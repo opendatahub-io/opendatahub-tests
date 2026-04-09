@@ -433,3 +433,26 @@ def wait_for_postgres_connection_log(
             return
 
     raise TimeoutError(f"PostgreSQL pod in namespace {namespace} did not report accepting connections")
+
+
+def assert_subscription_info_schema(subscription: dict[str, Any]) -> None:
+    """Assert a SubscriptionInfo object has the expected structure and field types."""
+    assert "subscription_id_header" in subscription, f"Missing subscription_id_header: {subscription}"
+    assert isinstance(subscription["subscription_id_header"], str), "subscription_id_header must be string"
+    assert "subscription_description" in subscription, f"Missing subscription_description: {subscription}"
+    assert isinstance(subscription["subscription_description"], str), "subscription_description must be string"
+    assert "priority" in subscription, f"Missing priority: {subscription}"
+    assert isinstance(subscription["priority"], int), "priority must be integer"
+    assert "model_refs" in subscription, f"Missing model_refs: {subscription}"
+    assert isinstance(subscription["model_refs"], list), "model_refs must be a list"
+    for model_ref in subscription["model_refs"]:
+        assert "name" in model_ref, f"model_ref missing name: {model_ref}"
+        assert isinstance(model_ref["name"], str), "model_ref name must be string"
+    if "display_name" in subscription:
+        assert isinstance(subscription["display_name"], str), "display_name must be string"
+    if "organization_id" in subscription:
+        assert isinstance(subscription["organization_id"], str), "organization_id must be string"
+    if "cost_center" in subscription:
+        assert isinstance(subscription["cost_center"], str), "cost_center must be string"
+    if "labels" in subscription:
+        assert isinstance(subscription["labels"], dict), "labels must be a dict"
