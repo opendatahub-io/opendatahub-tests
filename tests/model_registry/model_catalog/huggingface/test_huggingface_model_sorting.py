@@ -49,4 +49,5 @@ class TestHuggingFaceModelsSorting:
             sort_order=sort_order,
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
+            source_label="HuggingFace Source mixed",
         )
