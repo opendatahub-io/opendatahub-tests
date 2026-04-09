@@ -7,7 +7,9 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.data_science_pipelines_application import DataSciencePipelinesApplication
 from ocp_resources.deployment import Deployment
+from ocp_resources.evalhub import EvalHub
 from ocp_resources.inference_service import InferenceService
+from ocp_resources.mlflow import MLflow
 from ocp_resources.namespace import Namespace
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
@@ -30,8 +32,6 @@ from tests.model_explainability.evalhub.utils import wait_for_service_account
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import Timeout
 from utilities.infra import create_inference_token, create_ns
-from utilities.resources.evalhub import EvalHub
-from utilities.resources.mlflow import MLflow
 
 LOGGER = structlog.get_logger(name=__name__)
 
