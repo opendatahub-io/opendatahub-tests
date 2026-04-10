@@ -7,6 +7,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.resource import ResourceEditor
 
+from tests.model_registry.constants import DEFAULT_MODEL_CATALOG_CM
 from tests.model_registry.mcp_servers.config.constants import (
     MCP_CATALOG_INVALID_SOURCE,
     MCP_CATALOG_SOURCE,
@@ -36,7 +37,6 @@ def default_catalog_sources_data(
     model_registry_namespace: str,
 ) -> dict:
     """Return the parsed sources.yaml data from the default catalog sources ConfigMap."""
-    from tests.model_registry.constants import DEFAULT_MODEL_CATALOG_CM
 
     configmap = ConfigMap(
         name=DEFAULT_MODEL_CATALOG_CM,
@@ -73,39 +73,6 @@ def mcp_servers_by_source(
         headers=model_registry_rest_headers,
         params={"sourceLabel": source_label},
     )
-
-
-@pytest.fixture(scope="class")
-def random_default_mcp_server(default_mcp_servers: dict) -> dict:
-    """Return the first MCP server from the default catalog response."""
-    return default_mcp_servers["items"][0]
-
-
-@pytest.fixture(scope="class")
-def random_default_mcp_server_tools(
-    mcp_catalog_rest_urls: list[str],
-    model_registry_rest_headers: dict[str, str],
-    random_default_mcp_server: dict,
-) -> list[dict]:
-    """Return the tools for the first default MCP server, asserting toolCount matches."""
-    server_id = random_default_mcp_server["id"]
-    response = execute_get_command(
-        url=f"{mcp_catalog_rest_urls[0]}mcp_servers/{server_id}",
-        headers=model_registry_rest_headers,
-        params={"includeTools": "true"},
-    )
-    tool_count = response.get("toolCount", 0)
-    tools = response.get("tools", [])
-    assert len(tools) == tool_count, (
-        f"Tool count mismatch for server '{server_id}': toolCount={tool_count}, actual tools={len(tools)}"
-    )
-    return tools
-
-
-@pytest.fixture(scope="class")
-def random_default_mcp_server_tool(random_default_mcp_server_tools: list[dict]) -> dict:
-    """Return a random tool from the first default MCP server."""
-    return random_default_mcp_server_tools[0]
 
 
 @pytest.fixture(scope="class")

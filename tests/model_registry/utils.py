@@ -14,7 +14,7 @@ from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
-from timeout_sampler import retry
+from timeout_sampler import TimeoutSampler, retry
 
 from tests.model_registry.constants import (
     DB_BASE_RESOURCES_NAME,
@@ -961,13 +961,38 @@ def wait_for_model_catalog_pod_created(client: DynamicClient, model_registry_nam
     raise PodNotFound("Model catalog pod not found")
 
 
-@retry(
-    wait_timeout=90,
-    sleep=5,
-    exceptions_dict={ResourceNotFoundError: [], TransientUnauthorizedError: []},
-)
-def wait_for_mcp_catalog_api(url: str, headers: dict[str, str]) -> requests.Response:
-    """Wait for MCP catalog API to be ready and returning MCP server data."""
-    LOGGER.info(f"Waiting for MCP catalog API at {url}mcp_servers")
-    response = execute_get_call(url=f"{url}mcp_servers", headers=headers)
-    return response.json()
+def wait_for_mcp_catalog_api(
+    url: str, headers: dict[str, str], consecutive_stable_checks: int = 3, sleep: int = 5, wait_timeout: int = 120
+) -> dict:
+    """Wait for MCP catalog API to be ready and data fully loaded.
+
+    Polls the API until the server count stabilizes across consecutive checks,
+    ensuring catalog data has been fully loaded after a pod restart.
+    """
+    servers_url = f"{url}mcp_servers"
+    LOGGER.info(f"Waiting for MCP catalog API at {servers_url}")
+    last_size = -1
+    stable_count = 0
+    sampler = TimeoutSampler(
+        wait_timeout=wait_timeout,
+        sleep=sleep,
+        func=execute_get_call,
+        exceptions_dict={ResourceNotFoundError: [], TransientUnauthorizedError: []},
+        url=servers_url,
+        headers=headers,
+        params={"pageSize": 1000},
+    )
+    for sample in sampler:
+        data = json.loads(sample.text)
+        current_size = data.get("size", 0)
+        LOGGER.info(
+            f"MCP catalog API returned {current_size} servers (stable: {stable_count}/{consecutive_stable_checks})"
+        )
+        if current_size > 0 and current_size == last_size:
+            stable_count += 1
+            if stable_count >= consecutive_stable_checks:
+                return data
+        else:
+            stable_count = 0
+        last_size = current_size
+    return data

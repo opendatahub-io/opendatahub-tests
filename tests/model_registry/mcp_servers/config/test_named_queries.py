@@ -41,7 +41,7 @@ class TestMCPServerNamedQueries:
         response = execute_get_command(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
             headers=model_registry_rest_headers,
-            params={"namedQuery": named_query},
+            params={"namedQuery": named_query, "pageSize": 1000},
         )
         items = exclude_default_mcp_servers(response=response, default_mcp_servers=default_mcp_servers)
         assert len(items) == 1, f"Expected 1 server matching '{named_query}', got {len(items)}"
