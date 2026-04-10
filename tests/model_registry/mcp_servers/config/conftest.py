@@ -58,6 +58,17 @@ def random_default_mcp_server_tools(
 
 
 @pytest.fixture(scope="class")
+def mcp_server_with_multiple_tools(default_mcp_servers: dict) -> tuple[str, int]:
+    """Return the ID and tool count of a default MCP server that has at least 2 tools."""
+    server = next(
+        (server for server in default_mcp_servers.get("items", []) if server.get("toolCount", 0) >= 2),
+        None,
+    )
+    assert server, "No default MCP server found with at least 2 tools"
+    return server["id"], server["toolCount"]
+
+
+@pytest.fixture(scope="class")
 def random_default_mcp_server_tool(random_default_mcp_server_tools: list[dict]) -> dict:
     """Return a random tool from the first default MCP server."""
     return random_default_mcp_server_tools[0]
