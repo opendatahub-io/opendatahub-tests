@@ -15,6 +15,7 @@ from ocp_resources.service_account import ServiceAccount
 from tests.model_registry.constants import (
     CUSTOM_CATALOG_ID1,
     DEFAULT_CUSTOM_MODEL_CATALOG,
+    DEFAULT_MODEL_CATALOG_CM,
 )
 from tests.model_registry.model_catalog.catalog_config.utils import get_models_from_database_by_source
 from tests.model_registry.model_catalog.constants import (
@@ -110,7 +111,7 @@ def model_catalog_config_map(
 ) -> ConfigMap:
     """Parameterized fixture that takes a dict with configmap_name key and ensures it exists"""
     param = getattr(request, "param", {})
-    configmap_name = param.get("configmap_name", "model-catalog-default-sources")
+    configmap_name = param.get("configmap_name", DEFAULT_MODEL_CATALOG_CM)
     return ConfigMap(name=configmap_name, client=admin_client, namespace=model_registry_namespace, ensure_exists=True)
 
 
