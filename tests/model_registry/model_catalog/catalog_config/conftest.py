@@ -25,6 +25,7 @@ LOGGER = structlog.get_logger(name=__name__)
 
 @pytest.fixture(scope="package")
 def recreated_model_catalog_configmap(
+    pytestconfig: pytest.Config,
     admin_client: DynamicClient,
 ) -> ConfigMap:
     """
@@ -35,6 +36,16 @@ def recreated_model_catalog_configmap(
         ConfigMap: The recreated ConfigMap instance
     """
     namespace_name = py_config["model_registry_namespace"]
+
+    if pytestconfig.option.pre_upgrade or pytestconfig.option.post_upgrade:
+        LOGGER.info(f"Skipping ConfigMap {DEFAULT_CUSTOM_MODEL_CATALOG} recreation during upgrade testing")
+        return ConfigMap(
+            name=DEFAULT_CUSTOM_MODEL_CATALOG,
+            client=admin_client,
+            namespace=namespace_name,
+            ensure_exists=True,
+        )
+
     # TODO: would require changing this to look for configmaps based on label
     # Get the existing ConfigMap
     configmap = ConfigMap(

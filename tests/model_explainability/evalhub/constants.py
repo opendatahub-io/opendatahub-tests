@@ -44,10 +44,20 @@ EVALHUB_USER_ROLE_RULES: list[dict[str, list[str]]] = [
 
 # Garak provider
 GARAK_PROVIDER_ID: str = "garak-kfp"
-GARAK_BENCHMARK_ID: str = "quick"
+GARAK_BENCHMARK_ID: str = "intents"
 GARAK_JOB_TIMEOUT: int = 1800  # 30 minutes
 GARAK_JOB_POLL_INTERVAL: int = 30  # seconds
 
 # Job service account naming
 EVALHUB_JOB_SA_PREFIX: str = "evalhub-"
 EVALHUB_JOB_SA_SUFFIX: str = "-job"
+
+# Garak intents CSV
+GARAK_INTENTS_S3_KEY: str = "intents/misinformation_prompts.csv"
+MINIO_MC_IMAGE = "quay.io/minio/mc@sha256:470f5546b596e16c7816b9c3fa7a78ce4076bb73c2c73f7faeec0c8043923123"
+MINIO_UPLOADER_SECURITY_CONTEXT = {
+    "allowPrivilegeEscalation": False,
+    "capabilities": {"drop": ["ALL"]},
+    "runAsNonRoot": True,
+    "seccompProfile": {"type": "RuntimeDefault"},
+}
