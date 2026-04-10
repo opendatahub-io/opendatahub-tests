@@ -70,7 +70,15 @@ class TestMCPServerFiltering:
         )
         LOGGER.info(f"filter_options full response: {response}")
 
-        expected_filters = {"transports", "license", "provider", "architecture.array_value", "publishedDate"}
+        expected_filters = {
+            "transports",
+            "license",
+            "provider",
+            "architecture.array_value",
+            "publishedDate",
+            "deploymentMode",
+            "tags",
+        }
         assert expected_filters == set(response["filters"].keys())
 
     def test_pagination_with_filters(

@@ -4,10 +4,10 @@ import pytest
 import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.config_map import ConfigMap
 from ocp_resources.resource import ResourceEditor
 
 from tests.model_registry.mcp_servers.config.constants import (
-    EXPECTED_DEFAULT_MCP_CATALOG,
     MCP_CATALOG_INVALID_SOURCE,
     MCP_CATALOG_SOURCE,
     MCP_CATALOG_SOURCE2,
@@ -28,6 +28,51 @@ from tests.model_registry.utils import (
 )
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+@pytest.fixture(scope="class")
+def default_catalog_sources_data(
+    admin_client: DynamicClient,
+    model_registry_namespace: str,
+) -> dict:
+    """Return the parsed sources.yaml data from the default catalog sources ConfigMap."""
+    from tests.model_registry.constants import DEFAULT_MODEL_CATALOG_CM
+
+    configmap = ConfigMap(
+        name=DEFAULT_MODEL_CATALOG_CM,
+        client=admin_client,
+        namespace=model_registry_namespace,
+    )
+    return yaml.safe_load(configmap.instance.data.get("sources.yaml", "{}") or "{}")
+
+
+@pytest.fixture(scope="class")
+def default_mcp_catalogs(default_catalog_sources_data: dict) -> list[dict]:
+    """Return the mcp_catalogs list from the default catalog sources ConfigMap."""
+    return default_catalog_sources_data.get("mcp_catalogs", [])
+
+
+@pytest.fixture(scope="class")
+def default_mcp_label_definitions(default_catalog_sources_data: dict) -> list[dict]:
+    """Return the MCP server label definitions from the default catalog sources ConfigMap."""
+    return [
+        label for label in default_catalog_sources_data.get("labels", []) if label.get("assetType") == "mcp_servers"
+    ]
+
+
+@pytest.fixture(scope="class")
+def mcp_servers_by_source(
+    request: pytest.FixtureRequest,
+    mcp_catalog_rest_urls: list[str],
+    model_registry_rest_headers: dict[str, str],
+) -> dict:
+    """Return MCP servers filtered by source label, passed via request.param."""
+    source_label = request.param
+    return execute_get_command(
+        url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
+        headers=model_registry_rest_headers,
+        params={"sourceLabel": source_label},
+    )
 
 
 @pytest.fixture(scope="class")
@@ -65,19 +110,25 @@ def random_default_mcp_server_tool(random_default_mcp_server_tools: list[dict]) 
 
 @pytest.fixture(scope="class")
 def disable_default_mcp_source(
+    request: pytest.FixtureRequest,
     admin_client: DynamicClient,
     model_registry_namespace: str,
     mcp_catalog_rest_urls: list[str],
     model_registry_rest_headers: dict[str, str],
-) -> Generator[None]:
-    """Class-scoped fixture that disables the default MCP catalog source and restores it after."""
+) -> Generator[str]:
+    """Class-scoped fixture that disables a default MCP catalog source and restores it after.
+
+    The catalog to disable is passed via request.param (expected catalog dict).
+    Yields the catalog ID of the disabled source.
+    """
+    expected_catalog = request.param
     catalog_config_map, current_data = get_mcp_catalog_sources(
         admin_client=admin_client, model_registry_namespace=model_registry_namespace
     )
     current_data["mcp_catalogs"] = [
         {
-            "name": EXPECTED_DEFAULT_MCP_CATALOG["name"],
-            "id": EXPECTED_DEFAULT_MCP_CATALOG["id"],
+            "name": expected_catalog["name"],
+            "id": expected_catalog["id"],
             "enabled": False,
         }
     ]
@@ -89,7 +140,7 @@ def disable_default_mcp_source(
             client=admin_client, model_registry_namespace=model_registry_namespace
         )
         wait_for_mcp_catalog_api(url=mcp_catalog_rest_urls[0], headers=model_registry_rest_headers)
-        yield
+        yield expected_catalog["id"]
 
     wait_for_model_catalog_pod_ready_after_deletion(
         client=admin_client, model_registry_namespace=model_registry_namespace

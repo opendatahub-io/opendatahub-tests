@@ -7,6 +7,7 @@ from tests.model_registry.mcp_servers.config.constants import (
     DEFAULT_MCP_LABEL,
     MCP_CATALOG_SOURCE2_NAME,
     MCP_CATALOG_SOURCE_NAME,
+    PARTNER_MCP_LABEL,
 )
 from tests.model_registry.utils import execute_get_command
 
@@ -21,9 +22,10 @@ class TestMCPServerSourceLabel:
     @pytest.mark.parametrize(
         "source_label_param",
         [
-            pytest.param({"sourceLabel": "null"}, id="null_label"),
-            pytest.param({}, id="no_filter"),
-            pytest.param({"sourceLabel": DEFAULT_MCP_LABEL}, id="default_label"),
+            pytest.param({"sourceLabel": "null"}, id="test_null_label"),
+            pytest.param({}, id="test_no_filter"),
+            pytest.param({"sourceLabel": DEFAULT_MCP_LABEL}, id="test_default_label"),
+            pytest.param({"sourceLabel": PARTNER_MCP_LABEL}, id="test_partner_label"),
         ],
     )
     def test_mcp_server_source_label(

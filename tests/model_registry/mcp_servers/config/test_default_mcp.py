@@ -2,13 +2,17 @@ from typing import Self
 
 import pytest
 import structlog
-import yaml
-from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
-from ocp_resources.config_map import ConfigMap
 
-from tests.model_registry.constants import DEFAULT_MODEL_CATALOG_CM
-from tests.model_registry.mcp_servers.config.constants import EXPECTED_DEFAULT_MCP_CATALOG
+from tests.model_registry.mcp_servers.config.constants import (
+    DEFAULT_MCP_LABEL,
+    EXPECTED_COMMUNITY_MCP_CATALOG,
+    EXPECTED_DEFAULT_MCP_CATALOG,
+    EXPECTED_PARTNER_MCP_CATALOG,
+    EXPECTED_PARTNER_MCP_LABEL_DEFINITION,
+    EXPECTED_REDHAT_MCP_LABEL_DEFINITION,
+    PARTNER_MCP_LABEL,
+)
 from tests.model_registry.utils import execute_get_command
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -21,55 +25,83 @@ pytestmark = [pytest.mark.install, pytest.mark.post_upgrade]
 class TestDefaultMCPCatalogSourceConfigMap:
     """Tests for the default MCP catalog source ConfigMap entry."""
 
+    @pytest.mark.parametrize(
+        "expected_catalog",
+        [
+            pytest.param(EXPECTED_DEFAULT_MCP_CATALOG, id="test_redhat_catalog"),
+            pytest.param(EXPECTED_PARTNER_MCP_CATALOG, id="test_partner_catalog"),
+            pytest.param(EXPECTED_COMMUNITY_MCP_CATALOG, id="test_community_catalog"),
+        ],
+    )
     def test_default_mcp_catalog_entry(
         self: Self,
-        admin_client: DynamicClient,
-        model_registry_namespace: str,
+        default_mcp_catalogs: list[dict],
+        expected_catalog: dict,
     ):
-        """Verify that model-catalog-default-sources ConfigMap contains the expected Red Hat MCP Servers entry."""
-        configmap = ConfigMap(
-            name=DEFAULT_MODEL_CATALOG_CM,
-            client=admin_client,
-            namespace=model_registry_namespace,
-        )
-        sources_data = yaml.safe_load(configmap.instance.data.get("sources.yaml", "{}") or "{}")
-        mcp_catalogs = sources_data.get("mcp_catalogs", [])
-
-        matching = [entry for entry in mcp_catalogs if entry.get("id") == EXPECTED_DEFAULT_MCP_CATALOG["id"]]
+        """Verify that default-catalog-sources ConfigMap contains the expected MCP catalog entry."""
+        matching = [entry for entry in default_mcp_catalogs if entry.get("id") == expected_catalog["id"]]
         assert matching, (
-            f"Expected mcp_catalogs entry with id '{EXPECTED_DEFAULT_MCP_CATALOG['id']}' "
-            f"not found in {DEFAULT_MODEL_CATALOG_CM} ConfigMap. Found entries: {mcp_catalogs}"
+            f"Expected mcp_catalogs entry with id '{expected_catalog['id']}' "
+            f"not found in ConfigMap. Found entries: {default_mcp_catalogs}"
         )
-        assert matching[0] == EXPECTED_DEFAULT_MCP_CATALOG, (
-            f"MCP catalog entry does not match expected values.\n"
-            f"Expected: {EXPECTED_DEFAULT_MCP_CATALOG}\n"
-            f"Actual: {matching[0]}"
+        assert matching[0] == expected_catalog, (
+            f"MCP catalog entry does not match expected values.\nExpected: {expected_catalog}\nActual: {matching[0]}"
         )
-        LOGGER.info(f"Found {len(matching)} MCP catalogs from default catalog")
+
+    @pytest.mark.parametrize(
+        "expected_label",
+        [
+            pytest.param(EXPECTED_REDHAT_MCP_LABEL_DEFINITION, id="test_redhat_label"),
+            pytest.param(EXPECTED_PARTNER_MCP_LABEL_DEFINITION, id="test_partner_label"),
+        ],
+    )
+    def test_default_mcp_label_definition(
+        self: Self,
+        default_mcp_label_definitions: list[dict],
+        expected_label: dict,
+    ):
+        """Verify that the default catalog sources ConfigMap contains the expected MCP label definition."""
+        matching = [label for label in default_mcp_label_definitions if label.get("name") == expected_label["name"]]
+        assert matching, (
+            f"Expected label definition with name '{expected_label['name']}' "
+            f"not found in ConfigMap. Found labels: {default_mcp_label_definitions}"
+        )
+        assert matching[0] == expected_label, (
+            f"Label definition does not match expected values.\nExpected: {expected_label}\nActual: {matching[0]}"
+        )
 
 
 @pytest.mark.tier1
+@pytest.mark.parametrize(
+    "mcp_servers_by_source",
+    [
+        pytest.param(DEFAULT_MCP_LABEL, id="test_redhat"),
+        pytest.param(PARTNER_MCP_LABEL, id="test_partner"),
+        pytest.param("null", id="test_community"),
+    ],
+    indirect=True,
+)
 class TestDefaultMCPCatalogSourceValidations:
     """Tests for the default MCP catalog source API validations."""
 
     def test_default_mcp_servers_loaded(
         self: Self,
-        default_mcp_servers: dict,
+        mcp_servers_by_source: dict,
     ):
-        """Verify that the default MCP catalog returns a non-empty list of servers."""
-        size = default_mcp_servers.get("size", 0)
-        items = default_mcp_servers.get("items", [])
-        LOGGER.info(f"Found {len(items)} MCP servers from default catalog (size={size})")
-        assert size > 0, f"Expected size > 0 from default MCP catalog, but got {size}"
-        assert len(items) > 0, "Expected at least one MCP server from the default catalog, but got none"
+        """Verify that the MCP catalog returns a non-empty list of servers for the given source label."""
+        size = mcp_servers_by_source.get("size", 0)
+        items = mcp_servers_by_source.get("items", [])
+        LOGGER.info(f"Found {len(items)} MCP servers (size={size})")
+        assert size > 0, f"Expected size > 0, but got {size}"
+        assert len(items) > 0, "Expected at least one MCP server, but got none"
 
     def test_default_mcp_servers_required_fields(
         self: Self,
-        default_mcp_servers: dict,
+        mcp_servers_by_source: dict,
     ):
-        """Verify that all default MCP servers contain required metadata fields."""
+        """Verify that all MCP servers contain required metadata fields."""
         errors = []
-        for server in default_mcp_servers.get("items", []):
+        for server in mcp_servers_by_source.get("items", []):
             server_name = server["name"]
             for field in REQUIRED_SERVER_FIELDS:
                 if not server.get(field):
@@ -80,44 +112,43 @@ class TestDefaultMCPCatalogSourceValidations:
         self: Self,
         mcp_catalog_rest_urls: list[str],
         model_registry_rest_headers: dict[str, str],
-        random_default_mcp_server: dict,
+        mcp_servers_by_source: dict,
     ):
         """Verify that fetching an MCP server by id returns the same data as the list response."""
-        server_id = random_default_mcp_server["id"]
-        response = execute_get_command(
+        server = mcp_servers_by_source["items"][0]
+        server_id = server["id"]
+        fetched = execute_get_command(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers/{server_id}",
             headers=model_registry_rest_headers,
         )
         LOGGER.info(f"Fetched MCP server by id: {server_id}")
-        assert response == random_default_mcp_server, (
-            f"Server fetched by id does not match list response.\n"
-            f"Expected: {random_default_mcp_server}\n"
-            f"Actual: {response}"
+        assert fetched == server, (
+            f"Server fetched by id does not match list response.\nExpected: {server}\nActual: {fetched}"
         )
 
     def test_default_mcp_server_get_tools(
         self: Self,
         mcp_catalog_rest_urls: list[str],
         model_registry_rest_headers: dict[str, str],
-        default_mcp_servers: dict,
+        mcp_servers_by_source: dict,
     ):
-        """Verify that all default MCP servers have tools and each tool has required fields."""
+        """Verify that all MCP servers have tools and each tool has required fields."""
         errors = []
-        for server in default_mcp_servers.get("items", []):
+        for server in mcp_servers_by_source.get("items", []):
             server_name = server["name"]
             server_id = server["id"]
             tool_count = server.get("toolCount", 0)
             if tool_count == 0:
                 errors.append(f"Server '{server_name}' has toolCount=0")
                 continue
-            response = execute_get_command(
+            tools_response = execute_get_command(
                 url=f"{mcp_catalog_rest_urls[0]}mcp_servers/{server_id}/tools",
                 headers=model_registry_rest_headers,
                 params={"pageSize": 1000},
             )
-            if response["size"] != tool_count:
-                errors.append(f"Server '{server_name}': toolCount={tool_count} but got {response['size']} tools")
-            for tool in response["items"]:
+            if tools_response["size"] != tool_count:
+                errors.append(f"Server '{server_name}': toolCount={tool_count} but got {tools_response['size']} tools")
+            for tool in tools_response["items"]:
                 missing_fields = [field for field in ["id", "name", "accessType", "description"] if not tool.get(field)]
                 if missing_fields:
                     tool_name = tool.get("name", "<unnamed>")
@@ -126,22 +157,44 @@ class TestDefaultMCPCatalogSourceValidations:
                     )
         assert not errors, "Tool validation failed:\n" + "\n".join(errors)
 
-    def test_mcp_server_tool_limit(
+    @pytest.mark.xfail(reason="RHOAIENG-57606: toolLimit is broken on mcp_servers/<id> endpoint")
+    def test_mcp_server_by_id_tool_limit(
         self: Self,
         mcp_catalog_rest_urls: list[str],
         model_registry_rest_headers: dict[str, str],
+        mcp_servers_by_source: dict,
     ):
         """Verify toolLimit caps returned tools array (TC-API-021)."""
+        tool_limit = 1
+        server = mcp_servers_by_source["items"][0]
+        response = execute_get_command(
+            url=f"{mcp_catalog_rest_urls[0]}mcp_servers/{server['id']}",
+            headers=model_registry_rest_headers,
+            params={"includeTools": "true", "toolLimit": str(tool_limit)},
+        )
+        tools = response.get("tools", [])
+        assert len(tools) <= tool_limit, (
+            f"Server '{server['name']}' returned {len(tools)} tools, expected at most {tool_limit}"
+        )
+
+    def test_mcp_servers_tool_limit(
+        self: Self,
+        mcp_catalog_rest_urls: list[str],
+        model_registry_rest_headers: dict[str, str],
+        mcp_servers_by_source: dict,
+    ):
+        """Verify toolLimit caps returned tools array on the mcp_servers list endpoint."""
         tool_limit = 1
         response = execute_get_command(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
             headers=model_registry_rest_headers,
-            params={"includeTools": "true", "toolLimit": str(tool_limit)},
+            params={"includeTools": "true", "toolLimit": str(tool_limit), "pageSize": 1000},
         )
         for server in response.get("items", []):
             name = server["name"]
-            assert len(server["tools"]) <= tool_limit, (
-                f"Server '{name}' returned {len(server['tools'])} tools, expected at most {tool_limit}"
+            tools = server.get("tools", [])
+            assert len(tools) <= tool_limit, (
+                f"Server '{name}' returned {len(tools)} tools, expected at most {tool_limit}"
             )
 
     @pytest.mark.tier3
@@ -149,6 +202,7 @@ class TestDefaultMCPCatalogSourceValidations:
         self: Self,
         mcp_catalog_rest_urls: list[str],
         model_registry_rest_headers: dict[str, str],
+        mcp_servers_by_source: dict,
     ):
         """Verify toolLimit exceeding maximum (100) is rejected (TC-API-023)."""
         with pytest.raises(ResourceNotFoundError):
@@ -162,43 +216,49 @@ class TestDefaultMCPCatalogSourceValidations:
         self: Self,
         mcp_catalog_rest_urls: list[str],
         model_registry_rest_headers: dict[str, str],
-        random_default_mcp_server: dict,
-        random_default_mcp_server_tool: dict,
+        mcp_servers_by_source: dict,
     ):
         """Verify that fetching a specific tool by name returns the same data as the tools list."""
-        server_id = random_default_mcp_server["id"]
-        tool_name = random_default_mcp_server_tool["name"]
-        response = execute_get_command(
+        server = next(
+            (s for s in mcp_servers_by_source.get("items", []) if s.get("toolCount", 0) > 0),
+            None,
+        )
+        assert server, "No server with tools found"
+        server_id = server["id"]
+        tools_response = execute_get_command(
+            url=f"{mcp_catalog_rest_urls[0]}mcp_servers/{server_id}/tools",
+            headers=model_registry_rest_headers,
+            params={"pageSize": 1000},
+        )
+        tool = tools_response["items"][0]
+        tool_name = tool["name"]
+        fetched = execute_get_command(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers/{server_id}/tools/{tool_name}",
             headers=model_registry_rest_headers,
         )
-
-        LOGGER.info(f"Fetched tool '{tool_name}' for MCP server: {random_default_mcp_server['name']}")
-        assert response == random_default_mcp_server_tool, (
-            f"Tool fetched by name does not match tools list response.\n"
-            f"Expected: {random_default_mcp_server_tool}\n"
-            f"Actual: {response}"
+        LOGGER.info(f"Fetched tool '{tool_name}' for MCP server: {server['name']}")
+        assert fetched == tool, (
+            f"Tool fetched by name does not match tools list response.\nExpected: {tool}\nActual: {fetched}"
         )
 
     def test_default_mcp_server_tools_loaded(
         self: Self,
         mcp_catalog_rest_urls: list[str],
         model_registry_rest_headers: dict[str, str],
-        default_mcp_servers: dict,
+        mcp_servers_by_source: dict,
     ):
-        """Verify that default MCP server tools are correctly loaded when includeTools=true."""
-        response = execute_get_command(
-            url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
-            headers=model_registry_rest_headers,
-            params={"includeTools": "true", "toolLimit": "100"},
-        )
-        default_server_names = {server["name"] for server in default_mcp_servers.get("items", [])}
-        default_servers = [server for server in response.get("items", []) if server["name"] in default_server_names]
+        """Verify that MCP server tools are correctly loaded when includeTools=true."""
         errors = []
-        for server in default_servers:
+        for server in mcp_servers_by_source.get("items", []):
+            server_id = server["id"]
             name = server["name"]
-            tool_count = server.get("toolCount", 0)
-            tools = server.get("tools", [])
+            response = execute_get_command(
+                url=f"{mcp_catalog_rest_urls[0]}mcp_servers/{server_id}",
+                headers=model_registry_rest_headers,
+                params={"includeTools": "true", "toolLimit": "100"},
+            )
+            tool_count = response.get("toolCount", 0)
+            tools = response.get("tools", [])
             if not tools:
                 errors.append(f"Server '{name}' has no tools with includeTools=true")
                 continue
@@ -207,23 +267,30 @@ class TestDefaultMCPCatalogSourceValidations:
         assert not errors, "Tool loading validation failed:\n" + "\n".join(errors)
 
 
+@pytest.mark.parametrize(
+    "disable_default_mcp_source",
+    [
+        pytest.param(EXPECTED_DEFAULT_MCP_CATALOG, id="test_redhat"),
+        pytest.param(EXPECTED_PARTNER_MCP_CATALOG, id="test_partner"),
+        pytest.param(EXPECTED_COMMUNITY_MCP_CATALOG, id="test_community"),
+    ],
+    indirect=True,
+)
 class TestDefaultMCPDisable:
-    """Tests for verifying behavior when the default MCP catalog source is disabled."""
+    """Tests for verifying behavior when a default MCP catalog source is disabled."""
 
     def test_default_mcp_servers_disabled(
         self: Self,
         mcp_catalog_rest_urls: list[str],
         model_registry_rest_headers: dict[str, str],
-        disable_default_mcp_source: dict,
-        default_mcp_servers: dict,
+        disable_default_mcp_source: str,
     ):
-        """Verify that default MCP servers are not returned when the default source is disabled."""
+        """Verify that MCP servers from the disabled source are not returned."""
         response = execute_get_command(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
             headers=model_registry_rest_headers,
         )
-        returned_server_ids = {server["source_id"] for server in response.get("items", [])}
-        for server in default_mcp_servers.get("items", []):
-            assert server["source_id"] not in returned_server_ids, (
-                f"Default MCP server '{server['name']}' should not be present after disabling source"
-            )
+        returned_source_ids = {server["source_id"] for server in response.get("items", [])}
+        assert disable_default_mcp_source not in returned_source_ids, (
+            "Servers from disabled source should not be present, but source_id found in response"
+        )
