@@ -32,7 +32,7 @@ from tests.model_explainability.evalhub.constants import (
     EVALHUB_USER_ROLE_RULES,
     GARAK_INTENTS_S3_KEY,
     MINIO_MC_IMAGE,
-    MINIO_UPLOADER_SECURITY_CONTEXT
+    MINIO_UPLOADER_SECURITY_CONTEXT,
 )
 from tests.model_explainability.evalhub.utils import wait_for_service_account
 from utilities.certificates_utils import create_ca_bundle_file
