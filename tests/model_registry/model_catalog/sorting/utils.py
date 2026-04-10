@@ -1,4 +1,3 @@
-import re
 from typing import Any
 
 import structlog
@@ -83,11 +82,13 @@ def _postgres_collation_key(name: str) -> tuple[str, str]:
 
     PostgreSQL with a locale like en_US.UTF-8 treats punctuation as ignorable
     at the primary comparison level. This function emulates that by producing a
-    tuple of (alphanumeric-only lowercase, full lowercase) for comparison.
+    tuple of (alphanumeric-only casefolded, full casefolded) for comparison.
+    Uses str.casefold() for proper Unicode casing and str.isalnum() to preserve
+    non-ASCII alphanumeric characters.
     """
-    lower = name.lower()
-    primary = re.sub(r"[^a-z0-9]", "", lower)
-    return (primary, lower)
+    folded = name.casefold()
+    primary = "".join(ch for ch in folded if ch.isalnum())
+    return (primary, folded)
 
 
 def validate_items_sorted_correctly(items: list[dict], field: str, order: str) -> bool:
