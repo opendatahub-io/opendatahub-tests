@@ -10,7 +10,7 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.pod import Pod
 from timeout_sampler import TimeoutExpiredError, retry
 
-from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG
+from tests.model_registry.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
 from tests.model_registry.model_catalog.constants import (
     DEFAULT_CATALOGS,
     REDHAT_AI_CATALOG_ID,
@@ -308,9 +308,9 @@ def modify_catalog_source(
     if not target_source:
         LOGGER.info(f"Source {source_id} not found in {DEFAULT_CUSTOM_MODEL_CATALOG}. Syncing from default sources.")
 
-        # Get default sources ConfigMap (model-catalog-default-sources)
+        # Get default sources ConfigMap (default-catalog-sources)
         default_sources_cm = ConfigMap(
-            name="model-catalog-default-sources",
+            name=DEFAULT_MODEL_CATALOG_CM,
             client=admin_client,
             namespace=namespace,
         )
