@@ -82,7 +82,7 @@ class TestMCPServerNamedQueries:
         response = execute_get_command(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
             headers=model_registry_rest_headers,
-            params={"namedQuery": "production_ready", "filterQuery": filter_query},
+            params={"namedQuery": "production_ready", "filterQuery": filter_query, "pageSize": 1000},
         )
         items = response["items"]
         assert len(items) == expected_count, (

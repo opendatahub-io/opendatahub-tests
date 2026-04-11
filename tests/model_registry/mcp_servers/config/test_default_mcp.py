@@ -40,9 +40,9 @@ class TestDefaultMCPCatalogSourceConfigMap:
     ):
         """Verify that default-catalog-sources ConfigMap contains the expected MCP catalog entry."""
         matching = [entry for entry in default_mcp_catalogs if entry.get("id") == expected_catalog["id"]]
-        assert matching, (
-            f"Expected mcp_catalogs entry with id '{expected_catalog['id']}' "
-            f"not found in ConfigMap. Found entries: {default_mcp_catalogs}"
+        assert len(matching) == 1, (
+            f"Expected exactly 1 mcp_catalogs entry with id '{expected_catalog['id']}', "
+            f"found {len(matching)}: {matching}"
         )
         assert matching[0] == expected_catalog, (
             f"MCP catalog entry does not match expected values.\nExpected: {expected_catalog}\nActual: {matching[0]}"
@@ -62,9 +62,9 @@ class TestDefaultMCPCatalogSourceConfigMap:
     ):
         """Verify that the default catalog sources ConfigMap contains the expected MCP label definition."""
         matching = [label for label in default_mcp_label_definitions if label.get("name") == expected_label["name"]]
-        assert matching, (
-            f"Expected label definition with name '{expected_label['name']}' "
-            f"not found in ConfigMap. Found labels: {default_mcp_label_definitions}"
+        assert len(matching) == 1, (
+            f"Expected exactly 1 label definition with name '{expected_label['name']}', "
+            f"found {len(matching)}: {matching}"
         )
         assert matching[0] == expected_label, (
             f"Label definition does not match expected values.\nExpected: {expected_label}\nActual: {matching[0]}"
@@ -289,6 +289,7 @@ class TestDefaultMCPDisable:
         response = execute_get_command(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
             headers=model_registry_rest_headers,
+            params={"pageSize": 1000},
         )
         returned_source_ids = {server["source_id"] for server in response.get("items", [])}
         assert disable_default_mcp_source not in returned_source_ids, (

@@ -71,7 +71,7 @@ def mcp_servers_by_source(
     return execute_get_command(
         url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
         headers=model_registry_rest_headers,
-        params={"sourceLabel": source_label},
+        params={"sourceLabel": source_label, "pageSize": 1000},
     )
 
 
@@ -112,6 +112,7 @@ def disable_default_mcp_source(
     wait_for_model_catalog_pod_ready_after_deletion(
         client=admin_client, model_registry_namespace=model_registry_namespace
     )
+    wait_for_mcp_catalog_api(url=mcp_catalog_rest_urls[0], headers=model_registry_rest_headers)
 
 
 @pytest.fixture(scope="class")
@@ -150,6 +151,7 @@ def mcp_multi_source_configmap_patch(
     wait_for_model_catalog_pod_ready_after_deletion(
         client=admin_client, model_registry_namespace=model_registry_namespace
     )
+    wait_for_mcp_catalog_api(url=mcp_catalog_rest_urls[0], headers=model_registry_rest_headers)
 
 
 @pytest.fixture(scope="class")
@@ -190,6 +192,7 @@ def mcp_source_label_configmap_patch(
     wait_for_model_catalog_pod_ready_after_deletion(
         client=admin_client, model_registry_namespace=model_registry_namespace
     )
+    wait_for_mcp_catalog_api(url=mcp_catalog_rest_urls[0], headers=model_registry_rest_headers)
 
 
 @pytest.fixture(scope="class")
@@ -229,6 +232,7 @@ def mcp_invalid_yaml_configmap_patch(
     wait_for_model_catalog_pod_ready_after_deletion(
         client=admin_client, model_registry_namespace=model_registry_namespace
     )
+    wait_for_mcp_catalog_api(url=mcp_catalog_rest_urls[0], headers=model_registry_rest_headers)
 
 
 @pytest.fixture(scope="class")
@@ -286,6 +290,7 @@ def mcp_included_excluded_configmap_patch(
     wait_for_model_catalog_pod_ready_after_deletion(
         client=admin_client, model_registry_namespace=model_registry_namespace
     )
+    wait_for_mcp_catalog_api(url=mcp_catalog_rest_urls[0], headers=model_registry_rest_headers)
 
 
 @pytest.fixture(scope="class")

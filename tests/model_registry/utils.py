@@ -963,7 +963,7 @@ def wait_for_model_catalog_pod_created(client: DynamicClient, model_registry_nam
 
 def wait_for_mcp_catalog_api(
     url: str, headers: dict[str, str], consecutive_stable_checks: int = 3, sleep: int = 5, wait_timeout: int = 120
-) -> dict:
+) -> dict[str, Any]:
     """Wait for MCP catalog API to be ready and data fully loaded.
 
     Polls the API until the server count stabilizes across consecutive checks,
@@ -971,8 +971,9 @@ def wait_for_mcp_catalog_api(
     """
     servers_url = f"{url}mcp_servers"
     LOGGER.info(f"Waiting for MCP catalog API at {servers_url}")
-    last_size = -1
+    last_payload = None
     stable_count = 0
+    data = {}
     sampler = TimeoutSampler(
         wait_timeout=wait_timeout,
         sleep=sleep,
@@ -985,14 +986,16 @@ def wait_for_mcp_catalog_api(
     for sample in sampler:
         data = json.loads(sample.text)
         current_size = data.get("size", 0)
-        LOGGER.info(
-            f"MCP catalog API returned {current_size} servers (stable: {stable_count}/{consecutive_stable_checks})"
-        )
-        if current_size > 0 and current_size == last_size:
+        payload_identity = json.dumps(data, sort_keys=True)
+        if current_size > 0 and payload_identity == last_payload:
             stable_count += 1
             if stable_count >= consecutive_stable_checks:
+                LOGGER.info(f"MCP catalog API stabilized with {current_size} servers after {stable_count} checks")
                 return data
         else:
             stable_count = 0
-        last_size = current_size
+        last_payload = payload_identity
+        LOGGER.info(
+            f"MCP catalog API returned {current_size} servers (stable: {stable_count}/{consecutive_stable_checks})"
+        )
     return data
