@@ -90,7 +90,7 @@ def _load_documents_from_manifest(
             list are returned.
     """
     abs_manifest = _REPO_ROOT / manifest_path
-    manifest_dir = str(abs_manifest.parent)
+    manifest_dir = abs_manifest.parent.resolve()
     raw_list = json.loads(abs_manifest.read_text())
     allowed_ids = set(document_ids) if document_ids is not None else None
 
@@ -100,15 +100,23 @@ def _load_documents_from_manifest(
         if missing:
             raise ValueError(f"document_ids not found in manifest {manifest_path}: {sorted(missing)}")
 
-    return tuple(
-        DatasetDocument(
-            path=f"{manifest_dir}/{entry['filename']}",
-            document_id=entry["document_id"],
-            attributes=entry.get("attributes", {}),
+    docs: list[DatasetDocument] = []
+    for entry in raw_list:
+        if allowed_ids is not None and entry["document_id"] not in allowed_ids:
+            continue
+        resolved = (manifest_dir / entry["filename"]).resolve()
+        if not resolved.is_relative_to(manifest_dir):
+            raise ValueError(
+                f"Manifest entry {entry['filename']!r} resolves outside the dataset directory {manifest_dir}"
+            )
+        docs.append(
+            DatasetDocument(
+                path=str(resolved),
+                document_id=entry["document_id"],
+                attributes=entry.get("attributes", {}),
+            )
         )
-        for entry in raw_list
-        if allowed_ids is None or entry["document_id"] in allowed_ids
-    )
+    return tuple(docs)
 
 
 @dataclass(frozen=True)
