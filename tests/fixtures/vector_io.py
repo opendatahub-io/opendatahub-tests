@@ -72,8 +72,10 @@ def vector_io_provider_deployment_config_factory(
         - "milvus-remote": Remote Milvus service requiring external deployment
 
     Environment Variables by Provider:
-        - "milvus": no env vars available
-        - "milvus-remote":
+        - "milvus" (or None): Injects ENABLE_INLINE_MILVUS=true so the
+          LlamaStack server starts its built-in Milvus instance.  No external
+          deployment is created.
+        - "milvus-remote" (does NOT receive ENABLE_INLINE_MILVUS):
           * MILVUS_ENDPOINT: Remote Milvus service endpoint URL
           * MILVUS_TOKEN: Authentication token for remote service
           * MILVUS_CONSISTENCY_LEVEL: Consistency level for operations

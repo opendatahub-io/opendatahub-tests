@@ -93,6 +93,13 @@ def _load_documents_from_manifest(
     manifest_dir = str(abs_manifest.parent)
     raw_list = json.loads(abs_manifest.read_text())
     allowed_ids = set(document_ids) if document_ids is not None else None
+
+    if allowed_ids is not None:
+        present_ids = {entry["document_id"] for entry in raw_list}
+        missing = allowed_ids - present_ids
+        if missing:
+            raise ValueError(f"document_ids not found in manifest {manifest_path}: {sorted(missing)}")
+
     return tuple(
         DatasetDocument(
             path=f"{manifest_dir}/{entry['filename']}",
