@@ -99,8 +99,7 @@ def vector_io_provider_deployment_config_factory(
         env_vars: list[dict[str, Any]] = []
 
         if provider_name is None or provider_name == "milvus":
-            # Default case - no additional environment variables needed
-            pass
+            env_vars.append({"name": "ENABLE_INLINE_MILVUS", "value": "true"})
         elif provider_name == "milvus-remote":
             request.getfixturevalue(argname="milvus_service")
             env_vars.append({"name": "MILVUS_ENDPOINT", "value": "http://vector-io-milvus-service:19530"})
