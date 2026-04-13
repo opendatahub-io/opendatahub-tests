@@ -1,3 +1,4 @@
+import math
 import os
 import tempfile
 import time
@@ -6,18 +7,27 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+import httpx
+import pytest
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
+from langchain_openai import OpenAIEmbeddings as LangchainOpenAIEmbeddings
 from llama_stack_client import APIConnectionError, InternalServerError, LlamaStackClient
 from llama_stack_client.types.file import File
+from llama_stack_client.types.vector_store import VectorStore
 from llama_stack_client.types.vector_stores.vector_store_file import VectorStoreFile
 from ocp_resources.pod import Pod
+from openai import OpenAI
+from ragas import SingleTurnSample
+from ragas.llms import llm_factory
 from timeout_sampler import retry
 
 from tests.llama_stack.constants import (
     LLS_CORE_POD_FILTER,
+    RAGAS_MAX_SAMPLES,
+    ModelInfo,
 )
 from tests.llama_stack.datasets import Dataset
 from utilities.exceptions import UnexpectedResourceCountError
@@ -391,3 +401,159 @@ def vector_store_upload_dataset(
             vector_store=vector_store,
             attributes=doc.attributes,
         )
+
+
+def extract_retrieved_contexts(response) -> list[str]:
+    """
+    Extract retrieved contexts from a LlamaStack Responses API output.
+
+    Args:
+        response: Response object from client.responses.create()
+
+    Returns:
+        List of retrieved context strings
+    """
+    retrieved_contexts = []
+
+    for output_item in response.output:
+        if (
+            hasattr(output_item, "type")
+            and output_item.type == "file_search_call"
+            and hasattr(output_item, "results")
+            and output_item.results
+        ):
+            for result in output_item.results:
+                if hasattr(result, "text") and result.text:
+                    retrieved_contexts.append(result.text)
+
+    return retrieved_contexts
+
+
+def mean_ragas_score(scores: list) -> float:
+    """Compute mean of RAGAS per-sample scores, filtering out NaN values."""
+    valid = [s for s in scores if s is not None and not math.isnan(s)]
+    return sum(valid) / len(valid) if valid else 0.0
+
+
+@pytest.fixture(scope="class")
+def ragas_evaluator_llm(
+    unprivileged_llama_stack_client: LlamaStackClient,
+    llama_stack_models: ModelInfo,
+) -> Generator[Any, Any, Any]:
+    """Create a RAGAS evaluator LLM backed by the Llama Stack OpenAI-compatible endpoint."""
+    base_url = str(unprivileged_llama_stack_client.base_url).rstrip("/")
+    verify_ssl = os.getenv("LLS_CLIENT_VERIFY_SSL", "false").lower() == "true"
+
+    http_client = httpx.Client(verify=verify_ssl, timeout=httpx.Timeout(240.0))
+    openai_client = OpenAI(
+        api_key=os.getenv("LLS_CORE_VLLM_API_TOKEN", ""),
+        base_url=f"{base_url}/v1",
+        http_client=http_client,
+    )
+
+    evaluator_llm = llm_factory(
+        model=llama_stack_models.model_id,
+        provider="openai",
+        client=openai_client,
+    )
+    evaluator_llm.model_args["max_tokens"] = 4096
+
+    yield evaluator_llm
+    http_client.close()
+
+
+@pytest.fixture(scope="class")
+def ragas_evaluator_embeddings(
+    unprivileged_llama_stack_client: LlamaStackClient,
+    llama_stack_models: ModelInfo,
+) -> Generator[Any, Any, Any]:
+    """Create RAGAS embeddings backed by the Llama Stack sentence-transformers provider.
+
+    Uses langchain_openai.OpenAIEmbeddings because the old ragas.metrics.AnswerRelevancy
+    calls embed_query()/embed_documents() (LangChain interface), which the newer
+    ragas.embeddings.OpenAIEmbeddings does not implement.
+    """
+    base_url = str(unprivileged_llama_stack_client.base_url).rstrip("/")
+    verify_ssl = os.getenv("LLS_CLIENT_VERIFY_SSL", "false").lower() == "true"
+
+    http_client = httpx.Client(verify=verify_ssl, timeout=httpx.Timeout(120.0))
+
+    embeddings = LangchainOpenAIEmbeddings(
+        openai_api_key="false",  # pragma: allowlist secret
+        openai_api_base=f"{base_url}/v1",
+        model=llama_stack_models.embedding_model.id,
+        http_client=http_client,
+        check_embedding_ctx_length=False,
+        tiktoken_enabled=False,
+    )
+
+    yield embeddings
+    http_client.close()
+
+
+@pytest.fixture(scope="class")
+def ragas_samples(
+    unprivileged_llama_stack_client: LlamaStackClient,
+    llama_stack_models: ModelInfo,
+    vector_store: VectorStore,
+    dataset: Dataset,
+) -> list[SingleTurnSample]:
+    """Build RAGAS evaluation samples by querying the RAG pipeline for each ground-truth QA pair.
+
+    Uses the Responses API with the file_search tool against the vector store,
+    mirroring a real-world RAG scenario.  The number of questions sent to the
+    LLM is capped by ``RAGAS_MAX_SAMPLES`` (env var, default 5).
+    """
+    qa_records = dataset.load_qa(retrieval_mode="vector")[:RAGAS_MAX_SAMPLES]
+    samples: list[SingleTurnSample] = []
+
+    for i, record in enumerate(qa_records):
+        LOGGER.info(f"[{i + 1}/{len(qa_records)}] {record.question[:80]}...")
+
+        try:
+            resp = unprivileged_llama_stack_client.responses.create(
+                model=llama_stack_models.model_id,
+                instructions=(
+                    "/no_think\n"
+                    "You are a helpful assistant with access to data via the file_search tool.\n\n"
+                    "When asked questions, use available tools to find the answer. Follow these rules:\n"
+                    "1. Use tools immediately without asking for confirmation\n"
+                    "2. Chain tool calls as needed\n"
+                    "3. Do not narrate your process\n"
+                    "4. Only provide the final answer\n"
+                    "5. If the answer is not found in the context, respond with 'I don't know'"
+                ),
+                tools=[{"type": "file_search", "vector_store_ids": [vector_store.id]}],
+                stream=False,
+                input=record.question,
+            )
+
+            rag_answer = resp.output_text.strip()
+            retrieved_contexts = extract_retrieved_contexts(response=resp)
+
+        except Exception:
+            LOGGER.exception(f"RAG call failed for question: {record.question!r}, skipping sample")
+            continue
+
+        if not rag_answer:
+            LOGGER.warning(f"Empty RAG response for question: {record.question!r}, skipping sample")
+            continue
+        if not retrieved_contexts:
+            LOGGER.warning(f"No retrieved contexts for question: {record.question!r}, skipping sample")
+            continue
+
+        samples.append(
+            SingleTurnSample(
+                user_input=record.question,
+                retrieved_contexts=retrieved_contexts,
+                response=rag_answer,
+                reference=record.ground_truth,
+            )
+        )
+
+        LOGGER.info(f"  Answer: {rag_answer[:120]}...")
+        LOGGER.info(f"  Retrieved {len(retrieved_contexts)} context(s)")
+
+    assert samples, "Failed to build any RAGAS samples from the dataset QA records"
+    LOGGER.info(f"Built {len(samples)} RAGAS evaluation samples from {len(qa_records)} QA records")
+    return samples
