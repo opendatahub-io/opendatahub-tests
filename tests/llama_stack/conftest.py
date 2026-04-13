@@ -1,8 +1,8 @@
-from typing import Generator, Any, Dict, Callable
 import os
+from collections.abc import Callable, Generator
+from typing import Any
+
 import httpx
-from ocp_resources.route import Route
-from ocp_resources.resource import ResourceEditor
 import pytest
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
@@ -10,26 +10,28 @@ from llama_stack_client import APIError, LlamaStackClient
 from llama_stack_client.types.vector_store import VectorStore
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
-
-from utilities.resources.llama_stack_distribution import LlamaStackDistribution
 from ocp_resources.namespace import Namespace
+from ocp_resources.resource import ResourceEditor
+from ocp_resources.route import Route
+from ocp_resources.secret import Secret
+from ocp_resources.service import Service
 from semver import Version
 from simple_logger.logger import get_logger
-from utilities.general import generate_random_name
-from tests.llama_stack.utils import (
-    create_llama_stack_distribution,
-    wait_for_llama_stack_client_ready,
-    vector_store_create_file_from_url,
-    wait_for_unique_llama_stack_pod,
-)
-from utilities.constants import DscComponents, Annotations
-from utilities.data_science_cluster_utils import update_components_in_dsc
+
 from tests.llama_stack.constants import (
     LLS_OPENSHIFT_MINIMAL_VERSION,
     ModelInfo,
 )
-from ocp_resources.service import Service
-from ocp_resources.secret import Secret
+from tests.llama_stack.utils import (
+    create_llama_stack_distribution,
+    vector_store_create_file_from_url,
+    wait_for_llama_stack_client_ready,
+    wait_for_unique_llama_stack_pod,
+)
+from utilities.constants import Annotations, DscComponents
+from utilities.data_science_cluster_utils import update_components_in_dsc
+from utilities.general import generate_random_name
+from utilities.resources.llama_stack_distribution import LlamaStackDistribution
 
 LOGGER = get_logger(name=__name__)
 
@@ -71,7 +73,10 @@ LLAMA_STACK_DISTRIBUTION_SECRET_DATA = {
     "aws-secret-access-key": LLS_CORE_AWS_SECRET_ACCESS_KEY,
 }
 
-IBM_EARNINGS_DOC_URL = "https://www.ibm.com/downloads/documents/us-en/1550f7eea8c0ded6"
+IBM_EARNINGS_DOC_URL = (
+    "https://raw.githubusercontent.com/opendatahub-io/opendatahub-tests/main/tests/llama_stack/"
+    "dataset/corpus/finance/ibm-4q25-earnings-press-release-unencrypted.pdf"
+)
 
 UPGRADE_DISTRIBUTION_NAME = "llama-stack-distribution-upgrade"
 
@@ -295,7 +300,7 @@ def llama_stack_server_config(
     env_vars_vector_io = vector_io_provider_deployment_config_factory(provider_name=vector_io_provider)
     env_vars.extend(env_vars_vector_io)
 
-    server_config: Dict[str, Any] = {
+    server_config: dict[str, Any] = {
         "containerSpec": {
             "resources": {
                 "requests": {"cpu": "1", "memory": "3Gi"},
@@ -1000,7 +1005,7 @@ def postgres_deployment(
             yield deployment
 
 
-def get_postgres_deployment_template() -> Dict[str, Any]:
+def get_postgres_deployment_template() -> dict[str, Any]:
     """Return a Kubernetes deployment for PostgreSQL"""
     return {
         "metadata": {"labels": {"app": "postgres"}},
