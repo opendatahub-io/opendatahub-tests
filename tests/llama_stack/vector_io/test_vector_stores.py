@@ -1,14 +1,27 @@
+from typing import Any
+
 import pytest
 import structlog
 from llama_stack_client import APIConnectionError, InternalServerError, LlamaStackClient
 from llama_stack_client.types.vector_store import VectorStore
+from ragas import EvaluationDataset, SingleTurnSample, evaluate
+from ragas.metrics import AnswerRelevancy, ContextPrecision, ContextRecall, Faithfulness
 
-from tests.llama_stack.constants import ModelInfo
+from tests.llama_stack.constants import (
+    ANSWER_RELEVANCY_THRESHOLD,
+    CONTEXT_PRECISION_THRESHOLD,
+    CONTEXT_RECALL_THRESHOLD,
+    FAITHFULNESS_THRESHOLD,
+    ModelInfo,
+)
 from tests.llama_stack.datasets import (
     FINANCE_DATASET,
     IBM_2025_Q4_EARNINGS,
     IBM_2025_Q4_EARNINGS_ENCRYPTED,
     Dataset,
+)
+from tests.llama_stack.utils import (
+    mean_ragas_score,
 )
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -270,3 +283,124 @@ class TestLlamaStackVectorStores:
 
         except (APIConnectionError, InternalServerError) as exc:
             pytest.fail(f"LlamaStack server returned 500 for file_search query {vector_question!r}: {exc}")
+
+
+@pytest.mark.parametrize(
+    "unprivileged_model_namespace, llama_stack_server_config, vector_store, dataset",
+    [
+        pytest.param(
+            {"name": "test-llamastack-ragas-eval", "randomize_name": True},
+            {
+                "llama_stack_storage_size": "2Gi",
+                "vector_io_provider": "pgvector",
+                "embedding_provider": "sentence-transformers",
+                "files_provider": "local",
+            },
+            {"vector_io_provider": "pgvector", "dataset": FINANCE_DATASET},
+            FINANCE_DATASET,
+            id="ragas-eval:pgvector, embedding:sentence-transformers, dataset:FINANCE_DATASET",
+        ),
+    ],
+    indirect=True,
+)
+@pytest.mark.rag
+class TestLlamaStackRagasEval:
+    """
+    Integration tests for evaluating the LlamaStack Retrieval-Augmented Generation (RAG)
+    pipeline using RAGAS metrics. This class runs end-to-end evaluations over the Responses
+    API with vector store-backed file search, computing faithfulness, answer relevancy,
+    context precision, and context recall. It ensures that LlamaStack's RAG responses
+    are factual, relevant, and grounded in the retrieved context, using multiple metrics
+    and data samples. The test configures model and provider parameters via pytest,
+    and leverages fixtures to build the RAGAS evaluation dataset.
+    """
+
+    @pytest.mark.tier1
+    @pytest.mark.tier2
+    def test_ragas_faithfulness(
+        self,
+        ragas_samples: list[SingleTurnSample],
+        ragas_evaluator_llm: Any,
+    ) -> None:
+        """Verify RAG responses are factually grounded in retrieved context.
+
+        Given: RAGAS samples from the RAG pipeline (Responses API + file_search)
+        When: The Faithfulness metric is evaluated across all samples
+        Then: The aggregate faithfulness score meets the minimum threshold
+        """
+        result = evaluate(
+            dataset=EvaluationDataset(samples=ragas_samples),
+            metrics=[Faithfulness(llm=ragas_evaluator_llm)],
+        )
+        score = mean_ragas_score(scores=result["faithfulness"])
+        LOGGER.info(f"RAGAS Faithfulness score: {score:.3f} (threshold: {FAITHFULNESS_THRESHOLD})")
+        assert score >= FAITHFULNESS_THRESHOLD, (
+            f"RAGAS Faithfulness score {score:.3f} is below threshold {FAITHFULNESS_THRESHOLD}"
+        )
+
+    @pytest.mark.tier2
+    def test_ragas_answer_relevancy(
+        self,
+        ragas_samples: list[SingleTurnSample],
+        ragas_evaluator_llm: Any,
+        ragas_evaluator_embeddings: Any,
+    ) -> None:
+        """Verify RAG responses address the user's question.
+
+        Given: RAGAS samples from the RAG pipeline (Responses API + file_search)
+        When: The AnswerRelevancy metric is evaluated across all samples
+        Then: The aggregate answer relevancy score meets the minimum threshold
+        """
+        result = evaluate(
+            dataset=EvaluationDataset(samples=ragas_samples),
+            metrics=[AnswerRelevancy(llm=ragas_evaluator_llm, embeddings=ragas_evaluator_embeddings)],
+        )
+        score = mean_ragas_score(scores=result["answer_relevancy"])
+        LOGGER.info(f"RAGAS Answer Relevancy score: {score:.3f} (threshold: {ANSWER_RELEVANCY_THRESHOLD})")
+        assert score >= ANSWER_RELEVANCY_THRESHOLD, (
+            f"RAGAS Answer Relevancy score {score:.3f} is below threshold {ANSWER_RELEVANCY_THRESHOLD}"
+        )
+
+    @pytest.mark.tier2
+    def test_ragas_context_precision(
+        self,
+        ragas_samples: list[SingleTurnSample],
+        ragas_evaluator_llm: Any,
+    ) -> None:
+        """Verify retrieval returns relevant documents for the query.
+
+        Given: RAGAS samples from the RAG pipeline (Responses API + file_search)
+        When: The ContextPrecision metric is evaluated across all samples
+        Then: The aggregate context precision score meets the minimum threshold
+        """
+        result = evaluate(
+            dataset=EvaluationDataset(samples=ragas_samples),
+            metrics=[ContextPrecision(llm=ragas_evaluator_llm)],
+        )
+        score = mean_ragas_score(scores=result["context_precision"])
+        LOGGER.info(f"RAGAS Context Precision score: {score:.3f} (threshold: {CONTEXT_PRECISION_THRESHOLD})")
+        assert score >= CONTEXT_PRECISION_THRESHOLD, (
+            f"RAGAS Context Precision score {score:.3f} is below threshold {CONTEXT_PRECISION_THRESHOLD}"
+        )
+
+    @pytest.mark.tier2
+    def test_ragas_context_recall(
+        self,
+        ragas_samples: list[SingleTurnSample],
+        ragas_evaluator_llm: Any,
+    ) -> None:
+        """Verify retrieval covers the information needed to answer correctly.
+
+        Given: RAGAS samples from the RAG pipeline (Responses API + file_search)
+        When: The ContextRecall metric is evaluated across all samples
+        Then: The aggregate context recall score meets the minimum threshold
+        """
+        result = evaluate(
+            dataset=EvaluationDataset(samples=ragas_samples),
+            metrics=[ContextRecall(llm=ragas_evaluator_llm)],
+        )
+        score = mean_ragas_score(scores=result["context_recall"])
+        LOGGER.info(f"RAGAS Context Recall score: {score:.3f} (threshold: {CONTEXT_RECALL_THRESHOLD})")
+        assert score >= CONTEXT_RECALL_THRESHOLD, (
+            f"RAGAS Context Recall score {score:.3f} is below threshold {CONTEXT_RECALL_THRESHOLD}"
+        )
