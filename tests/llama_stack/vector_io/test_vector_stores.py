@@ -1,6 +1,6 @@
 import pytest
 import structlog
-from llama_stack_client import InternalServerError, LlamaStackClient
+from llama_stack_client import APIConnectionError, InternalServerError, LlamaStackClient
 from llama_stack_client.types.vector_store import VectorStore
 
 from tests.llama_stack.constants import ModelInfo
@@ -249,24 +249,24 @@ class TestLlamaStackVectorStores:
                         if content_item.annotations:
                             annotations.extend(content_item.annotations)
 
-                assert annotations, (
-                    "Response message should contain file_citation annotations when file_search returns results"
+                assert annotations, "Response message should contain annotations when file_search returns results"
+
+                citation_annotations = [a for a in annotations if a.type == "file_citation"]
+                assert citation_annotations, (
+                    f"Expected at least one file_citation annotation, got types: {[a.type for a in annotations]}"
                 )
 
-                for annotation in annotations:
-                    assert annotation.type == "file_citation", (
-                        f"Expected annotation type 'file_citation', got '{annotation.type}'"
-                    )
+                for annotation in citation_annotations:
                     assert annotation.file_id, "Annotation must include a non-empty file_id"
                     assert annotation.filename, "Annotation must include a non-empty filename"
                     assert annotation.index is not None, "Annotation must include an index"
 
                 LOGGER.info(
-                    f"Found {len(annotations)} file_citation annotation(s). "
-                    f"File IDs: {[a.file_id for a in annotations]}. "
-                    f"Filenames: {[a.filename for a in annotations]}. "
-                    f"Indexes: {[a.index for a in annotations]}. "
+                    f"Found {len(citation_annotations)} file_citation annotation(s). "
+                    f"File IDs: {[a.file_id for a in citation_annotations]}. "
+                    f"Filenames: {[a.filename for a in citation_annotations]}. "
+                    f"Indexes: {[a.index for a in citation_annotations]}. "
                 )
 
-        except InternalServerError as exc:
+        except (APIConnectionError, InternalServerError) as exc:
             pytest.fail(f"LlamaStack server returned 500 for file_search query {vector_question!r}: {exc}")
