@@ -196,21 +196,21 @@ class TestEvalHubCollectionsFeature:
     """
 
     # ------------------------------------------------------------------
-    # Create and get by id → 201 / 200
+    # Fixtures: setup (create) and teardown (delete) via yield
     # ------------------------------------------------------------------
 
-    def test_create_and_get_collection(
+    @pytest.fixture()
+    def collection(
         self,
         tenant_a_token: str,
         tenant_a_namespace: Namespace,
         evalhub_mt_ca_bundle_file: str,
         evalhub_mt_route: Route,
-    ) -> None:
-        """POST collection → 201, GET by id → 200 with correct fields."""
+    ) -> dict:
+        """Create a collection with COLLECTION_PAYLOAD; delete on teardown."""
         headers = build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name)
         base = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}"
 
-        # CREATE
         resp = requests.post(
             url=base,
             headers=headers,
@@ -220,32 +220,240 @@ class TestEvalHubCollectionsFeature:
         )
         assert resp.status_code == 201, f"Expected 201 for collection create, got {resp.status_code}: {resp.text}"
         body = resp.json()
-        assert body["name"] == COLLECTION_PAYLOAD["name"]
-        assert "resource" in body
         collection_id = body["resource"]["id"]
 
-        # GET by id
-        resp = requests.get(
-            url=f"{base}/{collection_id}",
-            headers=headers,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=10,
-        )
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["name"] == COLLECTION_PAYLOAD["name"]
-        assert body["resource"]["id"] == collection_id
-        assert len(body["benchmarks"]) == 1
-        assert body["benchmarks"][0]["id"] == "arc_easy"
-        assert body["benchmarks"][0]["parameters"]["weight"] == 3
+        yield {"id": collection_id, "body": body, "base": base, "headers": headers}
 
-        # Cleanup
         requests.delete(
             url=f"{base}/{collection_id}",
             headers=headers,
             verify=evalhub_mt_ca_bundle_file,
             timeout=10,
         )
+
+    @pytest.fixture()
+    def collection_no_description(
+        self,
+        tenant_a_token: str,
+        tenant_a_namespace: Namespace,
+        evalhub_mt_ca_bundle_file: str,
+        evalhub_mt_route: Route,
+    ) -> dict:
+        """Create a collection without description; delete on teardown."""
+        headers = build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name)
+        base = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}"
+
+        resp = requests.post(
+            url=base,
+            headers=headers,
+            json=COLLECTION_NO_DESCRIPTION_PAYLOAD,
+            verify=evalhub_mt_ca_bundle_file,
+            timeout=30,
+        )
+        assert resp.status_code == 201, (
+            f"Expected 201 for collection without description, got {resp.status_code}: {resp.text}"
+        )
+        collection_id = resp.json()["resource"]["id"]
+
+        yield {"id": collection_id, "base": base, "headers": headers}
+
+        requests.delete(
+            url=f"{base}/{collection_id}",
+            headers=headers,
+            verify=evalhub_mt_ca_bundle_file,
+            timeout=10,
+        )
+
+    @pytest.fixture()
+    def provider_and_collection_with_url(
+        self,
+        tenant_a_token: str,
+        tenant_a_namespace: Namespace,
+        evalhub_mt_ca_bundle_file: str,
+        evalhub_mt_route: Route,
+    ) -> dict:
+        """Create a custom provider with benchmark URL, then a collection referencing it.
+
+        Yields both IDs; deletes collection then provider on teardown.
+        """
+        headers = build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name)
+        providers_base = f"https://{evalhub_mt_route.host}{EVALHUB_PROVIDERS_PATH}"
+        collections_base = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}"
+
+        # Create custom provider
+        resp = requests.post(
+            url=providers_base,
+            headers=headers,
+            json=CUSTOM_PROVIDER_BENCHMARK_URL_PAYLOAD,
+            verify=evalhub_mt_ca_bundle_file,
+            timeout=30,
+        )
+        assert resp.status_code == 201, f"Expected 201 for provider create, got {resp.status_code}: {resp.text}"
+        provider_body = resp.json()
+        provider_id = provider_body["resource"]["id"]
+
+        # Create collection referencing the custom provider's benchmark
+        collection_payload = {
+            "name": "fvt-benchmark-url-collection",
+            "description": "Collection referencing custom provider benchmark with url",
+            "category": "test",
+            "benchmarks": [
+                {
+                    "id": "bench_with_url",
+                    "provider_id": provider_id,
+                }
+            ],
+        }
+        resp = requests.post(
+            url=collections_base,
+            headers=headers,
+            json=collection_payload,
+            verify=evalhub_mt_ca_bundle_file,
+            timeout=30,
+        )
+        assert resp.status_code == 201, f"Expected 201 for collection create, got {resp.status_code}: {resp.text}"
+        collection_body = resp.json()
+        collection_id = collection_body["resource"]["id"]
+
+        yield {
+            "provider_id": provider_id,
+            "provider_body": provider_body,
+            "collection_id": collection_id,
+            "collection_body": collection_body,
+            "collections_base": collections_base,
+            "headers": headers,
+        }
+
+        requests.delete(
+            url=f"{collections_base}/{collection_id}",
+            headers=headers,
+            verify=evalhub_mt_ca_bundle_file,
+            timeout=10,
+        )
+        requests.delete(
+            url=f"{providers_base}/{provider_id}",
+            headers=headers,
+            verify=evalhub_mt_ca_bundle_file,
+            timeout=10,
+        )
+
+    @pytest.fixture()
+    def three_collections(
+        self,
+        tenant_a_token: str,
+        tenant_a_namespace: Namespace,
+        evalhub_mt_ca_bundle_file: str,
+        evalhub_mt_route: Route,
+    ) -> dict:
+        """Create 3 collections with different tags/categories; delete all on teardown."""
+        headers = build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name)
+        base = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}"
+        created_ids = []
+
+        payloads = [
+            {
+                "name": "test-collection-1",
+                "description": "FVT",
+                "category": "test",
+                "tags": ["test-tag-1", "test-tag-2"],
+                "benchmarks": [{"id": "arc_easy", "provider_id": "lm_evaluation_harness"}],
+            },
+            {
+                "name": "test-collection-2",
+                "description": "FVT",
+                "category": "test",
+                "tags": ["test-tag-1"],
+                "benchmarks": [{"id": "arc_easy", "provider_id": "lm_evaluation_harness"}],
+            },
+            {
+                "name": "test-collection-3",
+                "description": "FVT",
+                "category": "test3",
+                "tags": ["test-tag-3", "test-tag-2", "test-tag-1"],
+                "benchmarks": [{"id": "arc_easy", "provider_id": "lm_evaluation_harness"}],
+            },
+        ]
+        for p in payloads:
+            resp = requests.post(
+                url=base,
+                headers=headers,
+                json=p,
+                verify=evalhub_mt_ca_bundle_file,
+                timeout=30,
+            )
+            assert resp.status_code == 201
+            created_ids.append(resp.json()["resource"]["id"])
+
+        yield {"ids": created_ids, "base": base, "headers": headers}
+
+        for cid in created_ids:
+            requests.delete(
+                url=f"{base}/{cid}?hard_delete=true",
+                headers=headers,
+                verify=evalhub_mt_ca_bundle_file,
+                timeout=10,
+            )
+
+    @pytest.fixture()
+    def three_collections_for_pagination(
+        self,
+        tenant_a_token: str,
+        tenant_a_namespace: Namespace,
+        evalhub_mt_ca_bundle_file: str,
+        evalhub_mt_route: Route,
+    ) -> dict:
+        """Create 3 collections for pagination tests; delete all on teardown."""
+        headers = build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name)
+        base = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}"
+        created_ids = []
+
+        for _ in range(3):
+            resp = requests.post(
+                url=base,
+                headers=headers,
+                json=COLLECTION_PAYLOAD,
+                verify=evalhub_mt_ca_bundle_file,
+                timeout=30,
+            )
+            assert resp.status_code == 201
+            created_ids.append(resp.json()["resource"]["id"])
+
+        yield {"ids": created_ids, "base": base, "headers": headers}
+
+        for cid in created_ids:
+            requests.delete(
+                url=f"{base}/{cid}?hard_delete=true",
+                headers=headers,
+                verify=evalhub_mt_ca_bundle_file,
+                timeout=10,
+            )
+
+    # ------------------------------------------------------------------
+    # Create and get by id → 201 / 200
+    # ------------------------------------------------------------------
+
+    def test_create_and_get_collection(
+        self,
+        collection: dict,
+        evalhub_mt_ca_bundle_file: str,
+    ) -> None:
+        """POST collection → 201, GET by id → 200 with correct fields."""
+        body = collection["body"]
+        assert body["name"] == COLLECTION_PAYLOAD["name"]
+
+        resp = requests.get(
+            url=f"{collection['base']}/{collection['id']}",
+            headers=collection["headers"],
+            verify=evalhub_mt_ca_bundle_file,
+            timeout=10,
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["name"] == COLLECTION_PAYLOAD["name"]
+        assert body["resource"]["id"] == collection["id"]
+        assert len(body["benchmarks"]) == 1
+        assert body["benchmarks"][0]["id"] == "arc_easy"
+        assert body["benchmarks"][0]["parameters"]["weight"] == 3
 
     # ------------------------------------------------------------------
     # Validation: missing / empty required fields → 400
@@ -325,34 +533,10 @@ class TestEvalHubCollectionsFeature:
 
     def test_create_collection_without_description_returns_201(
         self,
-        tenant_a_token: str,
-        tenant_a_namespace: Namespace,
-        evalhub_mt_ca_bundle_file: str,
-        evalhub_mt_route: Route,
+        collection_no_description: dict,
     ) -> None:
         """POST collection without description (optional) → 201."""
-        headers = build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name)
-        base = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}"
-
-        resp = requests.post(
-            url=base,
-            headers=headers,
-            json=COLLECTION_NO_DESCRIPTION_PAYLOAD,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=30,
-        )
-        assert resp.status_code == 201, (
-            f"Expected 201 for collection without description, got {resp.status_code}: {resp.text}"
-        )
-        collection_id = resp.json()["resource"]["id"]
-
-        # Cleanup
-        requests.delete(
-            url=f"{base}/{collection_id}",
-            headers=headers,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=10,
-        )
+        assert collection_no_description["id"]
 
     def test_create_collection_benchmark_missing_id_returns_400(
         self,
@@ -398,67 +582,28 @@ class TestEvalHubCollectionsFeature:
 
     def test_create_collection_persists_benchmark_url(
         self,
-        tenant_a_token: str,
-        tenant_a_namespace: Namespace,
+        provider_and_collection_with_url: dict,
         evalhub_mt_ca_bundle_file: str,
-        evalhub_mt_route: Route,
     ) -> None:
         """Create a custom provider with a benchmark URL, then create a collection
         referencing it. The collection should enrich and persist the URL."""
-        headers = build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name)
-        providers_base = f"https://{evalhub_mt_route.host}{EVALHUB_PROVIDERS_PATH}"
-        collections_base = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}"
-
-        # 1. Create custom provider with a benchmark that has a URL
-        resp = requests.post(
-            url=providers_base,
-            headers=headers,
-            json=CUSTOM_PROVIDER_BENCHMARK_URL_PAYLOAD,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=30,
-        )
-        assert resp.status_code == 201, f"Expected 201 for provider create, got {resp.status_code}: {resp.text}"
-        provider_body = resp.json()
-        provider_id = provider_body["resource"]["id"]
-
+        ctx = provider_and_collection_with_url
         expected_url = "https://example.com/fvt-custom-provider-benchmark"
 
-        assert provider_body["benchmarks"][0].get("url") == expected_url, (
-            f"Provider benchmark URL not stored: {provider_body['benchmarks']}"
+        # Verify provider stored the URL
+        assert ctx["provider_body"]["benchmarks"][0].get("url") == expected_url, (
+            f"Provider benchmark URL not stored: {ctx['provider_body']['benchmarks']}"
         )
-
-        # 2. Create collection referencing the custom provider's benchmark
-        collection_payload = {
-            "name": "fvt-benchmark-url-collection",
-            "description": "Collection referencing custom provider benchmark with url",
-            "category": "test",
-            "benchmarks": [
-                {
-                    "id": "bench_with_url",
-                    "provider_id": provider_id,
-                }
-            ],
-        }
-        resp = requests.post(
-            url=collections_base,
-            headers=headers,
-            json=collection_payload,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=30,
-        )
-        assert resp.status_code == 201, f"Expected 201 for collection create, got {resp.status_code}: {resp.text}"
-        create_body = resp.json()
-        collection_id = create_body["resource"]["id"]
 
         # Verify URL enriched in the create response
-        assert create_body["benchmarks"][0].get("url") == expected_url, (
-            f"Expected enriched benchmark URL in create response, got: {create_body['benchmarks'][0]}"
+        assert ctx["collection_body"]["benchmarks"][0].get("url") == expected_url, (
+            f"Expected enriched benchmark URL in create response, got: {ctx['collection_body']['benchmarks'][0]}"
         )
 
-        # 3. GET collection and verify benchmark URL persisted
+        # GET collection and verify benchmark URL persisted
         resp = requests.get(
-            url=f"{collections_base}/{collection_id}",
-            headers=headers,
+            url=f"{ctx['collections_base']}/{ctx['collection_id']}",
+            headers=ctx["headers"],
             verify=evalhub_mt_ca_bundle_file,
             timeout=10,
         )
@@ -467,20 +612,6 @@ class TestEvalHubCollectionsFeature:
         assert len(body["benchmarks"]) == 1
         assert body["benchmarks"][0].get("url") == expected_url, (
             f"Expected enriched benchmark URL in GET response, got: {body['benchmarks'][0]}"
-        )
-
-        # Cleanup
-        requests.delete(
-            url=f"{collections_base}/{collection_id}",
-            headers=headers,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=10,
-        )
-        requests.delete(
-            url=f"{providers_base}/{provider_id}",
-            headers=headers,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=10,
         )
 
     # ------------------------------------------------------------------
@@ -527,30 +658,13 @@ class TestEvalHubCollectionsFeature:
 
     def test_update_collection_returns_200_and_persists(
         self,
-        tenant_a_token: str,
-        tenant_a_namespace: Namespace,
+        collection: dict,
         evalhub_mt_ca_bundle_file: str,
-        evalhub_mt_route: Route,
     ) -> None:
         """PUT collection → 200, changes persisted on GET."""
-        headers = build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name)
-        base = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}"
-
-        # Create
-        resp = requests.post(
-            url=base,
-            headers=headers,
-            json=COLLECTION_PAYLOAD,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=30,
-        )
-        assert resp.status_code == 201
-        collection_id = resp.json()["resource"]["id"]
-
-        # Update (PUT)
         resp = requests.put(
-            url=f"{base}/{collection_id}",
-            headers=headers,
+            url=f"{collection['base']}/{collection['id']}",
+            headers=collection["headers"],
             json=COLLECTION_UPDATE_PAYLOAD,
             verify=evalhub_mt_ca_bundle_file,
             timeout=10,
@@ -559,24 +673,15 @@ class TestEvalHubCollectionsFeature:
         assert resp.json()["name"] == "updated-collection-name"
         assert resp.json()["description"] == "Updated description for FVT"
 
-        # Verify persisted
         resp = requests.get(
-            url=f"{base}/{collection_id}",
-            headers=headers,
+            url=f"{collection['base']}/{collection['id']}",
+            headers=collection["headers"],
             verify=evalhub_mt_ca_bundle_file,
             timeout=10,
         )
         assert resp.status_code == 200
         assert resp.json()["name"] == "updated-collection-name"
         assert resp.json()["description"] == "Updated description for FVT"
-
-        # Cleanup
-        requests.delete(
-            url=f"{base}/{collection_id}",
-            headers=headers,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=10,
-        )
 
     # ------------------------------------------------------------------
     # Update non-existent / empty id → 404
@@ -628,66 +733,28 @@ class TestEvalHubCollectionsFeature:
 
     def test_update_collection_without_name_returns_400(
         self,
-        tenant_a_token: str,
-        tenant_a_namespace: Namespace,
+        collection: dict,
         evalhub_mt_ca_bundle_file: str,
-        evalhub_mt_route: Route,
     ) -> None:
         """PUT collection without name → 400."""
-        headers = build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name)
-        base = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}"
-
-        resp = requests.post(
-            url=base,
-            headers=headers,
-            json=COLLECTION_PAYLOAD,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=30,
-        )
-        assert resp.status_code == 201
-        collection_id = resp.json()["resource"]["id"]
-
         resp = requests.put(
-            url=f"{base}/{collection_id}",
-            headers=headers,
+            url=f"{collection['base']}/{collection['id']}",
+            headers=collection["headers"],
             json=COLLECTION_NO_NAME_PAYLOAD,
             verify=evalhub_mt_ca_bundle_file,
             timeout=10,
         )
         assert resp.status_code == 400, f"Expected 400 for update without name, got {resp.status_code}: {resp.text}"
 
-        # Cleanup
-        requests.delete(
-            url=f"{base}/{collection_id}",
-            headers=headers,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=10,
-        )
-
     def test_update_collection_without_description_returns_200(
         self,
-        tenant_a_token: str,
-        tenant_a_namespace: Namespace,
+        collection: dict,
         evalhub_mt_ca_bundle_file: str,
-        evalhub_mt_route: Route,
     ) -> None:
         """PUT collection without description (optional) → 200."""
-        headers = build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name)
-        base = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}"
-
-        resp = requests.post(
-            url=base,
-            headers=headers,
-            json=COLLECTION_PAYLOAD,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=30,
-        )
-        assert resp.status_code == 201
-        collection_id = resp.json()["resource"]["id"]
-
         resp = requests.put(
-            url=f"{base}/{collection_id}",
-            headers=headers,
+            url=f"{collection['base']}/{collection['id']}",
+            headers=collection["headers"],
             json=COLLECTION_UPDATE_NO_DESCRIPTION_PAYLOAD,
             verify=evalhub_mt_ca_bundle_file,
             timeout=10,
@@ -696,38 +763,15 @@ class TestEvalHubCollectionsFeature:
             f"Expected 200 for update without description, got {resp.status_code}: {resp.text}"
         )
 
-        # Cleanup
-        requests.delete(
-            url=f"{base}/{collection_id}",
-            headers=headers,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=10,
-        )
-
     def test_update_collection_without_benchmarks_returns_400(
         self,
-        tenant_a_token: str,
-        tenant_a_namespace: Namespace,
+        collection: dict,
         evalhub_mt_ca_bundle_file: str,
-        evalhub_mt_route: Route,
     ) -> None:
         """PUT collection without benchmarks field → 400."""
-        headers = build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name)
-        base = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}"
-
-        resp = requests.post(
-            url=base,
-            headers=headers,
-            json=COLLECTION_PAYLOAD,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=30,
-        )
-        assert resp.status_code == 201
-        collection_id = resp.json()["resource"]["id"]
-
         resp = requests.put(
-            url=f"{base}/{collection_id}",
-            headers=headers,
+            url=f"{collection['base']}/{collection['id']}",
+            headers=collection["headers"],
             json=COLLECTION_NO_BENCHMARKS_PAYLOAD,
             verify=evalhub_mt_ca_bundle_file,
             timeout=10,
@@ -736,38 +780,15 @@ class TestEvalHubCollectionsFeature:
             f"Expected 400 for update without benchmarks, got {resp.status_code}: {resp.text}"
         )
 
-        # Cleanup
-        requests.delete(
-            url=f"{base}/{collection_id}",
-            headers=headers,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=10,
-        )
-
     def test_update_collection_with_empty_benchmarks_returns_400(
         self,
-        tenant_a_token: str,
-        tenant_a_namespace: Namespace,
+        collection: dict,
         evalhub_mt_ca_bundle_file: str,
-        evalhub_mt_route: Route,
     ) -> None:
         """PUT collection with empty benchmarks array → 400."""
-        headers = build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name)
-        base = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}"
-
-        resp = requests.post(
-            url=base,
-            headers=headers,
-            json=COLLECTION_PAYLOAD,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=30,
-        )
-        assert resp.status_code == 201
-        collection_id = resp.json()["resource"]["id"]
-
         resp = requests.put(
-            url=f"{base}/{collection_id}",
-            headers=headers,
+            url=f"{collection['base']}/{collection['id']}",
+            headers=collection["headers"],
             json=COLLECTION_EMPTY_BENCHMARKS_PAYLOAD,
             verify=evalhub_mt_ca_bundle_file,
             timeout=10,
@@ -776,38 +797,15 @@ class TestEvalHubCollectionsFeature:
             f"Expected 400 for update with empty benchmarks, got {resp.status_code}: {resp.text}"
         )
 
-        # Cleanup
-        requests.delete(
-            url=f"{base}/{collection_id}",
-            headers=headers,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=10,
-        )
-
     def test_update_collection_benchmark_missing_id_returns_400(
         self,
-        tenant_a_token: str,
-        tenant_a_namespace: Namespace,
+        collection: dict,
         evalhub_mt_ca_bundle_file: str,
-        evalhub_mt_route: Route,
     ) -> None:
         """PUT collection with benchmark missing id → 400."""
-        headers = build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name)
-        base = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}"
-
-        resp = requests.post(
-            url=base,
-            headers=headers,
-            json=COLLECTION_PAYLOAD,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=30,
-        )
-        assert resp.status_code == 201
-        collection_id = resp.json()["resource"]["id"]
-
         resp = requests.put(
-            url=f"{base}/{collection_id}",
-            headers=headers,
+            url=f"{collection['base']}/{collection['id']}",
+            headers=collection["headers"],
             json=COLLECTION_BENCHMARK_NO_ID_PAYLOAD,
             verify=evalhub_mt_ca_bundle_file,
             timeout=10,
@@ -816,38 +814,15 @@ class TestEvalHubCollectionsFeature:
             f"Expected 400 for update with benchmark missing id, got {resp.status_code}: {resp.text}"
         )
 
-        # Cleanup
-        requests.delete(
-            url=f"{base}/{collection_id}",
-            headers=headers,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=10,
-        )
-
     def test_update_collection_benchmark_missing_provider_id_returns_400(
         self,
-        tenant_a_token: str,
-        tenant_a_namespace: Namespace,
+        collection: dict,
         evalhub_mt_ca_bundle_file: str,
-        evalhub_mt_route: Route,
     ) -> None:
         """PUT collection with benchmark missing provider_id → 400."""
-        headers = build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name)
-        base = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}"
-
-        resp = requests.post(
-            url=base,
-            headers=headers,
-            json=COLLECTION_PAYLOAD,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=30,
-        )
-        assert resp.status_code == 201
-        collection_id = resp.json()["resource"]["id"]
-
         resp = requests.put(
-            url=f"{base}/{collection_id}",
-            headers=headers,
+            url=f"{collection['base']}/{collection['id']}",
+            headers=collection["headers"],
             json=COLLECTION_BENCHMARK_NO_PROVIDER_ID_PAYLOAD,
             verify=evalhub_mt_ca_bundle_file,
             timeout=10,
@@ -856,42 +831,19 @@ class TestEvalHubCollectionsFeature:
             f"Expected 400 for update with benchmark missing provider_id, got {resp.status_code}: {resp.text}"
         )
 
-        # Cleanup
-        requests.delete(
-            url=f"{base}/{collection_id}",
-            headers=headers,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=10,
-        )
-
     # ------------------------------------------------------------------
     # PATCH collection
     # ------------------------------------------------------------------
 
     def test_patch_collection_name_returns_200(
         self,
-        tenant_a_token: str,
-        tenant_a_namespace: Namespace,
+        collection: dict,
         evalhub_mt_ca_bundle_file: str,
-        evalhub_mt_route: Route,
     ) -> None:
         """PATCH collection name → 200, change persisted on GET."""
-        headers = build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name)
-        base = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}"
-
-        resp = requests.post(
-            url=base,
-            headers=headers,
-            json=COLLECTION_PAYLOAD,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=30,
-        )
-        assert resp.status_code == 201
-        collection_id = resp.json()["resource"]["id"]
-
         resp = requests.patch(
-            url=f"{base}/{collection_id}",
-            headers=headers,
+            url=f"{collection['base']}/{collection['id']}",
+            headers=collection["headers"],
             json=[{"op": "replace", "path": "/name", "value": "patched-collection-name"}],
             verify=evalhub_mt_ca_bundle_file,
             timeout=10,
@@ -899,46 +851,23 @@ class TestEvalHubCollectionsFeature:
         assert resp.status_code == 200
 
         resp = requests.get(
-            url=f"{base}/{collection_id}",
-            headers=headers,
+            url=f"{collection['base']}/{collection['id']}",
+            headers=collection["headers"],
             verify=evalhub_mt_ca_bundle_file,
             timeout=10,
         )
         assert resp.status_code == 200
         assert resp.json()["name"] == "patched-collection-name"
 
-        # Cleanup
-        requests.delete(
-            url=f"{base}/{collection_id}",
-            headers=headers,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=10,
-        )
-
     def test_patch_benchmark_element_in_collection_returns_200(
         self,
-        tenant_a_token: str,
-        tenant_a_namespace: Namespace,
+        collection: dict,
         evalhub_mt_ca_bundle_file: str,
-        evalhub_mt_route: Route,
     ) -> None:
         """PATCH a single benchmark field → 200, change persisted."""
-        headers = build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name)
-        base = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}"
-
-        resp = requests.post(
-            url=base,
-            headers=headers,
-            json=COLLECTION_PAYLOAD,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=30,
-        )
-        assert resp.status_code == 201
-        collection_id = resp.json()["resource"]["id"]
-
         resp = requests.patch(
-            url=f"{base}/{collection_id}",
-            headers=headers,
+            url=f"{collection['base']}/{collection['id']}",
+            headers=collection["headers"],
             json=[{"op": "replace", "path": "/benchmarks/0/id", "value": "patched-benchmark-id"}],
             verify=evalhub_mt_ca_bundle_file,
             timeout=10,
@@ -946,8 +875,8 @@ class TestEvalHubCollectionsFeature:
         assert resp.status_code == 200
 
         resp = requests.get(
-            url=f"{base}/{collection_id}",
-            headers=headers,
+            url=f"{collection['base']}/{collection['id']}",
+            headers=collection["headers"],
             verify=evalhub_mt_ca_bundle_file,
             timeout=10,
         )
@@ -955,38 +884,15 @@ class TestEvalHubCollectionsFeature:
         assert resp.json()["benchmarks"][0]["id"] == "patched-benchmark-id"
         assert len(resp.json()["benchmarks"]) == 1
 
-        # Cleanup
-        requests.delete(
-            url=f"{base}/{collection_id}",
-            headers=headers,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=10,
-        )
-
     def test_patch_entire_benchmark_element_in_collection_returns_200(
         self,
-        tenant_a_token: str,
-        tenant_a_namespace: Namespace,
+        collection: dict,
         evalhub_mt_ca_bundle_file: str,
-        evalhub_mt_route: Route,
     ) -> None:
         """PATCH replace entire benchmark element → 200, change persisted."""
-        headers = build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name)
-        base = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}"
-
-        resp = requests.post(
-            url=base,
-            headers=headers,
-            json=COLLECTION_PAYLOAD,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=30,
-        )
-        assert resp.status_code == 201
-        collection_id = resp.json()["resource"]["id"]
-
         resp = requests.patch(
-            url=f"{base}/{collection_id}",
-            headers=headers,
+            url=f"{collection['base']}/{collection['id']}",
+            headers=collection["headers"],
             json=[
                 {
                     "op": "replace",
@@ -1000,8 +906,8 @@ class TestEvalHubCollectionsFeature:
         assert resp.status_code == 200
 
         resp = requests.get(
-            url=f"{base}/{collection_id}",
-            headers=headers,
+            url=f"{collection['base']}/{collection['id']}",
+            headers=collection["headers"],
             verify=evalhub_mt_ca_bundle_file,
             timeout=10,
         )
@@ -1009,14 +915,6 @@ class TestEvalHubCollectionsFeature:
         assert resp.json()["benchmarks"][0]["id"] == "replaced-benchmark-id"
         assert resp.json()["benchmarks"][0]["provider_id"] == "other_provider"
         assert len(resp.json()["benchmarks"]) == 1
-
-        # Cleanup
-        requests.delete(
-            url=f"{base}/{collection_id}",
-            headers=headers,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=10,
-        )
 
     def test_patch_collection_nonexistent_id_returns_404(
         self,
@@ -1060,41 +958,18 @@ class TestEvalHubCollectionsFeature:
 
     def test_patch_collection_invalid_body_returns_400(
         self,
-        tenant_a_token: str,
-        tenant_a_namespace: Namespace,
+        collection: dict,
         evalhub_mt_ca_bundle_file: str,
-        evalhub_mt_route: Route,
     ) -> None:
         """PATCH with invalid op returns 400."""
-        headers = build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name)
-        base = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}"
-
-        resp = requests.post(
-            url=base,
-            headers=headers,
-            json=COLLECTION_PAYLOAD,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=30,
-        )
-        assert resp.status_code == 201
-        collection_id = resp.json()["resource"]["id"]
-
         resp = requests.patch(
-            url=f"{base}/{collection_id}",
-            headers=headers,
+            url=f"{collection['base']}/{collection['id']}",
+            headers=collection["headers"],
             json=[{"op": "invalid_op", "path": "/name", "value": "x"}],
             verify=evalhub_mt_ca_bundle_file,
             timeout=10,
         )
         assert resp.status_code == 400, f"Expected 400 for invalid patch op, got {resp.status_code}: {resp.text}"
-
-        # Cleanup
-        requests.delete(
-            url=f"{base}/{collection_id}",
-            headers=headers,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=10,
-        )
 
     # ------------------------------------------------------------------
     # List collections
@@ -1144,31 +1019,17 @@ class TestEvalHubCollectionsFeature:
 
     def test_list_collections_pagination_next_href(
         self,
-        tenant_a_token: str,
-        tenant_a_namespace: Namespace,
+        three_collections_for_pagination: dict,
         evalhub_mt_ca_bundle_file: str,
         evalhub_mt_route: Route,
     ) -> None:
         """Create 3 collections, list with limit=2, follow next href, verify second page."""
-        headers = build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name)
-        base = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}"
-        created_ids = []
-
-        for _ in range(3):
-            resp = requests.post(
-                url=base,
-                headers=headers,
-                json=COLLECTION_PAYLOAD,
-                verify=evalhub_mt_ca_bundle_file,
-                timeout=30,
-            )
-            assert resp.status_code == 201
-            created_ids.append(resp.json()["resource"]["id"])
+        ctx = three_collections_for_pagination
 
         # First page
         resp = requests.get(
-            url=f"{base}?limit=2&offset=0",
-            headers=headers,
+            url=f"{ctx['base']}?limit=2&offset=0",
+            headers=ctx["headers"],
             verify=evalhub_mt_ca_bundle_file,
             timeout=10,
         )
@@ -1191,21 +1052,12 @@ class TestEvalHubCollectionsFeature:
             next_url = f"https://{evalhub_mt_route.host}{next_href}"
         resp = requests.get(
             url=next_url,
-            headers=headers,
+            headers=ctx["headers"],
             verify=evalhub_mt_ca_bundle_file,
             timeout=10,
         )
         assert resp.status_code == 200
         assert len(resp.json()["items"]) >= 1
-
-        # Cleanup
-        for cid in created_ids:
-            requests.delete(
-                url=f"{base}/{cid}?hard_delete=true",
-                headers=headers,
-                verify=evalhub_mt_ca_bundle_file,
-                timeout=10,
-            )
 
     @pytest.mark.parametrize(
         "query,expected_code",
@@ -1283,54 +1135,16 @@ class TestEvalHubCollectionsFeature:
 
     def test_list_collections_by_tags_name_and_category(
         self,
-        tenant_a_token: str,
-        tenant_a_namespace: Namespace,
+        three_collections: dict,
         evalhub_mt_ca_bundle_file: str,
-        evalhub_mt_route: Route,
     ) -> None:
         """Create 3 collections with different tags/categories, verify filter semantics."""
-        headers = build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name)
-        base = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}"
-        created_ids = []
-
-        payloads = [
-            {
-                "name": "test-collection-1",
-                "description": "FVT",
-                "category": "test",
-                "tags": ["test-tag-1", "test-tag-2"],
-                "benchmarks": [{"id": "arc_easy", "provider_id": "lm_evaluation_harness"}],
-            },
-            {
-                "name": "test-collection-2",
-                "description": "FVT",
-                "category": "test",
-                "tags": ["test-tag-1"],
-                "benchmarks": [{"id": "arc_easy", "provider_id": "lm_evaluation_harness"}],
-            },
-            {
-                "name": "test-collection-3",
-                "description": "FVT",
-                "category": "test3",
-                "tags": ["test-tag-3", "test-tag-2", "test-tag-1"],
-                "benchmarks": [{"id": "arc_easy", "provider_id": "lm_evaluation_harness"}],
-            },
-        ]
-        for p in payloads:
-            resp = requests.post(
-                url=base,
-                headers=headers,
-                json=p,
-                verify=evalhub_mt_ca_bundle_file,
-                timeout=30,
-            )
-            assert resp.status_code == 201
-            created_ids.append(resp.json()["resource"]["id"])
+        ctx = three_collections
 
         def count(query: str) -> int:
             r = requests.get(
-                url=f"{base}?{query}",
-                headers=headers,
+                url=f"{ctx['base']}?{query}",
+                headers=ctx["headers"],
                 verify=evalhub_mt_ca_bundle_file,
                 timeout=10,
             )
@@ -1364,15 +1178,6 @@ class TestEvalHubCollectionsFeature:
         # Combined: name + tags
         assert count("name=test-collection-1&tags=test-tag-1") == 1
         assert count("name=test-collection-1&tags=test-tag-3") == 0
-
-        # Cleanup
-        for cid in created_ids:
-            requests.delete(
-                url=f"{base}/{cid}?hard_delete=true",
-                headers=headers,
-                verify=evalhub_mt_ca_bundle_file,
-                timeout=10,
-            )
 
     # ------------------------------------------------------------------
     # List system-defined collections with pagination
