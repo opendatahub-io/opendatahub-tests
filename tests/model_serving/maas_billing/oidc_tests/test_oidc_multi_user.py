@@ -146,7 +146,7 @@ class TestOIDCMultiUser:
     ) -> None:
         """Verify a second OIDC user can independently mint an API key."""
         assert second_user_minted_api_key.get("key", "").startswith("sk-oai-"), (
-            f"Expected API key starting with 'sk-oai-', got: {second_user_minted_api_key}"
+            "Expected API key starting with 'sk-oai-' prefix"
         )
         LOGGER.info(
             f"[oidc] {oidc_second_user_credentials['username']} created API key id={second_user_minted_api_key['id']}"

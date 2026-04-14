@@ -37,12 +37,10 @@ class TestOIDCTokenFlow:
         assert "key" in oidc_minted_api_key, "Expected 'key' field in API key creation response"
 
         plaintext_key: str = oidc_minted_api_key["key"]
-        assert plaintext_key.startswith("sk-oai-"), (
-            f"Expected API key to start with 'sk-oai-' prefix, got: {plaintext_key[:18]}"
-        )
+        assert plaintext_key.startswith("sk-oai-"), "Expected API key to start with 'sk-oai-' prefix"
         assert len(plaintext_key) > len("sk-oai-"), "API key body after prefix must not be empty"
 
-        LOGGER.info(f"[oidc] Created API key id={oidc_minted_api_key['id']} prefix={plaintext_key[:18]}...")
+        LOGGER.info(f"[oidc] Created API key id={oidc_minted_api_key['id']}")
 
     @pytest.mark.tier3
     def test_tampered_oidc_token_rejected(
