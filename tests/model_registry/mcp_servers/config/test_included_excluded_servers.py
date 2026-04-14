@@ -32,6 +32,7 @@ class TestMCPServerIncludedExcludedFiltering:
         response = execute_get_command(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
             headers=model_registry_rest_headers,
+            params={"pageSize": 1000},
         )
         server_names = {server["name"] for server in response.get("items", [])}
         assert "weather-api" in server_names, f"Expected 'weather-api' in {server_names}"
