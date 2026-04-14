@@ -836,9 +836,7 @@ def authorino_tls_configured(admin_client: DynamicClient) -> Generator[None, Any
         namespace=authorino_namespace,
     )
     current_image = next(
-        c.image
-        for c in authorino_deployment.instance.spec.template.spec.containers
-        if c.name == "authorino"
+        c.image for c in authorino_deployment.instance.spec.template.spec.containers if c.name == "authorino"
     )
     deployment_patch = {
         "spec": {
