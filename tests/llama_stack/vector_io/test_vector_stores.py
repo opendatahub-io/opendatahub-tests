@@ -315,92 +315,68 @@ class TestLlamaStackRagasEval:
     and leverages fixtures to build the RAGAS evaluation dataset.
     """
 
-    @pytest.mark.tier1
-    @pytest.mark.tier2
-    def test_ragas_faithfulness(
-        self,
-        ragas_samples: list[SingleTurnSample],
-        ragas_evaluator_llm: Any,
-    ) -> None:
-        """Verify RAG responses are factually grounded in retrieved context.
-
-        Given: RAGAS samples from the RAG pipeline (Responses API + file_search)
-        When: The Faithfulness metric is evaluated across all samples
-        Then: The aggregate faithfulness score meets the minimum threshold
-        """
-        result = evaluate(
-            dataset=EvaluationDataset(samples=ragas_samples),
-            metrics=[Faithfulness(llm=ragas_evaluator_llm)],
-        )
-        score = mean_ragas_score(scores=result["faithfulness"])
-        LOGGER.info(f"RAGAS Faithfulness score: {score:.3f} (threshold: {FAITHFULNESS_THRESHOLD})")
-        assert score >= FAITHFULNESS_THRESHOLD, (
-            f"RAGAS Faithfulness score {score:.3f} is below threshold {FAITHFULNESS_THRESHOLD}"
-        )
-
-    @pytest.mark.tier2
-    def test_ragas_answer_relevancy(
+    @pytest.mark.parametrize(
+        "metric_cls, metric_key, threshold, needs_embeddings",
+        [
+            pytest.param(
+                Faithfulness,
+                "faithfulness",
+                FAITHFULNESS_THRESHOLD,
+                False,
+                id="faithfulness",
+                marks=pytest.mark.tier1,
+            ),
+            pytest.param(
+                AnswerRelevancy,
+                "answer_relevancy",
+                ANSWER_RELEVANCY_THRESHOLD,
+                True,
+                id="answer_relevancy",
+                marks=pytest.mark.tier2,
+            ),
+            pytest.param(
+                ContextPrecision,
+                "context_precision",
+                CONTEXT_PRECISION_THRESHOLD,
+                False,
+                id="context_precision",
+                marks=pytest.mark.tier2,
+            ),
+            pytest.param(
+                ContextRecall,
+                "context_recall",
+                CONTEXT_RECALL_THRESHOLD,
+                False,
+                id="context_recall",
+                marks=pytest.mark.tier2,
+            ),
+        ],
+    )
+    def test_ragas_metric(
         self,
         ragas_samples: list[SingleTurnSample],
         ragas_evaluator_llm: Any,
         ragas_evaluator_embeddings: Any,
+        metric_cls: type,
+        metric_key: str,
+        threshold: float,
+        needs_embeddings: bool,
     ) -> None:
-        """Verify RAG responses address the user's question.
+        """Evaluate a RAGAS metric against RAG pipeline samples.
 
         Given: RAGAS samples from the RAG pipeline (Responses API + file_search)
-        When: The AnswerRelevancy metric is evaluated across all samples
-        Then: The aggregate answer relevancy score meets the minimum threshold
+        When: The specified metric is evaluated across all samples
+        Then: The aggregate score meets the minimum threshold
         """
+        kwargs: dict[str, Any] = {"llm": ragas_evaluator_llm}
+        if needs_embeddings:
+            kwargs["embeddings"] = ragas_evaluator_embeddings
+        metric = metric_cls(**kwargs)
+
         result = evaluate(
             dataset=EvaluationDataset(samples=ragas_samples),
-            metrics=[AnswerRelevancy(llm=ragas_evaluator_llm, embeddings=ragas_evaluator_embeddings)],
+            metrics=[metric],
         )
-        score = mean_ragas_score(scores=result["answer_relevancy"])
-        LOGGER.info(f"RAGAS Answer Relevancy score: {score:.3f} (threshold: {ANSWER_RELEVANCY_THRESHOLD})")
-        assert score >= ANSWER_RELEVANCY_THRESHOLD, (
-            f"RAGAS Answer Relevancy score {score:.3f} is below threshold {ANSWER_RELEVANCY_THRESHOLD}"
-        )
-
-    @pytest.mark.tier2
-    def test_ragas_context_precision(
-        self,
-        ragas_samples: list[SingleTurnSample],
-        ragas_evaluator_llm: Any,
-    ) -> None:
-        """Verify retrieval returns relevant documents for the query.
-
-        Given: RAGAS samples from the RAG pipeline (Responses API + file_search)
-        When: The ContextPrecision metric is evaluated across all samples
-        Then: The aggregate context precision score meets the minimum threshold
-        """
-        result = evaluate(
-            dataset=EvaluationDataset(samples=ragas_samples),
-            metrics=[ContextPrecision(llm=ragas_evaluator_llm)],
-        )
-        score = mean_ragas_score(scores=result["context_precision"])
-        LOGGER.info(f"RAGAS Context Precision score: {score:.3f} (threshold: {CONTEXT_PRECISION_THRESHOLD})")
-        assert score >= CONTEXT_PRECISION_THRESHOLD, (
-            f"RAGAS Context Precision score {score:.3f} is below threshold {CONTEXT_PRECISION_THRESHOLD}"
-        )
-
-    @pytest.mark.tier2
-    def test_ragas_context_recall(
-        self,
-        ragas_samples: list[SingleTurnSample],
-        ragas_evaluator_llm: Any,
-    ) -> None:
-        """Verify retrieval covers the information needed to answer correctly.
-
-        Given: RAGAS samples from the RAG pipeline (Responses API + file_search)
-        When: The ContextRecall metric is evaluated across all samples
-        Then: The aggregate context recall score meets the minimum threshold
-        """
-        result = evaluate(
-            dataset=EvaluationDataset(samples=ragas_samples),
-            metrics=[ContextRecall(llm=ragas_evaluator_llm)],
-        )
-        score = mean_ragas_score(scores=result["context_recall"])
-        LOGGER.info(f"RAGAS Context Recall score: {score:.3f} (threshold: {CONTEXT_RECALL_THRESHOLD})")
-        assert score >= CONTEXT_RECALL_THRESHOLD, (
-            f"RAGAS Context Recall score {score:.3f} is below threshold {CONTEXT_RECALL_THRESHOLD}"
-        )
+        score = mean_ragas_score(scores=result[metric_key])
+        LOGGER.info(f"RAGAS {metric_key} score: {score:.3f} (threshold: {threshold})")
+        assert score >= threshold, f"RAGAS {metric_key} score {score:.3f} is below threshold {threshold}"
