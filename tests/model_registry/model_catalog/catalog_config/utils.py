@@ -308,7 +308,7 @@ def modify_catalog_source(
     if not target_source:
         LOGGER.info(f"Source {source_id} not found in {DEFAULT_CUSTOM_MODEL_CATALOG}. Syncing from default sources.")
 
-        # Get default sources ConfigMap (default-catalog-sources)
+        # Get default sources ConfigMap (DEFAULT_MODEL_CATALOG_CM)
         default_sources_cm = ConfigMap(
             name=DEFAULT_MODEL_CATALOG_CM,
             client=admin_client,
