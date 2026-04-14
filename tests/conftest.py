@@ -2,7 +2,9 @@ import base64
 import os
 import shutil
 from ast import literal_eval
-from typing import Any, Callable, Generator
+from collections.abc import Callable, Generator
+from contextlib import ExitStack
+from typing import Any
 
 import pytest
 from semver import Version
@@ -720,16 +722,16 @@ def mariadb_operator_cr(
         namespace=OPENSHIFT_OPERATORS,
     )
 
-    if not mariadb_operator_cr.exists:
-        mariadb_operator_cr = MariadbOperator(kind_dict=mariadb_operator_cr_dict)
-        mariadb_operator_cr.create()
+    with ExitStack() as stack:
+        if not mariadb_operator_cr.exists:
+            mariadb_operator_cr = stack.enter_context(MariadbOperator(kind_dict=mariadb_operator_cr_dict))
 
-    mariadb_operator_cr.wait_for_condition(
-        condition="Deployed", status=mariadb_operator_cr.Condition.Status.TRUE, timeout=Timeout.TIMEOUT_10MIN
-    )
-    wait_for_mariadb_operator_deployments(mariadb_operator=mariadb_operator_cr, client=admin_client)
+        mariadb_operator_cr.wait_for_condition(
+            condition="Deployed", status=mariadb_operator_cr.Condition.Status.TRUE, timeout=Timeout.TIMEOUT_10MIN
+        )
+        wait_for_mariadb_operator_deployments(mariadb_operator=mariadb_operator_cr, client=admin_client)
 
-    yield mariadb_operator_cr
+        yield mariadb_operator_cr
 
 
 @pytest.fixture(scope="session")
