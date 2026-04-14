@@ -16,7 +16,6 @@ from ocp_resources.group import Group
 from ocp_resources.ingress_config_openshift_io import Ingress as IngressConfig
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.resource import ResourceEditor
-from pyhelper_utils.shell import run_command
 from requests import Response
 
 from utilities.constants import (
@@ -633,11 +632,3 @@ def assert_api_key_created_ok(
     )
     for field in required_fields:
         assert field in body, f"Response must contain '{field}'"
-
-
-def run_kubectl(cmd: list[str]) -> str:
-    """Run a kubectl command and return stdout."""
-    _, out, err = run_command(command=["kubectl", *cmd], timeout=60)
-    if err:
-        LOGGER.warning(f"kubectl {' '.join(cmd)}: {err.strip()}")
-    return out.strip()
