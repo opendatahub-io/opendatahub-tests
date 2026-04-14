@@ -540,42 +540,53 @@ class TestEvalHubCollectionsFeature:
         )
 
     # ------------------------------------------------------------------
-    # GET by non-existent / empty id → 404
+    # Non-existent / empty id → 404 (GET, PUT, PATCH, DELETE)
     # ------------------------------------------------------------------
 
-    def test_get_collection_nonexistent_id_returns_404(
-        self,
-        tenant_a_token: str,
-        tenant_a_namespace: Namespace,
-        evalhub_mt_ca_bundle_file: str,
-        evalhub_mt_route: Route,
-    ) -> None:
-        """GET /collections/{non-existent-uuid} returns 404."""
-        url = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}/00000000-0000-0000-0000-000000000000"
-        resp = requests.get(
-            url=url,
-            headers=build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name),
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=10,
-        )
-        assert resp.status_code == 404, f"Expected 404 for non-existent collection, got {resp.status_code}: {resp.text}"
+    NON_EXISTENT_PATH = "/00000000-0000-0000-0000-000000000000"
 
-    def test_get_collection_empty_id_returns_404(
+    @pytest.mark.parametrize(
+        "method,path_suffix,json_body",
+        [
+            pytest.param("GET", NON_EXISTENT_PATH, None, id="get-nonexistent"),
+            pytest.param("GET", "/", None, id="get-empty"),
+            pytest.param("PUT", NON_EXISTENT_PATH, COLLECTION_UPDATE_PAYLOAD, id="put-nonexistent"),
+            pytest.param("PUT", "/", COLLECTION_UPDATE_PAYLOAD, id="put-empty"),
+            pytest.param(
+                "PATCH",
+                NON_EXISTENT_PATH,
+                [{"op": "replace", "path": "/name", "value": "x"}],
+                id="patch-nonexistent",
+            ),
+            pytest.param(
+                "PATCH", "/", [{"op": "replace", "path": "/name", "value": "x"}], id="patch-empty"
+            ),
+            pytest.param("DELETE", NON_EXISTENT_PATH + "?hard_delete=true", None, id="delete-nonexistent"),
+        ],
+    )
+    def test_collection_nonexistent_or_empty_id_returns_404(
         self,
         tenant_a_token: str,
         tenant_a_namespace: Namespace,
         evalhub_mt_ca_bundle_file: str,
         evalhub_mt_route: Route,
+        method: str,
+        path_suffix: str,
+        json_body: dict | list | None,
     ) -> None:
-        """GET /collections/ (trailing slash, no id) returns 404."""
-        url = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}/"
-        resp = requests.get(
+        """Request against a non-existent or empty collection id returns 404."""
+        url = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}{path_suffix}"
+        resp = requests.request(
+            method=method,
             url=url,
             headers=build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name),
+            json=json_body,
             verify=evalhub_mt_ca_bundle_file,
             timeout=10,
         )
-        assert resp.status_code == 404, f"Expected 404 for empty collection path, got {resp.status_code}: {resp.text}"
+        assert resp.status_code == 404, (
+            f"Expected 404 for {method} {path_suffix}, got {resp.status_code}: {resp.text}"
+        )
 
     # ------------------------------------------------------------------
     # Update (PUT) lifecycle
@@ -607,50 +618,6 @@ class TestEvalHubCollectionsFeature:
         assert resp.status_code == 200
         assert resp.json()["name"] == "updated-collection-name"
         assert resp.json()["description"] == "Updated description for FVT"
-
-    # ------------------------------------------------------------------
-    # Update non-existent / empty id → 404
-    # ------------------------------------------------------------------
-
-    def test_update_collection_nonexistent_id_returns_404(
-        self,
-        tenant_a_token: str,
-        tenant_a_namespace: Namespace,
-        evalhub_mt_ca_bundle_file: str,
-        evalhub_mt_route: Route,
-    ) -> None:
-        """PUT on a non-existent collection returns 404."""
-        url = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}/00000000-0000-0000-0000-000000000000"
-        resp = requests.put(
-            url=url,
-            headers=build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name),
-            json=COLLECTION_UPDATE_PAYLOAD,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=10,
-        )
-        assert resp.status_code == 404, (
-            f"Expected 404 for non-existent collection update, got {resp.status_code}: {resp.text}"
-        )
-
-    def test_update_collection_empty_id_returns_404(
-        self,
-        tenant_a_token: str,
-        tenant_a_namespace: Namespace,
-        evalhub_mt_ca_bundle_file: str,
-        evalhub_mt_route: Route,
-    ) -> None:
-        """PUT /collections/ (trailing slash, no id) returns 404."""
-        url = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}/"
-        resp = requests.put(
-            url=url,
-            headers=build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name),
-            json=COLLECTION_UPDATE_PAYLOAD,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=10,
-        )
-        assert resp.status_code == 404, (
-            f"Expected 404 for empty collection PUT path, got {resp.status_code}: {resp.text}"
-        )
 
     # ------------------------------------------------------------------
     # Update validation: missing / empty required fields → 400
@@ -841,46 +808,6 @@ class TestEvalHubCollectionsFeature:
         assert resp.json()["benchmarks"][0]["provider_id"] == "other_provider"
         assert len(resp.json()["benchmarks"]) == 1
 
-    def test_patch_collection_nonexistent_id_returns_404(
-        self,
-        tenant_a_token: str,
-        tenant_a_namespace: Namespace,
-        evalhub_mt_ca_bundle_file: str,
-        evalhub_mt_route: Route,
-    ) -> None:
-        """PATCH on a non-existent collection returns 404."""
-        url = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}/00000000-0000-0000-0000-000000000000"
-        resp = requests.patch(
-            url=url,
-            headers=build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name),
-            json=[{"op": "replace", "path": "/name", "value": "x"}],
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=10,
-        )
-        assert resp.status_code == 404, (
-            f"Expected 404 for non-existent collection patch, got {resp.status_code}: {resp.text}"
-        )
-
-    def test_patch_collection_empty_id_returns_404(
-        self,
-        tenant_a_token: str,
-        tenant_a_namespace: Namespace,
-        evalhub_mt_ca_bundle_file: str,
-        evalhub_mt_route: Route,
-    ) -> None:
-        """PATCH /collections/ (trailing slash, no id) returns 404."""
-        url = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}/"
-        resp = requests.patch(
-            url=url,
-            headers=build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name),
-            json=[{"op": "replace", "path": "/name", "value": "x"}],
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=10,
-        )
-        assert resp.status_code == 404, (
-            f"Expected 404 for empty collection PATCH path, got {resp.status_code}: {resp.text}"
-        )
-
     def test_patch_collection_invalid_body_returns_400(
         self,
         collection: dict,
@@ -1028,31 +955,6 @@ class TestEvalHubCollectionsFeature:
         )
         assert resp.status_code == 400, f"Expected 400 for invalid scope, got {resp.status_code}: {resp.text}"
         assert resp.json().get("message_code") == "query_parameter_value_invalid"
-
-    # ------------------------------------------------------------------
-    # Delete collection
-    # ------------------------------------------------------------------
-
-    def test_delete_collection_nonexistent_id_returns_404(
-        self,
-        tenant_a_token: str,
-        tenant_a_namespace: Namespace,
-        evalhub_mt_ca_bundle_file: str,
-        evalhub_mt_route: Route,
-    ) -> None:
-        """DELETE non-existent collection returns 404."""
-        non_existent_id = "00000000-0000-0000-0000-000000000000"
-        url = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}/{non_existent_id}?hard_delete=true"
-        resp = requests.delete(
-            url=url,
-            headers=build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name),
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=10,
-        )
-        assert resp.status_code == 404, (
-            f"Expected 404 for non-existent collection delete, got {resp.status_code}: {resp.text}"
-        )
-        assert resp.json().get("message_code") == "resource_not_found"
 
     # ------------------------------------------------------------------
     # List by tags, name, and category (AND/OR semantics)
