@@ -10,6 +10,10 @@ LOGGER = structlog.get_logger(name=__name__)
 
 MAAS_API_AUTH_POLICY_NAME = "maas-api-auth-policy"
 OIDC_CLIENT_ID = "oc-cli"
+JWT_WHEN_PREDICATE = (
+    '!request.headers.authorization.startsWith("Bearer sk-oai-") && '
+    'request.headers.authorization.matches("^Bearer [^.]+\\\\.[^.]+\\\\.[^.]+$")'
+)
 
 
 def request_oidc_access_token(

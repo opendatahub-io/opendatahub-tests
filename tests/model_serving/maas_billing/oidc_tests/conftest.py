@@ -12,8 +12,10 @@ from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutSampler
 
 from tests.model_serving.maas_billing.oidc_tests.utils import (
+    JWT_WHEN_PREDICATE,
     MAAS_API_AUTH_POLICY_NAME,
     OIDC_CLIENT_ID,
+    fetch_models_with_header,
     request_oidc_access_token,
 )
 from tests.model_serving.maas_billing.utils import (
@@ -47,24 +49,19 @@ def oidc_auth_policy_patched(
         ensure_exists=True,
     )
 
-    jwt_when_predicate = (
-        '!request.headers.authorization.startsWith("Bearer sk-oai-") && '
-        'request.headers.authorization.matches("^Bearer [^.]+\\\\.[^.]+\\\\.[^.]+$")'
+    existing_openshift_identities = (
+        maas_auth_policy.instance.spec.get("rules", {}).get("authentication", {}).get("openshift-identities", {})
     )
+    existing_token_review = existing_openshift_identities.get("kubernetesTokenReview", {})
 
     oidc_authentication_rule = {
         "openshift-identities": {
             "when": [{"predicate": '!request.headers.authorization.startsWith("Bearer sk-oai-")'}],
-            "kubernetesTokenReview": {
-                "audiences": [
-                    "https://kubernetes.default.svc",
-                    "maas-default-gateway-sa",
-                ]
-            },
+            "kubernetesTokenReview": existing_token_review,
             "priority": 2,
         },
         "oidc-identities": {
-            "when": [{"predicate": jwt_when_predicate}],
+            "when": [{"predicate": JWT_WHEN_PREDICATE}],
             "jwt": {"issuerUrl": oidc_issuer_url},
             "priority": 1,
         },
@@ -73,7 +70,7 @@ def oidc_auth_policy_patched(
     oidc_authorization_rule = {
         "oidc-client-bound": {
             "when": [
-                {"predicate": jwt_when_predicate},
+                {"predicate": JWT_WHEN_PREDICATE},
                 {"predicate": "has(auth.identity.azp)"},
             ],
             "patternMatching": {
@@ -433,9 +430,31 @@ def oidc_api_key_with_spoofed_username(
     LOGGER.info(f"oidc_api_key_with_spoofed_username: created key id={api_key_body['id']}")
     yield api_key_body
 
-    revoke_api_key(
+    revoke_response, _ = revoke_api_key(
         request_session_http=request_session_http,
         base_url=base_url,
         key_id=api_key_body["id"],
         ocp_user_token=external_oidc_token,
     )
+    if revoke_response.status_code not in (200, 404):
+        LOGGER.warning(
+            f"oidc_api_key_with_spoofed_username: unexpected teardown status for key "
+            f"id={api_key_body['id']}: {revoke_response.status_code}"
+        )
+
+
+@pytest.fixture(scope="function")
+def baseline_models_response(
+    request_session_http: requests.Session,
+    base_url: str,
+    oidc_minted_api_key: dict[str, Any],
+) -> requests.Response:
+    """Fetch /v1/models with a valid OIDC-minted API key (no spoofed headers)."""
+    models_url = f"{base_url}/v1/models"
+    response = fetch_models_with_header(
+        session=request_session_http,
+        models_url=models_url,
+        api_key=oidc_minted_api_key["key"],
+    )
+    assert response.status_code == 200, f"Baseline models request failed: {response.status_code}"
+    return response

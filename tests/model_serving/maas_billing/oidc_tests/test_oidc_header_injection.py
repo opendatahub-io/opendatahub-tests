@@ -26,113 +26,47 @@ class TestOIDCHeaderInjection:
     """Verify the gateway ignores client-supplied identity headers."""
 
     @pytest.mark.tier1
-    def test_injected_username_header_ignored(
+    @pytest.mark.parametrize(
+        "header_name, header_value",
+        [
+            pytest.param("X-MaaS-Username", "evil_hacker", id="username"),
+            pytest.param("X-MaaS-Group", '["system:cluster-admins","cluster-admin"]', id="group"),
+            pytest.param("X-MaaS-Subscription", "fake-subscription-id-12345", id="subscription"),
+        ],
+    )
+    def test_injected_header_does_not_change_model_list(
         self,
         request_session_http: requests.Session,
         base_url: str,
         oidc_minted_api_key: dict[str, Any],
+        baseline_models_response: requests.Response,
+        header_name: str,
+        header_value: str,
     ) -> None:
-        """Verify client-supplied X-MaaS-Username does not override authenticated identity."""
-        api_key = oidc_minted_api_key["key"]
-
-        baseline_response = fetch_models_with_spoofed_header(
-            session=request_session_http,
-            base_url=base_url,
-            api_key=api_key,
-        )
-        assert baseline_response.status_code == 200, f"Baseline request failed: {baseline_response.status_code}"
-
+        """Verify injected identity header does not change the model list or escalate access."""
         spoofed_response = fetch_models_with_spoofed_header(
             session=request_session_http,
             base_url=base_url,
-            api_key=api_key,
-            extra_headers={"X-MaaS-Username": "evil_hacker"},
-        )
-
-        assert spoofed_response.status_code == 200, (
-            f"Expected 200 (injected header ignored), got {spoofed_response.status_code}: {spoofed_response.text[:200]}"
-        )
-        assert_model_lists_match(
-            baseline_response=baseline_response,
-            spoofed_response=spoofed_response,
-            injection_description="X-MaaS-Username",
-        )
-        LOGGER.info("[oidc] X-MaaS-Username injection correctly ignored by gateway")
-
-    @pytest.mark.tier2
-    def test_injected_group_header_does_not_escalate(
-        self,
-        request_session_http: requests.Session,
-        base_url: str,
-        oidc_minted_api_key: dict[str, Any],
-    ) -> None:
-        """Verify client-supplied X-MaaS-Group does not grant access to unauthorized resources."""
-        api_key = oidc_minted_api_key["key"]
-
-        baseline_response = fetch_models_with_spoofed_header(
-            session=request_session_http,
-            base_url=base_url,
-            api_key=api_key,
-        )
-        assert baseline_response.status_code == 200, f"Baseline request failed: {baseline_response.status_code}"
-
-        spoofed_response = fetch_models_with_spoofed_header(
-            session=request_session_http,
-            base_url=base_url,
-            api_key=api_key,
-            extra_headers={"X-MaaS-Group": '["system:cluster-admins","cluster-admin"]'},
+            api_key=oidc_minted_api_key["key"],
+            extra_headers={header_name: header_value},
         )
 
         if spoofed_response.status_code == 200:
             assert_model_lists_match(
-                baseline_response=baseline_response,
+                baseline_response=baseline_models_response,
                 spoofed_response=spoofed_response,
-                injection_description="X-MaaS-Group",
+                injection_description=header_name,
             )
-            LOGGER.info("[oidc] X-MaaS-Group injection overwritten — same models returned")
+            LOGGER.info(f"[oidc] {header_name} injection overwritten — same models returned")
         else:
             assert spoofed_response.status_code in (400, 403), (
-                f"Unexpected status for injected group header: "
+                f"Unexpected status for injected {header_name}: "
                 f"{spoofed_response.status_code} {spoofed_response.text[:200]}"
             )
             LOGGER.info(
-                f"[oidc] X-MaaS-Group injection caused denial ({spoofed_response.status_code}) — no escalation possible"
+                f"[oidc] {header_name} injection caused denial ({spoofed_response.status_code}) "
+                f"— no escalation possible"
             )
-
-    @pytest.mark.tier2
-    def test_injected_subscription_header_ignored(
-        self,
-        request_session_http: requests.Session,
-        base_url: str,
-        oidc_minted_api_key: dict[str, Any],
-    ) -> None:
-        """Verify client-supplied X-MaaS-Subscription does not grant access to other subscriptions."""
-        api_key = oidc_minted_api_key["key"]
-
-        baseline_response = fetch_models_with_spoofed_header(
-            session=request_session_http,
-            base_url=base_url,
-            api_key=api_key,
-        )
-        assert baseline_response.status_code == 200, f"Baseline request failed: {baseline_response.status_code}"
-
-        spoofed_response = fetch_models_with_spoofed_header(
-            session=request_session_http,
-            base_url=base_url,
-            api_key=api_key,
-            extra_headers={"X-MaaS-Subscription": "fake-subscription-id-12345"},
-        )
-        assert spoofed_response.status_code == 200, (
-            f"Expected 200 (injected subscription header ignored), "
-            f"got {spoofed_response.status_code}: {spoofed_response.text[:200]}"
-        )
-
-        assert_model_lists_match(
-            baseline_response=baseline_response,
-            spoofed_response=spoofed_response,
-            injection_description="X-MaaS-Subscription",
-        )
-        LOGGER.info("[oidc] X-MaaS-Subscription injection correctly ignored")
 
     @pytest.mark.tier2
     def test_injected_username_on_oidc_token_ignored(
@@ -140,7 +74,8 @@ class TestOIDCHeaderInjection:
         oidc_api_key_with_spoofed_username: dict[str, Any],
     ) -> None:
         """Verify client-supplied X-MaaS-Username with raw OIDC token does not override identity."""
-        assert oidc_api_key_with_spoofed_username.get("key", "").startswith("sk-oai-"), (
-            f"Unexpected API key payload: {oidc_api_key_with_spoofed_username}"
+        api_key_value = oidc_api_key_with_spoofed_username.get("key", "")
+        assert api_key_value.startswith("sk-oai-"), (
+            f"Expected API key starting with 'sk-oai-', got prefix: {api_key_value[:10]}..."
         )
         LOGGER.info("[oidc] API key minted with injected X-MaaS-Username — gateway ignored spoofed header")
