@@ -824,12 +824,23 @@ def mariadb_operator_cr(
         raise ResourceNotFoundError(f"No MariadbOperator dict found in alm_examples for CSV {mariadb_csv.name}")
 
     mariadb_operator_cr_dict["metadata"]["namespace"] = OPENSHIFT_OPERATORS
-    with MariadbOperator(kind_dict=mariadb_operator_cr_dict) as mariadb_operator_cr:
+    mariadb_operator_cr_name = mariadb_operator_cr_dict["metadata"]["name"]
+
+    mariadb_operator_cr = MariadbOperator(
+        client=admin_client,
+        name=mariadb_operator_cr_name,
+        namespace=OPENSHIFT_OPERATORS,
+    )
+
+    if not mariadb_operator_cr.exists:
+        mariadb_operator_cr = MariadbOperator(kind_dict=mariadb_operator_cr_dict)
+        mariadb_operator_cr.create()
         mariadb_operator_cr.wait_for_condition(
             condition="Deployed", status=mariadb_operator_cr.Condition.Status.TRUE, timeout=Timeout.TIMEOUT_10MIN
         )
         wait_for_mariadb_operator_deployments(mariadb_operator=mariadb_operator_cr, client=admin_client)
-        yield mariadb_operator_cr
+
+    yield mariadb_operator_cr
 
 
 @pytest.fixture(scope="session")
