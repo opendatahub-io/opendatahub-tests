@@ -466,6 +466,10 @@ class TestEvalHubCollectionsFeature:
             pytest.param(COLLECTION_EMPTY_BENCHMARKS_PAYLOAD, "benchmarks", id="empty-benchmarks"),
             pytest.param(COLLECTION_NO_NAME_PAYLOAD, "name", id="missing-name"),
             pytest.param(COLLECTION_NO_CATEGORY_PAYLOAD, "category", id="missing-category"),
+            pytest.param(COLLECTION_BENCHMARK_NO_ID_PAYLOAD, "benchmark id", id="benchmark-missing-id"),
+            pytest.param(
+                COLLECTION_BENCHMARK_NO_PROVIDER_ID_PAYLOAD, "benchmark provider_id", id="benchmark-missing-provider-id"
+            ),
         ],
     )
     def test_create_collection_missing_required_field_returns_400(
@@ -496,44 +500,6 @@ class TestEvalHubCollectionsFeature:
     ) -> None:
         """POST collection without description (optional) → 201."""
         assert collection_no_description["id"]
-
-    def test_create_collection_benchmark_missing_id_returns_400(
-        self,
-        tenant_a_token: str,
-        tenant_a_namespace: Namespace,
-        evalhub_mt_ca_bundle_file: str,
-        evalhub_mt_route: Route,
-    ) -> None:
-        """POST collection with benchmark missing id → 400."""
-        url = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}"
-        resp = requests.post(
-            url=url,
-            headers=build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name),
-            json=COLLECTION_BENCHMARK_NO_ID_PAYLOAD,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=30,
-        )
-        assert resp.status_code == 400, f"Expected 400 for benchmark missing id, got {resp.status_code}: {resp.text}"
-
-    def test_create_collection_benchmark_missing_provider_id_returns_400(
-        self,
-        tenant_a_token: str,
-        tenant_a_namespace: Namespace,
-        evalhub_mt_ca_bundle_file: str,
-        evalhub_mt_route: Route,
-    ) -> None:
-        """POST collection with benchmark missing provider_id → 400."""
-        url = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}"
-        resp = requests.post(
-            url=url,
-            headers=build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name),
-            json=COLLECTION_BENCHMARK_NO_PROVIDER_ID_PAYLOAD,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=30,
-        )
-        assert resp.status_code == 400, (
-            f"Expected 400 for benchmark missing provider_id, got {resp.status_code}: {resp.text}"
-        )
 
     # ------------------------------------------------------------------
     # Benchmark URL enrichment from custom provider
