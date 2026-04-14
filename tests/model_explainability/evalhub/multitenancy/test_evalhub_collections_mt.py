@@ -459,77 +459,36 @@ class TestEvalHubCollectionsFeature:
     # Validation: missing / empty required fields → 400
     # ------------------------------------------------------------------
 
-    def test_create_collection_without_benchmarks_returns_400(
+    @pytest.mark.parametrize(
+        "payload,field",
+        [
+            pytest.param(COLLECTION_NO_BENCHMARKS_PAYLOAD, "benchmarks", id="missing-benchmarks"),
+            pytest.param(COLLECTION_EMPTY_BENCHMARKS_PAYLOAD, "benchmarks", id="empty-benchmarks"),
+            pytest.param(COLLECTION_NO_NAME_PAYLOAD, "name", id="missing-name"),
+            pytest.param(COLLECTION_NO_CATEGORY_PAYLOAD, "category", id="missing-category"),
+        ],
+    )
+    def test_create_collection_missing_required_field_returns_400(
         self,
         tenant_a_token: str,
         tenant_a_namespace: Namespace,
         evalhub_mt_ca_bundle_file: str,
         evalhub_mt_route: Route,
+        payload: dict,
+        field: str,
     ) -> None:
-        """POST collection without benchmarks field → 400."""
+        """POST collection with missing or empty required field → 400."""
         url = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}"
         resp = requests.post(
             url=url,
             headers=build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name),
-            json=COLLECTION_NO_BENCHMARKS_PAYLOAD,
+            json=payload,
             verify=evalhub_mt_ca_bundle_file,
             timeout=30,
         )
-        assert resp.status_code == 400, f"Expected 400 for missing benchmarks, got {resp.status_code}: {resp.text}"
-
-    def test_create_collection_with_empty_benchmarks_returns_400(
-        self,
-        tenant_a_token: str,
-        tenant_a_namespace: Namespace,
-        evalhub_mt_ca_bundle_file: str,
-        evalhub_mt_route: Route,
-    ) -> None:
-        """POST collection with empty benchmarks array → 400."""
-        url = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}"
-        resp = requests.post(
-            url=url,
-            headers=build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name),
-            json=COLLECTION_EMPTY_BENCHMARKS_PAYLOAD,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=30,
+        assert resp.status_code == 400, (
+            f"Expected 400 for invalid '{field}', got {resp.status_code}: {resp.text}"
         )
-        assert resp.status_code == 400, f"Expected 400 for empty benchmarks, got {resp.status_code}: {resp.text}"
-
-    def test_create_collection_without_name_returns_400(
-        self,
-        tenant_a_token: str,
-        tenant_a_namespace: Namespace,
-        evalhub_mt_ca_bundle_file: str,
-        evalhub_mt_route: Route,
-    ) -> None:
-        """POST collection without name field → 400."""
-        url = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}"
-        resp = requests.post(
-            url=url,
-            headers=build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name),
-            json=COLLECTION_NO_NAME_PAYLOAD,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=30,
-        )
-        assert resp.status_code == 400, f"Expected 400 for missing name, got {resp.status_code}: {resp.text}"
-
-    def test_create_collection_without_category_returns_400(
-        self,
-        tenant_a_token: str,
-        tenant_a_namespace: Namespace,
-        evalhub_mt_ca_bundle_file: str,
-        evalhub_mt_route: Route,
-    ) -> None:
-        """POST collection without category field → 400."""
-        url = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}"
-        resp = requests.post(
-            url=url,
-            headers=build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name),
-            json=COLLECTION_NO_CATEGORY_PAYLOAD,
-            verify=evalhub_mt_ca_bundle_file,
-            timeout=30,
-        )
-        assert resp.status_code == 400, f"Expected 400 for missing category, got {resp.status_code}: {resp.text}"
 
     def test_create_collection_without_description_returns_201(
         self,
