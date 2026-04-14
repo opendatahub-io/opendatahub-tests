@@ -157,7 +157,6 @@ class TestDefaultMCPCatalogSourceValidations:
                     )
         assert not errors, "Tool validation failed:\n" + "\n".join(errors)
 
-    @pytest.mark.xfail(reason="RHOAIENG-57606: toolLimit is broken on mcp_servers/<id> endpoint")
     def test_mcp_server_by_id_tool_limit(
         self: Self,
         mcp_catalog_rest_urls: list[str],
@@ -241,11 +240,11 @@ class TestDefaultMCPCatalogSourceValidations:
             f"Tool fetched by name does not match tools list response.\nExpected: {tool}\nActual: {fetched}"
         )
 
-    @pytest.mark.xfail(reason="RHOAIENG-57606: Tools endpoint pagination not implemented upstream")
     def test_default_mcp_server_tools_pagination(
         self: Self,
         mcp_catalog_rest_urls: list[str],
         model_registry_rest_headers: dict[str, str],
+        mcp_servers_by_source: dict,
         mcp_server_with_multiple_tools: tuple[str, int],
     ):
         """Verify that tools endpoint supports pagination with pageSize and nextPageToken."""
