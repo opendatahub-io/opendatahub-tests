@@ -65,6 +65,7 @@ from utilities.infra import create_ns, get_openshift_token, login_with_user_pass
 from utilities.llmd_constants import ContainerImages, ModelStorage
 from utilities.llmd_utils import create_llmisvc
 from utilities.plugins.constant import OpenAIEnpoints
+from utilities.resources.authorino import Authorino
 from utilities.resources.rate_limit_policy import RateLimitPolicy
 from utilities.resources.token_rate_limit_policy import TokenRateLimitPolicy
 from utilities.user_utils import UserTestSession, create_htpasswd_file, wait_for_user_creation
@@ -809,11 +810,94 @@ def maas_api_endpoints_ready(
             return
 
 
+@pytest.fixture(scope="session")
+def authorino_tls_configured(admin_client: DynamicClient) -> Generator[None, Any, Any]:
+    """Configure Authorino TLS for MaaS API communication."""
+    authorino_namespace = "rh-connectivity-link"
+
+    LOGGER.info(f"authorino_tls_configured: configuring TLS in {authorino_namespace}")
+
+    authorino_service = Service(
+        client=admin_client,
+        name="authorino-authorino-authorization",
+        namespace=authorino_namespace,
+    )
+    service_patch = {
+        "metadata": {
+            "annotations": {
+                "service.beta.openshift.io/serving-cert-secret-name": "authorino-server-cert",
+            }
+        }
+    }
+
+    authorino_deployment = Deployment(
+        client=admin_client,
+        name="authorino",
+        namespace=authorino_namespace,
+    )
+    current_image = authorino_deployment.instance.spec.template.spec.containers[0].image
+    deployment_patch = {
+        "spec": {
+            "template": {
+                "spec": {
+                    "containers": [
+                        {
+                            "name": "authorino",
+                            "image": current_image,
+                            "env": [
+                                {
+                                    "name": "SSL_CERT_FILE",
+                                    "value": "/etc/ssl/certs/openshift-service-ca/service-ca-bundle.crt",
+                                },
+                                {
+                                    "name": "REQUESTS_CA_BUNDLE",
+                                    "value": "/etc/ssl/certs/openshift-service-ca/service-ca-bundle.crt",
+                                },
+                            ],
+                        }
+                    ]
+                }
+            }
+        }
+    }
+
+    authorino_cr = Authorino(
+        client=admin_client,
+        name="authorino",
+        namespace=authorino_namespace,
+    )
+    authorino_patch = {
+        "spec": {
+            "listener": {
+                "tls": {
+                    "enabled": True,
+                    "certSecretRef": {"name": "authorino-server-cert"},
+                }
+            }
+        }
+    }
+
+    with ResourceEditor(
+        patches={
+            authorino_service: service_patch,
+            authorino_deployment: deployment_patch,
+            authorino_cr: authorino_patch,
+        }
+    ):
+        authorino_deployment.wait_for_condition(condition="Available", status="True", timeout=120)
+        LOGGER.info("authorino_tls_configured: TLS configuration applied, rollout complete")
+        yield
+
+    authorino_deployment.wait_for_condition(condition="Available", status="True", timeout=120)
+    LOGGER.info("authorino_tls_configured: TLS configuration removed, rollout complete")
+
+
 @pytest.fixture(scope="class")
 def maas_api_gateway_reachable(
     request_session_http: requests.Session,
     base_url: str,
     maas_api_endpoints_ready: None,
+    authorino_tls_configured: None,
 ) -> None:
     probe_url = f"{base_url}/v1/models"
 
@@ -1063,9 +1147,9 @@ def maas_subscription_namespace(
 @pytest.fixture(scope="session")
 def maas_subscription_controller_enabled_latest(
     dsc_resource: DataScienceCluster,
-    maas_postgres_prereqs: None,
     maas_gateway_api: None,
     maas_subscription_namespace: Namespace,
+    maas_postgres_prereqs: dict[Any, Any],
 ) -> Generator[DataScienceCluster, Any, Any]:
     """
     ensures postgres prerequisites and subscription namespace exist before MaaS is switched to Managed.
