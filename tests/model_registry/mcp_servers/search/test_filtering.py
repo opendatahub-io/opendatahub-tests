@@ -101,7 +101,8 @@ class TestMCPServerFiltering:
         that every page returns a unique, previously unseen server ID.
         """
         base_url = f"{mcp_catalog_rest_urls[0]}mcp_servers"
-        filter_query = "license='Apache 2.0'"
+        expected_license = "Apache 2.0"
+        filter_query = f"license='{expected_license}'"
 
         # Get total count of matching servers
         all_response = execute_get_command(
@@ -129,6 +130,11 @@ class TestMCPServerFiltering:
             items = response.get("items", [])
 
             assert len(items) == 1, f"Expected 1 item on page {page_num}, got {len(items)}"
+
+            assert items[0]["license"] == expected_license, (
+                f"Page {page_num} server id '{items[0]['id']}' has license='{items[0].get('license')}',"
+                f" expected '{expected_license}'"
+            )
 
             server_id = items[0]["id"]
             assert server_id not in seen_ids, (
