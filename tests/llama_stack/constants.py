@@ -76,4 +76,8 @@ ANSWER_RELEVANCY_THRESHOLD = 0.5
 CONTEXT_PRECISION_THRESHOLD = 0.5
 CONTEXT_RECALL_THRESHOLD = 0.5
 
-RAGAS_MAX_SAMPLES = int(os.getenv("RAGAS_MAX_SAMPLES", "5"))
+_ragas_max_samples_raw = os.getenv("RAGAS_MAX_SAMPLES", "5")
+try:
+    RAGAS_MAX_SAMPLES = int(_ragas_max_samples_raw)
+except ValueError:
+    RAGAS_MAX_SAMPLES = 5

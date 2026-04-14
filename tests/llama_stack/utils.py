@@ -13,7 +13,6 @@ import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
-from langchain_openai import OpenAIEmbeddings as LangchainOpenAIEmbeddings
 from llama_stack_client import APIConnectionError, InternalServerError, LlamaStackClient
 from llama_stack_client.types.file import File
 from llama_stack_client.types.vector_store import VectorStore
@@ -410,7 +409,7 @@ def vector_store_upload_dataset(
         )
 
 
-def extract_retrieved_contexts(response) -> list[str]:
+def extract_retrieved_contexts(response: Any) -> list[str]:
     """
     Extract retrieved contexts from a LlamaStack Responses API output.
 
@@ -436,7 +435,7 @@ def extract_retrieved_contexts(response) -> list[str]:
     return retrieved_contexts
 
 
-def mean_ragas_score(scores: list) -> float:
+def mean_ragas_score(scores: list[float | None]) -> float:
     """Compute mean of RAGAS per-sample scores, filtering out NaN values."""
     valid = [s for s in scores if s is not None and not math.isnan(s)]
     return sum(valid) / len(valid) if valid else 0.0
@@ -452,21 +451,23 @@ def ragas_evaluator_llm(
     verify_ssl = os.getenv("LLS_CLIENT_VERIFY_SSL", "false").lower() == "true"
 
     http_client = httpx.Client(verify=verify_ssl, timeout=httpx.Timeout(240.0))
-    openai_client = OpenAI(
-        api_key=os.getenv("LLS_CORE_VLLM_API_TOKEN", ""),
-        base_url=f"{base_url}/v1",
-        http_client=http_client,
-    )
+    try:
+        openai_client = OpenAI(
+            api_key=os.getenv("LLS_CORE_VLLM_API_TOKEN", ""),
+            base_url=f"{base_url}/v1",
+            http_client=http_client,
+        )
 
-    evaluator_llm = llm_factory(
-        model=llama_stack_models.model_id,
-        provider="openai",
-        client=openai_client,
-    )
-    evaluator_llm.model_args["max_tokens"] = 4096
+        evaluator_llm = llm_factory(
+            model=llama_stack_models.model_id,
+            provider="openai",
+            client=openai_client,
+        )
+        evaluator_llm.model_args["max_tokens"] = 4096
 
-    yield evaluator_llm
-    http_client.close()
+        yield evaluator_llm
+    finally:
+        http_client.close()
 
 
 @pytest.fixture(scope="class")
@@ -483,19 +484,22 @@ def ragas_evaluator_embeddings(
     base_url = str(unprivileged_llama_stack_client.base_url).rstrip("/")
     verify_ssl = os.getenv("LLS_CLIENT_VERIFY_SSL", "false").lower() == "true"
 
+    from langchain_openai import OpenAIEmbeddings as LangchainOpenAIEmbeddings
+
     http_client = httpx.Client(verify=verify_ssl, timeout=httpx.Timeout(120.0))
+    try:
+        embeddings = LangchainOpenAIEmbeddings(
+            openai_api_key="false",  # pragma: allowlist secret
+            openai_api_base=f"{base_url}/v1",
+            model=llama_stack_models.embedding_model.id,
+            http_client=http_client,
+            check_embedding_ctx_length=False,
+            tiktoken_enabled=False,
+        )
 
-    embeddings = LangchainOpenAIEmbeddings(
-        openai_api_key="false",  # pragma: allowlist secret
-        openai_api_base=f"{base_url}/v1",
-        model=llama_stack_models.embedding_model.id,
-        http_client=http_client,
-        check_embedding_ctx_length=False,
-        tiktoken_enabled=False,
-    )
-
-    yield embeddings
-    http_client.close()
+        yield embeddings
+    finally:
+        http_client.close()
 
 
 @pytest.fixture(scope="class")
