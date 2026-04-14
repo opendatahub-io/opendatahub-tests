@@ -51,6 +51,7 @@ class TestMCPServerInvalidYAML:
         response = execute_get_command(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
             headers=model_registry_rest_headers,
+            params={"pageSize": 1000},
         )
         server_names = {server["name"] for server in response["items"]}
         assert EXPECTED_MCP_SERVER_NAMES.issubset(server_names), (
