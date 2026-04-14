@@ -81,35 +81,76 @@ class TestMCPServerFiltering:
         }
         assert expected_filters == set(response["filters"].keys())
 
+    @pytest.mark.parametrize(
+        "order_params",
+        [
+            pytest.param({}, id="test_without_order_by"),
+            pytest.param({"orderBy": "id", "sortOrder": "ASC"}, id="test_with_order_by_asc"),
+            pytest.param({"orderBy": "id", "sortOrder": "DESC"}, id="test_with_order_by_desc"),
+        ],
+    )
     def test_pagination_with_filters(
         self: Self,
         mcp_catalog_rest_urls: list[str],
         model_registry_rest_headers: dict[str, str],
+        order_params: dict[str, str],
     ):
-        """TC-API-032: Test that pagination works correctly with filterQuery."""
+        """TC-API-032: Test that pagination works correctly with filterQuery.
+
+        Paginates through all filtered results one item at a time and verifies
+        that every page returns a unique, previously unseen server ID.
+        """
         base_url = f"{mcp_catalog_rest_urls[0]}mcp_servers"
         filter_query = "license='Apache 2.0'"
 
-        # First page
-        response = execute_get_command(
+        # Get total count of matching servers
+        all_response = execute_get_command(
             url=base_url,
             headers=model_registry_rest_headers,
-            params={"filterQuery": filter_query, "pageSize": "1"},
+            params={"filterQuery": filter_query},
         )
-        first_page_items = response.get("items", [])
-        assert len(first_page_items) == 1, f"Expected 1 item on first page, got {len(first_page_items)}"
-        next_page_token = response.get("nextPageToken")
-        assert next_page_token, "Expected nextPageToken for second page"
+        total_items = all_response.get("size", 0)
+        LOGGER.info(f"Total items matching filter '{filter_query}': {total_items}")
+        assert total_items >= 2, f"Need at least 2 servers matching filter for pagination test, got {total_items}"
 
-        # Second page
-        response = execute_get_command(
-            url=base_url,
-            headers=model_registry_rest_headers,
-            params={"filterQuery": filter_query, "pageSize": "1", "nextPageToken": next_page_token},
-        )
-        second_page_items = response.get("items", [])
-        assert len(second_page_items) == 1, f"Expected 1 item on second page, got {len(second_page_items)}"
+        seen_ids: list[str] = []
+        next_page_token = None
 
-        assert first_page_items[0]["name"] != second_page_items[0]["name"], (
-            "Pagination returned the same server on both pages"
+        for page_num in range(1, total_items + 1):
+            params: dict[str, str] = {"filterQuery": filter_query, "pageSize": "1", **order_params}
+            if next_page_token:
+                params["nextPageToken"] = next_page_token
+
+            response = execute_get_command(
+                url=base_url,
+                headers=model_registry_rest_headers,
+                params=params,
+            )
+            items = response.get("items", [])
+
+            assert len(items) == 1, f"Expected 1 item on page {page_num}, got {len(items)}"
+
+            server_id = items[0]["id"]
+            assert server_id not in seen_ids, (
+                f"Page {page_num} returned duplicate server id '{server_id}', already seen on a previous page"
+            )
+            sort_order = order_params.get("sortOrder", "ASC")
+            if seen_ids:
+                if sort_order == "ASC":
+                    assert server_id > seen_ids[-1], (
+                        f"Page {page_num} id '{server_id}' is not greater than previous id '{seen_ids[-1]}'"
+                    )
+                elif sort_order == "DESC":
+                    assert server_id < seen_ids[-1], (
+                        f"Page {page_num} id '{server_id}' is not less than previous id '{seen_ids[-1]}'"
+                    )
+            seen_ids.append(server_id)
+
+            next_page_token = response.get("nextPageToken")
+            if page_num < total_items:
+                assert next_page_token, f"Expected nextPageToken after page {page_num}, but got none"
+
+        LOGGER.info(f"Pagination complete: found {len(seen_ids)} unique servers out of {total_items} total")
+        assert len(seen_ids) == total_items, (
+            f"Pagination returned {len(seen_ids)} unique servers but expected {total_items}"
         )
