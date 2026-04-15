@@ -9,6 +9,10 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 
+from tests.model_serving.model_server.kserve.negative.constants import (
+    INVALID_S3_ACCESS_KEY,
+    INVALID_S3_SIGNING_KEY,
+)
 from utilities.constants import (
     KServeDeploymentType,
     RuntimeTemplates,
@@ -16,9 +20,6 @@ from utilities.constants import (
 from utilities.inference_utils import create_isvc
 from utilities.infra import create_ns, get_pods_by_isvc_label, s3_endpoint_secret
 from utilities.serving_runtime import ServingRuntimeFromTemplate
-
-_INVALID_S3_ACCESS_KEY = "NOTAVALIDACCESSKEY000000"
-_INVALID_S3_SIGNING_KEY = "invalidKeyValueNotValid0000000000000000"
 
 
 @pytest.fixture(scope="package")
@@ -72,8 +73,8 @@ def invalid_s3_credentials_secret(
         client=unprivileged_client,
         name="invalid-s3-creds-secret",
         namespace=negative_test_namespace.name,
-        aws_access_key=_INVALID_S3_ACCESS_KEY,
-        aws_secret_access_key=_INVALID_S3_SIGNING_KEY,
+        aws_access_key=INVALID_S3_ACCESS_KEY,
+        aws_secret_access_key=INVALID_S3_SIGNING_KEY,
         aws_s3_region=ci_s3_bucket_region,
         aws_s3_bucket=ci_s3_bucket_name,
         aws_s3_endpoint=ci_s3_bucket_endpoint,
