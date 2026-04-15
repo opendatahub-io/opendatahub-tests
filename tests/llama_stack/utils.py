@@ -13,6 +13,7 @@ import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
+from langchain_openai import OpenAIEmbeddings as LangchainOpenAIEmbeddings
 from llama_stack_client import APIConnectionError, InternalServerError, LlamaStackClient
 from llama_stack_client.types.file import File
 from llama_stack_client.types.vector_store import VectorStore
@@ -477,8 +478,6 @@ def ragas_evaluator_embeddings(
     base_url = str(unprivileged_llama_stack_client.base_url).rstrip("/")
     verify_ssl = os.getenv("LLS_CLIENT_VERIFY_SSL", "false").lower() == "true"
 
-    from langchain_openai import OpenAIEmbeddings as LangchainOpenAIEmbeddings
-
     http_client = httpx.Client(verify=verify_ssl, timeout=httpx.Timeout(120.0))
     try:
         embeddings = LangchainOpenAIEmbeddings(
@@ -531,20 +530,14 @@ def ragas_samples(
                 stream=False,
                 input=record.question,
             )
+        except Exception as exc:  # noqa: BLE001
+            pytest.fail(f"RAG call failed for question {record.question!r}: {exc}")
 
-            rag_answer = resp.output_text.strip()
-            retrieved_contexts = extract_retrieved_contexts(response=resp)
+        rag_answer = resp.output_text.strip()
+        retrieved_contexts = extract_retrieved_contexts(response=resp)
 
-        except Exception:
-            LOGGER.exception(f"RAG call failed for question: {record.question!r}, skipping sample")
-            continue
-
-        if not rag_answer:
-            LOGGER.warning(f"Empty RAG response for question: {record.question!r}, skipping sample")
-            continue
-        if not retrieved_contexts:
-            LOGGER.warning(f"No retrieved contexts for question: {record.question!r}, skipping sample")
-            continue
+        assert rag_answer, f"Empty RAG response for question: {record.question!r}"
+        assert retrieved_contexts, f"No retrieved contexts for question: {record.question!r}"
 
         samples.append(
             SingleTurnSample(
@@ -558,6 +551,6 @@ def ragas_samples(
         LOGGER.info(f"  Answer: {rag_answer[:120]}...")
         LOGGER.info(f"  Retrieved {len(retrieved_contexts)} context(s)")
 
-    assert samples, "Failed to build any RAGAS samples from the dataset QA records"
+    assert len(samples) == len(qa_records), f"Built {len(samples)} RAGAS samples from {len(qa_records)} QA records"
     LOGGER.info(f"Built {len(samples)} RAGAS evaluation samples from {len(qa_records)} QA records")
     return samples
