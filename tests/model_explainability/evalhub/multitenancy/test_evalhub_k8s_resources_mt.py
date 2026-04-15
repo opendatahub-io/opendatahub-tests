@@ -47,7 +47,7 @@ def _adapter_container(job: Job):
 
 
 def _sidecar_container(job: Job):
-    for c in job.instance.spec.template.spec.containers:
+    for c in job.instance.spec.template.spec.initContainers or []:
         if c.name == "sidecar":
             return c
     pytest.fail(f"No sidecar container on Job {job.name}")

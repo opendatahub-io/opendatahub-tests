@@ -1,3 +1,5 @@
+from collections.abc import Generator
+
 import pytest
 import requests
 from ocp_resources.namespace import Namespace
@@ -206,7 +208,7 @@ class TestEvalHubCollectionsFeature:
         tenant_a_namespace: Namespace,
         evalhub_mt_ca_bundle_file: str,
         evalhub_mt_route: Route,
-    ) -> dict:
+    ) -> Generator[dict, None, None]:
         """Create a collection with COLLECTION_PAYLOAD; delete on teardown."""
         headers = build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name)
         base = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}"
@@ -238,7 +240,7 @@ class TestEvalHubCollectionsFeature:
         tenant_a_namespace: Namespace,
         evalhub_mt_ca_bundle_file: str,
         evalhub_mt_route: Route,
-    ) -> dict:
+    ) -> Generator[dict, None, None]:
         """Create a collection without description; delete on teardown."""
         headers = build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name)
         base = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}"
@@ -271,7 +273,7 @@ class TestEvalHubCollectionsFeature:
         tenant_a_namespace: Namespace,
         evalhub_mt_ca_bundle_file: str,
         evalhub_mt_route: Route,
-    ) -> dict:
+    ) -> Generator[dict, None, None]:
         """Create a custom provider with benchmark URL, then a collection referencing it.
 
         Yields both IDs; deletes collection then provider on teardown.
@@ -344,7 +346,7 @@ class TestEvalHubCollectionsFeature:
         tenant_a_namespace: Namespace,
         evalhub_mt_ca_bundle_file: str,
         evalhub_mt_route: Route,
-    ) -> dict:
+    ) -> Generator[dict, None, None]:
         """Create 3 collections with different tags/categories; delete all on teardown."""
         headers = build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name)
         base = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}"
@@ -401,7 +403,7 @@ class TestEvalHubCollectionsFeature:
         tenant_a_namespace: Namespace,
         evalhub_mt_ca_bundle_file: str,
         evalhub_mt_route: Route,
-    ) -> dict:
+    ) -> Generator[dict, None, None]:
         """Create 3 collections for pagination tests; delete all on teardown."""
         headers = build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name)
         base = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}"
