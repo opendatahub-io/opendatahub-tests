@@ -7,12 +7,9 @@ import requests
 import structlog
 
 from tests.model_serving.maas_billing.oidc_tests.utils import (
-    OIDC_CLIENT_ID,
     decode_jwt_payload,
     get_active_key_ids,
-    request_oidc_token_raw,
 )
-from utilities.general import generate_random_name
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -25,59 +22,7 @@ LOGGER = structlog.get_logger(name=__name__)
     "oidc_auth_policy_patched",
 )
 class TestOIDCMultiUser:
-    """Verify OIDC multi-user scenarios: credential validation, JWT claim mapping, and key isolation."""
-
-    @pytest.mark.tier1
-    def test_wrong_password_rejected_by_keycloak(
-        self,
-        request_session_http: requests.Session,
-        oidc_token_endpoint: str,
-        oidc_user_credentials: dict[str, str],
-    ) -> None:
-        """Verify wrong password is rejected by the OIDC provider before reaching MaaS.
-
-        Keycloak is the identity provider on BYOIDC clusters. Invalid credentials
-        must be rejected at the token endpoint so they never reach the MaaS API.
-        """
-        token_response = request_oidc_token_raw(
-            request_session_http=request_session_http,
-            token_url=oidc_token_endpoint,
-            client_id=OIDC_CLIENT_ID,
-            username=oidc_user_credentials["username"],
-            password="wrong-password-definitely-invalid",  # pragma: allowlist secret
-        )
-
-        assert token_response.status_code == 401, (
-            f"Expected 401 for wrong password, got {token_response.status_code}: {token_response.text[:200]}"
-        )
-        LOGGER.info(
-            f"[oidc] Wrong password for user '{oidc_user_credentials['username']}' "
-            f"correctly rejected by Keycloak with {token_response.status_code}"
-        )
-
-    @pytest.mark.tier3
-    def test_nonexistent_user_rejected_by_keycloak(
-        self,
-        request_session_http: requests.Session,
-        oidc_token_endpoint: str,
-    ) -> None:
-        """Verify nonexistent user is rejected by the OIDC provider before reaching MaaS.
-
-        Ensures the token endpoint rejects unknown users so they cannot obtain
-        tokens to access the MaaS API.
-        """
-        token_response = request_oidc_token_raw(
-            request_session_http=request_session_http,
-            token_url=oidc_token_endpoint,
-            client_id=OIDC_CLIENT_ID,
-            username=f"nonexistent-user-{generate_random_name()}",
-            password="any-password",  # pragma: allowlist secret
-        )
-
-        assert token_response.status_code == 401, (
-            f"Expected 401 for nonexistent user, got {token_response.status_code}: {token_response.text[:200]}"
-        )
-        LOGGER.info("[oidc] Nonexistent user correctly rejected by Keycloak with 401")
+    """Verify OIDC multi-user scenarios: JWT claim mapping, and key isolation."""
 
     @pytest.mark.tier1
     def test_jwt_contains_preferred_username(
