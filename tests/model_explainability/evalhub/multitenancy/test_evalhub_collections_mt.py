@@ -193,7 +193,8 @@ class TestEvalHubCollectionsMT:
 class TestEvalHubCollectionsFeature:
     """Feature tests for the EvalHub collections endpoint.
 
-    Covers create+get lifecycle, validation (missing/empty fields),
+    Covers CRUD lifecycle (create, get, update, patch, delete),
+    validation (missing/empty fields), pagination, filtering,
     and benchmark URL enrichment from custom providers.
     """
 
