@@ -51,22 +51,16 @@ class TestOIDCHeaderInjection:
             extra_headers={header_name: header_value},
         )
 
-        if spoofed_response.status_code == 200:
-            assert_model_lists_match(
-                baseline_response=baseline_models_response,
-                spoofed_response=spoofed_response,
-                injection_description=header_name,
-            )
-            LOGGER.info(f"[oidc] {header_name} injection overwritten — same models returned")
-        else:
-            assert spoofed_response.status_code in (400, 403), (
-                f"Unexpected status for injected {header_name}: "
-                f"{spoofed_response.status_code} {spoofed_response.text[:200]}"
-            )
-            LOGGER.info(
-                f"[oidc] {header_name} injection caused denial ({spoofed_response.status_code}) "
-                f"— no escalation possible"
-            )
+        assert spoofed_response.status_code == 200, (
+            f"Expected 200 for injected {header_name}, got {spoofed_response.status_code}: "
+            f"{spoofed_response.text[:200]}"
+        )
+        assert_model_lists_match(
+            baseline_response=baseline_models_response,
+            spoofed_response=spoofed_response,
+            injection_description=header_name,
+        )
+        LOGGER.info(f"[oidc] {header_name} injection overwritten — same models returned")
 
     @pytest.mark.tier2
     def test_injected_username_on_oidc_token_ignored(

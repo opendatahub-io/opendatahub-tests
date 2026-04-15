@@ -34,7 +34,11 @@ class TestOIDCMultiUser:
         oidc_token_endpoint: str,
         oidc_user_credentials: dict[str, str],
     ) -> None:
-        """Verify wrong password is rejected by Keycloak with 401."""
+        """Verify wrong password is rejected by the OIDC provider before reaching MaaS.
+
+        Keycloak is the identity provider on BYOIDC clusters. Invalid credentials
+        must be rejected at the token endpoint so they never reach the MaaS API.
+        """
         token_response = request_oidc_token_raw(
             request_session_http=request_session_http,
             token_url=oidc_token_endpoint,
@@ -57,7 +61,11 @@ class TestOIDCMultiUser:
         request_session_http: requests.Session,
         oidc_token_endpoint: str,
     ) -> None:
-        """Verify nonexistent user is rejected by Keycloak with 401."""
+        """Verify nonexistent user is rejected by the OIDC provider before reaching MaaS.
+
+        Ensures the token endpoint rejects unknown users so they cannot obtain
+        tokens to access the MaaS API.
+        """
         token_response = request_oidc_token_raw(
             request_session_http=request_session_http,
             token_url=oidc_token_endpoint,

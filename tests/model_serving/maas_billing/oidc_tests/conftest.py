@@ -12,7 +12,6 @@ from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutSampler
 
 from tests.model_serving.maas_billing.oidc_tests.utils import (
-    JWT_WHEN_PREDICATE,
     MAAS_API_AUTH_POLICY_NAME,
     OIDC_CLIENT_ID,
     fetch_models_with_header,
@@ -24,6 +23,7 @@ from tests.model_serving.maas_billing.utils import (
 )
 from utilities.general import generate_random_name
 from utilities.resources.auth_policy import AuthPolicy
+from utilities.resources.models_as_service import ModelsAsService
 from utilities.user_utils import get_byoidc_issuer_url
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -34,120 +34,40 @@ def oidc_auth_policy_patched(
     is_byoidc: bool,
     admin_client: DynamicClient,
 ) -> Generator[None, Any, Any]:
-    """Ensure OIDC JWT rules are on maas-api-auth-policy."""
+    """Enable OIDC on the ModelsAsService CR so the operator patches the AuthPolicy."""
     if not is_byoidc:
         pytest.skip("External OIDC tests require a byoidc cluster with Keycloak")
 
-    applications_namespace = py_config["applications_namespace"]
     oidc_issuer_url = get_byoidc_issuer_url(admin_client=admin_client)
-    LOGGER.info(f"oidc_auth_policy_patched: patching with issuer '{oidc_issuer_url}'")
+    LOGGER.info(f"oidc_auth_policy_patched: enabling externalOIDC with issuer '{oidc_issuer_url}'")
 
-    maas_auth_policy = AuthPolicy(
+    maas_cr = ModelsAsService(
         client=admin_client,
-        name=MAAS_API_AUTH_POLICY_NAME,
-        namespace=applications_namespace,
-        ensure_exists=True,
+        name="default-modelsasservice",
     )
-
-    existing_openshift_identities = (
-        maas_auth_policy.instance.spec.get("rules", {}).get("authentication", {}).get("openshift-identities", {})
-    )
-    existing_token_review = existing_openshift_identities.get("kubernetesTokenReview", {})
-
-    oidc_authentication_rule = {
-        "openshift-identities": {
-            "when": [{"predicate": '!request.headers.authorization.startsWith("Bearer sk-oai-")'}],
-            "kubernetesTokenReview": existing_token_review,
-            "priority": 2,
-        },
-        "oidc-identities": {
-            "when": [{"predicate": JWT_WHEN_PREDICATE}],
-            "jwt": {"issuerUrl": oidc_issuer_url},
-            "priority": 1,
-        },
-    }
-
-    oidc_authorization_rule = {
-        "oidc-client-bound": {
-            "when": [
-                {"predicate": JWT_WHEN_PREDICATE},
-                {"predicate": "has(auth.identity.azp)"},
-            ],
-            "patternMatching": {
-                "patterns": [
-                    {
-                        "selector": "auth.identity.azp",
-                        "operator": "eq",
-                        "value": OIDC_CLIENT_ID,
-                    }
-                ]
-            },
-            "priority": 1,
-        },
-        "openshift-user-allowed": {
-            "when": [
-                {"predicate": '!request.headers.authorization.startsWith("Bearer sk-oai-")'},
-                {"predicate": "has(auth.identity.user.username)"},
-            ],
-            "patternMatching": {
-                "patterns": [
-                    {
-                        "selector": "auth.identity.user.username",
-                        "operator": "neq",
-                        "value": "",
-                    }
-                ]
-            },
-            "priority": 1,
-        },
-    }
-
-    oidc_response_headers = {
-        "X-MaaS-Username-OC": {
-            "plain": {
-                "expression": (
-                    "has(auth.identity.preferred_username) ? "
-                    "auth.identity.preferred_username : "
-                    "(has(auth.identity.sub) ? auth.identity.sub : auth.identity.user.username)"
-                )
-            }
-        },
-        "X-MaaS-Group-OC": {
-            "plain": {
-                "expression": (
-                    "has(auth.identity.groups) ? "
-                    "(size(auth.identity.groups) > 0 ? "
-                    "'[\"system:authenticated\",\"' + auth.identity.groups.join('\",\"') + '\"]' : "
-                    "'[\"system:authenticated\"]') : "
-                    "'[\"' + auth.identity.user.groups.join('\",\"') + '\"]'"
-                )
-            }
-        },
-    }
+    applications_namespace = py_config["applications_namespace"]
 
     oidc_patch = {
-        "metadata": {
-            "annotations": {"opendatahub.io/managed": "false"},
-        },
         "spec": {
-            "rules": {
-                "authentication": oidc_authentication_rule,
-                "authorization": oidc_authorization_rule,
-                "response": {"success": {"headers": oidc_response_headers}},
+            "externalOIDC": {
+                "issuerUrl": oidc_issuer_url,
+                "clientId": OIDC_CLIENT_ID,
             }
-        },
+        }
     }
 
-    with ResourceEditor(patches={maas_auth_policy: oidc_patch}):
+    with ResourceEditor(patches={maas_cr: oidc_patch}):
+        maas_auth_policy = AuthPolicy(
+            client=admin_client,
+            name=MAAS_API_AUTH_POLICY_NAME,
+            namespace=applications_namespace,
+            ensure_exists=True,
+        )
         maas_auth_policy.wait_for_condition(condition="Enforced", status="True", timeout=120)
-        LOGGER.info(f"oidc_auth_policy_patched: AuthPolicy '{MAAS_API_AUTH_POLICY_NAME}' enforced with OIDC rules")
+        LOGGER.info("oidc_auth_policy_patched: operator applied OIDC rules to AuthPolicy")
         yield
 
-    maas_auth_policy.wait_for_condition(condition="Enforced", status="True", timeout=120)
-    LOGGER.info(
-        f"oidc_auth_policy_patched: OIDC rules removed, "
-        f"AuthPolicy '{MAAS_API_AUTH_POLICY_NAME}' restored to original state"
-    )
+    LOGGER.info("oidc_auth_policy_patched: externalOIDC removed, operator restoring AuthPolicy")
 
 
 @pytest.fixture(scope="class")
