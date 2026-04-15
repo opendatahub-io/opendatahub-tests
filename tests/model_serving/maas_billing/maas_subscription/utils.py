@@ -13,7 +13,6 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.maas_subscription import MaaSSubscription
 from ocp_resources.resource import ResourceEditor
-from ocp_resources.service import Service
 from timeout_sampler import TimeoutSampler
 
 from utilities.constants import (
