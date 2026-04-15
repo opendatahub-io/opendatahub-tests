@@ -3,12 +3,17 @@
 import shlex
 from typing import Any
 
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from pyhelper_utils.shell import run_command
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
+from utilities.constants import Timeout
 from utilities.infra import get_pods_by_isvc_label
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
+
+LOGGER = structlog.get_logger(name=__name__)
 
 VALID_OVMS_INFERENCE_BODY: dict[str, Any] = {
     "inputs": ONNX_INFERENCE_CONFIG["default_query_model"]["infer"]["query_input"]
@@ -51,6 +56,58 @@ def assert_pods_healthy(
                 f"Container {container.name} in pod {pod.name} restarted. "
                 f"Initial: {initial_restart_count}, Current: {container.restartCount}"
             )
+
+
+def wait_for_isvc_model_status_states(
+    isvc: InferenceService,
+    *,
+    target_model_state: str,
+    transition_status: str,
+    timeout: int = Timeout.TIMEOUT_15MIN,
+    sleep: int = 5,
+) -> None:
+    """Poll until ``status.modelStatus`` matches the expected model and transition states.
+
+    Args:
+        isvc: InferenceService to observe (must already exist on the API server).
+        target_model_state: Expected ``states.targetModelState`` (e.g. ``FailedToLoad``).
+        transition_status: Expected ``transitionStatus`` (e.g. ``BlockedByFailedLoad``).
+        timeout: Maximum seconds to wait.
+        sleep: Seconds between polls.
+
+    Raises:
+        TimeoutExpiredError: If the status is not observed within ``timeout``.
+    """
+
+    def _model_status() -> Any:
+        inst_status = getattr(isvc.instance, "status", None)
+        if not inst_status:
+            return None
+        return getattr(inst_status, "modelStatus", None)
+
+    sample: Any = None
+    try:
+        for sample in TimeoutSampler(wait_timeout=timeout, sleep=sleep, func=_model_status):
+            if not sample or not getattr(sample, "states", None):
+                continue
+            states = sample.states
+            if states.targetModelState == target_model_state and sample.transitionStatus == transition_status:
+                LOGGER.info(
+                    "InferenceService model status reached expected state",
+                    isvc=isvc.name,
+                    namespace=isvc.namespace,
+                    target_model_state=target_model_state,
+                    transition_status=transition_status,
+                )
+                return
+    except TimeoutExpiredError:
+        LOGGER.error(
+            "Timed out waiting for InferenceService model status",
+            isvc=isvc.name,
+            namespace=isvc.namespace,
+            last_model_status=sample,
+        )
+        raise
 
 
 def send_inference_request(
