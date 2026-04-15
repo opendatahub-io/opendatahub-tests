@@ -356,7 +356,7 @@ class TestLlamaStackRagasEval:
         self,
         ragas_samples: list[SingleTurnSample],
         ragas_evaluator_llm: Any,
-        ragas_evaluator_embeddings: Any,
+        request: pytest.FixtureRequest,
         metric_cls: type,
         metric_key: str,
         threshold: float,
@@ -370,7 +370,7 @@ class TestLlamaStackRagasEval:
         """
         kwargs: dict[str, Any] = {"llm": ragas_evaluator_llm}
         if needs_embeddings:
-            kwargs["embeddings"] = ragas_evaluator_embeddings
+            kwargs["embeddings"] = request.getfixturevalue(argname="ragas_evaluator_embeddings")
         metric = metric_cls(**kwargs)
 
         result = evaluate(
