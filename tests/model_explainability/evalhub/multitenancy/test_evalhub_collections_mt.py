@@ -208,7 +208,7 @@ class TestEvalHubCollectionsFeature:
         tenant_a_namespace: Namespace,
         evalhub_mt_ca_bundle_file: str,
         evalhub_mt_route: Route,
-    ) -> Generator[dict, None, None]:
+    ) -> Generator[dict]:
         """Create a collection with COLLECTION_PAYLOAD; delete on teardown."""
         headers = build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name)
         base = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}"
@@ -240,7 +240,7 @@ class TestEvalHubCollectionsFeature:
         tenant_a_namespace: Namespace,
         evalhub_mt_ca_bundle_file: str,
         evalhub_mt_route: Route,
-    ) -> Generator[dict, None, None]:
+    ) -> Generator[dict]:
         """Create a collection without description; delete on teardown."""
         headers = build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name)
         base = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}"
@@ -273,7 +273,7 @@ class TestEvalHubCollectionsFeature:
         tenant_a_namespace: Namespace,
         evalhub_mt_ca_bundle_file: str,
         evalhub_mt_route: Route,
-    ) -> Generator[dict, None, None]:
+    ) -> Generator[dict]:
         """Create a custom provider with benchmark URL, then a collection referencing it.
 
         Yields both IDs; deletes collection then provider on teardown.
@@ -346,7 +346,7 @@ class TestEvalHubCollectionsFeature:
         tenant_a_namespace: Namespace,
         evalhub_mt_ca_bundle_file: str,
         evalhub_mt_route: Route,
-    ) -> Generator[dict, None, None]:
+    ) -> Generator[dict]:
         """Create 3 collections with different tags/categories; delete all on teardown."""
         headers = build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name)
         base = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}"
@@ -403,7 +403,7 @@ class TestEvalHubCollectionsFeature:
         tenant_a_namespace: Namespace,
         evalhub_mt_ca_bundle_file: str,
         evalhub_mt_route: Route,
-    ) -> Generator[dict, None, None]:
+    ) -> Generator[dict]:
         """Create 3 collections for pagination tests; delete all on teardown."""
         headers = build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name)
         base = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}"
@@ -492,9 +492,7 @@ class TestEvalHubCollectionsFeature:
             verify=evalhub_mt_ca_bundle_file,
             timeout=30,
         )
-        assert resp.status_code == 400, (
-            f"Expected 400 for invalid '{field}', got {resp.status_code}: {resp.text}"
-        )
+        assert resp.status_code == 400, f"Expected 400 for invalid '{field}', got {resp.status_code}: {resp.text}"
 
     def test_create_collection_without_description_returns_201(
         self,
@@ -560,9 +558,7 @@ class TestEvalHubCollectionsFeature:
                 [{"op": "replace", "path": "/name", "value": "x"}],
                 id="patch-nonexistent",
             ),
-            pytest.param(
-                "PATCH", "/", [{"op": "replace", "path": "/name", "value": "x"}], id="patch-empty"
-            ),
+            pytest.param("PATCH", "/", [{"op": "replace", "path": "/name", "value": "x"}], id="patch-empty"),
             pytest.param("DELETE", NON_EXISTENT_PATH + "?hard_delete=true", None, id="delete-nonexistent"),
         ],
     )
@@ -586,9 +582,7 @@ class TestEvalHubCollectionsFeature:
             verify=evalhub_mt_ca_bundle_file,
             timeout=10,
         )
-        assert resp.status_code == 404, (
-            f"Expected 404 for {method} {path_suffix}, got {resp.status_code}: {resp.text}"
-        )
+        assert resp.status_code == 404, f"Expected 404 for {method} {path_suffix}, got {resp.status_code}: {resp.text}"
 
     # ------------------------------------------------------------------
     # Update (PUT) lifecycle
