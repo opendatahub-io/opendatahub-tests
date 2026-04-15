@@ -77,19 +77,46 @@ def _load_document_qa(
     return records
 
 
-def _load_documents_from_manifest(manifest_path: str) -> tuple[DatasetDocument, ...]:
-    """Load documents from a JSON manifest, resolving paths relative to the manifest directory."""
+def _load_documents_from_manifest(
+    manifest_path: str,
+    *,
+    document_ids: list[str] | None = None,
+) -> tuple[DatasetDocument, ...]:
+    """Load documents from a JSON manifest, resolving paths relative to the manifest directory.
+
+    Args:
+        manifest_path: Repo-relative path to a JSON manifest file.
+        document_ids: If given, only entries whose ``document_id`` is in this
+            list are returned.
+    """
     abs_manifest = _REPO_ROOT / manifest_path
-    manifest_dir = str(abs_manifest.parent)
+    manifest_dir = abs_manifest.parent.resolve()
     raw_list = json.loads(abs_manifest.read_text())
-    return tuple(
-        DatasetDocument(
-            path=f"{manifest_dir}/{entry['filename']}",
-            document_id=entry["document_id"],
-            attributes=entry.get("attributes", {}),
+    allowed_ids = set(document_ids) if document_ids is not None else None
+
+    if allowed_ids is not None:
+        present_ids = {entry["document_id"] for entry in raw_list}
+        missing = allowed_ids - present_ids
+        if missing:
+            raise ValueError(f"document_ids not found in manifest {manifest_path}: {sorted(missing)}")
+
+    docs: list[DatasetDocument] = []
+    for entry in raw_list:
+        if allowed_ids is not None and entry["document_id"] not in allowed_ids:
+            continue
+        resolved = (manifest_dir / entry["filename"]).resolve()
+        if not resolved.is_relative_to(manifest_dir):
+            raise ValueError(
+                f"Manifest entry {entry['filename']!r} resolves outside the dataset directory {manifest_dir}"
+            )
+        docs.append(
+            DatasetDocument(
+                path=str(resolved),
+                document_id=entry["document_id"],
+                attributes=entry.get("attributes", {}),
+            )
         )
-        for entry in raw_list
-    )
+    return tuple(docs)
 
 
 @dataclass(frozen=True)
@@ -140,19 +167,9 @@ FINANCE_DATASET = Dataset(
 # documents are returned even though the JSONL contains entries for all quarters.
 IBM_2025_Q4_EARNINGS = Dataset(
     qa_path="tests/llama_stack/dataset/ground_truth/finance_qa.jsonl",
-    documents=(
-        DatasetDocument(
-            path="tests/llama_stack/dataset/corpus/finance/ibm-4q25-earnings-press-release-unencrypted.pdf",
-            document_id="ibm_4q25_earnings_pr",
-            attributes={
-                "entity_symbol": "IBM",
-                "period_label": "2025-Q4",
-                "period_year": 2025,
-                "document_type": "earnings_press_release",
-                "language": "en",
-                "publication_date": 1738022400,
-            },
-        ),
+    documents=_load_documents_from_manifest(
+        "tests/llama_stack/dataset/corpus/finance/documents.json",
+        document_ids=["ibm_4q25_earnings_pr"],
     ),
 )
 

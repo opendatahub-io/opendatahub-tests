@@ -6,7 +6,10 @@ from urllib.parse import quote
 
 import requests
 import structlog
+from kubernetes.dynamic import DynamicClient
 from requests import Response
+
+from utilities.resources.auth_policy import AuthPolicy
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -168,3 +171,46 @@ def search_active_api_keys(
     assert resp.status_code == 200, f"Expected 200 from key search, got {resp.status_code}: {(resp.text or '')[:200]}"
     body = resp.json()
     return body.get("items") or body.get("data") or []
+
+
+def get_auth_policy_callback_url(
+    admin_client: DynamicClient,
+    policy_name: str,
+    namespace: str,
+) -> str:
+    """Read the apiKeyValidation callback URL from a MaaS AuthPolicy."""
+    auth_policy = AuthPolicy(
+        client=admin_client,
+        name=policy_name,
+        namespace=namespace,
+        ensure_exists=True,
+    )
+    try:
+        callback_url: str = auth_policy.instance.spec.rules.metadata.apiKeyValidation.http.url
+    except AttributeError as error:
+        raise AssertionError(
+            f"AuthPolicy '{policy_name}' in namespace '{namespace}' is missing "
+            f"the apiKeyValidation callback URL field: {error}"
+        ) from error
+    LOGGER.info(f"get_auth_policy_callback_url: policy='{policy_name}' url='{callback_url}'")
+    return callback_url
+
+
+def get_auth_policy_condition(
+    admin_client: DynamicClient,
+    policy_name: str,
+    namespace: str,
+    condition_type: str,
+) -> dict[str, Any] | None:
+    """Find a specific condition by type from an AuthPolicy's status."""
+    auth_policy = AuthPolicy(
+        client=admin_client,
+        name=policy_name,
+        namespace=namespace,
+    )
+    assert auth_policy.exists, f"AuthPolicy '{policy_name}' not found in namespace '{namespace}'"
+    conditions: list[dict[str, Any]] = (auth_policy.instance.status or {}).get("conditions") or []
+    return next(
+        (condition for condition in conditions if condition.get("type") == condition_type),
+        None,
+    )

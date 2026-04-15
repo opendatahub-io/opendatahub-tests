@@ -17,8 +17,9 @@ from utilities.constants import KServeDeploymentType, Protocols, Timeout
 from utilities.exceptions import (
     InferenceResponseError,
 )
-from utilities.inference_utils import UserInference
+from utilities.inference_utils import Inference, UserInference
 from utilities.infra import get_pods_by_isvc_label
+from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -179,6 +180,67 @@ def verify_inference_response(
 
         else:
             raise InferenceResponseError(f"Inference response output not found in response. Response: {res}")
+
+
+def wait_for_raw_isvc_https_infer_ready(
+    isvc: InferenceService,
+    *,
+    token: str | None = None,
+    timeout: int = Timeout.TIMEOUT_5MIN,
+    sleep: int = 5,
+) -> None:
+    """Block until the same external HTTPS REST infer the suite uses succeeds.
+
+    ``InferenceService`` Ready and Deployment replica counts do not imply the OpenShift
+    router has reprogrammed backends for the predictor ``Service`` after auth or pod
+    template changes. Waiting on **HTTP 200** and a **JSON** body on the real infer URL
+    (same path as ``verify_inference_response``) is the correct readiness condition.
+
+    Args:
+        isvc: Exposed raw KServe InferenceService.
+        token: Bearer token when auth is required; omit when auth is disabled.
+        timeout: Maximum seconds to poll.
+        sleep: Seconds between attempts.
+
+    Raises:
+        TimeoutExpiredError: If the infer path does not succeed in time.
+    """
+
+    def _https_infer_ok() -> bool:
+        inference = UserInference(
+            inference_service=isvc,
+            inference_config=ONNX_INFERENCE_CONFIG,
+            inference_type=Inference.INFER,
+            protocol=Protocols.HTTPS,
+        )
+        try:
+            out = inference.run_inference(
+                model_name=isvc.name,
+                use_default_query=True,
+                token=token,
+            )
+        except ValueError, InferenceResponseError:
+            return False
+
+        if not out or not out.strip():
+            return False
+
+        status_line = out.splitlines()[0].lower()
+        if not re.search(r"http/1\.\d\s+200\b", status_line):
+            return False
+        return "content-type: application/json" in out.lower()
+
+    try:
+        for ok in TimeoutSampler(wait_timeout=timeout, sleep=sleep, func=_https_infer_ok):
+            if ok:
+                LOGGER.info(f"Raw ISVC {isvc.name} external HTTPS infer ready (auth token={'yes' if token else 'no'})")
+                return
+    except TimeoutExpiredError:
+        LOGGER.error(
+            f"Timeout: InferenceService {isvc.name} in {isvc.namespace} external HTTPS infer not ready "
+            f"within {timeout}s (token={'yes' if token else 'no'})"
+        )
+        raise
 
 
 def run_inference_multiple_times(

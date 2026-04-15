@@ -2,7 +2,7 @@
 Test module for model deployment using the MLServer runtime.
 
 This module contains parameterized tests to validate model inference
-across REST protocol and raw deployment type.
+across REST protocol and RawDeployment mode.
 """
 
 from typing import Any
@@ -13,7 +13,6 @@ from ocp_resources.pod import Pod
 
 from tests.model_serving.model_runtime.mlserver.constant import (
     MODEL_CONFIGS,
-    RAW_DEPLOYMENT_TYPE,
 )
 from tests.model_serving.model_runtime.mlserver.utils import (
     get_deployment_config_dict,
@@ -22,7 +21,7 @@ from tests.model_serving.model_runtime.mlserver.utils import (
     get_test_case_id,
     validate_inference_request,
 )
-from utilities.constants import ModelFormat, Protocols
+from utilities.constants import KServeDeploymentType, ModelFormat, Protocols
 
 pytestmark = pytest.mark.usefixtures("valid_aws_config")
 
@@ -37,62 +36,66 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
     ),
     [
         pytest.param(
-            get_model_namespace_dict(
-                model_format_name=ModelFormat.LIGHTGBM,
-                deployment_type=RAW_DEPLOYMENT_TYPE,
+            get_model_namespace_dict(model_format_name=ModelFormat.LIGHTGBM),
+            get_deployment_config_dict(
+                model_format_name=ModelFormat.LIGHTGBM, deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT
             ),
-            get_deployment_config_dict(model_format_name=ModelFormat.LIGHTGBM, deployment_type=RAW_DEPLOYMENT_TYPE),
             get_model_storage_uri_dict(model_format_name=ModelFormat.LIGHTGBM),
-            get_deployment_config_dict(model_format_name=ModelFormat.LIGHTGBM, deployment_type=RAW_DEPLOYMENT_TYPE),
+            get_deployment_config_dict(
+                model_format_name=ModelFormat.LIGHTGBM, deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT
+            ),
             ModelFormat.LIGHTGBM,
             id=get_test_case_id(
                 model_format_name=ModelFormat.LIGHTGBM,
-                deployment_type=RAW_DEPLOYMENT_TYPE,
+                deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
             ),
             marks=pytest.mark.tier1,
         ),
         pytest.param(
-            get_model_namespace_dict(
-                model_format_name=ModelFormat.ONNX,
-                deployment_type=RAW_DEPLOYMENT_TYPE,
+            get_model_namespace_dict(model_format_name=ModelFormat.ONNX),
+            get_deployment_config_dict(
+                model_format_name=ModelFormat.ONNX, deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT
             ),
-            get_deployment_config_dict(model_format_name=ModelFormat.ONNX, deployment_type=RAW_DEPLOYMENT_TYPE),
             get_model_storage_uri_dict(model_format_name=ModelFormat.ONNX),
-            get_deployment_config_dict(model_format_name=ModelFormat.ONNX, deployment_type=RAW_DEPLOYMENT_TYPE),
+            get_deployment_config_dict(
+                model_format_name=ModelFormat.ONNX, deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT
+            ),
             ModelFormat.ONNX,
             id=get_test_case_id(
                 model_format_name=ModelFormat.ONNX,
-                deployment_type=RAW_DEPLOYMENT_TYPE,
+                deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
             ),
             marks=pytest.mark.tier1,
         ),
         pytest.param(
-            get_model_namespace_dict(
-                model_format_name=ModelFormat.SKLEARN,
-                deployment_type=RAW_DEPLOYMENT_TYPE,
+            get_model_namespace_dict(model_format_name=ModelFormat.SKLEARN),
+            get_deployment_config_dict(
+                model_format_name=ModelFormat.SKLEARN, deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT
             ),
-            get_deployment_config_dict(model_format_name=ModelFormat.SKLEARN, deployment_type=RAW_DEPLOYMENT_TYPE),
             get_model_storage_uri_dict(model_format_name=ModelFormat.SKLEARN),
-            get_deployment_config_dict(model_format_name=ModelFormat.SKLEARN, deployment_type=RAW_DEPLOYMENT_TYPE),
+            get_deployment_config_dict(
+                model_format_name=ModelFormat.SKLEARN, deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT
+            ),
             ModelFormat.SKLEARN,
             id=get_test_case_id(
                 model_format_name=ModelFormat.SKLEARN,
-                deployment_type=RAW_DEPLOYMENT_TYPE,
+                deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
             ),
             marks=pytest.mark.smoke,
         ),
         pytest.param(
-            get_model_namespace_dict(
-                model_format_name=ModelFormat.XGBOOST,
-                deployment_type=RAW_DEPLOYMENT_TYPE,
+            get_model_namespace_dict(model_format_name=ModelFormat.XGBOOST),
+            get_deployment_config_dict(
+                model_format_name=ModelFormat.XGBOOST, deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT
             ),
-            get_deployment_config_dict(model_format_name=ModelFormat.XGBOOST, deployment_type=RAW_DEPLOYMENT_TYPE),
             get_model_storage_uri_dict(model_format_name=ModelFormat.XGBOOST),
-            get_deployment_config_dict(model_format_name=ModelFormat.XGBOOST, deployment_type=RAW_DEPLOYMENT_TYPE),
+            get_deployment_config_dict(
+                model_format_name=ModelFormat.XGBOOST, deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT
+            ),
             ModelFormat.XGBOOST,
             id=get_test_case_id(
                 model_format_name=ModelFormat.XGBOOST,
-                deployment_type=RAW_DEPLOYMENT_TYPE,
+                deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
             ),
             marks=pytest.mark.tier1,
         ),
@@ -122,7 +125,7 @@ class TestMLServerModels:
         model_format: str,
     ) -> None:
         """
-        Test model inference using MLServer with REST protocol and raw deployment type.
+        Test model inference using MLServer with REST protocol and RawDeployment mode.
 
         This test sends inference requests using REST protocol and compares
         the actual response with the expected snapshot for validation.

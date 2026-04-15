@@ -37,7 +37,7 @@ LLMD_DSC_CONDITION: str = "KserveLLMInferenceServiceDependencies"
 
 LLMD_REQUIRED_OPERATORS: dict[str, str] = {
     "cert-manager-operator": "cert-manager-operator",
-    "authorino-operator": "openshift-operators",
+    "authorino-operator": "kuadrant-system",
     "rhcl-operator": "openshift-operators",
 }
 
@@ -45,8 +45,8 @@ LLMD_REQUIRED_DEPLOYMENTS: dict[str, str] = {
     "cert-manager-operator-controller-manager": "cert-manager-operator",
     "cert-manager": "cert-manager",
     "cert-manager-webhook": "cert-manager",
-    "authorino-operator": "openshift-operators",
-    "kuadrant-operator-controller-manager": "openshift-operators",
+    "authorino-operator": "kuadrant-system",
+    "kuadrant-operator-controller-manager": "kuadrant-system",
 }
 
 # Same KServe stack as tests/model_serving/model_server/kserve/conftest.py plus LLM-ISVC controller.

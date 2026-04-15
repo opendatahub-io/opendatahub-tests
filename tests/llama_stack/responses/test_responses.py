@@ -46,6 +46,7 @@ class TestLlamaStackResponses:
                 model=llama_stack_models.model_id,
                 input=question,
                 instructions="You are a helpful assistant.",
+                max_output_tokens=4096,
             )
 
             content = response.output_text

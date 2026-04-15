@@ -5,6 +5,7 @@ import os
 import shutil
 from ast import literal_eval
 from collections.abc import Callable, Generator
+from contextlib import ExitStack
 from typing import Any
 
 import pytest
@@ -299,7 +300,7 @@ def supported_accelerator_type(pytestconfig: pytest.Config) -> str | None:
     if accelerator_type.lower() not in AcceleratorType.SUPPORTED_LISTS:
         raise ValueError(
             "accelerator type is not defined."
-            "Either pass with `--supported-accelerator-type` or set `SUPPORTED_ACCLERATOR_TYPE` environment variable"
+            "Either pass with `--supported-accelerator-type` or set `SUPPORTED_ACCELERATOR_TYPE` environment variable"
         )
     return accelerator_type
 
@@ -824,11 +825,23 @@ def mariadb_operator_cr(
         raise ResourceNotFoundError(f"No MariadbOperator dict found in alm_examples for CSV {mariadb_csv.name}")
 
     mariadb_operator_cr_dict["metadata"]["namespace"] = OPENSHIFT_OPERATORS
-    with MariadbOperator(kind_dict=mariadb_operator_cr_dict) as mariadb_operator_cr:
+    mariadb_operator_cr_name = mariadb_operator_cr_dict["metadata"]["name"]
+
+    mariadb_operator_cr = MariadbOperator(
+        client=admin_client,
+        name=mariadb_operator_cr_name,
+        namespace=OPENSHIFT_OPERATORS,
+    )
+
+    with ExitStack() as stack:
+        if not mariadb_operator_cr.exists:
+            mariadb_operator_cr = stack.enter_context(cm=MariadbOperator(kind_dict=mariadb_operator_cr_dict))
+
         mariadb_operator_cr.wait_for_condition(
             condition="Deployed", status=mariadb_operator_cr.Condition.Status.TRUE, timeout=Timeout.TIMEOUT_10MIN
         )
         wait_for_mariadb_operator_deployments(mariadb_operator=mariadb_operator_cr, client=admin_client)
+
         yield mariadb_operator_cr
 
 
@@ -985,3 +998,26 @@ def oci_registry_route(admin_client: DynamicClient, oci_registry_service: Servic
 def oci_registry_host(oci_registry_route: Route) -> str:
     """Get the OCI registry host from the route"""
     return oci_registry_route.host
+
+
+@pytest.fixture(scope="session")
+def skip_if_no_supported_accelerator_type(supported_accelerator_type: str | None) -> None:
+    """Skip test if the required GPU accelerator type is not available.
+
+    Use this fixture for tests that validate GPU-specific functionality.
+    Note: vLLM supports CPU execution, but this fixture enforces GPU
+    requirements for tests that specifically need accelerator validation.
+    """
+    # GPU accelerators supported for vLLM GPU-specific testing
+    supported_gpu_accelerators = {
+        AcceleratorType.NVIDIA,
+        AcceleratorType.AMD,
+        AcceleratorType.GAUDI,
+    }
+
+    if not supported_accelerator_type or supported_accelerator_type.lower() not in supported_gpu_accelerators:
+        pytest.skip(
+            f"Test requires a supported GPU accelerator. "
+            f"Found: '{supported_accelerator_type or 'None'}'. "
+            f"Expected one of: {supported_gpu_accelerators}."
+        )
