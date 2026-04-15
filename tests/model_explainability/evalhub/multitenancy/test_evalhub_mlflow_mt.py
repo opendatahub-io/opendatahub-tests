@@ -18,7 +18,7 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
 from ocp_resources.route import Route
 from ocp_resources.service import Service
-from utilities.resources.evalhub import EvalHub
+from ocp_resources.evalhub import EvalHub
 
 from tests.model_explainability.evalhub.constants import (
     EVALHUB_JOBS_PATH,
