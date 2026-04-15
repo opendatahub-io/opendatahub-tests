@@ -157,7 +157,6 @@ class TestDefaultMCPCatalogSourceValidations:
                     )
         assert not errors, "Tool validation failed:\n" + "\n".join(errors)
 
-    @pytest.mark.xfail(reason="RHOAIENG-57606: toolLimit is broken on mcp_servers/<id> endpoint")
     def test_mcp_server_by_id_tool_limit(
         self: Self,
         mcp_catalog_rest_urls: list[str],
@@ -239,6 +238,42 @@ class TestDefaultMCPCatalogSourceValidations:
         LOGGER.info(f"Fetched tool '{tool_name}' for MCP server: {server['name']}")
         assert fetched == tool, (
             f"Tool fetched by name does not match tools list response.\nExpected: {tool}\nActual: {fetched}"
+        )
+
+    def test_default_mcp_server_tools_pagination(
+        self: Self,
+        mcp_catalog_rest_urls: list[str],
+        model_registry_rest_headers: dict[str, str],
+        mcp_servers_by_source: dict,
+        mcp_server_with_multiple_tools: tuple[str, int],
+    ):
+        """Verify that tools endpoint supports pagination with pageSize and nextPageToken."""
+        server_id, tool_count = mcp_server_with_multiple_tools
+        tools_url = f"{mcp_catalog_rest_urls[0]}mcp_servers/{server_id}/tools"
+
+        page_size = 1
+        all_tool_names = []
+        next_page_token = None
+
+        for _ in range(tool_count):
+            params: dict[str, str] = {"pageSize": str(page_size)}
+            if next_page_token:
+                params["nextPageToken"] = next_page_token
+
+            response = execute_get_command(
+                url=tools_url,
+                headers=model_registry_rest_headers,
+                params=params,
+            )
+            items = response.get("items", [])
+            assert len(items) == page_size, f"Expected {page_size} tool per page, got {len(items)}"
+            all_tool_names.extend(item["name"] for item in items)
+            next_page_token = response.get("nextPageToken")
+            if not next_page_token:
+                break
+
+        assert len(set(all_tool_names)) == tool_count, (
+            f"Expected {tool_count} unique tools, got {len(set(all_tool_names))}: {all_tool_names}"
         )
 
     def test_default_mcp_server_tools_loaded(
