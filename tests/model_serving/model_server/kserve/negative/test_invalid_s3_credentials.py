@@ -1,9 +1,6 @@
 """
 Tests for InferenceService behavior when S3 credentials are invalid.
 
-Related: https://issues.redhat.com/browse/RHOAIENG-48274
-https://issues.redhat.com/browse/RHOAIENG-56888
-
 This is distinct from ``platform/test_custom_resources.py`` (invalid *model path*
 with a valid credential chain): here the *path* is valid but the secret carries
 wrong AWS keys, matching a common customer misconfiguration (rotated keys, wrong
