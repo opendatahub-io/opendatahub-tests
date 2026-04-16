@@ -387,6 +387,66 @@ def api_key_bound_to_premium_subscription(
     )
 
 
+@pytest.fixture(scope="function")
+def api_key_for_deleted_subscription(
+    request_session_http: requests.Session,
+    base_url: str,
+    admin_client: DynamicClient,
+    maas_api_server_url: str,
+    original_user: str,
+    maas_model_tinyllama_free: MaaSModelRef,
+    maas_subscription_tinyllama_free: MaaSSubscription,
+) -> Generator[str, Any, Any]:
+    """Create an API key via a dedicated SA, bound to a temp subscription, then delete it.
+
+    Uses a ServiceAccount (not the free user) so that after subscription deletion
+    the SA has no other subscription to fall back to, ensuring 403.
+    """
+    sa_name = f"e2e-deleted-sub-sa-{generate_random_name()}"
+    temp_sub_name = f"e2e-deleted-sub-{generate_random_name()}"
+    applications_namespace = py_config["applications_namespace"]
+
+    with ServiceAccount(
+        client=admin_client,
+        namespace=applications_namespace,
+        name=sa_name,
+        teardown=True,
+    ) as sa:
+        sa.wait(timeout=60)
+
+        ok = login_with_user_password(api_address=maas_api_server_url, user=original_user)
+        assert ok, f"Failed to login as original_user={original_user}"
+        sa_token = create_inference_token(model_service_account=sa)
+
+        with create_maas_subscription(
+            admin_client=admin_client,
+            subscription_namespace=maas_subscription_tinyllama_free.namespace,
+            subscription_name=temp_sub_name,
+            owner_group_name="system:authenticated",
+            model_name=maas_model_tinyllama_free.name,
+            model_namespace=maas_model_tinyllama_free.namespace,
+            tokens_per_minute=100,
+            window="1m",
+            priority=20,
+            teardown=True,
+            wait_for_resource=True,
+        ) as temp_subscription:
+            temp_subscription.wait_for_condition(condition="Ready", status="True", timeout=300)
+
+            _, body = create_api_key(
+                base_url=base_url,
+                ocp_user_token=sa_token,
+                request_session_http=request_session_http,
+                api_key_name=f"e2e-deleted-sub-key-{generate_random_name()}",
+                subscription=temp_sub_name,
+            )
+            api_key_plaintext = body["key"]
+            LOGGER.info(f"api_key_for_deleted_subscription: created key id={body['id']} bound to '{temp_sub_name}'")
+
+        LOGGER.info(f"api_key_for_deleted_subscription: subscription '{temp_sub_name}' deleted")
+        yield api_key_plaintext
+
+
 @pytest.fixture(scope="class")
 def maas_wrong_group_service_account_token(
     maas_api_server_url: str,

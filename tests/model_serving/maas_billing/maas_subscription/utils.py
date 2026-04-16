@@ -182,6 +182,32 @@ def wait_for_auth_ready(auth: Auth, baseline_time: str, timeout: int = 60) -> No
             return
 
 
+def assert_models_belong_to_subscription(
+    models: list[dict[str, Any]],
+    expected_subscription_name: str,
+) -> None:
+    """Assert every model in the list references the expected subscription."""
+    for model_entry in models:
+        assert "subscriptions" in model_entry, f"Model '{model_entry.get('id')}' missing 'subscriptions' field"
+        bound_sub_names = [sub["name"] for sub in model_entry["subscriptions"]]
+        assert expected_subscription_name in bound_sub_names, (
+            f"Model '{model_entry.get('id')}' should reference subscription "
+            f"'{expected_subscription_name}', got {bound_sub_names}"
+        )
+
+
+def assert_model_info_schema(model: dict[str, Any]) -> None:
+    """Assert a ModelInfo object from /v1/models has the expected structure and field types."""
+    assert "id" in model, f"Missing 'id': {model}"
+    assert isinstance(model["id"], str), f"'id' must be string, got {type(model['id']).__name__}"
+    assert "object" in model, f"Missing 'object': {model}"
+    assert model["object"] == "model", f"Expected object='model', got {model['object']!r}"
+    assert "created" in model, f"Missing 'created': {model}"
+    assert isinstance(model["created"], int), f"'created' must be int, got {type(model['created']).__name__}"
+    assert "owned_by" in model, f"Missing 'owned_by': {model}"
+    assert isinstance(model["owned_by"], str), f"'owned_by' must be string, got {type(model['owned_by']).__name__}"
+
+
 def assert_subscription_info_schema(subscription: dict[str, Any]) -> None:
     """Assert a SubscriptionInfo object has the expected structure and field types."""
     assert "subscription_id_header" in subscription, f"Missing subscription_id_header: {subscription}"
