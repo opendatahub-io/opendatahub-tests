@@ -51,8 +51,6 @@ from utilities.resources.llama_stack_distribution import LlamaStackDistribution
 
 LOGGER = structlog.get_logger(name=__name__)
 
-pytestmark = pytest.mark.skip_on_disconnected
-
 
 @pytest.fixture(scope="class")
 def distribution_name(pytestconfig: pytest.Config) -> str:
