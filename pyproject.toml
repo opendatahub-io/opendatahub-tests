@@ -6,7 +6,7 @@ output-format = "grouped"
 extend-exclude = ["utilities/manifests"]
 
 [tool.ruff.lint]
-external = ["E501", "FCN001"]
+external = ["E501", "FCN001", "UFN001"]
 
 [tool.ruff.format]
 exclude = [".git", ".venv", ".mypy_cache", ".tox", "__pycache__", "utilities/manifests"]
@@ -66,14 +66,14 @@ dependencies = [
     "timeout-sampler>=1.0.6",
     "shortuuid>=1.0.13",
     "jira>=3.8.0",
-    "openshift-python-wrapper>=11.0.99",
+    "openshift-python-wrapper>=11.0.122",
     "semver>=3.0.4",
     "sqlalchemy>=2.0.40",
     "pytest-order>=1.3.0",
     "marshmallow>=4.0",
     "pytest-html>=4.1.1",
     "fire",
-    "llama_stack_client>=0.7.1,<0.8",
+    "llama_stack_client>=0.7.2,<0.8",
     "pytest-xdist==3.8.0",
     "dictdiffer>=0.9.0",
     "pytest>=9.0.0",

@@ -15,6 +15,7 @@ from ocp_resources.service_account import ServiceAccount
 from tests.model_registry.constants import (
     CUSTOM_CATALOG_ID1,
     DEFAULT_CUSTOM_MODEL_CATALOG,
+    DEFAULT_MODEL_CATALOG_CM,
 )
 from tests.model_registry.model_catalog.catalog_config.utils import get_models_from_database_by_source
 from tests.model_registry.model_catalog.constants import (
@@ -110,7 +111,7 @@ def model_catalog_config_map(
 ) -> ConfigMap:
     """Parameterized fixture that takes a dict with configmap_name key and ensures it exists"""
     param = getattr(request, "param", {})
-    configmap_name = param.get("configmap_name", "model-catalog-default-sources")
+    configmap_name = param.get("configmap_name", DEFAULT_MODEL_CATALOG_CM)
     return ConfigMap(name=configmap_name, client=admin_client, namespace=model_registry_namespace, ensure_exists=True)
 
 
@@ -146,11 +147,6 @@ def updated_catalog_config_map(
 
 @pytest.fixture(scope="class")
 def expected_catalog_values(request: pytest.FixtureRequest) -> dict[str, str]:
-    return request.param
-
-
-@pytest.fixture(scope="class")
-def is_huggingface(request: pytest.FixtureRequest) -> dict[str, str]:
     return request.param
 
 
@@ -398,12 +394,6 @@ def labels_configmap_patch(
         client=admin_client, model_registry_namespace=model_registry_namespace
     )
     wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
-
-
-@pytest.fixture()
-def skip_on_huggingface_source(is_huggingface: bool) -> None:
-    if is_huggingface:
-        pytest.skip(reason="Huggingface models does not support artifacts endpoints")
 
 
 @pytest.fixture()

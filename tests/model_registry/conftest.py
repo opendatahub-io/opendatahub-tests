@@ -19,7 +19,7 @@ from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
-from pytest import Config, FixtureRequest
+from pytest import Config, FixtureRequest, Item
 from pytest_testconfig import config as py_config
 
 from tests.model_registry.constants import (
@@ -474,3 +474,31 @@ def mcp_catalog_rest_urls(model_registry_namespace: str, model_catalog_routes: l
     """Build MCP catalog REST URL from existing model catalog routes."""
     assert model_catalog_routes, f"Model catalog routes do not exist in {model_registry_namespace}"
     return [f"https://{route.instance.spec.host}:443{MCP_CATALOG_API_PATH}" for route in model_catalog_routes]
+
+
+def pytest_collection_modifyitems(items: list[Item], config: pytest.Config) -> None:
+    """Deselect tests based on parametrize values that produce invalid combinations."""
+    deselected = []
+    remaining = []
+    for item in items:
+        callspec = getattr(item, "callspec", None)
+        if callspec:
+            if "test_requires_default_db" in item.keywords:
+                db_name = callspec.params.get("model_registry_metadata_db_resources", {}).get("db_name")
+                if db_name != "default":
+                    deselected.append(item)
+                    continue
+            if "test_huggingface_source" in item.keywords and "test_skip_on_huggingface_source" in item.keywords:
+                deselected.append(item)
+                continue
+            if (
+                "test_postgres_network_policy_only" in item.keywords
+                and callspec.params.get("model_catalog_network_policy") == "model-catalog-https-route"
+            ):
+                deselected.append(item)
+                continue
+        remaining.append(item)
+
+    if deselected:
+        items[:] = remaining
+        config.hook.pytest_deselected(items=deselected)

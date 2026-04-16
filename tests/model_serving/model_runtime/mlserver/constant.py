@@ -18,7 +18,6 @@ class OutputType:
 
 
 LOCALHOST_URL: str = "http://localhost"
-RAW_DEPLOYMENT_TYPE: str = "raw"
 MODEL_PATH_PREFIX: str = "mlserver/model_repository"
 
 PREDICT_RESOURCES: dict[str, list[dict[str, str | dict[str, str]]] | dict[str, dict[str, str]]] = {
@@ -36,7 +35,7 @@ PREDICT_RESOURCES: dict[str, list[dict[str, str | dict[str, str]]] | dict[str, d
 }
 
 BASE_RAW_DEPLOYMENT_CONFIG: dict[str, Any] = {
-    "deployment_type": KServeDeploymentType.RAW_DEPLOYMENT,
+    "deployment_mode": KServeDeploymentType.RAW_DEPLOYMENT,
     "min-replicas": 1,
     "enable_external_route": False,
 }

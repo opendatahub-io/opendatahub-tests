@@ -392,17 +392,6 @@ def model_data_for_test() -> Generator[dict[str, Any]]:
 
 
 @pytest.fixture()
-def skip_if_not_default_db(request):
-    """
-    Fixture that skips the test if not using default postgres database
-    """
-    default_db = request.node.callspec.params.get("model_registry_metadata_db_resources", {}).get("db_name")
-    LOGGER.info(f"default_db: {default_db}")
-    if not default_db or default_db != "default":
-        pytest.skip(reason="This test is only relevant for default postgres db")
-
-
-@pytest.fixture()
 def model_registry_default_postgres_deployment_match_label(
     model_registry_namespace: str, admin_client: DynamicClient, model_registry_instance: list[ModelRegistry]
 ) -> dict[str, str]:

@@ -6,8 +6,8 @@ import pytest
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
+from ocp_resources.evalhub import EvalHub
 from ocp_resources.namespace import Namespace
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
@@ -18,17 +18,13 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_explainability.evalhub.constants import (
     EVALHUB_HEALTH_PATH,
-    EVALHUB_JOB_CONFIG_CLUSTERROLE,
-    EVALHUB_JOBS_WRITER_CLUSTERROLE,
-    EVALHUB_MT_CR_NAME,
     EVALHUB_TENANT_LABEL_KEY,
-    EVALHUB_USER_ROLE_RULES,
     EVALHUB_VLLM_EMULATOR_PORT,
 )
+from tests.model_explainability.evalhub.utils import tenant_rbac_ready
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import Labels, Protocols, Timeout
 from utilities.infra import create_inference_token, create_ns
-from utilities.resources.evalhub import EvalHub
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -55,6 +51,7 @@ def evalhub_mt_cr(
         name="evalhub-mt",
         namespace=model_namespace.name,
         database={"type": "sqlite"},
+        collections=["leaderboard-v2"],
         wait_for_resource=True,
     ) as evalhub:
         yield evalhub
@@ -169,32 +166,6 @@ def tenant_b_namespace(
 # ---------------------------------------------------------------------------
 
 
-def _tenant_rbac_ready(admin_client: DynamicClient, namespace: str) -> bool:
-    """Check if the operator has provisioned job RBAC for the test EvalHub instance.
-
-    Matches by roleRef ClusterRole name rather than RoleBinding name substrings,
-    because long namespace names cause normalizeDNS1123LabelValue to truncate
-    the "job-config"/"job-writer" suffix out of the RoleBinding name.
-
-    Also waits for the operator-created ServiceAccount (name contains "job") and
-    service CA ConfigMap (name contains "service-ca") to be present.
-    """
-    rbs = list(RoleBinding.get(client=admin_client, namespace=namespace))
-    has_job_config = any(
-        rb.instance.roleRef.name == EVALHUB_JOB_CONFIG_CLUSTERROLE and rb.name.startswith(EVALHUB_MT_CR_NAME)
-        for rb in rbs
-    )
-    has_job_writer = any(
-        rb.instance.roleRef.name == EVALHUB_JOBS_WRITER_CLUSTERROLE and rb.name.startswith(EVALHUB_MT_CR_NAME)
-        for rb in rbs
-    )
-    sas = list(ServiceAccount.get(client=admin_client, namespace=namespace))
-    has_job_sa = any(sa.name.startswith(EVALHUB_MT_CR_NAME) and "job" in sa.name for sa in sas)
-    cms = list(ConfigMap.get(client=admin_client, namespace=namespace))
-    has_service_ca_cm = any(cm.name.startswith(EVALHUB_MT_CR_NAME) and "service-ca" in cm.name for cm in cms)
-    return has_job_config and has_job_writer and has_job_sa and has_service_ca_cm
-
-
 @pytest.fixture(scope="class")
 def tenant_a_rbac_ready(
     admin_client: DynamicClient,
@@ -211,7 +182,7 @@ def tenant_a_rbac_ready(
         for ready in TimeoutSampler(
             wait_timeout=120,
             sleep=5,
-            func=_tenant_rbac_ready,
+            func=tenant_rbac_ready,
             admin_client=admin_client,
             namespace=tenant_a_namespace.name,
         ):
@@ -230,6 +201,21 @@ def tenant_a_rbac_ready(
 # ---------------------------------------------------------------------------
 # ServiceAccount and RBAC (only in tenant-a)
 # ---------------------------------------------------------------------------
+
+# Mirrors the user RBAC template from resources/evalhub-user-rbac-template.yaml.
+# evaluations/collections/providers are virtual SAR resources — not real CRDs.
+EVALHUB_USER_ROLE_RULES: list[dict[str, list[str]]] = [
+    {
+        "apiGroups": ["trustyai.opendatahub.io"],
+        "resources": ["evaluations", "collections", "providers", "status-events"],
+        "verbs": ["get", "list", "create", "update", "patch", "delete"],
+    },
+    {
+        "apiGroups": ["mlflow.kubeflow.org"],
+        "resources": ["experiments"],
+        "verbs": ["create", "get"],
+    },
+]
 
 
 @pytest.fixture(scope="class")

@@ -20,7 +20,7 @@ OTHER_MODELS_CATALOG_ID: str = "other_models"
 SAMPLE_MODEL_NAME3 = "mistralai/Ministral-8B-Instruct-2410"
 CATALOG_CONTAINER: str = "catalog"
 REDHAT_AI_CATALOG_ID: str = "redhat_ai_models"
-OTHER_MODELS: str = "Other Models"
+OTHER_MODELS: str = "Other"
 VALIDATED_CATALOG_ID: str = "redhat_ai_validated_models"
 DEFAULT_CATALOGS: dict[str, Any] = {
     REDHAT_AI_CATALOG_ID: {

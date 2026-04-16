@@ -2,14 +2,21 @@ import re
 
 import pandas as pd
 import structlog
+from kubernetes.client.rest import ApiException
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.lm_eval_job import LMEvalJob
 from ocp_resources.pod import Pod
 from pyhelper_utils.general import tts
-from timeout_sampler import TimeoutExpiredError
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from utilities.constants import Timeout
-from utilities.exceptions import PodLogMissMatchError, UnexpectedFailureError
+from utilities.exceptions import (
+    PodLogMissMatchError,
+    UnexpectedFailureError,
+    UnexpectedResourceCountError,
+)
+from utilities.general import collect_pod_information
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -106,3 +113,77 @@ def validate_lmeval_job_pod_and_logs(lmevaljob_pod: Pod) -> None:
         raise UnexpectedFailureError("LMEval job pod failed from a running state.") from e
     if not bool(re.search(pod_success_log_regex, lmevaljob_pod.log())):
         raise PodLogMissMatchError("LMEval job pod failed.")
+
+
+def wait_for_vllm_model_ready(
+    client: DynamicClient,
+    namespace: str,
+    inference_service_name: str,
+    max_wait_time: int = 600,
+    check_interval: int = 10,
+) -> Pod:
+    """Wait for vLLM model to download and be ready to serve requests.
+
+    Args:
+        client: Kubernetes dynamic client
+        namespace: Namespace where the inference service is deployed
+        inference_service_name: Name of the inference service
+        max_wait_time: Maximum time to wait in seconds
+        check_interval: Time between checks in seconds
+
+    Returns:
+        The predictor pod once model is ready
+
+    Raises:
+        ResourceNotFoundError: If no predictor pod is found
+        UnexpectedFailureError: If model fails to load or pod encounters errors
+    """
+    LOGGER.info("Waiting for vLLM model to download and load...")
+
+    predictor_pods = list(
+        Pod.get(
+            dyn_client=client,
+            namespace=namespace,
+            label_selector=f"serving.kserve.io/inferenceservice={inference_service_name},component=predictor",
+        )
+    )
+
+    if not predictor_pods:
+        raise ResourceNotFoundError(f"No predictor pod found for inference service '{inference_service_name}'.")
+
+    if len(predictor_pods) != 1:
+        raise UnexpectedResourceCountError(
+            f"Expected exactly 1 predictor pod for inference service '{inference_service_name}', "
+            f"but found {len(predictor_pods)}: {[pod.name for pod in predictor_pods]}"
+        )
+
+    predictor_pod = predictor_pods[0]
+    LOGGER.info(f"Predictor pod: {predictor_pod.name}")
+
+    def _check_model_ready() -> bool:
+        try:
+            pod_logs = predictor_pod.log(container="kserve-container")
+            if "Uvicorn running on" in pod_logs or "Application startup complete" in pod_logs:
+                LOGGER.info("vLLM server is running and ready!")
+                return True
+            else:
+                LOGGER.info("Model still loading..")
+                return False
+        except (ApiException, OSError) as e:
+            LOGGER.info(f"Could not get pod logs yet: {e}")
+            return False
+
+    try:
+        for sample in TimeoutSampler(
+            wait_timeout=max_wait_time,
+            sleep=check_interval,
+            func=_check_model_ready,
+        ):
+            if sample:
+                break
+    except TimeoutExpiredError:
+        LOGGER.error(f"vLLM pod failed to start within {max_wait_time} seconds")
+        collect_pod_information(pod=predictor_pod)
+        raise
+
+    return predictor_pod
