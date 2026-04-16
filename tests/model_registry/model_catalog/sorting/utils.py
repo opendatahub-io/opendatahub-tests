@@ -77,6 +77,20 @@ def get_artifacts_with_sorting(
     return execute_get_command(url=base_url, headers=model_registry_rest_headers, params=params)
 
 
+def _postgres_collation_key(name: str) -> tuple[str, str]:
+    """Generate a sort key matching PostgreSQL's locale-aware collation.
+
+    PostgreSQL with a locale like en_US.UTF-8 treats punctuation as ignorable
+    at the primary comparison level. This function emulates that by producing a
+    tuple of (alphanumeric-only casefolded, full casefolded) for comparison.
+    Uses str.casefold() for proper Unicode casing and str.isalnum() to preserve
+    non-ASCII alphanumeric characters.
+    """
+    folded = name.casefold()
+    primary = "".join(ch for ch in folded if ch.isalnum())
+    return (primary, folded)
+
+
 def validate_items_sorted_correctly(items: list[dict], field: str, order: str) -> bool:
     """
     Extract field values and verify they're in correct order
@@ -117,8 +131,11 @@ def validate_items_sorted_correctly(items: list[dict], field: str, order: str) -
             # If conversion fails, fall back to string comparison
             values = [str(value) for value in values]
     elif field == "NAME":
-        # For NAME field, convert to lowercase for case-insensitive comparison
-        values = [str(value).lower() for value in values]
+        # For NAME field, use a collation key that matches PostgreSQL's locale-aware
+        # collation where punctuation (e.g. '.' and '-') is ignorable at the primary
+        # comparison level. The primary key strips non-alphanumeric characters; the
+        # secondary key (full lowercase string) acts as a tiebreaker.
+        values = [_postgres_collation_key(str(value)) for value in values]
 
     # Check if values are in correct order
     if order == "ASC":
