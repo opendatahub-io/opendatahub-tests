@@ -4,7 +4,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from timeout_sampler import TimeoutSampler
 
-from tests.model_registry.model_catalog.constants import MODEL_CATALOG_DEPLOYMENT_NAME
+from tests.model_registry.model_catalog.constants import CATALOG_CONTAINER, MODEL_CATALOG_DEPLOYMENT_NAME
 from tests.model_registry.utils import execute_get_command
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -86,7 +86,16 @@ def get_deployment_catalog_args(admin_client: DynamicClient, namespace: str) -> 
     deployment = Deployment(
         name=MODEL_CATALOG_DEPLOYMENT_NAME, namespace=namespace, client=admin_client, ensure_exists=True
     )
-    return deployment.instance.spec.template.spec.containers[0].args
+    catalog_container = next(
+        (
+            container
+            for container in deployment.instance.spec.template.spec.containers
+            if container.name == CATALOG_CONTAINER
+        ),
+        None,
+    )
+    assert catalog_container is not None, f"Container {CATALOG_CONTAINER!r} not found in deployment"
+    return catalog_container.args or []
 
 
 def wait_for_deployment_args_contain(

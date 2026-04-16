@@ -46,30 +46,23 @@ def labeled_configmap_alpha(
             cm_name=cm_name,
         ),
     )
-    if cm.exists:
-        LOGGER.warning(f"Leftover ConfigMap {cm_name} found, deleting before test")
-        cm.delete(wait=True)
-    cm.deploy()
-    LOGGER.info(f"Created labeled ConfigMap: {cm_name}")
+    assert not cm.exists, f"Leftover ConfigMap {cm_name} found — clean up before running tests"
 
-    wait_for_deployment_args_contain(
-        admin_client=admin_client, namespace=model_registry_namespace, expected_substring=cm_name
-    )
-    wait_for_model_catalog_pod_ready_after_deletion(
-        client=admin_client, model_registry_namespace=model_registry_namespace
-    )
-    wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
-    wait_for_source_models_loaded(
-        model_catalog_rest_url=model_catalog_rest_url,
-        model_registry_rest_headers=model_registry_rest_headers,
-        source_id=TEST_SOURCE_ALPHA_ID,
-    )
-
-    yield cm
-
-    if cm.exists:
-        cm.delete(wait=True)
-        LOGGER.info(f"Deleted labeled ConfigMap: {cm_name}")
+    with cm as created_cm:
+        LOGGER.info(f"Created labeled ConfigMap: {cm_name}")
+        wait_for_deployment_args_contain(
+            admin_client=admin_client, namespace=model_registry_namespace, expected_substring=cm_name
+        )
+        wait_for_model_catalog_pod_ready_after_deletion(
+            client=admin_client, model_registry_namespace=model_registry_namespace
+        )
+        wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
+        wait_for_source_models_loaded(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            source_id=TEST_SOURCE_ALPHA_ID,
+        )
+        yield created_cm
 
 
 @pytest.fixture(scope="class")
@@ -97,27 +90,20 @@ def labeled_configmap_beta(
             cm_name=cm_name,
         ),
     )
-    if cm.exists:
-        LOGGER.warning(f"Leftover ConfigMap {cm_name} found, deleting before test")
-        cm.delete(wait=True)
-    cm.deploy()
-    LOGGER.info(f"Created labeled ConfigMap: {cm_name}")
+    assert not cm.exists, f"Leftover ConfigMap {cm_name} found — clean up before running tests"
 
-    wait_for_deployment_args_contain(
-        admin_client=admin_client, namespace=model_registry_namespace, expected_substring=cm_name
-    )
-    wait_for_model_catalog_pod_ready_after_deletion(
-        client=admin_client, model_registry_namespace=model_registry_namespace
-    )
-    wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
-    wait_for_source_models_loaded(
-        model_catalog_rest_url=model_catalog_rest_url,
-        model_registry_rest_headers=model_registry_rest_headers,
-        source_id=TEST_SOURCE_BETA_ID,
-    )
-
-    yield cm
-
-    if cm.exists:
-        cm.delete(wait=True)
-        LOGGER.info(f"Deleted labeled ConfigMap: {cm_name}")
+    with cm as created_cm:
+        LOGGER.info(f"Created labeled ConfigMap: {cm_name}")
+        wait_for_deployment_args_contain(
+            admin_client=admin_client, namespace=model_registry_namespace, expected_substring=cm_name
+        )
+        wait_for_model_catalog_pod_ready_after_deletion(
+            client=admin_client, model_registry_namespace=model_registry_namespace
+        )
+        wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
+        wait_for_source_models_loaded(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            source_id=TEST_SOURCE_BETA_ID,
+        )
+        yield created_cm
