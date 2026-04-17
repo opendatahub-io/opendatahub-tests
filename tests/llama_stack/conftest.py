@@ -36,8 +36,11 @@ from tests.llama_stack.constants import (
     ModelInfo,
 )
 from tests.llama_stack.datasets import Dataset
-from tests.llama_stack.utils import (
+from tests.llama_stack.utils import (  # noqa: F401
     create_llama_stack_distribution,
+    ragas_evaluator_embeddings,
+    ragas_evaluator_llm,
+    ragas_samples,
     vector_store_upload_dataset,
     vector_store_upload_doc_sources,
     wait_for_llama_stack_client_ready,
