@@ -9,6 +9,10 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 
+from tests.model_serving.model_server.kserve.negative.constants import (
+    INVALID_S3_ACCESS_KEY,
+    INVALID_S3_SIGNING_KEY,
+)
 from utilities.constants import (
     KServeDeploymentType,
     RuntimeTemplates,
@@ -49,6 +53,28 @@ def negative_test_s3_secret(
         namespace=negative_test_namespace.name,
         aws_access_key=aws_access_key_id,
         aws_secret_access_key=aws_secret_access_key,
+        aws_s3_region=ci_s3_bucket_region,
+        aws_s3_bucket=ci_s3_bucket_name,
+        aws_s3_endpoint=ci_s3_bucket_endpoint,
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="package")
+def invalid_s3_credentials_secret(
+    unprivileged_client: DynamicClient,
+    negative_test_namespace: Namespace,
+    ci_s3_bucket_name: str,
+    ci_s3_bucket_region: str,
+    ci_s3_bucket_endpoint: str,
+) -> Generator[Secret, Any, Any]:
+    """S3 data-connection secret with a valid endpoint and bucket but invalid AWS keys."""
+    with s3_endpoint_secret(
+        client=unprivileged_client,
+        name="invalid-s3-creds-secret",
+        namespace=negative_test_namespace.name,
+        aws_access_key=INVALID_S3_ACCESS_KEY,
+        aws_secret_access_key=INVALID_S3_SIGNING_KEY,
         aws_s3_region=ci_s3_bucket_region,
         aws_s3_bucket=ci_s3_bucket_name,
         aws_s3_endpoint=ci_s3_bucket_endpoint,
@@ -98,6 +124,36 @@ def negative_test_ovms_isvc(
         model_format=supported_formats[0].name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         external_route=True,
+    ) as isvc:
+        yield isvc
+
+
+@pytest.fixture(scope="class")
+def invalid_s3_credentials_ovms_isvc(
+    admin_client: DynamicClient,
+    negative_test_namespace: Namespace,
+    ovms_serving_runtime: ServingRuntime,
+    ci_s3_bucket_name: str,
+    invalid_s3_credentials_secret: Secret,
+) -> Generator[InferenceService, Any, Any]:
+    """InferenceService that references a real bucket path with intentionally wrong S3 keys."""
+    storage_uri = f"s3://{ci_s3_bucket_name}/test-dir/"
+    supported_formats = ovms_serving_runtime.instance.spec.supportedModelFormats
+    if not supported_formats:
+        raise ValueError(f"ServingRuntime '{ovms_serving_runtime.name}' has no supportedModelFormats")
+
+    with create_isvc(
+        client=admin_client,
+        name="negative-test-invalid-s3-creds-isvc",
+        namespace=negative_test_namespace.name,
+        runtime=ovms_serving_runtime.name,
+        storage_key=invalid_s3_credentials_secret.name,
+        storage_path=urlparse(storage_uri).path,
+        model_format=supported_formats[0].name,
+        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+        external_route=False,
+        wait=False,
+        wait_for_predictor_pods=False,
     ) as isvc:
         yield isvc
 
