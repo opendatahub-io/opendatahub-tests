@@ -49,7 +49,7 @@ utilities/                # Shared utility functions
 ### Tests
 
 - Every test MUST have a docstring explaining what it tests (see `tests/cluster_health/test_cluster_health.py`)
-- Apply relevant markers from `pytest.ini`: tier (`smoke`, `sanity`, `tier1`, `tier2`), component (`model_serving`, `model_registry`, `llama_stack`), infrastructure (`gpu`, `parallel`, `slow`)
+- Apply relevant markers from `pytest.ini`: tier (`smoke`, `sanity`, `tier1`, `tier2`)
 - Use Given-When-Then format in docstrings for behavioral clarity
 
 ### Fixtures
@@ -76,9 +76,15 @@ utilities/                # Shared utility functions
 
 ### ✅ Always
 
+- Use meaningful variable names: `index`/`idx` instead of `i`, `server` instead of `s`, `item` instead of `x`
+- Use `test_` prefix in `pytest.param` id values (e.g., `id="test_without_order_by"`)
+- Use `pytest.mark.parametrize` when possible instead of duplicating test logic
+- Use bounded iteration instead of `while True` loops
+- Avoid code duplication by creating meaningful utilities
 - Follow existing patterns before introducing new approaches
 - Add type annotations (mypy strict enforced)
-- Write Google-format docstrings for tests and fixtures
+- Write Google-format docstrings for utility functions
+- Tests and fixtures should have a one-line docstring explaining what they do
 - Run `pre-commit run --all-files` before suggesting changes
 
 ### ⚠️ Ask First
