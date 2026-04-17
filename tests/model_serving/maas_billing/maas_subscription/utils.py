@@ -196,6 +196,22 @@ def assert_models_belong_to_subscription(
         )
 
 
+def assert_models_response_for_subscription(
+    response: requests.Response,
+    expected_subscription_name: str,
+) -> list[dict[str, Any]]:
+    """Assert a 200 /v1/models response contains models from the expected subscription."""
+    assert response.status_code == 200, f"Expected 200, got {response.status_code}: {(response.text or '')[:200]}"
+    data = response.json()
+    models: list[dict[str, Any]] = data.get("data") or []
+    assert len(models) >= 1, f"Expected at least 1 model, got {len(models)}"
+    assert_models_belong_to_subscription(
+        models=models,
+        expected_subscription_name=expected_subscription_name,
+    )
+    return models
+
+
 def assert_model_info_schema(model: dict[str, Any]) -> None:
     """Assert a ModelInfo object from /v1/models has the expected structure and field types."""
     assert "id" in model, f"Missing 'id': {model}"

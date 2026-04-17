@@ -7,7 +7,7 @@ from timeout_sampler import TimeoutSampler
 
 from tests.model_serving.maas_billing.maas_subscription.utils import (
     assert_model_info_schema,
-    assert_models_belong_to_subscription,
+    assert_models_response_for_subscription,
 )
 from tests.model_serving.maas_billing.utils import build_maas_headers
 
@@ -43,15 +43,9 @@ class TestListModels:
 
         response = request_session_http.get(url=models_url, headers=headers, timeout=30)
 
-        assert response.status_code == 200, f"Expected 200, got {response.status_code}: {(response.text or '')[:200]}"
-
-        data = response.json()
-        models = data.get("data") or []
-        assert len(models) >= 1, f"Expected at least 1 model, got {len(models)}"
-
         expected_sub = maas_subscription_tinyllama_free.name
-        assert_models_belong_to_subscription(
-            models=models,
+        models = assert_models_response_for_subscription(
+            response=response,
             expected_subscription_name=expected_sub,
         )
 
@@ -201,12 +195,10 @@ class TestListModels:
         headers = build_maas_headers(token=ocp_token_for_actor)
         headers["x-maas-subscription"] = maas_subscription_tinyllama_free.name
         response = request_session_http.get(url=models_url, headers=headers, timeout=30)
-        assert response.status_code == 200, f"Expected 200, got {response.status_code}: {(response.text or '')[:200]}"
-        data = response.json()
-        models = data.get("data") or []
+
         expected_sub = maas_subscription_tinyllama_free.name
-        assert_models_belong_to_subscription(
-            models=models,
+        models = assert_models_response_for_subscription(
+            response=response,
             expected_subscription_name=expected_sub,
         )
         LOGGER.info(f"[models] OCP token + header '{expected_sub}' -> {len(models)} model(s)")
