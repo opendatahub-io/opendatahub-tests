@@ -113,7 +113,7 @@ def pytest_addoption(parser: Parser) -> None:
     # Runtime options
     runtime_group.addoption(
         "--supported-accelerator-type",
-        default=os.environ.get("SUPPORTED_ACCLERATOR_TYPE"),
+        default=os.environ.get("SUPPORTED_ACCELERATOR_TYPE"),
         help="Supported accelerator type : Nvidia,AMD,Gaudi",
     )
     runtime_group.addoption(
@@ -205,6 +205,22 @@ def pytest_addoption(parser: Parser) -> None:
         action="store_true",
     )
 
+    # KServe health check options
+    kserve_health_group = parser.getgroup(name="KServe Health")
+    kserve_health_group.addoption(
+        "--skip-kserve-health-check",
+        help="Skip KServe component health check",
+        action="store_true",
+    )
+
+    # LLMD health check options
+    llmd_health_group = parser.getgroup(name="LLMD Health")
+    llmd_health_group.addoption(
+        "--skip-llmd-health-check",
+        help="Skip LLMD infrastructure dependency health check",
+        action="store_true",
+    )
+
     # HuggingFace options
     hf_group.addoption("--hf-access-token", default=os.environ.get("HF_ACCESS_TOKEN"), help="HF access token")
     # Model Registry options
@@ -277,23 +293,21 @@ def pytest_collection_modifyitems(session: Session, config: Config, items: list[
         else:
             non_upgrade_tests.append(item)
 
-    upgrade_tests = pre_upgrade_tests + post_upgrade_tests
+    original_items = list(items)
 
     if run_pre_upgrade_tests and run_post_upgrade_tests:
-        items[:] = upgrade_tests
-        config.hook.pytest_deselected(items=non_upgrade_tests)
-
+        items[:] = list(dict.fromkeys(pre_upgrade_tests + post_upgrade_tests))
     elif run_pre_upgrade_tests:
         items[:] = pre_upgrade_tests
-        config.hook.pytest_deselected(items=post_upgrade_tests + non_upgrade_tests)
-
     elif run_post_upgrade_tests:
         items[:] = post_upgrade_tests
-        config.hook.pytest_deselected(items=pre_upgrade_tests + non_upgrade_tests)
-
     else:
         items[:] = non_upgrade_tests
-        config.hook.pytest_deselected(items=upgrade_tests)
+
+    remaining_set = set(items)
+    deselected = [item for item in original_items if item not in remaining_set]
+    if deselected:
+        config.hook.pytest_deselected(items=deselected)
 
     _add_default_tier2_marker(items=items)
 

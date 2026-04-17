@@ -1,0 +1,23 @@
+{
+  "id": "onnx",
+  "model_name": "onnx-modelcar",
+  "outputs": [
+    {
+      "data": [
+        4.1880645751953125,
+        2.2079954147338867,
+        -4.680917263031006
+      ],
+      "datatype": "FP32",
+      "name": "predict",
+      "parameters": {
+        "content_type": "np"
+      },
+      "shape": [
+        1,
+        3
+      ]
+    }
+  ],
+  "parameters": {}
+}

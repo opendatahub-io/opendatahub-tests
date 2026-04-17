@@ -1,4 +1,3 @@
-import os
 from collections.abc import Callable, Generator
 from typing import Any
 
@@ -19,7 +18,9 @@ from ocp_resources.service import Service
 from semver import Version
 
 from tests.llama_stack.constants import (
+    HTTPS_PROXY,
     LLAMA_STACK_DISTRIBUTION_SECRET_DATA,
+    LLS_CLIENT_VERIFY_SSL,
     LLS_CORE_EMBEDDING_MODEL,
     LLS_CORE_EMBEDDING_PROVIDER_MODEL_ID,
     LLS_CORE_INFERENCE_MODEL,
@@ -42,14 +43,13 @@ from tests.llama_stack.utils import (
     wait_for_llama_stack_client_ready,
     wait_for_unique_llama_stack_pod,
 )
+from utilities import infra
 from utilities.constants import Annotations, DscComponents
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.general import generate_random_name
 from utilities.resources.llama_stack_distribution import LlamaStackDistribution
 
 LOGGER = structlog.get_logger(name=__name__)
-
-pytestmark = pytest.mark.skip_on_disconnected
 
 
 @pytest.fixture(scope="class")
@@ -72,12 +72,19 @@ def enabled_llama_stack_operator(dsc_resource: DataScienceCluster) -> Generator[
 
 
 @pytest.fixture(scope="class")
+def is_disconnected_cluster(admin_client: DynamicClient) -> bool:
+    """Whether the target cluster is disconnected (air-gapped)."""
+    return infra.is_disconnected_cluster(client=admin_client)
+
+
+@pytest.fixture(scope="class")
 def llama_stack_server_config(
     request: FixtureRequest,
     pytestconfig: pytest.Config,
     distribution_name: str,
     vector_io_provider_deployment_config_factory: Callable[[str], list[dict[str, str]]],
     files_provider_config_factory: Callable[[str], list[dict[str, str]]],
+    is_disconnected_cluster: bool,
 ) -> dict[str, Any]:
     """
     Generate server configuration for LlamaStack distribution deployment and deploy vector I/O provider resources.
@@ -94,6 +101,7 @@ def llama_stack_server_config(
             and return their configuration environment variables
         files_provider_config_factory: Factory function to configure files storage providers
             and return their configuration environment variables
+        is_disconnected_cluster: Whether the target cluster is disconnected (air-gapped)
 
     Returns:
         Dict containing server configuration with the following structure:
@@ -141,7 +149,10 @@ def llama_stack_server_config(
     """
 
     env_vars = []
+    tls_config: dict[str, Any] | None = None
     params = getattr(request, "param", {})
+    cpu_requests = "2"
+    cpu_limits = "4"
 
     # INFERENCE_MODEL
     if params.get("inference_model"):
@@ -191,8 +202,25 @@ def llama_stack_server_config(
         env_vars.append({"name": "VLLM_EMBEDDING_MAX_TOKENS", "value": LLS_CORE_VLLM_EMBEDDING_MAX_TOKENS})
         env_vars.append({"name": "VLLM_EMBEDDING_TLS_VERIFY", "value": LLS_CORE_VLLM_EMBEDDING_TLS_VERIFY})
     elif embedding_provider == "sentence-transformers":
+        # Increase CPU limits to prevent timeouts when inserting files into vector stores
+        cpu_requests = "4"
+        cpu_limits = "8"
+
+        # Enable sentence-transformers embedding model
         env_vars.append({"name": "ENABLE_SENTENCE_TRANSFORMERS", "value": "true"})
         env_vars.append({"name": "EMBEDDING_PROVIDER", "value": "sentence-transformers"})
+        # Explicitly set EMBEDDING_MODEL and EMBEDDING_PROVIDER_MODEL_ID.
+        # This overrides the default sentence-transformer model (nomic-embed-text-v1.5).
+        env_vars.append({"name": "EMBEDDING_MODEL", "value": "ibm-granite/granite-embedding-125m-english"})
+        env_vars.append({"name": "EMBEDDING_PROVIDER_MODEL_ID", "value": "ibm-granite/granite-embedding-125m-english"})
+
+        if is_disconnected_cluster:
+            # Workaround to fix sentence-transformer embeddings on disconnected (RHAIENG-1624)
+            env_vars.append({"name": "SENTENCE_TRANSFORMERS_HOME", "value": "/opt/app-root/src/.cache/huggingface/hub"})
+            env_vars.append({"name": "HF_HUB_OFFLINE", "value": "1"})
+            env_vars.append({"name": "TRANSFORMERS_OFFLINE", "value": "1"})
+            env_vars.append({"name": "HF_DATASETS_OFFLINE", "value": "1"})
+
     else:
         raise ValueError(f"Unsupported embeddings provider: {embedding_provider}")
 
@@ -229,11 +257,35 @@ def llama_stack_server_config(
     env_vars_vector_io = vector_io_provider_deployment_config_factory(provider_name=vector_io_provider)
     env_vars.extend(env_vars_vector_io)
 
+    if is_disconnected_cluster and HTTPS_PROXY:
+        LOGGER.info(f"Setting proxy and tlsconfig configuration (https_proxy:{HTTPS_PROXY})")
+        env_vars.append({"name": "HTTPS_PROXY", "value": HTTPS_PROXY})
+
+        # The operator sets SSL_CERT_FILE automatically when tlsConfig.caBundle is
+        # configured, but the `requests` library (used by tiktoken to download
+        # tokenizer data) ignores SSL_CERT_FILE and only checks REQUESTS_CA_BUNDLE.
+        # Without this, tiktoken fails with SSL CERTIFICATE_VERIFY_FAILED when the
+        # proxy uses a self-signed certificate (e.g. in disconnected clusters).
+        env_vars.append({
+            "name": "REQUESTS_CA_BUNDLE",
+            "value": "/etc/ssl/certs/ca-bundle/ca-bundle.crt",
+        })
+
+        tls_config = {
+            "caBundle": {
+                "configMapName": "odh-trusted-ca-bundle",
+                "configMapKeys": [
+                    "ca-bundle.crt",  # CNO-injected cluster CAs
+                    "odh-ca-bundle.crt",  # User-specified custom CAs
+                ],
+            },
+        }
+
     server_config: dict[str, Any] = {
         "containerSpec": {
             "resources": {
-                "requests": {"cpu": "1", "memory": "3Gi"},
-                "limits": {"cpu": "3", "memory": "6Gi"},
+                "requests": {"cpu": cpu_requests, "memory": "3Gi"},
+                "limits": {"cpu": cpu_limits, "memory": "6Gi"},
             },
             "env": env_vars,
             "name": "llama-stack",
@@ -242,9 +294,15 @@ def llama_stack_server_config(
         "distribution": {"name": "rh-dev"},
     }
 
+    if tls_config:
+        server_config["tlsConfig"] = tls_config
+
     if params.get("llama_stack_storage_size"):
-        storage_size = params.get("llama_stack_storage_size")
-        server_config["storage"] = {"size": storage_size}
+        if is_disconnected_cluster:
+            LOGGER.warning("Skipping storage_size configuration on disconnected clusters due to known bug RHAIENG-1819")
+        else:
+            storage_size = params.get("llama_stack_storage_size")
+            server_config["storage"] = {"size": storage_size}
 
     return server_config
 
@@ -593,14 +651,13 @@ def llama_stack_test_route(
 def _create_llama_stack_client(
     route: Route,
 ) -> Generator[LlamaStackClient, Any, Any]:
-    # LLS_CLIENT_VERIFY_SSL is false by default to be able to test with Self-Signed certificates
-    verifySSL = os.getenv("LLS_CLIENT_VERIFY_SSL", "false").lower() == "true"
-    http_client = httpx.Client(verify=verifySSL, timeout=240)
+    http_client = httpx.Client(verify=LLS_CLIENT_VERIFY_SSL, timeout=300)
     try:
         client = LlamaStackClient(
             base_url=f"https://{route.host}",
             max_retries=3,
             http_client=http_client,
+            timeout=300,
         )
         wait_for_llama_stack_client_ready(client=client)
         existing_file_ids = {f.id for f in client.files.list().data}

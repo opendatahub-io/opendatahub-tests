@@ -72,8 +72,10 @@ def vector_io_provider_deployment_config_factory(
         - "milvus-remote": Remote Milvus service requiring external deployment
 
     Environment Variables by Provider:
-        - "milvus": no env vars available
-        - "milvus-remote":
+        - "milvus" (or None): Injects ENABLE_INLINE_MILVUS=true so the
+          LlamaStack server starts its built-in Milvus instance.  No external
+          deployment is created.
+        - "milvus-remote" (does NOT receive ENABLE_INLINE_MILVUS):
           * MILVUS_ENDPOINT: Remote Milvus service endpoint URL
           * MILVUS_TOKEN: Authentication token for remote service
           * MILVUS_CONSISTENCY_LEVEL: Consistency level for operations
@@ -99,8 +101,7 @@ def vector_io_provider_deployment_config_factory(
         env_vars: list[dict[str, Any]] = []
 
         if provider_name is None or provider_name == "milvus":
-            # Default case - no additional environment variables needed
-            pass
+            env_vars.append({"name": "ENABLE_INLINE_MILVUS", "value": "true"})
         elif provider_name == "milvus-remote":
             request.getfixturevalue(argname="milvus_service")
             env_vars.append({"name": "MILVUS_ENDPOINT", "value": "http://vector-io-milvus-service:19530"})
@@ -113,10 +114,6 @@ def vector_io_provider_deployment_config_factory(
             env_vars.append({"name": "MILVUS_CONSISTENCY_LEVEL", "value": "Bounded"})
         elif provider_name == "faiss":
             env_vars.append({"name": "ENABLE_FAISS", "value": "faiss"})
-            env_vars.append({
-                "name": "FAISS_KVSTORE_DB_PATH",
-                "value": "/opt/app-root/src/.llama/distributions/rh/sqlite_vec.db",
-            })
         elif provider_name == "pgvector":
             request.getfixturevalue(argname="pgvector_service")
             env_vars.append({"name": "ENABLE_PGVECTOR", "value": "true"})

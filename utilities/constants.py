@@ -9,6 +9,7 @@ class KServeDeploymentType:
     RAW_DEPLOYMENT: str = "RawDeployment"
     STANDARD: str = "Standard"
     MODEL_MESH: str = "ModelMesh"
+    KNATIVE: str = "Knative"
 
     RAW_DEPLOYMENT_MODES: tuple[str, ...] = (RAW_DEPLOYMENT, STANDARD)
 
@@ -299,6 +300,14 @@ class ModelCarImage:
     )
     GRANITE_8B_CODE_INSTRUCT: str = "oci://registry.redhat.io/rhelai1/modelcar-granite-8b-code-instruct:1.4"
 
+    # MLServer model car images - update URIs when images are available
+    MLSERVER_SKLEARN: str = "oci://quay.io/jooholee/mlserver-sklearn@sha256:ec9bc6b520909c52bd1d4accc2b2d28adb04981bd4c3ce94f17f23dd573e1f55"  # noqa: E501
+    MLSERVER_XGBOOST: str = "oci://quay.io/jooholee/mlserver-xgboost@sha256:5b6982bdc939b53a7a1210f56aa52bf7de0f0cbc693668db3fd1f496571bff29"  # noqa: E501
+    MLSERVER_LIGHTGBM: str = "oci://quay.io/jooholee/mlserver-lightgbm@sha256:77eb15a2eccefa3756faaf2ee4bc1e63990b746427d323957c461f33a4f1a6a3"  # noqa: E501
+    MLSERVER_ONNX: str = (
+        "oci://quay.io/jooholee/mlserver-onnx@sha256:d0ad00fb6f2caa8f02a0250fc44a576771d0846b2ac8d164ec203b10ec5d604b"  # noqa: E501
+    )
+
 
 class ModelStorage:
     """Model storage URIs for different storage backends."""
@@ -494,6 +503,7 @@ class LLMdInferenceSimConfig:
     name: str = LLM_D_INFERENCE_SIM_NAME
     port: int = 8032
     model_name: str = "Qwen2.5-1.5B-Instruct"
+    max_model_len: int = 8192
     serving_runtime_name: str = f"{LLM_D_INFERENCE_SIM_NAME}-serving-runtime"
     isvc_name: str = f"{LLM_D_INFERENCE_SIM_NAME}-isvc"
 

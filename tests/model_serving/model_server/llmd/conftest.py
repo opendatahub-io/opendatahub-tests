@@ -9,13 +9,17 @@ import structlog
 import yaml
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.deployment import Deployment
 from ocp_resources.gateway import Gateway
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.namespace import Namespace
+from ocp_resources.resource import Resource
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.service_account import ServiceAccount
+from pytest_testconfig import config as py_config
 
 from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaOciConfig
 from tests.model_serving.model_server.llmd.utils import wait_for_llmisvc, wait_for_llmisvc_pods_ready
@@ -23,9 +27,147 @@ from utilities.constants import Timeout
 from utilities.infra import create_inference_token, s3_endpoint_secret, update_configmap_data
 from utilities.llmd_utils import create_llmd_gateway
 from utilities.logger import RedactedString
+from utilities.resources.kuadrant import Kuadrant
+from utilities.resources.leader_worker_set_operator import LeaderWorkerSetOperator
 
 LOGGER = structlog.get_logger(name=__name__)
 logging.getLogger("timeout_sampler").setLevel(logging.WARNING)
+
+LLMD_DSC_CONDITION: str = "KserveLLMInferenceServiceDependencies"
+
+LLMD_REQUIRED_OPERATORS: dict[str, str] = {
+    "cert-manager-operator": "cert-manager-operator",
+    "authorino-operator": "kuadrant-system",
+    "rhcl-operator": "openshift-operators",
+}
+
+LLMD_REQUIRED_DEPLOYMENTS: dict[str, str] = {
+    "cert-manager-operator-controller-manager": "cert-manager-operator",
+    "cert-manager": "cert-manager",
+    "cert-manager-webhook": "cert-manager",
+    "authorino-operator": "kuadrant-system",
+    "kuadrant-operator-controller-manager": "kuadrant-system",
+}
+
+# Same KServe stack as tests/model_serving/model_server/kserve/conftest.py plus LLM-ISVC controller.
+LLMD_KSERVE_CONTROLLER_DEPLOYMENTS: list[str] = [
+    "kserve-controller-manager",
+    "odh-model-controller",
+    "llmisvc-controller-manager",
+]
+
+
+def _verify_operator_csv(admin_client: DynamicClient, csv_prefix: str, namespace: str) -> None:
+    for csv in ClusterServiceVersion.get(client=admin_client, namespace=namespace):
+        if csv.name.startswith(csv_prefix) and csv.status == csv.Status.SUCCEEDED:
+            return
+    pytest.xfail(f"Operator CSV {csv_prefix} not found or not Succeeded in {namespace}")
+
+
+def verify_llmd_health(admin_client: DynamicClient, dsc_resource: Resource) -> None:
+    """Verify LLMD infrastructure dependencies are healthy.
+
+    Checks DSC condition, required operator CSVs, dependency and KServe controller
+    deployments, optional LeaderWorkerSetOperator CR (LWS is optional),
+    and Kuadrant CR.
+    """
+    # 1. DSC condition for LLMD dependencies
+    for condition in dsc_resource.instance.status.conditions:
+        if condition.type == LLMD_DSC_CONDITION:
+            if condition.status != "True":
+                pytest.xfail(
+                    f"{LLMD_DSC_CONDITION} is not ready: {condition.status}, reason: {condition.get('reason')}"
+                )
+            break
+    else:
+        pytest.xfail(f"{LLMD_DSC_CONDITION} condition not found in DSC status")
+
+    # 2. Operator CSVs
+    for csv_prefix, namespace in LLMD_REQUIRED_OPERATORS.items():
+        _verify_operator_csv(admin_client=admin_client, csv_prefix=csv_prefix, namespace=namespace)
+
+    # 3. Controller deployments
+    for name, namespace in LLMD_REQUIRED_DEPLOYMENTS.items():
+        deployment = Deployment(client=admin_client, name=name, namespace=namespace)
+        if not deployment.exists:
+            pytest.xfail(f"LLMD dependency deployment {name} not found in {namespace}")
+
+        dep_available = False
+        for condition in deployment.instance.status.get("conditions", []):
+            if condition.type == "Available":
+                if condition.status != "True":
+                    pytest.xfail(f"Deployment {name} in {namespace} is not Available: {condition.get('reason')}")
+                dep_available = True
+                break
+
+        if not dep_available:
+            pytest.xfail(f"Deployment {name} in {namespace} has no Available condition")
+
+    applications_namespace = py_config["applications_namespace"]
+    for name in LLMD_KSERVE_CONTROLLER_DEPLOYMENTS:
+        deployment = Deployment(client=admin_client, name=name, namespace=applications_namespace)
+        if not deployment.exists:
+            pytest.xfail(f"KServe/LLMD controller deployment {name} not found in {applications_namespace}")
+
+        kserve_dep_available = False
+        for condition in deployment.instance.status.get("conditions", []):
+            if condition.type == "Available":
+                if condition.status != "True":
+                    pytest.xfail(
+                        f"Deployment {name} in {applications_namespace} is not Available: {condition.get('reason')}"
+                    )
+                kserve_dep_available = True
+                break
+
+        if not kserve_dep_available:
+            pytest.xfail(f"Deployment {name} in {applications_namespace} has no Available condition")
+
+    # 4. LeaderWorkerSetOperator CR (optional)
+    lws_operator = LeaderWorkerSetOperator(client=admin_client, name="cluster")
+    if lws_operator.exists:
+        lws_available = False
+        for condition in lws_operator.instance.status.get("conditions", []):
+            if condition.type == "Available":
+                if condition.status != "True":
+                    pytest.xfail(f"LeaderWorkerSetOperator is not Available: {condition.get('reason')}")
+                lws_available = True
+                break
+
+        if not lws_available:
+            pytest.xfail("LeaderWorkerSetOperator has no Available condition")
+    else:
+        LOGGER.warning("LeaderWorkerSetOperator cluster CR not found; LWS is optional for LLMD (RHOAIENG-52057)")
+
+    # 5. Kuadrant CR
+    kuadrant = Kuadrant(client=admin_client, name="kuadrant", namespace="kuadrant-system")
+    if not kuadrant.exists:
+        pytest.xfail("Kuadrant 'kuadrant' CR not found")
+
+    LOGGER.info("LLMD component health check passed")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def llmd_health_check(
+    request: pytest.FixtureRequest,
+    admin_client: DynamicClient,
+    dsc_resource: Resource,
+) -> None:
+    """Session-scoped health gate for all LLMD tests.
+
+    Marks LLMD tests as xfail when required infrastructure dependencies are unhealthy
+    (see verify_llmd_health). Use --skip-llmd-health-check to disable.
+    """
+    if request.session.config.getoption("--skip-llmd-health-check"):
+        LOGGER.warning("Skipping LLMD health check, got --skip-llmd-health-check")
+        return
+
+    selected_markers = {mark.name for item in request.session.items for mark in item.iter_markers()}
+    if "component_health" in selected_markers:
+        LOGGER.info("Skipping LLMD health gate because selected tests include component_health marker")
+        return
+
+    verify_llmd_health(admin_client=admin_client, dsc_resource=dsc_resource)
+
 
 AuthEntry = namedtuple(typename="AuthEntry", field_names=["service", "token"])
 

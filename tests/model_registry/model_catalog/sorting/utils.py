@@ -77,6 +77,20 @@ def get_artifacts_with_sorting(
     return execute_get_command(url=base_url, headers=model_registry_rest_headers, params=params)
 
 
+def _postgres_collation_key(name: str) -> tuple[str, str]:
+    """Generate a sort key matching PostgreSQL's locale-aware collation.
+
+    PostgreSQL with a locale like en_US.UTF-8 treats punctuation as ignorable
+    at the primary comparison level. This function emulates that by producing a
+    tuple of (alphanumeric-only casefolded, full casefolded) for comparison.
+    Uses str.casefold() for proper Unicode casing and str.isalnum() to preserve
+    non-ASCII alphanumeric characters.
+    """
+    folded = name.casefold()
+    primary = "".join(ch for ch in folded if ch.isalnum())
+    return (primary, folded)
+
+
 def validate_items_sorted_correctly(items: list[dict], field: str, order: str) -> bool:
     """
     Extract field values and verify they're in correct order
@@ -117,8 +131,11 @@ def validate_items_sorted_correctly(items: list[dict], field: str, order: str) -
             # If conversion fails, fall back to string comparison
             values = [str(value) for value in values]
     elif field == "NAME":
-        # For NAME field, convert to lowercase for case-insensitive comparison
-        values = [str(value).lower() for value in values]
+        # For NAME field, use a collation key that matches PostgreSQL's locale-aware
+        # collation where punctuation (e.g. '.' and '-') is ignorable at the primary
+        # comparison level. The primary key strips non-alphanumeric characters; the
+        # secondary key (full lowercase string) acts as a tiebreaker.
+        values = [_postgres_collation_key(str(value)) for value in values]
 
     # Check if values are in correct order
     if order == "ASC":
@@ -517,14 +534,26 @@ def assert_model_sorting(
     sort_order: str | None,
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
+    source_label: str | None = None,
 ) -> None:
-    LOGGER.info(f"Testing models sorting: orderBy={order_by}, sortOrder={sort_order}")
+    LOGGER.info(f"Testing models sorting: orderBy={order_by}, sortOrder={sort_order}, source_label={source_label}")
 
     response = get_models_from_catalog_api(
         model_catalog_rest_url=model_catalog_rest_url,
         model_registry_rest_headers=model_registry_rest_headers,
         order_by=order_by,
         sort_order=sort_order,
+        source_label=source_label,
     )
 
-    assert validate_items_sorted_correctly(items=response["items"], field=order_by, order=sort_order)
+    items = response["items"]
+    field_map = {
+        "ID": "id",
+        "NAME": "name",
+        "CREATE_TIME": "createTimeSinceEpoch",
+        "LAST_UPDATE_TIME": "lastUpdateTimeSinceEpoch",
+    }
+    values = [item.get(field_map[order_by]) for item in items]
+    assert validate_items_sorted_correctly(items=items, field=order_by, order=sort_order), (
+        f"Items not sorted correctly by {order_by} {sort_order}. Values: {values}"
+    )

@@ -1,4 +1,5 @@
 DEFAULT_MCP_LABEL: str = "Red Hat"
+PARTNER_MCP_LABEL: str = "Red Hat Partners"
 
 EXPECTED_DEFAULT_MCP_CATALOG: dict = {
     "name": "Red Hat MCP Servers",
@@ -9,6 +10,41 @@ EXPECTED_DEFAULT_MCP_CATALOG: dict = {
         "yamlCatalogPath": "/shared-data/redhat-mcp-servers-catalog.yaml",
     },
     "labels": ["Red Hat"],
+}
+
+EXPECTED_PARTNER_MCP_CATALOG: dict = {
+    "name": "Red Hat Partner MCP Servers",
+    "id": "rh_partner_mcp_servers",
+    "type": "yaml",
+    "enabled": True,
+    "properties": {
+        "yamlCatalogPath": "/shared-data/partner-mcp-servers-catalog.yaml",
+    },
+    "labels": ["Red Hat Partners"],
+}
+
+EXPECTED_COMMUNITY_MCP_CATALOG: dict = {
+    "name": "Community MCP Servers",
+    "id": "community_mcp_servers",
+    "type": "yaml",
+    "enabled": True,
+    "properties": {
+        "yamlCatalogPath": "/shared-data/community-mcp-servers-catalog.yaml",
+    },
+}
+
+EXPECTED_REDHAT_MCP_LABEL_DEFINITION: dict = {
+    "name": "Red Hat",
+    "assetType": "mcp_servers",
+    "displayName": "Red Hat MCP servers",
+    "description": "Official Red Hat MCP servers with support.",
+}
+
+EXPECTED_PARTNER_MCP_LABEL_DEFINITION: dict = {
+    "name": "Red Hat Partners",
+    "assetType": "mcp_servers",
+    "displayName": "Red Hat Partner MCP servers",
+    "description": "A collection of Red Hat Partner MCP servers.",
 }
 
 CALCULATOR_SERVER_NAME: str = "calculator"
@@ -179,11 +215,17 @@ MCP_CATALOG_INVALID_SOURCE: dict = {
 
 NAMED_QUERIES: dict = {
     "production_ready": {
-        "verifiedSource": {"operator": "=", "value": True},
+        "assetType": "mcp_servers",
+        "filters": {
+            "verifiedSource": {"operator": "=", "value": True},
+        },
     },
     "security_focused": {
-        "sast": {"operator": "=", "value": True},
-        "readOnlyTools": {"operator": "=", "value": True},
+        "assetType": "mcp_servers",
+        "filters": {
+            "sast": {"operator": "=", "value": True},
+            "readOnlyTools": {"operator": "=", "value": True},
+        },
     },
 }
 

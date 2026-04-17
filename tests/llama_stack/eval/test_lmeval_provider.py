@@ -92,6 +92,7 @@ class TestLlamaStackLMEvalProvider:
     indirect=True,
 )
 @pytest.mark.rawdeployment
+@pytest.mark.skip_on_disconnected
 @pytest.mark.model_explainability
 class TestLlamaStackLMEvalCustomBenchmark:
     """
