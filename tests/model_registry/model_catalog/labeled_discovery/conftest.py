@@ -13,6 +13,7 @@ from tests.model_registry.model_catalog.labeled_discovery.utils import (
     TEST_SOURCE_BETA_ID,
     build_labeled_configmap_data,
     wait_for_deployment_args_contain,
+    wait_for_deployment_args_not_contain,
     wait_for_source_models_loaded,
 )
 from tests.model_registry.model_catalog.utils import wait_for_model_catalog_api
@@ -64,6 +65,15 @@ def labeled_configmap_alpha(
         )
         yield created_cm
 
+    LOGGER.info(f"Teardown: waiting for deployment to reconcile after deleting {cm_name}")
+    wait_for_deployment_args_not_contain(
+        admin_client=admin_client, namespace=model_registry_namespace, unwanted_substring=cm_name
+    )
+    wait_for_model_catalog_pod_ready_after_deletion(
+        client=admin_client, model_registry_namespace=model_registry_namespace
+    )
+    wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
+
 
 @pytest.fixture(scope="class")
 def labeled_configmap_beta(
@@ -107,3 +117,12 @@ def labeled_configmap_beta(
             source_id=TEST_SOURCE_BETA_ID,
         )
         yield created_cm
+
+    LOGGER.info(f"Teardown: waiting for deployment to reconcile after deleting {cm_name}")
+    wait_for_deployment_args_not_contain(
+        admin_client=admin_client, namespace=model_registry_namespace, unwanted_substring=cm_name
+    )
+    wait_for_model_catalog_pod_ready_after_deletion(
+        client=admin_client, model_registry_namespace=model_registry_namespace
+    )
+    wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
