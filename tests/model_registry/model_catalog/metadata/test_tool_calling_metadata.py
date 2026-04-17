@@ -3,7 +3,7 @@ from typing import Any, Self
 import pytest
 import structlog
 
-from tests.model_registry.model_catalog.constants import VALIDATED_CATALOG_ID
+from tests.model_registry.model_catalog.constants import REDHAT_AI_CATALOG_ID, VALIDATED_CATALOG_ID
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -90,3 +90,86 @@ class TestToolCallingMetadata:
             errors.append(f"Model '{model_name}' field 'tool_call_parser' is an empty string")
 
         assert not errors, f"Model '{model_name}' tool-calling metadata issues:\n" + "\n".join(errors)
+
+    def test_auto_tool_choice_flag_in_api_response(
+        self: Self,
+        randomly_picked_model_from_catalog_api_by_source: tuple[dict[Any, Any], str, str],
+    ):
+        """TC-API-003: Verify --enable-auto-tool-choice flag data in BFF API response."""
+        model_data, model_name, _ = randomly_picked_model_from_catalog_api_by_source
+
+        assert model_data.get("tool_calling_supported") is True, (
+            f"Model '{model_name}' must have tool_calling_supported=True"
+        )
+
+        errors: list[str] = []
+        auto_tool_choice_flag = "--enable-auto-tool-choice"
+
+        required_cli_args = model_data.get("required_cli_args", [])
+        has_flag_in_args = isinstance(required_cli_args, list) and auto_tool_choice_flag in required_cli_args
+        has_dedicated_field = "enable_auto_tool_choice" in model_data
+
+        if not has_flag_in_args and not has_dedicated_field:
+            errors.append(
+                f"Model '{model_name}': '{auto_tool_choice_flag}' not found in "
+                f"required_cli_args ({required_cli_args}) or as a dedicated field"
+            )
+
+        if has_flag_in_args:
+            idx = required_cli_args.index(auto_tool_choice_flag)
+            if idx + 1 < len(required_cli_args) and not required_cli_args[idx + 1].startswith("--"):
+                errors.append(
+                    f"Model '{model_name}': '{auto_tool_choice_flag}' should be a standalone boolean flag, "
+                    f"not followed by value '{required_cli_args[idx + 1]}'"
+                )
+
+        if has_dedicated_field:
+            field_value = model_data["enable_auto_tool_choice"]
+            if not isinstance(field_value, bool):
+                errors.append(
+                    f"Model '{model_name}': 'enable_auto_tool_choice' is not a bool: {type(field_value).__name__}"
+                )
+            elif field_value is not True:
+                errors.append(f"Model '{model_name}': 'enable_auto_tool_choice' is False for a tool-calling model")
+
+        assert not errors, f"Model '{model_name}' auto-tool-choice flag issues:\n" + "\n".join(errors)
+
+
+@pytest.mark.parametrize(
+    "randomly_picked_model_from_catalog_api_by_source",
+    [
+        pytest.param(
+            {"source": REDHAT_AI_CATALOG_ID, "header_type": "registry"},
+            id="random-non-tool-calling-model",
+        ),
+    ],
+    indirect=True,
+)
+class TestNonToolCallingModelExcludesAutoToolChoice:
+    """TC-API-003 (step 5): Non-tool-calling model must not include --enable-auto-tool-choice."""
+
+    def test_non_tool_calling_model_excludes_auto_tool_choice(
+        self: Self,
+        randomly_picked_model_from_catalog_api_by_source: tuple[dict[Any, Any], str, str],
+    ):
+        """TC-API-003 (step 5): Non-tool-calling model must not include --enable-auto-tool-choice."""
+        model_data, model_name, _ = randomly_picked_model_from_catalog_api_by_source
+
+        if model_data.get("tool_calling_supported") is True:
+            pytest.skip(f"Model '{model_name}' supports tool-calling; skipping negative test")
+
+        errors: list[str] = []
+
+        required_cli_args = model_data.get("required_cli_args", [])
+        if isinstance(required_cli_args, list) and "--enable-auto-tool-choice" in required_cli_args:
+            errors.append(
+                f"Model '{model_name}' has '--enable-auto-tool-choice' in 'required_cli_args' "
+                f"but tool_calling_supported is not True"
+            )
+
+        if model_data.get("enable_auto_tool_choice") is True:
+            errors.append(
+                f"Model '{model_name}' has 'enable_auto_tool_choice' set to True but tool_calling_supported is not True"
+            )
+
+        assert not errors, f"Model '{model_name}' auto-tool-choice issues:\n" + "\n".join(errors)
