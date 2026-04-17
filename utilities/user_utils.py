@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import logging
+import os
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -58,12 +59,16 @@ def create_htpasswd_file(username: str, password: str) -> tuple[Path, str]:
     Returns:
         Tuple of (temp file path, base64 encoded content)
     """
-    sha1_digest = hashlib.sha1(password.encode()).digest()
+    sha1_digest = hashlib.sha1(password.encode()).digest()  # noqa: S324 — ephemeral test users with random passwords; security of hash is irrelevant
     hashed = "{SHA}" + base64.b64encode(sha1_digest).decode()
     htpasswd_line = f"{username}:{hashed}\n"
 
-    temp_path = Path(tempfile.mkstemp(suffix=".htpasswd")[1])
-    temp_path.write_text(htpasswd_line)
+    fd, path = tempfile.mkstemp(suffix=".htpasswd")
+    try:
+        os.write(fd, htpasswd_line.encode())
+    finally:
+        os.close(fd)
+    temp_path = Path(path)
 
     htpasswd_b64 = base64.b64encode(htpasswd_line.encode()).decode()
     return temp_path, htpasswd_b64
