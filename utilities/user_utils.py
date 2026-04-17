@@ -1,10 +1,10 @@
 import base64
-import hashlib
 import logging
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+import bcrypt
 import requests
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.user import User
@@ -49,7 +49,7 @@ class UserTestSession:
 
 def create_htpasswd_file(username: str, password: str) -> tuple[Path, str]:
     """
-    Create an htpasswd file for a user using the {SHA} hash scheme.
+    Create an htpasswd file for a user using bcrypt hashing.
 
     Args:
         username: The username to add to the htpasswd file
@@ -58,8 +58,7 @@ def create_htpasswd_file(username: str, password: str) -> tuple[Path, str]:
     Returns:
         Tuple of (temp file path, base64 encoded content)
     """
-    sha1_digest = hashlib.sha1(password.encode()).digest()  # noqa: S324 — ephemeral test users with random passwords; security of hash is irrelevant
-    hashed = "{SHA}" + base64.b64encode(sha1_digest).decode()
+    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
     htpasswd_line = f"{username}:{hashed}\n"
 
     with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".htpasswd") as f:
