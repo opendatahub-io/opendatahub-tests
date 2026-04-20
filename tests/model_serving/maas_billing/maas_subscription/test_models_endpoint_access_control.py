@@ -5,7 +5,7 @@ import requests
 import structlog
 from ocp_resources.maas_subscription import MaaSSubscription
 
-from tests.model_serving.maas_billing.maas_subscription.utils import assert_models_response_for_subscription
+from tests.model_serving.maas_billing.maas_subscription.utils import fetch_and_assert_models_for_subscription
 from tests.model_serving.maas_billing.utils import build_maas_headers
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -37,15 +37,13 @@ class TestModelsEndpointAccessControl:
         maas_subscription_tinyllama_premium: MaaSSubscription,
     ) -> None:
         """Verify API key ignores client-injected X-MaaS-Subscription header."""
-        headers = build_maas_headers(token=api_key_bound_to_free_subscription)
-        headers["x-maas-subscription"] = maas_subscription_tinyllama_premium.name
-
-        response = request_session_http.get(url=models_url, headers=headers, timeout=30)
-
         expected_sub = maas_subscription_tinyllama_free.name
-        models = assert_models_response_for_subscription(
-            response=response,
+        models = fetch_and_assert_models_for_subscription(
+            session=request_session_http,
+            models_url=models_url,
+            token=api_key_bound_to_free_subscription,
             expected_subscription_name=expected_sub,
+            extra_headers={"x-maas-subscription": maas_subscription_tinyllama_premium.name},
         )
 
         LOGGER.info(
@@ -95,17 +93,12 @@ class TestModelsEndpointAccessControl:
         maas_subscription_tinyllama_free: MaaSSubscription,
     ) -> None:
         """Verify single subscription auto-selects without needing a header."""
-        headers = build_maas_headers(token=api_key_bound_to_free_subscription)
-
-        response = request_session_http.get(url=models_url, headers=headers, timeout=30)
-
         expected_sub = maas_subscription_tinyllama_free.name
-        models = assert_models_response_for_subscription(
-            response=response,
+        models = fetch_and_assert_models_for_subscription(
+            session=request_session_http,
+            models_url=models_url,
+            token=api_key_bound_to_free_subscription,
             expected_subscription_name=expected_sub,
         )
 
-        LOGGER.info(
-            f"[models] Single subscription auto-select -> {response.status_code} "
-            f"with {len(models)} model(s) from '{expected_sub}'"
-        )
+        LOGGER.info(f"[models] Single subscription auto-select — returned {len(models)} model(s) from '{expected_sub}'")

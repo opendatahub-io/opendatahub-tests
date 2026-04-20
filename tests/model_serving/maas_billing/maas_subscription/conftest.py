@@ -454,6 +454,13 @@ def api_key_for_deleted_subscription(
     LOGGER.info(f"api_key_for_deleted_subscription: subscription '{temp_sub_name}' deleted")
     yield api_key_plaintext
 
+    revoke_api_key(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        key_id=body["id"],
+        ocp_user_token=deleted_sub_service_account,
+    )
+
 
 @pytest.fixture(scope="class")
 def exhausted_token_quota(
@@ -466,7 +473,7 @@ def exhausted_token_quota(
     headers = build_maas_headers(token=api_key_bound_to_free_subscription)
     headers["x-maas-subscription"] = maas_subscription_tinyllama_free.name
 
-    max_requests = 20
+    max_requests = 10
     for attempt in range(max_requests):
         response = request_session_http.post(
             url=model_url_tinyllama_free,

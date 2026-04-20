@@ -212,6 +212,26 @@ def assert_models_response_for_subscription(
     return models
 
 
+def fetch_and_assert_models_for_subscription(
+    session: requests.Session,
+    models_url: str,
+    token: str,
+    expected_subscription_name: str,
+    extra_headers: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    """GET /v1/models and assert all returned models belong to the expected subscription."""
+    from tests.model_serving.maas_billing.utils import build_maas_headers
+
+    headers = build_maas_headers(token=token)
+    if extra_headers:
+        headers.update(extra_headers)
+    response = session.get(url=models_url, headers=headers, timeout=30)
+    return assert_models_response_for_subscription(
+        response=response,
+        expected_subscription_name=expected_subscription_name,
+    )
+
+
 def assert_model_info_schema(model: dict[str, Any]) -> None:
     """Assert a ModelInfo object from /v1/models has the expected structure and field types."""
     assert "id" in model, f"Missing 'id': {model}"
