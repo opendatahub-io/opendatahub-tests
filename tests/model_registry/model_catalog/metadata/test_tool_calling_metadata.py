@@ -1,138 +1,93 @@
+"""
+Tool-calling metadata tests for Model Catalog API (RHAISTRAT-1262, RHOAIENG-53375).
+
+IMPORTANT: These tests validate tool-calling metadata in the model README field, NOT as discrete JSON fields.
+"""
+
 from typing import Any, Self
 
 import pytest
-import structlog
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
 
 from tests.model_registry.model_catalog.constants import REDHAT_AI_CATALOG_ID, VALIDATED_CATALOG_ID
-
-LOGGER = structlog.get_logger(name=__name__)
-
-# TODO: Confirm this model name once tool-calling models are ingested into the validated catalog
-TOOL_CALLING_TARGET_MODELS: list[str] = [
-    "ibm-granite/granite-3.1-8b-instruct",
-]
+from tests.model_registry.utils import execute_get_call
 
 pytestmark = [
     pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace", "original_user")
 ]
 
 
-@pytest.mark.parametrize(
-    "randomly_picked_model_from_catalog_api_by_source",
-    [
-        pytest.param(
-            {"source": VALIDATED_CATALOG_ID, "model_name": model_name, "header_type": "registry"},
-            id=model_name.split("/")[-1],
-        )
-        for model_name in TOOL_CALLING_TARGET_MODELS
-    ],
-    indirect=True,
-)
 class TestToolCallingMetadata:
-    """Tests for tool-calling metadata fields in model catalog API (RHAISTRAT-1262)."""
+    """Tests for tool-calling metadata in model README (RHAISTRAT-1262, RHOAIENG-53375)."""
 
-    def test_tool_calling_metadata_fields_present(
+    def test_vllm_tool_calling_deployment_section(
         self: Self,
-        randomly_picked_model_from_catalog_api_by_source: tuple[dict[Any, Any], str, str],
+        tool_calling_model_readme: tuple[str, str],
     ):
-        """TC-API-001: Verify that tool-calling metadata fields are present and correctly typed for validated models."""
-        model_data, model_name, _ = randomly_picked_model_from_catalog_api_by_source
+        """TC-API-001 & TC-API-002: Verify vLLM tool-calling deployment documentation in README."""
+        readme, model_name = tool_calling_model_readme
         errors: list[str] = []
 
-        if "tool_calling_supported" not in model_data:
-            errors.append(f"Model '{model_name}' missing 'tool_calling_supported' field")
-        elif not isinstance(model_data["tool_calling_supported"], bool):
-            errors.append(
-                f"Model '{model_name}' field 'tool_calling_supported' is not a bool: "
-                f"{type(model_data['tool_calling_supported']).__name__}"
-            )
-        elif model_data["tool_calling_supported"] is not True:
-            errors.append(f"Model '{model_name}' field 'tool_calling_supported' is not True")
+        if "vLLM Deployment with Tool Calling" not in readme:
+            errors.append(f"Model '{model_name}' README missing 'vLLM Deployment with Tool Calling' section")
 
-        if "required_cli_args" not in model_data:
-            errors.append(f"Model '{model_name}' missing 'required_cli_args' field")
-        elif not isinstance(model_data["required_cli_args"], list):
-            errors.append(
-                f"Model '{model_name}' field 'required_cli_args' is not a list: "
-                f"{type(model_data['required_cli_args']).__name__}"
-            )
-        elif not model_data["required_cli_args"]:
-            errors.append(f"Model '{model_name}' field 'required_cli_args' is an empty list")
+        if "vllm serve" not in readme:
+            errors.append(f"Model '{model_name}' README missing 'vllm serve' command")
 
-        if "chat_template_path" not in model_data:
-            errors.append(f"Model '{model_name}' missing 'chat_template_path' field")
-        elif not isinstance(model_data["chat_template_path"], str):
-            errors.append(
-                f"Model '{model_name}' field 'chat_template_path' is not a str: "
-                f"{type(model_data['chat_template_path']).__name__}"
-            )
-        elif not model_data["chat_template_path"]:
-            errors.append(f"Model '{model_name}' field 'chat_template_path' is an empty string")
+        if "--tool-call-parser" not in readme:
+            errors.append(f"Model '{model_name}' README missing '--tool-call-parser' flag")
 
-        if "chat_template_file_name" not in model_data:
-            errors.append(f"Model '{model_name}' missing 'chat_template_file_name' field")
-        elif not isinstance(model_data["chat_template_file_name"], str):
-            errors.append(
-                f"Model '{model_name}' field 'chat_template_file_name' is not a str: "
-                f"{type(model_data['chat_template_file_name']).__name__}"
-            )
-        elif not model_data["chat_template_file_name"]:
-            errors.append(f"Model '{model_name}' field 'chat_template_file_name' is an empty string")
+        if "Tool Call Parser" not in readme:
+            errors.append(f"Model '{model_name}' README missing 'Tool Call Parser' section")
 
-        if "tool_call_parser" not in model_data:
-            errors.append(f"Model '{model_name}' missing 'tool_call_parser' field")
-        elif not isinstance(model_data["tool_call_parser"], str):
-            errors.append(
-                f"Model '{model_name}' field 'tool_call_parser' is not a str: "
-                f"{type(model_data['tool_call_parser']).__name__}"
-            )
-        elif not model_data["tool_call_parser"]:
-            errors.append(f"Model '{model_name}' field 'tool_call_parser' is an empty string")
+        if model_name not in readme:
+            errors.append(f"Model '{model_name}' README does not reference model name")
 
-        assert not errors, f"Model '{model_name}' tool-calling metadata issues:\n" + "\n".join(errors)
+        if "```bash" not in readme and "```" not in readme:
+            errors.append(f"Model '{model_name}' README missing code block formatting")
 
-    def test_auto_tool_choice_flag_in_api_response(
+        assert not errors, f"Model '{model_name}' vLLM deployment issues:\n" + "\n".join(errors)
+
+    def test_auto_tool_choice_flag_in_readme(
         self: Self,
-        randomly_picked_model_from_catalog_api_by_source: tuple[dict[Any, Any], str, str],
+        tool_calling_model_readme: tuple[str, str],
     ):
-        """TC-API-003: Verify --enable-auto-tool-choice flag data in BFF API response."""
-        model_data, model_name, _ = randomly_picked_model_from_catalog_api_by_source
+        """TC-API-003: Verify --enable-auto-tool-choice flag is documented in vLLM command."""
+        readme, model_name = tool_calling_model_readme
 
-        assert model_data.get("tool_calling_supported") is True, (
-            f"Model '{model_name}' must have tool_calling_supported=True"
+        assert "--enable-auto-tool-choice" in readme, (
+            f"Model '{model_name}' README missing '--enable-auto-tool-choice' flag"
         )
 
+    def test_chat_template_documentation(
+        self: Self,
+        tool_calling_model_readme: tuple[str, str],
+    ):
+        """TC-API-005 & TC-API-006: Verify chat template path and file name are documented in README."""
+        readme, model_name = tool_calling_model_readme
         errors: list[str] = []
-        auto_tool_choice_flag = "--enable-auto-tool-choice"
 
-        required_cli_args = model_data.get("required_cli_args", [])
-        has_flag_in_args = isinstance(required_cli_args, list) and auto_tool_choice_flag in required_cli_args
-        has_dedicated_field = "enable_auto_tool_choice" in model_data
+        # TC-API-005: Check that --chat-template flag is present
+        if "--chat-template" not in readme:
+            errors.append(f"Model '{model_name}' README missing '--chat-template' flag in vLLM command")
 
-        if not has_flag_in_args and not has_dedicated_field:
-            errors.append(
-                f"Model '{model_name}': '{auto_tool_choice_flag}' not found in "
-                f"required_cli_args ({required_cli_args}) or as a dedicated field"
-            )
+        # TC-API-005: Check for "Template path:" documentation
+        if "Template path:" not in readme:
+            errors.append(f"Model '{model_name}' README missing 'Template path:' documentation")
 
-        if has_flag_in_args:
-            idx = required_cli_args.index(auto_tool_choice_flag)
-            if idx + 1 < len(required_cli_args) and not required_cli_args[idx + 1].startswith("--"):
-                errors.append(
-                    f"Model '{model_name}': '{auto_tool_choice_flag}' should be a standalone boolean flag, "
-                    f"not followed by value '{required_cli_args[idx + 1]}'"
-                )
+        # TC-API-006: Check for "Chat template file:" documentation
+        if "Chat template file:" not in readme:
+            errors.append(f"Model '{model_name}' README missing 'Chat template file:' documentation")
 
-        if has_dedicated_field:
-            field_value = model_data["enable_auto_tool_choice"]
-            if not isinstance(field_value, bool):
-                errors.append(
-                    f"Model '{model_name}': 'enable_auto_tool_choice' is not a bool: {type(field_value).__name__}"
-                )
-            elif field_value is not True:
-                errors.append(f"Model '{model_name}': 'enable_auto_tool_choice' is False for a tool-calling model")
+        # TC-API-006: Verify .jinja file is referenced
+        if ".jinja" not in readme:
+            errors.append(f"Model '{model_name}' README missing .jinja file reference")
 
-        assert not errors, f"Model '{model_name}' auto-tool-choice flag issues:\n" + "\n".join(errors)
+        # TC-API-006: Check for Chat Template section header
+        if "### Chat Template" not in readme and "## Chat Template" not in readme:
+            errors.append(f"Model '{model_name}' README missing 'Chat Template' section header")
+
+        assert not errors, f"Model '{model_name}' chat template issues:\n" + "\n".join(errors)
 
 
 @pytest.mark.parametrize(
@@ -145,31 +100,74 @@ class TestToolCallingMetadata:
     ],
     indirect=True,
 )
-class TestNonToolCallingModelExcludesAutoToolChoice:
-    """TC-API-003 (step 5): Non-tool-calling model must not include --enable-auto-tool-choice."""
+class TestNonToolCallingModelMetadata:
+    """Tests for models without tool-calling support (RHAISTRAT-1262)."""
+
+    def test_non_tool_calling_model_readme_without_section(
+        self: Self,
+        randomly_picked_model_from_catalog_api_by_source: tuple[dict[Any, Any], str, str],
+    ):
+        """TC-API-004: Verify non-tool-calling model README does not include tool-calling section."""
+        model_data, model_name, _ = randomly_picked_model_from_catalog_api_by_source
+        readme = model_data["readme"]
+
+        # Skip if model actually supports tool-calling (based on README content)
+        if "vLLM Deployment with Tool Calling" in readme:
+            pytest.skip(f"Model '{model_name}' has tool-calling section in README; skipping negative test")
+
+        errors: list[str] = []
+
+        # Verify README does not contain tool-calling specific sections
+        if "--tool-call-parser" in readme:
+            errors.append(
+                f"Model '{model_name}' README contains '--tool-call-parser' but should not have tool-calling content"
+            )
+
+        if "Tool Call Parser" in readme:
+            errors.append(f"Model '{model_name}' README contains 'Tool Call Parser' section but should not")
+
+        assert not errors, f"Model '{model_name}' non-tool-calling README issues:\n" + "\n".join(errors)
 
     def test_non_tool_calling_model_excludes_auto_tool_choice(
         self: Self,
         randomly_picked_model_from_catalog_api_by_source: tuple[dict[Any, Any], str, str],
     ):
-        """TC-API-003 (step 5): Non-tool-calling model must not include --enable-auto-tool-choice."""
+        """TC-API-003: Non-tool-calling model README must not include --enable-auto-tool-choice."""
         model_data, model_name, _ = randomly_picked_model_from_catalog_api_by_source
+        readme = model_data["readme"]
 
-        if model_data.get("tool_calling_supported") is True:
-            pytest.skip(f"Model '{model_name}' supports tool-calling; skipping negative test")
+        if "vLLM Deployment with Tool Calling" in readme:
+            pytest.skip(f"Model '{model_name}' has tool-calling section in README; skipping negative test")
 
+        assert "--enable-auto-tool-choice" not in readme, (
+            f"Model '{model_name}' README contains '--enable-auto-tool-choice' flag but should not"
+        )
+
+
+class TestNonExistentModelError:
+    """TC-API-007: Error handling for non-existent model requests (RHAISTRAT-1262)."""
+
+    def test_nonexistent_model_returns_error(
+        self: Self,
+        model_catalog_rest_url: list[str],
+        model_registry_rest_headers: dict[str, str],
+    ):
+        """TC-API-007: Verify non-existent model request returns appropriate error."""
+        nonexistent_model_id = "nonexistent-model-v99"
+        url = f"{model_catalog_rest_url[0]}sources/{VALIDATED_CATALOG_ID}/models/{nonexistent_model_id}"
+
+        with pytest.raises(ResourceNotFoundError) as exc_info:
+            execute_get_call(url=url, headers=model_registry_rest_headers)
+
+        error_message = str(exc_info.value)
         errors: list[str] = []
 
-        required_cli_args = model_data.get("required_cli_args", [])
-        if isinstance(required_cli_args, list) and "--enable-auto-tool-choice" in required_cli_args:
-            errors.append(
-                f"Model '{model_name}' has '--enable-auto-tool-choice' in 'required_cli_args' "
-                f"but tool_calling_supported is not True"
-            )
+        if "404" not in error_message:
+            errors.append(f"Expected 404 status code in error, got: {error_message}")
 
-        if model_data.get("enable_auto_tool_choice") is True:
-            errors.append(
-                f"Model '{model_name}' has 'enable_auto_tool_choice' set to True but tool_calling_supported is not True"
-            )
+        sensitive_patterns = ["stack trace", "psql", "postgres", "password", "secret"]
+        for pattern in sensitive_patterns:
+            if pattern.lower() in error_message.lower():
+                errors.append(f"Error response may contain sensitive information: found '{pattern}'")
 
-        assert not errors, f"Model '{model_name}' auto-tool-choice issues:\n" + "\n".join(errors)
+        assert not errors, "Non-existent model error issues:\n" + "\n".join(errors)
