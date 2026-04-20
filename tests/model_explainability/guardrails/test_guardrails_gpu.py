@@ -65,7 +65,7 @@ from utilities.plugins.constant import OpenAIEnpoints
     ],
     indirect=True,
 )
-@pytest.mark.smoke
+@pytest.mark.tier1
 @pytest.mark.gpu
 @pytest.mark.rawdeployment
 @pytest.mark.usefixtures("patched_dsc_kserve_headed")

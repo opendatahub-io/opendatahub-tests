@@ -19,7 +19,7 @@ from utilities.guardrails import get_auth_headers
     ],
     indirect=True,
 )
-@pytest.mark.smoke
+@pytest.mark.tier1
 @pytest.mark.model_explainability
 class TestEvalHub:
     """Tests for basic EvalHub service health."""
