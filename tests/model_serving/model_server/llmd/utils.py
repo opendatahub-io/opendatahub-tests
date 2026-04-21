@@ -6,6 +6,7 @@ Follows the established model server utils pattern for consistency.
 """
 
 import json
+import time
 from pathlib import Path
 
 import structlog
@@ -427,6 +428,7 @@ def send_prefix_cache_requests(
     token: str,
     count: int = 20,
     min_ratio: float = 0.8,
+    delay_after_first_request: int | None = None,
 ) -> int:
     """Send identical requests for prefix cache testing. Returns success count."""
     LOGGER.info(f"Sending {count} identical requests to test prefix cache")
@@ -441,6 +443,11 @@ def send_prefix_cache_requests(
             )
             if status == 200:
                 successful += 1
+            if i == 0 and delay_after_first_request is not None and delay_after_first_request > 0:
+                LOGGER.info(
+                    f"Waiting {delay_after_first_request}s after first request for KV cache index propagation"
+                )
+                time.sleep(delay_after_first_request)
         except Exception:
             LOGGER.exception(f"Request {i + 1}/{count} failed")
     LOGGER.info(f"{successful}/{count} requests succeeded")
