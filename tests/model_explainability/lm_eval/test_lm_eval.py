@@ -231,3 +231,53 @@ def test_lmeval_gpu(
     )
 
     validate_lmeval_job_pod_and_logs(lmevaljob_pod=lmevaljob_gpu_pod)
+
+@pytest.mark.tier1
+@pytest.mark.rawdeployment
+@pytest.mark.pre_upgrade
+@pytest.mark.parametrize(
+    "model_namespace, lmevaljob_hf",
+    [
+        pytest.param(
+            {"name": "test-lmeval-lifecycle-upgrade"},
+            {"task_list": {"taskNames": ["arc_easy"]}},
+        ),
+    ],
+    indirect=True,
+)
+
+def test_lmeval_job_pod_lifecycle_pre(
+    admin_client,
+    model_namespace,
+    lmevaljob_hf_pod,
+):
+    """Verify LMEval job pod lifecycle before upgrade.
+
+    Ensures that an LMEvalJob created before the platform upgrade runs and completes successfully.
+    """
+    validate_lmeval_job_pod_and_logs(lmevaljob_hf_pod)
+
+
+@pytest.mark.tier1
+@pytest.mark.rawdeployment
+@pytest.mark.post_upgrade
+@pytest.mark.parametrize(
+    "model_namespace, lmevaljob_hf",
+    [
+        pytest.param(
+            {"name": "test-lmeval-lifecycle-upgrade"},
+            {"task_list": {"taskNames": ["arc_easy"]}},
+        ),
+    ],
+    indirect=True,
+)
+def test_lmeval_job_pod_lifecycle_post(
+    admin_client,
+    model_namespace,
+    lmevaljob_hf_pod,
+):
+    """Verify LMEval job pod lifecycle after upgrade.
+
+    Ensures that an LMEvalJob created after the platform upgrade runs and completes successfully.
+    """
+    validate_lmeval_job_pod_and_logs(lmevaljob_hf_pod)
