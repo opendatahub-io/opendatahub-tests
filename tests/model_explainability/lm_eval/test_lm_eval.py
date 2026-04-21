@@ -1,6 +1,7 @@
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 
@@ -29,6 +30,23 @@ TIER2_LMEVAL_TASKS: list[str] = list(
 )
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+@pytest.mark.smoke
+@pytest.mark.model_explainability
+def test_lmevaljob_crd_exists(
+    admin_client: DynamicClient,
+) -> None:
+    """Verify LMEvalJob CRD exists on the cluster."""
+    crd_name = "lmevaljobs.trustyai.opendatahub.io"
+
+    crd_resource = CustomResourceDefinition(
+        client=admin_client,
+        name=crd_name,
+        ensure_exists=True,
+    )
+
+    assert crd_resource.exists, f"CRD {crd_name} does not exist on the cluster"
 
 
 @pytest.mark.skip_on_disconnected
@@ -88,7 +106,7 @@ def test_lmeval_huggingface_model_tier2(admin_client, model_namespace, lmevaljob
     ],
     indirect=True,
 )
-@pytest.mark.smoke
+@pytest.mark.tier1
 def test_lmeval_local_offline_builtin_tasks_flan_arceasy(
     admin_client,
     model_namespace,
@@ -145,7 +163,7 @@ def test_lmeval_s3_storage(
     ],
     indirect=True,
 )
-@pytest.mark.smoke
+@pytest.mark.tier1
 def test_verify_lmeval_pod_images(lmevaljob_s3_offline_pod, trustyai_operator_configmap) -> None:
     """Test to verify LMEval pod images.
     Checks if the image tag from the ConfigMap is used within the Pod and if it's pinned using a sha256 digest.

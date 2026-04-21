@@ -51,8 +51,6 @@ from utilities.resources.llama_stack_distribution import LlamaStackDistribution
 
 LOGGER = structlog.get_logger(name=__name__)
 
-pytestmark = pytest.mark.skip_on_disconnected
-
 
 @pytest.fixture(scope="class")
 def distribution_name(pytestconfig: pytest.Config) -> str:
@@ -211,6 +209,10 @@ def llama_stack_server_config(
         # Enable sentence-transformers embedding model
         env_vars.append({"name": "ENABLE_SENTENCE_TRANSFORMERS", "value": "true"})
         env_vars.append({"name": "EMBEDDING_PROVIDER", "value": "sentence-transformers"})
+        # Explicitly set EMBEDDING_MODEL and EMBEDDING_PROVIDER_MODEL_ID.
+        # This overrides the default sentence-transformer model (nomic-embed-text-v1.5).
+        env_vars.append({"name": "EMBEDDING_MODEL", "value": "ibm-granite/granite-embedding-125m-english"})
+        env_vars.append({"name": "EMBEDDING_PROVIDER_MODEL_ID", "value": "ibm-granite/granite-embedding-125m-english"})
 
         if is_disconnected_cluster:
             # Workaround to fix sentence-transformer embeddings on disconnected (RHAIENG-1624)

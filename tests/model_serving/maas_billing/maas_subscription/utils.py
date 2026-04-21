@@ -10,13 +10,9 @@ import pytest
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.deployment import Deployment
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.maas_subscription import MaaSSubscription
-from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
-from ocp_resources.secret import Secret
-from ocp_resources.service import Service
 from timeout_sampler import TimeoutSampler
 
 from utilities.constants import (
@@ -28,13 +24,6 @@ from utilities.resources.auth import Auth
 
 LOGGER = structlog.get_logger(name=__name__)
 MAAS_SUBSCRIPTION_NAMESPACE = "models-as-a-service"
-MAAS_DB_NAMESPACE = "redhat-ods-applications"
-POSTGRES_DEPLOYMENT_NAME = "postgres"
-POSTGRES_SERVICE_NAME = "postgres"
-POSTGRES_CREDS_SECRET_NAME = "postgres-creds"  # pragma: allowlist secret
-MAAS_DB_CONFIG_SECRET_NAME = "maas-db-config"  # pragma: allowlist secret
-POSTGRES_IMAGE = "registry.redhat.io/rhel9/postgresql-15:latest"
-POSTGRES_READY_LOG_TEXT = "accepting connections"
 
 
 @contextmanager
@@ -193,246 +182,66 @@ def wait_for_auth_ready(auth: Auth, baseline_time: str, timeout: int = 60) -> No
             return
 
 
-def get_maas_postgres_labels() -> dict[str, str]:
-    return {
-        "app": "postgres",
-        "purpose": "poc",
-    }
-
-
-def get_maas_api_labels() -> dict[str, str]:
-    return {
-        "app": "maas-api",
-        "purpose": "poc",
-    }
-
-
-def get_maas_postgres_secret_objects(
-    client: DynamicClient,
-    namespace: str,
-    teardown_resources: bool,
-    postgres_user: str,
-    postgres_password: str,
-    postgres_db: str,
-) -> list[Secret]:
-    return [
-        Secret(
-            client=client,
-            name=POSTGRES_CREDS_SECRET_NAME,
-            namespace=namespace,
-            string_data={
-                "POSTGRES_USER": postgres_user,
-                "POSTGRES_PASSWORD": postgres_password,
-                "POSTGRES_DB": postgres_db,
-            },
-            label=get_maas_postgres_labels(),
-            type="Opaque",
-            teardown=teardown_resources,
+def assert_models_belong_to_subscription(
+    models: list[dict[str, Any]],
+    expected_subscription_name: str,
+) -> None:
+    """Assert every model in the list references the expected subscription."""
+    for model_entry in models:
+        assert "subscriptions" in model_entry, f"Model '{model_entry.get('id')}' missing 'subscriptions' field"
+        bound_sub_names = [sub["name"] for sub in model_entry["subscriptions"]]
+        assert expected_subscription_name in bound_sub_names, (
+            f"Model '{model_entry.get('id')}' should reference subscription "
+            f"'{expected_subscription_name}', got {bound_sub_names}"
         )
-    ]
 
 
-def get_maas_db_config_secret_objects(
-    client: DynamicClient,
-    namespace: str,
-    teardown_resources: bool,
-    postgres_user: str,
-    postgres_password: str,
-    postgres_db: str,
-) -> list[Secret]:
-    db_connection_url = (
-        f"postgresql://{postgres_user}:{postgres_password}@{POSTGRES_SERVICE_NAME}:5432/{postgres_db}?sslmode=disable"
+def assert_models_response_for_subscription(
+    response: requests.Response,
+    expected_subscription_name: str,
+) -> list[dict[str, Any]]:
+    """Assert a 200 /v1/models response contains models from the expected subscription."""
+    assert response.status_code == 200, f"Expected 200, got {response.status_code}: {(response.text or '')[:200]}"
+    data = response.json()
+    models: list[dict[str, Any]] = data.get("data") or []
+    assert len(models) >= 1, f"Expected at least 1 model, got {len(models)}"
+    assert_models_belong_to_subscription(
+        models=models,
+        expected_subscription_name=expected_subscription_name,
+    )
+    return models
+
+
+def fetch_and_assert_models_for_subscription(
+    session: requests.Session,
+    models_url: str,
+    token: str,
+    expected_subscription_name: str,
+    extra_headers: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    """GET /v1/models and assert all returned models belong to the expected subscription."""
+    from tests.model_serving.maas_billing.utils import build_maas_headers
+
+    headers = build_maas_headers(token=token)
+    if extra_headers:
+        headers.update(extra_headers)
+    response = session.get(url=models_url, headers=headers, timeout=30)
+    return assert_models_response_for_subscription(
+        response=response,
+        expected_subscription_name=expected_subscription_name,
     )
 
-    return [
-        Secret(
-            client=client,
-            name=MAAS_DB_CONFIG_SECRET_NAME,
-            namespace=namespace,
-            string_data={"DB_CONNECTION_URL": db_connection_url},
-            label=get_maas_api_labels(),
-            type="Opaque",
-            teardown=teardown_resources,
-        )
-    ]
 
-
-def get_maas_postgres_service_objects(
-    client: DynamicClient,
-    namespace: str,
-    teardown_resources: bool,
-) -> list[Service]:
-    return [
-        Service(
-            client=client,
-            name=POSTGRES_SERVICE_NAME,
-            namespace=namespace,
-            selector={"app": "postgres"},
-            ports=[
-                {
-                    "name": "postgres",
-                    "port": 5432,
-                    "protocol": "TCP",
-                    "targetPort": 5432,
-                }
-            ],
-            label=get_maas_postgres_labels(),
-            teardown=teardown_resources,
-        )
-    ]
-
-
-def get_maas_postgres_deployment_template_dict() -> dict[str, Any]:
-    return {
-        "metadata": {
-            "labels": get_maas_postgres_labels(),
-        },
-        "spec": {
-            "containers": [
-                {
-                    "name": "postgres",
-                    "image": POSTGRES_IMAGE,
-                    "env": [
-                        {
-                            "name": "POSTGRESQL_USER",
-                            "valueFrom": {
-                                "secretKeyRef": {
-                                    "name": POSTGRES_CREDS_SECRET_NAME,
-                                    "key": "POSTGRES_USER",
-                                }
-                            },
-                        },
-                        {
-                            "name": "POSTGRESQL_PASSWORD",
-                            "valueFrom": {
-                                "secretKeyRef": {
-                                    "name": POSTGRES_CREDS_SECRET_NAME,
-                                    "key": "POSTGRES_PASSWORD",
-                                }
-                            },
-                        },
-                        {
-                            "name": "POSTGRESQL_DATABASE",
-                            "valueFrom": {
-                                "secretKeyRef": {
-                                    "name": POSTGRES_CREDS_SECRET_NAME,
-                                    "key": "POSTGRES_DB",
-                                }
-                            },
-                        },
-                    ],
-                    "ports": [{"containerPort": 5432}],
-                    "volumeMounts": [{"name": "data", "mountPath": "/var/lib/pgsql/data"}],
-                    "resources": {
-                        "requests": {"memory": "256Mi", "cpu": "100m"},
-                        "limits": {"memory": "512Mi", "cpu": "500m"},
-                    },
-                    "readinessProbe": {
-                        "exec": {"command": ["/usr/libexec/check-container"]},
-                        "initialDelaySeconds": 5,
-                        "periodSeconds": 5,
-                    },
-                }
-            ],
-            "volumes": [{"name": "data", "emptyDir": {}}],
-        },
-    }
-
-
-def get_maas_postgres_deployment_objects(
-    client: DynamicClient,
-    namespace: str,
-    teardown_resources: bool,
-) -> list[Deployment]:
-    return [
-        Deployment(
-            client=client,
-            name=POSTGRES_DEPLOYMENT_NAME,
-            namespace=namespace,
-            label=get_maas_postgres_labels(),
-            replicas=1,
-            selector={"matchLabels": {"app": "postgres"}},
-            template=get_maas_postgres_deployment_template_dict(),
-            wait_for_resource=True,
-            teardown=teardown_resources,
-        )
-    ]
-
-
-def get_maas_postgres_resources(
-    client: DynamicClient,
-    namespace: str,
-    teardown_resources: bool,
-    postgres_user: str,
-    postgres_password: str,
-    postgres_db: str,
-) -> dict[Any, Any]:
-    return {
-        Secret: get_maas_postgres_secret_objects(
-            client=client,
-            namespace=namespace,
-            teardown_resources=teardown_resources,
-            postgres_user=postgres_user,
-            postgres_password=postgres_password,
-            postgres_db=postgres_db,
-        )
-        + get_maas_db_config_secret_objects(
-            client=client,
-            namespace=namespace,
-            teardown_resources=teardown_resources,
-            postgres_user=postgres_user,
-            postgres_password=postgres_password,
-            postgres_db=postgres_db,
-        ),
-        Service: get_maas_postgres_service_objects(
-            client=client,
-            namespace=namespace,
-            teardown_resources=teardown_resources,
-        ),
-        Deployment: get_maas_postgres_deployment_objects(
-            client=client,
-            namespace=namespace,
-            teardown_resources=teardown_resources,
-        ),
-    }
-
-
-def wait_for_postgres_deployment_ready(
-    admin_client: DynamicClient,
-    namespace: str = MAAS_DB_NAMESPACE,
-    timeout: int = 180,
-) -> None:
-    deployment = Deployment(
-        client=admin_client,
-        name=POSTGRES_DEPLOYMENT_NAME,
-        namespace=namespace,
-    )
-    deployment.wait_for_condition(condition="Available", status="True", timeout=timeout)
-
-
-def get_postgres_pod_in_namespace(
-    admin_client: DynamicClient,
-    namespace: str = MAAS_DB_NAMESPACE,
-) -> Pod:
-    postgres_pods = list(Pod.get(client=admin_client, namespace=namespace, label_selector="app=postgres"))
-    assert postgres_pods, f"No PostgreSQL pod found in namespace {namespace}"
-    return postgres_pods[0]
-
-
-def wait_for_postgres_connection_log(
-    admin_client: DynamicClient,
-    namespace: str = MAAS_DB_NAMESPACE,
-    timeout: int = 180,
-    sleep: int = 5,
-) -> None:
-    for _ in TimeoutSampler(wait_timeout=timeout, sleep=sleep, func=lambda: True):
-        postgres_pod = get_postgres_pod_in_namespace(admin_client=admin_client, namespace=namespace)
-        pod_log = postgres_pod.log(container="postgres")
-        if POSTGRES_READY_LOG_TEXT in pod_log:
-            LOGGER.info(f"PostgreSQL pod is accepting connections in namespace {namespace}")
-            return
-
-    raise TimeoutError(f"PostgreSQL pod in namespace {namespace} did not report accepting connections")
+def assert_model_info_schema(model: dict[str, Any]) -> None:
+    """Assert a ModelInfo object from /v1/models has the expected structure and field types."""
+    assert "id" in model, f"Missing 'id': {model}"
+    assert isinstance(model["id"], str), f"'id' must be string, got {type(model['id']).__name__}"
+    assert "object" in model, f"Missing 'object': {model}"
+    assert model["object"] == "model", f"Expected object='model', got {model['object']!r}"
+    assert "created" in model, f"Missing 'created': {model}"
+    assert isinstance(model["created"], int), f"'created' must be int, got {type(model['created']).__name__}"
+    assert "owned_by" in model, f"Missing 'owned_by': {model}"
+    assert isinstance(model["owned_by"], str), f"'owned_by' must be string, got {type(model['owned_by']).__name__}"
 
 
 def assert_subscription_info_schema(subscription: dict[str, Any]) -> None:

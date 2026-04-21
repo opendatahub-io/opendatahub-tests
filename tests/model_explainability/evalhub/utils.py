@@ -1,6 +1,9 @@
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.config_map import ConfigMap
+from ocp_resources.job import Job
+from ocp_resources.role_binding import RoleBinding
 from ocp_resources.service_account import ServiceAccount
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
@@ -8,7 +11,15 @@ from tests.model_explainability.evalhub.constants import (
     EVALHUB_COLLECTIONS_PATH,
     EVALHUB_HEALTH_PATH,
     EVALHUB_HEALTH_STATUS_HEALTHY,
+    EVALHUB_JOB_CONFIG_CLUSTERROLE,
     EVALHUB_JOBS_PATH,
+    EVALHUB_JOBS_WRITER_CLUSTERROLE,
+    EVALHUB_K8S_LABEL_APP,
+    EVALHUB_K8S_LABEL_APP_VALUE,
+    EVALHUB_K8S_LABEL_COMPONENT,
+    EVALHUB_K8S_LABEL_COMPONENT_VALUE,
+    EVALHUB_K8S_LABEL_JOB_ID,
+    EVALHUB_MT_CR_NAME,
     EVALHUB_PROVIDERS_PATH,
     EVALHUB_VLLM_EMULATOR_PORT,
     GARAK_JOB_POLL_INTERVAL,
@@ -470,12 +481,24 @@ def delete_evalhub_job(
     ca_bundle_file: str,
     tenant: str,
     job_id: str,
+    *,
+    hard_delete: bool | None = None,
 ) -> requests.Response:
-    """Delete (cancel) an evaluation job. Returns the full HTTP response."""
+    """Delete (cancel) an evaluation job. Returns the full HTTP response.
+
+    Args:
+        hard_delete: When ``True``, pass ``hard_delete=true`` (remove API record).
+            When ``False``, pass ``hard_delete=false`` (soft cancel). When ``None``,
+            omit the query param (server default: soft cancel).
+    """
     url = f"https://{host}{EVALHUB_JOBS_PATH}/{job_id}"
+    params: dict[str, str] | None = None
+    if hard_delete is not None:
+        params = {"hard_delete": "true" if hard_delete else "false"}
     return requests.delete(
         url=url,
         headers=build_headers(token=token, tenant=tenant),
+        params=params,
         verify=ca_bundle_file,
         timeout=10,
     )
@@ -537,6 +560,137 @@ def validate_evalhub_delete_no_tenant(
 # ---------------------------------------------------------------------------
 # Shared job and collection payloads
 # ---------------------------------------------------------------------------
+
+
+def post_evalhub_job_raw(
+    host: str,
+    token: str,
+    ca_bundle_file: str,
+    tenant: str,
+    payload: dict,
+) -> requests.Response:
+    """POST /evaluations/jobs without asserting status (caller handles 202 vs errors)."""
+    url = f"https://{host}{EVALHUB_JOBS_PATH}"
+    return requests.post(
+        url=url,
+        headers=build_headers(token=token, tenant=tenant),
+        json=payload,
+        verify=ca_bundle_file,
+        timeout=30,
+    )
+
+
+def get_evalhub_job_http(
+    host: str,
+    token: str,
+    ca_bundle_file: str,
+    tenant: str,
+    job_id: str,
+) -> requests.Response:
+    """GET a single evaluation job by id."""
+    url = f"https://{host}{EVALHUB_JOBS_PATH}/{job_id}"
+    return requests.get(
+        url=url,
+        headers=build_headers(token=token, tenant=tenant),
+        verify=ca_bundle_file,
+        timeout=10,
+    )
+
+
+def evalhub_runtime_label_selector(evalhub_job_id: str) -> str:
+    """Label selector for batch Jobs and spec ConfigMaps created for one EvalHub job id."""
+    return (
+        f"{EVALHUB_K8S_LABEL_APP}={EVALHUB_K8S_LABEL_APP_VALUE},"
+        f"{EVALHUB_K8S_LABEL_COMPONENT}={EVALHUB_K8S_LABEL_COMPONENT_VALUE},"
+        f"{EVALHUB_K8S_LABEL_JOB_ID}={evalhub_job_id}"
+    )
+
+
+def wait_for_evalhub_runtime_job_count(
+    admin_client: DynamicClient,
+    namespace: str,
+    evalhub_job_id: str,
+    *,
+    minimum: int,
+    timeout: int = 180,
+    sleep: int = 5,
+) -> list[Job]:
+    """Wait until at least ``minimum`` batch Jobs exist for the EvalHub logical job id."""
+    selector = evalhub_runtime_label_selector(evalhub_job_id=evalhub_job_id)
+
+    def list_jobs() -> list[Job]:
+        return list(
+            Job.get(
+                client=admin_client,
+                namespace=namespace,
+                label_selector=selector,
+            )
+        )
+
+    for jobs in TimeoutSampler(wait_timeout=timeout, sleep=sleep, func=list_jobs):
+        if len(jobs) >= minimum:
+            return jobs
+    raise TimeoutExpiredError(
+        f"Expected at least {minimum} batch Job(s) for evalhub job_id={evalhub_job_id} in {namespace}"
+    )
+
+
+def wait_for_evalhub_runtime_resources_absent(
+    admin_client: DynamicClient,
+    namespace: str,
+    evalhub_job_id: str,
+    *,
+    timeout: int = 180,
+    sleep: int = 5,
+) -> None:
+    """Wait until no batch Job or spec ConfigMap remains for the EvalHub job id."""
+    selector = evalhub_runtime_label_selector(evalhub_job_id=evalhub_job_id)
+
+    def count_runtime_objects() -> tuple[int, int]:
+        jobs = list(Job.get(client=admin_client, namespace=namespace, label_selector=selector))
+        cms = list(ConfigMap.get(client=admin_client, namespace=namespace, label_selector=selector))
+        return len(jobs), len(cms)
+
+    for job_count, cm_count in TimeoutSampler(wait_timeout=timeout, sleep=sleep, func=count_runtime_objects):
+        if job_count == 0 and cm_count == 0:
+            return
+    raise TimeoutExpiredError(
+        f"Timed out waiting for runtime Job/ConfigMap cleanup for job_id={evalhub_job_id} in {namespace}"
+    )
+
+
+def build_evalhub_multi_benchmark_job_payload(
+    model_service_name: str,
+    tenant_namespace: str,
+    job_name: str = "evalhub-mt-multibench-job",
+) -> dict:
+    """Two lm_evaluation_harness benchmarks with different parameters (distinct job.json mapping)."""
+    model_url = f"http://{model_service_name}.{tenant_namespace}.svc.cluster.local:{EVALHUB_VLLM_EMULATOR_PORT}/v1"
+    return {
+        "name": job_name,
+        "model": {
+            "url": model_url,
+            "name": "emulatedModel",
+        },
+        "benchmarks": [
+            {
+                "id": "arc_easy",
+                "provider_id": "lm_evaluation_harness",
+                "parameters": {
+                    "num_examples": 8,
+                    "tokenizer": "google/flan-t5-small",
+                },
+            },
+            {
+                "id": "arc_easy",
+                "provider_id": "lm_evaluation_harness",
+                "parameters": {
+                    "num_examples": 3,
+                    "tokenizer": "google/flan-t5-small",
+                },
+            },
+        ],
+    }
 
 
 def build_evalhub_job_payload(
@@ -601,6 +755,59 @@ def submit_evalhub_collection(
         verify=ca_bundle_file,
         timeout=30,
     )
+
+
+# ---------------------------------------------------------------------------
+# Tenant RBAC readiness check
+# ---------------------------------------------------------------------------
+
+
+def tenant_rbac_ready(admin_client: DynamicClient, namespace: str) -> bool:
+    """Check if the operator has provisioned job RBAC for the test EvalHub instance.
+
+    Matches by roleRef ClusterRole name rather than RoleBinding name substrings,
+    because long namespace names cause normalizeDNS1123LabelValue to truncate
+    the "job-config"/"job-writer" suffix out of the RoleBinding name.
+
+    Also waits for the operator-created ServiceAccount (name contains "job") and
+    service CA ConfigMap (name contains "service-ca") to be present.
+    """
+    rbs = list(RoleBinding.get(client=admin_client, namespace=namespace))
+    has_job_config = any(
+        rb.instance.roleRef.name == EVALHUB_JOB_CONFIG_CLUSTERROLE and rb.name.startswith(EVALHUB_MT_CR_NAME)
+        for rb in rbs
+    )
+    has_job_writer = any(
+        rb.instance.roleRef.name == EVALHUB_JOBS_WRITER_CLUSTERROLE and rb.name.startswith(EVALHUB_MT_CR_NAME)
+        for rb in rbs
+    )
+    sas = list(ServiceAccount.get(client=admin_client, namespace=namespace))
+    has_job_sa = any(sa.name.startswith(EVALHUB_MT_CR_NAME) and "job" in sa.name for sa in sas)
+    cms = list(ConfigMap.get(client=admin_client, namespace=namespace))
+    has_service_ca_cm = any(cm.name.startswith(EVALHUB_MT_CR_NAME) and "service-ca" in cm.name for cm in cms)
+    return has_job_config and has_job_writer and has_job_sa and has_service_ca_cm
+
+
+def tenant_rbac_absent(admin_client: DynamicClient, namespace: str) -> bool:
+    """Check that all operator-managed RBAC resources have been removed.
+
+    Returns True only when both RoleBindings, the job ServiceAccount,
+    and the service-CA ConfigMap are all gone.
+    """
+    rbs = list(RoleBinding.get(client=admin_client, namespace=namespace))
+    has_job_config = any(
+        rb.instance.roleRef.name == EVALHUB_JOB_CONFIG_CLUSTERROLE and rb.name.startswith(EVALHUB_MT_CR_NAME)
+        for rb in rbs
+    )
+    has_job_writer = any(
+        rb.instance.roleRef.name == EVALHUB_JOBS_WRITER_CLUSTERROLE and rb.name.startswith(EVALHUB_MT_CR_NAME)
+        for rb in rbs
+    )
+    sas = list(ServiceAccount.get(client=admin_client, namespace=namespace))
+    has_job_sa = any(sa.name.startswith(EVALHUB_MT_CR_NAME) and "job" in sa.name for sa in sas)
+    cms = list(ConfigMap.get(client=admin_client, namespace=namespace))
+    has_service_ca_cm = any(cm.name.startswith(EVALHUB_MT_CR_NAME) and "service-ca" in cm.name for cm in cms)
+    return not has_job_config and not has_job_writer and not has_job_sa and not has_service_ca_cm
 
 
 # ---------------------------------------------------------------------------

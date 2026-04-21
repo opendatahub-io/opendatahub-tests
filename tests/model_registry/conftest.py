@@ -491,6 +491,12 @@ def pytest_collection_modifyitems(items: list[Item], config: pytest.Config) -> N
             if "test_huggingface_source" in item.keywords and "test_skip_on_huggingface_source" in item.keywords:
                 deselected.append(item)
                 continue
+            if (
+                "test_postgres_network_policy_only" in item.keywords
+                and callspec.params.get("model_catalog_network_policy") == "model-catalog-https-route"
+            ):
+                deselected.append(item)
+                continue
         remaining.append(item)
 
     if deselected:
