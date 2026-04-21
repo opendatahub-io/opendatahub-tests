@@ -27,7 +27,7 @@ class TestOIDCTokenFlow:
     """
 
     @pytest.mark.smoke
-    @pytest.mark.usefixtures("minimal_subscription_for_free_user")
+    @pytest.mark.usefixtures("oidc_subscription")
     def test_oidc_token_creates_api_key(
         self,
         oidc_minted_api_key: dict[str, Any],

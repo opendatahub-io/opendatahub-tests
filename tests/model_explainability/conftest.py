@@ -8,6 +8,7 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from pytest_testconfig import config as py_config
 
+from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import TRUSTYAI_SERVICE_NAME
 
 
@@ -36,3 +37,11 @@ def trustyai_operator_configmap(
         name=f"{TRUSTYAI_SERVICE_NAME}-operator-config",
         ensure_exists=True,
     )
+
+
+@pytest.fixture(scope="class")
+def openshift_ca_bundle_file(
+    admin_client: DynamicClient,
+) -> str:
+    """Create CA bundle file for HTTPS verification."""
+    return create_ca_bundle_file(client=admin_client)
