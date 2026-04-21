@@ -232,6 +232,7 @@ def test_lmeval_gpu(
 
     validate_lmeval_job_pod_and_logs(lmevaljob_pod=lmevaljob_gpu_pod)
 
+
 @pytest.mark.tier1
 @pytest.mark.rawdeployment
 @pytest.mark.pre_upgrade
@@ -245,7 +246,6 @@ def test_lmeval_gpu(
     ],
     indirect=True,
 )
-
 def test_lmeval_job_pod_lifecycle_pre(
     admin_client,
     model_namespace,
