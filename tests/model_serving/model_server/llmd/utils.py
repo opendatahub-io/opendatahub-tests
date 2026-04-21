@@ -444,9 +444,7 @@ def send_prefix_cache_requests(
             if status == 200:
                 successful += 1
             if i == 0 and delay_after_first_request is not None and delay_after_first_request > 0:
-                LOGGER.info(
-                    f"Waiting {delay_after_first_request}s after first request for KV cache index propagation"
-                )
+                LOGGER.info(f"Waiting {delay_after_first_request}s after first request for KV cache index propagation")
                 time.sleep(delay_after_first_request)
         except Exception:
             LOGGER.exception(f"Request {i + 1}/{count} failed")
