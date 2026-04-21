@@ -424,6 +424,7 @@ def use_unprivileged_client(pytestconfig: pytest.Config) -> bool:
 def non_admin_user_password(
     admin_client: DynamicClient, use_unprivileged_client: bool, is_byoidc: bool
 ) -> tuple[str, str] | None:
+    print("####################################\n\n non_admin_user_password \n\n####################################")
     def _decode_split_data(_data: str) -> list[str]:
         return base64.b64decode(_data).decode().split(",")
 
@@ -495,20 +496,29 @@ def unprivileged_client(
         raise ValueError("Unprivileged user not provisioned")
 
     elif is_byoidc:
+        print("####################################\n\n unprivileged_client \n\n####################################")
         tokens = get_oidc_tokens(admin_client, non_admin_user_password[0], non_admin_user_password[1])
         issuer = get_byoidc_issuer_url(admin_client)
 
         with open(kubconfig_filepath) as fd:
             kubeconfig_content = yaml.safe_load(fd)
 
-        # create the oidc user config
+        # extract client-id from existing admin kubeconfig if available, otherwise default
+        existing_users = kubeconfig_content.get("users", [])
+        client_id = "oc-cli"
+        for u in existing_users:
+            auth_config = u.get("user", {}).get("auth-provider", {}).get("config", {})
+            if auth_config.get("client-id"):
+                client_id = auth_config["client-id"]
+                break
+
         user = {
             "name": non_admin_user_password[0],
             "user": {
                 "auth-provider": {
                     "name": "oidc",
                     "config": {
-                        "client-id": "oc-cli",
+                        "client-id": client_id,
                         "client-secret": "",
                         "idp-issuer-url": issuer,
                         "id-token": tokens[0],

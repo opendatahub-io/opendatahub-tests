@@ -61,6 +61,7 @@ def model_registry_group_with_user(
     """
     Fixture to manage a test user in a specified group.
     Adds the user to the group before the test, then removes them after.
+    For BYOIDC, the user's group comes from the OIDC token (e.g., Entra group UUID).
 
     Args:
         admin_client: The admin client for accessing the cluster
@@ -70,7 +71,7 @@ def model_registry_group_with_user(
         Group: The group with the test user added
     """
     if is_byoidc:
-        # this is no op. byoidc already has a group with user model-registry-user
+        # no-op for byoidc — group membership comes from the OIDC token
         yield
     else:
         group_name = f"{MR_INSTANCE_NAME}-users"

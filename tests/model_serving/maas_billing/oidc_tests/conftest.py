@@ -24,7 +24,7 @@ from tests.model_serving.maas_billing.utils import (
 from utilities.general import generate_random_name
 from utilities.resources.auth_policy import AuthPolicy
 from utilities.resources.models_as_service import ModelsAsService
-from utilities.user_utils import get_byoidc_issuer_url
+from utilities.user_utils import get_byoidc_issuer_url, get_oidc_token_endpoint
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -36,7 +36,7 @@ def oidc_auth_policy_patched(
 ) -> Generator[None, Any, Any]:
     """Enable OIDC on the ModelsAsService CR so the operator patches the AuthPolicy."""
     if not is_byoidc:
-        pytest.skip("External OIDC tests require a byoidc cluster with Keycloak")
+        pytest.skip("External OIDC tests require a byoidc cluster")
 
     oidc_issuer_url = get_byoidc_issuer_url(admin_client=admin_client)
     LOGGER.info(f"oidc_auth_policy_patched: enabling externalOIDC with issuer '{oidc_issuer_url}'")
@@ -163,9 +163,9 @@ def oidc_second_user_credentials(
 def oidc_token_endpoint(
     admin_client: DynamicClient,
 ) -> str:
-    """Resolve the Keycloak token endpoint URL from the cluster's OIDC issuer."""
+    """Resolve the token endpoint URL from the cluster's OIDC issuer via well-known discovery."""
     oidc_issuer_url = get_byoidc_issuer_url(admin_client=admin_client)
-    return f"{oidc_issuer_url}/protocol/openid-connect/token"
+    return get_oidc_token_endpoint(oidc_issuer_url)
 
 
 @pytest.fixture(scope="class")

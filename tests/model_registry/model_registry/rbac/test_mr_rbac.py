@@ -34,7 +34,7 @@ from tests.model_registry.model_registry.rbac.utils import (
     grant_mr_access,
     revoke_mr_access,
 )
-from tests.model_registry.utils import get_endpoint_from_mr_service, get_mr_service_by_label, get_mr_user_token
+from tests.model_registry.utils import get_byoidc_user_credentials, get_endpoint_from_mr_service, get_mr_service_by_label, get_mr_user_token
 from utilities.constants import Protocols
 from utilities.infra import get_openshift_token
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
@@ -92,17 +92,17 @@ class TestUserPermission:
         1. After adding the user to the appropriate group, they gain access
         """
         # Wait for access to be granted
-        # Create a copy to avoid mutating the shared fixture
-        creds_copy = user_credentials_rbac.copy()
-        creds_copy["username"] = "mr-user1"
+        if is_byoidc:
+            mr_user1_creds = get_byoidc_user_credentials(client=admin_client, username="mr-user1")
+            token = get_mr_user_token(admin_client=admin_client, user_credentials_rbac=mr_user1_creds)
+        else:
+            token = get_openshift_token()
         sampler = TimeoutSampler(
             wait_timeout=240,
             sleep=5,
             func=assert_positive_mr_registry,
             model_registry_instance_rest_endpoint=model_registry_instance_rest_endpoint[0],
-            token=get_openshift_token()
-            if not is_byoidc
-            else get_mr_user_token(admin_client=admin_client, user_credentials_rbac=creds_copy),
+            token=token,
         )
         for _ in sampler:
             break  # Break after first successful iteration
@@ -148,15 +148,13 @@ class TestUserPermission:
         2. The user can access the Model Registry after being granted access
         """
         if is_byoidc:
-            # Create a copy to avoid mutating the shared fixture
-            creds_copy = user_credentials_rbac.copy()
-            creds_copy["username"] = "mr-non-admin"
+            mr_non_admin_creds = get_byoidc_user_credentials(client=admin_client, username="mr-non-admin")
             sampler = TimeoutSampler(
                 wait_timeout=120,
                 sleep=5,
                 func=assert_positive_mr_registry,
                 model_registry_instance_rest_endpoint=model_registry_instance_rest_endpoint[0],
-                token=get_mr_user_token(admin_client=admin_client, user_credentials_rbac=creds_copy),
+                token=get_mr_user_token(admin_client=admin_client, user_credentials_rbac=mr_non_admin_creds),
             )
             for _ in sampler:
                 break  # Break after first successful iteration
