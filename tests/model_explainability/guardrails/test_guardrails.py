@@ -1,5 +1,7 @@
 import pytest
 import yaml
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from simple_logger.logger import get_logger
 
 from tests.model_explainability.guardrails.constants import (
@@ -41,6 +43,23 @@ PROMPT_INJECTION_DETECTOR: str = "prompt-injection-detector"
 HAP_DETECTOR: str = "hap-detector"
 
 
+@pytest.mark.smoke
+@pytest.mark.model_explainability
+def test_guardrailsorchestrator_crd_exists(
+    admin_client: DynamicClient,
+) -> None:
+    """Verify GuardrailsOrchestrator CRD exists on the cluster."""
+    crd_name = "guardrailsorchestrators.trustyai.opendatahub.io"
+
+    crd_resource = CustomResourceDefinition(
+        client=admin_client,
+        name=crd_name,
+        ensure_exists=True,
+    )
+
+    assert crd_resource.exists, f"CRD {crd_name} does not exist on the cluster"
+
+
 @pytest.mark.parametrize(
     "model_namespace, orchestrator_config, guardrails_orchestrator",
     [
@@ -59,7 +78,7 @@ HAP_DETECTOR: str = "hap-detector"
     ],
     indirect=True,
 )
-@pytest.mark.smoke
+@pytest.mark.tier1
 def test_validate_guardrails_orchestrator_images(
     orchestrator_config, guardrails_orchestrator_pod, trustyai_operator_configmap
 ):
@@ -117,7 +136,7 @@ def test_validate_guardrails_orchestrator_images(
     ],
     indirect=True,
 )
-@pytest.mark.smoke
+@pytest.mark.tier1
 @pytest.mark.rawdeployment
 @pytest.mark.usefixtures("guardrails_gateway_config")
 class TestGuardrailsOrchestratorWithBuiltInDetectors:
