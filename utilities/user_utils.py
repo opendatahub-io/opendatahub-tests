@@ -63,7 +63,7 @@ def create_htpasswd_file(username: str, password: str) -> tuple[Path, str]:
 
     with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".htpasswd") as f:
         f.write(htpasswd_line)
-        temp_path = Path(f.name)
+        temp_path = Path(f.name)  # noqa: FCN001
 
     htpasswd_b64 = base64.b64encode(htpasswd_line.encode()).decode()
     return temp_path, htpasswd_b64
