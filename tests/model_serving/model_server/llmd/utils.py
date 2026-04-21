@@ -21,6 +21,7 @@ from timeout_sampler import TimeoutExpiredError, retry
 from utilities.certificates_utils import get_ca_bundle
 from utilities.constants import Timeout
 from utilities.infra import is_disconnected_cluster
+from utilities.jira import is_jira_issue_open
 from utilities.llmd_constants import LLMDGateway, LLMEndpoint
 from utilities.monitoring import get_metrics_value
 
@@ -484,3 +485,36 @@ def get_scheduler_decision_logs(
 
     LOGGER.info(f"Retrieved {len(json_logs)} logs from router-scheduler pod")
     return json_logs
+
+
+def workaround_503_no_healthy_upstream(llmisvc: LLMInferenceService, prompt: str) -> None:
+    """Warm up inference endpoint to work around RHOAIENG-55154.
+
+    Requests soon after Ready condition may 503 with 'no healthy upstream'.
+    Retries every 3s for up to 30s until the endpoint stops returning 503.
+    Swallows TimeoutExpiredError if retries are exhausted, letting the real test assertion decide.
+    Skips entirely if the Jira issue is closed (result is cached).
+
+    See: https://redhat.atlassian.net/browse/RHOAIENG-55154
+
+    Args:
+        llmisvc: The LLMInferenceService to warm up
+        prompt: The prompt to send in the warm up request
+    """
+    if not is_jira_issue_open(jira_id="RHOAIENG-55154"):
+        LOGGER.info("RHOAIENG-55154 is closed - remove this block")
+        return
+
+    try:
+        _send_warm_up_request(llmisvc=llmisvc, prompt=prompt)
+    except TimeoutExpiredError:
+        LOGGER.warning(f"RHOAIENG-55154: warm up retries exhausted for {llmisvc.name}")
+
+
+@retry(wait_timeout=30, sleep=3)
+def _send_warm_up_request(llmisvc: LLMInferenceService, prompt: str) -> bool:
+    """Send one warm-up request; return True to stop retrying, False to retry."""
+    LOGGER.info(f"RHOAIENG-55154: sending warm up request to {llmisvc.name}")
+    status, body = send_chat_completions(llmisvc=llmisvc, prompt=prompt)
+    LOGGER.info(f"RHOAIENG-55154: warm up returned {status}")
+    return not (status == 503 and "no healthy upstream" in body)

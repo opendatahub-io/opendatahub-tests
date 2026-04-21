@@ -30,6 +30,12 @@ model_explainability/
 │   ├── test_lm_eval.py                  # HuggingFace, offline, vLLM, S3 tests
 │   └── utils.py
 │
+├── nemo_guardrails/                     # NeMo Guardrails tests
+│   ├── conftest.py                      # NeMo CR, ConfigMap, Secret fixtures
+│   ├── constants.py                     # Test data, entity types, policies
+│   ├── test_nemo_guardrails.py          # API, chat/completions, guardrail/checks, multi-server tests
+│   ├── utils.py                         # Config generation, request helpers
+│
 ├── trustyai_operator/                   # TrustyAI Operator validation
 │   ├── test_trustyai_operator.py        # Operator image validation
 │   └── utils.py
@@ -65,6 +71,7 @@ model_explainability/
 - **`evalhub/`** - EvalHub service health endpoint validation via kube-rbac-proxy
 - **`guardrails/`** - Guardrails Orchestrator tests with built-in regex detectors (PII), HuggingFace detectors (prompt injection, HAP), auto-configuration, and gateway routing. Includes OpenTelemetry/Tempo trace integration
 - **`lm_eval/`** - Language Model Evaluation tests covering HuggingFace models, local/offline tasks, vLLM integration, S3 storage, and OCI registry artifacts
+- **`nemo_guardrails/`** - NeMo Guardrails tests for LLM-as-a-judge (self-check policies), Presidio PII detection (email, SSN, credit card, person names), multi-server deployments, multi-configuration servers, authentication (kube-rbac-proxy), and secret mounting for API tokens
 - **`trustyai_operator/`** - TrustyAI operator container image validation (SHA256 digests, CSV relatedImages)
 - **`trustyai_service/`** - TrustyAI Service tests for drift detection (4 metrics), fairness metrics (SPD, DIR), database migration, multi-namespace support, and upgrade scenarios. Tests run against both PVC and database storage backends
 
@@ -79,6 +86,7 @@ model_explainability/
 @pytest.mark.post_upgrade          # Post-upgrade tests
 @pytest.mark.rawdeployment         # KServe raw deployment mode
 @pytest.mark.skip_on_disconnected  # Requires internet connectivity
+@pytest.mark.nemo_guardrails       # NeMo Guardrails specific tests
 ```
 
 ## Running Tests
@@ -95,8 +103,11 @@ uv run pytest tests/model_explainability/
 # Run TrustyAI Service tests
 uv run pytest tests/model_explainability/trustyai_service/
 
-# Run Guardrails tests
+# Run Guardrails Orchestrator tests
 uv run pytest tests/model_explainability/guardrails/
+
+# Run NeMo Guardrails tests
+uv run pytest tests/model_explainability/nemo_guardrails/
 
 # Run LM Eval tests
 uv run pytest tests/model_explainability/lm_eval/
