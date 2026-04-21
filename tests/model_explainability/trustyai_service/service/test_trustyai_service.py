@@ -1,4 +1,6 @@
 import pytest
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.namespace import Namespace
 from ocp_resources.trustyai_service import TrustyAIService
 
@@ -20,6 +22,23 @@ from tests.model_explainability.trustyai_service.service.utils import (
     patch_trustyai_service_cr,
 )
 from utilities.constants import MinIo
+
+
+@pytest.mark.smoke
+@pytest.mark.model_explainability
+def test_trustyaiservice_crd_exists(
+    admin_client: DynamicClient,
+) -> None:
+    """Verify TrustyAIService CRD exists on the cluster."""
+    crd_name = "trustyaiservices.trustyai.opendatahub.io"
+
+    crd_resource = CustomResourceDefinition(
+        client=admin_client,
+        name=crd_name,
+        ensure_exists=True,
+    )
+
+    assert crd_resource.exists, f"CRD {crd_name} does not exist on the cluster"
 
 
 @pytest.mark.parametrize(
@@ -55,7 +74,7 @@ def test_trustyai_service_with_invalid_db_cert(
     ],
     indirect=True,
 )
-@pytest.mark.smoke
+@pytest.mark.tier1
 def test_validate_trustyai_service_image(
     admin_client,
     model_namespace: Namespace,

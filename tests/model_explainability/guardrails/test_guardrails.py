@@ -1,6 +1,8 @@
 import pytest
 import requests
 import yaml
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
@@ -38,6 +40,23 @@ from utilities.plugins.constant import OpenAIEnpoints
 LOGGER = get_logger(name=__name__)
 
 
+@pytest.mark.smoke
+@pytest.mark.model_explainability
+def test_guardrailsorchestrator_crd_exists(
+    admin_client: DynamicClient,
+) -> None:
+    """Verify GuardrailsOrchestrator CRD exists on the cluster."""
+    crd_name = "guardrailsorchestrators.trustyai.opendatahub.io"
+
+    crd_resource = CustomResourceDefinition(
+        client=admin_client,
+        name=crd_name,
+        ensure_exists=True,
+    )
+
+    assert crd_resource.exists, f"CRD {crd_name} does not exist on the cluster"
+
+
 @pytest.mark.parametrize(
     "model_namespace, orchestrator_config, guardrails_orchestrator",
     [
@@ -56,7 +75,7 @@ LOGGER = get_logger(name=__name__)
     ],
     indirect=True,
 )
-@pytest.mark.smoke
+@pytest.mark.tier1
 def test_validate_guardrails_orchestrator_images(
     model_namespace,
     orchestrator_config,
@@ -115,7 +134,7 @@ def test_validate_guardrails_orchestrator_images(
     ],
     indirect=True,
 )
-@pytest.mark.smoke
+@pytest.mark.tier1
 @pytest.mark.rawdeployment
 @pytest.mark.usefixtures("patched_dsc_kserve_headed", "guardrails_gateway_config")
 class TestGuardrailsOrchestratorWithBuiltInDetectors:
