@@ -9,6 +9,7 @@ from ocp_resources.cron_job import CronJob
 from ocp_resources.deployment import Deployment
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.maas_model_ref import MaaSModelRef
+from ocp_resources.maas_subscription import MaaSSubscription
 from ocp_resources.namespace import Namespace
 from ocp_resources.network_policy import NetworkPolicy
 from ocp_resources.pod import Pod
@@ -343,6 +344,30 @@ def active_api_key_with_plaintext(
         raise AssertionError(
             f"Unexpected teardown status for key id={api_key_data['id']}: {revoke_response.status_code}"
         )
+
+
+@pytest.fixture(scope="class")
+def api_key_for_free_model_listing(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_token_for_actor: str,
+    maas_subscription_tinyllama_free: MaaSSubscription,
+) -> Generator[str, Any, Any]:
+    """API key bound to the free TinyLlama subscription at mint time. Revoked on teardown."""
+    _, body = create_api_key(
+        base_url=base_url,
+        ocp_user_token=ocp_token_for_actor,
+        request_session_http=request_session_http,
+        api_key_name=f"e2e-list-models-{generate_random_name()}",
+        subscription=maas_subscription_tinyllama_free.name,
+    )
+    yield body["key"]
+    revoke_api_key(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        key_id=body["id"],
+        ocp_user_token=ocp_token_for_actor,
+    )
 
 
 @pytest.fixture(scope="function")
