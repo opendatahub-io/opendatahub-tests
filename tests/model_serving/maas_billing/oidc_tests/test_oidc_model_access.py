@@ -22,7 +22,7 @@ LOGGER = structlog.get_logger(name=__name__)
     "maas_subscription_controller_enabled_latest",
     "maas_gateway_api",
     "maas_api_gateway_reachable",
-    "minimal_subscription_for_free_user",
+    "oidc_subscription_with_model",
     "oidc_auth_policy_patched",
 )
 class TestOIDCModelAccess:
