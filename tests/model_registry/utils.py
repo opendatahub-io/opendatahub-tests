@@ -826,7 +826,7 @@ def wait_for_default_resource_cleanedup(admin_client: DynamicClient, namespace_n
 
 def get_mr_user_token(admin_client: DynamicClient, user_credentials_rbac: dict[str, str]) -> str:
     issuer_url = get_byoidc_issuer_url(admin_client=admin_client)
-    url = get_oidc_token_endpoint(issuer_url)
+    url = get_oidc_token_endpoint(issuer_url=issuer_url)
     headers = {"Content-Type": "application/x-www-form-urlencoded", "User-Agent": "python-requests"}
 
     data = {

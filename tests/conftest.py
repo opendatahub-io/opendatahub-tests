@@ -424,7 +424,6 @@ def use_unprivileged_client(pytestconfig: pytest.Config) -> bool:
 def non_admin_user_password(
     admin_client: DynamicClient, use_unprivileged_client: bool, is_byoidc: bool
 ) -> tuple[str, str] | None:
-    print("####################################\n\n non_admin_user_password \n\n####################################")
     def _decode_split_data(_data: str) -> list[str]:
         return base64.b64decode(_data).decode().split(",")
 
@@ -496,7 +495,6 @@ def unprivileged_client(
         raise ValueError("Unprivileged user not provisioned")
 
     elif is_byoidc:
-        print("####################################\n\n unprivileged_client \n\n####################################")
         tokens = get_oidc_tokens(admin_client, non_admin_user_password[0], non_admin_user_password[1])
         issuer = get_byoidc_issuer_url(admin_client)
 

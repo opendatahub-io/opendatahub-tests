@@ -34,7 +34,12 @@ from tests.model_registry.model_registry.rbac.utils import (
     grant_mr_access,
     revoke_mr_access,
 )
-from tests.model_registry.utils import get_byoidc_user_credentials, get_endpoint_from_mr_service, get_mr_service_by_label, get_mr_user_token
+from tests.model_registry.utils import (
+    get_byoidc_user_credentials,
+    get_endpoint_from_mr_service,
+    get_mr_service_by_label,
+    get_mr_user_token,
+)
 from utilities.constants import Protocols
 from utilities.infra import get_openshift_token
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
@@ -217,68 +222,73 @@ class TestUserMultiProjectPermission:
             endpoint = get_endpoint_from_mr_service(svc=service, protocol=Protocols.REST)
             mr_data.append({"instance": mr_instance, "endpoint": endpoint, "name": mr_instance.name})
 
-        token = (
-            get_openshift_token()
-            if not is_byoidc
-            else (get_mr_user_token(admin_client=admin_client, user_credentials_rbac=user_credentials_rbac))
-        )
+        if is_byoidc:
+            token = get_mr_user_token(admin_client=admin_client, user_credentials_rbac=user_credentials_rbac)
+            rbac_username = "mr-non-admin"
+        else:
+            token = get_openshift_token()
+            rbac_username = user_credentials_rbac["username"]
 
         # Test each MR instance sequentially
-        for i, current_mr_data in enumerate(mr_data):
-            current_mr = current_mr_data["instance"]
-            current_endpoint = current_mr_data["endpoint"]
+        granted_instances: list[str] = []
+        try:
+            for i, current_mr_data in enumerate(mr_data):
+                current_mr = current_mr_data["instance"]
+                current_endpoint = current_mr_data["endpoint"]
 
-            LOGGER.info(f"Testing access to MR instance {i + 1}/{len(mr_data)}: {current_mr.name}")
+                LOGGER.info(f"Testing access to MR instance {i + 1}/{len(mr_data)}: {current_mr.name}")
 
-            # Grant access to current instance
-            grant_mr_access(
-                admin_client=admin_client,
-                user=user_credentials_rbac["username"],
-                mr_instance_name=current_mr.name,
-                model_registry_namespace=model_registry_namespace,
-            )
-
-            # Verify access to current instance
-            sampler = TimeoutSampler(
-                wait_timeout=240,
-                sleep=5,
-                func=assert_positive_mr_registry,
-                model_registry_instance_rest_endpoint=current_endpoint,
-                token=token,
-            )
-            for _ in sampler:
-                break
-
-            # Verify NO access to other instances
-            other_mr_names = [mr["name"] for j, mr in enumerate(mr_data) if j != i]
-            for j, other_mr_data in enumerate(mr_data):
-                if i != j:
-                    # Wait for role reconciliation - retry until ForbiddenException is raised
-                    sampler = TimeoutSampler(
-                        wait_timeout=360,
-                        sleep=10,
-                        func=assert_forbidden_access,
-                        endpoint=other_mr_data["endpoint"],
-                        token=token,
-                    )
-                    for _ in sampler:
-                        break
-
-            LOGGER.info(f"User has access to {current_mr.name}, but not to: {', '.join(other_mr_names)}")
-
-            # Revoke access (except for the last instance)
-            if i < len(mr_data) - 1:
-                revoke_mr_access(
+                # Grant access to current instance
+                grant_mr_access(
                     admin_client=admin_client,
-                    user=user_credentials_rbac["username"],
+                    user=rbac_username,
                     mr_instance_name=current_mr.name,
                     model_registry_namespace=model_registry_namespace,
                 )
+                granted_instances.append(current_mr.name)
 
-        # Clean up - revoke access from the last instance
-        revoke_mr_access(
-            admin_client=admin_client,
-            user=user_credentials_rbac["username"],
-            mr_instance_name=mr_data[-1]["instance"].name,
-            model_registry_namespace=model_registry_namespace,
-        )
+                # Verify access to current instance
+                sampler = TimeoutSampler(
+                    wait_timeout=240,
+                    sleep=5,
+                    func=assert_positive_mr_registry,
+                    model_registry_instance_rest_endpoint=current_endpoint,
+                    token=token,
+                )
+                for _ in sampler:
+                    break
+
+                # Verify NO access to other instances
+                other_mr_names = [mr["name"] for j, mr in enumerate(mr_data) if j != i]
+                for j, other_mr_data in enumerate(mr_data):
+                    if i != j:
+                        # Wait for role reconciliation - retry until ForbiddenException is raised
+                        sampler = TimeoutSampler(
+                            wait_timeout=360,
+                            sleep=10,
+                            func=assert_forbidden_access,
+                            endpoint=other_mr_data["endpoint"],
+                            token=token,
+                        )
+                        for _ in sampler:
+                            break
+
+                LOGGER.info(f"User has access to {current_mr.name}, but not to: {', '.join(other_mr_names)}")
+
+                # Revoke access (except for the last instance)
+                if i < len(mr_data) - 1:
+                    revoke_mr_access(
+                        admin_client=admin_client,
+                        user=rbac_username,
+                        mr_instance_name=current_mr.name,
+                        model_registry_namespace=model_registry_namespace,
+                    )
+                    granted_instances.remove(current_mr.name)
+        finally:
+            for instance_name in granted_instances:
+                revoke_mr_access(
+                    admin_client=admin_client,
+                    user=rbac_username,
+                    mr_instance_name=instance_name,
+                    model_registry_namespace=model_registry_namespace,
+                )
