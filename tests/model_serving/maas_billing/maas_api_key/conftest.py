@@ -346,7 +346,7 @@ def active_api_key_with_plaintext(
         )
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def api_key_for_free_model_listing(
     request_session_http: requests.Session,
     base_url: str,
@@ -354,20 +354,24 @@ def api_key_for_free_model_listing(
     maas_subscription_tinyllama_free: MaaSSubscription,
 ) -> Generator[str, Any, Any]:
     """API key bound to the free TinyLlama subscription at mint time. Revoked on teardown."""
-    _, body = create_api_key(
+    creation_response, body = create_api_key(
         base_url=base_url,
         ocp_user_token=ocp_token_for_actor,
         request_session_http=request_session_http,
         api_key_name=f"e2e-list-models-{generate_random_name()}",
         subscription=maas_subscription_tinyllama_free.name,
+        raise_on_error=False,
     )
+    assert_api_key_created_ok(resp=creation_response, body=body, required_fields=("key", "id"))
     yield body["key"]
-    revoke_api_key(
+    revoke_response, _ = revoke_api_key(
         request_session_http=request_session_http,
         base_url=base_url,
         key_id=body["id"],
         ocp_user_token=ocp_token_for_actor,
     )
+    if revoke_response.status_code not in (200, 404):
+        raise AssertionError(f"Unexpected teardown status for key id={body['id']}: {revoke_response.status_code}")
 
 
 @pytest.fixture(scope="function")
