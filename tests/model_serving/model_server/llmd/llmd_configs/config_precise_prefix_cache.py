@@ -26,7 +26,7 @@ class PrecisePrefixCacheConfig(QwenHfConfig):
             "enable_kv_cache_events": True,
             "publisher": "zmq",
             "endpoint": f"tcp://{cls.name}-epp-service:5557",
-            "topic": "kv@$(POD_IP)@$(MODEL_NAME)",
+            "topic": "kv@$(POD_IP):8000@$(MODEL_NAME)",
         }
         return [
             {

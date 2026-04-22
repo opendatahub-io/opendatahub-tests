@@ -1,4 +1,4 @@
-import base64
+import os
 from collections.abc import Generator
 from typing import Any
 
@@ -7,14 +7,15 @@ import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.resource import ResourceEditor
-from ocp_resources.secret import Secret
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutSampler
 
 from tests.model_serving.maas_billing.oidc_tests.utils import (
     MAAS_API_AUTH_POLICY_NAME,
     OIDC_CLIENT_ID,
+    create_oidc_subscription,
     fetch_models_with_header,
+    get_maas_oidc_issuer_url,
     request_oidc_access_token,
 )
 from tests.model_serving.maas_billing.utils import (
@@ -24,9 +25,41 @@ from tests.model_serving.maas_billing.utils import (
 from utilities.general import generate_random_name
 from utilities.resources.auth_policy import AuthPolicy
 from utilities.resources.models_as_service import ModelsAsService
-from utilities.user_utils import get_byoidc_issuer_url
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+@pytest.fixture(scope="class")
+def oidc_subscription(
+    admin_client: DynamicClient,
+    maas_unprivileged_model_namespace: Any,
+    maas_subscription_namespace: Any,
+) -> Generator[Any, Any, Any]:
+    """Create a MaaSSubscription owned by the MaaS OIDC group for external OIDC tests."""
+    yield from create_oidc_subscription(
+        admin_client=admin_client,
+        subscription_namespace=maas_subscription_namespace.name,
+        model_name=f"e2e-authz-model-{generate_random_name()}",
+        model_namespace=maas_unprivileged_model_namespace.name,
+    )
+
+
+@pytest.fixture(scope="class")
+def oidc_subscription_with_model(
+    admin_client: DynamicClient,
+    maas_inference_service_tinyllama: Any,
+    maas_subscription_namespace: Any,
+) -> Generator[Any, Any, Any]:
+    """Create a MaaSSubscription referencing the deployed TinyLlama model.
+
+    Used by tests that need ``/v1/models`` to return a real model for inference.
+    """
+    yield from create_oidc_subscription(
+        admin_client=admin_client,
+        subscription_namespace=maas_subscription_namespace.name,
+        model_name=maas_inference_service_tinyllama.name,
+        model_namespace=maas_inference_service_tinyllama.namespace,
+    )
 
 
 @pytest.fixture(scope="class")
@@ -38,7 +71,7 @@ def oidc_auth_policy_patched(
     if not is_byoidc:
         pytest.skip("External OIDC tests require a byoidc cluster with Keycloak")
 
-    oidc_issuer_url = get_byoidc_issuer_url(admin_client=admin_client)
+    oidc_issuer_url = get_maas_oidc_issuer_url(admin_client=admin_client)
     LOGGER.info(f"oidc_auth_policy_patched: enabling externalOIDC with issuer '{oidc_issuer_url}'")
 
     maas_cr = ModelsAsService(
@@ -73,98 +106,57 @@ def oidc_auth_policy_patched(
 @pytest.fixture(scope="class")
 def oidc_user_credentials(
     is_byoidc: bool,
-    admin_client: DynamicClient,
 ) -> dict[str, str]:
-    """Read OIDC user credentials from the cluster's byoidc-credentials Secret."""
+    """Read first MaaS OIDC user credentials from environment variables."""
     if not is_byoidc:
-        pytest.skip("OIDC user credentials require a byoidc cluster")
+        pytest.skip("OIDC user credentials require a byoidc cluster with Keycloak")
 
-    credentials_secret = Secret(
-        client=admin_client,
-        name="byoidc-credentials",
-        namespace="oidc",
-        ensure_exists=True,
-    )
-    credential_data = credentials_secret.instance.data
+    username = os.environ.get("MAAS_OIDC_USER1")
+    password = os.environ.get("MAAS_OIDC_PASSWORD1")
+    if not username or not password:
+        pytest.fail("MAAS_OIDC_USER1 and MAAS_OIDC_PASSWORD1 environment variables must be set", pytrace=False)
 
-    user_names = base64.b64decode(credential_data.users).decode().split(",")
-    passwords = base64.b64decode(credential_data.passwords).decode().split(",")
-
-    assert user_names and user_names != [""], "No usernames found in byoidc-credentials secret"
-    assert passwords and passwords != [""], "No passwords found in byoidc-credentials secret"
-    assert len(user_names) == len(passwords), (
-        f"Mismatched credential counts: {len(user_names)} users, {len(passwords)} passwords"
-    )
-
-    non_admin_users = [
-        (username, password)
-        for username, password in zip(user_names, passwords, strict=True)
-        if not username.startswith("odh-admin")
-    ]
-    if non_admin_users:
-        selected_username, selected_password = non_admin_users[0]
-    else:
-        selected_username, selected_password = user_names[0], passwords[0]
-
-    LOGGER.info(f"oidc_user_credentials: using byoidc user '{selected_username}'")
-    return {"username": selected_username, "password": selected_password}
+    LOGGER.info(f"oidc_user_credentials: using MaaS realm user '{username}'")
+    return {"username": username, "password": password}
 
 
 @pytest.fixture(scope="class")
 def oidc_second_user_credentials(
     is_byoidc: bool,
-    admin_client: DynamicClient,
-    oidc_user_credentials: dict[str, str],
 ) -> dict[str, str]:
-    """Read a different OIDC user's credentials for key isolation tests.
-
-    Picks the first user that is different from ``oidc_user_credentials``
-    to ensure cross-user key isolation can be tested on any cluster.
-    """
+    """Read second MaaS OIDC user credentials from environment variables."""
     if not is_byoidc:
-        pytest.skip("OIDC second user credentials require a byoidc cluster")
+        pytest.skip("OIDC second user credentials require a byoidc cluster with Keycloak")
 
-    first_username = oidc_user_credentials["username"]
+    username = os.environ.get("MAAS_OIDC_USER2")
+    password = os.environ.get("MAAS_OIDC_PASSWORD2")
+    if not username or not password:
+        pytest.fail("MAAS_OIDC_USER2 and MAAS_OIDC_PASSWORD2 environment variables must be set", pytrace=False)
 
-    credentials_secret = Secret(
-        client=admin_client,
-        name="byoidc-credentials",
-        namespace="oidc",
-        ensure_exists=True,
-    )
-    credential_data = credentials_secret.instance.data
+    LOGGER.info(f"oidc_second_user_credentials: using MaaS realm user '{username}'")
+    return {"username": username, "password": password}
 
-    user_names = base64.b64decode(credential_data.users).decode().split(",")
-    passwords = base64.b64decode(credential_data.passwords).decode().split(",")
 
-    non_admin_pairs = [
-        (username, password)
-        for username, password in zip(user_names, passwords, strict=True)
-        if username != first_username and not username.startswith("odh-admin")
-    ]
+@pytest.fixture(scope="class")
+def oidc_client_secret(
+    is_byoidc: bool,
+) -> str:
+    """Read the MaaS OIDC client secret from environment variables."""
+    if not is_byoidc:
+        pytest.skip("OIDC client secret requires a byoidc cluster with Keycloak")
 
-    fallback_pairs = [
-        (username, password)
-        for username, password in zip(user_names, passwords, strict=True)
-        if username != first_username
-    ]
-
-    selected_pairs = non_admin_pairs or fallback_pairs
-    assert selected_pairs, f"Need at least 2 different users for isolation tests. Only found: {first_username}"
-
-    selected_username, selected_password = selected_pairs[0]
-    LOGGER.info(
-        f"oidc_second_user_credentials: using byoidc user '{selected_username}' (different from '{first_username}')"
-    )
-    return {"username": selected_username, "password": selected_password}
+    secret = os.environ.get("MAAS_OIDC_CLIENT_SECRET")
+    if not secret:
+        pytest.fail("MAAS_OIDC_CLIENT_SECRET environment variable must be set", pytrace=False)
+    return secret
 
 
 @pytest.fixture(scope="class")
 def oidc_token_endpoint(
     admin_client: DynamicClient,
 ) -> str:
-    """Resolve the Keycloak token endpoint URL from the cluster's OIDC issuer."""
-    oidc_issuer_url = get_byoidc_issuer_url(admin_client=admin_client)
+    """Resolve the Keycloak token endpoint URL from the MaaS OIDC realm."""
+    oidc_issuer_url = get_maas_oidc_issuer_url(admin_client=admin_client)
     return f"{oidc_issuer_url}/protocol/openid-connect/token"
 
 
@@ -173,13 +165,15 @@ def external_oidc_token(
     request_session_http: requests.Session,
     oidc_token_endpoint: str,
     oidc_user_credentials: dict[str, str],
+    oidc_client_secret: str,
     oidc_auth_policy_patched: None,
 ) -> str:
-    """Acquire a fresh OIDC access token from the cluster's Keycloak for the first user."""
+    """Acquire a fresh OIDC access token from the MaaS Keycloak realm for the first user."""
     access_token = request_oidc_access_token(
         request_session_http=request_session_http,
         token_url=oidc_token_endpoint,
         client_id=OIDC_CLIENT_ID,
+        client_secret=oidc_client_secret,
         username=oidc_user_credentials["username"],
         password=oidc_user_credentials["password"],
     )
@@ -195,6 +189,7 @@ def second_user_oidc_token(
     request_session_http: requests.Session,
     oidc_token_endpoint: str,
     oidc_second_user_credentials: dict[str, str],
+    oidc_client_secret: str,
     oidc_auth_policy_patched: None,
 ) -> str:
     """Acquire a fresh OIDC access token for the second user (key isolation tests)."""
@@ -202,6 +197,7 @@ def second_user_oidc_token(
         request_session_http=request_session_http,
         token_url=oidc_token_endpoint,
         client_id=OIDC_CLIENT_ID,
+        client_secret=oidc_client_secret,
         username=oidc_second_user_credentials["username"],
         password=oidc_second_user_credentials["password"],
     )
