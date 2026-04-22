@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 import pytest
 import requests
 import structlog
@@ -48,26 +46,27 @@ class TestAuthPolicyApiKeyValidation:
         )
 
     @pytest.mark.smoke
+    @pytest.mark.usefixtures(
+        "maas_model_tinyllama_free",
+        "maas_auth_policy_tinyllama_free",
+    )
     @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
     def test_api_key_can_list_models(
         self,
         request_session_http: requests.Session,
         base_url: str,
-        active_api_key_with_plaintext: dict[str, Any],
+        api_key_for_free_model_listing: str,
     ) -> None:
         """Verify an API key can list models via GET /v1/models without 403."""
-        api_key_plaintext: str = active_api_key_with_plaintext["key"]
-        api_key_id: str = active_api_key_with_plaintext["id"]
-
         models_response = get_maas_models_response(
             session=request_session_http,
             base_url=base_url,
             headers={
-                "Authorization": f"Bearer {api_key_plaintext}",
+                "Authorization": f"Bearer {api_key_for_free_model_listing}",
                 "Content-Type": "application/json",
             },
         )
         models_list: list[dict] = models_response.json().get("data", [])
         assert models_list, "Expected at least one model from /v1/models"
 
-        LOGGER.info(f"API key successfully listed {len(models_list)} model(s) via /v1/models (key id={api_key_id})")
+        LOGGER.info(f"API key successfully listed {len(models_list)} model(s) via /v1/models")
