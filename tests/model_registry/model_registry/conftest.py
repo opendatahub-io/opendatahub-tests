@@ -104,9 +104,11 @@ def model_registry_rest_url(model_registry_instance_rest_endpoint: list[str]) ->
 
 
 @pytest.fixture(scope="class")
-def model_registry_deployment_containers(model_registry_namespace: str) -> list[dict[str, Any]]:
+def model_registry_deployment_containers(
+    admin_client: DynamicClient, model_registry_namespace: str
+) -> list[dict[str, Any]]:
     return Deployment(
-        name=MR_INSTANCE_NAME, namespace=model_registry_namespace, ensure_exists=True
+        client=admin_client, name=MR_INSTANCE_NAME, namespace=model_registry_namespace, ensure_exists=True
     ).instance.spec.template.spec.containers
 
 
