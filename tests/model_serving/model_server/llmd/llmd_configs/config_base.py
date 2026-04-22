@@ -131,7 +131,7 @@ class GpuConfig(LLMISvcConfig):
     """GPU inference base. Sets GPU resource limits."""
 
     enable_auth = False
-    wait_timeout = 480
+    wait_timeout = 600
 
     @classmethod
     def container_resources(cls):
