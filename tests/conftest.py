@@ -504,8 +504,8 @@ def unprivileged_client(
         # extract client-id from existing admin kubeconfig if available, otherwise default
         existing_users = kubeconfig_content.get("users", [])
         client_id = "oc-cli"
-        for u in existing_users:
-            auth_config = u.get("user", {}).get("auth-provider", {}).get("config", {})
+        for kubeconfig_user in existing_users:
+            auth_config = kubeconfig_user.get("user", {}).get("auth-provider", {}).get("config", {})
             if auth_config.get("client-id"):
                 client_id = auth_config["client-id"]
                 break

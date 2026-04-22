@@ -884,10 +884,10 @@ def get_byoidc_user_credentials(client: DynamicClient, username: str | None = No
     requested_username = username if username else user_names[0]
 
     # entra ID usernames are in the form of `user@<tenant>.onmicrosoft.com`, find by prefix
-    for u, p in zip(user_names, passwords):
-        if u.startswith(requested_username):
-            selected_username = u
-            selected_password = p
+    for stored_user, stored_password in zip(user_names, passwords):
+        if stored_user.startswith(requested_username):
+            selected_username = stored_user
+            selected_password = stored_password
 
     if not selected_username:
         raise ValueError(f"Username '{requested_username}' not found in byoidc credentials")

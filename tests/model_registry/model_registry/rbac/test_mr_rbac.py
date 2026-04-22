@@ -232,11 +232,11 @@ class TestUserMultiProjectPermission:
         # Test each MR instance sequentially
         granted_instances: list[str] = []
         try:
-            for i, current_mr_data in enumerate(mr_data):
+            for idx, current_mr_data in enumerate(mr_data):
                 current_mr = current_mr_data["instance"]
                 current_endpoint = current_mr_data["endpoint"]
 
-                LOGGER.info(f"Testing access to MR instance {i + 1}/{len(mr_data)}: {current_mr.name}")
+                LOGGER.info(f"Testing access to MR instance {idx + 1}/{len(mr_data)}: {current_mr.name}")
 
                 # Grant access to current instance
                 grant_mr_access(
@@ -259,9 +259,9 @@ class TestUserMultiProjectPermission:
                     break
 
                 # Verify NO access to other instances
-                other_mr_names = [mr["name"] for j, mr in enumerate(mr_data) if j != i]
-                for j, other_mr_data in enumerate(mr_data):
-                    if i != j:
+                other_mr_names = [mr["name"] for other_idx, mr in enumerate(mr_data) if other_idx != idx]
+                for other_idx, other_mr_data in enumerate(mr_data):
+                    if idx != other_idx:
                         # Wait for role reconciliation - retry until ForbiddenException is raised
                         sampler = TimeoutSampler(
                             wait_timeout=360,
@@ -276,7 +276,7 @@ class TestUserMultiProjectPermission:
                 LOGGER.info(f"User has access to {current_mr.name}, but not to: {', '.join(other_mr_names)}")
 
                 # Revoke access (except for the last instance)
-                if i < len(mr_data) - 1:
+                if idx < len(mr_data) - 1:
                     revoke_mr_access(
                         admin_client=admin_client,
                         user=rbac_username,

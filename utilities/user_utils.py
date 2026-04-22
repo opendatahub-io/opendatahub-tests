@@ -98,7 +98,17 @@ def wait_for_user_creation(username: str, password: str, cluster_url: str) -> bo
 
 
 def get_oidc_token_endpoint(issuer_url: str) -> str:
-    """Discover the token endpoint from the OIDC well-known configuration."""
+    """Discover the token endpoint from the OIDC well-known configuration.
+
+    Args:
+        issuer_url: The OIDC issuer URL (e.g. Keycloak realm URL or Entra v2.0 endpoint).
+
+    Returns:
+        The token endpoint URL.
+
+    Raises:
+        ValueError: If the well-known config does not contain a token_endpoint.
+    """
     well_known_url = f"{issuer_url}/.well-known/openid-configuration"
     response = requests.get(well_known_url, timeout=30)
     response.raise_for_status()
@@ -115,11 +125,23 @@ def get_oidc_tokens(
     client_id: str = "",
     scope: str = "openid profile",
 ) -> tuple[str, str]:
+    """Request OIDC tokens via the Resource Owner Password Credentials grant.
+
+    Args:
+        admin_client: Cluster client used to discover OIDC configuration.
+        username: OIDC username.
+        password: OIDC password.
+        client_id: OAuth client ID. If empty, discovered from the cluster Authentication CR.
+        scope: OAuth scopes to request.
+
+    Returns:
+        Tuple of (id_token, refresh_token). refresh_token may be empty if the provider does not issue one.
+    """
     if not client_id:
         client_id = get_byoidc_cli_client_id(admin_client=admin_client)
 
     issuer_url = get_byoidc_issuer_url(admin_client=admin_client)
-    url = get_oidc_token_endpoint(issuer_url)
+    url = get_oidc_token_endpoint(issuer_url=issuer_url)
     headers = {"Content-Type": "application/x-www-form-urlencoded", "User-Agent": "python-requests"}
 
     data = {
