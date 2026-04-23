@@ -31,7 +31,7 @@ from utilities.constants import Annotations, PodNotFound, Protocols, Timeout
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
 from utilities.general import wait_for_pods_running
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
-from utilities.user_utils import get_byoidc_issuer_url
+from utilities.user_utils import get_byoidc_cli_client_id, get_byoidc_issuer_url, get_oidc_token_endpoint
 
 ADDRESS_ANNOTATION_PREFIX: str = "routing.opendatahub.io/external-address-"
 MARIA_DB_IMAGE = (
@@ -825,15 +825,16 @@ def wait_for_default_resource_cleanedup(admin_client: DynamicClient, namespace_n
 
 
 def get_mr_user_token(admin_client: DynamicClient, user_credentials_rbac: dict[str, str]) -> str:
-    url = f"{get_byoidc_issuer_url(admin_client=admin_client)}/protocol/openid-connect/token"
+    issuer_url = get_byoidc_issuer_url(admin_client=admin_client)
+    url = get_oidc_token_endpoint(issuer_url=issuer_url)
     headers = {"Content-Type": "application/x-www-form-urlencoded", "User-Agent": "python-requests"}
 
     data = {
         "username": user_credentials_rbac["username"],
         "password": user_credentials_rbac["password"],
         "grant_type": "password",
-        "client_id": "oc-cli",
-        "scope": "openid",
+        "client_id": get_byoidc_cli_client_id(admin_client=admin_client),
+        "scope": "openid profile",
     }
 
     LOGGER.info(f"Requesting token for user {user_credentials_rbac['username']} in byoidc environment")
@@ -882,18 +883,14 @@ def get_byoidc_user_credentials(client: DynamicClient, username: str | None = No
     # Use specified username or default to first user
     requested_username = username if username else user_names[0]
 
-    if requested_username and requested_username in user_names:
-        # Find the index of the requested username
-        user_index = user_names.index(requested_username)
-        if user_index < len(passwords):
-            selected_username = user_names[user_index]
-            selected_password = passwords[user_index]
-        else:
-            raise ValueError(f"Password not found for user '{requested_username}' at index {user_index}")
-    elif requested_username:
+    # entra ID usernames are in the form of `user@<tenant>.onmicrosoft.com`, find by prefix
+    for stored_user, stored_password in zip(user_names, passwords):
+        if stored_user.startswith(requested_username):
+            selected_username = stored_user
+            selected_password = stored_password
+
+    if not selected_username:
         raise ValueError(f"Username '{requested_username}' not found in byoidc credentials")
-    else:
-        raise ValueError("No users found in byoidc credentials")
 
     LOGGER.info(f"Using byoidc-credentials username='{selected_username}'")
     return {

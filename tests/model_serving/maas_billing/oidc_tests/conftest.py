@@ -36,7 +36,7 @@ def oidc_auth_policy_patched(
 ) -> Generator[None, Any, Any]:
     """Enable OIDC on the ModelsAsService CR so the operator patches the AuthPolicy."""
     if not is_byoidc:
-        pytest.skip("External OIDC tests require a byoidc cluster with Keycloak")
+        pytest.skip("External OIDC tests require a byoidc cluster")
 
     oidc_issuer_url = get_byoidc_issuer_url(admin_client=admin_client)
     LOGGER.info(f"oidc_auth_policy_patched: enabling externalOIDC with issuer '{oidc_issuer_url}'")

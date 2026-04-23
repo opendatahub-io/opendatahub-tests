@@ -1,3 +1,5 @@
+import base64
+import json
 from collections.abc import Generator
 from contextlib import ExitStack
 from typing import Any
@@ -21,8 +23,9 @@ from tests.model_registry.constants import (
 )
 from tests.model_registry.model_registry.rbac.group_utils import create_group
 from tests.model_registry.model_registry.rbac.utils import create_role_binding
+from tests.model_registry.utils import get_byoidc_user_credentials, get_mr_user_token
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
-from utilities.user_utils import UserTestSession
+from utilities.user_utils import UserTestSession, get_byoidc_issuer_url
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -53,25 +56,61 @@ def add_user_to_group(
 
 
 @pytest.fixture(scope="function")
+def byoidc_entra_group_role_bindings(
+    admin_client: DynamicClient,
+    model_registry_namespace: str,
+) -> Generator[list[RoleBinding]]:
+    """RoleBindings mapping Entra group UUIDs from mr-user1's token to the model registry role."""
+    mr_user1_creds = get_byoidc_user_credentials(client=admin_client, username="mr-user1")
+    token = get_mr_user_token(admin_client=admin_client, user_credentials_rbac=mr_user1_creds)
+
+    payload = token.split(".")[1]
+    payload += "=" * (-len(payload) % 4)
+    claims = json.loads(base64.b64decode(payload))
+    entra_groups: list[str] = claims["groups"]
+
+    role_name = f"registry-user-{MR_INSTANCE_NAME}"
+    with ExitStack() as stack:
+        role_bindings = [
+            stack.enter_context(
+                RoleBinding(
+                    client=admin_client,
+                    namespace=model_registry_namespace,
+                    name=f"{MR_INSTANCE_NAME}-entra-group-{idx}",
+                    role_ref_name=role_name,
+                    role_ref_kind="Role",
+                    subjects_kind="Group",
+                    subjects_name=group_uuid,
+                )
+            )
+            for idx, group_uuid in enumerate(entra_groups)
+        ]
+        LOGGER.info(f"Created {len(role_bindings)} RoleBindings for Entra groups: {entra_groups}")
+        yield role_bindings
+
+
+@pytest.fixture(scope="function")
 def model_registry_group_with_user(
+    request: FixtureRequest,
     is_byoidc: bool,
     admin_client: DynamicClient,
     test_idp_user: UserTestSession,
-) -> Generator[Group]:
+) -> Generator[Group | list[RoleBinding]]:
     """
     Fixture to manage a test user in a specified group.
-    Adds the user to the group before the test, then removes them after.
-
-    Args:
-        admin_client: The admin client for accessing the cluster
-        test_idp_user_session: The test user session containing user information
+    For Microsoft Entra BYOIDC, creates RoleBindings for Entra group UUIDs.
+    For other BYOIDC providers, group membership comes from the OIDC token.
+    For non-BYOIDC, adds the user to an OpenShift Group.
 
     Yields:
-        Group: The group with the test user added
+        Group or list[RoleBinding] depending on the authentication type.
     """
     if is_byoidc:
-        # this is no op. byoidc already has a group with user model-registry-user
-        yield
+        issuer_url = get_byoidc_issuer_url(admin_client=admin_client)
+        if "microsoftonline" in issuer_url:
+            yield request.getfixturevalue(argname="byoidc_entra_group_role_bindings")
+        else:
+            yield
     else:
         group_name = f"{MR_INSTANCE_NAME}-users"
         group = Group(
