@@ -1,10 +1,10 @@
 """Prefill-decode disaggregation configuration for LLMInferenceService."""
 
-from .config_models import QwenS3Config
+from .config_models import TinyLlamaS3GpuConfig
 
 
-class PrefillDecodeConfig(QwenS3Config):
-    """S3 GPU with prefill-decode disaggregation — inherits Qwen+S3+GPU from QwenS3Config."""
+class PrefillDecodeConfig(TinyLlamaS3GpuConfig):
+    """S3 GPU with prefill-decode disaggregation — inherits TinyLlama+S3+GPU."""
 
     enable_auth = False
     name = "llmisvc-prefill-decode-gpu"

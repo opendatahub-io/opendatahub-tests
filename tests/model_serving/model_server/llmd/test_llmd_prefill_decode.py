@@ -20,7 +20,7 @@ NAMESPACE = ns_from_file(file=__file__)
 )
 @pytest.mark.usefixtures("valid_aws_config", "skip_if_no_gpu_available", "skip_if_disconnected")
 class TestLlmdPrefillDecode:
-    """Deploy Qwen on GPU with prefill-decode disaggregation and verify chat completions."""
+    """Deploy TinyLlama on GPU with prefill-decode disaggregation and verify chat completions."""
 
     def test_llmd_prefill_decode(
         self,

@@ -33,7 +33,7 @@ pytestmark = [pytest.mark.tier2, pytest.mark.gpu]
 )
 @pytest.mark.usefixtures("valid_aws_config", "skip_if_less_than_2_gpus", "skip_if_disconnected")
 class TestSingleNodePrecisePrefixCache:
-    """Deploy Qwen on GPU with 2 replicas and precise prefix cache routing,
+    """Deploy TinyLlama on GPU with 2 replicas and precise prefix cache routing,
     then verify cache hits via Prometheus metrics.
     """
 
