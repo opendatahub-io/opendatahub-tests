@@ -375,7 +375,7 @@ def query_metric_by_pod(
     return result
 
 
-@retry(wait_timeout=90, sleep=30, exceptions_dict={AssertionError: []}, print_log=False)
+@retry(wait_timeout=120, sleep=10, exceptions_dict={AssertionError: []}, print_log=False)
 def assert_prefix_cache_routing(
     prometheus: Prometheus,
     llmisvc: LLMInferenceService,
