@@ -64,7 +64,7 @@ class TestSingleNodePrecisePrefixCache:
             prompt=PREFIX_CACHE_PROMPT,
             token=llmisvc_token,
             count=NUM_REQUESTS,
-            delay_after_first_request=30,
+            delay_after_first_request=15,
         )
         assert successful == NUM_REQUESTS, f"Expected all {NUM_REQUESTS} requests to succeed, got {successful}"
 
