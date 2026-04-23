@@ -64,7 +64,7 @@ class TestLlamaStackFMSGuardrailsProvider:
             "confidence_threshold": 0.5,
             "message_types": ["system", "user"],
             "auth_token": current_client_token,
-            "verify_ssl": True,
+            "verify_ssl": False,
             "ssl_cert_path": "/etc/llama/certs/orch-certificate.crt",
             "detectors": {"regex": {"detector_params": {"regex": ["email", "ssn", "credit-card", "^hello$"]}}},
         }
@@ -92,7 +92,6 @@ class TestLlamaStackFMSGuardrailsProvider:
                     "role": "user",
                 }
             ],
-            params={},
         )
 
         assert run_shields_response.violation is not None, "Expected shield violation to be present"
