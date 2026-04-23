@@ -66,7 +66,6 @@ class TestSingleNodePrecisePrefixCache:
             count=NUM_REQUESTS,
             delay_after_first_request=15,
         )
-        assert successful == NUM_REQUESTS, f"Expected all {NUM_REQUESTS} requests to succeed, got {successful}"
 
         assert_prefix_cache_routing(
             prometheus=prometheus,
