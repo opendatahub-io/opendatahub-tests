@@ -38,9 +38,7 @@ class TestPvcFailures:
             The PVC stays in ``Pending`` phase because no provisioner matches.
         """
         pvc_phase = bad_storage_class_pvc.instance.status.phase
-        assert pvc_phase == "Pending", (
-            f"Expected PVC to be Pending with non-existent StorageClass, got {pvc_phase}"
-        )
+        assert pvc_phase == "Pending", f"Expected PVC to be Pending with non-existent StorageClass, got {pvc_phase}"
 
     def test_isvc_reports_not_ready_with_bad_pvc(
         self,
