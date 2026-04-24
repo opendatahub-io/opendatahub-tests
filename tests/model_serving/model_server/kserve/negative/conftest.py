@@ -6,12 +6,14 @@ import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
+from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 
 from tests.model_serving.model_server.kserve.negative.constants import (
     INVALID_S3_ACCESS_KEY,
     INVALID_S3_SIGNING_KEY,
+    NONEXISTENT_STORAGE_CLASS,
 )
 from utilities.constants import (
     KServeDeploymentType,
@@ -149,6 +151,50 @@ def invalid_s3_credentials_ovms_isvc(
         runtime=ovms_serving_runtime.name,
         storage_key=invalid_s3_credentials_secret.name,
         storage_path=urlparse(storage_uri).path,
+        model_format=supported_formats[0].name,
+        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+        external_route=False,
+        wait=False,
+        wait_for_predictor_pods=False,
+    ) as isvc:
+        yield isvc
+
+
+@pytest.fixture(scope="class")
+def bad_storage_class_pvc(
+    unprivileged_client: DynamicClient,
+    negative_test_namespace: Namespace,
+) -> Generator[PersistentVolumeClaim, Any, Any]:
+    """PVC referencing a non-existent StorageClass; stays Pending indefinitely."""
+    with PersistentVolumeClaim(
+        client=unprivileged_client,
+        name="bad-sc-pvc",
+        namespace=negative_test_namespace.name,
+        size="1Gi",
+        accessmodes="ReadWriteOnce",
+        storage_class=NONEXISTENT_STORAGE_CLASS,
+    ) as pvc:
+        yield pvc
+
+
+@pytest.fixture(scope="class")
+def bad_pvc_ovms_isvc(
+    admin_client: DynamicClient,
+    negative_test_namespace: Namespace,
+    ovms_serving_runtime: ServingRuntime,
+    bad_storage_class_pvc: PersistentVolumeClaim,
+) -> Generator[InferenceService, Any, Any]:
+    """InferenceService backed by a PVC that cannot be provisioned."""
+    supported_formats = ovms_serving_runtime.instance.spec.supportedModelFormats
+    if not supported_formats:
+        raise ValueError(f"ServingRuntime '{ovms_serving_runtime.name}' has no supportedModelFormats")
+
+    with create_isvc(
+        client=admin_client,
+        name="negative-test-bad-pvc-isvc",
+        namespace=negative_test_namespace.name,
+        runtime=ovms_serving_runtime.name,
+        storage_uri=f"pvc://{bad_storage_class_pvc.name}/models/",
         model_format=supported_formats[0].name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         external_route=False,

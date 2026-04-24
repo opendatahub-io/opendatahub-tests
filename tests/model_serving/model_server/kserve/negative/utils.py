@@ -113,6 +113,56 @@ def wait_for_isvc_model_status_states(
         raise
 
 
+def wait_for_isvc_ready_false(
+    isvc: InferenceService,
+    *,
+    timeout: int = Timeout.TIMEOUT_15MIN,
+    sleep: int = 5,
+) -> None:
+    """Poll until ISVC ``status.conditions`` contains ``Ready=False``.
+
+    Args:
+        isvc: InferenceService to observe.
+        timeout: Maximum seconds to wait.
+        sleep: Seconds between polls.
+
+    Raises:
+        TimeoutExpiredError: If the condition is not observed within ``timeout``.
+    """
+
+    def _ready_condition() -> Any:
+        inst_status = getattr(isvc.instance, "status", None)
+        if not inst_status:
+            return None
+        conditions = getattr(inst_status, "conditions", None)
+        if not conditions:
+            return None
+        for cond in conditions:
+            if cond.type == "Ready":
+                return cond
+        return None
+
+    sample: Any = None
+    try:
+        for sample in TimeoutSampler(wait_timeout=timeout, sleep=sleep, func=_ready_condition):
+            if sample and sample.status == "False":
+                LOGGER.info(
+                    "InferenceService Ready=False observed",
+                    isvc=isvc.name,
+                    namespace=isvc.namespace,
+                    reason=getattr(sample, "reason", None),
+                )
+                return
+    except TimeoutExpiredError:
+        LOGGER.error(
+            "Timed out waiting for InferenceService Ready=False",
+            isvc=isvc.name,
+            namespace=isvc.namespace,
+            last_ready_condition=sample,
+        )
+        raise
+
+
 def _pod_restart_total(pod: Pod) -> int:
     total = 0
     for cs in pod.instance.status.containerStatuses or []:
