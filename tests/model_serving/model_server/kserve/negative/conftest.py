@@ -12,6 +12,7 @@ from ocp_resources.serving_runtime import ServingRuntime
 from tests.model_serving.model_server.kserve.negative.constants import (
     INVALID_S3_ACCESS_KEY,
     INVALID_S3_SIGNING_KEY,
+    WRONG_MODEL_FORMAT,
 )
 from utilities.constants import (
     KServeDeploymentType,
@@ -150,6 +151,32 @@ def invalid_s3_credentials_ovms_isvc(
         storage_key=invalid_s3_credentials_secret.name,
         storage_path=urlparse(storage_uri).path,
         model_format=supported_formats[0].name,
+        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+        external_route=False,
+        wait=False,
+        wait_for_predictor_pods=False,
+    ) as isvc:
+        yield isvc
+
+
+@pytest.fixture(scope="class")
+def wrong_model_format_ovms_isvc(
+    admin_client: DynamicClient,
+    negative_test_namespace: Namespace,
+    ovms_serving_runtime: ServingRuntime,
+    ci_s3_bucket_name: str,
+    negative_test_s3_secret: Secret,
+) -> Generator[InferenceService, Any, Any]:
+    """InferenceService declaring ``pytorch`` format against an OVMS runtime that expects ONNX."""
+    storage_uri = f"s3://{ci_s3_bucket_name}/test-dir/"
+    with create_isvc(
+        client=admin_client,
+        name="negative-test-wrong-format-isvc",
+        namespace=negative_test_namespace.name,
+        runtime=ovms_serving_runtime.name,
+        storage_key=negative_test_s3_secret.name,
+        storage_path=urlparse(storage_uri).path,
+        model_format=WRONG_MODEL_FORMAT,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         external_route=False,
         wait=False,
