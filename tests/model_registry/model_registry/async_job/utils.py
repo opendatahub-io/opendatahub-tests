@@ -1,35 +1,16 @@
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.job import Job
 from ocp_resources.pod import Pod
 from ocp_resources.service import Service
 from timeout_sampler import TimeoutExpiredError
 
+from tests.model_registry.utils import get_latest_job_pod
 from utilities.constants import MinIo
 from utilities.general import collect_pod_information
 
 LOGGER = structlog.get_logger(name=__name__)
 
-
-def get_latest_job_pod(admin_client: DynamicClient, job: Job) -> Pod:
-    """Get the latest (most recently created) Pod created by a Job"""
-    pods = list(
-        Pod.get(
-            client=admin_client,
-            namespace=job.namespace,
-            label_selector=f"job-name={job.name}",
-        )
-    )
-
-    if not pods:
-        raise AssertionError(f"No pods found for job {job.name}")
-
-    # Sort pods by creation time (latest first)
-    sorted_pods = sorted(pods, key=lambda p: p.instance.metadata.creationTimestamp or "", reverse=True)
-
-    latest_pod = sorted_pods[0]
-    LOGGER.info(f"Found {len(pods)} pod(s) for job {job.name}, using latest: {latest_pod.name}")
-    return latest_pod
+__all__ = ["get_latest_job_pod"]
 
 
 def upload_test_model_to_minio_from_image(
