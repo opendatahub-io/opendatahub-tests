@@ -41,7 +41,7 @@ repos:
         exclude: .*/__snapshots__/.*|.*-input\.json$|^semgrep\.yaml$
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.10
+    rev: v0.15.11
     hooks:
       - id: ruff
       - id: ruff-format

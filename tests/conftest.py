@@ -501,14 +501,22 @@ def unprivileged_client(
         with open(kubconfig_filepath) as fd:
             kubeconfig_content = yaml.safe_load(fd)
 
-        # create the oidc user config
+        # extract client-id from existing admin kubeconfig if available, otherwise default
+        existing_users = kubeconfig_content.get("users", [])
+        client_id = "oc-cli"
+        for kubeconfig_user in existing_users:
+            auth_config = kubeconfig_user.get("user", {}).get("auth-provider", {}).get("config", {})
+            if auth_config.get("client-id"):
+                client_id = auth_config["client-id"]
+                break
+
         user = {
             "name": non_admin_user_password[0],
             "user": {
                 "auth-provider": {
                     "name": "oidc",
                     "config": {
-                        "client-id": "oc-cli",
+                        "client-id": client_id,
                         "client-secret": "",
                         "idp-issuer-url": issuer,
                         "id-token": tokens[0],
