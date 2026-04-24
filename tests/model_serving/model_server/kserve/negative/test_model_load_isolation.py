@@ -17,7 +17,6 @@ from tests.model_serving.model_server.kserve.negative.utils import (
     VALID_OVMS_INFERENCE_BODY,
     assert_kserve_control_plane_stable,
     send_inference_request,
-    snapshot_kserve_control_plane_restart_totals,
     wait_for_isvc_model_status_states,
 )
 from utilities.infra import get_pods_by_isvc_label
@@ -77,6 +76,8 @@ class TestModelLoadIsolation:
         assert status_code == 200, (
             f"Healthy neighbor ISVC returned {status_code} after failed ISVC deployed. Response: {response_body}"
         )
+        parsed = json.loads(response_body)
+        assert parsed.get("outputs"), f"Healthy neighbor ISVC returned invalid payload: {response_body}"
 
     def test_healthy_neighbor_pods_have_zero_new_restarts(
         self,
@@ -100,6 +101,11 @@ class TestModelLoadIsolation:
         )
 
         pods = get_pods_by_isvc_label(client=admin_client, isvc=negative_test_ovms_isvc)
+        current_uids = {pod.instance.metadata.uid for pod in pods}
+        baseline_uids = set(healthy_isvc_pod_restart_baseline)
+        assert current_uids == baseline_uids, (
+            f"Healthy ISVC pod set changed. Baseline UIDs: {baseline_uids}, Current UIDs: {current_uids}"
+        )
         for pod in pods:
             uid = pod.instance.metadata.uid
             current_total = 0
@@ -108,7 +114,7 @@ class TestModelLoadIsolation:
             for ics in pod.instance.status.initContainerStatuses or []:
                 current_total += ics.restartCount
 
-            baseline = healthy_isvc_pod_restart_baseline.get(uid, 0)
+            baseline = healthy_isvc_pod_restart_baseline[uid]
             assert current_total == baseline, (
                 f"Healthy ISVC pod {pod.name} restarted after failing neighbor deployed. "
                 f"Baseline: {baseline}, Current: {current_total}"
@@ -118,6 +124,7 @@ class TestModelLoadIsolation:
         self,
         admin_client: DynamicClient,
         neighbor_failing_ovms_isvc: InferenceService,
+        kserve_control_plane_restart_baseline: dict[str, int],
     ) -> None:
         """Given a failed neighbor ISVC, the control plane must remain stable.
 
@@ -129,10 +136,6 @@ class TestModelLoadIsolation:
             show no CrashLoopBackOff, and do not accumulate new container restarts.
         """
         applications_namespace: str = py_config["applications_namespace"]
-        prior_restart_totals = snapshot_kserve_control_plane_restart_totals(
-            admin_client=admin_client,
-            applications_namespace=applications_namespace,
-        )
 
         wait_for_isvc_model_status_states(
             isvc=neighbor_failing_ovms_isvc,
@@ -143,5 +146,5 @@ class TestModelLoadIsolation:
         assert_kserve_control_plane_stable(
             admin_client=admin_client,
             applications_namespace=applications_namespace,
-            prior_restart_totals=prior_restart_totals,
+            prior_restart_totals=kserve_control_plane_restart_baseline,
         )
