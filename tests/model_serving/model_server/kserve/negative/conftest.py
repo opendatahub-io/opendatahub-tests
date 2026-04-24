@@ -8,11 +8,15 @@ from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
+from pytest_testconfig import config as py_config
 
 from tests.model_serving.model_server.kserve.negative.constants import (
     INVALID_S3_ACCESS_KEY,
     INVALID_S3_SIGNING_KEY,
     WRONG_MODEL_FORMAT,
+)
+from tests.model_serving.model_server.kserve.negative.utils import (
+    snapshot_kserve_control_plane_restart_totals,
 )
 from utilities.constants import (
     KServeDeploymentType,
@@ -177,6 +181,81 @@ def wrong_model_format_ovms_isvc(
         storage_key=negative_test_s3_secret.name,
         storage_path=urlparse(storage_uri).path,
         model_format=WRONG_MODEL_FORMAT,
+        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+        external_route=False,
+        wait=False,
+        wait_for_predictor_pods=False,
+    ) as isvc:
+        yield isvc
+
+
+@pytest.fixture(scope="class")
+def healthy_isvc_pod_restart_baseline(
+    admin_client: DynamicClient,
+    negative_test_ovms_isvc: InferenceService,
+) -> dict[str, int]:
+    """Capture per-pod restart totals for the healthy ISVC before a failing neighbor is introduced."""
+    pods = get_pods_by_isvc_label(client=admin_client, isvc=negative_test_ovms_isvc)
+    if not pods:
+        raise AssertionError(
+            f"No pods found for InferenceService {negative_test_ovms_isvc.name!r} "
+            f"in namespace {negative_test_ovms_isvc.namespace!r} while capturing restart baseline"
+        )
+    baseline: dict[str, int] = {}
+    for pod in pods:
+        total = 0
+        for cs in pod.instance.status.containerStatuses or []:
+            total += cs.restartCount
+        for ics in pod.instance.status.initContainerStatuses or []:
+            total += ics.restartCount
+        baseline[pod.instance.metadata.uid] = total
+    return baseline
+
+
+@pytest.fixture(scope="class")
+def kserve_control_plane_restart_baseline(
+    admin_client: DynamicClient,
+    negative_test_ovms_isvc: InferenceService,
+) -> dict[str, int]:
+    """Snapshot control-plane restart totals before any failing neighbor ISVC exists."""
+    applications_namespace: str = py_config["applications_namespace"]
+    return snapshot_kserve_control_plane_restart_totals(
+        admin_client=admin_client,
+        applications_namespace=applications_namespace,
+    )
+
+
+@pytest.fixture(scope="class")
+def neighbor_failing_ovms_isvc(
+    admin_client: DynamicClient,
+    negative_test_namespace: Namespace,
+    ovms_serving_runtime: ServingRuntime,
+    ci_s3_bucket_name: str,
+    invalid_s3_credentials_secret: Secret,
+    negative_test_ovms_isvc: InferenceService,
+    healthy_isvc_pod_restart_baseline: dict[str, int],
+    kserve_control_plane_restart_baseline: dict[str, int],
+) -> Generator[InferenceService, Any, Any]:
+    """Failing ISVC deployed alongside a healthy neighbor for isolation testing.
+
+    Depends on ``negative_test_ovms_isvc`` to ensure the healthy ISVC
+    is Ready before this failing one is introduced. Pulls in restart baselines
+    only for ordering so snapshots run before this ISVC is created.
+    """
+    _ = (healthy_isvc_pod_restart_baseline, kserve_control_plane_restart_baseline)
+    storage_uri = f"s3://{ci_s3_bucket_name}/test-dir/"
+    supported_formats = ovms_serving_runtime.instance.spec.supportedModelFormats
+    if not supported_formats:
+        raise ValueError(f"ServingRuntime '{ovms_serving_runtime.name}' has no supportedModelFormats")
+
+    with create_isvc(
+        client=admin_client,
+        name="neg-fail-neighbor-isvc",
+        namespace=negative_test_namespace.name,
+        runtime=ovms_serving_runtime.name,
+        storage_key=invalid_s3_credentials_secret.name,
+        storage_path=urlparse(storage_uri).path,
+        model_format=supported_formats[0].name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         external_route=False,
         wait=False,
