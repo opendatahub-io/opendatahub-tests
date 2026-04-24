@@ -12,6 +12,7 @@ from ocp_resources.serving_runtime import ServingRuntime
 from pytest_testconfig import config as py_config
 
 from tests.model_serving.model_server.kserve.negative.constants import (
+    CORRUPTED_MODEL_S3_PATH,
     INVALID_S3_ACCESS_KEY,
     INVALID_S3_SIGNING_KEY,
     NONEXISTENT_STORAGE_CLASS,
@@ -183,6 +184,36 @@ def wrong_model_format_ovms_isvc(
         storage_key=negative_test_s3_secret.name,
         storage_path=urlparse(storage_uri).path,
         model_format=WRONG_MODEL_FORMAT,
+        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+        external_route=False,
+        wait=False,
+        wait_for_predictor_pods=False,
+    ) as isvc:
+        yield isvc
+
+
+@pytest.fixture(scope="class")
+def corrupted_model_ovms_isvc(
+    admin_client: DynamicClient,
+    negative_test_namespace: Namespace,
+    ovms_serving_runtime: ServingRuntime,
+    ci_s3_bucket_name: str,
+    negative_test_s3_secret: Secret,
+) -> Generator[InferenceService, Any, Any]:
+    """InferenceService pointing to a zero-byte / corrupted model artifact in S3."""
+    storage_uri = f"s3://{ci_s3_bucket_name}/{CORRUPTED_MODEL_S3_PATH}/"
+    supported_formats = ovms_serving_runtime.instance.spec.supportedModelFormats
+    if not supported_formats:
+        raise ValueError(f"ServingRuntime '{ovms_serving_runtime.name}' has no supportedModelFormats")
+
+    with create_isvc(
+        client=admin_client,
+        name="negative-test-corrupted-model-isvc",
+        namespace=negative_test_namespace.name,
+        runtime=ovms_serving_runtime.name,
+        storage_key=negative_test_s3_secret.name,
+        storage_path=urlparse(storage_uri).path,
+        model_format=supported_formats[0].name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         external_route=False,
         wait=False,

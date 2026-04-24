@@ -29,19 +29,19 @@ class TinyLlamaHfConfig(CpuConfig):
     storage_uri = ModelStorage.HF_TINYLLAMA
 
 
-class QwenS3Config(GpuConfig):
-    """Qwen 7B via S3 bucket, GPU inference."""
+class TinyLlamaS3GpuConfig(GpuConfig):
+    """TinyLlama via S3 bucket, GPU inference."""
 
     enable_auth = False
-    name = "llmisvc-qwen-s3-gpu"
-    storage_uri = ModelStorage.S3_QWEN
-    model_name = ModelNames.QWEN
+    name = "llmisvc-tinyllama-s3-gpu"
+    storage_uri = ModelStorage.TINYLLAMA_S3
+    model_name = ModelNames.TINYLLAMA
 
 
-class QwenHfConfig(GpuConfig):
-    """Qwen 7B via HuggingFace, GPU inference."""
+class TinyLlamaHfGpuConfig(GpuConfig):
+    """TinyLlama via HuggingFace, GPU inference."""
 
     enable_auth = False
-    name = "llmisvc-qwen-hf-gpu"
-    storage_uri = ModelStorage.HF_QWEN_7B_INSTRUCT
-    model_name = ModelNames.QWEN
+    name = "llmisvc-tinyllama-hf-gpu"
+    storage_uri = ModelStorage.HF_TINYLLAMA
+    model_name = ModelNames.TINYLLAMA

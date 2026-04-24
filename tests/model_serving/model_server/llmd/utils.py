@@ -375,7 +375,7 @@ def query_metric_by_pod(
     return result
 
 
-@retry(wait_timeout=90, sleep=30, exceptions_dict={AssertionError: []}, print_log=False)
+@retry(wait_timeout=120, sleep=10, exceptions_dict={AssertionError: []}, print_log=False)
 def assert_prefix_cache_routing(
     prometheus: Prometheus,
     llmisvc: LLMInferenceService,
@@ -427,30 +427,57 @@ def send_prefix_cache_requests(
     llmisvc: LLMInferenceService,
     prompt: str,
     token: str,
-    count: int = 20,
-    min_ratio: float = 0.8,
+    count: int,
+    max_failures: int = 5,
     delay_after_first_request: int | None = None,
 ) -> int:
-    """Send identical requests for prefix cache testing. Returns success count."""
-    LOGGER.info(f"Sending {count} identical requests to test prefix cache")
+    """Send identical chat completion requests until ``count`` succeed.
+
+    Keeps sending the same prompt until the target number of successful (HTTP 200)
+    responses is reached. Aborts with AssertionError if failures exceed ``max_failures``.
+
+    Args:
+        llmisvc: The LLMInferenceService to send requests to.
+        prompt: The prompt text sent in every request.
+        token: Bearer token for authentication.
+        count: Number of successful responses required.
+        max_failures: Maximum tolerated failures (non-200 or exceptions) before aborting.
+        delay_after_first_request: Seconds to wait after the first successful request,
+            used to allow KV cache index propagation before subsequent requests.
+
+    Returns:
+        The number of successful requests (always equal to ``count``).
+
+    Raises:
+        AssertionError: If failures exceed ``max_failures``.
+    """
+    LOGGER.info(f"Sending requests until {count} succeed (max {max_failures} failures allowed)")
     successful = 0
-    for i in range(count):
+    failures = 0
+
+    while successful < count:
+        # mark test failed when inference requests exceed the max_failures threshold
+        assert failures < max_failures, f"Too many failures: {failures}/{max_failures}, {successful}/{count} succeeded"
+
         try:
-            status, _ = send_chat_completions(
-                llmisvc=llmisvc,
-                prompt=prompt,
-                token=token,
-                insecure=False,
-            )
-            if status == 200:
-                successful += 1
-            if i == 0 and delay_after_first_request is not None and delay_after_first_request > 0:
-                LOGGER.info(f"Waiting {delay_after_first_request}s after first request for KV cache index propagation")
-                time.sleep(delay_after_first_request)
+            status, body = send_chat_completions(llmisvc=llmisvc, prompt=prompt, token=token, insecure=False)
         except Exception:
-            LOGGER.exception(f"Request {i + 1}/{count} failed")
-    LOGGER.info(f"{successful}/{count} requests succeeded")
-    assert successful >= count * min_ratio, f"Too many failures: {successful}/{count} (need {min_ratio * 100}%)"
+            failures += 1
+            LOGGER.exception(f"Request raised an exception ({failures}/{max_failures} failures)")
+            continue
+
+        if status == 200:
+            successful += 1
+            # add delay after first successful request for KV cache index propagation
+            if successful == 1 and delay_after_first_request:
+                LOGGER.info(f"Waiting {delay_after_first_request}s for KV cache index propagation")
+                time.sleep(delay_after_first_request)
+        else:
+            failures += 1
+            LOGGER.warning(f"Request failed with status {status}: {body} ({failures}/{max_failures} failures)")
+            time.sleep(5)
+
+    LOGGER.info(f"{successful} requests succeeded ({failures} failures)")
     return successful
 
 
