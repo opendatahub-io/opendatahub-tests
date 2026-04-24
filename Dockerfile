@@ -23,7 +23,7 @@ RUN curl -sSL "https://github.com/fullstorydev/grpcurl/releases/download/v1.9.2/
     && mv grpcurl /usr/bin/grpcurl
 
 # Install cosign
-COPY --from=quay.io/securesign/cli-cosign@sha256:8ce71066399e9cdff69cb903be9935fe08050367439f34b6ae9dfb87fe512f2b /usr/local/bin/cosign /usr/bin/cosign
+COPY --from=quay.io/securesign/cli-cosign@sha256:ec84e6b8097fef6b1f774eb09f41669679ceed458bf855593f34d69480899152 /usr/local/bin/cosign /usr/bin/cosign
 
 RUN useradd -ms /bin/bash $USER
 USER $USER
