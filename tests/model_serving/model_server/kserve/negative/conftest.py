@@ -179,7 +179,7 @@ def neighbor_failing_ovms_isvc(
 
     with create_isvc(
         client=admin_client,
-        name="negative-test-neighbor-failing-isvc",
+        name="neg-fail-neighbor-isvc",
         namespace=negative_test_namespace.name,
         runtime=ovms_serving_runtime.name,
         storage_key=invalid_s3_credentials_secret.name,
