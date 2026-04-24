@@ -11,14 +11,16 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from pytest_testconfig import config as py_config
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_serving.model_server.kserve.negative.utils import (
     assert_kserve_control_plane_stable,
     snapshot_kserve_control_plane_restart_totals,
     wait_for_isvc_ready_false,
 )
+from utilities.constants import Timeout
 
-pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_config")]
+pytestmark = [pytest.mark.rawdeployment]
 
 
 @pytest.mark.tier2
@@ -37,8 +39,26 @@ class TestPvcFailures:
         Then:
             The PVC stays in ``Pending`` phase because no provisioner matches.
         """
-        pvc_phase = bad_storage_class_pvc.instance.status.phase
-        assert pvc_phase == "Pending", f"Expected PVC to be Pending with non-existent StorageClass, got {pvc_phase}"
+        last_phase: str | None = None
+
+        def _pvc_phase() -> str | None:
+            bad_storage_class_pvc.update()
+            status = getattr(bad_storage_class_pvc.instance, "status", None)
+            return getattr(status, "phase", None) if status else None
+
+        try:
+            for last_phase in TimeoutSampler(
+                wait_timeout=Timeout.TIMEOUT_2MIN,
+                sleep=2,
+                func=_pvc_phase,
+            ):
+                if last_phase == "Pending":
+                    return
+        except TimeoutExpiredError as exc:
+            raise AssertionError(
+                "Expected PVC phase Pending with non-existent StorageClass within timeout; "
+                f"last observed phase: {last_phase!r}"
+            ) from exc
 
     def test_isvc_reports_not_ready_with_bad_pvc(
         self,

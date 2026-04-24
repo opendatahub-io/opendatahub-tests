@@ -131,6 +131,7 @@ def wait_for_isvc_ready_false(
     """
 
     def _ready_condition() -> Any:
+        isvc.update()
         inst_status = getattr(isvc.instance, "status", None)
         if not inst_status:
             return None
@@ -145,12 +146,13 @@ def wait_for_isvc_ready_false(
     sample: Any = None
     try:
         for sample in TimeoutSampler(wait_timeout=timeout, sleep=sleep, func=_ready_condition):
-            if sample and sample.status == "False":
+            if sample is not None and getattr(sample, "status", None) == "False":
                 LOGGER.info(
                     "InferenceService Ready=False observed",
                     isvc=isvc.name,
                     namespace=isvc.namespace,
                     reason=getattr(sample, "reason", None),
+                    message=getattr(sample, "message", None),
                 )
                 return
     except TimeoutExpiredError:
@@ -159,6 +161,8 @@ def wait_for_isvc_ready_false(
             isvc=isvc.name,
             namespace=isvc.namespace,
             last_ready_condition=sample,
+            last_reason=getattr(sample, "reason", None) if sample is not None else None,
+            last_message=getattr(sample, "message", None) if sample is not None else None,
         )
         raise
 
