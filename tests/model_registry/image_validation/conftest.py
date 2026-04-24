@@ -4,10 +4,12 @@ from typing import Any
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.job import Job
 from ocp_resources.pod import Pod
 from pytest import FixtureRequest
 from pytest_testconfig import config as py_config
 
+from tests.model_registry.utils import get_latest_job_pod
 from utilities.general import wait_for_pods_by_labels
 from utilities.infra import ResourceNotFoundError
 
@@ -53,3 +55,27 @@ def async_upload_image(admin_client: DynamicClient) -> str:
         )
 
     return config_map.instance.data["IMAGES_JOBS_ASYNC_UPLOAD"]
+
+
+@pytest.fixture(scope="class")
+def async_job_pod(
+    admin_client: DynamicClient,
+    async_upload_image: str,
+    model_registry_namespace: str,
+) -> Generator[Pod, Any, Any]:
+    """Deploy async upload job with a trivial command and yield the resulting pod."""
+    with Job(
+        client=admin_client,
+        name="async-upload-image-validation",
+        namespace=model_registry_namespace,
+        restart_policy="Never",
+        containers=[
+            {
+                "name": "async-upload",
+                "image": async_upload_image,
+                "command": ["true"],
+            }
+        ],
+    ) as job:
+        job.wait_for_condition(condition="Complete", status="True")
+        yield get_latest_job_pod(admin_client=admin_client, job=job)

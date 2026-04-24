@@ -10,6 +10,7 @@ from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import RegisteredModel
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
+from ocp_resources.job import Job
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
@@ -996,3 +997,23 @@ def wait_for_mcp_catalog_api(
             f"MCP catalog API returned {current_size} servers (stable: {stable_count}/{consecutive_stable_checks})"
         )
     return data
+
+
+def get_latest_job_pod(admin_client: DynamicClient, job: Job) -> Pod:
+    """Get the latest (most recently created) Pod created by a Job."""
+    pods = list(
+        Pod.get(
+            client=admin_client,
+            namespace=job.namespace,
+            label_selector=f"job-name={job.name}",
+        )
+    )
+
+    if not pods:
+        raise AssertionError(f"No pods found for job {job.name}")
+
+    sorted_pods = sorted(pods, key=lambda p: p.instance.metadata.creationTimestamp or "", reverse=True)
+
+    latest_pod = sorted_pods[0]
+    LOGGER.info(f"Found {len(pods)} pod(s) for job {job.name}, using latest: {latest_pod.name}")
+    return latest_pod
