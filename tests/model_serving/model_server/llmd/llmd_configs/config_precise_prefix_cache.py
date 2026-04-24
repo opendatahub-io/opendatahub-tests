@@ -4,16 +4,16 @@ import json
 
 import yaml
 
-from .config_models import QwenHfConfig
+from .config_models import TinyLlamaHfGpuConfig
 
 
-class PrecisePrefixCacheConfig(QwenHfConfig):
-    """Single-node precise prefix cache — Qwen 7B via HuggingFace, 2 GPU replicas."""
+class PrecisePrefixCacheConfig(TinyLlamaHfGpuConfig):
+    """Single-node precise prefix cache — TinyLlama via HuggingFace, 2 GPU replicas."""
 
     name = "llmisvc-precise-prefix"
     # The precise-prefix-cache-scorer scheduler plugin downloads the tokenizer from
     # HuggingFace using the model name. It must be the full HF repo ID, not an alias.
-    model_name = "Qwen/Qwen2.5-7B-Instruct"
+    model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
     replicas = 2
     block_size = 64
     hash_algo = "sha256_cbor"

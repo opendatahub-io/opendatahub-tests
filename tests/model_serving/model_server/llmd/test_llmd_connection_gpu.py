@@ -1,7 +1,7 @@
 import pytest
 from ocp_resources.llm_inference_service import LLMInferenceService
 
-from tests.model_serving.model_server.llmd.llmd_configs import QwenHfConfig, QwenS3Config
+from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaHfGpuConfig, TinyLlamaS3GpuConfig
 from tests.model_serving.model_server.llmd.utils import (
     ns_from_file,
     parse_completion_text,
@@ -17,14 +17,14 @@ NAMESPACE = ns_from_file(file=__file__)
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, llmisvc",
     [
-        pytest.param({"name": NAMESPACE}, QwenS3Config, id="s3"),
-        pytest.param({"name": NAMESPACE}, QwenHfConfig, id="hf"),
+        pytest.param({"name": NAMESPACE}, TinyLlamaS3GpuConfig, id="s3"),
+        pytest.param({"name": NAMESPACE}, TinyLlamaHfGpuConfig, id="hf"),
     ],
     indirect=True,
 )
 @pytest.mark.usefixtures("valid_aws_config", "skip_if_no_gpu_available", "skip_if_disconnected")
 class TestLlmdConnectionGpu:
-    """Deploy Qwen on GPU via S3 and HuggingFace and verify chat completions."""
+    """Deploy TinyLlama on GPU via S3 and HuggingFace and verify chat completions."""
 
     def test_llmd_connection_gpu(
         self,
