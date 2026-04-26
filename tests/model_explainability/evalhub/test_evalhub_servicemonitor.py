@@ -97,9 +97,7 @@ class TestEvalHubServiceMonitor:
     def test_servicemonitor_endpoint_path(self) -> None:
         """Verify the scrape path is /metrics."""
         endpoint = self._sm.instance.spec.endpoints[0]
-        assert endpoint.path == EVALHUB_METRICS_PATH, (
-            f"Expected path '{EVALHUB_METRICS_PATH}', got '{endpoint.path}'"
-        )
+        assert endpoint.path == EVALHUB_METRICS_PATH, f"Expected path '{EVALHUB_METRICS_PATH}', got '{endpoint.path}'"
 
     def test_servicemonitor_endpoint_scheme(self) -> None:
         """Verify the scrape scheme is https."""
@@ -205,9 +203,9 @@ class TestEvalHubServiceMonitor:
 
         rules = role.instance.rules or []
         sm_rules = [
-            r for r in rules
-            if SERVICEMONITOR_API_GROUP in (r.apiGroups or [])
-            and "servicemonitors" in (r.resources or [])
+            r
+            for r in rules
+            if SERVICEMONITOR_API_GROUP in (r.apiGroups or []) and "servicemonitors" in (r.resources or [])
         ]
         assert sm_rules, (
             f"ClusterRole '{EVALHUB_MANAGER_CLUSTERROLE}' has no rule for "
@@ -320,9 +318,7 @@ class TestEvalHubServiceMonitorCRDAbsent:
             name=f"{evalhub_cr.name}{EVALHUB_SERVICE_MONITOR_SUFFIX}",
             namespace=model_namespace.name,
         )
-        assert not sm.exists, (
-            f"ServiceMonitor '{sm.name}' was unexpectedly created despite the CRD being absent"
-        )
+        assert not sm.exists, f"ServiceMonitor '{sm.name}' was unexpectedly created despite the CRD being absent"
 
 
 @pytest.mark.parametrize(
@@ -372,9 +368,7 @@ class TestEvalHubServiceMonitorDeletion:
                 if sm.exists:
                     break
 
-            assert sm.exists, (
-                f"ServiceMonitor '{sm_name}' was not created after EvalHub deployment"
-            )
+            assert sm.exists, f"ServiceMonitor '{sm_name}' was not created after EvalHub deployment"
 
         # EvalHub CR is now deleted (context manager exited); wait for GC
         sm_gone = False
