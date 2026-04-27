@@ -1,5 +1,13 @@
 """Constants for LLMD tests."""
 
+from utilities.constants import Labels
+
+# List of accelerators supported by llm-d tests
+LLMD_TESTS_SUPPORTED_ACCELERATORS = (Labels.Nvidia.NVIDIA_COM_GPU, Labels.ROCm.ROCM_GPU)
+
+# LLMInferenceServiceConfig CR name for AMD ROCm vLLM image override
+AMD_ROCM_TEMPLATE = "kserve-config-llm-template-amd-rocm"
+
 # DSC status condition that gates LLMD test execution
 LLMD_DSC_CONDITION: str = "KserveLLMInferenceServiceDependencies"
 
