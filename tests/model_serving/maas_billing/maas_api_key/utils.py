@@ -8,10 +8,50 @@ import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 from requests import Response
+from timeout_sampler import TimeoutSampler
 
+from tests.model_serving.maas_billing.utils import build_maas_headers
 from utilities.resources.auth_policy import AuthPolicy
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+def assert_key_rejected_at_inference(
+    request_session_http: requests.Session,
+    inference_url: str,
+    plaintext_key: str,
+    payload: dict[str, Any],
+    expected_status: int = 403,
+    wait_timeout: int = 60,
+    sleep: int = 2,
+) -> None:
+    """Poll inference endpoint until the API key is rejected with expected status."""
+    headers = build_maas_headers(token=plaintext_key)
+    for response in TimeoutSampler(
+        wait_timeout=wait_timeout,
+        sleep=sleep,
+        func=request_session_http.post,
+        url=inference_url,
+        headers=headers,
+        json=payload,
+        timeout=10,
+    ):
+        LOGGER.info(f"Polling inference: status={response.status_code} expected={expected_status}")
+        if response.status_code == expected_status:
+            break
+
+    assert response.status_code == expected_status, (
+        f"Expected {expected_status}, got {response.status_code}: {(response.text or '')[:200]}"
+    )
+
+
+def build_chat_payload(model_name: str, prompt: str = "hello", max_tokens: int = 1) -> dict[str, Any]:
+    """Build a minimal chat completions request payload."""
+    return {
+        "model": model_name,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": max_tokens,
+    }
 
 
 def get_api_key(
@@ -171,6 +211,11 @@ def search_active_api_keys(
     assert resp.status_code == 200, f"Expected 200 from key search, got {resp.status_code}: {(resp.text or '')[:200]}"
     body = resp.json()
     return body.get("items") or body.get("data") or []
+
+
+def build_inference_url(maas_scheme: str, maas_host: str, model_name: str) -> str:
+    """Build the chat completions inference URL for a given model."""
+    return f"{maas_scheme}://{maas_host}/llm/{model_name}/v1/chat/completions"
 
 
 def get_auth_policy_callback_url(

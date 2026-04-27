@@ -16,7 +16,11 @@ from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from pytest_testconfig import config as py_config
 
-from tests.model_serving.maas_billing.maas_api_key.utils import resolve_api_key_username
+from tests.model_serving.maas_billing.maas_api_key.utils import (
+    build_chat_payload,
+    build_inference_url,
+    resolve_api_key_username,
+)
 from tests.model_serving.maas_billing.maas_subscription.utils import (
     wait_for_auth_ready,
 )
@@ -402,3 +406,25 @@ def unconfigured_model_ref(
         model_ref.wait_for_condition(condition="Ready", status="True", timeout=300)
         LOGGER.info(f"unconfigured_model_ref: created model ref '{model_ref_name}' (no MaaSAuthPolicy)")
         yield model_ref
+
+
+@pytest.fixture(scope="class")
+def tinyllama_free_inference_url(
+    maas_scheme: str,
+    maas_host: str,
+    maas_inference_service_tinyllama_free: LLMInferenceService,
+) -> str:
+    """Chat completions URL for the free TinyLlama model."""
+    return build_inference_url(
+        maas_scheme=maas_scheme,
+        maas_host=maas_host,
+        model_name=maas_inference_service_tinyllama_free.name,
+    )
+
+
+@pytest.fixture(scope="class")
+def tinyllama_free_payload(
+    maas_inference_service_tinyllama_free: LLMInferenceService,
+) -> dict[str, Any]:
+    """Minimal chat completions payload for the free TinyLlama model."""
+    return build_chat_payload(model_name=maas_inference_service_tinyllama_free.name)
