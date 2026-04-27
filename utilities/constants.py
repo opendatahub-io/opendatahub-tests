@@ -176,7 +176,7 @@ class DscComponents:
     MODELMESHSERVING: str = "modelmeshserving"
     KSERVE: str = "kserve"
     MODELREGISTRY: str = "modelregistry"
-    LLAMASTACKOPERATOR: str = "llamastackoperator"
+    OGXOPERATOR: str = "ogxoperator"
     KUEUE: str = "kueue"
 
     class ManagementState:
@@ -188,13 +188,13 @@ class DscComponents:
         MODEL_REGISTRY_READY: str = "ModelRegistryReady"
         KSERVE_READY: str = "KserveReady"
         MODEL_MESH_SERVING_READY: str = "ModelMeshServingReady"
-        LLAMA_STACK_OPERATOR_READY: str = "LlamaStackOperatorReady"
+        OGX_OPERATOR_READY: str = "OGXOperatorReady"
 
     COMPONENT_MAPPING: dict[str, str] = {  # noqa: RUF012
         MODELMESHSERVING: ConditionType.MODEL_MESH_SERVING_READY,
         KSERVE: ConditionType.KSERVE_READY,
         MODELREGISTRY: ConditionType.MODEL_REGISTRY_READY,
-        LLAMASTACKOPERATOR: ConditionType.LLAMA_STACK_OPERATOR_READY,
+        OGXOPERATOR: ConditionType.OGX_OPERATOR_READY,
     }
 
 

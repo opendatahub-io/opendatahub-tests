@@ -16,7 +16,7 @@ def files_provider_config_factory(
 
     This fixture returns a factory function that can configure additional files storage providers
     (such as S3/minio) and return the necessary environment variables
-    for configuring the LlamaStack server to use these providers.
+    for configuring the OGX server to use these providers.
 
     Args:
         request: Pytest fixture request object for accessing other fixtures
@@ -64,13 +64,11 @@ def files_provider_config_factory(
             })
             env_vars.append({
                 "name": "AWS_ACCESS_KEY_ID",
-                "valueFrom": {"secretKeyRef": {"name": "llamastack-distribution-secret", "key": "aws-access-key-id"}},
+                "valueFrom": {"secretKeyRef": {"name": "ogx-distribution-secret", "key": "aws-access-key-id"}},
             })
             env_vars.append({
                 "name": "AWS_SECRET_ACCESS_KEY",
-                "valueFrom": {
-                    "secretKeyRef": {"name": "llamastack-distribution-secret", "key": "aws-secret-access-key"}
-                },
+                "valueFrom": {"secretKeyRef": {"name": "ogx-distribution-secret", "key": "aws-secret-access-key"}},
             })
             env_vars.append({"name": "S3_AUTO_CREATE_BUCKET", "value": S3_AUTO_CREATE_BUCKET})
 

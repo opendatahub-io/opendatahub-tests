@@ -49,7 +49,7 @@ utilities/                # Shared utility functions
 ### Tests
 
 - Every test MUST have a docstring explaining what it tests (see `tests/cluster_health/test_cluster_health.py`)
-- Apply relevant markers from `pytest.ini`: tier (`smoke`, `sanity`, `tier1`, `tier2`), component (`model_serving`, `model_registry`, `llama_stack`), infrastructure (`gpu`, `parallel`, `slow`)
+- Apply relevant markers from `pytest.ini`: tier (`smoke`, `sanity`, `tier1`, `tier2`), component (`model_serving`, `model_registry`, `ogx`), infrastructure (`gpu`, `parallel`, `slow`)
 - Use Given-When-Then format in docstrings for behavioral clarity
 
 ### Fixtures
