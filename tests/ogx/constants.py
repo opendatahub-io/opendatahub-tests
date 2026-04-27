@@ -68,4 +68,4 @@ OGX_DISTRIBUTION_SECRET_DATA = {
     "aws-secret-access-key": LLS_CORE_AWS_SECRET_ACCESS_KEY,
 }
 
-UPGRADE_DISTRIBUTION_NAME = "ogx-distribution-upgrade"
+UPGRADE_DISTRIBUTION_NAME = "ogx-server-upgrade"

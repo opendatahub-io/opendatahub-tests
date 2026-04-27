@@ -11,10 +11,8 @@ from utilities.general import wait_for_pods_by_labels
 
 
 @pytest.fixture(scope="class")
-def ogx_distribution_pods(
-    admin_client: DynamicClient, unprivileged_model_namespace: Namespace
-) -> Generator[Pod, Any, Any]:
-    """Returns the OgxDistribution pods running in the namespace."""
+def ogx_server_pods(admin_client: DynamicClient, unprivileged_model_namespace: Namespace) -> Generator[Pod, Any, Any]:
+    """Returns the OgxServer pods running in the namespace."""
     yield wait_for_pods_by_labels(
         admin_client=admin_client,
         namespace=unprivileged_model_namespace.name,

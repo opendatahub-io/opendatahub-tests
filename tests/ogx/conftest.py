@@ -36,7 +36,7 @@ from tests.ogx.constants import (
 )
 from tests.ogx.datasets import Dataset
 from tests.ogx.utils import (
-    create_ogx_distribution,
+    create_ogx_server,
     vector_store_upload_dataset,
     vector_store_upload_doc_sources,
     wait_for_ogx_client_ready,
@@ -45,7 +45,7 @@ from tests.ogx.utils import (
 from utilities.constants import Annotations, DscComponents
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.general import generate_random_name
-from utilities.resources.ogx_distribution import OgxDistribution
+from utilities.resources.ogx_server import OgxServer
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -64,7 +64,7 @@ def enabled_ogx_operator(dsc_resource: DataScienceCluster) -> Generator[DataScie
     with update_components_in_dsc(
         dsc=dsc_resource,
         components={
-            DscComponents.LLAMASTACKOPERATOR: DscComponents.ManagementState.MANAGED,
+            DscComponents.OGX: DscComponents.ManagementState.MANAGED,
         },
         wait_for_components_state=True,
     ) as dsc:
@@ -248,7 +248,7 @@ def ogx_server_config(
 
 
 @pytest.fixture(scope="class")
-def ogx_distribution_secret(
+def ogx_server_secret(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     model_namespace: Namespace,
@@ -272,7 +272,7 @@ def ogx_distribution_secret(
 
 
 @pytest.fixture(scope="class")
-def unprivileged_ogx_distribution_secret(
+def unprivileged_ogx_server_secret(
     pytestconfig: pytest.Config,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
@@ -296,7 +296,7 @@ def unprivileged_ogx_distribution_secret(
 
 
 @pytest.fixture(scope="class")
-def unprivileged_ogx_distribution(
+def unprivileged_ogx_server(
     pytestconfig: pytest.Config,
     distribution_name: str,
     unprivileged_client: DynamicClient,
@@ -310,36 +310,36 @@ def unprivileged_ogx_distribution(
     aws_access_key_id: str,
     aws_secret_access_key: str,
     teardown_resources: bool,
-    unprivileged_ogx_distribution_secret: Secret,
+    unprivileged_ogx_server_secret: Secret,
     unprivileged_postgres_deployment: Deployment,
     unprivileged_postgres_service: Service,
-) -> Generator[OgxDistribution]:
+) -> Generator[OgxServer]:
     if pytestconfig.option.post_upgrade:
-        lls_dist = OgxDistribution(
+        ogx_srv = OgxServer(
             client=unprivileged_client,
             name=distribution_name,
             namespace=unprivileged_model_namespace.name,
             ensure_exists=True,
         )
-        lls_dist.wait_for_status(status=OgxDistribution.Status.READY, timeout=600)
-        yield lls_dist
-        lls_dist.clean_up()
+        ogx_srv.wait_for_status(status=OgxServer.Status.READY, timeout=600)
+        yield ogx_srv
+        ogx_srv.clean_up()
         return
 
-    with create_ogx_distribution(
+    with create_ogx_server(
         client=unprivileged_client,
         name=distribution_name,
         namespace=unprivileged_model_namespace.name,
         replicas=1,
         server=ogx_server_config,
         teardown=teardown_resources,
-    ) as lls_dist:
-        lls_dist.wait_for_status(status=OgxDistribution.Status.READY, timeout=600)
-        yield lls_dist
+    ) as ogx_srv:
+        ogx_srv.wait_for_status(status=OgxServer.Status.READY, timeout=600)
+        yield ogx_srv
 
 
 @pytest.fixture(scope="class")
-def ogx_distribution(
+def ogx_server(
     pytestconfig: pytest.Config,
     distribution_name: str,
     admin_client: DynamicClient,
@@ -353,62 +353,62 @@ def ogx_distribution(
     aws_access_key_id: str,
     aws_secret_access_key: str,
     teardown_resources: bool,
-    ogx_distribution_secret: Secret,
+    ogx_server_secret: Secret,
     postgres_deployment: Deployment,
     postgres_service: Service,
-) -> Generator[OgxDistribution]:
+) -> Generator[OgxServer]:
     if pytestconfig.option.post_upgrade:
-        lls_dist = OgxDistribution(
+        ogx_srv = OgxServer(
             client=admin_client,
             name=distribution_name,
             namespace=model_namespace.name,
             ensure_exists=True,
         )
-        lls_dist.wait_for_status(status=OgxDistribution.Status.READY, timeout=600)
-        yield lls_dist
-        lls_dist.clean_up()
+        ogx_srv.wait_for_status(status=OgxServer.Status.READY, timeout=600)
+        yield ogx_srv
+        ogx_srv.clean_up()
         return
 
-    with create_ogx_distribution(
+    with create_ogx_server(
         client=admin_client,
         name=distribution_name,
         namespace=model_namespace.name,
         replicas=1,
         server=ogx_server_config,
         teardown=teardown_resources,
-    ) as lls_dist:
-        lls_dist.wait_for_status(status=OgxDistribution.Status.READY, timeout=600)
-        yield lls_dist
+    ) as ogx_srv:
+        ogx_srv.wait_for_status(status=OgxServer.Status.READY, timeout=600)
+        yield ogx_srv
 
 
-def _get_ogx_distribution_deployment(
+def _get_ogx_server_deployment(
     client: DynamicClient,
-    ogx_distribution: OgxDistribution,
+    ogx_server: OgxServer,
 ) -> Generator[Deployment, Any, Any]:
     """
-    Returns the Deployment resource for a given OgxDistribution.
+    Returns the Deployment resource for a given OgxServer.
     Note: The deployment is created by the operator; this function retrieves it.
     Includes a workaround for RHAIENG-1819 to ensure exactly one pod exists.
 
     Args:
         client (DynamicClient): Kubernetes client
-        ogx_distribution (OgxDistribution): OGX distribution resource
+        ogx_server (OgxServer): OGX distribution resource
 
     Yields:
         Generator[Deployment, Any, Any]: Deployment resource
     """
     deployment = Deployment(
         client=client,
-        namespace=ogx_distribution.namespace,
-        name=ogx_distribution.name,
+        namespace=ogx_server.namespace,
+        name=ogx_server.name,
         min_ready_seconds=10,
     )
     deployment.timeout_seconds = 240
     deployment.wait(timeout=240)
     deployment.wait_for_replicas()
     # Workaround for RHAIENG-1819 (Incorrect number of ogx pods deployed after
-    # creating OgxDistribution after setting custom ca bundle in DSCI)
-    wait_for_unique_ogx_pod(client=client, namespace=ogx_distribution.namespace)
+    # creating OgxServer after setting custom ca bundle in DSCI)
+    wait_for_unique_ogx_pod(client=client, namespace=ogx_server.namespace)
     yield deployment
 
 
@@ -425,41 +425,39 @@ def skip_ogx_if_not_supported_openshift_version(admin_client: DynamicClient, ope
 
 
 @pytest.fixture(scope="class")
-def unprivileged_ogx_distribution_deployment(
+def unprivileged_ogx_server_deployment(
     unprivileged_client: DynamicClient,
-    unprivileged_ogx_distribution: OgxDistribution,
+    unprivileged_ogx_server: OgxServer,
 ) -> Generator[Deployment, Any, Any]:
     """
     Returns a deployment resource for unprivileged OGX distribution.
 
     Args:
         unprivileged_client (DynamicClient): Unprivileged Kubernetes client
-        unprivileged_ogx_distribution (OgxDistribution): Unprivileged OGX distribution resource
+        unprivileged_ogx_server (OgxServer): Unprivileged OGX distribution resource
 
     Yields:
         Generator[Deployment, Any, Any]: Deployment resource
     """
-    yield from _get_ogx_distribution_deployment(
-        client=unprivileged_client, ogx_distribution=unprivileged_ogx_distribution
-    )
+    yield from _get_ogx_server_deployment(client=unprivileged_client, ogx_server=unprivileged_ogx_server)
 
 
 @pytest.fixture(scope="class")
-def ogx_distribution_deployment(
+def ogx_server_deployment(
     admin_client: DynamicClient,
-    ogx_distribution: OgxDistribution,
+    ogx_server: OgxServer,
 ) -> Generator[Deployment, Any, Any]:
     """
     Returns a deployment resource for admin OGX distribution.
 
     Args:
         admin_client (DynamicClient): Admin Kubernetes client
-        ogx_distribution (OgxDistribution): OGX distribution resource
+        ogx_server (OgxServer): OGX distribution resource
 
     Yields:
         Generator[Deployment, Any, Any]: Deployment resource
     """
-    yield from _get_ogx_distribution_deployment(client=admin_client, ogx_distribution=ogx_distribution)
+    yield from _get_ogx_server_deployment(client=admin_client, ogx_server=ogx_server)
 
 
 def _create_ogx_test_route(
@@ -555,14 +553,14 @@ def unprivileged_ogx_test_route(
     pytestconfig: pytest.Config,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
-    unprivileged_ogx_distribution_deployment: Deployment,
+    unprivileged_ogx_server_deployment: Deployment,
     teardown_resources: bool,
 ) -> Generator[Route, Any, Any]:
     yield from _create_ogx_test_route(
         pytestconfig=pytestconfig,
         client=unprivileged_client,
         namespace=unprivileged_model_namespace,
-        deployment=unprivileged_ogx_distribution_deployment,
+        deployment=unprivileged_ogx_server_deployment,
         teardown_resources=teardown_resources,
     )
 
@@ -572,14 +570,14 @@ def ogx_test_route(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    ogx_distribution_deployment: Deployment,
+    ogx_server_deployment: Deployment,
     teardown_resources: bool,
 ) -> Generator[Route, Any, Any]:
     yield from _create_ogx_test_route(
         pytestconfig=pytestconfig,
         client=admin_client,
         namespace=model_namespace,
-        deployment=ogx_distribution_deployment,
+        deployment=ogx_server_deployment,
         teardown_resources=teardown_resources,
     )
 

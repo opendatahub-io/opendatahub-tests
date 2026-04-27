@@ -22,7 +22,7 @@ from tests.ogx.constants import (
 from tests.ogx.datasets import Dataset
 from utilities.exceptions import UnexpectedResourceCountError
 from utilities.path_utils import resolve_repo_path
-from utilities.resources.ogx_distribution import OgxDistribution
+from utilities.resources.ogx_server import OgxServer
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -120,14 +120,14 @@ def vector_store_create_and_poll(
 
 
 @contextmanager
-def create_ogx_distribution(
+def create_ogx_server(
     client: DynamicClient,
     name: str,
     namespace: str,
     replicas: int,
     server: dict[str, Any],
     teardown: bool = True,
-) -> Generator[OgxDistribution, Any, Any]:
+) -> Generator[OgxServer, Any, Any]:
     """
     Context manager to create and optionally delete a LLama Stack Distribution
     """
@@ -141,7 +141,7 @@ def create_ogx_distribution(
         },
     }
 
-    with OgxDistribution(
+    with OgxServer(
         client=client,
         name=name,
         namespace=namespace,
@@ -150,8 +150,8 @@ def create_ogx_distribution(
         server=server,
         wait_for_resource=True,
         teardown=teardown,
-    ) as ogx_distribution:
-        yield ogx_distribution
+    ) as ogx_server:
+        yield ogx_server
 
 
 @retry(
@@ -160,7 +160,7 @@ def create_ogx_distribution(
     exceptions_dict={ResourceNotFoundError: [], UnexpectedResourceCountError: []},
 )
 def wait_for_unique_ogx_pod(client: DynamicClient, namespace: str) -> Pod:
-    """Wait until exactly one OgxDistribution pod is found in the
+    """Wait until exactly one OgxServer pod is found in the
     namespace (multiple pods may indicate known bug RHAIENG-1819)."""
     pods = list(
         Pod.get(

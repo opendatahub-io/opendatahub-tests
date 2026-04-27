@@ -6,7 +6,7 @@ from ocp_resources.pod import Pod
 from utilities.general import validate_container_images
 
 
-@pytest.mark.usefixtures("unprivileged_ogx_distribution")
+@pytest.mark.usefixtures("unprivileged_ogx_server")
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, ogx_server_config",
     [
@@ -19,7 +19,7 @@ from utilities.general import validate_container_images
 )
 @pytest.mark.downstream_only
 @pytest.mark.ogx
-class TestOgxDistribution:
+class TestOgxServer:
     """
     Test class that implements multiple tests to verify OGX distribution functionality.
 
@@ -30,17 +30,17 @@ class TestOgxDistribution:
     @pytest.mark.smoke
     def test_ogxdistribution_verify_images(
         self: Self,
-        ogx_distribution_pods: Pod,
+        ogx_server_pods: Pod,
         related_images_refs: set[str],
     ) -> None:
         """
-        Verify that OgxDistribution container images meet the requirements:
+        Verify that OgxServer container images meet the requirements:
         1. Images are hosted in registry.redhat.io
         2. Images use sha256 digest instead of tags
         3. Images are listed in the CSV's relatedImages section
         """
         validation_errors = []
-        for pod in [ogx_distribution_pods]:
+        for pod in [ogx_server_pods]:
             validation_errors.extend(validate_container_images(pod=pod, valid_image_refs=related_images_refs))
 
         if validation_errors:

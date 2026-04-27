@@ -84,12 +84,12 @@ def guardrails_orchestrator_ssl_cert_secret(
 @pytest.fixture(scope="class")
 def patched_ogx_deployment_tls_certs(
     pytestconfig: pytest.Config,
-    ogx_distribution,
+    ogx_server,
     guardrails_orchestrator_ssl_cert_secret,
 ):
     lls_deployment = Deployment(
-        name=ogx_distribution.name,
-        namespace=ogx_distribution.namespace,
+        name=ogx_server.name,
+        namespace=ogx_server.namespace,
         ensure_exists=True,
     )
 
