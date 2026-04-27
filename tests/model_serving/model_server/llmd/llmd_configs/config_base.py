@@ -1,7 +1,12 @@
 """Base configuration class for LLMInferenceService resources."""
 
+import structlog
+from kubernetes.dynamic import DynamicClient
+
 from utilities.constants import ResourceLimits
 from utilities.llmd_constants import ContainerImages
+
+LOGGER = structlog.get_logger(name=__name__)
 
 
 class LLMISvcConfig:
@@ -16,9 +21,9 @@ class LLMISvcConfig:
     storage_uri = ""
     replicas = 1
     container_image = None
-    template_config_ref = "kserve-config-llm-template"
     enable_auth = False
     wait_timeout = 240
+    base_refs = None
 
     @classmethod
     def container_resources(cls):
@@ -89,9 +94,23 @@ class LLMISvcConfig:
             f"  replicas:        {cls.replicas}",
             f"  container_image: {cls.container_image or '(default)'}",
             f"  auth:            {cls.annotations().get('security.opendatahub.io/enable-auth', 'false')}",
-            border + "\n",
+            f"  resources:       {cls.container_resources() or '(none)'}",
         ]
+        return lines
+
+    @classmethod
+    def format_describe(cls, namespace: str = ""):
+        """Return a formatted config summary for log output."""
+        border = "=" * 60
+        lines = cls.describe(namespace=namespace)
+        lines.append(border + "\n")
         return "\n".join(lines)
+
+    @classmethod
+    def build(cls, client: DynamicClient) -> type:
+        """No-op for non-GPU configs. GpuConfig overrides with actual detection."""
+        LOGGER.info(f"[llmd] No accelerator needed for {cls.__name__}")
+        return cls
 
     @classmethod
     def with_overrides(cls, **overrides):
