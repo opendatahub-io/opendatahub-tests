@@ -62,9 +62,7 @@ class TestPostUpgradeModelCarServer:
 
     @pytest.mark.post_upgrade
     @pytest.mark.dependency(depends=["model_car_isvc_exists"])
-    def test_model_car_post_upgrade_not_modified(
-        self, model_car_inference_service_fixture, upgrade_baseline_fixture
-    ):
+    def test_model_car_post_upgrade_not_modified(self, model_car_inference_service_fixture, upgrade_baseline_fixture):
         """Verify Model Car InferenceService is not modified during upgrade"""
         baseline = upgrade_baseline_fixture.get(model_car_inference_service_fixture.name, {})
         expected = baseline.get("isvc_observed_generation", 1)

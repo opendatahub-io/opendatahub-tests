@@ -100,9 +100,7 @@ class TestPostUpgradeMetricsServer:
 
     @pytest.mark.post_upgrade
     @pytest.mark.dependency(depends=["metrics_isvc_exists"])
-    def test_metrics_post_upgrade_not_modified(
-        self, metrics_inference_service_fixture, upgrade_baseline_fixture
-    ):
+    def test_metrics_post_upgrade_not_modified(self, metrics_inference_service_fixture, upgrade_baseline_fixture):
         """Verify metrics InferenceService is not modified during upgrade"""
         baseline = upgrade_baseline_fixture.get(metrics_inference_service_fixture.name, {})
         expected = baseline.get("isvc_observed_generation", 1)
