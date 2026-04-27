@@ -41,7 +41,7 @@ repos:
         exclude: .*/__snapshots__/.*|.*-input\.json$|^semgrep\.yaml$
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.11
+    rev: v0.15.12
     hooks:
       - id: ruff
       - id: ruff-format
@@ -52,7 +52,7 @@ repos:
       - id: gitleaks
 
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.20.1
+    rev: v1.20.2
     hooks:
       - id: mypy
         additional_dependencies: ["types-PyYAML", "types-requests"]
@@ -95,7 +95,7 @@ repos:
       - id: actionlint
 
   - repo: https://github.com/DavidAnson/markdownlint-cli2
-    rev: v0.22.0
+    rev: v0.22.1
     hooks:
       - id: markdownlint-cli2
         args:
