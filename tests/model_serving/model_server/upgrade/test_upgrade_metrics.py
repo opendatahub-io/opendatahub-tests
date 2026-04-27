@@ -3,7 +3,7 @@ import pytest
 from tests.model_serving.model_server.upgrade.utils import (
     get_metrics_value,
     verify_inference_generation,
-    verify_isvc_pods_not_restarted,
+    verify_isvc_pods_not_restarted_against_baseline,
     verify_metrics_configmap_exists,
     verify_metrics_retained,
     verify_model_status_loaded,
@@ -23,6 +23,7 @@ pytestmark = [
 ]
 
 
+@pytest.mark.usefixtures("capture_metrics_upgrade_baseline")
 class TestPreUpgradeMetricsServer:
     """Pre-upgrade tests for metrics persistence during model serving."""
 
@@ -99,9 +100,13 @@ class TestPostUpgradeMetricsServer:
 
     @pytest.mark.post_upgrade
     @pytest.mark.dependency(depends=["metrics_isvc_exists"])
-    def test_metrics_post_upgrade_not_modified(self, metrics_inference_service_fixture):
+    def test_metrics_post_upgrade_not_modified(
+        self, metrics_inference_service_fixture, upgrade_baseline_fixture
+    ):
         """Verify metrics InferenceService is not modified during upgrade"""
-        verify_inference_generation(isvc=metrics_inference_service_fixture, expected_generation=1)
+        baseline = upgrade_baseline_fixture.get(metrics_inference_service_fixture.name, {})
+        expected = baseline.get("isvc_observed_generation", 1)
+        verify_inference_generation(isvc=metrics_inference_service_fixture, expected_generation=expected)
 
     @pytest.mark.post_upgrade
     @pytest.mark.dependency(depends=["metrics_isvc_exists"])
@@ -149,10 +154,12 @@ class TestPostUpgradeMetricsServer:
         self,
         admin_client,
         metrics_inference_service_fixture,
+        upgrade_baseline_fixture,
     ):
-        """Verify metrics pods have not restarted during upgrade"""
-        verify_isvc_pods_not_restarted(
+        """Verify metrics pods have not restarted beyond pre-upgrade baseline"""
+        baseline = upgrade_baseline_fixture.get(metrics_inference_service_fixture.name, {})
+        verify_isvc_pods_not_restarted_against_baseline(
             client=admin_client,
             isvc=metrics_inference_service_fixture,
-            max_restarts=2,
+            baseline_restart_counts=baseline.get("pod_restart_counts", {}),
         )
