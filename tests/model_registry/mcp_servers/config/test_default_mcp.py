@@ -38,7 +38,7 @@ class TestDefaultMCPCatalogSourceConfigMap:
         default_mcp_catalogs: list[dict],
         expected_catalog: dict,
     ):
-        """Verify that DEFAULT_MODEL_CATALOG_CM ConfigMap contains the expected MCP catalog entry."""
+        """Verify that default-catalog-sources ConfigMap contains the expected MCP catalog entry."""
         matching = [entry for entry in default_mcp_catalogs if entry.get("id") == expected_catalog["id"]]
         assert len(matching) == 1, (
             f"Expected exactly 1 mcp_catalogs entry with id '{expected_catalog['id']}', "
