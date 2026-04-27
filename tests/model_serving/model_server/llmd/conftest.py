@@ -206,16 +206,6 @@ def s3_service_account(
 
 
 # ===========================================
-#  GPU guards
-# ===========================================
-@pytest.fixture(scope="session")
-def skip_if_less_than_2_gpus(gpu_count_on_cluster: int) -> None:
-    """Skip test if fewer than 2 GPUs are available on the cluster."""
-    if gpu_count_on_cluster < 2:
-        pytest.skip(f"Test requires at least 2 GPUs (found {gpu_count_on_cluster})")
-
-
-# ===========================================
 #  LLMInferenceService creation
 # ===========================================
 @pytest.fixture(scope="class")
@@ -235,7 +225,7 @@ def llmisvc(
             indirect=True,
         )
     """
-    config_cls = request.param
+    config_cls = request.param.build(client=admin_client)
     namespace = unprivileged_model_namespace.name
 
     service_account = None
@@ -261,7 +251,7 @@ def llmisvc_auth_pair(
             cfg = TinyLlamaOciConfig.with_overrides(
                 name=f"llmisvc-auth-{i}",
                 enable_auth=True,
-            )
+            ).build(client=admin_client)
             svc = stack.enter_context(
                 cm=_create_llmisvc_from_config(
                     config_cls=cfg,
