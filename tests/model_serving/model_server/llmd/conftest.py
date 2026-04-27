@@ -363,8 +363,6 @@ def _create_llmisvc_from_config(
     teardown: bool = True,
 ) -> Generator[LLMInferenceService, Any]:
     """Create an LLMInferenceService from a config class."""
-    LOGGER.info(f"\n{config_cls.describe(namespace=namespace)}")
-
     model: dict[str, Any] = {"uri": config_cls.storage_uri}
     if config_cls.model_name:
         model["name"] = config_cls.model_name
@@ -383,13 +381,14 @@ def _create_llmisvc_from_config(
     })
 
     template: dict[str, Any] = {
-        "configRef": config_cls.template_config_ref,
         "containers": [main_container],
     }
     if service_account:
         template["serviceAccountName"] = service_account
 
     prefill = config_cls.prefill_config()
+    if prefill and service_account and "template" in prefill:
+        prefill["template"]["serviceAccountName"] = service_account
 
     svc_kwargs: dict[str, Any] = {
         "client": client,
@@ -402,11 +401,11 @@ def _create_llmisvc_from_config(
         "replicas": config_cls.replicas,
         "router": config_cls.router_config(),
         "template": template,
+        "base_refs": config_cls.base_refs,
+        "prefill": prefill,
     }
-    if prefill is not None:
-        if service_account and "template" in prefill:
-            prefill["template"]["serviceAccountName"] = service_account
-        svc_kwargs["prefill"] = prefill
+
+    LOGGER.info(f"\n{config_cls.format_describe(namespace=namespace)}")
 
     with LLMInferenceService(**svc_kwargs) as llm_service:
         wait_for_llmisvc(llmisvc=llm_service, timeout=config_cls.wait_timeout)
