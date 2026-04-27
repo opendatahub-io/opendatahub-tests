@@ -21,8 +21,17 @@ from ocp_resources.role_binding import RoleBinding
 from ocp_resources.service_account import ServiceAccount
 from pytest_testconfig import config as py_config
 
+from tests.model_serving.model_server.llmd.constants import (
+    LLMD_DSC_CONDITION,
+    LLMD_KSERVE_CONTROLLER_DEPLOYMENTS,
+    LLMD_REQUIRED_DEPLOYMENTS,
+    LLMD_REQUIRED_OPERATORS,
+)
 from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaOciConfig
-from tests.model_serving.model_server.llmd.utils import wait_for_llmisvc, wait_for_llmisvc_pods_ready
+from tests.model_serving.model_server.llmd.utils import (
+    wait_for_llmisvc,
+    wait_for_llmisvc_pods_ready,
+)
 from utilities.constants import Timeout
 from utilities.infra import create_inference_token, s3_endpoint_secret, update_configmap_data
 from utilities.llmd_utils import create_llmd_gateway
@@ -32,29 +41,6 @@ from utilities.resources.leader_worker_set_operator import LeaderWorkerSetOperat
 
 LOGGER = structlog.get_logger(name=__name__)
 logging.getLogger("timeout_sampler").setLevel(logging.WARNING)
-
-LLMD_DSC_CONDITION: str = "KserveLLMInferenceServiceDependencies"
-
-LLMD_REQUIRED_OPERATORS: dict[str, str] = {
-    "cert-manager-operator": "cert-manager-operator",
-    "authorino-operator": "kuadrant-system",
-    "rhcl-operator": "openshift-operators",
-}
-
-LLMD_REQUIRED_DEPLOYMENTS: dict[str, str] = {
-    "cert-manager-operator-controller-manager": "cert-manager-operator",
-    "cert-manager": "cert-manager",
-    "cert-manager-webhook": "cert-manager",
-    "authorino-operator": "kuadrant-system",
-    "kuadrant-operator-controller-manager": "kuadrant-system",
-}
-
-# Same KServe stack as tests/model_serving/model_server/kserve/conftest.py plus LLM-ISVC controller.
-LLMD_KSERVE_CONTROLLER_DEPLOYMENTS: list[str] = [
-    "kserve-controller-manager",
-    "odh-model-controller",
-    "llmisvc-controller-manager",
-]
 
 
 def _verify_operator_csv(admin_client: DynamicClient, csv_prefix: str, namespace: str) -> None:
