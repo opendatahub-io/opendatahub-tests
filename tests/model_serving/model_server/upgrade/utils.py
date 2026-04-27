@@ -441,8 +441,7 @@ def capture_isvc_baseline(client: DynamicClient, isvc: InferenceService) -> dict
     for pod in pods:
         if pod.instance.status.containerStatuses:
             pod_restart_counts[pod.name] = {
-                container.name: container.restartCount
-                for container in pod.instance.status.containerStatuses
+                container.name: container.restartCount for container in pod.instance.status.containerStatuses
             }
 
     baseline["pod_restart_counts"] = pod_restart_counts
@@ -521,9 +520,7 @@ def load_baseline_from_configmap(
 
     raw = cm.instance.data.get("baseline")
     if not raw:
-        raise AssertionError(
-            f"Baseline ConfigMap '{UPGRADE_BASELINE_CM_NAME}' has no 'baseline' key in data."
-        )
+        raise AssertionError(f"Baseline ConfigMap '{UPGRADE_BASELINE_CM_NAME}' has no 'baseline' key in data.")
 
     return json.loads(raw)
 
@@ -559,6 +556,4 @@ def verify_isvc_pods_not_restarted_against_baseline(
                 )
 
     if increased_containers:
-        raise PodContainersRestartError(
-            f"Container restart counts increased after upgrade: {increased_containers}"
-        )
+        raise PodContainersRestartError(f"Container restart counts increased after upgrade: {increased_containers}")

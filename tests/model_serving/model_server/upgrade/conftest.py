@@ -20,7 +20,6 @@ from tests.model_serving.model_server.upgrade.utils import (
     capture_isvc_baseline,
     load_baseline_from_configmap,
     save_baseline_to_configmap,
-    UPGRADE_BASELINE_CM_NAME,
 )
 from utilities.constants import (
     KServeDeploymentType,
