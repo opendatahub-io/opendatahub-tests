@@ -278,7 +278,7 @@ class GpuConfig(LLMISvcConfig):
         """
         rhoai_version = None
         for csv in ClusterServiceVersion.get(client=client, namespace="redhat-ods-operator"):
-            if csv.name.startswith("rhods-operator"):
+            if csv.name.startswith("rhods-operator") and csv.status == csv.Status.SUCCEEDED:
                 rhoai_version = csv.instance.spec.version
                 LOGGER.info(f"[llmd] Found RHOAI CSV: {csv.name}, version: {rhoai_version}")
                 break
