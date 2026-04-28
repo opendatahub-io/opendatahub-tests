@@ -214,6 +214,7 @@ class TestPostUpgradeTrustyAIService:
 class TestPreUpgradeTrustyAIServiceDB:
     """Pre-upgrade tests for TrustyAI Service with DB storage from the start."""
 
+    @pytest.mark.dependency(name="db_pre_upgrade_inference")
     @pytest.mark.pre_upgrade
     def test_trustyai_service_db_pre_upgrade_inference(
         self,
@@ -235,6 +236,7 @@ class TestPreUpgradeTrustyAIServiceDB:
             inference_token=isvc_getter_token,
         )
 
+    @pytest.mark.dependency(name="db_pre_upgrade_data_upload", depends=["db_pre_upgrade_inference"])
     @pytest.mark.pre_upgrade
     def test_trustyai_service_db_pre_upgrade_data_upload(
         self,
@@ -251,6 +253,7 @@ class TestPreUpgradeTrustyAIServiceDB:
             data_path=f"{DRIFT_BASE_DATA_PATH}/training_data.json",
         )
 
+    @pytest.mark.dependency(depends=["db_pre_upgrade_data_upload"])
     @pytest.mark.pre_upgrade
     def test_trustyai_service_db_pre_upgrade_drift_metric_schedule_meanshift(
         self,

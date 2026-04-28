@@ -268,14 +268,14 @@ def create_isvc_getter_token_secret(
 
 
 def validate_db_credentials_secret(secret: Secret, namespace_name: str) -> None:
-    """Validates that a DB credentials secret has all required keys.
+    """Validates that a DB credentials secret has all required keys with non-empty values.
 
     Args:
         secret: Secret: The database credentials secret to validate.
         namespace_name: str: The namespace name for error messages.
 
     Raises:
-        AssertionError: If the secret is missing required keys or has no data.
+        AssertionError: If the secret is missing required keys, has no data, or has empty values.
     """
     required_keys = {
         "databaseKind",
@@ -296,6 +296,11 @@ def validate_db_credentials_secret(secret: Secret, namespace_name: str) -> None:
     assert not missing_keys, (
         f"db-credentials secret is missing required keys: {missing_keys} in namespace {namespace_name}. "
         f"Available keys: {actual_keys}"
+    )
+
+    empty_keys = {key for key in required_keys if not secret_data.get(key)}
+    assert not empty_keys, (
+        f"db-credentials secret has empty required values: {empty_keys} in namespace {namespace_name}"
     )
 
 

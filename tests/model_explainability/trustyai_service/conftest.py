@@ -1,4 +1,5 @@
 import json
+import secrets
 from collections.abc import Generator
 from typing import Any
 
@@ -200,6 +201,7 @@ def db_credentials_secret(
         yield secret
         secret.clean_up()
     else:
+        db_password = secrets.token_urlsafe(nbytes=24)
         with Secret(
             client=admin_client,
             name=DB_CREDENTIALS_SECRET_NAME,
@@ -208,7 +210,7 @@ def db_credentials_secret(
                 "databaseKind": MARIADB,
                 "databaseName": DB_NAME,
                 "databaseUsername": DB_USERNAME,
-                "databasePassword": DB_PASSWORD,
+                "databasePassword": db_password,
                 "databaseService": MARIADB,
                 "databasePort": "3306",
                 "databaseGeneration": "update",
