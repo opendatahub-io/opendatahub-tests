@@ -13,17 +13,18 @@ from tests.model_explainability.lm_eval.conftest import LMEVALJOB_NAME
 from tests.model_explainability.lm_eval.utils import get_lmevaljob_pod
 from utilities.exceptions import MissingParameter
 
-
+LMEVALJOB_NAME: str = "lmeval-test-job"
 @pytest.fixture(scope="class")
-def lmevaljob_hf(
+def lmevaljob_hf_upgrade(
     request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
     patched_dsc_lmeval_allow_all: DataScienceCluster,
-    lmeval_hf_access_token: Secret,
+    lmeval_hf_access_token_upgrade: Secret,
     pytestconfig: pytest.Config,
     teardown_resources: bool,
 ) -> Generator[LMEvalJob, None, None]:
+
     is_post_upgrade = pytestconfig.option.post_upgrade
 
     if is_post_upgrade:
@@ -77,12 +78,13 @@ def lmevaljob_hf(
 
 
 @pytest.fixture(scope="class")
-def lmevaljob_hf_pod(admin_client: DynamicClient, lmevaljob_hf: LMEvalJob) -> Generator[Pod, Any, Any]:
-    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_hf)
+def lmevaljob_hf_pod_upgrade(admin_client: DynamicClient, lmevaljob_hf_upgrade: LMEvalJob) -> Generator[Pod, Any, Any]:
+    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_hf_upgrade)
+
 
 
 @pytest.fixture(scope="class")
-def lmeval_hf_access_token(
+def lmeval_hf_access_token_upgrade(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     pytestconfig: Config,
