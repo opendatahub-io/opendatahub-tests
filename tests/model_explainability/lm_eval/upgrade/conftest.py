@@ -9,7 +9,6 @@ from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from pytest import Config, FixtureRequest
 
-from tests.model_explainability.lm_eval.conftest import LMEVALJOB_NAME
 from tests.model_explainability.lm_eval.utils import get_lmevaljob_pod
 from utilities.exceptions import MissingParameter
 
