@@ -157,7 +157,7 @@ def create_trustyai_service(
 
 @contextmanager
 def create_isvc_getter_service_account(
-    client: DynamicClient, namespace: Namespace, name: str
+    client: DynamicClient, namespace: Namespace, name: str, teardown: bool = True
 ) -> Generator[ServiceAccount, Any, Any]:
     """Creates a ServiceAccount for fetching InferenceServices.
 
@@ -165,22 +165,26 @@ def create_isvc_getter_service_account(
         client: The Kubernetes dynamic client.
         namespace: Namespace: The Namespace object where the ServiceAccount will be created.
         name: str: The name of the ServiceAccount.
+        teardown: bool: Decides if the ServiceAccount should be deleted when the context exits.
 
     Yields:
         Generator[ServiceAccount, Any, Any]: The created ServiceAccount object.
     """
-    with ServiceAccount(client=client, name=name, namespace=namespace.name) as sa:
+    with ServiceAccount(client=client, name=name, namespace=namespace.name, teardown=teardown) as sa:
         yield sa
 
 
 @contextmanager
-def create_isvc_getter_role(client: DynamicClient, namespace: Namespace, name: str) -> Generator[Role, Any, Any]:
+def create_isvc_getter_role(
+    client: DynamicClient, namespace: Namespace, name: str, teardown: bool = True
+) -> Generator[Role, Any, Any]:
     """Creates a Role with permissions to get, list, and watch InferenceServices.
 
     Args:
         client: DynamicClient: The Kubernetes dynamic client.
         namespace: Namespace: The Namespace object where the Role will be created.
         name: str: The name of the Role.
+        teardown: bool: Decide if the Role should be deleted when the context exits.
 
     Yields:
         Generator[Role, Any, Any]: The created Role object.
@@ -196,13 +200,19 @@ def create_isvc_getter_role(client: DynamicClient, namespace: Namespace, name: s
                 "verbs": ["get", "list", "watch"],
             }
         ],
+        teardown=teardown,
     ) as role:
         yield role
 
 
 @contextmanager
 def create_isvc_getter_role_binding(
-    client: DynamicClient, namespace: Namespace, role: Role, service_account: ServiceAccount, name: str
+    client: DynamicClient,
+    namespace: Namespace,
+    role: Role,
+    service_account: ServiceAccount,
+    name: str,
+    teardown: bool = True,
 ) -> Generator[RoleBinding, Any, Any]:
     """Creates a RoleBinding to link a ServiceAccount to the InferenceService getter Role.
 
@@ -212,6 +222,7 @@ def create_isvc_getter_role_binding(
         role: Role: The Role object to bind.
         service_account: ServiceAccount: The ServiceAccount object to bind.
         name: str: The name of the RoleBinding.
+        teardown: bool: Whether to delete the RoleBinding when the context exits.
 
     Yields:
         Generator[RoleBinding, Any, Any]: The created RoleBinding object.
@@ -224,13 +235,14 @@ def create_isvc_getter_role_binding(
         subjects_name=service_account.name,
         role_ref_kind="Role",
         role_ref_name=role.name,
+        teardown=teardown,
     ) as rb:
         yield rb
 
 
 @contextmanager
 def create_isvc_getter_token_secret(
-    client: DynamicClient, namespace: Namespace, service_account: ServiceAccount, name: str
+    client: DynamicClient, namespace: Namespace, service_account: ServiceAccount, name: str, teardown: bool = True
 ) -> Generator[Secret, Any, Any]:
     """Creates a Secret of type 'kubernetes.io/service-account-token' for a given ServiceAccount.
 
@@ -239,6 +251,7 @@ def create_isvc_getter_token_secret(
         namespace: Namespace: The Namespace object where the Secret will be created.
         service_account: ServiceAccount: The ServiceAccount object for which the token Secret is created.
         name: str: The name of the Secret.
+        teardown: bool: Whether to delete the Secret when the context exits.
 
     Yields:
         Generator[Secret, Any, Any]: The created Secret object.
@@ -249,8 +262,41 @@ def create_isvc_getter_token_secret(
         name=name,
         annotations={"kubernetes.io/service-account.name": service_account.name},
         type="kubernetes.io/service-account-token",
+        teardown=teardown,
     ) as secret:
         yield secret
+
+
+def validate_db_credentials_secret(secret: Secret, namespace_name: str) -> None:
+    """Validates that a DB credentials secret has all required keys.
+
+    Args:
+        secret: Secret: The database credentials secret to validate.
+        namespace_name: str: The namespace name for error messages.
+
+    Raises:
+        AssertionError: If the secret is missing required keys or has no data.
+    """
+    required_keys = {
+        "databaseKind",
+        "databaseName",
+        "databaseUsername",
+        "databasePassword",
+        "databaseService",
+        "databasePort",
+        "databaseGeneration",
+    }
+
+    secret_data = secret.instance.data
+    assert secret_data is not None, f"db-credentials secret has no data in namespace {namespace_name}"
+
+    actual_keys = set(secret_data.keys())
+    missing_keys = required_keys - actual_keys
+
+    assert not missing_keys, (
+        f"db-credentials secret is missing required keys: {missing_keys} in namespace {namespace_name}. "
+        f"Available keys: {actual_keys}"
+    )
 
 
 def validate_trustyai_service_images(
