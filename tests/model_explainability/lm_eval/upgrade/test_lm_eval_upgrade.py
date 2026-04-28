@@ -1,5 +1,4 @@
 import pytest
-import structlog
 
 from tests.model_explainability.lm_eval.utils import (
     get_lmeval_tasks,
@@ -15,7 +14,6 @@ TIER2_LMEVAL_TASKS: list[str] = list(
     set(get_lmeval_tasks(min_downloads=0.70, max_downloads=10000)) - set(TIER1_LMEVAL_TASKS)
 )
 
-LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.parametrize(
