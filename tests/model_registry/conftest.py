@@ -46,7 +46,12 @@ from utilities.general import (
     wait_for_pods_by_labels,
     wait_for_pods_running,
 )
-from utilities.infra import get_data_science_cluster, login_with_user_password, wait_for_dsc_status_ready
+from utilities.infra import (
+    ResourceNotFoundError,
+    get_data_science_cluster,
+    login_with_user_password,
+    wait_for_dsc_status_ready,
+)
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from utilities.user_utils import UserTestSession, create_htpasswd_file, wait_for_user_creation
 
@@ -57,6 +62,24 @@ LOGGER = structlog.get_logger(name=__name__)
 @pytest.fixture(scope="session")
 def model_registry_namespace(updated_dsc_component_state_scope_session: DataScienceCluster) -> str:
     return updated_dsc_component_state_scope_session.instance.spec.components.modelregistry.registriesNamespace
+
+
+@pytest.fixture(scope="session")
+def async_upload_image(admin_client: DynamicClient) -> str:
+    """Async upload job image from the model-registry-operator-parameters ConfigMap."""
+    config_map = ConfigMap(
+        client=admin_client,
+        name="model-registry-operator-parameters",
+        namespace=py_config["applications_namespace"],
+    )
+
+    if not config_map.exists:
+        raise ResourceNotFoundError(
+            f"ConfigMap 'model-registry-operator-parameters' not found in"
+            f" namespace '{py_config['applications_namespace']}'"
+        )
+
+    return config_map.instance.data["IMAGES_JOBS_ASYNC_UPLOAD"]
 
 
 @pytest.fixture(scope="session")

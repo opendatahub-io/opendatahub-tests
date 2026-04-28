@@ -19,7 +19,7 @@ LOGGER = structlog.get_logger(name=__name__)
     "maas_subscription_controller_enabled_latest",
     "maas_gateway_api",
     "maas_api_gateway_reachable",
-    "minimal_subscription_for_free_user",
+    "oidc_subscription",
     "oidc_auth_policy_patched",
 )
 class TestOIDCHeaderInjection:
@@ -43,7 +43,12 @@ class TestOIDCHeaderInjection:
         header_name: str,
         header_value: str,
     ) -> None:
-        """Verify injected identity header does not change the model list or escalate access."""
+        """Verify injected identity header does not escalate access.
+
+        Two safe outcomes:
+        - 200 with identical model list (header overwritten by gateway)
+        - 403 denial (header interfered but did not grant escalated access)
+        """
         spoofed_response = fetch_models_with_spoofed_header(
             session=request_session_http,
             base_url=base_url,
@@ -51,16 +56,22 @@ class TestOIDCHeaderInjection:
             extra_headers={header_name: header_value},
         )
 
-        assert spoofed_response.status_code == 200, (
-            f"Expected 200 for injected {header_name}, got {spoofed_response.status_code}: "
-            f"{spoofed_response.text[:200]}"
-        )
-        assert_model_lists_match(
-            baseline_response=baseline_models_response,
-            spoofed_response=spoofed_response,
-            injection_description=header_name,
-        )
-        LOGGER.info(f"[oidc] {header_name} injection overwritten — same models returned")
+        if spoofed_response.status_code == 200:
+            assert_model_lists_match(
+                baseline_response=baseline_models_response,
+                spoofed_response=spoofed_response,
+                injection_description=header_name,
+            )
+            LOGGER.info(f"[oidc] {header_name} injection overwritten — same models returned")
+        else:
+            assert spoofed_response.status_code in (401, 403), (
+                f"Unexpected status for injected {header_name}: "
+                f"{spoofed_response.status_code}: {spoofed_response.text[:200]}"
+            )
+            LOGGER.info(
+                f"[oidc] {header_name} injection caused denial ({spoofed_response.status_code}) "
+                f"— no escalation possible"
+            )
 
     @pytest.mark.tier2
     def test_injected_username_on_oidc_token_ignored(

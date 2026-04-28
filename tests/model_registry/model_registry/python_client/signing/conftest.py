@@ -35,7 +35,6 @@ from tests.model_registry.model_registry.async_job.constants import (
     ASYNC_UPLOAD_JOB_NAME,
     MODEL_SYNC_CONFIG,
 )
-from tests.model_registry.model_registry.async_job.utils import get_latest_job_pod
 from tests.model_registry.model_registry.python_client.signing.constants import (
     IDENTITY_TOKEN_MOUNT_PATH,
     NATIVE_SIGNING_REPO,
@@ -61,6 +60,7 @@ from tests.model_registry.model_registry.python_client.signing.utils import (
     get_tas_service_urls,
     run_minio_uploader_pod,
 )
+from tests.model_registry.utils import get_latest_job_pod
 from utilities.constants import (
     OPENSHIFT_OPERATORS,
     ApiGroups,

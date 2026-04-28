@@ -21,7 +21,7 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
 VALID_BODY_RAW = json.dumps(VALID_OVMS_INFERENCE_BODY)
 
 
-@pytest.mark.tier2
+@pytest.mark.tier3
 class TestInvalidModelName:
     """Test class for verifying error handling when targeting a non-existent model.
 

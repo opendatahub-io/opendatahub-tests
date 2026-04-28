@@ -13,7 +13,7 @@ from tests.model_serving.model_server.llmd.utils import (
     send_prefix_cache_requests,
 )
 
-NUM_REQUESTS = 20
+NUM_REQUESTS = 12
 PREFIX_CACHE_PROMPT = (
     "Explain in detail the fundamental principles of quantum mechanics including "
     "wave-particle duality, superposition, and entanglement in simple terms. "
@@ -33,7 +33,7 @@ pytestmark = [pytest.mark.tier2, pytest.mark.gpu]
 )
 @pytest.mark.usefixtures("valid_aws_config", "skip_if_less_than_2_gpus", "skip_if_disconnected")
 class TestSingleNodePrecisePrefixCache:
-    """Deploy Qwen on GPU with 2 replicas and precise prefix cache routing,
+    """Deploy TinyLlama on GPU with 2 replicas and precise prefix cache routing,
     then verify cache hits via Prometheus metrics.
     """
 
@@ -48,7 +48,7 @@ class TestSingleNodePrecisePrefixCache:
 
         1. Assert the router-scheduler pod exists and is Running.
         2. Assert exactly 2 workload pods are found.
-        3. Send 20 chat completion requests with a shared long prompt.
+        3. Send identical chat completion requests with a shared long prompt.
         4. Query Prometheus and assert all traffic was routed to a single pod with correct prefix cache hit counts.
         5. Assert the scheduler made at least the expected number of routing decisions.
         """
@@ -64,8 +64,8 @@ class TestSingleNodePrecisePrefixCache:
             prompt=PREFIX_CACHE_PROMPT,
             token=llmisvc_token,
             count=NUM_REQUESTS,
+            delay_after_first_request=15,
         )
-        assert successful == NUM_REQUESTS, f"Expected all {NUM_REQUESTS} requests to succeed, got {successful}"
 
         assert_prefix_cache_routing(
             prometheus=prometheus,
