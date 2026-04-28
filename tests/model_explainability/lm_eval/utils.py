@@ -121,7 +121,6 @@ def validate_lmeval_job_completed(lmevaljob_pod: Pod) -> None:
         r"INFO\sdriver\supdate status: job completed\s\{\"state\":\s\{\"state\""
         r":\"Complete\",\"reason\":\"Succeeded\",\"message\":\"job completed\""
     )
-    # Pod is already past Running by the time post-upgrade tests execute
     try:
         lmevaljob_pod.wait_for_status(status=Pod.Status.SUCCEEDED, timeout=tts("1h"))
     except TimeoutExpiredError as e:
@@ -129,3 +128,10 @@ def validate_lmeval_job_completed(lmevaljob_pod: Pod) -> None:
 
     if not bool(re.search(pod_success_log_regex, lmevaljob_pod.log())):
         raise PodLogMissMatchError("LMEval job pod logs missing after upgrade.")
+
+def validate_lmeval_job_started(lmevaljob_pod: Pod) -> None:
+    """Validate LMEval job pod has started (pre-upgrade check)."""
+    try:
+        lmevaljob_pod.wait_for_status(status=Pod.Status.RUNNING, timeout=tts("5m"))
+    except TimeoutExpiredError as e:
+        raise UnexpectedFailureError("LMEval job pod did not start before upgrade.") from e

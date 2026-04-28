@@ -2,7 +2,7 @@ import pytest
 import structlog
 
 from tests.model_explainability.lm_eval.utils import get_lmeval_tasks, validate_lmeval_job_pod_and_logs, \
-    validate_lmeval_job_completed
+    validate_lmeval_job_completed, validate_lmeval_job_started
 
 LMEVALJOB_COMPLETE_STATE: str = "Complete"
 
@@ -34,7 +34,7 @@ class TestLMEvalJobLifecyclePreUpgrade:
         lmevaljob_hf_pod,
     ):
         """Verify LMEval job pod lifecycle before upgrade."""
-        validate_lmeval_job_pod_and_logs(lmevaljob_pod=lmevaljob_hf_pod)
+        validate_lmeval_job_started(lmevaljob_pod=lmevaljob_hf_pod)
 
 @pytest.mark.parametrize(
     "model_namespace",
