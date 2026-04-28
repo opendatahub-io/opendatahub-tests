@@ -13,6 +13,7 @@ from tests.model_explainability.lm_eval.conftest import LMEVALJOB_NAME
 from tests.model_explainability.lm_eval.utils import get_lmevaljob_pod
 from utilities.exceptions import MissingParameter
 
+
 @pytest.fixture(scope="class")
 def lmevaljob_hf(
     request: FixtureRequest,
@@ -23,7 +24,6 @@ def lmevaljob_hf(
     pytestconfig: pytest.Config,
     teardown_resources: bool,
 ) -> Generator[LMEvalJob, None, None]:
-
     is_post_upgrade = pytestconfig.option.post_upgrade
 
     if is_post_upgrade:
@@ -79,7 +79,6 @@ def lmevaljob_hf(
 @pytest.fixture(scope="class")
 def lmevaljob_hf_pod(admin_client: DynamicClient, lmevaljob_hf: LMEvalJob) -> Generator[Pod, Any, Any]:
     yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_hf)
-
 
 
 @pytest.fixture(scope="class")

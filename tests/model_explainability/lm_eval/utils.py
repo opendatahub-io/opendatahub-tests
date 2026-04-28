@@ -109,6 +109,7 @@ def validate_lmeval_job_pod_and_logs(lmevaljob_pod: Pod) -> None:
     if not bool(re.search(pod_success_log_regex, lmevaljob_pod.log())):
         raise PodLogMissMatchError("LMEval job pod failed.")
 
+
 def validate_lmeval_job_completed(lmevaljob_pod: Pod) -> None:
     """Validate LMEval job pod has completed successfully post-upgrade.
 
@@ -128,6 +129,7 @@ def validate_lmeval_job_completed(lmevaljob_pod: Pod) -> None:
 
     if not bool(re.search(pod_success_log_regex, lmevaljob_pod.log())):
         raise PodLogMissMatchError("LMEval job pod logs missing after upgrade.")
+
 
 def validate_lmeval_job_started(lmevaljob_pod: Pod) -> None:
     """Validate LMEval job pod has started (pre-upgrade check)."""
