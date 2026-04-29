@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 import requests
 import structlog
@@ -11,6 +9,7 @@ from utilities.general import generate_random_name
 LOGGER = structlog.get_logger(name=__name__)
 
 
+@pytest.mark.tier3
 @pytest.mark.usefixtures(
     "maas_unprivileged_model_namespace",
     "maas_subscription_controller_enabled_latest",
@@ -23,7 +22,6 @@ LOGGER = structlog.get_logger(name=__name__)
 class TestApiKeyCreationNegative:
     """Negative tests for API key creation and revoked key on API endpoints."""
 
-    @pytest.mark.tier3
     @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
     def test_create_key_with_empty_name_rejected(
         self,
@@ -44,7 +42,6 @@ class TestApiKeyCreationNegative:
         )
         LOGGER.info(f"Empty key name correctly rejected with {response.status_code}")
 
-    @pytest.mark.tier3
     @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
     def test_create_key_with_nonexistent_subscription_rejected(
         self,
@@ -67,7 +64,6 @@ class TestApiKeyCreationNegative:
         )
         LOGGER.info(f"Non-existent subscription correctly rejected with {response.status_code}")
 
-    @pytest.mark.tier3
     @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
     def test_create_duplicate_key_name_allowed(
         self,
@@ -105,7 +101,6 @@ class TestApiKeyCreationNegative:
                 ocp_user_token=ocp_token_for_actor,
             )
 
-    @pytest.mark.tier3
     @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
     def test_revoked_key_rejected_on_models_endpoint(
         self,
