@@ -20,6 +20,7 @@ class PrecisePrefixCacheConfig(TinyLlamaHfGpuConfig):
     hash_algo = "sha256_cbor"
     hash_seed = "42"
     enable_auth = True
+    wait_timeout = 720
 
     @classmethod
     def container_env(cls):

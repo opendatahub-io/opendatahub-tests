@@ -11,6 +11,7 @@ from pathlib import Path
 
 import structlog
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.event import Event
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.node import Node
 from ocp_resources.pod import Pod
@@ -121,8 +122,34 @@ def _debug_info_pod_statuses(llmisvc: LLMInferenceService) -> str:
     return "\n".join(lines)
 
 
+def _debug_info_events(llmisvc: LLMInferenceService) -> str:
+    """Collect recent warning events from the LLMISVC namespace."""
+    events = Event.list(
+        client=llmisvc.client,
+        namespace=llmisvc.namespace,
+        field_selector="type=Warning",
+        since_seconds=600,
+    )
+    if not events:
+        return "  (no warning events)"
+
+    lines = []
+    for event in events:
+        timestamp = str(event.get("lastTimestamp") or event.get("eventTime") or "")
+        if "T" in timestamp:
+            timestamp = timestamp.split("T")[1][:8]
+        reason = event.get("reason", "")
+        obj = event.get("involvedObject") or {}
+        obj_name = obj.get("name", "")
+        msg = " ".join(event.get("message", "").split())
+        count = event.get("count", 1)
+        count_str = f" (x{count})" if count and count > 1 else ""
+        lines.append(f"  * {reason}{count_str} — {msg} [{obj_name}][{timestamp}]")
+    return "\n".join(lines)
+
+
 def _log_llmisvc_debug_info(llmisvc: LLMInferenceService) -> None:
-    """Log debug info related to LLMISVC timeout: conditions and pod statuses."""
+    """Log debug info related to LLMISVC timeout: conditions, pod statuses, and events."""
     name, ns = llmisvc.name, llmisvc.namespace
     separator = "=" * 60
     sections = [
@@ -133,6 +160,7 @@ def _log_llmisvc_debug_info(llmisvc: LLMInferenceService) -> None:
     for label, func in [
         ("Conditions", lambda: _debug_info_conditions(llmisvc)),
         ("Pods", lambda: _debug_info_pod_statuses(llmisvc)),
+        ("Events", lambda: _debug_info_events(llmisvc)),
     ]:
         try:
             sections.append(f"\n {label}:\n{func()}")

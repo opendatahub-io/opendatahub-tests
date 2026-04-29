@@ -26,7 +26,7 @@ class LLMISvcConfig:
     replicas = 1
     container_image = None
     enable_auth = False
-    wait_timeout = 240
+    wait_timeout = 300
     base_refs = None
 
     @classmethod
@@ -126,6 +126,7 @@ class CpuConfig(LLMISvcConfig):
     """CPU inference base. Sets vLLM CPU image, CPU env vars, and CPU resource limits."""
 
     enable_auth = False
+    wait_timeout = 420
     container_image = ContainerImages.VLLM_CPU
 
     @classmethod
