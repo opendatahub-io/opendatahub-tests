@@ -11,6 +11,7 @@ class EstimatedPrefixCacheConfig(TinyLlamaS3GpuConfig):
     enable_auth = True
     name = "llmisvc-estimated-prefix"
     replicas = 2
+    min_gpus_per_node = 2
     block_size = 64
     hash_algo = "sha256"
     hash_seed = "42"

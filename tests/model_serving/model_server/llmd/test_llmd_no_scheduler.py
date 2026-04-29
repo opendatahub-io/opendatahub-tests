@@ -6,6 +6,7 @@ from tests.model_serving.model_server.llmd.utils import (
     ns_from_file,
     parse_completion_text,
     send_chat_completions,
+    workaround_503_no_healthy_upstream,
 )
 
 pytestmark = [pytest.mark.tier2, pytest.mark.gpu]
@@ -26,7 +27,7 @@ class S3GpuNoSchedulerConfig(TinyLlamaS3GpuConfig):
     [({"name": NAMESPACE}, S3GpuNoSchedulerConfig)],
     indirect=True,
 )
-@pytest.mark.usefixtures("valid_aws_config", "skip_if_no_gpu_available", "skip_if_disconnected")
+@pytest.mark.usefixtures("valid_aws_config", "skip_if_disconnected")
 class TestLlmdNoScheduler:
     """Deploy TinyLlama on GPU with the scheduler disabled and verify chat completions."""
 
@@ -43,6 +44,7 @@ class TestLlmdNoScheduler:
         prompt = "What is the capital of Italy?"
         expected = "rome"
 
+        workaround_503_no_healthy_upstream(llmisvc=llmisvc, prompt=prompt)
         status, body = send_chat_completions(llmisvc=llmisvc, prompt=prompt)
         assert status == 200, f"Expected 200, got {status}: {body}"
         completion = parse_completion_text(response_body=body)

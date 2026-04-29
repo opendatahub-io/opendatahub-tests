@@ -6,6 +6,7 @@ from utilities.constants import Protocols
 from utilities.manifests.vllm import VLLM_INFERENCE_CONFIG
 
 pytestmark = [
+    pytest.mark.tier2,
     pytest.mark.rawdeployment,
     pytest.mark.usefixtures("skip_if_no_gpu_nodes"),
     pytest.mark.multinode,

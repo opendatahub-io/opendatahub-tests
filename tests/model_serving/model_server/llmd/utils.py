@@ -11,13 +11,16 @@ from pathlib import Path
 
 import structlog
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.event import Event
 from ocp_resources.llm_inference_service import LLMInferenceService
+from ocp_resources.node import Node
 from ocp_resources.pod import Pod
 from ocp_resources.prometheus import Prometheus
 from ocp_resources.route import Route
 from pyhelper_utils.shell import run_command
 from timeout_sampler import TimeoutExpiredError, retry
 
+from tests.model_serving.model_server.llmd.constants import LLMD_TESTS_SUPPORTED_ACCELERATORS
 from utilities.certificates_utils import get_ca_bundle
 from utilities.constants import Timeout
 from utilities.infra import is_disconnected_cluster
@@ -26,6 +29,29 @@ from utilities.llmd_constants import LLMDGateway, LLMEndpoint
 from utilities.monitoring import get_metrics_value
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+def detect_accelerators(client: DynamicClient) -> list[dict[str, int]]:
+    """Detect accelerator resources available on cluster worker nodes.
+
+    Returns:
+        List of dicts, one per accelerator node. Each dict maps accelerator
+        resource name to available count.
+        Example: [{"amd.com/gpu": 8}, {"amd.com/gpu": 4}]
+    """
+    accelerators: list[dict[str, int]] = []
+    for node in Node.get(client=client, label_selector="node-role.kubernetes.io/worker"):
+        allocatable = node.instance.status.allocatable or {}
+        node_accelerators = {
+            resource: int(allocatable[resource])
+            for resource in LLMD_TESTS_SUPPORTED_ACCELERATORS
+            if int(allocatable.get(resource, 0)) > 0
+        }
+        if node_accelerators:
+            LOGGER.info(f"[llmd] Accelerator node {node.name}: {node_accelerators}")
+            accelerators.append(node_accelerators)
+
+    return accelerators
 
 
 def ns_from_file(file: str) -> str:
@@ -96,8 +122,34 @@ def _debug_info_pod_statuses(llmisvc: LLMInferenceService) -> str:
     return "\n".join(lines)
 
 
+def _debug_info_events(llmisvc: LLMInferenceService) -> str:
+    """Collect recent warning events from the LLMISVC namespace."""
+    events = Event.list(
+        client=llmisvc.client,
+        namespace=llmisvc.namespace,
+        field_selector="type=Warning",
+        since_seconds=600,
+    )
+    if not events:
+        return "  (no warning events)"
+
+    lines = []
+    for event in events:
+        timestamp = str(event.get("lastTimestamp") or event.get("eventTime") or "")
+        if "T" in timestamp:
+            timestamp = timestamp.split("T")[1][:8]
+        reason = event.get("reason", "")
+        obj = event.get("involvedObject") or {}
+        obj_name = obj.get("name", "")
+        msg = " ".join(event.get("message", "").split())
+        count = event.get("count", 1)
+        count_str = f" (x{count})" if count and count > 1 else ""
+        lines.append(f"  * {reason}{count_str} — {msg} [{obj_name}][{timestamp}]")
+    return "\n".join(lines)
+
+
 def _log_llmisvc_debug_info(llmisvc: LLMInferenceService) -> None:
-    """Log debug info related to LLMISVC timeout: conditions and pod statuses."""
+    """Log debug info related to LLMISVC timeout: conditions, pod statuses, and events."""
     name, ns = llmisvc.name, llmisvc.namespace
     separator = "=" * 60
     sections = [
@@ -108,6 +160,7 @@ def _log_llmisvc_debug_info(llmisvc: LLMInferenceService) -> None:
     for label, func in [
         ("Conditions", lambda: _debug_info_conditions(llmisvc)),
         ("Pods", lambda: _debug_info_pod_statuses(llmisvc)),
+        ("Events", lambda: _debug_info_events(llmisvc)),
     ]:
         try:
             sections.append(f"\n {label}:\n{func()}")

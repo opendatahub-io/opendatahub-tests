@@ -27,6 +27,7 @@ class TinyLlamaHfConfig(CpuConfig):
     enable_auth = False
     name = "llmisvc-tinyllama-hf-cpu"
     storage_uri = ModelStorage.HF_TINYLLAMA
+    wait_timeout = 420
 
 
 class TinyLlamaS3GpuConfig(GpuConfig):
