@@ -1,5 +1,7 @@
 """Prefill-decode disaggregation configuration for LLMInferenceService."""
 
+from utilities.constants import Labels
+
 from .config_models import TinyLlamaS3GpuConfig
 
 
@@ -8,6 +10,8 @@ class PrefillDecodeConfig(TinyLlamaS3GpuConfig):
 
     enable_auth = False
     name = "llmisvc-prefill-decode-gpu"
+    min_gpus_per_node = 2
+    supported_accelerators = (Labels.Nvidia.NVIDIA_COM_GPU,)
 
     @classmethod
     def prefill_config(cls):
