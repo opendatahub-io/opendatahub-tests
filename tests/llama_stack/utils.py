@@ -385,8 +385,18 @@ def vector_store_create_file_from_url(url: str, llama_stack_client: LlamaStackCl
             with open(temp_file_path, "rb") as file_to_upload:
                 uploaded_file = llama_stack_client.files.create(file=file_to_upload, purpose="assistants")
 
-            # Add file to vector store
-            llama_stack_client.vector_stores.files.create(vector_store_id=vector_store.id, file_id=uploaded_file.id)
+            # Add file to vector store. Chunk size set for compatibility with nomic-embed-text-v2-moe
+            llama_stack_client.vector_stores.files.create(
+                vector_store_id=vector_store.id,
+                file_id=uploaded_file.id,
+                chunking_strategy={
+                    "type": "static",
+                    "static": {
+                        "max_chunk_size_tokens": 400,
+                        "chunk_overlap_tokens": 200,
+                    },
+                },
+            )
 
         return True
 
