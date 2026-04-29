@@ -199,7 +199,7 @@ def install_packages_in_pod(
 class TestCustomImageValidation:
     """Validate custom workbench images with package introspection."""
 
-    @pytest.mark.sanity
+    @pytest.mark.tier1
     @pytest.mark.slow
     @pytest.mark.parametrize(
         "unprivileged_model_namespace,users_persistent_volume_claim,default_notebook,notebook_image,packages_to_verify",
