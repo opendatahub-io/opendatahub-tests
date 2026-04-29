@@ -1,3 +1,4 @@
+import math
 import os
 import tempfile
 import time
@@ -398,3 +399,41 @@ def vector_store_upload_dataset(
             vector_store=vector_store,
             attributes=doc.attributes,
         )
+
+
+def extract_retrieved_contexts(response: Any) -> list[str]:
+    """
+    Extract unique retrieved contexts from a LlamaStack Responses API output.
+
+    De-duplicates results so that repeated file_search_call hits (e.g. from
+    chained tool calls) don't inflate ContextPrecision/ContextRecall scores.
+
+    Args:
+        response: Response object from client.responses.create()
+
+    Returns:
+        List of unique retrieved context strings, in first-seen order
+    """
+    retrieved_contexts: list[str] = []
+    seen: set[str] = set()
+
+    for output_item in response.output:
+        if (
+            hasattr(output_item, "type")
+            and output_item.type == "file_search_call"
+            and hasattr(output_item, "results")
+            and output_item.results
+        ):
+            for result in output_item.results:
+                text = getattr(result, "text", None)
+                if text and text not in seen:
+                    seen.add(text)
+                    retrieved_contexts.append(text)
+
+    return retrieved_contexts
+
+
+def mean_ragas_score(scores: list[float | None]) -> float:
+    """Compute mean of RAGAS per-sample scores, filtering out NaN values."""
+    valid = [s for s in scores if s is not None and not math.isnan(s)]
+    return sum(valid) / len(valid) if valid else 0.0

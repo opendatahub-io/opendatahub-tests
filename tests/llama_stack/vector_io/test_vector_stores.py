@@ -3,7 +3,9 @@ import structlog
 from llama_stack_client import APIConnectionError, InternalServerError, LlamaStackClient
 from llama_stack_client.types.vector_store import VectorStore
 
-from tests.llama_stack.constants import ModelInfo
+from tests.llama_stack.constants import (
+    ModelInfo,
+)
 from tests.llama_stack.datasets import (
     FINANCE_DATASET,
     IBM_2025_Q4_EARNINGS,
