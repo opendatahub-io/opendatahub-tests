@@ -45,6 +45,33 @@ def assert_key_rejected_at_inference(
     )
 
 
+def assert_key_rejected_on_endpoint(
+    request_session_http: requests.Session,
+    url: str,
+    plaintext_key: str,
+    expected_status: int = 403,
+    wait_timeout: int = 30,
+    sleep: int = 2,
+) -> None:
+    """Poll a GET endpoint until the API key is rejected with expected status."""
+    headers = build_maas_headers(token=plaintext_key)
+    for response in TimeoutSampler(
+        wait_timeout=wait_timeout,
+        sleep=sleep,
+        func=request_session_http.get,
+        url=url,
+        headers=headers,
+        timeout=10,
+    ):
+        LOGGER.info(f"Polling endpoint: status={response.status_code} expected={expected_status}")
+        if response.status_code == expected_status:
+            break
+
+    assert response.status_code == expected_status, (
+        f"Expected {expected_status}, got {response.status_code}: {(response.text or '')[:200]}"
+    )
+
+
 def build_chat_payload(model_name: str, prompt: str = "hello", max_tokens: int = 1) -> dict[str, Any]:
     """Build a minimal chat completions request payload."""
     return {
