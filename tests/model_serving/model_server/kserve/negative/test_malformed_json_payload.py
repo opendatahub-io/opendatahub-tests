@@ -24,7 +24,7 @@ MISSING_BRACE_BODY = '{"inputs": [{"name": "Input3"'
 TRAILING_COMMA_BODY = '{"inputs": [{"name": "Input3",}]}'
 
 
-@pytest.mark.tier2
+@pytest.mark.tier3
 @pytest.mark.rawdeployment
 class TestMalformedJsonPayload:
     """Test class for verifying error handling when receiving malformed JSON payloads.

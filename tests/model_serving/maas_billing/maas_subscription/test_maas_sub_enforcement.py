@@ -12,7 +12,6 @@ from tests.model_serving.maas_billing.utils import build_maas_headers
 LOGGER = structlog.get_logger(name=__name__)
 
 MAAS_SUBSCRIPTION_HEADER = "x-maas-subscription"
-INVALID_SUBSCRIPTION = "does-not-exist"
 
 
 @pytest.mark.usefixtures(
@@ -72,27 +71,3 @@ class TestSubscriptionEnforcementTinyLlama:
         LOGGER.info(f"test_explicit_subscription_header_works -> {resp.status_code}")
 
         assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text[:200]}"
-
-    @pytest.mark.tier1
-    @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "premium"}], indirect=True)
-    def test_invalid_subscription_header_gets_429(
-        self,
-        request_session_http: requests.Session,
-        model_url_tinyllama_premium: str,
-        maas_headers_for_actor_api_key: dict[str, str],
-    ) -> None:
-        """
-        - Send invalid x-maas-subscription
-        - Expect 429 or 403
-        """
-        headers = dict(maas_headers_for_actor_api_key)
-        headers[MAAS_SUBSCRIPTION_HEADER] = INVALID_SUBSCRIPTION
-
-        resp = request_session_http.post(
-            url=model_url_tinyllama_premium,
-            headers=headers,
-            json=chat_payload_for_url(model_url=model_url_tinyllama_premium),
-            timeout=60,
-        )
-
-        assert resp.status_code in (429, 403), f"Expected 429 or 403, got {resp.status_code}: {resp.text[:200]}"

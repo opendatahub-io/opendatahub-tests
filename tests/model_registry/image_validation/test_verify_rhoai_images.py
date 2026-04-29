@@ -1,6 +1,6 @@
 """
-Tests to verify that all Model Registry component images (operator and instance container images)
-meet the requirements:
+Tests to verify that all Model Registry component images (operator, instance, and async job
+container images) meet the requirements:
 1. Images are hosted in registry.redhat.io
 2. Images use sha256 digest instead of tags
 3. Images are listed in the CSV's relatedImages section
@@ -49,6 +49,19 @@ class TestAIHubResourcesImages:
         related_images_refs: set[str],
     ):
         validate_images(pods_to_validate=resource_pods, related_images_refs=related_images_refs)
+
+    @pytest.mark.tier1
+    def test_verify_async_job_image(
+        self: Self,
+        async_job_pod: Pod,
+        related_images_refs: set[str],
+    ):
+        """
+        Given an async upload job deployed using the image from the operator ConfigMap
+        When validating the actual container image on the resulting pod
+        Then verify it uses registry.redhat.io, sha256 digest, and is listed in CSV relatedImages
+        """
+        validate_images(pods_to_validate=[async_job_pod], related_images_refs=related_images_refs)
 
 
 @pytest.mark.parametrize(

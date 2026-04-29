@@ -6,7 +6,9 @@ import pytest
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.cluster_service_version import ClusterServiceVersion
+from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
+from ocp_resources.guardrails_orchestrator import GuardrailsOrchestrator
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.open_telemetry_collector import OpenTelemetryCollector
@@ -26,6 +28,8 @@ from tests.model_explainability.guardrails.constants import (
     OTEL_EXPORTER_PORT,
     SUPER_SECRET,
     TEMPO,
+    TEST_TLS_CERTIFICATE,
+    TEST_TLS_PRIVATE_KEY,
 )
 from utilities.constants import (
     KServeDeploymentType,
@@ -99,6 +103,31 @@ def prompt_injection_detector_route(
         service=prompt_injection_detector_isvc.name,
         wait_for_resource=True,
     )
+
+
+@pytest.fixture(scope="class")
+def custom_tls_secret(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+) -> Generator[Secret, Any, Any]:
+    """
+    Creates a test TLS secret with self-signed certificate data from constants.
+    This secret will be mounted to the Guardrails Orchestrator to test custom TLS mounting.
+
+    Note: The certificate and key are test fixtures defined in constants.py with
+    no real-world validity. Security scanners should ignore these test credentials.
+    """
+    with Secret(
+        client=admin_client,
+        name="custom-tls-cert",
+        namespace=model_namespace.name,
+        string_data={
+            "tls.crt": TEST_TLS_CERTIFICATE,
+            "tls.key": TEST_TLS_PRIVATE_KEY,
+        },
+        type="kubernetes.io/tls",
+    ) as secret:
+        yield secret
 
 
 @pytest.fixture(scope="class")
@@ -415,6 +444,61 @@ def wait_for_pods_by_label(
             condition=Pod.Condition.READY,
             status="True",
         )
+
+
+@pytest.fixture(scope="class")
+def guardrails_orchestrator_with_tls(
+    request,
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    custom_tls_secret: Secret,
+    orchestrator_config: ConfigMap,
+) -> Generator[Any, Any]:
+    """
+    Creates a GuardrailsOrchestrator with custom TLS secrets mounted.
+    """
+    params = getattr(request, "param", {})
+    tls_secrets = params.get("tls_secrets", [])
+
+    with GuardrailsOrchestrator(
+        client=admin_client,
+        name=GUARDRAILS_ORCHESTRATOR_NAME,
+        namespace=model_namespace.name,
+        log_level="DEBUG",
+        replicas=1,
+        orchestrator_config=orchestrator_config.name,
+        enable_built_in_detectors=False,
+        enable_guardrails_gateway=False,
+        tls_secrets=tls_secrets,
+        wait_for_resource=True,
+    ) as gorch:
+        gorch_deployment = Deployment(
+            client=admin_client, name=gorch.name, namespace=gorch.namespace, wait_for_resource=True
+        )
+        gorch_deployment.wait_for_replicas()
+        yield gorch
+
+
+@pytest.fixture(scope="class")
+def guardrails_orchestrator_pod_with_tls(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    guardrails_orchestrator_with_tls,
+) -> Pod:
+    """
+    Retrieves the Guardrails Orchestrator pod for TLS testing.
+    """
+    pods = Pod.get(
+        client=admin_client,
+        namespace=model_namespace.name,
+        label_selector=f"app.kubernetes.io/instance={GUARDRAILS_ORCHESTRATOR_NAME}",
+    )
+    pod = next(iter(pods), None)
+    if pod is None:
+        raise RuntimeError(
+            f"No guardrails orchestrator pod found with label app.kubernetes.io/instance={GUARDRAILS_ORCHESTRATOR_NAME}"
+        )
+    return pod
 
 
 @pytest.fixture(scope="class")

@@ -13,7 +13,7 @@ def test_validate_trustyai_operator_image(
     trustyai_operator_configmap: ConfigMap,
     trustyai_operator_deployment: Deployment,
 ):
-    return validate_trustyai_operator_image(
+    validate_trustyai_operator_image(
         related_images_refs=related_images_refs,
         tai_operator_configmap_data=trustyai_operator_configmap.instance.data,
         tai_operator_deployment=trustyai_operator_deployment,

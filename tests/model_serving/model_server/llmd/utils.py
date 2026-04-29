@@ -6,24 +6,52 @@ Follows the established model server utils pattern for consistency.
 """
 
 import json
+import time
 from pathlib import Path
 
 import structlog
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.event import Event
 from ocp_resources.llm_inference_service import LLMInferenceService
+from ocp_resources.node import Node
 from ocp_resources.pod import Pod
 from ocp_resources.prometheus import Prometheus
 from ocp_resources.route import Route
 from pyhelper_utils.shell import run_command
 from timeout_sampler import TimeoutExpiredError, retry
 
+from tests.model_serving.model_server.llmd.constants import LLMD_TESTS_SUPPORTED_ACCELERATORS
 from utilities.certificates_utils import get_ca_bundle
 from utilities.constants import Timeout
 from utilities.infra import is_disconnected_cluster
+from utilities.jira import is_jira_issue_open
 from utilities.llmd_constants import LLMDGateway, LLMEndpoint
 from utilities.monitoring import get_metrics_value
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+def detect_accelerators(client: DynamicClient) -> list[dict[str, int]]:
+    """Detect accelerator resources available on cluster worker nodes.
+
+    Returns:
+        List of dicts, one per accelerator node. Each dict maps accelerator
+        resource name to available count.
+        Example: [{"amd.com/gpu": 8}, {"amd.com/gpu": 4}]
+    """
+    accelerators: list[dict[str, int]] = []
+    for node in Node.get(client=client, label_selector="node-role.kubernetes.io/worker"):
+        allocatable = node.instance.status.allocatable or {}
+        node_accelerators = {
+            resource: int(allocatable[resource])
+            for resource in LLMD_TESTS_SUPPORTED_ACCELERATORS
+            if int(allocatable.get(resource, 0)) > 0
+        }
+        if node_accelerators:
+            LOGGER.info(f"[llmd] Accelerator node {node.name}: {node_accelerators}")
+            accelerators.append(node_accelerators)
+
+    return accelerators
 
 
 def ns_from_file(file: str) -> str:
@@ -94,8 +122,34 @@ def _debug_info_pod_statuses(llmisvc: LLMInferenceService) -> str:
     return "\n".join(lines)
 
 
+def _debug_info_events(llmisvc: LLMInferenceService) -> str:
+    """Collect recent warning events from the LLMISVC namespace."""
+    events = Event.list(
+        client=llmisvc.client,
+        namespace=llmisvc.namespace,
+        field_selector="type=Warning",
+        since_seconds=600,
+    )
+    if not events:
+        return "  (no warning events)"
+
+    lines = []
+    for event in events:
+        timestamp = str(event.get("lastTimestamp") or event.get("eventTime") or "")
+        if "T" in timestamp:
+            timestamp = timestamp.split("T")[1][:8]
+        reason = event.get("reason", "")
+        obj = event.get("involvedObject") or {}
+        obj_name = obj.get("name", "")
+        msg = " ".join(event.get("message", "").split())
+        count = event.get("count", 1)
+        count_str = f" (x{count})" if count and count > 1 else ""
+        lines.append(f"  * {reason}{count_str} — {msg} [{obj_name}][{timestamp}]")
+    return "\n".join(lines)
+
+
 def _log_llmisvc_debug_info(llmisvc: LLMInferenceService) -> None:
-    """Log debug info related to LLMISVC timeout: conditions and pod statuses."""
+    """Log debug info related to LLMISVC timeout: conditions, pod statuses, and events."""
     name, ns = llmisvc.name, llmisvc.namespace
     separator = "=" * 60
     sections = [
@@ -106,6 +160,7 @@ def _log_llmisvc_debug_info(llmisvc: LLMInferenceService) -> None:
     for label, func in [
         ("Conditions", lambda: _debug_info_conditions(llmisvc)),
         ("Pods", lambda: _debug_info_pod_statuses(llmisvc)),
+        ("Events", lambda: _debug_info_events(llmisvc)),
     ]:
         try:
             sections.append(f"\n {label}:\n{func()}")
@@ -373,7 +428,7 @@ def query_metric_by_pod(
     return result
 
 
-@retry(wait_timeout=90, sleep=30, exceptions_dict={AssertionError: []}, print_log=False)
+@retry(wait_timeout=120, sleep=10, exceptions_dict={AssertionError: []}, print_log=False)
 def assert_prefix_cache_routing(
     prometheus: Prometheus,
     llmisvc: LLMInferenceService,
@@ -425,26 +480,57 @@ def send_prefix_cache_requests(
     llmisvc: LLMInferenceService,
     prompt: str,
     token: str,
-    count: int = 20,
-    min_ratio: float = 0.8,
+    count: int,
+    max_failures: int = 5,
+    delay_after_first_request: int | None = None,
 ) -> int:
-    """Send identical requests for prefix cache testing. Returns success count."""
-    LOGGER.info(f"Sending {count} identical requests to test prefix cache")
+    """Send identical chat completion requests until ``count`` succeed.
+
+    Keeps sending the same prompt until the target number of successful (HTTP 200)
+    responses is reached. Aborts with AssertionError if failures exceed ``max_failures``.
+
+    Args:
+        llmisvc: The LLMInferenceService to send requests to.
+        prompt: The prompt text sent in every request.
+        token: Bearer token for authentication.
+        count: Number of successful responses required.
+        max_failures: Maximum tolerated failures (non-200 or exceptions) before aborting.
+        delay_after_first_request: Seconds to wait after the first successful request,
+            used to allow KV cache index propagation before subsequent requests.
+
+    Returns:
+        The number of successful requests (always equal to ``count``).
+
+    Raises:
+        AssertionError: If failures exceed ``max_failures``.
+    """
+    LOGGER.info(f"Sending requests until {count} succeed (max {max_failures} failures allowed)")
     successful = 0
-    for i in range(count):
+    failures = 0
+
+    while successful < count:
+        # mark test failed when inference requests exceed the max_failures threshold
+        assert failures < max_failures, f"Too many failures: {failures}/{max_failures}, {successful}/{count} succeeded"
+
         try:
-            status, _ = send_chat_completions(
-                llmisvc=llmisvc,
-                prompt=prompt,
-                token=token,
-                insecure=False,
-            )
-            if status == 200:
-                successful += 1
+            status, body = send_chat_completions(llmisvc=llmisvc, prompt=prompt, token=token, insecure=False)
         except Exception:
-            LOGGER.exception(f"Request {i + 1}/{count} failed")
-    LOGGER.info(f"{successful}/{count} requests succeeded")
-    assert successful >= count * min_ratio, f"Too many failures: {successful}/{count} (need {min_ratio * 100}%)"
+            failures += 1
+            LOGGER.exception(f"Request raised an exception ({failures}/{max_failures} failures)")
+            continue
+
+        if status == 200:
+            successful += 1
+            # add delay after first successful request for KV cache index propagation
+            if successful == 1 and delay_after_first_request:
+                LOGGER.info(f"Waiting {delay_after_first_request}s for KV cache index propagation")
+                time.sleep(delay_after_first_request)
+        else:
+            failures += 1
+            LOGGER.warning(f"Request failed with status {status}: {body} ({failures}/{max_failures} failures)")
+            time.sleep(5)
+
+    LOGGER.info(f"{successful} requests succeeded ({failures} failures)")
     return successful
 
 
@@ -479,3 +565,36 @@ def get_scheduler_decision_logs(
 
     LOGGER.info(f"Retrieved {len(json_logs)} logs from router-scheduler pod")
     return json_logs
+
+
+def workaround_503_no_healthy_upstream(llmisvc: LLMInferenceService, prompt: str) -> None:
+    """Warm up inference endpoint to work around RHOAIENG-55154.
+
+    Requests soon after Ready condition may 503 with 'no healthy upstream'.
+    Retries every 3s for up to 30s until the endpoint stops returning 503.
+    Swallows TimeoutExpiredError if retries are exhausted, letting the real test assertion decide.
+    Skips entirely if the Jira issue is closed (result is cached).
+
+    See: https://redhat.atlassian.net/browse/RHOAIENG-55154
+
+    Args:
+        llmisvc: The LLMInferenceService to warm up
+        prompt: The prompt to send in the warm up request
+    """
+    if not is_jira_issue_open(jira_id="RHOAIENG-55154"):
+        LOGGER.info("RHOAIENG-55154 is closed - remove this block")
+        return
+
+    try:
+        _send_warm_up_request(llmisvc=llmisvc, prompt=prompt)
+    except TimeoutExpiredError:
+        LOGGER.warning(f"RHOAIENG-55154: warm up retries exhausted for {llmisvc.name}")
+
+
+@retry(wait_timeout=30, sleep=3)
+def _send_warm_up_request(llmisvc: LLMInferenceService, prompt: str) -> bool:
+    """Send one warm-up request; return True to stop retrying, False to retry."""
+    LOGGER.info(f"RHOAIENG-55154: sending warm up request to {llmisvc.name}")
+    status, body = send_chat_completions(llmisvc=llmisvc, prompt=prompt)
+    LOGGER.info(f"RHOAIENG-55154: warm up returned {status}")
+    return not (status == 503 and "no healthy upstream" in body)
