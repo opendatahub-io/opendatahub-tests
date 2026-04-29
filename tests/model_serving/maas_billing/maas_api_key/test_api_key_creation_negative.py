@@ -40,8 +40,7 @@ class TestApiKeyCreationNegative:
             raise_on_error=False,
         )
         assert response.status_code == 400, (
-            f"Expected 400 for empty key name, got {response.status_code}: "
-            f"{(response.text or '')[:200]}"
+            f"Expected 400 for empty key name, got {response.status_code}: {(response.text or '')[:200]}"
         )
         LOGGER.info(f"Empty key name correctly rejected with {response.status_code}")
 
@@ -64,8 +63,7 @@ class TestApiKeyCreationNegative:
             raise_on_error=False,
         )
         assert response.status_code == 400, (
-            f"Expected 400 for non-existent subscription, got {response.status_code}: "
-            f"{(response.text or '')[:200]}"
+            f"Expected 400 for non-existent subscription, got {response.status_code}: {(response.text or '')[:200]}"
         )
         LOGGER.info(f"Non-existent subscription correctly rejected with {response.status_code}")
 
@@ -92,8 +90,7 @@ class TestApiKeyCreationNegative:
                 raise_on_error=False,
             )
             assert response.status_code in (200, 201), (
-                f"Key creation attempt {attempt + 1} failed: {response.status_code}: "
-                f"{(response.text or '')[:200]}"
+                f"Key creation attempt {attempt + 1} failed: {response.status_code}: {(response.text or '')[:200]}"
             )
             if body.get("id"):
                 created_key_ids.append(body["id"])
@@ -139,4 +136,4 @@ class TestApiKeyCreationNegative:
             url=f"{base_url}/v1/models",
             plaintext_key=body["key"],
         )
-        LOGGER.info(f"Revoked key correctly rejected on /v1/models with 403")
+        LOGGER.info("Revoked key correctly rejected on /v1/models with 403")
