@@ -16,7 +16,6 @@ TENANT_NAME = "default-tenant"
 @pytest.mark.component_health
 @pytest.mark.usefixtures("maas_subscription_controller_enabled_latest")
 class TestTenantHealthCheck:
-
     def test_tenant_crd_exists(
         self,
         admin_client: DynamicClient,
@@ -41,9 +40,7 @@ class TestTenantHealthCheck:
             name=TENANT_NAME,
             namespace=maas_subscription_namespace.name,
         )
-        assert tenant.exists, (
-            f"Tenant '{TENANT_NAME}' not found in namespace '{maas_subscription_namespace.name}'"
-        )
+        assert tenant.exists, f"Tenant '{TENANT_NAME}' not found in namespace '{maas_subscription_namespace.name}'"
         LOGGER.info(f"Tenant '{TENANT_NAME}' exists in namespace '{maas_subscription_namespace.name}'")
 
     @pytest.mark.parametrize(
