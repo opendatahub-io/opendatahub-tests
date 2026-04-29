@@ -109,6 +109,13 @@ def vector_store_create_and_poll(
         file_id=file_id,
         timeout=request_timeout,
         attributes=dict(attributes) if attributes else attributes,
+        chunking_strategy={
+            "type": "static",
+            "static": {
+                "max_chunk_size_tokens": 400,
+                "chunk_overlap_tokens": 200,
+            },
+        },
     )
     terminal_statuses = ("completed", "failed", "cancelled")
     deadline = start + wait_timeout
