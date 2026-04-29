@@ -15,6 +15,7 @@ class PrecisePrefixCacheConfig(TinyLlamaHfGpuConfig):
     # HuggingFace using the model name. It must be the full HF repo ID, not an alias.
     model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
     replicas = 2
+    min_gpus_per_node = 2
     block_size = 64
     hash_algo = "sha256_cbor"
     hash_seed = "42"
