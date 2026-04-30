@@ -201,7 +201,7 @@ def valid_aws_config(aws_access_key_id: str, aws_secret_access_key: str, ci_s3_b
     """
     endpoint_host = urlparse(ci_s3_bucket_endpoint).hostname or ""
     if not endpoint_host.endswith(".amazonaws.com"):
-        LOGGER.info(f"S3 endpoint is {ci_s3_bucket_endpoint} (non-AWS) - skipping STS credential validation")
+        LOGGER.info("Non-AWS S3 endpoint detected - skipping STS credential validation")
         return aws_access_key_id, aws_secret_access_key
 
     now = datetime.datetime.now(tz=datetime.UTC)
