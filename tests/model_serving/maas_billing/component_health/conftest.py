@@ -18,7 +18,5 @@ def default_tenant(
         name=TENANT_NAME,
         namespace=maas_subscription_namespace.name,
     )
-    assert tenant.exists, (
-        f"Tenant '{TENANT_NAME}' not found in namespace '{maas_subscription_namespace.name}'"
-    )
+    assert tenant.exists, f"Tenant '{TENANT_NAME}' not found in namespace '{maas_subscription_namespace.name}'"
     return tenant
