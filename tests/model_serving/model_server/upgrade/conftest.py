@@ -208,24 +208,22 @@ def inference_service_fixture(
             yield isvc
 
 
-@pytest.fixture(scope="session")
-def capture_upgrade_baseline(
+def _capture_and_save_baseline(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    inference_service_fixture: InferenceService,
+    isvc: InferenceService,
 ) -> None:
-    """Capture baseline values for the basic raw-deployment ISVC and persist to ConfigMap.
+    """Capture ISVC baseline values and persist to the shared ConfigMap.
 
-    Runs only during pre-upgrade. Each ISVC-specific conftest captures its own
-    baselines via dedicated fixtures; this one handles the basic upgrade-isvc.
+    No-op during post-upgrade runs.
     """
     if pytestconfig.option.post_upgrade:
         return
 
     baselines = {
-        inference_service_fixture.name: capture_isvc_baseline(
+        isvc.name: capture_isvc_baseline(
             client=admin_client,
-            isvc=inference_service_fixture,
+            isvc=isvc,
         ),
     }
     save_baseline_to_configmap(
@@ -236,25 +234,24 @@ def capture_upgrade_baseline(
 
 
 @pytest.fixture(scope="session")
+def capture_upgrade_baseline(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    inference_service_fixture: InferenceService,
+) -> None:
+    """Capture baseline values for the basic raw-deployment ISVC."""
+    _capture_and_save_baseline(pytestconfig=pytestconfig, admin_client=admin_client, isvc=inference_service_fixture)
+
+
+@pytest.fixture(scope="session")
 def capture_auth_upgrade_baseline(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     auth_inference_service_fixture: InferenceService,
 ) -> None:
     """Capture baseline values for the auth ISVC."""
-    if pytestconfig.option.post_upgrade:
-        return
-
-    baselines = {
-        auth_inference_service_fixture.name: capture_isvc_baseline(
-            client=admin_client,
-            isvc=auth_inference_service_fixture,
-        ),
-    }
-    save_baseline_to_configmap(
-        client=admin_client,
-        namespace=UPGRADE_NAMESPACE,
-        baselines=baselines,
+    _capture_and_save_baseline(
+        pytestconfig=pytestconfig, admin_client=admin_client, isvc=auth_inference_service_fixture
     )
 
 
@@ -265,19 +262,8 @@ def capture_model_car_upgrade_baseline(
     model_car_inference_service_fixture: InferenceService,
 ) -> None:
     """Capture baseline values for the model-car ISVC."""
-    if pytestconfig.option.post_upgrade:
-        return
-
-    baselines = {
-        model_car_inference_service_fixture.name: capture_isvc_baseline(
-            client=admin_client,
-            isvc=model_car_inference_service_fixture,
-        ),
-    }
-    save_baseline_to_configmap(
-        client=admin_client,
-        namespace=UPGRADE_NAMESPACE,
-        baselines=baselines,
+    _capture_and_save_baseline(
+        pytestconfig=pytestconfig, admin_client=admin_client, isvc=model_car_inference_service_fixture
     )
 
 
@@ -288,19 +274,8 @@ def capture_metrics_upgrade_baseline(
     metrics_inference_service_fixture: InferenceService,
 ) -> None:
     """Capture baseline values for the metrics ISVC."""
-    if pytestconfig.option.post_upgrade:
-        return
-
-    baselines = {
-        metrics_inference_service_fixture.name: capture_isvc_baseline(
-            client=admin_client,
-            isvc=metrics_inference_service_fixture,
-        ),
-    }
-    save_baseline_to_configmap(
-        client=admin_client,
-        namespace=UPGRADE_NAMESPACE,
-        baselines=baselines,
+    _capture_and_save_baseline(
+        pytestconfig=pytestconfig, admin_client=admin_client, isvc=metrics_inference_service_fixture
     )
 
 
@@ -311,19 +286,8 @@ def capture_private_endpoint_upgrade_baseline(
     private_endpoint_inference_service_fixture: InferenceService,
 ) -> None:
     """Capture baseline values for the private-endpoint ISVC."""
-    if pytestconfig.option.post_upgrade:
-        return
-
-    baselines = {
-        private_endpoint_inference_service_fixture.name: capture_isvc_baseline(
-            client=admin_client,
-            isvc=private_endpoint_inference_service_fixture,
-        ),
-    }
-    save_baseline_to_configmap(
-        client=admin_client,
-        namespace=UPGRADE_NAMESPACE,
-        baselines=baselines,
+    _capture_and_save_baseline(
+        pytestconfig=pytestconfig, admin_client=admin_client, isvc=private_endpoint_inference_service_fixture
     )
 
 

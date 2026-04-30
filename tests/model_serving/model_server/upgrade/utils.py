@@ -104,33 +104,6 @@ def verify_model_status_loaded(isvc: InferenceService) -> None:
         )
 
 
-def verify_isvc_pods_not_restarted(client: DynamicClient, isvc: InferenceService, max_restarts: int = 0) -> None:
-    """
-    Verify that pods associated with the InferenceService have not restarted.
-
-    Args:
-        client: DynamicClient instance
-        isvc: InferenceService instance
-        max_restarts: Maximum allowed restart count (default 0)
-
-    Raises:
-        PodContainersRestartError: If any container has restarted more than max_restarts times
-    """
-    pods = get_pods_by_isvc_label(client=client, isvc=isvc)
-    restarted_containers: dict[str, list[str]] = {}
-
-    for pod in pods:
-        if pod.instance.status.containerStatuses:
-            for container in pod.instance.status.containerStatuses:
-                if container.restartCount > max_restarts:
-                    if pod.name not in restarted_containers:
-                        restarted_containers[pod.name] = []
-                    restarted_containers[pod.name].append(f"{container.name} (restarts: {container.restartCount})")
-
-    if restarted_containers:
-        raise PodContainersRestartError(f"Containers restarted: {restarted_containers}")
-
-
 def verify_storage_uri_unchanged(isvc: InferenceService, expected_uri: str) -> None:
     """
     Verify that the storage URI has not changed.
