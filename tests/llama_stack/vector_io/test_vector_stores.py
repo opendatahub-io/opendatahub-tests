@@ -21,11 +21,11 @@ IBM_EARNINGS_SEARCH_QUERIES_BY_MODE: dict[str, list[str]] = {
         "What did leadership say about generative AI and growth?",
     ],
     "keyword": [
-        "What was free cash flow in the fourth quarter?",
-        "What was Consulting revenue and segment profit margin?",
-        "What was Software revenue and constant currency growth?",
-        "What was diluted earnings per share for continuing operations?",
-        "What are full-year 2026 expectations for revenue and free cash flow?",
+        "What was fourth-quarter free cash flow?",
+        "What was Consulting segment profit margin?",
+        "What was Software revenue constant currency growth?",
+        "What was diluted earnings per share?",
+        "What are full-year 2026 revenue expectations?",
     ],
     "hybrid": [
         "What was IBM free cash flow and what does the company expect for 2026?",
