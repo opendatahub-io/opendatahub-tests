@@ -27,13 +27,6 @@ class TestTenantHealthCheck:
         assert crd.exists, f"Tenant CRD '{TENANT_CRD_NAME}' not found in the cluster"
         LOGGER.info(f"Tenant CRD '{TENANT_CRD_NAME}' exists")
 
-    def test_default_tenant_exists(
-        self,
-        default_tenant: Tenant,
-    ) -> None:
-        """Verify default-tenant CR exists in the MaaS namespace."""
-        LOGGER.info(f"Tenant '{default_tenant.name}' exists in namespace '{default_tenant.namespace}'")
-
     @pytest.mark.parametrize(
         "condition_type, expected_status",
         [
