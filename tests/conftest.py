@@ -11,6 +11,7 @@ from collections.abc import Callable, Generator
 from contextlib import ExitStack
 from typing import Any
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 import pytest
@@ -198,7 +199,8 @@ def valid_aws_config(aws_access_key_id: str, aws_secret_access_key: str, ci_s3_b
     minutes for storage-initializer pods to time out on the cluster.
     Skips validation when using a non-AWS S3 backend (e.g. Minio).
     """
-    if "amazonaws.com" not in ci_s3_bucket_endpoint:
+    endpoint_host = urlparse(ci_s3_bucket_endpoint).hostname or ""
+    if not endpoint_host.endswith(".amazonaws.com"):
         LOGGER.info(f"S3 endpoint is {ci_s3_bucket_endpoint} (non-AWS) - skipping STS credential validation")
         return aws_access_key_id, aws_secret_access_key
 
