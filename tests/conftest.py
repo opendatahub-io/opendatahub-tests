@@ -190,13 +190,18 @@ def registry_host(pytestconfig: pytest.Config) -> list[str]:
 
 
 @pytest.fixture(scope="session")
-def valid_aws_config(aws_access_key_id: str, aws_secret_access_key: str) -> tuple[str, str]:
+def valid_aws_config(aws_access_key_id: str, aws_secret_access_key: str, ci_s3_bucket_endpoint: str) -> tuple[str, str]:
     """Validate AWS credentials before any S3-dependent test runs.
 
     Calls STS GetCallerIdentity using AWS Signature V4.
     Fails fast at session start if credentials are missing or expired, instead of waiting
     minutes for storage-initializer pods to time out on the cluster.
+    Skips validation when using a non-AWS S3 backend (e.g. Minio).
     """
+    if "amazonaws.com" not in ci_s3_bucket_endpoint:
+        LOGGER.info(f"S3 endpoint is {ci_s3_bucket_endpoint} (non-AWS) - skipping STS credential validation")
+        return aws_access_key_id, aws_secret_access_key
+
     now = datetime.datetime.now(tz=datetime.UTC)
     datestamp = now.strftime(format="%Y%m%d")
     amzdate = now.strftime(format="%Y%m%dT%H%M%SZ")
