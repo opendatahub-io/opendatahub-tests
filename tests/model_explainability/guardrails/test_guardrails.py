@@ -2,6 +2,9 @@ import pytest
 import requests
 import structlog
 import yaml
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.custom_resource_definition import CustomResourceDefinition
+from ocp_resources.namespace import Namespace
 from timeout_sampler import retry
 
 from tests.model_explainability.guardrails.constants import (
@@ -15,6 +18,7 @@ from tests.model_explainability.guardrails.constants import (
     PII_OUTPUT_DETECTION_PROMPT,
     PROMPT_INJECTION_INPUT_DETECTION_PROMPT,
     STANDALONE_DETECTION_ENDPOINT,
+    TEST_TLS_CERTIFICATE,
 )
 from tests.model_explainability.guardrails.utils import (
     create_detector_config,
@@ -39,6 +43,23 @@ LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.smoke
+@pytest.mark.model_explainability
+def test_guardrailsorchestrator_crd_exists(
+    admin_client: DynamicClient,
+) -> None:
+    """Verify GuardrailsOrchestrator CRD exists on the cluster."""
+    crd_name = "guardrailsorchestrators.trustyai.opendatahub.io"
+
+    crd_resource = CustomResourceDefinition(
+        client=admin_client,
+        name=crd_name,
+        ensure_exists=True,
+    )
+
+    assert crd_resource.exists, f"CRD {crd_name} does not exist on the cluster"
+
+
+@pytest.mark.tier1
 @pytest.mark.parametrize(
     "model_namespace, orchestrator_config, guardrails_orchestrator",
     [
@@ -70,7 +91,7 @@ def test_validate_guardrails_orchestrator_images(
     validate_tai_component_images(pod=guardrails_orchestrator_pod, tai_operator_configmap=trustyai_operator_configmap)
 
 
-@pytest.mark.smoke
+@pytest.mark.tier1
 @pytest.mark.parametrize(
     "model_namespace, orchestrator_config, guardrails_gateway_config, guardrails_orchestrator",
     [
@@ -212,7 +233,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         )
 
 
-@pytest.mark.smoke
+@pytest.mark.tier1
 @pytest.mark.parametrize(
     "model_namespace, orchestrator_config, guardrails_gateway_config,guardrails_orchestrator",
     [
@@ -569,4 +590,136 @@ class TestGuardrailsOrchestratorAutoConfigWithGateway:
             ca_bundle_file=openshift_ca_bundle_file,
             content=str(message),
             model=LLMdInferenceSimConfig.model_name,
+        )
+
+
+@pytest.mark.tier1
+@pytest.mark.parametrize(
+    "model_namespace, orchestrator_config, guardrails_orchestrator_with_tls",
+    [
+        pytest.param(
+            {"name": "test-guardrails-custom-tls"},
+            {
+                "orchestrator_config_data": {
+                    "config.yaml": yaml.dump({
+                        "openai": LLM_D_CHAT_GENERATION_CONFIG,
+                        "detectors": BUILTIN_DETECTOR_CONFIG,
+                    })
+                },
+            },
+            {"tls_secrets": ["custom-tls-cert"]},
+        )
+    ],
+    indirect=True,
+)
+@pytest.mark.rawdeployment
+@pytest.mark.usefixtures("patched_dsc_kserve_headed")
+class TestGuardrailsOrchestratorCustomTLS:
+    """
+    Tests custom TLS certificate mounting for the GuardrailsOrchestrator.
+    Verifies that custom TLS secrets specified in the CR are correctly mounted
+    to the orchestrator deployment at /etc/tls/$SECRET_NAME.
+
+    Tests are split into dependent steps for better granularity:
+    1. Volume mount check
+    2. Volume references correct secret
+    3. Certificate files exist in the pod
+    4. Certificate content matches expected
+    """
+
+    @pytest.mark.dependency(name="volume_mount_check")
+    def test_volume_mount_exists(
+        self,
+        admin_client: DynamicClient,
+        model_namespace: Namespace,
+        custom_tls_secret,
+        guardrails_orchestrator_with_tls,
+        guardrails_orchestrator_pod_with_tls,
+    ):
+        """Verify the volume mount exists in the pod spec."""
+        pod = guardrails_orchestrator_pod_with_tls
+
+        # Verify the volume mount exists in the pod spec (scan all containers to handle sidecars)
+        volume_mounts = [
+            volume_mount
+            for container in pod.instance.spec.containers
+            for volume_mount in (container.volumeMounts or [])
+            if volume_mount.mountPath == "/etc/tls/custom-tls-cert"
+        ]
+
+        assert volume_mounts, "Custom TLS volume mount not found in any container"
+        assert volume_mounts[0].name, "Volume mount has no name"
+
+    @pytest.mark.dependency(name="volume_secret_reference", depends=["volume_mount_check"])
+    def test_volume_references_correct_secret(
+        self,
+        admin_client: DynamicClient,
+        model_namespace: Namespace,
+        custom_tls_secret,
+        guardrails_orchestrator_with_tls,
+        guardrails_orchestrator_pod_with_tls,
+    ):
+        """Verify the volume references the correct secret."""
+        pod = guardrails_orchestrator_pod_with_tls
+
+        volume_mounts = [
+            volume_mount
+            for container in pod.instance.spec.containers
+            for volume_mount in (container.volumeMounts or [])
+            if volume_mount.mountPath == "/etc/tls/custom-tls-cert"
+        ]
+
+        volumes = [volume for volume in pod.instance.spec.volumes if volume.name == volume_mounts[0].name]
+        assert volumes, f"Volume {volume_mounts[0].name} not found in pod volumes"
+        assert volumes[0].secret.secretName == "custom-tls-cert", (  # pragma: allowlist secret
+            "Volume does not reference the correct secret"
+        )
+
+    @pytest.mark.dependency(name="cert_files_exist", depends=["volume_secret_reference"])
+    def test_certificate_files_exist(
+        self,
+        admin_client: DynamicClient,
+        model_namespace: Namespace,
+        custom_tls_secret,
+        guardrails_orchestrator_with_tls,
+        guardrails_orchestrator_pod_with_tls,
+    ):
+        """Verify certificate files exist in the pod."""
+        pod = guardrails_orchestrator_pod_with_tls
+
+        # Use test -f for authoritative file existence checks
+        cert_file_check = "test -f /etc/tls/custom-tls-cert/tls.crt && echo 'cert_exists'"
+        cert_result = pod.execute(command=["sh", "-c", cert_file_check])
+        assert "cert_exists" in cert_result, "TLS certificate file not found in mounted path"
+
+        key_file_check = "test -f /etc/tls/custom-tls-cert/tls.key && echo 'key_exists'"  # pragma: allowlist secret
+        key_result = pod.execute(command=["sh", "-c", key_file_check])
+        assert "key_exists" in key_result, "TLS key file not found in mounted path"  # pragma: allowlist secret
+
+    @pytest.mark.dependency(depends=["cert_files_exist"])
+    def test_certificate_content_matches(
+        self,
+        admin_client: DynamicClient,
+        model_namespace: Namespace,
+        custom_tls_secret,
+        guardrails_orchestrator_with_tls,
+        guardrails_orchestrator_pod_with_tls,
+    ):
+        """Verify the certificate content matches expected test certificate."""
+        pod = guardrails_orchestrator_pod_with_tls
+
+        cert_content_cmd = "cat /etc/tls/custom-tls-cert/tls.crt"
+        cert_content = pod.execute(command=["sh", "-c", cert_content_cmd])
+
+        # Normalize whitespace for comparison
+        expected_cert = TEST_TLS_CERTIFICATE.strip()
+        actual_cert = cert_content.strip()
+
+        assert actual_cert == expected_cert, (
+            f"Mounted certificate content does not match expected test certificate. "
+            f"Expected length: {len(expected_cert)}, Actual length: {len(actual_cert)}"
+        )
+
+        LOGGER.info(
+            f"Custom TLS secret successfully mounted and verified at /etc/tls/custom-tls-cert in pod {pod.name}"
         )

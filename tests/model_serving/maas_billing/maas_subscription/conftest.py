@@ -387,6 +387,116 @@ def api_key_bound_to_premium_subscription(
     )
 
 
+@pytest.fixture(scope="function")
+def deleted_sub_service_account(
+    admin_client: DynamicClient,
+    maas_api_server_url: str,
+    original_user: str,
+) -> Generator[str, Any, Any]:
+    """Create a dedicated SA and return its token for deleted-subscription testing."""
+    sa_name = f"e2e-deleted-sub-sa-{generate_random_name()}"
+    applications_namespace = py_config["applications_namespace"]
+
+    with ServiceAccount(
+        client=admin_client,
+        namespace=applications_namespace,
+        name=sa_name,
+        teardown=True,
+    ) as sa:
+        sa.wait(timeout=60)
+
+        ok = login_with_user_password(api_address=maas_api_server_url, user=original_user)
+        assert ok, f"Failed to login as original_user={original_user}"
+
+        yield create_inference_token(model_service_account=sa)
+
+
+@pytest.fixture(scope="function")
+def api_key_for_deleted_subscription(
+    request_session_http: requests.Session,
+    base_url: str,
+    admin_client: DynamicClient,
+    deleted_sub_service_account: str,
+    maas_model_tinyllama_free: MaaSModelRef,
+    maas_subscription_tinyllama_free: MaaSSubscription,
+) -> Generator[str, Any, Any]:
+    """Create an API key bound to a temp subscription, then delete the subscription.
+
+    Returns the plaintext API key whose subscription no longer exists.
+    """
+    temp_sub_name = f"e2e-deleted-sub-{generate_random_name()}"
+
+    with create_maas_subscription(
+        admin_client=admin_client,
+        subscription_namespace=maas_subscription_tinyllama_free.namespace,
+        subscription_name=temp_sub_name,
+        owner_group_name="system:authenticated",
+        model_name=maas_model_tinyllama_free.name,
+        model_namespace=maas_model_tinyllama_free.namespace,
+        tokens_per_minute=100,
+        window="1m",
+        priority=20,
+        teardown=True,
+        wait_for_resource=True,
+    ) as temp_subscription:
+        temp_subscription.wait_for_condition(condition="Ready", status="True", timeout=300)
+
+        _, body = create_api_key(
+            base_url=base_url,
+            ocp_user_token=deleted_sub_service_account,
+            request_session_http=request_session_http,
+            api_key_name=f"e2e-deleted-sub-key-{generate_random_name()}",
+            subscription=temp_sub_name,
+        )
+        api_key_plaintext = body["key"]
+        LOGGER.info(f"api_key_for_deleted_subscription: created key id={body['id']} bound to '{temp_sub_name}'")
+
+    LOGGER.info(f"api_key_for_deleted_subscription: subscription '{temp_sub_name}' deleted")
+    yield api_key_plaintext
+
+    revoke_api_key(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        key_id=body["id"],
+        ocp_user_token=deleted_sub_service_account,
+    )
+
+
+@pytest.fixture(scope="class")
+def exhausted_token_quota(
+    request_session_http: requests.Session,
+    model_url_tinyllama_free: str,
+    api_key_bound_to_free_subscription: str,
+    maas_subscription_tinyllama_free: MaaSSubscription,
+) -> None:
+    """Exhaust the free-tier token quota by sending inference requests until 429."""
+    headers = build_maas_headers(token=api_key_bound_to_free_subscription)
+    headers["x-maas-subscription"] = maas_subscription_tinyllama_free.name
+
+    max_requests = 10
+    for attempt in range(max_requests):
+        response = request_session_http.post(
+            url=model_url_tinyllama_free,
+            headers=headers,
+            json={
+                "model": "llm-s3-tinyllama-free",
+                "messages": [{"role": "user", "content": "Hello"}],
+                "max_tokens": 50,
+            },
+            timeout=60,
+        )
+        if response.status_code == 429:
+            LOGGER.info(f"[models] Rate limit hit after {attempt + 1} inference request(s)")
+            return
+
+        assert response.status_code == 200, (
+            f"Unexpected status {response.status_code} during inference "
+            f"(attempt {attempt + 1}): {(response.text or '')[:200]}"
+        )
+
+    pytest.fail(f"Could not exhaust token quota within {max_requests} requests")
+
+
 @pytest.fixture(scope="class")
 def maas_wrong_group_service_account_token(
     maas_api_server_url: str,
@@ -437,8 +547,8 @@ def temporary_system_authenticated_subscription(
         model_namespace=maas_model_tinyllama_free.namespace,
         tokens_per_minute=50,
         window="1m",
-        priority=0,
-        teardown=False,
+        priority=2,
+        teardown=True,
         wait_for_resource=True,
     ) as temporary_subscription:
         temporary_subscription.wait_for_condition(
@@ -524,38 +634,6 @@ def premium_system_authenticated_access(
 
 
 @pytest.fixture(scope="function")
-def second_free_subscription(
-    admin_client: DynamicClient,
-    maas_free_group: str,
-    maas_model_tinyllama_free: MaaSModelRef,
-    maas_subscription_tinyllama_free: MaaSSubscription,
-) -> Generator[MaaSSubscription, Any, Any]:
-    """
-    Creates a second subscription for maas_free_group on the free model.
-    Used to simulate an ambiguous subscription selection (two qualifying subscriptions,
-    no x-maas-subscription header).
-    """
-    with create_maas_subscription(
-        admin_client=admin_client,
-        subscription_namespace=maas_subscription_tinyllama_free.namespace,
-        subscription_name="e2e-second-free-subscription",
-        owner_group_name=maas_free_group,
-        model_name=maas_model_tinyllama_free.name,
-        model_namespace=maas_model_tinyllama_free.namespace,
-        tokens_per_minute=500,
-        window="1m",
-        priority=5,
-        teardown=True,
-        wait_for_resource=True,
-    ) as second_subscription:
-        second_subscription.wait_for_condition(condition="Ready", status="True", timeout=300)
-        LOGGER.info(
-            f"Created second free subscription {second_subscription.name} for model {maas_model_tinyllama_free.name}"
-        )
-        yield second_subscription
-
-
-@pytest.fixture(scope="function")
 def free_actor_premium_subscription(
     admin_client: DynamicClient,
     maas_model_tinyllama_premium: MaaSModelRef,
@@ -575,7 +653,7 @@ def free_actor_premium_subscription(
         model_namespace=maas_model_tinyllama_premium.namespace,
         tokens_per_minute=100,
         window="1m",
-        priority=0,
+        priority=5,
         teardown=True,
         wait_for_resource=True,
     ) as sub_for_free_actor:

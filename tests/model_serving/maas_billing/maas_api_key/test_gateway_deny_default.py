@@ -25,7 +25,6 @@ CHAT_COMPLETIONS = OpenAIEnpoints.CHAT_COMPLETIONS
 class TestGatewayDenyByDefault:
     """Verify gateway-default-auth denies access to unconfigured models."""
 
-    @pytest.mark.smoke
     def test_gateway_default_auth_in_gateway_namespace_and_accepted(
         self,
         admin_client,
@@ -54,7 +53,6 @@ class TestGatewayDenyByDefault:
 
         LOGGER.info(f"{GATEWAY_DEFAULT_AUTH_NAME} correctly deployed to '{gateway_namespace}' and Accepted")
 
-    @pytest.mark.smoke
     def test_unconfigured_model_denies_unauthenticated_request(
         self,
         request_session_http: requests.Session,

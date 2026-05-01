@@ -1,5 +1,8 @@
 import base64
 import binascii
+import datetime
+import hashlib
+import hmac
 import json
 import os
 import shutil
@@ -7,6 +10,9 @@ from ast import literal_eval
 from collections.abc import Callable, Generator
 from contextlib import ExitStack
 from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 
 import pytest
 import shortuuid
@@ -185,7 +191,65 @@ def registry_host(pytestconfig: pytest.Config) -> list[str]:
 
 
 @pytest.fixture(scope="session")
-def valid_aws_config(aws_access_key_id: str, aws_secret_access_key: str) -> tuple[str, str]:
+def valid_aws_config(aws_access_key_id: str, aws_secret_access_key: str, ci_s3_bucket_endpoint: str) -> tuple[str, str]:
+    """Validate AWS credentials before any S3-dependent test runs.
+
+    Calls STS GetCallerIdentity using AWS Signature V4.
+    Fails fast at session start if credentials are missing or expired, instead of waiting
+    minutes for storage-initializer pods to time out on the cluster.
+    Skips validation when using a non-AWS S3 backend (e.g. Minio).
+    """
+    endpoint_host = urlparse(ci_s3_bucket_endpoint).hostname or ""
+    if not endpoint_host.endswith(".amazonaws.com"):
+        LOGGER.info("Non-AWS S3 endpoint detected - skipping STS credential validation")
+        return aws_access_key_id, aws_secret_access_key
+
+    now = datetime.datetime.now(tz=datetime.UTC)
+    datestamp = now.strftime(format="%Y%m%d")
+    amzdate = now.strftime(format="%Y%m%dT%H%M%SZ")
+
+    def _sign(key: bytes, msg: str) -> bytes:
+        return hmac.new(key, msg.encode(), hashlib.sha256).digest()
+
+    credential_scope = f"{datestamp}/us-east-1/sts/aws4_request"
+    payload_hash = hashlib.sha256(b"Action=GetCallerIdentity&Version=2011-06-15").hexdigest()
+    canonical_request = (
+        f"POST\n/\n\ncontent-type:application/x-www-form-urlencoded\nhost:sts.amazonaws.com\n"
+        f"x-amz-date:{amzdate}\n\ncontent-type;host;x-amz-date\n{payload_hash}"
+    )
+    string_to_sign = (
+        f"AWS4-HMAC-SHA256\n{amzdate}\n{credential_scope}\n{hashlib.sha256(canonical_request.encode()).hexdigest()}"
+    )
+    date_key = _sign(key=f"AWS4{aws_secret_access_key}".encode(), msg=datestamp)
+    region_key = _sign(key=date_key, msg="us-east-1")
+    service_key = _sign(key=region_key, msg="sts")
+    signing_key = _sign(key=service_key, msg="aws4_request")
+    signature = hmac.new(signing_key, string_to_sign.encode(), hashlib.sha256).hexdigest()
+    authorization = (
+        f"AWS4-HMAC-SHA256 Credential={aws_access_key_id}/{credential_scope}, "
+        f"SignedHeaders=content-type;host;x-amz-date, Signature={signature}"
+    )
+
+    req = Request(
+        url="https://sts.amazonaws.com/",
+        data=b"Action=GetCallerIdentity&Version=2011-06-15",
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "X-Amz-Date": amzdate,
+            "Authorization": authorization,
+        },
+    )
+    try:
+        urlopen(url=req, timeout=10)
+    except HTTPError as e:
+        if e.code in (401, 403):
+            raise ValueError(f"AWS credential are invalid or expired (HTTP {e.code}: {e.reason})") from e
+        LOGGER.warning(f"Unable to validate AWS credentials - continue with tests (HTTP {e.code}: {e.reason})")
+    except (URLError, OSError) as e:
+        LOGGER.warning(f"Unable to validate AWS credentials  - continue with tests: {e}")
+    else:
+        LOGGER.info("AWS credentials validated successfully via STS GetCallerIdentity")
+
     return aws_access_key_id, aws_secret_access_key
 
 
@@ -444,14 +508,22 @@ def unprivileged_client(
         with open(kubconfig_filepath) as fd:
             kubeconfig_content = yaml.safe_load(fd)
 
-        # create the oidc user config
+        # extract client-id from existing admin kubeconfig if available, otherwise default
+        existing_users = kubeconfig_content.get("users", [])
+        client_id = "oc-cli"
+        for kubeconfig_user in existing_users:
+            auth_config = kubeconfig_user.get("user", {}).get("auth-provider", {}).get("config", {})
+            if auth_config.get("client-id"):
+                client_id = auth_config["client-id"]
+                break
+
         user = {
             "name": non_admin_user_password[0],
             "user": {
                 "auth-provider": {
                     "name": "oidc",
                     "config": {
-                        "client-id": "oc-cli",
+                        "client-id": client_id,
                         "client-secret": "",
                         "idp-issuer-url": issuer,
                         "id-token": tokens[0],
