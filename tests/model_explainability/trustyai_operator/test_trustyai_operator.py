@@ -2,6 +2,7 @@ import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
+from pytest_testconfig import config as py_config
 
 from tests.model_explainability.trustyai_operator.utils import validate_trustyai_operator_image
 
@@ -17,4 +18,5 @@ def test_validate_trustyai_operator_image(
         related_images_refs=related_images_refs,
         tai_operator_configmap_data=trustyai_operator_configmap.instance.data,
         tai_operator_deployment=trustyai_operator_deployment,
+        upstream=py_config["distribution"] == "upstream",
     )

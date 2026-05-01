@@ -20,6 +20,7 @@ from utilities.exceptions import ResourceValueMismatch, UnexpectedResourceCountE
 
 # Constants for image validation
 SHA256_DIGEST_PATTERN = r"@sha256:[a-f0-9]{64}$"
+UPSTREAM_IMAGE_REGISTRY = "quay.io/opendatahub"
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -204,17 +205,19 @@ def get_pod_images(pod: Pod) -> list[str]:
     return containers
 
 
-def validate_image_format(image: str) -> tuple[bool, str]:
+def validate_image_format(image: str, upstream: bool = False) -> tuple[bool, str]:
     """Validate image format according to requirements.
 
     Args:
         image: The image string to validate
+        upstream: If True, validate against quay.io/opendatahub instead of registry.redhat.io
 
     Returns:
         Tuple of (is_valid, error_message)
     """
-    if not image.startswith(Resource.ApiGroup.IMAGE_REGISTRY):
-        return False, f"Image {image} is not from {Resource.ApiGroup.IMAGE_REGISTRY}"
+    expected_registry = UPSTREAM_IMAGE_REGISTRY if upstream else Resource.ApiGroup.IMAGE_REGISTRY
+    if not image.startswith(expected_registry):
+        return False, f"Image {image} is not from {expected_registry}"
 
     if not re.search(SHA256_DIGEST_PATTERN, image):
         return False, f"Image {image} does not use sha256 digest"
@@ -265,6 +268,7 @@ def validate_container_images(
     pod: Pod,
     valid_image_refs: set[str],
     skip_patterns: list[str] | None = None,
+    upstream: bool = False,
 ) -> list[str]:
     """
     Validate all container images in a pod against a set of valid image references.
@@ -273,6 +277,7 @@ def validate_container_images(
         pod: The pod whose images to validate
         valid_image_refs: Set of valid image references to check against
         skip_patterns: List of patterns to skip validation for (e.g. ["openshift-service-mesh"])
+        upstream: If True, validate against quay.io/opendatahub instead of registry.redhat.io
 
     Returns:
         List of validation error messages, empty if all validations pass
@@ -288,7 +293,7 @@ def validate_container_images(
             continue
 
         # Validate image format
-        is_valid, error_msg = validate_image_format(image=image)
+        is_valid, error_msg = validate_image_format(image=image, upstream=upstream)
         if not is_valid:
             validation_errors.append(
                 f"Pod {pod.name} in namespace: {pod.namespace} image validation failed: {error_msg}"
