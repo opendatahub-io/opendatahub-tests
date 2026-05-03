@@ -219,7 +219,9 @@ class TestEvalHubNetworkPolicy:
         (e.g. redhat-ods-applications). This test checks the same port-blocking logic
         against NetworkPolicies in that namespace, which may have stricter default-deny rules.
         """
-        applications_namespace = py_config["applications_namespace"]
+        applications_namespace = py_config.get("applications_namespace")
+        if not applications_namespace:
+            pytest.skip("applications_namespace not set in test config — skipping production namespace check")
         if applications_namespace == model_namespace.name:
             pytest.skip("EvalHub test namespace is the applications namespace — already covered above")
 
