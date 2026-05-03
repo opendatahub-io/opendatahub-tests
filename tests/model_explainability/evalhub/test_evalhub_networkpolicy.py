@@ -104,7 +104,16 @@ class TestEvalHubNetworkPolicy:
         exist in the namespace.
         """
         policies = list(NetworkPolicy.get(client=admin_client, namespace=model_namespace.name))
-        evalhub_netpols = [p for p in policies if evalhub_cr.name in p.name]
+        cr_uid = evalhub_cr.instance.metadata.uid
+
+        def _owned_by_evalhub_cr(policy: NetworkPolicy) -> bool:
+            for ref in policy.instance.metadata.get("ownerReferences") or []:
+                if ref.get("kind") == "EvalHub" and ref.get("name") == evalhub_cr.name:
+                    if cr_uid is None or ref.get("uid") == cr_uid:
+                        return True
+            return False
+
+        evalhub_netpols = [p for p in policies if _owned_by_evalhub_cr(p)]
         assert not evalhub_netpols, (
             f"Operator unexpectedly created NetworkPolicy resources for EvalHub: "
             f"{[p.name for p in evalhub_netpols]}. "
