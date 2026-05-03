@@ -146,7 +146,11 @@ class TestEvalHubNetworkPolicy:
 
         def _owned_by_evalhub_cr(policy: NetworkPolicy) -> bool:
             for ref in policy.instance.metadata.get("ownerReferences") or []:
-                if ref.get("kind") == "EvalHub" and ref.get("name") == evalhub_cr.name and (cr_uid is None or ref.get("uid") == cr_uid):
+                if (
+                    ref.get("kind") == "EvalHub"
+                    and ref.get("name") == evalhub_cr.name
+                    and (cr_uid is None or ref.get("uid") == cr_uid)
+                ):
                     return True
             return False
 
