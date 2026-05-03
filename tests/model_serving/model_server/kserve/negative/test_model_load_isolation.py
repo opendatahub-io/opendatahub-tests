@@ -26,7 +26,7 @@ pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_conf
 VALID_BODY_RAW: str = json.dumps(VALID_OVMS_INFERENCE_BODY)
 
 
-@pytest.mark.tier2
+@pytest.mark.tier3
 class TestModelLoadIsolation:
     """A failed ISVC must not impact a healthy neighbor in the same namespace."""
 

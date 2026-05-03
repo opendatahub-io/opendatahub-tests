@@ -20,7 +20,7 @@ from tests.model_serving.model_server.kserve.negative.utils import (
 pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_config")]
 
 
-@pytest.mark.tier2
+@pytest.mark.tier3
 class TestCorruptedModelArtifacts:
     """KServe surfaces model load failure when the model artifact is invalid."""
 

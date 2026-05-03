@@ -104,14 +104,14 @@ class TestListModels:
 
     @pytest.mark.tier2
     @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
-    def test_empty_model_list_returns_empty_array(
+    def test_subscription_without_auth_policy_still_lists_model(
         self,
         request_session_http: requests.Session,
         models_url: str,
         ocp_token_for_actor: str,
         free_actor_premium_subscription,
     ) -> None:
-        """Verify inaccessible models return data=[] not data=null."""
+        """Verify /v1/models returns models based on subscription ownership, not AuthPolicy."""
         headers = build_maas_headers(token=ocp_token_for_actor)
         headers["x-maas-subscription"] = free_actor_premium_subscription.name
 
@@ -123,12 +123,15 @@ class TestListModels:
         assert "data" in data, "Response missing 'data' field"
 
         models = data["data"]
-        assert models is not None, "'data' must not be null (should be [] for empty)"
+        assert models is not None, "'data' must not be null"
         assert isinstance(models, list), f"'data' must be a list, got {type(models).__name__}"
-        assert len(models) == 0, (
-            f"Expected empty list (user has no auth policy for premium model), got {len(models)}: {models}"
+        assert len(models) == 1, (
+            f"Expected 1 model from subscription (visibility granted by subscription ownership), "
+            f"got {len(models)}: {models}"
         )
-        LOGGER.info(f"[models] Empty model list -> {response.status_code} with data=[]")
+        LOGGER.info(
+            f"[models] Subscription without AuthPolicy -> {response.status_code} with {len(models)} model(s) visible"
+        )
 
     @pytest.mark.tier2
     @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)

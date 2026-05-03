@@ -547,7 +547,7 @@ def temporary_system_authenticated_subscription(
         model_namespace=maas_model_tinyllama_free.namespace,
         tokens_per_minute=50,
         window="1m",
-        priority=0,
+        priority=2,
         teardown=True,
         wait_for_resource=True,
     ) as temporary_subscription:
@@ -653,7 +653,7 @@ def free_actor_premium_subscription(
         model_namespace=maas_model_tinyllama_premium.namespace,
         tokens_per_minute=100,
         window="1m",
-        priority=0,
+        priority=5,
         teardown=True,
         wait_for_resource=True,
     ) as sub_for_free_actor:
