@@ -146,9 +146,8 @@ class TestEvalHubNetworkPolicy:
 
         def _owned_by_evalhub_cr(policy: NetworkPolicy) -> bool:
             for ref in policy.instance.metadata.get("ownerReferences") or []:
-                if ref.get("kind") == "EvalHub" and ref.get("name") == evalhub_cr.name:
-                    if cr_uid is None or ref.get("uid") == cr_uid:
-                        return True
+                if ref.get("kind") == "EvalHub" and ref.get("name") == evalhub_cr.name and (cr_uid is None or ref.get("uid") == cr_uid):
+                    return True
             return False
 
         evalhub_netpols = [p for p in policies if _owned_by_evalhub_cr(p)]
@@ -200,7 +199,7 @@ class TestEvalHubNetworkPolicy:
             for rule in ingress_rules:
                 if not _rule_covers_metrics_port(rule):
                     continue
-                assert _monitoring_allowed_by_rule(rule), (
+                assert _monitoring_allowed_by_rule(rule=rule), (
                     f"NetworkPolicy '{policy.name}' restricts port {EVALHUB_SERVICE_PORT} "
                     f"on EvalHub pods but does not allow ingress from '{MONITORING_NAMESPACE}'. "
                     "Prometheus will not be able to scrape EvalHub metrics."
@@ -254,7 +253,7 @@ class TestEvalHubNetworkPolicy:
                 if not _rule_covers_metrics_port(rule):
                     continue
                 from_rules = rule.get("from") or []
-                monitoring_allowed = _monitoring_allowed_by_rule(rule)
+                monitoring_allowed = _monitoring_allowed_by_rule(rule=rule)
                 assert monitoring_allowed or not from_rules, (
                     f"NetworkPolicy '{policy.name}' in '{applications_namespace}' restricts "
                     f"port {EVALHUB_SERVICE_PORT} on EvalHub pods without allowing '{MONITORING_NAMESPACE}'. "
