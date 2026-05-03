@@ -12,6 +12,7 @@ from timeout_sampler import TimeoutSampler
 from tests.model_explainability.evalhub.constants import (
     EVALHUB_APP_LABEL,
     EVALHUB_COMPONENT_LABEL,
+    EVALHUB_KIND,
     EVALHUB_METRICS_PATH,
     EVALHUB_SERVICE_CA_CERT_KEY,
     EVALHUB_SERVICE_CA_CONFIGMAP_SUFFIX,
@@ -59,6 +60,9 @@ class TestEvalHubServiceMonitor:
             name=f"{evalhub_cr.name}{EVALHUB_SERVICE_MONITOR_SUFFIX}",
             namespace=model_namespace.name,
         )
+        for _ in TimeoutSampler(wait_timeout=60, sleep=5, func=lambda: sm.exists):
+            if sm.exists:
+                break
         self._sm = sm
         self._evalhub_cr = evalhub_cr
         self._model_namespace = model_namespace
@@ -134,7 +138,7 @@ class TestEvalHubServiceMonitor:
         """Verify TLS serverName matches the EvalHub service DNS name."""
         endpoint = self._sm.instance.spec.endpoints[0]
         expected = f"{self._evalhub_cr.name}.{self._model_namespace.name}.svc"
-        actual = endpoint.tlsConfig.get("safeConfig", {}).get("serverName") or endpoint.tlsConfig.serverName
+        actual = endpoint.tlsConfig.serverName
         assert actual == expected, f"Expected TLS serverName '{expected}', got '{actual}'"
 
     def test_servicemonitor_tls_ca_configmap(self) -> None:
@@ -186,7 +190,7 @@ class TestEvalHubServiceMonitor:
         assert owner.name == self._evalhub_cr.name, (
             f"Expected ownerReference.name='{self._evalhub_cr.name}', got '{owner.name}'"
         )
-        assert owner.kind == "EvalHub", f"Expected ownerReference.kind='EvalHub', got '{owner.kind}'"
+        assert owner.kind == EVALHUB_KIND, f"Expected ownerReference.kind='{EVALHUB_KIND}', got '{owner.kind}'"
 
     def test_operator_clusterrole_has_servicemonitor_permissions(
         self,
