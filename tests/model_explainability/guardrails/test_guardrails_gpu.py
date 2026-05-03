@@ -65,7 +65,7 @@ from utilities.plugins.constant import OpenAIEnpoints
     ],
     indirect=True,
 )
-@pytest.mark.tier1
+@pytest.mark.tier2
 @pytest.mark.gpu
 @pytest.mark.rawdeployment
 @pytest.mark.usefixtures("patched_dsc_kserve_headed")
@@ -168,6 +168,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
 
 
 @pytest.mark.gpu
+@pytest.mark.tier2
 @pytest.mark.rawdeployment
 @pytest.mark.usefixtures("patched_dsc_kserve_headed")
 @pytest.mark.parametrize(

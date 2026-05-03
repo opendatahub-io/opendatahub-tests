@@ -190,7 +190,7 @@ class TestEvalHubNetworkPolicy:
             # An empty ingress list means deny-all, which never allows monitoring.
             ingress_rules = spec.get("ingress") or []
             if not ingress_rules:
-                assert False, (  # noqa: B011
+                assert False, (
                     f"NetworkPolicy '{policy.name}' denies all ingress to EvalHub pods "
                     f"(policyTypes includes 'Ingress', no ingress rules). "
                     "Prometheus will not be able to scrape EvalHub metrics."
@@ -243,7 +243,7 @@ class TestEvalHubNetworkPolicy:
 
             ingress_rules = spec.get("ingress") or []
             if not ingress_rules:
-                assert False, (  # noqa: B011
+                assert False, (
                     f"NetworkPolicy '{policy.name}' in '{applications_namespace}' denies all ingress "
                     "to EvalHub pods (policyTypes includes 'Ingress', no ingress rules). "
                     "This would block Prometheus from scraping EvalHub metrics in production."
