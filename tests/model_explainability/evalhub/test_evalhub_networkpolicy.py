@@ -8,14 +8,14 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.network_policy import NetworkPolicy
 from pytest_testconfig import config as py_config
 
-CLUSTER_MONITORING_CONFIGMAP = "cluster-monitoring-config"
-OPENSHIFT_MONITORING_NAMESPACE = "openshift-monitoring"
-
 from tests.model_explainability.evalhub.constants import (
     EVALHUB_APP_LABEL,
     EVALHUB_COMPONENT_LABEL,
     EVALHUB_SERVICE_PORT,
 )
+
+CLUSTER_MONITORING_CONFIGMAP = "cluster-monitoring-config"
+OPENSHIFT_MONITORING_NAMESPACE = "openshift-monitoring"
 
 # Namespace where OpenShift user-workload-monitoring Prometheus runs
 MONITORING_NAMESPACE: str = "openshift-user-workload-monitoring"
