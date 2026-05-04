@@ -3,7 +3,7 @@ import pytest
 from tests.model_serving.model_server.upgrade.utils import (
     verify_auth_enabled,
     verify_inference_generation,
-    verify_isvc_pods_not_restarted,
+    verify_isvc_pods_not_restarted_against_baseline,
     verify_serving_runtime_generation,
 )
 from tests.model_serving.model_server.utils import verify_inference_response
@@ -14,6 +14,7 @@ from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
 pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_config")]
 
 
+@pytest.mark.usefixtures("capture_auth_upgrade_baseline")
 class TestPreUpgradeAuthModelServer:
     """Pre-upgrade tests for authentication-enabled model serving."""
 
@@ -58,15 +59,23 @@ class TestPostUpgradeAuthModelServer:
 
     @pytest.mark.post_upgrade
     @pytest.mark.dependency(depends=["auth_isvc_exists"])
-    def test_auth_raw_deployment_post_upgrade_not_modified(self, auth_inference_service_fixture):
+    def test_auth_raw_deployment_post_upgrade_not_modified(
+        self, auth_inference_service_fixture, upgrade_baseline_fixture
+    ):
         """Verify authenticated InferenceService is not modified during upgrade"""
-        verify_inference_generation(isvc=auth_inference_service_fixture, expected_generation=1)
+        baseline = upgrade_baseline_fixture.get(auth_inference_service_fixture.name, {})
+        expected = baseline.get("isvc_observed_generation", 1)
+        verify_inference_generation(isvc=auth_inference_service_fixture, expected_generation=expected)
 
     @pytest.mark.post_upgrade
     @pytest.mark.dependency(depends=["auth_isvc_exists"])
-    def test_auth_raw_deployment_post_upgrade_runtime_not_modified(self, auth_inference_service_fixture):
+    def test_auth_raw_deployment_post_upgrade_runtime_not_modified(
+        self, auth_inference_service_fixture, upgrade_baseline_fixture
+    ):
         """Verify ServingRuntime is not modified during upgrade"""
-        verify_serving_runtime_generation(isvc=auth_inference_service_fixture, expected_generation=1)
+        baseline = upgrade_baseline_fixture.get(auth_inference_service_fixture.name, {})
+        expected = baseline.get("runtime_generation", 1)
+        verify_serving_runtime_generation(isvc=auth_inference_service_fixture, expected_generation=expected)
 
     @pytest.mark.post_upgrade
     @pytest.mark.dependency(depends=["auth_isvc_exists"])
@@ -120,9 +129,12 @@ class TestPostUpgradeAuthModelServer:
         self,
         admin_client,
         auth_inference_service_fixture,
+        upgrade_baseline_fixture,
     ):
-        """Verify InferenceService pods have not restarted during upgrade"""
-        verify_isvc_pods_not_restarted(
+        """Verify InferenceService pods have not restarted beyond pre-upgrade baseline"""
+        baseline = upgrade_baseline_fixture.get(auth_inference_service_fixture.name, {})
+        verify_isvc_pods_not_restarted_against_baseline(
             client=admin_client,
             isvc=auth_inference_service_fixture,
+            baseline_restart_counts=baseline.get("pod_restart_counts", {}),
         )
