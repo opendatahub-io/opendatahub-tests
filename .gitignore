@@ -160,6 +160,9 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 .idea/
 
+# Test results
+results_xunit.xml
+
 # OS generated files #
 .DS_Store
 .DS_Store?
