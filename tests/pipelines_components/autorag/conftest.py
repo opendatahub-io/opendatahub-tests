@@ -32,15 +32,9 @@ _AUTORAG_REQUIRED_ENV = {
 
 @pytest.fixture(scope="session", autouse=True)
 def _validate_autorag_env() -> None:
-    missing = [
-        f"  {var}: {desc}"
-        for var, desc in _AUTORAG_REQUIRED_ENV.items()
-        if not os.environ.get(var)
-    ]
+    missing = [f"  {var}: {desc}" for var, desc in _AUTORAG_REQUIRED_ENV.items() if not os.environ.get(var)]
     if missing:
-        pytest.skip(
-            "AutoRAG smoke test requires environment variables:\n" + "\n".join(missing)
-        )
+        pytest.skip("AutoRAG smoke test requires environment variables:\n" + "\n".join(missing))
 
     import tests.pipelines_components.constants as _constants
 

@@ -226,10 +226,7 @@ def automl_train_data(
     """Synthetic training CSV uploaded to DSPA MinIO for the AutoML smoke test."""
     minio_endpoint = f"http://minio-{DSPA_NAME}.{pipelines_namespace.name}.svc.cluster.local:9000"
 
-    mc_setup = (
-        "export MC_CONFIG_DIR=/work/.mc && "
-        "mc alias set dspa $MINIO_ENDPOINT $MINIO_ACCESS_KEY $MINIO_SECRET_KEY"
-    )
+    mc_setup = "export MC_CONFIG_DIR=/work/.mc && mc alias set dspa $MINIO_ENDPOINT $MINIO_ACCESS_KEY $MINIO_SECRET_KEY"
     mc_upload = (
         f"cat <<'CSVEOF' > /work/train.csv\n{AUTOML_SMOKE_CSV}CSVEOF\n"
         f"mc cp /work/train.csv dspa/{shlex.quote(DSPA_S3_BUCKET)}/{shlex.quote(AUTOML_TRAIN_DATA_FILE_KEY)}"
