@@ -536,6 +536,12 @@ def pytest_collection_modifyitems(items: list[Item], config: pytest.Config) -> N
             ):
                 deselected.append(item)
                 continue
+            if (
+                "test_https_route_network_policy_only" in item.keywords
+                and callspec.params.get("model_catalog_network_policy") != "model-catalog-https-route"
+            ):
+                deselected.append(item)
+                continue
         remaining.append(item)
 
     if deselected:
