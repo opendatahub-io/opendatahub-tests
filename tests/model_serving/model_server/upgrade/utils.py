@@ -642,8 +642,7 @@ def verify_isvc_pods_not_restarted_against_baseline(
     new_pods = current_pod_names - baseline_pod_names
     if missing_pods or new_pods:
         raise PodContainersRestartError(
-            f"Pod set changed after upgrade for {isvc.name}. "
-            f"missing={sorted(missing_pods)}, new={sorted(new_pods)}"
+            f"Pod set changed after upgrade for {isvc.name}. missing={sorted(missing_pods)}, new={sorted(new_pods)}"
         )
 
     for pod in pods:
@@ -653,8 +652,7 @@ def verify_isvc_pods_not_restarted_against_baseline(
         for container in pod.instance.status.containerStatuses:
             if container.name not in pod_baseline:
                 raise PodContainersRestartError(
-                    f"Container set changed after upgrade for pod {pod.name}: "
-                    f"new container '{container.name}'"
+                    f"Container set changed after upgrade for pod {pod.name}: new container '{container.name}'"
                 )
             pre_count = pod_baseline[container.name]
             if container.restartCount > pre_count:
