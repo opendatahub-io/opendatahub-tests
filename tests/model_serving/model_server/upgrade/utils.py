@@ -451,21 +451,8 @@ def save_baseline_to_configmap(
     Returns:
         The created ConfigMap
     """
-    cm = ConfigMap(
-        client=client,
-        name=UPGRADE_BASELINE_CM_NAME,
-        namespace=namespace,
-    )
-
-    if cm.exists:
-        cm_data = cm.instance.data or {}
-        existing_data = json.loads(cm_data.get("baseline", "{}"))
-        existing_data.update(baselines)
-        resource_dict = cm.instance.to_dict()
-        resource_dict.setdefault("data", {})
-        resource_dict["data"]["baseline"] = json.dumps(existing_data)
-        cm.update(resource_dict=resource_dict)
-    else:
+    cm = ConfigMap(client=client, name=UPGRADE_BASELINE_CM_NAME, namespace=namespace)
+    if not cm.exists:
         cm = ConfigMap(
             client=client,
             name=UPGRADE_BASELINE_CM_NAME,
@@ -473,8 +460,41 @@ def save_baseline_to_configmap(
             data={"baseline": json.dumps(baselines)},
         )
         cm.deploy()
+        return cm
 
-    return cm
+    # Optimistic retry loop to avoid dropping entries if concurrent writers update
+    # the same baseline ConfigMap around the same time.
+    last_conflict: Exception | None = None
+    for _ in range(5):
+        try:
+            cm = ConfigMap(client=client, name=UPGRADE_BASELINE_CM_NAME, namespace=namespace)
+            if not cm.exists:
+                cm = ConfigMap(
+                    client=client,
+                    name=UPGRADE_BASELINE_CM_NAME,
+                    namespace=namespace,
+                    data={"baseline": json.dumps(baselines)},
+                )
+                cm.deploy()
+                return cm
+
+            cm_data = cm.instance.data or {}
+            existing_data = json.loads(cm_data.get("baseline", "{}"))
+            existing_data.update(baselines)
+            resource_dict = cm.instance.to_dict()
+            resource_dict.setdefault("data", {})
+            resource_dict["data"]["baseline"] = json.dumps(existing_data)
+            cm.update(resource_dict=resource_dict)
+            return cm
+        except Exception as exc:
+            if "409" in str(exc) or "Conflict" in str(exc):
+                last_conflict = exc
+                continue
+            raise
+
+    raise AssertionError(
+        f"Failed to update baseline ConfigMap '{UPGRADE_BASELINE_CM_NAME}' due to repeated update conflicts."
+    ) from last_conflict
 
 
 def load_baseline_from_configmap(
@@ -646,10 +666,23 @@ def verify_isvc_pods_not_restarted_against_baseline(
         )
 
     for pod in pods:
-        if not pod.instance.status.containerStatuses:
-            continue
+        statuses = pod.instance.status.containerStatuses or []
         pod_baseline = baseline_restart_counts[pod.name]
-        for container in pod.instance.status.containerStatuses:
+        if not statuses and pod_baseline:
+            raise PodContainersRestartError(
+                f"Container statuses missing after upgrade for pod {pod.name}; "
+                f"baseline expected {sorted(pod_baseline.keys())}"
+            )
+
+        current_container_names = {container.name for container in statuses}
+        missing_containers = set(pod_baseline.keys()) - current_container_names
+        if missing_containers:
+            raise PodContainersRestartError(
+                f"Container set changed after upgrade for pod {pod.name}: "
+                f"missing containers {sorted(missing_containers)}"
+            )
+
+        for container in statuses:
             if container.name not in pod_baseline:
                 raise PodContainersRestartError(
                     f"Container set changed after upgrade for pod {pod.name}: new container '{container.name}'"
