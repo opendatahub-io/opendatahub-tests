@@ -14,7 +14,7 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.oauth import OAuth
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
-from ocp_resources.resource import ResourceEditor
+from ocp_resources.resource import ResourceEditor, get_client
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
@@ -39,7 +39,7 @@ from tests.model_registry.utils import (
     get_rest_headers,
     wait_for_default_resource_cleanedup,
 )
-from utilities.constants import DscComponents, Labels
+from utilities.constants import MODEL_REGISTRY_CUSTOM_NAMESPACE, DscComponents, Labels
 from utilities.general import (
     generate_random_name,
     wait_for_oauth_openshift_deployment,
@@ -57,6 +57,22 @@ from utilities.user_utils import UserTestSession, create_htpasswd_file, wait_for
 
 DEFAULT_TOKEN_DURATION = "10m"
 LOGGER = structlog.get_logger(name=__name__)
+
+
+def pytest_sessionstart(session: pytest.Session) -> None:
+    """Sets model registry namespace in global config."""
+    config = session.config
+    if config.getoption("--collect-only") or config.getoption("--setup-plan"):
+        return
+
+    if config.getoption("--custom-namespace"):
+        LOGGER.info(f"Running model registry tests against custom namespace: {MODEL_REGISTRY_CUSTOM_NAMESPACE}")
+        py_config["model_registry_namespace"] = MODEL_REGISTRY_CUSTOM_NAMESPACE
+    else:
+        LOGGER.info("Running model registry tests against default namespace")
+        py_config["model_registry_namespace"] = get_data_science_cluster(
+            client=get_client()
+        ).instance.spec.components.modelregistry.registriesNamespace
 
 
 @pytest.fixture(scope="session")
