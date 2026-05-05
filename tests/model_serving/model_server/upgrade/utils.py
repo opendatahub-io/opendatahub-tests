@@ -8,12 +8,14 @@ from ocp_resources.inference_service import InferenceService
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.prometheus import Prometheus
 from ocp_resources.route import Route
+from ocp_resources.secret import Secret
 
 from utilities.constants import Annotations
 from utilities.exceptions import PodContainersRestartError, ResourceMismatchError
 from utilities.infra import get_inference_serving_runtime, get_pods_by_isvc_label
 
 UPGRADE_BASELINE_CM_NAME = "upgrade-test-baseline"
+UPGRADE_AUTH_TOKEN_SECRET_NAME = "upgrade-test-auth-token"
 
 
 def verify_inference_generation(isvc: InferenceService, expected_generation: int) -> None:
@@ -501,80 +503,85 @@ def load_baseline_from_configmap(
     return json.loads(raw)
 
 
-def save_auth_token_to_configmap(
+def save_auth_token_to_secret(
     client: DynamicClient,
     namespace: str,
     token: str,
 ) -> None:
     """
-    Persist the pre-upgrade auth token into the baseline ConfigMap so the
-    post-upgrade run can reuse the exact same token to prove that the
-    pre-existing auth setup survives the upgrade.
+    Persist the pre-upgrade auth token into a Secret so the post-upgrade run
+    can reuse the exact same token to prove that the pre-existing auth setup
+    survives the upgrade.
+
+    A Secret is used instead of a ConfigMap to avoid storing credentials in
+    plaintext cluster metadata (CWE-312).
 
     Args:
         client: DynamicClient instance
-        namespace: Namespace where the baseline ConfigMap lives
+        namespace: Namespace where the Secret will be created
         token: The bearer token to persist
     """
-    cm = ConfigMap(
+    secret = Secret(
         client=client,
-        name=UPGRADE_BASELINE_CM_NAME,
+        name=UPGRADE_AUTH_TOKEN_SECRET_NAME,
         namespace=namespace,
     )
 
-    if cm.exists:
-        resource_dict = cm.instance.to_dict()
-        resource_dict.setdefault("data", {})
-        resource_dict["data"]["auth_token"] = token
-        cm.update(resource_dict=resource_dict)
+    if secret.exists:
+        resource_dict = secret.instance.to_dict()
+        resource_dict.setdefault("stringData", {})
+        resource_dict["stringData"]["auth_token"] = token
+        secret.update(resource_dict=resource_dict)
     else:
-        cm = ConfigMap(
+        Secret(
             client=client,
-            name=UPGRADE_BASELINE_CM_NAME,
+            name=UPGRADE_AUTH_TOKEN_SECRET_NAME,
             namespace=namespace,
-            data={"auth_token": token},
-        )
-        cm.deploy()
+            type="Opaque",
+            string_data={"auth_token": token},
+        ).deploy()
 
 
-def load_auth_token_from_configmap(
+def load_auth_token_from_secret(
     client: DynamicClient,
     namespace: str,
 ) -> str:
     """
-    Load the pre-upgrade auth token from the baseline ConfigMap.
+    Load the pre-upgrade auth token from the Secret.
 
     Args:
         client: DynamicClient instance
-        namespace: Namespace where the baseline ConfigMap lives
+        namespace: Namespace where the Secret lives
 
     Returns:
         The pre-upgrade bearer token
 
     Raises:
-        AssertionError: If ConfigMap or token key is missing
+        AssertionError: If Secret or token key is missing
     """
-    cm = ConfigMap(
+    import base64
+
+    secret = Secret(
         client=client,
-        name=UPGRADE_BASELINE_CM_NAME,
+        name=UPGRADE_AUTH_TOKEN_SECRET_NAME,
         namespace=namespace,
     )
 
-    if not cm.exists:
+    if not secret.exists:
         raise AssertionError(
-            f"Baseline ConfigMap '{UPGRADE_BASELINE_CM_NAME}' not found in namespace '{namespace}'. "
+            f"Auth token Secret '{UPGRADE_AUTH_TOKEN_SECRET_NAME}' not found in namespace '{namespace}'. "
             f"Ensure pre-upgrade tests ran successfully."
         )
 
-    cm_data = cm.instance.data or {}
-    token = cm_data.get("auth_token")
-    if not token:
+    secret_data = secret.instance.data or {}
+    encoded_token = secret_data.get("auth_token")
+    if not encoded_token:
         raise AssertionError(
-            f"Baseline ConfigMap '{UPGRADE_BASELINE_CM_NAME}' has no 'auth_token' key. "
+            f"Auth token Secret '{UPGRADE_AUTH_TOKEN_SECRET_NAME}' has no 'auth_token' key. "
             f"Ensure the pre-upgrade auth tests captured the token."
         )
 
-    return token
+    return base64.b64decode(encoded_token).decode()
 
 
 def verify_isvc_pods_not_restarted_against_baseline(

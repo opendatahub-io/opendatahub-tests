@@ -18,9 +18,9 @@ from ocp_resources.serving_runtime import ServingRuntime
 
 from tests.model_serving.model_server.upgrade.utils import (
     capture_isvc_baseline,
-    load_auth_token_from_configmap,
+    load_auth_token_from_secret,
     load_baseline_from_configmap,
-    save_auth_token_to_configmap,
+    save_auth_token_to_secret,
     save_baseline_to_configmap,
 )
 from utilities.constants import (
@@ -259,7 +259,7 @@ def capture_auth_upgrade_baseline(
     _capture_and_save_baseline(
         pytestconfig=pytestconfig, admin_client=admin_client, isvc=auth_inference_service_fixture
     )
-    save_auth_token_to_configmap(
+    save_auth_token_to_secret(
         client=admin_client,
         namespace=UPGRADE_NAMESPACE,
         token=str(auth_inference_token_fixture),
@@ -545,7 +545,7 @@ def auth_inference_token_fixture(
     """
     if pytestconfig.option.post_upgrade:
         return RedactedString(
-            value=load_auth_token_from_configmap(
+            value=load_auth_token_from_secret(
                 client=admin_client,
                 namespace=UPGRADE_NAMESPACE,
             )
