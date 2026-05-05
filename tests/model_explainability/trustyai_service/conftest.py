@@ -411,14 +411,14 @@ def isvc_getter_service_account(
     cleanup.
     """
     if pytestconfig.option.post_upgrade:
-        sa = ServiceAccount(
+        service_account = ServiceAccount(
             client=admin_client,
             name=ISVC_GETTER,
             namespace=model_namespace.name,
             ensure_exists=True,
         )
-        yield sa
-        sa.clean_up()
+        yield service_account
+        service_account.clean_up()
     else:
         with create_isvc_getter_service_account(
             client=admin_client, namespace=model_namespace, name=ISVC_GETTER, teardown=teardown_resources
@@ -475,14 +475,14 @@ def isvc_getter_role_binding(
     and manages cleanup.
     """
     if pytestconfig.option.post_upgrade:
-        rb = RoleBinding(
+        role_binding = RoleBinding(
             client=admin_client,
             name=ISVC_GETTER,
             namespace=model_namespace.name,
             ensure_exists=True,
         )
-        yield rb
-        rb.clean_up()
+        yield role_binding
+        role_binding.clean_up()
     else:
         with create_isvc_getter_role_binding(
             client=admin_client,
