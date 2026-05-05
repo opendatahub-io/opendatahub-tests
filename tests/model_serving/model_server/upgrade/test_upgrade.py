@@ -61,7 +61,10 @@ class TestPostUpgradeModelServer:
         self, inference_service_fixture, upgrade_baseline_fixture
     ):
         """Test that the raw deployment inference service is not modified in upgrade"""
-        baseline = get_isvc_baseline(upgrade_baseline_fixture, inference_service_fixture.name)
+        baseline = get_isvc_baseline(
+            baselines=upgrade_baseline_fixture,
+            isvc_name=inference_service_fixture.name,
+        )
         verify_inference_generation(
             isvc=inference_service_fixture,
             expected_generation=baseline["isvc_observed_generation"],
@@ -73,7 +76,10 @@ class TestPostUpgradeModelServer:
         self, inference_service_fixture, upgrade_baseline_fixture
     ):
         """Test that the raw deployment runtime is not modified in upgrade"""
-        baseline = get_isvc_baseline(upgrade_baseline_fixture, inference_service_fixture.name)
+        baseline = get_isvc_baseline(
+            baselines=upgrade_baseline_fixture,
+            isvc_name=inference_service_fixture.name,
+        )
         verify_serving_runtime_generation(
             isvc=inference_service_fixture,
             expected_generation=baseline["runtime_generation"],
@@ -88,7 +94,10 @@ class TestPostUpgradeModelServer:
         upgrade_baseline_fixture,
     ):
         """Verify InferenceService pods have not restarted beyond pre-upgrade baseline"""
-        baseline = get_isvc_baseline(upgrade_baseline_fixture, inference_service_fixture.name)
+        baseline = get_isvc_baseline(
+            baselines=upgrade_baseline_fixture,
+            isvc_name=inference_service_fixture.name,
+        )
         verify_isvc_pods_not_restarted_against_baseline(
             client=admin_client,
             isvc=inference_service_fixture,

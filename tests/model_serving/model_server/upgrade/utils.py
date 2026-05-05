@@ -16,7 +16,7 @@ from utilities.exceptions import PodContainersRestartError, ResourceMismatchErro
 from utilities.infra import get_inference_serving_runtime, get_pods_by_isvc_label
 
 UPGRADE_BASELINE_CM_NAME = "upgrade-test-baseline"
-UPGRADE_AUTH_TOKEN_SECRET_NAME = "upgrade-test-auth-token"
+UPGRADE_AUTH_TOKEN_SECRET_NAME = "upgrade-test-auth-token"  # pragma: allowlist secret
 
 
 class ISVCBaseline(TypedDict):

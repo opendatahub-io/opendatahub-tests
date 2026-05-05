@@ -64,7 +64,10 @@ class TestPostUpgradeAuthModelServer:
         self, auth_inference_service_fixture, upgrade_baseline_fixture
     ):
         """Verify authenticated InferenceService is not modified during upgrade"""
-        baseline = get_isvc_baseline(upgrade_baseline_fixture, auth_inference_service_fixture.name)
+        baseline = get_isvc_baseline(
+            baselines=upgrade_baseline_fixture,
+            isvc_name=auth_inference_service_fixture.name,
+        )
         verify_inference_generation(
             isvc=auth_inference_service_fixture,
             expected_generation=baseline["isvc_observed_generation"],
@@ -76,7 +79,10 @@ class TestPostUpgradeAuthModelServer:
         self, auth_inference_service_fixture, upgrade_baseline_fixture
     ):
         """Verify ServingRuntime is not modified during upgrade"""
-        baseline = get_isvc_baseline(upgrade_baseline_fixture, auth_inference_service_fixture.name)
+        baseline = get_isvc_baseline(
+            baselines=upgrade_baseline_fixture,
+            isvc_name=auth_inference_service_fixture.name,
+        )
         verify_serving_runtime_generation(
             isvc=auth_inference_service_fixture,
             expected_generation=baseline["runtime_generation"],
@@ -154,7 +160,10 @@ class TestPostUpgradeAuthModelServer:
         upgrade_baseline_fixture,
     ):
         """Verify InferenceService pods have not restarted beyond pre-upgrade baseline"""
-        baseline = get_isvc_baseline(upgrade_baseline_fixture, auth_inference_service_fixture.name)
+        baseline = get_isvc_baseline(
+            baselines=upgrade_baseline_fixture,
+            isvc_name=auth_inference_service_fixture.name,
+        )
         verify_isvc_pods_not_restarted_against_baseline(
             client=admin_client,
             isvc=auth_inference_service_fixture,

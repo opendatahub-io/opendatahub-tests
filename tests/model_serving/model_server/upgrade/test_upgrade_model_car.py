@@ -65,7 +65,10 @@ class TestPostUpgradeModelCarServer:
     @pytest.mark.dependency(depends=["model_car_isvc_exists"])
     def test_model_car_post_upgrade_not_modified(self, model_car_inference_service_fixture, upgrade_baseline_fixture):
         """Verify Model Car InferenceService is not modified during upgrade"""
-        baseline = get_isvc_baseline(upgrade_baseline_fixture, model_car_inference_service_fixture.name)
+        baseline = get_isvc_baseline(
+            baselines=upgrade_baseline_fixture,
+            isvc_name=model_car_inference_service_fixture.name,
+        )
         verify_inference_generation(
             isvc=model_car_inference_service_fixture,
             expected_generation=baseline["isvc_observed_generation"],
@@ -77,7 +80,10 @@ class TestPostUpgradeModelCarServer:
         self, model_car_inference_service_fixture, upgrade_baseline_fixture
     ):
         """Verify ServingRuntime is not modified during upgrade"""
-        baseline = get_isvc_baseline(upgrade_baseline_fixture, model_car_inference_service_fixture.name)
+        baseline = get_isvc_baseline(
+            baselines=upgrade_baseline_fixture,
+            isvc_name=model_car_inference_service_fixture.name,
+        )
         verify_serving_runtime_generation(
             isvc=model_car_inference_service_fixture,
             expected_generation=baseline["runtime_generation"],
@@ -101,7 +107,10 @@ class TestPostUpgradeModelCarServer:
         upgrade_baseline_fixture,
     ):
         """Verify Model Car pods have not restarted beyond pre-upgrade baseline"""
-        baseline = get_isvc_baseline(upgrade_baseline_fixture, model_car_inference_service_fixture.name)
+        baseline = get_isvc_baseline(
+            baselines=upgrade_baseline_fixture,
+            isvc_name=model_car_inference_service_fixture.name,
+        )
         verify_isvc_pods_not_restarted_against_baseline(
             client=admin_client,
             isvc=model_car_inference_service_fixture,
