@@ -1,18 +1,28 @@
-from typing import Any, Generator
+from collections.abc import Generator
+from typing import Any
 
 import pytest
+import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.gateway import Gateway
 from ocp_resources.inference_service import InferenceService
+from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
-from simple_logger.logger import get_logger
 
+from tests.model_serving.model_server.upgrade.utils import (
+    capture_isvc_baseline,
+    load_auth_token_from_secret,
+    load_baseline_from_configmap,
+    save_auth_token_to_secret,
+    save_baseline_to_configmap,
+)
 from utilities.constants import (
     KServeDeploymentType,
     ModelAndFormat,
@@ -22,6 +32,7 @@ from utilities.constants import (
     ModelVersion,
     Protocols,
     RuntimeTemplates,
+    Timeout,
 )
 from utilities.inference_utils import create_isvc
 from utilities.infra import (
@@ -31,18 +42,40 @@ from utilities.infra import (
     s3_endpoint_secret,
     update_configmap_data,
 )
+from utilities.llmd_constants import KServeGateway, LLMDGateway
+from utilities.llmd_utils import create_llmd_gateway
 from utilities.logger import RedactedString
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
-
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 UPGRADE_NAMESPACE = "upgrade-model-server"
 AUTH_UPGRADE_NAMESPACE = "upgrade-auth-model-server"
 MODEL_CAR_UPGRADE_NAMESPACE = "upgrade-model-car"
 METRICS_UPGRADE_NAMESPACE = "upgrade-metrics"
-PRIVATE_ENDPOINT_UPGRADE_NAMESPACE = "upgrade-private-endpoint"
+PRIVATE_ENDPOINT_UPGRADE_NAMESPACE = "upgrade-pvt-ep"
+LLMD_UPGRADE_NAMESPACE = "upgrade-llmd"
+NEW_ISVC_UPGRADE_NAMESPACE = "upgrade-new-isvc"
 S3_CONNECTION = "upgrade-connection"
+
+
+@pytest.fixture(scope="session")
+def upgrade_baseline_fixture(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+) -> dict[str, dict]:
+    """Load pre-upgrade baseline values from the cluster ConfigMap.
+
+    Only available during post-upgrade runs. Returns an empty dict during
+    pre-upgrade so fixtures that depend on it can be unconditionally wired.
+    """
+    if not pytestconfig.option.post_upgrade:
+        return {}
+
+    return load_baseline_from_configmap(
+        client=admin_client,
+        namespace=UPGRADE_NAMESPACE,
+    )
 
 
 @pytest.fixture(scope="session")
@@ -175,6 +208,98 @@ def inference_service_fixture(
             **isvc_kwargs,
         ) as isvc:
             yield isvc
+
+
+def _capture_and_save_baseline(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    isvc: InferenceService,
+) -> None:
+    """Capture ISVC baseline values and persist to the shared ConfigMap.
+
+    No-op during post-upgrade runs.
+    """
+    if pytestconfig.option.post_upgrade:
+        return
+
+    baselines = {
+        isvc.name: capture_isvc_baseline(
+            client=admin_client,
+            isvc=isvc,
+        ),
+    }
+    save_baseline_to_configmap(
+        client=admin_client,
+        namespace=UPGRADE_NAMESPACE,
+        baselines=baselines,
+    )
+
+
+@pytest.fixture(scope="session")
+def capture_upgrade_baseline(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    inference_service_fixture: InferenceService,
+) -> None:
+    """Capture baseline values for the basic raw-deployment ISVC."""
+    _capture_and_save_baseline(pytestconfig=pytestconfig, admin_client=admin_client, isvc=inference_service_fixture)
+
+
+@pytest.fixture(scope="session")
+def capture_auth_upgrade_baseline(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    auth_inference_service_fixture: InferenceService,
+    auth_inference_token_fixture: str,
+) -> None:
+    """Capture baseline values and auth token for the auth ISVC."""
+    if pytestconfig.option.post_upgrade:
+        return
+
+    _capture_and_save_baseline(
+        pytestconfig=pytestconfig, admin_client=admin_client, isvc=auth_inference_service_fixture
+    )
+    save_auth_token_to_secret(
+        client=admin_client,
+        namespace=UPGRADE_NAMESPACE,
+        token=str(auth_inference_token_fixture),
+    )
+
+
+@pytest.fixture(scope="session")
+def capture_model_car_upgrade_baseline(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    model_car_inference_service_fixture: InferenceService,
+) -> None:
+    """Capture baseline values for the model-car ISVC."""
+    _capture_and_save_baseline(
+        pytestconfig=pytestconfig, admin_client=admin_client, isvc=model_car_inference_service_fixture
+    )
+
+
+@pytest.fixture(scope="session")
+def capture_metrics_upgrade_baseline(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    metrics_inference_service_fixture: InferenceService,
+) -> None:
+    """Capture baseline values for the metrics ISVC."""
+    _capture_and_save_baseline(
+        pytestconfig=pytestconfig, admin_client=admin_client, isvc=metrics_inference_service_fixture
+    )
+
+
+@pytest.fixture(scope="session")
+def capture_private_endpoint_upgrade_baseline(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    private_endpoint_inference_service_fixture: InferenceService,
+) -> None:
+    """Capture baseline values for the private-endpoint ISVC."""
+    _capture_and_save_baseline(
+        pytestconfig=pytestconfig, admin_client=admin_client, isvc=private_endpoint_inference_service_fixture
+    )
 
 
 # Authentication Upgrade Fixtures
@@ -406,10 +531,43 @@ def auth_role_binding_fixture(
 
 @pytest.fixture(scope="session")
 def auth_inference_token_fixture(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
     auth_service_account_fixture: ServiceAccount,
     auth_role_binding_fixture: RoleBinding,
 ) -> str:
-    """Authentication token for upgrade tests."""
+    """Authentication token for upgrade tests.
+
+    Pre-upgrade: creates a fresh token and returns it (also persisted to
+    the baseline ConfigMap by capture_auth_upgrade_baseline).
+    Post-upgrade: loads the pre-upgrade token from the ConfigMap so
+    inference tests prove the old token still works after the upgrade.
+    """
+    if pytestconfig.option.post_upgrade:
+        return RedactedString(
+            value=load_auth_token_from_secret(
+                client=admin_client,
+                namespace=UPGRADE_NAMESPACE,
+            )
+        )
+
+    return RedactedString(value=create_inference_token(model_service_account=auth_service_account_fixture))
+
+
+@pytest.fixture(scope="session")
+def auth_fresh_token_fixture(
+    pytestconfig: pytest.Config,
+    auth_service_account_fixture: ServiceAccount,
+    auth_role_binding_fixture: RoleBinding,
+) -> str | None:
+    """Fresh authentication token created post-upgrade.
+
+    Only available during post-upgrade runs. Used to verify that new
+    token creation works on the upgraded control plane.
+    """
+    if not pytestconfig.option.post_upgrade:
+        return None
+
     return RedactedString(value=create_inference_token(model_service_account=auth_service_account_fixture))
 
 
@@ -511,7 +669,7 @@ def model_car_inference_service_fixture(
 def upgrade_user_workload_monitoring_config_map(
     admin_client: DynamicClient,
     cluster_monitoring_config: ConfigMap,
-) -> Generator[ConfigMap, None, None]:
+) -> Generator[ConfigMap]:
     """
     Session-scoped user workload monitoring ConfigMap for upgrade tests.
 
@@ -674,7 +832,7 @@ def private_endpoint_s3_connection_fixture(
     """S3 connection secret for private endpoint upgrade tests."""
     secret_kwargs = {
         "client": admin_client,
-        "name": "private-endpoint-upgrade-connection",
+        "name": "pvt-ep-upgrade-connection",
         "namespace": private_endpoint_namespace_fixture.name,
     }
 
@@ -706,7 +864,7 @@ def private_endpoint_serving_runtime_fixture(
     """ServingRuntime for private endpoint upgrade tests."""
     runtime_kwargs = {
         "client": admin_client,
-        "name": "private-endpoint-upgrade-runtime",
+        "name": "pvt-ep-upgrade-runtime",
         "namespace": private_endpoint_namespace_fixture.name,
     }
 
@@ -743,7 +901,7 @@ def private_endpoint_inference_service_fixture(
     """InferenceService with private endpoint (no external route) for upgrade tests."""
     isvc_kwargs = {
         "client": admin_client,
-        "name": "private-endpoint-upgrade-isvc",
+        "name": "pvt-ep-upgrade-isvc",
         "namespace": private_endpoint_serving_runtime_fixture.namespace,
     }
 
@@ -765,3 +923,161 @@ def private_endpoint_inference_service_fixture(
             **isvc_kwargs,
         ) as isvc:
             yield isvc
+
+
+# LLMD Upgrade Fixtures
+@pytest.fixture(scope="session")
+def llmd_namespace_fixture(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    teardown_resources: bool,
+) -> Generator[Namespace, Any, Any]:
+    """Namespace for LLMD upgrade tests."""
+    ns = Namespace(client=admin_client, name=LLMD_UPGRADE_NAMESPACE)
+
+    if pytestconfig.option.post_upgrade:
+        yield ns
+        ns.clean_up()
+    else:
+        with create_ns(
+            admin_client=admin_client,
+            name=LLMD_UPGRADE_NAMESPACE,
+            model_mesh_enabled=False,
+            add_dashboard_label=True,
+            teardown=teardown_resources,
+        ) as ns:
+            yield ns
+
+
+@pytest.fixture(scope="session")
+def llmd_gateway_fixture(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    teardown_resources: bool,
+) -> Generator[Gateway, Any, Any]:
+    """Shared LLMD Gateway for upgrade tests."""
+    gateway = Gateway(
+        client=admin_client,
+        name=LLMDGateway.DEFAULT_NAME,
+        namespace=LLMDGateway.DEFAULT_NAMESPACE,
+        api_group=KServeGateway.API_GROUP,
+    )
+
+    if pytestconfig.option.post_upgrade:
+        yield gateway
+        gateway.clean_up()
+    else:
+        with create_llmd_gateway(
+            client=admin_client,
+            timeout=Timeout.TIMEOUT_1MIN,
+            teardown=teardown_resources,
+        ) as gateway:
+            yield gateway
+
+
+@pytest.fixture(scope="session")
+def llmd_inference_service_fixture(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    llmd_namespace_fixture: Namespace,
+    llmd_gateway_fixture: Gateway,
+    teardown_resources: bool,
+) -> Generator[LLMInferenceService, Any, Any]:
+    """LLMInferenceService using TinyLlama OCI for upgrade tests."""
+    from tests.model_serving.model_server.llmd.conftest import _create_llmisvc_from_config
+    from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaOciConfig
+
+    config_cls = TinyLlamaOciConfig
+    llmisvc = LLMInferenceService(
+        client=admin_client,
+        name=config_cls.name,
+        namespace=llmd_namespace_fixture.name,
+    )
+
+    if pytestconfig.option.post_upgrade:
+        yield llmisvc
+        llmisvc.clean_up()
+    else:
+        with _create_llmisvc_from_config(
+            config_cls=config_cls,
+            namespace=llmd_namespace_fixture.name,
+            client=admin_client,
+            teardown=teardown_resources,
+        ) as llmisvc:
+            yield llmisvc
+
+
+# Post-Upgrade New ISVC Creation Fixtures
+@pytest.fixture(scope="session")
+def new_isvc_namespace_fixture(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+) -> Generator[Namespace, Any, Any]:
+    """Namespace for creating a fresh ISVC post-upgrade."""
+    if not pytestconfig.option.post_upgrade:
+        yield None
+        return
+
+    with create_ns(
+        admin_client=admin_client,
+        name=NEW_ISVC_UPGRADE_NAMESPACE,
+        model_mesh_enabled=False,
+        add_dashboard_label=True,
+        teardown=True,
+    ) as ns:
+        yield ns
+
+
+@pytest.fixture(scope="session")
+def new_isvc_serving_runtime_fixture(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    new_isvc_namespace_fixture: Namespace,
+) -> Generator[ServingRuntime, Any, Any]:
+    """ServingRuntime for fresh ISVC creation on upgraded control plane."""
+    if not pytestconfig.option.post_upgrade or new_isvc_namespace_fixture is None:
+        yield None
+        return
+
+    with ServingRuntimeFromTemplate(
+        client=admin_client,
+        name="new-isvc-upgrade-runtime",
+        namespace=new_isvc_namespace_fixture.name,
+        template_name=RuntimeTemplates.OVMS_KSERVE,
+        multi_model=False,
+        enable_http=True,
+        teardown=True,
+        resources={
+            ModelFormat.OVMS: {
+                "requests": {"cpu": "1", "memory": "4Gi"},
+                "limits": {"cpu": "2", "memory": "8Gi"},
+            }
+        },
+    ) as model_runtime:
+        yield model_runtime
+
+
+@pytest.fixture(scope="session")
+def new_isvc_inference_service_fixture(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    new_isvc_serving_runtime_fixture: ServingRuntime,
+) -> Generator[InferenceService, Any, Any]:
+    """Fresh InferenceService created on the upgraded control plane using Model Car (no S3)."""
+    if not pytestconfig.option.post_upgrade or new_isvc_serving_runtime_fixture is None:
+        yield None
+        return
+
+    with create_isvc(
+        client=admin_client,
+        name="new-isvc-post-upgrade",
+        namespace=new_isvc_serving_runtime_fixture.namespace,
+        runtime=new_isvc_serving_runtime_fixture.name,
+        model_format=new_isvc_serving_runtime_fixture.instance.spec.supportedModelFormats[0].name,
+        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+        storage_uri=ModelCarImage.MNIST_8_1,
+        external_route=True,
+        teardown=True,
+        wait_for_predictor_pods=False,
+    ) as isvc:
+        yield isvc
