@@ -1,6 +1,7 @@
 import pytest
 
 from tests.model_serving.model_server.upgrade.utils import (
+    get_isvc_baseline,
     verify_inference_generation,
     verify_isvc_pods_not_restarted_against_baseline,
     verify_model_status_loaded,
@@ -60,9 +61,11 @@ class TestPostUpgradeModelServer:
         self, inference_service_fixture, upgrade_baseline_fixture
     ):
         """Test that the raw deployment inference service is not modified in upgrade"""
-        baseline = upgrade_baseline_fixture.get(inference_service_fixture.name, {})
-        expected = baseline.get("isvc_observed_generation", 1)
-        verify_inference_generation(isvc=inference_service_fixture, expected_generation=expected)
+        baseline = get_isvc_baseline(upgrade_baseline_fixture, inference_service_fixture.name)
+        verify_inference_generation(
+            isvc=inference_service_fixture,
+            expected_generation=baseline["isvc_observed_generation"],
+        )
 
     @pytest.mark.post_upgrade
     @pytest.mark.dependency(depends=["isvc_exists"])
@@ -70,9 +73,11 @@ class TestPostUpgradeModelServer:
         self, inference_service_fixture, upgrade_baseline_fixture
     ):
         """Test that the raw deployment runtime is not modified in upgrade"""
-        baseline = upgrade_baseline_fixture.get(inference_service_fixture.name, {})
-        expected = baseline.get("runtime_generation", 1)
-        verify_serving_runtime_generation(isvc=inference_service_fixture, expected_generation=expected)
+        baseline = get_isvc_baseline(upgrade_baseline_fixture, inference_service_fixture.name)
+        verify_serving_runtime_generation(
+            isvc=inference_service_fixture,
+            expected_generation=baseline["runtime_generation"],
+        )
 
     @pytest.mark.post_upgrade
     @pytest.mark.dependency(depends=["isvc_exists"])
@@ -83,11 +88,11 @@ class TestPostUpgradeModelServer:
         upgrade_baseline_fixture,
     ):
         """Verify InferenceService pods have not restarted beyond pre-upgrade baseline"""
-        baseline = upgrade_baseline_fixture.get(inference_service_fixture.name, {})
+        baseline = get_isvc_baseline(upgrade_baseline_fixture, inference_service_fixture.name)
         verify_isvc_pods_not_restarted_against_baseline(
             client=admin_client,
             isvc=inference_service_fixture,
-            baseline_restart_counts=baseline.get("pod_restart_counts", {}),
+            baseline_restart_counts=baseline["pod_restart_counts"],
         )
 
     @pytest.mark.post_upgrade

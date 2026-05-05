@@ -1,4 +1,5 @@
 import json
+from typing import TypedDict
 
 import structlog
 from kubernetes.dynamic import DynamicClient
@@ -16,6 +17,13 @@ from utilities.infra import get_inference_serving_runtime, get_pods_by_isvc_labe
 
 UPGRADE_BASELINE_CM_NAME = "upgrade-test-baseline"
 UPGRADE_AUTH_TOKEN_SECRET_NAME = "upgrade-test-auth-token"
+
+
+class ISVCBaseline(TypedDict):
+    isvc_observed_generation: int
+    runtime_name: str
+    runtime_generation: int
+    pod_restart_counts: dict[str, dict[str, int]]
 
 
 def verify_inference_generation(isvc: InferenceService, expected_generation: int) -> None:
@@ -386,7 +394,7 @@ def verify_gateway_accepted(gateway: Gateway) -> None:
         raise AssertionError(f"Gateway {gateway.name} is not Accepted. Conditions: {conditions}")
 
 
-def capture_isvc_baseline(client: DynamicClient, isvc: InferenceService) -> dict:
+def capture_isvc_baseline(client: DynamicClient, isvc: InferenceService) -> ISVCBaseline:
     """
     Capture baseline values for an InferenceService before upgrade.
 
@@ -399,12 +407,15 @@ def capture_isvc_baseline(client: DynamicClient, isvc: InferenceService) -> dict
         isvc: InferenceService instance
 
     Returns:
-        dict with isvc_observed_generation, runtime_generation, and pod_restart_counts
+        ISVCBaseline with isvc_observed_generation, runtime_generation, and pod_restart_counts
     """
     logger = structlog.get_logger(name=__name__)
 
-    baseline: dict = {
+    baseline: ISVCBaseline = {
         "isvc_observed_generation": isvc.instance.status.observedGeneration,
+        "runtime_name": "",
+        "runtime_generation": 0,
+        "pod_restart_counts": {},
     }
 
     runtime = get_inference_serving_runtime(isvc=isvc)
@@ -427,7 +438,7 @@ def capture_isvc_baseline(client: DynamicClient, isvc: InferenceService) -> dict
 def save_baseline_to_configmap(
     client: DynamicClient,
     namespace: str,
-    baselines: dict[str, dict],
+    baselines: dict[str, ISVCBaseline],
 ) -> ConfigMap:
     """
     Save captured baselines to a ConfigMap on the cluster.
@@ -469,7 +480,7 @@ def save_baseline_to_configmap(
 def load_baseline_from_configmap(
     client: DynamicClient,
     namespace: str,
-) -> dict[str, dict]:
+) -> dict[str, ISVCBaseline]:
     """
     Load baselines from the ConfigMap on the cluster.
 
@@ -584,6 +595,28 @@ def load_auth_token_from_secret(
     return base64.b64decode(encoded_token).decode()
 
 
+def get_isvc_baseline(baselines: dict[str, ISVCBaseline], isvc_name: str) -> ISVCBaseline:
+    """
+    Retrieve the baseline for a specific ISVC, failing fast if missing.
+
+    Args:
+        baselines: Dict mapping ISVC names to their baseline dicts
+        isvc_name: Name of the InferenceService
+
+    Returns:
+        The ISVCBaseline for the given ISVC
+
+    Raises:
+        AssertionError: If the baseline is missing for this ISVC
+    """
+    baseline = baselines.get(isvc_name)
+    assert baseline is not None, (
+        f"Missing baseline for InferenceService '{isvc_name}'. "
+        f"Ensure pre-upgrade tests captured the baseline. Available: {sorted(baselines.keys())}"
+    )
+    return baseline
+
+
 def verify_isvc_pods_not_restarted_against_baseline(
     client: DynamicClient,
     isvc: InferenceService,
@@ -603,12 +636,27 @@ def verify_isvc_pods_not_restarted_against_baseline(
     pods = get_pods_by_isvc_label(client=client, isvc=isvc)
     increased_containers: dict[str, list[str]] = {}
 
+    current_pod_names = {pod.name for pod in pods}
+    baseline_pod_names = set(baseline_restart_counts.keys())
+    missing_pods = baseline_pod_names - current_pod_names
+    new_pods = current_pod_names - baseline_pod_names
+    if missing_pods or new_pods:
+        raise PodContainersRestartError(
+            f"Pod set changed after upgrade for {isvc.name}. "
+            f"missing={sorted(missing_pods)}, new={sorted(new_pods)}"
+        )
+
     for pod in pods:
         if not pod.instance.status.containerStatuses:
             continue
-        pod_baseline = baseline_restart_counts.get(pod.name, {})
+        pod_baseline = baseline_restart_counts[pod.name]
         for container in pod.instance.status.containerStatuses:
-            pre_count = pod_baseline.get(container.name, 0)
+            if container.name not in pod_baseline:
+                raise PodContainersRestartError(
+                    f"Container set changed after upgrade for pod {pod.name}: "
+                    f"new container '{container.name}'"
+                )
+            pre_count = pod_baseline[container.name]
             if container.restartCount > pre_count:
                 increased_containers.setdefault(pod.name, []).append(
                     f"{container.name} (pre={pre_count}, post={container.restartCount})"

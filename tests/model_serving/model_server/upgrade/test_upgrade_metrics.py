@@ -1,6 +1,7 @@
 import pytest
 
 from tests.model_serving.model_server.upgrade.utils import (
+    get_isvc_baseline,
     get_metrics_value,
     verify_inference_generation,
     verify_isvc_pods_not_restarted_against_baseline,
@@ -102,9 +103,11 @@ class TestPostUpgradeMetricsServer:
     @pytest.mark.dependency(depends=["metrics_isvc_exists"])
     def test_metrics_post_upgrade_not_modified(self, metrics_inference_service_fixture, upgrade_baseline_fixture):
         """Verify metrics InferenceService is not modified during upgrade"""
-        baseline = upgrade_baseline_fixture.get(metrics_inference_service_fixture.name, {})
-        expected = baseline.get("isvc_observed_generation", 1)
-        verify_inference_generation(isvc=metrics_inference_service_fixture, expected_generation=expected)
+        baseline = get_isvc_baseline(upgrade_baseline_fixture, metrics_inference_service_fixture.name)
+        verify_inference_generation(
+            isvc=metrics_inference_service_fixture,
+            expected_generation=baseline["isvc_observed_generation"],
+        )
 
     @pytest.mark.post_upgrade
     @pytest.mark.dependency(depends=["metrics_isvc_exists"])
@@ -155,9 +158,9 @@ class TestPostUpgradeMetricsServer:
         upgrade_baseline_fixture,
     ):
         """Verify metrics pods have not restarted beyond pre-upgrade baseline"""
-        baseline = upgrade_baseline_fixture.get(metrics_inference_service_fixture.name, {})
+        baseline = get_isvc_baseline(upgrade_baseline_fixture, metrics_inference_service_fixture.name)
         verify_isvc_pods_not_restarted_against_baseline(
             client=admin_client,
             isvc=metrics_inference_service_fixture,
-            baseline_restart_counts=baseline.get("pod_restart_counts", {}),
+            baseline_restart_counts=baseline["pod_restart_counts"],
         )
