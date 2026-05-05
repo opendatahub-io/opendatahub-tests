@@ -1,5 +1,7 @@
 import pytest
 import yaml
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from simple_logger.logger import get_logger
 
 from tests.model_explainability.guardrails.constants import (
@@ -17,14 +19,10 @@ from tests.model_explainability.guardrails.utils import (
     send_and_verify_unsuitable_output_detection,
     send_and_verify_negative_detection,
     send_and_verify_standalone_detection,
+    check_guardrails_traces_in_tempo,
 )
 from tests.model_explainability.utils import validate_tai_component_images
-from utilities.constants import (
-    CHAT_GENERATION_CONFIG,
-    BUILTIN_DETECTOR_CONFIG,
-    MinIo,
-    QWEN_MODEL_NAME,
-)
+from utilities.constants import CHAT_GENERATION_CONFIG, BUILTIN_DETECTOR_CONFIG, MinIo, QWEN_MODEL_NAME
 from utilities.plugins.constant import OpenAIEnpoints
 
 LOGGER = get_logger(name=__name__)
@@ -39,6 +37,23 @@ STANDALONE_DETECTION_ENDPOINT: str = "api/v2/text/detection/content"
 
 PROMPT_INJECTION_DETECTOR: str = "prompt-injection-detector"
 HAP_DETECTOR: str = "hap-detector"
+
+
+@pytest.mark.smoke
+@pytest.mark.model_explainability
+def test_guardrailsorchestrator_crd_exists(
+    admin_client: DynamicClient,
+) -> None:
+    """Verify GuardrailsOrchestrator CRD exists on the cluster."""
+    crd_name = "guardrailsorchestrators.trustyai.opendatahub.io"
+
+    crd_resource = CustomResourceDefinition(
+        client=admin_client,
+        name=crd_name,
+        ensure_exists=True,
+    )
+
+    assert crd_resource.exists, f"CRD {crd_name} does not exist on the cluster"
 
 
 @pytest.mark.parametrize(
@@ -59,7 +74,7 @@ HAP_DETECTOR: str = "hap-detector"
     ],
     indirect=True,
 )
-@pytest.mark.smoke
+@pytest.mark.tier1
 def test_validate_guardrails_orchestrator_images(
     orchestrator_config, guardrails_orchestrator_pod, trustyai_operator_configmap
 ):
@@ -117,7 +132,7 @@ def test_validate_guardrails_orchestrator_images(
     ],
     indirect=True,
 )
-@pytest.mark.smoke
+@pytest.mark.tier1
 @pytest.mark.rawdeployment
 @pytest.mark.usefixtures("guardrails_gateway_config")
 class TestGuardrailsOrchestratorWithBuiltInDetectors:
@@ -226,7 +241,8 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
 
 
 @pytest.mark.parametrize(
-    "model_namespace, minio_pod, minio_data_connection, orchestrator_config, guardrails_orchestrator",
+    "model_namespace, minio_pod, minio_data_connection, orchestrator_config, guardrails_gateway_config,"
+    "guardrails_orchestrator",
     [
         pytest.param(
             {"name": "test-guardrails-huggingface"},
@@ -264,12 +280,41 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
                     })
                 },
             },
-            {"orchestrator_config": True, "enable_built_in_detectors": False, "enable_guardrails_gateway": False},
+            {
+                "guardrails_gateway_config_data": {
+                    "config.yaml": yaml.dump({
+                        "orchestrator": {
+                            "host": "localhost",
+                            "port": 8032,
+                        },
+                        "detectors": [],
+                        "routes": [],
+                    })
+                },
+            },
+            {
+                "orchestrator_config": True,
+                "enable_built_in_detectors": False,
+                "enable_guardrails_gateway": True,
+                "guardrails_gateway_config": True,
+                "otel_exporter_config": True,
+            },
         )
     ],
     indirect=True,
 )
 @pytest.mark.rawdeployment
+@pytest.mark.usefixtures(
+    "guardrails_gateway_config",
+    "minio_pvc_otel",
+    "minio_deployment_otel",
+    "minio_service_otel",
+    "minio_secret_otel",
+    "installed_tempo_operator",
+    "installed_opentelemetry_operator",
+    "tempo_stack",
+    "otel_collector",
+)
 class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
     """
     These tests verify that the GuardrailsOrchestrator works as expected when using HuggingFace detectors
@@ -293,6 +338,8 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
         guardrails_orchestrator_route,
         prompt_injection_detector_route,
         openshift_ca_bundle_file,
+        otel_collector,
+        tempo_stack,
     ):
         send_and_verify_unsuitable_input_detection(
             url=f"https://{guardrails_orchestrator_route.host}/{CHAT_COMPLETIONS_DETECTION_ENDPOINT}",
@@ -313,6 +360,8 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
         guardrails_orchestrator_route,
         prompt_injection_detector_route,
         openshift_ca_bundle_file,
+        otel_collector,
+        tempo_stack,
     ):
         send_and_verify_negative_detection(
             url=f"https://{guardrails_orchestrator_route.host}/{CHAT_COMPLETIONS_DETECTION_ENDPOINT}",
@@ -331,6 +380,8 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
         orchestrator_config,
         guardrails_orchestrator_route,
         hap_detector_route,
+        otel_collector,
+        tempo_stack,
     ):
         send_and_verify_standalone_detection(
             url=f"https://{guardrails_orchestrator_route.host}/{STANDALONE_DETECTION_ENDPOINT}",
@@ -340,6 +391,24 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
             content=HAP_INPUT_DETECTION_PROMPT.content,
             expected_min_score=0.9,
         )
+
+    def test_guardrails_traces_in_tempo(
+        self,
+        admin_client,
+        minio_pod,
+        minio_data_connection,
+        orchestrator_config,
+        guardrails_orchestrator,
+        guardrails_gateway_config,
+        otel_collector,
+        tempo_stack,
+        tempo_traces_service_portforward,
+    ):
+        """
+        Ensure that OpenTelemetry traces from Guardrails Orchestrator are collected in Tempo.
+        Equivalent to clicking 'Find Traces' in the Tempo UI.
+        """
+        check_guardrails_traces_in_tempo(tempo_traces_service_portforward=tempo_traces_service_portforward)
 
 
 @pytest.mark.parametrize(

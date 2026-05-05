@@ -390,3 +390,28 @@ def send_and_verify_standalone_detection(
     assert score > expected_min_score, f"Expected score > {expected_min_score}, got {score}"
 
     return response
+
+
+@retry(wait_timeout=60, sleep=5)
+def check_guardrails_traces_in_tempo(tempo_traces_service_portforward: str):
+    """
+    Check for guardrails traces in Tempo.
+
+    Args:
+        tempo_traces_service_portforward: The Tempo traces service port-forward URL
+
+    Returns:
+        The traces data if found, False otherwise
+    """
+    services = requests.get(f"{tempo_traces_service_portforward}/api/services").json().get("data", [])
+
+    guardrails_services = [service for service in services if "guardrails" in service]
+    if not guardrails_services:
+        return False
+
+    svc = guardrails_services[0]
+
+    traces = requests.get(f"{tempo_traces_service_portforward}/api/traces?service={svc}").json()
+
+    if traces.get("data"):
+        return traces
