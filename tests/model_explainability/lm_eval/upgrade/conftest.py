@@ -87,14 +87,28 @@ def lmeval_hf_access_token_upgrade(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     pytestconfig: Config,
-) -> Secret:
+) -> Generator[Secret, None, None]:
+    is_post_upgrade = pytestconfig.option.post_upgrade
+
+    if is_post_upgrade:
+        secret = Secret(
+            client=admin_client,
+            name="hf-secret",
+            namespace=model_namespace.name,
+            ensure_exists=True,
+        )
+        yield secret
+        secret.clean_up()
+        return
+
     hf_access_token = pytestconfig.option.hf_access_token
     if not hf_access_token:
         raise MissingParameter(
             "HF access token is not set. "
             "Either pass with `--hf-access-token` or set `HF_ACCESS_TOKEN` environment variable"
         )
-    with Secret(
+
+    secret = Secret(
         client=admin_client,
         name="hf-secret",
         namespace=model_namespace.name,
@@ -102,5 +116,6 @@ def lmeval_hf_access_token_upgrade(
             "HF_ACCESS_TOKEN": hf_access_token,
         },
         wait_for_resource=True,
-    ) as secret:
-        yield secret
+    )
+    secret.create()
+    yield secret
