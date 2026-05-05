@@ -127,7 +127,7 @@ def validate_lmeval_job_completed(lmevaljob_pod: Pod) -> None:
     except TimeoutExpiredError as completed_timeout:
         raise UnexpectedFailureError("LMEval job pod failed to complete after upgrade.") from completed_timeout
 
-    if not bool(re.search(pod_success_log_regex, lmevaljob_pod.log())):
+    if not re.search(pod_success_log_regex, lmevaljob_pod.log()):
         raise PodLogMissMatchError("LMEval job pod logs missing after upgrade.")
 
 
