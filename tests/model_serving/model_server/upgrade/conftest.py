@@ -18,7 +18,9 @@ from ocp_resources.serving_runtime import ServingRuntime
 
 from tests.model_serving.model_server.upgrade.utils import (
     capture_isvc_baseline,
+    load_auth_token_from_configmap,
     load_baseline_from_configmap,
+    save_auth_token_to_configmap,
     save_baseline_to_configmap,
 )
 from utilities.constants import (
@@ -248,10 +250,19 @@ def capture_auth_upgrade_baseline(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     auth_inference_service_fixture: InferenceService,
+    auth_inference_token_fixture: str,
 ) -> None:
-    """Capture baseline values for the auth ISVC."""
+    """Capture baseline values and auth token for the auth ISVC."""
+    if pytestconfig.option.post_upgrade:
+        return
+
     _capture_and_save_baseline(
         pytestconfig=pytestconfig, admin_client=admin_client, isvc=auth_inference_service_fixture
+    )
+    save_auth_token_to_configmap(
+        client=admin_client,
+        namespace=UPGRADE_NAMESPACE,
+        token=str(auth_inference_token_fixture),
     )
 
 
@@ -520,10 +531,43 @@ def auth_role_binding_fixture(
 
 @pytest.fixture(scope="session")
 def auth_inference_token_fixture(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
     auth_service_account_fixture: ServiceAccount,
     auth_role_binding_fixture: RoleBinding,
 ) -> str:
-    """Authentication token for upgrade tests."""
+    """Authentication token for upgrade tests.
+
+    Pre-upgrade: creates a fresh token and returns it (also persisted to
+    the baseline ConfigMap by capture_auth_upgrade_baseline).
+    Post-upgrade: loads the pre-upgrade token from the ConfigMap so
+    inference tests prove the old token still works after the upgrade.
+    """
+    if pytestconfig.option.post_upgrade:
+        return RedactedString(
+            value=load_auth_token_from_configmap(
+                client=admin_client,
+                namespace=UPGRADE_NAMESPACE,
+            )
+        )
+
+    return RedactedString(value=create_inference_token(model_service_account=auth_service_account_fixture))
+
+
+@pytest.fixture(scope="session")
+def auth_fresh_token_fixture(
+    pytestconfig: pytest.Config,
+    auth_service_account_fixture: ServiceAccount,
+    auth_role_binding_fixture: RoleBinding,
+) -> str | None:
+    """Fresh authentication token created post-upgrade.
+
+    Only available during post-upgrade runs. Used to verify that new
+    token creation works on the upgraded control plane.
+    """
+    if not pytestconfig.option.post_upgrade:
+        return None
+
     return RedactedString(value=create_inference_token(model_service_account=auth_service_account_fixture))
 
 
@@ -991,7 +1035,7 @@ def new_isvc_serving_runtime_fixture(
     new_isvc_namespace_fixture: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
     """ServingRuntime for fresh ISVC creation on upgraded control plane."""
-    if not pytestconfig.option.post_upgrade:
+    if not pytestconfig.option.post_upgrade or new_isvc_namespace_fixture is None:
         yield None
         return
 
@@ -1020,7 +1064,7 @@ def new_isvc_inference_service_fixture(
     new_isvc_serving_runtime_fixture: ServingRuntime,
 ) -> Generator[InferenceService, Any, Any]:
     """Fresh InferenceService created on the upgraded control plane using Model Car (no S3)."""
-    if not pytestconfig.option.post_upgrade:
+    if not pytestconfig.option.post_upgrade or new_isvc_serving_runtime_fixture is None:
         yield None
         return
 

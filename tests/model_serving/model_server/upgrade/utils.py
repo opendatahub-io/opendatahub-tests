@@ -445,9 +445,11 @@ def save_baseline_to_configmap(
     )
 
     if cm.exists:
-        existing_data = json.loads(cm.instance.data.get("baseline", "{}"))
+        cm_data = cm.instance.data or {}
+        existing_data = json.loads(cm_data.get("baseline", "{}"))
         existing_data.update(baselines)
         resource_dict = cm.instance.to_dict()
+        resource_dict.setdefault("data", {})
         resource_dict["data"]["baseline"] = json.dumps(existing_data)
         cm.update(resource_dict=resource_dict)
     else:
@@ -491,11 +493,88 @@ def load_baseline_from_configmap(
             f"Ensure pre-upgrade tests ran successfully."
         )
 
-    raw = cm.instance.data.get("baseline")
+    cm_data = cm.instance.data or {}
+    raw = cm_data.get("baseline")
     if not raw:
         raise AssertionError(f"Baseline ConfigMap '{UPGRADE_BASELINE_CM_NAME}' has no 'baseline' key in data.")
 
     return json.loads(raw)
+
+
+def save_auth_token_to_configmap(
+    client: DynamicClient,
+    namespace: str,
+    token: str,
+) -> None:
+    """
+    Persist the pre-upgrade auth token into the baseline ConfigMap so the
+    post-upgrade run can reuse the exact same token to prove that the
+    pre-existing auth setup survives the upgrade.
+
+    Args:
+        client: DynamicClient instance
+        namespace: Namespace where the baseline ConfigMap lives
+        token: The bearer token to persist
+    """
+    cm = ConfigMap(
+        client=client,
+        name=UPGRADE_BASELINE_CM_NAME,
+        namespace=namespace,
+    )
+
+    if cm.exists:
+        resource_dict = cm.instance.to_dict()
+        resource_dict.setdefault("data", {})
+        resource_dict["data"]["auth_token"] = token
+        cm.update(resource_dict=resource_dict)
+    else:
+        cm = ConfigMap(
+            client=client,
+            name=UPGRADE_BASELINE_CM_NAME,
+            namespace=namespace,
+            data={"auth_token": token},
+        )
+        cm.deploy()
+
+
+def load_auth_token_from_configmap(
+    client: DynamicClient,
+    namespace: str,
+) -> str:
+    """
+    Load the pre-upgrade auth token from the baseline ConfigMap.
+
+    Args:
+        client: DynamicClient instance
+        namespace: Namespace where the baseline ConfigMap lives
+
+    Returns:
+        The pre-upgrade bearer token
+
+    Raises:
+        AssertionError: If ConfigMap or token key is missing
+    """
+    cm = ConfigMap(
+        client=client,
+        name=UPGRADE_BASELINE_CM_NAME,
+        namespace=namespace,
+    )
+
+    if not cm.exists:
+        raise AssertionError(
+            f"Baseline ConfigMap '{UPGRADE_BASELINE_CM_NAME}' not found in namespace '{namespace}'. "
+            f"Ensure pre-upgrade tests ran successfully."
+        )
+
+    cm_data = cm.instance.data or {}
+    token = cm_data.get("auth_token")
+    if not token:
+        raise AssertionError(
+            f"Baseline ConfigMap '{UPGRADE_BASELINE_CM_NAME}' has no 'auth_token' key. "
+            f"Ensure the pre-upgrade auth tests captured the token."
+        )
+
+    return token
 
 
 def verify_isvc_pods_not_restarted_against_baseline(

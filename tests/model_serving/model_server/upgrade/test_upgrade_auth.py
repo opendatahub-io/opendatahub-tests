@@ -125,6 +125,23 @@ class TestPostUpgradeAuthModelServer:
 
     @pytest.mark.post_upgrade
     @pytest.mark.dependency(depends=["auth_isvc_exists"])
+    def test_auth_raw_deployment_post_upgrade_fresh_token_inference(
+        self,
+        auth_inference_service_fixture,
+        auth_fresh_token_fixture,
+    ):
+        """Verify a freshly created token also works for inference after upgrade"""
+        verify_inference_response(
+            inference_service=auth_inference_service_fixture,
+            inference_config=OPENVINO_KSERVE_INFERENCE_CONFIG,
+            inference_type=Inference.INFER,
+            protocol=Protocols.HTTPS,
+            use_default_query=True,
+            token=auth_fresh_token_fixture,
+        )
+
+    @pytest.mark.post_upgrade
+    @pytest.mark.dependency(depends=["auth_isvc_exists"])
     def test_auth_raw_deployment_post_upgrade_pods_not_restarted(
         self,
         admin_client,
