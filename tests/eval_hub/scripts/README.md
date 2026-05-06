@@ -21,7 +21,7 @@ uv run python tests/eval_hub/scripts/verify_evalhub_setup.py
 
 **Example output:**
 
-```
+```text
 EvalHub Setup Verification
 ==================================================
 ✓ Test 1: Getting OpenShift token...
