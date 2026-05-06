@@ -199,8 +199,8 @@ class TestEvalHubNetworkPolicy:
             if not _policy_restricts_metrics_port(spec):
                 continue
 
-            # Policy restricts the metrics port — every restricting rule must allow monitoring.
-            # An empty ingress list means deny-all, which never allows monitoring.
+            # Policy restricts the metrics port — at least one ingress rule must
+            # allow monitoring (NetworkPolicy ingress rules are additive).
             ingress_rules = spec.get("ingress") or []
             if not ingress_rules:
                 pytest.fail(
@@ -209,14 +209,15 @@ class TestEvalHubNetworkPolicy:
                     "Prometheus will not be able to scrape EvalHub metrics."
                 )
 
-            for rule in ingress_rules:
-                if not _rule_covers_metrics_port(rule):
-                    continue
-                assert _monitoring_allowed_by_rule(rule=rule), (
-                    f"NetworkPolicy '{policy.name}' restricts port {EVALHUB_SERVICE_PORT} "
-                    f"on EvalHub pods but does not allow ingress from '{MONITORING_NAMESPACE}'. "
-                    "Prometheus will not be able to scrape EvalHub metrics."
-                )
+            monitoring_allowed = any(
+                _rule_covers_metrics_port(rule) and _monitoring_allowed_by_rule(rule=rule)
+                for rule in ingress_rules
+            )
+            assert monitoring_allowed, (
+                f"NetworkPolicy '{policy.name}' restricts port {EVALHUB_SERVICE_PORT} "
+                f"on EvalHub pods but no ingress rule allows traffic from '{MONITORING_NAMESPACE}'. "
+                "Prometheus will not be able to scrape EvalHub metrics."
+            )
 
     def test_applications_namespace_evalhub_servicemonitor_reachable(
         self,
@@ -262,13 +263,14 @@ class TestEvalHubNetworkPolicy:
                     "This would block Prometheus from scraping EvalHub metrics in production."
                 )
 
-            for rule in ingress_rules:
-                if not _rule_covers_metrics_port(rule):
-                    continue
-                from_rules = rule.get("from") or []
-                monitoring_allowed = _monitoring_allowed_by_rule(rule=rule)
-                assert monitoring_allowed or not from_rules, (
-                    f"NetworkPolicy '{policy.name}' in '{applications_namespace}' restricts "
-                    f"port {EVALHUB_SERVICE_PORT} on EvalHub pods without allowing '{MONITORING_NAMESPACE}'. "
-                    "This would block Prometheus from scraping EvalHub metrics in production."
-                )
+            monitoring_allowed = any(
+                _rule_covers_metrics_port(rule)
+                and (_monitoring_allowed_by_rule(rule=rule) or not (rule.get("from") or []))
+                for rule in ingress_rules
+            )
+            assert monitoring_allowed, (
+                f"NetworkPolicy '{policy.name}' in '{applications_namespace}' restricts "
+                f"port {EVALHUB_SERVICE_PORT} on EvalHub pods but no ingress rule allows "
+                f"traffic from '{MONITORING_NAMESPACE}'. "
+                "This would block Prometheus from scraping EvalHub metrics in production."
+            )
