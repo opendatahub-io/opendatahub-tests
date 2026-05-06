@@ -76,14 +76,10 @@ def main():
     print("\n✓ Test 4: Checking Kueue CRDs...")
     try:
         result = subprocess.run(
-<<<<<<< HEAD
-            args=["oc", "api-resources", "--api-group=kueue.x-k8s.io"], capture_output=True, text=True, check=True
-=======
             args=["oc", "api-resources", "--api-group=kueue.x-k8s.io"],
             capture_output=True,
             text=True,
             check=True,
->>>>>>> 6393636 (fix: for precommit ci errors)
         )
         kueue_crds = [line for line in result.stdout.split("\n") if line and "NAME" not in line]
         print(f"  Found {len(kueue_crds)} Kueue CRDs")
