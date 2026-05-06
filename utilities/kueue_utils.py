@@ -13,6 +13,48 @@ from utilities.constants import Timeout
 LOGGER = structlog.get_logger(name=__name__)
 
 
+class Workload(NamespacedResource):
+    api_group: str = "kueue.x-k8s.io"
+
+    def __init__(self, **kwargs: Any):
+        """
+        Args:
+            kwargs: Keyword arguments to pass to the Workload constructor
+        """
+        super().__init__(**kwargs)
+
+    def get_condition(self, condition_type: str) -> dict[str, Any] | None:
+        """Return the status condition matching condition_type, or None."""
+        self.get()
+        for condition in self.instance.get("status", {}).get("conditions", []):
+            if condition.get("type") == condition_type:
+                return dict(condition)
+        return None
+
+    def is_admitted(self) -> bool:
+        """Return True if Admitted condition is True."""
+        condition = self.get_condition("Admitted")
+        return condition is not None and condition.get("status") == "True"
+
+
+class WorkloadPriorityClass(Resource):
+    api_group: str = "kueue.x-k8s.io"
+
+    def __init__(self, value: int, **kwargs: Any):
+        """
+        Args:
+            value: Priority value (higher = more important)
+            kwargs: Keyword arguments to pass to the WorkloadPriorityClass constructor
+        """
+        super().__init__(**kwargs)
+        self.value = value
+
+    def to_dict(self) -> None:
+        super().to_dict()
+        if not self.kind_dict and not self.yaml_file:
+            self.res["value"] = self.value
+
+
 class ResourceFlavor(Resource):
     api_group: str = "kueue.x-k8s.io"
 
@@ -177,6 +219,36 @@ def check_gated_pods_and_running_pods(
     return running_pods, gated_pods
 
 
+@contextmanager
+def create_workload_priority_class(
+    client: DynamicClient,
+    name: str,
+    value: int,
+    teardown: bool = True,
+) -> Generator[WorkloadPriorityClass, Any, Any]:
+    """Context manager to create and optionally delete a WorkloadPriorityClass."""
+    with WorkloadPriorityClass(
+        client=client,
+        name=name,
+        value=value,
+        teardown=teardown,
+    ) as wpc:
+        yield wpc
+
+
+def get_workloads_for_job(client: DynamicClient, namespace: str, job_name: str) -> list[Workload]:
+    """Return Workload resources owned by the given Job name."""
+    workloads = list(Workload.get(client=client, namespace=namespace))
+    return [
+        wl
+        for wl in workloads
+        if any(
+            ref.get("name") == job_name and ref.get("kind") == "Job"
+            for ref in wl.instance.get("metadata", {}).get("ownerReferences", [])
+        )
+    ]
+
+
 @retry(
     wait_timeout=Timeout.TIMEOUT_4MIN,
     sleep=5,
@@ -198,13 +270,19 @@ def wait_for_kueue_crds_available(client: DynamicClient) -> bool:
     list(ResourceFlavor.get(client=client))
 
     # Check kueue-controller-manager pods exist and are ready
-    pods = list(
-        Pod.get(
-            label_selector="control-plane=controller-manager,app.kubernetes.io/name=kueue",
-            namespace="openshift-kueue-operator",
-            client=client,
+    # Kueue can be deployed in different namespaces (openshift-operators, openshift-kueue-operator, kueue-system)
+    # Try to find pods in common locations
+    pods = []
+    for ns in ["openshift-operators", "openshift-kueue-operator", "kueue-system"]:
+        pods = list(
+            Pod.get(
+                label_selector="control-plane=controller-manager,app.kubernetes.io/name=kueue",
+                namespace=ns,
+                client=client,
+            )
         )
-    )
+        if pods:
+            break
     all_pods_ready = pods and all(
         any(
             condition.type == Pod.Condition.READY and condition.status == Pod.Condition.Status.TRUE
