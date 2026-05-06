@@ -117,9 +117,14 @@ class TestModelCatalogNetworkPolicyConnectivity:
         """
         service_url = f"https://model-catalog.{model_registry_namespace}.svc.cluster.local:8443"
         result = dashboard_pod.execute(command=["curl", "-k", "--connect-timeout", "10", service_url])
-        LOGGER.info(f"curl result from dashboard pod to {service_url}: {result}")
-        assert "Connection timed out" not in result and "Failed to connect" not in result, (
-            f"Dashboard pod cannot reach model-catalog at {service_url} — NetworkPolicy may be blocking traffic"
+        LOGGER.info(f"curl to {service_url}: rc={result.rc}, stdout={result.stdout}, stderr={result.stderr}")
+        assert result.rc == 0, (
+            f"Dashboard pod cannot reach model-catalog at {service_url} — "
+            f"NetworkPolicy may be blocking traffic (rc={result.rc}, stderr={result.stderr})"
+        )
+        assert "Connection timed out" not in result.stdout, (
+            f"Dashboard pod connection timed out to model-catalog at {service_url} — "
+            f"NetworkPolicy may be blocking traffic"
         )
 
 

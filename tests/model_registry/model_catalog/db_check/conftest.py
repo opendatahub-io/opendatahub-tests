@@ -165,20 +165,6 @@ def restarted_operator_pod(admin_client: DynamicClient) -> Pod:
     return new_pod
 
 
-@pytest.fixture(scope="class")
-def dashboard_pod(admin_client: DynamicClient) -> Pod:
-    """Get a running dashboard pod from the applications namespace."""
-    pods = list(
-        Pod.get(
-            client=admin_client,
-            namespace=py_config["applications_namespace"],
-            label_selector="app=rhods-dashboard",
-        )
-    )
-    assert pods, "No dashboard pods found"
-    return pods[0]
-
-
 @pytest.fixture()
 def non_catalog_network_policy(admin_client: DynamicClient, model_registry_namespace: str) -> NetworkPolicy:
     """Create a NetworkPolicy without catalog labels in the model registry namespace."""

@@ -53,6 +53,7 @@ from utilities.infra import (
     wait_for_dsc_status_ready,
 )
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.resources.pod import Pod as UtilPod
 from utilities.user_utils import UserTestSession, create_htpasswd_file, wait_for_user_creation
 
 DEFAULT_TOKEN_DURATION = "10m"
@@ -547,3 +548,17 @@ def pytest_collection_modifyitems(items: list[Item], config: pytest.Config) -> N
     if deselected:
         items[:] = remaining
         config.hook.pytest_deselected(items=deselected)
+
+
+@pytest.fixture(scope="class")
+def dashboard_pod(admin_client: DynamicClient) -> UtilPod:
+    """Get a running dashboard pod from the applications namespace."""
+    pods = list(
+        UtilPod.get(
+            client=admin_client,
+            namespace=py_config["applications_namespace"],
+            label_selector="app=rhods-dashboard",
+        )
+    )
+    assert pods, "No dashboard pods found"
+    return pods[0]
