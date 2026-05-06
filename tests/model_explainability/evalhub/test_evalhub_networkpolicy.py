@@ -1,3 +1,5 @@
+from typing import Any, Dict
+
 import pytest
 import yaml
 from kubernetes.dynamic import DynamicClient
@@ -25,7 +27,7 @@ MONITORING_NAMESPACE: str = "openshift-user-workload-monitoring"
 NAMESPACE_NAME_LABEL: str = "kubernetes.io/metadata.name"
 
 
-def _rule_covers_metrics_port(rule: dict) -> bool:
+def _rule_covers_metrics_port(rule: Dict[str, Any]) -> bool:
     """Return True if an ingress rule applies to the EvalHub metrics port.
 
     A rule covers the metrics port when:
@@ -38,14 +40,21 @@ def _rule_covers_metrics_port(rule: dict) -> bool:
     return any(p.get("port") in (EVALHUB_SERVICE_PORT, EVALHUB_SERVICE_MONITOR_PORT) for p in ports)
 
 
-def _policy_restricts_metrics_port(spec) -> bool:
+def _policy_restricts_metrics_port(spec: Dict[str, Any]) -> bool:
     """Return True if a NetworkPolicy spec restricts ingress on the metrics port.
 
     A policy restricts the metrics port when policyTypes includes "Ingress" and either:
     - spec.ingress is absent or empty (implicit deny-all), or
     - at least one ingress rule covers the metrics port.
+
+    Per the Kubernetes spec, when policyTypes is omitted but ingress rules
+    exist, the policy implicitly applies to Ingress traffic.
     """
-    if "Ingress" not in (spec.get("policyTypes") or []):
+    policy_types = spec.get("policyTypes")
+    if policy_types is None:
+        if not spec.get("ingress"):
+            return False
+    elif "Ingress" not in policy_types:
         return False
     ingress_rules = spec.get("ingress") or []
     if not ingress_rules:
@@ -53,7 +62,7 @@ def _policy_restricts_metrics_port(spec) -> bool:
     return any(_rule_covers_metrics_port(rule) for rule in ingress_rules)
 
 
-def _monitoring_allowed_by_rule(rule: dict) -> bool:
+def _monitoring_allowed_by_rule(rule: Dict[str, Any]) -> bool:
     """Return True if an ingress rule's from list allows the monitoring namespace."""
     return any(
         (ns_sel := fr.get("namespaceSelector", {}))
@@ -194,7 +203,7 @@ class TestEvalHubNetworkPolicy:
             # An empty ingress list means deny-all, which never allows monitoring.
             ingress_rules = spec.get("ingress") or []
             if not ingress_rules:
-                assert False, (
+                pytest.fail(
                     f"NetworkPolicy '{policy.name}' denies all ingress to EvalHub pods "
                     f"(policyTypes includes 'Ingress', no ingress rules). "
                     "Prometheus will not be able to scrape EvalHub metrics."
@@ -247,7 +256,7 @@ class TestEvalHubNetworkPolicy:
 
             ingress_rules = spec.get("ingress") or []
             if not ingress_rules:
-                assert False, (
+                pytest.fail(
                     f"NetworkPolicy '{policy.name}' in '{applications_namespace}' denies all ingress "
                     "to EvalHub pods (policyTypes includes 'Ingress', no ingress rules). "
                     "This would block Prometheus from scraping EvalHub metrics in production."
