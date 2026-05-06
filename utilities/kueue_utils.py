@@ -33,7 +33,7 @@ class Workload(NamespacedResource):
 
     def is_admitted(self) -> bool:
         """Return True if Admitted condition is True."""
-        condition = self.get_condition("Admitted")
+        condition = self.get_condition(condition_type="Admitted")
         return condition is not None and condition.get("status") == "True"
 
 

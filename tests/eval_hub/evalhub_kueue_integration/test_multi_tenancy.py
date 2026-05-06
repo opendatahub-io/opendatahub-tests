@@ -53,17 +53,17 @@ class TestMultiTenancy:
         Then each namespace's quota is enforced independently.
         """
         with (
-            create_resource_flavor(client=admin_client, name=MULTI_TENANCY_FLAVOR) as _rf,
+            create_resource_flavor(client=admin_client, name=MULTI_TENANCY_FLAVOR),
             create_ns(
                 name=TEAM_A_NS,
                 admin_client=admin_client,
                 labels={KUEUE_MANAGED_LABEL: "true", EVALHUB_TENANT_LABEL: "true", "team": "team-a"},
-            ) as ns_a,
+            ),
             create_ns(
                 name=TEAM_B_NS,
                 admin_client=admin_client,
                 labels={KUEUE_MANAGED_LABEL: "true", EVALHUB_TENANT_LABEL: "true", "team": "team-b"},
-            ) as ns_b,
+            ),
             create_cluster_queue(
                 client=admin_client,
                 name=TEAM_A_CQ,
@@ -82,7 +82,7 @@ class TestMultiTenancy:
                     }
                 ],
                 namespace_selector={"matchLabels": {"team": "team-a"}},
-            ) as _cq_a,
+            ),
             create_cluster_queue(
                 client=admin_client,
                 name=TEAM_B_CQ,
@@ -101,13 +101,13 @@ class TestMultiTenancy:
                     }
                 ],
                 namespace_selector={"matchLabels": {"team": "team-b"}},
-            ) as _cq_b,
+            ),
             create_local_queue(
                 client=admin_client, name=LOCAL_QUEUE_NAME, cluster_queue=TEAM_A_CQ, namespace=TEAM_A_NS
-            ) as _lq_a,
+            ),
             create_local_queue(
                 client=admin_client, name=LOCAL_QUEUE_NAME, cluster_queue=TEAM_B_CQ, namespace=TEAM_B_NS
-            ) as _lq_b,
+            ),
         ):
             _, body_a = submit_eval_job(
                 base_url=evalhub_base_url,
@@ -140,9 +140,5 @@ class TestMultiTenancy:
             assert result_a, "Team A job should be admitted (independent quota)"
             assert result_b, "Team B job should be admitted (independent quota)"
 
-            delete_eval_job(
-                base_url=evalhub_base_url, token=current_client_token, job_id=job_a_id, hard_delete=True
-            )
-            delete_eval_job(
-                base_url=evalhub_base_url, token=current_client_token, job_id=job_b_id, hard_delete=True
-            )
+            delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_a_id, hard_delete=True)
+            delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_b_id, hard_delete=True)

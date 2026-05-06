@@ -79,6 +79,7 @@ class TestQueueManagement:
 
         # Check for Kubernetes Job creation immediately (before job completes/fails)
         import time
+
         time.sleep(2)  # Brief wait for Job resource to be created by EvalHub
 
         jobs = list(
@@ -91,9 +92,7 @@ class TestQueueManagement:
 
         # If job was created but failed very quickly, it may already be gone
         # In that case, verify the EvalHub job reached a terminal state
-        result = wait_for_job_running_or_completed(
-            base_url=evalhub_base_url, token=current_client_token, job_id=job_id
-        )
+        result = wait_for_job_running_or_completed(base_url=evalhub_base_url, token=current_client_token, job_id=job_id)
         assert result, f"Job {job_id} did not reach running/completed/failed state"
 
         # Only check K8s Job if it still exists (may have been cleaned up if job failed fast)
@@ -145,7 +144,7 @@ class TestQueueManagement:
         )
         job2_id = body2["resource"]["id"]
 
-        status_body = wait_for_job_state(
+        wait_for_job_state(
             base_url=evalhub_base_url,
             token=current_client_token,
             job_id=job2_id,

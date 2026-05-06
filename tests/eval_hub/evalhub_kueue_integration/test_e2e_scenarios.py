@@ -89,6 +89,7 @@ class TestE2EScenarios:
 
         # Check for K8s Job immediately after submission (before it completes/fails)
         import time
+
         time.sleep(2)  # Brief wait for Job resource creation
 
         k8s_jobs = list(
@@ -123,7 +124,7 @@ class TestE2EScenarios:
         # Check Workload finished condition if it exists
         if workloads:
             wl = workloads[0]
-            finished_cond = wl.get_condition(WorkloadConditionType.FINISHED)
+            finished_cond = wl.get_condition(condition_type=WorkloadConditionType.FINISHED)
             if finished_cond:
                 assert finished_cond["status"] == "True", "Workload should be finished"
 
