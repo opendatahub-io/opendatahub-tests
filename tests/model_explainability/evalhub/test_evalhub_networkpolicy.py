@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any
 
 import pytest
 import yaml
@@ -27,7 +27,7 @@ MONITORING_NAMESPACE: str = "openshift-user-workload-monitoring"
 NAMESPACE_NAME_LABEL: str = "kubernetes.io/metadata.name"
 
 
-def _rule_covers_metrics_port(rule: Dict[str, Any]) -> bool:
+def _rule_covers_metrics_port(rule: dict[str, Any]) -> bool:
     """Return True if an ingress rule applies to the EvalHub metrics port.
 
     A rule covers the metrics port when:
@@ -40,7 +40,7 @@ def _rule_covers_metrics_port(rule: Dict[str, Any]) -> bool:
     return any(p.get("port") in (EVALHUB_SERVICE_PORT, EVALHUB_SERVICE_MONITOR_PORT) for p in ports)
 
 
-def _policy_restricts_metrics_port(spec: Dict[str, Any]) -> bool:
+def _policy_restricts_metrics_port(spec: dict[str, Any]) -> bool:
     """Return True if a NetworkPolicy spec restricts ingress on the metrics port.
 
     A policy restricts the metrics port when policyTypes includes "Ingress" and either:
@@ -62,7 +62,7 @@ def _policy_restricts_metrics_port(spec: Dict[str, Any]) -> bool:
     return any(_rule_covers_metrics_port(rule) for rule in ingress_rules)
 
 
-def _monitoring_allowed_by_rule(rule: Dict[str, Any]) -> bool:
+def _monitoring_allowed_by_rule(rule: dict[str, Any]) -> bool:
     """Return True if an ingress rule's from list allows the monitoring namespace."""
     return any(
         (ns_sel := fr.get("namespaceSelector", {}))
@@ -210,8 +210,7 @@ class TestEvalHubNetworkPolicy:
                 )
 
             monitoring_allowed = any(
-                _rule_covers_metrics_port(rule) and _monitoring_allowed_by_rule(rule=rule)
-                for rule in ingress_rules
+                _rule_covers_metrics_port(rule) and _monitoring_allowed_by_rule(rule=rule) for rule in ingress_rules
             )
             assert monitoring_allowed, (
                 f"NetworkPolicy '{policy.name}' restricts port {EVALHUB_SERVICE_PORT} "
