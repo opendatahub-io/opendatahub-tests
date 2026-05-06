@@ -11,6 +11,7 @@ last_updated: '2026-05-04'
 **Objective**: Verify that when a ClusterQueue has `withinClusterQueue: LowerPriority`, a higher-priority job preempts a running lower-priority job.
 
 **Preconditions**:
+
 - Kueue Operator installed on the cluster
 - ClusterQueue `eval-cq-preempt` created with:
   - nominalQuota: cpu=500m, memory=1Gi
@@ -18,6 +19,7 @@ last_updated: '2026-05-04'
 - LocalQueue `eval-queue` created in test namespace mapped to `eval-cq-preempt`
 
 **Test Steps**:
+
 1. Create ClusterQueue `eval-cq-preempt` with preemption enabled (`withinClusterQueue: LowerPriority`) and quota cpu=500m, memory=1Gi
 2. Create LocalQueue `eval-queue` in test namespace
 3. Submit job-low (priority 100, cpu=500m, memory=1Gi) — it is admitted and consumes full quota
@@ -31,12 +33,14 @@ last_updated: '2026-05-04'
 11. Teardown: Delete both jobs, LocalQueue, and ClusterQueue
 
 **Expected Results**:
+
 - Job-low is preempted: Workload conditions show `Evicted=True`, `Preempted=True`, `Requeued=True`
 - Job-low Kubernetes Job is re-suspended (`spec.suspend: true`)
 - Job-high is admitted and running
 - Kubernetes Events show preemption sequence (EvictedDueToPreempted, Preempted, Suspended)
 
 **Validation**:
+
 - `oc get workload <job-low-workload> -n ${NAMESPACE} -o jsonpath='{.status.conditions[?(@.type=="Preempted")].status}'` returns `True`
 - `oc get events -n ${NAMESPACE} --sort-by='.lastTimestamp' | grep -i preempt` shows preemption events
 

@@ -11,6 +11,7 @@ last_updated: '2026-05-04'
 **Objective**: Verify that jobs submitted from different namespaces map to their respective ClusterQueues via LocalQueues, providing quota isolation between tenants.
 
 **Preconditions**:
+
 - Kueue Operator installed on the cluster
 - Namespace `team-a-ns` created with labels: team=team-a, kueue.openshift.io/managed=true
 - Namespace `team-b-ns` created with labels: team=team-b, kueue.openshift.io/managed=true
@@ -20,6 +21,7 @@ last_updated: '2026-05-04'
 - EvalHub configured for both namespaces
 
 **Test Steps**:
+
 1. Create two namespaces with appropriate labels
 2. Create two ClusterQueues with namespace selectors and equal quotas
 3. Create LocalQueue `eval-queue` in each namespace pointing to the corresponding ClusterQueue
@@ -31,6 +33,7 @@ last_updated: '2026-05-04'
 9. Teardown: Delete all jobs, LocalQueues, ClusterQueues, and test namespaces
 
 **Expected Results**:
+
 - Job-a and job-b are both admitted concurrently (separate ClusterQueue quotas)
 - Job-c (team-a-ns) is pending because team-a-cq quota is exhausted
 - Job-b (team-b-ns) is unaffected by team-a's quota exhaustion

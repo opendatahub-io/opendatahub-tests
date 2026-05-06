@@ -11,10 +11,12 @@ last_updated: '2026-05-04'
 **Objective**: Verify that an API request with a valid token but insufficient permissions returns HTTP 403 Forbidden.
 
 **Preconditions**:
+
 - EvalHub deployed and accessible via route
 - A service account `limited-user` with a valid token but no permissions to create evaluation jobs
 
 **Test Steps**:
+
 1. Create a service account `limited-user` in the test namespace without evaluation job permissions
 2. Obtain a token for `limited-user`
 3. Send a POST request to `/api/v1/evaluations/jobs` with the limited-user token
@@ -22,10 +24,12 @@ last_updated: '2026-05-04'
 5. Teardown: Delete the `limited-user` service account
 
 **Expected Results**:
+
 - HTTP response status code is 403
 - Response body contains an error message indicating insufficient permissions
 
 **Test Data**:
+
 ```bash
 LIMITED_TOKEN=$(oc create token limited-user -n ${NAMESPACE})
 

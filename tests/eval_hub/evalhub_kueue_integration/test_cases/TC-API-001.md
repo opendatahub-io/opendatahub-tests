@@ -11,6 +11,7 @@ last_updated: '2026-05-04'
 **Objective**: Verify that an evaluation job submitted via POST /api/v1/evaluations/jobs with a valid Kueue queue specification is accepted with HTTP 202.
 
 **Preconditions**:
+
 - Kueue Operator installed on the cluster
 - ClusterQueue `eval-cq` created with nominalQuota: cpu=2, memory=8Gi
 - LocalQueue `eval-queue` created in test namespace mapped to `eval-cq`
@@ -18,6 +19,7 @@ last_updated: '2026-05-04'
 - EvalHub deployed and accessible via route
 
 **Test Steps**:
+
 1. Set up Kueue resources (ClusterQueue, LocalQueue) as per preconditions
 2. Obtain a valid bearer token for the EvalHub API
 3. Submit a POST request to `/api/v1/evaluations/jobs` with queue specification
@@ -27,11 +29,13 @@ last_updated: '2026-05-04'
 7. Teardown: Delete the created evaluation job, LocalQueue, and ClusterQueue
 
 **Expected Results**:
+
 - HTTP response status code is 202
 - Response body contains `resource.id` with a non-empty UUID
 - Response body contains `status.state` set to `pending`
 
 **Test Data**:
+
 ```bash
 TOKEN=$(oc create token evalhub-client -n ${NAMESPACE})
 
@@ -59,6 +63,7 @@ curl -s -X POST \
 ```
 
 **Expected Response**:
+
 ```json
 {
   "resource": {
@@ -76,6 +81,7 @@ curl -s -X POST \
 ```
 
 **Validation**:
+
 - Verify a Kubernetes Job is created in the namespace with the label `kueue.x-k8s.io/queue-name: eval-queue`
 - Verify a Kueue Workload resource is created for the job
 

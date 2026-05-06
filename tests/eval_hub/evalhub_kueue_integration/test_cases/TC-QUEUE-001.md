@@ -11,12 +11,14 @@ last_updated: '2026-05-04'
 **Objective**: Verify that a job submitted to a LocalQueue with available ClusterQueue quota is admitted and starts running.
 
 **Preconditions**:
+
 - Kueue Operator installed on the cluster
 - ClusterQueue `eval-cq` created with nominalQuota: cpu=1, memory=4Gi
 - LocalQueue `eval-queue` created in test namespace mapped to `eval-cq`
 - No other jobs consuming quota in `eval-cq`
 
 **Test Steps**:
+
 1. Create ClusterQueue `eval-cq` with cpu=1, memory=4Gi quota
 2. Create LocalQueue `eval-queue` in the test namespace pointing to `eval-cq`
 3. Submit an evaluation job with `queue.kind: "kueue"` and `queue.name: "eval-queue"`
@@ -26,11 +28,13 @@ last_updated: '2026-05-04'
 7. Teardown: Delete the evaluation job, LocalQueue, and ClusterQueue
 
 **Expected Results**:
+
 - Workload resource has `Admitted=True` and `QuotaReserved=True` conditions
 - Kubernetes Job has `spec.suspend: false`
 - EvalHub API reports `status.state: "running"` within the admission timeout
 
 **Validation**:
+
 - `oc get workload -n ${NAMESPACE} -o jsonpath='{.items[0].status.conditions[?(@.type=="Admitted")].status}'` returns `True`
 - `oc get job -n ${NAMESPACE} -o jsonpath='{.items[0].spec.suspend}'` returns `false`
 
