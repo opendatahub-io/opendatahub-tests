@@ -170,5 +170,12 @@ class TestPriorityOrdering:
         )
         assert high_result, "High priority job should be admitted first"
 
+        _, low_status_body = get_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=low_id)
+        low_state = low_status_body.get("status", {}).get("state")
+        assert low_state == EvalJobState.PENDING, (
+            f"Low priority job should stay {EvalJobState.PENDING} while high priority "
+            f"(job_id={high_id}) is admitted first; got {low_state!r}"
+        )
+
         for jid in (high_id, low_id, blocker_id):
             delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=jid, hard_delete=True)

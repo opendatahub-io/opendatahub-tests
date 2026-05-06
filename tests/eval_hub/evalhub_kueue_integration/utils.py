@@ -1,3 +1,4 @@
+import os
 from typing import Any
 
 import requests
@@ -14,6 +15,35 @@ from tests.eval_hub.evalhub_kueue_integration.constants import (
 )
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+def get_requests_verify() -> bool | str:
+    """TLS ``verify`` setting for EvalHub HTTP calls (``requests``).
+
+    Environment variables:
+
+        EVALHUB_INSECURE:
+            When set to a truthy value (``true``, ``1``, ``yes``, case-insensitive),
+            returns ``False`` so TLS certificate verification is disabled. Use only
+            when necessary (e.g. dev clusters with self-signed certs).
+
+        EVALHUB_CA_BUNDLE:
+            Path to a PEM CA bundle file. When set (and ``EVALHUB_INSECURE`` is not
+            enabled), that path is passed to ``requests`` as ``verify``.
+
+    ``EVALHUB_INSECURE`` takes precedence over ``EVALHUB_CA_BUNDLE``. When neither
+    applies, returns ``True`` (verify using default/system CAs).
+
+    Returns:
+        Value for the ``verify`` parameter: ``True``, ``False``, or a path string.
+    """
+    insecure = os.environ.get("EVALHUB_INSECURE", "").strip().lower()
+    if insecure in ("true", "1", "yes"):
+        return False
+    ca_bundle = os.environ.get("EVALHUB_CA_BUNDLE", "").strip()
+    if ca_bundle:
+        return ca_bundle
+    return True
 
 
 def get_evalhub_route_url(client: DynamicClient, namespace: str) -> str:
@@ -80,7 +110,13 @@ def submit_eval_job(
         "X-Tenant": tenant,
     }
 
-    resp = requests.post(f"{base_url}{EVALHUB_JOBS_ENDPOINT}", json=payload, headers=headers, verify=False, timeout=30)
+    resp = requests.post(
+        f"{base_url}{EVALHUB_JOBS_ENDPOINT}",
+        json=payload,
+        headers=headers,
+        verify=get_requests_verify(),
+        timeout=30,
+    )
     try:
         body = resp.json()
     except requests.exceptions.JSONDecodeError:
@@ -92,7 +128,12 @@ def submit_eval_job(
 def get_eval_job(base_url: str, token: str, job_id: str, tenant: str = "test-tenant") -> tuple[int, dict[str, Any]]:
     """Get evaluation job status from EvalHub."""
     headers = {"Authorization": f"Bearer {token}", "X-Tenant": tenant}
-    resp = requests.get(f"{base_url}{EVALHUB_JOBS_ENDPOINT}/{job_id}", headers=headers, verify=False, timeout=30)
+    resp = requests.get(
+        f"{base_url}{EVALHUB_JOBS_ENDPOINT}/{job_id}",
+        headers=headers,
+        verify=get_requests_verify(),
+        timeout=30,
+    )
     try:
         body = resp.json()
     except requests.exceptions.JSONDecodeError:
@@ -111,7 +152,13 @@ def list_eval_jobs(
     params: dict[str, str] = {}
     if status:
         params["status"] = status
-    resp = requests.get(f"{base_url}{EVALHUB_JOBS_ENDPOINT}", headers=headers, params=params, verify=False, timeout=30)
+    resp = requests.get(
+        f"{base_url}{EVALHUB_JOBS_ENDPOINT}",
+        headers=headers,
+        params=params,
+        verify=get_requests_verify(),
+        timeout=30,
+    )
     try:
         body = resp.json()
     except requests.exceptions.JSONDecodeError:
@@ -132,7 +179,11 @@ def delete_eval_job(
     if hard_delete:
         params["hard_delete"] = "true"
     resp = requests.delete(
-        f"{base_url}{EVALHUB_JOBS_ENDPOINT}/{job_id}", headers=headers, params=params, verify=False, timeout=30
+        f"{base_url}{EVALHUB_JOBS_ENDPOINT}/{job_id}",
+        headers=headers,
+        params=params,
+        verify=get_requests_verify(),
+        timeout=30,
     )
     LOGGER.info("Deleted eval job", job_id=job_id, hard_delete=hard_delete, status=resp.status_code)
     return resp.status_code
@@ -141,7 +192,12 @@ def delete_eval_job(
 def get_health(base_url: str, token: str) -> tuple[int, dict[str, Any]]:
     """Get EvalHub health check."""
     headers = {"Authorization": f"Bearer {token}"}
-    resp = requests.get(f"{base_url}{EVALHUB_HEALTH_ENDPOINT}", headers=headers, verify=False, timeout=30)
+    resp = requests.get(
+        f"{base_url}{EVALHUB_HEALTH_ENDPOINT}",
+        headers=headers,
+        verify=get_requests_verify(),
+        timeout=30,
+    )
     try:
         body = resp.json()
     except requests.exceptions.JSONDecodeError:
