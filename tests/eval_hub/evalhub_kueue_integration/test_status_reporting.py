@@ -78,6 +78,7 @@ class TestStatusReporting:
 
         # Check for K8s Job immediately before it may get cleaned up
         import time
+
         time.sleep(2)  # Brief wait for Job/Workload creation
 
         k8s_jobs = list(
@@ -100,16 +101,20 @@ class TestStatusReporting:
             if len(workloads) >= 1:
                 wl = workloads[0]
                 # Check conditions - may be Finished/Evicted if job failed fast
-                admitted_cond = wl.get_condition(WorkloadConditionType.ADMITTED)
-                quota_cond = wl.get_condition(WorkloadConditionType.QUOTA_RESERVED)
+                admitted_cond = wl.get_condition(condition_type=WorkloadConditionType.ADMITTED)
+                quota_cond = wl.get_condition(condition_type=WorkloadConditionType.QUOTA_RESERVED)
 
                 # Only assert conditions if Workload is still active (not finished/evicted)
-                finished_cond = wl.get_condition(WorkloadConditionType.FINISHED)
+                finished_cond = wl.get_condition(condition_type=WorkloadConditionType.FINISHED)
                 if not finished_cond or finished_cond.get("status") != "True":
                     if admitted_cond:
-                        assert admitted_cond["status"] == "True", f"Admitted should be True, got {admitted_cond['status']}"
+                        assert admitted_cond["status"] == "True", (
+                            f"Admitted should be True, got {admitted_cond['status']}"
+                        )
                     if quota_cond:
-                        assert quota_cond["status"] == "True", f"QuotaReserved should be True, got {quota_cond['status']}"
+                        assert quota_cond["status"] == "True", (
+                            f"QuotaReserved should be True, got {quota_cond['status']}"
+                        )
 
                 owner_refs = wl.instance.get("metadata", {}).get("ownerReferences", [])
                 assert any(ref.get("kind") == "Job" for ref in owner_refs), "Workload should have Job ownerReference"
@@ -146,6 +151,7 @@ class TestStatusReporting:
 
         # Check LocalQueue status immediately while job is being admitted
         import time
+
         time.sleep(2)  # Brief wait for Workload to be created and admitted
 
         eval_local_queue.get()
@@ -154,11 +160,9 @@ class TestStatusReporting:
         pending = lq_status.get("pendingWorkloads", 0)
         reserving = lq_status.get("reservingWorkloads", 0)
 
-        # Job should be either admitted, pending, or reserving (may fail fast and become 0)
-        # For Kueue testing, verify queue tracked the workload at some point
-        total_tracked = admitted + pending + reserving
-        # Note: If job failed very quickly, all counts may be 0, which is acceptable
-        # The test validates that LocalQueue status is queryable and structured correctly
+        # Job should be either admitted, pending, or reserving (may fail fast and become 0).
+        # This validates queue counters are present and numeric.
+        assert admitted >= 0 and pending >= 0 and reserving >= 0, "LocalQueue workload counters should be non-negative"
 
         wait_for_job_running_or_completed(base_url=evalhub_base_url, token=current_client_token, job_id=job_id)
 

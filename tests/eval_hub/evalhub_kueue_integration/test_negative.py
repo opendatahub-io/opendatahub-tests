@@ -2,14 +2,12 @@
 
 import pytest
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.job import Job
 from ocp_resources.namespace import Namespace
 
 from tests.eval_hub.evalhub_kueue_integration.constants import (
     CLUSTER_QUEUE_NAME,
     DEFAULT_CPU_QUOTA,
     DEFAULT_MEMORY_QUOTA,
-    KUEUE_QUEUE_NAME_LABEL,
     LOCAL_QUEUE_NAME,
     RESOURCE_FLAVOR_NAME,
     EvalJobState,
@@ -122,19 +120,10 @@ class TestNegativeScenarios:
         assert status_code == 202, f"Expected 202, got {status_code}: {body}"
         job_id = body["resource"]["id"]
 
-        jobs_with_kueue_label = list(
-            Job.get(
-                client=admin_client,
-                namespace=eval_test_namespace.name,
-                label_selector=KUEUE_QUEUE_NAME_LABEL,
-            )
-        )
-        job_names_with_label = {j.name for j in jobs_with_kueue_label}
-
         workloads = list(Workload.get(client=admin_client, namespace=eval_test_namespace.name))
-        assert not any(
-            wl.instance.get("metadata", {}).get("name", "").startswith("tc-neg-002") for wl in workloads
-        ), "No Workload should be created for job without queue spec"
+        assert not any(wl.instance.get("metadata", {}).get("name", "").startswith("tc-neg-002") for wl in workloads), (
+            "No Workload should be created for job without queue spec"
+        )
 
         delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, hard_delete=True)
 
@@ -202,8 +191,6 @@ class TestNegativeScenarios:
         Then the API returns 404 Not Found.
         """
         fake_job_id = "00000000-0000-0000-0000-000000000000"
-        status_code, body = get_eval_job(
-            base_url=evalhub_base_url, token=current_client_token, job_id=fake_job_id
-        )
+        status_code, body = get_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=fake_job_id)
 
         assert status_code == 404, f"Expected 404, got {status_code}: {body}"
