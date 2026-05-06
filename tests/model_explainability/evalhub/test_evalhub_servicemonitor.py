@@ -305,9 +305,7 @@ class TestEvalHubServiceMonitorCRDAbsent:
     ) -> None:
         """Verify EvalHub reaches a ready state even when the ServiceMonitor CRD is absent."""
         assert evalhub_deployment.exists, "EvalHub deployment was not created"
-        assert evalhub_deployment.instance.status.availableReplicas >= 1, (
-            "EvalHub deployment is not ready — operator may have blocked on missing ServiceMonitor CRD"
-        )
+        evalhub_deployment.wait_for_replicas()
 
     def test_no_servicemonitor_created_when_crd_absent(
         self,
