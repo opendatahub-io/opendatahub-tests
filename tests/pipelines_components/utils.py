@@ -141,7 +141,7 @@ def wait_for_pipeline_run(
     except TimeoutExpiredError as err:
         msg = f"Pipeline run {run_id} did not complete within {timeout}s"
         LOGGER.error(msg)
-        raise TimeoutError(msg) from err
+        raise TimeoutExpiredError(msg) from err
 
     msg = f"Pipeline run {run_id} exited polling without reaching terminal state"
     raise RuntimeError(msg)
@@ -160,10 +160,8 @@ def delete_pipeline(
         verify=ca_bundle,
         timeout=60,
     )
-    if resp.ok:
-        LOGGER.info(f"Deleted pipeline {pipeline_id}")
-    else:
-        LOGGER.warning(f"Failed to delete pipeline {pipeline_id}: {resp.status_code} {resp.text}")
+    _raise_for_status(resp=resp)
+    LOGGER.info(f"Deleted pipeline {pipeline_id}")
 
 
 def delete_pipeline_run(
@@ -179,10 +177,8 @@ def delete_pipeline_run(
         verify=ca_bundle,
         timeout=60,
     )
-    if resp.ok:
-        LOGGER.info(f"Deleted pipeline run {run_id}")
-    else:
-        LOGGER.warning(f"Failed to delete pipeline run {run_id}: {resp.status_code} {resp.text}")
+    _raise_for_status(resp=resp)
+    LOGGER.info(f"Deleted pipeline run {run_id}")
 
 
 def collect_pipeline_pod_logs(

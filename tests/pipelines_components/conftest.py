@@ -19,6 +19,7 @@ from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
+from timeout_sampler import TimeoutExpiredError
 
 from tests.pipelines_components.constants import (
     AUTOML_SMOKE_CSV,
@@ -264,7 +265,7 @@ def automl_train_data(
     ) as upload_pod:
         try:
             upload_pod.wait_for_status(status="Succeeded", timeout=120)
-        except Exception:
+        except TimeoutExpiredError:
             collect_pod_information(pod=upload_pod)
             raise
 
