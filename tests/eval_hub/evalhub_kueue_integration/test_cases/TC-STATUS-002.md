@@ -11,11 +11,13 @@ last_updated: '2026-05-04'
 **Objective**: Verify that the LocalQueue resource status accurately reflects the count of pending and admitted workloads.
 
 **Preconditions**:
+
 - Kueue Operator installed on the cluster
 - ClusterQueue `eval-cq` created with nominalQuota: cpu=500m, memory=1Gi
 - LocalQueue `eval-queue` created in test namespace mapped to `eval-cq`
 
 **Test Steps**:
+
 1. Create ClusterQueue with small quota (cpu=500m, memory=1Gi) and LocalQueue
 2. Query LocalQueue status — verify pending=0, admitted=0
 3. Submit job-a (cpu=500m, memory=1Gi) — wait for admission
@@ -25,10 +27,12 @@ last_updated: '2026-05-04'
 7. Teardown: Delete both jobs, LocalQueue, and ClusterQueue
 
 **Expected Results**:
+
 - After job-a admitted: `oc get localqueue eval-queue -n ${NAMESPACE}` shows ADMITTED=1, PENDING=0
 - After job-b submitted: `oc get localqueue eval-queue -n ${NAMESPACE}` shows ADMITTED=1, PENDING=1
 
 **Validation**:
+
 - `oc get localqueue eval-queue -n ${NAMESPACE} -o jsonpath='{.status.pendingWorkloads}'` returns expected count
 - `oc get localqueue eval-queue -n ${NAMESPACE} -o jsonpath='{.status.admittedWorkloads}'` returns expected count
 

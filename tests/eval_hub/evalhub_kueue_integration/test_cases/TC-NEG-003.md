@@ -11,9 +11,11 @@ last_updated: '2026-05-04'
 **Objective**: Verify that an API request without a valid authorization token returns HTTP 401 Unauthorized.
 
 **Preconditions**:
+
 - EvalHub deployed and accessible via route
 
 **Test Steps**:
+
 1. Send a POST request to `/api/v1/evaluations/jobs` without an Authorization header
 2. Verify the response status code is 401
 3. Send a GET request to `/api/v1/evaluations/jobs` without an Authorization header
@@ -22,10 +24,12 @@ last_updated: '2026-05-04'
 6. Verify the response status code is 401
 
 **Expected Results**:
+
 - All requests without valid authorization return HTTP 401
 - Response body contains an error message indicating authentication failure
 
 **Test Data**:
+
 ```bash
 # No Authorization header
 curl -s -o /dev/null -w "%{http_code}" -X POST \

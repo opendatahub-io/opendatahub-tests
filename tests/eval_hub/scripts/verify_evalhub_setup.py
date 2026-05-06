@@ -76,7 +76,10 @@ def main():
     print("\n✓ Test 4: Checking Kueue CRDs...")
     try:
         result = subprocess.run(
-            args=["oc", "api-resources", "--api-group=kueue.x-k8s.io"], capture_output=True, text=True, check=True
+            args=["oc", "api-resources", "--api-group=kueue.x-k8s.io"],
+            capture_output=True,
+            text=True,
+            check=True,
         )
         kueue_crds = [line for line in result.stdout.split("\n") if line and "NAME" not in line]
         print(f"  Found {len(kueue_crds)} Kueue CRDs")

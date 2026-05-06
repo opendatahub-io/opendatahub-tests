@@ -19,7 +19,6 @@ from tests.eval_hub.evalhub_kueue_integration.utils import (
     get_eval_job,
     submit_eval_job,
     wait_for_job_running_or_completed,
-    wait_for_job_state,
 )
 from utilities.kueue_utils import ClusterQueue, LocalQueue, ResourceFlavor
 
