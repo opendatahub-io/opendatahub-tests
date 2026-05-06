@@ -153,10 +153,11 @@ def delete_pipeline(
     pipeline_id: str,
     ca_bundle: str,
 ) -> None:
-    """Delete a pipeline from the DSPA."""
+    """Delete a pipeline and all its versions from the DSPA."""
     resp = requests.delete(
         url=f"{api_url}/apis/v2beta1/pipelines/{pipeline_id}",
         headers=headers,
+        params={"cascade": "true"},
         verify=ca_bundle,
         timeout=60,
     )

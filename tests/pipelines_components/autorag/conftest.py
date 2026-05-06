@@ -8,7 +8,6 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.data_science_pipelines_application import DataSciencePipelinesApplication
 from ocp_resources.secret import Secret
 
-import tests.pipelines_components.constants as _constants
 from tests.pipelines_components.constants import (
     AUTORAG_DSPA_NAME,
     AUTORAG_DSPA_NAMESPACE,
@@ -53,7 +52,11 @@ def _validate_autorag_env() -> None:
     if missing:
         pytest.skip("AutoRAG smoke test requires environment variables:\n" + "\n".join(missing))
 
-    _constants.AUTORAG_PIPELINE_YAML = resolve_pipeline_yaml(value=AUTORAG_PIPELINE_YAML)
+
+@pytest.fixture(scope="class")
+def autorag_pipeline_yaml_path() -> str:
+    """Resolve the AutoRAG pipeline YAML to a local file path (downloads if URL)."""
+    return resolve_pipeline_yaml(value=AUTORAG_PIPELINE_YAML)
 
 
 @pytest.fixture(scope="class")
@@ -119,13 +122,14 @@ def autorag_pipeline_id(
     dspa_api_url: str,
     dspa_auth_headers: dict[str, str],
     dspa_ca_bundle_file: str,
+    autorag_pipeline_yaml_path: str,
 ) -> Generator[str, Any, Any]:
     """Upload the AutoRAG pipeline YAML and yield the pipeline ID. Deletes the pipeline on teardown."""
     run_suffix = uuid.uuid4().hex[:8]
     pipeline_id = upload_pipeline(
         api_url=dspa_api_url,
         headers=dspa_auth_headers,
-        pipeline_yaml_path=AUTORAG_PIPELINE_YAML,
+        pipeline_yaml_path=autorag_pipeline_yaml_path,
         pipeline_name=f"autorag-smoke-{run_suffix}",
         ca_bundle=dspa_ca_bundle_file,
     )
