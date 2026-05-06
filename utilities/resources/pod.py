@@ -4,6 +4,7 @@ from typing import Any, NamedTuple
 import kubernetes.stream
 from kubernetes.stream import ws_client
 from ocp_resources.pod import Pod as _Pod
+from timeout_sampler import TimeoutWatch
 
 
 class PodExecResult(NamedTuple):
@@ -48,13 +49,16 @@ class Pod(_Pod):
         )
 
         error_channel: dict[str, Any] = {}
+        timeout_watch = TimeoutWatch(timeout=timeout)
         while resp.is_open():
             resp.run_forever(timeout=2)
             try:
                 error_channel = json.loads(resp.read_channel(ws_client.ERROR_CHANNEL))
                 break
             except json.decoder.JSONDecodeError:
-                continue
+                if timeout_watch.remaining_time() <= 0:
+                    resp.close()
+                    return PodExecResult(stdout="", stderr="command timed out", rc=-1)
 
         stdout = resp.read_stdout(timeout=5) or ""
         stderr = resp.read_stderr(timeout=5) or ""
