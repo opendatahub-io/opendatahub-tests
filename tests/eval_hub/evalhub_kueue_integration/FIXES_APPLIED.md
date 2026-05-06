@@ -83,7 +83,7 @@ Changed from generic names to unique test-specific names:
 These tests validate **Kueue behavior**, not job execution success:
 
 | What We Test | What We Don't Test |
-|--------------|-------------------|
+| --- | --- |
 | ✅ Job submission (202 accepted) | ❌ Job completes successfully |
 | ✅ Queue admission logic | ❌ LLM evaluation results |
 | ✅ Resource quota enforcement | ❌ Model endpoint availability |
@@ -175,7 +175,7 @@ if target_state == EvalJobState.PENDING and current_state == EvalJobState.FAILED
 - Made K8s Job assertions optional (skip if job cleaned up due to fast failure)
 - Fixed tuple unpacking error in `test_job_pending_when_quota_exhausted`
 
-#### test_e2e_scenarios.py  
+#### test_e2e_scenarios.py (Lifecycle timing fix)
 
 - Added 2-second sleep for Job resource creation
 - Made Workload admission checks conditional (skip if job failed fast)
@@ -187,7 +187,7 @@ if target_state == EvalJobState.PENDING and current_state == EvalJobState.FAILED
 - `test_local_queue_status_counts`: Checks LocalQueue status immediately (before job completes)
 - Removed hard assertion on admitted count (may be 0 if job failed instantly)
 
-#### test_resource_quota.py
+#### test_resource_quota.py (Validation hardening)
 
 - Added status code check and "resource" key validation
 - Prevents KeyError when API returns error response

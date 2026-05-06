@@ -12,7 +12,7 @@ reviewers: []
 ---
 # EvalHub Kueue Integration Test Plan
 
-**RHOAI QE – Evaluation Job Queue Management**
+## RHOAI QE – Evaluation Job Queue Management
 
 **Strategy**: [RHOAIENG-59092](https://issues.redhat.com/browse/RHOAIENG-59092)
 
@@ -124,7 +124,7 @@ This test plan validates the integration of Kueue with EvalHub to enable product
 ## 4. API Endpoints / Kubernetes Resources Under Test
 
 | Endpoint/Method | Type | Purpose | Priority |
-|-----------------|------|---------|----------|
+| --- | --- | --- | --- |
 | POST /api/v1/evaluations/jobs | REST | Submit evaluation job with Kueue queue configuration (queue.kind, queue.name) | P0 |
 | GET /api/v1/evaluations/jobs/{id} | REST | Retrieve job status and results for Kueue-managed job | P0 |
 | GET /api/v1/evaluations/jobs | REST | List jobs with filtering (status, name, tags, limit, offset) | P1 |
@@ -149,7 +149,7 @@ This test plan validates the integration of Kueue with EvalHub to enable product
 ### 5.1 Test Case Organization
 
 | Category | Test Cases | Priority Distribution |
-|----------|------------|----------------------|
+| --- | --- | --- |
 | API Integration (TC-API) | 5 | P0: 4, P1: 1 |
 | Queue Management (TC-QUEUE) | 3 | P0: 2, P1: 1 |
 | Resource Quota (TC-QUOTA) | 2 | P0: 2 |
@@ -189,7 +189,7 @@ End-to-end scenarios that validate the user journeys defined in the strategy. Ea
 ### 6.1 Scenario Summary
 
 | ID | Scenario | Endpoints Covered | Priority |
-|----|----------|-------------------|----------|
+| --- | --- | --- | --- |
 | TC-E2E-001 | Complete job lifecycle — submit, queue, admit, run, complete | POST jobs, GET jobs/{id}, LocalQueue, ClusterQueue, Workload | P0 |
 | TC-E2E-002 | Job queuing under resource pressure — submit, wait, admit, complete | POST jobs, GET jobs/{id}, DELETE jobs/{id}, LocalQueue, ClusterQueue | P0 |
 | TC-E2E-003 | Job cancellation during execution — submit, admit, run, cancel | POST jobs, GET jobs/{id}, DELETE jobs/{id}, Workload | P0 |
@@ -197,7 +197,7 @@ End-to-end scenarios that validate the user journeys defined in the strategy. Ea
 ### 6.2 E2E Coverage Matrix
 
 | Endpoint (from Section 4) | E2E Scenarios |
-|----------------------------|---------------|
+| --- | --- |
 | POST /api/v1/evaluations/jobs | TC-E2E-001, TC-E2E-002, TC-E2E-003 |
 | GET /api/v1/evaluations/jobs/{id} | TC-E2E-001, TC-E2E-002, TC-E2E-003 |
 | GET /api/v1/evaluations/jobs | — |
@@ -248,7 +248,7 @@ Each category below must be explicitly addressed. If a category does not apply t
 ## 8. Risks and Mitigation
 
 | Risk | Impact | Probability | Mitigation |
-|------|--------|-------------|------------|
+| --- | --- | --- | --- |
 | Preemption causes jobs to restart from beginning with no checkpointing, wasting resources | High | Medium | Create dedicated ClusterQueue for evaluation jobs with preemption disabled (withinClusterQueue: Never) as per best practice. Document this requirement clearly. |
 | EvalHub API does not expose preemption status, users cannot tell if job was preempted | Medium | High | Enhance EvalHub API to surface Workload status.conditions (Evicted, Preempted, Requeued). Until implemented, document that users must check Kubernetes Workload resource directly. |
 | Dependency on cluster administrator to install Kueue and configure ClusterQueues before EvalHub can use it | High | High | Provide installation documentation, automated testing, and validation that Kueue is available before EvalHub enables integration. Consider helm chart or operator to bundle prerequisites. |
@@ -300,7 +300,7 @@ Each category below must be explicitly addressed. If a category does not apply t
 ### 10.1 Test Case Summary
 
 | Category | Total | P0 | P1 | P2 |
-|----------|-------|----|----|-----|
+| --- | --- | --- | --- | --- |
 | API Integration (TC-API) | 5 | 4 | 1 | 0 |
 | Queue Management (TC-QUEUE) | 3 | 2 | 1 | 0 |
 | Resource Quota (TC-QUOTA) | 2 | 2 | 0 | 0 |
@@ -316,7 +316,7 @@ Each category below must be explicitly addressed. If a category does not apply t
 ### 10.2 Endpoint/Method Coverage
 
 | Endpoint | Test Cases | Coverage |
-|----------|------------|----------|
+| --- | --- | --- |
 | POST /api/v1/evaluations/jobs | TC-API-001, TC-QUEUE-001, TC-QUEUE-002, TC-QUOTA-001, TC-NEG-001, TC-NEG-002, TC-E2E-001, TC-E2E-002, TC-E2E-003 | |
 | GET /api/v1/evaluations/jobs/{id} | TC-API-002, TC-E2E-001, TC-E2E-002, TC-E2E-003, TC-NEG-005 | |
 | GET /api/v1/evaluations/jobs | TC-API-003 | |
@@ -332,10 +332,10 @@ Each category below must be explicitly addressed. If a category does not apply t
 ### 10.3 Document Change Log
 
 | Version | Date | Changes |
-|---------|------|---------|
+| --- | --- | --- |
 | 1.0.0 | 2026-05-04 | Initial test plan |
 | 1.1.0 | 2026-05-04 | Generated 28 test cases across 10 categories |
 
 ---
 
-**End of Test Plan**
+## End of Test Plan
