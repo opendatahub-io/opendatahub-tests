@@ -88,8 +88,7 @@ class TestPriorityOrdering:
     """TC-PRIO-002: Verify higher priority job is admitted before lower priority."""
 
     @pytest.mark.parametrize(
-        "eval_test_namespace, eval_resource_flavor, eval_cluster_queue, eval_local_queue, "
-        "eval_workload_priority_class",
+        "eval_test_namespace, eval_resource_flavor, eval_cluster_queue, eval_local_queue, eval_workload_priority_class",
         [
             pytest.param(
                 {"name": "evalhub-prio-order"},

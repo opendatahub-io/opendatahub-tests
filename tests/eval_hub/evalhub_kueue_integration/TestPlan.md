@@ -11,6 +11,7 @@ last_updated: '2026-05-04'
 reviewers: []
 ---
 # EvalHub Kueue Integration Test Plan
+
 **RHOAI QE – Evaluation Job Queue Management**
 
 **Strategy**: [RHOAIENG-59092](https://issues.redhat.com/browse/RHOAIENG-59092)
@@ -20,11 +21,13 @@ reviewers: []
 ## 1. Executive Summary
 
 ### 1.1 Purpose
+
 This test plan validates the integration of Kueue with EvalHub to enable production-ready LLM evaluation job management with fair resource sharing, priority-based scheduling, and automatic queueing. The integration allows multiple teams to run evaluation benchmarks simultaneously on limited GPU/CPU resources while preventing cluster instability and job failures due to resource contention. Testing will verify that jobs can be submitted with queue specifications, admitted based on resource quotas, queued when resources are unavailable, and managed through their complete lifecycle including preemption scenarios.
 
 ### 1.2 Scope
 
 #### In Scope (RHOAI QE Responsibilities)
+
 - Job submission via POST /api/v1/evaluations/jobs with Kueue queue specification (queue.kind: "kueue", queue.name)
 - Job status retrieval via GET /api/v1/evaluations/jobs/{id} with Kueue-managed state tracking
 - Job listing via GET /api/v1/evaluations/jobs with filtering (status, name, tags)
@@ -40,6 +43,7 @@ This test plan validates the integration of Kueue with EvalHub to enable product
 - ClusterQueue and LocalQueue configuration for evaluation workloads
 
 #### Out of Scope (Other Teams)
+
 - Internal Kueue implementation details (only the integration interface is tested)
 - Cluster administration tasks (Kueue installation, ClusterQueue/ResourceFlavor creation)
 - MLflow integration internal logic (tested only as part of job results validation)
@@ -49,6 +53,7 @@ This test plan validates the integration of Kueue with EvalHub to enable product
 - Job checkpointing functionality (evaluation workloads cannot checkpoint progress)
 
 ### 1.3 Test Objectives
+
 1. Verify that jobs submitted with valid Kueue queue configuration via POST /api/v1/evaluations/jobs are successfully accepted (202) and queued
 2. Validate that job lifecycle states transition correctly (pending → running → completed) and are accurately reflected in GET /api/v1/evaluations/jobs/{id} responses
 3. Confirm that default priority (0) is applied when not specified, and custom priorities are honored
@@ -62,18 +67,21 @@ This test plan validates the integration of Kueue with EvalHub to enable product
 ## 2. Test Strategy
 
 ### 2.1 Test Levels
+
 - **API Integration Testing** — Validate EvalHub API accepts queue specifications (queue.kind, queue.name) and correctly translates job submissions into Kubernetes resources with Kueue workloads
 - **Functional Testing** — Verify job queueing, admission, priority handling, quota enforcement, and integration between EvalHub service and Kueue controllers
 - **Kubernetes Resource Testing** — Validate Workload resources are created, LocalQueue/ClusterQueue mappings work, and resource quota enforcement operates correctly
 - **Status Reporting Testing** — Confirm EvalHub API reports job states (pending, running, completed) and Kubernetes Workload resources expose detailed queue position and admission status
 
 ### 2.2 Test Types
+
 - **Positive Testing** — Valid job submissions with proper queue specifications, successful admission when quota available, normal job lifecycle completion
 - **Negative Testing** — Invalid queue names, missing queue specifications, jobs submitted to non-existent LocalQueues, quota exceeded scenarios
 - **Boundary Testing** — Maximum concurrent jobs in queue, quota limits, priority ranges, cohort borrowing limits
 - **Regression Testing** — Ensure existing EvalHub job submission without Kueue still works, backwards compatibility with non-Kueue workflows
 
 ### 2.3 Test Priorities
+
 - **P0 (Critical)** - Core Kueue integration functionality: job submission with queue specification, job admission when quota available, job execution and completion, resource quota enforcement
 - **P1 (High)** - Priority-based scheduling, queue status visibility via API and Kubernetes, preemption behavior (if enabled), cohort-based resource borrowing
 - **P2 (Medium)** - Edge cases like queue reconfiguration, LocalQueue to ClusterQueue remapping, detailed Workload status conditions, multi-tenant quota isolation
@@ -83,6 +91,7 @@ This test plan validates the integration of Kueue with EvalHub to enable product
 ## 3. Test Environment
 
 ### 3.1 Test Cluster Configuration
+
 - OpenShift cluster with Kubernetes 1.21+ (Kueue requirement)
 - RHOAI/ODH platform installed
 - **Cluster Capacity**: 1 node with 2 CPU cores, 8 GB memory, 0 GPUs
@@ -91,6 +100,7 @@ This test plan validates the integration of Kueue with EvalHub to enable product
 - Multi-namespace setup to simulate multi-tenancy (within resource constraints)
 
 ### 3.2 Test Data Requirements
+
 - Sample LocalQueue YAML manifests with various queue configurations
 - Sample ClusterQueue YAML manifests with different resource quotas (CPU, memory) and preemption policies
 - Sample ResourceFlavor definitions for CPU and memory resources (no GPU resources)
@@ -102,6 +112,7 @@ This test plan validates the integration of Kueue with EvalHub to enable product
 - Job resource requests fitting within cluster capacity (e.g., 500m CPU, 1Gi memory per job for multi-job scenarios)
 
 ### 3.3 Test Users
+
 - Cluster Administrator with permissions to install operators and create cluster-scoped resources (ClusterQueues, ResourceFlavors)
 - Namespace Owner with permissions to create LocalQueues, label namespaces, and configure namespace-scoped resources
 - EvalHub User with permissions to submit jobs via API and monitor job status
@@ -251,6 +262,7 @@ Each category below must be explicitly addressed. If a category does not apply t
 ## 9. Test Environment Requirements
 
 ### 9.1 Infrastructure
+
 - Single-node Kubernetes cluster (2 CPU cores, 8 GB memory, 0 GPUs)
 - Multi-namespace setup (at least 2 namespaces for multi-tenancy scenarios)
 - Kueue Operator deployment with cluster instance (version from config/env var, hard-coded for initial implementation)
@@ -262,6 +274,7 @@ Each category below must be explicitly addressed. If a category does not apply t
 - **Setup/Teardown**: Each test scenario performs Kueue operator installation, ClusterQueue/LocalQueue creation, and cleanup to revert cluster to original state
 
 ### 9.2 Configuration
+
 - Kueue Operator version configuration via environment variable or config file (hard-coded version for initial implementation)
 - Namespace labels: team=team-a, kueue.openshift.io/managed=true, evalhub.trustyai.opendatahub.io/tenant=true
 - LocalQueue to ClusterQueue mappings
@@ -272,6 +285,7 @@ Each category below must be explicitly addressed. If a category does not apply t
 - Job resource requests configured to fit cluster capacity (e.g., 500m CPU, 1Gi memory per job)
 
 ### 9.3 Test Tools
+
 - kubectl/oc CLI for Kueue resource inspection and namespace management
 - curl/httpie for EvalHub API job submission and status queries
 - kubectl get workload commands for detailed queue status

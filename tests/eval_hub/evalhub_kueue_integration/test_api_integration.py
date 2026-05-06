@@ -7,9 +7,9 @@ from tests.eval_hub.evalhub_kueue_integration.constants import (
     CLUSTER_QUEUE_NAME,
     DEFAULT_CPU_QUOTA,
     DEFAULT_MEMORY_QUOTA,
-    EvalJobState,
     LOCAL_QUEUE_NAME,
     RESOURCE_FLAVOR_NAME,
+    EvalJobState,
 )
 from tests.eval_hub.evalhub_kueue_integration.utils import (
     delete_eval_job,
@@ -77,8 +77,9 @@ class TestApiIntegration:
         assert status_code == 202, f"Expected 202, got {status_code}: {body}"
         assert "resource" in body, f"Response missing 'resource' field: {body}"
         assert "id" in body["resource"], f"Response missing 'resource.id': {body}"
-        assert body.get("status", {}).get("state") in (EvalJobState.PENDING, EvalJobState.FAILED), \
+        assert body.get("status", {}).get("state") in (EvalJobState.PENDING, EvalJobState.FAILED), (
             f"Expected pending or failed state, got: {body.get('status', {}).get('state')}"
+        )
 
         job_id = body["resource"]["id"]
         delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, hard_delete=True)
@@ -110,9 +111,7 @@ class TestApiIntegration:
         )
         job_id = body["resource"]["id"]
 
-        status_code, status_body = get_eval_job(
-            base_url=evalhub_base_url, token=current_client_token, job_id=job_id
-        )
+        status_code, status_body = get_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id)
 
         assert status_code == 200, f"Expected 200, got {status_code}: {status_body}"
         assert "status" in status_body

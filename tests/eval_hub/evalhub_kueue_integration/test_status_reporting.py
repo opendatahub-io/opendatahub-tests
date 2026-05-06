@@ -78,6 +78,7 @@ class TestStatusReporting:
 
         # Check for K8s Job immediately before it may get cleaned up
         import time
+
         time.sleep(2)  # Brief wait for Job/Workload creation
 
         k8s_jobs = list(
@@ -107,9 +108,13 @@ class TestStatusReporting:
                 finished_cond = wl.get_condition(WorkloadConditionType.FINISHED)
                 if not finished_cond or finished_cond.get("status") != "True":
                     if admitted_cond:
-                        assert admitted_cond["status"] == "True", f"Admitted should be True, got {admitted_cond['status']}"
+                        assert admitted_cond["status"] == "True", (
+                            f"Admitted should be True, got {admitted_cond['status']}"
+                        )
                     if quota_cond:
-                        assert quota_cond["status"] == "True", f"QuotaReserved should be True, got {quota_cond['status']}"
+                        assert quota_cond["status"] == "True", (
+                            f"QuotaReserved should be True, got {quota_cond['status']}"
+                        )
 
                 owner_refs = wl.instance.get("metadata", {}).get("ownerReferences", [])
                 assert any(ref.get("kind") == "Job" for ref in owner_refs), "Workload should have Job ownerReference"
@@ -146,6 +151,7 @@ class TestStatusReporting:
 
         # Check LocalQueue status immediately while job is being admitted
         import time
+
         time.sleep(2)  # Brief wait for Workload to be created and admitted
 
         eval_local_queue.get()

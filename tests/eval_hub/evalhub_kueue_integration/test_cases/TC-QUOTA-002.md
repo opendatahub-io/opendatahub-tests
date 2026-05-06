@@ -11,12 +11,14 @@ last_updated: '2026-05-04'
 **Objective**: Verify that a single job requesting more resources than the ClusterQueue quota remains queued and is not admitted.
 
 **Preconditions**:
+
 - Kueue Operator installed on the cluster
 - ClusterQueue `eval-cq` created with nominalQuota: cpu=500m, memory=1Gi
 - LocalQueue `eval-queue` created in test namespace mapped to `eval-cq`
 - No other jobs consuming quota
 
 **Test Steps**:
+
 1. Create ClusterQueue `eval-cq` with cpu=500m, memory=1Gi
 2. Create LocalQueue `eval-queue` in test namespace
 3. Submit an evaluation job requesting cpu=1, memory=2Gi (exceeds quota)
@@ -27,12 +29,14 @@ last_updated: '2026-05-04'
 8. Teardown: Delete the job, LocalQueue, and ClusterQueue
 
 **Expected Results**:
+
 - Workload status shows `QuotaReserved=False` with message containing "insufficient unused quota"
 - Kubernetes Job has `spec.suspend: true`
 - EvalHub API reports `status.state: "pending"`
 - The job is not scheduled on any node
 
 **Validation**:
+
 - `oc get workload -n ${NAMESPACE} -o jsonpath='{.items[0].status.conditions[?(@.type=="QuotaReserved")].message}'` contains "insufficient"
 
 **Notes**: To be filled later in the process.

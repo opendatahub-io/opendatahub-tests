@@ -12,11 +12,13 @@ upgrade_phase: both
 **Objective**: Verify that a job submitted without a queue specification is processed by EvalHub without Kueue involvement, maintaining backwards compatibility.
 
 **Preconditions**:
+
 - Kueue Operator may or may not be installed
 - EvalHub deployed and accessible
 - No queue specification in the request body
 
 **Test Steps**:
+
 1. Submit a POST request to `/api/v1/evaluations/jobs` without the `queue` field
 2. Verify the response status code is 202 (Accepted)
 3. Verify the Kubernetes Job is created without the `kueue.x-k8s.io/queue-name` label
@@ -25,12 +27,14 @@ upgrade_phase: both
 6. Teardown: Delete the evaluation job
 
 **Expected Results**:
+
 - HTTP response status code is 202
 - Kubernetes Job does not have the `kueue.x-k8s.io/queue-name` label
 - No Workload resource exists for the job
 - The job runs without Kueue queue management
 
 **Test Data**:
+
 ```bash
 curl -s -X POST \
   "https://${EVALHUB_ROUTE}/api/v1/evaluations/jobs" \
@@ -52,6 +56,7 @@ curl -s -X POST \
 ```
 
 **Validation**:
+
 - `oc get workloads -n ${NAMESPACE} -o json | jq '.items | length'` shows no new Workload resource
 - `oc get job -n ${NAMESPACE} -l kueue.x-k8s.io/queue-name -o json | jq '.items | length'` returns 0 for the new job
 

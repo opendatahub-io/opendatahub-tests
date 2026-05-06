@@ -11,6 +11,7 @@ last_updated: '2026-05-04'
 **Objective**: Verify that when a ClusterQueue has `withinClusterQueue: Never` (default), higher-priority jobs do not preempt lower-priority running jobs.
 
 **Preconditions**:
+
 - Kueue Operator installed on the cluster
 - ClusterQueue `eval-cq-nopreempt` created with:
   - nominalQuota: cpu=500m, memory=1Gi
@@ -18,6 +19,7 @@ last_updated: '2026-05-04'
 - LocalQueue `eval-queue` created in test namespace mapped to `eval-cq-nopreempt`
 
 **Test Steps**:
+
 1. Create ClusterQueue `eval-cq-nopreempt` without specifying preemption (defaults to `withinClusterQueue: Never`)
 2. Create LocalQueue `eval-queue` in test namespace
 3. Submit job-low (priority 100, cpu=500m, memory=1Gi) — it is admitted and running
@@ -30,11 +32,13 @@ last_updated: '2026-05-04'
 10. Teardown: Delete both jobs, LocalQueue, and ClusterQueue
 
 **Expected Results**:
+
 - Job-low remains running with `Admitted=True`, no `Preempted` or `Evicted` conditions
 - Job-high remains pending with `Admitted=False`
 - No preemption events in the namespace
 
 **Validation**:
+
 - `oc get workload <job-low-workload> -n ${NAMESPACE} -o jsonpath='{.status.conditions[?(@.type=="Preempted")].status}'` returns empty or does not exist
 - `oc get events -n ${NAMESPACE} | grep -i preempt | wc -l` returns `0`
 

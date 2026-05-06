@@ -13,12 +13,14 @@ uv run python tests/eval_hub/scripts/verify_evalhub_setup.py
 ```
 
 **What it checks:**
+
 - OpenShift authentication (oc token)
 - EvalHub API connectivity and health endpoint
 - EvalHub API responsiveness (404 for nonexistent job)
 - Kueue CRDs installation
 
 **Example output:**
+
 ```
 EvalHub Setup Verification
 ==================================================
@@ -39,6 +41,7 @@ Cleans up leftover Kueue resources from previous test runs. **Run this before ex
 ```
 
 **What it does:**
+
 - Deletes all evalhub test namespaces
 - Removes evalhub ClusterQueues (evalhub-test-cq, team-a-cq, team-b-cq)
 - Removes evalhub ResourceFlavors (evalhub-test-flavor, evalhub-multi-test-flavor)
@@ -53,11 +56,13 @@ Runs the complete EvalHub Kueue integration test suite with proper environment c
 ```
 
 **What it does:**
+
 - Sets required environment variables (OC_BINARY_PATH, EVALHUB_BASE_URL, etc.)
 - Runs pytest with kueue marker
 - Displays test summary
 
 **Environment Variables:**
+
 - `OC_BINARY_PATH`: Path to oc CLI binary
 - `EVALHUB_BASE_URL`: EvalHub API endpoint
 - `EVALHUB_MODEL_URL`: LLM model endpoint for evaluation

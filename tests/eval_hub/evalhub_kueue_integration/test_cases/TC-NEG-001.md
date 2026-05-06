@@ -11,11 +11,13 @@ last_updated: '2026-05-04'
 **Objective**: Verify that submitting a job with a queue name that does not match any existing LocalQueue results in an appropriate error response.
 
 **Preconditions**:
+
 - Kueue Operator installed on the cluster
 - No LocalQueue named `nonexistent-queue` exists in the test namespace
 - EvalHub deployed and accessible
 
 **Test Steps**:
+
 1. Ensure Kueue is installed but no LocalQueue named `nonexistent-queue` exists
 2. Submit a POST request to `/api/v1/evaluations/jobs` with `queue.name: "nonexistent-queue"`
 3. Verify the response indicates an error (400 Bad Request or the job enters a permanently pending state)
@@ -23,10 +25,12 @@ last_updated: '2026-05-04'
 5. Teardown: Delete any created resources
 
 **Expected Results**:
+
 - Either: HTTP 400 with an error message indicating the queue does not exist
 - Or: HTTP 202 followed by the Workload showing `Admitted=False` with a message referencing the missing queue
 
 **Test Data**:
+
 ```bash
 curl -s -X POST \
   "https://${EVALHUB_ROUTE}/api/v1/evaluations/jobs" \

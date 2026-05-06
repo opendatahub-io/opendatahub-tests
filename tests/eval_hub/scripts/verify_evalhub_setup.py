@@ -4,7 +4,7 @@
 Run with: uv run python tests/eval_hub/scripts/verify_evalhub_setup.py
 Or directly: ./tests/eval_hub/scripts/verify_evalhub_setup.py (if uv environment is active)
 """
-import os
+
 import subprocess
 import sys
 
@@ -19,10 +19,12 @@ except ImportError:
 EVALHUB_BASE_URL = "https://evalhub-prabhu.apps.rosa.prabhu-comhub.xqmp.p3.openshiftapps.com"
 EVALHUB_NAMESPACE = "prabhu"
 
+
 def get_token():
     """Get OpenShift token from oc command."""
     result = subprocess.run(["oc", "whoami", "-t"], capture_output=True, text=True, check=True)
     return result.stdout.strip()
+
 
 def main():
     """Run basic connectivity tests."""
@@ -42,10 +44,7 @@ def main():
     print("\n✓ Test 2: Testing EvalHub API health...")
     try:
         resp = requests.get(
-            f"{EVALHUB_BASE_URL}/health",
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=10,
-            verify=True
+            f"{EVALHUB_BASE_URL}/health", headers={"Authorization": f"Bearer {token}"}, timeout=10, verify=True
         )
         print(f"  Health endpoint: HTTP {resp.status_code}")
         if resp.status_code == 200:
@@ -60,7 +59,7 @@ def main():
             f"{EVALHUB_BASE_URL}/api/v1/jobs/nonexistent-test-id",
             headers={"Authorization": f"Bearer {token}"},
             timeout=10,
-            verify=True
+            verify=True,
         )
         print(f"  API response: HTTP {resp.status_code}")
         if resp.status_code == 404:
@@ -77,14 +76,11 @@ def main():
     print("\n✓ Test 4: Checking Kueue CRDs...")
     try:
         result = subprocess.run(
-            ["oc", "api-resources", "--api-group=kueue.x-k8s.io"],
-            capture_output=True,
-            text=True,
-            check=True
+            ["oc", "api-resources", "--api-group=kueue.x-k8s.io"], capture_output=True, text=True, check=True
         )
         kueue_crds = [line for line in result.stdout.split("\n") if line and "NAME" not in line]
         print(f"  Found {len(kueue_crds)} Kueue CRDs")
-        print(f"  ✓ Kueue is installed")
+        print("  ✓ Kueue is installed")
     except Exception as e:
         print(f"  ✗ Kueue check failed: {e}")
         return 1
@@ -93,6 +89,7 @@ def main():
     print("✓ All verification tests passed!")
     print("\nEnvironment is ready for test execution.")
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -89,6 +89,7 @@ class TestE2EScenarios:
 
         # Check for K8s Job immediately after submission (before it completes/fails)
         import time
+
         time.sleep(2)  # Brief wait for Job resource creation
 
         k8s_jobs = list(

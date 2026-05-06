@@ -132,9 +132,9 @@ class TestNegativeScenarios:
         job_names_with_label = {j.name for j in jobs_with_kueue_label}
 
         workloads = list(Workload.get(client=admin_client, namespace=eval_test_namespace.name))
-        assert not any(
-            wl.instance.get("metadata", {}).get("name", "").startswith("tc-neg-002") for wl in workloads
-        ), "No Workload should be created for job without queue spec"
+        assert not any(wl.instance.get("metadata", {}).get("name", "").startswith("tc-neg-002") for wl in workloads), (
+            "No Workload should be created for job without queue spec"
+        )
 
         delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, hard_delete=True)
 
@@ -202,8 +202,6 @@ class TestNegativeScenarios:
         Then the API returns 404 Not Found.
         """
         fake_job_id = "00000000-0000-0000-0000-000000000000"
-        status_code, body = get_eval_job(
-            base_url=evalhub_base_url, token=current_client_token, job_id=fake_job_id
-        )
+        status_code, body = get_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=fake_job_id)
 
         assert status_code == 404, f"Expected 404, got {status_code}: {body}"
