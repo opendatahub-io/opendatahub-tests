@@ -55,6 +55,10 @@ class TestEvalHubServiceMonitor:
         evalhub_cr: EvalHub,
         evalhub_deployment: Deployment,
     ) -> ServiceMonitor:
+        crd = CustomResourceDefinition(client=admin_client, name=SERVICE_MONITOR_CRD)
+        if not crd.exists:
+            pytest.skip(f"ServiceMonitor CRD ({SERVICE_MONITOR_CRD}) is not installed on this cluster")
+
         sm = ServiceMonitor(
             client=admin_client,
             name=f"{evalhub_cr.name}{EVALHUB_SERVICE_MONITOR_SUFFIX}",
