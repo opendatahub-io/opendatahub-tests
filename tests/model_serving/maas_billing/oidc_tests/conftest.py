@@ -12,6 +12,7 @@ from timeout_sampler import TimeoutSampler
 
 from tests.model_serving.maas_billing.oidc_tests.utils import (
     MAAS_API_AUTH_POLICY_NAME,
+    MAAS_OIDC_GROUP,
     OIDC_CLIENT_ID,
     create_oidc_subscription,
     fetch_models_with_header,
@@ -24,7 +25,7 @@ from tests.model_serving.maas_billing.utils import (
 )
 from utilities.general import generate_random_name
 from utilities.resources.auth_policy import AuthPolicy
-from utilities.resources.models_as_service import ModelsAsService
+from utilities.resources.tenant import Tenant
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -54,12 +55,32 @@ def oidc_subscription_with_model(
 
     Used by tests that need ``/v1/models`` to return a real model for inference.
     """
-    yield from create_oidc_subscription(
+    from ocp_resources.maas_auth_policy import MaaSAuthPolicy
+
+    auth_policy_name = f"e2e-oidc-auth-{generate_random_name()}"
+
+    for subscription in create_oidc_subscription(
         admin_client=admin_client,
         subscription_namespace=maas_subscription_namespace.name,
         model_name=maas_inference_service_tinyllama.name,
         model_namespace=maas_inference_service_tinyllama.namespace,
-    )
+    ):
+        subscription.wait_for_condition(condition="Ready", status="True", timeout=300)
+        with MaaSAuthPolicy(
+            client=admin_client,
+            name=auth_policy_name,
+            namespace=maas_subscription_namespace.name,
+            model_refs=[
+                {
+                    "name": maas_inference_service_tinyllama.name,
+                    "namespace": maas_inference_service_tinyllama.namespace,
+                }
+            ],
+            subjects={"groups": [{"name": MAAS_OIDC_GROUP}]},
+            teardown=True,
+            wait_for_resource=True,
+        ):
+            yield subscription
 
 
 @pytest.fixture(scope="class")
@@ -67,16 +88,17 @@ def oidc_auth_policy_patched(
     is_byoidc: bool,
     admin_client: DynamicClient,
 ) -> Generator[None, Any, Any]:
-    """Enable OIDC on the ModelsAsService CR so the operator patches the AuthPolicy."""
+    """Enable OIDC on the Tenant CR so the maas-controller patches the AuthPolicy."""
     if not is_byoidc:
         pytest.skip("External OIDC tests require a byoidc cluster")
 
     oidc_issuer_url = get_maas_oidc_issuer_url(admin_client=admin_client)
     LOGGER.info(f"oidc_auth_policy_patched: enabling externalOIDC with issuer '{oidc_issuer_url}'")
 
-    maas_cr = ModelsAsService(
+    tenant_cr = Tenant(
         client=admin_client,
-        name="default-modelsasservice",
+        name="default-tenant",
+        namespace="models-as-a-service",
     )
     applications_namespace = py_config["applications_namespace"]
 
@@ -89,7 +111,7 @@ def oidc_auth_policy_patched(
         }
     }
 
-    with ResourceEditor(patches={maas_cr: oidc_patch}):
+    with ResourceEditor(patches={tenant_cr: oidc_patch}):
         maas_auth_policy = AuthPolicy(
             client=admin_client,
             name=MAAS_API_AUTH_POLICY_NAME,
