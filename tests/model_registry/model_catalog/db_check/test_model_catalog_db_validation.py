@@ -1,4 +1,3 @@
-import json
 import math
 import re
 from datetime import UTC, datetime
@@ -10,9 +9,13 @@ from ocp_resources.network_policy import NetworkPolicy
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_registry.model_catalog.constants import CATALOG_CONTAINER
+from tests.model_registry.model_catalog.db_check.utils import (
+    find_language_mismatches_between_api_and_db,
+    parse_language_properties_from_db,
+)
+from tests.model_registry.model_catalog.db_constants import LANGUAGE_PROPERTIES_DB_QUERY
 from tests.model_registry.model_catalog.utils import execute_database_query, get_postgres_pod_in_namespace
 from tests.model_registry.utils import (
-    execute_get_command,
     wait_for_model_catalog_pod_ready_after_deletion,
 )
 
@@ -67,9 +70,8 @@ class TestModelCatalogLoaderHealth:
         Then no 'duplicated key not allowed' errors should be present
         """
         catalog_log = model_catalog_pod.log(container=CATALOG_CONTAINER)
-        duplicate_errors = [line for line in catalog_log.splitlines() if "duplicated key not allowed" in line]
-        assert not duplicate_errors, (
-            f"Found {len(duplicate_errors)} duplicate key errors in catalog logs:\n" + "\n".join(duplicate_errors)
+        assert "duplicated key not allowed" not in catalog_log, (
+            "Found duplicate key errors in catalog logs — property upsert may have regressed"
         )
 
 
@@ -253,17 +255,6 @@ class TestNonCatalogNetworkPolicyNotRecreated:
             pytest.fail("Expected TimeoutExpiredError but sampler completed without it")
 
 
-LANGUAGE_PROPERTIES_DB_QUERY = """
-SELECT c.name AS model_name, cp.string_value AS language
-FROM "Context" c
-JOIN "ContextProperty" cp ON cp.context_id = c.id
-WHERE c.type_id = (SELECT id FROM "Type" WHERE name = 'kf.CatalogModel')
-AND cp.name = 'language'
-AND cp.is_custom_property = false
-ORDER BY c.name, cp.string_value;
-"""
-
-
 class TestLanguagePropertyConsistency:
     def test_language_properties_match_between_api_and_database(
         self,
@@ -281,41 +272,15 @@ class TestLanguagePropertyConsistency:
             query=LANGUAGE_PROPERTIES_DB_QUERY,
             namespace=model_registry_namespace,
         )
-        db_languages: dict[str, set[str]] = {}
-        for line in db_result.strip().splitlines():
-            line = line.strip()
-            if not line or line.startswith(("-", "(")) or "|" not in line:
-                continue
-            if "model_name" in line and "language" in line:
-                continue
-            parts = line.split("|")
-            if len(parts) == 2:
-                model_name = parts[0].strip()
-                raw_value = parts[1].strip()
-                try:
-                    langs = json.loads(raw_value)
-                    db_languages.setdefault(model_name, set()).update(langs)
-                except json.JSONDecodeError:
-                    db_languages.setdefault(model_name, set()).add(raw_value)
-
+        db_languages = parse_language_properties_from_db(psql_output=db_result)
         assert db_languages, "No language properties found in database"
         LOGGER.info(f"Found language properties for {len(db_languages)} models in database")
 
-        mismatches = []
-        for model_name, db_langs in db_languages.items():
-            api_model = execute_get_command(
-                url=f"{model_catalog_rest_url[0]}models?pageSize=1&filterQuery=name='{model_name}'",
-                headers=model_registry_rest_headers,
-            )
-            items = api_model.get("items", [])
-            if not items:
-                mismatches.append(f"{model_name}: not found in API")
-                continue
-
-            api_langs = set(items[0].get("language", []))
-            if db_langs != api_langs:
-                mismatches.append(f"{model_name}: DB={sorted(db_langs)}, API={sorted(api_langs)}")
-
+        mismatches = find_language_mismatches_between_api_and_db(
+            db_languages=db_languages,
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+        )
         assert not mismatches, (
             f"Language property mismatches between API and DB for {len(mismatches)} model(s):\n" + "\n".join(mismatches)
         )
