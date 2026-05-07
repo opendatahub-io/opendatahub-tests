@@ -14,7 +14,7 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.oauth import OAuth
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
-from ocp_resources.resource import ResourceEditor
+from ocp_resources.resource import ResourceEditor, get_client
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
@@ -39,7 +39,7 @@ from tests.model_registry.utils import (
     get_rest_headers,
     wait_for_default_resource_cleanedup,
 )
-from utilities.constants import DscComponents, Labels
+from utilities.constants import MODEL_REGISTRY_CUSTOM_NAMESPACE, DscComponents, Labels
 from utilities.general import (
     generate_random_name,
     wait_for_oauth_openshift_deployment,
@@ -53,10 +53,27 @@ from utilities.infra import (
     wait_for_dsc_status_ready,
 )
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.resources.pod import Pod as UtilPod
 from utilities.user_utils import UserTestSession, create_htpasswd_file, wait_for_user_creation
 
 DEFAULT_TOKEN_DURATION = "10m"
 LOGGER = structlog.get_logger(name=__name__)
+
+
+def pytest_sessionstart(session: pytest.Session) -> None:
+    """Sets model registry namespace in global config."""
+    config = session.config
+    if config.getoption("--collect-only") or config.getoption("--setup-plan"):
+        return
+
+    if config.getoption("--custom-namespace"):
+        LOGGER.info(f"Running model registry tests against custom namespace: {MODEL_REGISTRY_CUSTOM_NAMESPACE}")
+        py_config["model_registry_namespace"] = MODEL_REGISTRY_CUSTOM_NAMESPACE
+    else:
+        LOGGER.info("Running model registry tests against default namespace")
+        py_config["model_registry_namespace"] = get_data_science_cluster(
+            client=get_client()
+        ).instance.spec.components.modelregistry.registriesNamespace
 
 
 @pytest.fixture(scope="session")
@@ -520,8 +537,28 @@ def pytest_collection_modifyitems(items: list[Item], config: pytest.Config) -> N
             ):
                 deselected.append(item)
                 continue
+            if (
+                "test_https_route_network_policy_only" in item.keywords
+                and callspec.params.get("model_catalog_network_policy") != "model-catalog-https-route"
+            ):
+                deselected.append(item)
+                continue
         remaining.append(item)
 
     if deselected:
         items[:] = remaining
         config.hook.pytest_deselected(items=deselected)
+
+
+@pytest.fixture(scope="class")
+def dashboard_pod(admin_client: DynamicClient) -> UtilPod:
+    """Get a running dashboard pod from the applications namespace."""
+    pods = list(
+        UtilPod.get(
+            client=admin_client,
+            namespace=py_config["applications_namespace"],
+            label_selector="app=rhods-dashboard",
+        )
+    )
+    assert pods, "No dashboard pods found"
+    return pods[0]

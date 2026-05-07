@@ -9,7 +9,7 @@ from tests.model_serving.model_server.llmd.utils import (
     workaround_503_no_healthy_upstream,
 )
 
-pytestmark = [pytest.mark.tier2, pytest.mark.gpu]
+pytestmark = [pytest.mark.tier2, pytest.mark.llmd_gpu]
 
 NAMESPACE = ns_from_file(file=__file__)
 
