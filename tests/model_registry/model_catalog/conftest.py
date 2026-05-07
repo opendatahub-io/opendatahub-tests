@@ -8,6 +8,7 @@ import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.route import Route
 from ocp_resources.service_account import ServiceAccount
@@ -40,6 +41,14 @@ from tests.model_registry.utils import (
 from utilities.infra import create_inference_token, get_openshift_token, login_with_user_password
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+@pytest.fixture(scope="class")
+def model_catalog_pod(admin_client: DynamicClient, model_registry_namespace: str) -> Pod:
+    """Get the first model catalog pod in the model registry namespace."""
+    pods = get_model_catalog_pod(client=admin_client, model_registry_namespace=model_registry_namespace)
+    assert pods, "No model catalog pods found"
+    return pods[0]
 
 
 @pytest.fixture()
