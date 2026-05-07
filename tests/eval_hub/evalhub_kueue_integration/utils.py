@@ -46,8 +46,13 @@ def get_requests_verify() -> bool | str:
     return True
 
 
-def get_evalhub_route_url(client: DynamicClient, namespace: str) -> str:
-    """Return the HTTPS URL for the EvalHub route in the given namespace."""
+def get_evalhub_route_url(client: DynamicClient, namespace: str, allow_insecure: bool = False) -> str:
+    """Return the URL for the EvalHub route in the given namespace.
+
+    By default this function fails closed and requires TLS on the selected
+    route. To permit non-TLS routes explicitly, set ``allow_insecure=True`` or
+    set ``EVALHUB_ALLOW_INSECURE_ROUTE=true``.
+    """
     routes = list(
         Route.get(
             client=client,
@@ -67,8 +72,20 @@ def get_evalhub_route_url(client: DynamicClient, namespace: str) -> str:
     if not routes:
         raise RuntimeError(f"No EvalHub route found in namespace {namespace}")
 
-    host = routes[0].instance.spec.host
-    tls = routes[0].instance.spec.get("tls")
+    selected_route = routes[0]
+    host = selected_route.instance.spec.host
+    tls = selected_route.instance.spec.get("tls")
+    env_allow_insecure = os.environ.get("EVALHUB_ALLOW_INSECURE_ROUTE", "").strip().lower() in (
+        "true",
+        "1",
+        "yes",
+    )
+    if not tls and not (allow_insecure or env_allow_insecure):
+        raise RuntimeError(
+            "EvalHub route in namespace "
+            f"'{namespace}' has no TLS configuration; refusing to use insecure HTTP. "
+            "Set allow_insecure=True or EVALHUB_ALLOW_INSECURE_ROUTE=true to override."
+        )
     scheme = "https" if tls else "http"
     return f"{scheme}://{host}"
 

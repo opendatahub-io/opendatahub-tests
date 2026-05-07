@@ -239,12 +239,13 @@ def create_workload_priority_class(
 def get_workloads_for_job(client: DynamicClient, namespace: str, job_name: str) -> list[Workload]:
     """Return Workload resources owned by the given Job name."""
     workloads = list(Workload.get(client=client, namespace=namespace))
+    workload_instances = [wl.instance for wl in workloads]
     return [
         wl
-        for wl in workloads
+        for wl, instance in zip(workloads, workload_instances, strict=False)
         if any(
             ref.get("name") == job_name and ref.get("kind") == "Job"
-            for ref in wl.instance.get("metadata", {}).get("ownerReferences", [])
+            for ref in instance.get("metadata", {}).get("ownerReferences", [])
         )
     ]
 
@@ -274,15 +275,14 @@ def wait_for_kueue_crds_available(client: DynamicClient) -> bool:
     # Try to find pods in common locations
     pods = []
     for ns in ["openshift-operators", "openshift-kueue-operator", "kueue-system"]:
-        pods = list(
+        ns_pods = list(
             Pod.get(
                 label_selector="control-plane=controller-manager,app.kubernetes.io/name=kueue",
                 namespace=ns,
                 client=client,
             )
         )
-        if pods:
-            break
+        pods.extend(ns_pods)
     all_pods_ready = pods and all(
         any(
             condition.type == Pod.Condition.READY and condition.status == Pod.Condition.Status.TRUE

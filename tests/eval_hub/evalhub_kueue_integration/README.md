@@ -6,7 +6,7 @@ Integration of Kueue with EvalHub to enable production-ready LLM evaluation job 
 
 - **Strategy**: [RHOAIENG-59092](https://issues.redhat.com/browse/RHOAIENG-59092)
 - **Test Plan**: [TestPlan.md](TestPlan.md)
-- **Feature Documentation**: [EvalHub Kueue Integration Guide](/Users/nbs/work/ai-engineering/docs/evalhub-kueue-integration-guide_v7_1.md)
+- **Feature Documentation**: EvalHub Kueue Integration Guide
 
 ## Overview
 

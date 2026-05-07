@@ -43,23 +43,26 @@ curl -s -X POST \
   "https://${EVALHUB_ROUTE}/api/v1/evaluations/jobs" \
   -H "Authorization: Bearer ${TOKEN}" \
   -H "Content-Type: application/json" \
-  -d '{
-    "name": "tc-api-001-kueue-submit",
-    "model": {
-      "url": "http://llm-service.${NAMESPACE}.svc.cluster.local:8080/v1",
-      "name": "granite-3.1-8b"
-    },
-    "queue": {
-      "kind": "kueue",
-      "name": "eval-queue"
-    },
-    "benchmarks": [
-      {
-        "id": "arc_easy",
-        "provider_id": "lm_evaluation_harness"
-      }
-    ]
-  }'
+  -d "$(cat <<EOF
+{
+  "name": "tc-api-001-kueue-submit",
+  "model": {
+    "url": "http://llm-service.${NAMESPACE}.svc.cluster.local:8080/v1",
+    "name": "granite-3.1-8b"
+  },
+  "queue": {
+    "kind": "kueue",
+    "name": "eval-queue"
+  },
+  "benchmarks": [
+    {
+      "id": "arc_easy",
+      "provider_id": "lm_evaluation_harness"
+    }
+  ]
+}
+EOF
+)"
 ```
 
 **Expected Response**:

@@ -4,9 +4,12 @@ import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.job import Job
 from ocp_resources.namespace import Namespace
+from timeout_sampler import TimeoutSampler
 
 from tests.eval_hub.evalhub_kueue_integration.constants import (
     CLUSTER_QUEUE_NAME,
+    E2E_CPU_QUOTA,
+    E2E_MEMORY_QUOTA,
     KUEUE_QUEUE_NAME_LABEL,
     LOCAL_QUEUE_NAME,
     RESOURCE_FLAVOR_NAME,
@@ -39,8 +42,8 @@ NAMESPACE_NAME = "evalhub-e2e-test"
             {
                 "name": CLUSTER_QUEUE_NAME,
                 "resource_flavor_name": RESOURCE_FLAVOR_NAME,
-                "cpu_quota": 1,
-                "memory_quota": "4Gi",
+                "cpu_quota": E2E_CPU_QUOTA,
+                "memory_quota": E2E_MEMORY_QUOTA,
             },
             {"name": LOCAL_QUEUE_NAME, "cluster_queue": CLUSTER_QUEUE_NAME},
             id="test_e2e_scenarios",
@@ -87,18 +90,22 @@ class TestE2EScenarios:
             EvalJobState.FAILED,
         ), f"Expected pending/running/failed, got: {pending_body['status']['state']}"
 
-        # Check for K8s Job immediately after submission (before it completes/fails)
-        import time
-
-        time.sleep(2)  # Brief wait for Job resource creation
-
-        k8s_jobs = list(
-            Job.get(
-                client=admin_client,
-                namespace=eval_test_namespace.name,
-                label_selector=f"{KUEUE_QUEUE_NAME_LABEL}={LOCAL_QUEUE_NAME}",
-            )
-        )
+        # Poll for K8s Job creation after submission (before it completes/fails).
+        k8s_jobs: list[Job] = []
+        for jobs in TimeoutSampler(
+            wait_timeout=120,
+            sleep=2,
+            func=lambda: list(
+                Job.get(
+                    client=admin_client,
+                    namespace=eval_test_namespace.name,
+                    label_selector=f"{KUEUE_QUEUE_NAME_LABEL}={LOCAL_QUEUE_NAME}",
+                )
+            ),
+        ):
+            if jobs:
+                k8s_jobs = jobs
+                break
 
         # Wait for job to reach terminal state
         running_body = wait_for_job_running_or_completed(

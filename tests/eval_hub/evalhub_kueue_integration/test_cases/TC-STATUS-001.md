@@ -3,7 +3,7 @@ test_case_id: TC-STATUS-001
 source_key: RHOAIENG-59092
 priority: P1
 status: Draft
-automation_status: Not Started
+automation_status: Automated
 last_updated: '2026-05-04'
 ---
 # TC-STATUS-001: Workload resource reflects detailed queue status conditions

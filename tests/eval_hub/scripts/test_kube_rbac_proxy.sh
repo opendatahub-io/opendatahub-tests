@@ -96,8 +96,9 @@ run_test() {
     local test_num="$1"
     local test_name="$2"
     local objective="$3"
-    local curl_cmd="$4"
-    local expected_status="$5"
+    local expected_status="$4"
+    shift 4
+    local -a curl_cmd_array=("$@")
 
     log_test "$test_num" "$test_name"
 
@@ -105,7 +106,58 @@ run_test() {
     local temp_response=$(mktemp)
     local temp_headers=$(mktemp)
 
-    eval "$curl_cmd -w '\n%{http_code}' -D '$temp_headers' > '$temp_response' 2>&1"
+    if [ "${#curl_cmd_array[@]}" -eq 0 ] || [ "${curl_cmd_array[0]}" != "curl" ]; then
+        echo "ERROR: TEST $test_num requires a curl command array" >&2
+        rm -f "$temp_response" "$temp_headers"
+        exit 1
+    fi
+
+    # Validate flags when command input is externally provided.
+    local i=1
+    while [ "$i" -lt "${#curl_cmd_array[@]}" ]; do
+        local token="${curl_cmd_array[$i]}"
+        case "$token" in
+            -k|-s|-S|-L|-i|--silent|--show-error|--location|--insecure)
+                ;;
+            -H|--header|-X|--request|-d|--data|--data-raw|--url)
+                i=$((i + 1))
+                if [ "$i" -ge "${#curl_cmd_array[@]}" ]; then
+                    echo "ERROR: Missing value for curl flag '$token' in TEST $test_num" >&2
+                    rm -f "$temp_response" "$temp_headers"
+                    exit 1
+                fi
+                ;;
+            http://*|https://*)
+                ;;
+            *)
+                echo "ERROR: Unsupported curl token '$token' in TEST $test_num" >&2
+                rm -f "$temp_response" "$temp_headers"
+                exit 1
+                ;;
+        esac
+        i=$((i + 1))
+    done
+
+    local -a request_cmd=("${curl_cmd_array[@]}")
+    local -a redacted_request_cmd=("${request_cmd[@]}")
+    i=0
+    while [ "$i" -lt "${#redacted_request_cmd[@]}" ]; do
+        case "${redacted_request_cmd[$i]}" in
+            -H|--header)
+                if [ "$((i + 1))" -lt "${#redacted_request_cmd[@]}" ] && \
+                    [[ "${redacted_request_cmd[$((i + 1))]}" == Authorization:\ Bearer* ]]; then
+                    redacted_request_cmd[$((i + 1))]="Authorization: Bearer REDACTED"
+                fi
+                i=$((i + 1))
+                ;;
+            --header=Authorization:\ Bearer*)
+                redacted_request_cmd[$i]="--header=Authorization: Bearer REDACTED"
+                ;;
+        esac
+        i=$((i + 1))
+    done
+    local -a exec_cmd=("${curl_cmd_array[@]}" -w '\n%{http_code}' -D "$temp_headers")
+    "${exec_cmd[@]}" > "$temp_response" 2>&1
 
     # Extract status code (last line)
     local actual_status=$(tail -1 "$temp_response")
@@ -133,7 +185,7 @@ run_test() {
 
 **Request:**
 \`\`\`bash
-$curl_cmd
+$(printf '%q ' "${redacted_request_cmd[@]}")
 \`\`\`
 
 **Response Status:** $actual_status
@@ -193,36 +245,36 @@ main() {
     run_test 1 \
         "Authentication - Valid ServiceAccount Token" \
         "Verify that kube-rbac-proxy accepts valid Kubernetes ServiceAccount tokens" \
-        "curl -k -H \"Authorization: Bearer $TOKEN\" -H \"X-Tenant: $NAMESPACE\" \"$BASE_URL/api/v1/evaluations/providers\"" \
-        "200"
+        "200" \
+        curl -k -H "Authorization: Bearer $TOKEN" -H "X-Tenant: $NAMESPACE" "$BASE_URL/api/v1/evaluations/providers"
 
     # TEST 2: Missing Authentication
     run_test 2 \
         "Authentication - Invalid/Missing Token" \
         "Verify that kube-rbac-proxy rejects requests without valid authentication" \
-        "curl -k -H \"X-Tenant: $NAMESPACE\" \"$BASE_URL/api/v1/evaluations/providers\"" \
-        "401"
+        "401" \
+        curl -k -H "X-Tenant: $NAMESPACE" "$BASE_URL/api/v1/evaluations/providers"
 
     # TEST 3: Configured Endpoint (Allowed)
     run_test 3 \
         "Authorization - Configured Endpoint (Allowed)" \
         "Verify that authorized endpoints in auth.yaml configuration are accessible" \
-        "curl -k -H \"Authorization: Bearer $TOKEN\" -H \"X-Tenant: $NAMESPACE\" \"$BASE_URL/api/v1/evaluations/providers\"" \
-        "200"
+        "200" \
+        curl -k -H "Authorization: Bearer $TOKEN" -H "X-Tenant: $NAMESPACE" "$BASE_URL/api/v1/evaluations/providers"
 
     # TEST 4: Unconfigured Endpoint (Blocked)
     run_test 4 \
         "Authorization - Unconfigured Endpoint (Blocked)" \
         "Verify that endpoints NOT in auth.yaml configuration are blocked" \
-        "curl -k -H \"Authorization: Bearer $TOKEN\" -H \"X-Tenant: $NAMESPACE\" \"$BASE_URL/openapi.yaml\"" \
-        "403"
+        "403" \
+        curl -k -H "Authorization: Bearer $TOKEN" -H "X-Tenant: $NAMESPACE" "$BASE_URL/openapi.yaml"
 
     # TEST 5: Health Endpoint Bypass
     run_test 5 \
         "Health Endpoint Bypass (--ignore-paths)" \
         "Verify that /api/v1/health bypasses authentication and authorization checks" \
-        "curl -k \"$BASE_URL/api/v1/health\"" \
-        "200"
+        "200" \
+        curl -k "$BASE_URL/api/v1/health"
 
     # Generate summary
     cat >> "$OUTPUT_FILE" <<EOF

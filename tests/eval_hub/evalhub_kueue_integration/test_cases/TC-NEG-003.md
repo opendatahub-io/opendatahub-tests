@@ -38,9 +38,14 @@ curl -s -o /dev/null -w "%{http_code}" -X POST \
   -d '{"name": "tc-neg-003-unauth"}'
 
 # Invalid token
-curl -s -o /dev/null -w "%{http_code}" -X GET \
+invalid_response=$(curl -s -w '\n%{http_code}' -X GET \
   "https://${EVALHUB_ROUTE}/api/v1/evaluations/jobs" \
-  -H "Authorization: Bearer invalid-token-value"
+  -H "Authorization: Bearer invalid-token-value")
+invalid_status=$(echo "$invalid_response" | tail -n 1)
+invalid_body=$(echo "$invalid_response" | sed '$d')
+
+test "$invalid_status" = "401"
+echo "$invalid_body" | grep -Eiq "unauthorized|invalid token|authentication"
 ```
 
 **Notes**: To be filled later in the process.
