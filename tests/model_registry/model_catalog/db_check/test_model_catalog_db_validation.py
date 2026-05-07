@@ -8,7 +8,13 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.network_policy import NetworkPolicy
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
-from tests.model_registry.model_catalog.utils import get_postgres_pod_in_namespace
+from tests.model_registry.model_catalog.constants import CATALOG_CONTAINER
+from tests.model_registry.model_catalog.db_check.utils import (
+    find_language_mismatches_between_api_and_db,
+    parse_language_properties_from_db,
+)
+from tests.model_registry.model_catalog.db_constants import LANGUAGE_PROPERTIES_DB_QUERY
+from tests.model_registry.model_catalog.utils import execute_database_query, get_postgres_pod_in_namespace
 from tests.model_registry.utils import (
     wait_for_model_catalog_pod_ready_after_deletion,
 )
@@ -55,6 +61,18 @@ class TestModelCatalogDBSecret:
             client=admin_client, model_registry_namespace=model_registry_namespace
         )
         LOGGER.info("Model catalog pod is ready after secret recreation")
+
+
+class TestModelCatalogLoaderHealth:
+    def test_no_duplicate_key_errors_in_catalog_logs(self, model_catalog_pod):
+        """Given a model catalog pod with default data loaded
+        When checking the catalog container logs
+        Then no 'duplicated key not allowed' errors should be present
+        """
+        catalog_log = model_catalog_pod.log(container=CATALOG_CONTAINER)
+        assert "duplicated key not allowed" not in catalog_log, (
+            "Found duplicate key errors in catalog logs — property upsert may have regressed"
+        )
 
 
 @pytest.mark.parametrize(
@@ -235,3 +253,34 @@ class TestNonCatalogNetworkPolicyNotRecreated:
             LOGGER.info("Non-catalog NetworkPolicy was not recreated after 30 seconds, as expected")
         else:
             pytest.fail("Expected TimeoutExpiredError but sampler completed without it")
+
+
+class TestLanguagePropertyConsistency:
+    def test_language_properties_match_between_api_and_database(
+        self,
+        admin_client: DynamicClient,
+        model_catalog_rest_url: list[str],
+        model_registry_rest_headers: dict[str, str],
+        model_registry_namespace: str,
+    ):
+        """Given models loaded into the catalog
+        When comparing language values from the API and database
+        Then all models with language properties should have matching values
+        """
+        db_result = execute_database_query(
+            admin_client=admin_client,
+            query=LANGUAGE_PROPERTIES_DB_QUERY,
+            namespace=model_registry_namespace,
+        )
+        db_languages = parse_language_properties_from_db(psql_output=db_result)
+        assert db_languages, "No language properties found in database"
+        LOGGER.info(f"Found language properties for {len(db_languages)} models in database")
+
+        mismatches = find_language_mismatches_between_api_and_db(
+            db_languages=db_languages,
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+        )
+        assert not mismatches, (
+            f"Language property mismatches between API and DB for {len(mismatches)} model(s):\n" + "\n".join(mismatches)
+        )
