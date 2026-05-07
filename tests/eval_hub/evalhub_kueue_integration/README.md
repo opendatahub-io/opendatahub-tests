@@ -6,7 +6,7 @@ Integration of Kueue with EvalHub to enable production-ready LLM evaluation job 
 
 - **Strategy**: [RHOAIENG-59092](https://issues.redhat.com/browse/RHOAIENG-59092)
 - **Test Plan**: [TestPlan.md](TestPlan.md)
-- **Feature Documentation**: EvalHub Kueue Integration Guide
+- [Feature Documentation](TestPlan.md): EvalHub Kueue Integration Guide
 
 ## Overview
 
@@ -25,7 +25,7 @@ See [test_cases/INDEX.md](test_cases/INDEX.md) for the complete test case index.
 
 ## Automated Test Implementation
 
-Automated tests for this feature will be implemented in the component repository following the test plan specifications. Tests will validate:
+Automated tests for this feature are implemented in the component repository following the test plan specifications. These tests validate:
 
 - API integration for job submission with queue specifications
 - Job lifecycle management (queueing, admission, execution, completion)

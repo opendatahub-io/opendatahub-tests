@@ -20,23 +20,23 @@ last_updated: '2026-05-04'
 
 1. Create ClusterQueue and LocalQueue as per preconditions
 2. Submit an evaluation job with queue specification
-3. Immediately query the Workload resource before admission
-4. Verify `QuotaReserved` and `Admitted` conditions are present
+3. Poll/query the Workload resource during pre-admission (blocked/queueing phase)
+4. Verify initial `QuotaReserved` and `Admitted` values are `False` or missing
 5. Wait for the job to be admitted
 6. Query the Workload resource again
-7. Verify conditions transition: `QuotaReserved=True`, `Admitted=True`
+7. Verify conditions transition to `QuotaReserved=True` and `Admitted=True`
 8. Verify the Workload has an `ownerReference` pointing to the Kubernetes Job
 9. Teardown: Delete the job, LocalQueue, and ClusterQueue
 
 **Expected Results**:
 
-- Before admission: Workload has `QuotaReserved=False`, `Admitted=False`
+- Before admission: Workload has `QuotaReserved=False`/missing and `Admitted=False`/missing
 - After admission: Workload has `QuotaReserved=True`, `Admitted=True`
 - Workload `metadata.ownerReferences` contains the Kubernetes Job name
 
 **Validation**:
 
-- `oc get workload -n ${NAMESPACE} -o yaml` shows complete status.conditions array
-- `oc get workload -n ${NAMESPACE} -o jsonpath='{.items[0].metadata.ownerReferences[0].name}'` returns the Kubernetes Job name
+- `oc get workload "${WORKLOAD_NAME}" -n "${NAMESPACE}" -o yaml` shows complete status.conditions for the intended Workload
+- `oc get workload "${WORKLOAD_NAME}" -n "${NAMESPACE}" -o jsonpath='{.metadata.ownerReferences[?(@.kind=="Job")].name}'` returns the Kubernetes Job ownerReference name
 
 **Notes**: To be filled later in the process.

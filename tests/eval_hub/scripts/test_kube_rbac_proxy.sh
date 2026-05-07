@@ -8,8 +8,10 @@
 set -euo pipefail
 
 # Configuration
-NAMESPACE="${EVALHUB_NAMESPACE:-prabhu}"
-BASE_URL="${EVALHUB_BASE_URL:-https://evalhub-${NAMESPACE}.apps.rosa.${NAMESPACE}-comhub.xqmp.p3.openshiftapps.com}"
+: "${EVALHUB_NAMESPACE:?error: EVALHUB_NAMESPACE must be set}"
+: "${EVALHUB_BASE_URL:?error: EVALHUB_BASE_URL must be set}"
+NAMESPACE="${EVALHUB_NAMESPACE}"
+BASE_URL="${EVALHUB_BASE_URL}"
 OUTPUT_FILE="${1:-/tmp/kube-rbac-proxy-test-results.md}"
 
 # Colors for output
@@ -76,7 +78,11 @@ init_output() {
 
 EOF
 
-    local pod=$(get_evalhub_pod)
+    local pod
+    pod="$(get_evalhub_pod)" || {
+        echo "ERROR: Failed to query EvalHub pod in namespace $NAMESPACE" >&2
+        exit 1
+    }
     if [ -z "$pod" ]; then
         echo "ERROR: No running evalhub pod found in namespace $NAMESPACE"
         exit 1
@@ -103,8 +109,26 @@ run_test() {
     log_test "$test_num" "$test_name"
 
     # Execute curl and capture response
-    local temp_response=$(mktemp)
-    local temp_headers=$(mktemp)
+    local temp_response
+    local temp_headers
+    temp_response="$(mktemp)" || {
+        echo "ERROR: Failed to create temp response file for TEST $test_num" >&2
+        exit 1
+    }
+    if [ -z "$temp_response" ]; then
+        echo "ERROR: mktemp returned empty response file path for TEST $test_num" >&2
+        exit 1
+    fi
+    temp_headers="$(mktemp)" || {
+        echo "ERROR: Failed to create temp headers file for TEST $test_num" >&2
+        rm -f "$temp_response"
+        exit 1
+    }
+    if [ -z "$temp_headers" ]; then
+        echo "ERROR: mktemp returned empty headers file path for TEST $test_num" >&2
+        rm -f "$temp_response"
+        exit 1
+    fi
 
     if [ "${#curl_cmd_array[@]}" -eq 0 ] || [ "${curl_cmd_array[0]}" != "curl" ]; then
         echo "ERROR: TEST $test_num requires a curl command array" >&2
@@ -160,11 +184,26 @@ run_test() {
     "${exec_cmd[@]}" > "$temp_response" 2>&1
 
     # Extract status code (last line)
-    local actual_status=$(tail -1 "$temp_response")
+    local actual_status
+    actual_status="$(tail -1 "$temp_response")" || {
+        echo "ERROR: Failed to extract status code for TEST $test_num" >&2
+        rm -f "$temp_response" "$temp_headers"
+        exit 1
+    }
     # Extract response body (everything except last line)
-    local total_lines=$(wc -l < "$temp_response" | tr -d ' ')
+    local total_lines
+    total_lines="$(wc -l < "$temp_response" | tr -d ' ')" || {
+        echo "ERROR: Failed to read response line count for TEST $test_num" >&2
+        rm -f "$temp_response" "$temp_headers"
+        exit 1
+    }
     local body_lines=$((total_lines - 1))
-    local response_body=$(head -n "$body_lines" "$temp_response")
+    local response_body
+    response_body="$(head -n "$body_lines" "$temp_response")" || {
+        echo "ERROR: Failed to extract response body for TEST $test_num" >&2
+        rm -f "$temp_response" "$temp_headers"
+        exit 1
+    }
 
     # Determine pass/fail
     local result
@@ -211,10 +250,18 @@ EOF
     if [ "$actual_status" = "200" ] || [ "$actual_status" = "202" ] || [ "$actual_status" = "409" ]; then
         echo "**evalhub Logs (showing received headers):**" >> "$OUTPUT_FILE"
         echo '```json' >> "$OUTPUT_FILE"
-        local pod=$(get_evalhub_pod)
-        oc logs "$pod" -n "$NAMESPACE" -c evalhub --tail=2 2>/dev/null | grep -E '"tenant"|"user"' || echo "No recent logs found"
-        echo '```' >> "$OUTPUT_FILE"
-        echo "" >> "$OUTPUT_FILE"
+        local pod
+        pod="$(get_evalhub_pod)" || {
+            echo "ERROR: Failed to query EvalHub pod for log capture in TEST $test_num" >&2
+            rm -f "$temp_response" "$temp_headers"
+            exit 1
+        }
+        {
+            oc logs "$pod" -n "$NAMESPACE" -c evalhub --tail=2 2>/dev/null | grep -E '"tenant"|"user"' || \
+                echo "No recent logs found"
+            echo '```'
+            echo ""
+        } >> "$OUTPUT_FILE"
     fi
 
     echo "**Result:** $result - ${test_name}" >> "$OUTPUT_FILE"
@@ -235,7 +282,10 @@ main() {
     init_output
 
     # Get token
-    TOKEN=$(get_token)
+    TOKEN="$(get_token)" || {
+        echo "ERROR: Failed to get OpenShift token"
+        exit 1
+    }
     if [ -z "$TOKEN" ]; then
         echo "ERROR: Failed to get OpenShift token"
         exit 1

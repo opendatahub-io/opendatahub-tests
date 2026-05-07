@@ -31,6 +31,8 @@ last_updated: '2026-05-04'
 **Test Data**:
 
 ```bash
+set -euo pipefail
+
 # No Authorization header
 curl -s -o /dev/null -w "%{http_code}" -X POST \
   "https://${EVALHUB_ROUTE}/api/v1/evaluations/jobs" \
@@ -44,8 +46,14 @@ invalid_response=$(curl -s -w '\n%{http_code}' -X GET \
 invalid_status=$(echo "$invalid_response" | tail -n 1)
 invalid_body=$(echo "$invalid_response" | sed '$d')
 
-test "$invalid_status" = "401"
-echo "$invalid_body" | grep -Eiq "unauthorized|invalid token|authentication"
+if [ "$invalid_status" != "401" ]; then
+  echo "Expected HTTP 401 for invalid token, got: $invalid_status" >&2
+  exit 1
+fi
+if ! echo "$invalid_body" | grep -Eiq "unauthorized|invalid token|authentication"; then
+  echo "Expected authentication failure message in response body, got: $invalid_body" >&2
+  exit 1
+fi
 ```
 
 **Notes**: To be filled later in the process.
