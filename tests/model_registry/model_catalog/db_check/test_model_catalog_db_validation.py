@@ -89,6 +89,44 @@ class TestModelCatalogDBNetworkPolicy:
             "Only model-catalog pods should be allowed to access postgres"
         )
 
+    @pytest.mark.test_https_route_network_policy_only
+    def test_https_route_ingress_namespace_labels(self, model_catalog_network_policy):
+        """Given the model-catalog-https-route NetworkPolicy
+        When inspecting its ingress namespace selectors
+        Then it allows traffic from dashboard namespace and OpenShift ingress namespace
+        """
+        from_rules = model_catalog_network_policy.instance.spec.ingress[0]["from"]
+        namespace_labels = [
+            rule.namespaceSelector.matchLabels
+            for rule in from_rules
+            if hasattr(rule, "namespaceSelector") and rule.namespaceSelector
+        ]
+        assert any(labels.get("opendatahub.io/generated-namespace") == "true" for labels in namespace_labels), (
+            "NetworkPolicy should allow traffic from dashboard namespace (opendatahub.io/generated-namespace: true)"
+        )
+        assert any(labels.get("network.openshift.io/policy-group") == "ingress" for labels in namespace_labels), (
+            "NetworkPolicy should allow traffic from OpenShift ingress namespace"
+        )
+
+
+class TestModelCatalogNetworkPolicyConnectivity:
+    def test_dashboard_can_reach_model_catalog(self, dashboard_pod, model_registry_namespace: str):
+        """Given a dashboard pod in the applications namespace
+        When curling the model-catalog internal service on the kube-rbac-proxy port
+        Then the connection is not blocked by the NetworkPolicy
+        """
+        service_url = f"https://model-catalog.{model_registry_namespace}.svc.cluster.local:8443"
+        result = dashboard_pod.execute(command=["curl", "-k", "--connect-timeout", "10", service_url])
+        LOGGER.info(f"curl to {service_url}: rc={result.rc}, stdout={result.stdout}, stderr={result.stderr}")
+        assert result.rc == 0, (
+            f"Dashboard pod cannot reach model-catalog at {service_url} — "
+            f"NetworkPolicy may be blocking traffic (rc={result.rc}, stderr={result.stderr})"
+        )
+        assert "Connection timed out" not in result.stdout, (
+            f"Dashboard pod connection timed out to model-catalog at {service_url} — "
+            f"NetworkPolicy may be blocking traffic"
+        )
+
 
 @pytest.mark.parametrize(
     "deleted_network_policy_original_spec, recreated_network_policy",
