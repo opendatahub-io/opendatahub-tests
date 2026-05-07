@@ -109,17 +109,18 @@ class TestKservePVCWriteAccess:
             )
 
     @pytest.mark.parametrize(
-        "patched_read_only_isvc",
+        "patched_read_only_isvc, expected_raises",
         [
-            pytest.param({"readonly": "false"}, id="test_readonly_annotation_false"),
-            pytest.param({"readonly": "true"}, id="test_readonly_annotation_true"),
+            pytest.param({"readonly": "false"}, False, id="test_readonly_annotation_false"),
+            pytest.param({"readonly": "true"}, True, id="test_readonly_annotation_true"),
         ],
-        indirect=True,
+        indirect=["patched_read_only_isvc"],
     )
     def test_isvc_readonly_annotation_toggle_lifecycle(
         self,
         unprivileged_client: DynamicClient,
         patched_read_only_isvc: InferenceService,
+        expected_raises: bool,
     ) -> None:
         """Verify write access reflects each annotation toggle on a live ISVC.
 
@@ -134,19 +135,24 @@ class TestKservePVCWriteAccess:
         Regression coverage: RHOAIENG-8288 — annotation toggle on a live ISVC did not update
         the effective mount access mode across transitions.
         """
+        expected_annotation = "true" if expected_raises else "false"
+        assert (
+            patched_read_only_isvc.instance.metadata.annotations.get("storage.kserve.io/readonly")
+            == expected_annotation
+        ), f"Expected annotation readonly={expected_annotation} was not applied"
+
         new_pod = get_pods_by_isvc_label(
             client=unprivileged_client,
             isvc=patched_read_only_isvc,
         )[0]
-        readonly_val = patched_read_only_isvc.instance.metadata.annotations.get("storage.kserve.io/readonly")
-        if readonly_val == "false":
-            new_pod.execute(
-                container=Containers.KSERVE_CONTAINER_NAME,
-                command=POD_TOUCH_SPLIT_COMMAND,
-            )
-        else:
+        if expected_raises:
             with pytest.raises(ExecOnPodError):
                 new_pod.execute(
                     container=Containers.KSERVE_CONTAINER_NAME,
                     command=POD_TOUCH_SPLIT_COMMAND,
                 )
+        else:
+            new_pod.execute(
+                container=Containers.KSERVE_CONTAINER_NAME,
+                command=POD_TOUCH_SPLIT_COMMAND,
+            )
