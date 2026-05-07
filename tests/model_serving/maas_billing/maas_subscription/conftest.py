@@ -18,9 +18,9 @@ from tests.model_serving.maas_billing.maas_subscription.utils import (
     patch_llmisvc_with_maas_router_and_tiers,
 )
 from tests.model_serving.maas_billing.utils import build_maas_headers, create_api_key, revoke_api_key
+from utilities.constants import ContainerImages, ModelStorage
 from utilities.general import generate_random_name
 from utilities.infra import create_inference_token, login_with_user_password
-from utilities.llmd_constants import ContainerImages, ModelStorage
 from utilities.llmd_utils import create_llmisvc
 from utilities.plugins.constant import OpenAIEnpoints
 
@@ -41,8 +41,8 @@ def maas_inference_service_tinyllama_premium(
             client=admin_client,
             name="llm-s3-tinyllama-premium",
             namespace=maas_unprivileged_model_namespace.name,
-            storage_uri=ModelStorage.TINYLLAMA_S3,
-            container_image=ContainerImages.VLLM_CPU,
+            storage_uri=ModelStorage.S3.TINYLLAMA,
+            container_image=ContainerImages.VLLM.CPU,
             container_resources={
                 "limits": {"cpu": "2", "memory": "12Gi"},
                 "requests": {"cpu": "1", "memory": "8Gi"},

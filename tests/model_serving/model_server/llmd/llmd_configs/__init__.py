@@ -4,6 +4,7 @@ from .config_models import (
     TinyLlamaHfConfig,
     TinyLlamaHfGpuConfig,
     TinyLlamaOciConfig,
+    TinyLlamaOciGpuConfig,
     TinyLlamaS3Config,
     TinyLlamaS3GpuConfig,
 )
@@ -18,6 +19,7 @@ __all__ = [
     "TinyLlamaHfConfig",
     "TinyLlamaHfGpuConfig",
     "TinyLlamaOciConfig",
+    "TinyLlamaOciGpuConfig",
     "TinyLlamaS3Config",
     "TinyLlamaS3GpuConfig",
 ]
