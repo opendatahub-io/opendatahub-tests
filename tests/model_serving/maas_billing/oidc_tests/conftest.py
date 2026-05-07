@@ -28,6 +28,7 @@ from utilities.resources.auth_policy import AuthPolicy
 from utilities.resources.tenant import Tenant
 
 LOGGER = structlog.get_logger(name=__name__)
+TENANT_NAME = "default-tenant"
 
 
 @pytest.fixture(scope="class")
@@ -87,6 +88,7 @@ def oidc_subscription_with_model(
 def oidc_auth_policy_patched(
     is_byoidc: bool,
     admin_client: DynamicClient,
+    maas_subscription_namespace: Any,
 ) -> Generator[None, Any, Any]:
     """Enable OIDC on the Tenant CR so the maas-controller patches the AuthPolicy."""
     if not is_byoidc:
@@ -97,8 +99,8 @@ def oidc_auth_policy_patched(
 
     tenant_cr = Tenant(
         client=admin_client,
-        name="default-tenant",
-        namespace="models-as-a-service",
+        name=TENANT_NAME,
+        namespace=maas_subscription_namespace.name,
     )
     applications_namespace = py_config["applications_namespace"]
 
