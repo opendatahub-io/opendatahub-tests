@@ -6,6 +6,7 @@ import pytest
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.maas_auth_policy import MaaSAuthPolicy
 from ocp_resources.resource import ResourceEditor
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutSampler
@@ -56,8 +57,6 @@ def oidc_subscription_with_model(
 
     Used by tests that need ``/v1/models`` to return a real model for inference.
     """
-    from ocp_resources.maas_auth_policy import MaaSAuthPolicy
-
     auth_policy_name = f"e2e-oidc-auth-{generate_random_name()}"
 
     for subscription in create_oidc_subscription(
