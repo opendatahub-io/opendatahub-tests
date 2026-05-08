@@ -51,11 +51,12 @@ from utilities.constants import (
     MAAS_GATEWAY_NAMESPACE,
     MAAS_RATE_LIMIT_POLICY_NAME,
     MAAS_TOKEN_RATE_LIMIT_POLICY_NAME,
+    ContainerImages,
     DscComponents,
+    ModelStorage,
 )
 from utilities.general import generate_random_name, wait_for_oauth_openshift_deployment
 from utilities.infra import create_ns, get_openshift_token, login_with_user_password, s3_endpoint_secret
-from utilities.llmd_constants import ContainerImages, ModelStorage
 from utilities.llmd_utils import create_llmisvc
 from utilities.plugins.constant import OpenAIEnpoints
 from utilities.resources.authorino import Authorino
@@ -649,8 +650,8 @@ def maas_inference_service_tinyllama(
             client=admin_client,
             name="llm-s3-tinyllama",
             namespace=maas_unprivileged_model_namespace.name,
-            storage_uri=ModelStorage.TINYLLAMA_S3,
-            container_image=ContainerImages.VLLM_CPU,
+            storage_uri=ModelStorage.S3.TINYLLAMA,
+            container_image=ContainerImages.VLLM.CPU,
             container_resources={
                 "limits": {"cpu": "2", "memory": "12Gi"},
                 "requests": {"cpu": "1", "memory": "8Gi"},
@@ -665,7 +666,7 @@ def maas_inference_service_tinyllama(
     ):
         inst = llm_service.instance
         storage_uri = inst.spec.model.uri
-        assert storage_uri == ModelStorage.TINYLLAMA_S3, f"Unexpected storage_uri on TinyLlama LLMI: {storage_uri}"
+        assert storage_uri == ModelStorage.S3.TINYLLAMA, f"Unexpected storage_uri on TinyLlama LLMI: {storage_uri}"
 
         llm_service.wait_for_condition(
             condition="Ready",
@@ -1120,8 +1121,8 @@ def maas_inference_service_tinyllama_free(
             client=admin_client,
             name="llm-s3-tinyllama-free",
             namespace=maas_unprivileged_model_namespace.name,
-            storage_uri=ModelStorage.TINYLLAMA_S3,
-            container_image=ContainerImages.VLLM_CPU,
+            storage_uri=ModelStorage.S3.TINYLLAMA,
+            container_image=ContainerImages.VLLM.CPU,
             container_resources={
                 "limits": {"cpu": "2", "memory": "12Gi"},
                 "requests": {"cpu": "1", "memory": "8Gi"},

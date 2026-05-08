@@ -10,10 +10,9 @@ from ocp_resources.gateway import Gateway
 from ocp_resources.llm_inference_service import LLMInferenceService
 from timeout_sampler import TimeoutWatch
 
-from utilities.constants import Timeout
+from utilities.constants import ContainerImages, Timeout
 from utilities.infra import get_services_by_isvc_label, is_disconnected_cluster
 from utilities.llmd_constants import (
-    ContainerImages,
     KServeGateway,
     LLMDGateway,
 )
@@ -252,7 +251,7 @@ def create_llmisvc(
     if container_env is None:
         container_env = [{"name": "VLLM_LOGGING_LEVEL", "value": "DEBUG"}]
         # Add FIPS-compatible env vars for vLLM CPU image
-        if container_image == ContainerImages.VLLM_CPU:
+        if container_image == ContainerImages.VLLM.CPU:
             container_env.extend([
                 {"name": "VLLM_ADDITIONAL_ARGS", "value": "--ssl-ciphers ECDHE+AESGCM:DHE+AESGCM"},
                 {"name": "VLLM_CPU_KVCACHE_SPACE", "value": "4"},
