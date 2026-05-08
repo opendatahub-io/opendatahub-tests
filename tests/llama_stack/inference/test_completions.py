@@ -28,11 +28,11 @@ class TestLlamaStackInferenceCompletions:
     @pytest.mark.tier1
     def test_inference_chat_completion(
         self,
-        unprivileged_llama_stack_client: LlamaStackClient,
+        llama_stack_client: LlamaStackClient,
         llama_stack_models: ModelInfo,
     ) -> None:
         """Test chat completion functionality with a simple ACK response."""
-        response = unprivileged_llama_stack_client.chat.completions.create(
+        response = llama_stack_client.chat.completions.create(
             model=llama_stack_models.model_id,
             messages=[
                 {"role": "system", "content": "You are a helpful assistant."},
@@ -50,11 +50,11 @@ class TestLlamaStackInferenceCompletions:
     @pytest.mark.tier1
     def test_inference_completion(
         self,
-        unprivileged_llama_stack_client: LlamaStackClient,
+        llama_stack_client: LlamaStackClient,
         llama_stack_models: ModelInfo,
     ) -> None:
         """Test text completion functionality with a geography question."""
-        response = unprivileged_llama_stack_client.completions.create(
+        response = llama_stack_client.completions.create(
             model=llama_stack_models.model_id, prompt="What is the capital of Catalonia?", max_tokens=20, temperature=0
         )
         assert len(response.choices) > 0, "No response after basic inference on llama-stack server"

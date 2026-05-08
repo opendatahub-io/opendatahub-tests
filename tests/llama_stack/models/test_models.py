@@ -24,7 +24,7 @@ class TestLlamaStackModels:
 
     def test_models_list(
         self,
-        unprivileged_llama_stack_client: LlamaStackClient,
+        llama_stack_client: LlamaStackClient,
     ) -> None:
         """Test listing all available models.
 
@@ -32,7 +32,7 @@ class TestLlamaStackModels:
         containing at least one LLM and one embedding model, compatible
         with OpenAI SDK structure.
         """
-        models = unprivileged_llama_stack_client.models.list()
+        models = llama_stack_client.models.list()
         assert models is not None, "No models returned from LlamaStackClient"
         assert isinstance(models, list), "models.list() should return a list"
         assert len(models) > 0, "At least one model should be available"
@@ -59,14 +59,14 @@ class TestLlamaStackModels:
 
     def test_models_list_structure(
         self,
-        unprivileged_llama_stack_client: LlamaStackClient,
+        llama_stack_client: LlamaStackClient,
     ) -> None:
         """Test that model list response structure matches OpenAI SDK compatibility.
 
         Verifies that each model in the list has the required fields expected
         by OpenAI-compatible clients.
         """
-        models = unprivileged_llama_stack_client.models.list()
+        models = llama_stack_client.models.list()
         assert models is not None, "No models returned from LlamaStackClient"
 
         for model in models:
@@ -81,18 +81,18 @@ class TestLlamaStackModels:
 
     def test_models_retrieve_existing(
         self,
-        unprivileged_llama_stack_client: LlamaStackClient,
+        llama_stack_client: LlamaStackClient,
     ) -> None:
         """Test retrieving an existing model by ID.
 
         Verifies that models.retrieve() returns the correct model when given
         a valid model identifier from the list.
         """
-        models = unprivileged_llama_stack_client.models.list()
+        models = llama_stack_client.models.list()
         assert len(models) > 0, "At least one model should be available"
 
         test_model = models[0]
-        retrieved_model = unprivileged_llama_stack_client.models.retrieve(model_id=test_model.id)
+        retrieved_model = llama_stack_client.models.retrieve(model_id=test_model.id)
 
         assert retrieved_model is not None, f"Model {test_model.id} should be retrievable"
         assert isinstance(retrieved_model, ModelRetrieveResponse), "Retrieved model should be a ModelRetrieveResponse"
@@ -106,7 +106,7 @@ class TestLlamaStackModels:
 
     def test_models_retrieve_nonexistent(
         self,
-        unprivileged_llama_stack_client: LlamaStackClient,
+        llama_stack_client: LlamaStackClient,
     ) -> None:
         """Test retrieving a non-existent model raises NotFoundError.
 
@@ -116,4 +116,4 @@ class TestLlamaStackModels:
         nonexistent_model_id = "nonexistent-provider/nonexistent-model"
 
         with pytest.raises(NotFoundError):
-            unprivileged_llama_stack_client.models.retrieve(model_id=nonexistent_model_id)
+            llama_stack_client.models.retrieve(model_id=nonexistent_model_id)
