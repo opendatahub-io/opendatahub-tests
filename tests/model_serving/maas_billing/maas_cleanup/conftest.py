@@ -11,7 +11,7 @@ from utilities.constants import DscComponents
 def maas_disabled_for_cleanup_test(
     dsc_resource: DataScienceCluster,
     maas_controller_enabled_latest: DataScienceCluster,
-) -> Generator[None, None, None]:
+) -> Generator[None]:
     """Patch DSC modelsAsService to Removed, then restore Managed on teardown.
 
     Depends on maas_controller_enabled_latest so MaaS is guaranteed to be running
@@ -19,9 +19,7 @@ def maas_disabled_for_cleanup_test(
     reproduces.
     """
     component_patch = {
-        DscComponents.KSERVE: {
-            "modelsAsService": {"managementState": DscComponents.ManagementState.REMOVED}
-        }
+        DscComponents.KSERVE: {"modelsAsService": {"managementState": DscComponents.ManagementState.REMOVED}}
     }
     with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
         dsc_resource.wait_for_condition(condition="Ready", status="True", timeout=600)
