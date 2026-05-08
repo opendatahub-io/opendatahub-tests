@@ -134,7 +134,6 @@ def minted_token(
     maas_controller_enabled_latest: None,
     maas_gateway_api: None,
     maas_request_ratelimit_policy: None,
-    maas_token_ratelimit_policy: None,
     maas_api_gateway_reachable: None,
 ) -> str:
     """Mint a MaaS token once per test class and reuse it."""
@@ -641,7 +640,6 @@ def maas_inference_service_tinyllama(
     maas_model_service_account: ServiceAccount,
     maas_gateway_api: None,
     maas_request_ratelimit_policy: None,
-    maas_token_ratelimit_policy: None,
 ) -> Generator[LLMInferenceService]:
     """
     TinyLlama S3-backed LLMInferenceService wired through MaaS for tests.
@@ -723,7 +721,6 @@ def maas_controller_enabled_latest(
     dsc_resource: DataScienceCluster,
     maas_gateway_api: None,
     maas_request_ratelimit_policy: None,
-    maas_token_ratelimit_policy: None,
 ) -> Generator[DataScienceCluster]:
     """
     Ensure MaaS (KServe modelsAsService) is MANAGED for the session.
