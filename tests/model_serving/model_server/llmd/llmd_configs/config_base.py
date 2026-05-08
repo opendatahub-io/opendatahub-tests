@@ -7,8 +7,7 @@ from ocp_resources.cluster_service_version import ClusterServiceVersion
 
 from tests.model_serving.model_server.llmd.constants import AMD_ROCM_TEMPLATE, LLMD_TESTS_SUPPORTED_ACCELERATORS
 from tests.model_serving.model_server.llmd.utils import detect_accelerators
-from utilities.constants import Labels
-from utilities.llmd_constants import ContainerImages
+from utilities.constants import ContainerImages, Labels
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -127,7 +126,7 @@ class CpuConfig(LLMISvcConfig):
 
     enable_auth = False
     wait_timeout = 420
-    container_image = ContainerImages.VLLM_CPU
+    container_image = ContainerImages.VLLM.CPU
 
     @classmethod
     def container_env(cls):
