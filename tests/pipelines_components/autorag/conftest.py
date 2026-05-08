@@ -239,15 +239,11 @@ def _get_postgres_template(secret_name: str, app_label: str) -> dict[str, Any]:
                         {"name": "POSTGRESQL_DATABASE", "value": "ps_db"},
                         {
                             "name": "POSTGRESQL_USER",
-                            "valueFrom": {
-                                "secretKeyRef": {"name": secret_name, "key": "postgres-user"}
-                            },
+                            "valueFrom": {"secretKeyRef": {"name": secret_name, "key": "postgres-user"}},
                         },
                         {
                             "name": "POSTGRESQL_PASSWORD",
-                            "valueFrom": {
-                                "secretKeyRef": {"name": secret_name, "key": "postgres-password"}
-                            },
+                            "valueFrom": {"secretKeyRef": {"name": secret_name, "key": "postgres-password"}},
                         },
                     ],
                     "volumeMounts": [{"name": "postgresdata", "mountPath": "/var/lib/pgsql/data"}],
@@ -386,9 +382,7 @@ def autorag_llama_stack_deployment(
     deployment.timeout_seconds = 240
     deployment.wait(timeout=240)
     deployment.wait_for_replicas()
-    wait_for_unique_llama_stack_pod(
-        client=admin_client, namespace=autorag_llama_stack_distribution.namespace
-    )
+    wait_for_unique_llama_stack_pod(client=admin_client, namespace=autorag_llama_stack_distribution.namespace)
     return deployment
 
 
