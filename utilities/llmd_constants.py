@@ -1,15 +1,6 @@
 """LLMD-specific constants that extend the shared constants."""
 
-from utilities.constants import (
-    ContainerImages as SharedContainerImages,
-)
-from utilities.constants import (
-    Labels,
-    ModelName,
-)
-from utilities.constants import (
-    ModelStorage as SharedModelStorage,
-)
+from utilities.constants import Labels
 
 
 class LLMDGateway:
@@ -29,31 +20,3 @@ class LLMEndpoint:
     DEFAULT_MAX_TOKENS: int = 50
     DEFAULT_TEMPERATURE: float = 0.0
     DEFAULT_TIMEOUT: int = 60
-
-
-class ModelStorage:
-    """LLMD-specific model storage aliases for convenience."""
-
-    TINYLLAMA_OCI: str = SharedModelStorage.OCI.TINYLLAMA
-    TINYLLAMA_S3: str = SharedModelStorage.S3.TINYLLAMA
-    S3_QWEN: str = SharedModelStorage.S3.QWEN_7B_INSTRUCT
-    HF_TINYLLAMA: str = SharedModelStorage.HuggingFace.TINYLLAMA
-    HF_OPT125M: str = SharedModelStorage.HuggingFace.OPT125M
-    HF_QWEN_7B_INSTRUCT: str = SharedModelStorage.HuggingFace.QWEN_7B_INSTRUCT
-
-
-class ContainerImages:
-    """LLMD-specific container image aliases."""
-
-    VLLM_CPU: str = SharedContainerImages.VLLM.CPU
-
-
-class ModelNames:
-    """LLMD-specific model name aliases."""
-
-    QWEN: str = ModelName.QWEN
-    TINYLLAMA: str = ModelName.TINYLLAMA
-
-
-class LLMDDefaults:
-    REPLICAS: int = 1

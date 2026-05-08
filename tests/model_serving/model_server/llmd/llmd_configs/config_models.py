@@ -1,6 +1,6 @@
 """Model+storage configurations — bind a model to a storage backend."""
 
-from utilities.llmd_constants import ModelNames, ModelStorage
+from utilities.constants import ModelName, ModelStorage
 
 from .config_base import CpuConfig, GpuConfig
 
@@ -10,7 +10,7 @@ class TinyLlamaOciConfig(CpuConfig):
 
     enable_auth = False
     name = "llmisvc-tinyllama-oci-cpu"
-    storage_uri = ModelStorage.TINYLLAMA_OCI
+    storage_uri = ModelStorage.OCI.TINYLLAMA
 
 
 class TinyLlamaS3Config(CpuConfig):
@@ -18,7 +18,7 @@ class TinyLlamaS3Config(CpuConfig):
 
     enable_auth = False
     name = "llmisvc-tinyllama-s3-cpu"
-    storage_uri = ModelStorage.TINYLLAMA_S3
+    storage_uri = ModelStorage.S3.TINYLLAMA
 
 
 class TinyLlamaHfConfig(CpuConfig):
@@ -26,8 +26,17 @@ class TinyLlamaHfConfig(CpuConfig):
 
     enable_auth = False
     name = "llmisvc-tinyllama-hf-cpu"
-    storage_uri = ModelStorage.HF_TINYLLAMA
+    storage_uri = ModelStorage.HuggingFace.TINYLLAMA
     wait_timeout = 420
+
+
+class TinyLlamaOciGpuConfig(GpuConfig):
+    """TinyLlama via OCI container registry, GPU inference."""
+
+    enable_auth = False
+    name = "llmisvc-tinyllama-oci-gpu"
+    storage_uri = ModelStorage.OCI.TINYLLAMA
+    model_name = ModelName.TINYLLAMA
 
 
 class TinyLlamaS3GpuConfig(GpuConfig):
@@ -35,8 +44,8 @@ class TinyLlamaS3GpuConfig(GpuConfig):
 
     enable_auth = False
     name = "llmisvc-tinyllama-s3-gpu"
-    storage_uri = ModelStorage.TINYLLAMA_S3
-    model_name = ModelNames.TINYLLAMA
+    storage_uri = ModelStorage.S3.TINYLLAMA
+    model_name = ModelName.TINYLLAMA
 
 
 class TinyLlamaHfGpuConfig(GpuConfig):
@@ -44,5 +53,5 @@ class TinyLlamaHfGpuConfig(GpuConfig):
 
     enable_auth = False
     name = "llmisvc-tinyllama-hf-gpu"
-    storage_uri = ModelStorage.HF_TINYLLAMA
-    model_name = ModelNames.TINYLLAMA
+    storage_uri = ModelStorage.HuggingFace.TINYLLAMA
+    model_name = ModelName.TINYLLAMA
