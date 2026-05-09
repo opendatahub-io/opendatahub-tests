@@ -2,7 +2,7 @@ import math
 import os
 import tempfile
 import time
-from collections.abc import Callable, Generator
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -18,17 +18,7 @@ from ocp_resources.pod import Pod
 from timeout_sampler import retry
 
 from tests.llama_stack.constants import (
-    HTTPS_PROXY,
-    LLS_CORE_EMBEDDING_MODEL,
-    LLS_CORE_EMBEDDING_PROVIDER_MODEL_ID,
-    LLS_CORE_INFERENCE_MODEL,
     LLS_CORE_POD_FILTER,
-    LLS_CORE_VLLM_EMBEDDING_MAX_TOKENS,
-    LLS_CORE_VLLM_EMBEDDING_TLS_VERIFY,
-    LLS_CORE_VLLM_EMBEDDING_URL,
-    LLS_CORE_VLLM_MAX_TOKENS,
-    LLS_CORE_VLLM_TLS_VERIFY,
-    LLS_CORE_VLLM_URL,
 )
 from tests.llama_stack.datasets import Dataset
 from utilities.exceptions import UnexpectedResourceCountError
