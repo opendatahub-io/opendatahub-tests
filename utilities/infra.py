@@ -74,7 +74,7 @@ def create_ns(
     name: str | None = None,
     unprivileged_client: DynamicClient | None = None,
     teardown: bool = True,
-    delete_timeout: int = Timeout.TIMEOUT_6MIN,
+    delete_timeout: int = 360,
     labels: dict[str, str] | None = None,
     ns_annotations: dict[str, str] | None = None,
     model_mesh_enabled: bool = False,

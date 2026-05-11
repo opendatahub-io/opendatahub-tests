@@ -141,6 +141,7 @@ class AcceleratorType:
 class ApiGroups:
     HAPROXY_ROUTER_OPENSHIFT_IO: str = "haproxy.router.openshift.io"
     OPENDATAHUB_IO: str = "opendatahub.io"
+    KUEUE_X_K8S_IO: str = "kueue.x-k8s.io"
     KSERVE: str = "serving.kserve.io"
     KUADRANT_IO: str = "kuadrant.io"
     MAAS_IO: str = "maas.opendatahub.io"
