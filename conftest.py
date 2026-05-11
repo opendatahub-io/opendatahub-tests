@@ -341,9 +341,10 @@ def _set_api_versions_for_rhoai_25_compat() -> None:
         api_resources = client.resources.get(
             api_version="datasciencecluster.opendatahub.io/v2", kind="DataScienceCluster"
         )
-        api_resources.get()  # Test if we can list resources
+        DataScienceCluster.api_version = "datasciencecluster.opendatahub.io/v2"
+        DSCInitialization.api_version = "dscinitialization.opendatahub.io/v2"
         LOGGER.info("Detected RHOAI 3.x+ (using v2 APIs)")
-    except NotFoundError, MissingResourceError:
+    except (NotFoundError, MissingResourceError):
         # v2 API not available - we're on RHOAI 2.25
         LOGGER.info("Detected RHOAI 2.25 (using v1 APIs)")
         DataScienceCluster.api_version = "datasciencecluster.opendatahub.io/v1"
