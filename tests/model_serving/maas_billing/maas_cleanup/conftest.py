@@ -13,16 +13,7 @@ def maas_disabled_for_cleanup_test(
     dsc_resource: DataScienceCluster,
     maas_controller_enabled_latest: DataScienceCluster,
 ) -> Generator[None]:
-<<<<<<< HEAD
-    """Patch DSC modelsAsService to Removed, then restore Managed on teardown.
-
-    Depends on maas_controller_enabled_latest so MaaS is guaranteed to be running
-    before the disable is triggered, matching the real admin workflow that the bug
-    reproduces.
-    """
-=======
     """Patch DSC modelsAsService to Removed, then restore Managed on teardown."""
->>>>>>> a5538c4 (Address review commnets)
     component_patch = {
         DscComponents.KSERVE: {"modelsAsService": {"managementState": DscComponents.ManagementState.REMOVED}}
     }
