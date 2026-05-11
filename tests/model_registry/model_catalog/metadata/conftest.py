@@ -29,6 +29,8 @@ def expected_labels_by_asset_type(
     return [label for label in all_labels if label.get("assetType") == asset_type]
 
 
+# TODO: RHOAIENG-62057 - Remove this fixture and use randomly_picked_model_from_catalog_api_by_source
+# once the bug is fixed.
 @pytest.fixture(scope="class")
 def model_with_benchmark_metadata(
     model_catalog_pod: Pod,
