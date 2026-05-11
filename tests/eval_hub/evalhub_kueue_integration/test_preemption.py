@@ -79,7 +79,9 @@ class TestPreemptionEnabled:
             tenant=eval_test_namespace.name,
         )
         low_id = body_low["resource"]["id"]
-        wait_for_job_running_or_completed(base_url=evalhub_base_url, token=current_client_token, job_id=low_id, tenant=eval_test_namespace.name)
+        wait_for_job_running_or_completed(
+            base_url=evalhub_base_url, token=current_client_token, job_id=low_id, tenant=eval_test_namespace.name
+        )
 
         _, body_high = submit_eval_job(
             base_url=evalhub_base_url,
@@ -94,7 +96,9 @@ class TestPreemptionEnabled:
         high_id = body_high["resource"]["id"]
 
         high_result = wait_for_job_running_or_completed(
-            base_url=evalhub_base_url, token=current_client_token, job_id=high_id,
+            base_url=evalhub_base_url,
+            token=current_client_token,
+            job_id=high_id,
             tenant=eval_test_namespace.name,
         )
         assert high_result, "High priority job should be admitted after preempting low priority job"
@@ -113,7 +117,13 @@ class TestPreemptionEnabled:
             )
 
         for jid in (high_id, low_id):
-            delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=jid, hard_delete=True, tenant=eval_test_namespace.name)
+            delete_eval_job(
+                base_url=evalhub_base_url,
+                token=current_client_token,
+                job_id=jid,
+                hard_delete=True,
+                tenant=eval_test_namespace.name,
+            )
 
 
 class TestPreemptedJobRestart:
@@ -167,7 +177,9 @@ class TestPreemptedJobRestart:
             tenant=eval_test_namespace.name,
         )
         low_id = body_low["resource"]["id"]
-        wait_for_job_running_or_completed(base_url=evalhub_base_url, token=current_client_token, job_id=low_id, tenant=eval_test_namespace.name)
+        wait_for_job_running_or_completed(
+            base_url=evalhub_base_url, token=current_client_token, job_id=low_id, tenant=eval_test_namespace.name
+        )
 
         _, body_high = submit_eval_job(
             base_url=evalhub_base_url,
@@ -181,17 +193,33 @@ class TestPreemptedJobRestart:
         )
         high_id = body_high["resource"]["id"]
 
-        wait_for_job_running_or_completed(base_url=evalhub_base_url, token=current_client_token, job_id=high_id, tenant=eval_test_namespace.name)
+        wait_for_job_running_or_completed(
+            base_url=evalhub_base_url, token=current_client_token, job_id=high_id, tenant=eval_test_namespace.name
+        )
 
-        delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=high_id, hard_delete=True, tenant=eval_test_namespace.name)
+        delete_eval_job(
+            base_url=evalhub_base_url,
+            token=current_client_token,
+            job_id=high_id,
+            hard_delete=True,
+            tenant=eval_test_namespace.name,
+        )
 
         low_result = wait_for_job_running_or_completed(
-            base_url=evalhub_base_url, token=current_client_token, job_id=low_id,
+            base_url=evalhub_base_url,
+            token=current_client_token,
+            job_id=low_id,
             tenant=eval_test_namespace.name,
         )
         assert low_result, "Preempted job should be re-admitted and running after high-priority job completes"
 
-        delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=low_id, hard_delete=True, tenant=eval_test_namespace.name)
+        delete_eval_job(
+            base_url=evalhub_base_url,
+            token=current_client_token,
+            job_id=low_id,
+            hard_delete=True,
+            tenant=eval_test_namespace.name,
+        )
 
 
 class TestNoPreemption:
@@ -245,7 +273,9 @@ class TestNoPreemption:
             tenant=eval_test_namespace.name,
         )
         low_id = body_low["resource"]["id"]
-        wait_for_job_running_or_completed(base_url=evalhub_base_url, token=current_client_token, job_id=low_id, tenant=eval_test_namespace.name)
+        wait_for_job_running_or_completed(
+            base_url=evalhub_base_url, token=current_client_token, job_id=low_id, tenant=eval_test_namespace.name
+        )
 
         _, body_high = submit_eval_job(
             base_url=evalhub_base_url,
@@ -273,4 +303,10 @@ class TestNoPreemption:
             )
 
         for jid in (high_id, low_id):
-            delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=jid, hard_delete=True, tenant=eval_test_namespace.name)
+            delete_eval_job(
+                base_url=evalhub_base_url,
+                token=current_client_token,
+                job_id=jid,
+                hard_delete=True,
+                tenant=eval_test_namespace.name,
+            )

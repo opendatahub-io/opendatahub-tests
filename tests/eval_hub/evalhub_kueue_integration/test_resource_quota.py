@@ -10,8 +10,6 @@ from tests.eval_hub.evalhub_kueue_integration.constants import (
     KUEUE_QUEUE_NAME_LABEL,
     LOCAL_QUEUE_NAME,
     RESOURCE_FLAVOR_NAME,
-    SMALL_CPU_QUOTA,
-    SMALL_MEMORY_QUOTA,
     EvalJobState,
 )
 from tests.eval_hub.evalhub_kueue_integration.utils import (
@@ -78,7 +76,7 @@ class TestQuotaWithinLimits:
                 model_url=evalhub_model_url,
                 model_name=evalhub_model_name,
                 queue_name=LOCAL_QUEUE_NAME,
-            tenant=eval_test_namespace.name,
+                tenant=eval_test_namespace.name,
             )
             assert status_code == 202, f"Expected 202, got {status_code}: {body}"
             assert "resource" in body, f"Response missing 'resource' key: {body}"
@@ -86,12 +84,18 @@ class TestQuotaWithinLimits:
 
         for job_id in job_ids:
             result = wait_for_job_running_or_completed(
-                base_url=evalhub_base_url, token=current_client_token, job_id=job_id
-            , tenant=eval_test_namespace.name)
+                base_url=evalhub_base_url, token=current_client_token, job_id=job_id, tenant=eval_test_namespace.name
+            )
             assert result, f"Job {job_id} was not admitted within quota"
 
         for job_id in job_ids:
-            delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, hard_delete=True, tenant=eval_test_namespace.name)
+            delete_eval_job(
+                base_url=evalhub_base_url,
+                token=current_client_token,
+                job_id=job_id,
+                hard_delete=True,
+                tenant=eval_test_namespace.name,
+            )
 
 
 class TestQuotaExceeded:
@@ -146,7 +150,9 @@ class TestQuotaExceeded:
 
         # Job should be pending (quota exceeded) or may fail if execution issues occur
         # Either way, Kueue should have processed it
-        _, status_body = get_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, tenant=eval_test_namespace.name)
+        _, status_body = get_eval_job(
+            base_url=evalhub_base_url, token=current_client_token, job_id=job_id, tenant=eval_test_namespace.name
+        )
         job_state = status_body.get("status", {}).get("state", "")
         assert job_state in (
             EvalJobState.PENDING,
@@ -163,4 +169,10 @@ class TestQuotaExceeded:
         for job in k8s_jobs:
             assert job.instance.spec.get("suspend") is True, "Job should remain suspended when quota exceeded"
 
-        delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, hard_delete=True, tenant=eval_test_namespace.name)
+        delete_eval_job(
+            base_url=evalhub_base_url,
+            token=current_client_token,
+            job_id=job_id,
+            hard_delete=True,
+            tenant=eval_test_namespace.name,
+        )

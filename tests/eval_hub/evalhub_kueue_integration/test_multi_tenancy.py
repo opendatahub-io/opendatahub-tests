@@ -140,5 +140,17 @@ class TestMultiTenancy:
             assert result_a, "Team A job should be admitted (independent quota)"
             assert result_b, "Team B job should be admitted (independent quota)"
 
-            delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_a_id, hard_delete=True, tenant="team-a")
-            delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_b_id, hard_delete=True, tenant="team-b")
+            delete_eval_job(
+                base_url=evalhub_base_url,
+                token=current_client_token,
+                job_id=job_a_id,
+                hard_delete=True,
+                tenant="team-a",
+            )
+            delete_eval_job(
+                base_url=evalhub_base_url,
+                token=current_client_token,
+                job_id=job_b_id,
+                hard_delete=True,
+                tenant="team-b",
+            )

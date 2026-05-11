@@ -79,12 +79,20 @@ class TestNegativeScenarios:
             assert "error" in str(body).lower() or "message" in body
         elif status_code == 202:
             job_id = body["resource"]["id"]
-            _, status_body = get_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, tenant=eval_test_namespace.name)
+            _, status_body = get_eval_job(
+                base_url=evalhub_base_url, token=current_client_token, job_id=job_id, tenant=eval_test_namespace.name
+            )
             state = status_body.get("status", {}).get("state")
             assert state in (EvalJobState.PENDING, EvalJobState.FAILED), (
                 f"Job with invalid queue should be pending or failed, got {state}"
             )
-            delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, hard_delete=True, tenant=eval_test_namespace.name)
+            delete_eval_job(
+                base_url=evalhub_base_url,
+                token=current_client_token,
+                job_id=job_id,
+                hard_delete=True,
+                tenant=eval_test_namespace.name,
+            )
         else:
             pytest.fail(f"Unexpected status code {status_code} for non-existent queue: {body}")
 
@@ -127,7 +135,13 @@ class TestNegativeScenarios:
             "No Workload should be created for job without queue spec"
         )
 
-        delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, hard_delete=True, tenant=eval_test_namespace.name)
+        delete_eval_job(
+            base_url=evalhub_base_url,
+            token=current_client_token,
+            job_id=job_id,
+            hard_delete=True,
+            tenant=eval_test_namespace.name,
+        )
 
     @pytest.mark.tier1
     def test_unauthorized_returns_401(
@@ -194,6 +208,8 @@ class TestNegativeScenarios:
         Then the API returns 404 Not Found.
         """
         fake_job_id = "00000000-0000-0000-0000-000000000000"
-        status_code, body = get_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=fake_job_id, tenant=eval_test_namespace.name)
+        status_code, body = get_eval_job(
+            base_url=evalhub_base_url, token=current_client_token, job_id=fake_job_id, tenant=eval_test_namespace.name
+        )
 
         assert status_code == 404, f"Expected 404, got {status_code}: {body}"
