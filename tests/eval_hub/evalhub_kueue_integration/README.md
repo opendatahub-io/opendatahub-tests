@@ -6,7 +6,6 @@ Integration of Kueue with EvalHub to enable production-ready LLM evaluation job 
 
 - **Strategy**: [RHOAIENG-59092](https://issues.redhat.com/browse/RHOAIENG-59092)
 - **Test Plan**: [TestPlan.md](TestPlan.md)
-- [Feature Documentation](TestPlan.md): EvalHub Kueue Integration Guide
 
 ## Overview
 
@@ -41,7 +40,7 @@ Automated tests for this feature are implemented in the component repository fol
 # 1. Verify environment setup
 uv run python ../scripts/verify_evalhub_setup.py
 
-# 2. Clean up leftover resources (IMPORTANT!)
+# 2. (Optional) cleanup_kueue_resources.sh — does nothing unless KUEUE_EVALHUB_FORCE_CLEANUP=1
 ../scripts/cleanup_kueue_resources.sh
 
 # 3. Run tests
@@ -50,7 +49,12 @@ uv run python ../scripts/verify_evalhub_setup.py
 
 ### Manual Execution
 
+**Authentication:** These tests do **not** read `EVALHUB_API_TOKEN`, `EVALHUB_AUTH_HEADER`, or similar. The shared [`current_client_token`](../../../tests/conftest.py) fixture supplies an OpenShift OAuth token from your kube context (`get_openshift_token`); EvalHub HTTP helpers send `Authorization: Bearer <token>` and, for job endpoints, `X-Tenant` (see [`utils.py`](utils.py)). Use a user who can reach the EvalHub route and APIs—otherwise you will see **401** (unauthenticated) or **403** (forbidden). Cluster login and kubeconfig are covered in [Getting started — Tests cluster](../../../docs/GETTING_STARTED.md#tests-cluster).
+
 ```bash
+export KUBECONFIG="/path/to/kubeconfig"   # optional; defaults to ~/.kube/config
+# oc login …  # ensure context matches the cluster where EvalHub runs (see Getting started)
+
 export OC_BINARY_PATH="/path/to/oc"
 export EVALHUB_BASE_URL="https://evalhub-url"
 export EVALHUB_MODEL_URL="http://model-url"
@@ -64,7 +68,7 @@ uv run pytest tests/eval_hub/evalhub_kueue_integration/ -v -m kueue
 Located in `tests/eval_hub/scripts/`:
 
 - **verify_evalhub_setup.py**: Verifies EvalHub API connectivity and Kueue installation
-- **cleanup_kueue_resources.sh**: Cleans up leftover Kueue resources from previous test runs
+- **cleanup_kueue_resources.sh**: Opt-in only (`KUEUE_EVALHUB_FORCE_CLEANUP=1`); deletes fixed legacy evalhub cluster-scoped names if you need manual cleanup after an abnormal run
 - **run_evalhub_tests.sh**: Runs the full test suite with proper environment configuration
 
 See [scripts/README.md](../scripts/README.md) for detailed documentation.

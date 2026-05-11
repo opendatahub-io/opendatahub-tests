@@ -33,11 +33,15 @@ last_updated: '2026-05-04'
 ```bash
 set -euo pipefail
 
-# No Authorization header
-curl -s -o /dev/null -w "%{http_code}" -X POST \
+# Step 2: POST without Authorization header — must return 401
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
   "https://${EVALHUB_ROUTE}/api/v1/evaluations/jobs" \
   -H "Content-Type: application/json" \
-  -d '{"name": "tc-neg-003-unauth"}'
+  -d '{"name": "tc-neg-003-unauth"}')
+if [ "$HTTP_CODE" != "401" ]; then
+  echo "Expected HTTP 401 for unauthenticated POST, got: $HTTP_CODE" >&2
+  exit 1
+fi
 
 # Invalid token
 invalid_response=$(curl -s -w '\n%{http_code}' -X GET \

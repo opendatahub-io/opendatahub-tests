@@ -34,18 +34,22 @@ EvalHub Setup Verification
 
 ### cleanup_kueue_resources.sh
 
-Cleans up leftover Kueue resources from previous test runs. **Run this before executing tests** to ensure a clean state.
+**Opt-in only.** By default this script **does not delete any cluster resources** (safe on shared clusters). Normal runs rely on fixture/context teardown.
+
+To delete the legacy hard-coded evalhub test object names after you deliberately choose to:
 
 ```bash
+export KUEUE_EVALHUB_FORCE_CLEANUP=1
 ./tests/eval_hub/scripts/cleanup_kueue_resources.sh
 ```
 
-**What it does:**
+**When `KUEUE_EVALHUB_FORCE_CLEANUP=1`:**
 
-- Deletes all evalhub test namespaces
 - Removes evalhub ClusterQueues (evalhub-test-cq, team-a-cq, team-b-cq)
 - Removes evalhub ResourceFlavors (evalhub-test-flavor, evalhub-multi-test-flavor)
 - Removes WorkloadPriorityClass (evalhub-test-high-priority)
+
+Does **not** delete namespaces; test fixtures manage namespace lifecycle.
 
 ### run_evalhub_tests.sh
 
@@ -74,8 +78,7 @@ Runs the complete EvalHub Kueue integration test suite with proper environment c
 # 1. Verify environment setup
 uv run python tests/eval_hub/scripts/verify_evalhub_setup.py
 
-# 2. Clean up leftover resources
-./tests/eval_hub/scripts/cleanup_kueue_resources.sh
+# 2. (Optional) Force-delete legacy evalhub names after a crash — see cleanup_kueue_resources.sh
 
 # 3. Run tests
 ./tests/eval_hub/scripts/run_evalhub_tests.sh

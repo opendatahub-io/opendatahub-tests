@@ -33,12 +33,12 @@ log_test() {
 
 log_pass() {
     echo -e "${GREEN}✅ PASS${NC}"
-    ((TESTS_PASSED++))
+    ((++TESTS_PASSED))
 }
 
 log_fail() {
     echo -e "${RED}✗ FAIL${NC}"
-    ((TESTS_FAILED++))
+    ((++TESTS_FAILED))
 }
 
 # Get fresh token
@@ -181,29 +181,41 @@ run_test() {
         i=$((i + 1))
     done
     local -a exec_cmd=("${curl_cmd_array[@]}" -w '\n%{http_code}' -D "$temp_headers")
+    local curl_exit=0
+    set +e
     "${exec_cmd[@]}" > "$temp_response" 2>&1
+    curl_exit=$?
+    set -e
 
-    # Extract status code (last line)
     local actual_status
-    actual_status="$(tail -1 "$temp_response")" || {
-        echo "ERROR: Failed to extract status code for TEST $test_num" >&2
-        rm -f "$temp_response" "$temp_headers"
-        exit 1
-    }
-    # Extract response body (everything except last line)
-    local total_lines
-    total_lines="$(wc -l < "$temp_response" | tr -d ' ')" || {
-        echo "ERROR: Failed to read response line count for TEST $test_num" >&2
-        rm -f "$temp_response" "$temp_headers"
-        exit 1
-    }
-    local body_lines=$((total_lines - 1))
     local response_body
-    response_body="$(head -n "$body_lines" "$temp_response")" || {
-        echo "ERROR: Failed to extract response body for TEST $test_num" >&2
-        rm -f "$temp_response" "$temp_headers"
-        exit 1
-    }
+    local total_lines
+    local body_lines
+
+    if [ "$curl_exit" -ne 0 ]; then
+        # Sentinel: not a real HTTP status; ensures comparison fails and output records transport failure
+        actual_status="000"
+        response_body="$(cat "$temp_response" 2>/dev/null || true)"
+    else
+        # Extract status code (last line)
+        actual_status="$(tail -1 "$temp_response")" || {
+            echo "ERROR: Failed to extract status code for TEST $test_num" >&2
+            rm -f "$temp_response" "$temp_headers"
+            exit 1
+        }
+        # Extract response body (everything except last line)
+        total_lines="$(wc -l < "$temp_response" | tr -d ' ')" || {
+            echo "ERROR: Failed to read response line count for TEST $test_num" >&2
+            rm -f "$temp_response" "$temp_headers"
+            exit 1
+        }
+        body_lines=$((total_lines - 1))
+        response_body="$(head -n "$body_lines" "$temp_response")" || {
+            echo "ERROR: Failed to extract response body for TEST $test_num" >&2
+            rm -f "$temp_response" "$temp_headers"
+            exit 1
+        }
+    fi
 
     # Determine pass/fail
     local result
@@ -230,6 +242,9 @@ $(printf '%q ' "${redacted_request_cmd[@]}")
 **Response Status:** $actual_status
 
 EOF
+    if [ "$curl_exit" -ne 0 ]; then
+        echo "**Transport:** curl exited with code ${curl_exit} (status ${actual_status} is a sentinel, not HTTP)." >> "$OUTPUT_FILE"
+    fi
 
     if [ "$actual_status" = "$expected_status" ]; then
         echo "**Response Body (first 500 chars):**" >> "$OUTPUT_FILE"
