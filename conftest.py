@@ -323,6 +323,33 @@ def _add_default_tier2_marker(items: list[Item]) -> None:
             item.add_marker(marker=pytest.mark.tier2)
 
 
+def _set_api_versions_for_rhoai_25_compat() -> None:
+    """
+    Detect RHOAI version and set DataScienceCluster/DSCInitialization API versions for compatibility.
+    RHOAI 2.25 uses v1 APIs (datasciencecluster.opendatahub.io/v1, dscinitialization.opendatahub.io/v1)
+    RHOAI 3.x+ uses v2 APIs (datasciencecluster.opendatahub.io/v2, dscinitialization.opendatahub.io/v2)
+    """
+    from kubernetes.dynamic.exceptions import NotFoundError
+    from ocp_resources.data_science_cluster import DataScienceCluster
+    from ocp_resources.dsc_initialization import DSCInitialization
+    from ocp_resources.exceptions import MissingResourceError
+
+    client = get_client()
+
+    # Check if v2 API is available (RHOAI 3.x+)
+    try:
+        api_resources = client.resources.get(
+            api_version="datasciencecluster.opendatahub.io/v2", kind="DataScienceCluster"
+        )
+        api_resources.get()  # Test if we can list resources
+        LOGGER.info("Detected RHOAI 3.x+ (using v2 APIs)")
+    except NotFoundError, MissingResourceError:
+        # v2 API not available - we're on RHOAI 2.25
+        LOGGER.info("Detected RHOAI 2.25 (using v1 APIs)")
+        DataScienceCluster.api_version = "datasciencecluster.opendatahub.io/v1"
+        DSCInitialization.api_version = "dscinitialization.opendatahub.io/v1"
+
+
 def pytest_sessionstart(session: Session) -> None:
     log_file = session.config.getoption(name="log_file") or "pytest-tests.log"
     tests_log_file = os.path.join(get_base_dir(), log_file)
@@ -378,6 +405,8 @@ def pytest_sessionstart(session: Session) -> None:
     if config.getoption("--collect-only") or config.getoption("--setup-plan"):
         LOGGER.info("Skipping global config update for collect-only or setup-plan")
         return
+    # Detect RHOAI version and set DSC/DSCI API versions (v1 for 2.25, v2 for 3.x+)
+    _set_api_versions_for_rhoai_25_compat()
     updated_global_config(admin_client=get_client(), config=config)
 
 
