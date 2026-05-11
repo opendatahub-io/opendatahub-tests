@@ -78,11 +78,19 @@ class TestDefaultPriority:
         )
         job_id = body["resource"]["id"]
 
-        _, status_body = get_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, tenant=eval_test_namespace.name)
+        _, status_body = get_eval_job(
+            base_url=evalhub_base_url, token=current_client_token, job_id=job_id, tenant=eval_test_namespace.name
+        )
         priority = status_body.get("priority", 0)
         assert priority == 0, f"Expected default priority 0, got {priority}"
 
-        delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, hard_delete=True, tenant=eval_test_namespace.name)
+        delete_eval_job(
+            base_url=evalhub_base_url,
+            token=current_client_token,
+            job_id=job_id,
+            hard_delete=True,
+            tenant=eval_test_namespace.name,
+        )
 
 
 class TestPriorityOrdering:
@@ -136,7 +144,9 @@ class TestPriorityOrdering:
             tenant=eval_test_namespace.name,
         )
         blocker_id = body_blocker["resource"]["id"]
-        wait_for_job_running_or_completed(base_url=evalhub_base_url, token=current_client_token, job_id=blocker_id, tenant=eval_test_namespace.name)
+        wait_for_job_running_or_completed(
+            base_url=evalhub_base_url, token=current_client_token, job_id=blocker_id, tenant=eval_test_namespace.name
+        )
 
         _, body_low = submit_eval_job(
             base_url=evalhub_base_url,
@@ -171,12 +181,16 @@ class TestPriorityOrdering:
         )
 
         high_result = wait_for_job_running_or_completed(
-            base_url=evalhub_base_url, token=current_client_token, job_id=high_id,
+            base_url=evalhub_base_url,
+            token=current_client_token,
+            job_id=high_id,
             tenant=eval_test_namespace.name,
         )
         assert high_result, "High priority job should be admitted first"
 
-        _, low_status_body = get_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=low_id, tenant=eval_test_namespace.name)
+        _, low_status_body = get_eval_job(
+            base_url=evalhub_base_url, token=current_client_token, job_id=low_id, tenant=eval_test_namespace.name
+        )
         low_state = low_status_body.get("status", {}).get("state")
         assert low_state == EvalJobState.PENDING, (
             f"Low priority job should stay {EvalJobState.PENDING} while high priority "
@@ -184,4 +198,10 @@ class TestPriorityOrdering:
         )
 
         for jid in (high_id, low_id, blocker_id):
-            delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=jid, hard_delete=True, tenant=eval_test_namespace.name)
+            delete_eval_job(
+                base_url=evalhub_base_url,
+                token=current_client_token,
+                job_id=jid,
+                hard_delete=True,
+                tenant=eval_test_namespace.name,
+            )

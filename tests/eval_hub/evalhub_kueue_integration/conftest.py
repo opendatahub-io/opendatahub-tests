@@ -98,7 +98,9 @@ def _provision_evalhub_tenant_resources(
                     subject["namespace"] = tenant_namespace
 
             # Create with the body
-            tenant_rb.res = tenant_rb.client.resources.get(api_version="rbac.authorization.k8s.io/v1", kind="RoleBinding")
+            tenant_rb.res = tenant_rb.client.resources.get(
+                api_version="rbac.authorization.k8s.io/v1", kind="RoleBinding"
+            )
             tenant_rb.res.create(
                 body={
                     "apiVersion": "rbac.authorization.k8s.io/v1",
@@ -127,7 +129,9 @@ def _provision_evalhub_tenant_resources(
                             namespace=tenant_namespace,
                             teardown=False,
                         )
-                        tenant_role.res = tenant_role.client.resources.get(api_version="rbac.authorization.k8s.io/v1", kind="Role")
+                        tenant_role.res = tenant_role.client.resources.get(
+                            api_version="rbac.authorization.k8s.io/v1", kind="Role"
+                        )
                         tenant_role.res.create(
                             body={
                                 "apiVersion": "rbac.authorization.k8s.io/v1",
@@ -148,7 +152,9 @@ def _provision_evalhub_tenant_resources(
     try:
         source_cm = ConfigMap(client=admin_client, name="evalhub-service-ca", namespace=evalhub_namespace)
         if not source_cm.exists:
-            LOGGER.warning("ConfigMap not found, skipping", cm_name="evalhub-service-ca", evalhub_namespace=evalhub_namespace)
+            LOGGER.warning(
+                "ConfigMap not found, skipping", cm_name="evalhub-service-ca", evalhub_namespace=evalhub_namespace
+            )
             return
 
         # Get the source ConfigMap data

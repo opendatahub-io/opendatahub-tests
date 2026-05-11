@@ -83,7 +83,13 @@ class TestApiIntegration:
         )
 
         job_id = body["resource"]["id"]
-        delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, hard_delete=True, tenant=eval_test_namespace.name)
+        delete_eval_job(
+            base_url=evalhub_base_url,
+            token=current_client_token,
+            job_id=job_id,
+            hard_delete=True,
+            tenant=eval_test_namespace.name,
+        )
 
     def test_get_job_status(
         self,
@@ -113,7 +119,9 @@ class TestApiIntegration:
         )
         job_id = body["resource"]["id"]
 
-        status_code, status_body = get_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, tenant=eval_test_namespace.name)
+        status_code, status_body = get_eval_job(
+            base_url=evalhub_base_url, token=current_client_token, job_id=job_id, tenant=eval_test_namespace.name
+        )
 
         assert status_code == 200, f"Expected 200, got {status_code}: {status_body}"
         assert "status" in status_body
@@ -124,7 +132,13 @@ class TestApiIntegration:
             EvalJobState.FAILED,
         ), f"Expected valid job state, got: {status_body['status']['state']}"
 
-        delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, hard_delete=True, tenant=eval_test_namespace.name)
+        delete_eval_job(
+            base_url=evalhub_base_url,
+            token=current_client_token,
+            job_id=job_id,
+            hard_delete=True,
+            tenant=eval_test_namespace.name,
+        )
 
     def test_list_jobs_with_filter(
         self,
@@ -157,12 +171,19 @@ class TestApiIntegration:
         status_code, list_body = list_eval_jobs(
             base_url=evalhub_base_url,
             token=current_client_token,
-            status=EvalJobState.PENDING, tenant=eval_test_namespace.name,
+            status=EvalJobState.PENDING,
+            tenant=eval_test_namespace.name,
         )
 
         assert status_code == 200, f"Expected 200, got {status_code}: {list_body}"
 
-        delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, hard_delete=True, tenant=eval_test_namespace.name)
+        delete_eval_job(
+            base_url=evalhub_base_url,
+            token=current_client_token,
+            job_id=job_id,
+            hard_delete=True,
+            tenant=eval_test_namespace.name,
+        )
 
     def test_cancel_job_soft_delete(
         self,
@@ -193,15 +214,27 @@ class TestApiIntegration:
         job_id = body["resource"]["id"]
 
         delete_status = delete_eval_job(
-            base_url=evalhub_base_url, token=current_client_token, job_id=job_id, hard_delete=False
-        , tenant=eval_test_namespace.name)
+            base_url=evalhub_base_url,
+            token=current_client_token,
+            job_id=job_id,
+            hard_delete=False,
+            tenant=eval_test_namespace.name,
+        )
         # Accept 204 (successful cancel) or 409 (already terminal, cannot cancel)
         assert delete_status in (204, 409), f"Expected 204 or 409, got {delete_status}"
 
-        get_status, _ = get_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, tenant=eval_test_namespace.name)
+        get_status, _ = get_eval_job(
+            base_url=evalhub_base_url, token=current_client_token, job_id=job_id, tenant=eval_test_namespace.name
+        )
         assert get_status == 200, f"Expected 200 after soft delete, got {get_status}"
 
-        delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, hard_delete=True, tenant=eval_test_namespace.name)
+        delete_eval_job(
+            base_url=evalhub_base_url,
+            token=current_client_token,
+            job_id=job_id,
+            hard_delete=True,
+            tenant=eval_test_namespace.name,
+        )
 
     def test_cancel_job_hard_delete(
         self,
@@ -232,9 +265,15 @@ class TestApiIntegration:
         job_id = body["resource"]["id"]
 
         delete_status = delete_eval_job(
-            base_url=evalhub_base_url, token=current_client_token, job_id=job_id, hard_delete=True
-        , tenant=eval_test_namespace.name)
+            base_url=evalhub_base_url,
+            token=current_client_token,
+            job_id=job_id,
+            hard_delete=True,
+            tenant=eval_test_namespace.name,
+        )
         assert delete_status == 204, f"Expected 204, got {delete_status}"
 
-        get_status, _ = get_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, tenant=eval_test_namespace.name)
+        get_status, _ = get_eval_job(
+            base_url=evalhub_base_url, token=current_client_token, job_id=job_id, tenant=eval_test_namespace.name
+        )
         assert get_status == 404, f"Expected 404 after hard delete, got {get_status}"
