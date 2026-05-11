@@ -17,16 +17,6 @@ from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 
-from tests.llama_stack.constants import (
-    LLAMA_STACK_DISTRIBUTION_SECRET_DATA,
-    LLS_CLIENT_VERIFY_SSL,
-    POSTGRES_IMAGE,
-)
-from tests.llama_stack.utils import (
-    create_llama_stack_distribution,
-    wait_for_llama_stack_client_ready,
-    wait_for_unique_llama_stack_pod,
-)
 from tests.pipelines_components.constants import (
     AUTORAG_DSPA_NAME,
     AUTORAG_DSPA_NAMESPACE,
@@ -50,6 +40,14 @@ from utilities.constants import Annotations, DscComponents, KServeDeploymentType
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.general import generate_random_name
 from utilities.inference_utils import create_isvc
+from utilities.llama_stack_utils import (
+    LLAMA_STACK_DISTRIBUTION_SECRET_DATA,
+    LLS_CLIENT_VERIFY_SSL,
+    POSTGRES_IMAGE,
+    create_llama_stack_distribution,
+    wait_for_llama_stack_client_ready,
+    wait_for_unique_llama_stack_pod,
+)
 from utilities.resources.llama_stack_distribution import LlamaStackDistribution
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 

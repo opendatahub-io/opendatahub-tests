@@ -1,28 +1,22 @@
 import os
 import tempfile
 import time
-from collections.abc import Generator
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import requests
 import structlog
-from kubernetes.dynamic import DynamicClient
-from kubernetes.dynamic.exceptions import ResourceNotFoundError
-from llama_stack_client import APIConnectionError, InternalServerError, LlamaStackClient
+from llama_stack_client import LlamaStackClient
 from llama_stack_client.types.file import File
 from llama_stack_client.types.vector_stores.vector_store_file import VectorStoreFile
-from ocp_resources.pod import Pod
-from timeout_sampler import retry
 
-from tests.llama_stack.constants import (
-    LLS_CORE_POD_FILTER,
-)
 from tests.llama_stack.datasets import Dataset
-from utilities.exceptions import UnexpectedResourceCountError
+from utilities.llama_stack_utils import (
+    create_llama_stack_distribution,
+    wait_for_llama_stack_client_ready,
+    wait_for_unique_llama_stack_pod,
+)
 from utilities.path_utils import resolve_repo_path
-from utilities.resources.llama_stack_distribution import LlamaStackDistribution
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -130,96 +124,6 @@ def vector_store_create_and_poll(
         LOGGER.warning(f"Unexpected vector store file status {vs_file.status!r}, treating as terminal")
     return vs_file
 
-
-@contextmanager
-def create_llama_stack_distribution(
-    client: DynamicClient,
-    name: str,
-    namespace: str,
-    replicas: int,
-    server: dict[str, Any],
-    teardown: bool = True,
-) -> Generator[LlamaStackDistribution, Any, Any]:
-    """
-    Context manager to create and optionally delete a LLama Stack Distribution
-    """
-
-    # Starting with RHOAI 3.3, pods in the 'openshift-ingress' namespace must be allowed
-    # to access the llama-stack-service. This is required for the llama_stack_test_route
-    # to function properly.
-    network: dict[str, Any] = {
-        "allowedFrom": {
-            "namespaces": ["openshift-ingress"],
-        },
-    }
-
-    with LlamaStackDistribution(
-        client=client,
-        name=name,
-        namespace=namespace,
-        replicas=replicas,
-        network=network,
-        server=server,
-        wait_for_resource=True,
-        teardown=teardown,
-    ) as llama_stack_distribution:
-        yield llama_stack_distribution
-
-
-@retry(
-    wait_timeout=240,
-    sleep=5,
-    exceptions_dict={ResourceNotFoundError: [], UnexpectedResourceCountError: []},
-)
-def wait_for_unique_llama_stack_pod(client: DynamicClient, namespace: str) -> Pod:
-    """Wait until exactly one LlamaStackDistribution pod is found in the
-    namespace (multiple pods may indicate known bug RHAIENG-1819)."""
-    pods = list(
-        Pod.get(
-            client=client,
-            namespace=namespace,
-            label_selector=LLS_CORE_POD_FILTER,
-        )
-    )
-    if not pods:
-        raise ResourceNotFoundError(f"No pods found with label selector {LLS_CORE_POD_FILTER} in namespace {namespace}")
-    if len(pods) != 1:
-        raise UnexpectedResourceCountError(
-            f"Expected exactly 1 pod with label selector {LLS_CORE_POD_FILTER} "
-            f"in namespace {namespace}, found {len(pods)}. "
-            f"(possibly due to known bug RHAIENG-1819)"
-        )
-    return pods[0]
-
-
-@retry(wait_timeout=90, sleep=5)
-def wait_for_llama_stack_client_ready(client: LlamaStackClient) -> bool:
-    """Wait for LlamaStack client to be ready by checking health, version, and database access."""
-    try:
-        client.inspect.health()
-        version = client.inspect.version()
-        models = client.models.list()
-        vector_stores = client.vector_stores.list()
-        files = client.files.list()
-        LOGGER.info(
-            f"Llama Stack server is available! "
-            f"(version:{version.version} "
-            f"models:{len(models)} "
-            f"vector_stores:{len(vector_stores.data)} "
-            f"files:{len(files.data)})"
-        )
-
-    except (APIConnectionError, InternalServerError) as error:
-        LOGGER.debug(f"Llama Stack server not ready yet: {error}")
-        LOGGER.debug(f"Base URL: {client.base_url}, Error type: {type(error)}, Error details: {error!s}")
-        return False
-
-    except Exception as e:  # noqa: BLE001
-        LOGGER.warning(f"Unexpected error checking Llama Stack readiness: {e}")
-        return False
-
-    else:
-        return True
 
 
 def vector_store_create_file_from_url(
