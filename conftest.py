@@ -338,9 +338,7 @@ def _set_api_versions_for_rhoai_25_compat() -> None:
 
     # Check if v2 API is available (RHOAI 3.x+)
     try:
-        client.resources.get(
-            api_version="datasciencecluster.opendatahub.io/v2", kind="DataScienceCluster"
-        )
+        client.resources.get(api_version="datasciencecluster.opendatahub.io/v2", kind="DataScienceCluster")
         DataScienceCluster.api_version = "datasciencecluster.opendatahub.io/v2"
         DSCInitialization.api_version = "dscinitialization.opendatahub.io/v2"
         LOGGER.info("Detected RHOAI 3.x+ (using v2 APIs)")
