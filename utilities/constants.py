@@ -337,7 +337,9 @@ class OCIRegistry:
         DEFAULT_HTTP_ADDRESS: str = "0.0.0.0"
 
     class PodConfig:
-        REGISTRY_IMAGE: str = "ghcr.io/project-zot/zot:v2.1.8"
+        REGISTRY_IMAGE: str = (  # v2.1.8 multi-arch
+            "ghcr.io/project-zot/zot@sha256:cd2aea942f428630bcb4190542be6abd35e14177aab84fc7ccad0dca8ecb363d"
+        )
         REGISTRY_BASE_CONFIG: dict[str, Any] = {  # noqa: RUF012
             "args": None,
             "labels": {

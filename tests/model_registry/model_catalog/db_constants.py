@@ -243,3 +243,13 @@ AND EXISTS (
 )
 ORDER BY model_name;
 """
+
+LANGUAGE_PROPERTIES_DB_QUERY = """
+SELECT c.name AS model_name, cp.string_value AS language
+FROM "Context" c
+JOIN "ContextProperty" cp ON cp.context_id = c.id
+WHERE c.type_id = (SELECT id FROM "Type" WHERE name = 'kf.CatalogModel')
+AND cp.name = 'language'
+AND cp.is_custom_property = false
+ORDER BY c.name, cp.string_value;
+"""

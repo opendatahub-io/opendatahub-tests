@@ -112,8 +112,8 @@ def vector_store_create_and_poll(
         chunking_strategy={
             "type": "static",
             "static": {
-                "max_chunk_size_tokens": 400,
-                "chunk_overlap_tokens": 200,
+                "max_chunk_size_tokens": 384,
+                "chunk_overlap_tokens": 64,
             },
         },
     )
