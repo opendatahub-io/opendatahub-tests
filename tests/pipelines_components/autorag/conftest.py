@@ -65,7 +65,7 @@ AUTORAG_EMBEDDING_MODEL_NAME: str = os.environ.get("AUTORAG_EMBEDDING_MODEL_NAME
 _AUTORAG_REQUIRED_ENV = {
     "AUTORAG_PIPELINE_YAML": "Path to compiled AutoRAG pipeline YAML",
     "AUTORAG_DSPA_NAMESPACE": "Namespace with pre-existing DSPA",
-    "AUTORAG_S3_SECRET_NAME": "S3 credentials secret name in the DSPA namespace",
+    "AUTORAG_S3_SECRET_NAME": "<S3 credentials secret name in the DSPA namespace>",
     "AUTORAG_INFERENCE_MODEL_URI": "Storage URI for inference model (e.g. s3://bucket/model or hf://org/model)",
     "AUTORAG_INFERENCE_MODEL_NAME": "Inference model name (e.g. granite-3b-instruct)",
     "AUTORAG_EMBEDDING_MODEL_URI": "Storage URI for embedding model (e.g. s3://bucket/model or hf://org/model)",
