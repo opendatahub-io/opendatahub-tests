@@ -73,6 +73,7 @@ class TestStatusReporting:
             model_url=evalhub_model_url,
             model_name=evalhub_model_name,
             queue_name=LOCAL_QUEUE_NAME,
+            tenant=eval_test_namespace.name,
         )
         job_id = body["resource"]["id"]
 
@@ -90,7 +91,7 @@ class TestStatusReporting:
         )
 
         # Wait for job to reach terminal state
-        wait_for_job_running_or_completed(base_url=evalhub_base_url, token=current_client_token, job_id=job_id)
+        wait_for_job_running_or_completed(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, tenant=eval_test_namespace.name)
 
         # Only check Workload conditions if K8s Job was created and still exists
         if len(k8s_jobs) >= 1:
@@ -119,7 +120,7 @@ class TestStatusReporting:
                 owner_refs = wl.instance.get("metadata", {}).get("ownerReferences", [])
                 assert any(ref.get("kind") == "Job" for ref in owner_refs), "Workload should have Job ownerReference"
 
-        delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, hard_delete=True)
+        delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, hard_delete=True, tenant=eval_test_namespace.name)
 
     def test_local_queue_status_counts(
         self,
@@ -146,6 +147,7 @@ class TestStatusReporting:
             model_url=evalhub_model_url,
             model_name=evalhub_model_name,
             queue_name=LOCAL_QUEUE_NAME,
+            tenant=eval_test_namespace.name,
         )
         job_id = body["resource"]["id"]
 
@@ -164,6 +166,6 @@ class TestStatusReporting:
         # This validates queue counters are present and numeric.
         assert admitted >= 0 and pending >= 0 and reserving >= 0, "LocalQueue workload counters should be non-negative"
 
-        wait_for_job_running_or_completed(base_url=evalhub_base_url, token=current_client_token, job_id=job_id)
+        wait_for_job_running_or_completed(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, tenant=eval_test_namespace.name)
 
-        delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, hard_delete=True)
+        delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, hard_delete=True, tenant=eval_test_namespace.name)

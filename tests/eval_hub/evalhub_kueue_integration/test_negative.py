@@ -72,18 +72,19 @@ class TestNegativeScenarios:
             model_url=evalhub_model_url,
             model_name=evalhub_model_name,
             queue_name="nonexistent-queue",
+            tenant=eval_test_namespace.name,
         )
 
         if status_code == 400:
             assert "error" in str(body).lower() or "message" in body
         elif status_code == 202:
             job_id = body["resource"]["id"]
-            _, status_body = get_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id)
+            _, status_body = get_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, tenant=eval_test_namespace.name)
             state = status_body.get("status", {}).get("state")
             assert state in (EvalJobState.PENDING, EvalJobState.FAILED), (
                 f"Job with invalid queue should be pending or failed, got {state}"
             )
-            delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, hard_delete=True)
+            delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, hard_delete=True, tenant=eval_test_namespace.name)
         else:
             pytest.fail(f"Unexpected status code {status_code} for non-existent queue: {body}")
 
@@ -115,6 +116,7 @@ class TestNegativeScenarios:
             model_url=evalhub_model_url,
             model_name=evalhub_model_name,
             queue_name=None,
+            tenant=eval_test_namespace.name,
         )
 
         assert status_code == 202, f"Expected 202, got {status_code}: {body}"
@@ -125,7 +127,7 @@ class TestNegativeScenarios:
             "No Workload should be created for job without queue spec"
         )
 
-        delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, hard_delete=True)
+        delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, hard_delete=True, tenant=eval_test_namespace.name)
 
     @pytest.mark.tier1
     def test_unauthorized_returns_401(
@@ -151,6 +153,7 @@ class TestNegativeScenarios:
             model_url=evalhub_model_url,
             model_name=evalhub_model_name,
             queue_name=LOCAL_QUEUE_NAME,
+            tenant=eval_test_namespace.name,
         )
 
         assert status_code == 401, f"Expected 401, got {status_code}: {body}"
@@ -191,6 +194,6 @@ class TestNegativeScenarios:
         Then the API returns 404 Not Found.
         """
         fake_job_id = "00000000-0000-0000-0000-000000000000"
-        status_code, body = get_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=fake_job_id)
+        status_code, body = get_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=fake_job_id, tenant=eval_test_namespace.name)
 
         assert status_code == 404, f"Expected 404, got {status_code}: {body}"

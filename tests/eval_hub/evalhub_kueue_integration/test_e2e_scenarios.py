@@ -81,11 +81,12 @@ class TestE2EScenarios:
                 model_url=evalhub_model_url,
                 model_name=evalhub_model_name,
                 queue_name=LOCAL_QUEUE_NAME,
+            tenant=eval_test_namespace.name,
             )
             assert status_code == 202, f"Expected 202, got {status_code}: {body}"
             job_id = body["resource"]["id"]
 
-            _, pending_body = get_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id)
+            _, pending_body = get_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, tenant=eval_test_namespace.name)
             assert pending_body["status"]["state"] in (
                 EvalJobState.PENDING,
                 EvalJobState.RUNNING,
@@ -111,7 +112,10 @@ class TestE2EScenarios:
 
             # Wait for job to reach terminal state
             running_body = wait_for_job_running_or_completed(
-                base_url=evalhub_base_url, token=current_client_token, job_id=job_id
+                base_url=evalhub_base_url,
+                token=current_client_token,
+                job_id=job_id,
+                tenant=eval_test_namespace.name,
             )
             assert running_body, "Job should reach running or completed or failed state"
 
@@ -127,6 +131,7 @@ class TestE2EScenarios:
                 token=current_client_token,
                 job_id=job_id,
                 target_state=EvalJobState.COMPLETED,
+                tenant=eval_test_namespace.name,
             )
             assert completed_body, "Job should reach completed or failed state"
 
@@ -138,7 +143,7 @@ class TestE2EScenarios:
                     assert finished_cond["status"] == "True", "Workload should be finished"
         finally:
             if job_id:
-                delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, hard_delete=True)
+                delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, hard_delete=True, tenant=eval_test_namespace.name)
 
     def test_job_queuing_under_pressure(
         self,
@@ -168,6 +173,7 @@ class TestE2EScenarios:
                 model_url=evalhub_model_url,
                 model_name=evalhub_model_name,
                 queue_name=LOCAL_QUEUE_NAME,
+            tenant=eval_test_namespace.name,
             )
             assert status1 == 202, f"Expected 202 for first job, got {status1}: {body1}"
             assert "resource" in body1 and "id" in body1["resource"], (
@@ -180,6 +186,7 @@ class TestE2EScenarios:
                 token=current_client_token,
                 job_id=job1_id,
                 target_state=EvalJobState.RUNNING,
+                tenant=eval_test_namespace.name,
             )
             assert running_body, "First job should reach running state before second submission"
 
@@ -190,6 +197,7 @@ class TestE2EScenarios:
                 model_url=evalhub_model_url,
                 model_name=evalhub_model_name,
                 queue_name=LOCAL_QUEUE_NAME,
+            tenant=eval_test_namespace.name,
             )
             assert status2 == 202, f"Expected 202 for second job, got {status2}: {body2}"
             assert "resource" in body2 and "id" in body2["resource"], (
@@ -197,7 +205,7 @@ class TestE2EScenarios:
             )
             job2_id = body2["resource"]["id"]
 
-            _, status_body = get_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job2_id)
+            _, status_body = get_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job2_id, tenant=eval_test_namespace.name)
             assert status_body["status"]["state"] in (
                 EvalJobState.PENDING,
                 EvalJobState.FAILED,
@@ -208,10 +216,12 @@ class TestE2EScenarios:
                 token=current_client_token,
                 job_id=job1_id,
                 target_state=EvalJobState.COMPLETED,
+                tenant=eval_test_namespace.name,
             )
 
             result = wait_for_job_running_or_completed(
-                base_url=evalhub_base_url, token=current_client_token, job_id=job2_id
+                base_url=evalhub_base_url, token=current_client_token, job_id=job2_id,
+                tenant=eval_test_namespace.name,
             )
             assert result, "Second job should be admitted after first completes"
 
@@ -220,6 +230,7 @@ class TestE2EScenarios:
                 token=current_client_token,
                 job_id=job2_id,
                 target_state=EvalJobState.COMPLETED,
+                tenant=eval_test_namespace.name,
             )
         finally:
             for jid in (job2_id, job1_id):
@@ -228,7 +239,7 @@ class TestE2EScenarios:
                         base_url=evalhub_base_url,
                         token=current_client_token,
                         job_id=jid,
-                        hard_delete=True,
+                        hard_delete=True, tenant=eval_test_namespace.name,
                     )
 
     def test_job_cancellation_during_execution(
@@ -258,6 +269,7 @@ class TestE2EScenarios:
                 model_url=evalhub_model_url,
                 model_name=evalhub_model_name,
                 queue_name=LOCAL_QUEUE_NAME,
+            tenant=eval_test_namespace.name,
             )
             assert status_code == 202, f"Expected 202, got {status_code}: {body}"
             assert "resource" in body and "id" in body["resource"], (
@@ -270,19 +282,21 @@ class TestE2EScenarios:
                 token=current_client_token,
                 job_id=job_id,
                 target_state=EvalJobState.RUNNING,
+                tenant=eval_test_namespace.name,
             )
             assert running_body, "Job should reach running state before hard delete"
 
             delete_status = delete_eval_job(
-                base_url=evalhub_base_url, token=current_client_token, job_id=job_id, hard_delete=True
+                base_url=evalhub_base_url, token=current_client_token, job_id=job_id, hard_delete=True,
+                tenant=eval_test_namespace.name,
             )
             assert delete_status == 204, f"Expected 204, got {delete_status}"
             job_id = None
 
             get_status, _ = get_eval_job(
                 base_url=evalhub_base_url, token=current_client_token, job_id=body["resource"]["id"]
-            )
+            , tenant=eval_test_namespace.name)
             assert get_status == 404, f"Expected 404 after hard delete, got {get_status}"
         finally:
             if job_id:
-                delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, hard_delete=True)
+                delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, hard_delete=True, tenant=eval_test_namespace.name)

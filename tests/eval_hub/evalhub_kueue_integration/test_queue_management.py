@@ -74,6 +74,7 @@ class TestQueueManagement:
             model_url=evalhub_model_url,
             model_name=evalhub_model_name,
             queue_name=LOCAL_QUEUE_NAME,
+            tenant=eval_test_namespace.name,
         )
         job_id = body["resource"]["id"]
 
@@ -92,7 +93,7 @@ class TestQueueManagement:
 
         # If job was created but failed very quickly, it may already be gone
         # In that case, verify the EvalHub job reached a terminal state
-        result = wait_for_job_running_or_completed(base_url=evalhub_base_url, token=current_client_token, job_id=job_id)
+        result = wait_for_job_running_or_completed(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, tenant=eval_test_namespace.name)
         assert result, f"Job {job_id} did not reach running/completed/failed state"
 
         # Only check K8s Job if it still exists (may have been cleaned up if job failed fast)
@@ -102,7 +103,7 @@ class TestQueueManagement:
                     "Job should not be suspended after admission"
                 )
 
-        delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, hard_delete=True)
+        delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, hard_delete=True, tenant=eval_test_namespace.name)
 
     def test_job_pending_when_quota_exhausted(
         self,
@@ -129,10 +130,11 @@ class TestQueueManagement:
             model_url=evalhub_model_url,
             model_name=evalhub_model_name,
             queue_name=LOCAL_QUEUE_NAME,
+            tenant=eval_test_namespace.name,
         )
         job1_id = body1["resource"]["id"]
 
-        wait_for_job_running_or_completed(base_url=evalhub_base_url, token=current_client_token, job_id=job1_id)
+        wait_for_job_running_or_completed(base_url=evalhub_base_url, token=current_client_token, job_id=job1_id, tenant=eval_test_namespace.name)
 
         _, body2 = submit_eval_job(
             base_url=evalhub_base_url,
@@ -141,6 +143,7 @@ class TestQueueManagement:
             model_url=evalhub_model_url,
             model_name=evalhub_model_name,
             queue_name=LOCAL_QUEUE_NAME,
+            tenant=eval_test_namespace.name,
         )
         job2_id = body2["resource"]["id"]
 
@@ -149,10 +152,11 @@ class TestQueueManagement:
             token=current_client_token,
             job_id=job2_id,
             target_state=EvalJobState.PENDING,
+            tenant=eval_test_namespace.name,
         )
 
-        delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job2_id, hard_delete=True)
-        delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job1_id, hard_delete=True)
+        delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job2_id, hard_delete=True, tenant=eval_test_namespace.name)
+        delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job1_id, hard_delete=True, tenant=eval_test_namespace.name)
 
     def test_pending_job_auto_admitted(
         self,
@@ -179,9 +183,10 @@ class TestQueueManagement:
             model_url=evalhub_model_url,
             model_name=evalhub_model_name,
             queue_name=LOCAL_QUEUE_NAME,
+            tenant=eval_test_namespace.name,
         )
         job1_id = body1["resource"]["id"]
-        wait_for_job_running_or_completed(base_url=evalhub_base_url, token=current_client_token, job_id=job1_id)
+        wait_for_job_running_or_completed(base_url=evalhub_base_url, token=current_client_token, job_id=job1_id, tenant=eval_test_namespace.name)
 
         _, body2 = submit_eval_job(
             base_url=evalhub_base_url,
@@ -190,17 +195,18 @@ class TestQueueManagement:
             model_url=evalhub_model_url,
             model_name=evalhub_model_name,
             queue_name=LOCAL_QUEUE_NAME,
+            tenant=eval_test_namespace.name,
         )
         job2_id = body2["resource"]["id"]
 
         wait_for_job_state(
             base_url=evalhub_base_url, token=current_client_token, job_id=job1_id, target_state=EvalJobState.COMPLETED
-        )
+        , tenant=eval_test_namespace.name)
 
         result = wait_for_job_running_or_completed(
             base_url=evalhub_base_url, token=current_client_token, job_id=job2_id
-        )
+        , tenant=eval_test_namespace.name)
         assert result, f"Job {job2_id} was not auto-admitted after resources freed"
 
-        delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job2_id, hard_delete=True)
-        delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job1_id, hard_delete=True)
+        delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job2_id, hard_delete=True, tenant=eval_test_namespace.name)
+        delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job1_id, hard_delete=True, tenant=eval_test_namespace.name)

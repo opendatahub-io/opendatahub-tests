@@ -73,6 +73,7 @@ class TestUpgradeScenarios:
             model_url=evalhub_model_url,
             model_name=evalhub_model_name,
             queue_name=None,
+            tenant=eval_test_namespace.name,
         )
         assert status_no_queue == 202, f"Expected 202 without queue, got {status_no_queue}: {body_no_queue}"
         no_queue_id = body_no_queue["resource"]["id"]
@@ -84,17 +85,18 @@ class TestUpgradeScenarios:
             model_url=evalhub_model_url,
             model_name=evalhub_model_name,
             queue_name=LOCAL_QUEUE_NAME,
+            tenant=eval_test_namespace.name,
         )
         assert status_with_queue == 202, f"Expected 202 with queue, got {status_with_queue}: {body_with_queue}"
         with_queue_id = body_with_queue["resource"]["id"]
 
         result = wait_for_job_running_or_completed(
             base_url=evalhub_base_url, token=current_client_token, job_id=with_queue_id
-        )
+        , tenant=eval_test_namespace.name)
         assert result, "Kueue-managed job should be admitted"
 
-        delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=no_queue_id, hard_delete=True)
-        delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=with_queue_id, hard_delete=True)
+        delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=no_queue_id, hard_delete=True, tenant=eval_test_namespace.name)
+        delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=with_queue_id, hard_delete=True, tenant=eval_test_namespace.name)
 
     def test_rollback_scenario(
         self,
@@ -121,6 +123,7 @@ class TestUpgradeScenarios:
             model_url=evalhub_model_url,
             model_name=evalhub_model_name,
             queue_name=None,
+            tenant=eval_test_namespace.name,
         )
         assert status_code == 202, f"Expected 202, got {status_code}: {body}"
         job_id = body["resource"]["id"]
@@ -128,4 +131,4 @@ class TestUpgradeScenarios:
         health_status, health_body = get_health(base_url=evalhub_base_url, token=current_client_token)
         assert health_status == 200, f"Health check failed: {health_status} {health_body}"
 
-        delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, hard_delete=True)
+        delete_eval_job(base_url=evalhub_base_url, token=current_client_token, job_id=job_id, hard_delete=True, tenant=eval_test_namespace.name)
