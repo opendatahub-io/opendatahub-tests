@@ -4,7 +4,10 @@ from typing import Any
 import pytest
 import structlog
 from _pytest.fixtures import FixtureRequest
+from kubernetes.client.rest import ApiException
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import ForbiddenError, NotFoundError, ResourceNotFoundError
+from ocp_resources.exceptions import MissingResourceError
 from ocp_resources.namespace import Namespace
 
 from tests.eval_hub.evalhub_kueue_integration.constants import (
@@ -28,6 +31,14 @@ from utilities.kueue_utils import (
 )
 
 LOGGER = structlog.get_logger(name=__name__)
+
+_TENANT_RESOURCE_COPY_ERRORS = (
+    ApiException,
+    ForbiddenError,
+    MissingResourceError,
+    NotFoundError,
+    ResourceNotFoundError,
+)
 
 
 def _provision_evalhub_tenant_resources(
@@ -142,10 +153,10 @@ def _provision_evalhub_tenant_resources(
                             namespace=tenant_namespace,
                         )
                         LOGGER.info("Created Role in tenant namespace", role_name=role_name, namespace=tenant_namespace)
-                except Exception as role_err:
+                except _TENANT_RESOURCE_COPY_ERRORS as role_err:
                     LOGGER.warning("Failed to copy Role", role_name=role_name, error=str(role_err))
 
-        except Exception as e:
+        except _TENANT_RESOURCE_COPY_ERRORS as e:
             LOGGER.warning("Failed to copy RoleBinding", rb_name=rb_name, error=str(e))
 
     # Copy evalhub-service-ca ConfigMap
@@ -170,7 +181,7 @@ def _provision_evalhub_tenant_resources(
         )
         tenant_cm.create()
         LOGGER.info("Created ConfigMap in tenant namespace", cm_name="evalhub-service-ca", namespace=tenant_namespace)
-    except Exception as e:
+    except _TENANT_RESOURCE_COPY_ERRORS as e:
         LOGGER.warning("Failed to copy ConfigMap", cm_name="evalhub-service-ca", error=str(e))
 
 
