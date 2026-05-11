@@ -23,7 +23,6 @@ from tests.model_registry.model_catalog.search.utils import (
     validate_search_results_against_database,
 )
 from tests.model_registry.model_catalog.utils import get_models_from_catalog_api
-from tests.model_registry.utils import get_model_catalog_pod
 
 LOGGER = structlog.get_logger(name=__name__)
 pytestmark = [pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace")]
@@ -320,18 +319,12 @@ class TestSearchModelsByFilterQuery:
     @pytest.mark.downstream_only
     def test_presence_performance_data_on_pod(
         self: Self,
-        admin_client: DynamicClient,
-        model_registry_namespace: str,
+        model_catalog_pod,
     ):
         """
         Checks that performance data files exist for all models in the catalog pod.
         It ensures that each model has the required metadata and performance files present in the pod.
         """
-
-        model_catalog_pod = get_model_catalog_pod(
-            client=admin_client, model_registry_namespace=model_registry_namespace
-        )[0]
-
         validation_results = validate_performance_data_files_on_pod(model_catalog_pod=model_catalog_pod)
 
         # Assert that all models have all required performance data files
