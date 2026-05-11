@@ -17,6 +17,10 @@ from tests.eval_hub.evalhub_kueue_integration.constants import (
 LOGGER = structlog.get_logger(name=__name__)
 
 
+class EvalHubSetupError(RuntimeError):
+    """Raised when session preflight checks for EvalHub + Kueue fail."""
+
+
 def get_requests_verify() -> bool | str:
     """TLS ``verify`` setting for EvalHub HTTP calls (``requests``).
 
@@ -204,6 +208,57 @@ def delete_eval_job(
     )
     LOGGER.info("Deleted eval job", job_id=job_id, hard_delete=hard_delete, status=resp.status_code)
     return resp.status_code
+
+
+def verify_evalhub_preflight(
+    admin_client: DynamicClient,
+    base_url: str,
+    *,
+    nonexistent_job_id: str = "verify-evalhub-setup-nonexistent-job-id",
+    tenant: str = "test-tenant",
+) -> None:
+    """Validate EvalHub HTTP reachability and Kueue before integration tests.
+
+    Consolidates the former CLI verification script into shared code; uses
+    the same routes and TLS behavior as test helpers (``EVALHUB_*`` endpoints,
+    :func:`get_requests_verify`, ``get_openshift_token``).
+
+    Raises:
+        EvalHubSetupError: If the jobs probe does not return 404 or Kueue is not ready.
+    """
+    from utilities.infra import get_openshift_token
+    from utilities.kueue_utils import wait_for_kueue_crds_available
+
+    token = get_openshift_token(client=admin_client)
+    if not token.strip():
+        raise EvalHubSetupError("OpenShift token is empty; log in with oc login.")
+
+    verify_tls = get_requests_verify()
+    base = base_url.rstrip("/")
+    headers_bearer = {"Authorization": f"Bearer {token}"}
+    headers_jobs = {**headers_bearer, "X-Tenant": tenant}
+
+    health_url = f"{base}{EVALHUB_HEALTH_ENDPOINT}"
+    try:
+        health_resp = requests.get(health_url, headers=headers_bearer, timeout=10, verify=verify_tls)
+        LOGGER.info("evalhub_preflight_health", status_code=health_resp.status_code)
+    except requests.RequestException as exc:
+        LOGGER.warning("evalhub_preflight_health_unreachable", error=str(exc))
+
+    jobs_url = f"{base}{EVALHUB_JOBS_ENDPOINT}/{nonexistent_job_id}"
+    try:
+        jobs_resp = requests.get(jobs_url, headers=headers_jobs, timeout=10, verify=verify_tls)
+    except requests.RequestException as exc:
+        raise EvalHubSetupError(f"EvalHub jobs API unreachable: {exc}") from exc
+
+    if jobs_resp.status_code != 404:
+        snippet = jobs_resp.text[:500] if jobs_resp.text else ""
+        raise EvalHubSetupError(
+            f"Expected HTTP 404 for nonexistent job GET, got {jobs_resp.status_code}. Body (truncated): {snippet!r}"
+        )
+
+    wait_for_kueue_crds_available(client=admin_client)
+    LOGGER.info("evalhub_preflight_complete")
 
 
 def get_health(base_url: str, token: str) -> tuple[int, dict[str, Any]]:

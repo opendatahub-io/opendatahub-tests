@@ -2,35 +2,20 @@
 
 Helper scripts for running and managing EvalHub integration tests.
 
-## Scripts
+## Environment verification (pytest)
 
-### verify_evalhub_setup.py
+Preflight checks (EvalHub HTTP + Kueue) run automatically via the session fixture
+``evalhub_preflight_verified`` when you execute tests under ``tests/eval_hub/``.
 
-Verifies EvalHub and Kueue setup before running tests. **Run this first** to ensure the environment is properly configured.
+To run **only** those checks without the full suite:
 
 ```bash
-uv run python tests/eval_hub/scripts/verify_evalhub_setup.py
+uv run pytest tests/eval_hub/test_evalhub_preflight.py -q
 ```
 
-**What it checks:**
+Implementation: ``verify_evalhub_preflight`` in ``tests/eval_hub/evalhub_kueue_integration/utils.py``.
 
-- OpenShift authentication (oc token)
-- EvalHub API connectivity and health endpoint
-- EvalHub API responsiveness (404 for nonexistent job)
-- Kueue CRDs installation
-
-**Example output:**
-
-```text
-EvalHub Setup Verification
-==================================================
-✓ Test 1: Getting OpenShift token...
-✓ Test 2: Testing EvalHub API health...
-✓ Test 3: Testing EvalHub API (nonexistent job = 404)...
-✓ Test 4: Checking Kueue CRDs...
-==================================================
-✓ All verification tests passed!
-```
+## Scripts
 
 ### cleanup_kueue_resources.sh
 
@@ -75,8 +60,8 @@ Runs the complete EvalHub Kueue integration test suite with proper environment c
 ## Recommended Workflow
 
 ```bash
-# 1. Verify environment setup
-uv run python tests/eval_hub/scripts/verify_evalhub_setup.py
+# 1. Verify cluster + EvalHub + Kueue (preflight only)
+uv run pytest tests/eval_hub/test_evalhub_preflight.py -q
 
 # 2. (Optional) Force-delete legacy evalhub names after a crash — see cleanup_kueue_resources.sh
 

@@ -27,7 +27,6 @@ from utilities.kueue_utils import (
     create_local_queue,
     create_resource_flavor,
     create_workload_priority_class,
-    wait_for_kueue_crds_available,
 )
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -207,9 +206,8 @@ def _kueue_resource_groups(
 
 
 @pytest.fixture(scope="session")
-def ensure_kueue_available(admin_client: DynamicClient) -> None:
-    """Ensure Kueue CRDs and controller pods are available."""
-    wait_for_kueue_crds_available(client=admin_client)
+def ensure_kueue_available(evalhub_preflight_verified: None) -> None:
+    """Kueue readiness is validated in session preflight (``evalhub_preflight_verified``)."""
 
 
 @pytest.fixture(scope="class")

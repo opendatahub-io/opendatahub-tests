@@ -37,8 +37,8 @@ Automated tests for this feature are implemented in the component repository fol
 ### Quick Start
 
 ```bash
-# 1. Verify environment setup
-uv run python ../scripts/verify_evalhub_setup.py
+# 1. Preflight only (EvalHub API + Kueue — same checks as session fixture)
+uv run pytest ../test_evalhub_preflight.py -q
 
 # 2. (Optional) cleanup_kueue_resources.sh — does nothing unless KUEUE_EVALHUB_FORCE_CLEANUP=1
 ../scripts/cleanup_kueue_resources.sh
@@ -69,11 +69,9 @@ uv run pytest tests/eval_hub/evalhub_kueue_integration/ -v -m kueue
 
 ### Helper Scripts
 
-Located in `tests/eval_hub/scripts/`:
-
-- **verify_evalhub_setup.py**: Verifies EvalHub API connectivity and Kueue installation
-- **cleanup_kueue_resources.sh**: Opt-in only (`KUEUE_EVALHUB_FORCE_CLEANUP=1`); deletes fixed legacy evalhub cluster-scoped names if you need manual cleanup after an abnormal run
-- **run_evalhub_tests.sh**: Runs the full test suite with proper environment configuration
+- **`tests/eval_hub/test_evalhub_preflight.py`**: Run ``uv run pytest tests/eval_hub/test_evalhub_preflight.py -q`` for EvalHub + Kueue preflight only (also runs automatically via session fixture before other `tests/eval_hub/` tests).
+- **`tests/eval_hub/scripts/`** — **cleanup_kueue_resources.sh**: Opt-in only (`KUEUE_EVALHUB_FORCE_CLEANUP=1`); deletes fixed legacy evalhub cluster-scoped names if you need manual cleanup after an abnormal run
+- **`tests/eval_hub/scripts/run_evalhub_tests.sh`**: Runs the full test suite with proper environment configuration
 
 See [scripts/README.md](../scripts/README.md) for detailed documentation.
 

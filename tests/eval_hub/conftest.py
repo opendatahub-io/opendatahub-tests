@@ -4,9 +4,29 @@ import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
 
-from tests.eval_hub.evalhub_kueue_integration.utils import get_evalhub_route_url
+from tests.eval_hub.evalhub_kueue_integration.utils import (
+    EvalHubSetupError,
+    get_evalhub_route_url,
+    verify_evalhub_preflight,
+)
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def evalhub_preflight_verified(
+    admin_client: DynamicClient,
+    evalhub_base_url: str,
+) -> None:
+    """Run EvalHub API + Kueue checks before any test under ``tests/eval_hub/``.
+
+    Calls ``verify_evalhub_preflight`` (token, health probe, 404 on fake job id,
+    Kueue CRDs/controller). For a standalone run, use ``tests/eval_hub/test_evalhub_preflight.py``.
+    """
+    try:
+        verify_evalhub_preflight(admin_client=admin_client, base_url=evalhub_base_url)
+    except EvalHubSetupError as exc:
+        pytest.fail(str(exc))
 
 
 @pytest.fixture(scope="session")
