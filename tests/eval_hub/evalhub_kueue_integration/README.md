@@ -51,6 +51,10 @@ uv run python ../scripts/verify_evalhub_setup.py
 
 **Authentication:** These tests do **not** read `EVALHUB_API_TOKEN`, `EVALHUB_AUTH_HEADER`, or similar. The shared [`current_client_token`](../../../tests/conftest.py) fixture supplies an OpenShift OAuth token from your kube context (`get_openshift_token`); EvalHub HTTP helpers send `Authorization: Bearer <token>` and, for job endpoints, `X-Tenant` (see [`utils.py`](utils.py)). Use a user who can reach the EvalHub route and APIs—otherwise you will see **401** (unauthenticated) or **403** (forbidden). Cluster login and kubeconfig are covered in [Getting started — Tests cluster](../../../docs/GETTING_STARTED.md#tests-cluster).
 
+**Security:** Treat **`KUBECONFIG`** (path and file contents), the kube/OpenShift **OAuth token** implied by an active login, **`OC_BINARY_PATH`**, **`EVALHUB_BASE_URL`**, **`EVALHUB_MODEL_URL`**, and **`EVALHUB_NAMESPACE`** as sensitive—do **not** commit them to version control, paste them into tickets, or leave broad `export …` lines in shared shell history. Prefer a **gitignored** local file (e.g. **`.envrc`** with **direnv**, or a small sourced script), CI/CD secrets, or a team secret manager. Long‑lived kubeconfigs and tokens should be **rotated** when they expire or when access changes; refresh with **`oc login`** / **`oc token`** so pytest picks up a current identity.
+
+**Kubernetes/API scope:** The identity behind **`current_client_token`** must be allowed to call EvalHub’s HTTP APIs used by these tests and to manage fixture resources (namespaces, Kueue **ClusterQueues** / **ResourceFlavors** / **LocalQueues**, and **Jobs** / **Workloads** under test). That usually exceeds **`get`/`create`/`delete` on Jobs and Workloads in `EVALHUB_NAMESPACE` alone**—tests also create **namespaces** and cluster‑scoped Kueue objects; grant the narrowest rolebinding your cluster policy allows that still satisfies those operations.
+
 ```bash
 export KUBECONFIG="/path/to/kubeconfig"   # optional; defaults to ~/.kube/config
 # oc login …  # ensure context matches the cluster where EvalHub runs (see Getting started)

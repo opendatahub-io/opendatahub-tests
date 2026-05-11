@@ -43,7 +43,15 @@ if [ "$HTTP_CODE" != "401" ]; then
   exit 1
 fi
 
-# Invalid token
+# Step 4: GET without Authorization header — must return 401
+HTTP_CODE_GET=$(curl -s -o /dev/null -w "%{http_code}" -X GET \
+  "https://${EVALHUB_ROUTE}/api/v1/evaluations/jobs")
+if [ "$HTTP_CODE_GET" != "401" ]; then
+  echo "Expected HTTP 401 for unauthenticated GET, got: $HTTP_CODE_GET" >&2
+  exit 1
+fi
+
+# Steps 5–6: invalid Authorization header
 invalid_response=$(curl -s -w '\n%{http_code}' -X GET \
   "https://${EVALHUB_ROUTE}/api/v1/evaluations/jobs" \
   -H "Authorization: Bearer invalid-token-value")

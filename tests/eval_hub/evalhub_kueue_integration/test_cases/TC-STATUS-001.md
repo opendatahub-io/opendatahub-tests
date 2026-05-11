@@ -13,8 +13,10 @@ last_updated: '2026-05-04'
 **Preconditions**:
 
 - Kueue Operator installed on the cluster
-- ClusterQueue `eval-cq` created with nominalQuota: cpu=1, memory=4Gi
-- LocalQueue `eval-queue` created in test namespace mapped to `eval-cq`
+- A **ClusterQueue** with nominalQuota: cpu=1, memory=4Gi, named with a **per-run unique identifier** (e.g. suffix using a UUID, CI run ID, or pytest node id) so it cannot collide with other suites on a shared cluster; optionally add ownership labels (e.g. `tests.opendatahub.io/test-case=TC-STATUS-001`, `tests.opendatahub.io/run-id=<unique>`) when your tooling supports labels on these CRs
+- A **LocalQueue** in the test namespace pointing at that ClusterQueue, using a **unique name** (same suffix or label scheme) — **do not** rely on fixed global names such as `eval-cq` / `eval-queue` that another test run might own
+
+Automated tests in this repo use fixture-scoped names from [`constants.py`](../constants.py) (`CLUSTER_QUEUE_NAME`, `LOCAL_QUEUE_NAME`) inside a dedicated namespace; manual runs should still use unique names or labels as above.
 
 **Test Steps**:
 
@@ -23,7 +25,7 @@ last_updated: '2026-05-04'
 3. **TC-STATUS-001 — Pre-admission baseline (required):** In a polling/query loop on the Workload during pre-admission, capture and record **at least one** sample where condition **`Admitted`** is `False` or **missing** *and* condition **`QuotaReserved`** is `False` or **missing** (the same sample must satisfy both). If bounded polling completes without such a sample, **fail TC-STATUS-001** (no pre-admission baseline was observed).
 4. **TC-STATUS-001 — Post-admission (bounded; CWE-400):** Only after step 3 succeeds, run a **bounded** polling loop (not an unbounded “wait for admission”): repeat **query Workload → evaluate `status.conditions`** at interval **`TC_STATUS_001_ADMISSION_POLL_INTERVAL_SECONDS`** until **`Admitted=True`** and **`QuotaReserved=True`**, or until elapsed time exceeds **`TC_STATUS_001_ADMISSION_TIMEOUT_SECONDS`**. If the timeout is reached, **fail explicitly**: abort further polling, log **the last observed Workload resource** (full YAML or at minimum `status.conditions` / **`Admitted`** / **`QuotaReserved`**) for diagnostics, and **do not** pass the test. If admission succeeds within the timeout, **query the Workload again** and assert conditions include **`QuotaReserved=True`** and **`Admitted=True`** (same observation).
 5. Verify the Workload has an `ownerReference` pointing to the Kubernetes Job
-6. Teardown: Delete the job, LocalQueue, and ClusterQueue
+6. Teardown: Delete only the Job and the **same** LocalQueue and ClusterQueue instances created for **this** TC-STATUS-001 run (exact names from step 1, or `oc delete … -l <ownership label>`). Do **not** delete queues by ambiguous fixed names that could belong to another run or team
 
 **Harness parameters (override via environment for automation):**
 

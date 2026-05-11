@@ -4,6 +4,9 @@
 #
 # Usage:
 #   ./test_kube_rbac_proxy.sh
+#
+# TLS: By default curl verifies certificates. To disable verification (e.g. dev clusters),
+# set INSECURE_TESTS to 1, true, or yes — curl then adds -k/--insecure.
 
 set -euo pipefail
 
@@ -59,13 +62,35 @@ get_pod_config() {
     echo ""
     echo "### kube-rbac-proxy Configuration:"
     echo '```'
-    oc get pod "$pod" -n "$NAMESPACE" -o jsonpath='{.spec.containers[?(@.name=="kube-rbac-proxy")].args}' | \
-        python3 -c 'import json,sys; args=json.load(sys.stdin); print("\n".join(args))'
+    local proxy_args_raw
+    proxy_args_raw="$(oc get pod "$pod" -n "$NAMESPACE" -o jsonpath='{.spec.containers[?(@.name=="kube-rbac-proxy")].args}' 2>/dev/null || true)"
+    if [ -z "$proxy_args_raw" ]; then
+        echo "(kube-rbac-proxy args unavailable: empty oc output or missing container)"
+    else
+        local formatted
+        if formatted="$(printf '%s' "$proxy_args_raw" | python3 -c 'import json,sys; args=json.load(sys.stdin); print("\n".join(args))' 2>/dev/null)"; then
+            echo "$formatted"
+        else
+            echo "(kube-rbac-proxy args could not be parsed as JSON)"
+        fi
+    fi
     echo '```'
     echo ""
     echo "### evalhub Configuration:"
     echo '```yaml'
-    oc get configmap evalhub-config -n "$NAMESPACE" -o jsonpath='{.data.config\.yaml}' | grep -A 5 "service:"
+    local cm_yaml
+    cm_yaml="$(oc get configmap evalhub-config -n "$NAMESPACE" -o jsonpath='{.data.config\.yaml}' 2>/dev/null || true)"
+    if [ -z "$cm_yaml" ]; then
+        echo "(evalhub-config ConfigMap missing, or config.yaml key empty)"
+    else
+        local svc_block
+        svc_block="$(printf '%s\n' "$cm_yaml" | grep -A 5 "service:" 2>/dev/null || true)"
+        if [ -n "$svc_block" ]; then
+            echo "$svc_block"
+        else
+            echo "(no line matching service: in evalhub config yaml)"
+        fi
+    fi
     echo '```'
 }
 
@@ -306,40 +331,48 @@ main() {
         exit 1
     fi
 
+    local curl_insecure=()
+    case "${INSECURE_TESTS:-}" in
+        1|[Tt][Rr][Uu][Ee]|[Yy][Ee][Ss])
+            curl_insecure=( -k )
+            echo "WARNING: INSECURE_TESTS is set — curl uses -k (TLS verification disabled)" >&2
+            ;;
+    esac
+
     # TEST 1: Valid Authentication
     run_test 1 \
         "Authentication - Valid ServiceAccount Token" \
         "Verify that kube-rbac-proxy accepts valid Kubernetes ServiceAccount tokens" \
         "200" \
-        curl -k -H "Authorization: Bearer $TOKEN" -H "X-Tenant: $NAMESPACE" "$BASE_URL/api/v1/evaluations/providers"
+        curl "${curl_insecure[@]}" -H "Authorization: Bearer ${TOKEN}" -H "X-Tenant: ${NAMESPACE}" "${BASE_URL}/api/v1/evaluations/providers"
 
     # TEST 2: Missing Authentication
     run_test 2 \
         "Authentication - Invalid/Missing Token" \
         "Verify that kube-rbac-proxy rejects requests without valid authentication" \
         "401" \
-        curl -k -H "X-Tenant: $NAMESPACE" "$BASE_URL/api/v1/evaluations/providers"
+        curl "${curl_insecure[@]}" -H "X-Tenant: ${NAMESPACE}" "${BASE_URL}/api/v1/evaluations/providers"
 
     # TEST 3: Configured Endpoint (Allowed)
     run_test 3 \
         "Authorization - Configured Endpoint (Allowed)" \
         "Verify that authorized endpoints in auth.yaml configuration are accessible" \
         "200" \
-        curl -k -H "Authorization: Bearer $TOKEN" -H "X-Tenant: $NAMESPACE" "$BASE_URL/api/v1/evaluations/providers"
+        curl "${curl_insecure[@]}" -H "Authorization: Bearer ${TOKEN}" -H "X-Tenant: ${NAMESPACE}" "${BASE_URL}/api/v1/evaluations/providers"
 
     # TEST 4: Unconfigured Endpoint (Blocked)
     run_test 4 \
         "Authorization - Unconfigured Endpoint (Blocked)" \
         "Verify that endpoints NOT in auth.yaml configuration are blocked" \
         "403" \
-        curl -k -H "Authorization: Bearer $TOKEN" -H "X-Tenant: $NAMESPACE" "$BASE_URL/openapi.yaml"
+        curl "${curl_insecure[@]}" -H "Authorization: Bearer ${TOKEN}" -H "X-Tenant: ${NAMESPACE}" "${BASE_URL}/openapi.yaml"
 
     # TEST 5: Health Endpoint Bypass
     run_test 5 \
         "Health Endpoint Bypass (--ignore-paths)" \
         "Verify that /api/v1/health bypasses authentication and authorization checks" \
         "200" \
-        curl -k "$BASE_URL/api/v1/health"
+        curl "${curl_insecure[@]}" "${BASE_URL}/api/v1/health"
 
     # Generate summary
     cat >> "$OUTPUT_FILE" <<EOF
