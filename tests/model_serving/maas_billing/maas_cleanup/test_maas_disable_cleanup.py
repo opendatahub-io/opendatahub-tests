@@ -48,17 +48,9 @@ class TestMaaSDisableCleanup:
         admin_client: DynamicClient,
     ) -> None:
         """Verify all MaaS CRDs are removed after managementState is set to Removed."""
-<<<<<<< HEAD
-        surviving_crds = [
-            crd_name for crd_name in MAAS_CRDS if CustomResourceDefinition(client=admin_client, name=crd_name).exists
-        ]
-        assert not surviving_crds, (
-            f"MaaS CRDs still present after managementState set to Removed: {', '.join(surviving_crds)}"
-=======
         assert all(not CustomResourceDefinition(client=admin_client, name=crd_name).exists for crd_name in MAAS_CRDS), (
             f"MaaS CRDs still present after managementState set to Removed: "
             f"{', '.join(crd for crd in MAAS_CRDS if CustomResourceDefinition(client=admin_client, name=crd).exists)}"
->>>>>>> a5538c4 (Address review commnets)
         )
 
     def test_disable_maas_removes_cluster_rbac(
@@ -80,15 +72,9 @@ class TestMaaSDisableCleanup:
                 namespace=applications_namespace,
             ),
         }
-<<<<<<< HEAD
-        surviving_rbac = [label for label, resource in rbac_resources.items() if resource.exists]
-        assert not surviving_rbac, (
-            f"MaaS RBAC resources still present after managementState set to Removed: {', '.join(surviving_rbac)}"
-=======
         assert all(not resource.exists for resource in rbac_resources.values()), (
             f"MaaS RBAC resources still present after managementState set to Removed: "
             f"{', '.join(label for label, resource in rbac_resources.items() if resource.exists)}"
->>>>>>> a5538c4 (Address review commnets)
         )
 
     def test_disable_maas_no_bundle_resources_remain(
