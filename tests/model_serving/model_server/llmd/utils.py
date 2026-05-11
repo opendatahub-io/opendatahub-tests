@@ -244,13 +244,13 @@ def _get_disconnected_inference_url(llmisvc: LLMInferenceService) -> str:
     return f"https://{host}/{llmisvc.namespace}/{llmisvc.name}"
 
 
-def _build_chat_body(model_name: str, prompt: str, max_tokens: int = 50) -> str:
+def _build_chat_body(model_name: str, prompt: str, max_tokens: int = LLMEndpoint.DEFAULT_MAX_TOKENS) -> str:
     """Build OpenAI chat completion request body."""
     return json.dumps({
         "model": model_name,
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": max_tokens,
-        "temperature": 0.0,
+        "temperature": LLMEndpoint.DEFAULT_TEMPERATURE,
         "stream": False,
     })
 
@@ -278,7 +278,11 @@ def _log_curl_command(url: str, body: str, token: bool, ca_cert: str | None) -> 
 
 
 def _curl_post(
-    url: str, body: str, token: str | None = None, ca_cert: str | None = None, timeout: int = 60
+    url: str,
+    body: str,
+    token: str | None = None,
+    ca_cert: str | None = None,
+    timeout: int = LLMEndpoint.DEFAULT_TIMEOUT,
 ) -> tuple[int, str]:
     """POST to URL via curl. Returns (status_code, response_body)."""
     cmd = [

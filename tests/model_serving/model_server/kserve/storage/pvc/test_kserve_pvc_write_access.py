@@ -1,6 +1,8 @@
 import shlex
 
 import pytest
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import ExecOnPodError
 
 from tests.model_serving.model_server.kserve.storage.constants import (
@@ -101,6 +103,55 @@ class TestKservePVCWriteAccess:
             isvc=patched_read_only_isvc,
         )[0]
         with pytest.raises(ExecOnPodError):
+            new_pod.execute(
+                container=Containers.KSERVE_CONTAINER_NAME,
+                command=POD_TOUCH_SPLIT_COMMAND,
+            )
+
+    @pytest.mark.parametrize(
+        "patched_read_only_isvc, expected_raises",
+        [
+            pytest.param({"readonly": "false"}, False, id="test_readonly_annotation_false"),
+            pytest.param({"readonly": "true"}, True, id="test_readonly_annotation_true"),
+        ],
+        indirect=["patched_read_only_isvc"],
+    )
+    def test_isvc_readonly_annotation_toggle_lifecycle(
+        self,
+        unprivileged_client: DynamicClient,
+        patched_read_only_isvc: InferenceService,
+        expected_raises: bool,
+    ) -> None:
+        """Verify write access reflects each annotation toggle on a live ISVC.
+
+        Given a PVC-backed ISVC with the read-only annotation patched to 'false',
+        When a write operation is attempted inside the predictor container after the pod rolls out,
+        Then the write succeeds (no ExecOnPodError).
+
+        Given the same ISVC with the annotation patched to 'true',
+        When the same write operation is attempted after the new pod comes up,
+        Then the write is denied (ExecOnPodError raised).
+
+        Regression coverage: RHOAIENG-8288 — annotation toggle on a live ISVC did not update
+        the effective mount access mode across transitions.
+        """
+        expected_annotation = "true" if expected_raises else "false"
+        assert (
+            patched_read_only_isvc.instance.metadata.annotations.get("storage.kserve.io/readonly")
+            == expected_annotation
+        ), f"Expected annotation readonly={expected_annotation} was not applied"
+
+        new_pod = get_pods_by_isvc_label(
+            client=unprivileged_client,
+            isvc=patched_read_only_isvc,
+        )[0]
+        if expected_raises:
+            with pytest.raises(ExecOnPodError):
+                new_pod.execute(
+                    container=Containers.KSERVE_CONTAINER_NAME,
+                    command=POD_TOUCH_SPLIT_COMMAND,
+                )
+        else:
             new_pod.execute(
                 container=Containers.KSERVE_CONTAINER_NAME,
                 command=POD_TOUCH_SPLIT_COMMAND,
