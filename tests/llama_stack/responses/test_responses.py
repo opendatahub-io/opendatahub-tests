@@ -38,8 +38,8 @@ class TestLlamaStackResponses:
         """
         test_cases = [
             ("What is the capital of France?", ["paris"]),
-            ("What language is primarily used for web browsers?", ["javascript"]),
-            ("Name a primary color.", ["red", "blue", "yellow"]),
+            ("What programming language is executed inside web browsers (client-side)?", ["javascript"]),
+            ("Name a primary color in the RYB color model.", ["red", "yellow", "blue"]),
             ("What is 15 + 27?", ["42", "forty-two"]),
             ("Summarize what Python is in one sentence.", ["programming", "language"]),
         ]
