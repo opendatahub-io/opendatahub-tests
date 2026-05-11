@@ -52,7 +52,7 @@ def ragas_evaluator_llm(
         http_client.close()
 
 
-class _LangChainCompatibleEmbeddings:
+class OpenAIEmbeddingsAdapter:
     """Adapter bridging ragas.embeddings.OpenAIEmbeddings to the embed_query/embed_documents
     interface that older ragas metrics (AnswerRelevancy) still expect internally."""
 
@@ -96,7 +96,7 @@ def ragas_evaluator_embeddings(
             model=llama_stack_models.embedding_model.id,
         )
 
-        yield _LangChainCompatibleEmbeddings(ragas_embeddings=ragas_embeddings)
+        yield OpenAIEmbeddingsAdapter(ragas_embeddings=ragas_embeddings)
     finally:
         http_client.close()
 
