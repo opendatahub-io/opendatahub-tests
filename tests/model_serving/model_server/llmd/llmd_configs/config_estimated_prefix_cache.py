@@ -2,15 +2,16 @@
 
 import yaml
 
-from .config_models import QwenS3Config
+from .config_models import TinyLlamaS3GpuConfig
 
 
-class EstimatedPrefixCacheConfig(QwenS3Config):
-    """Single-node estimated prefix cache — Qwen via S3, 2 GPU replicas."""
+class EstimatedPrefixCacheConfig(TinyLlamaS3GpuConfig):
+    """Single-node estimated prefix cache — TinyLlama via S3, 2 GPU replicas."""
 
     enable_auth = True
     name = "llmisvc-estimated-prefix"
     replicas = 2
+    min_gpus_per_node = 2
     block_size = 64
     hash_algo = "sha256"
     hash_seed = "42"

@@ -1,15 +1,35 @@
 import pytest
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 
 from tests.model_explainability.evalhub.constants import (
+    EVALHUB_API_GROUP,
     EVALHUB_APP_LABEL,
     EVALHUB_COMPONENT_LABEL,
     EVALHUB_CONTAINER_NAME,
+    EVALHUB_PLURAL,
     EVALHUB_SERVICE_NAME,
 )
+
+
+@pytest.mark.smoke
+@pytest.mark.model_explainability
+def test_evalhub_crd_exists(
+    admin_client: DynamicClient,
+) -> None:
+    """Verify EvalHub CRD exists on the cluster."""
+    crd_name = f"{EVALHUB_PLURAL}.{EVALHUB_API_GROUP}"
+
+    crd_resource = CustomResourceDefinition(
+        client=admin_client,
+        name=crd_name,
+        ensure_exists=True,
+    )
+
+    assert crd_resource.exists, f"CRD {crd_name} does not exist on the cluster"
 
 
 @pytest.mark.parametrize(
@@ -21,7 +41,7 @@ from tests.model_explainability.evalhub.constants import (
     ],
     indirect=True,
 )
-@pytest.mark.smoke
+@pytest.mark.tier1
 @pytest.mark.model_explainability
 class TestEvalHubDeployment:
     """Tests for EvalHub deployment topology (pods, containers, labels)."""

@@ -257,7 +257,7 @@ def ovms_smoke_pod(
         Pod: The completed Pod resource (phase Succeeded when both scripts exit 0).
     """
     run_cmd = (
-        f"python {OVMS_SMOKE_SCRIPTS_MOUNT_PATH}/ovms_smoketest.py && python {OVMS_SMOKE_SCRIPTS_MOUNT_PATH}/smoke.py"
+        f"python3 {OVMS_SMOKE_SCRIPTS_MOUNT_PATH}/ovms_smoketest.py && python3 {OVMS_SMOKE_SCRIPTS_MOUNT_PATH}/smoke.py"
     )
     # Use writable dirs under /tmp so non-root container can cache models and configs.
     # HF_HOME is the preferred cache for Hugging Face (TRANSFORMERS_CACHE is deprecated in v5).

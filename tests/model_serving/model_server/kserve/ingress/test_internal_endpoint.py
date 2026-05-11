@@ -14,7 +14,7 @@ OVMS_REST_PORT = 8888
 OVMS_HEALTH_ENDPOINT = "v2/health/ready"
 HTTP_OK = "200"
 
-pytestmark = [pytest.mark.usefixtures("valid_aws_config")]
+pytestmark = [pytest.mark.tier1, pytest.mark.usefixtures("valid_aws_config")]
 
 
 @pytest.mark.parametrize(

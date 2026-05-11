@@ -1,3 +1,6 @@
+import json
+from typing import TypedDict
+
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
@@ -6,10 +9,21 @@ from ocp_resources.inference_service import InferenceService
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.prometheus import Prometheus
 from ocp_resources.route import Route
+from ocp_resources.secret import Secret
 
 from utilities.constants import Annotations
 from utilities.exceptions import PodContainersRestartError, ResourceMismatchError
 from utilities.infra import get_inference_serving_runtime, get_pods_by_isvc_label
+
+UPGRADE_BASELINE_CM_NAME = "upgrade-test-baseline"
+UPGRADE_AUTH_TOKEN_SECRET_NAME = "upgrade-test-auth-token"  # pragma: allowlist secret
+
+
+class ISVCBaseline(TypedDict):
+    isvc_observed_generation: int
+    runtime_name: str
+    runtime_generation: int
+    pod_restart_counts: dict[str, dict[str, int]]
 
 
 def verify_inference_generation(isvc: InferenceService, expected_generation: int) -> None:
@@ -98,33 +112,6 @@ def verify_model_status_loaded(isvc: InferenceService) -> None:
             f"Model not up to date for InferenceService {isvc.name}. "
             f"Expected transitionStatus 'UpToDate', got '{transition_status}'"
         )
-
-
-def verify_isvc_pods_not_restarted(client: DynamicClient, isvc: InferenceService, max_restarts: int = 0) -> None:
-    """
-    Verify that pods associated with the InferenceService have not restarted.
-
-    Args:
-        client: DynamicClient instance
-        isvc: InferenceService instance
-        max_restarts: Maximum allowed restart count (default 0)
-
-    Raises:
-        PodContainersRestartError: If any container has restarted more than max_restarts times
-    """
-    pods = get_pods_by_isvc_label(client=client, isvc=isvc)
-    restarted_containers: dict[str, list[str]] = {}
-
-    for pod in pods:
-        if pod.instance.status.containerStatuses:
-            for container in pod.instance.status.containerStatuses:
-                if container.restartCount > max_restarts:
-                    if pod.name not in restarted_containers:
-                        restarted_containers[pod.name] = []
-                    restarted_containers[pod.name].append(f"{container.name} (restarts: {container.restartCount})")
-
-    if restarted_containers:
-        raise PodContainersRestartError(f"Containers restarted: {restarted_containers}")
 
 
 def verify_storage_uri_unchanged(isvc: InferenceService, expected_uri: str) -> None:
@@ -405,3 +392,306 @@ def verify_gateway_accepted(gateway: Gateway) -> None:
     )
     if not is_accepted:
         raise AssertionError(f"Gateway {gateway.name} is not Accepted. Conditions: {conditions}")
+
+
+def capture_isvc_baseline(client: DynamicClient, isvc: InferenceService) -> ISVCBaseline:
+    """
+    Capture baseline values for an InferenceService before upgrade.
+
+    Captures observedGeneration, runtime generation, and per-container restart
+    counts so post-upgrade assertions can compare against actual pre-upgrade
+    state rather than hardcoded values.
+
+    Args:
+        client: DynamicClient instance
+        isvc: InferenceService instance
+
+    Returns:
+        ISVCBaseline with isvc_observed_generation, runtime_generation, and pod_restart_counts
+    """
+    logger = structlog.get_logger(name=__name__)
+
+    baseline: ISVCBaseline = {
+        "isvc_observed_generation": isvc.instance.status.observedGeneration,
+        "runtime_name": "",
+        "runtime_generation": 0,
+        "pod_restart_counts": {},
+    }
+
+    runtime = get_inference_serving_runtime(isvc=isvc)
+    baseline["runtime_name"] = runtime.name
+    baseline["runtime_generation"] = runtime.instance.metadata.generation
+
+    pod_restart_counts: dict[str, dict[str, int]] = {}
+    pods = get_pods_by_isvc_label(client=client, isvc=isvc)
+    for pod in pods:
+        if pod.instance.status.containerStatuses:
+            pod_restart_counts[pod.name] = {
+                container.name: container.restartCount for container in pod.instance.status.containerStatuses
+            }
+
+    baseline["pod_restart_counts"] = pod_restart_counts
+    logger.info(f"Captured baseline for {isvc.name}: {baseline}")
+    return baseline
+
+
+def save_baseline_to_configmap(
+    client: DynamicClient,
+    namespace: str,
+    baselines: dict[str, ISVCBaseline],
+) -> ConfigMap:
+    """
+    Save captured baselines to a ConfigMap on the cluster.
+
+    Args:
+        client: DynamicClient instance
+        namespace: Namespace where the ConfigMap will be created
+        baselines: Dict mapping ISVC names to their baseline dicts
+
+    Returns:
+        The created ConfigMap
+    """
+    cm = ConfigMap(client=client, name=UPGRADE_BASELINE_CM_NAME, namespace=namespace)
+    if not cm.exists:
+        cm = ConfigMap(
+            client=client,
+            name=UPGRADE_BASELINE_CM_NAME,
+            namespace=namespace,
+            data={"baseline": json.dumps(baselines)},
+        )
+        cm.deploy()
+        return cm
+
+    # Optimistic retry loop to avoid dropping entries if concurrent writers update
+    # the same baseline ConfigMap around the same time.
+    last_conflict: Exception | None = None
+    for _ in range(5):
+        try:
+            cm = ConfigMap(client=client, name=UPGRADE_BASELINE_CM_NAME, namespace=namespace)
+            if not cm.exists:
+                cm = ConfigMap(
+                    client=client,
+                    name=UPGRADE_BASELINE_CM_NAME,
+                    namespace=namespace,
+                    data={"baseline": json.dumps(baselines)},
+                )
+                cm.deploy()
+                return cm
+
+            cm_data = cm.instance.data or {}
+            existing_data = json.loads(cm_data.get("baseline", "{}"))
+            existing_data.update(baselines)
+            resource_dict = cm.instance.to_dict()
+            resource_dict.setdefault("data", {})
+            resource_dict["data"]["baseline"] = json.dumps(existing_data)
+            cm.update(resource_dict=resource_dict)
+            return cm
+        except Exception as exc:
+            if "409" in str(exc) or "Conflict" in str(exc):
+                last_conflict = exc
+                continue
+            raise
+
+    raise AssertionError(
+        f"Failed to update baseline ConfigMap '{UPGRADE_BASELINE_CM_NAME}' due to repeated update conflicts."
+    ) from last_conflict
+
+
+def load_baseline_from_configmap(
+    client: DynamicClient,
+    namespace: str,
+) -> dict[str, ISVCBaseline]:
+    """
+    Load baselines from the ConfigMap on the cluster.
+
+    Args:
+        client: DynamicClient instance
+        namespace: Namespace where the ConfigMap was created
+
+    Returns:
+        Dict mapping ISVC names to their baseline dicts
+
+    Raises:
+        AssertionError: If ConfigMap does not exist or has no baseline data
+    """
+    cm = ConfigMap(
+        client=client,
+        name=UPGRADE_BASELINE_CM_NAME,
+        namespace=namespace,
+    )
+
+    if not cm.exists:
+        raise AssertionError(
+            f"Baseline ConfigMap '{UPGRADE_BASELINE_CM_NAME}' not found in namespace '{namespace}'. "
+            f"Ensure pre-upgrade tests ran successfully."
+        )
+
+    cm_data = cm.instance.data or {}
+    raw = cm_data.get("baseline")
+    if not raw:
+        raise AssertionError(f"Baseline ConfigMap '{UPGRADE_BASELINE_CM_NAME}' has no 'baseline' key in data.")
+
+    return json.loads(raw)
+
+
+def save_auth_token_to_secret(
+    client: DynamicClient,
+    namespace: str,
+    token: str,
+) -> None:
+    """
+    Persist the pre-upgrade auth token into a Secret so the post-upgrade run
+    can reuse the exact same token to prove that the pre-existing auth setup
+    survives the upgrade.
+
+    A Secret is used instead of a ConfigMap to avoid storing credentials in
+    plaintext cluster metadata (CWE-312).
+
+    Args:
+        client: DynamicClient instance
+        namespace: Namespace where the Secret will be created
+        token: The bearer token to persist
+    """
+    secret = Secret(
+        client=client,
+        name=UPGRADE_AUTH_TOKEN_SECRET_NAME,
+        namespace=namespace,
+    )
+
+    if secret.exists:
+        resource_dict = secret.instance.to_dict()
+        resource_dict.setdefault("stringData", {})
+        resource_dict["stringData"]["auth_token"] = token
+        secret.update(resource_dict=resource_dict)
+    else:
+        Secret(
+            client=client,
+            name=UPGRADE_AUTH_TOKEN_SECRET_NAME,
+            namespace=namespace,
+            type="Opaque",
+            string_data={"auth_token": token},
+        ).deploy()
+
+
+def load_auth_token_from_secret(
+    client: DynamicClient,
+    namespace: str,
+) -> str:
+    """
+    Load the pre-upgrade auth token from the Secret.
+
+    Args:
+        client: DynamicClient instance
+        namespace: Namespace where the Secret lives
+
+    Returns:
+        The pre-upgrade bearer token
+
+    Raises:
+        AssertionError: If Secret or token key is missing
+    """
+    import base64
+
+    secret = Secret(
+        client=client,
+        name=UPGRADE_AUTH_TOKEN_SECRET_NAME,
+        namespace=namespace,
+    )
+
+    if not secret.exists:
+        raise AssertionError(
+            f"Auth token Secret '{UPGRADE_AUTH_TOKEN_SECRET_NAME}' not found in namespace '{namespace}'. "
+            f"Ensure pre-upgrade tests ran successfully."
+        )
+
+    secret_data = secret.instance.data or {}
+    encoded_token = secret_data.get("auth_token")
+    if not encoded_token:
+        raise AssertionError(
+            f"Auth token Secret '{UPGRADE_AUTH_TOKEN_SECRET_NAME}' has no 'auth_token' key. "
+            f"Ensure the pre-upgrade auth tests captured the token."
+        )
+
+    return base64.b64decode(encoded_token).decode()
+
+
+def get_isvc_baseline(baselines: dict[str, ISVCBaseline], isvc_name: str) -> ISVCBaseline:
+    """
+    Retrieve the baseline for a specific ISVC, failing fast if missing.
+
+    Args:
+        baselines: Dict mapping ISVC names to their baseline dicts
+        isvc_name: Name of the InferenceService
+
+    Returns:
+        The ISVCBaseline for the given ISVC
+
+    Raises:
+        AssertionError: If the baseline is missing for this ISVC
+    """
+    baseline = baselines.get(isvc_name)
+    assert baseline is not None, (
+        f"Missing baseline for InferenceService '{isvc_name}'. "
+        f"Ensure pre-upgrade tests captured the baseline. Available: {sorted(baselines.keys())}"
+    )
+    return baseline
+
+
+def verify_isvc_pods_not_restarted_against_baseline(
+    client: DynamicClient,
+    isvc: InferenceService,
+    baseline_restart_counts: dict[str, dict[str, int]],
+) -> None:
+    """
+    Verify that pod restart counts have not increased since the pre-upgrade baseline.
+
+    Args:
+        client: DynamicClient instance
+        isvc: InferenceService instance
+        baseline_restart_counts: Pre-upgrade restart counts per pod per container
+
+    Raises:
+        PodContainersRestartError: If any container's restart count increased
+    """
+    pods = get_pods_by_isvc_label(client=client, isvc=isvc)
+    increased_containers: dict[str, list[str]] = {}
+
+    current_pod_names = {pod.name for pod in pods}
+    baseline_pod_names = set(baseline_restart_counts.keys())
+    missing_pods = baseline_pod_names - current_pod_names
+    new_pods = current_pod_names - baseline_pod_names
+    if missing_pods or new_pods:
+        raise PodContainersRestartError(
+            f"Pod set changed after upgrade for {isvc.name}. missing={sorted(missing_pods)}, new={sorted(new_pods)}"
+        )
+
+    for pod in pods:
+        statuses = pod.instance.status.containerStatuses or []
+        pod_baseline = baseline_restart_counts[pod.name]
+        if not statuses and pod_baseline:
+            raise PodContainersRestartError(
+                f"Container statuses missing after upgrade for pod {pod.name}; "
+                f"baseline expected {sorted(pod_baseline.keys())}"
+            )
+
+        current_container_names = {container.name for container in statuses}
+        missing_containers = set(pod_baseline.keys()) - current_container_names
+        if missing_containers:
+            raise PodContainersRestartError(
+                f"Container set changed after upgrade for pod {pod.name}: "
+                f"missing containers {sorted(missing_containers)}"
+            )
+
+        for container in statuses:
+            if container.name not in pod_baseline:
+                raise PodContainersRestartError(
+                    f"Container set changed after upgrade for pod {pod.name}: new container '{container.name}'"
+                )
+            pre_count = pod_baseline[container.name]
+            if container.restartCount > pre_count:
+                increased_containers.setdefault(pod.name, []).append(
+                    f"{container.name} (pre={pre_count}, post={container.restartCount})"
+                )
+
+    if increased_containers:
+        raise PodContainersRestartError(f"Container restart counts increased after upgrade: {increased_containers}")

@@ -98,8 +98,8 @@ All code MUST consider security implications.
 ### Test Markers
 
 - All tests MUST apply relevant markers from pytest.ini
-- Use tier markers (smoke, sanity, tier1, tier2) to indicate test priority
-- Use component markers (model_explainability, llama_stack, rag) for ownership
+- Use tier markers (smoke, sanity, tier1, tier2, tier3) to indicate test priority
+- Use component markers (model_explainability, llama_stack, rag) for ownership in areas with cross-team ownership (e.g., `tests/llama_stack`)
 - Use infrastructure markers (gpu, parallel, slow) for execution filtering
 
 ### Test Organization

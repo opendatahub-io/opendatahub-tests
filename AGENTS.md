@@ -49,13 +49,13 @@ utilities/                # Shared utility functions
 ### Tests
 
 - Every test MUST have a docstring explaining what it tests (see `tests/cluster_health/test_cluster_health.py`)
-- Apply relevant markers from `pytest.ini`: tier (`smoke`, `sanity`, `tier1`, `tier2`), component (`model_serving`, `model_registry`, `llama_stack`), infrastructure (`gpu`, `parallel`, `slow`)
+- Apply relevant markers from `pytest.ini`: tier (`smoke`, `sanity`, `tier1`, `tier2`, `tier3`), and infrastructure (`gpu`, `parallel`, `slow`). Use component markers (`model_explainability`, `llama_stack`, `rag`) as needed for cross-directory ownership (e.g., `tests/llama_stack`) — see `pytest.ini` for the full list
 - Use Given-When-Then format in docstrings for behavioral clarity
 
 ### Fixtures
 
 - Fixture names MUST be nouns: `storage_secret` not `create_secret`
-- Use context managers for resource lifecycle (see `tests/conftest.py:544-550` for pattern)
+- Use context managers for resource lifecycle (see `cluster_monitoring_config` fixture in `tests/conftest.py` for pattern)
 - Fixtures do one thing only—compose them rather than nesting
 - Use narrowest scope that meets the need: function > class > module > session
 
@@ -76,9 +76,15 @@ utilities/                # Shared utility functions
 
 ### ✅ Always
 
+- Use meaningful variable names: `index`/`idx` instead of `i`, `server` instead of `s`, `item` instead of `x`
+- Use `test_` prefix in `pytest.param` id values (e.g., `id="test_without_order_by"`)
+- Use `pytest.mark.parametrize` when possible instead of duplicating test logic
+- Use bounded iteration instead of `while True` loops
+- Avoid code duplication by creating meaningful utilities
 - Follow existing patterns before introducing new approaches
 - Add type annotations (mypy strict enforced)
-- Write Google-format docstrings for tests and fixtures
+- Write Google-format docstrings for utility functions
+- Tests should have a concise docstring (Given-When-Then for tests, one-line for fixtures)
 - Run `pre-commit run --all-files` before suggesting changes
 
 ### ⚠️ Ask First

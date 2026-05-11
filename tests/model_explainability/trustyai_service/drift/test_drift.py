@@ -43,9 +43,9 @@ DRIFT_METRICS = [
     ],
     indirect=True,
 )
+@pytest.mark.tier1
 @pytest.mark.usefixtures("minio_pod")
 @pytest.mark.rawdeployment
-@pytest.mark.smoke
 class TestDriftMetrics:
     """
     Verifies all the basic operations that can be performed with all the drift metrics

@@ -9,7 +9,7 @@ PLACEHOLDER_STORAGE_URI = "s3://dummy-bucket/dummy/"
 # Runtime configs: display name (for "name : passed") and template name.
 # For each we create ServingRuntime + InferenceService, wait for pod(s), validate, then teardown.
 RUNTIME_CONFIGS = [
-    {"name": "odh_openvino_model_server_image", "template": RuntimeTemplates.OVMS_KSERVE},
+    {"name": "odh_ovms_image", "template": RuntimeTemplates.OVMS_KSERVE},
     {"name": "odh_vllm_cpu_image", "template": RuntimeTemplates.VLLM_CPU_x86},
     {"name": "odh_vllm_gaudi_image", "template": RuntimeTemplates.VLLM_GAUDI},
     {"name": "odh_mlserver_image", "template": RuntimeTemplates.MLSERVER},

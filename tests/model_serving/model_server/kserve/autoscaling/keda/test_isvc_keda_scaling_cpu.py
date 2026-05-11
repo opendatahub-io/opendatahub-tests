@@ -34,7 +34,11 @@ OVMS_METRICS_QUERY = (
 )
 OVMS_METRICS_THRESHOLD = 2.0
 
-pytestmark = [pytest.mark.keda, pytest.mark.usefixtures("valid_aws_config")]
+pytestmark = [
+    pytest.mark.tier2,
+    pytest.mark.keda,
+    pytest.mark.usefixtures("valid_aws_config"),
+]
 
 
 @pytest.mark.parametrize(

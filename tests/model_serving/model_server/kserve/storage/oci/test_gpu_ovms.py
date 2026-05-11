@@ -21,6 +21,7 @@ from utilities.infra import get_pods_by_isvc_label
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
 pytestmark = [
+    pytest.mark.tier2,
     pytest.mark.gpu,
     pytest.mark.model_server_gpu,
     pytest.mark.rawdeployment,

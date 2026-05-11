@@ -91,7 +91,7 @@ class TestOIDCMultiUser:
         )
 
     @pytest.mark.tier2
-    @pytest.mark.usefixtures("minimal_subscription_for_free_user")
+    @pytest.mark.usefixtures("oidc_subscription")
     def test_second_user_can_mint_api_key(
         self,
         second_user_minted_api_key: dict[str, Any],
@@ -106,7 +106,7 @@ class TestOIDCMultiUser:
         )
 
     @pytest.mark.tier2
-    @pytest.mark.usefixtures("minimal_subscription_for_free_user")
+    @pytest.mark.usefixtures("oidc_subscription")
     def test_api_key_isolation_between_users(
         self,
         request_session_http: requests.Session,

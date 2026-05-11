@@ -18,7 +18,7 @@ from utilities.guardrails import get_auth_headers
     ],
     indirect=True,
 )
-@pytest.mark.smoke
+@pytest.mark.tier1
 @pytest.mark.model_explainability
 class TestEvalHubMetrics:
     """Tests for the EvalHub Prometheus metrics endpoint."""

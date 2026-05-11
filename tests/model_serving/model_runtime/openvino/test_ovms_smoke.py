@@ -5,7 +5,7 @@ How the Pod works:
   - A Pod is created in the test namespace with restart_policy=Never.
   - The smoke scripts (ovms_smoketest.py, smoke.py) are mounted read-only at /scripts
     via a ConfigMap populated from the repo files.
-  - The container runs: python /scripts/ovms_smoketest.py && python /scripts/smoke.py.
+  - The container runs: python3 /scripts/ovms_smoketest.py && python3 /scripts/smoke.py.
   - If both scripts exit 0, the Pod phase becomes Succeeded.
   - If either script fails (non-zero exit or exception), the Pod fails and the test fails.
   - The test asserts Pod phase Succeeded; logs available via oc logs for debugging.

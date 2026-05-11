@@ -1,4 +1,5 @@
 import os
+import re
 import shlex
 import shutil
 
@@ -64,7 +65,7 @@ def prepare_pytest_item_data_dir(item: Item, output_dir: str) -> str:
         item.fspath.dirname.split(f"/{tests_path}{fspath_split_str}")[-1],
         item.fspath.basename.partition(".py")[0],
         item_cls_name,
-        item.name,
+        re.sub(r"[^\w.\-]", "_", item.name),  # sanitize colons/spaces that break oc adm must-gather --dest-dir
     )
     os.makedirs(item_dir_log, exist_ok=True)
     return item_dir_log
