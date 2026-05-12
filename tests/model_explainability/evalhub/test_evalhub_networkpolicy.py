@@ -1,5 +1,3 @@
-from typing import Any
-
 import pytest
 import yaml
 from kubernetes.dynamic import DynamicClient
@@ -16,59 +14,15 @@ from tests.model_explainability.evalhub.constants import (
     EVALHUB_SERVICE_MONITOR_PORT,
     EVALHUB_SERVICE_PORT,
 )
+from tests.model_explainability.evalhub.utils import (
+    MONITORING_NAMESPACE,
+    monitoring_allowed_by_rule,
+    policy_restricts_metrics_port,
+    rule_covers_metrics_port,
+)
 
 CLUSTER_MONITORING_CONFIGMAP = "cluster-monitoring-config"
 OPENSHIFT_MONITORING_NAMESPACE = "openshift-monitoring"
-
-# Namespace where OpenShift user-workload-monitoring Prometheus runs
-MONITORING_NAMESPACE: str = "openshift-user-workload-monitoring"
-
-# Label OpenShift sets on every namespace — used in NetworkPolicy namespaceSelectors
-NAMESPACE_NAME_LABEL: str = "kubernetes.io/metadata.name"
-
-
-def _rule_covers_metrics_port(rule: dict[str, Any]) -> bool:
-    """Return True if an ingress rule applies to the EvalHub metrics port.
-
-    A rule covers the metrics port when:
-    - its ports field is absent (rule applies to all ports), or
-    - any port entry matches 8443 by number or by the service's named port ("https").
-    """
-    ports = rule.get("ports")
-    if ports is None:
-        return True
-    return any(p.get("port") in (EVALHUB_SERVICE_PORT, EVALHUB_SERVICE_MONITOR_PORT) for p in ports)
-
-
-def _policy_restricts_metrics_port(spec: dict[str, Any]) -> bool:
-    """Return True if a NetworkPolicy spec restricts ingress on the metrics port.
-
-    A policy restricts the metrics port when policyTypes includes "Ingress" and either:
-    - spec.ingress is absent or empty (implicit deny-all), or
-    - at least one ingress rule covers the metrics port.
-
-    Per the Kubernetes spec, when policyTypes is omitted but ingress rules
-    exist, the policy implicitly applies to Ingress traffic.
-    """
-    policy_types = spec.get("policyTypes")
-    if policy_types is None:
-        if not spec.get("ingress"):
-            return False
-    elif "Ingress" not in policy_types:
-        return False
-    ingress_rules = spec.get("ingress") or []
-    if not ingress_rules:
-        return True  # deny-all ingress
-    return any(_rule_covers_metrics_port(rule) for rule in ingress_rules)
-
-
-def _monitoring_allowed_by_rule(rule: dict[str, Any]) -> bool:
-    """Return True if an ingress rule's from list allows the monitoring namespace."""
-    return any(
-        (ns_sel := fr.get("namespaceSelector", {}))
-        and ns_sel.get("matchLabels", {}).get(NAMESPACE_NAME_LABEL) == MONITORING_NAMESPACE
-        for fr in (rule.get("from") or [])
-    )
 
 
 @pytest.mark.smoke
@@ -194,7 +148,7 @@ class TestEvalHubNetworkPolicy:
             if match_labels and not all(match_labels.get(k) == v for k, v in evalhub_labels.items()):
                 continue
 
-            if not _policy_restricts_metrics_port(spec):
+            if not policy_restricts_metrics_port(spec, EVALHUB_SERVICE_PORT, EVALHUB_SERVICE_MONITOR_PORT):
                 continue
 
             # Policy restricts the metrics port — at least one ingress rule must
@@ -208,7 +162,9 @@ class TestEvalHubNetworkPolicy:
                 )
 
             monitoring_allowed = any(
-                _rule_covers_metrics_port(rule) and _monitoring_allowed_by_rule(rule=rule) for rule in ingress_rules
+                rule_covers_metrics_port(rule, EVALHUB_SERVICE_PORT, EVALHUB_SERVICE_MONITOR_PORT)
+                and monitoring_allowed_by_rule(rule=rule)
+                for rule in ingress_rules
             )
             assert monitoring_allowed, (
                 f"NetworkPolicy '{policy.name}' restricts port {EVALHUB_SERVICE_PORT} "
@@ -250,7 +206,7 @@ class TestEvalHubNetworkPolicy:
             if match_labels and not all(match_labels.get(k) == v for k, v in evalhub_labels.items()):
                 continue
 
-            if not _policy_restricts_metrics_port(spec):
+            if not policy_restricts_metrics_port(spec, EVALHUB_SERVICE_PORT, EVALHUB_SERVICE_MONITOR_PORT):
                 continue
 
             ingress_rules = spec.get("ingress") or []
@@ -262,8 +218,8 @@ class TestEvalHubNetworkPolicy:
                 )
 
             monitoring_allowed = any(
-                _rule_covers_metrics_port(rule)
-                and (_monitoring_allowed_by_rule(rule=rule) or not (rule.get("from") or []))
+                rule_covers_metrics_port(rule, EVALHUB_SERVICE_PORT, EVALHUB_SERVICE_MONITOR_PORT)
+                and (monitoring_allowed_by_rule(rule=rule) or not (rule.get("from") or []))
                 for rule in ingress_rules
             )
             assert monitoring_allowed, (
