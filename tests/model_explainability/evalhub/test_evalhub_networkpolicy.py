@@ -113,11 +113,11 @@ class TestEvalHubNetworkPolicy:
                     return True
             return False
 
-        evalhub_netpols = [p for p in policies if _owned_by_evalhub_cr(p)]
+        evalhub_netpols = [policy for policy in policies if _owned_by_evalhub_cr(policy)]
         assert not evalhub_netpols, (
             f"Operator unexpectedly created NetworkPolicy resources for EvalHub: "
-            f"{[p.name for p in evalhub_netpols]}. "
-            "These should have been removed in trustyai-service-operator#713."
+            f"{[policy.name for policy in evalhub_netpols]}. "
+            "The operator should not manage NetworkPolicy resources for EvalHub."
         )
 
     def test_no_networkpolicy_blocks_metrics_port_from_monitoring(
