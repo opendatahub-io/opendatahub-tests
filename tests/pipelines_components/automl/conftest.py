@@ -3,6 +3,7 @@ from typing import Any
 
 import pytest
 import structlog
+from ocp_resources.namespace import Namespace
 
 from tests.pipelines_components.constants import (
     AUTOML_LABEL_COLUMN,
@@ -45,7 +46,7 @@ def automl_pipeline_id(
     dspa_auth_headers: dict[str, str],
     dspa_ca_bundle_file: str,
     automl_pipeline_yaml_path: str,
-    pipelines_namespace: Namespace,  # noqa: F821
+    pipelines_namespace: Namespace,
 ) -> Generator[str, Any, Any]:
     """Upload the AutoML pipeline YAML and yield the pipeline ID. Deletes the pipeline on teardown."""
     pipeline_id = upload_pipeline(
@@ -70,7 +71,7 @@ def automl_run_id(
     dspa_auth_headers: dict[str, str],
     dspa_ca_bundle_file: str,
     automl_pipeline_id: str,
-    pipelines_namespace: Namespace,  # noqa: F821
+    pipelines_namespace: Namespace,
 ) -> Generator[str, Any, Any]:
     """Create a pipeline run and yield the run ID. Deletes the run on teardown."""
     run_id = create_pipeline_run(

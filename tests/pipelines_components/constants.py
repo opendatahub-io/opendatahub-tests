@@ -1,8 +1,6 @@
 import os
 from pathlib import Path
 
-from utilities.logger import RedactedString
-
 
 def _load_env_file(env_path: Path) -> None:
     """Parse a .env file and set variables into os.environ (does not overwrite existing)."""
@@ -63,12 +61,14 @@ AUTORAG_DSPA_NAME: str = os.environ.get("AUTORAG_DSPA_NAME", "dspa")
 AUTORAG_S3_SECRET_NAME: str = os.environ.get("AUTORAG_S3_SECRET_NAME", "")
 AUTORAG_S3_BUCKET: str = os.environ.get("AUTORAG_S3_BUCKET", "mlpipeline")
 
-# AutoRAG — Llama Stack (test creates K8s secret from these)
-AUTORAG_LLAMA_STACK_URL: str = os.environ.get("AUTORAG_LLAMA_STACK_URL", "")
-AUTORAG_LLAMA_STACK_API_KEY: RedactedString = RedactedString(value=os.environ.get("AUTORAG_LLAMA_STACK_API_KEY", ""))
-AUTORAG_EMBEDDINGS_MODEL: str = os.environ.get("AUTORAG_EMBEDDINGS_MODEL", "")
-AUTORAG_GENERATION_MODEL: str = os.environ.get("AUTORAG_GENERATION_MODEL", "")
-AUTORAG_VECTOR_DB_ID: str = os.environ.get("AUTORAG_VECTOR_DB_ID", "")
+# LlamaStack catalog-compatible model ID for the inference model (optional).
+# The rh-dev LlamaStack distribution validates INFERENCE_MODEL against its model catalog (Meta Llama,
+# IBM Granite, etc.).  If AUTORAG_INFERENCE_MODEL_NAME is not a catalog model (e.g. Qwen2.5-0.5B-Instruct),
+# set this to a supported catalog ID (e.g. meta-llama/Llama-3.2-1B-Instruct).  LlamaStack will register
+# that catalog model but route inference calls to vLLM using AUTORAG_INFERENCE_MODEL_NAME as the
+# provider_model_id, so the actual weights served by vLLM are used regardless of the catalog name.
+# Defaults to AUTORAG_INFERENCE_MODEL_NAME when unset (works as-is if the name is catalog-compatible).
+AUTORAG_LLAMA_STACK_INFERENCE_MODEL_ID: str = os.environ.get("AUTORAG_LLAMA_STACK_INFERENCE_MODEL_ID", "")
 
 # AutoRAG pipeline parameters
 AUTORAG_INPUT_DATA_KEY: str = os.getenv("AUTORAG_INPUT_DATA_KEY", "autorag-smoke/input_data")

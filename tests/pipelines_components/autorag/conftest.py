@@ -13,6 +13,7 @@ from ocp_resources.data_science_pipelines_application import DataSciencePipeline
 from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
+from ocp_resources.resource import ResourceEditor
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
@@ -21,6 +22,7 @@ from tests.pipelines_components.constants import (
     AUTORAG_DSPA_NAME,
     AUTORAG_DSPA_NAMESPACE,
     AUTORAG_INPUT_DATA_KEY,
+    AUTORAG_LLAMA_STACK_INFERENCE_MODEL_ID,
     AUTORAG_MAX_RAG_PATTERNS,
     AUTORAG_OPTIMIZATION_METRIC,
     AUTORAG_PIPELINE_YAML,
@@ -35,7 +37,6 @@ from tests.pipelines_components.utils import (
     resolve_pipeline_yaml,
     upload_pipeline,
 )
-from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import Annotations, DscComponents, KServeDeploymentType, RuntimeTemplates
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.general import generate_random_name
@@ -53,7 +54,6 @@ from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 LOGGER = structlog.get_logger(name=__name__)
 
-AUTORAG_LLAMA_STACK_SECRET_NAME: str = "autorag-llama-stack"
 AUTORAG_RESOURCE_PREFIX: str = "autorag-smoke"
 
 # User-provided env vars for the models to deploy
@@ -115,6 +115,9 @@ def autorag_inference_service(
     autorag_namespace: Namespace,
     autorag_inference_runtime: ServingRuntimeFromTemplate,
 ) -> Generator[InferenceService, Any, Any]:
+    # Use the LlamaStack catalog name as --served-model-name when set.
+    # This ensures vLLM, the LlamaStack catalog lookup, and inference routing all use the same name.
+    served_model_name = AUTORAG_LLAMA_STACK_INFERENCE_MODEL_ID or AUTORAG_INFERENCE_MODEL_NAME
     with create_isvc(
         client=admin_client,
         name="autorag-inference",
@@ -128,15 +131,23 @@ def autorag_inference_service(
             "requests": {"cpu": "4", "memory": "8Gi"},
             "limits": {"cpu": "8", "memory": "16Gi"},
         },
+        argument=["--served-model-name", served_model_name],
+        model_env_variables=[
+            {"name": "VLLM_CPU_KVCACHE_SPACE", "value": "2"},
+        ],
     ) as isvc:
         yield isvc
 
 
 @pytest.fixture(scope="class")
-def autorag_inference_url(autorag_inference_service: InferenceService) -> str:
-    url = autorag_inference_service.instance.status.url
-    assert url, "Inference InferenceService has no URL"
-    return f"{url}/v1"
+def autorag_inference_url(autorag_inference_service: InferenceService, autorag_namespace: Namespace) -> str:
+    # KServe sets status.address.url to the cluster-internal service URL with the correct port
+    # (e.g. http://{isvc}-predictor.{ns}.svc.cluster.local:8080).  Use it directly so LlamaStack
+    # can reach vLLM.  status.url is the external Route URL and is unreachable from within the cluster.
+    try:
+        return f"{autorag_inference_service.instance.status.address.url}/v1"
+    except AttributeError:
+        return f"http://{autorag_inference_service.name}-predictor.{autorag_namespace.name}.svc.cluster.local:8080/v1"
 
 
 @pytest.fixture(scope="class")
@@ -175,15 +186,19 @@ def autorag_embedding_service(
             "requests": {"cpu": "2", "memory": "4Gi"},
             "limits": {"cpu": "4", "memory": "16Gi"},
         },
+        model_env_variables=[
+            {"name": "VLLM_CPU_KVCACHE_SPACE", "value": "1"},
+        ],
     ) as isvc:
         yield isvc
 
 
 @pytest.fixture(scope="class")
-def autorag_embedding_url(autorag_embedding_service: InferenceService) -> str:
-    url = autorag_embedding_service.instance.status.url
-    assert url, "Embedding InferenceService has no URL"
-    return f"{url}/v1"
+def autorag_embedding_url(autorag_embedding_service: InferenceService, autorag_namespace: Namespace) -> str:
+    try:
+        return f"{autorag_embedding_service.instance.status.address.url}/v1"
+    except AttributeError:
+        return f"http://{autorag_embedding_service.name}-predictor.{autorag_namespace.name}.svc.cluster.local:8080/v1"
 
 
 # ---------------------------------------------------------------------------
@@ -303,12 +318,32 @@ def autorag_llama_stack_distribution(
     autorag_postgres_service: Service,
     autorag_inference_url: str,
     autorag_embedding_url: str,
+    autorag_inference_route: Route,
 ) -> Generator[LlamaStackDistribution, Any, Any]:
+    # INFERENCE_MODEL must be a model name in the LlamaStack rh-dev distribution catalog (Meta Llama,
+    # IBM Granite, etc.).  INFERENCE_PROVIDER_MODEL_ID is what the vllm-inference provider sends to
+    # vLLM — it must match the --served-model-name used by the inference ISVC.
+    # When AUTORAG_LLAMA_STACK_INFERENCE_MODEL_ID is unset, both values are the same (works when the
+    # model name is already catalog-compatible).  When the user's model is not in the catalog (e.g.
+    # Qwen2.5-0.5B-Instruct), they set AUTORAG_LLAMA_STACK_INFERENCE_MODEL_ID to a valid catalog name;
+    # the inference ISVC's --served-model-name is also set to that catalog name (see autorag_inference_service).
+    inference_catalog_model_id = AUTORAG_LLAMA_STACK_INFERENCE_MODEL_ID or AUTORAG_INFERENCE_MODEL_NAME
+
+    # Probe vLLM via the external Route before starting LlamaStack.
+    # The vllm-inference provider queries vLLM's /v1/models once at startup (refresh_models=False).
+    # If the model isn't there yet — or is served under a different name — it never gets registered.
+    # This wait logs the actual model names vLLM is serving, which is the key diagnostic.
+    _wait_for_vllm_model_ready(
+        vllm_base_url=f"https://{autorag_inference_route.host}/v1",
+        model_name=inference_catalog_model_id,
+    )
+
     secret_name = autorag_llama_stack_dist_secret.name
     postgres_service_name = autorag_postgres_service.name
 
     env_vars = [
-        {"name": "INFERENCE_MODEL", "value": AUTORAG_INFERENCE_MODEL_NAME},
+        {"name": "INFERENCE_MODEL", "value": inference_catalog_model_id},
+        {"name": "INFERENCE_PROVIDER_MODEL_ID", "value": inference_catalog_model_id},
         {
             "name": "VLLM_API_TOKEN",
             "valueFrom": {"secretKeyRef": {"name": secret_name, "key": "vllm-api-token"}},
@@ -344,8 +379,8 @@ def autorag_llama_stack_distribution(
     server_config: dict[str, Any] = {
         "containerSpec": {
             "resources": {
-                "requests": {"cpu": "2", "memory": "3Gi"},
-                "limits": {"cpu": "4", "memory": "6Gi"},
+                "requests": {"cpu": "4", "memory": "8Gi"},
+                "limits": {"cpu": "8", "memory": "16Gi"},
             },
             "env": env_vars,
             "name": "llama-stack",
@@ -380,8 +415,51 @@ def autorag_llama_stack_deployment(
     deployment.timeout_seconds = 240
     deployment.wait(timeout=240)
     deployment.wait_for_replicas()
-    wait_for_unique_llama_stack_pod(client=admin_client, namespace=autorag_llama_stack_distribution.namespace)
+    pod = wait_for_unique_llama_stack_pod(client=admin_client, namespace=autorag_llama_stack_distribution.namespace)
+
+    try:
+        logs = pod.log(container="llama-stack")
+        LOGGER.info("LlamaStack pod startup log", logs=logs[-8000:] if len(logs) > 8000 else logs)
+    except Exception as exc:  # noqa: BLE001
+        LOGGER.warning("Could not fetch LlamaStack pod logs", error=str(exc))
+
     return deployment
+
+
+@pytest.fixture(scope="class")
+def autorag_inference_route(
+    admin_client: DynamicClient,
+    autorag_namespace: Namespace,
+    autorag_inference_service: InferenceService,
+) -> Generator[Route, Any, Any]:
+    """External Route for the vLLM inference predictor service.
+
+    KServe RAW_DEPLOYMENT creates an internal-only service. This Route exposes it externally
+    so the test runner can probe /v1/models to verify what model name vLLM is serving before
+    LlamaStack starts.
+    """
+    route_name = generate_random_name(prefix="autorag-inf", length=12)
+    with Route(
+        client=admin_client,
+        namespace=autorag_namespace.name,
+        name=route_name,
+        service=f"{autorag_inference_service.name}-predictor",
+        wait_for_resource=True,
+    ) as route:
+        ResourceEditor(
+            patches={
+                route: {
+                    "spec": {
+                        "tls": {
+                            "termination": "edge",
+                            "insecureEdgeTerminationPolicy": "Redirect",
+                        }
+                    }
+                }
+            }
+        ).update()
+        route.wait(timeout=60)
+        yield route
 
 
 @pytest.fixture(scope="class")
@@ -398,8 +476,6 @@ def autorag_llama_stack_route(
         service=f"{autorag_llama_stack_deployment.name}-service",
         wait_for_resource=True,
     ) as route:
-        from ocp_resources.resource_editor import ResourceEditor
-
         ResourceEditor(
             patches={
                 route: {
@@ -447,24 +523,111 @@ def autorag_llama_stack_url(autorag_llama_stack_route: Route) -> str:
     return f"https://{autorag_llama_stack_route.host}"
 
 
+def _resolve_model_id(registered_ids: set[str], model_name: str) -> str | None:
+    """Return the registered model ID that matches model_name exactly or as a provider/name suffix."""
+    if model_name in registered_ids:
+        return model_name
+    matches = [mid for mid in registered_ids if mid.endswith(f"/{model_name}")]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _log_registered_models(client: LlamaStackClient) -> set[str]:
+    models = client.models.list()
+    registered_ids = {m.id for m in models}
+    LOGGER.info(
+        "Llama Stack registered models",
+        models=[
+            {
+                "id": m.id,
+                "model_type": str(getattr(m, "model_type", "?")),
+                "custom_metadata": getattr(m, "custom_metadata", {}),
+            }
+            for m in models
+        ],
+    )
+    return registered_ids
+
+
+def _wait_for_vllm_model_ready(vllm_base_url: str, model_name: str, timeout: int = 300) -> None:
+    """Poll vLLM's /v1/models until model_name appears, if the URL is reachable.
+
+    The vllm-inference provider queries vLLM at LlamaStack startup with refresh_models=False.
+    If the model is not yet in vLLM's /v1/models when LlamaStack starts, it will never register.
+
+    Skips gracefully when vllm_base_url is a cluster-internal address not reachable from the
+    test runner (e.g. http://service.namespace.svc.cluster.local/v1).
+    """
+    import time
+
+    LOGGER.info("Probing vLLM reachability from test runner", url=vllm_base_url, model=model_name)
+    try:
+        with httpx.Client(verify=False, timeout=5) as probe:
+            probe.get(f"{vllm_base_url}/models")
+    except Exception as exc:  # noqa: BLE001
+        LOGGER.info(
+            "vLLM URL not reachable from test runner (cluster-internal); skipping readiness wait",
+            url=vllm_base_url,
+            model=model_name,
+            reason=str(exc),
+        )
+        return
+
+    deadline = time.monotonic() + timeout
+    LOGGER.info("vLLM URL is reachable; waiting for model", url=vllm_base_url, model=model_name)
+    while time.monotonic() < deadline:
+        try:
+            with httpx.Client(verify=False, timeout=30) as client:
+                resp = client.get(f"{vllm_base_url}/models")
+                if resp.status_code == 200:
+                    model_ids = {m.get("id", "") for m in resp.json().get("data", [])}
+                    LOGGER.info("vLLM models", url=vllm_base_url, models=sorted(model_ids))
+                    if _resolve_model_id(model_ids, model_name) is not None:
+                        LOGGER.info("vLLM model is ready", model=model_name)
+                        return
+                else:
+                    LOGGER.debug("vLLM /v1/models returned non-200", status=resp.status_code)
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.debug("vLLM model check failed", error=str(exc))
+        time.sleep(15)
+    raise TimeoutError(
+        f"vLLM did not serve model '{model_name}' at '{vllm_base_url}' within {timeout}s. "
+        f"Verify --served-model-name is set correctly in the ISVC spec."
+    )
+
+
 @pytest.fixture(scope="class")
 def autorag_discovered_models(
     autorag_llama_stack_client: LlamaStackClient,
 ) -> tuple[str, str]:
-    """Discover embedding and generation model IDs from the deployed Llama Stack."""
-    models = autorag_llama_stack_client.models.list()
-    embedding_id = None
-    generation_id = None
-    for model in models:
-        model_type = getattr(model, "custom_metadata", {}).get("model_type", "")
-        if model_type == "embedding" and not embedding_id:
-            embedding_id = model.id
-        elif model_type == "llm" and not generation_id:
-            generation_id = model.id
+    """Assert both models are registered in Llama Stack and return their full IDs."""
+    registered_ids = _log_registered_models(client=autorag_llama_stack_client)
 
-    assert embedding_id, "No embedding model found in Llama Stack"
-    assert generation_id, "No generation (LLM) model found in Llama Stack"
-    LOGGER.info(f"Discovered models: embedding={embedding_id}, generation={generation_id}")
+    embedding_id = _resolve_model_id(registered_ids=registered_ids, model_name=AUTORAG_EMBEDDING_MODEL_NAME)
+    assert embedding_id is not None, (
+        f"Embedding model '{AUTORAG_EMBEDDING_MODEL_NAME}' not registered in Llama Stack. "
+        f"Available: {sorted(registered_ids)}"
+    )
+
+    # Try by vLLM model name first; if not found, try by the LlamaStack catalog ID (which may differ
+    # when AUTORAG_LLAMA_STACK_INFERENCE_MODEL_ID overrides AUTORAG_INFERENCE_MODEL_NAME).
+    generation_id = _resolve_model_id(registered_ids=registered_ids, model_name=AUTORAG_INFERENCE_MODEL_NAME)
+    if generation_id is None and AUTORAG_LLAMA_STACK_INFERENCE_MODEL_ID:
+        generation_id = _resolve_model_id(
+            registered_ids=registered_ids, model_name=AUTORAG_LLAMA_STACK_INFERENCE_MODEL_ID
+        )
+    assert generation_id is not None, (
+        f"Generation model not registered in Llama Stack. "
+        f"Looked for '{AUTORAG_INFERENCE_MODEL_NAME}'"
+        + (f" and '{AUTORAG_LLAMA_STACK_INFERENCE_MODEL_ID}'" if AUTORAG_LLAMA_STACK_INFERENCE_MODEL_ID else "")
+        + f". Available: {sorted(registered_ids)}\n"
+        f"The rh-dev LlamaStack distribution validates INFERENCE_MODEL against its model catalog. "
+        f"If '{AUTORAG_INFERENCE_MODEL_NAME}' is not a catalog model (e.g. a Qwen or custom model), "
+        f"set AUTORAG_LLAMA_STACK_INFERENCE_MODEL_ID to a supported catalog name such as "
+        f"'meta-llama/Llama-3.2-1B-Instruct'. Both the vLLM --served-model-name and INFERENCE_MODEL "
+        f"will use that catalog name; the actual weights are loaded from AUTORAG_INFERENCE_MODEL_URI."
+    )
+
+    LOGGER.info("Using models", embedding=embedding_id, generation=generation_id)
     return embedding_id, generation_id
 
 
@@ -506,23 +669,14 @@ def dspa_api_url(autorag_dspa: DataSciencePipelinesApplication) -> str:
 
 
 @pytest.fixture(scope="class")
-def dspa_auth_headers(current_client_token: str) -> dict[str, str]:
-    return {"Authorization": f"Bearer {current_client_token}"}
-
-
-@pytest.fixture(scope="class")
-def dspa_ca_bundle_file(admin_client: DynamicClient) -> str:
-    return create_ca_bundle_file(client=admin_client)
-
-
-@pytest.fixture(scope="class")
 def autorag_llama_stack_secret(
     admin_client: DynamicClient,
+    autorag_run_suffix: str,
     autorag_llama_stack_url: str,
 ) -> Generator[Secret, Any, Any]:
     with Secret(
         client=admin_client,
-        name=AUTORAG_LLAMA_STACK_SECRET_NAME,
+        name=f"{AUTORAG_RESOURCE_PREFIX}-ls-url-{autorag_run_suffix}",
         namespace=AUTORAG_DSPA_NAMESPACE,
         string_data={
             "LLAMA_STACK_CLIENT_BASE_URL": autorag_llama_stack_url,

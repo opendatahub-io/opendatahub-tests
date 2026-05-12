@@ -40,14 +40,6 @@ from utilities.infra import create_ns, wait_for_dsc_status_ready
 LOGGER = structlog.get_logger(name=__name__)
 
 _SENSITIVE_PATTERN = re.compile(r"(password|login|apikey|api_key|key|token|secret)", re.IGNORECASE)
-_AUTORAG_REQUIRED_VARS = [
-    "AUTORAG_DSPA_NAMESPACE",
-    "AUTORAG_S3_SECRET_NAME",
-    "AUTORAG_LLAMA_STACK_URL",
-    "AUTORAG_LLAMA_STACK_API_KEY",
-    "AUTORAG_EMBEDDINGS_MODEL",
-    "AUTORAG_GENERATION_MODEL",
-]
 
 
 def _mask_value(key: str, value: str) -> str:
@@ -57,7 +49,7 @@ def _mask_value(key: str, value: str) -> str:
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    """Log loaded .env variables and warn about missing required ones."""
+    """Log loaded .env variables."""
     env_file = Path(__file__).parent / ".env"
     if env_file.is_file():
         loaded = {}
@@ -73,13 +65,6 @@ def pytest_configure(config: pytest.Config) -> None:
             "Loaded .env file",
             path=str(env_file),
             variables={k: _mask_value(key=k, value=v) for k, v in loaded.items()},
-        )
-
-    missing = [v for v in _AUTORAG_REQUIRED_VARS if not os.environ.get(v)]
-    if missing:
-        structlog.get_logger(name=__name__).warning(  # noqa: FCN001
-            "Missing AutoRAG environment variables",
-            missing=missing,
         )
 
 
