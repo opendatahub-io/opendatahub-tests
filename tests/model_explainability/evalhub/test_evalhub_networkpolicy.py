@@ -185,8 +185,6 @@ class TestEvalHubNetworkPolicy:
         against NetworkPolicies in that namespace, which may have stricter default-deny rules.
         """
         applications_namespace = py_config["applications_namespace"]
-        if applications_namespace == model_namespace.name:
-            pytest.skip("EvalHub test namespace is the applications namespace — already covered above")
 
         evalhub_labels = {
             "app": EVALHUB_APP_LABEL,
