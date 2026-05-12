@@ -12,11 +12,6 @@ from llama_stack_client.types.file import File
 from llama_stack_client.types.vector_stores.vector_store_file import VectorStoreFile
 
 from tests.llama_stack.datasets import Dataset
-from utilities.llama_stack_utils import (
-    create_llama_stack_distribution,
-    wait_for_llama_stack_client_ready,
-    wait_for_unique_llama_stack_pod,
-)
 from utilities.path_utils import resolve_repo_path
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -124,7 +119,6 @@ def vector_store_create_and_poll(
     if vs_file.status not in terminal_statuses:
         LOGGER.warning(f"Unexpected vector store file status {vs_file.status!r}, treating as terminal")
     return vs_file
-
 
 
 def vector_store_create_file_from_url(

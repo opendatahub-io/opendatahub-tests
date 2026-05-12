@@ -63,7 +63,7 @@ try:
     RAGAS_MAX_SAMPLES = int(_ragas_max_samples_raw)
 except ValueError:
     RAGAS_MAX_SAMPLES = 5
-    
+
 __all__ = [
     "LLAMA_STACK_DISTRIBUTION_SECRET_DATA",
     "LLS_CLIENT_VERIFY_SSL",
