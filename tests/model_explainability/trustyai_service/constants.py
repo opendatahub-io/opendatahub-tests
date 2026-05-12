@@ -22,8 +22,8 @@ MLFLOW: str = "mlflow"
 GAUSSIAN_CREDIT_MODEL: str = "gaussian-credit-model"
 GAUSSIAN_CREDIT_MODEL_STORAGE_PATH: str = f"{SKLEARN}/{GAUSSIAN_CREDIT_MODEL.replace('-', '_')}/1"
 GAUSSIAN_CREDIT_MODEL_RESOURCES: dict[str, dict[str, str]] = {
-    "requests": {"cpu": "1", "memory": "2Gi"},
-    "limits": {"cpu": "1", "memory": "2Gi"},
+    "requests": {"cpu": "1", "memory": "500Mi"},
+    "limits": {"cpu": "1", "memory": "500Mi"},
 }
 
 KSERVE_MLSERVER: str = f"kserve-{MLSERVER}"

@@ -381,7 +381,7 @@ def wait_for_isvc_deployment_registered_by_trustyai_service(
         for deployment in deployments:
             if (
                 deployment.instance.metadata.annotations.get("internal.serving.kserve.io/logger-sink-url")
-                == f"https://{trustyai_service.name}.{isvc.namespace}.svc.cluster.local"
+                == f"http://{trustyai_service.name}.{isvc.namespace}.svc.cluster.local"
             ):
                 deployment.wait_for_replicas()
                 deployment.wait_for_condition(condition="Available", status="True")
