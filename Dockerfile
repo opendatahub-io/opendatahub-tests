@@ -13,7 +13,7 @@ ENV PATH="$PATH:$BIN_DIR"
 
 # Install system dependencies using dnf
 RUN dnf update -y \
-    && dnf install -y python3 python3-pip ssh gnupg curl gpg wget vim httpd-tools rsync openssl openssl-devel skopeo\
+    && dnf install -y python3 python3-pip python3-devel ssh gnupg curl gpg wget vim httpd-tools rsync openssl openssl-devel skopeo gcc-c++\
     && dnf clean all \
     && rm -rf /var/cache/dnf
 

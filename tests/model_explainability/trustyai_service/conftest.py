@@ -1,4 +1,5 @@
 import json
+import secrets
 from collections.abc import Generator
 from typing import Any
 
@@ -13,12 +14,10 @@ from ocp_resources.inference_service import InferenceService
 from ocp_resources.maria_db import MariaDB
 from ocp_resources.mariadb_operator import MariadbOperator
 from ocp_resources.namespace import Namespace
-from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
-from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.trustyai_service import TrustyAIService
@@ -27,12 +26,9 @@ from pytest_testconfig import py_config
 from tests.model_explainability.trustyai_service.constants import (
     GAUSSIAN_CREDIT_MODEL,
     GAUSSIAN_CREDIT_MODEL_RESOURCES,
-    GAUSSIAN_CREDIT_MODEL_STORAGE_PATH,
+    GAUSSIAN_CREDIT_MODEL_STORAGE_URI,
     ISVC_GETTER,
     KSERVE_MLSERVER,
-    KSERVE_MLSERVER_ANNOTATIONS,
-    KSERVE_MLSERVER_CONTAINERS,
-    KSERVE_MLSERVER_SUPPORTED_MODEL_FORMATS,
     TAI_DATA_CONFIG,
     TAI_DB_STORAGE_CONFIG,
     TAI_METRICS_CONFIG,
@@ -56,12 +52,13 @@ from utilities.constants import (
     TRUSTYAI_SERVICE_NAME,
     Annotations,
     KServeDeploymentType,
-    Labels,
+    RuntimeTemplates,
 )
 from utilities.inference_utils import create_isvc
 from utilities.infra import create_inference_token, get_kserve_storage_initialize_image, update_configmap_data
 from utilities.logger import RedactedString
 from utilities.operator_utils import get_cluster_service_version
+from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 DB_CREDENTIALS_SECRET_NAME: str = "db-credentials"
 DB_NAME: str = "trustyai_db"
@@ -79,11 +76,17 @@ def trustyai_service(
     user_workload_monitoring_config: ConfigMap,
     teardown_resources: bool,
 ) -> Generator[TrustyAIService, Any, Any]:
+    """Provides a TrustyAIService instance for testing.
+
+    In post-upgrade mode, references the existing TrustyAIService created during pre-upgrade tests
+    and cleans it up after post-upgrade tests complete.
+
+    In pre-upgrade mode (or when no upgrade flag is set), creates a new TrustyAIService with either
+    PVC or DB storage based on the test parametrization, and manages cleanup via teardown_resources.
+    """
     tais_kwargs = {"client": admin_client, "namespace": model_namespace.name, "name": TRUSTYAI_SERVICE_NAME}
 
     if pytestconfig.option.post_upgrade:
-        # If we are on post-upgrade tests, we don't need to create the TrustyAIService,
-        # but we need to clean it up manually
         trustyai_service = TrustyAIService(**tais_kwargs)
         yield trustyai_service
         trustyai_service.clean_up()
@@ -170,84 +173,151 @@ def user_workload_monitoring_config(admin_client: DynamicClient) -> Generator[Co
 
 
 @pytest.fixture(scope="class")
-def db_credentials_secret(admin_client: DynamicClient, model_namespace: Namespace) -> Generator[Secret, Any, Any]:
-    with Secret(
-        client=admin_client,
-        name=DB_CREDENTIALS_SECRET_NAME,
-        namespace=model_namespace.name,
-        string_data={
-            "databaseKind": MARIADB,
-            "databaseName": DB_NAME,
-            "databaseUsername": DB_USERNAME,
-            "databasePassword": DB_PASSWORD,
-            "databaseService": MARIADB,
-            "databasePort": "3306",
-            "databaseGeneration": "update",
-        },
-    ) as db_credentials:
-        yield db_credentials
+def db_credentials_secret(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    teardown_resources: bool,
+) -> Generator[Secret, Any, Any]:
+    """Provides database credentials secret for MariaDB connection.
+
+    In post-upgrade mode, references the existing secret created during pre-upgrade tests
+    and cleans it up after post-upgrade tests complete.
+
+    In pre-upgrade mode (or when no upgrade flag is set), creates a new secret with MariaDB
+    connection details and manages cleanup via teardown_resources.
+    """
+    if pytestconfig.option.post_upgrade:
+        secret = Secret(
+            client=admin_client,
+            name=DB_CREDENTIALS_SECRET_NAME,
+            namespace=model_namespace.name,
+            ensure_exists=True,
+        )
+        yield secret
+        secret.clean_up()
+    else:
+        db_password = secrets.token_urlsafe(nbytes=24)
+        with Secret(
+            client=admin_client,
+            name=DB_CREDENTIALS_SECRET_NAME,
+            namespace=model_namespace.name,
+            string_data={
+                "databaseKind": MARIADB,
+                "databaseName": DB_NAME,
+                "databaseUsername": DB_USERNAME,
+                "databasePassword": db_password,
+                "databaseService": MARIADB,
+                "databasePort": "3306",
+                "databaseGeneration": "update",
+            },
+            teardown=teardown_resources,
+        ) as db_credentials:
+            yield db_credentials
 
 
 @pytest.fixture(scope="class")
 def mariadb(
+    pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     model_namespace: Namespace,
     db_credentials_secret: Secret,
     mariadb_operator_cr: MariadbOperator,
+    teardown_resources: bool,
 ) -> Generator[MariaDB, Any, Any]:
-    mariadb_csv: ClusterServiceVersion = get_cluster_service_version(
-        client=admin_client, prefix=MARIADB, namespace=OPENSHIFT_OPERATORS
-    )
-    alm_examples: list[dict[str, Any]] = mariadb_csv.get_alm_examples()
-    mariadb_dict: dict[str, Any] = next((example for example in alm_examples if example["kind"] == "MariaDB"), None)
+    """Provides a MariaDB instance for TrustyAI database storage.
 
-    if not mariadb_dict:
-        raise ResourceNotFoundError(f"No MariaDB dict found in alm_examples for CSV {mariadb_csv.name}")
+    In post-upgrade mode, references the existing MariaDB created during pre-upgrade tests
+    and cleans it up after post-upgrade tests complete.
 
-    mariadb_dict["metadata"]["namespace"] = model_namespace.name
-    mariadb_dict["spec"]["database"] = DB_NAME
-    mariadb_dict["spec"]["username"] = DB_USERNAME
-
-    mariadb_dict["spec"]["replicas"] = 1
-
-    # Need to fix MariaDB version due to an issue with the default version in certain environments
-    # Using the same registry and image used by the MariaDB operator
-    # --just changing the tag to point to a stable version
-    mariadb_dict["spec"]["image"] = "docker-registry1.mariadb.com/library/mariadb:10.11.8"
-    mariadb_dict["spec"]["galera"]["enabled"] = False
-    mariadb_dict["spec"]["metrics"]["enabled"] = False
-    mariadb_dict["spec"]["tls"] = {"enabled": True, "required": True}
-
-    password_secret_key_ref = {"generate": False, "key": "databasePassword", "name": DB_CREDENTIALS_SECRET_NAME}
-
-    mariadb_dict["spec"]["rootPasswordSecretKeyRef"] = password_secret_key_ref
-    mariadb_dict["spec"]["passwordSecretKeyRef"] = password_secret_key_ref
-    with MariaDB(kind_dict=mariadb_dict) as mariadb:
-        wait_for_mariadb_pods(client=admin_client, mariadb=mariadb)
+    In pre-upgrade mode (or when no upgrade flag is set), creates a new MariaDB instance,
+    waits for pods to be ready, and cleans up.
+    """
+    if pytestconfig.option.post_upgrade:
+        mariadb = MariaDB(
+            client=admin_client,
+            name="mariadb",
+            namespace=model_namespace.name,
+            ensure_exists=True,
+        )
         yield mariadb
+        mariadb.clean_up()
+    else:
+        mariadb_csv: ClusterServiceVersion = get_cluster_service_version(
+            client=admin_client, prefix=MARIADB, namespace=OPENSHIFT_OPERATORS
+        )
+        alm_examples: list[dict[str, Any]] = mariadb_csv.get_alm_examples()
+        mariadb_dict: dict[str, Any] = next((example for example in alm_examples if example["kind"] == "MariaDB"), None)
+
+        if not mariadb_dict:
+            raise ResourceNotFoundError(f"No MariaDB dict found in alm_examples for CSV {mariadb_csv.name}")
+
+        mariadb_dict["metadata"]["namespace"] = model_namespace.name
+        mariadb_dict["spec"]["database"] = DB_NAME
+        mariadb_dict["spec"]["username"] = DB_USERNAME
+
+        mariadb_dict["spec"]["replicas"] = 1
+
+        # Need to fix MariaDB version due to an issue with the default version in certain environments
+        # Using the same registry and image used by the MariaDB operator
+        # --just changing the tag to point to a stable version
+        mariadb_dict["spec"]["image"] = "docker-registry1.mariadb.com/library/mariadb:10.11.8"
+        mariadb_dict["spec"]["galera"]["enabled"] = False
+        mariadb_dict["spec"]["metrics"]["enabled"] = False
+        mariadb_dict["spec"]["tls"] = {"enabled": True, "required": True}
+
+        password_secret_key_ref = {"generate": False, "key": "databasePassword", "name": DB_CREDENTIALS_SECRET_NAME}
+
+        mariadb_dict["spec"]["rootPasswordSecretKeyRef"] = password_secret_key_ref
+        mariadb_dict["spec"]["passwordSecretKeyRef"] = password_secret_key_ref
+        with MariaDB(kind_dict=mariadb_dict, teardown=teardown_resources) as mariadb:
+            wait_for_mariadb_pods(client=admin_client, mariadb=mariadb)
+            yield mariadb
 
 
 @pytest.fixture(scope="class")
 def trustyai_db_ca_secret(
-    admin_client: DynamicClient, model_namespace: Namespace, mariadb: MariaDB
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    mariadb: MariaDB,
+    teardown_resources: bool,
 ) -> Generator[Secret, Any]:
-    mariadb_ca_secret = Secret(
-        client=admin_client, name=f"{mariadb.name}-ca", namespace=model_namespace.name, ensure_exists=True
-    )
-    with Secret(
-        client=admin_client,
-        name=f"{TRUSTYAI_SERVICE_NAME}-db-ca",
-        namespace=model_namespace.name,
-        data_dict={"ca.crt": mariadb_ca_secret.instance.data["ca.crt"]},
-    ) as secret:
+    """Provides TLS CA certificate secret for TrustyAI to connect to MariaDB.
+
+    In post-upgrade mode, references the existing CA secret created during pre-upgrade tests
+    and cleans it up after post-upgrade tests complete.
+
+    In pre-upgrade mode (or when no upgrade flag is set), creates a new secret by copying the
+    CA certificate from the MariaDB CA secret and manages cleanup via teardown_resources.
+    """
+    if pytestconfig.option.post_upgrade:
+        secret = Secret(
+            client=admin_client,
+            name=f"{TRUSTYAI_SERVICE_NAME}-db-ca",
+            namespace=model_namespace.name,
+            ensure_exists=True,
+        )
         yield secret
+        secret.clean_up()
+    else:
+        mariadb_ca_secret = Secret(
+            client=admin_client, name=f"{mariadb.name}-ca", namespace=model_namespace.name, ensure_exists=True
+        )
+        with Secret(
+            client=admin_client,
+            name=f"{TRUSTYAI_SERVICE_NAME}-db-ca",
+            namespace=model_namespace.name,
+            data_dict={"ca.crt": mariadb_ca_secret.instance.data["ca.crt"]},
+            teardown=teardown_resources,
+        ) as secret:
+            yield secret
 
 
 @pytest.fixture(scope="class")
 def mlserver_runtime(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    minio_data_connection: Secret,
     model_namespace: Namespace,
     teardown_resources: bool,
 ) -> Generator[ServingRuntime, Any, Any]:
@@ -263,12 +333,9 @@ def mlserver_runtime(
         serving_runtime.clean_up()
 
     else:
-        with ServingRuntime(
-            containers=KSERVE_MLSERVER_CONTAINERS,
-            supported_model_formats=KSERVE_MLSERVER_SUPPORTED_MODEL_FORMATS,
-            protocol_versions=["v2"],
-            annotations=KSERVE_MLSERVER_ANNOTATIONS,
-            label={Labels.OpenDataHub.DASHBOARD: "true"},
+        with ServingRuntimeFromTemplate(
+            template_name=RuntimeTemplates.MLSERVER,
+            deployment_type=KServeDeploymentType.RAW_DEPLOYMENT,
             teardown=teardown_resources,
             **mlserver_runtime_kwargs,
         ) as mlserver:
@@ -280,11 +347,8 @@ def gaussian_credit_model(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    minio_pod: Pod,
-    minio_service: Service,
-    minio_data_connection: Secret,
     mlserver_runtime: ServingRuntime,
-    kserve_raw_config: ConfigMap,
+    # kserve_raw_config: ConfigMap,
     kserve_logger_ca_bundle: ConfigMap,
     teardown_resources: bool,
 ) -> Generator[InferenceService, Any, Any]:
@@ -303,8 +367,7 @@ def gaussian_credit_model(
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
             model_format=XGBOOST,
             runtime=mlserver_runtime.name,
-            storage_key=minio_data_connection.name,
-            storage_path=GAUSSIAN_CREDIT_MODEL_STORAGE_PATH,
+            storage_uri=GAUSSIAN_CREDIT_MODEL_STORAGE_URI,
             enable_auth=True,
             external_route=True,
             wait_for_predictor_pods=False,
@@ -322,51 +385,139 @@ def gaussian_credit_model(
 
 @pytest.fixture(scope="class")
 def isvc_getter_service_account(
-    admin_client: DynamicClient, model_namespace: Namespace
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    teardown_resources: bool,
 ) -> Generator[ServiceAccount, Any, Any]:
-    with create_isvc_getter_service_account(
-        client=admin_client, namespace=model_namespace, name=ISVC_GETTER
-    ) as service_account:
+    """Provides a ServiceAccount for fetching InferenceServices.
+
+    In post-upgrade mode, references the existing ServiceAccount created during pre-upgrade tests
+    and cleans it up after post-upgrade tests complete.
+
+    In pre-upgrade mode (or when no upgrade flag is set), creates a new ServiceAccount and manages
+    cleanup.
+    """
+    if pytestconfig.option.post_upgrade:
+        service_account = ServiceAccount(
+            client=admin_client,
+            name=ISVC_GETTER,
+            namespace=model_namespace.name,
+            ensure_exists=True,
+        )
         yield service_account
+        service_account.clean_up()
+    else:
+        with create_isvc_getter_service_account(
+            client=admin_client, namespace=model_namespace, name=ISVC_GETTER, teardown=teardown_resources
+        ) as service_account:
+            yield service_account
 
 
 @pytest.fixture(scope="class")
-def isvc_getter_role(admin_client: DynamicClient, model_namespace: Namespace) -> Generator[Role, Any, Any]:
-    with create_isvc_getter_role(client=admin_client, namespace=model_namespace, name=ISVC_GETTER) as role:
+def isvc_getter_role(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    teardown_resources: bool,
+) -> Generator[Role, Any, Any]:
+    """Provides a Role with permissions to get, list, and watch InferenceServices.
+
+    In post-upgrade mode, references the existing Role created during pre-upgrade tests
+    and cleans it up after post-upgrade tests complete.
+
+    In pre-upgrade mode (or when no upgrade flag is set), creates a new Role with InferenceService
+    access permissions and manages cleanup.
+    """
+    if pytestconfig.option.post_upgrade:
+        role = Role(
+            client=admin_client,
+            name=ISVC_GETTER,
+            namespace=model_namespace.name,
+            ensure_exists=True,
+        )
         yield role
+        role.clean_up()
+    else:
+        with create_isvc_getter_role(
+            client=admin_client, namespace=model_namespace, name=ISVC_GETTER, teardown=teardown_resources
+        ) as role:
+            yield role
 
 
 @pytest.fixture(scope="class")
 def isvc_getter_role_binding(
+    pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     model_namespace: Namespace,
     isvc_getter_role: Role,
     isvc_getter_service_account: ServiceAccount,
+    teardown_resources: bool,
 ) -> Generator[RoleBinding, Any, Any]:
-    with create_isvc_getter_role_binding(
-        client=admin_client,
-        namespace=model_namespace,
-        role=isvc_getter_role,
-        service_account=isvc_getter_service_account,
-        name=ISVC_GETTER,
-    ) as role_binding:
+    """Provides a RoleBinding to link the ServiceAccount to the InferenceService getter Role.
+
+    In post-upgrade mode, references the existing RoleBinding created during pre-upgrade tests
+    and cleans it up after post-upgrade tests complete.
+
+    In pre-upgrade mode (or when no upgrade flag is set), creates a new RoleBinding
+    and manages cleanup.
+    """
+    if pytestconfig.option.post_upgrade:
+        role_binding = RoleBinding(
+            client=admin_client,
+            name=ISVC_GETTER,
+            namespace=model_namespace.name,
+            ensure_exists=True,
+        )
         yield role_binding
+        role_binding.clean_up()
+    else:
+        with create_isvc_getter_role_binding(
+            client=admin_client,
+            namespace=model_namespace,
+            role=isvc_getter_role,
+            service_account=isvc_getter_service_account,
+            name=ISVC_GETTER,
+            teardown=teardown_resources,
+        ) as role_binding:
+            yield role_binding
 
 
 @pytest.fixture(scope="class")
 def isvc_getter_token_secret(
+    pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     model_namespace: Namespace,
     isvc_getter_service_account: ServiceAccount,
     isvc_getter_role_binding: RoleBinding,
+    teardown_resources: bool,
 ) -> Generator[Secret, Any, Any]:
-    with create_isvc_getter_token_secret(
-        client=admin_client,
-        name="sa-token",
-        namespace=model_namespace,
-        service_account=isvc_getter_service_account,
-    ) as secret:
+    """Provides a token Secret for the InferenceService getter ServiceAccount.
+
+    In post-upgrade mode, references the existing token Secret created during pre-upgrade tests
+    and cleans it up after post-upgrade tests complete.
+
+    In pre-upgrade mode (or when no upgrade flag is set), creates a new token Secret and manages
+    cleanup via teardown_resources.
+    """
+    if pytestconfig.option.post_upgrade:
+        secret = Secret(
+            client=admin_client,
+            name="sa-token",
+            namespace=model_namespace.name,
+            ensure_exists=True,
+        )
         yield secret
+        secret.clean_up()
+    else:
+        with create_isvc_getter_token_secret(
+            client=admin_client,
+            name="sa-token",
+            namespace=model_namespace,
+            service_account=isvc_getter_service_account,
+            teardown=teardown_resources,
+        ) as secret:
+            yield secret
 
 
 @pytest.fixture(scope="class")

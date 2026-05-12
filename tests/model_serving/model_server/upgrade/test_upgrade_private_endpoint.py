@@ -1,9 +1,10 @@
 import pytest
 
 from tests.model_serving.model_server.upgrade.utils import (
+    get_isvc_baseline,
     verify_inference_generation,
     verify_isvc_internal_access,
-    verify_isvc_pods_not_restarted,
+    verify_isvc_pods_not_restarted_against_baseline,
     verify_no_external_route,
     verify_private_endpoint_url,
     verify_serving_runtime_generation,
@@ -16,6 +17,7 @@ from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
 pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_config")]
 
 
+@pytest.mark.usefixtures("capture_private_endpoint_upgrade_baseline")
 class TestPreUpgradePrivateEndpoint:
     """Pre-upgrade tests for private endpoint (internal-only) model serving."""
 
@@ -85,15 +87,33 @@ class TestPostUpgradePrivateEndpoint:
 
     @pytest.mark.post_upgrade
     @pytest.mark.dependency(depends=["private_endpoint_post_exists"])
-    def test_private_endpoint_post_upgrade_not_modified(self, private_endpoint_inference_service_fixture):
+    def test_private_endpoint_post_upgrade_not_modified(
+        self, private_endpoint_inference_service_fixture, upgrade_baseline_fixture
+    ):
         """Verify InferenceService is not modified during upgrade"""
-        verify_inference_generation(isvc=private_endpoint_inference_service_fixture, expected_generation=1)
+        baseline = get_isvc_baseline(
+            baselines=upgrade_baseline_fixture,
+            isvc_name=private_endpoint_inference_service_fixture.name,
+        )
+        verify_inference_generation(
+            isvc=private_endpoint_inference_service_fixture,
+            expected_generation=baseline["isvc_observed_generation"],
+        )
 
     @pytest.mark.post_upgrade
     @pytest.mark.dependency(depends=["private_endpoint_post_exists"])
-    def test_private_endpoint_post_upgrade_runtime_not_modified(self, private_endpoint_inference_service_fixture):
+    def test_private_endpoint_post_upgrade_runtime_not_modified(
+        self, private_endpoint_inference_service_fixture, upgrade_baseline_fixture
+    ):
         """Verify ServingRuntime is not modified during upgrade"""
-        verify_serving_runtime_generation(isvc=private_endpoint_inference_service_fixture, expected_generation=1)
+        baseline = get_isvc_baseline(
+            baselines=upgrade_baseline_fixture,
+            isvc_name=private_endpoint_inference_service_fixture.name,
+        )
+        verify_serving_runtime_generation(
+            isvc=private_endpoint_inference_service_fixture,
+            expected_generation=baseline["runtime_generation"],
+        )
 
     @pytest.mark.post_upgrade
     @pytest.mark.dependency(depends=["private_endpoint_post_exists"])
@@ -122,9 +142,15 @@ class TestPostUpgradePrivateEndpoint:
         self,
         admin_client,
         private_endpoint_inference_service_fixture,
+        upgrade_baseline_fixture,
     ):
-        """Verify InferenceService pods have not restarted during upgrade"""
-        verify_isvc_pods_not_restarted(
+        """Verify InferenceService pods have not restarted beyond pre-upgrade baseline"""
+        baseline = get_isvc_baseline(
+            baselines=upgrade_baseline_fixture,
+            isvc_name=private_endpoint_inference_service_fixture.name,
+        )
+        verify_isvc_pods_not_restarted_against_baseline(
             client=admin_client,
             isvc=private_endpoint_inference_service_fixture,
+            baseline_restart_counts=baseline["pod_restart_counts"],
         )
