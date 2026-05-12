@@ -79,9 +79,9 @@ def test_monitoring_namespace_carries_name_label(admin_client: DynamicClient) ->
 class TestEvalHubNetworkPolicy:
     """Tests verifying that NetworkPolicy configuration allows Prometheus to scrape EvalHub metrics.
 
-    PR #713 removed the operator-managed NetworkPolicy in favour of external network
-    management. These tests verify that:
-    - The operator no longer creates a NetworkPolicy for EvalHub.
+    The operator does not manage NetworkPolicy resources for EvalHub; network access
+    is handled externally. These tests verify that:
+    - The operator does not create a NetworkPolicy for EvalHub.
     - No NetworkPolicy in the EvalHub namespace blocks ingress on the metrics port
       from the openshift-user-workload-monitoring namespace.
     - The monitoring namespace carries the expected label used by NetworkPolicy selectors.
