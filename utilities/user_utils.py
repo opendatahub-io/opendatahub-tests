@@ -59,6 +59,8 @@ def create_htpasswd_file(username: str, password: str) -> tuple[Path, str]:
         Tuple of (temp file path, base64 encoded content)
     """
     hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    # OpenShift OAuth uses Apache APR's crypt_blowfish which only recognizes $2y$/$2a$, not $2b$
+    hashed = hashed.replace("$2b$", "$2y$", 1)
     htpasswd_line = f"{username}:{hashed}\n"
 
     with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".htpasswd") as f:
