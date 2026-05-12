@@ -96,8 +96,6 @@ class TestGarakBenchmark:
                             "endpoint": kfp_endpoint,
                             "namespace": tenant_namespace.name,
                             "s3_secret_name": dspa_secret_patch.name,
-                            "s3_endpoint": f"http://minio-dspa.{tenant_namespace.name}.svc.cluster.local:9000",
-                            "s3_bucket": "mlpipeline",
                             "verify_ssl": False,
                         },
                         # Skip the SDGHub step, it'll fail to produce a dataset with our dummy model

@@ -14,23 +14,19 @@ from tests.model_explainability.trustyai_service.trustyai_service_utils import (
     verify_upload_data_to_trustyai_service,
 )
 from tests.model_explainability.trustyai_service.utils import validate_db_credentials_secret
-from utilities.constants import MinIo
 from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
 
 
 @pytest.mark.parametrize(
-    "model_namespace, minio_pod, minio_data_connection, trustyai_service",
+    "model_namespace, trustyai_service",
     [
         pytest.param(
             {"name": "test-trustyaiservice-upgrade"},
-            MinIo.PodConfig.MODEL_MESH_MINIO_CONFIG,
-            {"bucket": MinIo.Buckets.MODELMESH_EXAMPLE_MODELS},
             {"storage": "pvc"},
         )
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("minio_pod")
 class TestPreUpgradeTrustyAIService:
     @pytest.mark.pre_upgrade
     def test_trustyai_service_pre_upgrade_inference(
@@ -57,7 +53,6 @@ class TestPreUpgradeTrustyAIService:
     def test_trustyai_service_pre_upgrade_data_upload(
         self,
         admin_client,
-        minio_data_connection,
         current_client_token,
         trustyai_service,
     ) -> None:
@@ -91,23 +86,19 @@ class TestPreUpgradeTrustyAIService:
 
 
 @pytest.mark.parametrize(
-    "model_namespace, minio_pod, minio_data_connection",
+    "model_namespace",
     [
         pytest.param(
             {"name": "test-trustyaiservice-upgrade"},
-            MinIo.PodConfig.MODEL_MESH_MINIO_CONFIG,
-            {"bucket": MinIo.Buckets.MODELMESH_EXAMPLE_MODELS},
         )
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("minio_pod")
 class TestPostUpgradeTrustyAIService:
     @pytest.mark.post_upgrade
     def test_drift_metric_delete_pre_db_migration(
         self,
         admin_client,
-        minio_data_connection,
         current_client_token,
         trustyai_service,
     ):
@@ -183,7 +174,6 @@ class TestPostUpgradeTrustyAIService:
     def test_drift_metric_delete_post_db_migration(
         self,
         admin_client,
-        minio_data_connection,
         current_client_token,
         trustyai_db_ca_secret,
         trustyai_service,
@@ -198,19 +188,16 @@ class TestPostUpgradeTrustyAIService:
 
 
 @pytest.mark.parametrize(
-    "model_namespace, minio_pod, minio_data_connection, trustyai_service",
+    "model_namespace, trustyai_service",
     [
         pytest.param(
             {"name": "test-trustyaiservice-db-upgrade"},
-            MinIo.PodConfig.MODEL_MESH_MINIO_CONFIG,
-            {"bucket": MinIo.Buckets.MODELMESH_EXAMPLE_MODELS},
             {"storage": "db"},
         )
     ],
     indirect=True,
 )
 @pytest.mark.rawdeployment
-@pytest.mark.usefixtures("minio_pod")
 class TestPreUpgradeTrustyAIServiceDB:
     """Pre-upgrade tests for TrustyAI Service with DB storage from the start."""
 
@@ -241,7 +228,6 @@ class TestPreUpgradeTrustyAIServiceDB:
     def test_trustyai_service_db_pre_upgrade_data_upload(
         self,
         admin_client,
-        minio_data_connection,
         current_client_token,
         trustyai_service,
     ) -> None:
@@ -276,19 +262,16 @@ class TestPreUpgradeTrustyAIServiceDB:
 
 
 @pytest.mark.parametrize(
-    "model_namespace, minio_pod, minio_data_connection, trustyai_service",
+    "model_namespace, trustyai_service",
     [
         pytest.param(
             {"name": "test-trustyaiservice-db-upgrade"},
-            MinIo.PodConfig.MODEL_MESH_MINIO_CONFIG,
-            {"bucket": MinIo.Buckets.MODELMESH_EXAMPLE_MODELS},
             {"storage": "db"},
         )
     ],
     indirect=True,
 )
 @pytest.mark.rawdeployment
-@pytest.mark.usefixtures("minio_pod")
 class TestPostUpgradeTrustyAIServiceDB:
     """Post-upgrade tests for TrustyAI Service with DB storage persistence."""
 
@@ -298,7 +281,6 @@ class TestPostUpgradeTrustyAIServiceDB:
         self,
         admin_client,
         model_namespace,
-        minio_data_connection,
         trustyai_service,
         db_credentials_secret,
         mariadb,
@@ -324,7 +306,6 @@ class TestPostUpgradeTrustyAIServiceDB:
     def test_trustyai_service_db_post_upgrade_preexisting_metric_can_be_deleted(
         self,
         admin_client,
-        minio_data_connection,
         current_client_token,
         trustyai_db_ca_secret,
         trustyai_service,
