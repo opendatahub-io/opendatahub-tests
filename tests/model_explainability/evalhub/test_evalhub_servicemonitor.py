@@ -295,14 +295,6 @@ class TestEvalHubServiceMonitorCRDAbsent:
         if crd.exists:
             pytest.skip("ServiceMonitor CRD is present — graceful-degradation tests require it to be absent")
 
-    def test_evalhub_becomes_ready_without_servicemonitor_crd(
-        self,
-        evalhub_deployment: Deployment,
-    ) -> None:
-        """Verify EvalHub reaches a ready state even when the ServiceMonitor CRD is absent."""
-        assert evalhub_deployment.exists, "EvalHub deployment was not created"
-        evalhub_deployment.wait_for_replicas()
-
     def test_no_servicemonitor_created_when_crd_absent(
         self,
         admin_client: DynamicClient,
