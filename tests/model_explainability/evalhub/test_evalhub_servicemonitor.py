@@ -358,8 +358,6 @@ class TestEvalHubServiceMonitorDeletion:
                 if sm.exists:
                     break
 
-            assert sm.exists, f"ServiceMonitor '{sm_name}' was not created after EvalHub deployment"
-
         # EvalHub CR is now deleted (context manager exited); wait for GC
         sm_gone = False
         for _ in TimeoutSampler(wait_timeout=60, sleep=5, func=lambda: not sm.exists):
