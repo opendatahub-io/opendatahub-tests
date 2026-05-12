@@ -50,6 +50,7 @@ classifiers = [
 ]
 
 dependencies = [
+    "bcrypt>=4.0.0",
     "ipython>=8.18.1",
     "model-registry[signing]>=0.2.13",
     "openshift-python-utilities>=5.0.71",
