@@ -72,7 +72,6 @@ def _monitoring_allowed_by_rule(rule: dict[str, Any]) -> bool:
 
 
 @pytest.mark.smoke
-@pytest.mark.model_explainability
 def test_user_workload_monitoring_enabled(admin_client: DynamicClient) -> None:
     """Verify user-workload-monitoring is enabled on this cluster.
 
@@ -98,7 +97,6 @@ def test_user_workload_monitoring_enabled(admin_client: DynamicClient) -> None:
 
 
 @pytest.mark.smoke
-@pytest.mark.model_explainability
 def test_monitoring_namespace_carries_name_label(admin_client: DynamicClient) -> None:
     """Verify the monitoring namespace has the kubernetes.io/metadata.name label.
 
@@ -125,7 +123,6 @@ def test_monitoring_namespace_carries_name_label(admin_client: DynamicClient) ->
     indirect=True,
 )
 @pytest.mark.tier1
-@pytest.mark.model_explainability
 class TestEvalHubNetworkPolicy:
     """Tests verifying that NetworkPolicy configuration allows Prometheus to scrape EvalHub metrics.
 
