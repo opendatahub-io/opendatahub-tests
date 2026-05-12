@@ -258,7 +258,7 @@ def llama_stack_server_config(
     env_vars.extend(env_vars_vector_io)
 
     if is_disconnected_cluster and HTTPS_PROXY:
-        LOGGER.info(f"Setting proxy and tlsconfig configuration (https_proxy:{HTTPS_PROXY})")
+        LOGGER.info("Setting proxy and tlsconfig configuration")
         env_vars.append({"name": "HTTPS_PROXY", "value": HTTPS_PROXY})
 
         # The operator sets SSL_CERT_FILE automatically when tlsConfig.caBundle is
