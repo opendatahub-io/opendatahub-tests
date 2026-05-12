@@ -70,3 +70,14 @@ LLAMA_STACK_DISTRIBUTION_SECRET_DATA = {
 }
 
 UPGRADE_DISTRIBUTION_NAME = "llama-stack-distribution-upgrade"
+
+FAITHFULNESS_THRESHOLD = 0.5
+ANSWER_RELEVANCY_THRESHOLD = 0.5
+CONTEXT_PRECISION_THRESHOLD = 0.5
+CONTEXT_RECALL_THRESHOLD = 0.5
+
+_ragas_max_samples_raw = os.getenv("RAGAS_MAX_SAMPLES", "5")
+try:
+    RAGAS_MAX_SAMPLES = int(_ragas_max_samples_raw)
+except ValueError:
+    RAGAS_MAX_SAMPLES = 5

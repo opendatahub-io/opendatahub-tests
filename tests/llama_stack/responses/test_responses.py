@@ -33,12 +33,15 @@ class TestLlamaStackResponses:
         Test simple responses API from the llama-stack server.
 
         Validates basic text generation capabilities using the responses API endpoint.
-        Tests identity and capability questions to ensure the LLM can provide
-        appropriate responses about itself and its functionality.
+        Tests factual questions with constrained answers to ensure the LLM can
+        provide correct responses across different model sizes.
         """
         test_cases = [
-            ("Who are you?", ["model", "assistant", "ai", "artificial", "language model"]),
-            ("What can you do?", ["answer"]),
+            ("What is the capital of France?", ["paris"]),
+            ("What programming language is executed inside web browsers (client-side)?", ["javascript"]),
+            ("Name a primary color in the RYB color model.", ["red", "yellow", "blue"]),
+            ("What is 15 + 27?", ["42", "forty-two"]),
+            ("Summarize what Python is in one sentence.", ["programming", "language"]),
         ]
 
         for question, expected_keywords in test_cases:
@@ -46,6 +49,7 @@ class TestLlamaStackResponses:
                 model=llama_stack_models.model_id,
                 input=question,
                 instructions="You are a helpful assistant.",
+                temperature=0.0,
                 max_output_tokens=4096,
             )
 
