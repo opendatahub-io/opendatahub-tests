@@ -7,7 +7,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.route import Route
 from timeout_sampler import retry
 
-from tests.eval_hub.evalhub_kueue_integration.constants import (
+from tests.model_explainability.evalhub.evalhub_kueue_integration.constants import (
     EVALHUB_HEALTH_ENDPOINT,
     EVALHUB_JOBS_ENDPOINT,
     EvalJobState,

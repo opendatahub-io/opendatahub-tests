@@ -9,7 +9,7 @@ def test_evalhub_preflight(evalhub_preflight_verified: None) -> None:
 
     Run without the full suite::
 
-        uv run pytest tests/eval_hub/test_evalhub_preflight.py -q
+        uv run pytest tests/model_explainability/evalhub/evalhub_kueue_integration/test_evalhub_preflight.py -q
 
     Replaces the removed ``scripts/verify_evalhub_setup.py`` helper.
     """

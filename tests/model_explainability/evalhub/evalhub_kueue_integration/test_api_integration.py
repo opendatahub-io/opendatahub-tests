@@ -3,7 +3,7 @@
 import pytest
 from ocp_resources.namespace import Namespace
 
-from tests.eval_hub.evalhub_kueue_integration.constants import (
+from tests.model_explainability.evalhub.evalhub_kueue_integration.constants import (
     CLUSTER_QUEUE_NAME,
     DEFAULT_CPU_QUOTA,
     DEFAULT_MEMORY_QUOTA,
@@ -11,7 +11,7 @@ from tests.eval_hub.evalhub_kueue_integration.constants import (
     RESOURCE_FLAVOR_NAME,
     EvalJobState,
 )
-from tests.eval_hub.evalhub_kueue_integration.utils import (
+from tests.model_explainability.evalhub.evalhub_kueue_integration.utils import (
     delete_eval_job,
     get_eval_job,
     list_eval_jobs,

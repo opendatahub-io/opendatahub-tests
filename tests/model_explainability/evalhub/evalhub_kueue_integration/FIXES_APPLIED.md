@@ -95,17 +95,17 @@ These tests validate **Kueue behavior**, not job execution success:
 
 ```bash
 # Clean up leftover resources first (IMPORTANT!)
-./tests/eval_hub/scripts/cleanup_kueue_resources.sh
+./tests/model_explainability/evalhub/evalhub_kueue_integration/scripts/cleanup_kueue_resources.sh
 
 # Run all Kueue tests using helper script
-./tests/eval_hub/scripts/run_evalhub_tests.sh
+./tests/model_explainability/evalhub/evalhub_kueue_integration/scripts/run_evalhub_tests.sh
 
 # Or run manually with environment variables
 export OC_BINARY_PATH="/opt/homebrew/bin/oc"
 export EVALHUB_BASE_URL="https://evalhub-prabhu.apps.rosa.prabhu-comhub.xqmp.p3.openshiftapps.com"
 export EVALHUB_MODEL_URL="http://granite-llm-metrics.prabhu.svc.cluster.local:8080/v1"
 export EVALHUB_NAMESPACE="prabhu"
-uv run pytest tests/eval_hub/evalhub_kueue_integration/ -v -m kueue
+uv run pytest tests/model_explainability/evalhub/evalhub_kueue_integration/ -v -m kueue
 ```
 
 ## Cleanup
@@ -113,7 +113,7 @@ uv run pytest tests/eval_hub/evalhub_kueue_integration/ -v -m kueue
 Before running tests, clean up any leftover resources:
 
 ```bash
-./tests/eval_hub/scripts/cleanup_kueue_resources.sh
+./tests/model_explainability/evalhub/evalhub_kueue_integration/scripts/cleanup_kueue_resources.sh
 ```
 
 ### 6. E2E and API Test Adjustments

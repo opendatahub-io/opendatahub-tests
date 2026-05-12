@@ -5,15 +5,15 @@ Helper scripts for running and managing EvalHub integration tests.
 ## Environment verification (pytest)
 
 Preflight checks (EvalHub HTTP + Kueue) run automatically via the session fixture
-``evalhub_preflight_verified`` when you execute tests under ``tests/eval_hub/``.
+``evalhub_preflight_verified`` when you execute tests under ``tests/model_explainability/evalhub/evalhub_kueue_integration/``.
 
 To run **only** those checks without the full suite:
 
 ```bash
-uv run pytest tests/eval_hub/test_evalhub_preflight.py -q
+uv run pytest tests/model_explainability/evalhub/evalhub_kueue_integration/test_evalhub_preflight.py -q
 ```
 
-Implementation: ``verify_evalhub_preflight`` in ``tests/eval_hub/evalhub_kueue_integration/utils.py``.
+Implementation: ``verify_evalhub_preflight`` in ``tests/model_explainability/evalhub/evalhub_kueue_integration/utils.py``.
 
 ## Scripts
 
@@ -25,7 +25,7 @@ To delete the legacy hard-coded evalhub test object names after you deliberately
 
 ```bash
 export KUEUE_EVALHUB_FORCE_CLEANUP=1
-./tests/eval_hub/scripts/cleanup_kueue_resources.sh
+./tests/model_explainability/evalhub/evalhub_kueue_integration/scripts/cleanup_kueue_resources.sh
 ```
 
 **When `KUEUE_EVALHUB_FORCE_CLEANUP=1`:**
@@ -41,7 +41,7 @@ Does **not** delete namespaces; test fixtures manage namespace lifecycle.
 Runs the complete EvalHub Kueue integration test suite with proper environment configuration.
 
 ```bash
-./tests/eval_hub/scripts/run_evalhub_tests.sh
+./tests/model_explainability/evalhub/evalhub_kueue_integration/scripts/run_evalhub_tests.sh
 ```
 
 **What it does:**
@@ -61,12 +61,12 @@ Runs the complete EvalHub Kueue integration test suite with proper environment c
 
 ```bash
 # 1. Verify cluster + EvalHub + Kueue (preflight only)
-uv run pytest tests/eval_hub/test_evalhub_preflight.py -q
+uv run pytest tests/model_explainability/evalhub/evalhub_kueue_integration/test_evalhub_preflight.py -q
 
 # 2. (Optional) Force-delete legacy evalhub names after a crash — see cleanup_kueue_resources.sh
 
 # 3. Run tests
-./tests/eval_hub/scripts/run_evalhub_tests.sh
+./tests/model_explainability/evalhub/evalhub_kueue_integration/scripts/run_evalhub_tests.sh
 ```
 
 ## Manual Test Execution
@@ -79,5 +79,5 @@ export EVALHUB_BASE_URL="https://your-evalhub-url"
 export EVALHUB_MODEL_URL="http://your-model-url"
 export EVALHUB_NAMESPACE="your-namespace"
 
-uv run pytest tests/eval_hub/evalhub_kueue_integration/ -v -m kueue
+uv run pytest tests/model_explainability/evalhub/evalhub_kueue_integration/ -v -m kueue
 ```

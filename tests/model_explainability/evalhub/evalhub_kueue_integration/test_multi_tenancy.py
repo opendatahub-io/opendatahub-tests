@@ -3,14 +3,14 @@
 import pytest
 from kubernetes.dynamic import DynamicClient
 
-from tests.eval_hub.evalhub_kueue_integration.constants import (
+from tests.model_explainability.evalhub.evalhub_kueue_integration.constants import (
     EVALHUB_TENANT_LABEL,
     KUEUE_MANAGED_LABEL,
     LOCAL_QUEUE_NAME,
     SMALL_CPU_QUOTA,
     SMALL_MEMORY_QUOTA,
 )
-from tests.eval_hub.evalhub_kueue_integration.utils import (
+from tests.model_explainability.evalhub.evalhub_kueue_integration.utils import (
     delete_eval_job,
     submit_eval_job,
     wait_for_job_running_or_completed,

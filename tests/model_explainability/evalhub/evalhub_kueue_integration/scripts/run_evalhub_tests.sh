@@ -12,7 +12,7 @@ set -euo pipefail
 # If "${REPO_ROOT}/.env" exists, it is sourced before validation.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../../../../.." && pwd)"
 cd "${REPO_ROOT}" || {
   echo "error: failed to cd to repository root: ${REPO_ROOT}" >&2
   exit 1
@@ -44,7 +44,7 @@ echo "Running EvalHub Kueue integration tests..."
 echo "=========================================="
 
 # Run all tests with summary
-uv run pytest tests/eval_hub/evalhub_kueue_integration/ -v -m kueue --tb=short -q
+uv run pytest tests/model_explainability/evalhub/evalhub_kueue_integration/ -v -m kueue --tb=short -q
 
 echo ""
 echo "=========================================="

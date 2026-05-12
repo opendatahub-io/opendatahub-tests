@@ -6,7 +6,7 @@ from ocp_resources.job import Job
 from ocp_resources.namespace import Namespace
 from timeout_sampler import TimeoutSampler
 
-from tests.eval_hub.evalhub_kueue_integration.constants import (
+from tests.model_explainability.evalhub.evalhub_kueue_integration.constants import (
     CLUSTER_QUEUE_NAME,
     E2E_CPU_QUOTA,
     E2E_MEMORY_QUOTA,
@@ -16,7 +16,7 @@ from tests.eval_hub.evalhub_kueue_integration.constants import (
     EvalJobState,
     WorkloadConditionType,
 )
-from tests.eval_hub.evalhub_kueue_integration.utils import (
+from tests.model_explainability.evalhub.evalhub_kueue_integration.utils import (
     delete_eval_job,
     get_eval_job,
     submit_eval_job,

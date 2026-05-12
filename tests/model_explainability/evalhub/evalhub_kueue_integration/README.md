@@ -38,18 +38,18 @@ Automated tests for this feature are implemented in the component repository fol
 
 ```bash
 # 1. Preflight only (EvalHub API + Kueue — same checks as session fixture)
-uv run pytest ../test_evalhub_preflight.py -q
+uv run pytest test_evalhub_preflight.py -q
 
 # 2. (Optional) cleanup_kueue_resources.sh — does nothing unless KUEUE_EVALHUB_FORCE_CLEANUP=1
-../scripts/cleanup_kueue_resources.sh
+./scripts/cleanup_kueue_resources.sh
 
 # 3. Run tests
-../scripts/run_evalhub_tests.sh
+./scripts/run_evalhub_tests.sh
 ```
 
 ### Manual Execution
 
-**Authentication:** These tests do **not** read `EVALHUB_API_TOKEN`, `EVALHUB_AUTH_HEADER`, or similar. The shared [`current_client_token`](../../../tests/conftest.py) fixture supplies an OpenShift OAuth token from your kube context (`get_openshift_token`); EvalHub HTTP helpers send `Authorization: Bearer <token>` and, for job endpoints, `X-Tenant` (see [`utils.py`](utils.py)). Use a user who can reach the EvalHub route and APIs—otherwise you will see **401** (unauthenticated) or **403** (forbidden). Cluster login and kubeconfig are covered in [Getting started — Tests cluster](../../../docs/GETTING_STARTED.md#tests-cluster).
+**Authentication:** These tests do **not** read `EVALHUB_API_TOKEN`, `EVALHUB_AUTH_HEADER`, or similar. The shared [`current_client_token`](../../../conftest.py) fixture supplies an OpenShift OAuth token from your kube context (`get_openshift_token`); EvalHub HTTP helpers send `Authorization: Bearer <token>` and, for job endpoints, `X-Tenant` (see [`utils.py`](utils.py)). Use a user who can reach the EvalHub route and APIs—otherwise you will see **401** (unauthenticated) or **403** (forbidden). Cluster login and kubeconfig are covered in [Getting started — Tests cluster](../../../../docs/GETTING_STARTED.md#tests-cluster).
 
 **Security:** Treat **`KUBECONFIG`** (path and file contents), the kube/OpenShift **OAuth token** implied by an active login, **`OC_BINARY_PATH`**, **`EVALHUB_BASE_URL`**, **`EVALHUB_MODEL_URL`**, and **`EVALHUB_NAMESPACE`** as sensitive—do **not** commit them to version control, paste them into tickets, or leave broad `export …` lines in shared shell history. Prefer a **gitignored** local file (e.g. **`.envrc`** with **direnv**, or a small sourced script), CI/CD secrets, or a team secret manager. Long‑lived kubeconfigs and tokens should be **rotated** when they expire or when access changes; refresh with **`oc login`** / **`oc token`** so pytest picks up a current identity.
 
@@ -64,14 +64,14 @@ export EVALHUB_BASE_URL="https://evalhub-url"
 export EVALHUB_MODEL_URL="http://model-url"
 export EVALHUB_NAMESPACE="namespace"
 
-uv run pytest tests/eval_hub/evalhub_kueue_integration/ -v -m kueue
+uv run pytest tests/model_explainability/evalhub/evalhub_kueue_integration/ -v -m kueue
 ```
 
 ### Helper Scripts
 
-- **`tests/eval_hub/test_evalhub_preflight.py`**: Run ``uv run pytest tests/eval_hub/test_evalhub_preflight.py -q`` for EvalHub + Kueue preflight only (also runs automatically via session fixture before other `tests/eval_hub/` tests).
-- **`tests/eval_hub/scripts/`** — **cleanup_kueue_resources.sh**: Opt-in only (`KUEUE_EVALHUB_FORCE_CLEANUP=1`); deletes fixed legacy evalhub cluster-scoped names if you need manual cleanup after an abnormal run
-- **`tests/eval_hub/scripts/run_evalhub_tests.sh`**: Runs the full test suite with proper environment configuration
+- **`tests/model_explainability/evalhub/evalhub_kueue_integration/test_evalhub_preflight.py`**: Run ``uv run pytest tests/model_explainability/evalhub/evalhub_kueue_integration/test_evalhub_preflight.py -q`` for EvalHub + Kueue preflight only (also runs automatically via session fixture before other tests in this package).
+- **`tests/model_explainability/evalhub/evalhub_kueue_integration/scripts/`** — **cleanup_kueue_resources.sh**: Opt-in only (`KUEUE_EVALHUB_FORCE_CLEANUP=1`); deletes fixed legacy evalhub cluster-scoped names if you need manual cleanup after an abnormal run
+- **`tests/model_explainability/evalhub/evalhub_kueue_integration/scripts/run_evalhub_tests.sh`**: Runs the full test suite with proper environment configuration
 
 See [scripts/README.md](../scripts/README.md) for detailed documentation.
 
