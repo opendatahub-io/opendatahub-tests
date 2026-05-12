@@ -59,7 +59,6 @@ def test_monitoring_namespace_carries_name_label(admin_client: DynamicClient) ->
     will silently fail to match.
     """
     ns = Namespace(client=admin_client, name=MONITORING_NAMESPACE, ensure_exists=True)
-    assert ns.exists, f"Namespace '{MONITORING_NAMESPACE}' does not exist on this cluster"
     labels = ns.instance.metadata.labels or {}
     assert labels.get(NAMESPACE_NAME_LABEL) == MONITORING_NAMESPACE, (
         f"Expected namespace '{MONITORING_NAMESPACE}' to carry label "
