@@ -144,7 +144,7 @@ class TestEvalHubNetworkPolicy:
             # Only care about policies whose podSelector targets EvalHub pods.
             # An empty podSelector (match_labels == {}) selects all pods in the namespace.
             match_labels = (spec.podSelector or {}).get("matchLabels", {})
-            if match_labels and not all(match_labels.get(k) == v for k, v in evalhub_labels.items()):
+            if match_labels and not all(match_labels.get(label) == value for label, value in evalhub_labels.items()):
                 continue
 
             if not policy_restricts_metrics_port(spec, EVALHUB_SERVICE_PORT, EVALHUB_SERVICE_MONITOR_PORT):
@@ -202,7 +202,7 @@ class TestEvalHubNetworkPolicy:
             # Only consider policies whose podSelector targets EvalHub pods.
             # An empty podSelector (match_labels == {}) selects all pods in the namespace.
             match_labels = (spec.podSelector or {}).get("matchLabels", {})
-            if match_labels and not all(match_labels.get(k) == v for k, v in evalhub_labels.items()):
+            if match_labels and not all(match_labels.get(label) == value for label, value in evalhub_labels.items()):
                 continue
 
             if not policy_restricts_metrics_port(spec, EVALHUB_SERVICE_PORT, EVALHUB_SERVICE_MONITOR_PORT):
