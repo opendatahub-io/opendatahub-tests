@@ -200,7 +200,6 @@ class TestEvalHubServiceMonitor:
         deployed ClusterRole, confirming the operator can create and manage ServiceMonitors.
         """
         role = ClusterRole(client=admin_client, name=EVALHUB_MANAGER_CLUSTERROLE, ensure_exists=True)
-        assert role.exists, f"ClusterRole '{EVALHUB_MANAGER_CLUSTERROLE}' not found"
 
         rules = role.instance.rules or []
         sm_rules = [
