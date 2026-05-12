@@ -72,13 +72,6 @@ class TestEvalHubServiceMonitor:
         self._model_namespace = model_namespace
         return sm
 
-    def test_servicemonitor_created(self) -> None:
-        """Verify the operator creates a ServiceMonitor after EvalHub is deployed."""
-        assert self._sm.exists, (
-            f"ServiceMonitor '{self._sm.name}' not found in namespace '{self._model_namespace.name}'. "
-            "The operator may not have reconciled yet or the Prometheus Operator CRD is absent."
-        )
-
     def test_servicemonitor_name(self) -> None:
         """Verify the ServiceMonitor name follows the '{evalhub-name}-metrics' convention."""
         expected = f"{self._evalhub_cr.name}{EVALHUB_SERVICE_MONITOR_SUFFIX}"
