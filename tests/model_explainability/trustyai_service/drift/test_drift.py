@@ -10,6 +10,8 @@ from tests.model_explainability.trustyai_service.trustyai_service_utils import (
     verify_trustyai_service_metric_request,
     verify_trustyai_service_metric_scheduling_request,
     verify_upload_data_to_trustyai_service,
+    verify_upload_gzip_data_to_trustyai_service,
+    verify_upload_malformed_gzip_returns_400,
 )
 from utilities.constants import MinIo
 from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
@@ -92,6 +94,35 @@ class TestDriftMetrics:
             trustyai_service=trustyai_service,
             token=current_client_token,
             data_path=f"{DRIFT_BASE_DATA_PATH}/training_data.json",
+        )
+
+    @pytest.mark.dependency(depends=["send_inference"])
+    def test_upload_gzip_compressed_data(
+        self,
+        admin_client,
+        minio_data_connection,
+        current_client_token,
+        trustyai_service,
+    ) -> None:
+        verify_upload_gzip_data_to_trustyai_service(
+            client=admin_client,
+            trustyai_service=trustyai_service,
+            token=current_client_token,
+            data_path=f"{DRIFT_BASE_DATA_PATH}/training_data.json",
+        )
+
+    @pytest.mark.dependency(depends=["send_inference"])
+    def test_upload_malformed_gzip_returns_400(
+        self,
+        admin_client,
+        minio_data_connection,
+        current_client_token,
+        trustyai_service,
+    ) -> None:
+        verify_upload_malformed_gzip_returns_400(
+            client=admin_client,
+            trustyai_service=trustyai_service,
+            token=current_client_token,
         )
 
     @pytest.mark.dependency(depends=["upload_data"])
