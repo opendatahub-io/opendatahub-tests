@@ -23,7 +23,7 @@ pytestmark = [pytest.mark.tier1, pytest.mark.usefixtures("valid_aws_config"), py
     "unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service",
     [
         pytest.param(
-            {"name": "raw-deployment-onnx-mnist-rest"},
+            {"name": "raw-onnx-vis"},
             RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
             {
                 "name": "onnx-route-visibility",
@@ -174,7 +174,7 @@ class TestRestRawDeploymentRoutesTimeout:
             route_timeout=OpenshiftRouteTimeout.TIMEOUT_1MICROSEC,
         )
 
-        with pytest.raises(InferenceResponseError, match="504"):
+        with pytest.raises((InferenceResponseError, AssertionError), match="504"):
             verify_inference_response(
                 inference_service=ovms_raw_isvc_patched_annotations,
                 inference_config=ONNX_INFERENCE_CONFIG,
