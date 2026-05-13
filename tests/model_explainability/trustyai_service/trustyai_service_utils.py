@@ -1,5 +1,7 @@
+import gzip
 import json
 import os
+from collections.abc import Callable
 from http import HTTPStatus
 from typing import Any
 
@@ -88,16 +90,18 @@ class TrustyAIServiceClient:
         self,
         endpoint: str,
         method: str,
-        data: str | None = None,
+        data: str | bytes | None = None,
         json: dict[str, Any] | None = None,
+        extra_headers: dict[str, str] | None = None,
     ) -> Any:
         """Sends HTTP request to specified TrustyAIService endpoint.
 
         Args:
             endpoint (str): API endpoint to send request to.
             method (str): HTTP method (GET, POST, DELETE).
-            data (str | None ): Request body data.
+            data (str | bytes | None): Request body data.
             json (dict[str, Any] | None): JSON data to send.
+            extra_headers (dict[str, str] | None): Additional headers to merge with defaults.
 
         Returns:
             Any: Response from the request.
@@ -107,7 +111,8 @@ class TrustyAIServiceClient:
         """
 
         url = f"https://{self.service_route.host}/{endpoint}"
-        base_kwargs = {"url": url, "headers": self.headers, "verify": self.cert_path}
+        headers = {**self.headers, **(extra_headers or {})}
+        base_kwargs = {"url": url, "headers": headers, "verify": self.cert_path}
 
         method = method.upper()
         if method not in ("GET", "POST", "DELETE"):
@@ -145,6 +150,46 @@ class TrustyAIServiceClient:
 
         LOGGER.info(f"Uploading data to TrustyAIService: {data_path}")
         return self._send_request(endpoint=self.Endpoints.DATA_UPLOAD, method="POST", data=data)
+
+    def upload_gzip_data(self, data_path: str) -> requests.Response:
+        """Uploads gzip-compressed data to TrustyAI's /data/upload endpoint.
+
+        Args:
+            data_path (str): Path to the JSON data file to compress and upload.
+
+        Returns:
+            requests.Response: Response from upload request.
+        """
+        with open(data_path, "r") as file:
+            raw_data = file.read().encode("utf-8")
+
+        compressed = gzip.compress(data=raw_data)
+
+        LOGGER.info(f"Uploading gzip-compressed data to TrustyAIService: {data_path}")
+        return self._send_request(
+            endpoint=self.Endpoints.DATA_UPLOAD,
+            method="POST",
+            data=compressed,
+            extra_headers={"Content-Encoding": "gzip"},
+        )
+
+    def upload_raw_bytes(self, data: bytes, content_encoding: str = "gzip") -> requests.Response:
+        """Uploads raw bytes to /data/upload with specified Content-Encoding header.
+
+        Args:
+            data (bytes): Raw bytes to send as request body.
+            content_encoding (str): Value for Content-Encoding header. Defaults to "gzip".
+
+        Returns:
+            requests.Response: Response from upload request.
+        """
+        LOGGER.info(f"Uploading raw bytes to TrustyAIService with Content-Encoding: {content_encoding}")
+        return self._send_request(
+            endpoint=self.Endpoints.DATA_UPLOAD,
+            method="POST",
+            data=data,
+            extra_headers={"Content-Encoding": content_encoding},
+        )
 
     def apply_name_mappings(
         self, model_name: str, input_mappings: dict[str, str], output_mappings: dict[str, str]
@@ -537,6 +582,41 @@ def verify_trustyai_service_metric_scheduling_request(
         raise MetricValidationError("\n".join(errors))
 
 
+def _verify_upload_and_check_observations(
+    client: DynamicClient,
+    token: str,
+    trustyai_service: TrustyAIService,
+    data_path: str,
+    upload_fn: Callable[[], requests.Response],
+) -> None:
+    """Uploads data via the provided function and verifies the observation count increased.
+
+    Args:
+        client (DynamicClient): The client instance for interacting with the cluster.
+        token (str): Authentication token for the service.
+        trustyai_service (TrustyAIService): The TrustyAI service instance.
+        data_path (str): Path to the data file to be uploaded.
+        upload_fn: Callable that performs the upload and returns a requests.Response.
+    """
+    with open(data_path, "r") as file:
+        data = file.read()
+
+    expected_num_observations: int = (
+        get_num_observations_from_trustyai_service(client=client, token=token, trustyai_service=trustyai_service)
+        + json.loads(data)["request"]["inputs"][0]["shape"][0]
+    )
+
+    response = upload_fn()
+    assert response.status_code == HTTPStatus.OK, f"Upload failed with status {response.status_code}: {response.text}"
+
+    actual_num_observations: int = get_num_observations_from_trustyai_service(
+        client=client, token=token, trustyai_service=trustyai_service
+    )
+    assert actual_num_observations == expected_num_observations, (
+        f"Observation count mismatch after upload. Expected {expected_num_observations}, got {actual_num_observations}"
+    )
+
+
 def verify_upload_data_to_trustyai_service(
     client: DynamicClient,
     token: str,
@@ -552,24 +632,14 @@ def verify_upload_data_to_trustyai_service(
         token (str): Authentication token for the service.
         data_path (str): Path to the data file to be uploaded.
     """
-
-    with open(data_path, "r") as file:
-        data = file.read()
-
-    expected_num_observations: int = (
-        get_num_observations_from_trustyai_service(client=client, token=token, trustyai_service=trustyai_service)
-        + json.loads(data)["request"]["inputs"][0]["shape"][0]
+    tas_client = TrustyAIServiceClient(token=token, service=trustyai_service, client=client)
+    _verify_upload_and_check_observations(
+        client=client,
+        token=token,
+        trustyai_service=trustyai_service,
+        data_path=data_path,
+        upload_fn=lambda: tas_client.upload_data(data_path=data_path),
     )
-
-    response = TrustyAIServiceClient(token=token, service=trustyai_service, client=client).upload_data(
-        data_path=data_path
-    )
-    assert response.status_code == HTTPStatus.OK
-
-    actual_num_observations: int = get_num_observations_from_trustyai_service(
-        client=client, token=token, trustyai_service=trustyai_service
-    )
-    assert expected_num_observations >= actual_num_observations
 
 
 def verify_trustyai_service_metric_delete_request(
@@ -656,4 +726,53 @@ def verify_trustyai_service_name_mappings(
     response_output_mappings = model_data["outputSchema"]["nameMapping"]
     assert response_output_mappings == output_mappings, (
         f"Output mappings mismatch. Expected: {output_mappings}, Got: {response_output_mappings}"
+    )
+
+
+def verify_upload_gzip_data_to_trustyai_service(
+    client: DynamicClient,
+    token: str,
+    trustyai_service: TrustyAIService,
+    data_path: str,
+) -> None:
+    """Uploads gzip-compressed data to TrustyAI and verifies the observation count increased.
+
+    Args:
+        client (DynamicClient): The client instance for interacting with the cluster.
+        trustyai_service (TrustyAIService): The TrustyAI service instance.
+        token (str): Authentication token for the service.
+        data_path (str): Path to the JSON data file to compress and upload.
+    """
+    tas_client = TrustyAIServiceClient(token=token, service=trustyai_service, client=client)
+    _verify_upload_and_check_observations(
+        client=client,
+        token=token,
+        trustyai_service=trustyai_service,
+        data_path=data_path,
+        upload_fn=lambda: tas_client.upload_gzip_data(data_path=data_path),
+    )
+
+
+def verify_upload_malformed_gzip_returns_400(
+    client: DynamicClient,
+    token: str,
+    trustyai_service: TrustyAIService,
+) -> None:
+    """Sends invalid gzip data to TrustyAI's /data/upload and verifies HTTP 400 response.
+
+    Args:
+        client (DynamicClient): The client instance for interacting with the cluster.
+        trustyai_service (TrustyAIService): The TrustyAI service instance.
+        token (str): Authentication token for the service.
+    """
+    invalid_gzip_payload = b"not-a-valid-gzip-stream"
+
+    response = TrustyAIServiceClient(token=token, service=trustyai_service, client=client).upload_raw_bytes(
+        data=invalid_gzip_payload
+    )
+    assert response.status_code == HTTPStatus.BAD_REQUEST, (
+        f"Expected HTTP 400 for malformed gzip, got {response.status_code}: {response.text}"
+    )
+    assert "could not be decompressed" in response.text, (
+        f"Expected error message about decompression failure, got: {response.text}"
     )
