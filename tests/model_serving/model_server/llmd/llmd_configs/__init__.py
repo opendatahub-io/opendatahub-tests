@@ -9,11 +9,13 @@ from .config_models import (
     TinyLlamaS3GpuConfig,
 )
 from .config_precise_prefix_cache import PrecisePrefixCacheConfig
+from .config_singlenode_prefill_decode import SingleNodePrefillDecodeConfig
 
 __all__ = [
     "EstimatedPrefixCacheConfig",
     "LLMISvcConfig",
     "PrecisePrefixCacheConfig",
+    "SingleNodePrefillDecodeConfig",
     "TinyLlamaHfConfig",
     "TinyLlamaHfGpuConfig",
     "TinyLlamaOciConfig",
