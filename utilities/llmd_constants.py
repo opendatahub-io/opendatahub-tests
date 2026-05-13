@@ -17,6 +17,7 @@ class KServeGateway:
 
 class LLMEndpoint:
     CHAT_COMPLETIONS: str = "/v1/chat/completions"
+    COMPLETIONS: str = "/v1/completions"
     DEFAULT_MAX_TOKENS: int = 50
     DEFAULT_TEMPERATURE: float = 0.0
     DEFAULT_TIMEOUT: int = 60
