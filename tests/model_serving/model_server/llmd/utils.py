@@ -352,6 +352,50 @@ def send_chat_completions(
     return status_code, response_body
 
 
+def _build_completions_body(model_name: str, prompt: str, max_tokens: int = LLMEndpoint.DEFAULT_MAX_TOKENS) -> str:
+    """Build OpenAI completions request body (non-chat)."""
+    return json.dumps({
+        "model": model_name,
+        "prompt": prompt,
+        "max_tokens": max_tokens,
+        "temperature": LLMEndpoint.DEFAULT_TEMPERATURE,
+        "stream": False,
+    })
+
+
+def send_completions(
+    llmisvc: LLMInferenceService,
+    prompt: str,
+    token: str | None = None,
+    insecure: bool = True,
+) -> tuple[int, str]:
+    """Send a completions request to /v1/completions.
+
+    Args:
+        llmisvc: The LLMInferenceService to send the request to.
+        prompt: The prompt text.
+        token: Optional bearer token for authentication.
+        insecure: Skip TLS verification (default True).
+
+    Returns:
+        Tuple of (status_code, response_body).
+    """
+    base_url = (
+        _get_disconnected_inference_url(llmisvc)
+        if is_disconnected_cluster(llmisvc.client)
+        else _get_inference_url(llmisvc)
+    )
+    url = base_url + LLMEndpoint.COMPLETIONS
+    model_name = _get_model_name(llmisvc=llmisvc)
+    body = _build_completions_body(model_name=model_name, prompt=prompt)
+    ca_cert = None if insecure else _resolve_ca_cert(llmisvc.client)
+
+    LOGGER.info(f"Sending completions request to {llmisvc.name} — URL: {url}, Model: {model_name}")
+    status_code, response_body = _curl_post(url=url, body=body, token=token, ca_cert=ca_cert)
+    LOGGER.info(f"Completions response — status={status_code}\n{response_body}")
+    return status_code, response_body
+
+
 def parse_completion_text(response_body: str) -> str:
     """Extract completion text from a chat completion response."""
     try:
@@ -359,6 +403,121 @@ def parse_completion_text(response_body: str) -> str:
         return data["choices"][0]["message"]["content"]
     except (json.JSONDecodeError, KeyError, IndexError, TypeError) as e:
         raise ValueError(f"Failed to parse completion response: {e}\nBody: {response_body[:500]}") from e
+
+
+def parse_prompt_tokens(response_body: str) -> int:
+    """Extract prompt_tokens from an inference response's usage field.
+
+    Args:
+        response_body: JSON response body from a chat completion or completion request.
+
+    Returns:
+        Number of prompt tokens reported by the model.
+    """
+    try:
+        data = json.loads(response_body)
+        return data["usage"]["prompt_tokens"]
+    except (json.JSONDecodeError, KeyError, TypeError) as e:
+        raise ValueError(f"Failed to parse prompt_tokens: {e}\nBody: {response_body[:500]}") from e
+
+
+@retry(wait_timeout=120, sleep=10, exceptions_dict={AssertionError: []}, print_log=False)
+def assert_kv_transfer(
+    prometheus: Prometheus,
+    unprivileged_client: DynamicClient,
+    llmisvc: LLMInferenceService,
+    expected_transferred_tokens: int,
+    num_requests: int,
+) -> bool:
+    """Assert P/D KV transfer metrics match expected values.
+
+    Asserts the following invariants on kserve_vllm:prompt_tokens_by_source_total:
+    - decode.external_kv_transfer == expected_transferred_tokens: all prompt tokens received from prefill
+    - decode.local_compute == num_requests: vLLM recomputes 1 token per request locally
+      (the model needs at least 1 input token to run a forward pass)
+    - prefill.local_compute == expected_transferred_tokens: prefill computes all prompt tokens locally
+    - prefill.external_kv_transfer == 0: prefill only sends KV cache, never receives
+
+    Args:
+        prometheus: Prometheus client for querying metrics.
+        unprivileged_client: DynamicClient instance.
+        llmisvc: The LLMInferenceService under test.
+        expected_transferred_tokens: sum of prompt_tokens from all responses.
+        num_requests: number of requests sent.
+
+    Returns:
+        True when all assertions pass (required by @retry to stop retrying).
+    """
+    prompt_tokens_by_source_total_metric = "kserve_vllm:prompt_tokens_by_source_total"
+
+    decode_pod = get_llmd_pod_by_role(client=unprivileged_client, llmisvc=llmisvc, role="decode")
+    prefill_pod = get_llmd_pod_by_role(client=unprivileged_client, llmisvc=llmisvc, role="prefill")
+
+    def _query(pod_name: str, source: str) -> float:
+        query = (
+            f"{prompt_tokens_by_source_total_metric}"
+            f'{{namespace="{llmisvc.namespace}",pod="{pod_name}",source="{source}"}}'
+        )
+        raw = get_metrics_value(prometheus=prometheus, metrics_query=query)
+        LOGGER.info(f"PromQL: {query} → {raw}")
+        return float(raw or 0)
+
+    decode_kv = _query(pod_name=decode_pod.name, source="external_kv_transfer")
+    decode_local = _query(pod_name=decode_pod.name, source="local_compute")
+    prefill_compute = _query(pod_name=prefill_pod.name, source="local_compute")
+    prefill_kv = _query(pod_name=prefill_pod.name, source="external_kv_transfer")
+
+    LOGGER.info(
+        f"KV transfer metrics — "
+        f"decode.external_kv_transfer={decode_kv}, "
+        f"decode.local_compute={decode_local}, "
+        f"prefill.local_compute={prefill_compute}, "
+        f"prefill.external_kv_transfer={prefill_kv}, "
+        f"expected_transferred_tokens={expected_transferred_tokens}"
+    )
+
+    assert decode_kv == expected_transferred_tokens, (
+        f"decode.external_kv_transfer={decode_kv} != expected {expected_transferred_tokens}"
+    )
+    assert decode_local == num_requests, (
+        f"decode.local_compute={decode_local} != num_requests {num_requests} (expected 1 recomputed token per request)"
+    )
+    assert prefill_compute == expected_transferred_tokens, (
+        f"prefill.local_compute={prefill_compute} != expected {expected_transferred_tokens}"
+    )
+    assert prefill_kv == 0, f"Prefill pod should not receive KV transfers (got {prefill_kv})"
+    return True
+
+
+def get_llmd_pod_by_role(
+    client: DynamicClient,
+    llmisvc: LLMInferenceService,
+    role: str,
+) -> Pod:
+    """Get the workload pod with a specific llm-d.ai/role label.
+
+    Args:
+        client: DynamicClient instance.
+        llmisvc: The LLMInferenceService to get the pod for.
+        role: Pod role label value (decode or prefill).
+
+    Returns:
+        The matching Pod object.
+
+    Raises:
+        RuntimeError: If no pod with the given role is found.
+    """
+    for pod in Pod.get(
+        client=client,
+        namespace=llmisvc.namespace,
+        label_selector=(
+            f"{Pod.ApiGroup.APP_KUBERNETES_IO}/part-of=llminferenceservice,"
+            f"{Pod.ApiGroup.APP_KUBERNETES_IO}/name={llmisvc.name},"
+            f"llm-d.ai/role={role}"
+        ),
+    ):
+        return pod
+    raise RuntimeError(f"No pod with role={role} for {llmisvc.name} in {llmisvc.namespace}")
 
 
 def get_llmd_workload_pods(
@@ -430,6 +589,38 @@ def query_metric_by_pod(
         query = f'sum({metric_name}{{namespace="{llmisvc.namespace}",pod="{pod.name}"}})'
         result[pod.name] = float(get_metrics_value(prometheus=prometheus, metrics_query=query) or 0)
     return result
+
+
+def scheduler_has_plugin(
+    client: DynamicClient,
+    llmisvc: LLMInferenceService,
+    plugin_name: str,
+) -> bool:
+    """Check whether a named plugin exists in the scheduler's --config-text.
+
+    Args:
+        client: DynamicClient instance.
+        llmisvc: The LLMInferenceService to check.
+        plugin_name: Name of the plugin to search for (e.g. 'prefill-filter').
+
+    Returns:
+        True if the plugin is found in the scheduler config.
+
+    Raises:
+        RuntimeError: If no scheduler pod or --config-text is found.
+    """
+    pod = get_llmd_router_scheduler_pod(client=client, llmisvc=llmisvc)
+    if not pod:
+        raise RuntimeError(f"No scheduler pod found for {llmisvc.name} in {llmisvc.namespace}")
+
+    containers = pod.instance.spec.containers
+    for container in containers:
+        args = container.get("args") or []
+        for i, arg in enumerate(args):
+            if arg == "--config-text" and i + 1 < len(args):
+                return plugin_name in args[i + 1]
+
+    raise RuntimeError(f"No --config-text found in scheduler pod {pod.name}")
 
 
 @retry(wait_timeout=120, sleep=10, exceptions_dict={AssertionError: []}, print_log=False)
