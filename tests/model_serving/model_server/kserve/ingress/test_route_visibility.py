@@ -101,9 +101,10 @@ class TestRestRawDeploymentRoutes:
     def test_disabled_rest_raw_deployment_exposed_route(self, patched_kserve_isvc_visibility_label):
         """Verify inference still succeeds over the internal route after the external route is disabled.
 
-        Given a raw deployment ISVC previously exposed externally,
-        When the networking.kserve.io label is reverted to local-cluster,
-        Then the inference request over HTTP to the internal URL must still succeed.
+        Given a raw deployment ISVC that was previously exposed externally and has since had
+        the networking.kserve.io label removed (reverting to default local-cluster behavior),
+        When an inference request is sent over HTTP to the cluster-internal URL,
+        Then the response must be successful.
         """
         verify_inference_response(
             inference_service=patched_kserve_isvc_visibility_label,
