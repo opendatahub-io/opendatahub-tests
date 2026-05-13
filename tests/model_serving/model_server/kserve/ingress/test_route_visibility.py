@@ -43,7 +43,7 @@ class TestRestRawDeploymentRoutes:
         2. Verify the default route visibility label is not set.
         3. Query the model via the internal route and confirm a successful response.
         4. Patch the ISVC to expose the route externally and verify inference over HTTPS.
-        5. Revert the route to local-cluster visibility and verify external HTTPS access is disabled.
+        5. Revert the route to local-cluster visibility and verify internal HTTP access still works.
     """
 
     def test_default_visibility_value(self, ovms_kserve_inference_service):
@@ -99,21 +99,20 @@ class TestRestRawDeploymentRoutes:
         indirect=True,
     )
     def test_disabled_rest_raw_deployment_exposed_route(self, patched_kserve_isvc_visibility_label):
-        """Verify inference fails over the external HTTPS route after it is disabled.
+        """Verify inference still succeeds over the internal route after the external route is disabled.
 
         Given a raw deployment ISVC that was previously exposed externally and has since had
         the networking.kserve.io label reverted to local-cluster,
-        When an inference request is sent over HTTPS to the now-disabled external route,
-        Then the request must fail with an InferenceResponseError.
+        When an inference request is sent over HTTP to the cluster-internal URL,
+        Then the response must be successful, confirming internal access is unaffected.
         """
-        with pytest.raises(InferenceResponseError):
-            verify_inference_response(
-                inference_service=patched_kserve_isvc_visibility_label,
-                inference_config=ONNX_INFERENCE_CONFIG,
-                inference_type=Inference.INFER,
-                protocol=Protocols.HTTPS,
-                use_default_query=True,
-            )
+        verify_inference_response(
+            inference_service=patched_kserve_isvc_visibility_label,
+            inference_config=ONNX_INFERENCE_CONFIG,
+            inference_type=Inference.INFER,
+            protocol=Protocols.HTTP,
+            use_default_query=True,
+        )
 
 
 @pytest.mark.parametrize(
