@@ -26,13 +26,19 @@ def patched_kserve_isvc_visibility_label(
     request: FixtureRequest,
     ovms_kserve_inference_service: InferenceService,
 ) -> Generator[InferenceService, Any, Any]:
-    visibility = request.param["visibility"]
+    param = getattr(request, "param", None)
+    if not isinstance(param, dict) or "visibility" not in param:
+        raise pytest.UsageError(
+            "Fixture 'patched_kserve_isvc_visibility_label' requires indirect "
+            "parametrization with request.param['visibility']."
+        )
+
+    visibility = param["visibility"]
 
     labels = ovms_kserve_inference_service.instance.metadata.labels
+    current_visibility = labels.get(Labels.Kserve.NETWORKING_KSERVE_IO) if labels else None
 
-    if (not labels and visibility == "local-cluster") or (
-        labels and labels.get(Labels.Kserve.NETWORKING_KSERVE_IO) == visibility
-    ):
+    if (current_visibility is None and visibility == "local-cluster") or current_visibility == visibility:
         LOGGER.info(f"Inference service visibility is set to {visibility}. Skipping update.")
         yield ovms_kserve_inference_service
 
@@ -75,11 +81,19 @@ def ovms_raw_isvc_patched_annotations(
     ovms_raw_inference_service: InferenceService,
 ) -> Generator[InferenceService, Any, Any]:
     """Patch ISVC annotations and restore after the test."""
-    if hasattr(request, "param"):
+    param = getattr(request, "param", None)
+    if param is not None and not isinstance(param, dict):
+        raise pytest.UsageError(
+            "Fixture 'ovms_raw_isvc_patched_annotations' requires indirect "
+            "parametrization with request.param['annotations']."
+        )
+
+    annotations = param.get("annotations") if param else None
+    if annotations is not None:
         with ResourceEditor(
             patches={
                 ovms_raw_inference_service: {
-                    "metadata": {"annotations": request.param["annotations"]},
+                    "metadata": {"annotations": annotations},
                 }
             }
         ):
