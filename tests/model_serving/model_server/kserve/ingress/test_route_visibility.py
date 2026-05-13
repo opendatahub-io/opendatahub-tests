@@ -6,159 +6,128 @@ from utilities.constants import (
     KServeDeploymentType,
     Labels,
     ModelFormat,
-    ModelInferenceRuntime,
-    ModelStoragePath,
+    ModelVersion,
     OpenshiftRouteTimeout,
     Protocols,
-    RuntimeTemplates,
+    RunTimeConfigs,
 )
-from utilities.exceptions import (
-    InferenceResponseError,
-)
+from utilities.exceptions import InferenceResponseError
 from utilities.inference_utils import Inference
 from utilities.infra import wait_for_route_timeout
-from utilities.manifests.caikit_tgis import CAIKIT_TGIS_INFERENCE_CONFIG
+from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
 pytestmark = [pytest.mark.tier1, pytest.mark.usefixtures("valid_aws_config"), pytest.mark.rawdeployment]
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, serving_runtime_from_template, s3_models_inference_service",
+    "unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service",
     [
         pytest.param(
-            {"name": "raw-deployment-caikit-flan-rest"},
+            {"name": "raw-deployment-onnx-mnist-rest"},
+            RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
             {
-                "name": f"{Protocols.HTTP}-{ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME}",
-                "template-name": RuntimeTemplates.CAIKIT_TGIS_SERVING,
-                "multi-model": False,
-                "enable-http": True,
-                "enable-grpc": False,
-            },
-            {
-                "name": f"{Protocols.HTTP}-{ModelFormat.CAIKIT}",
+                "name": "onnx-route-visibility",
+                "model-version": ModelVersion.OPSET13,
+                "model-dir": "test-dir",
                 "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT,
-                "model-dir": ModelStoragePath.FLAN_T5_SMALL_CAIKIT,
             },
         )
     ],
     indirect=True,
 )
 class TestRestRawDeploymentRoutes:
-    """Validate REST route visibility transitions for KServe raw deployment.
+    """Validate REST route visibility transitions for KServe raw deployment with MNIST ONNX.
 
     Steps:
-        1. Deploy a Caikit-TGIS model as a raw deployment with HTTP enabled.
+        1. Deploy an ONNX MNIST model as a raw deployment with no external route.
         2. Verify the default route visibility label is not set.
         3. Query the model via the internal route and confirm a successful response.
         4. Patch the ISVC to expose the route externally and verify inference over HTTPS.
-        5. Revert the route to local-cluster visibility and verify external access is disabled.
+        5. Revert the route to local-cluster visibility and verify internal access still works.
     """
 
-    def test_default_visibility_value(self, s3_models_inference_service):
-        """Test default route visibility value"""
-        if labels := s3_models_inference_service.labels:
+    def test_default_visibility_value(self, ovms_kserve_inference_service):
+        """Test default route visibility label is absent on a raw deployment."""
+        if labels := ovms_kserve_inference_service.labels:
             assert labels.get(Labels.Kserve.NETWORKING_KSERVE_IO) is None
 
-    def test_rest_raw_deployment_internal_route(self, s3_models_inference_service):
-        """Test HTTP inference using internal route"""
+    def test_rest_raw_deployment_internal_route(self, ovms_kserve_inference_service):
+        """Test inference succeeds over the internal HTTP route."""
         verify_inference_response(
-            inference_service=s3_models_inference_service,
-            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
-            inference_type=Inference.ALL_TOKENS,
+            inference_service=ovms_kserve_inference_service,
+            inference_config=ONNX_INFERENCE_CONFIG,
+            inference_type=Inference.INFER,
             protocol=Protocols.HTTP,
-            model_name=ModelFormat.CAIKIT,
             use_default_query=True,
         )
 
     @pytest.mark.parametrize(
-        "patched_s3_caikit_kserve_isvc_visibility_label",
-        [
-            pytest.param(
-                {"visibility": Labels.Kserve.EXPOSED},
-            )
-        ],
+        "patched_kserve_isvc_visibility_label",
+        [pytest.param({"visibility": Labels.Kserve.EXPOSED})],
         indirect=True,
     )
-    @pytest.mark.dependency(name="test_rest_raw_deployment_exposed_route")
-    def test_rest_raw_deployment_exposed_route(self, patched_s3_caikit_kserve_isvc_visibility_label):
-        """Test HTTP inference using exposed (external) route"""
+    @pytest.mark.dependency(name="test_rest_raw_deployment_routes__exposed_route")
+    def test_rest_raw_deployment_exposed_route(self, patched_kserve_isvc_visibility_label):
+        """Test inference succeeds over the exposed external HTTPS route."""
         verify_inference_response(
-            inference_service=patched_s3_caikit_kserve_isvc_visibility_label,
-            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
-            inference_type=Inference.ALL_TOKENS,
+            inference_service=patched_kserve_isvc_visibility_label,
+            inference_config=ONNX_INFERENCE_CONFIG,
+            inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
-            model_name=ModelFormat.CAIKIT,
             use_default_query=True,
         )
 
-    @pytest.mark.dependency(depends=["test_rest_raw_deployment_exposed_route"])
+    @pytest.mark.dependency(depends=["test_rest_raw_deployment_routes__exposed_route"])
     @pytest.mark.parametrize(
-        "patched_s3_caikit_kserve_isvc_visibility_label",
-        [
-            pytest.param(
-                {"visibility": "local-cluster"},
-            )
-        ],
+        "patched_kserve_isvc_visibility_label",
+        [pytest.param({"visibility": "local-cluster"})],
         indirect=True,
     )
-    def test_disabled_rest_raw_deployment_exposed_route(self, patched_s3_caikit_kserve_isvc_visibility_label):
-        """Test HTTP inference fails when using external route after it was disabled"""
+    def test_disabled_rest_raw_deployment_exposed_route(self, patched_kserve_isvc_visibility_label):
+        """Test inference succeeds over the internal route after external route is disabled."""
         verify_inference_response(
-            inference_service=patched_s3_caikit_kserve_isvc_visibility_label,
-            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
-            inference_type=Inference.ALL_TOKENS,
+            inference_service=patched_kserve_isvc_visibility_label,
+            inference_config=ONNX_INFERENCE_CONFIG,
+            inference_type=Inference.INFER,
             protocol=Protocols.HTTP,
-            model_name=ModelFormat.CAIKIT,
             use_default_query=True,
         )
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, serving_runtime_from_template, s3_models_inference_service",
+    "unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_raw_inference_service",
     [
         pytest.param(
-            {"name": "raw-deployment-caikit-flan-rest-timeout"},
-            {
-                "name": f"{Protocols.HTTP}-{ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME}",
-                "template-name": RuntimeTemplates.CAIKIT_TGIS_SERVING,
-                "multi-model": False,
-                "enable-http": True,
-                "enable-grpc": False,
-            },
-            {
-                "name": f"{Protocols.HTTP}-{ModelFormat.CAIKIT}",
-                "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT,
-                "model-dir": ModelStoragePath.FLAN_T5_SMALL_CAIKIT,
-                "external-route": True,
-            },
+            {"name": "raw-deployment-onnx-mnist-rest-timeout"},
+            RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
+            {"name": ModelFormat.ONNX, "model-version": ModelVersion.OPSET13, "model-dir": "test-dir"},
         )
     ],
     indirect=True,
 )
 class TestRestRawDeploymentRoutesTimeout:
-    """Validate REST route timeout behavior for KServe raw deployment.
+    """Validate REST route timeout behavior for KServe raw deployment with MNIST ONNX.
 
     Steps:
-        1. Deploy a Caikit-TGIS model as a raw deployment with an external route.
+        1. Deploy an ONNX MNIST model as a raw deployment with an external route.
         2. Verify inference succeeds over the exposed HTTPS route.
         3. Patch the route with an extremely low timeout annotation.
         4. Verify inference fails with a 504 Gateway Time-out error.
     """
 
-    @pytest.mark.dependency(name="test_rest_raw_deployment_exposed_route")
-    def test_rest_raw_deployment_exposed_route(self, s3_models_inference_service):
-        """Test HTTP inference using exposed (external) route"""
+    @pytest.mark.dependency(name="test_rest_raw_deployment_routes_timeout__exposed_route")
+    def test_rest_raw_deployment_exposed_route(self, ovms_raw_inference_service):
+        """Test inference succeeds over the exposed external HTTPS route."""
         verify_inference_response(
-            inference_service=s3_models_inference_service,
-            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
-            inference_type=Inference.ALL_TOKENS,
+            inference_service=ovms_raw_inference_service,
+            inference_config=ONNX_INFERENCE_CONFIG,
+            inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
-            model_name=ModelFormat.CAIKIT,
             use_default_query=True,
         )
 
     @pytest.mark.parametrize(
-        "s3_models_inference_service_patched_annotations",
+        "ovms_raw_isvc_patched_annotations",
         [
             pytest.param({
                 "annotations": {Annotations.HaproxyRouterOpenshiftIo.TIMEOUT: OpenshiftRouteTimeout.TIMEOUT_1MICROSEC}
@@ -166,160 +135,20 @@ class TestRestRawDeploymentRoutesTimeout:
         ],
         indirect=True,
     )
-    @pytest.mark.dependency(depends=["test_rest_raw_deployment_exposed_route"])
-    def test_rest_raw_deployment_exposed_route_with_timeout(self, s3_models_inference_service_patched_annotations):
-        """Test HTTP inference using exposed (external) route fails when timeout is set too low"""
+    @pytest.mark.dependency(depends=["test_rest_raw_deployment_routes_timeout__exposed_route"])
+    def test_rest_raw_deployment_exposed_route_with_timeout(self, ovms_raw_isvc_patched_annotations):
+        """Test inference fails with 504 when the route timeout is set to 1 microsecond."""
         wait_for_route_timeout(
-            name=s3_models_inference_service_patched_annotations.name,
-            namespace=s3_models_inference_service_patched_annotations.namespace,
+            name=ovms_raw_isvc_patched_annotations.name,
+            namespace=ovms_raw_isvc_patched_annotations.namespace,
             route_timeout=OpenshiftRouteTimeout.TIMEOUT_1MICROSEC,
         )
 
-        with pytest.raises(InferenceResponseError) as ire:
+        with pytest.raises(InferenceResponseError, match="504"):
             verify_inference_response(
-                inference_service=s3_models_inference_service_patched_annotations,
-                inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
-                inference_type=Inference.ALL_TOKENS,
+                inference_service=ovms_raw_isvc_patched_annotations,
+                inference_config=ONNX_INFERENCE_CONFIG,
+                inference_type=Inference.INFER,
                 protocol=Protocols.HTTPS,
-                model_name=ModelFormat.CAIKIT,
                 use_default_query=True,
             )
-        assert "504 Gateway Time-out" in str(ire)
-
-
-@pytest.mark.parametrize(
-    "unprivileged_model_namespace, serving_runtime_from_template, s3_models_inference_service",
-    [
-        pytest.param(
-            {"name": "raw-deployment-caikit-flan-grpc"},
-            {
-                "name": f"{Protocols.HTTP}-{ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME}",
-                "template-name": RuntimeTemplates.CAIKIT_TGIS_SERVING,
-                "multi-model": False,
-                "enable-grpc": True,
-                "enable-http": False,
-            },
-            {
-                "name": f"{Protocols.GRPC}-{ModelFormat.CAIKIT}",
-                "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT,
-                "model-dir": ModelStoragePath.FLAN_T5_SMALL_CAIKIT,
-            },
-        )
-    ],
-    indirect=True,
-)
-@pytest.mark.skip(reason="skipping grpc raw for tgis-caikit")
-class TestGrpcRawDeployment:
-    """Validate gRPC route visibility transitions for KServe raw deployment.
-
-    Steps:
-        1. Deploy a Caikit-TGIS model as a raw deployment with gRPC enabled.
-        2. Query the model via the internal gRPC route and confirm a successful streaming response.
-        3. Patch the ISVC to expose the route externally and verify gRPC inference over the exposed route.
-    """
-
-    def test_grpc_raw_deployment_internal_route(self, s3_models_inference_service):
-        """Test GRPC inference using internal route"""
-        verify_inference_response(
-            inference_service=s3_models_inference_service,
-            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
-            inference_type=Inference.STREAMING,
-            protocol=Protocols.GRPC,
-            model_name=ModelFormat.CAIKIT,
-            use_default_query=True,
-        )
-
-    @pytest.mark.parametrize(
-        "patched_s3_caikit_kserve_isvc_visibility_label",
-        [
-            pytest.param(
-                {"visibility": Labels.Kserve.EXPOSED},
-            )
-        ],
-        indirect=True,
-    )
-    def test_grpc_raw_deployment_exposed_route(self, patched_s3_caikit_kserve_isvc_visibility_label):
-        """Test GRPC inference using exposed (external) route"""
-        verify_inference_response(
-            inference_service=patched_s3_caikit_kserve_isvc_visibility_label,
-            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
-            inference_type=Inference.STREAMING,
-            protocol=Protocols.GRPC,
-            model_name=ModelFormat.CAIKIT,
-            use_default_query=True,
-        )
-
-
-@pytest.mark.parametrize(
-    "unprivileged_model_namespace, serving_runtime_from_template, s3_models_inference_service",
-    [
-        pytest.param(
-            {"name": "raw-deployment-caikit-flan-grpc-timeout"},
-            {
-                "name": f"{Protocols.HTTP}-{ModelInferenceRuntime.CAIKIT_TGIS_RUNTIME}",
-                "template-name": RuntimeTemplates.CAIKIT_TGIS_SERVING,
-                "multi-model": False,
-                "enable-grpc": True,
-                "enable-http": False,
-            },
-            {
-                "name": f"{Protocols.GRPC}-{ModelFormat.CAIKIT}",
-                "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT,
-                "model-dir": ModelStoragePath.FLAN_T5_SMALL_CAIKIT,
-                "external-route": True,
-            },
-        )
-    ],
-    indirect=True,
-)
-@pytest.mark.skip(reason="skipping grpc raw for tgis-caikit")
-class TestGrpcRawDeploymentTimeout:
-    """Validate gRPC route timeout behavior for KServe raw deployment.
-
-    Steps:
-        1. Deploy a Caikit-TGIS model as a raw deployment with an external gRPC route.
-        2. Verify gRPC inference succeeds over the exposed route.
-        3. Patch the route with an extremely low timeout annotation.
-        4. Verify gRPC inference fails with a 504 Gateway Time-out error.
-    """
-
-    @pytest.mark.dependency(name="test_grpc_raw_deployment_exposed_route")
-    def test_grpc_raw_deployment_exposed_route(self, s3_models_inference_service):
-        """Test GRPC inference using exposed (external) route"""
-        verify_inference_response(
-            inference_service=s3_models_inference_service,
-            inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
-            inference_type=Inference.STREAMING,
-            protocol=Protocols.GRPC,
-            model_name=ModelFormat.CAIKIT,
-            use_default_query=True,
-        )
-
-    @pytest.mark.parametrize(
-        "s3_models_inference_service_patched_annotations",
-        [
-            pytest.param({
-                "annotations": {Annotations.HaproxyRouterOpenshiftIo.TIMEOUT: OpenshiftRouteTimeout.TIMEOUT_1MICROSEC}
-            })
-        ],
-        indirect=True,
-    )
-    @pytest.mark.dependency(depends=["test_grpc_raw_deployment_exposed_route"])
-    def test_grpc_raw_deployment_exposed_route_with_timeout(self, s3_models_inference_service_patched_annotations):
-        """Test GRPC inference using exposed (external) route fails when timeout is set too low"""
-        wait_for_route_timeout(
-            name=s3_models_inference_service_patched_annotations.name,
-            namespace=s3_models_inference_service_patched_annotations.namespace,
-            route_timeout=OpenshiftRouteTimeout.TIMEOUT_1MICROSEC,
-        )
-
-        with pytest.raises(InferenceResponseError) as ire:
-            verify_inference_response(
-                inference_service=s3_models_inference_service_patched_annotations,
-                inference_config=CAIKIT_TGIS_INFERENCE_CONFIG,
-                inference_type=Inference.STREAMING,
-                protocol=Protocols.GRPC,
-                model_name=ModelFormat.CAIKIT,
-                use_default_query=True,
-            )
-        assert "504 Gateway Time-out" in str(ire)

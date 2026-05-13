@@ -10,7 +10,6 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
-from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from timeout_sampler import TimeoutSampler
 
@@ -23,54 +22,72 @@ LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture()
-def patched_s3_caikit_kserve_isvc_visibility_label(
+def patched_kserve_isvc_visibility_label(
     request: FixtureRequest,
-    unprivileged_client: DynamicClient,
-    s3_models_inference_service: InferenceService,
+    ovms_kserve_inference_service: InferenceService,
 ) -> Generator[InferenceService, Any, Any]:
     visibility = request.param["visibility"]
 
-    labels = s3_models_inference_service.instance.metadata.labels
+    labels = ovms_kserve_inference_service.instance.metadata.labels
 
     # If no label is applied, visibility is "local-cluster"
     if (not labels and visibility == "local-cluster") or (
         labels and labels.get(Labels.Kserve.NETWORKING_KSERVE_IO) == visibility
     ):
         LOGGER.info(f"Inference service visibility is set to {visibility}. Skipping update.")
-        yield s3_models_inference_service
+        yield ovms_kserve_inference_service
 
     else:
-        isvc_orig_url = s3_models_inference_service.instance.status.url
+        isvc_orig_url = ovms_kserve_inference_service.instance.status.url
 
         with ResourceEditor(
             patches={
-                s3_models_inference_service: {
+                ovms_kserve_inference_service: {
                     "metadata": {
                         "labels": {Labels.Kserve.NETWORKING_KSERVE_IO: visibility},
                     }
                 }
             }
         ):
-            LOGGER.info(f"Wait for inference service {s3_models_inference_service.name} url update")
+            LOGGER.info(f"Wait for inference service {ovms_kserve_inference_service.name} url update")
             for sample in TimeoutSampler(
                 wait_timeout=2 * 60,
                 sleep=1,
-                func=lambda: s3_models_inference_service.instance.status.url,
+                func=lambda: ovms_kserve_inference_service.instance.status.url,
             ):
                 if sample:  # noqa: SIM102
                     if visibility == Labels.Kserve.EXPOSED and isvc_orig_url == sample or sample != isvc_orig_url:
                         break
 
-            yield s3_models_inference_service
+            yield ovms_kserve_inference_service
 
-        LOGGER.info(f"Wait for inference service {s3_models_inference_service.name} url restore to original one")
+        LOGGER.info(f"Wait for inference service {ovms_kserve_inference_service.name} url restore to original one")
         for sample in TimeoutSampler(
             wait_timeout=2 * 60,
             sleep=1,
-            func=lambda: s3_models_inference_service.instance.status.url,
+            func=lambda: ovms_kserve_inference_service.instance.status.url,
         ):
             if sample and sample == isvc_orig_url:
                 break
+
+
+@pytest.fixture(scope="function")
+def ovms_raw_isvc_patched_annotations(
+    request: FixtureRequest,
+    ovms_raw_inference_service: InferenceService,
+) -> Generator[InferenceService, Any, Any]:
+    """Patch ISVC annotations and restore after the test."""
+    if hasattr(request, "param"):
+        with ResourceEditor(
+            patches={
+                ovms_raw_inference_service: {
+                    "metadata": {"annotations": request.param["annotations"]},
+                }
+            }
+        ):
+            yield ovms_raw_inference_service
+    else:
+        yield ovms_raw_inference_service
 
 
 @pytest.fixture(scope="class")
@@ -83,19 +100,17 @@ def diff_namespace(admin_client: DynamicClient, unprivileged_client: DynamicClie
 def endpoint_isvc(
     unprivileged_client: DynamicClient,
     serving_runtime_from_template: ServingRuntime,
-    models_endpoint_s3_secret: Secret,
-    model_service_account: ServiceAccount,
+    ci_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=unprivileged_client,
         name="endpoint-isvc",
         namespace=serving_runtime_from_template.namespace,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-        storage_key=models_endpoint_s3_secret.name,
+        storage_key=ci_endpoint_s3_secret.name,
         storage_path=ModelStoragePath.OPENVINO_EXAMPLE_MODEL,
         model_format=serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,
         runtime=serving_runtime_from_template.name,
-        model_service_account=model_service_account.name,
         wait_for_predictor_pods=False,
     ) as isvc:
         yield isvc
