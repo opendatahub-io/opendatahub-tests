@@ -47,12 +47,22 @@ class TestRestRawDeploymentRoutes:
     """
 
     def test_default_visibility_value(self, ovms_kserve_inference_service):
-        """Test default route visibility label is absent on a raw deployment."""
-        if labels := ovms_kserve_inference_service.labels:
-            assert labels.get(Labels.Kserve.NETWORKING_KSERVE_IO) is None
+        """Verify default route visibility label is absent on a raw deployment.
+
+        Given a raw deployment ISVC with no visibility label explicitly set,
+        When the ISVC labels are inspected,
+        Then the networking.kserve.io label must not be present.
+        """
+        labels = ovms_kserve_inference_service.labels or {}
+        assert labels.get(Labels.Kserve.NETWORKING_KSERVE_IO) is None
 
     def test_rest_raw_deployment_internal_route(self, ovms_kserve_inference_service):
-        """Test inference succeeds over the internal HTTP route."""
+        """Verify inference succeeds over the internal HTTP route.
+
+        Given a raw deployment ISVC with no external route,
+        When an inference request is sent over HTTP to the cluster-internal URL,
+        Then the response must be successful.
+        """
         verify_inference_response(
             inference_service=ovms_kserve_inference_service,
             inference_config=ONNX_INFERENCE_CONFIG,
@@ -68,7 +78,12 @@ class TestRestRawDeploymentRoutes:
     )
     @pytest.mark.dependency(name="test_rest_raw_deployment_routes__exposed_route")
     def test_rest_raw_deployment_exposed_route(self, patched_kserve_isvc_visibility_label):
-        """Test inference succeeds over the exposed external HTTPS route."""
+        """Verify inference succeeds over the exposed external HTTPS route.
+
+        Given a raw deployment ISVC with the networking.kserve.io label set to exposed,
+        When an inference request is sent over HTTPS to the external route,
+        Then the response must be successful.
+        """
         verify_inference_response(
             inference_service=patched_kserve_isvc_visibility_label,
             inference_config=ONNX_INFERENCE_CONFIG,
@@ -84,7 +99,12 @@ class TestRestRawDeploymentRoutes:
         indirect=True,
     )
     def test_disabled_rest_raw_deployment_exposed_route(self, patched_kserve_isvc_visibility_label):
-        """Test inference succeeds over the internal route after external route is disabled."""
+        """Verify inference still succeeds over the internal route after the external route is disabled.
+
+        Given a raw deployment ISVC previously exposed externally,
+        When the networking.kserve.io label is reverted to local-cluster,
+        Then the inference request over HTTP to the internal URL must still succeed.
+        """
         verify_inference_response(
             inference_service=patched_kserve_isvc_visibility_label,
             inference_config=ONNX_INFERENCE_CONFIG,
@@ -117,7 +137,12 @@ class TestRestRawDeploymentRoutesTimeout:
 
     @pytest.mark.dependency(name="test_rest_raw_deployment_routes_timeout__exposed_route")
     def test_rest_raw_deployment_exposed_route(self, ovms_raw_inference_service):
-        """Test inference succeeds over the exposed external HTTPS route."""
+        """Verify inference succeeds over the exposed external HTTPS route before timeout is set.
+
+        Given a raw deployment ISVC with an external route and no timeout annotation,
+        When an inference request is sent over HTTPS,
+        Then the response must be successful.
+        """
         verify_inference_response(
             inference_service=ovms_raw_inference_service,
             inference_config=ONNX_INFERENCE_CONFIG,
@@ -137,7 +162,12 @@ class TestRestRawDeploymentRoutesTimeout:
     )
     @pytest.mark.dependency(depends=["test_rest_raw_deployment_routes_timeout__exposed_route"])
     def test_rest_raw_deployment_exposed_route_with_timeout(self, ovms_raw_isvc_patched_annotations):
-        """Test inference fails with 504 when the route timeout is set to 1 microsecond."""
+        """Verify inference fails with 504 when the route timeout is set to 1 microsecond.
+
+        Given a raw deployment ISVC with the HAProxy timeout annotation set to 1 microsecond,
+        When an inference request is sent over HTTPS after the route applies the timeout,
+        Then the request must fail with an InferenceResponseError matching HTTP 504.
+        """
         wait_for_route_timeout(
             name=ovms_raw_isvc_patched_annotations.name,
             namespace=ovms_raw_isvc_patched_annotations.namespace,

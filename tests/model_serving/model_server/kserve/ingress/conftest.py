@@ -30,7 +30,6 @@ def patched_kserve_isvc_visibility_label(
 
     labels = ovms_kserve_inference_service.instance.metadata.labels
 
-    # If no label is applied, visibility is "local-cluster"
     if (not labels and visibility == "local-cluster") or (
         labels and labels.get(Labels.Kserve.NETWORKING_KSERVE_IO) == visibility
     ):
@@ -55,9 +54,8 @@ def patched_kserve_isvc_visibility_label(
                 sleep=1,
                 func=lambda: ovms_kserve_inference_service.instance.status.url,
             ):
-                if sample:  # noqa: SIM102
-                    if visibility == Labels.Kserve.EXPOSED and isvc_orig_url == sample or sample != isvc_orig_url:
-                        break
+                if sample and sample != isvc_orig_url:
+                    break
 
             yield ovms_kserve_inference_service
 
@@ -71,7 +69,7 @@ def patched_kserve_isvc_visibility_label(
                 break
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture()
 def ovms_raw_isvc_patched_annotations(
     request: FixtureRequest,
     ovms_raw_inference_service: InferenceService,
