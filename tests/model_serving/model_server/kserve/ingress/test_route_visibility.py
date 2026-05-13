@@ -174,7 +174,7 @@ class TestRestRawDeploymentRoutesTimeout:
             route_timeout=OpenshiftRouteTimeout.TIMEOUT_1MICROSEC,
         )
 
-        with pytest.raises((InferenceResponseError, AssertionError), match="504"):
+        with pytest.raises(InferenceResponseError, match="504"):
             verify_inference_response(
                 inference_service=ovms_raw_isvc_patched_annotations,
                 inference_config=ONNX_INFERENCE_CONFIG,
