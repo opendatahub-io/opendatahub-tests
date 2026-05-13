@@ -414,8 +414,11 @@ def parse_prompt_tokens(response_body: str) -> int:
     Returns:
         Number of prompt tokens reported by the model.
     """
-    data = json.loads(response_body)
-    return data["usage"]["prompt_tokens"]
+    try:
+        data = json.loads(response_body)
+        return data["usage"]["prompt_tokens"]
+    except (json.JSONDecodeError, KeyError, TypeError) as e:
+        raise ValueError(f"Failed to parse prompt_tokens: {e}\nBody: {response_body[:500]}") from e
 
 
 @retry(wait_timeout=120, sleep=10, exceptions_dict={AssertionError: []}, print_log=False)
