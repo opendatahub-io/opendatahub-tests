@@ -79,7 +79,7 @@ def create_llmd_gateway(
     elif is_disconnected_cluster(client=client):
         raise RuntimeError(
             f"Gateway {name} in namespace {namespace} does not exist on a disconnected cluster. "
-            "The gateway must be pre-created by CI using configure-disconnected-llmd-gateway.sh."
+            "The gateway must be pre-created by CI using configure-llmd-gateway.sh."
         )
     else:
         gateway_body = {
