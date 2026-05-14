@@ -460,9 +460,6 @@ BUILTIN_DETECTOR_CONFIG: dict[str, Any] = {
     }
 }
 
-QWEN_ISVC_NAME = "qwen-isvc"
-QWEN_MODEL_NAME: str = "qwen25-05b-instruct"
-
 
 class ContainerImages:
     """Centralized container images for various runtimes and models."""
@@ -488,13 +485,6 @@ class ContainerImages:
         MODEL_SERVER: str = "quay.io/opendatahub/openvino_model_server@sha256:564664371d3a21b9e732a5c1b4b40bacad714a5144c0a9aaf675baec4a04b148"  # noqa: E501
 
 
-CHAT_GENERATION_CONFIG: dict[str, Any] = {
-    "service": {
-        "hostname": f"{QWEN_MODEL_NAME}-predictor",
-        "port": 80,
-        "request_timeout": 600,
-    }
-}
 TRUSTYAI_SERVICE_NAME: str = "trustyai-service"
 
 LLM_D_INFERENCE_SIM_NAME = "llm-d-inference-sim"
