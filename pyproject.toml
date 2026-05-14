@@ -36,7 +36,7 @@ dev = [
 ]
 
 [project]
-requires-python = "==3.14.*"
+requires-python = ">=3.12"
 name = "opendatahub-tests"
 version = "0.1.0"
 description = "Tests repository for Open Data Hub (ODH)"

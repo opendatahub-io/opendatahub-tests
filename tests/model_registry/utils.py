@@ -148,7 +148,7 @@ def get_database_image(db_backend: str) -> str:
 
 def get_database_health_probes(db_backend: str) -> dict[str, dict[str, Any]]:
     """Get liveness and readiness probes for database container based on backend type."""
-    if db_backend == "postgres":
+    if db_backend in ["postgres", "postgresql"]:
         return {
             "livenessProbe": {
                 "exec": {
