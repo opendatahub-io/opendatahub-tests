@@ -26,8 +26,8 @@ from tests.llama_stack.constants import (
     ModelInfo,
 )
 from tests.llama_stack.datasets import Dataset
+from tests.llama_stack.server_config import build_llama_stack_server_config
 from tests.llama_stack.utils import (
-    build_llama_stack_server_config,
     create_llama_stack_distribution,
     vector_store_upload_dataset,
     vector_store_upload_doc_sources,
