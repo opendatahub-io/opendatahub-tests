@@ -26,7 +26,7 @@ class TestLlamaStackResponses:
     @pytest.mark.tier1
     def test_responses_create(
         self,
-        unprivileged_llama_stack_client: LlamaStackClient,
+        llama_stack_client: LlamaStackClient,
         llama_stack_models: ModelInfo,
     ) -> None:
         """
@@ -45,7 +45,7 @@ class TestLlamaStackResponses:
         ]
 
         for question, expected_keywords in test_cases:
-            response = unprivileged_llama_stack_client.responses.create(
+            response = llama_stack_client.responses.create(
                 model=llama_stack_models.model_id,
                 input=question,
                 instructions="You are a helpful assistant.",

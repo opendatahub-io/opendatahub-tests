@@ -311,9 +311,7 @@ def create_llmisvc(
                 {
                     "name": "main",
                     "resources": container_resources,
-                    "env": container_env + [{"name": "VLLM_PREFILL_MODE", "value": "true"}]
-                    if container_env
-                    else [{"name": "VLLM_PREFILL_MODE", "value": "true"}],
+                    "env": container_env if container_env else [],
                 }
             ]
         }

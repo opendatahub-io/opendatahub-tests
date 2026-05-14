@@ -9,11 +9,11 @@ IBM_EARNINGS_RAG_QUERY = "How did IBM perform financially in the fourth quarter 
 
 
 def _assert_minimal_rag_response(
-    unprivileged_llama_stack_client: LlamaStackClient,
+    llama_stack_client: LlamaStackClient,
     llama_stack_models: ModelInfo,
     vector_store: VectorStore,
 ) -> None:
-    response = unprivileged_llama_stack_client.responses.create(
+    response = llama_stack_client.responses.create(
         input=IBM_EARNINGS_RAG_QUERY,
         model=llama_stack_models.model_id,
         instructions="Always use the file_search tool to look up information before answering.",
@@ -55,7 +55,7 @@ def _assert_minimal_rag_response(
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, llama_stack_server_config, vector_store",
+    "unprivileged_model_namespace, llama_stack_distribution, vector_store",
     [
         pytest.param(
             {"name": "test-llamastack-vector-rag-upgrade"},
@@ -75,25 +75,25 @@ class TestPreUpgradeLlamaStackVectorStoreRag:
     @pytest.mark.pre_upgrade
     def test_vector_store_rag_pre_upgrade(
         self,
-        unprivileged_llama_stack_client: LlamaStackClient,
+        llama_stack_client: LlamaStackClient,
         llama_stack_models: ModelInfo,
         vector_store: VectorStore,
     ) -> None:
         """Verify vector-store-backed RAG works before upgrade.
 
-        Given: A running unprivileged LlamaStack distribution with a vector store and uploaded documents.
+        Given: A running LlamaStack distribution with a vector store and uploaded documents.
         When: A retrieval-augmented response is requested using file search.
         Then: The response includes completed file_search_call output and file_citation annotations.
         """
         _assert_minimal_rag_response(
-            unprivileged_llama_stack_client=unprivileged_llama_stack_client,
+            llama_stack_client=llama_stack_client,
             llama_stack_models=llama_stack_models,
             vector_store=vector_store,
         )
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, llama_stack_server_config, vector_store",
+    "unprivileged_model_namespace, llama_stack_distribution, vector_store",
     [
         pytest.param(
             {"name": "test-llamastack-vector-rag-upgrade"},
@@ -114,18 +114,18 @@ class TestPostUpgradeLlamaStackVectorStoreRag:
     @pytest.mark.xfail(reason="RHAIENG-3650")
     def test_vector_store_rag_post_upgrade(
         self,
-        unprivileged_llama_stack_client: LlamaStackClient,
+        llama_stack_client: LlamaStackClient,
         llama_stack_models: ModelInfo,
         vector_store: VectorStore,
     ) -> None:
         """Verify vector-store-backed RAG remains correct after upgrade.
 
-        Given: A pre-existing unprivileged LlamaStack distribution after upgrade with reused vector store docs.
+        Given: A pre-existing LlamaStack distribution after upgrade with reused vector store docs.
         When: A retrieval-augmented response is requested using file search.
         Then: The response includes completed file_search_call output and file_citation annotations.
         """
         _assert_minimal_rag_response(
-            unprivileged_llama_stack_client=unprivileged_llama_stack_client,
+            llama_stack_client=llama_stack_client,
             llama_stack_models=llama_stack_models,
             vector_store=vector_store,
         )

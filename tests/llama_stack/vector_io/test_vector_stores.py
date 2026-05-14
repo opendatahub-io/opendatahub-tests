@@ -17,7 +17,7 @@ LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, llama_stack_server_config, vector_store, dataset",
+    "unprivileged_model_namespace, llama_stack_distribution, vector_store, dataset",
     [
         pytest.param(
             {"name": "test-llamastack-vector-stores", "randomize_name": True},
@@ -109,7 +109,7 @@ class TestLlamaStackVectorStores:
 
     def test_vector_stores_file_upload(
         self,
-        unprivileged_llama_stack_client: LlamaStackClient,
+        llama_stack_client: LlamaStackClient,
         vector_store: VectorStore,
         dataset: Dataset,
     ) -> None:
@@ -122,7 +122,7 @@ class TestLlamaStackVectorStores:
         """
         store_id = vector_store.id
         completed_files = list(
-            unprivileged_llama_stack_client.vector_stores.files.list(
+            llama_stack_client.vector_stores.files.list(
                 vector_store_id=store_id,
                 filter="completed",
             )
@@ -135,7 +135,7 @@ class TestLlamaStackVectorStores:
 
     def test_vector_stores_search(
         self,
-        unprivileged_llama_stack_client: LlamaStackClient,
+        llama_stack_client: LlamaStackClient,
         vector_store: VectorStore,
         dataset: Dataset,
     ) -> None:
@@ -157,7 +157,7 @@ class TestLlamaStackVectorStores:
         for search_mode in search_modes:
             qa_records = dataset.load_qa(retrieval_mode=search_mode)
             for record in qa_records:
-                search_response = unprivileged_llama_stack_client.vector_stores.search(
+                search_response = llama_stack_client.vector_stores.search(
                     vector_store_id=vector_store.id,
                     query=record.question,
                     search_mode=search_mode,
@@ -184,7 +184,7 @@ class TestLlamaStackVectorStores:
 
     def test_response_file_search_tool_invocation(
         self,
-        unprivileged_llama_stack_client: LlamaStackClient,
+        llama_stack_client: LlamaStackClient,
         llama_stack_models: ModelInfo,
         vector_store: VectorStore,
         dataset: Dataset,
@@ -208,7 +208,7 @@ class TestLlamaStackVectorStores:
         )
 
         try:
-            response = unprivileged_llama_stack_client.responses.create(
+            response = llama_stack_client.responses.create(
                 input=vector_question,
                 model=llama_stack_models.model_id,
                 instructions=system_instructions,

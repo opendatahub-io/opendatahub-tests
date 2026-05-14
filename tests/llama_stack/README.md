@@ -8,7 +8,6 @@ The folder structure is based on the upstream Llama Stack integration tests, ava
 
 ### Current Test Suites
 
-- **`eval/`** - Evaluation provider tests (LM Eval)
 - **`inference/`** - Inference functionality tests
 - **`models/`** - Model management and catalog tests
 - **`operator/`** - Tests for the llama-stack-k8s-operator and Red Hat LlamaStack Distribution image
