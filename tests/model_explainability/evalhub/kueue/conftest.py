@@ -31,6 +31,11 @@ from tests.model_explainability.evalhub.kueue.constants import (
     VLLM_EMULATOR,
     VLLM_EMULATOR_IMAGE,
 )
+from tests.model_explainability.evalhub.multitenancy.conftest import (  # noqa: F401
+    evalhub_mt_ca_bundle_file,
+    evalhub_mt_deployment,
+    evalhub_mt_route,
+)
 from tests.model_explainability.evalhub.utils import tenant_rbac_ready
 from utilities.constants import DscComponents, Labels, Protocols, Timeout
 from utilities.data_science_cluster_utils import get_dsc_ready_condition, wait_for_dsc_reconciliation
