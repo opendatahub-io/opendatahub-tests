@@ -1,16 +1,16 @@
 # OGX Integration Tests
 
-This directory contains OpenShift AI integration tests for OGX components. These tests validate the functionality of OGX APIs and providers when deployed on OpenShift AI using the [Red Hat OGX Server](https://github.com/opendatahub-io/ogx-server).
+This directory contains OpenShift AI integration tests for OGX components. These tests validate the functionality of OGX APIs and providers when deployed on OpenShift AI using the [Red Hat OGX Distribution](https://github.com/opendatahub-io/ogx-distribution).
 
 ## Directory Structure
 
-The folder structure is based on the upstream OGX integration tests, available at [ogx-ai/ogx/tests/integration](https://github.com/ogx-ai/ogx/tree/main/tests/integration). Each subfolder maps to an endpoint in the OGX API. For more information about the available endpoints, see the [OGX API documentation](https://ogx-ai.github.io/ogx/docs/concepts/apis) and the [Python SDK Reference](https://ogx-ai.github.io/ogx/docs/references/python_sdk_reference).
+The folder structure is based on the upstream OGX integration tests, available at [ogx-ai/ogx/tests/integration](https://github.com/ogx-ai/ogx/tree/main/tests/integration). Each subfolder maps to an endpoint in the OGX API. For more information about the available endpoints, see the [OGX API documentation](https://ogx-ai.github.io/docs/concepts/apis) and the [Python SDK Reference](https://ogx-ai.github.io/docs/references/python_sdk_reference).
 
 ### Current Test Suites
 
 - **`inference/`** - Inference functionality tests
 - **`models/`** - Model management and catalog tests
-- **`operator/`** - Tests for the ogx-operator and Red Hat OGX Server image
+- **`operator/`** - Tests for the ogx-operator and Red Hat OGX Distribution image
 - **`responses/`** - Response handling and validation tests
 - **`safety/`** - Safety and guardrails tests (TrustyAI FMS provider)
 - **`vector_io/`** - Vector store and I/O tests
@@ -41,7 +41,7 @@ To add support for testing new OGX API providers (e.g., a new vector_io provider
 
 OGX tests require setting the following environment variables (for example in a `.env` file at the root folder).
 
-> **Note:** Most of these environment variables are added as `env_vars` in the OgxServer CR, as they are required to configure the Red Hat OGX Server's [run.yaml](https://github.com/opendatahub-io/ogx-server/blob/main/distribution/run.yaml).
+> **Note:** Most of these environment variables are added as `env_vars` in the OgxServer CR, as they are required to configure the Red Hat OGX Distribution's [config.yaml](https://github.com/opendatahub-io/ogx-distribution/blob/main/distribution/config.yaml).
 
 ```bash
 OC_BINARY_PATH=/usr/local/sbin/oc                 # Optional
@@ -122,9 +122,9 @@ uv run pytest -m "rag and not gpu" tests/ogx/
 
 ### OGX K8s Operator
 
-The `operator/` folder contains tests specifically for the ogx-operator and the Red Hat OGX Server image. These tests validate the operator's functionality and the distribution image when deployed on OpenShift AI.
+The `operator/` folder contains tests specifically for the ogx-operator and the Red Hat OGX Distribution image. These tests validate the operator's functionality and the distribution image when deployed on OpenShift AI.
 
-There is also a separate operator repository with additional tests related to ogx-operator verifications. The main end-to-end (e2e) tests for the operator are implemented in the [ogx-operator repository](https://github.com/ogx-ai/ogx-operator/tree/main/tests/e2e).
+There is also a separate operator repository with additional tests related to ogx-operator verifications. The main end-to-end (e2e) tests for the operator are implemented in the [ogx-k8s-operator repository](https://github.com/ogx-ai/ogx-k8s-operator/tree/main/tests/e2e).
 
 ### Test Scope Guidelines
 
@@ -133,14 +133,14 @@ Tests in this repository should be specific to OpenDataHub and OpenShift AI, suc
 - Verifying that OGX components included in the builds work as expected
 - Testing particular scenarios like ODH/RHOAI upgrades
 - Validating OpenShift AI-specific configurations and integrations
-- Testing Red Hat OGX Server-specific features
+- Testing Red Hat OGX Distribution-specific features
 
 For generic ogx testing, it is preferred to contribute to the upstream ogx [unit](https://github.com/ogx-ai/ogx/tree/main/tests/unit) and [integration](https://github.com/ogx-ai/ogx/tree/main/tests/integration) tests.
 
-## Red Hat OGX Server
+## Red Hat OGX Distribution
 
-For information about the APIs and Providers available in the Red Hat OGX Server image, see the [distribution documentation](https://github.com/opendatahub-io/ogx-server/tree/main/distribution).
+For information about the APIs and Providers available in the Red Hat OGX Distribution image, see the [distribution documentation](https://github.com/opendatahub-io/ogx-distribution/tree/main/distribution).
 
 ## Additional Resources
 
-- [OGX Documentation](https://ogx-ai.github.io/ogx/docs/)
+- [OGX Documentation](https://ogx-ai.github.io/docs/)

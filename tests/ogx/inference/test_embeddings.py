@@ -31,7 +31,7 @@ class TestOgxInferenceEmbeddings:
       ibm-granite/granite-embedding-125m-english, served with sentence-transformers
 
     For more information about this API, see:
-    - https://ogx-ai.github.io/ogx/docs/references/python_sdk_reference#inference
+    - https://ogx-ai.github.io/docs/references/python_sdk_reference#inference
     - https://github.com/openai/openai-python/blob/main/api.md#embeddings
     """
 
