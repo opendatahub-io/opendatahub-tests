@@ -16,7 +16,7 @@ def files_provider_config_factory(
 
     This fixture returns a factory function that can configure additional files storage providers
     (such as S3/minio) and return the necessary environment variables
-    for configuring the LlamaStack server to use these providers.
+    for configuring the OGX server to use these providers.
 
     Args:
         request: Pytest fixture request object for accessing other fixtures

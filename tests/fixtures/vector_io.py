@@ -54,7 +54,7 @@ def vector_io_provider_deployment_config_factory(
 
     This fixture returns a factory function that can deploy different vector I/O providers
     (such as Milvus) in the cluster and return the necessary environment variables
-    for configuring the LlamaStack server to use these providers.
+    for configuring the OGX server to use these providers.
 
     Provider-specific dependencies (e.g., unprivileged_model_namespace, vector_io_secret)
     are resolved lazily via request.getfixturevalue() only when a provider that requires
@@ -73,7 +73,7 @@ def vector_io_provider_deployment_config_factory(
 
     Environment Variables by Provider:
         - "milvus" (or None): Injects ENABLE_INLINE_MILVUS=true so the
-          LlamaStack server starts its built-in Milvus instance.  No external
+          OGX server starts its built-in Milvus instance.  No external
           deployment is created.
         - "milvus-remote" (does NOT receive ENABLE_INLINE_MILVUS):
           * MILVUS_ENDPOINT: Remote Milvus service endpoint URL

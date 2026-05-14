@@ -1,30 +1,30 @@
 import pytest
-from llama_stack_client import LlamaStackClient, NotFoundError
-from llama_stack_client.types import Model, ModelRetrieveResponse
+from ogx_client import NotFoundError, OgxClient
+from ogx_client.types import Model, ModelRetrieveResponse
 
 
 @pytest.mark.parametrize(
     "unprivileged_model_namespace",
     [
         pytest.param(
-            {"name": "test-llamastack-models", "randomize_name": True},
+            {"name": "test-ogx-models", "randomize_name": True},
         ),
     ],
     indirect=True,
 )
-@pytest.mark.llama_stack
+@pytest.mark.ogx
 @pytest.mark.tier1
-class TestLlamaStackModels:
-    """Test class for LlamaStack models API functionality.
+class TestOgxModels:
+    """Test class for OGX models API functionality.
 
     For more information about this API, see:
-    - https://github.com/llamastack/llama-stack-client-python/blob/main/api.md#models
+    - https://github.com/ogx-ai/ogx-client-python/blob/main/api.md#models
     - https://github.com/openai/openai-python/blob/main/api.md#models
     """
 
     def test_models_list(
         self,
-        llama_stack_client: LlamaStackClient,
+        ogx_client: OgxClient,
     ) -> None:
         """Test listing all available models.
 
@@ -32,8 +32,8 @@ class TestLlamaStackModels:
         containing at least one LLM and one embedding model, compatible
         with OpenAI SDK structure.
         """
-        models = llama_stack_client.models.list()
-        assert models is not None, "No models returned from LlamaStackClient"
+        models = ogx_client.models.list()
+        assert models is not None, "No models returned from OgxClient"
         assert isinstance(models, list), "models.list() should return a list"
         assert len(models) > 0, "At least one model should be available"
 
@@ -59,15 +59,15 @@ class TestLlamaStackModels:
 
     def test_models_list_structure(
         self,
-        llama_stack_client: LlamaStackClient,
+        ogx_client: OgxClient,
     ) -> None:
         """Test that model list response structure matches OpenAI SDK compatibility.
 
         Verifies that each model in the list has the required fields expected
         by OpenAI-compatible clients.
         """
-        models = llama_stack_client.models.list()
-        assert models is not None, "No models returned from LlamaStackClient"
+        models = ogx_client.models.list()
+        assert models is not None, "No models returned from OgxClient"
 
         for model in models:
             assert hasattr(model, "id"), "Model should have identifier attribute"
@@ -81,18 +81,18 @@ class TestLlamaStackModels:
 
     def test_models_retrieve_existing(
         self,
-        llama_stack_client: LlamaStackClient,
+        ogx_client: OgxClient,
     ) -> None:
         """Test retrieving an existing model by ID.
 
         Verifies that models.retrieve() returns the correct model when given
         a valid model identifier from the list.
         """
-        models = llama_stack_client.models.list()
+        models = ogx_client.models.list()
         assert len(models) > 0, "At least one model should be available"
 
         test_model = models[0]
-        retrieved_model = llama_stack_client.models.retrieve(model_id=test_model.id)
+        retrieved_model = ogx_client.models.retrieve(model_id=test_model.id)
 
         assert retrieved_model is not None, f"Model {test_model.id} should be retrievable"
         assert isinstance(retrieved_model, ModelRetrieveResponse), "Retrieved model should be a ModelRetrieveResponse"
@@ -106,7 +106,7 @@ class TestLlamaStackModels:
 
     def test_models_retrieve_nonexistent(
         self,
-        llama_stack_client: LlamaStackClient,
+        ogx_client: OgxClient,
     ) -> None:
         """Test retrieving a non-existent model raises NotFoundError.
 
@@ -116,4 +116,4 @@ class TestLlamaStackModels:
         nonexistent_model_id = "nonexistent-provider/nonexistent-model"
 
         with pytest.raises(NotFoundError):
-            llama_stack_client.models.retrieve(model_id=nonexistent_model_id)
+            ogx_client.models.retrieve(model_id=nonexistent_model_id)

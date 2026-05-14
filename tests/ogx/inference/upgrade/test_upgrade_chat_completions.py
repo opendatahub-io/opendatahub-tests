@@ -1,22 +1,22 @@
 import pytest
-from llama_stack_client import LlamaStackClient
+from ogx_client import OgxClient
 
-from tests.llama_stack.constants import ModelInfo
+from tests.ogx.constants import ModelInfo
 
 
 def _assert_chat_completion_ack(
-    llama_stack_client: LlamaStackClient,
-    llama_stack_models: ModelInfo,
+    ogx_client: OgxClient,
+    ogx_models: ModelInfo,
 ) -> None:
-    response = llama_stack_client.chat.completions.create(
-        model=llama_stack_models.model_id,
+    response = ogx_client.chat.completions.create(
+        model=ogx_models.model_id,
         messages=[
             {"role": "system", "content": "You are a helpful assistant."},
             {"role": "user", "content": "Just respond ACK."},
         ],
         temperature=0,
     )
-    assert len(response.choices) > 0, "No response after basic inference on llama-stack server"
+    assert len(response.choices) > 0, "No response after basic inference on ogx server"
 
     content = response.choices[0].message.content
     assert content is not None, "LLM response content is None"
@@ -27,28 +27,28 @@ def _assert_chat_completion_ack(
     "unprivileged_model_namespace",
     [
         pytest.param(
-            {"name": "test-llamastack-infer-chat-upgrade"},
+            {"name": "test-ogx-infer-chat-upgrade"},
         ),
     ],
     indirect=True,
 )
-@pytest.mark.llama_stack
-class TestPreUpgradeLlamaStackInferenceCompletions:
+@pytest.mark.ogx
+class TestPreUpgradeOgxInferenceCompletions:
     @pytest.mark.pre_upgrade
     def test_inference_chat_completion_pre_upgrade(
         self,
-        llama_stack_client: LlamaStackClient,
-        llama_stack_models: ModelInfo,
+        ogx_client: OgxClient,
+        ogx_models: ModelInfo,
     ) -> None:
         """Verify chat completion returns ACK before upgrade.
 
-        Given: A running LlamaStack distribution.
+        Given: A running OGX distribution.
         When: A deterministic chat completion request is sent.
         Then: The response contains at least one choice with non-empty ACK content.
         """
         _assert_chat_completion_ack(
-            llama_stack_client=llama_stack_client,
-            llama_stack_models=llama_stack_models,
+            ogx_client=ogx_client,
+            ogx_models=ogx_models,
         )
 
 
@@ -56,27 +56,27 @@ class TestPreUpgradeLlamaStackInferenceCompletions:
     "unprivileged_model_namespace",
     [
         pytest.param(
-            {"name": "test-llamastack-infer-chat-upgrade"},
+            {"name": "test-ogx-infer-chat-upgrade"},
         ),
     ],
     indirect=True,
 )
-@pytest.mark.llama_stack
-class TestPostUpgradeLlamaStackInferenceCompletions:
+@pytest.mark.ogx
+class TestPostUpgradeOgxInferenceCompletions:
     @pytest.mark.post_upgrade
     @pytest.mark.xfail(reason="RHAIENG-3650")
     def test_inference_chat_completion_post_upgrade(
         self,
-        llama_stack_client: LlamaStackClient,
-        llama_stack_models: ModelInfo,
+        ogx_client: OgxClient,
+        ogx_models: ModelInfo,
     ) -> None:
         """Verify chat completion returns ACK after upgrade.
 
-        Given: A pre-existing LlamaStack distribution after platform upgrade.
+        Given: A pre-existing OGX distribution after platform upgrade.
         When: A deterministic chat completion request is sent.
         Then: The response contains at least one choice with non-empty ACK content.
         """
         _assert_chat_completion_ack(
-            llama_stack_client=llama_stack_client,
-            llama_stack_models=llama_stack_models,
+            ogx_client=ogx_client,
+            ogx_models=ogx_models,
         )

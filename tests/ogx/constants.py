@@ -2,12 +2,12 @@ import os
 from typing import NamedTuple
 
 import semver
-from llama_stack_client.types import Model
+from ogx_client.types import Model
 from semver import VersionInfo
 
 
 class ModelInfo(NamedTuple):
-    """Container for model information from LlamaStack client."""
+    """Container for model information from OGX client."""
 
     model_id: str
     embedding_model: Model
@@ -18,7 +18,7 @@ HTTPS_PROXY: str = os.getenv("SQUID_HTTPS_PROXY", "")
 
 # LLS_CLIENT_VERIFY_SSL is false by default to be able to test with Self-Signed certificates
 LLS_CLIENT_VERIFY_SSL = os.getenv("LLS_CLIENT_VERIFY_SSL", "false").lower() == "true"
-LLS_CORE_POD_FILTER: str = "app=llama-stack"
+OGX_CORE_POD_FILTER: str = "app.kubernetes.io/name=ogx"
 LLS_OPENSHIFT_MINIMAL_VERSION: VersionInfo = semver.VersionInfo.parse("4.17.0")
 
 POSTGRES_IMAGE = os.getenv(
@@ -49,7 +49,7 @@ LLS_CORE_VLLM_EMBEDDING_TLS_VERIFY = os.getenv("LLS_CORE_VLLM_EMBEDDING_TLS_VERI
 LLS_CORE_AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", "")
 LLS_CORE_AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "")
 
-LLAMA_STACK_DISTRIBUTION_SECRET_DATA = {
+OGX_SERVER_SECRET_DATA = {
     "postgres-user": POSTGRESQL_USER,
     "postgres-password": POSTGRESQL_PASSWORD,
     "vllm-api-token": LLS_CORE_VLLM_API_TOKEN,
@@ -58,7 +58,7 @@ LLAMA_STACK_DISTRIBUTION_SECRET_DATA = {
     "aws-secret-access-key": LLS_CORE_AWS_SECRET_ACCESS_KEY,
 }
 
-UPGRADE_DISTRIBUTION_NAME = "llama-stack-distribution-upgrade"
+UPGRADE_DISTRIBUTION_NAME = "ogx-server-upgrade"
 
 FAITHFULNESS_THRESHOLD = 0.5
 ANSWER_RELEVANCY_THRESHOLD = 0.5

@@ -3,7 +3,7 @@ from typing import Any
 
 import structlog
 
-from tests.llama_stack.constants import (
+from tests.ogx.constants import (
     HTTPS_PROXY,
     LLS_CORE_EMBEDDING_MODEL,
     LLS_CORE_EMBEDDING_PROVIDER_MODEL_ID,
@@ -19,13 +19,13 @@ from tests.llama_stack.constants import (
 LOGGER = structlog.get_logger(name=__name__)
 
 
-def build_llama_stack_server_config(
+def build_ogx_server_config(
     vector_io_provider_deployment_config_factory: Callable[[str], list[dict[str, str]]],
     files_provider_config_factory: Callable[[str], list[dict[str, str]]],
     is_disconnected_cluster: bool,
     params: dict[str, Any],
 ) -> dict[str, Any]:
-    """Build server configuration for LlamaStack distribution deployment.
+    """Build server configuration for OGX distribution deployment.
 
     Args:
         vector_io_provider_deployment_config_factory: Factory to deploy vector I/O providers
@@ -38,7 +38,7 @@ def build_llama_stack_server_config(
             - embedding_provider: Embedding provider ("vllm-embedding" or "sentence-transformers").
             - vector_io_provider: Vector I/O provider type (e.g. "milvus", "milvus-remote").
             - files_provider: Files storage provider ("local" or "s3").
-            - llama_stack_storage_size: PVC storage size (e.g. "2Gi").
+            - ogx_storage_size: PVC storage size (e.g. "2Gi").
 
     Returns:
         Server configuration dict with containerSpec, distribution, and optional
@@ -170,7 +170,7 @@ def build_llama_stack_server_config(
                 "limits": {"cpu": cpu_limits, "memory": "6Gi"},
             },
             "env": env_vars,
-            "name": "llama-stack",
+            "name": "ogx",
             "port": 8321,
         },
         "distribution": {"name": "rh-dev"},
@@ -179,11 +179,11 @@ def build_llama_stack_server_config(
     if tls_config:
         server_config["tlsConfig"] = tls_config
 
-    if params.get("llama_stack_storage_size"):
+    if params.get("ogx_storage_size"):
         if is_disconnected_cluster:
             LOGGER.warning("Skipping storage_size configuration on disconnected clusters due to known bug RHAIENG-1819")
         else:
-            storage_size = params.get("llama_stack_storage_size")
+            storage_size = params.get("ogx_storage_size")
             server_config["storage"] = {"size": storage_size}
 
     return server_config

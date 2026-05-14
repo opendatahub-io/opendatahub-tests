@@ -1526,32 +1526,6 @@ wheels = [
 ]
 
 [[package]]
-name = "llama-stack-client"
-version = "0.7.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "anyio" },
-    { name = "click" },
-    { name = "distro" },
-    { name = "fire" },
-    { name = "httpx" },
-    { name = "pandas" },
-    { name = "prompt-toolkit" },
-    { name = "pyaml" },
-    { name = "pydantic" },
-    { name = "requests" },
-    { name = "rich" },
-    { name = "sniffio" },
-    { name = "termcolor" },
-    { name = "tqdm" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/d7/3d/c4a268a4b60feb6f7e6da3fad2504aa157a52384529766560f8f3cfca43f/llama_stack_client-0.7.2.tar.gz", hash = "sha256:0e3458800af6a18fd8fc5e0760ed626931a416f6c1fdf24aeba4001e6fca9aec", size = 372953, upload-time = "2026-04-08T14:19:32.02Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/78/a8/cc7fa209471abcaac51139b3e6655c3b18ea718f0afa7cfa6ad974dd9eab/llama_stack_client-0.7.2-py3-none-any.whl", hash = "sha256:8b86156f2522c241ae46280e59287b7716c3cdaf016b6477630eb64bd8cbf150", size = 375337, upload-time = "2026-04-08T14:19:30.444Z" },
-]
-
-[[package]]
 name = "markdown-it-py"
 version = "4.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1835,6 +1809,32 @@ wheels = [
 ]
 
 [[package]]
+name = "ogx-client"
+version = "0.7.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "click" },
+    { name = "distro" },
+    { name = "fire" },
+    { name = "httpx" },
+    { name = "pandas" },
+    { name = "prompt-toolkit" },
+    { name = "pyaml" },
+    { name = "pydantic" },
+    { name = "requests" },
+    { name = "rich" },
+    { name = "sniffio" },
+    { name = "termcolor" },
+    { name = "tqdm" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ea/14/de328d875a8fe536fbb784cd2bb71d3e2811b69319cf2aab9aa151f5b5ab/ogx_client-0.7.3.tar.gz", hash = "sha256:f9e9fe66608166a658df63642955706e7c12892b3ee0dd21cbb889d7396c6621", size = 436495, upload-time = "2026-05-01T19:01:31.218Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/71/1d/767a470740cc71f7f405ad93b2f259c26a75ebf62f93236c2d8198a07366/ogx_client-0.7.3-py3-none-any.whl", hash = "sha256:29c4bcb70ffeedbc27d2f833c6a2ca5c0ae91b30f8d7024dddba8b94f5deec13", size = 311473, upload-time = "2026-05-01T19:01:29.339Z" },
+]
+
+[[package]]
 name = "openai"
 version = "2.36.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1877,9 +1877,9 @@ dependencies = [
     { name = "huggingface-hub" },
     { name = "ipython" },
     { name = "jira" },
-    { name = "llama-stack-client" },
     { name = "marshmallow" },
     { name = "model-registry", extra = ["signing"] },
+    { name = "ogx-client" },
     { name = "openai" },
     { name = "openshift-python-utilities" },
     { name = "openshift-python-wrapper" },
@@ -1923,9 +1923,9 @@ requires-dist = [
     { name = "huggingface-hub", specifier = ">=1.2.3" },
     { name = "ipython", specifier = ">=8.18.1" },
     { name = "jira", specifier = ">=3.8.0" },
-    { name = "llama-stack-client", specifier = ">=0.7.2,<0.8" },
     { name = "marshmallow", specifier = ">=4.0" },
     { name = "model-registry", extras = ["signing"], specifier = ">=0.2.13" },
+    { name = "ogx-client", specifier = ">=0.7.2,<0.8" },
     { name = "openai", specifier = ">=2.36" },
     { name = "openshift-python-utilities", specifier = ">=5.0.71" },
     { name = "openshift-python-wrapper", specifier = ">=11.0.122" },

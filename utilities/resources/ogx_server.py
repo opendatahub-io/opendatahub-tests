@@ -6,12 +6,13 @@ from typing import Any
 from ocp_resources.resource import MissingRequiredArgumentError, NamespacedResource
 
 
-class LlamaStackDistribution(NamespacedResource):
+class OgxServer(NamespacedResource):
     """
     No field description from API
     """
 
-    api_group: str = NamespacedResource.ApiGroup.LLAMASTACK_IO
+    api_group: str = "ogx.io"
+    kind: str = "OGXServer"
 
     def __init__(
         self,
@@ -24,9 +25,9 @@ class LlamaStackDistribution(NamespacedResource):
         Args:
             replicas (int): No field description from API
 
-            network (dict[str, Any]): NetworkSpec defines the desired state of llama server.
+            network (dict[str, Any]): NetworkSpec defines the desired state of OGX server.
 
-            server (dict[str, Any]): ServerSpec defines the desired state of llama server.
+            server (dict[str, Any]): ServerSpec defines the desired state of OGX server.
 
         """
         super().__init__(**kwargs)

@@ -1,6 +1,6 @@
-# Llama Stack test fixtures (internal)
+# OGX test fixtures (internal)
 
-These files are for **internal Open Data Hub / OpenShift AI integration tests** only. We use them to hit **[Llama Stack](https://github.com/meta-llama/llama-stack) vector store APIs**---think ingest, indexing, search, and the plumbing around that---not as a shipped dataset or for model training.
+These files are for **internal Open Data Hub / OpenShift AI integration tests** only. We use them to hit **[OGX](https://github.com/meta-llama/ogx) vector store APIs**---think ingest, indexing, search, and the plumbing around that---not as a shipped dataset or for model training.
 
 ## Folder layout
 
@@ -26,7 +26,7 @@ dataset/
 
 ## Using `datasets.py`
 
-The module `tests/llama_stack/datasets.py` provides a lightweight, dependency-free loader for the files in this directory. It exposes typed dataclasses and pre-built `Dataset` instances that tests and fixtures can import directly.
+The module `tests/ogx/datasets.py` provides a lightweight, dependency-free loader for the files in this directory. It exposes typed dataclasses and pre-built `Dataset` instances that tests and fixtures can import directly.
 
 ### Core types
 
@@ -49,7 +49,7 @@ Subsets like `IBM_2025_Q4_EARNINGS` share the same `finance_qa.jsonl` as their `
 ### Loading QA records
 
 ```python
-from tests.llama_stack.datasets import FINANCE_DATASET, IBM_2025_Q4_EARNINGS
+from tests.ogx.datasets import FINANCE_DATASET, IBM_2025_Q4_EARNINGS
 
 # All QA records for the full corpus (60 records)
 all_qa = FINANCE_DATASET.load_qa()
@@ -67,10 +67,10 @@ q4_hybrid = IBM_2025_Q4_EARNINGS.load_qa(retrieval_mode="hybrid")
 ### Accessing documents and attributes
 
 ```python
-from tests.llama_stack.datasets import FINANCE_DATASET
+from tests.ogx.datasets import FINANCE_DATASET
 
 for doc in FINANCE_DATASET.documents:
-    print(doc.path)          # "tests/llama_stack/dataset/corpus/finance/ibm-1q25-..."
+    print(doc.path)          # "tests/ogx/dataset/corpus/finance/ibm-1q25-..."
     print(doc.document_id)   # "ibm_1q25_earnings_pr"
     print(doc.attributes)    # {"entity_symbol": "IBM", "period_year": 2025, ...}
 ```
@@ -80,7 +80,7 @@ for doc in FINANCE_DATASET.documents:
 Tests receive a `Dataset` via indirect parametrize and a `dataset` fixture:
 
 ```python
-from tests.llama_stack.datasets import FINANCE_DATASET, IBM_2025_Q4_EARNINGS, Dataset
+from tests.ogx.datasets import FINANCE_DATASET, IBM_2025_Q4_EARNINGS, Dataset
 
 @pytest.mark.parametrize(
     "vector_store, dataset",
@@ -113,11 +113,11 @@ The `vector_store` fixture reads the `"dataset"` key from its param to upload th
 
 ## Adding a new subject
 
-1. Create `corpus/<subject>/` and drop in the source documents (PDFs, or any other format supported by the Llama Stack Files and Vector IO providers).
+1. Create `corpus/<subject>/` and drop in the source documents (PDFs, or any other format supported by the OGX Files and Vector IO providers).
 2. Then add the following files and configuration for the subject:
    - `corpus/<subject>/documents.json` — manifest mapping each file to a `document_id` and attributes (see schema below).
    - `ground_truth/<subject>_qa.jsonl` — QA pairs linking questions and answers to document IDs (see schema below).
-   - A new `Dataset` instance in `tests/llama_stack/datasets.py` following the `FINANCE_DATASET` pattern.
+   - A new `Dataset` instance in `tests/ogx/datasets.py` following the `FINANCE_DATASET` pattern.
 
 ## `documents.json` manifest
 
