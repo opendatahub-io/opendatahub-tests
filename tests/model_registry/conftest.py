@@ -1,11 +1,11 @@
 import os
+import uuid
 from collections.abc import Generator
 from contextlib import ExitStack
 from typing import Any
 
 import pytest
 import structlog
-import uuid
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.data_science_cluster import DataScienceCluster
@@ -372,7 +372,9 @@ def model_registry_instance(
                 if registry.name == "model-registry0" or "model-registry0-postgres" or "db-model-registry0":
                     continue
                 else:
-                    wait_for_default_resource_cleanedup(admin_client=admin_client, namespace_name=model_registry_namespace)
+                    wait_for_default_resource_cleanedup(
+                        admin_client=admin_client, namespace_name=model_registry_namespace
+                    )
 
 
 @pytest.fixture(scope="class")
