@@ -17,9 +17,7 @@ from llama_stack_client.types.vector_stores.vector_store_file import VectorStore
 from ocp_resources.pod import Pod
 from timeout_sampler import retry
 
-from tests.llama_stack.constants import (
-    LLS_CORE_POD_FILTER,
-)
+from tests.llama_stack.constants import LLS_CORE_POD_FILTER
 from tests.llama_stack.datasets import Dataset
 from utilities.exceptions import UnexpectedResourceCountError
 from utilities.path_utils import resolve_repo_path

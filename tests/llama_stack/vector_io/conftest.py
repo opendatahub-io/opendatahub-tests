@@ -21,7 +21,7 @@ LOGGER = structlog.get_logger(name=__name__)
 
 @pytest.fixture(scope="class")
 def ragas_evaluator_llm(
-    unprivileged_llama_stack_client: LlamaStackClient,
+    llama_stack_client: LlamaStackClient,
     llama_stack_models: ModelInfo,
 ) -> Generator[Any, Any, Any]:
     """Create a RAGAS evaluator LLM backed by the Llama Stack OpenAI-compatible endpoint."""
@@ -29,7 +29,7 @@ def ragas_evaluator_llm(
     from openai import OpenAI
     from ragas.llms import llm_factory
 
-    base_url = str(unprivileged_llama_stack_client.base_url).rstrip("/")
+    base_url = str(llama_stack_client.base_url).rstrip("/")
     verify_ssl = os.getenv("LLS_CLIENT_VERIFY_SSL", "false").lower() == "true"
 
     http_client = httpx.Client(verify=verify_ssl, timeout=httpx.Timeout(240.0))
@@ -68,7 +68,7 @@ class OpenAIEmbeddingsAdapter:
 
 @pytest.fixture(scope="class")
 def ragas_evaluator_embeddings(
-    unprivileged_llama_stack_client: LlamaStackClient,
+    llama_stack_client: LlamaStackClient,
     llama_stack_models: ModelInfo,
 ) -> Generator[Any, Any, Any]:
     """Create RAGAS embeddings backed by the Llama Stack vLLM embedding provider.
@@ -80,7 +80,7 @@ def ragas_evaluator_embeddings(
     from openai import OpenAI
     from ragas.embeddings import OpenAIEmbeddings as RagasOpenAIEmbeddings
 
-    base_url = str(unprivileged_llama_stack_client.base_url).rstrip("/")
+    base_url = str(llama_stack_client.base_url).rstrip("/")
     verify_ssl = os.getenv("LLS_CLIENT_VERIFY_SSL", "false").lower() == "true"
 
     http_client = httpx.Client(verify=verify_ssl, timeout=httpx.Timeout(120.0))
@@ -103,7 +103,7 @@ def ragas_evaluator_embeddings(
 
 @pytest.fixture(scope="class")
 def ragas_samples(
-    unprivileged_llama_stack_client: LlamaStackClient,
+    llama_stack_client: LlamaStackClient,
     llama_stack_models: ModelInfo,
     vector_store: VectorStore,
     dataset: Dataset,
@@ -127,7 +127,7 @@ def ragas_samples(
         LOGGER.info(f"[{i + 1}/{len(qa_records)}] {record.question[:80]}...")
 
         try:
-            resp = unprivileged_llama_stack_client.responses.create(
+            resp = llama_stack_client.responses.create(
                 model=llama_stack_models.model_id,
                 instructions=(
                     "/no_think\n"

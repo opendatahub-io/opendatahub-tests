@@ -6,9 +6,9 @@ from ocp_resources.pod import Pod
 from utilities.general import validate_container_images
 
 
-@pytest.mark.usefixtures("unprivileged_llama_stack_distribution")
+@pytest.mark.usefixtures("llama_stack_distribution")
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, llama_stack_server_config",
+    "unprivileged_model_namespace, llama_stack_distribution",
     [
         pytest.param(
             {"name": "test-llamastack-operator", "randomize_name": True},

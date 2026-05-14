@@ -22,7 +22,7 @@ LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, llama_stack_server_config, vector_store, dataset",
+    "unprivileged_model_namespace, llama_stack_distribution, vector_store, dataset",
     [
         pytest.param(
             {"name": "test-llamastack-ragas-eval", "randomize_name": True},
