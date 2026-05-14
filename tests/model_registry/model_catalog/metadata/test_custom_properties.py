@@ -25,20 +25,16 @@ pytestmark = [
 class TestCustomProperties:
     """Test suite for validating custom properties in model catalog API"""
 
-    @pytest.mark.parametrize(
-        "randomly_picked_model_from_catalog_api_by_source", [{"source": VALIDATED_CATALOG_ID}], indirect=True
-    )
     def test_custom_properties_match_metadata(
         self,
-        randomly_picked_model_from_catalog_api_by_source: tuple[dict[Any, Any], str, str],
+        model_with_benchmark_metadata: tuple[dict[Any, Any], str, str],
         model_catalog_pod,
     ):
         """Test that custom properties from API match values in metadata.json files."""
-        model_data, model_name, catalog_id = randomly_picked_model_from_catalog_api_by_source
+        model_data, model_name, catalog_id = model_with_benchmark_metadata
 
         LOGGER.info(f"Testing custom properties metadata match for model '{model_name}' from catalog '{catalog_id}'")
 
-        # Extract custom properties and get metadata
         custom_props = model_data.get("customProperties", {})
         api_props = extract_custom_property_values(custom_properties=custom_props)
         metadata = get_metadata_from_catalog_pod(model_catalog_pod=model_catalog_pod, model_name=model_name)

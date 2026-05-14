@@ -273,6 +273,25 @@ def validate_custom_properties_match_metadata(api_custom_properties: dict[str, s
     return True
 
 
+def get_benchmark_path(model_catalog_pod: Pod, model_name: str) -> str:
+    """Resolve the metadata.json path with case-insensitive directory matching."""
+    base_dir = "/shared-benchmark-data"
+    path_segments = model_name.split("/", maxsplit=1)
+
+    resolved_segments: list[str] = []
+    current_dir = base_dir
+    for segment in path_segments:
+        ls_output = model_catalog_pod.execute(command=["ls", current_dir], container=CATALOG_CONTAINER)
+        directories = ls_output.strip().split("\n")
+        match = next((directory for directory in directories if directory.lower() == segment.lower()), None)
+        if not match:
+            raise FileNotFoundError(f"No benchmark directory found for '{segment}' under {current_dir}")
+        resolved_segments.append(match)
+        current_dir = f"{current_dir}/{match}"
+
+    return f"{base_dir}/{'/'.join(resolved_segments)}/metadata.json"
+
+
 def get_metadata_from_catalog_pod(model_catalog_pod: Pod, model_name: str) -> dict[str, Any]:
     """
     Read and parse metadata.json for a model from the catalog pod.
@@ -287,7 +306,7 @@ def get_metadata_from_catalog_pod(model_catalog_pod: Pod, model_name: str) -> di
     Raises:
         Exception: If metadata.json cannot be read or parsed
     """
-    metadata_path = f"/shared-benchmark-data/{model_name}/metadata.json"
+    metadata_path = get_benchmark_path(model_catalog_pod=model_catalog_pod, model_name=model_name)
     LOGGER.info(f"Reading metadata from: {metadata_path}")
 
     try:

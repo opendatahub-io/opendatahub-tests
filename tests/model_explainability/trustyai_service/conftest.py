@@ -14,12 +14,10 @@ from ocp_resources.inference_service import InferenceService
 from ocp_resources.maria_db import MariaDB
 from ocp_resources.mariadb_operator import MariadbOperator
 from ocp_resources.namespace import Namespace
-from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
-from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.trustyai_service import TrustyAIService
@@ -28,12 +26,9 @@ from pytest_testconfig import py_config
 from tests.model_explainability.trustyai_service.constants import (
     GAUSSIAN_CREDIT_MODEL,
     GAUSSIAN_CREDIT_MODEL_RESOURCES,
-    GAUSSIAN_CREDIT_MODEL_STORAGE_PATH,
+    GAUSSIAN_CREDIT_MODEL_STORAGE_URI,
     ISVC_GETTER,
     KSERVE_MLSERVER,
-    KSERVE_MLSERVER_ANNOTATIONS,
-    KSERVE_MLSERVER_CONTAINERS,
-    KSERVE_MLSERVER_SUPPORTED_MODEL_FORMATS,
     TAI_DATA_CONFIG,
     TAI_DB_STORAGE_CONFIG,
     TAI_METRICS_CONFIG,
@@ -57,12 +52,13 @@ from utilities.constants import (
     TRUSTYAI_SERVICE_NAME,
     Annotations,
     KServeDeploymentType,
-    Labels,
+    RuntimeTemplates,
 )
 from utilities.inference_utils import create_isvc
 from utilities.infra import create_inference_token, get_kserve_storage_initialize_image, update_configmap_data
 from utilities.logger import RedactedString
 from utilities.operator_utils import get_cluster_service_version
+from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 DB_CREDENTIALS_SECRET_NAME: str = "db-credentials"
 DB_NAME: str = "trustyai_db"
@@ -322,7 +318,6 @@ def trustyai_db_ca_secret(
 def mlserver_runtime(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    minio_data_connection: Secret,
     model_namespace: Namespace,
     teardown_resources: bool,
 ) -> Generator[ServingRuntime, Any, Any]:
@@ -338,12 +333,9 @@ def mlserver_runtime(
         serving_runtime.clean_up()
 
     else:
-        with ServingRuntime(
-            containers=KSERVE_MLSERVER_CONTAINERS,
-            supported_model_formats=KSERVE_MLSERVER_SUPPORTED_MODEL_FORMATS,
-            protocol_versions=["v2"],
-            annotations=KSERVE_MLSERVER_ANNOTATIONS,
-            label={Labels.OpenDataHub.DASHBOARD: "true"},
+        with ServingRuntimeFromTemplate(
+            template_name=RuntimeTemplates.MLSERVER,
+            deployment_type=KServeDeploymentType.RAW_DEPLOYMENT,
             teardown=teardown_resources,
             **mlserver_runtime_kwargs,
         ) as mlserver:
@@ -355,11 +347,8 @@ def gaussian_credit_model(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    minio_pod: Pod,
-    minio_service: Service,
-    minio_data_connection: Secret,
     mlserver_runtime: ServingRuntime,
-    kserve_raw_config: ConfigMap,
+    # kserve_raw_config: ConfigMap,
     kserve_logger_ca_bundle: ConfigMap,
     teardown_resources: bool,
 ) -> Generator[InferenceService, Any, Any]:
@@ -378,8 +367,7 @@ def gaussian_credit_model(
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
             model_format=XGBOOST,
             runtime=mlserver_runtime.name,
-            storage_key=minio_data_connection.name,
-            storage_path=GAUSSIAN_CREDIT_MODEL_STORAGE_PATH,
+            storage_uri=GAUSSIAN_CREDIT_MODEL_STORAGE_URI,
             enable_auth=True,
             external_route=True,
             wait_for_predictor_pods=False,

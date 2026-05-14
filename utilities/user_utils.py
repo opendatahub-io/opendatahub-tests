@@ -1,14 +1,13 @@
 import base64
 import logging
-import shlex
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+import bcrypt
 import requests
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.user import User
-from pyhelper_utils.shell import run_command
 from timeout_sampler import retry
 
 from utilities.exceptions import ExceptionUserLogin
@@ -50,7 +49,7 @@ class UserTestSession:
 
 def create_htpasswd_file(username: str, password: str) -> tuple[Path, str]:
     """
-    Create an htpasswd file for a user.
+    Create an htpasswd file for a user using bcrypt hashing.
 
     Args:
         username: The username to add to the htpasswd file
@@ -59,16 +58,17 @@ def create_htpasswd_file(username: str, password: str) -> tuple[Path, str]:
     Returns:
         Tuple of (temp file path, base64 encoded content)
     """
-    with tempfile.NamedTemporaryFile(mode="w+", delete=False) as temp_file:
-        temp_path = Path(temp_file.name).resolve()  # Get absolute path
-        run_command(command=shlex.split(f"htpasswd -c -b {temp_path.absolute()!s} {username} {password}"), check=True)
+    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    # OpenShift OAuth uses Apache APR's crypt_blowfish which only recognizes $2y$/$2a$, not $2b$
+    hashed = hashed.replace("$2b$", "$2y$", 1)
+    htpasswd_line = f"{username}:{hashed}\n"
 
-        # Read the htpasswd file content and encode it
-        temp_file.seek(0)
-        htpasswd_content = temp_file.read()
-        htpasswd_b64 = base64.b64encode(htpasswd_content.encode()).decode()
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".htpasswd") as f:
+        f.write(htpasswd_line)
+        temp_path = Path(f.name)  # noqa: FCN001
 
-        return temp_path, htpasswd_b64
+    htpasswd_b64 = base64.b64encode(htpasswd_line.encode()).decode()
+    return temp_path, htpasswd_b64
 
 
 @retry(
