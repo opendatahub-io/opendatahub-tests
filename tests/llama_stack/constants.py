@@ -1,20 +1,9 @@
 import os
-from enum import Enum
 from typing import NamedTuple
 
 import semver
 from llama_stack_client.types import Model
 from semver import VersionInfo
-
-
-class LlamaStackProviders:
-    """LlamaStack provider identifiers."""
-
-    class Inference(str, Enum):
-        VLLM_INFERENCE = "vllm-inference"
-
-    class Eval(str, Enum):
-        TRUSTYAI_LMEVAL = "trustyai_lmeval"
 
 
 class ModelInfo(NamedTuple):
