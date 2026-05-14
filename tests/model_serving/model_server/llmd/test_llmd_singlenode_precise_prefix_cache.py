@@ -23,7 +23,7 @@ PREFIX_CACHE_PROMPT = (
 
 NAMESPACE = ns_from_file(file=__file__)
 
-pytestmark = [pytest.mark.tier2, pytest.mark.gpu]
+pytestmark = [pytest.mark.tier2, pytest.mark.llmd_gpu]
 
 
 @pytest.mark.parametrize(
