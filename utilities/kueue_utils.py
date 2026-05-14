@@ -95,6 +95,12 @@ class ClusterQueue(Resource):
                 _spec["resourceGroups"] = self.resource_groups
 
 
+class Workload(NamespacedResource):
+    """Kueue Workload resource (kueue.x-k8s.io/v1beta1)."""
+
+    api_group: str = "kueue.x-k8s.io"
+
+
 @contextmanager
 def create_resource_flavor(
     client: DynamicClient,

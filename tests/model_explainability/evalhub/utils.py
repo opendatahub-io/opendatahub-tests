@@ -3,7 +3,6 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.job import Job
-from ocp_resources.resource import NamespacedResource
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.service_account import ServiceAccount
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
@@ -27,6 +26,7 @@ from tests.model_explainability.evalhub.constants import (
     GARAK_JOB_TIMEOUT,
 )
 from utilities.guardrails import get_auth_headers
+from utilities.kueue_utils import Workload
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -913,18 +913,11 @@ def wait_for_service_account(
 # ---------------------------------------------------------------------------
 
 
-class KueueWorkload(NamespacedResource):
-    """Kueue Workload resource (kueue.x-k8s.io/v1beta1)."""
-
-    api_group: str = "kueue.x-k8s.io"
-    api_version: str = "v1beta1"
-
-
-def get_evalhub_job_workload(
+def _get_evalhub_job_workload(
     admin_client: DynamicClient,
     namespace: str,
     evalhub_job_id: str,
-) -> KueueWorkload | None:
+) -> Workload | None:
     """Get the Kueue Workload for an EvalHub job.
 
     EvalHub creates batch Jobs with labels app=evalhub, component=evaluation-job, job_id={id}.
@@ -936,11 +929,11 @@ def get_evalhub_job_workload(
         evalhub_job_id: EvalHub job ID.
 
     Returns:
-        KueueWorkload instance or None if not found.
+        Workload instance or None if not found.
     """
     selector = evalhub_runtime_label_selector(evalhub_job_id=evalhub_job_id)
     workloads = list(
-        KueueWorkload.get(
+        Workload.get(
             client=admin_client,
             namespace=namespace,
             label_selector=selector,
@@ -949,11 +942,11 @@ def get_evalhub_job_workload(
     return workloads[0] if workloads else None
 
 
-def check_workload_admitted(workload: KueueWorkload) -> bool:
+def _check_workload_admitted(workload: Workload) -> bool:
     """Check if a Kueue Workload is admitted.
 
     Args:
-        workload: KueueWorkload instance.
+        workload: Workload instance.
 
     Returns:
         True if the workload has Admitted=True condition.
@@ -965,11 +958,11 @@ def check_workload_admitted(workload: KueueWorkload) -> bool:
     return False
 
 
-def check_workload_quota_reserved(workload: KueueWorkload) -> bool:
+def check_workload_quota_reserved(workload: Workload) -> bool:
     """Check if a Kueue Workload has QuotaReserved=True.
 
     Args:
-        workload: KueueWorkload instance.
+        workload: Workload instance.
 
     Returns:
         True if the workload has QuotaReserved=True condition.
@@ -981,14 +974,14 @@ def check_workload_quota_reserved(workload: KueueWorkload) -> bool:
     return False
 
 
-def check_workload_inadmissible(workload: KueueWorkload) -> bool:
+def _check_workload_inadmissible(workload: Workload) -> bool:
     """Check if a Kueue Workload is inadmissible (quota exhausted).
 
     Per Kueue docs: QuotaReserved condition with reason=Inadmissible and status=False
     indicates the workload cannot be admitted due to quota constraints.
 
     Args:
-        workload: KueueWorkload instance.
+        workload: Workload instance.
 
     Returns:
         True if the workload has QuotaReserved=False with reason=Inadmissible.
@@ -1010,7 +1003,7 @@ def wait_for_evalhub_job_workload_admitted(
     evalhub_job_id: str,
     timeout: int = 120,
     sleep: int = 5,
-) -> KueueWorkload:
+) -> Workload:
     """Wait for the Kueue Workload to be admitted.
 
     Args:
@@ -1021,7 +1014,7 @@ def wait_for_evalhub_job_workload_admitted(
         sleep: Seconds between polls (default 5).
 
     Returns:
-        Admitted KueueWorkload instance.
+        Admitted Workload instance.
 
     Raises:
         TimeoutExpiredError: If the workload is not admitted within the timeout.
@@ -1031,12 +1024,12 @@ def wait_for_evalhub_job_workload_admitted(
     for sample in TimeoutSampler(
         wait_timeout=timeout,
         sleep=sleep,
-        func=get_evalhub_job_workload,
+        func=_get_evalhub_job_workload,
         admin_client=admin_client,
         namespace=namespace,
         evalhub_job_id=evalhub_job_id,
     ):
-        if sample and check_workload_admitted(sample):
+        if sample and _check_workload_admitted(sample):
             LOGGER.info(f"Workload for job {evalhub_job_id} admitted")
             return sample
 
@@ -1049,7 +1042,7 @@ def wait_for_evalhub_job_workload_inadmissible(
     evalhub_job_id: str,
     timeout: int = 120,
     sleep: int = 5,
-) -> KueueWorkload:
+) -> Workload:
     """Wait for the Kueue Workload to become inadmissible (quota exhausted).
 
     Args:
@@ -1060,7 +1053,7 @@ def wait_for_evalhub_job_workload_inadmissible(
         sleep: Seconds between polls (default 5).
 
     Returns:
-        Inadmissible KueueWorkload instance.
+        Inadmissible Workload instance.
 
     Raises:
         TimeoutExpiredError: If the workload does not become inadmissible within the timeout.
@@ -1070,12 +1063,12 @@ def wait_for_evalhub_job_workload_inadmissible(
     for sample in TimeoutSampler(
         wait_timeout=timeout,
         sleep=sleep,
-        func=get_evalhub_job_workload,
+        func=_get_evalhub_job_workload,
         admin_client=admin_client,
         namespace=namespace,
         evalhub_job_id=evalhub_job_id,
     ):
-        if sample and check_workload_inadmissible(sample):
+        if sample and _check_workload_inadmissible(sample):
             LOGGER.info(f"Workload for job {evalhub_job_id} is inadmissible")
             return sample
 
