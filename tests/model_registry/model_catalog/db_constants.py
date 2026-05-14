@@ -181,6 +181,7 @@ API_EXCLUDED_FILTER_FIELDS = {
     "source_id",
     "logo",
     "license_link",
+    "serving_config",
     "artifacts.metricsType.string_value",  # artifact property with full name
     "artifacts.model_id.string_value",  # artifact property with full name
 }
