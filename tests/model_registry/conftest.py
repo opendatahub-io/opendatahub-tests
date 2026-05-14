@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 import structlog
+import uuid
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.data_science_cluster import DataScienceCluster
@@ -344,11 +345,14 @@ def model_registry_instance(
         yield [mr_instance]
         mr_instance.delete(wait=True)
     else:
-        db_name = param.get("db_name", "mysql")
+        db_name = param.get("db_name", "postgres")
+        unique_suffix = uuid.uuid4().hex[:6]
+        unique_base_name = f"{MR_INSTANCE_BASE_NAME}-{unique_suffix}"
+
         mr_objects = get_model_registry_objects(
             client=admin_client,
             namespace=model_registry_namespace,
-            base_name=MR_INSTANCE_BASE_NAME,
+            base_name=unique_base_name,
             num=param.get("num_resources", 1),
             teardown_resources=teardown_resources,
             params=param,
@@ -364,7 +368,11 @@ def model_registry_instance(
                 )
             yield mr_instances
         if db_name == "default":
-            wait_for_default_resource_cleanedup(admin_client=admin_client, namespace_name=model_registry_namespace)
+            for registry in ModelRegistry.get(namespace=model_registry_namespace, client=admin_client):
+                if registry.name == "model-registry0" or "model-registry0-postgres" or "db-model-registry0":
+                    continue
+                else:
+                    wait_for_default_resource_cleanedup(admin_client=admin_client, namespace_name=model_registry_namespace)
 
 
 @pytest.fixture(scope="class")
@@ -376,7 +384,7 @@ def model_registry_metadata_db_resources(
     model_registry_namespace: str,
 ) -> Generator[dict[Any, Any]]:
     num_resources = getattr(request, "param", {}).get("num_resources", 1)
-    db_backend = getattr(request, "param", {}).get("db_name", "mysql")
+    db_backend = getattr(request, "param", {}).get("db_name") or "postgres"
 
     if pytestconfig.option.post_upgrade:
         resources = {
