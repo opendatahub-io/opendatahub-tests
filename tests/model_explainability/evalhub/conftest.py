@@ -34,6 +34,11 @@ from tests.model_explainability.evalhub.constants import (
     MINIO_MC_IMAGE,
     MINIO_UPLOADER_SECURITY_CONTEXT,
 )
+from tests.model_explainability.evalhub.multitenancy.conftest import (  # noqa: F401
+    evalhub_mt_ca_bundle_file,
+    evalhub_mt_deployment,
+    evalhub_mt_route,
+)
 from tests.model_explainability.evalhub.utils import wait_for_service_account
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import Timeout
