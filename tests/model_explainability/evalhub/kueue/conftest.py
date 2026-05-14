@@ -31,11 +31,6 @@ from tests.model_explainability.evalhub.kueue.constants import (
     VLLM_EMULATOR,
     VLLM_EMULATOR_IMAGE,
 )
-from tests.model_explainability.evalhub.multitenancy.conftest import (
-    evalhub_mt_ca_bundle_file,
-    evalhub_mt_deployment,
-    evalhub_mt_route,
-)
 from tests.model_explainability.evalhub.utils import tenant_rbac_ready
 from utilities.constants import DscComponents, Labels, Protocols, Timeout
 from utilities.data_science_cluster_utils import get_dsc_ready_condition, wait_for_dsc_reconciliation
@@ -77,9 +72,7 @@ def _is_kueue_operator_installed(admin_client: DynamicClient) -> bool:
 
 
 @pytest.fixture(scope="session")
-def kueue_unmanaged_dsc(
-    admin_client: DynamicClient, dsc_resource: DataScienceCluster
-) -> Generator[None, Any, Any]:
+def kueue_unmanaged_dsc(admin_client: DynamicClient, dsc_resource: DataScienceCluster) -> Generator[None, Any, Any]:
     """Set DSC Kueue to Unmanaged and wait for CRDs to be available."""
     try:
         if not _is_kueue_operator_installed(admin_client):

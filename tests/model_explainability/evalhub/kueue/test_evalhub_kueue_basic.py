@@ -19,6 +19,7 @@ from tests.model_explainability.evalhub.utils import (
 )
 from utilities.kueue_utils import LocalQueue, check_gated_pods_and_running_pods
 
+
 @pytest.mark.tier1
 @pytest.mark.kueue
 @pytest.mark.model_explainability
@@ -240,7 +241,7 @@ class TestEvalHubKueueBasic:
         )
 
         # Verify pod counts: 1 running, 1 gated
-        all_labels = f"app=evalhub,component=evaluation-job"
+        all_labels = "app=evalhub,component=evaluation-job"
         running_pods, gated_pods = check_gated_pods_and_running_pods(
             labels=[all_labels],
             namespace=evalhub_kueue_namespace.name,
