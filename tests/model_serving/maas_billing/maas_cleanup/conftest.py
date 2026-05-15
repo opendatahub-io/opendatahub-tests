@@ -9,11 +9,16 @@ from utilities.data_science_cluster_utils import get_dsc_ready_condition, wait_f
 
 
 @pytest.fixture(scope="class")
-def maas_disabled_for_cleanup_test(
+def dsc_with_maas_disabled(
     dsc_resource: DataScienceCluster,
     maas_controller_enabled_latest: DataScienceCluster,
 ) -> Generator[None]:
-    """Patch DSC modelsAsService to Removed, then restore Managed on teardown."""
+    """DSC with modelsAsService set to Removed, restored to Managed on teardown.
+
+    Requires a pre-configured MaaS gateway (via maas_controller_enabled_latest)
+    to be in place before disabling MaaS; tests will fail with confusing errors
+    if no gateway is bootstrapped on the cluster.
+    """
     component_patch = {
         DscComponents.KSERVE: {"modelsAsService": {"managementState": DscComponents.ManagementState.REMOVED}}
     }

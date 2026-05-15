@@ -22,7 +22,7 @@ MAAS_CRDS: tuple[str, ...] = (
 
 
 @pytest.mark.tier3
-@pytest.mark.usefixtures("maas_disabled_for_cleanup_test")
+@pytest.mark.usefixtures("dsc_with_maas_disabled")
 class TestMaaSDisableCleanup:
     """Verify MaaS controller bundle is fully cleaned up when managementState is set to Removed."""
 
@@ -37,20 +37,19 @@ class TestMaaSDisableCleanup:
             name=MAAS_CONTROLLER_RESOURCE_NAME,
             namespace=applications_namespace,
         )
-        if controller_deployment.exists:
-            assert controller_deployment.wait_deleted(timeout=600), (
-                f"maas-controller Deployment still exists in namespace '{applications_namespace}'"
-                f" after managementState set to Removed"
-            )
+        assert not controller_deployment.exists, (
+            f"maas-controller Deployment still exists in namespace '{applications_namespace}'"
+            f" after managementState set to Removed"
+        )
 
     def test_disable_maas_removes_crds(
         self,
         admin_client: DynamicClient,
     ) -> None:
         """Verify all MaaS CRDs are removed after managementState is set to Removed."""
-        assert all(not CustomResourceDefinition(client=admin_client, name=crd_name).exists for crd_name in MAAS_CRDS), (
-            f"MaaS CRDs still present after managementState set to Removed: "
-            f"{', '.join(crd for crd in MAAS_CRDS if CustomResourceDefinition(client=admin_client, name=crd).exists)}"
+        surviving_crds = [crd for crd in MAAS_CRDS if CustomResourceDefinition(client=admin_client, name=crd).exists]
+        assert not surviving_crds, (
+            f"MaaS CRDs still present after managementState set to Removed: {', '.join(surviving_crds)}"
         )
 
     def test_disable_maas_removes_cluster_rbac(
@@ -72,9 +71,9 @@ class TestMaaSDisableCleanup:
                 namespace=applications_namespace,
             ),
         }
-        assert all(not resource.exists for resource in rbac_resources.values()), (
-            f"MaaS RBAC resources still present after managementState set to Removed: "
-            f"{', '.join(label for label, resource in rbac_resources.items() if resource.exists)}"
+        surviving_rbac = [label for label, resource in rbac_resources.items() if resource.exists]
+        assert not surviving_rbac, (
+            f"MaaS RBAC resources still present after managementState set to Removed: {', '.join(surviving_rbac)}"
         )
 
     def test_disable_maas_no_bundle_resources_remain(
