@@ -16,7 +16,7 @@ from ocp_resources.role_binding import RoleBinding
 from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from pytest_testconfig import config as py_config
-from timeout_sampler import TimeoutExpiredError, TimeoutSampler
+from timeout_sampler import TimeoutSampler
 
 from tests.model_explainability.evalhub.constants import (
     EVALHUB_TENANT_LABEL_KEY,
