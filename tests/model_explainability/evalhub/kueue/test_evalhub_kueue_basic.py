@@ -21,8 +21,6 @@ from utilities.kueue_utils import LocalQueue, check_gated_pods_and_running_pods
 
 
 @pytest.mark.tier1
-@pytest.mark.kueue
-@pytest.mark.model_explainability
 class TestEvalHubKueueBasic:
     """Basic lifecycle tests for EvalHub jobs with Kueue admission control."""
 

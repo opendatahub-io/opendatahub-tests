@@ -59,7 +59,7 @@ def _is_kueue_operator_installed(admin_client: DynamicClient) -> bool:
         csvs = list(
             ClusterServiceVersion.get(
                 client=admin_client,
-                namespace=py_config.get("applications_namespace", "openshift-operators"),
+                namespace=py_config["applications_namespace"],
             )
         )
         for csv in csvs:
@@ -76,7 +76,7 @@ def kueue_unmanaged_dsc(admin_client: DynamicClient, dsc_resource: DataScienceCl
     """Set DSC Kueue to Unmanaged and wait for CRDs to be available."""
     try:
         if not _is_kueue_operator_installed(admin_client):
-            pytest.skip("Kueue operator is not installed, skipping Kueue tests")
+            pytest.fail("Kueue operator is not installed")
 
         # Check current Kueue state
         kueue_management_state = dsc_resource.instance.spec.components[DscComponents.KUEUE].managementState
@@ -108,7 +108,7 @@ def kueue_unmanaged_dsc(admin_client: DynamicClient, dsc_resource: DataScienceCl
             yield
 
     except (AttributeError, KeyError) as e:
-        pytest.skip(f"Kueue component not found in DSC: {e}")
+        pytest.fail(f"Kueue component not found in DSC: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -136,7 +136,7 @@ def evalhub_kueue_namespace(
 @pytest.fixture(scope="class")
 def evalhub_kueue_multi_job_resource_flavor(
     admin_client: DynamicClient,
-    kueue_unmanaged_dsc,
+    kueue_unmanaged_dsc: None,
 ) -> Generator[ResourceFlavor, Any, Any]:
     """ResourceFlavor for multi-job quota tests."""
     with create_resource_flavor(
@@ -150,7 +150,7 @@ def evalhub_kueue_multi_job_resource_flavor(
 def evalhub_kueue_multi_job_cluster_queue(
     admin_client: DynamicClient,
     evalhub_kueue_multi_job_resource_flavor: ResourceFlavor,
-    kueue_unmanaged_dsc,
+    kueue_unmanaged_dsc: None,
 ) -> Generator[ClusterQueue, Any, Any]:
     """ClusterQueue with quota for multiple EvalHub jobs."""
     resource_groups = [
@@ -198,7 +198,7 @@ def evalhub_kueue_multi_job_local_queue(
 @pytest.fixture(scope="class")
 def evalhub_kueue_single_job_resource_flavor(
     admin_client: DynamicClient,
-    kueue_unmanaged_dsc,
+    kueue_unmanaged_dsc: None,
 ) -> Generator[ResourceFlavor, Any, Any]:
     """ResourceFlavor for single-job quota tests."""
     with create_resource_flavor(
@@ -264,19 +264,16 @@ def evalhub_kueue_rbac_ready(
     evalhub_mt_deployment: Deployment,
 ) -> None:
     """Wait for operator to provision tenant RBAC in Kueue namespace."""
-    try:
-        for ready in TimeoutSampler(
-            wait_timeout=120,
-            sleep=5,
-            func=tenant_rbac_ready,
-            admin_client=admin_client,
-            namespace=evalhub_kueue_namespace.name,
-        ):
-            if ready:
-                LOGGER.info(f"Operator RBAC provisioned in {evalhub_kueue_namespace.name}")
-                return
-    except TimeoutExpiredError as err:
-        raise RuntimeError(f"Operator RBAC not provisioned in {evalhub_kueue_namespace.name}") from err
+    for ready in TimeoutSampler(
+        wait_timeout=120,
+        sleep=5,
+        func=tenant_rbac_ready,
+        admin_client=admin_client,
+        namespace=evalhub_kueue_namespace.name,
+    ):
+        if ready:
+            LOGGER.info(f"Operator RBAC provisioned in {evalhub_kueue_namespace.name}")
+            return
 
 
 # vLLM emulator in Kueue namespace
