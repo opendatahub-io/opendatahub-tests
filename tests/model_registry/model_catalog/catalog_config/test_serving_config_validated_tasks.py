@@ -3,6 +3,7 @@ from typing import Self
 
 import pytest
 import structlog
+from ocp_resources.config_map import ConfigMap
 
 from tests.model_registry.constants import CUSTOM_CATALOG_ID1
 from tests.model_registry.model_catalog.utils import get_catalog_str, get_models_from_catalog_api
@@ -17,6 +18,8 @@ EXPECTED_VALIDATED_TASKS = ["text-generation", "tool-calling"]
 EXPECTED_TOOL_CALL_PARSER = "granite"
 EXPECTED_CHAT_TEMPLATE = "opt/app-root/template/tool_chat_template_granite.jinja"
 EXPECTED_REQUIRED_ARGS = ["--config_format granite"]
+
+VALIDATED_TASKS_UNIQUE_TERM = "tool-calling"
 
 
 def _build_custom_yaml_with_serving_config() -> str:
@@ -34,7 +37,6 @@ models:
   licenseLink: https://www.apache.org/licenses/LICENSE-2.0.txt
   tasks:
     - text-generation
-    - tool-calling
   validatedTasks:
     - text-generation
     - tool-calling
@@ -82,16 +84,15 @@ models:
     ],
     indirect=["updated_catalog_config_map"],
 )
-@pytest.mark.usefixtures(
-    "model_registry_namespace",
-    "updated_catalog_config_map",
-)
+@pytest.mark.usefixtures("model_registry_namespace")
+@pytest.mark.jira("RHOAIENG-60668")
 @pytest.mark.tier1
 class TestServingConfigAndValidatedTasks:
     """Tests for validatedTasks and servingConfig fields in custom catalog models (RHOAIENG-60668)."""
 
     def test_model_with_serving_config_and_validated_tasks(
         self: Self,
+        updated_catalog_config_map: ConfigMap,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
     ):
@@ -117,10 +118,14 @@ class TestServingConfigAndValidatedTasks:
         assert tool_calling.get("toolCallParser") == EXPECTED_TOOL_CALL_PARSER
         assert tool_calling.get("chatTemplate") == EXPECTED_CHAT_TEMPLATE
         assert tool_calling.get("enableAutoToolChoice") is True
-        assert tool_calling.get("requiredArgs") == EXPECTED_REQUIRED_ARGS
+
+        required_args = tool_calling.get("requiredArgs")
+        assert isinstance(required_args, list), f"requiredArgs should be a list, got: {type(required_args)}"
+        assert required_args == EXPECTED_REQUIRED_ARGS
 
     def test_model_without_serving_config_and_validated_tasks(
         self: Self,
+        updated_catalog_config_map: ConfigMap,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
     ):
@@ -144,13 +149,23 @@ class TestServingConfigAndValidatedTasks:
 
     def test_serving_config_excluded_from_filter_options(
         self: Self,
+        updated_catalog_config_map: ConfigMap,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
     ):
-        """Given the model catalog API
+        """Given the model catalog API with a custom catalog loaded
         When querying the filter_options endpoint
         Then serving_config should not appear in the filterable properties
         """
+        sources = execute_get_command(
+            url=f"{model_catalog_rest_url[0]}sources",
+            headers=model_registry_rest_headers,
+        )
+        source_ids = {source["id"] for source in sources.get("items", [])}
+        assert CUSTOM_CATALOG_ID1 in source_ids, (
+            f"Custom catalog source '{CUSTOM_CATALOG_ID1}' not found — catalog may not have loaded yet"
+        )
+
         response = execute_get_command(
             url=f"{model_catalog_rest_url[0]}models/filter_options",
             headers=model_registry_rest_headers,
@@ -160,20 +175,22 @@ class TestServingConfigAndValidatedTasks:
 
     def test_validated_tasks_searchable_via_q_parameter(
         self: Self,
+        updated_catalog_config_map: ConfigMap,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
     ):
-        """Given a custom catalog model with validatedTasks containing 'tool-calling'
+        """Given a custom catalog model with validatedTasks containing 'tool-calling' but tasks without it
         When searching with q=tool-calling scoped to the custom source
-        Then the model with that validated task is returned in results
+        Then the model is returned because validated_tasks is included in the search index
         """
         response = get_models_from_catalog_api(
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
-            q="tool-calling",
+            q=VALIDATED_TASKS_UNIQUE_TERM,
             additional_params=f"&source={CUSTOM_CATALOG_ID1}",
         )
         model_names = [model["name"] for model in response.get("items", [])]
         assert MODEL_WITH_SERVING_CONFIG in model_names, (
-            f"Expected '{MODEL_WITH_SERVING_CONFIG}' in search results for 'tool-calling', got: {model_names}"
+            f"Expected '{MODEL_WITH_SERVING_CONFIG}' in search results for '{VALIDATED_TASKS_UNIQUE_TERM}'. "
+            f"The backend search should match validated_tasks (not just tasks). Got: {model_names}"
         )
