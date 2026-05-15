@@ -11,17 +11,17 @@ import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
-from llama_stack_client import APIConnectionError, InternalServerError, LlamaStackClient
-from llama_stack_client.types.file import File
-from llama_stack_client.types.vector_stores.vector_store_file import VectorStoreFile
 from ocp_resources.pod import Pod
+from ogx_client import APIConnectionError, InternalServerError, OgxClient
+from ogx_client.types.file import File
+from ogx_client.types.vector_stores.vector_store_file import VectorStoreFile
 from timeout_sampler import retry
 
-from tests.llama_stack.constants import LLS_CORE_POD_FILTER
-from tests.llama_stack.datasets import Dataset
+from tests.ogx.constants import OGX_CORE_POD_FILTER
+from tests.ogx.datasets import Dataset
 from utilities.exceptions import UnexpectedResourceCountError
 from utilities.path_utils import resolve_repo_path
-from utilities.resources.llama_stack_distribution import LlamaStackDistribution
+from utilities.resources.ogx_server import OgxServer
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -74,7 +74,7 @@ def _assert_vector_store_file_attached(
 
 
 def vector_store_create_and_poll(
-    llama_stack_client: LlamaStackClient,
+    ogx_client: OgxClient,
     vector_store_id: str,
     file_id: str,
     *,
@@ -88,7 +88,7 @@ def vector_store_create_and_poll(
     file, then repeatedly retrieve until status is completed, failed, or cancelled.
 
     Args:
-        llama_stack_client: The configured LlamaStackClient.
+        ogx_client: The configured OgxClient.
         vector_store_id: The vector store to attach the file to.
         file_id: The file ID (from files.create) to attach.
         attributes: Optional attributes to associate with the file.
@@ -103,7 +103,7 @@ def vector_store_create_and_poll(
     """
     start = time.monotonic()
     request_timeout = max(1, int(wait_timeout - (time.monotonic() - start)))
-    vs_file = llama_stack_client.vector_stores.files.create(
+    vs_file = ogx_client.vector_stores.files.create(
         vector_store_id=vector_store_id,
         file_id=file_id,
         timeout=request_timeout,
@@ -123,7 +123,7 @@ def vector_store_create_and_poll(
         if time.monotonic() >= deadline:
             raise TimeoutError(f"Vector store file {vs_file.id} still in_progress after {wait_timeout}s")
         time.sleep(poll_interval_sec)
-        vs_file = llama_stack_client.vector_stores.files.retrieve(file_id=vs_file.id, vector_store_id=vector_store_id)
+        vs_file = ogx_client.vector_stores.files.retrieve(file_id=vs_file.id, vector_store_id=vector_store_id)
 
     if vs_file.status not in terminal_statuses:
         LOGGER.warning(f"Unexpected vector store file status {vs_file.status!r}, treating as terminal")
@@ -131,38 +131,58 @@ def vector_store_create_and_poll(
 
 
 @contextmanager
-def create_llama_stack_distribution(
+def create_ogx_server(
     client: DynamicClient,
     name: str,
     namespace: str,
-    replicas: int,
-    server: dict[str, Any],
+    config: dict[str, Any],
     teardown: bool = True,
-) -> Generator[LlamaStackDistribution, Any, Any]:
-    """
-    Context manager to create and optionally delete a LLama Stack Distribution
+) -> Generator[OgxServer, Any, Any]:
+    """Context manager to create and optionally delete an OGX Server.
+
+    Args:
+        client: Kubernetes dynamic client.
+        name: Name for the OGXServer resource.
+        namespace: Target namespace.
+        config: OGXServerSpec configuration dict as returned by ``build_ogx_server_config``
+            (keys: distribution, workload, tls, etc.).
+        teardown: Whether to delete the resource on exit.
     """
 
     # Starting with RHOAI 3.3, pods in the 'openshift-ingress' namespace must be allowed
-    # to access the llama-stack-service. This is required for the llama_stack_test_route
+    # to access the ogx-service. This is required for the ogx_test_route
     # to function properly.
     network: dict[str, Any] = {
-        "allowedFrom": {
-            "namespaces": ["openshift-ingress"],
+        "policy": {
+            "ingress": [
+                {
+                    "from": [
+                        {
+                            "namespaceSelector": {
+                                "matchLabels": {
+                                    "kubernetes.io/metadata.name": "openshift-ingress",
+                                },
+                            },
+                        },
+                    ],
+                    "ports": [{"protocol": "TCP", "port": 8321}],
+                },
+            ],
         },
     }
 
-    with LlamaStackDistribution(
+    with OgxServer(
         client=client,
         name=name,
         namespace=namespace,
-        replicas=replicas,
+        distribution=config["distribution"],
+        workload=config.get("workload"),
         network=network,
-        server=server,
+        tls=config.get("tls"),
         wait_for_resource=True,
         teardown=teardown,
-    ) as llama_stack_distribution:
-        yield llama_stack_distribution
+    ) as ogx_server:
+        yield ogx_server
 
 
 @retry(
@@ -170,21 +190,21 @@ def create_llama_stack_distribution(
     sleep=5,
     exceptions_dict={ResourceNotFoundError: [], UnexpectedResourceCountError: []},
 )
-def wait_for_unique_llama_stack_pod(client: DynamicClient, namespace: str) -> Pod:
-    """Wait until exactly one LlamaStackDistribution pod is found in the
+def wait_for_unique_ogx_pod(client: DynamicClient, namespace: str) -> Pod:
+    """Wait until exactly one OgxServer pod is found in the
     namespace (multiple pods may indicate known bug RHAIENG-1819)."""
     pods = list(
         Pod.get(
             client=client,
             namespace=namespace,
-            label_selector=LLS_CORE_POD_FILTER,
+            label_selector=OGX_CORE_POD_FILTER,
         )
     )
     if not pods:
-        raise ResourceNotFoundError(f"No pods found with label selector {LLS_CORE_POD_FILTER} in namespace {namespace}")
+        raise ResourceNotFoundError(f"No pods found with label selector {OGX_CORE_POD_FILTER} in namespace {namespace}")
     if len(pods) != 1:
         raise UnexpectedResourceCountError(
-            f"Expected exactly 1 pod with label selector {LLS_CORE_POD_FILTER} "
+            f"Expected exactly 1 pod with label selector {OGX_CORE_POD_FILTER} "
             f"in namespace {namespace}, found {len(pods)}. "
             f"(possibly due to known bug RHAIENG-1819)"
         )
@@ -192,8 +212,8 @@ def wait_for_unique_llama_stack_pod(client: DynamicClient, namespace: str) -> Po
 
 
 @retry(wait_timeout=90, sleep=5)
-def wait_for_llama_stack_client_ready(client: LlamaStackClient) -> bool:
-    """Wait for LlamaStack client to be ready by checking health, version, and database access."""
+def wait_for_ogx_client_ready(client: OgxClient) -> bool:
+    """Wait for OGX client to be ready by checking health, version, and database access."""
     try:
         client.inspect.health()
         version = client.inspect.version()
@@ -201,7 +221,7 @@ def wait_for_llama_stack_client_ready(client: LlamaStackClient) -> bool:
         vector_stores = client.vector_stores.list()
         files = client.files.list()
         LOGGER.info(
-            f"Llama Stack server is available! "
+            f"OGX server is available! "
             f"(version:{version.version} "
             f"models:{len(models)} "
             f"vector_stores:{len(vector_stores.data)} "
@@ -209,28 +229,26 @@ def wait_for_llama_stack_client_ready(client: LlamaStackClient) -> bool:
         )
 
     except (APIConnectionError, InternalServerError) as error:
-        LOGGER.debug(f"Llama Stack server not ready yet: {error}")
+        LOGGER.debug(f"OGX server not ready yet: {error}")
         LOGGER.debug(f"Base URL: {client.base_url}, Error type: {type(error)}, Error details: {error!s}")
         return False
 
     except Exception as e:  # noqa: BLE001
-        LOGGER.warning(f"Unexpected error checking Llama Stack readiness: {e}")
+        LOGGER.warning(f"Unexpected error checking OGX readiness: {e}")
         return False
 
     else:
         return True
 
 
-def vector_store_create_file_from_url(
-    url: str, llama_stack_client: LlamaStackClient, vector_store: Any
-) -> VectorStoreFile:
+def vector_store_create_file_from_url(url: str, ogx_client: OgxClient, vector_store: Any) -> VectorStoreFile:
     """
     Downloads a file from URL to a temporally file and uploads it to the files provider (files.create)
     and to the vector_store (vector_stores.files.create)
 
     Args:
         url: The URL to download the file from
-        llama_stack_client: The configured LlamaStackClient
+        ogx_client: The configured OgxClient
         vector_store: The vector store to upload the file to
 
     Returns:
@@ -257,7 +275,7 @@ def vector_store_create_file_from_url(
             temp_file_path = Path(temp_file.name)  # noqa: FCN001
             LOGGER.info(f"Stored remote file (url={url}) into temporal file (temp_file_path={temp_file_path})")
             return vector_store_create_file_from_path(
-                file_path=temp_file_path, llama_stack_client=llama_stack_client, vector_store=vector_store
+                file_path=temp_file_path, ogx_client=ogx_client, vector_store=vector_store
             )
 
     except (requests.exceptions.RequestException, Exception) as e:
@@ -270,7 +288,7 @@ def vector_store_create_file_from_url(
 
 def vector_store_create_file_from_path(
     file_path: Path,
-    llama_stack_client: LlamaStackClient,
+    ogx_client: OgxClient,
     vector_store: Any,
     *,
     attributes: dict[str, str | int | float | bool] | None = None,
@@ -281,7 +299,7 @@ def vector_store_create_file_from_path(
 
     Args:
         file_path: Path to the local file to upload
-        llama_stack_client: The configured LlamaStackClient
+        ogx_client: The configured OgxClient
         vector_store: The vector store to add the file to
         attributes: Optional attributes to associate with the vector-store file.
 
@@ -295,15 +313,15 @@ def vector_store_create_file_from_path(
     if not file_path.is_file():
         raise FileNotFoundError(f"File not found: {file_path}")
 
-    LOGGER.info(f"Uploading local file {file_path.name} to the llama-stack files provider")
+    LOGGER.info(f"Uploading local file {file_path.name} to the ogx files provider")
     with open(file_path, "rb") as file_to_upload:
-        uploaded_file = llama_stack_client.files.create(file=file_to_upload, purpose="assistants")
+        uploaded_file = ogx_client.files.create(file=file_to_upload, purpose="assistants")
         _assert_file_uploaded(uploaded_file=uploaded_file, expected_purpose="assistants")
-    LOGGER.info(f"Uploaded {file_path.name} (file_id={uploaded_file.id}) to the llama-stack files provider")
+    LOGGER.info(f"Uploaded {file_path.name} (file_id={uploaded_file.id}) to the ogx files provider")
 
     LOGGER.info(f"Adding uploaded file (filename{uploaded_file.filename} to vector store {vector_store.id}")
     vs_file = vector_store_create_and_poll(
-        llama_stack_client=llama_stack_client,
+        ogx_client=ogx_client,
         vector_store_id=vector_store.id,
         file_id=uploaded_file.id,
         attributes=attributes,
@@ -317,7 +335,7 @@ def vector_store_create_file_from_path(
 
 def vector_store_upload_doc_sources(
     doc_sources: list[str],
-    llama_stack_client: LlamaStackClient,
+    ogx_client: OgxClient,
     vector_store: Any,
     vector_io_provider: str,
 ) -> None:
@@ -328,7 +346,7 @@ def vector_store_upload_doc_sources(
 
     Args:
         doc_sources: List of URL or path strings (repo-relative or absolute under repo root).
-        llama_stack_client: Client used for file and vector store APIs.
+        ogx_client: Client used for file and vector store APIs.
         vector_store: Target vector store (must expose ``id``).
         vector_io_provider: Provider id for log context only.
 
@@ -343,7 +361,7 @@ def vector_store_upload_doc_sources(
         if source.startswith(("http://", "https://")):
             vector_store_create_file_from_url(
                 url=source,
-                llama_stack_client=llama_stack_client,
+                ogx_client=ogx_client,
                 vector_store=vector_store,
             )
             continue
@@ -359,13 +377,13 @@ def vector_store_upload_doc_sources(
                     continue
                 vector_store_create_file_from_path(
                     file_path=file_path_resolved,
-                    llama_stack_client=llama_stack_client,
+                    ogx_client=ogx_client,
                     vector_store=vector_store,
                 )
         elif source_path.is_file():
             vector_store_create_file_from_path(
                 file_path=source_path,
-                llama_stack_client=llama_stack_client,
+                ogx_client=ogx_client,
                 vector_store=vector_store,
             )
         else:
@@ -374,7 +392,7 @@ def vector_store_upload_doc_sources(
 
 def vector_store_upload_dataset(
     dataset: Dataset,
-    llama_stack_client: LlamaStackClient,
+    ogx_client: OgxClient,
     vector_store: Any,
 ) -> None:
     """Upload all documents from a ``Dataset`` to a vector store.
@@ -385,7 +403,7 @@ def vector_store_upload_dataset(
 
     Args:
         dataset: Dataset whose ``documents`` will be uploaded.
-        llama_stack_client: Client used for file and vector store APIs.
+        ogx_client: Client used for file and vector store APIs.
         vector_store: Target vector store (must expose ``id``).
     """
     LOGGER.info(f"Uploading dataset ({len(dataset.documents)} document(s)) to vector_store (id={vector_store.id})")
@@ -393,7 +411,7 @@ def vector_store_upload_dataset(
         source_path = resolve_repo_path(source=doc.path)
         vector_store_create_file_from_path(
             file_path=source_path,
-            llama_stack_client=llama_stack_client,
+            ogx_client=ogx_client,
             vector_store=vector_store,
             attributes=doc.attributes,
         )
@@ -401,7 +419,7 @@ def vector_store_upload_dataset(
 
 def extract_retrieved_contexts(response: Any) -> list[str]:
     """
-    Extract unique retrieved contexts from a LlamaStack Responses API output.
+    Extract unique retrieved contexts from a OGX Responses API output.
 
     De-duplicates results so that repeated file_search_call hits (e.g. from
     chained tool calls) don't inflate ContextPrecision/ContextRecall scores.

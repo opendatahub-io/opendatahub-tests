@@ -116,9 +116,9 @@ uv run pytest -k test_name
 uv run pytest tests/<component_name> -m "smoke and not sanity and not tier1"
 ```
 
-### LlamaStack Integration Tests
+### OGX Integration Tests
 
-For more information about LlamaStack integration tests, see [/tests/llama_stack/README.md](../tests/llama_stack/README.md).
+For more information about OGX integration tests, see [/tests/ogx/README.md](../tests/ogx/README.md).
 
 ### Running on different distributions
 
