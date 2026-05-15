@@ -19,10 +19,12 @@ from ocp_resources.role_binding import RoleBinding
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
+from ocp_resources.service_monitor import ServiceMonitor
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_explainability.evalhub.constants import (
+    EVALHUB_APP_LABEL,
     EVALHUB_JOB_CONFIG_CLUSTERROLE,
     EVALHUB_JOB_SA_PREFIX,
     EVALHUB_JOB_SA_SUFFIX,
@@ -101,6 +103,26 @@ def evalhub_ca_bundle_file(
 ) -> str:
     """Create a CA bundle file for verifying the EvalHub route TLS certificate."""
     return create_ca_bundle_file(client=admin_client)
+
+
+@pytest.fixture(scope="class")
+def evalhub_service_monitor(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    evalhub_deployment: Deployment,
+) -> ServiceMonitor:
+    """Get the ServiceMonitor created by the TrustyAI operator for EvalHub metrics scraping."""
+    service_monitors = list(
+        ServiceMonitor.get(
+            client=admin_client,
+            namespace=model_namespace.name,
+            label_selector=f"app={EVALHUB_APP_LABEL}",
+        )
+    )
+    assert service_monitors, (
+        f"No ServiceMonitor found in namespace '{model_namespace.name}' with label app={EVALHUB_APP_LABEL}"
+    )
+    return service_monitors[0]
 
 
 # ---------------------------------------------------------------------------
