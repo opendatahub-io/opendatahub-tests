@@ -30,12 +30,12 @@ def ragas_evaluator_llm(
     from ragas.llms import llm_factory
 
     base_url = str(ogx_client.base_url).rstrip("/")
-    verify_ssl = os.getenv("LLS_CLIENT_VERIFY_SSL", "false").lower() == "true"
+    verify_ssl = os.getenv("OGX_CLIENT_VERIFY_SSL", "false").lower() == "true"
 
     http_client = httpx.Client(verify=verify_ssl, timeout=httpx.Timeout(240.0))
     try:
         openai_client = OpenAI(
-            api_key=os.getenv("LLS_CORE_VLLM_API_TOKEN", ""),
+            api_key=os.getenv("OGX_CORE_VLLM_API_TOKEN", ""),
             base_url=f"{base_url}/v1",
             http_client=http_client,
         )
@@ -81,12 +81,12 @@ def ragas_evaluator_embeddings(
     from ragas.embeddings import OpenAIEmbeddings as RagasOpenAIEmbeddings
 
     base_url = str(ogx_client.base_url).rstrip("/")
-    verify_ssl = os.getenv("LLS_CLIENT_VERIFY_SSL", "false").lower() == "true"
+    verify_ssl = os.getenv("OGX_CLIENT_VERIFY_SSL", "false").lower() == "true"
 
     http_client = httpx.Client(verify=verify_ssl, timeout=httpx.Timeout(120.0))
     try:
         openai_client = OpenAI(
-            api_key=os.getenv("LLS_CORE_VLLM_API_TOKEN", "not-required"),
+            api_key=os.getenv("OGX_CORE_VLLM_API_TOKEN", "not-required"),
             base_url=f"{base_url}/v1",
             http_client=http_client,
         )

@@ -4,7 +4,7 @@ from collections.abc import Callable
 import pytest
 from _pytest.fixtures import FixtureRequest
 
-S3_AUTO_CREATE_BUCKET = os.getenv("LLS_FILES_S3_AUTO_CREATE_BUCKET", "true")
+S3_AUTO_CREATE_BUCKET = os.getenv("OGX_FILES_S3_AUTO_CREATE_BUCKET", "true")
 
 
 @pytest.fixture(scope="class")
@@ -64,13 +64,11 @@ def files_provider_config_factory(
             })
             env_vars.append({
                 "name": "AWS_ACCESS_KEY_ID",
-                "valueFrom": {"secretKeyRef": {"name": "llamastack-distribution-secret", "key": "aws-access-key-id"}},
+                "valueFrom": {"secretKeyRef": {"name": "ogx-distribution-secret", "key": "aws-access-key-id"}},
             })
             env_vars.append({
                 "name": "AWS_SECRET_ACCESS_KEY",
-                "valueFrom": {
-                    "secretKeyRef": {"name": "llamastack-distribution-secret", "key": "aws-secret-access-key"}
-                },
+                "valueFrom": {"secretKeyRef": {"name": "ogx-distribution-secret", "key": "aws-secret-access-key"}},
             })
             env_vars.append({"name": "S3_AUTO_CREATE_BUCKET", "value": S3_AUTO_CREATE_BUCKET})
 

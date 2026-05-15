@@ -18,8 +18,8 @@ from ogx_client.types.vector_store import VectorStore
 from semver import Version
 
 from tests.ogx.constants import (
-    LLS_CLIENT_VERIFY_SSL,
-    LLS_OPENSHIFT_MINIMAL_VERSION,
+    OGX_CLIENT_VERIFY_SSL,
+    OGX_OPENSHIFT_MINIMAL_VERSION,
     OGX_SERVER_SECRET_DATA,
     POSTGRES_IMAGE,
     UPGRADE_DISTRIBUTION_NAME,
@@ -46,10 +46,10 @@ LOGGER = structlog.get_logger(name=__name__)
 @pytest.fixture(scope="session", autouse=True)
 def skip_ogx_if_not_supported_openshift_version(admin_client: DynamicClient, openshift_version: Version) -> None:
     """Skip ogx tests if OpenShift version is not supported (< 4.17) by ogx-operator"""
-    if openshift_version < LLS_OPENSHIFT_MINIMAL_VERSION:
+    if openshift_version < OGX_OPENSHIFT_MINIMAL_VERSION:
         message = (
             f"Skipping ogx tests, as ogx-operator is not supported "
-            f"on OpenShift {openshift_version} ({LLS_OPENSHIFT_MINIMAL_VERSION} or newer required)"
+            f"on OpenShift {openshift_version} ({OGX_OPENSHIFT_MINIMAL_VERSION} or newer required)"
         )
         LOGGER.info(message)
         pytest.skip(reason=message)
@@ -90,7 +90,7 @@ def ogx_server_secret(
     secret = Secret(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace.name,
-        name="llamastack-distribution-secret",
+        name="ogx-distribution-secret",
         type="Opaque",
         string_data=OGX_SERVER_SECRET_DATA,
         ensure_exists=pytestconfig.option.post_upgrade,
@@ -281,7 +281,7 @@ def ogx_client(
     ogx_test_route: Route,
 ) -> Generator[OgxClient, Any, Any]:
     """Returns a ready-to-use OgxClient."""
-    http_client = httpx.Client(verify=LLS_CLIENT_VERIFY_SSL, timeout=300)
+    http_client = httpx.Client(verify=OGX_CLIENT_VERIFY_SSL, timeout=300)
     try:
         client = OgxClient(
             base_url=f"https://{ogx_test_route.host}",
@@ -592,14 +592,12 @@ def get_postgres_deployment_template() -> dict[str, Any]:
                         {"name": "POSTGRESQL_DATABASE", "value": "ps_db"},
                         {
                             "name": "POSTGRESQL_USER",
-                            "valueFrom": {
-                                "secretKeyRef": {"name": "llamastack-distribution-secret", "key": "postgres-user"}
-                            },
+                            "valueFrom": {"secretKeyRef": {"name": "ogx-distribution-secret", "key": "postgres-user"}},
                         },
                         {
                             "name": "POSTGRESQL_PASSWORD",
                             "valueFrom": {
-                                "secretKeyRef": {"name": "llamastack-distribution-secret", "key": "postgres-password"}
+                                "secretKeyRef": {"name": "ogx-distribution-secret", "key": "postgres-password"}
                             },
                         },
                     ],

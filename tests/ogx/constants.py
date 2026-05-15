@@ -16,46 +16,46 @@ class ModelInfo(NamedTuple):
 
 HTTPS_PROXY: str = os.getenv("SQUID_HTTPS_PROXY", "")
 
-# LLS_CLIENT_VERIFY_SSL is false by default to be able to test with Self-Signed certificates
-LLS_CLIENT_VERIFY_SSL = os.getenv("LLS_CLIENT_VERIFY_SSL", "false").lower() == "true"
+# OGX_CLIENT_VERIFY_SSL is false by default to be able to test with Self-Signed certificates
+OGX_CLIENT_VERIFY_SSL = os.getenv("OGX_CLIENT_VERIFY_SSL", "false").lower() == "true"
 OGX_CORE_POD_FILTER: str = "app.kubernetes.io/name=ogx"
-LLS_OPENSHIFT_MINIMAL_VERSION: VersionInfo = semver.VersionInfo.parse("4.17.0")
+OGX_OPENSHIFT_MINIMAL_VERSION: VersionInfo = semver.VersionInfo.parse("4.17.0")
 
 POSTGRES_IMAGE = os.getenv(
-    "LLS_VECTOR_IO_POSTGRES_IMAGE",
+    "OGX_VECTOR_IO_POSTGRES_IMAGE",
     (
         "registry.redhat.io/rhel9/postgresql-15@sha256:"
         "90ec347a35ab8a5d530c8d09f5347b13cc71df04f3b994bfa8b1a409b1171d59"  # postgres 15 # pragma: allowlist secret
     ),
 )
-POSTGRESQL_USER = os.getenv("LLS_VECTOR_IO_POSTGRESQL_USER", "ps_user")
-POSTGRESQL_PASSWORD = os.getenv("LLS_VECTOR_IO_POSTGRESQL_PASSWORD", "ps_password")
+POSTGRESQL_USER = os.getenv("OGX_VECTOR_IO_POSTGRESQL_USER", "ps_user")
+POSTGRESQL_PASSWORD = os.getenv("OGX_VECTOR_IO_POSTGRESQL_PASSWORD", "ps_password")
 
-LLS_CORE_INFERENCE_MODEL = os.getenv("LLS_CORE_INFERENCE_MODEL", "")
-LLS_CORE_VLLM_URL = os.getenv("LLS_CORE_VLLM_URL", "")
-LLS_CORE_VLLM_API_TOKEN = os.getenv("LLS_CORE_VLLM_API_TOKEN", "")
-LLS_CORE_VLLM_MAX_TOKENS = os.getenv("LLS_CORE_VLLM_MAX_TOKENS", "16384")
-LLS_CORE_VLLM_TLS_VERIFY = os.getenv("LLS_CORE_VLLM_TLS_VERIFY", "true")
+OGX_CORE_INFERENCE_MODEL = os.getenv("OGX_CORE_INFERENCE_MODEL", "")
+OGX_CORE_VLLM_URL = os.getenv("OGX_CORE_VLLM_URL", "")
+OGX_CORE_VLLM_API_TOKEN = os.getenv("OGX_CORE_VLLM_API_TOKEN", "")
+OGX_CORE_VLLM_MAX_TOKENS = os.getenv("OGX_CORE_VLLM_MAX_TOKENS", "16384")
+OGX_CORE_VLLM_TLS_VERIFY = os.getenv("OGX_CORE_VLLM_TLS_VERIFY", "true")
 
-LLS_CORE_EMBEDDING_MODEL = os.getenv("LLS_CORE_EMBEDDING_MODEL", "nomic-embed-text-v1-5")
-LLS_CORE_EMBEDDING_PROVIDER_MODEL_ID = os.getenv("LLS_CORE_EMBEDDING_PROVIDER_MODEL_ID", "nomic-embed-text-v1-5")
-LLS_CORE_VLLM_EMBEDDING_URL = os.getenv(
-    "LLS_CORE_VLLM_EMBEDDING_URL", "https://nomic-embed-text-v1-5.example.com:443/v1"
+OGX_CORE_EMBEDDING_MODEL = os.getenv("OGX_CORE_EMBEDDING_MODEL", "nomic-embed-text-v1-5")
+OGX_CORE_EMBEDDING_PROVIDER_MODEL_ID = os.getenv("OGX_CORE_EMBEDDING_PROVIDER_MODEL_ID", "nomic-embed-text-v1-5")
+OGX_CORE_VLLM_EMBEDDING_URL = os.getenv(
+    "OGX_CORE_VLLM_EMBEDDING_URL", "https://nomic-embed-text-v1-5.example.com:443/v1"
 )
-LLS_CORE_VLLM_EMBEDDING_API_TOKEN = os.getenv("LLS_CORE_VLLM_EMBEDDING_API_TOKEN", "fake")
-LLS_CORE_VLLM_EMBEDDING_MAX_TOKENS = os.getenv("LLS_CORE_VLLM_EMBEDDING_MAX_TOKENS", "8192")
-LLS_CORE_VLLM_EMBEDDING_TLS_VERIFY = os.getenv("LLS_CORE_VLLM_EMBEDDING_TLS_VERIFY", "true")
+OGX_CORE_VLLM_EMBEDDING_API_TOKEN = os.getenv("OGX_CORE_VLLM_EMBEDDING_API_TOKEN", "fake")
+OGX_CORE_VLLM_EMBEDDING_MAX_TOKENS = os.getenv("OGX_CORE_VLLM_EMBEDDING_MAX_TOKENS", "8192")
+OGX_CORE_VLLM_EMBEDDING_TLS_VERIFY = os.getenv("OGX_CORE_VLLM_EMBEDDING_TLS_VERIFY", "true")
 
-LLS_CORE_AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", "")
-LLS_CORE_AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "")
+OGX_CORE_AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", "")
+OGX_CORE_AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "")
 
 OGX_SERVER_SECRET_DATA = {
     "postgres-user": POSTGRESQL_USER,
     "postgres-password": POSTGRESQL_PASSWORD,
-    "vllm-api-token": LLS_CORE_VLLM_API_TOKEN,
-    "vllm-embedding-api-token": LLS_CORE_VLLM_EMBEDDING_API_TOKEN,
-    "aws-access-key-id": LLS_CORE_AWS_ACCESS_KEY_ID,
-    "aws-secret-access-key": LLS_CORE_AWS_SECRET_ACCESS_KEY,
+    "vllm-api-token": OGX_CORE_VLLM_API_TOKEN,
+    "vllm-embedding-api-token": OGX_CORE_VLLM_EMBEDDING_API_TOKEN,
+    "aws-access-key-id": OGX_CORE_AWS_ACCESS_KEY_ID,
+    "aws-secret-access-key": OGX_CORE_AWS_SECRET_ACCESS_KEY,
 }
 
 UPGRADE_DISTRIBUTION_NAME = "ogx-server-upgrade"

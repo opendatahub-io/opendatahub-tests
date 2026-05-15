@@ -12,37 +12,37 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 
 MILVUS_IMAGE = os.getenv(
-    "LLS_VECTOR_IO_MILVUS_IMAGE",
+    "OGX_VECTOR_IO_MILVUS_IMAGE",
     "docker.io/milvusdb/milvus@sha256:3d772c3eae3a6107b778636cea5715b9353360b92e5dcfdcaf4ca7022f4f497c",  # Milvus 2.6.3
 )
-MILVUS_TOKEN = os.getenv("LLS_VECTOR_IO_MILVUS_TOKEN", secrets.token_urlsafe(32))
+MILVUS_TOKEN = os.getenv("OGX_VECTOR_IO_MILVUS_TOKEN", secrets.token_urlsafe(32))
 ETCD_IMAGE = os.getenv(
-    "LLS_VECTOR_IO_ETCD_IMAGE",
+    "OGX_VECTOR_IO_ETCD_IMAGE",
     "quay.io/coreos/etcd@sha256:3397341272b9e0a6f44d7e3fc7c321c6efe6cbe82ce866b9b01d0c704bfc5bf3",  # etcd v3.6.5
 )
 
 PGVECTOR_IMAGE = os.getenv(
-    "LLS_VECTOR_IO_PGVECTOR_IMAGE",
+    "OGX_VECTOR_IO_PGVECTOR_IMAGE",
     (
         "docker.io/pgvector/pgvector@sha256:"
         "0a07c4114ba6d1d04effcce3385e9f5ce305eb02e56a3d35948a415a52f193ec"  # pgvector 16  # pragma: allowlist secret
     ),
 )
 
-PGVECTOR_USER = os.getenv("LLS_VECTOR_IO_PGVECTOR_USER", "vector_user")
-PGVECTOR_PASSWORD = os.getenv("LLS_VECTOR_IO_PGVECTOR_PASSWORD", "yourpassword")
+PGVECTOR_USER = os.getenv("OGX_VECTOR_IO_PGVECTOR_USER", "vector_user")
+PGVECTOR_PASSWORD = os.getenv("OGX_VECTOR_IO_PGVECTOR_PASSWORD", "yourpassword")
 
 # qdrant v1 unprivileged latest
 QDRANT_IMAGE = os.getenv(
-    "LLS_VECTOR_IO_QDRANT_IMAGE",
+    "OGX_VECTOR_IO_QDRANT_IMAGE",
     (
         "docker.io/qdrant/qdrant@sha256:"
         "9dfabc51ededc48158899a288a19a04de1ab54a11d8c512e1c40eebbd5e2bc92"  # pragma: allowlist secret
     ),
 )
 
-QDRANT_API_KEY = os.getenv("LLS_VECTOR_IO_QDRANT_API_KEY", "yourapikey")
-QDRANT_URL = os.getenv("LLS_VECTOR_IO_QDRANT_URL", "http://vector-io-qdrant-service:6333")
+QDRANT_API_KEY = os.getenv("OGX_VECTOR_IO_QDRANT_API_KEY", "yourapikey")
+QDRANT_URL = os.getenv("OGX_VECTOR_IO_QDRANT_URL", "http://vector-io-qdrant-service:6333")
 
 
 @pytest.fixture(scope="class")
