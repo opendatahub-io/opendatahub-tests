@@ -1,12 +1,12 @@
 import pytest
 import structlog
-from llama_stack_client import APIConnectionError, InternalServerError, LlamaStackClient
-from llama_stack_client.types.vector_store import VectorStore
+from ogx_client import APIConnectionError, InternalServerError, OgxClient
+from ogx_client.types.vector_store import VectorStore
 
-from tests.llama_stack.constants import (
+from tests.ogx.constants import (
     ModelInfo,
 )
-from tests.llama_stack.datasets import (
+from tests.ogx.datasets import (
     FINANCE_DATASET,
     IBM_2025_Q4_EARNINGS,
     IBM_2025_Q4_EARNINGS_ENCRYPTED,
@@ -17,12 +17,12 @@ LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, llama_stack_distribution, vector_store, dataset",
+    "unprivileged_model_namespace, ogx_server, vector_store, dataset",
     [
         pytest.param(
-            {"name": "test-llamastack-vector-stores", "randomize_name": True},
+            {"name": "test-ogx-vector-stores", "randomize_name": True},
             {
-                "llama_stack_storage_size": "2Gi",
+                "ogx_storage_size": "2Gi",
                 "vector_io_provider": "milvus",
                 "embedding_provider": "sentence-transformers",
                 "files_provider": "local",
@@ -33,9 +33,9 @@ LOGGER = structlog.get_logger(name=__name__)
             marks=(pytest.mark.smoke),
         ),
         pytest.param(
-            {"name": "test-llamastack-vector-stores", "randomize_name": True},
+            {"name": "test-ogx-vector-stores", "randomize_name": True},
             {
-                "llama_stack_storage_size": "2Gi",
+                "ogx_storage_size": "2Gi",
                 "vector_io_provider": "milvus",
                 "embedding_provider": "sentence-transformers",
                 "files_provider": "local",
@@ -46,7 +46,7 @@ LOGGER = structlog.get_logger(name=__name__)
             marks=(pytest.mark.tier1, pytest.mark.xfail(reason="RHAIENG-3816")),
         ),
         pytest.param(
-            {"name": "test-llamastack-vector-stores", "randomize_name": True},
+            {"name": "test-ogx-vector-stores", "randomize_name": True},
             {
                 "vector_io_provider": "milvus-remote",
                 "embedding_provider": "vllm-embedding",
@@ -58,9 +58,9 @@ LOGGER = structlog.get_logger(name=__name__)
             marks=(pytest.mark.smoke),
         ),
         pytest.param(
-            {"name": "test-llamastack-vector-stores", "randomize_name": True},
+            {"name": "test-ogx-vector-stores", "randomize_name": True},
             {
-                "llama_stack_storage_size": "2Gi",
+                "ogx_storage_size": "2Gi",
                 "vector_io_provider": "faiss",
                 "files_provider": "local",
             },
@@ -70,9 +70,9 @@ LOGGER = structlog.get_logger(name=__name__)
             marks=(pytest.mark.tier1),
         ),
         pytest.param(
-            {"name": "test-llamastack-vector-stores", "randomize_name": True},
+            {"name": "test-ogx-vector-stores", "randomize_name": True},
             {
-                "llama_stack_storage_size": "2Gi",
+                "ogx_storage_size": "2Gi",
                 "vector_io_provider": "pgvector",
                 "files_provider": "s3",
             },
@@ -82,9 +82,9 @@ LOGGER = structlog.get_logger(name=__name__)
             marks=(pytest.mark.tier1),
         ),
         pytest.param(
-            {"name": "test-llamastack-vector-stores", "randomize_name": True},
+            {"name": "test-ogx-vector-stores", "randomize_name": True},
             {
-                "llama_stack_storage_size": "2Gi",
+                "ogx_storage_size": "2Gi",
                 "vector_io_provider": "qdrant-remote",
                 "files_provider": "local",
             },
@@ -97,19 +97,19 @@ LOGGER = structlog.get_logger(name=__name__)
     indirect=True,
 )
 @pytest.mark.rag
-class TestLlamaStackVectorStores:
-    """Test class for LlamaStack OpenAI Compatible Vector Stores API
+class TestOgxVectorStores:
+    """Test class for OGX OpenAI Compatible Vector Stores API
 
     Note: multiple vector_io providers and datasets are tested via pytest parametrize
 
     For more information about this API, see:
-    - https://github.com/llamastack/llama-stack-client-python/blob/main/api.md#vectorstores
+    - https://github.com/ogx-ai/ogx-client-python/blob/main/api.md#vectorstores
     - https://github.com/openai/openai-python/blob/main/api.md#vectorstores
     """
 
     def test_vector_stores_file_upload(
         self,
-        llama_stack_client: LlamaStackClient,
+        ogx_client: OgxClient,
         vector_store: VectorStore,
         dataset: Dataset,
     ) -> None:
@@ -122,7 +122,7 @@ class TestLlamaStackVectorStores:
         """
         store_id = vector_store.id
         completed_files = list(
-            llama_stack_client.vector_stores.files.list(
+            ogx_client.vector_stores.files.list(
                 vector_store_id=store_id,
                 filter="completed",
             )
@@ -135,7 +135,7 @@ class TestLlamaStackVectorStores:
 
     def test_vector_stores_search(
         self,
-        llama_stack_client: LlamaStackClient,
+        ogx_client: OgxClient,
         vector_store: VectorStore,
         dataset: Dataset,
     ) -> None:
@@ -150,14 +150,14 @@ class TestLlamaStackVectorStores:
 
         provider_id = (vector_store.metadata or {}).get("provider_id", "")
         # FAISS does not support hybrid and keyword search modes see:
-        # https://github.com/llamastack/llama-stack/blob/main/src/llama_stack/providers/inline/vector_io/faiss/faiss.py#L180-L196
+        # https://github.com/ogx-ai/ogx/blob/main/src/ogx/providers/inline/vector_io/faiss/faiss.py#L180-L196
         if provider_id == "faiss":
             search_modes = [m for m in search_modes if m == "vector"]
 
         for search_mode in search_modes:
             qa_records = dataset.load_qa(retrieval_mode=search_mode)
             for record in qa_records:
-                search_response = llama_stack_client.vector_stores.search(
+                search_response = ogx_client.vector_stores.search(
                     vector_store_id=vector_store.id,
                     query=record.question,
                     search_mode=search_mode,
@@ -184,8 +184,8 @@ class TestLlamaStackVectorStores:
 
     def test_response_file_search_tool_invocation(
         self,
-        llama_stack_client: LlamaStackClient,
-        llama_stack_models: ModelInfo,
+        ogx_client: OgxClient,
+        ogx_models: ModelInfo,
         vector_store: VectorStore,
         dataset: Dataset,
         subtests: pytest.Subtests,
@@ -208,9 +208,9 @@ class TestLlamaStackVectorStores:
         )
 
         try:
-            response = llama_stack_client.responses.create(
+            response = ogx_client.responses.create(
                 input=vector_question,
-                model=llama_stack_models.model_id,
+                model=ogx_models.model_id,
                 instructions=system_instructions,
                 stream=False,
                 max_output_tokens=4096,
@@ -282,4 +282,4 @@ class TestLlamaStackVectorStores:
                     )
 
         except (APIConnectionError, InternalServerError) as exc:
-            pytest.fail(f"LlamaStack server returned 500 for file_search query {vector_question!r}: {exc}")
+            pytest.fail(f"OGX server returned 500 for file_search query {vector_question!r}: {exc}")

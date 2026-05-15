@@ -5,43 +5,43 @@ from typing import Any
 import httpx
 import pytest
 import structlog
-from llama_stack_client import LlamaStackClient
-from llama_stack_client.types.vector_store import VectorStore
+from ogx_client import OgxClient
+from ogx_client.types.vector_store import VectorStore
 from ragas import SingleTurnSample
 
-from tests.llama_stack.constants import (
+from tests.ogx.constants import (
     RAGAS_MAX_SAMPLES,
     ModelInfo,
 )
-from tests.llama_stack.datasets import Dataset
-from tests.llama_stack.utils import extract_retrieved_contexts
+from tests.ogx.datasets import Dataset
+from tests.ogx.utils import extract_retrieved_contexts
 
 LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")
 def ragas_evaluator_llm(
-    llama_stack_client: LlamaStackClient,
-    llama_stack_models: ModelInfo,
+    ogx_client: OgxClient,
+    ogx_models: ModelInfo,
 ) -> Generator[Any, Any, Any]:
-    """Create a RAGAS evaluator LLM backed by the Llama Stack OpenAI-compatible endpoint."""
+    """Create a RAGAS evaluator LLM backed by the OGX OpenAI-compatible endpoint."""
     pytest.importorskip("openai")
     from openai import OpenAI
     from ragas.llms import llm_factory
 
-    base_url = str(llama_stack_client.base_url).rstrip("/")
-    verify_ssl = os.getenv("LLS_CLIENT_VERIFY_SSL", "false").lower() == "true"
+    base_url = str(ogx_client.base_url).rstrip("/")
+    verify_ssl = os.getenv("OGX_CLIENT_VERIFY_SSL", "false").lower() == "true"
 
     http_client = httpx.Client(verify=verify_ssl, timeout=httpx.Timeout(240.0))
     try:
         openai_client = OpenAI(
-            api_key=os.getenv("LLS_CORE_VLLM_API_TOKEN", ""),
+            api_key=os.getenv("OGX_CORE_VLLM_API_TOKEN", ""),
             base_url=f"{base_url}/v1",
             http_client=http_client,
         )
 
         evaluator_llm = llm_factory(
-            model=llama_stack_models.model_id,
+            model=ogx_models.model_id,
             provider="openai",
             client=openai_client,
         )
@@ -68,10 +68,10 @@ class OpenAIEmbeddingsAdapter:
 
 @pytest.fixture(scope="class")
 def ragas_evaluator_embeddings(
-    llama_stack_client: LlamaStackClient,
-    llama_stack_models: ModelInfo,
+    ogx_client: OgxClient,
+    ogx_models: ModelInfo,
 ) -> Generator[Any, Any, Any]:
-    """Create RAGAS embeddings backed by the Llama Stack vLLM embedding provider.
+    """Create RAGAS embeddings backed by the OGX vLLM embedding provider.
 
     Uses ragas.embeddings.OpenAIEmbeddings with a thin adapter that exposes
     embed_query()/embed_documents() for older metrics like AnswerRelevancy,
@@ -80,20 +80,20 @@ def ragas_evaluator_embeddings(
     from openai import OpenAI
     from ragas.embeddings import OpenAIEmbeddings as RagasOpenAIEmbeddings
 
-    base_url = str(llama_stack_client.base_url).rstrip("/")
-    verify_ssl = os.getenv("LLS_CLIENT_VERIFY_SSL", "false").lower() == "true"
+    base_url = str(ogx_client.base_url).rstrip("/")
+    verify_ssl = os.getenv("OGX_CLIENT_VERIFY_SSL", "false").lower() == "true"
 
     http_client = httpx.Client(verify=verify_ssl, timeout=httpx.Timeout(120.0))
     try:
         openai_client = OpenAI(
-            api_key=os.getenv("LLS_CORE_VLLM_API_TOKEN", "not-required"),
+            api_key=os.getenv("OGX_CORE_VLLM_API_TOKEN", "not-required"),
             base_url=f"{base_url}/v1",
             http_client=http_client,
         )
 
         ragas_embeddings = RagasOpenAIEmbeddings(
             client=openai_client,
-            model=llama_stack_models.embedding_model.id,
+            model=ogx_models.embedding_model.id,
         )
 
         yield OpenAIEmbeddingsAdapter(ragas_embeddings=ragas_embeddings)
@@ -103,8 +103,8 @@ def ragas_evaluator_embeddings(
 
 @pytest.fixture(scope="class")
 def ragas_samples(
-    llama_stack_client: LlamaStackClient,
-    llama_stack_models: ModelInfo,
+    ogx_client: OgxClient,
+    ogx_models: ModelInfo,
     vector_store: VectorStore,
     dataset: Dataset,
 ) -> list[SingleTurnSample]:
@@ -127,8 +127,8 @@ def ragas_samples(
         LOGGER.info(f"[{i + 1}/{len(qa_records)}] {record.question[:80]}...")
 
         try:
-            resp = llama_stack_client.responses.create(
-                model=llama_stack_models.model_id,
+            resp = ogx_client.responses.create(
+                model=ogx_models.model_id,
                 instructions=(
                     "/no_think\n"
                     "You are a helpful assistant with access to data via the file_search tool.\n\n"
