@@ -182,7 +182,7 @@ def evalhub_kueue_multi_job_local_queue(
     admin_client: DynamicClient,
     evalhub_kueue_namespace: Namespace,
     evalhub_kueue_multi_job_cluster_queue: ClusterQueue,
-    kueue_unmanaged_dsc,
+    kueue_unmanaged_dsc: None,
 ) -> Generator[LocalQueue, Any, Any]:
     """LocalQueue for multi-job tests."""
     with create_local_queue(
@@ -212,7 +212,7 @@ def evalhub_kueue_single_job_resource_flavor(
 def evalhub_kueue_single_job_cluster_queue(
     admin_client: DynamicClient,
     evalhub_kueue_single_job_resource_flavor: ResourceFlavor,
-    kueue_unmanaged_dsc,
+    kueue_unmanaged_dsc: None,
 ) -> Generator[ClusterQueue, Any, Any]:
     """ClusterQueue with quota for exactly 1 EvalHub job."""
     resource_groups = [
@@ -244,7 +244,7 @@ def evalhub_kueue_single_job_local_queue(
     admin_client: DynamicClient,
     evalhub_kueue_namespace: Namespace,
     evalhub_kueue_single_job_cluster_queue: ClusterQueue,
-    kueue_unmanaged_dsc,
+    kueue_unmanaged_dsc: None,
 ) -> Generator[LocalQueue, Any, Any]:
     """LocalQueue in the EvalHub namespace for single-job tests."""
     with create_local_queue(
