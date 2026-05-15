@@ -14,7 +14,11 @@ from tests.model_registry.model_catalog.db_check.utils import (
     parse_language_properties_from_db,
 )
 from tests.model_registry.model_catalog.db_constants import LANGUAGE_PROPERTIES_DB_QUERY
-from tests.model_registry.model_catalog.utils import execute_database_query, get_postgres_pod_in_namespace
+from tests.model_registry.model_catalog.utils import (
+    execute_database_query,
+    get_postgres_pod_in_namespace,
+    wait_for_model_catalog_api,
+)
 from tests.model_registry.utils import (
     wait_for_model_catalog_pod_ready_after_deletion,
 )
@@ -51,7 +55,11 @@ class TestModelCatalogDBSecret:
 
     @pytest.mark.dependency(depends=["test_model_catalog_postgres_password_recreation"])
     def test_model_catalog_pod_ready_after_secret_recreation(
-        self, admin_client: DynamicClient, model_registry_namespace: str
+        self,
+        admin_client: DynamicClient,
+        model_registry_namespace: str,
+        model_catalog_rest_url: list[str],
+        model_registry_rest_headers: dict[str, str],
     ):
         """Test that model catalog pod becomes ready after secret recreation"""
         # delete the postgres pod first
@@ -60,6 +68,7 @@ class TestModelCatalogDBSecret:
         wait_for_model_catalog_pod_ready_after_deletion(
             client=admin_client, model_registry_namespace=model_registry_namespace
         )
+        wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
         LOGGER.info("Model catalog pod is ready after secret recreation")
 
 
