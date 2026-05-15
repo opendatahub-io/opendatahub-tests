@@ -25,7 +25,11 @@ def build_ogx_server_config(
     is_disconnected_cluster: bool,
     params: dict[str, Any],
 ) -> dict[str, Any]:
-    """Build server configuration for OGX distribution deployment.
+    """Build OGXServer spec configuration matching the v1beta1 CRD.
+
+    Returns a dict whose keys correspond to top-level OGXServerSpec fields
+    (distribution, workload, tls). The caller is responsible for adding
+    network policy configuration.
 
     Args:
         vector_io_provider_deployment_config_factory: Factory to deploy vector I/O providers
@@ -41,8 +45,7 @@ def build_ogx_server_config(
             - ogx_storage_size: PVC storage size (e.g. "2Gi").
 
     Returns:
-        Server configuration dict with containerSpec, distribution, and optional
-        tlsConfig/storage sections.
+        OGXServerSpec configuration dict with distribution, workload, and optional tls sections.
     """
 
     env_vars = []
@@ -143,7 +146,7 @@ def build_ogx_server_config(
         LOGGER.info("Setting proxy and tlsconfig configuration")
         env_vars.append({"name": "HTTPS_PROXY", "value": HTTPS_PROXY})
 
-        # The operator sets SSL_CERT_FILE automatically when tlsConfig.caBundle is
+        # The operator sets SSL_CERT_FILE automatically when tls.trust is
         # configured, but the `requests` library (used by tiktoken to download
         # tokenizer data) ignores SSL_CERT_FILE and only checks REQUESTS_CA_BUNDLE.
         # Without this, tiktoken fails with SSL CERTIFICATE_VERIFY_FAILED when the
@@ -154,36 +157,35 @@ def build_ogx_server_config(
         })
 
         tls_config = {
-            "caBundle": {
-                "configMapName": "odh-trusted-ca-bundle",
-                "configMapKeys": [
-                    "ca-bundle.crt",  # CNO-injected cluster CAs
-                    "odh-ca-bundle.crt",  # User-specified custom CAs
+            "trust": {
+                "caCertificates": [
+                    {"name": "odh-trusted-ca-bundle", "key": "ca-bundle.crt"},
+                    {"name": "odh-trusted-ca-bundle", "key": "odh-ca-bundle.crt"},
                 ],
             },
         }
 
-    server_config: dict[str, Any] = {
-        "containerSpec": {
+    config: dict[str, Any] = {
+        "distribution": {"name": "rh-dev"},
+        "workload": {
             "resources": {
                 "requests": {"cpu": cpu_requests, "memory": "3Gi"},
                 "limits": {"cpu": cpu_limits, "memory": "6Gi"},
             },
-            "env": env_vars,
-            "name": "ogx",
-            "port": 8321,
+            "overrides": {
+                "env": env_vars,
+            },
         },
-        "distribution": {"name": "rh-dev"},
     }
 
     if tls_config:
-        server_config["tlsConfig"] = tls_config
+        config["tls"] = tls_config
 
     if params.get("ogx_storage_size"):
         if is_disconnected_cluster:
             LOGGER.warning("Skipping storage_size configuration on disconnected clusters due to known bug RHAIENG-1819")
         else:
             storage_size = params.get("ogx_storage_size")
-            server_config["storage"] = {"size": storage_size}
+            config["workload"]["storage"] = {"size": storage_size}
 
-    return server_config
+    return config

@@ -12,7 +12,6 @@ The folder structure is based on the upstream OGX integration tests, available a
 - **`models/`** - Model management and catalog tests
 - **`operator/`** - Tests for the ogx-operator and Red Hat OGX Distribution image
 - **`responses/`** - Response handling and validation tests
-- **`safety/`** - Safety and guardrails tests (TrustyAI FMS provider)
 - **`vector_io/`** - Vector store and I/O tests
 
 ## Test Markers
@@ -32,8 +31,7 @@ To add support for testing new OGX API providers (e.g., a new vector_io provider
 ### Available Team Markers  (to be expanded)
 
 - `@pytest.mark.ogx` - OGX Core team tests
-- `@pytest.mark.model_explainability` - AI Safety team tests
-- `@pytest.mark.rag` - RAG team tests
+- `@pytest.mark.rag` - OGX Core team RAG tests
 
 ## Running Tests
 

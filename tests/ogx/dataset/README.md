@@ -1,6 +1,6 @@
 # OGX test fixtures (internal)
 
-These files are for **internal Open Data Hub / OpenShift AI integration tests** only. We use them to hit **[OGX](https://github.com/meta-llama/ogx) vector store APIs**---think ingest, indexing, search, and the plumbing around that---not as a shipped dataset or for model training.
+These files are for **internal Open Data Hub / OpenShift AI integration tests** only. We use them to hit **[OGX](https://github.com/ogx-ai/ogx) vector store APIs**---think ingest, indexing, search, and the plumbing around that---not as a shipped dataset or for model training.
 
 ## Folder layout
 

@@ -135,20 +135,39 @@ def create_ogx_server(
     client: DynamicClient,
     name: str,
     namespace: str,
-    replicas: int,
-    server: dict[str, Any],
+    config: dict[str, Any],
     teardown: bool = True,
 ) -> Generator[OgxServer, Any, Any]:
-    """
-    Context manager to create and optionally delete an OGX Server
+    """Context manager to create and optionally delete an OGX Server.
+
+    Args:
+        client: Kubernetes dynamic client.
+        name: Name for the OGXServer resource.
+        namespace: Target namespace.
+        config: OGXServerSpec configuration dict as returned by ``build_ogx_server_config``
+            (keys: distribution, workload, tls, etc.).
+        teardown: Whether to delete the resource on exit.
     """
 
     # Starting with RHOAI 3.3, pods in the 'openshift-ingress' namespace must be allowed
     # to access the ogx-service. This is required for the ogx_test_route
     # to function properly.
     network: dict[str, Any] = {
-        "allowedFrom": {
-            "namespaces": ["openshift-ingress"],
+        "policy": {
+            "ingress": [
+                {
+                    "from": [
+                        {
+                            "namespaceSelector": {
+                                "matchLabels": {
+                                    "kubernetes.io/metadata.name": "openshift-ingress",
+                                },
+                            },
+                        },
+                    ],
+                    "ports": [{"protocol": "TCP", "port": 8321}],
+                },
+            ],
         },
     }
 
@@ -156,9 +175,10 @@ def create_ogx_server(
         client=client,
         name=name,
         namespace=namespace,
-        replicas=replicas,
+        distribution=config["distribution"],
+        workload=config.get("workload"),
         network=network,
-        server=server,
+        tls=config.get("tls"),
         wait_for_resource=True,
         teardown=teardown,
     ) as ogx_server:

@@ -149,8 +149,7 @@ def ogx_server(
         client=unprivileged_client,
         name=distribution_name,
         namespace=unprivileged_model_namespace.name,
-        replicas=1,
-        server=ogx_server_config,
+        config=ogx_server_config,
         teardown=teardown_resources,
     ) as ogx_srv:
         ogx_srv.wait_for_status(status=OgxServer.Status.READY, timeout=600)
