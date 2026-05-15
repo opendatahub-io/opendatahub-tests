@@ -21,11 +21,8 @@ EXPECTED_REQUIRED_ARGS = ["--config_format granite"]
 
 VALIDATED_TASKS_UNIQUE_TERM = "tool-calling"
 
-
-def _build_custom_yaml_with_serving_config() -> str:
-    """Build custom catalog YAML with models that have validatedTasks and servingConfig."""
-    current_time = int(time.time() * 1000)
-    return f"""source: Custom Test
+_CURRENT_TIME = int(time.time() * 1000)
+CUSTOM_YAML_WITH_SERVING_CONFIG: str = f"""source: Custom Test
 models:
 - name: {MODEL_WITH_SERVING_CONFIG}
   description: Test model with servingConfig and validatedTasks.
@@ -49,8 +46,8 @@ models:
         - "--config_format granite"
   artifacts:
     - uri: oci://registry.example.io/test-serving:1.0
-  createTimeSinceEpoch: "{current_time - 10000!s}"
-  lastUpdateTimeSinceEpoch: "{current_time!s}"
+  createTimeSinceEpoch: "{_CURRENT_TIME - 10000!s}"
+  lastUpdateTimeSinceEpoch: "{_CURRENT_TIME!s}"
 
 - name: {MODEL_WITHOUT_SERVING_CONFIG}
   description: Plain test model without servingConfig or validatedTasks.
@@ -64,8 +61,8 @@ models:
     - text-generation
   artifacts:
     - uri: oci://registry.example.io/test-plain:1.0
-  createTimeSinceEpoch: "{current_time - 10000!s}"
-  lastUpdateTimeSinceEpoch: "{current_time!s}"
+  createTimeSinceEpoch: "{_CURRENT_TIME - 10000!s}"
+  lastUpdateTimeSinceEpoch: "{_CURRENT_TIME!s}"
 """
 
 
@@ -76,7 +73,7 @@ models:
             {
                 "sources_yaml": get_catalog_str(ids=[CUSTOM_CATALOG_ID1]),
                 "sample_yaml": {
-                    "sample-custom-catalog1.yaml": _build_custom_yaml_with_serving_config(),
+                    "sample-custom-catalog1.yaml": CUSTOM_YAML_WITH_SERVING_CONFIG,
                 },
             },
             id="test_serving_config_validated_tasks",
