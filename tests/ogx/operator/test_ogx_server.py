@@ -6,41 +6,41 @@ from ocp_resources.pod import Pod
 from utilities.general import validate_container_images
 
 
-@pytest.mark.usefixtures("unprivileged_llama_stack_distribution")
+@pytest.mark.usefixtures("ogx_server")
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, llama_stack_server_config",
+    "unprivileged_model_namespace, ogx_server",
     [
         pytest.param(
-            {"name": "test-llamastack-operator", "randomize_name": True},
-            {"llama_stack_storage_size": "2Gi"},
+            {"name": "test-ogx-operator", "randomize_name": True},
+            {"ogx_storage_size": "2Gi"},
         ),
     ],
     indirect=True,
 )
 @pytest.mark.downstream_only
-@pytest.mark.llama_stack
-class TestLlamaStackDistribution:
+@pytest.mark.ogx
+class TestOgxServer:
     """
-    Test class that implements multiple tests to verify LlamaStack distribution functionality.
+    Test class that implements multiple tests to verify OGX distribution functionality.
 
-    This class contains tests that validate various aspects of the LlamaStack operator
+    This class contains tests that validate various aspects of the OGX operator
     and its distribution components, including image validation and configuration checks.
     """
 
     @pytest.mark.smoke
-    def test_llamastackdistribution_verify_images(
+    def test_ogx_server_verify_images(
         self: Self,
-        llama_stack_distribution_pods: Pod,
+        ogx_server_pods: Pod,
         related_images_refs: set[str],
     ) -> None:
         """
-        Verify that LlamaStackDistribution container images meet the requirements:
+        Verify that OgxServer container images meet the requirements:
         1. Images are hosted in registry.redhat.io
         2. Images use sha256 digest instead of tags
         3. Images are listed in the CSV's relatedImages section
         """
         validation_errors = []
-        for pod in [llama_stack_distribution_pods]:
+        for pod in [ogx_server_pods]:
             validation_errors.extend(validate_container_images(pod=pod, valid_image_refs=related_images_refs))
 
         if validation_errors:

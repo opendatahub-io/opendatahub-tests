@@ -177,7 +177,7 @@ class DscComponents:
     MODELMESHSERVING: str = "modelmeshserving"
     KSERVE: str = "kserve"
     MODELREGISTRY: str = "modelregistry"
-    LLAMASTACKOPERATOR: str = "llamastackoperator"
+    OGX: str = "ogx"
     KUEUE: str = "kueue"
 
     class ManagementState:
@@ -189,13 +189,13 @@ class DscComponents:
         MODEL_REGISTRY_READY: str = "ModelRegistryReady"
         KSERVE_READY: str = "KserveReady"
         MODEL_MESH_SERVING_READY: str = "ModelMeshServingReady"
-        LLAMA_STACK_OPERATOR_READY: str = "LlamaStackOperatorReady"
+        OGX_READY: str = "OgxReady"
 
     COMPONENT_MAPPING: dict[str, str] = {  # noqa: RUF012
         MODELMESHSERVING: ConditionType.MODEL_MESH_SERVING_READY,
         KSERVE: ConditionType.KSERVE_READY,
         MODELREGISTRY: ConditionType.MODEL_REGISTRY_READY,
-        LLAMASTACKOPERATOR: ConditionType.LLAMA_STACK_OPERATOR_READY,
+        OGX: ConditionType.OGX_READY,
     }
 
 
@@ -460,9 +460,6 @@ BUILTIN_DETECTOR_CONFIG: dict[str, Any] = {
     }
 }
 
-QWEN_ISVC_NAME = "qwen-isvc"
-QWEN_MODEL_NAME: str = "qwen25-05b-instruct"
-
 
 class ContainerImages:
     """Centralized container images for various runtimes and models."""
@@ -488,13 +485,6 @@ class ContainerImages:
         MODEL_SERVER: str = "quay.io/opendatahub/openvino_model_server@sha256:564664371d3a21b9e732a5c1b4b40bacad714a5144c0a9aaf675baec4a04b148"  # noqa: E501
 
 
-CHAT_GENERATION_CONFIG: dict[str, Any] = {
-    "service": {
-        "hostname": f"{QWEN_MODEL_NAME}-predictor",
-        "port": 80,
-        "request_timeout": 600,
-    }
-}
 TRUSTYAI_SERVICE_NAME: str = "trustyai-service"
 
 LLM_D_INFERENCE_SIM_NAME = "llm-d-inference-sim"

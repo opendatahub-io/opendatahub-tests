@@ -49,7 +49,7 @@ utilities/                # Shared utility functions
 ### Tests
 
 - Every test MUST have a docstring explaining what it tests (see `tests/cluster_health/test_cluster_health.py`)
-- Apply relevant markers from `pytest.ini`: tier (`smoke`, `sanity`, `tier1`, `tier2`, `tier3`), and infrastructure (`gpu`, `parallel`, `slow`). Use component markers (`model_explainability`, `llama_stack`, `rag`) as needed for cross-directory ownership (e.g., `tests/llama_stack`) — see `pytest.ini` for the full list
+- Apply relevant markers from `pytest.ini`: tier (`smoke`, `sanity`, `tier1`, `tier2`, `tier3`), and infrastructure (`gpu`, `parallel`, `slow`). Use component markers (`model_explainability`, `ogx`, `rag`) as needed for cross-directory ownership (e.g., `tests/ogx`) — see `pytest.ini` for the full list
 - Use Given-When-Then format in docstrings for behavioral clarity
 
 ### Fixtures
