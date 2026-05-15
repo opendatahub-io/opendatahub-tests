@@ -951,7 +951,7 @@ def _check_workload_admitted(workload: Workload) -> bool:
     Returns:
         True if the workload has Admitted=True condition.
     """
-    conditions = workload.instance.status.get("conditions", [])
+    conditions = (workload.instance.status or {}).get("conditions", [])
     for condition in conditions:
         if condition.get("type") == "Admitted" and condition.get("status") == "True":
             return True
@@ -967,7 +967,7 @@ def check_workload_quota_reserved(workload: Workload) -> bool:
     Returns:
         True if the workload has QuotaReserved=True condition.
     """
-    conditions = workload.instance.status.get("conditions", [])
+    conditions = (workload.instance.status or {}).get("conditions", [])
     for condition in conditions:
         if condition.get("type") == "QuotaReserved" and condition.get("status") == "True":
             return True
@@ -986,7 +986,7 @@ def _check_workload_inadmissible(workload: Workload) -> bool:
     Returns:
         True if the workload has QuotaReserved=False with reason=Inadmissible.
     """
-    conditions = workload.instance.status.get("conditions", [])
+    conditions = (workload.instance.status or {}).get("conditions", [])
     for condition in conditions:
         if (
             condition.get("type") == "QuotaReserved"

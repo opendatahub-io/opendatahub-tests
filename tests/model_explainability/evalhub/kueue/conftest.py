@@ -373,6 +373,7 @@ def evalhub_kueue_vllm_emulator_deployment(
                         },
                         "securityContext": {
                             "allowPrivilegeEscalation": False,
+                            "runAsNonRoot": True,
                             "capabilities": {"drop": ["ALL"]},
                             "seccompProfile": {"type": "RuntimeDefault"},
                         },
