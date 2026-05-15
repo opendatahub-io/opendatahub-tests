@@ -42,8 +42,8 @@ from utilities.infra import (
     s3_endpoint_secret,
     update_configmap_data,
 )
-from utilities.llmd_constants import KServeGateway, LLMDGateway
-from utilities.llmd_utils import create_llmd_gateway
+from utilities.llmd_constants import ContainerImages, KServeGateway, LLMDGateway, ModelStorage
+from utilities.llmd_utils import create_llmd_gateway, create_llmisvc
 from utilities.logger import RedactedString
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -984,25 +984,42 @@ def llmd_inference_service_fixture(
     teardown_resources: bool,
 ) -> Generator[LLMInferenceService, Any, Any]:
     """LLMInferenceService using TinyLlama OCI for upgrade tests."""
-    from tests.model_serving.model_server.llmd.conftest import _create_llmisvc_from_config
-    from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaOciConfig
+    from tests.model_serving.model_server.llmd.constants import LLMD_LIVENESS_PROBE
 
-    config_cls = TinyLlamaOciConfig
-    llmisvc = LLMInferenceService(
-        client=admin_client,
-        name=config_cls.name,
-        namespace=llmd_namespace_fixture.name,
-    )
+    llmisvc_name = "llmisvc-tinyllama-oci-cpu"
 
     if pytestconfig.option.post_upgrade:
+        llmisvc = LLMInferenceService(
+            client=admin_client,
+            name=llmisvc_name,
+            namespace=llmd_namespace_fixture.name,
+        )
         yield llmisvc
         llmisvc.clean_up()
     else:
-        with _create_llmisvc_from_config(
-            config_cls=config_cls,
-            namespace=llmd_namespace_fixture.name,
+        with create_llmisvc(
             client=admin_client,
+            name=llmisvc_name,
+            namespace=llmd_namespace_fixture.name,
+            storage_uri=ModelStorage.TINYLLAMA_OCI,
+            container_image=ContainerImages.VLLM_CPU,
+            container_resources={
+                "limits": {"cpu": "1", "memory": "10Gi"},
+                "requests": {"cpu": "100m", "memory": "8Gi"},
+            },
+            container_env=[
+                {"name": "VLLM_LOGGING_LEVEL", "value": "DEBUG"},
+                {
+                    "name": "VLLM_ADDITIONAL_ARGS",
+                    "value": (
+                        "--max-num-seqs 20 --max-model-len 128 --enforce-eager --ssl-ciphers ECDHE+AESGCM:DHE+AESGCM"
+                    ),
+                },
+                {"name": "VLLM_CPU_KVCACHE_SPACE", "value": "4"},
+            ],
+            liveness_probe=LLMD_LIVENESS_PROBE,
             teardown=teardown_resources,
+            timeout=Timeout.TIMEOUT_15MIN,
         ) as llmisvc:
             yield llmisvc
 
