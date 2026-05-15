@@ -13,12 +13,7 @@ def dsc_with_maas_disabled(
     dsc_resource: DataScienceCluster,
     maas_controller_enabled_latest: DataScienceCluster,
 ) -> Generator[None]:
-    """DSC with modelsAsService set to Removed, restored to Managed on teardown.
-
-    Requires a pre-configured MaaS gateway (via maas_controller_enabled_latest)
-    to be in place before disabling MaaS; tests will fail with confusing errors
-    if no gateway is bootstrapped on the cluster.
-    """
+    """DSC with modelsAsService set to Removed, restored to Managed on teardown."""
     component_patch = {
         DscComponents.KSERVE: {"modelsAsService": {"managementState": DscComponents.ManagementState.REMOVED}}
     }

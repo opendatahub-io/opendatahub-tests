@@ -2,7 +2,6 @@ import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.cluster_role import ClusterRole
 from ocp_resources.cluster_role_binding import ClusterRoleBinding
-from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.deployment import Deployment
 from ocp_resources.service_account import ServiceAccount
 from pytest_testconfig import config as py_config
@@ -10,14 +9,6 @@ from pytest_testconfig import config as py_config
 from tests.model_serving.maas_billing.maas_cleanup.utils import (
     MAAS_CONTROLLER_RESOURCE_NAME,
     get_surviving_maas_controller_resources,
-)
-from utilities.constants import ApiGroups
-
-MAAS_CRDS: tuple[str, ...] = (
-    f"maasmodelrefs.{ApiGroups.MAAS_IO}",
-    f"maasauthpolicies.{ApiGroups.MAAS_IO}",
-    f"maassubscriptions.{ApiGroups.MAAS_IO}",
-    f"tenants.{ApiGroups.MAAS_IO}",
 )
 
 
@@ -40,16 +31,6 @@ class TestMaaSDisableCleanup:
         assert not controller_deployment.exists, (
             f"maas-controller Deployment still exists in namespace '{applications_namespace}'"
             f" after managementState set to Removed"
-        )
-
-    def test_disable_maas_removes_crds(
-        self,
-        admin_client: DynamicClient,
-    ) -> None:
-        """Verify all MaaS CRDs are removed after managementState is set to Removed."""
-        surviving_crds = [crd for crd in MAAS_CRDS if CustomResourceDefinition(client=admin_client, name=crd).exists]
-        assert not surviving_crds, (
-            f"MaaS CRDs still present after managementState set to Removed: {', '.join(surviving_crds)}"
         )
 
     def test_disable_maas_removes_cluster_rbac(
@@ -85,7 +66,6 @@ class TestMaaSDisableCleanup:
         surviving_resources = get_surviving_maas_controller_resources(
             admin_client=admin_client,
             applications_namespace=applications_namespace,
-            crd_names=MAAS_CRDS,
         )
         assert not surviving_resources, (
             f"maas-controller bundle resources still present after managementState set to Removed:"

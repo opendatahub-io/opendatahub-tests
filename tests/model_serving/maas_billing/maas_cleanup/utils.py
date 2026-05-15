@@ -1,7 +1,6 @@
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.cluster_role import ClusterRole
 from ocp_resources.cluster_role_binding import ClusterRoleBinding
-from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.deployment import Deployment
 from ocp_resources.service_account import ServiceAccount
 
@@ -11,9 +10,11 @@ MAAS_CONTROLLER_RESOURCE_NAME = "maas-controller"
 def get_surviving_maas_controller_resources(
     admin_client: DynamicClient,
     applications_namespace: str,
-    crd_names: tuple[str, ...],
 ) -> list[str]:
-    """Return 'Kind/name' strings for any maas-controller bundle resources still present on the cluster."""
+    """Return 'Kind/name' strings for any maas-controller bundle resources still present on the cluster.
+
+    MaaS CRDs are intentionally retained after disable and are not checked here.
+    """
     surviving: list[str] = []
 
     resource_checks: list[tuple[str, bool]] = [
@@ -52,9 +53,5 @@ def get_surviving_maas_controller_resources(
     for resource_label, exists in resource_checks:
         if exists:
             surviving.append(resource_label)
-
-    for crd_name in crd_names:
-        if CustomResourceDefinition(client=admin_client, name=crd_name).exists:
-            surviving.append(f"CustomResourceDefinition/{crd_name}")
 
     return surviving
