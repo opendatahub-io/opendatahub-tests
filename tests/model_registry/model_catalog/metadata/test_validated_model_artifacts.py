@@ -1,11 +1,7 @@
 import pytest
 import structlog
 
-from tests.model_registry.model_catalog.constants import (
-    MODEL_ARTIFACT_TYPE,
-    VALIDATED_CATALOG_ID,
-)
-from tests.model_registry.utils import execute_get_command
+from utilities.jira import is_jira_issue_open
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -26,41 +22,20 @@ class TestValidatedModelArtifactURI:
     @pytest.mark.tier1
     def test_validated_model_artifacts_use_redhat_registry(
         self,
-        model_catalog_rest_url: list[str],
-        model_registry_rest_headers: dict[str, str],
+        validated_model_artifact_uris: dict[str, list[str]],
     ):
         """Given all models in the validated catalog
         When fetching model artifacts for each model
         Then every model-artifact URI should contain registry.redhat.io
         """
-        models_response = execute_get_command(
-            url=f"{model_catalog_rest_url[0]}models?source={VALIDATED_CATALOG_ID}&pageSize=1000",
-            headers=model_registry_rest_headers,
-        )
-        models = models_response.get("items", [])
-        assert models, f"No models found in {VALIDATED_CATALOG_ID} catalog"
-        LOGGER.info(f"Validating artifact URIs for {len(models)} validated models")
-
         validation_errors = []
 
-        for model in models:
-            model_name = model["name"]
-            artifacts_url = (
-                f"{model_catalog_rest_url[0]}sources/{VALIDATED_CATALOG_ID}/models/{model_name}/artifacts?pageSize=100"
-            )
-            artifacts_response = execute_get_command(url=artifacts_url, headers=model_registry_rest_headers)
-            model_artifacts = [
-                artifact
-                for artifact in artifacts_response.get("items", [])
-                if artifact.get("artifactType") == MODEL_ARTIFACT_TYPE
-            ]
-
-            if not model_artifacts:
+        for model_name, uris in validated_model_artifact_uris.items():
+            if not uris:
                 validation_errors.append(f"Model '{model_name}' has no model-artifact entries")
                 continue
 
-            for artifact in model_artifacts:
-                uri = artifact.get("uri", "")
+            for uri in uris:
                 if EXPECTED_REGISTRY_PREFIX not in uri:
                     validation_errors.append(f"Model '{model_name}' has non-Red Hat registry URI: '{uri}'")
 
@@ -68,4 +43,33 @@ class TestValidatedModelArtifactURI:
             f"Artifact URI validation failed for {len(validation_errors)} model(s):\n" + "\n".join(validation_errors)
         )
 
-        LOGGER.info(f"All {len(models)} validated models have artifact URIs containing '{EXPECTED_REGISTRY_PREFIX}'")
+        LOGGER.info(
+            f"All {len(validated_model_artifact_uris)} validated models have artifact URIs"
+            f" containing '{EXPECTED_REGISTRY_PREFIX}'"
+        )
+
+    @pytest.mark.tier1
+    @pytest.mark.xfail(
+        condition=is_jira_issue_open(jira_id="RHOAIENG-62675"),
+        reason="RHOAIENG-62675",
+        run=False,
+    )
+    def test_validated_models_have_single_model_artifact(
+        self,
+        validated_model_artifact_uris: dict[str, list[str]],
+    ):
+        """Given all models in the validated catalog
+        When fetching model artifacts for each model
+        Then every model should have exactly one model-artifact
+        """
+        validation_errors = []
+
+        for model_name, uris in validated_model_artifact_uris.items():
+            if len(uris) != 1:
+                validation_errors.append(f"Model '{model_name}' has {len(uris)} model-artifact(s), expected 1: {uris}")
+
+        assert not validation_errors, (
+            f"Unexpected model-artifact count for {len(validation_errors)} model(s):\n" + "\n".join(validation_errors)
+        )
+
+        LOGGER.info(f"All {len(validated_model_artifact_uris)} validated models have exactly 1 model-artifact")
