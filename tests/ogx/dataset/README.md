@@ -86,7 +86,7 @@ from tests.ogx.datasets import FINANCE_DATASET, IBM_2025_Q4_EARNINGS, Dataset
     "vector_store, dataset",
     [
         pytest.param(
-            {"vector_io_provider": "milvus", "dataset": IBM_2025_Q4_EARNINGS},
+            {"vector_io_provider": "milvus-remote", "dataset": IBM_2025_Q4_EARNINGS},
             IBM_2025_Q4_EARNINGS,
             id="milvus-single-doc",
         ),

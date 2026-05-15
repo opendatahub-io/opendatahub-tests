@@ -13,11 +13,6 @@ from tests.ogx.constants import ModelInfo
             {"embedding_provider": "vllm-embedding"},
             id="embedding_provider_vllm-embedding",
         ),
-        pytest.param(
-            {"name": "test-ogx-infer-embeddings", "randomize_name": True},
-            {"embedding_provider": "sentence-transformers"},
-            id="embedding_provider_sentence-transformers",
-        ),
     ],
     indirect=True,
 )
@@ -27,8 +22,6 @@ class TestOgxInferenceEmbeddings:
 
     This test suite is parametrized to test:
     - A remote embeddings model served with vllm
-    - The embedding model included in the Red Hat OGX Distribution,
-      ibm-granite/granite-embedding-125m-english, served with sentence-transformers
 
     For more information about this API, see:
     - https://ogx-ai.github.io/docs/references/python_sdk_reference#inference

@@ -18,7 +18,7 @@ HTTPS_PROXY: str = os.getenv("SQUID_HTTPS_PROXY", "")
 
 # OGX_CLIENT_VERIFY_SSL is false by default to be able to test with Self-Signed certificates
 OGX_CLIENT_VERIFY_SSL = os.getenv("OGX_CLIENT_VERIFY_SSL", "false").lower() == "true"
-OGX_CORE_POD_FILTER: str = "app.kubernetes.io/name=ogx"
+OGX_CORE_POD_FILTER: str = "app=ogx"
 OGX_OPENSHIFT_MINIMAL_VERSION: VersionInfo = semver.VersionInfo.parse("4.17.0")
 
 POSTGRES_IMAGE = os.getenv(

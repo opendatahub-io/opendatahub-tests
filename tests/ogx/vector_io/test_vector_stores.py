@@ -22,63 +22,49 @@ LOGGER = structlog.get_logger(name=__name__)
         pytest.param(
             {"name": "test-ogx-vector-stores", "randomize_name": True},
             {
-                "ogx_storage_size": "2Gi",
-                "vector_io_provider": "milvus",
-                "embedding_provider": "sentence-transformers",
-                "files_provider": "local",
+                "vector_io_provider": "milvus-remote",
+                "embedding_provider": "vllm-embedding",
+                "files_provider": "s3",
             },
-            {"vector_io_provider": "milvus", "dataset": IBM_2025_Q4_EARNINGS},
+            {"vector_io_provider": "milvus-remote", "dataset": IBM_2025_Q4_EARNINGS},
             IBM_2025_Q4_EARNINGS,
-            id="vector_io:milvus, files:local, embedding:sentence-transformers, dataset:IBM_2025_Q4_EARNINGS",
+            id="vector_io:milvus-remote, files: s3, embedding: vllm-embedding, dataset:IBM_2025_Q4_EARNINGS",
             marks=(pytest.mark.smoke),
         ),
         pytest.param(
             {"name": "test-ogx-vector-stores", "randomize_name": True},
             {
-                "ogx_storage_size": "2Gi",
-                "vector_io_provider": "milvus",
-                "embedding_provider": "sentence-transformers",
+                "vector_io_provider": "pgvector",
+                "embedding_provider": "vllm-embedding",
                 "files_provider": "local",
             },
-            {"vector_io_provider": "milvus", "dataset": IBM_2025_Q4_EARNINGS_ENCRYPTED},
-            IBM_2025_Q4_EARNINGS_ENCRYPTED,
-            id="vector_io:milvus, files:local, embedding:sentence-transformers, dataset:IBM_2025_Q4_EARNINGS_ENCRYPTED",
-            marks=(pytest.mark.tier1, pytest.mark.xfail(reason="RHAIENG-3816")),
+            {"vector_io_provider": "pgvector", "dataset": IBM_2025_Q4_EARNINGS},
+            IBM_2025_Q4_EARNINGS,
+            id="vector_io:pgvector, files: local, embedding: vllm-embedding, dataset:IBM_2025_Q4_EARNINGS",
+            marks=(pytest.mark.smoke),
         ),
         pytest.param(
             {"name": "test-ogx-vector-stores", "randomize_name": True},
             {
                 "vector_io_provider": "milvus-remote",
                 "embedding_provider": "vllm-embedding",
-                "files_provider": "s3",
+                "files_provider": "local",
             },
             {"vector_io_provider": "milvus-remote", "dataset": FINANCE_DATASET},
             FINANCE_DATASET,
-            id="vector_io:milvus-remote, files: s3, embedding: vllm-embedding, dataset:FINANCE_DATASET",
-            marks=(pytest.mark.smoke),
-        ),
-        pytest.param(
-            {"name": "test-ogx-vector-stores", "randomize_name": True},
-            {
-                "ogx_storage_size": "2Gi",
-                "vector_io_provider": "faiss",
-                "files_provider": "local",
-            },
-            {"vector_io_provider": "faiss", "dataset": FINANCE_DATASET},
-            FINANCE_DATASET,
-            id="vector_io: faiss, files:local, embedding: vllm-embedding, dataset:FINANCE_DATASET",
+            id="vector_io:milvus-remote, files: local, embedding: vllm-embedding, dataset:FINANCE_DATASET",
             marks=(pytest.mark.tier1),
         ),
         pytest.param(
             {"name": "test-ogx-vector-stores", "randomize_name": True},
             {
-                "ogx_storage_size": "2Gi",
                 "vector_io_provider": "pgvector",
+                "embedding_provider": "vllm-embedding",
                 "files_provider": "s3",
             },
             {"vector_io_provider": "pgvector", "dataset": FINANCE_DATASET},
             FINANCE_DATASET,
-            id="vector_io:pgvector, files:s3, embedding: vllm-embedding, dataset:FINANCE_DATASET",
+            id="vector_io:pgvector, files: s3, embedding: vllm-embedding, dataset:FINANCE_DATASET",
             marks=(pytest.mark.tier1),
         ),
         pytest.param(
@@ -92,6 +78,18 @@ LOGGER = structlog.get_logger(name=__name__)
             FINANCE_DATASET,
             id="vector_io:qdrant-remote, files:local, embedding: vllm-embedding, dataset:FINANCE_DATASET",
             marks=(pytest.mark.tier1),
+        ),
+        pytest.param(
+            {"name": "test-ogx-vector-stores", "randomize_name": True},
+            {
+                "vector_io_provider": "milvus-remote",
+                "embedding_provider": "vllm-embedding",
+                "files_provider": "s3",
+            },
+            {"vector_io_provider": "milvus-remote", "dataset": IBM_2025_Q4_EARNINGS_ENCRYPTED},
+            IBM_2025_Q4_EARNINGS_ENCRYPTED,
+            id="vector_io:milvus-remote, files:s3, embedding:vllm-embedding, dataset:IBM_2025_Q4_EARNINGS_ENCRYPTED",
+            marks=(pytest.mark.tier2, pytest.mark.xfail(reason="RHAIENG-3816")),
         ),
     ],
     indirect=True,
@@ -147,12 +145,6 @@ class TestOgxVectorStores:
         Then: Each mode returns relevant results with proper metadata and content
         """
         search_modes = sorted({r.retrieval_mode for r in dataset.load_qa()})
-
-        provider_id = (vector_store.metadata or {}).get("provider_id", "")
-        # FAISS does not support hybrid and keyword search modes see:
-        # https://github.com/ogx-ai/ogx/blob/main/src/ogx/providers/inline/vector_io/faiss/faiss.py#L180-L196
-        if provider_id == "faiss":
-            search_modes = [m for m in search_modes if m == "vector"]
 
         for search_mode in search_modes:
             qa_records = dataset.load_qa(retrieval_mode=search_mode)

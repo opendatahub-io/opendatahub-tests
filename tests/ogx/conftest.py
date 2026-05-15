@@ -325,7 +325,7 @@ def ogx_models(ogx_client: OgxClient) -> ModelInfo:
     """
     models = ogx_client.models.list()
 
-    model_id = next(m for m in models if m.custom_metadata["model_type"] == "llm").id
+    model_id = next(m for m in models.data if m.custom_metadata["model_type"] == "llm").id
 
     # Ensure getting the right embedding model depending on the available providers
     providers = ogx_client.providers.list()
@@ -339,7 +339,7 @@ def ogx_models(ogx_client: OgxClient) -> ModelInfo:
 
     embedding_model = next(
         m
-        for m in models
+        for m in models.data
         if m.custom_metadata["model_type"] == "embedding" and m.custom_metadata["provider_id"] == target_provider_id
     )
     embedding_dimension = int(embedding_model.custom_metadata["embedding_dimension"])
@@ -419,7 +419,7 @@ def vector_store(
             "vector_store",
             [
                 pytest.param(
-                    {"vector_io_provider": "milvus", "dataset": IBM_2025_Q4_EARNINGS},
+                    {"vector_io_provider": "milvus-remote", "dataset": IBM_2025_Q4_EARNINGS},
                     id="milvus-with-IBM-earnings-dataset",
                 ),
             ],
