@@ -141,6 +141,7 @@ class AcceleratorType:
 class ApiGroups:
     HAPROXY_ROUTER_OPENSHIFT_IO: str = "haproxy.router.openshift.io"
     OPENDATAHUB_IO: str = "opendatahub.io"
+    KUEUE_X_K8S_IO: str = "kueue.x-k8s.io"
     KSERVE: str = "serving.kserve.io"
     KUADRANT_IO: str = "kuadrant.io"
     MAAS_IO: str = "maas.opendatahub.io"
@@ -247,6 +248,7 @@ class Timeout:
     TIMEOUT_2MIN: int = 2 * TIMEOUT_1MIN
     TIMEOUT_4MIN: int = 4 * TIMEOUT_1MIN
     TIMEOUT_5MIN: int = 5 * TIMEOUT_1MIN
+    TIMEOUT_6MIN: int = 6 * TIMEOUT_1MIN
     TIMEOUT_10MIN: int = 10 * TIMEOUT_1MIN
     TIMEOUT_15MIN: int = 15 * TIMEOUT_1MIN
     TIMEOUT_20MIN: int = 20 * TIMEOUT_1MIN
