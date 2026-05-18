@@ -10,6 +10,10 @@ from tests.model_registry.model_catalog.utils import get_catalog_str, get_models
 from tests.model_registry.utils import execute_get_command
 
 LOGGER = structlog.get_logger(name=__name__)
+pytestmark = [
+    pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace"),
+]
+
 
 MODEL_WITH_SERVING_CONFIG = "test/model-with-serving-config"
 MODEL_WITHOUT_SERVING_CONFIG = "test/model-without-serving-config"
