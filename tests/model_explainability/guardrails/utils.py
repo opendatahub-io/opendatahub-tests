@@ -243,7 +243,12 @@ def create_detector_config(*detector_names: str) -> dict[str, dict[str, Any]]:
 
 
 def verify_health_info_response(host, token, ca_bundle_file):
-    response = requests.get(url=f"https://{host}/info", headers=get_auth_headers(token=token), verify=ca_bundle_file)
+    response = requests.get(
+        url=f"https://{host}/info",
+        headers=get_auth_headers(token=token),
+        verify=ca_bundle_file,
+        timeout=30,
+    )
     assert response.status_code == http.HTTPStatus.OK
 
     healthy_status = "HEALTHY"
@@ -267,6 +272,7 @@ def _send_guardrails_orchestrator_post_request(
         headers=get_auth_headers(token=token),
         json=payload,
         verify=ca_bundle_file,
+        timeout=30,
     )
 
     if response.status_code != http.HTTPStatus.OK:
