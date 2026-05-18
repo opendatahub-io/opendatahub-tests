@@ -56,15 +56,12 @@ class TestManagedByLabel:
             isvc=dummy_ovms_raw_inference_service,
         )
 
-        assert pods, (
-            f"No pods found for InferenceService {dummy_ovms_raw_inference_service.name}"
-        )
+        assert pods, f"No pods found for InferenceService {dummy_ovms_raw_inference_service.name}"
 
         for pod in pods:
             pod_labels = pod.instance.metadata.labels or {}
             assert MANAGED_BY_LABEL_KEY in pod_labels, (
-                f"Pod {pod.name} is missing label '{MANAGED_BY_LABEL_KEY}'. "
-                f"Existing labels: {dict(pod_labels)}"
+                f"Pod {pod.name} is missing label '{MANAGED_BY_LABEL_KEY}'. Existing labels: {dict(pod_labels)}"
             )
             assert pod_labels[MANAGED_BY_LABEL_KEY] == MANAGED_BY_LABEL_VALUE, (
                 f"Pod {pod.name} has '{MANAGED_BY_LABEL_KEY}={pod_labels[MANAGED_BY_LABEL_KEY]}', "
