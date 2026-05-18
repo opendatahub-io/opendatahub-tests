@@ -1,21 +1,21 @@
 import pytest
-from llama_stack_client import LlamaStackClient
-from llama_stack_client.types.vector_store import VectorStore
+from ogx_client import OgxClient
+from ogx_client.types.vector_store import VectorStore
 
-from tests.llama_stack.constants import ModelInfo
-from tests.llama_stack.datasets import IBM_2025_Q4_EARNINGS
+from tests.ogx.constants import ModelInfo
+from tests.ogx.datasets import IBM_2025_Q4_EARNINGS
 
 IBM_EARNINGS_RAG_QUERY = "How did IBM perform financially in the fourth quarter of 2025?"
 
 
 def _assert_minimal_rag_response(
-    llama_stack_client: LlamaStackClient,
-    llama_stack_models: ModelInfo,
+    ogx_client: OgxClient,
+    ogx_models: ModelInfo,
     vector_store: VectorStore,
 ) -> None:
-    response = llama_stack_client.responses.create(
+    response = ogx_client.responses.create(
         input=IBM_EARNINGS_RAG_QUERY,
-        model=llama_stack_models.model_id,
+        model=ogx_models.model_id,
         instructions="Always use the file_search tool to look up information before answering.",
         stream=False,
         max_output_tokens=4096,
@@ -55,12 +55,12 @@ def _assert_minimal_rag_response(
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, llama_stack_distribution, vector_store",
+    "unprivileged_model_namespace, ogx_server, vector_store",
     [
         pytest.param(
-            {"name": "test-llamastack-vector-rag-upgrade"},
+            {"name": "test-ogx-vector-rag-upgrade"},
             {
-                "llama_stack_storage_size": "2Gi",
+                "ogx_storage_size": "2Gi",
                 "vector_io_provider": "milvus",
                 "files_provider": "s3",
             },
@@ -69,36 +69,36 @@ def _assert_minimal_rag_response(
     ],
     indirect=True,
 )
-@pytest.mark.llama_stack
+@pytest.mark.ogx
 @pytest.mark.rag
-class TestPreUpgradeLlamaStackVectorStoreRag:
+class TestPreUpgradeOgxVectorStoreRag:
     @pytest.mark.pre_upgrade
     def test_vector_store_rag_pre_upgrade(
         self,
-        llama_stack_client: LlamaStackClient,
-        llama_stack_models: ModelInfo,
+        ogx_client: OgxClient,
+        ogx_models: ModelInfo,
         vector_store: VectorStore,
     ) -> None:
         """Verify vector-store-backed RAG works before upgrade.
 
-        Given: A running LlamaStack distribution with a vector store and uploaded documents.
+        Given: A running OGX distribution with a vector store and uploaded documents.
         When: A retrieval-augmented response is requested using file search.
         Then: The response includes completed file_search_call output and file_citation annotations.
         """
         _assert_minimal_rag_response(
-            llama_stack_client=llama_stack_client,
-            llama_stack_models=llama_stack_models,
+            ogx_client=ogx_client,
+            ogx_models=ogx_models,
             vector_store=vector_store,
         )
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, llama_stack_distribution, vector_store",
+    "unprivileged_model_namespace, ogx_server, vector_store",
     [
         pytest.param(
-            {"name": "test-llamastack-vector-rag-upgrade"},
+            {"name": "test-ogx-vector-rag-upgrade"},
             {
-                "llama_stack_storage_size": "2Gi",
+                "ogx_storage_size": "2Gi",
                 "vector_io_provider": "milvus",
                 "files_provider": "s3",
             },
@@ -107,25 +107,25 @@ class TestPreUpgradeLlamaStackVectorStoreRag:
     ],
     indirect=True,
 )
-@pytest.mark.llama_stack
+@pytest.mark.ogx
 @pytest.mark.rag
-class TestPostUpgradeLlamaStackVectorStoreRag:
+class TestPostUpgradeOgxVectorStoreRag:
     @pytest.mark.post_upgrade
     @pytest.mark.xfail(reason="RHAIENG-3650")
     def test_vector_store_rag_post_upgrade(
         self,
-        llama_stack_client: LlamaStackClient,
-        llama_stack_models: ModelInfo,
+        ogx_client: OgxClient,
+        ogx_models: ModelInfo,
         vector_store: VectorStore,
     ) -> None:
         """Verify vector-store-backed RAG remains correct after upgrade.
 
-        Given: A pre-existing LlamaStack distribution after upgrade with reused vector store docs.
+        Given: A pre-existing OGX distribution after upgrade with reused vector store docs.
         When: A retrieval-augmented response is requested using file search.
         Then: The response includes completed file_search_call output and file_citation annotations.
         """
         _assert_minimal_rag_response(
-            llama_stack_client=llama_stack_client,
-            llama_stack_models=llama_stack_models,
+            ogx_client=ogx_client,
+            ogx_models=ogx_models,
             vector_store=vector_store,
         )

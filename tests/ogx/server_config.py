@@ -3,29 +3,33 @@ from typing import Any
 
 import structlog
 
-from tests.llama_stack.constants import (
+from tests.ogx.constants import (
     HTTPS_PROXY,
-    LLS_CORE_EMBEDDING_MODEL,
-    LLS_CORE_EMBEDDING_PROVIDER_MODEL_ID,
-    LLS_CORE_INFERENCE_MODEL,
-    LLS_CORE_VLLM_EMBEDDING_MAX_TOKENS,
-    LLS_CORE_VLLM_EMBEDDING_TLS_VERIFY,
-    LLS_CORE_VLLM_EMBEDDING_URL,
-    LLS_CORE_VLLM_MAX_TOKENS,
-    LLS_CORE_VLLM_TLS_VERIFY,
-    LLS_CORE_VLLM_URL,
+    OGX_CORE_EMBEDDING_MODEL,
+    OGX_CORE_EMBEDDING_PROVIDER_MODEL_ID,
+    OGX_CORE_INFERENCE_MODEL,
+    OGX_CORE_VLLM_EMBEDDING_MAX_TOKENS,
+    OGX_CORE_VLLM_EMBEDDING_TLS_VERIFY,
+    OGX_CORE_VLLM_EMBEDDING_URL,
+    OGX_CORE_VLLM_MAX_TOKENS,
+    OGX_CORE_VLLM_TLS_VERIFY,
+    OGX_CORE_VLLM_URL,
 )
 
 LOGGER = structlog.get_logger(name=__name__)
 
 
-def build_llama_stack_server_config(
+def build_ogx_server_config(
     vector_io_provider_deployment_config_factory: Callable[[str], list[dict[str, str]]],
     files_provider_config_factory: Callable[[str], list[dict[str, str]]],
     is_disconnected_cluster: bool,
     params: dict[str, Any],
 ) -> dict[str, Any]:
-    """Build server configuration for LlamaStack distribution deployment.
+    """Build OGXServer spec configuration matching the v1beta1 CRD.
+
+    Returns a dict whose keys correspond to top-level OGXServerSpec fields
+    (distribution, workload, tls). The caller is responsible for adding
+    network policy configuration.
 
     Args:
         vector_io_provider_deployment_config_factory: Factory to deploy vector I/O providers
@@ -38,11 +42,10 @@ def build_llama_stack_server_config(
             - embedding_provider: Embedding provider ("vllm-embedding" or "sentence-transformers").
             - vector_io_provider: Vector I/O provider type (e.g. "milvus", "milvus-remote").
             - files_provider: Files storage provider ("local" or "s3").
-            - llama_stack_storage_size: PVC storage size (e.g. "2Gi").
+            - ogx_storage_size: PVC storage size (e.g. "2Gi").
 
     Returns:
-        Server configuration dict with containerSpec, distribution, and optional
-        tlsConfig/storage sections.
+        OGXServerSpec configuration dict with distribution, workload, and optional tls sections.
     """
 
     env_vars = []
@@ -54,20 +57,20 @@ def build_llama_stack_server_config(
     if params.get("inference_model"):
         inference_model = str(params.get("inference_model"))
     else:
-        inference_model = LLS_CORE_INFERENCE_MODEL
+        inference_model = OGX_CORE_INFERENCE_MODEL
     env_vars.append({"name": "INFERENCE_MODEL", "value": inference_model})
 
     env_vars.append(
         {
             "name": "VLLM_API_TOKEN",
-            "valueFrom": {"secretKeyRef": {"name": "llamastack-distribution-secret", "key": "vllm-api-token"}},
+            "valueFrom": {"secretKeyRef": {"name": "ogx-distribution-secret", "key": "vllm-api-token"}},
         },
     )
 
-    env_vars.append({"name": "VLLM_URL", "value": LLS_CORE_VLLM_URL})
+    env_vars.append({"name": "VLLM_URL", "value": OGX_CORE_VLLM_URL})
 
-    env_vars.append({"name": "VLLM_TLS_VERIFY", "value": LLS_CORE_VLLM_TLS_VERIFY})
-    env_vars.append({"name": "VLLM_MAX_TOKENS", "value": LLS_CORE_VLLM_MAX_TOKENS})
+    env_vars.append({"name": "VLLM_TLS_VERIFY", "value": OGX_CORE_VLLM_TLS_VERIFY})
+    env_vars.append({"name": "VLLM_MAX_TOKENS", "value": OGX_CORE_VLLM_MAX_TOKENS})
 
     env_vars.append({"name": "FMS_ORCHESTRATOR_URL", "value": "http://localhost"})
 
@@ -75,19 +78,17 @@ def build_llama_stack_server_config(
     embedding_provider = params.get("embedding_provider") or "vllm-embedding"
 
     if embedding_provider == "vllm-embedding":
-        env_vars.append({"name": "EMBEDDING_MODEL", "value": LLS_CORE_EMBEDDING_MODEL})
-        env_vars.append({"name": "EMBEDDING_PROVIDER_MODEL_ID", "value": LLS_CORE_EMBEDDING_PROVIDER_MODEL_ID})
-        env_vars.append({"name": "VLLM_EMBEDDING_URL", "value": LLS_CORE_VLLM_EMBEDDING_URL})
+        env_vars.append({"name": "EMBEDDING_MODEL", "value": OGX_CORE_EMBEDDING_MODEL})
+        env_vars.append({"name": "EMBEDDING_PROVIDER_MODEL_ID", "value": OGX_CORE_EMBEDDING_PROVIDER_MODEL_ID})
+        env_vars.append({"name": "VLLM_EMBEDDING_URL", "value": OGX_CORE_VLLM_EMBEDDING_URL})
         env_vars.append(
             {
                 "name": "VLLM_EMBEDDING_API_TOKEN",
-                "valueFrom": {
-                    "secretKeyRef": {"name": "llamastack-distribution-secret", "key": "vllm-embedding-api-token"}
-                },
+                "valueFrom": {"secretKeyRef": {"name": "ogx-distribution-secret", "key": "vllm-embedding-api-token"}},
             },
         )
-        env_vars.append({"name": "VLLM_EMBEDDING_MAX_TOKENS", "value": LLS_CORE_VLLM_EMBEDDING_MAX_TOKENS})
-        env_vars.append({"name": "VLLM_EMBEDDING_TLS_VERIFY", "value": LLS_CORE_VLLM_EMBEDDING_TLS_VERIFY})
+        env_vars.append({"name": "VLLM_EMBEDDING_MAX_TOKENS", "value": OGX_CORE_VLLM_EMBEDDING_MAX_TOKENS})
+        env_vars.append({"name": "VLLM_EMBEDDING_TLS_VERIFY", "value": OGX_CORE_VLLM_EMBEDDING_TLS_VERIFY})
     elif embedding_provider == "sentence-transformers":
         # Increase CPU limits to prevent timeouts when inserting files into vector stores
         cpu_requests = "4"
@@ -117,17 +118,17 @@ def build_llama_stack_server_config(
     env_vars.append(
         {
             "name": "POSTGRES_USER",
-            "valueFrom": {"secretKeyRef": {"name": "llamastack-distribution-secret", "key": "postgres-user"}},
+            "valueFrom": {"secretKeyRef": {"name": "ogx-distribution-secret", "key": "postgres-user"}},
         },
     )
     env_vars.append(
         {
             "name": "POSTGRES_PASSWORD",
-            "valueFrom": {"secretKeyRef": {"name": "llamastack-distribution-secret", "key": "postgres-password"}},
+            "valueFrom": {"secretKeyRef": {"name": "ogx-distribution-secret", "key": "postgres-password"}},
         },
     )
     env_vars.append({"name": "POSTGRES_DB", "value": "ps_db"})
-    env_vars.append({"name": "POSTGRES_TABLE_NAME", "value": "llamastack_kvstore"})
+    env_vars.append({"name": "POSTGRES_TABLE_NAME", "value": "ogx_kvstore"})
 
     # Depending on parameter files_provider, configure files provider and obtain required env_vars
     files_provider = params.get("files_provider") or "local"
@@ -143,7 +144,7 @@ def build_llama_stack_server_config(
         LOGGER.info("Setting proxy and tlsconfig configuration")
         env_vars.append({"name": "HTTPS_PROXY", "value": HTTPS_PROXY})
 
-        # The operator sets SSL_CERT_FILE automatically when tlsConfig.caBundle is
+        # The operator sets SSL_CERT_FILE automatically when tls.trust is
         # configured, but the `requests` library (used by tiktoken to download
         # tokenizer data) ignores SSL_CERT_FILE and only checks REQUESTS_CA_BUNDLE.
         # Without this, tiktoken fails with SSL CERTIFICATE_VERIFY_FAILED when the
@@ -154,36 +155,35 @@ def build_llama_stack_server_config(
         })
 
         tls_config = {
-            "caBundle": {
-                "configMapName": "odh-trusted-ca-bundle",
-                "configMapKeys": [
-                    "ca-bundle.crt",  # CNO-injected cluster CAs
-                    "odh-ca-bundle.crt",  # User-specified custom CAs
+            "trust": {
+                "caCertificates": [
+                    {"name": "odh-trusted-ca-bundle", "key": "ca-bundle.crt"},
+                    {"name": "odh-trusted-ca-bundle", "key": "odh-ca-bundle.crt"},
                 ],
             },
         }
 
-    server_config: dict[str, Any] = {
-        "containerSpec": {
+    config: dict[str, Any] = {
+        "distribution": {"name": "rh-dev"},
+        "workload": {
             "resources": {
                 "requests": {"cpu": cpu_requests, "memory": "3Gi"},
                 "limits": {"cpu": cpu_limits, "memory": "6Gi"},
             },
-            "env": env_vars,
-            "name": "llama-stack",
-            "port": 8321,
+            "overrides": {
+                "env": env_vars,
+            },
         },
-        "distribution": {"name": "rh-dev"},
     }
 
     if tls_config:
-        server_config["tlsConfig"] = tls_config
+        config["tls"] = tls_config
 
-    if params.get("llama_stack_storage_size"):
+    if params.get("ogx_storage_size"):
         if is_disconnected_cluster:
             LOGGER.warning("Skipping storage_size configuration on disconnected clusters due to known bug RHAIENG-1819")
         else:
-            storage_size = params.get("llama_stack_storage_size")
-            server_config["storage"] = {"size": storage_size}
+            storage_size = params.get("ogx_storage_size")
+            config["workload"]["storage"] = {"size": storage_size}
 
-    return server_config
+    return config
