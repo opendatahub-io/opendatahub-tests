@@ -2,11 +2,39 @@
 
 The following are some helpful tips on how to set up your VS Code environment for working with this repository.
 
-## Mypy Type Checker in Visual Studio Code
+## Pyrefly Type Checker in Visual Studio Code
 
-If you use Visual Studio Code as your IDE, we recommend using the [Mypy Type Checker](https://marketplace.visualstudio.com/items?itemName=ms-python.mypy-type-checker) extension.
-After installing it, make sure to update the `Mypy-type-checkers: Args` setting
-to `"mypy-type-checker.args" = ["--config-file=pyproject.toml"]`.
+If you use Visual Studio Code as your IDE, we recommend using the [Pyrefly](https://marketplace.visualstudio.com/items?itemName=meta.pyrefly) extension.
+After installing it, the extension will automatically use the configuration from `pyproject.toml`.
+
+The Pyrefly extension provides:
+
+- Fast inline type checking (15x faster than mypy)
+- Auto-completion and hover tooltips
+- Go-to-definition and find references
+- Type inference without annotations
+
+**Installation:**
+
+```bash
+code --install-extension meta.pyrefly
+```
+
+Alternatively, use the `.vscode/settings.json` workspace configuration provided in this repository.
+
+## PyCharm Type Checking with Pyrefly
+
+PyCharm 2026.1.2 and later have native Pyrefly integration.
+
+**Enable Pyrefly:**
+
+1. Click the **Type widget** at the bottom of the PyCharm window
+2. Select "Use Pyrefly" from the dropdown
+3. PyCharm will install Pyrefly automatically if not present
+
+**Note:** Currently works for local interpreter configurations only (Docker, WSL, SSH not yet supported).
+
+The integration provides fast type diagnostics, quick documentation, and inlay hints.
 
 ## Debugging in Visual Studio Code
 

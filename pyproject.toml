@@ -28,6 +28,29 @@ override-dependencies = [
 
 [tool.uv.sources]
 
+[tool.pyrefly]
+preset = "legacy"  # Start mypy-compatible, tighten later
+python-version = "3.14"
+ignore-missing-imports = ["*"]  # Match mypy ignore_missing_imports
+permissive-ignores = true  # Respect mypy ignore comments during transition
+
+# Exclude patterns matching pre-commit config
+project-excludes = [
+    "**/docs/**",
+    "**/*test*.py",  # Tests have 700+ errors (fixtures, mocks, dynamic types)
+    "**/utilities/manifests/**",
+    "**/utilities/plugins/tgis_grpc*",  # Includes tgis_grpc/ dir and tgis_grpc_plugin.py
+    "**/__pycache__/**",
+    "**/.mypy_cache/**",
+    "**/.ruff_cache/**",
+    "**/.venv/**",
+    "**/.tox/**",
+]
+
+[tool.pyrefly.errors]
+# Start permissive to match mypy behavior
+missing-import = false  # Covered by ignore-missing-imports
+
 [dependency-groups]
 dev = [
     "ipdb>=0.13.13",
@@ -67,7 +90,6 @@ dependencies = [
     "grpcio-reflection",
     "portforward>=0.7.1",
     "pytest-testconfig>=0.2.0",
-
     "pygithub>=2.5.0",
     "timeout-sampler>=1.0.6",
     "shortuuid>=1.0.13",
@@ -86,6 +108,7 @@ dependencies = [
     "huggingface-hub>=1.2.3",
     "openai>=2.36",
     "ragas>=0.4",
+    "pyrefly>=0.60.0",
 ]
 
 [project.urls]
