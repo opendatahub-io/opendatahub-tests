@@ -6,8 +6,6 @@ import pytest
 import structlog
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
-from llama_stack_client import APIError, LlamaStackClient
-from llama_stack_client.types.vector_store import VectorStore
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
@@ -15,43 +13,43 @@ from ocp_resources.resource import ResourceEditor
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
+from ogx_client import APIError, OgxClient
+from ogx_client.types.vector_store import VectorStore
 from semver import Version
 
-from tests.llama_stack.constants import (
-    LLAMA_STACK_DISTRIBUTION_SECRET_DATA,
-    LLS_CLIENT_VERIFY_SSL,
-    LLS_OPENSHIFT_MINIMAL_VERSION,
+from tests.ogx.constants import (
+    OGX_CLIENT_VERIFY_SSL,
+    OGX_OPENSHIFT_MINIMAL_VERSION,
+    OGX_SERVER_SECRET_DATA,
     POSTGRES_IMAGE,
     UPGRADE_DISTRIBUTION_NAME,
     ModelInfo,
 )
-from tests.llama_stack.datasets import Dataset
-from tests.llama_stack.server_config import build_llama_stack_server_config
-from tests.llama_stack.utils import (
-    create_llama_stack_distribution,
+from tests.ogx.datasets import Dataset
+from tests.ogx.server_config import build_ogx_server_config
+from tests.ogx.utils import (
+    create_ogx_server,
     vector_store_upload_dataset,
     vector_store_upload_doc_sources,
-    wait_for_llama_stack_client_ready,
-    wait_for_unique_llama_stack_pod,
+    wait_for_ogx_client_ready,
+    wait_for_unique_ogx_pod,
 )
 from utilities import infra
 from utilities.constants import Annotations, DscComponents
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.general import generate_random_name
-from utilities.resources.llama_stack_distribution import LlamaStackDistribution
+from utilities.resources.ogx_server import OgxServer
 
 LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="session", autouse=True)
-def skip_llama_stack_if_not_supported_openshift_version(
-    admin_client: DynamicClient, openshift_version: Version
-) -> None:
-    """Skip llama-stack tests if OpenShift version is not supported (< 4.17) by llama-stack-operator"""
-    if openshift_version < LLS_OPENSHIFT_MINIMAL_VERSION:
+def skip_ogx_if_not_supported_openshift_version(admin_client: DynamicClient, openshift_version: Version) -> None:
+    """Skip ogx tests if OpenShift version is not supported (< 4.17) by ogx-operator"""
+    if openshift_version < OGX_OPENSHIFT_MINIMAL_VERSION:
         message = (
-            f"Skipping llama-stack tests, as llama-stack-operator is not supported "
-            f"on OpenShift {openshift_version} ({LLS_OPENSHIFT_MINIMAL_VERSION} or newer required)"
+            f"Skipping ogx tests, as ogx-operator is not supported "
+            f"on OpenShift {openshift_version} ({OGX_OPENSHIFT_MINIMAL_VERSION} or newer required)"
         )
         LOGGER.info(message)
         pytest.skip(reason=message)
@@ -61,15 +59,15 @@ def skip_llama_stack_if_not_supported_openshift_version(
 def distribution_name(pytestconfig: pytest.Config) -> str:
     if pytestconfig.option.pre_upgrade or pytestconfig.option.post_upgrade:
         return UPGRADE_DISTRIBUTION_NAME
-    return generate_random_name(prefix="llama-stack-distribution")
+    return generate_random_name(prefix="ogx-server")
 
 
 @pytest.fixture(scope="class")
-def enabled_llama_stack_operator(dsc_resource: DataScienceCluster) -> Generator[DataScienceCluster, Any, Any]:
+def enabled_ogx_operator(dsc_resource: DataScienceCluster) -> Generator[DataScienceCluster, Any, Any]:
     with update_components_in_dsc(
         dsc=dsc_resource,
         components={
-            DscComponents.LLAMASTACKOPERATOR: DscComponents.ManagementState.MANAGED,
+            DscComponents.OGX: DscComponents.ManagementState.MANAGED,
         },
         wait_for_components_state=True,
     ) as dsc:
@@ -83,7 +81,7 @@ def is_disconnected_cluster(admin_client: DynamicClient) -> bool:
 
 
 @pytest.fixture(scope="class")
-def llama_stack_distribution_secret(
+def ogx_server_secret(
     pytestconfig: pytest.Config,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
@@ -92,9 +90,9 @@ def llama_stack_distribution_secret(
     secret = Secret(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace.name,
-        name="llamastack-distribution-secret",
+        name="ogx-distribution-secret",
         type="Opaque",
-        string_data=LLAMA_STACK_DISTRIBUTION_SECRET_DATA,
+        string_data=OGX_SERVER_SECRET_DATA,
         ensure_exists=pytestconfig.option.post_upgrade,
         teardown=teardown_resources,
     )
@@ -107,28 +105,28 @@ def llama_stack_distribution_secret(
 
 
 @pytest.fixture(scope="class")
-def llama_stack_distribution(
+def ogx_server(
     request: FixtureRequest,
     pytestconfig: pytest.Config,
     distribution_name: str,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
-    enabled_llama_stack_operator: DataScienceCluster,
+    enabled_ogx_operator: DataScienceCluster,
     vector_io_provider_deployment_config_factory: Callable[[str], list[dict[str, str]]],
     files_provider_config_factory: Callable[[str], list[dict[str, str]]],
     is_disconnected_cluster: bool,
     teardown_resources: bool,
-    llama_stack_distribution_secret: Secret,
+    ogx_server_secret: Secret,
     postgres_deployment: Deployment,
     postgres_service: Service,
-) -> Generator[LlamaStackDistribution]:
-    """LlamaStack distribution resource with server configuration built from test parameters.
+) -> Generator[OgxServer]:
+    """OGX distribution resource with server configuration built from test parameters.
 
     Accepts indirect parametrization with a dict containing server config options
-    (see ``build_llama_stack_server_config`` for accepted keys).
+    (see ``build_ogx_server_config`` for accepted keys).
     """
     params = getattr(request, "param", {})
-    llama_stack_server_config = build_llama_stack_server_config(
+    ogx_server_config = build_ogx_server_config(
         vector_io_provider_deployment_config_factory=vector_io_provider_deployment_config_factory,
         files_provider_config_factory=files_provider_config_factory,
         is_disconnected_cluster=is_disconnected_cluster,
@@ -136,59 +134,58 @@ def llama_stack_distribution(
     )
 
     if pytestconfig.option.post_upgrade:
-        lls_dist = LlamaStackDistribution(
+        ogx_srv = OgxServer(
             client=unprivileged_client,
             name=distribution_name,
             namespace=unprivileged_model_namespace.name,
             ensure_exists=True,
         )
-        lls_dist.wait_for_status(status=LlamaStackDistribution.Status.READY, timeout=600)
-        yield lls_dist
-        lls_dist.clean_up()
+        ogx_srv.wait_for_status(status=OgxServer.Status.READY, timeout=600)
+        yield ogx_srv
+        ogx_srv.clean_up()
         return
 
-    with create_llama_stack_distribution(
+    with create_ogx_server(
         client=unprivileged_client,
         name=distribution_name,
         namespace=unprivileged_model_namespace.name,
-        replicas=1,
-        server=llama_stack_server_config,
+        config=ogx_server_config,
         teardown=teardown_resources,
-    ) as lls_dist:
-        lls_dist.wait_for_status(status=LlamaStackDistribution.Status.READY, timeout=600)
-        yield lls_dist
+    ) as ogx_srv:
+        ogx_srv.wait_for_status(status=OgxServer.Status.READY, timeout=600)
+        yield ogx_srv
 
 
 @pytest.fixture(scope="class")
-def llama_stack_distribution_deployment(
+def ogx_server_deployment(
     unprivileged_client: DynamicClient,
-    llama_stack_distribution: LlamaStackDistribution,
+    ogx_server: OgxServer,
 ) -> Generator[Deployment, Any, Any]:
-    """Returns a deployment resource for the LlamaStack distribution."""
+    """Returns a deployment resource for the OGX distribution."""
     deployment = Deployment(
         client=unprivileged_client,
-        namespace=llama_stack_distribution.namespace,
-        name=llama_stack_distribution.name,
+        namespace=ogx_server.namespace,
+        name=ogx_server.name,
         min_ready_seconds=10,
     )
     deployment.timeout_seconds = 240
     deployment.wait(timeout=240)
     deployment.wait_for_replicas()
-    # Workaround for RHAIENG-1819 (Incorrect number of llama-stack pods deployed after
-    # creating LlamaStackDistribution after setting custom ca bundle in DSCI)
-    wait_for_unique_llama_stack_pod(client=unprivileged_client, namespace=llama_stack_distribution.namespace)
+    # Workaround for RHAIENG-1819 (Incorrect number of ogx pods deployed after
+    # creating OgxServer after setting custom ca bundle in DSCI)
+    wait_for_unique_ogx_pod(client=unprivileged_client, namespace=ogx_server.namespace)
     yield deployment
 
 
 @pytest.fixture(scope="class")
-def llama_stack_test_route(
+def ogx_test_route(
     pytestconfig: pytest.Config,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
-    llama_stack_distribution_deployment: Deployment,
+    ogx_server_deployment: Deployment,
     teardown_resources: bool,
 ) -> Generator[Route, Any, Any]:
-    """Route for LlamaStack distribution with TLS edge termination."""
+    """Route for OGX distribution with TLS edge termination."""
     if pytestconfig.option.pre_upgrade or pytestconfig.option.post_upgrade:
         route_name = "lls-upg-route"
         upgrade_route_patch = {
@@ -203,7 +200,7 @@ def llama_stack_test_route(
             },
         }
     else:
-        route_name = generate_random_name(prefix="llama-stack", length=12)
+        route_name = generate_random_name(prefix="ogx", length=12)
 
     if pytestconfig.option.post_upgrade:
         route = Route(
@@ -227,7 +224,7 @@ def llama_stack_test_route(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace.name,
         name=route_name,
-        service=f"{llama_stack_distribution_deployment.name}-service",
+        service=f"{ogx_server_deployment.name}-service",
         wait_for_resource=True,
         teardown=teardown_resources,
     ) as route:
@@ -257,14 +254,14 @@ def llama_stack_test_route(
         yield route
 
 
-def _cleanup_files(client: LlamaStackClient, existing_file_ids: set[str]) -> None:
-    """Delete files created during test execution via the LlamaStack files API.
+def _cleanup_files(client: OgxClient, existing_file_ids: set[str]) -> None:
+    """Delete files created during test execution via the OGX files API.
 
     Only deletes files whose IDs were not present before the test ran,
     avoiding interference with other test sessions.
 
     Args:
-        client: The LlamaStackClient used during the test
+        client: The OgxClient used during the test
         existing_file_ids: File IDs that existed before the test started
     """
     try:
@@ -280,19 +277,19 @@ def _cleanup_files(client: LlamaStackClient, existing_file_ids: set[str]) -> Non
 
 
 @pytest.fixture(scope="class")
-def llama_stack_client(
-    llama_stack_test_route: Route,
-) -> Generator[LlamaStackClient, Any, Any]:
-    """Returns a ready-to-use LlamaStackClient."""
-    http_client = httpx.Client(verify=LLS_CLIENT_VERIFY_SSL, timeout=300)
+def ogx_client(
+    ogx_test_route: Route,
+) -> Generator[OgxClient, Any, Any]:
+    """Returns a ready-to-use OgxClient."""
+    http_client = httpx.Client(verify=OGX_CLIENT_VERIFY_SSL, timeout=300)
     try:
-        client = LlamaStackClient(
-            base_url=f"https://{llama_stack_test_route.host}",
+        client = OgxClient(
+            base_url=f"https://{ogx_test_route.host}",
             max_retries=3,
             http_client=http_client,
             timeout=300,
         )
-        wait_for_llama_stack_client_ready(client=client)
+        wait_for_ogx_client_ready(client=client)
         existing_file_ids = {f.id for f in client.files.list().data}
 
         yield client
@@ -303,9 +300,9 @@ def llama_stack_client(
 
 
 @pytest.fixture(scope="class")
-def llama_stack_models(llama_stack_client: LlamaStackClient) -> ModelInfo:
+def ogx_models(ogx_client: OgxClient) -> ModelInfo:
     """
-    Returns model information from the LlamaStack client.
+    Returns model information from the OGX client.
 
     Selects the embedding model based on available providers with the following priority:
     1. sentence-transformers provider (if present)
@@ -317,7 +314,7 @@ def llama_stack_models(llama_stack_client: LlamaStackClient) -> ModelInfo:
         - embedding_dimension: The dimension of the embedding model
 
     Args:
-        llama_stack_client: The configured LlamaStackClient
+        ogx_client: The configured OgxClient
 
     Returns:
         ModelInfo: NamedTuple containing model information
@@ -326,12 +323,12 @@ def llama_stack_models(llama_stack_client: LlamaStackClient) -> ModelInfo:
         ValueError: If no embedding provider (sentence-transformers or vllm-embedding) is found
 
     """
-    models = llama_stack_client.models.list()
+    models = ogx_client.models.list()
 
     model_id = next(m for m in models if m.custom_metadata["model_type"] == "llm").id
 
     # Ensure getting the right embedding model depending on the available providers
-    providers = llama_stack_client.providers.list()
+    providers = ogx_client.providers.list()
     provider_ids = [p.provider_id for p in providers]
     if "sentence-transformers" in provider_ids:
         target_provider_id = "sentence-transformers"
@@ -362,12 +359,12 @@ def dataset(request: FixtureRequest) -> Dataset:
     Dataset (e.g. for QA ground-truth queries) without hardcoding it.
 
     Note: we use this fixture instead of a plain pytest parameter to avoid
-    fixture dependency problems that were causing Llama Stack dependent resources
+    fixture dependency problems that were causing OGX dependent resources
     like databases or secrets not being created at the right time.
 
     Raises:
         pytest.UsageError: If the fixture is not indirect-parametrized or the
-            parameter is not a :class:`~tests.llama_stack.datasets.Dataset` instance.
+            parameter is not a :class:`~tests.ogx.datasets.Dataset` instance.
     """
     if not hasattr(request, "param"):
         raise pytest.UsageError(
@@ -379,15 +376,15 @@ def dataset(request: FixtureRequest) -> Dataset:
     if not isinstance(param, Dataset):
         raise pytest.UsageError(
             "The `dataset` fixture must be indirect-parametrized with a "
-            f"tests.llama_stack.datasets.Dataset instance; got {type(param).__name__!r}."
+            f"tests.ogx.datasets.Dataset instance; got {type(param).__name__!r}."
         )
     return param
 
 
 @pytest.fixture(scope="class")
 def vector_store(
-    llama_stack_client: LlamaStackClient,
-    llama_stack_models: ModelInfo,
+    ogx_client: OgxClient,
+    ogx_models: ModelInfo,
     request: FixtureRequest,
     pytestconfig: pytest.Config,
     teardown_resources: bool,
@@ -395,7 +392,7 @@ def vector_store(
     """
     Fixture to provide a vector store instance for tests.
 
-    Given: A configured LlamaStackClient, an embedding model, and test parameters specifying
+    Given: A configured OgxClient, an embedding model, and test parameters specifying
         vector store provider and a dataset or document sources.
     When: The fixture is invoked by a parameterized test class or function.
     Then: It creates (or reuses, in post-upgrade scenarios) a vector store with the specified
@@ -437,8 +434,8 @@ def vector_store(
                     {
                         "vector_io_provider": "faiss",
                         "doc_sources": [
-                            "tests/llama_stack/dataset/corpus/finance/document1.pdf",
-                            "tests/llama_stack/dataset/corpus/finance/document2.pdf",
+                            "tests/ogx/dataset/corpus/finance/document1.pdf",
+                            "tests/ogx/dataset/corpus/finance/document2.pdf",
                         ],
                     },
                     id="faiss-with-explicit-documents",
@@ -467,7 +464,7 @@ def vector_store(
         )
 
     if pytestconfig.option.post_upgrade:
-        stores = llama_stack_client.vector_stores.list().data
+        stores = ogx_client.vector_stores.list().data
         vector_store = next(
             (vs for vs in stores if getattr(vs, "name", "") == "test_vector_store"),
             None,
@@ -476,11 +473,11 @@ def vector_store(
             raise ValueError("Expected vector store 'test_vector_store' to exist in post-upgrade run")
         LOGGER.info(f"Reusing existing vector_store in post-upgrade run (id={vector_store.id})")
     else:
-        vector_store = llama_stack_client.vector_stores.create(
+        vector_store = ogx_client.vector_stores.create(
             name="test_vector_store",
             extra_body={
-                "embedding_model": llama_stack_models.embedding_model.id,
-                "embedding_dimension": llama_stack_models.embedding_dimension,
+                "embedding_model": ogx_models.embedding_model.id,
+                "embedding_dimension": ogx_models.embedding_dimension,
                 "provider_id": vector_io_provider,
             },
         )
@@ -491,19 +488,19 @@ def vector_store(
                 if dataset:
                     vector_store_upload_dataset(
                         dataset=dataset,
-                        llama_stack_client=llama_stack_client,
+                        ogx_client=ogx_client,
                         vector_store=vector_store,
                     )
                 elif doc_sources:
                     vector_store_upload_doc_sources(
                         doc_sources=doc_sources,
-                        llama_stack_client=llama_stack_client,
+                        ogx_client=ogx_client,
                         vector_store=vector_store,
                         vector_io_provider=vector_io_provider,
                     )
             except Exception:
                 try:
-                    llama_stack_client.vector_stores.delete(vector_store_id=vector_store.id)
+                    ogx_client.vector_stores.delete(vector_store_id=vector_store.id)
                     LOGGER.info(f"Deleted vector store {vector_store.id} after failed document ingestion")
                 except Exception as del_exc:  # noqa: BLE001
                     LOGGER.warning(f"Failed to delete vector store {vector_store.id} after ingestion error: {del_exc}")
@@ -513,7 +510,7 @@ def vector_store(
 
     if teardown_resources:
         try:
-            llama_stack_client.vector_stores.delete(vector_store_id=vector_store.id)
+            ogx_client.vector_stores.delete(vector_store_id=vector_store.id)
             LOGGER.info(f"Deleted vector store {vector_store.id}")
         except Exception as e:  # noqa: BLE001
             LOGGER.warning(f"Failed to delete vector store {vector_store.id}: {e}")
@@ -595,14 +592,12 @@ def get_postgres_deployment_template() -> dict[str, Any]:
                         {"name": "POSTGRESQL_DATABASE", "value": "ps_db"},
                         {
                             "name": "POSTGRESQL_USER",
-                            "valueFrom": {
-                                "secretKeyRef": {"name": "llamastack-distribution-secret", "key": "postgres-user"}
-                            },
+                            "valueFrom": {"secretKeyRef": {"name": "ogx-distribution-secret", "key": "postgres-user"}},
                         },
                         {
                             "name": "POSTGRESQL_PASSWORD",
                             "valueFrom": {
-                                "secretKeyRef": {"name": "llamastack-distribution-secret", "key": "postgres-password"}
+                                "secretKeyRef": {"name": "ogx-distribution-secret", "key": "postgres-password"}
                             },
                         },
                     ],
