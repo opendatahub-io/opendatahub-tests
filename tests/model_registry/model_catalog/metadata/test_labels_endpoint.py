@@ -13,6 +13,9 @@ from tests.model_registry.model_catalog.metadata.utils import (
 from utilities.infra import get_openshift_token
 
 LOGGER = structlog.get_logger(name=__name__)
+pytestmark = [
+    pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace"),
+]
 
 
 class TestLabelsEndpoint:
