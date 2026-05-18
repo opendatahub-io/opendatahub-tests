@@ -1,9 +1,9 @@
 FROM registry.access.redhat.com/ubi9/ubi:latest
 
 # -------- arguments
-ARG USER=apbansal
-ARG HOME=/home/apbansal
-ARG TESTS_DIR=/home/apbansal/opendatahub-tests
+ARG USER=rhoai
+ARG HOME=/home/${USER}
+ARG TESTS_DIR=${HOME}/opendatahub-tests
 
 # -------- environment
 ENV HOME=${HOME}
