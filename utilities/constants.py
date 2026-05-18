@@ -501,7 +501,7 @@ class LLMdInferenceSimConfig:
 
 
 LLM_D_CHAT_GENERATION_CONFIG: dict[str, Any] = {
-    "service": {"hostname": f"{LLMdInferenceSimConfig.isvc_name}-predictor", "port": 8032}
+    "service": {"hostname": f"{LLMdInferenceSimConfig.isvc_name}-predictor", "port": 80}
 }
 
 

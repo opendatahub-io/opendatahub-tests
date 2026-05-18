@@ -21,7 +21,7 @@ from utilities.plugins.constant import OpenAIEnpoints
     "model_namespace, orchestrator_config, guardrails_gateway_config, guardrails_orchestrator",
     [
         pytest.param(
-            {"name": "test-guardrails-builtin-upgrade"},
+            {"name": "test-guardrails-upgrade"},
             {
                 "orchestrator_config_data": {
                     "config.yaml": yaml.dump({
@@ -196,7 +196,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectorsPreUpgrade:
     "model_namespace",
     [
         pytest.param(
-            {"name": "test-guardrails-builtin-upgrade"},
+            {"name": "test-guardrails-upgrade"},
         )
     ],
     indirect=True,
