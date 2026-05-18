@@ -27,56 +27,55 @@ def build_ogx_server_config(
 ) -> dict[str, Any]:
     """Build OGXServer spec configuration matching the v1beta1 CRD.
 
-    Returns a dict whose keys correspond to top-level OGXServerSpec fields
-    (distribution, workload, tls). The caller is responsible for adding
-    network policy configuration.
+    Assembles the ``distribution``, ``workload``, and optional ``tls`` sections.
+    Core VLLM inference, vLLM embedding, and PostgreSQL kvstore environment
+    variables are always set from ``tests.ogx.constants``; provider-specific
+    variables come from the factory callables. The caller is responsible for
+    adding network policy configuration.
+
+    On disconnected clusters, when ``HTTPS_PROXY`` is set, proxy and trusted-CA
+    TLS configuration is added. ``ogx_storage_size`` is ignored on disconnected
+    clusters (RHAIENG-1819).
 
     Args:
-        vector_io_provider_deployment_config_factory: Factory to deploy vector I/O providers
-            and return their configuration environment variables.
-        files_provider_config_factory: Factory to configure files storage providers
-            and return their configuration environment variables.
+        vector_io_provider_deployment_config_factory: Factory that deploys a
+            vector I/O provider and returns its environment variable dicts.
+        files_provider_config_factory: Factory that configures a files storage
+            provider and returns its environment variable dicts.
         is_disconnected_cluster: Whether the target cluster is disconnected (air-gapped).
-        params: Configuration parameters dict with optional keys:
-            - inference_model: Override for INFERENCE_MODEL env var.
-            - embedding_provider: Embedding provider ("vllm-embedding" or "sentence-transformers").
-            - vector_io_provider: Vector I/O provider type (e.g. "milvus", "milvus-remote").
-            - files_provider: Files storage provider ("local" or "s3").
-            - ogx_storage_size: PVC storage size (e.g. "2Gi").
+        params: Optional configuration overrides:
+            - embedding_provider: Embedding backend; only ``"vllm-embedding"``
+              is supported (default).
+            - vector_io_provider: Vector I/O provider id passed to the factory
+              (e.g. ``"milvus"``, ``"milvus-remote"``, ``"pgvector"``,
+              ``"qdrant-remote"``, ``"faiss"``; default ``"milvus-remote"``).
+            - files_provider: Files storage provider (``"local"`` or ``"s3"``;
+              default ``"local"``).
+            - ogx_storage_size: PVC size for workload storage (e.g. ``"2Gi"``).
 
     Returns:
-        OGXServerSpec configuration dict with distribution, workload, and optional tls sections.
+        OGXServerSpec configuration dict with ``distribution``, ``workload``,
+        and optional ``tls`` sections.
     """
 
     env_vars = []
     tls_config: dict[str, Any] | None = None
-    cpu_requests = "2"
-    cpu_limits = "4"
+    cpu_requests = "1"
+    cpu_limits = "2"
 
-    # INFERENCE_MODEL
-    if params.get("inference_model"):
-        inference_model = str(params.get("inference_model"))
-    else:
-        inference_model = OGX_CORE_INFERENCE_MODEL
-    env_vars.append({"name": "INFERENCE_MODEL", "value": inference_model})
-
+    env_vars.append({"name": "INFERENCE_MODEL", "value": OGX_CORE_INFERENCE_MODEL})
     env_vars.append(
         {
             "name": "VLLM_API_TOKEN",
             "valueFrom": {"secretKeyRef": {"name": "ogx-distribution-secret", "key": "vllm-api-token"}},
         },
     )
-
     env_vars.append({"name": "VLLM_URL", "value": OGX_CORE_VLLM_URL})
-
     env_vars.append({"name": "VLLM_TLS_VERIFY", "value": OGX_CORE_VLLM_TLS_VERIFY})
     env_vars.append({"name": "VLLM_MAX_TOKENS", "value": OGX_CORE_VLLM_MAX_TOKENS})
 
-    env_vars.append({"name": "FMS_ORCHESTRATOR_URL", "value": "http://localhost"})
-
     # EMBEDDING_MODEL
     embedding_provider = params.get("embedding_provider") or "vllm-embedding"
-
     if embedding_provider == "vllm-embedding":
         env_vars.append({"name": "EMBEDDING_MODEL", "value": OGX_CORE_EMBEDDING_MODEL})
         env_vars.append({"name": "EMBEDDING_PROVIDER_MODEL_ID", "value": OGX_CORE_EMBEDDING_PROVIDER_MODEL_ID})
@@ -89,26 +88,6 @@ def build_ogx_server_config(
         )
         env_vars.append({"name": "VLLM_EMBEDDING_MAX_TOKENS", "value": OGX_CORE_VLLM_EMBEDDING_MAX_TOKENS})
         env_vars.append({"name": "VLLM_EMBEDDING_TLS_VERIFY", "value": OGX_CORE_VLLM_EMBEDDING_TLS_VERIFY})
-    elif embedding_provider == "sentence-transformers":
-        # Increase CPU limits to prevent timeouts when inserting files into vector stores
-        cpu_requests = "4"
-        cpu_limits = "8"
-
-        # Enable sentence-transformers embedding model
-        env_vars.append({"name": "ENABLE_SENTENCE_TRANSFORMERS", "value": "true"})
-        env_vars.append({"name": "EMBEDDING_PROVIDER", "value": "sentence-transformers"})
-        # Explicitly set EMBEDDING_MODEL and EMBEDDING_PROVIDER_MODEL_ID.
-        # This overrides the default sentence-transformer model (nomic-embed-text-v1.5).
-        env_vars.append({"name": "EMBEDDING_MODEL", "value": "ibm-granite/granite-embedding-125m-english"})
-        env_vars.append({"name": "EMBEDDING_PROVIDER_MODEL_ID", "value": "ibm-granite/granite-embedding-125m-english"})
-
-        if is_disconnected_cluster:
-            # Workaround to fix sentence-transformer embeddings on disconnected (RHAIENG-1624)
-            env_vars.append({"name": "SENTENCE_TRANSFORMERS_HOME", "value": "/opt/app-root/src/.cache/huggingface/hub"})
-            env_vars.append({"name": "HF_HUB_OFFLINE", "value": "1"})
-            env_vars.append({"name": "TRANSFORMERS_OFFLINE", "value": "1"})
-            env_vars.append({"name": "HF_DATASETS_OFFLINE", "value": "1"})
-
     else:
         raise ValueError(f"Unsupported embeddings provider: {embedding_provider}")
 
@@ -136,7 +115,7 @@ def build_ogx_server_config(
     env_vars.extend(env_vars_files)
 
     # Depending on parameter vector_io_provider, deploy vector_io provider and obtain required env_vars
-    vector_io_provider = params.get("vector_io_provider") or "milvus"
+    vector_io_provider = params.get("vector_io_provider") or "milvus-remote"
     env_vars_vector_io = vector_io_provider_deployment_config_factory(provider_name=vector_io_provider)
     env_vars.extend(env_vars_vector_io)
 
@@ -167,8 +146,8 @@ def build_ogx_server_config(
         "distribution": {"name": "rh-dev"},
         "workload": {
             "resources": {
-                "requests": {"cpu": cpu_requests, "memory": "3Gi"},
-                "limits": {"cpu": cpu_limits, "memory": "6Gi"},
+                "requests": {"cpu": cpu_requests, "memory": "1Gi"},
+                "limits": {"cpu": cpu_limits, "memory": "2Gi"},
             },
             "overrides": {
                 "env": env_vars,
