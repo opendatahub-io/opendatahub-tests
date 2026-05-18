@@ -1,7 +1,11 @@
 from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
-
+import subprocess
+import csv
+import os
+import re
+from datetime import datetime
 import portforward
 import pytest
 import structlog
@@ -108,20 +112,23 @@ def run_raw_inference(
     isvc: InferenceService,
     port: int,
     endpoint: str,
-    chat_query: list[list[dict[str, str]]] = CHAT_QUERY,
+    chat_query: list[list[dict[str, str]]] | None = None,
+    #chat_query: list[list[dict[str, str]]] = CHAT_QUERY,
     completion_query: list[dict[str, str]] = COMPLETION_QUERY,
     tool_calling: dict[Any, Any] | None = None,
 ) -> tuple[Any, list[Any], list[Any]]:
+    chat_query = chat_query or CHAT_QUERY
     LOGGER.info(pod_name)
     with portforward.forward(
         pod_or_service=pod_name,
         namespace=isvc.namespace,
-        from_port=port,
+        from_port=0,
         to_port=port,
-    ):
+    ) as pf:
+        local_port = pf.from_port
         if endpoint == "tgis":
             model_detail, grpc_chat_response, grpc_chat_stream_responses = fetch_tgis_response(
-                url=f"localhost:{port}",
+                url=f"localhost:{local_port}",
                 model_name=isvc.instance.metadata.name,
                 completion_query=completion_query,
             )
@@ -129,7 +136,7 @@ def run_raw_inference(
 
         elif endpoint == "openai":
             model_info, completion_responses, stream_completion_responses = fetch_openai_response(
-                url=f"http://localhost:{port}",
+                url=f"http://localhost:{local_port}",
                 model_name=isvc.instance.metadata.name,
                 chat_query=chat_query,
                 completion_query=completion_query,
@@ -199,3 +206,87 @@ def validate_raw_tgis_inference_request(
 def skip_if_not_deployment_mode(isvc: InferenceService, deployment_type: str) -> None:
     if isvc.instance.metadata.annotations["serving.kserve.io/deploymentMode"] != deployment_type:
         pytest.skip(f"Test is being skipped because model is not being deployed in {deployment_type} mode")
+
+
+#Performance Helper Methods
+
+def get_vllm_version(namespace, pod_name):
+    cmd = f'oc exec -n {namespace} {pod_name} -- python -c "import vllm; print(vllm.__version__)"'
+    result = subprocess.check_output(cmd, shell=True, text=True)
+    return result.strip()
+
+def get_vllm_throughput_logs(namespace, pod_name):
+    cmd = f"oc logs -n {namespace} {pod_name} | grep 'Avg prompt throughput'"
+    result = subprocess.getoutput(cmd)
+    return result
+
+def parse_vllm_logs(logs, start_time, used_entries):
+    parsed = []
+
+    try:
+        start_dt = datetime.strptime(start_time, "%H:%M:%S")
+    except Exception:
+        start_dt = None
+
+    for line in logs.split("\n"):
+        time_match = re.search(r"(\d{2}:\d{2}:\d{2})", line)
+        if not time_match:
+            continue
+
+        try:
+            log_dt = datetime.strptime(time_match.group(1), "%H:%M:%S")
+        except Exception:
+            continue
+
+        # Filter only new logs (AFTER request)
+        if start_dt and (log_dt - start_dt).total_seconds() < 0:
+            continue
+        # Avoid duplicate log lines
+        if line in used_entries:
+            continue
+
+        match = re.search(
+            r"Avg prompt throughput: ([\d.]+) tokens/s, Avg generation throughput: ([\d.]+) tokens/s",
+            line
+        )
+
+        if match:
+            parsed.append({
+                "prompt_tokens_per_sec": float(match.group(1)),
+                "generation_tokens_per_sec": float(match.group(2))
+            })
+            used_entries.add(line)
+
+    return parsed
+
+def save_performance_report(model_name, version, logs, request_type, input_prompt, start_time, used_entries):
+    parsed_logs = parse_vllm_logs(logs, start_time, used_entries)
+
+    last = parsed_logs[-1] if parsed_logs else {}
+    max_prompt = max([x["prompt_tokens_per_sec"] for x in parsed_logs], default=0)
+    max_generation = max([x["generation_tokens_per_sec"] for x in parsed_logs], default=0)
+
+    file_exists = os.path.isfile("performance_report.csv")
+    with open("performance_report.csv", "a", newline="") as f:
+        writer = csv.writer(f)
+        if not file_exists:
+            writer.writerow([
+                "model",
+                "vllm_version",
+                "request_type",
+                "input_prompt",
+                "last_prompt_tokens_per_sec",
+                "last_generation_tokens_per_sec",
+                "max_prompt_tokens_per_sec",
+                "max_generation_tokens_per_sec"
+                ])
+        writer.writerow([
+            model_name,
+            version,
+            request_type,
+            input_prompt,
+            last.get("prompt_tokens_per_sec", 0),
+            last.get("generation_tokens_per_sec", 0),
+            max_prompt,
+            max_generation
+            ])        

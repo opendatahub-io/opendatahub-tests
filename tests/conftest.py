@@ -197,6 +197,22 @@ def valid_aws_config(aws_access_key_id: str, aws_secret_access_key: str) -> tupl
     Fails fast at session start if credentials are missing or expired, instead of waiting
     minutes for storage-initializer pods to time out on the cluster.
     """
+    
+    # ✅ Explicit opt-out
+    if os.environ.get("SKIP_AWS_CREDENTIAL_VALIDATION", "").lower() in ("1", "true", "yes"):
+        return aws_access_key_id, aws_secret_access_key
+
+    # ✅ Auto-detect non-AWS S3 endpoints
+    endpoint = (
+        os.environ.get("MODELS_S3_BUCKET_ENDPOINT")
+        or os.environ.get("CI_S3_BUCKET_ENDPOINT")
+        or ""
+    )
+
+    if endpoint and "amazonaws.com" not in endpoint:
+        return aws_access_key_id, aws_secret_access_key
+
+
     now = datetime.datetime.now(tz=datetime.UTC)
     datestamp = now.strftime(format="%Y%m%d")
     amzdate = now.strftime(format="%Y%m%dT%H%M%SZ")
@@ -921,7 +937,7 @@ def gpu_count_on_cluster(nodes: list[Any]) -> int:
             if key in allowed_exact or any(key.startswith(p) for p in allowed_prefixes):
                 try:
                     total_gpus += int(val)
-                except ValueError, TypeError:
+                except (ValueError, TypeError):
                     LOGGER.debug(f"Skipping non-integer allocatable for {key} on {node.name}: {val!r}")
                     continue
     return total_gpus

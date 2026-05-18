@@ -34,7 +34,14 @@ def serving_runtime(
     supported_accelerator_type: str,
     vllm_runtime_image: str,
 ) -> Generator[ServingRuntime]:
-    accelerator_type = supported_accelerator_type.lower()
+    #accelerator_type = supported_accelerator_type.lower()
+    
+    accelerator_type = (
+        supported_accelerator_type.lower()
+        if supported_accelerator_type
+        else "cpu"
+    )
+
     template_name = TEMPLATE_MAP.get(accelerator_type, RuntimeTemplates.VLLM_CUDA)
     with ServingRuntimeFromTemplate(
         client=admin_client,
@@ -45,6 +52,24 @@ def serving_runtime(
         runtime_image=vllm_runtime_image,
         support_tgis_open_ai_endpoints=True,
     ) as model_runtime:
+
+        runtime_dict = model_runtime.instance.to_dict()
+        container = runtime_dict["spec"]["containers"][0]
+        container.setdefault("env", [])
+
+        # Append new env variable (don't overwrite existing ones)
+        container["env"].append({
+            "name": "VLLM_CPU_KVCACHE_SPACE",
+            "value": "4"
+        })
+
+        if "args" in container:
+            container["args"] = list(dict.fromkeys(container["args"]))
+
+        # Apply update
+        #model_runtime.update(model_runtime.instance.to_dict())
+        model_runtime.update(resource_dict=runtime_dict)
+
         yield model_runtime
 
 
@@ -68,22 +93,40 @@ def vllm_inference_service(
         "model_service_account": vllm_model_service_account.name,
         "deployment_mode": request.param.get("deployment_mode", KServeDeploymentType.RAW_DEPLOYMENT),
     }
-    accelerator_type = supported_accelerator_type.lower()
+    #accelerator_type = supported_accelerator_type.lower()
+    accelerator_type = (
+        supported_accelerator_type.lower()
+        if supported_accelerator_type
+        else "cpu"
+    )
     gpu_count = request.param.get("gpu_count")
     timeout = request.param.get("timeout")
-    identifier = ACCELERATOR_IDENTIFIER.get(accelerator_type, Labels.Nvidia.NVIDIA_COM_GPU)
+    #identifier = ACCELERATOR_IDENTIFIER.get(accelerator_type, Labels.Nvidia.NVIDIA_COM_GPU)
     resources: Any = PREDICT_RESOURCES["resources"]
-    resources["requests"][identifier] = gpu_count
-    resources["limits"][identifier] = gpu_count
+    if gpu_count:
+        identifier = ACCELERATOR_IDENTIFIER.get(
+                accelerator_type, Labels.Nvidia.NVIDIA_COM_GPU
+        )
+    #resources: Any = PREDICT_RESOURCES["resources"]
+        resources["requests"][identifier] = gpu_count
+        resources["limits"][identifier] = gpu_count
     isvc_kwargs["resources"] = resources
     if timeout:
         isvc_kwargs["timeout"] = timeout
-    if gpu_count > 1:
+    if gpu_count and gpu_count > 1:
         isvc_kwargs["volumes"] = PREDICT_RESOURCES["volumes"]
         isvc_kwargs["volumes_mounts"] = PREDICT_RESOURCES["volume_mounts"]
     if arguments := request.param.get("runtime_argument"):
-        arguments = [arg for arg in arguments if not arg.startswith(("--tensor-parallel-size", "--quantization"))]
-        arguments.append(f"--tensor-parallel-size={gpu_count}")
+
+        arguments = [
+            arg for arg in arguments
+            if not arg.startswith(("--tensor-parallel-size", "--quantization"))
+        ]
+        if gpu_count:
+            arguments.append(f"--tensor-parallel-size={gpu_count}")
+
+        #arguments = [arg for arg in arguments if not arg.startswith(("--tensor-parallel-size", "--quantization"))]
+        #arguments.append(f"--tensor-parallel-size={gpu_count}")
         if quantization := request.param.get("quantization"):
             validate_supported_quantization_schema(q_type=quantization)
             arguments.append(f"--quantization={quantization}")

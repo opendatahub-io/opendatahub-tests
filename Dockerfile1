@@ -1,0 +1,35 @@
+FROM registry.access.redhat.com/ubi9/ubi:latest
+
+# -------- arguments
+ARG USER=apbansal
+ARG HOME=/home/apbansal
+ARG TESTS_DIR=/home/apbansal/opendatahub-tests
+
+# -------- environment
+ENV HOME=${HOME}
+ENV PYTHONUNBUFFERED=1
+ENV PATH="${HOME}/.local/bin:${PATH}"
+
+# -------- system deps
+RUN dnf update -y && \
+    dnf install -y \
+        python3 python3-pip \
+        git curl wget \
+        openssl openssl-devel \
+        gcc gcc-c++ make \
+    dnf clean all
+
+# -------- user
+RUN useradd -m -s /bin/bash ${USER}
+USER ${USER}
+WORKDIR ${HOME}
+
+# -------- copy repo
+WORKDIR ${TESTS_DIR}
+COPY --chown=${USER}:${USER} . ${TESTS_DIR}
+
+# -------- python deps (NO uv for local image)
+RUN python3 -m pip install --upgrade pip \
+    && python3 -m pip install -r requirements.txt
+
+ENTRYPOINT ["pytest"]

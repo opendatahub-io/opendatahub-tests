@@ -22,6 +22,7 @@ warn_unused_ignores = true
 ignore_missing_imports = true
 
 [tool.uv.sources]
+grpcio = { path = "wheels/grpcio-1.80.0+ppc64le1-cp312-cp312-manylinux_2_34_ppc64le.whl" }
 
 [dependency-groups]
 dev = [
@@ -31,12 +32,12 @@ dev = [
 ]
 
 [project]
-requires-python = "==3.14.*"
+requires-python = "==3.12.*"
 name = "opendatahub-tests"
 version = "0.1.0"
 description = "Tests repository for Open Data Hub (ODH)"
 authors = []
-license = {text = "Apache License (2.0)"}
+license = { text = "Apache License (2.0)" }
 readme = "README.md"
 keywords = ["Openshift", "RHOAI", "ODH"]
 classifiers = [
@@ -57,8 +58,9 @@ dependencies = [
     "requests",
     "pytest-asyncio",
     "syrupy",
-    "protobuf",
-    "grpcio-reflection",
+    "protobuf>=5,<7",
+    "grpcio==1.80.0",
+    "grpcio-reflection==1.80.0",
     "portforward>=0.7.1",
     "pytest-testconfig>=0.2.0",
 
@@ -79,6 +81,7 @@ dependencies = [
     "pytest>=9.0.0",
     "huggingface-hub>=1.2.3",
 ]
+
 
 [project.urls]
 homepage = "https://github.com/opendatahub-io/opendatahub-tests"

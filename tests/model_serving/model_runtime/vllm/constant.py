@@ -14,6 +14,7 @@ ACCELERATOR_IDENTIFIER: dict[str, str] = {
 }
 
 TEMPLATE_MAP: dict[str, str] = {
+    "cpu": "vllm-cpu-runtime-template",
     AcceleratorType.NVIDIA: RuntimeTemplates.VLLM_CUDA,
     AcceleratorType.AMD: RuntimeTemplates.VLLM_ROCM,
     AcceleratorType.GAUDI: RuntimeTemplates.VLLM_GAUDI,
@@ -30,7 +31,7 @@ PREDICT_RESOURCES: dict[str, list[dict[str, str | dict[str, str]]] | dict[str, d
         {"name": "tmp", "mountPath": "/tmp"},
         {"name": "home", "mountPath": "/home/vllm"},
     ],
-    "resources": {"requests": {"cpu": "2", "memory": "15Gi"}, "limits": {"cpu": "3", "memory": "16Gi"}},
+    "resources": {"requests": {"cpu": "12", "memory": "64Gi"}, "limits": {"cpu": "12", "memory": "64Gi"}},
 }
 
 COMPLETION_QUERY: list[dict[str, str]] = [

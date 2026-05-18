@@ -173,7 +173,7 @@ def create_ns(
             project.clean_up()
 
 
-def wait_for_replicas_in_deployment(deployment: Deployment, replicas: int, timeout: int = Timeout.TIMEOUT_2MIN) -> None:
+def wait_for_replicas_in_deployment(deployment: Deployment, replicas: int, timeout: int = 1800) -> None:
     """
     Wait for replicas in deployment to updated in spec.
 
@@ -211,7 +211,8 @@ def wait_for_inference_deployment_replicas(
     expected_num_deployments: int = 1,
     labels: str = "",
     deployed: bool = True,
-    timeout: int = Timeout.TIMEOUT_5MIN,
+    #timeout: int = Timeout.TIMEOUT_5MIN,
+    timeout: int = 1800,
 ) -> list[Deployment]:
     """
     Wait for inference deployment replicas to complete.
@@ -735,7 +736,8 @@ def verify_no_failed_pods(
     client: DynamicClient,
     isvc: InferenceService,
     runtime_name: str | None = None,
-    timeout: int = Timeout.TIMEOUT_5MIN,
+    timeout: int = 1800,
+    #timeout: int = Timeout.TIMEOUT_5MIN,
 ) -> None:
     """
     Verify pods created and no failed pods.
@@ -984,7 +986,7 @@ def wait_for_serverless_pods_deletion(resource: Project | Namespace, admin_clien
                 LOGGER.info(f"Waiting for {KServeDeploymentType.SERVERLESS} pod {pod.name} to be deleted")
                 pod.wait_deleted(timeout=Timeout.TIMEOUT_1MIN)
 
-        except ResourceNotFoundError, NotFoundError:
+        except (ResourceNotFoundError, NotFoundError):
             LOGGER.info(f"Pod {pod.name} is deleted")
 
 

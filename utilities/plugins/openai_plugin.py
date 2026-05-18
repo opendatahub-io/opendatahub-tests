@@ -62,7 +62,8 @@ class OpenAIClient:
         data = self._construct_request_data(endpoint, query, extra_param)
         try:
             url = f"{self.host}{endpoint}"
-            response = requests.post(url, headers=headers, json=data, verify=False)
+            LOGGER.info(f"Sending request to {url} with timeout=1200s")
+            response = requests.post(url, headers=headers, json=data, verify=False, timeout=(60, 1200))
             LOGGER.info(response)
             response.raise_for_status()
             message = response.json()
@@ -95,7 +96,8 @@ class OpenAIClient:
         tokens = []
         try:
             url = f"{self.host}{endpoint}"
-            response = requests.post(url, headers=headers, json=data, verify=False, stream=True)
+            LOGGER.info(f"Streaming request to {url} with timeout=1200s")
+            response = requests.post(url, headers=headers, json=data, verify=False, stream=True, timeout=(60, 1200))
             LOGGER.info(response)
             response.raise_for_status()
             for line in response.iter_lines():
@@ -104,7 +106,7 @@ class OpenAIClient:
                     message = json.loads(data)
                     token = self._parse_streaming_response(endpoint, message)
                     tokens.append(token)
-        except requests.exceptions.RequestException, json.JSONDecodeError:
+        except (requests.exceptions.RequestException, json.JSONDecodeError):
             LOGGER.error("Streaming request error")
             raise
         return "".join(tokens)
@@ -137,7 +139,7 @@ class OpenAIClient:
             if data:
                 data = OpenAIClient._remove_keys(data, keys_to_remove)
             return data
-        except requests.exceptions.RequestException, json.JSONDecodeError:
+        except (requests.exceptions.RequestException, json.JSONDecodeError):
             LOGGER.exception("Request error")
 
     @retry(stop=stop_after_attempt(MAX_RETRIES), wait=wait_exponential(min=1, max=6))
