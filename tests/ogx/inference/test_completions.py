@@ -1,8 +1,8 @@
 import pytest
 import structlog
-from llama_stack_client import LlamaStackClient
+from ogx_client import OgxClient
 
-from tests.llama_stack.constants import ModelInfo
+from tests.ogx.constants import ModelInfo
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -11,36 +11,36 @@ LOGGER = structlog.get_logger(name=__name__)
     "unprivileged_model_namespace",
     [
         pytest.param(
-            {"name": "test-llamastack-infer-completions", "randomize_name": True},
+            {"name": "test-ogx-infer-completions", "randomize_name": True},
         ),
     ],
     indirect=True,
 )
-@pytest.mark.llama_stack
-class TestLlamaStackInferenceCompletions:
-    """Test class for LlamaStack Inference API for Chat Completions and Completions
+@pytest.mark.ogx
+class TestOgxInferenceCompletions:
+    """Test class for OGX Inference API for Chat Completions and Completions
 
     For more information about this API, see:
-    - https://llamastack.github.io/docs/references/python_sdk_reference#inference
+    - https://ogx-ai.github.io/docs/references/python_sdk_reference#inference
     - https://github.com/openai/openai-python/blob/main/api.md#completions-1
     """
 
     @pytest.mark.tier1
     def test_inference_chat_completion(
         self,
-        llama_stack_client: LlamaStackClient,
-        llama_stack_models: ModelInfo,
+        ogx_client: OgxClient,
+        ogx_models: ModelInfo,
     ) -> None:
         """Test chat completion functionality with a simple ACK response."""
-        response = llama_stack_client.chat.completions.create(
-            model=llama_stack_models.model_id,
+        response = ogx_client.chat.completions.create(
+            model=ogx_models.model_id,
             messages=[
                 {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": "Just respond ACK."},
             ],
             temperature=0,
         )
-        assert len(response.choices) > 0, "No response after basic inference on llama-stack server"
+        assert len(response.choices) > 0, "No response after basic inference on ogx server"
 
         # Check if response has the expected structure and content
         content = response.choices[0].message.content
@@ -50,14 +50,14 @@ class TestLlamaStackInferenceCompletions:
     @pytest.mark.tier1
     def test_inference_completion(
         self,
-        llama_stack_client: LlamaStackClient,
-        llama_stack_models: ModelInfo,
+        ogx_client: OgxClient,
+        ogx_models: ModelInfo,
     ) -> None:
         """Test text completion functionality with a geography question."""
-        response = llama_stack_client.completions.create(
-            model=llama_stack_models.model_id, prompt="What is the capital of Catalonia?", max_tokens=20, temperature=0
+        response = ogx_client.completions.create(
+            model=ogx_models.model_id, prompt="What is the capital of Catalonia?", max_tokens=20, temperature=0
         )
-        assert len(response.choices) > 0, "No response after basic inference on llama-stack server"
+        assert len(response.choices) > 0, "No response after basic inference on ogx server"
 
         # Check if response has the expected structure and content
         content = response.choices[0].text.lower()

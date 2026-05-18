@@ -1,4 +1,4 @@
-"""Lightweight dataset loader for Llama Stack test fixtures.
+"""Lightweight dataset loader for OGX test fixtures.
 
 Uses the standard ``json`` module to avoid heavy dependencies like
 ``datasets`` / ``pyarrow``.  Functions are generic path-based.
@@ -157,8 +157,8 @@ class Dataset:
 
 
 FINANCE_DATASET = Dataset(
-    qa_path="tests/llama_stack/dataset/ground_truth/finance_qa.jsonl",
-    documents=_load_documents_from_manifest("tests/llama_stack/dataset/corpus/finance/documents.json"),
+    qa_path="tests/ogx/dataset/ground_truth/finance_qa.jsonl",
+    documents=_load_documents_from_manifest("tests/ogx/dataset/corpus/finance/documents.json"),
 )
 
 # Subsets below reuse the shared finance_qa.jsonl as their qa_path.  This works
@@ -166,18 +166,18 @@ FINANCE_DATASET = Dataset(
 # present in self.documents, so only the questions relevant to the subset's
 # documents are returned even though the JSONL contains entries for all quarters.
 IBM_2025_Q4_EARNINGS = Dataset(
-    qa_path="tests/llama_stack/dataset/ground_truth/finance_qa.jsonl",
+    qa_path="tests/ogx/dataset/ground_truth/finance_qa.jsonl",
     documents=_load_documents_from_manifest(
-        "tests/llama_stack/dataset/corpus/finance/documents.json",
+        "tests/ogx/dataset/corpus/finance/documents.json",
         document_ids=["ibm_4q25_earnings_pr"],
     ),
 )
 
 IBM_2025_Q4_EARNINGS_ENCRYPTED = Dataset(
-    qa_path="tests/llama_stack/dataset/ground_truth/finance_qa.jsonl",
+    qa_path="tests/ogx/dataset/ground_truth/finance_qa.jsonl",
     documents=(
         DatasetDocument(
-            path="tests/llama_stack/dataset/corpus/pdf-testing/ibm-4q25-press-release-encrypted.pdf",
+            path="tests/ogx/dataset/corpus/pdf-testing/ibm-4q25-press-release-encrypted.pdf",
             document_id="ibm_4q25_earnings_pr",
             attributes={
                 "entity_symbol": "IBM",
