@@ -325,7 +325,7 @@ def ogx_models(ogx_client: OgxClient) -> ModelInfo:
     """
     models = ogx_client.models.list()
 
-    model_id = next(m for m in models.data if m.custom_metadata["model_type"] == "llm").id
+    model_id = next(model for model in models.data if model.custom_metadata["model_type"] == "llm").id
 
     # Ensure getting the right embedding model depending on the available providers
     providers = ogx_client.providers.list()
@@ -338,9 +338,10 @@ def ogx_models(ogx_client: OgxClient) -> ModelInfo:
         raise ValueError("No embedding provider found")
 
     embedding_model = next(
-        m
-        for m in models.data
-        if m.custom_metadata["model_type"] == "embedding" and m.custom_metadata["provider_id"] == target_provider_id
+        model
+        for model in models.data
+        if model.custom_metadata["model_type"] == "embedding"
+        and model.custom_metadata["provider_id"] == target_provider_id
     )
     embedding_dimension = int(embedding_model.custom_metadata["embedding_dimension"])
 
