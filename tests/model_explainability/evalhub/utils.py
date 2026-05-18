@@ -1,3 +1,5 @@
+from typing import Any
+
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
@@ -808,6 +810,45 @@ def tenant_rbac_absent(admin_client: DynamicClient, namespace: str) -> bool:
     cms = list(ConfigMap.get(client=admin_client, namespace=namespace))
     has_service_ca_cm = any(cm.name.startswith(EVALHUB_MT_CR_NAME) and "service-ca" in cm.name for cm in cms)
     return not has_job_config and not has_job_writer and not has_job_sa and not has_service_ca_cm
+
+
+# ---------------------------------------------------------------------------
+# NetworkPolicy helpers
+# ---------------------------------------------------------------------------
+
+MONITORING_NAMESPACE: str = "openshift-user-workload-monitoring"
+NAMESPACE_NAME_LABEL: str = "kubernetes.io/metadata.name"
+
+
+def rule_covers_metrics_port(rule: dict[str, Any], service_port: int, monitor_port: int) -> bool:
+    """Return True if an ingress rule applies to the given metrics ports."""
+    ports = rule.get("ports")
+    if ports is None:
+        return True
+    return any(p.get("port") in (service_port, monitor_port) for p in ports)
+
+
+def policy_restricts_metrics_port(spec: dict[str, Any], service_port: int, monitor_port: int) -> bool:
+    """Return True if a NetworkPolicy spec restricts ingress on the metrics port."""
+    policy_types = spec.get("policyTypes")
+    if policy_types is None:
+        if not spec.get("ingress"):
+            return False
+    elif "Ingress" not in policy_types:
+        return False
+    ingress_rules = spec.get("ingress") or []
+    if not ingress_rules:
+        return True
+    return any(rule_covers_metrics_port(rule, service_port, monitor_port) for rule in ingress_rules)
+
+
+def monitoring_allowed_by_rule(rule: dict[str, Any]) -> bool:
+    """Return True if an ingress rule's from list allows the monitoring namespace."""
+    return any(
+        (ns_sel := fr.get("namespaceSelector", {}))
+        and ns_sel.get("matchLabels", {}).get(NAMESPACE_NAME_LABEL) == MONITORING_NAMESPACE
+        for fr in (rule.get("from") or [])
+    )
 
 
 # ---------------------------------------------------------------------------

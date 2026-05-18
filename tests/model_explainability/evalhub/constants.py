@@ -63,6 +63,14 @@ GARAK_JOB_POLL_INTERVAL: int = 30  # seconds
 EVALHUB_JOB_SA_PREFIX: str = "evalhub-"
 EVALHUB_JOB_SA_SUFFIX: str = "-job"
 
+# ServiceMonitor
+EVALHUB_SERVICE_MONITOR_SUFFIX: str = "-metrics"
+EVALHUB_SERVICE_MONITOR_SCRAPE_INTERVAL: str = "30s"
+EVALHUB_SERVICE_MONITOR_PORT: str = "https"
+EVALHUB_SERVICE_MONITOR_SCHEME: str = "https"
+EVALHUB_SERVICE_CA_CONFIGMAP_SUFFIX: str = "-service-ca"
+EVALHUB_SERVICE_CA_CERT_KEY: str = "service-ca.crt"
+
 # Garak intents CSV
 GARAK_INTENTS_S3_KEY: str = "intents/misinformation_prompts.csv"
 MINIO_MC_IMAGE = "quay.io/minio/mc@sha256:470f5546b596e16c7816b9c3fa7a78ce4076bb73c2c73f7faeec0c8043923123"
