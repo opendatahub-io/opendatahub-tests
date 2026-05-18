@@ -8,6 +8,9 @@ from tests.model_registry.mcp_servers.config.utils import exclude_default_mcp_se
 from tests.model_registry.utils import execute_get_command
 
 LOGGER = structlog.get_logger(name=__name__)
+pytestmark = [
+    pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace"),
+]
 
 
 @pytest.mark.usefixtures("mcp_servers_configmap_patch")
