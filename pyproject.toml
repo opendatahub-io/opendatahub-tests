@@ -39,7 +39,7 @@ project-excludes = [
     "**/docs/**",
     "**/*test*.py",  # Tests have 700+ errors (fixtures, mocks, dynamic types)
     "**/utilities/manifests/**",
-    "**/utilities/plugins/tgis_grpc/**",
+    "**/utilities/plugins/tgis_grpc*",  # Includes tgis_grpc/ dir and tgis_grpc_plugin.py
     "**/__pycache__/**",
     "**/.mypy_cache/**",
     "**/.ruff_cache/**",

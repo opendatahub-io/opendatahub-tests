@@ -56,9 +56,8 @@ repos:
     hooks:
       - id: pyrefly-check
         name: Pyrefly (type checking)
-        language: system
         pass_filenames: false
-        exclude: ^(docs/|.*test.*\.py$|utilities/manifests/.*|utilities/plugins/tgis_grpc/.*)
+        exclude: ^(docs/|.*test.*\.py$|utilities/manifests/.*|utilities/plugins/tgis_grpc)
 
 
   - repo: local
