@@ -46,7 +46,7 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
     ],
     indirect=True,
 )
-class TestGranite2BModelCPU:
+class TestGranite8BModelCPU:
     def test_deploy_model_inference(
         self,
         vllm_inference_service,

@@ -47,7 +47,7 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
     ],
     indirect=True,
 )
-class TestGranite2BModelCPU:
+class TestGranite8BModelCPU:
     def test_deploy_model_inference(
         self,
         vllm_inference_service,
@@ -58,11 +58,6 @@ class TestGranite2BModelCPU:
         namespace_name = vllm_inference_service.namespace
         model_name = "granite-3.1-8b-instruct"
 
-        #custom_query = [
-        #        [
-         #           {"role": "user", "content": "Please list one IBM Research laboratory located in the United States. You should only output its name and location."}
-         #       ]
-        #]
 
         start_time = time.strftime("%H:%M:%S")
 
@@ -71,7 +66,6 @@ class TestGranite2BModelCPU:
             isvc=vllm_inference_service,
             port=Ports.REST_PORT,
             endpoint="openai"
-            #chat_query=custom_query,
         )
         
         time.sleep(2)
