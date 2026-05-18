@@ -181,6 +181,7 @@ API_EXCLUDED_FILTER_FIELDS = {
     "source_id",
     "logo",
     "license_link",
+    "serving_config",
     "artifacts.metricsType.string_value",  # artifact property with full name
     "artifacts.model_id.string_value",  # artifact property with full name
 }
@@ -202,7 +203,7 @@ JOIN "Artifact" a ON a.id = ap.artifact_id
 JOIN "Attribution" attr ON attr.artifact_id = a.id
 JOIN "Context" c ON c.id = attr.context_id
 WHERE ap.name ILIKE '%average%'
-ORDER BY ap.double_value {sort_order};
+ORDER BY ap.double_value {sort_order}, c.id ASC;
 """
 
 # SQL query for accuracy sorting with task filter database validation
@@ -226,7 +227,7 @@ AND EXISTS (
     AND cp.name = 'tasks'
     AND cp.string_value LIKE '%"{task_value}"%'
 )
-ORDER BY ap.double_value {sort_order};
+ORDER BY ap.double_value {sort_order}, c.id ASC;
 """
 
 # SQL query for getting models by source ID

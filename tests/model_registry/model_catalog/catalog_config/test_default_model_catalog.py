@@ -319,7 +319,11 @@ class TestModelCatalogDefaultData:
             comparable_fields = all_model_fields - {"license"}
             # Filter to only schema-defined fields for value comparison
             model_filtered = {key: value for key, value in model.items() if key in comparable_fields}
-            api_model_filtered = {key: value for key, value in api_model.items() if key in comparable_fields}
+            # Only compare API fields that exist in the YAML — the API may add default values
+            # (e.g., validatedTasks: []) for fields not present in the YAML
+            api_model_filtered = {
+                key: value for key, value in api_model.items() if key in comparable_fields and key in model_filtered
+            }
 
             differences = list(diff(model_filtered, api_model_filtered))
             if differences:
