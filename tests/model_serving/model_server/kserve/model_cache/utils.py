@@ -13,32 +13,41 @@ from utilities.infra import get_pods_by_isvc_label
 
 KSERVE_LOCALMODEL_LABEL: str = f"{ApiGroups.KSERVE}/localmodel"
 KSERVE_LOCALMODEL_PVC_ANNOTATION: str = f"{ApiGroups.KSERVE}/localmodel-pvc-name"
-MODEL_CACHE_JOBS_NAMESPACE: str = "kserve-localmodel-jobs"
-MODEL_CACHE_DOWNLOAD_SA: str = "kserve-localmodel-sa"
 LOCAL_MODEL_NODE_GROUP_NAME: str = "workers"
 MODEL_CACHE_AGENT_DAEMONSET: str = "kserve-localmodelnode-agent"
-MNIST_ONNX_S3_PATH: str = "test-dir"
+# S3 path inside the CI bucket that contains the MNIST ONNX model (test-dir/1/mnist-8.onnx)
+MINT_ONNX_STORAGE_PATH: str = "test-dir/1"
 
 
 class LocalModelCache(Resource):
-    """Cluster-scoped `LocalModelCache` CR (KServe `serving.kserve.io/v1alpha1`)."""
+    """Cluster-scoped `LocalModelCache` CR (KServe ``serving.kserve.io/v1alpha1``)."""
 
     api_group: str = Resource.ApiGroup.SERVING_KSERVE_IO
-    api_version: str = "v1alpha1"
 
     def __init__(
         self,
         source_model_uri: str,
         model_size: str,
         node_groups: list[str],
+        storage_key: str | None = None,
         service_account_name: str | None = None,
         **kwargs: Any,
     ) -> None:
-        """Build a `LocalModelCache` with model download source and target node groups."""
+        """Build a ``LocalModelCache`` with model download source and target node groups.
+
+        Args:
+            source_model_uri: Remote model URI (e.g. ``s3://bucket/path/``).
+            model_size: Upper bound for the cached model size (e.g. ``"100Mi"``).
+            node_groups: Names of ``LocalModelNodeGroup`` objects to cache on.
+            storage_key: Name of a kserve-annotated Secret in the operator job namespace
+                used to inject S3 credentials into the download Job.
+            service_account_name: SA name for credential injection (alternative to *storage_key*).
+        """
         super().__init__(**kwargs)
         self.source_model_uri = source_model_uri
         self.model_size = model_size
         self.node_groups = node_groups
+        self.storage_key = storage_key
         self.service_account_name = service_account_name
 
     def to_dict(self) -> None:
@@ -51,20 +60,21 @@ class LocalModelCache(Resource):
                 "modelSize": self.model_size,
                 "nodeGroups": self.node_groups,
             }
-            if self.service_account_name:
+            if self.storage_key:
+                spec["storage"] = {"key": self.storage_key}
+            elif self.service_account_name:
                 spec["serviceAccountName"] = self.service_account_name
             self.res["spec"] = spec
 
 
 class LocalModelNodeGroup(Resource):
-    """`LocalModelNodeGroup` CR provisioned by the operator for model-cache workers."""
+    """`LocalModelNodeGroup` CR provisioned by the operator for model-cache worker nodes."""
 
     api_group: str = Resource.ApiGroup.SERVING_KSERVE_IO
-    api_version: str = "v1alpha1"
 
 
 def resource_instance_to_dict(*, resource: Resource) -> dict[str, Any]:
-    """Return the wrapper's live object as a plain `dict`."""
+    """Return the wrapper's live object as a plain ``dict``."""
     resource.get()
     inst = resource.instance
     if hasattr(inst, "to_dict"):
@@ -75,24 +85,24 @@ def resource_instance_to_dict(*, resource: Resource) -> dict[str, Any]:
 
 
 def cache_status_dict(*, cache: LocalModelCache) -> dict[str, Any]:
-    """Read `status` from a `LocalModelCache` after refreshing from the API."""
+    """Read ``status`` from a ``LocalModelCache`` after refreshing from the API."""
     body = resource_instance_to_dict(resource=cache)
     status = body.get("status")
     return status if isinstance(status, dict) else {}
 
 
 def wait_for_local_model_cache_nodes_downloaded(*, cache: LocalModelCache, timeout: int) -> dict[str, Any]:
-    """Poll until every reported node reaches `NodeDownloaded` and copies are consistent.
+    """Poll until every reported node reaches ``NodeDownloaded`` and copies are consistent.
 
     Args:
-        cache: Active `LocalModelCache` resource handle.
+        cache: Active ``LocalModelCache`` resource handle.
         timeout: Maximum seconds to wait for downloads.
 
     Returns:
-        The cache `status` dict when successful.
+        The cache ``status`` dict when successful.
 
     Raises:
-        AssertionError: If the cache does not become ready in time.
+        AssertionError: If the cache does not become ready within *timeout* seconds.
     """
     try:
         for sample in TimeoutSampler(
@@ -131,7 +141,7 @@ def assert_predictor_storage_initializer_uses_pvc(
     isvc: InferenceService,
     runtime_name: str,
 ) -> None:
-    """Assert the storage initializer rewrote storage to a `pvc://` URI for the predictor Pod."""
+    """Assert the storage initializer rewrote storage to a ``pvc://`` URI for the predictor Pod."""
     pods = get_pods_by_isvc_label(client=client, isvc=isvc, runtime_name=runtime_name)
     pod = pods[0]
     spec = pod.instance.spec

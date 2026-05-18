@@ -1,3 +1,5 @@
+from typing import Any
+
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
@@ -20,22 +22,19 @@ pytestmark = [
 ]
 
 
-@pytest.mark.parametrize(
-    "unprivileged_model_namespace, ovms_kserve_serving_runtime",
-    [
-        pytest.param(
-            {"name": "kserve-model-cache-smoke"},
-            RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
-        )
-    ],
-    indirect=True,
-)
 class TestModelCacheSmoke:
     """Smoke coverage for KServe local model cache (TC-04, TC-05)."""
 
     @pytest.mark.slow
+    @pytest.mark.parametrize(
+        "unprivileged_model_namespace, ovms_kserve_serving_runtime",
+        [pytest.param({"name": "kserve-model-cache-smoke"}, RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG)],
+        indirect=True,
+    )
     def test_local_model_cache_reaches_node_downloaded(
         self,
+        unprivileged_model_namespace: Any,
+        ovms_kserve_serving_runtime: Any,
         mnist_local_model_cache: LocalModelCache,
     ) -> None:
         """TC-04: `LocalModelCache` reports `NodeDownloaded` and healthy `copies` for all nodes.
@@ -54,6 +53,11 @@ class TestModelCacheSmoke:
         assert copies.get("available") == copies.get("total")
         assert (copies.get("available") or 0) >= 1
 
+    @pytest.mark.parametrize(
+        "unprivileged_model_namespace, ovms_kserve_serving_runtime",
+        [pytest.param({"name": "kserve-model-cache-smoke"}, RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG)],
+        indirect=True,
+    )
     def test_inference_service_with_local_model_label_succeeds(
         self,
         unprivileged_client: DynamicClient,
