@@ -37,7 +37,7 @@ permissive-ignores = true  # Respect mypy ignore comments during transition
 # Exclude patterns matching pre-commit config
 project-excludes = [
     "**/docs/**",
-    "**/*test*.py",  # Matches .*test.*\.py pattern
+    "**/*test*.py",  # Tests have 700+ errors (fixtures, mocks, dynamic types)
     "**/utilities/manifests/**",
     "**/utilities/plugins/tgis_grpc/**",
     "**/__pycache__/**",
