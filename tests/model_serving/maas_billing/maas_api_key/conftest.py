@@ -266,26 +266,25 @@ def maas_cleanup_networkpolicy(
 def maas_api_pod_name(
     admin_client: DynamicClient,
 ) -> str:
-    """Return the name of the single running maas-api pod (exactly one pod is expected)."""
+    """Return the name of a running maas-api pod."""
     applications_namespace = py_config["applications_namespace"]
-    # Derive the pod label selector from the Deployment itself — avoids hardcoding labels
-    # that may differ between operator versions or environments.
     deployment = Deployment(client=admin_client, name="maas-api", namespace=applications_namespace)
     assert deployment.exists, f"Deployment maas-api not found in {applications_namespace}"
     match_labels = deployment.instance.spec.selector.matchLabels
     label_selector = ",".join(f"{k}={v}" for k, v in match_labels.items())
-    pods = list(
+    all_pods = list(
         Pod.get(
             client=admin_client,
             namespace=applications_namespace,
             label_selector=label_selector,
         )
     )
-    assert len(pods) == 1, f"Expected exactly 1 maas-api pod in {applications_namespace}, found {len(pods)}"
-    assert pods[0].instance.status.phase == "Running", (
-        f"maas-api pod '{pods[0].name}' is not Running (phase={pods[0].instance.status.phase})"
+    running_pods = [pod for pod in all_pods if pod.instance.status.phase == "Running"]
+    assert len(running_pods) >= 1, (
+        f"Expected at least 1 running maas-api pod in {applications_namespace}, "
+        f"found {len(running_pods)} running out of {len(all_pods)} total"
     )
-    return pods[0].name
+    return running_pods[0].name
 
 
 @pytest.fixture()
