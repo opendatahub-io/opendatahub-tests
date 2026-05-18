@@ -8,12 +8,14 @@ If you use Visual Studio Code as your IDE, we recommend using the [Pyrefly](http
 After installing it, the extension will automatically use the configuration from `pyproject.toml`.
 
 The Pyrefly extension provides:
+
 - Fast inline type checking (15x faster than mypy)
 - Auto-completion and hover tooltips
 - Go-to-definition and find references
 - Type inference without annotations
 
 **Installation:**
+
 ```bash
 code --install-extension meta.pyrefly
 ```
@@ -25,6 +27,7 @@ Alternatively, use the `.vscode/settings.json` workspace configuration provided 
 PyCharm 2026.1.2 and later have native Pyrefly integration.
 
 **Enable Pyrefly:**
+
 1. Click the **Type widget** at the bottom of the PyCharm window
 2. Select "Use Pyrefly" from the dropdown
 3. PyCharm will install Pyrefly automatically if not present
