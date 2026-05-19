@@ -223,7 +223,7 @@ def wait_for_ogx_client_ready(client: OgxClient) -> bool:
         LOGGER.info(
             f"OGX server is available! "
             f"(version:{version.version} "
-            f"models:{len(models)} "
+            f"models:{len(models.data)} "
             f"vector_stores:{len(vector_stores.data)} "
             f"files:{len(files.data)})"
         )
