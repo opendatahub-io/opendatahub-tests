@@ -18,7 +18,11 @@ from tests.model_registry.utils import execute_get_command
 LOGGER = structlog.get_logger(name=__name__)
 REQUIRED_SERVER_FIELDS: list[str] = ["name", "version", "description", "readme"]
 
-pytestmark = [pytest.mark.install, pytest.mark.post_upgrade]
+pytestmark = [
+    pytest.mark.install,
+    pytest.mark.post_upgrade,
+    pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace"),
+]
 
 
 @pytest.mark.smoke

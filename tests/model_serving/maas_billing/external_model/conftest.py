@@ -86,7 +86,6 @@ def external_model_ref(
         teardown=True,
         wait_for_resource=True,
     ) as model_ref:
-        model_ref.wait_for_condition(condition="Ready", status="True", timeout=600)
         yield model_ref
 
 
@@ -120,6 +119,7 @@ def external_model_subscription(
     admin_client: DynamicClient,
     maas_subscription_namespace: Namespace,
     external_model_ref: MaaSModelRef,
+    external_model_auth_policy: MaaSAuthPolicy,
 ) -> Generator[MaaSSubscription, Any, Any]:
     """MaaSSubscription for the external model with generous token limits."""
     with MaaSSubscription(
@@ -139,6 +139,7 @@ def external_model_subscription(
         wait_for_resource=True,
     ) as subscription:
         subscription.wait_for_condition(condition="Ready", status="True", timeout=300)
+        external_model_ref.wait_for_condition(condition="Ready", status="True", timeout=300)
         yield subscription
 
 

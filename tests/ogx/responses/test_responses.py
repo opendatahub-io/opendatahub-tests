@@ -1,36 +1,36 @@
 import pytest
-from llama_stack_client import LlamaStackClient
+from ogx_client import OgxClient
 
-from tests.llama_stack.constants import ModelInfo
+from tests.ogx.constants import ModelInfo
 
 
 @pytest.mark.parametrize(
     "unprivileged_model_namespace",
     [
         pytest.param(
-            {"name": "test-llamastack-responses", "randomize_name": True},
+            {"name": "test-ogx-responses", "randomize_name": True},
         ),
     ],
     indirect=True,
 )
 @pytest.mark.rag
 @pytest.mark.skip_must_gather
-class TestLlamaStackResponses:
-    """Test class for LlamaStack responses API functionality.
+class TestOgxResponses:
+    """Test class for OGX responses API functionality.
 
     For more information about this API, see:
-    - https://github.com/llamastack/llama-stack-client-python/blob/main/api.md#responses
+    - https://github.com/ogx-ai/ogx-client-python/blob/main/api.md#responses
     - https://github.com/openai/openai-python/blob/main/api.md#responses
     """
 
     @pytest.mark.tier1
     def test_responses_create(
         self,
-        llama_stack_client: LlamaStackClient,
-        llama_stack_models: ModelInfo,
+        ogx_client: OgxClient,
+        ogx_models: ModelInfo,
     ) -> None:
         """
-        Test simple responses API from the llama-stack server.
+        Test simple responses API from the ogx server.
 
         Validates basic text generation capabilities using the responses API endpoint.
         Tests factual questions with constrained answers to ensure the LLM can
@@ -45,8 +45,8 @@ class TestLlamaStackResponses:
         ]
 
         for question, expected_keywords in test_cases:
-            response = llama_stack_client.responses.create(
-                model=llama_stack_models.model_id,
+            response = ogx_client.responses.create(
+                model=ogx_models.model_id,
                 input=question,
                 instructions="You are a helpful assistant.",
                 temperature=0.0,

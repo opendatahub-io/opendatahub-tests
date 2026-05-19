@@ -8,6 +8,7 @@ from ocp_resources.pod import Pod
 
 from tests.model_registry.model_catalog.constants import (
     CATALOG_CONTAINER,
+    MODEL_ARTIFACT_TYPE,
     PERFORMANCE_DATA_DIR,
     VALIDATED_CATALOG_ID,
 )
@@ -69,3 +70,30 @@ def model_with_benchmark_metadata(
     model_name = random.choice(seq=eligible)
     LOGGER.info(f"Picked model with benchmark metadata: {model_name}")
     return api_models[model_name], model_name, VALIDATED_CATALOG_ID
+
+
+@pytest.fixture(scope="class")
+def validated_model_artifact_uris(
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+) -> dict[str, list[str]]:
+    """Map of model name to its model-artifact URIs for all validated models."""
+    models_response = execute_get_command(
+        url=f"{model_catalog_rest_url[0]}models?source={VALIDATED_CATALOG_ID}&pageSize=1000",
+        headers=model_registry_rest_headers,
+    )
+    models = models_response.get("items", [])
+    assert models, f"No models found in {VALIDATED_CATALOG_ID} catalog"
+    LOGGER.info(f"Fetching model-artifact URIs for {len(models)} validated models")
+
+    result: dict[str, list[str]] = {}
+    for model in models:
+        model_name = model["name"]
+        artifacts_url = (
+            f"{model_catalog_rest_url[0]}sources/{VALIDATED_CATALOG_ID}"
+            f"/models/{model_name}/artifacts?pageSize=100&artifactType={MODEL_ARTIFACT_TYPE}"
+        )
+        artifacts_response = execute_get_command(url=artifacts_url, headers=model_registry_rest_headers)
+        result[model_name] = [artifact.get("uri", "") for artifact in artifacts_response.get("items", [])]
+
+    return result

@@ -200,7 +200,7 @@ def validate_accuracy_sorting_against_database(
     sort_order: str | None,
     namespace: str = "rhoai-model-registries",
     task_filter: str | None = None,
-) -> bool:
+) -> list[str]:
     """
     Validate API accuracy sorting results against database query results.
 
@@ -220,8 +220,10 @@ def validate_accuracy_sorting_against_database(
         task_filter: Optional task filter value (e.g., "automatic-speech-recognition")
 
     Returns:
-        True if sorted correctly, False otherwise
+        Empty list if sorted correctly, list of error messages otherwise
     """
+    errors: list[str] = []
+
     # Get models with accuracy from database
     models_with_accuracy = get_models_by_accuracy_from_database(
         admin_client=admin_client, sort_order=sort_order or "ASC", namespace=namespace, task_filter=task_filter
@@ -251,25 +253,32 @@ def validate_accuracy_sorting_against_database(
         and api_models_without_accuracy
         and api_models_with_accuracy[-1][0] > api_models_without_accuracy[0][0]
     ):
-        LOGGER.error(
+        errors.append(
             f"Models without accuracy appear before models with accuracy. "
             f"Last with accuracy at index {api_models_with_accuracy[-1][0]}, "
             f"first without at index {api_models_without_accuracy[0][0]}"
         )
-        return False
 
     # Validate: models with accuracy are in correct order (or present if no sort_order)
     if api_models_with_accuracy and not _verify_models_with_accuracy_sorted(
         models=api_models_with_accuracy, expected_models=models_with_accuracy, sort_order=sort_order
     ):
-        return False
+        actual_names = [name for _, name in api_models_with_accuracy]
+        errors.append(
+            f"Models with accuracy in wrong order ({sort_order}):\n"
+            f"  Expected: {models_with_accuracy}\n"
+            f"  Actual:   {actual_names}"
+        )
 
     # Validate: models without accuracy are sorted by ID ASC
     if api_models_without_accuracy and not _verify_items_without_property_sorted(api_models_without_accuracy):
-        return False
+        ids = [int(item["id"]) for _, item in api_models_without_accuracy]
+        errors.append(f"Models without accuracy not sorted by ID ASC: {ids}")
 
-    LOGGER.info(f"All models validated successfully{filter_info}{sort_info}")
-    return True
+    if not errors:
+        LOGGER.info(f"All models validated successfully{filter_info}{sort_info}")
+
+    return errors
 
 
 def get_models_by_accuracy_from_database(

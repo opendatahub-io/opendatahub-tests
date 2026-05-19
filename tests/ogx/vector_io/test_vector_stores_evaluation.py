@@ -5,16 +5,16 @@ import structlog
 from ragas import EvaluationDataset, SingleTurnSample, evaluate
 from ragas.metrics import AnswerRelevancy, ContextPrecision, ContextRecall, Faithfulness
 
-from tests.llama_stack.constants import (
+from tests.ogx.constants import (
     ANSWER_RELEVANCY_THRESHOLD,
     CONTEXT_PRECISION_THRESHOLD,
     CONTEXT_RECALL_THRESHOLD,
     FAITHFULNESS_THRESHOLD,
 )
-from tests.llama_stack.datasets import (
+from tests.ogx.datasets import (
     FINANCE_DATASET,
 )
-from tests.llama_stack.utils import (
+from tests.ogx.utils import (
     mean_ragas_score,
 )
 
@@ -22,12 +22,12 @@ LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, llama_stack_distribution, vector_store, dataset",
+    "unprivileged_model_namespace, ogx_server, vector_store, dataset",
     [
         pytest.param(
-            {"name": "test-llamastack-ragas-eval", "randomize_name": True},
+            {"name": "test-ogx-ragas-eval", "randomize_name": True},
             {
-                "llama_stack_storage_size": "2Gi",
+                "ogx_storage_size": "2Gi",
                 "vector_io_provider": "pgvector",
                 "embedding_provider": "vllm-embedding",
                 "files_provider": "s3",
@@ -40,12 +40,12 @@ LOGGER = structlog.get_logger(name=__name__)
     indirect=True,
 )
 @pytest.mark.rag
-class TestLlamaStackRagasEval:
+class TestOgxRagasEval:
     """
-    Integration tests for evaluating the LlamaStack Retrieval-Augmented Generation (RAG)
+    Integration tests for evaluating the OGX Retrieval-Augmented Generation (RAG)
     pipeline using RAGAS metrics. This class runs end-to-end evaluations over the Responses
     API with vector store-backed file search, computing faithfulness, answer relevancy,
-    context precision, and context recall. It ensures that LlamaStack's RAG responses
+    context precision, and context recall. It ensures that OGX's RAG responses
     are factual, relevant, and grounded in the retrieved context, using multiple metrics
     and data samples. The test configures model and provider parameters via pytest,
     and leverages fixtures to build the RAGAS evaluation dataset.
