@@ -4,7 +4,7 @@ from ocp_resources.job import Job
 from ocp_resources.namespace import Namespace
 from ocp_resources.route import Route
 from ocp_resources.service import Service
-from timeout_sampler import TimeoutSampler
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_explainability.evalhub.utils import (
     _get_job_status,
@@ -20,6 +20,15 @@ from tests.model_explainability.evalhub.utils import (
 from utilities.kueue_utils import LocalQueue, check_gated_pods_and_running_pods
 
 
+@pytest.mark.parametrize(
+    "model_namespace",
+    [
+        pytest.param(
+            {"name": "test-evalhub-kueue"},
+        ),
+    ],
+    indirect=True,
+)
 @pytest.mark.tier1
 class TestEvalHubKueueBasic:
     """Basic lifecycle tests for EvalHub jobs with Kueue admission control."""
@@ -27,7 +36,7 @@ class TestEvalHubKueueBasic:
     def test_evalhub_job_workload_created(
         self,
         admin_client: DynamicClient,
-        evalhub_kueue_namespace: Namespace,
+        model_namespace: Namespace,
         evalhub_kueue_multi_job_local_queue: LocalQueue,
         evalhub_kueue_user_token: str,
         evalhub_kueue_vllm_service: Service,
@@ -37,14 +46,14 @@ class TestEvalHubKueueBasic:
         """Submit an EvalHub job and verify Kueue Workload is created."""
         payload = build_evalhub_job_payload(
             model_service_name=evalhub_kueue_vllm_service.name,
-            tenant_namespace=evalhub_kueue_namespace.name,
+            tenant_namespace=model_namespace.name,
         )
 
         data = submit_evalhub_job(
             host=evalhub_mt_route.host,
             token=evalhub_kueue_user_token,
             ca_bundle_file=evalhub_mt_ca_bundle_file,
-            tenant=evalhub_kueue_namespace.name,
+            tenant=model_namespace.name,
             payload=payload,
         )
         job_id = data["resource"]["id"]
@@ -52,7 +61,7 @@ class TestEvalHubKueueBasic:
         # Wait for Kueue Workload to be created and admitted
         workload = wait_for_evalhub_job_workload_admitted(
             admin_client=admin_client,
-            namespace=evalhub_kueue_namespace.name,
+            namespace=model_namespace.name,
             evalhub_job_id=job_id,
             timeout=120,
         )
@@ -63,7 +72,7 @@ class TestEvalHubKueueBasic:
     def test_evalhub_job_lifecycle_with_kueue(
         self,
         admin_client: DynamicClient,
-        evalhub_kueue_namespace: Namespace,
+        model_namespace: Namespace,
         evalhub_kueue_multi_job_local_queue: LocalQueue,
         evalhub_kueue_user_token: str,
         evalhub_kueue_vllm_service: Service,
@@ -73,7 +82,7 @@ class TestEvalHubKueueBasic:
         """Full lifecycle: submit → admitted → running → completed."""
         payload = build_evalhub_job_payload(
             model_service_name=evalhub_kueue_vllm_service.name,
-            tenant_namespace=evalhub_kueue_namespace.name,
+            tenant_namespace=model_namespace.name,
         )
 
         # 1. Submit job
@@ -81,7 +90,7 @@ class TestEvalHubKueueBasic:
             host=evalhub_mt_route.host,
             token=evalhub_kueue_user_token,
             ca_bundle_file=evalhub_mt_ca_bundle_file,
-            tenant=evalhub_kueue_namespace.name,
+            tenant=model_namespace.name,
             payload=payload,
         )
         job_id = data["resource"]["id"]
@@ -89,7 +98,7 @@ class TestEvalHubKueueBasic:
         # 2. Verify Kueue admits the workload
         wait_for_evalhub_job_workload_admitted(
             admin_client=admin_client,
-            namespace=evalhub_kueue_namespace.name,
+            namespace=model_namespace.name,
             evalhub_job_id=job_id,
         )
 
@@ -97,7 +106,7 @@ class TestEvalHubKueueBasic:
         selector = evalhub_runtime_label_selector(evalhub_job_id=job_id)
         running_pods, gated_pods = check_gated_pods_and_running_pods(
             labels=[selector],
-            namespace=evalhub_kueue_namespace.name,
+            namespace=model_namespace.name,
             admin_client=admin_client,
         )
         assert running_pods >= 1, f"Expected >=1 running pod, got {running_pods}"
@@ -108,7 +117,7 @@ class TestEvalHubKueueBasic:
             host=evalhub_mt_route.host,
             token=evalhub_kueue_user_token,
             ca_bundle_file=evalhub_mt_ca_bundle_file,
-            tenant=evalhub_kueue_namespace.name,
+            tenant=model_namespace.name,
             job_id=job_id,
             timeout=600,
         )
@@ -118,7 +127,7 @@ class TestEvalHubKueueBasic:
         jobs = list(
             Job.get(
                 client=admin_client,
-                namespace=evalhub_kueue_namespace.name,
+                namespace=model_namespace.name,
                 label_selector=selector,
             )
         )
@@ -130,7 +139,7 @@ class TestEvalHubKueueBasic:
     def test_evalhub_status_reflects_kueue_state(
         self,
         admin_client: DynamicClient,
-        evalhub_kueue_namespace: Namespace,
+        model_namespace: Namespace,
         evalhub_kueue_multi_job_local_queue: LocalQueue,
         evalhub_kueue_user_token: str,
         evalhub_kueue_vllm_service: Service,
@@ -140,14 +149,14 @@ class TestEvalHubKueueBasic:
         """EvalHub API status should transition: pending → running → completed."""
         payload = build_evalhub_job_payload(
             model_service_name=evalhub_kueue_vllm_service.name,
-            tenant_namespace=evalhub_kueue_namespace.name,
+            tenant_namespace=model_namespace.name,
         )
 
         data = submit_evalhub_job(
             host=evalhub_mt_route.host,
             token=evalhub_kueue_user_token,
             ca_bundle_file=evalhub_mt_ca_bundle_file,
-            tenant=evalhub_kueue_namespace.name,
+            tenant=model_namespace.name,
             payload=payload,
         )
         job_id = data["resource"]["id"]
@@ -156,26 +165,29 @@ class TestEvalHubKueueBasic:
         assert data["status"]["state"] == "pending"
 
         # Wait for admission and running state
-        for sample in TimeoutSampler(
-            wait_timeout=180,
-            sleep=10,
-            func=_get_job_status,
-            host=evalhub_mt_route.host,
-            token=evalhub_kueue_user_token,
-            ca_bundle_file=evalhub_mt_ca_bundle_file,
-            tenant=evalhub_kueue_namespace.name,
-            job_id=job_id,
-        ):
-            state = sample.get("status", {}).get("state", "")
-            if state == "running":
-                break
+        try:
+            for sample in TimeoutSampler(
+                wait_timeout=180,
+                sleep=10,
+                func=_get_job_status,
+                host=evalhub_mt_route.host,
+                token=evalhub_kueue_user_token,
+                ca_bundle_file=evalhub_mt_ca_bundle_file,
+                tenant=model_namespace.name,
+                job_id=job_id,
+            ):
+                state = sample.get("status", {}).get("state", "")
+                if state == "running":
+                    break
+        except TimeoutExpiredError:
+            pytest.fail(f"EvalHub job {job_id} did not reach 'running' state within 180s")
 
         # Wait for completion
         job_result = wait_for_evalhub_job(
             host=evalhub_mt_route.host,
             token=evalhub_kueue_user_token,
             ca_bundle_file=evalhub_mt_ca_bundle_file,
-            tenant=evalhub_kueue_namespace.name,
+            tenant=model_namespace.name,
             job_id=job_id,
             timeout=600,
         )
@@ -184,7 +196,7 @@ class TestEvalHubKueueBasic:
     def test_queue_capacity_exhaustion(
         self,
         admin_client: DynamicClient,
-        evalhub_kueue_namespace: Namespace,
+        model_namespace: Namespace,
         evalhub_kueue_single_job_local_queue: LocalQueue,
         evalhub_kueue_user_token: str,
         evalhub_kueue_vllm_service: Service,
@@ -197,7 +209,7 @@ class TestEvalHubKueueBasic:
         """
         payload1 = build_evalhub_job_payload(
             model_service_name=evalhub_kueue_vllm_service.name,
-            tenant_namespace=evalhub_kueue_namespace.name,
+            tenant_namespace=model_namespace.name,
         )
 
         # Submit first job
@@ -205,7 +217,7 @@ class TestEvalHubKueueBasic:
             host=evalhub_mt_route.host,
             token=evalhub_kueue_user_token,
             ca_bundle_file=evalhub_mt_ca_bundle_file,
-            tenant=evalhub_kueue_namespace.name,
+            tenant=model_namespace.name,
             payload=payload1,
         )
         job1_id = data1["resource"]["id"]
@@ -213,20 +225,20 @@ class TestEvalHubKueueBasic:
         # Wait for first job to be admitted
         wait_for_evalhub_job_workload_admitted(
             admin_client=admin_client,
-            namespace=evalhub_kueue_namespace.name,
+            namespace=model_namespace.name,
             evalhub_job_id=job1_id,
         )
 
         # Submit second job
         payload2 = build_evalhub_job_payload(
             model_service_name=evalhub_kueue_vllm_service.name,
-            tenant_namespace=evalhub_kueue_namespace.name,
+            tenant_namespace=model_namespace.name,
         )
         data2 = submit_evalhub_job(
             host=evalhub_mt_route.host,
             token=evalhub_kueue_user_token,
             ca_bundle_file=evalhub_mt_ca_bundle_file,
-            tenant=evalhub_kueue_namespace.name,
+            tenant=model_namespace.name,
             payload=payload2,
         )
         job2_id = data2["resource"]["id"]
@@ -234,15 +246,16 @@ class TestEvalHubKueueBasic:
         # Verify second job's workload is inadmissible
         wait_for_evalhub_job_workload_inadmissible(
             admin_client=admin_client,
-            namespace=evalhub_kueue_namespace.name,
+            namespace=model_namespace.name,
             evalhub_job_id=job2_id,
         )
 
-        # Verify pod counts: 1 running, 1 gated
-        all_labels = "app=evalhub,component=evaluation-job"
+        # Verify pod counts: 1 running, 1 gated (scoped to these two jobs only)
+        selector1 = evalhub_runtime_label_selector(evalhub_job_id=job1_id)
+        selector2 = evalhub_runtime_label_selector(evalhub_job_id=job2_id)
         running_pods, gated_pods = check_gated_pods_and_running_pods(
-            labels=[all_labels],
-            namespace=evalhub_kueue_namespace.name,
+            labels=[selector1, selector2],
+            namespace=model_namespace.name,
             admin_client=admin_client,
         )
 

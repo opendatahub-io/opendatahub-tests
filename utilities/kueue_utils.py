@@ -14,7 +14,10 @@ LOGGER = structlog.get_logger(name=__name__)
 
 
 class ResourceFlavor(Resource):
+    """Kueue ResourceFlavor resource."""
+
     api_group: str = "kueue.x-k8s.io"
+    api_version: str = "kueue.x-k8s.io/v1beta2"
 
     def __init__(self, **kwargs: Any):
         """
@@ -32,7 +35,10 @@ class ResourceFlavor(Resource):
 
 
 class LocalQueue(NamespacedResource):
+    """Kueue LocalQueue resource."""
+
     api_group: str = "kueue.x-k8s.io"
+    api_version: str = "kueue.x-k8s.io/v1beta2"
 
     def __init__(
         self,
@@ -60,7 +66,10 @@ class LocalQueue(NamespacedResource):
 
 
 class ClusterQueue(Resource):
+    """Kueue ClusterQueue resource."""
+
     api_group: str = "kueue.x-k8s.io"
+    api_version: str = "kueue.x-k8s.io/v1beta2"
 
     def __init__(
         self,
@@ -96,9 +105,10 @@ class ClusterQueue(Resource):
 
 
 class Workload(NamespacedResource):
-    """Kueue Workload resource (kueue.x-k8s.io/v1beta1)."""
+    """Kueue Workload resource (kueue.x-k8s.io/v1beta2)."""
 
     api_group: str = "kueue.x-k8s.io"
+    api_version: str = "kueue.x-k8s.io/v1beta2"
 
 
 @contextmanager
