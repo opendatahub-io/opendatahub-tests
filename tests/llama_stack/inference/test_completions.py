@@ -54,7 +54,10 @@ class TestLlamaStackInferenceCompletions:
     ) -> None:
         """Test text completion functionality with a geography question."""
         response = unprivileged_llama_stack_client.completions.create(
-            model=llama_stack_models.model_id, prompt="What is the capital of Catalonia?", max_tokens=20, temperature=0
+            model=llama_stack_models.model_id,
+            prompt="Answer with only the city name. What is the capital of Catalonia?",
+            max_tokens=256,
+            temperature=0,
         )
         assert len(response.choices) > 0, "No response after basic inference on llama-stack server"
 
