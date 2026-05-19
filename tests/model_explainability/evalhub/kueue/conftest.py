@@ -364,9 +364,7 @@ def evalhub_kueue_rbac_ready(
                 LOGGER.info(f"Operator RBAC provisioned in {model_namespace.name}")
                 return
     except TimeoutExpiredError as exc:
-        raise RuntimeError(
-            f"Operator RBAC not provisioned in {model_namespace.name} within 120s"
-        ) from exc
+        raise RuntimeError(f"Operator RBAC not provisioned in {model_namespace.name} within 120s") from exc
 
 
 # vLLM emulator in Kueue namespace
