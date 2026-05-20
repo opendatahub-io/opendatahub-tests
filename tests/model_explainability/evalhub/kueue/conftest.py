@@ -125,7 +125,7 @@ def kueue_unmanaged_dsc(admin_client: DynamicClient, dsc_resource: DataScienceCl
 
 # Kueue-specific namespace fixture
 @pytest.fixture(scope="class")
-def model_namespace(
+def evalhub_kueue_namespace(
     admin_client: DynamicClient,
 ) -> Generator[Namespace, Any, Any]:
     """Namespace with both EvalHub tenant label and Kueue queue label."""
@@ -187,14 +187,14 @@ def evalhub_kueue_multi_job_cluster_queue(
 @pytest.fixture(scope="class")
 def evalhub_kueue_multi_job_local_queue(
     admin_client: DynamicClient,
-    model_namespace: Namespace,
+    evalhub_kueue_namespace: Namespace,
     evalhub_kueue_multi_job_cluster_queue: ClusterQueue,
     kueue_unmanaged_dsc: None,
 ) -> Generator[LocalQueue, Any, Any]:
     """LocalQueue for multi-job tests."""
     with create_local_queue(
         name="evalhub-local-queue-multi",
-        namespace=model_namespace.name,
+        namespace=evalhub_kueue_namespace.name,
         cluster_queue=evalhub_kueue_multi_job_cluster_queue.name,
         client=admin_client,
     ) as local_queue:
@@ -249,14 +249,14 @@ def evalhub_kueue_single_job_cluster_queue(
 @pytest.fixture(scope="class")
 def evalhub_kueue_single_job_local_queue(
     admin_client: DynamicClient,
-    model_namespace: Namespace,
+    evalhub_kueue_namespace: Namespace,
     evalhub_kueue_single_job_cluster_queue: ClusterQueue,
     kueue_unmanaged_dsc: None,
 ) -> Generator[LocalQueue, Any, Any]:
     """LocalQueue in the EvalHub namespace for single-job tests."""
     with create_local_queue(
         name="evalhub-local-queue",
-        namespace=model_namespace.name,
+        namespace=evalhub_kueue_namespace.name,
         cluster_queue=evalhub_kueue_single_job_cluster_queue.name,
         client=admin_client,
     ) as local_queue:
@@ -267,7 +267,7 @@ def evalhub_kueue_single_job_local_queue(
 @pytest.fixture(scope="class")
 def evalhub_kueue_tenant_rbac(
     admin_client: DynamicClient,
-    model_namespace: Namespace,
+    evalhub_kueue_namespace: Namespace,
     evalhub_mt_deployment: Deployment,
 ) -> None:
     """Wait for operator to provision tenant RBAC in Kueue namespace."""
@@ -277,27 +277,27 @@ def evalhub_kueue_tenant_rbac(
             sleep=5,
             func=tenant_rbac_ready,
             admin_client=admin_client,
-            namespace=model_namespace.name,
+            namespace=evalhub_kueue_namespace.name,
         ):
             if ready:
-                LOGGER.info(f"Operator RBAC provisioned in {model_namespace.name}")
+                LOGGER.info(f"Operator RBAC provisioned in {evalhub_kueue_namespace.name}")
                 return
     except TimeoutExpiredError as exc:
-        raise RuntimeError(f"Operator RBAC not provisioned in {model_namespace.name} within 120s") from exc
+        raise RuntimeError(f"Operator RBAC not provisioned in {evalhub_kueue_namespace.name} within 120s") from exc
 
 
 # vLLM emulator in Kueue namespace
 @pytest.fixture(scope="class")
 def evalhub_kueue_vllm_emulator_deployment(
     admin_client: DynamicClient,
-    model_namespace: Namespace,
+    evalhub_kueue_namespace: Namespace,
     evalhub_kueue_tenant_rbac: None,
 ) -> Generator[Deployment, Any, Any]:
     """Deploy vLLM emulator in the Kueue namespace."""
     label = {Labels.Openshift.APP: VLLM_EMULATOR}
     with Deployment(
         client=admin_client,
-        namespace=model_namespace.name,
+        namespace=evalhub_kueue_namespace.name,
         name=VLLM_EMULATOR,
         label=label,
         selector={"matchLabels": label},
@@ -333,13 +333,13 @@ def evalhub_kueue_vllm_emulator_deployment(
 @pytest.fixture(scope="class")
 def evalhub_kueue_vllm_service(
     admin_client: DynamicClient,
-    model_namespace: Namespace,
+    evalhub_kueue_namespace: Namespace,
     evalhub_kueue_vllm_emulator_deployment: Deployment,
 ) -> Generator[Service, Any, Any]:
     """Service for vLLM emulator."""
     with Service(
         client=admin_client,
-        namespace=model_namespace.name,
+        namespace=evalhub_kueue_namespace.name,
         name=f"{VLLM_EMULATOR}-service",
         ports=[
             {
@@ -358,30 +358,30 @@ def evalhub_kueue_vllm_service(
 @pytest.fixture(scope="class")
 def evalhub_kueue_user_token(
     admin_client: DynamicClient,
-    model_namespace: Namespace,
+    evalhub_kueue_namespace: Namespace,
 ) -> str:
     """Create ServiceAccount and token for EvalHub API access."""
     with (
         ServiceAccount(
             client=admin_client,
             name="evalhub-kueue-user",
-            namespace=model_namespace.name,
+            namespace=evalhub_kueue_namespace.name,
             wait_for_resource=True,
         ) as sa,
         Role(
             client=admin_client,
             name="evalhub-kueue-user-role",
-            namespace=model_namespace.name,
+            namespace=evalhub_kueue_namespace.name,
             rules=EVALHUB_USER_ROLE_RULES,
             wait_for_resource=True,
         ) as role,
         RoleBinding(
             client=admin_client,
             name="evalhub-kueue-user-binding",
-            namespace=model_namespace.name,
+            namespace=evalhub_kueue_namespace.name,
             subjects_kind="ServiceAccount",
             subjects_name=sa.name,
-            subjects_namespace=model_namespace.name,
+            subjects_namespace=evalhub_kueue_namespace.name,
             role_ref_kind="Role",
             role_ref_name=role.name,
             wait_for_resource=True,
