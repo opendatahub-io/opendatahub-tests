@@ -7,15 +7,12 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.cluster_service_version import ClusterServiceVersion
-from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
-from ocp_resources.evalhub import EvalHub
 from ocp_resources.namespace import Namespace
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
-from ocp_resources.route import Route
 from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from pytest_testconfig import config as py_config
@@ -35,7 +32,6 @@ from tests.model_explainability.evalhub.kueue.constants import (
     VLLM_EMULATOR_IMAGE,
 )
 from tests.model_explainability.evalhub.utils import tenant_rbac_ready
-from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import DscComponents, Labels, Protocols, Timeout
 from utilities.data_science_cluster_utils import get_dsc_ready_condition, wait_for_dsc_reconciliation
 from utilities.infra import create_inference_token, create_ns
@@ -57,83 +53,8 @@ LOGGER = structlog.get_logger(name=__name__)
 # ---------------------------------------------------------------------------
 
 
-def _is_evalhub_crd_available(admin_client: DynamicClient) -> bool:
-    """Check if EvalHub CRD is installed on the cluster."""
-    crd_name = "evalhubs.trustyai.opendatahub.io"
-    try:
-        crd = CustomResourceDefinition(
-            client=admin_client,
-            name=crd_name,
-        )
-        return crd.exists
-    except Exception:
-        return False
-
-
-@pytest.fixture(scope="class")
-def evalhub_mt_cr(
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
-) -> Generator[EvalHub, Any, Any]:
-    """Create an EvalHub CR for multi-tenancy Kueue tests.
-
-    Note: This creates a Custom Resource (CR) instance, not the CustomResourceDefinition (CRD).
-    The CRD must already be installed by the EvalHub/TrustyAI operator.
-    """
-    if not _is_evalhub_crd_available(admin_client):
-        pytest.fail(
-            "EvalHub CRD 'evalhubs.trustyai.opendatahub.io' not available on this cluster. "
-            "Install the TrustyAI/EvalHub operator first."
-        )
-
-    with EvalHub(
-        client=admin_client,
-        name="evalhub-mt",
-        namespace=model_namespace.name,
-        database={"type": "sqlite"},
-        collections=["leaderboard-v2"],
-        wait_for_resource=True,
-    ) as evalhub:
-        yield evalhub
-
-
-@pytest.fixture(scope="class")
-def evalhub_mt_deployment(
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
-    evalhub_mt_cr: EvalHub,
-) -> Deployment:
-    """Wait for the EvalHub deployment to become available."""
-    deployment = Deployment(
-        client=admin_client,
-        name=evalhub_mt_cr.name,
-        namespace=model_namespace.name,
-    )
-    deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_5MIN)
-    return deployment
-
-
-@pytest.fixture(scope="class")
-def evalhub_mt_route(
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
-    evalhub_mt_deployment: Deployment,
-) -> Route:
-    """Get the Route for the EvalHub service."""
-    return Route(
-        client=admin_client,
-        name=evalhub_mt_deployment.name,
-        namespace=model_namespace.name,
-        ensure_exists=True,
-    )
-
-
-@pytest.fixture(scope="class")
-def evalhub_mt_ca_bundle_file(
-    admin_client: DynamicClient,
-) -> str:
-    """CA bundle file for verifying TLS on the EvalHub route."""
-    return create_ca_bundle_file(client=admin_client)
+# Note: evalhub_mt_cr, evalhub_mt_deployment, evalhub_mt_route, and evalhub_mt_ca_bundle_file
+# fixtures are defined in ../multitenancy/conftest.py and shared across evalhub tests
 
 
 # ---------------------------------------------------------------------------
@@ -151,7 +72,8 @@ def _is_kueue_operator_installed(admin_client: DynamicClient) -> bool:
             )
         )
         for csv in csvs:
-            if csv.name.startswith("kueue") and csv.status == csv.Status.SUCCEEDED:
+            # Check phase instead of status attribute, and verify package name precisely
+            if csv.instance.status.phase == "Succeeded" and "kueue" in csv.instance.spec.get("displayName", "").lower():
                 LOGGER.info(f"Found Kueue operator CSV: {csv.name}")
                 return True
         return False
@@ -162,41 +84,38 @@ def _is_kueue_operator_installed(admin_client: DynamicClient) -> bool:
 @pytest.fixture(scope="session")
 def kueue_unmanaged_dsc(admin_client: DynamicClient, dsc_resource: DataScienceCluster) -> Generator[None, Any, Any]:
     """Set DSC Kueue to Unmanaged and wait for CRDs to be available."""
+    if not _is_kueue_operator_installed(admin_client):
+        pytest.fail("Kueue operator is not installed")
+
+    # Check current Kueue state - narrow try/except to component lookup only
     try:
-        if not _is_kueue_operator_installed(admin_client):
-            pytest.fail("Kueue operator is not installed")
-
-        # Check current Kueue state
         kueue_management_state = dsc_resource.instance.spec.components[DscComponents.KUEUE].managementState
-
-        with ExitStack() as stack:
-            # Only patch if Kueue is not already Unmanaged
-            if kueue_management_state != DscComponents.ManagementState.UNMANAGED:
-                LOGGER.info(f"Patching Kueue from {kueue_management_state} to Unmanaged")
-                # Read timestamp BEFORE applying patch
-                ready_condition = get_dsc_ready_condition(dsc=dsc_resource)
-                pre_patch_time = ready_condition.get("lastTransitionTime") if ready_condition else None
-
-                dsc_dict = {
-                    "spec": {
-                        "components": {
-                            DscComponents.KUEUE: {"managementState": DscComponents.ManagementState.UNMANAGED}
-                        }
-                    }
-                }
-                stack.enter_context(cm=ResourceEditor(patches={dsc_resource: dsc_dict}))
-
-                # Wait for DSC to reconcile the patch
-                wait_for_dsc_reconciliation(dsc=dsc_resource, baseline_time=pre_patch_time)
-            else:
-                LOGGER.info("Kueue already Unmanaged, no patch needed")
-
-            # Always wait for Kueue CRDs and controller pods (regardless of patch)
-            wait_for_kueue_crds_available(client=admin_client)
-            yield
-
     except (AttributeError, KeyError) as e:
         pytest.fail(f"Kueue component not found in DSC: {e}")
+
+    with ExitStack() as stack:
+        # Only patch if Kueue is not already Unmanaged
+        if kueue_management_state != DscComponents.ManagementState.UNMANAGED:
+            LOGGER.info(f"Patching Kueue from {kueue_management_state} to Unmanaged")
+            # Read timestamp BEFORE applying patch
+            ready_condition = get_dsc_ready_condition(dsc=dsc_resource)
+            pre_patch_time = ready_condition.get("lastTransitionTime") if ready_condition else None
+
+            dsc_dict = {
+                "spec": {
+                    "components": {DscComponents.KUEUE: {"managementState": DscComponents.ManagementState.UNMANAGED}}
+                }
+            }
+            stack.enter_context(cm=ResourceEditor(patches={dsc_resource: dsc_dict}))
+
+            # Wait for DSC to reconcile the patch
+            wait_for_dsc_reconciliation(dsc=dsc_resource, baseline_time=pre_patch_time)
+        else:
+            LOGGER.info("Kueue already Unmanaged, no patch needed")
+
+        # Always wait for Kueue CRDs and controller pods (regardless of patch)
+        wait_for_kueue_crds_available(client=admin_client)
+        yield
 
 
 # ---------------------------------------------------------------------------
@@ -346,7 +265,7 @@ def evalhub_kueue_single_job_local_queue(
 
 # RBAC fixtures
 @pytest.fixture(scope="class")
-def evalhub_kueue_rbac_ready(
+def evalhub_kueue_tenant_rbac(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     evalhub_mt_deployment: Deployment,
@@ -372,7 +291,7 @@ def evalhub_kueue_rbac_ready(
 def evalhub_kueue_vllm_emulator_deployment(
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    evalhub_kueue_rbac_ready: None,
+    evalhub_kueue_tenant_rbac: None,
 ) -> Generator[Deployment, Any, Any]:
     """Deploy vLLM emulator in the Kueue namespace."""
     label = {Labels.Openshift.APP: VLLM_EMULATOR}

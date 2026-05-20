@@ -20,15 +20,6 @@ from tests.model_explainability.evalhub.utils import (
 from utilities.kueue_utils import LocalQueue, check_gated_pods_and_running_pods
 
 
-@pytest.mark.parametrize(
-    "model_namespace",
-    [
-        pytest.param(
-            {"name": "test-evalhub-kueue"},
-        ),
-    ],
-    indirect=True,
-)
 @pytest.mark.tier1
 class TestEvalHubKueueBasic:
     """Basic lifecycle tests for EvalHub jobs with Kueue admission control."""
