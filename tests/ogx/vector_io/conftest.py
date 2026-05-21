@@ -10,6 +10,7 @@ from ogx_client.types.vector_store import VectorStore
 from ragas import SingleTurnSample
 
 from tests.ogx.constants import (
+    RAGAS_EVAL_MAX_TOKENS,
     RAGAS_MAX_SAMPLES,
     ModelInfo,
 )
@@ -44,8 +45,9 @@ def ragas_evaluator_llm(
             model=ogx_models.model_id,
             provider="openai",
             client=openai_client,
+            max_tokens=RAGAS_EVAL_MAX_TOKENS,
+            system_prompt="/no_think",
         )
-        evaluator_llm.model_args["max_tokens"] = 4096
 
         yield evaluator_llm
     finally:
