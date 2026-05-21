@@ -44,6 +44,9 @@ def guardrails_orchestrator(
         yield gorch
         gorch.clean_up()
     else:
+        assert hasattr(request, "param") and request.param is not None, (
+            "guardrails_orchestrator fixture requires parametrization outside post_upgrade mode"
+        )
         gorch_kwargs["log_level"] = "DEBUG"
         gorch_kwargs["replicas"] = 1
         gorch_kwargs["wait_for_resource"] = True
@@ -195,7 +198,7 @@ def guardrails_orchestrator_health_route(
     )
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def guardrails_healthcheck(
     current_client_token, openshift_ca_bundle_file, guardrails_orchestrator_health_route: Route
 ) -> None:

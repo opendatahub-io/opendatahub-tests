@@ -46,7 +46,10 @@ def llm_d_inference_sim_serving_runtime(
     """
     if pytestconfig.option.post_upgrade:
         sr = ServingRuntime(
-            client=admin_client, name=LLMdInferenceSimConfig.serving_runtime_name, namespace=model_namespace.name
+            client=admin_client,
+            name=LLMdInferenceSimConfig.serving_runtime_name,
+            namespace=model_namespace.name,
+            ensure_exists=True,
         )
         yield sr
         sr.clean_up()
