@@ -31,8 +31,8 @@ class TestEvalHubKueueBasic:
         evalhub_kueue_multi_job_local_queue: LocalQueue,
         evalhub_kueue_user_token: str,
         evalhub_kueue_vllm_service: Service,
-        evalhub_mt_route: Route,
-        evalhub_mt_ca_bundle_file: str,
+        evalhub_kueue_route: Route,
+        evalhub_kueue_ca_bundle_file: str,
     ) -> None:
         """Submit an EvalHub job and verify Kueue Workload is created."""
         payload = build_evalhub_job_payload(
@@ -41,9 +41,9 @@ class TestEvalHubKueueBasic:
         )
 
         data = submit_evalhub_job(
-            host=evalhub_mt_route.host,
+            host=evalhub_kueue_route.host,
             token=evalhub_kueue_user_token,
-            ca_bundle_file=evalhub_mt_ca_bundle_file,
+            ca_bundle_file=evalhub_kueue_ca_bundle_file,
             tenant=evalhub_kueue_namespace.name,
             payload=payload,
         )
@@ -67,8 +67,8 @@ class TestEvalHubKueueBasic:
         evalhub_kueue_multi_job_local_queue: LocalQueue,
         evalhub_kueue_user_token: str,
         evalhub_kueue_vllm_service: Service,
-        evalhub_mt_route: Route,
-        evalhub_mt_ca_bundle_file: str,
+        evalhub_kueue_route: Route,
+        evalhub_kueue_ca_bundle_file: str,
     ) -> None:
         """Full lifecycle: submit → admitted → running → completed."""
         payload = build_evalhub_job_payload(
@@ -78,9 +78,9 @@ class TestEvalHubKueueBasic:
 
         # 1. Submit job
         data = submit_evalhub_job(
-            host=evalhub_mt_route.host,
+            host=evalhub_kueue_route.host,
             token=evalhub_kueue_user_token,
-            ca_bundle_file=evalhub_mt_ca_bundle_file,
+            ca_bundle_file=evalhub_kueue_ca_bundle_file,
             tenant=evalhub_kueue_namespace.name,
             payload=payload,
         )
@@ -105,9 +105,9 @@ class TestEvalHubKueueBasic:
 
         # 4. Wait for EvalHub API to report completion
         job_result = wait_for_evalhub_job(
-            host=evalhub_mt_route.host,
+            host=evalhub_kueue_route.host,
             token=evalhub_kueue_user_token,
-            ca_bundle_file=evalhub_mt_ca_bundle_file,
+            ca_bundle_file=evalhub_kueue_ca_bundle_file,
             tenant=evalhub_kueue_namespace.name,
             job_id=job_id,
             timeout=600,
@@ -134,8 +134,8 @@ class TestEvalHubKueueBasic:
         evalhub_kueue_multi_job_local_queue: LocalQueue,
         evalhub_kueue_user_token: str,
         evalhub_kueue_vllm_service: Service,
-        evalhub_mt_route: Route,
-        evalhub_mt_ca_bundle_file: str,
+        evalhub_kueue_route: Route,
+        evalhub_kueue_ca_bundle_file: str,
     ) -> None:
         """EvalHub API status should transition: pending → running → completed."""
         payload = build_evalhub_job_payload(
@@ -144,9 +144,9 @@ class TestEvalHubKueueBasic:
         )
 
         data = submit_evalhub_job(
-            host=evalhub_mt_route.host,
+            host=evalhub_kueue_route.host,
             token=evalhub_kueue_user_token,
-            ca_bundle_file=evalhub_mt_ca_bundle_file,
+            ca_bundle_file=evalhub_kueue_ca_bundle_file,
             tenant=evalhub_kueue_namespace.name,
             payload=payload,
         )
@@ -161,9 +161,9 @@ class TestEvalHubKueueBasic:
                 wait_timeout=180,
                 sleep=10,
                 func=_get_job_status,
-                host=evalhub_mt_route.host,
+                host=evalhub_kueue_route.host,
                 token=evalhub_kueue_user_token,
-                ca_bundle_file=evalhub_mt_ca_bundle_file,
+                ca_bundle_file=evalhub_kueue_ca_bundle_file,
                 tenant=evalhub_kueue_namespace.name,
                 job_id=job_id,
             ):
@@ -175,9 +175,9 @@ class TestEvalHubKueueBasic:
 
         # Wait for completion
         job_result = wait_for_evalhub_job(
-            host=evalhub_mt_route.host,
+            host=evalhub_kueue_route.host,
             token=evalhub_kueue_user_token,
-            ca_bundle_file=evalhub_mt_ca_bundle_file,
+            ca_bundle_file=evalhub_kueue_ca_bundle_file,
             tenant=evalhub_kueue_namespace.name,
             job_id=job_id,
             timeout=600,
@@ -191,8 +191,8 @@ class TestEvalHubKueueBasic:
         evalhub_kueue_single_job_local_queue: LocalQueue,
         evalhub_kueue_user_token: str,
         evalhub_kueue_vllm_service: Service,
-        evalhub_mt_route: Route,
-        evalhub_mt_ca_bundle_file: str,
+        evalhub_kueue_route: Route,
+        evalhub_kueue_ca_bundle_file: str,
     ) -> None:
         """Validate failure behavior: job rejection when queue capacity is exhausted.
 
@@ -205,9 +205,9 @@ class TestEvalHubKueueBasic:
 
         # Submit first job
         data1 = submit_evalhub_job(
-            host=evalhub_mt_route.host,
+            host=evalhub_kueue_route.host,
             token=evalhub_kueue_user_token,
-            ca_bundle_file=evalhub_mt_ca_bundle_file,
+            ca_bundle_file=evalhub_kueue_ca_bundle_file,
             tenant=evalhub_kueue_namespace.name,
             payload=payload1,
         )
@@ -226,9 +226,9 @@ class TestEvalHubKueueBasic:
             tenant_namespace=evalhub_kueue_namespace.name,
         )
         data2 = submit_evalhub_job(
-            host=evalhub_mt_route.host,
+            host=evalhub_kueue_route.host,
             token=evalhub_kueue_user_token,
-            ca_bundle_file=evalhub_mt_ca_bundle_file,
+            ca_bundle_file=evalhub_kueue_ca_bundle_file,
             tenant=evalhub_kueue_namespace.name,
             payload=payload2,
         )

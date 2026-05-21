@@ -77,7 +77,7 @@ def _is_evalhub_crd_available(admin_client: DynamicClient) -> bool:
 
 # Kueue-specific evalhub_mt_* fixtures (use evalhub_kueue_namespace instead of model_namespace)
 @pytest.fixture(scope="class")
-def evalhub_mt_cr(
+def evalhub_kueue_cr(
     admin_client: DynamicClient,
     evalhub_kueue_namespace: Namespace,
 ) -> Generator[EvalHub, Any, Any]:
@@ -100,15 +100,15 @@ def evalhub_mt_cr(
 
 
 @pytest.fixture(scope="class")
-def evalhub_mt_deployment(
+def evalhub_kueue_deployment(
     admin_client: DynamicClient,
     evalhub_kueue_namespace: Namespace,
-    evalhub_mt_cr: EvalHub,
+    evalhub_kueue_cr: EvalHub,
 ) -> Deployment:
     """Wait for the EvalHub deployment to become available."""
     deployment = Deployment(
         client=admin_client,
-        name=evalhub_mt_cr.name,
+        name=evalhub_kueue_cr.name,
         namespace=evalhub_kueue_namespace.name,
     )
     deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_5MIN)
@@ -116,22 +116,22 @@ def evalhub_mt_deployment(
 
 
 @pytest.fixture(scope="class")
-def evalhub_mt_route(
+def evalhub_kueue_route(
     admin_client: DynamicClient,
     evalhub_kueue_namespace: Namespace,
-    evalhub_mt_deployment: Deployment,
+    evalhub_kueue_deployment: Deployment,
 ) -> Route:
     """Get the Route for the EvalHub service."""
     return Route(
         client=admin_client,
-        name=evalhub_mt_deployment.name,
+        name=evalhub_kueue_deployment.name,
         namespace=evalhub_kueue_namespace.name,
         ensure_exists=True,
     )
 
 
 @pytest.fixture(scope="class")
-def evalhub_mt_ca_bundle_file(
+def evalhub_kueue_ca_bundle_file(
     admin_client: DynamicClient,
 ) -> str:
     """CA bundle file for verifying TLS on the EvalHub route."""
@@ -209,12 +209,13 @@ def kueue_unmanaged_dsc(admin_client: DynamicClient, dsc_resource: DataScienceCl
 def evalhub_kueue_namespace(
     admin_client: DynamicClient,
 ) -> Generator[Namespace, Any, Any]:
-    """Namespace with both EvalHub tenant label and Kueue queue label."""
+    """Namespace with both EvalHub tenant label and Kueue opt-in label."""
     with create_ns(
         admin_client=admin_client,
         name="test-evalhub-kueue",
         labels={
             EVALHUB_TENANT_LABEL_KEY: "true",
+            "kueue.x-k8s.io/managed": "true",  # Required for Kueue admission control
         },
     ) as ns:
         yield ns
@@ -349,7 +350,7 @@ def evalhub_kueue_single_job_local_queue(
 def evalhub_kueue_tenant_rbac(
     admin_client: DynamicClient,
     evalhub_kueue_namespace: Namespace,
-    evalhub_mt_deployment: Deployment,
+    evalhub_kueue_deployment: Deployment,
 ) -> None:
     """Wait for operator to provision tenant RBAC in Kueue namespace."""
     try:
