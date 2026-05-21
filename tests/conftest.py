@@ -199,11 +199,6 @@ def valid_aws_config(aws_access_key_id: str, aws_secret_access_key: str, ci_s3_b
     minutes for storage-initializer pods to time out on the cluster.
     """
     
-    # ✅ Explicit opt-out
-    #if os.environ.get("SKIP_AWS_CREDENTIAL_VALIDATION", "").lower() in ("1", "true", "yes"):
-    #    LOGGER.info("Skipping AWS credential validation due to explicit opt-out")
-    #    return aws_access_key_id, aws_secret_access_key
-
     endpoint_host = urlparse(ci_s3_bucket_endpoint).hostname or ""
 
     if endpoint_host and not endpoint_host.endswith(".amazonaws.com"):
