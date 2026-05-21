@@ -44,9 +44,10 @@ def guardrails_orchestrator(
         yield gorch
         gorch.clean_up()
     else:
-        assert hasattr(request, "param") and request.param is not None, (
-            "guardrails_orchestrator fixture requires parametrization outside post_upgrade mode"
-        )
+        if not (hasattr(request, "param") and request.param is not None):
+            raise pytest.UsageError(
+                "guardrails_orchestrator fixture requires parametrization outside post_upgrade mode"
+            )
         gorch_kwargs["log_level"] = "DEBUG"
         gorch_kwargs["replicas"] = 1
         gorch_kwargs["wait_for_resource"] = True

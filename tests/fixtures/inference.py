@@ -49,8 +49,12 @@ def llm_d_inference_sim_serving_runtime(
             client=admin_client,
             name=LLMdInferenceSimConfig.serving_runtime_name,
             namespace=model_namespace.name,
-            ensure_exists=True,
         )
+        if not sr.exists:
+            raise pytest.UsageError(
+                f"ServingRuntime {LLMdInferenceSimConfig.serving_runtime_name} "
+                f"does not exist in namespace {model_namespace.name} after upgrade."
+            )
         yield sr
         sr.clean_up()
 
