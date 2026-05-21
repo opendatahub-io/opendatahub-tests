@@ -3,12 +3,12 @@ import structlog
 import time
 
 from tests.model_serving.model_runtime.vllm.utils import (
-        run_raw_inference,
+        run_raw_inference, 
         get_vllm_version, 
         get_vllm_throughput_logs, 
         parse_vllm_logs, 
         save_performance_report,
-)        
+) 
 from utilities.constants import KServeDeploymentType, Ports
 
 from tests.model_serving.model_runtime.vllm.constant import (
@@ -20,9 +20,7 @@ LOGGER = structlog.get_logger(name=__name__)
 serving_argument = [
     "--dtype=bfloat16",
     "--model=/mnt/models",
-    "--max-model-len=256",
-    "--max-num-seqs=1",
-    "--max-num-batched-tokens=256",
+    "--max-model-len=1042",
     "--uvicorn-log-level=debug",
 ]
 
@@ -33,20 +31,20 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
     "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",
     [
         pytest.param(
-            {"name": "granite-raw-cpu"},
-            {"model-dir": "models/granite-3.3-8b-instruct"},
+            {"name": "llama-3-2-raw-cpu"},
+            {"model-dir": "models/llama-32-1b-instruct"},
             {"deployment_type": KServeDeploymentType.RAW_DEPLOYMENT},
             {
                 "deployment_mode": KServeDeploymentType.RAW_DEPLOYMENT,
                 "runtime_argument": serving_argument,
-                "name": "granite-raw-cpu",
+                "name": "llama-3-2-raw-cpu",
                 "min-replicas": 1,
             },
         ),
     ],
     indirect=True,
 )
-class TestGranite8BModelCPU:
+class TestLlama321BModelCPU:
     def test_deploy_model_inference(
         self,
         vllm_inference_service,
@@ -55,8 +53,8 @@ class TestGranite8BModelCPU:
     ):
         pod_name = vllm_pod_resource.name
         namespace_name = vllm_inference_service.namespace
-        model_name = "granite-3.3-8b-instruct"
-
+        model_name = "llama-3-2-1b-instruct"
+ 
         start_time = time.strftime("%H:%M:%S")
 
         model_details, grpc_chat_response, grpc_chat_stream_responses = run_raw_inference(
@@ -65,7 +63,7 @@ class TestGranite8BModelCPU:
             port=Ports.REST_PORT,
             endpoint="openai",
         )
-        
+
         time.sleep(2)
         vllm_version = get_vllm_version(namespace_name, pod_name)
         used_entries_chat = set()

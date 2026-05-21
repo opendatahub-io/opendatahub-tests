@@ -12,6 +12,7 @@ from contextlib import ExitStack
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+from urllib.parse import urlparse
 
 import pytest
 import shortuuid
@@ -190,7 +191,7 @@ def registry_host(pytestconfig: pytest.Config) -> list[str]:
 
 
 @pytest.fixture(scope="session")
-def valid_aws_config(aws_access_key_id: str, aws_secret_access_key: str) -> tuple[str, str]:
+def valid_aws_config(aws_access_key_id: str, aws_secret_access_key: str, ci_s3_bucket_endpoint: str,) -> tuple[str, str]:
     """Validate AWS credentials before any S3-dependent test runs.
 
     Calls STS GetCallerIdentity using AWS Signature V4.
@@ -199,17 +200,14 @@ def valid_aws_config(aws_access_key_id: str, aws_secret_access_key: str) -> tupl
     """
     
     # ✅ Explicit opt-out
-    if os.environ.get("SKIP_AWS_CREDENTIAL_VALIDATION", "").lower() in ("1", "true", "yes"):
-        return aws_access_key_id, aws_secret_access_key
+    #if os.environ.get("SKIP_AWS_CREDENTIAL_VALIDATION", "").lower() in ("1", "true", "yes"):
+    #    LOGGER.info("Skipping AWS credential validation due to explicit opt-out")
+    #    return aws_access_key_id, aws_secret_access_key
 
-    # ✅ Auto-detect non-AWS S3 endpoints
-    endpoint = (
-        os.environ.get("MODELS_S3_BUCKET_ENDPOINT")
-        or os.environ.get("CI_S3_BUCKET_ENDPOINT")
-        or ""
-    )
+    endpoint_host = urlparse(ci_s3_bucket_endpoint).hostname or ""
 
-    if endpoint and "amazonaws.com" not in endpoint:
+    if endpoint_host and not endpoint_host.endswith(".amazonaws.com"):
+        LOGGER.info("Non-AWS S3 endpoint detected - skipping STS credential validation")
         return aws_access_key_id, aws_secret_access_key
 
 
