@@ -189,7 +189,7 @@ class DscComponents:
         MODEL_REGISTRY_READY: str = "ModelRegistryReady"
         KSERVE_READY: str = "KserveReady"
         MODEL_MESH_SERVING_READY: str = "ModelMeshServingReady"
-        OGX_READY: str = "OgxReady"
+        OGX_READY: str = "OGXReady"
 
     COMPONENT_MAPPING: dict[str, str] = {  # noqa: RUF012
         MODELMESHSERVING: ConditionType.MODEL_MESH_SERVING_READY,
