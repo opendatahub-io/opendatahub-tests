@@ -122,7 +122,7 @@ class TestModelRegistryGatewayDomain:
     ):
         """Given GATEWAY_DOMAIN is set and HTTPRoutes exist for model registry
         When sending a request to the gateway domain with the model registry path
-        Then the gateway routes the request (401 Unauthorized is acceptable)
+        Then the gateway routes the request successfully
         """
         LOGGER.info(f"Testing gateway connectivity: {gateway_model_registry_url}")
         response = requests.get(gateway_model_registry_url, verify=False, timeout=30)

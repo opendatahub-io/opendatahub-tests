@@ -31,7 +31,7 @@ class TestModelRegistryRBAC:
     @pytest.mark.usefixtures("sa_namespace", "service_account")
     def test_service_account_access_denied(
         self: Self,
-        model_registry_instance_rest_endpoint: list[str],
+        model_registry_instance_rest_endpoint: list[tuple[str, int]],
         sa_token: str,
     ):
         """
@@ -62,7 +62,7 @@ class TestModelRegistryRBAC:
     def test_service_account_access_granted(
         self: Self,
         service_account: ServiceAccount,
-        model_registry_instance_rest_endpoint: list[str],
+        model_registry_instance_rest_endpoint: list[tuple[str, int]],
     ):
         """
         Verifies SA access is GRANTED via REST after applying Role and RoleBinding fixtures.
