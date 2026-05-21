@@ -7,12 +7,15 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.cluster_service_version import ClusterServiceVersion
+from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
+from ocp_resources.evalhub import EvalHub
 from ocp_resources.namespace import Namespace
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
+from ocp_resources.route import Route
 from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from pytest_testconfig import config as py_config
@@ -32,6 +35,7 @@ from tests.model_explainability.evalhub.kueue.constants import (
     VLLM_EMULATOR_IMAGE,
 )
 from tests.model_explainability.evalhub.utils import tenant_rbac_ready
+from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import DscComponents, Labels, Protocols, Timeout
 from utilities.data_science_cluster_utils import get_dsc_ready_condition, wait_for_dsc_reconciliation
 from utilities.infra import create_inference_token, create_ns
@@ -49,12 +53,89 @@ LOGGER = structlog.get_logger(name=__name__)
 
 
 # ---------------------------------------------------------------------------
+# Helper Functions
+# ---------------------------------------------------------------------------
+
+
+def _is_evalhub_crd_available(admin_client: DynamicClient) -> bool:
+    """Check if EvalHub CRD is installed on the cluster."""
+    crd_name = "evalhubs.trustyai.opendatahub.io"
+    try:
+        crd = CustomResourceDefinition(
+            client=admin_client,
+            name=crd_name,
+        )
+        return crd.exists
+    except (AttributeError, KeyError):
+        return False
+
+
+# ---------------------------------------------------------------------------
 # EvalHub Multi-Tenancy Fixtures (for Kueue tests)
 # ---------------------------------------------------------------------------
 
 
-# Note: evalhub_mt_cr, evalhub_mt_deployment, evalhub_mt_route, and evalhub_mt_ca_bundle_file
-# fixtures are defined in ../multitenancy/conftest.py and shared across evalhub tests
+# Kueue-specific evalhub_mt_* fixtures (use evalhub_kueue_namespace instead of model_namespace)
+@pytest.fixture(scope="class")
+def evalhub_mt_cr(
+    admin_client: DynamicClient,
+    evalhub_kueue_namespace: Namespace,
+) -> Generator[EvalHub, Any, Any]:
+    """Create an EvalHub CR for Kueue tests."""
+    if not _is_evalhub_crd_available(admin_client):
+        pytest.fail(
+            "EvalHub CRD 'evalhubs.trustyai.opendatahub.io' not available on this cluster. "
+            "Install the TrustyAI/EvalHub operator first."
+        )
+
+    with EvalHub(
+        client=admin_client,
+        name="evalhub-mt",
+        namespace=evalhub_kueue_namespace.name,
+        database={"type": "sqlite"},
+        collections=["leaderboard-v2"],
+        wait_for_resource=True,
+    ) as evalhub:
+        yield evalhub
+
+
+@pytest.fixture(scope="class")
+def evalhub_mt_deployment(
+    admin_client: DynamicClient,
+    evalhub_kueue_namespace: Namespace,
+    evalhub_mt_cr: EvalHub,
+) -> Deployment:
+    """Wait for the EvalHub deployment to become available."""
+    deployment = Deployment(
+        client=admin_client,
+        name=evalhub_mt_cr.name,
+        namespace=evalhub_kueue_namespace.name,
+    )
+    deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_5MIN)
+    return deployment
+
+
+@pytest.fixture(scope="class")
+def evalhub_mt_route(
+    admin_client: DynamicClient,
+    evalhub_kueue_namespace: Namespace,
+    evalhub_mt_deployment: Deployment,
+) -> Route:
+    """Get the Route for the EvalHub service."""
+    return Route(
+        client=admin_client,
+        name=evalhub_mt_deployment.name,
+        namespace=evalhub_kueue_namespace.name,
+        ensure_exists=True,
+    )
+
+
+@pytest.fixture(scope="class")
+def evalhub_mt_ca_bundle_file(
+    admin_client: DynamicClient,
+) -> str:
+    """CA bundle file for verifying TLS on the EvalHub route."""
+    return create_ca_bundle_file(client=admin_client)
 
 
 # ---------------------------------------------------------------------------
