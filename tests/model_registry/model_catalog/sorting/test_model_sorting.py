@@ -64,11 +64,12 @@ class TestAccuracySorting:
             sort_order=sort_order,
         )
 
-        assert validate_accuracy_sorting_against_database(
+        errors = validate_accuracy_sorting_against_database(
             admin_client=admin_client,
             api_response=response,
             sort_order=sort_order,
         )
+        assert not errors, f"Accuracy sorting validation failed (sortOrder={sort_order}):\n" + "\n".join(errors)
 
     @pytest.mark.parametrize(
         "use_case",

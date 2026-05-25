@@ -89,12 +89,14 @@ def model_registry_default_db_instance_rest_endpoint(
 @pytest.fixture(scope="class")
 def model_registry_client_default_db(
     current_client_token: str,
-    model_registry_default_db_instance_rest_endpoint: str,
+    model_registry_default_db_instance_rest_endpoint: tuple[str, int],
 ) -> ModelRegistryClient:
-    server, port = model_registry_default_db_instance_rest_endpoint.split(":")
+    address, port = model_registry_default_db_instance_rest_endpoint
+    host, _, path = address.partition("/")
+    server_url = f"{Protocols.HTTPS}://{host}:{port}/{path}" if path else f"{Protocols.HTTPS}://{host}:{port}"
     mr_client = ModelRegistryClient(
-        server_address=f"{Protocols.HTTPS}://{server}",
-        port=int(port),
+        server_address=server_url,
+        port=port,
         author="opendatahub-test",
         user_token=current_client_token,
         is_secure=False,

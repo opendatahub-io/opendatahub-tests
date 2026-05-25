@@ -19,7 +19,11 @@ from tests.model_registry.image_validation.utils import validate_images
 from utilities.constants import Labels
 
 LOGGER = structlog.get_logger(name=__name__)
-pytestmark = [pytest.mark.downstream_only, pytest.mark.skip_must_gather]
+pytestmark = [
+    pytest.mark.downstream_only,
+    pytest.mark.skip_must_gather,
+    pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace"),
+]
 
 
 class TestAIHubResourcesImages:

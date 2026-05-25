@@ -1,3 +1,5 @@
+from typing import Any
+
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
@@ -90,6 +92,8 @@ class TestMaaSController:
         request: pytest.FixtureRequest,
         resource_fixture: str,
         kind_label: str,
+        maas_auth_policy_tinyllama_free: Any,
+        maas_subscription_tinyllama_free: Any,
     ) -> None:
         """Verify the MaaS subscription flow objects are created and Ready."""
         resource = request.getfixturevalue(argname=resource_fixture)
