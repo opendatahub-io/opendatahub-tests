@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 import shortuuid
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.config_map import ConfigMap
 from ocp_resources.daemonset import DaemonSet
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
@@ -102,22 +103,51 @@ def mnist_local_model_cache(
 
 
 @pytest.fixture(scope="class")
+def ensure_ca_bundle_in_namespace(
+    admin_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+) -> None:
+    """Ensure odh-trusted-ca-bundle exists in the test namespace for SSL verification.
+
+    When rhods-operator's certconfigmapgenerator is not running, the CNO-injected
+    CA bundle must be created manually so odh-model-controller can aggregate it
+    into odh-kserve-custom-ca-bundle for storage-initializer pods.
+    """
+    import time
+
+    ns = unprivileged_model_namespace.name
+    cm = ConfigMap(client=admin_client, name="odh-trusted-ca-bundle", namespace=ns)
+    if not cm.exists:
+        ConfigMap(
+            client=admin_client,
+            name="odh-trusted-ca-bundle",
+            namespace=ns,
+            label={"config.openshift.io/inject-trusted-cabundle": "true"},
+        ).deploy()
+        time.sleep(15)
+
+
+@pytest.fixture(scope="class")
 def mnist_onnx_local_model_cache_inference_service(
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     ovms_kserve_serving_runtime: ServingRuntime,
-    ci_endpoint_s3_secret: Secret,
+    ci_s3_bucket_name: str,
     mnist_local_model_cache: LocalModelCache,
+    ensure_ca_bundle_in_namespace: None,
 ) -> Generator[InferenceService, Any, Any]:
-    """Deploy a raw `InferenceService` that uses the MNIST cache via the localmodel label."""
+    """Deploy a raw `InferenceService` that uses the MNIST cache via the localmodel label.
+
+    Uses storageUri (not StorageSpec) so the KServe defaulting webhook can match
+    against LocalModelCache.spec.sourceModelUri and set the PVC rewrite annotation.
+    """
     labels = {KSERVE_LOCALMODEL_LABEL: mnist_local_model_cache.name}
     with create_isvc(
         client=unprivileged_client,
         name=f"{Protocols.HTTP}-{ModelFormat.ONNX}-lmcache",
         namespace=unprivileged_model_namespace.name,
         runtime=ovms_kserve_serving_runtime.name,
-        storage_key=ci_endpoint_s3_secret.name,
-        storage_path=MINT_ONNX_STORAGE_PATH,
+        storage_uri=f"s3://{ci_s3_bucket_name}/{MINT_ONNX_STORAGE_PATH}/",
         model_format=ovms_kserve_serving_runtime.instance.spec.supportedModelFormats[0].name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         external_route=True,

@@ -49,7 +49,7 @@ class TestModelCacheSmoke:
             assert state == "NodeDownloaded", f"node {node_name} expected NodeDownloaded, got {state!r}"
 
         copies = status.get("copies") or {}
-        assert copies.get("failed") == 0
+        assert copies.get("failed", 0) == 0
         assert copies.get("available") == copies.get("total")
         assert (copies.get("available") or 0) >= 1
 

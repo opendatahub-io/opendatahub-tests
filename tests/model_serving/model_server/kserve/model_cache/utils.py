@@ -12,11 +12,13 @@ from utilities.constants import ApiGroups
 from utilities.infra import get_pods_by_isvc_label
 
 KSERVE_LOCALMODEL_LABEL: str = f"{ApiGroups.KSERVE}/localmodel"
-KSERVE_LOCALMODEL_PVC_ANNOTATION: str = f"{ApiGroups.KSERVE}/localmodel-pvc-name"
+KSERVE_LOCALMODEL_PVC_ANNOTATION: str = f"internal.{ApiGroups.KSERVE}/localmodel-pvc-name"
 LOCAL_MODEL_NODE_GROUP_NAME: str = "workers"
 MODEL_CACHE_AGENT_DAEMONSET: str = "kserve-localmodelnode-agent"
-# S3 path inside the CI bucket that contains the MNIST ONNX model (test-dir/1/mnist-8.onnx)
-MINT_ONNX_STORAGE_PATH: str = "test-dir/1"
+# S3 path inside the CI bucket whose subtree contains the MNIST ONNX model.
+# Must include the numeric version directory (1/) so OVMS sees /mnt/models/1/mnist-8.onnx
+# when the PVC is mounted via LocalModelCache.
+MINT_ONNX_STORAGE_PATH: str = "test-dir"
 
 
 class LocalModelCache(Resource):
@@ -141,13 +143,20 @@ def assert_predictor_storage_initializer_uses_pvc(
     isvc: InferenceService,
     runtime_name: str,
 ) -> None:
-    """Assert the storage initializer rewrote storage to a ``pvc://`` URI for the predictor Pod."""
+    """Assert the local model cache PVC is mounted directly on the predictor Pod.
+
+    KServe rewrites ``pvc://`` URIs to a direct volume mount (no storage-initializer
+    init container), so we verify:
+    1. The ``kserve-pvc-source`` volume exists (PVC backed).
+    2. The pod carries the ``internal.kserve.io/localmodel-pvc-name`` annotation.
+    """
     pods = get_pods_by_isvc_label(client=client, isvc=isvc, runtime_name=runtime_name)
     pod = pods[0]
     spec = pod.instance.spec
-    init_list = spec.initContainers or []
-    args_blob = " ".join(str(a) for c in init_list for a in (c.args or []))
-    assert "pvc://" in args_blob, f"Expected pvc:// rewrite in init container args; pod spec init args={args_blob!r}"
+
+    volume_names = [v.name for v in (spec.volumes or [])]
+    pvc_volumes = [v for v in (spec.volumes or []) if v.name == "kserve-pvc-source"]
+    assert pvc_volumes, f"Expected 'kserve-pvc-source' PVC volume on predictor pod; volumes={volume_names!r}"
 
     meta = pod.instance.metadata
     annotations = (meta.annotations or {}) if meta else {}
