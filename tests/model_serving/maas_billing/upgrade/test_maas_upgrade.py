@@ -111,9 +111,11 @@ class TestPreUpgradeMaaS:
                 client=admin_client,
                 name="default",
             )
-            assert not maas_config.exists, "MaaS Config/default already exists — cluster may already be on 3.5"
         except NotImplementedError:
-            pass  # CRD absent in 3.4 — Config is definitely not present
+            return
+        assert not maas_config.exists, (
+            "MaaS Config/default already exists — cluster may already be on 3.5"
+        )
 
 
 class TestPostUpgradeMaaS:
