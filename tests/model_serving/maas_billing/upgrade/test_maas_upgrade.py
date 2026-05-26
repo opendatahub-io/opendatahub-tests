@@ -15,13 +15,15 @@ from timeout_sampler import TimeoutSampler
 from tests.model_serving.maas_billing.upgrade.utils import (
     MaaSBaseline,
     verify_maas_auth_policy_exists,
-    verify_maas_gateway_programmed,
     verify_maas_model_ref_exists,
     verify_maas_subscription_not_mutated,
     verify_maas_subscription_ready,
+)
+from tests.model_serving.maas_billing.utils import (
+    gateway_probe_reaches_maas_api,
+    verify_maas_gateway_programmed,
     verify_maas_tenant_ready,
 )
-from tests.model_serving.maas_billing.utils import gateway_probe_reaches_maas_api
 from utilities.constants import ApiGroups
 from utilities.general import generate_random_name
 from utilities.resources.maas_config import Config as MaaSConfig
