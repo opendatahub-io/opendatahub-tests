@@ -9,14 +9,14 @@ from ocp_resources.secret import Secret
 from ocp_resources.trustyai_service import TrustyAIService
 
 
-from tests.model_explainability.trustyai_service.constants import (
+from tests.ai_safety.trustyai_service.constants import (
     TAI_METRICS_CONFIG,
     TAI_DB_STORAGE_CONFIG,
 )
-from tests.model_explainability.trustyai_service.trustyai_service_utils import (
+from tests.ai_safety.trustyai_service.trustyai_service_utils import (
     TRUSTYAI_SERVICE_NAME,
 )
-from tests.model_explainability.trustyai_service.utils import (
+from tests.ai_safety.trustyai_service.utils import (
     create_trustyai_service,
 )
 

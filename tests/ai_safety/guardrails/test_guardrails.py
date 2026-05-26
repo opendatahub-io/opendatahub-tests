@@ -7,8 +7,8 @@ import yaml
 from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
-from tests.model_explainability.constants import QWEN_MODEL_NAME
-from tests.model_explainability.guardrails.constants import (
+from tests.ai_safety.constants import QWEN_MODEL_NAME
+from tests.ai_safety.guardrails.constants import (
     QWEN_ISVC_NAME,
     CHAT_GENERATION_CONFIG,
     BUILTIN_DETECTOR_CONFIG,
@@ -16,14 +16,14 @@ from tests.model_explainability.guardrails.constants import (
     EXAMPLE_EMAIL_ADDRESS,
     GUARDRAILS_MULTI_DETECTOR_INPUT_PROMPTS,
 )
-from tests.model_explainability.guardrails.utils import (
+from tests.ai_safety.guardrails.utils import (
     verify_builtin_detector_unsuitable_input_response,
     verify_negative_detection_response,
     verify_builtin_detector_unsuitable_output_response,
     get_auth_headers,
     get_chat_detections_payload,
 )
-from tests.model_explainability.utils import validate_tai_component_images
+from tests.ai_safety.utils import validate_tai_component_images
 from utilities.constants import Timeout, MinIo
 from utilities.plugins.constant import OpenAIEnpoints
 

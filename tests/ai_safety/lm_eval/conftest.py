@@ -15,7 +15,7 @@ from ocp_resources.service import Service
 from pytest import Config, FixtureRequest
 from pytest_testconfig import py_config
 
-from tests.model_explainability.lm_eval.utils import get_lmevaljob_pod
+from tests.ai_safety.lm_eval.utils import get_lmevaljob_pod
 from utilities.constants import Annotations, Labels, MinIo, Protocols, Timeout
 from utilities.exceptions import MissingParameter
 

@@ -20,7 +20,7 @@ from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.trustyai_service import TrustyAIService
 
-from tests.model_explainability.trustyai_service.constants import (
+from tests.ai_safety.trustyai_service.constants import (
     TAI_DATA_CONFIG,
     TAI_METRICS_CONFIG,
     TAI_PVC_STORAGE_CONFIG,
@@ -35,10 +35,10 @@ from tests.model_explainability.trustyai_service.constants import (
     TAI_DB_STORAGE_CONFIG,
     ISVC_GETTER,
 )
-from tests.model_explainability.trustyai_service.trustyai_service_utils import (
+from tests.ai_safety.trustyai_service.trustyai_service_utils import (
     wait_for_isvc_deployment_registered_by_trustyai_service,
 )
-from tests.model_explainability.trustyai_service.utils import (
+from tests.ai_safety.trustyai_service.utils import (
     create_trustyai_service,
     wait_for_mariadb_pods,
     TRUSTYAI_SERVICE_NAME,

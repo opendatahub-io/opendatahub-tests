@@ -1,7 +1,7 @@
 import pytest
 from simple_logger.logger import get_logger
 
-from tests.model_explainability.constants import QWEN_MODEL_NAME
+from tests.ai_safety.constants import QWEN_MODEL_NAME
 from utilities.constants import MinIo
 
 LOGGER = get_logger(name=__name__)

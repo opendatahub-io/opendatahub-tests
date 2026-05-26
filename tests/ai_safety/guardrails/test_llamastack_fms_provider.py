@@ -2,12 +2,12 @@ import pytest
 import yaml
 from simple_logger.logger import get_logger
 
-from tests.model_explainability.guardrails.constants import (
+from tests.ai_safety.guardrails.constants import (
     CHAT_GENERATION_CONFIG,
     BUILTIN_DETECTOR_CONFIG,
     PROMPT_WITH_PII,
 )
-from tests.model_explainability.constants import QWEN_MODEL_NAME
+from tests.ai_safety.constants import QWEN_MODEL_NAME
 from utilities.constants import MinIo
 
 LOGGER = get_logger(name=__name__)
