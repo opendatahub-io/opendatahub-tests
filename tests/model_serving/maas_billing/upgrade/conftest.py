@@ -216,10 +216,11 @@ def maas_upgrade_baseline_fixture(
     """
     if not pytestconfig.option.post_upgrade:
         return {}  # type: ignore[return-value]
-    return load_maas_baseline_from_configmap(
-        client=admin_client,
-        namespace=MAAS_UPGRADE_NAMESPACE,
-    )
+    else:
+        return load_maas_baseline_from_configmap(
+            client=admin_client,
+            namespace=MAAS_UPGRADE_NAMESPACE,
+        )
 
 
 @pytest.fixture(scope="session")
@@ -232,7 +233,7 @@ def capture_maas_upgrade_baseline(
     maas_upgrade_subscription: MaaSSubscription,
     maas_upgrade_tenant: Tenant,
 ) -> None:
-    """Capture and persist MaaS state snapshot before upgrade.
+    """Capture and persist MaaS state snapshot to ConfigMap before upgrade.
 
     No-op during post-upgrade runs. During pre-upgrade, saves a baseline of all
     MaaS control plane resources to a ConfigMap in the upgrade namespace so that
@@ -240,15 +241,16 @@ def capture_maas_upgrade_baseline(
     """
     if pytestconfig.option.post_upgrade:
         return
-    baseline = capture_maas_baseline(
-        gateway=maas_upgrade_gateway,
-        model_ref=maas_upgrade_model_ref,
-        auth_policy=maas_upgrade_auth_policy,
-        subscription=maas_upgrade_subscription,
-        tenant=maas_upgrade_tenant,
-    )
-    save_maas_baseline_to_configmap(
-        client=admin_client,
-        namespace=MAAS_UPGRADE_NAMESPACE,
-        baseline=baseline,
-    )
+    else:
+        baseline = capture_maas_baseline(
+            gateway=maas_upgrade_gateway,
+            model_ref=maas_upgrade_model_ref,
+            auth_policy=maas_upgrade_auth_policy,
+            subscription=maas_upgrade_subscription,
+            tenant=maas_upgrade_tenant,
+        )
+        save_maas_baseline_to_configmap(
+            client=admin_client,
+            namespace=MAAS_UPGRADE_NAMESPACE,
+            baseline=baseline,
+        )

@@ -636,13 +636,13 @@ def assert_api_key_created_ok(
         assert field in body, f"Response must contain '{field}'"
 
 
-def verify_maas_gateway_programmed(*, gateway: Gateway) -> None:
+def verify_maas_gateway_programmed(gateway: Gateway) -> None:
     """Assert that the MaaS Gateway exists and has reached Programmed=True."""
     assert gateway.exists, f"MaaS Gateway '{gateway.name}' not found in namespace '{gateway.namespace}'"
     gateway.wait_for_condition(condition="Programmed", status="True", timeout=300)
 
 
-def verify_maas_tenant_ready(*, tenant: Tenant) -> None:
+def verify_maas_tenant_ready(tenant: Tenant) -> None:
     """Assert that the Tenant CR exists and has Ready=True."""
     assert tenant.exists, f"Tenant '{tenant.name}' not found in namespace '{tenant.namespace}'"
     tenant.wait_for_condition(condition="Ready", status="True", timeout=300)
