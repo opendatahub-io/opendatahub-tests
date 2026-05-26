@@ -15,8 +15,8 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.trustyai_service import TrustyAIService
 
-from tests.model_explainability.trustyai_service.trustyai_service_utils import TRUSTYAI_SERVICE_NAME
-from tests.model_explainability.trustyai_service.utils import (
+from tests.ai_safety.trustyai_service.trustyai_service_utils import TRUSTYAI_SERVICE_NAME
+from tests.ai_safety.trustyai_service.utils import (
     get_cluster_service_version,
     wait_for_mariadb_operator_deployments,
     wait_for_mariadb_pods,
