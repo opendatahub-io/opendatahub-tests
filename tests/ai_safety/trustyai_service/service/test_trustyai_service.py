@@ -2,15 +2,15 @@ import pytest
 from ocp_resources.namespace import Namespace
 from ocp_resources.trustyai_service import TrustyAIService
 
-from tests.model_explainability.trustyai_service.constants import DRIFT_BASE_DATA_PATH
-from tests.model_explainability.trustyai_service.trustyai_service_utils import (
+from tests.ai_safety.trustyai_service.constants import DRIFT_BASE_DATA_PATH
+from tests.ai_safety.trustyai_service.trustyai_service_utils import (
     send_inferences_and_verify_trustyai_service_registered,
     verify_upload_data_to_trustyai_service,
     TrustyAIServiceMetrics,
     verify_trustyai_service_metric_scheduling_request,
     verify_trustyai_service_metric_delete_request,
 )
-from tests.model_explainability.trustyai_service.utils import (
+from tests.ai_safety.trustyai_service.utils import (
     validate_trustyai_service_db_conn_failure,
     validate_trustyai_service_images,
 )

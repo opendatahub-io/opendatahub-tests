@@ -1,6 +1,6 @@
 import pytest
 
-from tests.model_explainability.utils import validate_tai_component_images
+from tests.ai_safety.utils import validate_tai_component_images
 from utilities.constants import Timeout
 
 LMEVALJOB_COMPLETE_STATE: str = "Complete"

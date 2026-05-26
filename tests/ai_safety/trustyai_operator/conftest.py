@@ -3,7 +3,7 @@ from kubernetes.dynamic import DynamicClient
 from pytest_testconfig import config as py_config
 from ocp_resources.deployment import Deployment
 
-from tests.model_explainability.trustyai_service.trustyai_service_utils import TRUSTYAI_SERVICE_NAME
+from tests.ai_safety.trustyai_service.trustyai_service_utils import TRUSTYAI_SERVICE_NAME
 
 
 @pytest.fixture(scope="class")

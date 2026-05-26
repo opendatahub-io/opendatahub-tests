@@ -2,7 +2,7 @@ from typing import Dict, Any, List
 
 from utilities.constants import Ports, ApiGroups
 
-DRIFT_BASE_DATA_PATH: str = "./tests/model_explainability/trustyai_service/drift/model_data"
+DRIFT_BASE_DATA_PATH: str = "./tests/ai_safety/trustyai_service/drift/model_data"
 TAI_DATA_CONFIG: Dict[str, str] = {"filename": "data.csv", "format": "CSV"}
 TAI_METRICS_CONFIG: Dict[str, str] = {"schedule": "5s"}
 TAI_PVC_STORAGE_CONFIG: Dict[str, str] = {"format": "PVC", "folder": "/inputs", "size": "1Gi"}

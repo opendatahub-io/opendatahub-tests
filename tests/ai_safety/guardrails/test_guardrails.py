@@ -5,14 +5,14 @@ import requests
 from simple_logger.logger import get_logger
 from timeout_sampler import retry
 
-from tests.model_explainability.guardrails.utils import (
+from tests.ai_safety.guardrails.utils import (
     verify_builtin_detector_unsuitable_input_response,
     verify_negative_detection_response,
     verify_builtin_detector_unsuitable_output_response,
     get_auth_headers,
     get_chat_payload,
 )
-from tests.model_explainability.utils import validate_tai_component_images
+from tests.ai_safety.utils import validate_tai_component_images
 from utilities.constants import Timeout, MinIo
 from utilities.plugins.constant import OpenAIEnpoints
 

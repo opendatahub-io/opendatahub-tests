@@ -15,7 +15,7 @@ from ocp_resources.service_account import ServiceAccount
 from ocp_resources.trustyai_service import TrustyAIService
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
-from tests.model_explainability.trustyai_service.trustyai_service_utils import TRUSTYAI_SERVICE_NAME
+from tests.ai_safety.trustyai_service.trustyai_service_utils import TRUSTYAI_SERVICE_NAME
 from utilities.constants import Timeout
 from timeout_sampler import retry
 
