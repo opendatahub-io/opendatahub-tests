@@ -144,9 +144,7 @@ def verify_maas_gateway_programmed(gateway: Gateway) -> None:
     Raises:
         AssertionError: If the gateway does not exist.
     """
-    assert gateway.exists, (
-        f"MaaS Gateway '{gateway.name}' not found in namespace '{gateway.namespace}' after upgrade."
-    )
+    assert gateway.exists, f"MaaS Gateway '{gateway.name}' not found in namespace '{gateway.namespace}' after upgrade."
     gateway.wait_for_condition(condition="Programmed", status="True", timeout=300)
 
 
@@ -229,7 +227,5 @@ def verify_maas_tenant_ready(tenant: Tenant) -> None:
     Raises:
         AssertionError: If the Tenant does not exist.
     """
-    assert tenant.exists, (
-        f"Tenant '{tenant.name}' not found in namespace '{tenant.namespace}' after upgrade."
-    )
+    assert tenant.exists, f"Tenant '{tenant.name}' not found in namespace '{tenant.namespace}' after upgrade."
     tenant.wait_for_condition(condition="Ready", status="True", timeout=300)
