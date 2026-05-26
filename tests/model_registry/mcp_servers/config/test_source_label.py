@@ -5,15 +5,13 @@ import structlog
 
 from tests.model_registry.mcp_servers.config.constants import (
     DEFAULT_MCP_LABEL,
-    MCP_CATALOG_SOURCE2_NAME,
-    MCP_CATALOG_SOURCE_NAME,
+    PARTNER_MCP_LABEL,
 )
 from tests.model_registry.utils import execute_get_command
 
 LOGGER = structlog.get_logger(name=__name__)
 
 
-@pytest.mark.usefixtures("mcp_source_label_configmap_patch")
 class TestMCPServerSourceLabel:
     """Tests for MCP server sourceLabel filtering (TC-API-036 to TC-API-039)."""
 
@@ -21,9 +19,10 @@ class TestMCPServerSourceLabel:
     @pytest.mark.parametrize(
         "source_label_param",
         [
-            pytest.param({"sourceLabel": "null"}, id="null_label"),
-            pytest.param({}, id="no_filter"),
-            pytest.param({"sourceLabel": DEFAULT_MCP_LABEL}, id="default_label"),
+            pytest.param({"sourceLabel": "null"}, id="test_null_label"),
+            pytest.param({}, id="test_no_filter"),
+            pytest.param({"sourceLabel": DEFAULT_MCP_LABEL}, id="test_default_label"),
+            pytest.param({"sourceLabel": PARTNER_MCP_LABEL}, id="test_partner_label"),
         ],
     )
     def test_mcp_server_source_label(
@@ -43,31 +42,37 @@ class TestMCPServerSourceLabel:
         LOGGER.info(f"Source label filter {source_label_param}: size={size}")
         assert size > 0, f"Expected size > 0 for source label filter {source_label_param}, but got {size}"
 
-    def test_mcp_server_custom_source_labels(
+    def test_mcp_server_source_label_combined(
         self: Self,
         mcp_catalog_rest_urls: list[str],
         model_registry_rest_headers: dict[str, str],
     ):
-        """Validate MCP server filtering by individual and combined custom source labels."""
-        sizes = {}
-        for label in [
-            MCP_CATALOG_SOURCE_NAME,
-            MCP_CATALOG_SOURCE2_NAME,
-            f"{MCP_CATALOG_SOURCE_NAME},{MCP_CATALOG_SOURCE2_NAME}",
-        ]:
-            size = execute_get_command(
-                url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
-                headers=model_registry_rest_headers,
-                params={"sourceLabel": label},
-            )["size"]
-            LOGGER.info(f"Source label '{label}': size={size}")
-            assert size > 0, f"Expected size > 0 for sourceLabel '{label}', but got {size}"
-            sizes[label] = size
+        """Validate MCP server filtering by individual and combined source labels."""
+        default_label_size = execute_get_command(
+            url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
+            headers=model_registry_rest_headers,
+            params={"sourceLabel": DEFAULT_MCP_LABEL},
+        )["size"]
+        partner_label_size = execute_get_command(
+            url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
+            headers=model_registry_rest_headers,
+            params={"sourceLabel": PARTNER_MCP_LABEL},
+        )["size"]
+        both_labeled_size = execute_get_command(
+            url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
+            headers=model_registry_rest_headers,
+            params={"sourceLabel": f"{DEFAULT_MCP_LABEL},{PARTNER_MCP_LABEL}"},
+        )["size"]
 
-        combined_label = f"{MCP_CATALOG_SOURCE_NAME},{MCP_CATALOG_SOURCE2_NAME}"
-        assert sizes[MCP_CATALOG_SOURCE_NAME] + sizes[MCP_CATALOG_SOURCE2_NAME] == sizes[combined_label], (
-            f"Expected source1 ({sizes[MCP_CATALOG_SOURCE_NAME]}) + source2 ({sizes[MCP_CATALOG_SOURCE2_NAME]}) "
-            f"== combined ({sizes[combined_label]})"
+        LOGGER.info(
+            f"default_label_size: {default_label_size}, partner_label_size: {partner_label_size}, "
+            f"both_labeled_size: {both_labeled_size}"
+        )
+        assert default_label_size > 0, f"Expected size > 0 for default label, but got {default_label_size}"
+        assert partner_label_size > 0, f"Expected size > 0 for partner label, but got {partner_label_size}"
+        assert default_label_size + partner_label_size == both_labeled_size, (
+            f"Expected default ({default_label_size}) + partner ({partner_label_size}) "
+            f"== combined ({both_labeled_size})"
         )
 
     @pytest.mark.tier3

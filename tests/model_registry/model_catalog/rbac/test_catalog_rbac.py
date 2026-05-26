@@ -45,7 +45,7 @@ class TestCatalogRBAC:
         Verify that admin users can read both catalog ConfigMaps.
 
         Admins should have:
-        - get/watch on model-catalog-default-sources (read-only)
+        - get/watch on default-catalog-sources (read-only)
         - get/watch/update/patch on model-catalog-sources (read/write)
 
         Note: Admin write access to model-catalog-sources is already tested by existing tests

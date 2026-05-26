@@ -24,7 +24,7 @@ workbenches/
 
 ```python
 @pytest.mark.smoke    # Quick validation tests (imagestream health, basic spawning)
-@pytest.mark.sanity   # Comprehensive validation tests
+@pytest.mark.tier1    # Comprehensive validation tests
 @pytest.mark.slow     # Long-running tests (custom image validation)
 ```
 

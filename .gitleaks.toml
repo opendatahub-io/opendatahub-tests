@@ -64,4 +64,6 @@
     '''database-password\s*:\s*"?(The)?BlurstOfTimes"?''',
     '''database-user\s*:\s*"?mlmduser"?''',
     '''database-user\s*:\s*"?modelregistryuser"?''',
+    '''TEST_TLS_CERTIFICATE''',
+    '''TEST_TLS_PRIVATE_KEY''',
   ]

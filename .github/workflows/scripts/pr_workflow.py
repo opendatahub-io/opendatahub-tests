@@ -3,6 +3,7 @@ import os
 import re
 import sys
 
+import github.Auth
 from constants import (
     ALL_LABELS_DICT,
     APPROVED,
@@ -18,7 +19,7 @@ from constants import (
     VERIFIED_LABEL_STR,
     WELCOME_COMMENT,
 )
-from github.GithubException import UnknownObjectException
+from github.GithubException import GithubException, UnknownObjectException
 from github.MainClass import Github
 from github.Organization import Organization
 from github.PullRequest import PullRequest
@@ -81,7 +82,7 @@ class PrBaseClass:
         )
 
     def set_gh_config(self) -> None:
-        self.gh_client = Github(login_or_token=self.github_token)
+        self.gh_client = Github(auth=github.Auth.Token(self.github_token))
         self.repo = self.gh_client.get_repo(full_name_or_id=self.repo_name)
         self.pr = self.repo.get_pull(number=self.pr_number)
 
@@ -332,7 +333,7 @@ class PrLabeler(PrBaseClass):
         self.pr.create_issue_comment(body=WELCOME_COMMENT)
         try:
             self.pr.add_to_assignees(self.pr.user.login)
-        except UnknownObjectException:
+        except UnknownObjectException, GithubException:
             LOGGER.warning(f"User {self.pr.user.login} can not be assigned to the PR.")
 
     def approve_pr(self) -> None:

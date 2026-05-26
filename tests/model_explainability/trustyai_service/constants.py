@@ -21,9 +21,13 @@ MLFLOW: str = "mlflow"
 
 GAUSSIAN_CREDIT_MODEL: str = "gaussian-credit-model"
 GAUSSIAN_CREDIT_MODEL_STORAGE_PATH: str = f"{SKLEARN}/{GAUSSIAN_CREDIT_MODEL.replace('-', '_')}/1"
+GAUSSIAN_CREDIT_MODEL_STORAGE_URI: str = (
+    "oci://quay.io/trustyai_testing/gaussian-credit-model-modelcar"
+    "@sha256:323dbb70c980c7f57bb6a884f5d46ee1c620c0b193368d13a469b49e7c9054c4"
+)
 GAUSSIAN_CREDIT_MODEL_RESOURCES: dict[str, dict[str, str]] = {
-    "requests": {"cpu": "1", "memory": "2Gi"},
-    "limits": {"cpu": "1", "memory": "2Gi"},
+    "requests": {"cpu": "1", "memory": "500Mi"},
+    "limits": {"cpu": "1", "memory": "500Mi"},
 }
 
 KSERVE_MLSERVER: str = f"kserve-{MLSERVER}"

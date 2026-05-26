@@ -1,4 +1,6 @@
 import pytest
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.namespace import Namespace
 from ocp_resources.trustyai_service import TrustyAIService
 
@@ -19,7 +21,23 @@ from tests.model_explainability.trustyai_service.utils import (
     validate_trustyai_service_db_conn_failure,
     validate_trustyai_service_images,
 )
-from utilities.constants import MinIo
+
+
+@pytest.mark.smoke
+@pytest.mark.model_explainability
+def test_trustyaiservice_crd_exists(
+    admin_client: DynamicClient,
+) -> None:
+    """Verify TrustyAIService CRD exists on the cluster."""
+    crd_name = "trustyaiservices.trustyai.opendatahub.io"
+
+    crd_resource = CustomResourceDefinition(
+        client=admin_client,
+        name=crd_name,
+        ensure_exists=True,
+    )
+
+    assert crd_resource.exists, f"CRD {crd_name} does not exist on the cluster"
 
 
 @pytest.mark.tier1
@@ -46,7 +64,7 @@ def test_trustyai_service_with_invalid_db_cert(
     )
 
 
-@pytest.mark.smoke
+@pytest.mark.tier1
 @pytest.mark.parametrize(
     "model_namespace, trustyai_service",
     [
@@ -75,18 +93,15 @@ def test_validate_trustyai_service_image(
 
 @pytest.mark.tier1
 @pytest.mark.parametrize(
-    "model_namespace, minio_pod, minio_data_connection, trustyai_service",
+    "model_namespace, trustyai_service",
     [
         pytest.param(
             {"name": "test-trustyai-db-migration"},
-            MinIo.PodConfig.MODEL_MESH_MINIO_CONFIG,
-            {"bucket": MinIo.Buckets.MODELMESH_EXAMPLE_MODELS},
             {"storage": "pvc"},
         )
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("minio_pod")
 @pytest.mark.rawdeployment
 def test_trustyai_service_db_migration(
     admin_client,

@@ -371,6 +371,11 @@ class UserInference(Inference):
             token=token,
         )
 
+        if re.search(rf"http/1\.\d\s+{HTTPStatus.GATEWAY_TIMEOUT.value}\b", out.lower()):
+            raise InferenceResponseError(
+                f"Inference service at {self.get_inference_url()} returned {HTTPStatus.GATEWAY_TIMEOUT} error."
+            )
+
         try:
             if self.protocol in Protocols.TCP_PROTOCOLS:
                 # with curl response headers are also returned

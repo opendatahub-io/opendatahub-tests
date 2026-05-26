@@ -54,10 +54,10 @@ def run_openvino_inference(
 ) -> Any:
     """
     Run inference against an OpenVINO-hosted model using REST protocol.
-    Supports RAW KServe deployment mode.
+    Supports RawDeployment and Standard modes (non-serverless Deployment-based serving).
 
     Args:
-        pod_name (str): Name of the pod running the OpenVINO model (used for RAW deployment).
+        pod_name (str): Name of the pod running the OpenVINO model (used for port-forward).
         isvc (InferenceService): The KServe InferenceService object.
         input_data (dict[str, Any]): The input data payload for inference.
         model_version (str): The version of the model to target, if applicable.
@@ -67,7 +67,7 @@ def run_openvino_inference(
 
     Notes:
         - REST calls expect the model to support V2 REST inference APIs.
-        - RAW deployments use port-forwarding.
+        - RawDeployment and Standard use port-forwarding to the predictor pod (same as MLServer utils).
     """
     annotations = getattr(isvc.instance.metadata, "annotations", {}) or {}
     deployment_mode = annotations.get("serving.kserve.io/deploymentMode")
@@ -78,13 +78,14 @@ def run_openvino_inference(
     version_suffix = f"/versions/{model_version}" if model_version else ""
     rest_endpoint = f"/v2/models/{model_name}{version_suffix}/infer"
 
-    if deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT:
-        port = OPENVINO_REST_PORT
-        with portforward.forward(pod_or_service=pod_name, namespace=isvc.namespace, from_port=port, to_port=port):
-            host = f"{LOCAL_HOST_URL}:{port}"
-            return send_rest_request(url=f"{host}{rest_endpoint}", input_data=input_data, verify=False)
+    supported_modes = (KServeDeploymentType.RAW_DEPLOYMENT, KServeDeploymentType.STANDARD)
+    if deployment_mode not in supported_modes:
+        raise ValueError(f"Unsupported deployment_mode {deployment_mode}. Supported modes: {supported_modes}")
 
-    raise ValueError(f"Invalid deployment_mode {deployment_mode}")
+    port = OPENVINO_REST_PORT
+    with portforward.forward(pod_or_service=pod_name, namespace=isvc.namespace, from_port=port, to_port=port):
+        host = f"{LOCAL_HOST_URL}:{port}"
+        return send_rest_request(url=f"{host}{rest_endpoint}", input_data=input_data, verify=False)
 
 
 def validate_inference_request(

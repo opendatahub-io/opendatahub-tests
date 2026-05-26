@@ -12,7 +12,7 @@ from tests.model_registry.utils import execute_get_command
 
 pytestmark = [pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace")]
 
-DEFAULT_MCP_CATALOG_ID: str = "rh_mcp_servers"
+DEFAULT_MCP_CATALOG_IDS: set[str] = {"rh_mcp_servers", "rh_partner_mcp_servers", "community_mcp_servers"}
 LOGGER = structlog.get_logger(name=__name__)
 
 
@@ -63,7 +63,7 @@ class TestAssetTypeFilter:
         [
             (None, {REDHAT_AI_CATALOG_ID, VALIDATED_CATALOG_ID, OTHER_MODELS_CATALOG_ID}),
             ("models", {REDHAT_AI_CATALOG_ID, VALIDATED_CATALOG_ID, OTHER_MODELS_CATALOG_ID}),
-            ("mcp_servers", {DEFAULT_MCP_CATALOG_ID}),
+            ("mcp_servers", DEFAULT_MCP_CATALOG_IDS),
             ("invalid_value", set()),
         ],
         ids=["default-models", "explicit-models", "mcp-servers", "invalid-empty"],

@@ -6,24 +6,52 @@ Follows the established model server utils pattern for consistency.
 """
 
 import json
+import time
 from pathlib import Path
 
 import structlog
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.event import Event
 from ocp_resources.llm_inference_service import LLMInferenceService
+from ocp_resources.node import Node
 from ocp_resources.pod import Pod
 from ocp_resources.prometheus import Prometheus
 from ocp_resources.route import Route
 from pyhelper_utils.shell import run_command
 from timeout_sampler import TimeoutExpiredError, retry
 
+from tests.model_serving.model_server.llmd.constants import LLMD_TESTS_SUPPORTED_ACCELERATORS
 from utilities.certificates_utils import get_ca_bundle
 from utilities.constants import Timeout
 from utilities.infra import is_disconnected_cluster
+from utilities.jira import is_jira_issue_open
 from utilities.llmd_constants import LLMDGateway, LLMEndpoint
 from utilities.monitoring import get_metrics_value
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+def detect_accelerators(client: DynamicClient) -> list[dict[str, int]]:
+    """Detect accelerator resources available on cluster worker nodes.
+
+    Returns:
+        List of dicts, one per accelerator node. Each dict maps accelerator
+        resource name to available count.
+        Example: [{"amd.com/gpu": 8}, {"amd.com/gpu": 4}]
+    """
+    accelerators: list[dict[str, int]] = []
+    for node in Node.get(client=client, label_selector="node-role.kubernetes.io/worker"):
+        allocatable = node.instance.status.allocatable or {}
+        node_accelerators = {
+            resource: int(allocatable[resource])
+            for resource in LLMD_TESTS_SUPPORTED_ACCELERATORS
+            if int(allocatable.get(resource, 0)) > 0
+        }
+        if node_accelerators:
+            LOGGER.info(f"[llmd] Accelerator node {node.name}: {node_accelerators}")
+            accelerators.append(node_accelerators)
+
+    return accelerators
 
 
 def ns_from_file(file: str) -> str:
@@ -94,8 +122,34 @@ def _debug_info_pod_statuses(llmisvc: LLMInferenceService) -> str:
     return "\n".join(lines)
 
 
+def _debug_info_events(llmisvc: LLMInferenceService) -> str:
+    """Collect recent warning events from the LLMISVC namespace."""
+    events = Event.list(
+        client=llmisvc.client,
+        namespace=llmisvc.namespace,
+        field_selector="type=Warning",
+        since_seconds=600,
+    )
+    if not events:
+        return "  (no warning events)"
+
+    lines = []
+    for event in events:
+        timestamp = str(event.get("lastTimestamp") or event.get("eventTime") or "")
+        if "T" in timestamp:
+            timestamp = timestamp.split("T")[1][:8]
+        reason = event.get("reason", "")
+        obj = event.get("involvedObject") or {}
+        obj_name = obj.get("name", "")
+        msg = " ".join(event.get("message", "").split())
+        count = event.get("count", 1)
+        count_str = f" (x{count})" if count and count > 1 else ""
+        lines.append(f"  * {reason}{count_str} — {msg} [{obj_name}][{timestamp}]")
+    return "\n".join(lines)
+
+
 def _log_llmisvc_debug_info(llmisvc: LLMInferenceService) -> None:
-    """Log debug info related to LLMISVC timeout: conditions and pod statuses."""
+    """Log debug info related to LLMISVC timeout: conditions, pod statuses, and events."""
     name, ns = llmisvc.name, llmisvc.namespace
     separator = "=" * 60
     sections = [
@@ -106,6 +160,7 @@ def _log_llmisvc_debug_info(llmisvc: LLMInferenceService) -> None:
     for label, func in [
         ("Conditions", lambda: _debug_info_conditions(llmisvc)),
         ("Pods", lambda: _debug_info_pod_statuses(llmisvc)),
+        ("Events", lambda: _debug_info_events(llmisvc)),
     ]:
         try:
             sections.append(f"\n {label}:\n{func()}")
@@ -189,13 +244,13 @@ def _get_disconnected_inference_url(llmisvc: LLMInferenceService) -> str:
     return f"https://{host}/{llmisvc.namespace}/{llmisvc.name}"
 
 
-def _build_chat_body(model_name: str, prompt: str, max_tokens: int = 50) -> str:
+def _build_chat_body(model_name: str, prompt: str, max_tokens: int = LLMEndpoint.DEFAULT_MAX_TOKENS) -> str:
     """Build OpenAI chat completion request body."""
     return json.dumps({
         "model": model_name,
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": max_tokens,
-        "temperature": 0.0,
+        "temperature": LLMEndpoint.DEFAULT_TEMPERATURE,
         "stream": False,
     })
 
@@ -223,7 +278,11 @@ def _log_curl_command(url: str, body: str, token: bool, ca_cert: str | None) -> 
 
 
 def _curl_post(
-    url: str, body: str, token: str | None = None, ca_cert: str | None = None, timeout: int = 60
+    url: str,
+    body: str,
+    token: str | None = None,
+    ca_cert: str | None = None,
+    timeout: int = LLMEndpoint.DEFAULT_TIMEOUT,
 ) -> tuple[int, str]:
     """POST to URL via curl. Returns (status_code, response_body)."""
     cmd = [
@@ -293,6 +352,50 @@ def send_chat_completions(
     return status_code, response_body
 
 
+def _build_completions_body(model_name: str, prompt: str, max_tokens: int = LLMEndpoint.DEFAULT_MAX_TOKENS) -> str:
+    """Build OpenAI completions request body (non-chat)."""
+    return json.dumps({
+        "model": model_name,
+        "prompt": prompt,
+        "max_tokens": max_tokens,
+        "temperature": LLMEndpoint.DEFAULT_TEMPERATURE,
+        "stream": False,
+    })
+
+
+def send_completions(
+    llmisvc: LLMInferenceService,
+    prompt: str,
+    token: str | None = None,
+    insecure: bool = True,
+) -> tuple[int, str]:
+    """Send a completions request to /v1/completions.
+
+    Args:
+        llmisvc: The LLMInferenceService to send the request to.
+        prompt: The prompt text.
+        token: Optional bearer token for authentication.
+        insecure: Skip TLS verification (default True).
+
+    Returns:
+        Tuple of (status_code, response_body).
+    """
+    base_url = (
+        _get_disconnected_inference_url(llmisvc)
+        if is_disconnected_cluster(llmisvc.client)
+        else _get_inference_url(llmisvc)
+    )
+    url = base_url + LLMEndpoint.COMPLETIONS
+    model_name = _get_model_name(llmisvc=llmisvc)
+    body = _build_completions_body(model_name=model_name, prompt=prompt)
+    ca_cert = None if insecure else _resolve_ca_cert(llmisvc.client)
+
+    LOGGER.info(f"Sending completions request to {llmisvc.name} — URL: {url}, Model: {model_name}")
+    status_code, response_body = _curl_post(url=url, body=body, token=token, ca_cert=ca_cert)
+    LOGGER.info(f"Completions response — status={status_code}\n{response_body}")
+    return status_code, response_body
+
+
 def parse_completion_text(response_body: str) -> str:
     """Extract completion text from a chat completion response."""
     try:
@@ -300,6 +403,121 @@ def parse_completion_text(response_body: str) -> str:
         return data["choices"][0]["message"]["content"]
     except (json.JSONDecodeError, KeyError, IndexError, TypeError) as e:
         raise ValueError(f"Failed to parse completion response: {e}\nBody: {response_body[:500]}") from e
+
+
+def parse_prompt_tokens(response_body: str) -> int:
+    """Extract prompt_tokens from an inference response's usage field.
+
+    Args:
+        response_body: JSON response body from a chat completion or completion request.
+
+    Returns:
+        Number of prompt tokens reported by the model.
+    """
+    try:
+        data = json.loads(response_body)
+        return data["usage"]["prompt_tokens"]
+    except (json.JSONDecodeError, KeyError, TypeError) as e:
+        raise ValueError(f"Failed to parse prompt_tokens: {e}\nBody: {response_body[:500]}") from e
+
+
+@retry(wait_timeout=120, sleep=10, exceptions_dict={AssertionError: []}, print_log=False)
+def assert_kv_transfer(
+    prometheus: Prometheus,
+    unprivileged_client: DynamicClient,
+    llmisvc: LLMInferenceService,
+    expected_transferred_tokens: int,
+    num_requests: int,
+) -> bool:
+    """Assert P/D KV transfer metrics match expected values.
+
+    Asserts the following invariants on kserve_vllm:prompt_tokens_by_source_total:
+    - decode.external_kv_transfer == expected_transferred_tokens: all prompt tokens received from prefill
+    - decode.local_compute == num_requests: vLLM recomputes 1 token per request locally
+      (the model needs at least 1 input token to run a forward pass)
+    - prefill.local_compute == expected_transferred_tokens: prefill computes all prompt tokens locally
+    - prefill.external_kv_transfer == 0: prefill only sends KV cache, never receives
+
+    Args:
+        prometheus: Prometheus client for querying metrics.
+        unprivileged_client: DynamicClient instance.
+        llmisvc: The LLMInferenceService under test.
+        expected_transferred_tokens: sum of prompt_tokens from all responses.
+        num_requests: number of requests sent.
+
+    Returns:
+        True when all assertions pass (required by @retry to stop retrying).
+    """
+    prompt_tokens_by_source_total_metric = "kserve_vllm:prompt_tokens_by_source_total"
+
+    decode_pod = get_llmd_pod_by_role(client=unprivileged_client, llmisvc=llmisvc, role="decode")
+    prefill_pod = get_llmd_pod_by_role(client=unprivileged_client, llmisvc=llmisvc, role="prefill")
+
+    def _query(pod_name: str, source: str) -> float:
+        query = (
+            f"{prompt_tokens_by_source_total_metric}"
+            f'{{namespace="{llmisvc.namespace}",pod="{pod_name}",source="{source}"}}'
+        )
+        raw = get_metrics_value(prometheus=prometheus, metrics_query=query)
+        LOGGER.info(f"PromQL: {query} → {raw}")
+        return float(raw or 0)
+
+    decode_kv = _query(pod_name=decode_pod.name, source="external_kv_transfer")
+    decode_local = _query(pod_name=decode_pod.name, source="local_compute")
+    prefill_compute = _query(pod_name=prefill_pod.name, source="local_compute")
+    prefill_kv = _query(pod_name=prefill_pod.name, source="external_kv_transfer")
+
+    LOGGER.info(
+        f"KV transfer metrics — "
+        f"decode.external_kv_transfer={decode_kv}, "
+        f"decode.local_compute={decode_local}, "
+        f"prefill.local_compute={prefill_compute}, "
+        f"prefill.external_kv_transfer={prefill_kv}, "
+        f"expected_transferred_tokens={expected_transferred_tokens}"
+    )
+
+    assert decode_kv == expected_transferred_tokens, (
+        f"decode.external_kv_transfer={decode_kv} != expected {expected_transferred_tokens}"
+    )
+    assert decode_local == num_requests, (
+        f"decode.local_compute={decode_local} != num_requests {num_requests} (expected 1 recomputed token per request)"
+    )
+    assert prefill_compute == expected_transferred_tokens, (
+        f"prefill.local_compute={prefill_compute} != expected {expected_transferred_tokens}"
+    )
+    assert prefill_kv == 0, f"Prefill pod should not receive KV transfers (got {prefill_kv})"
+    return True
+
+
+def get_llmd_pod_by_role(
+    client: DynamicClient,
+    llmisvc: LLMInferenceService,
+    role: str,
+) -> Pod:
+    """Get the workload pod with a specific llm-d.ai/role label.
+
+    Args:
+        client: DynamicClient instance.
+        llmisvc: The LLMInferenceService to get the pod for.
+        role: Pod role label value (decode or prefill).
+
+    Returns:
+        The matching Pod object.
+
+    Raises:
+        RuntimeError: If no pod with the given role is found.
+    """
+    for pod in Pod.get(
+        client=client,
+        namespace=llmisvc.namespace,
+        label_selector=(
+            f"{Pod.ApiGroup.APP_KUBERNETES_IO}/part-of=llminferenceservice,"
+            f"{Pod.ApiGroup.APP_KUBERNETES_IO}/name={llmisvc.name},"
+            f"llm-d.ai/role={role}"
+        ),
+    ):
+        return pod
+    raise RuntimeError(f"No pod with role={role} for {llmisvc.name} in {llmisvc.namespace}")
 
 
 def get_llmd_workload_pods(
@@ -373,7 +591,39 @@ def query_metric_by_pod(
     return result
 
 
-@retry(wait_timeout=90, sleep=30, exceptions_dict={AssertionError: []}, print_log=False)
+def scheduler_has_plugin(
+    client: DynamicClient,
+    llmisvc: LLMInferenceService,
+    plugin_name: str,
+) -> bool:
+    """Check whether a named plugin exists in the scheduler's --config-text.
+
+    Args:
+        client: DynamicClient instance.
+        llmisvc: The LLMInferenceService to check.
+        plugin_name: Name of the plugin to search for (e.g. 'prefill-filter').
+
+    Returns:
+        True if the plugin is found in the scheduler config.
+
+    Raises:
+        RuntimeError: If no scheduler pod or --config-text is found.
+    """
+    pod = get_llmd_router_scheduler_pod(client=client, llmisvc=llmisvc)
+    if not pod:
+        raise RuntimeError(f"No scheduler pod found for {llmisvc.name} in {llmisvc.namespace}")
+
+    containers = pod.instance.spec.containers
+    for container in containers:
+        args = container.get("args") or []
+        for i, arg in enumerate(args):
+            if arg == "--config-text" and i + 1 < len(args):
+                return plugin_name in args[i + 1]
+
+    raise RuntimeError(f"No --config-text found in scheduler pod {pod.name}")
+
+
+@retry(wait_timeout=120, sleep=10, exceptions_dict={AssertionError: []}, print_log=False)
 def assert_prefix_cache_routing(
     prometheus: Prometheus,
     llmisvc: LLMInferenceService,
@@ -425,26 +675,57 @@ def send_prefix_cache_requests(
     llmisvc: LLMInferenceService,
     prompt: str,
     token: str,
-    count: int = 20,
-    min_ratio: float = 0.8,
+    count: int,
+    max_failures: int = 5,
+    delay_after_first_request: int | None = None,
 ) -> int:
-    """Send identical requests for prefix cache testing. Returns success count."""
-    LOGGER.info(f"Sending {count} identical requests to test prefix cache")
+    """Send identical chat completion requests until ``count`` succeed.
+
+    Keeps sending the same prompt until the target number of successful (HTTP 200)
+    responses is reached. Aborts with AssertionError if failures exceed ``max_failures``.
+
+    Args:
+        llmisvc: The LLMInferenceService to send requests to.
+        prompt: The prompt text sent in every request.
+        token: Bearer token for authentication.
+        count: Number of successful responses required.
+        max_failures: Maximum tolerated failures (non-200 or exceptions) before aborting.
+        delay_after_first_request: Seconds to wait after the first successful request,
+            used to allow KV cache index propagation before subsequent requests.
+
+    Returns:
+        The number of successful requests (always equal to ``count``).
+
+    Raises:
+        AssertionError: If failures exceed ``max_failures``.
+    """
+    LOGGER.info(f"Sending requests until {count} succeed (max {max_failures} failures allowed)")
     successful = 0
-    for i in range(count):
+    failures = 0
+
+    while successful < count:
+        # mark test failed when inference requests exceed the max_failures threshold
+        assert failures < max_failures, f"Too many failures: {failures}/{max_failures}, {successful}/{count} succeeded"
+
         try:
-            status, _ = send_chat_completions(
-                llmisvc=llmisvc,
-                prompt=prompt,
-                token=token,
-                insecure=False,
-            )
-            if status == 200:
-                successful += 1
+            status, body = send_chat_completions(llmisvc=llmisvc, prompt=prompt, token=token, insecure=False)
         except Exception:
-            LOGGER.exception(f"Request {i + 1}/{count} failed")
-    LOGGER.info(f"{successful}/{count} requests succeeded")
-    assert successful >= count * min_ratio, f"Too many failures: {successful}/{count} (need {min_ratio * 100}%)"
+            failures += 1
+            LOGGER.exception(f"Request raised an exception ({failures}/{max_failures} failures)")
+            continue
+
+        if status == 200:
+            successful += 1
+            # add delay after first successful request for KV cache index propagation
+            if successful == 1 and delay_after_first_request:
+                LOGGER.info(f"Waiting {delay_after_first_request}s for KV cache index propagation")
+                time.sleep(delay_after_first_request)
+        else:
+            failures += 1
+            LOGGER.warning(f"Request failed with status {status}: {body} ({failures}/{max_failures} failures)")
+            time.sleep(5)
+
+    LOGGER.info(f"{successful} requests succeeded ({failures} failures)")
     return successful
 
 
@@ -479,3 +760,36 @@ def get_scheduler_decision_logs(
 
     LOGGER.info(f"Retrieved {len(json_logs)} logs from router-scheduler pod")
     return json_logs
+
+
+def workaround_503_no_healthy_upstream(llmisvc: LLMInferenceService, prompt: str) -> None:
+    """Warm up inference endpoint to work around RHOAIENG-55154.
+
+    Requests soon after Ready condition may 503 with 'no healthy upstream'.
+    Retries every 3s for up to 30s until the endpoint stops returning 503.
+    Swallows TimeoutExpiredError if retries are exhausted, letting the real test assertion decide.
+    Skips entirely if the Jira issue is closed (result is cached).
+
+    See: https://redhat.atlassian.net/browse/RHOAIENG-55154
+
+    Args:
+        llmisvc: The LLMInferenceService to warm up
+        prompt: The prompt to send in the warm up request
+    """
+    if not is_jira_issue_open(jira_id="RHOAIENG-55154"):
+        LOGGER.info("RHOAIENG-55154 is closed - remove this block")
+        return
+
+    try:
+        _send_warm_up_request(llmisvc=llmisvc, prompt=prompt)
+    except TimeoutExpiredError:
+        LOGGER.warning(f"RHOAIENG-55154: warm up retries exhausted for {llmisvc.name}")
+
+
+@retry(wait_timeout=30, sleep=3)
+def _send_warm_up_request(llmisvc: LLMInferenceService, prompt: str) -> bool:
+    """Send one warm-up request; return True to stop retrying, False to retry."""
+    LOGGER.info(f"RHOAIENG-55154: sending warm up request to {llmisvc.name}")
+    status, body = send_chat_completions(llmisvc=llmisvc, prompt=prompt)
+    LOGGER.info(f"RHOAIENG-55154: warm up returned {status}")
+    return not (status == 503 and "no healthy upstream" in body)

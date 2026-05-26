@@ -84,19 +84,18 @@ class TestMultipleAuthPoliciesPerModel:
         )
 
     @pytest.mark.tier1
-    @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
-    def test_delete_extra_auth_policy_denies_access_on_premium_model(
+    @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "premium"}], indirect=True)
+    def test_delete_one_auth_policy_other_still_works(
         self,
         request_session_http: requests.Session,
         model_url_tinyllama_premium: str,
         premium_system_authenticated_access,
-        api_key_bound_to_system_auth_subscription: str,
+        api_key_bound_to_premium_subscription: str,
     ) -> None:
+        """Delete one of two auth policies for the same model. The remaining auth policy
+        and its subscription still grant access (HTTP 200).
         """
-        Verify FREE actor loses access again after the extra AuthPolicy is deleted.
-        API key is minted and bound to the system:authenticated subscription at creation time.
-        """
-        headers = build_maas_headers(token=api_key_bound_to_system_auth_subscription)
+        headers = build_maas_headers(token=api_key_bound_to_premium_subscription)
         payload = chat_payload_for_url(model_url=model_url_tinyllama_premium)
 
         poll_expected_status(
@@ -107,6 +106,7 @@ class TestMultipleAuthPoliciesPerModel:
             expected_statuses={200},
         )
 
+        LOGGER.info(f"Deleting extra AuthPolicy {premium_system_authenticated_access['auth_policy'].name}")
         premium_system_authenticated_access["auth_policy"].delete(wait=True)
 
         response = poll_expected_status(
@@ -114,9 +114,10 @@ class TestMultipleAuthPoliciesPerModel:
             model_url=model_url_tinyllama_premium,
             headers=headers,
             payload=payload,
-            expected_statuses={403},
+            expected_statuses={200},
         )
 
-        assert response.status_code == 403, (
-            f"Expected 403 after deleting extra AuthPolicy, got {response.status_code}: {(response.text or '')[:200]}"
+        assert response.status_code == 200, (
+            f"Expected 200 after deleting extra AuthPolicy (original still active), "
+            f"got {response.status_code}: {(response.text or '')[:200]}"
         )

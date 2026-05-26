@@ -16,6 +16,6 @@ tests/model_registry/                          @dbasunag @lugi0 @fege
 tests/model_serving/                           @mwaykole @Raghul-M @brettmthompson @threcc @rpancham @SB159
 tests/model_serving/model_runtime/             @Raghul-M @brettmthompson @rpancham
 tests/model_serving/model_server/              @threcc @mwaykole
-tests/model_serving/maas_billing/ @SB159
-tests/rag/                                     @jgarciao @jiripetrlik
+tests/model_serving/maas_billing/              @SB159
+tests/llama_stack/                             @Artemon-line @Bobbins228 @ChristianZaccaria @jgarciao @jiripetrlik @Ygnas
 tests/workbenches                              @jstourac @andyatmiami @jiridanek @harshad16

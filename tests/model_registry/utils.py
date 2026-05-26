@@ -10,11 +10,12 @@ from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import RegisteredModel
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
+from ocp_resources.job import Job
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
-from timeout_sampler import retry
+from timeout_sampler import TimeoutSampler, retry
 
 from tests.model_registry.constants import (
     DB_BASE_RESOURCES_NAME,
@@ -31,7 +32,7 @@ from utilities.constants import Annotations, PodNotFound, Protocols, Timeout
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
 from utilities.general import wait_for_pods_running
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
-from utilities.user_utils import get_byoidc_issuer_url
+from utilities.user_utils import get_byoidc_cli_client_id, get_byoidc_issuer_url, get_oidc_token_endpoint
 
 ADDRESS_ANNOTATION_PREFIX: str = "routing.opendatahub.io/external-address-"
 MARIA_DB_IMAGE = (
@@ -70,11 +71,26 @@ def get_mr_service_by_label(client: DynamicClient, namespace_name: str, mr_insta
     raise ResourceNotFoundError(f"{mr_instance.name} has no Service")
 
 
-def get_endpoint_from_mr_service(svc: Service, protocol: str) -> str:
-    if protocol in (Protocols.REST, Protocols.GRPC):
-        return svc.instance.metadata.annotations[f"{ADDRESS_ANNOTATION_PREFIX}{protocol}"]
-    else:
+def get_endpoint_from_mr_service(svc: Service, protocol: str) -> tuple[str, int]:
+    """Extract external address and port from a model registry service.
+
+    Args:
+        svc: The model registry Service resource.
+        protocol: Protocol to look up (rest or grpc).
+
+    Returns:
+        Tuple of (external address, port). Port is 443 for gateway URLs, or
+        extracted from the annotation for legacy host:port format.
+    """
+    if protocol not in (Protocols.REST, Protocols.GRPC):
         raise ProtocolNotSupportedError(protocol)
+
+    address = svc.instance.metadata.annotations[f"{ADDRESS_ANNOTATION_PREFIX}{protocol}"]
+    if ":" in address:
+        host, port_str = address.rsplit(":", 1)
+        return host, int(port_str)
+
+    return address, 443
 
 
 def get_database_volumes(resource_name: str, db_backend: str) -> list[dict[str, Any]]:
@@ -825,15 +841,16 @@ def wait_for_default_resource_cleanedup(admin_client: DynamicClient, namespace_n
 
 
 def get_mr_user_token(admin_client: DynamicClient, user_credentials_rbac: dict[str, str]) -> str:
-    url = f"{get_byoidc_issuer_url(admin_client=admin_client)}/protocol/openid-connect/token"
+    issuer_url = get_byoidc_issuer_url(admin_client=admin_client)
+    url = get_oidc_token_endpoint(issuer_url=issuer_url)
     headers = {"Content-Type": "application/x-www-form-urlencoded", "User-Agent": "python-requests"}
 
     data = {
         "username": user_credentials_rbac["username"],
         "password": user_credentials_rbac["password"],
         "grant_type": "password",
-        "client_id": "oc-cli",
-        "scope": "openid",
+        "client_id": get_byoidc_cli_client_id(admin_client=admin_client),
+        "scope": "openid profile",
     }
 
     LOGGER.info(f"Requesting token for user {user_credentials_rbac['username']} in byoidc environment")
@@ -882,18 +899,14 @@ def get_byoidc_user_credentials(client: DynamicClient, username: str | None = No
     # Use specified username or default to first user
     requested_username = username if username else user_names[0]
 
-    if requested_username and requested_username in user_names:
-        # Find the index of the requested username
-        user_index = user_names.index(requested_username)
-        if user_index < len(passwords):
-            selected_username = user_names[user_index]
-            selected_password = passwords[user_index]
-        else:
-            raise ValueError(f"Password not found for user '{requested_username}' at index {user_index}")
-    elif requested_username:
+    # entra ID usernames are in the form of `user@<tenant>.onmicrosoft.com`, find by prefix
+    for stored_user, stored_password in zip(user_names, passwords):
+        if stored_user.startswith(requested_username):
+            selected_username = stored_user
+            selected_password = stored_password
+
+    if not selected_username:
         raise ValueError(f"Username '{requested_username}' not found in byoidc credentials")
-    else:
-        raise ValueError("No users found in byoidc credentials")
 
     LOGGER.info(f"Using byoidc-credentials username='{selected_username}'")
     return {
@@ -961,13 +974,61 @@ def wait_for_model_catalog_pod_created(client: DynamicClient, model_registry_nam
     raise PodNotFound("Model catalog pod not found")
 
 
-@retry(
-    wait_timeout=90,
-    sleep=5,
-    exceptions_dict={ResourceNotFoundError: [], TransientUnauthorizedError: []},
-)
-def wait_for_mcp_catalog_api(url: str, headers: dict[str, str]) -> requests.Response:
-    """Wait for MCP catalog API to be ready and returning MCP server data."""
-    LOGGER.info(f"Waiting for MCP catalog API at {url}mcp_servers")
-    response = execute_get_call(url=f"{url}mcp_servers", headers=headers)
-    return response.json()
+def wait_for_mcp_catalog_api(
+    url: str, headers: dict[str, str], consecutive_stable_checks: int = 3, sleep: int = 5, wait_timeout: int = 120
+) -> dict[str, Any]:
+    """Wait for MCP catalog API to be ready and data fully loaded.
+
+    Polls the API until the server count stabilizes across consecutive checks,
+    ensuring catalog data has been fully loaded after a pod restart.
+    """
+    servers_url = f"{url}mcp_servers"
+    LOGGER.info(f"Waiting for MCP catalog API at {servers_url}")
+    last_payload = None
+    stable_count = 0
+    data = {}
+    sampler = TimeoutSampler(
+        wait_timeout=wait_timeout,
+        sleep=sleep,
+        func=execute_get_call,
+        exceptions_dict={ResourceNotFoundError: [], TransientUnauthorizedError: []},
+        url=servers_url,
+        headers=headers,
+        params={"pageSize": 1000},
+    )
+    for sample in sampler:
+        data = json.loads(sample.text)
+        current_size = data.get("size", 0)
+        payload_identity = json.dumps(data, sort_keys=True)
+        if current_size > 0 and payload_identity == last_payload:
+            stable_count += 1
+            if stable_count >= consecutive_stable_checks:
+                LOGGER.info(f"MCP catalog API stabilized with {current_size} servers after {stable_count} checks")
+                return data
+        else:
+            stable_count = 0
+        last_payload = payload_identity
+        LOGGER.info(
+            f"MCP catalog API returned {current_size} servers (stable: {stable_count}/{consecutive_stable_checks})"
+        )
+    return data
+
+
+def get_latest_job_pod(admin_client: DynamicClient, job: Job) -> Pod:
+    """Get the latest (most recently created) Pod created by a Job."""
+    pods = list(
+        Pod.get(
+            client=admin_client,
+            namespace=job.namespace,
+            label_selector=f"job-name={job.name}",
+        )
+    )
+
+    if not pods:
+        raise AssertionError(f"No pods found for job {job.name}")
+
+    sorted_pods = sorted(pods, key=lambda p: p.instance.metadata.creationTimestamp or "", reverse=True)
+
+    latest_pod = sorted_pods[0]
+    LOGGER.info(f"Found {len(pods)} pod(s) for job {job.name}, using latest: {latest_pod.name}")
+    return latest_pod

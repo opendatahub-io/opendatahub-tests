@@ -267,8 +267,8 @@ def get_model_registry_host(
     mr_service = get_mr_service_by_label(
         client=admin_client, namespace_name=model_registry_namespace, mr_instance=mr_instance
     )
-    mr_endpoint = get_endpoint_from_mr_service(svc=mr_service, protocol=Protocols.REST)
-    return mr_endpoint.split(":")[0]
+    address, _ = get_endpoint_from_mr_service(svc=mr_service, protocol=Protocols.REST)
+    return address.split("/")[0]
 
 
 def create_async_upload_job(

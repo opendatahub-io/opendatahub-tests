@@ -37,6 +37,7 @@ def default_mcp_servers(
     return execute_get_command(
         url=f"{mcp_catalog_rest_urls_scope_session[0]}mcp_servers",
         headers=model_registry_rest_headers_scope_session,
+        params={"pageSize": 1000},
     )
 
 
@@ -56,4 +57,5 @@ def mcp_servers_response(
     return execute_get_command(
         url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
         headers=model_registry_rest_headers,
+        params={"pageSize": 1000},
     )

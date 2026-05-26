@@ -81,7 +81,7 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
                 model_format_name=ModelFormat.SKLEARN,
                 deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
             ),
-            marks=pytest.mark.smoke,
+            marks=pytest.mark.tier1,
         ),
         pytest.param(
             get_model_namespace_dict(model_format_name=ModelFormat.XGBOOST),

@@ -182,13 +182,6 @@ def guardrails_orchestrator_route(
 
 
 @pytest.fixture(scope="class")
-def guardrails_orchestrator_url(
-    guardrails_orchestrator_route: Route,
-) -> str:
-    return f"https://{guardrails_orchestrator_route.host}"
-
-
-@pytest.fixture(scope="class")
 def guardrails_orchestrator_health_route(
     admin_client: DynamicClient,
     model_namespace: Namespace,

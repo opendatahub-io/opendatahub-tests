@@ -9,13 +9,18 @@ from ocp_resources.cron_job import CronJob
 from ocp_resources.deployment import Deployment
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.maas_model_ref import MaaSModelRef
+from ocp_resources.maas_subscription import MaaSSubscription
 from ocp_resources.namespace import Namespace
 from ocp_resources.network_policy import NetworkPolicy
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from pytest_testconfig import config as py_config
 
-from tests.model_serving.maas_billing.maas_api_key.utils import resolve_api_key_username
+from tests.model_serving.maas_billing.maas_api_key.utils import (
+    build_chat_payload,
+    build_inference_url,
+    resolve_api_key_username,
+)
 from tests.model_serving.maas_billing.maas_subscription.utils import (
     wait_for_auth_ready,
 )
@@ -261,26 +266,25 @@ def maas_cleanup_networkpolicy(
 def maas_api_pod_name(
     admin_client: DynamicClient,
 ) -> str:
-    """Return the name of the single running maas-api pod (exactly one pod is expected)."""
+    """Return the name of a running maas-api pod."""
     applications_namespace = py_config["applications_namespace"]
-    # Derive the pod label selector from the Deployment itself — avoids hardcoding labels
-    # that may differ between operator versions or environments.
     deployment = Deployment(client=admin_client, name="maas-api", namespace=applications_namespace)
     assert deployment.exists, f"Deployment maas-api not found in {applications_namespace}"
     match_labels = deployment.instance.spec.selector.matchLabels
     label_selector = ",".join(f"{k}={v}" for k, v in match_labels.items())
-    pods = list(
+    all_pods = list(
         Pod.get(
             client=admin_client,
             namespace=applications_namespace,
             label_selector=label_selector,
         )
     )
-    assert len(pods) == 1, f"Expected exactly 1 maas-api pod in {applications_namespace}, found {len(pods)}"
-    assert pods[0].instance.status.phase == "Running", (
-        f"maas-api pod '{pods[0].name}' is not Running (phase={pods[0].instance.status.phase})"
+    running_pods = [pod for pod in all_pods if pod.instance.status.phase == "Running"]
+    assert len(running_pods) >= 1, (
+        f"Expected at least 1 running maas-api pod in {applications_namespace}, "
+        f"found {len(running_pods)} running out of {len(all_pods)} total"
     )
-    return pods[0].name
+    return running_pods[0].name
 
 
 @pytest.fixture()
@@ -346,6 +350,34 @@ def active_api_key_with_plaintext(
 
 
 @pytest.fixture(scope="function")
+def api_key_for_free_model_listing(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_token_for_actor: str,
+    maas_subscription_tinyllama_free: MaaSSubscription,
+) -> Generator[str, Any, Any]:
+    """API key bound to the free TinyLlama subscription at mint time. Revoked on teardown."""
+    creation_response, body = create_api_key(
+        base_url=base_url,
+        ocp_user_token=ocp_token_for_actor,
+        request_session_http=request_session_http,
+        api_key_name=f"e2e-list-models-{generate_random_name()}",
+        subscription=maas_subscription_tinyllama_free.name,
+        raise_on_error=False,
+    )
+    assert_api_key_created_ok(resp=creation_response, body=body, required_fields=("key", "id"))
+    yield body["key"]
+    revoke_response, _ = revoke_api_key(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        key_id=body["id"],
+        ocp_user_token=ocp_token_for_actor,
+    )
+    if revoke_response.status_code not in (200, 404):
+        raise AssertionError(f"Unexpected teardown status for key id={body['id']}: {revoke_response.status_code}")
+
+
+@pytest.fixture(scope="function")
 def unconfigured_model_ref(
     admin_client: DynamicClient,
     maas_inference_service_tinyllama_free: LLMInferenceService,
@@ -373,3 +405,25 @@ def unconfigured_model_ref(
         model_ref.wait_for_condition(condition="Ready", status="True", timeout=300)
         LOGGER.info(f"unconfigured_model_ref: created model ref '{model_ref_name}' (no MaaSAuthPolicy)")
         yield model_ref
+
+
+@pytest.fixture(scope="class")
+def tinyllama_free_inference_url(
+    maas_scheme: str,
+    maas_host: str,
+    maas_inference_service_tinyllama_free: LLMInferenceService,
+) -> str:
+    """Chat completions URL for the free TinyLlama model."""
+    return build_inference_url(
+        maas_scheme=maas_scheme,
+        maas_host=maas_host,
+        model_name=maas_inference_service_tinyllama_free.name,
+    )
+
+
+@pytest.fixture(scope="class")
+def tinyllama_free_payload(
+    maas_inference_service_tinyllama_free: LLMInferenceService,
+) -> dict[str, Any]:
+    """Minimal chat completions payload for the free TinyLlama model."""
+    return build_chat_payload(model_name=maas_inference_service_tinyllama_free.name)

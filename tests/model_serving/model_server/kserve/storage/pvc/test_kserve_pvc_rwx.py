@@ -11,7 +11,7 @@ from utilities.constants import Containers, KServeDeploymentType, StorageClassNa
 POD_LS_SPLIT_COMMAND: list[str] = shlex.split("ls /mnt/models")
 
 
-pytestmark = [pytest.mark.usefixtures("skip_if_no_nfs_storage_class")]
+pytestmark = [pytest.mark.tier1, pytest.mark.usefixtures("skip_if_no_nfs_storage_class")]
 
 
 @pytest.mark.parametrize(

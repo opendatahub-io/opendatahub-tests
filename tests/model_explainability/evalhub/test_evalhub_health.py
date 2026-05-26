@@ -19,7 +19,7 @@ from utilities.guardrails import get_auth_headers
     ],
     indirect=True,
 )
-@pytest.mark.smoke
+@pytest.mark.tier1
 @pytest.mark.model_explainability
 class TestEvalHub:
     """Tests for basic EvalHub service health."""
@@ -72,3 +72,24 @@ class TestEvalHub:
         )
         response.raise_for_status()
         assert response.json()["status"] == EVALHUB_HEALTH_STATUS_HEALTHY
+
+    @pytest.mark.parametrize("method", ["post", "put", "delete"])
+    def test_evalhub_health_rejects_non_get_methods(
+        self,
+        current_client_token: str,
+        evalhub_ca_bundle_file: str,
+        evalhub_route: Route,
+        method: str,
+    ) -> None:
+        """Health endpoint rejects POST, PUT, and DELETE with 405."""
+        url = f"https://{evalhub_route.host}{EVALHUB_HEALTH_PATH}"
+        headers = get_auth_headers(token=current_client_token)
+        response = getattr(requests, method)(
+            url=url,
+            headers=headers,
+            verify=evalhub_ca_bundle_file,
+            timeout=10,
+        )
+        assert response.status_code == 405, (
+            f"Expected 405 for {method.upper()} on health endpoint, got {response.status_code}"
+        )

@@ -21,8 +21,17 @@ from ocp_resources.role_binding import RoleBinding
 from ocp_resources.service_account import ServiceAccount
 from pytest_testconfig import config as py_config
 
+from tests.model_serving.model_server.llmd.constants import (
+    LLMD_DSC_CONDITION,
+    LLMD_KSERVE_CONTROLLER_DEPLOYMENTS,
+    LLMD_REQUIRED_DEPLOYMENTS,
+    LLMD_REQUIRED_OPERATORS,
+)
 from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaOciConfig
-from tests.model_serving.model_server.llmd.utils import wait_for_llmisvc, wait_for_llmisvc_pods_ready
+from tests.model_serving.model_server.llmd.utils import (
+    wait_for_llmisvc,
+    wait_for_llmisvc_pods_ready,
+)
 from utilities.constants import Timeout
 from utilities.infra import create_inference_token, s3_endpoint_secret, update_configmap_data
 from utilities.llmd_utils import create_llmd_gateway
@@ -32,29 +41,6 @@ from utilities.resources.leader_worker_set_operator import LeaderWorkerSetOperat
 
 LOGGER = structlog.get_logger(name=__name__)
 logging.getLogger("timeout_sampler").setLevel(logging.WARNING)
-
-LLMD_DSC_CONDITION: str = "KserveLLMInferenceServiceDependencies"
-
-LLMD_REQUIRED_OPERATORS: dict[str, str] = {
-    "cert-manager-operator": "cert-manager-operator",
-    "authorino-operator": "kuadrant-system",
-    "rhcl-operator": "openshift-operators",
-}
-
-LLMD_REQUIRED_DEPLOYMENTS: dict[str, str] = {
-    "cert-manager-operator-controller-manager": "cert-manager-operator",
-    "cert-manager": "cert-manager",
-    "cert-manager-webhook": "cert-manager",
-    "authorino-operator": "kuadrant-system",
-    "kuadrant-operator-controller-manager": "kuadrant-system",
-}
-
-# Same KServe stack as tests/model_serving/model_server/kserve/conftest.py plus LLM-ISVC controller.
-LLMD_KSERVE_CONTROLLER_DEPLOYMENTS: list[str] = [
-    "kserve-controller-manager",
-    "odh-model-controller",
-    "llmisvc-controller-manager",
-]
 
 
 def _verify_operator_csv(admin_client: DynamicClient, csv_prefix: str, namespace: str) -> None:
@@ -220,16 +206,6 @@ def s3_service_account(
 
 
 # ===========================================
-#  GPU guards
-# ===========================================
-@pytest.fixture(scope="session")
-def skip_if_less_than_2_gpus(gpu_count_on_cluster: int) -> None:
-    """Skip test if fewer than 2 GPUs are available on the cluster."""
-    if gpu_count_on_cluster < 2:
-        pytest.skip(f"Test requires at least 2 GPUs (found {gpu_count_on_cluster})")
-
-
-# ===========================================
 #  LLMInferenceService creation
 # ===========================================
 @pytest.fixture(scope="class")
@@ -249,7 +225,7 @@ def llmisvc(
             indirect=True,
         )
     """
-    config_cls = request.param
+    config_cls = request.param.build(client=admin_client)
     namespace = unprivileged_model_namespace.name
 
     service_account = None
@@ -275,7 +251,7 @@ def llmisvc_auth_pair(
             cfg = TinyLlamaOciConfig.with_overrides(
                 name=f"llmisvc-auth-{i}",
                 enable_auth=True,
-            )
+            ).build(client=admin_client)
             svc = stack.enter_context(
                 cm=_create_llmisvc_from_config(
                     config_cls=cfg,
@@ -387,8 +363,6 @@ def _create_llmisvc_from_config(
     teardown: bool = True,
 ) -> Generator[LLMInferenceService, Any]:
     """Create an LLMInferenceService from a config class."""
-    LOGGER.info(f"\n{config_cls.describe(namespace=namespace)}")
-
     model: dict[str, Any] = {"uri": config_cls.storage_uri}
     if config_cls.model_name:
         model["name"] = config_cls.model_name
@@ -407,13 +381,14 @@ def _create_llmisvc_from_config(
     })
 
     template: dict[str, Any] = {
-        "configRef": config_cls.template_config_ref,
         "containers": [main_container],
     }
     if service_account:
         template["serviceAccountName"] = service_account
 
     prefill = config_cls.prefill_config()
+    if prefill and service_account and "template" in prefill:
+        prefill["template"]["serviceAccountName"] = service_account
 
     svc_kwargs: dict[str, Any] = {
         "client": client,
@@ -426,11 +401,11 @@ def _create_llmisvc_from_config(
         "replicas": config_cls.replicas,
         "router": config_cls.router_config(),
         "template": template,
+        "base_refs": config_cls.base_refs,
+        "prefill": prefill,
     }
-    if prefill is not None:
-        if service_account and "template" in prefill:
-            prefill["template"]["serviceAccountName"] = service_account
-        svc_kwargs["prefill"] = prefill
+
+    LOGGER.info(f"\n{config_cls.format_describe(namespace=namespace)}")
 
     with LLMInferenceService(**svc_kwargs) as llm_service:
         wait_for_llmisvc(llmisvc=llm_service, timeout=config_cls.wait_timeout)

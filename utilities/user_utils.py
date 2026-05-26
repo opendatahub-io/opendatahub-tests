@@ -1,14 +1,13 @@
 import base64
 import logging
-import shlex
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+import bcrypt
 import requests
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.user import User
-from pyhelper_utils.shell import run_command
 from timeout_sampler import retry
 
 from utilities.exceptions import ExceptionUserLogin
@@ -50,7 +49,7 @@ class UserTestSession:
 
 def create_htpasswd_file(username: str, password: str) -> tuple[Path, str]:
     """
-    Create an htpasswd file for a user.
+    Create an htpasswd file for a user using bcrypt hashing.
 
     Args:
         username: The username to add to the htpasswd file
@@ -59,16 +58,17 @@ def create_htpasswd_file(username: str, password: str) -> tuple[Path, str]:
     Returns:
         Tuple of (temp file path, base64 encoded content)
     """
-    with tempfile.NamedTemporaryFile(mode="w+", delete=False) as temp_file:
-        temp_path = Path(temp_file.name).resolve()  # Get absolute path
-        run_command(command=shlex.split(f"htpasswd -c -b {temp_path.absolute()!s} {username} {password}"), check=True)
+    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    # OpenShift OAuth uses Apache APR's crypt_blowfish which only recognizes $2y$/$2a$, not $2b$
+    hashed = hashed.replace("$2b$", "$2y$", 1)
+    htpasswd_line = f"{username}:{hashed}\n"
 
-        # Read the htpasswd file content and encode it
-        temp_file.seek(0)
-        htpasswd_content = temp_file.read()
-        htpasswd_b64 = base64.b64encode(htpasswd_content.encode()).decode()
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".htpasswd") as f:
+        f.write(htpasswd_line)
+        temp_path = Path(f.name)  # noqa: FCN001
 
-        return temp_path, htpasswd_b64
+    htpasswd_b64 = base64.b64encode(htpasswd_line.encode()).decode()
+    return temp_path, htpasswd_b64
 
 
 @retry(
@@ -97,35 +97,81 @@ def wait_for_user_creation(username: str, password: str, cluster_url: str) -> bo
     raise ExceptionUserLogin(f"Could not login as user {username}.")
 
 
-def get_oidc_tokens(admin_client: DynamicClient, username: str, password: str) -> tuple[str, str]:
-    url = f"{get_byoidc_issuer_url(admin_client=admin_client)}/protocol/openid-connect/token"
+def get_oidc_token_endpoint(issuer_url: str) -> str:
+    """Discover the token endpoint from the OIDC well-known configuration.
+
+    Args:
+        issuer_url: The OIDC issuer URL (e.g. Keycloak realm URL or Entra v2.0 endpoint).
+
+    Returns:
+        The token endpoint URL.
+
+    Raises:
+        ValueError: If the well-known config does not contain a token_endpoint.
+    """
+    well_known_url = f"{issuer_url}/.well-known/openid-configuration"
+    response = requests.get(well_known_url, timeout=30)
+    response.raise_for_status()
+    token_endpoint = response.json().get("token_endpoint")
+    if not token_endpoint:
+        raise ValueError(f"No token_endpoint in well-known config at {well_known_url}")
+    return token_endpoint
+
+
+def get_oidc_tokens(
+    admin_client: DynamicClient,
+    username: str,
+    password: str,
+    client_id: str = "",
+    scope: str = "openid profile",
+) -> tuple[str, str]:
+    """Request OIDC tokens via the Resource Owner Password Credentials grant.
+
+    Args:
+        admin_client: Cluster client used to discover OIDC configuration.
+        username: OIDC username.
+        password: OIDC password.
+        client_id: OAuth client ID. If empty, discovered from the cluster Authentication CR.
+        scope: OAuth scopes to request.
+
+    Returns:
+        Tuple of (id_token, refresh_token). refresh_token may be empty if the provider does not issue one.
+    """
+    if not client_id:
+        client_id = get_byoidc_cli_client_id(admin_client=admin_client)
+
+    issuer_url = get_byoidc_issuer_url(admin_client=admin_client)
+    url = get_oidc_token_endpoint(issuer_url=issuer_url)
     headers = {"Content-Type": "application/x-www-form-urlencoded", "User-Agent": "python-requests"}
 
     data = {
         "username": username,
         "password": password,
         "grant_type": "password",
-        "client_id": "oc-cli",
-        "scope": "openid",
+        "client_id": client_id,
+        "scope": scope,
     }
 
-    LOGGER.info(f"Requesting token for user {username} in byoidc environment")
+    LOGGER.info(f"Requesting token for user {username} from {url}")
     response = requests.post(
         url=url,
         headers=headers,
         data=data,
         allow_redirects=True,
         timeout=30,
-        verify=True,  # Set to False if you need to skip SSL verification
+        verify=True,
     )
     response.raise_for_status()
     json_response = response.json()
 
-    # Validate that we got an access token
-    if "id_token" not in json_response or "refresh_token" not in json_response:
-        LOGGER.error("Warning: No id_token or refresh_token in response")
-        raise AssertionError(f"No id_token or refresh_token in response: {json_response}")
-    return json_response["id_token"], json_response["refresh_token"]
+    if "id_token" not in json_response:
+        raise AssertionError(f"No id_token in response: {json_response}")
+
+    refresh_token = json_response.get("refresh_token", "")
+    if not refresh_token:
+        LOGGER.warning("No refresh_token in response (add offline_access to scope to get one)")
+
+    return json_response["id_token"], refresh_token
 
 
 def get_byoidc_issuer_url(admin_client: DynamicClient) -> str:
@@ -134,3 +180,14 @@ def get_byoidc_issuer_url(admin_client: DynamicClient) -> str:
     url = authentication.instance.spec.oidcProviders[0].issuer.issuerURL
     assert url is not None
     return url
+
+
+def get_byoidc_cli_client_id(admin_client: DynamicClient) -> str:
+    """Get the CLI client ID from the Authentication CR's oidcClients (componentName=cli)."""
+    authentication = get_cluster_authentication(admin_client=admin_client)
+    assert authentication is not None
+    for oidc_client in authentication.instance.spec.oidcProviders[0].oidcClients:
+        if oidc_client.componentName == "cli":
+            return oidc_client.clientID
+    audiences = authentication.instance.spec.oidcProviders[0].issuer.audiences
+    return audiences[0] if audiences else "oc-cli"

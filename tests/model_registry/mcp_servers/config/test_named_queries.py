@@ -8,6 +8,9 @@ from tests.model_registry.mcp_servers.config.utils import exclude_default_mcp_se
 from tests.model_registry.utils import execute_get_command
 
 LOGGER = structlog.get_logger(name=__name__)
+pytestmark = [
+    pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace"),
+]
 
 
 @pytest.mark.usefixtures("mcp_servers_configmap_patch")
@@ -41,7 +44,7 @@ class TestMCPServerNamedQueries:
         response = execute_get_command(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
             headers=model_registry_rest_headers,
-            params={"namedQuery": named_query},
+            params={"namedQuery": named_query, "pageSize": 1000},
         )
         items = exclude_default_mcp_servers(response=response, default_mcp_servers=default_mcp_servers)
         assert len(items) == 1, f"Expected 1 server matching '{named_query}', got {len(items)}"
@@ -82,7 +85,7 @@ class TestMCPServerNamedQueries:
         response = execute_get_command(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
             headers=model_registry_rest_headers,
-            params={"namedQuery": "production_ready", "filterQuery": filter_query},
+            params={"namedQuery": "production_ready", "filterQuery": filter_query, "pageSize": 1000},
         )
         items = response["items"]
         assert len(items) == expected_count, (
