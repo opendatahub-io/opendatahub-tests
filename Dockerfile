@@ -12,7 +12,7 @@ ENV BIN_DIR="$HOME_DIR/.local/bin"
 ENV PATH="$PATH:$BIN_DIR"
 
 RUN apt-get update \
-    && apt-get install -y ssh gnupg software-properties-common curl gpg wget vim \
+    && apt-get install -y ssh gnupg curl gpg wget vim \
     && apt-get clean autoclean \
     && apt-get autoremove --yes \
     && rm -rf /var/lib/{apt,dpkg,cache,log}/

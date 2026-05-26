@@ -1,7 +1,7 @@
 import pytest
 from ocp_resources.pod import Pod
 
-from tests.model_explainability.lm_eval.utils import verify_lmevaljob_running
+from tests.ai_safety.lm_eval.utils import verify_lmevaljob_running
 from utilities.constants import Timeout
 
 
