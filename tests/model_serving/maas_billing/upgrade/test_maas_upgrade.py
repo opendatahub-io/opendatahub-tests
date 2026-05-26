@@ -113,9 +113,7 @@ class TestPreUpgradeMaaS:
             )
         except NotImplementedError:
             return
-        assert not maas_config.exists, (
-            "MaaS Config/default already exists — cluster may already be on 3.5"
-        )
+        assert not maas_config.exists, "MaaS Config/default already exists — cluster may already be on 3.5"
 
 
 class TestPostUpgradeMaaS:
