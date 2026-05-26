@@ -416,7 +416,7 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
                     "detectorServiceLabelToMatch": AUTOCONFIG_DETECTOR_LABEL,
                 },
                 "enable_built_in_detectors": True,
-                "enable_guardrails_gateway": True
+                "enable_guardrails_gateway": True,
             },
         )
     ],
