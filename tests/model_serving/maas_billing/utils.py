@@ -638,9 +638,7 @@ def assert_api_key_created_ok(
 
 def verify_maas_gateway_programmed(*, gateway: Gateway) -> None:
     """Assert that the MaaS Gateway exists and has reached Programmed=True."""
-    assert gateway.exists, (
-        f"MaaS Gateway '{gateway.name}' not found in namespace '{gateway.namespace}'"
-    )
+    assert gateway.exists, f"MaaS Gateway '{gateway.name}' not found in namespace '{gateway.namespace}'"
     gateway.wait_for_condition(condition="Programmed", status="True", timeout=300)
 
 

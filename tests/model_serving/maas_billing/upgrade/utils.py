@@ -9,7 +9,6 @@ from ocp_resources.maas_auth_policy import MaaSAuthPolicy
 from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.maas_subscription import MaaSSubscription
 
-from tests.model_serving.maas_billing.utils import verify_maas_gateway_programmed, verify_maas_tenant_ready
 from utilities.resources.tenant import Tenant
 
 LOGGER = structlog.get_logger(name=__name__)
