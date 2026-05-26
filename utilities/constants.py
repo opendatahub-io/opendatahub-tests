@@ -379,6 +379,22 @@ BUILTIN_DETECTOR_CONFIG: Dict[str, Any] = {
 QWEN_ISVC_NAME = "qwen-isvc"
 QWEN_MODEL_NAME: str = "qwen25-05b-instruct"
 
+LLM_D_INFERENCE_SIM_NAME = "llm-d-inference-sim"
+
+
+class LLMdInferenceSimConfig:
+    name: str = LLM_D_INFERENCE_SIM_NAME
+    port: int = 8032
+    model_name: str = "Qwen2.5-1.5B-Instruct"
+    max_model_len: int = 8192
+    serving_runtime_name: str = f"{LLM_D_INFERENCE_SIM_NAME}-serving-runtime"
+    isvc_name: str = f"{LLM_D_INFERENCE_SIM_NAME}-isvc"
+
+
+LLM_D_CHAT_GENERATION_CONFIG: Dict[str, Any] = {
+    "service": {"hostname": f"{LLMdInferenceSimConfig.isvc_name}-predictor", "port": 8032}
+}
+
 CHAT_GENERATION_CONFIG: Dict[str, Any] = {
     "service": {"hostname": f"{QWEN_MODEL_NAME}-predictor", "port": 8032, "request_timeout": 600}
 }
