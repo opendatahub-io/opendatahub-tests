@@ -46,18 +46,18 @@ def llm_d_inference_sim_serving_runtime(
 
     """
     if pytestconfig.option.post_upgrade:
-        sr = ServingRuntime(
+        serving_runtime = ServingRuntime(
             client=admin_client,
             name=LLMdInferenceSimConfig.serving_runtime_name,
             namespace=model_namespace.name,
         )
-        if not sr.exists:
+        if not serving_runtime.exists:
             raise ResourceNotFoundError(
                 f"ServingRuntime {LLMdInferenceSimConfig.serving_runtime_name} "
                 f"does not exist in namespace {model_namespace.name} after upgrade"
             )
-        yield sr
-        sr.clean_up()
+        yield serving_runtime
+        serving_runtime.clean_up()
 
     else:
         with ServingRuntime(
