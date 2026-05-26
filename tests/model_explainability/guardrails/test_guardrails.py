@@ -415,6 +415,8 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
                     "inferenceServiceToGuardrail": LLMdInferenceSimConfig.isvc_name,
                     "detectorServiceLabelToMatch": AUTOCONFIG_DETECTOR_LABEL,
                 },
+                "enable_built_in_detectors": True,
+                "enable_guardrails_gateway": True
             },
         )
     ],
@@ -433,6 +435,8 @@ class TestGuardrailsOrchestratorAutoConfig:
         current_client_token,
         openshift_ca_bundle_file,
         llm_d_inference_sim_isvc,
+        hap_detector_isvc,
+        prompt_injection_detector_isvc,
         guardrails_orchestrator_health_route,
         guardrails_healthcheck,
     ):
@@ -447,6 +451,8 @@ class TestGuardrailsOrchestratorAutoConfig:
         current_client_token,
         openshift_ca_bundle_file,
         llm_d_inference_sim_isvc,
+        hap_detector_isvc,
+        prompt_injection_detector_isvc,
         guardrails_orchestrator_route,
         guardrails_healthcheck,
     ):
@@ -464,6 +470,8 @@ class TestGuardrailsOrchestratorAutoConfig:
         self,
         current_client_token,
         llm_d_inference_sim_isvc,
+        hap_detector_isvc,
+        prompt_injection_detector_isvc,
         guardrails_orchestrator_route,
         openshift_ca_bundle_file,
         guardrails_healthcheck,
