@@ -151,8 +151,9 @@ def model_sync_async_job(
     mr_service = get_mr_service_by_label(
         client=admin_client, namespace_name=model_registry_namespace, mr_instance=mr_instance
     )
-    mr_endpoint = get_endpoint_from_mr_service(svc=mr_service, protocol=Protocols.REST)
-    mr_host = mr_endpoint.split(":")[0]
+    mr_address, mr_port = get_endpoint_from_mr_service(svc=mr_service, protocol=Protocols.REST)
+    mr_host, _, mr_path = mr_address.partition("/")
+    mr_server_address = f"https://{mr_host}:{mr_port}/{mr_path}" if mr_path else f"https://{mr_host}:{mr_port}"
 
     # Volume mounts for credentials
     volume_mounts = [
@@ -178,7 +179,7 @@ def model_sync_async_job(
         {"name": "MODEL_SYNC_MODEL_VERSION_ID", "value": MODEL_SYNC_CONFIG["MODEL_VERSION_ID"]},
         {"name": "MODEL_SYNC_MODEL_ARTIFACT_ID", "value": MODEL_SYNC_CONFIG["MODEL_ARTIFACT_ID"]},
         # Model Registry connection parameters
-        {"name": "MODEL_SYNC_REGISTRY_SERVER_ADDRESS", "value": f"https://{mr_host}"},
+        {"name": "MODEL_SYNC_REGISTRY_SERVER_ADDRESS", "value": mr_server_address},
         {"name": "MODEL_SYNC_REGISTRY_USER_TOKEN", "value": sa_token},
         {"name": "MODEL_SYNC_REGISTRY_IS_SECURE", "value": "False"},
         # OCI destination configuration
