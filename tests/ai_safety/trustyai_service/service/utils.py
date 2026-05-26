@@ -7,7 +7,7 @@ from ocp_resources.resource import ResourceEditor
 from ocp_resources.trustyai_service import TrustyAIService
 from timeout_sampler import retry
 
-from tests.model_explainability.trustyai_service.trustyai_service_utils import TRUSTYAI_SERVICE_NAME
+from tests.ai_safety.trustyai_service.trustyai_service_utils import TRUSTYAI_SERVICE_NAME
 from utilities.constants import Timeout
 
 

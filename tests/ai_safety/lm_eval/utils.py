@@ -49,7 +49,7 @@ def get_lmeval_tasks(min_downloads: int = 10000) -> List[str]:
     if min_downloads < 1:
         raise ValueError("Minimum downloads must be greater than 0")
 
-    lmeval_tasks = pd.read_csv(filepath_or_buffer="tests/model_explainability/lm_eval/data/new_task_list.csv")
+    lmeval_tasks = pd.read_csv(filepath_or_buffer="tests/ai_safety/lm_eval/data/new_task_list.csv")
 
     # filter for tasks that either exceed (min_downloads OR exist on the OpenLLM leaderboard)
     # AND exist on LMEval AND do not include image data

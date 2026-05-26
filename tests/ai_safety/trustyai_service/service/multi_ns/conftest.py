@@ -9,7 +9,7 @@ from ocp_resources.trustyai_service import TrustyAIService
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
-from tests.model_explainability.trustyai_service.constants import (
+from tests.ai_safety.trustyai_service.constants import (
     TAI_METRICS_CONFIG,
     TAI_DATA_CONFIG,
     TAI_PVC_STORAGE_CONFIG,
@@ -23,11 +23,11 @@ from tests.model_explainability.trustyai_service.constants import (
     ISVC_GETTER,
     GAUSSIAN_CREDIT_MODEL,
 )
-from tests.model_explainability.trustyai_service.trustyai_service_utils import (
+from tests.ai_safety.trustyai_service.trustyai_service_utils import (
     TRUSTYAI_SERVICE_NAME,
     wait_for_isvc_deployment_registered_by_trustyai_service,
 )
-from tests.model_explainability.trustyai_service.utils import (
+from tests.ai_safety.trustyai_service.utils import (
     create_trustyai_service,
     create_isvc_getter_service_account,
     create_isvc_getter_role,

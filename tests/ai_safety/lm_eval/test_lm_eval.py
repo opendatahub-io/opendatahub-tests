@@ -3,9 +3,9 @@ from typing import List
 
 from utilities.constants import Timeout
 
-from tests.model_explainability.utils import validate_tai_component_images
+from tests.ai_safety.utils import validate_tai_component_images
 
-from tests.model_explainability.lm_eval.utils import get_lmeval_tasks
+from tests.ai_safety.lm_eval.utils import get_lmeval_tasks
 
 LMEVALJOB_COMPLETE_STATE: str = "Complete"
 

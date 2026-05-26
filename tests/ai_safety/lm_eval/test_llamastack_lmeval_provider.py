@@ -1,7 +1,7 @@
 import pytest
 from simple_logger.logger import get_logger
 
-from tests.model_explainability.constants import MNT_MODELS
+from tests.ai_safety.constants import MNT_MODELS
 from utilities.constants import MinIo
 
 LOGGER = get_logger(name=__name__)

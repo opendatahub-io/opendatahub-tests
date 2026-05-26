@@ -16,9 +16,9 @@ from ocp_resources.service import Service
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest_testconfig import config as py_config
 
-from tests.model_explainability.guardrails.constants import QWEN_ISVC_NAME
-from tests.model_explainability.constants import MNT_MODELS
-from tests.model_explainability.trustyai_service.trustyai_service_utils import TRUSTYAI_SERVICE_NAME
+from tests.ai_safety.guardrails.constants import QWEN_ISVC_NAME
+from tests.ai_safety.constants import MNT_MODELS
+from tests.ai_safety.trustyai_service.trustyai_service_utils import TRUSTYAI_SERVICE_NAME
 from utilities.constants import KServeDeploymentType, RuntimeTemplates
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
