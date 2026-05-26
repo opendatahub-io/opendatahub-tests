@@ -25,7 +25,7 @@ TRUSTYAI_LMEVAL_CUSTOM = f"{LlamaStackProviders.Eval.TRUSTYAI_LMEVAL}::dk-bench"
     indirect=True,
 )
 @pytest.mark.rawdeployment
-@pytest.mark.model_explainability
+@pytest.mark.ai_safety
 class TestLlamaStackLMEvalProvider:
     """
     Tests for the LlamaStack LMEval provider.
@@ -92,7 +92,7 @@ class TestLlamaStackLMEvalProvider:
     indirect=True,
 )
 @pytest.mark.rawdeployment
-@pytest.mark.model_explainability
+@pytest.mark.ai_safety
 class TestLlamaStackLMEvalCustomBenchmark:
     """
     Tests for running LM-Eval on a custom benchmark (DK-Bench)

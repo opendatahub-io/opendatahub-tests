@@ -33,7 +33,7 @@ To add support for testing new LlamaStack API providers (e.g., a new vector_io p
 ### Available Team Markers  (to be expanded)
 
 - `@pytest.mark.llama_stack` - LlamaStack Core team tests
-- `@pytest.mark.model_explainability` - AI Safety team tests
+- `@pytest.mark.ai_safety` - AI Safety team tests
 - `@pytest.mark.rag` - RAG team tests
 
 ## Running Tests
