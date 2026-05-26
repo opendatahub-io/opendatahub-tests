@@ -15,7 +15,7 @@ from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from pytest_testconfig import py_config
 
-from tests.model_explainability.lm_eval.utils import get_lmevaljob_pod
+from tests.ai_safety.lm_eval.utils import get_lmevaljob_pod
 from utilities.constants import Labels, Timeout, Annotations, Protocols, MinIo
 
 VLLM_EMULATOR: str = "vllm-emulator"

@@ -1,7 +1,7 @@
 import pytest
 from ocp_resources.namespace import Namespace
 
-from tests.model_explainability.trustyai_service.utils import validate_trustyai_service_db_conn_failure
+from tests.ai_safety.trustyai_service.utils import validate_trustyai_service_db_conn_failure
 
 
 @pytest.mark.parametrize(
