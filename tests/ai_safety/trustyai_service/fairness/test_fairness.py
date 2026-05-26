@@ -3,7 +3,7 @@ from typing import Any
 import pytest
 from ocp_resources.inference_service import InferenceService
 
-from tests.model_explainability.trustyai_service.trustyai_service_utils import (
+from tests.ai_safety.trustyai_service.trustyai_service_utils import (
     send_inferences_and_verify_trustyai_service_registered,
     verify_trustyai_service_name_mappings,
     verify_trustyai_service_metric_request,
@@ -13,7 +13,7 @@ from tests.model_explainability.trustyai_service.trustyai_service_utils import (
 )
 from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
 
-BASE_DATA_PATH: str = "./tests/model_explainability/trustyai_service/fairness/model_data"
+BASE_DATA_PATH: str = "./tests/ai_safety/trustyai_service/fairness/model_data"
 IS_MALE_IDENTIFYING: str = "Is Male-Identifying?"
 WILL_DEFAULT: str = "Will Default?"
 INPUT_NAME_MAPPINGS: dict[str, str] = {
