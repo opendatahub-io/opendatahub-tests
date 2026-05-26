@@ -9,6 +9,7 @@ from ocp_resources.maas_auth_policy import MaaSAuthPolicy
 from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.maas_subscription import MaaSSubscription
 
+from tests.model_serving.maas_billing.utils import verify_maas_gateway_programmed, verify_maas_tenant_ready
 from utilities.resources.tenant import Tenant
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -40,18 +41,7 @@ def capture_maas_baseline(
     subscription: MaaSSubscription,
     tenant: Tenant,
 ) -> MaaSBaseline:
-    """Snapshot MaaS control plane state before upgrade.
-
-    Args:
-        gateway: MaaS Gateway resource.
-        model_ref: MaaSModelRef created for upgrade testing.
-        auth_policy: MaaSAuthPolicy created for upgrade testing.
-        subscription: MaaSSubscription created for upgrade testing.
-        tenant: default-tenant Tenant CR bootstrapped by MaaS in 3.4.
-
-    Returns:
-        MaaSBaseline snapshot dict for post-upgrade comparison.
-    """
+    """Snapshot MaaS control plane state before upgrade."""
     baseline: MaaSBaseline = {
         "gateway_name": gateway.name,
         "gateway_namespace": gateway.namespace,
@@ -76,16 +66,7 @@ def save_maas_baseline_to_configmap(
     namespace: str,
     baseline: MaaSBaseline,
 ) -> ConfigMap:
-    """Persist the MaaS baseline snapshot to a ConfigMap for post-upgrade retrieval.
-
-    Args:
-        client: DynamicClient instance.
-        namespace: Namespace where the ConfigMap is created.
-        baseline: Baseline snapshot to persist.
-
-    Returns:
-        The created or updated ConfigMap.
-    """
+    """Persist the MaaS baseline snapshot to a ConfigMap for post-upgrade retrieval."""
     serialized_data = {MAAS_UPGRADE_BASELINE_CM_KEY: json.dumps(baseline)}
     config_map = ConfigMap(client=client, name=MAAS_UPGRADE_BASELINE_CM_NAME, namespace=namespace)
     if config_map.exists:
@@ -109,18 +90,7 @@ def load_maas_baseline_from_configmap(
     client: DynamicClient,
     namespace: str,
 ) -> MaaSBaseline:
-    """Load the MaaS baseline snapshot from the ConfigMap created during pre-upgrade.
-
-    Args:
-        client: DynamicClient instance.
-        namespace: Namespace where the ConfigMap was saved.
-
-    Returns:
-        MaaSBaseline snapshot dict.
-
-    Raises:
-        AssertionError: If the ConfigMap or baseline key is missing.
-    """
+    """Load the MaaS baseline snapshot from the ConfigMap created during pre-upgrade."""
     config_map = ConfigMap(client=client, name=MAAS_UPGRADE_BASELINE_CM_NAME, namespace=namespace)
     assert config_map.exists, (
         f"MaaS baseline ConfigMap '{MAAS_UPGRADE_BASELINE_CM_NAME}' not found in '{namespace}'. "
@@ -135,42 +105,15 @@ def load_maas_baseline_from_configmap(
     return json.loads(raw_baseline)
 
 
-def verify_maas_gateway_programmed(gateway: Gateway) -> None:
-    """Assert that the MaaS Gateway exists and has reached Programmed=True.
-
-    Args:
-        gateway: Gateway resource to check.
-
-    Raises:
-        AssertionError: If the gateway does not exist.
-    """
-    assert gateway.exists, f"MaaS Gateway '{gateway.name}' not found in namespace '{gateway.namespace}' after upgrade."
-    gateway.wait_for_condition(condition="Programmed", status="True", timeout=300)
-
-
 def verify_maas_model_ref_exists(model_ref: MaaSModelRef) -> None:
-    """Assert that the MaaSModelRef exists after upgrade.
-
-    Args:
-        model_ref: MaaSModelRef resource to check.
-
-    Raises:
-        AssertionError: If the resource does not exist.
-    """
+    """Assert that the MaaSModelRef exists after upgrade."""
     assert model_ref.exists, (
         f"MaaSModelRef '{model_ref.name}' not found in namespace '{model_ref.namespace}' after upgrade."
     )
 
 
 def verify_maas_auth_policy_exists(auth_policy: MaaSAuthPolicy) -> None:
-    """Assert that the MaaSAuthPolicy exists after upgrade.
-
-    Args:
-        auth_policy: MaaSAuthPolicy resource to check.
-
-    Raises:
-        AssertionError: If the resource does not exist.
-    """
+    """Assert that the MaaSAuthPolicy exists after upgrade."""
     assert auth_policy.exists, (
         f"MaaSAuthPolicy '{auth_policy.name}' not found in namespace '{auth_policy.namespace}' after upgrade."
     )
@@ -181,12 +124,6 @@ def verify_maas_subscription_ready(subscription: MaaSSubscription) -> None:
 
     The subscription may not reach Ready=True without a backing LLMInferenceService,
     which is out of scope for upgrade tests. The goal is to verify CR survival across upgrade.
-
-    Args:
-        subscription: MaaSSubscription resource to check.
-
-    Raises:
-        AssertionError: If the resource does not exist.
     """
     assert subscription.exists, (
         f"MaaSSubscription '{subscription.name}' not found in namespace '{subscription.namespace}' after upgrade."
@@ -197,35 +134,10 @@ def verify_maas_subscription_not_mutated(
     subscription: MaaSSubscription,
     baseline: MaaSBaseline,
 ) -> None:
-    """Assert that MaaSSubscription generation matches the pre-upgrade baseline.
-
-    Args:
-        subscription: MaaSSubscription resource to check.
-        baseline: Pre-upgrade baseline snapshot.
-
-    Raises:
-        AssertionError: If the subscription generation increased (indicating unwanted mutation).
-    """
+    """Assert that MaaSSubscription generation matches the pre-upgrade baseline."""
     current_generation = subscription.instance.metadata.generation or 0
     expected_generation = baseline["subscription_generation"]
     assert current_generation == expected_generation, (
         f"MaaSSubscription '{subscription.name}' was mutated during upgrade: "
         f"expected generation {expected_generation}, got {current_generation}."
     )
-
-
-def verify_maas_tenant_ready(tenant: Tenant) -> None:
-    """Assert that the default-tenant Tenant CR exists and has Ready=True.
-
-    The Tenant is the best leading indicator of controller health post-upgrade —
-    if it regresses to a non-Ready state every other MaaS assertion will reflect
-    the same root cause.
-
-    Args:
-        tenant: Tenant CR to check.
-
-    Raises:
-        AssertionError: If the Tenant does not exist.
-    """
-    assert tenant.exists, f"Tenant '{tenant.name}' not found in namespace '{tenant.namespace}' after upgrade."
-    tenant.wait_for_condition(condition="Ready", status="True", timeout=300)
