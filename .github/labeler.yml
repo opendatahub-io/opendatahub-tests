@@ -1,6 +1,6 @@
 "ModelExplainability":
 - changed-files:
-  - any-glob-to-any-file: "tests/ai_safety/**"
+  - any-glob-to-any-file: "tests/model_explainability/**"
 
 "ModelRegistry":
 - changed-files:
