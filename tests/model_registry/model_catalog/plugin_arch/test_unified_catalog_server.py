@@ -16,7 +16,6 @@ pytestmark = [
 ]
 
 
-@pytest.mark.jira("RHOAIENG-60400")
 class TestCatalogPluginArchitecture:
     """Tests for unified catalog server plugin architecture."""
 
