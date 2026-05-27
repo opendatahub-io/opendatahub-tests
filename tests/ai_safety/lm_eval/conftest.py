@@ -13,8 +13,8 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from pytest import Config, FixtureRequest
 
-from tests.model_explainability.lm_eval.constants import ARC_EASY_DATASET_IMAGE, FLAN_T5_IMAGE
-from tests.model_explainability.lm_eval.utils import get_lmevaljob_pod
+from tests.ai_safety.lm_eval.constants import ARC_EASY_DATASET_IMAGE, FLAN_T5_IMAGE
+from tests.ai_safety.lm_eval.utils import get_lmevaljob_pod
 from utilities.constants import Labels, MinIo, Protocols, Timeout
 from utilities.exceptions import MissingParameter
 

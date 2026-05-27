@@ -1,14 +1,14 @@
 import pytest
 from typing import List
 
-from tests.model_explainability.lm_eval.constants import (
+from tests.ai_safety.lm_eval.constants import (
     LLMAAJ_TASK_DATA,
     CUSTOM_UNITXT_TASK_DATA,
     ARC_EASY_DATASET_IMAGE,
 )
-from tests.model_explainability.utils import validate_tai_component_images
+from tests.ai_safety.utils import validate_tai_component_images
 
-from tests.model_explainability.lm_eval.utils import get_lmeval_tasks, validate_lmeval_job_pod_and_logs
+from tests.ai_safety.lm_eval.utils import get_lmeval_tasks, validate_lmeval_job_pod_and_logs
 
 LMEVALJOB_COMPLETE_STATE: str = "Complete"
 

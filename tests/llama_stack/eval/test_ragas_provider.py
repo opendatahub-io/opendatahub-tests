@@ -38,7 +38,7 @@ RAGAS_TEST_DATASET = [
     indirect=True,
 )
 @pytest.mark.rawdeployment
-@pytest.mark.model_explainability
+@pytest.mark.ai_safety
 class TestLlamaStackRagasInlineProvider:
     """Tests for LlamaStack Ragas inline evaluation provider integration."""
 
@@ -115,7 +115,7 @@ class TestLlamaStackRagasInlineProvider:
     indirect=True,
 )
 @pytest.mark.rawdeployment
-@pytest.mark.model_explainability
+@pytest.mark.ai_safety
 class TestLlamaStackRagasRemoteProvider:
     """Tests for LlamaStack Ragas remote evaluation provider integration with Kubeflow Pipelines."""
 

@@ -3,7 +3,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
 
-from tests.model_explainability.trustyai_operator.utils import validate_trustyai_operator_image
+from tests.ai_safety.trustyai_operator.utils import validate_trustyai_operator_image
 
 
 @pytest.mark.smoke

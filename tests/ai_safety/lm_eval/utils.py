@@ -53,7 +53,7 @@ def get_lmeval_tasks(min_downloads: int | float, max_downloads: int | float | No
     if min_downloads <= 0:
         raise ValueError("Minimum downloads must be greater than 0")
 
-    lmeval_tasks = pd.read_csv(filepath_or_buffer="tests/model_explainability/lm_eval/data/new_task_list.csv")
+    lmeval_tasks = pd.read_csv(filepath_or_buffer="tests/ai_safety/lm_eval/data/new_task_list.csv")
 
     if isinstance(min_downloads, float):
         if not 0 <= min_downloads <= 1:

@@ -19,7 +19,7 @@ from ocp_resources.tempo_stack import TempoStack
 from ocp_utilities.operators import install_operator, uninstall_operator
 from timeout_sampler import TimeoutSampler
 
-from tests.model_explainability.guardrails.constants import (
+from tests.ai_safety.guardrails.constants import (
     AUTOCONFIG_DETECTOR_LABEL,
     OTEL_EXPORTER_PORT,
     SUPER_SECRET,

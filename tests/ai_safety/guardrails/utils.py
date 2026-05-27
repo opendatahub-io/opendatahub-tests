@@ -10,7 +10,7 @@ from timeout_sampler import retry
 
 from utilities.exceptions import UnexpectedValueError
 from utilities.guardrails import get_auth_headers
-from tests.model_explainability.guardrails.constants import GuardrailsDetectionPrompt
+from tests.ai_safety.guardrails.constants import GuardrailsDetectionPrompt
 
 LOGGER = get_logger(name=__name__)
 
