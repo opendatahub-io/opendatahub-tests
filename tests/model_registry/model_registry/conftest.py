@@ -34,11 +34,10 @@ DEFAULT_TOKEN_DURATION = "10m"
 
 
 @pytest.fixture(scope="class")
-def model_registry_instance_rest_endpoint(admin_client: DynamicClient, model_registry_instance) -> list[str]:
-    """
-    Get the REST endpoint(s) for the model registry instance.
-    """
-    # get all the services:
+def model_registry_instance_rest_endpoint(
+    admin_client: DynamicClient, model_registry_instance: list
+) -> list[tuple[str, int]]:
+    """REST endpoint address and port for each model registry instance."""
     mr_services = [
         get_mr_service_by_label(client=admin_client, namespace_name=mr_instance.namespace, mr_instance=mr_instance)
         for mr_instance in model_registry_instance
@@ -51,23 +50,17 @@ def model_registry_instance_rest_endpoint(admin_client: DynamicClient, model_reg
 @pytest.fixture(scope="class")
 def model_registry_client(
     current_client_token: str,
-    model_registry_instance_rest_endpoint: list[str],
+    model_registry_instance_rest_endpoint: list[tuple[str, int]],
 ) -> list[ModelRegistryClient]:
-    """
-    Get a client for the model registry instance.
-    Args:
-        current_client_token: The current client token
-        model_registry_instance_rest_endpoint: list of model registry endpoints
-    Returns:
-        ModelRegistryClient: A client for the model registry instance
-    """
+    """ModelRegistryClient for each model registry instance."""
     mr_clients = []
-    for rest_endpoint in model_registry_instance_rest_endpoint:
-        server, port = rest_endpoint.split(":")
+    for address, port in model_registry_instance_rest_endpoint:
+        host, _, path = address.partition("/")
+        server_url = f"{Protocols.HTTPS}://{host}:{port}/{path}" if path else f"{Protocols.HTTPS}://{host}:{port}"
         mr_clients.append(
             ModelRegistryClient(
-                server_address=f"{Protocols.HTTPS}://{server}",
-                port=int(port),
+                server_address=server_url,
+                port=port,
                 author="opendatahub-test",
                 user_token=current_client_token,
                 is_secure=False,
@@ -96,9 +89,9 @@ def registered_model(
 
 
 @pytest.fixture(scope="class")
-def model_registry_rest_url(model_registry_instance_rest_endpoint: list[str]) -> list[str]:
-    # address and port need to be split in the client instantiation
-    return [f"{Protocols.HTTPS}://{rest_url}" for rest_url in model_registry_instance_rest_endpoint]
+def model_registry_rest_url(model_registry_instance_rest_endpoint: list[tuple[str, int]]) -> list[str]:
+    """Full HTTPS URL for each model registry REST endpoint."""
+    return [f"{Protocols.HTTPS}://{address}" for address, _ in model_registry_instance_rest_endpoint]
 
 
 @pytest.fixture(scope="class")

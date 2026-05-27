@@ -83,15 +83,29 @@ def assert_huggingface_values_matches_model_catalog_api_values(
         assert result["name"] == model_name
         hf_api_values = get_huggingface_model_params(model_name=model_name, huggingface_api=huggingface_api)
         error = ""
+        custom_props = result["customProperties"]
         for field_name in ["gated", "private", "model_type"]:
-            model_catalog_value = result["customProperties"][f"hf_{field_name}"]["string_value"]
+            prop_key = f"hf_{field_name}"
+            if prop_key not in custom_props:
+                error += f"Missing expected property '{prop_key}' in customProperties. "
+                continue
+            model_catalog_value = custom_props[prop_key]["string_value"]
             if model_catalog_value != str(hf_api_values[field_name]):
                 error += (
                     f"HuggingFace api value for {field_name} is {hf_api_values[field_name]} and "
                     f"value found from model catalog api call is {model_catalog_value}"
                 )
         for field_name in ["architectures", "tags"]:
-            field_value = sorted(ast.literal_eval(result["customProperties"][f"hf_{field_name}"]["string_value"]))
+            prop_key = f"hf_{field_name}"
+            if prop_key not in custom_props:
+                error += f"Missing expected property '{prop_key}' in customProperties. "
+                continue
+            raw_value = custom_props[prop_key]["string_value"]
+            try:
+                field_value = sorted(ast.literal_eval(raw_value))
+            except ValueError, SyntaxError:
+                error += f"Failed to parse '{prop_key}' value: {raw_value}. "
+                continue
             hf_api_value = sorted(hf_api_values[field_name])
             if field_value != hf_api_value:
                 error += f"HF api value for {field_name} {field_value} and found {hf_api_value}"

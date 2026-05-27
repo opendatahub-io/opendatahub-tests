@@ -84,6 +84,54 @@ class TestCustomProperties:
         LOGGER.info(f"All {len(models)} models in catalog '{catalog_id}' have valid model_type values")
 
 
+@pytest.mark.skip_must_gather
+class TestHardwareTagProperty:
+    """Tests for RHOAIENG-61492: hardware_tag custom property on Intel Xeon validated models."""
+
+    @pytest.mark.parametrize(
+        "model_name",
+        [
+            pytest.param("RedHatAI/Qwen3-Embedding-8B", id="test_qwen3_embedding_8b"),
+            pytest.param("RedHatAI/all-MiniLM-L6-v2", id="test_all_minilm_l6_v2"),
+            pytest.param("RedHatAI/embeddinggemma-300m", id="test_embeddinggemma_300m"),
+            pytest.param("RedHatAI/granite-embedding-english-r2", id="test_granite_embedding_english_r2"),
+            pytest.param("RedHatAI/nomic-embed-text-v1.5", id="test_nomic_embed_text_v1_5"),
+            pytest.param(
+                "RedHatAI/Meta-Llama-3.1-8B-Instruct-quantized.w4a16",
+                id="test_meta_llama_3_1_8b_instruct_w4a16",
+            ),
+            pytest.param(
+                "RedHatAI/Meta-Llama-3.1-8B-Instruct-quantized.w8a8",
+                id="test_meta_llama_3_1_8b_instruct_w8a8",
+            ),
+        ],
+    )
+    def test_xeon_model_has_hardware_tag(
+        self,
+        model_name: str,
+        model_catalog_rest_url: list[str],
+        model_registry_rest_headers: dict[str, str],
+    ):
+        """Given an Intel Xeon validated model in the catalog
+        When querying its custom properties
+        Then hardware_tag should be present with value 'Intel Xeon'
+        """
+        response = execute_get_command(
+            url=f"{model_catalog_rest_url[0]}models",
+            headers=model_registry_rest_headers,
+            params={"pageSize": 1, "filterQuery": f"name='{model_name}'"},
+        )
+        items = response.get("items", [])
+        assert items, f"Model '{model_name}' not found in catalog"
+
+        custom_properties = items[0].get("customProperties", {})
+        assert "hardware_tag" in custom_properties, f"Model '{model_name}' missing hardware_tag custom property"
+        assert custom_properties["hardware_tag"]["string_value"] == "Intel Xeon", (
+            f"Model '{model_name}' hardware_tag is '{custom_properties['hardware_tag']['string_value']}', "
+            f"expected 'Intel Xeon'"
+        )
+
+
 MULTILINGUAL_MODELS = [
     pytest.param(
         VALIDATED_CATALOG_ID,

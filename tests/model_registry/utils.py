@@ -71,11 +71,26 @@ def get_mr_service_by_label(client: DynamicClient, namespace_name: str, mr_insta
     raise ResourceNotFoundError(f"{mr_instance.name} has no Service")
 
 
-def get_endpoint_from_mr_service(svc: Service, protocol: str) -> str:
-    if protocol in (Protocols.REST, Protocols.GRPC):
-        return svc.instance.metadata.annotations[f"{ADDRESS_ANNOTATION_PREFIX}{protocol}"]
-    else:
+def get_endpoint_from_mr_service(svc: Service, protocol: str) -> tuple[str, int]:
+    """Extract external address and port from a model registry service.
+
+    Args:
+        svc: The model registry Service resource.
+        protocol: Protocol to look up (rest or grpc).
+
+    Returns:
+        Tuple of (external address, port). Port is 443 for gateway URLs, or
+        extracted from the annotation for legacy host:port format.
+    """
+    if protocol not in (Protocols.REST, Protocols.GRPC):
         raise ProtocolNotSupportedError(protocol)
+
+    address = svc.instance.metadata.annotations[f"{ADDRESS_ANNOTATION_PREFIX}{protocol}"]
+    if ":" in address:
+        host, port_str = address.rsplit(":", 1)
+        return host, int(port_str)
+
+    return address, 443
 
 
 def get_database_volumes(resource_name: str, db_backend: str) -> list[dict[str, Any]]:

@@ -14,23 +14,19 @@ from utilities.infra import get_openshift_token
 LOGGER = logging.getLogger(__name__)
 
 
-def build_mr_client_args(rest_endpoint: str, token: str, author: str = "rbac-test") -> dict[str, Any]:
-    """
-    Builds arguments for ModelRegistryClient based on REST endpoint and token.
+def build_mr_client_args(rest_endpoint: tuple[str, int], token: str, author: str = "rbac-test") -> dict[str, Any]:
+    """Builds arguments for ModelRegistryClient.
 
     Args:
-        rest_endpoint: The REST endpoint of the Model Registry instance.
+        rest_endpoint: Tuple of (address, port) from get_endpoint_from_mr_service.
         token: The token for the user.
         author: The author of the request.
-
-    Returns:
-        A dictionary of arguments for ModelRegistryClient.
-
-    Note: Uses is_secure=False for testing purposes.
     """
-    server, port = rest_endpoint.split(":")
+    address, port = rest_endpoint
+    host, _, path = address.partition("/")
+    server_url = f"{Protocols.HTTPS}://{host}:{port}/{path}" if path else f"{Protocols.HTTPS}://{host}:{port}"
     return {
-        "server_address": f"{Protocols.HTTPS}://{server}",
+        "server_address": server_url,
         "port": port,
         "user_token": token,
         "is_secure": False,
@@ -39,23 +35,14 @@ def build_mr_client_args(rest_endpoint: str, token: str, author: str = "rbac-tes
 
 
 def assert_positive_mr_registry(
-    model_registry_instance_rest_endpoint: str,
+    model_registry_instance_rest_endpoint: tuple[str, int],
     token: str = "",
 ) -> None:
-    """
-    Assert that a user has access to the Model Registry.
+    """Assert that a user has access to the Model Registry.
 
     Args:
-        model_registry_instance_rest_endpoint: The Model Registry rest endpoint
-        token: user token
-
-    Raises:
-        AssertionError: If client initialization fails
-        Exception: If any other error occurs during the check
-
-    Note:
-        This function should be called within the appropriate context (admin or user)
-        as it uses the current context to get the token.
+        model_registry_instance_rest_endpoint: Tuple of (address, port).
+        token: user token.
     """
     client_args = build_mr_client_args(
         rest_endpoint=model_registry_instance_rest_endpoint,
@@ -147,8 +134,8 @@ def revoke_mr_access(
     LOGGER.info(f"RoleBinding {rb.name} deleted successfully.")
 
 
-def assert_forbidden_access(endpoint: str, token: str) -> None:
-    """Helper function to assert that access is properly forbidden"""
+def assert_forbidden_access(endpoint: tuple[str, int], token: str) -> None:
+    """Assert that access is properly forbidden."""
     try:
         ModelRegistryClient(**build_mr_client_args(rest_endpoint=endpoint, token=token))
         # If no exception is raised, the access is still granted - raise an error to continue retrying

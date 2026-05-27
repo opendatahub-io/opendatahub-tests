@@ -65,11 +65,11 @@ class TestModelRegistryWithSecureDB:
         service = get_mr_service_by_label(
             client=admin_client, namespace_name=model_registry_namespace, mr_instance=deploy_secure_db_mr
         )
-        model_registry_rest_url = get_endpoint_from_mr_service(svc=service, protocol=Protocols.REST)
+        model_registry_rest_address, _ = get_endpoint_from_mr_service(svc=service, protocol=Protocols.REST)
 
         with pytest.raises(requests.exceptions.SSLError) as exc_info:
             register_model_rest_api(
-                model_registry_rest_url=f"https://{model_registry_rest_url}",
+                model_registry_rest_url=f"https://{model_registry_rest_address}",
                 model_registry_rest_headers=model_registry_rest_headers,
                 data_dict=model_data_for_test,
                 verify=local_ca_bundle,
@@ -112,10 +112,10 @@ class TestModelRegistryWithSecureDB:
         service = get_mr_service_by_label(
             client=admin_client, namespace_name=model_registry_namespace, mr_instance=deploy_secure_db_mr
         )
-        model_registry_rest_url = get_endpoint_from_mr_service(svc=service, protocol=Protocols.REST)
+        model_registry_rest_address, _ = get_endpoint_from_mr_service(svc=service, protocol=Protocols.REST)
 
         result = register_model_rest_api(
-            model_registry_rest_url=f"https://{model_registry_rest_url}",
+            model_registry_rest_url=f"https://{model_registry_rest_address}",
             model_registry_rest_headers=model_registry_rest_headers,
             data_dict=model_data_for_test,
             verify=local_ca_bundle,

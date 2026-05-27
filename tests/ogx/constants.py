@@ -70,3 +70,5 @@ try:
     RAGAS_MAX_SAMPLES = int(_ragas_max_samples_raw)
 except ValueError:
     RAGAS_MAX_SAMPLES = 5
+
+RAGAS_EVAL_MAX_TOKENS = 16384

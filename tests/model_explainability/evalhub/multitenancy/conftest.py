@@ -7,7 +7,6 @@ import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
-from ocp_resources.evalhub import EvalHub
 from ocp_resources.namespace import Namespace
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
@@ -22,7 +21,6 @@ from tests.model_explainability.evalhub.constants import (
     EVALHUB_VLLM_EMULATOR_PORT,
 )
 from tests.model_explainability.evalhub.utils import tenant_rbac_ready
-from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import Labels, Protocols, Timeout
 from utilities.infra import create_inference_token, create_ns
 
@@ -30,70 +28,10 @@ LOGGER = structlog.get_logger(name=__name__)
 
 
 # ---------------------------------------------------------------------------
-# EvalHub instance (shared across the class)
+# Note: evalhub_mt_cr, evalhub_mt_deployment, evalhub_mt_route, and
+# evalhub_mt_ca_bundle_file fixtures are defined in ../conftest.py (parent)
+# and shared across all evalhub test subdirectories.
 # ---------------------------------------------------------------------------
-
-
-@pytest.fixture(scope="class")
-def evalhub_mt_cr(
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
-) -> Generator[EvalHub, Any, Any]:
-    """Create an EvalHub CR for multi-tenancy tests.
-
-    Uses a distinct name ('evalhub-mt') to avoid RoleBinding name collisions
-    with the production EvalHub instance. The operator names tenant RoleBindings
-    as '{instance.Name}-{ns}-job-config-rb' and uses Get-or-Create (not Update),
-    so two instances named 'evalhub' would collide and the first one wins.
-    """
-    with EvalHub(
-        client=admin_client,
-        name="evalhub-mt",
-        namespace=model_namespace.name,
-        database={"type": "sqlite"},
-        collections=["leaderboard-v2"],
-        wait_for_resource=True,
-    ) as evalhub:
-        yield evalhub
-
-
-@pytest.fixture(scope="class")
-def evalhub_mt_deployment(
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
-    evalhub_mt_cr: EvalHub,
-) -> Deployment:
-    """Wait for the EvalHub deployment to become available."""
-    deployment = Deployment(
-        client=admin_client,
-        name=evalhub_mt_cr.name,
-        namespace=model_namespace.name,
-    )
-    deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_5MIN)
-    return deployment
-
-
-@pytest.fixture(scope="class")
-def evalhub_mt_route(
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
-    evalhub_mt_deployment: Deployment,
-) -> Route:
-    """Get the Route for the EvalHub service."""
-    return Route(
-        client=admin_client,
-        name=evalhub_mt_deployment.name,
-        namespace=model_namespace.name,
-        ensure_exists=True,
-    )
-
-
-@pytest.fixture(scope="class")
-def evalhub_mt_ca_bundle_file(
-    admin_client: DynamicClient,
-) -> str:
-    """CA bundle file for verifying TLS on the EvalHub route."""
-    return create_ca_bundle_file(client=admin_client)
 
 
 @pytest.fixture(scope="class")
