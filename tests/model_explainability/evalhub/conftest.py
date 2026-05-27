@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.data_science_pipelines_application import DataSciencePipelinesApplication
 from ocp_resources.deployment import Deployment
 from ocp_resources.evalhub import EvalHub
@@ -44,6 +45,24 @@ LOGGER = structlog.get_logger(name=__name__)
 
 
 # ---------------------------------------------------------------------------
+# Helper Functions
+# ---------------------------------------------------------------------------
+
+
+def _is_evalhub_crd_available(admin_client: DynamicClient) -> bool:
+    """Check if EvalHub CRD is installed on the cluster."""
+    crd_name = "evalhubs.trustyai.opendatahub.io"
+    try:
+        crd = CustomResourceDefinition(
+            client=admin_client,
+            name=crd_name,
+        )
+        return crd.exists
+    except AttributeError, KeyError:
+        return False
+
+
+# ---------------------------------------------------------------------------
 # Shared EvalHub fixtures (used by health tests and garak tests)
 # ---------------------------------------------------------------------------
 
@@ -62,6 +81,82 @@ def evalhub_cr(
         wait_for_resource=True,
     ) as evalhub:
         yield evalhub
+
+
+# ---------------------------------------------------------------------------
+# Multi-tenancy EvalHub fixtures (shared by multitenancy/ and kueue/ tests)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="class")
+def evalhub_mt_cr(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+) -> Generator[EvalHub, Any, Any]:
+    """Create an EvalHub CR for multi-tenancy tests.
+
+    Uses a distinct name ('evalhub-mt') to avoid RoleBinding name collisions
+    with the production EvalHub instance. The operator names tenant RoleBindings
+    as '{instance.Name}-{ns}-job-config-rb' and uses Get-or-Create (not Update),
+    so two instances named 'evalhub' would collide and the first one wins.
+
+    Note: This creates a Custom Resource (CR) instance, not the CustomResourceDefinition (CRD).
+    The CRD must already be installed by the EvalHub/TrustyAI operator.
+    """
+    if not _is_evalhub_crd_available(admin_client):
+        pytest.fail(
+            "EvalHub CRD 'evalhubs.trustyai.opendatahub.io' not available on this cluster. "
+            "Install the TrustyAI/EvalHub operator first."
+        )
+
+    with EvalHub(
+        client=admin_client,
+        name="evalhub-mt",
+        namespace=model_namespace.name,
+        database={"type": "sqlite"},
+        collections=["leaderboard-v2"],
+        wait_for_resource=True,
+    ) as evalhub:
+        yield evalhub
+
+
+@pytest.fixture(scope="class")
+def evalhub_mt_deployment(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    evalhub_mt_cr: EvalHub,
+) -> Deployment:
+    """Wait for the EvalHub deployment to become available."""
+    deployment = Deployment(
+        client=admin_client,
+        name=evalhub_mt_cr.name,
+        namespace=model_namespace.name,
+    )
+    deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_5MIN)
+    return deployment
+
+
+@pytest.fixture(scope="class")
+def evalhub_mt_route(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    evalhub_mt_deployment: Deployment,
+) -> Route:
+    """Get the Route for the EvalHub service."""
+    return Route(
+        client=admin_client,
+        name=evalhub_mt_deployment.name,
+        namespace=model_namespace.name,
+        ensure_exists=True,
+    )
+
+
+@pytest.fixture(scope="class")
+def evalhub_mt_ca_bundle_file(
+    admin_client: DynamicClient,
+) -> str:
+    """CA bundle file for verifying TLS on the EvalHub route."""
+    return create_ca_bundle_file(client=admin_client)
 
 
 @pytest.fixture(scope="class")
