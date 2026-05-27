@@ -18,7 +18,7 @@ pytestmark = [pytest.mark.skip_on_disconnected]
             {
                 "sources_yaml": get_hf_catalog_str(ids=["mixed"]),
             },
-            "ibm-granite/granite-4.0-h-1b",
+            "ibm-granite/granite-3.2-8b-instruct",
             "HuggingFace Source mixed",
             id="test_huggingface_model_filter_by_name",
         ),

@@ -18,7 +18,7 @@ pytestmark = [
 MIXED_SOURCE_ID = "huggingface_mixed"
 OVERLAPPING_SOURCE_ID = "huggingface_overlapping_mixed"
 # Model shared across both sources - the core scenario for silent drop bug
-SHARED_MODEL = "ibm-granite/granite-4.0-h-1b"
+SHARED_MODEL = "ibm-granite/granite-3.2-8b-instruct"
 
 
 @pytest.mark.parametrize(
