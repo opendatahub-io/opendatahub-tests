@@ -5,7 +5,7 @@ from typing import Any
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
-from kubernetes.dynamic.exceptions import ResourceNotFoundError
+from kubernetes.dynamic.exceptions import NotFoundError, ResourceNotFoundError
 from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import RegisteredModel
 from ocp_resources.config_map import ConfigMap
@@ -957,7 +957,10 @@ def wait_for_model_catalog_pod_ready_after_deletion(
     # We can wait for the pods to reflect updated catalog, however, deleting them ensures the updated config is
     # applied immediately.
     for pod in model_catalog_pods:
-        pod.delete()
+        try:
+            pod.delete()
+        except NotFoundError:
+            pass
     # After the deletion, we need to wait for the pod to be spinned up and get to ready state.
     assert wait_for_model_catalog_pod_created(client=client, model_registry_namespace=model_registry_namespace)
     wait_for_pods_running(

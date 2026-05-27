@@ -232,8 +232,8 @@ class TestModelCatalogDBNetworkPolicyNoReconciliationStorm:
         reconcile_id = re.search(r'"reconcileID":\s*"([^"]+)"', np_creation_lines[0]).group(1)
         reconcile_log_lines = [line for line in logs.splitlines() if reconcile_id in line]
         LOGGER.info(f"ReconcileID {reconcile_id} has {len(reconcile_log_lines)} log entries")
-        assert len(reconcile_log_lines) == 4, (
-            f"Expected 4 log entries for reconcileID {reconcile_id}, "
+        assert len(reconcile_log_lines) == 5, (
+            f"Expected 5 log entries for reconcileID {reconcile_id}, "
             f"got {len(reconcile_log_lines)}: {reconcile_log_lines}"
         )
 
