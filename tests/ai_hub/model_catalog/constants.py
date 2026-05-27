@@ -63,7 +63,7 @@ HF_CUSTOM_MODE: str = "jonburdo/test2"
 HF_MODELS: dict[str, Any] = {
     "mixed": [
         # Generative models (text-generation)
-        "ibm-granite/granite-4.0-h-1b",
+        "ibm-granite/granite-3.2-8b-instruct",
         "microsoft/phi-2",
         "microsoft/Phi-4-mini-reasoning",
         "microsoft/Phi-3.5-mini-instruct",
@@ -87,7 +87,7 @@ HF_MODELS: dict[str, Any] = {
     "custom": [HF_CUSTOM_MODE],
     "overlapping_mixed": [
         # Shared with "mixed" - tests that same model across sources is not silently dropped
-        "ibm-granite/granite-4.0-h-1b",
+        "ibm-granite/granite-3.2-8b-instruct",
         # Unique to this source
         "ibm-granite/granite-4.0-h-small",
     ],
