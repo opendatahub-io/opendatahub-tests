@@ -4,7 +4,7 @@ import pytest
 from pytest_testconfig import config as py_config
 
 from simple_logger.logger import get_logger
-from tests.workbenches.utils import get_username
+from tests.workbenches.notebooks_server.controller.utils import get_username
 
 from kubernetes.dynamic import DynamicClient
 
