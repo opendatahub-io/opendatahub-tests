@@ -23,7 +23,8 @@ SELECT
         -- Custom properties with array_value get .array_value suffix
         WHEN name IN ('validated_on') AND array_value IS NOT NULL THEN name || '.array_value'
         -- Custom properties with string_value get .string_value suffix
-        WHEN name IN ('model_type', 'size', 'tensor_type', 'variant_group_id') THEN name || '.string_value'
+        WHEN name IN ('model_type', 'size', 'tensor_type', 'variant_group_id',
+            'hardware_tag') THEN name || '.string_value'
         -- Core properties keep base name only
         ELSE name
     END AS name,
