@@ -1,22 +1,21 @@
 from typing import Generator
 
 import pytest
-from pytest_testconfig import config as py_config
-
-from simple_logger.logger import get_logger
-from tests.workbenches.notebooks_server.controller.utils import get_username
-
 from kubernetes.dynamic import DynamicClient
-
 from ocp_resources.namespace import Namespace
-from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.notebook import Notebook
+from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
+from pytest_testconfig import config as py_config
+from simple_logger.logger import get_logger
 
-from utilities.constants import Labels, Timeout
+from tests.workbenches.notebooks_server.controller.utils import (
+    build_notebook_dict,
+    get_username,
+    resolve_notebook_image,
+)
 from utilities import constants
-from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH
-from utilities.infra import check_internal_image_registry_available
+from utilities.constants import Timeout
 from utilities.general import collect_pod_information
 
 LOGGER = get_logger(name=__name__)
@@ -40,9 +39,11 @@ def users_persistent_volume_claim(
 
 @pytest.fixture(scope="function")
 def minimal_image() -> Generator[str, None, None]:
-    """Provides a full image name of a minimal workbench image"""
+    """Provides a full image name of a minimal workbench image (name:tag only, no registry prefix)."""
     image_name = "jupyter-minimal-notebook" if py_config.get("distribution") == "upstream" else "s2i-minimal-notebook"
-    yield f"{image_name}:{'2025.2'}"
+    image_tag = py_config.get("workbench_image_tag", "2025.2")
+
+    yield f"{image_name}:{image_tag}"
 
 
 @pytest.fixture(scope="function")
@@ -51,14 +52,12 @@ def notebook_image(
     admin_client: DynamicClient,
     minimal_image: str,
 ) -> str:
-    """
-    Resolves the notebook image path.
+    """Resolves the notebook image path.
 
     Priority:
     1. 'custom_image' provided via indirect parametrization
-    2. Default 'minimal_image' (with automatic registry resolution)
+    2. Default minimal image via ``resolve_notebook_image()``.
     """
-    # SAFELY get parameters. If test doesn't parameterize this fixture, default to empty dict.
     params = getattr(request, "param", {})
     custom_image = params.get("custom_image")
 
@@ -90,19 +89,14 @@ def notebook_image(
 
     # Case B: Default Image (Implicit / Good Default)
     # This runs for all standard tests in test_spawning.py
-    internal_image_registry = check_internal_image_registry_available(admin_client=admin_client)
-
-    return (
-        f"{INTERNAL_IMAGE_REGISTRY_PATH}/{py_config['applications_namespace']}/{minimal_image}"
-        if internal_image_registry
-        else minimal_image
-    )
+    return resolve_notebook_image(admin_client=admin_client)
 
 
 @pytest.fixture(scope="function")
 def default_notebook(
     request: pytest.FixtureRequest,
     admin_client: DynamicClient,
+    unprivileged_client: DynamicClient,
     notebook_image: str,
 ) -> Generator[Notebook, None, None]:
     """Returns a new Notebook CR for a given namespace, name, and image"""
@@ -116,105 +110,14 @@ def default_notebook(
     username = get_username(client=admin_client)
     assert username, "Failed to determine username from the cluster"
 
-    # Set the image path based on the resolved notebook_image
-    image_path = notebook_image
+    notebook_dict = build_notebook_dict(
+        namespace=namespace,
+        name=name,
+        image_path=notebook_image,
+        extra_annotations=auth_annotations or None,
+    )
 
-    probe_config = {
-        "failureThreshold": 3,
-        "httpGet": {
-            "path": f"/notebook/{namespace}/{name}/api",
-            "port": "notebook-port",
-            "scheme": "HTTP",
-        },
-        "initialDelaySeconds": 10,
-        "periodSeconds": 5,
-        "successThreshold": 1,
-        "timeoutSeconds": 1,
-    }
-
-    notebook = {
-        "apiVersion": "kubeflow.org/v1",
-        "kind": "Notebook",
-        "metadata": {
-            "annotations": {
-                Labels.Notebook.INJECT_AUTH: "true",
-                "opendatahub.io/accelerator-name": "",
-                "notebooks.opendatahub.io/last-image-selection": image_path,
-                # Add any additional annotations if provided
-                **auth_annotations,
-            },
-            "finalizers": [
-                "notebook.opendatahub.io/kube-rbac-proxy-cleanup",
-            ],
-            "labels": {
-                Labels.Openshift.APP: name,
-                Labels.OpenDataHub.DASHBOARD: "true",
-                "opendatahub.io/odh-managed": "true",
-            },
-            "name": name,
-            "namespace": namespace,
-        },
-        "spec": {
-            "template": {
-                "spec": {
-                    "affinity": {},
-                    "containers": [
-                        {
-                            "env": [
-                                {
-                                    "name": "NOTEBOOK_ARGS",
-                                    "value": "--ServerApp.port=8888\n"
-                                    "                  "
-                                    "--ServerApp.token=''\n"
-                                    "                  "
-                                    "--ServerApp.password=''\n"
-                                    "                  "
-                                    f"--ServerApp.base_url=/notebook/{namespace}/{name}\n"
-                                    "                  "
-                                    "--ServerApp.quit_button=False\n",
-                                },
-                                {"name": "JUPYTER_IMAGE", "value": image_path},
-                            ],
-                            "image": image_path,
-                            "imagePullPolicy": "Always",
-                            "livenessProbe": probe_config,
-                            "name": name,
-                            "ports": [{"containerPort": 8888, "name": "notebook-port", "protocol": "TCP"}],
-                            "readinessProbe": probe_config,
-                            "resources": {
-                                "limits": {"cpu": "2", "memory": "4Gi"},
-                                "requests": {"cpu": "1", "memory": "1Gi"},
-                            },
-                            "volumeMounts": [
-                                {"mountPath": "/opt/app-root/src", "name": name},
-                                {"mountPath": "/dev/shm", "name": "shm"},
-                            ],
-                            "workingDir": "/opt/app-root/src",
-                        },
-                    ],
-                    "enableServiceLinks": False,
-                    "serviceAccountName": name,
-                    "volumes": [
-                        {"name": name, "persistentVolumeClaim": {"claimName": name}},
-                        {"emptyDir": {"medium": "Memory"}, "name": "shm"},
-                        {
-                            "name": "kube-rbac-proxy-config",
-                            "configMap": {"defaultMode": 420, "name": "test-kube-rbac-proxy-config"},
-                        },
-                        {
-                            "name": "kube-rbac-proxy-tls-certificates",
-                            "secret": {
-                                "defaultMode": 420,
-                                "secretName": "test-kube-rbac-proxy-tls",  # pragma: allowlist secret
-                            },
-                        },
-                    ],
-                }
-            }
-        },
-    }
-
-    with Notebook(kind_dict=notebook) as nb:
+    with Notebook(client=unprivileged_client, kind_dict=notebook_dict) as nb:
         yield nb
 
 
