@@ -33,7 +33,6 @@ class MaaSBaseline(TypedDict):
 
 
 def capture_maas_baseline(
-    *,
     gateway: Gateway,
     model_ref: MaaSModelRef,
     auth_policy: MaaSAuthPolicy,
@@ -60,7 +59,6 @@ def capture_maas_baseline(
 
 
 def save_maas_baseline_to_configmap(
-    *,
     client: DynamicClient,
     namespace: str,
     baseline: MaaSBaseline,
@@ -85,7 +83,6 @@ def save_maas_baseline_to_configmap(
 
 
 def load_maas_baseline_from_configmap(
-    *,
     client: DynamicClient,
     namespace: str,
 ) -> MaaSBaseline:
