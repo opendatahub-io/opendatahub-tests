@@ -213,13 +213,13 @@ class TestServingConfigPipelineOutput:
         Then toolCallParser must be present
         """
         models_with_config = [
-            model for model in tool_calling_models if model.get("servingConfig", {}).get("toolCalling")
+            model for model in tool_calling_models if (model.get("servingConfig") or {}).get("toolCalling")
         ]
         assert models_with_config, "No models with servingConfig.toolCalling found in catalog"
 
         validation_errors = []
         for model in models_with_config:
-            model_name = model.get("name", "unknown")
+            model_name = model["name"]
             if not model["servingConfig"]["toolCalling"].get("toolCallParser"):
                 validation_errors.append(f"Model '{model_name}' missing toolCallParser")
 
@@ -237,7 +237,7 @@ class TestServingConfigPipelineOutput:
         """
         validation_errors = []
         for model in tool_calling_models:
-            model_name = model.get("name", "unknown")
+            model_name = model["name"]
             readme = model.get("readme", "")
             if TOOL_CALLING_README_HEADING in readme:
                 validation_errors.append(f"Model '{model_name}' still has '{TOOL_CALLING_README_HEADING}' in readme")
