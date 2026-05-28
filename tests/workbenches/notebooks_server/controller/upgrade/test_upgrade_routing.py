@@ -209,7 +209,7 @@ class TestPostUpgradeNotebookRouting:
         assert len(matching_routes) == 1, (
             f"Expected exactly 1 HTTPRoute for notebook '{upgrade_notebook.name}' "
             f"in namespace '{apps_ns}', found {len(matching_routes)}. "
-            f"Routes: {[r.name for r in matching_routes]}"
+            f"Routes: {[route.name for route in matching_routes]}"
         )
 
     @pytest.mark.post_upgrade
