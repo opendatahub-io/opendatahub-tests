@@ -17,6 +17,7 @@ from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError
 
 from tests.workbenches.notebooks_server.controller.utils import (
+    WORKBENCH_TRUSTED_CA_BUNDLE_NAME,
     StatefulSet,
     build_notebook_dict,
     resolve_notebook_image,
@@ -35,6 +36,7 @@ UPGRADE_NOTEBOOK_NAME = "upgrade-workbenches"
 UPGRADE_STOPPED_NOTEBOOK_NAME = "upgrade-wb-stopped"
 NEW_NOTEBOOK_NAME = "upgrade-wb-new"
 UPGRADE_BASELINE_CM_NAME = "upgrade-workbenches-baseline"
+ODH_TRUSTED_CA_BUNDLE_NAME = "odh-trusted-ca-bundle"
 
 
 @pytest.fixture(scope="session")
@@ -437,6 +439,31 @@ def stopped_notebook_pre_upgrade_shutdown(
 
 
 @pytest.fixture(scope="session")
+def workbench_trusted_ca_bundle(
+    unprivileged_client: DynamicClient,
+    upgrade_notebook_namespace: Namespace,
+) -> ConfigMap:
+    """The workbench-trusted-ca-bundle ConfigMap created by the ODH controller."""
+    return ConfigMap(
+        client=unprivileged_client,
+        name=WORKBENCH_TRUSTED_CA_BUNDLE_NAME,
+        namespace=upgrade_notebook_namespace.name,
+    )
+
+
+@pytest.fixture(scope="session")
+def odh_trusted_ca_bundle(
+    admin_client: DynamicClient,
+) -> ConfigMap:
+    """The odh-trusted-ca-bundle ConfigMap in the applications namespace (source of trust)."""
+    return ConfigMap(
+        client=admin_client,
+        name=ODH_TRUSTED_CA_BUNDLE_NAME,
+        namespace=py_config["applications_namespace"],
+    )
+
+
+@pytest.fixture(scope="session")
 def capture_notebook_baseline(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
@@ -447,6 +474,8 @@ def capture_notebook_baseline(
     upgrade_notebook_httproute: HTTPRoute,
     stopped_notebook: Notebook,
     stopped_notebook_pre_upgrade_shutdown: None,
+    workbench_trusted_ca_bundle: ConfigMap,
+    odh_trusted_ca_bundle: ConfigMap,
 ) -> None:
     """Capture notebook resource metadata to a ConfigMap before upgrade.
 
@@ -472,6 +501,18 @@ def capture_notebook_baseline(
 
     stopped_annotation = stopped_notebook.instance.metadata.annotations.get("kubeflow-resource-stopped")
 
+    assert workbench_trusted_ca_bundle.exists, (
+        f"ConfigMap '{WORKBENCH_TRUSTED_CA_BUNDLE_NAME}' not found in "
+        f"'{upgrade_notebook.namespace}' during baseline capture"
+    )
+    ca_bundle_resource_version = workbench_trusted_ca_bundle.instance.metadata.resourceVersion
+
+    assert odh_trusted_ca_bundle.exists, (
+        f"ConfigMap '{ODH_TRUSTED_CA_BUNDLE_NAME}' not found in "
+        f"'{py_config['applications_namespace']}' during baseline capture"
+    )
+    odh_ca_bundle_resource_version = odh_trusted_ca_bundle.instance.metadata.resourceVersion
+
     baseline = {
         "ntb_creation_timestamp": creation_timestamp,
         "notebook_generation": notebook_generation,
@@ -480,6 +521,8 @@ def capture_notebook_baseline(
         "service_selector": service_selector,
         "httproute_generation": httproute_generation,
         "stopped_annotation_value": stopped_annotation,
+        "ca_bundle_resource_version": ca_bundle_resource_version,
+        "odh_ca_bundle_resource_version": odh_ca_bundle_resource_version,
     }
 
     ConfigMap(
