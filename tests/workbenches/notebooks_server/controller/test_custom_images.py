@@ -213,7 +213,7 @@ class TestCustomImageValidation:
             # 4. Update packages_to_verify list
             # 5. Remove the skip marker once the image is available
             # 6. Run the test:
-            # pytest tests/workbenches/notebook-controller/\
+            # pytest tests/workbenches/notebooks_server/controller/\
             #     test_custom_images.py::TestCustomImageValidation::\
             #     test_custom_image_package_verification[your_id] -v
             # ========================================
