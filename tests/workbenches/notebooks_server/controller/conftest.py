@@ -11,7 +11,7 @@ from ocp_resources.pod import Pod
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError
 
-from tests.workbenches.utils import get_username
+from tests.workbenches.notebooks_server.controller.utils import get_username
 from utilities import constants
 from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH, Labels, Timeout
 from utilities.general import collect_pod_information

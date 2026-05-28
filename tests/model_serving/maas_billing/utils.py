@@ -12,6 +12,7 @@ from kubernetes.dynamic import DynamicClient
 
 # from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.endpoints import Endpoints
+from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.group import Group
 from ocp_resources.ingress_config_openshift_io import Ingress as IngressConfig
 from ocp_resources.llm_inference_service import LLMInferenceService
@@ -25,6 +26,7 @@ from utilities.constants import (
 from utilities.llmd_utils import get_llm_inference_url
 from utilities.plugins.constant import OpenAIEnpoints, RestHeader
 from utilities.resources.rate_limit_policy import RateLimitPolicy
+from utilities.resources.tenant import Tenant
 from utilities.resources.token_rate_limit_policy import TokenRateLimitPolicy
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -632,3 +634,15 @@ def assert_api_key_created_ok(
     )
     for field in required_fields:
         assert field in body, f"Response must contain '{field}'"
+
+
+def verify_maas_gateway_programmed(gateway: Gateway) -> None:
+    """Assert that the MaaS Gateway exists and has reached Programmed=True."""
+    assert gateway.exists, f"MaaS Gateway '{gateway.name}' not found in namespace '{gateway.namespace}'"
+    gateway.wait_for_condition(condition="Programmed", status="True", timeout=300)
+
+
+def verify_maas_tenant_ready(tenant: Tenant) -> None:
+    """Assert that the Tenant CR exists and has Ready=True."""
+    assert tenant.exists, f"Tenant '{tenant.name}' not found in namespace '{tenant.namespace}'"
+    tenant.wait_for_condition(condition="Ready", status="True", timeout=300)
