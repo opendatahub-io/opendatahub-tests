@@ -16,8 +16,8 @@ from simple_logger.logger import get_logger
 from kubernetes.dynamic import DynamicClient
 from model_registry import ModelRegistry as ModelRegistryClient
 
-from tests.model_registry.constants import DB_RESOURCES_NAME, MR_INSTANCE_NAME, MR_OPERATOR_NAME, DEFAULT_LABEL_DICT_DB
-from tests.model_registry.utils import (
+from tests.ai_hub.constants import DB_RESOURCES_NAME, MR_INSTANCE_NAME, MR_OPERATOR_NAME, DEFAULT_LABEL_DICT_DB
+from tests.ai_hub.utils import (
     get_endpoint_from_mr_service,
     get_mr_service_by_label,
     ModelRegistryV1Alpha1,
