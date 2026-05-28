@@ -661,6 +661,7 @@ def llama_stack_test_route(
 
 def _create_llama_stack_client(
     route: Route,
+    teardown_resources: bool = True,
 ) -> Generator[LlamaStackClient, Any, Any]:
     # LLS_CLIENT_VERIFY_SSL is false by default to be able to test with Self-Signed certificates
     verifySSL = os.getenv("LLS_CLIENT_VERIFY_SSL", "false").lower() == "true"
@@ -676,7 +677,8 @@ def _create_llama_stack_client(
 
         yield client
 
-        _cleanup_files(client=client, existing_file_ids=existing_file_ids)
+        if teardown_resources:
+            _cleanup_files(client=client, existing_file_ids=existing_file_ids)
     finally:
         http_client.close()
 
@@ -706,36 +708,42 @@ def _cleanup_files(client: LlamaStackClient, existing_file_ids: set[str]) -> Non
 @pytest.fixture(scope="class")
 def unprivileged_llama_stack_client(
     unprivileged_llama_stack_test_route: Route,
+    teardown_resources: bool,
 ) -> Generator[LlamaStackClient, Any, Any]:
     """
     Returns a ready to use LlamaStackClient for unprivileged deployment.
 
     Args:
         unprivileged_llama_stack_test_route (Route): Route resource for unprivileged LlamaStack distribution
+        teardown_resources (bool): Whether to clean up files after test execution
 
     Yields:
         Generator[LlamaStackClient, Any, Any]: Configured LlamaStackClient for RAG testing
     """
     yield from _create_llama_stack_client(
         route=unprivileged_llama_stack_test_route,
+        teardown_resources=teardown_resources,
     )
 
 
 @pytest.fixture(scope="class")
 def llama_stack_client(
     llama_stack_test_route: Route,
+    teardown_resources: bool,
 ) -> Generator[LlamaStackClient, Any, Any]:
     """
     Returns a ready to use LlamaStackClient.
 
     Args:
         llama_stack_test_route (Route): Route resource for LlamaStack distribution
+        teardown_resources (bool): Whether to clean up files after test execution
 
     Yields:
         Generator[LlamaStackClient, Any, Any]: Configured LlamaStackClient for RAG testing
     """
     yield from _create_llama_stack_client(
         route=llama_stack_test_route,
+        teardown_resources=teardown_resources,
     )
 
 
