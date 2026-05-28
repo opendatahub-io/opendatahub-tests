@@ -263,6 +263,7 @@ def mcp_included_excluded_configmap_patch(
 
 @pytest.fixture(scope="class")
 def mcp_servers_configmap_patch(
+    pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     model_registry_namespace: str,
     mcp_catalog_rest_urls: list[str],
@@ -276,29 +277,32 @@ def mcp_servers_configmap_patch(
       plus named queries for filtering by custom properties
     - mcp-servers.yaml: the actual MCP server definitions
     """
-    catalog_config_map, current_data = get_mcp_catalog_sources(
-        admin_client=admin_client, model_registry_namespace=model_registry_namespace
-    )
-    if "mcp_catalogs" not in current_data:
-        current_data["mcp_catalogs"] = []
-    current_data["mcp_catalogs"].append(MCP_CATALOG_SOURCE)
-    current_data["namedQueries"] = NAMED_QUERIES
+    if pytestconfig.option.post_upgrade or pytestconfig.option.pre_upgrade:
+        yield
+    else:
+        catalog_config_map, current_data = get_mcp_catalog_sources(
+            admin_client=admin_client, model_registry_namespace=model_registry_namespace
+        )
+        if "mcp_catalogs" not in current_data:
+            current_data["mcp_catalogs"] = []
+        current_data["mcp_catalogs"].append(MCP_CATALOG_SOURCE)
+        current_data["namedQueries"] = NAMED_QUERIES
 
-    patches = {
-        "data": {
-            "sources.yaml": yaml.dump(current_data, default_flow_style=False),
-            "mcp-servers.yaml": MCP_SERVERS_YAML,
+        patches = {
+            "data": {
+                "sources.yaml": yaml.dump(current_data, default_flow_style=False),
+                "mcp-servers.yaml": MCP_SERVERS_YAML,
+            }
         }
-    }
 
-    with ResourceEditor(patches={catalog_config_map: patches}):
+        with ResourceEditor(patches={catalog_config_map: patches}):
+            wait_for_model_catalog_pod_ready_after_deletion(
+                client=admin_client, model_registry_namespace=model_registry_namespace
+            )
+            wait_for_mcp_catalog_api(url=mcp_catalog_rest_urls[0], headers=model_registry_rest_headers)
+            yield
+
         wait_for_model_catalog_pod_ready_after_deletion(
             client=admin_client, model_registry_namespace=model_registry_namespace
         )
         wait_for_mcp_catalog_api(url=mcp_catalog_rest_urls[0], headers=model_registry_rest_headers)
-        yield
-
-    wait_for_model_catalog_pod_ready_after_deletion(
-        client=admin_client, model_registry_namespace=model_registry_namespace
-    )
-    wait_for_mcp_catalog_api(url=mcp_catalog_rest_urls[0], headers=model_registry_rest_headers)

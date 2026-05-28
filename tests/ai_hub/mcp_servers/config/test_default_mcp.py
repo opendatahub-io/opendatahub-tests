@@ -20,6 +20,7 @@ REQUIRED_SERVER_FIELDS: list[str] = ["name", "version", "description", "readme"]
 
 pytestmark = [
     pytest.mark.install,
+    pytest.mark.pre_upgrade,
     pytest.mark.post_upgrade,
     pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace"),
 ]

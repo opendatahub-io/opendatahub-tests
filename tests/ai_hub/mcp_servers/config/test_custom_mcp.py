@@ -12,17 +12,22 @@ from tests.ai_hub.mcp_servers.config.constants import (
 LOGGER = structlog.get_logger(name=__name__)
 
 
+@pytest.mark.install
+@pytest.mark.pre_upgrade
+@pytest.mark.post_upgrade
 @pytest.mark.usefixtures("mcp_servers_configmap_patch")
 class TestMCPServerLoading:
     """Tests for loading Custom MCP servers from YAML into the catalog (TC-LOAD-001)."""
 
     def test_custom_mcp_servers(
         self: Self,
+        pytestconfig: pytest.Config,
         mcp_servers_response: list[dict],
         default_mcp_servers: dict,
     ):
         """Verify MCP servers loaded with correct timestamps and tools excluded by default (TC-LOAD-001, TC-API-020)."""
         servers_by_name = {server["name"]: server for server in mcp_servers_response.get("items", [])}
+
         default_server_names = {server["name"] for server in default_mcp_servers.get("items", [])}
         assert default_server_names.issubset(set(servers_by_name)), (
             f"Missing default servers: {default_server_names - set(servers_by_name)}"

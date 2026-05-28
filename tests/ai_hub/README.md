@@ -118,6 +118,48 @@ uv run pytest tests/ai_hub/model_registry/rbac/
 uv run pytest -m pre_upgrade tests/ai_hub/
 ```
 
+## Upgrade Testing
+
+### Running Upgrade Tests
+
+```bash
+# Pre-upgrade: patches ConfigMaps, registers models
+uv run pytest tests/model_registry/ --pre-upgrade -v
+
+# ... perform the actual cluster upgrade ...
+
+# Post-upgrade: validates persistence, then cleans up
+uv run pytest tests/model_registry/ --post-upgrade -v
+```
+
+### Test Execution Flow
+
+- **Pre-upgrade** patches ConfigMaps with custom sources and registers models. Resources are left in place for post-upgrade validation.
+- **Post-upgrade** validates that custom sources, models, and MCP servers persisted across the upgrade, then cleans up.
+- Fixtures like `mcp_servers_configmap_patch` and `updated_catalog_config_map` become no-ops during upgrade runs to avoid overwriting the state set up by the pre-upgrade session.
+
+### Coverage Matrix
+
+| Component | Pre-upgrade | Post-upgrade | Upgrade Paths |
+| --- | --- | --- | --- |
+| Model Registry (MySQL) | Register model | Retrieve model, validate spec | All (via release branches) |
+| Model Registry (PostgreSQL) | Register model | Retrieve model | All |
+| Model Catalog ConfigMap | Patch custom source | Validate persistence | All |
+| Model Catalog API | Custom catalog tests (reused) | Custom catalog tests (reused) | All |
+| MCP Catalog ConfigMap | Patch custom source | Validate persistence | All |
+| MCP Catalog API | Default server tests | Default + custom server tests | All |
+| MCP Default Sources | ConfigMap entries, labels, API | Same | All |
+
+### Known Limitations
+
+No known limitations.
+
+### Maintenance Ownership
+
+- **Who updates tests when APIs change:** AI Hub QE
+- **When to update constants:** When default MCP catalogs/labels change upstream (new partner servers, label renames)
+- **When to update upgrade fixtures:** When new ConfigMaps are introduced (e.g., new catalog source types)
+
 ## Additional Resources
 
 - [Model Registry Documentation](https://github.com/kubeflow/model-registry)
