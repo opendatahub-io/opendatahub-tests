@@ -17,7 +17,7 @@ from tests.model_registry.model_catalog.catalog_config.utils import (
     wait_for_catalog_source_restore,
 )
 from tests.model_registry.model_catalog.constants import REDHAT_AI_CATALOG_ID, REDHAT_AI_CATALOG_NAME
-from tests.model_registry.model_catalog.utils import wait_for_model_catalog_api
+from tests.model_registry.model_catalog.utils import get_models_from_catalog_api, wait_for_model_catalog_api
 from tests.model_registry.utils import get_model_catalog_pod, wait_for_model_catalog_pod_ready_after_deletion
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -234,3 +234,21 @@ def disabled_redhat_ai_source(
         source_label=REDHAT_AI_CATALOG_NAME,
         expected_count=catalog_pod_model_counts[REDHAT_AI_CATALOG_ID],
     )
+
+
+@pytest.fixture(scope="class")
+def tool_calling_models(
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+) -> list[dict]:
+    """Models from the catalog that have tool-calling in their tasks."""
+    response = get_models_from_catalog_api(
+        model_catalog_rest_url=model_catalog_rest_url,
+        model_registry_rest_headers=model_registry_rest_headers,
+        page_size=500,
+        additional_params="&filterQuery=tasks='tool-calling'",
+    )
+    models = response.get("items", [])
+    assert models, "No models with tasks='tool-calling' found in catalog"
+    LOGGER.info(f"Found {len(models)} models with tool-calling task")
+    return models

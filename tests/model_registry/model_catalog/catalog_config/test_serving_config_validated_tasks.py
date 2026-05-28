@@ -1,5 +1,5 @@
 import time
-from typing import Self
+from typing import Any, Self
 
 import pytest
 import structlog
@@ -8,6 +8,8 @@ from ocp_resources.config_map import ConfigMap
 from tests.model_registry.constants import CUSTOM_CATALOG_ID1
 from tests.model_registry.model_catalog.utils import get_catalog_str, get_models_from_catalog_api
 from tests.model_registry.utils import execute_get_command
+
+TOOL_CALLING_README_HEADING = "## vLLM Deployment with Tool Calling"
 
 LOGGER = structlog.get_logger(name=__name__)
 pytestmark = [
@@ -194,4 +196,52 @@ class TestServingConfigAndValidatedTasks:
         assert MODEL_WITH_SERVING_CONFIG in model_names, (
             f"Expected '{MODEL_WITH_SERVING_CONFIG}' in search results for '{VALIDATED_TASKS_UNIQUE_TERM}'. "
             f"The backend search should match validated_tasks (not just tasks). Got: {model_names}"
+        )
+
+
+@pytest.mark.usefixtures("model_registry_namespace")
+@pytest.mark.tier2
+class TestServingConfigPipelineOutput:
+    """Tests for RHOAIENG-60670: pipeline outputs structured servingConfig instead of README markdown."""
+
+    def test_serving_config_has_valid_tool_calling_fields(
+        self: Self,
+        tool_calling_models: list[dict[str, Any]],
+    ):
+        """Given models with tool-calling in the catalog
+        When a model has servingConfig.toolCalling
+        Then toolCallParser must be present
+        """
+        models_with_config = [
+            model for model in tool_calling_models if (model.get("servingConfig") or {}).get("toolCalling")
+        ]
+        assert models_with_config, "No models with servingConfig.toolCalling found in catalog"
+
+        validation_errors = []
+        for model in models_with_config:
+            model_name = model["name"]
+            if not model["servingConfig"]["toolCalling"].get("toolCallParser"):
+                validation_errors.append(f"Model '{model_name}' missing toolCallParser")
+
+        assert not validation_errors, (
+            f"servingConfig validation failed for {len(validation_errors)} model(s):\n" + "\n".join(validation_errors)
+        )
+
+    def test_tool_calling_readme_section_removed(
+        self: Self,
+        tool_calling_models: list[dict[str, Any]],
+    ):
+        """Given models with tool-calling in the catalog
+        When checking their readme content
+        Then the old vLLM Deployment with Tool Calling markdown section is absent
+        """
+        validation_errors = []
+        for model in tool_calling_models:
+            model_name = model["name"]
+            readme = model.get("readme", "")
+            if TOOL_CALLING_README_HEADING in readme:
+                validation_errors.append(f"Model '{model_name}' still has '{TOOL_CALLING_README_HEADING}' in readme")
+
+        assert not validation_errors, f"README cleanup failed for {len(validation_errors)} model(s):\n" + "\n".join(
+            validation_errors
         )

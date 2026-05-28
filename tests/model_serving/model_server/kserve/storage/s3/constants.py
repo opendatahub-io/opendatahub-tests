@@ -10,8 +10,11 @@ MINIO_INFERENCE_CONFIG = {
     "name": "loan-model",
     "model-format": ModelAndFormat.OPENVINO_IR,
     "model-version": "1",
-    "model-dir": "kserve/openvino-age-gender-recognition",
+    "model-dir": "serving/kserve/openvino-age-gender-recognition",
 }
-KSERVE_MINIO_INFERENCE_CONFIG = {"model-dir": "kserve/openvino-age-gender-recognition", **MINIO_INFERENCE_CONFIG}
+KSERVE_MINIO_INFERENCE_CONFIG = {
+    "model-dir": "serving/kserve/openvino-age-gender-recognition",
+    **MINIO_INFERENCE_CONFIG,
+}
 
 AGE_GENDER_INFERENCE_TYPE = "age-gender-recognition"
