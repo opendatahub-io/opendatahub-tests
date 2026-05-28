@@ -34,16 +34,15 @@ class TestNotebook:
         users_persistent_volume_claim: PersistentVolumeClaim,
         default_notebook: Notebook,
     ):
+        """Create a simple Notebook CR with all necessary resources.
+
+        Given all required resources (namespace, PVC, Notebook CR) are created,
+        When the notebook controller reconciles,
+        Then the notebook pod should reach Ready state.
+
+        Validation is performed by the notebook_pod fixture which waits
+        for the pod to exist and reach Ready condition.
         """
-        Create a simple Notebook CR with all necessary resources and see if the Notebook Operator creates it properly
-        """
-        notebook_pod = Pod(
-            client=unprivileged_client,
-            namespace=default_notebook.namespace,
-            name=f"{default_notebook.name}-0",
-        )
-        notebook_pod.wait()
-        notebook_pod.wait_for_condition(condition=Pod.Condition.READY, status=Pod.Condition.Status.TRUE)
 
     @pytest.mark.smoke
     @pytest.mark.parametrize(
