@@ -29,7 +29,7 @@ ai_hub/
 │   ├── sorting/                   # Sorting functionality
 │   └── upgrade/                   # Catalog upgrade tests
 │
-├── ai_hub/                # Core Model Registry tests
+├── model_registry/                # Core Model Registry tests
 │   ├── async_job/                 # Asynchronous model upload tests
 │   ├── negative_tests/            # Error scenario validation
 │   ├── python_client/             # Python client tests
@@ -42,7 +42,7 @@ ai_hub/
 │
 └── upgrade/                       # Combined upgrade scenarios
     ├── model_catalog/
-    └── ai_hub/
+    └── model_registry/
 ```
 
 ### Current Test Suites
@@ -51,7 +51,7 @@ ai_hub/
 - **`image_validation/`** - Container image validation (SHA256 digests, registry sources)
 - **`mcp_servers/`** - MCP server integration tests covering data loading, filtering, keyword search, named queries, and multi-source support
 - **`model_catalog/`** - Model Catalog tests including HuggingFace model integration, custom/default catalog sources, source merging, inclusion/exclusion filtering, search, sorting, metadata endpoints, and lifecycle management
-- **`ai_hub/`** - Core registry tests for model registration and versioning via REST API and Python client, RBAC with users/groups/ServiceAccounts, async model uploads, model signing, negative testing, and deployment with InferenceService
+- **`model_registry/`** - Core registry tests for model registration and versioning via REST API and Python client, RBAC with users/groups/ServiceAccounts, async model uploads, model signing, negative testing, and deployment with InferenceService
 - **`scc/`** - Security Context Constraints validation for registry and catalog pods
 - **`test_security.py`** - Validates unauthenticated access is denied (401 responses)
 
@@ -83,7 +83,7 @@ Tests are parametrized across multiple database backends:
 
 ## Running Tests
 
-### Run All Model Registry Tests
+### Run All AI Hub Tests
 
 ```bash
 uv run pytest tests/ai_hub/
@@ -93,7 +93,7 @@ uv run pytest tests/ai_hub/
 
 ```bash
 # Run core registry tests
-uv run pytest tests/ai_hub/ai_hub/
+uv run pytest tests/ai_hub/model_registry/
 
 # Run catalog tests
 uv run pytest tests/ai_hub/model_catalog/
@@ -112,7 +112,7 @@ uv run pytest tests/ai_hub/model_catalog/huggingface/
 uv run pytest -m smoke tests/ai_hub/
 
 # Run RBAC tests
-uv run pytest tests/ai_hub/ai_hub/rbac/
+uv run pytest tests/ai_hub/model_registry/rbac/
 
 # Run upgrade tests
 uv run pytest -m pre_upgrade tests/ai_hub/
