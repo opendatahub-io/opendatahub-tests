@@ -11,8 +11,8 @@
 *       @opendatahub-io/opendatahub-tests-contributors
 
 # Test directory specific rules
-tests/model_explainability/       @sheltoncyril @kpunwatk
-tests/model_registry/             @dbasunag @lugi0 @fege
-tests/model_serving/              @mwaykole @Raghul-M @brettmthompson @threcc @malhajfr
+tests/ai_safety/       @sheltoncyril @kpunwatk
+tests/ai_hub/             @dbasunag @lugi0 @fege
+tests/model_serving/              @mwaykole @Raghul-M @brettmthompson @threcc
 tests/rag/                        @jgarciao @jiripetrlik
 tests/workbenches                 @jstourac @andyatmiami
