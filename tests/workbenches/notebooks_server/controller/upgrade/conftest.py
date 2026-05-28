@@ -10,9 +10,11 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.notebook import Notebook
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
+from ocp_resources.service import Service
 from timeout_sampler import TimeoutExpiredError
 
 from tests.workbenches.notebooks_server.controller.utils import (
+    StatefulSet,
     build_notebook_dict,
     resolve_notebook_image,
 )
@@ -175,12 +177,41 @@ def upgrade_notebook_pod(
 
 
 @pytest.fixture(scope="session")
+def upgrade_notebook_statefulset(
+    unprivileged_client: DynamicClient,
+    upgrade_notebook: Notebook,
+) -> StatefulSet:
+    """StatefulSet owned by the Notebook CR."""
+    return StatefulSet(
+        client=unprivileged_client,
+        name=upgrade_notebook.name,
+        namespace=upgrade_notebook.namespace,
+    )
+
+
+@pytest.fixture(scope="session")
+def upgrade_notebook_service(
+    unprivileged_client: DynamicClient,
+    upgrade_notebook: Notebook,
+) -> Service:
+    """Service owned by the Notebook CR."""
+    return Service(
+        client=unprivileged_client,
+        name=upgrade_notebook.name,
+        namespace=upgrade_notebook.namespace,
+    )
+
+
+@pytest.fixture(scope="session")
 def capture_notebook_baseline(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
+    upgrade_notebook: Notebook,
     upgrade_notebook_pod: Pod,
+    upgrade_notebook_statefulset: StatefulSet,
+    upgrade_notebook_service: Service,
 ) -> None:
-    """Capture the notebook pod creation timestamp to a ConfigMap before upgrade.
+    """Capture notebook resource metadata to a ConfigMap before upgrade.
 
     No-op during post-upgrade runs.
     """
@@ -190,7 +221,19 @@ def capture_notebook_baseline(
     creation_timestamp = upgrade_notebook_pod.instance.metadata.creationTimestamp
     assert creation_timestamp, f"Pod '{upgrade_notebook_pod.name}' has no creationTimestamp in metadata"
 
-    baseline = {"ntb_creation_timestamp": creation_timestamp}
+    notebook_generation = upgrade_notebook.instance.metadata.generation
+    sts_generation = upgrade_notebook_statefulset.instance.metadata.generation
+    service_spec = upgrade_notebook_service.instance.spec
+    service_ports = json.dumps(service_spec.ports, sort_keys=True, default=str)
+    service_selector = json.dumps(service_spec.selector, sort_keys=True, default=str)
+
+    baseline = {
+        "ntb_creation_timestamp": creation_timestamp,
+        "notebook_generation": notebook_generation,
+        "statefulset_generation": sts_generation,
+        "service_ports": service_ports,
+        "service_selector": service_selector,
+    }
 
     ConfigMap(
         client=admin_client,
