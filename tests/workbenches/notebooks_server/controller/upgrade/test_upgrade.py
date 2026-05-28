@@ -24,8 +24,10 @@ class TestPreUpgradeNotebook:
         """Given a Notebook CR is created before upgrade,
         When the notebook controller reconciles and starts the pod,
         Then the notebook pod should exist and be in Ready state.
+
+        Validation is performed by the upgrade_notebook_pod fixture which waits
+        for the pod to exist and reach Ready condition.
         """
-        assert upgrade_notebook_pod.exists, f"Notebook pod '{upgrade_notebook_pod.name}' does not exist"
 
 
 class TestPostUpgradeNotebook:
