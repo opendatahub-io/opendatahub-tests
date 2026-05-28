@@ -47,7 +47,7 @@ EXCLUDE_MARKERS_FROM_DEFAULT_TIER2: set[str] = {"smoke", "tier1", "tier2", "tier
 # To include a component for default marking please add the component path to this list
 DEFAULT_TIER2_MARKER_TEST_PATHS: tuple[str, ...] = (
     "tests/ai_hub",
-    "tests/model_explainability",
+    "tests/ai_safety",
     "tests/model_serving/maas_billing",
 )
 
