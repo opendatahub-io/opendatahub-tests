@@ -1,4 +1,5 @@
 import json
+from typing import Any
 
 import pytest
 from ocp_resources.notebook import Notebook
@@ -40,7 +41,7 @@ class TestPostUpgradeNotebook:
     def test_notebook_not_restarted_after_upgrade(
         self,
         upgrade_notebook_pod: Pod,
-        upgrade_notebook_baseline: dict[str, str],
+        upgrade_notebook_baseline: dict[str, Any],
     ) -> None:
         """Given a notebook was running before upgrade,
         When the upgrade completes,
@@ -61,7 +62,7 @@ class TestPostUpgradeNotebook:
     def test_notebook_cr_not_modified_after_upgrade(
         self,
         upgrade_notebook: Notebook,
-        upgrade_notebook_baseline: dict[str, str],
+        upgrade_notebook_baseline: dict[str, Any],
     ) -> None:
         """Given a Notebook CR existed before upgrade,
         When the upgrade completes,
@@ -80,7 +81,7 @@ class TestPostUpgradeNotebook:
     def test_statefulset_not_modified_after_upgrade(
         self,
         upgrade_notebook_statefulset: StatefulSet,
-        upgrade_notebook_baseline: dict[str, str],
+        upgrade_notebook_baseline: dict[str, Any],
     ) -> None:
         """Given a notebook StatefulSet existed before upgrade,
         When the upgrade completes,
@@ -129,7 +130,7 @@ class TestPostUpgradeNotebook:
     def test_service_not_modified_after_upgrade(
         self,
         upgrade_notebook_service: Service,
-        upgrade_notebook_baseline: dict[str, str],
+        upgrade_notebook_baseline: dict[str, Any],
     ) -> None:
         """Given a notebook Service existed before upgrade,
         When the upgrade completes,
