@@ -46,7 +46,7 @@ BASIC_LOGGER = logging.getLogger(name="basic")
 EXCLUDE_MARKERS_FROM_DEFAULT_TIER2: set[str] = {"smoke", "tier1", "tier2", "tier3", "pre_upgrade", "post_upgrade"}
 # To include a component for default marking please add the component path to this list
 DEFAULT_TIER2_MARKER_TEST_PATHS: tuple[str, ...] = (
-    "tests/model_registry",
+    "tests/ai_hub",
     "tests/ai_safety",
     "tests/model_serving/maas_billing",
 )
