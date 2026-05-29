@@ -10,7 +10,6 @@ from tests.model_serving.maas_billing.multitenancy.aigateway.utils import (
     AIGatewayTestContext,
     build_aigateway_spec,
     build_aigateway_test_context,
-    tenant_namespace_name_for_aigateway,
 )
 from utilities.general import generate_random_name
 from utilities.resources.aigateway import AIGateway
@@ -34,7 +33,6 @@ def aigateway_for_test(
 ) -> Generator[AIGatewayTestContext, Any, Any]:
     """Create a disposable AIGateway and yield context for bootstrap assertions."""
     aigateway_name = f"e2e-aigw-{generate_random_name()}"
-    tenant_namespace_name = tenant_namespace_name_for_aigateway(aigateway_name=aigateway_name)
     aigateway_spec = build_aigateway_spec(aigateway_name=aigateway_name)
     with AIGateway(
         client=admin_client,
