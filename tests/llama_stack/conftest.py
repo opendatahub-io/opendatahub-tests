@@ -74,7 +74,7 @@ LLAMA_STACK_DISTRIBUTION_SECRET_DATA = {
 }
 
 IBM_EARNINGS_DOC_URL = (
-    "https://raw.githubusercontent.com/opendatahub-io/opendatahub-tests/main/tests/llama_stack/"
+    "https://raw.githubusercontent.com/opendatahub-io/opendatahub-tests/main/tests/ogx/"
     "dataset/corpus/finance/ibm-4q25-earnings-press-release-unencrypted.pdf"
 )
 
