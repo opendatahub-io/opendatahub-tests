@@ -4,8 +4,8 @@ from model_registry import ModelRegistry as ModelRegistryClient
 
 from simple_logger.logger import get_logger
 
-from tests.model_registry.constants import MODEL_NAME, MR_NAMESPACE
-from tests.model_registry.utils import register_model, get_and_validate_registered_model
+from tests.ai_hub.constants import MODEL_NAME, MR_NAMESPACE
+from tests.ai_hub.utils import register_model, get_and_validate_registered_model
 from utilities.constants import DscComponents
 
 

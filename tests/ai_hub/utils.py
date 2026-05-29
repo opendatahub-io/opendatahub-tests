@@ -10,7 +10,7 @@ from ocp_resources.service import Service
 from ocp_resources.model_registry import ModelRegistry
 from kubernetes.dynamic.exceptions import ResourceNotFoundError, NotFoundError
 
-from tests.model_registry.constants import MODEL_NAME, MODEL_DESCRIPTION
+from tests.ai_hub.constants import MODEL_NAME, MODEL_DESCRIPTION
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
 from utilities.constants import Protocols, ModelFormat
 

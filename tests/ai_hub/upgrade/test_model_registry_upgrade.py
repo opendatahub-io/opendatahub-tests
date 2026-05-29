@@ -1,9 +1,9 @@
 import pytest
 from typing import Self
-from tests.model_registry.constants import MODEL_NAME
+from tests.ai_hub.constants import MODEL_NAME
 from model_registry import ModelRegistry as ModelRegistryClient
 from simple_logger.logger import get_logger
-from tests.model_registry.utils import get_and_validate_registered_model, register_model
+from tests.ai_hub.utils import get_and_validate_registered_model, register_model
 
 LOGGER = get_logger(name=__name__)
 
