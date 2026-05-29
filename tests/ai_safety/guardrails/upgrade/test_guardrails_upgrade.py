@@ -202,7 +202,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectorsPreUpgrade:
     indirect=True,
 )
 @pytest.mark.rawdeployment
-@pytest.mark.usefixtures("guardrails_gateway_config")
+@pytest.mark.usefixtures("patched_dsc_kserve_headed", "guardrails_gateway_config")
 class TestGuardrailsOrchestratorWithBuiltInDetectorsPostUpgrade:
     """
     Tests that the GuardrailsOrchestrator functionality persists after an ODH upgrade.
