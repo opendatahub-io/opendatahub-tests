@@ -11,10 +11,10 @@
 *       @opendatahub-io/opendatahub-tests-contributors
 
 # Test directory specific rules
-tests/ai_safety/                               @sheltoncyril @kpunwatk
-tests/model_registry/                          @dbasunag @lugi0 @fege
-tests/model_serving/                           @mwaykole @Raghul-M @brettmthompson @threcc @rpancham @SB159
-tests/model_serving/model_runtime/             @Raghul-M @brettmthompson @rpancham
+tests/ai_safety/                    @sheltoncyril @kpunwatk
+tests/ai_hub/                          @dbasunag @lugi0 @fege
+tests/model_serving/                           @mwaykole @Raghul-M @brettmthompson @threcc @SB159
+tests/model_serving/model_runtime/             @Raghul-M @brettmthompson
 tests/model_serving/model_server/              @threcc @mwaykole
 tests/model_serving/maas_billing/              @SB159
 tests/llama_stack/                             @Artemon-line @Bobbins228 @ChristianZaccaria @jgarciao @jiripetrlik @Ygnas
