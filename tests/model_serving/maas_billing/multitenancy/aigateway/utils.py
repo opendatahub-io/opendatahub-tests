@@ -7,7 +7,7 @@ from ocp_resources.namespace import Namespace
 
 from tests.model_serving.maas_billing.maas_subscription.utils import MAAS_SUBSCRIPTION_NAMESPACE
 from tests.model_serving.maas_billing.utils import verify_maas_gateway_programmed, verify_maas_tenant_ready
-from utilities.constants import ApiGroups, MAAS_GATEWAY_NAMESPACE
+from utilities.constants import MAAS_GATEWAY_NAMESPACE, ApiGroups
 from utilities.resources.aigateway import AIGateway
 from utilities.resources.tenant import Tenant
 
@@ -60,9 +60,7 @@ def build_aigateway_test_context(aigateway: AIGateway) -> AIGatewayTestContext:
 
 def verify_aigateway_ready(aigateway: AIGateway) -> None:
     """Assert the AIGateway exists and reports Ready=True with phase Active."""
-    assert aigateway.exists, (
-        f"AIGateway '{aigateway.name}' not found in namespace '{aigateway.namespace}'"
-    )
+    assert aigateway.exists, f"AIGateway '{aigateway.name}' not found in namespace '{aigateway.namespace}'"
     aigateway.wait_for_condition(condition="Ready", status="True", timeout=300)
     phase = getattr(aigateway.instance.status, "phase", "") or ""
     assert phase == "Active", f"Expected AIGateway phase Active, got '{phase}'"

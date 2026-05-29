@@ -21,8 +21,7 @@ def aigateway_infra_namespace(admin_client: DynamicClient) -> str:
     """Return the infra namespace where AIGateway objects are created."""
     infra_namespace = Namespace(client=admin_client, name=AIGATEWAY_INFRA_NAMESPACE)
     assert infra_namespace.exists, (
-        f"Infra namespace '{AIGATEWAY_INFRA_NAMESPACE}' not found — "
-        "required for AIGateway multitenancy tests"
+        f"Infra namespace '{AIGATEWAY_INFRA_NAMESPACE}' not found — required for AIGateway multitenancy tests"
     )
     return AIGATEWAY_INFRA_NAMESPACE
 
