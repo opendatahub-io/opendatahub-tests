@@ -1,18 +1,19 @@
 import pytest
 import yaml
+
 from tests.ai_safety.guardrails.constants import (
-    PII_INPUT_DETECTION_PROMPT,
-    PII_OUTPUT_DETECTION_PROMPT,
     HARMLESS_PROMPT,
     PII_ENDPOINT,
+    PII_INPUT_DETECTION_PROMPT,
+    PII_OUTPUT_DETECTION_PROMPT,
 )
 from tests.ai_safety.guardrails.utils import (
-    verify_health_info_response,
+    send_and_verify_negative_detection,
     send_and_verify_unsuitable_input_detection,
     send_and_verify_unsuitable_output_detection,
-    send_and_verify_negative_detection,
+    verify_health_info_response,
 )
-from utilities.constants import LLM_D_CHAT_GENERATION_CONFIG, BUILTIN_DETECTOR_CONFIG, LLMdInferenceSimConfig
+from utilities.constants import BUILTIN_DETECTOR_CONFIG, LLM_D_CHAT_GENERATION_CONFIG, LLMdInferenceSimConfig
 from utilities.plugins.constant import OpenAIEnpoints
 
 
@@ -201,7 +202,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectorsPreUpgrade:
     indirect=True,
 )
 @pytest.mark.rawdeployment
-@pytest.mark.usefixtures("guardrails_gateway_config")
+@pytest.mark.usefixtures("patched_dsc_kserve_headed", "guardrails_gateway_config")
 class TestGuardrailsOrchestratorWithBuiltInDetectorsPostUpgrade:
     """
     Tests that the GuardrailsOrchestrator functionality persists after an ODH upgrade.

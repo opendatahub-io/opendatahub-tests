@@ -57,7 +57,6 @@ def test_guardrailsorchestrator_crd_exists(
     assert crd_resource.exists, f"CRD {crd_name} does not exist on the cluster"
 
 
-
 @pytest.mark.parametrize(
     "model_namespace, orchestrator_config, guardrails_orchestrator",
     [

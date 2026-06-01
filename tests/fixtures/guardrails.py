@@ -1,4 +1,5 @@
-from typing import Generator, Any
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 from _pytest.fixtures import FixtureRequest
@@ -11,7 +12,7 @@ from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.route import Route
 
-from utilities.constants import Labels, Annotations
+from utilities.constants import Annotations, Labels
 from utilities.guardrails import check_guardrails_health_endpoint
 
 GUARDRAILS_ORCHESTRATOR_NAME: str = "guardrails-orchestrator"
@@ -35,6 +36,10 @@ def guardrails_orchestrator(
         yield gorch
         gorch.clean_up()
     else:
+        if not (hasattr(request, "param") and request.param is not None):
+            raise pytest.UsageError(
+                "guardrails_orchestrator fixture requires parametrization outside post_upgrade mode"
+            )
         gorch_kwargs["log_level"] = "DEBUG"
         gorch_kwargs["replicas"] = 1
         gorch_kwargs["wait_for_resource"] = True
@@ -181,7 +186,7 @@ def guardrails_orchestrator_health_route(
     )
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def guardrails_healthcheck(
     current_client_token, openshift_ca_bundle_file, guardrails_orchestrator_health_route: Route
 ) -> None:

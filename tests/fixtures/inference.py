@@ -1,7 +1,9 @@
-from typing import Generator, Any
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
@@ -13,15 +15,14 @@ from ocp_resources.service import Service
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest_testconfig import py_config
 from simple_logger.logger import get_logger
-
-from utilities.constants import (
-    RuntimeTemplates,
-    KServeDeploymentType,
-    QWEN_MODEL_NAME,
-    LLMdInferenceSimConfig,
-)
 from timeout_sampler import retry
 
+from utilities.constants import (
+    QWEN_MODEL_NAME,
+    KServeDeploymentType,
+    LLMdInferenceSimConfig,
+    RuntimeTemplates,
+)
 from utilities.inference_utils import create_isvc
 from utilities.infra import get_data_science_cluster, wait_for_dsc_status_ready
 from utilities.serving_runtime import ServingRuntimeFromTemplate
@@ -108,11 +109,18 @@ def llm_d_inference_sim_serving_runtime(
 
     """
     if pytestconfig.option.post_upgrade:
-        sr = ServingRuntime(
-            client=admin_client, name=LLMdInferenceSimConfig.serving_runtime_name, namespace=model_namespace.name
+        serving_runtime = ServingRuntime(
+            client=admin_client,
+            name=LLMdInferenceSimConfig.serving_runtime_name,
+            namespace=model_namespace.name,
         )
-        yield sr
-        sr.clean_up()
+        if not serving_runtime.exists:
+            raise ResourceNotFoundError(
+                f"ServingRuntime {LLMdInferenceSimConfig.serving_runtime_name} "
+                f"does not exist in namespace {model_namespace.name} after upgrade"
+            )
+        yield serving_runtime
+        serving_runtime.clean_up()
 
     else:
         with ServingRuntime(
@@ -221,7 +229,7 @@ def kserve_controller_manager_deployment(admin_client: DynamicClient) -> Generat
 @pytest.fixture(scope="class")
 def patched_dsc_kserve_headed(
     admin_client, kserve_controller_manager_deployment: Deployment
-) -> Generator[DataScienceCluster, None, None]:
+) -> Generator[DataScienceCluster]:
     """Configure KServe Services to work in Headed mode i.e. using the Service port instead of the Pod port"""
 
     def _kserve_status(dsc_resource: DataScienceCluster) -> str:

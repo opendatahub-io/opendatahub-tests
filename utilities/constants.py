@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any
 
 from ocp_resources.resource import Resource
 
@@ -242,7 +242,6 @@ class RunTimeConfigs:
 class ModelCarImage:
     MNIST_8_1: str = (
         "oci://quay.io/mwaykole/test@sha256:cb7d25c43e52c755e85f5b59199346f30e03b7112ef38b74ed4597aec8748743"
-        # noqa: E501
     )
     GRANITE_8B_CODE_INSTRUCT: str = "oci://registry.redhat.io/rhelai1/modelcar-granite-8b-code-instruct:1.4"
 
@@ -289,7 +288,6 @@ class MinIo:
     class PodConfig:
         KSERVE_MINIO_IMAGE: str = (
             "quay.io/jooholee/model-minio@sha256:b9554be19a223830cf792d5de984ccc57fc140b954949f5ffc6560fab977ca7a"
-            # noqa: E501
         )
         MINIO_BASE_LABELS_ANNOTATIONS: dict[str, Any] = {
             "labels": {
@@ -308,21 +306,18 @@ class MinIo:
         MODEL_MESH_MINIO_CONFIG: dict[str, Any] = {
             "image": "quay.io/trustyai_testing/modelmesh-minio-examples@"
             "sha256:d2ccbe92abf9aa5085b594b2cae6c65de2bf06306c30ff5207956eb949bb49da",
-            # noqa: E501
             **MINIO_BASE_CONFIG,
         }
 
         QWEN_MINIO_CONFIG: dict[str, Any] = {
             "image": "quay.io/trustyai_testing/hf-llm-minio@"
             "sha256:2404a37d578f2a9c7adb3971e26a7438fedbe7e2e59814f396bfa47cd5fe93bb",
-            # noqa: E501
             **MINIO_BASE_CONFIG,
         }
 
         QWEN_HAP_BPIV2_MINIO_CONFIG: dict[str, Any] = {
             "image": "quay.io/trustyai_testing/qwen2.5-0.5b-instruct-hap-bpiv2-minio@"
             "sha256:eac1ca56f62606e887c80b4a358b3061c8d67f0b071c367c0aa12163967d5b2b",
-            # noqa: E501
             **MINIO_BASE_CONFIG,
         }
 
@@ -339,7 +334,7 @@ class MinIo:
 
     class RunTimeConfig:
         # TODO: Remove runtime_image once ovms/loan_model_alpha model works with latest ovms
-        IMAGE = "quay.io/opendatahub/openvino_model_server@sha256:564664371d3a21b9e732a5c1b4b40bacad714a5144c0a9aaf675baec4a04b148"  # noqa: E501
+        IMAGE = "quay.io/opendatahub/openvino_model_server@sha256:564664371d3a21b9e732a5c1b4b40bacad714a5144c0a9aaf675baec4a04b148"
 
 
 MODEL_REGISTRY: str = "model-registry"
@@ -364,7 +359,7 @@ OPENSHIFT_OPERATORS: str = "openshift-operators"
 MARIADB: str = "mariadb"
 MODEL_REGISTRY_CUSTOM_NAMESPACE: str = "model-registry-custom-ns"
 THANOS_QUERIER_ADDRESS = "https://thanos-querier.openshift-monitoring.svc:9092"
-BUILTIN_DETECTOR_CONFIG: Dict[str, Any] = {
+BUILTIN_DETECTOR_CONFIG: dict[str, Any] = {
     "regex": {
         "type": "text_contents",
         "service": {
@@ -391,11 +386,11 @@ class LLMdInferenceSimConfig:
     isvc_name: str = f"{LLM_D_INFERENCE_SIM_NAME}-isvc"
 
 
-LLM_D_CHAT_GENERATION_CONFIG: Dict[str, Any] = {
+LLM_D_CHAT_GENERATION_CONFIG: dict[str, Any] = {
     "service": {"hostname": f"{LLMdInferenceSimConfig.isvc_name}-predictor", "port": 8032}
 }
 
-CHAT_GENERATION_CONFIG: Dict[str, Any] = {
+CHAT_GENERATION_CONFIG: dict[str, Any] = {
     "service": {"hostname": f"{QWEN_MODEL_NAME}-predictor", "port": 8032, "request_timeout": 600}
 }
 TRUSTYAI_SERVICE_NAME: str = "trustyai-service"
