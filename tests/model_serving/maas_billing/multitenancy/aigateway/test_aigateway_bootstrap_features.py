@@ -172,6 +172,5 @@ class TestAIGatewayBootstrapFeatures:
                 expected_oidc=TEST_OIDC_SPEC,
             )
             LOGGER.info(
-                f"AIGateway oidc mirrored to Tenant/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} "
-                f"in '{tenant_namespace_name}'"
+                f"AIGateway oidc mirrored to Tenant/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} in '{tenant_namespace_name}'"
             )
