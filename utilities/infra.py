@@ -600,7 +600,8 @@ def get_openshift_token(client: DynamicClient | None = None) -> str:
     """
     client = client or get_client()
     LOGGER.info("Getting OpenShift token")
-    bearer_str = client.configuration.api_key["authorization"]
+    api_key = client.configuration.api_key
+    bearer_str = api_key.get("authorization") or api_key.get("BearerToken")
     assert bearer_str, "No OpenShift token found from client instance"
     match = re.search(r"Bearer (.+)", bearer_str)
     assert match, "No OpenShift token found"
