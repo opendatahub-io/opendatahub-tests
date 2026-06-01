@@ -821,7 +821,7 @@ def mariadb_operator_cr(
         mariadb_operator_cr.wait_for_condition(
             condition="Deployed", status=mariadb_operator_cr.Condition.Status.TRUE, timeout=Timeout.TIMEOUT_10MIN
         )
-        wait_for_mariadb_operator_deployments(mariadb_operator=mariadb_operator_cr, client=admin_client)
+        wait_for_mariadb_operator_deployments(mariadb_operator=mariadb_operator_cr)
 
         yield mariadb_operator_cr
 
