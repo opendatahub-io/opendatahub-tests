@@ -334,7 +334,10 @@ class MinIo:
 
     class RunTimeConfig:
         # TODO: Remove runtime_image once ovms/loan_model_alpha model works with latest ovms
-        IMAGE = "quay.io/opendatahub/openvino_model_server@sha256:564664371d3a21b9e732a5c1b4b40bacad714a5144c0a9aaf675baec4a04b148"
+        IMAGE = (
+            "quay.io/opendatahub/openvino_model_server@sha256:"
+            "564664371d3a21b9e732a5c1b4b40bacad714a5144c0a9aaf675baec4a04b148"  # pragma: allowlist secret
+        )
 
 
 MODEL_REGISTRY: str = "model-registry"
@@ -387,7 +390,7 @@ class LLMdInferenceSimConfig:
 
 
 LLM_D_CHAT_GENERATION_CONFIG: dict[str, Any] = {
-    "service": {"hostname": f"{LLMdInferenceSimConfig.isvc_name}-predictor", "port": 8032}
+    "service": {"hostname": f"{LLMdInferenceSimConfig.isvc_name}-predictor", "port": 80}
 }
 
 CHAT_GENERATION_CONFIG: dict[str, Any] = {

@@ -169,13 +169,13 @@ def verify_builtin_detector_unsuitable_output_response(
     errors = []
 
     unsuitable_output_warning = "UNSUITABLE_OUTPUT"
-    warnings = response_data.get("warnings", [])
+    warnings = response_data.get("warnings") or []
     if len(warnings) != 1:
         errors.append(f"Expected 1 warning in response, got {len(warnings)}")
     elif warnings[0]["type"] != unsuitable_output_warning:
         errors.append(f"Expected warning type {unsuitable_output_warning}, got {warnings[0]['type']}")
 
-    output_detections = response_data.get("detections", {}).get("output", [])
+    output_detections = (response_data.get("detections") or {}).get("output", [])
 
     if len(output_detections) < 1:
         errors.append(f"Expected at least one output detection, but got {len(output_detections)}.")
