@@ -25,6 +25,12 @@ AIGATEWAY_CHILD_NAME_PREFIX = "aigateway-"
 AIGATEWAY_TENANT_ADMIN_ROLE_SUFFIX = "tenant-admin"
 AIGATEWAY_OBJECT_ADMIN_ROLE_SUFFIX = "object-admin"
 TEST_RBAC_GROUP_NAME = "maas-aigw-e2e-admins"
+AIGATEWAY_TEST_OIDC_SPEC = {
+    "issuerUrl": "https://sso.example.com/realms/maas-aigw-e2e",
+    "clientId": "maas-aigw-e2e",
+    "ttl": 600,
+}
+AIGATEWAY_TEST_RBAC_ADMINS = [{"kind": "Group", "name": TEST_RBAC_GROUP_NAME}]
 
 
 class AIGatewayTestContext(TypedDict):
