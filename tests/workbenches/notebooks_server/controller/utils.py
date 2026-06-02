@@ -2,6 +2,7 @@ from typing import Any
 
 import structlog
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.resource import NamespacedResource
 from ocp_resources.self_subject_review import SelfSubjectReview
 from ocp_resources.user import User
 from pytest_testconfig import config as py_config
@@ -10,6 +11,12 @@ from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH, Labels
 from utilities.infra import check_internal_image_registry_available, get_product_version
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+class StatefulSet(NamespacedResource):
+    """StatefulSet resource (apps/v1). Not shipped by ocp_resources."""
+
+    api_group: str = NamespacedResource.ApiGroup.APPS
 
 
 def get_username(client: DynamicClient) -> str | None:
