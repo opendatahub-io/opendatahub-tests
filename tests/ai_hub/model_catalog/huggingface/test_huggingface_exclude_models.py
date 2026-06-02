@@ -38,7 +38,7 @@ pytestmark = [
         pytest.param(
             {
                 "sources_yaml": get_hf_catalog_str(
-                    ids=["mixed"], excluded_models=["ibm-granite/granite-4.0-h-1b", "microsoft/phi-2"]
+                    ids=["mixed"], excluded_models=["ibm-granite/granite-3.2-8b-instruct", "microsoft/phi-2"]
                 ),
             },
             [
@@ -46,7 +46,7 @@ pytestmark = [
                 "microsoft/Phi-4-mini-reasoning",
                 "microsoft/Phi-3.5-mini-instruct",
             ],
-            ["ibm-granite/granite-4.0-h-1b", "microsoft/phi-2"],
+            ["ibm-granite/granite-3.2-8b-instruct", "microsoft/phi-2"],
             id="test_model_exclusion_specific_models",
             marks=(pytest.mark.install),
         ),
