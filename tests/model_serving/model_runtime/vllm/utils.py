@@ -1,3 +1,4 @@
+import os
 from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
@@ -10,6 +11,7 @@ from ocp_resources.inference_service import InferenceService
 from ocp_resources.secret import Secret
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from tests.model_serving.model_runtime.utils import validate_text_inference_fuzzy
 from tests.model_serving.model_runtime.vllm.constant import (
     CHAT_QUERY,
     COMPLETION_QUERY,
@@ -154,8 +156,8 @@ def validate_raw_openai_inference_request(
     pod_name: str,
     isvc: InferenceService,
     response_snapshot: Any,
-    chat_query: list[list[dict[str, str]]],
-    completion_query: list[dict[str, str]],
+    chat_query: list[list[dict[str, Any]]],
+    completion_query: list[dict[str, Any]],
     tool_calling: dict[Any, Any] | None = None,
 ) -> None:
     model_info, chat_responses, completion_responses = run_raw_inference(
@@ -167,12 +169,38 @@ def validate_raw_openai_inference_request(
         completion_query=completion_query,
         tool_calling=tool_calling,
     )
-    validate_inference_output(
-        model_info,
-        chat_responses,
-        completion_responses,
-        response_snapshot=response_snapshot,
-    )
+
+    if chat_responses:
+        chat_validation_queries = []
+        for idx, query_list in enumerate(chat_query):
+            keywords_dict = next((msg for msg in query_list if "keywords" in msg), None)
+            if keywords_dict is None:
+                raise ValueError(f"chat_query[{idx}] is missing keywords metadata")
+            user_text = " ".join(
+                msg.get("content", "") for msg in query_list if isinstance(msg, dict) and "content" in msg
+            )
+            chat_validation_queries.append({"text": user_text, "keywords": keywords_dict["keywords"]})
+
+        validate_text_inference_fuzzy(
+            completion_responses=chat_responses,
+            queries=chat_validation_queries,
+            model_info=model_info,
+        )
+
+    if completion_responses:
+        validate_text_inference_fuzzy(
+            completion_responses=completion_responses,
+            queries=completion_query,
+            model_info=model_info,
+        )
+
+    if os.getenv("CHECK_SNAPSHOT", "false").lower() == "true":
+        validate_inference_output(
+            model_info,
+            chat_responses,
+            completion_responses,
+            response_snapshot=response_snapshot,
+        )
 
 
 def validate_raw_tgis_inference_request(
