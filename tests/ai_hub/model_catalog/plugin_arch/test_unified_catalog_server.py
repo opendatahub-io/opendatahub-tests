@@ -61,6 +61,7 @@ class TestCatalogPluginArchitecture:
 
         if expect_plugins:
             assert "plugins" in body, f"/{endpoint} missing 'plugins' aggregation: {body}"
+            assert body["plugins"].get("catalog") is True, f"Catalog plugin not registered or unhealthy: {body}"
             unhealthy_plugins = {name: status for name, status in body["plugins"].items() if not status}
             assert not unhealthy_plugins, f"Unhealthy plugins detected: {unhealthy_plugins}"
 
