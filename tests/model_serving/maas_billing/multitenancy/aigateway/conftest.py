@@ -5,7 +5,6 @@ import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.namespace import Namespace
-from ocp_resources.resource import ResourceEditor
 from pytest_testconfig import config as py_config
 
 from tests.model_serving.maas_billing.maas_subscription.utils import MAAS_SUBSCRIPTION_NAMESPACE
@@ -20,12 +19,9 @@ from tests.model_serving.maas_billing.multitenancy.aigateway.utils import (
     aigateway_from_spec,
     build_aigateway_spec,
     build_aigateway_test_context,
-    cleanup_preserved_tenant_namespace,
-    deploy_aigateway,
     deploy_aigateway_from_spec,
     deploy_and_verify_aigateway_ready,
     tenant_namespace_name_for_aigateway,
-    verify_aigateway_ready,
 )
 from utilities.constants import MAAS_GATEWAY_NAMESPACE
 from utilities.general import generate_random_name
@@ -207,19 +203,17 @@ def ready_aigateway_with_cleanup_on_delete(
     teardown_resources: bool,
 ) -> Generator[AIGatewayTestContext, Any, Any]:
     """Create a Ready AIGateway with cleanupOnDelete=true; test owns deletion."""
-    aigateway = deploy_aigateway(
+    aigateway_name = f"e2e-aigw-del-{generate_random_name()}"
+    aigateway_spec = build_aigateway_spec(aigateway_name=aigateway_name, cleanup_on_delete=True)
+    with aigateway_from_spec(
         admin_client=admin_client,
-        infra_namespace=aigateway_infra_namespace,
-        name_prefix="e2e-aigw-del",
-        cleanup_on_delete=True,
-        teardown=False,
-    )
-    try:
-        verify_aigateway_ready(aigateway=aigateway)
+        aigateway_name=aigateway_name,
+        cr_namespace=aigateway_infra_namespace,
+        aigateway_spec=aigateway_spec,
+        teardown=teardown_resources,
+    ) as aigateway:
+        deploy_and_verify_aigateway_ready(aigateway=aigateway)
         yield build_aigateway_test_context(aigateway=aigateway)
-    finally:
-        if teardown_resources and aigateway.exists:
-            aigateway.clean_up()
 
 
 @pytest.fixture
@@ -229,25 +223,24 @@ def ready_aigateway_without_cleanup_on_delete(
     teardown_resources: bool,
 ) -> Generator[AIGatewayTestContext, Any, Any]:
     """Create a Ready AIGateway with cleanupOnDelete=false; test owns deletion."""
-    aigateway = deploy_aigateway(
-        admin_client=admin_client,
-        infra_namespace=aigateway_infra_namespace,
-        name_prefix="e2e-aigw-keep",
-        cleanup_on_delete=False,
-        teardown=False,
-    )
-    test_context = build_aigateway_test_context(aigateway=aigateway)
-    try:
-        verify_aigateway_ready(aigateway=aigateway)
-        yield test_context
-    finally:
-        if teardown_resources:
-            if aigateway.exists:
-                aigateway.clean_up()
-            cleanup_preserved_tenant_namespace(
-                admin_client=admin_client,
-                tenant_namespace_name=test_context["tenant_namespace_name"],
-            )
+    aigateway_name = f"e2e-aigw-keep-{generate_random_name()}"
+    tenant_namespace_name = tenant_namespace_name_for_aigateway(aigateway_name=aigateway_name)
+    with Namespace(client=admin_client, name=tenant_namespace_name, teardown=teardown_resources):
+        aigateway_spec = build_aigateway_spec(
+            aigateway_name=aigateway_name,
+            tenant_namespace_name=tenant_namespace_name,
+            cleanup_on_delete=False,
+            create_tenant_namespace=False,
+        )
+        with aigateway_from_spec(
+            admin_client=admin_client,
+            aigateway_name=aigateway_name,
+            cr_namespace=aigateway_infra_namespace,
+            aigateway_spec=aigateway_spec,
+            teardown=teardown_resources,
+        ) as aigateway:
+            deploy_and_verify_aigateway_ready(aigateway=aigateway)
+            yield build_aigateway_test_context(aigateway=aigateway)
 
 
 @pytest.fixture
@@ -259,21 +252,15 @@ def aigateway_on_labeled_preexisting_namespace(
     """Create a pre-existing labeled tenant namespace and a Ready adopting AIGateway."""
     aigateway_name = f"e2e-aigw-preexist-{generate_random_name()}"
     tenant_namespace_name = tenant_namespace_name_for_aigateway(aigateway_name=aigateway_name)
-    with Namespace(client=admin_client, name=tenant_namespace_name, teardown=teardown_resources) as tenant_namespace:
-        if not tenant_namespace.exists:
-            tenant_namespace.deploy()
-        ResourceEditor(
-            patches={
-                tenant_namespace: {
-                    "metadata": {
-                        "annotations": {
-                            AIGATEWAY_NAME_ANNOTATION: aigateway_name,
-                            AIGATEWAY_NAMESPACE_ANNOTATION: aigateway_infra_namespace,
-                        }
-                    }
-                }
-            }
-        ).update()
+    with Namespace(
+        client=admin_client,
+        name=tenant_namespace_name,
+        annotations={
+            AIGATEWAY_NAME_ANNOTATION: aigateway_name,
+            AIGATEWAY_NAMESPACE_ANNOTATION: aigateway_infra_namespace,
+        },
+        teardown=teardown_resources,
+    ) as tenant_namespace:
         aigateway_spec = build_aigateway_spec(
             aigateway_name=aigateway_name,
             tenant_namespace_name=tenant_namespace_name,
@@ -309,18 +296,14 @@ def aigateway_pending_missing_tenant_namespace(
         tenant_namespace_name=tenant_namespace_name,
         create_tenant_namespace=False,
     )
-    aigateway = deploy_aigateway_from_spec(
+    with aigateway_from_spec(
         admin_client=admin_client,
         aigateway_name=aigateway_name,
         cr_namespace=aigateway_infra_namespace,
         aigateway_spec=aigateway_spec,
-        teardown=False,
-    )
-    try:
+        teardown=teardown_resources,
+    ) as aigateway:
         yield aigateway
-    finally:
-        if teardown_resources and aigateway.exists:
-            aigateway.clean_up()
 
 
 @pytest.fixture
@@ -332,37 +315,27 @@ def aigateway_on_namespace_owned_by_other(
     """Create an AIGateway against a namespace already claimed by another AIGateway."""
     aigateway_name = f"e2e-aigw-ns-clash-{generate_random_name()}"
     shared_namespace_name = f"e2e-aigw-shared-{generate_random_name()}"
-    with Namespace(client=admin_client, name=shared_namespace_name, teardown=teardown_resources) as shared_namespace:
-        if not shared_namespace.exists:
-            shared_namespace.deploy()
-        ResourceEditor(
-            patches={
-                shared_namespace: {
-                    "metadata": {
-                        "annotations": {
-                            AIGATEWAY_NAME_ANNOTATION: "other-aigw",
-                            AIGATEWAY_NAMESPACE_ANNOTATION: aigateway_infra_namespace,
-                        }
-                    }
-                }
-            }
-        ).update()
+    with Namespace(
+        client=admin_client,
+        name=shared_namespace_name,
+        annotations={
+            AIGATEWAY_NAME_ANNOTATION: "other-aigw",
+            AIGATEWAY_NAMESPACE_ANNOTATION: aigateway_infra_namespace,
+        },
+        teardown=teardown_resources,
+    ):
         aigateway_spec = build_aigateway_spec(
             aigateway_name=aigateway_name,
             tenant_namespace_name=shared_namespace_name,
         )
-        aigateway = deploy_aigateway_from_spec(
+        with aigateway_from_spec(
             admin_client=admin_client,
             aigateway_name=aigateway_name,
             cr_namespace=aigateway_infra_namespace,
             aigateway_spec=aigateway_spec,
-            teardown=False,
-        )
-        try:
+            teardown=teardown_resources,
+        ) as aigateway:
             yield aigateway
-        finally:
-            if teardown_resources and aigateway.exists:
-                aigateway.clean_up()
 
 
 @pytest.fixture
@@ -381,39 +354,25 @@ def aigateway_on_gateway_owned_by_other(
         namespace=MAAS_GATEWAY_NAMESPACE,
         gateway_class_name="openshift-default",
         listeners=[{"name": "http", "port": 80, "protocol": "HTTP"}],
+        annotations={
+            AIGATEWAY_NAME_ANNOTATION: "other-aigw",
+            AIGATEWAY_NAMESPACE_ANNOTATION: aigateway_infra_namespace,
+        },
         teardown=teardown_resources,
-    ) as contested_gateway:
-        if not contested_gateway.exists:
-            contested_gateway.deploy()
-        ResourceEditor(
-            patches={
-                contested_gateway: {
-                    "metadata": {
-                        "annotations": {
-                            AIGATEWAY_NAME_ANNOTATION: "other-aigw",
-                            AIGATEWAY_NAMESPACE_ANNOTATION: aigateway_infra_namespace,
-                        }
-                    }
-                }
-            }
-        ).update()
+    ):
         aigateway_spec = build_aigateway_spec(
             aigateway_name=aigateway_name,
             tenant_namespace_name=tenant_namespace_name,
             gateway_name=contested_gateway_name,
         )
-        aigateway = deploy_aigateway_from_spec(
+        with aigateway_from_spec(
             admin_client=admin_client,
             aigateway_name=aigateway_name,
             cr_namespace=aigateway_infra_namespace,
             aigateway_spec=aigateway_spec,
-            teardown=False,
-        )
-        try:
+            teardown=teardown_resources,
+        ) as aigateway:
             yield aigateway
-        finally:
-            if teardown_resources and aigateway.exists:
-                aigateway.clean_up()
 
 
 @pytest.fixture
@@ -441,18 +400,14 @@ def invalid_placement_aigateway(
         aigateway_name=aigateway_name,
         tenant_namespace_name=resolved_tenant_namespace,
     )
-    aigateway = deploy_aigateway_from_spec(
+    with aigateway_from_spec(
         admin_client=admin_client,
         aigateway_name=aigateway_name,
         cr_namespace=resolved_cr_namespace,
         aigateway_spec=aigateway_spec,
-        teardown=False,
-    )
-    try:
+        teardown=teardown_resources,
+    ) as aigateway:
         yield aigateway
-    finally:
-        if teardown_resources and aigateway.exists:
-            aigateway.clean_up()
 
 
 @pytest.fixture
@@ -473,15 +428,12 @@ def aigateway_deploy_tls_without_domain(
             aigateway_name=aigateway_name,
             cr_namespace=aigateway_infra_namespace,
             aigateway_spec=aigateway_spec,
-            teardown=False,
         )
         created_aigateways.append(aigateway)
         return aigateway
 
-    try:
-        yield deploy
-    finally:
-        if teardown_resources:
-            for aigateway in created_aigateways:
-                if aigateway.exists:
-                    aigateway.clean_up()
+    yield deploy
+    if teardown_resources:
+        for aigateway in created_aigateways:
+            if aigateway.exists:
+                aigateway.clean_up()

@@ -488,17 +488,6 @@ def verify_tenant_namespace_preserved(
     )
 
 
-def cleanup_preserved_tenant_namespace(
-    admin_client: DynamicClient,
-    tenant_namespace_name: str,
-) -> None:
-    """Delete a tenant namespace left behind when cleanupOnDelete=false."""
-    tenant_namespace = Namespace(client=admin_client, name=tenant_namespace_name)
-    if tenant_namespace.exists:
-        tenant_namespace.delete()
-        tenant_namespace.wait_deleted(timeout=120)
-
-
 def _fresh_aigateway(aigateway: AIGateway) -> AIGateway:
     """Return a new handle to re-read the current AIGateway status from the API."""
     return AIGateway(
