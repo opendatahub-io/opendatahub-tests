@@ -2,9 +2,9 @@
 
 import structlog
 from kubernetes.dynamic import DynamicClient
-from kubernetes.dynamic.exceptions import NotFoundError
 from ocp_resources.deployment import Deployment
 from ocp_resources.service import Service
+from utilities.resources.destination_rule import DestinationRule
 
 from utilities.constants import MAAS_GATEWAY_NAMESPACE
 
@@ -14,8 +14,6 @@ BBR_PRE_PROCESSING_DEPLOYMENT_NAME: str = "payload-pre-processing"
 BBR_PRE_PROCESSING_SERVICE_NAME: str = "payload-pre-processing"
 BBR_PRE_PROCESSING_GRPC_PORT: int = 9004
 BBR_PRE_PROCESSING_DESTINATION_RULE_NAME: str = "payload-pre-processing"
-ISTIO_DESTINATION_RULE_API_VERSION: str = "networking.istio.io/v1beta1"
-ISTIO_DESTINATION_RULE_KIND: str = "DestinationRule"
 
 
 def verify_bbr_pre_processing_deployment_ready(
@@ -72,20 +70,12 @@ def verify_bbr_pre_processing_destination_rule_exists(
     gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
 ) -> None:
     """Assert the payload-pre-processing DestinationRule exists in the gateway namespace."""
-    destination_rule_api = admin_client.resources.get(
-        api_version=ISTIO_DESTINATION_RULE_API_VERSION,
-        kind=ISTIO_DESTINATION_RULE_KIND,
+    destination_rule = DestinationRule(
+        client=admin_client,
+        name=BBR_PRE_PROCESSING_DESTINATION_RULE_NAME,
+        namespace=gateway_namespace,
     )
-    destination_rule_found = True
-    try:
-        destination_rule_api.get(
-            name=BBR_PRE_PROCESSING_DESTINATION_RULE_NAME,
-            namespace=gateway_namespace,
-        )
-    except NotFoundError:
-        destination_rule_found = False
-
-    assert destination_rule_found, (
+    assert destination_rule.exists, (
         f"DestinationRule '{gateway_namespace}/{BBR_PRE_PROCESSING_DESTINATION_RULE_NAME}' not found — "
         "expected to be created by the controller after reconciliation"
     )
