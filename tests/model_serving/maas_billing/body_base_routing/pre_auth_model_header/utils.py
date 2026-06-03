@@ -4,6 +4,7 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from ocp_resources.service import Service
+from utilities.resources.destination_rule import DestinationRule
 
 from utilities.constants import MAAS_GATEWAY_NAMESPACE
 from utilities.resources.destination_rule import DestinationRule
