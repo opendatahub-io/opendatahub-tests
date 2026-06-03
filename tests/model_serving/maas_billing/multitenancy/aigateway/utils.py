@@ -14,7 +14,6 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 from tests.model_serving.maas_billing.maas_subscription.utils import MAAS_SUBSCRIPTION_NAMESPACE
 from tests.model_serving.maas_billing.utils import verify_maas_gateway_programmed, verify_maas_tenant_ready
 from utilities.constants import MAAS_GATEWAY_NAMESPACE, ApiGroups
-from utilities.general import generate_random_name
 from utilities.resources.aigateway import AIGateway
 from utilities.resources.tenant import Tenant
 
@@ -170,28 +169,6 @@ def deploy_aigateway_from_spec(
     if not aigateway.exists:
         aigateway.deploy()
     return aigateway
-
-
-def deploy_aigateway(
-    admin_client: DynamicClient,
-    infra_namespace: str,
-    name_prefix: str,
-    cleanup_on_delete: bool = True,
-    teardown: bool = False,
-) -> AIGateway:
-    """Create an AIGateway CR for cleanup and lifecycle tests."""
-    aigateway_name = f"{name_prefix}-{generate_random_name()}"
-    aigateway_spec = build_aigateway_spec(
-        aigateway_name=aigateway_name,
-        cleanup_on_delete=cleanup_on_delete,
-    )
-    return deploy_aigateway_from_spec(
-        admin_client=admin_client,
-        aigateway_name=aigateway_name,
-        cr_namespace=infra_namespace,
-        aigateway_spec=aigateway_spec,
-        teardown=teardown,
-    )
 
 
 def deploy_and_verify_aigateway_ready(aigateway: AIGateway) -> None:
