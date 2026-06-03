@@ -54,9 +54,7 @@ def verify_bbr_pre_processing_service_port(
         name=BBR_PRE_PROCESSING_SERVICE_NAME,
         namespace=gateway_namespace,
     )
-    assert service.exists, (
-        f"Service '{gateway_namespace}/{BBR_PRE_PROCESSING_SERVICE_NAME}' not found"
-    )
+    assert service.exists, f"Service '{gateway_namespace}/{BBR_PRE_PROCESSING_SERVICE_NAME}' not found"
     service_ports = service.instance.spec.ports or []
     exposed_port_numbers = [port.port for port in service_ports]
     assert BBR_PRE_PROCESSING_GRPC_PORT in exposed_port_numbers, (
@@ -91,6 +89,4 @@ def verify_bbr_pre_processing_destination_rule_exists(
         f"DestinationRule '{gateway_namespace}/{BBR_PRE_PROCESSING_DESTINATION_RULE_NAME}' not found — "
         "expected to be created by the controller after reconciliation"
     )
-    LOGGER.info(
-        f"DestinationRule '{gateway_namespace}/{BBR_PRE_PROCESSING_DESTINATION_RULE_NAME}' exists"
-    )
+    LOGGER.info(f"DestinationRule '{gateway_namespace}/{BBR_PRE_PROCESSING_DESTINATION_RULE_NAME}' exists")
