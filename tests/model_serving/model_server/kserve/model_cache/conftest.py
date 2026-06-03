@@ -1,4 +1,4 @@
-"""Pytest fixtures for KServe `LocalModelCache` smoke tests."""
+"""Pytest fixtures for KServe ``LocalModelNamespaceCache`` smoke tests."""
 
 from collections.abc import Generator
 from typing import Any
@@ -6,7 +6,6 @@ from typing import Any
 import pytest
 import shortuuid
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.config_map import ConfigMap
 from ocp_resources.daemonset import DaemonSet
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
@@ -15,11 +14,10 @@ from ocp_resources.serving_runtime import ServingRuntime
 from pytest_testconfig import config as py_config
 
 from tests.model_serving.model_server.kserve.model_cache.utils import (
-    KSERVE_LOCALMODEL_LABEL,
     LOCAL_MODEL_NODE_GROUP_NAME,
     MINT_ONNX_STORAGE_PATH,
     MODEL_CACHE_AGENT_DAEMONSET,
-    LocalModelCache,
+    LocalModelNamespaceCache,
     LocalModelNodeGroup,
     wait_for_local_model_cache_nodes_downloaded,
 )
@@ -30,7 +28,12 @@ from utilities.infra import s3_endpoint_secret
 
 @pytest.fixture(scope="session")
 def model_cache_infra_ready(admin_client: DynamicClient) -> None:
-    """Skip the session when the operator has not provisioned model-cache infra from the DSC."""
+    """Skip the session when model-cache infra is absent.
+
+    Prerequisite: the DSC must have ``kserve.modelCache.managementState: Managed``
+    configured by a cluster admin before the test suite runs.  This fixture does
+    **not** create or modify the DSC; it only verifies the expected resources exist.
+    """
     node_group = LocalModelNodeGroup(client=admin_client, name=LOCAL_MODEL_NODE_GROUP_NAME)
     if not node_group.exists:
         pytest.skip(
@@ -60,10 +63,10 @@ def model_cache_download_s3_secret(
     ci_s3_bucket_region: str,
     ci_s3_bucket_endpoint: str,
 ) -> Generator[Secret, Any, Any]:
-    """S3 credential secret in the job namespace for `LocalModelCache` download Jobs.
+    """S3 credential secret in the job namespace for ``LocalModelNamespaceCache`` download Jobs.
 
     The download Job runs in the operator's job namespace (``redhat-ods-applications``),
-    which is separate from the ISVC namespace.  The ``LocalModelCache`` spec references
+    which is separate from the ISVC namespace.  The ``LocalModelNamespaceCache`` spec references
     this secret via ``spec.storage.key``.
     """
     applications_namespace: str = py_config["applications_namespace"]
@@ -85,14 +88,16 @@ def mnist_local_model_cache(
     admin_client: DynamicClient,
     model_cache_infra_ready: None,
     model_cache_download_s3_secret: Secret,
+    unprivileged_model_namespace: Namespace,
     ci_s3_bucket_name: str,
-) -> Generator[LocalModelCache, Any, Any]:
-    """Create a `LocalModelCache` for the MNIST ONNX model and wait for `NodeDownloaded`."""
+) -> Generator[LocalModelNamespaceCache, Any, Any]:
+    """Create a ``LocalModelNamespaceCache`` for the MNIST ONNX model and wait for ``NodeDownloaded``."""
     cache_name = f"mnist-onnx-{shortuuid.uuid()[:10].lower()}"
     source_uri = f"s3://{ci_s3_bucket_name}/{MINT_ONNX_STORAGE_PATH}/"
-    with LocalModelCache(
+    with LocalModelNamespaceCache(
         client=admin_client,
         name=cache_name,
+        namespace=unprivileged_model_namespace.name,
         source_model_uri=source_uri,
         model_size="100Mi",
         node_groups=[LOCAL_MODEL_NODE_GROUP_NAME],
@@ -103,45 +108,19 @@ def mnist_local_model_cache(
 
 
 @pytest.fixture(scope="class")
-def ensure_ca_bundle_in_namespace(
-    admin_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
-) -> None:
-    """Ensure odh-trusted-ca-bundle exists in the test namespace for SSL verification.
-
-    When rhods-operator's certconfigmapgenerator is not running, the CNO-injected
-    CA bundle must be created manually so odh-model-controller can aggregate it
-    into odh-kserve-custom-ca-bundle for storage-initializer pods.
-    """
-    import time
-
-    ns = unprivileged_model_namespace.name
-    cm = ConfigMap(client=admin_client, name="odh-trusted-ca-bundle", namespace=ns)
-    if not cm.exists:
-        ConfigMap(
-            client=admin_client,
-            name="odh-trusted-ca-bundle",
-            namespace=ns,
-            label={"config.openshift.io/inject-trusted-cabundle": "true"},
-        ).deploy()
-        time.sleep(15)
-
-
-@pytest.fixture(scope="class")
 def mnist_onnx_local_model_cache_inference_service(
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     ovms_kserve_serving_runtime: ServingRuntime,
     ci_s3_bucket_name: str,
-    mnist_local_model_cache: LocalModelCache,
-    ensure_ca_bundle_in_namespace: None,
+    mnist_local_model_cache: LocalModelNamespaceCache,
 ) -> Generator[InferenceService, Any, Any]:
-    """Deploy a raw `InferenceService` that uses the MNIST cache via the localmodel label.
+    """Deploy a raw ``InferenceService`` whose storageUri matches the cached model.
 
-    Uses storageUri (not StorageSpec) so the KServe defaulting webhook can match
-    against LocalModelCache.spec.sourceModelUri and set the PVC rewrite annotation.
+    The KServe defaulting webhook automatically detects a matching
+    ``LocalModelNamespaceCache.spec.sourceModelUri`` and rewrites the ISVC to use
+    PVC-backed storage — no manual ``localmodel`` label is needed.
     """
-    labels = {KSERVE_LOCALMODEL_LABEL: mnist_local_model_cache.name}
     with create_isvc(
         client=unprivileged_client,
         name=f"{Protocols.HTTP}-{ModelFormat.ONNX}-lmcache",
@@ -151,7 +130,6 @@ def mnist_onnx_local_model_cache_inference_service(
         model_format=ovms_kserve_serving_runtime.instance.spec.supportedModelFormats[0].name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         external_route=True,
-        labels=labels,
         timeout=Timeout.TIMEOUT_15MIN,
     ) as isvc:
         yield isvc

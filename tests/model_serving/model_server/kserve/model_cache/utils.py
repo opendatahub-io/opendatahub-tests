@@ -5,26 +5,22 @@ from typing import Any
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
-from ocp_resources.resource import Resource
+from ocp_resources.resource import NamespacedResource, Resource
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from utilities.constants import ApiGroups
 from utilities.infra import get_pods_by_isvc_label
 
-KSERVE_LOCALMODEL_LABEL: str = f"{ApiGroups.KSERVE}/localmodel"
 KSERVE_LOCALMODEL_PVC_ANNOTATION: str = f"internal.{ApiGroups.KSERVE}/localmodel-pvc-name"
 LOCAL_MODEL_NODE_GROUP_NAME: str = "workers"
 MODEL_CACHE_AGENT_DAEMONSET: str = "kserve-localmodelnode-agent"
-# S3 path inside the CI bucket whose subtree contains the MNIST ONNX model.
-# Must include the numeric version directory (1/) so OVMS sees /mnt/models/1/mnist-8.onnx
-# when the PVC is mounted via LocalModelCache.
 MINT_ONNX_STORAGE_PATH: str = "test-dir"
 
 
-class LocalModelCache(Resource):
-    """Cluster-scoped `LocalModelCache` CR (KServe ``serving.kserve.io/v1alpha1``)."""
+class LocalModelNamespaceCache(NamespacedResource):
+    """Namespace-scoped ``LocalModelNamespaceCache`` CR (KServe ``serving.kserve.io/v1alpha1``)."""
 
-    api_group: str = Resource.ApiGroup.SERVING_KSERVE_IO
+    api_group: str = NamespacedResource.ApiGroup.SERVING_KSERVE_IO
 
     def __init__(
         self,
@@ -35,7 +31,7 @@ class LocalModelCache(Resource):
         service_account_name: str | None = None,
         **kwargs: Any,
     ) -> None:
-        """Build a ``LocalModelCache`` with model download source and target node groups.
+        """Build a ``LocalModelNamespaceCache`` with model download source and target node groups.
 
         Args:
             source_model_uri: Remote model URI (e.g. ``s3://bucket/path/``).
@@ -86,18 +82,18 @@ def resource_instance_to_dict(*, resource: Resource) -> dict[str, Any]:
     raise TypeError(f"Unsupported kubernetes instance type: {type(inst)!r}")
 
 
-def cache_status_dict(*, cache: LocalModelCache) -> dict[str, Any]:
-    """Read ``status`` from a ``LocalModelCache`` after refreshing from the API."""
+def cache_status_dict(*, cache: LocalModelNamespaceCache) -> dict[str, Any]:
+    """Read ``status`` from a ``LocalModelNamespaceCache`` after refreshing from the API."""
     body = resource_instance_to_dict(resource=cache)
     status = body.get("status")
     return status if isinstance(status, dict) else {}
 
 
-def wait_for_local_model_cache_nodes_downloaded(*, cache: LocalModelCache, timeout: int) -> dict[str, Any]:
+def wait_for_local_model_cache_nodes_downloaded(*, cache: LocalModelNamespaceCache, timeout: int) -> dict[str, Any]:
     """Poll until every reported node reaches ``NodeDownloaded`` and copies are consistent.
 
     Args:
-        cache: Active ``LocalModelCache`` resource handle.
+        cache: Active ``LocalModelNamespaceCache`` resource handle.
         timeout: Maximum seconds to wait for downloads.
 
     Returns:
@@ -117,14 +113,14 @@ def wait_for_local_model_cache_nodes_downloaded(*, cache: LocalModelCache, timeo
     except TimeoutExpiredError:
         last = cache_status_dict(cache=cache)
         pytest.fail(
-            f"LocalModelCache {cache.name} did not reach NodeDownloaded on all nodes in {timeout}s; "
-            f"last status={last!r}"
+            f"LocalModelNamespaceCache {cache.name} did not reach NodeDownloaded on all nodes "
+            f"in {timeout}s; last status={last!r}"
         )
 
-    pytest.fail(f"LocalModelCache {cache.name}: polling stopped before NodeDownloaded status")
+    pytest.fail(f"LocalModelNamespaceCache {cache.name}: polling stopped before NodeDownloaded status")
 
 
-def _cache_download_state_sample(*, cache: LocalModelCache) -> dict[str, Any]:
+def _cache_download_state_sample(*, cache: LocalModelNamespaceCache) -> dict[str, Any]:
     status = cache_status_dict(cache=cache)
     node_status = status.get("nodeStatus") or {}
     copies = status.get("copies") or {}
@@ -147,16 +143,20 @@ def assert_predictor_storage_initializer_uses_pvc(
 
     KServe rewrites ``pvc://`` URIs to a direct volume mount (no storage-initializer
     init container), so we verify:
-    1. The ``kserve-pvc-source`` volume exists (PVC backed).
+    1. The ``kserve-pvc-source`` volume exists and is PVC-backed.
     2. The pod carries the ``internal.kserve.io/localmodel-pvc-name`` annotation.
     """
     pods = get_pods_by_isvc_label(client=client, isvc=isvc, runtime_name=runtime_name)
+    assert pods, f"No predictor pods found for InferenceService {isvc.namespace}/{isvc.name}"
     pod = pods[0]
     spec = pod.instance.spec
 
     volume_names = [v.name for v in (spec.volumes or [])]
     pvc_volumes = [v for v in (spec.volumes or []) if v.name == "kserve-pvc-source"]
     assert pvc_volumes, f"Expected 'kserve-pvc-source' PVC volume on predictor pod; volumes={volume_names!r}"
+    assert any(
+        getattr(v, "persistent_volume_claim", None) or getattr(v, "persistentVolumeClaim", None) for v in pvc_volumes
+    ), "Volume 'kserve-pvc-source' exists but is not PVC-backed"
 
     meta = pod.instance.metadata
     annotations = (meta.annotations or {}) if meta else {}

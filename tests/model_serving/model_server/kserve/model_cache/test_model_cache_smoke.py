@@ -6,7 +6,9 @@ from ocp_resources.inference_service import InferenceService
 from ocp_resources.serving_runtime import ServingRuntime
 
 from tests.model_serving.model_server.kserve.model_cache.utils import (
-    LocalModelCache,
+    LOCAL_MODEL_NODE_GROUP_NAME,
+    LocalModelNamespaceCache,
+    LocalModelNodeGroup,
     assert_predictor_storage_initializer_uses_pvc,
     cache_status_dict,
 )
@@ -23,29 +25,42 @@ pytestmark = [
 
 
 class TestModelCacheSmoke:
-    """Smoke coverage for KServe local model cache (TC-04, TC-05)."""
+    """Smoke coverage for KServe local model namespace cache (TC-04, TC-05)."""
 
     @pytest.mark.slow
     @pytest.mark.parametrize(
         "unprivileged_model_namespace, ovms_kserve_serving_runtime",
-        [pytest.param({"name": "kserve-model-cache-smoke"}, RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG)],
+        [
+            pytest.param(
+                {"name": "kserve-model-cache-smoke"},
+                RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
+                id="test_namespace_cache_node_downloaded",
+            )
+        ],
         indirect=True,
     )
     def test_local_model_cache_reaches_node_downloaded(
         self,
+        admin_client: DynamicClient,
         unprivileged_model_namespace: Any,
         ovms_kserve_serving_runtime: Any,
-        mnist_local_model_cache: LocalModelCache,
+        mnist_local_model_cache: LocalModelNamespaceCache,
     ) -> None:
-        """TC-04: `LocalModelCache` reports `NodeDownloaded` and healthy `copies` for all nodes.
-
-        After the shared fixture waits for downloads, re-read status and assert fields explicitly.
+        """Given a provisioned LocalModelNamespaceCache, when status is refreshed,
+        then all nodes in the node group are NodeDownloaded and copies are healthy.
         """
+        node_group = LocalModelNodeGroup(client=admin_client, name=LOCAL_MODEL_NODE_GROUP_NAME)
+        node_group.get()
+        expected_nodes: list[str] = node_group.instance.spec.get("nodes", [])
+        assert expected_nodes, f"LocalModelNodeGroup '{LOCAL_MODEL_NODE_GROUP_NAME}' has no nodes listed"
+
         status = cache_status_dict(cache=mnist_local_model_cache)
         node_status = status.get("nodeStatus") or {}
         assert node_status, "status.nodeStatus must list at least one node"
 
-        for node_name, state in node_status.items():
+        for node_name in expected_nodes:
+            state = node_status.get(node_name)
+            assert state is not None, f"node {node_name} missing from nodeStatus"
             assert state == "NodeDownloaded", f"node {node_name} expected NodeDownloaded, got {state!r}"
 
         copies = status.get("copies") or {}
@@ -55,17 +70,25 @@ class TestModelCacheSmoke:
 
     @pytest.mark.parametrize(
         "unprivileged_model_namespace, ovms_kserve_serving_runtime",
-        [pytest.param({"name": "kserve-model-cache-smoke"}, RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG)],
+        [
+            pytest.param(
+                {"name": "kserve-model-cache-smoke"},
+                RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
+                id="test_cached_model_inference",
+            )
+        ],
         indirect=True,
     )
-    def test_inference_service_with_local_model_label_succeeds(
+    def test_cached_model_inference_succeeds(
         self,
         unprivileged_client: DynamicClient,
-        mnist_local_model_cache: LocalModelCache,
+        mnist_local_model_cache: LocalModelNamespaceCache,
         mnist_onnx_local_model_cache_inference_service: InferenceService,
         ovms_kserve_serving_runtime: ServingRuntime,
     ) -> None:
-        """TC-05: predictor uses PVC-backed storage rewrite and MNIST ONNX inference returns HTTP 200."""
+        """Given an ISVC whose storageUri matches a cached model, when inference runs
+        over HTTPS, then PVC rewrite is present and response succeeds.
+        """
         isvc = mnist_onnx_local_model_cache_inference_service
         assert_predictor_storage_initializer_uses_pvc(
             client=unprivileged_client,
@@ -90,6 +113,6 @@ class TestModelCacheSmoke:
         ]
         assert bound, (
             f"Expected InferenceService {isvc.namespace}/{isvc.name} listed under "
-            f"LocalModelCache {mnist_local_model_cache.name} status.inferenceServices; "
+            f"LocalModelNamespaceCache {mnist_local_model_cache.name} status.inferenceServices; "
             f"got {status.get('inferenceServices')!r}"
         )
