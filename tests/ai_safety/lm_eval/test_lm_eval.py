@@ -258,7 +258,7 @@ def test_lmeval_gpu(
     validate_lmeval_job_pod_and_logs(lmevaljob_pod=lmevaljob_gpu_pod)
 
 
-@pytest.mark.tier1
+@pytest.mark.tier2
 @pytest.mark.parametrize(
     "model_namespace",
     [
@@ -275,11 +275,12 @@ def test_lmeval_vllm_emulator_https_ca_bundle(
     lmevaljob_vllm_emulator_https: LMEvalJob,
     lmevaljob_vllm_emulator_https_pod: Pod,
 ):
-    """Verify that the operator auto-injects a CA bundle when the LMEvalJob targets an HTTPS endpoint.
+    """Test CA bundle injection for HTTPS LMEvalJob.
 
-    The vLLM emulator is exposed via a TLS edge-terminated Route. The operator should detect
-    the HTTPS base_url, create a merged CA ConfigMap, mount it into the pod, and set
-    REQUESTS_CA_BUNDLE so the evaluation completes without SSL errors.
+    Given: A vLLM emulator exposed via TLS edge-terminated Route
+    When: LMEvalJob is created with HTTPS base_url
+    Then: Operator injects CA bundle (ConfigMap, volume, mount, REQUESTS_CA_BUNDLE env var)
+          and evaluation completes without SSL errors
 
     Validates RHOAIENG-60487.
     """
@@ -287,7 +288,7 @@ def test_lmeval_vllm_emulator_https_ca_bundle(
     validate_lmeval_job_pod_and_logs(lmevaljob_pod=lmevaljob_vllm_emulator_https_pod)
 
 
-@pytest.mark.tier1
+@pytest.mark.tier2
 @pytest.mark.parametrize(
     "model_namespace",
     [
@@ -304,10 +305,11 @@ def test_lmeval_vllm_emulator_http_no_ca_bundle(
     lmevaljob_vllm_emulator: LMEvalJob,
     lmevaljob_vllm_emulator_pod: Pod,
 ):
-    """Verify that the operator does NOT inject a CA bundle when the LMEvalJob uses HTTP.
+    """Test no CA bundle injection for HTTP LMEvalJob.
 
-    The vLLM emulator is exposed via a plain HTTP service. The operator should skip CA
-    injection since the base_url does not use HTTPS.
+    Given: A vLLM emulator exposed via plain HTTP service
+    When: LMEvalJob is created with HTTP base_url
+    Then: Operator does not inject CA bundle and evaluation completes successfully
     """
     validate_ca_bundle_not_injected(pod=lmevaljob_vllm_emulator_pod, job_name=lmevaljob_vllm_emulator.name)
     validate_lmeval_job_pod_and_logs(lmevaljob_pod=lmevaljob_vllm_emulator_pod)
@@ -330,10 +332,11 @@ def test_lmeval_https_verify_certificate_no_ca_bundle(
     lmevaljob_vllm_emulator_https_verify_cert: LMEvalJob,
     lmevaljob_vllm_emulator_https_verify_cert_pod: Pod,
 ):
-    """Verify that the operator does NOT inject a CA bundle when verify_certificate is explicitly set.
+    """Test no CA bundle injection when verify_certificate is set.
 
-    Even though the base_url uses HTTPS, the presence of verify_certificate in modelArgs
-    should prevent the operator from auto-injecting the CA bundle.
+    Given: A vLLM emulator exposed via HTTPS TLS-terminated Route
+    When: LMEvalJob is created with HTTPS base_url and verify_certificate explicitly set
+    Then: Operator does not inject CA bundle despite HTTPS scheme
     """
     validate_ca_bundle_not_injected(
         pod=lmevaljob_vllm_emulator_https_verify_cert_pod,
@@ -358,10 +361,11 @@ def test_lmeval_rerun_after_spec_change(
     lmevaljob_vllm_emulator: LMEvalJob,
     lmevaljob_vllm_emulator_pod: Pod,
 ):
-    """Verify that a completed LMEvalJob re-runs when its spec is edited.
+    """Test LMEvalJob re-runs after spec change.
 
-    After the initial evaluation completes, editing the spec (bumping metadata.Generation)
-    should cause the operator to reset the job status to New and create a new pod.
+    Given: A completed LMEvalJob with last-scheduled-generation annotation set
+    When: Job spec is edited (batchSize changed, bumping metadata.Generation)
+    Then: Job status resets to New, re-runs to Complete, and generation annotation updates
 
     Validates trustyai-service-operator#729 re-run behavior.
     """
@@ -438,11 +442,13 @@ def test_lmeval_https_sets_ssl_cert_file(
     model_namespace: Namespace,
     lmevaljob_vllm_emulator_https_pod: Pod,
 ):
-    """SSL_CERT_FILE should be set alongside REQUESTS_CA_BUNDLE for HTTPS jobs.
+    """Test SSL_CERT_FILE is set alongside REQUESTS_CA_BUNDLE for HTTPS jobs.
 
-    PR #729 only sets REQUESTS_CA_BUNDLE, which covers the requests library but not
-    Python's ssl module (used by urllib3, httpx, aiohttp). The general fix should set
-    both so all Python HTTPS clients use the cluster CA.
+    Given: A vLLM emulator exposed via HTTPS TLS-terminated Route
+    When: LMEvalJob is created with HTTPS base_url
+    Then: Both SSL_CERT_FILE and REQUESTS_CA_BUNDLE are set and point to the same CA bundle
+
+    Note: PR #729 only sets REQUESTS_CA_BUNDLE. General fix (RHOAIENG-60453) should set both.
     """
     main_container = lmevaljob_vllm_emulator_https_pod.instance.spec.containers[0]
     env_map = {e.name: e.value for e in (main_container.env or [])}
@@ -470,11 +476,13 @@ def test_lmeval_http_has_ca_bundle(
     model_namespace: Namespace,
     lmevaljob_vllm_emulator_pod: Pod,
 ):
-    """HTTP jobs should also get the CA trust store mounted.
+    """Test CA trust store is mounted unconditionally for HTTP jobs.
 
-    The general fix mounts odh-trusted-ca-bundle unconditionally so that all outbound
-    HTTPS from the pod (HuggingFace downloads, dataset fetches, metrics endpoints)
-    can verify cluster-signed certificates — not just the model endpoint.
+    Given: A vLLM emulator exposed via plain HTTP service
+    When: LMEvalJob is created with HTTP base_url
+    Then: CA trust store (odh-trusted-ca-bundle) is mounted and env vars set for outbound HTTPS
+
+    Note: General fix (RHOAIENG-60453) mounts CA unconditionally for all outbound HTTPS traffic.
     """
     main_container = lmevaljob_vllm_emulator_pod.instance.spec.containers[0]
     env_map = {e.name: e.value for e in (main_container.env or [])}
@@ -486,9 +494,9 @@ def test_lmeval_http_has_ca_bundle(
     )
 
     has_ca_volume = any(
-        v.configMap and v.configMap.name == ODH_TRUSTED_CA_BUNDLE_CONFIGMAP
-        for v in lmevaljob_vllm_emulator_pod.instance.spec.volumes
-        if v.configMap is not None
+        volume.configMap and volume.configMap.name == ODH_TRUSTED_CA_BUNDLE_CONFIGMAP
+        for volume in lmevaljob_vllm_emulator_pod.instance.spec.volumes
+        if volume.configMap is not None
     )
     assert has_ca_volume, f"No volume referencing '{ODH_TRUSTED_CA_BUNDLE_CONFIGMAP}' ConfigMap found on HTTP job pod"
 
@@ -510,12 +518,13 @@ def test_lmeval_https_verify_certificate_has_ca_bundle(
     model_namespace: Namespace,
     lmevaljob_vllm_emulator_https_verify_cert_pod: Pod,
 ):
-    """CA trust store should be mounted even when verify_certificate is set.
+    """Test CA trust store is mounted regardless of verify_certificate setting.
 
-    verify_certificate is a Python-level lm-eval setting that controls whether the
-    requests library verifies certificates. The trust store mount is a pod-level concern
-    that should be present regardless — a user might set verify_certificate=True and
-    still need the cluster CA to actually verify against.
+    Given: A vLLM emulator exposed via HTTPS with verify_certificate explicitly set
+    When: LMEvalJob is created with HTTPS base_url and verify_certificate=False
+    Then: CA trust store is mounted and env vars set regardless of verify_certificate
+
+    Note: verify_certificate is lm-eval level; trust store is pod level (RHOAIENG-60453).
     """
     main_container = lmevaljob_vllm_emulator_https_verify_cert_pod.instance.spec.containers[0]
     env_map = {e.name: e.value for e in (main_container.env or [])}
@@ -527,9 +536,9 @@ def test_lmeval_https_verify_certificate_has_ca_bundle(
     )
 
     has_ca_volume = any(
-        v.configMap and v.configMap.name == ODH_TRUSTED_CA_BUNDLE_CONFIGMAP
-        for v in lmevaljob_vllm_emulator_https_verify_cert_pod.instance.spec.volumes
-        if v.configMap is not None
+        volume.configMap and volume.configMap.name == ODH_TRUSTED_CA_BUNDLE_CONFIGMAP
+        for volume in lmevaljob_vllm_emulator_https_verify_cert_pod.instance.spec.volumes
+        if volume.configMap is not None
     )
     assert has_ca_volume, (
         f"No volume referencing '{ODH_TRUSTED_CA_BUNDLE_CONFIGMAP}' found — "

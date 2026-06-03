@@ -133,12 +133,12 @@ def validate_ca_bundle_injected(pod: Pod, job_name: str) -> None:
     """
     merged_cm_name = f"{job_name}{MERGED_CA_CONFIGMAP_SUFFIX}"
 
-    volume_names = [v.name for v in pod.instance.spec.volumes]
+    volume_names = [volume.name for volume in pod.instance.spec.volumes]
     assert CA_BUNDLE_VOLUME_NAME in volume_names, (
         f"Expected volume '{CA_BUNDLE_VOLUME_NAME}' not found. Volumes: {volume_names}"
     )
 
-    ca_volume = next(v for v in pod.instance.spec.volumes if v.name == CA_BUNDLE_VOLUME_NAME)
+    ca_volume = next(volume for volume in pod.instance.spec.volumes if volume.name == CA_BUNDLE_VOLUME_NAME)
     assert ca_volume.configMap is not None, "CA bundle volume must reference a ConfigMap"
     assert ca_volume.configMap.name == merged_cm_name, (
         f"Expected ConfigMap '{merged_cm_name}', got '{ca_volume.configMap.name}'"
@@ -178,7 +178,7 @@ def validate_ca_bundle_not_injected(pod: Pod, job_name: str) -> None:
         pod: The LMEvalJob pod to inspect.
         job_name: The name of the LMEvalJob (used to derive the merged ConfigMap name).
     """
-    volume_names = [v.name for v in pod.instance.spec.volumes]
+    volume_names = [volume.name for volume in pod.instance.spec.volumes]
     assert CA_BUNDLE_VOLUME_NAME not in volume_names, (
         f"Unexpected CA bundle volume '{CA_BUNDLE_VOLUME_NAME}' found on pod"
     )
