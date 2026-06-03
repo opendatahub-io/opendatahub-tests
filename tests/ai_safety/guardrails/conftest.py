@@ -459,7 +459,9 @@ def minio_pvc_otel(
 
 
 @pytest.fixture(scope="class")
-def minio_deployment_otel(admin_client, model_namespace, minio_pvc_otel, pytestconfig: pytest.Config, teardown_resources: bool):
+def minio_deployment_otel(
+    admin_client, model_namespace, minio_pvc_otel, pytestconfig: pytest.Config, teardown_resources: bool
+):
     if pytestconfig.option.post_upgrade:
         # During post-upgrade, reuse existing Deployment
         deployment = Deployment(
@@ -514,7 +516,9 @@ def minio_deployment_otel(admin_client, model_namespace, minio_pvc_otel, pytestc
 
 
 @pytest.fixture(scope="class")
-def minio_service_otel(admin_client, model_namespace, minio_deployment_otel, pytestconfig: pytest.Config, teardown_resources: bool):
+def minio_service_otel(
+    admin_client, model_namespace, minio_deployment_otel, pytestconfig: pytest.Config, teardown_resources: bool
+):
     if pytestconfig.option.post_upgrade:
         # During post-upgrade, reuse existing Service
         service = Service(
@@ -552,7 +556,9 @@ def minio_service_otel(admin_client, model_namespace, minio_deployment_otel, pyt
 
 
 @pytest.fixture(scope="class")
-def minio_secret_otel(admin_client, model_namespace, minio_service_otel, pytestconfig: pytest.Config, teardown_resources: bool):
+def minio_secret_otel(
+    admin_client, model_namespace, minio_service_otel, pytestconfig: pytest.Config, teardown_resources: bool
+):
     if pytestconfig.option.post_upgrade:
         # During post-upgrade, reuse existing Secret
         secret = Secret(
