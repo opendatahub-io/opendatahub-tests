@@ -1,5 +1,3 @@
-from collections.abc import Callable
-
 import pytest
 from kubernetes.dynamic.exceptions import DynamicApiError
 
@@ -55,8 +53,8 @@ class TestAIGatewayReconcileFailures:
     @pytest.mark.tier3
     def test_aigateway_tls_requires_domain_at_api(
         self,
-        aigateway_deploy_tls_without_domain: Callable[[], AIGateway],
+        aigateway_deploy_tls_without_domain: AIGateway,
     ) -> None:
         """Verify API rejects tls without domain."""
         with pytest.raises(DynamicApiError):
-            aigateway_deploy_tls_without_domain()
+            aigateway_deploy_tls_without_domain.deploy()

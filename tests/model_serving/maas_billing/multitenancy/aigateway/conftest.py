@@ -1,4 +1,4 @@
-from collections.abc import Callable, Generator
+from collections.abc import Generator
 from typing import Any
 
 import pytest
@@ -19,7 +19,6 @@ from tests.model_serving.maas_billing.multitenancy.aigateway.utils import (
     aigateway_from_spec,
     build_aigateway_spec,
     build_aigateway_test_context,
-    deploy_aigateway_from_spec,
     deploy_and_verify_aigateway_ready,
     tenant_namespace_name_for_aigateway,
 )
@@ -327,6 +326,7 @@ def aigateway_on_namespace_owned_by_other(
         aigateway_spec = build_aigateway_spec(
             aigateway_name=aigateway_name,
             tenant_namespace_name=shared_namespace_name,
+            create_tenant_namespace=False,
         )
         with aigateway_from_spec(
             admin_client=admin_client,
@@ -348,22 +348,26 @@ def aigateway_on_gateway_owned_by_other(
     aigateway_name = f"e2e-aigw-gw-clash-{generate_random_name()}"
     contested_gateway_name = f"e2e-aigw-contested-{generate_random_name()}"
     tenant_namespace_name = tenant_namespace_name_for_aigateway(aigateway_name=aigateway_name)
-    with Gateway(
-        client=admin_client,
-        name=contested_gateway_name,
-        namespace=MAAS_GATEWAY_NAMESPACE,
-        gateway_class_name="openshift-default",
-        listeners=[{"name": "http", "port": 80, "protocol": "HTTP"}],
-        annotations={
-            AIGATEWAY_NAME_ANNOTATION: "other-aigw",
-            AIGATEWAY_NAMESPACE_ANNOTATION: aigateway_infra_namespace,
-        },
-        teardown=teardown_resources,
+    with (
+        Gateway(
+            client=admin_client,
+            name=contested_gateway_name,
+            namespace=MAAS_GATEWAY_NAMESPACE,
+            gateway_class_name="openshift-default",
+            listeners=[{"name": "http", "port": 80, "protocol": "HTTP"}],
+            annotations={
+                AIGATEWAY_NAME_ANNOTATION: "other-aigw",
+                AIGATEWAY_NAMESPACE_ANNOTATION: aigateway_infra_namespace,
+            },
+            teardown=teardown_resources,
+        ),
+        Namespace(client=admin_client, name=tenant_namespace_name, teardown=teardown_resources),
     ):
         aigateway_spec = build_aigateway_spec(
             aigateway_name=aigateway_name,
             tenant_namespace_name=tenant_namespace_name,
             gateway_name=contested_gateway_name,
+            create_tenant_namespace=False,
         )
         with aigateway_from_spec(
             admin_client=admin_client,
@@ -415,25 +419,16 @@ def aigateway_deploy_tls_without_domain(
     admin_client: DynamicClient,
     aigateway_infra_namespace: str,
     teardown_resources: bool,
-) -> Generator[Callable[[], AIGateway], Any, Any]:
-    """Return deploy callable for an AIGateway spec with tls but no domain."""
+) -> Generator[AIGateway, Any, Any]:
+    """Yield an undeployed AIGateway spec with tls but no domain for API validation tests."""
     aigateway_name = f"e2e-aigw-cel-{generate_random_name()}"
     aigateway_spec = build_aigateway_spec(aigateway_name=aigateway_name)
     aigateway_spec["tls"] = {"certificateRef": {"name": "test-tls-cert"}}
-    created_aigateways: list[AIGateway] = []
-
-    def deploy() -> AIGateway:
-        aigateway = deploy_aigateway_from_spec(
-            admin_client=admin_client,
-            aigateway_name=aigateway_name,
-            cr_namespace=aigateway_infra_namespace,
-            aigateway_spec=aigateway_spec,
-        )
-        created_aigateways.append(aigateway)
-        return aigateway
-
-    yield deploy
-    if teardown_resources:
-        for aigateway in created_aigateways:
-            if aigateway.exists:
-                aigateway.clean_up()
+    with aigateway_from_spec(
+        admin_client=admin_client,
+        aigateway_name=aigateway_name,
+        cr_namespace=aigateway_infra_namespace,
+        aigateway_spec=aigateway_spec,
+        teardown=teardown_resources,
+    ) as aigateway:
+        yield aigateway

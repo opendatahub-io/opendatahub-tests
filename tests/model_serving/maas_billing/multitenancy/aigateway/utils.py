@@ -151,26 +151,6 @@ def aigateway_from_spec(
     )
 
 
-def deploy_aigateway_from_spec(
-    admin_client: DynamicClient,
-    aigateway_name: str,
-    cr_namespace: str,
-    aigateway_spec: dict[str, Any],
-    teardown: bool = False,
-) -> AIGateway:
-    """Create an AIGateway CR from a prepared spec dict without a context manager."""
-    aigateway = aigateway_from_spec(
-        admin_client=admin_client,
-        aigateway_name=aigateway_name,
-        cr_namespace=cr_namespace,
-        aigateway_spec=aigateway_spec,
-        teardown=teardown,
-    )
-    if not aigateway.exists:
-        aigateway.deploy()
-    return aigateway
-
-
 def deploy_and_verify_aigateway_ready(aigateway: AIGateway) -> None:
     """Create the AIGateway CR if missing and wait until it reports Ready with phase Active."""
     if not aigateway.exists:
