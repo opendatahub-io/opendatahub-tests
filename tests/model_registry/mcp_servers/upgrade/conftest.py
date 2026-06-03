@@ -6,7 +6,6 @@ import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.resource import ResourceEditor
-
 from tests.model_registry.mcp_servers.config.constants import (
     MCP_CATALOG_SOURCE,
     MCP_SERVERS_YAML,
