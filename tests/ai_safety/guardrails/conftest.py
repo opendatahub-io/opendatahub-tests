@@ -8,7 +8,7 @@ from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
-from utilities.resources import OpenTelemetryCollector
+from utilities.resources.open_telemetry_collector import OpenTelemetryCollector
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.route import Route
@@ -16,7 +16,7 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.subscription import Subscription
-from utilities.resources import TempoStack
+from utilities.resources.tempo_stack import TempoStack
 from ocp_utilities.operators import uninstall_operator, install_operator
 from timeout_sampler import TimeoutSampler
 
@@ -428,110 +428,157 @@ def wait_for_pods_by_label(
 def minio_pvc_otel(
     admin_client: DynamicClient,
     model_namespace: Namespace,
+    pytestconfig: pytest.Config,
+    teardown_resources: bool,
 ) -> Generator[PersistentVolumeClaim, Any, Any]:
     """
     Creates a PVC for MinIO storage backend in the given namespace.
     """
-    pvc_kwargs = {
-        "name": "minio",
-        "namespace": model_namespace.name,
-        "client": admin_client,
-        "size": "2Gi",
-        "accessmodes": "ReadWriteOnce",
-        "label": {"app.kubernetes.io/name": "minio"},
-    }
-
-    with PersistentVolumeClaim(**pvc_kwargs) as pvc:
+    if pytestconfig.option.post_upgrade:
+        # During post-upgrade, reuse existing PVC
+        pvc = PersistentVolumeClaim(
+            name="minio",
+            namespace=model_namespace.name,
+            client=admin_client,
+        )
         yield pvc
+        pvc.clean_up()
+    else:
+        # During pre-upgrade or normal tests, create new PVC
+        pvc_kwargs = {
+            "name": "minio",
+            "namespace": model_namespace.name,
+            "client": admin_client,
+            "size": "2Gi",
+            "accessmodes": "ReadWriteOnce",
+            "label": {"app.kubernetes.io/name": "minio"},
+        }
+
+        with PersistentVolumeClaim(**pvc_kwargs, teardown=teardown_resources) as pvc:
+            yield pvc
 
 
 @pytest.fixture(scope="class")
-def minio_deployment_otel(admin_client, model_namespace, minio_pvc_otel):
-    selector = {"matchLabels": {"app.kubernetes.io/name": "minio"}}
-    pod_template = {
-        "metadata": {"labels": {"app.kubernetes.io/name": "minio"}},
-        "spec": {
-            "containers": [
-                {
-                    "name": "minio",
-                    "image": "quay.io/minio/minio",
-                    "command": ["/bin/sh", "-c", "mkdir -p /storage/tempo && minio server /storage"],
-                    "env": [
-                        {"name": "MINIO_ACCESS_KEY", "value": TEMPO},
-                        {"name": "MINIO_SECRET_KEY", "value": MINIO_SECRET_KEY_VALUE},
-                    ],
-                    "ports": [{"containerPort": 9000}],
-                    "volumeMounts": [{"mountPath": "/storage", "name": "storage"}],
-                }
-            ],
-            "volumes": [
-                {
-                    "name": "storage",
-                    "persistentVolumeClaim": {"claimName": "minio"},
-                }
-            ],
-        },
-    }
-
-    deployment = Deployment(
-        client=admin_client,
-        name="minio",
-        namespace=model_namespace.name,
-        selector=selector,
-        template=pod_template,
-        strategy={"type": "Recreate"},
-        teardown=True,
-    )
-
-    with deployment:
+def minio_deployment_otel(admin_client, model_namespace, minio_pvc_otel, pytestconfig: pytest.Config, teardown_resources: bool):
+    if pytestconfig.option.post_upgrade:
+        # During post-upgrade, reuse existing Deployment
+        deployment = Deployment(
+            client=admin_client,
+            name="minio",
+            namespace=model_namespace.name,
+        )
         deployment.wait_for_replicas()
         yield deployment
-
-
-@pytest.fixture(scope="class")
-def minio_service_otel(admin_client, model_namespace, minio_deployment_otel):
-    ports = [
-        {
-            "port": 9000,
-            "protocol": "TCP",
-            "targetPort": 9000,
+        deployment.clean_up()
+    else:
+        # During pre-upgrade or normal tests, create new Deployment
+        selector = {"matchLabels": {"app.kubernetes.io/name": "minio"}}
+        pod_template = {
+            "metadata": {"labels": {"app.kubernetes.io/name": "minio"}},
+            "spec": {
+                "containers": [
+                    {
+                        "name": "minio",
+                        "image": "quay.io/minio/minio",
+                        "command": ["/bin/sh", "-c", "mkdir -p /storage/tempo && minio server /storage"],
+                        "env": [
+                            {"name": "MINIO_ACCESS_KEY", "value": TEMPO},
+                            {"name": "MINIO_SECRET_KEY", "value": MINIO_SECRET_KEY_VALUE},
+                        ],
+                        "ports": [{"containerPort": 9000}],
+                        "volumeMounts": [{"mountPath": "/storage", "name": "storage"}],
+                    }
+                ],
+                "volumes": [
+                    {
+                        "name": "storage",
+                        "persistentVolumeClaim": {"claimName": "minio"},
+                    }
+                ],
+            },
         }
-    ]
 
-    selector = {
-        "app.kubernetes.io/name": "minio",
-    }
+        deployment = Deployment(
+            client=admin_client,
+            name="minio",
+            namespace=model_namespace.name,
+            selector=selector,
+            template=pod_template,
+            strategy={"type": "Recreate"},
+            teardown=teardown_resources,
+        )
 
-    service = Service(
-        client=admin_client,
-        name="minio",
-        namespace=model_namespace.name,
-        ports=ports,
-        selector=selector,
-        type="ClusterIP",
-        teardown=True,
-    )
-    service.deploy()
-    yield service
+        with deployment:
+            deployment.wait_for_replicas()
+            yield deployment
 
 
 @pytest.fixture(scope="class")
-def minio_secret_otel(admin_client, model_namespace, minio_service_otel):
-    secret = Secret(
-        client=admin_client,
-        name="minio-test",
-        namespace=model_namespace.name,
-        string_data={
-            "endpoint": f"http://{minio_service_otel.name}.{model_namespace.name}.svc.cluster.local:9000",
-            "bucket": TEMPO,
-            "access_key_id": TEMPO,  # pragma: allowlist secret
-            "access_key_secret": MINIO_SECRET_KEY_VALUE,  # pragma: allowlist secret
-        },
-        type="Opaque",
-        teardown=True,
-    )
-    secret.deploy()
-    yield secret
+def minio_service_otel(admin_client, model_namespace, minio_deployment_otel, pytestconfig: pytest.Config, teardown_resources: bool):
+    if pytestconfig.option.post_upgrade:
+        # During post-upgrade, reuse existing Service
+        service = Service(
+            client=admin_client,
+            name="minio",
+            namespace=model_namespace.name,
+        )
+        yield service
+        service.clean_up()
+    else:
+        # During pre-upgrade or normal tests, create new Service
+        ports = [
+            {
+                "port": 9000,
+                "protocol": "TCP",
+                "targetPort": 9000,
+            }
+        ]
+
+        selector = {
+            "app.kubernetes.io/name": "minio",
+        }
+
+        service = Service(
+            client=admin_client,
+            name="minio",
+            namespace=model_namespace.name,
+            ports=ports,
+            selector=selector,
+            type="ClusterIP",
+            teardown=teardown_resources,
+        )
+        service.deploy()
+        yield service
+
+
+@pytest.fixture(scope="class")
+def minio_secret_otel(admin_client, model_namespace, minio_service_otel, pytestconfig: pytest.Config, teardown_resources: bool):
+    if pytestconfig.option.post_upgrade:
+        # During post-upgrade, reuse existing Secret
+        secret = Secret(
+            client=admin_client,
+            name="minio-test",
+            namespace=model_namespace.name,
+        )
+        yield secret
+        secret.clean_up()
+    else:
+        # During pre-upgrade or normal tests, create new Secret
+        secret = Secret(
+            client=admin_client,
+            name="minio-test",
+            namespace=model_namespace.name,
+            string_data={
+                "endpoint": f"http://{minio_service_otel.name}.{model_namespace.name}.svc.cluster.local:9000",
+                "bucket": TEMPO,
+                "access_key_id": TEMPO,  # pragma: allowlist secret
+                "access_key_secret": MINIO_SECRET_KEY_VALUE,  # pragma: allowlist secret
+            },
+            type="Opaque",
+            teardown=teardown_resources,
+        )
+        secret.deploy()
+        yield secret
 
 
 @pytest.fixture(scope="class")

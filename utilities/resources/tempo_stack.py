@@ -9,7 +9,7 @@ class TempoStack(NamespacedResource):
     TempoStack manages a Tempo deployment in microservices mode.
     """
 
-    api_group: str = NamespacedResource.ApiGroup.TEMPO_GRAFANA_COM
+    api_group: str = "tempo.grafana.com"
 
     def __init__(
         self,

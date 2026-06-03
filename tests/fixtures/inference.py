@@ -50,24 +50,38 @@ def qwen_isvc(
     minio_service: Service,
     minio_data_connection: Secret,
     vllm_cpu_runtime: ServingRuntime,
+    pytestconfig: pytest.Config,
+    teardown_resources: bool,
 ) -> Generator[InferenceService, Any, Any]:
-    with create_isvc(
-        client=admin_client,
-        name=QWEN_MODEL_NAME,
-        namespace=model_namespace.name,
-        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-        model_format="vLLM",
-        runtime=vllm_cpu_runtime.name,
-        storage_key=minio_data_connection.name,
-        storage_path="Qwen2.5-0.5B-Instruct",
-        wait_for_predictor_pods=False,
-        enable_auth=True,
-        resources={
-            "requests": {"cpu": "2", "memory": "10Gi"},
-            "limits": {"cpu": "2", "memory": "12Gi"},
-        },
-    ) as isvc:
+    if pytestconfig.option.post_upgrade:
+        # During post-upgrade, reuse existing InferenceService
+        isvc = InferenceService(
+            client=admin_client,
+            name=QWEN_MODEL_NAME,
+            namespace=model_namespace.name,
+        )
         yield isvc
+        isvc.clean_up()
+    else:
+        # During pre-upgrade or normal tests, create new InferenceService
+        with create_isvc(
+            client=admin_client,
+            name=QWEN_MODEL_NAME,
+            namespace=model_namespace.name,
+            deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+            model_format="vLLM",
+            runtime=vllm_cpu_runtime.name,
+            storage_key=minio_data_connection.name,
+            storage_path="Qwen2.5-0.5B-Instruct",
+            wait_for_predictor_pods=False,
+            enable_auth=True,
+            resources={
+                "requests": {"cpu": "2", "memory": "10Gi"},
+                "limits": {"cpu": "2", "memory": "12Gi"},
+            },
+            teardown=teardown_resources,
+        ) as isvc:
+            yield isvc
 
 
 @pytest.fixture(scope="class")
