@@ -2,6 +2,9 @@
 # UFN plugin must be run in serial
 jobs = 0
 max-line-length = 120
+# E203: whitespace before ':' - conflicts with ruff-format/Black
+# W503: line break before binary operator - conflicts with PEP 8
+ignore = E203,W503
 
 exclude =
     doc,
