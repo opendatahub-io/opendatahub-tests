@@ -418,14 +418,12 @@ def test_lmeval_rerun_after_spec_change(
 # They xfail against PR #729's conditional injection and will pass once the
 # general fix is implemented in the operator.
 
-XFAIL_GENERAL_CA = pytest.mark.xfail(
+
+@pytest.mark.xfail(
     reason="Requires generalized CA bundle injection (RHOAIENG-60453): "
     "unconditional mount of odh-trusted-ca-bundle with SSL_CERT_FILE",
     strict=True,
 )
-
-
-@XFAIL_GENERAL_CA
 @pytest.mark.tier1
 @pytest.mark.parametrize(
     "model_namespace",
@@ -451,7 +449,7 @@ def test_lmeval_https_sets_ssl_cert_file(
     Note: PR #729 only sets REQUESTS_CA_BUNDLE. General fix (RHOAIENG-60453) should set both.
     """
     main_container = lmevaljob_vllm_emulator_https_pod.instance.spec.containers[0]
-    env_map = {e.name: e.value for e in (main_container.env or [])}
+    env_map = {env_var.name: env_var.value for env_var in (main_container.env or [])}
     assert "SSL_CERT_FILE" in env_map, "SSL_CERT_FILE env var not found on HTTPS job pod"
     assert "REQUESTS_CA_BUNDLE" in env_map, "REQUESTS_CA_BUNDLE env var not found on HTTPS job pod"
     assert env_map["SSL_CERT_FILE"] == env_map["REQUESTS_CA_BUNDLE"], (
@@ -459,7 +457,11 @@ def test_lmeval_https_sets_ssl_cert_file(
     )
 
 
-@XFAIL_GENERAL_CA
+@pytest.mark.xfail(
+    reason="Requires generalized CA bundle injection (RHOAIENG-60453): "
+    "unconditional mount of odh-trusted-ca-bundle with SSL_CERT_FILE",
+    strict=True,
+)
 @pytest.mark.tier1
 @pytest.mark.parametrize(
     "model_namespace",
@@ -485,7 +487,7 @@ def test_lmeval_http_has_ca_bundle(
     Note: General fix (RHOAIENG-60453) mounts CA unconditionally for all outbound HTTPS traffic.
     """
     main_container = lmevaljob_vllm_emulator_pod.instance.spec.containers[0]
-    env_map = {e.name: e.value for e in (main_container.env or [])}
+    env_map = {env_var.name: env_var.value for env_var in (main_container.env or [])}
     assert "REQUESTS_CA_BUNDLE" in env_map, (
         "REQUESTS_CA_BUNDLE env var not found on HTTP job pod — CA should be injected unconditionally"
     )
@@ -501,7 +503,11 @@ def test_lmeval_http_has_ca_bundle(
     assert has_ca_volume, f"No volume referencing '{ODH_TRUSTED_CA_BUNDLE_CONFIGMAP}' ConfigMap found on HTTP job pod"
 
 
-@XFAIL_GENERAL_CA
+@pytest.mark.xfail(
+    reason="Requires generalized CA bundle injection (RHOAIENG-60453): "
+    "unconditional mount of odh-trusted-ca-bundle with SSL_CERT_FILE",
+    strict=True,
+)
 @pytest.mark.tier1
 @pytest.mark.parametrize(
     "model_namespace",
@@ -527,7 +533,7 @@ def test_lmeval_https_verify_certificate_has_ca_bundle(
     Note: verify_certificate is lm-eval level; trust store is pod level (RHOAIENG-60453).
     """
     main_container = lmevaljob_vllm_emulator_https_verify_cert_pod.instance.spec.containers[0]
-    env_map = {e.name: e.value for e in (main_container.env or [])}
+    env_map = {env_var.name: env_var.value for env_var in (main_container.env or [])}
     assert "REQUESTS_CA_BUNDLE" in env_map, (
         "REQUESTS_CA_BUNDLE not found — CA should be injected regardless of verify_certificate"
     )

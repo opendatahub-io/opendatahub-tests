@@ -145,17 +145,17 @@ def validate_ca_bundle_injected(pod: Pod, job_name: str) -> None:
     )
 
     main_container = pod.instance.spec.containers[0]
-    mount_names = [m.name for m in main_container.volumeMounts]
+    mount_names = [mount.name for mount in main_container.volumeMounts]
     assert CA_BUNDLE_VOLUME_NAME in mount_names, (
         f"Expected volume mount '{CA_BUNDLE_VOLUME_NAME}' not found. Mounts: {mount_names}"
     )
 
-    ca_mount = next(m for m in main_container.volumeMounts if m.name == CA_BUNDLE_VOLUME_NAME)
+    ca_mount = next(mount for mount in main_container.volumeMounts if mount.name == CA_BUNDLE_VOLUME_NAME)
     assert ca_mount.mountPath == CA_BUNDLE_MOUNT_PATH
     assert ca_mount.subPath == MERGED_CA_BUNDLE_KEY
     assert ca_mount.readOnly is True
 
-    env_map = {e.name: e.value for e in (main_container.env or []) if e.value is not None}
+    env_map = {env_var.name: env_var.value for env_var in (main_container.env or []) if env_var.value is not None}
     assert "REQUESTS_CA_BUNDLE" in env_map, "REQUESTS_CA_BUNDLE env var not found"
     assert env_map["REQUESTS_CA_BUNDLE"] == CA_BUNDLE_MOUNT_PATH
 
@@ -184,7 +184,7 @@ def validate_ca_bundle_not_injected(pod: Pod, job_name: str) -> None:
     )
 
     main_container = pod.instance.spec.containers[0]
-    env_names = [e.name for e in (main_container.env or [])]
+    env_names = [env_var.name for env_var in (main_container.env or [])]
     assert "REQUESTS_CA_BUNDLE" not in env_names, "Unexpected REQUESTS_CA_BUNDLE env var found on pod"
 
     merged_cm_name = f"{job_name}{MERGED_CA_CONFIGMAP_SUFFIX}"
