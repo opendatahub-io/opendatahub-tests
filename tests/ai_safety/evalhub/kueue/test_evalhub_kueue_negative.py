@@ -65,68 +65,68 @@ class TestEvalHubKueueNegative:
         ]
         assert len(job_workloads) == 0, "No Workload should be created for job without queue spec"
 
-    def test_unauthorized_returns_401(
+    @pytest.mark.parametrize(
+        "test_case,expected_status,method,use_invalid_token,job_id",
+        [
+            ("TC-NEG-003: unauthorized POST", 401, "POST", True, None),
+            ("TC-NEG-005: GET nonexistent job", 404, "GET", False, "00000000-0000-0000-0000-000000000000"),
+        ],
+        ids=["unauthorized_401", "nonexistent_job_404"],
+    )
+    def test_error_responses(
         self,
+        test_case: str,
+        expected_status: int,
+        method: str,
+        use_invalid_token: bool,
+        job_id: str | None,
         evalhub_kueue_namespace: Namespace,
         evalhub_kueue_multi_job_local_queue: LocalQueue,
         evalhub_kueue_vllm_service: Service,
         evalhub_kueue_route: Route,
         evalhub_kueue_ca_bundle_file: str,
-    ) -> None:
-        """TC-NEG-003: Verify unauthorized request returns 401.
-
-        Given EvalHub requires authentication,
-        When a request is made without a valid bearer token,
-        Then the API returns 401 Unauthorized.
-        """
-        payload = build_evalhub_job_payload(
-            model_service_name=evalhub_kueue_vllm_service.name,
-            tenant_namespace=evalhub_kueue_namespace.name,
-            job_name="tc-neg-003-unauth",
-        )
-        payload["queue"] = {"kind": "kueue", "name": evalhub_kueue_multi_job_local_queue.name}
-
-        url = f"https://{evalhub_kueue_route.host}/api/v1/evaluations/jobs"
-        headers = {
-            "Authorization": "Bearer invalid-token-12345",
-            "X-Tenant": evalhub_kueue_namespace.name,
-            "Content-Type": "application/json",
-        }
-
-        response = requests.post(
-            url=url,
-            headers=headers,
-            json=payload,
-            verify=evalhub_kueue_ca_bundle_file,
-            timeout=30,
-        )
-
-        assert response.status_code == 401, f"Expected 401 Unauthorized, got {response.status_code}: {response.text}"
-
-    def test_get_nonexistent_job_returns_404(
-        self,
-        evalhub_kueue_namespace: Namespace,
-        evalhub_kueue_multi_job_local_queue: LocalQueue,
         evalhub_kueue_user_token: str,
-        evalhub_kueue_route: Route,
-        evalhub_kueue_ca_bundle_file: str,
     ) -> None:
-        """TC-NEG-005: Verify GET non-existent job returns 404.
+        """Parameterized test for HTTP error responses.
 
-        Given no job exists with a specific ID,
-        When a GET request is made for that job ID,
-        Then the API returns 404 Not Found.
+        Tests both unauthorized access (401) and non-existent resource (404) scenarios.
         """
-        fake_job_id = "00000000-0000-0000-0000-000000000000"
-        response = get_evalhub_job_http(
-            host=evalhub_kueue_route.host,
-            token=evalhub_kueue_user_token,
-            ca_bundle_file=evalhub_kueue_ca_bundle_file,
-            tenant=evalhub_kueue_namespace.name,
-            job_id=fake_job_id,
-        )
+        if method == "POST":
+            # Test unauthorized POST request
+            payload = build_evalhub_job_payload(
+                model_service_name=evalhub_kueue_vllm_service.name,
+                tenant_namespace=evalhub_kueue_namespace.name,
+                job_name="tc-neg-003-unauth",
+            )
+            payload["queue"] = {"kind": "kueue", "name": evalhub_kueue_multi_job_local_queue.name}
 
-        assert response.status_code == 404, f"Expected 404 Not Found, got {response.status_code}: {response.text}"
+            url = f"https://{evalhub_kueue_route.host}/api/v1/evaluations/jobs"
+            headers = {
+                "Authorization": "Bearer invalid-token-12345",
+                "X-Tenant": evalhub_kueue_namespace.name,
+                "Content-Type": "application/json",
+            }
+
+            response = requests.post(
+                url=url,
+                headers=headers,
+                json=payload,
+                verify=evalhub_kueue_ca_bundle_file,
+                timeout=30,
+            )
+        else:
+            # Test GET for non-existent job
+            response = get_evalhub_job_http(
+                host=evalhub_kueue_route.host,
+                token=evalhub_kueue_user_token,
+                ca_bundle_file=evalhub_kueue_ca_bundle_file,
+                tenant=evalhub_kueue_namespace.name,
+                job_id=job_id,
+            )
+
+        assert response.status_code == expected_status, (
+            f"{test_case}: Expected {expected_status}, got {response.status_code}: {response.text}"
+        )
 
     def test_forbidden_cross_tenant_access(
         self,
