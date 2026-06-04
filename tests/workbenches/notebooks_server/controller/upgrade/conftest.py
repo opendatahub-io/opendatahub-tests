@@ -1,5 +1,6 @@
 import json
 from collections.abc import Generator
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -30,6 +31,7 @@ LOGGER = structlog.get_logger(name=__name__)
 
 UPGRADE_NAMESPACE = "upgrade-workbenches"
 UPGRADE_NOTEBOOK_NAME = "upgrade-workbenches"
+UPGRADE_STOPPED_NOTEBOOK_NAME = "upgrade-wb-stopped"
 UPGRADE_BASELINE_CM_NAME = "upgrade-workbenches-baseline"
 
 
@@ -155,18 +157,8 @@ def upgrade_notebook_pod(
             timeout=Timeout.TIMEOUT_5MIN,
         )
     except (TimeoutError, TimeoutExpiredError, RuntimeError) as e:
-        try:
-            pod_exists = notebook_pod.exists
-        except Exception as exists_error:  # noqa: BLE001
-            LOGGER.warning(f"Failed to verify pod existence after timeout: {exists_error}")
-            pod_exists = False
-
-        if pod_exists:
-            try:
-                collect_pod_information(notebook_pod)
-            except Exception as collect_error:  # noqa: BLE001
-                LOGGER.warning(f"Failed to collect pod artifacts: {collect_error}")
-
+        if notebook_pod.exists:
+            collect_pod_information(notebook_pod)
             raise AssertionError(
                 f"Pod '{upgrade_notebook.name}-0' failed to reach Ready state "
                 f"within {Timeout.TIMEOUT_5MIN} seconds.\n"
@@ -233,6 +225,140 @@ def upgrade_notebook_reference_grant(
 
 
 @pytest.fixture(scope="session")
+def stopped_notebook_pvc(
+    pytestconfig: pytest.Config,
+    unprivileged_client: DynamicClient,
+    upgrade_notebook_namespace: Namespace,
+    teardown_resources: bool,
+) -> Generator[PersistentVolumeClaim, Any, Any]:
+    """PVC for the stopped notebook upgrade scenario."""
+    pvc_kwargs = {
+        "client": unprivileged_client,
+        "name": UPGRADE_STOPPED_NOTEBOOK_NAME,
+        "namespace": upgrade_notebook_namespace.name,
+    }
+
+    if pytestconfig.option.post_upgrade:
+        yield PersistentVolumeClaim(**pvc_kwargs)
+    else:
+        with PersistentVolumeClaim(
+            **pvc_kwargs,
+            label={constants.Labels.OpenDataHub.DASHBOARD: "true"},
+            accessmodes=PersistentVolumeClaim.AccessMode.RWO,
+            size="1Gi",
+            volume_mode=PersistentVolumeClaim.VolumeMode.FILE,
+            teardown=teardown_resources,
+        ) as pvc:
+            yield pvc
+
+
+@pytest.fixture(scope="session")
+def stopped_notebook(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    unprivileged_client: DynamicClient,
+    upgrade_notebook_namespace: Namespace,
+    stopped_notebook_pvc: PersistentVolumeClaim,
+    upgrade_notebook_image: str,
+    teardown_resources: bool,
+) -> Generator[Notebook, Any, Any]:
+    """Notebook CR that is stopped before upgrade via kubeflow-resource-stopped annotation."""
+    notebook_kwargs = {
+        "client": unprivileged_client,
+        "name": UPGRADE_STOPPED_NOTEBOOK_NAME,
+        "namespace": upgrade_notebook_namespace.name,
+    }
+
+    if pytestconfig.option.post_upgrade:
+        nb = Notebook(**notebook_kwargs)
+        yield nb
+        if teardown_resources:
+            nb.client = admin_client
+            nb.clean_up()
+    else:
+        notebook_dict = build_notebook_dict(
+            namespace=upgrade_notebook_namespace.name,
+            name=UPGRADE_STOPPED_NOTEBOOK_NAME,
+            image_path=upgrade_notebook_image,
+        )
+
+        with Notebook(client=unprivileged_client, kind_dict=notebook_dict, teardown=teardown_resources) as nb:
+            yield nb
+
+
+@pytest.fixture(scope="session")
+def stopped_notebook_statefulset(
+    unprivileged_client: DynamicClient,
+    stopped_notebook: Notebook,
+) -> StatefulSet:
+    """StatefulSet for the stopped notebook."""
+    return StatefulSet(
+        client=unprivileged_client,
+        name=stopped_notebook.name,
+        namespace=stopped_notebook.namespace,
+    )
+
+
+@pytest.fixture(scope="session")
+def stopped_notebook_pre_upgrade_shutdown(
+    pytestconfig: pytest.Config,
+    unprivileged_client: DynamicClient,
+    stopped_notebook: Notebook,
+    stopped_notebook_statefulset: StatefulSet,
+) -> None:
+    """Pre-upgrade stopped notebook state: annotation applied, pod terminated, replicas=0.
+
+    No-op during post-upgrade runs.
+    """
+    if pytestconfig.option.post_upgrade:
+        return
+
+    notebook_pod = Pod(
+        client=unprivileged_client,
+        namespace=stopped_notebook.namespace,
+        name=f"{stopped_notebook.name}-0",
+    )
+
+    try:
+        notebook_pod.wait()
+        notebook_pod.wait_for_condition(
+            condition=Pod.Condition.READY,
+            status=Pod.Condition.Status.TRUE,
+            timeout=Timeout.TIMEOUT_5MIN,
+        )
+    except (TimeoutError, TimeoutExpiredError, RuntimeError) as e:
+        if notebook_pod.exists:
+            collect_pod_information(notebook_pod)
+            raise AssertionError(
+                f"Pod '{stopped_notebook.name}-0' failed to reach Ready state "
+                f"before stop. Cannot proceed with upgrade test. Original error: {e}"
+            ) from e
+
+        raise AssertionError(f"Pod '{stopped_notebook.name}-0' was not created. Check notebook controller logs.") from e
+
+    stop_timestamp = datetime.now(tz=UTC).strftime(format="%Y-%m-%dT%H:%M:%SZ")
+    stopped_notebook.update({
+        "metadata": {
+            "name": stopped_notebook.name,
+            "annotations": {"kubeflow-resource-stopped": stop_timestamp},
+        }
+    })
+    LOGGER.info(
+        f"Stopped notebook '{stopped_notebook.name}' via kubeflow-resource-stopped annotation "
+        f"with timestamp '{stop_timestamp}'"
+    )
+
+    notebook_pod.wait_deleted(timeout=Timeout.TIMEOUT_2MIN)
+    LOGGER.info(f"Pod '{notebook_pod.name}' terminated after stop annotation")
+
+    replicas = stopped_notebook_statefulset.instance.spec.replicas
+    assert replicas == 0, (
+        f"StatefulSet '{stopped_notebook_statefulset.name}' has {replicas} replicas after stop, expected 0"
+    )
+    LOGGER.info(f"StatefulSet '{stopped_notebook_statefulset.name}' confirmed at 0 replicas")
+
+
+@pytest.fixture(scope="session")
 def capture_notebook_baseline(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
@@ -241,6 +367,8 @@ def capture_notebook_baseline(
     upgrade_notebook_statefulset: StatefulSet,
     upgrade_notebook_service: Service,
     upgrade_notebook_httproute: HTTPRoute,
+    stopped_notebook: Notebook,
+    stopped_notebook_pre_upgrade_shutdown: None,
 ) -> None:
     """Capture notebook resource metadata to a ConfigMap before upgrade.
 
@@ -264,6 +392,8 @@ def capture_notebook_baseline(
     )
     httproute_generation = upgrade_notebook_httproute.instance.metadata.generation
 
+    stopped_annotation = stopped_notebook.instance.metadata.annotations.get("kubeflow-resource-stopped")
+
     baseline = {
         "ntb_creation_timestamp": creation_timestamp,
         "notebook_generation": notebook_generation,
@@ -271,6 +401,7 @@ def capture_notebook_baseline(
         "service_ports": service_ports,
         "service_selector": service_selector,
         "httproute_generation": httproute_generation,
+        "stopped_annotation_value": stopped_annotation,
     }
 
     ConfigMap(

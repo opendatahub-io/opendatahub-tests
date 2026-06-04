@@ -20,7 +20,6 @@ pytestmark = [
 ]
 
 
-@pytest.mark.jira("RHOAIENG-49128")
 class TestModelRegistryGatewayDomain:
     """Tests for GATEWAY_DOMAIN-based HTTPRoute routing for model registry (RHOAIENG-49128)."""
 
