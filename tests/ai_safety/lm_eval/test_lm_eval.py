@@ -424,7 +424,6 @@ def test_lmeval_rerun_after_spec_change(
     "unconditional mount of odh-trusted-ca-bundle with SSL_CERT_FILE",
     strict=True,
 )
-@pytest.mark.tier1
 @pytest.mark.parametrize(
     "model_namespace",
     [
@@ -462,7 +461,6 @@ def test_lmeval_https_sets_ssl_cert_file(
     "unconditional mount of odh-trusted-ca-bundle with SSL_CERT_FILE",
     strict=True,
 )
-@pytest.mark.tier1
 @pytest.mark.parametrize(
     "model_namespace",
     [
@@ -508,7 +506,6 @@ def test_lmeval_http_has_ca_bundle(
     "unconditional mount of odh-trusted-ca-bundle with SSL_CERT_FILE",
     strict=True,
 )
-@pytest.mark.tier1
 @pytest.mark.parametrize(
     "model_namespace",
     [
