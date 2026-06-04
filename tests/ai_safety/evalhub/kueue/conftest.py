@@ -34,7 +34,12 @@ from tests.ai_safety.evalhub.kueue.constants import (
     VLLM_EMULATOR,
     VLLM_EMULATOR_IMAGE,
 )
-from tests.ai_safety.evalhub.utils import tenant_rbac_ready
+from tests.ai_safety.evalhub.utils import (
+    build_evalhub_job_payload,
+    delete_evalhub_job,
+    submit_evalhub_job,
+    tenant_rbac_ready,
+)
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import DscComponents, Labels, Protocols, Timeout
 from utilities.data_science_cluster_utils import get_dsc_ready_condition, wait_for_dsc_reconciliation
@@ -470,3 +475,141 @@ def evalhub_kueue_user_token(
         ),
     ):
         yield create_inference_token(model_service_account=sa)
+
+
+# ---------------------------------------------------------------------------
+# Negative Test Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def evalhub_job_with_nonexistent_queue(
+    evalhub_kueue_namespace: Namespace,
+    evalhub_kueue_vllm_service: Service,
+    evalhub_kueue_route: Route,
+    evalhub_kueue_user_token: str,
+    evalhub_kueue_ca_bundle_file: str,
+):
+    """Fixture that submits a job with non-existent queue and ensures cleanup."""
+    payload = build_evalhub_job_payload(
+        model_service_name=evalhub_kueue_vllm_service.name,
+        tenant_namespace=evalhub_kueue_namespace.name,
+        job_name="tc-neg-001-invalid-queue",
+    )
+    payload["queue"] = {"kind": "kueue", "name": "nonexistent-queue"}
+
+    data = submit_evalhub_job(
+        host=evalhub_kueue_route.host,
+        token=evalhub_kueue_user_token,
+        ca_bundle_file=evalhub_kueue_ca_bundle_file,
+        tenant=evalhub_kueue_namespace.name,
+        payload=payload,
+    )
+    job_id = data["resource"]["id"]
+
+    yield {
+        "job_id": job_id,
+        "host": evalhub_kueue_route.host,
+        "token": evalhub_kueue_user_token,
+        "ca_bundle_file": evalhub_kueue_ca_bundle_file,
+        "tenant": evalhub_kueue_namespace.name,
+    }
+
+    # Cleanup - always executes even if test fails
+    delete_evalhub_job(
+        host=evalhub_kueue_route.host,
+        token=evalhub_kueue_user_token,
+        ca_bundle_file=evalhub_kueue_ca_bundle_file,
+        tenant=evalhub_kueue_namespace.name,
+        job_id=job_id,
+        hard_delete=True,
+    )
+
+
+@pytest.fixture
+def evalhub_job_without_queue_spec(
+    evalhub_kueue_namespace: Namespace,
+    evalhub_kueue_vllm_service: Service,
+    evalhub_kueue_route: Route,
+    evalhub_kueue_user_token: str,
+    evalhub_kueue_ca_bundle_file: str,
+):
+    """Fixture that submits a job without queue spec and ensures cleanup."""
+    payload = build_evalhub_job_payload(
+        model_service_name=evalhub_kueue_vllm_service.name,
+        tenant_namespace=evalhub_kueue_namespace.name,
+        job_name="tc-neg-002-no-queue",
+    )
+    payload.pop("queue", None)
+
+    data = submit_evalhub_job(
+        host=evalhub_kueue_route.host,
+        token=evalhub_kueue_user_token,
+        ca_bundle_file=evalhub_kueue_ca_bundle_file,
+        tenant=evalhub_kueue_namespace.name,
+        payload=payload,
+    )
+    job_id = data["resource"]["id"]
+
+    yield {
+        "job_id": job_id,
+        "host": evalhub_kueue_route.host,
+        "token": evalhub_kueue_user_token,
+        "ca_bundle_file": evalhub_kueue_ca_bundle_file,
+        "tenant": evalhub_kueue_namespace.name,
+    }
+
+    # Cleanup - always executes even if test fails
+    delete_evalhub_job(
+        host=evalhub_kueue_route.host,
+        token=evalhub_kueue_user_token,
+        ca_bundle_file=evalhub_kueue_ca_bundle_file,
+        tenant=evalhub_kueue_namespace.name,
+        job_id=job_id,
+        hard_delete=True,
+    )
+
+
+@pytest.fixture
+def evalhub_job_for_cross_tenant_test(
+    evalhub_kueue_namespace: Namespace,
+    evalhub_kueue_multi_job_local_queue: LocalQueue,
+    evalhub_kueue_vllm_service: Service,
+    evalhub_kueue_route: Route,
+    evalhub_kueue_user_token: str,
+    evalhub_kueue_ca_bundle_file: str,
+):
+    """Fixture that submits a job for cross-tenant access testing and ensures cleanup."""
+    payload = build_evalhub_job_payload(
+        model_service_name=evalhub_kueue_vllm_service.name,
+        tenant_namespace=evalhub_kueue_namespace.name,
+        job_name="tc-neg-004-cross-tenant",
+    )
+    payload["queue"] = {"kind": "kueue", "name": evalhub_kueue_multi_job_local_queue.name}
+
+    data = submit_evalhub_job(
+        host=evalhub_kueue_route.host,
+        token=evalhub_kueue_user_token,
+        ca_bundle_file=evalhub_kueue_ca_bundle_file,
+        tenant=evalhub_kueue_namespace.name,
+        payload=payload,
+    )
+    job_id = data["resource"]["id"]
+
+    yield {
+        "job_id": job_id,
+        "host": evalhub_kueue_route.host,
+        "token": evalhub_kueue_user_token,
+        "ca_bundle_file": evalhub_kueue_ca_bundle_file,
+        "tenant": evalhub_kueue_namespace.name,
+    }
+
+    # Cleanup - always executes even if test fails
+    delete_evalhub_job(
+        host=evalhub_kueue_route.host,
+        token=evalhub_kueue_user_token,
+        ca_bundle_file=evalhub_kueue_ca_bundle_file,
+        tenant=evalhub_kueue_namespace.name,
+        job_id=job_id,
+        hard_delete=True,
+    )
