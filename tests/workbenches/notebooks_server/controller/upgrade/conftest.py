@@ -11,6 +11,7 @@ from ocp_resources.notebook import Notebook
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.service import Service
+from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError
 
 from tests.workbenches.notebooks_server.controller.utils import (
@@ -22,6 +23,8 @@ from utilities import constants
 from utilities.constants import Timeout
 from utilities.general import collect_pod_information
 from utilities.infra import create_ns
+from utilities.resources.http_route import HTTPRoute
+from utilities.resources.reference_grant import ReferenceGrant
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -203,6 +206,33 @@ def upgrade_notebook_service(
 
 
 @pytest.fixture(scope="session")
+def upgrade_notebook_httproute(
+    admin_client: DynamicClient,
+    upgrade_notebook: Notebook,
+) -> HTTPRoute:
+    """HTTPRoute for the notebook in the applications (controller) namespace."""
+    httproute_name = f"nb-{upgrade_notebook.namespace}-{upgrade_notebook.name}"
+    return HTTPRoute(
+        client=admin_client,
+        name=httproute_name,
+        namespace=py_config["applications_namespace"],
+    )
+
+
+@pytest.fixture(scope="session")
+def upgrade_notebook_reference_grant(
+    admin_client: DynamicClient,
+    upgrade_notebook_namespace: Namespace,
+) -> ReferenceGrant:
+    """ReferenceGrant in the notebook namespace allowing cross-namespace HTTPRoute access."""
+    return ReferenceGrant(
+        client=admin_client,
+        name="notebook-httproute-access",
+        namespace=upgrade_notebook_namespace.name,
+    )
+
+
+@pytest.fixture(scope="session")
 def capture_notebook_baseline(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
@@ -210,6 +240,7 @@ def capture_notebook_baseline(
     upgrade_notebook_pod: Pod,
     upgrade_notebook_statefulset: StatefulSet,
     upgrade_notebook_service: Service,
+    upgrade_notebook_httproute: HTTPRoute,
 ) -> None:
     """Capture notebook resource metadata to a ConfigMap before upgrade.
 
@@ -226,6 +257,12 @@ def capture_notebook_baseline(
     service_spec = upgrade_notebook_service.instance.spec
     service_ports = json.dumps(service_spec.ports, sort_keys=True, default=str)
     service_selector = json.dumps(service_spec.selector, sort_keys=True, default=str)
+    upgrade_notebook_httproute.wait()
+    assert upgrade_notebook_httproute.exists, (
+        f"HTTPRoute '{upgrade_notebook_httproute.name}' not found in "
+        f"'{upgrade_notebook_httproute.namespace}' during baseline capture"
+    )
+    httproute_generation = upgrade_notebook_httproute.instance.metadata.generation
 
     baseline = {
         "ntb_creation_timestamp": creation_timestamp,
@@ -233,6 +270,7 @@ def capture_notebook_baseline(
         "statefulset_generation": sts_generation,
         "service_ports": service_ports,
         "service_selector": service_selector,
+        "httproute_generation": httproute_generation,
     }
 
     ConfigMap(
@@ -249,7 +287,7 @@ def capture_notebook_baseline(
 def upgrade_notebook_baseline(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-) -> dict[str, str]:
+) -> dict[str, Any]:
     """Load the pre-upgrade notebook baseline from the ConfigMap.
 
     Returns an empty dict during pre-upgrade runs.

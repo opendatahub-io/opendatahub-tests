@@ -33,28 +33,109 @@ PREDICT_RESOURCES: dict[str, list[dict[str, str | dict[str, str]]] | dict[str, d
     "resources": {"requests": {"cpu": "2", "memory": "15Gi"}, "limits": {"cpu": "3", "memory": "16Gi"}},
 }
 
-COMPLETION_QUERY: list[dict[str, str]] = [
+COMPLETION_QUERY: list[dict[str, Any]] = [
     {
         "text": "List the top five breeds of dogs and their characteristics.",
+        "keywords": [
+            "dog",
+            "breed",
+            "labrador",
+            "german",
+            "golden",
+            "bulldog",
+            "beagle",
+            "poodle",
+            "characteristic",
+            "loyal",
+            "friendly",
+        ],
     },
     {
         "text": "Translate the following English sentence into Japanese, French, and Swahili: 'The early bird catches "
-        "the worm.'"
+        "the worm.'",
+        "keywords": [
+            "japanese",
+            "french",
+            "swahili",
+            "translation",
+            "bird",
+            "worm",
+            "early",
+            "tori",
+            "oiseau",
+            "ndege",
+        ],
     },
-    {"text": "Write a short story about a robot that dreams for the first time."},
+    {
+        "text": "Write a short story about a robot that dreams for the first time.",
+        "keywords": [
+            "robot",
+            "dream",
+            "story",
+            "first",
+            "time",
+            "android",
+            "machine",
+            "sleep",
+            "consciousness",
+            "awake",
+        ],
+    },
     {
         "text": "Explain the cultural significance of the Mona Lisa painting, and how its perception might vary in "
-        "Western versus Eastern societies."
+        "Western versus Eastern societies.",
+        "keywords": [
+            "mona lisa",
+            "cultural",
+            "painting",
+            "western",
+            "eastern",
+            "art",
+            "da vinci",
+            "leonardo",
+            "society",
+            "perception",
+        ],
     },
     {
         "text": "Compare and contrast artificial intelligence with human intelligence in terms of "
-        "processing information."
+        "processing information.",
+        "keywords": [
+            "artificial intelligence",
+            "human intelligence",
+            "ai",
+            "compare",
+            "contrast",
+            "processing",
+            "information",
+            "machine",
+            "brain",
+            "learning",
+        ],
     },
-    {"text": "Briefly describe the major milestones in the development of artificial intelligence from 1950 to 2020."},
+    {
+        "text": "Briefly describe the major milestones in the development of artificial intelligence "
+        "from 1950 to 2020.",
+        "keywords": [
+            "artificial intelligence",
+            "milestone",
+            "development",
+            "1950",
+            "2020",
+            "history",
+            "ai",
+            "turing",
+            "deep learning",
+            "neural",
+        ],
+    },
 ]
 
-CHAT_QUERY: list[list[dict[str, str]]] = [
-    [{"role": "user", "content": "Write python code to find even number"}],
+CHAT_QUERY: list[list[dict[str, Any]]] = [
+    [
+        {"role": "user", "content": "Write python code to find even number"},
+        {"keywords": ["python", "code", "even", "number", "def", "return", "modulo", "%", "function", "if"]},
+    ],
     [
         {
             "role": "system",
@@ -65,6 +146,19 @@ CHAT_QUERY: list[list[dict[str, str]]] = [
             "role": "user",
             "content": "SpellForce 3 is a pretty bad game. The developer Grimlore Games is "
             "clearly a bunch of no-talent hacks, and 2017 was a terrible year for games anyway.",
+        },
+        {
+            "keywords": [
+                "spellforce",
+                "game",
+                "developer",
+                "grimlore",
+                "2017",
+                "function",
+                "attribute",
+                "value",
+                "representation",
+            ]
         },
     ],
 ]
