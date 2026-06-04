@@ -155,18 +155,8 @@ def upgrade_notebook_pod(
             timeout=Timeout.TIMEOUT_5MIN,
         )
     except (TimeoutError, TimeoutExpiredError, RuntimeError) as e:
-        try:
-            pod_exists = notebook_pod.exists
-        except Exception as exists_error:  # noqa: BLE001
-            LOGGER.warning(f"Failed to verify pod existence after timeout: {exists_error}")
-            pod_exists = False
-
-        if pod_exists:
-            try:
-                collect_pod_information(notebook_pod)
-            except Exception as collect_error:  # noqa: BLE001
-                LOGGER.warning(f"Failed to collect pod artifacts: {collect_error}")
-
+        if notebook_pod.exists:
+            collect_pod_information(notebook_pod)
             raise AssertionError(
                 f"Pod '{upgrade_notebook.name}-0' failed to reach Ready state "
                 f"within {Timeout.TIMEOUT_5MIN} seconds.\n"
