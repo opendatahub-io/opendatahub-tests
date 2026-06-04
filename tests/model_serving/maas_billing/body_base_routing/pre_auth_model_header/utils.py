@@ -1,13 +1,15 @@
 """Utilities and verification helpers for body-based routing (BBR) tests."""
 
+from typing import Any
+
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from ocp_resources.service import Service
-from utilities.resources.destination_rule import DestinationRule
 
 from utilities.constants import MAAS_GATEWAY_NAMESPACE
 from utilities.resources.destination_rule import DestinationRule
+from utilities.resources.envoy_filter import EnvoyFilter
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -15,6 +17,12 @@ BBR_PRE_PROCESSING_DEPLOYMENT_NAME: str = "payload-pre-processing"
 BBR_PRE_PROCESSING_SERVICE_NAME: str = "payload-pre-processing"
 BBR_PRE_PROCESSING_GRPC_PORT: int = 9004
 BBR_PRE_PROCESSING_DESTINATION_RULE_NAME: str = "payload-pre-processing"
+BBR_POST_PROCESSING_DEPLOYMENT_NAME: str = "payload-processing"
+BBR_ENVOY_FILTER_NAME: str = "payload-processing"
+BBR_PRE_FILTER_NAME: str = "envoy.filters.http.ext_proc.bbr-pre"
+BBR_POST_FILTER_NAME: str = "envoy.filters.http.ext_proc.bbr"
+ENVOY_FILTER_INSERT_BEFORE: str = "INSERT_BEFORE"
+ENVOY_FILTER_INSERT_AFTER: str = "INSERT_AFTER"
 
 
 def verify_bbr_pre_processing_deployment_ready(
@@ -81,3 +89,166 @@ def verify_bbr_pre_processing_destination_rule_exists(
         "expected to be created by the controller after reconciliation"
     )
     LOGGER.info(f"DestinationRule '{gateway_namespace}/{BBR_PRE_PROCESSING_DESTINATION_RULE_NAME}' exists")
+
+
+def _get_bbr_envoy_filter_config_patches(
+    admin_client: DynamicClient,
+    gateway_namespace: str,
+) -> list[Any]:
+    """Assert the BBR EnvoyFilter exists and return its configPatches."""
+    envoy_filter = EnvoyFilter(
+        client=admin_client,
+        name=BBR_ENVOY_FILTER_NAME,
+        namespace=gateway_namespace,
+    )
+    assert envoy_filter.exists, (
+        f"EnvoyFilter '{gateway_namespace}/{BBR_ENVOY_FILTER_NAME}' not found — "
+        "expected after the controller reconciles"
+    )
+    return envoy_filter.instance.spec.configPatches or []
+
+
+def _extract_cluster_name_from_patch_value(patch_value: Any) -> str | None:
+    """Extract gRPC cluster name from a configPatch value object; handles both camelCase and snake_case."""
+    typed_config = getattr(patch_value, "typedConfig", None) or getattr(patch_value, "typed_config", None)
+    if not typed_config:
+        return None
+    grpc_service = getattr(typed_config, "grpcService", None) or getattr(typed_config, "grpc_service", None)
+    if not grpc_service:
+        return None
+    envoy_grpc = getattr(grpc_service, "envoyGrpc", None) or getattr(grpc_service, "envoy_grpc", None)
+    if not envoy_grpc:
+        return None
+    return getattr(envoy_grpc, "clusterName", None) or getattr(envoy_grpc, "cluster_name", None)
+
+
+def verify_bbr_envoy_filter_has_pre_and_post_auth_stages(
+    admin_client: DynamicClient,
+    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+) -> None:
+    """Assert the BBR EnvoyFilter contains both the pre-auth (bbr-pre) and post-auth (bbr) filter patches."""
+    config_patches = _get_bbr_envoy_filter_config_patches(
+        admin_client=admin_client, gateway_namespace=gateway_namespace
+    )
+    filter_names: list[str] = []
+    for config_patch in config_patches:
+        patch = getattr(config_patch, "patch", None)
+        patch_value = getattr(patch, "value", None) if patch is not None else None
+        filter_name = getattr(patch_value, "name", None) if patch_value is not None else None
+        if filter_name:
+            filter_names.append(filter_name)
+    assert BBR_PRE_FILTER_NAME in filter_names, (
+        f"EnvoyFilter '{BBR_ENVOY_FILTER_NAME}' missing pre-auth stage '{BBR_PRE_FILTER_NAME}' — "
+        f"found filters: {filter_names!r}"
+    )
+    assert BBR_POST_FILTER_NAME in filter_names, (
+        f"EnvoyFilter '{BBR_ENVOY_FILTER_NAME}' missing post-auth stage '{BBR_POST_FILTER_NAME}' — "
+        f"found filters: {filter_names!r}"
+    )
+    LOGGER.info(
+        f"EnvoyFilter '{gateway_namespace}/{BBR_ENVOY_FILTER_NAME}' has pre-auth and post-auth stages: {filter_names!r}"
+    )
+
+
+def verify_bbr_pre_stage_is_insert_before_wasm_plugin(
+    admin_client: DynamicClient,
+    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+) -> None:
+    """Assert the bbr-pre configPatch uses INSERT_BEFORE so it runs before the WasmPlugin auth stage."""
+    config_patches = _get_bbr_envoy_filter_config_patches(
+        admin_client=admin_client, gateway_namespace=gateway_namespace
+    )
+    for config_patch in config_patches:
+        patch = getattr(config_patch, "patch", None)
+        if patch is None:
+            continue
+        patch_value = getattr(patch, "value", None)
+        filter_name = getattr(patch_value, "name", None) if patch_value is not None else None
+        if filter_name != BBR_PRE_FILTER_NAME:
+            continue
+        operation = getattr(patch, "operation", None)
+        assert operation == ENVOY_FILTER_INSERT_BEFORE, (
+            f"Pre-auth stage '{BBR_PRE_FILTER_NAME}' has operation '{operation}', "
+            f"expected '{ENVOY_FILTER_INSERT_BEFORE}' — it must run before the WasmPlugin"
+        )
+        LOGGER.info(f"Pre-auth stage '{BBR_PRE_FILTER_NAME}' correctly uses {ENVOY_FILTER_INSERT_BEFORE}")
+        return
+    raise AssertionError(
+        f"Pre-auth filter '{BBR_PRE_FILTER_NAME}' not found in EnvoyFilter '{BBR_ENVOY_FILTER_NAME}' configPatches"
+    )
+
+
+def verify_bbr_post_stage_is_insert_after_wasm_plugin(
+    admin_client: DynamicClient,
+    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+) -> None:
+    """Assert the bbr post-auth configPatch uses INSERT_AFTER so it runs after the WasmPlugin auth stage."""
+    config_patches = _get_bbr_envoy_filter_config_patches(
+        admin_client=admin_client, gateway_namespace=gateway_namespace
+    )
+    for config_patch in config_patches:
+        patch = getattr(config_patch, "patch", None)
+        if patch is None:
+            continue
+        patch_value = getattr(patch, "value", None)
+        filter_name = getattr(patch_value, "name", None) if patch_value is not None else None
+        if filter_name != BBR_POST_FILTER_NAME:
+            continue
+        operation = getattr(patch, "operation", None)
+        assert operation == ENVOY_FILTER_INSERT_AFTER, (
+            f"Post-auth stage '{BBR_POST_FILTER_NAME}' has operation '{operation}', "
+            f"expected '{ENVOY_FILTER_INSERT_AFTER}' — it must run after the WasmPlugin"
+        )
+        LOGGER.info(f"Post-auth stage '{BBR_POST_FILTER_NAME}' correctly uses {ENVOY_FILTER_INSERT_AFTER}")
+        return
+    raise AssertionError(
+        f"Post-auth filter '{BBR_POST_FILTER_NAME}' not found in EnvoyFilter '{BBR_ENVOY_FILTER_NAME}' configPatches"
+    )
+
+
+def verify_bbr_envoy_filter_cluster_names_contain_gateway_namespace(
+    admin_client: DynamicClient,
+    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+) -> None:
+    """Assert all gRPC cluster names in the BBR EnvoyFilter point to services in the gateway namespace."""
+    config_patches = _get_bbr_envoy_filter_config_patches(
+        admin_client=admin_client, gateway_namespace=gateway_namespace
+    )
+    cluster_names: list[str] = []
+    for config_patch in config_patches:
+        patch = getattr(config_patch, "patch", None)
+        patch_value = getattr(patch, "value", None) if patch is not None else None
+        if patch_value is None:
+            continue
+        cluster_name = _extract_cluster_name_from_patch_value(patch_value=patch_value)
+        if cluster_name:
+            cluster_names.append(cluster_name)
+    assert cluster_names, f"No gRPC cluster names found in EnvoyFilter '{BBR_ENVOY_FILTER_NAME}' configPatches"
+    for cluster_name in cluster_names:
+        assert gateway_namespace in cluster_name, (
+            f"Cluster name '{cluster_name}' does not reference gateway namespace '{gateway_namespace}'"
+        )
+    LOGGER.info(f"All gRPC cluster names reference gateway namespace '{gateway_namespace}': {cluster_names!r}")
+
+
+def verify_bbr_post_auth_processing_deployment_ready(
+    admin_client: DynamicClient,
+    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+) -> None:
+    """Assert the post-auth payload-processing Deployment exists and all replicas are ready."""
+    deployment = Deployment(
+        client=admin_client,
+        name=BBR_POST_PROCESSING_DEPLOYMENT_NAME,
+        namespace=gateway_namespace,
+    )
+    assert deployment.exists, f"Deployment '{gateway_namespace}/{BBR_POST_PROCESSING_DEPLOYMENT_NAME}' not found"
+    ready_replicas: int = deployment.instance.status.readyReplicas or 0
+    desired_replicas: int = deployment.instance.spec.replicas or 1
+    assert ready_replicas >= desired_replicas, (
+        f"Deployment '{BBR_POST_PROCESSING_DEPLOYMENT_NAME}' has {ready_replicas}/{desired_replicas} ready replicas "
+        f"in namespace '{gateway_namespace}'"
+    )
+    LOGGER.info(
+        f"Deployment '{gateway_namespace}/{BBR_POST_PROCESSING_DEPLOYMENT_NAME}' is ready "
+        f"({ready_replicas}/{desired_replicas} replicas)"
+    )
