@@ -29,6 +29,7 @@ from utilities.constants import ApiGroups, KServeDeploymentType, Labels, MinIo, 
 from utilities.exceptions import MissingParameter
 from utilities.general import b64_encoded_string
 from utilities.inference_utils import create_isvc
+from utilities.resources.route import Route as TLSRoute
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 VLLM_EMULATOR: str = "vllm-emulator"
@@ -705,3 +706,112 @@ def lmevaljob_gpu(
         ],
     ) as lmevaljob:
         yield lmevaljob
+
+
+@pytest.fixture(scope="function")
+def vllm_emulator_tls_route(
+    admin_client: DynamicClient, model_namespace: Namespace, vllm_emulator_service: Service
+) -> Generator[TLSRoute, Any, Any]:
+    """Route with TLS edge termination for the vLLM emulator."""
+    with TLSRoute(
+        client=admin_client,
+        namespace=vllm_emulator_service.namespace,
+        name=f"{VLLM_EMULATOR}-tls",
+        to={"kind": "Service", "name": vllm_emulator_service.name, "weight": 100},
+        port={"targetPort": VLLM_EMULATOR_PORT},
+        tls={"termination": "edge", "insecureEdgeTerminationPolicy": "Redirect"},
+    ) as route:
+        yield route
+
+
+@pytest.fixture(scope="function")
+def lmevaljob_vllm_emulator_https(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    patched_dsc_lmeval_allow_all: DataScienceCluster,
+    vllm_emulator_deployment: Deployment,
+    vllm_emulator_service: Service,
+    vllm_emulator_tls_route: TLSRoute,
+) -> Generator[LMEvalJob, Any, Any]:
+    """LMEvalJob targeting the vLLM emulator via HTTPS TLS-terminated route."""
+    route_host = vllm_emulator_tls_route.instance.spec.host
+    with LMEvalJob(
+        client=admin_client,
+        namespace=model_namespace.name,
+        name=LMEVALJOB_NAME,
+        model="local-completions",
+        task_list={"taskNames": ["arc_easy"]},
+        log_samples=True,
+        batch_size="1",
+        allow_online=True,
+        allow_code_execution=False,
+        outputs={"pvcManaged": {"size": "5Gi"}},
+        model_args=[
+            {"name": "model", "value": "emulatedModel"},
+            {
+                "name": "base_url",
+                "value": f"https://{route_host}/v1/completions",
+            },
+            {"name": "num_concurrent", "value": "1"},
+            {"name": "max_retries", "value": "3"},
+            {"name": "tokenized_requests", "value": "False"},
+            {"name": "tokenizer", "value": "ibm-granite/granite-guardian-3.1-8b"},
+        ],
+    ) as job:
+        yield job
+
+
+@pytest.fixture(scope="function")
+def lmevaljob_vllm_emulator_https_pod(
+    admin_client: DynamicClient, lmevaljob_vllm_emulator_https: LMEvalJob
+) -> Generator[Pod, Any, Any]:
+    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_vllm_emulator_https)
+
+
+@pytest.fixture(scope="function")
+def lmevaljob_vllm_emulator_https_verify_cert(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    patched_dsc_lmeval_allow_all: DataScienceCluster,
+    vllm_emulator_deployment: Deployment,
+    vllm_emulator_service: Service,
+    vllm_emulator_tls_route: TLSRoute,
+) -> Generator[LMEvalJob, Any, Any]:
+    """LMEvalJob with HTTPS base_url and explicit verify_certificate set.
+
+    The operator should skip CA bundle injection when verify_certificate is explicitly set,
+    regardless of the HTTPS scheme.
+    """
+    route_host = vllm_emulator_tls_route.instance.spec.host
+    with LMEvalJob(
+        client=admin_client,
+        namespace=model_namespace.name,
+        name=LMEVALJOB_NAME,
+        model="local-completions",
+        task_list={"taskNames": ["arc_easy"]},
+        log_samples=True,
+        batch_size="1",
+        allow_online=True,
+        allow_code_execution=False,
+        outputs={"pvcManaged": {"size": "5Gi"}},
+        model_args=[
+            {"name": "model", "value": "emulatedModel"},
+            {
+                "name": "base_url",
+                "value": f"https://{route_host}/v1/completions",
+            },
+            {"name": "verify_certificate", "value": "False"},
+            {"name": "num_concurrent", "value": "1"},
+            {"name": "max_retries", "value": "3"},
+            {"name": "tokenized_requests", "value": "False"},
+            {"name": "tokenizer", "value": "ibm-granite/granite-guardian-3.1-8b"},
+        ],
+    ) as job:
+        yield job
+
+
+@pytest.fixture(scope="function")
+def lmevaljob_vllm_emulator_https_verify_cert_pod(
+    admin_client: DynamicClient, lmevaljob_vllm_emulator_https_verify_cert: LMEvalJob
+) -> Generator[Pod, Any, Any]:
+    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_vllm_emulator_https_verify_cert)

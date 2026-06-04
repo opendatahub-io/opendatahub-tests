@@ -120,6 +120,15 @@ ARC_EASY_DATASET_IMAGE: str = (
 LMEVAL_OCI_REPO = "lmeval/offline-oci"
 LMEVAL_OCI_TAG = "v1"
 
+# CA bundle injection constants (must match trustyai-service-operator/controllers/lmes/constants.go)
+MERGED_CA_CONFIGMAP_SUFFIX: str = "-ca-bundle"
+CA_BUNDLE_VOLUME_NAME: str = "odh-ca-bundle"
+CA_BUNDLE_MOUNT_PATH: str = "/etc/ssl/certs/odh-ca-bundle.crt"
+MERGED_CA_BUNDLE_KEY: str = "merged-ca-bundle.crt"
+LAST_SCHEDULED_GENERATION_ANNOTATION: str = "trustyai.opendatahub.io/last-scheduled-generation"
+LMEVALJOB_COMPLETE_STATE: str = "Complete"
+ODH_TRUSTED_CA_BUNDLE_CONFIGMAP: str = "odh-trusted-ca-bundle"
+
 # Accelerator identifier mapping for GPU types
 ACCELERATOR_IDENTIFIER: dict[str, str] = {
     "nvidia": "nvidia.com/gpu",
