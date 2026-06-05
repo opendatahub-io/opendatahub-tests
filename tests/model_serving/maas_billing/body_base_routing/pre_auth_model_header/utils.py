@@ -93,7 +93,7 @@ def verify_bbr_pre_processing_destination_rule_exists(
     LOGGER.info(f"DestinationRule '{gateway_namespace}/{BBR_PRE_PROCESSING_DESTINATION_RULE_NAME}' exists")
 
 
-def _get_bbr_envoy_filter_config_patches(
+def get_bbr_envoy_filter_config_patches(
     admin_client: DynamicClient,
     gateway_namespace: str,
 ) -> list[Any]:
@@ -125,13 +125,10 @@ def _extract_cluster_name_from_patch_value(patch_value: Any) -> str | None:
 
 
 def verify_bbr_envoy_filter_has_pre_and_post_auth_stages(
-    admin_client: DynamicClient,
+    config_patches: list[Any],
     gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
 ) -> None:
     """Assert the BBR EnvoyFilter contains both the pre-auth (bbr-pre) and post-auth (bbr) filter patches."""
-    config_patches = _get_bbr_envoy_filter_config_patches(
-        admin_client=admin_client, gateway_namespace=gateway_namespace
-    )
     filter_names: list[str] = []
     for config_patch in config_patches:
         patch = getattr(config_patch, "patch", None)
@@ -152,70 +149,73 @@ def verify_bbr_envoy_filter_has_pre_and_post_auth_stages(
     )
 
 
-def verify_bbr_pre_stage_is_insert_before_wasm_plugin(
-    admin_client: DynamicClient,
-    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+def verify_bbr_stage_filter_operation(
+    config_patches: list[Any],
+    filter_name: str,
+    expected_operation: str,
+    stage_label: str,
+    wasm_plugin_position: str,
 ) -> None:
-    """Assert the bbr-pre configPatch uses INSERT_BEFORE so it runs before the WasmPlugin auth stage."""
-    config_patches = _get_bbr_envoy_filter_config_patches(
-        admin_client=admin_client, gateway_namespace=gateway_namespace
-    )
+    """Assert a BBR configPatch uses the expected insert operation relative to the WasmPlugin.
+
+    Args:
+        config_patches: EnvoyFilter configPatches fetched once per test class.
+        filter_name: Envoy filter name in the configPatch value (e.g. bbr-pre or bbr).
+        expected_operation: Expected patch operation (INSERT_BEFORE or INSERT_AFTER).
+        stage_label: Human-readable stage label for assertion messages (e.g. Pre-auth).
+        wasm_plugin_position: Relative WasmPlugin position for assertion messages (before/after).
+    """
     for config_patch in config_patches:
         patch = getattr(config_patch, "patch", None)
         if patch is None:
             continue
         patch_value = getattr(patch, "value", None)
-        filter_name = getattr(patch_value, "name", None) if patch_value is not None else None
-        if filter_name != BBR_PRE_FILTER_NAME:
+        patch_filter_name = getattr(patch_value, "name", None) if patch_value is not None else None
+        if patch_filter_name != filter_name:
             continue
         operation = getattr(patch, "operation", None)
-        assert operation == ENVOY_FILTER_INSERT_BEFORE, (
-            f"Pre-auth stage '{BBR_PRE_FILTER_NAME}' has operation '{operation}', "
-            f"expected '{ENVOY_FILTER_INSERT_BEFORE}' — it must run before the WasmPlugin"
+        assert operation == expected_operation, (
+            f"{stage_label} stage '{filter_name}' has operation '{operation}', "
+            f"expected '{expected_operation}' — it must run {wasm_plugin_position} the WasmPlugin"
         )
-        LOGGER.info(f"Pre-auth stage '{BBR_PRE_FILTER_NAME}' correctly uses {ENVOY_FILTER_INSERT_BEFORE}")
+        LOGGER.info(f"{stage_label} stage '{filter_name}' correctly uses {expected_operation}")
         return
     raise AssertionError(
-        f"Pre-auth filter '{BBR_PRE_FILTER_NAME}' not found in EnvoyFilter '{BBR_ENVOY_FILTER_NAME}' configPatches"
+        f"{stage_label} filter '{filter_name}' not found in EnvoyFilter '{BBR_ENVOY_FILTER_NAME}' configPatches"
+    )
+
+
+def verify_bbr_pre_stage_is_insert_before_wasm_plugin(
+    config_patches: list[Any],
+) -> None:
+    """Assert the bbr-pre configPatch uses INSERT_BEFORE so it runs before the WasmPlugin auth stage."""
+    verify_bbr_stage_filter_operation(
+        config_patches=config_patches,
+        filter_name=BBR_PRE_FILTER_NAME,
+        expected_operation=ENVOY_FILTER_INSERT_BEFORE,
+        stage_label="Pre-auth",
+        wasm_plugin_position="before",
     )
 
 
 def verify_bbr_post_stage_is_insert_after_wasm_plugin(
-    admin_client: DynamicClient,
-    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+    config_patches: list[Any],
 ) -> None:
     """Assert the bbr post-auth configPatch uses INSERT_AFTER so it runs after the WasmPlugin auth stage."""
-    config_patches = _get_bbr_envoy_filter_config_patches(
-        admin_client=admin_client, gateway_namespace=gateway_namespace
-    )
-    for config_patch in config_patches:
-        patch = getattr(config_patch, "patch", None)
-        if patch is None:
-            continue
-        patch_value = getattr(patch, "value", None)
-        filter_name = getattr(patch_value, "name", None) if patch_value is not None else None
-        if filter_name != BBR_POST_FILTER_NAME:
-            continue
-        operation = getattr(patch, "operation", None)
-        assert operation == ENVOY_FILTER_INSERT_AFTER, (
-            f"Post-auth stage '{BBR_POST_FILTER_NAME}' has operation '{operation}', "
-            f"expected '{ENVOY_FILTER_INSERT_AFTER}' — it must run after the WasmPlugin"
-        )
-        LOGGER.info(f"Post-auth stage '{BBR_POST_FILTER_NAME}' correctly uses {ENVOY_FILTER_INSERT_AFTER}")
-        return
-    raise AssertionError(
-        f"Post-auth filter '{BBR_POST_FILTER_NAME}' not found in EnvoyFilter '{BBR_ENVOY_FILTER_NAME}' configPatches"
+    verify_bbr_stage_filter_operation(
+        config_patches=config_patches,
+        filter_name=BBR_POST_FILTER_NAME,
+        expected_operation=ENVOY_FILTER_INSERT_AFTER,
+        stage_label="Post-auth",
+        wasm_plugin_position="after",
     )
 
 
 def verify_bbr_envoy_filter_cluster_names_contain_gateway_namespace(
-    admin_client: DynamicClient,
+    config_patches: list[Any],
     gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
 ) -> None:
     """Assert all gRPC cluster names in the BBR EnvoyFilter point to services in the gateway namespace."""
-    config_patches = _get_bbr_envoy_filter_config_patches(
-        admin_client=admin_client, gateway_namespace=gateway_namespace
-    )
     cluster_names: list[str] = []
     for config_patch in config_patches:
         patch = getattr(config_patch, "patch", None)
