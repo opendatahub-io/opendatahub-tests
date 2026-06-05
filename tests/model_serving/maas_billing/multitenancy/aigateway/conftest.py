@@ -83,16 +83,16 @@ def aigateway_adopting_preexisting_namespace(
             teardown=teardown_resources,
         ),
         Namespace(client=admin_client, name=tenant_namespace_name, teardown=teardown_resources),
-    ):
-        with aigateway_from_spec(
+        aigateway_from_spec(
             admin_client=admin_client,
             aigateway_name=aigateway_name,
             cr_namespace=aigateway_infra_namespace,
             aigateway_spec=aigateway_spec,
             teardown=teardown_resources,
-        ) as aigateway:
-            deploy_and_verify_aigateway_ready(aigateway=aigateway)
-            yield build_aigateway_test_context(aigateway=aigateway)
+        ) as aigateway,
+    ):
+        deploy_and_verify_aigateway_ready(aigateway=aigateway)
+        yield build_aigateway_test_context(aigateway=aigateway)
 
 
 @pytest.fixture
@@ -209,20 +209,20 @@ def aigateway_on_labeled_preexisting_namespace(
             },
             teardown=teardown_resources,
         ) as tenant_namespace,
-    ):
-        with aigateway_from_spec(
+        aigateway_from_spec(
             admin_client=admin_client,
             aigateway_name=aigateway_name,
             cr_namespace=aigateway_infra_namespace,
             aigateway_spec=aigateway_spec,
             teardown=teardown_resources,
-        ) as aigateway:
-            deploy_and_verify_aigateway_ready(aigateway=aigateway)
-            yield AIGatewayPreexistingNamespaceContext(
-                aigateway=aigateway,
-                tenant_namespace=tenant_namespace,
-                tenant_namespace_name=tenant_namespace_name,
-            )
+        ) as aigateway,
+    ):
+        deploy_and_verify_aigateway_ready(aigateway=aigateway)
+        yield AIGatewayPreexistingNamespaceContext(
+            aigateway=aigateway,
+            tenant_namespace=tenant_namespace,
+            tenant_namespace_name=tenant_namespace_name,
+        )
 
 
 @pytest.fixture
@@ -295,15 +295,15 @@ def aigateway_on_namespace_owned_by_other(
             },
             teardown=teardown_resources,
         ),
-    ):
-        with aigateway_from_spec(
+        aigateway_from_spec(
             admin_client=admin_client,
             aigateway_name=aigateway_name,
             cr_namespace=aigateway_infra_namespace,
             aigateway_spec=aigateway_spec,
             teardown=teardown_resources,
-        ) as aigateway:
-            yield aigateway
+        ) as aigateway,
+    ):
+        yield aigateway
 
 
 @pytest.fixture

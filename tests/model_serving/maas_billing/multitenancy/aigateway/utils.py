@@ -564,8 +564,7 @@ def verify_preprovisioned_bootstrap_gateway_preserved(
         namespace=gateway_namespace,
     )
     assert bootstrap_gateway.exists, (
-        f"Pre-provisioned Gateway '{gateway_namespace}/{gateway_name}' "
-        "should be preserved after AITenant deletion"
+        f"Pre-provisioned Gateway '{gateway_namespace}/{gateway_name}' should be preserved after AITenant deletion"
     )
 
 
