@@ -42,7 +42,7 @@ def verify_bbr_pre_processing_deployment_ready(
         "payload-pre-processing must be deployed by the maas-controller after reconciliation"
     )
     ready_replicas: int = deployment.instance.status.readyReplicas or 0
-    desired_replicas: int = deployment.instance.spec.replicas or 1
+    desired_replicas: int = deployment.instance.spec.replicas if deployment.instance.spec.replicas is not None else 1
     assert ready_replicas >= desired_replicas, (
         f"Deployment '{BBR_PRE_PROCESSING_DEPLOYMENT_NAME}' has {ready_replicas}/{desired_replicas} ready replicas "
         f"in namespace '{gateway_namespace}'"
@@ -226,9 +226,11 @@ def verify_bbr_envoy_filter_cluster_names_contain_gateway_namespace(
         if cluster_name:
             cluster_names.append(cluster_name)
     assert cluster_names, f"No gRPC cluster names found in EnvoyFilter '{BBR_ENVOY_FILTER_NAME}' configPatches"
+    fqdn_segment = f".{gateway_namespace}.svc"
     for cluster_name in cluster_names:
-        assert gateway_namespace in cluster_name, (
-            f"Cluster name '{cluster_name}' does not reference gateway namespace '{gateway_namespace}'"
+        assert fqdn_segment in cluster_name, (
+            f"Cluster name '{cluster_name}' does not reference gateway namespace '{gateway_namespace}' "
+            f"in the service FQDN (expected '{fqdn_segment}' in cluster name)"
         )
     LOGGER.info(f"All gRPC cluster names reference gateway namespace '{gateway_namespace}': {cluster_names!r}")
 
@@ -245,7 +247,7 @@ def verify_bbr_post_auth_processing_deployment_ready(
     )
     assert deployment.exists, f"Deployment '{gateway_namespace}/{BBR_POST_PROCESSING_DEPLOYMENT_NAME}' not found"
     ready_replicas: int = deployment.instance.status.readyReplicas or 0
-    desired_replicas: int = deployment.instance.spec.replicas or 1
+    desired_replicas: int = deployment.instance.spec.replicas if deployment.instance.spec.replicas is not None else 1
     assert ready_replicas >= desired_replicas, (
         f"Deployment '{BBR_POST_PROCESSING_DEPLOYMENT_NAME}' has {ready_replicas}/{desired_replicas} ready replicas "
         f"in namespace '{gateway_namespace}'"
