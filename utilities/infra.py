@@ -173,7 +173,9 @@ def create_ns(
             project.clean_up()
 
 
-def wait_for_replicas_in_deployment(deployment: Deployment, replicas: int, timeout: int = Timeout.TIMEOUT_30MIN) -> None:
+def wait_for_replicas_in_deployment(
+    deployment: Deployment, replicas: int, timeout: int = Timeout.TIMEOUT_30MIN
+) -> None:
     """
     Wait for replicas in deployment to updated in spec.
 

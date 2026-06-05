@@ -2,17 +2,16 @@ import pytest
 import structlog
 from timeout_sampler import TimeoutSampler
 
+from tests.model_serving.model_runtime.vllm.constant import (
+    CHAT_QUERY,
+)
 from tests.model_serving.model_runtime.vllm.utils import (
-        run_raw_inference,
-        get_vllm_version,
-        get_vllm_throughput_logs,
-        save_performance_report,
+    get_vllm_throughput_logs,
+    get_vllm_version,
+    run_raw_inference,
+    save_performance_report,
 )
 from utilities.constants import KServeDeploymentType, Ports
-
-from tests.model_serving.model_runtime.vllm.constant import (
-        CHAT_QUERY,
-)
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -26,6 +25,7 @@ serving_argument = [
 ]
 
 pytestmark = pytest.mark.usefixtures("valid_aws_config")
+
 
 @pytest.mark.parametrize(
     "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",
@@ -56,10 +56,7 @@ class TestGranite8BModelCPU:
         model_name = "granite-3.1-8b-instruct"
 
         model_details, grpc_chat_response, grpc_chat_stream_responses = run_raw_inference(
-            pod_name=pod,
-            isvc=vllm_inference_service,
-            port=Ports.REST_PORT,
-            endpoint="openai"
+            pod_name=pod, isvc=vllm_inference_service, port=Ports.REST_PORT, endpoint="openai"
         )
 
         used_entries_chat = set()
@@ -88,4 +85,3 @@ class TestGranite8BModelCPU:
         assert model_details == response_snapshot
         assert grpc_chat_response == response_snapshot
         assert grpc_chat_stream_responses == response_snapshot
-

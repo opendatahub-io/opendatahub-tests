@@ -13,7 +13,6 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
-from urllib.parse import urlparse
 
 import pytest
 import shortuuid

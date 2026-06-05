@@ -2,17 +2,17 @@ import pytest
 import structlog
 from timeout_sampler import TimeoutSampler
 
+from tests.model_serving.model_runtime.vllm.constant import (
+    CHAT_QUERY,
+)
 from tests.model_serving.model_runtime.vllm.utils import (
-        run_raw_inference,
-        get_vllm_version,
-        get_vllm_throughput_logs,
-        save_performance_report,
+    get_vllm_throughput_logs,
+    get_vllm_version,
+    run_raw_inference,
+    save_performance_report,
 )
 from utilities.constants import KServeDeploymentType, Ports
 
-from tests.model_serving.model_runtime.vllm.constant import (
-        CHAT_QUERY,
-)
 LOGGER = structlog.get_logger(name=__name__)
 
 serving_argument = [
@@ -25,6 +25,7 @@ serving_argument = [
 ]
 
 pytestmark = pytest.mark.usefixtures("valid_aws_config")
+
 
 @pytest.mark.parametrize(
     "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",

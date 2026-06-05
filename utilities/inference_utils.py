@@ -579,7 +579,7 @@ def create_isvc(
     autoscaler_mode: str | None = None,
     stop_resume: bool = False,
     multi_node_worker_spec: dict[str, Any] | None = None,
-    #timeout: int = Timeout.TIMEOUT_15MIN,
+    # timeout: int = Timeout.TIMEOUT_15MIN,
     timeout: int = 1800,
     scale_metric: str | None = None,
     scale_target: int | None = None,

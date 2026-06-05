@@ -1,11 +1,10 @@
-import os
-from collections.abc import Generator
-from contextlib import contextmanager
-from typing import Any
 import csv
 import os
 import re
-from datetime import datetime
+from collections.abc import Generator
+from contextlib import contextmanager
+from typing import Any
+
 import portforward
 import pytest
 import structlog
@@ -115,7 +114,7 @@ def run_raw_inference(
     port: int,
     endpoint: str,
     chat_query: list[list[dict[str, str]]] | None = None,
-    #chat_query: list[list[dict[str, str]]] = CHAT_QUERY,
+    # chat_query: list[list[dict[str, str]]] = CHAT_QUERY,
     completion_query: list[dict[str, str]] = COMPLETION_QUERY,
     tool_calling: dict[Any, Any] | None = None,
 ) -> tuple[Any, list[Any], list[Any]]:
@@ -238,17 +237,22 @@ def skip_if_not_deployment_mode(isvc: InferenceService, deployment_type: str) ->
 
 # Performance helper methods
 
+
 def get_vllm_version(namespace: str, pod_name: str) -> str:
     pod = Pod(name=pod_name, namespace=namespace)
     result = pod.execute(command=["python", "-c", "import vllm; print(vllm.__version__)"])
     return result.strip()
 
+
 def get_vllm_throughput_logs(namespace: str, pod_name: str, start_time: str | None = None) -> str:
     pod = Pod(name=pod_name, namespace=namespace)
-    logs = pod.log(container="kserve-container", since_time=start_time) if start_time else pod.log(
-        container="kserve-container"
+    logs = (
+        pod.log(container="kserve-container", since_time=start_time)
+        if start_time
+        else pod.log(container="kserve-container")
     )
     return "\n".join(line for line in logs.splitlines() if "Avg prompt throughput" in line)
+
 
 def parse_vllm_logs(logs: str, used_entries: set[str]) -> list[dict[str, float]]:
     parsed = []
@@ -263,15 +267,14 @@ def parse_vllm_logs(logs: str, used_entries: set[str]) -> list[dict[str, float]]
         )
 
         if match:
-            parsed.append(
-                {
-                    "prompt_tokens_per_sec": float(match.group(1)),
-                    "generation_tokens_per_sec": float(match.group(2)),
-                }
-            )
+            parsed.append({
+                "prompt_tokens_per_sec": float(match.group(1)),
+                "generation_tokens_per_sec": float(match.group(2)),
+            })
             used_entries.add(line)
 
     return parsed
+
 
 def save_performance_report(
     model_name: str,
@@ -294,28 +297,23 @@ def save_performance_report(
     with open(report_file, "a", newline="") as f:
         writer = csv.writer(f)
         if not file_exists:
-            writer.writerow(
-                [
-                    "model",
-                    "vllm_version",
-                    "request_type",
-                    "input_prompt",
-                    "last_prompt_tokens_per_sec",
-                    "last_generation_tokens_per_sec",
-                    "max_prompt_tokens_per_sec",
-                    "max_generation_tokens_per_sec",
-                ]
-            )
-        writer.writerow(
-            [
-                model_name,
-                version,
-                request_type,
-                input_prompt,
-                last.get("prompt_tokens_per_sec", 0),
-                last.get("generation_tokens_per_sec", 0),
-                max_prompt,
-                max_generation,
-            ]
-        )
-
+            writer.writerow([
+                "model",
+                "vllm_version",
+                "request_type",
+                "input_prompt",
+                "last_prompt_tokens_per_sec",
+                "last_generation_tokens_per_sec",
+                "max_prompt_tokens_per_sec",
+                "max_generation_tokens_per_sec",
+            ])
+        writer.writerow([
+            model_name,
+            version,
+            request_type,
+            input_prompt,
+            last.get("prompt_tokens_per_sec", 0),
+            last.get("generation_tokens_per_sec", 0),
+            max_prompt,
+            max_generation,
+        ])
