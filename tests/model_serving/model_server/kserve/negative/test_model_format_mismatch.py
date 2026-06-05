@@ -1,9 +1,10 @@
 """
-Tests for InferenceService behavior when the declared model format does not match the runtime.
+Tests for InferenceService behavior when the declared model format is not
+supported by the explicitly specified ServingRuntime.
 
-Deploying a model with ``modelFormat=pytorch`` against an OVMS runtime (which
-expects ONNX/OpenVINO IR) forces a format mismatch that KServe should surface
-as ``FailedToLoad`` rather than leaving the ISVC in a stuck or ambiguous state.
+KServe validates the model format against the runtime's ``supportedModelFormats``
+before attempting to load. An unsupported format should be surfaced as
+``FailedToLoad`` with ``InvalidSpec`` rather than silently succeeding or hanging.
 """
 
 import pytest
@@ -22,21 +23,21 @@ pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_conf
 
 @pytest.mark.tier3
 class TestModelFormatMismatch:
-    """KServe surfaces model load failure when the format doesn't match the runtime."""
+    """KServe rejects an ISVC whose model format is not in the runtime's supportedModelFormats."""
 
     def test_isvc_reports_failed_to_load_with_wrong_model_format(
         self,
         admin_client: DynamicClient,
         wrong_model_format_ovms_isvc: InferenceService,
     ) -> None:
-        """Given a model format incompatible with the runtime, the ISVC must not silently succeed.
+        """Given a model format not in the runtime's supportedModelFormats, KServe must reject the spec.
 
         When:
-            An OVMS RawDeployment InferenceService is created declaring ``pytorch``
-            format while the runtime only supports ONNX / OpenVINO IR.
+            An OVMS RawDeployment InferenceService is created declaring a format
+            not listed in the runtime's ``supportedModelFormats``.
 
         Then:
-            ``status.modelStatus`` reaches ``FailedToLoad`` with ``BlockedByFailedLoad``.
+            ``status.modelStatus`` reaches ``FailedToLoad`` with ``InvalidSpec``.
             ``kserve-controller-manager`` and ``odh-model-controller`` remain Available,
             show no CrashLoopBackOff, and do not accumulate new container restarts.
         """
@@ -49,7 +50,7 @@ class TestModelFormatMismatch:
             wait_for_isvc_model_status_states(
                 isvc=wrong_model_format_ovms_isvc,
                 target_model_state="FailedToLoad",
-                transition_status="BlockedByFailedLoad",
+                transition_status="InvalidSpec",
             )
         finally:
             assert_kserve_control_plane_stable(

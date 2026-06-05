@@ -26,7 +26,7 @@ class TestInvalidModelName:
     """Test class for verifying error handling when targeting a non-existent model.
 
     Preconditions:
-        - InferenceService "negative-test-ovms-isvc" deployed and ready
+        - InferenceService "neg-ovms-isvc" deployed and ready
         - No InferenceService with name "nonexistent-model"
 
     Test Steps:
