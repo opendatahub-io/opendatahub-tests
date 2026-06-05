@@ -3,7 +3,6 @@ from typing import Any
 
 import pytest
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.namespace import Namespace
 from pytest_testconfig import config as py_config
 
@@ -24,7 +23,6 @@ from tests.model_serving.maas_billing.multitenancy.aigateway.utils import (
     ready_aigateway_with_preprovisioned_gateway,
     tenant_namespace_name_for_aigateway,
 )
-from utilities.constants import MAAS_GATEWAY_NAMESPACE
 from utilities.general import generate_random_name
 from utilities.resources.aitenant import AITenant
 
@@ -230,19 +228,21 @@ def aigateway_pending_missing_tenant_namespace(
         tenant_namespace_name=tenant_namespace_name,
         create_tenant_namespace=False,
     )
-    with aigateway_bootstrap_gateway(
-        admin_client=admin_client,
-        gateway_name=aigateway_name,
-        teardown=teardown_resources,
-    ):
-        with aigateway_from_spec(
+    with (
+        aigateway_bootstrap_gateway(
+            admin_client=admin_client,
+            gateway_name=aigateway_name,
+            teardown=teardown_resources,
+        ),
+        aigateway_from_spec(
             admin_client=admin_client,
             aigateway_name=aigateway_name,
             cr_namespace=aigateway_infra_namespace,
             aigateway_spec=aigateway_spec,
             teardown=teardown_resources,
-        ) as aigateway:
-            yield aigateway
+        ) as aigateway,
+    ):
+        yield aigateway
 
 
 @pytest.fixture
@@ -311,19 +311,21 @@ def invalid_placement_aigateway(
         tenant_namespace_name=resolved_tenant_namespace,
     )
     if cr_namespace == "infra_namespace":
-        with aigateway_bootstrap_gateway(
-            admin_client=admin_client,
-            gateway_name=aigateway_name,
-            teardown=teardown_resources,
-        ):
-            with aigateway_from_spec(
+        with (
+            aigateway_bootstrap_gateway(
+                admin_client=admin_client,
+                gateway_name=aigateway_name,
+                teardown=teardown_resources,
+            ),
+            aigateway_from_spec(
                 admin_client=admin_client,
                 aigateway_name=aigateway_name,
                 cr_namespace=resolved_cr_namespace,
                 aigateway_spec=aigateway_spec,
                 teardown=teardown_resources,
-            ) as aigateway:
-                yield aigateway
+            ) as aigateway,
+        ):
+            yield aigateway
     else:
         with aigateway_from_spec(
             admin_client=admin_client,
@@ -333,4 +335,3 @@ def invalid_placement_aigateway(
             teardown=teardown_resources,
         ) as aigateway:
             yield aigateway
-

@@ -177,22 +177,24 @@ def ready_aigateway_with_preprovisioned_gateway(
     cr_namespace: str,
     aigateway_spec: dict[str, Any],
     teardown: bool,
-) -> Generator[AITenant, None, None]:
+) -> Generator[AITenant]:
     """Pre-provision the bootstrap Gateway, deploy AITenant, and wait until Ready."""
-    with aigateway_bootstrap_gateway(
-        admin_client=admin_client,
-        gateway_name=aigateway_name,
-        teardown=teardown,
-    ):
-        with aigateway_from_spec(
+    with (
+        aigateway_bootstrap_gateway(
+            admin_client=admin_client,
+            gateway_name=aigateway_name,
+            teardown=teardown,
+        ),
+        aigateway_from_spec(
             admin_client=admin_client,
             aigateway_name=aigateway_name,
             cr_namespace=cr_namespace,
             aigateway_spec=aigateway_spec,
             teardown=teardown,
-        ) as aigateway:
-            deploy_and_verify_aigateway_ready(aigateway=aigateway)
-            yield aigateway
+        ) as aigateway,
+    ):
+        deploy_and_verify_aigateway_ready(aigateway=aigateway)
+        yield aigateway
 
 
 def deploy_and_verify_aigateway_ready(aigateway: AITenant) -> None:
@@ -320,8 +322,7 @@ def verify_aigateway_bootstrap_children(
         f"Tenant gatewayRef.name expected {aigateway_name!r}, got {tenant_gateway_ref.name!r}"
     )
     assert tenant_gateway_ref.namespace == MAAS_GATEWAY_NAMESPACE, (
-        f"Tenant gatewayRef.namespace expected {MAAS_GATEWAY_NAMESPACE!r}, "
-        f"got {tenant_gateway_ref.namespace!r}"
+        f"Tenant gatewayRef.namespace expected {MAAS_GATEWAY_NAMESPACE!r}, got {tenant_gateway_ref.namespace!r}"
     )
     LOGGER.info(
         f"AIGateway '{aigateway_name}' bootstrap verified: namespace, gateway, and "
@@ -480,17 +481,21 @@ def verify_aigateway_rbac_children_removed(
         (infra_namespace, object_admin_name, "RoleBinding"),
     ):
         if resource_kind == "Role":
-            exists_check = lambda bound_namespace=namespace, role_name=resource_name: Role(
-                client=admin_client,
-                name=role_name,
-                namespace=bound_namespace,
-            ).exists
+            exists_check = lambda bound_namespace=namespace, role_name=resource_name: (
+                Role(
+                    client=admin_client,
+                    name=role_name,
+                    namespace=bound_namespace,
+                ).exists
+            )
         else:
-            exists_check = lambda bound_namespace=namespace, bound_name=resource_name: RoleBinding(
-                client=admin_client,
-                name=bound_name,
-                namespace=bound_namespace,
-            ).exists
+            exists_check = lambda bound_namespace=namespace, bound_name=resource_name: (
+                RoleBinding(
+                    client=admin_client,
+                    name=bound_name,
+                    namespace=bound_namespace,
+                ).exists
+            )
         _wait_until_resource_absent(
             exists_check=exists_check,
             resource_label=f"{resource_kind} '{namespace}/{resource_name}'",
@@ -556,11 +561,13 @@ def verify_aigateway_bootstrap_children_removed(
     )
 
     _wait_until_resource_absent(
-        exists_check=lambda: Tenant(
-            client=admin_client,
-            name=AIGATEWAY_BOOTSTRAPPED_TENANT_NAME,
-            namespace=tenant_namespace_name,
-        ).exists,
+        exists_check=lambda: (
+            Tenant(
+                client=admin_client,
+                name=AIGATEWAY_BOOTSTRAPPED_TENANT_NAME,
+                namespace=tenant_namespace_name,
+            ).exists
+        ),
         resource_label=(f"Tenant/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} in '{tenant_namespace_name}'"),
         timeout=timeout,
     )

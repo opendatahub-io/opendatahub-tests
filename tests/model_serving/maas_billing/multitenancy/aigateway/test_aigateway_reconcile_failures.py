@@ -35,4 +35,3 @@ class TestAIGatewayReconcileFailures:
             phase="Failed",
             ready_reason=AIGATEWAY_TENANT_NAMESPACE_FAILED_REASON,
         )
-
