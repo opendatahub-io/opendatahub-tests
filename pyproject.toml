@@ -21,8 +21,15 @@ show_error_codes = true
 warn_unused_ignores = true
 ignore_missing_imports = true
 
+[[tool.uv.index]]
+name = "ibm-ppc64le"
+url = "https://wheels.developerfirst.ibm.com/ppc64le/linux/+simple/"
+explicit = true
+
 [tool.uv.sources]
-grpcio = { path = "wheels/grpcio-1.80.0+ppc64le1-cp312-cp312-manylinux_2_34_ppc64le.whl" }
+grpcio = [
+  { index = "ibm-ppc64le", marker = "platform_machine == 'ppc64le'" }
+]
 
 [dependency-groups]
 dev = [

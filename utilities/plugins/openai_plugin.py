@@ -62,7 +62,7 @@ class OpenAIClient:
         data = self._construct_request_data(endpoint, query, extra_param)
         try:
             url = f"{self.host}{endpoint}"
-            LOGGER.info(f"Sending request to {url} with timeout=1200s")
+            LOGGER.info(f"Sending request to {url} with timeout=(60s connect, 1200s read)")
             response = requests.post(url, headers=headers, json=data, verify=False, timeout=(60, 1200))
             LOGGER.info(response)
             response.raise_for_status()
@@ -96,7 +96,7 @@ class OpenAIClient:
         tokens = []
         try:
             url = f"{self.host}{endpoint}"
-            LOGGER.info(f"Streaming request to {url} with timeout=1200s")
+            LOGGER.info(f"Streaming request to {url} with timeout=(60s connect, 1200s read)")
             response = requests.post(url, headers=headers, json=data, verify=False, stream=True, timeout=(60, 1200))
             LOGGER.info(response)
             response.raise_for_status()

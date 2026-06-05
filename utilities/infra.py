@@ -173,7 +173,7 @@ def create_ns(
             project.clean_up()
 
 
-def wait_for_replicas_in_deployment(deployment: Deployment, replicas: int, timeout: int = 1800) -> None:
+def wait_for_replicas_in_deployment(deployment: Deployment, replicas: int, timeout: int = Timeout.TIMEOUT_30MIN) -> None:
     """
     Wait for replicas in deployment to updated in spec.
 
@@ -211,8 +211,7 @@ def wait_for_inference_deployment_replicas(
     expected_num_deployments: int = 1,
     labels: str = "",
     deployed: bool = True,
-    #timeout: int = Timeout.TIMEOUT_5MIN,
-    timeout: int = 1800,
+    timeout: int = Timeout.TIMEOUT_30MIN,
 ) -> list[Deployment]:
     """
     Wait for inference deployment replicas to complete.
@@ -736,8 +735,7 @@ def verify_no_failed_pods(
     client: DynamicClient,
     isvc: InferenceService,
     runtime_name: str | None = None,
-    timeout: int = 1800,
-    #timeout: int = Timeout.TIMEOUT_5MIN,
+    timeout: int = Timeout.TIMEOUT_30MIN,
 ) -> None:
     """
     Verify pods created and no failed pods.

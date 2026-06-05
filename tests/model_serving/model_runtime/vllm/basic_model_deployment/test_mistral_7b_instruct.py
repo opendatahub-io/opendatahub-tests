@@ -13,7 +13,6 @@ from utilities.constants import KServeDeploymentType, Ports
 from tests.model_serving.model_runtime.vllm.constant import (
         CHAT_QUERY,
 )
-
 LOGGER = structlog.get_logger(name=__name__)
 
 serving_argument = [
@@ -31,35 +30,35 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
     "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",
     [
         pytest.param(
-            {"name": "granite-raw-cpu"},
-            {"model-dir": "models/granite-3.1-8b-instruct"},
+            {"name": "mistral-raw-cpu"},
+            {"model-dir": "models/Mistral-7B-v0.3"},
             {"deployment_type": KServeDeploymentType.RAW_DEPLOYMENT},
             {
                 "deployment_mode": KServeDeploymentType.RAW_DEPLOYMENT,
                 "runtime_argument": serving_argument,
-                "name": "granite-raw-cpu",
+                "name": "mistral-raw-cpu",
                 "min-replicas": 1,
             },
         ),
     ],
     indirect=True,
 )
-class TestGranite8BModelCPU:
+class TestMistral7BModelCPU:
     def test_deploy_model_inference(
         self,
         vllm_inference_service,
         vllm_pod_resource,
         response_snapshot,
     ):
-        pod = vllm_pod_resource.name
+        pod_name = vllm_pod_resource.name
         namespace_name = vllm_inference_service.namespace
-        model_name = "granite-3.1-8b-instruct"
+        model_name = "mistral-7b-instruct"
 
         model_details, grpc_chat_response, grpc_chat_stream_responses = run_raw_inference(
-            pod_name=pod,
+            pod_name=pod_name,
             isvc=vllm_inference_service,
             port=Ports.REST_PORT,
-            endpoint="openai"
+            endpoint="openai",
         )
 
         used_entries_chat = set()
@@ -69,13 +68,13 @@ class TestGranite8BModelCPU:
             sleep=2,
             func=get_vllm_throughput_logs,
             namespace=namespace_name,
-            pod_name=pod,
+            pod_name=pod_name,
         ):
             chat_logs = sample
             if chat_logs:
                 break
 
-        vllm_version = get_vllm_version(namespace_name, pod)
+        vllm_version = get_vllm_version(namespace_name, pod_name)
         save_performance_report(
             model_name=model_name,
             version=vllm_version,

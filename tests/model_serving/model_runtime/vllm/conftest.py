@@ -66,8 +66,6 @@ def serving_runtime(
         if "args" in container:
             container["args"] = list(dict.fromkeys(container["args"]))
 
-        # Apply update
-        #model_runtime.update(model_runtime.instance.to_dict())
         model_runtime.update(resource_dict=runtime_dict)
 
         yield model_runtime
@@ -125,8 +123,6 @@ def vllm_inference_service(
         if gpu_count:
             arguments.append(f"--tensor-parallel-size={gpu_count}")
 
-        #arguments = [arg for arg in arguments if not arg.startswith(("--tensor-parallel-size", "--quantization"))]
-        #arguments.append(f"--tensor-parallel-size={gpu_count}")
         if quantization := request.param.get("quantization"):
             validate_supported_quantization_schema(q_type=quantization)
             arguments.append(f"--quantization={quantization}")

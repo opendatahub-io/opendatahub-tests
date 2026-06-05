@@ -1,7 +1,6 @@
 from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
-import subprocess
 import csv
 import os
 import re
@@ -11,6 +10,7 @@ import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
+from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -208,85 +208,86 @@ def skip_if_not_deployment_mode(isvc: InferenceService, deployment_type: str) ->
         pytest.skip(f"Test is being skipped because model is not being deployed in {deployment_type} mode")
 
 
-#Performance Helper Methods
+# Performance helper methods
 
-def get_vllm_version(namespace, pod_name):
-    cmd = f'oc exec -n {namespace} {pod_name} -- python -c "import vllm; print(vllm.__version__)"'
-    result = subprocess.check_output(cmd, shell=True, text=True)
+def get_vllm_version(namespace: str, pod_name: str) -> str:
+    pod = Pod(name=pod_name, namespace=namespace)
+    result = pod.execute(command=["python", "-c", "import vllm; print(vllm.__version__)"])
     return result.strip()
 
-def get_vllm_throughput_logs(namespace, pod_name):
-    cmd = f"oc logs -n {namespace} {pod_name} | grep 'Avg prompt throughput'"
-    result = subprocess.getoutput(cmd)
-    return result
+def get_vllm_throughput_logs(namespace: str, pod_name: str, start_time: str | None = None) -> str:
+    pod = Pod(name=pod_name, namespace=namespace)
+    logs = pod.log(container="kserve-container", since_time=start_time) if start_time else pod.log(
+        container="kserve-container"
+    )
+    return "\n".join(line for line in logs.splitlines() if "Avg prompt throughput" in line)
 
-def parse_vllm_logs(logs, start_time, used_entries):
+def parse_vllm_logs(logs: str, used_entries: set[str]) -> list[dict[str, float]]:
     parsed = []
 
-    try:
-        start_dt = datetime.strptime(start_time, "%H:%M:%S")
-    except Exception:
-        start_dt = None
-
-    for line in logs.split("\n"):
-        time_match = re.search(r"(\d{2}:\d{2}:\d{2})", line)
-        if not time_match:
-            continue
-
-        try:
-            log_dt = datetime.strptime(time_match.group(1), "%H:%M:%S")
-        except Exception:
-            continue
-
-        # Filter only new logs (AFTER request)
-        if start_dt and (log_dt - start_dt).total_seconds() < 0:
-            continue
-        # Avoid duplicate log lines
+    for line in logs.splitlines():
         if line in used_entries:
             continue
 
         match = re.search(
             r"Avg prompt throughput: ([\d.]+) tokens/s, Avg generation throughput: ([\d.]+) tokens/s",
-            line
+            line,
         )
 
         if match:
-            parsed.append({
-                "prompt_tokens_per_sec": float(match.group(1)),
-                "generation_tokens_per_sec": float(match.group(2))
-            })
+            parsed.append(
+                {
+                    "prompt_tokens_per_sec": float(match.group(1)),
+                    "generation_tokens_per_sec": float(match.group(2)),
+                }
+            )
             used_entries.add(line)
 
     return parsed
 
-def save_performance_report(model_name, version, logs, request_type, input_prompt, start_time, used_entries):
-    parsed_logs = parse_vllm_logs(logs, start_time, used_entries)
+def save_performance_report(
+    model_name: str,
+    version: str,
+    logs: str,
+    request_type: str,
+    input_prompt: str,
+    used_entries: set[str],
+) -> None:
+    parsed_logs = parse_vllm_logs(logs=logs, used_entries=used_entries)
 
     last = parsed_logs[-1] if parsed_logs else {}
-    max_prompt = max([x["prompt_tokens_per_sec"] for x in parsed_logs], default=0)
-    max_generation = max([x["generation_tokens_per_sec"] for x in parsed_logs], default=0)
+    max_prompt = max((x["prompt_tokens_per_sec"] for x in parsed_logs), default=0)
+    max_generation = max((x["generation_tokens_per_sec"] for x in parsed_logs), default=0)
 
-    file_exists = os.path.isfile("performance_report.csv")
-    with open("performance_report.csv", "a", newline="") as f:
+    worker = os.getenv("PYTEST_XDIST_WORKER", "gw0")
+    report_file = f"performance_report_{worker}.csv"
+    file_exists = os.path.isfile(report_file)
+
+    with open(report_file, "a", newline="") as f:
         writer = csv.writer(f)
         if not file_exists:
-            writer.writerow([
-                "model",
-                "vllm_version",
-                "request_type",
-                "input_prompt",
-                "last_prompt_tokens_per_sec",
-                "last_generation_tokens_per_sec",
-                "max_prompt_tokens_per_sec",
-                "max_generation_tokens_per_sec"
-                ])
-        writer.writerow([
-            model_name,
-            version,
-            request_type,
-            input_prompt,
-            last.get("prompt_tokens_per_sec", 0),
-            last.get("generation_tokens_per_sec", 0),
-            max_prompt,
-            max_generation
-            ])        
+            writer.writerow(
+                [
+                    "model",
+                    "vllm_version",
+                    "request_type",
+                    "input_prompt",
+                    "last_prompt_tokens_per_sec",
+                    "last_generation_tokens_per_sec",
+                    "max_prompt_tokens_per_sec",
+                    "max_generation_tokens_per_sec",
+                ]
+            )
+        writer.writerow(
+            [
+                model_name,
+                version,
+                request_type,
+                input_prompt,
+                last.get("prompt_tokens_per_sec", 0),
+                last.get("generation_tokens_per_sec", 0),
+                max_prompt,
+                max_generation,
+            ]
+        )
+
