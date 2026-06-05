@@ -40,7 +40,6 @@ class EnvoyFilter(NamespacedResource):
         super().to_dict()
 
         if not self.kind_dict and not self.yaml_file:
-
             self.res["spec"] = {}
             _spec = self.res["spec"]
 

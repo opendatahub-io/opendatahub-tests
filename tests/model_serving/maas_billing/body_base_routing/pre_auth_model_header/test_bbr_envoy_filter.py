@@ -34,7 +34,7 @@ class TestBBREnvoyFilter:
         admin_client: DynamicClient,
         bbr_gateway_namespace: str,
     ) -> None:
-        """Verify the bbr-pre configPatch uses INSERT_BEFORE so body extraction runs before the WasmPlugin auth stage."""
+        """Verify the bbr-pre configPatch uses INSERT_BEFORE so body extraction runs before the WasmPlugin."""
         verify_bbr_pre_stage_is_insert_before_wasm_plugin(
             admin_client=admin_client,
             gateway_namespace=bbr_gateway_namespace,
@@ -46,7 +46,7 @@ class TestBBREnvoyFilter:
         admin_client: DynamicClient,
         bbr_gateway_namespace: str,
     ) -> None:
-        """Verify the bbr post-auth configPatch uses INSERT_AFTER so usage tracking runs after the WasmPlugin auth stage."""
+        """Verify the bbr post-auth configPatch uses INSERT_AFTER so usage tracking runs after the WasmPlugin."""
         verify_bbr_post_stage_is_insert_after_wasm_plugin(
             admin_client=admin_client,
             gateway_namespace=bbr_gateway_namespace,

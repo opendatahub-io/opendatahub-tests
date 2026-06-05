@@ -1,5 +1,7 @@
 """Utilities and verification helpers for body-based routing (BBR) tests."""
 
+from __future__ import annotations
+
 from typing import Any
 
 import structlog
@@ -37,7 +39,7 @@ def verify_bbr_pre_processing_deployment_ready(
     )
     assert deployment.exists, (
         f"Deployment '{gateway_namespace}/{BBR_PRE_PROCESSING_DEPLOYMENT_NAME}' not found — "
-        "payload-pre-processing must be deployed by the controller after PR #948 is merged"
+        "payload-pre-processing must be deployed by the maas-controller after reconciliation"
     )
     ready_replicas: int = deployment.instance.status.readyReplicas or 0
     desired_replicas: int = deployment.instance.spec.replicas or 1
