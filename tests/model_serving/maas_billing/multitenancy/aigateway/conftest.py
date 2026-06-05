@@ -17,6 +17,7 @@ from tests.model_serving.maas_billing.multitenancy.aigateway.utils import (
     AIGatewayTestContext,
     aigateway_bootstrap_gateway,
     aigateway_from_spec,
+    bootstrap_gateway_ref,
     build_aigateway_spec,
     build_aigateway_test_context,
     deploy_and_verify_aigateway_ready,
@@ -65,19 +66,24 @@ def aigateway_adopting_preexisting_namespace(
     """Create a tenant namespace first, then an AITenant that adopts it with create=false."""
     aigateway_name = f"e2e-aigw-adopt-ns-{generate_random_name()}"
     tenant_namespace_name = tenant_namespace_name_for_aigateway(aigateway_name=aigateway_name)
+    aigateway_spec = build_aigateway_spec(
+        aigateway_name=aigateway_name,
+        tenant_namespace_name=tenant_namespace_name,
+        create_tenant_namespace=False,
+    )
+    gateway_name, gateway_namespace = bootstrap_gateway_ref(
+        aigateway_name=aigateway_name,
+        aigateway_spec=aigateway_spec,
+    )
     with (
         aigateway_bootstrap_gateway(
             admin_client=admin_client,
-            gateway_name=aigateway_name,
+            gateway_name=gateway_name,
+            gateway_namespace=gateway_namespace,
             teardown=teardown_resources,
         ),
         Namespace(client=admin_client, name=tenant_namespace_name, teardown=teardown_resources),
     ):
-        aigateway_spec = build_aigateway_spec(
-            aigateway_name=aigateway_name,
-            tenant_namespace_name=tenant_namespace_name,
-            create_tenant_namespace=False,
-        )
         with aigateway_from_spec(
             admin_client=admin_client,
             aigateway_name=aigateway_name,
@@ -177,10 +183,21 @@ def aigateway_on_labeled_preexisting_namespace(
     """Create a pre-existing labeled tenant namespace and a Ready adopting AIGateway."""
     aigateway_name = f"e2e-aigw-preexist-{generate_random_name()}"
     tenant_namespace_name = tenant_namespace_name_for_aigateway(aigateway_name=aigateway_name)
+    aigateway_spec = build_aigateway_spec(
+        aigateway_name=aigateway_name,
+        tenant_namespace_name=tenant_namespace_name,
+        cleanup_on_delete=True,
+        create_tenant_namespace=False,
+    )
+    gateway_name, gateway_namespace = bootstrap_gateway_ref(
+        aigateway_name=aigateway_name,
+        aigateway_spec=aigateway_spec,
+    )
     with (
         aigateway_bootstrap_gateway(
             admin_client=admin_client,
-            gateway_name=aigateway_name,
+            gateway_name=gateway_name,
+            gateway_namespace=gateway_namespace,
             teardown=teardown_resources,
         ),
         Namespace(
@@ -193,12 +210,6 @@ def aigateway_on_labeled_preexisting_namespace(
             teardown=teardown_resources,
         ) as tenant_namespace,
     ):
-        aigateway_spec = build_aigateway_spec(
-            aigateway_name=aigateway_name,
-            tenant_namespace_name=tenant_namespace_name,
-            cleanup_on_delete=True,
-            create_tenant_namespace=False,
-        )
         with aigateway_from_spec(
             admin_client=admin_client,
             aigateway_name=aigateway_name,
@@ -228,10 +239,15 @@ def aigateway_pending_missing_tenant_namespace(
         tenant_namespace_name=tenant_namespace_name,
         create_tenant_namespace=False,
     )
+    gateway_name, gateway_namespace = bootstrap_gateway_ref(
+        aigateway_name=aigateway_name,
+        aigateway_spec=aigateway_spec,
+    )
     with (
         aigateway_bootstrap_gateway(
             admin_client=admin_client,
-            gateway_name=aigateway_name,
+            gateway_name=gateway_name,
+            gateway_namespace=gateway_namespace,
             teardown=teardown_resources,
         ),
         aigateway_from_spec(
@@ -254,10 +270,20 @@ def aigateway_on_namespace_owned_by_other(
     """Create an AITenant against a namespace already claimed by another AITenant."""
     aigateway_name = f"e2e-aigw-ns-clash-{generate_random_name()}"
     shared_namespace_name = f"e2e-aigw-shared-{generate_random_name()}"
+    aigateway_spec = build_aigateway_spec(
+        aigateway_name=aigateway_name,
+        tenant_namespace_name=shared_namespace_name,
+        create_tenant_namespace=False,
+    )
+    gateway_name, gateway_namespace = bootstrap_gateway_ref(
+        aigateway_name=aigateway_name,
+        aigateway_spec=aigateway_spec,
+    )
     with (
         aigateway_bootstrap_gateway(
             admin_client=admin_client,
-            gateway_name=aigateway_name,
+            gateway_name=gateway_name,
+            gateway_namespace=gateway_namespace,
             teardown=teardown_resources,
         ),
         Namespace(
@@ -270,11 +296,6 @@ def aigateway_on_namespace_owned_by_other(
             teardown=teardown_resources,
         ),
     ):
-        aigateway_spec = build_aigateway_spec(
-            aigateway_name=aigateway_name,
-            tenant_namespace_name=shared_namespace_name,
-            create_tenant_namespace=False,
-        )
         with aigateway_from_spec(
             admin_client=admin_client,
             aigateway_name=aigateway_name,
@@ -311,10 +332,15 @@ def invalid_placement_aigateway(
         tenant_namespace_name=resolved_tenant_namespace,
     )
     if cr_namespace == "infra_namespace":
+        gateway_name, gateway_namespace = bootstrap_gateway_ref(
+            aigateway_name=aigateway_name,
+            aigateway_spec=aigateway_spec,
+        )
         with (
             aigateway_bootstrap_gateway(
                 admin_client=admin_client,
-                gateway_name=aigateway_name,
+                gateway_name=gateway_name,
+                gateway_namespace=gateway_namespace,
                 teardown=teardown_resources,
             ),
             aigateway_from_spec(

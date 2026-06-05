@@ -64,6 +64,15 @@ def tenant_namespace_name_for_aigateway(aigateway_name: str) -> str:
     return f"{aigateway_name}{AIGATEWAY_TENANT_NAMESPACE_SUFFIX}"
 
 
+def tenant_namespace_name_from_aigateway(aigateway: AITenant) -> str:
+    """Return the tenant namespace name configured on a deployed AITenant."""
+    if aigateway.tenant_namespace is not None:
+        configured_name = aigateway.tenant_namespace.get("name")
+        if configured_name:
+            return configured_name
+    return aigateway.instance.spec.tenantNamespace.name
+
+
 def aigateway_child_resource_name(aigateway_name: str, suffix: str) -> str:
     """Return the controller-derived Role or RoleBinding name for an AIGateway child resource."""
     name = f"{AIGATEWAY_CHILD_NAME_PREFIX}{aigateway_name}-{suffix}"
@@ -128,6 +137,29 @@ def build_aigateway_spec(
     return spec
 
 
+def bootstrap_gateway_ref(
+    aigateway_name: str,
+    aigateway_spec: dict[str, Any],
+) -> tuple[str, str]:
+    """Resolve the bootstrap Gateway name and namespace from an AITenant spec."""
+    gateway_spec = aigateway_spec.get("gateway", {})
+    return (
+        gateway_spec.get("name", aigateway_name),
+        gateway_spec.get("namespace", MAAS_GATEWAY_NAMESPACE),
+    )
+
+
+def bootstrap_gateway_ref_from_aigateway(aigateway: AITenant) -> tuple[str, str]:
+    """Resolve the bootstrap Gateway name and namespace from an AITenant configuration."""
+    aigateway_spec: dict[str, Any] = {}
+    if aigateway.gateway is not None:
+        aigateway_spec["gateway"] = aigateway.gateway
+    return bootstrap_gateway_ref(
+        aigateway_name=aigateway.name,
+        aigateway_spec=aigateway_spec,
+    )
+
+
 def aigateway_from_spec(
     admin_client: DynamicClient,
     aigateway_name: str,
@@ -179,10 +211,15 @@ def ready_aigateway_with_preprovisioned_gateway(
     teardown: bool,
 ) -> Generator[AITenant]:
     """Pre-provision the bootstrap Gateway, deploy AITenant, and wait until Ready."""
+    gateway_name, gateway_namespace = bootstrap_gateway_ref(
+        aigateway_name=aigateway_name,
+        aigateway_spec=aigateway_spec,
+    )
     with (
         aigateway_bootstrap_gateway(
             admin_client=admin_client,
-            gateway_name=aigateway_name,
+            gateway_name=gateway_name,
+            gateway_namespace=gateway_namespace,
             teardown=teardown,
         ),
         aigateway_from_spec(
@@ -209,7 +246,7 @@ def build_aigateway_test_context(aigateway: AITenant) -> AIGatewayTestContext:
     return AIGatewayTestContext(
         aigateway=aigateway,
         aigateway_name=aigateway.name,
-        tenant_namespace_name=tenant_namespace_name_for_aigateway(aigateway_name=aigateway.name),
+        tenant_namespace_name=tenant_namespace_name_from_aigateway(aigateway=aigateway),
     )
 
 
@@ -237,13 +274,8 @@ def verify_aigateway_bootstrap_children(
     assert status_gateway_ref is not None, (
         f"AITenant '{aigateway_name}' status.gatewayRef should be set after bootstrap"
     )
-    assert status_gateway_ref.name == aigateway_name, (
-        f"AITenant status.gatewayRef.name expected {aigateway_name!r}, got {status_gateway_ref.name!r}"
-    )
-    assert status_gateway_ref.namespace == MAAS_GATEWAY_NAMESPACE, (
-        f"AITenant status.gatewayRef.namespace expected {MAAS_GATEWAY_NAMESPACE!r}, "
-        f"got {status_gateway_ref.namespace!r}"
-    )
+    gateway_name = status_gateway_ref.name
+    gateway_namespace = status_gateway_ref.namespace
     status_tenant_namespace = getattr(aigateway_status, "tenantNamespace", None)
     assert status_tenant_namespace == tenant_namespace_name, (
         f"AITenant status.tenantNamespace expected {tenant_namespace_name!r}, got {status_tenant_namespace!r}"
@@ -276,8 +308,8 @@ def verify_aigateway_bootstrap_children(
 
     tenant_gateway = Gateway(
         client=admin_client,
-        name=aigateway_name,
-        namespace=MAAS_GATEWAY_NAMESPACE,
+        name=gateway_name,
+        namespace=gateway_namespace,
         ensure_exists=True,
     )
     gateway_labels = dict(tenant_gateway.instance.metadata.labels or {})
@@ -287,16 +319,16 @@ def verify_aigateway_bootstrap_children(
         ("annotations", gateway_annotations),
     ):
         assert AIGATEWAY_NAME_ANNOTATION not in metadata, (
-            f"Pre-provisioned Gateway '{MAAS_GATEWAY_NAMESPACE}/{aigateway_name}' should not have "
+            f"Pre-provisioned Gateway '{gateway_namespace}/{gateway_name}' should not have "
             f"{metadata_name} {AIGATEWAY_NAME_ANNOTATION!r}"
         )
         assert AIGATEWAY_NAMESPACE_ANNOTATION not in metadata, (
-            f"Pre-provisioned Gateway '{MAAS_GATEWAY_NAMESPACE}/{aigateway_name}' should not have "
+            f"Pre-provisioned Gateway '{gateway_namespace}/{gateway_name}' should not have "
             f"{metadata_name} {AIGATEWAY_NAMESPACE_ANNOTATION!r}"
         )
     gateway_class_name = getattr(tenant_gateway.instance.spec, "gatewayClassName", None)
     assert gateway_class_name == AIGATEWAY_GATEWAY_CLASS_NAME, (
-        f"Gateway '{MAAS_GATEWAY_NAMESPACE}/{aigateway_name}' gatewayClassName expected "
+        f"Gateway '{gateway_namespace}/{gateway_name}' gatewayClassName expected "
         f"{AIGATEWAY_GATEWAY_CLASS_NAME!r}, got {gateway_class_name!r}"
     )
     verify_maas_gateway_programmed(gateway=tenant_gateway)
@@ -318,11 +350,11 @@ def verify_aigateway_bootstrap_children(
     assert tenant_gateway_ref is not None, (
         f"Tenant/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} spec.gatewayRef should be set after bootstrap"
     )
-    assert tenant_gateway_ref.name == aigateway_name, (
-        f"Tenant gatewayRef.name expected {aigateway_name!r}, got {tenant_gateway_ref.name!r}"
+    assert tenant_gateway_ref.name == gateway_name, (
+        f"Tenant gatewayRef.name expected {gateway_name!r}, got {tenant_gateway_ref.name!r}"
     )
-    assert tenant_gateway_ref.namespace == MAAS_GATEWAY_NAMESPACE, (
-        f"Tenant gatewayRef.namespace expected {MAAS_GATEWAY_NAMESPACE!r}, got {tenant_gateway_ref.namespace!r}"
+    assert tenant_gateway_ref.namespace == gateway_namespace, (
+        f"Tenant gatewayRef.namespace expected {gateway_namespace!r}, got {tenant_gateway_ref.namespace!r}"
     )
     LOGGER.info(
         f"AIGateway '{aigateway_name}' bootstrap verified: namespace, gateway, and "
@@ -474,47 +506,65 @@ def verify_aigateway_rbac_children_removed(
     """Assert tenant-admin and object-admin Roles and RoleBindings were removed after AITenant deletion."""
     tenant_admin_name = tenant_admin_role_name(aigateway_name=aigateway_name)
     object_admin_name = aigateway_object_admin_role_name(aigateway_name=aigateway_name)
-    for namespace, resource_name, resource_kind in (
-        (tenant_namespace_name, tenant_admin_name, "Role"),
-        (tenant_namespace_name, tenant_admin_name, "RoleBinding"),
-        (infra_namespace, object_admin_name, "Role"),
-        (infra_namespace, object_admin_name, "RoleBinding"),
-    ):
-        if resource_kind == "Role":
-            exists_check = lambda bound_namespace=namespace, role_name=resource_name: (
-                Role(
-                    client=admin_client,
-                    name=role_name,
-                    namespace=bound_namespace,
-                ).exists
-            )
-        else:
-            exists_check = lambda bound_namespace=namespace, bound_name=resource_name: (
-                RoleBinding(
-                    client=admin_client,
-                    name=bound_name,
-                    namespace=bound_namespace,
-                ).exists
-            )
-        _wait_until_resource_absent(
-            exists_check=exists_check,
-            resource_label=f"{resource_kind} '{namespace}/{resource_name}'",
-            timeout=timeout,
-        )
+    _wait_until_resource_absent(
+        exists_check=lambda: (
+            Role(
+                client=admin_client,
+                name=tenant_admin_name,
+                namespace=tenant_namespace_name,
+            ).exists
+        ),
+        resource_label=f"Role '{tenant_namespace_name}/{tenant_admin_name}'",
+        timeout=timeout,
+    )
+    _wait_until_resource_absent(
+        exists_check=lambda: (
+            RoleBinding(
+                client=admin_client,
+                name=tenant_admin_name,
+                namespace=tenant_namespace_name,
+            ).exists
+        ),
+        resource_label=f"RoleBinding '{tenant_namespace_name}/{tenant_admin_name}'",
+        timeout=timeout,
+    )
+    _wait_until_resource_absent(
+        exists_check=lambda: (
+            Role(
+                client=admin_client,
+                name=object_admin_name,
+                namespace=infra_namespace,
+            ).exists
+        ),
+        resource_label=f"Role '{infra_namespace}/{object_admin_name}'",
+        timeout=timeout,
+    )
+    _wait_until_resource_absent(
+        exists_check=lambda: (
+            RoleBinding(
+                client=admin_client,
+                name=object_admin_name,
+                namespace=infra_namespace,
+            ).exists
+        ),
+        resource_label=f"RoleBinding '{infra_namespace}/{object_admin_name}'",
+        timeout=timeout,
+    )
 
 
 def verify_preprovisioned_bootstrap_gateway_preserved(
     admin_client: DynamicClient,
-    aigateway_name: str,
+    gateway_name: str,
+    gateway_namespace: str,
 ) -> None:
     """Assert the pre-provisioned bootstrap Gateway still exists after AITenant deletion."""
     bootstrap_gateway = Gateway(
         client=admin_client,
-        name=aigateway_name,
-        namespace=MAAS_GATEWAY_NAMESPACE,
+        name=gateway_name,
+        namespace=gateway_namespace,
     )
     assert bootstrap_gateway.exists, (
-        f"Pre-provisioned Gateway '{MAAS_GATEWAY_NAMESPACE}/{aigateway_name}' "
+        f"Pre-provisioned Gateway '{gateway_namespace}/{gateway_name}' "
         "should be preserved after AITenant deletion"
     )
 
@@ -552,12 +602,15 @@ def verify_aigateway_bootstrap_children_removed(
     timeout: int = 300,
 ) -> None:
     """Assert controller-owned Tenant and RBAC children were removed after AITenant deletion."""
+    aigateway = test_context["aigateway"]
     aigateway_name = test_context["aigateway_name"]
     tenant_namespace_name = test_context["tenant_namespace_name"]
+    gateway_name, gateway_namespace = bootstrap_gateway_ref_from_aigateway(aigateway=aigateway)
 
     verify_preprovisioned_bootstrap_gateway_preserved(
         admin_client=admin_client,
-        aigateway_name=aigateway_name,
+        gateway_name=gateway_name,
+        gateway_namespace=gateway_namespace,
     )
 
     _wait_until_resource_absent(
