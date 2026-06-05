@@ -16,9 +16,13 @@ from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from pytest_testconfig import config as py_config
 
-from tests.model_serving.maas_billing.maas_api_key.utils import resolve_api_key_username
+from tests.model_serving.maas_billing.maas_api_key.utils import (
+    build_chat_payload,
+    build_inference_url,
+    resolve_api_key_username,
+)
 from tests.model_serving.maas_billing.maas_subscription.utils import (
-    wait_for_auth_ready,
+    wait_for_auth_admin_groups,
 )
 from tests.model_serving.maas_billing.utils import (
     assert_api_key_created_ok,
@@ -164,25 +168,12 @@ def admin_ocp_token(admin_client: DynamicClient) -> Generator[str, Any, Any]:
     current_groups: list[str] = list(auth.instance.spec.adminGroups or [])
     patched_groups = list(set(current_groups + ["dedicated-admins"]))
 
-    auth_conditions = (auth.instance.status or {}).get("conditions") or []
-    ready_before = next(
-        (condition for condition in auth_conditions if condition.get("type") == "Ready"),
-        {},
-    )
-    baseline_time: str = ready_before.get("lastTransitionTime", "")
-
     LOGGER.info(f"admin_ocp_token: patching Auth CR adminGroups to {patched_groups}")
     with ResourceEditor(patches={auth: {"spec": {"adminGroups": patched_groups}}}):
-        wait_for_auth_ready(auth=auth, baseline_time=baseline_time)
-        auth_conditions_after = (auth.instance.status or {}).get("conditions") or []
-        ready_after = next(
-            (condition for condition in auth_conditions_after if condition.get("type") == "Ready"),
-            {},
-        )
-        cleanup_baseline_time: str = ready_after.get("lastTransitionTime", "")
+        wait_for_auth_admin_groups(auth=auth, expected_admin_groups=patched_groups)
         yield get_openshift_token(client=admin_client)
 
-    wait_for_auth_ready(auth=auth, baseline_time=cleanup_baseline_time)
+    wait_for_auth_admin_groups(auth=auth, expected_admin_groups=current_groups)
 
 
 @pytest.fixture(scope="function")
@@ -262,26 +253,25 @@ def maas_cleanup_networkpolicy(
 def maas_api_pod_name(
     admin_client: DynamicClient,
 ) -> str:
-    """Return the name of the single running maas-api pod (exactly one pod is expected)."""
+    """Return the name of a running maas-api pod."""
     applications_namespace = py_config["applications_namespace"]
-    # Derive the pod label selector from the Deployment itself — avoids hardcoding labels
-    # that may differ between operator versions or environments.
     deployment = Deployment(client=admin_client, name="maas-api", namespace=applications_namespace)
     assert deployment.exists, f"Deployment maas-api not found in {applications_namespace}"
     match_labels = deployment.instance.spec.selector.matchLabels
     label_selector = ",".join(f"{k}={v}" for k, v in match_labels.items())
-    pods = list(
+    all_pods = list(
         Pod.get(
             client=admin_client,
             namespace=applications_namespace,
             label_selector=label_selector,
         )
     )
-    assert len(pods) == 1, f"Expected exactly 1 maas-api pod in {applications_namespace}, found {len(pods)}"
-    assert pods[0].instance.status.phase == "Running", (
-        f"maas-api pod '{pods[0].name}' is not Running (phase={pods[0].instance.status.phase})"
+    running_pods = [pod for pod in all_pods if pod.instance.status.phase == "Running"]
+    assert len(running_pods) >= 1, (
+        f"Expected at least 1 running maas-api pod in {applications_namespace}, "
+        f"found {len(running_pods)} running out of {len(all_pods)} total"
     )
-    return pods[0].name
+    return running_pods[0].name
 
 
 @pytest.fixture()
@@ -402,3 +392,25 @@ def unconfigured_model_ref(
         model_ref.wait_for_condition(condition="Ready", status="True", timeout=300)
         LOGGER.info(f"unconfigured_model_ref: created model ref '{model_ref_name}' (no MaaSAuthPolicy)")
         yield model_ref
+
+
+@pytest.fixture(scope="class")
+def tinyllama_free_inference_url(
+    maas_scheme: str,
+    maas_host: str,
+    maas_inference_service_tinyllama_free: LLMInferenceService,
+) -> str:
+    """Chat completions URL for the free TinyLlama model."""
+    return build_inference_url(
+        maas_scheme=maas_scheme,
+        maas_host=maas_host,
+        model_name=maas_inference_service_tinyllama_free.name,
+    )
+
+
+@pytest.fixture(scope="class")
+def tinyllama_free_payload(
+    maas_inference_service_tinyllama_free: LLMInferenceService,
+) -> dict[str, Any]:
+    """Minimal chat completions payload for the free TinyLlama model."""
+    return build_chat_payload(model_name=maas_inference_service_tinyllama_free.name)

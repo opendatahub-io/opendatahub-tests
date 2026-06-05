@@ -127,7 +127,7 @@ def create_curl_pod(
     containers = [
         {
             "name": pod_name,
-            "image": "registry.access.redhat.com/rhel7/rhel-tools",
+            "image": "image-registry.openshift-image-registry.svc:5000/openshift/tools:latest",
             "imagePullPolicy": "Always",
             "args": ["sleep", "infinity"],
             "securityContext": {

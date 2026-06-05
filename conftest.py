@@ -27,9 +27,9 @@ from pytest import (
 )
 from pytest_testconfig import config as py_config
 
-from utilities.constants import MODEL_REGISTRY_CUSTOM_NAMESPACE, KServeDeploymentType
+from utilities.constants import KServeDeploymentType
 from utilities.database import Database
-from utilities.infra import get_data_science_cluster, get_dsci_applications_namespace, get_operator_distribution
+from utilities.infra import get_dsci_applications_namespace, get_operator_distribution
 from utilities.logger import separator, setup_logging
 from utilities.must_gather_collector import (
     collect_rhoai_must_gather,
@@ -46,8 +46,8 @@ BASIC_LOGGER = logging.getLogger(name="basic")
 EXCLUDE_MARKERS_FROM_DEFAULT_TIER2: set[str] = {"smoke", "tier1", "tier2", "tier3", "pre_upgrade", "post_upgrade"}
 # To include a component for default marking please add the component path to this list
 DEFAULT_TIER2_MARKER_TEST_PATHS: tuple[str, ...] = (
-    "tests/model_registry",
-    "tests/model_explainability",
+    "tests/ai_hub",
+    "tests/ai_safety",
     "tests/model_serving/maas_billing",
 )
 
@@ -398,20 +398,9 @@ def updated_global_config(admin_client: DynamicClient, config: Config) -> None:
     elif distribution.startswith("OpenShift AI"):
         py_config["distribution"] = "downstream"
     else:
-        import pytest
-
         pytest.exit(f"Unknown distribution: {distribution}")
 
     py_config["applications_namespace"] = get_dsci_applications_namespace(client=admin_client)
-
-    if config.getoption("--custom-namespace"):
-        LOGGER.info(f"Running model registry tests against custom namespace: {MODEL_REGISTRY_CUSTOM_NAMESPACE}")
-        py_config["model_registry_namespace"] = MODEL_REGISTRY_CUSTOM_NAMESPACE
-    else:
-        LOGGER.info("Running model registry tests against default namespace")
-        py_config["model_registry_namespace"] = get_data_science_cluster(
-            client=admin_client
-        ).instance.spec.components.modelregistry.registriesNamespace
 
 
 def pytest_fixture_setup(fixturedef: FixtureDef[Any], request: FixtureRequest) -> None:

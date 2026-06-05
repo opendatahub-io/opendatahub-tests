@@ -118,58 +118,6 @@ def serving_runtime_from_template(
 
 
 @pytest.fixture(scope="class")
-def s3_models_inference_service(
-    request: FixtureRequest,
-    unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
-    serving_runtime_from_template: ServingRuntime,
-    models_endpoint_s3_secret: Secret,
-) -> Generator[InferenceService, Any, Any]:
-    isvc_kwargs = {
-        "client": unprivileged_client,
-        "name": request.param["name"],
-        "namespace": unprivileged_model_namespace.name,
-        "runtime": serving_runtime_from_template.name,
-        "model_format": serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,
-        "deployment_mode": request.param["deployment-mode"],
-        "storage_key": models_endpoint_s3_secret.name,
-        "storage_path": request.param["model-dir"],
-    }
-
-    if (external_route := request.param.get("external-route")) is not None:
-        isvc_kwargs["external_route"] = external_route
-
-    if (enable_auth := request.param.get("enable-auth")) is not None:
-        isvc_kwargs["enable_auth"] = enable_auth
-
-    if (scale_metric := request.param.get("scale-metric")) is not None:
-        isvc_kwargs["scale_metric"] = scale_metric
-
-    if (scale_target := request.param.get("scale-target")) is not None:
-        isvc_kwargs["scale_target"] = scale_target
-
-    with create_isvc(**isvc_kwargs) as isvc:
-        yield isvc
-
-
-@pytest.fixture(scope="function")
-def s3_models_inference_service_patched_annotations(
-    request: FixtureRequest, s3_models_inference_service: InferenceService
-) -> InferenceService:
-    if hasattr(request, "param"):
-        with ResourceEditor(
-            patches={
-                s3_models_inference_service: {
-                    "metadata": {
-                        "annotations": request.param["annotations"],
-                    }
-                }
-            }
-        ):
-            yield s3_models_inference_service
-
-
-@pytest.fixture(scope="class")
 def model_pvc(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,

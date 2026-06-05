@@ -13,7 +13,7 @@ ENV PATH="$PATH:$BIN_DIR"
 
 # Install system dependencies using dnf
 RUN dnf update -y \
-    && dnf install -y python3 python3-pip ssh gnupg curl gpg wget vim httpd-tools rsync openssl openssl-devel skopeo\
+    && dnf install -y python3 python3-pip python3-devel ssh gnupg curl gpg wget vim rsync openssl openssl-devel skopeo gcc-c++\
     && dnf clean all \
     && rm -rf /var/cache/dnf
 
@@ -22,8 +22,15 @@ RUN curl -sSL "https://github.com/fullstorydev/grpcurl/releases/download/v1.9.2/
     && tar xvf /tmp/grpcurl_1.2.tar.gz --no-same-owner \
     && mv grpcurl /usr/bin/grpcurl
 
+# Install must-gather-clean
+RUN wget https://github.com/openshift/must-gather-clean/releases/download/v0.0.4/must-gather-clean-linux-amd64.tar.gz -q \
+    && tar xzf must-gather-clean-linux-amd64.tar.gz \
+    && mv must-gather-clean /usr/bin/must-gather-clean \
+    && chmod +x /usr/bin/must-gather-clean \
+    && rm -f must-gather-clean-linux-amd64.tar.gz
+
 # Install cosign
-COPY --from=quay.io/securesign/cli-cosign@sha256:8ce71066399e9cdff69cb903be9935fe08050367439f34b6ae9dfb87fe512f2b /usr/local/bin/cosign /usr/bin/cosign
+COPY --from=quay.io/securesign/cli-cosign@sha256:ec84e6b8097fef6b1f774eb09f41669679ceed458bf855593f34d69480899152 /usr/local/bin/cosign /usr/bin/cosign
 
 RUN useradd -ms /bin/bash $USER
 USER $USER

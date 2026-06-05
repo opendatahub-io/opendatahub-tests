@@ -25,11 +25,38 @@ ignore_missing_imports = true
 name = "ibm-ppc64le"
 url = "https://wheels.developerfirst.ibm.com/ppc64le/linux/+simple/"
 explicit = true
+[tool.uv]
+override-dependencies = [
+    "marshmallow>=4.0",
+]
 
 [tool.uv.sources]
 grpcio = [
   { index = "ibm-ppc64le", marker = "platform_machine == 'ppc64le'" }
 ]
+
+[tool.pyrefly]
+preset = "legacy"  # Start mypy-compatible, tighten later
+python-version = "3.14"
+ignore-missing-imports = ["*"]  # Match mypy ignore_missing_imports
+permissive-ignores = true  # Respect mypy ignore comments during transition
+
+# Exclude patterns matching pre-commit config
+project-excludes = [
+    "**/docs/**",
+    "**/*test*.py",  # Tests have 700+ errors (fixtures, mocks, dynamic types)
+    "**/utilities/manifests/**",
+    "**/utilities/plugins/tgis_grpc*",  # Includes tgis_grpc/ dir and tgis_grpc_plugin.py
+    "**/__pycache__/**",
+    "**/.mypy_cache/**",
+    "**/.ruff_cache/**",
+    "**/.venv/**",
+    "**/.tox/**",
+]
+
+[tool.pyrefly.errors]
+# Start permissive to match mypy behavior
+missing-import = false  # Covered by ignore-missing-imports
 
 [dependency-groups]
 dev = [
@@ -53,6 +80,7 @@ classifiers = [
 ]
 
 dependencies = [
+    "bcrypt>=4.0.0",
     "ipython>=8.18.1",
     "model-registry[signing]>=0.2.13",
     "openshift-python-utilities>=5.0.71",
@@ -70,7 +98,6 @@ dependencies = [
     "grpcio-reflection==1.80.0",
     "portforward>=0.7.1",
     "pytest-testconfig>=0.2.0",
-
     "pygithub>=2.5.0",
     "timeout-sampler>=1.0.6",
     "shortuuid>=1.0.13",
@@ -82,11 +109,15 @@ dependencies = [
     "marshmallow>=4.0",
     "pytest-html>=4.1.1",
     "fire",
-    "llama_stack_client>=0.7.2,<0.8",
+    "ogx_client>=1.0.2,<2",
     "pytest-xdist==3.8.0",
     "dictdiffer>=0.9.0",
     "pytest>=9.0.0",
     "huggingface-hub>=1.2.3",
+    "openai>=2.36",
+    "ragas>=0.4",
+    "langchain-community<0.4.2",
+    "pyrefly>=1.0",
 ]
 
 

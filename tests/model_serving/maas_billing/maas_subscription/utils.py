@@ -166,19 +166,24 @@ def create_maas_subscription(
     )
 
 
-def wait_for_auth_ready(auth: Auth, baseline_time: str, timeout: int = 60) -> None:
-    """Wait for Auth CR to reconcile after a patch."""
+def wait_for_auth_admin_groups(
+    auth: Auth,
+    expected_admin_groups: list[str],
+    timeout: int = 60,
+) -> None:
+    """Wait until Auth CR spec.adminGroups matches expected and Ready=True."""
+    expected_groups = set(expected_admin_groups)
     for instance in TimeoutSampler(wait_timeout=timeout, sleep=2, func=lambda: auth.instance):
-        auth_conditions = (instance.status or {}).get("conditions") or []
+        current_groups = set(instance.spec.adminGroups or [])
         ready_condition = next(
-            (condition for condition in auth_conditions if condition.get("type") == "Ready"),
+            (
+                condition
+                for condition in (instance.status or {}).get("conditions") or []
+                if condition.get("type") == "Ready"
+            ),
             None,
         )
-        if (
-            ready_condition
-            and ready_condition.get("lastTransitionTime") != baseline_time
-            and ready_condition.get("status") == "True"
-        ):
+        if current_groups == expected_groups and ready_condition and ready_condition.get("status") == "True":
             return
 
 

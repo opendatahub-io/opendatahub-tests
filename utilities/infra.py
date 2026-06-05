@@ -600,7 +600,8 @@ def get_openshift_token(client: DynamicClient | None = None) -> str:
     """
     client = client or get_client()
     LOGGER.info("Getting OpenShift token")
-    bearer_str = client.configuration.api_key["authorization"]
+    api_key = client.configuration.api_key
+    bearer_str = api_key.get("authorization") or api_key.get("BearerToken")
     assert bearer_str, "No OpenShift token found from client instance"
     match = re.search(r"Bearer (.+)", bearer_str)
     assert match, "No OpenShift token found"
@@ -1100,7 +1101,7 @@ def verify_cluster_sanity(
             wait_for_dsci_status_ready(dsci_resource=dsci_resource)
             wait_for_dsc_status_ready(dsc_resource=dsc_resource)
 
-    except (ResourceNotReadyError, NodeUnschedulableError, NodeNotReadyError) as ex:
+    except (ResourceNotReadyError, NodeUnschedulableError, NodeNotReadyError, TimeoutExpiredError) as ex:
         error_msg = f"Cluster sanity check failed: {ex!s}"
         # return_code set to 99 to not collide with https://docs.pytest.org/en/stable/reference/exit-codes.html
         return_code = 99

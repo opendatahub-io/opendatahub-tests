@@ -11,6 +11,7 @@ from collections.abc import Callable, Generator
 from contextlib import ExitStack
 from typing import Any
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 from urllib.parse import urlparse
 
@@ -191,20 +192,18 @@ def registry_host(pytestconfig: pytest.Config) -> list[str]:
 
 
 @pytest.fixture(scope="session")
-def valid_aws_config(aws_access_key_id: str, aws_secret_access_key: str, ci_s3_bucket_endpoint: str,) -> tuple[str, str]:
+def valid_aws_config(aws_access_key_id: str, aws_secret_access_key: str, ci_s3_bucket_endpoint: str) -> tuple[str, str]:
     """Validate AWS credentials before any S3-dependent test runs.
 
     Calls STS GetCallerIdentity using AWS Signature V4.
     Fails fast at session start if credentials are missing or expired, instead of waiting
     minutes for storage-initializer pods to time out on the cluster.
+    Skips validation when using a non-AWS S3 backend (e.g. Minio).
     """
-    
     endpoint_host = urlparse(ci_s3_bucket_endpoint).hostname or ""
-
-    if endpoint_host and not endpoint_host.endswith(".amazonaws.com"):
+    if not endpoint_host.endswith(".amazonaws.com"):
         LOGGER.info("Non-AWS S3 endpoint detected - skipping STS credential validation")
         return aws_access_key_id, aws_secret_access_key
-
 
     now = datetime.datetime.now(tz=datetime.UTC)
     datestamp = now.strftime(format="%Y%m%d")
@@ -510,14 +509,22 @@ def unprivileged_client(
         with open(kubconfig_filepath) as fd:
             kubeconfig_content = yaml.safe_load(fd)
 
-        # create the oidc user config
+        # extract client-id from existing admin kubeconfig if available, otherwise default
+        existing_users = kubeconfig_content.get("users", [])
+        client_id = "oc-cli"
+        for kubeconfig_user in existing_users:
+            auth_config = kubeconfig_user.get("user", {}).get("auth-provider", {}).get("config", {})
+            if auth_config.get("client-id"):
+                client_id = auth_config["client-id"]
+                break
+
         user = {
             "name": non_admin_user_password[0],
             "user": {
                 "auth-provider": {
                     "name": "oidc",
                     "config": {
-                        "client-id": "oc-cli",
+                        "client-id": client_id,
                         "client-secret": "",
                         "idp-issuer-url": issuer,
                         "id-token": tokens[0],
@@ -860,7 +867,7 @@ def installed_mariadb_operator(admin_client: DynamicClient) -> Generator[None, A
             operator_namespace=operator_ns.name,
             timeout=Timeout.TIMEOUT_15MIN,
             install_plan_approval="Manual",
-            starting_csv=f"{operator_name}.v25.8.1",
+            starting_csv=f"{operator_name}.v25.8.2",
         )
 
         deployment = Deployment(

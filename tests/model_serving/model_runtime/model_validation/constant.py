@@ -41,16 +41,97 @@ BASE_RAW_DEPLOYMENT_CONFIG: dict[str, Any] = {
 }
 
 
-COMPLETION_QUERY: list[dict[str, str]] = [
+COMPLETION_QUERY: list[dict[str, Any]] = [
     {
         "text": "What are the key benefits of renewable energy sources compared to fossil fuels?",
+        "keywords": [
+            "renewable",
+            "energy",
+            "solar",
+            "wind",
+            "fossil",
+            "carbon",
+            "emission",
+            "sustainable",
+            "clean",
+            "pollution",
+        ],
     },
-    {"text": "Translate the following English sentence into Spanish, German, and Mandarin: 'Knowledge is power.'"},
-    {"text": "Write a poem about the beauty of the night sky and the mysteries it holds."},
-    {"text": "Explain the significance of the Great Wall of China in history and its impact on modern tourism."},
-    {"text": "Discuss the ethical implications of using artificial intelligence in healthcare decision-making."},
     {
-        "text": "Summarize the main events of the Apollo 11 moon landing and its importance in space exploration history."  # noqa: E501
+        "text": "Translate the following English sentence into Spanish, German, and Mandarin: 'Knowledge is power.'",
+        "keywords": [
+            "spanish",
+            "german",
+            "mandarin",
+            "translation",
+            "conocimiento",
+            "poder",
+            "wissen",
+            "macht",
+            "knowledge",
+            "power",
+        ],
+    },
+    {
+        "text": "Write a poem about the beauty of the night sky and the mysteries it holds.",
+        "keywords": [
+            "night",
+            "sky",
+            "stars",
+            "moon",
+            "dark",
+            "mystery",
+            "universe",
+            "cosmic",
+            "celestial",
+            "heaven",
+            "galaxy",
+        ],
+    },
+    {
+        "text": "Explain the significance of the Great Wall of China in history and its impact on modern tourism.",
+        "keywords": [
+            "great wall",
+            "china",
+            "chinese",
+            "history",
+            "tourism",
+            "dynasty",
+            "wall",
+            "monument",
+            "ancient",
+            "visitor",
+        ],
+    },
+    {
+        "text": "Discuss the ethical implications of using artificial intelligence in healthcare decision-making.",
+        "keywords": [
+            "ethical",
+            "ethics",
+            "ai",
+            "artificial intelligence",
+            "healthcare",
+            "medical",
+            "decision",
+            "patient",
+            "privacy",
+            "bias",
+        ],
+    },
+    {
+        "text": "Summarize the main events of the Apollo 11 moon landing and its importance in space exploration history.",  # noqa: E501
+        "keywords": [
+            "apollo",
+            "moon",
+            "landing",
+            "nasa",
+            "armstrong",
+            "space",
+            "astronaut",
+            "lunar",
+            "exploration",
+            "1969",
+        ],
     },
 ]
 

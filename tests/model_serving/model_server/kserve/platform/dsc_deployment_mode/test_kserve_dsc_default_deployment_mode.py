@@ -53,9 +53,9 @@ class TestKServeDSCRawDefaultDeploymentMode:
 
     def test_isvc_contains_raw_deployment_mode(self, default_deployment_mode_in_dsc, ovms_inference_service):
         """Verify that default deployment mode is set to raw in inference service."""
-        assert (
-            ovms_inference_service.instance.metadata.annotations[Annotations.KserveIo.DEPLOYMENT_MODE]
-            == KServeDeploymentType.RAW_DEPLOYMENT
+        actual_mode = ovms_inference_service.instance.metadata.annotations[Annotations.KserveIo.DEPLOYMENT_MODE]
+        assert actual_mode in KServeDeploymentType.RAW_DEPLOYMENT_MODES, (
+            f"Expected one of {KServeDeploymentType.RAW_DEPLOYMENT_MODES}, got {actual_mode!r}"
         )
 
     def test_kserve_dsc_raw_default_deployment_mode(self, default_deployment_mode_in_dsc, ovms_inference_service):

@@ -1,6 +1,6 @@
 """Model+storage configurations — bind a model to a storage backend."""
 
-from utilities.llmd_constants import ModelNames, ModelStorage
+from utilities.constants import ModelName, ModelStorage
 
 from .config_base import CpuConfig, GpuConfig
 
@@ -10,7 +10,7 @@ class TinyLlamaOciConfig(CpuConfig):
 
     enable_auth = False
     name = "llmisvc-tinyllama-oci-cpu"
-    storage_uri = ModelStorage.TINYLLAMA_OCI
+    storage_uri = ModelStorage.OCI.TINYLLAMA
 
 
 class TinyLlamaS3Config(CpuConfig):
@@ -18,7 +18,7 @@ class TinyLlamaS3Config(CpuConfig):
 
     enable_auth = False
     name = "llmisvc-tinyllama-s3-cpu"
-    storage_uri = ModelStorage.TINYLLAMA_S3
+    storage_uri = ModelStorage.S3.TINYLLAMA
 
 
 class TinyLlamaHfConfig(CpuConfig):
@@ -26,22 +26,32 @@ class TinyLlamaHfConfig(CpuConfig):
 
     enable_auth = False
     name = "llmisvc-tinyllama-hf-cpu"
-    storage_uri = ModelStorage.HF_TINYLLAMA
+    storage_uri = ModelStorage.HuggingFace.TINYLLAMA
+    wait_timeout = 420
 
 
-class QwenS3Config(GpuConfig):
-    """Qwen 7B via S3 bucket, GPU inference."""
-
-    enable_auth = False
-    name = "llmisvc-qwen-s3-gpu"
-    storage_uri = ModelStorage.S3_QWEN
-    model_name = ModelNames.QWEN
-
-
-class QwenHfConfig(GpuConfig):
-    """Qwen 7B via HuggingFace, GPU inference."""
+class TinyLlamaOciGpuConfig(GpuConfig):
+    """TinyLlama via OCI container registry, GPU inference."""
 
     enable_auth = False
-    name = "llmisvc-qwen-hf-gpu"
-    storage_uri = ModelStorage.HF_QWEN_7B_INSTRUCT
-    model_name = ModelNames.QWEN
+    name = "llmisvc-tinyllama-oci-gpu"
+    storage_uri = ModelStorage.OCI.TINYLLAMA
+    model_name = ModelName.TINYLLAMA
+
+
+class TinyLlamaS3GpuConfig(GpuConfig):
+    """TinyLlama via S3 bucket, GPU inference."""
+
+    enable_auth = False
+    name = "llmisvc-tinyllama-s3-gpu"
+    storage_uri = ModelStorage.S3.TINYLLAMA
+    model_name = ModelName.TINYLLAMA
+
+
+class TinyLlamaHfGpuConfig(GpuConfig):
+    """TinyLlama via HuggingFace, GPU inference."""
+
+    enable_auth = False
+    name = "llmisvc-tinyllama-hf-gpu"
+    storage_uri = ModelStorage.HuggingFace.TINYLLAMA
+    model_name = ModelName.TINYLLAMA

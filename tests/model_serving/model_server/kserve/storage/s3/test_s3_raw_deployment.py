@@ -10,7 +10,7 @@ from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import KServeDeploymentType, MinIo, Protocols
 from utilities.manifests.openvino import OPENVINO_INFERENCE_CONFIG
 
-pytestmark = [pytest.mark.rawdeployment, pytest.mark.minio]
+pytestmark = [pytest.mark.tier1, pytest.mark.rawdeployment, pytest.mark.minio]
 
 
 @pytest.mark.parametrize(
