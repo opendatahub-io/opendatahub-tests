@@ -1,5 +1,6 @@
 import hashlib
-from collections.abc import Callable
+from collections.abc import Callable, Generator
+from contextlib import contextmanager
 from typing import Any, TypedDict
 
 import pytest
@@ -14,24 +15,23 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 from tests.model_serving.maas_billing.maas_subscription.utils import MAAS_SUBSCRIPTION_NAMESPACE
 from tests.model_serving.maas_billing.utils import verify_maas_gateway_programmed, verify_maas_tenant_ready
 from utilities.constants import MAAS_GATEWAY_NAMESPACE, ApiGroups
-from utilities.resources.aigateway import AIGateway
+from utilities.resources.aitenant import AITenant
 from utilities.resources.tenant import Tenant
 
 LOGGER = structlog.get_logger(name=__name__)
 
-AIGATEWAY_CRD_NAME = f"aigateways.{ApiGroups.MAAS_IO}"
-AIGATEWAY_INFRA_NAMESPACE = "ai-gateway-system"
+AIGATEWAY_CRD_NAME = f"aitenants.{ApiGroups.MAAS_IO}"
+AIGATEWAY_INFRA_NAMESPACE = "redhat-ai-gateway-infra"
 AIGATEWAY_BOOTSTRAPPED_TENANT_NAME = "default-tenant"
 AIGATEWAY_TENANT_NAMESPACE_SUFFIX = "-maas"
-AIGATEWAY_NAME_ANNOTATION = "maas.opendatahub.io/aigateway-name"
-AIGATEWAY_NAMESPACE_ANNOTATION = "maas.opendatahub.io/aigateway-namespace"
-AIGATEWAY_CREATED_ANNOTATION = "maas.opendatahub.io/created-by-aigateway"
+AIGATEWAY_NAME_ANNOTATION = "maas.opendatahub.io/aitenant-name"
+AIGATEWAY_NAMESPACE_ANNOTATION = "maas.opendatahub.io/aitenant-namespace"
+AIGATEWAY_CREATED_ANNOTATION = "maas.opendatahub.io/created-by-aitenant"
 MUTATED_TENANT_NAMESPACE_NAME = "mutated-tenant-ns-maas"
 AIGATEWAY_INVALID_PLACEMENT_REASON = "InvalidPlacement"
 AIGATEWAY_TENANT_NAMESPACE_MISSING_REASON = "TenantNamespaceMissing"
 AIGATEWAY_TENANT_NAMESPACE_FAILED_REASON = "TenantNamespaceFailed"
-AIGATEWAY_GATEWAY_RECONCILE_FAILED_REASON = "GatewayReconcileFailed"
-AIGATEWAY_CHILD_NAME_PREFIX = "aigateway-"
+AIGATEWAY_CHILD_NAME_PREFIX = "aitenant-"
 AIGATEWAY_TENANT_ADMIN_ROLE_SUFFIX = "tenant-admin"
 AIGATEWAY_OBJECT_ADMIN_ROLE_SUFFIX = "object-admin"
 TEST_RBAC_GROUP_NAME = "maas-aigw-e2e-admins"
@@ -41,16 +41,20 @@ AIGATEWAY_TEST_OIDC_SPEC = {
     "ttl": 600,
 }
 AIGATEWAY_TEST_RBAC_ADMINS = [{"kind": "Group", "name": TEST_RBAC_GROUP_NAME}]
+AIGATEWAY_GATEWAY_CLASS_NAME = "openshift-default"
+AIGATEWAY_BOOTSTRAP_GATEWAY_LISTENERS = [{"name": "http", "port": 80, "protocol": "HTTP"}]
+AIGATEWAY_MANAGED_BY_LABEL = "maas.opendatahub.io/managed-by-aitenant"
+AIGATEWAY_TENANT_LABEL = "ai-gateway.opendatahub.io/tenant"
 
 
 class AIGatewayTestContext(TypedDict):
-    aigateway: AIGateway
+    aigateway: AITenant
     aigateway_name: str
     tenant_namespace_name: str
 
 
 class AIGatewayPreexistingNamespaceContext(TypedDict):
-    aigateway: AIGateway
+    aigateway: AITenant
     tenant_namespace: Namespace
     tenant_namespace_name: str
 
@@ -94,33 +98,29 @@ def build_aigateway_spec(
     create_tenant_namespace: bool = True,
     gateway_name: str | None = None,
     gateway_namespace: str | None = None,
-    domain: str | None = None,
-    tls: dict[str, Any] | None = None,
+    include_gateway: bool = False,
     oidc: dict[str, Any] | None = None,
     rbac_admins: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
-    """Build an AIGateway spec for bootstrap and negative-path testing."""
+    """Build an AITenant spec for bootstrap and negative-path testing."""
     resolved_tenant_namespace = tenant_namespace_name or tenant_namespace_name_for_aigateway(
         aigateway_name=aigateway_name
     )
-    gateway_spec: dict[str, Any] = {
-        "namespace": gateway_namespace or MAAS_GATEWAY_NAMESPACE,
-        "gatewayClassName": "openshift-default",
-    }
-    if gateway_name is not None:
-        gateway_spec["name"] = gateway_name
     spec: dict[str, Any] = {
         "tenantNamespace": {
             "name": resolved_tenant_namespace,
             "create": create_tenant_namespace,
             "cleanupOnDelete": cleanup_on_delete,
         },
-        "gateway": gateway_spec,
     }
-    if domain is not None:
-        spec["domain"] = domain
-    if tls is not None:
-        spec["tls"] = tls
+    if include_gateway:
+        gateway_spec: dict[str, Any] = {
+            "namespace": gateway_namespace or MAAS_GATEWAY_NAMESPACE,
+            "gatewayClassName": "openshift-default",
+        }
+        if gateway_name is not None:
+            gateway_spec["name"] = gateway_name
+        spec["gateway"] = gateway_spec
     if oidc is not None:
         spec["oidc"] = oidc
     if rbac_admins is not None:
@@ -134,32 +134,76 @@ def aigateway_from_spec(
     cr_namespace: str,
     aigateway_spec: dict[str, Any],
     teardown: bool = False,
-) -> AIGateway:
-    """Return an AIGateway configured from spec; use with ``with aigateway_from_spec(...) as aigateway:``."""
-    return AIGateway(
+) -> AITenant:
+    """Return an AITenant configured from spec; use with ``with aigateway_from_spec(...) as aigateway:``."""
+    aitenant_kwargs: dict[str, Any] = {
+        "client": admin_client,
+        "name": aigateway_name,
+        "namespace": cr_namespace,
+        "tenant_namespace": aigateway_spec["tenantNamespace"],
+        "teardown": teardown,
+        "wait_for_resource": True,
+    }
+    if "gateway" in aigateway_spec:
+        aitenant_kwargs["gateway"] = aigateway_spec["gateway"]
+    if "oidc" in aigateway_spec:
+        aitenant_kwargs["oidc"] = aigateway_spec["oidc"]
+    if "rbac" in aigateway_spec:
+        aitenant_kwargs["rbac"] = aigateway_spec["rbac"]
+    return AITenant(**aitenant_kwargs)
+
+
+def aigateway_bootstrap_gateway(
+    admin_client: DynamicClient,
+    gateway_name: str,
+    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+    teardown: bool = True,
+) -> Gateway:
+    """Return a bootstrap Gateway that must exist before AITenant reconciliation."""
+    return Gateway(
         client=admin_client,
-        name=aigateway_name,
-        namespace=cr_namespace,
-        tenant_namespace=aigateway_spec["tenantNamespace"],
-        gateway=aigateway_spec["gateway"],
-        domain=aigateway_spec.get("domain"),
-        tls=aigateway_spec.get("tls"),
-        oidc=aigateway_spec.get("oidc"),
-        rbac=aigateway_spec.get("rbac"),
+        name=gateway_name,
+        namespace=gateway_namespace,
+        gateway_class_name=AIGATEWAY_GATEWAY_CLASS_NAME,
+        listeners=AIGATEWAY_BOOTSTRAP_GATEWAY_LISTENERS,
         teardown=teardown,
-        wait_for_resource=True,
     )
 
 
-def deploy_and_verify_aigateway_ready(aigateway: AIGateway) -> None:
-    """Create the AIGateway CR if missing and wait until it reports Ready with phase Active."""
+@contextmanager
+def ready_aigateway_with_preprovisioned_gateway(
+    admin_client: DynamicClient,
+    aigateway_name: str,
+    cr_namespace: str,
+    aigateway_spec: dict[str, Any],
+    teardown: bool,
+) -> Generator[AITenant, None, None]:
+    """Pre-provision the bootstrap Gateway, deploy AITenant, and wait until Ready."""
+    with aigateway_bootstrap_gateway(
+        admin_client=admin_client,
+        gateway_name=aigateway_name,
+        teardown=teardown,
+    ):
+        with aigateway_from_spec(
+            admin_client=admin_client,
+            aigateway_name=aigateway_name,
+            cr_namespace=cr_namespace,
+            aigateway_spec=aigateway_spec,
+            teardown=teardown,
+        ) as aigateway:
+            deploy_and_verify_aigateway_ready(aigateway=aigateway)
+            yield aigateway
+
+
+def deploy_and_verify_aigateway_ready(aigateway: AITenant) -> None:
+    """Create the AITenant CR if missing and wait until it reports Ready with phase Active."""
     if not aigateway.exists:
         aigateway.deploy()
     verify_aigateway_ready(aigateway=aigateway)
 
 
-def build_aigateway_test_context(aigateway: AIGateway) -> AIGatewayTestContext:
-    """Build the standard test context dict from a deployed AIGateway."""
+def build_aigateway_test_context(aigateway: AITenant) -> AIGatewayTestContext:
+    """Build the standard test context dict from a deployed AITenant."""
     return AIGatewayTestContext(
         aigateway=aigateway,
         aigateway_name=aigateway.name,
@@ -167,21 +211,41 @@ def build_aigateway_test_context(aigateway: AIGateway) -> AIGatewayTestContext:
     )
 
 
-def verify_aigateway_ready(aigateway: AIGateway) -> None:
-    """Assert the AIGateway exists and reports Ready=True with phase Active."""
-    assert aigateway.exists, f"AIGateway '{aigateway.name}' not found in namespace '{aigateway.namespace}'"
+def verify_aigateway_ready(aigateway: AITenant) -> None:
+    """Assert the AITenant exists and reports Ready=True with phase Active."""
+    assert aigateway.exists, f"AITenant '{aigateway.name}' not found in namespace '{aigateway.namespace}'"
     aigateway.wait_for_condition(condition="Ready", status="True", timeout=300)
     phase = getattr(aigateway.instance.status, "phase", "") or ""
-    assert phase == "Active", f"Expected AIGateway phase Active, got '{phase}'"
+    assert phase == "Active", f"Expected AITenant phase Active, got '{phase}'"
 
 
 def verify_aigateway_bootstrap_children(
     admin_client: DynamicClient,
     test_context: AIGatewayTestContext,
+    infra_namespace: str = AIGATEWAY_INFRA_NAMESPACE,
 ) -> None:
-    """Assert AIGateway reconciliation created the expected child resources."""
+    """Assert AITenant bootstrap created the expected namespace, Gateway, and Tenant resources."""
+    aigateway = test_context["aigateway"]
     aigateway_name = test_context["aigateway_name"]
     tenant_namespace_name = test_context["tenant_namespace_name"]
+
+    fresh_aigateway = _fresh_aigateway(aigateway=aigateway)
+    aigateway_status = fresh_aigateway.instance.status
+    status_gateway_ref = getattr(aigateway_status, "gatewayRef", None)
+    assert status_gateway_ref is not None, (
+        f"AITenant '{aigateway_name}' status.gatewayRef should be set after bootstrap"
+    )
+    assert status_gateway_ref.name == aigateway_name, (
+        f"AITenant status.gatewayRef.name expected {aigateway_name!r}, got {status_gateway_ref.name!r}"
+    )
+    assert status_gateway_ref.namespace == MAAS_GATEWAY_NAMESPACE, (
+        f"AITenant status.gatewayRef.namespace expected {MAAS_GATEWAY_NAMESPACE!r}, "
+        f"got {status_gateway_ref.namespace!r}"
+    )
+    status_tenant_namespace = getattr(aigateway_status, "tenantNamespace", None)
+    assert status_tenant_namespace == tenant_namespace_name, (
+        f"AITenant status.tenantNamespace expected {tenant_namespace_name!r}, got {status_tenant_namespace!r}"
+    )
 
     tenant_namespace = Namespace(
         client=admin_client,
@@ -189,6 +253,24 @@ def verify_aigateway_bootstrap_children(
         ensure_exists=True,
     )
     assert tenant_namespace.exists, f"Tenant namespace '{tenant_namespace_name}' was not created"
+    namespace_labels = dict(tenant_namespace.instance.metadata.labels or {})
+    namespace_annotations = dict(tenant_namespace.instance.metadata.annotations or {})
+    assert namespace_labels.get(AIGATEWAY_MANAGED_BY_LABEL) == "true", (
+        f"Tenant namespace '{tenant_namespace_name}' label {AIGATEWAY_MANAGED_BY_LABEL} expected 'true', "
+        f"got {namespace_labels.get(AIGATEWAY_MANAGED_BY_LABEL)!r}"
+    )
+    assert namespace_labels.get(AIGATEWAY_TENANT_LABEL) == aigateway_name, (
+        f"Tenant namespace '{tenant_namespace_name}' label {AIGATEWAY_TENANT_LABEL} expected {aigateway_name!r}, "
+        f"got {namespace_labels.get(AIGATEWAY_TENANT_LABEL)!r}"
+    )
+    assert namespace_annotations.get(AIGATEWAY_NAME_ANNOTATION) == aigateway_name, (
+        f"Tenant namespace {AIGATEWAY_NAME_ANNOTATION} expected {aigateway_name!r}, "
+        f"got {namespace_annotations.get(AIGATEWAY_NAME_ANNOTATION)!r}"
+    )
+    assert namespace_annotations.get(AIGATEWAY_NAMESPACE_ANNOTATION) == infra_namespace, (
+        f"Tenant namespace {AIGATEWAY_NAMESPACE_ANNOTATION} expected {infra_namespace!r}, "
+        f"got {namespace_annotations.get(AIGATEWAY_NAMESPACE_ANNOTATION)!r}"
+    )
 
     tenant_gateway = Gateway(
         client=admin_client,
@@ -196,17 +278,54 @@ def verify_aigateway_bootstrap_children(
         namespace=MAAS_GATEWAY_NAMESPACE,
         ensure_exists=True,
     )
+    gateway_labels = dict(tenant_gateway.instance.metadata.labels or {})
+    gateway_annotations = dict(tenant_gateway.instance.metadata.annotations or {})
+    for metadata_name, metadata in (
+        ("labels", gateway_labels),
+        ("annotations", gateway_annotations),
+    ):
+        assert AIGATEWAY_NAME_ANNOTATION not in metadata, (
+            f"Pre-provisioned Gateway '{MAAS_GATEWAY_NAMESPACE}/{aigateway_name}' should not have "
+            f"{metadata_name} {AIGATEWAY_NAME_ANNOTATION!r}"
+        )
+        assert AIGATEWAY_NAMESPACE_ANNOTATION not in metadata, (
+            f"Pre-provisioned Gateway '{MAAS_GATEWAY_NAMESPACE}/{aigateway_name}' should not have "
+            f"{metadata_name} {AIGATEWAY_NAMESPACE_ANNOTATION!r}"
+        )
+    gateway_class_name = getattr(tenant_gateway.instance.spec, "gatewayClassName", None)
+    assert gateway_class_name == AIGATEWAY_GATEWAY_CLASS_NAME, (
+        f"Gateway '{MAAS_GATEWAY_NAMESPACE}/{aigateway_name}' gatewayClassName expected "
+        f"{AIGATEWAY_GATEWAY_CLASS_NAME!r}, got {gateway_class_name!r}"
+    )
     verify_maas_gateway_programmed(gateway=tenant_gateway)
 
     bootstrapped_tenant = Tenant(
         client=admin_client,
         name=AIGATEWAY_BOOTSTRAPPED_TENANT_NAME,
         namespace=tenant_namespace_name,
+        ensure_exists=True,
     )
-    verify_maas_tenant_ready(tenant=bootstrapped_tenant)
+    assert bootstrapped_tenant.exists, (
+        f"Tenant/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} was not created in '{tenant_namespace_name}'"
+    )
+    tenant_labels = dict(bootstrapped_tenant.instance.metadata.labels or {})
+    assert tenant_labels.get(AIGATEWAY_MANAGED_BY_LABEL) is not None, (
+        f"Tenant/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} should have label {AIGATEWAY_MANAGED_BY_LABEL}"
+    )
+    tenant_gateway_ref = getattr(bootstrapped_tenant.instance.spec, "gatewayRef", None)
+    assert tenant_gateway_ref is not None, (
+        f"Tenant/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} spec.gatewayRef should be set after bootstrap"
+    )
+    assert tenant_gateway_ref.name == aigateway_name, (
+        f"Tenant gatewayRef.name expected {aigateway_name!r}, got {tenant_gateway_ref.name!r}"
+    )
+    assert tenant_gateway_ref.namespace == MAAS_GATEWAY_NAMESPACE, (
+        f"Tenant gatewayRef.namespace expected {MAAS_GATEWAY_NAMESPACE!r}, "
+        f"got {tenant_gateway_ref.namespace!r}"
+    )
     LOGGER.info(
         f"AIGateway '{aigateway_name}' bootstrap verified: namespace, gateway, and "
-        f"Tenant/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} are ready"
+        f"Tenant/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} exist with expected metadata"
     )
 
 
@@ -232,51 +351,6 @@ def verify_bootstrapped_tenant_oidc(
         assert actual_value == expected_value, (
             f"Tenant externalOIDC.{field_name} expected {expected_value!r}, got {actual_value!r}"
         )
-
-
-def verify_gateway_listener_hostname(
-    admin_client: DynamicClient,
-    gateway_name: str,
-    expected_hostname: str,
-) -> None:
-    """Assert the tenant Gateway exposes a listener with the expected hostname."""
-    tenant_gateway = Gateway(
-        client=admin_client,
-        name=gateway_name,
-        namespace=MAAS_GATEWAY_NAMESPACE,
-        ensure_exists=True,
-    )
-    listeners = tenant_gateway.instance.spec.listeners or []
-    assert listeners, f"Gateway '{gateway_name}' has no listeners"
-    listener_hostname = listeners[0].hostname
-    assert listener_hostname is not None, f"Gateway '{gateway_name}' listener has no hostname"
-    assert str(listener_hostname) == expected_hostname, (
-        f"Gateway listener hostname expected {expected_hostname!r}, got {listener_hostname!r}"
-    )
-
-
-def verify_gateway_https_listener_tls(
-    admin_client: DynamicClient,
-    gateway_name: str,
-    certificate_secret_name: str,
-) -> None:
-    """Assert the tenant Gateway exposes an HTTPS listener with the expected TLS cert ref."""
-    tenant_gateway = Gateway(
-        client=admin_client,
-        name=gateway_name,
-        namespace=MAAS_GATEWAY_NAMESPACE,
-        ensure_exists=True,
-    )
-    listeners = tenant_gateway.instance.spec.listeners or []
-    https_listeners = [listener for listener in listeners if str(getattr(listener, "protocol", "")).endswith("HTTPS")]
-    assert https_listeners, f"Gateway '{gateway_name}' has no HTTPS listener"
-    tls_config = https_listeners[0].tls
-    assert tls_config is not None, f"Gateway '{gateway_name}' HTTPS listener has no TLS config"
-    certificate_refs = tls_config.certificateRefs or []
-    assert certificate_refs, f"Gateway '{gateway_name}' TLS config has no certificateRefs"
-    assert str(certificate_refs[0].name) == certificate_secret_name, (
-        f"Expected TLS certificateRef {certificate_secret_name!r}, got {certificate_refs[0].name!r}"
-    )
 
 
 def _normalize_rbac_subjects(subjects: list[Any]) -> list[dict[str, str]]:
@@ -372,7 +446,6 @@ def verify_aigateway_rbac_roles_without_admin_bindings(
 
 
 def _wait_until_resource_absent(
-    *,
     exists_check: Callable[[], bool],
     resource_label: str,
     timeout: int = 300,
@@ -387,45 +460,116 @@ def _wait_until_resource_absent(
             if absent:
                 return
     except TimeoutExpiredError:
-        pytest.fail(f"{resource_label} still exists after AIGateway deletion (timeout {timeout}s)")
+        pytest.fail(f"{resource_label} still exists after AITenant deletion (timeout {timeout}s)")
+
+
+def verify_aigateway_rbac_children_removed(
+    admin_client: DynamicClient,
+    aigateway_name: str,
+    tenant_namespace_name: str,
+    infra_namespace: str,
+    timeout: int = 300,
+) -> None:
+    """Assert tenant-admin and object-admin Roles and RoleBindings were removed after AITenant deletion."""
+    tenant_admin_name = tenant_admin_role_name(aigateway_name=aigateway_name)
+    object_admin_name = aigateway_object_admin_role_name(aigateway_name=aigateway_name)
+    for namespace, resource_name, resource_kind in (
+        (tenant_namespace_name, tenant_admin_name, "Role"),
+        (tenant_namespace_name, tenant_admin_name, "RoleBinding"),
+        (infra_namespace, object_admin_name, "Role"),
+        (infra_namespace, object_admin_name, "RoleBinding"),
+    ):
+        if resource_kind == "Role":
+            exists_check = lambda bound_namespace=namespace, role_name=resource_name: Role(
+                client=admin_client,
+                name=role_name,
+                namespace=bound_namespace,
+            ).exists
+        else:
+            exists_check = lambda bound_namespace=namespace, bound_name=resource_name: RoleBinding(
+                client=admin_client,
+                name=bound_name,
+                namespace=bound_namespace,
+            ).exists
+        _wait_until_resource_absent(
+            exists_check=exists_check,
+            resource_label=f"{resource_kind} '{namespace}/{resource_name}'",
+            timeout=timeout,
+        )
+
+
+def verify_preprovisioned_bootstrap_gateway_preserved(
+    admin_client: DynamicClient,
+    aigateway_name: str,
+) -> None:
+    """Assert the pre-provisioned bootstrap Gateway still exists after AITenant deletion."""
+    bootstrap_gateway = Gateway(
+        client=admin_client,
+        name=aigateway_name,
+        namespace=MAAS_GATEWAY_NAMESPACE,
+    )
+    assert bootstrap_gateway.exists, (
+        f"Pre-provisioned Gateway '{MAAS_GATEWAY_NAMESPACE}/{aigateway_name}' "
+        "should be preserved after AITenant deletion"
+    )
+
+
+def verify_tenant_namespace_aitenant_metadata_stripped(
+    admin_client: DynamicClient,
+    tenant_namespace_name: str,
+) -> None:
+    """Assert AITenant ownership labels and annotations were removed from the tenant namespace."""
+    tenant_namespace = Namespace(
+        client=admin_client,
+        name=tenant_namespace_name,
+        ensure_exists=True,
+    )
+    labels = tenant_namespace.instance.metadata.labels or {}
+    annotations = tenant_namespace.instance.metadata.annotations or {}
+    assert labels.get(AIGATEWAY_MANAGED_BY_LABEL) is None, (
+        f"Tenant namespace '{tenant_namespace_name}' should not retain {AIGATEWAY_MANAGED_BY_LABEL}"
+    )
+    assert labels.get(AIGATEWAY_TENANT_LABEL) is None, (
+        f"Tenant namespace '{tenant_namespace_name}' should not retain {AIGATEWAY_TENANT_LABEL}"
+    )
+    assert annotations.get(AIGATEWAY_NAME_ANNOTATION) is None, (
+        f"Tenant namespace '{tenant_namespace_name}' should not retain {AIGATEWAY_NAME_ANNOTATION}"
+    )
+    assert annotations.get(AIGATEWAY_NAMESPACE_ANNOTATION) is None, (
+        f"Tenant namespace '{tenant_namespace_name}' should not retain {AIGATEWAY_NAMESPACE_ANNOTATION}"
+    )
 
 
 def verify_aigateway_bootstrap_children_removed(
     admin_client: DynamicClient,
     test_context: AIGatewayTestContext,
+    infra_namespace: str = AIGATEWAY_INFRA_NAMESPACE,
     timeout: int = 300,
 ) -> None:
-    """Assert tenant namespace, Gateway, and bootstrapped Tenant were removed."""
+    """Assert controller-owned Tenant and RBAC children were removed after AITenant deletion."""
     aigateway_name = test_context["aigateway_name"]
     tenant_namespace_name = test_context["tenant_namespace_name"]
 
-    _wait_until_resource_absent(
-        exists_check=lambda: Namespace(client=admin_client, name=tenant_namespace_name).exists,
-        resource_label=f"Tenant namespace '{tenant_namespace_name}'",
-        timeout=timeout,
+    verify_preprovisioned_bootstrap_gateway_preserved(
+        admin_client=admin_client,
+        aigateway_name=aigateway_name,
     )
 
     _wait_until_resource_absent(
-        exists_check=lambda: (
-            Gateway(
-                client=admin_client,
-                name=aigateway_name,
-                namespace=MAAS_GATEWAY_NAMESPACE,
-            ).exists
-        ),
-        resource_label=f"Gateway '{aigateway_name}' in '{MAAS_GATEWAY_NAMESPACE}'",
-        timeout=timeout,
-    )
-
-    _wait_until_resource_absent(
-        exists_check=lambda: (
-            Tenant(
-                client=admin_client,
-                name=AIGATEWAY_BOOTSTRAPPED_TENANT_NAME,
-                namespace=tenant_namespace_name,
-            ).exists
-        ),
+        exists_check=lambda: Tenant(
+            client=admin_client,
+            name=AIGATEWAY_BOOTSTRAPPED_TENANT_NAME,
+            namespace=tenant_namespace_name,
+        ).exists,
         resource_label=(f"Tenant/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} in '{tenant_namespace_name}'"),
+        timeout=timeout,
+    )
+
+    verify_aigateway_rbac_children_removed(
+        admin_client=admin_client,
+        aigateway_name=aigateway_name,
+        tenant_namespace_name=tenant_namespace_name,
+        infra_namespace=infra_namespace,
         timeout=timeout,
     )
 
@@ -434,20 +578,20 @@ def verify_tenant_namespace_preserved(
     admin_client: DynamicClient,
     tenant_namespace_name: str,
 ) -> None:
-    """Assert the tenant namespace still exists after AIGateway deletion."""
+    """Assert the tenant namespace still exists after AITenant deletion."""
     tenant_namespace = Namespace(
         client=admin_client,
         name=tenant_namespace_name,
         ensure_exists=True,
     )
     assert tenant_namespace.exists, (
-        f"Tenant namespace '{tenant_namespace_name}' should be preserved when cleanupOnDelete=false"
+        f"Tenant namespace '{tenant_namespace_name}' should be preserved after AITenant deletion"
     )
 
 
-def _fresh_aigateway(aigateway: AIGateway) -> AIGateway:
-    """Return a new handle to re-read the current AIGateway status from the API."""
-    return AIGateway(
+def _fresh_aigateway(aigateway: AITenant) -> AITenant:
+    """Return a new handle to re-read the current AITenant status from the API."""
+    return AITenant(
         client=aigateway.client,
         name=aigateway.name,
         namespace=aigateway.namespace,
@@ -455,7 +599,7 @@ def _fresh_aigateway(aigateway: AIGateway) -> AIGateway:
     )
 
 
-def get_aigateway_ready_reason(aigateway: AIGateway) -> str:
+def get_aigateway_ready_reason(aigateway: AITenant) -> str:
     """Return the Ready condition reason, or an empty string when absent."""
     fresh_aigateway = _fresh_aigateway(aigateway=aigateway)
     for condition in fresh_aigateway.instance.status.conditions or []:
@@ -465,11 +609,11 @@ def get_aigateway_ready_reason(aigateway: AIGateway) -> str:
 
 
 def aigateway_has_status(
-    aigateway: AIGateway,
+    aigateway: AITenant,
     phase: str,
     ready_reason: str | None = None,
 ) -> bool:
-    """Return True when AIGateway status matches the expected phase and optional Ready reason."""
+    """Return True when AITenant status matches the expected phase and optional Ready reason."""
     fresh_aigateway = _fresh_aigateway(aigateway=aigateway)
     current_phase = getattr(fresh_aigateway.instance.status, "phase", "") or ""
     if current_phase != phase:
@@ -480,12 +624,12 @@ def aigateway_has_status(
 
 
 def wait_until_aigateway_status(
-    aigateway: AIGateway,
+    aigateway: AITenant,
     phase: str,
     ready_reason: str | None = None,
     timeout: int = 120,
 ) -> None:
-    """Wait until AIGateway reaches the expected phase and optional Ready reason."""
+    """Wait until AITenant reaches the expected phase and optional Ready reason."""
     try:
         for matched in TimeoutSampler(
             wait_timeout=timeout,
@@ -502,13 +646,13 @@ def wait_until_aigateway_status(
         current_phase = getattr(_fresh_aigateway(aigateway=aigateway).instance.status, "phase", "") or ""
         current_reason = get_aigateway_ready_reason(aigateway=aigateway)
         pytest.fail(
-            f"AIGateway '{aigateway.name}' did not reach phase={phase} "
+            f"AITenant '{aigateway.name}' did not reach phase={phase} "
             f"ready_reason={ready_reason}: phase={current_phase} ready_reason={current_reason}"
         )
 
 
-def verify_aigateway_invalid_placement(aigateway: AIGateway) -> None:
-    """Assert the controller rejected AIGateway placement with InvalidPlacement."""
+def verify_aigateway_invalid_placement(aigateway: AITenant) -> None:
+    """Assert the controller rejected AITenant placement with InvalidPlacement."""
     wait_until_aigateway_status(
         aigateway=aigateway,
         phase="Failed",

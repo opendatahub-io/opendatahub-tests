@@ -9,42 +9,37 @@ from tests.model_serving.maas_billing.multitenancy.aigateway.utils import (
     AIGatewayPreexistingNamespaceContext,
     AIGatewayTestContext,
     verify_aigateway_bootstrap_children_removed,
+    verify_tenant_namespace_aitenant_metadata_stripped,
     verify_tenant_namespace_preserved,
 )
 
 
 @pytest.mark.usefixtures("maas_subscription_controller_enabled_latest", "aigateway_infra_namespace")
 class TestAIGatewayCleanup:
-    """Tier1/tier2/tier3 tests for AIGateway deletion and immutability."""
+    """Tier1/tier2/tier3 tests for AITenant deletion and immutability."""
 
     @pytest.mark.tier1
-    def test_aigateway_deletion_cleans_up_children(
+    def test_aigateway_deletion_cleans_up_children_and_preserves_namespace(
         self,
         admin_client: DynamicClient,
-        ready_aigateway_with_cleanup_on_delete: AIGatewayTestContext,
+        aigateway_infra_namespace: str,
+        ready_aigateway_for_deletion: AIGatewayTestContext,
     ) -> None:
-        """Verify delete with cleanupOnDelete=true removes owned children."""
-        test_context = ready_aigateway_with_cleanup_on_delete
+        """Verify delete removes controller-owned children and preserves the tenant namespace."""
+        test_context = ready_aigateway_for_deletion
         aigateway = test_context["aigateway"]
         aigateway.delete()
         aigateway.wait_deleted(timeout=300)
         verify_aigateway_bootstrap_children_removed(
             admin_client=admin_client,
             test_context=test_context,
+            infra_namespace=aigateway_infra_namespace,
         )
-
-    @pytest.mark.tier1
-    def test_aigateway_deletion_preserves_namespace_when_cleanup_disabled(
-        self,
-        admin_client: DynamicClient,
-        ready_aigateway_without_cleanup_on_delete: AIGatewayTestContext,
-    ) -> None:
-        """Verify delete with cleanupOnDelete=false keeps the tenant namespace."""
-        test_context = ready_aigateway_without_cleanup_on_delete
-        aigateway = test_context["aigateway"]
-        aigateway.delete()
-        aigateway.wait_deleted(timeout=300)
         verify_tenant_namespace_preserved(
+            admin_client=admin_client,
+            tenant_namespace_name=test_context["tenant_namespace_name"],
+        )
+        verify_tenant_namespace_aitenant_metadata_stripped(
             admin_client=admin_client,
             tenant_namespace_name=test_context["tenant_namespace_name"],
         )
@@ -82,7 +77,7 @@ class TestAIGatewayCleanup:
         aigateway = test_context["aigateway"]
         tenant_namespace = test_context["tenant_namespace"]
         assert AIGATEWAY_CREATED_ANNOTATION not in (tenant_namespace.instance.metadata.annotations or {}), (
-            "Pre-existing namespace must not be marked created-by-aigateway"
+            "Pre-existing namespace must not be marked created-by-aitenant"
         )
         aigateway.delete()
         aigateway.wait_deleted(timeout=300)

@@ -6,56 +6,45 @@ from ocp_resources.exceptions import MissingRequiredArgumentError
 from ocp_resources.resource import NamespacedResource
 
 
-class AIGateway(NamespacedResource):
+class AITenant(NamespacedResource):
     """
-    AIGateway bootstraps one tenant slice: a dedicated Gateway, a tenant namespace,
-    the MaaS tenant config object, and tenant-admin RBAC.
+    AITenant bootstraps one tenant slice: a tenant namespace, an existing
+    network-admin-provisioned Gateway reference, the MaaS tenant config object,
+    and tenant-admin RBAC.
     """
 
     api_group: str = NamespacedResource.ApiGroup.MAAS_OPENDATAHUB_IO
 
     def __init__(
         self,
-        domain: str | None = None,
         gateway: dict[str, Any] | None = None,
         oidc: dict[str, Any] | None = None,
         rbac: dict[str, Any] | None = None,
         tenant_namespace: dict[str, Any] | None = None,
-        tls: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
         r"""
         Args:
-            domain (str): Domain is the tenant hostname used for data-plane routing. When set
-              together with TLS, the controller creates an HTTPS listener on
-              port 443. When set without TLS, the controller creates an HTTP
-              listener on port 80. When omitted, the controller creates a
-              default HTTP listener on port 80 without a hostname.
+            gateway (dict[str, Any]): Gateway references the network-admin-provisioned Gateway API Gateway
+              for this tenant.
 
-            gateway (dict[str, Any]): Gateway is the Gateway API template reconciled for this tenant.
-
-            oidc (dict[str, Any]): OIDC contains non-MaaS-specific OIDC settings for this AI Gateway. The
-              current controller mirrors this into the temporary Tenant config
-              object until the MaaS config CR rename lands.
+            oidc (dict[str, Any]): OIDC contains non-MaaS-specific OIDC settings for this AI Gateway
+              tenant. The controller mirrors this into the temporary Tenant
+              config object until the MaaS config CR rename lands.
 
             rbac (dict[str, Any]): RBAC configures tenant-admin access to the tenant namespace and this
-              AIGateway object.
+              AITenant object.
 
             tenant_namespace (dict[str, Any]): TenantNamespace identifies the namespace where tenant administrators
               manage MaaS objects.
 
-            tls (dict[str, Any]): TLS configures the TLS certificate for the tenant Gateway HTTPS
-              listener. Only effective when Domain is also set.
-
         """
         super().__init__(**kwargs)
 
-        self.domain = domain
         self.gateway = gateway
         self.oidc = oidc
         self.rbac = rbac
         self.tenant_namespace = tenant_namespace
-        self.tls = tls
 
     def to_dict(self) -> None:
         super().to_dict()
@@ -69,9 +58,6 @@ class AIGateway(NamespacedResource):
 
             _spec["tenantNamespace"] = self.tenant_namespace
 
-            if self.domain is not None:
-                _spec["domain"] = self.domain
-
             if self.gateway is not None:
                 _spec["gateway"] = self.gateway
 
@@ -81,5 +67,4 @@ class AIGateway(NamespacedResource):
             if self.rbac is not None:
                 _spec["rbac"] = self.rbac
 
-            if self.tls is not None:
-                _spec["tls"] = self.tls
+    # End of generated code

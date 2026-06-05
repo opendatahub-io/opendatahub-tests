@@ -2,7 +2,7 @@ import pytest
 import structlog
 
 from tests.model_serving.maas_billing.multitenancy.aigateway.utils import verify_aigateway_invalid_placement
-from utilities.resources.aigateway import AIGateway
+from utilities.resources.aitenant import AITenant
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -48,7 +48,7 @@ class TestAIGatewayInvalidNamespacePlacement:
     )
     def test_aigateway_invalid_namespace_placement_rejected(
         self,
-        invalid_placement_aigateway: AIGateway,
+        invalid_placement_aigateway: AITenant,
     ) -> None:
         """Verify invalid namespace placement fails with InvalidPlacement."""
         verify_aigateway_invalid_placement(aigateway=invalid_placement_aigateway)

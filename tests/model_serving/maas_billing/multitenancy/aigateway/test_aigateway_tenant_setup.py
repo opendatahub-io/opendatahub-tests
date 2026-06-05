@@ -21,14 +21,14 @@ class TestAIGatewayTenantSetup:
         self,
         admin_client: DynamicClient,
     ) -> None:
-        """Verify the AIGateway CRD is registered in the cluster."""
+        """Verify the AITenant CRD is registered in the cluster."""
         crd = CustomResourceDefinition(
             client=admin_client,
             name=AIGATEWAY_CRD_NAME,
             ensure_exists=True,
         )
-        assert crd.exists, f"AIGateway CRD '{AIGATEWAY_CRD_NAME}' not found in the cluster"
-        LOGGER.info(f"AIGateway CRD '{AIGATEWAY_CRD_NAME}' exists")
+        assert crd.exists, f"AITenant CRD '{AIGATEWAY_CRD_NAME}' not found in the cluster"
+        LOGGER.info(f"AITenant CRD '{AIGATEWAY_CRD_NAME}' exists")
 
     @pytest.mark.smoke
     def test_aigateway_bootstrap_creates_tenant_environment(
