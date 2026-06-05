@@ -13,6 +13,9 @@ from utilities.infra import get_rhods_operator_installed_csv
 
 BASE_DIRECTORY_NAME = "must-gather-collected"
 BASE_RESULTS_DIR = "/home/odh/opendatahub-tests/"
+MUST_GATHER_CLEAN_CONFIG = os.path.join(
+    os.path.dirname(__file__), "manifests", "must_gather_clean", "must-gather-clean-config.yaml"
+)
 LOGGER = structlog.get_logger(name=__name__)
 
 
@@ -137,6 +140,31 @@ def run_must_gather(
     return run_command(command=shlex.split(must_gather_command), check=False, timeout=timeout)[1]
 
 
+def run_must_gather_clean(must_gather_path: str, target_dir: str) -> str:
+    """Run must-gather-clean to obfuscate sensitive data from collected must-gather output.
+
+    Args:
+        must_gather_path: Path to the raw must-gather output directory.
+        target_dir: Parent directory where the cleaned output will be placed.
+
+    Returns:
+        Path to the cleaned must-gather output directory.
+    """
+    cleaned_dir = os.path.join(target_dir, "must-gather-cleaned")
+    clean_command = f"must-gather-clean -c {MUST_GATHER_CLEAN_CONFIG} -i {must_gather_path} -o {cleaned_dir}"
+    LOGGER.info(f"Running must-gather-clean: {clean_command}")
+    result = run_command(command=shlex.split(clean_command), check=False, timeout=300)
+    LOGGER.info(f"must-gather-clean output: {result[1]}")
+
+    if os.path.isdir(cleaned_dir):
+        shutil.rmtree(path=must_gather_path, ignore_errors=True)
+        LOGGER.info(f"Removed original must-gather output: {must_gather_path}")
+        return cleaned_dir
+
+    LOGGER.warning("must-gather-clean did not produce output, using original must-gather data")
+    return must_gather_path
+
+
 def get_must_gather_image_info() -> str:
     csv_object = get_rhods_operator_installed_csv()
     if not csv_object:
@@ -178,6 +206,7 @@ def collect_rhoai_must_gather(
                 _file.write(output)
         # get must gather directory to archive
         path = get_must_gather_output_dir(must_gather_path=target_dir)
+        path = run_must_gather_clean(must_gather_path=path, target_dir=target_dir)
         if os.getenv("ARCHIVE_MUST_GATHER", "true") == "true":
             # archive the folder and get the zip file's name
             file_name = shutil.make_archive(base_name=base_file_name, format="zip", base_dir=path)

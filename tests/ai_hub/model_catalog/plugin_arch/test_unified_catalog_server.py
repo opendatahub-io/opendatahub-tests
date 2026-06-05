@@ -28,40 +28,55 @@ class TestCatalogPluginArchitecture:
         Then plugin initialization messages confirm successful startup
         """
         log = model_catalog_pod.log(container=CATALOG_CONTAINER)
-        assert "Catalog plugin becoming leader" in log, "Catalog plugin load did not complete successfully"
+        assert "all plugins initialized" in log, "Plugin initialization did not complete successfully"
+        assert "model plugin becoming leader" in log, "Model plugin did not become leader"
+        assert "mcp plugin becoming leader" in log, "MCP plugin did not become leader"
 
-        LOGGER.info("Catalog pod initialized plugins successfully")
+        LOGGER.info("Catalog pod initialized all plugins successfully")
 
-    @pytest.mark.parametrize(
-        "endpoint, expected_status, expect_plugins",
-        [
-            pytest.param("healthz", "ok", False, id="test_healthz"),
-            pytest.param("readyz", "ready", True, id="test_readyz"),
-        ],
-    )
-    def test_health_endpoint(
+    def test_healthz(
         self,
         catalog_base_url: str,
         model_registry_rest_headers: dict[str, str],
-        endpoint: str,
-        expected_status: str,
-        expect_plugins: bool,
     ):
-        """Given the catalog server is running with registered plugins
-        When querying a health endpoint
-        Then the server reports the expected status
+        """Given the catalog server is running
+        When querying the healthz endpoint
+        Then the server reports ok status
         """
         response = requests.get(
-            f"{catalog_base_url}/{endpoint}", headers=model_registry_rest_headers, verify=False, timeout=30
+            f"{catalog_base_url}/healthz", headers=model_registry_rest_headers, verify=False, timeout=30
         )
-        assert response.ok, f"/{endpoint} returned {response.status_code}"
+        assert response.ok, f"/healthz returned {response.status_code}"
 
         body = response.json()
-        assert body["status"] == expected_status, f"/{endpoint} check failed: {body}"
+        assert body["status"] == "ok", f"/healthz check failed: {body}"
+        LOGGER.info(f"/healthz returned: {body}")
 
-        if expect_plugins:
-            assert "plugins" in body, f"/{endpoint} missing 'plugins' aggregation: {body}"
-            unhealthy_plugins = {name: status for name, status in body["plugins"].items() if not status}
-            assert not unhealthy_plugins, f"Unhealthy plugins detected: {unhealthy_plugins}"
+    @pytest.mark.parametrize(
+        "plugin_name",
+        [
+            pytest.param("model", id="test_readyz_model_plugin"),
+            pytest.param("mcp", id="test_readyz_mcp_plugin"),
+        ],
+    )
+    def test_readyz_plugin_registered(
+        self,
+        catalog_base_url: str,
+        model_registry_rest_headers: dict[str, str],
+        plugin_name: str,
+    ):
+        """Given the catalog server is running with registered plugins
+        When querying the readyz endpoint
+        Then the plugin is registered and healthy
+        """
+        response = requests.get(
+            f"{catalog_base_url}/readyz", headers=model_registry_rest_headers, verify=False, timeout=30
+        )
+        assert response.ok, f"/readyz returned {response.status_code}"
 
-        LOGGER.info(f"/{endpoint} returned: {body}")
+        body = response.json()
+        assert body["status"] == "ready", f"/readyz check failed: {body}"
+        assert body.get("plugins", {}).get(plugin_name) is True, (
+            f"Plugin '{plugin_name}' not registered or unhealthy: {body}"
+        )
+        LOGGER.info(f"/readyz plugin '{plugin_name}': {body}")

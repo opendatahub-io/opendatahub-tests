@@ -108,7 +108,7 @@ def wait_for_isvc_model_status_states(
             "Timed out waiting for InferenceService model status",
             isvc=isvc.name,
             namespace=isvc.namespace,
-            last_model_status=sample,
+            last_model_status=sample.to_dict() if sample else None,
         )
         raise
 
@@ -160,7 +160,7 @@ def wait_for_isvc_ready_false(
             "Timed out waiting for InferenceService Ready=False",
             isvc=isvc.name,
             namespace=isvc.namespace,
-            last_ready_condition=sample,
+            last_ready_condition=sample.to_dict() if sample else None,
             last_reason=getattr(sample, "reason", None) if sample is not None else None,
             last_message=getattr(sample, "message", None) if sample is not None else None,
         )
