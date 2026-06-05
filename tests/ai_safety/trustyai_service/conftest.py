@@ -258,10 +258,9 @@ def mariadb(
 
         mariadb_dict["spec"]["replicas"] = 1
 
-        # Need to fix MariaDB version due to an issue with the default version in certain environments
-        # Using the same registry and image used by the MariaDB operator
-        # --just changing the tag to point to a stable version
-        mariadb_dict["spec"]["image"] = "docker-registry1.mariadb.com/library/mariadb:10.11.8"
+        # Using Quay mirror to avoid Docker Hub rate limits
+        # Old URL: docker-registry1.mariadb.com/library/mariadb:10.11.8
+        mariadb_dict["spec"]["image"] = "quay.io/trustyai_testing/mariadb:10.11.8"
         mariadb_dict["spec"]["galera"]["enabled"] = False
         mariadb_dict["spec"]["metrics"]["enabled"] = False
         mariadb_dict["spec"]["tls"] = {"enabled": True, "required": True}
