@@ -31,7 +31,7 @@ STRING_VALUES_AS_FP32_BODY = _make_body_with_input_override(data=["string_value"
 INVALID_DATATYPE_BODY = _make_body_with_input_override(datatype="INVALID_TYPE")
 
 
-@pytest.mark.tier2
+@pytest.mark.tier3
 class TestWrongInputDataType:
     """Test class for verifying error handling when input tensor has wrong data type.
 
