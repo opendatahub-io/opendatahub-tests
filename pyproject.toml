@@ -21,12 +21,19 @@ show_error_codes = true
 warn_unused_ignores = true
 ignore_missing_imports = true
 
+[[tool.uv.index]]
+name = "ibm-ppc64le"
+url = "https://wheels.developerfirst.ibm.com/ppc64le/linux/+simple/"
+explicit = true
 [tool.uv]
 override-dependencies = [
     "marshmallow>=4.0",
 ]
 
 [tool.uv.sources]
+grpcio = [
+  { index = "ibm-ppc64le", marker = "platform_machine == 'ppc64le'" }
+]
 
 [tool.pyrefly]
 preset = "legacy"  # Start mypy-compatible, tighten later
@@ -59,12 +66,12 @@ dev = [
 ]
 
 [project]
-requires-python = "==3.14.*"
+requires-python = "==3.12.*"
 name = "opendatahub-tests"
 version = "0.1.0"
 description = "Tests repository for Open Data Hub (ODH)"
 authors = []
-license = {text = "Apache License (2.0)"}
+license = { text = "Apache License (2.0)" }
 readme = "README.md"
 keywords = ["Openshift", "RHOAI", "ODH"]
 classifiers = [
@@ -86,8 +93,9 @@ dependencies = [
     "requests",
     "pytest-asyncio",
     "syrupy",
-    "protobuf",
-    "grpcio-reflection",
+    "protobuf>=5,<7",
+    "grpcio==1.80.0",
+    "grpcio-reflection==1.80.0",
     "portforward>=0.7.1",
     "pytest-testconfig>=0.2.0",
     "pygithub>=2.5.0",
@@ -111,6 +119,7 @@ dependencies = [
     "langchain-community<0.4.2",
     "pyrefly>=1.0",
 ]
+
 
 [project.urls]
 homepage = "https://github.com/opendatahub-io/opendatahub-tests"

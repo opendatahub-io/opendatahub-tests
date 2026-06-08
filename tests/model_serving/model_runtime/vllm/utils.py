@@ -1,4 +1,6 @@
+import csv
 import os
+import re
 from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
@@ -8,6 +10,7 @@ import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
+from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -110,20 +113,23 @@ def run_raw_inference(
     isvc: InferenceService,
     port: int,
     endpoint: str,
-    chat_query: list[list[dict[str, str]]] = CHAT_QUERY,
+    chat_query: list[list[dict[str, str]]] | None = None,
+    # chat_query: list[list[dict[str, str]]] = CHAT_QUERY,
     completion_query: list[dict[str, str]] = COMPLETION_QUERY,
     tool_calling: dict[Any, Any] | None = None,
 ) -> tuple[Any, list[Any], list[Any]]:
+    chat_query = chat_query or CHAT_QUERY
     LOGGER.info(pod_name)
     with portforward.forward(
         pod_or_service=pod_name,
         namespace=isvc.namespace,
-        from_port=port,
+        from_port=0,
         to_port=port,
-    ):
+    ) as pf:
+        local_port = pf.from_port
         if endpoint == "tgis":
             model_detail, grpc_chat_response, grpc_chat_stream_responses = fetch_tgis_response(
-                url=f"localhost:{port}",
+                url=f"localhost:{local_port}",
                 model_name=isvc.instance.metadata.name,
                 completion_query=completion_query,
             )
@@ -131,7 +137,7 @@ def run_raw_inference(
 
         elif endpoint == "openai":
             model_info, completion_responses, stream_completion_responses = fetch_openai_response(
-                url=f"http://localhost:{port}",
+                url=f"http://localhost:{local_port}",
                 model_name=isvc.instance.metadata.name,
                 chat_query=chat_query,
                 completion_query=completion_query,
@@ -227,3 +233,87 @@ def validate_raw_tgis_inference_request(
 def skip_if_not_deployment_mode(isvc: InferenceService, deployment_type: str) -> None:
     if isvc.instance.metadata.annotations["serving.kserve.io/deploymentMode"] != deployment_type:
         pytest.skip(f"Test is being skipped because model is not being deployed in {deployment_type} mode")
+
+
+# Performance helper methods
+
+
+def get_vllm_version(namespace: str, pod_name: str) -> str:
+    pod = Pod(name=pod_name, namespace=namespace)
+    result = pod.execute(command=["python", "-c", "import vllm; print(vllm.__version__)"])
+    return result.strip()
+
+
+def get_vllm_throughput_logs(namespace: str, pod_name: str, start_time: str | None = None) -> str:
+    pod = Pod(name=pod_name, namespace=namespace)
+    logs = (
+        pod.log(container="kserve-container", since_time=start_time)
+        if start_time
+        else pod.log(container="kserve-container")
+    )
+    return "\n".join(line for line in logs.splitlines() if "Avg prompt throughput" in line)
+
+
+def parse_vllm_logs(logs: str, used_entries: set[str]) -> list[dict[str, float]]:
+    parsed = []
+
+    for line in logs.splitlines():
+        if line in used_entries:
+            continue
+
+        match = re.search(
+            r"Avg prompt throughput: ([\d.]+) tokens/s, Avg generation throughput: ([\d.]+) tokens/s",
+            line,
+        )
+
+        if match:
+            parsed.append({
+                "prompt_tokens_per_sec": float(match.group(1)),
+                "generation_tokens_per_sec": float(match.group(2)),
+            })
+            used_entries.add(line)
+
+    return parsed
+
+
+def save_performance_report(
+    model_name: str,
+    version: str,
+    logs: str,
+    request_type: str,
+    input_prompt: str,
+    used_entries: set[str],
+) -> None:
+    parsed_logs = parse_vllm_logs(logs=logs, used_entries=used_entries)
+
+    last = parsed_logs[-1] if parsed_logs else {}
+    max_prompt = max((x["prompt_tokens_per_sec"] for x in parsed_logs), default=0)
+    max_generation = max((x["generation_tokens_per_sec"] for x in parsed_logs), default=0)
+
+    worker = os.getenv("PYTEST_XDIST_WORKER", "gw0")
+    report_file = f"performance_report_{worker}.csv"
+    file_exists = os.path.isfile(report_file)
+
+    with open(report_file, "a", newline="") as f:
+        writer = csv.writer(f)
+        if not file_exists:
+            writer.writerow([
+                "model",
+                "vllm_version",
+                "request_type",
+                "input_prompt",
+                "last_prompt_tokens_per_sec",
+                "last_generation_tokens_per_sec",
+                "max_prompt_tokens_per_sec",
+                "max_generation_tokens_per_sec",
+            ])
+        writer.writerow([
+            model_name,
+            version,
+            request_type,
+            input_prompt,
+            last.get("prompt_tokens_per_sec", 0),
+            last.get("generation_tokens_per_sec", 0),
+            max_prompt,
+            max_generation,
+        ])

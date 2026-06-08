@@ -4,7 +4,20 @@ REGISTRY_NAMESPACE ?= "opendatahub"
 IMAGE_NAME="opendatahub-tests"
 IMAGE_TAG ?= "latest"
 
-FULL_OPERATOR_IMAGE ?= "$(IMAGE_REGISTRY)/$(REGISTRY_NAMESPACE)/$(IMAGE_NAME):$(IMAGE_TAG)"
+# CPU build flag - set to "true" to build CPU image
+# This will be passed from Jenkins as: make build CPU=true
+CPU ?= false
+
+# Conditional Dockerfile and tag selection based on CPU flag
+ifeq ($(CPU),true)
+    DOCKERFILE = Dockerfile.CPU
+    EFFECTIVE_IMAGE_TAG = power
+else
+    DOCKERFILE = Dockerfile
+    EFFECTIVE_IMAGE_TAG = $(IMAGE_TAG)
+endif
+
+FULL_OPERATOR_IMAGE ?= "$(IMAGE_REGISTRY)/$(REGISTRY_NAMESPACE)/$(IMAGE_NAME):$(EFFECTIVE_IMAGE_TAG)"
 
 all: check
 
@@ -13,7 +26,7 @@ check:
 	tox
 
 build:
-	$(IMAGE_BUILD_CMD) build -t $(FULL_OPERATOR_IMAGE) .
+	$(IMAGE_BUILD_CMD) build -f $(DOCKERFILE) -t $(FULL_OPERATOR_IMAGE) .
 
 push:
 	$(IMAGE_BUILD_CMD) push $(FULL_OPERATOR_IMAGE)

@@ -179,3 +179,19 @@ QWEN.md
 # Must-Gather Artifacts
 must-gather-collected/
 oc.tar
+
+# Test snapshots and temporary files
+tests/model_serving/model_runtime/vllm/basic_model_deployment/.test_*.py.swp
+tests/model_serving/model_runtime/vllm/basic_model_deployment/__snapshots__/
+
+# UV lock backup
+uv_old.lock
+
+# Performance reports
+performance_report.csv
+
+# Python version file
+.python-version
+
+# Test environment
+testenv/
