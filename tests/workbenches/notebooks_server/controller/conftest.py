@@ -4,7 +4,7 @@ import pytest
 from pytest_testconfig import config as py_config
 
 from simple_logger.logger import get_logger
-from tests.workbenches.utils import get_username
+from tests.workbenches.notebooks_server.controller.utils import get_username
 
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
@@ -65,7 +65,7 @@ def default_notebook(
         raise ResourceNotFoundError(f"Route {route.name} does not exist")
 
     # Set the correct username
-    username = get_username(dyn_client=admin_client)
+    username = get_username(client=admin_client)
     assert username, "Failed to determine username from the cluster"
 
     # Check internal image registry availability
