@@ -65,6 +65,10 @@
       "matchDatasources": ["docker"],
       "matchPackageNames": ["quay.io/fedora/fedora"],
       "enabled": false
+    },
+    {
+      "matchPackageNames": ["langchain-community"],
+      "enabled": false
     }
   ]
 }
