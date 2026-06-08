@@ -337,6 +337,7 @@ class TestSearchModelsByFilterQuery:
         # Assert that all models have all required performance data files
         assert not validation_results, f"Models with missing performance data files: {validation_results}"
 
+    @pytest.mark.downstream_only
     @pytest.mark.parametrize(
         "models_from_filter_query, expected_value, logic_type",
         [
