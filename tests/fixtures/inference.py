@@ -1,4 +1,5 @@
-from typing import Generator, Any
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 from kubernetes.dynamic import DynamicClient
