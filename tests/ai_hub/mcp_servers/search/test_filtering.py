@@ -143,11 +143,11 @@ class TestMCPServerFiltering:
             sort_order = order_params.get("sortOrder", "ASC")
             if seen_ids:
                 if sort_order == "ASC":
-                    assert server_id > seen_ids[-1], (
+                    assert int(server_id) > int(seen_ids[-1]), (
                         f"Page {page_num} id '{server_id}' is not greater than previous id '{seen_ids[-1]}'"
                     )
                 elif sort_order == "DESC":
-                    assert server_id < seen_ids[-1], (
+                    assert int(server_id) < int(seen_ids[-1]), (
                         f"Page {page_num} id '{server_id}' is not less than previous id '{seen_ids[-1]}'"
                     )
             seen_ids.append(server_id)
