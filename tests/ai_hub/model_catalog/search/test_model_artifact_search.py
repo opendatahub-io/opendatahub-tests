@@ -18,7 +18,10 @@ from tests.ai_hub.model_catalog.search.utils import (
 )
 
 LOGGER = structlog.get_logger(name=__name__)
-pytestmark = [pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace")]
+pytestmark = [
+    pytest.mark.downstream_only,
+    pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace"),
+]
 MODEL_NAMEs_ARTIFACT_SEARCH: list[str] = [
     "RedHatAI/Llama-3.1-8B-Instruct",
     "RedHatAI/Mistral-Small-3.1-24B-Instruct-2503-FP8-dynamic",
