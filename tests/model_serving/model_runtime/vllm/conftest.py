@@ -14,6 +14,7 @@ from pytest import FixtureRequest
 
 from tests.model_serving.model_runtime.vllm.constant import ACCELERATOR_IDENTIFIER, PREDICT_RESOURCES, TEMPLATE_MAP
 from tests.model_serving.model_runtime.vllm.utils import (
+    dedupe_vllm_cli_args,
     kserve_s3_endpoint_secret,
     skip_if_not_deployment_mode,
     validate_supported_quantization_schema,
@@ -87,7 +88,7 @@ def vllm_inference_service(
         if quantization := request.param.get("quantization"):
             validate_supported_quantization_schema(q_type=quantization)
             arguments.append(f"--quantization={quantization}")
-        isvc_kwargs["argument"] = arguments
+        isvc_kwargs["argument"] = dedupe_vllm_cli_args(arguments=arguments)
 
     if min_replicas := request.param.get("min-replicas"):
         isvc_kwargs["min_replicas"] = min_replicas
@@ -137,5 +138,5 @@ def vllm_pod_resource(admin_client: DynamicClient, vllm_inference_service: Infer
 def skip_if_not_raw_deployment(vllm_inference_service: InferenceService) -> None:
     skip_if_not_deployment_mode(
         isvc=vllm_inference_service,
-        deployment_type=KServeDeploymentType.RAW_DEPLOYMENT,
+        deployment_types=KServeDeploymentType.RAW_DEPLOYMENT_MODES,
     )

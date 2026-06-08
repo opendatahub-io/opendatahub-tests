@@ -164,30 +164,32 @@ def aws_secret_access_key(pytestconfig: Config) -> str:
 
 
 @pytest.fixture(scope="session")
-def registry_pull_secret(pytestconfig: Config) -> list[str]:
-    registry_pull_secret = pytestconfig.option.registry_pull_secret
-    if not registry_pull_secret:
+def registry_pull_secret(pytestconfig: pytest.Config) -> list[str]:
+    """Return base64 registry auth strings paired with registry_host by index."""
+    registry_pull_secrets = pytestconfig.option.registry_pull_secret
+    if not registry_pull_secrets:
         raise ValueError(
             "Registry pull secret is not set. "
-            "Either pass with `--registry_pull_secret` or set `OCI_REGISTRY_PULL_SECRET` environment variable"
+            "Either pass with `--registry-pull-secret` or set `OCI_REGISTRY_PULL_SECRET` environment variable"
         )
     try:
-        for secret in registry_pull_secret:
+        for secret in registry_pull_secrets:
             base64.b64decode(s=secret, validate=True)
-        return registry_pull_secret
+        return registry_pull_secrets
     except binascii.Error:
         raise ValueError("Registry pull secret is not a valid base64 encoded string")
 
 
 @pytest.fixture(scope="session")
 def registry_host(pytestconfig: pytest.Config) -> list[str]:
-    registry_host = pytestconfig.option.registry_host
-    if not registry_host:
+    """Return registry hosts paired with registry_pull_secret by index."""
+    registry_hosts = pytestconfig.option.registry_host
+    if not registry_hosts:
         raise ValueError(
             "Registry host for OCI images is not set. "
-            "Either pass with `--registry_host` or set `REGISTRY_HOST` environment variable"
+            "Either pass with `--registry-host` or set `REGISTRY_HOST` environment variable"
         )
-    return registry_host
+    return registry_hosts
 
 
 @pytest.fixture(scope="session")
