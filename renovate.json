@@ -5,7 +5,8 @@
     ":prHourlyLimitNone",
     ":dependencyDashboard",
     ":maintainLockFilesWeekly",
-    ":semanticCommitTypeAll(chore)"
+    ":semanticCommitTypeAll(chore)",
+    ":enablePreCommit"
   ],
   "prConcurrentLimit": 0,
   "rangeStrategy": "update-lockfile",
@@ -69,6 +70,17 @@
     {
       "matchPackageNames": ["langchain-community"],
       "enabled": false
+    },
+    {
+      "groupName": "pre-commit hooks",
+      "matchManagers": ["pre-commit"],
+      "ignoreUnstable": true,
+      "commitMessagePrefix": "chore:",
+      "commitMessageTopic": "update pre-commit hooks",
+      "schedule": [
+        "before 7am on tuesday"
+      ],
+      "prPriority": 6
     }
   ]
 }
