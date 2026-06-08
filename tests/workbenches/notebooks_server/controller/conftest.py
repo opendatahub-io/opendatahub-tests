@@ -48,6 +48,7 @@ def minimal_image() -> Generator[str, None, None]:
 def default_notebook(
     request: pytest.FixtureRequest,
     admin_client: DynamicClient,
+    unprivileged_client: DynamicClient,
     minimal_image: str,
 ) -> Generator[Notebook, None, None]:
     """Returns a new Notebook CR for a given namespace, name, and image"""
@@ -58,7 +59,7 @@ def default_notebook(
 
     route_host = get_dashboard_route_host(admin_client=admin_client)
 
-    username = get_username(client=admin_client)
+    username = get_username(client=unprivileged_client)
     assert username, "Failed to determine username from the cluster"
 
     image_path = resolve_notebook_image(admin_client=admin_client)

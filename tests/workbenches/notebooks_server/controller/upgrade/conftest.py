@@ -8,6 +8,7 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.notebook import Notebook
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
+from ocp_resources.route import Route
 from ocp_resources.service import Service
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError
@@ -116,7 +117,7 @@ def upgrade_notebook(
             nb.clean_up()
     else:
         route_host = get_dashboard_route_host(admin_client=admin_client)
-        username = get_username(client=admin_client)
+        username = get_username(client=unprivileged_client)
         assert username, "Failed to determine username from the cluster"
 
         notebook_dict = build_notebook_dict(
@@ -200,6 +201,32 @@ def upgrade_notebook_service(
 
 
 @pytest.fixture(scope="session")
+def upgrade_notebook_tls_service(
+    unprivileged_client: DynamicClient,
+    upgrade_notebook: Notebook,
+) -> Service:
+    """TLS Service created by the notebook controller for oauth-proxy (name-tls)."""
+    return Service(
+        client=unprivileged_client,
+        name=f"{upgrade_notebook.name}-tls",
+        namespace=upgrade_notebook.namespace,
+    )
+
+
+@pytest.fixture(scope="session")
+def upgrade_notebook_route(
+    admin_client: DynamicClient,
+    upgrade_notebook: Notebook,
+) -> Route:
+    """OpenShift Route for the notebook (created by the notebook controller for oauth-proxy)."""
+    return Route(
+        client=admin_client,
+        name=upgrade_notebook.name,
+        namespace=upgrade_notebook.namespace,
+    )
+
+
+@pytest.fixture(scope="session")
 def capture_notebook_baseline(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
@@ -207,6 +234,8 @@ def capture_notebook_baseline(
     upgrade_notebook_pod: Pod,
     upgrade_notebook_statefulset: StatefulSet,
     upgrade_notebook_service: Service,
+    upgrade_notebook_tls_service: Service,
+    upgrade_notebook_route: Route,
 ) -> None:
     """Capture notebook resource metadata to a ConfigMap before upgrade.
 
@@ -224,12 +253,33 @@ def capture_notebook_baseline(
     service_ports = json.dumps(service_spec.ports, sort_keys=True, default=str)
     service_selector = json.dumps(service_spec.selector, sort_keys=True, default=str)
 
+    assert upgrade_notebook_tls_service.exists, (
+        f"TLS Service '{upgrade_notebook_tls_service.name}' not found in "
+        f"'{upgrade_notebook_tls_service.namespace}' during baseline capture"
+    )
+    tls_service_spec = upgrade_notebook_tls_service.instance.spec
+    tls_service_ports = json.dumps(tls_service_spec.ports, sort_keys=True, default=str)
+    tls_service_selector = json.dumps(tls_service_spec.selector, sort_keys=True, default=str)
+
+    assert upgrade_notebook_route.exists, (
+        f"Route '{upgrade_notebook_route.name}' not found in "
+        f"'{upgrade_notebook_route.namespace}' during baseline capture"
+    )
+    route_generation = upgrade_notebook_route.instance.metadata.generation
+    route_host = upgrade_notebook_route.host
+    route_tls_termination = upgrade_notebook_route.instance.spec.get("tls", {}).get("termination", "")
+
     baseline = {
         "ntb_creation_timestamp": creation_timestamp,
         "notebook_generation": notebook_generation,
         "statefulset_generation": sts_generation,
         "service_ports": service_ports,
         "service_selector": service_selector,
+        "tls_service_ports": tls_service_ports,
+        "tls_service_selector": tls_service_selector,
+        "route_generation": route_generation,
+        "route_host": route_host,
+        "route_tls_termination": route_tls_termination,
     }
 
     ConfigMap(
