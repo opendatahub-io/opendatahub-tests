@@ -13,7 +13,9 @@ workbenches/
 │       ├── test_spawning.py              # Basic notebook spawning tests
 │       └── upgrade/
 │           ├── conftest.py               # Session-scoped fixtures for upgrade lifecycle
-│           └── test_upgrade.py           # Pre/post upgrade notebook survival tests
+│           ├── test_upgrade.py           # Pre/post upgrade notebook survival tests
+│           ├── test_upgrade_routing.py   # Pre/post upgrade Route survival tests
+│           └── test_upgrade_stopped.py   # Pre/post upgrade stopped notebook tests
 └── notebook_images/                      # Notebook container image tests (placeholder)
 ```
 
@@ -21,6 +23,8 @@ workbenches/
 
 - **`notebooks_server/controller/test_spawning.py`** - Tests basic notebook creation via Notebook CR and validates pod creation. Also tests OAuth proxy container resource customization via annotations
 - **`notebooks_server/controller/upgrade/test_upgrade.py`** - Upgrade survival tests. Pre-upgrade creates a notebook and captures its pod creation timestamp to a ConfigMap. Post-upgrade verifies the pod was not restarted by comparing timestamps
+- **`notebooks_server/controller/upgrade/test_upgrade_routing.py`** - Upgrade tests for OpenShift Routes. Pre-upgrade verifies the Route exists and targets the correct service. Post-upgrade verifies the Route survived unchanged
+- **`notebooks_server/controller/upgrade/test_upgrade_stopped.py`** - Upgrade tests for stopped notebooks. Pre-upgrade stops a notebook via annotation and verifies scale-down. Post-upgrade verifies it remains stopped
 
 ## Test Markers
 
