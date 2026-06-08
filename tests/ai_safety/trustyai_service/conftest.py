@@ -10,14 +10,18 @@ from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.maria_db import MariaDB
 from ocp_resources.mariadb_operator import MariadbOperator
 from ocp_resources.namespace import Namespace
+from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
+from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
+from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.trustyai_service import TrustyAIService
@@ -26,9 +30,12 @@ from pytest_testconfig import py_config
 from tests.ai_safety.trustyai_service.constants import (
     GAUSSIAN_CREDIT_MODEL,
     GAUSSIAN_CREDIT_MODEL_RESOURCES,
-    GAUSSIAN_CREDIT_MODEL_STORAGE_URI,
+    GAUSSIAN_CREDIT_MODEL_STORAGE_PATH,
     ISVC_GETTER,
     KSERVE_MLSERVER,
+    KSERVE_MLSERVER_ANNOTATIONS,
+    KSERVE_MLSERVER_CONTAINERS,
+    KSERVE_MLSERVER_SUPPORTED_MODEL_FORMATS,
     TAI_DATA_CONFIG,
     TAI_DB_STORAGE_CONFIG,
     TAI_METRICS_CONFIG,
@@ -52,13 +59,12 @@ from utilities.constants import (
     TRUSTYAI_SERVICE_NAME,
     Annotations,
     KServeDeploymentType,
-    RuntimeTemplates,
+    Labels,
 )
 from utilities.inference_utils import create_isvc
 from utilities.infra import create_inference_token, get_kserve_storage_initialize_image, update_configmap_data
 from utilities.logger import RedactedString
 from utilities.operator_utils import get_cluster_service_version
-from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 DB_CREDENTIALS_SECRET_NAME: str = "db-credentials"
 DB_NAME: str = "trustyai_db"
@@ -216,63 +222,325 @@ def db_credentials_secret(
             yield db_credentials
 
 
+def _generate_mariadb_tls_certs(namespace_name: str) -> tuple[str, str, str]:
+    """Generate self-signed TLS certificates for MariaDB using cryptography library.
+
+    Returns:
+        tuple: (ca_cert_pem, server_cert_pem, server_key_pem)
+    """
+    from cryptography import x509
+    from cryptography.hazmat.backends import default_backend
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID
+    import datetime
+
+    # Generate CA private key
+    ca_key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=2048,
+        backend=default_backend(),
+    )
+
+    # Generate CA certificate
+    ca_subject = ca_issuer = x509.Name(
+        [
+            x509.NameAttribute(NameOID.COMMON_NAME, f"mariadb-ca-{namespace_name}"),
+        ]
+    )
+    ca_cert = (
+        x509.CertificateBuilder()
+        .subject_name(ca_subject)
+        .issuer_name(ca_issuer)
+        .public_key(ca_key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(datetime.datetime.utcnow())
+        .not_valid_after(datetime.datetime.utcnow() + datetime.timedelta(days=365))
+        .add_extension(
+            x509.BasicConstraints(ca=True, path_length=None),
+            critical=True,
+        )
+        .sign(ca_key, hashes.SHA256(), backend=default_backend())
+    )
+
+    # Generate server private key
+    server_key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=2048,
+        backend=default_backend(),
+    )
+
+    # Generate server certificate
+    server_subject = x509.Name(
+        [
+            x509.NameAttribute(NameOID.COMMON_NAME, f"mariadb.{namespace_name}.svc.cluster.local"),
+        ]
+    )
+    server_cert = (
+        x509.CertificateBuilder()
+        .subject_name(server_subject)
+        .issuer_name(ca_cert.subject)
+        .public_key(server_key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(datetime.datetime.utcnow())
+        .not_valid_after(datetime.datetime.utcnow() + datetime.timedelta(days=365))
+        .add_extension(
+            x509.SubjectAlternativeName(
+                [
+                    x509.DNSName("mariadb"),
+                    x509.DNSName(f"mariadb.{namespace_name}.svc"),
+                    x509.DNSName(f"mariadb.{namespace_name}.svc.cluster.local"),
+                ]
+            ),
+            critical=False,
+        )
+        .sign(ca_key, hashes.SHA256(), backend=default_backend())
+    )
+
+    # Serialize to PEM format
+    ca_cert_pem = ca_cert.public_bytes(serialization.Encoding.PEM).decode("utf-8")
+    server_cert_pem = server_cert.public_bytes(serialization.Encoding.PEM).decode("utf-8")
+    server_key_pem = server_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.TraditionalOpenSSL,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode("utf-8")
+
+    return ca_cert_pem, server_cert_pem, server_key_pem
+
+
 @pytest.fixture(scope="class")
 def mariadb(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     model_namespace: Namespace,
     db_credentials_secret: Secret,
-    mariadb_operator_cr: MariadbOperator,
     teardown_resources: bool,
-) -> Generator[MariaDB, Any, Any]:
-    """Provides a MariaDB instance for TrustyAI database storage.
+) -> Generator[Deployment, Any, Any]:
+    """Provides a MariaDB instance using direct Deployment with TLS enabled.
 
-    In post-upgrade mode, references the existing MariaDB created during pre-upgrade tests
-    and cleans it up after post-upgrade tests complete.
-
-    In pre-upgrade mode (or when no upgrade flag is set), creates a new MariaDB instance,
-    waits for pods to be ready, and cleans up.
+    Uses Red Hat MariaDB image deployed via Deployment to avoid Docker Hub rate limits.
+    Generates self-signed TLS certificates to match operator behavior.
     """
+    # Red Hat MariaDB image - using tag for multi-arch support (amd64, arm64, s390x, ppc64le)
+    MARIA_DB_IMAGE = "registry.redhat.io/rhel9/mariadb-1011:latest"
+
     if pytestconfig.option.post_upgrade:
-        mariadb = MariaDB(
+        deployment = Deployment(
             client=admin_client,
             name="mariadb",
             namespace=model_namespace.name,
             ensure_exists=True,
         )
-        yield mariadb
-        mariadb.clean_up()
+        yield deployment
+        deployment.clean_up()
     else:
-        mariadb_csv: ClusterServiceVersion = get_cluster_service_version(
-            client=admin_client, prefix=MARIADB, namespace=OPENSHIFT_OPERATORS
-        )
-        alm_examples: list[dict[str, Any]] = mariadb_csv.get_alm_examples()
-        mariadb_dict: dict[str, Any] = next((example for example in alm_examples if example["kind"] == "MariaDB"), None)
+        # Generate TLS certificates for MariaDB
+        ca_cert, server_cert, server_key = _generate_mariadb_tls_certs(model_namespace.name)
 
-        if not mariadb_dict:
-            raise ResourceNotFoundError(f"No MariaDB dict found in alm_examples for CSV {mariadb_csv.name}")
+        # Create secrets for TLS certificates
+        with Secret(
+            client=admin_client,
+            name="mariadb-ca",
+            namespace=model_namespace.name,
+            string_data={"ca.crt": ca_cert},
+            teardown=teardown_resources,
+        ) as ca_secret, Secret(
+            client=admin_client,
+            name="mariadb-server-cert",
+            namespace=model_namespace.name,
+            string_data={"tls.crt": server_cert},
+            teardown=teardown_resources,
+        ) as server_cert_secret, Secret(
+            client=admin_client,
+            name="mariadb-server-key",
+            namespace=model_namespace.name,
+            string_data={"tls.key": server_key},
+            teardown=teardown_resources,
+        ) as server_key_secret:
+            # Create PVC for MariaDB data
+            with PersistentVolumeClaim(
+                accessmodes="ReadWriteOnce",
+                name="mariadb",
+                namespace=model_namespace.name,
+                client=admin_client,
+                size="1Gi",
+                teardown=teardown_resources,
+            ) as pvc:
+                # Create Service for MariaDB
+                mariadb_service_dict = {
+                "apiVersion": "v1",
+                "kind": "Service",
+                "metadata": {
+                    "name": "mariadb",
+                    "namespace": model_namespace.name,
+                },
+                "spec": {
+                    "selector": {"name": "mariadb"},
+                    "ports": [{
+                        "port": 3306,
+                        "targetPort": 3306,
+                        "name": "mysql",
+                        "protocol": "TCP",
+                    }],
+                    }
+                }
 
-        mariadb_dict["metadata"]["namespace"] = model_namespace.name
-        mariadb_dict["spec"]["database"] = DB_NAME
-        mariadb_dict["spec"]["username"] = DB_USERNAME
+                with Service(kind_dict=mariadb_service_dict, teardown=teardown_resources) as svc:
+                    # Create Deployment (following ai_hub pattern)
+                    deployment_template = {
+                    "metadata": {
+                        "labels": {
+                            "name": "mariadb",
+                            "app": "mariadb",
+                            "component": "database",
+                        }
+                    },
+                    "spec": {
+                        "containers": [{
+                            "name": "mariadb",
+                            "image": MARIA_DB_IMAGE,
+                            "imagePullPolicy": "IfNotPresent",
+                            "env": [
+                                {
+                                    "name": "MYSQL_USER",
+                                    "valueFrom": {
+                                        "secretKeyRef": {
+                                            "name": DB_CREDENTIALS_SECRET_NAME,
+                                            "key": "databaseUsername",
+                                        }
+                                    },
+                                },
+                                {
+                                    "name": "MYSQL_PASSWORD",
+                                    "valueFrom": {
+                                        "secretKeyRef": {
+                                            "name": DB_CREDENTIALS_SECRET_NAME,
+                                            "key": "databasePassword",
+                                        }
+                                    },
+                                },
+                                {
+                                    "name": "MYSQL_ROOT_PASSWORD",
+                                    "valueFrom": {
+                                        "secretKeyRef": {
+                                            "name": DB_CREDENTIALS_SECRET_NAME,
+                                            "key": "databasePassword",
+                                        }
+                                    },
+                                },
+                                {
+                                    "name": "MYSQL_DATABASE",
+                                    "valueFrom": {
+                                        "secretKeyRef": {
+                                            "name": DB_CREDENTIALS_SECRET_NAME,
+                                            "key": "databaseName",
+                                        }
+                                    },
+                                },
+                                {
+                                    "name": "MARIADB_ROOT_PASSWORD",
+                                    "valueFrom": {
+                                        "secretKeyRef": {
+                                            "name": DB_CREDENTIALS_SECRET_NAME,
+                                            "key": "databasePassword",
+                                        }
+                                    },
+                                },
+                            ],
+                            "ports": [{"containerPort": 3306, "protocol": "TCP"}],
+                            "livenessProbe": {
+                                "exec": {
+                                    "command": [
+                                        "/bin/bash",
+                                        "-c",
+                                        "mysqladmin -u${MYSQL_USER} -p${MYSQL_ROOT_PASSWORD} ping",
+                                    ]
+                                },
+                                "initialDelaySeconds": 15,
+                                "periodSeconds": 10,
+                                "timeoutSeconds": 5,
+                            },
+                            "readinessProbe": {
+                                "exec": {
+                                    "command": [
+                                        "/bin/bash",
+                                        "-c",
+                                        'mysql -D ${MYSQL_DATABASE} -u${MYSQL_USER} -p${MYSQL_ROOT_PASSWORD} -e "SELECT 1"',
+                                    ]
+                                },
+                                "initialDelaySeconds": 10,
+                                "timeoutSeconds": 5,
+                            },
+                            "command": [
+                                "run-mysqld",
+                                "--ssl-ca=/etc/mysql/certs/ca.crt",
+                                "--ssl-cert=/etc/mysql/certs/tls.crt",
+                                "--ssl-key=/etc/mysql/certs/tls.key",
+                                "--require-secure-transport=ON"
+                            ],
+                            "securityContext": {"capabilities": {}, "privileged": False},
+                            "terminationMessagePath": "/dev/termination-log",
+                            "volumeMounts": [
+                                {
+                                    "mountPath": "/var/lib/mysql",
+                                    "name": "mariadb-data",
+                                },
+                                {
+                                    "mountPath": "/etc/mysql/certs/ca.crt",
+                                    "name": "ca-cert",
+                                    "subPath": "ca.crt",
+                                    "readOnly": True,
+                                },
+                                {
+                                    "mountPath": "/etc/mysql/certs/tls.crt",
+                                    "name": "server-cert",
+                                    "subPath": "tls.crt",
+                                    "readOnly": True,
+                                },
+                                {
+                                    "mountPath": "/etc/mysql/certs/tls.key",
+                                    "name": "server-key",
+                                    "subPath": "tls.key",
+                                    "readOnly": True,
+                                },
+                            ],
+                        }],
+                        "dnsPolicy": "ClusterFirst",
+                        "restartPolicy": "Always",
+                        "volumes": [
+                            {
+                                "name": "mariadb-data",
+                                "persistentVolumeClaim": {"claimName": "mariadb"},
+                            },
+                            {
+                                "name": "ca-cert",
+                                "secret": {"secretName": "mariadb-ca"},
+                            },
+                            {
+                                "name": "server-cert",
+                                "secret": {"secretName": "mariadb-server-cert"},
+                            },
+                            {
+                                "name": "server-key",
+                                "secret": {"secretName": "mariadb-server-key"},
+                            },
+                        ],
+                    }
+                }
 
-        mariadb_dict["spec"]["replicas"] = 1
-
-        # Need to fix MariaDB version due to an issue with the default version in certain environments
-        # Using the same registry and image used by the MariaDB operator
-        # --just changing the tag to point to a stable version
-        mariadb_dict["spec"]["image"] = "docker-registry1.mariadb.com/library/mariadb:10.11.8"
-        mariadb_dict["spec"]["galera"]["enabled"] = False
-        mariadb_dict["spec"]["metrics"]["enabled"] = False
-        mariadb_dict["spec"]["tls"] = {"enabled": True, "required": True}
-
-        password_secret_key_ref = {"generate": False, "key": "databasePassword", "name": DB_CREDENTIALS_SECRET_NAME}
-
-        mariadb_dict["spec"]["rootPasswordSecretKeyRef"] = password_secret_key_ref
-        mariadb_dict["spec"]["passwordSecretKeyRef"] = password_secret_key_ref
-        with MariaDB(kind_dict=mariadb_dict, teardown=teardown_resources) as mariadb:
-            wait_for_mariadb_pods(client=admin_client, mariadb=mariadb)
-            yield mariadb
+                with Deployment(
+                    name="mariadb",
+                    client=admin_client,
+                    namespace=model_namespace.name,
+                    label={"name": "mariadb"},
+                    replicas=1,
+                    selector={"matchLabels": {"name": "mariadb", "app": "mariadb"}},
+                    template=deployment_template,
+                    wait_for_resource=True,
+                    teardown=teardown_resources,
+                ) as deployment:
+                    yield deployment
 
 
 @pytest.fixture(scope="class")
@@ -280,16 +548,12 @@ def trustyai_db_ca_secret(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    mariadb: MariaDB,
+    mariadb: Deployment,
     teardown_resources: bool,
 ) -> Generator[Secret, Any]:
     """Provides TLS CA certificate secret for TrustyAI to connect to MariaDB.
 
-    In post-upgrade mode, references the existing CA secret created during pre-upgrade tests
-    and cleans it up after post-upgrade tests complete.
-
-    In pre-upgrade mode (or when no upgrade flag is set), creates a new secret by copying the
-    CA certificate from the MariaDB CA secret and manages cleanup via teardown_resources.
+    Copies the CA certificate from MariaDB's CA secret for TrustyAI to use.
     """
     if pytestconfig.option.post_upgrade:
         secret = Secret(
@@ -301,9 +565,15 @@ def trustyai_db_ca_secret(
         yield secret
         secret.clean_up()
     else:
+        # Get the MariaDB CA secret
         mariadb_ca_secret = Secret(
-            client=admin_client, name=f"{mariadb.name}-ca", namespace=model_namespace.name, ensure_exists=True
+            client=admin_client,
+            name="mariadb-ca",
+            namespace=model_namespace.name,
+            ensure_exists=True,
         )
+
+        # Create TrustyAI's copy of the CA secret
         with Secret(
             client=admin_client,
             name=f"{TRUSTYAI_SERVICE_NAME}-db-ca",
@@ -318,6 +588,7 @@ def trustyai_db_ca_secret(
 def mlserver_runtime(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
+    minio_data_connection: Secret,
     model_namespace: Namespace,
     teardown_resources: bool,
 ) -> Generator[ServingRuntime, Any, Any]:
@@ -333,9 +604,12 @@ def mlserver_runtime(
         serving_runtime.clean_up()
 
     else:
-        with ServingRuntimeFromTemplate(
-            template_name=RuntimeTemplates.MLSERVER,
-            deployment_type=KServeDeploymentType.RAW_DEPLOYMENT,
+        with ServingRuntime(
+            containers=KSERVE_MLSERVER_CONTAINERS,
+            supported_model_formats=KSERVE_MLSERVER_SUPPORTED_MODEL_FORMATS,
+            protocol_versions=["v2"],
+            annotations=KSERVE_MLSERVER_ANNOTATIONS,
+            label={Labels.OpenDataHub.DASHBOARD: "true"},
             teardown=teardown_resources,
             **mlserver_runtime_kwargs,
         ) as mlserver:
@@ -347,8 +621,11 @@ def gaussian_credit_model(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     model_namespace: Namespace,
+    minio_pod: Pod,
+    minio_service: Service,
+    minio_data_connection: Secret,
     mlserver_runtime: ServingRuntime,
-    # kserve_raw_config: ConfigMap,
+    kserve_raw_config: ConfigMap,
     kserve_logger_ca_bundle: ConfigMap,
     teardown_resources: bool,
 ) -> Generator[InferenceService, Any, Any]:
@@ -367,7 +644,8 @@ def gaussian_credit_model(
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
             model_format=XGBOOST,
             runtime=mlserver_runtime.name,
-            storage_uri=GAUSSIAN_CREDIT_MODEL_STORAGE_URI,
+            storage_key=minio_data_connection.name,
+            storage_path=GAUSSIAN_CREDIT_MODEL_STORAGE_PATH,
             enable_auth=True,
             external_route=True,
             wait_for_predictor_pods=False,
