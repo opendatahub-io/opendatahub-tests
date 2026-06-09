@@ -10,6 +10,7 @@ from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import RegisteredModel
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
+from ocp_resources.endpoints import Endpoints
 from ocp_resources.job import Job
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
@@ -947,9 +948,35 @@ def execute_get_command(
         raise
 
 
+def get_endpoint_ips(client: DynamicClient, namespace: str, service_name: str = "model-catalog") -> set[str]:
+    endpoints = Endpoints(name=service_name, namespace=namespace, client=client)
+    assert endpoints.exists, f"Endpoints for service {service_name} not found in {namespace}"
+    ips: set[str] = set()
+    for subset in endpoints.instance.subsets or []:
+        for address in subset.get("addresses", []):
+            ips.add(address["ip"])
+    return ips
+
+
+class EndpointsNotUpdated(Exception):
+    pass
+
+
+@retry(wait_timeout=60, sleep=5, exceptions_dict={EndpointsNotUpdated: []})
+def wait_for_endpoints_updated(
+    client: DynamicClient, namespace: str, old_ips: set[str], service_name: str = "model-catalog"
+) -> bool:
+    current_ips = get_endpoint_ips(client=client, namespace=namespace, service_name=service_name)
+    LOGGER.info(f"Endpoint check: old_ips={old_ips}, current_ips={current_ips}")
+    if current_ips and not current_ips & old_ips:
+        return True
+    raise EndpointsNotUpdated(f"Service {service_name} endpoints not yet updated: old={old_ips}, current={current_ips}")
+
+
 def wait_for_model_catalog_pod_ready_after_deletion(
     client: DynamicClient, model_registry_namespace: str, consecutive_try: int = 6
 ) -> bool:
+    old_endpoint_ips = get_endpoint_ips(client=client, namespace=model_registry_namespace)
     model_catalog_pods = get_model_catalog_pod(
         client=client,
         model_registry_namespace=model_registry_namespace,
@@ -966,6 +993,12 @@ def wait_for_model_catalog_pod_ready_after_deletion(
     wait_for_pods_running(
         admin_client=client, namespace_name=model_registry_namespace, number_of_consecutive_checks=consecutive_try
     )
+    current_ips = get_endpoint_ips(client=client, namespace=model_registry_namespace)
+    if current_ips & old_endpoint_ips:
+        LOGGER.warning(
+            f"Service endpoints still point to old pod IPs after restart: old={old_endpoint_ips}, current={current_ips}"
+        )
+    wait_for_endpoints_updated(client=client, namespace=model_registry_namespace, old_ips=old_endpoint_ips)
     return True
 
 
