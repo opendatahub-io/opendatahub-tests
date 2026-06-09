@@ -60,13 +60,13 @@ def _format_health_report(checks: list[HealthCheckResult]) -> tuple[bool, str]:
         and report is the formatted string for logging and xfail.
     """
     lines = []
-    for c in checks:
-        line = f"  {c.status:<6}{c.name}"
-        if c.detail:
-            line += f": {c.detail}"
+    for check in checks:
+        line = f"  {check.status:<6}{check.name}"
+        if check.detail:
+            line += f": {check.detail}"
         lines.append(line)
 
-    passed = not any(c.status == "FAIL" for c in checks)
+    passed = not any(check.status == "FAIL" for check in checks)
     border = "=" * 60
     title = "LLMD Health Check — PASSED" if passed else "LLMD Health Check — FAILED"
     report = "\n".join(["", border, f"  {title}", border] + lines + [border, ""])
