@@ -10,6 +10,7 @@ from kubernetes.dynamic.exceptions import NotFoundError, ResourceNotFoundError
 from ocp_resources.deployment import Deployment
 from ocp_resources.inference_graph import InferenceGraph
 from ocp_resources.inference_service import InferenceService
+from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.resource import Resource
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
@@ -73,6 +74,18 @@ def b64_encoded_string(string_to_encode: str) -> str:
     return base64.b64encode(string_to_encode.encode()).decode()
 
 
+def namespace_fs_group(client: DynamicClient, namespace: str) -> int | None:
+    """Return fsGroup from OpenShift namespace SCC uid-range annotation when present."""
+    ns = Namespace(client=client, name=namespace)
+    if not ns.exists:
+        return None
+    annotations = ns.instance.metadata.annotations or {}
+    uid_range = annotations.get("openshift.io/sa.scc.uid-range")
+    if not uid_range:
+        return None
+    return int(uid_range.split("/")[0])
+
+
 def download_model_data(
     client: DynamicClient,
     aws_access_key_id: str,
@@ -84,6 +97,7 @@ def download_model_data(
     aws_default_region: str,
     model_path: str,
     use_sub_path: bool = False,
+    restricted_scc_init: bool = False,
 ) -> str:
     """
     Downloads the model data from the bucket to the PVC
@@ -99,6 +113,8 @@ def download_model_data(
         aws_default_region (str): AWS default region
         model_path (str): Path to the model
         use_sub_path (bool): Whether to use a sub path
+        restricted_scc_init (bool): Use OpenShift restricted-SCC-safe init (no chmod,
+            fsGroup from namespace, init container mounts full PVC when use_sub_path).
 
     Returns:
         str: Path to the model path
@@ -109,13 +125,34 @@ def download_model_data(
         volume_mount["subPath"] = model_path
 
     pvc_model_path = f"/mnt/models/{model_path}"
+    if restricted_scc_init and use_sub_path:
+        init_volume_mount: dict[str, str] = {"mountPath": "/mnt/models/", "name": model_pvc_name}
+        init_command: list[str] = ["mkdir", "-p", pvc_model_path]
+        init_container_args: list[str] = []
+        download_destination = "/mnt/models/"
+    elif restricted_scc_init:
+        init_volume_mount = volume_mount
+        init_command = ["mkdir", "-p", pvc_model_path]
+        init_container_args = []
+        download_destination = pvc_model_path
+    else:
+        init_volume_mount = volume_mount
+        init_command = ["sh"]
+        init_container_args = [
+            "-c",
+            'mkdir -p "$1" && chmod -R 777 "$1"',
+            "init-container",
+            pvc_model_path,
+        ]
+        download_destination = pvc_model_path
+
     init_containers = [
         {
             "name": "init-container",
             "image": "quay.io/quay/busybox@sha256:92f3298bf80a1ba949140d77987f5de081f010337880cd771f7e7fc928f8c74d",
-            "command": ["sh"],
-            "args": ["-c", f"mkdir -p {pvc_model_path} && chmod -R 777 {pvc_model_path}"],
-            "volumeMounts": [volume_mount],
+            "command": init_command,
+            "args": init_container_args,
+            "volumeMounts": [init_volume_mount],
         }
     ]
     containers = [
@@ -124,7 +161,7 @@ def download_model_data(
             "image": utilities.infra.get_kserve_storage_initialize_image(client=client),
             "args": [
                 f"s3://{bucket_name}/{model_path}/",
-                pvc_model_path,
+                download_destination,
             ],
             "env": [
                 {"name": "AWS_ACCESS_KEY_ID", "value": aws_access_key_id},
@@ -140,15 +177,22 @@ def download_model_data(
     ]
     volumes = [{"name": model_pvc_name, "persistentVolumeClaim": {"claimName": model_pvc_name}}]
 
-    with Pod(
-        client=client,
-        namespace=model_namespace,
-        name="download-model-data",
-        init_containers=init_containers,
-        containers=containers,
-        volumes=volumes,
-        restart_policy="Never",
-    ) as pod:
+    pod_kwargs: dict[str, Any] = {
+        "client": client,
+        "namespace": model_namespace,
+        "name": "download-model-data",
+        "init_containers": init_containers,
+        "containers": containers,
+        "volumes": volumes,
+        "restart_policy": "Never",
+    }
+    if restricted_scc_init and (fs_group := namespace_fs_group(client=client, namespace=model_namespace)) is not None:
+        pod_kwargs["security_context"] = {
+            "fsGroup": fs_group,
+            "seccompProfile": {"type": "RuntimeDefault"},
+        }
+
+    with Pod(**pod_kwargs) as pod:
         pod.wait_for_status(status=Pod.Status.RUNNING)
         LOGGER.info("Waiting for model download to complete")
         pod.wait_for_status(status=Pod.Status.SUCCEEDED, timeout=25 * 60)
