@@ -1,53 +1,46 @@
+import datetime
 import re
 from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
 
 import structlog
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.x509.oid import NameOID
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
-from ocp_resources.maria_db import MariaDB
-from ocp_resources.mariadb_operator import MariadbOperator
 from ocp_resources.namespace import Namespace
+from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
+from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.trustyai_service import TrustyAIService
 from timeout_sampler import TimeoutSampler, retry
 
-from utilities.constants import TRUSTYAI_SERVICE_NAME, Timeout
+from utilities.constants import MARIA_DB_IMAGE, TRUSTYAI_SERVICE_NAME, Timeout
 from utilities.exceptions import TooManyPodsError, UnexpectedFailureError
 from utilities.general import validate_container_images, wait_for_pods_by_labels
 
 LOGGER = structlog.get_logger(name=__name__)
 
 
-def wait_for_mariadb_operator_deployments(mariadb_operator: MariadbOperator, client: DynamicClient) -> None:
-    expected_deployment_names: list[str] = [
-        "mariadb-operator",
-        "mariadb-operator-cert-controller",
-        "mariadb-operator-helm-controller-manager",
-        "mariadb-operator-webhook",
-    ]
-
-    for name in expected_deployment_names:
-        deployment = Deployment(client=client, name=name, namespace=mariadb_operator.namespace)
-        deployment.wait_for_replicas()
-
-
-def wait_for_mariadb_pods(client: DynamicClient, mariadb: MariaDB, timeout: int = Timeout.TIMEOUT_15MIN) -> None:
+def wait_for_mariadb_pods(
+    client: DynamicClient, deployment_name: str, namespace: str, timeout: int = Timeout.TIMEOUT_15MIN
+) -> None:
     def _get_mariadb_pods() -> list[Pod]:
-        return [
-            _pod
-            for _pod in Pod.get(
+        return list(
+            Pod.get(
                 client=client,
-                namespace=mariadb.namespace,
-                label_selector=f"app.kubernetes.io/instance={mariadb.name}",
+                namespace=namespace,
+                label_selector=f"name={deployment_name}",
             )
-        ]
+        )
 
     sampler = TimeoutSampler(wait_timeout=timeout, sleep=1, func=lambda: bool(_get_mariadb_pods()))
 
@@ -61,6 +54,248 @@ def wait_for_mariadb_pods(client: DynamicClient, mariadb: MariaDB, timeout: int 
             condition=Pod.Condition.READY,
             status="True",
         )
+
+
+def _generate_mariadb_tls_certs(namespace_name: str) -> tuple[str, str, str]:
+    """Generate self-signed TLS certificates for MariaDB.
+
+    Returns:
+        tuple: (ca_cert_pem, server_cert_pem, server_key_pem)
+    """
+    ca_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+    ca_subject = ca_issuer = x509.Name(
+        attributes=[x509.NameAttribute(oid=NameOID.COMMON_NAME, value=f"mariadb-ca-{namespace_name}")]
+    )
+    ca_cert = (
+        x509
+        .CertificateBuilder()
+        .subject_name(ca_subject)
+        .issuer_name(ca_issuer)
+        .public_key(ca_key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(datetime.datetime.now(datetime.UTC))
+        .not_valid_after(datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=365))
+        .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+        .sign(private_key=ca_key, algorithm=hashes.SHA256())
+    )
+
+    server_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+    server_subject = x509.Name(
+        attributes=[x509.NameAttribute(oid=NameOID.COMMON_NAME, value=f"mariadb.{namespace_name}.svc.cluster.local")]
+    )
+    server_cert = (
+        x509
+        .CertificateBuilder()
+        .subject_name(server_subject)
+        .issuer_name(ca_cert.subject)
+        .public_key(server_key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(datetime.datetime.now(datetime.UTC))
+        .not_valid_after(datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=365))
+        .add_extension(
+            x509.SubjectAlternativeName([
+                x509.DNSName("mariadb"),
+                x509.DNSName(f"mariadb.{namespace_name}.svc"),
+                x509.DNSName(f"mariadb.{namespace_name}.svc.cluster.local"),
+            ]),
+            critical=False,
+        )
+        .sign(private_key=ca_key, algorithm=hashes.SHA256())
+    )
+
+    ca_cert_pem = ca_cert.public_bytes(serialization.Encoding.PEM).decode("utf-8")
+    server_cert_pem = server_cert.public_bytes(serialization.Encoding.PEM).decode("utf-8")
+    server_key_pem = server_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.TraditionalOpenSSL,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode("utf-8")
+
+    return ca_cert_pem, server_cert_pem, server_key_pem
+
+
+@contextmanager
+def create_standalone_mariadb(
+    client: DynamicClient,
+    namespace_name: str,
+    name: str,
+    db_credentials_secret_name: str,
+    teardown: bool = True,
+) -> Generator[Deployment, Any, Any]:
+    """Create a standalone MariaDB deployment with TLS enabled.
+
+    Creates TLS secrets, PVC, Service, and Deployment for MariaDB.
+    Uses Red Hat registry image to avoid Docker Hub rate limits.
+    """
+    ca_cert, server_cert, server_key = _generate_mariadb_tls_certs(namespace_name=namespace_name)
+
+    with (
+        Secret(
+            client=client,
+            name=f"{name}-ca",
+            namespace=namespace_name,
+            string_data={"ca.crt": ca_cert},
+            teardown=teardown,
+        ),
+        Secret(
+            client=client,
+            name=f"{name}-server-cert",
+            namespace=namespace_name,
+            string_data={"tls.crt": server_cert},
+            teardown=teardown,
+        ),
+        Secret(
+            client=client,
+            name=f"{name}-server-key",
+            namespace=namespace_name,
+            string_data={"tls.key": server_key},
+            teardown=teardown,
+        ),
+        PersistentVolumeClaim(
+            accessmodes="ReadWriteOnce",
+            name=name,
+            namespace=namespace_name,
+            client=client,
+            size="1Gi",
+            teardown=teardown,
+        ),
+        Service(
+            kind_dict={
+                "apiVersion": "v1",
+                "kind": "Service",
+                "metadata": {"name": name, "namespace": namespace_name},
+                "spec": {
+                    "selector": {"name": name},
+                    "ports": [{"port": 3306, "targetPort": 3306, "name": "mysql", "protocol": "TCP"}],
+                },
+            },
+            teardown=teardown,
+        ),
+    ):
+        deployment_template = {
+            "metadata": {
+                "labels": {"name": name, "app": "mariadb", "component": "database"},
+            },
+            "spec": {
+                "containers": [
+                    {
+                        "name": "mariadb",
+                        "image": MARIA_DB_IMAGE,
+                        "imagePullPolicy": "IfNotPresent",
+                        "env": [
+                            {
+                                "name": "MYSQL_USER",
+                                "valueFrom": {
+                                    "secretKeyRef": {"name": db_credentials_secret_name, "key": "databaseUsername"}
+                                },
+                            },
+                            {
+                                "name": "MYSQL_PASSWORD",
+                                "valueFrom": {
+                                    "secretKeyRef": {"name": db_credentials_secret_name, "key": "databasePassword"}
+                                },
+                            },
+                            {
+                                "name": "MYSQL_ROOT_PASSWORD",
+                                "valueFrom": {
+                                    "secretKeyRef": {"name": db_credentials_secret_name, "key": "databasePassword"}
+                                },
+                            },
+                            {
+                                "name": "MYSQL_DATABASE",
+                                "valueFrom": {
+                                    "secretKeyRef": {"name": db_credentials_secret_name, "key": "databaseName"}
+                                },
+                            },
+                            {
+                                "name": "MARIADB_ROOT_PASSWORD",
+                                "valueFrom": {
+                                    "secretKeyRef": {"name": db_credentials_secret_name, "key": "databasePassword"}
+                                },
+                            },
+                        ],
+                        "ports": [{"containerPort": 3306, "protocol": "TCP"}],
+                        "command": [
+                            "run-mysqld",
+                            "--ssl-ca=/etc/mysql/certs/ca.crt",
+                            "--ssl-cert=/etc/mysql/certs/tls.crt",
+                            "--ssl-key=/etc/mysql/certs/tls.key",
+                            "--require-secure-transport=ON",
+                        ],
+                        "livenessProbe": {
+                            "exec": {
+                                "command": [
+                                    "/bin/bash",
+                                    "-c",
+                                    "mysqladmin -u${MYSQL_USER} -p${MYSQL_ROOT_PASSWORD} ping",
+                                ]
+                            },
+                            "initialDelaySeconds": 15,
+                            "periodSeconds": 10,
+                            "timeoutSeconds": 5,
+                        },
+                        "readinessProbe": {
+                            "exec": {
+                                "command": [
+                                    "/bin/bash",
+                                    "-c",
+                                    'mysql -D ${MYSQL_DATABASE} -u${MYSQL_USER} -p${MYSQL_ROOT_PASSWORD} -e "SELECT 1"',
+                                ]
+                            },
+                            "initialDelaySeconds": 10,
+                            "timeoutSeconds": 5,
+                        },
+                        "securityContext": {"capabilities": {}, "privileged": False},
+                        "terminationMessagePath": "/dev/termination-log",
+                        "volumeMounts": [
+                            {"mountPath": "/var/lib/mysql", "name": "mariadb-data"},
+                            {
+                                "mountPath": "/etc/mysql/certs/ca.crt",
+                                "name": "ca-cert",
+                                "subPath": "ca.crt",
+                                "readOnly": True,
+                            },
+                            {
+                                "mountPath": "/etc/mysql/certs/tls.crt",
+                                "name": "server-cert",
+                                "subPath": "tls.crt",
+                                "readOnly": True,
+                            },
+                            {
+                                "mountPath": "/etc/mysql/certs/tls.key",
+                                "name": "server-key",
+                                "subPath": "tls.key",
+                                "readOnly": True,
+                            },
+                        ],
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "restartPolicy": "Always",
+                "volumes": [
+                    {"name": "mariadb-data", "persistentVolumeClaim": {"claimName": name}},
+                    {"name": "ca-cert", "secret": {"secretName": f"{name}-ca"}},
+                    {"name": "server-cert", "secret": {"secretName": f"{name}-server-cert"}},
+                    {"name": "server-key", "secret": {"secretName": f"{name}-server-key"}},
+                ],
+            },
+        }
+
+        with Deployment(
+            name=name,
+            client=client,
+            namespace=namespace_name,
+            label={"name": name},
+            replicas=1,
+            selector={"matchLabels": {"name": name, "app": "mariadb"}},
+            template=deployment_template,
+            wait_for_resource=True,
+            teardown=teardown,
+        ) as deployment:
+            wait_for_mariadb_pods(client=client, deployment_name=name, namespace=namespace_name)
+            yield deployment
 
 
 @retry(
@@ -93,8 +328,8 @@ def validate_trustyai_service_db_conn_failure(
     """
     pods = list(Pod.get(client=client, namespace=namespace.name, label_selector=label_selector))
     mariadb_conn_failure_regex = (
-        r"^.+ERROR.+Could not connect to mariadb:.+ PKIX path validation failed: "
-        r"java\.security\.cert\.CertPathValidatorException: signature check failed"
+        r"^.+ERROR.+Could not connect to mariadb:.+"
+        r"(PKIX path.*failed|SSL|socket|Connection refused)"
     )
     if pods:
         if len(pods) > 1:

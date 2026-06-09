@@ -7,12 +7,9 @@ import pytest
 import yaml
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
-from kubernetes.dynamic.exceptions import ResourceNotFoundError
-from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
-from ocp_resources.maria_db import MariaDB
-from ocp_resources.mariadb_operator import MariadbOperator
 from ocp_resources.namespace import Namespace
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.role import Role
@@ -43,12 +40,11 @@ from tests.ai_safety.trustyai_service.utils import (
     create_isvc_getter_role_binding,
     create_isvc_getter_service_account,
     create_isvc_getter_token_secret,
+    create_standalone_mariadb,
     create_trustyai_service,
-    wait_for_mariadb_pods,
 )
 from utilities.constants import (
     MARIADB,
-    OPENSHIFT_OPERATORS,
     TRUSTYAI_SERVICE_NAME,
     Annotations,
     KServeDeploymentType,
@@ -57,7 +53,6 @@ from utilities.constants import (
 from utilities.inference_utils import create_isvc
 from utilities.infra import create_inference_token, get_kserve_storage_initialize_image, update_configmap_data
 from utilities.logger import RedactedString
-from utilities.operator_utils import get_cluster_service_version
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 DB_CREDENTIALS_SECRET_NAME: str = "db-credentials"
@@ -222,60 +217,31 @@ def mariadb(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     db_credentials_secret: Secret,
-    mariadb_operator_cr: MariadbOperator,
     teardown_resources: bool,
-) -> Generator[MariaDB, Any, Any]:
-    """Provides a MariaDB instance for TrustyAI database storage.
+) -> Generator[Deployment, Any, Any]:
+    """Provides a MariaDB instance using standalone Deployment with TLS enabled.
 
-    In post-upgrade mode, references the existing MariaDB created during pre-upgrade tests
-    and cleans it up after post-upgrade tests complete.
-
-    In pre-upgrade mode (or when no upgrade flag is set), creates a new MariaDB instance,
-    waits for pods to be ready, and cleans up.
+    Uses Red Hat MariaDB image deployed via Deployment to avoid Docker Hub rate limits.
+    Generates self-signed TLS certificates to match operator behavior.
     """
     if pytestconfig.option.post_upgrade:
-        mariadb = MariaDB(
+        deployment = Deployment(
             client=admin_client,
             name="mariadb",
             namespace=model_namespace.name,
             ensure_exists=True,
         )
-        yield mariadb
-        mariadb.clean_up()
+        yield deployment
+        deployment.clean_up()
     else:
-        mariadb_csv: ClusterServiceVersion = get_cluster_service_version(
-            client=admin_client, prefix=MARIADB, namespace=OPENSHIFT_OPERATORS
-        )
-        alm_examples: list[dict[str, Any]] = mariadb_csv.get_alm_examples()
-        mariadb_dict: dict[str, Any] = next((example for example in alm_examples if example["kind"] == "MariaDB"), None)
-
-        if not mariadb_dict:
-            raise ResourceNotFoundError(f"No MariaDB dict found in alm_examples for CSV {mariadb_csv.name}")
-
-        mariadb_dict["metadata"]["namespace"] = model_namespace.name
-        mariadb_dict["spec"]["database"] = DB_NAME
-        mariadb_dict["spec"]["username"] = DB_USERNAME
-
-        mariadb_dict["spec"]["replicas"] = 1
-
-        # Need to fix MariaDB version due to an issue with the default version in certain environments
-        # Using the same registry and image used by the MariaDB operator
-        # --just changing the tag to point to a stable version
-        mariadb_dict["spec"]["image"] = (
-            "registry.redhat.io/rhel9/mariadb-1011"
-            "@sha256:092407d87f8017bb444a462fb3d38ad5070429e94df7cf6b91d82697f36d0fa9"
-        )
-        mariadb_dict["spec"]["galera"]["enabled"] = False
-        mariadb_dict["spec"]["metrics"]["enabled"] = False
-        mariadb_dict["spec"]["tls"] = {"enabled": True, "required": True}
-
-        password_secret_key_ref = {"generate": False, "key": "databasePassword", "name": DB_CREDENTIALS_SECRET_NAME}
-
-        mariadb_dict["spec"]["rootPasswordSecretKeyRef"] = password_secret_key_ref
-        mariadb_dict["spec"]["passwordSecretKeyRef"] = password_secret_key_ref
-        with MariaDB(kind_dict=mariadb_dict, teardown=teardown_resources) as mariadb:
-            wait_for_mariadb_pods(client=admin_client, mariadb=mariadb)
-            yield mariadb
+        with create_standalone_mariadb(
+            client=admin_client,
+            namespace_name=model_namespace.name,
+            name="mariadb",
+            db_credentials_secret_name=DB_CREDENTIALS_SECRET_NAME,
+            teardown=teardown_resources,
+        ) as deployment:
+            yield deployment
 
 
 @pytest.fixture(scope="class")
@@ -283,16 +249,12 @@ def trustyai_db_ca_secret(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    mariadb: MariaDB,
+    mariadb: Deployment,
     teardown_resources: bool,
 ) -> Generator[Secret, Any]:
     """Provides TLS CA certificate secret for TrustyAI to connect to MariaDB.
 
-    In post-upgrade mode, references the existing CA secret created during pre-upgrade tests
-    and cleans it up after post-upgrade tests complete.
-
-    In pre-upgrade mode (or when no upgrade flag is set), creates a new secret by copying the
-    CA certificate from the MariaDB CA secret and manages cleanup via teardown_resources.
+    Copies the CA certificate from MariaDB's CA secret for TrustyAI to use.
     """
     if pytestconfig.option.post_upgrade:
         secret = Secret(
@@ -305,7 +267,7 @@ def trustyai_db_ca_secret(
         secret.clean_up()
     else:
         mariadb_ca_secret = Secret(
-            client=admin_client, name=f"{mariadb.name}-ca", namespace=model_namespace.name, ensure_exists=True
+            client=admin_client, name="mariadb-ca", namespace=model_namespace.name, ensure_exists=True
         )
         with Secret(
             client=admin_client,

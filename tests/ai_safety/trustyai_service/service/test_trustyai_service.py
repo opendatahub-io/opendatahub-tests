@@ -1,8 +1,12 @@
 import pytest
+import requests
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.custom_resource_definition import CustomResourceDefinition
+from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
 from ocp_resources.trustyai_service import TrustyAIService
+from timeout_sampler import retry
 
 from tests.ai_safety.trustyai_service.constants import (
     DRIFT_BASE_DATA_PATH,
@@ -21,6 +25,20 @@ from tests.ai_safety.trustyai_service.utils import (
     validate_trustyai_service_db_conn_failure,
     validate_trustyai_service_images,
 )
+from utilities.constants import TRUSTYAI_SERVICE_NAME
+
+logger = structlog.get_logger(name=__name__)
+
+
+@retry(wait_timeout=60, sleep=5)
+def _wait_for_route_ready(trustyai_service: TrustyAIService, token: str) -> bool:
+    route = trustyai_service.external_route
+    url = f"https://{route}/q/health"
+    response = requests.get(url, headers={"Authorization": f"Bearer {token}"}, verify=False, timeout=10)
+    content_type = response.headers.get("Content-Type", "")
+    logger.info(f"Route readiness check: status={response.status_code}, content-type={content_type}")
+    assert "application/json" in content_type, f"Route not ready, got content-type: {content_type}"
+    return True
 
 
 @pytest.mark.smoke
@@ -145,6 +163,15 @@ def test_trustyai_service_db_migration(
         client=admin_client,
         trustyai_service=trustyai_db_migration_patched_service,
     )
+
+    Deployment(
+        client=admin_client,
+        name=TRUSTYAI_SERVICE_NAME,
+        namespace=trustyai_db_migration_patched_service.namespace,
+        ensure_exists=True,
+    ).wait_for_replicas()
+
+    _wait_for_route_ready(trustyai_service=trustyai_db_migration_patched_service, token=current_client_token)
 
     verify_trustyai_service_metric_scheduling_request(
         client=admin_client,
