@@ -28,7 +28,7 @@ from tests.workbenches.notebooks_server.controller.utils import (
 from utilities import constants
 from utilities.constants import Timeout
 from utilities.general import collect_pod_information
-from utilities.infra import create_ns
+from utilities.infra import create_ns, get_product_version
 
 LOGGER = get_logger(name=__name__)
 
@@ -537,6 +537,13 @@ def capture_notebook_baseline(
     )
     odh_ca_bundle_resource_version = odh_trusted_ca_bundle.instance.metadata.resourceVersion
 
+    source_version = get_product_version(admin_client=admin_client)
+
+    containers = upgrade_notebook_pod.instance.spec.containers
+    sidecar_names = {"oauth-proxy", "kube-rbac-proxy"}
+    main_container = next((c for c in containers if c.name not in sidecar_names), None)
+    notebook_image = main_container.image if main_container else ""
+
     baseline = {
         "ntb_creation_timestamp": creation_timestamp,
         "notebook_generation": notebook_generation,
@@ -551,6 +558,8 @@ def capture_notebook_baseline(
         "stopped_annotation_value": stopped_annotation,
         "ca_bundle_resource_version": ca_bundle_resource_version,
         "odh_ca_bundle_resource_version": odh_ca_bundle_resource_version,
+        "source_rhoai_version": str(source_version),
+        "notebook_image": notebook_image,
     }
 
     ConfigMap(
