@@ -15,4 +15,4 @@ tests/ai_safety/       @kpunwatk @sheltoncyril
 tests/ai_hub/             @dbasunag @lugi0 @fege
 tests/model_serving/              @mwaykole @Raghul-M
 tests/rag/                        @jgarciao @jiripetrlik
-tests/workbenches                 @jstourac @andyatmiami
+tests/workbenches                 @jstourac @andyatmiami @jiridanek @harshad16

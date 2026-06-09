@@ -1,8 +1,10 @@
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.custom_resource_definition import CustomResourceDefinition
+from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
 from ocp_resources.trustyai_service import TrustyAIService
+from timeout_sampler import retry
 
 from tests.ai_safety.trustyai_service.constants import (
     DRIFT_BASE_DATA_PATH,
@@ -21,7 +23,7 @@ from tests.ai_safety.trustyai_service.service.utils import (
     wait_for_trustyai_db_migration_complete_log,
     patch_trustyai_service_cr,
 )
-from utilities.constants import MinIo
+from utilities.constants import MinIo, TRUSTYAI_SERVICE_NAME
 
 
 @pytest.mark.smoke
@@ -147,6 +149,29 @@ def test_trustyai_service_db_migration(
         client=admin_client,
         trustyai_service=trustyai_db_migration_patched_service,
     )
+
+    trustyai_deployment = Deployment(
+        name=TRUSTYAI_SERVICE_NAME,
+        namespace=trustyai_db_migration_patched_service.namespace,
+    )
+    trustyai_deployment.wait_for_replicas()
+
+    @retry(wait_timeout=60, sleep=5)
+    def _wait_for_route_ready():
+        from tests.ai_safety.trustyai_service.trustyai_service_utils import TrustyAIServiceClient
+
+        tas_client = TrustyAIServiceClient(
+            token=current_client_token,
+            service=trustyai_db_migration_patched_service,
+            client=admin_client,
+        )
+        response = tas_client.get_model_metadata()
+        assert response.headers.get("content-type", "").startswith("application/json"), (
+            f"Route not ready, got content-type: {response.headers.get('content-type')}"
+        )
+        return True
+
+    _wait_for_route_ready()
 
     verify_trustyai_service_metric_scheduling_request(
         client=admin_client,
