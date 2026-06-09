@@ -116,7 +116,10 @@ def _check_llmd_dsc_dependencies(dsc_resource: Resource) -> list[HealthCheckResu
     Returns:
         List of HealthCheckResult. Status is "OK", "FAIL", or "WARN".
     """
-    for condition in dsc_resource.instance.status.conditions:
+    conditions = getattr(getattr(dsc_resource.instance, "status", None), "conditions", None)
+    if not conditions:
+        return [HealthCheckResult("FAIL", f"DSC {LLMD_DSC_CONDITION}", "DSC has no status conditions")]
+    for condition in conditions:
         if condition.type == LLMD_DSC_CONDITION:
             if condition.status != "True":
                 detail = f"{condition.get('reason')} — {condition.get('message')}"
@@ -287,8 +290,8 @@ def llmisvc(
 
 
 class AuthEntry(NamedTuple):
-    service: str
-    token: str
+    service: LLMInferenceService
+    token: RedactedString
 
 
 @pytest.fixture(scope="class")
