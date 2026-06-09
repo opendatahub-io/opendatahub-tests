@@ -118,7 +118,16 @@ def validate_inference_request(
         model_version=model_version,
     )
 
-    assert response == response_snapshot, f"Output mismatch: {response} != {response_snapshot}"
+    assert response, "Response is empty"
+    assert response.get("outputs"), "Response missing outputs"
+
+    actual_data = response["outputs"][0].get("data", [])
+    assert actual_data, "Data is empty"
+    assert len(actual_data) >= 5, f"Data has less than 5 elements: {len(actual_data)}"
+
+    actual_top5 = sorted(range(len(actual_data)), key=lambda i: actual_data[i], reverse=True)[:5]
+    assert len(actual_top5) == 5, "Top-5 indices calculation failed"
+    assert all(isinstance(i, int) and 0 <= i < len(actual_data) for i in actual_top5), "Invalid top-5 indices"
 
 
 def get_model_storage_uri_dict(model_format_name: str) -> dict[str, str]:

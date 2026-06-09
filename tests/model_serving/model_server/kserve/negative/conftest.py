@@ -39,7 +39,7 @@ def negative_test_namespace(
     with create_ns(
         admin_client=admin_client,
         unprivileged_client=unprivileged_client,
-        name="negative-test-kserve",
+        name="neg-kserve",
     ) as ns:
         yield ns
 
@@ -98,7 +98,7 @@ def ovms_serving_runtime(
     """Create OVMS serving runtime shared across all negative tests."""
     with ServingRuntimeFromTemplate(
         client=admin_client,
-        name="negative-test-ovms-runtime",
+        name="neg-ovms-runtime",
         namespace=negative_test_namespace.name,
         template_name=RuntimeTemplates.OVMS_KSERVE,
         multi_model=False,
@@ -124,7 +124,7 @@ def negative_test_ovms_isvc(
 
     with create_isvc(
         client=admin_client,
-        name="negative-test-ovms-isvc",
+        name="neg-ovms-isvc",
         namespace=negative_test_namespace.name,
         runtime=ovms_serving_runtime.name,
         storage_key=negative_test_s3_secret.name,
@@ -152,7 +152,7 @@ def invalid_s3_credentials_ovms_isvc(
 
     with create_isvc(
         client=admin_client,
-        name="negative-test-invalid-s3-creds-isvc",
+        name="neg-bad-s3-isvc",
         namespace=negative_test_namespace.name,
         runtime=ovms_serving_runtime.name,
         storage_key=invalid_s3_credentials_secret.name,
@@ -174,11 +174,11 @@ def wrong_model_format_ovms_isvc(
     ci_s3_bucket_name: str,
     negative_test_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
-    """InferenceService declaring ``pytorch`` format against an OVMS runtime that expects ONNX."""
+    """InferenceService declaring a format not in the runtime's supportedModelFormats."""
     storage_uri = f"s3://{ci_s3_bucket_name}/test-dir/"
     with create_isvc(
         client=admin_client,
-        name="negative-test-wrong-format-isvc",
+        name="neg-wrong-fmt-isvc",
         namespace=negative_test_namespace.name,
         runtime=ovms_serving_runtime.name,
         storage_key=negative_test_s3_secret.name,
@@ -208,7 +208,7 @@ def corrupted_model_ovms_isvc(
 
     with create_isvc(
         client=admin_client,
-        name="negative-test-corrupted-model-isvc",
+        name="neg-corrupted-isvc",
         namespace=negative_test_namespace.name,
         runtime=ovms_serving_runtime.name,
         storage_key=negative_test_s3_secret.name,
@@ -253,7 +253,7 @@ def bad_pvc_ovms_isvc(
 
     with create_isvc(
         client=admin_client,
-        name="negative-test-bad-pvc-isvc",
+        name="neg-bad-pvc-isvc",
         namespace=negative_test_namespace.name,
         runtime=ovms_serving_runtime.name,
         storage_uri=f"pvc://{bad_storage_class_pvc.name}/models/",
