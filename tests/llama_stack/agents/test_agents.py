@@ -1,13 +1,16 @@
 import uuid
+
 import pytest
 from llama_stack_client import Agent, LlamaStackClient, RAGDocument
 from simple_logger.logger import get_logger
+
 from tests.llama_stack.constants import ModelInfo
 from tests.llama_stack.utils import get_torchtune_test_expectations, validate_rag_agent_responses
 
 LOGGER = get_logger(name=__name__)
 
 
+@pytest.mark.skip(reason="Llama Stack is deprecated in RHOAI 2.25 EUS (RHAIENG-5523)")
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, llama_stack_server_config",
     [
@@ -128,7 +131,7 @@ class TestLlamaStackAgents:
             documents = [
                 RAGDocument(
                     document_id=f"num-{index}",
-                    content=f"https://raw.githubusercontent.com/pytorch/torchtune/refs/tags/v0.6.1/docs/source/tutorials/{url}",  # noqa
+                    content=f"https://raw.githubusercontent.com/pytorch/torchtune/refs/tags/v0.6.1/docs/source/tutorials/{url}",  # noqa: E501
                     mime_type="text/plain",
                     metadata={},
                 )
