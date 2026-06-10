@@ -35,8 +35,6 @@ from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import Labels, Protocols, Timeout
 from utilities.infra import create_inference_token
 
-pytest_plugins = ["tests.ai_safety.evalhub.multitenancy.conftest"]
-
 LOGGER = structlog.get_logger(name=__name__)
 
 
