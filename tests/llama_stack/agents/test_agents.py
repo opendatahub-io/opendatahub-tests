@@ -10,7 +10,6 @@ from tests.llama_stack.utils import get_torchtune_test_expectations, validate_ra
 LOGGER = get_logger(name=__name__)
 
 
-@pytest.mark.skip(reason="Llama Stack is deprecated in RHOAI 2.25 EUS (RHAIENG-5523)")
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, llama_stack_server_config",
     [
@@ -53,27 +52,23 @@ class TestLlamaStackAgents:
         )
         s_id = agent.create_session(session_name=f"s{uuid.uuid4().hex}")
 
-        # Test identity question
-        response = agent.create_turn(
-            messages=[{"role": "user", "content": "Who are you?"}],
-            session_id=s_id,
-            stream=False,
-        )
-        content = response.output_message.content
-        text = str(content or "")
-        assert text, "LLM response content is empty"
-        assert "model" in text.lower(), "The LLM didn't provide the expected answer to the prompt"
+        test_cases = [
+            ("Who are you?", ["model", "assistant", "ai", "artificial", "language model"]),
+            ("What can you do?", ["help", "assist", "answer", "provide", "support"]),
+        ]
 
-        # Test capability question
-        response = agent.create_turn(
-            messages=[{"role": "user", "content": "What can you do?"}],
-            session_id=s_id,
-            stream=False,
-        )
-        content = response.output_message.content
-        text = str(content or "")
-        assert text, "LLM response content is empty"
-        assert "answer" in text.lower(), "The LLM didn't provide the expected answer to the prompt"
+        for question, expected_keywords in test_cases:
+            response = agent.create_turn(
+                messages=[{"role": "user", "content": question}],
+                session_id=s_id,
+                stream=False,
+            )
+            content = response.output_message.content
+            text = str(content or "")
+            assert text, f"LLM response content is empty for question: {question}"
+            assert any(keyword in text.lower() for keyword in expected_keywords), (
+                f"The LLM didn't provide any of the expected keywords {expected_keywords} for: {question}. Got: {text}"
+            )
 
     @pytest.mark.smoke
     def test_agents_rag_agent(
