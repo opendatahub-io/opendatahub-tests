@@ -138,11 +138,13 @@ Upgrade tests validate that AI Safety components continue to function correctly 
 Upgrade tests run in two phases:
 
 1. **Pre-upgrade phase** - Run before the platform upgrade to establish baseline state:
+
    ```bash
    uv run pytest -m pre_upgrade tests/ai_safety/
    ```
 
 2. **Post-upgrade phase** - Run after the platform upgrade to verify persistence and functionality:
+
    ```bash
    uv run pytest -m post_upgrade tests/ai_safety/
    ```
@@ -154,22 +156,26 @@ Upgrade tests run in two phases:
 **Location:** `tests/ai_safety/guardrails/upgrade/test_guardrails_upgrade.py`
 
 **Test Classes:**
+
 - `TestGuardrailsOrchestratorWithBuiltInDetectorsPreUpgrade`
 - `TestGuardrailsOrchestratorWithBuiltInDetectorsPostUpgrade`
 
 **Covered Upgrade Paths:**
+
 - Built-in detector persistence (regex, PII detection)
   - Pre-upgrade: Deploy orchestrator with built-in regex detectors for email and SSN detection
   - Post-upgrade: Verify detectors continue to function, health endpoints remain responsive
   - Validated: Input detection, output detection, passthrough routing, health/info endpoints
 
 **What's Validated:**
+
 - Orchestrator health and info endpoints remain responsive after upgrade
 - Built-in regex detectors continue detecting unsuitable input/output
 - Gateway routing and passthrough functionality persists
 - Configuration and detector settings survive the upgrade
 
 **Example:**
+
 ```bash
 # Pre-upgrade
 uv run pytest -m pre_upgrade tests/ai_safety/guardrails/upgrade/
@@ -185,6 +191,7 @@ uv run pytest -m post_upgrade tests/ai_safety/guardrails/upgrade/
 **Location:** `tests/ai_safety/trustyai_service/upgrade/test_trustyai_service_upgrade.py`
 
 **Test Classes:**
+
 - `TestPreUpgradeTrustyAIService` - PVC storage pre-upgrade validation
 - `TestPostUpgradeTrustyAIService` - Post-upgrade validation and PVC-to-database migration
 - `TestPreUpgradeDBTrustyAIService` - Database storage pre-upgrade validation
@@ -203,6 +210,7 @@ uv run pytest -m post_upgrade tests/ai_safety/guardrails/upgrade/
    - Validated: Database secret validation, inference data persistence, metric scheduling
 
 **What's Validated:**
+
 - TrustyAI service survives platform upgrade with both PVC and database storage
 - Inference data persists across upgrade
 - Scheduled metrics (drift detection) remain functional
@@ -211,11 +219,13 @@ uv run pytest -m post_upgrade tests/ai_safety/guardrails/upgrade/
 - Metric deletion and rescheduling work after upgrade
 
 **Test Dependencies:**
+
 - Some database tests use `pytest.mark.dependency` to ensure proper execution order
 - Dependencies: `db_pre_upgrade_inference` → `db_pre_upgrade_data_upload` → `db_pre_upgrade_metric_schedule`
 - Post-upgrade: `db_migration` → `db_post_upgrade_metric_delete`
 
 **Example:**
+
 ```bash
 # Pre-upgrade
 uv run pytest -m pre_upgrade tests/ai_safety/trustyai_service/upgrade/
