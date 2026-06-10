@@ -1,0 +1,118 @@
+import pytest
+from ocp_resources.namespace import Namespace
+from ocp_resources.route import Route
+
+from tests.ai_safety.evalhub.mcp.utils import TENANT_HEADER_NAME, EvalHubMcpClient
+from tests.ai_safety.evalhub.utils import build_headers
+from utilities.guardrails import get_auth_headers
+
+
+@pytest.mark.parametrize(
+    "model_namespace",
+    [
+        pytest.param(
+            {"name": "test-evalhub-mcp-auth"},
+        ),
+    ],
+    indirect=True,
+)
+@pytest.mark.tier2
+@pytest.mark.ai_safety
+@pytest.mark.usefixtures("evalhub_mcp_mt_ready", "evalhub_mcp_proxy_role_binding")
+class TestEvalHubMcpAuth:
+    """Authentication tests for evalhub-mcp behind kube-rbac-proxy."""
+
+    def test_mcp_request_without_token_is_rejected(
+        self,
+        evalhub_mcp_mt_route: Route,
+        evalhub_mcp_mt_ca_bundle_file: str,
+        tenant_a_namespace: Namespace,
+    ) -> None:
+        """Given no Authorization header, MCP JSON-RPC requests are rejected."""
+        client = EvalHubMcpClient(
+            host=evalhub_mcp_mt_route.host,
+            token="unused",
+            ca_bundle_file=evalhub_mcp_mt_ca_bundle_file,
+            tenant=tenant_a_namespace.name,
+        )
+        response = client.post_without_auth(
+            method="initialize",
+            params={
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "auth-test", "version": "1.0"},
+            },
+        )
+        assert response.status_code in (401, 403), (
+            f"Expected 401/403 without token, got {response.status_code}: {response.text}"
+        )
+
+    def test_mcp_request_without_tenant_header_is_rejected(
+        self,
+        tenant_a_token: str,
+        evalhub_mcp_mt_route: Route,
+        evalhub_mcp_mt_ca_bundle_file: str,
+    ) -> None:
+        """Given a valid token but no X-Tenant header, evalhub-mcp returns forbidden."""
+        headers = get_auth_headers(token=tenant_a_token)
+        response = EvalHubMcpClient(
+            host=evalhub_mcp_mt_route.host,
+            token=tenant_a_token,
+            ca_bundle_file=evalhub_mcp_mt_ca_bundle_file,
+            tenant="unused",
+        ).post_without_auth(
+            method="initialize",
+            params={
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "auth-test", "version": "1.0"},
+            },
+            extra_headers=headers,
+        )
+        assert response.status_code == 403, (
+            f"Expected 403 without X-Tenant, got {response.status_code}: {response.text}"
+        )
+
+
+@pytest.mark.parametrize(
+    "model_namespace",
+    [
+        pytest.param(
+            {"name": "test-evalhub-mcp-auth-denied"},
+        ),
+    ],
+    indirect=True,
+)
+@pytest.mark.tier2
+@pytest.mark.ai_safety
+@pytest.mark.usefixtures("evalhub_mcp_mt_ready")
+class TestEvalHubMcpProxyRbac:
+    """Authorization tests for evalhubs/proxy RBAC on the MCP route."""
+
+    def test_mcp_request_without_proxy_rbac_is_rejected(
+        self,
+        tenant_a_token: str,
+        tenant_a_namespace: Namespace,
+        evalhub_mcp_mt_route: Route,
+        evalhub_mcp_mt_ca_bundle_file: str,
+    ) -> None:
+        """Given token without evalhubs/proxy RBAC, kube-rbac-proxy rejects the MCP request."""
+        headers = build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name)
+        assert TENANT_HEADER_NAME in headers
+        response = EvalHubMcpClient(
+            host=evalhub_mcp_mt_route.host,
+            token=tenant_a_token,
+            ca_bundle_file=evalhub_mcp_mt_ca_bundle_file,
+            tenant=tenant_a_namespace.name,
+        ).post_without_auth(
+            method="initialize",
+            params={
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "auth-test", "version": "1.0"},
+            },
+            extra_headers=headers,
+        )
+        assert response.status_code in (401, 403), (
+            f"Expected 401/403 without proxy RBAC, got {response.status_code}: {response.text}"
+        )
