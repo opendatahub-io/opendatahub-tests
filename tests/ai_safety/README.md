@@ -221,8 +221,8 @@ uv run pytest -m post_upgrade tests/ai_safety/guardrails/upgrade/
 **Test Dependencies:**
 
 - Some database tests use `pytest.mark.dependency` to ensure proper execution order
-- Dependencies: `db_pre_upgrade_inference` → `db_pre_upgrade_data_upload` → `db_pre_upgrade_metric_schedule`
-- Post-upgrade: `db_migration` → `db_post_upgrade_metric_delete`
+- Dependencies: `db_pre_upgrade_inference` -> `db_pre_upgrade_data_upload` -> `db_pre_upgrade_metric_schedule`
+- Post-upgrade: `db_migration` -> `db_post_upgrade_metric_delete`
 
 **Example:**
 
