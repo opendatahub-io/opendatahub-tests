@@ -84,7 +84,6 @@ pytest_plugins = [
     "tests.fixtures.trustyai",
     "tests.fixtures.vector_io",
     "tests.fixtures.files",
-    "tests.fixtures.evalhub_tenancy",
 ]
 
 
