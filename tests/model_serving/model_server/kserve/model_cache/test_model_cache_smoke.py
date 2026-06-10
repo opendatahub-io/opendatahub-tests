@@ -8,6 +8,7 @@ from ocp_resources.serving_runtime import ServingRuntime
 from tests.model_serving.model_server.kserve.model_cache.utils import (
     LOCAL_MODEL_NODE_GROUP_NAME,
     LocalModelNamespaceCache,
+    LocalModelNode,
     LocalModelNodeGroup,
     assert_predictor_storage_initializer_uses_pvc,
     cache_status_dict,
@@ -52,7 +53,19 @@ class TestModelCacheSmoke:
         node_group = LocalModelNodeGroup(client=admin_client, name=LOCAL_MODEL_NODE_GROUP_NAME)
         node_group.get()
         expected_nodes: list[str] = node_group.instance.spec.get("nodes", [])
-        assert expected_nodes, f"LocalModelNodeGroup '{LOCAL_MODEL_NODE_GROUP_NAME}' has no nodes listed"
+        if not expected_nodes:
+            expected_nodes = [
+                node.name
+                for node in LocalModelNode.get(dyn_client=admin_client)
+                if any(
+                    model.get("nodeGroup") == LOCAL_MODEL_NODE_GROUP_NAME
+                    for model in (node.instance.spec.get("localModels") or [])
+                )
+            ]
+        assert expected_nodes, (
+            f"LocalModelNodeGroup '{LOCAL_MODEL_NODE_GROUP_NAME}' has no nodes listed in spec.nodes "
+            f"and no LocalModelNode resources reference it"
+        )
 
         status = cache_status_dict(cache=mnist_local_model_cache)
         node_status = status.get("nodeStatus") or {}

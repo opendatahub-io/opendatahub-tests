@@ -71,6 +71,12 @@ class LocalModelNodeGroup(Resource):
     api_group: str = Resource.ApiGroup.SERVING_KSERVE_IO
 
 
+class LocalModelNode(Resource):
+    """`LocalModelNode` CR representing a node participating in model caching."""
+
+    api_group: str = Resource.ApiGroup.SERVING_KSERVE_IO
+
+
 def resource_instance_to_dict(*, resource: Resource) -> dict[str, Any]:
     """Return the wrapper's live object as a plain ``dict``."""
     resource.get()
