@@ -6,7 +6,6 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
-from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
@@ -21,7 +20,6 @@ from tests.model_serving.model_runtime.vllm.utils import (
 )
 from utilities.constants import KServeDeploymentType, Labels, RuntimeTemplates
 from utilities.inference_utils import create_isvc
-from utilities.infra import get_pods_by_isvc_label
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -68,6 +66,7 @@ def vllm_inference_service(
         "model_format": serving_runtime.instance.spec.supportedModelFormats[0].name,
         "model_service_account": vllm_model_service_account.name,
         "deployment_mode": request.param.get("deployment_mode", KServeDeploymentType.RAW_DEPLOYMENT),
+        "external_route": True,
     }
     accelerator_type = supported_accelerator_type.lower()
     gpu_count = request.param.get("gpu_count")
@@ -127,11 +126,6 @@ def kserve_endpoint_s3_secret(
         aws_s3_endpoint=models_s3_bucket_endpoint,
     ) as secret:
         yield secret
-
-
-@pytest.fixture
-def vllm_pod_resource(admin_client: DynamicClient, vllm_inference_service: InferenceService) -> Pod:
-    return get_pods_by_isvc_label(client=admin_client, isvc=vllm_inference_service)[0]
 
 
 @pytest.fixture

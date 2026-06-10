@@ -8,7 +8,6 @@ import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
-from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest import FixtureRequest
@@ -33,7 +32,6 @@ from tests.model_serving.model_runtime.vllm.modelcar.utils import (
 from tests.model_serving.model_runtime.vllm.utils import dedupe_vllm_cli_args
 from utilities.constants import KServeDeploymentType, Labels, RuntimeTemplates
 from utilities.inference_utils import create_isvc
-from utilities.infra import get_pods_by_isvc_label
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -81,6 +79,7 @@ def vllm_model_car_inference_service(
         "storage_uri": request.param.get("model_car_image_uri"),
         "model_format": model_car_serving_runtime.instance.spec.supportedModelFormats[0].name,
         "deployment_mode": deployment_config.get("deployment_type", KServeDeploymentType.RAW_DEPLOYMENT),
+        "external_route": True,
         "image_pull_secrets": [kserve_registry_pull_secret.name],
     }
     accelerator_type = supported_accelerator_type.lower()
@@ -292,8 +291,3 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
             indirect=True,
             ids=ids,
         )
-
-
-@pytest.fixture
-def vllm_model_car_pod_resource(admin_client: DynamicClient, vllm_model_car_inference_service: InferenceService) -> Pod:
-    return get_pods_by_isvc_label(client=admin_client, isvc=vllm_model_car_inference_service)[0]
