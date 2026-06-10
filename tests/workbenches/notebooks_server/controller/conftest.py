@@ -12,7 +12,6 @@ from timeout_sampler import TimeoutExpiredError
 
 from tests.workbenches.notebooks_server.controller.utils import (
     build_notebook_dict,
-    get_username,
     resolve_notebook_image,
 )
 from utilities import constants
@@ -96,7 +95,6 @@ def notebook_image(
 @pytest.fixture(scope="function")
 def default_notebook(
     request: pytest.FixtureRequest,
-    admin_client: DynamicClient,
     unprivileged_client: DynamicClient,
     notebook_image: str,
 ) -> Generator[Notebook, None, None]:
@@ -106,10 +104,6 @@ def default_notebook(
 
     # Optional Auth annotations
     auth_annotations = request.param.get("auth_annotations", {})
-
-    # Set the correct username
-    username = get_username(client=admin_client)
-    assert username, "Failed to determine username from the cluster"
 
     notebook_dict = build_notebook_dict(
         namespace=namespace,
