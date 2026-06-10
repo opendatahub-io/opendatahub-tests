@@ -1,12 +1,12 @@
 from contextlib import contextmanager
 from typing import Generator, Any
 import os
+
+import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.secret import Secret
 from ocp_resources.inference_service import InferenceService
 from simple_logger.logger import get_logger
-import pytest
-import portforward
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from tests.model_serving.model_runtime.utils import validate_inference_output, validate_text_inference_fuzzy
@@ -15,7 +15,7 @@ from tests.model_serving.model_runtime.vllm.constant import (
     COMPLETION_QUERY,
     VLLM_SUPPORTED_QUANTIZATION,
 )
-from utilities.constants import Ports
+from utilities.inference_utils import get_exposed_isvc_url
 from utilities.plugins.constant import OpenAIEnpoints
 from utilities.plugins.openai_plugin import OpenAIClient
 
@@ -100,27 +100,20 @@ def fetch_openai_response(  # type: ignore
 
 @retry(stop=stop_after_attempt(5), wait=wait_exponential(min=1, max=6))
 def run_raw_inference(
-    pod_name: str,
     isvc: InferenceService,
-    port: int,
     chat_query: list[list[dict[str, str]]] = CHAT_QUERY,
     completion_query: list[dict[str, str]] = COMPLETION_QUERY,
     tool_calling: dict[Any, Any] | None = None,
 ) -> tuple[Any, list[Any], list[Any]]:
-    LOGGER.info(pod_name)
-    with portforward.forward(
-        pod_or_service=pod_name,
-        namespace=isvc.namespace,
-        from_port=port,
-        to_port=port,
-    ):
-        return fetch_openai_response(
-            url=f"http://localhost:{port}",
-            model_name=isvc.instance.metadata.name,
-            chat_query=chat_query,
-            completion_query=completion_query,
-            tool_calling=tool_calling,
-        )
+    url = get_exposed_isvc_url(isvc=isvc)
+    LOGGER.info("Using external route for inference: %s", url)
+    return fetch_openai_response(
+        url=url,
+        model_name=isvc.instance.metadata.name,
+        chat_query=chat_query,
+        completion_query=completion_query,
+        tool_calling=tool_calling,
+    )
 
 
 def validate_supported_quantization_schema(q_type: str) -> None:
@@ -129,7 +122,6 @@ def validate_supported_quantization_schema(q_type: str) -> None:
 
 
 def validate_raw_openai_inference_request(
-    pod_name: str,
     isvc: InferenceService,
     response_snapshot: Any,
     chat_query: list[list[dict[str, str]]],
@@ -137,9 +129,7 @@ def validate_raw_openai_inference_request(
     tool_calling: dict[Any, Any] | None = None,
 ) -> None:
     model_info, chat_responses, completion_responses = run_raw_inference(
-        pod_name=pod_name,
         isvc=isvc,
-        port=Ports.REST_PORT,
         chat_query=chat_query,
         completion_query=completion_query,
         tool_calling=tool_calling,

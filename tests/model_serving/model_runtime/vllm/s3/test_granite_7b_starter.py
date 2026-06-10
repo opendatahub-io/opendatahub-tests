@@ -4,7 +4,6 @@ from typing import Any
 import pytest
 import structlog
 from ocp_resources.inference_service import InferenceService
-from ocp_resources.pod import Pod
 
 from tests.model_serving.model_runtime.vllm.constant import (
     BASE_RAW_DEPLOYMENT_CONFIG,
@@ -49,11 +48,9 @@ class TestGraniteStarterModel:
         self,
         vllm_inference_service: Generator[InferenceService, Any, Any],
         skip_if_not_raw_deployment: Any,
-        vllm_pod_resource: Pod,
         response_snapshot: Any,
     ):
         validate_raw_openai_inference_request(
-            pod_name=vllm_pod_resource.name,
             isvc=vllm_inference_service,
             response_snapshot=response_snapshot,
             chat_query=GRANITE_CHAT_QUERY,

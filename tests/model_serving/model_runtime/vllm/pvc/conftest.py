@@ -7,7 +7,6 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
-from ocp_resources.pod import Pod
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest import FixtureRequest
 
@@ -19,7 +18,6 @@ from tests.model_serving.model_runtime.vllm.utils import (
 from utilities.constants import KServeDeploymentType, Labels
 from utilities.general import download_model_data
 from utilities.inference_utils import create_isvc
-from utilities.infra import get_pods_by_isvc_label
 
 
 @pytest.fixture(scope="class")
@@ -90,6 +88,7 @@ def vllm_pvc_inference_service(
         "storage_uri": f"pvc://{vllm_model_pvc.name}/{pvc_downloaded_model_data}",
         "model_format": serving_runtime.instance.spec.supportedModelFormats[0].name,
         "deployment_mode": request.param.get("deployment_mode", KServeDeploymentType.RAW_DEPLOYMENT),
+        "external_route": True,
     }
 
     accelerator_type = supported_accelerator_type.lower()
@@ -130,9 +129,3 @@ def vllm_pvc_inference_service(
 
     with create_isvc(**isvc_kwargs) as isvc:
         yield isvc
-
-
-@pytest.fixture()
-def vllm_pvc_pod_resource(admin_client: DynamicClient, vllm_pvc_inference_service: InferenceService) -> Pod:
-    """First predictor pod for the PVC-backed vLLM InferenceService."""
-    return get_pods_by_isvc_label(client=admin_client, isvc=vllm_pvc_inference_service)[0]

@@ -2,7 +2,6 @@ from typing import Any
 
 import pytest
 from ocp_resources.inference_service import InferenceService
-from ocp_resources.pod import Pod
 
 from tests.model_serving.model_runtime.vllm.constant import (
     COMPLETION_QUERY,
@@ -57,15 +56,13 @@ class TestVllmPvcGraniteInference:
     def test_vllm_pvc_granite_openai_inference(
         self,
         vllm_pvc_inference_service: InferenceService,
-        vllm_pvc_pod_resource: Pod,
         response_snapshot: Any,
     ) -> None:
         """Given a vLLM ISVC backed by PVC storage with the Granite model,
-        When OpenAI-compatible chat and completion requests are sent,
+        When OpenAI-compatible chat and completion requests are sent over the external route,
         Then the model returns valid responses.
         """
         validate_raw_openai_inference_request(
-            pod_name=vllm_pvc_pod_resource.name,
             isvc=vllm_pvc_inference_service,
             response_snapshot=response_snapshot,
             chat_query=GRANITE_CHAT_QUERY,
