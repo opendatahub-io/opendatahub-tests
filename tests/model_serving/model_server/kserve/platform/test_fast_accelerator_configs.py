@@ -54,10 +54,10 @@ def _extract_container_images(obj: Any) -> list[str]:
             if key == "image" and isinstance(value, str):
                 images.append(value)
             else:
-                images.extend(_extract_container_images(value))
+                images.extend(_extract_container_images(obj=value))
     elif isinstance(obj, list):
         for item in obj:
-            images.extend(_extract_container_images(item))
+            images.extend(_extract_container_images(obj=item))
     return images
 
 
@@ -220,14 +220,14 @@ class TestFastAcceleratorConfigs:
         """
         compared = 0
         for fast_config in fast_configs:
-            stable_name = _stable_name_for_fast(fast_config.name)
+            stable_name = _stable_name_for_fast(fast_name=fast_config.name)
             stable_config = stable_configs_by_name.get(stable_name)
             if stable_config is None:
                 LOGGER.warning(f"No stable counterpart '{stable_name}' for '{fast_config.name}'")
                 continue
 
-            fast_images = _extract_container_images(fast_config.instance.to_dict().get("spec", {}))
-            stable_images = _extract_container_images(stable_config.instance.to_dict().get("spec", {}))
+            fast_images = _extract_container_images(obj=fast_config.instance.to_dict().get("spec", {}))
+            stable_images = _extract_container_images(obj=stable_config.instance.to_dict().get("spec", {}))
 
             assert fast_images, f"No container images found in fast config '{fast_config.name}'"
             assert stable_images, f"No container images found in stable config '{stable_name}'"
