@@ -57,8 +57,7 @@ def get_rhoai_version_prefix(client: DynamicClient, namespace: str) -> str:
 
     if len(succeeded_csvs) > 1:
         raise ResourceNotUniqueError(
-            f"Multiple succeeded rhods-operator CSVs found:"
-            f" {[csv.name for csv in succeeded_csvs]}"
+            f"Multiple succeeded rhods-operator CSVs found: {[csv.name for csv in succeeded_csvs]}"
         )
 
     csv = succeeded_csvs[0]
