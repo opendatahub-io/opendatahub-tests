@@ -1,29 +1,41 @@
-from typing import Any, Generator
+from collections.abc import Generator
+from typing import Any
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
-from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest import FixtureRequest
-from simple_logger.logger import get_logger
 
 from tests.model_serving.model_runtime.vllm.constant import ACCELERATOR_IDENTIFIER, PREDICT_RESOURCES, TEMPLATE_MAP
 from tests.model_serving.model_runtime.vllm.utils import (
+    dedupe_vllm_cli_args,
     kserve_s3_endpoint_secret,
-    validate_supported_quantization_schema,
     skip_if_not_deployment_mode,
+    validate_supported_quantization_schema,
 )
-from utilities.constants import KServeDeploymentType
-from utilities.constants import Labels, RuntimeTemplates
+from utilities.constants import AcceleratorType, KServeDeploymentType, Labels, RuntimeTemplates
 from utilities.inference_utils import create_isvc
-from utilities.infra import get_pods_by_isvc_label
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
+
+SUPPORTED_CPU_X86_ACCELERATORS: set[str] = {AcceleratorType.CPU_x86}
+
+
+@pytest.fixture(scope="session")
+def skip_if_no_supported_cpu_x86_accelerator_type(supported_accelerator_type: str | None) -> None:
+    """Skip test unless the cluster provides the x86 CPU accelerator."""
+    if not supported_accelerator_type or supported_accelerator_type.lower() not in SUPPORTED_CPU_X86_ACCELERATORS:
+        pytest.skip(
+            f"Test requires a supported vLLM x86 CPU accelerator. "
+            f"Found: '{supported_accelerator_type or 'None'}'. "
+            f"Expected one of: {SUPPORTED_CPU_X86_ACCELERATORS}."
+        )
 
 
 @pytest.fixture(scope="class")
@@ -33,7 +45,7 @@ def serving_runtime(
     model_namespace: Namespace,
     supported_accelerator_type: str,
     vllm_runtime_image: str,
-) -> Generator[ServingRuntime, None, None]:
+) -> Generator[ServingRuntime]:
     accelerator_type = supported_accelerator_type.lower()
     template_name = TEMPLATE_MAP.get(accelerator_type, RuntimeTemplates.VLLM_CUDA)
     with ServingRuntimeFromTemplate(
@@ -67,6 +79,7 @@ def vllm_inference_service(
         "model_format": serving_runtime.instance.spec.supportedModelFormats[0].name,
         "model_service_account": vllm_model_service_account.name,
         "deployment_mode": request.param.get("deployment_mode", KServeDeploymentType.RAW_DEPLOYMENT),
+        "external_route": True,
     }
     accelerator_type = supported_accelerator_type.lower()
     gpu_count = request.param.get("gpu_count")
@@ -82,16 +95,12 @@ def vllm_inference_service(
         isvc_kwargs["volumes"] = PREDICT_RESOURCES["volumes"]
         isvc_kwargs["volumes_mounts"] = PREDICT_RESOURCES["volume_mounts"]
     if arguments := request.param.get("runtime_argument"):
-        arguments = [
-            arg
-            for arg in arguments
-            if not (arg.startswith("--tensor-parallel-size") or arg.startswith("--quantization"))
-        ]
+        arguments = [arg for arg in arguments if not arg.startswith(("--tensor-parallel-size", "--quantization"))]
         arguments.append(f"--tensor-parallel-size={gpu_count}")
         if quantization := request.param.get("quantization"):
             validate_supported_quantization_schema(q_type=quantization)
             arguments.append(f"--quantization={quantization}")
-        isvc_kwargs["argument"] = arguments
+        isvc_kwargs["argument"] = dedupe_vllm_cli_args(arguments=arguments)
 
     if min_replicas := request.param.get("min-replicas"):
         isvc_kwargs["min_replicas"] = min_replicas
@@ -119,7 +128,7 @@ def kserve_endpoint_s3_secret(
     aws_secret_access_key: str,
     models_s3_bucket_region: str,
     models_s3_bucket_endpoint: str,
-) -> Generator[Secret, None, None]:
+) -> Generator[Secret]:
     with kserve_s3_endpoint_secret(
         admin_client=admin_client,
         name="models-bucket-secret",
@@ -133,13 +142,8 @@ def kserve_endpoint_s3_secret(
 
 
 @pytest.fixture
-def vllm_pod_resource(admin_client: DynamicClient, vllm_inference_service: InferenceService) -> Pod:
-    return get_pods_by_isvc_label(client=admin_client, isvc=vllm_inference_service)[0]
-
-
-@pytest.fixture
 def skip_if_not_raw_deployment(vllm_inference_service: InferenceService) -> None:
     skip_if_not_deployment_mode(
         isvc=vllm_inference_service,
-        deployment_type=KServeDeploymentType.RAW_DEPLOYMENT,
+        deployment_types=KServeDeploymentType.RAW_DEPLOYMENT_MODES,
     )

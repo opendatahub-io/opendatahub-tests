@@ -1,27 +1,27 @@
+from collections.abc import Generator
+from typing import Any
+
 import pytest
-from ocp_resources.resource import ResourceEditor
-from simple_logger.logger import get_logger
-from typing import Any, Generator
+import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.namespace import Namespace
 from ocp_resources.inference_service import InferenceService
+from ocp_resources.namespace import Namespace
+
+from tests.model_serving.model_runtime.vllm.constant import BASE_RAW_DEPLOYMENT_CONFIG, GRANITE_SERVING_ARGUMENT
 from tests.model_serving.model_server.utils import (
-    verify_keda_scaledobject,
-    verify_final_pod_count,
     run_inference_multiple_times,
+    verify_final_pod_count,
+    verify_keda_scaledobject,
 )
-from tests.model_serving.model_runtime.vllm.constant import BASE_RAW_DEPLOYMENT_CONFIG
-from tests.model_serving.model_runtime.vllm.basic_model_deployment.test_granite_7b_starter import SERVING_ARGUMENT
-from utilities.constants import ModelFormat, ModelVersion, RunTimeConfigs, Protocols, Timeout
-from utilities.monitoring import validate_metrics_field
+from utilities.constants import ModelFormat, ModelVersion, Protocols, RunTimeConfigs, Timeout
 from utilities.inference_utils import Inference
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
-from utilities.jira import is_jira_open
+from utilities.monitoring import validate_metrics_field
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
-BASE_RAW_DEPLOYMENT_CONFIG["runtime_argument"] = SERVING_ARGUMENT
+BASE_RAW_DEPLOYMENT_CONFIG["runtime_argument"] = GRANITE_SERVING_ARGUMENT
 
 INITIAL_POD_COUNT = 1
 FINAL_POD_COUNT = 5
@@ -71,31 +71,6 @@ class TestOVMSKedaScaling:
         admin_client: DynamicClient,
     ):
         """Test KEDA ScaledObject configuration and run inference multiple times to trigger scaling."""
-
-        if is_jira_open(jira_id="RHOAIENG-31386", admin_client=admin_client):
-            isvc_dict = stressed_ovms_keda_inference_service.instance.to_dict()
-            metrics = isvc_dict.get("spec", {}).get("predictor", {}).get("autoScaling", {}).get("metrics", [])
-
-            if metrics and isinstance(metrics[0], dict) and metrics[0].get("external") is not None:
-                metrics[0].setdefault("external", {})["authenticationRef"] = {
-                    "authModes": "bearer",
-                    "authenticationRef": {"name": "inference-prometheus-auth"},
-                }
-
-                ResourceEditor(
-                    patches={
-                        stressed_ovms_keda_inference_service: {
-                            "spec": {
-                                "predictor": {
-                                    "autoScaling": {
-                                        "metrics": metrics,
-                                    }
-                                }
-                            }
-                        }
-                    }
-                ).update()
-
         verify_keda_scaledobject(
             client=unprivileged_client,
             isvc=stressed_ovms_keda_inference_service,

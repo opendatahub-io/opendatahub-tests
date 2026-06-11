@@ -1,46 +1,55 @@
+import datetime
 import logging
 import os
 import pathlib
 import shutil
-import datetime
 import traceback
+from typing import Any
 
 import pytest
 import shortuuid
-from _pytest.runner import CallInfo
+from _pytest.nodes import Node
 from _pytest.reports import TestReport
+from _pytest.runner import CallInfo
+from _pytest.terminal import TerminalReporter
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.cluster_service_version import ClusterServiceVersion
+from ocp_resources.resource import get_client
 from pytest import (
+    Collector,
+    CollectReport,
+    Config,
+    FixtureDef,
+    FixtureRequest,
+    Item,
     Parser,
     Session,
-    FixtureRequest,
-    FixtureDef,
-    Item,
-    Collector,
-    Config,
-    CollectReport,
 )
-from _pytest.nodes import Node
-from _pytest.terminal import TerminalReporter
-from typing import Optional, Any
 from pytest_testconfig import config as py_config
 
-from utilities.constants import KServeDeploymentType, MODEL_REGISTRY_CUSTOM_NAMESPACE
+from utilities.constants import MODEL_REGISTRY_CUSTOM_NAMESPACE, KServeDeploymentType
 from utilities.database import Database
+from utilities.infra import get_data_science_cluster, get_dsci_applications_namespace, get_operator_distribution
 from utilities.logger import separator, setup_logging
 from utilities.must_gather_collector import (
-    set_must_gather_collector_directory,
-    set_must_gather_collector_values,
-    get_must_gather_collector_dir,
     collect_rhoai_must_gather,
     get_base_dir,
+    get_must_gather_collector_dir,
+    set_must_gather_collector_directory,
+    set_must_gather_collector_values,
 )
-from kubernetes.dynamic import DynamicClient
-from utilities.infra import get_operator_distribution, get_dsci_applications_namespace, get_data_science_cluster
-from ocp_resources.resource import get_client
-from ocp_resources.cluster_service_version import ClusterServiceVersion
 
 LOGGER = logging.getLogger(name=__name__)
 BASIC_LOGGER = logging.getLogger(name="basic")
+
+# Add support to mark tests that does not have specific marking already, with tier2 marker
+EXCLUDE_MARKERS_FROM_DEFAULT_TIER2: set[str] = {"smoke", "tier1", "tier2", "tier3", "pre_upgrade", "post_upgrade"}
+# To include a component for default marking please add the component path to this list
+DEFAULT_TIER2_MARKER_TEST_PATHS: tuple[str, ...] = (
+    "tests/ai_hub",
+    "tests/ai_safety",
+    "tests/model_serving/maas_billing",
+)
 
 
 def pytest_addoption(parser: Parser) -> None:
@@ -104,8 +113,8 @@ def pytest_addoption(parser: Parser) -> None:
     # Runtime options
     runtime_group.addoption(
         "--supported-accelerator-type",
-        default=os.environ.get("SUPPORTED_ACCLERATOR_TYPE"),
-        help="Supported accelerator type : Nvidia,AMD,Gaudi",
+        default=os.environ.get("SUPPORTED_ACCELERATOR_TYPE"),
+        help="Supported accelerator type: nvidia, amd, gaudi, spyre, cpu_x86, cpu_power, cpu_z",
     )
     runtime_group.addoption(
         "--vllm-runtime-image",
@@ -122,16 +131,23 @@ def pytest_addoption(parser: Parser) -> None:
         default=os.environ.get("TRITON_RUNTIME_IMAGE"),
         help="Specify the runtime image to use for the tests",
     )
+    runtime_group.addoption(
+        "--ovms-runtime-image",
+        default=os.environ.get("OVMS_RUNTIME_IMAGE"),
+        help="Specify the OVMS runtime image to use for the tests",
+    )
 
     # OCI Registry options
     ociregistry_group.addoption(
         "--registry-pull-secret",
-        default=os.environ.get("OCI_REGISTRY_PULL_SECRET"),
+        action="append",
+        default=None,
         help="Registry pull secret to pull oci container images",
     )
     ociregistry_group.addoption(
         "--registry-host",
-        default=os.environ.get("REGISTRY_HOST"),
+        action="append",
+        default=None,
         help="Registry host to pull oci container images",
     )
 
@@ -189,6 +205,22 @@ def pytest_addoption(parser: Parser) -> None:
         action="store_true",
     )
 
+    # KServe health check options
+    kserve_health_group = parser.getgroup(name="KServe Health")
+    kserve_health_group.addoption(
+        "--skip-kserve-health-check",
+        help="Skip KServe component health check",
+        action="store_true",
+    )
+
+    # LLMD health check options
+    llmd_health_group = parser.getgroup(name="LLMD Health")
+    llmd_health_group.addoption(
+        "--skip-llmd-health-check",
+        help="Skip LLMD infrastructure dependency health check",
+        action="store_true",
+    )
+
     # HuggingFace options
     hf_group.addoption("--hf-access-token", default=os.environ.get("HF_ACCESS_TOKEN"), help="HF access token")
     # Model Registry options
@@ -227,7 +259,7 @@ def pytest_collection_modifyitems(session: Session, config: Config, items: list[
         if not _upgrade_deployment_modes:
             return True
 
-        return any([keyword for keyword in _item.keywords if keyword in _upgrade_deployment_modes])
+        return any(keyword for keyword in _item.keywords if keyword in _upgrade_deployment_modes)
 
     pre_upgrade_tests: list[Item] = []
     post_upgrade_tests: list[Item] = []
@@ -261,23 +293,34 @@ def pytest_collection_modifyitems(session: Session, config: Config, items: list[
         else:
             non_upgrade_tests.append(item)
 
-    upgrade_tests = pre_upgrade_tests + post_upgrade_tests
+    original_items = list(items)
 
     if run_pre_upgrade_tests and run_post_upgrade_tests:
-        items[:] = upgrade_tests
-        config.hook.pytest_deselected(items=non_upgrade_tests)
-
+        items[:] = list(dict.fromkeys(pre_upgrade_tests + post_upgrade_tests))
     elif run_pre_upgrade_tests:
         items[:] = pre_upgrade_tests
-        config.hook.pytest_deselected(items=post_upgrade_tests + non_upgrade_tests)
-
     elif run_post_upgrade_tests:
         items[:] = post_upgrade_tests
-        config.hook.pytest_deselected(items=pre_upgrade_tests + non_upgrade_tests)
-
     else:
         items[:] = non_upgrade_tests
-        config.hook.pytest_deselected(items=upgrade_tests)
+
+    remaining_set = set(items)
+    deselected = [item for item in original_items if item not in remaining_set]
+    if deselected:
+        config.hook.pytest_deselected(items=deselected)
+
+    _add_default_tier2_marker(items=items)
+
+
+def _add_default_tier2_marker(items: list[Item]) -> None:
+    """Add tier2 marker to tests that lack any tier/smoke/upgrade marker, for specific components."""
+    for item in items:
+        if not any(item.nodeid.startswith(path) for path in DEFAULT_TIER2_MARKER_TEST_PATHS):
+            continue
+
+        item_markers = {mark.name for mark in item.iter_markers()}
+        if not item_markers & EXCLUDE_MARKERS_FROM_DEFAULT_TIER2:
+            item.add_marker(marker=pytest.mark.tier2)
 
 
 def pytest_sessionstart(session: Session) -> None:
@@ -308,7 +351,7 @@ def pytest_sessionstart(session: Session) -> None:
             value = log_cli_override.split("=", 1)[1].lower()
             enable_console_value = value not in ("false", "0", "no", "off")
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         # If there's any issue with option detection, fall back to default behavior
         LOGGER.error(f"Error detecting log_cli option: {e}")
         enable_console_value = True
@@ -395,9 +438,9 @@ def pytest_runtest_setup(item: Item) -> None:
             db = item.config.option.must_gather_db
             db.insert_test_start_time(
                 test_name=f"{item.fspath}::{item.name}",
-                start_time=int(datetime.datetime.now().timestamp()),
+                start_time=int(datetime.datetime.now().timestamp()),  # noqa: DTZ005
             )
-        except Exception as db_exception:
+        except Exception as db_exception:  # noqa: BLE001
             LOGGER.error(f"Database error: {db_exception}. Must-gather collection may not be accurate")
 
     if KServeDeploymentType.RAW_DEPLOYMENT.lower() in item.keywords:
@@ -458,7 +501,7 @@ def pytest_sessionfinish(session: Session, exitstatus: int) -> None:
     LOGGER.info(f"Deleting pytest base dir {session.config.option.basetemp}")
     shutil.rmtree(path=session.config.option.basetemp, ignore_errors=True)
 
-    reporter: Optional[TerminalReporter] = session.config.pluginmanager.get_plugin("terminalreporter")
+    reporter: TerminalReporter | None = session.config.pluginmanager.get_plugin("terminalreporter")
     if reporter:
         reporter.summary_stats()
 
@@ -466,7 +509,7 @@ def pytest_sessionfinish(session: Session, exitstatus: int) -> None:
 def calculate_must_gather_timer(test_start_time: int) -> int:
     default_duration = 300
     if test_start_time > 0:
-        duration = int(datetime.datetime.now().timestamp()) - test_start_time
+        duration = int(datetime.datetime.now().timestamp()) - test_start_time  # noqa: DTZ005
         return duration if duration > 60 else default_duration
     else:
         LOGGER.warning(f"Could not get start time of test. Collecting must-gather for last {default_duration}s")
@@ -490,7 +533,7 @@ def pytest_exception_interact(node: Item | Collector, call: CallInfo[Any], repor
         try:
             db = node.config.option.must_gather_db
             test_start_time = db.get_test_start_time(test_name=test_name)
-        except Exception as db_exception:
+        except Exception as db_exception:  # noqa: BLE001
             test_start_time = 0
             LOGGER.warning(f"Error: {db_exception} in accessing database.")
 
@@ -501,7 +544,7 @@ def pytest_exception_interact(node: Item | Collector, call: CallInfo[Any], repor
                 target_dir=os.path.join(get_must_gather_collector_dir(), "pytest_exception_interact"),
             )
 
-        except Exception as current_exception:
+        except Exception as current_exception:  # noqa: BLE001
             LOGGER.warning(f"Failed to collect logs: {test_name}: {current_exception} {traceback.format_exc()}")
 
 

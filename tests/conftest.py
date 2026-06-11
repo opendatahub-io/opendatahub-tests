@@ -1,72 +1,82 @@
 import base64
 import binascii
+import datetime
+import hashlib
+import hmac
+import json
 import os
 import shutil
 from ast import literal_eval
 from collections.abc import Callable, Generator
 from contextlib import ExitStack
 from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
+
 import pytest
-from semver import Version
 import shortuuid
+import structlog
 import yaml
 from _pytest._py.path import LocalPath
 from _pytest.legacypath import TempdirFactory
 from _pytest.tmpdir import TempPathFactory
+from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
-
+from ocp_resources.authentication_config_openshift_io import Authentication
 from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.cluster_version import ClusterVersion
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.dsc_initialization import DSCInitialization
 from ocp_resources.mariadb_operator import MariadbOperator
+from ocp_resources.namespace import Namespace
 from ocp_resources.node import Node
 from ocp_resources.pod import Pod
+from ocp_resources.resource import get_client
+from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.subscription import Subscription
 from ocp_utilities.monitoring import Prometheus
+from ocp_utilities.operators import install_operator, uninstall_operator
 from pyhelper_utils.shell import run_command
-from pytest import FixtureRequest, Config
-from kubernetes.dynamic import DynamicClient
-from ocp_resources.data_science_cluster import DataScienceCluster
-from ocp_resources.namespace import Namespace
-from ocp_resources.resource import get_client
+from pytest import Config, FixtureRequest
 from pytest_testconfig import config as py_config
-from simple_logger.logger import get_logger
-import json
+from semver import Version
 
-from ocp_utilities.operators import uninstall_operator, install_operator
 from utilities.certificates_utils import create_ca_bundle_file
-from utilities.data_science_cluster_utils import update_components_in_dsc
-from utilities.exceptions import ClusterLoginError
-from utilities.infra import (
-    verify_cluster_sanity,
-    create_ns,
-    login_with_user_password,
-    get_openshift_token,
-    download_oc_console_cli,
-    get_cluster_authentication,
-)
 from utilities.constants import (
+    OPENSHIFT_OPERATORS,
     AcceleratorType,
     DscComponents,
     Labels,
     MinIo,
+    OCIRegistry,
     Protocols,
+    RuntimeTemplates,
     Timeout,
-    OPENSHIFT_OPERATORS,
 )
-from utilities.infra import update_configmap_data
+from utilities.data_science_cluster_utils import update_components_in_dsc
+from utilities.exceptions import ClusterLoginError
+from utilities.infra import (
+    create_ns,
+    download_oc_console_cli,
+    get_cluster_authentication,
+    get_openshift_token,
+    login_with_user_password,
+    update_configmap_data,
+    verify_cluster_sanity,
+)
 from utilities.logger import RedactedString
 from utilities.mariadb_utils import wait_for_mariadb_operator_deployments
 from utilities.minio import create_minio_data_connection_secret
-from utilities.operator_utils import get_csv_related_images, get_cluster_service_version
-from ocp_resources.authentication_config_openshift_io import Authentication
-from utilities.user_utils import get_oidc_tokens, get_byoidc_issuer_url
+from utilities.operator_utils import get_cluster_service_version, get_csv_related_images
+from utilities.serving_runtime import get_runtime_image_from_template
+from utilities.user_utils import get_byoidc_issuer_url, get_oidc_tokens
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 pytest_plugins = [
     "tests.fixtures.inference",
@@ -83,7 +93,7 @@ def admin_client() -> DynamicClient:
 
 
 @pytest.fixture(scope="session")
-def tests_tmp_dir(request: FixtureRequest, tmp_path_factory: TempPathFactory) -> Generator[None, None, None]:
+def tests_tmp_dir(request: FixtureRequest, tmp_path_factory: TempPathFactory) -> Generator[None]:
     base_path = os.path.join(request.config.option.basetemp, "tests")
     tests_tmp_path = tmp_path_factory.mktemp(basename=base_path)
     py_config["tmp_base_dir"] = str(tests_tmp_path)
@@ -100,7 +110,7 @@ def current_client_token(admin_client: DynamicClient) -> str:
 def teardown_resources(pytestconfig: pytest.Config) -> bool:
     delete_resources = True
 
-    if pytestconfig.option.pre_upgrade:
+    if pytestconfig.option.pre_upgrade:  # noqa: SIM102
         if delete_resources := pytestconfig.option.delete_pre_upgrade_resources:
             LOGGER.warning("Upgrade resources will be deleted")
 
@@ -154,33 +164,94 @@ def aws_secret_access_key(pytestconfig: Config) -> str:
 
 
 @pytest.fixture(scope="session")
-def registry_pull_secret(pytestconfig: Config) -> str:
-    registry_pull_secret = pytestconfig.option.registry_pull_secret
-    if not registry_pull_secret:
+def registry_pull_secret(pytestconfig: pytest.Config) -> list[str]:
+    """Return base64 registry auth strings paired with registry_host by index."""
+    registry_pull_secrets = pytestconfig.option.registry_pull_secret
+    if not registry_pull_secrets:
         raise ValueError(
             "Registry pull secret is not set. "
-            "Either pass with `--registry_pull_secret` or set `OCI_REGISTRY_PULL_SECRET` environment variable"
+            "Either pass with `--registry-pull-secret` or set `OCI_REGISTRY_PULL_SECRET` environment variable"
         )
     try:
-        base64.b64decode(s=registry_pull_secret, validate=True)
-        return registry_pull_secret
+        for secret in registry_pull_secrets:
+            base64.b64decode(s=secret, validate=True)
+        return registry_pull_secrets
     except binascii.Error:
         raise ValueError("Registry pull secret is not a valid base64 encoded string")
 
 
 @pytest.fixture(scope="session")
-def registry_host(pytestconfig: pytest.Config) -> str | None:
-    registry_host = pytestconfig.option.registry_host
-    if not registry_host:
+def registry_host(pytestconfig: pytest.Config) -> list[str]:
+    """Return registry hosts paired with registry_pull_secret by index."""
+    registry_hosts = pytestconfig.option.registry_host
+    if not registry_hosts:
         raise ValueError(
             "Registry host for OCI images is not set. "
-            "Either pass with `--registry_host` or set `REGISTRY_HOST` environment variable"
+            "Either pass with `--registry-host` or set `REGISTRY_HOST` environment variable"
         )
-    return registry_host
+    return registry_hosts
 
 
 @pytest.fixture(scope="session")
-def valid_aws_config(aws_access_key_id: str, aws_secret_access_key: str) -> tuple[str, str]:
+def valid_aws_config(aws_access_key_id: str, aws_secret_access_key: str, ci_s3_bucket_endpoint: str) -> tuple[str, str]:
+    """Validate AWS credentials before any S3-dependent test runs.
+
+    Calls STS GetCallerIdentity using AWS Signature V4.
+    Fails fast at session start if credentials are missing or expired, instead of waiting
+    minutes for storage-initializer pods to time out on the cluster.
+    Skips validation when using a non-AWS S3 backend (e.g. Minio).
+    """
+    endpoint_host = urlparse(ci_s3_bucket_endpoint).hostname or ""
+    if not endpoint_host.endswith(".amazonaws.com"):
+        LOGGER.info("Non-AWS S3 endpoint detected - skipping STS credential validation")
+        return aws_access_key_id, aws_secret_access_key
+
+    now = datetime.datetime.now(tz=datetime.UTC)
+    datestamp = now.strftime(format="%Y%m%d")
+    amzdate = now.strftime(format="%Y%m%dT%H%M%SZ")
+
+    def _sign(key: bytes, msg: str) -> bytes:
+        return hmac.new(key, msg.encode(), hashlib.sha256).digest()
+
+    credential_scope = f"{datestamp}/us-east-1/sts/aws4_request"
+    payload_hash = hashlib.sha256(b"Action=GetCallerIdentity&Version=2011-06-15").hexdigest()
+    canonical_request = (
+        f"POST\n/\n\ncontent-type:application/x-www-form-urlencoded\nhost:sts.amazonaws.com\n"
+        f"x-amz-date:{amzdate}\n\ncontent-type;host;x-amz-date\n{payload_hash}"
+    )
+    string_to_sign = (
+        f"AWS4-HMAC-SHA256\n{amzdate}\n{credential_scope}\n{hashlib.sha256(canonical_request.encode()).hexdigest()}"
+    )
+    date_key = _sign(key=f"AWS4{aws_secret_access_key}".encode(), msg=datestamp)
+    region_key = _sign(key=date_key, msg="us-east-1")
+    service_key = _sign(key=region_key, msg="sts")
+    signing_key = _sign(key=service_key, msg="aws4_request")
+    signature = hmac.new(signing_key, string_to_sign.encode(), hashlib.sha256).hexdigest()
+    authorization = (
+        f"AWS4-HMAC-SHA256 Credential={aws_access_key_id}/{credential_scope}, "
+        f"SignedHeaders=content-type;host;x-amz-date, Signature={signature}"
+    )
+
+    req = Request(
+        url="https://sts.amazonaws.com/",
+        data=b"Action=GetCallerIdentity&Version=2011-06-15",
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "X-Amz-Date": amzdate,
+            "Authorization": authorization,
+        },
+    )
+    try:
+        urlopen(url=req, timeout=10)
+    except HTTPError as e:
+        if e.code in (401, 403):
+            raise ValueError(f"AWS credential are invalid or expired (HTTP {e.code}: {e.reason})") from e
+        LOGGER.warning(f"Unable to validate AWS credentials - continue with tests (HTTP {e.code}: {e.reason})")
+    except (URLError, OSError) as e:
+        LOGGER.warning(f"Unable to validate AWS credentials  - continue with tests: {e}")
+    else:
+        LOGGER.info("AWS credentials validated successfully via STS GetCallerIdentity")
+
     return aws_access_key_id, aws_secret_access_key
 
 
@@ -248,7 +319,7 @@ def modelcar_yaml_config(pytestconfig: pytest.Config) -> dict[str, Any] | None:
         try:
             modelcar_yaml = yaml.safe_load(file)
             if not isinstance(modelcar_yaml, dict):
-                raise ValueError("modelcar.yaml should contain a dictionary.")
+                raise ValueError("modelcar.yaml should contain a dictionary.")  # noqa: TRY004
             return modelcar_yaml
         except yaml.YAMLError as e:
             raise ValueError(f"Error parsing modelcar.yaml: {e}") from e
@@ -295,7 +366,7 @@ def supported_accelerator_type(pytestconfig: pytest.Config) -> str | None:
     if accelerator_type.lower() not in AcceleratorType.SUPPORTED_LISTS:
         raise ValueError(
             "accelerator type is not defined."
-            "Either pass with `--supported-accelerator-type` or set `SUPPORTED_ACCLERATOR_TYPE` environment variable"
+            "Either pass with `--supported-accelerator-type` or set `SUPPORTED_ACCELERATOR_TYPE` environment variable"
         )
     return accelerator_type
 
@@ -327,6 +398,20 @@ def triton_runtime_image(pytestconfig: pytest.Config) -> str:
 
 
 @pytest.fixture(scope="session")
+def ovms_runtime_image(pytestconfig: pytest.Config, admin_client: DynamicClient) -> str:
+    """Return OVMS runtime image from --ovms-runtime-image or cluster template."""
+    runtime_image = pytestconfig.option.ovms_runtime_image
+    if runtime_image:
+        return runtime_image
+    namespace = py_config["applications_namespace"]
+    return get_runtime_image_from_template(
+        client=admin_client,
+        template_name=RuntimeTemplates.OVMS_KSERVE,
+        namespace=namespace,
+    )
+
+
+@pytest.fixture(scope="session")
 def use_unprivileged_client(pytestconfig: pytest.Config) -> bool:
     _use_unprivileged_client = py_config.get("use_unprivileged_client")
 
@@ -337,7 +422,7 @@ def use_unprivileged_client(pytestconfig: pytest.Config) -> bool:
         return literal_eval(_use_unprivileged_client)
 
     else:
-        raise ValueError(
+        raise ValueError(  # noqa: TRY004
             "use_unprivileged_client is not defined.\n"
             "Either pass with `--use-unprivileged-client` or "
             "set in `use_unprivileged_client` in `tests/global_config.py`"
@@ -347,7 +432,7 @@ def use_unprivileged_client(pytestconfig: pytest.Config) -> bool:
 @pytest.fixture(scope="session")
 def non_admin_user_password(
     admin_client: DynamicClient, use_unprivileged_client: bool, is_byoidc: bool
-) -> tuple[str, RedactedString] | None:
+) -> tuple[str, str] | None:
     def _decode_split_data(_data: str) -> list[str]:
         return base64.b64decode(_data).decode().split(",")
 
@@ -370,7 +455,7 @@ def non_admin_user_password(
         first_user_index = next((index for index, user in enumerate(users) if "user" in user), None)
 
         if first_user_index is not None:
-            return users[first_user_index], RedactedString(value=passwords[first_user_index])
+            return users[first_user_index], passwords[first_user_index]
 
     LOGGER.error("user credentials secret not found")
     return None
@@ -405,7 +490,7 @@ def unprivileged_client(
     admin_client: DynamicClient,
     use_unprivileged_client: bool,
     kubconfig_filepath: str,
-    non_admin_user_password: tuple[str, RedactedString] | None,
+    non_admin_user_password: tuple[str, str],
     is_byoidc: bool,
 ) -> Generator[DynamicClient, Any, Any]:
     """
@@ -425,14 +510,22 @@ def unprivileged_client(
         with open(kubconfig_filepath) as fd:
             kubeconfig_content = yaml.safe_load(fd)
 
-        # create the oidc user config
+        # extract client-id from existing admin kubeconfig if available, otherwise default
+        existing_users = kubeconfig_content.get("users", [])
+        client_id = "oc-cli"
+        for kubeconfig_user in existing_users:
+            auth_config = kubeconfig_user.get("user", {}).get("auth-provider", {}).get("config", {})
+            if auth_config.get("client-id"):
+                client_id = auth_config["client-id"]
+                break
+
         user = {
             "name": non_admin_user_password[0],
             "user": {
                 "auth-provider": {
                     "name": "oidc",
                     "config": {
-                        "client-id": "oc-cli",
+                        "client-id": client_id,
                         "client-secret": "",
                         "idp-issuer-url": issuer,
                         "id-token": tokens[0],
@@ -447,7 +540,9 @@ def unprivileged_client(
 
         # get the current context and modify the referenced user in place
         current_context_name = kubeconfig_content["current-context"]
-        current_context = [c for c in kubeconfig_content["contexts"] if c["name"] == current_context_name][0]
+        current_context = next((c for c in kubeconfig_content["contexts"] if c["name"] == current_context_name), None)
+        if current_context is None:
+            raise ValueError(f"Context '{current_context_name}' not found in kubeconfig")
         current_context["context"]["user"] = non_admin_user_password[0]
 
         unprivileged_client = get_client(
@@ -674,8 +769,8 @@ def cluster_sanity_scope_session(
 ) -> None:
     # Skip cluster sanity check when running tests that have cluster_health or operator_health markers
     selected_markers = {mark.name for item in request.session.items for mark in item.iter_markers()}
-    if {"cluster_health", "operator_health", "component_health"} & selected_markers:
-        LOGGER.info("Skipping cluster sanity check because selected tests include cluster/operator/component health")
+    if {"cluster_health", "operator_health"} & selected_markers:
+        LOGGER.info("Skipping cluster sanity check because selected tests include cluster/operator health")
         return
 
     verify_cluster_sanity(
@@ -692,9 +787,7 @@ def prometheus(admin_client: DynamicClient) -> Prometheus:
     return Prometheus(
         client=admin_client,
         resource_name="thanos-querier",
-        verify_ssl=create_ca_bundle_file(
-            client=admin_client, ca_type="openshift"
-        ),  # TODO: Verify SSL with appropriate certs
+        verify_ssl=create_ca_bundle_file(client=admin_client),  # TODO: Verify SSL with appropriate certs
         bearer_token=get_openshift_token(),
     )
 
@@ -702,8 +795,7 @@ def prometheus(admin_client: DynamicClient) -> Prometheus:
 @pytest.fixture(scope="session")
 def related_images_refs(admin_client: DynamicClient) -> set[str]:
     related_images = get_csv_related_images(admin_client=admin_client)
-    related_images_refs = {img["image"] for img in related_images}
-    return related_images_refs
+    return {img["image"] for img in related_images}
 
 
 @pytest.fixture(scope="session")
@@ -761,7 +853,7 @@ def autouse_fixtures(
 
 @pytest.fixture(scope="session")
 def installed_mariadb_operator(admin_client: DynamicClient) -> Generator[None, Any, Any]:
-    operator_ns = Namespace(name="openshift-operators", ensure_exists=True)
+    operator_ns = Namespace(client=admin_client, name="openshift-operators", ensure_exists=True)
     operator_name = "mariadb-operator"
 
     mariadb_operator_subscription = Subscription(client=admin_client, namespace=operator_ns.name, name=operator_name)
@@ -801,7 +893,7 @@ def mariadb_operator_cr(
     )
     alm_examples: list[dict[str, Any]] = mariadb_csv.get_alm_examples()
     mariadb_operator_cr_dict: dict[str, Any] = next(
-        example for example in alm_examples if example["kind"] == "MariadbOperator"
+        (example for example in alm_examples if example["kind"] == "MariadbOperator"), None
     )
     if not mariadb_operator_cr_dict:
         raise ResourceNotFoundError(f"No MariadbOperator dict found in alm_examples for CSV {mariadb_csv.name}")
@@ -822,7 +914,7 @@ def mariadb_operator_cr(
         mariadb_operator_cr.wait_for_condition(
             condition="Deployed", status=mariadb_operator_cr.Condition.Status.TRUE, timeout=Timeout.TIMEOUT_10MIN
         )
-        wait_for_mariadb_operator_deployments(mariadb_operator=mariadb_operator_cr)
+        wait_for_mariadb_operator_deployments(mariadb_operator=mariadb_operator_cr, client=admin_client)
 
         yield mariadb_operator_cr
 
@@ -846,7 +938,7 @@ def gpu_count_on_cluster(nodes: list[Any]) -> int:
             if key in allowed_exact or any(key.startswith(p) for p in allowed_prefixes):
                 try:
                     total_gpus += int(val)
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     LOGGER.debug(f"Skipping non-integer allocatable for {key} on {node.name}: {val!r}")
                     continue
     return total_gpus
@@ -857,3 +949,149 @@ def original_user() -> str:
     current_user = run_command(command=["oc", "whoami"])[1].strip()
     LOGGER.info(f"Original user: {current_user}")
     return current_user
+
+
+# OCI Registry
+@pytest.fixture(scope="class")
+def oci_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
+    with create_ns(
+        name=f"{OCIRegistry.Metadata.NAME}-{shortuuid.uuid().lower()}",
+        admin_client=admin_client,
+    ) as ns:
+        yield ns
+
+
+@pytest.fixture(scope="class")
+def oci_registry_pod_with_minio(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    oci_namespace: Namespace,
+    minio_service: Service,
+) -> Generator[Pod, Any, Any]:
+    pod_labels = {Labels.Openshift.APP: OCIRegistry.Metadata.NAME}
+
+    if labels := request.param.get("labels"):
+        pod_labels.update(labels)
+
+    minio_fqdn = f"{minio_service.name}.{minio_service.namespace}.svc.cluster.local"
+    minio_endpoint = f"{minio_fqdn}:{MinIo.Metadata.DEFAULT_PORT}"
+
+    with Pod(
+        client=admin_client,
+        name=OCIRegistry.Metadata.NAME,
+        namespace=oci_namespace.name,
+        containers=[
+            {
+                "args": request.param.get("args"),
+                "env": [
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_NAME", "value": OCIRegistry.Storage.STORAGE_DRIVER},
+                    {
+                        "name": "ZOT_STORAGE_STORAGEDRIVER_ROOTDIRECTORY",
+                        "value": OCIRegistry.Storage.STORAGE_DRIVER_ROOT_DIRECTORY,
+                    },
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_BUCKET", "value": MinIo.Buckets.MODELMESH_EXAMPLE_MODELS},
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_REGION", "value": OCIRegistry.Storage.STORAGE_DRIVER_REGION},
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_REGIONENDPOINT", "value": f"http://{minio_endpoint}"},
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_ACCESSKEY", "value": MinIo.Credentials.ACCESS_KEY_VALUE},
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_SECRETKEY", "value": MinIo.Credentials.SECRET_KEY_VALUE},
+                    {
+                        "name": "ZOT_STORAGE_STORAGEDRIVER_SECURE",
+                        "value": OCIRegistry.Storage.STORAGE_STORAGEDRIVER_SECURE,
+                    },
+                    {
+                        "name": "ZOT_STORAGE_STORAGEDRIVER_FORCEPATHSTYLE",
+                        "value": OCIRegistry.Storage.STORAGE_STORAGEDRIVER_FORCEPATHSTYLE,
+                    },
+                    {"name": "ZOT_HTTP_ADDRESS", "value": OCIRegistry.Metadata.DEFAULT_HTTP_ADDRESS},
+                    {"name": "ZOT_HTTP_PORT", "value": str(OCIRegistry.Metadata.DEFAULT_PORT)},
+                    {"name": "ZOT_LOG_LEVEL", "value": "info"},
+                ],
+                "image": request.param.get("image", OCIRegistry.PodConfig.REGISTRY_IMAGE),
+                "name": OCIRegistry.Metadata.NAME,
+                "securityContext": {
+                    "allowPrivilegeEscalation": False,
+                    "capabilities": {"drop": ["ALL"]},
+                    "runAsNonRoot": True,
+                    "seccompProfile": {"type": "RuntimeDefault"},
+                },
+                "volumeMounts": [
+                    {
+                        "name": "zot-data",
+                        "mountPath": "/var/lib/registry",
+                    }
+                ],
+            }
+        ],
+        volumes=[
+            {
+                "name": "zot-data",
+                "emptyDir": {},
+            }
+        ],
+        label=pod_labels,
+        annotations=request.param.get("annotations"),
+    ) as oci_pod:
+        oci_pod.wait_for_condition(condition="Ready", status="True")
+        yield oci_pod
+
+
+@pytest.fixture(scope="class")
+def oci_registry_service(admin_client: DynamicClient, oci_namespace: Namespace) -> Generator[Service, Any, Any]:
+    with Service(
+        client=admin_client,
+        name=OCIRegistry.Metadata.NAME,
+        namespace=oci_namespace.name,
+        ports=[
+            {
+                "name": f"{OCIRegistry.Metadata.NAME}-port",
+                "port": OCIRegistry.Metadata.DEFAULT_PORT,
+                "protocol": Protocols.TCP,
+                "targetPort": OCIRegistry.Metadata.DEFAULT_PORT,
+            }
+        ],
+        selector={
+            Labels.Openshift.APP: OCIRegistry.Metadata.NAME,
+        },
+        session_affinity="ClientIP",
+    ) as oci_service:
+        yield oci_service
+
+
+@pytest.fixture(scope="class")
+def oci_registry_route(admin_client: DynamicClient, oci_registry_service: Service) -> Generator[Route, Any, Any]:
+    with Route(
+        client=admin_client,
+        name=OCIRegistry.Metadata.NAME,
+        namespace=oci_registry_service.namespace,
+        service=oci_registry_service.name,
+    ) as oci_route:
+        yield oci_route
+
+
+@pytest.fixture(scope="class")
+def oci_registry_host(oci_registry_route: Route) -> str:
+    """Get the OCI registry host from the route"""
+    return oci_registry_route.host
+
+
+@pytest.fixture(scope="session")
+def skip_if_no_supported_accelerator_type(supported_accelerator_type: str | None) -> None:
+    """Skip test if the required GPU accelerator type is not available.
+
+    Use this fixture for tests that validate GPU-specific functionality.
+    Note: vLLM supports CPU execution, but this fixture enforces GPU
+    requirements for tests that specifically need accelerator validation.
+    """
+    # GPU accelerators supported for vLLM GPU-specific testing
+    supported_gpu_accelerators = {
+        AcceleratorType.NVIDIA,
+        AcceleratorType.AMD,
+        AcceleratorType.GAUDI,
+    }
+
+    if not supported_accelerator_type or supported_accelerator_type.lower() not in supported_gpu_accelerators:
+        pytest.skip(
+            f"Test requires a supported GPU accelerator. "
+            f"Found: '{supported_accelerator_type or 'None'}'. "
+            f"Expected one of: {supported_gpu_accelerators}."
+        )

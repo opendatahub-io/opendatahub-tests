@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any
 
 from ocp_resources.resource import Resource
 
@@ -7,7 +7,11 @@ from ocp_resources.resource import Resource
 class KServeDeploymentType:
     SERVERLESS: str = "Serverless"
     RAW_DEPLOYMENT: str = "RawDeployment"
+    STANDARD: str = "Standard"
     MODEL_MESH: str = "ModelMesh"
+    KNATIVE: str = "Knative"
+
+    RAW_DEPLOYMENT_MODES: tuple[str, ...] = (RAW_DEPLOYMENT, STANDARD)
 
 
 class ModelFormat:
@@ -81,6 +85,8 @@ class RuntimeTemplates:
     VLLM_GAUDI: str = "vllm-gaudi-runtime-template"
     VLLM_SPYRE: str = "vllm-spyre-x86-runtime-template"
     VLLM_CPU_x86: str = "vllm-cpu-x86-runtime-template"
+    VLLM_CPU_POWER: str = "vllm-cpu-power-runtime-template"
+    VLLM_CPU_Z: str = "vllm-cpu-z-runtime-template"
     MLSERVER: str = f"{ModelFormat.MLSERVER}-runtime-template"
     TRITON_REST: str = "triton-rest-runtime-template"
     TRITON_GRPC: str = "triton-grpc-runtime-template"
@@ -105,7 +111,7 @@ class Protocols:
     GRPC: str = "grpc"
     REST: str = "rest"
     TCP: str = "TCP"
-    TCP_PROTOCOLS: set[str] = {HTTP, HTTPS}
+    TCP_PROTOCOLS: set[str] = {HTTP, HTTPS}  # noqa: RUF012
     ALL_SUPPORTED_PROTOCOLS: set[str] = TCP_PROTOCOLS.union({GRPC})
 
 
@@ -131,7 +137,9 @@ class AcceleratorType:
     GAUDI: str = "gaudi"
     SPYRE: str = "spyre"
     CPU_x86: str = "cpu_x86"
-    SUPPORTED_LISTS: list[str] = [NVIDIA, AMD, GAUDI, SPYRE, CPU_x86]
+    CPU_POWER: str = "cpu_power"
+    CPU_Z: str = "cpu_z"
+    SUPPORTED_LISTS: list[str] = [NVIDIA, AMD, GAUDI, SPYRE, CPU_x86, CPU_POWER, CPU_Z]  # noqa: RUF012
 
 
 class ApiGroups:
@@ -139,6 +147,8 @@ class ApiGroups:
     OPENDATAHUB_IO: str = "opendatahub.io"
     KSERVE: str = "serving.kserve.io"
     KUADRANT_IO: str = "kuadrant.io"
+    MAAS_IO: str = "maas.opendatahub.io"
+    AUTH_IO: str = "SERVICES_PLATFORM_OPENDATAHUB_IO"
 
 
 class Annotations:
@@ -185,7 +195,7 @@ class DscComponents:
         MODEL_MESH_SERVING_READY: str = "ModelMeshServingReady"
         LLAMA_STACK_OPERATOR_READY: str = "LlamaStackOperatorReady"
 
-    COMPONENT_MAPPING: dict[str, str] = {
+    COMPONENT_MAPPING: dict[str, str] = {  # noqa: RUF012
         MODELMESHSERVING: ConditionType.MODEL_MESH_SERVING_READY,
         KSERVE: ConditionType.KSERVE_READY,
         MODELREGISTRY: ConditionType.MODEL_REGISTRY_READY,
@@ -282,7 +292,7 @@ class Containers:
 
 
 class RunTimeConfigs:
-    ONNX_OPSET13_RUNTIME_CONFIG: dict[str, Any] = {
+    ONNX_OPSET13_RUNTIME_CONFIG: dict[str, Any] = {  # noqa: RUF012
         "runtime-name": ModelInferenceRuntime.ONNX_RUNTIME,
         "model-format": {ModelFormat.ONNX: ModelVersion.OPSET13},
     }
@@ -291,9 +301,16 @@ class RunTimeConfigs:
 class ModelCarImage:
     MNIST_8_1: str = (
         "oci://quay.io/mwaykole/test@sha256:cb7d25c43e52c755e85f5b59199346f30e03b7112ef38b74ed4597aec8748743"
-        # noqa: E501
     )
     GRANITE_8B_CODE_INSTRUCT: str = "oci://registry.redhat.io/rhelai1/modelcar-granite-8b-code-instruct:1.4"
+
+    # MLServer model car images - update URIs when images are available
+    MLSERVER_SKLEARN: str = "oci://quay.io/jooholee/mlserver-sklearn@sha256:ec9bc6b520909c52bd1d4accc2b2d28adb04981bd4c3ce94f17f23dd573e1f55"  # noqa: E501
+    MLSERVER_XGBOOST: str = "oci://quay.io/jooholee/mlserver-xgboost@sha256:5b6982bdc939b53a7a1210f56aa52bf7de0f0cbc693668db3fd1f496571bff29"  # noqa: E501
+    MLSERVER_LIGHTGBM: str = "oci://quay.io/jooholee/mlserver-lightgbm@sha256:77eb15a2eccefa3756faaf2ee4bc1e63990b746427d323957c461f33a4f1a6a3"  # noqa: E501
+    MLSERVER_ONNX: str = (
+        "oci://quay.io/jooholee/mlserver-onnx@sha256:d0ad00fb6f2caa8f02a0250fc44a576771d0846b2ac8d164ec203b10ec5d604b"  # noqa: E501
+    )
 
 
 class ModelStorage:
@@ -314,6 +331,7 @@ class ModelStorage:
     class HuggingFace:
         TINYLLAMA: str = "hf://TinyLlama/TinyLlama-1.1B-Chat-v1.0"
         OPT125M: str = "hf://facebook/opt-125m"
+        QWEN_7B_INSTRUCT: str = "hf://Qwen/Qwen2.5-7B-Instruct"
 
 
 class OCIRegistry:
@@ -324,7 +342,7 @@ class OCIRegistry:
 
     class PodConfig:
         REGISTRY_IMAGE: str = "ghcr.io/project-zot/zot:v2.1.8"
-        REGISTRY_BASE_CONFIG: dict[str, Any] = {
+        REGISTRY_BASE_CONFIG: dict[str, Any] = {  # noqa: RUF012
             "args": None,
             "labels": {
                 "maistra.io/expose-route": "true",
@@ -358,9 +376,8 @@ class MinIo:
     class PodConfig:
         KSERVE_MINIO_IMAGE: str = (
             "quay.io/jooholee/model-minio@sha256:b9554be19a223830cf792d5de984ccc57fc140b954949f5ffc6560fab977ca7a"
-            # noqa: E501
         )
-        MINIO_BASE_LABELS_ANNOTATIONS: dict[str, Any] = {
+        MINIO_BASE_LABELS_ANNOTATIONS: dict[str, Any] = {  # noqa: RUF012
             "labels": {
                 "maistra.io/expose-route": "true",
             },
@@ -369,32 +386,32 @@ class MinIo:
             },
         }
 
-        MINIO_BASE_CONFIG: dict[str, Any] = {
+        MINIO_BASE_CONFIG: dict[str, Any] = {  # noqa: RUF012
             "args": ["server", "/data1"],
             **MINIO_BASE_LABELS_ANNOTATIONS,
         }
 
-        MODEL_MESH_MINIO_CONFIG: dict[str, Any] = {
+        MODEL_MESH_MINIO_CONFIG: dict[str, Any] = {  # noqa: RUF012
             "image": "quay.io/trustyai_testing/modelmesh-minio-examples@sha256:d2ccbe92abf9aa5085b594b2cae6c65de2bf06306c30ff5207956eb949bb49da",  # noqa: E501
             **MINIO_BASE_CONFIG,
         }
 
-        QWEN_MINIO_CONFIG: dict[str, Any] = {
+        QWEN_MINIO_CONFIG: dict[str, Any] = {  # noqa: RUF012
             "image": "quay.io/trustyai_testing/hf-llm-minio@sha256:2404a37d578f2a9c7adb3971e26a7438fedbe7e2e59814f396bfa47cd5fe93bb",  # noqa: E501
             **MINIO_BASE_CONFIG,
         }
 
-        QWEN_HAP_BPIV2_MINIO_CONFIG: dict[str, Any] = {
+        QWEN_HAP_BPIV2_MINIO_CONFIG: dict[str, Any] = {  # noqa: RUF012
             "image": "quay.io/trustyai_testing/qwen2.5-0.5b-instruct-hap-bpiv2-minio@sha256:eac1ca56f62606e887c80b4a358b3061c8d67f0b071c367c0aa12163967d5b2b",  # noqa: E501
             **MINIO_BASE_CONFIG,
         }
 
-        KSERVE_MINIO_CONFIG: dict[str, Any] = {
+        KSERVE_MINIO_CONFIG: dict[str, Any] = {  # noqa: RUF012
             "image": KSERVE_MINIO_IMAGE,
             **MINIO_BASE_CONFIG,
         }
 
-        MODEL_REGISTRY_MINIO_CONFIG: dict[str, Any] = {
+        MODEL_REGISTRY_MINIO_CONFIG: dict[str, Any] = {  # noqa: RUF012
             "image": "quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e",
             "args": ["server", "/data"],
             **MINIO_BASE_LABELS_ANNOTATIONS,
@@ -424,13 +441,19 @@ vLLM_CONFIG: dict[str, dict[str, Any]] = {
 
 RHOAI_OPERATOR_NAMESPACE = "redhat-ods-operator"
 OPENSHIFT_OPERATORS: str = "openshift-operators"
+
+MAAS_GATEWAY_NAME: str = "maas-default-gateway"
+MAAS_GATEWAY_NAMESPACE: str = "openshift-ingress"
+MAAS_RATE_LIMIT_POLICY_NAME: str = "gateway-rate-limits"
+MAAS_TOKEN_RATE_LIMIT_POLICY_NAME: str = "gateway-token-rate-limits"
+
 MARIADB: str = "mariadb"
 MARIA_DB_IMAGE: str = (
     "registry.redhat.io/rhel9/mariadb-1011@sha256:092407d87f8017bb444a462fb3d38ad5070429e94df7cf6b91d82697f36d0fa9"
 )
 MODEL_REGISTRY_CUSTOM_NAMESPACE: str = "model-registry-custom-ns"
 THANOS_QUERIER_ADDRESS = "https://thanos-querier.openshift-monitoring.svc:9092"
-BUILTIN_DETECTOR_CONFIG: Dict[str, Any] = {
+BUILTIN_DETECTOR_CONFIG: dict[str, Any] = {
     "regex": {
         "type": "text_contents",
         "service": {
@@ -470,7 +493,7 @@ class ContainerImages:
         MODEL_SERVER: str = "quay.io/opendatahub/openvino_model_server@sha256:564664371d3a21b9e732a5c1b4b40bacad714a5144c0a9aaf675baec4a04b148"  # noqa: E501
 
 
-CHAT_GENERATION_CONFIG: Dict[str, Any] = {
+CHAT_GENERATION_CONFIG: dict[str, Any] = {
     "service": {
         "hostname": f"{QWEN_MODEL_NAME}-predictor",
         "port": 80,
@@ -487,16 +510,37 @@ class LLMdInferenceSimConfig:
     name: str = LLM_D_INFERENCE_SIM_NAME
     port: int = 8032
     model_name: str = "Qwen2.5-1.5B-Instruct"
+    max_model_len: int = 8192
     serving_runtime_name: str = f"{LLM_D_INFERENCE_SIM_NAME}-serving-runtime"
     isvc_name: str = f"{LLM_D_INFERENCE_SIM_NAME}-isvc"
 
 
-LLM_D_CHAT_GENERATION_CONFIG: Dict[str, Any] = {
+LLM_D_CHAT_GENERATION_CONFIG: dict[str, Any] = {
     "service": {"hostname": f"{LLMdInferenceSimConfig.isvc_name}-predictor", "port": 80}
+}
+
+
+@dataclass
+class VLLMGPUConfig:
+    name: str = "vllm-gpu"
+    port: int = 80
+    model_name: str = "qwen3b"
+    serving_runtime_name: str = "vllm-runtime-gpu"
+    isvc_name: str = "qwen3b"
+
+    @classmethod
+    def get_hostname(cls, namespace: str) -> str:
+        return f"{cls.isvc_name}-predictor.{namespace}.svc.cluster.local"
+
+
+VLLM_CHAT_GENERATION_CONFIG: dict[str, Any] = {
+    "service": {"hostname": VLLMGPUConfig.get_hostname("test-guardrails-huggingface"), "port": VLLMGPUConfig.port}
 }
 
 
 class PodNotFound(Exception):
     """Pod not found"""
 
-    pass
+
+PROMPT_INJECTION_DETECTOR: str = "prompt-injection-detector"
+HAP_DETECTOR: str = "hap-detector"
