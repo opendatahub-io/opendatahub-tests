@@ -84,6 +84,8 @@ class RuntimeTemplates:
     VLLM_ROCM: str = "vllm-rocm-runtime-template"
     VLLM_GAUDI: str = "vllm-gaudi-runtime-template"
     VLLM_SPYRE: str = "vllm-spyre-x86-runtime-template"
+    VLLM_SPYRE_S390X: str = "vllm-spyre-s390x-runtime-template"
+    VLLM_SPYRE_PPC64LE: str = "vllm-spyre-ppc64le-runtime-template"
     VLLM_CPU_x86: str = "vllm-cpu-x86-runtime-template"
     MLSERVER: str = f"{ModelFormat.MLSERVER}-runtime-template"
     TRITON_REST: str = "triton-rest-runtime-template"
