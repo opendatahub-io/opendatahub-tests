@@ -43,13 +43,28 @@ def get_rhoai_version_prefix(client: DynamicClient, namespace: str) -> str:
 
     Raises:
         ValueError: If no succeeded ``rhods-operator`` CSV is found.
+        ResourceNotUniqueError: If multiple succeeded ``rhods-operator``
+            CSVs are found.
     """
-    for csv in ClusterServiceVersion.get(client=client, namespace=namespace):
-        if csv.name.startswith("rhods-operator") and csv.status == csv.Status.SUCCEEDED:
-            version = csv.instance.spec.version
-            LOGGER.info(f"Found RHOAI CSV: {csv.name}, version: {version}")
-            return f"v{version.replace('.', '-')}"
-    raise ValueError(f"RHOAI CSV (rhods-operator) not found in {namespace} namespace")
+    succeeded_csvs = [
+        csv
+        for csv in ClusterServiceVersion.get(client=client, namespace=namespace)
+        if csv.name.startswith("rhods-operator") and csv.status == csv.Status.SUCCEEDED
+    ]
+
+    if not succeeded_csvs:
+        raise ValueError(f"RHOAI CSV (rhods-operator) not found in {namespace} namespace")
+
+    if len(succeeded_csvs) > 1:
+        raise ResourceNotUniqueError(
+            f"Multiple succeeded rhods-operator CSVs found:"
+            f" {[csv.name for csv in succeeded_csvs]}"
+        )
+
+    csv = succeeded_csvs[0]
+    version = csv.instance.spec.version
+    LOGGER.info(f"Found RHOAI CSV: {csv.name}, version: {version}")
+    return f"v{version.replace('.', '-')}"
 
 
 def get_csv_related_images(admin_client: DynamicClient, csv_name: str | None = None) -> list[dict[str, str]]:
