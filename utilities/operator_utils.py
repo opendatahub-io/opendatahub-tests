@@ -27,6 +27,31 @@ def get_cluster_service_version(client: DynamicClient, prefix: str, namespace: s
     return matching_csvs[0]
 
 
+def get_rhoai_version_prefix(client: DynamicClient, namespace: str) -> str:
+    """Resolve the RHOAI version prefix from the operator CSV.
+
+    Iterates ClusterServiceVersions in the given namespace, finds the
+    ``rhods-operator`` CSV with SUCCEEDED status, and returns a version
+    prefix string (e.g. ``"v3-4-0"``).
+
+    Args:
+        client: Kubernetes dynamic client.
+        namespace: Namespace where the RHOAI operator CSV lives.
+
+    Returns:
+        Version prefix string derived from the CSV version.
+
+    Raises:
+        ValueError: If no succeeded ``rhods-operator`` CSV is found.
+    """
+    for csv in ClusterServiceVersion.get(client=client, namespace=namespace):
+        if csv.name.startswith("rhods-operator") and csv.status == csv.Status.SUCCEEDED:
+            version = csv.instance.spec.version
+            LOGGER.info(f"Found RHOAI CSV: {csv.name}, version: {version}")
+            return f"v{version.replace('.', '-')}"
+    raise ValueError(f"RHOAI CSV (rhods-operator) not found in {namespace} namespace")
+
+
 def get_csv_related_images(admin_client: DynamicClient, csv_name: str | None = None) -> list[dict[str, str]]:
     """Get relatedImages from the CSV.
 

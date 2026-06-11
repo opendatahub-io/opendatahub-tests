@@ -3,11 +3,12 @@
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.cluster_service_version import ClusterServiceVersion
+from pytest_testconfig import config as py_config
 
 from tests.model_serving.model_server.llmd.constants import AMD_ROCM_TEMPLATE, LLMD_TESTS_SUPPORTED_ACCELERATORS
 from tests.model_serving.model_server.llmd.utils import detect_accelerators
 from utilities.constants import ContainerImages, Labels
+from utilities.operator_utils import get_rhoai_version_prefix
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -276,17 +277,10 @@ class GpuConfig(LLMISvcConfig):
         "v3-4-0-ea-2-kserve-config-llm-template-amd-rocm"). We read the RHOAI CSV
         version and prepend it to the template name.
         """
-        rhoai_version = None
-        for csv in ClusterServiceVersion.get(client=client, namespace="redhat-ods-operator"):
-            if csv.name.startswith("rhods-operator") and csv.status == csv.Status.SUCCEEDED:
-                rhoai_version = csv.instance.spec.version
-                LOGGER.info(f"[llmd] Found RHOAI CSV: {csv.name}, version: {rhoai_version}")
-                break
-
-        if not rhoai_version:
-            raise ValueError("RHOAI CSV (rhods-operator) not found in redhat-ods-operator namespace")
-
-        version_prefix = f"v{rhoai_version.replace('.', '-')}"
+        version_prefix = get_rhoai_version_prefix(
+            client=client,
+            namespace=py_config["operator_namespace"],
+        )
         full_name = f"{version_prefix}-{template_name}"
         LOGGER.info(f"[llmd] Resolved baseRef: {template_name} -> {full_name}")
         return [{"name": full_name}]
