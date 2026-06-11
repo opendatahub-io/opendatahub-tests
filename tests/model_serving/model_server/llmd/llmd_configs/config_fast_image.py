@@ -4,8 +4,9 @@ Uses LLMInferenceServiceConfig baseRefs to deploy models with the
 nvidia-cuda fast-1 or fast-2 vLLM image overrides.
 """
 
-import structlog
+import pytest
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import NotFoundError, ResourceNotFoundError
 
 from tests.model_serving.model_server.llmd.constants import (
     NVIDIA_CUDA_FAST_1_TEMPLATE,
@@ -15,7 +16,8 @@ from utilities.constants import Labels
 
 from .config_models import TinyLlamaOciGpuConfig
 
-LOGGER = structlog.get_logger(name=__name__)
+_LLMISVC_CONFIG_API_VERSION = "serving.kserve.io/v1alpha1"
+_LLMISVC_CONFIG_KIND = "LLMInferenceServiceConfig"
 
 
 class FastImageConfig(TinyLlamaOciGpuConfig):
@@ -36,7 +38,21 @@ class FastImageConfig(TinyLlamaOciGpuConfig):
         """Detect GPU accelerator, resolve the versioned fast template, and skip if absent."""
         resolved = cls._resolve_accelerator(client=client)
         base_refs = cls._resolve_base_refs(client=client, template_name=cls.fast_template)
+        cr_name = base_refs[0]["name"]
+        cls._skip_if_cr_missing(client=client, cr_name=cr_name)
         return resolved.with_overrides(base_refs=base_refs)
+
+    @staticmethod
+    def _skip_if_cr_missing(client: DynamicClient, cr_name: str) -> None:
+        """Skip the test if the LLMInferenceServiceConfig CR does not exist on the cluster."""
+        try:
+            api = client.resources.get(
+                api_version=_LLMISVC_CONFIG_API_VERSION,
+                kind=_LLMISVC_CONFIG_KIND,
+            )
+            api.get(name=cr_name)
+        except (NotFoundError, ResourceNotFoundError):  # fmt: skip
+            pytest.skip(f"LLMInferenceServiceConfig CR '{cr_name}' not found on cluster — skipping test")
 
 
 class TinyLlamaFast1Config(FastImageConfig):
