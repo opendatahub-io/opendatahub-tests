@@ -285,6 +285,92 @@ def _curl_post(
     return status_code, response_body
 
 
+def _curl_get(
+    url: str,
+    token: str | None = None,
+    ca_cert: str | None = None,
+    timeout: int = LLMEndpoint.DEFAULT_TIMEOUT,
+) -> tuple[int, str]:
+    """GET a URL via curl. Returns (status_code, response_body).
+
+    Args:
+        url: The URL to fetch.
+        token: Optional bearer token for authentication.
+        ca_cert: Path to CA certificate for TLS verification.
+        timeout: Request timeout in seconds.
+
+    Returns:
+        Tuple of (status_code, response_body).
+    """
+    cmd = [
+        "curl",
+        "-s",
+        "-w",
+        "\n%{http_code}",
+        "-H",
+        "Accept: application/json",
+        "--max-time",
+        str(timeout),
+    ]
+    if token:
+        cmd.extend(["-H", f"Authorization: Bearer {token}"])
+    if ca_cert:
+        cmd.extend(["--cacert", ca_cert])
+    else:
+        cmd.append("--insecure")
+    cmd.append(url)
+
+    LOGGER.info(f"GET {url}")
+
+    _, stdout, stderr = run_command(command=cmd, verify_stderr=False, check=False, hide_log_command=True)
+    if not stdout.strip():
+        raise ConnectionError(f"curl GET failed with no output: {stderr}")
+
+    parts = stdout.rsplit("\n", 1)
+    response_body = parts[0] if len(parts) > 1 else ""
+    try:
+        status_code = int(parts[-1].strip())
+    except ValueError:
+        status_code = 0
+    return status_code, response_body
+
+
+def get_vllm_version(
+    llmisvc: LLMInferenceService,
+) -> str:
+    """Query the vLLM /version endpoint and return the version string.
+
+    Args:
+        llmisvc: The LLMInferenceService to query.
+
+    Returns:
+        The vLLM version string (e.g. "0.8.5").
+
+    Raises:
+        ValueError: If the response cannot be parsed or the endpoint returns an error.
+    """
+    base_url = (
+        _get_disconnected_inference_url(llmisvc)
+        if is_disconnected_cluster(llmisvc.client)
+        else _get_inference_url(llmisvc)
+    )
+    url = base_url + "/version"
+
+    LOGGER.info(f"Querying vLLM version from {llmisvc.name} at {url}")
+    status_code, response_body = _curl_get(url=url)
+    if status_code != 200:
+        raise ValueError(f"vLLM /version returned {status_code}: {response_body}")
+
+    try:
+        data = json.loads(response_body)
+        version = data["version"]
+    except (json.JSONDecodeError, KeyError, TypeError) as e:
+        raise ValueError(f"Failed to parse vLLM version response: {e}\nBody: {response_body[:500]}") from e
+
+    LOGGER.info(f"vLLM version for {llmisvc.name}: {version}")
+    return version
+
+
 def _get_model_name(llmisvc: LLMInferenceService) -> str:
     """Read model name from spec.model.name, falling back to the resource name."""
     return llmisvc.instance.spec.model.get("name", llmisvc.name)
