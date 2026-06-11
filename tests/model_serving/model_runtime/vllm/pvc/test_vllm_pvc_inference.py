@@ -22,7 +22,6 @@ PVC_RAW_DEPLOYMENT_CONFIG: dict[str, Any] = {
 pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "valid_aws_config")
 
 
-@pytest.mark.tier1
 @pytest.mark.vllm_nvidia_single_gpu
 @pytest.mark.vllm_amd_gpu
 @pytest.mark.parametrize(

@@ -24,7 +24,7 @@ BASE_RAW_DEPLOYMENT_CONFIG["runtime_argument"] = GRANITE_SERVING_ARGUMENT
 pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "valid_aws_config")
 
 
-@pytest.mark.vllm_nvidia_single_gpu
+@pytest.mark.vllm_nvidia_multi_gpu
 @pytest.mark.vllm_amd_gpu
 @pytest.mark.parametrize(
     "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",
@@ -35,10 +35,10 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "v
             {"deployment_type": KServeDeploymentType.RAW_DEPLOYMENT},
             {
                 **BASE_RAW_DEPLOYMENT_CONFIG,
-                "gpu_count": 1,
+                "gpu_count": 2,
                 "name": "granite-starter-raw",
             },
-            id="granite-starter-raw-single-gpu",
+            id="granite-starter-raw-multi-gpu",
         ),
     ],
     indirect=True,

@@ -11,6 +11,8 @@ ACCELERATOR_IDENTIFIER: dict[str, str] = {
     AcceleratorType.GAUDI: "habana.ai/gaudi",
     AcceleratorType.SPYRE: Labels.Spyre.SPYRE_COM_GPU,
     AcceleratorType.CPU_x86: Labels.CPU.CPU_x86,
+    AcceleratorType.CPU_POWER: Labels.CPU.CPU_x86,
+    AcceleratorType.CPU_Z: Labels.CPU.CPU_x86,
 }
 
 TEMPLATE_MAP: dict[str, str] = {
@@ -19,6 +21,8 @@ TEMPLATE_MAP: dict[str, str] = {
     AcceleratorType.GAUDI: RuntimeTemplates.VLLM_GAUDI,
     AcceleratorType.SPYRE: RuntimeTemplates.VLLM_SPYRE,
     AcceleratorType.CPU_x86: RuntimeTemplates.VLLM_CPU_x86,
+    AcceleratorType.CPU_POWER: RuntimeTemplates.VLLM_CPU_POWER,
+    AcceleratorType.CPU_Z: RuntimeTemplates.VLLM_CPU_Z,
 }
 
 PREDICT_RESOURCES: dict[str, list[dict[str, str | dict[str, str]]] | dict[str, dict[str, str]]] = {

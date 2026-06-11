@@ -15,7 +15,8 @@ LOGGER = structlog.get_logger(name=__name__)
 pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type")
 
 
-@pytest.mark.model_validation
+@pytest.mark.vllm_nvidia_single_gpu
+@pytest.mark.vllm_amd_gpu
 class TestVLLMModelCarRaw:
     def test_oci_model_car_raw_openai_inference(
         self,
