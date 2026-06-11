@@ -22,6 +22,7 @@ LOGGER = structlog.get_logger(name=__name__)
 pytestmark = pytest.mark.usefixtures("skip_if_no_supported_cpu_x86_accelerator_type", "valid_aws_config")
 
 
+@pytest.mark.smoke
 @pytest.mark.vllm_cpu_x86
 @pytest.mark.parametrize(
     (
@@ -44,6 +45,7 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_cpu_x86_accelerator_t
             },
             OPT_125M_COMPLETION_REQUEST,
             id="facebook-opt-125m-raw-cpu",
+            marks=[pytest.mark.smoke],
         ),
         pytest.param(
             {"name": "tinyllama-raw-cpu"},
@@ -57,6 +59,7 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_cpu_x86_accelerator_t
             },
             TINYLLAMA_CHAT_COMPLETION_REQUEST,
             id="tinyllama-1-1b-chat-raw-cpu",
+            marks=[pytest.mark.tier1],
         ),
     ],
     indirect=["model_namespace", "s3_models_storage_uri", "cpu_x86_serving_runtime", "cpu_x86_inference_service"],

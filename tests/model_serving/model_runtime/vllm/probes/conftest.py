@@ -1,4 +1,5 @@
 from collections.abc import Generator
+from copy import deepcopy
 from typing import Any
 
 import pytest
@@ -10,14 +11,19 @@ from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest import FixtureRequest
 
-from tests.model_serving.model_runtime.vllm.constant import ACCELERATOR_IDENTIFIER, PREDICT_RESOURCES, TEMPLATE_MAP
+from tests.model_serving.model_runtime.vllm.constant import TEMPLATE_MAP
+from tests.model_serving.model_runtime.vllm.cpu.cpu_x86.constant import (
+    CPU_X86_PREDICT_RESOURCES,
+    CPU_X86_VOLUME_MOUNTS,
+    CPU_X86_VOLUMES,
+)
 from tests.model_serving.model_runtime.vllm.probes.utils import VLLM_LIVENESS_PROBE, VLLM_READINESS_PROBE
 from tests.model_serving.model_runtime.vllm.utils import (
     dedupe_vllm_cli_args,
     skip_if_not_deployment_mode,
     validate_supported_quantization_schema,
 )
-from utilities.constants import Containers, KServeDeploymentType, Labels, RuntimeTemplates
+from utilities.constants import Containers, KServeDeploymentType, RuntimeTemplates, Timeout
 from utilities.inference_utils import create_isvc
 from utilities.infra import get_pods_by_isvc_label
 from utilities.serving_runtime import ServingRuntimeFromTemplate
@@ -31,9 +37,9 @@ def probes_serving_runtime(
     supported_accelerator_type: str,
     vllm_runtime_image: str,
 ) -> Generator[ServingRuntime, Any, Any]:
-    """vLLM ServingRuntime with readiness and liveness httpGet probes on kserve-container."""
+    """vLLM CPU x86 ServingRuntime with readiness and liveness httpGet probes on kserve-container."""
     accelerator_type = supported_accelerator_type.lower()
-    template_name = TEMPLATE_MAP.get(accelerator_type, RuntimeTemplates.VLLM_CUDA)
+    template_name = TEMPLATE_MAP.get(accelerator_type, RuntimeTemplates.VLLM_CPU_x86)
     with ServingRuntimeFromTemplate(
         client=admin_client,
         name="vllm-runtime",
@@ -58,11 +64,11 @@ def vllm_probes_inference_service(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     probes_serving_runtime: ServingRuntime,
-    supported_accelerator_type: str,
     s3_models_storage_uri: str,
     vllm_model_service_account: ServiceAccount,
 ) -> Generator[InferenceService, Any, Any]:
-    isvc_kwargs = {
+    """vLLM CPU x86 InferenceService with probe-enabled runtime backed by S3 model storage."""
+    isvc_kwargs: dict[str, Any] = {
         "client": admin_client,
         "name": request.param["name"],
         "namespace": model_namespace.name,
@@ -71,23 +77,15 @@ def vllm_probes_inference_service(
         "model_format": probes_serving_runtime.instance.spec.supportedModelFormats[0].name,
         "model_service_account": vllm_model_service_account.name,
         "deployment_mode": request.param.get("deployment_mode", KServeDeploymentType.RAW_DEPLOYMENT),
+        "external_route": True,
+        "resources": deepcopy(x=CPU_X86_PREDICT_RESOURCES),
+        "volumes": CPU_X86_VOLUMES,
+        "volumes_mounts": CPU_X86_VOLUME_MOUNTS,
+        "timeout": request.param.get("timeout", Timeout.TIMEOUT_20MIN),
     }
-    accelerator_type = supported_accelerator_type.lower()
-    gpu_count = request.param.get("gpu_count")
-    timeout = request.param.get("timeout")
-    identifier = ACCELERATOR_IDENTIFIER.get(accelerator_type, Labels.Nvidia.NVIDIA_COM_GPU)
-    resources: Any = PREDICT_RESOURCES["resources"]
-    resources["requests"][identifier] = gpu_count
-    resources["limits"][identifier] = gpu_count
-    isvc_kwargs["resources"] = resources
-    if timeout:
-        isvc_kwargs["timeout"] = timeout
-    if gpu_count > 1:
-        isvc_kwargs["volumes"] = PREDICT_RESOURCES["volumes"]
-        isvc_kwargs["volumes_mounts"] = PREDICT_RESOURCES["volume_mounts"]
+
     if arguments := request.param.get("runtime_argument"):
-        arguments = [arg for arg in arguments if not arg.startswith(("--tensor-parallel-size", "--quantization"))]
-        arguments.append(f"--tensor-parallel-size={gpu_count}")
+        arguments = [arg for arg in arguments if not arg.startswith("--quantization")]
         if quantization := request.param.get("quantization"):
             validate_supported_quantization_schema(q_type=quantization)
             arguments.append(f"--quantization={quantization}")
@@ -95,6 +93,9 @@ def vllm_probes_inference_service(
 
     if min_replicas := request.param.get("min-replicas"):
         isvc_kwargs["min_replicas"] = min_replicas
+
+    if model_env_variables := request.param.get("model_env_variables"):
+        isvc_kwargs["model_env_variables"] = model_env_variables
 
     with create_isvc(**isvc_kwargs) as isvc:
         yield isvc

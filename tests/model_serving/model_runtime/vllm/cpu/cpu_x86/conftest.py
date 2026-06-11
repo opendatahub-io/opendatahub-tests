@@ -21,24 +21,11 @@ from tests.model_serving.model_runtime.vllm.utils import (
     skip_if_not_deployment_mode,
     validate_supported_quantization_schema,
 )
-from utilities.constants import AcceleratorType, KServeDeploymentType, RuntimeTemplates, Timeout
+from utilities.constants import KServeDeploymentType, RuntimeTemplates, Timeout
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 LOGGER = structlog.get_logger(name=__name__)
-
-SUPPORTED_CPU_X86_ACCELERATORS: set[str] = {AcceleratorType.CPU_x86}
-
-
-@pytest.fixture(scope="session")
-def skip_if_no_supported_cpu_x86_accelerator_type(supported_accelerator_type: str | None) -> None:
-    """Skip test unless the cluster provides the x86 CPU accelerator."""
-    if not supported_accelerator_type or supported_accelerator_type.lower() not in SUPPORTED_CPU_X86_ACCELERATORS:
-        pytest.skip(
-            f"Test requires a supported vLLM x86 CPU accelerator. "
-            f"Found: '{supported_accelerator_type or 'None'}'. "
-            f"Expected one of: {SUPPORTED_CPU_X86_ACCELERATORS}."
-        )
 
 
 @pytest.fixture(scope="class")
