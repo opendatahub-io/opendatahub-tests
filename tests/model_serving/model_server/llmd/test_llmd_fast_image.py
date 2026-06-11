@@ -61,6 +61,6 @@ class TestLlmdFastImage:
         """
         version = get_vllm_version(llmisvc=llmisvc)
         assert version, "Expected a non-empty vLLM version string from /version endpoint"
-        assert re.match(r"^\d+\.\d+(\.\d+)", version), (
+        assert re.fullmatch(r"\d+\.\d+\.\d+(?:-[a-zA-Z0-9.]+)?(?:\+[a-zA-Z0-9.]+)?", version), (
             f"vLLM version '{version}' does not match expected semver format (e.g. '0.8.5')"
         )
