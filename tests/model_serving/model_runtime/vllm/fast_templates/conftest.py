@@ -45,10 +45,14 @@ def fast_template(fast_template_config: dict[str, str], admin_client: DynamicCli
 @pytest.fixture(scope="class")
 def stable_embedded_runtime(stable_template: Template) -> dict[str, Any]:
     """Embedded ServingRuntime dict from the stable template."""
-    return stable_template.instance.objects[0].to_dict()
+    objects = stable_template.instance.objects or []
+    assert objects, f"Stable template {stable_template.name} has no embedded objects"
+    return objects[0].to_dict()
 
 
 @pytest.fixture(scope="class")
 def fast_embedded_runtime(fast_template: Template) -> dict[str, Any]:
     """Embedded ServingRuntime dict from the fast template."""
-    return fast_template.instance.objects[0].to_dict()
+    objects = fast_template.instance.objects or []
+    assert objects, f"Fast template {fast_template.name} has no embedded objects"
+    return objects[0].to_dict()
