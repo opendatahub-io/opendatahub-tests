@@ -1,3 +1,5 @@
+import re
+
 import pytest
 from ocp_resources.llm_inference_service import LLMInferenceService
 
@@ -59,3 +61,6 @@ class TestLlmdFastImage:
         """
         version = get_vllm_version(llmisvc=llmisvc)
         assert version, "Expected a non-empty vLLM version string from /version endpoint"
+        assert re.match(r"^\d+\.\d+(\.\d+)", version), (
+            f"vLLM version '{version}' does not match expected semver format (e.g. '0.8.5')"
+        )
