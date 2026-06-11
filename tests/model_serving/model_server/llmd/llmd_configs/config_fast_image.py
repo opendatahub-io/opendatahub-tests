@@ -38,6 +38,8 @@ class FastImageConfig(TinyLlamaOciGpuConfig):
         """Detect GPU accelerator, resolve the versioned fast template, and skip if absent."""
         resolved = cls._resolve_accelerator(client=client)
         base_refs = cls._resolve_base_refs(client=client, template_name=cls.fast_template)
+        if not base_refs or "name" not in base_refs[0]:
+            raise ValueError(f"Invalid base_refs returned for template {cls.fast_template}")
         cr_name = base_refs[0]["name"]
         cls._skip_if_cr_missing(client=client, cr_name=cr_name)
         return resolved.with_overrides(base_refs=base_refs)

@@ -8,6 +8,7 @@ Follows the established model server utils pattern for consistency.
 import json
 import time
 from pathlib import Path
+from typing import Any
 
 import structlog
 from kubernetes.dynamic import DynamicClient
@@ -362,8 +363,10 @@ def get_vllm_version(
         raise ValueError(f"vLLM /version returned {status_code}: {response_body}")
 
     try:
-        data = json.loads(response_body)
+        data: dict[str, Any] = json.loads(response_body)
         version = data["version"]
+        if not isinstance(version, str):
+            raise TypeError(f"Expected version to be str, got {type(version).__name__}")
     except (json.JSONDecodeError, KeyError, TypeError) as e:
         raise ValueError(f"Failed to parse vLLM version response: {e}\nBody: {response_body[:500]}") from e
 
