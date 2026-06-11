@@ -102,12 +102,15 @@ class TestSingleNodePrefillDecode:
         )
 
         # Verify scheduler config contains all expected P/D plugins
+        # Plugins are different for 3.5ea1
         for expected_plugin in [
-            # "disagg-headers-handler", in 3.5ea1 the expect plugin is "prefill-header-handler"
-            "prefill-header-handlerprefill-filter",
+            "prefill-header-handler",
+            "prefill-filter",
             "decode-filter",
             "always-disagg-pd-decider",
-            "disagg-profile-handler",
+            "queue-scorer",
+            "prefix-cache-scorer",
+            "max-score-picker",
         ]:
             assert scheduler_has_plugin(client=unprivileged_client, llmisvc=llmisvc, plugin_name=expected_plugin), (
                 f"Scheduler config missing expected P/D plugin: {expected_plugin}"
