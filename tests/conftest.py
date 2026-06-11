@@ -453,7 +453,7 @@ def non_admin_user_password(
         first_user_index = next((index for index, user in enumerate(users) if "user" in user), None)
 
         if first_user_index is not None:
-            return users[first_user_index], passwords[first_user_index]
+            return users[first_user_index], RedactedString(value=passwords[first_user_index])
 
     LOGGER.error("user credentials secret not found")
     return None
