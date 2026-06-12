@@ -284,9 +284,11 @@ def submit_evaluation_via_mcp(
 ) -> dict[str, Any]:
     """Submit an evaluation job via MCP and return structured tool output."""
     result = call_mcp_tool(client=client, name="submit_evaluation", arguments=arguments)
-    assert not mcp_tool_is_error(result=result), f"submit_evaluation failed: {mcp_tool_error_text(result=result)}"
+    if mcp_tool_is_error(result=result):
+        raise RuntimeError(f"submit_evaluation failed: {mcp_tool_error_text(result=result)}")
     structured = mcp_tool_structured(result=result)
-    assert structured.get("job_id"), f"Expected job_id in submit response: {result}"
+    if not structured.get("job_id"):
+        raise ValueError(f"Expected job_id in submit response: {result}")
     return structured
 
 
