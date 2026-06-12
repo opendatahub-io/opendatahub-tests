@@ -28,7 +28,11 @@ class TestEvalHubMcpHealth:
         evalhub_mcp_mt_route: Route,
         evalhub_mcp_mt_ca_bundle_file: str,
     ) -> None:
-        """Given the MCP route is reachable, /health returns status ok without authentication."""
+        """
+        Given: EvalHub MCP route is reachable
+        When: Unauthenticated GET request is sent to /health
+        Then: Response returns HTTP 200 with status ok
+        """
         client = EvalHubMcpClient(
             host=evalhub_mcp_mt_route.host,
             token="unused",
@@ -44,7 +48,11 @@ class TestEvalHubMcpHealth:
         evalhub_mcp_mt_route: Route,
         evalhub_mcp_mt_ca_bundle_file: str,
     ) -> None:
-        """Given the MCP health endpoint, POST requests are not served as healthy checks."""
+        """
+        Given: EvalHub MCP route is reachable
+        When: Unauthenticated POST request is sent without MCP auth
+        Then: Server rejects the request with HTTP 401, 403, or 405
+        """
         client = EvalHubMcpClient(
             host=evalhub_mcp_mt_route.host,
             token="unused",

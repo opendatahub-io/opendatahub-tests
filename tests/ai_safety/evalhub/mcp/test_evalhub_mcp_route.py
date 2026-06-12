@@ -34,7 +34,11 @@ class TestEvalHubMcpRoute:
         model_namespace: Namespace,
         evalhub_mcp_mt_deployment,
     ) -> None:
-        """MCP Service listens on port 8443 for kube-rbac-proxy."""
+        """
+        Given: EvalHub operator has provisioned the MCP service
+        When: MCP Service ports are inspected
+        Then: Service exposes port 8443 for kube-rbac-proxy
+        """
         service_name = f"{EVALHUB_MCP_CR_NAME}{EVALHUB_MCP_DEPLOYMENT_SUFFIX}"
         service = Service(
             client=admin_client,
@@ -51,7 +55,11 @@ class TestEvalHubMcpRoute:
         evalhub_mcp_mt_route: Route,
         model_namespace: Namespace,
     ) -> None:
-        """MCP Route host is configured and targets the MCP service."""
+        """
+        Given: EvalHub operator has provisioned the MCP route
+        When: MCP Route spec is inspected
+        Then: Route host is configured and targets the MCP service
+        """
         assert evalhub_mcp_mt_route.host, "Expected non-empty MCP route host"
         assert evalhub_mcp_mt_route.namespace == model_namespace.name
         assert evalhub_mcp_mt_route.instance.spec.to.name == f"{EVALHUB_MCP_CR_NAME}{EVALHUB_MCP_DEPLOYMENT_SUFFIX}"
@@ -62,7 +70,11 @@ class TestEvalHubMcpRoute:
         model_namespace: Namespace,
         evalhub_mcp_mt_cr,
     ) -> None:
-        """Operator creates an MCP config ConfigMap for evalhub-mcp."""
+        """
+        Given: EvalHub CR with MCP enabled
+        When: Operator-provisioned MCP ConfigMap is inspected
+        Then: ConfigMap exists with config.yaml data
+        """
         configmap_name = f"{EVALHUB_MCP_CR_NAME}{EVALHUB_MCP_CONFIGMAP_SUFFIX}"
         configmap = ConfigMap(
             client=admin_client,
@@ -79,7 +91,11 @@ class TestEvalHubMcpRoute:
         model_namespace: Namespace,
         evalhub_mcp_mt_cr,
     ) -> None:
-        """MCP auth Secret is created for outbound EvalHub API access."""
+        """
+        Given: EvalHub CR with MCP enabled
+        When: Operator-provisioned MCP auth Secret is inspected
+        Then: Secret exists for outbound EvalHub API access
+        """
         secret_name = f"{EVALHUB_MCP_CR_NAME}{EVALHUB_MCP_DEPLOYMENT_SUFFIX}-token"
         secret = Secret(
             client=admin_client,

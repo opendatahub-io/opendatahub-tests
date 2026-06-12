@@ -28,7 +28,11 @@ class TestEvalHubMcpAuth:
         evalhub_mcp_mt_ca_bundle_file: str,
         tenant_a_namespace: Namespace,
     ) -> None:
-        """Given no Authorization header, MCP JSON-RPC requests are rejected."""
+        """
+        Given: No Authorization header is provided
+        When: MCP initialize request is sent
+        Then: Server rejects with HTTP 401 or 403
+        """
         client = EvalHubMcpClient(
             host=evalhub_mcp_mt_route.host,
             token="unused",
@@ -53,7 +57,11 @@ class TestEvalHubMcpAuth:
         evalhub_mcp_mt_route: Route,
         evalhub_mcp_mt_ca_bundle_file: str,
     ) -> None:
-        """Given a valid token but no X-Tenant header, evalhub-mcp returns forbidden."""
+        """
+        Given: A valid bearer token is provided without X-Tenant header
+        When: MCP initialize request is sent
+        Then: Server rejects with HTTP 403
+        """
         headers = get_auth_headers(token=tenant_a_token)
         response = EvalHubMcpClient(
             host=evalhub_mcp_mt_route.host,
@@ -96,7 +104,11 @@ class TestEvalHubMcpProxyRbac:
         evalhub_mcp_mt_route: Route,
         evalhub_mcp_mt_ca_bundle_file: str,
     ) -> None:
-        """Given token without evalhubs/proxy RBAC, kube-rbac-proxy rejects the MCP request."""
+        """
+        Given: A valid token and X-Tenant header without evalhubs/proxy RBAC
+        When: MCP initialize request is sent
+        Then: kube-rbac-proxy rejects with HTTP 401 or 403
+        """
         headers = build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name)
         assert TENANT_HEADER_NAME in headers
         response = EvalHubMcpClient(

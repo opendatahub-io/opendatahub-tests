@@ -37,7 +37,11 @@ class TestEvalHubMcpE2E:
         tenant_a_namespace: Namespace,
         evalhub_mcp_vllm_emulator_service: Service,
     ) -> None:
-        """Given a vLLM emulator, submit_evaluation creates a job and get_job_status reaches a terminal state."""
+        """
+        Given: Authenticated MCP client and a vLLM emulator model endpoint
+        When: discover_providers, submit_evaluation, and get_job_status are called
+        Then: Job is created and reaches completed state
+        """
         model_url = build_mcp_model_url(
             service_name=evalhub_mcp_vllm_emulator_service.name,
             tenant_namespace=tenant_a_namespace.name,

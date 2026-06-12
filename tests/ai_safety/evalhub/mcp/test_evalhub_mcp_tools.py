@@ -37,7 +37,11 @@ class TestEvalHubMcpTools:
         self,
         evalhub_mcp_client: EvalHubMcpClient,
     ) -> None:
-        """discover_providers with target_type=model returns model-scoped providers."""
+        """
+        Given: Authenticated MCP client
+        When: discover_providers is called with target_type=model
+        Then: Response returns only model-scoped providers
+        """
         result = call_mcp_tool(
             client=evalhub_mcp_client,
             name="discover_providers",
@@ -54,7 +58,11 @@ class TestEvalHubMcpTools:
         self,
         evalhub_mcp_client: EvalHubMcpClient,
     ) -> None:
-        """discover_providers includes the default lm_evaluation_harness provider."""
+        """
+        Given: Authenticated MCP client
+        When: discover_providers is called without filters
+        Then: Response includes the default lm_evaluation_harness provider
+        """
         result = call_mcp_tool(
             client=evalhub_mcp_client,
             name="discover_providers",
@@ -86,7 +94,11 @@ class TestEvalHubMcpTools:
         arguments: dict,
         expected_fragment: str,
     ) -> None:
-        """submit_evaluation returns validation errors for invalid input."""
+        """
+        Given: Authenticated MCP client with invalid submit_evaluation arguments
+        When: submit_evaluation tool is invoked
+        Then: Tool returns a validation error containing the expected fragment
+        """
         result = call_mcp_tool(
             client=evalhub_mcp_client,
             name="submit_evaluation",
@@ -122,7 +134,11 @@ class TestEvalHubMcpToolsSubmit:
         evalhub_mcp_vllm_emulator_service: Service,
         tenant_a_namespace: Namespace,
     ) -> None:
-        """submit_evaluation with benchmarks returns a pending job ID."""
+        """
+        Given: Authenticated MCP client with a vLLM emulator model URL
+        When: submit_evaluation is called with benchmarks
+        Then: Response returns a pending or running job ID
+        """
         model_url = build_mcp_model_url(
             service_name=evalhub_mcp_vllm_emulator_service.name,
             tenant_namespace=tenant_a_namespace.name,
@@ -146,7 +162,11 @@ class TestEvalHubMcpToolsSubmit:
         evalhub_mcp_vllm_emulator_service: Service,
         tenant_a_namespace: Namespace,
     ) -> None:
-        """submit_evaluation with collection ID returns a pending job ID."""
+        """
+        Given: Authenticated MCP client with a vLLM emulator model URL
+        When: submit_evaluation is called with a collection ID
+        Then: Response returns a pending or running job ID
+        """
         model_url = build_mcp_model_url(
             service_name=evalhub_mcp_vllm_emulator_service.name,
             tenant_namespace=tenant_a_namespace.name,

@@ -42,7 +42,11 @@ class TestEvalHubMcpJobs:
         evalhub_mcp_vllm_emulator_service: Service,
         tenant_a_namespace: Namespace,
     ) -> None:
-        """get_job_status returns state and progress_percent for a submitted job."""
+        """
+        Given: An evaluation job submitted via MCP tools
+        When: get_job_status is called for the job ID
+        Then: Response includes job_id, state, and progress_percent
+        """
         model_url = build_mcp_model_url(
             service_name=evalhub_mcp_vllm_emulator_service.name,
             tenant_namespace=tenant_a_namespace.name,
@@ -73,7 +77,11 @@ class TestEvalHubMcpJobs:
         evalhub_mcp_vllm_emulator_service: Service,
         tenant_a_namespace: Namespace,
     ) -> None:
-        """cancel_job stops a running evaluation and get_job_status reports cancelled."""
+        """
+        Given: A running evaluation job submitted via MCP tools
+        When: cancel_job is called and status is polled
+        Then: Job reaches cancelled terminal state
+        """
         model_url = build_mcp_model_url(
             service_name=evalhub_mcp_vllm_emulator_service.name,
             tenant_namespace=tenant_a_namespace.name,
@@ -108,7 +116,11 @@ class TestEvalHubMcpJobs:
         self,
         evalhub_mcp_client: EvalHubMcpClient,
     ) -> None:
-        """cancel_job for a missing job ID returns a tool error."""
+        """
+        Given: Authenticated MCP client with no matching job
+        When: cancel_job is called with a nonexistent job ID
+        Then: Tool returns an error result
+        """
         result = call_mcp_tool(
             client=evalhub_mcp_client,
             name="cancel_job",

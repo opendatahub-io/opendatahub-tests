@@ -35,7 +35,11 @@ class TestEvalHubMcpDeployment:
         model_namespace: Namespace,
         evalhub_mcp_mt_deployment: Deployment,
     ) -> None:
-        """Given MCP is enabled on the EvalHub CR, the MCP pod runs evalhub-mcp and kube-rbac-proxy."""
+        """
+        Given: EvalHub CR has MCP enabled and deployment is ready
+        When: MCP pod containers are inspected
+        Then: Pod runs evalhub-mcp and kube-rbac-proxy containers
+        """
         pods = list(
             Pod.get(
                 client=admin_client,
@@ -63,7 +67,11 @@ class TestEvalHubMcpDeployment:
         model_namespace: Namespace,
         evalhub_mcp_mt_deployment: Deployment,
     ) -> None:
-        """MCP pod labels match operator conventions (app, instance, component)."""
+        """
+        Given: EvalHub operator has provisioned the MCP deployment
+        When: MCP pod labels are inspected
+        Then: Labels match operator conventions for app, instance, and component
+        """
         pods = list(
             Pod.get(
                 client=admin_client,
@@ -83,7 +91,11 @@ class TestEvalHubMcpDeployment:
         model_namespace: Namespace,
         evalhub_mcp_mt_deployment: Deployment,
     ) -> None:
-        """MCP pod mounts the operator-generated config ConfigMap."""
+        """
+        Given: Operator-generated MCP config ConfigMap exists
+        When: MCP pod volumes are inspected
+        Then: Pod mounts the MCP configuration volume
+        """
         configmap_name = f"{EVALHUB_MCP_CR_NAME}{EVALHUB_MCP_CONFIGMAP_SUFFIX}"
         configmap = ConfigMap(
             client=admin_client,

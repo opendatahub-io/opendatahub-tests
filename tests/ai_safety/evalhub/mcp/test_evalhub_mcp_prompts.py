@@ -28,7 +28,11 @@ class TestEvalHubMcpPrompts:
         evalhub_mcp_client: EvalHubMcpClient,
         application_type: str,
     ) -> None:
-        """prompts/get edd_workflow returns dialogue for each valid application_type."""
+        """
+        Given: Authenticated MCP client with a valid application_type
+        When: prompts/get is called for edd_workflow
+        Then: Response includes non-empty dialogue messages
+        """
         result = get_mcp_prompt(
             client=evalhub_mcp_client,
             name="edd_workflow",
@@ -41,7 +45,11 @@ class TestEvalHubMcpPrompts:
         self,
         evalhub_mcp_client: EvalHubMcpClient,
     ) -> None:
-        """prompts/get edd_workflow with invalid application_type returns an error."""
+        """
+        Given: Authenticated MCP client
+        When: prompts/get edd_workflow is called with invalid application_type
+        Then: Server returns an MCP protocol error
+        """
         with pytest.raises(McpProtocolError):
             get_mcp_prompt(
                 client=evalhub_mcp_client,
@@ -53,7 +61,11 @@ class TestEvalHubMcpPrompts:
         self,
         evalhub_mcp_client: EvalHubMcpClient,
     ) -> None:
-        """prompts/get evaluate_model with model_url uses the with_model message group."""
+        """
+        Given: Authenticated MCP client with a model_url argument
+        When: prompts/get evaluate_model is called
+        Then: Response includes user or assistant dialogue messages
+        """
         result = get_mcp_prompt(
             client=evalhub_mcp_client,
             name="evaluate_model",
@@ -68,7 +80,11 @@ class TestEvalHubMcpPrompts:
         self,
         evalhub_mcp_client: EvalHubMcpClient,
     ) -> None:
-        """prompts/get compare_runs without job_ids returns the no_jobs guidance."""
+        """
+        Given: Authenticated MCP client without job_ids
+        When: prompts/get compare_runs is called
+        Then: Response includes no_jobs guidance messages
+        """
         result = get_mcp_prompt(
             client=evalhub_mcp_client,
             name="compare_runs",
@@ -81,7 +97,11 @@ class TestEvalHubMcpPrompts:
         self,
         evalhub_mcp_client: EvalHubMcpClient,
     ) -> None:
-        """prompts/get compare_runs with two job IDs returns comparison guidance."""
+        """
+        Given: Authenticated MCP client with two job IDs
+        When: prompts/get compare_runs is called
+        Then: Response includes comparison guidance messages
+        """
         result = get_mcp_prompt(
             client=evalhub_mcp_client,
             name="compare_runs",
@@ -94,7 +114,11 @@ class TestEvalHubMcpPrompts:
         self,
         evalhub_mcp_client: EvalHubMcpClient,
     ) -> None:
-        """prompts/get compare_runs with one job ID requires at least two IDs."""
+        """
+        Given: Authenticated MCP client with a single job ID
+        When: prompts/get compare_runs is called
+        Then: Server returns an MCP protocol error
+        """
         with pytest.raises(McpProtocolError):
             get_mcp_prompt(
                 client=evalhub_mcp_client,

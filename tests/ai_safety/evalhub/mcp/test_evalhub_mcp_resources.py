@@ -44,7 +44,11 @@ class TestEvalHubMcpResources:
         self,
         evalhub_mcp_client: EvalHubMcpClient,
     ) -> None:
-        """resources/read on evalhub://providers/{id} returns provider metadata."""
+        """
+        Given: Authenticated MCP client with a known provider ID
+        When: resources/read is called for evalhub://providers/{id}
+        Then: Response returns provider metadata for the requested ID
+        """
         uri = EVALHUB_MCP_PROVIDER_URI_TEMPLATE.format(provider_id=EVALHUB_MCP_DEFAULT_PROVIDER_ID)
         result = read_mcp_resource(client=evalhub_mcp_client, uri=uri)
         payload = json.loads(mcp_read_resource_text(result=result))
@@ -54,7 +58,11 @@ class TestEvalHubMcpResources:
         self,
         evalhub_mcp_client: EvalHubMcpClient,
     ) -> None:
-        """resources/read on evalhub://benchmarks/{id} returns benchmark metadata."""
+        """
+        Given: Authenticated MCP client with a known benchmark ID
+        When: resources/read is called for evalhub://benchmarks/{id}
+        Then: Response returns benchmark metadata for the requested ID
+        """
         uri = EVALHUB_MCP_BENCHMARK_URI_TEMPLATE.format(benchmark_id=EVALHUB_MCP_DEFAULT_BENCHMARK_ID)
         result = read_mcp_resource(client=evalhub_mcp_client, uri=uri)
         payload = json.loads(mcp_read_resource_text(result=result))
@@ -64,7 +72,11 @@ class TestEvalHubMcpResources:
         self,
         evalhub_mcp_client: EvalHubMcpClient,
     ) -> None:
-        """resources/read on evalhub://collections/{id} returns the configured collection."""
+        """
+        Given: Authenticated MCP client with a known collection ID
+        When: resources/read is called for evalhub://collections/{id}
+        Then: Response returns the configured collection metadata
+        """
         uri = EVALHUB_MCP_COLLECTION_URI_TEMPLATE.format(collection_id=EVALHUB_MCP_DEFAULT_COLLECTION_ID)
         result = read_mcp_resource(client=evalhub_mcp_client, uri=uri)
         payload = json.loads(mcp_read_resource_text(result=result))
@@ -74,7 +86,11 @@ class TestEvalHubMcpResources:
         self,
         evalhub_mcp_client: EvalHubMcpClient,
     ) -> None:
-        """resources/read for an unknown provider ID returns an MCP protocol error."""
+        """
+        Given: Authenticated MCP client with an unknown provider ID
+        When: resources/read is called for evalhub://providers/{id}
+        Then: Server returns an MCP protocol error
+        """
         uri = EVALHUB_MCP_PROVIDER_URI_TEMPLATE.format(provider_id="nonexistent-provider-id")
         with pytest.raises(McpProtocolError):
             read_mcp_resource(client=evalhub_mcp_client, uri=uri)
@@ -83,7 +99,11 @@ class TestEvalHubMcpResources:
         self,
         evalhub_mcp_client: EvalHubMcpClient,
     ) -> None:
-        """resources/read for an unknown benchmark ID returns an MCP protocol error."""
+        """
+        Given: Authenticated MCP client with an unknown benchmark ID
+        When: resources/read is called for evalhub://benchmarks/{id}
+        Then: Server returns an MCP protocol error
+        """
         uri = EVALHUB_MCP_BENCHMARK_URI_TEMPLATE.format(benchmark_id="nonexistent-benchmark-id")
         with pytest.raises(McpProtocolError):
             read_mcp_resource(client=evalhub_mcp_client, uri=uri)
@@ -114,7 +134,11 @@ class TestEvalHubMcpJobResources:
         evalhub_mcp_vllm_emulator_service: Service,
         tenant_a_namespace: Namespace,
     ) -> None:
-        """resources/read on evalhub://jobs/{id} returns the submitted job."""
+        """
+        Given: An evaluation job submitted via MCP tools
+        When: resources/read is called for evalhub://jobs/{id}
+        Then: Response returns metadata for the submitted job
+        """
         model_url = build_mcp_model_url(
             service_name=evalhub_mcp_vllm_emulator_service.name,
             tenant_namespace=tenant_a_namespace.name,
@@ -139,7 +163,11 @@ class TestEvalHubMcpJobResources:
         evalhub_mcp_vllm_emulator_service: Service,
         tenant_a_namespace: Namespace,
     ) -> None:
-        """resources/read on evalhub://jobs lists jobs created via MCP tools."""
+        """
+        Given: An evaluation job submitted via MCP tools
+        When: resources/read is called for evalhub://jobs
+        Then: Response lists the submitted job ID
+        """
         model_url = build_mcp_model_url(
             service_name=evalhub_mcp_vllm_emulator_service.name,
             tenant_namespace=tenant_a_namespace.name,
@@ -164,7 +192,11 @@ class TestEvalHubMcpJobResources:
         evalhub_mcp_vllm_emulator_service: Service,
         tenant_a_namespace: Namespace,
     ) -> None:
-        """resources/read on evalhub://jobs?status=pending returns only pending jobs."""
+        """
+        Given: A pending evaluation job submitted via MCP tools
+        When: resources/read is called for evalhub://jobs?status=pending
+        Then: Response includes the pending job ID
+        """
         model_url = build_mcp_model_url(
             service_name=evalhub_mcp_vllm_emulator_service.name,
             tenant_namespace=tenant_a_namespace.name,

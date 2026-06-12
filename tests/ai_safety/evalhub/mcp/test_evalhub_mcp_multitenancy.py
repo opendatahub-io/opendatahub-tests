@@ -46,7 +46,11 @@ class TestEvalHubMcpMultitenancy:
         tenant_a_namespace: Namespace,
         evalhub_mcp_vllm_emulator_service: Service,
     ) -> None:
-        """Authenticated MCP client scoped to tenant-a can submit evaluations."""
+        """
+        Given: MCP client authenticated for tenant-a with proxy RBAC
+        When: submit_evaluation is called with a tenant-a model URL
+        Then: Job is created and job_id is returned
+        """
         model_url = build_mcp_model_url(
             service_name=evalhub_mcp_vllm_emulator_service.name,
             tenant_namespace=tenant_a_namespace.name,
@@ -70,7 +74,11 @@ class TestEvalHubMcpMultitenancy:
         evalhub_mcp_vllm_emulator_service: Service,
         evalhub_mcp_mt_ready: None,
     ) -> None:
-        """MCP uses outbound EVALHUB_TENANT; mismatched inbound X-Tenant still submits to tenant-a."""
+        """
+        Given: MCP deployment scoped to tenant-a with mismatched inbound X-Tenant
+        When: submit_evaluation is called via MCP tools
+        Then: Job submission succeeds using outbound tenant-a scope
+        """
         client = EvalHubMcpClient(
             host=evalhub_mcp_mt_route.host,
             token=tenant_a_token,

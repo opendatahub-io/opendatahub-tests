@@ -34,7 +34,11 @@ class TestEvalHubMcpProtocol:
         self,
         evalhub_mcp_client: EvalHubMcpClient,
     ) -> None:
-        """Given an authenticated client, initialize returns evalhub-mcp server info and capabilities."""
+        """
+        Given: Authenticated MCP client
+        When: MCP initialize request is sent
+        Then: Response advertises evalhub-mcp server info and tools, resources, prompts capabilities
+        """
         result = evalhub_mcp_client.initialize_result
         server_info = result.get("serverInfo", {})
         assert server_info.get("name") == EVALHUB_MCP_SERVER_NAME
@@ -49,7 +53,11 @@ class TestEvalHubMcpProtocol:
         self,
         evalhub_mcp_client: EvalHubMcpClient,
     ) -> None:
-        """tools/list returns all four EvalHub MCP tools."""
+        """
+        Given: Authenticated MCP client
+        When: tools/list request is sent
+        Then: Response includes all four EvalHub MCP tools
+        """
         result = evalhub_mcp_client.call(method="tools/list", params={})
         tool_names = set(mcp_tool_names(result=result))
         for expected in EVALHUB_MCP_TOOLS:
@@ -59,7 +67,11 @@ class TestEvalHubMcpProtocol:
         self,
         evalhub_mcp_client: EvalHubMcpClient,
     ) -> None:
-        """resources/list includes providers, benchmarks, collections, jobs, and server version."""
+        """
+        Given: Authenticated MCP client
+        When: resources/list request is sent
+        Then: Response includes providers, benchmarks, collections, jobs, and server version
+        """
         result = evalhub_mcp_client.call(method="resources/list", params={})
         resource_names = set(mcp_resource_names(result=result))
         expected_names = {"providers", "benchmarks", "collections", "jobs", "server-version"}
@@ -69,7 +81,11 @@ class TestEvalHubMcpProtocol:
         self,
         evalhub_mcp_client: EvalHubMcpClient,
     ) -> None:
-        """resources/read on evalhub://server/version returns JSON build metadata."""
+        """
+        Given: Authenticated MCP client
+        When: resources/read is called for evalhub://server/version
+        Then: Response returns JSON build metadata with version and mcp_library
+        """
         result = evalhub_mcp_client.call(
             method="resources/read",
             params={"uri": "evalhub://server/version"},
@@ -83,7 +99,11 @@ class TestEvalHubMcpProtocol:
         self,
         evalhub_mcp_client: EvalHubMcpClient,
     ) -> None:
-        """resources/read on evalhub://providers returns a JSON provider list."""
+        """
+        Given: Authenticated MCP client
+        When: resources/read is called for evalhub://providers
+        Then: Response returns a JSON provider list
+        """
         result = evalhub_mcp_client.call(
             method="resources/read",
             params={"uri": "evalhub://providers"},
@@ -96,7 +116,11 @@ class TestEvalHubMcpProtocol:
         self,
         evalhub_mcp_client: EvalHubMcpClient,
     ) -> None:
-        """resources/read on evalhub://benchmarks returns benchmark metadata."""
+        """
+        Given: Authenticated MCP client
+        When: resources/read is called for evalhub://benchmarks
+        Then: Response returns benchmark metadata as a JSON list
+        """
         result = evalhub_mcp_client.call(
             method="resources/read",
             params={"uri": "evalhub://benchmarks"},
@@ -109,7 +133,11 @@ class TestEvalHubMcpProtocol:
         self,
         evalhub_mcp_client: EvalHubMcpClient,
     ) -> None:
-        """resources/read on evalhub://collections returns collection metadata."""
+        """
+        Given: Authenticated MCP client
+        When: resources/read is called for evalhub://collections
+        Then: Response returns collection metadata as a JSON list
+        """
         result = evalhub_mcp_client.call(
             method="resources/read",
             params={"uri": "evalhub://collections"},
@@ -122,7 +150,11 @@ class TestEvalHubMcpProtocol:
         self,
         evalhub_mcp_client: EvalHubMcpClient,
     ) -> None:
-        """resources/read on evalhub://jobs returns a (possibly empty) job list."""
+        """
+        Given: Authenticated MCP client
+        When: resources/read is called for evalhub://jobs
+        Then: Response returns a JSON job list
+        """
         result = evalhub_mcp_client.call(
             method="resources/read",
             params={"uri": "evalhub://jobs"},
@@ -135,7 +167,11 @@ class TestEvalHubMcpProtocol:
         self,
         evalhub_mcp_client: EvalHubMcpClient,
     ) -> None:
-        """prompts/list returns edd_workflow, evaluate_model, and compare_runs."""
+        """
+        Given: Authenticated MCP client
+        When: prompts/list request is sent
+        Then: Response includes edd_workflow, evaluate_model, and compare_runs
+        """
         result = evalhub_mcp_client.call(method="prompts/list", params={})
         prompt_names = set(mcp_prompt_names(result=result))
         for expected in EVALHUB_MCP_PROMPTS:
@@ -145,7 +181,11 @@ class TestEvalHubMcpProtocol:
         self,
         evalhub_mcp_client: EvalHubMcpClient,
     ) -> None:
-        """prompts/get edd_workflow(rag) returns user and assistant messages."""
+        """
+        Given: Authenticated MCP client with application_type rag
+        When: prompts/get edd_workflow is called
+        Then: Response includes user and assistant dialogue messages
+        """
         result = evalhub_mcp_client.call(
             method="prompts/get",
             params={
@@ -162,7 +202,11 @@ class TestEvalHubMcpProtocol:
         self,
         evalhub_mcp_client: EvalHubMcpClient,
     ) -> None:
-        """prompts/get evaluate_model without model_url uses the no_model message group."""
+        """
+        Given: Authenticated MCP client without model_url
+        When: prompts/get evaluate_model is called
+        Then: Response includes no_model message group
+        """
         result = evalhub_mcp_client.call(
             method="prompts/get",
             params={"name": "evaluate_model", "arguments": {}},
@@ -173,7 +217,11 @@ class TestEvalHubMcpProtocol:
         self,
         evalhub_mcp_client: EvalHubMcpClient,
     ) -> None:
-        """completion/complete returns suggestions for benchmark id autocompletion."""
+        """
+        Given: Authenticated MCP client with benchmark resource reference
+        When: completion/complete is called for benchmark id
+        Then: Response includes completion value suggestions
+        """
         result = evalhub_mcp_client.call(
             method="completion/complete",
             params={
@@ -188,7 +236,11 @@ class TestEvalHubMcpProtocol:
         self,
         evalhub_mcp_client: EvalHubMcpClient,
     ) -> None:
-        """tools/call discover_providers returns a provider summary list."""
+        """
+        Given: Authenticated MCP client
+        When: tools/call discover_providers is invoked
+        Then: Response includes a provider summary list
+        """
         result = evalhub_mcp_client.call(
             method="tools/call",
             params={
@@ -222,7 +274,11 @@ class TestEvalHubMcpProtocol:
         arguments: dict,
         expected_fragment: str,
     ) -> None:
-        """tools/call submit_evaluation returns validation errors for invalid input."""
+        """
+        Given: Authenticated MCP client with invalid submit_evaluation arguments
+        When: tools/call submit_evaluation is invoked
+        Then: Tool returns a validation error containing the expected fragment
+        """
         result = evalhub_mcp_client.call(
             method="tools/call",
             params={
@@ -240,7 +296,11 @@ class TestEvalHubMcpProtocol:
         self,
         evalhub_mcp_client: EvalHubMcpClient,
     ) -> None:
-        """tools/call get_job_status without job_id returns a validation error."""
+        """
+        Given: Authenticated MCP client
+        When: tools/call get_job_status is invoked without job_id
+        Then: Tool returns a validation error mentioning job_id
+        """
         result = evalhub_mcp_client.call(
             method="tools/call",
             params={"name": "get_job_status", "arguments": {}},
@@ -253,7 +313,11 @@ class TestEvalHubMcpProtocol:
         self,
         evalhub_mcp_client: EvalHubMcpClient,
     ) -> None:
-        """tools/call cancel_job without job_id returns a validation error."""
+        """
+        Given: Authenticated MCP client
+        When: tools/call cancel_job is invoked without job_id
+        Then: Tool returns a validation error mentioning job_id
+        """
         result = evalhub_mcp_client.call(
             method="tools/call",
             params={"name": "cancel_job", "arguments": {}},
@@ -266,7 +330,11 @@ class TestEvalHubMcpProtocol:
         self,
         evalhub_mcp_client: EvalHubMcpClient,
     ) -> None:
-        """tools/call get_job_status for a missing job returns an error result."""
+        """
+        Given: Authenticated MCP client with a nonexistent job ID
+        When: tools/call get_job_status is invoked
+        Then: Tool returns an error result
+        """
         result = evalhub_mcp_client.call(
             method="tools/call",
             params={
