@@ -1,3 +1,4 @@
+import socket
 from collections.abc import Generator
 from typing import Any
 
@@ -36,6 +37,46 @@ from utilities.constants import Labels, Protocols, Timeout
 from utilities.infra import create_inference_token
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+class _TransientEvalhubMcpHealthError(Exception):
+    """Recoverable failure while polling the EvalHub MCP health endpoint."""
+
+
+_TRANSIENT_MCP_HEALTH_REQUEST_EXCEPTIONS = (
+    requests.exceptions.ConnectTimeout,
+    requests.exceptions.ReadTimeout,
+)
+_TRANSIENT_MCP_HEALTH_EXCEPTIONS = {_TransientEvalhubMcpHealthError: []}
+
+
+def _is_dns_resolution_error(err: BaseException) -> bool:
+    """Return True when the exception chain includes a DNS resolution failure."""
+    exc: BaseException | None = err
+    while exc is not None:
+        if isinstance(exc, socket.gaierror):
+            return True
+        exc = exc.__cause__
+    return False
+
+
+def _probe_evalhub_mcp_health(
+    *,
+    url: str,
+    host: str,
+    ca_bundle_file: str,
+) -> requests.Response:
+    """GET the MCP health endpoint, retrying only on transient network failures."""
+    try:
+        return requests.get(url, verify=ca_bundle_file, timeout=10)
+    except requests.exceptions.ConnectionError as err:
+        if isinstance(err, requests.exceptions.SSLError) or _is_dns_resolution_error(err):
+            raise
+        LOGGER.warning(f"Transient error checking EvalHub MCP health at {host}: {err}")
+        raise _TransientEvalhubMcpHealthError(str(err)) from err
+    except _TRANSIENT_MCP_HEALTH_REQUEST_EXCEPTIONS as err:
+        LOGGER.warning(f"Transient error checking EvalHub MCP health at {host}: {err}")
+        raise _TransientEvalhubMcpHealthError(str(err)) from err
 
 
 def _is_evalhub_crd_available(admin_client: DynamicClient) -> bool:
@@ -189,18 +230,25 @@ def evalhub_mcp_mt_ready(
 ) -> None:
     """Wait until the MCP health endpoint responds on the route."""
     url = f"https://{evalhub_mcp_mt_route.host}{EVALHUB_MCP_HEALTH_PATH}"
+    host = evalhub_mcp_mt_route.host
     try:
         for sample in TimeoutSampler(
             wait_timeout=120,
             sleep=5,
-            func=lambda: requests.get(url, verify=evalhub_mcp_mt_ca_bundle_file, timeout=10),
-            exceptions_dict={Exception: []},
+            func=lambda: _probe_evalhub_mcp_health(
+                url=url,
+                host=host,
+                ca_bundle_file=evalhub_mcp_mt_ca_bundle_file,
+            ),
+            exceptions_dict=_TRANSIENT_MCP_HEALTH_EXCEPTIONS,
         ):
             if sample.ok:
-                LOGGER.info(f"EvalHub MCP at {evalhub_mcp_mt_route.host} is healthy")
+                LOGGER.info(f"EvalHub MCP at {host} is healthy")
                 return
     except TimeoutExpiredError as err:
-        raise RuntimeError(f"EvalHub MCP at {evalhub_mcp_mt_route.host} did not become healthy within 120s") from err
+        if err.last_exp is not None and err.elapsed_time is not None:
+            raise err.last_exp from err
+        raise RuntimeError(f"EvalHub MCP at {host} did not become healthy within 120s") from err
 
 
 @pytest.fixture(scope="class")
