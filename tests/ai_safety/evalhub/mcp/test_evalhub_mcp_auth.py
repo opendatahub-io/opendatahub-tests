@@ -31,7 +31,7 @@ class TestEvalHubMcpAuth:
         """
         Given: No Authorization header is provided
         When: MCP initialize request is sent
-        Then: Server rejects with HTTP 401 or 403
+        Then: Server rejects with HTTP 401
         """
         client = EvalHubMcpClient(
             host=evalhub_mcp_mt_route.host,
@@ -47,9 +47,7 @@ class TestEvalHubMcpAuth:
                 "clientInfo": {"name": "auth-test", "version": "1.0"},
             },
         )
-        assert response.status_code in (401, 403), (
-            f"Expected 401/403 without token, got {response.status_code}: {response.text}"
-        )
+        assert response.status_code == 401, f"Expected 401 without token, got {response.status_code}: {response.text}"
 
     def test_mcp_request_without_tenant_header_is_rejected(
         self,
@@ -107,7 +105,7 @@ class TestEvalHubMcpProxyRbac:
         """
         Given: A valid token and X-Tenant header without evalhubs/proxy RBAC
         When: MCP initialize request is sent
-        Then: kube-rbac-proxy rejects with HTTP 401 or 403
+        Then: kube-rbac-proxy rejects with HTTP 403
         """
         headers = build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name)
         assert TENANT_HEADER_NAME in headers
@@ -125,6 +123,6 @@ class TestEvalHubMcpProxyRbac:
             },
             extra_headers=headers,
         )
-        assert response.status_code in (401, 403), (
-            f"Expected 401/403 without proxy RBAC, got {response.status_code}: {response.text}"
+        assert response.status_code == 403, (
+            f"Expected 403 without proxy RBAC, got {response.status_code}: {response.text}"
         )
