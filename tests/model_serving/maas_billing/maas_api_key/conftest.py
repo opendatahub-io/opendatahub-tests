@@ -22,7 +22,7 @@ from tests.model_serving.maas_billing.maas_api_key.utils import (
     resolve_api_key_username,
 )
 from tests.model_serving.maas_billing.maas_subscription.utils import (
-    wait_for_auth_ready,
+    wait_for_auth_admin_groups,
 )
 from tests.model_serving.maas_billing.utils import (
     assert_api_key_created_ok,
@@ -168,25 +168,12 @@ def admin_ocp_token(admin_client: DynamicClient) -> Generator[str, Any, Any]:
     current_groups: list[str] = list(auth.instance.spec.adminGroups or [])
     patched_groups = list(set(current_groups + ["dedicated-admins"]))
 
-    auth_conditions = (auth.instance.status or {}).get("conditions") or []
-    ready_before = next(
-        (condition for condition in auth_conditions if condition.get("type") == "Ready"),
-        {},
-    )
-    baseline_time: str = ready_before.get("lastTransitionTime", "")
-
     LOGGER.info(f"admin_ocp_token: patching Auth CR adminGroups to {patched_groups}")
     with ResourceEditor(patches={auth: {"spec": {"adminGroups": patched_groups}}}):
-        wait_for_auth_ready(auth=auth, baseline_time=baseline_time)
-        auth_conditions_after = (auth.instance.status or {}).get("conditions") or []
-        ready_after = next(
-            (condition for condition in auth_conditions_after if condition.get("type") == "Ready"),
-            {},
-        )
-        cleanup_baseline_time: str = ready_after.get("lastTransitionTime", "")
+        wait_for_auth_admin_groups(auth=auth, expected_admin_groups=patched_groups)
         yield get_openshift_token(client=admin_client)
 
-    wait_for_auth_ready(auth=auth, baseline_time=cleanup_baseline_time)
+    wait_for_auth_admin_groups(auth=auth, expected_admin_groups=current_groups)
 
 
 @pytest.fixture(scope="function")

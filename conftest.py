@@ -46,8 +46,8 @@ BASIC_LOGGER = logging.getLogger(name="basic")
 EXCLUDE_MARKERS_FROM_DEFAULT_TIER2: set[str] = {"smoke", "tier1", "tier2", "tier3", "pre_upgrade", "post_upgrade"}
 # To include a component for default marking please add the component path to this list
 DEFAULT_TIER2_MARKER_TEST_PATHS: tuple[str, ...] = (
-    "tests/model_registry",
-    "tests/model_explainability",
+    "tests/ai_hub",
+    "tests/ai_safety",
     "tests/model_serving/maas_billing",
 )
 
@@ -114,7 +114,7 @@ def pytest_addoption(parser: Parser) -> None:
     runtime_group.addoption(
         "--supported-accelerator-type",
         default=os.environ.get("SUPPORTED_ACCELERATOR_TYPE"),
-        help="Supported accelerator type : Nvidia,AMD,Gaudi",
+        help="Supported accelerator type: nvidia, amd, gaudi, spyre, cpu_x86, cpu_power, cpu_z",
     )
     runtime_group.addoption(
         "--vllm-runtime-image",

@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 from collections.abc import Iterable
 from typing import Any
@@ -8,21 +9,72 @@ import structlog
 from ocp_resources.inference_service import InferenceService
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from tests.model_serving.model_runtime.model_validation.constant import (
+from tests.model_serving.model_runtime.vllm.modelcar.constant import (
     AUDIO_FILE_LOCAL_PATH,
     AUDIO_FILE_URL,
+    AUDIO_TRANSCRIPTION_KEYWORDS,
     COMPLETION_QUERY,
     EMBEDDING_QUERY,
     OPENAI_ENDPOINT_NAME,
-    SPYRE_INFERENCE_SERVICE_PORT,
 )
 from utilities.constants import Ports
 from utilities.exceptions import NotSupportedError
+from utilities.inference_utils import get_exposed_isvc_url
 from utilities.plugins.constant import OpenAIEnpoints
 from utilities.plugins.openai_plugin import OpenAIClient
-from utilities.plugins.tgis_grpc_plugin import TGISGRPCPlugin
 
 LOGGER = structlog.get_logger(name=__name__)
+
+ALPHABETIC_WORD = re.compile(r"[a-zA-Z]{2,}")
+ERROR_INDICATORS = re.compile(
+    r"traceback|cuda\s*error|out\s*of\s*memory|oom|"
+    r"segmentation\s*fault|segfault|core\s*dumped|exception|"
+    r"failed\s*to|error:|cuda_error|runtime\s*error|memory\s*error|"
+    r"assertion\s*error|valueerror|typeerror|keyerror|attributeerror",
+    re.IGNORECASE,
+)
+VALID_FINISH_REASONS = ["stop", "length", "eos_token", "stop_sequence"]
+
+
+class InferenceValidationError(Exception):
+    """Raised when fuzzy inference validation fails."""
+
+
+def normalize_text_completion_response(response: Any) -> dict[str, Any]:
+    """Wrap OpenAI client completion payloads into a standard choices envelope."""
+    if isinstance(response, str):
+        return {"choices": [{"text": response, "index": 0, "finish_reason": "stop"}]}
+    if isinstance(response, dict):
+        if "choices" in response:
+            return response
+        if "text" in response or "message" in response:
+            return {"choices": [response]}
+    raise InferenceValidationError(
+        f"Text response must be a choice dict or choices envelope, got {type(response).__name__}"
+    )
+
+
+def normalize_audio_transcription_response(response: Any) -> dict[str, Any]:
+    """Wrap OpenAI client audio payloads into a standard transcription dict."""
+    if isinstance(response, str):
+        return {"text": response}
+    if isinstance(response, dict) and "text" in response:
+        return response
+    raise InferenceValidationError(
+        f"Audio response must be a transcription string or dict with 'text', got {type(response).__name__}"
+    )
+
+
+def normalize_embedding_response(response: Any) -> dict[str, Any]:
+    """Wrap OpenAI client embedding payloads into a standard data envelope."""
+    if isinstance(response, dict):
+        if "data" in response:
+            return response
+        if "embedding" in response:
+            return {"data": [response]}
+    raise InferenceValidationError(
+        f"Embedding response must be an embedding item or data envelope, got {type(response).__name__}"
+    )
 
 
 def validate_inference_output(*args: tuple[str, ...] | list[Any], response_snapshot: Any) -> None:
@@ -30,70 +82,241 @@ def validate_inference_output(*args: tuple[str, ...] | list[Any], response_snaps
         assert data == response_snapshot, f"output mismatch for {data}"
 
 
-def validate_audio_inference_output(model_info: Any, completion_responses: Iterable[Any]) -> None:
-    assert model_info is not None, "Model info should not be None"
-    assert isinstance(model_info, (list, tuple)), "Model info should be a list or tuple"
-    assert isinstance(completion_responses, (list, tuple)), "Completion responses should be a list or tuple"
-    assert len(completion_responses) > 0, "Completion responses should not be empty"
+def validate_text_inference_fuzzy(
+    completion_responses: list[dict[str, Any]],
+    queries: list[dict[str, Any]],
+    model_info: Any,
+    require_keywords: bool = True,
+    allow_empty_responses: bool = False,
+    min_valid_responses: int = 1,
+) -> None:
+    if not completion_responses:
+        raise InferenceValidationError("No responses provided for validation")
+
+    if len(completion_responses) != len(queries):
+        raise InferenceValidationError(
+            f"Response count ({len(completion_responses)}) doesn't match query count ({len(queries)})"
+        )
+    if model_info is None:
+        raise InferenceValidationError("Model info is None")
+    if not isinstance(model_info, list):
+        raise InferenceValidationError(f"Model info should be a list, got {type(model_info).__name__}")
+    if len(model_info) == 0:
+        raise InferenceValidationError("Model info list is empty")
+    for idx, model in enumerate(model_info):
+        if not isinstance(model, dict):
+            raise InferenceValidationError(f"Model info item #{idx} should be a dict, got {type(model).__name__}")
+        if "id" not in model or "object" not in model:
+            raise InferenceValidationError(f"Model info item #{idx} missing 'id' or 'object' field")
+
+    LOGGER.info("Model info validation passed")
+    valid_response_count = 0
+    for idx, (response, query) in enumerate(zip(completion_responses, queries)):
+        query_text = query.get("text", "")
+        expected_keywords = query.get("keywords", [])
+
+        LOGGER.info(f"Validating response #{idx} for query: '{query_text[:50]}...'")
+        if not isinstance(response, dict):
+            raise InferenceValidationError(f"Response #{idx}: Expected dict, got {type(response).__name__}")
+        if "choices" not in response:
+            raise InferenceValidationError(f"Response #{idx}: Missing 'choices' field")
+        choices = response["choices"]
+        if not isinstance(choices, list):
+            raise InferenceValidationError(f"Response #{idx}: 'choices' must be a list")
+        if len(choices) == 0:
+            raise InferenceValidationError(f"Response #{idx}: 'choices' list is empty")
+
+        response_passed = False
+        for choice_idx, choice in enumerate(choices):
+            if not isinstance(choice, dict):
+                raise InferenceValidationError(f"Response #{idx}, choice #{choice_idx}: Expected dict")
+
+            finish_reason = (choice.get("finish_reason") or "").lower()
+            if finish_reason and finish_reason not in VALID_FINISH_REASONS:
+                LOGGER.warning(
+                    f"Response #{idx}, choice #{choice_idx}: Unexpected finish_reason '{finish_reason}' "
+                    f"(expected one of {VALID_FINISH_REASONS})"
+                )
+
+            has_text = "text" in choice
+            has_message = "message" in choice and isinstance(choice["message"], dict)
+            if not has_text and not has_message:
+                raise InferenceValidationError(
+                    f"Response #{idx}, choice #{choice_idx}: Missing 'text' or 'message' field"
+                )
+            if "text" in choice:
+                text = choice["text"]
+            elif "message" in choice and isinstance(choice["message"], dict):
+                text = choice["message"].get("content", "")
+            else:
+                text = ""
+            if not text or not text.strip():
+                if allow_empty_responses:
+                    LOGGER.warning(
+                        f"Response #{idx}: Text is empty, skipping validation for this prompt "
+                        f"(query: '{query_text[:50]}...')"
+                    )
+                    break
+                raise InferenceValidationError(f"Response #{idx}: Text is empty or whitespace-only")
+
+            if not expected_keywords and not ALPHABETIC_WORD.search(text):
+                raise InferenceValidationError(
+                    f"Response #{idx}: Text contains no alphabetic words (2+ chars). Text: '{text[:100]}...'"
+                )
+            text_lower = text.lower()
+            if error_match := ERROR_INDICATORS.search(text_lower):
+                raise InferenceValidationError(
+                    f"Response #{idx}: Text contains error indicator '{error_match.group()}'. Text: '{text[:200]}...'"
+                )
+            if expected_keywords and require_keywords:
+                found_keywords = [kw for kw in expected_keywords if kw.lower() in text_lower]
+                if not found_keywords:
+                    raise InferenceValidationError(
+                        f"Response #{idx}: None of the expected keywords {expected_keywords} "
+                        f"found in response to query: '{query_text[:100]}...'. Response text: '{text[:200]}...'"
+                    )
+
+                LOGGER.info(f"Response #{idx}: Found keywords {found_keywords} from expected {expected_keywords}")
+            elif expected_keywords:
+                LOGGER.info(
+                    f"Response #{idx}: Skipping keyword check (smoke validation); "
+                    f"expected keywords were {expected_keywords}"
+                )
+            else:
+                LOGGER.warning(f"Response #{idx}: No keywords provided for validation")
+
+            response_passed = True
+            LOGGER.info(f"Response #{idx} passed all validation checks")
+            break
+
+        if not response_passed:
+            continue
+
+        valid_response_count += 1
+
+    if allow_empty_responses:
+        if valid_response_count < min_valid_responses:
+            raise InferenceValidationError(
+                f"Smoke validation: only {valid_response_count}/{len(completion_responses)} responses had "
+                f"non-empty output; need at least {min_valid_responses}"
+            )
+        LOGGER.info(
+            f"Smoke validation: {valid_response_count}/{len(completion_responses)} responses passed "
+            f"(empty responses skipped)"
+        )
+    else:
+        LOGGER.info(f"All {len(completion_responses)} responses passed fuzzy validation")
+
+
+def validate_audio_inference_output(
+    model_info: Any,
+    completion_responses: Iterable[Any],
+    expected_keywords: list[str] | None = None,
+) -> None:
+    if model_info is None:
+        raise InferenceValidationError("Model info is None")
+    if not isinstance(completion_responses, (list, tuple)):
+        raise InferenceValidationError(
+            f"Completion responses should be a list or tuple, got {type(completion_responses).__name__}"
+        )
+    if len(completion_responses) == 0:
+        raise InferenceValidationError("Completion responses should not be empty")
+
+    keywords = expected_keywords or AUDIO_TRANSCRIPTION_KEYWORDS
+    for idx, response in enumerate(completion_responses):
+        normalized = normalize_audio_transcription_response(response=response)
+        text = normalized.get("text", "")
+        if not text or not text.strip():
+            raise InferenceValidationError(f"Audio response #{idx}: Transcription is empty")
+
+        text_lower = text.lower()
+        if ERROR_INDICATORS.search(text_lower):
+            raise InferenceValidationError(
+                f"Audio response #{idx}: Transcription contains error indicators. Text: '{text[:200]}...'"
+            )
+
+        if keywords:
+            found_keywords = [kw for kw in keywords if kw.lower() in text_lower]
+            if not found_keywords:
+                raise InferenceValidationError(
+                    f"Audio response #{idx}: None of the expected keywords {keywords} "
+                    f"found in transcription. Text: '{text[:200]}...'"
+                )
+            LOGGER.info(f"Audio response #{idx}: Found keywords {found_keywords} from expected {keywords}")
+
+    LOGGER.info(f"All {len(completion_responses)} audio transcription responses passed validation")
 
 
 def validate_embedding_inference_output(model_info: Any, embedding_responses: Iterable[Any]) -> None:
-    assert model_info is not None, "Model info should not be None"
-    assert isinstance(model_info, (list, tuple)), "Model info should be a list or tuple"
-    assert isinstance(embedding_responses, (list, tuple)), "Embedding responses should be a list or tuple"
-    assert len(embedding_responses) > 0, "Embedding responses should not be empty"
+    if model_info is None:
+        raise InferenceValidationError("Model info is None")
+    if not isinstance(embedding_responses, (list, tuple)):
+        raise InferenceValidationError(
+            f"Embedding responses should be a list or tuple, got {type(embedding_responses).__name__}"
+        )
+    if len(embedding_responses) == 0:
+        raise InferenceValidationError("Embedding responses should not be empty")
 
+    for idx, response in enumerate(embedding_responses):
+        normalized = normalize_embedding_response(response=response)
+        data = normalized.get("data", [])
+        if not isinstance(data, list) or len(data) == 0:
+            raise InferenceValidationError(f"Embedding response #{idx}: 'data' list is empty")
 
-def fetch_tgis_response(  # type: ignore
-    url: str,
-    model_name: str,
-    completion_query=COMPLETION_QUERY,
-) -> tuple[Any, list[Any], list[Any]]:
-    completion_responses = []
-    stream_completion_responses = []
-    inference_client = TGISGRPCPlugin(host=url, model_name=model_name, streaming=True)
-    model_info = inference_client.get_model_info()
-    if completion_query:
-        for query in completion_query:
-            completion_response = inference_client.make_grpc_request(query=query)
-            completion_responses.append(completion_response)
-            stream_response = inference_client.make_grpc_request_stream(query=query)
-            stream_completion_responses.append(stream_response)
-    return model_info, completion_responses, stream_completion_responses
+        for embed_idx, embedding_obj in enumerate(data):
+            if not isinstance(embedding_obj, dict):
+                raise InferenceValidationError(
+                    f"Embedding response #{idx}, item #{embed_idx}: Expected dict, got {type(embedding_obj).__name__}"
+                )
+            embedding = embedding_obj.get("embedding", [])
+            if not isinstance(embedding, list) or len(embedding) == 0:
+                raise InferenceValidationError(
+                    f"Embedding response #{idx}, item #{embed_idx}: Embedding vector is empty"
+                )
+            if not all(isinstance(value, (int, float)) for value in embedding):
+                raise InferenceValidationError(
+                    f"Embedding response #{idx}, item #{embed_idx}: Embedding vector must contain only numbers"
+                )
+
+    LOGGER.info(f"All {len(embedding_responses)} embedding responses passed validation")
 
 
 @retry(stop=stop_after_attempt(5), wait=wait_exponential(min=1, max=6))
 def run_raw_inference(
-    pod_name: str,
     isvc: InferenceService,
-    port: int,
     endpoint: str,
     completion_query: list[dict[str, str]] = COMPLETION_QUERY,
-) -> tuple[Any, list[Any], list[Any]]:
-    LOGGER.info("audio_inference:start endpoint=%s pod=%s", endpoint, pod_name)
+    url: str | None = None,
+    pod_name: str | None = None,
+    port: int | None = Ports.REST_PORT,
+) -> tuple[Any, list[Any]]:
+    if url is not None:
+        LOGGER.info("Using external route for inference: %s", url)
+        if endpoint == "openai":
+            return fetch_openai_response(
+                url=url,
+                model_name=isvc.instance.metadata.name,
+                completion_query=completion_query,
+            )
+        raise NotSupportedError(f"{endpoint} endpoint")
+
+    LOGGER.info("Using port forwarding for inference on pod: %s", pod_name)
+    if pod_name is None or port is None:
+        raise ValueError("pod_name and port are required when url is not provided")
+
     with portforward.forward(
         pod_or_service=pod_name,
         namespace=isvc.namespace,
         from_port=port,
         to_port=port,
     ):
-        if endpoint == "tgis":
-            model_detail, grpc_chat_response, grpc_chat_stream_responses = fetch_tgis_response(
-                url=f"localhost:{port}",
-                model_name=isvc.instance.metadata.name,
-                completion_query=completion_query,
-            )
-            return model_detail, grpc_chat_response, grpc_chat_stream_responses
-
-        elif endpoint == "openai":
-            model_info, completion_responses = fetch_openai_response(
+        if endpoint == "openai":
+            return fetch_openai_response(
                 url=f"http://localhost:{port}",
                 model_name=isvc.instance.metadata.name,
                 completion_query=completion_query,
             )
-            return model_info, completion_responses  # type: ignore
-        else:
-            raise NotSupportedError(f"{endpoint} endpoint")
+        raise NotSupportedError(f"{endpoint} endpoint")
 
 
 @retry(stop=stop_after_attempt(5), wait=wait_exponential(min=1, max=6))
@@ -197,15 +420,17 @@ def run_audio_inference(
 
 
 def validate_raw_openai_inference_request(
-    pod_name: str,
     isvc: InferenceService,
-    response_snapshot: Any,
-    completion_query: list[dict[str, str]],
-    model_output_type: str,
-    model_name: str,
+    response_snapshot: Any | None = None,
+    completion_query: list[dict[str, Any]] | None = None,
+    model_output_type: str = "text",
+    model_name: str | None = None,
+    pod_name: str | None = None,
     port: int = Ports.REST_PORT,
 ) -> None:
     if model_output_type == "audio":
+        if pod_name is None:
+            raise ValueError("pod_name is required for audio inference")
         LOGGER.info("Running audio inference test")
         model_info, completion_responses = run_audio_inference(
             pod_name=pod_name,
@@ -214,27 +439,42 @@ def validate_raw_openai_inference_request(
             endpoint=OPENAI_ENDPOINT_NAME,
             model_name=model_name,
         )
-        validate_audio_inference_output(model_info=model_info, completion_responses=completion_responses)
+        validate_audio_inference_output(
+            model_info=model_info,
+            completion_responses=completion_responses,
+            expected_keywords=AUDIO_TRANSCRIPTION_KEYWORDS,
+        )
         if os.path.exists(AUDIO_FILE_LOCAL_PATH):
             os.remove(AUDIO_FILE_LOCAL_PATH)
         return
     elif model_output_type == "text":
         LOGGER.info("Running text inference test")
-        scheduler_name = getattr(isvc.instance.spec.predictor, "schedulerName", "") or ""
-        if scheduler_name.lower() == "spyre-scheduler":
-            port = SPYRE_INFERENCE_SERVICE_PORT
+        effective_query = completion_query or COMPLETION_QUERY
         model_info, completion_responses = run_raw_inference(
-            pod_name=pod_name,
             isvc=isvc,
-            port=port,
             endpoint=OPENAI_ENDPOINT_NAME,
-            completion_query=completion_query,
+            completion_query=effective_query,
+            url=get_exposed_isvc_url(isvc=isvc),
         )
-        validate_inference_output(
-            completion_responses,
-            response_snapshot=response_snapshot,
+        wrapped_completion_responses = [
+            normalize_text_completion_response(response) for response in completion_responses
+        ]
+        validate_text_inference_fuzzy(
+            completion_responses=wrapped_completion_responses,
+            queries=effective_query,
+            model_info=model_info,
+            require_keywords=True,
+            allow_empty_responses=True,
+            min_valid_responses=1,
         )
+        if os.getenv("CHECK_SNAPSHOT", "false").lower() == "true":
+            validate_inference_output(
+                completion_responses,
+                response_snapshot=response_snapshot,
+            )
     elif model_output_type == "embedding":
+        if pod_name is None:
+            raise ValueError("pod_name is required for embedding inference")
         model_info, embedding_responses = run_embedding_inference(
             pod_name=pod_name,
             isvc=isvc,

@@ -89,7 +89,7 @@ LOGGER = structlog.get_logger(name=__name__)
             {"vector_io_provider": "milvus-remote", "dataset": IBM_2025_Q4_EARNINGS_ENCRYPTED},
             IBM_2025_Q4_EARNINGS_ENCRYPTED,
             id="vector_io:milvus-remote, files:s3, embedding:vllm-embedding, dataset:IBM_2025_Q4_EARNINGS_ENCRYPTED",
-            marks=(pytest.mark.tier2, pytest.mark.xfail(reason="RHAIENG-3816")),
+            marks=(pytest.mark.tier2),
         ),
     ],
     indirect=True,

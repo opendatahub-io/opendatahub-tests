@@ -17,7 +17,7 @@ Usage:
 """
 
 import logging
-import multiprocessing
+import queue
 import shutil
 from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
 from typing import Any
@@ -197,7 +197,7 @@ def setup_logging(
         enable_console (bool): whether to enable console output
 
     Returns:
-        QueueListener: Process monitoring the log Queue
+        QueueListener: Thread monitoring the log Queue
 
     Eg:
        all loggers -> QueueHandler -> Queue -> QueueListener -> StreamHandler (ConsoleRenderer)
@@ -220,7 +220,7 @@ def setup_logging(
         console_handler.setFormatter(fmt=_get_console_formatter(thread_name=thread_name))
         handlers.append(console_handler)
 
-    log_queue: multiprocessing.Queue[Any] = multiprocessing.Queue(maxsize=-1)
+    log_queue: queue.Queue[Any] = queue.Queue(maxsize=-1)
     log_listener = QueueListener(log_queue, *handlers, respect_handler_level=True)
 
     queue_handler = _StructlogQueueHandler(queue=log_queue)

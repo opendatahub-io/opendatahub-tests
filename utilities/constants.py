@@ -85,6 +85,8 @@ class RuntimeTemplates:
     VLLM_GAUDI: str = "vllm-gaudi-runtime-template"
     VLLM_SPYRE: str = "vllm-spyre-x86-runtime-template"
     VLLM_CPU_x86: str = "vllm-cpu-x86-runtime-template"
+    VLLM_CPU_POWER: str = "vllm-cpu-power-runtime-template"
+    VLLM_CPU_Z: str = "vllm-cpu-z-runtime-template"
     MLSERVER: str = f"{ModelFormat.MLSERVER}-runtime-template"
     TRITON_REST: str = "triton-rest-runtime-template"
     TRITON_GRPC: str = "triton-grpc-runtime-template"
@@ -135,7 +137,9 @@ class AcceleratorType:
     GAUDI: str = "gaudi"
     SPYRE: str = "spyre"
     CPU_x86: str = "cpu_x86"
-    SUPPORTED_LISTS: list[str] = [NVIDIA, AMD, GAUDI, SPYRE, CPU_x86]  # noqa: RUF012
+    CPU_POWER: str = "cpu_power"
+    CPU_Z: str = "cpu_z"
+    SUPPORTED_LISTS: list[str] = [NVIDIA, AMD, GAUDI, SPYRE, CPU_x86, CPU_POWER, CPU_Z]  # noqa: RUF012
 
 
 class ApiGroups:
@@ -446,6 +450,9 @@ MAAS_RATE_LIMIT_POLICY_NAME: str = "gateway-rate-limits"
 MAAS_TOKEN_RATE_LIMIT_POLICY_NAME: str = "gateway-token-rate-limits"
 
 MARIADB: str = "mariadb"
+MARIA_DB_IMAGE: str = (
+    "registry.redhat.io/rhel9/mariadb-1011@sha256:092407d87f8017bb444a462fb3d38ad5070429e94df7cf6b91d82697f36d0fa9"
+)
 MODEL_REGISTRY_CUSTOM_NAMESPACE: str = "model-registry-custom-ns"
 THANOS_QUERIER_ADDRESS = "https://thanos-querier.openshift-monitoring.svc:9092"
 BUILTIN_DETECTOR_CONFIG: dict[str, Any] = {

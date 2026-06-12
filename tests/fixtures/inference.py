@@ -4,6 +4,7 @@ from typing import Any
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
@@ -45,11 +46,18 @@ def llm_d_inference_sim_serving_runtime(
 
     """
     if pytestconfig.option.post_upgrade:
-        sr = ServingRuntime(
-            client=admin_client, name=LLMdInferenceSimConfig.serving_runtime_name, namespace=model_namespace.name
+        serving_runtime = ServingRuntime(
+            client=admin_client,
+            name=LLMdInferenceSimConfig.serving_runtime_name,
+            namespace=model_namespace.name,
         )
-        yield sr
-        sr.clean_up()
+        if not serving_runtime.exists:
+            raise ResourceNotFoundError(
+                f"ServingRuntime {LLMdInferenceSimConfig.serving_runtime_name} "
+                f"does not exist in namespace {model_namespace.name} after upgrade"
+            )
+        yield serving_runtime
+        serving_runtime.clean_up()
 
     else:
         with ServingRuntime(
