@@ -122,6 +122,7 @@ def evalhub_mcp_mt_cr(
         collections=["leaderboard-v2"],
         wait_for_resource=False,
     ) as evalhub:
+        # to_dict() populates evalhub.res (including spec) from constructor kwargs.
         evalhub.to_dict()
         evalhub.res["spec"]["mcp"] = {
             "enabled": True,
