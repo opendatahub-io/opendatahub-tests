@@ -1,8 +1,6 @@
 import pytest
 import structlog
 
-from utilities.jira import is_jira_issue_open
-
 LOGGER = structlog.get_logger(name=__name__)
 
 EXPECTED_REGISTRY_PREFIX = "registry.redhat.io"
@@ -49,11 +47,6 @@ class TestValidatedModelArtifactURI:
         )
 
     @pytest.mark.tier1
-    @pytest.mark.xfail(
-        condition=is_jira_issue_open(jira_id="RHOAIENG-62675"),
-        reason="RHOAIENG-62675",
-        run=False,
-    )
     def test_validated_models_have_single_model_artifact(
         self,
         validated_model_artifact_uris: dict[str, list[str]],
