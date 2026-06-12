@@ -1,83 +1,103 @@
-from typing import Generator
-
-import pytest
-from pytest_testconfig import config as py_config
-
-from simple_logger.logger import get_logger
-from tests.workbenches.utils import get_username
+from typing import Any
 
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
-
-from ocp_resources.namespace import Namespace
-from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
+from ocp_resources.resource import NamespacedResource
 from ocp_resources.route import Route
-from ocp_resources.notebook import Notebook
+from ocp_resources.self_subject_review import SelfSubjectReview
+from ocp_resources.user import User
+from pytest_testconfig import config as py_config
+from simple_logger.logger import get_logger
 
-from utilities.constants import Labels
-from utilities import constants
-from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH
+from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH, Labels
 from utilities.infra import check_internal_image_registry_available
 
 LOGGER = get_logger(name=__name__)
 
 
-@pytest.fixture(scope="function")
-def users_persistent_volume_claim(
-    request: pytest.FixtureRequest, unprivileged_model_namespace: Namespace, unprivileged_client: DynamicClient
-) -> Generator[PersistentVolumeClaim, None, None]:
-    with PersistentVolumeClaim(
-        client=unprivileged_client,
-        name=request.param["name"],
-        namespace=unprivileged_model_namespace.name,
-        label={constants.Labels.OpenDataHub.DASHBOARD: "true"},
-        accessmodes=PersistentVolumeClaim.AccessMode.RWO,
-        size="10Gi",
-        volume_mode=PersistentVolumeClaim.VolumeMode.FILE,
-    ) as pvc:
-        yield pvc
+class StatefulSet(NamespacedResource):
+    """StatefulSet resource (apps/v1). Not shipped by ocp_resources."""
+
+    api_group: str = NamespacedResource.ApiGroup.APPS
 
 
-@pytest.fixture(scope="function")
-def minimal_image() -> Generator[str, None, None]:
-    """Provides a full image name of a minimal workbench image"""
+def get_username(client: DynamicClient) -> str | None:
+    """Gets the username for the client (see kubectl -v8 auth whoami)"""
+    username: str | None
+    try:
+        self_subject_review = SelfSubjectReview(client=client, name="selfSubjectReview").create()
+        assert self_subject_review
+        username = self_subject_review.status.userInfo.username
+    except NotImplementedError:
+        LOGGER.info(
+            "SelfSubjectReview not found. Falling back to user.openshift.io/v1/users/~ for OpenShift versions <=4.14"
+        )
+        user = User(client=client, name="~").instance
+        username = user.get("metadata", {}).get("name", None)
+
+    return username
+
+
+def resolve_notebook_image(admin_client: DynamicClient) -> str:
+    """Resolves the full image path for a minimal workbench notebook.
+
+    Determines the image name based on distribution (upstream/downstream),
+    resolves the tag from config, and prepends the internal registry path
+    when available.
+
+    Args:
+        admin_client: Cluster client for querying registry availability.
+
+    Returns:
+        Full image reference (e.g. "image-registry.../namespace/jupyter-minimal-notebook:2025.2").
+    """
     image_name = "jupyter-minimal-notebook" if py_config.get("distribution") == "upstream" else "s2i-minimal-notebook"
-    yield f"{image_name}:{'2025.2'}"
+    image_tag = py_config.get("workbench_image_tag", "2025.2")
+
+    minimal_image = f"{image_name}:{image_tag}"
+    internal_image_registry = check_internal_image_registry_available(admin_client=admin_client)
+
+    return (
+        f"{INTERNAL_IMAGE_REGISTRY_PATH}/{py_config['applications_namespace']}/{minimal_image}"
+        if internal_image_registry
+        else minimal_image
+    )
 
 
-@pytest.fixture(scope="function")
-def default_notebook(
-    request: pytest.FixtureRequest,
-    admin_client: DynamicClient,
-    minimal_image: str,
-) -> Generator[Notebook, None, None]:
-    """Returns a new Notebook CR for a given namespace, name, and image"""
-    namespace = request.param["namespace"]
-    name = request.param["name"]
+def get_dashboard_route_host(admin_client: DynamicClient) -> str:
+    """Returns the hostname of the dashboard Route.
 
-    # Optional OAuth annotations
-    oauth_annotations = request.param.get("oauth_annotations", {})
-
-    # Set new Route url
+    Raises:
+        ResourceNotFoundError: If the dashboard Route does not exist.
+    """
     route_name = "odh-dashboard" if py_config.get("distribution") == "upstream" else "rhods-dashboard"
     route = Route(client=admin_client, name=route_name, namespace=py_config["applications_namespace"])
     if not route.exists:
         raise ResourceNotFoundError(f"Route {route.name} does not exist")
+    return route.host
 
-    # Set the correct username
-    username = get_username(dyn_client=admin_client)
-    assert username, "Failed to determine username from the cluster"
 
-    # Check internal image registry availability
-    internal_image_registry = check_internal_image_registry_available(admin_client=admin_client)
+def build_notebook_dict(
+    namespace: str,
+    name: str,
+    image_path: str,
+    route_host: str,
+    username: str,
+    extra_annotations: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Builds a Notebook CR dict for the kubeflow.org/v1 API (2.25 oauth-proxy style).
 
-    # Set the image path based on internal image registry status
-    minimal_image_path = (
-        f"{INTERNAL_IMAGE_REGISTRY_PATH}/{py_config['applications_namespace']}/{minimal_image}"
-        if internal_image_registry
-        else ":" + minimal_image.rsplit(":", maxsplit=1)[1]
-    )
+    Args:
+        namespace: Target namespace for the Notebook.
+        name: Notebook resource name (also used for PVC claim, service account, container).
+        image_path: Full container image reference.
+        route_host: Dashboard route hostname (for oauth-proxy logout URL and tornado_settings).
+        username: Cluster username (for tornado_settings).
+        extra_annotations: Optional annotations merged into metadata (e.g. oauth sidecar resources).
 
+    Returns:
+        A dict suitable for passing to ``Notebook(kind_dict=...)``.
+    """
     probe_config = {
         "failureThreshold": 3,
         "httpGet": {
@@ -91,18 +111,20 @@ def default_notebook(
         "timeoutSeconds": 1,
     }
 
-    notebook = {
+    annotations: dict[str, str] = {
+        "notebooks.opendatahub.io/inject-oauth": "true",
+        "opendatahub.io/accelerator-name": "",
+        "opendatahub.io/service-mesh": "false",
+        "notebooks.opendatahub.io/last-image-selection": image_path,
+    }
+    if extra_annotations:
+        annotations.update(extra_annotations)
+
+    return {
         "apiVersion": "kubeflow.org/v1",
         "kind": "Notebook",
         "metadata": {
-            "annotations": {
-                "notebooks.opendatahub.io/inject-oauth": "true",
-                "opendatahub.io/accelerator-name": "",
-                "opendatahub.io/service-mesh": "false",
-                "notebooks.opendatahub.io/last-image-selection": minimal_image,
-                # Add any additional annotations if provided
-                **oauth_annotations,
-            },
+            "annotations": annotations,
             "labels": {
                 Labels.Openshift.APP: name,
                 Labels.OpenDataHub.DASHBOARD: "true",
@@ -131,11 +153,11 @@ def default_notebook(
                                     "                  "
                                     "--ServerApp.quit_button=False\n"
                                     "                  "
-                                    f'--ServerApp.tornado_settings={{"user":"{username}","hub_host":"https://{route.host}","hub_prefix":"/projects/{namespace}"}}',  # noqa: E501 line too long
+                                    f'--ServerApp.tornado_settings={{"user":"{username}","hub_host":"https://{route_host}","hub_prefix":"/projects/{namespace}"}}',  # noqa: E501 line too long
                                 },
-                                {"name": "JUPYTER_IMAGE", "value": minimal_image_path},
+                                {"name": "JUPYTER_IMAGE", "value": image_path},
                             ],
-                            "image": minimal_image_path,
+                            "image": image_path,
                             "imagePullPolicy": "Always",
                             "livenessProbe": probe_config,
                             "name": name,
@@ -166,7 +188,7 @@ def default_notebook(
                                 "--email-domain=*",
                                 "--skip-provider-button",
                                 f'--openshift-sar={{"verb":"get","resource":"notebooks","resourceAPIGroup":"kubeflow.org","resourceName":"{name}","namespace":"$(NAMESPACE)"}}',  # noqa: E501 line too long
-                                f"--logout-url=https://{route.host}/projects/{namespace}?notebookLogout={name}",
+                                f"--logout-url=https://{route_host}/projects/{namespace}?notebookLogout={name}",
                             ],
                             "env": [
                                 {"name": "NAMESPACE", "valueFrom": {"fieldRef": {"fieldPath": "metadata.namespace"}}}
@@ -216,6 +238,3 @@ def default_notebook(
             }
         },
     }
-
-    with Notebook(kind_dict=notebook) as nb:
-        yield nb
