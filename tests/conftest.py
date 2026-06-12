@@ -432,7 +432,7 @@ def use_unprivileged_client(pytestconfig: pytest.Config) -> bool:
 @pytest.fixture(scope="session")
 def non_admin_user_password(
     admin_client: DynamicClient, use_unprivileged_client: bool, is_byoidc: bool
-) -> tuple[str, str] | None:
+) -> tuple[str, RedactedString] | None:
     def _decode_split_data(_data: str) -> list[str]:
         return base64.b64decode(_data).decode().split(",")
 
@@ -490,7 +490,7 @@ def unprivileged_client(
     admin_client: DynamicClient,
     use_unprivileged_client: bool,
     kubconfig_filepath: str,
-    non_admin_user_password: tuple[str, str],
+    non_admin_user_password: tuple[str, RedactedString] | None,
     is_byoidc: bool,
 ) -> Generator[DynamicClient, Any, Any]:
     """
