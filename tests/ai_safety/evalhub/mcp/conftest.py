@@ -246,7 +246,7 @@ def evalhub_mcp_mt_ready(
                 LOGGER.info(f"EvalHub MCP at {host} is healthy")
                 return
     except TimeoutExpiredError as err:
-        if err.last_exp is not None and err.elapsed_time is not None:
+        if err.last_exp is not None:
             raise err.last_exp from err
         raise RuntimeError(f"EvalHub MCP at {host} did not become healthy within 120s") from err
 
