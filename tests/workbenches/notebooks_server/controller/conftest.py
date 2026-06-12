@@ -253,7 +253,7 @@ def notebook_pod(
             status=Pod.Condition.Status.TRUE,
             timeout=pod_ready_timeout,
         )
-    except (TimeoutError, TimeoutExpiredError, RuntimeError) as e:
+    except (TimeoutError, TimeoutExpiredError) as e:
         try:
             pod_exists = notebook_pod.exists
         except Exception as exists_error:  # noqa: BLE001

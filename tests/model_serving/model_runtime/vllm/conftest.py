@@ -6,7 +6,6 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
-from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
@@ -19,12 +18,24 @@ from tests.model_serving.model_runtime.vllm.utils import (
     skip_if_not_deployment_mode,
     validate_supported_quantization_schema,
 )
-from utilities.constants import KServeDeploymentType, Labels, RuntimeTemplates
+from utilities.constants import AcceleratorType, KServeDeploymentType, Labels, RuntimeTemplates
 from utilities.inference_utils import create_isvc
-from utilities.infra import get_pods_by_isvc_label
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 LOGGER = structlog.get_logger(name=__name__)
+
+SUPPORTED_CPU_X86_ACCELERATORS: set[str] = {AcceleratorType.CPU_x86}
+
+
+@pytest.fixture(scope="session")
+def skip_if_no_supported_cpu_x86_accelerator_type(supported_accelerator_type: str | None) -> None:
+    """Skip test unless the cluster provides the x86 CPU accelerator."""
+    if not supported_accelerator_type or supported_accelerator_type.lower() not in SUPPORTED_CPU_X86_ACCELERATORS:
+        pytest.skip(
+            f"Test requires a supported vLLM x86 CPU accelerator. "
+            f"Found: '{supported_accelerator_type or 'None'}'. "
+            f"Expected one of: {SUPPORTED_CPU_X86_ACCELERATORS}."
+        )
 
 
 @pytest.fixture(scope="class")
@@ -68,6 +79,7 @@ def vllm_inference_service(
         "model_format": serving_runtime.instance.spec.supportedModelFormats[0].name,
         "model_service_account": vllm_model_service_account.name,
         "deployment_mode": request.param.get("deployment_mode", KServeDeploymentType.RAW_DEPLOYMENT),
+        "external_route": True,
     }
     accelerator_type = supported_accelerator_type.lower()
     gpu_count = request.param.get("gpu_count")
@@ -127,11 +139,6 @@ def kserve_endpoint_s3_secret(
         aws_s3_endpoint=models_s3_bucket_endpoint,
     ) as secret:
         yield secret
-
-
-@pytest.fixture
-def vllm_pod_resource(admin_client: DynamicClient, vllm_inference_service: InferenceService) -> Pod:
-    return get_pods_by_isvc_label(client=admin_client, isvc=vllm_inference_service)[0]
 
 
 @pytest.fixture
