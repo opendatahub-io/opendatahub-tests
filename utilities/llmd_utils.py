@@ -1,5 +1,6 @@
 """Utilities for LLM Deployment (LLMD) resources."""
 
+import json
 from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
@@ -8,10 +9,11 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.gateway import Gateway
 from ocp_resources.llm_inference_service import LLMInferenceService
+from ocp_resources.route import Route
 from timeout_sampler import TimeoutWatch
 
 from utilities.constants import ContainerImages, Timeout
-from utilities.infra import get_services_by_isvc_label, is_disconnected_cluster
+from utilities.infra import is_disconnected_cluster
 from utilities.llmd_constants import (
     KServeGateway,
     LLMDGateway,
@@ -349,48 +351,58 @@ def create_llmisvc(
 
 def get_llm_inference_url(llm_service: LLMInferenceService) -> str:
     """
-    Get the inference URL for an LLMInferenceService.
+    Get the base inference URL for an LLMInferenceService.
 
-    This function attempts to resolve the URL in the following order:
-    1. External URL from service status
-    2. Service discovery via labels
-    3. Fallback to service name pattern
+    Handles both connected clusters (status.url / gateway-external address)
+    and disconnected clusters (gateway Route).
 
     Args:
         llm_service: The LLMInferenceService resource
 
     Returns:
-        str: The inference URL (full URL including protocol and path)
-
-    Raises:
-        ValueError: If the inference URL cannot be determined
+        str: Base URL to which callers append /v1/chat/completions etc.
     """
-    # Check for external URL from status.addresses first
-    if llm_service.instance.status and llm_service.instance.status.get("addresses"):
-        addresses = llm_service.instance.status["addresses"]
-        if addresses and len(addresses) > 0 and addresses[0].get("url"):
-            url = addresses[0]["url"]
-            LOGGER.debug(f"Using external URL for {llm_service.name}: {url}")
-            return url
+    if is_disconnected_cluster(client=llm_service.client):
+        return _get_disconnected_inference_url(llm_service=llm_service)
 
-    # Fallback to legacy status.url field
-    if llm_service.instance.status and llm_service.instance.status.get("url"):
-        url = llm_service.instance.status["url"]
-        LOGGER.debug(f"Using legacy external URL for {llm_service.name}: {url}")
+    status = llm_service.instance.status or {}
+
+    if status.get("url"):
+        url = status["url"]
+        LOGGER.debug(f"Using status.url for {llm_service.name}: {url}")
         return url
 
-    try:
-        services = get_services_by_isvc_label(
-            client=llm_service.client,
-            isvc=llm_service,
-            runtime_name=None,
+    for addr in status.get("addresses") or []:
+        if addr.get("name") == "gateway-external" and addr.get("url"):
+            url = addr["url"]
+            LOGGER.debug(f"Using gateway-external address for {llm_service.name}: {url}")
+            return url
+
+    raise ValueError(
+        f"No inference URL found for LLMInferenceService {llm_service.name}. Status: {json.dumps(status, indent=2)}"
+    )
+
+
+def _get_disconnected_inference_url(llm_service: LLMInferenceService) -> str:
+    """Build inference URL using the gateway Route for disconnected clusters.
+
+    On disconnected clusters the gateway uses ClusterIP instead of LoadBalancer,
+    so status.url is not reachable. Resolves via the gateway Route instead.
+    """
+    route = Route(
+        client=llm_service.client,
+        name=LLMDGateway.DEFAULT_NAME,
+        namespace=LLMDGateway.DEFAULT_NAMESPACE,
+    )
+    if not route.exists:
+        raise RuntimeError(
+            f"Gateway Route {LLMDGateway.DEFAULT_NAME} not found in {LLMDGateway.DEFAULT_NAMESPACE}. "
+            "Disconnected clusters require the gateway Route to be configured."
         )
-        if services:
-            internal_url = f"http://{services[0].name}.{llm_service.namespace}.svc.cluster.local"
-            LOGGER.debug(f"Using service discovery URL for {llm_service.name}: {internal_url}")
-            return internal_url
-    except Exception as e:  # noqa: BLE001
-        LOGGER.warning(f"Could not get service for LLMInferenceService {llm_service.name}: {e}")
-    fallback_url = f"http://{llm_service.name}.{llm_service.namespace}.svc.cluster.local"
-    LOGGER.debug(f"Using fallback URL for {llm_service.name}: {fallback_url}")
-    return fallback_url
+    host = route.instance.spec.host
+    if not host:
+        raise RuntimeError(
+            f"Gateway Route {LLMDGateway.DEFAULT_NAME} in {LLMDGateway.DEFAULT_NAMESPACE} "
+            "has no host set. Ensure the Route is fully configured."
+        )
+    return f"https://{host}/{llm_service.namespace}/{llm_service.name}"
