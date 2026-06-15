@@ -106,6 +106,7 @@ def build_notebook_dict(
     image_path: str,
     extra_annotations: dict[str, str] | None = None,
     resources: dict[str, dict[str, str]] | None = None,
+    extra_env_vars: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     """Builds a Notebook CR dict for the kubeflow.org/v1 API.
 
@@ -117,6 +118,7 @@ def build_notebook_dict(
         resources: Container resources dict with "limits" and/or "requests" keys.
             None uses sensible defaults; empty dict ``{}`` omits resources entirely
             (useful when a HardwareProfile webhook injects them).
+        extra_env_vars: Optional list of env var dicts ({"name": ..., "value": ...}) to add.
 
     Returns:
         A dict suitable for passing to ``Notebook(kind_dict=...)``.
@@ -184,6 +186,7 @@ def build_notebook_dict(
                                     "--ServerApp.quit_button=False\n",
                                 },
                                 {"name": "JUPYTER_IMAGE", "value": image_path},
+                                *(extra_env_vars or []),
                             ],
                             "image": image_path,
                             "imagePullPolicy": "Always",

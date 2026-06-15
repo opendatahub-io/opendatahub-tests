@@ -186,12 +186,16 @@ def default_notebook(
     # Optional custom resource requests/limits for the notebook container
     custom_resources = request.param.get("resources")
 
+    # Optional extra environment variables for the notebook container
+    extra_env_vars = request.param.get("extra_env_vars")
+
     notebook_dict = build_notebook_dict(
         namespace=namespace,
         name=name,
         image_path=notebook_image,
         extra_annotations=auth_annotations or None,
         resources=custom_resources,
+        extra_env_vars=extra_env_vars,
     )
 
     with Notebook(client=unprivileged_client, kind_dict=notebook_dict) as nb:
