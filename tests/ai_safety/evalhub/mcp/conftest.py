@@ -85,7 +85,7 @@ def _is_evalhub_crd_available(admin_client: DynamicClient) -> bool:
     try:
         crd = CustomResourceDefinition(client=admin_client, name=crd_name)
         return crd.exists
-    except AttributeError, KeyError:
+    except (AttributeError, KeyError):
         return False
 
 
@@ -114,28 +114,29 @@ def evalhub_mcp_mt_cr(
             "Install the TrustyAI/EvalHub operator first."
         )
 
-    with EvalHub(
+    evalhub = EvalHub(
         client=admin_client,
         name=EVALHUB_MCP_CR_NAME,
         namespace=model_namespace.name,
         database={"type": "sqlite"},
         collections=["leaderboard-v2"],
         wait_for_resource=False,
-    ) as evalhub:
-        # to_dict() populates evalhub.res (including spec) from constructor kwargs.
-        evalhub.to_dict()
-        evalhub.res["spec"]["mcp"] = {
-            "enabled": True,
-            "replicas": 1,
-            "env": [
-                {
-                    "name": "EVALHUB_TENANT",
-                    "value": tenant_a_namespace.name,
-                }
-            ],
-        }
-        evalhub.create()
-        evalhub.wait_for_resource()
+    )
+    # to_dict() populates evalhub.res (including spec) from constructor kwargs.
+    evalhub.to_dict()
+    evalhub.res["spec"]["mcp"] = {
+        "enabled": True,
+        "replicas": 1,
+        "env": [
+            {
+                "name": "EVALHUB_TENANT",
+                "value": tenant_a_namespace.name,
+            }
+        ],
+    }
+
+    with evalhub:
+        evalhub.wait(timeout=300)
 
         service_account = ServiceAccount(
             client=admin_client,
@@ -157,32 +158,38 @@ def evalhub_mcp_mt_cr(
 
         token = create_inference_token(model_service_account=service_account)
         secret_name = _mcp_auth_secret_name(cr_name=EVALHUB_MCP_CR_NAME)
-        with Secret(
+        secret = Secret(
             client=admin_client,
             name=secret_name,
             namespace=model_namespace.name,
             string_data={"token": token},
-            wait_for_resource=True,
-        ):
-            evalhub.update(
-                resource_dict={
-                    "spec": {
-                        "mcp": {
-                            "enabled": True,
-                            "replicas": 1,
-                            "authSecret": secret_name,
-                            "env": [
-                                {
-                                    "name": "EVALHUB_TENANT",
-                                    "value": tenant_a_namespace.name,
-                                }
-                            ],
-                        }
+            wait_for_resource=False,
+        )
+        secret.deploy()
+
+        evalhub.update(
+            resource_dict={
+                "metadata": {
+                    "name": EVALHUB_MCP_CR_NAME,
+                    "namespace": model_namespace.name,
+                },
+                "spec": {
+                    "mcp": {
+                        "enabled": True,
+                        "replicas": 1,
+                        "authSecret": secret_name,
+                        "env": [
+                            {
+                                "name": "EVALHUB_TENANT",
+                                "value": tenant_a_namespace.name,
+                            }
+                        ],
                     }
                 }
-            )
-            evalhub.wait_for_resource()
-            yield evalhub
+            }
+        )
+        evalhub.wait(timeout=300)
+        yield evalhub
 
 
 @pytest.fixture(scope="class")
