@@ -6,11 +6,63 @@ import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.image_stream import ImageStream
+from packaging.version import InvalidVersion, Version
 from pytest_testconfig import config as py_config
 
 pytestmark = [pytest.mark.smoke]
 LOGGER = structlog.get_logger(name=__name__)
 IMPORT_SUCCESS_CONDITION_TYPE = "ImportSuccess"
+LATEST_TAGS_COUNT = 2
+
+
+RHOAI_VERSIONING_START = Version(version="3.4")
+
+
+def _tag_sort_key(version: Version) -> tuple[int, Version]:
+    """Return a sort key reflecting the chronological ordering of ImageStream tag versions.
+
+    Three naming schemes have been used historically:
+      - Tier 2 (newest): RHOAI major.minor >= 3.4 (e.g. 3.4, 3.5)
+      - Tier 1 (middle): year-based versions with major >= 2000 (e.g. 2024.1, 2025.2)
+      - Tier 0 (oldest): legacy versions before the year scheme (e.g. 1.2)
+    """
+    if version >= RHOAI_VERSIONING_START and version.major < 2000:
+        return (2, version)
+    if version.major >= 2000:
+        return (1, version)
+    return (0, version)
+
+
+def _get_latest_n_tag_names(imagestream_data: dict[str, Any], n: int = LATEST_TAGS_COUNT) -> set[str]:
+    """Return the names of the N most recent tags by version.
+
+    Handles mixed version schemes: RHOAI versions (3.4, 3.5) are ranked above
+    legacy year-based versions (2025.2, 2025.1, 2024.2, ...).
+
+    Args:
+        imagestream_data: Raw ImageStream dict (from `instance.to_dict()`).
+        n: Number of latest tags to return.
+
+    Returns:
+        Set of tag name strings for the N highest-versioned tags.
+    """
+    spec_tags = imagestream_data.get("spec", {}).get("tags", [])
+    all_tag_names = {str(tag.get("name")) for tag in spec_tags if tag.get("name")}
+    versioned: list[tuple[tuple[int, Version], str]] = []
+    for tag in spec_tags:
+        name = tag.get("name")
+        if not name:
+            continue
+        try:
+            version = Version(version=name)
+        except InvalidVersion:
+            continue
+        versioned.append((_tag_sort_key(version=version), name))
+    versioned.sort(reverse=True)
+    if not versioned:
+        # Fail safe: never return an empty filter that disables validation.
+        return all_tag_names
+    return {name for _, name in versioned[:n]}
 
 
 def _validate_imagestream_tag_health(
@@ -101,19 +153,21 @@ def _validate_imagestreams_with_label(
     imagestreams: list[ImageStream],
     label_selector: str,
     expected_count: int,
+    tags_to_validate: set[str] | None = None,
 ) -> None:
     """
     Validate ImageStreams selected by label and fail the test if unhealthy.
 
     This helper enforces:
     - expected ImageStream count for the selector
-    - every tag declared in `spec.tags` appears in `status.tags`
+    - every tag declared in `spec.tags` appears in `status.tags` (scoped to ``tags_to_validate`` when provided)
     - per-tag resolution/import checks via `_validate_imagestream_tag_health`
 
     Args:
         imagestreams: ImageStreams fetched for the label selector.
         label_selector: Label selector used to fetch ImageStreams.
         expected_count: Expected number of matching ImageStreams.
+        tags_to_validate: If provided, only validate these tag names. When ``None``, all tags are validated.
 
     Raises:
         pytest.fail: When any validation error is found.
@@ -145,6 +199,9 @@ def _validate_imagestreams_with_label(
             for spec_tag in imagestream_data.get("spec", {}).get("tags", [])
             if spec_tag.get("name")
         }
+        if tags_to_validate is not None:
+            spec_tag_names &= tags_to_validate
+
         status_tags = imagestream_data.get("status", {}).get("tags", [])
         status_tag_names = {str(status_tag.get("tag")) for status_tag in status_tags if status_tag.get("tag")}
 
@@ -161,6 +218,8 @@ def _validate_imagestreams_with_label(
 
         for status_tag in status_tags:
             tag_name = str(status_tag.get("tag", "<missing-tag-name>"))
+            if tags_to_validate is not None and tag_name not in tags_to_validate:
+                continue
             errors.extend(
                 _validate_imagestream_tag_health(
                     imagestream_name=imagestream_name,
@@ -174,22 +233,25 @@ def _validate_imagestreams_with_label(
 
 
 @pytest.mark.parametrize(
-    "label_selector, expected_imagestream_count",
+    "label_selector, expected_imagestream_count, latest_tags_only",
     [
         pytest.param(
             "opendatahub.io/notebook-image=true,platform.opendatahub.io/part-of=workbenches",
             11,
-            id="notebook_imagestreams",
+            True,
+            id="test_notebook_imagestreams",
         ),
         pytest.param(
             "opendatahub.io/runtime-image=true,platform.opendatahub.io/part-of=workbenches",
             7,
-            id="runtime_imagestreams",
+            False,
+            id="test_runtime_imagestreams",
         ),
         pytest.param(
             "opendatahub.io/notebook-image=true,platform.opendatahub.io/part-of=trainer",
             3,
-            id="trainer_imagestreams",
+            False,
+            id="test_trainer_imagestreams",
         ),
     ],
 )
@@ -197,11 +259,16 @@ def test_workbench_imagestreams_health(
     admin_client: DynamicClient,
     label_selector: str,
     expected_imagestream_count: int,
+    latest_tags_only: bool,
 ) -> None:
     """
     Given workbench-related ImageStreams in the applications namespace.
     When ImageStreams are listed by the expected workbench labels.
-    Then all expected ImageStreams exist and each tag is imported and resolved successfully.
+    Then all expected ImageStreams exist and the validated tags are imported and resolved.
+
+    For notebook ImageStreams, only the latest 2 version tags are validated
+    (these are guaranteed to be mirrored on disconnected clusters).
+    Runtime and trainer ImageStreams validate all tags unconditionally.
     """
     imagestreams = list(
         ImageStream.get(
@@ -211,8 +278,70 @@ def test_workbench_imagestreams_health(
         )
     )
 
+    tags_to_validate: set[str] | None = None
+    if latest_tags_only:
+        tags_to_validate = set()
+        for imagestream in imagestreams:
+            imagestream_data: dict[str, Any] = imagestream.instance.to_dict()
+            tags_to_validate |= _get_latest_n_tag_names(imagestream_data=imagestream_data)
+
     _validate_imagestreams_with_label(
         imagestreams=imagestreams,
         label_selector=label_selector,
         expected_count=expected_imagestream_count,
+        tags_to_validate=tags_to_validate,
+    )
+
+
+@pytest.mark.skip_on_disconnected
+@pytest.mark.parametrize(
+    "label_selector, expected_imagestream_count",
+    [
+        pytest.param(
+            "opendatahub.io/notebook-image=true,platform.opendatahub.io/part-of=workbenches",
+            11,
+            id="test_notebook_imagestreams",
+        ),
+    ],
+)
+def test_workbench_imagestreams_older_tags_health(
+    admin_client: DynamicClient,
+    label_selector: str,
+    expected_imagestream_count: int,
+) -> None:
+    """
+    Given workbench-related ImageStreams in the applications namespace.
+    When ImageStreams are listed by the expected workbench labels.
+    Then older version tags (beyond the latest 2) are also imported and resolved.
+
+    This test is skipped on disconnected clusters where only the latest 2 tags
+    are expected to be mirrored.
+    """
+    imagestreams = list(
+        ImageStream.get(
+            client=admin_client,
+            namespace=py_config["applications_namespace"],
+            label_selector=label_selector,
+        )
+    )
+
+    older_tags: set[str] = set()
+    for imagestream in imagestreams:
+        imagestream_data: dict[str, Any] = imagestream.instance.to_dict()
+        latest_tags = _get_latest_n_tag_names(imagestream_data=imagestream_data)
+        all_tag_names = {
+            str(spec_tag.get("name"))
+            for spec_tag in imagestream_data.get("spec", {}).get("tags", [])
+            if spec_tag.get("name")
+        }
+        older_tags |= all_tag_names - latest_tags
+
+    if not older_tags:
+        pytest.fail("No older tags found beyond the latest 2 versions across any notebook ImageStream")
+
+    _validate_imagestreams_with_label(
+        imagestreams=imagestreams,
+        label_selector=label_selector,
+        expected_count=expected_imagestream_count,
+        tags_to_validate=older_tags,
     )

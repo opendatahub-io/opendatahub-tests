@@ -97,7 +97,7 @@ def pvc_inference_service(
         "runtime": serving_runtime_from_template.name,
         "storage_uri": f"pvc://{model_pvc.name}/{ci_bucket_downloaded_model_data}",
         "model_format": serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,
-        "deployment_mode": request.param.get("deployment-mode", KServeDeploymentType.SERVERLESS),
+        "deployment_mode": request.param.get("deployment-mode", KServeDeploymentType.RAW_DEPLOYMENT),
         "wait_for_predictor_pods": True,
     }
 

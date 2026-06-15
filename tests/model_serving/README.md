@@ -28,7 +28,6 @@ model_serving/
 │   ├── image_validation/              # Runtime image validation
 │   ├── mlserver/                      # MLServer runtime tests
 │   │   └── basic_model_deployment/    # LightGBM, ONNX, Sklearn, XGBoost
-│   ├── model_validation/             # Model validation tests
 │   ├── openvino/                      # OpenVINO Model Server (OVMS) tests
 │   │   ├── smoke/                     # Smoke test scripts
 │   │   ├── test_ovms_smoke.py
@@ -37,11 +36,8 @@ model_serving/
 │   ├── triton/                        # NVIDIA Triton runtime tests
 │   │   └── basic_model_deployment/    # PyTorch, ONNX, TF, Keras, Python, FIL, DALI
 │   └── vllm/                          # vLLM runtime tests (LLMs)
-│       ├── basic_model_deployment/    # Granite, Llama, Merlinite models
-│       ├── multimodal/                # Vision models (Granite 3.1 2B)
-│       ├── quantization/              # AWQ quantization
-│       ├── speculative_decoding/      # Draft and n-gram decoding
-│       └── toolcalling/               # Function calling tests
+│       ├── modelcar/                  # OCI modelcar YAML-driven validation
+│       └── s3/                        # S3-hosted model raw deployment tests
 │
 └── model_server/                      # Server platform tests
     ├── conftest.py
@@ -68,7 +64,7 @@ model_serving/
 ### Current Test Suites
 
 - **`maas_billing/`** - MaaS billing tests including token management, rate limiting, RBAC, subscription lifecycle, API key CRUD/authorization, and cascade deletion
-- **`model_runtime/`** - Runtime validation for vLLM (LLM serving with GPU), OpenVINO (CPU-optimized inference), Triton (multi-framework), and MLServer (lightweight serving). Covers basic deployment, multimodal, quantization, speculative decoding, and tool calling
+- **`model_runtime/`** - Runtime validation for vLLM (S3 and OCI modelcar), OpenVINO (CPU-optimized inference), Triton (multi-framework), and MLServer (lightweight serving)
 - **`model_server/`** - Server platform tests for KServe deployment modes (raw, serverless), storage backends (S3, PVC, OCI, MinIO), authentication, autoscaling (KEDA, Kueue), inference graphs, lifecycle management, observability, negative testing, LLMD, and upgrade scenarios
 
 ## Test Markers
