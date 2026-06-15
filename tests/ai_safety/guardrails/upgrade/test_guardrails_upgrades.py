@@ -41,7 +41,7 @@ HAP_DETECTOR: str = "hap-detector"
                         "openai": {
                             "service": {
                                 "hostname": f"{QWEN_MODEL_NAME}-predictor",
-                                "port": 80,
+                                "port": 8032,
                             }
                         },
                         "detectors": {
@@ -49,7 +49,7 @@ HAP_DETECTOR: str = "hap-detector"
                                 "type": "text_contents",
                                 "service": {
                                     "hostname": f"{PROMPT_INJECTION_DETECTOR}-predictor",
-                                    "port": 80,
+                                    "port": 8000,
                                 },
                                 "chunker_id": "whole_doc_chunker",
                                 "default_threshold": 0.5,
@@ -58,7 +58,7 @@ HAP_DETECTOR: str = "hap-detector"
                                 "type": "text_contents",
                                 "service": {
                                     "hostname": f"{HAP_DETECTOR}-predictor",
-                                    "port": 80,
+                                    "port": 8000,
                                 },
                                 "chunker_id": "whole_doc_chunker",
                                 "default_threshold": 0.5,
