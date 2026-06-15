@@ -32,7 +32,6 @@ from utilities.inference_utils import create_isvc, LOGGER
 from utilities.operator_utils import get_cluster_service_version
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
-
 GUARDRAILS_ORCHESTRATOR_NAME = "guardrails-orchestrator"
 
 
