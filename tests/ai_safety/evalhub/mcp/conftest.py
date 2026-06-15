@@ -158,38 +158,36 @@ def evalhub_mcp_mt_cr(
 
         token = create_inference_token(model_service_account=service_account)
         secret_name = _mcp_auth_secret_name(cr_name=EVALHUB_MCP_CR_NAME)
-        secret = Secret(
+        with Secret(
             client=admin_client,
             name=secret_name,
             namespace=model_namespace.name,
             string_data={"token": token},
             wait_for_resource=False,
-        )
-        secret.deploy()
-
-        evalhub.update(
-            resource_dict={
-                "metadata": {
-                    "name": EVALHUB_MCP_CR_NAME,
-                    "namespace": model_namespace.name,
-                },
-                "spec": {
-                    "mcp": {
-                        "enabled": True,
-                        "replicas": 1,
-                        "authSecret": secret_name,
-                        "env": [
-                            {
-                                "name": "EVALHUB_TENANT",
-                                "value": tenant_a_namespace.name,
-                            }
-                        ],
-                    }
-                },
-            }
-        )
-        evalhub.wait(timeout=300)
-        yield evalhub
+        ):
+            evalhub.update(
+                resource_dict={
+                    "metadata": {
+                        "name": EVALHUB_MCP_CR_NAME,
+                        "namespace": model_namespace.name,
+                    },
+                    "spec": {
+                        "mcp": {
+                            "enabled": True,
+                            "replicas": 1,
+                            "authSecret": secret_name,
+                            "env": [
+                                {
+                                    "name": "EVALHUB_TENANT",
+                                    "value": tenant_a_namespace.name,
+                                }
+                            ],
+                        }
+                    },
+                }
+            )
+            evalhub.wait(timeout=300)
+            yield evalhub
 
 
 @pytest.fixture(scope="class")
