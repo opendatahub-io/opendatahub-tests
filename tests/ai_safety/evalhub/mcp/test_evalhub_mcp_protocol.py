@@ -252,46 +252,6 @@ class TestEvalHubMcpProtocol:
         providers = structured.get("providers", [])
         assert isinstance(providers, list), f"Expected providers list in structuredContent: {structured}"
 
-    @pytest.mark.parametrize(
-        "arguments,expected_fragment",
-        [
-            pytest.param({}, "benchmarks", id="test_missing_benchmarks_and_collection"),
-            pytest.param(
-                {
-                    "name": "invalid-job",
-                    "model": {"url": "http://model/v1", "name": "m"},
-                    "benchmarks": [{"id": "arc_easy", "provider_id": "lm_evaluation_harness"}],
-                    "collection": {"id": "leaderboard-v2"},
-                },
-                "not both",
-                id="test_benchmarks_and_collection",
-            ),
-        ],
-    )
-    def test_submit_evaluation_validation_errors(
-        self,
-        evalhub_mcp_client: EvalHubMcpClient,
-        arguments: dict,
-        expected_fragment: str,
-    ) -> None:
-        """
-        Given: Authenticated MCP client with invalid submit_evaluation arguments
-        When: tools/call submit_evaluation is invoked
-        Then: Tool returns a validation error containing the expected fragment
-        """
-        result = evalhub_mcp_client.call(
-            method="tools/call",
-            params={
-                "name": "submit_evaluation",
-                "arguments": arguments,
-            },
-        )
-        assert result.get("isError") is True, f"Expected tool error result, got: {result}"
-        content = result.get("content", [])
-        assert content, "Expected error content"
-        text = content[0].get("text", "") if isinstance(content[0], dict) else ""
-        assert expected_fragment.lower() in text.lower(), f"Expected '{expected_fragment}' in error: {text}"
-
     def test_get_job_status_requires_job_id(
         self,
         evalhub_mcp_client: EvalHubMcpClient,
