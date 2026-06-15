@@ -85,7 +85,7 @@ def _is_evalhub_crd_available(admin_client: DynamicClient) -> bool:
     try:
         crd = CustomResourceDefinition(client=admin_client, name=crd_name)
         return crd.exists
-    except (AttributeError, KeyError):
+    except AttributeError, KeyError:
         return False
 
 
@@ -185,7 +185,7 @@ def evalhub_mcp_mt_cr(
                             }
                         ],
                     }
-                }
+                },
             }
         )
         evalhub.wait(timeout=300)
