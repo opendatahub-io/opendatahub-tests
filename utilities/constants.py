@@ -147,6 +147,7 @@ class ApiGroups:
     OPENDATAHUB_IO: str = "opendatahub.io"
     KSERVE: str = "serving.kserve.io"
     KUADRANT_IO: str = "kuadrant.io"
+    MCP_KUADRANT_IO: str = "mcp.kuadrant.io"
     MAAS_IO: str = "maas.opendatahub.io"
     AUTH_IO: str = "SERVICES_PLATFORM_OPENDATAHUB_IO"
     SPARKOPERATOR_K8S_IO: str = "sparkoperator.k8s.io"
