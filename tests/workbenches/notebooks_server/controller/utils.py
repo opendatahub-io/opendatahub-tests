@@ -2,7 +2,7 @@ from typing import Any
 
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.resource import NamespacedResource
+from ocp_resources.resource import NamespacedResource, Resource
 from ocp_resources.self_subject_review import SelfSubjectReview
 from ocp_resources.user import User
 from pytest_testconfig import config as py_config
@@ -20,6 +20,12 @@ class StatefulSet(NamespacedResource):
     """StatefulSet resource (apps/v1). Not shipped by ocp_resources."""
 
     api_group: str = NamespacedResource.ApiGroup.APPS
+
+
+class MutatingWebhookConfiguration(Resource):
+    """MutatingWebhookConfiguration resource (admissionregistration.k8s.io/v1)."""
+
+    api_group: str = Resource.ApiGroup.ADMISSIONREGISTRATION_K8S_IO
 
 
 def get_username(client: DynamicClient) -> str | None:
