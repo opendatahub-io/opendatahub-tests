@@ -99,6 +99,7 @@ def build_notebook_dict(
     name: str,
     image_path: str,
     extra_annotations: dict[str, str] | None = None,
+    resources: dict[str, dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     """Builds a Notebook CR dict for the kubeflow.org/v1 API.
 
@@ -107,6 +108,7 @@ def build_notebook_dict(
         name: Notebook resource name (also used for PVC claim, service account, container).
         image_path: Full container image reference.
         extra_annotations: Optional annotations merged into metadata (e.g. auth sidecar resources).
+        resources: Optional container resources dict with "limits" and/or "requests" keys.
 
     Returns:
         A dict suitable for passing to ``Notebook(kind_dict=...)``.
@@ -123,6 +125,15 @@ def build_notebook_dict(
         "successThreshold": 1,
         "timeoutSeconds": 1,
     }
+
+    container_resources = (
+        resources
+        if resources is not None
+        else {
+            "limits": {"cpu": "2", "memory": "4Gi"},
+            "requests": {"cpu": "1", "memory": "1Gi"},
+        }
+    )
 
     annotations: dict[str, str] = {
         Labels.Notebook.INJECT_AUTH: "true",
@@ -172,10 +183,7 @@ def build_notebook_dict(
                             "name": name,
                             "ports": [{"containerPort": 8888, "name": "notebook-port", "protocol": "TCP"}],
                             "readinessProbe": probe_config,
-                            "resources": {
-                                "limits": {"cpu": "2", "memory": "4Gi"},
-                                "requests": {"cpu": "1", "memory": "1Gi"},
-                            },
+                            "resources": container_resources,
                             "volumeMounts": [
                                 {"mountPath": "/opt/app-root/src", "name": name},
                                 {"mountPath": "/dev/shm", "name": "shm"},
