@@ -16,16 +16,15 @@ from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.node import Node
 from ocp_resources.pod import Pod
 from ocp_resources.prometheus import Prometheus
-from ocp_resources.route import Route
 from pyhelper_utils.shell import run_command
 from timeout_sampler import TimeoutExpiredError, retry
 
 from tests.model_serving.model_server.llmd.constants import LLMD_TESTS_SUPPORTED_ACCELERATORS
 from utilities.certificates_utils import get_ca_bundle
 from utilities.constants import Timeout
-from utilities.infra import is_disconnected_cluster
 from utilities.jira import is_jira_issue_open
-from utilities.llmd_constants import LLMDGateway, LLMEndpoint
+from utilities.llmd_constants import LLMEndpoint
+from utilities.llmd_utils import get_llm_inference_url
 from utilities.monitoring import get_metrics_value
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -206,44 +205,6 @@ def wait_for_llmisvc_pods_ready(
         LOGGER.info(f"Pod {pod.name} is Ready")
 
 
-def _get_inference_url(llmisvc: LLMInferenceService) -> str:
-    """Extract inference URL from LLMISVC status."""
-    status = llmisvc.instance.status
-    if status and status.get("addresses"):
-        addresses = status["addresses"]
-        if addresses and addresses[0].get("url"):
-            return addresses[0]["url"]
-    if status and status.get("url"):
-        return status["url"]
-    return f"http://{llmisvc.name}.{llmisvc.namespace}.svc.cluster.local"
-
-
-def _get_disconnected_inference_url(llmisvc: LLMInferenceService) -> str:
-    """Build inference URL using the gateway Route for disconnected clusters.
-
-    On disconnected clusters the gateway uses ClusterIP instead of LoadBalancer,
-    so the internal service URL from LLMISVC status is not reachable from outside
-    the cluster. This function resolves the URL via the gateway Route instead.
-    """
-    route = Route(
-        client=llmisvc.client,
-        name=LLMDGateway.DEFAULT_NAME,
-        namespace=LLMDGateway.DEFAULT_NAMESPACE,
-    )
-    if not route.exists:
-        raise RuntimeError(
-            f"Gateway Route {LLMDGateway.DEFAULT_NAME} not found in {LLMDGateway.DEFAULT_NAMESPACE}. "
-            "Disconnected clusters require the gateway Route to be configured."
-        )
-    host = route.instance.spec.host
-    if not host:
-        raise RuntimeError(
-            f"Gateway Route {LLMDGateway.DEFAULT_NAME} in {LLMDGateway.DEFAULT_NAMESPACE} "
-            "has no host set. Ensure the Route is fully configured."
-        )
-    return f"https://{host}/{llmisvc.namespace}/{llmisvc.name}"
-
-
 def _build_chat_body(model_name: str, prompt: str, max_tokens: int = LLMEndpoint.DEFAULT_MAX_TOKENS) -> str:
     """Build OpenAI chat completion request body."""
     return json.dumps({
@@ -336,11 +297,7 @@ def send_chat_completions(
     insecure: bool = True,
 ) -> tuple[int, str]:
     """Send a chat completion request. Returns (status_code, response_body)."""
-    base_url = (
-        _get_disconnected_inference_url(llmisvc)
-        if is_disconnected_cluster(llmisvc.client)
-        else _get_inference_url(llmisvc)
-    )
+    base_url = get_llm_inference_url(llm_service=llmisvc)
     url = base_url + LLMEndpoint.CHAT_COMPLETIONS
     model_name = _get_model_name(llmisvc=llmisvc)
     body = _build_chat_body(model_name=model_name, prompt=prompt)
@@ -380,11 +337,7 @@ def send_completions(
     Returns:
         Tuple of (status_code, response_body).
     """
-    base_url = (
-        _get_disconnected_inference_url(llmisvc)
-        if is_disconnected_cluster(llmisvc.client)
-        else _get_inference_url(llmisvc)
-    )
+    base_url = get_llm_inference_url(llm_service=llmisvc)
     url = base_url + LLMEndpoint.COMPLETIONS
     model_name = _get_model_name(llmisvc=llmisvc)
     body = _build_completions_body(model_name=model_name, prompt=prompt)
