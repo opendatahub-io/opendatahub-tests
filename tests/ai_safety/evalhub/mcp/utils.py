@@ -212,7 +212,7 @@ def call_mcp_tool(
     *,
     name: str,
     arguments: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+) -> dict[str, Any] | None:
     """Invoke an MCP tool and return the full tools/call result."""
     return client.call(
         method="tools/call",
@@ -246,8 +246,10 @@ def mcp_tool_error_text(result: dict[str, Any]) -> str:
     return ""
 
 
-def mcp_tool_structured(result: dict[str, Any]) -> dict[str, Any]:
+def mcp_tool_structured(result: dict[str, Any] | None) -> dict[str, Any]:
     """Return structuredContent from a tools/call result."""
+    if result is None:
+        return {}
     structured = result.get("structuredContent", {})
     return structured if isinstance(structured, dict) else {}
 
