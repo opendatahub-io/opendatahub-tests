@@ -1,4 +1,5 @@
 import atexit
+import json
 import os
 import tempfile
 from pathlib import Path
@@ -208,3 +209,120 @@ def collect_pipeline_pod_logs(
 
     if not found:
         LOGGER.warning(f"No Argo Workflow found for pipeline run {run_id} in namespace {namespace}")
+
+
+# ---------------------------------------------------------------------------
+# Managed pipeline helpers
+# ---------------------------------------------------------------------------
+
+
+def use_managed_pipelines(yaml_env_value: str) -> bool:
+    """Return True (managed mode) when the YAML env var is empty, False (legacy) when set."""
+    return not bool(yaml_env_value)
+
+
+def find_pipeline_by_display_name(
+    api_url: str,
+    headers: dict[str, str],
+    display_name: str,
+    ca_bundle: str,
+) -> dict[str, str] | None:
+    """Search KFP for a pipeline by display name.
+
+    Returns {"pipeline_id": ..., "pipeline_version_id": ...} or None.
+    """
+    resp = requests.get(
+        url=f"{api_url}/apis/v2beta1/pipelines",
+        headers=headers,
+        params={
+            "filter": json.dumps({
+                "predicates": [
+                    {
+                        "key": "display_name",
+                        "operation": "EQUALS",
+                        "string_value": display_name,
+                    }
+                ]
+            })
+        },
+        verify=ca_bundle,
+        timeout=60,
+    )
+    _raise_for_status(resp=resp)
+    pipelines = resp.json().get("pipelines", [])
+    if not pipelines:
+        return None
+
+    pipeline_id = pipelines[0]["pipeline_id"]
+
+    version_resp = requests.get(
+        url=f"{api_url}/apis/v2beta1/pipelines/{pipeline_id}/versions",
+        headers=headers,
+        params={"sort_by": "created_at desc", "page_size": "1"},
+        verify=ca_bundle,
+        timeout=60,
+    )
+    _raise_for_status(resp=version_resp)
+    versions = version_resp.json().get("pipeline_versions", [])
+    version_id = versions[0]["pipeline_version_id"] if versions else ""
+
+    return {"pipeline_id": pipeline_id, "pipeline_version_id": version_id}
+
+
+def wait_for_managed_pipeline(
+    api_url: str,
+    headers: dict[str, str],
+    display_name: str,
+    ca_bundle: str,
+    timeout: int,
+    poll_interval: int,
+) -> dict[str, str]:
+    """Poll KFP until a managed pipeline with the given display name appears."""
+    LOGGER.info(f"Waiting for managed pipeline '{display_name}' (timeout={timeout}s)")
+
+    for result in TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=poll_interval,
+        func=find_pipeline_by_display_name,
+        exceptions_dict={requests.ConnectionError: [], requests.HTTPError: []},
+        api_url=api_url,
+        headers=headers,
+        display_name=display_name,
+        ca_bundle=ca_bundle,
+    ):
+        if result is not None:
+            LOGGER.info(
+                f"Found managed pipeline '{display_name}': "
+                f"pipeline_id={result['pipeline_id']}, version_id={result['pipeline_version_id']}"
+            )
+            return result
+
+    raise TimeoutExpiredError(f"Managed pipeline '{display_name}' not found within {timeout}s")
+
+
+def create_pipeline_run_managed(
+    api_url: str,
+    headers: dict[str, str],
+    pipeline_id: str,
+    pipeline_version_id: str,
+    run_name: str,
+    parameters: dict[str, Any],
+    ca_bundle: str,
+) -> str:
+    """Create a pipeline run for a managed pipeline (with version_id) and return the run ID."""
+    resp = requests.post(
+        url=f"{api_url}/apis/v2beta1/runs",
+        headers=headers,
+        json={
+            "display_name": run_name,
+            "pipeline_version_reference": {
+                "pipeline_id": pipeline_id,
+                "pipeline_version_id": pipeline_version_id,
+            },
+            "runtime_config": {"parameters": parameters},
+        },
+        verify=ca_bundle,
+        timeout=60,
+    )
+    _raise_for_status(resp=resp)
+    return resp.json()["run_id"]

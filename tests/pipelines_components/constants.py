@@ -75,6 +75,18 @@ AUTORAG_OPTIMIZATION_METRIC: str = os.getenv("AUTORAG_OPTIMIZATION_METRIC", "fai
 # AutoRAG timeouts (seconds)
 AUTORAG_PIPELINE_TIMEOUT: int = int(os.getenv("AUTORAG_PIPELINE_TIMEOUT", "3600"))
 
+# ---------------------------------------------------------------------------
+# Managed pipelines (DSPA operator auto-registers pipelines in KFP)
+# ---------------------------------------------------------------------------
+MANAGED_PIPELINE_AUTOML_TABULAR: str = os.getenv(
+    "MANAGED_PIPELINE_AUTOML_TABULAR", "autogluon-tabular-training-pipeline"
+)
+MANAGED_PIPELINE_AUTORAG: str = os.getenv("MANAGED_PIPELINE_AUTORAG", "documents-rag-optimization-pipeline")
+MANAGED_PIPELINES_IMAGE: str = os.getenv("MANAGED_PIPELINES_IMAGE", "")
+DSPA_READY_BUFFER_SECONDS: int = int(os.getenv("DSPA_READY_BUFFER_SECONDS", "30"))
+MANAGED_PIPELINE_WAIT_TIMEOUT: int = int(os.getenv("MANAGED_PIPELINE_WAIT_TIMEOUT", "300"))
+MANAGED_PIPELINE_POLL_INTERVAL: int = int(os.getenv("MANAGED_PIPELINE_POLL_INTERVAL", "15"))
+
 # Synthetic CSV for AutoML binary classification smoke test.
 # AutoGluon requires enough rows per class for stratified train/validation splits.
 AUTOML_SMOKE_CSV: str = """feature_1,feature_2,feature_3,target

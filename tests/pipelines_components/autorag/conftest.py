@@ -1,5 +1,6 @@
 import os
 import shlex
+import time
 import uuid
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -12,6 +13,7 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.data_science_cluster import DataScienceCluster
+from ocp_resources.data_science_pipelines_application import DataSciencePipelinesApplication
 from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
@@ -37,17 +39,24 @@ from tests.pipelines_components.constants import (
     AUTORAG_S3_BUCKET,
     AUTORAG_TEST_DATA_KEY,
     DSPA_NAME,
+    DSPA_READY_BUFFER_SECONDS,
     DSPA_S3_BUCKET,
     DSPA_S3_SECRET,
+    MANAGED_PIPELINE_AUTORAG,
+    MANAGED_PIPELINE_POLL_INTERVAL,
+    MANAGED_PIPELINE_WAIT_TIMEOUT,
     MINIO_MC_IMAGE,
     MINIO_UPLOADER_SECURITY_CONTEXT,
 )
 from tests.pipelines_components.utils import (
     create_pipeline_run,
+    create_pipeline_run_managed,
     delete_pipeline,
     delete_pipeline_run,
     resolve_pipeline_yaml,
     upload_pipeline,
+    use_managed_pipelines,
+    wait_for_managed_pipeline,
 )
 from utilities.constants import Annotations, DscComponents, KServeDeploymentType, RuntimeTemplates, Timeout
 from utilities.data_science_cluster_utils import update_components_in_dsc
@@ -78,7 +87,6 @@ AUTORAG_EMBEDDING_MODEL_URI: str = os.environ.get("AUTORAG_EMBEDDING_MODEL_URI",
 AUTORAG_EMBEDDING_MODEL_NAME: str = os.environ.get("AUTORAG_EMBEDDING_MODEL_NAME", "")
 
 _AUTORAG_REQUIRED_ENV = {
-    "AUTORAG_PIPELINE_YAML": "Path to compiled AutoRAG pipeline YAML",
     "AUTORAG_INFERENCE_MODEL_URI": "Storage URI for inference model (e.g. s3://bucket/model or hf://org/model)",
     "AUTORAG_INFERENCE_MODEL_NAME": "Inference model name (e.g. granite-3b-instruct)",
     "AUTORAG_EMBEDDING_MODEL_URI": "Storage URI for embedding model (e.g. s3://bucket/model or hf://org/model)",
@@ -178,6 +186,10 @@ def _wait_for_ogx_client_ready(client: OgxClient) -> bool:
 
 @pytest.fixture(scope="session", autouse=True)
 def _validate_autorag_env() -> None:
+    if AUTORAG_PIPELINE_YAML:
+        LOGGER.info("AUTORAG_PIPELINE_YAML is set — using legacy YAML upload mode")
+    else:
+        LOGGER.info("AUTORAG_PIPELINE_YAML is not set — using managed pipeline mode")
     missing = [f"  {var}: {desc}" for var, desc in _AUTORAG_REQUIRED_ENV.items() if not os.environ.get(var)]
     if missing:
         pytest.skip("AutoRAG smoke test requires environment variables:\n" + "\n".join(missing))
@@ -882,7 +894,32 @@ def autorag_discovered_models(
 
 
 @pytest.fixture(scope="class")
-def autorag_pipeline_yaml_path() -> str:
+def autorag_managed_pipeline(
+    dspa: DataSciencePipelinesApplication,
+    dspa_api_url: str,
+    dspa_auth_headers: dict[str, str],
+    dspa_ca_bundle_file: str,
+) -> dict[str, str] | None:
+    """Discovered managed pipeline info, or None in legacy mode."""
+    if not use_managed_pipelines(yaml_env_value=AUTORAG_PIPELINE_YAML):
+        return None
+    LOGGER.info(f"DSPA ready; sleeping {DSPA_READY_BUFFER_SECONDS}s for managed pipeline registration")
+    time.sleep(DSPA_READY_BUFFER_SECONDS)
+    return wait_for_managed_pipeline(
+        api_url=dspa_api_url,
+        headers=dspa_auth_headers,
+        display_name=MANAGED_PIPELINE_AUTORAG,
+        ca_bundle=dspa_ca_bundle_file,
+        timeout=MANAGED_PIPELINE_WAIT_TIMEOUT,
+        poll_interval=MANAGED_PIPELINE_POLL_INTERVAL,
+    )
+
+
+@pytest.fixture(scope="class")
+def autorag_pipeline_yaml_path() -> str | None:
+    """Resolve the AutoRAG pipeline YAML. None in managed mode."""
+    if not AUTORAG_PIPELINE_YAML:
+        return None
     return resolve_pipeline_yaml(value=AUTORAG_PIPELINE_YAML)
 
 
@@ -986,23 +1023,28 @@ def autorag_pipeline_id(
     dspa_api_url: str,
     dspa_auth_headers: dict[str, str],
     dspa_ca_bundle_file: str,
-    autorag_pipeline_yaml_path: str,
+    autorag_pipeline_yaml_path: str | None,
+    autorag_managed_pipeline: dict[str, str] | None,
 ) -> Generator[str, Any, Any]:
-    run_suffix = uuid.uuid4().hex[:8]
+    """Pipeline ID — from managed discovery or YAML upload."""
+    if autorag_managed_pipeline is not None:
+        yield autorag_managed_pipeline["pipeline_id"]
+    else:
+        assert autorag_pipeline_yaml_path is not None, "AUTORAG_PIPELINE_YAML must be set for legacy mode"
+        run_suffix = uuid.uuid4().hex[:8]
 
-    @retry(wait_timeout=120, sleep=10, exceptions_dict={requests.HTTPError: [], requests.ConnectionError: []})
-    def _upload() -> str:
-        return upload_pipeline(
-            api_url=dspa_api_url,
-            headers=dspa_auth_headers,
-            pipeline_yaml_path=autorag_pipeline_yaml_path,
-            pipeline_name=f"autorag-smoke-{run_suffix}",
-            ca_bundle=dspa_ca_bundle_file,
-        )
+        @retry(wait_timeout=120, sleep=10, exceptions_dict={requests.HTTPError: [], requests.ConnectionError: []})
+        def _upload() -> str:
+            return upload_pipeline(
+                api_url=dspa_api_url,
+                headers=dspa_auth_headers,
+                pipeline_yaml_path=autorag_pipeline_yaml_path,
+                pipeline_name=f"autorag-smoke-{run_suffix}",
+                ca_bundle=dspa_ca_bundle_file,
+            )
 
-    pipeline_id = _upload()
-    yield pipeline_id
-    if not os.getenv("AUTORAG_SKIP_TEARDOWN", "").lower() in ("true", "1", "yes"):
+        pipeline_id = _upload()
+        yield pipeline_id
         delete_pipeline(
             api_url=dspa_api_url,
             headers=dspa_auth_headers,
@@ -1017,6 +1059,7 @@ def autorag_run_id(
     dspa_auth_headers: dict[str, str],
     dspa_ca_bundle_file: str,
     autorag_pipeline_id: str,
+    autorag_managed_pipeline: dict[str, str] | None,
     autorag_ogx_url_secret: Secret,
     autorag_discovered_models: tuple[str, str],
     autorag_inference_url: str,
@@ -1026,7 +1069,7 @@ def autorag_run_id(
 ) -> Generator[str, Any, Any]:
     embedding_model, generation_model = autorag_discovered_models
 
-    parameters: dict = {
+    parameters: dict[str, Any] = {
         "input_data_secret_name": dspa_s3_credentials.name,
         "input_data_bucket_name": DSPA_S3_BUCKET,
         "input_data_key": AUTORAG_INPUT_DATA_KEY,
@@ -1041,19 +1084,30 @@ def autorag_run_id(
         "vector_io_provider_id": "milvus-remote",
     }
 
-    run_id = create_pipeline_run(
-        api_url=dspa_api_url,
-        headers=dspa_auth_headers,
-        pipeline_id=autorag_pipeline_id,
-        run_name=f"autorag-smoke-{uuid.uuid4().hex[:8]}",
-        parameters=parameters,
-        ca_bundle=dspa_ca_bundle_file,
-    )
-    yield run_id
-    if not os.getenv("AUTORAG_SKIP_TEARDOWN", "").lower() in ("true", "1", "yes"):
-        delete_pipeline_run(
+    if autorag_managed_pipeline is not None:
+        run_id = create_pipeline_run_managed(
             api_url=dspa_api_url,
             headers=dspa_auth_headers,
-            run_id=run_id,
+            pipeline_id=autorag_managed_pipeline["pipeline_id"],
+            pipeline_version_id=autorag_managed_pipeline["pipeline_version_id"],
+            run_name=f"autorag-smoke-{uuid.uuid4().hex[:8]}",
+            parameters=parameters,
             ca_bundle=dspa_ca_bundle_file,
         )
+    else:
+        run_id = create_pipeline_run(
+            api_url=dspa_api_url,
+            headers=dspa_auth_headers,
+            pipeline_id=autorag_pipeline_id,
+            run_name=f"autorag-smoke-{uuid.uuid4().hex[:8]}",
+            parameters=parameters,
+            ca_bundle=dspa_ca_bundle_file,
+        )
+
+    yield run_id
+    delete_pipeline_run(
+        api_url=dspa_api_url,
+        headers=dspa_auth_headers,
+        run_id=run_id,
+        ca_bundle=dspa_ca_bundle_file,
+    )

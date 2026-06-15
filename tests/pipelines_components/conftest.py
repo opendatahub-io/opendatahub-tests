@@ -29,6 +29,7 @@ from tests.pipelines_components.constants import (
     DSPA_PIPELINE_DEPLOYMENT,
     DSPA_S3_BUCKET,
     DSPA_S3_SECRET,
+    MANAGED_PIPELINES_IMAGE,
     MINIO_MC_IMAGE,
     MINIO_UPLOADER_SECURITY_CONTEXT,
 )
@@ -131,12 +132,20 @@ def dspa(
     pipelines_namespace: Namespace,
     enabled_pipelines_in_dsc: DataScienceCluster,
 ) -> Generator[DataSciencePipelinesApplication, Any, Any]:
-    """DataSciencePipelinesApplication with built-in MinIO object storage."""
+    """DataSciencePipelinesApplication with built-in MinIO and managed pipelines."""
+    managed_pipelines_spec: dict[str, Any] = {}
+    if MANAGED_PIPELINES_IMAGE:
+        managed_pipelines_spec["image"] = MANAGED_PIPELINES_IMAGE
+
     with DataSciencePipelinesApplication(
         client=admin_client,
         name=DSPA_NAME,
         namespace=pipelines_namespace.name,
         dsp_version="v2",
+        api_server={
+            "enableSamplePipeline": False,
+            "managedPipelines": managed_pipelines_spec,
+        },
         object_storage={
             "disableHealthCheck": False,
             "enableExternalRoute": True,
