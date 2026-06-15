@@ -389,7 +389,10 @@ def unconfigured_model_ref(
         teardown=True,
         wait_for_resource=True,
     ) as model_ref:
-        model_ref.wait_for_condition(condition="Ready", status="True", timeout=300)
+        # Don't wait for Ready — an unconfigured model (no MaaSAuthPolicy) stays
+        # Pending because it has no governance pairing. Wait for RuntimeReady instead
+        # to ensure the HTTPRoute exists so the gateway can apply deny-by-default.
+        model_ref.wait_for_condition(condition="RuntimeReady", status="True", timeout=300)
         LOGGER.info(f"unconfigured_model_ref: created model ref '{model_ref_name}' (no MaaSAuthPolicy)")
         yield model_ref
 
