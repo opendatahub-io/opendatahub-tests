@@ -131,6 +131,9 @@ class TestPostUpgradeNotebook:
         When the upgrade completes,
         Then readyReplicas should equal spec.replicas and no rollout should be pending.
         """
+        assert upgrade_notebook_statefulset.exists, (
+            f"StatefulSet '{upgrade_notebook_statefulset.name}' no longer exists after upgrade"
+        )
         sts = upgrade_notebook_statefulset.instance
         expected_replicas = sts.spec.replicas
         ready_replicas = sts.status.readyReplicas or 0
@@ -208,6 +211,11 @@ class TestPostUpgradeNotebook:
         When the upgrade completes,
         Then both CA bundles must change together or neither should change.
         """
+        assert workbench_trusted_ca_bundle.exists, (
+            f"ConfigMap '{workbench_trusted_ca_bundle.name}' no longer exists after upgrade"
+        )
+        assert odh_trusted_ca_bundle.exists, f"ConfigMap '{odh_trusted_ca_bundle.name}' no longer exists after upgrade"
+
         saved_workbench_rv = upgrade_notebook_baseline["ca_bundle_resource_version"]
         saved_odh_rv = upgrade_notebook_baseline["odh_ca_bundle_resource_version"]
 
