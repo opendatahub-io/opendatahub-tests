@@ -1,4 +1,4 @@
-"""Kuadrant custom resource for Kuadrant API management."""
+"""Kuadrant custom resources for Kuadrant API management."""
 
 from typing import Any
 
@@ -14,6 +14,18 @@ class Kuadrant(NamespacedResource):
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
+
+    def to_dict(self) -> None:
+        super().to_dict()
+
+        if not self.kind_dict and not self.yaml_file:
+            self.res["spec"] = {}
+
+
+class MCPGatewayExtension(NamespacedResource):
+    """MCPGatewayExtension is the Schema for the mcpgatewayextensions API (mcp.kuadrant.io/v1alpha1)."""
+
+    api_group: str = ApiGroups.MCP_KUADRANT_IO
 
     def to_dict(self) -> None:
         super().to_dict()
