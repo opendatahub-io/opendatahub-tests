@@ -68,6 +68,26 @@ def pytest_configure(config: pytest.Config) -> None:
         )
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _skip_teardown_if_requested():
+    """When SKIP_TEARDOWN=true, prevent all ocp_resources from being deleted on teardown.
+
+    This keeps the namespace, pods, routes, and all resources alive after the test
+    so that teams can inspect logs and state.
+    Delete the namespace manually when done: oc delete ns <namespace>
+    """
+    if os.getenv("SKIP_TEARDOWN", "").lower() not in ("true", "1", "yes"):
+        yield
+        return
+    LOGGER.warning("SKIP_TEARDOWN is set — all resources will be kept after test completion")
+    from ocp_resources.resource import Resource
+
+    _original_clean_up = Resource.clean_up
+    Resource.clean_up = lambda self, *args, **kwargs: True
+    yield
+    Resource.clean_up = _original_clean_up
+
+
 # ---------------------------------------------------------------------------
 # AutoML fixtures — create fresh namespace + DSPA per test run
 # ---------------------------------------------------------------------------
