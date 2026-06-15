@@ -2,8 +2,8 @@ import pytest
 from ocp_resources.namespace import Namespace
 from ocp_resources.route import Route
 
-from tests.ai_safety.evalhub.mcp.utils import TENANT_HEADER_NAME, EvalHubMcpClient
-from tests.ai_safety.evalhub.utils import build_headers
+from tests.ai_safety.evalhub.mcp.utils import EvalHubMcpClient
+from tests.ai_safety.evalhub.utils import TENANT_HEADER, build_headers
 from utilities.guardrails import get_auth_headers
 
 
@@ -108,7 +108,7 @@ class TestEvalHubMcpProxyRbac:
         Then: kube-rbac-proxy rejects with HTTP 403
         """
         headers = build_headers(token=tenant_a_token, tenant=tenant_a_namespace.name)
-        assert TENANT_HEADER_NAME in headers
+        assert TENANT_HEADER in headers
         response = EvalHubMcpClient(
             host=evalhub_mcp_mt_route.host,
             token=tenant_a_token,

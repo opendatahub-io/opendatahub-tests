@@ -19,7 +19,7 @@ from tests.ai_safety.evalhub.mcp.constants import (
     EVALHUB_MCP_PROTOCOL_VERSION,
     EVALHUB_MCP_PROXY_RESOURCE,
 )
-from tests.ai_safety.evalhub.utils import EVALHUB_JOB_TERMINAL_STATES, TENANT_HEADER, build_headers
+from tests.ai_safety.evalhub.utils import EVALHUB_JOB_TERMINAL_STATES, build_headers
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -342,9 +342,6 @@ def build_mcp_proxy_role_rules(evalhub_instance_name: str) -> list[dict[str, lis
             "verbs": ["get", "create"],
         }
     ]
-
-
-TENANT_HEADER_NAME = TENANT_HEADER
 
 
 def tenant_mcp_rbac_ready(
