@@ -7,12 +7,14 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
+from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest import FixtureRequest
 
 from tests.model_serving.model_runtime.vllm.constant import TEMPLATE_MAP
 from tests.model_serving.model_runtime.vllm.cpu.ibm_power_z.constant import IBM_POWER_Z_PREDICT_RESOURCES
 from tests.model_serving.model_runtime.vllm.utils import (
+    add_image_pull_secrets_if_configured,
     dedupe_vllm_cli_args,
     skip_if_not_deployment_mode,
     validate_supported_quantization_schema,
@@ -72,6 +74,7 @@ def ibm_power_z_inference_service(
     ibm_power_z_serving_runtime: ServingRuntime,
     s3_models_storage_uri: str,
     vllm_model_service_account: Any,
+    kserve_registry_pull_secret: Secret | None,
 ) -> Generator[InferenceService, Any, Any]:
     """vLLM InferenceService for CPU Power or Z deployments backed by S3 model storage."""
     isvc_kwargs: dict[str, Any] = {
@@ -97,6 +100,11 @@ def ibm_power_z_inference_service(
 
     if min_replicas := request.param.get("min-replicas"):
         isvc_kwargs["min_replicas"] = min_replicas
+
+    add_image_pull_secrets_if_configured(
+        isvc_kwargs=isvc_kwargs,
+        kserve_registry_pull_secret=kserve_registry_pull_secret,
+    )
 
     with create_isvc(**isvc_kwargs) as isvc:
         yield isvc
