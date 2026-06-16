@@ -3,8 +3,6 @@ from typing import Any
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.resource import NamespacedResource, Resource
-from ocp_resources.self_subject_review import SelfSubjectReview
-from ocp_resources.user import User
 from pytest_testconfig import config as py_config
 
 from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH, Labels
@@ -26,23 +24,6 @@ class MutatingWebhookConfiguration(Resource):
     """MutatingWebhookConfiguration resource (admissionregistration.k8s.io/v1)."""
 
     api_group: str = Resource.ApiGroup.ADMISSIONREGISTRATION_K8S_IO
-
-
-def get_username(client: DynamicClient) -> str | None:
-    """Gets the username for the client (see kubectl -v8 auth whoami)"""
-    username: str | None
-    try:
-        self_subject_review = SelfSubjectReview(client=client, name="selfSubjectReview").create()
-        assert self_subject_review
-        username = self_subject_review.status.userInfo.username
-    except NotImplementedError:
-        LOGGER.info(
-            "SelfSubjectReview not found. Falling back to user.openshift.io/v1/users/~ for OpenShift versions <=4.14"
-        )
-        user = User(client=client, name="~").instance
-        username = user.get("metadata", {}).get("name", None)
-
-    return username
 
 
 def resolve_notebook_image(admin_client: DynamicClient) -> str:
