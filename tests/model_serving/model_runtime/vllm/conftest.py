@@ -96,6 +96,9 @@ def vllm_inference_service(
     if min_replicas := request.param.get("min-replicas"):
         isvc_kwargs["min_replicas"] = min_replicas
 
+    if custom_annotations := request.param.get("custom_annotations"):
+        isvc_kwargs["custom_annotations"] = custom_annotations
+
     with create_isvc(**isvc_kwargs) as isvc:
         yield isvc
 

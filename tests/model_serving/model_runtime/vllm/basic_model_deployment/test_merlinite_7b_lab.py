@@ -58,6 +58,11 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "v
                 **BASE_SEVERRLESS_DEPLOYMENT_CONFIG,
                 "gpu_count": 1,
                 "name": "merlinite-lab-ser",
+                "custom_annotations": {
+                    "queue.serving.knative.dev/timeout-seconds": "600",
+                    "haproxy.router.openshift.io/timeout": "600s",
+                    "serving.knative.dev/progress-deadline": "10m",
+                },
             },
             id="merlinite-lab-7b-serverless-single-gpu",
         ),

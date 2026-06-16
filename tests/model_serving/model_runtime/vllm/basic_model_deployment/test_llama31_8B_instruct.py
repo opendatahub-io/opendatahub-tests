@@ -58,6 +58,11 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "v
                 **BASE_SEVERRLESS_DEPLOYMENT_CONFIG,
                 "gpu_count": 1,
                 "name": "llama31-instruct-ser",
+                "custom_annotations": {
+                    "queue.serving.knative.dev/timeout-seconds": "600",
+                    "haproxy.router.openshift.io/timeout": "600s",
+                    "serving.knative.dev/progress-deadline": "10m",
+                },
             },
             id="llama31-instruct-8b-serverless-single-gpu",
         ),
@@ -133,6 +138,11 @@ class TestLlama31InstructModel:
                 **BASE_SEVERRLESS_DEPLOYMENT_CONFIG,
                 "gpu_count": 2,
                 "name": "llama31-instruct-sm",
+                "custom_annotations": {
+                    "queue.serving.knative.dev/timeout-seconds": "600",
+                    "haproxy.router.openshift.io/timeout": "600s",
+                    "serving.knative.dev/progress-deadline": "10m",
+                },
             },
             id="llama31-instruct-8b-serverless-multi-gpu",
         ),

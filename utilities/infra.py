@@ -280,8 +280,10 @@ def wait_for_inference_deployment_replicas(
                     replicas=isvc.instance.spec.predictor.get("minReplicas", 1),
                     timeout=timeout_watcher.remaining_time(),
                 )
-
-            deployment.wait_for_replicas(deployed=deployed, timeout=timeout_watcher.remaining_time())
+                deployment.wait_for_replicas(deployed=deployed, timeout=timeout_watcher.remaining_time())
+            else:
+                # Serverless deployments scale to zero when idle - skip replica wait
+                LOGGER.info("Skipping replica wait for serverless deployment (scales to zero)")
         else:
             raise ResourceNotFoundError(f"Predictor deployment {deployment.name} does not exist on the server.")
 
