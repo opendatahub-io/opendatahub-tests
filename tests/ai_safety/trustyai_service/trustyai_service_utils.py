@@ -82,7 +82,7 @@ class TrustyAIServiceClient:
             base_url = "/metrics/drift"
         else:
             raise MetricValidationError(f"Unknown metric: {metric_name}")
-        return f"{base_url}/{metric_name}"
+        return f"{base_url.rstrip('/')}/{metric_name}"
 
     def _send_request(
         self,
@@ -227,9 +227,8 @@ class TrustyAIServiceClient:
         Returns:
             requests.Response: Response from metric request.
         """
-        endpoint: str = (
-            f"/{self._get_metric_base_url(metric_name=metric_name)}/{self.Endpoints.REQUEST if schedule else ''}"
-        )
+        base_url = self._get_metric_base_url(metric_name=metric_name)
+        endpoint: str = f"{base_url}/{self.Endpoints.REQUEST}" if schedule else base_url
         LOGGER.info(f"Sending request for metric {metric_name} to endpoint {endpoint}")
         return self._send_request(endpoint=endpoint, method="POST", json=json)
 
