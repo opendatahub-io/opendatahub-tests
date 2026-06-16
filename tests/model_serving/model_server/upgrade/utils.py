@@ -2,10 +2,8 @@ import json
 from typing import TypedDict
 
 import structlog
-from kubernetes.client.exceptions import ApiException
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
-from ocp_resources.deployment import Deployment
 from ocp_resources.gateway import Gateway
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.llm_inference_service import LLMInferenceService
@@ -826,7 +824,7 @@ def verify_llmisvc_status_fields(
     logger.info(event=f"[VERIFY] Status fields check for '{llmisvc.name}'")
     logger.info(event=f"[VERIFY] All conditions: {conditions}")
 
-    ready = next((c for c in conditions if _attr(obj=c, key="type") == "Ready"), None)
+    ready = next((condition for condition in conditions if _attr(obj=condition, key="type") == "Ready"), None)
     if not ready:
         raise AssertionError(f"LLMInferenceService {llmisvc.name} has no Ready condition after upgrade")
 
@@ -921,21 +919,21 @@ def verify_llmisvc_config_refs_exist(
         )
         return
 
+    from utilities.resources.llm_inference_service_config import LLMInferenceServiceConfig
+
     missing: list[str] = []
-    api = client.resources.get(
-        api_version="serving.kserve.io/v1alpha1",
-        kind="LLMInferenceServiceConfig",
-    )
     for config_name in config_ref_names:
-        try:
-            api.get(name=config_name, namespace=LLMISVC_CONFIG_NAMESPACE)
+        config_cr = LLMInferenceServiceConfig(
+            client=client,
+            name=config_name,
+            namespace=LLMISVC_CONFIG_NAMESPACE,
+        )
+        exists = config_cr.exists
+        if exists:
             logger.info(event=f"[VERIFY] LLMInferenceServiceConfig '{config_name}': exists=True")
-        except ApiException as exc:
-            if exc.status == 404:
-                logger.warning(event=f"[VERIFY] LLMInferenceServiceConfig '{config_name}': exists=False (404)")
-                missing.append(config_name)
-            else:
-                raise
+        else:
+            logger.warning(event=f"[VERIFY] LLMInferenceServiceConfig '{config_name}': exists=False")
+            missing.append(config_name)
 
     if missing:
         raise AssertionError(
@@ -993,22 +991,3 @@ def verify_llmisvc_pods_not_restarted_against_baseline(
     if increased:
         raise PodContainersRestartError(f"LLMISVC pod restart counts increased after upgrade: {increased}")
     logger.info(event=f"[VERIFY] PASS: No container restarts across {len(pods)} pod(s)")
-
-
-def verify_llmisvc_controller_healthy(
-    client: DynamicClient,
-    namespace: str = "redhat-ods-applications",
-) -> None:
-    """Verify the llmisvc-controller-manager deployment is healthy after upgrade."""
-    deploy = Deployment(
-        client=client,
-        name="llmisvc-controller-manager",
-        namespace=namespace,
-    )
-    if not deploy.exists:
-        raise AssertionError(f"llmisvc-controller-manager deployment not found in {namespace}")
-
-    conditions = deploy.instance.status.conditions or []
-    available = any(c.type == "Available" and c.status == "True" for c in conditions)
-    if not available:
-        raise AssertionError(f"llmisvc-controller-manager is not Available: {conditions}")
