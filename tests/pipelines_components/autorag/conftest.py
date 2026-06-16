@@ -247,6 +247,24 @@ def autorag_hf_token_secret(
 
 
 @pytest.fixture(scope="class")
+def autorag_model_service_account(
+    admin_client: DynamicClient,
+    pipelines_namespace: Namespace,
+    autorag_hf_token_secret: Secret,
+) -> Generator[Any, Any, Any]:
+    """ServiceAccount with HF token secret for KServe storage initializer."""
+    from ocp_resources.service_account import ServiceAccount
+
+    with ServiceAccount(
+        client=admin_client,
+        namespace=pipelines_namespace.name,
+        name="autorag-model-sa",
+        secrets=[{"name": autorag_hf_token_secret.name}],
+    ) as sa:
+        yield sa
+
+
+@pytest.fixture(scope="class")
 def autorag_inference_runtime(
     admin_client: DynamicClient,
     pipelines_namespace: Namespace,
@@ -268,7 +286,7 @@ def autorag_inference_service(
     admin_client: DynamicClient,
     pipelines_namespace: Namespace,
     autorag_inference_runtime: ServingRuntimeFromTemplate,
-    autorag_hf_token_secret: Secret,
+    autorag_model_service_account: Any,
 ) -> Generator[InferenceService, Any, Any]:
     served_model_name = AUTORAG_LLAMA_STACK_INFERENCE_MODEL_ID or AUTORAG_INFERENCE_MODEL_NAME
     with create_isvc(
@@ -281,6 +299,7 @@ def autorag_inference_service(
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         wait=True,
         timeout=Timeout.TIMEOUT_30MIN,
+        model_service_account=autorag_model_service_account.name,
         resources={
             "requests": {"cpu": "2", "memory": "4Gi"},
             "limits": {"cpu": "4", "memory": "8Gi"},
@@ -325,7 +344,7 @@ def autorag_embedding_service(
     admin_client: DynamicClient,
     pipelines_namespace: Namespace,
     autorag_embedding_runtime: ServingRuntimeFromTemplate,
-    autorag_hf_token_secret: Secret,
+    autorag_model_service_account: Any,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=admin_client,
@@ -337,6 +356,7 @@ def autorag_embedding_service(
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         wait=True,
         timeout=Timeout.TIMEOUT_30MIN,
+        model_service_account=autorag_model_service_account.name,
         resources={
             "requests": {"cpu": "2", "memory": "4Gi"},
             "limits": {"cpu": "4", "memory": "8Gi"},
