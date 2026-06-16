@@ -100,6 +100,9 @@ class TestPostUpgradeStoppedNotebook:
         When the upgrade completes,
         Then the StatefulSet should still have 0 replicas.
         """
+        assert stopped_notebook_statefulset.exists, (
+            f"StatefulSet '{stopped_notebook_statefulset.name}' no longer exists after upgrade"
+        )
         replicas = stopped_notebook_statefulset.instance.spec.replicas
         assert replicas == 0, (
             f"StatefulSet '{stopped_notebook_statefulset.name}' has {replicas} replicas after upgrade, "

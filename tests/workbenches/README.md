@@ -9,7 +9,7 @@ workbenches/
 ├── notebooks_server/
 │   ├── controller/
 │   │   ├── conftest.py                   # Pytest fixtures (PVC, notebook image, notebook CR, pod)
-│   │   ├── utils.py                      # Shared utilities (image resolution, notebook CR building, username retrieval)
+│   │   ├── utils.py                      # Shared utilities (image resolution, notebook CR building)
 │   │   ├── test_spawning.py              # Basic notebook spawning tests
 │   │   ├── test_custom_images.py         # Custom image package verification tests
 │   │   └── upgrade/
