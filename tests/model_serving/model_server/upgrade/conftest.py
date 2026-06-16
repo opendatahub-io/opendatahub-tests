@@ -17,7 +17,9 @@ from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 
 from tests.model_serving.model_server.upgrade.utils import (
+    UPGRADE_LLMD_BASELINE_CM_NAME,
     capture_isvc_baseline,
+    capture_llmisvc_baseline,
     load_auth_token_from_secret,
     load_baseline_from_configmap,
     save_auth_token_to_secret,
@@ -1022,6 +1024,53 @@ def llmd_inference_service_fixture(
             timeout=Timeout.TIMEOUT_15MIN,
         ) as llmisvc:
             yield llmisvc
+
+
+@pytest.fixture(scope="session")
+def capture_llmd_upgrade_baseline(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    llmd_inference_service_fixture: LLMInferenceService,
+) -> None:
+    """Capture LLMISVC baseline values and persist to a ConfigMap.
+
+    No-op during post-upgrade runs.
+    """
+    if pytestconfig.option.post_upgrade:
+        return
+
+    baselines = {
+        llmd_inference_service_fixture.name: capture_llmisvc_baseline(
+            client=admin_client,
+            llmisvc=llmd_inference_service_fixture,
+        ),
+    }
+    save_baseline_to_configmap(
+        client=admin_client,
+        namespace=LLMD_UPGRADE_NAMESPACE,
+        baselines=baselines,
+        cm_name=UPGRADE_LLMD_BASELINE_CM_NAME,
+    )
+
+
+@pytest.fixture(scope="session")
+def llmd_upgrade_baseline_fixture(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+) -> dict[str, dict]:
+    """Load pre-upgrade LLMISVC baseline values from the cluster ConfigMap.
+
+    Only available during post-upgrade runs. Returns an empty dict during
+    pre-upgrade so fixtures that depend on it can be unconditionally wired.
+    """
+    if not pytestconfig.option.post_upgrade:
+        return {}
+
+    return load_baseline_from_configmap(
+        client=admin_client,
+        namespace=LLMD_UPGRADE_NAMESPACE,
+        cm_name=UPGRADE_LLMD_BASELINE_CM_NAME,
+    )
 
 
 # Post-Upgrade New ISVC Creation Fixtures
