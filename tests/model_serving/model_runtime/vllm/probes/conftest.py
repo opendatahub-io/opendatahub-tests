@@ -7,6 +7,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
+from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest import FixtureRequest
@@ -19,6 +20,7 @@ from tests.model_serving.model_runtime.vllm.cpu.cpu_x86.constant import (
 )
 from tests.model_serving.model_runtime.vllm.probes.utils import VLLM_LIVENESS_PROBE, VLLM_READINESS_PROBE
 from tests.model_serving.model_runtime.vllm.utils import (
+    add_image_pull_secrets_if_configured,
     dedupe_vllm_cli_args,
     skip_if_not_deployment_mode,
     validate_supported_quantization_schema,
@@ -66,6 +68,7 @@ def vllm_probes_inference_service(
     probes_serving_runtime: ServingRuntime,
     s3_models_storage_uri: str,
     vllm_model_service_account: ServiceAccount,
+    kserve_registry_pull_secret: Secret | None,
 ) -> Generator[InferenceService, Any, Any]:
     """vLLM CPU x86 InferenceService with probe-enabled runtime backed by S3 model storage."""
     isvc_kwargs: dict[str, Any] = {
@@ -96,6 +99,11 @@ def vllm_probes_inference_service(
 
     if model_env_variables := request.param.get("model_env_variables"):
         isvc_kwargs["model_env_variables"] = model_env_variables
+
+    add_image_pull_secrets_if_configured(
+        isvc_kwargs=isvc_kwargs,
+        kserve_registry_pull_secret=kserve_registry_pull_secret,
+    )
 
     with create_isvc(**isvc_kwargs) as isvc:
         yield isvc

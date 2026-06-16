@@ -137,18 +137,21 @@ def pytest_addoption(parser: Parser) -> None:
         help="Specify the OVMS runtime image to use for the tests",
     )
 
-    # OCI Registry options
+    # OCI Registry options (vLLM modelcar)
     ociregistry_group.addoption(
-        "--registry-pull-secret",
-        action="append",
-        default=None,
-        help="Registry pull secret to pull oci container images",
+        "--quay-io-registry-pull-secret",
+        default=os.environ.get("QUAY_IO_REGISTRY_PULL_SECRET"),
+        help="Pull secret for quay.io modelcar images (base64 auth or JSON credentials)",
     )
     ociregistry_group.addoption(
-        "--registry-host",
-        action="append",
-        default=None,
-        help="Registry host to pull oci container images",
+        "--registry-stage-redhat-io-registry-pull-secret",
+        default=os.environ.get("REGISTRY_STAGE_REDHAT_IO_REGISTRY_PULL_SECRET"),
+        help="Pull secret for registry.stage.redhat.io modelcar images (base64 auth or JSON credentials)",
+    )
+    ociregistry_group.addoption(
+        "--registry-redhat-io-registry-pull-secret",
+        default=os.environ.get("REGISTRY_REDHAT_IO_REGISTRY_PULL_SECRET"),
+        help="Pull secret for registry.redhat.io modelcar images (base64 auth or JSON credentials)",
     )
 
     # Serving arguments options

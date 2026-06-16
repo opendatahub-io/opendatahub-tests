@@ -23,6 +23,15 @@ from utilities.plugins.openai_plugin import OpenAIClient
 LOGGER = structlog.get_logger(name=__name__)
 
 
+def add_image_pull_secrets_if_configured(
+    isvc_kwargs: dict[str, Any],
+    kserve_registry_pull_secret: Secret | None,
+) -> None:
+    """Add imagePullSecrets to ISVC kwargs when a registry pull secret is configured."""
+    if kserve_registry_pull_secret is not None:
+        isvc_kwargs["image_pull_secrets"] = [kserve_registry_pull_secret.name]
+
+
 def dedupe_vllm_cli_args(arguments: list[str]) -> list[str]:
     """Keep the first occurrence of each CLI flag (e.g. --model) to avoid vLLM duplicate-key warnings."""
     seen: set[str] = set()
