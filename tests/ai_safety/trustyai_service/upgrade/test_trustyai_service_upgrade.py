@@ -289,6 +289,7 @@ class TestPreUpgradeTrustyAIServiceDB:
 )
 @pytest.mark.rawdeployment
 @pytest.mark.usefixtures("minio_pod")
+@pytest.mark.db_resources_pre_existing
 class TestPostUpgradeTrustyAIServiceDB:
     """Post-upgrade tests for TrustyAI Service with DB storage persistence."""
 
