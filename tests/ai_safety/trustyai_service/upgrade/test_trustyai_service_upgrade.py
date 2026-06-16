@@ -272,6 +272,7 @@ class TestPreUpgradeTrustyAIServiceDB:
     indirect=True,
 )
 @pytest.mark.rawdeployment
+@pytest.mark.db_resources_pre_existing
 class TestPostUpgradeTrustyAIServiceDB:
     """Post-upgrade tests for TrustyAI Service with DB storage persistence."""
 
