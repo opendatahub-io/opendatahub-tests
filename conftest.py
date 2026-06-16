@@ -59,7 +59,6 @@ def pytest_addoption(parser: Parser) -> None:
     upgrade_group = parser.getgroup(name="Upgrade options")
     must_gather_group = parser.getgroup(name="MustGather")
     cluster_sanity_group = parser.getgroup(name="ClusterSanity")
-    ociregistry_group = parser.getgroup(name="OCI Registry")
     serving_arguments_group = parser.getgroup(name="Serving arguments")
     model_validation_automation_group = parser.getgroup(name="Model Validation Automation")
     hf_group = parser.getgroup(name="Hugging Face")
@@ -138,21 +137,11 @@ def pytest_addoption(parser: Parser) -> None:
     )
 
     # OCI Registry options (vLLM modelcar)
-    ociregistry_group.addoption(
-        "--quay-io-registry-pull-secret",
-        default=os.environ.get("QUAY_IO_REGISTRY_PULL_SECRET"),
-        help="Pull secret for quay.io modelcar images (base64 auth or JSON credentials)",
+    from tests.model_serving.model_runtime.vllm.modelcar.pytest_options import (
+        register_modelcar_registry_pull_secret_options,
     )
-    ociregistry_group.addoption(
-        "--registry-stage-redhat-io-registry-pull-secret",
-        default=os.environ.get("REGISTRY_STAGE_REDHAT_IO_REGISTRY_PULL_SECRET"),
-        help="Pull secret for registry.stage.redhat.io modelcar images (base64 auth or JSON credentials)",
-    )
-    ociregistry_group.addoption(
-        "--registry-redhat-io-registry-pull-secret",
-        default=os.environ.get("REGISTRY_REDHAT_IO_REGISTRY_PULL_SECRET"),
-        help="Pull secret for registry.redhat.io modelcar images (base64 auth or JSON credentials)",
-    )
+
+    register_modelcar_registry_pull_secret_options(parser=parser)
 
     # Serving arguments options
     serving_arguments_group.addoption(

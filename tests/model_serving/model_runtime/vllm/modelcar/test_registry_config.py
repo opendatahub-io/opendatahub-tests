@@ -4,12 +4,14 @@ from types import SimpleNamespace
 import pytest
 from _pytest.config.argparsing import Parser
 
-from conftest import pytest_addoption
 from tests.model_serving.model_runtime.vllm.modelcar.constant import (
     MODELCAR_REGISTRIES,
     QUAY_IO_REGISTRY_HOST,
     REGISTRY_REDHAT_IO_HOST,
     REGISTRY_STAGE_REDHAT_IO_HOST,
+)
+from tests.model_serving.model_runtime.vllm.modelcar.pytest_options import (
+    register_modelcar_registry_pull_secret_options,
 )
 from tests.model_serving.model_runtime.vllm.modelcar.utils import collect_modelcar_registry_credentials
 
@@ -23,8 +25,8 @@ def _pytestconfig_with_secrets(**secrets: str | None) -> SimpleNamespace:
 
 def _parse_registry_options(args: list[str]) -> SimpleNamespace:
     parser = Parser(prog="pytest", usage="pytest [options]")
-    pytest_addoption(parser)
-    return parser.parse(args)
+    register_modelcar_registry_pull_secret_options(parser=parser)
+    return parser.parse(args=args)
 
 
 class TestCollectModelcarRegistryCredentials:
@@ -112,8 +114,8 @@ class TestModelcarRegistryPytestOptions:
     ) -> None:
         """Given an env var for a registry pull secret, pytest option defaults to that value."""
         for registry in MODELCAR_REGISTRIES:
-            monkeypatch.delenv(registry.env_var, raising=False)
-        monkeypatch.setenv(env_var, VALID_AUTH)
+            monkeypatch.delenv(key=registry.env_var, raising=False)
+        monkeypatch.setenv(key=env_var, value=VALID_AUTH)
 
         options = _parse_registry_options(args=[])
 
@@ -128,7 +130,7 @@ class TestModelcarRegistryPytestOptions:
         """Given both env var and CLI option, CLI option takes precedence."""
         cli_auth = base64.b64encode(b"cli-user:cli-pass").decode()
         env_auth = base64.b64encode(b"env-user:env-pass").decode()
-        monkeypatch.setenv("QUAY_IO_REGISTRY_PULL_SECRET", env_auth)
+        monkeypatch.setenv(key="QUAY_IO_REGISTRY_PULL_SECRET", value=env_auth)
 
         options = _parse_registry_options(args=["--quay-io-registry-pull-secret", cli_auth])
         pytestconfig = SimpleNamespace(option=options)
