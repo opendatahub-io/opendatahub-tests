@@ -13,7 +13,10 @@ EVALHUB_COMPONENT_LABEL: str = "api"
 
 # CRD details
 EVALHUB_API_GROUP: str = "trustyai.opendatahub.io"
-EVALHUB_API_VERSION: str = "v1alpha1"
+EVALHUB_API_VERSION_V1: str = "v1"
+EVALHUB_API_VERSION_V1ALPHA1: str = "v1alpha1"
+EVALHUB_FULL_API_VERSION_V1: str = f"{EVALHUB_API_GROUP}/v1"
+EVALHUB_FULL_API_VERSION_V1ALPHA1: str = f"{EVALHUB_API_GROUP}/v1alpha1"
 EVALHUB_KIND: str = "EvalHub"
 EVALHUB_PLURAL: str = "evalhubs"
 
