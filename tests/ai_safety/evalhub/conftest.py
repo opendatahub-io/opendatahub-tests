@@ -19,7 +19,9 @@ from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
+from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
+from ocp_resources.service_monitor import ServiceMonitor
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
@@ -28,6 +30,7 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_JOB_SA_PREFIX,
     EVALHUB_JOB_SA_SUFFIX,
     EVALHUB_JOBS_WRITER_CLUSTERROLE,
+    EVALHUB_METRICS_SERVICE_SUFFIX,
     EVALHUB_TENANT_LABEL_KEY,
     EVALHUB_TENANT_LABEL_VALUE,
     EVALHUB_USER_ROLE_RULES,
@@ -196,6 +199,38 @@ def evalhub_ca_bundle_file(
 ) -> str:
     """Create a CA bundle file for verifying the EvalHub route TLS certificate."""
     return create_ca_bundle_file(client=admin_client)
+
+
+@pytest.fixture(scope="class")
+def evalhub_service_monitor(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    evalhub_deployment: Deployment,
+) -> ServiceMonitor:
+    """Fetch the ServiceMonitor created by the operator for EvalHub metrics."""
+    sm_name = f"{evalhub_deployment.name}{EVALHUB_METRICS_SERVICE_SUFFIX}"
+    return ServiceMonitor(
+        client=admin_client,
+        name=sm_name,
+        namespace=model_namespace.name,
+        ensure_exists=True,
+    )
+
+
+@pytest.fixture(scope="class")
+def evalhub_metrics_service(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    evalhub_deployment: Deployment,
+) -> Service:
+    """Fetch the metrics Service created by the operator for EvalHub."""
+    svc_name = f"{evalhub_deployment.name}{EVALHUB_METRICS_SERVICE_SUFFIX}"
+    return Service(
+        client=admin_client,
+        name=svc_name,
+        namespace=model_namespace.name,
+        ensure_exists=True,
+    )
 
 
 # ---------------------------------------------------------------------------

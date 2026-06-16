@@ -75,3 +75,9 @@ MINIO_UPLOADER_SECURITY_CONTEXT = {
     "runAsNonRoot": True,
     "seccompProfile": {"type": "RuntimeDefault"},
 }
+
+# ServiceMonitor and metrics Service
+EVALHUB_METRICS_SERVICE_SUFFIX: str = "-metrics"
+EVALHUB_METRICS_PORT: int = 8081
+EVALHUB_METRICS_COMPONENT_LABEL: str = "metrics"
+EVALHUB_SCRAPE_INTERVAL: str = "30s"
