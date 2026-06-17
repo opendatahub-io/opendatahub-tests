@@ -12,7 +12,7 @@ Representative IDEs:
 - Code Server (`code-server-notebook`)
 - RStudio (`rstudio-rhel9`)
 
-Post-upgrade validation follows the log → HTTP → log sequence from Jan Stourac's criteria (RHAIENG-5382) for JupyterLab and Code Server. RStudio skips the in-container HTTP probe because it serves via nginx, not Jupyter Server. A PVC marker file confirms data survives the upgrade.
+Post-upgrade validation follows the log -> HTTP -> log sequence from Jan Stourac's criteria (RHAIENG-5382) for JupyterLab and Code Server. RStudio skips the in-container HTTP probe because it serves via nginx, not Jupyter Server. A PVC marker file confirms data survives the upgrade.
 
 ### Running
 

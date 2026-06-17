@@ -1,5 +1,7 @@
 """N-1 workbench image survival tests across RHOAI platform upgrades."""
 
+from typing import Any
+
 import pytest
 from ocp_resources.namespace import Namespace
 from ocp_resources.notebook import Notebook
@@ -12,14 +14,19 @@ from tests.workbenches.notebook_images.utils import (
     read_pvc_upgrade_marker,
     verify_workbench_survival,
 )
+from utilities.constants import Timeout
 
 _WORKBENCH_IMAGE_SPECS = get_workbench_image_specs()
-pytestmark = pytest.mark.parametrize(
-    argnames="workbench_image_spec",
-    argvalues=_WORKBENCH_IMAGE_SPECS,
-    ids=[spec.ide for spec in _WORKBENCH_IMAGE_SPECS],
-    indirect=True,
-)
+pytestmark = [
+    pytest.mark.tier2,
+    pytest.mark.slow,
+    pytest.mark.parametrize(
+        argnames="workbench_image_spec",
+        argvalues=_WORKBENCH_IMAGE_SPECS,
+        ids=[spec.ide for spec in _WORKBENCH_IMAGE_SPECS],
+        indirect=True,
+    ),
+]
 
 
 @pytest.mark.usefixtures("capture_n_minus_one_baseline")
@@ -65,25 +72,25 @@ class TestPostUpgradeNMinusOneWorkbench:
         n_minus_one_pod.wait_for_condition(
             condition=Pod.Condition.READY,
             status=Pod.Condition.Status.TRUE,
-            timeout=300,
+            timeout=Timeout.TIMEOUT_5MIN,
         )
 
     @pytest.mark.post_upgrade
-    def test_pod_not_restarted_after_upgrade(
+    def test_pod_not_recreated_after_upgrade(
         self,
         n_minus_one_pod: Pod,
-        n_minus_one_baseline: dict[str, str],
+        n_minus_one_baseline: dict[str, Any],
         workbench_image_spec: WorkbenchImageSpec,
     ) -> None:
         """Given a workbench pod was running before upgrade,
         When the upgrade completes,
-        Then the pod creationTimestamp should match the pre-upgrade baseline.
+        Then the pod object should not be recreated.
         """
         current_timestamp = n_minus_one_pod.instance.metadata.creationTimestamp
         saved_timestamp = n_minus_one_baseline["pod_creation_timestamp"]
 
         assert current_timestamp == saved_timestamp, (
-            f"Workbench pod for {workbench_image_spec.ide} was restarted during upgrade. "
+            f"Workbench pod for {workbench_image_spec.ide} was recreated during upgrade. "
             f"Pre-upgrade: {saved_timestamp}, post-upgrade: {current_timestamp}"
         )
 
@@ -91,7 +98,7 @@ class TestPostUpgradeNMinusOneWorkbench:
     def test_pvc_data_survives_upgrade(
         self,
         n_minus_one_pod: Pod,
-        n_minus_one_baseline: dict[str, str],
+        n_minus_one_baseline: dict[str, Any],
         workbench_image_spec: WorkbenchImageSpec,
     ) -> None:
         """Given a marker file was written to the workbench PVC before upgrade,

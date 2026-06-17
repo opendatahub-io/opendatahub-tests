@@ -3,26 +3,25 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import time
-from collections.abc import Generator
-from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
 
 import structlog
+from kubernetes.client.rest import ApiException
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.image_stream import ImageStream
 from ocp_resources.pod import ExecOnPodError, Pod
 from ocp_resources.resource import NamespacedResource
 from ocp_resources.secret import Secret
-from ocp_resources.service_account import ServiceAccount
 from packaging.version import InvalidVersion
 from packaging.version import Version as PackagingVersion
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
-from utilities.constants import Labels, Timeout
+from utilities.constants import Timeout
 from utilities.infra import get_product_version
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -59,7 +58,22 @@ _ALLOWED_LOG_MESSAGES = (
     "WARNING: The Jupyter server is listening on all IP addresses and not using authentication.",
     "ServerApp.token config is deprecated in 2.0. Use IdentityProvider.token.",
     "Unable to retrieve mac address (unexpected format)",
+    # workbench-trusted-ca-bundle ConfigMap is optional; absent in test namespaces
+    "Skipping trusted CA bundle mount because the ConfigMap is not available",
+    "WARNING: skipping notebook trusted CA setup because no bundle was mounted",
 )
+
+_SENSITIVE_LOG_VALUE_RE = re.compile(
+    r"(?i)\b(token|access[_-]?token|refresh[_-]?token|password|passwd|secret)=([^\&\s]+)"
+)
+_SENSITIVE_HEADER_RE = re.compile(r"(?i)\b(authorization|cookie):\s*[^\r\n]+")
+
+
+def _redact_log_line(line: str) -> str:
+    """Redact common secret-bearing values before logs reach CI output."""
+    line = _SENSITIVE_LOG_VALUE_RE.sub(repl=r"\1=<redacted>", string=line)
+    return _SENSITIVE_HEADER_RE.sub(repl=r"\1: <redacted>", string=line)
+
 
 _RHOAI_VERSIONING_START = PackagingVersion(version="3.4")
 
@@ -125,8 +139,8 @@ def _resolve_target_image_tag(
     if image_tag:
         if image_tag in resolved_tags:
             return image_tag
-        if allow_latest_tag and image_tag == "latest" and spec_tag_names and "latest" in spec_tag_names:
-            return "latest"
+        if spec_tag_names and image_tag in spec_tag_names:
+            return image_tag
         return None
 
     product_version = get_product_version(admin_client=admin_client)
@@ -206,19 +220,25 @@ def _rstudio_build_prerequisite_skip_reason(admin_client: DynamicClient, namespa
 
 def _start_imagestream_build(namespace: str, buildconfig_name: str) -> None:
     """Trigger an OpenShift BuildConfig to populate an ImageStream tag."""
-    result = subprocess.run(
-        args=["oc", "start-build", buildconfig_name, "-n", namespace],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            args=["oc", "start-build", buildconfig_name, "-n", namespace],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=120,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise AssertionError(
+            f"Timed out starting BuildConfig '{buildconfig_name}' in namespace '{namespace}'"
+        ) from error
     if result.returncode != 0:
         raise AssertionError(
             f"Failed to start BuildConfig '{buildconfig_name}' in namespace '{namespace}': "
             f"{result.stderr.strip() or result.stdout.strip()}"
         )
 
-    LOGGER.info(f"Triggered BuildConfig '{buildconfig_name}' in namespace '{namespace}': {result.stdout.strip()}")
+    LOGGER.info(f"Triggered BuildConfig '{buildconfig_name}' in namespace '{namespace}'")
 
 
 def _refresh_imagestream_data(admin_client: DynamicClient, imagestream_name: str, namespace: str) -> dict[str, Any]:
@@ -465,139 +485,6 @@ def resolve_n_minus_one_image(admin_client: DynamicClient, spec: WorkbenchImageS
     )
 
 
-@contextmanager
-def notebook_service_account(
-    client: DynamicClient,
-    name: str,
-    namespace: str,
-    *,
-    teardown: bool = True,
-) -> Generator[ServiceAccount, Any, Any]:
-    """Ensure the per-notebook ServiceAccount exists before deploying a Notebook CR.
-
-    The Kubeflow notebook controller creates the StatefulSet immediately, but on some
-    RHOAI versions the ODH controller creates auth resources asynchronously. Pre-creating
-    the ServiceAccount avoids pod scheduling failures when the SA is not found.
-
-    Args:
-        client: Kubernetes client for the target namespace.
-        name: ServiceAccount name (matches the notebook name).
-        namespace: Target namespace.
-        teardown: Whether to delete the ServiceAccount on context exit.
-
-    Yields:
-        The existing or newly created ServiceAccount.
-    """
-    existing_sa = ServiceAccount(client=client, name=name, namespace=namespace, ensure_exists=False)
-    if existing_sa.exists:
-        yield existing_sa
-        return
-
-    with ServiceAccount(client=client, name=name, namespace=namespace, teardown=teardown) as service_account:
-        yield service_account
-
-
-def build_notebook_dict(
-    namespace: str,
-    name: str,
-    image_path: str,
-    extra_annotations: dict[str, str] | None = None,
-) -> dict[str, Any]:
-    """Build a Notebook CR dict for the kubeflow.org/v1 API.
-
-    Args:
-        namespace: Target namespace for the Notebook.
-        name: Notebook resource name (also used for PVC claim, service account, container).
-        image_path: Full container image reference.
-        extra_annotations: Optional annotations merged into metadata.
-
-    Returns:
-        A dict suitable for passing to ``Notebook(kind_dict=...)``.
-    """
-    probe_config = {
-        "failureThreshold": 3,
-        "httpGet": {
-            "path": f"/notebook/{namespace}/{name}/api",
-            "port": "notebook-port",
-            "scheme": "HTTP",
-        },
-        "initialDelaySeconds": 10,
-        "periodSeconds": 5,
-        "successThreshold": 1,
-        "timeoutSeconds": 1,
-    }
-
-    annotations: dict[str, str] = {
-        Labels.Notebook.INJECT_AUTH: "true",
-        "opendatahub.io/accelerator-name": "",
-        "notebooks.opendatahub.io/last-image-selection": image_path,
-    }
-    if extra_annotations:
-        annotations.update(extra_annotations)
-
-    return {
-        "apiVersion": "kubeflow.org/v1",
-        "kind": "Notebook",
-        "metadata": {
-            "annotations": annotations,
-            "labels": {
-                Labels.Openshift.APP: name,
-                Labels.OpenDataHub.DASHBOARD: "true",
-                "opendatahub.io/odh-managed": "true",
-            },
-            "name": name,
-            "namespace": namespace,
-        },
-        "spec": {
-            "template": {
-                "spec": {
-                    "affinity": {},
-                    "containers": [
-                        {
-                            "env": [
-                                {
-                                    "name": "NOTEBOOK_ARGS",
-                                    "value": "--ServerApp.port=8888\n"
-                                    "                  "
-                                    "--ServerApp.token=''\n"
-                                    "                  "
-                                    "--ServerApp.password=''\n"
-                                    "                  "
-                                    f"--ServerApp.base_url=/notebook/{namespace}/{name}\n"
-                                    "                  "
-                                    "--ServerApp.quit_button=False\n",
-                                },
-                                {"name": "JUPYTER_IMAGE", "value": image_path},
-                            ],
-                            "image": image_path,
-                            "imagePullPolicy": "Always",
-                            "livenessProbe": probe_config,
-                            "name": name,
-                            "ports": [{"containerPort": 8888, "name": "notebook-port", "protocol": "TCP"}],
-                            "readinessProbe": probe_config,
-                            "resources": {
-                                "limits": {"cpu": "2", "memory": "4Gi"},
-                                "requests": {"cpu": "1", "memory": "1Gi"},
-                            },
-                            "volumeMounts": [
-                                {"mountPath": "/opt/app-root/src", "name": name},
-                                {"mountPath": "/dev/shm", "name": "shm"},
-                            ],
-                            "workingDir": "/opt/app-root/src",
-                        },
-                    ],
-                    "enableServiceLinks": False,
-                    "serviceAccountName": name,
-                    "volumes": [
-                        {"name": name, "persistentVolumeClaim": {"claimName": name}},
-                        {"emptyDir": {"medium": "Memory"}, "name": "shm"},
-                    ],
-                }
-            }
-        },
-    }
-
-
 def grab_and_check_workbench_logs(
     pod: Pod,
     container_name: str,
@@ -628,10 +515,11 @@ def grab_and_check_workbench_logs(
         if not any(keyword in line for keyword in _BLOCKED_LOG_KEYWORDS):
             continue
         if any(allowed in line for allowed in allowed_messages):
-            LOGGER.debug(f"Waived log message: {line}")
+            LOGGER.debug(f"Waived log message: {_redact_log_line(line=line)}")
             continue
-        LOGGER.error(f"Unexpected log keyword in: {line}")
-        failed_lines.append(line)
+        redacted_line = _redact_log_line(line=line)
+        LOGGER.error(f"Unexpected log keyword in: {redacted_line}")
+        failed_lines.append(redacted_line)
 
     if failed_lines:
         joined_lines = "\n".join(failed_lines)
@@ -662,26 +550,25 @@ def wait_for_http_inside_container(
 
     Raises:
         AssertionError: If the container exits before becoming ready.
-        TimeoutError: If HTTP does not respond within the timeout.
+        TimeoutExpiredError: If HTTP does not respond within the timeout.
     """
-    check_script = f"import urllib.request; urllib.request.urlopen('http://localhost:{port}{path}', timeout=2)"
-    deadline = time.monotonic() + timeout
+    url = f"http://localhost:{port}{path}"
+    check_script = "import sys; import urllib.request; urllib.request.urlopen(sys.argv[1], timeout=2)"
 
-    while time.monotonic() <= deadline:
+    for _ in TimeoutSampler(wait_timeout=int(timeout), sleep=2, func=lambda: True):
         pod_phase = pod.instance.status.phase
         if pod_phase in {pod.Status.FAILED, pod.Status.SUCCEEDED}:
             raise AssertionError(f"Pod '{pod.name}' is not running before HTTP check (phase={pod_phase})")
 
         try:
-            pod.execute(container=container_name, command=["python", "-c", check_script], timeout=30)
+            pod.execute(
+                container=container_name,
+                command=["python", "-c", check_script, url],
+                timeout=30,
+            )
             return
         except ExecOnPodError:
-            time.sleep(2)
-
-    raise TimeoutError(
-        f"HTTP server on port {port} path '{path}' did not become ready within {timeout}s "
-        f"in pod '{pod.name}' container '{container_name}'"
-    )
+            pass
 
 
 def verify_workbench_survival(
@@ -716,11 +603,20 @@ def write_pvc_upgrade_marker(pod: Pod, container_name: str) -> None:
 
 def read_pvc_upgrade_marker(pod: Pod, container_name: str) -> str:
     """Read the pre-upgrade marker file from the workbench PVC."""
-    output = pod.execute(
-        container=container_name,
-        command=["cat", f"/opt/app-root/src/{UPGRADE_MARKER_FILENAME}"],
-        timeout=60,
-    )
+    marker_path = f"/opt/app-root/src/{UPGRADE_MARKER_FILENAME}"
+    try:
+        output = pod.execute(
+            container=container_name,
+            command=["cat", marker_path],
+            timeout=60,
+        )
+    except ExecOnPodError as error:
+        raise AssertionError(
+            f"Failed to read upgrade marker file '{marker_path}' from pod '{pod.name}' "
+            f"container '{container_name}'. "
+            "The pre-upgrade write may have failed silently, or the path is wrong. "
+            f"Underlying exec error: {error}"
+        ) from error
     return output.strip()
 
 
@@ -733,27 +629,33 @@ def merge_baseline_entry(
     """Merge one notebook baseline entry into the shared upgrade ConfigMap."""
     from ocp_resources.config_map import ConfigMap
 
-    cm = ConfigMap(client=admin_client, name=UPGRADE_BASELINE_CM_NAME, namespace=namespace)
-    existing_data: dict[str, Any] = {}
+    for attempt in range(5):
+        cm = ConfigMap(client=admin_client, name=UPGRADE_BASELINE_CM_NAME, namespace=namespace)
+        existing_data: dict[str, Any] = {}
+        if cm.exists:
+            raw = (cm.instance.data or {}).get("baseline", "{}")
+            existing_data = json.loads(raw)
 
-    if cm.exists:
-        raw = (cm.instance.data or {}).get("baseline", "{}")
-        existing_data = json.loads(raw)
+        existing_data[notebook_name] = baseline_entry
 
-    existing_data[notebook_name] = baseline_entry
-
-    if cm.exists:
-        resource_dict = cm.instance.to_dict()
-        resource_dict.setdefault("data", {})
-        resource_dict["data"]["baseline"] = json.dumps(existing_data)
-        cm.update(resource_dict=resource_dict)
-    else:
-        ConfigMap(
-            client=admin_client,
-            name=UPGRADE_BASELINE_CM_NAME,
-            namespace=namespace,
-            data={"baseline": json.dumps(existing_data)},
-        ).deploy()
+        try:
+            if cm.exists:
+                resource_dict = cm.instance.to_dict()
+                resource_dict.setdefault("data", {})
+                resource_dict["data"]["baseline"] = json.dumps(existing_data)
+                cm.update(resource_dict=resource_dict)
+            else:
+                ConfigMap(
+                    client=admin_client,
+                    name=UPGRADE_BASELINE_CM_NAME,
+                    namespace=namespace,
+                    data={"baseline": json.dumps(existing_data)},
+                ).deploy()
+            return
+        except ApiException as err:
+            if err.status != 409 or attempt == 4:
+                raise
+            time.sleep(1)
 
 
 def load_baseline_entry(

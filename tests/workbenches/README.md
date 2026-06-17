@@ -6,21 +6,21 @@ This directory contains tests for Jupyter notebook workbenches in OpenDataHub/RH
 
 ```text
 workbenches/
-├── notebooks_server/
-│   ├── controller/
-│   │   ├── conftest.py                   # Pytest fixtures (PVC, notebook image, notebook CR, pod)
-│   │   ├── utils.py                      # Shared utilities (image resolution, notebook CR building)
-│   │   ├── test_spawning.py              # Basic notebook spawning tests
-│   │   ├── test_custom_images.py         # Custom image package verification tests
-│   │   └── upgrade/
-│   │       ├── conftest.py               # Session-scoped fixtures for upgrade lifecycle
-│   │       └── test_upgrade.py           # Pre/post upgrade notebook survival tests
-│   └── operator/
-│       └── test_imagestream_health.py    # ImageStream validation tests
-└── notebook_images/                      # N-1 workbench image upgrade survival tests
-    ├── conftest.py                       # Session-scoped upgrade fixtures per IDE
-    ├── utils.py                          # Image resolution, log/HTTP validation helpers
-    └── test_upgrade_n_minus_1.py         # Pre/post upgrade N-1 image survival tests
+|-- notebooks_server/
+|   |-- controller/
+|   |   |-- conftest.py                   # Pytest fixtures (PVC, notebook image, notebook CR, pod)
+|   |   |-- utils.py                      # Shared utilities (image resolution, notebook CR building)
+|   |   |-- test_spawning.py              # Basic notebook spawning tests
+|   |   |-- test_custom_images.py         # Custom image package verification tests
+|   |   +-- upgrade/
+|   |       |-- conftest.py               # Session-scoped fixtures for upgrade lifecycle
+|   |       +-- test_upgrade.py           # Pre/post upgrade notebook survival tests
+|   +-- operator/
+|       +-- test_imagestream_health.py    # ImageStream validation tests
++-- notebook_images/                      # N-1 workbench image upgrade survival tests
+    |-- conftest.py                       # Session-scoped upgrade fixtures per IDE
+    |-- utils.py                          # Image resolution, log/HTTP validation helpers
+    +-- test_upgrade_n_minus_1.py         # Pre/post upgrade N-1 image survival tests
 ```
 
 ### Current Test Suites

@@ -15,12 +15,14 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 from tests.workbenches.notebook_images.utils import (
     UPGRADE_MARKER_CONTENT,
     WorkbenchImageSpec,
-    build_notebook_dict,
     merge_baseline_entry,
-    notebook_service_account,
     resolve_n_minus_one_image,
     should_skip_workbench_spec,
     write_pvc_upgrade_marker,
+)
+from tests.workbenches.notebooks_server.controller.utils import (
+    build_notebook_dict,
+    notebook_service_account,
 )
 from utilities import constants
 from utilities.constants import Timeout
@@ -108,10 +110,18 @@ def n_minus_one_baseline_data(
 
 @pytest.fixture(scope="session")
 def n_minus_one_image(
+    pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     workbench_image_spec: WorkbenchImageSpec,
+    n_minus_one_baseline_data: dict[str, Any],
 ) -> str:
     """Resolved N-1 image reference for the parametrized IDE."""
+    if pytestconfig.option.post_upgrade:
+        baseline_image = n_minus_one_baseline_data.get("image")
+        assert baseline_image, (
+            f"No baseline image stored for {workbench_image_spec.ide}; ensure pre-upgrade tests ran successfully."
+        )
+        return str(baseline_image)
     return resolve_n_minus_one_image(admin_client=admin_client, spec=workbench_image_spec)
 
 
@@ -160,8 +170,8 @@ def n_minus_one_notebook(
     n_minus_one_pvc: PersistentVolumeClaim,
     n_minus_one_baseline_data: dict[str, Any],
     workbench_image_spec: WorkbenchImageSpec,
+    n_minus_one_image: str,
     teardown_resources: bool,
-    request: pytest.FixtureRequest,
 ) -> Generator[Notebook, Any, Any]:
     """Notebook CR launched on the N-1 workbench image."""
     notebook_kwargs = {
@@ -177,7 +187,6 @@ def n_minus_one_notebook(
             nb.client = admin_client
             nb.clean_up()
     else:
-        n_minus_one_image = request.getfixturevalue(argname="n_minus_one_image")
         existing_notebook = Notebook(**notebook_kwargs)
         if existing_notebook.exists:
             annotations = existing_notebook.instance.metadata.annotations or {}
@@ -198,12 +207,13 @@ def n_minus_one_notebook(
                 f"'{selected_image}' but expected '{n_minus_one_image}'; recreating notebook"
             )
             existing_notebook.delete()
-            for _ in TimeoutSampler(
+            for sample in TimeoutSampler(
                 wait_timeout=Timeout.TIMEOUT_5MIN,
                 sleep=5,
                 func=lambda: not Notebook(**notebook_kwargs).exists,
             ):
-                break
+                if sample:
+                    break
 
         notebook_dict = build_notebook_dict(
             namespace=n_minus_one_namespace.name,
@@ -224,7 +234,6 @@ def n_minus_one_notebook(
 
 @pytest.fixture(scope="session")
 def n_minus_one_pod(
-    pytestconfig: pytest.Config,
     unprivileged_client: DynamicClient,
     n_minus_one_notebook: Notebook,
     workbench_image_spec: WorkbenchImageSpec,
@@ -235,9 +244,6 @@ def n_minus_one_pod(
         namespace=n_minus_one_notebook.namespace,
         name=f"{n_minus_one_notebook.name}-0",
     )
-
-    if pytestconfig.option.post_upgrade:
-        return notebook_pod
 
     try:
         notebook_pod.wait()
