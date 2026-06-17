@@ -331,10 +331,6 @@ def autorag_embedding_runtime(
         multi_model=False,
         enable_http=True,
         enable_grpc=False,
-        runtime_image=(
-            "registry.redhat.io/rhaii-early-access/vllm-cpu-rhel9"
-            "@sha256:c64ed56ee8622f55fc1b22a3f1bc114755672f655d56b8b76572c3e81f03fd79"
-        ),
     ) as runtime:
         yield runtime
 
