@@ -17,7 +17,10 @@ workbenches/
 │   │       └── test_upgrade.py           # Pre/post upgrade notebook survival tests
 │   └── operator/
 │       └── test_imagestream_health.py    # ImageStream validation tests
-└── notebook_images/                      # Notebook container image tests (placeholder)
+└── notebook_images/                      # N-1 workbench image upgrade survival tests
+    ├── conftest.py                       # Session-scoped upgrade fixtures per IDE
+    ├── utils.py                          # Image resolution, log/HTTP validation helpers
+    └── test_upgrade_n_minus_1.py         # Pre/post upgrade N-1 image survival tests
 ```
 
 ### Current Test Suites
@@ -26,6 +29,7 @@ workbenches/
 - **`notebooks_server/controller/test_spawning.py`** - Tests basic notebook creation via Notebook CR and validates pod creation. Also tests Auth proxy container resource customization via annotations
 - **`notebooks_server/controller/test_custom_images.py`** - Validates custom workbench images contain required Python packages by spawning a workbench, installing any missing packages, and executing import verification
 - **`notebooks_server/controller/upgrade/test_upgrade.py`** - Upgrade survival tests. Pre-upgrade creates a notebook and captures its pod creation timestamp to a ConfigMap. Post-upgrade verifies the pod was not restarted by comparing timestamps
+- **`notebook_images/test_upgrade_n_minus_1.py`** - N-1 workbench image survival tests for JupyterLab, Code Server, and RStudio. Pre-upgrade launches workbenches on source-version ImageStream tags; post-upgrade validates pod survival, PVC data, clean logs, and in-container HTTP responsiveness
 
 ## Test Markers
 
@@ -62,6 +66,12 @@ uv run pytest --pre-upgrade tests/workbenches/notebooks_server/controller/upgrad
 
 # Run upgrade tests (post-upgrade phase)
 uv run pytest --post-upgrade tests/workbenches/notebooks_server/controller/upgrade/
+
+# Run N-1 image upgrade tests (pre-upgrade phase)
+uv run pytest --pre-upgrade tests/workbenches/notebook_images/
+
+# Run N-1 image upgrade tests (post-upgrade phase)
+uv run pytest --post-upgrade tests/workbenches/notebook_images/
 ```
 
 ### Run Tests with Markers
