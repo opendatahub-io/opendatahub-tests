@@ -37,7 +37,6 @@ def poll_readyz(url: str, headers: dict[str, str], expected_code: int, timeout: 
                 return sample
     except TimeoutExpiredError:
         raise AssertionError(f"/readyz did not return {expected_code} within {timeout}s")
-    raise AssertionError(f"/readyz did not return {expected_code} within {timeout}s")
 
 
 def restore_catalog(admin_client: DynamicClient, namespace: str) -> None:
