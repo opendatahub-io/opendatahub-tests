@@ -16,7 +16,7 @@ from ocp_resources.trustyai_service import TrustyAIService
 from timeout_sampler import TimeoutSampler
 
 from utilities.certificates_utils import create_ca_bundle_file
-from utilities.constants import TRUSTYAI_SERVICE_NAME, KServeDeploymentType, Protocols, Timeout
+from utilities.constants import TRUSTYAI_SERVICE_NAME, Protocols, Timeout
 from utilities.exceptions import MetricValidationError
 from utilities.general import create_isvc_label_selector_str
 from utilities.inference_utils import Inference, UserInference
@@ -393,8 +393,7 @@ def wait_for_isvc_deployment_registered_by_trustyai_service(
     pod_label_selector = create_isvc_label_selector_str(isvc=isvc, resource_type="pod", runtime_name=runtime_name)
     trustyai_service = TrustyAIService(name=TRUSTYAI_SERVICE_NAME, namespace=isvc.namespace, ensure_exists=True)
 
-    deployment_mode = isvc.instance.metadata.annotations.get("serving.kserve.io/deploymentMode", "")
-    scheme = "https" if deployment_mode in KServeDeploymentType.RAW_DEPLOYMENT_MODES else "http"
+    expected_sink_host = f"{trustyai_service.name}.{isvc.namespace}.svc.cluster.local"
 
     def _get_deployments() -> list[Deployment]:
         return list(
@@ -426,10 +425,8 @@ def wait_for_isvc_deployment_registered_by_trustyai_service(
 
         all_ready = True
         for deployment in deployments:
-            if (
-                deployment.instance.metadata.annotations.get("internal.serving.kserve.io/logger-sink-url")
-                == f"{scheme}://{trustyai_service.name}.{isvc.namespace}.svc.cluster.local"
-            ):
+            sink_url = deployment.instance.metadata.annotations.get("internal.serving.kserve.io/logger-sink-url", "")
+            if sink_url.endswith(expected_sink_host):
                 deployment.wait_for_replicas()
                 deployment.wait_for_condition(condition="Available", status="True")
 
