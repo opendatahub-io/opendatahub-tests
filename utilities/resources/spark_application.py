@@ -219,17 +219,14 @@ class SparkApplication(NamespacedResource):
             if self.type is None:
                 raise MissingRequiredArgumentError(argument="self.type")
 
-
             self.res["spec"] = {}
             _spec = self.res["spec"]
-
 
             _spec["driver"] = self.driver
             _spec["executor"] = self.executor
             _spec["mainApplicationFile"] = self.main_application_file
             _spec["sparkVersion"] = self.spark_version
             _spec["type"] = self.type
-
 
             if self.arguments is not None:
                 _spec["arguments"] = self.arguments

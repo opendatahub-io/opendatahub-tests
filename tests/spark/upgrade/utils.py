@@ -314,8 +314,7 @@ def verify_pods_not_restarted(
         baseline_count = baseline_restart_counts.get(pod.name, 0)
 
         assert current_restart_count <= baseline_count, (
-            f"Pod {pod.name} restarted during upgrade. "
-            f"Baseline: {baseline_count}, Current: {current_restart_count}"
+            f"Pod {pod.name} restarted during upgrade. Baseline: {baseline_count}, Current: {current_restart_count}"
         )
 
     LOGGER.info(f"All pods for SparkApplication {spark_app.name} have not restarted beyond baseline")
