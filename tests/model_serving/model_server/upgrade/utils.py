@@ -15,6 +15,8 @@ from utilities.constants import Annotations
 from utilities.exceptions import PodContainersRestartError, ResourceMismatchError
 from utilities.infra import get_inference_serving_runtime, get_pods_by_isvc_label
 
+LOGGER = structlog.get_logger(name=__name__)
+
 UPGRADE_BASELINE_CM_NAME = "upgrade-test-baseline"
 UPGRADE_LLMD_BASELINE_CM_NAME = "upgrade-llmd-test-baseline"
 UPGRADE_AUTH_TOKEN_SECRET_NAME = "upgrade-test-auth-token"  # pragma: allowlist secret
@@ -189,8 +191,6 @@ def verify_metrics_retained(
     """
     from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
-    logger = structlog.get_logger(name=__name__)
-
     try:
         for sample in TimeoutSampler(
             wait_timeout=timeout,
@@ -202,11 +202,11 @@ def verify_metrics_retained(
                 if metric_values and len(metric_values) >= 2:
                     value = int(float(metric_values[1]))
                     if value >= min_value:
-                        logger.info(f"Metrics value {value} meets minimum threshold {min_value}")
+                        LOGGER.info(f"Metrics value {value} meets minimum threshold {min_value}")
                         return
-                    logger.info(f"Current metrics value: {value}, waiting for: {min_value}")
+                    LOGGER.info(f"Current metrics value: {value}, waiting for: {min_value}")
             else:
-                logger.info(f"No metrics found yet for query: {query}")
+                LOGGER.info(f"No metrics found yet for query: {query}")
     except TimeoutExpiredError:
         raise AssertionError(f"Timed out waiting for metrics. Query: {query}, minimum expected: {min_value}") from None
 
@@ -384,21 +384,21 @@ def verify_gateway_accepted(gateway: Gateway) -> None:
     Raises:
         AssertionError: If gateway does not exist or is not accepted
     """
-    logger = structlog.get_logger(name=__name__)
-    logger.info(event=f"[VERIFY] Gateway check: '{gateway.name}' in ns '{gateway.namespace}'")
-    logger.info(event=f"[VERIFY] Gateway exists: {gateway.exists}")
+
+    LOGGER.info(event=f"[VERIFY] Gateway check: '{gateway.name}' in ns '{gateway.namespace}'")
+    LOGGER.info(event=f"[VERIFY] Gateway exists: {gateway.exists}")
     if not gateway.exists:
         raise AssertionError(f"Gateway {gateway.name} does not exist in namespace {gateway.namespace}")
 
     conditions = gateway.instance.status.get("conditions", [])
-    logger.info(event=f"[VERIFY] Gateway conditions: {conditions}")
+    LOGGER.info(event=f"[VERIFY] Gateway conditions: {conditions}")
     is_accepted = any(
         condition.get("type") == "Accepted" and condition.get("status") == "True" for condition in conditions
     )
-    logger.info(event=f"[VERIFY] Gateway Accepted: {is_accepted}")
+    LOGGER.info(event=f"[VERIFY] Gateway Accepted: {is_accepted}")
     if not is_accepted:
         raise AssertionError(f"Gateway {gateway.name} is not Accepted. Conditions: {conditions}")
-    logger.info(event=f"[VERIFY] PASS: Gateway '{gateway.name}' is Accepted")
+    LOGGER.info(event=f"[VERIFY] PASS: Gateway '{gateway.name}' is Accepted")
 
 
 def capture_isvc_baseline(client: DynamicClient, isvc: InferenceService) -> ISVCBaseline:
@@ -416,7 +416,6 @@ def capture_isvc_baseline(client: DynamicClient, isvc: InferenceService) -> ISVC
     Returns:
         ISVCBaseline with isvc_observed_generation, runtime_generation, and pod_restart_counts
     """
-    logger = structlog.get_logger(name=__name__)
 
     baseline: ISVCBaseline = {
         "isvc_observed_generation": isvc.instance.status.observedGeneration,
@@ -438,7 +437,7 @@ def capture_isvc_baseline(client: DynamicClient, isvc: InferenceService) -> ISVC
             }
 
     baseline["pod_restart_counts"] = pod_restart_counts
-    logger.info(f"Captured baseline for {isvc.name}: {baseline}")
+    LOGGER.info(f"Captured baseline for {isvc.name}: {baseline}")
     return baseline
 
 
@@ -686,12 +685,12 @@ def capture_llmisvc_baseline(
     llmisvc: LLMInferenceService,
 ) -> LLMISVCBaseline:
     """Capture pre-upgrade state for an LLMInferenceService."""
-    logger = structlog.get_logger(name=__name__)
+
     spec = llmisvc.instance.spec
     pods = _get_all_llmisvc_pods(client=client, llmisvc=llmisvc)
 
-    logger.info(event=f"[BASELINE] Capturing baseline for LLMISVC '{llmisvc.name}' in ns '{llmisvc.namespace}'")
-    logger.info(event=f"[BASELINE] Found {len(pods)} pod(s): {[p.name for p in pods]}")
+    LOGGER.info(event=f"[BASELINE] Capturing baseline for LLMISVC '{llmisvc.name}' in ns '{llmisvc.namespace}'")
+    LOGGER.info(event=f"[BASELINE] Found {len(pods)} pod(s): {[p.name for p in pods]}")
 
     generation = llmisvc.instance.metadata.generation
     url = _get_llmisvc_url(status=llmisvc.instance.status)
@@ -700,22 +699,22 @@ def capture_llmisvc_baseline(
     container_images = _collect_container_images(pods=pods)
     restart_counts = _collect_restart_counts(pods=pods)
 
-    logger.info(event=f"[BASELINE] spec_generation={generation}")
-    logger.info(event=f"[BASELINE] url='{url}'")
-    logger.info(event=f"[BASELINE] replicas={replicas}")
-    logger.info(event=f"[BASELINE] config_ref_names ({len(config_ref_names)}): {config_ref_names}")
+    LOGGER.info(event=f"[BASELINE] spec_generation={generation}")
+    LOGGER.info(event=f"[BASELINE] url='{url}'")
+    LOGGER.info(event=f"[BASELINE] replicas={replicas}")
+    LOGGER.info(event=f"[BASELINE] config_ref_names ({len(config_ref_names)}): {config_ref_names}")
     if not config_ref_names:
-        logger.warning(
+        LOGGER.warning(
             event="[BASELINE] WARNING: No config refs found in LLMISVC status annotations. "
             "test_llmd_config_refs_survive_upgrade will be a NO-OP. "
             f"Expected annotations with prefix '{_CONFIG_REF_ANNOTATION_PREFIX}' in status.annotations."
         )
     for pod_name, images in container_images.items():
         for cname, cimage in images.items():
-            logger.info(event=f"[BASELINE] container_image: pod={pod_name} container={cname} image={cimage}")
+            LOGGER.info(event=f"[BASELINE] container_image: pod={pod_name} container={cname} image={cimage}")
     for pod_name, counts in restart_counts.items():
         for cname, count in counts.items():
-            logger.info(event=f"[BASELINE] restart_count: pod={pod_name} container={cname} count={count}")
+            LOGGER.info(event=f"[BASELINE] restart_count: pod={pod_name} container={cname} count={count}")
 
     baseline: LLMISVCBaseline = {
         "spec_generation": generation,
@@ -738,7 +737,7 @@ def _extract_config_ref_names(llmisvc: LLMInferenceService) -> list[str]:
     ``serving.kserve.io/config-llm-``. Each annotation value is the name of a
     LLMInferenceServiceConfig CR in the ``redhat-ods-applications`` namespace.
     """
-    logger = structlog.get_logger(name=__name__)
+
     refs: list[str] = []
 
     status = llmisvc.instance.status
@@ -750,7 +749,7 @@ def _extract_config_ref_names(llmisvc: LLMInferenceService) -> list[str]:
 
     for key, value in status_annotations.items():
         if key.startswith(_CONFIG_REF_ANNOTATION_PREFIX) and value:
-            logger.info(event=f"[BASELINE] Found config ref annotation: {key}={value}")
+            LOGGER.info(event=f"[BASELINE] Found config ref annotation: {key}={value}")
             refs.append(value)
 
     return sorted(set(refs))
@@ -800,16 +799,16 @@ def verify_llmisvc_generation_unchanged(
     baseline: LLMISVCBaseline,
 ) -> None:
     """Verify spec was not mutated by comparing metadata.generation."""
-    logger = structlog.get_logger(name=__name__)
+
     current = llmisvc.instance.metadata.generation
     expected = baseline["spec_generation"]
-    logger.info(event=f"[VERIFY] Generation check for '{llmisvc.name}': pre={expected}, post={current}")
+    LOGGER.info(event=f"[VERIFY] Generation check for '{llmisvc.name}': pre={expected}, post={current}")
     if current != expected:
         raise ResourceMismatchError(
             f"LLMInferenceService {llmisvc.name} spec was mutated during upgrade "
             f"(generation: pre={expected}, post={current})"
         )
-    logger.info(event=f"[VERIFY] PASS: Generation unchanged ({current})")
+    LOGGER.info(event=f"[VERIFY] PASS: Generation unchanged ({current})")
 
 
 def verify_llmisvc_status_fields(
@@ -817,40 +816,40 @@ def verify_llmisvc_status_fields(
     baseline: LLMISVCBaseline,
 ) -> None:
     """Verify Ready condition, URL, and replicas survived upgrade."""
-    logger = structlog.get_logger(name=__name__)
+
     status = llmisvc.instance.status
     conditions = getattr(status, "conditions", None) or []
 
-    logger.info(event=f"[VERIFY] Status fields check for '{llmisvc.name}'")
-    logger.info(event=f"[VERIFY] All conditions: {conditions}")
+    LOGGER.info(event=f"[VERIFY] Status fields check for '{llmisvc.name}'")
+    LOGGER.info(event=f"[VERIFY] All conditions: {conditions}")
 
     ready = next((condition for condition in conditions if _attr(obj=condition, key="type") == "Ready"), None)
     if not ready:
         raise AssertionError(f"LLMInferenceService {llmisvc.name} has no Ready condition after upgrade")
 
     ready_status = _attr(obj=ready, key="status")
-    logger.info(event=f"[VERIFY] Ready condition status='{ready_status}'")
+    LOGGER.info(event=f"[VERIFY] Ready condition status='{ready_status}'")
     if ready_status != "True":
         raise AssertionError(f"LLMInferenceService {llmisvc.name} is not Ready after upgrade: {ready}")
-    logger.info(event="[VERIFY] PASS: Ready condition is True")
+    LOGGER.info(event="[VERIFY] PASS: Ready condition is True")
 
     current_url = _get_llmisvc_url(status=status)
     expected_url = baseline["url"]
-    logger.info(event=f"[VERIFY] URL check: pre='{expected_url}', post='{current_url}'")
+    LOGGER.info(event=f"[VERIFY] URL check: pre='{expected_url}', post='{current_url}'")
     if expected_url and current_url != expected_url:
         raise ResourceMismatchError(
             f"LLMInferenceService {llmisvc.name} URL changed: pre='{expected_url}', post='{current_url}'"
         )
-    logger.info(event="[VERIFY] PASS: URL unchanged")
+    LOGGER.info(event="[VERIFY] PASS: URL unchanged")
 
     current_replicas = getattr(llmisvc.instance.spec, "replicas", 1) or 1
     expected_replicas = baseline["replicas"]
-    logger.info(event=f"[VERIFY] Replicas check: pre={expected_replicas}, post={current_replicas}")
+    LOGGER.info(event=f"[VERIFY] Replicas check: pre={expected_replicas}, post={current_replicas}")
     if current_replicas != expected_replicas:
         raise ResourceMismatchError(
             f"LLMInferenceService {llmisvc.name} replicas changed: pre={expected_replicas}, post={current_replicas}"
         )
-    logger.info(event=f"[VERIFY] PASS: Replicas unchanged ({current_replicas})")
+    LOGGER.info(event=f"[VERIFY] PASS: Replicas unchanged ({current_replicas})")
 
 
 def verify_llmisvc_container_images_unchanged(
@@ -859,35 +858,35 @@ def verify_llmisvc_container_images_unchanged(
     baseline: LLMISVCBaseline,
 ) -> None:
     """Verify container images were not changed during upgrade."""
-    logger = structlog.get_logger(name=__name__)
+
     pods = _get_all_llmisvc_pods(client=client, llmisvc=llmisvc)
     current_images = _collect_container_images(pods=pods)
     baseline_images = baseline["container_images"]
 
-    logger.info(event=f"[VERIFY] Container images check for '{llmisvc.name}'")
-    logger.info(event=f"[VERIFY] Baseline pods: {list(baseline_images.keys())}")
-    logger.info(event=f"[VERIFY] Current pods:  {list(current_images.keys())}")
+    LOGGER.info(event=f"[VERIFY] Container images check for '{llmisvc.name}'")
+    LOGGER.info(event=f"[VERIFY] Baseline pods: {list(baseline_images.keys())}")
+    LOGGER.info(event=f"[VERIFY] Current pods:  {list(current_images.keys())}")
 
     mismatches: list[str] = []
     for pod_name, containers in baseline_images.items():
         if pod_name not in current_images:
-            logger.warning(event=f"[VERIFY] MISSING: pod '{pod_name}' from baseline not found after upgrade")
+            LOGGER.warning(event=f"[VERIFY] MISSING: pod '{pod_name}' from baseline not found after upgrade")
             mismatches.append(f"pod {pod_name} missing after upgrade")
             continue
         for container_name, expected_image in containers.items():
             actual_image = current_images.get(pod_name, {}).get(container_name, "")
             if actual_image != expected_image:
-                logger.warning(
+                LOGGER.warning(
                     event=f"[VERIFY] MISMATCH: {pod_name}/{container_name}: "
                     f"pre='{expected_image}', post='{actual_image}'"
                 )
                 mismatches.append(f"{pod_name}/{container_name}: pre='{expected_image}', post='{actual_image}'")
             else:
-                logger.info(event=f"[VERIFY] OK: {pod_name}/{container_name} image unchanged: {actual_image}")
+                LOGGER.info(event=f"[VERIFY] OK: {pod_name}/{container_name} image unchanged: {actual_image}")
 
     if mismatches:
         raise ResourceMismatchError(f"Container images changed for {llmisvc.name}: {'; '.join(mismatches)}")
-    logger.info(event=f"[VERIFY] PASS: All container images unchanged across {len(baseline_images)} pod(s)")
+    LOGGER.info(event=f"[VERIFY] PASS: All container images unchanged across {len(baseline_images)} pod(s)")
 
 
 LLMISVC_CONFIG_NAMESPACE = "redhat-ods-applications"
@@ -904,16 +903,16 @@ def verify_llmisvc_config_refs_exist(
     LLMInferenceServiceConfig CRs are created by the controller in redhat-ods-applications,
     not in the LLMISVC's namespace.
     """
-    logger = structlog.get_logger(name=__name__)
+
     config_ref_names = baseline["config_ref_names"]
 
-    logger.info(
+    LOGGER.info(
         event=f"[VERIFY] Config refs check for '{llmisvc.name}': "
         f"{len(config_ref_names)} ref(s) to verify in ns '{LLMISVC_CONFIG_NAMESPACE}': {config_ref_names}"
     )
 
     if not config_ref_names:
-        logger.warning(
+        LOGGER.warning(
             event="[VERIFY] WARNING: baseline has 0 config refs — this check is a NO-OP. "
             "No status annotations with prefix 'serving.kserve.io/config-llm-' were found pre-upgrade."
         )
@@ -930,9 +929,9 @@ def verify_llmisvc_config_refs_exist(
         )
         exists = config_cr.exists
         if exists:
-            logger.info(event=f"[VERIFY] LLMInferenceServiceConfig '{config_name}': exists=True")
+            LOGGER.info(event=f"[VERIFY] LLMInferenceServiceConfig '{config_name}': exists=True")
         else:
-            logger.warning(event=f"[VERIFY] LLMInferenceServiceConfig '{config_name}': exists=False")
+            LOGGER.warning(event=f"[VERIFY] LLMInferenceServiceConfig '{config_name}': exists=False")
             missing.append(config_name)
 
     if missing:
@@ -940,7 +939,7 @@ def verify_llmisvc_config_refs_exist(
             f"LLMInferenceServiceConfig CRs deleted during upgrade for {llmisvc.name} "
             f"in ns '{LLMISVC_CONFIG_NAMESPACE}': {missing}"
         )
-    logger.info(event=f"[VERIFY] PASS: All {len(config_ref_names)} config ref(s) still exist")
+    LOGGER.info(event=f"[VERIFY] PASS: All {len(config_ref_names)} config ref(s) still exist")
 
 
 def verify_llmisvc_pods_not_restarted_against_baseline(
@@ -949,26 +948,26 @@ def verify_llmisvc_pods_not_restarted_against_baseline(
     baseline: LLMISVCBaseline,
 ) -> None:
     """Verify LLMISVC pod restart counts have not increased since baseline."""
-    logger = structlog.get_logger(name=__name__)
+
     baseline_counts = baseline["restart_counts"]
     pods = _get_all_llmisvc_pods(client=client, llmisvc=llmisvc)
     current_names = {pod.name for pod in pods}
     baseline_names = set(baseline_counts.keys())
 
-    logger.info(event=f"[VERIFY] Pod restart counts check for '{llmisvc.name}'")
-    logger.info(event=f"[VERIFY] Baseline pods ({len(baseline_names)}): {baseline_names}")
-    logger.info(event=f"[VERIFY] Current pods  ({len(current_names)}): {current_names}")
+    LOGGER.info(event=f"[VERIFY] Pod restart counts check for '{llmisvc.name}'")
+    LOGGER.info(event=f"[VERIFY] Baseline pods ({len(baseline_names)}): {baseline_names}")
+    LOGGER.info(event=f"[VERIFY] Current pods  ({len(current_names)}): {current_names}")
 
     missing_pods = baseline_names - current_names
     if missing_pods:
-        logger.error(event=f"[VERIFY] MISSING PODS: {missing_pods}")
+        LOGGER.error(event=f"[VERIFY] MISSING PODS: {missing_pods}")
         raise PodContainersRestartError(
             f"LLMISVC pods from baseline missing after upgrade for {llmisvc.name}: {missing_pods}"
         )
 
     new_pods = current_names - baseline_names
     if new_pods:
-        logger.warning(event=f"[VERIFY] New pods not in baseline (will check with restartCount > 0): {new_pods}")
+        LOGGER.warning(event=f"[VERIFY] New pods not in baseline (will check with restartCount > 0): {new_pods}")
 
     increased: dict[str, list[str]] = {}
     for pod in pods:
@@ -977,17 +976,17 @@ def verify_llmisvc_pods_not_restarted_against_baseline(
             pre_count = pod_baseline.get(container.name, 0)
             post_count = container.restartCount
             if post_count > pre_count:
-                logger.warning(
+                LOGGER.warning(
                     event=f"[VERIFY] RESTART: pod={pod.name} container={container.name} "
                     f"pre={pre_count} post={post_count}"
                 )
                 increased.setdefault(pod.name, []).append(f"{container.name} (pre={pre_count}, post={post_count})")
             else:
-                logger.info(
+                LOGGER.info(
                     event=f"[VERIFY] OK: pod={pod.name} container={container.name} "
                     f"restartCount pre={pre_count} post={post_count}"
                 )
 
     if increased:
         raise PodContainersRestartError(f"LLMISVC pod restart counts increased after upgrade: {increased}")
-    logger.info(event=f"[VERIFY] PASS: No container restarts across {len(pods)} pod(s)")
+    LOGGER.info(event=f"[VERIFY] PASS: No container restarts across {len(pods)} pod(s)")
