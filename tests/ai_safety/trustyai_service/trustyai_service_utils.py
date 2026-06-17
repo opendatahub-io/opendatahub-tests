@@ -108,7 +108,7 @@ class TrustyAIServiceClient:
             ValueError: If method is not GET, POST or DELETE.
         """
 
-        url = f"https://{self.service_route.host}/{endpoint}"
+        url = f"https://{self.service_route.host}/{endpoint.lstrip('/')}"
         headers = {**self.headers, **(extra_headers or {})}
         base_kwargs = {"url": url, "headers": headers, "verify": self.cert_path}
 
@@ -696,7 +696,8 @@ def verify_trustyai_service_metric_delete_request(
     delete_response = tas_client.delete_metric(metric_name=metric_name, request_id=request_id)
 
     assert delete_response.status_code == HTTPStatus.OK, (
-        f"Delete request failed with status code: {delete_response.status_code}"
+        f"Delete request failed with status code: {delete_response.status_code}. "
+        f"Response body: {delete_response.text!r}"
     )
 
     # Verify the number of metrics after deletion is N-1
