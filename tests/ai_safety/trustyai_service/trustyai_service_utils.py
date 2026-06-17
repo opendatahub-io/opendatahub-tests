@@ -77,9 +77,9 @@ class TrustyAIServiceClient:
         """
 
         if hasattr(TrustyAIServiceMetrics.Fairness, metric_name.upper()):
-            base_url: str = "/metrics/group/fairness"
+            base_url: str = "metrics/group/fairness"
         elif hasattr(TrustyAIServiceMetrics.Drift, metric_name.upper()):
-            base_url = "/metrics/drift"
+            base_url = "metrics/drift"
         else:
             raise MetricValidationError(f"Unknown metric: {metric_name}")
         return f"{base_url.rstrip('/')}/{metric_name}"
