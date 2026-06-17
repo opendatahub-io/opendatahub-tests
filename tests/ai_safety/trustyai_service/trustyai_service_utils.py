@@ -644,6 +644,28 @@ def verify_upload_data_to_trustyai_service(
     )
 
 
+def verify_trustyai_service_metric_registered_post_upgrade(
+    client: DynamicClient, trustyai_service: TrustyAIService, token: str, metric_name: str
+) -> None:
+    """Verifies that a metric scheduled pre-upgrade was re-registered by TrustyAI after upgrade.
+
+    Fails with a clear message if the metric is missing, pointing to known 3.5 breaking changes:
+    referenceTag is now required and must exist in logged data; fitColumns must use original
+    column names, not mapped names.
+    """
+    tas_client = TrustyAIServiceClient(token=token, service=trustyai_service, client=client)
+    metrics_response = tas_client.get_metrics(metric_name=metric_name)
+    metrics_data = json.loads(metrics_response.text)
+    num_metrics = len(metrics_data.get("requests", []))
+
+    assert num_metrics >= 1, (
+        f"Pre-upgrade {metric_name} metric was not re-registered by TrustyAI after upgrade. "
+        f"Known causes: (1) referenceTag is now required and must exist in logged data, "
+        f"(2) fitColumns must use original column names, not mapped names. "
+        f"Check TrustyAI service logs for re-registration errors."
+    )
+
+
 def verify_trustyai_service_metric_delete_request(
     client: DynamicClient, trustyai_service: TrustyAIService, token: str, metric_name: str
 ) -> None:
