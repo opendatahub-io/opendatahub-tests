@@ -326,4 +326,3 @@ def vllm_cpu_runtime(
         volumes=[{"emptyDir": {"medium": "Memory", "sizeLimit": "2Gi"}, "name": "shm"}],
     ) as serving_runtime:
         yield serving_runtime
-

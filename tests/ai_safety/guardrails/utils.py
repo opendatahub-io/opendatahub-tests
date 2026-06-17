@@ -386,6 +386,7 @@ def send_and_verify_standalone_detection(
 
     return response
 
+
 @retry(wait_timeout=60, sleep=5)
 def check_guardrails_traces_in_tempo(tempo_traces_service_portforward: str):
     """

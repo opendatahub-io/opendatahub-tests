@@ -3,17 +3,17 @@ import yaml
 from simple_logger.logger import get_logger
 
 from tests.ai_safety.guardrails.constants import (
-    PROMPT_INJECTION_INPUT_DETECTION_PROMPT,
     HAP_INPUT_DETECTION_PROMPT,
+    PROMPT_INJECTION_INPUT_DETECTION_PROMPT,
 )
 from tests.ai_safety.guardrails.utils import (
+    check_guardrails_traces_in_tempo,
     create_detector_config,
-    send_and_verify_unsuitable_input_detection,
     send_and_verify_negative_detection,
     send_and_verify_standalone_detection,
-    check_guardrails_traces_in_tempo,
+    send_and_verify_unsuitable_input_detection,
 )
-from utilities.constants import MinIo, QWEN_MODEL_NAME
+from utilities.constants import QWEN_MODEL_NAME, MinIo
 
 LOGGER = get_logger(name=__name__)
 

@@ -250,7 +250,7 @@ def hap_detector_route(
 @pytest.fixture(scope="class")
 def installed_tempo_operator(
     admin_client: DynamicClient, model_namespace: Namespace, pytestconfig: pytest.Config, teardown_resources: bool
-) -> Generator[None, Any, None]:
+) -> Generator[None, Any]:
     """
     Installs the Tempo operator and waits for its deployment.
     """
@@ -304,7 +304,7 @@ def tempo_stack(
     minio_secret_otel: Secret,
     pytestconfig: pytest.Config,
     teardown_resources: bool,
-) -> Generator[TempoStack, Any, None]:
+) -> Generator[TempoStack, Any]:
     """
     Create a TempoStack CR in the test namespace, configured to use MinIO backend.
     """
@@ -382,7 +382,7 @@ def tempo_stack(
 @pytest.fixture(scope="class")
 def installed_opentelemetry_operator(
     admin_client: DynamicClient, pytestconfig: pytest.Config, teardown_resources: bool
-) -> Generator[None, Any, None]:
+) -> Generator[None, Any]:
     """
     Installs the Red Hat OpenTelemetry Operator and waits for its deployment.
     """
