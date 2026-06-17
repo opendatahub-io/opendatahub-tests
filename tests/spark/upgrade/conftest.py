@@ -7,7 +7,9 @@ import pytest
 import shortuuid
 import structlog
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.namespace import Namespace
+from ocp_resources.resource import ResourceEditor
 from ocp_resources.service_account import ServiceAccount
 
 from tests.spark.upgrade.utils import (
@@ -16,6 +18,7 @@ from tests.spark.upgrade.utils import (
     load_baseline_from_configmap,
     save_baseline_to_configmap,
 )
+from utilities.constants import DscComponents
 from utilities.infra import create_ns
 from utilities.resources.spark_application import SparkApplication
 
@@ -23,6 +26,53 @@ LOGGER = structlog.get_logger(name=__name__)
 
 UPGRADE_NAMESPACE = "upgrade-spark-operator"
 SPARK_SERVICE_ACCOUNT = "spark-operator-spark"
+
+
+@pytest.fixture(scope="class")
+def pre_upgrade_spark_dsc_patch(
+    dsc_resource: DataScienceCluster,
+) -> DataScienceCluster:
+    """Enable Spark Operator in DSC before upgrade tests.
+
+    Spark Operator is Tech Preview and not managed by default.
+    This fixture sets it to Managed state for upgrade testing.
+    """
+    original_components = dsc_resource.instance.spec.components
+    component_patch = {"sparkoperator": {"managementState": DscComponents.ManagementState.MANAGED}}
+
+    current_state = original_components.get("sparkoperator", {}).get("managementState")
+    if current_state == DscComponents.ManagementState.MANAGED:
+        LOGGER.info("Spark Operator is already set to Managed")
+        return dsc_resource
+
+    LOGGER.info("Setting Spark Operator to Managed state")
+    editor = ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}})
+    editor.update()
+    return dsc_resource
+
+
+@pytest.fixture(scope="class")
+def post_upgrade_spark_dsc_patch(
+    dsc_resource: DataScienceCluster,
+) -> Generator[DataScienceCluster, Any, Any]:
+    """Restore Spark Operator to Removed state after upgrade tests.
+
+    Since Spark Operator is Tech Preview, it should be set back to Removed
+    state after testing to match the default cluster state.
+    """
+    yield dsc_resource
+
+    original_components = dsc_resource.instance.spec.components
+    component_patch = {"sparkoperator": {"managementState": DscComponents.ManagementState.REMOVED}}
+
+    current_state = original_components.get("sparkoperator", {}).get("managementState")
+    if current_state == DscComponents.ManagementState.REMOVED:
+        LOGGER.info("Spark Operator is already set to Removed")
+        return
+
+    LOGGER.info("Setting Spark Operator back to Removed state")
+    editor = ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}})
+    editor.update()
 
 
 @pytest.fixture(scope="session")
@@ -176,7 +226,7 @@ def new_spark_application_fixture(
     # Create SparkApplication spec
     spec = create_spark_pi_application_spec(
         name=spark_app_name,
-        namespace=namespace_fixture.name,
+        namespace=spark_namespace_fixture.name,
         service_account=service_account_fixture.name,
     )
 

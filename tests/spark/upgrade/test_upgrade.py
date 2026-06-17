@@ -14,11 +14,12 @@ from tests.spark.upgrade.utils import (
 )
 
 
-@pytest.mark.usefixtures("spark_capture_upgrade_baseline")
+@pytest.mark.usefixtures("pre_upgrade_spark_dsc_patch", "spark_capture_upgrade_baseline")
 class TestPreUpgradeSpark:
     """Validate Spark workload execution before an operator upgrade.
 
     Steps:
+        0. Enable Spark Operator in DSC (Tech Preview component)
         1. Deploy a SparkApplication (spark-pi) resource
         2. Verify the application completes successfully
         3. Capture baseline values (generation, restart counts, state) to ConfigMap
@@ -30,6 +31,7 @@ class TestPreUpgradeSpark:
         verify_spark_app_completed(spark_app=spark_application_fixture)
 
 
+@pytest.mark.usefixtures("post_upgrade_spark_dsc_patch")
 class TestPostUpgradeSpark:
     """Validate SparkApplication integrity and execution after an operator upgrade.
 
@@ -38,6 +40,7 @@ class TestPostUpgradeSpark:
         2. Verify the SparkApplication was not modified during the upgrade
         3. Verify pods have not restarted beyond pre-upgrade baseline
         4. Verify the SparkApplication is still in COMPLETED state
+        5. (Teardown) Restore Spark Operator to Removed state
     """
 
     @pytest.mark.post_upgrade
@@ -89,6 +92,7 @@ class TestPostUpgradeSpark:
         verify_spark_app_completed(spark_app=spark_application_fixture)
 
 
+@pytest.mark.usefixtures("post_upgrade_spark_dsc_patch")
 class TestPostUpgradeNewSparkApplication:
     """Verify that the upgraded control plane can create new SparkApplications.
 
