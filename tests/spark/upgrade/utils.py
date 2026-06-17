@@ -84,7 +84,9 @@ def create_spark_pi_application_spec(
             "image": image,
             "imagePullPolicy": "IfNotPresent",
             "mainClass": "org.apache.spark.examples.SparkPi",
-            "mainApplicationFile": f"local:///opt/spark/examples/jars/spark-examples_{spark_version}-{spark_version}.jar",
+            "mainApplicationFile": (
+                f"local:///opt/spark/examples/jars/spark-examples_{spark_version}-{spark_version}.jar"
+            ),
             "sparkVersion": spark_version,
             "restartPolicy": {
                 "type": "Never",

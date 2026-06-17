@@ -59,8 +59,8 @@ class SparkApplication(NamespacedResource):
             batch_scheduler (str): BatchScheduler configures which batch scheduler will be used for
               scheduling
 
-            batch_scheduler_options (dict[str, Any]): BatchSchedulerOptions provides fine-grained control on how to batch
-              scheduling.
+            batch_scheduler_options (dict[str, Any]): BatchSchedulerOptions provides fine-grained
+              control on how to batch scheduling.
 
             deps (dict[str, Any]): Deps captures all possible types of dependencies of a Spark
               application.

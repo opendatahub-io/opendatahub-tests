@@ -26,7 +26,7 @@ SPARK_SERVICE_ACCOUNT = "spark-operator-spark"
 
 
 @pytest.fixture(scope="session")
-def upgrade_baseline_fixture(
+def spark_upgrade_baseline_fixture(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
 ) -> dict[str, dict]:
@@ -45,7 +45,7 @@ def upgrade_baseline_fixture(
 
 
 @pytest.fixture(scope="session")
-def namespace_fixture(
+def spark_namespace_fixture(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     teardown_resources: bool,
@@ -76,7 +76,7 @@ def namespace_fixture(
 def service_account_fixture(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    namespace_fixture: Namespace,
+    spark_namespace_fixture: Namespace,
     teardown_resources: bool,
 ) -> Generator[ServiceAccount, Any, Any]:
     """Create or reference the Spark service account.
@@ -87,7 +87,7 @@ def service_account_fixture(
     sa_kwargs = {
         "client": admin_client,
         "name": SPARK_SERVICE_ACCOUNT,
-        "namespace": namespace_fixture.name,
+        "namespace": spark_namespace_fixture.name,
     }
 
     sa = ServiceAccount(**sa_kwargs)
@@ -105,7 +105,7 @@ def service_account_fixture(
 def spark_application_fixture(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    namespace_fixture: Namespace,
+    spark_namespace_fixture: Namespace,
     service_account_fixture: ServiceAccount,
     teardown_resources: bool,
 ) -> Generator[SparkApplication, Any, Any]:
@@ -119,7 +119,7 @@ def spark_application_fixture(
     spark_app_kwargs = {
         "client": admin_client,
         "name": spark_app_name,
-        "namespace": namespace_fixture.name,
+        "namespace": spark_namespace_fixture.name,
     }
 
     spark_app = SparkApplication(**spark_app_kwargs)
@@ -132,7 +132,7 @@ def spark_application_fixture(
         # Create SparkApplication spec
         spec = create_spark_pi_application_spec(
             name=spark_app_name,
-            namespace=namespace_fixture.name,
+            namespace=spark_namespace_fixture.name,
             service_account=service_account_fixture.name,
         )
 
@@ -151,7 +151,7 @@ def spark_application_fixture(
 def new_spark_application_fixture(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    namespace_fixture: Namespace,
+    spark_namespace_fixture: Namespace,
     service_account_fixture: ServiceAccount,
     teardown_resources: bool,
 ) -> Generator[SparkApplication | None, Any, Any]:
@@ -170,7 +170,7 @@ def new_spark_application_fixture(
     spark_app_kwargs = {
         "client": admin_client,
         "name": spark_app_name,
-        "namespace": namespace_fixture.name,
+        "namespace": spark_namespace_fixture.name,
     }
 
     # Create SparkApplication spec
@@ -217,7 +217,7 @@ def _capture_and_save_baseline(
 
 
 @pytest.fixture(scope="session")
-def capture_upgrade_baseline(
+def spark_capture_upgrade_baseline(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     spark_application_fixture: SparkApplication,

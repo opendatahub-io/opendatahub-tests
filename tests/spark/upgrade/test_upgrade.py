@@ -14,7 +14,7 @@ from tests.spark.upgrade.utils import (
 )
 
 
-@pytest.mark.usefixtures("capture_upgrade_baseline")
+@pytest.mark.usefixtures("spark_capture_upgrade_baseline")
 class TestPreUpgradeSpark:
     """Validate Spark workload execution before an operator upgrade.
 
@@ -51,11 +51,11 @@ class TestPostUpgradeSpark:
     def test_spark_application_post_upgrade_not_modified(
         self,
         spark_application_fixture,
-        upgrade_baseline_fixture,
+        spark_upgrade_baseline_fixture,
     ):
         """Test that SparkApplication is not modified during upgrade"""
         baseline = get_spark_app_baseline(
-            baselines=upgrade_baseline_fixture,
+            baselines=spark_upgrade_baseline_fixture,
             spark_app_name=spark_application_fixture.name,
         )
         verify_spark_app_generation(
@@ -69,11 +69,11 @@ class TestPostUpgradeSpark:
         self,
         admin_client,
         spark_application_fixture,
-        upgrade_baseline_fixture,
+        spark_upgrade_baseline_fixture,
     ):
         """Verify SparkApplication pods have not restarted beyond pre-upgrade baseline"""
         baseline = get_spark_app_baseline(
-            baselines=upgrade_baseline_fixture,
+            baselines=spark_upgrade_baseline_fixture,
             spark_app_name=spark_application_fixture.name,
         )
         verify_pods_not_restarted(
