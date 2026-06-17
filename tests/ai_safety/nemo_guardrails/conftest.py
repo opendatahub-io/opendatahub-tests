@@ -28,7 +28,7 @@ from tests.ai_safety.nemo_guardrails.utils import (
 from utilities.certificates_utils import get_tls_verify
 from utilities.constants import LLMdInferenceSimConfig
 from utilities.resources.envoy_filter import EnvoyFilter
-from utilities.resources.kuadrant import MCPGatewayExtension
+from utilities.resources.mcp_gateway_extension import MCPGatewayExtension
 
 
 # ===========================

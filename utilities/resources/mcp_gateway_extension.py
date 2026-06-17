@@ -5,11 +5,11 @@ from ocp_resources.resource import NamespacedResource
 from utilities.constants import ApiGroups
 
 
-class Kuadrant(NamespacedResource):
+class MCPGatewayExtension(NamespacedResource):
     """
-    Kuadrant is the Schema for the kuadrants API.
+    MCPGatewayExtension is the Schema for the mcpgatewayextensions API (mcp.kuadrant.io/v1alpha1).
     """
 
-    api_group: str = ApiGroups.KUADRANT_IO
+    api_group: str = ApiGroups.MCP_KUADRANT_IO
 
     # End of generated code
