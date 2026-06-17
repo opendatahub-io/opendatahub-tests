@@ -3,6 +3,9 @@ from typing import Any
 
 import pytest
 import structlog
+from ocp_resources.pod import Pod
+from ocp_resources.secret import Secret
+from ocp_resources.service import Service
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
