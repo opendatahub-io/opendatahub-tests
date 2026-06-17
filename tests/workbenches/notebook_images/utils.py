@@ -17,7 +17,8 @@ from ocp_resources.pod import ExecOnPodError, Pod
 from ocp_resources.resource import NamespacedResource
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
-from packaging.version import InvalidVersion, Version as PackagingVersion
+from packaging.version import InvalidVersion
+from packaging.version import Version as PackagingVersion
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
@@ -31,7 +32,7 @@ UPGRADE_MARKER_FILENAME = ".upgrade-marker"
 UPGRADE_MARKER_CONTENT = "n-minus-one-survival"
 NOTEBOOK_PORT = 8888
 RSTUDIO_BUILDCONFIG_NAME = "rstudio-server-rhel9"
-RSTUDIO_BUILD_SECRET_NAME = "rhel-subscription-secret"
+RSTUDIO_BUILD_SECRET_NAME = "rhel-subscription-secret"  # pragma: allowlist secret
 RSTUDIO_IMAGE_BUILD_TIMEOUT = Timeout.TIMEOUT_30MIN
 
 _BLOCKED_LOG_KEYWORDS = (
@@ -185,9 +186,7 @@ def _rstudio_build_prerequisite_skip_reason(admin_client: DynamicClient, namespa
         ensure_exists=False,
     )
     if not build_config.exists:
-        return (
-            f"RStudio BuildConfig '{RSTUDIO_BUILDCONFIG_NAME}' not found in namespace '{namespace}'"
-        )
+        return f"RStudio BuildConfig '{RSTUDIO_BUILDCONFIG_NAME}' not found in namespace '{namespace}'"
 
     build_secret = Secret(
         client=admin_client,
@@ -208,7 +207,7 @@ def _rstudio_build_prerequisite_skip_reason(admin_client: DynamicClient, namespa
 def _start_imagestream_build(namespace: str, buildconfig_name: str) -> None:
     """Trigger an OpenShift BuildConfig to populate an ImageStream tag."""
     result = subprocess.run(
-        ["oc", "start-build", buildconfig_name, "-n", namespace],
+        args=["oc", "start-build", buildconfig_name, "-n", namespace],
         capture_output=True,
         text=True,
         check=False,
@@ -219,10 +218,7 @@ def _start_imagestream_build(namespace: str, buildconfig_name: str) -> None:
             f"{result.stderr.strip() or result.stdout.strip()}"
         )
 
-    LOGGER.info(
-        f"Triggered BuildConfig '{buildconfig_name}' in namespace '{namespace}': "
-        f"{result.stdout.strip()}"
-    )
+    LOGGER.info(f"Triggered BuildConfig '{buildconfig_name}' in namespace '{namespace}': {result.stdout.strip()}")
 
 
 def _refresh_imagestream_data(admin_client: DynamicClient, imagestream_name: str, namespace: str) -> dict[str, Any]:
@@ -274,9 +270,7 @@ def _ensure_imagestream_tag_imported(
             f"{RSTUDIO_IMAGE_BUILD_TIMEOUT} seconds"
         ) from error
 
-    raise AssertionError(
-        f"ImageStream '{imagestream_name}' tag '{image_tag}' is not imported or resolved."
-    )
+    raise AssertionError(f"ImageStream '{imagestream_name}' tag '{image_tag}' is not imported or resolved.")
 
 
 @dataclass(frozen=True)
@@ -425,8 +419,7 @@ def resolve_n_minus_one_image(admin_client: DynamicClient, spec: WorkbenchImageS
             )
         elif resolved_tag != semver_tag:
             LOGGER.warning(
-                f"ImageStream tag '{semver_tag}' not found for {spec.ide}; "
-                f"using latest resolved tag '{resolved_tag}'"
+                f"ImageStream tag '{semver_tag}' not found for {spec.ide}; using latest resolved tag '{resolved_tag}'"
             )
         image_tag = resolved_tag
 
@@ -454,8 +447,7 @@ def resolve_n_minus_one_image(admin_client: DynamicClient, spec: WorkbenchImageS
         )
         if docker_image_reference:
             LOGGER.info(
-                f"Resolved N-1 image for {spec.ide}: {spec.imagestream_name}:{image_tag} -> "
-                f"{docker_image_reference}"
+                f"Resolved N-1 image for {spec.ide}: {spec.imagestream_name}:{image_tag} -> {docker_image_reference}"
             )
             return docker_image_reference
 

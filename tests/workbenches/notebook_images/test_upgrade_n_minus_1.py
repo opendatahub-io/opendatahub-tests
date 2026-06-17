@@ -15,8 +15,8 @@ from tests.workbenches.notebook_images.utils import (
 
 _WORKBENCH_IMAGE_SPECS = get_workbench_image_specs()
 pytestmark = pytest.mark.parametrize(
-    "workbench_image_spec",
-    _WORKBENCH_IMAGE_SPECS,
+    argnames="workbench_image_spec",
+    argvalues=_WORKBENCH_IMAGE_SPECS,
     ids=[spec.ide for spec in _WORKBENCH_IMAGE_SPECS],
     indirect=True,
 )

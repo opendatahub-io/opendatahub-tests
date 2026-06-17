@@ -210,14 +210,16 @@ def n_minus_one_notebook(
             name=workbench_image_spec.notebook_name,
             image_path=n_minus_one_image,
         )
-        with notebook_service_account(
-            client=unprivileged_client,
-            name=workbench_image_spec.notebook_name,
-            namespace=n_minus_one_namespace.name,
-            teardown=teardown_resources,
+        with (
+            notebook_service_account(
+                client=unprivileged_client,
+                name=workbench_image_spec.notebook_name,
+                namespace=n_minus_one_namespace.name,
+                teardown=teardown_resources,
+            ),
+            Notebook(client=unprivileged_client, kind_dict=notebook_dict, teardown=teardown_resources) as nb,
         ):
-            with Notebook(client=unprivileged_client, kind_dict=notebook_dict, teardown=teardown_resources) as nb:
-                yield nb
+            yield nb
 
 
 @pytest.fixture(scope="session")
