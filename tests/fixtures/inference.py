@@ -17,6 +17,7 @@ from pytest_testconfig import py_config
 from timeout_sampler import retry
 
 from utilities.constants import (
+    QWEN_MODEL_NAME,
     KServeDeploymentType,
     LLMdInferenceSimConfig,
     RuntimeTemplates,
