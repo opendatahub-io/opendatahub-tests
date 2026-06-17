@@ -331,7 +331,6 @@ def vllm_cpu_runtime(
         yield serving_runtime
 
 
-
 @pytest.fixture(scope="class")
 def qwen_isvc(
     admin_client: DynamicClient,
@@ -372,4 +371,3 @@ def qwen_isvc(
             teardown=teardown_resources,
         ) as isvc:
             yield isvc
-

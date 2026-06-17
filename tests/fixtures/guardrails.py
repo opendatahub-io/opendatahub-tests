@@ -8,27 +8,20 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
 from ocp_resources.guardrails_orchestrator import GuardrailsOrchestrator
-from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.route import Route
-from ocp_resources.secret import Secret
-from ocp_resources.service import Service
-from ocp_resources.serving_runtime import ServingRuntime
 
 from tests.fixtures.inference import get_vllm_chat_config
 from utilities.constants import (
     BUILTIN_DETECTOR_CONFIG,
     HAP_DETECTOR,
     PROMPT_INJECTION_DETECTOR,
-    QWEN_MODEL_NAME,
     Annotations,
-    KServeDeploymentType,
     Labels,
 )
 from utilities.guardrails import check_guardrails_health_endpoint
-from utilities.inference_utils import create_isvc
 
 GUARDRAILS_ORCHESTRATOR_NAME: str = "guardrails-orchestrator"
 
