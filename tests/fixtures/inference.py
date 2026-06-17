@@ -298,3 +298,32 @@ def patched_dsc_garak_kfp(admin_client) -> Generator[DataScienceCluster]:
     ):
         wait_for_dsc_status_ready(dsc_resource=dsc)
         yield dsc
+
+
+@pytest.fixture(scope="class")
+def vllm_cpu_runtime(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    minio_pod: Pod,
+    minio_service: Service,
+    minio_data_connection: Secret,
+) -> Generator[ServingRuntime, Any, Any]:
+    with ServingRuntimeFromTemplate(
+        client=admin_client,
+        name="vllm-runtime-cpu-fp16",
+        namespace=model_namespace.name,
+        template_name=RuntimeTemplates.VLLM_CUDA,
+        deployment_type=KServeDeploymentType.RAW_DEPLOYMENT,
+        runtime_image="quay.io/rh-aiservices-bu/vllm-cpu-openai-ubi9"
+        "@sha256:ada6b3ba98829eb81ae4f89364d9b431c0222671eafb9a04aa16f31628536af2",
+        containers={
+            "kserve-container": {
+                "args": ["--port=8032", "--model=/mnt/models", "--served-model-name={{.Name}}"],
+                "ports": [{"containerPort": 8032, "protocol": "TCP"}],
+                "volumeMounts": [{"mountPath": "/dev/shm", "name": "shm"}],
+            }
+        },
+        volumes=[{"emptyDir": {"medium": "Memory", "sizeLimit": "2Gi"}, "name": "shm"}],
+    ) as serving_runtime:
+        yield serving_runtime
+

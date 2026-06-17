@@ -8,10 +8,14 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
 from ocp_resources.guardrails_orchestrator import GuardrailsOrchestrator
+from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
+from ocp_resources.secret import Secret
+from ocp_resources.service import Service
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.route import Route
+from ocp_resources.serving_runtime import ServingRuntime
 
 from tests.fixtures.inference import get_vllm_chat_config
 from utilities.constants import (
@@ -19,9 +23,10 @@ from utilities.constants import (
     HAP_DETECTOR,
     PROMPT_INJECTION_DETECTOR,
     Annotations,
-    Labels,
+    Labels, KServeDeploymentType, QWEN_MODEL_NAME,
 )
 from utilities.guardrails import check_guardrails_health_endpoint
+from utilities.inference_utils import create_isvc
 
 GUARDRAILS_ORCHESTRATOR_NAME: str = "guardrails-orchestrator"
 
@@ -44,6 +49,10 @@ def guardrails_orchestrator(
         yield gorch
         gorch.clean_up()
     else:
+        if not (hasattr(request, "param") and request.param is not None):
+            raise pytest.UsageError(
+                "guardrails_orchestrator fixture requires parametrization outside post_upgrade mode"
+            )
         gorch_kwargs["log_level"] = "DEBUG"
         gorch_kwargs["replicas"] = 1
         gorch_kwargs["wait_for_resource"] = True
@@ -52,14 +61,6 @@ def guardrails_orchestrator(
 
         if request.param.get("orchestrator_config"):
             orchestrator_config = request.getfixturevalue(argname="orchestrator_config")
-            gorch_kwargs["orchestrator_config"] = orchestrator_config.name
-
-        elif request.param.get("orchestrator_config_gpu"):
-            orchestrator_config = request.getfixturevalue(argname="orchestrator_config_gpu")
-            gorch_kwargs["orchestrator_config"] = orchestrator_config.name
-
-        elif request.param.get("orchestrator_config_builtin_gpu"):
-            orchestrator_config = request.getfixturevalue(argname="orchestrator_config_builtin_gpu")
             gorch_kwargs["orchestrator_config"] = orchestrator_config.name
 
         if request.param.get("enable_guardrails_gateway"):
@@ -294,3 +295,50 @@ def orchestrator_config_gpu(
             teardown=teardown_resources,
         ) as cm:
             yield cm
+
+@pytest.fixture(scope="class")
+def qwen_isvc(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    minio_pod: Pod,
+    minio_service: Service,
+    minio_data_connection: Secret,
+    vllm_cpu_runtime: ServingRuntime,
+    pytestconfig: pytest.Config,
+    teardown_resources: bool,
+) -> Generator[InferenceService, Any, Any]:
+    if pytestconfig.option.post_upgrade:
+        # During post-upgrade, reuse existing InferenceService
+        isvc = InferenceService(
+            client=admin_client,
+            name=QWEN_MODEL_NAME,
+            namespace=model_namespace.name,
+        )
+        yield isvc
+        isvc.clean_up()
+    else:
+        # During pre-upgrade or normal tests, create new InferenceService
+        with create_isvc(
+            client=admin_client,
+            name=QWEN_MODEL_NAME,
+            namespace=model_namespace.name,
+            deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+            model_format="vLLM",
+            runtime=vllm_cpu_runtime.name,
+            storage_key=minio_data_connection.name,
+            storage_path="Qwen2.5-0.5B-Instruct",
+            wait_for_predictor_pods=False,
+            enable_auth=False,
+            resources={
+                "requests": {"cpu": "2", "memory": "10Gi"},
+                "limits": {"cpu": "2", "memory": "12Gi"},
+            },
+            teardown=teardown_resources,
+        ) as isvc:
+            yield isvc
+
+
+@pytest.fixture(scope="class")
+def qwen_isvc_url(qwen_isvc: InferenceService) -> str:
+    return f"http://{qwen_isvc.name}-predictor.{qwen_isvc.namespace}.svc.cluster.local:8032/v1"
+
