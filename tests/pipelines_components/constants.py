@@ -66,6 +66,8 @@ AUTORAG_S3_BUCKET: str = os.environ.get("AUTORAG_S3_BUCKET", "mlpipeline")
 # Defaults to AUTORAG_INFERENCE_MODEL_NAME when unset (works as-is if the name is catalog-compatible).
 AUTORAG_LLAMA_STACK_INFERENCE_MODEL_ID: str = os.environ.get("AUTORAG_LLAMA_STACK_INFERENCE_MODEL_ID", "")
 
+AUTORAG_EMBEDDING_MAX_MODEL_LEN: str = os.getenv("AUTORAG_EMBEDDING_MAX_MODEL_LEN", "512")
+
 # AutoRAG pipeline parameters
 AUTORAG_INPUT_DATA_KEY: str = os.getenv("AUTORAG_INPUT_DATA_KEY", "autorag-smoke/input_data")
 AUTORAG_TEST_DATA_KEY: str = os.getenv("AUTORAG_TEST_DATA_KEY", "autorag-smoke/benchmark_data.json")

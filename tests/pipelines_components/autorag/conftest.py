@@ -31,6 +31,7 @@ from tests.fixtures.vector_io import (  # noqa: NIT001
     get_milvus_deployment_template,
 )
 from tests.pipelines_components.constants import (
+    AUTORAG_EMBEDDING_MAX_MODEL_LEN,
     AUTORAG_INPUT_DATA_KEY,
     AUTORAG_LLAMA_STACK_INFERENCE_MODEL_ID,
     AUTORAG_MAX_RAG_PATTERNS,
@@ -234,7 +235,20 @@ def autorag_hf_token_secret(
     admin_client: DynamicClient,
     pipelines_namespace: Namespace,
 ) -> Generator[Secret, Any, Any]:
-    """HuggingFace token secret for downloading models from hf:// URIs."""
+    """HuggingFace token secret for downloading models from hf:// URIs.
+
+    The managed pipeline controller may auto-create this secret, so
+    reuse it if it already exists.
+    """
+    secret = Secret(
+        client=admin_client,
+        namespace=pipelines_namespace.name,
+        name="hf-token-secret",
+    )
+    if secret.exists:
+        yield secret
+        return
+
     hf_token = os.environ.get("HF_TOKEN", "")
     with Secret(
         client=admin_client,
@@ -368,10 +382,8 @@ def autorag_embedding_service(
             AUTORAG_EMBEDDING_MODEL_NAME,
             "--runner",
             "pooling",
-            "--hf-overrides",
-            '{"is_matryoshka": true}',
             "--max-model-len",
-            "1024",
+            AUTORAG_EMBEDDING_MAX_MODEL_LEN,
         ],
     ) as isvc:
         yield isvc
@@ -688,7 +700,7 @@ def autorag_ogx_server(
         namespace=pipelines_namespace.name,
         config=ogx_config,
     ) as ogx_srv:
-        ogx_srv.wait_for_status(status=OgxServer.Status.READY, timeout=600)
+        ogx_srv.wait_for_status(status=OgxServer.Status.READY, timeout=900)
         yield ogx_srv
 
 
