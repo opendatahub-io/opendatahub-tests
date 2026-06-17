@@ -186,9 +186,12 @@ def spark_application_fixture(
             service_account=service_account_fixture.name,
         )
 
-        # Deploy SparkApplication
-        spark_app_instance = SparkApplication(**spark_app_kwargs)
-        spark_app_instance.deploy(body=spec)
+        # Deploy SparkApplication using kind_dict
+        spark_app_instance = SparkApplication(
+            client=admin_client,
+            kind_dict=spec,
+        )
+        spark_app_instance.deploy()
 
         try:
             yield spark_app_instance
@@ -230,9 +233,12 @@ def new_spark_application_fixture(
         service_account=service_account_fixture.name,
     )
 
-    # Deploy SparkApplication
-    spark_app = SparkApplication(**spark_app_kwargs)
-    spark_app.deploy(body=spec)
+    # Deploy SparkApplication using kind_dict
+    spark_app = SparkApplication(
+        client=admin_client,
+        kind_dict=spec,
+    )
+    spark_app.deploy()
 
     try:
         yield spark_app
