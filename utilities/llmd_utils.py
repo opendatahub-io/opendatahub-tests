@@ -593,7 +593,7 @@ class LLMUserInference:
         cmd += f" --max-time {LLMEndpoint.DEFAULT_TIMEOUT} {endpoint_url}"
         return cmd
 
-    @retry(wait_timeout=Timeout.TIMEOUT_30SEC, sleep=5)
+    @retry(wait_timeout=180, sleep=5)
     def run_inference(
         self,
         model_name: str,
