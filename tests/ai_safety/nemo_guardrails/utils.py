@@ -16,12 +16,10 @@ from tests.ai_safety.nemo_guardrails.constants import (
     INPUT_PROMPT_TEMPLATE,
     OUTPUT_PROMPT_TEMPLATE,
 )
+from utilities.general import SHA256_DIGEST_PATTERN
 from utilities.guardrails import get_auth_headers
 
 LOGGER = structlog.get_logger(name=__name__)
-
-# SHA256 digest pattern
-SHA256_DIGEST_PATTERN = r"@sha256:[a-f0-9]{64}"
 
 
 def validate_nemo_guardrails_images(pod: Pod, trustyai_operator_configmap: ConfigMap) -> None:

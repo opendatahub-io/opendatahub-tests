@@ -47,7 +47,6 @@ from utilities.constants import RuntimeTemplates
 from utilities.exceptions import MissingParameter
 from utilities.general import generate_random_name, wait_for_pods_running
 from utilities.infra import create_ns
-from utilities.operator_utils import get_cluster_service_version
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -410,42 +409,8 @@ def model_registry_default_postgres_deployment_match_label(
     return deployment.instance.spec.selector.matchLabels
 
 
-# Model Registry Deployment Fixtures (similar to HuggingFace deployment fixtures)
-
-
-class ModelRegistryDeploymentError(Exception):
-    """Exception raised when model registry deployment fails."""
-
-
 class PredictorPodNotFoundError(Exception):
     """Exception raised when predictor pods are not found for an InferenceService."""
-
-
-def get_openvino_image_from_rhoai_csv(admin_client: DynamicClient) -> str:
-    """
-    Get the OpenVINO model server image from the RHOAI ClusterServiceVersion.
-
-    Returns:
-        str: The OpenVINO model server image URL from RHOAI CSV
-
-    Raises:
-        Exception: If unable to find the image in the CSV
-    """
-    # Get the RHOAI CSV using the utility function
-    csv = get_cluster_service_version(
-        client=admin_client, prefix="rhods-operator", namespace=py_config["applications_namespace"]
-    )
-
-    # Look for OpenVINO image in spec.relatedImages
-    related_images = csv.instance.spec.get("relatedImages", [])
-
-    for image_info in related_images:
-        image_url = image_info.get("image", "")
-        if "odh-openvino-model-server" in image_url:
-            LOGGER.info(f"Found OpenVINO image from RHOAI CSV: {image_url}")
-            return image_url
-
-    raise ModelRegistryDeploymentError("Could not find odh-openvino-model-server image in RHOAI CSV relatedImages")
 
 
 @pytest.fixture(scope="class")
