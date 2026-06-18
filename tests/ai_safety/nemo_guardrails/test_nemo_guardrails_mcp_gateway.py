@@ -29,7 +29,12 @@ from utilities.certificates_utils import get_tls_verify
     [pytest.param({"name": "test-nemo-guardrails"})],
     indirect=True,
 )
-@pytest.mark.usefixtures("patched_dsc_kserve_headed", "bbr_envoy_filter")
+@pytest.mark.usefixtures(
+    "patched_dsc_kserve_headed",
+    "installed_istio",
+    "installed_mcp_gateway",
+    "bbr_envoy_filter"
+)
 class TestNemoGuardrailsMCP:
     """
     Tests for MCP gateway configuration in NeMo Guardrails.
@@ -83,7 +88,7 @@ class TestNemoGuardrailsMCP:
         current_client_token: str,
         nemo_guardrails_mcp: NemoGuardrails,
         nemo_guardrails_mcp_route: Route,
-        nemo_guardrails_mcp_healthcheck,
+        nemo_guardrails_mcp_healthcheck: None,
         endpoint: str,
     ) -> None:
         """
@@ -112,10 +117,10 @@ class TestNemoGuardrailsMCP:
             assert "status" in response_json, "Check endpoint should return status"
             assert response_json["status"] in {"blocked", "success", "passed"}
 
+    @pytest.mark.usefixtures("nemo_guardrails_mcp")
     def test_nemo_mcp_envoy_filter_created(
         self,
         admin_client: DynamicClient,
-        nemo_guardrails_mcp: NemoGuardrails,
     ) -> None:
         """
         Verify operator creates an EnvoyFilter once the MCPGatewayExtension is present.
