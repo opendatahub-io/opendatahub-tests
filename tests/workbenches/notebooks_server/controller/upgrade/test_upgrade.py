@@ -90,6 +90,7 @@ class TestPostUpgradeNotebook:
         When the upgrade completes,
         Then the Notebook CR generation should be unchanged.
         """
+        assert upgrade_notebook.exists, f"Notebook CR '{upgrade_notebook.name}' no longer exists after upgrade"
         current_generation = upgrade_notebook.instance.metadata.generation
         saved_generation = upgrade_notebook_baseline["notebook_generation"]
 
@@ -131,6 +132,9 @@ class TestPostUpgradeNotebook:
         When the upgrade completes,
         Then readyReplicas should equal spec.replicas and no rollout should be pending.
         """
+        assert upgrade_notebook_statefulset.exists, (
+            f"StatefulSet '{upgrade_notebook_statefulset.name}' no longer exists after upgrade"
+        )
         sts = upgrade_notebook_statefulset.instance
         expected_replicas = sts.spec.replicas
         ready_replicas = sts.status.readyReplicas or 0

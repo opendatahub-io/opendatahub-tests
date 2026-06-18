@@ -110,6 +110,7 @@ class TestPostUpgradeNotebookRouting:
         When the upgrade completes,
         Then the Route generation should be unchanged.
         """
+        assert upgrade_notebook_route.exists, f"Route '{upgrade_notebook_route.name}' no longer exists after upgrade"
         current_generation = upgrade_notebook_route.instance.metadata.generation
         saved_generation = upgrade_notebook_baseline["route_generation"]
 
@@ -129,6 +130,7 @@ class TestPostUpgradeNotebookRouting:
         When the upgrade completes,
         Then it should still target the notebook's TLS Service.
         """
+        assert upgrade_notebook_route.exists, f"Route '{upgrade_notebook_route.name}' no longer exists after upgrade"
         expected_service = f"{upgrade_notebook.name}-tls"
         backend_service = upgrade_notebook_route.exposed_service
         assert backend_service == expected_service, (
@@ -146,6 +148,7 @@ class TestPostUpgradeNotebookRouting:
         When the upgrade completes,
         Then the Route hostname should be unchanged.
         """
+        assert upgrade_notebook_route.exists, f"Route '{upgrade_notebook_route.name}' no longer exists after upgrade"
         current_host = upgrade_notebook_route.host
         saved_host = upgrade_notebook_baseline["route_host"]
 
@@ -163,6 +166,7 @@ class TestPostUpgradeNotebookRouting:
         When the upgrade completes,
         Then the TLS termination mode should be unchanged.
         """
+        assert upgrade_notebook_route.exists, f"Route '{upgrade_notebook_route.name}' no longer exists after upgrade"
         tls = upgrade_notebook_route.instance.spec.get("tls", {})
         current_termination = tls.get("termination", "")
         saved_termination = upgrade_notebook_baseline["route_tls_termination"]

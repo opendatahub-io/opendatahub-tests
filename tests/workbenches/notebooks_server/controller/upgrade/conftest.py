@@ -18,6 +18,7 @@ from timeout_sampler import TimeoutExpiredError
 
 from tests.workbenches.notebooks_server.controller.utils import (
     WORKBENCH_TRUSTED_CA_BUNDLE_NAME,
+    MutatingWebhookConfiguration,
     StatefulSet,
     build_notebook_dict,
     get_dashboard_route_host,
@@ -37,6 +38,7 @@ UPGRADE_STOPPED_NOTEBOOK_NAME = "upgrade-wb-stopped"
 NEW_NOTEBOOK_NAME = "upgrade-wb-new"
 UPGRADE_BASELINE_CM_NAME = "upgrade-workbenches-baseline"
 ODH_TRUSTED_CA_BUNDLE_NAME = "odh-trusted-ca-bundle"
+NOTEBOOK_MUTATING_WEBHOOK_NAME = "odh-notebook-controller-mutating-webhook-configuration"
 
 
 @pytest.fixture(scope="session")
@@ -436,6 +438,17 @@ def stopped_notebook_pre_upgrade_shutdown(
         f"StatefulSet '{stopped_notebook_statefulset.name}' has {replicas} replicas after stop, expected 0"
     )
     LOGGER.info(f"StatefulSet '{stopped_notebook_statefulset.name}' confirmed at 0 replicas")
+
+
+@pytest.fixture(scope="session")
+def notebook_mutating_webhook(
+    admin_client: DynamicClient,
+) -> MutatingWebhookConfiguration:
+    """The notebook controller MutatingWebhookConfiguration (cluster-scoped)."""
+    return MutatingWebhookConfiguration(
+        client=admin_client,
+        name=NOTEBOOK_MUTATING_WEBHOOK_NAME,
+    )
 
 
 @pytest.fixture(scope="session")
