@@ -285,7 +285,15 @@ def assert_source_error_state_message(
     )
 
 
-@retry(wait_timeout=300, sleep=10, exceptions_dict={ResourceNotFoundError: [], TransientUnauthorizedError: []})
+@retry(
+    wait_timeout=300,
+    sleep=10,
+    exceptions_dict={
+        ResourceNotFoundError: [],
+        TransientUnauthorizedError: [],
+        requests.exceptions.ConnectionError: [],
+    },
+)
 def wait_for_model_catalog_api(url: str, headers: dict[str, str], verify: bool | str = False) -> requests.Response:
     """
     Wait for model catalog API to be ready and fully initialized checks both /sources and /models endpoints
