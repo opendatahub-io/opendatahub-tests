@@ -33,7 +33,6 @@ class EvalHubMcpClient:
 
     def __init__(
         self,
-        *,
         host: str,
         token: str,
         ca_bundle_file: str,
@@ -56,7 +55,6 @@ class EvalHubMcpClient:
     def _post(
         self,
         payload: dict[str, Any],
-        *,
         notification: bool = False,
     ) -> requests.Response:
         headers = {
@@ -168,7 +166,6 @@ class EvalHubMcpClient:
         self,
         method: str,
         params: dict[str, Any] | None = None,
-        *,
         extra_headers: dict[str, str] | None = None,
     ) -> requests.Response:
         """POST JSON-RPC without Authorization (for negative auth tests)."""
@@ -209,7 +206,6 @@ def mcp_prompt_names(result: dict[str, Any]) -> list[str]:
 
 def call_mcp_tool(
     client: EvalHubMcpClient,
-    *,
     name: str,
     arguments: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
@@ -220,12 +216,16 @@ def call_mcp_tool(
     )
 
 
-def read_mcp_resource(client: EvalHubMcpClient, *, uri: str) -> dict[str, Any]:
+def read_mcp_resource(client: EvalHubMcpClient, uri: str) -> dict[str, Any]:
     """Read an MCP resource by URI."""
     return client.call(method="resources/read", params={"uri": uri})
 
 
-def get_mcp_prompt(client: EvalHubMcpClient, *, name: str, arguments: dict[str, str] | None = None) -> dict[str, Any]:
+def get_mcp_prompt(
+    client: EvalHubMcpClient,
+    name: str,
+    arguments: dict[str, str] | None = None,
+) -> dict[str, Any]:
     """Fetch an MCP prompt by name."""
     return client.call(
         method="prompts/get",
@@ -254,13 +254,12 @@ def mcp_tool_structured(result: dict[str, Any] | None) -> dict[str, Any]:
     return structured if isinstance(structured, dict) else {}
 
 
-def build_mcp_model_url(*, service_name: str, tenant_namespace: str) -> str:
+def build_mcp_model_url(service_name: str, tenant_namespace: str) -> str:
     """Build the vLLM emulator model URL used by MCP submit_evaluation."""
     return f"http://{service_name}.{tenant_namespace}.svc.cluster.local:{EVALHUB_VLLM_EMULATOR_PORT}/v1"
 
 
 def build_mcp_evaluation_arguments(
-    *,
     model_url: str,
     job_name: str = "mcp-test-job",
     benchmark_id: str = EVALHUB_MCP_DEFAULT_BENCHMARK_ID,
@@ -281,7 +280,6 @@ def build_mcp_evaluation_arguments(
 
 def submit_evaluation_via_mcp(
     client: EvalHubMcpClient,
-    *,
     arguments: dict[str, Any],
 ) -> dict[str, Any]:
     """Submit an evaluation job via MCP and return structured tool output."""
@@ -296,7 +294,6 @@ def submit_evaluation_via_mcp(
 
 def wait_for_mcp_job_state(
     client: EvalHubMcpClient,
-    *,
     job_id: str,
     timeout: int = 600,
     sleep: int = 15,

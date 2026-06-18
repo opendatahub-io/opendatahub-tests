@@ -61,7 +61,6 @@ def _is_dns_resolution_error(err: BaseException) -> bool:
 
 
 def _probe_evalhub_mcp_health(
-    *,
     url: str,
     host: str,
     ca_bundle_file: str,
