@@ -14,11 +14,13 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.data_science_pipelines_application import DataSciencePipelinesApplication
 from ocp_resources.deployment import Deployment
+from ocp_resources.dsc_initialization import DSCInitialization
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
+from ocp_utilities.operators import install_operator, uninstall_operator
 from timeout_sampler import TimeoutExpiredError
 
 from tests.pipelines_components.constants import (
@@ -34,9 +36,9 @@ from tests.pipelines_components.constants import (
     MINIO_UPLOADER_SECURITY_CONTEXT,
 )
 from utilities.certificates_utils import create_ca_bundle_file
-from utilities.constants import Timeout
+from utilities.constants import RHOAI_OPERATOR_NAMESPACE, Timeout
 from utilities.general import collect_pod_information
-from utilities.infra import create_ns, wait_for_dsc_status_ready
+from utilities.infra import create_ns, get_rhods_subscription, wait_for_dsc_status_ready, wait_for_dsci_status_ready
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -67,6 +69,44 @@ def pytest_configure(config: pytest.Config) -> None:
             path=str(env_file),
             variables={k: _mask_value(key=k, value=v) for k, v in loaded.items()},
         )
+
+
+@pytest.fixture(scope="session", autouse=True)
+def ensure_rhoai_operator(admin_client: DynamicClient) -> Generator[None, Any, Any]:
+    """Install RHOAI operator if not already present; uninstall on teardown if we installed it."""
+    existing = get_rhods_subscription()
+    if existing:
+        LOGGER.info(f"RHOAI operator already installed: {existing.name}")
+        yield
+        return
+
+    LOGGER.info("RHOAI operator not found — installing from redhat-operators/stable")
+    install_operator(
+        admin_client=admin_client,
+        target_namespaces=None,
+        name="rhods-operator",
+        channel="stable",
+        source="redhat-operators",
+        operator_namespace=RHOAI_OPERATOR_NAMESPACE,
+        timeout=Timeout.TIMEOUT_15MIN,
+    )
+    wait_for_dsci_status_ready(
+        dsci_resource=DSCInitialization(client=admin_client, name="default-dsci", ensure_exists=True)
+    )
+    wait_for_dsc_status_ready(
+        dsc_resource=DataScienceCluster(client=admin_client, name="default-dsc", ensure_exists=True)
+    )
+    LOGGER.info("RHOAI operator installed and ready")
+
+    yield
+
+    LOGGER.info("Uninstalling RHOAI operator (installed by test fixture)")
+    uninstall_operator(
+        admin_client=admin_client,
+        name="rhods-operator",
+        operator_namespace=RHOAI_OPERATOR_NAMESPACE,
+        clean_up_namespace=False,
+    )
 
 
 @pytest.fixture(scope="session", autouse=True)
