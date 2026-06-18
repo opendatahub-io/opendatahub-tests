@@ -18,6 +18,7 @@ from tests.ai_hub.exceptions import (
 )
 from tests.ai_hub.model_registry.rest_api.constants import MODEL_REGISTER_DATA, MODEL_REGISTRY_BASE_URI
 from utilities.exceptions import ResourceValueMismatch
+from utilities.general import generate_random_name
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -280,7 +281,7 @@ def create_model_registry_inference_service(
     extra_labels: dict[str, str] | None = None,
 ) -> Generator[InferenceService, Any, Any]:
     """Create an InferenceService for model registry testing."""
-    name = "mr-test-inference-service"
+    name = generate_random_name(prefix="mr-test-isvc", length=4)
     register_model_data = registered_model_rest_api.get("register_model", {})
     model_uri = register_model_data.get("external_id", "hf://jonburdo/test2")
     model_name = register_model_data.get("name", "my-model")

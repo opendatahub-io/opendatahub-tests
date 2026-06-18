@@ -59,6 +59,12 @@ class TestModelRegistryFinalizerCleanup:
         inference_service_name = model_registry_linked_inference_service.name
         inference_service_namespace = model_registry_deployment_ns.name
 
+        finalizers = model_registry_linked_inference_service.instance.metadata.get("finalizers", [])
+        assert MODEL_REGISTRY_FINALIZER in finalizers, (
+            f"InferenceService '{inference_service_name}' missing finalizer '{MODEL_REGISTRY_FINALIZER}', "
+            f"found: {finalizers}"
+        )
+
         LOGGER.info(f"Deleting ModelRegistry '{model_registry.name}' while InferenceService exists")
         model_registry.delete(wait=True)
         LOGGER.info(f"Deleting InferenceService '{inference_service_name}' after ModelRegistry is gone")
