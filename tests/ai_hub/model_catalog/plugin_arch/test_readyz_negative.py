@@ -73,10 +73,10 @@ class TestReadyzDuringDatabaseOutage:
         )
 
 
-class TestReadyzColdStart:
-    """Tests for /readyz behavior during catalog pod cold start (RHOAIENG-67494)."""
+class TestReadyzAfterPodRestart:
+    """Tests for /readyz behavior after catalog pod restart with DB outage (RHOAIENG-67494)."""
 
-    def test_readyz_starts_unhealthy_during_cold_start(
+    def test_readyz_unhealthy_after_pod_restart_and_db_revoke(
         self: Self,
         admin_client: DynamicClient,
         catalog_base_url: str,
@@ -113,7 +113,19 @@ class TestReadyzColdStart:
             wait_timeout=READYZ_RECOVERY_TIMEOUT,
             sleep=5,
             func=new_pod.execute,
-            command=["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "http://localhost:8080/readyz"],
+            command=[
+                "curl",
+                "-s",
+                "--connect-timeout",
+                "5",
+                "--max-time",
+                "10",
+                "-o",
+                "/dev/null",
+                "-w",
+                "%{http_code}",
+                "http://localhost:8080/readyz",
+            ],
             container="catalog",
             ignore_rc=True,
         ):
@@ -128,7 +140,19 @@ class TestReadyzColdStart:
             wait_timeout=READYZ_UNHEALTHY_TIMEOUT,
             sleep=5,
             func=new_pod.execute,
-            command=["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "http://localhost:8080/readyz"],
+            command=[
+                "curl",
+                "-s",
+                "--connect-timeout",
+                "5",
+                "--max-time",
+                "10",
+                "-o",
+                "/dev/null",
+                "-w",
+                "%{http_code}",
+                "http://localhost:8080/readyz",
+            ],
             container="catalog",
             ignore_rc=True,
         ):
