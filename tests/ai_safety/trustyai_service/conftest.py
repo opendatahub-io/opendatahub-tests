@@ -172,7 +172,7 @@ def user_workload_monitoring_config(admin_client: DynamicClient) -> Generator[Co
 
 
 @pytest.fixture(scope="class")
-def db_resources_pre_existing(request) -> bool:
+def db_resources_pre_existing(request: FixtureRequest) -> bool:
     return bool(request.node.get_closest_marker("db_resources_pre_existing"))
 
 
