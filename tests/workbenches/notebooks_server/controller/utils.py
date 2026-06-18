@@ -14,6 +14,9 @@ from utilities.infra import check_internal_image_registry_available
 
 LOGGER = get_logger(name=__name__)
 
+WORKBENCH_TRUSTED_CA_BUNDLE_NAME = "workbench-trusted-ca-bundle"
+CA_BUNDLE_CERT_KEY = "ca-bundle.crt"
+
 
 class StatefulSet(NamespacedResource):
     """StatefulSet resource (apps/v1). Not shipped by ocp_resources."""
