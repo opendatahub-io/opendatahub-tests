@@ -8,11 +8,10 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.maas_auth_policy import MaaSAuthPolicy
 from ocp_resources.resource import ResourceEditor
-from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutSampler
 
 from tests.model_serving.maas_billing.oidc_tests.utils import (
-    MAAS_API_AUTH_POLICY_NAME,
+    MAAS_GATEWAY_AUTH_POLICY_NAME,
     MAAS_OIDC_GROUP,
     OIDC_CLIENT_ID,
     create_oidc_subscription,
@@ -24,6 +23,7 @@ from tests.model_serving.maas_billing.utils import (
     create_api_key,
     revoke_api_key,
 )
+from utilities.constants import MAAS_GATEWAY_NAMESPACE
 from utilities.general import generate_random_name
 from utilities.resources.auth_policy import AuthPolicy
 from utilities.resources.tenant import Tenant
@@ -101,7 +101,6 @@ def oidc_auth_policy_patched(
         name=TENANT_NAME,
         namespace=maas_subscription_namespace.name,
     )
-    applications_namespace = py_config["applications_namespace"]
 
     oidc_patch = {
         "spec": {
@@ -115,8 +114,8 @@ def oidc_auth_policy_patched(
     with ResourceEditor(patches={tenant_cr: oidc_patch}):
         maas_auth_policy = AuthPolicy(
             client=admin_client,
-            name=MAAS_API_AUTH_POLICY_NAME,
-            namespace=applications_namespace,
+            name=MAAS_GATEWAY_AUTH_POLICY_NAME,
+            namespace=MAAS_GATEWAY_NAMESPACE,
             ensure_exists=True,
         )
         maas_auth_policy.wait_for_condition(condition="Enforced", status="True", timeout=120)

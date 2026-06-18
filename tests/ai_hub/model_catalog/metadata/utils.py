@@ -339,7 +339,16 @@ def compare_filter_options_with_database(
     comparison_errors = []
 
     # Apply the same filtering logic the API uses
-    expected_properties = {name: values for name, values in db_properties.items() if name not in excluded_fields}
+    expected_properties = {}
+    for name, values in db_properties.items():
+        if name in excluded_fields:
+            continue
+        # The API excludes numeric properties with empty ranges (nil min/max → no data rows).
+        # DB returns these with an empty 2-element array like ['', ''] or empty values.
+        if name.endswith((".double_value", ".int_value")) and all(not value for value in values):
+            LOGGER.info(f"Skipping '{name}': numeric property with no populated values (excluded by API)")
+            continue
+        expected_properties[name] = values
 
     LOGGER.info(f"Database returned {len(db_properties)} total properties")
     LOGGER.info(
