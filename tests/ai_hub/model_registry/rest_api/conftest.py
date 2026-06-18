@@ -42,11 +42,12 @@ from tests.ai_hub.utils import (
     get_mr_standard_labels,
 )
 from utilities.certificates_utils import create_ca_bundle_with_router_cert, create_k8s_secret
+from utilities.constants import RuntimeTemplates
 from utilities.exceptions import MissingParameter
 from utilities.general import generate_random_name, wait_for_pods_running
 from utilities.infra import create_ns
-from utilities.operator_utils import get_cluster_service_version
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -407,42 +408,8 @@ def model_registry_default_postgres_deployment_match_label(
     return deployment.instance.spec.selector.matchLabels
 
 
-# Model Registry Deployment Fixtures (similar to HuggingFace deployment fixtures)
-
-
-class ModelRegistryDeploymentError(Exception):
-    """Exception raised when model registry deployment fails."""
-
-
 class PredictorPodNotFoundError(Exception):
     """Exception raised when predictor pods are not found for an InferenceService."""
-
-
-def get_openvino_image_from_rhoai_csv(admin_client: DynamicClient) -> str:
-    """
-    Get the OpenVINO model server image from the RHOAI ClusterServiceVersion.
-
-    Returns:
-        str: The OpenVINO model server image URL from RHOAI CSV
-
-    Raises:
-        Exception: If unable to find the image in the CSV
-    """
-    # Get the RHOAI CSV using the utility function
-    csv = get_cluster_service_version(
-        client=admin_client, prefix="rhods-operator", namespace=py_config["applications_namespace"]
-    )
-
-    # Look for OpenVINO image in spec.relatedImages
-    related_images = csv.instance.spec.get("relatedImages", [])
-
-    for image_info in related_images:
-        image_url = image_info.get("image", "")
-        if "odh-openvino-model-server" in image_url:
-            LOGGER.info(f"Found OpenVINO image from RHOAI CSV: {image_url}")
-            return image_url
-
-    raise ModelRegistryDeploymentError("Could not find odh-openvino-model-server image in RHOAI CSV relatedImages")
 
 
 @pytest.fixture(scope="class")
@@ -511,86 +478,16 @@ def model_registry_serving_runtime(
     admin_client: DynamicClient,
     model_registry_deployment_ns: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
-    """
-    Create a ServingRuntime for OpenVINO Model Server to support registered models.
-    Based on the HuggingFace serving runtime with complete ODH dashboard integration.
-    """
-    runtime_name = "mr-test-runtime"
-
-    # Complete annotations matching manually created examples
-    annotations = {
-        "opendatahub.io/apiProtocol": "REST",
-        "opendatahub.io/recommended-accelerators": '["nvidia.com/gpu"]',
-        "opendatahub.io/runtime-version": "v2025.4",
-        "opendatahub.io/serving-runtime-scope": "global",
-        "opendatahub.io/template-display-name": "OpenVINO Model Server",
-        "opendatahub.io/template-name": "kserve-ovms",
-        "openshift.io/display-name": "OpenVINO Model Server",
-    }
-
-    # Labels for ODH dashboard integration
-    labels = {
-        "opendatahub.io/dashboard": "true",
-    }
-
-    # Supported model formats
-    supported_model_formats = [
-        {"autoSelect": True, "name": "openvino_ir", "version": "opset13"},
-        {"name": "onnx", "version": "1"},
-        {"autoSelect": True, "name": "tensorflow", "version": "1"},
-        {"autoSelect": True, "name": "tensorflow", "version": "2"},
-        {"autoSelect": True, "name": "paddle", "version": "2"},
-        {"autoSelect": True, "name": "pytorch", "version": "2"},
-    ]
-
-    # Complete ServingRuntime specification
-    runtime_spec = {
-        "annotations": {
-            "opendatahub.io/kserve-runtime": "ovms",
-            "prometheus.io/path": "/metrics",
-            "prometheus.io/port": "8888",
-        },
-        "containers": [
-            {
-                "args": [
-                    "--model_name={{.Name}}",
-                    "--port=8001",
-                    "--rest_port=8888",
-                    "--model_path=/mnt/models",
-                    "--file_system_poll_wait_seconds=0",
-                    "--metrics_enable",
-                ],
-                "image": get_openvino_image_from_rhoai_csv(admin_client),
-                "name": "kserve-container",
-                "ports": [{"containerPort": 8888, "protocol": "TCP"}],
-            }
-        ],
-        "multiModel": False,
-        "protocolVersions": ["v2", "grpc-v2"],
-        "supportedModelFormats": supported_model_formats,
-    }
-
-    # Create the ServingRuntime with complete configuration
-    runtime_dict = {
-        "apiVersion": "serving.kserve.io/v1alpha1",
-        "kind": "ServingRuntime",
-        "metadata": {
-            "name": runtime_name,
-            "namespace": model_registry_deployment_ns.name,
-            "annotations": annotations,
-            "labels": labels,
-        },
-        "spec": runtime_spec,
-    }
-
-    with ServingRuntime(
+    """Create an OVMS ServingRuntime from the cluster template for registered models."""
+    with ServingRuntimeFromTemplate(
         client=admin_client,
-        kind_dict=runtime_dict,
-        teardown=True,
+        name="mr-test-runtime",
+        namespace=model_registry_deployment_ns.name,
+        template_name=RuntimeTemplates.OVMS_KSERVE,
+        multi_model=False,
+        enable_http=True,
+        enable_grpc=False,
     ) as serving_runtime:
-        LOGGER.info(
-            f"Created OpenVINO ServingRuntime: {runtime_name} in namespace: {model_registry_deployment_ns.name}"
-        )
         yield serving_runtime
 
 
