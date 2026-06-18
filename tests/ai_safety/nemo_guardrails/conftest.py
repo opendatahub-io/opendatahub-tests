@@ -6,12 +6,16 @@ from typing import Any
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.deployment import Deployment
+from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.nemo_guardrails import NemoGuardrails
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
+from ocp_resources.subscription import Subscription
+from ocp_utilities.operators import install_operator, uninstall_operator
 
 from tests.ai_safety.nemo_guardrails.constants import (
     BBR_ENVOY_FILTER_NAME,
@@ -26,7 +30,7 @@ from tests.ai_safety.nemo_guardrails.utils import (
     wait_for_nemo_guardrails_health,
 )
 from utilities.certificates_utils import get_tls_verify
-from utilities.constants import LLMdInferenceSimConfig
+from utilities.constants import LLMdInferenceSimConfig, Timeout
 from utilities.resources.envoy_filter import EnvoyFilter
 from utilities.resources.mcp_gateway_extension import MCPGatewayExtension
 
@@ -601,12 +605,60 @@ def nemo_guardrails_config_update_healthcheck(
     )
 
 
+@pytest.fixture(scope="session")
+def installed_istio(
+    admin_client: DynamicClient,
+) -> Generator[None, Any, Any]:
+    """Install OpenShift Service Mesh 3 if not already present; yield if Istio CRDs already exist."""
+    envoy_filter_crd = CustomResourceDefinition(
+        client=admin_client,
+        name="envoyfilters.networking.istio.io",
+    )
+
+    if envoy_filter_crd.exists:
+        yield
+        return
+
+    operator_name = "servicemeshoperator3"
+    operator_namespace = "openshift-operators"
+
+    subscription = Subscription(
+        client=admin_client,
+        namespace=operator_namespace,
+        name=operator_name,
+    )
+
+    if not subscription.exists:
+        install_operator(
+            admin_client=admin_client,
+            target_namespaces=[operator_namespace],
+            name=operator_name,
+            channel="stable-3.0",
+            source="redhat-operators",
+            operator_namespace=operator_namespace,
+            timeout=Timeout.TIMEOUT_15MIN,
+            install_plan_approval="Automatic",
+        )
+
+        yield
+
+        uninstall_operator(
+            admin_client=admin_client,
+            name=operator_name,
+            operator_namespace=operator_namespace,
+            clean_up_namespace=False,
+        )
+    else:
+        yield
+
+
 @pytest.fixture(scope="class")
 def bbr_envoy_filter(
     admin_client: DynamicClient,
+    installed_istio: None,
     mcp_gateway_namespace: Namespace,
 ) -> Generator[EnvoyFilter, Any, Any]:
-    """Create EnvoyFilter with a BBR configPatch."""
+    """EnvoyFilter simulating the BBR plugin's mcp-payload-processing filter in mcp-system."""
     with EnvoyFilter(
         client=admin_client,
         kind_dict={
@@ -647,22 +699,108 @@ def bbr_envoy_filter(
         yield envoy_filter
 
 
+@pytest.fixture(scope="session")
+def installed_mcp_gateway(
+    admin_client: DynamicClient,
+) -> Generator[None, Any, Any]:
+    """Install the mcp-gateway operator via OLM if not already present."""
+    operator_name = "mcp-gateway"
+    operator_namespace = "openshift-operators"
+
+    subscription = Subscription(
+        client=admin_client,
+        namespace=operator_namespace,
+        name=operator_name,
+    )
+
+    if not subscription.exists:
+        install_operator(
+            admin_client=admin_client,
+            target_namespaces=[operator_namespace],
+            name=operator_name,
+            channel="preview",
+            source="redhat-operators",
+            operator_namespace=operator_namespace,
+            timeout=Timeout.TIMEOUT_15MIN,
+            install_plan_approval="Automatic",
+        )
+
+        yield
+
+        uninstall_operator(
+            admin_client=admin_client,
+            name=operator_name,
+            operator_namespace=operator_namespace,
+            clean_up_namespace=False,
+        )
+    else:
+        yield
+
+
+@pytest.fixture(scope="session")
+def gateway_crd(
+    admin_client: DynamicClient,
+) -> Generator[None, Any, Any]:
+    """Verify gateways.gateway.networking.k8s.io CRD is present; built-in on OCP 4.19+."""
+    crd_name = "gateways.gateway.networking.k8s.io"
+    crd = CustomResourceDefinition(client=admin_client, name=crd_name)
+
+    if not crd.exists:
+        pytest.skip(
+            f"Gateway API CRD '{crd_name}' not found — OCP 4.19+ includes this CRD by default via the Ingress Operator."
+        )
+
+    yield
+
+
 @pytest.fixture(scope="class")
 def mcp_gateway_namespace(
     admin_client: DynamicClient,
 ) -> Generator[Namespace, Any, Any]:
     """Namespace where the MCPGatewayExtension lives."""
-    yield Namespace(
+    with Namespace(
         client=admin_client,
         name=MCP_GATEWAY_NAMESPACE,
-        ensure_exists=True,
-    )
+    ) as ns:
+        yield ns
+
+
+@pytest.fixture(scope="class")
+def mcp_gateway(
+    admin_client: DynamicClient,
+    gateway_crd: None,
+    mcp_gateway_namespace: Namespace,
+) -> Generator[Gateway, Any, Any]:
+    """Minimal Gateway resource required by the TrustyAI operator to proceed with MCP reconciliation."""
+    with Gateway(
+        client=admin_client,
+        kind_dict={
+            "apiVersion": "gateway.networking.k8s.io/v1",
+            "kind": "Gateway",
+            "metadata": {
+                "name": MCP_GATEWAY_NAME,
+                "namespace": MCP_GATEWAY_NAMESPACE,
+            },
+            "spec": {
+                "gatewayClassName": "istio",
+                "listeners": [
+                    {
+                        "name": "http",
+                        "port": 80,
+                        "protocol": "HTTP",
+                    }
+                ],
+            },
+        },
+    ) as gateway:
+        yield gateway
 
 
 @pytest.fixture(scope="class")
 def mcp_gateway_extension(
     admin_client: DynamicClient,
-    mcp_gateway_namespace: Namespace,
+    installed_mcp_gateway: None,
+    mcp_gateway: Gateway,
 ) -> Generator[MCPGatewayExtension, Any, Any]:
     """Minimal MCPGatewayExtension CR."""
     with MCPGatewayExtension(
