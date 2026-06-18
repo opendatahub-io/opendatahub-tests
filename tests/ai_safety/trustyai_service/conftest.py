@@ -191,7 +191,7 @@ def db_credentials_secret(
     In pre-upgrade mode (or when no upgrade flag is set), creates a new secret with MariaDB
     connection details and manages cleanup via teardown_resources.
     """
-    if pytestconfig.option.post_upgrade and _is_db_upgrade_namespace(model_namespace.name):
+    if pytestconfig.option.post_upgrade and _is_db_upgrade_namespace(namespace_name=model_namespace.name):
         secret = Secret(
             client=admin_client,
             name=DB_CREDENTIALS_SECRET_NAME,
@@ -233,7 +233,7 @@ def mariadb(
     Uses Red Hat MariaDB image deployed via Deployment to avoid Docker Hub rate limits.
     Generates self-signed TLS certificates to match operator behavior.
     """
-    if pytestconfig.option.post_upgrade and _is_db_upgrade_namespace(model_namespace.name):
+    if pytestconfig.option.post_upgrade and _is_db_upgrade_namespace(namespace_name=model_namespace.name):
         deployment = Deployment(
             client=admin_client,
             name="mariadb",
@@ -265,7 +265,7 @@ def trustyai_db_ca_secret(
 
     Copies the CA certificate from MariaDB's CA secret for TrustyAI to use.
     """
-    if pytestconfig.option.post_upgrade and _is_db_upgrade_namespace(model_namespace.name):
+    if pytestconfig.option.post_upgrade and _is_db_upgrade_namespace(namespace_name=model_namespace.name):
         secret = Secret(
             client=admin_client,
             name=f"{TRUSTYAI_SERVICE_NAME}-db-ca",
