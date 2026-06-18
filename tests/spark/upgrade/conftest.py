@@ -318,12 +318,6 @@ def new_spark_application_fixture(
     # Generate unique name for post-upgrade test (lowercase for RFC 1123)
     spark_app_name = f"post-upgrade-spark-pi-{shortuuid.uuid()[:8].lower()}"
 
-    spark_app_kwargs = {
-        "client": admin_client,
-        "name": spark_app_name,
-        "namespace": spark_namespace_fixture.name,
-    }
-
     # Create SparkApplication spec
     spec = create_spark_pi_application_spec(
         name=spark_app_name,
