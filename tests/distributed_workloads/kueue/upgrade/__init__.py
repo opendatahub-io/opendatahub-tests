@@ -1,0 +1,1 @@
+# Kueue upgrade test package

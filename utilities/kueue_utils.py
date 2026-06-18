@@ -1,6 +1,6 @@
 from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any
+from typing import Any, Literal
 
 import structlog
 from kubernetes.dynamic import DynamicClient
@@ -9,6 +9,7 @@ from ocp_resources.resource import MissingRequiredArgumentError, NamespacedResou
 from timeout_sampler import retry
 
 from utilities.constants import Timeout
+from utilities.kueue_utils_v1beta1 import ResourceFlavorV1Beta1
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -193,16 +194,53 @@ def check_gated_pods_and_running_pods(
     return running_pods, gated_pods
 
 
+KueueApiVersion = Literal["v1beta1", "v1beta2"]
+
+
+def _resource_flavor_class_for_api_version(api_version: KueueApiVersion) -> type[Resource]:
+    if api_version == "v1beta1":
+        return ResourceFlavorV1Beta1
+    return ResourceFlavor
+
+
+def _kueue_controller_pods_ready(client: DynamicClient) -> bool:
+    # Kueue controller can be in different namespaces depending on deployment method:
+    # - redhat-ods-applications: RHOAI deployment
+    # - openshift-kueue-operator: Standalone operator deployment
+    for namespace in ["redhat-ods-applications", "openshift-kueue-operator"]:
+        pods = list(
+            Pod.get(
+                label_selector="app.kubernetes.io/name=kueue",
+                namespace=namespace,
+                client=client,
+            )
+        )
+        if pods and all(
+            any(
+                condition.type == Pod.Condition.READY and condition.status == Pod.Condition.Status.TRUE
+                for condition in pod.instance.status.conditions or []
+            )
+            for pod in pods
+        ):
+            return True
+    return False
+
+
 @retry(
     wait_timeout=Timeout.TIMEOUT_4MIN,
     sleep=5,
 )
-def wait_for_kueue_crds_available(client: DynamicClient) -> bool:
+def wait_for_kueue_crds_available(client: DynamicClient, api_version: KueueApiVersion = "v1beta2") -> bool:
     """Wait for Kueue CRDs and controller to be fully available.
 
     This function waits for:
-    1. Kueue CRDs to be registered in the API server
+    1. Kueue CRDs to be registered in the API server at the requested version
     2. kueue-controller-manager pods to be Ready (needed for webhooks/admission control)
+
+    Args:
+        client: Kubernetes dynamic client.
+        api_version: Kueue CRD API version to probe. Use ``v1beta1`` for pre-upgrade
+            clusters and ``v1beta2`` for post-upgrade clusters.
 
     Raises:
         TimeoutExpiredError: If CRDs or controller are not available within the timeout period.
@@ -210,27 +248,13 @@ def wait_for_kueue_crds_available(client: DynamicClient) -> bool:
     Returns:
         True when CRDs are available and controller is ready.
     """
+    resource_flavor_class = _resource_flavor_class_for_api_version(api_version=api_version)
     # Check if CRDs are registered (raises exception if not, then will @retry)
-    list(ResourceFlavor.get(client=client))
+    list(resource_flavor_class.get(client=client))
 
-    # Check kueue-controller-manager pods exist and are ready
-    pods = list(
-        Pod.get(
-            label_selector="control-plane=controller-manager,app.kubernetes.io/name=kueue",
-            namespace="openshift-kueue-operator",
-            client=client,
-        )
-    )
-    all_pods_ready = pods and all(
-        any(
-            condition.type == Pod.Condition.READY and condition.status == Pod.Condition.Status.TRUE
-            for condition in pod.instance.status.conditions or []
-        )
-        for pod in pods
-    )
-    if not all_pods_ready:
+    if not _kueue_controller_pods_ready(client=client):
         LOGGER.info("Kueue controller pods not ready yet, retrying...")
         return False
 
-    LOGGER.info(f"Kueue is ready: CRDs available and {len(pods)} controller pod(s) running")
+    LOGGER.info(f"Kueue is ready: {api_version} CRDs available and controller pod(s) running")
     return True
