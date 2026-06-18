@@ -35,9 +35,10 @@ def wait_for_spark_application_state(
 
     def _get_state():
         """Get application state, handling None status."""
-        if spark_app.instance.status is None:
+        status = spark_app.instance.status
+        if status is None:
             return None
-        return spark_app.instance.status.get("applicationState", {}).get("state")
+        return status.get("applicationState", {}).get("state")
 
     sampler = TimeoutSampler(
         wait_timeout=timeout,
@@ -94,7 +95,7 @@ def create_spark_pi_application_spec(
             "image": image,
             "imagePullPolicy": "IfNotPresent",
             "mainClass": "org.apache.spark.examples.SparkPi",
-            "mainApplicationFile": "local:///opt/spark/examples/jars/spark-examples_2.13-4.0.1.jar",
+            "mainApplicationFile": f"local:///opt/spark/examples/jars/spark-examples_2.13-{spark_version}.jar",
             "sparkVersion": spark_version,
             "restartPolicy": {
                 "type": "Never",
@@ -204,7 +205,10 @@ def save_baseline_to_configmap(
     )
 
     if cm.exists:
-        cm.clean_up()
+        raise AssertionError(
+            f"ConfigMap {UPGRADE_BASELINE_CONFIGMAP} already exists in namespace {namespace}. "
+            "This indicates a previous test run did not clean up properly."
+        )
 
     cm.deploy()
     LOGGER.info("Baseline saved to ConfigMap")
@@ -232,8 +236,10 @@ def load_baseline_from_configmap(
     )
 
     if not cm.exists:
-        LOGGER.warning("Baseline ConfigMap does not exist")
-        return {}
+        raise AssertionError(
+            f"Baseline ConfigMap {UPGRADE_BASELINE_CONFIGMAP} does not exist in namespace {namespace}. "
+            "Cannot load baseline for post-upgrade verification."
+        )
 
     baseline_yaml = cm.instance.data.get("baselines.yaml", "")
     baselines = yaml.safe_load(baseline_yaml) or {}
@@ -322,13 +328,21 @@ def verify_pods_not_restarted(
         )
     )
 
+    # Verify pod identity continuity
+    baseline_pods = set(baseline_restart_counts.keys())
+    current_pods = {pod.name for pod in pods}
+    assert current_pods == baseline_pods, (
+        f"Pod set changed during upgrade. Baseline: {sorted(baseline_pods)}, "
+        f"Current: {sorted(current_pods)}"
+    )
+
     for pod in pods:
         current_restart_count = sum(
             container_status.get("restartCount", 0)
             for container_status in pod.instance.status.get("containerStatuses", [])
         )
 
-        baseline_count = baseline_restart_counts.get(pod.name, 0)
+        baseline_count = baseline_restart_counts[pod.name]
 
         assert current_restart_count <= baseline_count, (
             f"Pod {pod.name} restarted during upgrade. Baseline: {baseline_count}, Current: {current_restart_count}"

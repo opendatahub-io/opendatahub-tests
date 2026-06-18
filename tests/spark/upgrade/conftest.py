@@ -50,9 +50,9 @@ def pre_upgrade_spark_dsc_patch(
 
     current_state = original_components.get("sparkoperator", {}).get("managementState")
     if current_state == DscComponents.ManagementState.MANAGED:
-        LOGGER.info("Spark Operator is already set to Managed")
-        dsc_resource.wait_for_condition(condition="SparkOperatorReady", status="True", timeout=300)
-        return dsc_resource
+        raise AssertionError(
+            "Spark Operator is already in Managed state. This indicates a previous test did not clean up properly."
+        )
 
     LOGGER.info("Setting Spark Operator to Managed state")
     editor = ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}})
@@ -89,10 +89,10 @@ def post_upgrade_spark_dsc_patch(
     if current_state == DscComponents.ManagementState.REMOVED:
         LOGGER.info("Spark Operator is already set to Removed")
         return
-
-    LOGGER.info("Setting Spark Operator back to Removed state")
-    editor = ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}})
-    editor.update()
+    else:
+        LOGGER.info("Setting Spark Operator back to Removed state")
+        editor = ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}})
+        editor.update()
 
 
 @pytest.fixture(scope="session")
@@ -135,13 +135,12 @@ def spark_namespace_fixture(
             ns.clean_up()
 
     else:
-        # Pre-upgrade: clean up any existing namespace from failed previous runs
+        # Pre-upgrade: namespace should NOT exist from previous runs
         if ns.exists:
-            LOGGER.warning(
-                f"Namespace {UPGRADE_NAMESPACE} already exists (likely from failed previous run). "
-                "Cleaning it up to start fresh."
+            raise AssertionError(
+                f"Namespace {UPGRADE_NAMESPACE} already exists. "
+                "This indicates a previous test run did not clean up properly."
             )
-            ns.clean_up()
 
         with create_ns(
             admin_client=admin_client,
@@ -175,8 +174,6 @@ def spark_role_fixture(
 
     if pytestconfig.option.post_upgrade:
         yield role
-        role.clean_up()
-
     else:
         role_instance = Role(
             **role_kwargs,
@@ -225,8 +222,6 @@ def service_account_fixture(
 
     if pytestconfig.option.post_upgrade:
         yield sa
-        sa.clean_up()
-
     else:
         with ServiceAccount(**sa_kwargs, teardown=teardown_resources) as sa:
             # Create RoleBinding
@@ -274,8 +269,6 @@ def spark_application_fixture(
 
     if pytestconfig.option.post_upgrade:
         yield spark_app
-        spark_app.clean_up()
-
     else:
         # Create SparkApplication spec
         spec = create_spark_pi_application_spec(
