@@ -103,6 +103,8 @@ class TestPreUpgradeTrustyAIService:
 )
 @pytest.mark.usefixtures("minio_pod")
 class TestPostUpgradeTrustyAIService:
+    """Post-upgrade tests for TrustyAI Service verifying PVC-to-DB storage migration."""
+
     @pytest.mark.post_upgrade
     def test_drift_metric_delete_pre_db_migration(
         self,
