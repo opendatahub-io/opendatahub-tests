@@ -39,7 +39,22 @@ def protocol(request: FixtureRequest) -> str:
 
 @pytest.fixture(scope="session")
 def s3_models_storage_uri(request: FixtureRequest, models_s3_bucket_name: str) -> str:
-    return f"s3://{models_s3_bucket_name}/{request.param['model-dir']}/"
+    """
+    Build S3 model URI from fixture params.
+
+    Supports:
+    - relative model paths via ``model-dir`` + default/global bucket
+    - optional per-test bucket override via ``bucket-name``
+    - fully-qualified S3 URIs in ``model-dir`` (e.g. ``s3://bucket/prefix``)
+    """
+    model_dir = request.param["model-dir"].strip()
+
+    if model_dir.startswith("s3://"):
+        return f"{model_dir.rstrip('/')}/"
+
+    bucket_name = request.param.get("bucket-name", models_s3_bucket_name).strip()
+    normalized_model_dir = model_dir.strip("/")
+    return f"s3://{bucket_name}/{normalized_model_dir}/"
 
 
 @pytest.fixture(scope="class")
