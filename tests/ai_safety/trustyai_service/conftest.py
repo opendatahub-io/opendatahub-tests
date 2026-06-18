@@ -172,17 +172,11 @@ def user_workload_monitoring_config(admin_client: DynamicClient) -> Generator[Co
 
 
 @pytest.fixture(scope="class")
-def db_resources_pre_existing(request: FixtureRequest) -> bool:
-    return bool(request.node.get_closest_marker("db_resources_pre_existing"))
-
-
-@pytest.fixture(scope="class")
 def db_credentials_secret(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     model_namespace: Namespace,
     teardown_resources: bool,
-    db_resources_pre_existing: bool,
 ) -> Generator[Secret, Any, Any]:
     """Provides database credentials secret for MariaDB connection.
 
@@ -192,7 +186,7 @@ def db_credentials_secret(
     In pre-upgrade mode (or when no upgrade flag is set), creates a new secret with MariaDB
     connection details and manages cleanup via teardown_resources.
     """
-    if pytestconfig.option.post_upgrade and db_resources_pre_existing:
+    if pytestconfig.option.post_upgrade and "db-upgrade" in model_namespace.name:
         secret = Secret(
             client=admin_client,
             name=DB_CREDENTIALS_SECRET_NAME,
@@ -228,14 +222,13 @@ def mariadb(
     model_namespace: Namespace,
     db_credentials_secret: Secret,
     teardown_resources: bool,
-    db_resources_pre_existing: bool,
 ) -> Generator[Deployment, Any, Any]:
     """Provides a MariaDB instance using standalone Deployment with TLS enabled.
 
     Uses Red Hat MariaDB image deployed via Deployment to avoid Docker Hub rate limits.
     Generates self-signed TLS certificates to match operator behavior.
     """
-    if pytestconfig.option.post_upgrade and db_resources_pre_existing:
+    if pytestconfig.option.post_upgrade and "db-upgrade" in model_namespace.name:
         deployment = Deployment(
             client=admin_client,
             name="mariadb",
@@ -262,13 +255,12 @@ def trustyai_db_ca_secret(
     model_namespace: Namespace,
     mariadb: Deployment,
     teardown_resources: bool,
-    db_resources_pre_existing: bool,
 ) -> Generator[Secret, Any]:
     """Provides TLS CA certificate secret for TrustyAI to connect to MariaDB.
 
     Copies the CA certificate from MariaDB's CA secret for TrustyAI to use.
     """
-    if pytestconfig.option.post_upgrade and db_resources_pre_existing:
+    if pytestconfig.option.post_upgrade and "db-upgrade" in model_namespace.name:
         secret = Secret(
             client=admin_client,
             name=f"{TRUSTYAI_SERVICE_NAME}-db-ca",
