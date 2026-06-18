@@ -194,11 +194,7 @@ def spark_role_fixture(
             teardown=teardown_resources,
         )
         role_instance.deploy()
-        try:
-            yield role_instance
-        finally:
-            if teardown_resources:
-                role_instance.clean_up()
+        yield role_instance
 
 
 @pytest.fixture(scope="session")
@@ -225,25 +221,23 @@ def service_account_fixture(
     if pytestconfig.option.post_upgrade:
         yield sa
     else:
-        with ServiceAccount(**sa_kwargs, teardown=teardown_resources) as sa:
-            # Create RoleBinding
-            rb = RoleBinding(
-                client=admin_client,
-                name="spark-operator-rolebinding",
-                namespace=spark_namespace_fixture.name,
-                subjects_kind="ServiceAccount",
-                subjects_name=SPARK_SERVICE_ACCOUNT,
-                role_ref_kind="Role",
-                role_ref_name=spark_role_fixture.name,
-                teardown=teardown_resources,
-            )
-            rb.deploy()
+        sa = ServiceAccount(**sa_kwargs, teardown=teardown_resources)
+        sa.deploy()
 
-            try:
-                yield sa
-            finally:
-                if teardown_resources:
-                    rb.clean_up()
+        # Create RoleBinding
+        rb = RoleBinding(
+            client=admin_client,
+            name="spark-operator-rolebinding",
+            namespace=spark_namespace_fixture.name,
+            subjects_kind="ServiceAccount",
+            subjects_name=SPARK_SERVICE_ACCOUNT,
+            role_ref_kind="Role",
+            role_ref_name=spark_role_fixture.name,
+            teardown=teardown_resources,
+        )
+        rb.deploy()
+
+        yield sa
 
 
 @pytest.fixture(scope="session")
@@ -286,11 +280,7 @@ def spark_application_fixture(
         )
         spark_app_instance.deploy()
 
-        try:
-            yield spark_app_instance
-        finally:
-            if teardown_resources:
-                spark_app_instance.clean_up()
+        yield spark_app_instance
 
 
 @pytest.fixture(scope="session")
