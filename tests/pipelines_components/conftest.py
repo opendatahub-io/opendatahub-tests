@@ -17,7 +17,7 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.dsc_initialization import DSCInitialization
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
-from ocp_resources.resource import ResourceEditor
+from ocp_resources.resource import ResourceEditor, get_client
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_utilities.operators import install_operator, uninstall_operator
@@ -51,8 +51,18 @@ def _mask_value(key: str, value: str) -> str:
     return value
 
 
+_RHOAI_INSTALLED_BY_TESTS = False
+
+
 def pytest_configure(config: pytest.Config) -> None:
-    """Log loaded .env variables."""
+    """Load .env variables and ensure the RHOAI operator is installed.
+
+    This runs before the root conftest's pytest_sessionstart, which tries to
+    access the DataScienceCluster CRD.  If the operator is missing, that hook
+    crashes with NotImplementedError before any fixture gets a chance to run.
+    """
+    global _RHOAI_INSTALLED_BY_TESTS
+
     env_file = Path(__file__).parent / ".env"
     if env_file.is_file():
         loaded = {}
@@ -70,19 +80,15 @@ def pytest_configure(config: pytest.Config) -> None:
             variables={k: _mask_value(key=k, value=v) for k, v in loaded.items()},
         )
 
-
-@pytest.fixture(scope="session", autouse=True)
-def ensure_rhoai_operator(admin_client: DynamicClient) -> Generator[None, Any, Any]:
-    """Install RHOAI operator if not already present; uninstall on teardown if we installed it."""
     existing = get_rhods_subscription()
     if existing:
         LOGGER.info(f"RHOAI operator already installed: {existing.name}")
-        yield
         return
 
     LOGGER.info("RHOAI operator not found — installing from redhat-operators/stable")
+    client = get_client()
     install_operator(
-        admin_client=admin_client,
+        admin_client=client,
         target_namespaces=None,
         name="rhods-operator",
         channel="stable",
@@ -90,16 +96,18 @@ def ensure_rhoai_operator(admin_client: DynamicClient) -> Generator[None, Any, A
         operator_namespace=RHOAI_OPERATOR_NAMESPACE,
         timeout=Timeout.TIMEOUT_15MIN,
     )
-    wait_for_dsci_status_ready(
-        dsci_resource=DSCInitialization(client=admin_client, name="default-dsci", ensure_exists=True)
-    )
-    wait_for_dsc_status_ready(
-        dsc_resource=DataScienceCluster(client=admin_client, name="default-dsc", ensure_exists=True)
-    )
+    wait_for_dsci_status_ready(dsci_resource=DSCInitialization(client=client, name="default-dsci", ensure_exists=True))
+    wait_for_dsc_status_ready(dsc_resource=DataScienceCluster(client=client, name="default-dsc", ensure_exists=True))
     LOGGER.info("RHOAI operator installed and ready")
+    _RHOAI_INSTALLED_BY_TESTS = True
 
+
+@pytest.fixture(scope="session", autouse=True)
+def _uninstall_rhoai_if_we_installed_it(admin_client: DynamicClient) -> Generator[None, Any, Any]:
+    """Uninstall the RHOAI operator on teardown if it was installed by pytest_configure."""
     yield
-
+    if not _RHOAI_INSTALLED_BY_TESTS:
+        return
     LOGGER.info("Uninstalling RHOAI operator (installed by test fixture)")
     uninstall_operator(
         admin_client=admin_client,
