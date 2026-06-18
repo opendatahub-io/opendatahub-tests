@@ -10,6 +10,7 @@ from ocp_resources.notebook import Notebook
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.route import Route
+from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError
@@ -225,6 +226,71 @@ def upgrade_notebook_route(
         client=admin_client,
         name=upgrade_notebook.name,
         namespace=upgrade_notebook.namespace,
+    )
+
+
+@pytest.fixture(scope="session")
+def auth_oauth_config_secret(
+    unprivileged_client: DynamicClient,
+    upgrade_notebook: Notebook,
+) -> Secret:
+    """oauth-proxy config Secret for the notebook ({name}-oauth-config)."""
+    return Secret(
+        client=unprivileged_client,
+        name=f"{upgrade_notebook.name}-oauth-config",
+        namespace=upgrade_notebook.namespace,
+    )
+
+
+@pytest.fixture(scope="session")
+def auth_tls_secret(
+    unprivileged_client: DynamicClient,
+    upgrade_notebook: Notebook,
+) -> Secret:
+    """TLS Secret for the notebook's oauth-proxy ({name}-tls)."""
+    return Secret(
+        client=unprivileged_client,
+        name=f"{upgrade_notebook.name}-tls",
+        namespace=upgrade_notebook.namespace,
+    )
+
+
+@pytest.fixture(scope="session")
+def stopped_auth_oauth_config_secret(
+    unprivileged_client: DynamicClient,
+    stopped_notebook: Notebook,
+) -> Secret:
+    """oauth-proxy config Secret for the stopped notebook."""
+    return Secret(
+        client=unprivileged_client,
+        name=f"{stopped_notebook.name}-oauth-config",
+        namespace=stopped_notebook.namespace,
+    )
+
+
+@pytest.fixture(scope="session")
+def stopped_auth_tls_secret(
+    unprivileged_client: DynamicClient,
+    stopped_notebook: Notebook,
+) -> Secret:
+    """TLS Secret for the stopped notebook's oauth-proxy."""
+    return Secret(
+        client=unprivileged_client,
+        name=f"{stopped_notebook.name}-tls",
+        namespace=stopped_notebook.namespace,
+    )
+
+
+@pytest.fixture(scope="session")
+def stopped_tls_service(
+    unprivileged_client: DynamicClient,
+    stopped_notebook: Notebook,
+) -> Service:
+    """TLS Service for the stopped notebook ({name}-tls)."""
+    return Service(
+        client=unprivileged_client,
+        name=f"{stopped_notebook.name}-tls",
+        namespace=stopped_notebook.namespace,
     )
 
 
