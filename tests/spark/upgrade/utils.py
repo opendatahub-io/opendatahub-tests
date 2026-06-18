@@ -33,10 +33,16 @@ def wait_for_spark_application_state(
     """
     LOGGER.info(f"Waiting for SparkApplication {spark_app.name} to reach state {expected_state}")
 
+    def _get_state():
+        """Get application state, handling None status."""
+        if spark_app.instance.status is None:
+            return None
+        return spark_app.instance.status.get("applicationState", {}).get("state")
+
     sampler = TimeoutSampler(
         wait_timeout=timeout,
         sleep=5,
-        func=lambda: spark_app.instance.status.get("applicationState", {}).get("state"),
+        func=_get_state,
     )
 
     try:
@@ -45,7 +51,11 @@ def wait_for_spark_application_state(
                 LOGGER.info(f"SparkApplication {spark_app.name} reached state {expected_state}")
                 return
     except TimeoutExpiredError:
-        current_state = spark_app.instance.status.get("applicationState", {}).get("state", "UNKNOWN")
+        status = spark_app.instance.status
+        if status is None:
+            current_state = "No status yet"
+        else:
+            current_state = status.get("applicationState", {}).get("state", "UNKNOWN")
         raise TimeoutExpiredError(
             f"SparkApplication {spark_app.name} did not reach {expected_state} state within {timeout}s. "
             f"Current state: {current_state}"
@@ -84,9 +94,7 @@ def create_spark_pi_application_spec(
             "image": image,
             "imagePullPolicy": "IfNotPresent",
             "mainClass": "org.apache.spark.examples.SparkPi",
-            "mainApplicationFile": (
-                f"local:///opt/spark/examples/jars/spark-examples_{spark_version}-{spark_version}.jar"
-            ),
+            "mainApplicationFile": "local:///opt/spark/examples/jars/spark-examples_2.13-4.0.1.jar",
             "sparkVersion": spark_version,
             "restartPolicy": {
                 "type": "Never",
@@ -138,9 +146,9 @@ def capture_spark_application_baseline(
     """
     LOGGER.info(f"Capturing baseline for SparkApplication {spark_app.name}")
 
-    # Wait for application to complete and get observed generation from status
+    # Wait for application to complete and get metadata generation
     wait_for_spark_application_state(spark_app=spark_app, expected_state="COMPLETED", timeout=300)
-    observed_generation = spark_app.instance.status.get("observedGeneration", 0)
+    generation = spark_app.instance.metadata.generation
 
     # Get pod restart counts
     pod_restart_counts = {}
@@ -161,7 +169,7 @@ def capture_spark_application_baseline(
 
     baseline = {
         "spark_app_name": spark_app.name,
-        "observed_generation": observed_generation,
+        "generation": generation,
         "pod_restart_counts": pod_restart_counts,
         "application_state": spark_app.instance.status.get("applicationState", {}).get("state"),
     }
@@ -184,19 +192,21 @@ def save_baseline_to_configmap(
     """
     LOGGER.info(f"Saving baseline to ConfigMap {UPGRADE_BASELINE_CONFIGMAP} in namespace {namespace}")
 
+    cm_data = {
+        "baselines.yaml": yaml.dump(baselines),
+    }
+
     cm = ConfigMap(
         client=client,
         name=UPGRADE_BASELINE_CONFIGMAP,
         namespace=namespace,
+        data=cm_data,
     )
 
-    if not cm.exists:
-        cm.deploy()
+    if cm.exists:
+        cm.clean_up()
 
-    cm.instance.data = {
-        "baselines.yaml": yaml.dump(baselines),
-    }
-    cm.update()
+    cm.deploy()
     LOGGER.info("Baseline saved to ConfigMap")
 
 
@@ -252,16 +262,21 @@ def verify_spark_app_generation(
     spark_app: SparkApplication,
     expected_generation: int,
 ) -> None:
-    """Verify SparkApplication generation has not changed.
+    """Verify SparkApplication metadata generation has not changed.
 
     Args:
         spark_app: SparkApplication resource
-        expected_generation: Expected observed generation
+        expected_generation: Expected metadata generation
 
     Raises:
         AssertionError: If generation doesn't match
+
+    Note:
+        Uses metadata.generation (set by Kubernetes) instead of status.observedGeneration
+        because Spark Operator doesn't populate observedGeneration in the status.
     """
-    actual_generation = spark_app.instance.status.get("observedGeneration", 0)
+    actual_generation = spark_app.instance.metadata.generation
+
     assert actual_generation == expected_generation, (
         f"SparkApplication {spark_app.name} generation changed during upgrade. "
         f"Expected: {expected_generation}, Actual: {actual_generation}"

@@ -10,6 +10,8 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.namespace import Namespace
 from ocp_resources.resource import ResourceEditor
+from ocp_resources.role import Role
+from ocp_resources.role_binding import RoleBinding
 from ocp_resources.service_account import ServiceAccount
 
 from tests.spark.upgrade.utils import (
@@ -28,39 +30,57 @@ UPGRADE_NAMESPACE = "upgrade-spark-operator"
 SPARK_SERVICE_ACCOUNT = "spark-operator-spark"
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="session")
 def pre_upgrade_spark_dsc_patch(
+    pytestconfig: pytest.Config,
     dsc_resource: DataScienceCluster,
 ) -> DataScienceCluster:
     """Enable Spark Operator in DSC before upgrade tests.
 
     Spark Operator is Tech Preview and not managed by default.
     This fixture sets it to Managed state for upgrade testing.
+    Only runs during pre-upgrade phase.
     """
+    # Only enable during pre-upgrade phase
+    if pytestconfig.option.post_upgrade:
+        return dsc_resource
+
     original_components = dsc_resource.instance.spec.components
     component_patch = {"sparkoperator": {"managementState": DscComponents.ManagementState.MANAGED}}
 
     current_state = original_components.get("sparkoperator", {}).get("managementState")
     if current_state == DscComponents.ManagementState.MANAGED:
         LOGGER.info("Spark Operator is already set to Managed")
+        dsc_resource.wait_for_condition(condition="SparkOperatorReady", status="True", timeout=300)
         return dsc_resource
 
     LOGGER.info("Setting Spark Operator to Managed state")
     editor = ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}})
     editor.update()
+
+    # Wait for Spark Operator to be ready
+    LOGGER.info("Waiting for Spark Operator to be ready")
+    dsc_resource.wait_for_condition(condition="SparkOperatorReady", status="True", timeout=300)
+
     return dsc_resource
 
 
 @pytest.fixture(scope="class")
 def post_upgrade_spark_dsc_patch(
+    pytestconfig: pytest.Config,
     dsc_resource: DataScienceCluster,
 ) -> Generator[DataScienceCluster, Any, Any]:
-    """Restore Spark Operator to Removed state after upgrade tests.
+    """Restore Spark Operator to Removed state after new SparkApplication tests.
 
     Since Spark Operator is Tech Preview, it should be set back to Removed
     state after testing to match the default cluster state.
+    Only runs during post-upgrade phase.
     """
     yield dsc_resource
+
+    # Only restore during post-upgrade phase
+    if not pytestconfig.option.post_upgrade:
+        return
 
     original_components = dsc_resource.instance.spec.components
     component_patch = {"sparkoperator": {"managementState": DscComponents.ManagementState.REMOVED}}
@@ -99,19 +119,30 @@ def spark_namespace_fixture(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     teardown_resources: bool,
+    pre_upgrade_spark_dsc_patch: DataScienceCluster,
 ) -> Generator[Namespace, Any, Any]:
     """Create or reference the upgrade namespace.
 
-    Pre-upgrade: Creates namespace with teardown=False
+    Pre-upgrade: Creates fresh namespace (cleans up existing if needed)
     Post-upgrade: References existing namespace and cleans up after tests
     """
     ns = Namespace(client=admin_client, name=UPGRADE_NAMESPACE)
 
     if pytestconfig.option.post_upgrade:
+        # Post-upgrade: namespace should exist from pre-upgrade
         yield ns
-        ns.clean_up()
+        if teardown_resources:
+            ns.clean_up()
 
     else:
+        # Pre-upgrade: clean up any existing namespace from failed previous runs
+        if ns.exists:
+            LOGGER.warning(
+                f"Namespace {UPGRADE_NAMESPACE} already exists (likely from failed previous run). "
+                "Cleaning it up to start fresh."
+            )
+            ns.clean_up()
+
         with create_ns(
             admin_client=admin_client,
             name=UPGRADE_NAMESPACE,
@@ -123,15 +154,65 @@ def spark_namespace_fixture(
 
 
 @pytest.fixture(scope="session")
-def service_account_fixture(
+def spark_role_fixture(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     spark_namespace_fixture: Namespace,
     teardown_resources: bool,
-) -> Generator[ServiceAccount, Any, Any]:
-    """Create or reference the Spark service account.
+) -> Generator[Role, Any, Any]:
+    """Create or reference the Spark Role with necessary permissions.
 
-    Pre-upgrade: Creates service account
+    Pre-upgrade: Creates Role
+    Post-upgrade: References existing Role and cleans up
+    """
+    role_kwargs = {
+        "client": admin_client,
+        "name": "spark-operator-role",
+        "namespace": spark_namespace_fixture.name,
+    }
+
+    role = Role(**role_kwargs)
+
+    if pytestconfig.option.post_upgrade:
+        yield role
+        role.clean_up()
+
+    else:
+        role_instance = Role(
+            **role_kwargs,
+            rules=[
+                {
+                    "apiGroups": [""],
+                    "resources": ["pods", "services", "configmaps"],
+                    "verbs": ["create", "get", "list", "watch", "delete", "patch", "update"],
+                },
+                {
+                    "apiGroups": [""],
+                    "resources": ["pods/log"],
+                    "verbs": ["get"],
+                },
+            ],
+            teardown=teardown_resources,
+        )
+        role_instance.deploy()
+        try:
+            yield role_instance
+        finally:
+            if teardown_resources:
+                role_instance.clean_up()
+
+
+@pytest.fixture(scope="session")
+def service_account_fixture(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    spark_namespace_fixture: Namespace,
+    spark_role_fixture: Role,
+    teardown_resources: bool,
+) -> Generator[ServiceAccount, Any, Any]:
+    """Create or reference the Spark service account with RoleBinding.
+
+    Pre-upgrade: Creates service account and RoleBinding
     Post-upgrade: References existing service account and cleans up
     """
     sa_kwargs = {
@@ -148,7 +229,24 @@ def service_account_fixture(
 
     else:
         with ServiceAccount(**sa_kwargs, teardown=teardown_resources) as sa:
-            yield sa
+            # Create RoleBinding
+            rb = RoleBinding(
+                client=admin_client,
+                name="spark-operator-rolebinding",
+                namespace=spark_namespace_fixture.name,
+                subjects_kind="ServiceAccount",
+                subjects_name=SPARK_SERVICE_ACCOUNT,
+                role_ref_kind="Role",
+                role_ref_name=spark_role_fixture.name,
+                teardown=teardown_resources,
+            )
+            rb.deploy()
+
+            try:
+                yield sa
+            finally:
+                if teardown_resources:
+                    rb.clean_up()
 
 
 @pytest.fixture(scope="session")
@@ -217,8 +315,8 @@ def new_spark_application_fixture(
         yield None
         return
 
-    # Generate unique name for post-upgrade test
-    spark_app_name = f"post-upgrade-spark-pi-{shortuuid.uuid()[:8]}"
+    # Generate unique name for post-upgrade test (lowercase for RFC 1123)
+    spark_app_name = f"post-upgrade-spark-pi-{shortuuid.uuid()[:8].lower()}"
 
     spark_app_kwargs = {
         "client": admin_client,

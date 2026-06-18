@@ -31,7 +31,6 @@ class TestPreUpgradeSpark:
         verify_spark_app_completed(spark_app=spark_application_fixture)
 
 
-@pytest.mark.usefixtures("post_upgrade_spark_dsc_patch")
 class TestPostUpgradeSpark:
     """Validate SparkApplication integrity and execution after an operator upgrade.
 
@@ -40,7 +39,6 @@ class TestPostUpgradeSpark:
         2. Verify the SparkApplication was not modified during the upgrade
         3. Verify pods have not restarted beyond pre-upgrade baseline
         4. Verify the SparkApplication is still in COMPLETED state
-        5. (Teardown) Restore Spark Operator to Removed state
     """
 
     @pytest.mark.post_upgrade
@@ -63,7 +61,7 @@ class TestPostUpgradeSpark:
         )
         verify_spark_app_generation(
             spark_app=spark_application_fixture,
-            expected_generation=baseline["observed_generation"],
+            expected_generation=baseline["generation"],
         )
 
     @pytest.mark.post_upgrade
@@ -110,16 +108,16 @@ class TestPostUpgradeNewSparkApplication:
         )
 
     @pytest.mark.post_upgrade
-    @pytest.mark.dependency(depends=["new_spark_app_created"])
+    @pytest.mark.dependency(name="new_spark_app_execution", depends=["new_spark_app_created"])
+    def test_new_spark_application_post_upgrade_execution(self, new_spark_application_fixture):
+        """Verify new SparkApplication completes successfully on upgraded operator"""
+        verify_spark_app_completed(spark_app=new_spark_application_fixture)
+
+    @pytest.mark.post_upgrade
+    @pytest.mark.dependency(depends=["new_spark_app_execution"])
     def test_new_spark_application_post_upgrade_generation(self, new_spark_application_fixture):
-        """Verify newly created SparkApplication has generation=1 (fresh resource)"""
+        """Verify newly created SparkApplication has generation=1 (fresh resource, after execution)"""
         verify_spark_app_generation(
             spark_app=new_spark_application_fixture,
             expected_generation=1,
         )
-
-    @pytest.mark.post_upgrade
-    @pytest.mark.dependency(depends=["new_spark_app_created"])
-    def test_new_spark_application_post_upgrade_execution(self, new_spark_application_fixture):
-        """Verify new SparkApplication completes successfully on upgraded operator"""
-        verify_spark_app_completed(spark_app=new_spark_application_fixture)
