@@ -110,7 +110,7 @@ class TrustyAIServiceClient:
             ValueError: If method is not GET, POST or DELETE.
         """
 
-        url = f"https://{self.service_route.host}/{endpoint}"
+        url = f"https://{self.service_route.host}/{endpoint.lstrip('/')}"
         headers = {**self.headers, **(extra_headers or {})}
         base_kwargs = {"url": url, "headers": headers, "verify": self.cert_path}
 
