@@ -652,6 +652,10 @@ def verify_trustyai_service_metric_registered_post_upgrade(
     """
     tas_client = TrustyAIServiceClient(token=token, service=trustyai_service, client=client)
     metrics_response = tas_client.get_metrics(metric_name=metric_name)
+    assert metrics_response.status_code == HTTPStatus.OK, (
+        f"Failed to fetch {metric_name} metrics: "
+        f"HTTP {metrics_response.status_code}. Response body: {metrics_response.text!r}"
+    )
     metrics_data = json.loads(metrics_response.text)
     num_metrics = len(metrics_data.get("requests", []))
 

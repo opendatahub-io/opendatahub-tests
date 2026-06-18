@@ -96,6 +96,8 @@ class TestPreUpgradeTrustyAIService:
     indirect=True,
 )
 class TestPostUpgradeTrustyAIService:
+    """Post-upgrade tests for TrustyAI Service verifying PVC-to-DB storage migration."""
+
     @pytest.mark.dependency(name="pvc_metric_re_registered")
     @pytest.mark.post_upgrade
     def test_trustyai_service_post_upgrade_preexisting_metric_re_registered(
