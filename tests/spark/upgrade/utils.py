@@ -332,8 +332,7 @@ def verify_pods_not_restarted(
     baseline_pods = set(baseline_restart_counts.keys())
     current_pods = {pod.name for pod in pods}
     assert current_pods == baseline_pods, (
-        f"Pod set changed during upgrade. Baseline: {sorted(baseline_pods)}, "
-        f"Current: {sorted(current_pods)}"
+        f"Pod set changed during upgrade. Baseline: {sorted(baseline_pods)}, Current: {sorted(current_pods)}"
     )
 
     for pod in pods:
