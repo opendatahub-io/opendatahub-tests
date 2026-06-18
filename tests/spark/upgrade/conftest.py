@@ -53,16 +53,16 @@ def pre_upgrade_spark_dsc_patch(
         raise AssertionError(
             "Spark Operator is already in Managed state. This indicates a previous test did not clean up properly."
         )
+    else:
+        LOGGER.info("Setting Spark Operator to Managed state")
+        editor = ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}})
+        editor.update()
 
-    LOGGER.info("Setting Spark Operator to Managed state")
-    editor = ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}})
-    editor.update()
+        # Wait for Spark Operator to be ready
+        LOGGER.info("Waiting for Spark Operator to be ready")
+        dsc_resource.wait_for_condition(condition="SparkOperatorReady", status="True", timeout=300)
 
-    # Wait for Spark Operator to be ready
-    LOGGER.info("Waiting for Spark Operator to be ready")
-    dsc_resource.wait_for_condition(condition="SparkOperatorReady", status="True", timeout=300)
-
-    return dsc_resource
+        return dsc_resource
 
 
 @pytest.fixture(scope="class")
@@ -87,12 +87,14 @@ def post_upgrade_spark_dsc_patch(
 
     current_state = original_components.get("sparkoperator", {}).get("managementState")
     if current_state == DscComponents.ManagementState.REMOVED:
-        LOGGER.info("Spark Operator is already set to Removed")
-        return
-    else:
-        LOGGER.info("Setting Spark Operator back to Removed state")
-        editor = ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}})
-        editor.update()
+        raise AssertionError(
+            "Spark Operator is already in Removed state during post-upgrade. "
+            "This indicates Spark Operator was not enabled during pre-upgrade tests."
+        )
+
+    LOGGER.info("Setting Spark Operator back to Removed state")
+    editor = ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}})
+    editor.update()
 
 
 @pytest.fixture(scope="session")
