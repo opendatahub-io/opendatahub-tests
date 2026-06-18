@@ -91,10 +91,10 @@ def post_upgrade_spark_dsc_patch(
             "Spark Operator is already in Removed state during post-upgrade. "
             "This indicates Spark Operator was not enabled during pre-upgrade tests."
         )
-
-    LOGGER.info("Setting Spark Operator back to Removed state")
-    editor = ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}})
-    editor.update()
+    else:
+        LOGGER.info("Setting Spark Operator back to Removed state")
+        editor = ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}})
+        editor.update()
 
 
 @pytest.fixture(scope="session")
