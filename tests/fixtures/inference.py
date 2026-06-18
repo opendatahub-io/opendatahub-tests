@@ -184,6 +184,10 @@ def patched_dsc_kserve_headed(
     def _wait_for_kserve_upgrade(dsc_resource: DataScienceCluster):
         return _kserve_status(dsc_resource) != "True"
 
+    @retry(wait_timeout=60, sleep=5)
+    def _wait_for_kserve_ready(dsc_resource: DataScienceCluster):
+        return _kserve_status(dsc_resource) == "True"
+
     dsc = get_data_science_cluster(client=admin_client)
     if dsc.instance.spec.components.kserve.rawDeploymentServiceConfig != "Headed":
         with ResourceEditor(
@@ -191,7 +195,7 @@ def patched_dsc_kserve_headed(
         ):
             _wait_for_kserve_upgrade(dsc_resource=dsc)
             kserve_controller_manager_deployment.wait_for_replicas()
-            wait_for_dsc_status_ready(dsc_resource=dsc)
+            _wait_for_kserve_ready(dsc_resource=dsc)
             yield dsc
     else:
         LOGGER.info("DSC already configured for Headed mode")
