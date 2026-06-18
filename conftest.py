@@ -59,7 +59,6 @@ def pytest_addoption(parser: Parser) -> None:
     upgrade_group = parser.getgroup(name="Upgrade options")
     must_gather_group = parser.getgroup(name="MustGather")
     cluster_sanity_group = parser.getgroup(name="ClusterSanity")
-    ociregistry_group = parser.getgroup(name="OCI Registry")
     serving_arguments_group = parser.getgroup(name="Serving arguments")
     model_validation_automation_group = parser.getgroup(name="Model Validation Automation")
     hf_group = parser.getgroup(name="Hugging Face")
@@ -137,19 +136,12 @@ def pytest_addoption(parser: Parser) -> None:
         help="Specify the OVMS runtime image to use for the tests",
     )
 
-    # OCI Registry options
-    ociregistry_group.addoption(
-        "--registry-pull-secret",
-        action="append",
-        default=None,
-        help="Registry pull secret to pull oci container images",
+    # OCI Registry options (vLLM modelcar)
+    from tests.model_serving.model_runtime.vllm.modelcar.pytest_options import (
+        register_modelcar_registry_pull_secret_options,
     )
-    ociregistry_group.addoption(
-        "--registry-host",
-        action="append",
-        default=None,
-        help="Registry host to pull oci container images",
-    )
+
+    register_modelcar_registry_pull_secret_options(parser=parser)
 
     # Serving arguments options
     serving_arguments_group.addoption(
