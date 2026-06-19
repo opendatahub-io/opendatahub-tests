@@ -16,7 +16,7 @@ from ocp_resources.trustyai_service import TrustyAIService
 from timeout_sampler import TimeoutSampler
 
 from utilities.certificates_utils import create_ca_bundle_file
-from utilities.constants import TRUSTYAI_SERVICE_NAME, KServeDeploymentType, Protocols, Timeout
+from utilities.constants import TRUSTYAI_SERVICE_NAME, Protocols, Timeout
 from utilities.exceptions import MetricValidationError
 from utilities.general import create_isvc_label_selector_str
 from utilities.inference_utils import Inference, UserInference
@@ -77,12 +77,12 @@ class TrustyAIServiceClient:
         """
 
         if hasattr(TrustyAIServiceMetrics.Fairness, metric_name.upper()):
-            base_url: str = "/metrics/group/fairness"
+            base_url: str = "metrics/group/fairness"
         elif hasattr(TrustyAIServiceMetrics.Drift, metric_name.upper()):
-            base_url = "/metrics/drift"
+            base_url = "metrics/drift"
         else:
             raise MetricValidationError(f"Unknown metric: {metric_name}")
-        return f"{base_url}/{metric_name}"
+        return f"{base_url.rstrip('/')}/{metric_name}"
 
     def _send_request(
         self,
@@ -227,9 +227,8 @@ class TrustyAIServiceClient:
         Returns:
             requests.Response: Response from metric request.
         """
-        endpoint: str = (
-            f"/{self._get_metric_base_url(metric_name=metric_name)}/{self.Endpoints.REQUEST if schedule else ''}"
-        )
+        base_url = self._get_metric_base_url(metric_name=metric_name)
+        endpoint: str = f"{base_url}/{self.Endpoints.REQUEST}" if schedule else base_url
         LOGGER.info(f"Sending request for metric {metric_name} to endpoint {endpoint}")
         return self._send_request(endpoint=endpoint, method="POST", json=json)
 
@@ -394,8 +393,7 @@ def wait_for_isvc_deployment_registered_by_trustyai_service(
     pod_label_selector = create_isvc_label_selector_str(isvc=isvc, resource_type="pod", runtime_name=runtime_name)
     trustyai_service = TrustyAIService(name=TRUSTYAI_SERVICE_NAME, namespace=isvc.namespace, ensure_exists=True)
 
-    deployment_mode = isvc.instance.metadata.annotations.get("serving.kserve.io/deploymentMode", "")
-    scheme = "https" if deployment_mode in KServeDeploymentType.RAW_DEPLOYMENT_MODES else "http"
+    expected_sink_host = f"{trustyai_service.name}.{isvc.namespace}.svc.cluster.local"
 
     def _get_deployments() -> list[Deployment]:
         return list(
@@ -427,10 +425,8 @@ def wait_for_isvc_deployment_registered_by_trustyai_service(
 
         all_ready = True
         for deployment in deployments:
-            if (
-                deployment.instance.metadata.annotations.get("internal.serving.kserve.io/logger-sink-url")
-                == f"{scheme}://{trustyai_service.name}.{isvc.namespace}.svc.cluster.local"
-            ):
+            sink_url = deployment.instance.metadata.annotations.get("internal.serving.kserve.io/logger-sink-url", "")
+            if sink_url.endswith(expected_sink_host):
                 deployment.wait_for_replicas()
                 deployment.wait_for_condition(condition="Available", status="True")
 

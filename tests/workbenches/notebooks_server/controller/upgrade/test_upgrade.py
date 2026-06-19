@@ -2,11 +2,12 @@ import json
 from typing import Any
 
 import pytest
+from ocp_resources.config_map import ConfigMap
 from ocp_resources.notebook import Notebook
 from ocp_resources.pod import Pod
 from ocp_resources.service import Service
 
-from tests.workbenches.notebooks_server.controller.utils import StatefulSet
+from tests.workbenches.notebooks_server.controller.utils import CA_BUNDLE_CERT_KEY, StatefulSet
 
 
 @pytest.mark.usefixtures("capture_notebook_baseline")
@@ -24,8 +25,29 @@ class TestPreUpgradeNotebook:
         """Given a Notebook CR is created before upgrade,
         When the notebook controller reconciles and starts the pod,
         Then the notebook pod should exist and be in Ready state.
+
+        Validation is performed by the upgrade_notebook_pod fixture which waits
+        for the pod to exist and reach Ready condition.
         """
-        assert upgrade_notebook_pod.exists, f"Notebook pod '{upgrade_notebook_pod.name}' does not exist"
+
+    @pytest.mark.pre_upgrade
+    def test_ca_bundle_configmap_exists_before_upgrade(
+        self,
+        workbench_trusted_ca_bundle: ConfigMap,
+    ) -> None:
+        """Given a notebook is running before upgrade,
+        When the ODH controller reconciles CA certificates,
+        Then the workbench-trusted-ca-bundle ConfigMap should exist with ca-bundle.crt.
+        """
+        assert workbench_trusted_ca_bundle.exists, (
+            f"ConfigMap '{workbench_trusted_ca_bundle.name}' not found in namespace "
+            f"'{workbench_trusted_ca_bundle.namespace}'"
+        )
+
+        cm_data = workbench_trusted_ca_bundle.instance.data
+        assert cm_data and cm_data.get(CA_BUNDLE_CERT_KEY) is not None, (
+            f"ConfigMap '{workbench_trusted_ca_bundle.name}' missing key '{CA_BUNDLE_CERT_KEY}'."
+        )
 
 
 class TestPostUpgradeNotebook:
@@ -109,6 +131,9 @@ class TestPostUpgradeNotebook:
         When the upgrade completes,
         Then readyReplicas should equal spec.replicas and no rollout should be pending.
         """
+        assert upgrade_notebook_statefulset.exists, (
+            f"StatefulSet '{upgrade_notebook_statefulset.name}' no longer exists after upgrade"
+        )
         sts = upgrade_notebook_statefulset.instance
         expected_replicas = sts.spec.replicas
         ready_replicas = sts.status.readyReplicas or 0
@@ -156,3 +181,61 @@ class TestPostUpgradeNotebook:
             f"Pre-upgrade: {saved_selector}, "
             f"post-upgrade: {current_selector}"
         )
+
+    @pytest.mark.post_upgrade
+    def test_ca_bundle_configmap_exists_after_upgrade(
+        self,
+        workbench_trusted_ca_bundle: ConfigMap,
+    ) -> None:
+        """Given the workbench-trusted-ca-bundle existed before upgrade,
+        When the upgrade completes,
+        Then the ConfigMap should still exist with the ca-bundle.crt key.
+        """
+        assert workbench_trusted_ca_bundle.exists, (
+            f"ConfigMap '{workbench_trusted_ca_bundle.name}' no longer exists after upgrade"
+        )
+
+        cm_data = workbench_trusted_ca_bundle.instance.data
+        assert cm_data and cm_data.get(CA_BUNDLE_CERT_KEY) is not None, (
+            f"ConfigMap '{workbench_trusted_ca_bundle.name}' lost '{CA_BUNDLE_CERT_KEY}' key after upgrade."
+        )
+
+    @pytest.mark.post_upgrade
+    def test_ca_bundle_configmap_consistency_after_upgrade(
+        self,
+        workbench_trusted_ca_bundle: ConfigMap,
+        odh_trusted_ca_bundle: ConfigMap,
+        upgrade_notebook_baseline: dict[str, Any],
+    ) -> None:
+        """Given the workbench-trusted-ca-bundle and odh-trusted-ca-bundle existed before upgrade,
+        When the upgrade completes,
+        Then both CA bundles must change together or neither should change.
+        """
+        assert workbench_trusted_ca_bundle.exists, (
+            f"ConfigMap '{workbench_trusted_ca_bundle.name}' no longer exists after upgrade"
+        )
+        assert odh_trusted_ca_bundle.exists, f"ConfigMap '{odh_trusted_ca_bundle.name}' no longer exists after upgrade"
+
+        saved_workbench_rv = upgrade_notebook_baseline["ca_bundle_resource_version"]
+        saved_odh_rv = upgrade_notebook_baseline["odh_ca_bundle_resource_version"]
+
+        current_workbench_rv = workbench_trusted_ca_bundle.instance.metadata.resourceVersion
+        current_odh_rv = odh_trusted_ca_bundle.instance.metadata.resourceVersion
+
+        odh_bundle_changed = current_odh_rv != saved_odh_rv
+        workbench_bundle_changed = current_workbench_rv != saved_workbench_rv
+
+        if odh_bundle_changed:
+            assert workbench_bundle_changed, (
+                f"odh-trusted-ca-bundle was modified during upgrade but the change was not "
+                f"propagated to workbench-trusted-ca-bundle. "
+                f"odh resourceVersion: {saved_odh_rv} -> {current_odh_rv}, "
+                f"workbench resourceVersion: {saved_workbench_rv} (unchanged)"
+            )
+        else:
+            assert not workbench_bundle_changed, (
+                f"workbench-trusted-ca-bundle was modified during upgrade but the source "
+                f"odh-trusted-ca-bundle was not. This indicates an unexpected reconciliation. "
+                f"workbench resourceVersion: {saved_workbench_rv} -> {current_workbench_rv}, "
+                f"odh resourceVersion: {saved_odh_rv} (unchanged)"
+            )

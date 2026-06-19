@@ -93,7 +93,6 @@ class TestDriftMetrics:
     def test_upload_gzip_compressed_data(
         self,
         admin_client,
-        minio_data_connection,
         current_client_token,
         trustyai_service,
     ) -> None:
@@ -108,7 +107,6 @@ class TestDriftMetrics:
     def test_upload_malformed_gzip_returns_400(
         self,
         admin_client,
-        minio_data_connection,
         current_client_token,
         trustyai_service,
     ) -> None:

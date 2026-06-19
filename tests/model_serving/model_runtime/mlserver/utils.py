@@ -141,11 +141,15 @@ def validate_deterministic_snapshot(response: Any, response_snapshot: Any) -> No
         AssertionError: If the response structure is invalid or data is empty.
     """
     assert response, "Response is empty"
+    assert isinstance(response, dict), f"Response is not a dict: {response}"
     assert response.get("outputs"), "Response missing outputs"
     assert isinstance(response["outputs"], list), "Outputs must be a list"
     assert len(response["outputs"]) > 0, "Outputs list is empty"
 
-    actual_data = response["outputs"][0].get("data", [])
+    output = response["outputs"][0]
+    assert isinstance(output, dict), f"Output must be a dict, got {type(output).__name__}"
+
+    actual_data = output.get("data", [])
     assert actual_data, "Data is empty"
     assert isinstance(actual_data, list), "Data must be a list"
     assert all(isinstance(x, (int, float, list)) for x in actual_data), "Invalid data types in response"

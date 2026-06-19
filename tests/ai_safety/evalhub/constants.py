@@ -13,7 +13,10 @@ EVALHUB_COMPONENT_LABEL: str = "api"
 
 # CRD details
 EVALHUB_API_GROUP: str = "trustyai.opendatahub.io"
-EVALHUB_API_VERSION: str = "v1alpha1"
+EVALHUB_API_VERSION_V1: str = "v1"
+EVALHUB_API_VERSION_V1ALPHA1: str = "v1alpha1"
+EVALHUB_FULL_API_VERSION_V1: str = f"{EVALHUB_API_GROUP}/v1"
+EVALHUB_FULL_API_VERSION_V1ALPHA1: str = f"{EVALHUB_API_GROUP}/v1alpha1"
 EVALHUB_KIND: str = "EvalHub"
 EVALHUB_PLURAL: str = "evalhubs"
 
@@ -72,3 +75,9 @@ MINIO_UPLOADER_SECURITY_CONTEXT = {
     "runAsNonRoot": True,
     "seccompProfile": {"type": "RuntimeDefault"},
 }
+
+# ServiceMonitor and metrics Service
+EVALHUB_METRICS_SERVICE_SUFFIX: str = "-metrics"
+EVALHUB_METRICS_PORT: int = 8081
+EVALHUB_METRICS_COMPONENT_LABEL: str = "metrics"
+EVALHUB_SCRAPE_INTERVAL: str = "30s"

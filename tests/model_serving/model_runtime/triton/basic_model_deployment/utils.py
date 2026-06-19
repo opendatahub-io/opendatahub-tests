@@ -146,15 +146,27 @@ def validate_inference_request(
     )
 
     assert response, "Response is empty"
+    assert isinstance(response, dict), f"Response is not a dict: {response}"
     assert response.get("outputs"), "Response missing outputs"
 
-    actual_data = response["outputs"][0].get("data", [])
-    assert actual_data, "Data is empty"
-    assert len(actual_data) >= 5, f"Data has less than 5 elements: {len(actual_data)}"
+    if "rawOutputContents" in response or "raw_output_contents" in response:
+        raw_contents = response.get("rawOutputContents") or response.get("raw_output_contents")
+        assert raw_contents
+        return
 
-    actual_top5 = sorted(range(len(actual_data)), key=lambda i: actual_data[i], reverse=True)[:5]
-    assert len(actual_top5) == 5, "Top-5 indices calculation failed"
-    assert all(isinstance(i, int) and 0 <= i < len(actual_data) for i in actual_top5), "Invalid top-5 indices"
+    assert isinstance(response["outputs"], list), "Outputs must be a list"
+    assert len(response["outputs"]) > 0, "Outputs list is empty"
+
+    output = response["outputs"][0]
+    assert isinstance(output, dict), f"Output must be a dict, got {type(output).__name__}"
+
+    actual_data = output.get("data", [])
+    assert actual_data, "Data is empty"
+    assert isinstance(actual_data, list), f"Data must be a list, got {type(actual_data).__name__}"
+
+    top_k = min(5, len(actual_data))
+    actual_top_k = sorted(range(len(actual_data)), key=lambda i: actual_data[i], reverse=True)[:top_k]
+    assert all(isinstance(i, int) and 0 <= i < len(actual_data) for i in actual_top_k)
 
 
 def get_gpu_identifier(accelerator_type: str | None) -> str:

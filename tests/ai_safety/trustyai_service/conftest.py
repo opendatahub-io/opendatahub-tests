@@ -313,7 +313,7 @@ def gaussian_credit_model(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     mlserver_runtime: ServingRuntime,
-    # kserve_raw_config: ConfigMap,
+    kserve_raw_config: ConfigMap,
     kserve_logger_ca_bundle: ConfigMap,
     teardown_resources: bool,
 ) -> Generator[InferenceService, Any, Any]:

@@ -16,10 +16,10 @@ from tests.model_serving.model_runtime.vllm.modelcar.constant import (
     COMPLETION_QUERY,
     EMBEDDING_QUERY,
     OPENAI_ENDPOINT_NAME,
-    SPYRE_INFERENCE_SERVICE_PORT,
 )
 from utilities.constants import Ports
 from utilities.exceptions import NotSupportedError
+from utilities.inference_utils import get_exposed_isvc_url
 from utilities.plugins.constant import OpenAIEnpoints
 from utilities.plugins.openai_plugin import OpenAIClient
 
@@ -283,13 +283,27 @@ def validate_embedding_inference_output(model_info: Any, embedding_responses: It
 
 @retry(stop=stop_after_attempt(5), wait=wait_exponential(min=1, max=6))
 def run_raw_inference(
-    pod_name: str,
     isvc: InferenceService,
-    port: int,
     endpoint: str,
     completion_query: list[dict[str, str]] = COMPLETION_QUERY,
+    url: str | None = None,
+    pod_name: str | None = None,
+    port: int | None = Ports.REST_PORT,
 ) -> tuple[Any, list[Any]]:
-    LOGGER.info("audio_inference:start endpoint=%s pod=%s", endpoint, pod_name)
+    if url is not None:
+        LOGGER.info("Using external route for inference: %s", url)
+        if endpoint == "openai":
+            return fetch_openai_response(
+                url=url,
+                model_name=isvc.instance.metadata.name,
+                completion_query=completion_query,
+            )
+        raise NotSupportedError(f"{endpoint} endpoint")
+
+    LOGGER.info("Using port forwarding for inference on pod: %s", pod_name)
+    if pod_name is None or port is None:
+        raise ValueError("pod_name and port are required when url is not provided")
+
     with portforward.forward(
         pod_or_service=pod_name,
         namespace=isvc.namespace,
@@ -297,14 +311,12 @@ def run_raw_inference(
         to_port=port,
     ):
         if endpoint == "openai":
-            model_info, completion_responses = fetch_openai_response(
+            return fetch_openai_response(
                 url=f"http://localhost:{port}",
                 model_name=isvc.instance.metadata.name,
                 completion_query=completion_query,
             )
-            return model_info, completion_responses
-        else:
-            raise NotSupportedError(f"{endpoint} endpoint")
+        raise NotSupportedError(f"{endpoint} endpoint")
 
 
 @retry(stop=stop_after_attempt(5), wait=wait_exponential(min=1, max=6))
@@ -408,15 +420,17 @@ def run_audio_inference(
 
 
 def validate_raw_openai_inference_request(
-    pod_name: str,
     isvc: InferenceService,
     response_snapshot: Any | None = None,
     completion_query: list[dict[str, Any]] | None = None,
     model_output_type: str = "text",
     model_name: str | None = None,
+    pod_name: str | None = None,
     port: int = Ports.REST_PORT,
 ) -> None:
     if model_output_type == "audio":
+        if pod_name is None:
+            raise ValueError("pod_name is required for audio inference")
         LOGGER.info("Running audio inference test")
         model_info, completion_responses = run_audio_inference(
             pod_name=pod_name,
@@ -435,16 +449,12 @@ def validate_raw_openai_inference_request(
         return
     elif model_output_type == "text":
         LOGGER.info("Running text inference test")
-        scheduler_name = getattr(isvc.instance.spec.predictor, "schedulerName", "") or ""
-        if scheduler_name.lower() == "spyre-scheduler":
-            port = SPYRE_INFERENCE_SERVICE_PORT
         effective_query = completion_query or COMPLETION_QUERY
         model_info, completion_responses = run_raw_inference(
-            pod_name=pod_name,
             isvc=isvc,
-            port=port,
             endpoint=OPENAI_ENDPOINT_NAME,
             completion_query=effective_query,
+            url=get_exposed_isvc_url(isvc=isvc),
         )
         wrapped_completion_responses = [
             normalize_text_completion_response(response) for response in completion_responses
@@ -463,6 +473,8 @@ def validate_raw_openai_inference_request(
                 response_snapshot=response_snapshot,
             )
     elif model_output_type == "embedding":
+        if pod_name is None:
+            raise ValueError("pod_name is required for embedding inference")
         model_info, embedding_responses = run_embedding_inference(
             pod_name=pod_name,
             isvc=isvc,

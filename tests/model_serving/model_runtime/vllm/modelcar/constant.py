@@ -1,4 +1,41 @@
+from dataclasses import dataclass
 from typing import Any
+
+QUAY_IO_REGISTRY_HOST: str = "quay.io"
+REGISTRY_STAGE_REDHAT_IO_HOST: str = "registry.stage.redhat.io"
+REGISTRY_REDHAT_IO_HOST: str = "registry.redhat.io"
+
+
+@dataclass(frozen=True, slots=True)
+class ModelcarRegistry:
+    """OCI registry host and its pytest CLI/env configuration."""
+
+    host: str
+    option_dest: str
+    cli_option: str
+    env_var: str
+
+
+MODELCAR_REGISTRIES: tuple[ModelcarRegistry, ...] = (
+    ModelcarRegistry(
+        host=QUAY_IO_REGISTRY_HOST,
+        option_dest="quay_io_registry_pull_secret",
+        cli_option="--quay-io-registry-pull-secret",
+        env_var="QUAY_IO_REGISTRY_PULL_SECRET",
+    ),
+    ModelcarRegistry(
+        host=REGISTRY_STAGE_REDHAT_IO_HOST,
+        option_dest="registry_stage_redhat_io_registry_pull_secret",
+        cli_option="--registry-stage-redhat-io-registry-pull-secret",
+        env_var="REGISTRY_STAGE_REDHAT_IO_REGISTRY_PULL_SECRET",
+    ),
+    ModelcarRegistry(
+        host=REGISTRY_REDHAT_IO_HOST,
+        option_dest="registry_redhat_io_registry_pull_secret",
+        cli_option="--registry-redhat-io-registry-pull-secret",
+        env_var="REGISTRY_REDHAT_IO_REGISTRY_PULL_SECRET",
+    ),
+)
 
 COMPLETION_QUERY: list[dict[str, Any]] = [
     {
@@ -110,11 +147,7 @@ EMBEDDING_QUERY: list[dict[str, str]] = [
 PULL_SECRET_ACCESS_TYPE: str = '["Pull"]'
 PULL_SECRET_NAME: str = "oci-registry-pull-secret"  # pragma: allowlist secret
 
-SUPPORTED_MODELCAR_REGISTRY_HOSTS: frozenset[str] = frozenset({
-    "registry.redhat.io",
-    "registry.stage.redhat.io",
-    "quay.io",
-})
+SUPPORTED_MODELCAR_REGISTRY_HOSTS: frozenset[str] = frozenset({registry.host for registry in MODELCAR_REGISTRIES})
 SPYRE_INFERENCE_SERVICE_PORT: int = 8000
 TIMEOUT_20MIN: int = 30 * 60
 OPENAI_ENDPOINT_NAME: str = "openai"
