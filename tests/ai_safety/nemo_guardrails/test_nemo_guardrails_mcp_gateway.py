@@ -29,12 +29,7 @@ from utilities.certificates_utils import get_tls_verify
     [pytest.param({"name": "test-nemo-guardrails"})],
     indirect=True,
 )
-@pytest.mark.usefixtures(
-    "patched_dsc_kserve_headed",
-    "installed_istio",
-    "installed_mcp_gateway",
-    "bbr_envoy_filter"
-)
+@pytest.mark.usefixtures("patched_dsc_kserve_headed", "installed_istio", "installed_mcp_gateway", "bbr_envoy_filter")
 class TestNemoGuardrailsMCP:
     """
     Tests for MCP gateway configuration in NeMo Guardrails.
