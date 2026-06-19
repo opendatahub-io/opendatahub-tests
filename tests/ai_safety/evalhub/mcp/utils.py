@@ -7,7 +7,6 @@ from typing import Any
 
 import requests
 import structlog
-from kubernetes.dynamic import DynamicClient
 from timeout_sampler import TimeoutSampler
 
 from tests.ai_safety.evalhub.constants import EVALHUB_VLLM_EMULATOR_PORT
@@ -186,6 +185,37 @@ class EvalHubMcpClient:
         )
 
 
+def validate_evalhub_mcp_initialize(
+    host: str,
+    token: str,
+    ca_bundle_file: str,
+    tenant_namespace: str,
+) -> dict[str, Any]:
+    """Validate MCP initialize succeeds with bearer token, tenant header, and proxy RBAC.
+
+    Args:
+        host: MCP route hostname.
+        token: Bearer token for the test service account.
+        ca_bundle_file: Path to the cluster CA bundle for TLS verification.
+        tenant_namespace: Tenant namespace sent via X-Tenant header.
+
+    Returns:
+        The MCP initialize result object.
+
+    Raises:
+        requests.HTTPError: If the HTTP request fails.
+        McpProtocolError: If the JSON-RPC response contains an error.
+    """
+    assert token, "Expected non-empty bearer token"
+    client = EvalHubMcpClient(
+        host=host,
+        token=token,
+        ca_bundle_file=ca_bundle_file,
+        tenant=tenant_namespace,
+    )
+    return client.initialize()
+
+
 def mcp_resource_names(result: dict[str, Any]) -> list[str]:
     """Extract resource names from a resources/list result."""
     resources = result.get("resources", [])
@@ -339,34 +369,3 @@ def build_mcp_proxy_role_rules(evalhub_instance_name: str) -> list[dict[str, lis
             "verbs": ["get", "create"],
         }
     ]
-
-
-def tenant_mcp_rbac_ready(
-    admin_client: DynamicClient,
-    namespace: str,
-    evalhub_instance_name: str,
-) -> bool:
-    """Check operator job RBAC for a specific EvalHub instance in a tenant namespace."""
-    from ocp_resources.config_map import ConfigMap
-    from ocp_resources.role_binding import RoleBinding
-    from ocp_resources.service_account import ServiceAccount
-
-    from tests.ai_safety.evalhub.constants import (
-        EVALHUB_JOB_CONFIG_CLUSTERROLE,
-        EVALHUB_JOBS_WRITER_CLUSTERROLE,
-    )
-
-    rbs = list(RoleBinding.get(client=admin_client, namespace=namespace))
-    has_job_config = any(
-        rb.instance.roleRef.name == EVALHUB_JOB_CONFIG_CLUSTERROLE and rb.name.startswith(evalhub_instance_name)
-        for rb in rbs
-    )
-    has_job_writer = any(
-        rb.instance.roleRef.name == EVALHUB_JOBS_WRITER_CLUSTERROLE and rb.name.startswith(evalhub_instance_name)
-        for rb in rbs
-    )
-    sas = list(ServiceAccount.get(client=admin_client, namespace=namespace))
-    has_job_sa = any(sa.name.startswith(evalhub_instance_name) and "job" in sa.name for sa in sas)
-    cms = list(ConfigMap.get(client=admin_client, namespace=namespace))
-    has_service_ca_cm = any(cm.name.startswith(evalhub_instance_name) and "service-ca" in cm.name for cm in cms)
-    return has_job_config and has_job_writer and has_job_sa and has_service_ca_cm

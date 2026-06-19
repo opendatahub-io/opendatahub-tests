@@ -126,7 +126,7 @@ class TestEvalHubMcpToolsSubmit:
     def test_submit_evaluation_with_benchmarks(
         self,
         evalhub_mcp_client: EvalHubMcpClient,
-        evalhub_mcp_vllm_emulator_service: Service,
+        evalhub_vllm_emulator_service: Service,
         tenant_a_namespace: Namespace,
     ) -> None:
         """
@@ -135,7 +135,7 @@ class TestEvalHubMcpToolsSubmit:
         Then: Response returns a pending or running job ID
         """
         model_url = build_mcp_model_url(
-            service_name=evalhub_mcp_vllm_emulator_service.name,
+            service_name=evalhub_vllm_emulator_service.name,
             tenant_namespace=tenant_a_namespace.name,
         )
         result = call_mcp_tool(
@@ -154,7 +154,7 @@ class TestEvalHubMcpToolsSubmit:
     def test_submit_evaluation_with_collection(
         self,
         evalhub_mcp_client: EvalHubMcpClient,
-        evalhub_mcp_vllm_emulator_service: Service,
+        evalhub_vllm_emulator_service: Service,
         tenant_a_namespace: Namespace,
     ) -> None:
         """
@@ -163,7 +163,7 @@ class TestEvalHubMcpToolsSubmit:
         Then: Response returns a pending or running job ID
         """
         model_url = build_mcp_model_url(
-            service_name=evalhub_mcp_vllm_emulator_service.name,
+            service_name=evalhub_vllm_emulator_service.name,
             tenant_namespace=tenant_a_namespace.name,
         )
         result = call_mcp_tool(

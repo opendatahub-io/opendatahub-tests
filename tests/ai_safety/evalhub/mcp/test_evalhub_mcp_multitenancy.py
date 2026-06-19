@@ -39,7 +39,7 @@ class TestEvalHubMcpMultitenancy:
         self,
         evalhub_mcp_client: EvalHubMcpClient,
         tenant_a_namespace: Namespace,
-        evalhub_mcp_vllm_emulator_service: Service,
+        evalhub_vllm_emulator_service: Service,
     ) -> None:
         """
         Given: MCP client authenticated for tenant-a with proxy RBAC
@@ -47,7 +47,7 @@ class TestEvalHubMcpMultitenancy:
         Then: Job is created and job_id is returned
         """
         model_url = build_mcp_model_url(
-            service_name=evalhub_mcp_vllm_emulator_service.name,
+            service_name=evalhub_vllm_emulator_service.name,
             tenant_namespace=tenant_a_namespace.name,
         )
         submit_result = submit_evaluation_via_mcp(
@@ -66,7 +66,7 @@ class TestEvalHubMcpMultitenancy:
         tenant_b_namespace: Namespace,
         evalhub_mcp_mt_route: Route,
         evalhub_mcp_mt_ca_bundle_file: str,
-        evalhub_mcp_vllm_emulator_service: Service,
+        evalhub_vllm_emulator_service: Service,
         evalhub_mcp_mt_ready: None,
     ) -> None:
         """
@@ -83,7 +83,7 @@ class TestEvalHubMcpMultitenancy:
         client.initialize()
 
         model_url = build_mcp_model_url(
-            service_name=evalhub_mcp_vllm_emulator_service.name,
+            service_name=evalhub_vllm_emulator_service.name,
             tenant_namespace=tenant_a_namespace.name,
         )
         result = call_mcp_tool(

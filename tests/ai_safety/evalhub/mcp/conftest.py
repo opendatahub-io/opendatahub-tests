@@ -14,15 +14,9 @@ from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
-from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
-from tests.ai_safety.evalhub.constants import EVALHUB_VLLM_EMULATOR_PORT
-from tests.ai_safety.evalhub.kueue.constants import (
-    VLLM_EMULATOR,
-    VLLM_EMULATOR_IMAGE,
-)
 from tests.ai_safety.evalhub.mcp.constants import (
     EVALHUB_MCP_CR_NAME,
     EVALHUB_MCP_HEALTH_PATH,
@@ -30,11 +24,10 @@ from tests.ai_safety.evalhub.mcp.constants import (
 from tests.ai_safety.evalhub.mcp.utils import (
     EvalHubMcpClient,
     build_mcp_proxy_role_rules,
-    tenant_mcp_rbac_ready,
 )
 from tests.ai_safety.evalhub.utils import wait_for_service_account
 from utilities.certificates_utils import create_ca_bundle_file
-from utilities.constants import Labels, Protocols, Timeout
+from utilities.constants import Timeout
 from utilities.infra import create_inference_token
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -99,6 +92,18 @@ def _mcp_auth_secret_name(cr_name: str) -> str:
 
 def _evalhub_service_account_name(cr_name: str) -> str:
     return f"{cr_name}-service"
+
+
+@pytest.fixture(scope="class")
+def evalhub_tenant_rbac_instance_name() -> str:  # noqa: UFN001
+    """EvalHub CR name used when waiting for operator job RBAC in tenant namespaces."""
+    return EVALHUB_MCP_CR_NAME
+
+
+@pytest.fixture(scope="class")
+def evalhub_tenant_deployment(evalhub_mcp_mt_deployment: Deployment) -> Deployment:  # noqa: UFN001
+    """EvalHub deployment whose operator RBAC must be ready in tenant namespaces."""
+    return evalhub_mcp_mt_deployment
 
 
 @pytest.fixture(scope="class")
@@ -321,102 +326,3 @@ def evalhub_mcp_client(
     )
     client.initialize()
     return client
-
-
-@pytest.fixture(scope="class")
-def tenant_a_mcp_rbac_ready(
-    admin_client: DynamicClient,
-    tenant_a_namespace: Namespace,
-    evalhub_mcp_mt_deployment: Deployment,
-) -> None:
-    """Wait for operator RBAC provisioned for the MCP EvalHub instance in tenant-a."""
-    try:
-        for ready in TimeoutSampler(
-            wait_timeout=120,
-            sleep=5,
-            func=tenant_mcp_rbac_ready,
-            admin_client=admin_client,
-            namespace=tenant_a_namespace.name,
-            evalhub_instance_name=EVALHUB_MCP_CR_NAME,
-        ):
-            if ready:
-                LOGGER.info(f"Operator MCP RBAC provisioned in {tenant_a_namespace.name}")
-                return
-    except TimeoutExpiredError as err:
-        msg = (
-            f"Operator MCP RBAC not provisioned in '{tenant_a_namespace.name}' within timeout "
-            f"for EvalHub instance '{EVALHUB_MCP_CR_NAME}'"
-        )
-        LOGGER.error(msg)
-        raise RuntimeError(msg) from err
-
-
-@pytest.fixture(scope="class")
-def evalhub_mcp_vllm_emulator_deployment(
-    admin_client: DynamicClient,
-    tenant_a_namespace: Namespace,
-    tenant_a_mcp_rbac_ready: None,
-) -> Generator[Deployment, Any, Any]:
-    """Deploy the vLLM emulator in tenant-a for MCP job submission tests."""
-    label = {Labels.Openshift.APP: VLLM_EMULATOR}
-    with Deployment(
-        client=admin_client,
-        namespace=tenant_a_namespace.name,
-        name=VLLM_EMULATOR,
-        label=label,
-        selector={"matchLabels": label},
-        template={
-            "metadata": {
-                "labels": label,
-                "name": VLLM_EMULATOR,
-            },
-            "spec": {
-                "containers": [
-                    {
-                        "image": VLLM_EMULATOR_IMAGE,
-                        "name": VLLM_EMULATOR,
-                        "ports": [{"containerPort": EVALHUB_VLLM_EMULATOR_PORT, "protocol": Protocols.TCP}],
-                        "readinessProbe": {
-                            "tcpSocket": {"port": EVALHUB_VLLM_EMULATOR_PORT},
-                            "initialDelaySeconds": 5,
-                            "periodSeconds": 5,
-                            "timeoutSeconds": 3,
-                            "failureThreshold": 6,
-                        },
-                        "securityContext": {
-                            "allowPrivilegeEscalation": False,
-                            "capabilities": {"drop": ["ALL"]},
-                            "seccompProfile": {"type": "RuntimeDefault"},
-                        },
-                    }
-                ]
-            },
-        },
-        replicas=1,
-    ) as deployment:
-        deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_5MIN)
-        yield deployment
-
-
-@pytest.fixture(scope="class")
-def evalhub_mcp_vllm_emulator_service(
-    admin_client: DynamicClient,
-    tenant_a_namespace: Namespace,
-    evalhub_mcp_vllm_emulator_deployment: Deployment,
-) -> Generator[Service, Any, Any]:
-    """Service fronting the vLLM emulator in tenant-a for MCP job tests."""
-    with Service(
-        client=admin_client,
-        namespace=tenant_a_namespace.name,
-        name=f"{VLLM_EMULATOR}-service",
-        ports=[
-            {
-                "name": f"{VLLM_EMULATOR}-endpoint",
-                "port": EVALHUB_VLLM_EMULATOR_PORT,
-                "protocol": Protocols.TCP,
-                "targetPort": EVALHUB_VLLM_EMULATOR_PORT,
-            }
-        ],
-        selector={Labels.Openshift.APP: VLLM_EMULATOR},
-    ) as service:
-        yield service

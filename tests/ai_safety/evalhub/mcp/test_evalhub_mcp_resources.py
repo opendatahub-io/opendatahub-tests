@@ -126,7 +126,7 @@ class TestEvalHubMcpJobResources:
     def test_read_job_by_id_after_submit(
         self,
         evalhub_mcp_client: EvalHubMcpClient,
-        evalhub_mcp_vllm_emulator_service: Service,
+        evalhub_vllm_emulator_service: Service,
         tenant_a_namespace: Namespace,
     ) -> None:
         """
@@ -135,7 +135,7 @@ class TestEvalHubMcpJobResources:
         Then: Response returns metadata for the submitted job
         """
         model_url = build_mcp_model_url(
-            service_name=evalhub_mcp_vllm_emulator_service.name,
+            service_name=evalhub_vllm_emulator_service.name,
             tenant_namespace=tenant_a_namespace.name,
         )
         submit_result = submit_evaluation_via_mcp(
@@ -155,7 +155,7 @@ class TestEvalHubMcpJobResources:
     def test_jobs_list_includes_submitted_job(
         self,
         evalhub_mcp_client: EvalHubMcpClient,
-        evalhub_mcp_vllm_emulator_service: Service,
+        evalhub_vllm_emulator_service: Service,
         tenant_a_namespace: Namespace,
     ) -> None:
         """
@@ -164,7 +164,7 @@ class TestEvalHubMcpJobResources:
         Then: Response lists the submitted job ID
         """
         model_url = build_mcp_model_url(
-            service_name=evalhub_mcp_vllm_emulator_service.name,
+            service_name=evalhub_vllm_emulator_service.name,
             tenant_namespace=tenant_a_namespace.name,
         )
         submit_result = submit_evaluation_via_mcp(
@@ -184,7 +184,7 @@ class TestEvalHubMcpJobResources:
     def test_jobs_filtered_by_pending_status(
         self,
         evalhub_mcp_client: EvalHubMcpClient,
-        evalhub_mcp_vllm_emulator_service: Service,
+        evalhub_vllm_emulator_service: Service,
         tenant_a_namespace: Namespace,
     ) -> None:
         """
@@ -193,7 +193,7 @@ class TestEvalHubMcpJobResources:
         Then: Response includes the pending job ID
         """
         model_url = build_mcp_model_url(
-            service_name=evalhub_mcp_vllm_emulator_service.name,
+            service_name=evalhub_vllm_emulator_service.name,
             tenant_namespace=tenant_a_namespace.name,
         )
         submit_result = submit_evaluation_via_mcp(

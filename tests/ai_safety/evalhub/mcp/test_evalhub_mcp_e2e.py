@@ -30,7 +30,7 @@ class TestEvalHubMcpE2E:
         self,
         evalhub_mcp_client: EvalHubMcpClient,
         tenant_a_namespace: Namespace,
-        evalhub_mcp_vllm_emulator_service: Service,
+        evalhub_vllm_emulator_service: Service,
     ) -> None:
         """
         Given: Authenticated MCP client and a vLLM emulator model endpoint
@@ -38,7 +38,7 @@ class TestEvalHubMcpE2E:
         Then: Job is created and reaches completed state
         """
         model_url = build_mcp_model_url(
-            service_name=evalhub_mcp_vllm_emulator_service.name,
+            service_name=evalhub_vllm_emulator_service.name,
             tenant_namespace=tenant_a_namespace.name,
         )
 
