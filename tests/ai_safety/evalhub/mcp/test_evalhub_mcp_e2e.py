@@ -23,11 +23,6 @@ from tests.ai_safety.evalhub.mcp.utils import (
 )
 @pytest.mark.tier2
 @pytest.mark.ai_safety
-@pytest.mark.usefixtures(
-    "evalhub_mcp_vllm_emulator_deployment",
-    "evalhub_mcp_vllm_emulator_service",
-    "tenant_a_mcp_rbac_ready",
-)
 class TestEvalHubMcpE2E:
     """End-to-end MCP workflow: discover providers, submit job, poll status."""
 

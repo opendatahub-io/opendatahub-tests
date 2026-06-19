@@ -75,7 +75,7 @@ class TestEvalHubMcpTools:
     @pytest.mark.parametrize(
         "arguments,expected_fragment",
         [
-            pytest.param({}, "benchmarks", id="missing_benchmarks_and_collection"),
+            pytest.param({}, "benchmarks", id="test_missing_benchmarks_and_collection"),
             pytest.param(
                 {
                     "name": "invalid-job",
@@ -84,7 +84,7 @@ class TestEvalHubMcpTools:
                     "collection": {"id": EVALHUB_MCP_DEFAULT_COLLECTION_ID},
                 },
                 "not both",
-                id="benchmarks_and_collection",
+                id="test_benchmarks_and_collection",
             ),
         ],
     )
@@ -120,11 +120,6 @@ class TestEvalHubMcpTools:
 )
 @pytest.mark.tier2
 @pytest.mark.ai_safety
-@pytest.mark.usefixtures(
-    "evalhub_mcp_vllm_emulator_deployment",
-    "evalhub_mcp_vllm_emulator_service",
-    "tenant_a_mcp_rbac_ready",
-)
 class TestEvalHubMcpToolsSubmit:
     """MCP submit_evaluation success paths."""
 

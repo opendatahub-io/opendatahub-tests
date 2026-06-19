@@ -43,14 +43,14 @@ class TestEvalHubMcpHealth:
         response.raise_for_status()
         assert response.json()["status"] == EVALHUB_MCP_HEALTH_STATUS_OK
 
-    def test_mcp_health_rejects_post(
+    def test_mcp_jsonrpc_rejects_unauthenticated_post(
         self,
         evalhub_mcp_mt_route: Route,
         evalhub_mcp_mt_ca_bundle_file: str,
     ) -> None:
         """
         Given: EvalHub MCP route is reachable
-        When: Unauthenticated POST request is sent without MCP auth
+        When: Unauthenticated JSON-RPC POST is sent to the MCP base URL
         Then: Server rejects the request with HTTP 401, 403, or 405
         """
         client = EvalHubMcpClient(

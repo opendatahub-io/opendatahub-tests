@@ -9,10 +9,13 @@ from tests.ai_safety.evalhub.mcp.constants import (
 )
 from tests.ai_safety.evalhub.mcp.utils import (
     EvalHubMcpClient,
+    McpProtocolError,
     mcp_prompt_names,
     mcp_read_resource_text,
     mcp_resource_names,
+    mcp_tool_error_text,
     mcp_tool_names,
+    read_mcp_resource,
 )
 
 
@@ -76,6 +79,30 @@ class TestEvalHubMcpProtocol:
         resource_names = set(mcp_resource_names(result=result))
         expected_names = {"providers", "benchmarks", "collections", "jobs", "server-version"}
         assert expected_names.issubset(resource_names), f"Expected resources {expected_names}, got {resource_names}"
+
+    @pytest.mark.parametrize(
+        "uri",
+        [
+            pytest.param("evalhub://server/../../etc/passwd", id="test_uri_traversal_dotdot"),
+            pytest.param("evalhub://../../../admin/secrets", id="test_uri_traversal_root_escape"),
+            pytest.param(
+                "evalhub://server/%2e%2e/%2e%2e/etc/passwd",
+                id="test_uri_traversal_encoded_dotdot",
+            ),
+        ],
+    )
+    def test_read_resource_rejects_traversal(
+        self,
+        evalhub_mcp_client: EvalHubMcpClient,
+        uri: str,
+    ) -> None:
+        """
+        Given: A resource URI containing path traversal sequences
+        When: resources/read is called with that URI
+        Then: McpProtocolError is raised
+        """
+        with pytest.raises(McpProtocolError):
+            read_mcp_resource(client=evalhub_mcp_client, uri=uri)
 
     def test_read_server_version_resource(
         self,
@@ -266,7 +293,7 @@ class TestEvalHubMcpProtocol:
             params={"name": "get_job_status", "arguments": {}},
         )
         assert result.get("isError") is True
-        text = result["content"][0]["text"]
+        text = mcp_tool_error_text(result=result)
         assert "job_id" in text.lower()
 
     def test_cancel_job_requires_job_id(
@@ -283,7 +310,7 @@ class TestEvalHubMcpProtocol:
             params={"name": "cancel_job", "arguments": {}},
         )
         assert result.get("isError") is True
-        text = result["content"][0]["text"]
+        text = mcp_tool_error_text(result=result)
         assert "job_id" in text.lower()
 
     def test_get_job_status_nonexistent_job(

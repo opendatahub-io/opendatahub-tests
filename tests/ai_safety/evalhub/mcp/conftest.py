@@ -32,6 +32,7 @@ from tests.ai_safety.evalhub.mcp.utils import (
     build_mcp_proxy_role_rules,
     tenant_mcp_rbac_ready,
 )
+from tests.ai_safety.evalhub.utils import wait_for_service_account
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import Labels, Protocols, Timeout
 from utilities.infra import create_inference_token
@@ -136,64 +137,72 @@ def evalhub_mcp_mt_cr(
 
     with evalhub:
         evalhub.wait(timeout=300)
+        yield evalhub
 
-        service_account = ServiceAccount(
-            client=admin_client,
-            name=_evalhub_service_account_name(EVALHUB_MCP_CR_NAME),
-            namespace=model_namespace.name,
+
+@pytest.fixture(scope="class")
+def evalhub_mcp_service_account(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    evalhub_mcp_mt_cr: EvalHub,
+) -> ServiceAccount:
+    """Wait for the operator-created EvalHub service account in the model namespace."""
+    return wait_for_service_account(
+        admin_client=admin_client,
+        namespace=model_namespace.name,
+        sa_name=_evalhub_service_account_name(EVALHUB_MCP_CR_NAME),
+        timeout=120,
+    )
+
+
+@pytest.fixture(scope="class")
+def evalhub_mcp_mt_cr_with_auth(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    tenant_a_namespace: Namespace,
+    evalhub_mcp_mt_cr: EvalHub,
+    evalhub_mcp_service_account: ServiceAccount,
+) -> Generator[EvalHub, Any, Any]:
+    """Patch the EvalHub CR with MCP auth secret configuration."""
+    token = create_inference_token(model_service_account=evalhub_mcp_service_account)
+    secret_name = _mcp_auth_secret_name(cr_name=EVALHUB_MCP_CR_NAME)
+    with Secret(
+        client=admin_client,
+        name=secret_name,
+        namespace=model_namespace.name,
+        string_data={"token": token},
+        wait_for_resource=False,
+    ):
+        evalhub_mcp_mt_cr.update(
+            resource_dict={
+                "metadata": {
+                    "name": EVALHUB_MCP_CR_NAME,
+                    "namespace": model_namespace.name,
+                },
+                "spec": {
+                    "mcp": {
+                        "enabled": True,
+                        "replicas": 1,
+                        "authSecret": secret_name,
+                        "env": [
+                            {
+                                "name": "EVALHUB_TENANT",
+                                "value": tenant_a_namespace.name,
+                            }
+                        ],
+                    }
+                },
+            }
         )
-        try:
-            for _ in TimeoutSampler(
-                wait_timeout=120,
-                sleep=5,
-                func=lambda: service_account.exists,
-            ):
-                if service_account.exists:
-                    break
-        except TimeoutExpiredError as err:
-            raise RuntimeError(
-                f"EvalHub service account '{service_account.name}' not created in {model_namespace.name}"
-            ) from err
-
-        token = create_inference_token(model_service_account=service_account)
-        secret_name = _mcp_auth_secret_name(cr_name=EVALHUB_MCP_CR_NAME)
-        with Secret(
-            client=admin_client,
-            name=secret_name,
-            namespace=model_namespace.name,
-            string_data={"token": token},
-            wait_for_resource=False,
-        ):
-            evalhub.update(
-                resource_dict={
-                    "metadata": {
-                        "name": EVALHUB_MCP_CR_NAME,
-                        "namespace": model_namespace.name,
-                    },
-                    "spec": {
-                        "mcp": {
-                            "enabled": True,
-                            "replicas": 1,
-                            "authSecret": secret_name,
-                            "env": [
-                                {
-                                    "name": "EVALHUB_TENANT",
-                                    "value": tenant_a_namespace.name,
-                                }
-                            ],
-                        }
-                    },
-                }
-            )
-            evalhub.wait(timeout=300)
-            yield evalhub
+        evalhub_mcp_mt_cr.wait(timeout=300)
+        yield evalhub_mcp_mt_cr
 
 
 @pytest.fixture(scope="class")
 def evalhub_mcp_mt_deployment(
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    evalhub_mcp_mt_cr: EvalHub,
+    evalhub_mcp_mt_cr_with_auth: EvalHub,
 ) -> Deployment:
     """Wait for the EvalHub MCP deployment to become available."""
     deployment = Deployment(

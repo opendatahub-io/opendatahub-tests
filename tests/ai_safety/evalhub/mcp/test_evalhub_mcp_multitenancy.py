@@ -26,12 +26,7 @@ from tests.ai_safety.evalhub.mcp.utils import (
 )
 @pytest.mark.tier2
 @pytest.mark.ai_safety
-@pytest.mark.usefixtures(
-    "evalhub_mcp_vllm_emulator_deployment",
-    "evalhub_mcp_vllm_emulator_service",
-    "tenant_a_mcp_rbac_ready",
-    "evalhub_mcp_proxy_role_binding",
-)
+@pytest.mark.usefixtures("evalhub_mcp_proxy_role_binding")
 class TestEvalHubMcpMultitenancy:
     """MCP multi-tenancy behavior with tenant-scoped EvalHub configuration.
 

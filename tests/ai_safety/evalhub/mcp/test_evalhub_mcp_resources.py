@@ -120,11 +120,6 @@ class TestEvalHubMcpResources:
 )
 @pytest.mark.tier2
 @pytest.mark.ai_safety
-@pytest.mark.usefixtures(
-    "evalhub_mcp_vllm_emulator_deployment",
-    "evalhub_mcp_vllm_emulator_service",
-    "tenant_a_mcp_rbac_ready",
-)
 class TestEvalHubMcpJobResources:
     """MCP job resource reads after submitting an evaluation via tools."""
 
