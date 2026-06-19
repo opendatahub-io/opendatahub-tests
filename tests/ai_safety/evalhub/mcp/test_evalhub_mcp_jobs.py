@@ -9,6 +9,7 @@ from tests.ai_safety.evalhub.mcp.utils import (
     build_mcp_evaluation_arguments,
     build_mcp_model_url,
     call_mcp_tool,
+    format_mcp_job_status_failure,
     mcp_tool_error_text,
     mcp_tool_is_error,
     mcp_tool_structured,
@@ -99,13 +100,15 @@ class TestEvalHubMcpJobs:
         structured_cancel = mcp_tool_structured(result=cancel_result)
         assert structured_cancel.get("job_id") == job_id
 
-        terminal_state = wait_for_mcp_job_state(
+        terminal_state, job_status = wait_for_mcp_job_state(
             client=evalhub_mcp_client,
             job_id=job_id,
             timeout=300,
             terminal_states={"cancelled", "failed", "completed", "partially_failed"},
         )
-        assert terminal_state == "cancelled", f"Expected cancelled state, got '{terminal_state}'"
+        assert terminal_state == "cancelled", (
+            f"Expected cancelled state, got {format_mcp_job_status_failure(status=job_status)}"
+        )
 
     def test_cancel_nonexistent_job_returns_error(
         self,

@@ -672,6 +672,25 @@ def wait_for_evalhub_runtime_resources_absent(
     )
 
 
+def build_vllm_arc_easy_benchmark(num_examples: int = 10) -> dict:
+    """Build arc_easy benchmark parameters for the vLLM emulator.
+
+    Args:
+        num_examples: Number of dataset examples to evaluate.
+
+    Returns:
+        Benchmark dict for lm_evaluation_harness arc_easy jobs.
+    """
+    return {
+        "id": "arc_easy",
+        "provider_id": "lm_evaluation_harness",
+        "parameters": {
+            "num_examples": num_examples,
+            "tokenizer": "google/flan-t5-small",
+        },
+    }
+
+
 def build_evalhub_multi_benchmark_job_payload(
     model_service_name: str,
     tenant_namespace: str,
@@ -728,16 +747,7 @@ def build_evalhub_job_payload(
             "url": model_url,
             "name": "emulatedModel",
         },
-        "benchmarks": [
-            {
-                "id": "arc_easy",
-                "provider_id": "lm_evaluation_harness",
-                "parameters": {
-                    "num_examples": 10,
-                    "tokenizer": "google/flan-t5-small",
-                },
-            }
-        ],
+        "benchmarks": [build_vllm_arc_easy_benchmark()],
     }
 
 

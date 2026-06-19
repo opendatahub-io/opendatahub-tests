@@ -18,7 +18,11 @@ from tests.ai_safety.evalhub.mcp.constants import (
     EVALHUB_MCP_PROTOCOL_VERSION,
     EVALHUB_MCP_PROXY_RESOURCE,
 )
-from tests.ai_safety.evalhub.utils import EVALHUB_JOB_TERMINAL_STATES, build_headers
+from tests.ai_safety.evalhub.utils import (
+    EVALHUB_JOB_TERMINAL_STATES,
+    build_headers,
+    build_vllm_arc_easy_benchmark,
+)
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -303,6 +307,8 @@ def build_mcp_evaluation_arguments(
     }
     if collection_id:
         arguments["collection"] = {"id": collection_id}
+    elif benchmark_id == EVALHUB_MCP_DEFAULT_BENCHMARK_ID and provider_id == EVALHUB_MCP_DEFAULT_PROVIDER_ID:
+        arguments["benchmarks"] = [build_vllm_arc_easy_benchmark()]
     else:
         arguments["benchmarks"] = [{"id": benchmark_id, "provider_id": provider_id}]
     return arguments
@@ -322,16 +328,33 @@ def submit_evaluation_via_mcp(
     return structured
 
 
+def format_mcp_job_status_failure(status: dict[str, Any]) -> str:
+    """Format MCP get_job_status structured output for assertion messages."""
+    parts = [f"state='{status.get('state', '')}'"]
+    message = status.get("message")
+    if message:
+        parts.append(f"message={message!r}")
+    benchmarks = status.get("benchmarks")
+    if benchmarks:
+        parts.append(f"benchmarks={benchmarks!r}")
+    return "; ".join(parts)
+
+
 def wait_for_mcp_job_state(
     client: EvalHubMcpClient,
     job_id: str,
     timeout: int = 600,
     sleep: int = 15,
     terminal_states: set[str] | None = None,
-) -> str:
-    """Poll get_job_status until the job reaches a terminal state."""
+) -> tuple[str, dict[str, Any]]:
+    """Poll get_job_status until the job reaches a terminal state.
+
+    Returns:
+        A tuple of the terminal state and the last structured status payload.
+    """
     states = terminal_states or EVALHUB_JOB_TERMINAL_STATES
     terminal_state = ""
+    last_status: dict[str, Any] = {}
     for status_result in TimeoutSampler(
         wait_timeout=timeout,
         sleep=sleep,
@@ -341,11 +364,14 @@ def wait_for_mcp_job_state(
             arguments={"job_id": job_id},
         ),
     ):
-        structured = mcp_tool_structured(result=status_result)
-        terminal_state = structured.get("state", "")
+        last_status = mcp_tool_structured(result=status_result)
+        terminal_state = last_status.get("state", "")
+        LOGGER.info(f"MCP job {job_id} state: {terminal_state}")
         if terminal_state in states:
             break
-    return terminal_state
+    if terminal_state in {"failed", "partially_failed"}:
+        LOGGER.error(f"MCP job {job_id} failed: {format_mcp_job_status_failure(status=last_status)}")
+    return terminal_state, last_status
 
 
 def mcp_read_resource_text(result: dict[str, Any]) -> str:

@@ -7,6 +7,7 @@ from tests.ai_safety.evalhub.mcp.utils import (
     build_mcp_evaluation_arguments,
     build_mcp_model_url,
     call_mcp_tool,
+    format_mcp_job_status_failure,
     mcp_tool_structured,
     wait_for_mcp_job_state,
 )
@@ -64,5 +65,7 @@ class TestEvalHubMcpE2E:
         job_id = structured.get("job_id")
         assert job_id, f"Expected job_id in submit response: {submit_result}"
 
-        terminal_state = wait_for_mcp_job_state(client=evalhub_mcp_client, job_id=job_id)
-        assert terminal_state == "completed", f"Expected job to complete, got terminal state '{terminal_state}'"
+        terminal_state, job_status = wait_for_mcp_job_state(client=evalhub_mcp_client, job_id=job_id)
+        assert terminal_state == "completed", (
+            f"Expected job to complete, got {format_mcp_job_status_failure(status=job_status)}"
+        )
