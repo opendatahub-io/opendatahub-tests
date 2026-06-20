@@ -17,7 +17,7 @@ from tests.model_serving.model_runtime.vllm.constant import (
     PREDICT_RESOURCES,
     TEMPLATE_MAP,
 )
-from tests.model_serving.model_runtime.vllm.modelcar.constant import MODELCAR_REGISTRIES, TIMEOUT_20MIN
+from tests.model_serving.model_runtime.vllm.modelcar.constant import MODELCAR_REGISTRIES, MODELCAR_TIMEOUT
 from tests.model_serving.model_runtime.vllm.modelcar.utils import safe_k8s_name
 from tests.model_serving.model_runtime.vllm.utils import add_image_pull_secrets_if_configured, dedupe_vllm_cli_args
 from utilities.constants import KServeDeploymentType, Labels, RuntimeTemplates
@@ -45,7 +45,7 @@ def model_car_serving_runtime(
         name=f"vllm-{request.param['deployment_type'].lower()}-runtime",
         namespace=model_namespace.name,
         template_name=template_name,
-        deployment_type=request.param["deployment_type"],
+        deployment_type=request.param["deployment_mode"],
         runtime_image=vllm_runtime_image,
     ) as model_runtime:
         yield model_runtime
@@ -74,7 +74,7 @@ def vllm_model_car_inference_service(
         "runtime": model_car_serving_runtime.name,
         "storage_uri": request.param.get("model_car_image_uri"),
         "model_format": model_car_serving_runtime.instance.spec.supportedModelFormats[0].name,
-        "deployment_mode": deployment_config.get("deployment_type", KServeDeploymentType.RAW_DEPLOYMENT),
+        "deployment_mode": deployment_config.get("deployment_mode", KServeDeploymentType.RAW_DEPLOYMENT),
         "external_route": True,
     }
     add_image_pull_secrets_if_configured(
@@ -121,15 +121,15 @@ def vllm_model_car_inference_service(
 @pytest.fixture(scope="class")
 def deployment_config(request: FixtureRequest) -> dict[str, Any]:
     """Provide the base deployment configuration for modelcar raw deployments."""
-    deployment_type = request.param.get("deployment_type", KServeDeploymentType.RAW_DEPLOYMENT)
+    deployment_type = request.param.get("deployment_mode", KServeDeploymentType.RAW_DEPLOYMENT)
     serving_argument = request.param.get("runtime_argument", [])
 
     config = BASE_RAW_DEPLOYMENT_CONFIG.copy()
     config["runtime_argument"] = serving_argument
-    config["deployment_type"] = deployment_type
+    config["deployment_mode"] = deployment_type
     config["gpu_count"] = request.param.get("gpu_count", 1)
     config["model_output_type"] = request.param.get("model_output_type", "text")
-    config["timeout"] = TIMEOUT_20MIN
+    config["timeout"] = MODELCAR_TIMEOUT
     return config
 
 
@@ -145,13 +145,13 @@ def build_raw_params(
     deployment_type = KServeDeploymentType.RAW_DEPLOYMENT
     param = pytest.param(
         {"name": "raw-model-validation"},
-        {"deployment_type": deployment_type},
+        {"deployment_mode": deployment_type},
         {
             "model_name": name,
             "model_car_image_uri": image,
         },
         {
-            "deployment_type": deployment_type,
+            "deployment_mode": deployment_type,
             "runtime_argument": args,
             "gpu_count": gpu_count,
             "model_output_type": model_output_type,

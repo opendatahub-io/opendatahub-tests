@@ -149,7 +149,7 @@ PULL_SECRET_NAME: str = "oci-registry-pull-secret"  # pragma: allowlist secret
 
 SUPPORTED_MODELCAR_REGISTRY_HOSTS: frozenset[str] = frozenset({registry.host for registry in MODELCAR_REGISTRIES})
 SPYRE_INFERENCE_SERVICE_PORT: int = 8000
-TIMEOUT_20MIN: int = 30 * 60
+MODELCAR_TIMEOUT: int = 30 * 60
 OPENAI_ENDPOINT_NAME: str = "openai"
 AUDIO_FILE_URL: str = (
     "https://raw.githubusercontent.com/realpython/python-speech-recognition/master/audio_files/harvard.wav"

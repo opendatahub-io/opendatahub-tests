@@ -47,7 +47,7 @@ def probes_serving_runtime(
         name="vllm-runtime",
         namespace=model_namespace.name,
         template_name=template_name,
-        deployment_type=request.param["deployment_type"],
+        deployment_type=request.param["deployment_mode"],
         runtime_image=vllm_runtime_image,
         support_tgis_open_ai_endpoints=True,
         containers={
