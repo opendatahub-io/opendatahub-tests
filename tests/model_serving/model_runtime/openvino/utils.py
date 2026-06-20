@@ -189,12 +189,10 @@ def get_deployment_config_dict(model_format_name: str, deployment_mode: str, gpu
     Returns:
         dict[str, str]: A dictionary containing the deployment configuration.
     """
-    deployment_config_dict = {}
+    if deployment_mode != KServeDeploymentType.STANDARD:
+        raise ValueError(f"Unsupported deployment_mode: {deployment_mode!r}")
 
-    if deployment_mode == KServeDeploymentType.STANDARD:
-        deployment_config_dict = {"name": model_format_name, "gpu_count": gpu_count, **BASE_RAW_DEPLOYMENT_CONFIG}
-
-    return deployment_config_dict
+    return {"name": model_format_name, "gpu_count": gpu_count, **BASE_RAW_DEPLOYMENT_CONFIG}
 
 
 def get_test_case_id(model_format_name: str, deployment_mode: str, protocol_type: str) -> str:
