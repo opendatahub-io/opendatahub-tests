@@ -18,8 +18,7 @@ from tests.model_serving.model_runtime.mlserver.utils import (
     get_test_case_id,
     validate_inference_request,
 )
-from utilities.constants import ModelFormat, Protocols
-from utilities.infra import get_pods_by_isvc_label
+from utilities.constants import ModelFormat
 
 
 @pytest.mark.parametrize(
@@ -103,17 +102,6 @@ class TestMLServerModelCar:
         mlserver_model_car_inference_service: InferenceService,
         mlserver_response_snapshot: Any,
     ) -> None:
-        """
-        Test model inference using MLServer model car with OCI images.
-
-        Validates that MLServer can load models from OCI images and
-        perform inference using REST protocol.
-
-        Args:
-            mlserver_model_car_inference_service: Deployed inference service.
-            mlserver_response_snapshot: Expected response for validation.
-        """
-        # Extract model format from InferenceService spec
         model_format = mlserver_model_car_inference_service.instance.spec.predictor.model.modelFormat.name
 
         if model_format not in MODEL_CONFIGS:
@@ -121,21 +109,10 @@ class TestMLServerModelCar:
 
         model_format_config = MODEL_CONFIGS[model_format]
 
-        # Get pod directly from inference service (following kserve model_car pattern)
-        pods = get_pods_by_isvc_label(
-            client=mlserver_model_car_inference_service.client,
-            isvc=mlserver_model_car_inference_service,
-        )
-        if not pods:
-            raise RuntimeError(f"No pods found for InferenceService {mlserver_model_car_inference_service.name}")
-        pod = pods[0]
-
         validate_inference_request(
-            pod_name=pod.name,
             isvc=mlserver_model_car_inference_service,
             response_snapshot=mlserver_response_snapshot,
             input_query=model_format_config["rest_query"],
             model_version="",
             model_output_type=model_format_config["output_type"],
-            protocol=Protocols.REST,
         )

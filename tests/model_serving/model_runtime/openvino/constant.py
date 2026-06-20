@@ -16,8 +16,6 @@ from utilities.constants import (
 
 MODEL_PATH_PREFIX: str = "openvino/model_repository"
 
-LOCAL_HOST_URL: str = "http://localhost"
-
 OPENVINO_REST_PORT: int = 8888
 
 REST_PROTOCOL_TYPE_DICT: dict[str, str] = {"protocol_type": Protocols.REST}
@@ -39,7 +37,7 @@ PREDICT_RESOURCES: dict[str, list[dict[str, str | dict[str, str]]] | dict[str, d
 BASE_RAW_DEPLOYMENT_CONFIG: dict[str, Any] = {
     "deployment_mode": KServeDeploymentType.STANDARD,
     "min-replicas": 1,
-    "enable_external_route": False,
+    "enable_external_route": True,
 }
 
 OPENVINO_INPUT_BASE_PATH: str = Path(__file__).parent

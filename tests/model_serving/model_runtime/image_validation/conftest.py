@@ -16,7 +16,7 @@ from ocp_resources.pod import Pod
 from timeout_sampler import TimeoutSampler
 
 from tests.model_serving.model_runtime.image_validation.constant import PLACEHOLDER_STORAGE_URI
-from utilities.constants import KServeDeploymentType
+from utilities.constants import KServeDeploymentType, Timeout
 from utilities.inference_utils import create_isvc
 from utilities.infra import create_ns, wait_for_isvc_pods
 from utilities.serving_runtime import ServingRuntimeFromTemplate
@@ -73,12 +73,12 @@ def serving_runtime_pods_for_runtime(
             deployment_mode=KServeDeploymentType.STANDARD,
             wait=False,
             wait_for_predictor_pods=False,
-            timeout=120,
+            timeout=Timeout.TIMEOUT_2MIN,
             teardown=True,
         ) as isvc:
             # Wait for pods to be created (300 seconds timeout)
             for pods in TimeoutSampler(
-                wait_timeout=300,
+                wait_timeout=Timeout.TIMEOUT_5MIN,
                 sleep=5,
                 func=wait_for_isvc_pods,
                 client=admin_client,

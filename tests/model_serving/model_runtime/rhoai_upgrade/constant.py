@@ -63,7 +63,7 @@ OVMS_SERVING_RUNTIME_TEMPLATE_DICT: dict[str, Any] = {
     },
     "objects": [
         {
-            "apiVersion": "serving.kserve.io/v1alpha1",
+            "apiVersion": "serving.kserve.io/v1beta1",
             "kind": "ServingRuntime",
             "metadata": {
                 "name": SERVING_RUNTIME_INSTANCE_NAME,
@@ -74,7 +74,7 @@ OVMS_SERVING_RUNTIME_TEMPLATE_DICT: dict[str, Any] = {
                 "multiModel": False,
                 "annotations": OVMS_RUNTIME_PROMETHEUS_ANNOTATIONS,
                 "supportedModelFormats": OVMS_SUPPORTED_MODEL_FORMATS,
-                "protocolVersions": ["v2", "grpc-v2"],
+                "protocolVersions": ["v2"],
                 "containers": [
                     {
                         "name": "kserve-container",
