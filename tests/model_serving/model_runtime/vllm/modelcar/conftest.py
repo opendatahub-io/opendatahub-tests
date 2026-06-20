@@ -42,7 +42,7 @@ def model_car_serving_runtime(
     assert model_namespace.name is not None
     with ServingRuntimeFromTemplate(
         client=admin_client,
-        name=f"vllm-{request.param['deployment_type'].lower()}-runtime",
+        name=f"vllm-{request.param['deployment_mode'].lower()}-runtime",
         namespace=model_namespace.name,
         template_name=template_name,
         deployment_type=request.param["deployment_mode"],
