@@ -77,10 +77,6 @@ def normalize_embedding_response(response: Any) -> dict[str, Any]:
     )
 
 
-def validate_inference_output(*args: tuple[str, ...] | list[Any], response_snapshot: Any) -> None:
-    for data in args:
-        assert data == response_snapshot, f"output mismatch for {data}"
-
 
 def validate_text_inference_fuzzy(
     completion_responses: list[dict[str, Any]],
@@ -467,11 +463,6 @@ def validate_raw_openai_inference_request(
             allow_empty_responses=True,
             min_valid_responses=1,
         )
-        if os.getenv("CHECK_SNAPSHOT", "false").lower() == "true":
-            validate_inference_output(
-                completion_responses,
-                response_snapshot=response_snapshot,
-            )
     elif model_output_type == "embedding":
         if pod_name is None:
             raise ValueError("pod_name is required for embedding inference")

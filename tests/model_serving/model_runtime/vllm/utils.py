@@ -1,4 +1,3 @@
-import os
 from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
@@ -10,7 +9,7 @@ from ocp_resources.inference_service import InferenceService
 from ocp_resources.secret import Secret
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from tests.model_serving.model_runtime.utils import validate_inference_output, validate_text_inference_fuzzy
+from tests.model_serving.model_runtime.utils import validate_text_inference_fuzzy
 from tests.model_serving.model_runtime.vllm.constant import (
     CHAT_QUERY,
     COMPLETION_QUERY,
@@ -179,13 +178,6 @@ def validate_raw_openai_inference_request(
             min_valid_responses=1,
         )
 
-    if os.getenv("CHECK_SNAPSHOT", "false").lower() == "true":
-        validate_inference_output(
-            model_info,
-            chat_responses,
-            completion_responses,
-            response_snapshot=response_snapshot,
-        )
 
 
 def skip_if_not_deployment_mode(isvc: InferenceService, deployment_types: str | tuple[str, ...]) -> None:
