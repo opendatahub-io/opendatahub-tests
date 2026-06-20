@@ -77,7 +77,6 @@ def normalize_embedding_response(response: Any) -> dict[str, Any]:
     )
 
 
-
 def validate_text_inference_fuzzy(
     completion_responses: list[dict[str, Any]],
     queries: list[dict[str, Any]],

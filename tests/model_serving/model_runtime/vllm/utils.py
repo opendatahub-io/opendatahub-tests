@@ -179,7 +179,6 @@ def validate_raw_openai_inference_request(
         )
 
 
-
 def skip_if_not_deployment_mode(isvc: InferenceService, deployment_types: str | tuple[str, ...]) -> None:
     actual = isvc.instance.metadata.annotations["serving.kserve.io/deploymentMode"]
     expected = (deployment_types,) if isinstance(deployment_types, str) else deployment_types

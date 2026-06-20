@@ -6,9 +6,9 @@ from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from semver import Version
 from syrupy.extensions.json import JSONSnapshotExtension
+from utilities.version import get_rhoai_version_from_env, should_skip_for_marker
 
 from utilities.infra import get_product_version
-from utilities.version import get_rhoai_version_from_env, should_skip_for_marker
 
 LOGGER = structlog.get_logger(name=__name__)
 

@@ -10,17 +10,16 @@ This module provides functions for:
 
 from typing import Any
 
-import portforward
 import requests
 from ocp_resources.inference_service import InferenceService
 
 from tests.model_serving.model_runtime.mlserver.constant import (
     BASE_RAW_DEPLOYMENT_CONFIG,
-    LOCALHOST_URL,
     MODEL_PATH_PREFIX,
     OutputType,
 )
-from utilities.constants import KServeDeploymentType, Ports, Protocols
+from utilities.constants import KServeDeploymentType, Timeout
+from utilities.inference_utils import get_exposed_isvc_url
 
 
 def send_rest_request(url: str, input_data: dict[str, Any], verify: bool = False) -> Any:
@@ -38,91 +37,52 @@ def send_rest_request(url: str, input_data: dict[str, Any], verify: bool = False
     Raises:
         requests.HTTPError: If the response contains an HTTP error status.
     """
-    response = requests.post(url=url, json=input_data, verify=verify, timeout=60)
+    response = requests.post(url=url, json=input_data, verify=verify, timeout=Timeout.TIMEOUT_1MIN)
     response.raise_for_status()
     return response.json()
 
 
-def run_mlserver_inference(
-    pod_name: str, isvc: InferenceService, input_data: dict[str, Any], model_version: str, protocol: str
-) -> Any:
+def run_mlserver_inference(isvc: InferenceService, input_data: dict[str, Any], model_version: str) -> Any:
     """
-    Run inference against an MLServer-hosted model using REST protocol.
-    Supports RawDeployment(Standard) modes.
+    Run inference against an MLServer-hosted model using the external route.
 
     Args:
-        pod_name (str): Name of the pod running the MLServer model.
         isvc (InferenceService): The KServe InferenceService object.
         input_data (dict[str, Any]): The input data payload for inference.
         model_version (str): The version of the model to target, if applicable.
-        protocol (str): Protocol to use for inference ('REST').
 
     Returns:
         Any: The inference result from the model.
-
-    Raises:
-        ValueError: If the protocol is not REST or deployment mode is not RAW_DEPLOYMENT.
-
-    Notes:
-        - REST calls expect the model to support V2 REST inference APIs.
-        - Uses port-forwarding for RawDeployment(Standard) modes.
     """
-    deployment_mode = isvc.instance.metadata.annotations.get("serving.kserve.io/deploymentMode")
     model_name = isvc.instance.metadata.name
     version_suffix = f"/versions/{model_version}" if model_version else ""
     rest_endpoint = f"/v2/models/{model_name}{version_suffix}/infer"
 
-    if protocol != Protocols.REST:
-        raise ValueError(f"Unsupported protocol: {protocol}. Only REST is supported.")
-
-    supported_modes = (KServeDeploymentType.RAW_DEPLOYMENT, KServeDeploymentType.STANDARD)
-    if deployment_mode not in supported_modes:
-        raise ValueError(f"Unsupported deployment mode: {deployment_mode}. Supported modes: {supported_modes}")
-
-    port = Ports.REST_PORT
-    with portforward.forward(pod_or_service=pod_name, namespace=isvc.namespace, from_port=port, to_port=port):
-        host = f"{LOCALHOST_URL}:{port}"
-        return send_rest_request(url=f"{host}{rest_endpoint}", input_data=input_data, verify=False)
+    url = get_exposed_isvc_url(isvc=isvc)
+    return send_rest_request(url=f"{url}{rest_endpoint}", input_data=input_data, verify=False)
 
 
 def validate_inference_request(
-    pod_name: str,
     isvc: InferenceService,
     response_snapshot: Any,
     input_query: Any,
     model_version: str,
     model_output_type: str,
-    protocol: str,
 ) -> None:
     """
     Runs an inference request against an MLServer model and validates
-    that the response matches the expected snapshot.
-
-    Args:
-        pod_name (str): The pod name where the model is running.
-        isvc (InferenceService): The KServe InferenceService instance.
-        response_snapshot (Any): The expected inference output to compare against.
-        input_query (Any): The input data to send to the model.
-        model_version (str): The version of the model to target.
-        model_output_type (str): The type of output (deterministic or non_deterministic).
-        protocol (str): The protocol to use for inference ('REST').
-
-    Raises:
-        AssertionError: If the actual response does not match the snapshot.
+    the response using fuzzy validation.
     """
-
     response = run_mlserver_inference(
-        pod_name=pod_name,
         isvc=isvc,
         input_data=input_query,
         model_version=model_version,
-        protocol=protocol,
     )
 
     if model_output_type == OutputType.DETERMINISTIC:
         validate_deterministic_snapshot(response=response, response_snapshot=response_snapshot)
     elif model_output_type == OutputType.NON_DETERMINISTIC:
-        validate_nondeterministic_snapshot(response=response, protocol=protocol)
+        validate_nondeterministic_snapshot(response=response)
 
 
 def validate_deterministic_snapshot(response: Any, response_snapshot: Any) -> None:
@@ -155,33 +115,15 @@ def validate_deterministic_snapshot(response: Any, response_snapshot: Any) -> No
     assert all(isinstance(x, (int, float, list)) for x in actual_data), "Invalid data types in response"
 
 
-def validate_nondeterministic_snapshot(response: Any, protocol: str) -> None:
+def validate_nondeterministic_snapshot(response: Any) -> None:
     """
     Validates a model inference response containing non-deterministic output.
-
-    This function handles responses returned over REST protocol and extracts generated
-    output from a standard prediction response structure. It expects the output to be
-    a plain JSON string with the actual generated text stored under a "generated_text" key.
-
-    The function asserts that the generated output contains the keyword "test" as a
-    basic form of content validation. This is useful for verifying that the model is
-    producing reasonable and expected outputs in snapshot or integration tests, especially
-    when exact output matching is not feasible due to variability.
-
-    Args:
-        response (Any): The RawDeployment inference response returned by the model server.
-        protocol (str): The communication protocol used to interact with the model server (e.g., 'rest').
-
-    Raises:
-        RuntimeError: If response extraction or keyword validation fails.
+    Checks that the response contains generated text with expected keywords.
     """
     response_data = ""
 
     try:
-        if protocol == Protocols.REST:
-            response_data = response["outputs"][0]["data"][0]
-        else:
-            raise ValueError(f"Unsupported protocol: {protocol}")
+        response_data = response["outputs"][0]["data"][0]
 
         assert "generated_text" in response_data, "Keyword 'generated_text' not found in generated text."
         assert "test" in response_data, "Keyword 'test' not found in generated text."
@@ -270,9 +212,6 @@ def get_deployment_config_dict(
     """
     Generate a deployment configuration dictionary based on the model format and deployment mode.
 
-    This function merges a base deployment configuration (Standard) with a given model format
-    name to produce a complete configuration dictionary.
-
     Args:
         model_format_name (str): The model format name (e.g., "sklearn").
         deployment_mode (str): The deployment mode. Defaults to "Standard".
@@ -302,8 +241,7 @@ def get_test_case_id(
         modelcar (bool): Whether this is a model car deployment. Defaults to False.
 
     Returns:
-        str: A test case ID in the format: "<model_format>-<storage_type>-<deployment_mode>".
-              Example: "sklearn-s3-Standard" or "sklearn-modelcar-Standard"
+        str: A test case ID. Example: "sklearn-s3-standard" or "sklearn-modelcar-standard"
     """
     storage_type = "modelcar" if modelcar else "s3"
     base_id = f"{model_format_name.strip()}-{storage_type}-{deployment_mode.strip().lower()}"
