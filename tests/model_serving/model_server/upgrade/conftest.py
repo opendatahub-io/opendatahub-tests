@@ -16,8 +16,18 @@ from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 
+from tests.model_serving.model_server.llmd.llmd_configs.config_upgrade import (
+    LLMD_KUEUE_CLUSTER_QUEUE,
+    LLMD_KUEUE_CPU_QUOTA,
+    LLMD_KUEUE_LOCAL_QUEUE,
+    LLMD_KUEUE_MEMORY_QUOTA,
+    LLMD_KUEUE_RESOURCE_FLAVOR,
+    UpgradeAuthKueueConfig,
+)
 from tests.model_serving.model_server.upgrade.utils import (
+    UPGRADE_AUTH_TOKEN_SECRET_NAME,
     capture_isvc_baseline,
+    capture_llmisvc_baseline,
     load_auth_token_from_secret,
     load_baseline_from_configmap,
     save_auth_token_to_secret,
@@ -42,6 +52,14 @@ from utilities.infra import (
     s3_endpoint_secret,
     update_configmap_data,
 )
+from utilities.kueue_utils import (
+    ClusterQueue,
+    LocalQueue,
+    ResourceFlavor,
+    create_cluster_queue,
+    create_local_queue,
+    create_resource_flavor,
+)
 from utilities.llmd_constants import KServeGateway, LLMDGateway
 from utilities.llmd_utils import create_llmd_gateway
 from utilities.logger import RedactedString
@@ -54,7 +72,6 @@ AUTH_UPGRADE_NAMESPACE = "upgrade-auth-model-server"
 MODEL_CAR_UPGRADE_NAMESPACE = "upgrade-model-car"
 METRICS_UPGRADE_NAMESPACE = "upgrade-metrics"
 PRIVATE_ENDPOINT_UPGRADE_NAMESPACE = "upgrade-pvt-ep"
-LLMD_UPGRADE_NAMESPACE = "upgrade-llmd"
 NEW_ISVC_UPGRADE_NAMESPACE = "upgrade-new-isvc"
 S3_CONNECTION = "upgrade-connection"
 
@@ -925,88 +942,6 @@ def private_endpoint_inference_service_fixture(
             yield isvc
 
 
-# LLMD Upgrade Fixtures
-@pytest.fixture(scope="session")
-def llmd_namespace_fixture(
-    pytestconfig: pytest.Config,
-    admin_client: DynamicClient,
-    teardown_resources: bool,
-) -> Generator[Namespace, Any, Any]:
-    """Namespace for LLMD upgrade tests."""
-    ns = Namespace(client=admin_client, name=LLMD_UPGRADE_NAMESPACE)
-
-    if pytestconfig.option.post_upgrade:
-        yield ns
-        ns.clean_up()
-    else:
-        with create_ns(
-            admin_client=admin_client,
-            name=LLMD_UPGRADE_NAMESPACE,
-            model_mesh_enabled=False,
-            add_dashboard_label=True,
-            teardown=teardown_resources,
-        ) as ns:
-            yield ns
-
-
-@pytest.fixture(scope="session")
-def llmd_gateway_fixture(
-    pytestconfig: pytest.Config,
-    admin_client: DynamicClient,
-    teardown_resources: bool,
-) -> Generator[Gateway, Any, Any]:
-    """Shared LLMD Gateway for upgrade tests."""
-    gateway = Gateway(
-        client=admin_client,
-        name=LLMDGateway.DEFAULT_NAME,
-        namespace=LLMDGateway.DEFAULT_NAMESPACE,
-        api_group=KServeGateway.API_GROUP,
-    )
-
-    if pytestconfig.option.post_upgrade:
-        yield gateway
-        gateway.clean_up()
-    else:
-        with create_llmd_gateway(
-            client=admin_client,
-            timeout=Timeout.TIMEOUT_1MIN,
-            teardown=teardown_resources,
-        ) as gateway:
-            yield gateway
-
-
-@pytest.fixture(scope="session")
-def llmd_inference_service_fixture(
-    pytestconfig: pytest.Config,
-    admin_client: DynamicClient,
-    llmd_namespace_fixture: Namespace,
-    llmd_gateway_fixture: Gateway,
-    teardown_resources: bool,
-) -> Generator[LLMInferenceService, Any, Any]:
-    """LLMInferenceService using TinyLlama OCI for upgrade tests."""
-    from tests.model_serving.model_server.llmd.conftest import _create_llmisvc_from_config
-    from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaOciConfig
-
-    config_cls = TinyLlamaOciConfig
-    llmisvc = LLMInferenceService(
-        client=admin_client,
-        name=config_cls.name,
-        namespace=llmd_namespace_fixture.name,
-    )
-
-    if pytestconfig.option.post_upgrade:
-        yield llmisvc
-        llmisvc.clean_up()
-    else:
-        with _create_llmisvc_from_config(
-            config_cls=config_cls,
-            namespace=llmd_namespace_fixture.name,
-            client=admin_client,
-            teardown=teardown_resources,
-        ) as llmisvc:
-            yield llmisvc
-
-
 # Post-Upgrade New ISVC Creation Fixtures
 @pytest.fixture(scope="session")
 def new_isvc_namespace_fixture(
@@ -1081,3 +1016,310 @@ def new_isvc_inference_service_fixture(
         wait_for_predictor_pods=False,
     ) as isvc:
         yield isvc
+
+
+# ---------------------------------------------------------------------------
+# Fixtures used by LLMInferenceService upgrade tests
+# ---------------------------------------------------------------------------
+
+
+# llm-d gateway
+@pytest.fixture(scope="session")
+def llmisvc_upgrade_gateway(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    teardown_resources: bool,
+) -> Generator[Gateway, Any, Any]:
+    """Shared LLMD Gateway for upgrade tests."""
+    gateway = Gateway(
+        client=admin_client,
+        name=LLMDGateway.DEFAULT_NAME,
+        namespace=LLMDGateway.DEFAULT_NAMESPACE,
+        api_group=KServeGateway.API_GROUP,
+    )
+
+    if pytestconfig.option.post_upgrade:
+        yield gateway
+        gateway.clean_up()
+    else:
+        with create_llmd_gateway(
+            client=admin_client,
+            timeout=Timeout.TIMEOUT_1MIN,
+            teardown=teardown_resources,
+        ) as gateway:
+            yield gateway
+
+
+# llm-d namespaces
+@pytest.fixture(scope="session")
+def llmisvc_no_auth_namespace(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    teardown_resources: bool,
+) -> Generator[Namespace, Any, Any]:
+    """Namespace for LLMD upgrade tests."""
+    ns = Namespace(client=admin_client, name="upgrade-llmd")
+
+    if pytestconfig.option.post_upgrade:
+        yield ns
+        ns.clean_up()
+    else:
+        with create_ns(
+            admin_client=admin_client,
+            name="upgrade-llmd",
+            model_mesh_enabled=False,
+            add_dashboard_label=True,
+            teardown=teardown_resources,
+        ) as ns:
+            yield ns
+
+
+@pytest.fixture(scope="session")
+def llmisvc_auth_and_kueue_namespace(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    teardown_resources: bool,
+) -> Generator[Namespace, Any, Any]:
+    """Namespace for auth+Kueue LLMISVC upgrade tests, with Kueue management label."""
+    ns = Namespace(client=admin_client, name="upgrade-llmd-auth-and-kueue")
+
+    if pytestconfig.option.post_upgrade:
+        if not ns.exists:
+            pytest.skip(
+                f"[POST-UPGRADE] Namespace '{ns.name}' not found. "
+                "These LLMInferenceService upgrade tests support pre-upgrade from RHOAI 3.4+. "
+                "Upgrade paths from 3.3 or earlier do not create this namespace — skipping. "
+                "If this is unexpected, verify that pre-upgrade tests completed successfully "
+                "and that the correct upgrade path is being tested."
+            )
+        yield ns
+        ns.clean_up()
+    else:
+        with create_ns(
+            admin_client=admin_client,
+            name="upgrade-llmd-auth-and-kueue",
+            model_mesh_enabled=False,
+            add_dashboard_label=True,
+            add_kueue_label=True,
+            teardown=teardown_resources,
+        ) as ns:
+            yield ns
+
+
+# LLMInferenceService fixtures
+@pytest.fixture(scope="session")
+def llmisvc_upgrade_no_auth(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    llmisvc_no_auth_namespace: Namespace,
+    llmisvc_upgrade_gateway: Gateway,
+    teardown_resources: bool,
+) -> Generator[LLMInferenceService, Any, Any]:
+    """LLMInferenceService using TinyLlama OCI for upgrade tests."""
+    from tests.model_serving.model_server.llmd.conftest import _create_llmisvc_from_config
+    from tests.model_serving.model_server.llmd.llmd_configs.config_upgrade import UpgradeNoAuthConfig
+
+    config_cls = UpgradeNoAuthConfig
+    llmisvc = LLMInferenceService(
+        client=admin_client,
+        name=config_cls.name,
+        namespace=llmisvc_no_auth_namespace.name,
+    )
+
+    if pytestconfig.option.post_upgrade:
+        yield llmisvc
+        llmisvc.clean_up()
+    else:
+        with _create_llmisvc_from_config(
+            config_cls=config_cls,
+            namespace=llmisvc_no_auth_namespace.name,
+            client=admin_client,
+            teardown=teardown_resources,
+        ) as llmisvc:
+            yield llmisvc
+            _capture_and_save_llmd_baseline(pytestconfig=pytestconfig, admin_client=admin_client, llmisvc=llmisvc)
+
+
+@pytest.fixture(scope="session")
+def llmisvc_upgrade_auth_and_kueue(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    llmisvc_auth_and_kueue_namespace: Namespace,
+    llmisvc_upgrade_gateway: Gateway,
+    llmisvc_upgrade_kueue_resources: LocalQueue,
+    teardown_resources: bool,
+) -> Generator[LLMInferenceService, Any, Any]:
+    """Auth-enabled LLMInferenceService with Kueue integration for upgrade tests."""
+    from tests.model_serving.model_server.llmd.conftest import _create_llmisvc_from_config
+
+    config_cls = UpgradeAuthKueueConfig
+    llmisvc = LLMInferenceService(
+        client=admin_client,
+        name=config_cls.name,
+        namespace=llmisvc_auth_and_kueue_namespace.name,
+    )
+
+    if pytestconfig.option.post_upgrade:
+        yield llmisvc
+        if llmisvc.exists:
+            llmisvc.clean_up()
+    else:
+        with _create_llmisvc_from_config(
+            config_cls=config_cls,
+            namespace=llmisvc_auth_and_kueue_namespace.name,
+            client=admin_client,
+            teardown=teardown_resources,
+        ) as llmisvc:
+            yield llmisvc
+            _capture_and_save_llmd_baseline(pytestconfig=pytestconfig, admin_client=admin_client, llmisvc=llmisvc)
+
+
+# Kueue for upgrade tests
+@pytest.fixture(scope="session")
+def llmisvc_upgrade_kueue_resources(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    ensure_kueue_unmanaged_in_dsc,
+    llmisvc_auth_and_kueue_namespace: Namespace,
+    teardown_resources: bool,
+) -> Generator[LocalQueue, Any, Any]:
+    """Create Kueue resources (ResourceFlavor, ClusterQueue, LocalQueue) for upgrade tests.
+
+    Pre-upgrade: ensure_kueue_unmanaged_in_dsc skips if not installed, patches to Unmanaged if needed.
+    Post-upgrade: looks up the LocalQueue (verifies it survived).
+    """
+    from tests.model_serving.model_server.conftest import kueue_resource_groups
+
+    namespace = llmisvc_auth_and_kueue_namespace.name
+
+    if pytestconfig.option.post_upgrade:
+        local_queue = LocalQueue(
+            client=admin_client,
+            name=LLMD_KUEUE_LOCAL_QUEUE,
+            cluster_queue=LLMD_KUEUE_CLUSTER_QUEUE,
+            namespace=namespace,
+        )
+        yield local_queue
+        local_queue.clean_up()
+        ClusterQueue(client=admin_client, name=LLMD_KUEUE_CLUSTER_QUEUE).clean_up()
+        ResourceFlavor(client=admin_client, name=LLMD_KUEUE_RESOURCE_FLAVOR).clean_up()
+    else:
+        with (
+            create_resource_flavor(
+                client=admin_client,
+                name=LLMD_KUEUE_RESOURCE_FLAVOR,
+                teardown=teardown_resources,
+            ),
+            create_cluster_queue(
+                client=admin_client,
+                name=LLMD_KUEUE_CLUSTER_QUEUE,
+                resource_groups=kueue_resource_groups(
+                    flavor_name=LLMD_KUEUE_RESOURCE_FLAVOR,
+                    cpu_quota=LLMD_KUEUE_CPU_QUOTA,
+                    memory_quota=LLMD_KUEUE_MEMORY_QUOTA,
+                ),
+                teardown=teardown_resources,
+            ),
+            create_local_queue(
+                client=admin_client,
+                name=LLMD_KUEUE_LOCAL_QUEUE,
+                cluster_queue=LLMD_KUEUE_CLUSTER_QUEUE,
+                namespace=namespace,
+                teardown=teardown_resources,
+            ) as local_queue,
+        ):
+            yield local_queue
+
+
+# Auth for upgrade tests
+@pytest.fixture(scope="session")
+def llmisvc_upgrade_token(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    llmisvc_upgrade_auth_and_kueue: LLMInferenceService,
+) -> Generator[str, Any, Any]:
+    """Auth token for the auth-enabled LLMISVC, persisted across upgrade via a Secret.
+
+    Pre-upgrade: creates a ServiceAccount, Role (get on the LLMISVC), and RoleBinding,
+    generates a token from the SA, and saves it to a Secret on the cluster.
+    Post-upgrade: loads the same token from the Secret. Tests use it to verify that
+    auth RBAC survived the upgrade and the token is still accepted.
+    Teardown (post-upgrade only): cleans up SA, Role, RoleBinding, and the token Secret.
+
+    Args:
+        pytestconfig: Pytest config to check pre/post upgrade mode.
+        admin_client: Kubernetes dynamic client.
+        llmisvc_upgrade_auth_and_kueue: The auth-enabled LLMISVC to create RBAC for.
+
+    Yields:
+        RedactedString with the auth token.
+    """
+    svc = llmisvc_upgrade_auth_and_kueue
+    namespace = svc.namespace
+
+    if pytestconfig.option.post_upgrade:
+        token = load_auth_token_from_secret(
+            client=admin_client,
+            namespace=namespace,
+        )
+        yield RedactedString(value=token)
+        ServiceAccount(client=admin_client, namespace=namespace, name=f"{svc.name}-auth-sa").clean_up()
+        Role(client=admin_client, name=f"{svc.name}-view", namespace=namespace).clean_up()
+        RoleBinding(client=admin_client, name=f"{svc.name}-auth-sa-view", namespace=namespace).clean_up()
+        Secret(client=admin_client, name=UPGRADE_AUTH_TOKEN_SECRET_NAME, namespace=namespace).clean_up()
+    else:
+        sa = ServiceAccount(client=admin_client, namespace=namespace, name=f"{svc.name}-auth-sa")
+        sa.deploy()
+
+        role = Role(
+            client=admin_client,
+            name=f"{svc.name}-view",
+            namespace=namespace,
+            rules=[
+                {
+                    "apiGroups": [svc.api_group],
+                    "resources": ["llminferenceservices"],
+                    "verbs": ["get"],
+                    "resourceNames": [svc.name],
+                }
+            ],
+        )
+        role.deploy()
+
+        RoleBinding(
+            client=admin_client,
+            namespace=namespace,
+            name=f"{svc.name}-auth-sa-view",
+            role_ref_name=role.name,
+            role_ref_kind=role.kind,
+            subjects_kind="ServiceAccount",
+            subjects_name=sa.name,
+        ).deploy()
+
+        token = create_inference_token(model_service_account=sa)
+        save_auth_token_to_secret(
+            client=admin_client,
+            namespace=namespace,
+            token=token,
+        )
+        yield RedactedString(value=token)
+
+
+# Baseline for llm-d upgrade tests
+def _capture_and_save_llmd_baseline(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    llmisvc: LLMInferenceService,
+) -> None:
+    """Capture LLMISVC baseline and save ConfigMap in the LLMISVC's own namespace. No-op during post-upgrade."""
+    if pytestconfig.option.post_upgrade:
+        return
+
+    baselines = {
+        llmisvc.name: capture_llmisvc_baseline(client=admin_client, llmisvc=llmisvc),
+    }
+    save_baseline_to_configmap(
+        client=admin_client,
+        namespace=llmisvc.namespace,
+        baselines=baselines,
+    )
