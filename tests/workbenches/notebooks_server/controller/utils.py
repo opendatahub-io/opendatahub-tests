@@ -44,20 +44,22 @@ def resolve_notebook_image(admin_client: DynamicClient) -> str:
     """
     from tests.workbenches.notebook_images.utils import (
         WorkbenchImageSpec,
-        resolve_n_minus_one_image,
+        resolve_workbench_image,
     )
 
     imagestream_name = (
         "jupyter-minimal-notebook" if py_config.get("distribution") == "upstream" else "s2i-minimal-notebook"
     )
-    return resolve_n_minus_one_image(
+    return resolve_workbench_image(
         admin_client=admin_client,
         spec=WorkbenchImageSpec(
             ide="jupyterlab",
             imagestream_name=imagestream_name,
             notebook_name="workbench",
+            baseline_prefix="jupyterlab",
+            pvc_name="workbench-storage",
         ),
-    )
+    ).image_url
 
 
 @contextmanager

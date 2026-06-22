@@ -1200,6 +1200,21 @@ def download_oc_console_cli(admin_client: DynamicClient, tmpdir: LocalPath) -> s
     return binary_path
 
 
+def check_internal_image_registry_available(admin_client: DynamicClient) -> bool:
+    """Check if internal image registry is available by checking the imageregistry config managementState."""
+    from ocp_resources.config_imageregistry_operator_openshift_io import Config
+
+    try:
+        config_instance = Config(client=admin_client, name="cluster")
+        management_state = config_instance.instance.spec.get("managementState", "").lower()
+        is_available = management_state == "managed"
+        LOGGER.info(f"Image registry management state: {management_state}, available: {is_available}")
+        return is_available
+    except (ResourceNotFoundError, Exception) as error:  # noqa: BLE001
+        LOGGER.warning(f"Failed to check image registry config: {error}")
+        return False
+
+
 def get_cluster_authentication(admin_client: DynamicClient) -> Authentication | None:
     auth = Authentication(client=admin_client, name="cluster")
     if auth.exists:

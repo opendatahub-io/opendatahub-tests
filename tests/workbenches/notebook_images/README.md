@@ -2,32 +2,56 @@
 
 Tests for validating notebook container images used by OpenDataHub/RHOAI workbenches.
 
-## N-1 Upgrade Survival (`test_upgrade_n_minus_1.py`)
+## N-1 Upgrade Survival (`upgrade/`)
 
 Verifies that workbenches launched on N-1 (source-version) images remain healthy after a RHOAI platform upgrade.
 
-Representative IDEs:
+Per-IDE test modules:
 
-- JupyterLab (`s2i-minimal-notebook` / `jupyter-minimal-notebook`)
-- Code Server (`code-server-notebook`)
-- RStudio (`rstudio-rhel9`)
+- `upgrade/test_upgrade_jupyterlab.py` — JupyterLab (`s2i-minimal-notebook` / `jupyter-minimal-notebook`)
+- `upgrade/test_upgrade_codeserver.py` — Code Server (`code-server-notebook`)
+- `upgrade/test_upgrade_rstudio.py` — RStudio (legacy EUS track only)
 
-Post-upgrade validation follows the log -> HTTP -> log sequence from Jan Stourac's criteria (RHAIENG-5382) for JupyterLab and Code Server. RStudio skips the in-container HTTP probe because it serves via nginx, not Jupyter Server. A PVC marker file confirms data survives the upgrade.
+Pre-upgrade validation creates dashboard-faithful Notebook CRs, waits for controller reconciliation (kube-rbac-proxy, ReferenceGrant, HTTPRoute), captures a rich baseline (image selection, digest, restart counts, Notebook generation), and writes a PVC marker file.
+
+Post-upgrade validation checks:
+
+- Pod not recreated (creationTimestamp preserved)
+- Image selection annotation unchanged
+- Running container digest unchanged
+- Container restart counts unchanged
+- Notebook CR generation unchanged
+- StatefulSet health (readyReplicas, no pending rollout)
+- PVC marker file still readable
+- Log cleanliness and in-pod HTTP health (JupyterLab and Code Server only)
 
 ### Running
 
 ```bash
-# Pre-upgrade (on N-1 cluster)
-uv run pytest --pre-upgrade tests/workbenches/notebook_images/
+# Pre-upgrade (on N-1 cluster) — 3 tests (1 per IDE)
+uv run pytest --pre-upgrade tests/workbenches/notebook_images/upgrade/
 
-# Post-upgrade (on upgraded cluster)
-uv run pytest --post-upgrade tests/workbenches/notebook_images/
+# Post-upgrade (on upgraded cluster) — 27 tests (9 per IDE)
+uv run pytest --post-upgrade tests/workbenches/notebook_images/upgrade/
+
+# Target a single IDE
+uv run pytest --post-upgrade tests/workbenches/notebook_images/upgrade/test_upgrade_jupyterlab.py
 ```
 
-Optional: set `workbench_image_tag` in test config when the ImageStream tag differs from the operator CSV version.
+Optional overrides via pytest-testconfig:
+
+```bash
+# Pin a specific ImageStream tag (useful on already-upgraded clusters)
+uv run pytest --pre-upgrade tests/workbenches/notebook_images/upgrade/ --tc workbench_image_tag=3.4
+
+# Force stable (3.x major.minor) or legacy EUS (year.release) tag selection
+uv run pytest --pre-upgrade tests/workbenches/notebook_images/upgrade/ --tc workbench_upgrade_track=stable
+```
 
 ### Notes
 
 - Uses namespace `upgrade-notebook-images` (separate from `upgrade-workbenches` controller tests).
-- Code Server is skipped on upstream clusters (`jupyter-minimal-notebook` only).
-- RStudio is skipped on upstream clusters. On downstream clusters RStudio uses the ImageStream `latest` tag when no year-based version tags exist. RHOAI 2.25 builds RStudio in-cluster via `rstudio-server-rhel9` BuildConfig (requires `rhel-subscription-secret`); the test triggers that build when needed and waits for the imported image before launching the workbench.
+- Code Server and RStudio are skipped on upstream clusters.
+- RStudio runs only on the EUS upgrade track when a legacy RStudio ImageStream is present.
+- RStudio skips the in-container HTTP probe (serves via nginx, not Jupyter Server).
+- On clusters where RStudio images are built in-cluster, the test can instantiate `rstudio-server-rhel9` BuildConfig when the tag is not yet imported.
