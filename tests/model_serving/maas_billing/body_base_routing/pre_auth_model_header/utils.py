@@ -1,9 +1,8 @@
 """Utilities and verification helpers for body-based routing (BBR) tests."""
 
-from __future__ import annotations
-
 from typing import Any
 
+import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
@@ -180,7 +179,7 @@ def verify_bbr_stage_filter_operation(
         )
         LOGGER.info(f"{stage_label} stage '{filter_name}' correctly uses {expected_operation}")
         return
-    raise AssertionError(
+    pytest.fail(
         f"{stage_label} filter '{filter_name}' not found in EnvoyFilter '{BBR_ENVOY_FILTER_NAME}' configPatches"
     )
 

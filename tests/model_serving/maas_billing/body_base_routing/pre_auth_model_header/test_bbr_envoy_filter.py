@@ -1,6 +1,6 @@
 """Tests verifying the EnvoyFilter configuration introduced by the BBR pre-auth ext_proc."""
 
-from typing import Any
+from typing import Any, Self
 
 import pytest
 from kubernetes.dynamic import DynamicClient
@@ -20,7 +20,7 @@ class TestBBREnvoyFilter:
 
     @pytest.mark.smoke
     def test_bbr_envoy_filter_has_pre_and_post_auth_stages(
-        self,
+        self: Self,
         bbr_gateway_namespace: str,
         bbr_envoy_filter_config_patches: list[Any],
     ) -> None:
@@ -32,7 +32,7 @@ class TestBBREnvoyFilter:
 
     @pytest.mark.tier1
     def test_bbr_pre_stage_is_insert_before_wasm_plugin(
-        self,
+        self: Self,
         bbr_envoy_filter_config_patches: list[Any],
     ) -> None:
         """Verify the bbr-pre configPatch uses INSERT_BEFORE so body extraction runs before the WasmPlugin."""
@@ -42,7 +42,7 @@ class TestBBREnvoyFilter:
 
     @pytest.mark.tier1
     def test_bbr_post_stage_is_insert_after_wasm_plugin(
-        self,
+        self: Self,
         bbr_envoy_filter_config_patches: list[Any],
     ) -> None:
         """Verify the bbr post-auth configPatch uses INSERT_AFTER so usage tracking runs after the WasmPlugin."""
@@ -52,7 +52,7 @@ class TestBBREnvoyFilter:
 
     @pytest.mark.tier1
     def test_bbr_envoy_filter_cluster_names_resolve_to_gateway_namespace(
-        self,
+        self: Self,
         bbr_gateway_namespace: str,
         bbr_envoy_filter_config_patches: list[Any],
     ) -> None:
@@ -64,7 +64,7 @@ class TestBBREnvoyFilter:
 
     @pytest.mark.smoke
     def test_bbr_post_auth_processing_deployment_ready(
-        self,
+        self: Self,
         admin_client: DynamicClient,
         bbr_gateway_namespace: str,
     ) -> None:
