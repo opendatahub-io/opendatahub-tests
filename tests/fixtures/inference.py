@@ -176,16 +176,20 @@ def patched_dsc_kserve_headed(
     """Configure KServe Services to work in Headed mode i.e. using the Service port instead of the Pod port"""
 
     def _kserve_status(dsc_resource: DataScienceCluster) -> str:
-        return next(
-            filter(lambda condition: condition["type"] == "KserveReady", dsc_resource.instance.status["conditions"])
-        )["status"]
+        condition = next(
+            filter(lambda condition: condition["type"] == "KserveReady", dsc_resource.instance.status["conditions"]),
+            None,
+        )
+        if condition is None:
+            raise ValueError("KserveReady condition not found in DSC status")
+        return condition["status"]
 
     @retry(wait_timeout=30, sleep=1)
     def _wait_for_kserve_upgrade(dsc_resource: DataScienceCluster):
         return _kserve_status(dsc_resource) != "True"
 
     @retry(wait_timeout=60, sleep=5)
-    def _wait_for_kserve_ready(dsc_resource: DataScienceCluster):
+    def _wait_for_kserve_ready(dsc_resource: DataScienceCluster) -> bool:
         return _kserve_status(dsc_resource) == "True"
 
     dsc = get_data_science_cluster(client=admin_client)
