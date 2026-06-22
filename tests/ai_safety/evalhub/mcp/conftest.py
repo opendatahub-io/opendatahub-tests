@@ -20,6 +20,11 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_TENANT_LABEL_KEY,
     EVALHUB_VLLM_EMULATOR_PORT,
 )
+from tests.ai_safety.evalhub.multitenancy.conftest import (
+    EVALHUB_USER_ROLE_RULES,
+    VLLM_EMULATOR,
+    VLLM_EMULATOR_IMAGE,
+)
 from tests.ai_safety.evalhub.utils import tenant_rbac_ready
 from utilities.constants import Labels, Protocols, Timeout
 from utilities.infra import create_inference_token, create_ns
@@ -32,15 +37,6 @@ LOGGER = structlog.get_logger(name=__name__)
 # evalhub_mt_ca_bundle_file fixtures are defined in ../conftest.py (parent)
 # and shared across all evalhub test subdirectories.
 # ---------------------------------------------------------------------------
-
-
-EVALHUB_MCP_USER_ROLE_RULES: list[dict[str, list[str]]] = [
-    {
-        "apiGroups": ["trustyai.opendatahub.io"],
-        "resources": ["evaluations", "collections", "providers"],
-        "verbs": ["get", "list", "create", "update", "delete"],
-    },
-]
 
 
 # ---------------------------------------------------------------------------
@@ -153,7 +149,7 @@ def mcp_tenant_role(
         client=admin_client,
         name="evalhub-mcp-test-access",
         namespace=mcp_tenant_namespace.name,
-        rules=EVALHUB_MCP_USER_ROLE_RULES,
+        rules=EVALHUB_USER_ROLE_RULES,
         wait_for_resource=True,
     ) as role:
         yield role
@@ -192,11 +188,6 @@ def mcp_tenant_token(
 # ---------------------------------------------------------------------------
 # vLLM emulator
 # ---------------------------------------------------------------------------
-
-VLLM_EMULATOR: str = "vllm-emulator"
-VLLM_EMULATOR_IMAGE: str = (
-    "quay.io/trustyai_testing/vllm_emulator@sha256:c4bdd5bb93171dee5b4c8454f36d7c42b58b2a4ceb74f29dba5760ac53b5c12d"
-)
 
 
 @pytest.fixture(scope="class")
