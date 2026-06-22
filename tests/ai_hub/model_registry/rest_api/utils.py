@@ -11,6 +11,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
 from pyhelper_utils.shell import run_command
+from timeout_sampler import retry
 
 from tests.ai_hub.exceptions import (
     ModelRegistryResourceNotCreated,
@@ -23,6 +24,7 @@ from utilities.general import generate_random_name
 LOGGER = structlog.get_logger(name=__name__)
 
 
+@retry(wait_timeout=60, sleep=5, exceptions_dict={requests.exceptions.ConnectionError: []})
 def execute_model_registry_patch_command(
     url: str, headers: dict[str, str], data_json: dict[str, Any]
 ) -> dict[Any, Any]:
