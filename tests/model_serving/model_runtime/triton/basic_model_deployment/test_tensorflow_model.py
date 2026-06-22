@@ -38,26 +38,26 @@ pytestmark = pytest.mark.usefixtures(
     [
         pytest.param(
             {"protocol_type": Protocols.REST},
-            {"name": "tensorflow-raw"},
+            {"name": "tensorflow-standard"},
             MODEL_STORAGE_URI_DICT,
             {**BASE_RAW_DEPLOYMENT_CONFIG},
             {
-                "name": "tensorflow-raw-rest",
+                "name": "tensorflow-standard-rest",
                 **BASE_RAW_DEPLOYMENT_CONFIG,
             },
-            id="tensorflow-raw-rest-deployment",
+            id="tensorflow-standard-rest-deployment",
             marks=pytest.mark.smoke,
         ),
         pytest.param(
             {"protocol_type": Protocols.GRPC},
-            {"name": "tensorflow-raw"},
+            {"name": "tensorflow-standard"},
             MODEL_STORAGE_URI_DICT,
             {**BASE_RAW_DEPLOYMENT_CONFIG},
             {
-                "name": "tensorflow-raw-grpc",
+                "name": "tensorflow-standard-grpc",
                 **BASE_RAW_DEPLOYMENT_CONFIG,
             },
-            id="tensorflow-raw-grpc-deployment",
+            id="tensorflow-standard-grpc-deployment",
             marks=pytest.mark.smoke,
         ),
     ],
