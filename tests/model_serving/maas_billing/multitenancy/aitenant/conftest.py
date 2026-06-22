@@ -415,8 +415,9 @@ def aitenant_outside_infra_namespace(
 ) -> tuple[str, str]:
     """Return AITenant name and invalid CR namespace for admission webhook rejection tests."""
     cr_namespace_key: str = request.param
+    applications_namespace = py_config["applications_namespace"]
     namespace_map = {
-        "applications_namespace": py_config["applications_namespace"],
+        "applications_namespace": applications_namespace,
         "legacy_tenant_namespace": MAAS_SUBSCRIPTION_NAMESPACE,
     }
     aitenant_name = f"e2e-aigw-plc-{generate_random_name()}"

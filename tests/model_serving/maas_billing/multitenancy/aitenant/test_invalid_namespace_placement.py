@@ -44,7 +44,7 @@ class TestAITenantInvalidNamespacePlacement:
             aitenant_spec=aitenant_spec,
             teardown=teardown_resources,
         )
-        with pytest.raises(DynamicApiError, match="(?i)admission webhook"), aitenant:
+        with pytest.raises(DynamicApiError, match=r"(?i)admission webhook"), aitenant:
             aitenant.deploy()
         assert not aitenant.exists, f"AITenant '{aitenant_name}' should not exist in '{cr_namespace}'"
         LOGGER.info(f"AITenant '{aitenant_name}' rejected outside '{AITENANT_INFRA_NAMESPACE}' as expected")

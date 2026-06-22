@@ -627,9 +627,10 @@ def _fresh_aitenant(aitenant: AITenant) -> AITenant:
 def get_aitenant_ready_reason(aitenant: AITenant) -> str:
     """Return the Ready condition reason, or an empty string when absent."""
     fresh_aitenant = _fresh_aitenant(aitenant=aitenant)
-    for condition in fresh_aitenant.instance.status.conditions or []:
-        if condition.type == "Ready":
-            return condition.reason or ""
+    status = getattr(fresh_aitenant.instance, "status", {}) or {}
+    for condition in status.get("conditions", []):
+        if condition.get("type") == "Ready":
+            return condition.get("reason") or ""
     return ""
 
 
