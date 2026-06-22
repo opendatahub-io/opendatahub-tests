@@ -6,29 +6,30 @@ are successfully converted and accessible via v1beta2 API after upgrade.
 Test addresses Gap G3 from RHOAIENG-63117 audit report.
 """
 
-import structlog
-import pytest
 from typing import Any
+
+import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
 
 from utilities.kueue_utils import (
-    ResourceFlavor,
-    LocalQueue,
     ClusterQueue,
+    LocalQueue,
+    ResourceFlavor,
 )
 from utilities.kueue_utils_v1beta1 import (
-    ResourceFlavorV1Beta1,
-    LocalQueueV1Beta1,
     ClusterQueueV1Beta1,
+    LocalQueueV1Beta1,
+    ResourceFlavorV1Beta1,
 )
 
 # Import test constants from conftest
 from .conftest import (
     TEST_CLUSTER_QUEUE_NAME,
-    TEST_LOCAL_QUEUE_NAME,
     TEST_CPU_FLAVOR_NAME,
     TEST_GPU_FLAVOR_NAME,
+    TEST_LOCAL_QUEUE_NAME,
 )
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -251,11 +252,7 @@ class TestKueueCRDMigrationPostUpgrade:
         )
 
         # Update ClusterQueue stopPolicy to None to test admission
-        cluster_queue_v1beta2.update({
-            "spec": {
-                "stopPolicy": "None"
-            }
-        })
+        cluster_queue_v1beta2.update({"spec": {"stopPolicy": "None"}})
 
         # Verify update was successful
         cluster_queue_v1beta2.wait_for_condition(

@@ -249,11 +249,7 @@ def create_test_resource_groups() -> list[dict[str, Any]]:
 
 def create_test_namespace_selector() -> dict[str, Any]:
     """Create test namespace selector for ClusterQueue."""
-    return {
-        "matchLabels": {
-            "kueue-migration-test": "enabled"
-        }
-    }
+    return {"matchLabels": {"kueue-migration-test": "enabled"}}
 
 
 def create_test_tolerations() -> list[dict[str, Any]]:

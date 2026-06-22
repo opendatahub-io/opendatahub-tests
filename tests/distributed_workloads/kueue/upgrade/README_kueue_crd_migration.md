@@ -14,12 +14,14 @@ The Kueue CRD migration tests address **Gap G3** from RHOAIENG-63117 audit repor
 ## Test Files
 
 ### Core Migration Tests
+
 - **`test_kueue_crd_migration.py`** - Main migration test suite
   - Pre-upgrade: Creates ClusterQueue, LocalQueue, ResourceFlavor using v1beta1 API
   - Post-upgrade: Validates v1beta2 conversion and field preservation
   - Baseline comparison: Ensures no data loss during migration
 
 ### Advanced Webhook Tests
+
 - **`test_kueue_webhook_conversion.py`** - Conversion webhook testing
   - Round-trip conversion compatibility (v1beta1→v1beta2→v1beta1)
   - Edge cases: complex data structures, unicode, special characters
@@ -27,15 +29,18 @@ The Kueue CRD migration tests address **Gap G3** from RHOAIENG-63117 audit repor
   - Field defaults and status preservation
 
 ### Test Configuration
+
 - **`conftest.py`** - Kueue-specific pytest fixtures and configuration
 - **`__init__.py`** - Module initialization
 
 ### Utilities
+
 - **`utilities/kueue_utils_v1beta1.py`** - v1beta1 resource classes and helpers
 
 ## Test Resources Created
 
 ### ResourceFlavor (v1beta1)
+
 ```yaml
 apiVersion: kueue.x-k8s.io/v1beta1
 kind: ResourceFlavor
@@ -53,6 +58,7 @@ spec:
 ```
 
 ### ClusterQueue (v1beta1)
+
 ```yaml
 apiVersion: kueue.x-k8s.io/v1beta1
 kind: ClusterQueue
@@ -76,6 +82,7 @@ spec:
 ```
 
 ### LocalQueue (v1beta1)
+
 ```yaml
 apiVersion: kueue.x-k8s.io/v1beta1
 kind: LocalQueue
@@ -89,11 +96,13 @@ spec:
 ## Running the Tests
 
 ### Prerequisites
+
 1. RHOAI cluster with Kueue operator installed
 2. Admin and unprivileged kubeconfig access
 3. pytest with upgrade test infrastructure configured
 
 ### Pre-upgrade Tests
+
 ```bash
 # Run Kueue CRD migration pre-upgrade tests
 pytest tests/distributed_workloads/kueue/upgrade/test_kueue_crd_migration.py \
@@ -107,6 +116,7 @@ pytest tests/distributed_workloads/kueue/upgrade/test_kueue_webhook_conversion.p
 ```
 
 ### Post-upgrade Tests
+
 ```bash
 # Run Kueue CRD migration post-upgrade tests
 pytest tests/distributed_workloads/kueue/upgrade/test_kueue_crd_migration.py \
@@ -120,6 +130,7 @@ pytest tests/distributed_workloads/kueue/upgrade/test_kueue_webhook_conversion.p
 ```
 
 ### Combined Upgrade Test (Full Cycle)
+
 ```bash
 # Pre-upgrade phase
 pytest tests/distributed_workloads/kueue/upgrade/test_kueue_*.py \
@@ -137,11 +148,13 @@ pytest tests/distributed_workloads/kueue/upgrade/test_kueue_*.py \
 ## Test Validation
 
 ### Pre-upgrade Validation
+
 - ✅ Resources created successfully with v1beta1 API
 - ✅ Resource specifications captured in baseline ConfigMap
 - ✅ Functional behavior verified (ClusterQueue Active, workload admission)
 
 ### Post-upgrade Validation
+
 - ✅ Resources accessible via v1beta2 API
 - ✅ All fields preserved during migration (compared against baseline)
 - ✅ Bidirectional API compatibility (both v1beta1 and v1beta2 work)
@@ -153,16 +166,19 @@ pytest tests/distributed_workloads/kueue/upgrade/test_kueue_*.py \
 The tests integrate with the existing opendatahub-tests upgrade infrastructure:
 
 ### Test Discovery
+
 - Tests marked with `@pytest.mark.pre_upgrade` run during pre-upgrade phase
 - Tests marked with `@pytest.mark.post_upgrade` run during post-upgrade phase
 - Dependency management ensures proper test execution order
 
 ### Resource Management
+
 - `teardown_resources` fixture controls cleanup based on `SKIP_RESOURCE_TEARDOWN` env var
 - Baseline data persisted in ConfigMap survives upgrade for comparison
 - Namespace `kueue-crd-migration-test` labeled for Kueue management
 
 ### Error Handling
+
 - Must-gather collection on test failures
 - Comprehensive logging for debugging migration issues
 - Graceful handling of missing baselines or CRD unavailability
@@ -172,6 +188,7 @@ The tests integrate with the existing opendatahub-tests upgrade infrastructure:
 ### Common Issues
 
 **Issue**: Pre-upgrade tests fail with "Kueue CRDs not available"
+
 ```bash
 # Solution: Verify Kueue operator installation
 kubectl get crd -l app.kubernetes.io/name=kueue
@@ -179,6 +196,7 @@ kubectl get pods -n openshift-kueue-operator
 ```
 
 **Issue**: Post-upgrade tests fail with "Baseline ConfigMap not found"
+
 ```bash
 # Solution: Verify pre-upgrade tests created baseline
 kubectl get cm kueue-crd-migration-baseline -n kueue-crd-migration-test
@@ -186,12 +204,14 @@ kubectl describe cm kueue-crd-migration-baseline -n kueue-crd-migration-test
 ```
 
 **Issue**: Field comparison fails after upgrade
+
 ```bash
 # Solution: Check conversion webhook logs
 kubectl logs -n openshift-kueue-operator -l control-plane=controller-manager
 ```
 
 ### Must-Gather Collection
+
 ```bash
 # Collect debugging information on failure
 pytest tests/distributed_workloads/kueue/upgrade/test_kueue_crd_migration.py \
