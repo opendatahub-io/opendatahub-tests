@@ -1024,7 +1024,11 @@ def wait_for_mcp_catalog_api(
         wait_timeout=wait_timeout,
         sleep=sleep,
         func=execute_get_call,
-        exceptions_dict={ResourceNotFoundError: [], TransientUnauthorizedError: []},
+        exceptions_dict={
+            ResourceNotFoundError: [],
+            TransientUnauthorizedError: [],
+            requests.exceptions.ConnectionError: [],
+        },
         url=servers_url,
         headers=headers,
         params={"pageSize": 1000},
