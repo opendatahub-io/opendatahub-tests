@@ -35,9 +35,9 @@ class TestLlmdPreUpgrade:
             f"[PRE-UPGRADE] Checking LLMInferenceService '{llmd_inference_service_fixture.name}' "
             f"exists in namespace '{llmd_inference_service_fixture.namespace}'"
         )
-        exists = llmd_inference_service_fixture.exists
-        logger.info(f"[PRE-UPGRADE] LLMInferenceService exists: {exists}")
-        assert exists, f"LLMInferenceService {llmd_inference_service_fixture.name} does not exist"
+        assert llmd_inference_service_fixture.exists, (
+            f"LLMInferenceService {llmd_inference_service_fixture.name} does not exist"
+        )
         logger.info(f"[PRE-UPGRADE] PASS: LLMInferenceService '{llmd_inference_service_fixture.name}' is deployed")
 
     @pytest.mark.pre_upgrade
@@ -87,9 +87,9 @@ class TestLlmdPostUpgrade:
             f"[POST-UPGRADE] Checking LLMInferenceService '{llmd_inference_service_fixture.name}' "
             f"still exists in namespace '{llmd_inference_service_fixture.namespace}'"
         )
-        exists = llmd_inference_service_fixture.exists
-        logger.info(f"[POST-UPGRADE] LLMInferenceService exists: {exists}")
-        assert exists, f"LLMInferenceService {llmd_inference_service_fixture.name} does not exist after upgrade"
+        assert llmd_inference_service_fixture.exists, (
+            f"LLMInferenceService {llmd_inference_service_fixture.name} does not exist after upgrade"
+        )
         logger.info(
             f"[POST-UPGRADE] PASS: LLMInferenceService '{llmd_inference_service_fixture.name}' survived upgrade"
         )
