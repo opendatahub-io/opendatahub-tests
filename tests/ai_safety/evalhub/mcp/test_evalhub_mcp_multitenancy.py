@@ -40,6 +40,10 @@ class TestEvalHubMcpMultitenancy:
     in the configured tenant namespace regardless of the inbound header value.
     """
 
+    @pytest.mark.skip(
+        reason="Known bug RHOAIENG-70489: Job submission fails in 3.5 EA2. "
+        "Fixed in upstream PRs eval-hub/eval-hub#669 and #670"
+    )
     def test_mcp_submit_with_configured_tenant_succeeds(
         self,
         evalhub_mcp_client: EvalHubMcpClient,
@@ -64,6 +68,10 @@ class TestEvalHubMcpMultitenancy:
         )
         assert submit_result.get("job_id")
 
+    @pytest.mark.skip(
+        reason="Known bug RHOAIENG-70489: Job submission fails in 3.5 EA2. "
+        "Fixed in upstream PRs eval-hub/eval-hub#669 and #670"
+    )
     def test_mcp_submit_with_mismatched_tenant_header_still_creates_job(
         self,
         tenant_a_token: str,

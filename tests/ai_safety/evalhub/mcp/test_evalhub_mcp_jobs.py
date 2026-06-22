@@ -36,6 +36,11 @@ from tests.ai_safety.evalhub.mcp.utils import (
 class TestEvalHubMcpJobs:
     """MCP job lifecycle tests: status polling, cancellation, and completion."""
 
+    @pytest.mark.skip(
+        reason="Known bug RHOAIENG-70489: Job submission fails in 3.5 EA2. "
+        "Fixed in upstream PRs eval-hub/eval-hub#669 and #670. "
+        "Note: authSecret field replaced by auth.secret_ref in API"
+    )
     def test_get_job_status_returns_progress_fields(
         self,
         evalhub_mcp_client: EvalHubMcpClient,
@@ -71,6 +76,10 @@ class TestEvalHubMcpJobs:
         assert structured.get("state")
         assert "progress_percent" in structured
 
+    @pytest.mark.skip(
+        reason="Known bug RHOAIENG-70489: Job submission fails in 3.5 EA2. "
+        "Fixed in upstream PRs eval-hub/eval-hub#669 and #670"
+    )
     def test_cancel_running_job(
         self,
         evalhub_mcp_client: EvalHubMcpClient,

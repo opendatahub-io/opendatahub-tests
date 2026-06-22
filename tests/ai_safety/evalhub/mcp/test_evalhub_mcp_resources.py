@@ -66,7 +66,7 @@ class TestEvalHubMcpResources:
         uri = EVALHUB_MCP_BENCHMARK_URI_TEMPLATE.format(benchmark_id=EVALHUB_MCP_DEFAULT_BENCHMARK_ID)
         result = read_mcp_resource(client=evalhub_mcp_client, uri=uri)
         payload = json.loads(mcp_read_resource_text(result=result))
-        assert payload.get("resource", {}).get("id") == EVALHUB_MCP_DEFAULT_BENCHMARK_ID
+        assert payload.get("id") == EVALHUB_MCP_DEFAULT_BENCHMARK_ID
 
     def test_read_collection_by_id(
         self,
@@ -128,6 +128,10 @@ class TestEvalHubMcpResources:
 class TestEvalHubMcpJobResources:
     """MCP job resource reads after submitting an evaluation via tools."""
 
+    @pytest.mark.skip(
+        reason="Known bug RHOAIENG-70489: Job submission fails in 3.5 EA2. "
+        "Fixed in upstream PRs eval-hub/eval-hub#669 and #670"
+    )
     def test_read_job_by_id_after_submit(
         self,
         evalhub_mcp_client: EvalHubMcpClient,
@@ -157,6 +161,10 @@ class TestEvalHubMcpJobResources:
         payload = json.loads(mcp_read_resource_text(result=result))
         assert payload.get("resource", {}).get("id") == job_id
 
+    @pytest.mark.skip(
+        reason="Known bug RHOAIENG-70489: Job submission fails in 3.5 EA2. "
+        "Fixed in upstream PRs eval-hub/eval-hub#669 and #670"
+    )
     def test_jobs_list_includes_submitted_job(
         self,
         evalhub_mcp_client: EvalHubMcpClient,
@@ -186,6 +194,10 @@ class TestEvalHubMcpJobResources:
         job_ids = [item.get("resource", {}).get("id") for item in jobs if isinstance(item, dict)]
         assert job_id in job_ids, f"Submitted job {job_id} not found in jobs resource: {job_ids}"
 
+    @pytest.mark.skip(
+        reason="Known bug RHOAIENG-70489: Job submission fails in 3.5 EA2. "
+        "Fixed in upstream PRs eval-hub/eval-hub#669 and #670"
+    )
     def test_jobs_filtered_by_pending_status(
         self,
         evalhub_mcp_client: EvalHubMcpClient,

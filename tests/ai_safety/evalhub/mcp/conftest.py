@@ -32,6 +32,7 @@ from tests.ai_safety.evalhub.mcp.utils import (
     build_mcp_proxy_role_rules,
     tenant_mcp_rbac_ready,
 )
+from tests.fixtures.trustyai import EVALHUB_USER_ROLE_RULES
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import Labels, Protocols, Timeout
 from utilities.infra import create_inference_token
@@ -167,6 +168,9 @@ def evalhub_mcp_mt_cr(
         )
         secret.deploy()
 
+        # TODO: Update to use auth.secret_ref instead of authSecret when upstream
+        # PRs eval-hub/eval-hub#669 and #670 are integrated (fixes RHOAIENG-70489)
+        # New format: "auth": {"secret_ref": secret_name}
         evalhub.update(
             resource_dict={
                 "metadata": {
@@ -177,7 +181,7 @@ def evalhub_mcp_mt_cr(
                     "mcp": {
                         "enabled": True,
                         "replicas": 1,
-                        "authSecret": secret_name,
+                        "authSecret": secret_name,  # Will become auth.secret_ref
                         "env": [
                             {
                                 "name": "EVALHUB_TENANT",
@@ -298,6 +302,44 @@ def evalhub_mcp_proxy_role_binding(
 
 
 @pytest.fixture(scope="class")
+def mcp_server_tenant_rbac(
+    admin_client: DynamicClient,
+    tenant_a_namespace: Namespace,
+    model_namespace: Namespace,
+    evalhub_mcp_mt_deployment: Deployment,
+) -> Generator[RoleBinding, Any, Any]:
+    """Grant MCP server service account access to tenant namespace EvalHub API resources.
+
+    This is a workaround until the EvalHub operator automatically provisions these permissions.
+    The MCP server needs to access evaluations, providers, benchmarks, and collections in the
+    tenant namespace on behalf of authenticated users.
+    """
+    mcp_server_sa_name = _evalhub_service_account_name(EVALHUB_MCP_CR_NAME)
+
+    # Create role in tenant namespace granting EvalHub API access
+    with Role(
+        client=admin_client,
+        name=f"{EVALHUB_MCP_CR_NAME}-server-access",
+        namespace=tenant_a_namespace.name,
+        rules=EVALHUB_USER_ROLE_RULES,  # Same permissions as test user
+        wait_for_resource=True,
+    ) as role:
+        # Bind MCP server SA (from model namespace) to this role
+        with RoleBinding(
+            client=admin_client,
+            name=f"{EVALHUB_MCP_CR_NAME}-server-binding",
+            namespace=tenant_a_namespace.name,
+            subjects_kind="ServiceAccount",
+            subjects_name=mcp_server_sa_name,
+            subjects_namespace=model_namespace.name,
+            role_ref_kind="Role",
+            role_ref_name=role.name,
+            wait_for_resource=True,
+        ) as binding:
+            yield binding
+
+
+@pytest.fixture(scope="class")
 def evalhub_mcp_client(
     tenant_a_token: str,
     tenant_a_namespace: Namespace,
@@ -305,6 +347,7 @@ def evalhub_mcp_client(
     evalhub_mcp_mt_ca_bundle_file: str,
     evalhub_mcp_proxy_role_binding: RoleBinding,
     evalhub_mcp_mt_ready: None,
+    mcp_server_tenant_rbac: RoleBinding,
 ) -> EvalHubMcpClient:
     """Authenticated MCP client for tenant-a."""
     client = EvalHubMcpClient(
