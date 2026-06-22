@@ -1146,9 +1146,13 @@ def get_oc_console_cli_download_link(admin_client: DynamicClient) -> str:
     return all_links[0]
 
 
-@retry(wait_timeout=120, sleep=10, exceptions_dict={requests.exceptions.ConnectionError: []})
+@retry(
+    wait_timeout=120,
+    sleep=10,
+    exceptions_dict={requests.exceptions.ConnectionError: [], requests.exceptions.Timeout: []},
+)
 def _download_with_retry(url: str) -> requests.Response:
-    response = requests.get(url, verify=False, stream=True)
+    response = requests.get(url, verify=False, stream=True, timeout=60)
     response.raise_for_status()
     return response
 
