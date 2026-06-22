@@ -2,13 +2,12 @@
 
 from typing import Any
 
-from ocp_resources.exceptions import MissingRequiredArgumentError
 from ocp_resources.resource import NamespacedResource
 
 
 class AITenant(NamespacedResource):
     """
-    AITenant bootstraps one tenant slice: a tenant namespace, an existing
+        AITenant bootstraps one tenant slice: a tenant namespace, an existing
     network-admin-provisioned Gateway reference, the MaaS tenant config object,
     and tenant-admin RBAC.
     """
@@ -20,7 +19,6 @@ class AITenant(NamespacedResource):
         gateway: dict[str, Any] | None = None,
         oidc: dict[str, Any] | None = None,
         rbac: dict[str, Any] | None = None,
-        tenant_namespace: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
         r"""
@@ -35,28 +33,19 @@ class AITenant(NamespacedResource):
             rbac (dict[str, Any]): RBAC configures tenant-admin access to the tenant namespace and this
               AITenant object.
 
-            tenant_namespace (dict[str, Any]): TenantNamespace identifies the namespace where tenant administrators
-              manage MaaS objects.
-
         """
         super().__init__(**kwargs)
 
         self.gateway = gateway
         self.oidc = oidc
         self.rbac = rbac
-        self.tenant_namespace = tenant_namespace
 
     def to_dict(self) -> None:
         super().to_dict()
 
         if not self.kind_dict and not self.yaml_file:
-            if self.tenant_namespace is None:
-                raise MissingRequiredArgumentError(argument="self.tenant_namespace")
-
             self.res["spec"] = {}
             _spec = self.res["spec"]
-
-            _spec["tenantNamespace"] = self.tenant_namespace
 
             if self.gateway is not None:
                 _spec["gateway"] = self.gateway
