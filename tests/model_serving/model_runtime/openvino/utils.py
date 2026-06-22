@@ -170,7 +170,7 @@ def get_model_namespace_dict(model_format_name: str, deployment_mode: str, proto
         dict[str, str]: A dictionary with the key "name" and a concatenated identifier as value.
                         Example: {"name": "onnx-standard-rest"}
     """
-    name = f"{model_format_name.strip().lower()}-{deployment_mode.strip().lower()}-{protocol_type.strip().lower()}"
+    name = f"{model_format_name.strip()}-{deployment_mode.strip()}-{protocol_type.strip()}".lower()
     return {"name": name}
 
 
@@ -208,10 +208,7 @@ def get_test_case_id(model_format_name: str, deployment_mode: str, protocol_type
         str: A test case ID in the format: "<model_format>-<deployment_mode>-<protocol_type>-deployment".
               Example: "onnx-standard-rest-deployment"
     """
-    return (
-        f"{model_format_name.strip().lower()}-{deployment_mode.strip().lower()}-"
-        f"{protocol_type.strip().lower()}-deployment"
-    )
+    return f"{model_format_name.strip()}-{deployment_mode.strip()}-{protocol_type.strip()}-deployment".lower()
 
 
 def get_input_query(model_format_config: dict[str, Any], protocol: str) -> dict[str, Any]:

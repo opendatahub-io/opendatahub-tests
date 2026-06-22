@@ -63,7 +63,7 @@ OVMS_SERVING_RUNTIME_TEMPLATE_DICT: dict[str, Any] = {
     },
     "objects": [
         {
-            "apiVersion": "serving.kserve.io/v1beta1",
+            "apiVersion": "serving.kserve.io/v1alpha1",
             "kind": "ServingRuntime",
             "metadata": {
                 "name": SERVING_RUNTIME_INSTANCE_NAME,

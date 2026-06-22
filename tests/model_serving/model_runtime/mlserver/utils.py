@@ -72,6 +72,13 @@ def validate_inference_request(
     """
     Runs an inference request against an MLServer model and validates
     the response using fuzzy validation.
+
+    Args:
+        isvc (InferenceService): The KServe InferenceService object.
+        response_snapshot (Any): The stored snapshot for deterministic comparison.
+        input_query (Any): The input data payload for inference.
+        model_version (str): The version of the model to target.
+        model_output_type (str): The output type (deterministic or non-deterministic).
     """
     response = run_mlserver_inference(
         isvc=isvc,
@@ -242,5 +249,5 @@ def get_test_case_id(
         str: A test case ID. Example: "sklearn-s3-standard" or "sklearn-modelcar-standard"
     """
     storage_type = "modelcar" if modelcar else "s3"
-    base_id = f"{model_format_name.strip()}-{storage_type}-{deployment_mode.strip().lower()}"
+    base_id = f"{model_format_name.strip()}-{storage_type}-{deployment_mode.strip()}".lower()
     return base_id

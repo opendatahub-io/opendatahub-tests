@@ -122,6 +122,7 @@ class TestMLServerModels:
         mlserver_response_snapshot: Any,
         model_format: str,
     ) -> None:
+        """Validate MLServer inference for S3-stored models via REST protocol."""
         if model_format not in MODEL_CONFIGS:
             raise ValueError(f"Unsupported model format: {model_format}")
 

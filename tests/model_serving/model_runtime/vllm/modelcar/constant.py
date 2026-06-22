@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Any
 
+from utilities.constants import Timeout
+
 QUAY_IO_REGISTRY_HOST: str = "quay.io"
 REGISTRY_STAGE_REDHAT_IO_HOST: str = "registry.stage.redhat.io"
 REGISTRY_REDHAT_IO_HOST: str = "registry.redhat.io"
@@ -149,7 +151,7 @@ PULL_SECRET_NAME: str = "oci-registry-pull-secret"  # pragma: allowlist secret
 
 SUPPORTED_MODELCAR_REGISTRY_HOSTS: frozenset[str] = frozenset({registry.host for registry in MODELCAR_REGISTRIES})
 SPYRE_INFERENCE_SERVICE_PORT: int = 8000
-MODELCAR_TIMEOUT: int = 30 * 60
+MODELCAR_TIMEOUT: int = Timeout.TIMEOUT_30MIN
 OPENAI_ENDPOINT_NAME: str = "openai"
 AUDIO_FILE_URL: str = (
     "https://raw.githubusercontent.com/realpython/python-speech-recognition/master/audio_files/harvard.wav"

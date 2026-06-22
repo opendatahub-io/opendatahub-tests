@@ -102,6 +102,7 @@ class TestMLServerModelCar:
         mlserver_model_car_inference_service: InferenceService,
         mlserver_response_snapshot: Any,
     ) -> None:
+        """Validate MLServer inference using model car OCI image deployment."""
         model_format = mlserver_model_car_inference_service.instance.spec.predictor.model.modelFormat.name
 
         if model_format not in MODEL_CONFIGS:
