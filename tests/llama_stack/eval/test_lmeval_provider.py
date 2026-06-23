@@ -35,10 +35,6 @@ class TestLlamaStackLMEvalProvider:
     """
 
     def test_lmeval_register_benchmark(self, minio_pod, minio_data_connection, llama_stack_client):
-        llama_stack_client.models.register(
-            provider_id=LlamaStackProviders.Inference.VLLM_INFERENCE, model_type="llm", model_id=QWEN_MODEL_NAME
-        )
-
         llama_stack_client.alpha.benchmarks.register(
             benchmark_id=TRUSTYAI_LMEVAL_ARCEASY,
             dataset_id=TRUSTYAI_LMEVAL_ARCEASY,
@@ -103,10 +99,6 @@ class TestLlamaStackLMEvalCustomBenchmark:
     def test_lmeval_register_custom_benchmark(
         self, minio_pod, minio_data_connection, dataset_pvc, dataset_upload, llama_stack_client, qwen_isvc_url
     ):
-        llama_stack_client.models.register(
-            provider_id=LlamaStackProviders.Inference.VLLM_INFERENCE, model_type="llm", model_id=QWEN_MODEL_NAME
-        )
-
         llama_stack_client.alpha.benchmarks.register(
             benchmark_id=TRUSTYAI_LMEVAL_CUSTOM,
             dataset_id=TRUSTYAI_LMEVAL_CUSTOM,

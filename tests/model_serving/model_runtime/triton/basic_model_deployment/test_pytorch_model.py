@@ -36,26 +36,26 @@ pytestmark = pytest.mark.usefixtures(
     [
         pytest.param(
             {"protocol_type": Protocols.REST},
-            {"name": "pytorch-raw"},
+            {"name": "pytorch-standard"},
             MODEL_STORAGE_URI_DICT,
             {**BASE_RAW_DEPLOYMENT_CONFIG},
             {
-                "name": "pytorch-raw-rest",
+                "name": "pytorch-standard-rest",
                 **BASE_RAW_DEPLOYMENT_CONFIG,
             },
-            id="pytorch-raw-rest-deployment",
+            id="pytorch-standard-rest-deployment",
             marks=pytest.mark.tier1,
         ),
         pytest.param(
             {"protocol_type": Protocols.GRPC},
-            {"name": "pytorch-raw"},
+            {"name": "pytorch-standard"},
             MODEL_STORAGE_URI_DICT,
             {**BASE_RAW_DEPLOYMENT_CONFIG},
             {
-                "name": "pytorch-raw-grpc",
+                "name": "pytorch-standard-grpc",
                 **BASE_RAW_DEPLOYMENT_CONFIG,
             },
-            id="pytorch-raw-grpc-deployment",
+            id="pytorch-standard-grpc-deployment",
             marks=pytest.mark.tier1,
         ),
     ],
