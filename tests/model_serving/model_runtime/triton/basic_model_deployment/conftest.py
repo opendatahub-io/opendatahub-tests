@@ -23,10 +23,11 @@ from tests.model_serving.model_runtime.triton.basic_model_deployment.utils impor
 )
 from tests.model_serving.model_runtime.triton.constant import (
     PREDICT_RESOURCES,
-    RUNTIME_NAME,
+    RUNTIME_MAP,
 )
 from utilities.constants import (
     KServeDeploymentType,
+    Protocols,
 )
 from utilities.inference_utils import create_isvc
 from utilities.infra import get_pods_by_isvc_label
@@ -36,21 +37,33 @@ LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")
+def triton_grpc_serving_runtime_template(admin_client: DynamicClient, triton_runtime_image: str) -> Generator[Template]:
+    with create_triton_template(
+        admin_client=admin_client, protocol=Protocols.GRPC, triton_runtime_image=triton_runtime_image
+    ) as template:
+        yield template
+
+
+@pytest.fixture(scope="class")
 def triton_rest_serving_runtime_template(admin_client: DynamicClient, triton_runtime_image: str) -> Generator[Template]:
-    with create_triton_template(admin_client=admin_client, triton_runtime_image=triton_runtime_image) as template:
+    with create_triton_template(
+        admin_client=admin_client, protocol=Protocols.REST, triton_runtime_image=triton_runtime_image
+    ) as template:
         yield template
 
 
 @contextmanager
-def create_triton_template(admin_client: DynamicClient, triton_runtime_image: str) -> Generator[Template, Any, Any]:
+def create_triton_template(
+    admin_client: DynamicClient, protocol: str, triton_runtime_image: str
+) -> Generator[Template, Any, Any]:
     template_dict = {
         "apiVersion": "template.openshift.io/v1",
         "kind": "Template",
         "metadata": {
-            "name": "triton-rest-runtime-template",
+            "name": f"triton-{protocol}-runtime-template",
             "namespace": py_config["applications_namespace"],
         },
-        "objects": [create_triton_serving_runtime(triton_runtime_image=triton_runtime_image)],
+        "objects": [create_triton_serving_runtime(protocol=protocol, triton_runtime_image=triton_runtime_image)],
         "parameters": [],
     }
 
@@ -62,18 +75,24 @@ def create_triton_template(admin_client: DynamicClient, triton_runtime_image: st
         yield template
 
 
-def create_triton_serving_runtime(triton_runtime_image: str) -> dict[str, Any]:
+def create_triton_serving_runtime(protocol: str, triton_runtime_image: str) -> dict[str, Any]:
+    volumes = []
+    volume_mounts = []
+    if protocol == Protocols.GRPC:
+        volumes.append({"name": "shm", "emptyDir": {"medium": "Memory", "sizeLimit": "2Gi"}})
+        volume_mounts.append({"name": "shm", "mountPath": "/dev/shm"})
+
     port_config = {
-        "name": "http1",
-        "containerPort": 8080,
+        "name": "h2c" if protocol == Protocols.GRPC else "http1",
+        "containerPort": 9000 if protocol == Protocols.GRPC else 8080,
         "protocol": "TCP",
     }
 
     container_args = [
         "tritonserver",
         "--model-store=/mnt/models",
-        f"--http-port={port_config['containerPort']}",
-        "--allow-http=True",
+        f"--{'grpc' if protocol == Protocols.GRPC else 'http'}-port={port_config['containerPort']}",
+        f"--{'allow-grpc' if protocol == Protocols.GRPC else 'allow-http'}=True",
     ]
 
     kserve_container: list[dict[str, Any]] = [
@@ -82,7 +101,7 @@ def create_triton_serving_runtime(triton_runtime_image: str) -> dict[str, Any]:
             "image": triton_runtime_image,
             "args": container_args,
             "ports": [port_config],
-            "volumeMounts": [],
+            "volumeMounts": volume_mounts,
             "resources": {
                 "requests": {
                     "cpu": "1",
@@ -107,11 +126,13 @@ def create_triton_serving_runtime(triton_runtime_image: str) -> dict[str, Any]:
         {"name": "python", "version": "1", "autoSelect": True},
     ]
 
+    protocol_versions = ["v2", "grpc-v2"] if protocol == Protocols.GRPC else ["v2"]
+
     return {
         "apiVersion": "serving.kserve.io/v1beta1",
         "kind": "ServingRuntime",
         "metadata": {
-            "name": RUNTIME_NAME,
+            "name": RUNTIME_MAP.get(protocol, "triton-runtime"),
             "annotations": {
                 "prometheus.kserve.io/path": "/metrics",
                 "prometheus.kserve.io/port": "8002",
@@ -119,8 +140,8 @@ def create_triton_serving_runtime(triton_runtime_image: str) -> dict[str, Any]:
         },
         "spec": {
             "containers": kserve_container,
-            "volumes": [],
-            "protocolVersions": ["v2"],
+            "volumes": volumes,
+            "protocolVersions": protocol_versions,
             "supportedModelFormats": supported_model_formats,
         },
     }
@@ -131,12 +152,13 @@ def triton_serving_runtime(
     request: pytest.FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
+    protocol: str,
     supported_accelerator_type: str | None,
 ) -> Generator[ServingRuntime]:
-    template_name = get_template_name(accelerator_type=supported_accelerator_type)
+    template_name = get_template_name(protocol=protocol, accelerator_type=supported_accelerator_type)
     with ServingRuntimeFromTemplate(
         client=admin_client,
-        name=RUNTIME_NAME,
+        name=RUNTIME_MAP.get(protocol, "triton-runtime"),
         namespace=model_namespace.name,
         template_name=template_name,
         deployment_type=request.param.get("deployment_mode", KServeDeploymentType.STANDARD),
