@@ -19,7 +19,7 @@ maas_billing/
 │
 ├── maas_subscription/             # Subscription enforcement and access control tests
 │
-├── multitenancy/                  # AIGateway multitenancy tests
+├── multitenancy/                  # AITenant multitenancy tests
 │
 ├── oidc_tests/                    # OIDC authentication flow tests
 │
@@ -39,7 +39,7 @@ maas_billing/
 - **`maas_api_key/`** - API key CRUD, authorization, expiration, bulk operations, gateway rejection, and negative tests
 - **`maas_cleanup/`** - Validates that disabling MaaS in DSC cleans up operator-managed resources
 - **`maas_subscription/`** - Subscription enforcement, access control, filtering, rate limit exemptions, cascade deletion, multi-subscription and multi-auth-policy scenarios
-- **`multitenancy/`** - AIGateway tenant setup and cleanup for multitenancy scenarios
+- **`multitenancy/`** - AITenant tenant setup and cleanup for multitenancy scenarios
 - **`oidc_tests/`** - OIDC token flow, model access, multi-user, and header injection tests
 - **`upgrade/`** - Pre/post-upgrade tests validating MaaS control plane survival across operator upgrades
 - **`test_maas_endpoints.py`** - Core MaaS API endpoint validation
