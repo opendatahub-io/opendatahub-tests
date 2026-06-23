@@ -935,7 +935,6 @@ def execute_get_call(
     return resp
 
 
-@retry(wait_timeout=60, sleep=5, exceptions_dict={requests.exceptions.ConnectionError: []})
 def execute_get_command(
     url: str, headers: dict[str, str], verify: bool | str = False, params: dict[str, Any] | None = None
 ) -> dict[Any, Any]:
