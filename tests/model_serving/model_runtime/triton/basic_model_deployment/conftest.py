@@ -37,16 +37,12 @@ LOGGER = structlog.get_logger(name=__name__)
 
 @pytest.fixture(scope="class")
 def triton_rest_serving_runtime_template(admin_client: DynamicClient, triton_runtime_image: str) -> Generator[Template]:
-    with create_triton_template(
-        admin_client=admin_client, triton_runtime_image=triton_runtime_image
-    ) as template:
+    with create_triton_template(admin_client=admin_client, triton_runtime_image=triton_runtime_image) as template:
         yield template
 
 
 @contextmanager
-def create_triton_template(
-    admin_client: DynamicClient, triton_runtime_image: str
-) -> Generator[Template, Any, Any]:
+def create_triton_template(admin_client: DynamicClient, triton_runtime_image: str) -> Generator[Template, Any, Any]:
     template_dict = {
         "apiVersion": "template.openshift.io/v1",
         "kind": "Template",

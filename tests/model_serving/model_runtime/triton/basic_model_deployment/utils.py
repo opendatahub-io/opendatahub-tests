@@ -20,9 +20,7 @@ def send_rest_request(url: str, input_data: dict[str, Any]) -> Any:
     return response.json()
 
 
-def run_triton_inference(
-    pod_name: str, isvc: InferenceService, input_data: dict[str, Any], model_name: str
-) -> Any:
+def run_triton_inference(pod_name: str, isvc: InferenceService, input_data: dict[str, Any], model_name: str) -> Any:
     deployment_mode = isvc.instance.metadata.annotations.get("serving.kserve.io/deploymentMode")
     rest_endpoint = f"/v2/models/{model_name}/infer"
 
