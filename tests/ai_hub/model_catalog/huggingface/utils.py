@@ -118,6 +118,8 @@ def assert_huggingface_values_matches_model_catalog_api_values(
         LOGGER.error(f"mismatches are: {mismatch}")
         raise AssertionError("HF api call and model catalog hf models has value mismatch")
 
+    return True
+
 
 @retry(wait_timeout=60, sleep=5)
 def wait_for_huggingface_retrival_match(
