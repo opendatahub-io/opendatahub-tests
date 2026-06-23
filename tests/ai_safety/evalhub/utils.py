@@ -672,6 +672,25 @@ def wait_for_evalhub_runtime_resources_absent(
     )
 
 
+def build_vllm_arc_easy_benchmark(num_examples: int = 10) -> dict:
+    """Build arc_easy benchmark parameters for the vLLM emulator.
+
+    Args:
+        num_examples: Number of dataset examples to evaluate.
+
+    Returns:
+        Benchmark dict for lm_evaluation_harness arc_easy jobs.
+    """
+    return {
+        "id": "arc_easy",
+        "provider_id": "lm_evaluation_harness",
+        "parameters": {
+            "num_examples": num_examples,
+            "tokenizer": "google/flan-t5-small",
+        },
+    }
+
+
 def build_evalhub_multi_benchmark_job_payload(
     model_service_name: str,
     tenant_namespace: str,
@@ -728,16 +747,7 @@ def build_evalhub_job_payload(
             "url": model_url,
             "name": "emulatedModel",
         },
-        "benchmarks": [
-            {
-                "id": "arc_easy",
-                "provider_id": "lm_evaluation_harness",
-                "parameters": {
-                    "num_examples": 10,
-                    "tokenizer": "google/flan-t5-small",
-                },
-            }
-        ],
+        "benchmarks": [build_vllm_arc_easy_benchmark()],
     }
 
 
@@ -775,7 +785,11 @@ def submit_evalhub_collection(
 # ---------------------------------------------------------------------------
 
 
-def tenant_rbac_ready(admin_client: DynamicClient, namespace: str) -> bool:
+def tenant_rbac_ready(
+    admin_client: DynamicClient,
+    namespace: str,
+    evalhub_instance_name: str = EVALHUB_MT_CR_NAME,
+) -> bool:
     """Check if the operator has provisioned job RBAC for the test EvalHub instance.
 
     Matches by roleRef ClusterRole name rather than RoleBinding name substrings,
@@ -787,17 +801,17 @@ def tenant_rbac_ready(admin_client: DynamicClient, namespace: str) -> bool:
     """
     rbs = list(RoleBinding.get(client=admin_client, namespace=namespace))
     has_job_config = any(
-        rb.instance.roleRef.name == EVALHUB_JOB_CONFIG_CLUSTERROLE and rb.name.startswith(EVALHUB_MT_CR_NAME)
+        rb.instance.roleRef.name == EVALHUB_JOB_CONFIG_CLUSTERROLE and rb.name.startswith(evalhub_instance_name)
         for rb in rbs
     )
     has_job_writer = any(
-        rb.instance.roleRef.name == EVALHUB_JOBS_WRITER_CLUSTERROLE and rb.name.startswith(EVALHUB_MT_CR_NAME)
+        rb.instance.roleRef.name == EVALHUB_JOBS_WRITER_CLUSTERROLE and rb.name.startswith(evalhub_instance_name)
         for rb in rbs
     )
     sas = list(ServiceAccount.get(client=admin_client, namespace=namespace))
-    has_job_sa = any(sa.name.startswith(EVALHUB_MT_CR_NAME) and "job" in sa.name for sa in sas)
+    has_job_sa = any(sa.name.startswith(evalhub_instance_name) and "job" in sa.name for sa in sas)
     cms = list(ConfigMap.get(client=admin_client, namespace=namespace))
-    has_service_ca_cm = any(cm.name.startswith(EVALHUB_MT_CR_NAME) and "service-ca" in cm.name for cm in cms)
+    has_service_ca_cm = any(cm.name.startswith(evalhub_instance_name) and "service-ca" in cm.name for cm in cms)
     return has_job_config and has_job_writer and has_job_sa and has_service_ca_cm
 
 
