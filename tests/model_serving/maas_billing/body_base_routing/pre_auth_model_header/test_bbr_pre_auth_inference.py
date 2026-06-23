@@ -9,6 +9,7 @@ import structlog
 from tests.model_serving.maas_billing.body_base_routing.pre_auth_model_header.utils import (
     assert_bbr_inference_status,
 )
+from tests.model_serving.maas_billing.maas_api_key.utils import search_active_api_keys
 from tests.model_serving.maas_billing.utils import build_maas_headers, get_maas_models_response
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -87,14 +88,9 @@ class TestBBRPreAuthInference:
         ocp_token_for_actor: str,
     ) -> None:
         """Verify the maas-api /v1/api-keys/search endpoint returns 200 and is not broken by the bbr-pre ext_proc."""
-        response = request_session_http.post(
-            url=f"{base_url}/v1/api-keys/search",
-            headers={"Authorization": f"Bearer {ocp_token_for_actor}"},
-            json={},
-            timeout=60,
+        search_active_api_keys(
+            request_session_http=request_session_http,
+            base_url=base_url,
+            ocp_user_token=ocp_token_for_actor,
         )
-        assert response.status_code == 200, (
-            f"Expected 200 for maas-api /v1/api-keys/search after BBR deployment, "
-            f"got {response.status_code}: {(response.text or '')[:200]}"
-        )
-        LOGGER.info(f"maas-api /v1/api-keys/search returned {response.status_code} — bbr-pre not interfering")
+        LOGGER.info("/v1/api-keys/search returned 200 — bbr-pre not interfering")
