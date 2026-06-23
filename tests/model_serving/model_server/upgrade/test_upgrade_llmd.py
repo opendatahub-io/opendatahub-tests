@@ -74,7 +74,8 @@ class TestLlmdPostUpgrade:
     """Post-upgrade: verify non-auth LLMISVC survived the platform upgrade."""
 
     @pytest.fixture(scope="class")
-    def baseline(self, admin_client, llmisvc_upgrade_no_auth: LLMInferenceService):
+    def baseline(self, admin_client, llmisvc_upgrade_no_auth: LLMInferenceService) -> dict:
+        """Load pre-upgrade baseline for the no-auth LLMISVC from the cluster ConfigMap."""
         baselines = load_baseline_from_configmap(client=admin_client, namespace=llmisvc_upgrade_no_auth.namespace)
         assert llmisvc_upgrade_no_auth.name in baselines, (
             f"LLMISVC '{llmisvc_upgrade_no_auth.name}' not in baseline. Available: {list(baselines.keys())}"

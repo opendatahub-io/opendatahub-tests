@@ -1176,12 +1176,34 @@ def llmisvc_upgrade_auth_and_kueue(
 
 
 # Kueue for upgrade tests
+def _restore_kueue_dsc_state(
+    admin_client: DynamicClient,
+    dsc_resource,
+    namespace: str,
+    kueue_dsc_state_cm_name: str,
+) -> None:
+    """Restore original Kueue managementState from saved ConfigMap."""
+    state_cm = ConfigMap(client=admin_client, name=kueue_dsc_state_cm_name, namespace=namespace)
+    if state_cm.exists:
+        original_state = state_cm.instance.data.get("original_management_state")
+        if original_state:
+            LOGGER.info(f"Restoring Kueue managementState to '{original_state}' in DSC")
+            dsc_resource.update(
+                resource_dict={
+                    "metadata": {"name": dsc_resource.name},
+                    "spec": {"components": {DscComponents.KUEUE: {"managementState": original_state}}},
+                }
+            )
+        state_cm.clean_up()
+
+
 @pytest.fixture(scope="session")
 def ensure_kueue_for_upgrade(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     dsc_resource,
     llmisvc_auth_and_kueue_namespace: Namespace,
+    teardown_resources: bool,
 ) -> Generator[None, Any, Any]:
     """Ensure Kueue is available for upgrade tests.
 
@@ -1190,6 +1212,7 @@ def ensure_kueue_for_upgrade(
       2. Save the original DSC kueue managementState to a ConfigMap.
       3. Patch DSC kueue to Unmanaged if needed (direct update, no ResourceEditor restore).
       4. Wait for CRDs and controller pods.
+      5. Teardown: if --delete-pre-upgrade-resources, restore original state.
 
     Post-upgrade:
       1. Tests run without mutating DSC — verify the real post-upgrade state.
@@ -1198,7 +1221,6 @@ def ensure_kueue_for_upgrade(
     namespace = llmisvc_auth_and_kueue_namespace.name
     kueue_dsc_state_cm_name = "upgrade-kueue-dsc-state"
 
-    # pre-upgrade
     if not pytestconfig.option.post_upgrade:
         from tests.model_serving.model_server.conftest import _is_kueue_operator_installed
 
@@ -1206,7 +1228,7 @@ def ensure_kueue_for_upgrade(
         if not _is_kueue_operator_installed(admin_client):
             pytest.skip("Kueue operator is not installed, skipping Kueue upgrade tests")
 
-        # Step 2: save original state to ConfigMap (for post-upgrade restore)
+        # Step 2: save original state to ConfigMap (for restore in post-upgrade or pre-upgrade cleanup)
         kueue_management_state = dsc_resource.instance.spec.components[DscComponents.KUEUE].managementState
         LOGGER.info(f"Saving original Kueue managementState '{kueue_management_state}' to ConfigMap")
         ConfigMap(
@@ -1238,23 +1260,26 @@ def ensure_kueue_for_upgrade(
         # Step 4: wait for kueue CRDs and controller
         wait_for_kueue_crds_available(client=admin_client)
         yield
+
+        # Step 5: restore if --delete-pre-upgrade-resources (debugging mode)
+        if teardown_resources:
+            _restore_kueue_dsc_state(
+                admin_client=admin_client,
+                dsc_resource=dsc_resource,
+                namespace=namespace,
+                kueue_dsc_state_cm_name=kueue_dsc_state_cm_name,
+            )
     else:
         # Post-upgrade: tests run without mutating DSC state
         yield
 
         # Teardown: restore original kueue managementState from saved ConfigMap
-        state_cm = ConfigMap(client=admin_client, name=kueue_dsc_state_cm_name, namespace=namespace)
-        if state_cm.exists:
-            original_state = state_cm.instance.data.get("original_management_state")
-            if original_state:
-                LOGGER.info(f"Restoring Kueue managementState to '{original_state}' in DSC")
-                dsc_resource.update(
-                    resource_dict={
-                        "metadata": {"name": dsc_resource.name},
-                        "spec": {"components": {DscComponents.KUEUE: {"managementState": original_state}}},
-                    }
-                )
-            state_cm.clean_up()
+        _restore_kueue_dsc_state(
+            admin_client=admin_client,
+            dsc_resource=dsc_resource,
+            namespace=namespace,
+            kueue_dsc_state_cm_name=kueue_dsc_state_cm_name,
+        )
 
 
 @pytest.fixture(scope="session")

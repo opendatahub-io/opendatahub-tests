@@ -120,7 +120,8 @@ class TestLlmdAuthKueuePostUpgrade:
     """Post-upgrade: verify auth+Kueue LLMISVC survived the upgrade."""
 
     @pytest.fixture(scope="class")
-    def baseline(self, admin_client, llmisvc_upgrade_auth_and_kueue: LLMInferenceService):
+    def baseline(self, admin_client, llmisvc_upgrade_auth_and_kueue: LLMInferenceService) -> dict:
+        """Load pre-upgrade baseline for the auth+kueue LLMISVC from the cluster ConfigMap."""
         baselines = load_baseline_from_configmap(
             client=admin_client, namespace=llmisvc_upgrade_auth_and_kueue.namespace
         )
