@@ -88,7 +88,10 @@ class TestModelPerformanceProperties:
             query=MODEL_LEVEL_PERFORMANCE_QUERY.format(source_id=VALIDATED_CATALOG_ID, model_name=model_name),
             namespace=model_registry_namespace,
         )
-        assert property_name in db_result, f"{property_name} not found in database for '{model_name}'"
+        db_property_names = [line.split("|")[0].strip() for line in db_result.splitlines() if "|" in line]
+        assert property_name in db_property_names, (
+            f"{property_name} not found in database for '{model_name}', got: {db_property_names}"
+        )
         LOGGER.info(f"Model '{model_name}': {property_name}={prop['double_value']}")
 
     def test_cold_start_artifacts_have_required_fields(
@@ -152,7 +155,19 @@ class TestColdStartSortingAndFiltering:
         )
         items = response.get("items", [])
         assert len(items) > 1, "Expected multiple models when sorting by cold_start"
-        LOGGER.info(f"Sort ASC returned {len(items)} models: {[item['name'] for item in items]}")
+        model_names = [item["name"] for item in items]
+        asc_response = get_models_from_catalog_api(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            order_by="artifacts.cold_start_time_to_load_seconds",
+            sort_order="DESC",
+            page_size=1000,
+        )
+        desc_names = [item["name"] for item in asc_response.get("items", [])]
+        assert model_names == list(reversed(desc_names)), (
+            f"ASC order should be reverse of DESC order.\nASC: {model_names}\nDESC: {desc_names}"
+        )
+        LOGGER.info(f"Sort ASC returned {len(items)} models in correct order")
 
     def test_sort_models_by_cold_start_descending(
         self: Self,
@@ -173,7 +188,15 @@ class TestColdStartSortingAndFiltering:
         )
         items = response.get("items", [])
         assert len(items) > 1, "Expected multiple models when sorting by cold_start"
-        LOGGER.info(f"Sort DESC returned {len(items)} models: {[item['name'] for item in items]}")
+        unsorted_response = get_models_from_catalog_api(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            page_size=1000,
+        )
+        unsorted_names = [item["name"] for item in unsorted_response.get("items", [])]
+        sorted_names = [item["name"] for item in items]
+        assert sorted_names != unsorted_names, "DESC sorted order should differ from default order"
+        LOGGER.info(f"Sort DESC returned {len(items)} models in correct order")
 
     def test_filter_models_by_cold_start_range(
         self: Self,
@@ -183,18 +206,30 @@ class TestColdStartSortingAndFiltering:
         """
         Given models with cold-start performance data
         When models are filtered by cold_start_time_to_load_seconds range [50, 200]
-        Then only models with cold-start values in that range are returned
+        Then the filtered set is a non-empty proper subset of all models
         """
+        all_response = get_models_from_catalog_api(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            page_size=1000,
+        )
+        all_names = {item["name"] for item in all_response.get("items", [])}
+
         filter_query = (
             "artifacts.cold_start_time_to_load_seconds.double_value >= 50"
             " AND artifacts.cold_start_time_to_load_seconds.double_value <= 200"
         )
-        response = get_models_from_catalog_api(
+        filtered_response = get_models_from_catalog_api(
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
             additional_params=f"&filterQuery={filter_query}",
             page_size=1000,
         )
-        items = response.get("items", [])
-        assert items, "Expected at least one model with cold_start in [50, 200] range"
-        LOGGER.info(f"Filter cold_start [50-200]: {len(items)} models: {[item['name'] for item in items]}")
+        filtered_names = {item["name"] for item in filtered_response.get("items", [])}
+
+        assert filtered_names, "Expected at least one model with cold_start in [50, 200] range"
+        assert filtered_names < all_names, (
+            f"Filtered set should be a proper subset of all models. "
+            f"Filtered: {len(filtered_names)}, All: {len(all_names)}"
+        )
+        LOGGER.info(f"Filter cold_start [50-200]: {len(filtered_names)}/{len(all_names)} models")
