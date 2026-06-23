@@ -949,18 +949,17 @@ def new_isvc_namespace_fixture(
     admin_client: DynamicClient,
 ) -> Generator[Namespace, Any, Any]:
     """Namespace for creating a fresh ISVC post-upgrade."""
-    if not pytestconfig.option.post_upgrade:
+    if pytestconfig.option.post_upgrade:
+        with create_ns(
+            admin_client=admin_client,
+            name=NEW_ISVC_UPGRADE_NAMESPACE,
+            model_mesh_enabled=False,
+            add_dashboard_label=True,
+            teardown=True,
+        ) as ns:
+            yield ns
+    else:
         yield None
-        return
-
-    with create_ns(
-        admin_client=admin_client,
-        name=NEW_ISVC_UPGRADE_NAMESPACE,
-        model_mesh_enabled=False,
-        add_dashboard_label=True,
-        teardown=True,
-    ) as ns:
-        yield ns
 
 
 @pytest.fixture(scope="session")
@@ -970,26 +969,25 @@ def new_isvc_serving_runtime_fixture(
     new_isvc_namespace_fixture: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
     """ServingRuntime for fresh ISVC creation on upgraded control plane."""
-    if not pytestconfig.option.post_upgrade or new_isvc_namespace_fixture is None:
+    if pytestconfig.option.post_upgrade and new_isvc_namespace_fixture is not None:
+        with ServingRuntimeFromTemplate(
+            client=admin_client,
+            name="new-isvc-upgrade-runtime",
+            namespace=new_isvc_namespace_fixture.name,
+            template_name=RuntimeTemplates.OVMS_KSERVE,
+            multi_model=False,
+            enable_http=True,
+            teardown=True,
+            resources={
+                ModelFormat.OVMS: {
+                    "requests": {"cpu": "1", "memory": "4Gi"},
+                    "limits": {"cpu": "2", "memory": "8Gi"},
+                }
+            },
+        ) as model_runtime:
+            yield model_runtime
+    else:
         yield None
-        return
-
-    with ServingRuntimeFromTemplate(
-        client=admin_client,
-        name="new-isvc-upgrade-runtime",
-        namespace=new_isvc_namespace_fixture.name,
-        template_name=RuntimeTemplates.OVMS_KSERVE,
-        multi_model=False,
-        enable_http=True,
-        teardown=True,
-        resources={
-            ModelFormat.OVMS: {
-                "requests": {"cpu": "1", "memory": "4Gi"},
-                "limits": {"cpu": "2", "memory": "8Gi"},
-            }
-        },
-    ) as model_runtime:
-        yield model_runtime
 
 
 @pytest.fixture(scope="session")
@@ -999,23 +997,22 @@ def new_isvc_inference_service_fixture(
     new_isvc_serving_runtime_fixture: ServingRuntime,
 ) -> Generator[InferenceService, Any, Any]:
     """Fresh InferenceService created on the upgraded control plane using Model Car (no S3)."""
-    if not pytestconfig.option.post_upgrade or new_isvc_serving_runtime_fixture is None:
+    if pytestconfig.option.post_upgrade and new_isvc_serving_runtime_fixture is not None:
+        with create_isvc(
+            client=admin_client,
+            name="new-isvc-post-upgrade",
+            namespace=new_isvc_serving_runtime_fixture.namespace,
+            runtime=new_isvc_serving_runtime_fixture.name,
+            model_format=new_isvc_serving_runtime_fixture.instance.spec.supportedModelFormats[0].name,
+            deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+            storage_uri=ModelCarImage.MNIST_8_1,
+            external_route=True,
+            teardown=True,
+            wait_for_predictor_pods=False,
+        ) as isvc:
+            yield isvc
+    else:
         yield None
-        return
-
-    with create_isvc(
-        client=admin_client,
-        name="new-isvc-post-upgrade",
-        namespace=new_isvc_serving_runtime_fixture.namespace,
-        runtime=new_isvc_serving_runtime_fixture.name,
-        model_format=new_isvc_serving_runtime_fixture.instance.spec.supportedModelFormats[0].name,
-        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-        storage_uri=ModelCarImage.MNIST_8_1,
-        external_route=True,
-        teardown=True,
-        wait_for_predictor_pods=False,
-    ) as isvc:
-        yield isvc
 
 
 # ---------------------------------------------------------------------------
@@ -1117,9 +1114,9 @@ def llmisvc_upgrade_no_auth(
 ) -> Generator[LLMInferenceService, Any, Any]:
     """LLMInferenceService using TinyLlama OCI for upgrade tests."""
     from tests.model_serving.model_server.llmd.conftest import _create_llmisvc_from_config
-    from tests.model_serving.model_server.llmd.llmd_configs.config_upgrade import UpgradeNoAuthConfig
+    from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaOciConfig
 
-    config_cls = UpgradeNoAuthConfig
+    config_cls = TinyLlamaOciConfig
     llmisvc = LLMInferenceService(
         client=admin_client,
         name=config_cls.name,

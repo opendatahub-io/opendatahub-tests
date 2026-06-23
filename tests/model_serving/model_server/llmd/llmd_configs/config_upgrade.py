@@ -11,10 +11,6 @@ LLMD_KUEUE_CPU_QUOTA = "3"
 LLMD_KUEUE_MEMORY_QUOTA = "20Gi"
 
 
-class UpgradeNoAuthConfig(TinyLlamaOciConfig):
-    """TinyLlama via OCI for upgrade tests (no auth)."""
-
-
 class UpgradeAuthKueueConfig(TinyLlamaOciConfig):
     """TinyLlama via OCI with auth enabled and Kueue queue label, for upgrade tests."""
 
