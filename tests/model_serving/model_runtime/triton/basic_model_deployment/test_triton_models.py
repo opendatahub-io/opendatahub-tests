@@ -21,8 +21,8 @@ from tests.model_serving.model_runtime.triton.constant import (
     TRITON_GRPC_FIL_INPUT_PATH,
     TRITON_GRPC_KERAS_INPUT_PATH,
     TRITON_GRPC_ONNX_INPUT_PATH,
-    TRITON_GRPC_PYTORCH_INPUT_PATH,
     TRITON_GRPC_PYTHON_INPUT_PATH,
+    TRITON_GRPC_PYTORCH_INPUT_PATH,
     TRITON_GRPC_TF_INPUT_PATH,
     TRITON_REST_DALI_INPUT_PATH,
     TRITON_REST_FIL_INPUT_PATH,
@@ -203,7 +203,13 @@ GRPC_SKIP = pytest.mark.skip(reason="gRPC not yet supported on RHOAI")
             marks=[pytest.mark.tier1, pytest.mark.gpu, GRPC_SKIP],
         ),
     ],
-    indirect=["model_namespace", "s3_models_storage_uri", "protocol", "triton_serving_runtime", "triton_inference_service"],
+    indirect=[
+        "model_namespace",
+        "s3_models_storage_uri",
+        "protocol",
+        "triton_serving_runtime",
+        "triton_inference_service",
+    ],
 )
 class TestTritonModelDeployment:
     def test_inference(
