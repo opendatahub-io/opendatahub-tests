@@ -8,10 +8,10 @@ from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
+from timeout_sampler import TimeoutExpiredError
 
 from tests.workbenches.notebooks_server.controller.utils import (
     build_notebook_dict,
-    get_username,
     resolve_notebook_image,
 )
 from utilities import constants
@@ -95,7 +95,6 @@ def notebook_image(
 @pytest.fixture(scope="function")
 def default_notebook(
     request: pytest.FixtureRequest,
-    admin_client: DynamicClient,
     unprivileged_client: DynamicClient,
     notebook_image: str,
 ) -> Generator[Notebook, None, None]:
@@ -105,10 +104,6 @@ def default_notebook(
 
     # Optional Auth annotations
     auth_annotations = request.param.get("auth_annotations", {})
-
-    # Set the correct username
-    username = get_username(client=admin_client)
-    assert username, "Failed to determine username from the cluster"
 
     notebook_dict = build_notebook_dict(
         namespace=namespace,
@@ -168,8 +163,14 @@ def notebook_pod(
             status=Pod.Condition.Status.TRUE,
             timeout=Timeout.TIMEOUT_10MIN,
         )
-    except (TimeoutError, RuntimeError) as e:
-        if notebook_pod.exists:
+    except (TimeoutError, TimeoutExpiredError) as e:
+        try:
+            pod_exists = notebook_pod.exists
+        except Exception as exists_error:  # noqa: BLE001
+            LOGGER.warning(f"Failed to verify pod existence after timeout: {exists_error}")
+            pod_exists = False
+
+        if pod_exists:
             # Collect pod information for debugging purposes (YAML + logs saved to must-gather dir)
             collect_pod_information(notebook_pod)
             pod_status = notebook_pod.instance.status

@@ -347,7 +347,7 @@ def use_unprivileged_client(pytestconfig: pytest.Config) -> bool:
 @pytest.fixture(scope="session")
 def non_admin_user_password(
     admin_client: DynamicClient, use_unprivileged_client: bool, is_byoidc: bool
-) -> tuple[str, str] | None:
+) -> tuple[str, RedactedString] | None:
     def _decode_split_data(_data: str) -> list[str]:
         return base64.b64decode(_data).decode().split(",")
 
@@ -367,9 +367,10 @@ def non_admin_user_password(
         data = users_Secret[0].instance.data
         users = _decode_split_data(_data=data.users)
         passwords = _decode_split_data(_data=data.passwords)
-        first_user_index = next(index for index, user in enumerate(users) if "user" in user)
+        first_user_index = next((index for index, user in enumerate(users) if "user" in user), None)
 
-        return users[first_user_index], passwords[first_user_index]
+        if first_user_index is not None:
+            return users[first_user_index], RedactedString(value=passwords[first_user_index])
 
     LOGGER.error("user credentials secret not found")
     return None
@@ -404,7 +405,7 @@ def unprivileged_client(
     admin_client: DynamicClient,
     use_unprivileged_client: bool,
     kubconfig_filepath: str,
-    non_admin_user_password: tuple[str, str],
+    non_admin_user_password: tuple[str, RedactedString] | None,
     is_byoidc: bool,
 ) -> Generator[DynamicClient, Any, Any]:
     """
@@ -673,8 +674,8 @@ def cluster_sanity_scope_session(
 ) -> None:
     # Skip cluster sanity check when running tests that have cluster_health or operator_health markers
     selected_markers = {mark.name for item in request.session.items for mark in item.iter_markers()}
-    if {"cluster_health", "operator_health"} & selected_markers:
-        LOGGER.info("Skipping cluster sanity check because selected tests include cluster/operator health")
+    if {"cluster_health", "operator_health", "component_health"} & selected_markers:
+        LOGGER.info("Skipping cluster sanity check because selected tests include cluster/operator/component health")
         return
 
     verify_cluster_sanity(

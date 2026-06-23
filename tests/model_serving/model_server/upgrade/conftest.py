@@ -17,7 +17,6 @@ from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 
 from tests.model_serving.model_server.upgrade.utils import (
-    UPGRADE_LLMD_BASELINE_CM_NAME,
     capture_isvc_baseline,
     capture_llmisvc_baseline,
     load_auth_token_from_secret,
@@ -1049,7 +1048,6 @@ def capture_llmd_upgrade_baseline(
         client=admin_client,
         namespace=LLMD_UPGRADE_NAMESPACE,
         baselines=baselines,
-        cm_name=UPGRADE_LLMD_BASELINE_CM_NAME,
     )
 
 
@@ -1069,7 +1067,6 @@ def llmd_upgrade_baseline_fixture(
     return load_baseline_from_configmap(
         client=admin_client,
         namespace=LLMD_UPGRADE_NAMESPACE,
-        cm_name=UPGRADE_LLMD_BASELINE_CM_NAME,
     )
 
 

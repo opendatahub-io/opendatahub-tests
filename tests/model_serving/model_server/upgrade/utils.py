@@ -13,12 +13,11 @@ from ocp_resources.secret import Secret
 
 from utilities.constants import Annotations
 from utilities.exceptions import PodContainersRestartError, ResourceMismatchError
-from utilities.infra import get_inference_serving_runtime, get_pods_by_isvc_label
+from utilities.infra import get_inference_serving_runtime, get_pods_by_isvc_label, get_product_version
 
 LOGGER = structlog.get_logger(name=__name__)
 
 UPGRADE_BASELINE_CM_NAME = "upgrade-test-baseline"
-UPGRADE_LLMD_BASELINE_CM_NAME = "upgrade-llmd-test-baseline"
 UPGRADE_AUTH_TOKEN_SECRET_NAME = "upgrade-test-auth-token"  # pragma: allowlist secret
 
 
@@ -386,7 +385,6 @@ def verify_gateway_accepted(gateway: Gateway) -> None:
     """
 
     LOGGER.info(event=f"[VERIFY] Gateway check: '{gateway.name}' in ns '{gateway.namespace}'")
-    LOGGER.info(event=f"[VERIFY] Gateway exists: {gateway.exists}")
     if not gateway.exists:
         raise AssertionError(f"Gateway {gateway.name} does not exist in namespace {gateway.namespace}")
 
@@ -672,9 +670,11 @@ def verify_isvc_pods_not_restarted_against_baseline(
 
 
 class LLMISVCBaseline(TypedDict):
+    pre_upgrade_rhoai_version: str
     spec_generation: int
     url: str
     replicas: int
+    model_uri: str
     config_ref_names: list[str]
     container_images: dict[str, dict[str, str]]
     restart_counts: dict[str, dict[str, int]]
@@ -688,13 +688,16 @@ def capture_llmisvc_baseline(
 
     spec = llmisvc.instance.spec
     pods = _get_all_llmisvc_pods(client=client, llmisvc=llmisvc)
+    rhoai_version = str(get_product_version(admin_client=client))
 
     LOGGER.info(event=f"[BASELINE] Capturing baseline for LLMISVC '{llmisvc.name}' in ns '{llmisvc.namespace}'")
+    LOGGER.info(event=f"[BASELINE] pre_upgrade_rhoai_version: {rhoai_version}")
     LOGGER.info(event=f"[BASELINE] Found {len(pods)} pod(s): {[p.name for p in pods]}")
 
     generation = llmisvc.instance.metadata.generation
     url = _get_llmisvc_url(status=llmisvc.instance.status)
     replicas = getattr(spec, "replicas", 1) or 1
+    model_uri = spec.model.uri
     config_ref_names = _extract_config_ref_names(llmisvc=llmisvc)
     container_images = _collect_container_images(pods=pods)
     restart_counts = _collect_restart_counts(pods=pods)
@@ -702,6 +705,7 @@ def capture_llmisvc_baseline(
     LOGGER.info(event=f"[BASELINE] spec_generation={generation}")
     LOGGER.info(event=f"[BASELINE] url='{url}'")
     LOGGER.info(event=f"[BASELINE] replicas={replicas}")
+    LOGGER.info(event=f"[BASELINE] model_uri='{model_uri}'")
     LOGGER.info(event=f"[BASELINE] config_ref_names ({len(config_ref_names)}): {config_ref_names}")
     if not config_ref_names:
         LOGGER.warning(
@@ -717,9 +721,11 @@ def capture_llmisvc_baseline(
             LOGGER.info(event=f"[BASELINE] restart_count: pod={pod_name} container={cname} count={count}")
 
     baseline: LLMISVCBaseline = {
+        "pre_upgrade_rhoai_version": rhoai_version,
         "spec_generation": generation,
         "url": url,
         "replicas": replicas,
+        "model_uri": model_uri,
         "config_ref_names": config_ref_names,
         "container_images": container_images,
         "restart_counts": restart_counts,
