@@ -131,7 +131,6 @@ def wait_for_isvc_ready_false(
     """
 
     def _ready_condition() -> Any:
-        isvc.update()
         inst_status = getattr(isvc.instance, "status", None)
         if not inst_status:
             return None
