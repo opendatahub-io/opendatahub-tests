@@ -15,6 +15,14 @@ reviews:
         - Ensure we use https://github.com/RedHatQE/openshift-python-wrapper/ instead of direct oc calls when possible
         - Code reuse, test parameterization, proper test dependency should be also encouraged
         - Check CONSTITUTION and AGENTS files
+    - path: "tests/model_serving/model_runtime/**"
+      instructions: |
+        Review against the patterns documented in tests/model_serving/model_runtime/PATTERNS.md.
+        Flag violations of anti-patterns listed there as errors, specifically:
+        - CHECK_SNAPSHOT usage (use fuzzy validation instead)
+        - gRPC protocol references in Triton tests (not supported on RHOAI)
+        - Hardcoded deployment mode strings (use KServeDeploymentType enum)
+        - Exact snapshot comparisons in vLLM tests (use fuzzy validation for non-deterministic output)
   review_status: false
   changed_files_summary: true
   suggested_labels: true
@@ -85,3 +93,7 @@ knowledge_base:
     enabled: true
   pull_requests:
     scope: auto
+  code_guidelines:
+    - enabled: true
+      filePatterns:
+        - "**/PATTERNS.md"
