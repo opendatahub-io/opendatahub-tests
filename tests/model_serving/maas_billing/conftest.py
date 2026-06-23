@@ -1252,4 +1252,5 @@ def minimal_subscription_for_free_user(
             wait_for_resource=True,
         ) as subscription,
     ):
+        subscription.wait_for_condition(condition="Ready", status="True", timeout=300)
         yield subscription
