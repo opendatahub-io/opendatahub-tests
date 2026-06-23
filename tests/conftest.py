@@ -337,7 +337,9 @@ def use_unprivileged_client(pytestconfig: pytest.Config) -> bool:
 
 
 @pytest.fixture(scope="session")
-def non_admin_user_password(admin_client: DynamicClient, use_unprivileged_client: bool) -> tuple[str, str] | None:
+def non_admin_user_password(
+    admin_client: DynamicClient, use_unprivileged_client: bool
+) -> tuple[str, RedactedString] | None:
     def _decode_split_data(_data: str) -> list[str]:
         return base64.b64decode(_data).decode().split(",")
 
@@ -354,9 +356,10 @@ def non_admin_user_password(admin_client: DynamicClient, use_unprivileged_client
         data = ldap_Secret[0].instance.data
         users = _decode_split_data(_data=data.users)
         passwords = _decode_split_data(_data=data.passwords)
-        first_user_index = next(index for index, user in enumerate(users) if "user" in user)
+        first_user_index = next((index for index, user in enumerate(users) if "user" in user), None)
 
-        return users[first_user_index], passwords[first_user_index]
+        if first_user_index is not None:
+            return users[first_user_index], RedactedString(value=passwords[first_user_index])
 
     LOGGER.error("ldap secret not found")
     return None
@@ -378,7 +381,7 @@ def unprivileged_client(
     admin_client: DynamicClient,
     use_unprivileged_client: bool,
     kubconfig_filepath: str,
-    non_admin_user_password: tuple[str, str],
+    non_admin_user_password: tuple[str, RedactedString] | None,
 ) -> Generator[DynamicClient, Any, Any]:
     """
     Provides none privileged API client. If non_admin_user_password is None, then it will raise.

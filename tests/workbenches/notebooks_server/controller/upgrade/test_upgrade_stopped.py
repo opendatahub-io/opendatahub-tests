@@ -67,6 +67,7 @@ class TestPostUpgradeStoppedNotebook:
         When the upgrade completes,
         Then the kubeflow-resource-stopped annotation should still be present.
         """
+        assert stopped_notebook.exists, f"Stopped Notebook CR '{stopped_notebook.name}' no longer exists after upgrade"
         stop_annotation = stopped_notebook.instance.metadata.annotations.get("kubeflow-resource-stopped")
         assert stop_annotation is not None, (
             f"Notebook '{stopped_notebook.name}' lost 'kubeflow-resource-stopped' annotation after upgrade. "
@@ -83,6 +84,7 @@ class TestPostUpgradeStoppedNotebook:
         When the upgrade completes,
         Then the annotation value should be unchanged.
         """
+        assert stopped_notebook.exists, f"Stopped Notebook CR '{stopped_notebook.name}' no longer exists after upgrade"
         current_value = stopped_notebook.instance.metadata.annotations.get("kubeflow-resource-stopped")
         saved_value = upgrade_notebook_baseline["stopped_annotation_value"]
 
@@ -100,6 +102,9 @@ class TestPostUpgradeStoppedNotebook:
         When the upgrade completes,
         Then the StatefulSet should still have 0 replicas.
         """
+        assert stopped_notebook_statefulset.exists, (
+            f"StatefulSet '{stopped_notebook_statefulset.name}' no longer exists after upgrade"
+        )
         replicas = stopped_notebook_statefulset.instance.spec.replicas
         assert replicas == 0, (
             f"StatefulSet '{stopped_notebook_statefulset.name}' has {replicas} replicas after upgrade, "
