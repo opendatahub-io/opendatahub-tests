@@ -26,6 +26,17 @@ MAAS_AUTH_POLICY_FIXTURE_NAMES = (
 )
 
 
+def assert_tenant_field_empty(body: dict, context: str) -> None:
+    """Assert that the response body contains a 'tenant' field defaulting to empty string.
+
+    Args:
+        body: Parsed JSON response body from a MaaS API key endpoint.
+        context: Human-readable label for assertion error messages (e.g. "POST /v1/api-keys").
+    """
+    assert "tenant" in body, f"Expected 'tenant' field in {context} response, got keys: {list(body.keys())}"
+    assert body["tenant"] == "", f"Expected tenant='' (empty string) in {context} response, got: {body['tenant']!r}"
+
+
 def assert_key_rejected_at_inference(
     request_session_http: requests.Session,
     inference_url: str,
