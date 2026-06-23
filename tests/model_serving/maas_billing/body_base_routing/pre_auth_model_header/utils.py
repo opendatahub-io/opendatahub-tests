@@ -3,6 +3,7 @@
 from typing import Any
 
 import pytest
+import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
@@ -38,7 +39,7 @@ def verify_bbr_pre_processing_deployment_ready(
     )
     assert deployment.exists, (
         f"Deployment '{gateway_namespace}/{BBR_PRE_PROCESSING_DEPLOYMENT_NAME}' not found — "
-        "payload-pre-processing must be deployed by the maas-controller after reconciliation"
+        "expected to be created by the controller after reconciliation"
     )
     ready_replicas: int = deployment.instance.status.readyReplicas or 0
     desired_replicas: int = deployment.instance.spec.replicas if deployment.instance.spec.replicas is not None else 1
@@ -255,3 +256,18 @@ def verify_bbr_post_auth_processing_deployment_ready(
         f"Deployment '{gateway_namespace}/{BBR_POST_PROCESSING_DEPLOYMENT_NAME}' is ready "
         f"({ready_replicas}/{desired_replicas} replicas)"
     )
+
+
+def assert_bbr_inference_status(
+    session: requests.Session,
+    inference_url: str,
+    headers: dict[str, str],
+    payload: dict[str, Any],
+    expected_status: int,
+) -> None:
+    """Verify a POST to the BBR inference endpoint returns the expected HTTP status."""
+    response = session.post(url=inference_url, headers=headers, json=payload, timeout=60)
+    assert response.status_code == expected_status, (
+        f"Expected {expected_status} on BBR inference, got {response.status_code}"
+    )
+    LOGGER.info(f"BBR inference POST {inference_url} returned {response.status_code}")
