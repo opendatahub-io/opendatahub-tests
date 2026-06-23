@@ -1146,6 +1146,17 @@ def get_oc_console_cli_download_link(admin_client: DynamicClient) -> str:
     return all_links[0]
 
 
+@retry(
+    wait_timeout=120,
+    sleep=10,
+    exceptions_dict={requests.exceptions.ConnectionError: [], requests.exceptions.Timeout: []},
+)
+def _download_with_retry(url: str) -> requests.Response:
+    response = requests.get(url, verify=False, stream=True, timeout=60)
+    response.raise_for_status()
+    return response
+
+
 def download_oc_console_cli(admin_client: DynamicClient, tmpdir: LocalPath) -> str:
     """
     Download and extract the OpenShift CLI binary.
@@ -1164,8 +1175,7 @@ def download_oc_console_cli(admin_client: DynamicClient, tmpdir: LocalPath) -> s
     LOGGER.info(f"Downloading archive using: url={oc_console_cli_download_link}")
     urllib3.disable_warnings()  # TODO: remove when cert issue is addressed for managed clusters
     local_file_name = os.path.join(tmpdir, oc_console_cli_download_link.split("/")[-1])
-    with requests.get(oc_console_cli_download_link, verify=False, stream=True) as created_request:
-        created_request.raise_for_status()
+    with _download_with_retry(url=oc_console_cli_download_link) as created_request:
         content_iterator = created_request.iter_content(chunk_size=8192)
         with open(local_file_name, "wb") as file_downloaded:
             file_downloaded.writelines(content_iterator)
