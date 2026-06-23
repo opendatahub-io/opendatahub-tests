@@ -7,7 +7,7 @@ from .config_models import TinyLlamaOciConfig
 LLMD_KUEUE_LOCAL_QUEUE = "upgrade-llmd-local-queue"
 LLMD_KUEUE_CLUSTER_QUEUE = "upgrade-llmd-cluster-queue"
 LLMD_KUEUE_RESOURCE_FLAVOR = "upgrade-llmd-flavor"
-LLMD_KUEUE_CPU_QUOTA = "3"
+LLMD_KUEUE_CPU_QUOTA = 3
 LLMD_KUEUE_MEMORY_QUOTA = "20Gi"
 
 

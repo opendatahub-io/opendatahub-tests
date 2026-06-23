@@ -708,16 +708,9 @@ def get_llmisvc_url(llmisvc: LLMInferenceService) -> str:
     Used by capture_llmisvc_baseline (pre-upgrade) and post-upgrade tests.
 
     Returns:
-        The URL string, or empty string if not available.
+        The URL string.
     """
-    status = llmisvc.instance.status
-    conditions = getattr(status, "conditions", None) or []
-    for condition in conditions:
-        ctype = condition.get("type") if isinstance(condition, dict) else getattr(condition, "type", None)
-        cstatus = condition.get("status") if isinstance(condition, dict) else getattr(condition, "status", None)
-        if ctype == "Ready" and cstatus == "True":
-            return getattr(status, "url", "") or ""
-    return getattr(status, "url", "") or ""
+    return llmisvc.instance.status.url
 
 
 def get_llmisvc_replicas(llmisvc: LLMInferenceService) -> int:
@@ -726,9 +719,9 @@ def get_llmisvc_replicas(llmisvc: LLMInferenceService) -> int:
     Used by capture_llmisvc_baseline (pre-upgrade) and post-upgrade tests.
 
     Returns:
-        The replica count, defaults to 1 if not set.
+        The replica count.
     """
-    return getattr(llmisvc.instance.spec, "replicas", 1) or 1
+    return llmisvc.instance.spec.replicas
 
 
 def get_llmisvc_model_uri(llmisvc: LLMInferenceService) -> str:
@@ -737,9 +730,9 @@ def get_llmisvc_model_uri(llmisvc: LLMInferenceService) -> str:
     Used by capture_llmisvc_baseline (pre-upgrade) and post-upgrade tests.
 
     Returns:
-        The model URI string, or empty string if not set.
+        The model URI string.
     """
-    return getattr(llmisvc.instance.spec.model, "uri", "") or ""
+    return llmisvc.instance.spec.model.uri
 
 
 def get_llmisvc_config_ref_names(llmisvc: LLMInferenceService) -> list[str]:
@@ -1128,7 +1121,7 @@ def verify_llmisvc_inference_pool_exists(client: DynamicClient, llmisvc: LLMInfe
     LOGGER.info(event=f"[POST-UPGRADE] InferencePool '{pool_name}' exists")
     owner_refs = pool.instance.metadata.ownerReferences or []
     LOGGER.info(event=f"[POST-UPGRADE] InferencePool ownerReferences: {owner_refs}")
-    owned = any(ref.name == llmisvc.name for ref in owner_refs)
+    owned = any(ref.name == llmisvc.name and ref.kind == "LLMInferenceService" for ref in owner_refs)
     assert owned, f"InferencePool '{pool_name}' is not owned by '{llmisvc.name}'. Owners: {owner_refs}"
     LOGGER.info(event=f"[POST-UPGRADE] PASS: InferencePool '{pool_name}' exists and is owned by '{llmisvc.name}'")
 
@@ -1149,9 +1142,14 @@ def verify_llmisvc_httproute_exists(client: DynamicClient, llmisvc: LLMInference
         AssertionError: If no matching HTTPRoute is found.
     """
 
-    routes = list(HTTPRoute.get(client=client, namespace=llmisvc.namespace))
-    matching = [route for route in routes if llmisvc.name in route.name]
-    LOGGER.info(event=f"[POST-UPGRADE] HTTPRoute check for '{llmisvc.name}': found {len(matching)} route(s)")
-    assert matching, f"No HTTPRoute found for '{llmisvc.name}' in namespace '{llmisvc.namespace}'"
-    LOGGER.info(event=f"[POST-UPGRADE] HTTPRoute '{matching[0].name}' exists")
+    routes = list(
+        HTTPRoute.get(
+            client=client,
+            namespace=llmisvc.namespace,
+            label_selector=f"app.kubernetes.io/name={llmisvc.name},app.kubernetes.io/part-of=llminferenceservice",
+        )
+    )
+    LOGGER.info(event=f"[POST-UPGRADE] HTTPRoute check for '{llmisvc.name}': found {len(routes)} route(s)")
+    assert routes, f"No HTTPRoute found for '{llmisvc.name}' in namespace '{llmisvc.namespace}'"
+    LOGGER.info(event=f"[POST-UPGRADE] HTTPRoute '{routes[0].name}' exists")
     LOGGER.info(event=f"[POST-UPGRADE] PASS: HTTPRoute exists for '{llmisvc.name}'")
