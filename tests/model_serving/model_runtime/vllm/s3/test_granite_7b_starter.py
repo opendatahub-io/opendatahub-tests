@@ -32,7 +32,7 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "v
         pytest.param(
             {"name": "granite-starter-raw"},
             {"model-dir": MODEL_PATH},
-            {"deployment_type": KServeDeploymentType.RAW_DEPLOYMENT},
+            {"deployment_mode": KServeDeploymentType.RAW_DEPLOYMENT},
             {
                 **BASE_RAW_DEPLOYMENT_CONFIG,
                 "gpu_count": 2,

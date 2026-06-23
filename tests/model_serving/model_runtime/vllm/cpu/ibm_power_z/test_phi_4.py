@@ -33,7 +33,7 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_ibm_power_z_accelerat
         pytest.param(
             {"name": "phi-4-raw-cpu"},
             {"model-dir": PHI_4_MODEL_PATH},
-            {"deployment_type": KServeDeploymentType.RAW_DEPLOYMENT},
+            {"deployment_mode": KServeDeploymentType.RAW_DEPLOYMENT},
             {
                 **BASE_RAW_DEPLOYMENT_CONFIG,
                 "name": "phi-4-raw-cpu",

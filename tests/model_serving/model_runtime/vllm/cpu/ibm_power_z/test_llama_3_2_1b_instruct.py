@@ -33,7 +33,7 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_ibm_power_z_accelerat
         pytest.param(
             {"name": "llama-32-1b-instruct-raw-cpu"},
             {"model-dir": LLAMA_3_2_1B_INSTRUCT_MODEL_PATH},
-            {"deployment_type": KServeDeploymentType.RAW_DEPLOYMENT},
+            {"deployment_mode": KServeDeploymentType.RAW_DEPLOYMENT},
             {
                 **BASE_RAW_DEPLOYMENT_CONFIG,
                 "name": "llama-32-1b-instruct-raw-cpu",
