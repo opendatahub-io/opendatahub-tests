@@ -47,6 +47,8 @@ EMPTY_BODY_QUERY: dict[str, Any] = {}
     indirect=True,
 )
 class TestErrorProxying:
+    """Validate vLLM error responses for malformed and invalid requests."""
+
     def test_malformed_chat_request(
         self,
         vllm_inference_service: InferenceService,

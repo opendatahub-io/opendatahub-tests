@@ -41,6 +41,8 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
     ],
 )
 class TestVersionMismatch:
+    """Validate MLServer error handling for non-existent model versions."""
+
     def test_nonexistent_version_returns_error(
         self,
         negative_mlserver_isvc_no_wait: InferenceService,

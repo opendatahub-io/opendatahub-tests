@@ -31,6 +31,8 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
     indirect=True,
 )
 class TestISVCStatusMessages:
+    """Validate ISVC status conditions for invalid runtime configurations."""
+
     def test_isvc_reports_failure_conditions(
         self,
         negative_isvc_no_wait: InferenceService,

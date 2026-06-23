@@ -8,20 +8,6 @@ from utilities.infra import get_pods_by_isvc_label
 
 pytestmark = pytest.mark.usefixtures("valid_aws_config")
 
-LOW_MEMORY_RESOURCES = {
-    "requests": {"cpu": "2", "memory": "1Gi"},
-    "limits": {"cpu": "3", "memory": "2Gi"},
-}
-
-
-def _get_pod_restart_count(admin_client, isvc: InferenceService) -> int:
-    pods = get_pods_by_isvc_label(client=admin_client, isvc=isvc)
-    if not pods:
-        return 0
-    pod = pods[0]
-    container_statuses = pod.instance.status.containerStatuses or []
-    return sum(cs.restartCount for cs in container_statuses)
-
 
 @pytest.mark.tier3
 @pytest.mark.resilience
@@ -47,6 +33,8 @@ def _get_pod_restart_count(admin_client, isvc: InferenceService) -> int:
     indirect=True,
 )
 class TestOOMKillRecovery:
+    """Validate vLLM pod stability and recovery under resource-constrained deployments."""
+
     def test_pod_restarts_after_oom(
         self,
         admin_client,

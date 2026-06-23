@@ -30,6 +30,8 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
     indirect=True,
 )
 class TestInvalidCredentials:
+    """Validate ISVC failure behavior with invalid S3 credentials."""
+
     def test_isvc_fails_with_auth_error(
         self,
         negative_isvc_bad_creds: InferenceService,

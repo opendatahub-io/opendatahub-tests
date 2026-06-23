@@ -54,6 +54,8 @@ def _send_single_request(url: str, model_name: str) -> tuple[int, str]:
     indirect=True,
 )
 class TestConcurrentRequests:
+    """Validate vLLM stability under concurrent inference load."""
+
     def test_no_502_under_concurrent_load(
         self,
         resilience_inference_service: InferenceService,

@@ -51,6 +51,8 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
     ],
 )
 class TestWrongDimensions:
+    """Validate MLServer error handling for mismatched input tensor dimensions."""
+
     def test_wrong_input_dimensions_returns_error(
         self,
         negative_mlserver_isvc_no_wait: InferenceService,

@@ -38,6 +38,8 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
     ],
 )
 class TestCorruptedModelDeployment:
+    """Validate ISVC failure behavior when S3 model path is invalid."""
+
     def test_isvc_fails_with_storage_error(
         self,
         negative_mlserver_isvc_no_wait: InferenceService,

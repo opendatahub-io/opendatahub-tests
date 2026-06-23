@@ -23,6 +23,7 @@ def negative_mlserver_serving_runtime(
     model_namespace: Namespace,
     mlserver_runtime_image: str,
 ) -> Generator[ServingRuntime]:
+    """MLServer ServingRuntime for negative test scenarios."""
     with ServingRuntimeFromTemplate(
         client=admin_client,
         name="mlserver-neg-runtime",

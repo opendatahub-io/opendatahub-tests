@@ -42,6 +42,8 @@ SIMPLE_CHAT_QUERY: dict[str, Any] = {
     indirect=True,
 )
 class TestModelDeletion:
+    """Validate vLLM serving behavior when S3 model source is removed."""
+
     def test_serving_after_deployment(
         self,
         resilience_inference_service: InferenceService,
