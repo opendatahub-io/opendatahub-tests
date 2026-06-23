@@ -1,8 +1,4 @@
-"""TC-NEG-004: ISVC status messages for invalid configurations.
-
-Validates that the ISVC reports descriptive status conditions when created
-with invalid or unsupported configuration (e.g. non-existent runtime).
-"""
+"""ISVC status messages for invalid configurations."""
 
 import pytest
 from ocp_resources.inference_service import InferenceService
@@ -39,10 +35,7 @@ class TestISVCStatusMessages:
         self,
         negative_isvc_no_wait: InferenceService,
     ) -> None:
-        """Given a vLLM ISVC with an invalid runtime argument (--dtype=invalid_dtype),
-        When the ISVC is created and the predictor pod starts,
-        Then ISVC status conditions should contain error or failure information.
-        """
+        """Verify ISVC reports failure conditions when created with an invalid runtime argument."""
         condition_found = False
         for sample in TimeoutSampler(
             wait_timeout=Timeout.TIMEOUT_5MIN,

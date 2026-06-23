@@ -1,8 +1,4 @@
-"""TC-NEG-001: vLLM deployment with corrupted/missing model in S3.
-
-Validates that the ISVC surfaces a descriptive error when the S3 storage URI
-points to a non-existent or corrupted model path.
-"""
+"""vLLM deployment with corrupted/missing model in S3."""
 
 import pytest
 from ocp_resources.inference_service import InferenceService
@@ -40,10 +36,7 @@ class TestCorruptedModelDeployment:
         self,
         negative_isvc_no_wait: InferenceService,
     ) -> None:
-        """Given a vLLM ISVC pointing to a non-existent S3 model path,
-        When the ISVC is created,
-        Then it should not become Ready and should report a storage-related error.
-        """
+        """Verify ISVC reports a storage error for a non-existent S3 model path."""
         for sample in TimeoutSampler(
             wait_timeout=Timeout.TIMEOUT_5MIN,
             sleep=10,

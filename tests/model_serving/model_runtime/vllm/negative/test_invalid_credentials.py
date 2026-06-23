@@ -1,8 +1,4 @@
-"""TC-NEG-002: vLLM deployment with invalid S3 credentials.
-
-Validates that the ISVC surfaces an authentication error when the S3 secret
-contains wrong AWS access key / secret key.
-"""
+"""vLLM deployment with invalid S3 credentials."""
 
 import pytest
 from ocp_resources.inference_service import InferenceService
@@ -38,10 +34,7 @@ class TestInvalidCredentials:
         self,
         negative_isvc_bad_creds: InferenceService,
     ) -> None:
-        """Given a vLLM ISVC with invalid AWS credentials,
-        When the ISVC attempts to download the model from S3,
-        Then it should report an authentication/access-denied error.
-        """
+        """Verify ISVC reports an authentication error when S3 credentials are invalid."""
         for sample in TimeoutSampler(
             wait_timeout=Timeout.TIMEOUT_5MIN,
             sleep=10,

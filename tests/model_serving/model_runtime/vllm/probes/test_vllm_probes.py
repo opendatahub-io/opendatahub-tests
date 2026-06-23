@@ -41,13 +41,7 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_cpu_x86_accelerator_t
     indirect=True,
 )
 class TestVllmProbeHealth:
-    """Validate vLLM CPU predictor readiness and liveness probes for S3-backed OPT-125M.
-
-    Steps:
-        1. Deploy a vLLM CPU ServingRuntime with readiness/liveness probes and OPT-125M from S3.
-        2. Verify pod Ready, readinessProbe httpGet, and health endpoint HTTP 200.
-        3. Verify livenessProbe httpGet, no premature restarts, and health endpoint HTTP 200.
-    """
+    """Validate vLLM CPU predictor readiness and liveness probes for S3-backed OPT-125M."""
 
     def test_vllm_readiness_probe(
         self,
@@ -55,10 +49,7 @@ class TestVllmProbeHealth:
         skip_if_not_probes_raw_deployment: None,
         vllm_probes_pod_resource: Pod,
     ) -> None:
-        """Given a deployed vLLM OPT-125M ISVC with probe-enabled CPU runtime,
-        When the predictor pod is inspected,
-        Then the pod is Ready, readinessProbe defines httpGet, and the endpoint returns HTTP 200.
-        """
+        """Verify readinessProbe is configured and health endpoint returns HTTP 200."""
         assert pod_is_ready(pod=vllm_probes_pod_resource), f"Pod {vllm_probes_pod_resource.name} is not Ready"
 
         readiness_probe = get_probe(pod=vllm_probes_pod_resource, probe_type="readinessProbe")
@@ -78,10 +69,7 @@ class TestVllmProbeHealth:
         skip_if_not_probes_raw_deployment: None,
         vllm_probes_pod_resource: Pod,
     ) -> None:
-        """Given a deployed vLLM OPT-125M ISVC with probe-enabled CPU runtime,
-        When the predictor pod container status is checked,
-        Then livenessProbe defines httpGet, no containers restarted, and the endpoint returns HTTP 200.
-        """
+        """Verify livenessProbe is configured, no restarts occurred, and health endpoint returns HTTP 200."""
         restart_counts = get_restart_counts(pod=vllm_probes_pod_resource)
         restarted_containers = [name for name, count in restart_counts.items() if count > 0]
         assert not restarted_containers, (

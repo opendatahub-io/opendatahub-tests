@@ -1,8 +1,4 @@
-"""TC-PROBE-001: OpenVINO (OVMS) readiness and liveness probe validation.
-
-Validates that OVMS predictor pods have correctly configured readiness and
-liveness probes, and that the health endpoints return HTTP 200.
-"""
+"""OVMS readiness and liveness probe validation."""
 
 import pytest
 from ocp_resources.inference_service import InferenceService
@@ -45,10 +41,7 @@ class TestOVMSProbeHealth:
         ovms_probes_inference_service: InferenceService,
         ovms_probes_pod_resource: Pod,
     ) -> None:
-        """Given a deployed OVMS ISVC with probe-enabled runtime,
-        When the predictor pod is inspected,
-        Then the pod is Ready, readinessProbe defines httpGet, and the endpoint returns HTTP 200.
-        """
+        """Verify readinessProbe is configured and health endpoint returns HTTP 200."""
         assert pod_is_ready(pod=ovms_probes_pod_resource), f"Pod {ovms_probes_pod_resource.name} is not Ready"
 
         readiness_probe = get_probe(pod=ovms_probes_pod_resource, probe_type="readinessProbe")
@@ -67,10 +60,7 @@ class TestOVMSProbeHealth:
         ovms_probes_inference_service: InferenceService,
         ovms_probes_pod_resource: Pod,
     ) -> None:
-        """Given a deployed OVMS ISVC with probe-enabled runtime,
-        When the predictor pod container status is checked,
-        Then livenessProbe defines httpGet, no containers restarted, and the endpoint returns HTTP 200.
-        """
+        """Verify livenessProbe is configured, no restarts occurred, and health endpoint returns HTTP 200."""
         restart_counts = get_restart_counts(pod=ovms_probes_pod_resource)
         restarted_containers = [name for name, count in restart_counts.items() if count > 0]
         assert not restarted_containers, (

@@ -1,12 +1,4 @@
-"""TC-RES-002: vLLM behavior when underlying model is deleted from S3.
-
-Validates that the vLLM model server continues serving from its local cache
-(or reports a clear error) when the S3 model source is removed during serving.
-
-Note: This test requires manual intervention to delete the S3 model during the test run.
-It is designed as a framework that verifies the ISVC remains responsive after deployment,
-and checks that inference requests either succeed (cached) or fail gracefully.
-"""
+"""vLLM behavior when underlying model is deleted from S3."""
 
 from typing import Any
 
@@ -54,14 +46,7 @@ class TestModelDeletion:
         self,
         resilience_inference_service: InferenceService,
     ) -> None:
-        """Given a deployed vLLM ISVC with model loaded from S3,
-        When an inference request is sent after successful deployment,
-        Then the model server should respond (model is cached in local storage).
-
-        This validates the baseline: the model serves correctly from its local copy
-        after the initial S3 download. A full deletion test would remove the S3
-        object mid-serve and verify the ISVC continues or degrades gracefully.
-        """
+        """Verify deployed vLLM ISVC responds to inference after initial model download."""
         url = get_exposed_isvc_url(isvc=resilience_inference_service)
         model_name = resilience_inference_service.name
         query = {**SIMPLE_CHAT_QUERY, "model": model_name}

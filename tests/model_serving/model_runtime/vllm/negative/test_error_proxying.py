@@ -1,8 +1,4 @@
-"""TC-NEG-003: Malformed inference requests to a running vLLM ISVC.
-
-Validates that the model server returns appropriate HTTP error codes and
-descriptive error messages when receiving malformed or invalid requests.
-"""
+"""Malformed inference requests to a running vLLM ISVC."""
 
 from typing import Any
 
@@ -55,10 +51,7 @@ class TestErrorProxying:
         self,
         vllm_inference_service: InferenceService,
     ) -> None:
-        """Given a running vLLM ISVC,
-        When a malformed chat completion request is sent (messages as string instead of list),
-        Then the server returns HTTP 400/422 with an error message.
-        """
+        """Verify vLLM returns 400/422 for a malformed chat completion request."""
         url = get_exposed_isvc_url(isvc=vllm_inference_service)
         query = {**MALFORMED_CHAT_QUERY, "model": vllm_inference_service.name}
         response = requests.post(f"{url}/v1/chat/completions", json=query, verify=False, timeout=30)
@@ -70,10 +63,7 @@ class TestErrorProxying:
         self,
         vllm_inference_service: InferenceService,
     ) -> None:
-        """Given a running vLLM ISVC,
-        When an empty JSON body is sent to the chat completions endpoint,
-        Then the server returns an HTTP error (400/422).
-        """
+        """Verify vLLM returns 400/422 for an empty JSON request body."""
         url = get_exposed_isvc_url(isvc=vllm_inference_service)
         response = requests.post(f"{url}/v1/chat/completions", json=EMPTY_BODY_QUERY, verify=False, timeout=30)
         assert response.status_code in (400, 422), (
@@ -84,10 +74,7 @@ class TestErrorProxying:
         self,
         vllm_inference_service: InferenceService,
     ) -> None:
-        """Given a running vLLM ISVC,
-        When a request is sent to a non-existent endpoint,
-        Then the server returns HTTP 404 or 405.
-        """
+        """Verify vLLM returns 404/405 for a non-existent endpoint."""
         url = get_exposed_isvc_url(isvc=vllm_inference_service)
         response = requests.post(f"{url}/v1/nonexistent", json={"test": "data"}, verify=False, timeout=30)
         assert response.status_code in (404, 405), (

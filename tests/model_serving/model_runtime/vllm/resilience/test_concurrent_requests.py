@@ -1,8 +1,4 @@
-"""TC-RES-003: Concurrent inference requests to a vLLM ISVC.
-
-Validates that a vLLM model server handles N concurrent requests without
-returning 502 Bad Gateway or other proxy errors.
-"""
+"""Concurrent inference requests to a vLLM ISVC."""
 
 import concurrent.futures
 from typing import Any
@@ -62,10 +58,7 @@ class TestConcurrentRequests:
         self,
         resilience_inference_service: InferenceService,
     ) -> None:
-        """Given a running vLLM ISVC,
-        When N concurrent chat completion requests are sent simultaneously,
-        Then none of them should return 502 Bad Gateway.
-        """
+        """Verify concurrent chat requests do not produce 502 Bad Gateway errors."""
         url = get_exposed_isvc_url(isvc=resilience_inference_service)
         model_name = resilience_inference_service.name
 

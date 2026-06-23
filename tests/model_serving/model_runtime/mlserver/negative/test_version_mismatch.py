@@ -1,8 +1,4 @@
-"""TC-NEG-006: MLServer inference with model version mismatch.
-
-Validates that MLServer returns a descriptive error when a request targets
-a non-existent model version.
-"""
+"""MLServer inference with non-existent model version."""
 
 import portforward
 import pytest
@@ -50,10 +46,7 @@ class TestVersionMismatch:
         negative_mlserver_isvc_no_wait: InferenceService,
         mlserver_pod_resource: Pod,
     ) -> None:
-        """Given a deployed MLServer sklearn model at version v1.0.0,
-        When an inference request targets version v99.0.0 (non-existent),
-        Then the server returns an HTTP 404 or error indicating version not found.
-        """
+        """Verify MLServer returns an error when targeting a non-existent model version."""
         model_name = negative_mlserver_isvc_no_wait.instance.metadata.name
         endpoint = f"/v2/models/{model_name}/versions/v99.0.0/infer"
         port = Ports.REST_PORT

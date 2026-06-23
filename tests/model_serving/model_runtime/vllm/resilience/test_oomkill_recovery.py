@@ -1,8 +1,4 @@
-"""TC-RES-001: vLLM pod OOM recovery.
-
-Validates that a vLLM predictor pod recovers after being OOM-killed by
-Kubernetes due to memory limits being set artificially low.
-"""
+"""vLLM pod OOM recovery."""
 
 import pytest
 from ocp_resources.inference_service import InferenceService
@@ -56,14 +52,7 @@ class TestOOMKillRecovery:
         admin_client,
         resilience_inference_service: InferenceService,
     ) -> None:
-        """Given a vLLM ISVC deployed with tight memory limits,
-        When the predictor pod encounters OOM conditions,
-        Then Kubernetes restarts the pod and it eventually recovers.
-
-        Note: This test verifies the restart mechanism works. The pod may or may
-        not actually OOM depending on the model size and cluster resources.
-        If no OOM occurs, the test verifies the pod is at least running and stable.
-        """
+        """Verify pod recovers or remains stable under tight memory limits."""
         pods = get_pods_by_isvc_label(client=admin_client, isvc=resilience_inference_service)
         assert pods, f"No pods found for ISVC {resilience_inference_service.name}"
 

@@ -1,8 +1,4 @@
-"""TC-NEG-005: MLServer inference with wrong input dimensions.
-
-Validates that MLServer returns a descriptive error when the input tensor
-shape does not match the model's expected dimensions.
-"""
+"""MLServer inference with wrong input tensor dimensions."""
 
 from typing import Any
 
@@ -60,10 +56,7 @@ class TestWrongDimensions:
         negative_mlserver_isvc_no_wait: InferenceService,
         mlserver_pod_resource: Pod,
     ) -> None:
-        """Given a deployed MLServer sklearn model expecting shape [N, 4],
-        When an inference request is sent with shape [1, 10],
-        Then the server returns an HTTP 400 with a descriptive error message.
-        """
+        """Verify MLServer returns an error when input shape mismatches the model."""
         model_name = negative_mlserver_isvc_no_wait.instance.metadata.name
         endpoint = f"/v2/models/{model_name}/infer"
         port = Ports.REST_PORT
