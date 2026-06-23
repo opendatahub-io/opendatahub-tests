@@ -34,6 +34,7 @@ from tests.model_serving.model_server.upgrade.utils import (
     save_baseline_to_configmap,
 )
 from utilities.constants import (
+    DscComponents,
     KServeDeploymentType,
     ModelAndFormat,
     ModelCarImage,
@@ -44,6 +45,7 @@ from utilities.constants import (
     RuntimeTemplates,
     Timeout,
 )
+from utilities.data_science_cluster_utils import get_dsc_ready_condition, wait_for_dsc_reconciliation
 from utilities.inference_utils import create_isvc
 from utilities.infra import (
     create_inference_token,
@@ -59,6 +61,7 @@ from utilities.kueue_utils import (
     create_cluster_queue,
     create_local_queue,
     create_resource_flavor,
+    wait_for_kueue_crds_available,
 )
 from utilities.llmd_constants import KServeGateway, LLMDGateway
 from utilities.llmd_utils import create_llmd_gateway
@@ -1036,8 +1039,9 @@ def llmisvc_upgrade_gateway(
     )
 
     if pytestconfig.option.post_upgrade:
+        # No cleanup: the gateway is created by CI and shared across test runs.
+        # Pre-upgrade creates it only if missing; post-upgrade reuses the existing one.
         yield gateway
-        gateway.clean_up()
     else:
         with create_llmd_gateway(
             client=admin_client,
@@ -1173,17 +1177,98 @@ def llmisvc_upgrade_auth_and_kueue(
 
 # Kueue for upgrade tests
 @pytest.fixture(scope="session")
+def ensure_kueue_for_upgrade(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    dsc_resource,
+    llmisvc_auth_and_kueue_namespace: Namespace,
+) -> Generator[None, Any, Any]:
+    """Ensure Kueue is available for upgrade tests.
+
+    Pre-upgrade:
+      1. Skip if kueue operator is not installed.
+      2. Save the original DSC kueue managementState to a ConfigMap.
+      3. Patch DSC kueue to Unmanaged if needed (direct update, no ResourceEditor restore).
+      4. Wait for CRDs and controller pods.
+
+    Post-upgrade:
+      1. Tests run without mutating DSC — verify the real post-upgrade state.
+      2. Teardown: read the original state from ConfigMap and restore it.
+    """
+    namespace = llmisvc_auth_and_kueue_namespace.name
+    kueue_dsc_state_cm_name = "upgrade-kueue-dsc-state"
+
+    # pre-upgrade
+    if not pytestconfig.option.post_upgrade:
+        from tests.model_serving.model_server.conftest import _is_kueue_operator_installed
+
+        # Step 1: check kueue operator is installed
+        if not _is_kueue_operator_installed(admin_client):
+            pytest.skip("Kueue operator is not installed, skipping Kueue upgrade tests")
+
+        # Step 2: save original state to ConfigMap (for post-upgrade restore)
+        kueue_management_state = dsc_resource.instance.spec.components[DscComponents.KUEUE].managementState
+        LOGGER.info(f"Saving original Kueue managementState '{kueue_management_state}' to ConfigMap")
+        ConfigMap(
+            client=admin_client,
+            name=kueue_dsc_state_cm_name,
+            namespace=namespace,
+            data={"original_management_state": kueue_management_state},
+        ).deploy()
+
+        # Step 3: patch to Unmanaged if needed (state must persist through upgrade)
+        if kueue_management_state != DscComponents.ManagementState.UNMANAGED:
+            LOGGER.info(f"Patching Kueue from {kueue_management_state} to Unmanaged")
+            ready_condition = get_dsc_ready_condition(dsc=dsc_resource)
+            pre_patch_time = ready_condition.get("lastTransitionTime") if ready_condition else None
+            dsc_resource.update(
+                resource_dict={
+                    "metadata": {"name": dsc_resource.name},
+                    "spec": {
+                        "components": {
+                            DscComponents.KUEUE: {"managementState": DscComponents.ManagementState.UNMANAGED}
+                        }
+                    },
+                }
+            )
+            wait_for_dsc_reconciliation(dsc=dsc_resource, baseline_time=pre_patch_time)
+        else:
+            LOGGER.info("Kueue already Unmanaged, no patch needed")
+
+        # Step 4: wait for kueue CRDs and controller
+        wait_for_kueue_crds_available(client=admin_client)
+        yield
+    else:
+        # Post-upgrade: tests run without mutating DSC state
+        yield
+
+        # Teardown: restore original kueue managementState from saved ConfigMap
+        state_cm = ConfigMap(client=admin_client, name=kueue_dsc_state_cm_name, namespace=namespace)
+        if state_cm.exists:
+            original_state = state_cm.instance.data.get("original_management_state")
+            if original_state:
+                LOGGER.info(f"Restoring Kueue managementState to '{original_state}' in DSC")
+                dsc_resource.update(
+                    resource_dict={
+                        "metadata": {"name": dsc_resource.name},
+                        "spec": {"components": {DscComponents.KUEUE: {"managementState": original_state}}},
+                    }
+                )
+            state_cm.clean_up()
+
+
+@pytest.fixture(scope="session")
 def llmisvc_upgrade_kueue_resources(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    ensure_kueue_unmanaged_in_dsc,
+    ensure_kueue_for_upgrade,
     llmisvc_auth_and_kueue_namespace: Namespace,
     teardown_resources: bool,
 ) -> Generator[LocalQueue, Any, Any]:
     """Create Kueue resources (ResourceFlavor, ClusterQueue, LocalQueue) for upgrade tests.
 
-    Pre-upgrade: ensure_kueue_unmanaged_in_dsc skips if not installed, patches to Unmanaged if needed.
-    Post-upgrade: looks up the LocalQueue (verifies it survived).
+    Pre-upgrade: creates resources (ensure_kueue_for_upgrade handles DSC setup).
+    Post-upgrade: looks up the LocalQueue without mutating DSC state.
     """
     from tests.model_serving.model_server.conftest import kueue_resource_groups
 
