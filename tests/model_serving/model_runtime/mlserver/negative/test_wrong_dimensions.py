@@ -6,6 +6,7 @@ shape does not match the model's expected dimensions.
 
 from typing import Any
 
+import portforward
 import pytest
 import requests
 from ocp_resources.inference_service import InferenceService
@@ -14,8 +15,6 @@ from ocp_resources.pod import Pod
 from tests.model_serving.model_runtime.mlserver.constant import BASE_RAW_DEPLOYMENT_CONFIG, LOCALHOST_URL
 from tests.model_serving.model_runtime.mlserver.utils import get_model_namespace_dict
 from utilities.constants import Ports
-
-import portforward
 
 WRONG_SHAPE_QUERY: dict[str, Any] = {
     "id": "sklearn-wrong-dim",
@@ -85,6 +84,6 @@ class TestWrongDimensions:
                 f"Expected error status for wrong dimensions, got {response.status_code}: {response.text}"
             )
             error_text = response.text.lower()
-            assert any(
-                keyword in error_text for keyword in ("shape", "dimension", "feature", "mismatch", "error")
-            ), f"Error response should mention shape/dimension issue: {response.text}"
+            assert any(keyword in error_text for keyword in ("shape", "dimension", "feature", "mismatch", "error")), (
+                f"Error response should mention shape/dimension issue: {response.text}"
+            )

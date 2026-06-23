@@ -6,8 +6,6 @@ Kubernetes due to memory limits being set artificially low.
 
 import pytest
 from ocp_resources.inference_service import InferenceService
-from ocp_resources.pod import Pod
-from timeout_sampler import TimeoutSampler
 
 from tests.model_serving.model_runtime.vllm.constant import BASE_RAW_DEPLOYMENT_CONFIG
 from utilities.infra import get_pods_by_isvc_label
@@ -71,6 +69,4 @@ class TestOOMKillRecovery:
 
         pod = pods[0]
         phase = pod.instance.status.phase
-        assert phase in ("Running", "Pending", "Succeeded"), (
-            f"Pod {pod.name} is in unexpected phase: {phase}"
-        )
+        assert phase in ("Running", "Pending", "Succeeded"), f"Pod {pod.name} is in unexpected phase: {phase}"

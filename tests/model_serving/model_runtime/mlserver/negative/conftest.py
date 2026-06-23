@@ -1,6 +1,6 @@
 import copy
 from collections.abc import Generator
-from typing import Any, cast
+from typing import cast
 
 import pytest
 from kubernetes.dynamic import DynamicClient

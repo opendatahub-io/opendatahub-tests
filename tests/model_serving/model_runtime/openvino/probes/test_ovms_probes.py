@@ -49,9 +49,7 @@ class TestOVMSProbeHealth:
         When the predictor pod is inspected,
         Then the pod is Ready, readinessProbe defines httpGet, and the endpoint returns HTTP 200.
         """
-        assert pod_is_ready(pod=ovms_probes_pod_resource), (
-            f"Pod {ovms_probes_pod_resource.name} is not Ready"
-        )
+        assert pod_is_ready(pod=ovms_probes_pod_resource), f"Pod {ovms_probes_pod_resource.name} is not Ready"
 
         readiness_probe = get_probe(pod=ovms_probes_pod_resource, probe_type="readinessProbe")
         http_get = readiness_probe.get("httpGet")

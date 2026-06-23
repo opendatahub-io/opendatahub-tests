@@ -70,10 +70,7 @@ class TestConcurrentRequests:
         model_name = resilience_inference_service.name
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENT_REQUEST_COUNT) as executor:
-            futures = [
-                executor.submit(_send_single_request, url, model_name)
-                for _ in range(CONCURRENT_REQUEST_COUNT)
-            ]
+            futures = [executor.submit(_send_single_request, url, model_name) for _ in range(CONCURRENT_REQUEST_COUNT)]
             results = [f.result() for f in concurrent.futures.as_completed(futures)]
 
         bad_gateway_responses = [(code, body) for code, body in results if code == 502]
@@ -88,6 +85,5 @@ class TestConcurrentRequests:
 
         success_count = sum(1 for code, _ in results if 200 <= code < 300)
         assert success_count > 0, (
-            f"No successful responses out of {CONCURRENT_REQUEST_COUNT}. "
-            f"Status codes: {[code for code, _ in results]}"
+            f"No successful responses out of {CONCURRENT_REQUEST_COUNT}. Status codes: {[code for code, _ in results]}"
         )

@@ -4,6 +4,7 @@ Validates that MLServer returns a descriptive error when a request targets
 a non-existent model version.
 """
 
+import portforward
 import pytest
 import requests
 from ocp_resources.inference_service import InferenceService
@@ -16,8 +17,6 @@ from tests.model_serving.model_runtime.mlserver.constant import (
 )
 from tests.model_serving.model_runtime.mlserver.utils import get_model_namespace_dict
 from utilities.constants import Ports
-
-import portforward
 
 pytestmark = pytest.mark.usefixtures("valid_aws_config")
 

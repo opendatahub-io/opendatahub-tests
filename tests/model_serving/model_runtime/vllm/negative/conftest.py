@@ -16,7 +16,6 @@ from tests.model_serving.model_runtime.vllm.utils import (
     add_image_pull_secrets_if_configured,
     dedupe_vllm_cli_args,
     kserve_s3_endpoint_secret,
-    validate_supported_quantization_schema,
 )
 from utilities.constants import KServeDeploymentType, Labels, RuntimeTemplates
 from utilities.inference_utils import create_isvc
