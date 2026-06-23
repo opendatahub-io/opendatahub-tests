@@ -20,7 +20,7 @@ from utilities.constants import KServeDeploymentType, Labels, Protocols, Runtime
 
 
 def send_rest_request(url: str, input_data: dict[str, Any]) -> Any:
-    response = requests.post(url=url, json=input_data, verify=False, timeout=Timeout.TIMEOUT_3MIN)
+    response = requests.post(url=url, json=input_data, verify=False, timeout=Timeout.TIMEOUT_4MIN)
     response.raise_for_status()
     return response.json()
 

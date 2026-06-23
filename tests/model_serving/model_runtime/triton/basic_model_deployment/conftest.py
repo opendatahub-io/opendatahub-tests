@@ -129,7 +129,7 @@ def create_triton_serving_runtime(protocol: str, triton_runtime_image: str) -> d
     protocol_versions = ["v2", "grpc-v2"] if protocol == Protocols.GRPC else ["v2"]
 
     return {
-        "apiVersion": "serving.kserve.io/v1beta1",
+        "apiVersion": "serving.kserve.io/v1alpha1",
         "kind": "ServingRuntime",
         "metadata": {
             "name": RUNTIME_MAP.get(protocol, "triton-runtime"),
