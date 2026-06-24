@@ -73,7 +73,7 @@ def assert_huggingface_values_matches_model_catalog_api_values(
     model_registry_rest_headers: dict[str, str],
     expected_catalog_values: dict[str, str],
     huggingface_api: HfApi,
-) -> None:
+) -> bool:
     mismatch = {}
     LOGGER.info("Validating HuggingFace model metadata:")
     for model_name in expected_catalog_values:
