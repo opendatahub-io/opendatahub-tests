@@ -5,10 +5,13 @@ import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import UnprocessibleEntityError
-from ocp_resources.exceptions import MissingRequiredArgumentError
 from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
 
+from tests.model_serving.maas_billing.external_model.utils import (
+    external_provider_ref,
+)
+from tests.model_serving.maas_billing.utils import build_maas_headers
 from utilities.resources.external_model import ExternalModel
 from utilities.resources.external_provider import ExternalProvider
 
@@ -29,7 +32,7 @@ TYPO_PROVIDER = "opeanai"
 class TestExternalModelNegative:
     """Negative tests for ExternalModel CRD validation and gateway error handling."""
 
-    @pytest.mark.skip
+    @pytest.mark.skip(reason="CRD does not yet reject invalid provider enum values")
     @pytest.mark.tier3
     def test_typo_provider_rejected_by_crd(
         self,
@@ -60,16 +63,17 @@ class TestExternalModelNegative:
         admin_client: DynamicClient,
         maas_unprivileged_model_namespace: Namespace,
     ) -> None:
-        """Given an ExternalModel without externalProviderRefs, when it is created, then validation fails."""
-        with pytest.raises(MissingRequiredArgumentError):
+        """Given an ExternalModel with empty externalProviderRefs, when it is created, then the API rejects it."""
+        with pytest.raises(UnprocessibleEntityError):
             ExternalModel(
                 client=admin_client,
                 name="e2e-missing-provider-refs",
                 namespace=maas_unprivileged_model_namespace.name,
+                external_provider_refs=[],
                 teardown=True,
             ).deploy()
 
-        LOGGER.info("ExternalModel without externalProviderRefs correctly rejected")
+        LOGGER.info("ExternalModel without externalProviderRefs correctly rejected by CRD validation")
 
     @pytest.mark.tier3
     def test_invalid_endpoint_format_rejected_by_crd(
@@ -95,7 +99,7 @@ class TestExternalModelNegative:
 
         LOGGER.info("ExternalProvider with invalid endpoint format correctly rejected by CRD validation")
 
-    @pytest.mark.skip
+    @pytest.mark.skip(reason="CRD does not yet reject invalid apiFormat enum values")
     @pytest.mark.tier3
     def test_invalid_api_format_rejected_by_crd(
         self,
@@ -104,23 +108,26 @@ class TestExternalModelNegative:
         external_provider_cr: ExternalProvider,
     ) -> None:
         """Given an ExternalModel with an invalid apiFormat, when it is created, then the API rejects it."""
+        bad_ref = external_provider_ref(provider_name=external_provider_cr.name)
+        bad_ref["apiFormat"] = "openai"
         with pytest.raises(UnprocessibleEntityError):
             ExternalModel(
                 client=admin_client,
                 name="e2e-bad-api-format",
                 namespace=maas_unprivileged_model_namespace.name,
-                external_provider_refs=[
-                    {
-                        "ref": {"name": external_provider_cr.name},
-                        "targetModel": "gpt-3.5-turbo",
-                        "apiFormat": "openai",
-                    }
-                ],
+                external_provider_refs=[bad_ref],
                 teardown=True,
             ).deploy()
 
         LOGGER.info("ExternalModel with invalid apiFormat correctly rejected by CRD validation")
 
+    @pytest.mark.usefixtures(
+        "external_model_cr",
+        "external_model_ref",
+        "external_model_auth_policy",
+        "external_model_subscription",
+    )
+    @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
     @pytest.mark.tier3
     def test_request_to_nonexistent_model_returns_not_found(
         self,
@@ -128,8 +135,9 @@ class TestExternalModelNegative:
         maas_scheme: str,
         maas_host: str,
         maas_unprivileged_model_namespace: Namespace,
+        external_model_api_key: str,
     ) -> None:
-        """Given a model name that does not exist, when a chat request is sent, then the gateway returns 404 or 403."""
+        """Given a valid API key and unknown model path, when a chat request is sent, then the gateway returns 404."""
         url = (
             f"{maas_scheme}://{maas_host}"
             f"/{maas_unprivileged_model_namespace.name}"
@@ -137,18 +145,16 @@ class TestExternalModelNegative:
         )
         response = request_session_http.post(
             url=url,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": "Bearer INVALID-KEY-12345",
-            },
+            headers=build_maas_headers(token=external_model_api_key),
             json={
                 "model": NON_EXISTENT_MODEL_PATH,
                 "messages": [{"role": "user", "content": "hello"}],
             },
             timeout=60,
         )
-        assert response.status_code in (403, 404), (
-            f"Expected 403/404 for non-existent model, got {response.status_code}: {(response.text or '')[:200]}"
+        assert response.status_code == 404, (
+            f"Expected 404 for non-existent model route, got {response.status_code}: "
+            f"{(response.text or '')[:200]}"
         )
         LOGGER.info(
             f"Request to non-existent model '{NON_EXISTENT_MODEL_PATH}' correctly returned {response.status_code}"

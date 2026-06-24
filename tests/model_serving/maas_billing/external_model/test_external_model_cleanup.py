@@ -35,12 +35,7 @@ class TestExternalModelCleanup:
         admin_client: DynamicClient,
         maas_unprivileged_model_namespace: Namespace,
     ) -> None:
-        """Deleting an ExternalModel removes the HTTPRoute via OwnerReference garbage collection.
-
-        Given a temporary ExternalModel CR is created and the reconciler
-        produces an HTTPRoute, when the ExternalModel is deleted, then the
-        HTTPRoute is garbage-collected by Kubernetes OwnerReference.
-        """
+        """Given a temporary ExternalModel with an HTTPRoute, when the CR is deleted, then the HTTPRoute is removed."""
         namespace = maas_unprivileged_model_namespace.name
 
         with ExternalModel(

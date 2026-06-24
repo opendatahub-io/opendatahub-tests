@@ -11,6 +11,7 @@ from ocp_resources.service import Service
 from timeout_sampler import TimeoutSampler
 
 from utilities.constants import ApiGroups
+from utilities.resources.http_route import HTTPRoute
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -36,15 +37,20 @@ def external_provider_ref(provider_name: str, *, target_model: str = EXTERNAL_TA
 
 def _inference_resource_reconciliation_state(resource: Resource) -> str | None:
     """Return Ready, Failed, or the current status.phase (may be None/Pending)."""
-    status = resource.instance.status or {}
-    phase = status.get("phase")
+    status = resource.instance.status
+    if not status:
+        return None
+
+    phase = getattr(status, "phase", None)
     if phase == "Ready":
         return "Ready"
     if phase == "Failed":
         return "Failed"
-    for condition in status.get("conditions") or []:
-        if condition.get("type") == "Ready" and condition.get("status") == "True":
+
+    for condition in status.conditions or []:
+        if condition.type == "Ready" and condition.status == "True":
             return "Ready"
+
     return phase
 
 
@@ -65,8 +71,8 @@ def wait_for_inference_resource_phase(
         last_state = current_state
         LOGGER.info(f"Waiting for {resource.kind}/{resource.name} state={current_state} expected={phase}")
         if current_state == "Failed":
-            status = resource.instance.status or {}
-            pytest.fail(f"{resource.kind}/{resource.name} reconciliation Failed: {status.get('conditions', [])}")
+            conditions = resource.instance.status.conditions if resource.instance.status else []
+            pytest.fail(f"{resource.kind}/{resource.name} reconciliation Failed: {conditions}")
         if current_state == phase:
             return
 
@@ -81,15 +87,12 @@ def get_httproute(
     client: DynamicClient,
     name: str,
     namespace: str,
-) -> dict[str, Any] | None:
-    """Look up an HTTPRoute by name/namespace. Returns the resource dict or None."""
+) -> HTTPRoute | None:
+    """Look up an HTTPRoute by name/namespace. Returns the resource wrapper or None."""
     try:
-        api = client.resources.get(
-            api_version="gateway.networking.k8s.io/v1",
-            kind="HTTPRoute",
-        )
-        route = api.get(name=name, namespace=namespace)
-        return route.to_dict() if route else None
+        route = HTTPRoute(client=client, name=name, namespace=namespace)
+        if route.exists:
+            return route
     except NotFoundError, ResourceNotFoundError:
         LOGGER.debug(f"HTTPRoute {namespace}/{name} not found")
     return None
@@ -115,7 +118,7 @@ def wait_for_httproute(
     name: str,
     namespace: str,
     timeout: int = 60,
-) -> dict[str, Any]:
+) -> HTTPRoute:
     """Poll until the HTTPRoute exists, or raise on timeout."""
     for _ in TimeoutSampler(
         wait_timeout=timeout,

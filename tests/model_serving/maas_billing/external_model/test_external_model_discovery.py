@@ -33,7 +33,7 @@ class TestExternalModelDiscovery:
         self,
         external_model_cr: ExternalModel,
     ) -> None:
-        """Given an ExternalModel CR, verify it exists on the cluster."""
+        """Given a deployed ExternalModel CR, when checking the cluster, then the CR exists."""
         assert external_model_cr.exists, f"ExternalModel '{external_model_cr.name}' was not created"
         LOGGER.info(f"ExternalModel '{external_model_cr.name}' exists")
 
@@ -42,7 +42,7 @@ class TestExternalModelDiscovery:
         self,
         external_model_ref: MaaSModelRef,
     ) -> None:
-        """Given an ExternalModel, verify MaaSModelRef referencing it exists."""
+        """Given an ExternalModel, when checking MaaSModelRef, then a ref to the model exists."""
         assert external_model_ref.exists, f"MaaSModelRef '{external_model_ref.name}' not found"
         LOGGER.info(f"MaaSModelRef '{external_model_ref.name}' exists")
 
@@ -53,7 +53,7 @@ class TestExternalModelDiscovery:
         external_model_cr: ExternalModel,
         maas_unprivileged_model_namespace: Namespace,
     ) -> None:
-        """Given a reconciled ExternalModel, verify an HTTPRoute was created."""
+        """Given a reconciled ExternalModel, when listing HTTPRoutes, then one named after the model exists."""
         route = get_httproute(
             client=admin_client,
             name=external_model_cr.name,
@@ -71,7 +71,7 @@ class TestExternalModelDiscovery:
         external_provider_cr: ExternalProvider,
         maas_unprivileged_model_namespace: Namespace,
     ) -> None:
-        """Given a reconciled ExternalProvider, verify a backend Service was created."""
+        """Given a reconciled ExternalProvider, when listing Services, then one named after the provider exists."""
         svc = get_service(
             client=admin_client,
             name=external_provider_cr.name,
