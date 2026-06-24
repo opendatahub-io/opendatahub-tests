@@ -53,7 +53,11 @@ class TestEvalHubDeployment:
         model_namespace: Namespace,
         evalhub_deployment: Deployment,
     ) -> None:
-        """Verify the EvalHub deployment runs exactly 1 pod with evalhub and kube-rbac-proxy containers."""
+        """
+        Given: EvalHub CR is deployed and the deployment is ready.
+        When: The pod containers are inspected.
+        Then: Exactly one pod runs with both evalhub and kube-rbac-proxy containers present.
+        """
         pods = list(
             Pod.get(
                 client=admin_client,
