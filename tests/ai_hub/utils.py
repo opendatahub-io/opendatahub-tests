@@ -16,13 +16,13 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from timeout_sampler import TimeoutSampler, retry
 
+import tests.ai_hub.constants as ai_hub_constants
 from tests.ai_hub.constants import (
     DB_BASE_RESOURCES_NAME,
     MARIADB_MY_CNF,
     MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
     MODEL_REGISTRY_DB_SECRET_STR_DATA,
     MODEL_REGISTRY_POD_FILTER,
-    MR_DB_IMAGE_DIGEST,
     MR_POSTGRES_DB_OBJECT,
     PORT_MAP,
 )
@@ -138,8 +138,7 @@ def get_database_image(db_backend: str) -> str:
     elif db_backend == "mariadb":
         return MARIA_DB_IMAGE
     else:
-        # MySQL
-        return MR_DB_IMAGE_DIGEST
+        return ai_hub_constants.MR_DB_IMAGE_DIGEST
 
 
 def get_database_health_probes(db_backend: str) -> dict[str, dict[str, Any]]:
@@ -279,9 +278,8 @@ def get_model_registry_deployment_template_dict(
         },
     }
 
-    # Add args only for MySQL backend
-    if db_backend == "mysql":
-        base_dict["spec"]["containers"][0]["args"] = ["--datadir", "/var/lib/mysql/datadir"]
+    if db_backend == "mysql" and ai_hub_constants.MR_DB_MYSQL_ARGS:
+        base_dict["spec"]["containers"][0]["args"] = ai_hub_constants.MR_DB_MYSQL_ARGS
 
     if db_backend == "mariadb":
         base_dict["metadata"]["labels"]["app"] = db_backend
