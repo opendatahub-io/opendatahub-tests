@@ -67,9 +67,7 @@ class TestEvalHubDeployment:
         pod = pods[0]
         containers = pod.instance.spec.containers
         container_names = [container.name for container in containers]
-        assert len(containers) == 2, (
-            f"Expected 2 containers in EvalHub pod, found {len(containers)}: {container_names}"
-        )
+        assert len(containers) == 2, f"Expected 2 containers in EvalHub pod, found {len(containers)}: {container_names}"
         assert EVALHUB_CONTAINER_NAME in container_names, (
             f"Expected '{EVALHUB_CONTAINER_NAME}' container, got {container_names}"
         )
