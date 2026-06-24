@@ -258,7 +258,7 @@ def get_auth_policy_callback_url(
         ensure_exists=True,
     )
     try:
-        callback_url: str = auth_policy.instance.spec.rules.metadata.apiKeyValidation.http.url
+        callback_url: str = auth_policy.instance.spec.defaults.rules.metadata.apiKeyValidation.http.url
     except AttributeError as error:
         raise AssertionError(
             f"AuthPolicy '{policy_name}' in namespace '{namespace}' is missing "

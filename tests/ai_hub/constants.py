@@ -39,6 +39,12 @@ DB_RESOURCE_NAME: str = f"{DB_BASE_RESOURCES_NAME}0"
 MR_DB_IMAGE_DIGEST: str = (
     "public.ecr.aws/docker/library/mysql@sha256:28540698ce89bd72f985044de942d65bd99c6fadb2db105327db57f3f70564f0"
 )
+MR_DB_MYSQL_ARGS: list[str] = ["--datadir", "/var/lib/mysql/datadir"]
+# MySQL 8.4 from registry.redhat.io — supports amd64/arm64/s390x/ppc64le.
+# Uses run-mysqld entrypoint which sets MYSQL_DATADIR internally, no args needed.
+MR_DB_IMAGE_DIGEST_S390X: str = (
+    "registry.redhat.io/rhel9/mysql-84@sha256:c16d572a6ff2ba6029a261ea4ba6342a14743f1e2615b23a32964a201bda9566"
+)
 MODEL_REGISTRY_DB_SECRET_STR_DATA: dict[str, str] = {
     "database-name": "model_registry",
     "database-password": "TheBlurstOfTimes",  # pragma: allowlist secret
