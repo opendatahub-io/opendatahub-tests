@@ -20,6 +20,7 @@ LOGGER = structlog.get_logger(name=__name__)
     "maas_api_gateway_reachable",
     "maas_unprivileged_model_namespace",
     "minimal_subscription_for_free_user",
+    "maas_auth_policy_tinyllama_free",
 )
 class TestEphemeralKeyCleanup:
     """Tests for ephemeral API key cleanup (CronJob + internal endpoint)."""

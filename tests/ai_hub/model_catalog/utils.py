@@ -147,6 +147,7 @@ def _parse_single_column_format(lines: list[str], data_start: int) -> list[str]:
     return result
 
 
+@retry(wait_timeout=60, sleep=5, exceptions_dict={requests.exceptions.ConnectionError: []})
 def get_models_from_catalog_api(
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
