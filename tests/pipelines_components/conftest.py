@@ -8,23 +8,21 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import shortuuid
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.data_science_pipelines_application import DataSciencePipelinesApplication
 from ocp_resources.deployment import Deployment
-from ocp_resources.dsc_initialization import DSCInitialization
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
-from ocp_resources.resource import ResourceEditor, get_client
+from ocp_resources.resource import ResourceEditor
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
-from ocp_utilities.operators import install_operator, uninstall_operator
 from timeout_sampler import TimeoutExpiredError
 
 from tests.pipelines_components.constants import (
-    AUTOML_SMOKE_CSV,
+    AUTOML_S3_BUCKET,
+    AUTOML_S3_TRAIN_DATA_KEY,
     AUTOML_TRAIN_DATA_FILE_KEY,
     DSPA_MINIO_IMAGE,
     DSPA_NAME,
@@ -36,9 +34,9 @@ from tests.pipelines_components.constants import (
     MINIO_UPLOADER_SECURITY_CONTEXT,
 )
 from utilities.certificates_utils import create_ca_bundle_file
-from utilities.constants import RHOAI_OPERATOR_NAMESPACE, Timeout
+from utilities.constants import Timeout
 from utilities.general import collect_pod_information
-from utilities.infra import create_ns, get_rhods_subscription, wait_for_dsc_status_ready, wait_for_dsci_status_ready
+from utilities.infra import create_ns, get_rhods_subscription, wait_for_dsc_status_ready
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -51,18 +49,8 @@ def _mask_value(key: str, value: str) -> str:
     return value
 
 
-_RHOAI_INSTALLED_BY_TESTS = False
-
-
 def pytest_configure(config: pytest.Config) -> None:
-    """Load .env variables and ensure the RHOAI operator is installed.
-
-    This runs before the root conftest's pytest_sessionstart, which tries to
-    access the DataScienceCluster CRD.  If the operator is missing, that hook
-    crashes with NotImplementedError before any fixture gets a chance to run.
-    """
-    global _RHOAI_INSTALLED_BY_TESTS
-
+    """Load .env variables and check if the RHOAI operator is installed."""
     env_file = Path(__file__).parent / ".env"
     if env_file.is_file():
         loaded = {}
@@ -80,41 +68,20 @@ def pytest_configure(config: pytest.Config) -> None:
             variables={k: _mask_value(key=k, value=v) for k, v in loaded.items()},
         )
 
-    existing = get_rhods_subscription()
+    if config.option.collectonly:
+        return
+
+    try:
+        existing = get_rhods_subscription()
+    except Exception:  # noqa: BLE001
+        LOGGER.debug("No cluster connection available — skipping RHOAI operator check")
+        return
+
     if existing:
-        LOGGER.info(f"RHOAI operator already installed: {existing.name}")
-        return
-
-    LOGGER.info("RHOAI operator not found — installing from redhat-operators/stable")
-    client = get_client()
-    install_operator(
-        admin_client=client,
-        target_namespaces=None,
-        name="rhods-operator",
-        channel="stable",
-        source="redhat-operators",
-        operator_namespace=RHOAI_OPERATOR_NAMESPACE,
-        timeout=Timeout.TIMEOUT_15MIN,
-    )
-    wait_for_dsci_status_ready(dsci_resource=DSCInitialization(client=client, name="default-dsci", ensure_exists=True))
-    wait_for_dsc_status_ready(dsc_resource=DataScienceCluster(client=client, name="default-dsc", ensure_exists=True))
-    LOGGER.info("RHOAI operator installed and ready")
-    _RHOAI_INSTALLED_BY_TESTS = True
-
-
-@pytest.fixture(scope="session", autouse=True)
-def _uninstall_rhoai_if_we_installed_it(admin_client: DynamicClient) -> Generator[None, Any, Any]:
-    """Uninstall the RHOAI operator on teardown if it was installed by pytest_configure."""
-    yield
-    if not _RHOAI_INSTALLED_BY_TESTS:
-        return
-    LOGGER.info("Uninstalling RHOAI operator (installed by test fixture)")
-    uninstall_operator(
-        admin_client=admin_client,
-        name="rhods-operator",
-        operator_namespace=RHOAI_OPERATOR_NAMESPACE,
-        clean_up_namespace=False,
-    )
+        installed_csv = existing.instance.status.get("installedCSV", "unknown")
+        LOGGER.info(f"RHOAI operator installed: {existing.name} (CSV: {installed_csv})")
+    else:
+        LOGGER.info("RHOAI operator is not installed on this cluster")
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -149,7 +116,7 @@ def pipelines_namespace(  # noqa: UFN001
     """Dedicated namespace for pipelines component smoke tests."""
     with create_ns(
         admin_client=admin_client,
-        name=f"pipelines-smoke-{shortuuid.uuid().lower()}",
+        name=f"automl-aqa-{uuid.uuid4().hex[:8]}",
     ) as namespace:
         yield namespace
 
@@ -286,13 +253,21 @@ def automl_train_data(
     pipelines_namespace: Namespace,
     dspa_s3_credentials: Secret,
 ) -> str:
-    """Synthetic training CSV uploaded to DSPA MinIO for the AutoML smoke test."""
-    minio_endpoint = f"http://minio-{DSPA_NAME}.{pipelines_namespace.name}.svc.cluster.local:9000"
+    """Download AutoML training CSV from external S3 and upload to DSPA MinIO."""
+    src_bucket = shlex.quote(s=AUTOML_S3_BUCKET)
+    src_key = shlex.quote(s=AUTOML_S3_TRAIN_DATA_KEY)
+    dst_bucket = shlex.quote(s=DSPA_S3_BUCKET)
+    dst_key = shlex.quote(s=AUTOML_TRAIN_DATA_FILE_KEY)
 
-    mc_setup = "export MC_CONFIG_DIR=/work/.mc && mc alias set dspa $MINIO_ENDPOINT $MINIO_ACCESS_KEY $MINIO_SECRET_KEY"
-    mc_upload = (
-        f"cat <<'CSVEOF' > /work/train.csv\n{AUTOML_SMOKE_CSV}CSVEOF\n"
-        f"mc cp /work/train.csv dspa/{shlex.quote(DSPA_S3_BUCKET)}/{shlex.quote(AUTOML_TRAIN_DATA_FILE_KEY)}"
+    minio_endpoint = f"http://minio-{DSPA_NAME}.{pipelines_namespace.name}.svc.cluster.local:9000"
+    src_endpoint = os.environ.get("AWS_S3_ENDPOINT", "https://s3.amazonaws.com")
+
+    script = (
+        "export MC_CONFIG_DIR=/work/.mc && "
+        "mc alias set src $SRC_ENDPOINT $AWS_ACCESS_KEY_ID $AWS_SECRET_ACCESS_KEY && "
+        "mc alias set dspa $DST_ENDPOINT $DST_ACCESS_KEY $DST_SECRET_KEY && "
+        f"mc cp src/{src_bucket}/{src_key} /work/train.csv && "
+        f"mc cp /work/train.csv dspa/{dst_bucket}/{dst_key}"
     )
 
     pod_name = f"automl-data-uploader-{uuid.uuid4().hex[:8]}"
@@ -307,17 +282,20 @@ def automl_train_data(
                 "name": "minio-uploader",
                 "image": MINIO_MC_IMAGE,
                 "command": ["/bin/sh", "-c"],
-                "args": [f"{mc_setup} && {mc_upload}"],
+                "args": [script],
                 "volumeMounts": [{"name": "work", "mountPath": "/work"}],
                 "securityContext": MINIO_UPLOADER_SECURITY_CONTEXT,
                 "env": [
-                    {"name": "MINIO_ENDPOINT", "value": minio_endpoint},
+                    {"name": "SRC_ENDPOINT", "value": src_endpoint},
+                    {"name": "AWS_ACCESS_KEY_ID", "value": os.environ.get("AWS_ACCESS_KEY_ID", "")},
+                    {"name": "AWS_SECRET_ACCESS_KEY", "value": os.environ.get("AWS_SECRET_ACCESS_KEY", "")},
+                    {"name": "DST_ENDPOINT", "value": minio_endpoint},
                     {
-                        "name": "MINIO_ACCESS_KEY",
+                        "name": "DST_ACCESS_KEY",
                         "valueFrom": {"secretKeyRef": {"name": DSPA_S3_SECRET, "key": "accesskey"}},
                     },
                     {
-                        "name": "MINIO_SECRET_KEY",
+                        "name": "DST_SECRET_KEY",
                         "valueFrom": {"secretKeyRef": {"name": DSPA_S3_SECRET, "key": "secretkey"}},
                     },
                 ],
