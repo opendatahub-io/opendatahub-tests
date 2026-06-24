@@ -6,8 +6,8 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
 
 from tests.model_serving.maas_billing.external_model.utils import (
-    EXTERNAL_ENDPOINT,
-    EXTERNAL_SECRET_NAME,
+    EXTERNAL_PROVIDER_NAME,
+    external_provider_ref,
     wait_for_httproute,
     wait_for_httproute_deleted,
 )
@@ -24,6 +24,7 @@ CLEANUP_TEST_MODEL_NAME = "e2e-cleanup-test"
     "maas_gateway_api",
     "maas_api_gateway_reachable",
     "external_model_credential_secret",
+    "external_provider_cr",
 )
 class TestExternalModelCleanup:
     """Verify resource cleanup when ExternalModel CRs are deleted."""
@@ -46,12 +47,7 @@ class TestExternalModelCleanup:
             client=admin_client,
             name=CLEANUP_TEST_MODEL_NAME,
             namespace=namespace,
-            provider="openai",
-            target_model="gpt-3.5-turbo",
-            endpoint=EXTERNAL_ENDPOINT,
-            credential_ref={
-                "name": EXTERNAL_SECRET_NAME,
-            },
+            external_provider_refs=[external_provider_ref(provider_name=EXTERNAL_PROVIDER_NAME)],
             teardown=True,
             wait_for_resource=True,
         ):

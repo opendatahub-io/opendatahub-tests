@@ -15,6 +15,7 @@ LOGGER = structlog.get_logger(name=__name__)
     "maas_subscription_controller_enabled_latest",
     "maas_gateway_api",
     "maas_api_gateway_reachable",
+    "external_provider_cr",
     "external_model_cr",
     "external_model_ref",
     "external_model_auth_policy",
