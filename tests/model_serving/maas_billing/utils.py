@@ -18,6 +18,7 @@ from ocp_resources.ingress_config_openshift_io import Ingress as IngressConfig
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.resource import ResourceEditor
 from requests import Response
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from utilities.constants import (
     MAAS_GATEWAY_NAME,
@@ -542,17 +543,33 @@ def create_api_key(
     if ephemeral:
         payload["ephemeral"] = True
 
-    response = request_session_http.post(
-        url=api_keys_url,
-        headers={"Authorization": f"Bearer {ocp_user_token}", "Content-Type": "application/json"},
-        json=payload,
-        timeout=request_timeout_seconds,
-    )
-    LOGGER.info(f"create_api_key: url={api_keys_url} status={response.status_code}")
-    if response.status_code not in (200, 201):
+    response: requests.Response | None = None
+    try:
+        for response in TimeoutSampler(
+            wait_timeout=90,
+            sleep=5,
+            func=request_session_http.post,
+            url=api_keys_url,
+            headers={"Authorization": f"Bearer {ocp_user_token}", "Content-Type": "application/json"},
+            json=payload,
+            timeout=request_timeout_seconds,
+        ):
+            LOGGER.info(f"create_api_key: url={api_keys_url} status={response.status_code}")
+            if response.status_code in (200, 201):
+                break
+            if response.status_code == 403 and not (response.text or "").strip():
+                LOGGER.info("create_api_key: empty 403 (Authorino propagation delay) — retrying")
+                continue
+            break
+    except TimeoutExpiredError:
+        LOGGER.info("create_api_key: timed out after 90s waiting for non-403 response")
+
+    if response is None or response.status_code not in (200, 201):
+        status = response.status_code if response is not None else "no response"
+        body = response.text[:500] if response is not None else "timed out with persistent empty 403"
         if raise_on_error:
-            raise AssertionError(f"api-key create failed: status={response.status_code} body={response.text[:500]}")
-        return response, {}
+            raise AssertionError(f"api-key create failed: status={status} body={body}")
+        return response, {}  # type: ignore[return-value]
 
     try:
         parsed_body: dict[str, Any] = json.loads(response.text)
