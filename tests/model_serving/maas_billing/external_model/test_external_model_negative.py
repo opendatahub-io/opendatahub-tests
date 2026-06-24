@@ -153,8 +153,7 @@ class TestExternalModelNegative:
             timeout=60,
         )
         assert response.status_code == 404, (
-            f"Expected 404 for non-existent model route, got {response.status_code}: "
-            f"{(response.text or '')[:200]}"
+            f"Expected 404 for non-existent model route, got {response.status_code}: {(response.text or '')[:200]}"
         )
         LOGGER.info(
             f"Request to non-existent model '{NON_EXISTENT_MODEL_PATH}' correctly returned {response.status_code}"
