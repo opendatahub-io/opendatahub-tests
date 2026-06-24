@@ -287,7 +287,7 @@ def autorag_inference_runtime(
         client=admin_client,
         name="autorag-vllm-inference",
         namespace=pipelines_namespace.name,
-        template_name=RuntimeTemplates.VLLM_CPU_x86,
+        template_name="vllm-cpu-runtime-template", #that need to be changed when #RHOAIENG-68247 will be fixed
         multi_model=False,
         enable_http=True,
         enable_grpc=False,
