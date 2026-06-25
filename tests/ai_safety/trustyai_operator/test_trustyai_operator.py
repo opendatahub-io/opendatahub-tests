@@ -7,6 +7,7 @@ from tests.ai_safety.trustyai_operator.utils import validate_trustyai_operator_i
 
 
 @pytest.mark.smoke
+@pytest.mark.downstream_only
 def test_validate_trustyai_operator_image(
     admin_client: DynamicClient,
     related_images_refs: set[str],
