@@ -133,7 +133,7 @@ def validate_inference_request(
     )
 
     assert response, "Response is empty"
-    assert isinstance(response, dict), f"Response is not a dict: {response}"
+    assert isinstance(response, dict), f"Response is not a dict: {type(response).__name__}: {str(response)[:200]}"
     assert response.get("outputs"), "Response missing outputs"
 
     if "rawOutputContents" in response or "raw_output_contents" in response:
