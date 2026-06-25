@@ -63,6 +63,66 @@ class TestBBRPreAuthInference:
             expected_status=401,
         )
 
+    @pytest.mark.tier1
+    @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
+    def test_inference_path_wins_over_body_model_for_auth(
+        self: Self,
+        request_session_http: requests.Session,
+        bbr_inference_url: str,
+        bbr_api_key_headers: dict[str, str],
+    ) -> None:
+        """Verify that on /llm/ paths, auth uses path identity — wrong body model must not cause 401/403.
+
+        BBR pre-auth still sets X-Gateway-Model-Name from the body, so post-auth routing
+        may return 404 when body.model does not match a real model. That is a routing
+        failure, not an auth failure — 401/403 must not appear.
+        """
+        wrong_model_payload: dict[str, Any] = {
+            "model": "wrong-model-in-body",
+            "messages": [{"role": "user", "content": "hello"}],
+            "max_tokens": 1,
+        }
+        response = request_session_http.post(
+            url=bbr_inference_url,
+            headers=bbr_api_key_headers,
+            json=wrong_model_payload,
+            timeout=60,
+        )
+        assert response.status_code not in (401, 403), (
+            f"Auth rejected based on body model; expected path identity to win on /llm/ paths, "
+            f"got {response.status_code}"
+        )
+        LOGGER.info(f"Path-wins auth verified: got {response.status_code} (not 401/403)")
+
+    @pytest.mark.tier1
+    @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
+    def test_inference_streaming_returns_sse(
+        self: Self,
+        request_session_http: requests.Session,
+        bbr_inference_url: str,
+        bbr_chat_payload: dict[str, Any],
+        bbr_api_key_headers: dict[str, str],
+    ) -> None:
+        """Verify that inference with stream=True returns 200 with SSE text/event-stream chunks."""
+        streaming_payload = {**bbr_chat_payload, "stream": True}
+        response = request_session_http.post(
+            url=bbr_inference_url,
+            headers=bbr_api_key_headers,
+            json=streaming_payload,
+            timeout=60,
+            stream=True,
+        )
+        assert response.status_code == 200, f"Expected 200 for streaming BBR inference, got {response.status_code}"
+        content_type = response.headers.get("content-type", "")
+        assert "text/event-stream" in content_type, (
+            f"Expected text/event-stream content type for streaming response, got '{content_type}'"
+        )
+        chunks = [line for line, _ in zip(response.iter_lines(), range(10)) if line]
+        assert any(chunk.startswith(b"data:") for chunk in chunks), (
+            f"Expected SSE data: chunks in streaming response — first chunks: {chunks!r}"
+        )
+        LOGGER.info(f"Streaming BBR inference returned 200 with {len(chunks)} SSE chunks")
+
     @pytest.mark.smoke
     @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
     def test_list_models_returns_200_with_api_key(
