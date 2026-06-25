@@ -62,7 +62,6 @@ def prompt_injection_detector_isvc(
     teardown_resources: bool,
 ) -> Generator[InferenceService, Any, Any]:
     if pytestconfig.option.post_upgrade:
-        # During post-upgrade, reuse existing InferenceService
         isvc = InferenceService(
             client=admin_client,
             name="prompt-injection-detector",
@@ -263,7 +262,7 @@ def installed_tempo_operator(
 
         yield
 
-        if teardown_resources and not pytestconfig.option.post_upgrade:
+        if teardown_resources:
             uninstall_operator(
                 admin_client=admin_client,
                 name=package_name,
@@ -370,39 +369,42 @@ def installed_opentelemetry_operator(
 
     package_name = "opentelemetry-product"
 
-    opentelemetry_subscription = Subscription(client=admin_client, namespace=operator_ns.name, name=package_name)
-
-    if not opentelemetry_subscription.exists:
-        install_operator(
-            admin_client=admin_client,
-            target_namespaces=None,
-            name=package_name,
-            channel="stable",
-            source="redhat-operators",
-            operator_namespace=operator_ns.name,
-            timeout=Timeout.TIMEOUT_15MIN,
-            install_plan_approval="Automatic",
-            starting_csv="opentelemetry-operator.v0.140.0-1",
-        )
-
-        deployment = Deployment(
-            client=admin_client,
-            namespace=operator_ns.name,
-            name="opentelemetry-operator-controller-manager",
-            wait_for_resource=True,
-        )
-        deployment.wait_for_replicas()
-
+    if pytestconfig.option.post_upgrade:
+        # Post-upgrade: reuse existing operator
         yield
 
-        if teardown_resources and not pytestconfig.option.post_upgrade:
+        # Cleanup after post-upgrade tests
+        if teardown_resources:
             uninstall_operator(
                 admin_client=admin_client,
                 name=package_name,
-                operator_namespace=operator_ns.name,
+                operator_namespace=operator_namespace,
                 clean_up_namespace=False,
             )
     else:
+        # Pre-upgrade: install operator
+        opentelemetry_subscription = Subscription(client=admin_client, namespace=operator_ns.name, name=package_name)
+
+        if not opentelemetry_subscription.exists:
+            install_operator(
+                admin_client=admin_client,
+                target_namespaces=None,
+                name=package_name,
+                channel="stable",
+                source="redhat-operators",
+                operator_namespace=operator_ns.name,
+                timeout=Timeout.TIMEOUT_15MIN,
+                install_plan_approval="Automatic",
+            )
+
+            deployment = Deployment(
+                client=admin_client,
+                namespace=operator_ns.name,
+                name="opentelemetry-operator-controller-manager",
+                wait_for_resource=True,
+            )
+            deployment.wait_for_replicas()
+
         yield
 
 
