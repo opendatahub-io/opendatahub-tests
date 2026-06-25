@@ -7,6 +7,7 @@ from typing import Any
 
 import portforward
 import pytest
+import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
@@ -18,6 +19,7 @@ from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest_testconfig import config as py_config
+from timeout_sampler import retry
 
 from tests.ai_hub.constants import (
     CA_CONFIGMAP_NAME,
@@ -29,6 +31,7 @@ from tests.ai_hub.constants import (
 )
 from tests.ai_hub.model_registry.rest_api.constants import MODEL_REGISTER_DATA, MODEL_REGISTRY_BASE_URI
 from tests.ai_hub.model_registry.rest_api.utils import (
+    create_model_registry_inference_service,
     execute_model_registry_patch_command,
     generate_ca_and_server_cert,
     get_mr_deployment,
@@ -42,16 +45,28 @@ from tests.ai_hub.utils import (
     get_mr_standard_labels,
 )
 from utilities.certificates_utils import create_ca_bundle_with_router_cert, create_k8s_secret
+from utilities.constants import RuntimeTemplates
 from utilities.exceptions import MissingParameter
 from utilities.general import generate_random_name, wait_for_pods_running
 from utilities.infra import create_ns
-from utilities.operator_utils import get_cluster_service_version
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 LOGGER = structlog.get_logger(name=__name__)
 
 
 POSTGRES_FILE_PATH: str = "/etc/server-cert"
+
+
+@retry(wait_timeout=60, sleep=5, exceptions_dict={requests.exceptions.ConnectionError: []})
+def _register_model_rest_api_with_retry(
+    model_registry_rest_url: str, model_registry_rest_headers: dict[str, str], data_dict: dict[str, Any]
+) -> dict[str, Any]:
+    return register_model_rest_api(
+        model_registry_rest_url=model_registry_rest_url,
+        model_registry_rest_headers=model_registry_rest_headers,
+        data_dict=data_dict,
+    )
 
 
 @pytest.fixture(scope="class")
@@ -60,7 +75,7 @@ def registered_model_rest_api(
     model_registry_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
 ) -> dict[str, Any]:
-    return register_model_rest_api(
+    return _register_model_rest_api_with_retry(
         model_registry_rest_url=model_registry_rest_url[0],
         model_registry_rest_headers=model_registry_rest_headers,
         data_dict=request.param,
@@ -407,42 +422,8 @@ def model_registry_default_postgres_deployment_match_label(
     return deployment.instance.spec.selector.matchLabels
 
 
-# Model Registry Deployment Fixtures (similar to HuggingFace deployment fixtures)
-
-
-class ModelRegistryDeploymentError(Exception):
-    """Exception raised when model registry deployment fails."""
-
-
 class PredictorPodNotFoundError(Exception):
     """Exception raised when predictor pods are not found for an InferenceService."""
-
-
-def get_openvino_image_from_rhoai_csv(admin_client: DynamicClient) -> str:
-    """
-    Get the OpenVINO model server image from the RHOAI ClusterServiceVersion.
-
-    Returns:
-        str: The OpenVINO model server image URL from RHOAI CSV
-
-    Raises:
-        Exception: If unable to find the image in the CSV
-    """
-    # Get the RHOAI CSV using the utility function
-    csv = get_cluster_service_version(
-        client=admin_client, prefix="rhods-operator", namespace=py_config["applications_namespace"]
-    )
-
-    # Look for OpenVINO image in spec.relatedImages
-    related_images = csv.instance.spec.get("relatedImages", [])
-
-    for image_info in related_images:
-        image_url = image_info.get("image", "")
-        if "odh-openvino-model-server" in image_url:
-            LOGGER.info(f"Found OpenVINO image from RHOAI CSV: {image_url}")
-            return image_url
-
-    raise ModelRegistryDeploymentError("Could not find odh-openvino-model-server image in RHOAI CSV relatedImages")
 
 
 @pytest.fixture(scope="class")
@@ -511,86 +492,16 @@ def model_registry_serving_runtime(
     admin_client: DynamicClient,
     model_registry_deployment_ns: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
-    """
-    Create a ServingRuntime for OpenVINO Model Server to support registered models.
-    Based on the HuggingFace serving runtime with complete ODH dashboard integration.
-    """
-    runtime_name = "mr-test-runtime"
-
-    # Complete annotations matching manually created examples
-    annotations = {
-        "opendatahub.io/apiProtocol": "REST",
-        "opendatahub.io/recommended-accelerators": '["nvidia.com/gpu"]',
-        "opendatahub.io/runtime-version": "v2025.4",
-        "opendatahub.io/serving-runtime-scope": "global",
-        "opendatahub.io/template-display-name": "OpenVINO Model Server",
-        "opendatahub.io/template-name": "kserve-ovms",
-        "openshift.io/display-name": "OpenVINO Model Server",
-    }
-
-    # Labels for ODH dashboard integration
-    labels = {
-        "opendatahub.io/dashboard": "true",
-    }
-
-    # Supported model formats
-    supported_model_formats = [
-        {"autoSelect": True, "name": "openvino_ir", "version": "opset13"},
-        {"name": "onnx", "version": "1"},
-        {"autoSelect": True, "name": "tensorflow", "version": "1"},
-        {"autoSelect": True, "name": "tensorflow", "version": "2"},
-        {"autoSelect": True, "name": "paddle", "version": "2"},
-        {"autoSelect": True, "name": "pytorch", "version": "2"},
-    ]
-
-    # Complete ServingRuntime specification
-    runtime_spec = {
-        "annotations": {
-            "opendatahub.io/kserve-runtime": "ovms",
-            "prometheus.io/path": "/metrics",
-            "prometheus.io/port": "8888",
-        },
-        "containers": [
-            {
-                "args": [
-                    "--model_name={{.Name}}",
-                    "--port=8001",
-                    "--rest_port=8888",
-                    "--model_path=/mnt/models",
-                    "--file_system_poll_wait_seconds=0",
-                    "--metrics_enable",
-                ],
-                "image": get_openvino_image_from_rhoai_csv(admin_client),
-                "name": "kserve-container",
-                "ports": [{"containerPort": 8888, "protocol": "TCP"}],
-            }
-        ],
-        "multiModel": False,
-        "protocolVersions": ["v2", "grpc-v2"],
-        "supportedModelFormats": supported_model_formats,
-    }
-
-    # Create the ServingRuntime with complete configuration
-    runtime_dict = {
-        "apiVersion": "serving.kserve.io/v1alpha1",
-        "kind": "ServingRuntime",
-        "metadata": {
-            "name": runtime_name,
-            "namespace": model_registry_deployment_ns.name,
-            "annotations": annotations,
-            "labels": labels,
-        },
-        "spec": runtime_spec,
-    }
-
-    with ServingRuntime(
+    """Create an OVMS ServingRuntime from the cluster template for registered models."""
+    with ServingRuntimeFromTemplate(
         client=admin_client,
-        kind_dict=runtime_dict,
-        teardown=True,
+        name="mr-test-runtime",
+        namespace=model_registry_deployment_ns.name,
+        template_name=RuntimeTemplates.OVMS_KSERVE,
+        multi_model=False,
+        enable_http=True,
+        enable_grpc=False,
     ) as serving_runtime:
-        LOGGER.info(
-            f"Created OpenVINO ServingRuntime: {runtime_name} in namespace: {model_registry_deployment_ns.name}"
-        )
         yield serving_runtime
 
 
@@ -602,70 +513,43 @@ def model_registry_inference_service(
     model_registry_connection_secret: Secret,
     registered_model_rest_api: dict[str, Any],
 ) -> Generator[InferenceService, Any, Any]:
-    """
-    Create an InferenceService for testing registered models.
-    Based on the HuggingFace InferenceService with comprehensive ODH dashboard integration.
-    """
-    name = "mr-test-inference-service"
-    # Use the model URI from the registered model
-    register_model_data = registered_model_rest_api.get("register_model", {})
-    model_uri = register_model_data.get("external_id", "hf://jonburdo/test2")
-    model_name = register_model_data.get("name", "my-model")
-    runtime_name = model_registry_serving_runtime.name
-
-    # Resources
-    resources = {"limits": {"cpu": "2", "memory": "4Gi"}, "requests": {"cpu": "2", "memory": "4Gi"}}
-
-    # Labels for ODH dashboard integration
-    labels = {
-        "opendatahub.io/dashboard": "true",
-    }
-
-    # Comprehensive annotations matching ODH integration
-    annotations = {
-        "opendatahub.io/connections": model_registry_connection_secret.name,
-        "opendatahub.io/hardware-profile-name": "default-profile",
-        "opendatahub.io/hardware-profile-namespace": "redhat-ods-applications",
-        "opendatahub.io/model-type": "predictive",
-        "openshift.io/description": f"Model from registry: {model_name}",
-        "openshift.io/display-name": f"registry/{name}",
-        "security.opendatahub.io/enable-auth": "false",
-        "serving.kserve.io/deploymentMode": "RawDeployment",
-    }
-
-    # Predictor configuration
-    predictor_dict = {
-        "automountServiceAccountToken": False,
-        "deploymentStrategy": {"type": "RollingUpdate"},
-        "maxReplicas": 1,
-        "minReplicas": 1,
-        "model": {
-            "modelFormat": {"name": "onnx", "version": "1"},
-            "name": "",
-            "resources": resources,
-            "runtime": runtime_name,
-            "storageUri": model_uri,
-        },
-    }
-
-    with InferenceService(
-        client=admin_client,
-        name=name,
+    """Create an InferenceService for testing registered models."""
+    with create_model_registry_inference_service(
+        admin_client=admin_client,
         namespace=model_registry_deployment_ns.name,
-        annotations=annotations,
-        label=labels,
-        predictor=predictor_dict,
-        teardown=True,
+        runtime_name=model_registry_serving_runtime.name,
+        connection_secret_name=model_registry_connection_secret.name,
+        registered_model_rest_api=registered_model_rest_api,
     ) as inference_service:
-        # Wait for InferenceService to become Ready
-        inference_service.wait_for_condition(
-            condition="Ready",
-            status="True",
-            timeout=600,  # 10 minutes timeout for model loading
-        )
-        LOGGER.info(
-            f"Created Model Registry InferenceService: {name} in namespace: {model_registry_deployment_ns.name}"
-        )
+        yield inference_service
+
+
+@pytest.fixture(scope="class")
+def model_registry_linked_inference_service(
+    admin_client: DynamicClient,
+    model_registry_deployment_ns: Namespace,
+    model_registry_serving_runtime: ServingRuntime,
+    model_registry_connection_secret: Secret,
+    registered_model_rest_api: dict[str, Any],
+    model_registry_instance: list[ModelRegistry],
+) -> Generator[InferenceService, Any, Any]:
+    """Create an InferenceService with ModelRegistry labels for finalizer testing."""
+    register_model_data = registered_model_rest_api.get("register_model", {})
+    registered_model_id = register_model_data.get("id", "")
+    model_version_id = registered_model_rest_api.get("model_version", {}).get("id", "")
+
+    with create_model_registry_inference_service(
+        admin_client=admin_client,
+        namespace=model_registry_deployment_ns.name,
+        runtime_name=model_registry_serving_runtime.name,
+        connection_secret_name=model_registry_connection_secret.name,
+        registered_model_rest_api=registered_model_rest_api,
+        extra_labels={
+            "modelregistry.opendatahub.io/registered-model-id": registered_model_id,
+            "modelregistry.opendatahub.io/model-version-id": model_version_id,
+            "modelregistry.opendatahub.io/name": model_registry_instance[0].name,
+        },
+    ) as inference_service:
         yield inference_service
 
 

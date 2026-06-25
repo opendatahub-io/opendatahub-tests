@@ -20,6 +20,7 @@ MAAS_API_KEY_MAX_EXPIRATION_DAYS = 90
     "maas_gateway_api",
     "maas_api_gateway_reachable",
     "minimal_subscription_for_free_user",
+    "maas_auth_policy_tinyllama_free",
 )
 class TestAPIKeyExpiration:
     """Tests for API key expiration policy enforcement."""

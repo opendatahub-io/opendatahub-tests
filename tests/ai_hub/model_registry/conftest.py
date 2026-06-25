@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 import structlog
+from aiohttp import ClientConnectionError, ClientResponseError, ServerDisconnectedError
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from model_registry import ModelRegistry as ModelRegistryClient
@@ -17,6 +18,7 @@ from ocp_resources.role_binding import RoleBinding
 from ocp_resources.service_account import ServiceAccount
 from pyhelper_utils.shell import run_command
 from pytest import FixtureRequest
+from timeout_sampler import retry
 
 from tests.ai_hub.constants import (
     MODEL_REGISTRY_POD_FILTER,
@@ -71,21 +73,30 @@ def model_registry_client(
     return mr_clients
 
 
+@retry(
+    wait_timeout=60,
+    sleep=5,
+    exceptions_dict={ClientConnectionError: [], ServerDisconnectedError: [], ClientResponseError: []},
+)
+def _register_model_with_retry(client: ModelRegistryClient, params: dict[str, Any]) -> RegisteredModel:
+    return client.register_model(
+        name=params.get("model_name"),
+        uri=params.get("model_uri"),
+        version=params.get("model_version"),
+        version_description=params.get("model_description"),
+        model_format_name=params.get("model_format"),
+        model_format_version=params.get("model_format_version"),
+        storage_key=params.get("model_storage_key"),
+        storage_path=params.get("model_storage_path"),
+        metadata=params.get("model_metadata"),
+    )
+
+
 @pytest.fixture(scope="class")
 def registered_model(
     request: FixtureRequest, model_registry_client: list[ModelRegistryClient]
 ) -> Generator[RegisteredModel]:
-    yield model_registry_client[0].register_model(
-        name=request.param.get("model_name"),
-        uri=request.param.get("model_uri"),
-        version=request.param.get("model_version"),
-        version_description=request.param.get("model_description"),
-        model_format_name=request.param.get("model_format"),
-        model_format_version=request.param.get("model_format_version"),
-        storage_key=request.param.get("model_storage_key"),
-        storage_path=request.param.get("model_storage_path"),
-        metadata=request.param.get("model_metadata"),
-    )
+    yield _register_model_with_retry(client=model_registry_client[0], params=request.param)
 
 
 @pytest.fixture(scope="class")

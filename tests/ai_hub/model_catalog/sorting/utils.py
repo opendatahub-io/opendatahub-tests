@@ -1,7 +1,9 @@
 from typing import Any
 
+import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
+from timeout_sampler import retry
 
 from tests.ai_hub.model_catalog.db_constants import (
     GET_MODELS_BY_ACCURACY_DB_QUERY,
@@ -17,6 +19,7 @@ from tests.ai_hub.model_catalog.utils import (
 LOGGER = structlog.get_logger(name=__name__)
 
 
+@retry(wait_timeout=60, sleep=5, exceptions_dict={requests.exceptions.ConnectionError: []})
 def get_sources_with_sorting(
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
@@ -45,6 +48,7 @@ def get_sources_with_sorting(
     return execute_get_command(url=base_url, headers=model_registry_rest_headers, params=params)
 
 
+@retry(wait_timeout=60, sleep=5, exceptions_dict={requests.exceptions.ConnectionError: []})
 def get_artifacts_with_sorting(
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
@@ -438,6 +442,7 @@ def _verify_models_with_accuracy_sorted(
     return True
 
 
+@retry(wait_timeout=60, sleep=5, exceptions_dict={requests.exceptions.ConnectionError: []})
 def get_minimum_artifact_property_value(
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],

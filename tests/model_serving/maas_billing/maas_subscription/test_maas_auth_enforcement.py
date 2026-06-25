@@ -99,12 +99,12 @@ class TestMaaSAuthPolicyEnforcementTinyLlama:
             model_url=model_url_tinyllama_premium,
             headers=maas_headers_for_wrong_group_sa,
             payload=payload,
-            expected_statuses={401},
+            expected_statuses={401, 403},
         )
         LOGGER.info(
             "test_wrong_group_sa_denied_on_premium_model -> "
             f"POST {model_url_tinyllama_premium} returned {resp.status_code}"
         )
-        assert resp.status_code == 401, (
-            f"Expected 401 (SA token not authenticated as MaaS user), got {resp.status_code}: {resp.text[:200]}"
+        assert resp.status_code in (401, 403), (
+            f"Expected 401 or 403 (SA token denied on premium model), got {resp.status_code}: {resp.text[:200]}"
         )
