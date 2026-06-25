@@ -13,6 +13,8 @@ from tests.ai_hub.model_catalog.constants import (
     VALIDATED_CATALOG_ID,
 )
 from tests.ai_hub.model_catalog.metadata.utils import get_labels_from_configmaps
+from tests.ai_hub.model_catalog.search.utils import fetch_all_artifacts_with_dynamic_paging
+from tests.ai_hub.model_catalog.utils import get_models_from_catalog_api
 from tests.ai_hub.utils import execute_get_command
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -97,3 +99,42 @@ def validated_model_artifact_uris(
         result[model_name] = [artifact.get("uri", "") for artifact in artifacts_response.get("items", [])]
 
     return result
+
+
+@pytest.fixture()
+def validated_model(
+    request: pytest.FixtureRequest,
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+) -> dict[str, Any]:
+    """Fetch a validated model from the catalog API by name."""
+    model_name = request.param
+    response = get_models_from_catalog_api(
+        model_catalog_rest_url=model_catalog_rest_url,
+        model_registry_rest_headers=model_registry_rest_headers,
+        page_size=1,
+        additional_params=f"&source={VALIDATED_CATALOG_ID}&filterQuery=name='RedHatAI/{model_name}'",
+    )
+    items = response.get("items", [])
+    assert items, f"Model '{model_name}' not found in catalog API for source '{VALIDATED_CATALOG_ID}'"
+    return items[0]
+
+
+@pytest.fixture()
+def performance_artifacts(
+    validated_model: dict[str, Any],
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+) -> list[dict[str, Any]]:
+    """Fetch all performance artifacts for a validated model."""
+    model_name = validated_model["name"]
+    artifact_url = (
+        f"{model_catalog_rest_url[0]}sources/{VALIDATED_CATALOG_ID}/models/{model_name}/artifacts/performance?pageSize"
+    )
+    response = fetch_all_artifacts_with_dynamic_paging(
+        url_with_pagesize=artifact_url,
+        headers=model_registry_rest_headers,
+    )
+    artifacts = response.get("items", [])
+    assert artifacts, f"No performance artifacts found for '{model_name}'"
+    return artifacts

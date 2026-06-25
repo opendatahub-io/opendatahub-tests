@@ -20,6 +20,7 @@ LOGGER = structlog.get_logger(name=__name__)
     "maas_gateway_api",
     "maas_api_gateway_reachable",
     "minimal_subscription_for_free_user",
+    "maas_auth_policy_tinyllama_free",
 )
 class TestAPIKeyBulkOperations:
     """Tests for MaaS API key bulk revoke operations."""

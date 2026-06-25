@@ -9,6 +9,7 @@ EVALHUB_HEALTH_STATUS_HEALTHY: str = "healthy"
 
 EVALHUB_APP_LABEL: str = "eval-hub"
 EVALHUB_CONTAINER_NAME: str = "evalhub"
+EVALHUB_KUBE_RBAC_PROXY_CONTAINER: str = "kube-rbac-proxy"
 EVALHUB_COMPONENT_LABEL: str = "api"
 
 # CRD details

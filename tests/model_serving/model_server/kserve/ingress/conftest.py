@@ -74,6 +74,13 @@ def patched_kserve_isvc_visibility_label(
             if sample and sample == isvc_orig_url:
                 break
 
+        LOGGER.info(f"Wait for inference service {ovms_kserve_inference_service.name} ready after label restore")
+        ovms_kserve_inference_service.wait_for_condition(
+            condition=ovms_kserve_inference_service.Condition.READY,
+            status=ovms_kserve_inference_service.Condition.Status.TRUE,
+            timeout=2 * 60,
+        )
+
 
 @pytest.fixture()
 def ovms_raw_isvc_patched_annotations(
