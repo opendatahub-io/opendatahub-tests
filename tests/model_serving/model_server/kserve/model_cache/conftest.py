@@ -184,7 +184,7 @@ def mnist_local_model_cache(
         source_model_uri=source_uri,
         model_size="100Mi",
         node_groups=[LOCAL_MODEL_NODE_GROUP_NAME],
-        storage_key=model_cache_download_s3_secret.name,
+        storage={"key": model_cache_download_s3_secret.name},
     ) as cache:
         wait_for_local_model_cache_nodes_downloaded(cache=cache, timeout=Timeout.TIMEOUT_10MIN)
         yield cache

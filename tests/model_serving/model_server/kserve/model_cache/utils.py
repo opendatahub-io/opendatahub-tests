@@ -5,64 +5,17 @@ from typing import Any
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
-from ocp_resources.resource import NamespacedResource, Resource
+from ocp_resources.resource import Resource
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from utilities.constants import ApiGroups
 from utilities.infra import get_pods_by_isvc_label
+from utilities.resources.local_model_namespace_cache import LocalModelNamespaceCache
 
 KSERVE_LOCALMODEL_PVC_ANNOTATION: str = f"internal.{ApiGroups.KSERVE}/localmodel-pvc-name"
 LOCAL_MODEL_NODE_GROUP_NAME: str = "workers"
 MODEL_CACHE_AGENT_DAEMONSET: str = "kserve-localmodelnode-agent"
 MINT_ONNX_STORAGE_PATH: str = "test-dir"
-
-
-class LocalModelNamespaceCache(NamespacedResource):
-    """Namespace-scoped ``LocalModelNamespaceCache`` CR (KServe ``serving.kserve.io/v1alpha1``)."""
-
-    api_group: str = NamespacedResource.ApiGroup.SERVING_KSERVE_IO
-
-    def __init__(
-        self,
-        source_model_uri: str,
-        model_size: str,
-        node_groups: list[str],
-        storage_key: str | None = None,
-        service_account_name: str | None = None,
-        **kwargs: Any,
-    ) -> None:
-        """Build a ``LocalModelNamespaceCache`` with model download source and target node groups.
-
-        Args:
-            source_model_uri: Remote model URI (e.g. ``s3://bucket/path/``).
-            model_size: Upper bound for the cached model size (e.g. ``"100Mi"``).
-            node_groups: Names of ``LocalModelNodeGroup`` objects to cache on.
-            storage_key: Name of a kserve-annotated Secret in the operator job namespace
-                used to inject S3 credentials into the download Job.
-            service_account_name: SA name for credential injection (alternative to *storage_key*).
-        """
-        super().__init__(**kwargs)
-        self.source_model_uri = source_model_uri
-        self.model_size = model_size
-        self.node_groups = node_groups
-        self.storage_key = storage_key
-        self.service_account_name = service_account_name
-
-    def to_dict(self) -> None:
-        """Populate the Kubernetes manifest for this cache."""
-        super().to_dict()
-
-        if not self.kind_dict and not self.yaml_file:
-            spec: dict[str, Any] = {
-                "sourceModelUri": self.source_model_uri,
-                "modelSize": self.model_size,
-                "nodeGroups": self.node_groups,
-            }
-            if self.storage_key:
-                spec["storage"] = {"key": self.storage_key}
-            elif self.service_account_name:
-                spec["serviceAccountName"] = self.service_account_name
-            self.res["spec"] = spec
 
 
 class LocalModelNodeGroup(Resource):

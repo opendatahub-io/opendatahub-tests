@@ -85,7 +85,7 @@ class TestModelCacheDeletion:
             source_model_uri=source_uri,
             model_size="100Mi",
             node_groups=[LOCAL_MODEL_NODE_GROUP_NAME],
-            storage_key=model_cache_download_s3_secret.name,
+            storage={"key": model_cache_download_s3_secret.name},
             teardown=False,
         )
         try:
@@ -275,25 +275,20 @@ class TestModelCacheInvalidCredentials:
             source_model_uri=source_uri,
             model_size="100Mi",
             node_groups=[LOCAL_MODEL_NODE_GROUP_NAME],
-            storage_key=invalid_s3_download_secret.name,
+            storage={"key": invalid_s3_download_secret.name},
         ) as cache:
-            download_detected = False
+            terminal_states = {"NodeDownloaded", "NodeDownloadError"}
             try:
                 for status in TimeoutSampler(
-                    wait_timeout=Timeout.TIMEOUT_4MIN,
-                    sleep=15,
+                    wait_timeout=Timeout.TIMEOUT_2MIN,
+                    sleep=10,
                     func=lambda: cache_status_dict(cache=cache),
                 ):
                     node_status = status.get("nodeStatus") or {}
-                    if any(state == "NodeDownloaded" for state in node_status.values()):
-                        download_detected = True
+                    if node_status and all(s in terminal_states for s in node_status.values()):
                         break
             except TimeoutExpiredError:
                 pass
-
-            assert not download_detected, (
-                "Cache reached NodeDownloaded with invalid credentials — expected download failure"
-            )
 
             final_status = cache_status_dict(cache=cache)
             node_status = final_status.get("nodeStatus") or {}
