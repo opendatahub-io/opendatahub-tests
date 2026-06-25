@@ -32,30 +32,51 @@ TYPO_PROVIDER = "opeanai"
 class TestExternalModelNegative:
     """Negative tests for ExternalModel CRD validation and gateway error handling."""
 
-    @pytest.mark.skip(reason="CRD does not yet reject invalid provider enum values")
     @pytest.mark.tier3
-    def test_typo_provider_rejected_by_crd(
+    @pytest.mark.parametrize(
+        "name, provider, endpoint",
+        [
+            pytest.param(
+                "e2e-typo-provider",
+                TYPO_PROVIDER,
+                "api.openai.com",
+                marks=pytest.mark.skip(reason="CRD does not yet reject invalid provider enum values"),
+                id="test_typo_provider_rejected_by_crd",
+            ),
+            pytest.param(
+                "e2e-bad-endpoint",
+                "openai",
+                "https://not-a-valid-fqdn!@#",
+                id="test_invalid_endpoint_format_rejected_by_crd",
+            ),
+        ],
+    )
+    def test_external_provider_invalid_config_rejected_by_crd(
         self,
         admin_client: DynamicClient,
         maas_unprivileged_model_namespace: Namespace,
         external_model_credential_secret: Secret,
+        name: str,
+        provider: str,
+        endpoint: str,
     ) -> None:
-        """Given an ExternalProvider with a typo in provider, when it is created, then the API rejects it."""
+        """Given an ExternalProvider with invalid configuration, when it is created, then the API rejects it."""
         with pytest.raises(UnprocessibleEntityError):
             ExternalProvider(
                 client=admin_client,
-                name="e2e-typo-provider",
+                name=name,
                 namespace=maas_unprivileged_model_namespace.name,
-                provider=TYPO_PROVIDER,
-                endpoint="api.openai.com",
+                provider=provider,
+                endpoint=endpoint,
                 auth={
                     "type": "simple",
                     "secretRef": {"name": external_model_credential_secret.name},
                 },
                 teardown=True,
             ).deploy()
-
-        LOGGER.info(f"ExternalProvider with provider '{TYPO_PROVIDER}' correctly rejected by CRD validation")
+        LOGGER.info(
+            f"ExternalProvider with provider='{provider}', endpoint='{endpoint}' correctly rejected by CRD validation"
+        )
 
     @pytest.mark.tier3
     def test_missing_external_provider_refs_rejected(
@@ -72,32 +93,7 @@ class TestExternalModelNegative:
                 external_provider_refs=[],
                 teardown=True,
             ).deploy()
-
         LOGGER.info("ExternalModel without externalProviderRefs correctly rejected by CRD validation")
-
-    @pytest.mark.tier3
-    def test_invalid_endpoint_format_rejected_by_crd(
-        self,
-        admin_client: DynamicClient,
-        maas_unprivileged_model_namespace: Namespace,
-        external_model_credential_secret: Secret,
-    ) -> None:
-        """Given an ExternalProvider with an invalid endpoint format, when it is created, then the API rejects it."""
-        with pytest.raises(UnprocessibleEntityError):
-            ExternalProvider(
-                client=admin_client,
-                name="e2e-bad-endpoint",
-                namespace=maas_unprivileged_model_namespace.name,
-                provider="openai",
-                endpoint="https://not-a-valid-fqdn!@#",
-                auth={
-                    "type": "simple",
-                    "secretRef": {"name": external_model_credential_secret.name},
-                },
-                teardown=True,
-            ).deploy()
-
-        LOGGER.info("ExternalProvider with invalid endpoint format correctly rejected by CRD validation")
 
     @pytest.mark.skip(reason="CRD does not yet reject invalid apiFormat enum values")
     @pytest.mark.tier3

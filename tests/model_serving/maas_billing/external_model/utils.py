@@ -42,10 +42,8 @@ def _inference_resource_reconciliation_state(resource: Resource) -> str | None:
         return None
 
     phase = getattr(status, "phase", None)
-    if phase == "Ready":
-        return "Ready"
-    if phase == "Failed":
-        return "Failed"
+    if phase in ("Ready", "Failed"):
+        return phase
 
     for condition in status.conditions or []:
         if condition.type == "Ready" and condition.status == "True":
@@ -56,7 +54,6 @@ def _inference_resource_reconciliation_state(resource: Resource) -> str | None:
 
 def wait_for_inference_resource_phase(
     resource: Resource,
-    *,
     phase: str = "Ready",
     timeout: int = 300,
     sleep: int = 5,
