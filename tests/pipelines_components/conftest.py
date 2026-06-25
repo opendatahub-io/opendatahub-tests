@@ -15,7 +15,7 @@ from ocp_resources.data_science_pipelines_application import DataSciencePipeline
 from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
-from ocp_resources.resource import ResourceEditor
+from ocp_resources.resource import Resource, ResourceEditor
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from timeout_sampler import TimeoutExpiredError
@@ -61,27 +61,25 @@ def pytest_configure(config: pytest.Config) -> None:
             key, _, value = line.partition("=")
             loaded[key.strip()] = os.environ.get(key.strip(), value.strip())
 
-        logger = structlog.get_logger(name=__name__)
-        logger.info(  # noqa: FCN001
+        LOGGER.info(  # noqa: FCN001
             "Loaded .env file",
             path=str(env_file),
-            variables={k: _mask_value(key=k, value=v) for k, v in loaded.items()},
+            variables={name: _mask_value(key=name, value=val) for name, val in loaded.items()},
         )
 
-    if config.option.collectonly:
+    if config.option.collectonly or getattr(config.option, "setupplan", False):
         return
 
     try:
         existing = get_rhods_subscription()
-    except Exception:  # noqa: BLE001
-        LOGGER.debug("No cluster connection available — skipping RHOAI operator check")
-        return
+    except Exception as exc:
+        raise RuntimeError("No cluster connection available — cannot run tests") from exc
 
     if existing:
         installed_csv = existing.instance.status.get("installedCSV", "unknown")
         LOGGER.info(f"RHOAI operator installed: {existing.name} (CSV: {installed_csv})")
     else:
-        LOGGER.info("RHOAI operator is not installed on this cluster")
+        raise RuntimeError("RHOAI operator is not installed on this cluster")
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -92,16 +90,14 @@ def _skip_teardown_if_requested():
     so that teams can inspect logs and state.
     Delete the namespace manually when done: oc delete ns <namespace>
     """
-    if os.getenv("SKIP_TEARDOWN", "").lower() not in ("true", "1", "yes"):
+    if os.getenv("SKIP_TEARDOWN", "").lower() in ("true", "1", "yes"):
+        LOGGER.warning("SKIP_TEARDOWN is set — all resources will be kept after test completion")
+        _original_clean_up = Resource.clean_up
+        Resource.clean_up = lambda self, *args, **kwargs: True
         yield
-        return
-    LOGGER.warning("SKIP_TEARDOWN is set — all resources will be kept after test completion")
-    from ocp_resources.resource import Resource
-
-    _original_clean_up = Resource.clean_up
-    Resource.clean_up = lambda self, *args, **kwargs: True
-    yield
-    Resource.clean_up = _original_clean_up
+        Resource.clean_up = _original_clean_up
+    else:
+        yield
 
 
 # ---------------------------------------------------------------------------
@@ -139,6 +135,7 @@ def enabled_pipelines_in_dsc(
     ):
         wait_for_dsc_status_ready(dsc_resource=dsc_resource)
         yield dsc_resource
+        wait_for_dsc_status_ready(dsc_resource=dsc_resource)
 
 
 @pytest.fixture(scope="class")

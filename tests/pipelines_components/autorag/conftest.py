@@ -1,6 +1,5 @@
 import os
 import shlex
-import time
 import uuid
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -22,8 +21,9 @@ from ocp_resources.resource import ResourceEditor
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
+from ocp_resources.service_account import ServiceAccount
 from ogx_client import APIConnectionError, InternalServerError, OgxClient
-from timeout_sampler import TimeoutExpiredError, retry
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
 
 from tests.fixtures.vector_io import (  # noqa: NIT001
     MILVUS_TOKEN,
@@ -64,6 +64,7 @@ from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.exceptions import UnexpectedResourceCountError
 from utilities.general import generate_random_name
 from utilities.inference_utils import create_isvc
+from utilities.infra import create_ns
 from utilities.resources.ogx_server import OgxServer
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -193,7 +194,7 @@ def _validate_autorag_env() -> None:
         LOGGER.info("AUTORAG_PIPELINE_YAML is not set — using managed pipeline mode")
     missing = [f"  {var}: {desc}" for var, desc in _AUTORAG_REQUIRED_ENV.items() if not os.environ.get(var)]
     if missing:
-        pytest.skip("AutoRAG smoke test requires environment variables:\n" + "\n".join(missing))
+        pytest.fail("AutoRAG smoke test requires environment variables:\n" + "\n".join(missing))
 
 
 # ---------------------------------------------------------------------------
@@ -204,25 +205,11 @@ def _validate_autorag_env() -> None:
 
 @pytest.fixture(scope="class")
 def pipelines_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:  # noqa: UFN001
-    from ocp_resources.exceptions import ResourceTeardownError
-
-    from utilities.infra import create_ns
-
-    try:
-        with create_ns(
-            admin_client=admin_client,
-            name=f"autorag-aqa-{uuid.uuid4().hex[:8]}",
-        ) as namespace:
-            yield namespace
-    except ResourceTeardownError:
-        LOGGER.warning("Namespace %s teardown timed out, force-removing finalizers", namespace.name)
-        try:
-            ns_json = namespace.instance.to_dict()
-            ns_json["spec"]["finalizers"] = []
-            admin_client.request("PUT", f"/api/v1/namespaces/{namespace.name}/finalize", body=ns_json)
-            LOGGER.info("Force-finalized namespace %s", namespace.name)
-        except Exception:  # noqa: BLE001
-            LOGGER.warning("Could not force-finalize namespace %s — delete manually", namespace.name)
+    with create_ns(
+        admin_client=admin_client,
+        name=f"autorag-aqa-{uuid.uuid4().hex[:8]}",
+    ) as namespace:
+        yield namespace
 
 
 # ---------------------------------------------------------------------------
@@ -267,8 +254,6 @@ def autorag_model_service_account(
     autorag_hf_token_secret: Secret,
 ) -> Generator[Any, Any, Any]:
     """ServiceAccount with HF token secret for KServe storage initializer."""
-    from ocp_resources.service_account import ServiceAccount
-
     with ServiceAccount(
         client=admin_client,
         namespace=pipelines_namespace.name,
@@ -325,11 +310,10 @@ def autorag_inference_service(
 
 
 @pytest.fixture(scope="class")
-def autorag_inference_url(autorag_inference_service: InferenceService, pipelines_namespace: Namespace) -> str:
-    try:
-        return f"{autorag_inference_service.instance.status.address.url}/v1"
-    except AttributeError:
-        return f"http://{autorag_inference_service.name}-predictor.{pipelines_namespace.name}.svc.cluster.local:8080/v1"
+def autorag_inference_url(autorag_inference_service: InferenceService) -> str:
+    url = autorag_inference_service.instance.status.address.url
+    assert url, f"InferenceService {autorag_inference_service.name} has no status.address.url"
+    return f"{url}/v1"
 
 
 @pytest.fixture(scope="class")
@@ -390,11 +374,10 @@ def autorag_embedding_service(
 
 
 @pytest.fixture(scope="class")
-def autorag_embedding_url(autorag_embedding_service: InferenceService, pipelines_namespace: Namespace) -> str:
-    try:
-        return f"{autorag_embedding_service.instance.status.address.url}/v1"
-    except AttributeError:
-        return f"http://{autorag_embedding_service.name}-predictor.{pipelines_namespace.name}.svc.cluster.local:8080/v1"
+def autorag_embedding_url(autorag_embedding_service: InferenceService) -> str:
+    url = autorag_embedding_service.instance.status.address.url
+    assert url, f"InferenceService {autorag_embedding_service.name} has no status.address.url"
+    return f"{url}/v1"
 
 
 # ---------------------------------------------------------------------------
@@ -718,13 +701,7 @@ def autorag_ogx_deployment(
     deployment.timeout_seconds = 240
     deployment.wait(timeout=240)
     deployment.wait_for_replicas()
-    pod = _wait_for_unique_ogx_pod(client=admin_client, namespace=autorag_ogx_server.namespace)
-
-    try:
-        logs = pod.log()
-        LOGGER.info("OGX pod startup log", logs=logs[-8000:] if len(logs) > 8000 else logs)
-    except Exception as exc:  # noqa: BLE001
-        LOGGER.warning("Could not fetch OGX pod logs", error=str(exc))
+    _wait_for_unique_ogx_pod(client=admin_client, namespace=autorag_ogx_server.namespace)
 
     return deployment
 
@@ -829,16 +806,16 @@ def _resolve_model_id(registered_ids: set[str], model_name: str) -> str | None:
 
 def _log_registered_models(client: OgxClient) -> set[str]:
     models = client.models.list()
-    registered_ids = {m.id for m in models.data}
+    registered_ids = {model.id for model in models.data}
     LOGGER.info(
         "OGX registered models",
         models=[
             {
-                "id": m.id,
-                "model_type": str(getattr(m, "model_type", "?")),
-                "custom_metadata": getattr(m, "custom_metadata", {}),
+                "id": model.id,
+                "model_type": str(getattr(model, "model_type", "?")),
+                "custom_metadata": getattr(model, "custom_metadata", {}),
             }
-            for m in models.data
+            for model in models.data
         ],
     )
     return registered_ids
@@ -859,23 +836,29 @@ def _wait_for_vllm_model_ready(vllm_base_url: str, model_name: str, timeout: int
         )
         return
 
-    deadline = time.monotonic() + timeout
+    def _check_model() -> bool:
+        with httpx.Client(verify=False, timeout=30) as http_client:
+            resp = http_client.get(f"{vllm_base_url}/models")
+            if resp.status_code == 200:
+                model_ids = {model.get("id", "") for model in resp.json().get("data", [])}
+                LOGGER.info("vLLM models", url=vllm_base_url, models=sorted(model_ids))
+                if _resolve_model_id(model_ids, model_name) is not None:
+                    LOGGER.info("vLLM model is ready", model=model_name)
+                    return True
+            else:
+                LOGGER.debug("vLLM /v1/models returned non-200", status=resp.status_code)
+        return False
+
     LOGGER.info("vLLM URL is reachable; waiting for model", url=vllm_base_url, model=model_name)
-    while time.monotonic() < deadline:
-        try:
-            with httpx.Client(verify=False, timeout=30) as client:
-                resp = client.get(f"{vllm_base_url}/models")
-                if resp.status_code == 200:
-                    model_ids = {m.get("id", "") for m in resp.json().get("data", [])}
-                    LOGGER.info("vLLM models", url=vllm_base_url, models=sorted(model_ids))
-                    if _resolve_model_id(model_ids, model_name) is not None:
-                        LOGGER.info("vLLM model is ready", model=model_name)
-                        return
-                else:
-                    LOGGER.debug("vLLM /v1/models returned non-200", status=resp.status_code)
-        except Exception as exc:  # noqa: BLE001
-            LOGGER.debug("vLLM model check failed", error=str(exc))
-        time.sleep(15)
+    for ready in TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=15,
+        func=_check_model,
+        exceptions_dict={httpx.HTTPError: [], ConnectionError: [], OSError: []},
+    ):
+        if ready:
+            return
+
     raise TimeoutError(
         f"vLLM did not serve model '{model_name}' at '{vllm_base_url}' within {timeout}s. "
         f"Verify --served-model-name is set correctly in the ISVC spec."
