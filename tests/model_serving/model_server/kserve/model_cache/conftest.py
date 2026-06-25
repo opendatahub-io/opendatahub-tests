@@ -1,4 +1,4 @@
-"""Pytest fixtures for KServe ``LocalModelNamespaceCache`` smoke tests."""
+"""Pytest fixtures for KServe ``LocalModelNamespaceCache`` tests."""
 
 from collections.abc import Generator
 from typing import Any
@@ -7,11 +7,15 @@ import pytest
 import shortuuid
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.daemonset import DaemonSet
+from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
+from ocp_resources.node import Node
+from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest_testconfig import config as py_config
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_serving.model_server.kserve.model_cache.utils import (
     LOCAL_MODEL_NODE_GROUP_NAME,
@@ -23,35 +27,92 @@ from tests.model_serving.model_server.kserve.model_cache.utils import (
 )
 from utilities.constants import KServeDeploymentType, ModelFormat, Protocols, Timeout
 from utilities.inference_utils import create_isvc
-from utilities.infra import s3_endpoint_secret
+from utilities.infra import get_data_science_cluster, s3_endpoint_secret, wait_for_dsc_status_ready
+
+MODEL_CACHE_SIZE: str = "10Gi"
+MODEL_CACHE_NODE_COUNT: int = 2
 
 
 @pytest.fixture(scope="session")
-def model_cache_infra_ready(admin_client: DynamicClient) -> None:
-    """Skip the session when model-cache infra is absent.
+def model_cache_infra_ready(
+    admin_client: DynamicClient,
+) -> Generator[DataScienceCluster, Any, Any]:
+    """Enable ``kserve.modelCache`` in the DSC and wait for the agent DaemonSet.
 
-    Prerequisite: the DSC must have ``kserve.modelCache.managementState: Managed``
-    configured by a cluster admin before the test suite runs.  This fixture does
-    **not** create or modify the DSC; it only verifies the expected resources exist.
+    Patches the DSC to set ``modelCache.managementState: Managed`` with a
+    ``cacheSize`` and two worker ``nodeNames``.  On teardown the
+    ``ResourceEditor`` restores the original DSC spec automatically.
     """
-    node_group = LocalModelNodeGroup(client=admin_client, name=LOCAL_MODEL_NODE_GROUP_NAME)
-    if not node_group.exists:
-        pytest.skip(
-            f"LocalModelNodeGroup '{LOCAL_MODEL_NODE_GROUP_NAME}' not found; "
-            "set kserve.modelCache.managementState=Managed in the DSC."
-        )
-
+    dsc = get_data_science_cluster(client=admin_client)
     applications_namespace: str = py_config["applications_namespace"]
-    agent = DaemonSet(
-        client=admin_client,
-        name=MODEL_CACHE_AGENT_DAEMONSET,
-        namespace=applications_namespace,
+
+    already_labeled = sorted(
+        [node.name for node in Node.get(client=admin_client, label_selector="kserve/localmodel=worker")],
     )
-    if not agent.exists:
-        pytest.skip(
-            f"DaemonSet '{MODEL_CACHE_AGENT_DAEMONSET}' not found in '{applications_namespace}'; "
-            "model cache agent not deployed."
+    all_workers = sorted(
+        [node.name for node in Node.get(client=admin_client, label_selector="node-role.kubernetes.io/worker")],
+    )
+
+    if len(already_labeled) >= MODEL_CACHE_NODE_COUNT:
+        selected_nodes = already_labeled[:MODEL_CACHE_NODE_COUNT]
+    elif len(all_workers) >= MODEL_CACHE_NODE_COUNT:
+        selected_nodes = all_workers[:MODEL_CACHE_NODE_COUNT]
+    else:
+        pytest.skip(f"Need at least {MODEL_CACHE_NODE_COUNT} worker nodes for model cache; found {len(all_workers)}")
+
+    with ResourceEditor(
+        patches={
+            dsc: {
+                "spec": {
+                    "components": {
+                        "kserve": {
+                            "modelCache": {
+                                "managementState": "Managed",
+                                "cacheSize": MODEL_CACHE_SIZE,
+                                "nodeNames": selected_nodes,
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ):
+        wait_for_dsc_status_ready(dsc_resource=dsc)
+
+        try:
+            for sample in TimeoutSampler(
+                wait_timeout=Timeout.TIMEOUT_5MIN,
+                sleep=10,
+                func=lambda: LocalModelNodeGroup(client=admin_client, name=LOCAL_MODEL_NODE_GROUP_NAME).exists,
+            ):
+                if sample:
+                    break
+        except TimeoutExpiredError:
+            pytest.fail(
+                f"LocalModelNodeGroup '{LOCAL_MODEL_NODE_GROUP_NAME}' did not appear "
+                f"within {Timeout.TIMEOUT_5MIN}s after enabling modelCache in DSC"
+            )
+
+        agent = DaemonSet(
+            client=admin_client,
+            name=MODEL_CACHE_AGENT_DAEMONSET,
+            namespace=applications_namespace,
         )
+        try:
+            for sample in TimeoutSampler(
+                wait_timeout=Timeout.TIMEOUT_5MIN,
+                sleep=10,
+                func=lambda: agent.exists,
+            ):
+                if sample:
+                    break
+        except TimeoutExpiredError:
+            pytest.fail(
+                f"DaemonSet '{MODEL_CACHE_AGENT_DAEMONSET}' did not appear in "
+                f"'{applications_namespace}' within {Timeout.TIMEOUT_5MIN}s"
+            )
+
+        yield dsc
 
 
 @pytest.fixture(scope="class")
@@ -84,9 +145,31 @@ def model_cache_download_s3_secret(
 
 
 @pytest.fixture(scope="class")
+def invalid_s3_download_secret(
+    admin_client: DynamicClient,
+    ci_s3_bucket_name: str,
+    ci_s3_bucket_region: str,
+    ci_s3_bucket_endpoint: str,
+) -> Generator[Secret, Any, Any]:
+    """S3 secret with invalid credentials for negative download testing."""
+    applications_namespace: str = py_config["applications_namespace"]
+    with s3_endpoint_secret(
+        client=admin_client,
+        name="model-cache-invalid-secret",
+        namespace=applications_namespace,
+        aws_access_key="INVALIDACCESSKEY12345",
+        aws_secret_access_key="INVALIDSECRETACCESSKEY6789",  # pragma: allowlist secret
+        aws_s3_region=ci_s3_bucket_region,
+        aws_s3_bucket=ci_s3_bucket_name,
+        aws_s3_endpoint=ci_s3_bucket_endpoint,
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="class")
 def mnist_local_model_cache(
     admin_client: DynamicClient,
-    model_cache_infra_ready: None,
+    model_cache_infra_ready: DataScienceCluster,
     model_cache_download_s3_secret: Secret,
     unprivileged_model_namespace: Namespace,
     ci_s3_bucket_name: str,
