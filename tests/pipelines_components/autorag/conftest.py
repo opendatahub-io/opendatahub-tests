@@ -287,7 +287,7 @@ def autorag_inference_runtime(
         client=admin_client,
         name="autorag-vllm-inference",
         namespace=pipelines_namespace.name,
-        template_name="vllm-cpu-runtime-template", #that need to be changed when #RHOAIENG-68247 will be fixed
+        template_name="vllm-cpu-runtime-template",  # that need to be changed when #RHOAIENG-68247 will be fixed
         multi_model=False,
         enable_http=True,
         enable_grpc=False,
@@ -845,7 +845,6 @@ def _log_registered_models(client: OgxClient) -> set[str]:
 
 
 def _wait_for_vllm_model_ready(vllm_base_url: str, model_name: str, timeout: int = 300) -> None:
-    import time
 
     LOGGER.info("Probing vLLM reachability from test runner", url=vllm_base_url, model=model_name)
     try:
@@ -931,14 +930,12 @@ def autorag_managed_pipeline(
     """Discovered managed pipeline info, or None in legacy mode."""
     if not use_managed_pipelines(yaml_env_value=AUTORAG_PIPELINE_YAML):
         return None
-    LOGGER.info(f"DSPA ready; sleeping {DSPA_READY_BUFFER_SECONDS}s for managed pipeline registration")
-    time.sleep(DSPA_READY_BUFFER_SECONDS)
     return wait_for_managed_pipeline(
         api_url=dspa_api_url,
         headers=dspa_auth_headers,
         display_name=MANAGED_PIPELINE_AUTORAG,
         ca_bundle=dspa_ca_bundle_file,
-        timeout=MANAGED_PIPELINE_WAIT_TIMEOUT,
+        timeout=DSPA_READY_BUFFER_SECONDS + MANAGED_PIPELINE_WAIT_TIMEOUT,
         poll_interval=MANAGED_PIPELINE_POLL_INTERVAL,
     )
 

@@ -1,4 +1,3 @@
-import time
 from collections.abc import Generator
 from typing import Any
 
@@ -52,14 +51,12 @@ def automl_managed_pipeline(
     """Discovered managed pipeline info, or None in legacy mode."""
     if not use_managed_pipelines(yaml_env_value=AUTOML_PIPELINE_YAML):
         return None
-    LOGGER.info(f"DSPA ready; sleeping {DSPA_READY_BUFFER_SECONDS}s for managed pipeline registration")
-    time.sleep(DSPA_READY_BUFFER_SECONDS)
     return wait_for_managed_pipeline(
         api_url=dspa_api_url,
         headers=dspa_auth_headers,
         display_name=MANAGED_PIPELINE_AUTOML_TABULAR,
         ca_bundle=dspa_ca_bundle_file,
-        timeout=MANAGED_PIPELINE_WAIT_TIMEOUT,
+        timeout=DSPA_READY_BUFFER_SECONDS + MANAGED_PIPELINE_WAIT_TIMEOUT,
         poll_interval=MANAGED_PIPELINE_POLL_INTERVAL,
     )
 
