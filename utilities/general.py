@@ -474,7 +474,9 @@ def get_not_running_pods(pods: list[Pod]) -> list[dict[str, Any]]:
             ):
                 pods_not_running.append({pod.name: pod.status})
     except (ResourceNotFoundError, NotFoundError) as exc:
-        LOGGER.warning("Ignoring pod that disappeared during cluster sanity check: %s", exc)
+        LOGGER.warning(
+            "Ignoring pod '%s' that disappeared during cluster sanity check: %s", pod.name, type(exc).__name__
+        )
     return pods_not_running
 
 
@@ -490,8 +492,7 @@ def wait_for_pods_running(
     samples = TimeoutSampler(
         wait_timeout=180,
         sleep=5,
-        func=get_not_running_pods,
-        pods=list(Pod.get(client=admin_client, namespace=namespace_name)),
+        func=lambda: get_not_running_pods(pods=list(Pod.get(client=admin_client, namespace=namespace_name))),
         exceptions_dict={NotFoundError: [], ResourceNotFoundError: []},
     )
     sample = None
