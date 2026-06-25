@@ -4,7 +4,7 @@ from typing import Any
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
-from ocp_resources.maria_db import MariaDB
+from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
 from ocp_resources.trustyai_service import TrustyAIService
@@ -34,7 +34,7 @@ def trustyai_service_with_invalid_db_cert(
     model_namespace: Namespace,
     cluster_monitoring_config: ConfigMap,
     user_workload_monitoring_config: ConfigMap,
-    mariadb: MariaDB,
+    mariadb: Deployment,
     trustyai_invalid_db_ca_secret: None,
 ) -> Generator[TrustyAIService]:
     """Create a TrustyAIService deployment with an invalid database certificate set as secret.
@@ -54,7 +54,7 @@ def trustyai_service_with_invalid_db_cert(
 
 @pytest.fixture(scope="class")
 def trustyai_invalid_db_ca_secret(
-    admin_client: DynamicClient, model_namespace: Namespace, mariadb: MariaDB
+    admin_client: DynamicClient, model_namespace: Namespace, mariadb: Deployment
 ) -> Generator[Secret, Any]:
     with Secret(
         client=admin_client,

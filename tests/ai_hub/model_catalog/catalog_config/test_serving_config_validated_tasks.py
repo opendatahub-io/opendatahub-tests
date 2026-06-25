@@ -88,7 +88,6 @@ models:
     indirect=["updated_catalog_config_map"],
 )
 @pytest.mark.usefixtures("model_registry_namespace")
-@pytest.mark.jira("RHOAIENG-60668")
 @pytest.mark.tier1
 class TestServingConfigAndValidatedTasks:
     """Tests for validatedTasks and servingConfig fields in custom catalog models (RHOAIENG-60668)."""

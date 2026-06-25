@@ -23,6 +23,7 @@ from tests.ai_hub.model_catalog.search.utils import (
     validate_search_results_against_database,
 )
 from tests.ai_hub.model_catalog.utils import get_models_from_catalog_api
+from tests.ai_hub.utils import execute_get_command
 
 LOGGER = structlog.get_logger(name=__name__)
 pytestmark = [pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace")]
@@ -290,10 +291,10 @@ class TestSearchModelsByFilterQuery:
         """
         non_existing_filter_query = "fake IN ('gemma','modified-mit'))"
         with pytest.raises(ResourceNotFoundError, match="invalid filter query"):
-            get_models_from_catalog_api(
-                model_catalog_rest_url=model_catalog_rest_url,
-                model_registry_rest_headers=model_registry_rest_headers,
-                additional_params=f"&filterQuery={non_existing_filter_query}",
+            execute_get_command(
+                url=f"{model_catalog_rest_url[0]}models",
+                headers=model_registry_rest_headers,
+                params={"filterQuery": non_existing_filter_query},
             )
         # Test with a valid filter query that should return zero results
         no_result_licenses = "'fake'"
@@ -330,6 +331,7 @@ class TestSearchModelsByFilterQuery:
         # Assert that all models have all required performance data files
         assert not validation_results, f"Models with missing performance data files: {validation_results}"
 
+    @pytest.mark.downstream_only
     @pytest.mark.parametrize(
         "models_from_filter_query, expected_value, logic_type",
         [

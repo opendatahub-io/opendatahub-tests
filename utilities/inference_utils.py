@@ -135,6 +135,29 @@ class Inference:
         return False
 
 
+def get_exposed_isvc_url(isvc: InferenceService) -> str:
+    """Return the external inference base URL for an exposed InferenceService.
+
+    Args:
+        isvc: Exposed KServe InferenceService with a populated status.url.
+
+    Returns:
+        str: Base URL (scheme + host) for OpenAI-compatible inference requests.
+
+    Raises:
+        ValueError: If the service is not exposed or status.url is missing.
+    """
+    inference = Inference(inference_service=isvc)
+    if not inference.visibility_exposed:
+        raise ValueError(
+            f"InferenceService {isvc.name} is not exposed; enable external_route when creating the InferenceService."
+        )
+    base_url = isvc.instance.status.url
+    if not base_url:
+        raise ValueError(f"InferenceService {isvc.name} has no status.url; is it Ready?")
+    return base_url.rstrip("/")
+
+
 class UserInference(Inference):
     def __init__(
         self,

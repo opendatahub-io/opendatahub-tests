@@ -18,7 +18,7 @@ fixtures/
 - **`files.py`** - Factory fixture for configuring file storage providers (local, S3/MinIO)
 - **`guardrails.py`** - Fixtures for deploying and configuring the Guardrails Orchestrator, including pods, routes, health checks, and gateway configuration
 - **`inference.py`** - Fixtures for vLLM CPU serving runtimes, InferenceServices (Qwen), LLM-d inference simulator, and KServe controller configuration
-- **`trustyai.py`** - Fixtures for TrustyAI operator deployment and DataScienceCluster LMEval configuration
+- **`trustyai.py`** - Fixtures for TrustyAI operator deployment, DataScienceCluster LMEval configuration, and EvalHub multi-tenancy (tenant namespaces, RBAC, tokens)
 - **`vector_io.py`** - Factory fixture for deploying vector database providers (Milvus, Faiss, PGVector, Qdrant) with their backing services and configuration
 
 ## Registration

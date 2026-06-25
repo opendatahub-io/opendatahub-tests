@@ -129,6 +129,133 @@ uv run pytest tests/ai_safety/trustyai_service/drift/
 uv run pytest tests/ai_safety/trustyai_service/fairness/
 ```
 
+## Upgrade Testing
+
+Upgrade tests validate that AI Safety components continue to function correctly after an OpenShift AI platform upgrade. These tests use a pre-upgrade/post-upgrade pattern with pytest markers to ensure service continuity and data persistence across upgrades.
+
+### Running Upgrade Tests
+
+Upgrade tests run in two phases:
+
+1. **Pre-upgrade phase** - Run before the platform upgrade to establish baseline state:
+
+   ```bash
+   uv run pytest -m pre_upgrade tests/ai_safety/
+   ```
+
+2. **Post-upgrade phase** - Run after the platform upgrade to verify persistence and functionality:
+
+   ```bash
+   uv run pytest -m post_upgrade tests/ai_safety/
+   ```
+
+### Upgrade Test Coverage
+
+#### Guardrails Orchestrator
+
+**Location:** `tests/ai_safety/guardrails/upgrade/test_guardrails_upgrade.py`
+
+**Test Classes:**
+
+- `TestGuardrailsOrchestratorWithBuiltInDetectorsPreUpgrade`
+- `TestGuardrailsOrchestratorWithBuiltInDetectorsPostUpgrade`
+
+**Covered Upgrade Paths:**
+
+- Built-in detector persistence (regex, PII detection)
+  - Pre-upgrade: Deploy orchestrator with built-in regex detectors for email and SSN detection
+  - Post-upgrade: Verify detectors continue to function, health endpoints remain responsive
+  - Validated: Input detection, output detection, passthrough routing, health/info endpoints
+
+**What's Validated:**
+
+- Orchestrator health and info endpoints remain responsive after upgrade
+- Built-in regex detectors continue detecting unsuitable input/output
+- Gateway routing and passthrough functionality persists
+- Configuration and detector settings survive the upgrade
+
+**Example:**
+
+```bash
+# Pre-upgrade
+uv run pytest -m pre_upgrade tests/ai_safety/guardrails/upgrade/
+
+# Perform platform upgrade
+
+# Post-upgrade
+uv run pytest -m post_upgrade tests/ai_safety/guardrails/upgrade/
+```
+
+#### TrustyAI Service
+
+**Location:** `tests/ai_safety/trustyai_service/upgrade/test_trustyai_service_upgrade.py`
+
+**Test Classes:**
+
+- `TestPreUpgradeTrustyAIService` - PVC storage pre-upgrade validation
+- `TestPostUpgradeTrustyAIService` - Post-upgrade validation and PVC-to-database migration
+- `TestPreUpgradeDBTrustyAIService` - Database storage pre-upgrade validation
+- `TestPostUpgradeDBTrustyAIService` - Database storage post-upgrade validation
+
+**Covered Upgrade Paths:**
+
+1. **PVC Storage Upgrade Path:**
+   - Pre-upgrade: Deploy TrustyAI with PVC storage, send inferences, upload data, schedule drift metrics
+   - Post-upgrade: Verify service functionality, scheduled metrics, perform PVC-to-database migration
+   - Validated: Inference registration, data upload/retrieval, metric scheduling/deletion, database migration
+
+2. **Database Storage Upgrade Path:**
+   - Pre-upgrade: Deploy TrustyAI with database storage, send inferences, upload data, schedule metrics
+   - Post-upgrade: Verify database credentials, service functionality, metric persistence
+   - Validated: Database secret validation, inference data persistence, metric scheduling
+
+**What's Validated:**
+
+- TrustyAI service survives platform upgrade with both PVC and database storage
+- Inference data persists across upgrade
+- Scheduled metrics (drift detection) remain functional
+- PVC-to-database migration works post-upgrade
+- Database credentials and connections remain valid
+- Metric deletion and rescheduling work after upgrade
+
+**Test Dependencies:**
+
+- Some database tests use `pytest.mark.dependency` to ensure proper execution order
+- Dependencies: `db_pre_upgrade_inference` -> `db_pre_upgrade_data_upload` -> `db_pre_upgrade_metric_schedule`
+- Post-upgrade: `db_migration` -> `db_post_upgrade_metric_delete`
+
+**Example:**
+
+```bash
+# Pre-upgrade
+uv run pytest -m pre_upgrade tests/ai_safety/trustyai_service/upgrade/
+
+# Perform platform upgrade
+
+# Post-upgrade
+uv run pytest -m post_upgrade tests/ai_safety/trustyai_service/upgrade/
+```
+
+### Upgrade Test Patterns
+
+All upgrade tests follow these common patterns:
+
+1. **Namespace Reuse:** Pre- and post-upgrade test classes use the same namespace name to ensure resources persist across the upgrade
+2. **Pytest Markers:** Tests are segregated by phase using `@pytest.mark.pre_upgrade` and `@pytest.mark.post_upgrade`
+3. **State Validation:** Post-upgrade tests validate that pre-upgrade state (deployments, data, configurations) persists
+4. **Functionality Checks:** Both phases verify core functionality to ensure no regression
+
+### Adding New Upgrade Tests
+
+When adding new upgrade test coverage:
+
+1. Create test files in the appropriate `upgrade/` subdirectory
+2. Define separate test classes for pre-upgrade and post-upgrade phases
+3. Use the same namespace name in both classes via `pytest.param({"name": "test-<component>-upgrade"})`
+4. Mark pre-upgrade tests with `@pytest.mark.pre_upgrade`
+5. Mark post-upgrade tests with `@pytest.mark.post_upgrade`
+6. Update this README section with the new coverage details under the appropriate component heading
+
 ## Additional Resources
 
 - [TrustyAI Documentation](https://github.com/trustyai-explainability)

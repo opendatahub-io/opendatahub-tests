@@ -9,7 +9,7 @@ from tests.model_serving.model_server.kserve.storage.constants import (
     INFERENCE_SERVICE_PARAMS,
     KSERVE_OVMS_SERVING_RUNTIME_PARAMS,
 )
-from utilities.constants import Containers, StorageClassName
+from utilities.constants import Containers, KServeDeploymentType, StorageClassName
 from utilities.infra import get_pods_by_isvc_label
 
 pytestmark = [pytest.mark.tier1, pytest.mark.usefixtures("skip_if_no_nfs_storage_class", "valid_aws_config")]
@@ -27,7 +27,7 @@ POD_TOUCH_SPLIT_COMMAND: list[str] = shlex.split("touch /mnt/models/test")
             {"model-dir": "test-dir"},
             {"access-modes": "ReadWriteMany", "storage-class-name": StorageClassName.NFS, "pvc-size": "4Gi"},
             KSERVE_OVMS_SERVING_RUNTIME_PARAMS,
-            INFERENCE_SERVICE_PARAMS,
+            INFERENCE_SERVICE_PARAMS | {"deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT},
         )
     ],
     indirect=True,
@@ -36,7 +36,7 @@ class TestKservePVCWriteAccess:
     """Validate PVC write access control via the KServe read-only storage annotation.
 
     Steps:
-        1. Deploy an ISVC with a ReadWriteMany NFS PVC and no explicit read-only annotation.
+        1. Deploy a raw deployment ISVC with a ReadWriteMany NFS PVC and no explicit read-only annotation.
         2. Verify no pod containers have restarted.
         3. Verify the read-only annotation is not set by default.
         4. Verify write access is denied by default (touch command fails).

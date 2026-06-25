@@ -25,6 +25,7 @@ pytestmark = [
 class TestCustomProperties:
     """Test suite for validating custom properties in model catalog API"""
 
+    @pytest.mark.downstream_only
     def test_custom_properties_match_metadata(
         self,
         model_with_benchmark_metadata: tuple[dict[Any, Any], str, str],
@@ -84,6 +85,7 @@ class TestCustomProperties:
         LOGGER.info(f"All {len(models)} models in catalog '{catalog_id}' have valid model_type values")
 
 
+@pytest.mark.downstream_only
 @pytest.mark.skip_must_gather
 class TestHardwareTagProperty:
     """Tests for RHOAIENG-61492: hardware_tag custom property on Intel Xeon validated models."""

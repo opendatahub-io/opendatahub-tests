@@ -59,7 +59,7 @@ def serving_runtime_pods_for_runtime(
         name=runtime_name,
         namespace=namespace_name,
         template_name=config["template"],
-        deployment_type="raw",
+        deployment_type=KServeDeploymentType.STANDARD,
     ) as serving_runtime:
         # Get model format from the runtime for the InferenceService spec.
         model_format = serving_runtime.instance.spec.supportedModelFormats[0].name
@@ -70,7 +70,7 @@ def serving_runtime_pods_for_runtime(
             model_format=model_format,
             runtime=runtime_name,
             storage_uri=PLACEHOLDER_STORAGE_URI,
-            deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+            deployment_mode=KServeDeploymentType.STANDARD,
             wait=False,
             wait_for_predictor_pods=False,
             timeout=120,

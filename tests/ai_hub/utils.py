@@ -10,6 +10,7 @@ from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import RegisteredModel
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
+from ocp_resources.endpoints import Endpoints
 from ocp_resources.job import Job
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
@@ -17,27 +18,24 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from timeout_sampler import TimeoutSampler, retry
 
+import tests.ai_hub.constants as ai_hub_constants
 from tests.ai_hub.constants import (
     DB_BASE_RESOURCES_NAME,
     MARIADB_MY_CNF,
     MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
     MODEL_REGISTRY_DB_SECRET_STR_DATA,
     MODEL_REGISTRY_POD_FILTER,
-    MR_DB_IMAGE_DIGEST,
     MR_POSTGRES_DB_OBJECT,
     PORT_MAP,
 )
 from tests.ai_hub.exceptions import ModelRegistryResourceNotFoundError
-from utilities.constants import Annotations, PodNotFound, Protocols, Timeout
+from utilities.constants import MARIA_DB_IMAGE, Annotations, PodNotFound, Protocols, Timeout
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
 from utilities.general import wait_for_pods_running
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from utilities.user_utils import get_byoidc_cli_client_id, get_byoidc_issuer_url, get_oidc_token_endpoint
 
 ADDRESS_ANNOTATION_PREFIX: str = "routing.opendatahub.io/external-address-"
-MARIA_DB_IMAGE = (
-    "registry.redhat.io/rhel9/mariadb-1011@sha256:092407d87f8017bb444a462fb3d38ad5070429e94df7cf6b91d82697f36d0fa9"
-)
 POSTGRES_DB_IMAGE = (
     "public.ecr.aws/docker/library/postgres@sha256:6e9bbed548cc1ca776dd4685cfea9efe60d58df91186ec6bad7328fd03b388a5"
 )
@@ -157,8 +155,7 @@ def get_database_image(db_backend: str) -> str:
     elif db_backend == "mariadb":
         return MARIA_DB_IMAGE
     else:
-        # MySQL
-        return MR_DB_IMAGE_DIGEST
+        return ai_hub_constants.MR_DB_IMAGE_DIGEST
 
 
 def get_database_health_probes(db_backend: str) -> dict[str, dict[str, Any]]:
@@ -298,9 +295,8 @@ def get_model_registry_deployment_template_dict(
         },
     }
 
-    # Add args only for MySQL backend
-    if db_backend == "mysql":
-        base_dict["spec"]["containers"][0]["args"] = ["--datadir", "/var/lib/mysql/datadir"]
+    if db_backend == "mysql" and ai_hub_constants.MR_DB_MYSQL_ARGS:
+        base_dict["spec"]["containers"][0]["args"] = ai_hub_constants.MR_DB_MYSQL_ARGS
 
     if db_backend == "mariadb":
         base_dict["metadata"]["labels"]["app"] = db_backend
@@ -502,6 +498,7 @@ def get_and_validate_registered_model(
     ]
 
 
+@retry(wait_timeout=60, sleep=5, exceptions_dict={requests.exceptions.ConnectionError: []})
 def execute_model_registry_get_command(url: str, headers: dict[str, str], json_output: bool = True) -> dict[Any, Any]:
     """
     Executes model registry get commands against model registry rest end point
@@ -947,9 +944,35 @@ def execute_get_command(
         raise
 
 
+def get_endpoint_ips(client: DynamicClient, namespace: str, service_name: str = "model-catalog") -> set[str]:
+    endpoints = Endpoints(name=service_name, namespace=namespace, client=client)
+    assert endpoints.exists, f"Endpoints for service {service_name} not found in {namespace}"
+    ips: set[str] = set()
+    for subset in endpoints.instance.subsets or []:
+        for address in subset.get("addresses", []):
+            ips.add(address["ip"])
+    return ips
+
+
+class EndpointsNotUpdated(Exception):
+    pass
+
+
+@retry(wait_timeout=60, sleep=5, exceptions_dict={EndpointsNotUpdated: []})
+def wait_for_endpoints_updated(
+    client: DynamicClient, namespace: str, old_ips: set[str], service_name: str = "model-catalog"
+) -> bool:
+    current_ips = get_endpoint_ips(client=client, namespace=namespace, service_name=service_name)
+    LOGGER.info(f"Endpoint check: old_ips={old_ips}, current_ips={current_ips}")
+    if current_ips and not current_ips & old_ips:
+        return True
+    raise EndpointsNotUpdated(f"Service {service_name} endpoints not yet updated: old={old_ips}, current={current_ips}")
+
+
 def wait_for_model_catalog_pod_ready_after_deletion(
     client: DynamicClient, model_registry_namespace: str, consecutive_try: int = 6
 ) -> bool:
+    old_endpoint_ips = get_endpoint_ips(client=client, namespace=model_registry_namespace)
     model_catalog_pods = get_model_catalog_pod(
         client=client,
         model_registry_namespace=model_registry_namespace,
@@ -966,6 +989,12 @@ def wait_for_model_catalog_pod_ready_after_deletion(
     wait_for_pods_running(
         admin_client=client, namespace_name=model_registry_namespace, number_of_consecutive_checks=consecutive_try
     )
+    current_ips = get_endpoint_ips(client=client, namespace=model_registry_namespace)
+    if current_ips & old_endpoint_ips:
+        LOGGER.warning(
+            f"Service endpoints still point to old pod IPs after restart: old={old_endpoint_ips}, current={current_ips}"
+        )
+    wait_for_endpoints_updated(client=client, namespace=model_registry_namespace, old_ips=old_endpoint_ips)
     return True
 
 
@@ -994,7 +1023,11 @@ def wait_for_mcp_catalog_api(
         wait_timeout=wait_timeout,
         sleep=sleep,
         func=execute_get_call,
-        exceptions_dict={ResourceNotFoundError: [], TransientUnauthorizedError: []},
+        exceptions_dict={
+            ResourceNotFoundError: [],
+            TransientUnauthorizedError: [],
+            requests.exceptions.ConnectionError: [],
+        },
         url=servers_url,
         headers=headers,
         params={"pageSize": 1000},

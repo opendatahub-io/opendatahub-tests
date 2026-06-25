@@ -23,7 +23,7 @@ pytestmark = [pytest.mark.tier1, pytest.mark.usefixtures("skip_if_no_nfs_storage
             {"model-dir": "test-dir"},
             {"access-modes": "ReadWriteMany", "storage-class-name": StorageClassName.NFS, "pvc-size": "4Gi"},
             KSERVE_OVMS_SERVING_RUNTIME_PARAMS,
-            INFERENCE_SERVICE_PARAMS | {"deployment-mode": KServeDeploymentType.SERVERLESS, "min-replicas": 2},
+            INFERENCE_SERVICE_PARAMS | {"deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT, "min-replicas": 2},
         )
     ],
     indirect=True,
@@ -32,7 +32,7 @@ class TestKservePVCReadWriteManyAccess:
     """Validate ReadWriteMany PVC access across multiple KServe predictor pods.
 
     Steps:
-        1. Deploy a serverless ISVC with 2 replicas backed by an NFS ReadWriteMany PVC.
+        1. Deploy a raw deployment ISVC with 2 replicas backed by an NFS ReadWriteMany PVC.
         2. Verify the first predictor pod can read from the mounted PVC path.
         3. Verify the second predictor pod can also read from the same PVC path.
     """

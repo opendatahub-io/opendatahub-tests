@@ -142,6 +142,9 @@ class TestPostUpgradeNotebookRouting:
         When the upgrade completes,
         Then it should still reference the data-science-gateway in the openshift-ingress namespace.
         """
+        assert upgrade_notebook_httproute.exists, (
+            f"HTTPRoute '{upgrade_notebook_httproute.name}' no longer exists after upgrade"
+        )
         parent_refs = upgrade_notebook_httproute.instance.spec.get("parentRefs", [])
         assert parent_refs, f"HTTPRoute '{upgrade_notebook_httproute.name}' has no parentRefs after upgrade"
 
@@ -163,6 +166,9 @@ class TestPostUpgradeNotebookRouting:
         When the upgrade completes,
         Then the HTTPRoute generation should be unchanged.
         """
+        assert upgrade_notebook_httproute.exists, (
+            f"HTTPRoute '{upgrade_notebook_httproute.name}' no longer exists after upgrade"
+        )
         current_generation = upgrade_notebook_httproute.instance.metadata.generation
         saved_generation = upgrade_notebook_baseline["httproute_generation"]
 
@@ -209,7 +215,7 @@ class TestPostUpgradeNotebookRouting:
         assert len(matching_routes) == 1, (
             f"Expected exactly 1 HTTPRoute for notebook '{upgrade_notebook.name}' "
             f"in namespace '{apps_ns}', found {len(matching_routes)}. "
-            f"Routes: {[r.name for r in matching_routes]}"
+            f"Routes: {[route.name for route in matching_routes]}"
         )
 
     @pytest.mark.post_upgrade
