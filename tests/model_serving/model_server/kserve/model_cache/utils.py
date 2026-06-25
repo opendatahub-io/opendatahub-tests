@@ -7,10 +7,10 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.resource import Resource
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
-from utilities.resources.local_model_namespace_cache import LocalModelNamespaceCache
 
 from utilities.constants import ApiGroups
 from utilities.infra import get_pods_by_isvc_label
+from utilities.resources.local_model_namespace_cache import LocalModelNamespaceCache
 
 KSERVE_LOCALMODEL_PVC_ANNOTATION: str = f"internal.{ApiGroups.KSERVE}/localmodel-pvc-name"
 LOCAL_MODEL_NODE_GROUP_NAME: str = "workers"
