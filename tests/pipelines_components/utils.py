@@ -113,10 +113,9 @@ def get_workflow_phase(
     run_id: str,
 ) -> str | None:
     """Get the phase of the Argo Workflow associated with a pipeline run ID."""
-    for workflow in Workflow.get(client=admin_client, namespace=namespace):
-        labels = workflow.instance.metadata.get("labels", {})
-        if labels.get("pipeline/runid") == run_id:
-            return workflow.instance.get("status", {}).get("phase")
+    workflows = list(Workflow.get(client=admin_client, namespace=namespace, label_selector=f"pipeline/runid={run_id}"))
+    if workflows:
+        return workflows[0].instance.get("status", {}).get("phase")
     return None
 
 
@@ -192,13 +191,12 @@ def collect_pipeline_pod_logs(
     run_id: str,
 ) -> None:
     """Log failed workflow node messages for post-failure debugging."""
-    found = False
-    for workflow in Workflow.get(client=admin_client, namespace=namespace):
-        labels = workflow.instance.metadata.get("labels", {})
-        if labels.get("pipeline/runid") != run_id:
-            continue
+    workflows = list(Workflow.get(client=admin_client, namespace=namespace, label_selector=f"pipeline/runid={run_id}"))
+    if not workflows:
+        LOGGER.warning(f"No Argo Workflow found for pipeline run {run_id} in namespace {namespace}")
+        return
 
-        found = True
+    for workflow in workflows:
         nodes = workflow.instance.get("status", {}).get("nodes", {})
         for node_name, node in nodes.items():
             node_phase = node.get("phase", "")
@@ -206,9 +204,6 @@ def collect_pipeline_pod_logs(
                 message = node.get("message", "<no message>")
                 display_name = node.get("displayName", node_name)
                 LOGGER.error(f"Workflow node '{display_name}' {node_phase}: {message}")
-
-    if not found:
-        LOGGER.warning(f"No Argo Workflow found for pipeline run {run_id} in namespace {namespace}")
 
 
 # ---------------------------------------------------------------------------

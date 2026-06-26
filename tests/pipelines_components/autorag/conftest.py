@@ -227,24 +227,23 @@ def autorag_hf_token_secret(
     The managed pipeline controller may auto-create this secret, so
     reuse it if it already exists.
     """
-    secret = Secret(
+    existing_secret = Secret(
         client=admin_client,
         namespace=pipelines_namespace.name,
         name="hf-token-secret",
     )
-    if secret.exists:
-        yield secret
-        return
-
-    hf_token = os.environ.get("HF_TOKEN", "")
-    with Secret(
-        client=admin_client,
-        namespace=pipelines_namespace.name,
-        name="hf-token-secret",
-        type="Opaque",
-        string_data={"token": hf_token},
-    ) as secret:
-        yield secret
+    if existing_secret.exists:
+        yield existing_secret
+    else:
+        hf_token = os.environ.get("HF_TOKEN", "")
+        with Secret(
+            client=admin_client,
+            namespace=pipelines_namespace.name,
+            name="hf-token-secret",
+            type="Opaque",
+            string_data={"token": hf_token},
+        ) as new_secret:
+            yield new_secret
 
 
 @pytest.fixture(scope="class")

@@ -11,7 +11,6 @@ from tests.pipelines_components.utils import (
 )
 
 
-@pytest.mark.pipelines_components
 @pytest.mark.smoke
 class TestAutoMLSmoke:
     """AutoML pipeline smoke tests using AutoGluon Tabular Training from pipelines-components."""
