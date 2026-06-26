@@ -86,14 +86,15 @@ class EvalHubMcpClient:
         if not text:
             return {}
 
-        if text.startswith("data:"):
-            for line in text.splitlines():
-                line = line.strip()
-                if line.startswith("data:"):
-                    payload = line.removeprefix("data:").strip()
-                    if payload:
-                        return json.loads(payload)
-            return {}
+        if text.startswith("{"):
+            return json.loads(text)
+
+        for line in text.splitlines():
+            line = line.strip()
+            if line.startswith("data:"):
+                payload = line.removeprefix("data:").strip()
+                if payload:
+                    return json.loads(payload)
 
         return json.loads(text)
 
