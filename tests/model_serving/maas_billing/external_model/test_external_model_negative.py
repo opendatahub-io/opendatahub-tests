@@ -121,13 +121,23 @@ class TestExternalModelNegative:
             ).deploy()
         LOGGER.info(f"ExternalModel '{name}' with invalid config correctly rejected by CRD validation")
 
-    @pytest.mark.usefixtures(
-        "external_model_cr",
-        "external_model_ref",
-        "external_model_auth_policy",
-        "external_model_subscription",
-    )
-    @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
+
+@pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
+@pytest.mark.usefixtures(
+    "maas_unprivileged_model_namespace",
+    "maas_subscription_controller_enabled_latest",
+    "maas_gateway_api",
+    "maas_api_gateway_reachable",
+    "external_model_credential_secret",
+    "external_provider_cr",
+    "external_model_cr",
+    "external_model_ref",
+    "external_model_auth_policy",
+    "external_model_subscription",
+)
+class TestExternalModelNegativeGateway:
+    """Gateway negative tests requiring a valid API key."""
+
     @pytest.mark.tier3
     def test_request_to_nonexistent_model_returns_not_found(
         self,
