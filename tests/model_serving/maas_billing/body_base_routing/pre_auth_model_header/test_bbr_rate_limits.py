@@ -60,8 +60,7 @@ class TestBBRRateLimits:
                 )
                 return
             assert response.status_code == 200, (
-                f"Unexpected status {response.status_code} on attempt {attempt}: "
-                f"{(response.text or '')[:200]}"
+                f"Unexpected status {response.status_code} on attempt {attempt}: {(response.text or '')[:200]}"
             )
         pytest.fail(
             f"Rate limit not enforced after {BBR_RATE_LIMIT_MAX_REQUESTS} requests — "
