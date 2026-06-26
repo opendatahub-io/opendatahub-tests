@@ -111,6 +111,8 @@ dependencies = [
     "openai>=2.36",
     "ragas>=0.4",
     "langchain-community<0.4.2",
+    "ipykernel>=7.3.0",
+    "boto3>=1.43.33",
 ]
 
 [project.urls]
