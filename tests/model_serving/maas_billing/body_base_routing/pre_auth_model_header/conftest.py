@@ -55,7 +55,7 @@ def bbr_inference_url(
     return f"{maas_scheme}://{maas_host}/llm/{maas_inference_service_tinyllama_free.name}/v1/chat/completions"
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def bbr_api_key_headers(bbr_valid_api_key: str) -> dict[str, str]:
     """Authorization headers for BBR inference requests using a valid API key."""
     return build_maas_headers(token=bbr_valid_api_key)
@@ -71,7 +71,7 @@ def bbr_chat_payload(maas_inference_service_tinyllama_free: LLMInferenceService)
     }
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def bbr_valid_api_key(
     request_session_http: requests.Session,
     base_url: str,

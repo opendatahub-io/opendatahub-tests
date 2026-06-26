@@ -14,38 +14,23 @@ from tests.model_serving.maas_billing.utils import build_maas_headers, get_maas_
 
 LOGGER = structlog.get_logger(name=__name__)
 
+pytestmark = [
+    pytest.mark.usefixtures(
+        "maas_unprivileged_model_namespace",
+        "maas_subscription_controller_enabled_latest",
+        "maas_gateway_api",
+        "maas_api_gateway_reachable",
+        "maas_free_group",
+        "maas_model_tinyllama_free",
+        "maas_auth_policy_tinyllama_free",
+        "maas_subscription_tinyllama_free",
+        "maas_inference_service_tinyllama_free",
+    ),
+]
 
-@pytest.mark.usefixtures(
-    "maas_unprivileged_model_namespace",
-    "maas_subscription_controller_enabled_latest",
-    "maas_gateway_api",
-    "maas_api_gateway_reachable",
-    "maas_free_group",
-    "maas_model_tinyllama_free",
-    "maas_auth_policy_tinyllama_free",
-    "maas_subscription_tinyllama_free",
-    "maas_inference_service_tinyllama_free",
-)
-class TestBBRPreAuthInference:
-    """Regression tests verifying /llm/ path-routed inference is not broken after BBR pre-auth ext_proc is deployed."""
 
-    @pytest.mark.smoke
-    @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
-    def test_inference_model_in_body_only_returns_200(
-        self: Self,
-        request_session_http: requests.Session,
-        bbr_inference_url: str,
-        bbr_chat_payload: dict[str, Any],
-        bbr_api_key_headers: dict[str, str],
-    ) -> None:
-        """Verify /llm/ path-routed inference returns 200 and is not broken by the BBR pre-auth ext_proc deployment."""
-        assert_bbr_inference_status(
-            session=request_session_http,
-            inference_url=bbr_inference_url,
-            headers=bbr_api_key_headers,
-            payload=bbr_chat_payload,
-            expected_status=200,
-        )
+class TestBBRPreAuthInferenceAuth:
+    """Verify auth enforcement for BBR /llm/ path-routed inference on the MaaS gateway."""
 
     @pytest.mark.tier1
     def test_inference_invalid_key_returns_401_or_403(
@@ -89,8 +74,29 @@ class TestBBRPreAuthInference:
         )
         LOGGER.info(f"BBR inference with no API key returned {response.status_code}")
 
+
+@pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
+class TestBBRPreAuthInference:
+    """Regression tests verifying /llm/ path-routed inference is not broken after BBR pre-auth ext_proc is deployed."""
+
+    @pytest.mark.smoke
+    def test_inference_model_in_body_only_returns_200(
+        self: Self,
+        request_session_http: requests.Session,
+        bbr_inference_url: str,
+        bbr_chat_payload: dict[str, Any],
+        bbr_api_key_headers: dict[str, str],
+    ) -> None:
+        """Verify /llm/ path-routed inference returns 200 and is not broken by the BBR pre-auth ext_proc deployment."""
+        assert_bbr_inference_status(
+            session=request_session_http,
+            inference_url=bbr_inference_url,
+            headers=bbr_api_key_headers,
+            payload=bbr_chat_payload,
+            expected_status=200,
+        )
+
     @pytest.mark.tier1
-    @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
     def test_inference_path_wins_over_body_model_for_auth(
         self: Self,
         request_session_http: requests.Session,
@@ -118,7 +124,6 @@ class TestBBRPreAuthInference:
         LOGGER.info("Path-wins auth verified: auth passed and routing returned 404 for wrong body model")
 
     @pytest.mark.tier1
-    @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
     def test_inference_streaming_returns_sse(
         self: Self,
         request_session_http: requests.Session,
@@ -147,7 +152,6 @@ class TestBBRPreAuthInference:
         LOGGER.info(f"Streaming BBR inference returned 200 with {len(chunks)} SSE chunks")
 
     @pytest.mark.smoke
-    @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
     def test_list_models_returns_200_with_api_key(
         self: Self,
         request_session_http: requests.Session,
@@ -163,7 +167,6 @@ class TestBBRPreAuthInference:
         LOGGER.info("GET /v1/models with API key returned 200")
 
     @pytest.mark.smoke
-    @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
     def test_maas_api_endpoint_not_broken_by_bbr(
         self: Self,
         request_session_http: requests.Session,
