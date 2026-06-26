@@ -109,9 +109,7 @@ class TestBBRPreAuthInference:
             timeout=60,
             stream=True,
         ) as response:
-            assert response.status_code == 200, (
-                f"Expected 200 for streaming BBR inference, got {response.status_code}"
-            )
+            assert response.status_code == 200, f"Expected 200 for streaming BBR inference, got {response.status_code}"
             content_type = response.headers.get("content-type", "")
             assert "text/event-stream" in content_type, (
                 f"Expected text/event-stream content type for streaming response, got '{content_type}'"
