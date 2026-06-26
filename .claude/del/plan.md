@@ -1,4 +1,5 @@
 # Automation Plan — Model Serving Coverage Gaps
+>
 > Source: `Test Steps for Model Serving GapsCoverage.pdf`
 > Codebase: `tests/model_serving/`
 > Generated: 2026-05-07
@@ -9,6 +10,7 @@
 
 Each group below maps one or more Jira IDs to a concrete automation task.
 Every entry lists:
+
 - **File** — exact path where the test/fixture goes
 - **Test name(s)** — exact `def test_*` function(s) to write
 - **Fixtures needed** — new conftest entries required
@@ -34,6 +36,7 @@ These are pure assertion tests on existing running pods — no new infrastructur
 | **Effort** | Low |
 
 **Tests to write:**
+
 ```python
 def test_tls_private_key_not_in_pod_env(self, predictor_pod):
     """Given a deployed raw ISVC with TLS enabled,
@@ -60,6 +63,7 @@ def test_tls_private_key_not_mounted_as_volume(self, predictor_pod):
 | **Effort** | Low |
 
 **Tests to write:**
+
 ```python
 def test_automount_service_account_token_disabled(self, predictor_pod):
     """Given a deployed raw ISVC,
@@ -81,6 +85,7 @@ def test_automount_service_account_token_disabled(self, predictor_pod):
 | **Effort** | Medium |
 
 **Tests to write:**
+
 ```python
 def test_destination_rules_no_insecure_skip_verify(self, admin_client, model_namespace):
     """Given a deployed ISVC in a FIPS-enabled cluster,
@@ -111,6 +116,7 @@ def test_pod_monitor_no_insecure_skip_verify(self, admin_client, model_namespace
 | **Effort** | Low |
 
 **Tests to write:**
+
 ```python
 def test_auth_toggle_disable_does_not_rollout_pod(self, unprivileged_client,
         http_s3_ovms_raw_inference_service, patched_remove_raw_authentication_isvc):
@@ -146,6 +152,7 @@ def test_auth_toggle_reenable_does_not_rollout_pod(self, unprivileged_client,
 | **Effort** | Low |
 
 **Tests to write:**
+
 ```python
 def test_liveness_probe_update_propagates_to_deployment(self, unprivileged_client,
         ovms_kserve_serving_runtime, ovms_raw_inference_service, patched_runtime_liveness_probe):
@@ -161,6 +168,7 @@ def test_readiness_probe_update_propagates_to_deployment(self, unprivileged_clie
 ```
 
 **Fixtures needed:**
+
 - `patched_runtime_liveness_probe` — context-manager fixture that patches SR `livenessProbe.periodSeconds` and reverts
 - `patched_runtime_readiness_probe` — same for `readinessProbe`
 
@@ -176,6 +184,7 @@ def test_readiness_probe_update_propagates_to_deployment(self, unprivileged_clie
 | **Effort** | Low |
 
 **Tests to write:**
+
 ```python
 def test_llmisvc_not_stuck_stopping_after_config_deletion(self, admin_client,
         llmisvc, llmisvc_config):
@@ -186,6 +195,7 @@ def test_llmisvc_not_stuck_stopping_after_config_deletion(self, admin_client,
 ```
 
 **Fixtures needed:**
+
 - `llmisvc_config` — fixture that creates and yields the associated Config CR
 - SLA constant: `LLMISVC_STOP_TIMEOUT_SECONDS = 120`
 
@@ -205,6 +215,7 @@ def test_llmisvc_not_stuck_stopping_after_config_deletion(self, admin_client,
 | **Effort** | Medium |
 
 **Tests to write:**
+
 ```python
 def test_scheduler_pod_has_resource_requests(self, admin_client, llmisvc):
     """Given a deployed LLMInferenceService with a scheduler,
@@ -219,6 +230,7 @@ def test_scheduler_pod_respects_namespace_resource_quota(self, admin_client,
 ```
 
 **Fixtures needed:**
+
 - `namespace_resource_quota` — creates a `ResourceQuota` with CPU/memory limits, yields, deletes
 
 ---
@@ -233,6 +245,7 @@ def test_scheduler_pod_respects_namespace_resource_quota(self, admin_client,
 | **Effort** | High |
 
 **Tests to write:**
+
 ```python
 def test_llmd_07_crds_migrated_to_current_version(self, admin_client):
     """Given a cluster that has been upgraded from llm-d 0.7,
@@ -260,6 +273,7 @@ def test_llmd_07_metrics_compatibility(self, admin_client, llmisvc, prometheus):
 | **Effort** | Low |
 
 **Tests to write:**
+
 ```python
 def test_router_scheduler_tokenizer_image_importable(self, admin_client, llmisvc):
     """Given a running LLMInferenceService with a router-scheduler,
@@ -284,6 +298,7 @@ def test_router_scheduler_tokenizer_image_importable(self, admin_client, llmisvc
 | **Effort** | Medium |
 
 **Tests to write:**
+
 ```python
 def test_serving_runtime_update_recreates_head_service(self, admin_client,
         unprivileged_client, multi_node_inference_service, patched_multi_node_runtime):
@@ -312,6 +327,7 @@ def test_serving_runtime_update_recreates_worker_service(self, admin_client,
 | **Effort** | Medium |
 
 **Tests to write:**
+
 ```python
 def test_isvc_deletion_completes_with_external_autoscaler(self, admin_client,
         multi_node_isvc_with_external_autoscaler):
@@ -321,6 +337,7 @@ def test_isvc_deletion_completes_with_external_autoscaler(self, admin_client,
 ```
 
 **Fixtures needed:**
+
 - `multi_node_isvc_with_external_autoscaler` — ISVC with `autoscalerClass: external` annotation
 - `ISVC_DELETION_TIMEOUT = 300` seconds
 
@@ -340,6 +357,7 @@ def test_isvc_deletion_completes_with_external_autoscaler(self, admin_client,
 | **Effort** | Low |
 
 **Tests to write:**
+
 ```python
 def test_no_dangling_sar_configmap_without_oauth(self, admin_client,
         model_namespace, dog_breed_inference_graph_no_oauth):
@@ -366,6 +384,7 @@ def test_no_dangling_sar_configmap_without_oauth(self, admin_client,
 | **Effort** | Low |
 
 **Tests to write:**
+
 ```python
 def test_default_cluster_storage_container_has_multi_model_download(self, admin_client):
     """Given the default ClusterStorageContainer CR exists,
@@ -389,6 +408,7 @@ These are **additions to existing test files**, not new files.
 
 - **File:** `tests/model_serving/model_server/kserve/storage/pvc/test_kserve_pvc_write_access.py`
 - **Add test:**
+
 ```python
 def test_isvc_readonly_annotation_toggle_lifecycle(self, unprivileged_client,
         patched_read_only_isvc_false, patched_read_only_isvc_true):
@@ -399,6 +419,7 @@ def test_isvc_readonly_annotation_toggle_lifecycle(self, unprivileged_client,
 
 - **File:** `tests/model_serving/model_server/kserve/platform/dsc_deployment_mode/test_kserve_dsc_default_deployment_mode.py`
 - **Add test:**
+
 ```python
 def test_raw_deployment_headless_service_cluster_ip_none(self, admin_client,
         ovms_inference_service):
@@ -409,6 +430,7 @@ def test_raw_deployment_headless_service_cluster_ip_none(self, admin_client,
 
 - **File:** `tests/model_serving/model_server/kserve/storage/oci/test_oci_image.py`
 - **Add test:**
+
 ```python
 def test_hf_token_not_in_pod_env(self, model_car_inference_service):
     """Verify HF_TOKEN is absent from all pod container env vars and volume mount paths."""
@@ -425,6 +447,7 @@ def test_hf_token_not_in_pod_env(self, model_car_inference_service):
 
 - **File:** `tests/model_serving/model_server/kserve/autoscaling/keda/test_isvc_keda_scaling_gpu.py`
 - **Add test:**
+
 ```python
 def test_vllm_keda_scaling_verify_scale_down(self, ...):
     """After load stops, verify replica count returns to minReplicaCount within cooldown window."""
