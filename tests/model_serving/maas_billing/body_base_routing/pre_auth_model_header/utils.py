@@ -330,10 +330,14 @@ def verify_bbr_plugins_configmap_has_expected_plugins(
     )
     config_map_data: dict[str, str] = config_map.instance.data or {}
 
-    post_auth_raw = config_map_data.get(BBR_POST_AUTH_CONFIGMAP_KEY, "")
-    assert post_auth_raw, f"Key '{BBR_POST_AUTH_CONFIGMAP_KEY}' missing from ConfigMap '{BBR_PLUGINS_CONFIGMAP_NAME}'"
-    post_auth_config = yaml.safe_load(post_auth_raw)
-    post_auth_plugin_types = [plugin.get("type") for plugin in post_auth_config.get("plugins", [])]
+    assert BBR_POST_AUTH_CONFIGMAP_KEY in config_map_data, (
+        f"Key '{BBR_POST_AUTH_CONFIGMAP_KEY}' missing from ConfigMap '{BBR_PLUGINS_CONFIGMAP_NAME}'"
+    )
+    post_auth_config = yaml.safe_load(config_map_data[BBR_POST_AUTH_CONFIGMAP_KEY])
+    assert "plugins" in post_auth_config, (
+        f"No 'plugins' key in '{BBR_POST_AUTH_CONFIGMAP_KEY}' of ConfigMap '{BBR_PLUGINS_CONFIGMAP_NAME}'"
+    )
+    post_auth_plugin_types = [plugin["type"] for plugin in post_auth_config["plugins"]]
     for expected_type in BBR_POST_AUTH_EXPECTED_PLUGIN_TYPES:
         assert expected_type in post_auth_plugin_types, (
             f"Post-auth plugin '{expected_type}' not found in '{BBR_POST_AUTH_CONFIGMAP_KEY}' — "
@@ -341,25 +345,30 @@ def verify_bbr_plugins_configmap_has_expected_plugins(
         )
     LOGGER.info(f"Post-auth plugins verified: {post_auth_plugin_types!r}")
 
-    pre_auth_raw = config_map_data.get(BBR_PRE_AUTH_CONFIGMAP_KEY, "")
-    assert pre_auth_raw, f"Key '{BBR_PRE_AUTH_CONFIGMAP_KEY}' missing from ConfigMap '{BBR_PLUGINS_CONFIGMAP_NAME}'"
-    pre_auth_config = yaml.safe_load(pre_auth_raw)
-    pre_auth_plugin_types = [plugin.get("type") for plugin in pre_auth_config.get("plugins", [])]
+    assert BBR_PRE_AUTH_CONFIGMAP_KEY in config_map_data, (
+        f"Key '{BBR_PRE_AUTH_CONFIGMAP_KEY}' missing from ConfigMap '{BBR_PLUGINS_CONFIGMAP_NAME}'"
+    )
+    pre_auth_config = yaml.safe_load(config_map_data[BBR_PRE_AUTH_CONFIGMAP_KEY])
+    assert "plugins" in pre_auth_config, (
+        f"No 'plugins' key in '{BBR_PRE_AUTH_CONFIGMAP_KEY}' of ConfigMap '{BBR_PLUGINS_CONFIGMAP_NAME}'"
+    )
+    pre_auth_plugin_types = [plugin["type"] for plugin in pre_auth_config["plugins"]]
     assert BBR_PRE_AUTH_EXPECTED_PLUGIN_TYPE in pre_auth_plugin_types, (
         f"Pre-auth plugin '{BBR_PRE_AUTH_EXPECTED_PLUGIN_TYPE}' not found in '{BBR_PRE_AUTH_CONFIGMAP_KEY}' — "
         f"found: {pre_auth_plugin_types!r}"
     )
     pre_auth_plugin = next(
-        plugin
-        for plugin in pre_auth_config.get("plugins", [])
-        if plugin.get("type") == BBR_PRE_AUTH_EXPECTED_PLUGIN_TYPE
+        plugin for plugin in pre_auth_config["plugins"] if plugin["type"] == BBR_PRE_AUTH_EXPECTED_PLUGIN_TYPE
     )
-    params = pre_auth_plugin.get("parameters", {})
-    assert params.get("fieldName") == BBR_PRE_AUTH_PLUGIN_FIELD_NAME, (
-        f"Pre-auth plugin fieldName is '{params.get('fieldName')}', expected '{BBR_PRE_AUTH_PLUGIN_FIELD_NAME}'"
+    assert "parameters" in pre_auth_plugin, (
+        f"Pre-auth plugin '{BBR_PRE_AUTH_EXPECTED_PLUGIN_TYPE}' has no 'parameters' key"
     )
-    assert params.get("headerName") == BBR_PRE_AUTH_PLUGIN_HEADER_NAME, (
-        f"Pre-auth plugin headerName is '{params.get('headerName')}', expected '{BBR_PRE_AUTH_PLUGIN_HEADER_NAME}'"
+    params: dict[str, str] = pre_auth_plugin["parameters"]
+    assert params["fieldName"] == BBR_PRE_AUTH_PLUGIN_FIELD_NAME, (
+        f"Pre-auth plugin fieldName is '{params['fieldName']}', expected '{BBR_PRE_AUTH_PLUGIN_FIELD_NAME}'"
+    )
+    assert params["headerName"] == BBR_PRE_AUTH_PLUGIN_HEADER_NAME, (
+        f"Pre-auth plugin headerName is '{params['headerName']}', expected '{BBR_PRE_AUTH_PLUGIN_HEADER_NAME}'"
     )
     LOGGER.info(
         f"Pre-auth plugin '{BBR_PRE_AUTH_EXPECTED_PLUGIN_TYPE}' correctly maps "
