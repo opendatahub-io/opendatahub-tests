@@ -6,7 +6,7 @@ import pytest
 import requests
 import structlog
 
-from tests.model_serving.maas_billing.body_base_routing.pre_auth_model_header.conftest import (
+from tests.model_serving.maas_billing.body_base_routing.pre_auth_model_header.utils import (
     BBR_RATE_LIMIT_TOKENS_PER_MINUTE,
 )
 from tests.model_serving.maas_billing.utils import build_maas_headers

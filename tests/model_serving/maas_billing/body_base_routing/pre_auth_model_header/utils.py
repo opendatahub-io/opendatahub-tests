@@ -1,5 +1,6 @@
 """Utilities and verification helpers for body-based routing (BBR) tests."""
 
+from collections.abc import Generator
 from typing import Any
 
 import pytest
@@ -11,7 +12,9 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
 from ocp_resources.service import Service
 
+from tests.model_serving.maas_billing.utils import create_api_key, revoke_api_key
 from utilities.constants import MAAS_GATEWAY_NAMESPACE
+from utilities.general import generate_random_name
 from utilities.resources.destination_rule import DestinationRule
 from utilities.resources.envoy_filter import EnvoyFilter
 
@@ -41,6 +44,39 @@ BBR_POST_AUTH_EXPECTED_PLUGIN_TYPES: list[str] = [
 BBR_PRE_AUTH_EXPECTED_PLUGIN_TYPE: str = "body-field-to-header"
 BBR_PRE_AUTH_PLUGIN_FIELD_NAME: str = "model"
 BBR_PRE_AUTH_PLUGIN_HEADER_NAME: str = "X-Gateway-Model-Name"
+BBR_RATE_LIMIT_TOKENS_PER_MINUTE: int = 5
+
+
+def bbr_api_key_lifecycle(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_token_for_actor: str,
+    subscription_name: str,
+    key_name_prefix: str,
+    fixture_label: str,
+) -> Generator[str, Any, Any]:
+    """Create a BBR API key, yield the plaintext key, then revoke it on teardown."""
+    key_name = f"{key_name_prefix}-{generate_random_name()}"
+    _, api_key_data = create_api_key(
+        base_url=base_url,
+        ocp_user_token=ocp_token_for_actor,
+        request_session_http=request_session_http,
+        api_key_name=key_name,
+        subscription=subscription_name,
+    )
+    plaintext_key: str = api_key_data["key"]
+    LOGGER.info(f"{fixture_label}: created key id={api_key_data['id']} name={key_name}")
+    yield plaintext_key
+    revoke_response, _ = revoke_api_key(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        key_id=api_key_data["id"],
+        ocp_user_token=ocp_token_for_actor,
+    )
+    if revoke_response.status_code not in (200, 404):
+        raise AssertionError(
+            f"Unexpected teardown status for {fixture_label} key id={api_key_data['id']}: {revoke_response.status_code}"
+        )
 
 
 def verify_bbr_pre_processing_deployment_ready(

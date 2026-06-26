@@ -14,47 +14,15 @@ from ocp_resources.namespace import Namespace
 
 from tests.model_serving.maas_billing.body_base_routing.pre_auth_model_header.utils import (
     BBR_PRE_PROCESSING_DEPLOYMENT_NAME,
+    BBR_RATE_LIMIT_TOKENS_PER_MINUTE,
+    bbr_api_key_lifecycle,
     get_bbr_envoy_filter_config_patches,
 )
-from tests.model_serving.maas_billing.utils import build_maas_headers, create_api_key, revoke_api_key
+from tests.model_serving.maas_billing.utils import build_maas_headers
 from utilities.constants import MAAS_GATEWAY_NAMESPACE
 from utilities.general import generate_random_name
 
-BBR_RATE_LIMIT_TOKENS_PER_MINUTE: int = 5
-
 LOGGER = structlog.get_logger(name=__name__)
-
-
-def _bbr_api_key_lifecycle(
-    request_session_http: requests.Session,
-    base_url: str,
-    ocp_token_for_actor: str,
-    subscription_name: str,
-    key_name_prefix: str,
-    fixture_label: str,
-) -> Generator[str, Any, Any]:
-    """Create a BBR API key, yield the plaintext key, then revoke it on teardown."""
-    key_name = f"{key_name_prefix}-{generate_random_name()}"
-    _, api_key_data = create_api_key(
-        base_url=base_url,
-        ocp_user_token=ocp_token_for_actor,
-        request_session_http=request_session_http,
-        api_key_name=key_name,
-        subscription=subscription_name,
-    )
-    plaintext_key: str = api_key_data["key"]
-    LOGGER.info(f"{fixture_label}: created key id={api_key_data['id']} name={key_name}")
-    yield plaintext_key
-    revoke_response, _ = revoke_api_key(
-        request_session_http=request_session_http,
-        base_url=base_url,
-        key_id=api_key_data["id"],
-        ocp_user_token=ocp_token_for_actor,
-    )
-    if revoke_response.status_code not in (200, 404):
-        raise AssertionError(
-            f"Unexpected teardown status for {fixture_label} key id={api_key_data['id']}: {revoke_response.status_code}"
-        )
 
 
 @pytest.fixture(scope="session")
@@ -114,7 +82,7 @@ def bbr_valid_api_key(
     maas_subscription_tinyllama_free: MaaSSubscription,
 ) -> Generator[str, Any, Any]:
     """Create an API key bound to the free TinyLlama subscription and yield the plaintext key."""
-    yield from _bbr_api_key_lifecycle(
+    yield from bbr_api_key_lifecycle(
         request_session_http=request_session_http,
         base_url=base_url,
         ocp_token_for_actor=ocp_token_for_actor,
@@ -124,7 +92,7 @@ def bbr_valid_api_key(
     )
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture
 def bbr_low_limit_subscription(
     admin_client: DynamicClient,
     maas_subscription_namespace: Namespace,
@@ -156,7 +124,7 @@ def bbr_low_limit_subscription(
         yield subscription
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture
 def bbr_rate_limited_api_key(
     request_session_http: requests.Session,
     base_url: str,
@@ -164,7 +132,7 @@ def bbr_rate_limited_api_key(
     bbr_low_limit_subscription: MaaSSubscription,
 ) -> Generator[str, Any, Any]:
     """API key bound to the low-rate-limit BBR subscription."""
-    yield from _bbr_api_key_lifecycle(
+    yield from bbr_api_key_lifecycle(
         request_session_http=request_session_http,
         base_url=base_url,
         ocp_token_for_actor=ocp_token_for_actor,
