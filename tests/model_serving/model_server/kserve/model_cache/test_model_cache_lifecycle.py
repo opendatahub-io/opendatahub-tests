@@ -8,6 +8,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
+from ocp_resources.persistent_volume import PersistentVolume
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
@@ -17,6 +18,10 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 from tests.model_serving.model_server.kserve.model_cache.utils import (
     LOCAL_MODEL_NODE_GROUP_NAME,
     MINT_ONNX_STORAGE_PATH,
+    MODEL_CACHE_HOST_PATH,
+    MODEL_CACHE_NODE_PVC_NAME,
+    MODEL_CACHE_SIZE,
+    MODEL_CACHE_STORAGE_CLASS,
     LocalModelNamespaceCache,
     assert_predictor_uses_cached_pvc,
     cache_status_dict,
@@ -239,6 +244,96 @@ class TestModelCacheReuse:
             f"Cache '{mnist_local_model_cache.name}' should be isolated to namespace "
             f"'{cache_ns}' but was found in 'default'"
         )
+
+
+class TestModelCacheStorageClass:
+    """Tier 1: model cache PVCs use the expected StorageClass and capacity."""
+
+    @pytest.mark.parametrize(
+        "unprivileged_model_namespace, ovms_kserve_serving_runtime",
+        [
+            pytest.param(
+                {"name": "kserve-cache-reuse"},
+                RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
+                id="test_node_pvc_storage_class",
+            )
+        ],
+        indirect=True,
+    )
+    def test_node_pvc_uses_local_storage(
+        self,
+        admin_client: DynamicClient,
+        unprivileged_model_namespace: Namespace,
+        ovms_kserve_serving_runtime: Any,
+        model_cache_infra_ready: DataScienceCluster,
+    ) -> None:
+        """Given model cache infrastructure is enabled,
+        when the node-level PVC is inspected,
+        then it uses the local-storage StorageClass with the configured cacheSize.
+        """
+        apps_ns: str = py_config["applications_namespace"]
+        node_pvc = PersistentVolumeClaim(
+            client=admin_client,
+            name=MODEL_CACHE_NODE_PVC_NAME,
+            namespace=apps_ns,
+        )
+        assert node_pvc.exists, f"Node PVC '{MODEL_CACHE_NODE_PVC_NAME}' not found in '{apps_ns}'"
+        node_pvc.get()
+
+        sc_name = node_pvc.instance.spec.storageClassName
+        assert sc_name == MODEL_CACHE_STORAGE_CLASS, (
+            f"Node PVC StorageClass is '{sc_name}', expected '{MODEL_CACHE_STORAGE_CLASS}'"
+        )
+
+        requested_storage = node_pvc.instance.spec.resources.requests.get("storage")
+        assert requested_storage == MODEL_CACHE_SIZE, (
+            f"Node PVC capacity is '{requested_storage}', expected '{MODEL_CACHE_SIZE}'"
+        )
+
+    @pytest.mark.slow
+    @pytest.mark.parametrize(
+        "unprivileged_model_namespace, ovms_kserve_serving_runtime",
+        [
+            pytest.param(
+                {"name": "kserve-cache-reuse"},
+                RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
+                id="test_download_pv_storage_class",
+            )
+        ],
+        indirect=True,
+    )
+    def test_download_pv_uses_local_storage_and_host_path(
+        self,
+        admin_client: DynamicClient,
+        unprivileged_model_namespace: Namespace,
+        ovms_kserve_serving_runtime: Any,
+        mnist_local_model_cache: LocalModelNamespaceCache,
+    ) -> None:
+        """Given a cache that has reached NodeDownloaded,
+        when the download PV is inspected,
+        then it uses the local-storage StorageClass and the correct hostPath.
+        """
+        cache_name = mnist_local_model_cache.name
+        ns_name = unprivileged_model_namespace.name
+        download_pv_name = f"{cache_name}-{LOCAL_MODEL_NODE_GROUP_NAME}-{ns_name}-download"
+
+        pv = PersistentVolume(client=admin_client, name=download_pv_name)
+        assert pv.exists, f"Download PV '{download_pv_name}' not found"
+        pv.get()
+
+        sc_name = pv.instance.spec.storageClassName
+        assert sc_name == MODEL_CACHE_STORAGE_CLASS, (
+            f"Download PV StorageClass is '{sc_name}', expected '{MODEL_CACHE_STORAGE_CLASS}'"
+        )
+
+        host_path = getattr(pv.instance.spec, "hostPath", None) or {}
+        pv_path = host_path.get("path") if isinstance(host_path, dict) else getattr(host_path, "path", None)
+        assert pv_path == MODEL_CACHE_HOST_PATH, (
+            f"Download PV hostPath is '{pv_path}', expected '{MODEL_CACHE_HOST_PATH}'"
+        )
+
+        capacity = pv.instance.spec.capacity.get("storage")
+        assert capacity == MODEL_CACHE_SIZE, f"Download PV capacity is '{capacity}', expected '{MODEL_CACHE_SIZE}'"
 
 
 class TestModelCacheInvalidCredentials:
