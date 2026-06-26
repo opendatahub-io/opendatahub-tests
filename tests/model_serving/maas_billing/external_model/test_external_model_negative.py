@@ -79,43 +79,47 @@ class TestExternalModelNegative:
         )
 
     @pytest.mark.tier3
-    def test_missing_external_provider_refs_rejected(
-        self,
-        admin_client: DynamicClient,
-        maas_unprivileged_model_namespace: Namespace,
-    ) -> None:
-        """Given an ExternalModel with empty externalProviderRefs, when it is created, then the API rejects it."""
-        with pytest.raises(UnprocessibleEntityError):
-            ExternalModel(
-                client=admin_client,
-                name="e2e-missing-provider-refs",
-                namespace=maas_unprivileged_model_namespace.name,
-                external_provider_refs=[],
-                teardown=True,
-            ).deploy()
-        LOGGER.info("ExternalModel without externalProviderRefs correctly rejected by CRD validation")
-
-    @pytest.mark.skip(reason="CRD does not yet reject invalid apiFormat enum values")
-    @pytest.mark.tier3
-    def test_invalid_api_format_rejected_by_crd(
+    @pytest.mark.parametrize(
+        "name, external_provider_refs",
+        [
+            pytest.param(
+                "e2e-missing-provider-refs",
+                [],
+                id="test_missing_external_provider_refs_rejected",
+            ),
+            pytest.param(
+                "e2e-bad-api-format",
+                "invalid_api_format",
+                marks=pytest.mark.skip(reason="CRD does not yet reject invalid apiFormat enum values"),
+                id="test_invalid_api_format_rejected_by_crd",
+            ),
+        ],
+    )
+    def test_external_model_invalid_config_rejected_by_crd(
         self,
         admin_client: DynamicClient,
         maas_unprivileged_model_namespace: Namespace,
         external_provider_cr: ExternalProvider,
+        name: str,
+        external_provider_refs: list[dict[str, object]] | str,
     ) -> None:
-        """Given an ExternalModel with an invalid apiFormat, when it is created, then the API rejects it."""
-        bad_ref = external_provider_ref(provider_name=external_provider_cr.name)
-        bad_ref["apiFormat"] = "openai"
+        """Given an ExternalModel with invalid configuration, when it is created, then the API rejects it."""
+        if external_provider_refs == "invalid_api_format":
+            bad_ref = external_provider_ref(provider_name=external_provider_cr.name)
+            bad_ref["apiFormat"] = "not-a-valid-api-format"
+            provider_refs = [bad_ref]
+        else:
+            provider_refs = external_provider_refs
+
         with pytest.raises(UnprocessibleEntityError):
             ExternalModel(
                 client=admin_client,
-                name="e2e-bad-api-format",
+                name=name,
                 namespace=maas_unprivileged_model_namespace.name,
-                external_provider_refs=[bad_ref],
+                external_provider_refs=provider_refs,
                 teardown=True,
             ).deploy()
-
-        LOGGER.info("ExternalModel with invalid apiFormat correctly rejected by CRD validation")
+        LOGGER.info(f"ExternalModel '{name}' with invalid config correctly rejected by CRD validation")
 
     @pytest.mark.usefixtures(
         "external_model_cr",

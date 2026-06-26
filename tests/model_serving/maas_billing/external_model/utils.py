@@ -46,8 +46,12 @@ def _inference_resource_reconciliation_state(resource: Resource) -> str | None:
         return phase
 
     for condition in status.conditions or []:
-        if condition.type == "Ready" and condition.status == "True":
+        if condition.type != "Ready":
+            continue
+        if condition.status == "True":
             return "Ready"
+        if condition.status == "False":
+            return "Failed"
 
     return phase
 
