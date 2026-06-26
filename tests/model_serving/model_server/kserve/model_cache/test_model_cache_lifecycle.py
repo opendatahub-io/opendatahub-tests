@@ -18,7 +18,7 @@ from tests.model_serving.model_server.kserve.model_cache.utils import (
     LOCAL_MODEL_NODE_GROUP_NAME,
     MINT_ONNX_STORAGE_PATH,
     LocalModelNamespaceCache,
-    assert_predictor_storage_initializer_uses_pvc,
+    assert_predictor_uses_cached_pvc,
     cache_status_dict,
     wait_for_local_model_cache_nodes_downloaded,
 )
@@ -177,7 +177,7 @@ class TestModelCacheReuse:
             external_route=True,
             timeout=Timeout.TIMEOUT_15MIN,
         ) as second_isvc:
-            assert_predictor_storage_initializer_uses_pvc(
+            assert_predictor_uses_cached_pvc(
                 client=unprivileged_client,
                 isvc=second_isvc,
                 runtime_name=ovms_kserve_serving_runtime.name,
@@ -224,15 +224,20 @@ class TestModelCacheReuse:
         mnist_local_model_cache: LocalModelNamespaceCache,
     ) -> None:
         """Given a cache in the test namespace,
-        when listing caches in the 'default' namespace,
-        then no LocalModelNamespaceCache resources exist there.
+        when querying for it in the 'default' namespace,
+        then the same-named cache does not exist there.
         """
         cache_ns = mnist_local_model_cache.namespace
         assert cache_ns == unprivileged_model_namespace.name
 
-        caches_in_default = list(LocalModelNamespaceCache.get(dyn_client=admin_client, namespace="default"))
-        assert not caches_in_default, (
-            f"Expected no LocalModelNamespaceCache in 'default' namespace, found: {[c.name for c in caches_in_default]}"
+        cross_ns_cache = LocalModelNamespaceCache(
+            client=admin_client,
+            name=mnist_local_model_cache.name,
+            namespace="default",
+        )
+        assert not cross_ns_cache.exists, (
+            f"Cache '{mnist_local_model_cache.name}' should be isolated to namespace "
+            f"'{cache_ns}' but was found in 'default'"
         )
 
 

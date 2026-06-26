@@ -8,7 +8,7 @@ from ocp_resources.resource import NamespacedResource
 
 
 class LocalModelNamespaceCache(NamespacedResource):
-    """ """
+    """Namespace-scoped ``LocalModelNamespaceCache`` CR (KServe ``serving.kserve.io/v1alpha1``)."""
 
     api_group: str = NamespacedResource.ApiGroup.SERVING_KSERVE_IO
 

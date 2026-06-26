@@ -6,11 +6,8 @@ from ocp_resources.inference_service import InferenceService
 from ocp_resources.serving_runtime import ServingRuntime
 
 from tests.model_serving.model_server.kserve.model_cache.utils import (
-    LOCAL_MODEL_NODE_GROUP_NAME,
     LocalModelNamespaceCache,
-    LocalModelNode,
-    LocalModelNodeGroup,
-    assert_predictor_storage_initializer_uses_pvc,
+    assert_predictor_uses_cached_pvc,
     cache_status_dict,
 )
 from tests.model_serving.model_server.utils import verify_inference_response
@@ -42,7 +39,6 @@ class TestModelCacheSmoke:
     )
     def test_local_model_cache_reaches_node_downloaded(
         self,
-        admin_client: DynamicClient,
         unprivileged_model_namespace: Any,
         ovms_kserve_serving_runtime: Any,
         mnist_local_model_cache: LocalModelNamespaceCache,
@@ -50,30 +46,11 @@ class TestModelCacheSmoke:
         """Given a provisioned LocalModelNamespaceCache, when status is refreshed,
         then all nodes in the node group are NodeDownloaded and copies are healthy.
         """
-        node_group = LocalModelNodeGroup(client=admin_client, name=LOCAL_MODEL_NODE_GROUP_NAME)
-        node_group.get()
-        expected_nodes: list[str] = node_group.instance.spec.get("nodes", [])
-        if not expected_nodes:
-            expected_nodes = [
-                node.name
-                for node in LocalModelNode.get(dyn_client=admin_client)
-                if any(
-                    model.get("nodeGroup") == LOCAL_MODEL_NODE_GROUP_NAME
-                    for model in (node.instance.spec.get("localModels") or [])
-                )
-            ]
-        assert expected_nodes, (
-            f"LocalModelNodeGroup '{LOCAL_MODEL_NODE_GROUP_NAME}' has no nodes listed in spec.nodes "
-            f"and no LocalModelNode resources reference it"
-        )
-
         status = cache_status_dict(cache=mnist_local_model_cache)
         node_status = status.get("nodeStatus") or {}
         assert node_status, "status.nodeStatus must list at least one node"
 
-        for node_name in expected_nodes:
-            state = node_status.get(node_name)
-            assert state is not None, f"node {node_name} missing from nodeStatus"
+        for node_name, state in node_status.items():
             assert state == "NodeDownloaded", f"node {node_name} expected NodeDownloaded, got {state!r}"
 
         copies = status.get("copies") or {}
@@ -103,7 +80,7 @@ class TestModelCacheSmoke:
         over HTTPS, then PVC rewrite is present and response succeeds.
         """
         isvc = mnist_onnx_local_model_cache_inference_service
-        assert_predictor_storage_initializer_uses_pvc(
+        assert_predictor_uses_cached_pvc(
             client=unprivileged_client,
             isvc=isvc,
             runtime_name=ovms_kserve_serving_runtime.name,

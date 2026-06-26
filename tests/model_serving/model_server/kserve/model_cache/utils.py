@@ -15,6 +15,8 @@ from utilities.resources.local_model_namespace_cache import LocalModelNamespaceC
 KSERVE_LOCALMODEL_PVC_ANNOTATION: str = f"internal.{ApiGroups.KSERVE}/localmodel-pvc-name"
 LOCAL_MODEL_NODE_GROUP_NAME: str = "workers"
 MODEL_CACHE_AGENT_DAEMONSET: str = "kserve-localmodelnode-agent"
+MODEL_CACHE_SIZE: str = "10Gi"
+MODEL_CACHE_NODE_COUNT: int = 2
 MINT_ONNX_STORAGE_PATH: str = "test-dir"
 
 
@@ -92,7 +94,7 @@ def _cache_download_state_sample(*, cache: LocalModelNamespaceCache) -> dict[str
     return {"ready": bool(all_downloaded and copies_ok), "status": status}
 
 
-def assert_predictor_storage_initializer_uses_pvc(
+def assert_predictor_uses_cached_pvc(
     *,
     client: DynamicClient,
     isvc: InferenceService,

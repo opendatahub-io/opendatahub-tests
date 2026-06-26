@@ -21,6 +21,8 @@ from tests.model_serving.model_server.kserve.model_cache.utils import (
     LOCAL_MODEL_NODE_GROUP_NAME,
     MINT_ONNX_STORAGE_PATH,
     MODEL_CACHE_AGENT_DAEMONSET,
+    MODEL_CACHE_NODE_COUNT,
+    MODEL_CACHE_SIZE,
     LocalModelNamespaceCache,
     LocalModelNodeGroup,
     wait_for_local_model_cache_nodes_downloaded,
@@ -28,9 +30,6 @@ from tests.model_serving.model_server.kserve.model_cache.utils import (
 from utilities.constants import KServeDeploymentType, ModelFormat, Protocols, Timeout
 from utilities.inference_utils import create_isvc
 from utilities.infra import get_data_science_cluster, s3_endpoint_secret, wait_for_dsc_status_ready
-
-MODEL_CACHE_SIZE: str = "10Gi"
-MODEL_CACHE_NODE_COUNT: int = 2
 
 
 @pytest.fixture(scope="session")
@@ -58,7 +57,7 @@ def model_cache_infra_ready(
     elif len(all_workers) >= MODEL_CACHE_NODE_COUNT:
         selected_nodes = all_workers[:MODEL_CACHE_NODE_COUNT]
     else:
-        pytest.skip(f"Need at least {MODEL_CACHE_NODE_COUNT} worker nodes for model cache; found {len(all_workers)}")
+        pytest.fail(f"Need at least {MODEL_CACHE_NODE_COUNT} worker nodes for model cache; found {len(all_workers)}")
 
     with ResourceEditor(
         patches={

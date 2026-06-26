@@ -111,3 +111,26 @@ Consult these for detailed guidance:
 - [Constitution](./CONSTITUTION.md) - Non-negotiable principles (supersedes all other docs)
 - [Developer Guide](./docs/DEVELOPER_GUIDE.md) - Contribution workflow, fixture examples
 - [Style Guide](./docs/STYLE_GUIDE.md) - Naming, typing, docstrings
+
+## Learned User Preferences
+
+- When asked to identify a cluster issue, give a concise diagnosis first; do not start deep debugging unless asked
+- After pytest runs, explain why any tests were skipped
+- Sync `main` with `upstream/main` (fetch, merge, push to `origin`) before switching to release or feature branches
+- Test file names should describe the feature/behavior, not the tier level (e.g., `test_local_model_cache.py` not `test_model_cache_smoke.py`)
+- Prefer generated wrapper classes from `utilities/resources/` over custom resource classes in test `utils.py`
+- Fixture teardown should handle cleanup; don't manually delete namespaces before re-runs
+
+## Learned Workspace Facts
+
+- Git remotes: `origin` is the fork, `upstream` is opendatahub-io; release branches track `upstream/<version>` (e.g. `3.4`)
+- Downstream model-server upgrade tests: `uv run pytest --pre-upgrade|--post-upgrade --tc=distribution:downstream ./tests/model_serving/model_server`
+- Pre-upgrade tests create `upgrade-*` namespaces; delete leftover namespaces before re-running to avoid 409 conflicts
+- RHOAI 3.4 downstream clusters use `data-science-gateway-class` for LLMD ingress gateway, not `openshift-default`
+- Downstream AWS cluster `oc login` often requires `--insecure-skip-tls-verify`
+- `model_cache_infra_ready` fixture actively configures DSC `modelCache` via `ResourceEditor`; skips when LocalModelNodeGroup or agent DaemonSet is absent
+- RHOAI model cache uses namespaced `LocalModelNamespaceCache`, not cluster-scoped `LocalModelCache`
+- Kueue upgrade tests skip when the Kueue operator is not installed (no `kueue.x-k8s.io` CRDs)
+- `detect-secrets` pre-commit hook flags fake credentials in test fixtures; suppress false positives with `# pragma: allowlist secret`
+- DSC `modelCache` uses `nodeNames` (explicit hostnames) or `nodeSelector` to target worker nodes; they are mutually exclusive
+- `utilities/resources/local_model_namespace_cache.py` contains the generated `LocalModelNamespaceCache` wrapper; use it instead of duplicating in test utils
