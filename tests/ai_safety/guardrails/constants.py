@@ -68,6 +68,8 @@ HAP_INPUT_DETECTION_PROMPT: GuardrailsDetectionPrompt = GuardrailsDetectionPromp
     detection_text=HAP_PROMPT,
 )
 
+PROMPT_INJECTION_DETECTOR: str = "prompt-injection-detector"
+HAP_DETECTOR: str = "hap-detector"
 # Test TLS certificate and key for custom TLS mounting tests
 # These are self-signed test fixtures with no real-world validity
 # pragma: allowlist secret
@@ -132,3 +134,5 @@ nHtAnnHtAnnHtAnnHtAnnHtAnnHtAnnHtAnnHtAnnHtAnnHtAnnHtAnnHtAnnHtAn
 nHtAnnHtAnnHtAnnHtAnnHtAnnHtAnnHtAnnHtAnnHtAnnHtAnnHtAnnHtAnnHtAn
 nHtAnnHtAnnHtAnnHtAg==
 -----END PRIVATE KEY-----"""  # pragma: allowlist secret
+
+MINIO_SECRET_KEY_VALUE = "supersecret"  # pragma: allowlist secret
