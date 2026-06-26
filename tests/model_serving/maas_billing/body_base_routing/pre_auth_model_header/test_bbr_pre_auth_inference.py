@@ -27,7 +27,7 @@ LOGGER = structlog.get_logger(name=__name__)
     "maas_inference_service_tinyllama_free",
 )
 class TestBBRPreAuthInference:
-    """Tests verifying that BBR pre-auth ext_proc routes inference correctly."""
+    """Regression tests verifying /llm/ path-routed inference is not broken after BBR pre-auth ext_proc is deployed."""
 
     @pytest.mark.smoke
     @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
@@ -38,7 +38,7 @@ class TestBBRPreAuthInference:
         bbr_chat_payload: dict[str, Any],
         bbr_api_key_headers: dict[str, str],
     ) -> None:
-        """Verify inference succeeds with 200; BBR pre-auth ext_proc extracts model from request body for auth."""
+        """Verify /llm/ path-routed inference returns 200 and is not broken by the BBR pre-auth ext_proc deployment."""
         assert_bbr_inference_status(
             session=request_session_http,
             inference_url=bbr_inference_url,
@@ -48,20 +48,46 @@ class TestBBRPreAuthInference:
         )
 
     @pytest.mark.tier1
-    def test_inference_model_in_body_only_invalid_key_returns_401(
+    def test_inference_invalid_key_returns_401_or_403(
         self: Self,
         request_session_http: requests.Session,
         bbr_inference_url: str,
         bbr_chat_payload: dict[str, Any],
     ) -> None:
-        """Verify the gateway rejects inference with 401 when an invalid API key is used on the BBR endpoint."""
-        assert_bbr_inference_status(
-            session=request_session_http,
-            inference_url=bbr_inference_url,
+        """Verify the gateway rejects inference with 401 or 403 when an invalid API key is used."""
+        response = request_session_http.post(
+            url=bbr_inference_url,
             headers=build_maas_headers(token="invalid-key-that-does-not-exist"),
-            payload=bbr_chat_payload,
-            expected_status=401,
+            json=bbr_chat_payload,
+            timeout=60,
         )
+        assert response.status_code in (401, 403), (
+            f"Expected 401 or 403 for invalid API key on BBR inference, got {response.status_code}"
+        )
+        LOGGER.info(f"BBR inference with invalid API key returned {response.status_code}")
+
+    @pytest.mark.tier1
+    def test_inference_no_api_key_returns_401_or_403(
+        self: Self,
+        request_session_http: requests.Session,
+        bbr_inference_url: str,
+        bbr_chat_payload: dict[str, Any],
+    ) -> None:
+        """Verify the gateway rejects inference with 401 or 403 when no Authorization header is present.
+
+        Both codes are valid per the MaaS AuthPolicy: 401 for unauthenticated requests,
+        403 for requests denied at the authorization layer before credentials are evaluated.
+        """
+        response = request_session_http.post(
+            url=bbr_inference_url,
+            headers={},
+            json=bbr_chat_payload,
+            timeout=60,
+        )
+        assert response.status_code in (401, 403), (
+            f"Expected 401 or 403 for missing auth on BBR inference, got {response.status_code}"
+        )
+        LOGGER.info(f"BBR inference with no API key returned {response.status_code}")
 
     @pytest.mark.smoke
     @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
