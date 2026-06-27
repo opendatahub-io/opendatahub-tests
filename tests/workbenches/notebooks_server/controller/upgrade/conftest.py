@@ -11,11 +11,16 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.namespace import Namespace
 from ocp_resources.notebook import Notebook
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
-from ocp_resources.pod import Pod
+from ocp_resources.pod import ExecOnPodError, Pod
 from ocp_resources.service import Service
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError
 
+from tests.workbenches.notebooks_server.controller.upgrade.test_upgrade_elyra import (
+    list_runtime_configs,
+    parse_elyra_extensions,
+    read_runtime_config,
+)
 from tests.workbenches.notebooks_server.controller.utils import (
     WORKBENCH_TRUSTED_CA_BUNDLE_NAME,
     MutatingWebhookConfiguration,
@@ -526,6 +531,40 @@ def capture_notebook_baseline(
     )
     odh_ca_bundle_resource_version = odh_trusted_ca_bundle.instance.metadata.resourceVersion
 
+    # Capture Elyra extension and runtime config baseline
+    elyra_extensions_count = 0
+    elyra_extensions_sample = []
+    runtime_configs = {}
+
+    try:
+        labextension_output = upgrade_notebook_pod.execute(
+            container=upgrade_notebook.name,
+            command=["jupyter", "labextension", "list"],
+            timeout=Timeout.TIMEOUT_1MIN,
+        )
+        elyra_extensions = parse_elyra_extensions(labextension_output)
+        elyra_extensions_count = len(elyra_extensions)
+        elyra_extensions_sample = list(elyra_extensions.keys())[:3]  # Save first 3 as samples
+
+        LOGGER.info(f"Captured {elyra_extensions_count} Elyra extensions in baseline")
+    except ExecOnPodError as e:
+        LOGGER.warning(f"Failed to capture Elyra extensions baseline: {e}. Elyra upgrade tests may be skipped.")
+
+    try:
+        runtime_files = list_runtime_configs(upgrade_notebook_pod, upgrade_notebook.name)
+        for filename in runtime_files:
+            config = read_runtime_config(upgrade_notebook_pod, upgrade_notebook.name, filename)
+            runtime_configs[filename] = {
+                "display_name": config.get("display_name"),
+                "schema_name": config.get("schema_name"),
+                "runtime_type": config.get("metadata", {}).get("runtime_type"),
+                "api_endpoint": config.get("metadata", {}).get("api_endpoint"),
+            }
+
+        LOGGER.info(f"Captured {len(runtime_configs)} Elyra runtime configs in baseline")
+    except (ExecOnPodError, AssertionError) as e:
+        LOGGER.warning(f"Failed to capture Elyra runtime configs baseline: {e}. Runtime config upgrade tests may be skipped.")
+
     baseline = {
         "ntb_creation_timestamp": creation_timestamp,
         "notebook_generation": notebook_generation,
@@ -536,6 +575,9 @@ def capture_notebook_baseline(
         "stopped_annotation_value": stopped_annotation,
         "ca_bundle_resource_version": ca_bundle_resource_version,
         "odh_ca_bundle_resource_version": odh_ca_bundle_resource_version,
+        "elyra_extensions_count": elyra_extensions_count,
+        "elyra_extensions_sample": elyra_extensions_sample,
+        "runtime_configs": runtime_configs,
     }
 
     ConfigMap(
