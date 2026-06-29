@@ -77,8 +77,7 @@ class TestPreUpgradeElyra:
                 LOGGER.info(f"  ✓ {name} v{metadata['version']} - {metadata['status']}")
             else:
                 LOGGER.warning(
-                    f"  ⚠ {name} v{metadata['version']} - "
-                    f"enabled={metadata['enabled']}, status={metadata['status']}"
+                    f"  ⚠ {name} v{metadata['version']} - enabled={metadata['enabled']}, status={metadata['status']}"
                 )
 
     @pytest.mark.pre_upgrade
@@ -155,8 +154,7 @@ class TestPostUpgradeElyra:
         baseline_extensions_list = upgrade_notebook_baseline.get("elyra_extensions_list", [])
 
         assert baseline_extensions_list, (
-            "Baseline does not contain Elyra extensions list. "
-            "Pre-upgrade tests may not have run successfully."
+            "Baseline does not contain Elyra extensions list. Pre-upgrade tests may not have run successfully."
         )
 
         try:
@@ -168,8 +166,7 @@ class TestPostUpgradeElyra:
         except ExecOnPodError as e:
             collect_pod_information(upgrade_notebook_pod)
             raise AssertionError(
-                f"Failed to execute 'jupyter labextension list' on pod '{upgrade_notebook_pod.name}' "
-                f"after upgrade: {e}"
+                f"Failed to execute 'jupyter labextension list' on pod '{upgrade_notebook_pod.name}' after upgrade: {e}"
             ) from e
 
         current_extensions = parse_elyra_extensions(output)
@@ -218,9 +215,7 @@ class TestPostUpgradeElyra:
         baseline_configs = upgrade_notebook_baseline.get("runtime_configs", {})
 
         if not baseline_configs:
-            LOGGER.info(
-                "No runtime configs in baseline. Verifying that none exist post-upgrade either."
-            )
+            LOGGER.info("No runtime configs in baseline. Verifying that none exist post-upgrade either.")
             current_files = list_runtime_configs(upgrade_notebook_pod, upgrade_notebook.name)
             assert not current_files, (
                 f"No runtime configs existed before upgrade, but {len(current_files)} found after upgrade: "
@@ -241,7 +236,9 @@ class TestPostUpgradeElyra:
 
         added_files = current_filenames - baseline_filenames
         if added_files:
-            LOGGER.info(f"New runtime config files added (user-created or upgrade-generated): {', '.join(sorted(added_files))}")
+            LOGGER.info(
+                f"New runtime config files added (user-created or upgrade-generated): {', '.join(sorted(added_files))}"
+            )
 
         LOGGER.info(
             f"All {len(baseline_filenames)} baseline runtime config files still exist. "

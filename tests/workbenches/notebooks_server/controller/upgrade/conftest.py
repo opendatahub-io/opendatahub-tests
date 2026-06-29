@@ -561,7 +561,9 @@ def capture_notebook_baseline(
 
         LOGGER.info(f"Captured {len(runtime_configs)} Elyra runtime configs in baseline")
     except (ExecOnPodError, AssertionError) as e:
-        LOGGER.warning(f"Failed to capture Elyra runtime configs baseline: {e}. Runtime config upgrade tests may be skipped.")
+        LOGGER.warning(
+            f"Failed to capture Elyra runtime configs baseline: {e}. Runtime config upgrade tests may be skipped."
+        )
 
     baseline = {
         "ntb_creation_timestamp": creation_timestamp,

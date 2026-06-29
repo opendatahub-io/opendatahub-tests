@@ -158,9 +158,7 @@ def compare_runtime_config_semantics(baseline: dict[str, Any], current: dict[str
         current_value = current.get(field)
 
         if baseline_value != current_value:
-            differences.append(
-                f"Field '{field}' changed: '{baseline_value}' -> '{current_value}'"
-            )
+            differences.append(f"Field '{field}' changed: '{baseline_value}' -> '{current_value}'")
 
     baseline_metadata = baseline.get("metadata", {})
     current_metadata = current.get("metadata", {})
@@ -171,8 +169,6 @@ def compare_runtime_config_semantics(baseline: dict[str, Any], current: dict[str
         current_value = current_metadata.get(field)
 
         if baseline_value != current_value:
-            differences.append(
-                f"metadata.{field} changed: '{baseline_value}' -> '{current_value}'"
-            )
+            differences.append(f"metadata.{field} changed: '{baseline_value}' -> '{current_value}'")
 
     return differences
