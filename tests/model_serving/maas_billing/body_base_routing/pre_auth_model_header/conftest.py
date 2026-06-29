@@ -14,6 +14,7 @@ from ocp_resources.namespace import Namespace
 
 from tests.model_serving.maas_billing.body_base_routing.pre_auth_model_header.utils import (
     BBR_PRE_PROCESSING_DEPLOYMENT_NAME,
+    BBR_RATE_LIMIT_CHAT_MAX_TOKENS,
     BBR_RATE_LIMIT_TOKENS_PER_MINUTE,
     bbr_api_key_lifecycle,
     get_bbr_envoy_filter_config_patches,
@@ -75,6 +76,16 @@ def bbr_chat_payload(maas_inference_service_tinyllama_free: LLMInferenceService)
 
 
 @pytest.fixture(scope="class")
+def bbr_rate_limit_chat_payload(maas_inference_service_tinyllama_free: LLMInferenceService) -> dict[str, Any]:
+    """Chat completions payload for BBR rate limit tests using a large max_tokens to exhaust the token quota quickly."""
+    return {
+        "model": maas_inference_service_tinyllama_free.name,
+        "messages": [{"role": "user", "content": "hello"}],
+        "max_tokens": BBR_RATE_LIMIT_CHAT_MAX_TOKENS,
+    }
+
+
+@pytest.fixture(scope="class")
 def bbr_valid_api_key(
     request_session_http: requests.Session,
     base_url: str,
@@ -82,14 +93,15 @@ def bbr_valid_api_key(
     maas_subscription_tinyllama_free: MaaSSubscription,
 ) -> Generator[str, Any, Any]:
     """Create an API key bound to the free TinyLlama subscription and yield the plaintext key."""
-    yield from bbr_api_key_lifecycle(
+    with bbr_api_key_lifecycle(
         request_session_http=request_session_http,
         base_url=base_url,
         ocp_token_for_actor=ocp_token_for_actor,
         subscription_name=maas_subscription_tinyllama_free.name,
         key_name_prefix="e2e-bbr-inference",
         fixture_label="bbr_valid_api_key",
-    )
+    ) as api_key:
+        yield api_key
 
 
 @pytest.fixture
@@ -114,7 +126,6 @@ def bbr_low_limit_subscription(
             }
         ],
         priority=1,
-        teardown=True,
         wait_for_resource=True,
     ) as subscription:
         subscription.wait_for_condition(condition="Ready", status="True", timeout=300)
@@ -132,11 +143,12 @@ def bbr_rate_limited_api_key(
     bbr_low_limit_subscription: MaaSSubscription,
 ) -> Generator[str, Any, Any]:
     """API key bound to the low-rate-limit BBR subscription."""
-    yield from bbr_api_key_lifecycle(
+    with bbr_api_key_lifecycle(
         request_session_http=request_session_http,
         base_url=base_url,
         ocp_token_for_actor=ocp_token_for_actor,
         subscription_name=bbr_low_limit_subscription.name,
         key_name_prefix="e2e-bbr-rate-limit",
         fixture_label="bbr_rate_limited_api_key",
-    )
+    ) as api_key:
+        yield api_key

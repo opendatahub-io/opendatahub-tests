@@ -1,6 +1,7 @@
 """Utilities and verification helpers for body-based routing (BBR) tests."""
 
 from collections.abc import Generator
+from contextlib import contextmanager
 from typing import Any
 
 import pytest
@@ -44,9 +45,11 @@ BBR_POST_AUTH_EXPECTED_PLUGIN_TYPES: list[str] = [
 BBR_PRE_AUTH_EXPECTED_PLUGIN_TYPE: str = "body-field-to-header"
 BBR_PRE_AUTH_PLUGIN_FIELD_NAME: str = "model"
 BBR_PRE_AUTH_PLUGIN_HEADER_NAME: str = "X-Gateway-Model-Name"
-BBR_RATE_LIMIT_TOKENS_PER_MINUTE: int = 5
+BBR_RATE_LIMIT_TOKENS_PER_MINUTE: int = 100
+BBR_RATE_LIMIT_CHAT_MAX_TOKENS: int = 80
 
 
+@contextmanager
 def bbr_api_key_lifecycle(
     request_session_http: requests.Session,
     base_url: str,
@@ -64,19 +67,22 @@ def bbr_api_key_lifecycle(
         api_key_name=key_name,
         subscription=subscription_name,
     )
+    key_id: str = api_key_data["id"]
     plaintext_key: str = api_key_data["key"]
-    LOGGER.info(f"{fixture_label}: created key id={api_key_data['id']} name={key_name}")
-    yield plaintext_key
-    revoke_response, _ = revoke_api_key(
-        request_session_http=request_session_http,
-        base_url=base_url,
-        key_id=api_key_data["id"],
-        ocp_user_token=ocp_token_for_actor,
-    )
-    if revoke_response.status_code not in (200, 404):
-        raise AssertionError(
-            f"Unexpected teardown status for {fixture_label} key id={api_key_data['id']}: {revoke_response.status_code}"
+    LOGGER.info(f"{fixture_label}: created key id={key_id} name={key_name}")
+    try:
+        yield plaintext_key
+    finally:
+        revoke_response, _ = revoke_api_key(
+            request_session_http=request_session_http,
+            base_url=base_url,
+            key_id=key_id,
+            ocp_user_token=ocp_token_for_actor,
         )
+        if revoke_response.status_code not in (200, 404):
+            raise AssertionError(
+                f"Unexpected teardown status for {fixture_label} key id={key_id}: {revoke_response.status_code}"
+            )
 
 
 def verify_bbr_pre_processing_deployment_ready(
