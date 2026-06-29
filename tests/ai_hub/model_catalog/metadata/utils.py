@@ -7,7 +7,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.pod import Pod
 
-from tests.ai_hub.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
+from tests.ai_hub.constants import CATALOG_CONTAINER, DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
 from tests.ai_hub.utils import (
     execute_authenticated_post,
     execute_get_command,
@@ -16,7 +16,6 @@ from tests.ai_hub.utils import (
 )
 
 LOGGER = structlog.get_logger(name=__name__)
-CATALOG_CONTAINER = "catalog"
 
 
 def execute_model_catalog_post_command(url: str, token: str, files: dict[str, tuple[str, str, str]]) -> dict[str, Any]:

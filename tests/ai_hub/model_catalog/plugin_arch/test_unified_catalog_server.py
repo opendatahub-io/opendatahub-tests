@@ -3,7 +3,7 @@ import requests
 import structlog
 from ocp_resources.pod import Pod
 
-from tests.ai_hub.model_catalog.constants import CATALOG_CONTAINER
+from tests.ai_hub.constants import CATALOG_CONTAINER
 
 LOGGER = structlog.get_logger(name=__name__)
 

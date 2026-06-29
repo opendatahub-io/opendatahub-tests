@@ -6,8 +6,8 @@ import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.route import Route
 
+from tests.ai_hub.constants import CATALOG_CONTAINER
 from tests.ai_hub.mcp_servers.preview.utils import build_mcp_preview_config
-from tests.ai_hub.model_catalog.constants import CATALOG_CONTAINER
 from tests.ai_hub.utils import execute_authenticated_post, get_model_catalog_pod
 from utilities.infra import get_openshift_token
 
