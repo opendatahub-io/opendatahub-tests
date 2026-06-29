@@ -1,5 +1,6 @@
 import base64
 import json
+from fnmatch import fnmatch
 from typing import Any
 
 import requests
@@ -1068,6 +1069,15 @@ def get_latest_job_pod(admin_client: DynamicClient, job: Job) -> Pod:
     latest_pod = sorted_pods[0]
     LOGGER.info(f"Found {len(pods)} pod(s) for job {job.name}, using latest: {latest_pod.name}")
     return latest_pod
+
+
+def should_include_by_pattern(
+    name: str, included_patterns: list[str] | None = None, excluded_patterns: list[str] | None = None
+) -> bool:
+    """Determine if a name should be included based on include/exclude glob patterns."""
+    matches_included = any(fnmatch(name, pattern) for pattern in included_patterns) if included_patterns else True
+    matches_excluded = any(fnmatch(name, pattern) for pattern in excluded_patterns) if excluded_patterns else False
+    return matches_included and not matches_excluded
 
 
 def execute_authenticated_post(url: str, token: str, files: dict[str, tuple[str, str, str]]) -> dict[str, Any]:

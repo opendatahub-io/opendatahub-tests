@@ -8,7 +8,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.network_policy import NetworkPolicy
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
-from tests.ai_hub.model_catalog.constants import CATALOG_CONTAINER
+from tests.ai_hub.constants import CATALOG_CONTAINER
 from tests.ai_hub.model_catalog.db_check.utils import (
     find_language_mismatches_between_api_and_db,
     parse_language_properties_from_db,
