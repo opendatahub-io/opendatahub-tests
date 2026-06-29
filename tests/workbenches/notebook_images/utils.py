@@ -581,6 +581,54 @@ def resolve_workbench_image(admin_client: DynamicClient, spec: WorkbenchImageSpe
     return resolve_n_minus_one_image(admin_client=admin_client, imagestream_name=imagestream_name)
 
 
+def resolve_current_image(admin_client: DynamicClient, imagestream_name: str) -> ResolvedWorkbenchImage:
+    """Resolve the current (N) workbench image tag matching the cluster's product version.
+
+    Unlike ``resolve_n_minus_one_image`` which selects the pre-upgrade tag,
+    this function always resolves the tag matching the running product version,
+    intended as the target when bumping a workbench from N-1 to N.
+    """
+    applications_namespace = _applications_namespace()
+    imagestream = ImageStream(client=admin_client, name=imagestream_name, namespace=applications_namespace)
+    if not imagestream.exists:
+        raise AssertionError(f"ImageStream {imagestream_name} does not exist in namespace {applications_namespace}")
+
+    imagestream_data = imagestream.instance.to_dict()
+    status_tag_data = _get_imagestream_status_tag_data(imagestream_data=imagestream_data)
+    spec_tag_data = _get_imagestream_spec_tag_data(imagestream_data=imagestream_data)
+    current_product_version = get_product_version(admin_client=admin_client)
+
+    tag_name = f"{current_product_version.major}.{current_product_version.minor}"
+    if tag_name not in status_tag_data:
+        available_tags = sorted(status_tag_data)
+        raise AssertionError(
+            f"ImageStream {imagestream_name} does not have tag '{tag_name}' "
+            f"for product version {current_product_version}. "
+            f"Available tags: {available_tags}"
+        )
+
+    image_repository = _resolve_image_repository(
+        admin_client=admin_client,
+        imagestream_data=imagestream_data,
+        imagestream_name=imagestream_name,
+    )
+    tag_digest = _resolve_tag_digest(
+        status_tag_data=status_tag_data[tag_name],
+        imagestream_name=imagestream_name,
+        tag_name=tag_name,
+    )
+    build_commit = spec_tag_data.get(tag_name, {}).get("annotations", {}).get("opendatahub.io/notebook-build-commit")
+
+    return ResolvedWorkbenchImage(
+        imagestream_name=imagestream_name,
+        tag_name=tag_name,
+        image_url=f"{image_repository}:{tag_name}",
+        image_selection=f"{imagestream_name}:{tag_name}",
+        image_digest=tag_digest,
+        build_commit=str(build_commit) if build_commit else None,
+    )
+
+
 def find_rstudio_imagestream_name(admin_client: DynamicClient) -> str | None:
     """Return the legacy RStudio ImageStream name when it exists."""
     imagestreams = ImageStream.get(
@@ -1327,3 +1375,21 @@ def build_dashboard_image_patch(
         })
 
     return patches
+
+
+def apply_dashboard_image_patch(
+    notebook: Notebook,
+    patch_ops: list[dict[str, Any]],
+) -> None:
+    """Apply a JSON Patch to a Notebook CR, replicating the Dashboard's patchNotebookImage().
+
+    Uses ``application/json-patch+json`` content type so the Kubernetes API
+    interprets the body as RFC 6902 operations, matching how the Dashboard
+    frontend patches notebook images.
+    """
+    notebook.api.patch(
+        body=patch_ops,
+        name=notebook.name,
+        namespace=notebook.namespace,
+        content_type="application/json-patch+json",
+    )

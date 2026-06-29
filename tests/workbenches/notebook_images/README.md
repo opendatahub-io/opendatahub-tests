@@ -24,6 +24,12 @@ Post-upgrade validation checks:
 - Log cleanliness and in-pod HTTP health (JupyterLab and Code Server only)
 - Jupyter kernel in-memory state survived (JupyterLab only)
 
+## Dashboard Image Bump (`upgrade/test_bump_jupyterlab.py`)
+
+After the platform upgrade, applies the same JSON patch the Dashboard uses to bump a JupyterLab workbench from N-1 to N, then verifies the workbench restarts healthy with PVC data intact.
+
+Post-upgrade tests: workbench exists, JSON patch applied + pod rollout, image annotation + digest updated, log/HTTP health, PVC marker file survived.
+
 ### Running
 
 ```bash

@@ -11,6 +11,7 @@ from ocp_resources.notebook import Notebook
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
+from pytest_testconfig import config as py_config
 
 from tests.workbenches.notebook_images.utils import (
     UPGRADE_BASELINE_CM_NAME,
@@ -24,10 +25,12 @@ from tests.workbenches.notebook_images.utils import (
     is_legacy_track_tag,
     manage_upgrade_notebook,
     manage_upgrade_persistent_volume_claim,
+    resolve_current_image,
     resolve_workbench_image,
     resolve_workbench_upgrade_track,
     should_skip_workbench_spec,
     start_kernel_and_set_variable,
+    write_pvc_upgrade_marker,
 )
 from utilities.infra import create_ns
 
@@ -253,3 +256,147 @@ def n1_kernel_id(
     current_data[cm_key] = kernel_id
     ResourceEditor(patches={n1_image_baseline_configmap: {"data": current_data}}).update()
     return kernel_id
+
+
+# ---------------------------------------------------------------------------
+# Dashboard image bump fixtures (RHAIENG-5550)
+# ---------------------------------------------------------------------------
+
+
+def _bump_jupyterlab_spec() -> WorkbenchImageSpec:
+    """Return a WorkbenchImageSpec for the JupyterLab dashboard bump scenario."""
+    is_upstream = py_config.get("distribution") == "upstream"
+    return WorkbenchImageSpec(
+        ide="jupyterlab",
+        imagestream_name="jupyter-minimal-notebook" if is_upstream else "s2i-minimal-notebook",
+        notebook_name="upgrade-bump-jlab",
+        baseline_prefix="bump_jlab",
+        pvc_name="upgrade-bump-jlab-storage",
+    )
+
+
+@pytest.fixture(scope="session")
+def n1_bump_spec() -> WorkbenchImageSpec:
+    """Metadata for the JupyterLab dashboard image bump scenario."""
+    return _bump_jupyterlab_spec()
+
+
+@pytest.fixture(scope="session")
+def n1_bump_image(
+    admin_client: DynamicClient,
+    n1_bump_spec: WorkbenchImageSpec,
+) -> ResolvedWorkbenchImage:
+    """Resolved pre-upgrade (N-1) JupyterLab image for the bump workbench."""
+    return resolve_workbench_image(admin_client=admin_client, spec=n1_bump_spec)
+
+
+@pytest.fixture(scope="session")
+def n1_bump_pvc(
+    pytestconfig: pytest.Config,
+    unprivileged_client: DynamicClient,
+    n1_notebook_namespace: Namespace,
+    n1_bump_spec: WorkbenchImageSpec,
+    teardown_resources: bool,
+) -> Generator[PersistentVolumeClaim, Any, Any]:
+    """PVC backing the dashboard image bump workbench."""
+    yield from manage_upgrade_persistent_volume_claim(
+        pytestconfig=pytestconfig,
+        unprivileged_client=unprivileged_client,
+        namespace_name=n1_notebook_namespace.name,
+        spec=n1_bump_spec,
+        teardown_resources=teardown_resources,
+    )
+
+
+@pytest.fixture(scope="session")
+def n1_bump_notebook(
+    pytestconfig: pytest.Config,
+    unprivileged_client: DynamicClient,
+    n1_notebook_namespace: Namespace,
+    n1_bump_spec: WorkbenchImageSpec,
+    n1_bump_image: ResolvedWorkbenchImage,
+    n1_bump_pvc: PersistentVolumeClaim,
+    teardown_resources: bool,
+) -> Generator[Notebook, Any, Any]:
+    """Notebook CR pinned to the N-1 JupyterLab image for the bump test."""
+    del n1_bump_pvc
+    yield from manage_upgrade_notebook(
+        pytestconfig=pytestconfig,
+        unprivileged_client=unprivileged_client,
+        namespace_name=n1_notebook_namespace.name,
+        spec=n1_bump_spec,
+        resolved_image=n1_bump_image,
+        teardown_resources=teardown_resources,
+    )
+
+
+@pytest.fixture(scope="session")
+def n1_bump_pod(
+    admin_client: DynamicClient,
+    unprivileged_client: DynamicClient,
+    n1_bump_spec: WorkbenchImageSpec,
+    n1_bump_notebook: Notebook,
+) -> Pod:
+    """Ready pod for the bump workbench."""
+    return get_ready_upgrade_notebook_pod(
+        admin_client=admin_client,
+        unprivileged_client=unprivileged_client,
+        spec=n1_bump_spec,
+        notebook=n1_bump_notebook,
+    )
+
+
+@pytest.fixture(scope="session")
+def n1_bump_baseline(
+    pytestconfig: pytest.Config,
+    n1_image_baseline_configmap: ConfigMap,
+    n1_bump_spec: WorkbenchImageSpec,
+    n1_bump_notebook: Notebook,
+    n1_bump_pod: Pod,
+    n1_bump_image: ResolvedWorkbenchImage,
+) -> WorkbenchImageBaseline:
+    """Pre/post-upgrade baseline for the bump workbench."""
+    return capture_or_load_workbench_baseline(
+        pytestconfig=pytestconfig,
+        config_map=n1_image_baseline_configmap,
+        spec=n1_bump_spec,
+        notebook=n1_bump_notebook,
+        pod=n1_bump_pod,
+        resolved_image=n1_bump_image,
+    )
+
+
+@pytest.fixture(scope="session")
+def n1_bump_marker_written(
+    pytestconfig: pytest.Config,
+    n1_bump_spec: WorkbenchImageSpec,
+    n1_bump_pod: Pod,
+    n1_image_baseline_configmap: ConfigMap,
+) -> str:
+    """Write a marker file to PVC pre-upgrade; return marker content for post-upgrade comparison."""
+    marker_key = f"{n1_bump_spec.baseline_prefix}_pvc_marker"
+
+    if pytestconfig.option.post_upgrade:
+        data = dict(n1_image_baseline_configmap.instance.data or {})
+        if marker_key not in data:
+            raise AssertionError(f"PVC marker content not found in baseline ConfigMap (key: {marker_key})")
+        return data[marker_key]
+
+    write_pvc_upgrade_marker(pod=n1_bump_pod, container_name=n1_bump_spec.notebook_name)
+    marker_content = "n-minus-one-survival"
+    current_data = dict(n1_image_baseline_configmap.instance.data or {})
+    current_data[marker_key] = marker_content
+    ResourceEditor(patches={n1_image_baseline_configmap: {"data": current_data}}).update()
+    return marker_content
+
+
+@pytest.fixture(scope="session")
+def n1_bump_target_image(
+    admin_client: DynamicClient,
+    n1_bump_spec: WorkbenchImageSpec,
+) -> ResolvedWorkbenchImage:
+    """Post-upgrade (N) image to bump the workbench to."""
+    return resolve_current_image(
+        admin_client=admin_client,
+        imagestream_name=n1_bump_spec.imagestream_name,
+    )

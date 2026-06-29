@@ -23,6 +23,7 @@ workbenches/
         |-- conftest.py                   # Session-scoped parametrized upgrade fixtures
         |-- survival_checks.py            # Shared pre/post-upgrade validation steps
         |-- test_upgrade_workbench.py     # Parametrized N-1 survival checks (all IDEs)
+        |-- test_bump_jupyterlab.py      # Dashboard-driven N-1 to N image bump test
         |-- _kernel_start.py             # In-container script: start kernel, set variable
         +-- _kernel_verify.py            # In-container script: verify kernel state
 ```
