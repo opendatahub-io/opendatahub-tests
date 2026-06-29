@@ -10,6 +10,7 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.notebook import Notebook
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
+from ocp_resources.resource import ResourceEditor
 
 from tests.workbenches.notebook_images.utils import (
     UPGRADE_BASELINE_CM_NAME,
@@ -26,6 +27,7 @@ from tests.workbenches.notebook_images.utils import (
     resolve_workbench_image,
     resolve_workbench_upgrade_track,
     should_skip_workbench_spec,
+    start_kernel_and_set_variable,
 )
 from utilities.infra import create_ns
 
@@ -217,3 +219,37 @@ def n1_baseline(
         pod=n1_pod,
         resolved_image=n1_image,
     )
+
+
+@pytest.fixture(scope="session")
+def n1_kernel_id(
+    pytestconfig: pytest.Config,
+    n1_workbench_spec: WorkbenchImageSpec,
+    n1_notebook: Notebook,
+    n1_pod: Pod,
+    n1_baseline: WorkbenchImageBaseline,
+    n1_image_baseline_configmap: ConfigMap,
+) -> str:
+    """Start a Jupyter kernel pre-upgrade; return its ID for post-upgrade verification."""
+    if n1_workbench_spec.ide != "jupyterlab":
+        pytest.skip("Kernel state test is only applicable to JupyterLab workbenches")
+
+    cm_key = f"{n1_workbench_spec.baseline_prefix}_kernel_id"
+
+    if pytestconfig.option.post_upgrade:
+        data = dict(n1_image_baseline_configmap.instance.data or {})
+        kernel_id = data.get(cm_key)
+        if not kernel_id:
+            pytest.skip("No kernel_id stored in baseline ConfigMap — pre-upgrade kernel test was not run")
+        return kernel_id
+
+    kernel_id = start_kernel_and_set_variable(
+        pod=n1_pod,
+        container_name=n1_workbench_spec.notebook_name,
+        namespace=n1_notebook.namespace,
+        notebook_name=n1_notebook.name,
+    )
+    current_data = dict(n1_image_baseline_configmap.instance.data or {})
+    current_data[cm_key] = kernel_id
+    ResourceEditor(patches={n1_image_baseline_configmap: {"data": current_data}}).update()
+    return kernel_id

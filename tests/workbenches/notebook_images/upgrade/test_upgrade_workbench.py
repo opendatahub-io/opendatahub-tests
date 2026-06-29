@@ -25,6 +25,7 @@ from tests.workbenches.notebook_images.utils import (
     WorkbenchImageBaseline,
     WorkbenchImageSpec,
     get_workbench_image_specs,
+    verify_kernel_variable,
 )
 
 pytestmark = [
@@ -55,6 +56,17 @@ class TestPreUpgradeWorkbench:
             baseline=n1_baseline,
             spec=n1_workbench_spec,
         )
+
+    @pytest.mark.pre_upgrade
+    def test_pre_upgrade_kernel_started(
+        self,
+        n1_kernel_id: str,
+    ) -> None:
+        """Given a JupyterLab workbench on the source image tag,
+        When a Jupyter kernel is started and ``a = 3 + 4`` is executed,
+        Then the kernel ID is captured for post-upgrade verification.
+        """
+        assert n1_kernel_id
 
 
 class TestPostUpgradeWorkbench:
@@ -190,3 +202,22 @@ class TestPostUpgradeWorkbench:
             pod=n1_pod,
             spec=n1_workbench_spec,
         )
+
+    @pytest.mark.post_upgrade
+    @pytest.mark.dependency(depends=["pvc_data_survives"])
+    def test_post_upgrade_kernel_state_intact(
+        self,
+        n1_pod: Pod,
+        n1_workbench_spec: WorkbenchImageSpec,
+        n1_kernel_id: str,
+    ) -> None:
+        """Given a Jupyter kernel was running with ``a = 7`` before upgrade,
+        When the kernel is reconnected after upgrade,
+        Then ``print(a * 6)`` returns ``42``.
+        """
+        result = verify_kernel_variable(
+            pod=n1_pod,
+            container_name=n1_workbench_spec.notebook_name,
+            kernel_id=n1_kernel_id,
+        )
+        assert result == "42"

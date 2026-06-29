@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import pathlib
 import re
 import time
 from collections.abc import Generator
@@ -1237,6 +1238,46 @@ def capture_or_load_workbench_baseline(
     ResourceEditor(patches={config_map: {"data": updated_data}}).update()
     LOGGER.info(f"Saved N-1 baseline for {spec.ide}: tag={baseline.image_tag}")
     return baseline
+
+
+_KERNEL_SCRIPTS_DIR = str(pathlib.Path(__file__).parent / "upgrade")
+
+
+def start_kernel_and_set_variable(
+    pod: Pod,
+    container_name: str,
+    namespace: str,
+    notebook_name: str,
+) -> str:
+    """Start a Jupyter kernel inside the pod and execute ``a = 3 + 4``."""
+    script = pathlib.Path(_KERNEL_SCRIPTS_DIR, "_kernel_start.py").read_text()
+    base_url = f"http://localhost:8888/notebook/{namespace}/{notebook_name}"
+    result = pod.execute(
+        container=container_name,
+        command=["python", "-c", script, base_url],
+        timeout=60,
+    )
+    kernel_id = result.strip()
+    LOGGER.info(f"Started kernel {kernel_id} and set a = 3 + 4")
+    return kernel_id
+
+
+def verify_kernel_variable(pod: Pod, container_name: str, kernel_id: str) -> str:
+    """Reconnect to a running Jupyter kernel and verify ``a * 6 == 42``."""
+    script = pathlib.Path(_KERNEL_SCRIPTS_DIR, "_kernel_verify.py").read_text()
+    try:
+        result = pod.execute(
+            container=container_name,
+            command=["python", "-c", script, kernel_id],
+            timeout=30,
+        )
+    except ExecOnPodError as exc:
+        raise AssertionError(
+            f"Kernel {kernel_id} did not retain variable 'a' across upgrade -- kernel process may have been restarted"
+        ) from exc
+    output = result.strip()
+    LOGGER.info(f"Kernel {kernel_id} returned: {output}")
+    return output
 
 
 def build_dashboard_image_patch(
