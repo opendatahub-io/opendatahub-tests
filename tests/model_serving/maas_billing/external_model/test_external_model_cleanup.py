@@ -6,8 +6,8 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
 
 from tests.model_serving.maas_billing.external_model.utils import (
-    EXTERNAL_ENDPOINT,
-    EXTERNAL_SECRET_NAME,
+    EXTERNAL_PROVIDER_NAME,
+    external_provider_ref,
     wait_for_httproute,
     wait_for_httproute_deleted,
 )
@@ -24,6 +24,7 @@ CLEANUP_TEST_MODEL_NAME = "e2e-cleanup-test"
     "maas_gateway_api",
     "maas_api_gateway_reachable",
     "external_model_credential_secret",
+    "external_provider_cr",
 )
 class TestExternalModelCleanup:
     """Verify resource cleanup when ExternalModel CRs are deleted."""
@@ -34,24 +35,14 @@ class TestExternalModelCleanup:
         admin_client: DynamicClient,
         maas_unprivileged_model_namespace: Namespace,
     ) -> None:
-        """Deleting an ExternalModel removes the HTTPRoute via OwnerReference garbage collection.
-
-        Given a temporary ExternalModel CR is created and the reconciler
-        produces an HTTPRoute, when the ExternalModel is deleted, then the
-        HTTPRoute is garbage-collected by Kubernetes OwnerReference.
-        """
+        """Given a temporary ExternalModel with an HTTPRoute, when the CR is deleted, then the HTTPRoute is removed."""
         namespace = maas_unprivileged_model_namespace.name
 
         with ExternalModel(
             client=admin_client,
             name=CLEANUP_TEST_MODEL_NAME,
             namespace=namespace,
-            provider="openai",
-            target_model="gpt-3.5-turbo",
-            endpoint=EXTERNAL_ENDPOINT,
-            credential_ref={
-                "name": EXTERNAL_SECRET_NAME,
-            },
+            external_provider_refs=[external_provider_ref(provider_name=EXTERNAL_PROVIDER_NAME)],
             teardown=True,
             wait_for_resource=True,
         ):

@@ -10,11 +10,13 @@ from tests.model_serving.maas_billing.utils import build_maas_headers
 LOGGER = structlog.get_logger(name=__name__)
 
 
+@pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
 @pytest.mark.usefixtures(
     "maas_unprivileged_model_namespace",
     "maas_subscription_controller_enabled_latest",
     "maas_gateway_api",
     "maas_api_gateway_reachable",
+    "external_provider_cr",
     "external_model_cr",
     "external_model_ref",
     "external_model_auth_policy",
@@ -25,7 +27,6 @@ class TestExternalModelEgress:
 
     @pytest.mark.tier1
     @pytest.mark.skip_on_disconnected
-    @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
     def test_request_forwarded_to_external_endpoint(
         self,
         request_session_http: requests.Session,

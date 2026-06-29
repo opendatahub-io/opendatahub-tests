@@ -17,12 +17,18 @@ from tests.model_serving.maas_billing.external_model.utils import (
     EXTERNAL_AUTH_POLICY_NAME,
     EXTERNAL_ENDPOINT,
     EXTERNAL_MODEL_NAME,
+    EXTERNAL_PROVIDER_NAME,
     EXTERNAL_SECRET_NAME,
     EXTERNAL_SUBSCRIPTION_NAME,
+    INFERENCE_EXTERNAL_MODEL_API_GROUP,
+    external_provider_ref,
+    wait_for_httproute,
+    wait_for_inference_resource_phase,
 )
 from tests.model_serving.maas_billing.utils import create_api_key, revoke_api_key
 from utilities.general import generate_random_name
 from utilities.resources.external_model import ExternalModel
+from utilities.resources.external_provider import ExternalProvider
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -32,7 +38,7 @@ def external_model_credential_secret(
     admin_client: DynamicClient,
     maas_unprivileged_model_namespace: Namespace,
 ) -> Generator[Secret, Any, Any]:
-    """Opaque secret holding a dummy API key required by ExternalModel.credentialRef."""
+    """Opaque secret holding a dummy API key required by ExternalProvider auth."""
     with Secret(
         client=admin_client,
         name=EXTERNAL_SECRET_NAME,
@@ -46,25 +52,51 @@ def external_model_credential_secret(
 
 
 @pytest.fixture(scope="class")
-def external_model_cr(
+def external_provider_cr(
     admin_client: DynamicClient,
     maas_unprivileged_model_namespace: Namespace,
     external_model_credential_secret: Secret,
+) -> Generator[ExternalProvider, Any, Any]:
+    """ExternalProvider CR pointing to the external endpoint (httpbin.org by default)."""
+    with ExternalProvider(
+        client=admin_client,
+        name=EXTERNAL_PROVIDER_NAME,
+        namespace=maas_unprivileged_model_namespace.name,
+        provider="openai",
+        endpoint=EXTERNAL_ENDPOINT,
+        auth={
+            "type": "simple",
+            "secretRef": {"name": external_model_credential_secret.name},
+        },
+        teardown=True,
+        wait_for_resource=True,
+    ) as provider:
+        wait_for_inference_resource_phase(resource=provider, phase="Ready", timeout=300)
+        yield provider
+
+
+@pytest.fixture(scope="class")
+def external_model_cr(
+    admin_client: DynamicClient,
+    maas_unprivileged_model_namespace: Namespace,
+    external_provider_cr: ExternalProvider,
 ) -> Generator[ExternalModel, Any, Any]:
-    """ExternalModel CR pointing to the external endpoint (httpbin.org by default)."""
+    """ExternalModel CR referencing the ExternalProvider."""
     with ExternalModel(
         client=admin_client,
         name=EXTERNAL_MODEL_NAME,
         namespace=maas_unprivileged_model_namespace.name,
-        provider="openai",
-        target_model="gpt-3.5-turbo",
-        endpoint=EXTERNAL_ENDPOINT,
-        credential_ref={
-            "name": external_model_credential_secret.name,
-        },
+        external_provider_refs=[external_provider_ref(provider_name=external_provider_cr.name)],
         teardown=True,
         wait_for_resource=True,
     ) as external_model:
+        wait_for_inference_resource_phase(resource=external_model, phase="Ready", timeout=300)
+        wait_for_httproute(
+            client=admin_client,
+            name=external_model.name,
+            namespace=maas_unprivileged_model_namespace.name,
+            timeout=120,
+        )
         yield external_model
 
 
@@ -81,7 +113,9 @@ def external_model_ref(
         namespace=maas_unprivileged_model_namespace.name,
         model_ref={
             "name": external_model_cr.name,
+            "namespace": maas_unprivileged_model_namespace.name,
             "kind": "ExternalModel",
+            "apiGroup": INFERENCE_EXTERNAL_MODEL_API_GROUP,
         },
         teardown=True,
         wait_for_resource=True,

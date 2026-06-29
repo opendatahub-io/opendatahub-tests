@@ -11,6 +11,7 @@ from tests.model_serving.maas_billing.external_model.utils import (
     get_service,
 )
 from utilities.resources.external_model import ExternalModel
+from utilities.resources.external_provider import ExternalProvider
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -20,16 +21,19 @@ LOGGER = structlog.get_logger(name=__name__)
     "maas_subscription_controller_enabled_latest",
     "maas_gateway_api",
     "maas_api_gateway_reachable",
+    "external_provider_cr",
+    "external_model_cr",
+    "external_model_ref",
 )
 class TestExternalModelDiscovery:
-    """Verify ExternalModel reconciler creates the expected routing resources."""
+    """Verify ExternalModel reconciler creates HTTPRoute and ExternalProvider reconciler creates Service."""
 
     @pytest.mark.tier1
     def test_external_model_cr_exists(
         self,
         external_model_cr: ExternalModel,
     ) -> None:
-        """Given an ExternalModel CR, verify it exists on the cluster."""
+        """Given a deployed ExternalModel CR, when checking the cluster, then the CR exists."""
         assert external_model_cr.exists, f"ExternalModel '{external_model_cr.name}' was not created"
         LOGGER.info(f"ExternalModel '{external_model_cr.name}' exists")
 
@@ -38,7 +42,7 @@ class TestExternalModelDiscovery:
         self,
         external_model_ref: MaaSModelRef,
     ) -> None:
-        """Given an ExternalModel, verify MaaSModelRef referencing it exists."""
+        """Given an ExternalModel, when checking MaaSModelRef, then a ref to the model exists."""
         assert external_model_ref.exists, f"MaaSModelRef '{external_model_ref.name}' not found"
         LOGGER.info(f"MaaSModelRef '{external_model_ref.name}' exists")
 
@@ -46,38 +50,34 @@ class TestExternalModelDiscovery:
     def test_reconciler_created_httproute(
         self,
         admin_client: DynamicClient,
-        external_model_ref: MaaSModelRef,
+        external_model_cr: ExternalModel,
         maas_unprivileged_model_namespace: Namespace,
     ) -> None:
-        """Given a reconciled ExternalModel, verify an HTTPRoute was created."""
-        status = external_model_ref.instance.status or {}
-        httproute_name = status.get("httpRouteName")
-        assert httproute_name, f"MaaSModelRef '{external_model_ref.name}' has no httpRouteName in status"
-
+        """Given a reconciled ExternalModel, when listing HTTPRoutes, then one named after the model exists."""
         route = get_httproute(
             client=admin_client,
-            name=httproute_name,
+            name=external_model_cr.name,
             namespace=maas_unprivileged_model_namespace.name,
         )
         assert route is not None, (
-            f"HTTPRoute '{httproute_name}' not found in namespace '{maas_unprivileged_model_namespace.name}'"
+            f"HTTPRoute '{external_model_cr.name}' not found in namespace '{maas_unprivileged_model_namespace.name}'"
         )
-        LOGGER.info(f"HTTPRoute '{httproute_name}' created by reconciler")
+        LOGGER.info(f"HTTPRoute '{external_model_cr.name}' created by reconciler")
 
     @pytest.mark.tier1
     def test_reconciler_created_backend_service(
         self,
         admin_client: DynamicClient,
-        external_model_ref: MaaSModelRef,
+        external_provider_cr: ExternalProvider,
         maas_unprivileged_model_namespace: Namespace,
     ) -> None:
-        """Given a reconciled ExternalModel, verify a backend Service was created."""
+        """Given a reconciled ExternalProvider, when listing Services, then one named after the provider exists."""
         svc = get_service(
             client=admin_client,
-            name=external_model_ref.name,
+            name=external_provider_cr.name,
             namespace=maas_unprivileged_model_namespace.name,
         )
         assert svc is not None, (
-            f"Service '{external_model_ref.name}' not found in namespace '{maas_unprivileged_model_namespace.name}'"
+            f"Service '{external_provider_cr.name}' not found in namespace '{maas_unprivileged_model_namespace.name}'"
         )
-        LOGGER.info(f"Service '{external_model_ref.name}' created by reconciler")
+        LOGGER.info(f"Service '{external_provider_cr.name}' created by reconciler")
