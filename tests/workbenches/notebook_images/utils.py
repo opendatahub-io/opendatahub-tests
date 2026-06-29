@@ -66,13 +66,20 @@ BLOCKED_LOG_KEYWORDS = (
 )
 
 ALLOWED_LOG_MESSAGES = (
+    # nginx reverse proxy logs this while the upstream IDE (code-server) is still starting
     "connect() failed (111: Connection refused) while connecting to upstream, client",
+    # workbench-trusted-ca-bundle ConfigMap is optional; absent in test namespaces
     "Skipping trusted CA bundle mount because the ConfigMap is not available",
     "WARNING: skipping notebook trusted CA setup because no bundle was mounted",
+    # RHAIENG-5767: jupyter-events package emits this on every JupyterLab start
     "JupyterEventsVersionWarning: The `version` property of an event schema must be a string.",
+    # RHAIENG-5766: Dashboard NOTEBOOK_ARGS uses deprecated ServerApp.token instead of IdentityProvider.token
     "ServerApp.token config is deprecated in 2.0. Use IdentityProvider.token.",
+    # RHAIENG-5644: TLS is provided by the OpenShift route / Gateway, not in-container Jupyter
     "WARNING: The Jupyter server is listening on all IP addresses and not using encryption.",
+    # RHAIENG-5644: Jupyter auth disabled in-container; kube-rbac-proxy / oauth-proxy provides external auth
     "WARNING: The Jupyter server is listening on all IP addresses and not using authentication.",
+    # RHOAIENG-22226: uuid.getnode() fails in containers with no persistent MAC address
     "Unable to retrieve mac address (unexpected format)",
 )
 
