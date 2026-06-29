@@ -532,8 +532,7 @@ def capture_notebook_baseline(
     odh_ca_bundle_resource_version = odh_trusted_ca_bundle.instance.metadata.resourceVersion
 
     # Capture Elyra extension and runtime config baseline
-    elyra_extensions_count = 0
-    elyra_extensions_sample = []
+    elyra_extensions_list = []
     runtime_configs = {}
 
     try:
@@ -543,10 +542,9 @@ def capture_notebook_baseline(
             timeout=Timeout.TIMEOUT_1MIN,
         )
         elyra_extensions = parse_elyra_extensions(labextension_output)
-        elyra_extensions_count = len(elyra_extensions)
-        elyra_extensions_sample = list(elyra_extensions.keys())[:3]  # Save first 3 as samples
+        elyra_extensions_list = list(elyra_extensions.keys())  # Save complete list for 1:1 verification
 
-        LOGGER.info(f"Captured {elyra_extensions_count} Elyra extensions in baseline")
+        LOGGER.info(f"Captured {len(elyra_extensions_list)} Elyra extensions in baseline")
     except ExecOnPodError as e:
         LOGGER.warning(f"Failed to capture Elyra extensions baseline: {e}. Elyra upgrade tests may be skipped.")
 
@@ -575,8 +573,7 @@ def capture_notebook_baseline(
         "stopped_annotation_value": stopped_annotation,
         "ca_bundle_resource_version": ca_bundle_resource_version,
         "odh_ca_bundle_resource_version": odh_ca_bundle_resource_version,
-        "elyra_extensions_count": elyra_extensions_count,
-        "elyra_extensions_sample": elyra_extensions_sample,
+        "elyra_extensions_list": elyra_extensions_list,
         "runtime_configs": runtime_configs,
     }
 
