@@ -1237,3 +1237,52 @@ def capture_or_load_workbench_baseline(
     ResourceEditor(patches={config_map: {"data": updated_data}}).update()
     LOGGER.info(f"Saved N-1 baseline for {spec.ide}: tag={baseline.image_tag}")
     return baseline
+
+
+def build_dashboard_image_patch(
+    notebook: Notebook,
+    resolved_image: ResolvedWorkbenchImage,
+) -> list[dict[str, Any]]:
+    """Build the same Notebook image patch payload the Dashboard UI applies.
+
+    Mirrors the ``patchNotebookImage()`` JSON patch that the RHOAI Dashboard
+    sends when a user bumps their workbench to a newer ImageStream tag.  Used
+    by the RHAIENG-5550 dashboard-driven image bump tests, *not* by the N-1
+    survival tests in this package.
+    """
+    env_list = notebook.instance.spec.template.spec.containers[0].env or []
+    jupyter_image_env_index = next(
+        (idx for idx, env in enumerate(env_list) if getattr(env, "name", None) == "JUPYTER_IMAGE"),
+        None,
+    )
+    if jupyter_image_env_index is None:
+        raise AssertionError("Notebook container is missing the JUPYTER_IMAGE environment variable")
+
+    patches: list[dict[str, Any]] = [
+        {
+            "op": "replace",
+            "path": "/metadata/annotations/notebooks.opendatahub.io~1last-image-selection",
+            "value": resolved_image.image_selection,
+        },
+        {
+            "op": "replace",
+            "path": "/spec/template/spec/containers/0/image",
+            "value": resolved_image.image_url,
+        },
+        {
+            "op": "replace",
+            "path": f"/spec/template/spec/containers/0/env/{jupyter_image_env_index}/value",
+            "value": resolved_image.image_url,
+        },
+    ]
+
+    if resolved_image.build_commit:
+        annotations = notebook.instance.metadata.annotations or {}
+        commit_annotation_key = "notebooks.opendatahub.io/last-image-version-git-commit-selection"
+        patches.append({
+            "op": "replace" if annotations.get(commit_annotation_key) else "add",
+            "path": "/metadata/annotations/notebooks.opendatahub.io~1last-image-version-git-commit-selection",
+            "value": resolved_image.build_commit,
+        })
+
+    return patches
