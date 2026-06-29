@@ -4,6 +4,7 @@ import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
 
+from tests.ai_hub.constants import CATALOG_CONTAINER
 from tests.ai_hub.mcp_servers.config.constants import (
     EXPECTED_MCP_SERVER_NAMES,
     MCP_CATALOG_INVALID_SOURCE_ID,
@@ -15,8 +16,6 @@ from tests.ai_hub.mcp_servers.config.constants import (
 from tests.ai_hub.utils import execute_get_command, get_model_catalog_pod
 
 LOGGER = structlog.get_logger(name=__name__)
-
-CATALOG_CONTAINER = "catalog"
 
 
 @pytest.mark.parametrize(

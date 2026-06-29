@@ -1,42 +1,26 @@
 import json
-from fnmatch import fnmatch
 from typing import Any, Literal
 
-import requests
 import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.pod import Pod
 
-from tests.ai_hub.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
-from tests.ai_hub.utils import execute_get_command, get_rest_headers
+from tests.ai_hub.constants import CATALOG_CONTAINER, DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
+from tests.ai_hub.utils import (
+    execute_authenticated_post,
+    execute_get_command,
+    get_rest_headers,
+    should_include_by_pattern,
+)
 
 LOGGER = structlog.get_logger(name=__name__)
-CATALOG_CONTAINER = "catalog"
 
 
 def execute_model_catalog_post_command(url: str, token: str, files: dict[str, tuple[str, str, str]]) -> dict[str, Any]:
-    """
-    Execute model catalog POST endpoint with multipart/form-data files.
-
-    Args:
-        url: API endpoint URL
-        token: Authorization bearer token
-        files: Dictionary mapping form field names to (filename, content, mime_type) tuples
-
-    Returns:
-        dict: Parsed JSON response
-
-    Raises:
-        HTTPError: If response status is not successful
-    """
-    headers = {"Authorization": f"Bearer {token}"}
-
-    LOGGER.info(f"Executing model catalog POST: {url}")
-    response = requests.post(url=url, headers=headers, files=files, verify=False, timeout=60)
-    response.raise_for_status()
-    return response.json()
+    """Execute model catalog POST endpoint with multipart/form-data files."""
+    return execute_authenticated_post(url=url, token=token, files=files)
 
 
 def build_catalog_preview_config(
@@ -149,8 +133,8 @@ def validate_catalog_preview_items(
             continue
 
         # Use shared logic to determine if model should be included
-        expected_included = _should_include_model(
-            model_name=model_name, included_patterns=included_patterns, excluded_patterns=excluded_patterns
+        expected_included = should_include_by_pattern(
+            name=model_name, included_patterns=included_patterns, excluded_patterns=excluded_patterns
         )
 
         if item_included != expected_included:
@@ -158,32 +142,6 @@ def validate_catalog_preview_items(
 
     assert not errors, f"Found {len(errors)} items with incorrect 'included' property:\n" + "\n".join(errors)
     LOGGER.info(f"All {len(items)} items have correct 'included' property")
-
-
-def _should_include_model(
-    model_name: str, included_patterns: list[str] | None = None, excluded_patterns: list[str] | None = None
-) -> bool:
-    """
-    Determine if a model should be included based on include/exclude patterns.
-
-    Args:
-        model_name: Name of the model to check
-        included_patterns: List of glob patterns for includedModels (None means include all)
-        excluded_patterns: List of glob patterns for excludedModels (None means exclude none)
-
-    Returns:
-        bool: True if model should be included
-    """
-    # Check if model matches any included pattern
-    matches_included = any(fnmatch(model_name, pattern) for pattern in included_patterns) if included_patterns else True
-
-    # Check if model matches any excluded pattern
-    matches_excluded = (
-        any(fnmatch(model_name, pattern) for pattern in excluded_patterns) if excluded_patterns else False
-    )
-
-    # Model is included if it matches include pattern AND does not match exclude pattern
-    return matches_included and not matches_excluded
 
 
 def filter_models_by_patterns(
@@ -205,8 +163,8 @@ def filter_models_by_patterns(
 
     for model in models:
         model_name = model.get("name", "")
-        if _should_include_model(
-            model_name=model_name, included_patterns=included_patterns, excluded_patterns=excluded_patterns
+        if should_include_by_pattern(
+            name=model_name, included_patterns=included_patterns, excluded_patterns=excluded_patterns
         ):
             included_count += 1
 

@@ -14,7 +14,7 @@ from ocp_resources.route import Route
 from ocp_resources.service import Service
 from timeout_sampler import TimeoutSampler
 
-from tests.ai_hub.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
+from tests.ai_hub.constants import CATALOG_CONTAINER, DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
 from tests.ai_hub.model_catalog.catalog_config.utils import (
     extract_schema_fields,
     get_validate_default_model_catalog_source,
@@ -22,7 +22,7 @@ from tests.ai_hub.model_catalog.catalog_config.utils import (
     validate_model_catalog_enabled,
     validate_model_catalog_resource,
 )
-from tests.ai_hub.model_catalog.constants import CATALOG_CONTAINER, DEFAULT_CATALOGS, REDHAT_AI_CATALOG_ID
+from tests.ai_hub.model_catalog.constants import DEFAULT_CATALOGS, REDHAT_AI_CATALOG_ID
 from tests.ai_hub.utils import execute_get_command, get_model_catalog_pod, get_rest_headers
 from utilities.user_utils import UserTestSession
 
