@@ -13,16 +13,7 @@ from utilities.resources.tenant import Tenant
 
 LOGGER = structlog.get_logger(name=__name__)
 
-MAAS_TENANT_HEADER = "X-MaaS-Tenant"
 MAAS_API_DEPLOYMENT_NAME = "maas-api"
-
-
-def build_maas_tenant_headers(*, tenant_name: str, bearer_token: str | None = None) -> dict[str, str]:
-    """Return HTTP headers including the required multi-tenant scope header."""
-    headers = {MAAS_TENANT_HEADER: tenant_name}
-    if bearer_token is not None:
-        headers["Authorization"] = f"Bearer {bearer_token}"
-    return headers
 
 
 def maas_api_deployment_name_for_aitenant(*, aitenant_name: str) -> str:
@@ -44,9 +35,7 @@ def gateway_ref_from_aitenant(*, aitenant: AITenant) -> tuple[str, str]:
         wait_for_resource=False,
     )
     status_gateway_ref = getattr(fresh_aitenant.instance.status, "gatewayRef", None)
-    assert status_gateway_ref is not None, (
-        f"AITenant '{aitenant.name}' status.gatewayRef should be set after bootstrap"
-    )
+    assert status_gateway_ref is not None, f"AITenant '{aitenant.name}' status.gatewayRef should be set after bootstrap"
     return status_gateway_ref.name, status_gateway_ref.namespace
 
 
@@ -88,13 +77,9 @@ def verify_maas_api_deployment_for_aitenant(
         namespace=applications_namespace,
         ensure_exists=True,
     )
-    assert maas_api_deployment.exists, (
-        f"Deployment/{deployment_name} not found in namespace '{applications_namespace}'"
-    )
+    assert maas_api_deployment.exists, f"Deployment/{deployment_name} not found in namespace '{applications_namespace}'"
     maas_api_deployment.wait_for_condition(condition="Available", status="True", timeout=300)
-    LOGGER.info(
-        f"Deployment/{deployment_name} is Available in applications namespace '{applications_namespace}'"
-    )
+    LOGGER.info(f"Deployment/{deployment_name} is Available in applications namespace '{applications_namespace}'")
 
 
 def get_maas_api_httproute(
@@ -140,9 +125,7 @@ def wait_for_maas_api_httproute(
         )
         if route is not None:
             return route
-    raise TimeoutError(
-        f"HTTPRoute '{route_namespace}/{route_name}' not found within {timeout}s"
-    )
+    raise TimeoutError(f"HTTPRoute '{route_namespace}/{route_name}' not found within {timeout}s")
 
 
 def httproute_references_gateway(
@@ -152,10 +135,14 @@ def httproute_references_gateway(
     gateway_namespace: str,
 ) -> bool:
     """Return True when the HTTPRoute parentRefs include the expected Gateway."""
+    route_namespace = route.namespace
     parent_refs = getattr(route.instance.spec, "parentRefs", None) or []
     for parent_ref in parent_refs:
+        parent_kind = getattr(parent_ref, "kind", None) or "Gateway"
+        if parent_kind != "Gateway":
+            continue
         parent_name = getattr(parent_ref, "name", None)
-        parent_namespace = getattr(parent_ref, "namespace", None)
+        parent_namespace = getattr(parent_ref, "namespace", None) or route_namespace
         if parent_name == gateway_name and parent_namespace == gateway_namespace:
             return True
     return False
@@ -170,13 +157,18 @@ def verify_maas_api_httproute_attached_to_gateway(
     gateway_namespace: str,
     timeout: int = 300,
 ) -> None:
-    """Assert the per-tenant maas-api HTTPRoute exists in the applications namespace and attaches to the tenant Gateway."""
+    """Assert the per-tenant maas-api HTTPRoute exists in the applications namespace.
+
+    Also assert the route attaches to the tenant Gateway via parentRefs.
+    """
     wait_for_bootstrapped_tenant_deployments_available(
         admin_client=admin_client,
         tenant_namespace_name=tenant_namespace_name,
         timeout=timeout,
     )
-    route_name = maas_api_route_name_for_aitenant(aitenant_name=aitenant_name)
+    route_name = maas_api_route_name_for_aitenant(
+        aitenant_name=aitenant_name,
+    )
     maas_api_route = wait_for_maas_api_httproute(
         admin_client=admin_client,
         route_name=route_name,

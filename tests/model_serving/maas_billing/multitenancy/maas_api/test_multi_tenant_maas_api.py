@@ -23,7 +23,9 @@ class TestMultiTenantMaaSApi:
         admin_client: DynamicClient,
         aitenant_for_test: AITenantTestContext,
     ) -> None:
-        """Given a Ready AITenant, when the Tenant reconciler finishes, then maas-api-{tenant} is Available in the applications namespace."""
+        """Given a Ready AITenant, when the Tenant reconciler finishes,
+        then maas-api-{tenant} is Available in the applications namespace.
+        """
         verify_maas_api_deployment_for_aitenant(
             admin_client=admin_client,
             applications_namespace=py_config["applications_namespace"],
@@ -37,7 +39,9 @@ class TestMultiTenantMaaSApi:
         admin_client: DynamicClient,
         aitenant_for_test: AITenantTestContext,
     ) -> None:
-        """Given a Ready AITenant with a programmed Gateway, when checking maas-api-{tenant}-route, then parentRefs target that Gateway."""
+        """Given a Ready AITenant with a programmed Gateway, when checking maas-api-{tenant}-route,
+        then parentRefs target that Gateway.
+        """
         gateway_name, gateway_namespace = gateway_ref_from_aitenant(aitenant=aitenant_for_test["aitenant"])
         verify_maas_api_httproute_attached_to_gateway(
             admin_client=admin_client,
