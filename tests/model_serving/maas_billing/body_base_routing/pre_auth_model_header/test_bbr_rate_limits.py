@@ -12,22 +12,18 @@ LOGGER = structlog.get_logger(name=__name__)
 
 BBR_RATE_LIMIT_MAX_REQUESTS: int = 8
 
-pytestmark = [
-    pytest.mark.usefixtures(
-        "maas_unprivileged_model_namespace",
-        "maas_subscription_controller_enabled_latest",
-        "maas_gateway_api",
-        "maas_api_gateway_reachable",
-        "maas_free_group",
-        "maas_model_tinyllama_free",
-        "maas_auth_policy_tinyllama_free",
-        "bbr_low_limit_subscription",
-        "maas_inference_service_tinyllama_free",
-    ),
-    pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True),
-]
 
-
+@pytest.mark.usefixtures(
+    "maas_unprivileged_model_namespace",
+    "maas_subscription_controller_enabled_latest",
+    "maas_gateway_api",
+    "maas_api_gateway_reachable",
+    "maas_free_group",
+    "maas_model_tinyllama_free",
+    "maas_auth_policy_tinyllama_free",
+    "maas_inference_service_tinyllama_free",
+)
+@pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
 class TestBBRRateLimits:
     """Verify token rate limiting is enforced on BBR /llm/ inference paths."""
 

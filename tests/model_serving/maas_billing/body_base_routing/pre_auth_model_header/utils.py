@@ -67,22 +67,22 @@ def bbr_api_key_lifecycle(
         api_key_name=key_name,
         subscription=subscription_name,
     )
+    assert "id" in api_key_data, f"{fixture_label}: create_api_key response missing 'id'"
+    assert "key" in api_key_data, f"{fixture_label}: create_api_key response missing 'key'"
     key_id: str = api_key_data["id"]
     plaintext_key: str = api_key_data["key"]
     LOGGER.info(f"{fixture_label}: created key id={key_id} name={key_name}")
-    try:
-        yield plaintext_key
-    finally:
-        revoke_response, _ = revoke_api_key(
-            request_session_http=request_session_http,
-            base_url=base_url,
-            key_id=key_id,
-            ocp_user_token=ocp_token_for_actor,
+    yield plaintext_key
+    revoke_response, _ = revoke_api_key(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        key_id=key_id,
+        ocp_user_token=ocp_token_for_actor,
+    )
+    if revoke_response.status_code not in (200, 404):
+        raise AssertionError(
+            f"Unexpected teardown status for {fixture_label} key id={key_id}: {revoke_response.status_code}"
         )
-        if revoke_response.status_code not in (200, 404):
-            raise AssertionError(
-                f"Unexpected teardown status for {fixture_label} key id={key_id}: {revoke_response.status_code}"
-            )
 
 
 def verify_bbr_pre_processing_deployment_ready(
