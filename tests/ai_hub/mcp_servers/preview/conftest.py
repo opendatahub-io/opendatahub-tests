@@ -7,12 +7,12 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.route import Route
 
 from tests.ai_hub.mcp_servers.preview.utils import build_mcp_preview_config
+from tests.ai_hub.model_catalog.constants import CATALOG_CONTAINER
 from tests.ai_hub.utils import execute_authenticated_post, get_model_catalog_pod
 from utilities.infra import get_openshift_token
 
 LOGGER = structlog.get_logger(name=__name__)
 
-CATALOG_CONTAINER: str = "catalog"
 MCP_CATALOG_FILE: str = "/shared-data/redhat-mcp-servers-catalog.yaml"
 
 MODEL_CATALOG_API_PATH: str = "/api/model_catalog/v1alpha1/"

@@ -80,7 +80,6 @@ def validate_preview_items(
     )
     items = result.get("items", [])
     assert items, "Preview response returned empty items list"
-    LOGGER.info(f"Found {items} items")
     LOGGER.info(f"Validating 'included' property for {len(items)} items")
 
     errors = []

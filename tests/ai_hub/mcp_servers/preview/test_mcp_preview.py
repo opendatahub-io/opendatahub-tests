@@ -17,19 +17,28 @@ class TestMCPPreviewExistingSource:
 
     @pytest.mark.parametrize(
         "mcp_preview_result",
-        [pytest.param({"included_servers": ["*"], "excluded_servers": ["*aap*"]}, id="test_include_exclude")],
+        [
+            pytest.param(
+                {"included_servers": ["*"], "excluded_servers": ["*aap*"]},
+                id="test_include_exclude",
+            ),
+            pytest.param(
+                {},
+                id="test_no_filters",
+            ),
+        ],
         indirect=True,
     )
-    def test_mcp_preview_included_and_excluded_servers_filters(
+    def test_mcp_preview_server_filters(
         self: Self,
         mcp_preview_result: tuple[dict[str, Any], list[str] | None, list[str] | None],
         default_mcp_servers_from_yaml: list[dict[str, Any]],
     ):
         """
-        Test the catalog preview API for MCP servers with includedServers and excludedServers filters.
+        Test the catalog preview API for MCP servers with various filter combinations.
 
         Given an MCP server catalog with known server names,
-        When previewing with includedServers and excludedServers glob patterns,
+        When previewing with or without includedServers/excludedServers glob patterns,
         Then the preview response should return accurate counts and correct included status per server.
         """
         result, included_patterns, excluded_patterns = mcp_preview_result
@@ -46,29 +55,6 @@ class TestMCPPreviewExistingSource:
             excluded_patterns=excluded_patterns,
             expected_server_names=catalog_server_names,
         )
-
-    @pytest.mark.parametrize(
-        "mcp_preview_result",
-        [pytest.param({}, id="test_no_filters")],
-        indirect=True,
-    )
-    def test_mcp_preview_no_filters(
-        self: Self,
-        mcp_preview_result: tuple[dict[str, Any], list[str] | None, list[str] | None],
-        default_mcp_servers_from_yaml: list[dict[str, Any]],
-    ):
-        """
-        Test the catalog preview API for MCP servers with no filters.
-
-        Given an MCP server catalog,
-        When previewing with no includedServers or excludedServers patterns,
-        Then all servers should be included and counts should reflect the full catalog.
-        """
-        result, _, _ = mcp_preview_result
-        LOGGER.info(f"MCP preview result: {result}")
-        catalog_server_names = {server["name"] for server in default_mcp_servers_from_yaml}
-        validate_mcp_preview_counts(result=result, mcp_servers=default_mcp_servers_from_yaml)
-        validate_preview_items(result=result, expected_server_names=catalog_server_names)
 
     @pytest.mark.parametrize(
         "mcp_preview_result, filter_status",
