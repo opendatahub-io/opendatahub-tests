@@ -50,6 +50,11 @@ class AITenantTestContext(TypedDict):
     tenant_namespace_name: str
 
 
+class AITenantTestParams(TypedDict):
+    aitenant_name: str
+    aitenant_spec: dict[str, Any]
+
+
 class AITenantPreexistingNamespaceContext(TypedDict):
     aitenant: AITenant
     tenant_namespace: Namespace
