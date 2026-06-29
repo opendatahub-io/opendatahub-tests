@@ -20,7 +20,6 @@ from tests.workbenches.notebook_images.utils import (
     WorkbenchImageSpec,
     capture_or_load_workbench_baseline,
     get_ready_upgrade_notebook_pod,
-    get_workbench_image_spec_by_ide,
     is_legacy_track_tag,
     manage_upgrade_notebook,
     manage_upgrade_persistent_volume_claim,
@@ -92,14 +91,18 @@ def n1_image_baseline_configmap(
             yield config_map
 
 
-def _workbench_case_fixture(
-    ide: str,
+# --- Parametrized per-IDE fixtures ---
+
+
+@pytest.fixture(scope="session")
+def n1_workbench_spec(
+    request: pytest.FixtureRequest,
     admin_client: DynamicClient,
     workbench_upgrade_track: str,
     pytestconfig: pytest.Config,
 ) -> WorkbenchImageSpec:
-    """Return a workbench case or skip when the IDE is unsupported on this cluster."""
-    spec = get_workbench_image_spec_by_ide(ide=ide)
+    """Resolve the workbench spec for the current parametrize ID and skip if unsupported."""
+    spec: WorkbenchImageSpec = request.param
     if skip_reason := should_skip_workbench_spec(
         admin_client=admin_client,
         spec=spec,
@@ -110,374 +113,107 @@ def _workbench_case_fixture(
     return spec
 
 
-def _workbench_image_fixture(
+@pytest.fixture(scope="session")
+def n1_image(
     admin_client: DynamicClient,
-    spec: WorkbenchImageSpec,
+    n1_workbench_spec: WorkbenchImageSpec,
     pytestconfig: pytest.Config,
 ) -> ResolvedWorkbenchImage:
-    """Resolve the N-1 image for a workbench case."""
-    resolved_image = resolve_workbench_image(admin_client=admin_client, spec=spec)
+    """Resolved pre-upgrade image for the current IDE."""
+    resolved_image = resolve_workbench_image(admin_client=admin_client, spec=n1_workbench_spec)
     if (
         not pytestconfig.option.post_upgrade
-        and spec.require_eus_track
+        and n1_workbench_spec.require_eus_track
         and not is_legacy_track_tag(tag_name=resolved_image.tag_name)
     ):
-        pytest.skip(f"{spec.ide} workbench survival tests require a legacy EUS workbench image tag")
+        pytest.skip(f"{n1_workbench_spec.ide} workbench survival tests require a legacy EUS workbench image tag")
     return resolved_image
 
 
 @pytest.fixture(scope="session")
-def n1_jupyterlab_case(
-    admin_client: DynamicClient,
-    workbench_upgrade_track: str,
-    pytestconfig: pytest.Config,
-) -> WorkbenchImageSpec:
-    """Metadata for the JupyterLab upgrade-survival scenario."""
-    return _workbench_case_fixture(
-        ide="jupyterlab",
-        admin_client=admin_client,
-        workbench_upgrade_track=workbench_upgrade_track,
-        pytestconfig=pytestconfig,
-    )
-
-
-@pytest.fixture(scope="session")
-def n1_jupyterlab_image(
-    admin_client: DynamicClient,
-    n1_jupyterlab_case: WorkbenchImageSpec,
-    pytestconfig: pytest.Config,
-) -> ResolvedWorkbenchImage:
-    """Resolved pre-upgrade JupyterLab image."""
-    return _workbench_image_fixture(
-        admin_client=admin_client,
-        spec=n1_jupyterlab_case,
-        pytestconfig=pytestconfig,
-    )
-
-
-@pytest.fixture(scope="session")
-def n1_jupyterlab_persistent_volume_claim(
+def n1_pvc(
     pytestconfig: pytest.Config,
     unprivileged_client: DynamicClient,
     n1_notebook_namespace: Namespace,
-    n1_jupyterlab_case: WorkbenchImageSpec,
+    n1_workbench_spec: WorkbenchImageSpec,
     teardown_resources: bool,
 ) -> Generator[PersistentVolumeClaim, Any, Any]:
-    """PVC backing the JupyterLab upgrade workbench."""
+    """PVC backing the current IDE's upgrade workbench."""
     yield from manage_upgrade_persistent_volume_claim(
         pytestconfig=pytestconfig,
         unprivileged_client=unprivileged_client,
         namespace_name=n1_notebook_namespace.name,
-        spec=n1_jupyterlab_case,
+        spec=n1_workbench_spec,
         teardown_resources=teardown_resources,
     )
 
 
 @pytest.fixture(scope="session")
-def n1_jupyterlab_notebook(
+def n1_notebook(
     pytestconfig: pytest.Config,
     unprivileged_client: DynamicClient,
     n1_notebook_namespace: Namespace,
-    n1_jupyterlab_case: WorkbenchImageSpec,
-    n1_jupyterlab_image: ResolvedWorkbenchImage,
-    n1_jupyterlab_persistent_volume_claim: PersistentVolumeClaim,
+    n1_workbench_spec: WorkbenchImageSpec,
+    n1_image: ResolvedWorkbenchImage,
+    n1_pvc: PersistentVolumeClaim,
     teardown_resources: bool,
 ) -> Generator[Notebook, Any, Any]:
-    """Notebook CR pinned to the JupyterLab survival image."""
-    # Declare the PVC dependency so storage exists before the Notebook CR is created.
-    del n1_jupyterlab_persistent_volume_claim
+    """Notebook CR pinned to the current IDE's survival image."""
+    del n1_pvc
     yield from manage_upgrade_notebook(
         pytestconfig=pytestconfig,
         unprivileged_client=unprivileged_client,
         namespace_name=n1_notebook_namespace.name,
-        spec=n1_jupyterlab_case,
-        resolved_image=n1_jupyterlab_image,
+        spec=n1_workbench_spec,
+        resolved_image=n1_image,
         teardown_resources=teardown_resources,
     )
 
 
 @pytest.fixture(scope="session")
-def n1_jupyterlab_pod(
+def n1_pod(
     admin_client: DynamicClient,
     unprivileged_client: DynamicClient,
-    n1_jupyterlab_case: WorkbenchImageSpec,
-    n1_jupyterlab_notebook: Notebook,
+    n1_workbench_spec: WorkbenchImageSpec,
+    n1_notebook: Notebook,
 ) -> Pod:
-    """Ready pod for the JupyterLab upgrade workbench."""
+    """Ready pod for the current IDE's upgrade workbench."""
     return get_ready_upgrade_notebook_pod(
         admin_client=admin_client,
         unprivileged_client=unprivileged_client,
-        spec=n1_jupyterlab_case,
-        notebook=n1_jupyterlab_notebook,
+        spec=n1_workbench_spec,
+        notebook=n1_notebook,
     )
 
 
 @pytest.fixture(scope="session")
-def n1_jupyterlab_statefulset(
+def n1_statefulset(
     unprivileged_client: DynamicClient,
-    n1_jupyterlab_notebook: Notebook,
+    n1_notebook: Notebook,
 ) -> StatefulSet:
-    """StatefulSet owned by the JupyterLab Notebook CR."""
+    """StatefulSet owned by the current IDE's Notebook CR."""
     return StatefulSet(
         client=unprivileged_client,
-        name=n1_jupyterlab_notebook.name,
-        namespace=n1_jupyterlab_notebook.namespace,
+        name=n1_notebook.name,
+        namespace=n1_notebook.namespace,
     )
 
 
 @pytest.fixture(scope="session")
-def n1_jupyterlab_baseline(
+def n1_baseline(
     pytestconfig: pytest.Config,
     n1_image_baseline_configmap: ConfigMap,
-    n1_jupyterlab_case: WorkbenchImageSpec,
-    n1_jupyterlab_notebook: Notebook,
-    n1_jupyterlab_pod: Pod,
-    n1_jupyterlab_image: ResolvedWorkbenchImage,
+    n1_workbench_spec: WorkbenchImageSpec,
+    n1_notebook: Notebook,
+    n1_pod: Pod,
+    n1_image: ResolvedWorkbenchImage,
 ) -> WorkbenchImageBaseline:
-    """Pre/post-upgrade baseline for the JupyterLab workbench."""
+    """Pre/post-upgrade baseline for the current IDE's workbench."""
     return capture_or_load_workbench_baseline(
         pytestconfig=pytestconfig,
         config_map=n1_image_baseline_configmap,
-        spec=n1_jupyterlab_case,
-        notebook=n1_jupyterlab_notebook,
-        pod=n1_jupyterlab_pod,
-        resolved_image=n1_jupyterlab_image,
-    )
-
-
-@pytest.fixture(scope="session")
-def n1_codeserver_case(
-    admin_client: DynamicClient,
-    workbench_upgrade_track: str,
-    pytestconfig: pytest.Config,
-) -> WorkbenchImageSpec:
-    """Metadata for the Code Server upgrade-survival scenario."""
-    return _workbench_case_fixture(
-        ide="code-server",
-        admin_client=admin_client,
-        workbench_upgrade_track=workbench_upgrade_track,
-        pytestconfig=pytestconfig,
-    )
-
-
-@pytest.fixture(scope="session")
-def n1_codeserver_image(
-    admin_client: DynamicClient,
-    n1_codeserver_case: WorkbenchImageSpec,
-    pytestconfig: pytest.Config,
-) -> ResolvedWorkbenchImage:
-    """Resolved pre-upgrade Code Server image."""
-    return _workbench_image_fixture(
-        admin_client=admin_client,
-        spec=n1_codeserver_case,
-        pytestconfig=pytestconfig,
-    )
-
-
-@pytest.fixture(scope="session")
-def n1_codeserver_persistent_volume_claim(
-    pytestconfig: pytest.Config,
-    unprivileged_client: DynamicClient,
-    n1_notebook_namespace: Namespace,
-    n1_codeserver_case: WorkbenchImageSpec,
-    teardown_resources: bool,
-) -> Generator[PersistentVolumeClaim, Any, Any]:
-    """PVC backing the Code Server upgrade workbench."""
-    yield from manage_upgrade_persistent_volume_claim(
-        pytestconfig=pytestconfig,
-        unprivileged_client=unprivileged_client,
-        namespace_name=n1_notebook_namespace.name,
-        spec=n1_codeserver_case,
-        teardown_resources=teardown_resources,
-    )
-
-
-@pytest.fixture(scope="session")
-def n1_codeserver_notebook(
-    pytestconfig: pytest.Config,
-    unprivileged_client: DynamicClient,
-    n1_notebook_namespace: Namespace,
-    n1_codeserver_case: WorkbenchImageSpec,
-    n1_codeserver_image: ResolvedWorkbenchImage,
-    n1_codeserver_persistent_volume_claim: PersistentVolumeClaim,
-    teardown_resources: bool,
-) -> Generator[Notebook, Any, Any]:
-    """Notebook CR pinned to the Code Server survival image."""
-    # Declare the PVC dependency so storage exists before the Notebook CR is created.
-    del n1_codeserver_persistent_volume_claim
-    yield from manage_upgrade_notebook(
-        pytestconfig=pytestconfig,
-        unprivileged_client=unprivileged_client,
-        namespace_name=n1_notebook_namespace.name,
-        spec=n1_codeserver_case,
-        resolved_image=n1_codeserver_image,
-        teardown_resources=teardown_resources,
-    )
-
-
-@pytest.fixture(scope="session")
-def n1_codeserver_pod(
-    admin_client: DynamicClient,
-    unprivileged_client: DynamicClient,
-    n1_codeserver_case: WorkbenchImageSpec,
-    n1_codeserver_notebook: Notebook,
-) -> Pod:
-    """Ready pod for the Code Server upgrade workbench."""
-    return get_ready_upgrade_notebook_pod(
-        admin_client=admin_client,
-        unprivileged_client=unprivileged_client,
-        spec=n1_codeserver_case,
-        notebook=n1_codeserver_notebook,
-    )
-
-
-@pytest.fixture(scope="session")
-def n1_codeserver_statefulset(
-    unprivileged_client: DynamicClient,
-    n1_codeserver_notebook: Notebook,
-) -> StatefulSet:
-    """StatefulSet owned by the Code Server Notebook CR."""
-    return StatefulSet(
-        client=unprivileged_client,
-        name=n1_codeserver_notebook.name,
-        namespace=n1_codeserver_notebook.namespace,
-    )
-
-
-@pytest.fixture(scope="session")
-def n1_codeserver_baseline(
-    pytestconfig: pytest.Config,
-    n1_image_baseline_configmap: ConfigMap,
-    n1_codeserver_case: WorkbenchImageSpec,
-    n1_codeserver_notebook: Notebook,
-    n1_codeserver_pod: Pod,
-    n1_codeserver_image: ResolvedWorkbenchImage,
-) -> WorkbenchImageBaseline:
-    """Pre/post-upgrade baseline for the Code Server workbench."""
-    return capture_or_load_workbench_baseline(
-        pytestconfig=pytestconfig,
-        config_map=n1_image_baseline_configmap,
-        spec=n1_codeserver_case,
-        notebook=n1_codeserver_notebook,
-        pod=n1_codeserver_pod,
-        resolved_image=n1_codeserver_image,
-    )
-
-
-@pytest.fixture(scope="session")
-def n1_rstudio_case(
-    admin_client: DynamicClient,
-    workbench_upgrade_track: str,
-    pytestconfig: pytest.Config,
-) -> WorkbenchImageSpec:
-    """Metadata for the legacy RStudio upgrade-survival scenario."""
-    return _workbench_case_fixture(
-        ide="rstudio",
-        admin_client=admin_client,
-        workbench_upgrade_track=workbench_upgrade_track,
-        pytestconfig=pytestconfig,
-    )
-
-
-@pytest.fixture(scope="session")
-def n1_rstudio_image(
-    admin_client: DynamicClient,
-    n1_rstudio_case: WorkbenchImageSpec,
-    pytestconfig: pytest.Config,
-) -> ResolvedWorkbenchImage:
-    """Resolved pre-upgrade RStudio image."""
-    return _workbench_image_fixture(
-        admin_client=admin_client,
-        spec=n1_rstudio_case,
-        pytestconfig=pytestconfig,
-    )
-
-
-@pytest.fixture(scope="session")
-def n1_rstudio_persistent_volume_claim(
-    pytestconfig: pytest.Config,
-    unprivileged_client: DynamicClient,
-    n1_notebook_namespace: Namespace,
-    n1_rstudio_case: WorkbenchImageSpec,
-    teardown_resources: bool,
-) -> Generator[PersistentVolumeClaim, Any, Any]:
-    """PVC backing the RStudio upgrade workbench."""
-    yield from manage_upgrade_persistent_volume_claim(
-        pytestconfig=pytestconfig,
-        unprivileged_client=unprivileged_client,
-        namespace_name=n1_notebook_namespace.name,
-        spec=n1_rstudio_case,
-        teardown_resources=teardown_resources,
-    )
-
-
-@pytest.fixture(scope="session")
-def n1_rstudio_notebook(
-    pytestconfig: pytest.Config,
-    unprivileged_client: DynamicClient,
-    n1_notebook_namespace: Namespace,
-    n1_rstudio_case: WorkbenchImageSpec,
-    n1_rstudio_image: ResolvedWorkbenchImage,
-    n1_rstudio_persistent_volume_claim: PersistentVolumeClaim,
-    teardown_resources: bool,
-) -> Generator[Notebook, Any, Any]:
-    """Notebook CR pinned to the RStudio survival image."""
-    # Declare the PVC dependency so storage exists before the Notebook CR is created.
-    del n1_rstudio_persistent_volume_claim
-    yield from manage_upgrade_notebook(
-        pytestconfig=pytestconfig,
-        unprivileged_client=unprivileged_client,
-        namespace_name=n1_notebook_namespace.name,
-        spec=n1_rstudio_case,
-        resolved_image=n1_rstudio_image,
-        teardown_resources=teardown_resources,
-    )
-
-
-@pytest.fixture(scope="session")
-def n1_rstudio_pod(
-    admin_client: DynamicClient,
-    unprivileged_client: DynamicClient,
-    n1_rstudio_case: WorkbenchImageSpec,
-    n1_rstudio_notebook: Notebook,
-) -> Pod:
-    """Ready pod for the RStudio upgrade workbench."""
-    return get_ready_upgrade_notebook_pod(
-        admin_client=admin_client,
-        unprivileged_client=unprivileged_client,
-        spec=n1_rstudio_case,
-        notebook=n1_rstudio_notebook,
-    )
-
-
-@pytest.fixture(scope="session")
-def n1_rstudio_statefulset(
-    unprivileged_client: DynamicClient,
-    n1_rstudio_notebook: Notebook,
-) -> StatefulSet:
-    """StatefulSet owned by the RStudio Notebook CR."""
-    return StatefulSet(
-        client=unprivileged_client,
-        name=n1_rstudio_notebook.name,
-        namespace=n1_rstudio_notebook.namespace,
-    )
-
-
-@pytest.fixture(scope="session")
-def n1_rstudio_baseline(
-    pytestconfig: pytest.Config,
-    n1_image_baseline_configmap: ConfigMap,
-    n1_rstudio_case: WorkbenchImageSpec,
-    n1_rstudio_notebook: Notebook,
-    n1_rstudio_pod: Pod,
-    n1_rstudio_image: ResolvedWorkbenchImage,
-) -> WorkbenchImageBaseline:
-    """Pre/post-upgrade baseline for the RStudio workbench."""
-    return capture_or_load_workbench_baseline(
-        pytestconfig=pytestconfig,
-        config_map=n1_image_baseline_configmap,
-        spec=n1_rstudio_case,
-        notebook=n1_rstudio_notebook,
-        pod=n1_rstudio_pod,
-        resolved_image=n1_rstudio_image,
+        spec=n1_workbench_spec,
+        notebook=n1_notebook,
+        pod=n1_pod,
+        resolved_image=n1_image,
     )
