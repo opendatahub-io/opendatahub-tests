@@ -2,9 +2,36 @@ from typing import Any
 
 import structlog
 
-from tests.ai_hub.utils import should_include_by_pattern
+from tests.ai_hub.mcp_servers.preview.constants import MCP_SERVERS_INLINE_DATA
+from tests.ai_hub.utils import execute_authenticated_post, should_include_by_pattern
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+def post_stateless_preview(
+    model_catalog_preview_url: str,
+    token: str,
+    page_size: int = 100,
+    next_page_token: str = "",
+    included_servers: list[str] | None = None,
+    excluded_servers: list[str] | None = None,
+) -> dict[str, Any]:
+    """Post a stateless MCP preview request with inline catalog data."""
+    config_content = build_mcp_preview_config(
+        included_servers=included_servers,
+        excluded_servers=excluded_servers,
+    )
+
+    query = f"pageSize={page_size}"
+    if next_page_token:
+        query += f"&nextPageToken={next_page_token}"
+    url = f"{model_catalog_preview_url}sources/preview?{query}"
+
+    files = {
+        "config": ("config.yaml", config_content, "application/x-yaml"),
+        "catalogData": ("catalog-data.yaml", MCP_SERVERS_INLINE_DATA, "application/x-yaml"),
+    }
+    return execute_authenticated_post(url=url, token=token, files=files)
 
 
 def build_mcp_preview_config(
@@ -52,6 +79,7 @@ def validate_mcp_preview_counts(
     )
     expected = {"totalAssets": total, "includedAssets": included_count, "excludedAssets": total - included_count}
     LOGGER.info(f"MCP preview counts expected: {expected}, actual: {summary}")
+
     errors = [
         f"{key} mismatch: API={summary[key]}, expected={expected[key]}"
         for key in expected
@@ -66,6 +94,7 @@ def validate_preview_items(
     included_patterns: list[str] | None = None,
     excluded_patterns: list[str] | None = None,
     expected_server_names: set[str] | None = None,
+    allow_empty: bool = False,
 ) -> None:
     """Validate that each item in the preview response has the correct 'included' property.
 
@@ -74,13 +103,17 @@ def validate_preview_items(
         included_patterns: Glob patterns for includedServers (None means include all)
         excluded_patterns: Glob patterns for excludedServers (None means exclude none)
         expected_server_names: If provided, verify all returned names exist in this set
+        allow_empty: If True, skip the non-empty items assertion (e.g. for pagination last page)
     """
     assert result.get("assetType") == "mcp_servers", (
         f"Expected assetType 'mcp_servers', got '{result.get('assetType')}'"
     )
     items = result.get("items", [])
-    assert items, "Preview response returned empty items list"
-    LOGGER.info(f"Validating 'included' property for {len(items)} items")
+    if not allow_empty:
+        assert items, "Preview response returned empty items list"
+    LOGGER.info(f"Filters: includedServers={included_patterns}, excludedServers={excluded_patterns}")
+    item_details = [{"name": item["name"], "included": item.get("included")} for item in items]
+    LOGGER.info(f"Validating {len(items)} items: {item_details}")
 
     errors = []
     for item in items:
