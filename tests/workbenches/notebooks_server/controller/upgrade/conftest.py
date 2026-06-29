@@ -16,7 +16,7 @@ from ocp_resources.service import Service
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError
 
-from tests.workbenches.notebooks_server.controller.upgrade.test_upgrade_elyra import (
+from tests.workbenches.notebooks_server.controller.upgrade.elyra_utils import (
     list_runtime_configs,
     parse_elyra_extensions,
     read_runtime_config,
