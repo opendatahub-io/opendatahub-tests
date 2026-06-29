@@ -58,7 +58,7 @@ class TestPreUpgradeElyra:
                 f"Failed to execute 'jupyter labextension list' on pod '{upgrade_notebook_pod.name}': {e}"
             ) from e
 
-        elyra_extensions = parse_elyra_extensions(output)
+        elyra_extensions = parse_elyra_extensions(labextension_output=output)
 
         assert elyra_extensions, (
             f"No Elyra extensions found in workbench pod '{upgrade_notebook_pod.name}'. "
@@ -94,7 +94,7 @@ class TestPreUpgradeElyra:
         If no user-created runtimes exist, the test will log a warning but pass.
         The post-upgrade test will verify that whatever existed pre-upgrade is preserved.
         """
-        runtime_files = list_runtime_configs(upgrade_notebook_pod, upgrade_notebook.name)
+        runtime_files = list_runtime_configs(pod=upgrade_notebook_pod, container=upgrade_notebook.name)
 
         if not runtime_files:
             LOGGER.warning(
@@ -110,7 +110,9 @@ class TestPreUpgradeElyra:
         )
 
         for filename in runtime_files:
-            runtime_config = read_runtime_config(upgrade_notebook_pod, upgrade_notebook.name, filename)
+            runtime_config = read_runtime_config(
+                pod=upgrade_notebook_pod, container=upgrade_notebook.name, filename=filename
+            )
 
             required_keys = ["display_name", "schema_name", "metadata"]
             missing_keys = [key for key in required_keys if key not in runtime_config]
@@ -169,7 +171,7 @@ class TestPostUpgradeElyra:
                 f"Failed to execute 'jupyter labextension list' on pod '{upgrade_notebook_pod.name}' after upgrade: {e}"
             ) from e
 
-        current_extensions = parse_elyra_extensions(output)
+        current_extensions = parse_elyra_extensions(labextension_output=output)
 
         baseline_extensions = set(baseline_extensions_list)
         current_extensions_set = set(current_extensions.keys())
@@ -216,14 +218,14 @@ class TestPostUpgradeElyra:
 
         if not baseline_configs:
             LOGGER.info("No runtime configs in baseline. Verifying that none exist post-upgrade either.")
-            current_files = list_runtime_configs(upgrade_notebook_pod, upgrade_notebook.name)
+            current_files = list_runtime_configs(pod=upgrade_notebook_pod, container=upgrade_notebook.name)
             assert not current_files, (
                 f"No runtime configs existed before upgrade, but {len(current_files)} found after upgrade: "
                 f"{', '.join(current_files)}. This may indicate unexpected config creation during upgrade."
             )
             return
 
-        current_files = list_runtime_configs(upgrade_notebook_pod, upgrade_notebook.name)
+        current_files = list_runtime_configs(pod=upgrade_notebook_pod, container=upgrade_notebook.name)
         current_filenames = set(current_files)
         baseline_filenames = set(baseline_configs.keys())
 
@@ -247,8 +249,12 @@ class TestPostUpgradeElyra:
 
         all_differences = []
         for filename, baseline_config in baseline_configs.items():
-            current_config = read_runtime_config(upgrade_notebook_pod, upgrade_notebook.name, filename)
-            differences = compare_runtime_config_semantics(baseline_config, current_config, filename)
+            current_config = read_runtime_config(
+                pod=upgrade_notebook_pod, container=upgrade_notebook.name, filename=filename
+            )
+            differences = compare_runtime_config_semantics(
+                baseline=baseline_config, current=current_config, filename=filename
+            )
 
             if differences:
                 all_differences.append(f"\n{filename}:")

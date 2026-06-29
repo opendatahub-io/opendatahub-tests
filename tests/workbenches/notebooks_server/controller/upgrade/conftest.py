@@ -541,7 +541,7 @@ def capture_notebook_baseline(
             command=["jupyter", "labextension", "list"],
             timeout=Timeout.TIMEOUT_1MIN,
         )
-        elyra_extensions = parse_elyra_extensions(labextension_output)
+        elyra_extensions = parse_elyra_extensions(labextension_output=labextension_output)
         elyra_extensions_list = list(elyra_extensions.keys())  # Save complete list for 1:1 verification
 
         LOGGER.info(f"Captured {len(elyra_extensions_list)} Elyra extensions in baseline")
@@ -549,9 +549,9 @@ def capture_notebook_baseline(
         LOGGER.warning(f"Failed to capture Elyra extensions baseline: {e}. Elyra upgrade tests may be skipped.")
 
     try:
-        runtime_files = list_runtime_configs(upgrade_notebook_pod, upgrade_notebook.name)
+        runtime_files = list_runtime_configs(pod=upgrade_notebook_pod, container=upgrade_notebook.name)
         for filename in runtime_files:
-            config = read_runtime_config(upgrade_notebook_pod, upgrade_notebook.name, filename)
+            config = read_runtime_config(pod=upgrade_notebook_pod, container=upgrade_notebook.name, filename=filename)
             runtime_configs[filename] = {
                 "display_name": config.get("display_name"),
                 "schema_name": config.get("schema_name"),
