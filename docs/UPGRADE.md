@@ -40,3 +40,27 @@ uv run pytest --pre-upgrade --post-upgrade --upgrade-deployment-modes=servelerss
 ```bash
 uv run pytest --pre-upgrade --post-upgrade --upgrade-deployment-modes=servelerss,rawdeployment
 ```
+
+## Workbench image survival (N-1)
+
+Run the workbench image survival suite separately from controller upgrade tests:
+
+```bash
+# Pre-upgrade on the source cluster
+uv run pytest --pre-upgrade tests/workbenches/notebook_images/upgrade/
+
+# Post-upgrade on the upgraded cluster
+uv run pytest --post-upgrade tests/workbenches/notebook_images/upgrade/
+
+# Target a single IDE
+uv run pytest --post-upgrade tests/workbenches/notebook_images/upgrade/test_upgrade_jupyterlab.py
+```
+
+Override ImageStream tag selection when needed:
+
+```bash
+uv run pytest --pre-upgrade tests/workbenches/notebook_images/upgrade/ --tc workbench_image_tag=3.4
+uv run pytest --pre-upgrade tests/workbenches/notebook_images/upgrade/ --tc workbench_upgrade_track=eus
+```
+
+See [tests/workbenches/notebook_images/README.md](../tests/workbenches/notebook_images/README.md) for coverage details.
