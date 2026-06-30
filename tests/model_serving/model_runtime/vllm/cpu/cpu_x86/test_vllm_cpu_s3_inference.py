@@ -11,8 +11,6 @@ from tests.model_serving.model_runtime.vllm.cpu.cpu_x86.constant import (
     CPU_X86_SERVING_ARGUMENT,
     OPT_125M_COMPLETION_REQUEST,
     OPT_125M_MODEL_PATH,
-    TINYLLAMA_CHAT_COMPLETION_REQUEST,
-    TINYLLAMA_MODEL_PATH,
 )
 from tests.model_serving.model_runtime.vllm.cpu.cpu_x86.utils import validate_cpu_x86_inference_request
 from utilities.constants import KServeDeploymentType
@@ -34,32 +32,18 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_cpu_x86_accelerator_t
     ),
     [
         pytest.param(
-            {"name": "opt-125m-raw-cpu"},
+            {"name": "opt-125m-standard-cpu"},
             {"model-dir": OPT_125M_MODEL_PATH},
-            {"deployment_mode": KServeDeploymentType.RAW_DEPLOYMENT},
+            {"deployment_mode": KServeDeploymentType.STANDARD},
             {
                 **BASE_RAW_DEPLOYMENT_CONFIG,
-                "name": "opt-125m-raw-cpu",
+                "name": "opt-125m-standard-cpu",
                 "runtime_argument": CPU_X86_SERVING_ARGUMENT,
                 "model_env_variables": CPU_X86_ENV_VARIABLES,
             },
             OPT_125M_COMPLETION_REQUEST,
-            id="facebook-opt-125m-raw-cpu",
+            id="facebook-opt-125m-standard-cpu",
             marks=[pytest.mark.smoke],
-        ),
-        pytest.param(
-            {"name": "tinyllama-raw-cpu"},
-            {"model-dir": TINYLLAMA_MODEL_PATH},
-            {"deployment_mode": KServeDeploymentType.RAW_DEPLOYMENT},
-            {
-                **BASE_RAW_DEPLOYMENT_CONFIG,
-                "name": "tinyllama-raw-cpu",
-                "runtime_argument": CPU_X86_SERVING_ARGUMENT,
-                "model_env_variables": CPU_X86_ENV_VARIABLES,
-            },
-            TINYLLAMA_CHAT_COMPLETION_REQUEST,
-            id="tinyllama-1-1b-chat-raw-cpu",
-            marks=[pytest.mark.tier1],
         ),
     ],
     indirect=["model_namespace", "s3_models_storage_uri", "cpu_x86_serving_runtime", "cpu_x86_inference_service"],

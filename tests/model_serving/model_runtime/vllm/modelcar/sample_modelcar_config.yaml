@@ -28,7 +28,6 @@ model-car:
         - "--uvicorn-log-level=info"
         - "--trust-remote-code"
 
-
 default:
     serving_arguments:
       args:
