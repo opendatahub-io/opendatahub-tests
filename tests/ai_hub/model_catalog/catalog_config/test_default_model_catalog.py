@@ -224,7 +224,13 @@ class TestModelCatalogDefault:
             url=f"{model_catalog_rest_url[0]}sources/{REDHAT_AI_CATALOG_ID}/models/{model_name}",
             headers=get_rest_headers(token=user_token_for_api_calls),
         )
-        differences = list(diff(random_model, result))
+        # artifactCounts is only present on the detail endpoint, not the list endpoint
+        detail_only_fields = {"artifactCounts"}
+        differences = [
+            change
+            for change in diff(random_model, result)
+            if not (change[0] == "add" and change[1] == "" and all(key in detail_only_fields for key, _ in change[2]))
+        ]
         assert not differences, f"Expected no differences in model information for {model_name}: {differences}"
 
     def test_model_default_catalog_get_model_artifact(
