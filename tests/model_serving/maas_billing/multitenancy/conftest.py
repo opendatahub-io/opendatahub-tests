@@ -9,7 +9,6 @@ from ocp_resources.namespace import Namespace
 from tests.model_serving.maas_billing.multitenancy.aitenant.utils import (
     AITENANT_INFRA_NAMESPACE,
     AITenantTestContext,
-    AITenantTestParams,
     aitenant_from_spec,
     bootstrap_gateway_context,
     bootstrap_gateway_ref,
@@ -32,19 +31,19 @@ def aitenant_infra_namespace(admin_client: DynamicClient) -> str:
 
 
 @pytest.fixture
-def aitenant_test_params() -> AITenantTestParams:
+def aitenant_test_params() -> dict[str, Any]:
     """Return the default AITenant name and spec for bootstrap tests."""
     aitenant_name = f"e2e-aigw-{generate_random_name()}"
-    return AITenantTestParams(
-        aitenant_name=aitenant_name,
-        aitenant_spec=build_aitenant_spec(aitenant_name=aitenant_name),
-    )
+    return {
+        "aitenant_name": aitenant_name,
+        "aitenant_spec": build_aitenant_spec(aitenant_name=aitenant_name),
+    }
 
 
 @pytest.fixture
 def aitenant_bootstrap_gateway(
     admin_client: DynamicClient,
-    aitenant_test_params: AITenantTestParams,
+    aitenant_test_params: dict[str, Any],
     teardown_resources: bool,
 ) -> Generator[Gateway, Any, Any]:
     """Pre-provision the bootstrap Gateway required by an AITenant."""
@@ -65,7 +64,7 @@ def aitenant_bootstrap_gateway(
 def aitenant(
     admin_client: DynamicClient,
     aitenant_infra_namespace: str,
-    aitenant_test_params: AITenantTestParams,
+    aitenant_test_params: dict[str, Any],
     aitenant_bootstrap_gateway: Gateway,
     teardown_resources: bool,
 ) -> Generator[AITenant, Any, Any]:

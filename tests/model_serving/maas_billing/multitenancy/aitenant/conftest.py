@@ -1,5 +1,5 @@
 from collections.abc import Generator
-from typing import Any
+from typing import Any, TypedDict
 
 import pytest
 from kubernetes.dynamic import DynamicClient
@@ -15,7 +15,6 @@ from tests.model_serving.maas_billing.multitenancy.aitenant.utils import (
     AITENANT_TEST_RBAC_ADMINS,
     AITenantPreexistingNamespaceContext,
     AITenantTestContext,
-    AITenantTestParams,
     aitenant_from_spec,
     bootstrap_gateway_context,
     bootstrap_gateway_ref,
@@ -27,11 +26,10 @@ from tests.model_serving.maas_billing.multitenancy.aitenant.utils import (
 from utilities.general import generate_random_name
 from utilities.resources.aitenant import AITenant
 
-# ---------------------------------------------------------------------------
-# Note: aitenant_infra_namespace, aitenant_test_params, aitenant_bootstrap_gateway,
-# aitenant, ready_aitenant, and aitenant_for_test fixtures are defined in
-# ../conftest.py (parent) and shared across all multitenancy test subdirectories.
-# ---------------------------------------------------------------------------
+
+class AITenantTestParams(TypedDict):
+    aitenant_name: str
+    aitenant_spec: dict[str, Any]
 
 
 @pytest.fixture

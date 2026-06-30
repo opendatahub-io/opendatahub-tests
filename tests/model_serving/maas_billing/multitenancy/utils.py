@@ -16,17 +16,17 @@ LOGGER = structlog.get_logger(name=__name__)
 MAAS_API_DEPLOYMENT_NAME = "maas-api"
 
 
-def maas_api_deployment_name_for_aitenant(*, aitenant_name: str) -> str:
+def maas_api_deployment_name_for_aitenant(aitenant_name: str) -> str:
     """Return the per-tenant maas-api Deployment name for an additional AITenant."""
     return f"{MAAS_API_DEPLOYMENT_NAME}-{aitenant_name}"
 
 
-def maas_api_route_name_for_aitenant(*, aitenant_name: str) -> str:
+def maas_api_route_name_for_aitenant(aitenant_name: str) -> str:
     """Return the per-tenant maas-api HTTPRoute name applied by the Tenant reconciler post-render."""
     return f"{MAAS_API_DEPLOYMENT_NAME}-{aitenant_name}-route"
 
 
-def gateway_ref_from_aitenant(*, aitenant: AITenant) -> tuple[str, str]:
+def gateway_ref_from_aitenant(aitenant: AITenant) -> tuple[str, str]:
     """Return the Gateway name and namespace referenced by AITenant status."""
     fresh_aitenant = AITenant(
         client=aitenant.client,
@@ -86,21 +86,15 @@ def get_maas_api_httproute(
     admin_client: DynamicClient,
     route_name: str,
     route_namespace: str,
-) -> HTTPRoute | None:
-    """Look up a per-tenant maas-api HTTPRoute; return None when it is not present yet."""
-    try:
-        route = HTTPRoute(
-            client=admin_client,
-            name=route_name,
-            namespace=route_namespace,
-            wait_for_resource=False,
-            ensure_exists=False,
-        )
-        if route.exists:
-            return route
-    except NotFoundError, ResourceNotFoundError:
-        LOGGER.debug(f"HTTPRoute '{route_namespace}/{route_name}' not found yet")
-    return None
+) -> HTTPRoute:
+    """Look up a per-tenant maas-api HTTPRoute; raise when it is not present yet."""
+    return HTTPRoute(
+        client=admin_client,
+        name=route_name,
+        namespace=route_namespace,
+        wait_for_resource=False,
+        ensure_exists=True,
+    )
 
 
 def wait_for_maas_api_httproute(
@@ -110,26 +104,19 @@ def wait_for_maas_api_httproute(
     timeout: int = 300,
 ) -> HTTPRoute:
     """Poll until the per-tenant maas-api HTTPRoute exists."""
-    for _ in TimeoutSampler(
+    for route in TimeoutSampler(
         wait_timeout=timeout,
         sleep=3,
         func=get_maas_api_httproute,
+        exceptions_dict={NotFoundError: [], ResourceNotFoundError: []},
         admin_client=admin_client,
         route_name=route_name,
         route_namespace=route_namespace,
     ):
-        route = get_maas_api_httproute(
-            admin_client=admin_client,
-            route_name=route_name,
-            route_namespace=route_namespace,
-        )
-        if route is not None:
-            return route
-    raise TimeoutError(f"HTTPRoute '{route_namespace}/{route_name}' not found within {timeout}s")
+        return route
 
 
 def httproute_references_gateway(
-    *,
     route: HTTPRoute,
     gateway_name: str,
     gateway_namespace: str,
