@@ -62,6 +62,7 @@ class TestAccuracySorting:
             model_registry_rest_headers=model_registry_rest_headers,
             order_by="ACCURACY",
             sort_order=sort_order,
+            page_size=1000,
         )
 
         errors = validate_accuracy_sorting_against_database(
