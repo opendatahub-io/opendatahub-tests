@@ -31,16 +31,16 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_ibm_power_z_accelerat
     ),
     [
         pytest.param(
-            {"name": "phi-4-raw-cpu"},
+            {"name": "phi-4-standard-cpu"},
             {"model-dir": PHI_4_MODEL_PATH},
-            {"deployment_mode": KServeDeploymentType.RAW_DEPLOYMENT},
+            {"deployment_mode": KServeDeploymentType.STANDARD},
             {
                 **BASE_RAW_DEPLOYMENT_CONFIG,
-                "name": "phi-4-raw-cpu",
+                "name": "phi-4-standard-cpu",
                 "runtime_argument": IBM_POWER_Z_SERVING_ARGUMENT,
             },
             IBM_POWER_Z_CHAT_INFERENCE_REQUEST,
-            id="test_phi_4_raw_cpu",
+            id="test_phi_4_standard_cpu",
         ),
     ],
     indirect=[

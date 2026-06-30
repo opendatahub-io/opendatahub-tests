@@ -4,7 +4,8 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from timeout_sampler import TimeoutSampler
 
-from tests.ai_hub.model_catalog.constants import CATALOG_CONTAINER, MODEL_CATALOG_DEPLOYMENT_NAME
+from tests.ai_hub.constants import CATALOG_CONTAINER
+from tests.ai_hub.model_catalog.constants import MODEL_CATALOG_DEPLOYMENT_NAME
 from tests.ai_hub.utils import execute_get_command
 
 LOGGER = structlog.get_logger(name=__name__)

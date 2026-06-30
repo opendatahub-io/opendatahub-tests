@@ -14,7 +14,7 @@ from ocp_resources.route import Route
 from ocp_resources.service import Service
 from timeout_sampler import TimeoutSampler
 
-from tests.ai_hub.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
+from tests.ai_hub.constants import CATALOG_CONTAINER, DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
 from tests.ai_hub.model_catalog.catalog_config.utils import (
     extract_schema_fields,
     get_validate_default_model_catalog_source,
@@ -22,7 +22,7 @@ from tests.ai_hub.model_catalog.catalog_config.utils import (
     validate_model_catalog_enabled,
     validate_model_catalog_resource,
 )
-from tests.ai_hub.model_catalog.constants import CATALOG_CONTAINER, DEFAULT_CATALOGS, REDHAT_AI_CATALOG_ID
+from tests.ai_hub.model_catalog.constants import DEFAULT_CATALOGS, REDHAT_AI_CATALOG_ID
 from tests.ai_hub.utils import execute_get_command, get_model_catalog_pod, get_rest_headers
 from utilities.user_utils import UserTestSession
 
@@ -224,7 +224,13 @@ class TestModelCatalogDefault:
             url=f"{model_catalog_rest_url[0]}sources/{REDHAT_AI_CATALOG_ID}/models/{model_name}",
             headers=get_rest_headers(token=user_token_for_api_calls),
         )
-        differences = list(diff(random_model, result))
+        # artifactCounts is only present on the detail endpoint, not the list endpoint
+        detail_only_fields = {"artifactCounts"}
+        differences = [
+            change
+            for change in diff(random_model, result)
+            if not (change[0] == "add" and change[1] == "" and all(key in detail_only_fields for key, _ in change[2]))
+        ]
         assert not differences, f"Expected no differences in model information for {model_name}: {differences}"
 
     def test_model_default_catalog_get_model_artifact(
