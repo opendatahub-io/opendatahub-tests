@@ -31,16 +31,16 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_ibm_power_z_accelerat
     ),
     [
         pytest.param(
-            {"name": "mistral-7b-instruct-raw-cpu"},
+            {"name": "mistral-7b-instruct-standard-cpu"},
             {"model-dir": MISTRAL_7B_INSTRUCT_MODEL_PATH},
-            {"deployment_mode": KServeDeploymentType.RAW_DEPLOYMENT},
+            {"deployment_mode": KServeDeploymentType.STANDARD},
             {
                 **BASE_RAW_DEPLOYMENT_CONFIG,
-                "name": "mistral-7b-instruct-raw-cpu",
+                "name": "mistral-7b-instruct-standard-cpu",
                 "runtime_argument": IBM_POWER_Z_SERVING_ARGUMENT,
             },
             IBM_POWER_Z_CHAT_INFERENCE_REQUEST,
-            id="test_mistral_7b_instruct_raw_cpu",
+            id="test_mistral_7b_instruct_standard_cpu",
         ),
     ],
     indirect=[

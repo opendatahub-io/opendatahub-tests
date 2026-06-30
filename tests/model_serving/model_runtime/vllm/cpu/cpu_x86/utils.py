@@ -11,7 +11,7 @@ from utilities.plugins.constant import OpenAIEnpoints, RestHeader
 
 LOGGER = structlog.get_logger(name=__name__)
 
-DEFAULT_REQUEST_TIMEOUT: int = 30
+DEFAULT_REQUEST_TIMEOUT: int = 120
 
 
 @retry(stop=stop_after_attempt(5), wait=wait_exponential(min=1, max=6))
