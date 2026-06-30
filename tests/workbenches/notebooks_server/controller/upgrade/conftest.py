@@ -558,7 +558,8 @@ def capture_notebook_baseline(
         LOGGER.info(f"Captured {len(runtime_configs)} Elyra runtime configs in baseline")
     else:
         LOGGER.info("No Elyra extensions found. Elyra upgrade tests will be skipped.")
-        runtime_configs = {}
+        elyra_extensions = None
+        runtime_configs = None
 
     baseline = {
         "ntb_creation_timestamp": creation_timestamp,

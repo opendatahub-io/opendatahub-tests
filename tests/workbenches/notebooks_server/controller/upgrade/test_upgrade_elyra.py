@@ -153,10 +153,13 @@ class TestPostUpgradeElyra:
         Allows: New extensions to be added
         Prevents: Extensions being removed or status degradation
         """
-        baseline_extensions = upgrade_notebook_baseline.get("elyra_extensions", {})
+        baseline_extensions = upgrade_notebook_baseline.get("elyra_extensions")
+
+        if baseline_extensions is None:
+            pytest.skip("No Elyra extensions in baseline - Elyra was not installed pre-upgrade")
 
         if not baseline_extensions:
-            pytest.skip("No Elyra extensions in baseline - Elyra was not installed pre-upgrade")
+            pytest.skip("Empty Elyra extensions baseline - unexpected state")
 
         try:
             output = upgrade_notebook_pod.execute(
@@ -225,12 +228,13 @@ class TestPostUpgradeElyra:
 
         Ignores: timestamps, field ordering, extra fields
         """
-        baseline_configs = upgrade_notebook_baseline.get("runtime_configs", {})
+        baseline_configs = upgrade_notebook_baseline.get("runtime_configs")
 
-        # Skip if Elyra wasn't installed pre-upgrade (baseline will be None, not just empty)
+        # Skip if Elyra wasn't installed pre-upgrade
         if baseline_configs is None:
             pytest.skip("No Elyra runtime configs in baseline - Elyra was not installed pre-upgrade")
 
+        # If baseline is {} (empty dict), it means Elyra was installed but had no runtime configs
         if not baseline_configs:
             LOGGER.info("No runtime configs in baseline. Verifying that none exist post-upgrade either.")
             current_files = list_runtime_configs(pod=upgrade_notebook_pod, container=upgrade_notebook.name)
