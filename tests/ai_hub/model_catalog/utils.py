@@ -147,6 +147,7 @@ def _parse_single_column_format(lines: list[str], data_start: int) -> list[str]:
     return result
 
 
+@retry(wait_timeout=60, sleep=5, exceptions_dict={requests.exceptions.ConnectionError: []}, print_func_args=False)
 def get_models_from_catalog_api(
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
@@ -285,7 +286,16 @@ def assert_source_error_state_message(
     )
 
 
-@retry(wait_timeout=90, sleep=5, exceptions_dict={ResourceNotFoundError: [], TransientUnauthorizedError: []})
+@retry(
+    wait_timeout=300,
+    sleep=10,
+    exceptions_dict={
+        ResourceNotFoundError: [],
+        TransientUnauthorizedError: [],
+        requests.exceptions.ConnectionError: [],
+    },
+    print_func_args=False,
+)
 def wait_for_model_catalog_api(url: str, headers: dict[str, str], verify: bool | str = False) -> requests.Response:
     """
     Wait for model catalog API to be ready and fully initialized checks both /sources and /models endpoints

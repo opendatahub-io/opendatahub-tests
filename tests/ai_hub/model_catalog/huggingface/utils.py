@@ -1,6 +1,7 @@
 import ast
 from typing import Any
 
+import requests
 import structlog
 from huggingface_hub import HfApi
 from kubernetes.dynamic import DynamicClient
@@ -66,12 +67,13 @@ def get_huggingface_nested_attributes(obj, attr_path) -> Any:
         return None
 
 
+@retry(wait_timeout=60, sleep=5, exceptions_dict={requests.exceptions.ConnectionError: []}, print_func_args=False)
 def assert_huggingface_values_matches_model_catalog_api_values(
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
     expected_catalog_values: dict[str, str],
     huggingface_api: HfApi,
-) -> None:
+) -> bool:
     mismatch = {}
     LOGGER.info("Validating HuggingFace model metadata:")
     for model_name in expected_catalog_values:
@@ -101,6 +103,8 @@ def assert_huggingface_values_matches_model_catalog_api_values(
     if mismatch:
         LOGGER.error(f"mismatches are: {mismatch}")
         raise AssertionError("HF api call and model catalog hf models has value mismatch")
+
+    return True
 
 
 @retry(wait_timeout=60, sleep=5)
@@ -144,6 +148,7 @@ def wait_for_hugging_face_model_import(
         return False
 
 
+@retry(wait_timeout=60, sleep=5, exceptions_dict={requests.exceptions.ConnectionError: []}, print_func_args=False)
 def get_huggingface_model_from_api(
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],

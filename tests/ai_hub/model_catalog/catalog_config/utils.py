@@ -3,6 +3,7 @@ import subprocess
 from typing import Any
 
 import pytest
+import requests
 import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
@@ -539,6 +540,7 @@ def models_with_source_id(models: set[str], source_id: str) -> set[str]:
     return {f"{source_id}:{model}" for model in models}
 
 
+@retry(wait_timeout=60, sleep=5, exceptions_dict={requests.exceptions.ConnectionError: []}, print_func_args=False)
 def validate_model_catalog_sources(
     model_catalog_sources_url: str, rest_headers: dict[str, str], expected_catalog_values: dict[str, str]
 ) -> None:
@@ -551,3 +553,18 @@ def validate_model_catalog_sources(
     ids_expected = [expected_entry["id"] for expected_entry in expected_catalog_values]
     LOGGER.info(f"IDs expected: {ids_expected}, IDs found: {ids_from_query}")
     assert set(ids_expected).issubset(set(ids_from_query)), f"Expected: {expected_catalog_values}. Actual: {results}"
+
+
+@retry(wait_timeout=60, sleep=5, exceptions_dict={requests.exceptions.ConnectionError: []}, print_func_args=False)
+def get_models_by_source(url: str, headers: dict[str, str]) -> list[dict[str, Any]]:
+    return execute_get_command(url=url, headers=headers)["items"]
+
+
+@retry(wait_timeout=60, sleep=5, exceptions_dict={requests.exceptions.ConnectionError: []}, print_func_args=False)
+def get_model_by_name(url: str, headers: dict[str, str]) -> dict[str, Any]:
+    return execute_get_command(url=url, headers=headers)
+
+
+@retry(wait_timeout=60, sleep=5, exceptions_dict={requests.exceptions.ConnectionError: []}, print_func_args=False)
+def get_model_artifacts(url: str, headers: dict[str, str]) -> list[dict[str, Any]]:
+    return execute_get_command(url=url, headers=headers)["items"]

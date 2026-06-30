@@ -481,6 +481,7 @@ def get_and_validate_registered_model(
     ]
 
 
+@retry(wait_timeout=60, sleep=5, exceptions_dict={requests.exceptions.ConnectionError: []}, print_func_args=False)
 def execute_model_registry_get_command(url: str, headers: dict[str, str], json_output: bool = True) -> dict[Any, Any]:
     """
     Executes model registry get commands against model registry rest end point
@@ -970,7 +971,12 @@ def wait_for_mcp_catalog_api(
         wait_timeout=wait_timeout,
         sleep=sleep,
         func=execute_get_call,
-        exceptions_dict={ResourceNotFoundError: [], TransientUnauthorizedError: []},
+        exceptions_dict={
+            ResourceNotFoundError: [],
+            TransientUnauthorizedError: [],
+            requests.exceptions.ConnectionError: [],
+        },
+        print_func_args=False,
         url=servers_url,
         headers=headers,
         params={"pageSize": 1000},
