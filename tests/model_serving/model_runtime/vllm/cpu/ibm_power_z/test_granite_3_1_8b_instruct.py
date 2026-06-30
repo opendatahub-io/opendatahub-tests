@@ -31,16 +31,16 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_ibm_power_z_accelerat
     ),
     [
         pytest.param(
-            {"name": "granite-3-1-8b-instruct-raw-cpu"},
+            {"name": "granite-3-1-8b-instruct-standard-cpu"},
             {"model-dir": GRANITE_3_1_8B_INSTRUCT_MODEL_PATH},
-            {"deployment_mode": KServeDeploymentType.RAW_DEPLOYMENT},
+            {"deployment_mode": KServeDeploymentType.STANDARD},
             {
                 **BASE_RAW_DEPLOYMENT_CONFIG,
-                "name": "granite-3-1-8b-instruct-raw-cpu",
+                "name": "granite-3-1-8b-instruct-standard-cpu",
                 "runtime_argument": IBM_POWER_Z_SERVING_ARGUMENT,
             },
             IBM_POWER_Z_CHAT_INFERENCE_REQUEST,
-            id="test_granite_3_1_8b_instruct_raw_cpu",
+            id="test_granite_3_1_8b_instruct_standard_cpu",
         ),
     ],
     indirect=[

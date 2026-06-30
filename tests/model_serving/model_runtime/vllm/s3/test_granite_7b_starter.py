@@ -30,15 +30,15 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "v
     "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",
     [
         pytest.param(
-            {"name": "granite-starter-raw"},
+            {"name": "granite-starter-standard"},
             {"model-dir": MODEL_PATH},
-            {"deployment_mode": KServeDeploymentType.RAW_DEPLOYMENT},
+            {"deployment_mode": KServeDeploymentType.STANDARD},
             {
                 **BASE_RAW_DEPLOYMENT_CONFIG,
                 "gpu_count": 2,
-                "name": "granite-starter-raw",
+                "name": "granite-starter-standard",
             },
-            id="granite-starter-raw-multi-gpu",
+            id="granite-starter-standard-multi-gpu",
         ),
     ],
     indirect=True,

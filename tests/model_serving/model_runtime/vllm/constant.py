@@ -162,7 +162,7 @@ GRANITE_CHAT_QUERY: list[list[dict[str, Any]]] = [
 ]
 
 BASE_RAW_DEPLOYMENT_CONFIG: dict[str, Any] = {
-    "deployment_mode": KServeDeploymentType.RAW_DEPLOYMENT,
+    "deployment_mode": KServeDeploymentType.STANDARD,
     "runtime_argument": None,
     "min-replicas": 1,
 }
