@@ -60,25 +60,25 @@ class TestPreUpgradeElyra:
 
         elyra_extensions = parse_elyra_extensions(labextension_output=output)
 
-        assert elyra_extensions, (
-            f"No Elyra extensions found in workbench pod '{upgrade_notebook_pod.name}'. "
-            f"Expected at least one extension containing 'elyra' in the name. "
-            f"Full output:\n{output}"
-        )
+        if not elyra_extensions:
+            pytest.skip("No Elyra extensions found - Elyra is not installed in this workbench")
 
-        enabled_count = sum(1 for ext in elyra_extensions.values() if ext["enabled"])
-        LOGGER.info(
-            f"Found {len(elyra_extensions)} Elyra extensions ({enabled_count} enabled) "
-            f"in pod '{upgrade_notebook_pod.name}'"
-        )
-
+        # Verify all Elyra extensions are healthy (enabled + OK status)
+        unhealthy = []
         for name, metadata in elyra_extensions.items():
             if metadata["enabled"] and metadata["status"] == "OK":
-                LOGGER.info(f"  ✓ {name} v{metadata['version']} - {metadata['status']}")
+                LOGGER.info(f"  ✓ {name} v{metadata['version']} - enabled, {metadata['status']}")
             else:
-                LOGGER.warning(
-                    f"  ⚠ {name} v{metadata['version']} - enabled={metadata['enabled']}, status={metadata['status']}"
+                LOGGER.error(
+                    f"  ✗ {name} v{metadata['version']} - enabled={metadata['enabled']}, status={metadata['status']}"
                 )
+                unhealthy.append(name)
+
+        assert not unhealthy, (
+            f"Found {len(unhealthy)} unhealthy Elyra extension(s): {', '.join(unhealthy)}. "
+            f"All Elyra extensions must be enabled with OK status before running upgrade tests. "
+            f"Fix the broken extensions before proceeding."
+        )
 
     @pytest.mark.pre_upgrade
     def test_elyra_runtime_configs_exist_before_upgrade(
@@ -147,17 +147,16 @@ class TestPostUpgradeElyra:
     ) -> None:
         """Given Elyra extensions were installed before upgrade,
         When the upgrade completes,
-        Then all baseline Elyra extensions should still be present.
+        Then all baseline Elyra extensions should still be present with the same status.
 
-        Requires: All baseline extensions still present
+        Requires: All baseline extensions still present with same enabled/status
         Allows: New extensions to be added
-        Prevents: Extensions being removed or disabled
+        Prevents: Extensions being removed or status degradation
         """
-        baseline_extensions_list = upgrade_notebook_baseline.get("elyra_extensions_list", [])
+        baseline_extensions = upgrade_notebook_baseline.get("elyra_extensions", {})
 
-        assert baseline_extensions_list, (
-            "Baseline does not contain Elyra extensions list. Pre-upgrade tests may not have run successfully."
-        )
+        if not baseline_extensions:
+            pytest.skip("No Elyra extensions in baseline - Elyra was not installed pre-upgrade")
 
         try:
             output = upgrade_notebook_pod.execute(
@@ -173,26 +172,38 @@ class TestPostUpgradeElyra:
 
         current_extensions = parse_elyra_extensions(labextension_output=output)
 
-        baseline_extensions = set(baseline_extensions_list)
-        current_extensions_set = set(current_extensions.keys())
-
-        # Check that all baseline extensions are still present (allows additions, prevents removals)
-        missing = baseline_extensions - current_extensions_set
-
+        # Check for removed extensions
+        missing = set(baseline_extensions.keys()) - set(current_extensions.keys())
         assert not missing, (
             f"The following Elyra extensions were removed during upgrade: {', '.join(sorted(missing))}. "
-            f"Pre-upgrade: {sorted(baseline_extensions)}, "
-            f"post-upgrade: {sorted(current_extensions_set)}"
+            f"Pre-upgrade: {sorted(baseline_extensions.keys())}, "
+            f"post-upgrade: {sorted(current_extensions.keys())}"
         )
 
-        added = current_extensions_set - baseline_extensions
+        # Check for status changes (enabled/status degradation)
+        status_changes = []
+        for name, baseline_meta in baseline_extensions.items():
+            current_meta = current_extensions[name]
+
+            # Compare enabled and status fields
+            if baseline_meta["enabled"] != current_meta["enabled"] or baseline_meta["status"] != current_meta["status"]:
+                status_changes.append(
+                    f"{name}: enabled {baseline_meta['enabled']}→{current_meta['enabled']}, "
+                    f"status {baseline_meta['status']}→{current_meta['status']}"
+                )
+
+        assert not status_changes, "The following Elyra extensions changed status during upgrade:\n  " + "\n  ".join(
+            status_changes
+        )
+
+        # Log new extensions (informational)
+        added = set(current_extensions.keys()) - set(baseline_extensions.keys())
         if added:
-            LOGGER.info(f"New extensions added during upgrade: {', '.join(sorted(added))}")
+            LOGGER.info(f"New Elyra extensions added during upgrade: {', '.join(sorted(added))}")
 
         LOGGER.info(
-            f"Elyra extensions verified: {len(current_extensions_set)} extensions "
-            f"({len(baseline_extensions)} baseline + {len(added)} new). "
-            f"All baseline extensions preserved."
+            f"Elyra extensions verified: {len(baseline_extensions)} baseline extensions preserved "
+            f"({len(added)} new extensions added)"
         )
 
     @pytest.mark.post_upgrade
@@ -215,6 +226,10 @@ class TestPostUpgradeElyra:
         Ignores: timestamps, field ordering, extra fields
         """
         baseline_configs = upgrade_notebook_baseline.get("runtime_configs", {})
+
+        # Skip if Elyra wasn't installed pre-upgrade (baseline will be None, not just empty)
+        if baseline_configs is None:
+            pytest.skip("No Elyra runtime configs in baseline - Elyra was not installed pre-upgrade")
 
         if not baseline_configs:
             LOGGER.info("No runtime configs in baseline. Verifying that none exist post-upgrade either.")

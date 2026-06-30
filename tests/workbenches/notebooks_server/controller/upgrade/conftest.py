@@ -11,7 +11,7 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.namespace import Namespace
 from ocp_resources.notebook import Notebook
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
-from ocp_resources.pod import ExecOnPodError, Pod
+from ocp_resources.pod import Pod
 from ocp_resources.service import Service
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError
@@ -531,39 +531,34 @@ def capture_notebook_baseline(
     )
     odh_ca_bundle_resource_version = odh_trusted_ca_bundle.instance.metadata.resourceVersion
 
-    # Capture Elyra extension and runtime config baseline
-    elyra_extensions_list = []
-    runtime_configs = {}
+    # Capture Elyra extension and runtime config baseline (optional - only if Elyra is installed)
+    labextension_output = upgrade_notebook_pod.execute(
+        container=upgrade_notebook.name,
+        command=["jupyter", "labextension", "list"],
+        timeout=Timeout.TIMEOUT_1MIN,
+    )
+    elyra_extensions = parse_elyra_extensions(labextension_output=labextension_output)
 
-    try:
-        labextension_output = upgrade_notebook_pod.execute(
-            container=upgrade_notebook.name,
-            command=["jupyter", "labextension", "list"],
-            timeout=Timeout.TIMEOUT_1MIN,
-        )
-        elyra_extensions = parse_elyra_extensions(labextension_output=labextension_output)
-        elyra_extensions_list = list(elyra_extensions.keys())  # Save complete list for 1:1 verification
+    if elyra_extensions:
+        LOGGER.info(f"Captured {len(elyra_extensions)} Elyra extensions in baseline")
 
-        LOGGER.info(f"Captured {len(elyra_extensions_list)} Elyra extensions in baseline")
-    except ExecOnPodError as e:
-        LOGGER.warning(f"Failed to capture Elyra extensions baseline: {e}. Elyra upgrade tests may be skipped.")
-
-    try:
         runtime_files = list_runtime_configs(pod=upgrade_notebook_pod, container=upgrade_notebook.name)
+        runtime_configs = {}
         for filename in runtime_files:
             config = read_runtime_config(pod=upgrade_notebook_pod, container=upgrade_notebook.name, filename=filename)
             runtime_configs[filename] = {
                 "display_name": config.get("display_name"),
                 "schema_name": config.get("schema_name"),
-                "runtime_type": config.get("metadata", {}).get("runtime_type"),
-                "api_endpoint": config.get("metadata", {}).get("api_endpoint"),
+                "metadata": {
+                    "runtime_type": config.get("metadata", {}).get("runtime_type"),
+                    "api_endpoint": config.get("metadata", {}).get("api_endpoint"),
+                },
             }
 
         LOGGER.info(f"Captured {len(runtime_configs)} Elyra runtime configs in baseline")
-    except (ExecOnPodError, AssertionError) as e:
-        LOGGER.warning(
-            f"Failed to capture Elyra runtime configs baseline: {e}. Runtime config upgrade tests may be skipped."
-        )
+    else:
+        LOGGER.info("No Elyra extensions found. Elyra upgrade tests will be skipped.")
+        runtime_configs = {}
 
     baseline = {
         "ntb_creation_timestamp": creation_timestamp,
@@ -575,7 +570,7 @@ def capture_notebook_baseline(
         "stopped_annotation_value": stopped_annotation,
         "ca_bundle_resource_version": ca_bundle_resource_version,
         "odh_ca_bundle_resource_version": odh_ca_bundle_resource_version,
-        "elyra_extensions_list": elyra_extensions_list,
+        "elyra_extensions": elyra_extensions,
         "runtime_configs": runtime_configs,
     }
 
