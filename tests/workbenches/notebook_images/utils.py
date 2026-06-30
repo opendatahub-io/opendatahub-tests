@@ -1101,14 +1101,6 @@ def load_workbench_baseline(config_map_data: dict[str, str], baseline_prefix: st
     return WorkbenchImageBaseline.from_configmap_data(prefix=baseline_prefix, data=config_map_data)
 
 
-def get_workbench_image_spec_by_ide(ide: str) -> WorkbenchImageSpec:
-    """Return the workbench IDE configuration for the requested IDE name."""
-    for spec in get_workbench_image_specs():
-        if spec.ide == ide:
-            return spec
-    raise KeyError(f"Unknown workbench IDE '{ide}'")
-
-
 def wait_for_notebook_deletion(
     unprivileged_client: DynamicClient,
     *,
