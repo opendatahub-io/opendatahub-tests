@@ -78,6 +78,7 @@ class TestMCPServerFiltering:
             "publishedDate",
             "deploymentMode",
             "tags",
+            "supportTier.string_value",
         }
         assert expected_filters == set(response["filters"].keys())
 
