@@ -20,6 +20,10 @@ maas_billing/
 ├── maas_subscription/             # Subscription enforcement and access control tests
 │
 ├── multitenancy/                  # AITenant multitenancy tests
+│   ├── conftest.py                # Shared AITenant bootstrap fixtures
+│   ├── utils.py                   # Per-tenant maas-api verification helpers
+│   ├── aitenant/                  # AITenant bootstrap and cleanup (scenario fixtures)
+│   └── maas_api/                  # Per-tenant maas-api deployment and routing
 │
 ├── oidc_tests/                    # OIDC authentication flow tests
 │
@@ -39,7 +43,7 @@ maas_billing/
 - **`maas_api_key/`** - API key CRUD, authorization, expiration, bulk operations, gateway rejection, and negative tests
 - **`maas_cleanup/`** - Validates that disabling MaaS in DSC cleans up operator-managed resources
 - **`maas_subscription/`** - Subscription enforcement, access control, filtering, rate limit exemptions, cascade deletion, multi-subscription and multi-auth-policy scenarios
-- **`multitenancy/`** - AITenant tenant setup and cleanup for multitenancy scenarios
+- **`multitenancy/`** - AITenant bootstrap, per-tenant maas-api deployment/routing, auth isolation, and cross-gateway inference
 - **`oidc_tests/`** - OIDC token flow, model access, multi-user, and header injection tests
 - **`upgrade/`** - Pre/post-upgrade tests validating MaaS control plane survival across operator upgrades
 - **`test_maas_endpoints.py`** - Core MaaS API endpoint validation
