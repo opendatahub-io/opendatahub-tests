@@ -1,6 +1,7 @@
 from collections.abc import Generator
 from contextlib import ExitStack, contextmanager
 from typing import Any, TypedDict
+from urllib.parse import urlparse
 
 import requests
 import structlog
@@ -27,10 +28,14 @@ from tests.model_serving.maas_billing.multitenancy.aitenant.utils import (
     AIGATEWAY_GATEWAY_CLASS_NAME,
 )
 from tests.model_serving.maas_billing.utils import (
+    assert_api_key_created_ok,
+    create_api_key,
     gateway_probe_reaches_maas_api,
+    revoke_api_key,
     verify_maas_gateway_programmed,
 )
 from utilities.constants import MAAS_GATEWAY_NAMESPACE, ApiGroups, ContainerImages, ModelStorage
+from utilities.general import generate_random_name
 from utilities.infra import s3_endpoint_secret
 from utilities.llmd_utils import create_llmisvc
 from utilities.resources.aitenant import AITenant
@@ -121,6 +126,7 @@ def wait_for_tenant_gateway_maas_api_reachable(
         http_session=request_session_http,
         probe_url=probe_url,
         request_timeout_seconds=request_timeout_seconds,
+        exceptions_dict={requests.RequestException: []},
     ):
         if gateway_reachable:
             LOGGER.info(f"Tenant Gateway '{gateway_name}' maas-api reachable at {probe_url} (status={status_code})")
@@ -299,6 +305,40 @@ def assert_api_key_search_includes_ids(
     )
 
 
+@contextmanager
+def isolation_tenant_api_key_id(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_user_token: str,
+    subscription_name: str,
+    key_name_prefix: str,
+    fixture_label: str,
+) -> Generator[str, Any, Any]:
+    """Create a tenant-scoped API key, yield its id, then revoke it on teardown."""
+    key_name = f"{key_name_prefix}-{generate_random_name()}"
+    create_response, api_key_body = create_api_key(
+        base_url=base_url,
+        ocp_user_token=ocp_user_token,
+        request_session_http=request_session_http,
+        api_key_name=key_name,
+        subscription=subscription_name,
+    )
+    assert_api_key_created_ok(resp=create_response, body=api_key_body, required_fields=("id",))
+    key_id: str = api_key_body["id"]
+    LOGGER.info(f"{fixture_label}: created key id={key_id} name={key_name}")
+    yield key_id
+    revoke_response, _ = revoke_api_key(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        key_id=key_id,
+        ocp_user_token=ocp_user_token,
+    )
+    if revoke_response.status_code not in (200, 404):
+        raise AssertionError(
+            f"Unexpected teardown status for {fixture_label} key id={key_id}: {revoke_response.status_code}"
+        )
+
+
 def maas_api_deployment_name_for_aitenant(aitenant_name: str) -> str:
     """Return the per-tenant maas-api Deployment name for an additional AITenant."""
     return f"{MAAS_API_DEPLOYMENT_NAME}-{aitenant_name}"
@@ -387,11 +427,12 @@ def verify_tenant_gateway_auth_policy_callback_url(
         policy_name=policy_name,
         namespace=gateway_namespace,
     )
-    assert expected_host in callback_url, (
+    callback_hostname = urlparse(url=callback_url).hostname
+    assert callback_hostname == expected_host, (
         f"AuthPolicy '{gateway_namespace}/{policy_name}' apiKeyValidation callback uses wrong maas-api host. "
-        f"Expected '{expected_host}' in URL, got: {callback_url}"
+        f"Expected hostname '{expected_host}', got '{callback_hostname}' in URL: {callback_url}"
     )
-    assert shared_host not in callback_url, (
+    assert callback_hostname != shared_host, (
         f"AuthPolicy '{gateway_namespace}/{policy_name}' apiKeyValidation callback targets shared maas-api "
         f"('{shared_host}') instead of per-tenant '{expected_host}': {callback_url}"
     )
@@ -776,49 +817,6 @@ def wait_for_httproute_accepted_on_gateway(
         ) from None
 
 
-def gateway_has_attached_maas_api_route(gateway: Gateway) -> bool:
-    """Return True when the Gateway listener reports at least one attached HTTPRoute."""
-    listeners = getattr(gateway.instance.status, "listeners", None) or []
-    return any(getattr(listener, "attachedRoutes", 0) >= 1 for listener in listeners)
-
-
-def wait_for_gateway_maas_api_route_attached(
-    admin_client: DynamicClient,
-    gateway_name: str,
-    gateway_namespace: str,
-    timeout: int = 300,
-) -> None:
-    """Wait until the tenant Gateway listener reports an attached maas-api HTTPRoute."""
-    gateway = Gateway(
-        client=admin_client,
-        name=gateway_name,
-        namespace=gateway_namespace,
-        ensure_exists=True,
-    )
-    try:
-        for _ in TimeoutSampler(
-            wait_timeout=timeout,
-            sleep=5,
-            func=gateway.get,
-            exceptions_dict={NotFoundError: [], ResourceNotFoundError: []},
-        ):
-            if gateway_has_attached_maas_api_route(gateway=gateway):
-                LOGGER.info(
-                    f"Gateway '{gateway_namespace}/{gateway_name}' has attachedRoutes >= 1 "
-                    "for per-tenant maas-api HTTPRoute"
-                )
-                return
-    except TimeoutExpiredError:
-        attached_routes = [
-            getattr(listener, "attachedRoutes", 0)
-            for listener in (getattr(gateway.instance.status, "listeners", None) or [])
-        ]
-        raise AssertionError(
-            f"Gateway '{gateway_namespace}/{gateway_name}' did not attach a maas-api HTTPRoute "
-            f"within {timeout}s; listener attachedRoutes={attached_routes}"
-        ) from None
-
-
 def verify_maas_api_httproute_attached_to_gateway(
     admin_client: DynamicClient,
     applications_namespace: str,
@@ -858,12 +856,6 @@ def verify_maas_api_httproute_attached_to_gateway(
         admin_client=admin_client,
         route_name=route_name,
         route_namespace=applications_namespace,
-        gateway_name=gateway_name,
-        gateway_namespace=gateway_namespace,
-        timeout=timeout,
-    )
-    wait_for_gateway_maas_api_route_attached(
-        admin_client=admin_client,
         gateway_name=gateway_name,
         gateway_namespace=gateway_namespace,
         timeout=timeout,

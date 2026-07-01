@@ -21,6 +21,7 @@ from tests.model_serving.maas_billing.multitenancy.utils import (
     TenantIsolationGovernance,
     gateway_ref_from_aitenant,
     isolation_bootstrap_gateway_context,
+    isolation_tenant_api_key_id,
     label_namespace_gateway_access,
     maas_api_base_url_for_gateway,
     make_tenant_model_accessible,
@@ -33,7 +34,6 @@ from tests.model_serving.maas_billing.multitenancy.utils import (
     verify_tenant_gateway_auth_policy_callback_url,
     wait_for_tenant_gateway_maas_api_reachable,
 )
-from tests.model_serving.maas_billing.utils import create_api_key, revoke_api_key
 from utilities.general import generate_random_name
 from utilities.resources.aitenant import AITenant
 from utilities.resources.route import Route
@@ -386,24 +386,15 @@ def tenant_a_api_key_id(
     current_client_token: str,
 ) -> Generator[str, Any, Any]:
     """Create an API key in tenant A and revoke it after the test class completes."""
-    api_key_name = f"e2e-mt-isolation-a-{generate_random_name()}"
-    _, api_key_body = create_api_key(
-        base_url=tenant_a_base_url,
-        ocp_user_token=current_client_token,
-        request_session_http=request_session_http,
-        api_key_name=api_key_name,
-        subscription=tenant_a_subscription_name,
-    )
-    key_id = api_key_body["id"]
-    yield key_id
-    revoke_response, _ = revoke_api_key(
+    with isolation_tenant_api_key_id(
         request_session_http=request_session_http,
         base_url=tenant_a_base_url,
-        key_id=key_id,
         ocp_user_token=current_client_token,
-    )
-    if revoke_response.status_code not in (200, 404):
-        raise AssertionError(f"Unexpected teardown status for tenant A key id={key_id}: {revoke_response.status_code}")
+        subscription_name=tenant_a_subscription_name,
+        key_name_prefix="e2e-mt-isolation-a",
+        fixture_label="tenant_a_api_key_id",
+    ) as key_id:
+        yield key_id
 
 
 @pytest.fixture(scope="class")
@@ -415,21 +406,12 @@ def tenant_b_api_key_id(
     current_client_token: str,
 ) -> Generator[str, Any, Any]:
     """Create an API key in tenant B and revoke it after the test class completes."""
-    api_key_name = f"e2e-mt-isolation-b-{generate_random_name()}"
-    _, api_key_body = create_api_key(
-        base_url=tenant_b_base_url,
-        ocp_user_token=current_client_token,
-        request_session_http=request_session_http,
-        api_key_name=api_key_name,
-        subscription=tenant_b_subscription_name,
-    )
-    key_id = api_key_body["id"]
-    yield key_id
-    revoke_response, _ = revoke_api_key(
+    with isolation_tenant_api_key_id(
         request_session_http=request_session_http,
         base_url=tenant_b_base_url,
-        key_id=key_id,
         ocp_user_token=current_client_token,
-    )
-    if revoke_response.status_code not in (200, 404):
-        raise AssertionError(f"Unexpected teardown status for tenant B key id={key_id}: {revoke_response.status_code}")
+        subscription_name=tenant_b_subscription_name,
+        key_name_prefix="e2e-mt-isolation-b",
+        fixture_label="tenant_b_api_key_id",
+    ) as key_id:
+        yield key_id
