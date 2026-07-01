@@ -2,6 +2,15 @@
 
 Verifies that Elyra JupyterLab extensions and runtime configurations
 survive platform upgrades without modification.
+
+Notes on Elyra runtime configurations:
+- Elyra creates a runtime config directory at /opt/app-root/src/.local/share/jupyter/metadata/runtimes/
+- Runtime configs may or may not exist depending on user setup
+- Pre-upgrade tests WARN if no runtime configs exist
+  - Elyra will not function correctly, but this is technically allowable as a migration state
+- Post-upgrade tests verify existing configs are preserved:
+  - Existing configs must NOT be deleted or modified
+  - New configs MAY be added (e.g., auto-created odh_dsp.json)
 """
 
 from typing import Any
@@ -26,14 +35,9 @@ LOGGER = structlog.get_logger(name=__name__)
 
 @pytest.mark.usefixtures("capture_notebook_baseline")
 class TestPreUpgradeElyra:
-    """Verify Elyra extensions and runtime configs exist before platform upgrade.
+    """Verify Elyra extensions and runtime configs before upgrade.
 
-    Steps:
-        1. Execute `jupyter labextension list` in the notebook pod
-        2. Verify at least one Elyra extension is installed (any extension containing "elyra")
-        3. List runtime configuration files in the Elyra metadata directory
-        4. Parse and validate each runtime config JSON
-        5. Baseline data is captured by the capture_notebook_baseline fixture
+    Allows workbenches without Elyra, so if Elyra is not installed, tests are skipped.
     """
 
     @pytest.mark.pre_upgrade
@@ -42,10 +46,7 @@ class TestPreUpgradeElyra:
         upgrade_notebook: Notebook,
         upgrade_notebook_pod: Pod,
     ) -> None:
-        """Given a workbench notebook is running before upgrade,
-        When we check installed JupyterLab extensions,
-        Then at least one Elyra extension should be present and enabled.
-        """
+        """Verify Elyra extensions are installed and healthy before upgrade."""
         try:
             output = upgrade_notebook_pod.execute(
                 container=upgrade_notebook.name,
@@ -86,28 +87,21 @@ class TestPreUpgradeElyra:
         upgrade_notebook: Notebook,
         upgrade_notebook_pod: Pod,
     ) -> None:
-        """Given a workbench notebook is running before upgrade,
-        When we check Elyra runtime configurations,
-        Then runtime config files should exist and be valid JSON.
+        """Validate Elyra runtime configs before upgrade.
 
-        Note: This test does not require specific runtime configs to exist.
-        If no user-created runtimes exist, the test will log a warning but pass.
-        The post-upgrade test will verify that whatever existed pre-upgrade is preserved.
+        Warns if no configs exist (Elyra will not function correctly, but is a technically allowable state).
+        Validates JSON structure of any configs found.
         """
         runtime_files = list_runtime_configs(pod=upgrade_notebook_pod, container=upgrade_notebook.name)
 
         if not runtime_files:
             LOGGER.warning(
-                f"No user-created Elyra runtime configs found in '{ELYRA_RUNTIMES_DIR}' "
-                f"on pod '{upgrade_notebook_pod.name}'. This is not an error, but upgrade "
-                f"tests will only verify that this state is preserved (no runtimes before = no runtimes after)."
+                f"No Elyra runtime configs found in '{ELYRA_RUNTIMES_DIR}'. "
+                f"Elyra will not function correctly without runtime configurations."
             )
             return
 
-        LOGGER.info(
-            f"Found {len(runtime_files)} Elyra runtime config(s) in pod '{upgrade_notebook_pod.name}': "
-            f"{', '.join(runtime_files)}"
-        )
+        LOGGER.info(f"Found {len(runtime_files)} Elyra runtime config(s): {', '.join(runtime_files)}")
 
         for filename in runtime_files:
             runtime_config = read_runtime_config(
@@ -128,14 +122,9 @@ class TestPreUpgradeElyra:
 
 
 class TestPostUpgradeElyra:
-    """Verify Elyra extensions and runtime configs survived the platform upgrade.
+    """Verify Elyra extensions and runtime configs preserved after upgrade.
 
-    Steps:
-        1. Load pre-upgrade baseline from ConfigMap
-        2. Re-execute `jupyter labextension list`
-        3. Verify all baseline extensions still present (allows additions, prevents removals)
-        4. Re-read runtime config files
-        5. Compare configs semantically against baseline
+    Allows workbenches without Elyra, so if Elyra was not installed pre-upgrade, tests are skipped.
     """
 
     @pytest.mark.post_upgrade
@@ -145,21 +134,15 @@ class TestPostUpgradeElyra:
         upgrade_notebook_pod: Pod,
         upgrade_notebook_baseline: dict[str, Any],
     ) -> None:
-        """Given Elyra extensions were installed before upgrade,
-        When the upgrade completes,
-        Then all baseline Elyra extensions should still be present with the same status.
+        """Verify baseline Elyra extensions preserved after upgrade.
 
-        Requires: All baseline extensions still present with same enabled/status
-        Allows: New extensions to be added
-        Prevents: Extensions being removed or status degradation
+        Allows additions, prevents removals or status degradation.
         """
         baseline_extensions = upgrade_notebook_baseline.get("elyra_extensions")
 
+        # Skip if Elyra wasn't installed pre-upgrade
         if baseline_extensions is None:
             pytest.skip("No Elyra extensions in baseline - Elyra was not installed pre-upgrade")
-
-        if not baseline_extensions:
-            pytest.skip("Empty Elyra extensions baseline - unexpected state")
 
         try:
             output = upgrade_notebook_pod.execute(
@@ -216,32 +199,25 @@ class TestPostUpgradeElyra:
         upgrade_notebook_pod: Pod,
         upgrade_notebook_baseline: dict[str, Any],
     ) -> None:
-        """Given Elyra runtime configs existed before upgrade,
-        When the upgrade completes,
-        Then runtime configs should be semantically unchanged.
+        """Verify baseline runtime configs preserved after upgrade.
 
-        Verifies critical fields:
-            - display_name
-            - schema_name
-            - metadata.runtime_type
-            - metadata.api_endpoint
-
-        Ignores: timestamps, field ordering, extra fields
+        Allows additions, prevents deletions or modifications.
+        Compares: display_name, schema_name, metadata.runtime_type, metadata.api_endpoint
         """
+        baseline_extensions = upgrade_notebook_baseline.get("elyra_extensions")
         baseline_configs = upgrade_notebook_baseline.get("runtime_configs")
 
         # Skip if Elyra wasn't installed pre-upgrade
-        if baseline_configs is None:
-            pytest.skip("No Elyra runtime configs in baseline - Elyra was not installed pre-upgrade")
+        if baseline_extensions is None:
+            pytest.skip("No Elyra extensions in baseline - Elyra was not installed pre-upgrade")
 
         # If baseline is {} (empty dict), it means Elyra was installed but had no runtime configs
         if not baseline_configs:
-            LOGGER.info("No runtime configs in baseline. Verifying that none exist post-upgrade either.")
             current_files = list_runtime_configs(pod=upgrade_notebook_pod, container=upgrade_notebook.name)
-            assert not current_files, (
-                f"No runtime configs existed before upgrade, but {len(current_files)} found after upgrade: "
-                f"{', '.join(current_files)}. This may indicate unexpected config creation during upgrade."
-            )
+            if current_files:
+                LOGGER.info(f"{len(current_files)} runtime config(s) added during upgrade: {', '.join(current_files)}")
+            else:
+                LOGGER.info("No runtime configs before or after upgrade.")
             return
 
         current_files = list_runtime_configs(pod=upgrade_notebook_pod, container=upgrade_notebook.name)
@@ -257,14 +233,9 @@ class TestPostUpgradeElyra:
 
         added_files = current_filenames - baseline_filenames
         if added_files:
-            LOGGER.info(
-                f"New runtime config files added (user-created or upgrade-generated): {', '.join(sorted(added_files))}"
-            )
+            LOGGER.info(f"New runtime config(s) added: {', '.join(sorted(added_files))}")
 
-        LOGGER.info(
-            f"All {len(baseline_filenames)} baseline runtime config files still exist. "
-            f"Performing semantic comparison..."
-        )
+        LOGGER.info(f"Verifying {len(baseline_filenames)} baseline config(s) semantically unchanged...")
 
         all_differences = []
         for filename, baseline_config in baseline_configs.items():

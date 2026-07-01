@@ -531,7 +531,7 @@ def capture_notebook_baseline(
     )
     odh_ca_bundle_resource_version = odh_trusted_ca_bundle.instance.metadata.resourceVersion
 
-    # Capture Elyra extension and runtime config baseline (optional - only if Elyra is installed)
+    # Capture Elyra extension and runtime config baseline
     labextension_output = upgrade_notebook_pod.execute(
         container=upgrade_notebook.name,
         command=["jupyter", "labextension", "list"],
@@ -539,6 +539,7 @@ def capture_notebook_baseline(
     )
     elyra_extensions = parse_elyra_extensions(labextension_output=labextension_output)
 
+    # test is optional to allow for workbenches that do not support Elyra
     if elyra_extensions:
         LOGGER.info(f"Captured {len(elyra_extensions)} Elyra extensions in baseline")
 
@@ -555,7 +556,10 @@ def capture_notebook_baseline(
                 },
             }
 
-        LOGGER.info(f"Captured {len(runtime_configs)} Elyra runtime configs in baseline")
+        if runtime_configs:
+            LOGGER.info(f"Captured {len(runtime_configs)} Elyra runtime config(s): {', '.join(runtime_configs.keys())}")
+        else:
+            LOGGER.info("Captured 0 Elyra runtime configs in baseline")
     else:
         LOGGER.info("No Elyra extensions found. Elyra upgrade tests will be skipped.")
         elyra_extensions = None
