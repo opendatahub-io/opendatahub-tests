@@ -22,7 +22,7 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
     (
         "model_namespace",
         "mlserver_model_pvc",
-        "pvc_downloaded_model_data",
+        "mlserver_pvc_downloaded_model_data",
         "mlserver_serving_runtime",
         "mlserver_pvc_inference_service",
     ),

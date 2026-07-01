@@ -55,7 +55,7 @@ def mlserver_model_pvc(
 
 
 @pytest.fixture(scope="class")
-def pvc_downloaded_model_data(
+def mlserver_pvc_downloaded_model_data(
     request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
@@ -109,7 +109,7 @@ def mlserver_pvc_inference_service(
     model_namespace: Namespace,
     mlserver_serving_runtime,
     mlserver_model_pvc: PersistentVolumeClaim,
-    pvc_downloaded_model_data: str,
+    mlserver_pvc_downloaded_model_data: str,
 ) -> Generator[InferenceService, Any, Any]:
     """
     Create an MLServer InferenceService using PVC storage.
@@ -134,7 +134,7 @@ def mlserver_pvc_inference_service(
         InferenceService: Created InferenceService resource
     """
     deployment_mode = request.param.get("deployment_mode", KServeDeploymentType.RAW_DEPLOYMENT)
-    storage_uri = f"pvc://{mlserver_model_pvc.name}/{pvc_downloaded_model_data}"
+    storage_uri = f"pvc://{mlserver_model_pvc.name}/{mlserver_pvc_downloaded_model_data}"
 
     isvc_kwargs: dict[str, Any] = {
         "client": admin_client,
