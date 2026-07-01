@@ -73,15 +73,28 @@ class TestModelCatalogDBSecret:
 
 
 class TestModelCatalogLoaderHealth:
-    def test_no_duplicate_key_errors_in_catalog_logs(self, model_catalog_pod):
+    @pytest.mark.parametrize(
+        "error_substring, failure_message",
+        [
+            pytest.param(
+                "duplicated key not allowed",
+                "Found duplicate key errors in catalog logs — property upsert may have regressed",
+                id="test_no_duplicate_key_errors",
+            ),
+            pytest.param(
+                "Duplicate benchmark",
+                "Found duplicate benchmark entries in catalog logs — benchmark data has duplicates",
+                id="test_no_duplicate_benchmark_entries",
+            ),
+        ],
+    )
+    def test_no_loader_errors_in_catalog_logs(self, model_catalog_pod, error_substring, failure_message):
         """Given a model catalog pod with default data loaded
         When checking the catalog container logs
-        Then no 'duplicated key not allowed' errors should be present
+        Then no error patterns should be present
         """
         catalog_log = model_catalog_pod.log(container=CATALOG_CONTAINER)
-        assert "duplicated key not allowed" not in catalog_log, (
-            "Found duplicate key errors in catalog logs — property upsert may have regressed"
-        )
+        assert error_substring not in catalog_log, failure_message
 
 
 @pytest.mark.parametrize(
