@@ -410,28 +410,3 @@ def check_guardrails_traces_in_tempo(tempo_traces_service_portforward: str):
 
     if traces.get("data"):
         return traces
-
-
-@retry(exceptions_dict={TimeoutError: []}, wait_timeout=10, sleep=1)
-def send_and_verify_standalone_detection(
-    url: str,
-    token: str,
-    ca_bundle_file: str,
-    detector_name: str,
-    content: str,
-    expected_min_score: float = 0.9,
-):
-    """Send a prompt to the standalone detections endpoint and verify that it triggers a detection"""
-
-    payload = {"detectors": {detector_name: {}}, "content": content}
-    response = _send_guardrails_orchestrator_post_request(
-        url=url, token=token, ca_bundle_file=ca_bundle_file, payload=payload
-    )
-
-    data = response.json()
-    assert "detections" in data, f"Expected 'detections' key in response, got: {data}"
-
-    score = data["detections"][0]["score"]
-    assert score > expected_min_score, f"Expected score > {expected_min_score}, got {score}"
-
-    return response
