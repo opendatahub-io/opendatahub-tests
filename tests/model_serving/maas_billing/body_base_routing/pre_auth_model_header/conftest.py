@@ -8,14 +8,18 @@ import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.llm_inference_service import LLMInferenceService
+from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.maas_subscription import MaaSSubscription
 from ocp_resources.namespace import Namespace
 
 from tests.model_serving.maas_billing.body_base_routing.pre_auth_model_header.utils import (
     BBR_PRE_PROCESSING_DEPLOYMENT_NAME,
+    BBR_RATE_LIMIT_CHAT_MAX_TOKENS,
+    BBR_RATE_LIMIT_TOKENS_PER_MINUTE,
+    bbr_api_key_lifecycle,
     get_bbr_envoy_filter_config_patches,
 )
-from tests.model_serving.maas_billing.utils import build_maas_headers, create_api_key, revoke_api_key
+from tests.model_serving.maas_billing.utils import build_maas_headers
 from utilities.constants import MAAS_GATEWAY_NAMESPACE
 from utilities.general import generate_random_name
 
@@ -72,6 +76,16 @@ def bbr_chat_payload(maas_inference_service_tinyllama_free: LLMInferenceService)
 
 
 @pytest.fixture(scope="class")
+def bbr_rate_limit_chat_payload(maas_inference_service_tinyllama_free: LLMInferenceService) -> dict[str, Any]:
+    """Chat completions payload for BBR rate limit tests using a large max_tokens to exhaust the token quota quickly."""
+    return {
+        "model": maas_inference_service_tinyllama_free.name,
+        "messages": [{"role": "user", "content": "hello"}],
+        "max_tokens": BBR_RATE_LIMIT_CHAT_MAX_TOKENS,
+    }
+
+
+@pytest.fixture(scope="class")
 def bbr_valid_api_key(
     request_session_http: requests.Session,
     base_url: str,
@@ -79,24 +93,62 @@ def bbr_valid_api_key(
     maas_subscription_tinyllama_free: MaaSSubscription,
 ) -> Generator[str, Any, Any]:
     """Create an API key bound to the free TinyLlama subscription and yield the plaintext key."""
-    key_name = f"e2e-bbr-inference-{generate_random_name()}"
-    _, api_key_data = create_api_key(
-        base_url=base_url,
-        ocp_user_token=ocp_token_for_actor,
-        request_session_http=request_session_http,
-        api_key_name=key_name,
-        subscription=maas_subscription_tinyllama_free.name,
-    )
-    plaintext_key: str = api_key_data["key"]
-    LOGGER.info(f"bbr_valid_api_key: created key id={api_key_data['id']} name={key_name}")
-    yield plaintext_key
-    revoke_response, _ = revoke_api_key(
+    with bbr_api_key_lifecycle(
         request_session_http=request_session_http,
         base_url=base_url,
-        key_id=api_key_data["id"],
-        ocp_user_token=ocp_token_for_actor,
-    )
-    if revoke_response.status_code not in (200, 404):
-        raise AssertionError(
-            f"Unexpected teardown status for BBR key id={api_key_data['id']}: {revoke_response.status_code}"
+        ocp_token_for_actor=ocp_token_for_actor,
+        subscription_name=maas_subscription_tinyllama_free.name,
+        key_name_prefix="e2e-bbr-inference",
+        fixture_label="bbr_valid_api_key",
+    ) as api_key:
+        yield api_key
+
+
+@pytest.fixture
+def bbr_low_limit_subscription(
+    admin_client: DynamicClient,
+    maas_subscription_namespace: Namespace,
+    maas_model_tinyllama_free: MaaSModelRef,
+    maas_free_group: str,
+) -> Generator[MaaSSubscription, Any, Any]:
+    """Create a MaaSSubscription with a low token rate limit for BBR rate limiting tests."""
+    sub_name = f"bbr-rate-limit-sub-{generate_random_name()}"
+    with MaaSSubscription(
+        client=admin_client,
+        name=sub_name,
+        namespace=maas_subscription_namespace.name,
+        owner={"groups": [{"name": maas_free_group}]},
+        model_refs=[
+            {
+                "name": maas_model_tinyllama_free.name,
+                "namespace": maas_model_tinyllama_free.namespace,
+                "tokenRateLimits": [{"limit": BBR_RATE_LIMIT_TOKENS_PER_MINUTE, "window": "1m"}],
+            }
+        ],
+        priority=1,
+        wait_for_resource=True,
+    ) as subscription:
+        subscription.wait_for_condition(condition="Ready", status="True", timeout=300)
+        LOGGER.info(
+            f"bbr_low_limit_subscription: created '{sub_name}' with token limit {BBR_RATE_LIMIT_TOKENS_PER_MINUTE}/min"
         )
+        yield subscription
+
+
+@pytest.fixture
+def bbr_rate_limited_api_key(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_token_for_actor: str,
+    bbr_low_limit_subscription: MaaSSubscription,
+) -> Generator[str, Any, Any]:
+    """API key bound to the low-rate-limit BBR subscription."""
+    with bbr_api_key_lifecycle(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        ocp_token_for_actor=ocp_token_for_actor,
+        subscription_name=bbr_low_limit_subscription.name,
+        key_name_prefix="e2e-bbr-rate-limit",
+        fixture_label="bbr_rate_limited_api_key",
+    ) as api_key:
+        yield api_key
