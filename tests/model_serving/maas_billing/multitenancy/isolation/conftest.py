@@ -28,10 +28,10 @@ from tests.model_serving.maas_billing.multitenancy.utils import (
     tenant_gateway_external_route,
     tenant_isolation_auth_policy_name,
     tenant_isolation_subscription_name,
-    wait_for_tenant_gateway_maas_api_reachable,
     verify_maas_api_deployment_for_aitenant,
     verify_maas_api_httproute_attached_to_gateway,
     verify_tenant_gateway_auth_policy_callback_url,
+    wait_for_tenant_gateway_maas_api_reachable,
 )
 from tests.model_serving.maas_billing.utils import create_api_key, revoke_api_key
 from utilities.general import generate_random_name
@@ -403,9 +403,7 @@ def tenant_a_api_key_id(
         ocp_user_token=current_client_token,
     )
     if revoke_response.status_code not in (200, 404):
-        raise AssertionError(
-            f"Unexpected teardown status for tenant A key id={key_id}: {revoke_response.status_code}"
-        )
+        raise AssertionError(f"Unexpected teardown status for tenant A key id={key_id}: {revoke_response.status_code}")
 
 
 @pytest.fixture(scope="class")
@@ -434,6 +432,4 @@ def tenant_b_api_key_id(
         ocp_user_token=current_client_token,
     )
     if revoke_response.status_code not in (200, 404):
-        raise AssertionError(
-            f"Unexpected teardown status for tenant B key id={key_id}: {revoke_response.status_code}"
-        )
+        raise AssertionError(f"Unexpected teardown status for tenant B key id={key_id}: {revoke_response.status_code}")
