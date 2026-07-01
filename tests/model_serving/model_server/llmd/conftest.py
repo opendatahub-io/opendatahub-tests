@@ -551,17 +551,10 @@ def _create_llmisvc_from_config(
     LOGGER.info(f"\n{config_cls.format_describe(namespace=namespace)}")
 
     kv_offloading = config_cls.kv_cache_offloading()
-    resource_cls = LLMInferenceService
-    if kv_offloading:
+    if kv_offloading is not None:
+        svc_kwargs["kv_cache_offloading"] = kv_offloading
 
-        class _LLMISvcWithKvOffload(LLMInferenceService):
-            def to_dict(self) -> None:
-                super().to_dict()
-                self.res.setdefault("spec", {})["kvCacheOffloading"] = kv_offloading
-
-        resource_cls = _LLMISvcWithKvOffload
-
-    with resource_cls(**svc_kwargs) as llm_service:
+    with LLMInferenceService(**svc_kwargs) as llm_service:
         wait_for_llmisvc(llmisvc=llm_service, timeout=config_cls.wait_timeout)
         wait_for_llmisvc_pods_ready(client=client, llmisvc=llm_service)
         yield llm_service
