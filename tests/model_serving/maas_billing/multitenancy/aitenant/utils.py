@@ -39,7 +39,14 @@ AITENANT_TEST_OIDC_SPEC = {
 }
 AITENANT_TEST_RBAC_ADMINS = [{"kind": "Group", "name": TEST_RBAC_GROUP_NAME}]
 AIGATEWAY_GATEWAY_CLASS_NAME = "openshift-default"
-AIGATEWAY_BOOTSTRAP_GATEWAY_LISTENERS = [{"name": "http", "port": 80, "protocol": "HTTP"}]
+AIGATEWAY_BOOTSTRAP_GATEWAY_LISTENERS = [
+    {
+        "name": "http",
+        "port": 80,
+        "protocol": "HTTP",
+        "allowedRoutes": {"namespaces": {"from": "All"}},
+    },
+]
 AIGATEWAY_MANAGED_BY_LABEL = "maas.opendatahub.io/managed-by-aitenant"
 AIGATEWAY_TENANT_LABEL = "ai-gateway.opendatahub.io/tenant"
 
