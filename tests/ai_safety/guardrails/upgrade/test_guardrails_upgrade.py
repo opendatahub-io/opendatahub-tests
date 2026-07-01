@@ -2,33 +2,34 @@ import pytest
 import yaml
 
 from tests.ai_safety.guardrails.constants import (
+    CHAT_COMPLETIONS_DETECTION_ENDPOINT,
+    HAP_DETECTOR,
+    HAP_INPUT_DETECTION_PROMPT,
     HARMLESS_PROMPT,
     PII_ENDPOINT,
     PII_INPUT_DETECTION_PROMPT,
     PII_OUTPUT_DETECTION_PROMPT,
-    PROMPT_INJECTION_INPUT_DETECTION_PROMPT,
-    HAP_INPUT_DETECTION_PROMPT,
-    CHAT_COMPLETIONS_DETECTION_ENDPOINT,
-    STANDALONE_DETECTION_ENDPOINT,
     PROMPT_INJECTION_DETECTOR,
-    HAP_DETECTOR
+    PROMPT_INJECTION_INPUT_DETECTION_PROMPT,
+    STANDALONE_DETECTION_ENDPOINT,
 )
 from tests.ai_safety.guardrails.utils import (
+    check_guardrails_traces_in_tempo,
     create_detector_config,
     send_and_verify_negative_detection,
+    send_and_verify_standalone_detection,
     send_and_verify_unsuitable_input_detection,
     send_and_verify_unsuitable_output_detection,
     verify_health_info_response,
-    check_guardrails_traces_in_tempo,
-    send_and_verify_standalone_detection
 )
-from utilities.constants import (BUILTIN_DETECTOR_CONFIG,
-                                 LLM_D_CHAT_GENERATION_CONFIG,
-                                 LLMdInferenceSimConfig, QWEN_MODEL_NAME,
-                                 MinIo)
+from utilities.constants import (
+    BUILTIN_DETECTOR_CONFIG,
+    LLM_D_CHAT_GENERATION_CONFIG,
+    QWEN_MODEL_NAME,
+    LLMdInferenceSimConfig,
+    MinIo,
+)
 from utilities.plugins.constant import OpenAIEnpoints
-
-
 
 
 @pytest.mark.parametrize(

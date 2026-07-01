@@ -83,7 +83,7 @@ def guardrails_orchestrator(
                 "protocol": "grpc",
                 "metricsEndpoint": metrics_endpoint,
                 "tracesEndpoint": traces_endpoint,
-                "otlpExport": "metrics,traces"
+                "otlpExport": "metrics,traces",
             }
         with GuardrailsOrchestrator(**gorch_kwargs, teardown=teardown_resources) as gorch:
             gorch_deployment = Deployment(name=gorch.name, namespace=gorch.namespace, wait_for_resource=True)

@@ -25,12 +25,12 @@ from timeout_sampler import TimeoutSampler
 
 from tests.ai_safety.guardrails.constants import (
     AUTOCONFIG_DETECTOR_LABEL,
+    MINIO_SECRET_KEY_VALUE,
     OTEL_EXPORTER_PORT,
     SUPER_SECRET,
     TEMPO,
     TEST_TLS_CERTIFICATE,
     TEST_TLS_PRIVATE_KEY,
-    MINIO_SECRET_KEY_VALUE
 )
 from utilities.constants import (
     KServeDeploymentType,
@@ -142,7 +142,6 @@ def prompt_injection_detector_route(
         yield route
 
 
-
 @pytest.fixture(scope="class")
 def custom_tls_secret(
     admin_client: DynamicClient,
@@ -250,7 +249,6 @@ def hap_detector_route(
         yield route
 
 
-
 @pytest.fixture(scope="class")
 def installed_tempo_operator(admin_client: DynamicClient, model_namespace: Namespace) -> Generator[None, Any]:
     """
@@ -305,7 +303,7 @@ def tempo_stack(
     minio_secret_otel: Secret,
     pytestconfig: pytest.Config,
     teardown_resources: bool,
-) -> Generator[TempoStack, Any, None]:
+) -> Generator[TempoStack, Any]:
     """
     Create a TempoStack CR in the test namespace, configured to use MinIO backend.
     """
@@ -380,11 +378,10 @@ def tempo_stack(
             yield tempo_cr
 
 
-
 @pytest.fixture(scope="class")
 def installed_opentelemetry_operator(
     admin_client: DynamicClient, pytestconfig: pytest.Config, teardown_resources: bool
-) -> Generator[None, Any, None]:
+) -> Generator[None, Any]:
     """
     Installs the Red Hat OpenTelemetry Operator and waits for its deployment.
     """
@@ -688,6 +685,7 @@ def minio_deployment_otel(admin_client, model_namespace, minio_pvc_otel):
         deployment.wait_for_replicas()
         yield deployment
 
+
 @pytest.fixture(scope="class")
 def minio_service_otel(
     admin_client, model_namespace, minio_deployment_otel, pytestconfig: pytest.Config, teardown_resources: bool
@@ -758,7 +756,6 @@ def minio_secret_otel(
         )
         secret.deploy()
         yield secret
-
 
 
 @pytest.fixture(scope="class")

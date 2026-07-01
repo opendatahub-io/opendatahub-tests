@@ -412,7 +412,6 @@ def check_guardrails_traces_in_tempo(tempo_traces_service_portforward: str):
         return traces
 
 
-
 @retry(exceptions_dict={TimeoutError: []}, wait_timeout=10, sleep=1)
 def send_and_verify_standalone_detection(
     url: str,

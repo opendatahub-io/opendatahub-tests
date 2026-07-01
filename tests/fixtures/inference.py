@@ -9,20 +9,21 @@ from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
-from ocp_resources.serving_runtime import ServingRuntime
-from pytest_testconfig import py_config
-from timeout_sampler import retry
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
+from ocp_resources.serving_runtime import ServingRuntime
+from pytest_testconfig import py_config
+from timeout_sampler import retry
+
 from utilities.constants import (
+    QWEN_MODEL_NAME,
     KServeDeploymentType,
     LLMdInferenceSimConfig,
     RuntimeTemplates,
     Timeout,
     VLLMGPUConfig,
-    QWEN_MODEL_NAME
 )
 from utilities.inference_utils import create_isvc
 from utilities.infra import get_data_science_cluster, wait_for_dsc_status_ready
