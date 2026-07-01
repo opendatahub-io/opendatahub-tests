@@ -238,3 +238,13 @@ def triton_pod_resource(
     if not pods:
         raise ResourceNotFoundError(f"No pods found for InferenceService {triton_inference_service.name}")
     return pods[0]
+
+
+def pytest_collection_modifyitems(config, items):
+    """Remove gRPC protocol tests as RHOAI does not support gRPC for Triton"""
+    remaining = []
+    for item in items:
+        # Remove any test with 'grpc-deployment' in the parameterized id
+        if "grpc-deployment" not in item.nodeid:
+            remaining.append(item)
+    items[:] = remaining
