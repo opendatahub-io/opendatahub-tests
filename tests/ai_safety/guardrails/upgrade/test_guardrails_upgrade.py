@@ -529,6 +529,7 @@ class TestPreUpgradeGuardrailsOrchestratorWithHuggingFaceDetectors:
     ],
     indirect=True,
 )
+@pytest.mark.rawdeployment
 @pytest.mark.usefixtures(
     "minio_pvc_otel",
     "minio_deployment_otel",

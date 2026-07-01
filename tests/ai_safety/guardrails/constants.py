@@ -135,4 +135,3 @@ nHtAnnHtAnnHtAnnHtAnnHtAnnHtAnnHtAnnHtAnnHtAnnHtAnnHtAnnHtAnnHtAn
 nHtAnnHtAnnHtAnnHtAg==
 -----END PRIVATE KEY-----"""  # pragma: allowlist secret
 
-MINIO_SECRET_KEY_VALUE = "supersecret"  # pragma: allowlist secret
