@@ -71,6 +71,7 @@ dependencies = [
     "llama_stack_client==0.2.23",
     "pytest-xdist==3.8.0",
     "dictdiffer>=0.9.0",
+    "structlog>=24.1.0",
 ]
 
 [project.urls]
