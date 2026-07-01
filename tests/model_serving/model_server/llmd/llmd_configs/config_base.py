@@ -84,6 +84,10 @@ class LLMISvcConfig:
         return None
 
     @classmethod
+    def kv_cache_offloading(cls):
+        return None
+
+    @classmethod
     def labels(cls):
         return {}
 

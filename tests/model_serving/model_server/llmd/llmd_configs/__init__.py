@@ -6,6 +6,7 @@ from .config_fast_image import (
     TinyLlamaFast1Config,
     TinyLlamaFast2Config,
 )
+from .config_kv_cache_cpu_offload import KvCacheCpuOffloadConfig
 from .config_models import (
     TinyLlamaHfConfig,
     TinyLlamaHfGpuConfig,
@@ -19,6 +20,7 @@ from .config_singlenode_prefill_decode import SingleNodePrefillDecodeConfig
 
 __all__ = [
     "EstimatedPrefixCacheConfig",
+    "KvCacheCpuOffloadConfig",
     "LLMISvcConfig",
     "PrecisePrefixCacheProducerConfig",
     "PrecisePrefixCacheScorerConfig",
