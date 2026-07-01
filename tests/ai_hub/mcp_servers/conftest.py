@@ -4,7 +4,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.route import Route
 
 from tests.ai_hub.constants import MCP_CATALOG_API_PATH
-from tests.ai_hub.utils import execute_get_command, get_rest_headers
+from tests.ai_hub.utils import execute_get_command_with_retry, get_rest_headers
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -34,7 +34,7 @@ def default_mcp_servers(
     model_registry_rest_headers_scope_session: dict[str, str],
 ) -> dict:
     """Session-scoped fixture that fetches the default MCP servers list once per session."""
-    return execute_get_command(
+    return execute_get_command_with_retry(
         url=f"{mcp_catalog_rest_urls_scope_session[0]}mcp_servers",
         headers=model_registry_rest_headers_scope_session,
         params={"pageSize": 1000},
@@ -54,7 +54,7 @@ def mcp_servers_response(
     model_registry_rest_headers: dict[str, str],
 ) -> dict:
     """Class-scoped fixture that fetches the MCP servers list once per test class."""
-    return execute_get_command(
+    return execute_get_command_with_retry(
         url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
         headers=model_registry_rest_headers,
         params={"pageSize": 1000},

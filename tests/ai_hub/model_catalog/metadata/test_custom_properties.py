@@ -10,7 +10,7 @@ from tests.ai_hub.model_catalog.metadata.utils import (
     get_metadata_from_catalog_pod,
     validate_custom_properties_match_metadata,
 )
-from tests.ai_hub.utils import execute_get_command, get_model_catalog_pod
+from tests.ai_hub.utils import execute_get_command_with_retry, get_model_catalog_pod
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -65,7 +65,7 @@ class TestCustomProperties:
         """
         valid_model_types = {"generative", "predictive", "unknown"}
 
-        response = execute_get_command(
+        response = execute_get_command_with_retry(
             url=f"{model_catalog_rest_url[0]}models?source={catalog_id}&pageSize=100",
             headers=model_registry_rest_headers,
         )

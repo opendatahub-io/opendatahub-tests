@@ -927,6 +927,13 @@ def execute_get_command(
         raise
 
 
+@retry(wait_timeout=60, sleep=5, exceptions_dict={requests.exceptions.ConnectionError: []})
+def execute_get_command_with_retry(
+    url: str, headers: dict[str, str], verify: bool | str = False, params: dict[str, Any] | None = None
+) -> dict[Any, Any]:
+    return execute_get_command(url=url, headers=headers, verify=verify, params=params)
+
+
 def wait_for_model_catalog_pod_ready_after_deletion(
     client: DynamicClient, model_registry_namespace: str, consecutive_try: int = 6
 ) -> bool:

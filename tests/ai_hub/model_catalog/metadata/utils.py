@@ -10,7 +10,7 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.pod import Pod
 
 from tests.ai_hub.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
-from tests.ai_hub.utils import execute_get_command, get_rest_headers
+from tests.ai_hub.utils import execute_get_command_with_retry, get_rest_headers
 
 LOGGER = structlog.get_logger(name=__name__)
 CATALOG_CONTAINER = "catalog"
@@ -460,7 +460,7 @@ def get_labels_from_api(
     url = f"{model_catalog_rest_url}labels"
     headers = get_rest_headers(token=user_token)
     params: dict[str, str] | None = {"assetType": asset_type} if asset_type is not None else None
-    response = execute_get_command(url=url, headers=headers, params=params)
+    response = execute_get_command_with_retry(url=url, headers=headers, params=params)
     return response["items"]
 
 

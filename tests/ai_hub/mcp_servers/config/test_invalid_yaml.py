@@ -12,7 +12,7 @@ from tests.ai_hub.mcp_servers.config.constants import (
     MCP_SERVERS_YAML_MALFORMED,
     MCP_SERVERS_YAML_MISSING_NAME,
 )
-from tests.ai_hub.utils import execute_get_command, get_model_catalog_pod
+from tests.ai_hub.utils import execute_get_command_with_retry, get_model_catalog_pod
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -48,7 +48,7 @@ class TestMCPServerInvalidYAML:
     ):
         """Verify that valid MCP servers from a healthy source are still loaded
         when another source contains invalid YAML."""
-        response = execute_get_command(
+        response = execute_get_command_with_retry(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
             headers=model_registry_rest_headers,
             params={"pageSize": 1000},
