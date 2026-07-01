@@ -360,6 +360,7 @@ def qwen_isvc(
         ) as isvc:
             yield isvc
 
+
 @pytest.fixture(scope="class")
 def vllm_cpu_runtime(
     admin_client: DynamicClient,
