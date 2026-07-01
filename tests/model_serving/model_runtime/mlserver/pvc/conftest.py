@@ -121,7 +121,7 @@ def mlserver_pvc_inference_service(
     Args:
         request: Pytest request with parameters:
             - name: InferenceService name
-            - deployment_mode: Deployment mode (default: RAW_DEPLOYMENT)
+            - deployment_mode: Deployment mode (default: STANDARD)
             - timeout: Optional timeout in seconds
             - min_replicas: Optional minimum replicas
         admin_client: Kubernetes admin client
@@ -133,7 +133,7 @@ def mlserver_pvc_inference_service(
     Yields:
         InferenceService: Created InferenceService resource
     """
-    deployment_mode = request.param.get("deployment_mode", KServeDeploymentType.RAW_DEPLOYMENT)
+    deployment_mode = request.param.get("deployment_mode", KServeDeploymentType.STANDARD)
     storage_uri = f"pvc://{mlserver_model_pvc.name}/{mlserver_pvc_downloaded_model_data}"
 
     isvc_kwargs: dict[str, Any] = {
