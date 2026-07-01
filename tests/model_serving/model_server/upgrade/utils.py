@@ -1,10 +1,12 @@
 import json
-from typing import TypedDict
+from typing import Any, TypedDict
 
+import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
+from ocp_resources.dsc_initialization import DSCInitialization
 from ocp_resources.gateway import Gateway
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.llm_inference_service import LLMInferenceService
@@ -12,14 +14,244 @@ from ocp_resources.prometheus import Prometheus
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 
-from utilities.constants import Annotations
+from tests.model_serving.model_server.upgrade.kserve_kueue_upgrade_config import (
+    KSERVE_KUEUE_POD_CPU_LIMIT,
+    KSERVE_KUEUE_POD_CPU_REQUEST,
+    KSERVE_KUEUE_POD_MEMORY_LIMIT,
+    KSERVE_KUEUE_POD_MEMORY_REQUEST,
+)
+from utilities.constants import (
+    Annotations,
+    DscComponents,
+    KServeDeploymentType,
+    ModelFormat,
+    RuntimeTemplates,
+)
 from utilities.exceptions import PodContainersRestartError, ResourceMismatchError
-from utilities.infra import get_inference_serving_runtime, get_pods_by_isvc_label
+from utilities.infra import get_inference_serving_runtime, get_pods_by_isvc_label, wait_for_dsci_status_ready
 from utilities.resources.http_route import HTTPRoute
 from utilities.resources.inference_pool import InferencePool
 
 UPGRADE_BASELINE_CM_NAME = "upgrade-test-baseline"
 UPGRADE_AUTH_TOKEN_SECRET_NAME = "upgrade-test-auth-token"  # pragma: allowlist secret
+DSCI_SERVICEMESH_STATE_ABSENT = "absent"
+DSCI_SERVICEMESH_STATE_NOT_PATCHED = "not_patched"
+DSCI_SERVICEMESH_STATE_CM_KEY = "original_servicemesh"
+KSERVE_RAW_DEPLOYMENT_SERVICE_CONFIG_HEADLESS = "Headless"
+KSERVE_DSCI_SERVICEMESH_CONTROL_PLANE_NAME = "data-science-smcp"
+KSERVE_DSCI_SERVICEMESH_CONTROL_PLANE_NAMESPACE = "istio-system"
+KSERVE_DSCI_SERVICEMESH_AUTH_AUDIENCE = "https://kubernetes.default.svc"
+
+
+LOGGER = structlog.get_logger(name=__name__)
+
+
+def kserve_raw_deployment_dsci_servicemesh_desired_state() -> dict[str, Any]:
+    """Return minimal DSCI ``spec.serviceMesh`` for RHOAI 2.25.x raw-deployment KServe.
+
+    The operator's ``getTemplateData()`` dereferences ``serviceMesh.controlPlane`` even when
+    KServe ``serving`` is Removed. A Removed service mesh block avoids deploying mesh infra.
+    """
+    return {
+        "managementState": DscComponents.ManagementState.REMOVED,
+        "controlPlane": {
+            "name": KSERVE_DSCI_SERVICEMESH_CONTROL_PLANE_NAME,
+            "namespace": KSERVE_DSCI_SERVICEMESH_CONTROL_PLANE_NAMESPACE,
+            "metricsCollection": "Istio",
+        },
+        "auth": {"audiences": [KSERVE_DSCI_SERVICEMESH_AUTH_AUDIENCE]},
+    }
+
+
+def _spec_field(spec_fragment: Any, field: str, default: Any = None) -> Any:
+    """Read a field from a spec fragment that may be a dict or attribute object."""
+    if spec_fragment is None:
+        return default
+    if isinstance(spec_fragment, dict):
+        return spec_fragment.get(field, default)
+    return getattr(spec_fragment, field, default)
+
+
+def build_kserve_raw_deployment_dsci_servicemesh_patch(spec_service_mesh: Any) -> dict[str, Any]:
+    """Build a DSCI serviceMesh patch when ``spec.serviceMesh`` is absent (RHOAI 2.25.x).
+
+    The operator's ``getTemplateData()`` dereferences ``serviceMesh.controlPlane`` even when
+    KServe uses raw deployment. When the block is missing entirely, reconciliation panics.
+    Clusters that already define ``serviceMesh`` are left unchanged.
+
+    Args:
+        spec_service_mesh: The ``spec.serviceMesh`` object from the DSCI, if present.
+
+    Returns:
+        Dict of fields to patch under ``spec.serviceMesh``. Empty when already present.
+    """
+    if spec_service_mesh:
+        return {}
+    return kserve_raw_deployment_dsci_servicemesh_desired_state()
+
+
+def capture_dsci_servicemesh_state_for_upgrade(spec_service_mesh: Any) -> dict[str, str]:
+    """Serialize DSCI ``spec.serviceMesh`` for later restore after post-upgrade tests.
+
+    Args:
+        spec_service_mesh: The ``spec.serviceMesh`` object from the DSCI, if present.
+
+    Returns:
+        ConfigMap data with the original serviceMesh state encoded for restore.
+    """
+    if not spec_service_mesh:
+        return {DSCI_SERVICEMESH_STATE_CM_KEY: DSCI_SERVICEMESH_STATE_ABSENT}
+
+    if isinstance(spec_service_mesh, dict):
+        mesh_dict = spec_service_mesh
+    else:
+        mesh_dict = spec_service_mesh.to_dict()
+
+    return {DSCI_SERVICEMESH_STATE_CM_KEY: json.dumps(mesh_dict)}
+
+
+def restore_dsci_servicemesh_from_upgrade_state(
+    dsci_resource: DSCInitialization,
+    original_servicemesh: str,
+) -> None:
+    """Restore DSCI ``spec.serviceMesh`` to the value saved before pre-upgrade patching.
+
+    Args:
+        dsci_resource: DSCInitialization resource to update.
+        original_servicemesh: Serialized state from ``capture_dsci_servicemesh_state_for_upgrade``.
+    """
+    if original_servicemesh == DSCI_SERVICEMESH_STATE_ABSENT:
+        dsci_resource.get()
+        resource_dict = dsci_resource.instance.to_dict()
+        spec = resource_dict.get("spec", {})
+        if "serviceMesh" not in spec:
+            LOGGER.info("DSCI serviceMesh already absent; no restore needed")
+            return
+        spec.pop("serviceMesh")
+        dsci_resource.update_replace(resource_dict=resource_dict)
+        wait_for_dsci_status_ready(dsci_resource=dsci_resource)
+        return
+
+    dsci_resource.update(
+        resource_dict={
+            "metadata": {"name": dsci_resource.name},
+            "spec": {"serviceMesh": json.loads(original_servicemesh)},
+        }
+    )
+    wait_for_dsci_status_ready(dsci_resource=dsci_resource)
+
+
+def _is_kserve_ready(dsc_resource) -> bool:
+    """Return True when the DSC reports KserveReady=True."""
+    for condition in dsc_resource.instance.status.conditions or []:
+        if condition.type == DscComponents.COMPONENT_MAPPING[DscComponents.KSERVE]:
+            return condition.status == "True"
+    return False
+
+
+def _restore_dsci_servicemesh_state(
+    admin_client: DynamicClient,
+    dsci_resource: DSCInitialization,
+    namespace: str,
+    dsci_servicemesh_state_cm_name: str,
+) -> None:
+    """Restore original DSCI serviceMesh state from the saved ConfigMap."""
+    state_cm = ConfigMap(client=admin_client, name=dsci_servicemesh_state_cm_name, namespace=namespace)
+    if not state_cm.exists:
+        pytest.fail(
+            f"DSCI serviceMesh state ConfigMap '{dsci_servicemesh_state_cm_name}' not found in namespace "
+            f"'{namespace}'. Ensure pre-upgrade tests saved the original state."
+        )
+
+    original_servicemesh = state_cm.instance.data.get(DSCI_SERVICEMESH_STATE_CM_KEY)
+    if original_servicemesh == DSCI_SERVICEMESH_STATE_NOT_PATCHED:
+        LOGGER.info("Pre-upgrade did not patch DSCI serviceMesh; skipping restore")
+        state_cm.clean_up()
+    elif original_servicemesh is not None:
+        LOGGER.info("Restoring DSCI serviceMesh to pre-upgrade state")
+        restore_dsci_servicemesh_from_upgrade_state(
+            dsci_resource=dsci_resource,
+            original_servicemesh=original_servicemesh,
+        )
+        state_cm.clean_up()
+    else:
+        pytest.fail(
+            f"DSCI serviceMesh state ConfigMap '{dsci_servicemesh_state_cm_name}' is missing required key "
+            f"'{DSCI_SERVICEMESH_STATE_CM_KEY}'. Cannot restore safely without discarding recovery state."
+        )
+
+
+def _kserve_kueue_upgrade_runtime_template_kwargs(
+    runtime_kwargs: dict[str, Any],
+    teardown_resources: bool,
+) -> dict[str, Any]:
+    """Build ServingRuntimeFromTemplate kwargs for KServe Kueue upgrade tests."""
+    return {
+        **runtime_kwargs,
+        "template_name": RuntimeTemplates.OVMS_KSERVE,
+        "multi_model": False,
+        "enable_http": True,
+        "teardown": teardown_resources,
+        "resources": {
+            ModelFormat.OVMS: {
+                "requests": {"cpu": KSERVE_KUEUE_POD_CPU_REQUEST, "memory": KSERVE_KUEUE_POD_MEMORY_REQUEST},
+                "limits": {"cpu": KSERVE_KUEUE_POD_CPU_LIMIT, "memory": KSERVE_KUEUE_POD_MEMORY_LIMIT},
+            }
+        },
+    }
+
+
+def kserve_raw_deployment_dsc_desired_state() -> dict[str, Any]:
+    """Return the full DSC ``spec.components.kserve`` shape for raw-deployment upgrade tests."""
+    return {
+        "managementState": DscComponents.ManagementState.MANAGED,
+        "defaultDeploymentMode": KServeDeploymentType.RAW_DEPLOYMENT,
+        "rawDeploymentServiceConfig": KSERVE_RAW_DEPLOYMENT_SERVICE_CONFIG_HEADLESS,
+        "nim": {"managementState": DscComponents.ManagementState.REMOVED},
+        "serving": {"managementState": DscComponents.ManagementState.REMOVED},
+    }
+
+
+def build_kserve_raw_deployment_upgrade_patch(spec_kserve: Any) -> dict[str, Any]:
+    """Build a DSC kserve patch for raw-deployment upgrade tests.
+
+    Configures KServe for raw deployment only: enables the KServe controller,
+    sets ``defaultDeploymentMode`` to RawDeployment, uses headless services, and
+    removes serverless (``serving``) and NIM sub-components.
+
+    Args:
+        spec_kserve: The ``spec.components.kserve`` object from the DSC.
+
+    Returns:
+        Dict of fields to patch under ``spec.components.kserve``. Empty when already configured.
+    """
+    desired = kserve_raw_deployment_dsc_desired_state()
+    if not spec_kserve:
+        return desired
+
+    patch: dict[str, Any] = {}
+
+    if _spec_field(spec_fragment=spec_kserve, field="managementState") != desired["managementState"]:
+        patch["managementState"] = desired["managementState"]
+
+    if _spec_field(spec_fragment=spec_kserve, field="defaultDeploymentMode") != desired["defaultDeploymentMode"]:
+        patch["defaultDeploymentMode"] = desired["defaultDeploymentMode"]
+
+    if (
+        _spec_field(spec_fragment=spec_kserve, field="rawDeploymentServiceConfig")
+        != desired["rawDeploymentServiceConfig"]
+    ):
+        patch["rawDeploymentServiceConfig"] = desired["rawDeploymentServiceConfig"]
+
+    nim = _spec_field(spec_fragment=spec_kserve, field="nim")
+    if _spec_field(spec_fragment=nim, field="managementState") != DscComponents.ManagementState.REMOVED:
+        patch["nim"] = desired["nim"]
+
+    serving = _spec_field(spec_fragment=spec_kserve, field="serving")
+    if _spec_field(spec_fragment=serving, field="managementState") != DscComponents.ManagementState.REMOVED:
+        patch["serving"] = desired["serving"]
+
+    return patch
 
 
 class ISVCBaseline(TypedDict):
@@ -27,6 +259,12 @@ class ISVCBaseline(TypedDict):
     runtime_name: str
     runtime_generation: int
     pod_restart_counts: dict[str, dict[str, int]]
+
+
+class ISVCKueueBaseline(ISVCBaseline):
+    kueue_integration_stats: dict[str, int]
+    total_copies: int
+    min_replicas: int
 
 
 def verify_inference_generation(isvc: InferenceService, expected_generation: int) -> None:
@@ -112,9 +350,22 @@ def verify_model_status_loaded(isvc: InferenceService) -> None:
 
     if transition_status != "UpToDate":
         raise AssertionError(
-            f"Model not up to date for InferenceService {isvc.name}. "
+            f"Model transition status incorrect for InferenceService {isvc.name}. "
             f"Expected transitionStatus 'UpToDate', got '{transition_status}'"
         )
+
+
+def read_isvc_total_copies(isvc: InferenceService) -> int:
+    """Return totalCopies from ISVC status without requiring a fully Loaded model state.
+
+    Use for Kueue gating scenarios where additional replicas are pending admission and
+    ``targetModelState`` may remain ``Pending`` while ``totalCopies`` reflects running
+    loaded copies (see ``test_kueue_isvc_raw``).
+    """
+    model_status = isvc.instance.status.modelStatus
+    if not model_status or model_status.copies is None:
+        raise AssertionError(f"modelStatus.copies not populated for InferenceService {isvc.name}")
+    return model_status.copies.totalCopies
 
 
 def verify_storage_uri_unchanged(isvc: InferenceService, expected_uri: str) -> None:
@@ -350,6 +601,60 @@ def capture_isvc_baseline(client: DynamicClient, isvc: InferenceService) -> ISVC
     return baseline
 
 
+def get_isvc_kueue_integration_stats(
+    client: DynamicClient,
+    isvc: InferenceService,
+    runtime_name: str,
+) -> dict[str, int]:
+    """Get Kueue integration stats (running and gated pod counts) for a raw ISVC.
+
+    Args:
+        client: Kubernetes dynamic client.
+        isvc: The InferenceService to inspect.
+        runtime_name: ServingRuntime name used for pod label selection.
+
+    Returns:
+        Dict with ``running`` and ``gated`` pod counts.
+    """
+    from utilities.general import create_isvc_label_selector_str
+    from utilities.kueue_utils import check_gated_pods_and_running_pods
+
+    pod_labels = [
+        create_isvc_label_selector_str(
+            isvc=isvc,
+            resource_type="pod",
+            runtime_name=runtime_name,
+        )
+    ]
+    running, gated = check_gated_pods_and_running_pods(
+        labels=pod_labels,
+        namespace=isvc.namespace,
+        admin_client=client,
+    )
+    return {"running": running, "gated": gated}
+
+
+def capture_isvc_kueue_baseline(client: DynamicClient, isvc: InferenceService) -> ISVCKueueBaseline:
+    """Capture pre-upgrade baseline for a Kueue-integrated raw InferenceService."""
+    baseline = capture_isvc_baseline(client=client, isvc=isvc)
+    runtime_name = baseline["runtime_name"]
+    isvc.get()
+    total_copies = read_isvc_total_copies(isvc=isvc)
+    min_replicas = isvc.instance.spec.predictor.get("minReplicas", 1)
+    kueue_baseline: ISVCKueueBaseline = {
+        **baseline,
+        "kueue_integration_stats": get_isvc_kueue_integration_stats(
+            client=client,
+            isvc=isvc,
+            runtime_name=runtime_name,
+        ),
+        "total_copies": total_copies,
+        "min_replicas": min_replicas,
+    }
+    structlog.get_logger(name=__name__).info(f"Captured Kueue baseline for {isvc.name}: {kueue_baseline}")
+    return kueue_baseline
+
+
 def save_baseline_to_configmap(
     client: DynamicClient,
     namespace: str,
@@ -559,6 +864,8 @@ def verify_isvc_pods_not_restarted_against_baseline(
     client: DynamicClient,
     isvc: InferenceService,
     baseline_restart_counts: dict[str, dict[str, int]],
+    *,
+    allow_new_pods: bool = False,
 ) -> None:
     """
     Verify that pod restart counts have not increased since the pre-upgrade baseline.
@@ -567,9 +874,12 @@ def verify_isvc_pods_not_restarted_against_baseline(
         client: DynamicClient instance
         isvc: InferenceService instance
         baseline_restart_counts: Pre-upgrade restart counts per pod per container
+        allow_new_pods: When True, additional pods are permitted (e.g. Kueue-gated pods
+            that were not in the baseline because they had no containerStatuses yet).
 
     Raises:
-        PodContainersRestartError: If any container's restart count increased
+        PodContainersRestartError: If any baseline pod is missing or any container's
+            restart count increased
     """
     pods = get_pods_by_isvc_label(client=client, isvc=isvc)
     increased_containers: dict[str, list[str]] = {}
@@ -578,12 +888,25 @@ def verify_isvc_pods_not_restarted_against_baseline(
     baseline_pod_names = set(baseline_restart_counts.keys())
     missing_pods = baseline_pod_names - current_pod_names
     new_pods = current_pod_names - baseline_pod_names
-    if missing_pods or new_pods:
+    if missing_pods:
+        raise PodContainersRestartError(
+            f"Pod set changed after upgrade for {isvc.name}. missing={sorted(missing_pods)}, new={sorted(new_pods)}"
+        )
+    if new_pods and not allow_new_pods:
         raise PodContainersRestartError(
             f"Pod set changed after upgrade for {isvc.name}. missing={sorted(missing_pods)}, new={sorted(new_pods)}"
         )
 
     for pod in pods:
+        if pod.name not in baseline_restart_counts:
+            if allow_new_pods:
+                statuses = pod.instance.status.containerStatuses or []
+                for container in statuses:
+                    if container.restartCount > 0:
+                        increased_containers.setdefault(pod.name, []).append(
+                            f"{container.name} (pre=0, post={container.restartCount})"
+                        )
+            continue
         statuses = pod.instance.status.containerStatuses or []
         pod_baseline = baseline_restart_counts[pod.name]
         if not statuses and pod_baseline:
@@ -618,8 +941,6 @@ def verify_isvc_pods_not_restarted_against_baseline(
 # ---------------------------------------------------------------------------
 # Utils functions used by LLMInferenceService upgrade tests
 # ---------------------------------------------------------------------------
-
-LOGGER = structlog.get_logger(name=__name__)
 
 
 class LLMISVCBaseline(TypedDict):

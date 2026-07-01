@@ -425,7 +425,8 @@ def pytest_runtest_setup(item: Item) -> None:
             LOGGER.error(f"Database error: {db_exception}. Must-gather collection may not be accurate")
 
     if KServeDeploymentType.RAW_DEPLOYMENT.lower() in item.keywords:
-        item.fixturenames.insert(0, "enabled_kserve_in_dsc")
+        if not ("kueue" in item.keywords and ("pre_upgrade" in item.keywords or "post_upgrade" in item.keywords)):
+            item.fixturenames.insert(0, "enabled_kserve_in_dsc")
 
     elif KServeDeploymentType.MODEL_MESH.lower() in item.keywords:
         item.fixturenames.insert(0, "enabled_modelmesh_in_dsc")
