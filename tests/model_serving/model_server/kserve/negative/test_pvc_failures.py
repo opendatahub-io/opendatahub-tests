@@ -42,7 +42,6 @@ class TestPvcFailures:
         last_phase: str | None = None
 
         def _pvc_phase() -> str | None:
-            bad_storage_class_pvc.update()
             status = getattr(bad_storage_class_pvc.instance, "status", None)
             return getattr(status, "phase", None) if status else None
 

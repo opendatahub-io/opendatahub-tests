@@ -10,6 +10,7 @@ from tests.ai_safety.trustyai_service.trustyai_service_utils import (
     TrustyAIServiceMetrics,
     send_inferences_and_verify_trustyai_service_registered,
     verify_trustyai_service_metric_delete_request,
+    verify_trustyai_service_metric_registered_post_upgrade,
     verify_trustyai_service_metric_scheduling_request,
     verify_upload_data_to_trustyai_service,
 )
@@ -95,6 +96,25 @@ class TestPreUpgradeTrustyAIService:
     indirect=True,
 )
 class TestPostUpgradeTrustyAIService:
+    """Post-upgrade tests for TrustyAI Service verifying PVC-to-DB storage migration."""
+
+    @pytest.mark.dependency(name="pvc_metric_re_registered")
+    @pytest.mark.post_upgrade
+    def test_trustyai_service_post_upgrade_preexisting_metric_re_registered(
+        self,
+        admin_client,
+        current_client_token,
+        trustyai_service,
+    ) -> None:
+        """Verify the drift metric scheduled pre-upgrade was re-registered by TrustyAI after upgrade."""
+        verify_trustyai_service_metric_registered_post_upgrade(
+            client=admin_client,
+            trustyai_service=trustyai_service,
+            token=current_client_token,
+            metric_name=TrustyAIServiceMetrics.Drift.MEANSHIFT,
+        )
+
+    @pytest.mark.dependency(depends=["pvc_metric_re_registered"])
     @pytest.mark.post_upgrade
     def test_drift_metric_delete_pre_db_migration(
         self,
@@ -301,7 +321,24 @@ class TestPostUpgradeTrustyAIServiceDB:
             f"Database was likely deleted during upgrade."
         )
 
-    @pytest.mark.dependency(name="db_verify_persistence", depends=["db_credentials_check"])
+    @pytest.mark.dependency(name="db_metric_re_registered", depends=["db_credentials_check"])
+    @pytest.mark.post_upgrade
+    def test_trustyai_service_db_post_upgrade_preexisting_metric_re_registered(
+        self,
+        admin_client,
+        current_client_token,
+        trustyai_db_ca_secret,
+        trustyai_service,
+    ) -> None:
+        """Verify the drift metric scheduled pre-upgrade was re-registered by TrustyAI after upgrade."""
+        verify_trustyai_service_metric_registered_post_upgrade(
+            client=admin_client,
+            trustyai_service=trustyai_service,
+            token=current_client_token,
+            metric_name=TrustyAIServiceMetrics.Drift.MEANSHIFT,
+        )
+
+    @pytest.mark.dependency(name="db_verify_persistence", depends=["db_metric_re_registered"])
     @pytest.mark.post_upgrade
     def test_trustyai_service_db_post_upgrade_preexisting_metric_can_be_deleted(
         self,

@@ -1,4 +1,3 @@
-import json
 from collections.abc import Generator
 from typing import Any
 
@@ -18,18 +17,9 @@ from tests.model_serving.model_runtime.vllm.constant import (
     PREDICT_RESOURCES,
     TEMPLATE_MAP,
 )
-from tests.model_serving.model_runtime.vllm.modelcar.constant import (
-    PULL_SECRET_ACCESS_TYPE,
-    PULL_SECRET_NAME,
-    SUPPORTED_MODELCAR_REGISTRY_HOSTS,
-    TIMEOUT_20MIN,
-)
-from tests.model_serving.model_runtime.vllm.modelcar.utils import (
-    normalize_registry_pull_auth,
-    safe_k8s_name,
-    validate_registry_pull_auth,
-)
-from tests.model_serving.model_runtime.vllm.utils import dedupe_vllm_cli_args
+from tests.model_serving.model_runtime.vllm.modelcar.constant import MODELCAR_REGISTRIES, TIMEOUT_20MIN
+from tests.model_serving.model_runtime.vllm.modelcar.utils import safe_k8s_name
+from tests.model_serving.model_runtime.vllm.utils import add_image_pull_secrets_if_configured, dedupe_vllm_cli_args
 from utilities.constants import KServeDeploymentType, Labels, RuntimeTemplates
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
@@ -69,8 +59,14 @@ def vllm_model_car_inference_service(
     model_car_serving_runtime: ServingRuntime,
     supported_accelerator_type: str,
     deployment_config: dict[str, Any],
-    kserve_registry_pull_secret: Secret,
+    kserve_registry_pull_secret: Secret | None,
 ) -> Generator[InferenceService, Any, Any]:
+    if kserve_registry_pull_secret is None:
+        options_help = ", ".join(f"`{registry.cli_option}` or `{registry.env_var}`" for registry in MODELCAR_REGISTRIES)
+        raise ValueError(
+            f"modelcar tests require at least one registry pull secret. Set at least one of: {options_help}"
+        )
+
     isvc_kwargs = {
         "client": admin_client,
         "name": safe_k8s_name(request.param.get("model_name", "")),
@@ -78,10 +74,13 @@ def vllm_model_car_inference_service(
         "runtime": model_car_serving_runtime.name,
         "storage_uri": request.param.get("model_car_image_uri"),
         "model_format": model_car_serving_runtime.instance.spec.supportedModelFormats[0].name,
-        "deployment_mode": deployment_config.get("deployment_type", KServeDeploymentType.RAW_DEPLOYMENT),
+        "deployment_mode": deployment_config.get("deployment_type", KServeDeploymentType.STANDARD),
         "external_route": True,
-        "image_pull_secrets": [kserve_registry_pull_secret.name],
     }
+    add_image_pull_secrets_if_configured(
+        isvc_kwargs=isvc_kwargs,
+        kserve_registry_pull_secret=kserve_registry_pull_secret,
+    )
     accelerator_type = supported_accelerator_type.lower()
     gpu_count = deployment_config.get("gpu_count", 0)
     timeout = deployment_config.get("timeout")
@@ -120,49 +119,9 @@ def vllm_model_car_inference_service(
 
 
 @pytest.fixture(scope="class")
-def kserve_registry_pull_secret(
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
-    registry_pull_secret: list[str],
-    registry_host: list[str],
-) -> Generator[Secret, Any, Any]:
-    """Create one dockerconfigjson pull secret with auths for all configured registry hosts."""
-    if len(registry_host) != len(registry_pull_secret):
-        raise ValueError(
-            f"registry_host count ({len(registry_host)}) must match "
-            f"registry_pull_secret count ({len(registry_pull_secret)})"
-        )
-
-    unsupported_hosts = set(registry_host) - SUPPORTED_MODELCAR_REGISTRY_HOSTS
-    if unsupported_hosts:
-        raise ValueError(f"Unsupported OCI registry hosts: {sorted(unsupported_hosts)}")
-
-    auths: dict[str, dict[str, str]] = {}
-    for host, raw_auth in zip(registry_host, registry_pull_secret):
-        auth = normalize_registry_pull_auth(raw_value=raw_auth, expected_host=host)
-        validate_registry_pull_auth(auth=auth)
-        auths[host] = {"auth": auth}
-
-    docker_config_json = json.dumps({"auths": auths})
-    with Secret(
-        client=admin_client,
-        name=PULL_SECRET_NAME,
-        namespace=model_namespace.name,
-        string_data={
-            ".dockerconfigjson": docker_config_json,
-            "ACCESS_TYPE": PULL_SECRET_ACCESS_TYPE,
-            "OCI_HOST": ",".join(registry_host),
-        },
-        type="kubernetes.io/dockerconfigjson",
-        wait_for_resource=True,
-    ) as secret:
-        yield secret
-
-
-@pytest.fixture(scope="class")
 def deployment_config(request: FixtureRequest) -> dict[str, Any]:
     """Provide the base deployment configuration for modelcar raw deployments."""
-    deployment_type = request.param.get("deployment_type", KServeDeploymentType.RAW_DEPLOYMENT)
+    deployment_type = request.param.get("deployment_type", KServeDeploymentType.STANDARD)
     serving_argument = request.param.get("runtime_argument", [])
 
     config = BASE_RAW_DEPLOYMENT_CONFIG.copy()
@@ -182,10 +141,10 @@ def build_raw_params(
     execution_mode: str,
     model_output_type: str = "text",
 ) -> tuple[Any, str]:
-    test_id = f"{name}-raw"
-    deployment_type = KServeDeploymentType.RAW_DEPLOYMENT
+    test_id = f"{name}-standard"
+    deployment_type = KServeDeploymentType.STANDARD
     param = pytest.param(
-        {"name": "raw-model-validation"},
+        {"name": "standard-model-validation"},
         {"deployment_type": deployment_type},
         {
             "model_name": name,

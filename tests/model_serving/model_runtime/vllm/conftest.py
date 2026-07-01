@@ -1,3 +1,4 @@
+import json
 from collections.abc import Generator
 from typing import Any
 
@@ -12,7 +13,17 @@ from ocp_resources.serving_runtime import ServingRuntime
 from pytest import FixtureRequest
 
 from tests.model_serving.model_runtime.vllm.constant import ACCELERATOR_IDENTIFIER, PREDICT_RESOURCES, TEMPLATE_MAP
+from tests.model_serving.model_runtime.vllm.modelcar.constant import (
+    PULL_SECRET_ACCESS_TYPE,
+    PULL_SECRET_NAME,
+    SUPPORTED_MODELCAR_REGISTRY_HOSTS,
+)
+from tests.model_serving.model_runtime.vllm.modelcar.utils import (
+    normalize_registry_pull_auth,
+    validate_registry_pull_auth,
+)
 from tests.model_serving.model_runtime.vllm.utils import (
+    add_image_pull_secrets_if_configured,
     dedupe_vllm_cli_args,
     kserve_s3_endpoint_secret,
     skip_if_not_deployment_mode,
@@ -53,11 +64,55 @@ def serving_runtime(
         name="vllm-runtime",
         namespace=model_namespace.name,
         template_name=template_name,
-        deployment_type=request.param["deployment_type"],
+        deployment_type=request.param["deployment_mode"],
         runtime_image=vllm_runtime_image,
         support_tgis_open_ai_endpoints=True,
     ) as model_runtime:
         yield model_runtime
+
+
+@pytest.fixture(scope="class")
+def kserve_registry_pull_secret(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    registry_pull_secret: list[str],
+    registry_host: list[str],
+) -> Generator[Secret | None, Any, Any]:
+    """Create a dockerconfigjson pull secret when OCI registry credentials are configured."""
+    if not registry_host:
+        yield None
+        return
+
+    if len(registry_host) != len(registry_pull_secret):
+        raise ValueError(
+            f"registry_host count ({len(registry_host)}) must match "
+            f"registry_pull_secret count ({len(registry_pull_secret)})"
+        )
+
+    unsupported_hosts = set(registry_host) - SUPPORTED_MODELCAR_REGISTRY_HOSTS
+    if unsupported_hosts:
+        raise ValueError(f"Unsupported OCI registry hosts: {sorted(unsupported_hosts)}")
+
+    auths: dict[str, dict[str, str]] = {}
+    for host, raw_auth in zip(registry_host, registry_pull_secret):
+        auth = normalize_registry_pull_auth(raw_value=raw_auth, expected_host=host)
+        validate_registry_pull_auth(auth=auth)
+        auths[host] = {"auth": auth}
+
+    docker_config_json = json.dumps({"auths": auths})
+    with Secret(
+        client=admin_client,
+        name=PULL_SECRET_NAME,
+        namespace=model_namespace.name,
+        string_data={
+            ".dockerconfigjson": docker_config_json,
+            "ACCESS_TYPE": PULL_SECRET_ACCESS_TYPE,
+            "OCI_HOST": ",".join(registry_host),
+        },
+        type="kubernetes.io/dockerconfigjson",
+        wait_for_resource=True,
+    ) as secret:
+        yield secret
 
 
 @pytest.fixture(scope="class")
@@ -69,6 +124,7 @@ def vllm_inference_service(
     supported_accelerator_type: str,
     s3_models_storage_uri: str,
     vllm_model_service_account: ServiceAccount,
+    kserve_registry_pull_secret: Secret | None,
 ) -> Generator[InferenceService, Any, Any]:
     isvc_kwargs = {
         "client": admin_client,
@@ -78,7 +134,7 @@ def vllm_inference_service(
         "storage_uri": s3_models_storage_uri,
         "model_format": serving_runtime.instance.spec.supportedModelFormats[0].name,
         "model_service_account": vllm_model_service_account.name,
-        "deployment_mode": request.param.get("deployment_mode", KServeDeploymentType.RAW_DEPLOYMENT),
+        "deployment_mode": request.param.get("deployment_mode", KServeDeploymentType.STANDARD),
         "external_route": True,
     }
     accelerator_type = supported_accelerator_type.lower()
@@ -104,6 +160,11 @@ def vllm_inference_service(
 
     if min_replicas := request.param.get("min-replicas"):
         isvc_kwargs["min_replicas"] = min_replicas
+
+    add_image_pull_secrets_if_configured(
+        isvc_kwargs=isvc_kwargs,
+        kserve_registry_pull_secret=kserve_registry_pull_secret,
+    )
 
     with create_isvc(**isvc_kwargs) as isvc:
         yield isvc

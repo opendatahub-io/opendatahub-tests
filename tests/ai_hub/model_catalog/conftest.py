@@ -14,13 +14,13 @@ from ocp_resources.route import Route
 from ocp_resources.service_account import ServiceAccount
 
 from tests.ai_hub.constants import (
+    CATALOG_CONTAINER,
     CUSTOM_CATALOG_ID1,
     DEFAULT_CUSTOM_MODEL_CATALOG,
     DEFAULT_MODEL_CATALOG_CM,
 )
 from tests.ai_hub.model_catalog.catalog_config.utils import get_models_from_database_by_source
 from tests.ai_hub.model_catalog.constants import (
-    CATALOG_CONTAINER,
     DEFAULT_CATALOG_FILE,
     DEFAULT_CATALOGS,
     REDHAT_AI_CATALOG_ID,

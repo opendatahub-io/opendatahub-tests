@@ -7,6 +7,7 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
+from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest import FixtureRequest
 
@@ -17,6 +18,7 @@ from tests.model_serving.model_runtime.vllm.cpu.cpu_x86.constant import (
     CPU_X86_VOLUMES,
 )
 from tests.model_serving.model_runtime.vllm.utils import (
+    add_image_pull_secrets_if_configured,
     dedupe_vllm_cli_args,
     skip_if_not_deployment_mode,
     validate_supported_quantization_schema,
@@ -44,7 +46,7 @@ def cpu_x86_serving_runtime(
         name="vllm-runtime",
         namespace=model_namespace.name,
         template_name=template_name,
-        deployment_type=request.param["deployment_type"],
+        deployment_type=request.param["deployment_mode"],
         runtime_image=vllm_runtime_image,
         support_tgis_open_ai_endpoints=True,
     ) as model_runtime:
@@ -59,6 +61,7 @@ def cpu_x86_inference_service(
     cpu_x86_serving_runtime: ServingRuntime,
     s3_models_storage_uri: str,
     vllm_model_service_account: Any,
+    kserve_registry_pull_secret: Secret | None,
 ) -> Generator[InferenceService, Any, Any]:
     """vLLM InferenceService for CPU x86 deployments backed by S3 model storage."""
     isvc_kwargs: dict[str, Any] = {
@@ -69,7 +72,7 @@ def cpu_x86_inference_service(
         "storage_uri": s3_models_storage_uri,
         "model_format": cpu_x86_serving_runtime.instance.spec.supportedModelFormats[0].name,
         "model_service_account": vllm_model_service_account.name,
-        "deployment_mode": request.param.get("deployment_mode", KServeDeploymentType.RAW_DEPLOYMENT),
+        "deployment_mode": request.param.get("deployment_mode", KServeDeploymentType.STANDARD),
         "external_route": True,
         "resources": deepcopy(x=CPU_X86_PREDICT_RESOURCES),
         "volumes": CPU_X86_VOLUMES,
@@ -89,6 +92,11 @@ def cpu_x86_inference_service(
 
     if model_env_variables := request.param.get("model_env_variables"):
         isvc_kwargs["model_env_variables"] = model_env_variables
+
+    add_image_pull_secrets_if_configured(
+        isvc_kwargs=isvc_kwargs,
+        kserve_registry_pull_secret=kserve_registry_pull_secret,
+    )
 
     with create_isvc(**isvc_kwargs) as isvc:
         yield isvc

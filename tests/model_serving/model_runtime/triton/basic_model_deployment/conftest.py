@@ -159,7 +159,7 @@ def triton_serving_runtime(
         name=RUNTIME_MAP.get(protocol, "triton-runtime"),
         namespace=model_namespace.name,
         template_name=template_name,
-        deployment_type=request.param.get("deployment_type", KServeDeploymentType.RAW_DEPLOYMENT),
+        deployment_type=request.param.get("deployment_mode", KServeDeploymentType.STANDARD),
     ) as model_runtime:
         yield model_runtime
 
@@ -190,7 +190,7 @@ def triton_inference_service(
         "storage_uri": s3_models_storage_uri,
         "model_format": model_format,
         "model_service_account": triton_model_service_account.name,
-        "deployment_mode": params.get("deployment_type", KServeDeploymentType.RAW_DEPLOYMENT),
+        "deployment_mode": params.get("deployment_mode", KServeDeploymentType.STANDARD),
         "external_route": params.get("enable_external_route", False),
     }
     resources = copy.deepcopy(cast(dict[str, dict[str, str]], PREDICT_RESOURCES["resources"]))
@@ -238,3 +238,13 @@ def triton_pod_resource(
     if not pods:
         raise ResourceNotFoundError(f"No pods found for InferenceService {triton_inference_service.name}")
     return pods[0]
+
+
+def pytest_collection_modifyitems(config, items):
+    """Remove gRPC protocol tests as RHOAI does not support gRPC for Triton"""
+    remaining = []
+    for item in items:
+        # Remove any test with 'grpc-deployment' in the parameterized id
+        if "grpc-deployment" not in item.nodeid:
+            remaining.append(item)
+    items[:] = remaining

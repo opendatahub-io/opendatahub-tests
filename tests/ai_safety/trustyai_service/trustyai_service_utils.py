@@ -16,7 +16,7 @@ from ocp_resources.trustyai_service import TrustyAIService
 from timeout_sampler import TimeoutSampler
 
 from utilities.certificates_utils import create_ca_bundle_file
-from utilities.constants import TRUSTYAI_SERVICE_NAME, KServeDeploymentType, Protocols, Timeout
+from utilities.constants import TRUSTYAI_SERVICE_NAME, Protocols, Timeout
 from utilities.exceptions import MetricValidationError
 from utilities.general import create_isvc_label_selector_str
 from utilities.inference_utils import Inference, UserInference
@@ -77,12 +77,12 @@ class TrustyAIServiceClient:
         """
 
         if hasattr(TrustyAIServiceMetrics.Fairness, metric_name.upper()):
-            base_url: str = "/metrics/group/fairness"
+            base_url: str = "metrics/group/fairness"
         elif hasattr(TrustyAIServiceMetrics.Drift, metric_name.upper()):
-            base_url = "/metrics/drift"
+            base_url = "metrics/drift"
         else:
             raise MetricValidationError(f"Unknown metric: {metric_name}")
-        return f"{base_url}/{metric_name}"
+        return f"{base_url.rstrip('/')}/{metric_name}"
 
     def _send_request(
         self,
@@ -108,7 +108,7 @@ class TrustyAIServiceClient:
             ValueError: If method is not GET, POST or DELETE.
         """
 
-        url = f"https://{self.service_route.host}/{endpoint}"
+        url = f"https://{self.service_route.host}/{endpoint.lstrip('/')}"
         headers = {**self.headers, **(extra_headers or {})}
         base_kwargs = {"url": url, "headers": headers, "verify": self.cert_path}
 
@@ -227,9 +227,8 @@ class TrustyAIServiceClient:
         Returns:
             requests.Response: Response from metric request.
         """
-        endpoint: str = (
-            f"/{self._get_metric_base_url(metric_name=metric_name)}/{self.Endpoints.REQUEST if schedule else ''}"
-        )
+        base_url = self._get_metric_base_url(metric_name=metric_name)
+        endpoint: str = f"{base_url}/{self.Endpoints.REQUEST}" if schedule else base_url
         LOGGER.info(f"Sending request for metric {metric_name} to endpoint {endpoint}")
         return self._send_request(endpoint=endpoint, method="POST", json=json)
 
@@ -394,8 +393,7 @@ def wait_for_isvc_deployment_registered_by_trustyai_service(
     pod_label_selector = create_isvc_label_selector_str(isvc=isvc, resource_type="pod", runtime_name=runtime_name)
     trustyai_service = TrustyAIService(name=TRUSTYAI_SERVICE_NAME, namespace=isvc.namespace, ensure_exists=True)
 
-    deployment_mode = isvc.instance.metadata.annotations.get("serving.kserve.io/deploymentMode", "")
-    scheme = "https" if deployment_mode in KServeDeploymentType.RAW_DEPLOYMENT_MODES else "http"
+    expected_sink_host = f"{trustyai_service.name}.{isvc.namespace}.svc.cluster.local"
 
     def _get_deployments() -> list[Deployment]:
         return list(
@@ -427,10 +425,8 @@ def wait_for_isvc_deployment_registered_by_trustyai_service(
 
         all_ready = True
         for deployment in deployments:
-            if (
-                deployment.instance.metadata.annotations.get("internal.serving.kserve.io/logger-sink-url")
-                == f"{scheme}://{trustyai_service.name}.{isvc.namespace}.svc.cluster.local"
-            ):
+            sink_url = deployment.instance.metadata.annotations.get("internal.serving.kserve.io/logger-sink-url", "")
+            if sink_url.endswith(expected_sink_host):
                 deployment.wait_for_replicas()
                 deployment.wait_for_condition(condition="Available", status="True")
 
@@ -645,6 +641,32 @@ def verify_upload_data_to_trustyai_service(
     )
 
 
+def verify_trustyai_service_metric_registered_post_upgrade(
+    client: DynamicClient, trustyai_service: TrustyAIService, token: str, metric_name: str
+) -> None:
+    """Verifies that a metric scheduled pre-upgrade was re-registered by TrustyAI after upgrade.
+
+    Fails with a clear message if the metric is missing, pointing to known 3.5 breaking changes:
+    referenceTag is now required and must exist in logged data; fitColumns must use original
+    column names, not mapped names.
+    """
+    tas_client = TrustyAIServiceClient(token=token, service=trustyai_service, client=client)
+    metrics_response = tas_client.get_metrics(metric_name=metric_name)
+    assert metrics_response.status_code == HTTPStatus.OK, (
+        f"Failed to fetch {metric_name} metrics: "
+        f"HTTP {metrics_response.status_code}. Response body: {metrics_response.text!r}"
+    )
+    metrics_data = json.loads(metrics_response.text)
+    num_metrics = len(metrics_data.get("requests", []))
+
+    assert num_metrics >= 1, (
+        f"Pre-upgrade {metric_name} metric was not re-registered by TrustyAI after upgrade. "
+        f"Known causes: (1) referenceTag is now required and must exist in logged data, "
+        f"(2) fitColumns must use original column names, not mapped names. "
+        f"Check TrustyAI service logs for re-registration errors."
+    )
+
+
 def verify_trustyai_service_metric_delete_request(
     client: DynamicClient, trustyai_service: TrustyAIService, token: str, metric_name: str
 ) -> None:
@@ -675,7 +697,8 @@ def verify_trustyai_service_metric_delete_request(
     delete_response = tas_client.delete_metric(metric_name=metric_name, request_id=request_id)
 
     assert delete_response.status_code == HTTPStatus.OK, (
-        f"Delete request failed with status code: {delete_response.status_code}"
+        f"Delete request failed with status code: {delete_response.status_code}. "
+        f"Response body: {delete_response.text!r}"
     )
 
     # Verify the number of metrics after deletion is N-1

@@ -36,26 +36,26 @@ pytestmark = pytest.mark.usefixtures(
     [
         pytest.param(
             {"protocol_type": Protocols.REST},
-            {"name": "keras-raw"},
+            {"name": "keras-standard"},
             MODEL_STORAGE_URI_DICT,
             {**BASE_RAW_DEPLOYMENT_CONFIG},
             {
-                "name": "keras-raw-rest",
+                "name": "keras-standard-rest",
                 **BASE_RAW_DEPLOYMENT_CONFIG,
             },
-            id="keras-raw-rest-deployment",
+            id="keras-standard-rest-deployment",
             marks=pytest.mark.tier1,
         ),
         pytest.param(
             {"protocol_type": Protocols.GRPC},
-            {"name": "keras-raw"},
+            {"name": "keras-standard"},
             MODEL_STORAGE_URI_DICT,
             {**BASE_RAW_DEPLOYMENT_CONFIG},
             {
-                "name": "keras-raw-grpc",
+                "name": "keras-standard-grpc",
                 **BASE_RAW_DEPLOYMENT_CONFIG,
             },
-            id="keras-raw-grpc-deployment",
+            id="keras-standard-grpc-deployment",
             marks=pytest.mark.tier1,
         ),
     ],
