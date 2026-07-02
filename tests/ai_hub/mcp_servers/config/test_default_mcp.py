@@ -13,7 +13,7 @@ from tests.ai_hub.mcp_servers.config.constants import (
     EXPECTED_REDHAT_MCP_LABEL_DEFINITION,
     PARTNER_MCP_LABEL,
 )
-from tests.ai_hub.utils import execute_get_command
+from tests.ai_hub.utils import execute_get_command_with_retry
 
 LOGGER = structlog.get_logger(name=__name__)
 REQUIRED_SERVER_FIELDS: list[str] = ["name", "version", "description", "readme"]
@@ -122,7 +122,7 @@ class TestDefaultMCPCatalogSourceValidations:
         """Verify that fetching an MCP server by id returns the same data as the list response."""
         server = mcp_servers_by_source["items"][0]
         server_id = server["id"]
-        fetched = execute_get_command(
+        fetched = execute_get_command_with_retry(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers/{server_id}",
             headers=model_registry_rest_headers,
         )
@@ -146,7 +146,7 @@ class TestDefaultMCPCatalogSourceValidations:
             if tool_count == 0:
                 errors.append(f"Server '{server_name}' has toolCount=0")
                 continue
-            tools_response = execute_get_command(
+            tools_response = execute_get_command_with_retry(
                 url=f"{mcp_catalog_rest_urls[0]}mcp_servers/{server_id}/tools",
                 headers=model_registry_rest_headers,
                 params={"pageSize": 1000},
@@ -171,7 +171,7 @@ class TestDefaultMCPCatalogSourceValidations:
         """Verify toolLimit caps returned tools array (TC-API-021)."""
         tool_limit = 1
         server = mcp_servers_by_source["items"][0]
-        response = execute_get_command(
+        response = execute_get_command_with_retry(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers/{server['id']}",
             headers=model_registry_rest_headers,
             params={"includeTools": "true", "toolLimit": str(tool_limit)},
@@ -189,7 +189,7 @@ class TestDefaultMCPCatalogSourceValidations:
     ):
         """Verify toolLimit caps returned tools array on the mcp_servers list endpoint."""
         tool_limit = 1
-        response = execute_get_command(
+        response = execute_get_command_with_retry(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
             headers=model_registry_rest_headers,
             params={"includeTools": "true", "toolLimit": str(tool_limit), "pageSize": 1000},
@@ -210,7 +210,7 @@ class TestDefaultMCPCatalogSourceValidations:
     ):
         """Verify toolLimit exceeding maximum (100) is rejected (TC-API-023)."""
         with pytest.raises(ResourceNotFoundError):
-            execute_get_command(
+            execute_get_command_with_retry(
                 url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
                 headers=model_registry_rest_headers,
                 params={"includeTools": "true", "toolLimit": "101"},
@@ -229,14 +229,14 @@ class TestDefaultMCPCatalogSourceValidations:
         )
         assert server, "No server with tools found"
         server_id = server["id"]
-        tools_response = execute_get_command(
+        tools_response = execute_get_command_with_retry(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers/{server_id}/tools",
             headers=model_registry_rest_headers,
             params={"pageSize": 1000},
         )
         tool = tools_response["items"][0]
         tool_name = tool["name"]
-        fetched = execute_get_command(
+        fetched = execute_get_command_with_retry(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers/{server_id}/tools/{tool_name}",
             headers=model_registry_rest_headers,
         )
@@ -265,7 +265,7 @@ class TestDefaultMCPCatalogSourceValidations:
             if next_page_token:
                 params["nextPageToken"] = next_page_token
 
-            response = execute_get_command(
+            response = execute_get_command_with_retry(
                 url=tools_url,
                 headers=model_registry_rest_headers,
                 params=params,
@@ -292,7 +292,7 @@ class TestDefaultMCPCatalogSourceValidations:
         for server in mcp_servers_by_source.get("items", []):
             server_id = server["id"]
             name = server["name"]
-            response = execute_get_command(
+            response = execute_get_command_with_retry(
                 url=f"{mcp_catalog_rest_urls[0]}mcp_servers/{server_id}",
                 headers=model_registry_rest_headers,
                 params={"includeTools": "true", "toolLimit": "100"},
@@ -326,7 +326,7 @@ class TestDefaultMCPDisable:
         disable_default_mcp_source: str,
     ):
         """Verify that MCP servers from the disabled source are not returned."""
-        response = execute_get_command(
+        response = execute_get_command_with_retry(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
             headers=model_registry_rest_headers,
             params={"pageSize": 1000},

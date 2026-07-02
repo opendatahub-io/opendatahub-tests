@@ -14,7 +14,7 @@ from tests.ai_hub.model_catalog.metadata.utils import (
 )
 from tests.ai_hub.model_catalog.utils import (
     execute_database_query,
-    execute_get_command,
+    execute_get_command_with_retry,
     parse_psql_output,
 )
 from tests.ai_hub.utils import get_rest_headers
@@ -65,7 +65,7 @@ class TestFilterOptionsEndpoint:
         api_url = f"{model_catalog_rest_url[0]}models/filter_options"
         LOGGER.info(f"Testing comprehensive database coverage for: {api_url}")
 
-        api_response = execute_get_command(
+        api_response = execute_get_command_with_retry(
             url=api_url,
             headers=get_rest_headers(token=user_token_for_api_calls),
         )
@@ -133,7 +133,7 @@ class TestFilterOptionsEndpoint:
         url = f"{model_catalog_rest_url[0]}models/filter_options"
         LOGGER.info(f"Testing namedQueries in filter_options endpoint: {url}")
 
-        response = execute_get_command(
+        response = execute_get_command_with_retry(
             url=url,
             headers=get_rest_headers(token=user_token_for_api_calls),
         )

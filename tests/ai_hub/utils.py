@@ -945,6 +945,13 @@ def execute_get_command(
         raise
 
 
+@retry(wait_timeout=60, sleep=5, exceptions_dict={requests.exceptions.ConnectionError: []})
+def execute_get_command_with_retry(
+    url: str, headers: dict[str, str], verify: bool | str = False, params: dict[str, Any] | None = None
+) -> dict[Any, Any]:
+    return execute_get_command(url=url, headers=headers, verify=verify, params=params)
+
+
 def get_endpoint_ips(client: DynamicClient, namespace: str, service_name: str = "model-catalog") -> set[str]:
     endpoints = Endpoints(name=service_name, namespace=namespace, client=client)
     assert endpoints.exists, f"Endpoints for service {service_name} not found in {namespace}"
