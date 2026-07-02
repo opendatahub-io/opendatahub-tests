@@ -13,6 +13,7 @@ from tests.ai_hub.utils import (
     TransientUnauthorizedError,
     execute_get_call,
     execute_get_command,
+    execute_get_command_with_retry,
 )
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -273,7 +274,7 @@ def assert_source_error_state_message(
     expected_error_message: str,
     source_id: str,
 ):
-    results = execute_get_command(
+    results = execute_get_command_with_retry(
         url=f"{model_catalog_rest_url[0]}sources",
         headers=model_registry_rest_headers,
     )["items"]

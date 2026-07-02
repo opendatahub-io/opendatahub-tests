@@ -22,7 +22,6 @@ from timeout_sampler import TimeoutExpiredError
 
 from tests.pipelines_components.constants import (
     AUTOML_S3_BUCKET,
-    AUTOML_S3_TRAIN_DATA_KEY,
     AUTOML_TRAIN_DATA_FILE_KEY,
     DSPA_MINIO_IMAGE,
     DSPA_NAME,
@@ -244,15 +243,58 @@ def dspa_s3_credentials(
     return secret
 
 
+EXTERNAL_S3_SECRET: str = "external-s3-credentials"
+
+
 @pytest.fixture(scope="class")
+def external_s3_secret(
+    admin_client: DynamicClient,
+    pipelines_namespace: Namespace,
+) -> Generator[Secret, Any, Any]:
+    """Transient secret holding external AWS S3 credentials for data upload pods."""
+    aws_access_key_id = os.environ.get("AWS_ACCESS_KEY_ID")
+    aws_secret_access_key = os.environ.get("AWS_SECRET_ACCESS_KEY")
+    assert aws_access_key_id, (
+        "Environment variable 'AWS_ACCESS_KEY_ID' is not set. "
+        "Set it in .env or shell to provide external S3 credentials."
+    )
+    assert aws_secret_access_key, (
+        "Environment variable 'AWS_SECRET_ACCESS_KEY' is not set. "
+        "Set it in .env or shell to provide external S3 credentials."
+    )
+    with Secret(
+        client=admin_client,
+        name=EXTERNAL_S3_SECRET,
+        namespace=pipelines_namespace.name,
+        string_data={
+            "AWS_ACCESS_KEY_ID": aws_access_key_id,
+            "AWS_SECRET_ACCESS_KEY": aws_secret_access_key,
+        },
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="function")
 def automl_train_data(
     admin_client: DynamicClient,
     pipelines_namespace: Namespace,
     dspa_s3_credentials: Secret,
+    external_s3_secret: Secret,
+    task_type: str,
 ) -> str:
-    """Download AutoML training CSV from external S3 and upload to DSPA MinIO."""
+    """Download AutoML training CSV from external S3 and upload to DSPA MinIO.
+
+    Picks S3 key based on task_type parameter (regression or classification).
+    """
+    env_var = f"AUTOML_{task_type.upper()}_S3_TRAIN_DATA_KEY"
+    src_key_value = os.environ.get(env_var)
+    assert src_key_value, (
+        f"Environment variable '{env_var}' is not set. "
+        f"Set it in .env or shell to provide the S3 key for {task_type} training data."
+    )
+
     src_bucket = shlex.quote(s=AUTOML_S3_BUCKET)
-    src_key = shlex.quote(s=AUTOML_S3_TRAIN_DATA_KEY)
+    src_key = shlex.quote(s=src_key_value)
     dst_bucket = shlex.quote(s=DSPA_S3_BUCKET)
     dst_key = shlex.quote(s=AUTOML_TRAIN_DATA_FILE_KEY)
 
@@ -284,8 +326,14 @@ def automl_train_data(
                 "securityContext": MINIO_UPLOADER_SECURITY_CONTEXT,
                 "env": [
                     {"name": "SRC_ENDPOINT", "value": src_endpoint},
-                    {"name": "AWS_ACCESS_KEY_ID", "value": os.environ.get("AWS_ACCESS_KEY_ID", "")},
-                    {"name": "AWS_SECRET_ACCESS_KEY", "value": os.environ.get("AWS_SECRET_ACCESS_KEY", "")},
+                    {
+                        "name": "AWS_ACCESS_KEY_ID",
+                        "valueFrom": {"secretKeyRef": {"name": EXTERNAL_S3_SECRET, "key": "AWS_ACCESS_KEY_ID"}},
+                    },
+                    {
+                        "name": "AWS_SECRET_ACCESS_KEY",
+                        "valueFrom": {"secretKeyRef": {"name": EXTERNAL_S3_SECRET, "key": "AWS_SECRET_ACCESS_KEY"}},
+                    },
                     {"name": "DST_ENDPOINT", "value": minio_endpoint},
                     {
                         "name": "DST_ACCESS_KEY",

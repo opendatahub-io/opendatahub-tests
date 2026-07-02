@@ -87,12 +87,16 @@ def get_api_key(
     key_id: str,
     ocp_user_token: str,
     request_timeout_seconds: int = 60,
+    extra_headers: dict[str, str] | None = None,
 ) -> tuple[Response, dict[str, Any]]:
     """Fetch a single API key by ID via MaaS API (GET /v1/api-keys/{id})."""
     url = f"{base_url}/v1/api-keys/{quote(key_id, safe='')}"
+    request_headers = {"Authorization": f"Bearer {ocp_user_token}"}
+    if extra_headers is not None:
+        request_headers.update(extra_headers)
     response = request_session_http.get(
         url=url,
-        headers={"Authorization": f"Bearer {ocp_user_token}"},
+        headers=request_headers,
         timeout=request_timeout_seconds,
     )
     LOGGER.info(f"get_api_key: url={url} key_id={key_id} status={response.status_code}")
@@ -113,6 +117,7 @@ def list_api_keys(
     sort: dict[str, Any] | None = None,
     pagination: dict[str, Any] | None = None,
     request_timeout_seconds: int = 60,
+    extra_headers: dict[str, str] | None = None,
 ) -> tuple[Response, dict[str, Any]]:
     """Search/list API keys via MaaS API (POST /v1/api-keys/search)."""
     url = f"{base_url}/v1/api-keys/search"
@@ -124,9 +129,12 @@ def list_api_keys(
     if pagination is not None:
         payload["pagination"] = pagination
 
+    request_headers = {"Authorization": f"Bearer {ocp_user_token}"}
+    if extra_headers is not None:
+        request_headers.update(extra_headers)
     response = request_session_http.post(
         url=url,
-        headers={"Authorization": f"Bearer {ocp_user_token}"},
+        headers=request_headers,
         json=payload,
         timeout=request_timeout_seconds,
     )
@@ -245,6 +253,24 @@ def build_inference_url(maas_scheme: str, maas_host: str, model_name: str) -> st
     return f"{maas_scheme}://{maas_host}/llm/{model_name}/v1/chat/completions"
 
 
+def _mapping_get(mapping: Any, key: str) -> Any:
+    """Read a key from a Kubernetes API object or plain dict."""
+    if mapping is None:
+        return None
+    if isinstance(mapping, dict):
+        return mapping.get(key)
+    return getattr(mapping, key, None)
+
+
+def _api_key_validation_callback_url_from_rules(rules: Any) -> str | None:
+    """Return apiKeyValidation.http.url from an AuthPolicy rules block, if present."""
+    metadata = _mapping_get(mapping=rules, key="metadata")
+    api_key_validation = _mapping_get(mapping=metadata, key="apiKeyValidation")
+    http_config = _mapping_get(mapping=api_key_validation, key="http")
+    callback_url = _mapping_get(mapping=http_config, key="url")
+    return str(callback_url) if callback_url else None
+
+
 def get_auth_policy_callback_url(
     admin_client: DynamicClient,
     policy_name: str,
@@ -257,15 +283,32 @@ def get_auth_policy_callback_url(
         namespace=namespace,
         ensure_exists=True,
     )
-    try:
-        callback_url: str = auth_policy.instance.spec.defaults.rules.metadata.apiKeyValidation.http.url
-    except AttributeError as error:
-        raise AssertionError(
-            f"AuthPolicy '{policy_name}' in namespace '{namespace}' is missing "
-            f"the apiKeyValidation callback URL field: {error}"
-        ) from error
-    LOGGER.info(f"get_auth_policy_callback_url: policy='{policy_name}' url='{callback_url}'")
-    return callback_url
+    spec = auth_policy.instance.spec
+    rules_blocks = (
+        _mapping_get(mapping=_mapping_get(mapping=spec, key="defaults"), key="rules"),
+        _mapping_get(mapping=spec, key="rules"),
+        _mapping_get(mapping=_mapping_get(mapping=spec, key="overrides"), key="rules"),
+    )
+    for rules in rules_blocks:
+        callback_url = _api_key_validation_callback_url_from_rules(rules=rules)
+        if callback_url:
+            LOGGER.info(f"get_auth_policy_callback_url: policy='{policy_name}' url='{callback_url}'")
+            return callback_url
+
+    configured_blocks = [
+        block_name
+        for block_name, rules in (
+            ("spec.defaults.rules", rules_blocks[0]),
+            ("spec.rules", rules_blocks[1]),
+            ("spec.overrides.rules", rules_blocks[2]),
+        )
+        if rules is not None
+    ]
+    raise AssertionError(
+        f"AuthPolicy '{policy_name}' in namespace '{namespace}' has no "
+        f"metadata.apiKeyValidation.http.url. "
+        f"Found rules blocks: {configured_blocks or ['none']}"
+    )
 
 
 def get_auth_policy_condition(

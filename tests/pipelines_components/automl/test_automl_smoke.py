@@ -15,8 +15,12 @@ from tests.pipelines_components.utils import (
 class TestAutoMLSmoke:
     """AutoML pipeline smoke tests using AutoGluon Tabular Training from pipelines-components."""
 
+    @pytest.mark.parametrize(
+        "task_type", ["regression", "classification", "multiclass"], ids=["regression", "classification", "multiclass"]
+    )
     def test_automl_pipeline_completes(
         self,
+        task_type: str,
         admin_client: DynamicClient,
         pipelines_namespace: Namespace,
         dspa_s3_credentials: Secret,
@@ -39,5 +43,6 @@ class TestAutoMLSmoke:
             )
 
         assert phase == WORKFLOW_SUCCEEDED, (
-            f"AutoML pipeline run {automl_run_id} ended with phase '{phase}', expected '{WORKFLOW_SUCCEEDED}'"
+            f"AutoML {task_type} pipeline run {automl_run_id} ended with phase '{phase}', "
+            f"expected '{WORKFLOW_SUCCEEDED}'"
         )
