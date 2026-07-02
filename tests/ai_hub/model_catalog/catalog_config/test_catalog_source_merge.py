@@ -2,7 +2,7 @@ import pytest
 import structlog
 
 from tests.ai_hub.model_catalog.constants import REDHAT_AI_CATALOG_ID
-from tests.ai_hub.utils import execute_get_command
+from tests.ai_hub.utils import execute_get_command_with_retry
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -40,7 +40,9 @@ class TestCatalogSourceMerge:
         original_catalog = sparse_override_catalog_source["original_catalog"]
 
         # Query sources endpoint to get the merged result
-        response = execute_get_command(url=f"{model_catalog_rest_url[0]}sources", headers=model_registry_rest_headers)
+        response = execute_get_command_with_retry(
+            url=f"{model_catalog_rest_url[0]}sources", headers=model_registry_rest_headers
+        )
         items = response.get("items", [])
         LOGGER.info(f"API response items: {items}")
 
