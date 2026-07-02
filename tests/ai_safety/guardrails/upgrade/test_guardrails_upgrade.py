@@ -10,7 +10,7 @@ from tests.ai_safety.guardrails.constants import (
     PROMPT_INJECTION_INPUT_DETECTION_PROMPT,
     HAP_INPUT_DETECTION_PROMPT,
     STANDALONE_DETECTION_ENDPOINT,
-    CHAT_COMPLETIONS_DETECTION_ENDPOINT
+    CHAT_COMPLETIONS_DETECTION_ENDPOINT,
 )
 from tests.ai_safety.guardrails.utils import (
     create_detector_config,
@@ -19,12 +19,15 @@ from tests.ai_safety.guardrails.utils import (
     send_and_verify_unsuitable_output_detection,
     verify_health_info_response,
     check_guardrails_traces_in_tempo,
-    send_and_verify_standalone_detection
+    send_and_verify_standalone_detection,
 )
-from utilities.constants import (BUILTIN_DETECTOR_CONFIG,
-                                 LLM_D_CHAT_GENERATION_CONFIG,
-                                 LLMdInferenceSimConfig, QWEN_MODEL_NAME,
-                                 MinIo)
+from utilities.constants import (
+    BUILTIN_DETECTOR_CONFIG,
+    LLM_D_CHAT_GENERATION_CONFIG,
+    LLMdInferenceSimConfig,
+    QWEN_MODEL_NAME,
+    MinIo,
+)
 from utilities.plugins.constant import OpenAIEnpoints
 
 
@@ -337,7 +340,6 @@ class TestGuardrailsOrchestratorWithBuiltInDetectorsPostUpgrade:
             content=str(message),
             model=LLMdInferenceSimConfig.model_name,
         )
-
 
 
 @pytest.mark.parametrize(

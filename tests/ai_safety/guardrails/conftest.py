@@ -101,7 +101,6 @@ def prompt_injection_detector_isvc(
             yield isvc
 
 
-
 @pytest.fixture(scope="class")
 def prompt_injection_detector_route(
     pytestconfig: pytest.Config,
@@ -130,7 +129,6 @@ def prompt_injection_detector_route(
             teardown=teardown_resources,
         ) as route:
             yield route
-
 
 
 # Other "helper" fixtures
@@ -214,7 +212,6 @@ def hap_detector_route(
             teardown=teardown_resources,
         ) as route:
             yield route
-
 
 
 @pytest.fixture(scope="class")
@@ -345,8 +342,6 @@ def tempo_stack(
             )
 
             yield tempo_cr
-
-
 
 
 @pytest.fixture(scope="class")
@@ -623,6 +618,7 @@ def minio_service_otel(
         service.deploy()
         yield service
 
+
 @pytest.fixture(scope="class")
 def minio_secret_otel(
     admin_client, model_namespace, minio_service_otel, pytestconfig: pytest.Config, teardown_resources: bool
@@ -654,6 +650,7 @@ def minio_secret_otel(
         )
         secret.deploy()
         yield secret
+
 
 @pytest.fixture(scope="class")
 def otelcol_metrics_endpoint(admin_client: DynamicClient, model_namespace: Namespace):
