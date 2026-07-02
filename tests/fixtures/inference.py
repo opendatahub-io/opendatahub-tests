@@ -89,7 +89,8 @@ def qwen_isvc(
             namespace=model_namespace.name,
         )
         yield isvc
-        isvc.clean_up()
+        if teardown_resources:
+            isvc.clean_up()
     else:
         # During pre-upgrade or normal tests, create new InferenceService
         with create_isvc(
@@ -115,7 +116,6 @@ def qwen_isvc(
 @pytest.fixture(scope="class")
 def qwen_isvc_url(qwen_isvc: InferenceService) -> str:
     return f"http://{qwen_isvc.name}-predictor.{qwen_isvc.namespace}.svc.cluster.local:8032/v1"
-
 
 @pytest.fixture(scope="class")
 def llm_d_inference_sim_serving_runtime(
@@ -146,7 +146,8 @@ def llm_d_inference_sim_serving_runtime(
                 f"does not exist in namespace {model_namespace.name} after upgrade"
             )
         yield serving_runtime
-        serving_runtime.clean_up()
+        if teardown_resources:
+            serving_runtime.clean_up()
 
     else:
         with ServingRuntime(
@@ -221,7 +222,8 @@ def llm_d_inference_sim_isvc(
             client=admin_client, name=LLMdInferenceSimConfig.isvc_name, namespace=model_namespace.name
         )
         yield isvc
-        isvc.clean_up()
+        if teardown_resources:
+            isvc.clean_up()
     else:
         with create_isvc(
             client=admin_client,
