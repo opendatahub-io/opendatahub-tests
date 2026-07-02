@@ -19,12 +19,14 @@ from tests.ai_safety.guardrails.utils import (
     send_and_verify_unsuitable_output_detection,
     verify_health_info_response,
     check_guardrails_traces_in_tempo,
-
 )
-from utilities.constants import (BUILTIN_DETECTOR_CONFIG,
-                                 LLM_D_CHAT_GENERATION_CONFIG,
-                                 LLMdInferenceSimConfig, QWEN_MODEL_NAME,
-                                 MinIo)
+from utilities.constants import (
+    BUILTIN_DETECTOR_CONFIG,
+    LLM_D_CHAT_GENERATION_CONFIG,
+    LLMdInferenceSimConfig,
+    QWEN_MODEL_NAME,
+    MinIo,
+)
 from utilities.plugins.constant import OpenAIEnpoints
 
 HARMLESS_PROMPT: str = "What is the opposite of up?"
@@ -34,6 +36,7 @@ STANDALONE_DETECTION_ENDPOINT: str = "api/v2/text/detection/content"
 
 PROMPT_INJECTION_DETECTOR: str = "prompt-injection-detector"
 HAP_DETECTOR: str = "hap-detector"
+
 
 @pytest.mark.parametrize(
     "model_namespace, orchestrator_config, guardrails_gateway_config, guardrails_orchestrator",
