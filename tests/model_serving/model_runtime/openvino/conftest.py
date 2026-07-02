@@ -76,6 +76,23 @@ def openvino_serving_runtime(
 
 
 @pytest.fixture(scope="class")
+def openvino_pvc_serving_runtime(
+    request: pytest.FixtureRequest,
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+) -> Generator[ServingRuntime]:
+    """OpenVINO ServingRuntime fixture for PVC tests."""
+    with ServingRuntimeFromTemplate(
+        client=admin_client,
+        name="openvino-runtime",
+        namespace=model_namespace.name,
+        template_name=RuntimeTemplates.OVMS_KSERVE,
+        deployment_type=request.param.get("deployment_mode", KServeDeploymentType.STANDARD),
+    ) as model_runtime:
+        yield model_runtime
+
+
+@pytest.fixture(scope="class")
 def openvino_inference_service(
     request: pytest.FixtureRequest,
     admin_client: DynamicClient,

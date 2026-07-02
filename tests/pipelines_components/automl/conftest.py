@@ -1,3 +1,4 @@
+import os
 from collections.abc import Generator
 from typing import Any
 
@@ -7,10 +8,8 @@ from ocp_resources.data_science_pipelines_application import DataSciencePipeline
 from ocp_resources.namespace import Namespace
 
 from tests.pipelines_components.constants import (
-    AUTOML_LABEL_COLUMN,
     AUTOML_PIPELINE_YAML,
-    AUTOML_TASK_TYPE,
-    AUTOML_TOP_N,
+    AUTOML_TASK_CONFIGS,
     AUTOML_TRAIN_DATA_FILE_KEY,
     DSPA_READY_BUFFER_SECONDS,
     DSPA_S3_BUCKET,
@@ -99,7 +98,7 @@ def automl_pipeline_id(
         )
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def automl_run_id(
     dspa_api_url: str,
     dspa_auth_headers: dict[str, str],
@@ -107,15 +106,18 @@ def automl_run_id(
     automl_pipeline_id: str,
     automl_managed_pipeline: dict[str, str] | None,
     pipelines_namespace: Namespace,
+    task_type: str,
 ) -> Generator[str, Any, Any]:
     """Create a pipeline run and yield the run ID. Deletes the run on teardown."""
+    task_config = AUTOML_TASK_CONFIGS[task_type]
+
     parameters: dict[str, Any] = {
         "train_data_secret_name": DSPA_S3_SECRET,
         "train_data_bucket_name": DSPA_S3_BUCKET,
         "train_data_file_key": AUTOML_TRAIN_DATA_FILE_KEY,
-        "label_column": AUTOML_LABEL_COLUMN,
-        "task_type": AUTOML_TASK_TYPE,
-        "top_n": AUTOML_TOP_N,
+        "label_column": task_config["label_column"],
+        "task_type": task_config["task_type"],
+        "top_n": task_config["top_n"],
     }
 
     if automl_managed_pipeline is not None:
@@ -139,9 +141,10 @@ def automl_run_id(
         )
 
     yield run_id
-    delete_pipeline_run(
-        api_url=dspa_api_url,
-        headers=dspa_auth_headers,
-        run_id=run_id,
-        ca_bundle=dspa_ca_bundle_file,
-    )
+    if os.getenv("SKIP_TEARDOWN", "").lower() not in ("true", "1", "yes"):
+        delete_pipeline_run(
+            api_url=dspa_api_url,
+            headers=dspa_auth_headers,
+            run_id=run_id,
+            ca_bundle=dspa_ca_bundle_file,
+        )
