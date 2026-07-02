@@ -63,6 +63,11 @@ DB_CREDENTIALS_SECRET_NAME: str = "db-credentials"
 DB_NAME: str = "trustyai_db"
 DB_USERNAME: str = "trustyai_user"
 DB_PASSWORD: str = "trustyai_password"
+DB_UPGRADE_NAMESPACE_SUFFIX: str = "-db-upgrade"
+
+
+def _is_db_upgrade_namespace(namespace_name: str) -> bool:
+    return namespace_name.endswith(DB_UPGRADE_NAMESPACE_SUFFIX)
 
 
 @pytest.fixture(scope="class")
@@ -180,13 +185,10 @@ def db_credentials_secret(
 ) -> Generator[Secret, Any, Any]:
     """Provides database credentials secret for MariaDB connection.
 
-    In post-upgrade mode, references the existing secret created during pre-upgrade tests
-    and cleans it up after post-upgrade tests complete.
-
-    In pre-upgrade mode (or when no upgrade flag is set), creates a new secret with MariaDB
+    In post-upgrade mode (or when no upgrade flag is set), creates a new secret with MariaDB
     connection details and manages cleanup via teardown_resources.
     """
-    if pytestconfig.option.post_upgrade:
+    if pytestconfig.option.post_upgrade and _is_db_upgrade_namespace(namespace_name=model_namespace.name):
         secret = Secret(
             client=admin_client,
             name=DB_CREDENTIALS_SECRET_NAME,
@@ -217,18 +219,20 @@ def db_credentials_secret(
 
 @pytest.fixture(scope="class")
 def mariadb(
-    pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     model_namespace: Namespace,
     db_credentials_secret: Secret,
     teardown_resources: bool,
+    pytestconfig: pytest.Config,
 ) -> Generator[Deployment, Any, Any]:
     """Provides a MariaDB instance using standalone Deployment with TLS enabled.
 
     Uses Red Hat MariaDB image deployed via Deployment to avoid Docker Hub rate limits.
     Generates self-signed TLS certificates to match operator behavior.
+    In post-upgrade mode for the DB persistence namespace, fetches the
+    pre-existing MariaDB deployment. Otherwise creates a fresh deployment.
     """
-    if pytestconfig.option.post_upgrade:
+    if pytestconfig.option.post_upgrade and _is_db_upgrade_namespace(namespace_name=model_namespace.name):
         deployment = Deployment(
             client=admin_client,
             name="mariadb",
@@ -250,17 +254,17 @@ def mariadb(
 
 @pytest.fixture(scope="class")
 def trustyai_db_ca_secret(
-    pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     model_namespace: Namespace,
     mariadb: Deployment,
     teardown_resources: bool,
+    pytestconfig: pytest.Config,
 ) -> Generator[Secret, Any]:
     """Provides TLS CA certificate secret for TrustyAI to connect to MariaDB.
 
     Copies the CA certificate from MariaDB's CA secret for TrustyAI to use.
     """
-    if pytestconfig.option.post_upgrade:
+    if pytestconfig.option.post_upgrade and _is_db_upgrade_namespace(namespace_name=model_namespace.name):
         secret = Secret(
             client=admin_client,
             name=f"{TRUSTYAI_SERVICE_NAME}-db-ca",
@@ -347,7 +351,7 @@ def gaussian_credit_model(
             storage_path=GAUSSIAN_CREDIT_MODEL_STORAGE_PATH,
             enable_auth=True,
             external_route=True,
-            wait_for_predictor_pods=False,
+            wait_for_predictor_pods=True,
             resources=GAUSSIAN_CREDIT_MODEL_RESOURCES,
             teardown=teardown_resources,
             **gaussian_credit_model_kwargs,
