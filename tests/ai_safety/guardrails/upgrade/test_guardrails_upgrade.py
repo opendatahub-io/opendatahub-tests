@@ -29,8 +29,6 @@ from utilities.constants import (
 )
 from utilities.plugins.constant import OpenAIEnpoints
 
-HARMLESS_PROMPT: str = "What is the opposite of up?"
-
 CHAT_COMPLETIONS_DETECTION_ENDPOINT: str = "api/v2/chat/completions-detection"
 STANDALONE_DETECTION_ENDPOINT: str = "api/v2/text/detection/content"
 
