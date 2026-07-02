@@ -61,11 +61,9 @@ def guardrails_orchestrator(
             gorch_kwargs["enable_built_in_detectors"] = enable_built_in_detectors
 
         if request.param.get("otel_exporter_config"):
-            metrics_endpoint = request.getfixturevalue(argname="otelcol_metrics_endpoint")
             traces_endpoint = request.getfixturevalue(argname="tempo_traces_endpoint")
             gorch_kwargs["otel_exporter"] = {
                 "protocol": "grpc",
-                "metricsEndpoint": metrics_endpoint,
                 "tracesEndpoint": traces_endpoint,
                 "otlpExport": "metrics,traces",
             }
