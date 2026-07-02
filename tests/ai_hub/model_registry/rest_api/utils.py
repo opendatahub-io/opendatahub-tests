@@ -10,6 +10,8 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
+from ocp_resources.node import Node
+from ocp_resources.resource import get_client
 from pyhelper_utils.shell import run_command
 from timeout_sampler import retry
 
@@ -117,6 +119,36 @@ def validate_resource_attributes(
     ]:
         raise ResourceValueMismatch(f"Resource: {resource_name} has mismatched data: {errors}")
     LOGGER.info(f"Successfully validated resource: {resource_name}: {actual_resource_data['name']}")
+
+def validate_vllm_inference(endpoint: str, model: str) -> requests.Response:
+    """Validate that a deployed vLLM model is reachable and can generate a completion."""
+
+    response = requests.post(
+        f"{endpoint}/v1/completions",
+        json={
+            "model": model,
+            "prompt": "Hello",
+            "max_tokens": 10,
+            "temperature": 0,
+        },
+        timeout=300,
+    )
+
+    assert response.status_code == 200, (
+        f"Completion endpoint returned status code "
+        f"{response.status_code}: {response.text}"
+    )
+
+    response_json = response.json()
+
+    assert "choices" in response_json
+    assert response_json["choices"]
+    assert "text" in response_json["choices"][0]
+    assert response_json["choices"][0]["text"].strip()
+
+    return response
+
+
 
 
 def generate_ca_and_server_cert(
@@ -269,6 +301,11 @@ def get_register_model_data(num_models: int) -> list[dict[str, Any]]:
     return model_data
 
 
+def get_cluster_architecture() -> str:
+    client = get_client()
+    nodes = list(Node.get(dyn_client=client))
+    return nodes[0].instance.status.nodeInfo.architecture
+
 def get_mr_deployment(admin_client: DynamicClient, mr_namespace: str) -> list[Deployment]:
     return list(Deployment.get(client=admin_client, namespace=mr_namespace))
 
@@ -285,10 +322,12 @@ def create_model_registry_inference_service(
     """Create an InferenceService for model registry testing."""
     name = generate_random_name(prefix="mr-test-isvc", length=4)
     register_model_data = registered_model_rest_api.get("register_model", {})
-    model_uri = register_model_data.get("external_id", "hf://jonburdo/test2")
+    model_artifact = registered_model_rest_api.get("model_artifact", {})
+
+    model_uri = model_artifact.get("uri", "hf://TinyLlama/TinyLlama-1.1B-Chat-v1.0")
     model_name = register_model_data.get("name", "my-model")
 
-    resources = {"limits": {"cpu": "2", "memory": "4Gi"}, "requests": {"cpu": "2", "memory": "4Gi"}}
+    resources = {"limits": {"cpu": "2", "memory": "8Gi"}, "requests": {"cpu": "2", "memory": "8Gi"}}
 
     labels = {"opendatahub.io/dashboard": "true"}
     if extra_labels:
@@ -305,13 +344,21 @@ def create_model_registry_inference_service(
         "serving.kserve.io/deploymentMode": "RawDeployment",
     }
 
+    LOGGER.info(
+        "Creating InferenceService for model '%s' using format '%s'.",
+        model_name,
+        model_artifact.get("modelFormatName"),
+    )
+
     predictor_dict = {
         "automountServiceAccountToken": False,
         "deploymentStrategy": {"type": "RollingUpdate"},
         "maxReplicas": 1,
         "minReplicas": 1,
         "model": {
-            "modelFormat": {"name": "onnx", "version": "1"},
+            "modelFormat": {
+                "name": model_artifact.get("modelFormatName", "vLLM"),
+            },
             "name": "",
             "resources": resources,
             "runtime": runtime_name,
@@ -331,6 +378,6 @@ def create_model_registry_inference_service(
         inference_service.wait_for_condition(
             condition="Ready",
             status="True",
-            timeout=600,
+            timeout=1200,
         )
         yield inference_service

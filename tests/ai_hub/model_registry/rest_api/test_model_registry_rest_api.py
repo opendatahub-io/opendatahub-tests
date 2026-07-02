@@ -28,7 +28,7 @@ from tests.ai_hub.model_registry.rest_api.constants import (
     STATE_ARCHIVED,
     STATE_LIVE,
 )
-from tests.ai_hub.model_registry.rest_api.utils import validate_resource_attributes
+from tests.ai_hub.model_registry.rest_api.utils import validate_resource_attributes, validate_vllm_inference
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -377,21 +377,15 @@ class TestModelRegistryDeployment:
     ) -> None:
         """
         Test deployment of a model registered in Model Registry end-to-end.
-        Validates that a model registered in the registry can be deployed and accessed
-        via inference endpoints, similar to HuggingFace model deployment.
+        Validates that a registered model can be deployed using a vLLM
+        ServingRuntime and accessed through the OpenAI-compatible inference API.
         """
         register_model_data = registered_model_rest_api.get("register_model", {})
         model_name = register_model_data.get("name", "unknown")
 
         LOGGER.info(f"Testing deployment of registered model: {model_name}")
 
-        # Test model endpoint accessibility
-        model_endpoint = f"{model_registry_model_portforward}/{model_registry_inference_service.name}"
-        LOGGER.info(f"Testing registered model endpoint: {model_endpoint}")
-
-        model_response = requests.get(model_endpoint, timeout=10)
-        LOGGER.info(f"Model endpoint status: {model_response.status_code}")
-
-        assert model_response.status_code == 200, (
-            f"Model endpoint returned status code:{model_response.status_code}: response text{model_response.text}"
+        validate_vllm_inference(
+            endpoint=model_registry_model_portforward,
+            model=model_registry_inference_service.name,
         )

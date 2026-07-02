@@ -20,6 +20,7 @@ from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest_testconfig import config as py_config
 from timeout_sampler import retry
+from utilities.constants import ModelFormat
 
 from tests.ai_hub.constants import (
     CA_CONFIGMAP_NAME,
@@ -36,6 +37,7 @@ from tests.ai_hub.model_registry.rest_api.utils import (
     generate_ca_and_server_cert,
     get_mr_deployment,
     register_model_rest_api,
+    get_cluster_architecture,
 )
 from tests.ai_hub.utils import (
     add_db_certs_volumes_to_deployment,
@@ -75,12 +77,25 @@ def registered_model_rest_api(
     model_registry_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
 ) -> dict[str, Any]:
+    model_data = copy.deepcopy(request.param)
+
+    model_data["model_artifact_data"]["modelFormatName"] = "vLLM"
+    model_data["model_artifact_data"]["uri"] = "hf://TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+    model_data["model_artifact_data"].setdefault("customProperties", {})
+    model_data["model_artifact_data"]["customProperties"][
+        "HF_HUB_ENABLE_HF_TRANSFER"
+    ] = {
+        "string_value": "0",
+        "metadataType": "MetadataStringValue",
+    }
+
+    LOGGER.info("Sending artifact: %s", model_data["model_artifact_data"])
+
     return _register_model_rest_api_with_retry(
         model_registry_rest_url=model_registry_rest_url[0],
         model_registry_rest_headers=model_registry_rest_headers,
-        data_dict=request.param,
+        data_dict=model_data,
     )
-
 
 @pytest.fixture()
 def updated_model_registry_resource(
@@ -452,9 +467,10 @@ def model_registry_connection_secret(
     with the opendatahub.io/connections annotation.
     """
     resource_name = "mr-test-inference-service-connection"
-    # Use the model URI from the registered model
+    # Use the model URI from the registered model artifact
     register_model_data = registered_model_rest_api.get("register_model", {})
-    model_uri = register_model_data.get("external_id", "hf://jonburdo/test2")
+    model_artifact = registered_model_rest_api.get("model_artifact", {})
+    model_uri = model_artifact.get("uri", "hf://TinyLlama/TinyLlama-1.1B-Chat-v1.0")
 
     # Base64 encode the model URI
     encoded_uri = base64.b64encode(model_uri.encode()).decode()
@@ -486,24 +502,43 @@ def model_registry_connection_secret(
         )
         yield connection_secret
 
-
 @pytest.fixture(scope="class")
 def model_registry_serving_runtime(
     admin_client: DynamicClient,
     model_registry_deployment_ns: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
-    """Create an OVMS ServingRuntime from the cluster template for registered models."""
+    """Create an vLLM CPU ServingRuntime from the cluster template for registered models."""
+
+    if get_cluster_architecture() == "s390x":
+        LOGGER.info(f"Switching to VLLM_CPU_Z.")
+        runtime_template = RuntimeTemplates.VLLM_CPU_Z
+    else:
+        LOGGER.info("Using vLLM CPU x86 runtime.")
+        runtime_template = RuntimeTemplates.VLLM_CPU_x86
+
+
+    containers = {
+        "kserve-container": {
+            "env": [
+                {
+                    "name": "VLLM_CPU_KVCACHE_SPACE",
+                    "value": "4",
+                }
+             ]
+         }
+     }
+
     with ServingRuntimeFromTemplate(
         client=admin_client,
         name="mr-test-runtime",
         namespace=model_registry_deployment_ns.name,
-        template_name=RuntimeTemplates.OVMS_KSERVE,
+        template_name=runtime_template,
         multi_model=False,
         enable_http=True,
         enable_grpc=False,
+        containers=containers,
     ) as serving_runtime:
         yield serving_runtime
-
 
 @pytest.fixture(scope="class")
 def model_registry_inference_service(
@@ -581,7 +616,6 @@ def model_registry_predictor_pod(
     LOGGER.info(f"Found predictor pod: {pod.name} in namespace: {namespace}")
     return pod
 
-
 @pytest.fixture(scope="class")
 def model_registry_model_portforward(
     model_registry_deployment_ns: Namespace,
@@ -595,20 +629,29 @@ def model_registry_model_portforward(
     """
     namespace = model_registry_deployment_ns.name
     local_port = 9998  # Different from HF to avoid conflicts
-    remote_port = 8888  # OpenVINO Model Server REST port
-    local_url = f"http://localhost:{local_port}/v1/models"
+    remote_port = 8080  # vLLM HTTP port
+    local_url = f"http://localhost:{local_port}"
 
+    pf = portforward.forward(
+        pod_or_service=model_registry_predictor_pod.name,
+        namespace=namespace,
+        from_port=local_port,
+        to_port=remote_port,
+        waiting=30,
+    )
+
+    # IMPORTANT: explicitly start context
+    pf.__enter__()
+
+    LOGGER.info(f"Port-forward started: {local_url}")
+
+    yield local_url
     try:
-        with portforward.forward(
-            pod_or_service=model_registry_predictor_pod.name,
-            namespace=namespace,
-            from_port=local_port,
-            to_port=remote_port,
-            waiting=20,
-        ):
-            LOGGER.info(f"Model Registry model port-forward established: {local_url}")
-            LOGGER.info(f"Test with: curl -s {local_url}/{model_registry_inference_service.name}")
-            yield local_url
+        pf.__exit__(None, None, None)
     except Exception as expt:
-        LOGGER.error(f"Failed to set up port forwarding for pod {model_registry_predictor_pod.name}: {expt}")
+        LOGGER.error(
+            "Failed to tear down port-forward for pod %s: %s",
+            model_registry_predictor_pod.name,
+            expt,
+        )
         raise
