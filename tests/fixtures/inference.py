@@ -385,38 +385,3 @@ def patched_dsc_garak_kfp(admin_client) -> Generator[DataScienceCluster]:
     ):
         wait_for_dsc_status_ready(dsc_resource=dsc)
         yield dsc
-
-
-@pytest.fixture(scope="class")
-def vllm_gpu_runtime(
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
-) -> Generator[ServingRuntime, Any, Any]:
-
-    with ServingRuntimeFromTemplate(
-        client=admin_client,
-        name="vllm-runtime-gpu",
-        namespace=model_namespace.name,
-        template_name=RuntimeTemplates.VLLM_CUDA,
-        deployment_type=KServeDeploymentType.RAW_DEPLOYMENT,
-        runtime_image=(
-            "registry.redhat.io/rhaiis/vllm-cuda-rhel9@"
-            "sha256:ec799bb5eeb7e25b4b25a8917ab5161da6b6f1ab830cbba61bba371cffb0c34d"
-        ),
-        containers={
-            "kserve-container": {
-                "command": ["python", "-m", "vllm.entrypoints.openai.api_server"],
-                "args": [
-                    "--port=8080",
-                    "--model=/mnt/models",
-                    "--tokenizer=/mnt/models",
-                    "--served-model-name={{.Name}}",
-                    "--dtype=float16",
-                    "--enforce-eager",
-                ],
-                "ports": [{"containerPort": 8080, "protocol": "TCP"}],
-                "resources": {"limits": {"nvidia.com/gpu": "1"}},
-            }
-        },
-    ) as runtime:
-        yield runtime
