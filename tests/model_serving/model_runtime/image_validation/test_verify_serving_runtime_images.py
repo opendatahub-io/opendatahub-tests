@@ -20,7 +20,7 @@ from utilities.general import validate_container_images
 
 LOGGER = structlog.get_logger(name=__name__)
 
-pytestmark = [pytest.mark.downstream_only, pytest.mark.skip_must_gather, pytest.mark.smoke]
+pytestmark = [pytest.mark.downstream_only, pytest.mark.skip_must_gather, pytest.mark.tier1]
 
 
 @pytest.mark.parametrize("serving_runtime_pods_for_runtime", RUNTIME_CONFIGS, indirect=True)

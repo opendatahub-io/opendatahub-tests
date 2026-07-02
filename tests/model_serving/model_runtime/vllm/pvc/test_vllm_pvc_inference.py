@@ -14,7 +14,7 @@ from utilities.constants import KServeDeploymentType
 MODEL_PATH: str = "granite-7b-starter"
 
 PVC_RAW_DEPLOYMENT_CONFIG: dict[str, Any] = {
-    "deployment_mode": KServeDeploymentType.RAW_DEPLOYMENT,
+    "deployment_mode": KServeDeploymentType.STANDARD,
     "runtime_argument": GRANITE_SERVING_ARGUMENT,
     "min-replicas": 1,
 }
@@ -31,13 +31,13 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "v
             {"name": "vllm-pvc-granite"},
             {"pvc-size": "20Gi"},
             {"model-dir": MODEL_PATH},
-            {"deployment_mode": KServeDeploymentType.RAW_DEPLOYMENT},
+            {"deployment_mode": KServeDeploymentType.STANDARD},
             {
                 **PVC_RAW_DEPLOYMENT_CONFIG,
                 "gpu_count": 1,
                 "name": "vllm-pvc-granite",
             },
-            id="test_vllm_pvc_granite_raw_single_gpu",
+            id="test_vllm_pvc_granite_standard_single_gpu",
         ),
     ],
     indirect=True,

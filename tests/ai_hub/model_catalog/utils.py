@@ -13,6 +13,7 @@ from tests.ai_hub.utils import (
     TransientUnauthorizedError,
     execute_get_call,
     execute_get_command,
+    execute_get_command_with_retry,
 )
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -147,6 +148,7 @@ def _parse_single_column_format(lines: list[str], data_start: int) -> list[str]:
     return result
 
 
+@retry(wait_timeout=60, sleep=5, exceptions_dict={requests.exceptions.ConnectionError: []}, print_func_args=False)
 def get_models_from_catalog_api(
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
@@ -272,7 +274,7 @@ def assert_source_error_state_message(
     expected_error_message: str,
     source_id: str,
 ):
-    results = execute_get_command(
+    results = execute_get_command_with_retry(
         url=f"{model_catalog_rest_url[0]}sources",
         headers=model_registry_rest_headers,
     )["items"]
@@ -285,7 +287,16 @@ def assert_source_error_state_message(
     )
 
 
-@retry(wait_timeout=90, sleep=5, exceptions_dict={ResourceNotFoundError: [], TransientUnauthorizedError: []})
+@retry(
+    wait_timeout=300,
+    sleep=10,
+    exceptions_dict={
+        ResourceNotFoundError: [],
+        TransientUnauthorizedError: [],
+        requests.exceptions.ConnectionError: [],
+    },
+    print_func_args=False,
+)
 def wait_for_model_catalog_api(url: str, headers: dict[str, str], verify: bool | str = False) -> requests.Response:
     """
     Wait for model catalog API to be ready and fully initialized checks both /sources and /models endpoints

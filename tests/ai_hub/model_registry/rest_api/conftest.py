@@ -7,6 +7,7 @@ from typing import Any
 
 import portforward
 import pytest
+import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
@@ -18,6 +19,7 @@ from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest_testconfig import config as py_config
+from timeout_sampler import retry
 
 from tests.ai_hub.constants import (
     CA_CONFIGMAP_NAME,
@@ -54,13 +56,24 @@ LOGGER = structlog.get_logger(name=__name__)
 POSTGRES_FILE_PATH: str = "/etc/server-cert"
 
 
+@retry(wait_timeout=60, sleep=5, exceptions_dict={requests.exceptions.ConnectionError: []})
+def _register_model_rest_api_with_retry(
+    model_registry_rest_url: str, model_registry_rest_headers: dict[str, str], data_dict: dict[str, Any]
+) -> dict[str, Any]:
+    return register_model_rest_api(
+        model_registry_rest_url=model_registry_rest_url,
+        model_registry_rest_headers=model_registry_rest_headers,
+        data_dict=data_dict,
+    )
+
+
 @pytest.fixture(scope="class")
 def registered_model_rest_api(
     request: pytest.FixtureRequest,
     model_registry_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
 ) -> dict[str, Any]:
-    return register_model_rest_api(
+    return _register_model_rest_api_with_retry(
         model_registry_rest_url=model_registry_rest_url[0],
         model_registry_rest_headers=model_registry_rest_headers,
         data_dict=request.param,

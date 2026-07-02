@@ -8,6 +8,7 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from pyhelper_utils.shell import run_command
+from timeout_sampler import retry
 
 from tests.ai_hub.exceptions import (
     ModelRegistryResourceNotCreated,
@@ -19,6 +20,7 @@ from utilities.exceptions import ResourceValueMismatch
 LOGGER = structlog.get_logger(name=__name__)
 
 
+@retry(wait_timeout=60, sleep=5, exceptions_dict={requests.exceptions.ConnectionError: []}, print_func_args=False)
 def execute_model_registry_patch_command(
     url: str, headers: dict[str, str], data_json: dict[str, Any]
 ) -> dict[Any, Any]:

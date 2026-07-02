@@ -5,7 +5,7 @@ import structlog
 from ocp_resources.config_map import ConfigMap
 
 from tests.ai_hub.model_catalog.utils import get_hf_catalog_str, get_models_from_catalog_api
-from tests.ai_hub.utils import execute_get_command
+from tests.ai_hub.utils import execute_get_command_with_retry
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -45,7 +45,7 @@ class TestHuggingFaceModelsMultipleSources:
         model_registry_rest_headers: dict[str, str],
     ):
         """Verify both HF sources report 'available' status after catalog sync."""
-        response = execute_get_command(
+        response = execute_get_command_with_retry(
             url=f"{model_catalog_rest_url[0]}sources",
             headers=model_registry_rest_headers,
         )
@@ -99,7 +99,7 @@ class TestHuggingFaceModelsMultipleSources:
         for source_id in [MIXED_SOURCE_ID, OVERLAPPING_SOURCE_ID]:
             LOGGER.info(f"Fetching model '{SHARED_MODEL}' from source '{source_id}'")
             url = f"{model_catalog_rest_url[0]}sources/{source_id}/models/{SHARED_MODEL}"
-            result = execute_get_command(url=url, headers=model_registry_rest_headers)
+            result = execute_get_command_with_retry(url=url, headers=model_registry_rest_headers)
             assert result["name"] == SHARED_MODEL, (
                 f"Expected model name '{SHARED_MODEL}', got '{result['name']}' from source '{source_id}'"
             )
@@ -113,7 +113,7 @@ class TestHuggingFaceModelsMultipleSources:
         """Verify the API response does not leak internal sourceId: prefix in externalId."""
         for source_id in [MIXED_SOURCE_ID, OVERLAPPING_SOURCE_ID]:
             url = f"{model_catalog_rest_url[0]}sources/{source_id}/models/{SHARED_MODEL}"
-            result = execute_get_command(url=url, headers=model_registry_rest_headers)
+            result = execute_get_command_with_retry(url=url, headers=model_registry_rest_headers)
             external_id = result.get("externalId", "")
             assert not external_id.startswith(f"{source_id}:"), (
                 f"externalId '{external_id}' leaks internal namespace prefix '{source_id}:'. "

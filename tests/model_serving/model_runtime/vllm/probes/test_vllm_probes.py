@@ -28,14 +28,14 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_cpu_x86_accelerator_t
         pytest.param(
             {"name": "opt-125m-probes"},
             {"model-dir": OPT_125M_MODEL_PATH},
-            {"deployment_mode": KServeDeploymentType.RAW_DEPLOYMENT},
+            {"deployment_mode": KServeDeploymentType.STANDARD},
             {
                 **BASE_RAW_DEPLOYMENT_CONFIG,
                 "name": "opt-125m-probes",
                 "runtime_argument": CPU_X86_SERVING_ARGUMENT,
                 "model_env_variables": CPU_X86_ENV_VARIABLES,
             },
-            id="test_vllm_opt_125m_raw_cpu_probes",
+            id="test_vllm_opt_125m_standard_cpu_probes",
         ),
     ],
     indirect=True,

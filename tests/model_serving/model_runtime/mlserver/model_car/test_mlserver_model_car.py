@@ -22,7 +22,6 @@ from utilities.constants import ModelFormat, Protocols
 from utilities.infra import get_pods_by_isvc_label
 
 
-@pytest.mark.smoke
 @pytest.mark.parametrize(
     (
         "model_namespace",
@@ -38,6 +37,7 @@ from utilities.infra import get_pods_by_isvc_label
             },
             get_deployment_config_dict(model_format_name=ModelFormat.SKLEARN),
             id=get_test_case_id(model_format_name=ModelFormat.SKLEARN, modelcar=True),
+            marks=pytest.mark.smoke,
         ),
         pytest.param(
             get_model_namespace_dict(model_format_name=ModelFormat.XGBOOST, modelcar=True),
@@ -47,6 +47,7 @@ from utilities.infra import get_pods_by_isvc_label
             },
             get_deployment_config_dict(model_format_name=ModelFormat.XGBOOST),
             id=get_test_case_id(model_format_name=ModelFormat.XGBOOST, modelcar=True),
+            marks=pytest.mark.tier1,
         ),
         pytest.param(
             get_model_namespace_dict(model_format_name=ModelFormat.LIGHTGBM, modelcar=True),
@@ -56,6 +57,7 @@ from utilities.infra import get_pods_by_isvc_label
             },
             get_deployment_config_dict(model_format_name=ModelFormat.LIGHTGBM),
             id=get_test_case_id(model_format_name=ModelFormat.LIGHTGBM, modelcar=True),
+            marks=pytest.mark.tier1,
         ),
         pytest.param(
             {"name": f"{ModelFormat.LIGHTGBM}-model-car-text-type"},
@@ -69,6 +71,7 @@ from utilities.infra import get_pods_by_isvc_label
             },
             get_deployment_config_dict(model_format_name=ModelFormat.LIGHTGBM),
             id=get_test_case_id(model_format_name=ModelFormat.LIGHTGBM, modelcar=True) + "_text_type",
+            marks=pytest.mark.tier1,
         ),
         pytest.param(
             get_model_namespace_dict(model_format_name=ModelFormat.ONNX, modelcar=True),
@@ -78,6 +81,7 @@ from utilities.infra import get_pods_by_isvc_label
             },
             get_deployment_config_dict(model_format_name=ModelFormat.ONNX),
             id=get_test_case_id(model_format_name=ModelFormat.ONNX, modelcar=True),
+            marks=pytest.mark.tier1,
         ),
     ],
     indirect=[

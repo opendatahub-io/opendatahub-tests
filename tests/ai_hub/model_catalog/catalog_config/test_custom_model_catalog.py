@@ -21,7 +21,7 @@ from tests.ai_hub.model_catalog.utils import (
     get_hf_catalog_str,
     get_sample_yaml_str,
 )
-from tests.ai_hub.utils import execute_get_command
+from tests.ai_hub.utils import execute_get_command, execute_get_command_with_retry
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -101,10 +101,7 @@ class TestModelCatalogCustom:
         """
         for expected_entry in expected_catalog_values:
             url = f"{model_catalog_rest_url[0]}models?source={expected_entry['id']}"
-            result = execute_get_command(
-                url=url,
-                headers=model_registry_rest_headers,
-            )["items"]
+            result = execute_get_command_with_retry(url=url, headers=model_registry_rest_headers)["items"]
             assert result, f"Expected custom models to be present. Actual: {result}"
 
     def test_model_custom_catalog_get_model_by_name(
@@ -120,10 +117,7 @@ class TestModelCatalogCustom:
         for expected_entry in expected_catalog_values:
             model_name = expected_entry["model_name"]
             url = f"{model_catalog_rest_url[0]}sources/{expected_entry['id']}/models/{model_name}"
-            result = execute_get_command(
-                url=url,
-                headers=model_registry_rest_headers,
-            )
+            result = execute_get_command_with_retry(url=url, headers=model_registry_rest_headers)
             assert result["name"] == model_name
 
     @pytest.mark.test_skip_on_huggingface_source
@@ -142,10 +136,7 @@ class TestModelCatalogCustom:
             model_name = expected_entry["model_name"]
             url = f"{model_catalog_rest_url[0]}sources/{expected_entry['id']}/models/{model_name}/artifacts"
 
-            artifacts = execute_get_command(
-                url=url,
-                headers=model_registry_rest_headers,
-            )["items"]
+            artifacts = execute_get_command_with_retry(url=url, headers=model_registry_rest_headers)["items"]
 
             assert artifacts, f"No artifacts found for {model_name}"
             assert artifacts[0]["uri"]
@@ -163,10 +154,7 @@ class TestModelCatalogCustom:
         Add a model to a source and ensure it is added to the catalog
         """
         url = f"{model_catalog_rest_url[0]}sources/{CUSTOM_CATALOG_ID1}/models/{SAMPLE_MODEL_NAME3}"
-        result = execute_get_command(
-            url=url,
-            headers=model_registry_rest_headers,
-        )
+        result = execute_get_command_with_retry(url=url, headers=model_registry_rest_headers)
         assert result["name"] == SAMPLE_MODEL_NAME3
 
     @pytest.mark.dependency(depends=["test_model_custom_catalog_add_model"])
