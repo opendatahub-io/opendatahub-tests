@@ -2,6 +2,7 @@ import random
 from typing import Any, Self
 
 import pytest
+import requests
 import structlog
 import yaml
 from dictdiffer import diff
@@ -23,7 +24,12 @@ from tests.ai_hub.model_catalog.catalog_config.utils import (
     validate_model_catalog_resource,
 )
 from tests.ai_hub.model_catalog.constants import DEFAULT_CATALOGS, REDHAT_AI_CATALOG_ID
-from tests.ai_hub.utils import execute_get_command, get_model_catalog_pod, get_rest_headers
+from tests.ai_hub.utils import (
+    execute_get_command,
+    execute_get_command_with_retry,
+    get_model_catalog_pod,
+    get_rest_headers,
+)
 from utilities.user_utils import UserTestSession
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -184,7 +190,7 @@ class TestModelCatalogDefault:
             wait_timeout=120,
             sleep=5,
             func=lambda: execute_get_command(url=url, headers=headers)["items"],
-            exceptions_dict={ResourceNotFoundError: []},
+            exceptions_dict={ResourceNotFoundError: [], requests.exceptions.ConnectionError: []},
         )
 
         for result in sampler:
@@ -220,7 +226,7 @@ class TestModelCatalogDefault:
         Validate a specific user can access get Model by name associated with a default source
         """
         random_model, model_name, _ = randomly_picked_model_from_catalog_api_by_source
-        result = execute_get_command(
+        result = execute_get_command_with_retry(
             url=f"{model_catalog_rest_url[0]}sources/{REDHAT_AI_CATALOG_ID}/models/{model_name}",
             headers=get_rest_headers(token=user_token_for_api_calls),
         )
@@ -243,7 +249,7 @@ class TestModelCatalogDefault:
         Validate a specific user can access get Model artifacts for model associated with default source
         """
         _, model_name, _ = randomly_picked_model_from_catalog_api_by_source
-        result = execute_get_command(
+        result = execute_get_command_with_retry(
             url=f"{model_catalog_rest_url[0]}sources/{REDHAT_AI_CATALOG_ID}/models/{model_name}/artifacts",
             headers=get_rest_headers(token=user_token_for_api_calls),
         )["items"]
@@ -362,7 +368,7 @@ class TestModelCatalogDefaultData:
         model_name = random_model["name"]
         LOGGER.info(f"Random model: {model_name}")
 
-        api_model_artifacts = execute_get_command(
+        api_model_artifacts = execute_get_command_with_retry(
             url=f"{model_catalog_rest_url[0]}sources/{REDHAT_AI_CATALOG_ID}/models/{model_name}/artifacts",
             headers=model_registry_rest_headers,
         )["items"]

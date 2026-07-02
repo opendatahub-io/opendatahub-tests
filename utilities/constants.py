@@ -15,6 +15,7 @@ class KServeDeploymentType:
 
 
 class ModelFormat:
+    AUTOGLUON: str = "autogluon"
     CAIKIT: str = "caikit"
     LIGHTGBM: str = "lightgbm"
     MLSERVER: str = "mlserver"
@@ -70,6 +71,7 @@ class ModelEndpoint:
 
 
 class ModelVersion:
+    AUTOGLUON_1: str = "1"
     OPSET1: str = "opset1"
     OPSET13: str = "opset13"
 
@@ -103,6 +105,7 @@ class ModelInferenceRuntime:
     VLLM_RUNTIME: str = f"{ModelFormat.VLLM}-runtime"
     TENSORFLOW_RUNTIME: str = f"{ModelFormat.TENSORFLOW}-runtime"
     MLSERVER_RUNTIME: str = f"{ModelFormat.MLSERVER}-runtime"
+    AUTOGLUON_RUNTIME: str = f"{ModelFormat.AUTOGLUON}-runtime"
 
 
 class Protocols:
