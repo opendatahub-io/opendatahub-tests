@@ -7,8 +7,9 @@ from urllib.parse import quote
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import NotFoundError, ResourceNotFoundError
 from requests import Response
-from timeout_sampler import TimeoutSampler
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_serving.maas_billing.utils import build_maas_headers
 from utilities.resources.auth_policy import AuthPolicy
@@ -271,6 +272,64 @@ def _api_key_validation_callback_url_from_rules(rules: Any) -> str | None:
     return str(callback_url) if callback_url else None
 
 
+def get_auth_policy_condition(
+    admin_client: DynamicClient,
+    policy_name: str,
+    namespace: str,
+    condition_type: str,
+) -> dict[str, Any] | None:
+    """Find a specific condition by type from an AuthPolicy's status."""
+    auth_policy = AuthPolicy(
+        client=admin_client,
+        name=policy_name,
+        namespace=namespace,
+    )
+    assert auth_policy.exists, f"AuthPolicy '{policy_name}' not found in namespace '{namespace}'"
+    conditions: list[dict[str, Any]] = (auth_policy.instance.status or {}).get("conditions") or []
+    return next(
+        (condition for condition in conditions if condition.get("type") == condition_type),
+        None,
+    )
+
+
+def wait_for_auth_policy_accepted(
+    admin_client: DynamicClient,
+    policy_name: str,
+    namespace: str,
+    timeout: int = 300,
+    reconciliation_hint: str = ("Ensure a MaaSAuthPolicy exists to trigger gateway auth reconciliation."),
+) -> AuthPolicy:
+    """Poll until an AuthPolicy exists and its Accepted condition is True."""
+    auth_policy = AuthPolicy(
+        client=admin_client,
+        name=policy_name,
+        namespace=namespace,
+    )
+    try:
+        for _ in TimeoutSampler(
+            wait_timeout=timeout,
+            sleep=5,
+            func=auth_policy.get,
+            exceptions_dict={NotFoundError: [], ResourceNotFoundError: []},
+        ):
+            if not auth_policy.exists:
+                continue
+            accepted_condition = get_auth_policy_condition(
+                admin_client=admin_client,
+                policy_name=policy_name,
+                namespace=namespace,
+                condition_type="Accepted",
+            )
+            if accepted_condition is not None and accepted_condition.get("status") == "True":
+                LOGGER.info(f"AuthPolicy '{namespace}/{policy_name}' is Accepted after MaaSAuthPolicy reconciliation")
+                return auth_policy
+    except TimeoutExpiredError as error:
+        raise AssertionError(
+            f"Timed out waiting for AuthPolicy '{namespace}/{policy_name}' to become Accepted. {reconciliation_hint}"
+        ) from error
+    raise AssertionError(f"AuthPolicy '{namespace}/{policy_name}' did not become Accepted")
+
+
 def get_auth_policy_callback_url(
     admin_client: DynamicClient,
     policy_name: str,
@@ -308,24 +367,4 @@ def get_auth_policy_callback_url(
         f"AuthPolicy '{policy_name}' in namespace '{namespace}' has no "
         f"metadata.apiKeyValidation.http.url. "
         f"Found rules blocks: {configured_blocks or ['none']}"
-    )
-
-
-def get_auth_policy_condition(
-    admin_client: DynamicClient,
-    policy_name: str,
-    namespace: str,
-    condition_type: str,
-) -> dict[str, Any] | None:
-    """Find a specific condition by type from an AuthPolicy's status."""
-    auth_policy = AuthPolicy(
-        client=admin_client,
-        name=policy_name,
-        namespace=namespace,
-    )
-    assert auth_policy.exists, f"AuthPolicy '{policy_name}' not found in namespace '{namespace}'"
-    conditions: list[dict[str, Any]] = (auth_policy.instance.status or {}).get("conditions") or []
-    return next(
-        (condition for condition in conditions if condition.get("type") == condition_type),
-        None,
     )
