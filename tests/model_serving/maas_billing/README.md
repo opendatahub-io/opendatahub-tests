@@ -23,6 +23,7 @@ maas_billing/
 │   ├── conftest.py                # Shared AITenant bootstrap fixtures
 │   ├── utils.py                   # Per-tenant maas-api verification helpers
 │   ├── aitenant/                  # AITenant bootstrap and cleanup (scenario fixtures)
+│   ├── isolation/                 # Tenant-scoped API key auth isolation
 │   └── maas_api/                  # Per-tenant maas-api deployment and routing
 │
 ├── oidc_tests/                    # OIDC authentication flow tests
