@@ -290,7 +290,8 @@ def tempo_stack(
             timeout=Timeout.TIMEOUT_10MIN,
         )
         yield tempo_cr
-        tempo_cr.clean_up()
+        if teardown_resources:
+            tempo_cr.clean_up()
     else:
         # During pre-upgrade or normal tests, create new TempoStack
         csv_prefix = "tempo-operator"
@@ -421,9 +422,12 @@ def otel_collector(
     # Extract OpenTelemetryCollector CR example from ALM examples
     alm_examples: list[dict[str, Any]] = otel_csv.get_alm_examples()
     otel_cr_dict: dict[str, Any] = next(
-        example
-        for example in alm_examples
-        if example["kind"] == "OpenTelemetryCollector" and example["apiVersion"] == "opentelemetry.io/v1beta1"
+        (
+            example
+            for example in alm_examples
+            if example["kind"] == "OpenTelemetryCollector" and example["apiVersion"] == "opentelemetry.io/v1beta1"
+        ),
+        None,
     )
 
     if not otel_cr_dict:
@@ -591,7 +595,8 @@ def minio_service_otel(
             namespace=model_namespace.name,
         )
         yield service
-        service.clean_up()
+        if teardown_resources:
+            service.clean_up()
     else:
         # During pre-upgrade or normal tests, create new Service
         ports = [
@@ -630,7 +635,8 @@ def minio_secret_otel(
             namespace=model_namespace.name,
         )
         yield secret
-        secret.clean_up()
+        if teardown_resources:
+            secret.clean_up()
     else:
         # During pre-upgrade or normal tests, create new Secret
         secret = Secret(
