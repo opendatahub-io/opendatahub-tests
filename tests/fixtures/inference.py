@@ -420,4 +420,3 @@ def vllm_gpu_runtime(
         },
     ) as runtime:
         yield runtime
-

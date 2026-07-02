@@ -269,7 +269,7 @@ def tempo_stack(
     minio_secret_otel: Secret,
     pytestconfig: pytest.Config,
     teardown_resources: bool,
-) -> Generator[TempoStack, Any, None]:
+) -> Generator[TempoStack, Any]:
     """
     Create a TempoStack CR in the test namespace, configured to use MinIO backend.
     """
@@ -345,12 +345,10 @@ def tempo_stack(
             yield tempo_cr
 
 
-
-
 @pytest.fixture(scope="class")
 def installed_opentelemetry_operator(
     admin_client: DynamicClient, pytestconfig: pytest.Config, teardown_resources: bool
-) -> Generator[None, Any, None]:
+) -> Generator[None, Any]:
     """
     Installs the Red Hat OpenTelemetry Operator and waits for its deployment.
     """
@@ -398,6 +396,7 @@ def installed_opentelemetry_operator(
             deployment.wait_for_replicas()
 
         yield
+
 
 @pytest.fixture(scope="class")
 def otel_collector(
@@ -603,7 +602,6 @@ def minio_deployment_otel(admin_client, model_namespace, minio_pvc_otel):
         yield deployment
 
 
-
 @pytest.fixture(scope="class")
 def minio_service_otel(
     admin_client, model_namespace, minio_deployment_otel, pytestconfig: pytest.Config, teardown_resources: bool
@@ -644,6 +642,7 @@ def minio_service_otel(
         service.deploy()
         yield service
 
+
 @pytest.fixture(scope="class")
 def minio_secret_otel(
     admin_client, model_namespace, minio_service_otel, pytestconfig: pytest.Config, teardown_resources: bool
@@ -675,7 +674,6 @@ def minio_secret_otel(
         )
         secret.deploy()
         yield secret
-
 
 
 @pytest.fixture(scope="class")
