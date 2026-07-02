@@ -720,26 +720,6 @@ def minio_secret_otel(
 
 
 @pytest.fixture(scope="class")
-def otelcol_metrics_endpoint(admin_client: DynamicClient, model_namespace: Namespace):
-    """
-    Returns the metrics endpoint for the OpenTelemetryCollector by grepping the service name.
-    """
-
-    service = next(
-        Service.get(
-            client=admin_client,
-            namespace=model_namespace.name,
-            label_selector="app.kubernetes.io/component=opentelemetry-collector",
-        )
-    )
-
-    service_name = service.name
-
-    port = OTEL_EXPORTER_PORT
-    return f"http://{service_name}.{model_namespace.name}.svc.cluster.local:{port}"
-
-
-@pytest.fixture(scope="class")
 def tempo_traces_endpoint(tempo_stack, model_namespace: Namespace, admin_client: DynamicClient):
     """
     Returns the TempoStack distributor endpoint dynamically using ocp_resources.Service.
