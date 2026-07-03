@@ -8,6 +8,7 @@ import structlog
 import yaml
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import NotFoundError, ResourceNotFoundError
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
 from ocp_resources.gateway import Gateway
@@ -220,6 +221,39 @@ def shared_llmd_gateway(admin_client: DynamicClient) -> Generator[Gateway]:
         timeout=Timeout.TIMEOUT_1MIN,
     ) as gateway:
         yield gateway
+
+
+# ===========================================
+#  Skip Conditions
+# ===========================================
+@pytest.fixture(scope="class")
+def skip_if_fast_cr_missing(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+) -> None:
+    """Skip if the LLMInferenceServiceConfig CR for the fast template is absent.
+
+    Reads the config class from the llmisvc parametrize arg to determine which
+    fast template CR to check.  No-op when the config has no fast_template.
+    """
+    callspec = getattr(request.node, "callspec", None)
+    config_cls = callspec.params.get("llmisvc") if callspec else None
+    if not config_cls or not getattr(config_cls, "fast_template", ""):
+        return
+
+    from tests.model_serving.model_server.llmd.llmd_configs.config_base import GpuConfig
+
+    base_refs = GpuConfig._resolve_base_refs(client=admin_client, template_name=config_cls.fast_template)
+    cr_name = base_refs[0]["name"]
+
+    try:
+        api = admin_client.resources.get(
+            api_version="serving.kserve.io/v1alpha1",
+            kind="LLMInferenceServiceConfig",
+        )
+        api.get(name=cr_name)
+    except (NotFoundError, ResourceNotFoundError):
+        pytest.skip(f"LLMInferenceServiceConfig CR '{cr_name}' not found on cluster — skipping test")
 
 
 # ===========================================
