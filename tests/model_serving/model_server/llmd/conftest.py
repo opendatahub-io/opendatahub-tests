@@ -252,7 +252,7 @@ def skip_if_fast_cr_missing(
             kind="LLMInferenceServiceConfig",
         )
         api.get(name=cr_name)
-    except (NotFoundError, ResourceNotFoundError):
+    except NotFoundError, ResourceNotFoundError:
         pytest.skip(f"LLMInferenceServiceConfig CR '{cr_name}' not found on cluster — skipping test")
 
 
