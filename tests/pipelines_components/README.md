@@ -6,7 +6,7 @@ Each test submits a pipeline run to a DataSciencePipelinesApplication (DSPA) and
 
 ## Test Suites
 
-- **`automl/`** -- AutoGluon Tabular + Timeseries Training pipeline smoke tests
+- **`automl/`** -- AutoGluon Tabular Training pipeline smoke tests (regression + classification)
 - **`autorag/`** -- Documents RAG Optimization pipeline smoke test
 
 Both suites are **fully self-contained**: they create a dedicated namespace, deploy all required infrastructure, run the pipeline, and clean up on teardown.
@@ -49,29 +49,27 @@ to fall back to manual YAML upload. URLs are downloaded automatically at test st
 
 ### AutoML
 
-The AutoML tabular test is parametrized by `task_type` (regression + classification).
-A separate timeseries test uses the `autogluon-timeseries-training-pipeline`.
+The AutoML tabular test is parametrized by `task_type` (regression, classification, multiclass).
 
 The tabular pipeline accepts `task_type` values: `"binary"`, `"multiclass"`, `"regression"`.
 
 ```bash
-# Run all AutoML tests (regression + classification + timeseries)
+# Run all AutoML tests (regression + classification + multiclass)
 pytest tests/pipelines_components/automl/ -v
 
 # Run only one task type
 pytest tests/pipelines_components/automl/ -k regression
 pytest tests/pipelines_components/automl/ -k classification
-pytest tests/pipelines_components/automl/ -k timeseries
+pytest tests/pipelines_components/automl/ -k multiclass
 ```
 
 | Variable | Description | Default |
 | --- | --- | --- |
 | `AUTOML_S3_BUCKET` | External S3 bucket with training data | _(required)_ |
-| `AUTOML_REGRESSION_S3_TRAIN_DATA_KEY` | S3 key for regression training CSV | _(required)_ |
-| `AUTOML_CLASSIFICATION_S3_TRAIN_DATA_KEY` | S3 key for classification training CSV | _(required)_ |
-| `AUTOML_TIMESERIES_S3_TRAIN_DATA_KEY` | S3 key for timeseries training CSV | _(required)_ |
-| `AUTOML_TRAIN_DATA_FILE_KEY` | Destination key in DSPA MinIO (tabular) | `automl-smoke/train.csv` |
-| `AUTOML_TIMESERIES_TRAIN_DATA_FILE_KEY` | Destination key in DSPA MinIO (timeseries) | `automl-smoke/timeseries-train.csv` |
+| `AUTOML_REGRESSION_S3_TRAIN_DATA_KEY` | S3 key for regression training CSV | `datasets/regression/regression.csv` |
+| `AUTOML_CLASSIFICATION_S3_TRAIN_DATA_KEY` | S3 key for binary classification training CSV | _(required)_ |
+| `AUTOML_MULTICLASS_S3_TRAIN_DATA_KEY` | S3 key for multiclass classification training CSV | _(required)_ |
+| `AUTOML_TRAIN_DATA_FILE_KEY` | Destination key in DSPA MinIO | `automl-smoke/train.csv` |
 | `AUTOML_PIPELINE_YAML` | Legacy: path or URL to pipeline YAML | _(empty = managed mode)_ |
 | `AUTOML_PIPELINE_TIMEOUT` | Max wait for pipeline completion (sec) | `1800` |
 
@@ -97,8 +95,7 @@ pytest tests/pipelines_components/automl/ -k timeseries
 
 | Variable | Description | Default |
 | --- | --- | --- |
-| `MANAGED_PIPELINE_AUTOML_TABULAR` | Display name of AutoML tabular pipeline | `autogluon-tabular-training-pipeline` |
-| `MANAGED_PIPELINE_AUTOML_TIMESERIES` | Display name of AutoML timeseries pipeline | `autogluon-timeseries-training-pipeline` |
+| `MANAGED_PIPELINE_AUTOML_TABULAR` | Display name of AutoML pipeline | `autogluon-tabular-training-pipeline` |
 | `MANAGED_PIPELINE_AUTORAG` | Display name of AutoRAG pipeline | `documents-rag-optimization-pipeline` |
 | `MANAGED_PIPELINES_IMAGE` | Pin a specific pipelines-components image | _(empty)_ |
 | `DSPA_READY_BUFFER_SECONDS` | Buffer after DSPA ready before polling | `30` |
@@ -112,7 +109,7 @@ pytest tests/pipelines_components/automl/ -k timeseries
 
 ## Running Tests
 
-### Run AutoML smoke tests (regression + classification + timeseries)
+### Run AutoML smoke tests (regression + classification)
 
 ```bash
 uv run pytest tests/pipelines_components/automl/ -m smoke -v -s
@@ -120,7 +117,6 @@ uv run pytest tests/pipelines_components/automl/ -m smoke -v -s
 # Run only one task type
 uv run pytest tests/pipelines_components/automl/ -k regression -v -s
 uv run pytest tests/pipelines_components/automl/ -k classification -v -s
-uv run pytest tests/pipelines_components/automl/ -k timeseries -v -s
 ```
 
 ### Run AutoRAG smoke test
@@ -142,8 +138,8 @@ uv run pytest tests/pipelines_components/ -m smoke -v -s
 - Creates a dedicated namespace (`automl-aqa-<hash>`)
 - Deploys DSPA with built-in MinIO for object storage
 - Downloads training data from external S3 into DSPA MinIO (dataset per task type)
-- Discovers managed pipelines (tabular + timeseries)
-- Submits pipeline runs via DSPA REST API (regression, classification, timeseries)
+- Discovers managed pipeline or uploads YAML (legacy mode)
+- Submits pipeline run via DSPA REST API (parametrized: regression + classification)
 - Cleans up namespace on teardown
 
 ### AutoRAG (fully self-contained)

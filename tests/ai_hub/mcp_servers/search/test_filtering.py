@@ -3,7 +3,7 @@ from typing import Self
 import pytest
 import structlog
 
-from tests.ai_hub.utils import execute_get_command
+from tests.ai_hub.utils import execute_get_command_with_retry
 
 REDHAT_PROVIDER: str = "Red Hat"
 LOGGER = structlog.get_logger(name=__name__)
@@ -32,7 +32,7 @@ class TestMCPServerFiltering:
         field_check: tuple[str, str],
     ):
         """TC-API-003, TC-API-009: Test filtering MCP servers by provider and license."""
-        response = execute_get_command(
+        response = execute_get_command_with_retry(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
             headers=model_registry_rest_headers,
             params={"filterQuery": filter_query},
@@ -64,7 +64,7 @@ class TestMCPServerFiltering:
         url = f"{mcp_catalog_rest_urls[0]}mcp_servers/filter_options"
         LOGGER.info(f"Requesting filter_options from: {url}")
 
-        response = execute_get_command(
+        response = execute_get_command_with_retry(
             url=url,
             headers=model_registry_rest_headers,
         )
@@ -78,6 +78,7 @@ class TestMCPServerFiltering:
             "publishedDate",
             "deploymentMode",
             "tags",
+            "supportTier.string_value",
         }
         assert expected_filters == set(response["filters"].keys())
 
@@ -105,7 +106,7 @@ class TestMCPServerFiltering:
         filter_query = f"license='{expected_license}'"
 
         # Get total count of matching servers
-        all_response = execute_get_command(
+        all_response = execute_get_command_with_retry(
             url=base_url,
             headers=model_registry_rest_headers,
             params={"filterQuery": filter_query},
@@ -122,7 +123,7 @@ class TestMCPServerFiltering:
             if next_page_token:
                 params["nextPageToken"] = next_page_token
 
-            response = execute_get_command(
+            response = execute_get_command_with_retry(
                 url=base_url,
                 headers=model_registry_rest_headers,
                 params=params,

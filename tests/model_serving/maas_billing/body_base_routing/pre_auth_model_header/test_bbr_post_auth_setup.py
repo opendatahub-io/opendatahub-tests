@@ -1,5 +1,7 @@
 """Smoke tests for BBR payload-processing (post-auth) infrastructure deployment."""
 
+from typing import Self
+
 import pytest
 from kubernetes.dynamic import DynamicClient
 
@@ -17,7 +19,7 @@ class TestBBRPostAuthSetup:
 
     @pytest.mark.smoke
     def test_bbr_post_processing_deployment_ready(
-        self,
+        self: Self,
         admin_client: DynamicClient,
         bbr_gateway_namespace: str,
     ) -> None:
@@ -29,7 +31,7 @@ class TestBBRPostAuthSetup:
 
     @pytest.mark.smoke
     def test_bbr_post_processing_service_exposes_port_9004(
-        self,
+        self: Self,
         admin_client: DynamicClient,
         bbr_gateway_namespace: str,
     ) -> None:
@@ -41,7 +43,7 @@ class TestBBRPostAuthSetup:
 
     @pytest.mark.smoke
     def test_bbr_post_processing_destination_rule_exists(
-        self,
+        self: Self,
         admin_client: DynamicClient,
         bbr_gateway_namespace: str,
     ) -> None:
@@ -53,7 +55,7 @@ class TestBBRPostAuthSetup:
 
     @pytest.mark.smoke
     def test_bbr_plugins_configmap_has_expected_plugins(
-        self,
+        self: Self,
         admin_client: DynamicClient,
         bbr_gateway_namespace: str,
     ) -> None:

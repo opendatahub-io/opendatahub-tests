@@ -252,13 +252,23 @@ def external_s3_secret(
     pipelines_namespace: Namespace,
 ) -> Generator[Secret, Any, Any]:
     """Transient secret holding external AWS S3 credentials for data upload pods."""
+    aws_access_key_id = os.environ.get("AWS_ACCESS_KEY_ID")
+    aws_secret_access_key = os.environ.get("AWS_SECRET_ACCESS_KEY")
+    assert aws_access_key_id, (
+        "Environment variable 'AWS_ACCESS_KEY_ID' is not set. "
+        "Set it in .env or shell to provide external S3 credentials."
+    )
+    assert aws_secret_access_key, (
+        "Environment variable 'AWS_SECRET_ACCESS_KEY' is not set. "
+        "Set it in .env or shell to provide external S3 credentials."
+    )
     with Secret(
         client=admin_client,
         name=EXTERNAL_S3_SECRET,
         namespace=pipelines_namespace.name,
         string_data={
-            "AWS_ACCESS_KEY_ID": os.environ.get("AWS_ACCESS_KEY_ID", ""),
-            "AWS_SECRET_ACCESS_KEY": os.environ.get("AWS_SECRET_ACCESS_KEY", ""),
+            "AWS_ACCESS_KEY_ID": aws_access_key_id,
+            "AWS_SECRET_ACCESS_KEY": aws_secret_access_key,
         },
     ) as secret:
         yield secret

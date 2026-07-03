@@ -21,7 +21,7 @@ from tests.ai_hub.mcp_servers.config.constants import (
 )
 from tests.ai_hub.mcp_servers.config.utils import get_mcp_catalog_sources
 from tests.ai_hub.utils import (
-    execute_get_command,
+    execute_get_command_with_retry,
     wait_for_mcp_catalog_api,
     wait_for_model_catalog_pod_ready_after_deletion,
 )
@@ -66,7 +66,7 @@ def mcp_servers_by_source(
 ) -> dict:
     """Return MCP servers filtered by source label, passed via request.param."""
     source_label = request.param
-    return execute_get_command(
+    return execute_get_command_with_retry(
         url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
         headers=model_registry_rest_headers,
         params={"sourceLabel": source_label, "pageSize": 1000},

@@ -8,14 +8,36 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.pod import Pod
 
 from tests.ai_hub.constants import CATALOG_CONTAINER, DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
+from tests.ai_hub.model_catalog.search.utils import fetch_all_artifacts_with_dynamic_paging
 from tests.ai_hub.utils import (
     execute_authenticated_post,
-    execute_get_command,
+    execute_get_command_with_retry,
     get_rest_headers,
     should_include_by_pattern,
 )
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+def get_artifact_counts_from_endpoint(
+    model_catalog_rest_url: str,
+    source_id: str,
+    model_name: str,
+    headers: dict[str, str],
+) -> dict[str, int]:
+    """Fetch all artifacts for a model and return counts grouped by category."""
+    artifacts_url = f"{model_catalog_rest_url}sources/{source_id}/models/{model_name}/artifacts?pageSize"
+    artifacts_response = fetch_all_artifacts_with_dynamic_paging(
+        url_with_pagesize=artifacts_url,
+        headers=headers,
+    )
+    counts: dict[str, int] = {}
+    for artifact in artifacts_response.get("items", []):
+        metrics_type = artifact.get("metricsType", "")
+        artifact_type = artifact.get("artifactType", "")
+        key = metrics_type if metrics_type else artifact_type
+        counts[key] = counts.get(key, 0) + 1
+    return counts
 
 
 def execute_model_catalog_post_command(url: str, token: str, files: dict[str, tuple[str, str, str]]) -> dict[str, Any]:
@@ -446,7 +468,7 @@ def get_labels_from_api(
     url = f"{model_catalog_rest_url}labels"
     headers = get_rest_headers(token=user_token)
     params: dict[str, str] | None = {"assetType": asset_type} if asset_type is not None else None
-    response = execute_get_command(url=url, headers=headers, params=params)
+    response = execute_get_command_with_retry(url=url, headers=headers, params=params)
     return response["items"]
 
 

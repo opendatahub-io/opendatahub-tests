@@ -50,23 +50,16 @@ AUTOML_TASK_CONFIGS: dict[str, dict[str, Any]] = {
         "task_type": "binary",
         "top_n": 1,
     },
+    "multiclass": {
+        "s3_train_data_key": "datasets/classification/multiclass.csv",
+        "label_column": "target",
+        "task_type": "multiclass",
+        "top_n": 1,
+    },
 }
 
 # AutoML pipeline parameters — AUTOML_TRAIN_DATA_FILE_KEY is the destination key in DSPA MinIO
 AUTOML_TRAIN_DATA_FILE_KEY: str = os.getenv("AUTOML_TRAIN_DATA_FILE_KEY", "automl-smoke/train.csv")
-
-# AutoML timeseries configuration
-AUTOML_TIMESERIES_CONFIG: dict[str, Any] = {
-    "id_column": "series_id",
-    "timestamp_column": "Month",
-    "target": "Sunspots",
-    "prediction_length": 1,
-    "top_n": 3,
-    "known_covariates_names": [],
-}
-AUTOML_TIMESERIES_TRAIN_DATA_FILE_KEY: str = os.getenv(
-    "AUTOML_TIMESERIES_TRAIN_DATA_FILE_KEY", "automl-smoke/timeseries-train.csv"
-)
 
 # Timeouts (seconds)
 AUTOML_PIPELINE_TIMEOUT: int = int(os.getenv("AUTOML_PIPELINE_TIMEOUT", "1800"))
@@ -112,9 +105,6 @@ AUTORAG_PIPELINE_TIMEOUT: int = int(os.getenv("AUTORAG_PIPELINE_TIMEOUT", "3600"
 # ---------------------------------------------------------------------------
 MANAGED_PIPELINE_AUTOML_TABULAR: str = os.getenv(
     "MANAGED_PIPELINE_AUTOML_TABULAR", "autogluon-tabular-training-pipeline"
-)
-MANAGED_PIPELINE_AUTOML_TIMESERIES: str = os.getenv(
-    "MANAGED_PIPELINE_AUTOML_TIMESERIES", "autogluon-timeseries-training-pipeline"
 )
 MANAGED_PIPELINE_AUTORAG: str = os.getenv("MANAGED_PIPELINE_AUTORAG", "documents-rag-optimization-pipeline")
 MANAGED_PIPELINES_IMAGE: str = os.getenv("MANAGED_PIPELINES_IMAGE", "")
