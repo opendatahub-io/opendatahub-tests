@@ -45,8 +45,6 @@ class TestAutoMLSmoke:
         assert phase == WORKFLOW_SUCCEEDED, (
             f"AutoML {task_type} pipeline run {automl_run_id} ended with phase '{phase}', "
             f"expected '{WORKFLOW_SUCCEEDED}'"
-            f"AutoML {task_type} pipeline run {automl_run_id} ended with phase '{phase}', "
-            f"expected '{WORKFLOW_SUCCEEDED}'"
         )
 
     def test_timeseries_pipeline_completes(

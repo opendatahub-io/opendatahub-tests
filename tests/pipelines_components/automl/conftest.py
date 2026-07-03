@@ -308,13 +308,6 @@ def timeseries_run_id(
     )
 
     yield run_id
-    if not os.getenv("SKIP_TEARDOWN", "").lower() in ("true", "1", "yes"):
-        delete_pipeline_run(
-            api_url=dspa_api_url,
-            headers=dspa_auth_headers,
-            run_id=run_id,
-            ca_bundle=dspa_ca_bundle_file,
-        )
     if os.getenv("SKIP_TEARDOWN", "").lower() not in ("true", "1", "yes"):
         delete_pipeline_run(
             api_url=dspa_api_url,
