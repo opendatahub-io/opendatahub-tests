@@ -165,14 +165,26 @@ class GpuConfig(LLMISvcConfig):
     accelerator = "nvidia.com/gpu"
     base_refs = None
 
-    @classmethod
-    def build(cls, client: DynamicClient) -> type:
-        """Resolve all cluster-dependent config."""
-        return cls._resolve_accelerator(client=client)
+    # Subclasses set this to override the LLMInferenceServiceConfig template used for base_refs.
+    # When it is set to None, ROCm uses AMD_ROCM_TEMPLATE and all others use no base_refs (default image).
+    base_refs_template = None
 
     @classmethod
-    def _resolve_accelerator(cls, client: DynamicClient) -> type:
-        """Detect cluster GPU accelerators and resolve the config for the best match.
+    def build(cls, client: DynamicClient) -> type:
+        """Resolve cluster-dependent config that cannot be set statically.
+
+        Config classes declare what they need (supported_accelerators, base_refs_template,
+        min_gpus_per_node, etc.) but the actual GPU type and versioned CR names depend on
+        the cluster state at runtime. This method queries the cluster and returns a derived
+        config class with the resolved values bound.
+        """
+        accelerator = cls._resolve_accelerator(client=client)
+        base_refs = cls._resolve_base_refs(client=client, accelerator=accelerator)
+        return cls.with_overrides(accelerator=accelerator, base_refs=base_refs)
+
+    @classmethod
+    def _resolve_accelerator(cls, client: DynamicClient) -> str:
+        """Detect cluster GPU accelerators and return the best match.
 
         Scans worker nodes for GPU resources, filters to types supported by the
         current test's config class, and skips the test if the cluster doesn't meet
@@ -181,10 +193,7 @@ class GpuConfig(LLMISvcConfig):
         When multiple accelerator types qualify, picks the one with the most
         total GPUs available, using node count as tiebreaker.
 
-        For AMD GPUs, resolves the ROCm-specific base ref template from the RHOAI CSV version.
-        If base_refs is already set on the config class, the existing value is preserved.
-
-        Returns a derived config class with accelerator and base_refs bound.
+        Returns the selected accelerator resource name (e.g. "nvidia.com/gpu").
         """
         # node_accelerators is a list where each entry is a worker node's GPU resources,
         # e.g. [{"amd.com/gpu": 8}, {"amd.com/gpu": 8}]
@@ -229,29 +238,43 @@ class GpuConfig(LLMISvcConfig):
             )
 
         # Pick the accelerator type with the most GPUs, then most nodes as tiebreaker
-        selected_resource = max(
+        selected = max(
             qualified,
             key=lambda resource_name: (
                 qualified[resource_name]["total_gpus"],
                 qualified[resource_name]["qualifying_nodes"],
             ),
         )
-        selected_stats = qualified[selected_resource]
+        stats = qualified[selected]
 
-        if selected_resource == Labels.ROCm.ROCM_GPU:
-            base_refs = cls.base_refs or cls._resolve_base_refs(client=client, template_name=AMD_ROCM_TEMPLATE)
+        LOGGER.info(f"[llmd] Selected {selected}: {stats['total_gpus']} GPU(s) on {stats['qualifying_nodes']} node(s)")
+        return selected
+
+    @classmethod
+    def _resolve_base_refs(cls, client: DynamicClient, accelerator: str) -> list[dict[str, str]]:
+        """Determine the LLMInferenceServiceConfig template and resolve the versioned CR name.
+
+        Resolution order:
+        1. cls.base_refs_template — explicit override (e.g. fast image configs)
+        2. AMD_ROCM_TEMPLATE — default for AMD accelerators
+        3. No template — standard CUDA image, no base_refs needed
+
+        Returns a list of base_ref dicts, or empty list if no template applies.
+        """
+
+        if cls.base_refs_template:
+            # config class specifies an explicit template (e.g. fast image configs)
+            template = cls.base_refs_template
+        elif accelerator == Labels.ROCm.ROCM_GPU:
+            # ROCm accelerator defaults to the AMD ROCm template
+            template = AMD_ROCM_TEMPLATE
         else:
-            base_refs = cls.base_refs or []
+            # uses default CUDA image, no base_refs set
+            return []
 
-        LOGGER.info(
-            f"[llmd] Selected {selected_resource}:"
-            f" {selected_stats['total_gpus']} GPU(s) on {selected_stats['qualifying_nodes']} node(s),"
-            f" base_refs: {base_refs or '(default CUDA)'}"
-        )
-        return cls.with_overrides(
-            accelerator=selected_resource,
-            base_refs=base_refs,
-        )
+        base_refs = cls._prepend_rhoai_version_to_base_refs_template(client=client, template_name=template)
+        LOGGER.info(f"[llmd] Resolved base_refs: {base_refs}")
+        return base_refs
 
     @classmethod
     def describe(cls, namespace: str = ""):
@@ -269,7 +292,7 @@ class GpuConfig(LLMISvcConfig):
         return cls.accelerator
 
     @staticmethod
-    def _resolve_base_refs(client: DynamicClient, template_name: str) -> list[dict[str, str]]:
+    def _prepend_rhoai_version_to_base_refs_template(client: DynamicClient, template_name: str) -> list[dict[str, str]]:
         """Resolve a baseRef template name to a versioned CR name.
 
         LLMInferenceServiceConfig CRs use versioned names (e.g.
