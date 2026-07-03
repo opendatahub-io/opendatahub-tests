@@ -14,7 +14,6 @@ from ocp_resources.secret import Secret
 from timeout_sampler import TimeoutExpiredError
 
 from tests.pipelines_components.constants import (
-    EXTERNAL_S3_SECRET,
     AUTOML_PIPELINE_YAML,
     AUTOML_S3_BUCKET,
     AUTOML_TASK_CONFIGS,
@@ -25,6 +24,7 @@ from tests.pipelines_components.constants import (
     DSPA_READY_BUFFER_SECONDS,
     DSPA_S3_BUCKET,
     DSPA_S3_SECRET,
+    EXTERNAL_S3_SECRET,
     MANAGED_PIPELINE_AUTOML_TABULAR,
     MANAGED_PIPELINE_AUTOML_TIMESERIES,
     MANAGED_PIPELINE_POLL_INTERVAL,
