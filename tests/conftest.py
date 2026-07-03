@@ -758,7 +758,9 @@ def cluster_sanity_scope_session(
     # Skip cluster sanity check when running tests that have cluster_health or operator_health markers
     selected_markers = {mark.name for item in request.session.items for mark in item.iter_markers()}
     if {"cluster_health", "operator_health", "component_health", "dsc_health"} & selected_markers:
-        LOGGER.info("Skipping cluster sanity check because selected tests include cluster/operator/component/dsc health")
+        LOGGER.info(
+            "Skipping cluster sanity check because selected tests include cluster/operator/component/dsc health"
+        )
         return
 
     verify_cluster_sanity(
