@@ -243,6 +243,7 @@ def skip_if_fast_cr_missing(
 
     from tests.model_serving.model_server.llmd.constants import LLMD_TESTS_SUPPORTED_ACCELERATORS
     from tests.model_serving.model_server.llmd.utils import detect_accelerators, discover_fast_cr
+    from utilities.infra import get_dsci_applications_namespace
 
     node_accelerators = detect_accelerators(client=admin_client)
     cluster_accelerator = None
@@ -255,15 +256,36 @@ def skip_if_fast_cr_missing(
             break
 
     if not cluster_accelerator:
-        pytest.skip("No supported accelerator found on cluster for fast image test")
+        pytest.skip(
+            f"No supported accelerator found on cluster for fast image test."
+            f" Config: {config_cls.__name__}, fast_suffix: '{config_cls.fast_suffix}'."
+            f" Supported accelerators: {LLMD_TESTS_SUPPORTED_ACCELERATORS}."
+            f" Detected node accelerators: {node_accelerators or 'none'}"
+        )
 
-    cr_name = discover_fast_cr(
+    topology = getattr(config_cls, "topology", "workload-single-node")
+    apps_namespace = get_dsci_applications_namespace(client=admin_client)
+    result = discover_fast_cr(
         client=admin_client,
         fast_suffix=config_cls.fast_suffix,
         accelerator=cluster_accelerator,
+        namespace=apps_namespace,
+        topology=topology,
     )
-    if not cr_name:
-        pytest.skip(f"No fast CR with suffix '{config_cls.fast_suffix}' found for accelerator '{cluster_accelerator}'")
+    if not result.name:
+        pytest.skip(
+            f"No LLMInferenceServiceConfig CR matching fast image requirements."
+            f" Config: {config_cls.__name__}, fast_suffix: '{config_cls.fast_suffix}',"
+            f" accelerator: '{cluster_accelerator}', topology: '{topology}',"
+            f" namespace: '{apps_namespace}'."
+            f" The cluster does not have a fast CR with the annotation"
+            f" opendatahub.io/recommended-accelerators containing '{cluster_accelerator}'"
+            f" and opendatahub.io/supported-topologies containing '{topology}'"
+            f" whose name ends with '{config_cls.fast_suffix}'."
+            f" CRs with matching suffix: {result.suffix_matches or 'none'}."
+            f" All LLMInferenceServiceConfig CRs in '{apps_namespace}':"
+            f" {result.all_cr_names or 'none'}"
+        )
 
 
 # ===========================================

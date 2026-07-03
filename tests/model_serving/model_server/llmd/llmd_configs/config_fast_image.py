@@ -8,6 +8,7 @@ from the cluster.
 from kubernetes.dynamic import DynamicClient
 
 from tests.model_serving.model_server.llmd.utils import discover_fast_cr
+from utilities.infra import get_dsci_applications_namespace
 
 from .config_models import TinyLlamaOciGpuConfig
 
@@ -23,17 +24,20 @@ class FastImageConfig(TinyLlamaOciGpuConfig):
     """
 
     fast_suffix: str = ""
+    topology: str = "workload-single-node"
 
     @classmethod
     def build(cls, client: DynamicClient) -> type:
         """Detect GPU accelerator and discover the matching fast CR."""
         resolved = cls._resolve_accelerator(client=client)
-        cr_name = discover_fast_cr(
+        result = discover_fast_cr(
             client=client,
             fast_suffix=cls.fast_suffix,
             accelerator=resolved.accelerator,
+            namespace=get_dsci_applications_namespace(client=client),
+            topology=cls.topology,
         )
-        base_refs = [{"name": cr_name}] if cr_name else resolved.base_refs or []
+        base_refs = [{"name": result.name}] if result.name else resolved.base_refs or []
         return resolved.with_overrides(base_refs=base_refs)
 
 

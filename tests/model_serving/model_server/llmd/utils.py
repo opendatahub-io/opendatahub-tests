@@ -55,55 +55,85 @@ def detect_accelerators(client: DynamicClient) -> list[dict[str, int]]:
     return accelerators
 
 
+class FastCRResult:
+    """Result of a fast CR discovery attempt."""
+
+    def __init__(self, name: str | None, all_cr_names: list[str], suffix_matches: list[str]):
+        self.name = name
+        self.all_cr_names = all_cr_names
+        self.suffix_matches = suffix_matches
+
+
 def discover_fast_cr(
     client: DynamicClient,
     fast_suffix: str,
     accelerator: str,
-) -> str | None:
-    """Discover a fast LLMInferenceServiceConfig CR matching the accelerator.
+    namespace: str,
+    topology: str = "workload-single-node",
+) -> FastCRResult:
+    """Discover a fast LLMInferenceServiceConfig CR matching the accelerator and topology.
 
-    Lists all LLMInferenceServiceConfig CRs on the cluster, filters to those
-    whose name ends with the given fast suffix (e.g. ``-fast-1``), excludes
-    prefill templates, and returns the one whose
-    ``opendatahub.io/recommended-accelerators`` annotation contains the given
-    accelerator resource name.
+    Lists LLMInferenceServiceConfig CRs in the given namespace, filters to
+    those whose name ends with the given fast suffix (e.g. ``-fast-1``), and
+    returns the one whose ``opendatahub.io/recommended-accelerators`` annotation
+    contains the given accelerator and whose
+    ``opendatahub.io/supported-topologies`` annotation contains the given
+    topology.
 
     Args:
         client: Kubernetes dynamic client.
         fast_suffix: The suffix to match (e.g. ``-fast-1``, ``-fast-2``).
         accelerator: The k8s accelerator resource name (e.g. ``nvidia.com/gpu``).
+        namespace: The namespace where LLMInferenceServiceConfig CRs are deployed
+            (typically the DSCI applications namespace).
+        topology: The deployment topology to match (e.g. ``workload-single-node``).
 
     Returns:
-        The full CR name if found, or ``None`` if no matching CR exists.
+        FastCRResult with the matched CR name (or None), all CR names in the
+        namespace, and details on suffix-matched CRs for diagnostics.
     """
     try:
         api = client.resources.get(
             api_version="serving.kserve.io/v1alpha1",
             kind="LLMInferenceServiceConfig",
         )
-        all_crs = api.get()
+        all_crs = api.get(namespace=namespace)
     except ResourceNotFoundError:
         LOGGER.warning("[llmd] LLMInferenceServiceConfig CRD not found on cluster")
-        return None
+        return FastCRResult(name=None, all_cr_names=[], suffix_matches=[])
 
+    all_cr_names = [cr.metadata.name for cr in all_crs.items]
+    LOGGER.info(f"[llmd] LLMInferenceServiceConfig CRs in '{namespace}': {all_cr_names}")
+
+    suffix_matches = []
     for cr in all_crs.items:
         name = cr.metadata.name
         if not name.endswith(fast_suffix):
             continue
-        if "-prefill-" in name:
-            continue
         annotations = cr.metadata.get("annotations") or {}
-        raw = annotations.get("opendatahub.io/recommended-accelerators", "[]")
+        raw_accel = annotations.get("opendatahub.io/recommended-accelerators", "[]")
+        raw_topo = annotations.get("opendatahub.io/supported-topologies", "[]")
         try:
-            recommended = json.loads(raw)
-        except (ValueError, TypeError):
+            recommended = json.loads(raw_accel)
+            topologies = json.loads(raw_topo)
+        except (ValueError, TypeError):  # fmt: skip
+            suffix_matches.append(f"{name} (unparseable annotations)")
             continue
-        if accelerator in recommended:
-            LOGGER.info(f"[llmd] Discovered fast CR: {name} (suffix={fast_suffix}, accelerator={accelerator})")
-            return name
+        suffix_matches.append(f"{name} (accelerators={recommended}, topologies={topologies})")
+        if accelerator in recommended and topology in topologies:
+            LOGGER.info(
+                f"[llmd] Discovered fast CR: {name}"
+                f" (suffix={fast_suffix}, accelerator={accelerator}, topology={topology})"
+            )
+            return FastCRResult(name=name, all_cr_names=all_cr_names, suffix_matches=suffix_matches)
 
-    LOGGER.warning(f"[llmd] No fast CR found for suffix={fast_suffix}, accelerator={accelerator}")
-    return None
+    LOGGER.warning(
+        f"[llmd] No fast CR found for suffix={fast_suffix},"
+        f" accelerator={accelerator}, topology={topology}."
+        f" CRs ending with '{fast_suffix}': {suffix_matches or 'none'}."
+        f" All CRs in '{namespace}': {all_cr_names}"
+    )
+    return FastCRResult(name=None, all_cr_names=all_cr_names, suffix_matches=suffix_matches)
 
 
 def ns_from_file(file: str) -> str:
