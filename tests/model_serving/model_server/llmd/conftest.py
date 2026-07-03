@@ -8,7 +8,6 @@ import structlog
 import yaml
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
-from kubernetes.dynamic.exceptions import NotFoundError, ResourceNotFoundError
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
 from ocp_resources.gateway import Gateway
@@ -231,29 +230,40 @@ def skip_if_fast_cr_missing(
     request: FixtureRequest,
     admin_client: DynamicClient,
 ) -> None:
-    """Skip if the LLMInferenceServiceConfig CR for the fast template is absent.
+    """Skip if no fast LLMInferenceServiceConfig CR matches the cluster accelerator.
 
-    Reads the config class from the llmisvc parametrize arg to determine which
-    fast template CR to check.  No-op when the config has no fast_template.
+    Reads the config class from the llmisvc parametrize arg.  Detects the
+    cluster accelerator, then checks whether a matching fast CR exists.
+    No-op when the config has no ``fast_suffix``.
     """
     callspec = getattr(request.node, "callspec", None)
     config_cls = callspec.params.get("llmisvc") if callspec else None
-    if not config_cls or not getattr(config_cls, "fast_template", ""):
+    if not config_cls or not getattr(config_cls, "fast_suffix", ""):
         return
 
-    from tests.model_serving.model_server.llmd.llmd_configs.config_base import GpuConfig
+    from tests.model_serving.model_server.llmd.constants import LLMD_TESTS_SUPPORTED_ACCELERATORS
+    from tests.model_serving.model_server.llmd.utils import detect_accelerators, discover_fast_cr
 
-    base_refs = GpuConfig._resolve_base_refs(client=admin_client, template_name=config_cls.fast_template)
-    cr_name = base_refs[0]["name"]
+    node_accelerators = detect_accelerators(client=admin_client)
+    cluster_accelerator = None
+    for node in node_accelerators:
+        for resource_name in node:
+            if resource_name in LLMD_TESTS_SUPPORTED_ACCELERATORS:
+                cluster_accelerator = resource_name
+                break
+        if cluster_accelerator:
+            break
 
-    try:
-        api = admin_client.resources.get(
-            api_version="serving.kserve.io/v1alpha1",
-            kind="LLMInferenceServiceConfig",
-        )
-        api.get(name=cr_name)
-    except NotFoundError, ResourceNotFoundError:
-        pytest.skip(f"LLMInferenceServiceConfig CR '{cr_name}' not found on cluster — skipping test")
+    if not cluster_accelerator:
+        pytest.skip("No supported accelerator found on cluster for fast image test")
+
+    cr_name = discover_fast_cr(
+        client=admin_client,
+        fast_suffix=config_cls.fast_suffix,
+        accelerator=cluster_accelerator,
+    )
+    if not cr_name:
+        pytest.skip(f"No fast CR with suffix '{config_cls.fast_suffix}' found for accelerator '{cluster_accelerator}'")
 
 
 # ===========================================

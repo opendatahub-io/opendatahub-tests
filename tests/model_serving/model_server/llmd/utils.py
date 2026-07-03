@@ -12,6 +12,7 @@ from typing import Any
 
 import structlog
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.event import Event
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.node import Node
@@ -52,6 +53,57 @@ def detect_accelerators(client: DynamicClient) -> list[dict[str, int]]:
             accelerators.append(node_accelerators)
 
     return accelerators
+
+
+def discover_fast_cr(
+    client: DynamicClient,
+    fast_suffix: str,
+    accelerator: str,
+) -> str | None:
+    """Discover a fast LLMInferenceServiceConfig CR matching the accelerator.
+
+    Lists all LLMInferenceServiceConfig CRs on the cluster, filters to those
+    whose name ends with the given fast suffix (e.g. ``-fast-1``), excludes
+    prefill templates, and returns the one whose
+    ``opendatahub.io/recommended-accelerators`` annotation contains the given
+    accelerator resource name.
+
+    Args:
+        client: Kubernetes dynamic client.
+        fast_suffix: The suffix to match (e.g. ``-fast-1``, ``-fast-2``).
+        accelerator: The k8s accelerator resource name (e.g. ``nvidia.com/gpu``).
+
+    Returns:
+        The full CR name if found, or ``None`` if no matching CR exists.
+    """
+    try:
+        api = client.resources.get(
+            api_version="serving.kserve.io/v1alpha1",
+            kind="LLMInferenceServiceConfig",
+        )
+        all_crs = api.get()
+    except ResourceNotFoundError:
+        LOGGER.warning("[llmd] LLMInferenceServiceConfig CRD not found on cluster")
+        return None
+
+    for cr in all_crs.items:
+        name = cr.metadata.name
+        if not name.endswith(fast_suffix):
+            continue
+        if "-prefill-" in name:
+            continue
+        annotations = cr.metadata.get("annotations") or {}
+        raw = annotations.get("opendatahub.io/recommended-accelerators", "[]")
+        try:
+            recommended = json.loads(raw)
+        except (ValueError, TypeError):
+            continue
+        if accelerator in recommended:
+            LOGGER.info(f"[llmd] Discovered fast CR: {name} (suffix={fast_suffix}, accelerator={accelerator})")
+            return name
+
+    LOGGER.warning(f"[llmd] No fast CR found for suffix={fast_suffix}, accelerator={accelerator}")
+    return None
 
 
 def ns_from_file(file: str) -> str:
