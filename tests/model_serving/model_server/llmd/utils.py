@@ -225,84 +225,30 @@ def _resolve_ca_cert(client: DynamicClient) -> str:
         return ""
 
 
-def _log_curl_command(url: str, body: str, token: bool, ca_cert: str | None) -> None:
+def _log_curl_command(method: str, url: str, body: str | None, token: bool, ca_cert: str | None) -> None:
     """Log a human-readable curl command with token redacted and payload formatted."""
-    formatted_body = json.dumps(json.loads(body), indent=2)
     auth_header = "\n  -H 'Authorization: Bearer ***REDACTED***'" if token else ""
     tls_flag = f"\n  --cacert {ca_cert}" if ca_cert else "\n  --insecure"
+
+    body_parts = ""
+    if body:
+        formatted_body = json.dumps(json.loads(body), indent=2)
+        body_parts = f"\n  -H 'Content-Type: application/json' \\\n  -d '{formatted_body}' \\"
+
     LOGGER.info(
-        f"curl -s -X POST \\\n"
-        f"  -H 'Content-Type: application/json' \\\n"
-        f"  -H 'Accept: application/json' \\{auth_header}\n"
-        f"  -d '{formatted_body}' \\{tls_flag}\n"
-        f"  {url}"
+        f"curl -s -X {method} \\\n  -H 'Accept: application/json' \\{auth_header}{body_parts}{tls_flag}\n  {url}"
     )
 
 
-def _curl_post(
+def _curl_request(
+    method: str,
     url: str,
-    body: str,
+    body: str | None = None,
     token: str | None = None,
     ca_cert: str | None = None,
     timeout: int = LLMEndpoint.DEFAULT_TIMEOUT,
 ) -> tuple[int, str]:
-    """POST to URL via curl. Returns (status_code, response_body)."""
-    cmd = [
-        "curl",
-        "-s",
-        "-w",
-        "\n%{http_code}",
-        "-X",
-        "POST",
-        "-H",
-        "Content-Type: application/json",
-        "-H",
-        "Accept: application/json",
-        "-d",
-        body,
-        "--max-time",
-        str(timeout),
-    ]
-    if token:
-        cmd.extend(["-H", f"Authorization: Bearer {token}"])
-    if ca_cert:
-        cmd.extend(["--cacert", ca_cert])
-    else:
-        cmd.append("--insecure")
-    cmd.append(url)
-
-    _log_curl_command(url=url, body=body, token=bool(token), ca_cert=ca_cert)
-
-    _, stdout, stderr = run_command(command=cmd, verify_stderr=False, check=False, hide_log_command=True)
-    if not stdout.strip():
-        raise ConnectionError(f"curl failed with no output: {stderr}")
-
-    parts = stdout.rsplit("\n", 1)
-    response_body = parts[0] if len(parts) > 1 else ""
-    try:
-        status_code = int(parts[-1].strip())
-    except ValueError:
-        status_code = 0
-    return status_code, response_body
-
-
-def _curl_get(
-    url: str,
-    token: str | None = None,
-    ca_cert: str | None = None,
-    timeout: int = LLMEndpoint.DEFAULT_TIMEOUT,
-) -> tuple[int, str]:
-    """GET a URL via curl. Returns (status_code, response_body).
-
-    Args:
-        url: The URL to fetch.
-        token: Optional bearer token for authentication.
-        ca_cert: Path to CA certificate for TLS verification.
-        timeout: Request timeout in seconds.
-
-    Returns:
-        Tuple of (status_code, response_body).
-    """
+    """Execute an HTTP request via curl. Returns (status_code, response_body)."""
     cmd = [
         "curl",
         "-s",
@@ -313,6 +259,10 @@ def _curl_get(
         "--max-time",
         str(timeout),
     ]
+    if method != "GET":
+        cmd.extend(["-X", method])
+    if body:
+        cmd.extend(["-H", "Content-Type: application/json", "-d", body])
     if token:
         cmd.extend(["-H", f"Authorization: Bearer {token}"])
     if ca_cert:
@@ -321,11 +271,11 @@ def _curl_get(
         cmd.append("--insecure")
     cmd.append(url)
 
-    LOGGER.info(f"GET {url}")
+    _log_curl_command(method=method, url=url, body=body, token=bool(token), ca_cert=ca_cert)
 
     _, stdout, stderr = run_command(command=cmd, verify_stderr=False, check=False, hide_log_command=True)
     if not stdout.strip():
-        raise ConnectionError(f"curl GET failed with no output: {stderr}")
+        raise ConnectionError(f"curl {method} failed with no output: {stderr}")
 
     parts = stdout.rsplit("\n", 1)
     response_body = parts[0] if len(parts) > 1 else ""
@@ -338,11 +288,15 @@ def _curl_get(
 
 def get_vllm_version(
     llmisvc: LLMInferenceService,
+    token: str | None = None,
+    insecure: bool = True,
 ) -> str:
     """Query the vLLM /version endpoint and return the version string.
 
     Args:
         llmisvc: The LLMInferenceService to query.
+        token: Optional bearer token for authentication.
+        insecure: Skip TLS verification (default True).
 
     Returns:
         The vLLM version string (e.g. "0.8.5").
@@ -356,9 +310,10 @@ def get_vllm_version(
         else _get_inference_url(llmisvc)
     )
     url = base_url + "/version"
+    ca_cert = None if insecure else _resolve_ca_cert(llmisvc.client)
 
     LOGGER.info(f"Querying vLLM version from {llmisvc.name} at {url}")
-    status_code, response_body = _curl_get(url=url)
+    status_code, response_body = _curl_request(method="GET", url=url, token=token, ca_cert=ca_cert)
     if status_code != 200:
         raise ValueError(f"vLLM /version returned {status_code}: {response_body}")
 
@@ -393,7 +348,7 @@ def send_chat_completions(
     ca_cert = None if insecure else _resolve_ca_cert(llmisvc.client)
 
     LOGGER.info(f"Sending inference request to {llmisvc.name} — URL: {url}, Model: {model_name}")
-    status_code, response_body = _curl_post(url=url, body=body, token=token, ca_cert=ca_cert)
+    status_code, response_body = _curl_request(method="POST", url=url, body=body, token=token, ca_cert=ca_cert)
     LOGGER.info(f"Inference response — status={status_code}\n{response_body}")
     return status_code, response_body
 
@@ -433,7 +388,7 @@ def send_completions(
     ca_cert = None if insecure else _resolve_ca_cert(llmisvc.client)
 
     LOGGER.info(f"Sending completions request to {llmisvc.name} — URL: {url}, Model: {model_name}")
-    status_code, response_body = _curl_post(url=url, body=body, token=token, ca_cert=ca_cert)
+    status_code, response_body = _curl_request(method="POST", url=url, body=body, token=token, ca_cert=ca_cert)
     LOGGER.info(f"Completions response — status={status_code}\n{response_body}")
     return status_code, response_body
 
