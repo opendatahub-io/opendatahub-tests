@@ -17,7 +17,6 @@ import pytest
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
 
-from tests.model_serving.model_runtime.triton.S3.utils import load_json, validate_inference_request
 from tests.model_serving.model_runtime.triton.constant import (
     BASE_RAW_DEPLOYMENT_CONFIG,
     MODEL_PATH_PREFIX,
@@ -31,6 +30,7 @@ from tests.model_serving.model_runtime.triton.constant import (
     TRITON_GRPC_PYTORCH_INPUT_PATH,
     TRITON_GRPC_TF_INPUT_PATH,
 )
+from tests.model_serving.model_runtime.triton.S3.utils import load_json, validate_inference_request
 from utilities.constants import Protocols
 from utilities.path_utils import resolve_repo_path
 
@@ -133,7 +133,13 @@ pytestmark = pytest.mark.usefixtures("root_dir", "valid_aws_config", "triton_grp
             marks=pytest.mark.gpu,
         ),
     ],
-    indirect=["protocol", "model_namespace", "s3_models_storage_uri", "triton_serving_runtime", "triton_inference_service"],
+    indirect=[
+        "protocol",
+        "model_namespace",
+        "s3_models_storage_uri",
+        "triton_serving_runtime",
+        "triton_inference_service",
+    ],
 )
 class TestTritonGRPC:
     """
