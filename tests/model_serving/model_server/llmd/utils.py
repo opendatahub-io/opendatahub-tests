@@ -407,11 +407,7 @@ def get_vllm_version(
     Raises:
         ValueError: If the response cannot be parsed or the endpoint returns an error.
     """
-    base_url = (
-        _get_disconnected_inference_url(llmisvc)
-        if is_disconnected_cluster(llmisvc.client)
-        else _get_inference_url(llmisvc)
-    )
+    base_url = get_llm_inference_url(llm_service=llmisvc)
     url = base_url + "/version"
     ca_cert = None if insecure else _resolve_ca_cert(llmisvc.client)
 
