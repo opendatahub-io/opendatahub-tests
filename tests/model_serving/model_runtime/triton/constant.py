@@ -9,22 +9,24 @@ from utilities.constants import (
     Timeout,
 )
 
-TRITON_INPUT_BASE_PATH = "tests/model_serving/model_runtime/triton/basic_model_deployment"
+TRITON_INPUT_BASE_PATH = "tests/model_serving/model_runtime/triton/S3"
+TRITON_REST_INPUT_PATH = os.path.join(TRITON_INPUT_BASE_PATH, "rest-input")
+TRITON_GRPC_INPUT_PATH = os.path.join(TRITON_INPUT_BASE_PATH, "grpc-input")
 
-TRITON_REST_ONNX_INPUT_PATH = os.path.join(TRITON_INPUT_BASE_PATH, "kserve-triton-onnx-rest-input.json")
-TRITON_GRPC_ONNX_INPUT_PATH = os.path.join(TRITON_INPUT_BASE_PATH, "kserve-triton-onnx-gRPC-input.json")
-TRITON_REST_PYTHON_INPUT_PATH = os.path.join(TRITON_INPUT_BASE_PATH, "kserve-triton-python-rest-input.json")
-TRITON_GRPC_PYTHON_INPUT_PATH = os.path.join(TRITON_INPUT_BASE_PATH, "kserve-triton-python-gRPC-input.json")
-TRITON_REST_KERAS_INPUT_PATH = os.path.join(TRITON_INPUT_BASE_PATH, "kserve-keras-triton-resnet-rest-input.json")
-TRITON_GRPC_KERAS_INPUT_PATH = os.path.join(TRITON_INPUT_BASE_PATH, "kserve-keras-triton-resnet-gRPC-input.json")
-TRITON_REST_TF_INPUT_PATH = os.path.join(TRITON_INPUT_BASE_PATH, "kserve-triton-tensorflow-rest-input.json")
-TRITON_GRPC_TF_INPUT_PATH = os.path.join(TRITON_INPUT_BASE_PATH, "kserve-triton-tensorflow-gRPC-input.json")
-TRITON_REST_PYTORCH_INPUT_PATH = os.path.join(TRITON_INPUT_BASE_PATH, "kserve-triton-resnet-rest-input.json")
-TRITON_GRPC_PYTORCH_INPUT_PATH = os.path.join(TRITON_INPUT_BASE_PATH, "kserve-triton-resnet-gRPC-input.json")
-TRITON_REST_DALI_INPUT_PATH = os.path.join(TRITON_INPUT_BASE_PATH, "kserve-triton-dali-rest-input.json")
-TRITON_GRPC_DALI_INPUT_PATH = os.path.join(TRITON_INPUT_BASE_PATH, "kserve-triton-dali-gRPC-input.json")
-TRITON_REST_FIL_INPUT_PATH = os.path.join(TRITON_INPUT_BASE_PATH, "kserve-triton-fil-rest-input.json")
-TRITON_GRPC_FIL_INPUT_PATH = os.path.join(TRITON_INPUT_BASE_PATH, "kserve-triton-fil-gRPC-input.json")
+TRITON_REST_ONNX_INPUT_PATH = os.path.join(TRITON_REST_INPUT_PATH, "kserve-triton-onnx-rest-input.json")
+TRITON_GRPC_ONNX_INPUT_PATH = os.path.join(TRITON_GRPC_INPUT_PATH, "kserve-triton-onnx-gRPC-input.json")
+TRITON_REST_PYTHON_INPUT_PATH = os.path.join(TRITON_REST_INPUT_PATH, "kserve-triton-python-rest-input.json")
+TRITON_GRPC_PYTHON_INPUT_PATH = os.path.join(TRITON_GRPC_INPUT_PATH, "kserve-triton-python-gRPC-input.json")
+TRITON_REST_KERAS_INPUT_PATH = os.path.join(TRITON_REST_INPUT_PATH, "kserve-keras-triton-resnet-rest-input.json")
+TRITON_GRPC_KERAS_INPUT_PATH = os.path.join(TRITON_GRPC_INPUT_PATH, "kserve-keras-triton-resnet-gRPC-input.json")
+TRITON_REST_TF_INPUT_PATH = os.path.join(TRITON_REST_INPUT_PATH, "kserve-triton-tensorflow-rest-input.json")
+TRITON_GRPC_TF_INPUT_PATH = os.path.join(TRITON_GRPC_INPUT_PATH, "kserve-triton-tensorflow-gRPC-input.json")
+TRITON_REST_PYTORCH_INPUT_PATH = os.path.join(TRITON_REST_INPUT_PATH, "kserve-triton-resnet-rest-input.json")
+TRITON_GRPC_PYTORCH_INPUT_PATH = os.path.join(TRITON_GRPC_INPUT_PATH, "kserve-triton-resnet-gRPC-input.json")
+TRITON_REST_DALI_INPUT_PATH = os.path.join(TRITON_REST_INPUT_PATH, "kserve-triton-dali-rest-input.json")
+TRITON_GRPC_DALI_INPUT_PATH = os.path.join(TRITON_GRPC_INPUT_PATH, "kserve-triton-dali-gRPC-input.json")
+TRITON_REST_FIL_INPUT_PATH = os.path.join(TRITON_REST_INPUT_PATH, "kserve-triton-fil-rest-input.json")
+TRITON_GRPC_FIL_INPUT_PATH = os.path.join(TRITON_GRPC_INPUT_PATH, "kserve-triton-fil-gRPC-input.json")
 
 LOCAL_HOST_URL: str = "http://localhost"
 TRITON_REST_PORT: int = 8080

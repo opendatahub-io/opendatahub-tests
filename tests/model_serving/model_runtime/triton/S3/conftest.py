@@ -17,7 +17,7 @@ from ocp_resources.template import Template
 from pytest_testconfig import config as py_config
 from syrupy.extensions.json import JSONSnapshotExtension
 
-from tests.model_serving.model_runtime.triton.basic_model_deployment.utils import (
+from tests.model_serving.model_runtime.triton.S3.utils import (
     get_gpu_identifier,
     get_template_name,
 )
