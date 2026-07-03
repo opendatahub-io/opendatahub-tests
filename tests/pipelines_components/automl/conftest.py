@@ -13,8 +13,8 @@ from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from timeout_sampler import TimeoutExpiredError
 
-from tests.pipelines_components.conftest import EXTERNAL_S3_SECRET
 from tests.pipelines_components.constants import (
+    EXTERNAL_S3_SECRET,
     AUTOML_PIPELINE_YAML,
     AUTOML_S3_BUCKET,
     AUTOML_TASK_CONFIGS,

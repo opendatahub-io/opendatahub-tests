@@ -74,6 +74,8 @@ AUTOML_TIMESERIES_TRAIN_DATA_FILE_KEY: str = os.getenv(
     "AUTOML_TIMESERIES_TRAIN_DATA_FILE_KEY", "automl-smoke/timeseries-train.csv"
 )
 
+EXTERNAL_S3_SECRET: str = "external-s3-credentials"
+
 # Timeouts (seconds)
 AUTOML_PIPELINE_TIMEOUT: int = int(os.getenv("AUTOML_PIPELINE_TIMEOUT", "1800"))
 PIPELINE_POLL_INTERVAL: int = int(os.getenv("PIPELINE_POLL_INTERVAL", "30"))
