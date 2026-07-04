@@ -244,6 +244,7 @@ def build_inference_url(maas_scheme: str, maas_host: str, model_name: str) -> st
     """Build the chat completions inference URL for a given model."""
     return f"{maas_scheme}://{maas_host}/llm/{model_name}/v1/chat/completions"
 
+
 def wait_for_auth_policy_accepted(
     admin_client: DynamicClient,
     policy_name: str,
