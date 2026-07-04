@@ -7,8 +7,9 @@ from urllib.parse import quote
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import NotFoundError, ResourceNotFoundError
 from requests import Response
-from timeout_sampler import TimeoutSampler
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_serving.maas_billing.utils import build_maas_headers
 from utilities.resources.auth_policy import AuthPolicy
@@ -243,6 +244,7 @@ def search_active_api_keys(
 def build_inference_url(maas_scheme: str, maas_host: str, model_name: str) -> str:
     """Build the chat completions inference URL for a given model."""
     return f"{maas_scheme}://{maas_host}/llm/{model_name}/v1/chat/completions"
+
 
 def wait_for_auth_policy_accepted(
     admin_client: DynamicClient,
