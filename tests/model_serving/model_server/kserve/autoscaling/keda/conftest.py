@@ -198,6 +198,10 @@ def stressed_keda_vllm_inference_service(
             daemon=True,
         )
         load_thread.start()
+        # Attach the load thread to the ISVC instance so that the scale-down
+        # test can join() it and wait for load to stop before asserting
+        # that KEDA returns replicas to minReplicaCount.
+        isvc._keda_load_thread = load_thread
         yield isvc
 
 
