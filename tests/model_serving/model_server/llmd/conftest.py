@@ -230,21 +230,37 @@ def skip_if_fast_cr_missing(
     request: FixtureRequest,
     admin_client: DynamicClient,
 ) -> None:
-    """Skip if no fast LLMInferenceServiceConfig CR matches the cluster accelerator.
+    """Skip the test class if no fast-image LLMInferenceServiceConfig CR exists on the cluster.
 
-    Reads the config class from the llmisvc parametrize arg.  Detects the
-    cluster accelerator, then checks whether a matching fast CR exists.
-    No-op when the config has no ``fast_suffix``.
+    This fixture is opt-in — only test classes decorated with
+    ``@pytest.mark.usefixtures("skip_if_fast_cr_missing")`` invoke it.
+
+    It reads the config class from the ``llmisvc`` parametrize arg, detects the
+    cluster's GPU accelerator, and queries the DSCI applications namespace for a
+    matching LLMInferenceServiceConfig CR using the config's
+    ``accelerator_config_name_regex``.
+
+    The fixture is a no-op (returns immediately) when the config class does not
+    define a fast-image regex — i.e. when ``accelerator_config_name_regex`` equals
+    the ``GpuConfig`` default ``^(?!.*fast-)``.  This prevents the fixture from
+    running unnecessary discovery for standard (non-fast) GPU configs.
     """
     callspec = getattr(request.node, "callspec", None)
     config_cls = callspec.params.get("llmisvc") if callspec else None
-    if not config_cls or not getattr(config_cls, "fast_suffix", ""):
+
+    # The GpuConfig default regex "^(?!.*fast-)" is a negative lookahead that
+    # excludes fast CRs — it is NOT a fast-image regex.  Only proceed when the
+    # config overrides the default with a positive fast-matching pattern.
+    default_regex = "^(?!.*fast-)"
+    config_regex = getattr(config_cls, "accelerator_config_name_regex", default_regex)
+    if not config_cls or config_regex == default_regex:
         return
 
     from tests.model_serving.model_server.llmd.constants import LLMD_TESTS_SUPPORTED_ACCELERATORS
-    from tests.model_serving.model_server.llmd.utils import detect_accelerators, discover_fast_cr
+    from tests.model_serving.model_server.llmd.utils import detect_accelerators, list_matching_accelerator_configs
     from utilities.infra import get_dsci_applications_namespace
 
+    # Detect which GPU accelerators are available on worker nodes
     node_accelerators = detect_accelerators(client=admin_client)
     cluster_accelerator = None
     for node in node_accelerators:
@@ -257,33 +273,40 @@ def skip_if_fast_cr_missing(
 
     if not cluster_accelerator:
         pytest.skip(
-            f"No supported accelerator found on cluster for fast image test."
-            f" Config: {config_cls.__name__}, fast_suffix: '{config_cls.fast_suffix}'."
-            f" Supported accelerators: {LLMD_TESTS_SUPPORTED_ACCELERATORS}."
-            f" Detected node accelerators: {node_accelerators or 'none'}"
+            f"No supported GPU accelerator found on any worker node."
+            f" Config class: {config_cls.__name__},"
+            f" accelerator_config_name_regex: '{config_regex}'."
+            f" Supported accelerator types: {LLMD_TESTS_SUPPORTED_ACCELERATORS}."
+            f" Worker node accelerators detected: {node_accelerators or 'none (no GPUs found)'}"
         )
 
-    topology = getattr(config_cls, "topology", "workload-single-node")
+    # Query the DSCI applications namespace for a matching fast CR
+    topology = getattr(config_cls, "supported_topology", "workload-single-node")
     apps_namespace = get_dsci_applications_namespace(client=admin_client)
-    result = discover_fast_cr(
+    result = list_matching_accelerator_configs(
         client=admin_client,
-        fast_suffix=config_cls.fast_suffix,
-        accelerator=cluster_accelerator,
         namespace=apps_namespace,
+        accelerator=cluster_accelerator,
         topology=topology,
+        name_regex=config_regex,
     )
     if not result.name:
         pytest.skip(
-            f"No LLMInferenceServiceConfig CR matching fast image requirements."
-            f" Config: {config_cls.__name__}, fast_suffix: '{config_cls.fast_suffix}',"
-            f" accelerator: '{cluster_accelerator}', topology: '{topology}',"
-            f" namespace: '{apps_namespace}'."
-            f" The cluster does not have a fast CR with the annotation"
-            f" opendatahub.io/recommended-accelerators containing '{cluster_accelerator}'"
-            f" and opendatahub.io/supported-topologies containing '{topology}'"
-            f" whose name ends with '{config_cls.fast_suffix}'."
-            f" CRs with matching suffix: {result.suffix_matches or 'none'}."
-            f" All LLMInferenceServiceConfig CRs in '{apps_namespace}':"
+            f"No LLMInferenceServiceConfig CR matches the fast-image requirements."
+            f" Config class: {config_cls.__name__},"
+            f" accelerator_config_name_regex: '{config_regex}',"
+            f" detected accelerator: '{cluster_accelerator}',"
+            f" required topology: '{topology}',"
+            f" search namespace: '{apps_namespace}'."
+            f" The cluster does not have an LLMInferenceServiceConfig CR with"
+            f" annotation opendatahub.io/recommended-accelerators containing"
+            f" '{cluster_accelerator}'"
+            f" AND annotation opendatahub.io/supported-topologies containing"
+            f" '{topology}'"
+            f" AND name matching regex '{config_regex}'."
+            f" CRs that passed the name regex (with annotations):"
+            f" {result.candidates or 'none'}."
+            f" All LLMInferenceServiceConfig CRs in namespace '{apps_namespace}':"
             f" {result.all_cr_names or 'none'}"
         )
 

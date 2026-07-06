@@ -6,6 +6,7 @@ Follows the established model server utils pattern for consistency.
 """
 
 import json
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -55,42 +56,47 @@ def detect_accelerators(client: DynamicClient) -> list[dict[str, int]]:
     return accelerators
 
 
-class FastCRResult:
-    """Result of a fast CR discovery attempt."""
+class AcceleratorConfigDiscoveryResult:
+    """Result of an LLMInferenceServiceConfig CR discovery attempt.
 
-    def __init__(self, name: str | None, all_cr_names: list[str], suffix_matches: list[str]):
+    Attributes:
+        name: The name of the matched CR, or None if no CR matched all criteria.
+        all_cr_names: Every CR name found in the namespace (for diagnostics).
+        candidates: Human-readable descriptions of CRs that passed the name regex
+            filter, including their annotation values (for skip/error messages).
+    """
+
+    def __init__(self, name: str | None, all_cr_names: list[str], candidates: list[str]):
         self.name = name
         self.all_cr_names = all_cr_names
-        self.suffix_matches = suffix_matches
+        self.candidates = candidates
 
 
-def discover_fast_cr(
+def list_matching_accelerator_configs(
     client: DynamicClient,
-    fast_suffix: str,
-    accelerator: str,
     namespace: str,
-    topology: str = "workload-single-node",
-) -> FastCRResult:
-    """Discover a fast LLMInferenceServiceConfig CR matching the accelerator and topology.
+    accelerator: str,
+    topology: str,
+    name_regex: str = "",
+) -> AcceleratorConfigDiscoveryResult:
+    """Find an LLMInferenceServiceConfig CR matching accelerator, topology, and optional name regex.
 
-    Lists LLMInferenceServiceConfig CRs in the given namespace, filters to
-    those whose name ends with the given fast suffix (e.g. ``-fast-1``), and
-    returns the one whose ``opendatahub.io/recommended-accelerators`` annotation
-    contains the given accelerator and whose
-    ``opendatahub.io/supported-topologies`` annotation contains the given
-    topology.
+    Lists LLMInferenceServiceConfig CRs in the given namespace and filters by
+    ``opendatahub.io/recommended-accelerators`` and
+    ``opendatahub.io/supported-topologies`` annotations.  When ``name_regex``
+    is non-empty, only CRs whose name matches the regex are considered.
 
     Args:
         client: Kubernetes dynamic client.
-        fast_suffix: The suffix to match (e.g. ``-fast-1``, ``-fast-2``).
-        accelerator: The k8s accelerator resource name (e.g. ``nvidia.com/gpu``).
         namespace: The namespace where LLMInferenceServiceConfig CRs are deployed
             (typically the DSCI applications namespace).
+        accelerator: The k8s accelerator resource name (e.g. ``nvidia.com/gpu``).
         topology: The deployment topology to match (e.g. ``workload-single-node``).
+        name_regex: Optional regex to filter CR names (e.g. ``.*fast-1$``).
 
     Returns:
-        FastCRResult with the matched CR name (or None), all CR names in the
-        namespace, and details on suffix-matched CRs for diagnostics.
+        AcceleratorConfigDiscoveryResult with the matched CR name (or None), all CR names in
+        the namespace, and details on candidate CRs for diagnostics.
     """
     try:
         api = client.resources.get(
@@ -100,15 +106,15 @@ def discover_fast_cr(
         all_crs = api.get(namespace=namespace)
     except ResourceNotFoundError:
         LOGGER.warning("[llmd] LLMInferenceServiceConfig CRD not found on cluster")
-        return FastCRResult(name=None, all_cr_names=[], suffix_matches=[])
+        return AcceleratorConfigDiscoveryResult(name=None, all_cr_names=[], candidates=[])
 
     all_cr_names = [cr.metadata.name for cr in all_crs.items]
     LOGGER.info(f"[llmd] LLMInferenceServiceConfig CRs in '{namespace}': {all_cr_names}")
 
-    suffix_matches = []
+    candidates = []
     for cr in all_crs.items:
         name = cr.metadata.name
-        if not name.endswith(fast_suffix):
+        if name_regex and not re.search(name_regex, name):
             continue
         annotations = cr.metadata.get("annotations") or {}
         raw_accel = annotations.get("opendatahub.io/recommended-accelerators", "[]")
@@ -117,23 +123,26 @@ def discover_fast_cr(
             recommended = json.loads(raw_accel)
             topologies = json.loads(raw_topo)
         except (ValueError, TypeError):  # fmt: skip
-            suffix_matches.append(f"{name} (unparseable annotations)")
+            candidates.append(f"{name} (unparseable annotations)")
             continue
-        suffix_matches.append(f"{name} (accelerators={recommended}, topologies={topologies})")
+        candidates.append(f"{name} (accelerators={recommended}, topologies={topologies})")
         if accelerator in recommended and topology in topologies:
             LOGGER.info(
-                f"[llmd] Discovered fast CR: {name}"
-                f" (suffix={fast_suffix}, accelerator={accelerator}, topology={topology})"
+                f"[llmd] Matched CR: {name} (accelerator={accelerator}, topology={topology}, regex='{name_regex}')"
             )
-            return FastCRResult(name=name, all_cr_names=all_cr_names, suffix_matches=suffix_matches)
+            return AcceleratorConfigDiscoveryResult(name=name, all_cr_names=all_cr_names, candidates=candidates)
 
     LOGGER.warning(
-        f"[llmd] No fast CR found for suffix={fast_suffix},"
-        f" accelerator={accelerator}, topology={topology}."
-        f" CRs ending with '{fast_suffix}': {suffix_matches or 'none'}."
-        f" All CRs in '{namespace}': {all_cr_names}"
+        f"[llmd] No LLMInferenceServiceConfig CR matched all criteria."
+        f" Searched namespace='{namespace}' for CRs with:"
+        f" opendatahub.io/recommended-accelerators containing '{accelerator}',"
+        f" opendatahub.io/supported-topologies containing '{topology}',"
+        f" name matching regex '{name_regex}'."
+        f" CRs that passed the name regex filter (with their annotations):"
+        f" {candidates or 'none'}."
+        f" All LLMInferenceServiceConfig CRs in '{namespace}': {all_cr_names or 'none'}"
     )
-    return FastCRResult(name=None, all_cr_names=all_cr_names, suffix_matches=suffix_matches)
+    return AcceleratorConfigDiscoveryResult(name=None, all_cr_names=all_cr_names, candidates=candidates)
 
 
 def ns_from_file(file: str) -> str:

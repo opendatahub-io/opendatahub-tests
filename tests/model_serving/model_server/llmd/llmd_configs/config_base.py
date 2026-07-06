@@ -3,11 +3,11 @@
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.cluster_service_version import ClusterServiceVersion
 
-from tests.model_serving.model_server.llmd.constants import AMD_ROCM_TEMPLATE, LLMD_TESTS_SUPPORTED_ACCELERATORS
-from tests.model_serving.model_server.llmd.utils import detect_accelerators
+from tests.model_serving.model_server.llmd.constants import LLMD_TESTS_SUPPORTED_ACCELERATORS
+from tests.model_serving.model_server.llmd.utils import detect_accelerators, list_matching_accelerator_configs
 from utilities.constants import ContainerImages, Labels
+from utilities.infra import get_dsci_applications_namespace
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -160,9 +160,23 @@ class GpuConfig(LLMISvcConfig):
     min_gpus_per_node = 1
     min_nodes = 1
     supported_accelerators = LLMD_TESTS_SUPPORTED_ACCELERATORS
+    # supported-topologies values must be consistent with the samples
+    # API and Dashboard usage.  See odh-model-controller docs:
+    # features/samples/llm-d/llm-d-ui-flow-mechanics.md
+    # features/llm-d/samples/samples-api.md
+    supported_topology = "workload-single-node"
 
-    # defaults, overridden by build() after accelerator detection
+    # Default accelerator resource name used when the cluster has NVIDIA GPUs.
+    # Overridden by build() after accelerator detection (e.g. "amd.com/gpu" on AMD clusters).
     accelerator = "nvidia.com/gpu"
+
+    # Regex matched against LLMInferenceServiceConfig CR names during discovery.
+    # The default negative lookahead excludes fast-image CRs (e.g. "…fast-1", "…fast-2")
+    # so that standard GPU configs only match the regular CUDA/ROCm templates.
+    # Fast image subclasses override this with a positive regex (e.g. ".*fast-1$").
+    accelerator_config_name_regex = "^(?!.*fast-)"
+
+    # Resolved by _resolve_base_refs at build time; set explicitly to skip discovery.
     base_refs = None
 
     @classmethod
@@ -176,15 +190,18 @@ class GpuConfig(LLMISvcConfig):
 
         Scans worker nodes for GPU resources, filters to types supported by the
         current test's config class, and skips the test if the cluster doesn't meet
-        min_gpus_per_node and min_nodes requirements.
+        ``min_gpus_per_node`` and ``min_nodes`` requirements.
 
         When multiple accelerator types qualify, picks the one with the most
         total GPUs available, using node count as tiebreaker.
 
-        For AMD GPUs, resolves the ROCm-specific base ref template from the RHOAI CSV version.
-        If base_refs is already set on the config class, the existing value is preserved.
+        After selecting the accelerator, discovers the matching
+        LLMInferenceServiceConfig CR via ``_resolve_base_refs`` (annotation-based
+        discovery filtered by ``accelerator_config_name_regex``).  For NVIDIA GPUs,
+        an empty result falls through to the default CUDA template; for non-NVIDIA
+        accelerators (e.g. AMD ROCm), a missing CR is a hard failure.
 
-        Returns a derived config class with accelerator and base_refs bound.
+        Returns a derived config class with ``accelerator`` and ``base_refs`` bound.
         """
         # node_accelerators is a list where each entry is a worker node's GPU resources,
         # e.g. [{"amd.com/gpu": 8}, {"amd.com/gpu": 8}]
@@ -238,15 +255,32 @@ class GpuConfig(LLMISvcConfig):
         )
         selected_stats = qualified[selected_resource]
 
-        if selected_resource == Labels.ROCm.ROCM_GPU:
-            base_refs = cls.base_refs or cls._resolve_base_refs(client=client, template_name=AMD_ROCM_TEMPLATE)
-        else:
-            base_refs = cls.base_refs or []
+        # Discover the LLMInferenceServiceConfig CR matching this config's accelerator,
+        # topology, and name regex.  Uses annotation-based discovery via _resolve_base_refs.
+        # If base_refs is already set explicitly on the config class, discovery is skipped.
+        base_refs = cls.base_refs or cls._resolve_base_refs(client=client)
+
+        if len(base_refs) == 0 and selected_resource != Labels.Nvidia.NVIDIA_COM_GPU:
+            # Non-NVIDIA accelerators (e.g. AMD ROCm) require a matching
+            # LLMInferenceServiceConfig CR — there is no built-in fallback template.
+            # NVIDIA falls through to the default CUDA template when no CR matches.
+            pytest.fail(
+                f"No LLMInferenceServiceConfig CR found for {cls.__name__}."
+                f" Discovery searched for CRs with"
+                f" opendatahub.io/recommended-accelerators containing '{selected_resource}'"
+                f" and opendatahub.io/supported-topologies containing '{cls.supported_topology}'"
+                f" and name matching regex '{cls.accelerator_config_name_regex}'."
+                f" Hardware requirements: {cls.min_gpus_per_node} GPU(s)/node"
+                f" on {cls.min_nodes} node(s),"
+                f" supported types: {cls.supported_accelerators}."
+                f" Candidates found on cluster: {candidates or 'none'}"
+            )
 
         LOGGER.info(
-            f"[llmd] Selected {selected_resource}:"
-            f" {selected_stats['total_gpus']} GPU(s) on {selected_stats['qualifying_nodes']} node(s),"
-            f" base_refs: {base_refs or '(default CUDA)'}"
+            f"[llmd] Selected accelerator for {cls.__name__}: {selected_resource}"
+            f" ({selected_stats['total_gpus']} GPU(s) on"
+            f" {selected_stats['qualifying_nodes']} node(s)),"
+            f" base_refs: {base_refs or '(default CUDA — no CR override)'}"
         )
         return cls.with_overrides(
             accelerator=selected_resource,
@@ -268,28 +302,51 @@ class GpuConfig(LLMISvcConfig):
         """Return the Kubernetes GPU resource name (e.g. nvidia.com/gpu, amd.com/gpu)."""
         return cls.accelerator
 
-    @staticmethod
-    def _resolve_base_refs(client: DynamicClient, template_name: str) -> list[dict[str, str]]:
-        """Resolve a baseRef template name to a versioned CR name.
+    @classmethod
+    def _resolve_base_refs(cls, client: DynamicClient) -> list[dict[str, str]]:
+        """Discover the LLMInferenceServiceConfig CR matching this config's requirements.
 
-        LLMInferenceServiceConfig CRs use versioned names (e.g.
-        "v3-4-0-ea-2-kserve-config-llm-template-amd-rocm"). We read the RHOAI CSV
-        version and prepend it to the template name.
+        Searches the DSCI applications namespace for LLMInferenceServiceConfig CRs
+        and filters by three criteria:
+
+        1. **Name regex** (``cls.accelerator_config_name_regex``): the CR name must
+           match this regex.  The default ``^(?!.*fast-)`` excludes fast-image CRs;
+           fast image subclasses override with a positive pattern like ``.*fast-1$``.
+        2. **Accelerator annotation** (``opendatahub.io/recommended-accelerators``):
+           the JSON array must contain ``cls.accelerator`` (e.g. ``nvidia.com/gpu``).
+        3. **Topology annotation** (``opendatahub.io/supported-topologies``):
+           the JSON array must contain ``cls.supported_topology``
+           (e.g. ``workload-single-node``).
+
+        Returns:
+            A single-element list ``[{"name": cr_name}]`` if a matching CR is found,
+            or an empty list if no CR matches.  The caller decides whether to fail
+            (non-NVIDIA) or fall back to the default CUDA template (NVIDIA).
         """
-        rhoai_version = None
-        for csv in ClusterServiceVersion.get(client=client, namespace="redhat-ods-operator"):
-            if csv.name.startswith("rhods-operator") and csv.status == csv.Status.SUCCEEDED:
-                rhoai_version = csv.instance.spec.version
-                LOGGER.info(f"[llmd] Found RHOAI CSV: {csv.name}, version: {rhoai_version}")
-                break
-
-        if not rhoai_version:
-            raise ValueError("RHOAI CSV (rhods-operator) not found in redhat-ods-operator namespace")
-
-        version_prefix = f"v{rhoai_version.replace('.', '-')}"
-        full_name = f"{version_prefix}-{template_name}"
-        LOGGER.info(f"[llmd] Resolved baseRef: {template_name} -> {full_name}")
-        return [{"name": full_name}]
+        namespace = get_dsci_applications_namespace(client=client)
+        LOGGER.info(
+            f"[llmd] Resolving base_refs for {cls.__name__}:"
+            f" accelerator='{cls.accelerator}',"
+            f" topology='{cls.supported_topology}',"
+            f" name_regex='{cls.accelerator_config_name_regex}',"
+            f" namespace='{namespace}'"
+        )
+        result = list_matching_accelerator_configs(
+            client=client,
+            namespace=namespace,
+            accelerator=cls.accelerator,
+            topology=cls.supported_topology,
+            name_regex=cls.accelerator_config_name_regex,
+        )
+        if result.name:
+            LOGGER.info(f"[llmd] Resolved base_refs for {cls.__name__}: [{{name: {result.name}}}]")
+            return [{"name": result.name}]
+        LOGGER.warning(
+            f"[llmd] No matching CR found for {cls.__name__}."
+            f" All CRs in '{namespace}': {result.all_cr_names or 'none'}."
+            f" Candidates after regex/annotation filtering: {result.candidates or 'none'}"
+        )
+        return []
 
     @classmethod
     def container_resources(cls):

@@ -1,14 +1,20 @@
 """Fast image configurations for LLMInferenceService resources.
 
-Uses LLMInferenceServiceConfig baseRefs to deploy models with
-accelerator-specific fast vLLM image overrides, discovered dynamically
-from the cluster.
+Fast-image CRs are optional LLMInferenceServiceConfig resources deployed by the
+RHOAI operator.  They provide pre-optimized vLLM container images for specific
+GPU architectures (e.g. NVIDIA CUDA).  CR names follow the pattern
+``<version-prefix>kserve-config-llm-…-fast-1`` / ``…-fast-2``.
+
+Subclasses set ``accelerator_config_name_regex`` to a regex that selects the
+desired fast CR variant.  All CR discovery is handled by
+``GpuConfig._resolve_base_refs`` at build time — subclasses are pure data
+classes with no discovery logic.
+
+Tests using these configs should be decorated with
+``@pytest.mark.usefixtures("skip_if_fast_cr_missing")`` so that missing fast
+CRs cause a clean skip rather than a silent fallback to the default CUDA
+template.
 """
-
-from kubernetes.dynamic import DynamicClient
-
-from tests.model_serving.model_server.llmd.utils import discover_fast_cr
-from utilities.infra import get_dsci_applications_namespace
 
 from .config_models import TinyLlamaOciGpuConfig
 
@@ -16,40 +22,27 @@ from .config_models import TinyLlamaOciGpuConfig
 class FastImageConfig(TinyLlamaOciGpuConfig):
     """Base class for fast image GPU inference.
 
-    Subclasses set ``fast_suffix`` to the fast variant suffix (e.g. ``-fast-1``).
-    ``build()`` detects the cluster accelerator, then discovers the matching
-    fast LLMInferenceServiceConfig CR from the cluster.
-    Use the ``skip_if_fast_cr_missing`` fixture to skip when no fast CR
-    matches the cluster's accelerator.
+    Subclasses override ``accelerator_config_name_regex`` with a regex matching
+    the desired fast CR name (e.g. ``.*fast-1$``).  The base ``GpuConfig``
+    default regex ``^(?!.*fast-)`` explicitly excludes fast CRs, so only
+    subclasses that override it will match them.
+
+    Use the ``skip_if_fast_cr_missing`` fixture to skip when no matching CR
+    is found on the cluster.  Without it, the test would silently deploy with
+    the default CUDA template (because fast CRs use NVIDIA GPUs, which have a
+    built-in fallback).
     """
-
-    fast_suffix: str = ""
-    topology: str = "workload-single-node"
-
-    @classmethod
-    def build(cls, client: DynamicClient) -> type:
-        """Detect GPU accelerator and discover the matching fast CR."""
-        resolved = cls._resolve_accelerator(client=client)
-        result = discover_fast_cr(
-            client=client,
-            fast_suffix=cls.fast_suffix,
-            accelerator=resolved.accelerator,
-            namespace=get_dsci_applications_namespace(client=client),
-            topology=cls.topology,
-        )
-        base_refs = [{"name": result.name}] if result.name else resolved.base_refs or []
-        return resolved.with_overrides(base_refs=base_refs)
 
 
 class TinyLlamaFast1Config(FastImageConfig):
-    """TinyLlama via OCI, GPU inference with fast-1 image."""
+    """TinyLlama via OCI, GPU inference with the fast-1 optimized vLLM image."""
 
     name = "llmisvc-tinyllama-oci-fast-1"
-    fast_suffix = "-fast-1"
+    accelerator_config_name_regex = ".*fast-1$"
 
 
 class TinyLlamaFast2Config(FastImageConfig):
-    """TinyLlama via OCI, GPU inference with fast-2 image."""
+    """TinyLlama via OCI, GPU inference with the fast-2 optimized vLLM image."""
 
     name = "llmisvc-tinyllama-oci-fast-2"
-    fast_suffix = "-fast-2"
+    accelerator_config_name_regex = ".*fast-2$"
