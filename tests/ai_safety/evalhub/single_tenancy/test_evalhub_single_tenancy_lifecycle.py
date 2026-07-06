@@ -32,6 +32,9 @@ Run in isolation:
 
 from __future__ import annotations
 
+from collections.abc import Generator
+from typing import Any
+
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
@@ -87,7 +90,7 @@ class TestEvalHubInvalidPlacement:
     def invalid_placement_namespace(
         self,
         model_namespace: Namespace,
-    ):
+    ) -> Namespace:
         """Re-label the model_namespace with the tenant label before EvalHub is created."""
         ResourceEditor(
             patches={
@@ -103,7 +106,7 @@ class TestEvalHubInvalidPlacement:
         self,
         admin_client: DynamicClient,
         invalid_placement_namespace: Namespace,
-    ):
+    ) -> Generator[EvalHub, Any, Any]:
         """Multi-tenant (default) EvalHub CR in the tenant-labelled namespace."""
         with EvalHub(
             client=admin_client,
