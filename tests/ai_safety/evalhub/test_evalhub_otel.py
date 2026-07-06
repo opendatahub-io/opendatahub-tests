@@ -27,6 +27,17 @@ from utilities.guardrails import get_auth_headers
 
 LOGGER = structlog.get_logger(name=__name__)
 
+
+@pytest.mark.parametrize(
+    "model_namespace",
+    [
+        pytest.param(
+            {"name": "test-evalhub-otel"},
+        ),
+    ],
+    indirect=True,
+)
+@pytest.mark.tier1
 class TestEvalHubOTEL:
     """Tests for EvalHub OpenTelemetry metrics integration."""
 
