@@ -9,7 +9,12 @@ This config covers single-node P/D: Prefill is set, Worker is nil → standard D
 Physical co-location on the same host is via pod affinity (user responsibility), not controller.
 
 No custom scheduler config is specified. The controller auto-generates the full P/D
-EndpointPickerConfig with all disaggregation plugins when spec.prefill != nil
+EndpointPickerConfig with all disaggregation plugins when spec.prefill != nil.
+
+Fast image variants (``SingleNodePDFast1Config``, ``SingleNodePDFast2Config``)
+override ``accelerator_config_name_regex`` to select a fast-image
+LLMInferenceServiceConfig CR.  When the required fast CR is not present on the
+cluster, ``GpuConfig._resolve_accelerator`` automatically skips the test.
 """
 
 from utilities.constants import Labels
@@ -84,3 +89,27 @@ class SingleNodePrefillDecodeConfig(TinyLlamaOciGpuConfig):
                 ],
             },
         }
+
+
+class SingleNodePDFast1Config(SingleNodePrefillDecodeConfig):
+    """Single-node P/D with fast-1 optimized vLLM image.
+
+    Inherits all P/D behavior (NixlConnector, pod affinity, 2 GPUs) and
+    overrides ``accelerator_config_name_regex`` to select the fast-1 CR.
+    Skipped automatically when the fast-1 CR is not present on the cluster.
+    """
+
+    name = "llmisvc-singlenode-pd-fast-1"
+    accelerator_config_name_regex = ".*fast-1$"
+
+
+class SingleNodePDFast2Config(SingleNodePrefillDecodeConfig):
+    """Single-node P/D with fast-2 optimized vLLM image.
+
+    Inherits all P/D behavior (NixlConnector, pod affinity, 2 GPUs) and
+    overrides ``accelerator_config_name_regex`` to select the fast-2 CR.
+    Skipped automatically when the fast-2 CR is not present on the cluster.
+    """
+
+    name = "llmisvc-singlenode-pd-fast-2"
+    accelerator_config_name_regex = ".*fast-2$"

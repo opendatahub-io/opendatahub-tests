@@ -4,7 +4,11 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.prometheus import Prometheus
 
-from tests.model_serving.model_server.llmd.llmd_configs import SingleNodePrefillDecodeConfig
+from tests.model_serving.model_server.llmd.llmd_configs import (
+    SingleNodePDFast1Config,
+    SingleNodePDFast2Config,
+    SingleNodePrefillDecodeConfig,
+)
 from tests.model_serving.model_server.llmd.utils import (
     assert_kv_transfer,
     get_llmd_pod_by_role,
@@ -51,7 +55,21 @@ PROMPTS = [
 
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, llmisvc",
-    [({"name": NAMESPACE}, SingleNodePrefillDecodeConfig)],
+    [
+        pytest.param({"name": NAMESPACE}, SingleNodePrefillDecodeConfig, id="standard"),
+        pytest.param(
+            {"name": NAMESPACE},
+            SingleNodePDFast1Config,
+            id="fast-1",
+            marks=pytest.mark.fast_vllm,
+        ),
+        pytest.param(
+            {"name": NAMESPACE},
+            SingleNodePDFast2Config,
+            id="fast-2",
+            marks=pytest.mark.fast_vllm,
+        ),
+    ],
     indirect=True,
 )
 @pytest.mark.usefixtures("skip_if_disconnected")
