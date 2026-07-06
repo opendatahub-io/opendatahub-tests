@@ -16,11 +16,6 @@ from ocp_resources.service import Service
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError
 
-from tests.workbenches.notebooks_server.controller.upgrade.elyra_utils import (
-    list_runtime_configs,
-    parse_elyra_extensions,
-    read_runtime_config,
-)
 from tests.workbenches.notebooks_server.controller.utils import (
     WORKBENCH_TRUSTED_CA_BUNDLE_NAME,
     MutatingWebhookConfiguration,
@@ -531,40 +526,6 @@ def capture_notebook_baseline(
     )
     odh_ca_bundle_resource_version = odh_trusted_ca_bundle.instance.metadata.resourceVersion
 
-    # Capture Elyra extension and runtime config baseline
-    labextension_output = upgrade_notebook_pod.execute(
-        container=upgrade_notebook.name,
-        command=["jupyter", "labextension", "list"],
-        timeout=Timeout.TIMEOUT_1MIN,
-    )
-    elyra_extensions = parse_elyra_extensions(labextension_output=labextension_output)
-
-    # test is optional to allow for workbenches that do not support Elyra
-    if elyra_extensions:
-        LOGGER.info(f"Captured {len(elyra_extensions)} Elyra extensions in baseline")
-
-        runtime_files = list_runtime_configs(pod=upgrade_notebook_pod, container=upgrade_notebook.name)
-        runtime_configs = {}
-        for filename in runtime_files:
-            config = read_runtime_config(pod=upgrade_notebook_pod, container=upgrade_notebook.name, filename=filename)
-            runtime_configs[filename] = {
-                "display_name": config.get("display_name"),
-                "schema_name": config.get("schema_name"),
-                "metadata": {
-                    "runtime_type": config.get("metadata", {}).get("runtime_type"),
-                    "api_endpoint": config.get("metadata", {}).get("api_endpoint"),
-                },
-            }
-
-        if runtime_configs:
-            LOGGER.info(f"Captured {len(runtime_configs)} Elyra runtime config(s): {', '.join(runtime_configs.keys())}")
-        else:
-            LOGGER.info("Captured 0 Elyra runtime configs in baseline")
-    else:
-        LOGGER.info("No Elyra extensions found. Elyra upgrade tests will be skipped.")
-        elyra_extensions = None
-        runtime_configs = None
-
     baseline = {
         "ntb_creation_timestamp": creation_timestamp,
         "notebook_generation": notebook_generation,
@@ -575,8 +536,6 @@ def capture_notebook_baseline(
         "stopped_annotation_value": stopped_annotation,
         "ca_bundle_resource_version": ca_bundle_resource_version,
         "odh_ca_bundle_resource_version": odh_ca_bundle_resource_version,
-        "elyra_extensions": elyra_extensions,
-        "runtime_configs": runtime_configs,
     }
 
     ConfigMap(
