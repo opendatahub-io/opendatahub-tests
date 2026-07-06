@@ -67,7 +67,12 @@ class TestEvalHubSingleTenancyOperatorResources:
         model_namespace: Namespace,
         evalhub_st_deployment: Deployment,
     ) -> None:
-        """Operator creates a Deployment that reaches ready replicas within 5 minutes."""
+        """Given: an EvalHub CR with spec.tenancy: single in a workload namespace.
+
+        When: the operator reconciles the instance.
+
+        Then: a Deployment named after the CR exists and has at least one ready replica.
+        """
         assert evalhub_st_deployment.exists, f"Expected Deployment '{EVALHUB_ST_CR_NAME}' in {model_namespace.name}"
         status = evalhub_st_deployment.instance.status
         assert status.readyReplicas and status.readyReplicas >= 1, (
@@ -80,7 +85,12 @@ class TestEvalHubSingleTenancyOperatorResources:
         model_namespace: Namespace,
         evalhub_st_cr: SingleTenantEvalHub,
     ) -> None:
-        """Operator creates a Service on port 8443 with the correct instance selector."""
+        """Given: a single-tenancy EvalHub instance in a workload namespace.
+
+        When: the operator-created Service is inspected.
+
+        Then: it exists on port 8443 with selector instance matching the CR name.
+        """
         svc = Service(
             client=admin_client,
             name=EVALHUB_ST_CR_NAME,
@@ -103,7 +113,12 @@ class TestEvalHubSingleTenancyOperatorResources:
         model_namespace: Namespace,
         evalhub_st_route: Route,
     ) -> None:
-        """Operator creates an OpenShift Route for the single-tenant instance."""
+        """Given: a single-tenancy EvalHub instance in a workload namespace.
+
+        When: the operator-created Route is inspected.
+
+        Then: the Route exists and has a host assigned by the OpenShift router.
+        """
         assert evalhub_st_route.exists, f"Expected Route '{EVALHUB_ST_CR_NAME}' in {model_namespace.name}"
         host = evalhub_st_route.host
         assert host, "Route has no host — OpenShift router has not assigned one yet"
@@ -114,7 +129,12 @@ class TestEvalHubSingleTenancyOperatorResources:
         model_namespace: Namespace,
         evalhub_st_cr: SingleTenantEvalHub,
     ) -> None:
-        """Operator creates a metrics Service on port 8081 for Prometheus scraping."""
+        """Given: a single-tenancy EvalHub instance in a workload namespace.
+
+        When: the operator-created metrics Service is inspected.
+
+        Then: it exists and exposes port 8081 for Prometheus scraping.
+        """
         metrics_name = f"{EVALHUB_ST_CR_NAME}{EVALHUB_METRICS_SERVICE_SUFFIX}"
         svc = Service(
             client=admin_client,
@@ -133,7 +153,12 @@ class TestEvalHubSingleTenancyOperatorResources:
         model_namespace: Namespace,
         evalhub_st_cr: SingleTenantEvalHub,
     ) -> None:
-        """Operator creates a ServiceMonitor targeting the metrics Service."""
+        """Given: a single-tenancy EvalHub instance in a workload namespace.
+
+        When: the operator-created ServiceMonitor is inspected.
+
+        Then: it exists and targets the metrics Service.
+        """
         sm_name = f"{EVALHUB_ST_CR_NAME}{EVALHUB_METRICS_SERVICE_SUFFIX}"
         sm = ServiceMonitor(
             client=admin_client,
@@ -170,7 +195,12 @@ class TestEvalHubSingleTenancyRBAC:
         evalhub_st_cr: SingleTenantEvalHub,
         evalhub_st_deployment: Deployment,
     ) -> None:
-        """evalhub-tenant-admin Role exists and has rules for trustyai.opendatahub.io resources."""
+        """Given: a single-tenancy EvalHub instance with a ready Deployment.
+
+        When: the evalhub-tenant-admin Role is inspected.
+
+        Then: it exists with rules granting access to trustyai.opendatahub.io resources.
+        """
         role = Role(
             client=admin_client,
             name=EVALHUB_TENANT_ADMIN_ROLE_NAME,
@@ -191,7 +221,12 @@ class TestEvalHubSingleTenancyRBAC:
         evalhub_st_cr: SingleTenantEvalHub,
         evalhub_st_deployment: Deployment,
     ) -> None:
-        """evalhub-user Role exists and has rules."""
+        """Given: a single-tenancy EvalHub instance with a ready Deployment.
+
+        When: the evalhub-user Role is inspected.
+
+        Then: it exists with at least one RBAC rule.
+        """
         role = Role(
             client=admin_client,
             name=EVALHUB_USER_ROLE_NAME,
@@ -208,7 +243,12 @@ class TestEvalHubSingleTenancyRBAC:
         evalhub_st_cr: SingleTenantEvalHub,
         evalhub_st_deployment: Deployment,
     ) -> None:
-        """evalhub-tenant-admin-binding RoleBinding exists."""
+        """Given: a single-tenancy EvalHub instance with a ready Deployment.
+
+        When: the evalhub-tenant-admin-binding RoleBinding is inspected.
+
+        Then: it exists in the workload namespace.
+        """
         rb = RoleBinding(
             client=admin_client,
             name=EVALHUB_TENANT_ADMIN_BINDING_NAME,
@@ -222,7 +262,12 @@ class TestEvalHubSingleTenancyRBAC:
         model_namespace: Namespace,
         evalhub_st_cr: SingleTenantEvalHub,
     ) -> None:
-        """evalhub-tenant-admin-binding roleRef points to evalhub-tenant-admin (Role, not ClusterRole)."""
+        """Given: a single-tenancy EvalHub instance in a workload namespace.
+
+        When: the evalhub-tenant-admin-binding RoleBinding roleRef is inspected.
+
+        Then: roleRef kind is Role and name is evalhub-tenant-admin.
+        """
         rb = RoleBinding(
             client=admin_client,
             name=EVALHUB_TENANT_ADMIN_BINDING_NAME,
@@ -241,7 +286,12 @@ class TestEvalHubSingleTenancyRBAC:
         model_namespace: Namespace,
         evalhub_st_cr: SingleTenantEvalHub,
     ) -> None:
-        """Binding subject is system:serviceaccounts:{ns} (Group), granting all SAs admin access."""
+        """Given: a single-tenancy EvalHub instance in a workload namespace.
+
+        When: the evalhub-tenant-admin-binding subjects are inspected.
+
+        Then: a Group subject named system:serviceaccounts:{namespace} is present.
+        """
         rb = RoleBinding(
             client=admin_client,
             name=EVALHUB_TENANT_ADMIN_BINDING_NAME,
@@ -262,7 +312,12 @@ class TestEvalHubSingleTenancyRBAC:
         model_namespace: Namespace,
         evalhub_st_cr: SingleTenantEvalHub,
     ) -> None:
-        """evalhub-tenant-admin Role is owner-ref'd to the EvalHub CR for automatic GC."""
+        """Given: a single-tenancy EvalHub instance in a workload namespace.
+
+        When: the evalhub-tenant-admin Role ownerReferences are inspected.
+
+        Then: an EvalHub ownerReference pointing to the CR name is present.
+        """
         role = Role(
             client=admin_client,
             name=EVALHUB_TENANT_ADMIN_ROLE_NAME,
@@ -283,7 +338,12 @@ class TestEvalHubSingleTenancyRBAC:
         model_namespace: Namespace,
         evalhub_st_cr: SingleTenantEvalHub,
     ) -> None:
-        """evalhub-user Role is owner-ref'd to the EvalHub CR."""
+        """Given: a single-tenancy EvalHub instance in a workload namespace.
+
+        When: the evalhub-user Role ownerReferences are inspected.
+
+        Then: an EvalHub ownerReference pointing to the CR name is present.
+        """
         role = Role(
             client=admin_client,
             name=EVALHUB_USER_ROLE_NAME,
@@ -302,7 +362,12 @@ class TestEvalHubSingleTenancyRBAC:
         model_namespace: Namespace,
         evalhub_st_cr: SingleTenantEvalHub,
     ) -> None:
-        """evalhub-tenant-admin-binding RoleBinding is owner-ref'd to the EvalHub CR."""
+        """Given: a single-tenancy EvalHub instance in a workload namespace.
+
+        When: the evalhub-tenant-admin-binding ownerReferences are inspected.
+
+        Then: an EvalHub ownerReference pointing to the CR name is present.
+        """
         rb = RoleBinding(
             client=admin_client,
             name=EVALHUB_TENANT_ADMIN_BINDING_NAME,
@@ -343,7 +408,12 @@ class TestEvalHubSingleTenancyNoCrossNamespace:
         second_namespace: Namespace,
         evalhub_st_cr: SingleTenantEvalHub,
     ) -> None:
-        """evalhub-discovery ConfigMap must not be created in the unlabeled second namespace."""
+        """Given: a single-tenancy EvalHub in one namespace and an unlabeled second namespace.
+
+        When: the second namespace is checked for an evalhub-discovery ConfigMap.
+
+        Then: no such ConfigMap exists.
+        """
         cm = ConfigMap(
             client=admin_client,
             name=EVALHUB_DISCOVERY_CM_NAME,
@@ -361,7 +431,12 @@ class TestEvalHubSingleTenancyNoCrossNamespace:
         second_namespace: Namespace,
         evalhub_st_cr: SingleTenantEvalHub,
     ) -> None:
-        """No job ServiceAccount created by EvalHub should exist in the second namespace."""
+        """Given: a single-tenancy EvalHub in one namespace and an unlabeled second namespace.
+
+        When: the second namespace is checked for the EvalHub job ServiceAccount.
+
+        Then: no job ServiceAccount exists there.
+        """
         expected_sa_name = f"{evalhub_st_cr.name}-{model_namespace.name}-job"
         sa = ServiceAccount(
             client=admin_client,
@@ -379,7 +454,12 @@ class TestEvalHubSingleTenancyNoCrossNamespace:
         second_namespace: Namespace,
         evalhub_st_cr: SingleTenantEvalHub,
     ) -> None:
-        """No RoleBindings with the CR name prefix should exist in the second namespace."""
+        """Given: a single-tenancy EvalHub in one namespace and an unlabeled second namespace.
+
+        When: RoleBindings in the second namespace are listed.
+
+        Then: none have names prefixed with the EvalHub CR name.
+        """
         rbs = list(RoleBinding.get(client=admin_client, namespace=second_namespace.name))
         cr_name = evalhub_st_cr.name
         evalhub_rbs = [rb for rb in rbs if rb.name.startswith(cr_name)]
