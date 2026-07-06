@@ -21,8 +21,8 @@ BBR_PRE_PROCESSING_GRPC_PORT: int = 9004
 BBR_PRE_PROCESSING_DESTINATION_RULE_NAME: str = "payload-pre-processing"
 BBR_POST_PROCESSING_DEPLOYMENT_NAME: str = "payload-processing"
 BBR_ENVOY_FILTER_NAME: str = "payload-processing"
-BBR_PRE_FILTER_NAME: str = "envoy.filters.http.ext_proc.bbr-pre"
-BBR_POST_FILTER_NAME: str = "envoy.filters.http.ext_proc.bbr"
+BBR_PRE_FILTER_NAME: str = "envoy.filters.http.ext_proc.ipp-pre"
+BBR_POST_FILTER_NAME: str = "envoy.filters.http.ext_proc.ipp"
 ENVOY_FILTER_INSERT_BEFORE: str = "INSERT_BEFORE"
 ENVOY_FILTER_INSERT_AFTER: str = "INSERT_AFTER"
 
