@@ -22,7 +22,7 @@ from tests.ai_safety.nemo_guardrails.constants import (
     BBR_SUB_FILTER_NAME,
     MCP_GATEWAY_NAME,
     MCP_GATEWAY_NAMESPACE,
-    PresidioEntity,
+    PresidioEntity, MCP_ENVOY_FILTER_NAME,
 )
 from tests.ai_safety.nemo_guardrails.utils import (
     create_llm_judge_config,
@@ -665,7 +665,7 @@ def bbr_envoy_filter(
             "apiVersion": "networking.istio.io/v1alpha3",
             "kind": "EnvoyFilter",
             "metadata": {
-                "name": BBR_ENVOY_FILTER_NAME,
+                "name": MCP_ENVOY_FILTER_NAME,
                 "namespace": MCP_GATEWAY_NAMESPACE,
             },
             "spec": {
