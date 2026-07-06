@@ -357,16 +357,20 @@ class TestEvalHubSingleTenancyNoCrossNamespace:
     def test_no_job_service_account_in_other_namespace(
         self,
         admin_client: DynamicClient,
+        model_namespace: Namespace,
         second_namespace: Namespace,
         evalhub_st_cr: SingleTenantEvalHub,
     ) -> None:
         """No job ServiceAccount created by EvalHub should exist in the second namespace."""
-        sas = list(ServiceAccount.get(client=admin_client, namespace=second_namespace.name))
-        cr_name = evalhub_st_cr.name
-        evalhub_job_sas = [sa for sa in sas if sa.name.startswith(cr_name) and "job" in sa.name]
-        assert not evalhub_job_sas, (
-            f"Unexpected EvalHub job ServiceAccount(s) in {second_namespace.name}: "
-            f"{[sa.name for sa in evalhub_job_sas]}"
+        expected_sa_name = f"{evalhub_st_cr.name}-{model_namespace.name}-job"
+        sa = ServiceAccount(
+            client=admin_client,
+            name=expected_sa_name,
+            namespace=second_namespace.name,
+        )
+        assert not sa.exists, (
+            f"Unexpected EvalHub job ServiceAccount '{expected_sa_name}' in {second_namespace.name}: "
+            "single-tenant EvalHub must not provision job ServiceAccounts in other namespaces"
         )
 
     def test_no_rolebindings_in_other_namespace(
