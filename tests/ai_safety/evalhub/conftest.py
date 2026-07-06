@@ -1086,29 +1086,6 @@ def evalhub_otel_http_cr(
         yield evalhub
 
 
-@pytest.fixture(scope="class")
-def evalhub_otel_default_interval_cr(
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
-    evalhub_otel_grpc_endpoint: str,
-) -> Generator[EvalHub, Any, Any]:
-    """Create EvalHub CR with default export interval (no env var set)."""
-    with EvalHub(
-        client=admin_client,
-        name="evalhub-default-interval",
-        namespace=model_namespace.name,
-        database={"type": "sqlite"},
-        otel={
-            "enabled": True,
-            "exporterType": "otlp-grpc",
-            "endpoint": evalhub_otel_grpc_endpoint,
-            "insecure": True,
-        },
-        # No OTEL_METRIC_EXPORT_INTERVAL set - should default to 60s
-        wait_for_resource=True,
-    ) as evalhub:
-        yield evalhub
-
 
 @pytest.fixture(scope="class")
 def evalhub_otel_dual_sink_cr(
