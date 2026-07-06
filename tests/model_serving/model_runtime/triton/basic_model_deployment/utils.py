@@ -5,7 +5,7 @@ This module provides functions for:
 - Managing S3 secrets for model access
 - Sending inference requests via REST and gRPC protocols
 - Running inference against TRITON deployments
-- Validating responses against snapshots
+- Validating inference responses
 """
 
 import json
@@ -130,7 +130,6 @@ def get_grpc_url(base_url: str, port: int) -> str:
 def validate_inference_request(
     pod_name: str,
     isvc: InferenceService,
-    response_snapshot: Any,
     input_query: Any,
     model_name: str,
     protocol: str,

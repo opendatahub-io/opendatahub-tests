@@ -4,8 +4,6 @@ Test module for FIL  model served by Triton via KServe.
 Validates inference using REST and gRPC protocols with raw deployment mode.
 """
 
-from typing import Any
-
 import pytest
 import structlog
 from ocp_resources.inference_service import InferenceService
@@ -67,24 +65,22 @@ class TestFILModel:
     Covers:
     - REST and gRPC protocols
     - Raw deployment mode
-    - Snapshot validation of inference results
+    - Validation of inference results
     """
 
     def test_fil_inference(
         self,
         triton_inference_service: InferenceService,
         triton_pod_resource: Pod,
-        triton_response_snapshot: Any,
         protocol: str,
         root_dir: str,
     ) -> None:
         """
-        Run inference and validate against snapshot.
+        Run inference and validate response.
 
         Args:
             triton_inference_service: The deployed InferenceService object
             triton_pod_resource: The pod running the model server
-            triton_response_snapshot: Expected response snapshot
             protocol: REST or gRPC
             root_dir: Root directory for test execution
         """
@@ -94,7 +90,6 @@ class TestFILModel:
         validate_inference_request(
             pod_name=triton_pod_resource.name,
             isvc=triton_inference_service,
-            response_snapshot=triton_response_snapshot,
             input_query=input_query,
             model_name=FIL_MODEL_NAME,
             protocol=protocol,

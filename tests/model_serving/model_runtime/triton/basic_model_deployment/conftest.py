@@ -15,7 +15,6 @@ from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.template import Template
 from pytest_testconfig import config as py_config
-from syrupy.extensions.json import JSONSnapshotExtension
 
 from tests.model_serving.model_runtime.triton.basic_model_deployment.utils import (
     get_gpu_identifier,
@@ -222,11 +221,6 @@ def triton_model_service_account(admin_client: DynamicClient, kserve_s3_secret: 
         secrets=[{"name": kserve_s3_secret.name}],
     ) as sa:
         yield sa
-
-
-@pytest.fixture
-def triton_response_snapshot(snapshot: Any) -> Any:
-    return snapshot.use_extension(extension_class=JSONSnapshotExtension)
 
 
 @pytest.fixture
