@@ -14,7 +14,6 @@ import pytest
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.deployment import Deployment
 from ocp_resources.evalhub import EvalHub
 from ocp_resources.namespace import Namespace
@@ -28,25 +27,12 @@ from tests.ai_safety.evalhub.single_tenancy.constants import (
     EVALHUB_ST_CR_NAME,
     EVALHUB_USER_ROLE_NAME,
 )
-from tests.ai_safety.evalhub.single_tenancy.utils import SingleTenantEvalHub
+from tests.ai_safety.evalhub.single_tenancy.utils import SingleTenantEvalHub, _is_evalhub_crd_available
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import Timeout
 from utilities.infra import create_inference_token, create_ns
 
 LOGGER = structlog.get_logger(name=__name__)
-
-
-def _is_evalhub_crd_available(admin_client: DynamicClient) -> bool:
-    """Check if EvalHub CRD is installed on the cluster."""
-    crd_name = "evalhubs.trustyai.opendatahub.io"
-    try:
-        crd = CustomResourceDefinition(
-            client=admin_client,
-            name=crd_name,
-        )
-        return crd.exists
-    except AttributeError, KeyError:
-        return False
 
 
 # ---------------------------------------------------------------------------
