@@ -18,11 +18,11 @@ from ocp_resources.subscription import Subscription
 from ocp_utilities.operators import install_operator, uninstall_operator
 
 from tests.ai_safety.nemo_guardrails.constants import (
-    BBR_ENVOY_FILTER_NAME,
     BBR_SUB_FILTER_NAME,
+    MCP_ENVOY_FILTER_NAME,
     MCP_GATEWAY_NAME,
     MCP_GATEWAY_NAMESPACE,
-    PresidioEntity, MCP_ENVOY_FILTER_NAME,
+    PresidioEntity,
 )
 from tests.ai_safety.nemo_guardrails.utils import (
     create_llm_judge_config,
