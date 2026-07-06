@@ -1,6 +1,8 @@
 # Kueue Configuration
-SINGLE_JOB_CPU_QUOTA = "2"
-SINGLE_JOB_MEMORY_QUOTA = "4Gi"
+# SINGLE_JOB quota is sized to hold exactly one EvalHub job (which requests ~300m CPU, ~640Mi memory).
+# This ensures a second job is reliably inadmissible when the first holds the quota.
+SINGLE_JOB_CPU_QUOTA = "400m"
+SINGLE_JOB_MEMORY_QUOTA = "700Mi"
 MULTI_JOB_CPU_QUOTA = "8"
 MULTI_JOB_MEMORY_QUOTA = "16Gi"
 

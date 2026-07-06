@@ -216,7 +216,7 @@ def wait_for_kueue_crds_available(client: DynamicClient) -> bool:
     # Check kueue-controller-manager pods exist and are ready
     pods = list(
         Pod.get(
-            label_selector="control-plane=controller-manager,app.kubernetes.io/name=kueue",
+            label_selector="app.openshift.io/name=kueue",
             namespace="openshift-kueue-operator",
             client=client,
         )
