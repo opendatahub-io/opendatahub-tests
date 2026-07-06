@@ -121,7 +121,12 @@ class TestEvalHubInvalidPlacement:
         self,
         invalid_placement_evalhub: EvalHub,
     ) -> None:
-        """Status.phase transitions to 'Error' after the operator detects the placement conflict."""
+        """Given: a multi-tenant (default) EvalHub CR in a namespace labelled as a tenant.
+
+        When: the operator reconciles and detects the placement conflict.
+
+        Then: status.phase transitions to Error.
+        """
 
         def _get_phase() -> str | None:
             return (invalid_placement_evalhub.instance.status or {}).get("phase")
@@ -146,7 +151,12 @@ class TestEvalHubInvalidPlacement:
         invalid_placement_namespace: Namespace,
         invalid_placement_evalhub: EvalHub,
     ) -> None:
-        """No Deployment is created when EvalHub enters InvalidPlacement."""
+        """Given: a multi-tenant EvalHub CR in InvalidPlacement (tenant-labelled namespace).
+
+        When: the operator halts reconciliation without creating a Deployment.
+
+        Then: no Deployment named after the CR exists in the namespace.
+        """
         deployment = Deployment(
             client=admin_client,
             name=invalid_placement_evalhub.name,
@@ -182,7 +192,12 @@ class TestEvalHubModeSwitchSingleToMulti:
         evalhub_st_cr: SingleTenantEvalHub,
         evalhub_st_deployment: Deployment,
     ) -> None:
-        """Pre-condition: convenience Roles exist before the mode switch."""
+        """Given: an EvalHub CR with spec.tenancy: single and a ready Deployment.
+
+        When: the convenience Roles are inspected before any mode switch.
+
+        Then: evalhub-tenant-admin and evalhub-user Roles exist in the workload namespace.
+        """
         admin_role = Role(
             client=admin_client,
             name=EVALHUB_TENANT_ADMIN_ROLE_NAME,
@@ -208,7 +223,12 @@ class TestEvalHubModeSwitchSingleToMulti:
         model_namespace: Namespace,
         evalhub_st_cr: SingleTenantEvalHub,
     ) -> None:
-        """Patching spec.tenancy to multi causes the operator to delete the convenience Roles."""
+        """Given: a single-tenancy EvalHub with convenience Roles in its namespace.
+
+        When: spec.tenancy is patched to multi.
+
+        Then: evalhub-tenant-admin, evalhub-user, and evalhub-tenant-admin-binding are deleted.
+        """
         ResourceEditor(patches={evalhub_st_cr: {"spec": {"tenancy": EVALHUB_TENANCY_MULTI}}}).update()
         LOGGER.info(f"Patched '{evalhub_st_cr.name}' spec.tenancy → multi")
 
@@ -237,7 +257,12 @@ class TestEvalHubModeSwitchSingleToMulti:
         labeled_tenant_namespace: Namespace,
         evalhub_st_cr: SingleTenantEvalHub,
     ) -> None:
-        """After switch to multi, RBAC is provisioned in labeled tenant namespace."""
+        """Given: a single-tenancy EvalHub switched to multi mode with a labeled tenant namespace.
+
+        When: the operator reconciles cross-namespace tenant RBAC.
+
+        Then: jobs-writer and job-config RoleBindings are created in the tenant namespace.
+        """
         cr_name = evalhub_st_cr.name
 
         def _tenant_rbac_ready() -> bool:
@@ -288,7 +313,12 @@ class TestEvalHubModeSwitchMultiToSingle:
         evalhub_mt_for_switch: EvalHub,
         evalhub_mt_switch_deployment: Deployment,
     ) -> None:
-        """Pre-condition: multi-tenant RBAC is provisioned in the labeled namespace."""
+        """Given: a multi-tenancy EvalHub with a labeled tenant namespace.
+
+        When: tenant RBAC is inspected before switching to single mode.
+
+        Then: a jobs-writer RoleBinding exists in the tenant namespace.
+        """
         cr_name = evalhub_mt_for_switch.name
 
         def _rbac_ready() -> bool:
@@ -314,7 +344,13 @@ class TestEvalHubModeSwitchMultiToSingle:
         model_namespace: Namespace,
         evalhub_mt_for_switch: EvalHub,
     ) -> None:
-        """Patching spec.tenancy to single creates evalhub-tenant-admin and evalhub-user Roles."""
+        """Given: a multi-tenancy EvalHub with cross-namespace RBAC in a tenant namespace.
+
+        When: spec.tenancy is patched to single.
+
+        Then: evalhub-tenant-admin, evalhub-user, and evalhub-tenant-admin-binding
+        are created in the instance namespace.
+        """
         ResourceEditor(patches={evalhub_mt_for_switch: {"spec": {"tenancy": EVALHUB_TENANCY_SINGLE}}}).update()
         LOGGER.info(f"Patched '{evalhub_mt_for_switch.name}' spec.tenancy → single")
 
@@ -342,7 +378,12 @@ class TestEvalHubModeSwitchMultiToSingle:
         labeled_tenant_namespace: Namespace,
         evalhub_mt_for_switch: EvalHub,
     ) -> None:
-        """After switch to single, cross-namespace RoleBindings are cleaned up."""
+        """Given: a multi-tenancy EvalHub switched to single mode.
+
+        When: the operator cleans up cross-namespace RoleBindings.
+
+        Then: jobs-writer and job-config RoleBindings are removed from the tenant namespace.
+        """
         cr_name = evalhub_mt_for_switch.name
 
         def _tenant_rbac_gone() -> bool:
@@ -395,7 +436,12 @@ class TestEvalHubTenantConfigMapHotMount:
         evalhub_st_cr: SingleTenantEvalHub,
         evalhub_st_deployment: Deployment,
     ) -> None:
-        """Creating a tenant-labeled ConfigMap causes the Deployment generation to increment."""
+        """Given: a single-tenancy EvalHub with a ready Deployment.
+
+        When: a ConfigMap labelled evalhub-provider-type=tenant is created in the instance namespace.
+
+        Then: the Deployment metadata.generation increments (rollout triggered).
+        """
         initial_generation = evalhub_st_deployment.instance.metadata.generation or 0
         cm_name = "evalhub-st-test-tenant-provider"
 
@@ -456,7 +502,12 @@ class TestEvalHubSingleTenancyDeletion:
         evalhub_st_cr: SingleTenantEvalHub,
         evalhub_st_deployment: Deployment,
     ) -> None:
-        """After EvalHub CR deletion, convenience Roles and RoleBinding are garbage-collected."""
+        """Given: a single-tenancy EvalHub with owner-referenced convenience Roles and RoleBinding.
+
+        When: the EvalHub CR is deleted.
+
+        Then: evalhub-tenant-admin, evalhub-user, and evalhub-tenant-admin-binding are garbage-collected.
+        """
         # Verify Roles exist before deletion (pre-condition)
         admin_role = Role(
             client=admin_client,
