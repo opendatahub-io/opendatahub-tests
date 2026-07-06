@@ -1018,7 +1018,9 @@ def otel_collector_pod(
 @pytest.fixture(scope="class")
 def evalhub_otel_grpc_endpoint(otel_collector_service: Service) -> str:
     """Get OTEL collector gRPC endpoint."""
-    return f"{otel_collector_service.name}.{otel_collector_service.namespace}.svc.cluster.local:{OTEL_COLLECTOR_GRPC_PORT}"
+    return (
+        f"{otel_collector_service.name}.{otel_collector_service.namespace}.svc.cluster.local:{OTEL_COLLECTOR_GRPC_PORT}"
+    )
 
 
 @pytest.fixture(scope="class")
@@ -1229,4 +1231,3 @@ def evalhub_otel_dual_sink_route(
 def evalhub_otel_ca_bundle_file(admin_client: DynamicClient) -> str:
     """CA bundle file for EvalHub OTEL routes."""
     return create_ca_bundle_file(client=admin_client)
-

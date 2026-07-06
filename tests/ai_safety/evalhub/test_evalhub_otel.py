@@ -13,7 +13,6 @@ import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
-from ocp_resources.evalhub import EvalHub
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.route import Route
@@ -94,9 +93,9 @@ class TestEvalHubOTEL:
             None,
         )
         assert evalhub_container is not None, "evalhub container not found in pod"
-        assert (
-            evalhub_container.restartCount == 0
-        ), f"Container restarted {evalhub_container.restartCount} times - indicates initialization failure"
+        assert evalhub_container.restartCount == 0, (
+            f"Container restarted {evalhub_container.restartCount} times - indicates initialization failure"
+        )
 
         # Check logs for OTEL configuration
         logs = pod.log(container="evalhub")
@@ -134,7 +133,7 @@ class TestEvalHubOTEL:
 
         for i in range(5):
             response = requests.get(url=url, headers=headers, verify=evalhub_otel_ca_bundle_file, timeout=10)
-            assert response.status_code == 200, f"Health check {i+1} failed: {response.status_code}"
+            assert response.status_code == 200, f"Health check {i + 1} failed: {response.status_code}"
             time.sleep(1)
 
         LOGGER.info("Generated 5 health check requests")
@@ -173,7 +172,7 @@ class TestEvalHubOTEL:
 
         for i in range(5):
             response = requests.get(url=url, headers=headers, verify=evalhub_otel_ca_bundle_file, timeout=10)
-            assert response.status_code == 200, f"Health check {i+1} failed: {response.status_code}"
+            assert response.status_code == 200, f"Health check {i + 1} failed: {response.status_code}"
             time.sleep(1)
 
         LOGGER.info("Generated 5 health check requests for HTTP exporter test")
@@ -281,7 +280,7 @@ class TestEvalHubOTEL:
 
         for i in range(10):
             response = requests.get(url=url, headers=headers, verify=evalhub_otel_ca_bundle_file, timeout=10)
-            assert response.status_code == 200, f"Request {i+1} failed"
+            assert response.status_code == 200, f"Request {i + 1} failed"
 
         LOGGER.info("Generated 10 health check requests for dual-sink test")
 
@@ -300,22 +299,21 @@ class TestEvalHubOTEL:
         evalhub_pod = pods[0]
 
         # Exec curl from within the pod to access metrics service
-        prom_metrics = evalhub_pod.execute(
-            command=["curl", "-s", "http://localhost:8081/metrics"],
-            container="evalhub"
-        )
+        prom_metrics = evalhub_pod.execute(command=["curl", "-s", "http://localhost:8081/metrics"], container="evalhub")
 
         # Verify the health path metric is present
-        assert EVALHUB_HEALTH_PATH in prom_metrics, (
-            f"Expected '{EVALHUB_HEALTH_PATH}' metric in Prometheus output"
-        )
+        assert EVALHUB_HEALTH_PATH in prom_metrics, f"Expected '{EVALHUB_HEALTH_PATH}' metric in Prometheus output"
 
         # Parse the counter value from Prometheus metrics
         # Format: http_server_request_count_total{http_route="/api/v1/health",...} 10
-        health_counter_pattern = r'http_server_request_count_total\{[^}]*http_route="' + re.escape(EVALHUB_HEALTH_PATH) + r'"[^}]*\}\s+(\d+)'
+        health_counter_pattern = (
+            r'http_server_request_count_total\{[^}]*http_route="' + re.escape(EVALHUB_HEALTH_PATH) + r'"[^}]*\}\s+(\d+)'
+        )
         prom_match = re.search(health_counter_pattern, prom_metrics)
 
-        assert prom_match, f"Could not find http_server_request_count_total for {EVALHUB_HEALTH_PATH} in Prometheus metrics"
+        assert prom_match, (
+            f"Could not find http_server_request_count_total for {EVALHUB_HEALTH_PATH} in Prometheus metrics"
+        )
         prom_count = int(prom_match.group(1))
 
         LOGGER.info(f"Prometheus endpoint shows count: {prom_count}")
@@ -364,9 +362,7 @@ class TestEvalHubOTEL:
             url = f"https://{evalhub_otel_grpc_route.host}{endpoint}"
             response = requests.get(url=url, headers=headers, verify=evalhub_otel_ca_bundle_file, timeout=10)
             # Endpoints should respond (200, 400, 404, 401 all valid), just not crash (500, 502, 503)
-            assert response.status_code < 500, (
-                f"Endpoint {endpoint} crashed with status {response.status_code}"
-            )
+            assert response.status_code < 500, f"Endpoint {endpoint} crashed with status {response.status_code}"
             LOGGER.info(f"Accessed endpoint {endpoint}: {response.status_code}")
 
         # Wait for metrics export
