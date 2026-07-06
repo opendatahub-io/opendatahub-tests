@@ -51,7 +51,7 @@ class TestNemoGuardrailsMCP:
         When: CR spec is inspected
         Then: mcpGateway entry references the expected gateway name and namespace
         """
-        mcp_gateway = nemo_guardrails_mcp.instance.spec.mcpGateway
+        mcp_gateway = nemo_guardrails_mcp.kind_dict["spec"]["mcpGateway"]
         assert mcp_gateway, "CR spec.mcpGateway should not be empty"
         assert mcp_gateway["name"] == MCP_GATEWAY_NAME, (
             f"Expected mcpGateway.name={MCP_GATEWAY_NAME!r}, got {mcp_gateway['name']!r}"
