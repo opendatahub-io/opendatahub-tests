@@ -161,10 +161,10 @@ class WorkbenchImageBaseline:
             f"{prefix}_notebook_generation": str(self.notebook_generation),
             f"{prefix}_upgrade_marker": self.upgrade_marker,
             f"{prefix}_elyra_extensions": (
-                json.dumps(self.elyra_extensions, sort_keys=True) if self.elyra_extensions else ""
+                json.dumps(self.elyra_extensions, sort_keys=True) if self.elyra_extensions is not None else ""
             ),
             f"{prefix}_runtime_configs": (
-                json.dumps(self.runtime_configs, sort_keys=True) if self.runtime_configs else ""
+                json.dumps(self.runtime_configs, sort_keys=True) if self.runtime_configs is not None else ""
             ),
         }
 
@@ -211,6 +211,9 @@ def get_workbench_image_specs() -> list[WorkbenchImageSpec]:
     """Return the IDE matrix for N-1 survival tests."""
     is_upstream = py_config.get("distribution") == "upstream"
     jupyter_imagestream = "jupyter-minimal-notebook" if is_upstream else "s2i-minimal-notebook"
+    datascience_imagestream = (
+        "jupyter-datascience-ubi9-python" if is_upstream else "jupyter-datascience-notebook-imagestream"
+    )
 
     return [
         WorkbenchImageSpec(
@@ -222,7 +225,7 @@ def get_workbench_image_specs() -> list[WorkbenchImageSpec]:
         ),
         WorkbenchImageSpec(
             ide="jupyter-elyra",
-            imagestream_name="jupyter-datascience-ubi9-python",
+            imagestream_name=datascience_imagestream,
             notebook_name="upgrade-n1-jupyter-elyra",
             baseline_prefix="jupyter-elyra",
             pvc_name="upgrade-n1-jupyter-elyra-storage",

@@ -233,11 +233,19 @@ def verify_post_upgrade_elyra_extensions_preserved(
         "No Elyra extensions in baseline. This test requires Elyra to have been present pre-upgrade."
     )
 
-    output = pod.execute(
-        container=notebook.name,
-        command=["jupyter", "labextension", "list"],
-        timeout=Timeout.TIMEOUT_1MIN,
-    )
+    try:
+        output = pod.execute(
+            container=notebook.name,
+            command=["jupyter", "labextension", "list"],
+            timeout=Timeout.TIMEOUT_1MIN,
+        )
+    except ExecOnPodError as e:
+        collect_pod_information(pod)
+        raise AssertionError(
+            f"Failed to execute 'jupyter labextension list' on pod '{pod.name}' after upgrade. "
+            f"Cannot verify Elyra extensions preservation. Error: {e}"
+        ) from e
+
     current_extensions = parse_elyra_extensions(labextension_output=output)
 
     # Check for removed extensions

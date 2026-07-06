@@ -223,9 +223,9 @@ class TestPostUpgradeJupyterElyraWorkbench:
         n1_jupyter_elyra_notebook: Notebook,
         n1_jupyter_elyra_baseline: WorkbenchImageBaseline,
     ) -> None:
-        """Verify Elyra extensions survived upgrade unchanged.
-
-        Skips if Elyra was not present in the pre-upgrade baseline.
+        """Given the pre-upgrade Elyra baseline,
+        When Elyra extensions are checked after upgrade,
+        Then all extensions are preserved with unchanged status.
         """
         verify_post_upgrade_elyra_extensions_preserved(
             pod=n1_jupyter_elyra_pod,
@@ -241,9 +241,9 @@ class TestPostUpgradeJupyterElyraWorkbench:
         n1_jupyter_elyra_notebook: Notebook,
         n1_jupyter_elyra_baseline: WorkbenchImageBaseline,
     ) -> None:
-        """Verify Elyra runtime configs survived upgrade unchanged.
-
-        Skips if Elyra was not present in the pre-upgrade baseline.
+        """Given the pre-upgrade Elyra baseline,
+        When runtime configurations are checked after upgrade,
+        Then all configs are preserved with unchanged content.
         """
         verify_post_upgrade_elyra_runtime_configs_preserved(
             pod=n1_jupyter_elyra_pod,
