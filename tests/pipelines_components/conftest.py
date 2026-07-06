@@ -28,6 +28,7 @@ from tests.pipelines_components.constants import (
     DSPA_PIPELINE_DEPLOYMENT,
     DSPA_S3_BUCKET,
     DSPA_S3_SECRET,
+    EXTERNAL_S3_SECRET,
     MANAGED_PIPELINES_IMAGE,
     MINIO_MC_IMAGE,
     MINIO_UPLOADER_SECURITY_CONTEXT,
@@ -241,9 +242,6 @@ def dspa_s3_credentials(
         }
     )
     return secret
-
-
-EXTERNAL_S3_SECRET: str = "external-s3-credentials"
 
 
 @pytest.fixture(scope="class")
