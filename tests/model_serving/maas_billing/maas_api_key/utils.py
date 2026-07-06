@@ -7,8 +7,9 @@ from urllib.parse import quote
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import NotFoundError, ResourceNotFoundError
 from requests import Response
-from timeout_sampler import TimeoutSampler
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_serving.maas_billing.utils import build_maas_headers
 from utilities.resources.auth_policy import AuthPolicy
@@ -243,6 +244,44 @@ def search_active_api_keys(
 def build_inference_url(maas_scheme: str, maas_host: str, model_name: str) -> str:
     """Build the chat completions inference URL for a given model."""
     return f"{maas_scheme}://{maas_host}/llm/{model_name}/v1/chat/completions"
+
+
+def wait_for_auth_policy_accepted(
+    admin_client: DynamicClient,
+    policy_name: str,
+    namespace: str,
+    timeout: int = 300,
+    reconciliation_hint: str = ("Ensure a MaaSAuthPolicy exists to trigger gateway auth reconciliation."),
+) -> AuthPolicy:
+    """Poll until an AuthPolicy exists and its Accepted condition is True."""
+    auth_policy = AuthPolicy(
+        client=admin_client,
+        name=policy_name,
+        namespace=namespace,
+    )
+    try:
+        for _ in TimeoutSampler(
+            wait_timeout=timeout,
+            sleep=5,
+            func=auth_policy.get,
+            exceptions_dict={NotFoundError: [], ResourceNotFoundError: []},
+        ):
+            if not auth_policy.exists:
+                continue
+            accepted_condition = get_auth_policy_condition(
+                admin_client=admin_client,
+                policy_name=policy_name,
+                namespace=namespace,
+                condition_type="Accepted",
+            )
+            if accepted_condition is not None and accepted_condition.get("status") == "True":
+                LOGGER.info(f"AuthPolicy '{namespace}/{policy_name}' is Accepted after MaaSAuthPolicy reconciliation")
+                return auth_policy
+    except TimeoutExpiredError as error:
+        raise AssertionError(
+            f"Timed out waiting for AuthPolicy '{namespace}/{policy_name}' to become Accepted. {reconciliation_hint}"
+        ) from error
+    raise AssertionError(f"AuthPolicy '{namespace}/{policy_name}' did not become Accepted")
 
 
 def get_auth_policy_callback_url(
