@@ -13,7 +13,7 @@ from tests.ai_hub.mcp_servers.config.constants import (
     EXPECTED_REDHAT_MCP_LABEL_DEFINITION,
     PARTNER_MCP_LABEL,
 )
-from tests.ai_hub.utils import execute_get_command_with_retry
+from tests.ai_hub.utils import execute_get_command, execute_get_command_with_retry
 
 LOGGER = structlog.get_logger(name=__name__)
 REQUIRED_SERVER_FIELDS: list[str] = ["name", "version", "description", "readme"]
@@ -210,7 +210,7 @@ class TestDefaultMCPCatalogSourceValidations:
     ):
         """Verify toolLimit exceeding maximum (100) is rejected (TC-API-023)."""
         with pytest.raises(ResourceNotFoundError):
-            execute_get_command_with_retry(
+            execute_get_command(
                 url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
                 headers=model_registry_rest_headers,
                 params={"includeTools": "true", "toolLimit": "101"},
