@@ -854,14 +854,14 @@ def otel_collector_config(
     otel_collector_namespace: Namespace,
 ) -> Generator[ConfigMap, Any, Any]:
     """Create OTEL collector configuration."""
-    config_yaml = """
+    config_yaml = f"""
 receivers:
   otlp:
     protocols:
       grpc:
-        endpoint: 0.0.0.0:4317
+        endpoint: 0.0.0.0:{OTEL_COLLECTOR_GRPC_PORT}
       http:
-        endpoint: 0.0.0.0:4318
+        endpoint: 0.0.0.0:{OTEL_COLLECTOR_HTTP_PORT}
 
 processors:
   batch:
@@ -874,7 +874,7 @@ exporters:
   logging:
     loglevel: debug
   prometheus:
-    endpoint: "0.0.0.0:8889"
+    endpoint: "0.0.0.0:{OTEL_COLLECTOR_PROMETHEUS_PORT}"
     namespace: evalhub
     send_timestamps: true
     metric_expiration: 180m
@@ -1026,7 +1026,10 @@ def evalhub_otel_grpc_endpoint(otel_collector_service: Service) -> str:
 @pytest.fixture(scope="class")
 def evalhub_otel_http_endpoint(otel_collector_service: Service) -> str:
     """Get OTEL collector HTTP endpoint."""
-    return f"http://{otel_collector_service.name}.{otel_collector_service.namespace}.svc.cluster.local:{OTEL_COLLECTOR_HTTP_PORT}"
+    return (
+        f"http://{otel_collector_service.name}.{otel_collector_service.namespace}"
+        f".svc.cluster.local:{OTEL_COLLECTOR_HTTP_PORT}"
+    )
 
 
 @pytest.fixture(scope="class")
