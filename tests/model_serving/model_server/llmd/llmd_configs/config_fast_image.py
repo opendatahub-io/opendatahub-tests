@@ -16,6 +16,12 @@ When the required fast CR is not present on the cluster,
 """
 
 from .config_models import TinyLlamaOciGpuConfig
+from .config_singlenode_prefill_decode import SingleNodePrefillDecodeConfig
+
+# Regexes for matching fast-image LLMInferenceServiceConfig CR names.
+# Used by all fast-image config classes to avoid duplicating the pattern.
+FAST_1_REGEX = ".*fast-1$"
+FAST_2_REGEX = ".*fast-2$"
 
 
 class FastImageConfig(TinyLlamaOciGpuConfig):
@@ -36,11 +42,35 @@ class TinyLlamaFast1Config(FastImageConfig):
     """TinyLlama via OCI, GPU inference with the fast-1 optimized vLLM image."""
 
     name = "llmisvc-tinyllama-oci-fast-1"
-    accelerator_config_name_regex = ".*fast-1$"
+    accelerator_config_name_regex = FAST_1_REGEX
 
 
 class TinyLlamaFast2Config(FastImageConfig):
     """TinyLlama via OCI, GPU inference with the fast-2 optimized vLLM image."""
 
     name = "llmisvc-tinyllama-oci-fast-2"
-    accelerator_config_name_regex = ".*fast-2$"
+    accelerator_config_name_regex = FAST_2_REGEX
+
+
+class SingleNodePDFast1Config(SingleNodePrefillDecodeConfig):
+    """Single-node P/D with fast-1 optimized vLLM image.
+
+    Inherits all P/D behavior (NixlConnector, pod affinity, 2 GPUs) and
+    overrides ``accelerator_config_name_regex`` to select the fast-1 CR.
+    Skipped automatically when the fast-1 CR is not present on the cluster.
+    """
+
+    name = "llmisvc-singlenode-pd-fast-1"
+    accelerator_config_name_regex = FAST_1_REGEX
+
+
+class SingleNodePDFast2Config(SingleNodePrefillDecodeConfig):
+    """Single-node P/D with fast-2 optimized vLLM image.
+
+    Inherits all P/D behavior (NixlConnector, pod affinity, 2 GPUs) and
+    overrides ``accelerator_config_name_regex`` to select the fast-2 CR.
+    Skipped automatically when the fast-2 CR is not present on the cluster.
+    """
+
+    name = "llmisvc-singlenode-pd-fast-2"
+    accelerator_config_name_regex = FAST_2_REGEX
