@@ -498,6 +498,8 @@ class ContainerImages:
 
 
 TRUSTYAI_SERVICE_NAME: str = "trustyai-service"
+QWEN_ISVC_NAME = "qwen-isvc"
+QWEN_MODEL_NAME: str = "qwen25-05b-instruct"
 
 LLM_D_INFERENCE_SIM_NAME = "llm-d-inference-sim"
 
