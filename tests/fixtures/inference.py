@@ -62,30 +62,44 @@ def vllm_cpu_runtime(
 
 @pytest.fixture(scope="class")
 def qwen_isvc(
+    pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     model_namespace: Namespace,
     minio_pod: Pod,
     minio_service: Service,
     minio_data_connection: Secret,
     vllm_cpu_runtime: ServingRuntime,
+    teardown_resources: bool,
 ) -> Generator[InferenceService, Any, Any]:
-    with create_isvc(
+    isvc = InferenceService(
         client=admin_client,
         name=QWEN_MODEL_NAME,
         namespace=model_namespace.name,
-        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-        model_format="vLLM",
-        runtime=vllm_cpu_runtime.name,
-        storage_key=minio_data_connection.name,
-        storage_path="Qwen2.5-0.5B-Instruct",
-        wait_for_predictor_pods=False,
-        enable_auth=False,
-        resources={
-            "requests": {"cpu": "1", "memory": "6Gi"},
-            "limits": {"cpu": "2", "memory": "12Gi"},
-        },
-    ) as isvc:
+    )
+
+    if pytestconfig.option.post_upgrade:
         yield isvc
+        if teardown_resources:
+            isvc.clean_up()
+    else:
+        with create_isvc(
+            client=admin_client,
+            name=QWEN_MODEL_NAME,
+            namespace=model_namespace.name,
+            deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+            model_format="vLLM",
+            runtime=vllm_cpu_runtime.name,
+            storage_key=minio_data_connection.name,
+            storage_path="Qwen2.5-0.5B-Instruct",
+            wait_for_predictor_pods=False,
+            enable_auth=False,
+            resources={
+                "requests": {"cpu": "1", "memory": "6Gi"},
+                "limits": {"cpu": "2", "memory": "12Gi"},
+            },
+            teardown=teardown_resources,
+        ) as isvc:
+            yield isvc
 
 
 @pytest.fixture(scope="class")
