@@ -170,11 +170,18 @@ class GpuConfig(LLMISvcConfig):
     # Overridden by build() after accelerator detection (e.g. "amd.com/gpu" on AMD clusters).
     accelerator = "nvidia.com/gpu"
 
-    # Regex matched against LLMInferenceServiceConfig CR names during discovery.
-    # The default negative lookahead excludes fast-image CRs (e.g. "…fast-1", "…fast-2")
-    # so that standard GPU configs only match the regular CUDA/ROCm templates.
-    # Fast image subclasses override this with a positive regex (e.g. ".*fast-1$").
-    accelerator_config_name_regex = "^(?!.*fast-)"
+    # Negative lookahead that excludes fast-image CRs (e.g. "…fast-1",
+    # "…fast-2") so that standard GPU configs only match the regular
+    # CUDA/ROCm templates.  Used as the default for
+    # accelerator_config_name_regex below and as sentinel in
+    # _resolve_accelerator to distinguish standard configs from fast
+    # image configs that override the regex.
+    _DEFAULT_ACCELERATOR_CONFIG_NAME_REGEX = "^(?!.*fast-)"
+
+    # Regex matched against LLMInferenceServiceConfig CR names during
+    # discovery.  Fast image subclasses override this with a positive
+    # regex (e.g. ".*fast-1$").
+    accelerator_config_name_regex = _DEFAULT_ACCELERATOR_CONFIG_NAME_REGEX
 
     # Resolved by _resolve_base_refs at build time; set explicitly to skip discovery.
     base_refs = None
@@ -260,21 +267,45 @@ class GpuConfig(LLMISvcConfig):
         # If base_refs is already set explicitly on the config class, discovery is skipped.
         base_refs = cls.base_refs or cls._resolve_base_refs(client=client)
 
-        if len(base_refs) == 0 and selected_resource != Labels.Nvidia.NVIDIA_COM_GPU:
-            # Non-NVIDIA accelerators (e.g. AMD ROCm) require a matching
-            # LLMInferenceServiceConfig CR — there is no built-in fallback template.
-            # NVIDIA falls through to the default CUDA template when no CR matches.
-            pytest.fail(
-                f"No LLMInferenceServiceConfig CR found for {cls.__name__}."
-                f" Discovery searched for CRs with"
-                f" opendatahub.io/recommended-accelerators containing '{selected_resource}'"
-                f" and opendatahub.io/supported-topologies containing '{cls.supported_topology}'"
-                f" and name matching regex '{cls.accelerator_config_name_regex}'."
-                f" Hardware requirements: {cls.min_gpus_per_node} GPU(s)/node"
+        if len(base_refs) == 0:
+            _is_default_regex = cls.accelerator_config_name_regex == cls._DEFAULT_ACCELERATOR_CONFIG_NAME_REGEX
+            _is_nvidia = selected_resource == Labels.Nvidia.NVIDIA_COM_GPU
+
+            _no_cr_msg = (
+                f"No LLMInferenceServiceConfig CR found"
+                f" for {cls.__name__}."
+                f" accelerator_config_name_regex:"
+                f" '{cls.accelerator_config_name_regex}',"
+                f" accelerator: '{selected_resource}',"
+                f" topology: '{cls.supported_topology}'."
+                f" The cluster does not have an"
+                f" LLMInferenceServiceConfig CR with"
+                f" opendatahub.io/recommended-accelerators"
+                f" containing '{selected_resource}'"
+                f" AND opendatahub.io/supported-topologies"
+                f" containing '{cls.supported_topology}'"
+                f" AND name matching regex"
+                f" '{cls.accelerator_config_name_regex}'."
+                f" Hardware: {cls.min_gpus_per_node} GPU(s)/node"
                 f" on {cls.min_nodes} node(s),"
-                f" supported types: {cls.supported_accelerators}."
-                f" Candidates found on cluster: {candidates or 'none'}"
+                f" supported types:"
+                f" {cls.supported_accelerators}."
+                f" Candidates found on cluster:"
+                f" {candidates or 'none'}"
             )
+
+            if not _is_default_regex:
+                # Config targets a specific CR variant (e.g. fast-1,
+                # fast-2) that is not present on this cluster.  Skip
+                # rather than silently falling back to a wrong template.
+                pytest.skip(_no_cr_msg)
+            elif not _is_nvidia:
+                # Non-NVIDIA accelerator (e.g. AMD ROCm) with standard
+                # regex: a matching CR is required because there is no
+                # built-in fallback template.  This is a hard failure.
+                pytest.fail(_no_cr_msg)
+            # else: standard NVIDIA with default regex — fall through
+            # to the default CUDA template (no CR override needed).
 
         LOGGER.info(
             f"[llmd] Selected accelerator for {cls.__name__}: {selected_resource}"

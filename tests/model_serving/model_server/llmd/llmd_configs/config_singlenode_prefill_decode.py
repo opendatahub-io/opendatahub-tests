@@ -31,6 +31,7 @@ class SingleNodePrefillDecodeConfig(TinyLlamaOciGpuConfig):
     min_nodes = 1
     min_gpus_per_node = 2
     supported_accelerators = (Labels.Nvidia.NVIDIA_COM_GPU,)
+    supported_topology = "workload-single-node-pd"
 
     @classmethod
     def container_env(cls):

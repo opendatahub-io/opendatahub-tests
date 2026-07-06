@@ -25,7 +25,7 @@ NAMESPACE = ns_from_file(file=__file__)
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("skip_if_disconnected", "skip_if_fast_cr_missing")
+@pytest.mark.usefixtures("skip_if_disconnected")
 class TestLlmdFastImage:
     """Deploy TinyLlama using fast-1 and fast-2 LLMInferenceServiceConfig and verify inference."""
 
