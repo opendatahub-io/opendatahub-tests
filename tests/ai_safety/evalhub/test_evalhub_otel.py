@@ -6,7 +6,6 @@ OpenTelemetry metrics to OTLP-compatible backends.
 
 import re
 import time
-from datetime import datetime
 from typing import ClassVar
 
 import pytest
@@ -228,8 +227,7 @@ class TestEvalHubOTEL:
 
         # Check for evidence of metric export
         assert "ResourceMetrics" in collector_logs or "http.server.request" in collector_logs, (
-            "No metrics found in collector logs after 70s wait. "
-            "Default 60s export interval may not be working."
+            "No metrics found in collector logs after 70s wait. Default 60s export interval may not be working."
         )
 
         LOGGER.info("Default export interval verified - metrics exported successfully")
