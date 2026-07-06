@@ -19,7 +19,6 @@ LOGGER = structlog.get_logger(name=__name__)
     "maas_unprivileged_model_namespace",
     "maas_subscription_controller_enabled_latest",
     "maas_gateway_api",
-    "maas_api_gateway_reachable",
 )
 class TestExternalModelDiscovery:
     """Verify ExternalModel reconciler creates the expected routing resources."""
