@@ -114,7 +114,9 @@ class TestPostUpgradeJupyterElyraWorkbench:
         verify_post_upgrade_image_selection(notebook=n1_jupyter_elyra_notebook, baseline=n1_jupyter_elyra_baseline)
 
     @pytest.mark.post_upgrade
-    @pytest.mark.dependency(name="jupyter_elyra_image_digest_unchanged", depends=["jupyter_elyra_image_selection_unchanged"])
+    @pytest.mark.dependency(
+        name="jupyter_elyra_image_digest_unchanged", depends=["jupyter_elyra_image_selection_unchanged"]
+    )
     def test_jupyter_elyra_post_upgrade_image_digest_unchanged(
         self,
         n1_jupyter_elyra_notebook: Notebook,
@@ -132,7 +134,9 @@ class TestPostUpgradeJupyterElyraWorkbench:
         )
 
     @pytest.mark.post_upgrade
-    @pytest.mark.dependency(name="jupyter_elyra_restart_counts_unchanged", depends=["jupyter_elyra_image_digest_unchanged"])
+    @pytest.mark.dependency(
+        name="jupyter_elyra_restart_counts_unchanged", depends=["jupyter_elyra_image_digest_unchanged"]
+    )
     def test_jupyter_elyra_post_upgrade_restart_counts_unchanged(
         self,
         n1_jupyter_elyra_pod: Pod,
