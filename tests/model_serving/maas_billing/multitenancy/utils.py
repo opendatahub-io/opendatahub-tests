@@ -1,4 +1,3 @@
-import json
 from collections.abc import Generator
 from contextlib import ExitStack, contextmanager
 from typing import Any, TypedDict
@@ -127,12 +126,7 @@ def tenant_gateway_inference_url(
 
 def assert_tenant_inference_response_has_choices(response: requests.Response) -> None:
     """Assert a successful tenant inference response contains non-empty chat completion choices."""
-    try:
-        response_body: dict[str, Any] = json.loads(response.text)
-    except json.JSONDecodeError as error:
-        raise AssertionError(
-            f"Non-JSON tenant inference response: status={response.status_code} body={response.text[:200]}"
-        ) from error
+    response_body: dict[str, Any] = response.json()
     assert "choices" in response_body, f"'choices' field missing in tenant inference response: {response.text[:200]}"
     completions_choices = response_body["choices"]
     assert isinstance(completions_choices, list) and completions_choices, (
@@ -170,8 +164,12 @@ def assert_tenant_inference_status(
                 assert_tenant_inference_response_has_choices(response=response)
                 LOGGER.info(f"Tenant inference POST {inference_url} returned {response.status_code}")
                 return
-        except TimeoutExpiredError:
-            pass
+        except TimeoutExpiredError as error:
+            raise AssertionError(
+                f"Timed out waiting for {expected_status} on tenant inference POST {inference_url} "
+                f"within {TENANT_INFERENCE_READY_TIMEOUT_SECONDS}s; "
+                f"last status={last_status_code}: {last_response_text}"
+            ) from error
         raise AssertionError(
             f"Expected {expected_status} on tenant inference POST {inference_url}, "
             f"last status={last_status_code}: {last_response_text}"
