@@ -21,6 +21,8 @@ Run in isolation:
 
 from __future__ import annotations
 
+from typing import Literal, TypedDict
+
 import pytest
 import requests
 import structlog
@@ -40,7 +42,32 @@ from tests.ai_safety.evalhub.utils import build_headers
 LOGGER = structlog.get_logger(name=__name__)
 
 
-def _minimal_job_payload(tenant_namespace: str, job_name: str = "evalhub-st-api-test-job") -> dict:
+class _JobBenchmarkParameters(TypedDict):
+    num_examples: int
+    tokenizer: Literal["google/flan-t5-small"]
+
+
+class _JobBenchmark(TypedDict):
+    id: Literal["arc_easy"]
+    provider_id: Literal["lm_evaluation_harness"]
+    parameters: _JobBenchmarkParameters
+
+
+class _JobModel(TypedDict):
+    url: str
+    name: Literal["emulatedModel"]
+
+
+class _JobPayload(TypedDict):
+    name: str
+    model: _JobModel
+    benchmarks: list[_JobBenchmark]
+
+
+def _minimal_job_payload(
+    tenant_namespace: str,
+    job_name: str = "evalhub-st-api-test-job",
+) -> _JobPayload:
     """Minimal job payload that targets a non-existent model URL.
 
     The job will be accepted (202) and then fail when it tries to reach the
