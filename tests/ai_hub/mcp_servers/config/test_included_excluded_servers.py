@@ -3,7 +3,7 @@ from typing import Self
 import pytest
 import structlog
 
-from tests.ai_hub.utils import execute_get_command
+from tests.ai_hub.utils import execute_get_command_with_retry
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -29,7 +29,7 @@ class TestMCPServerIncludedExcludedFiltering:
         model_registry_rest_headers: dict[str, str],
     ):
         """Verify includedServers are loaded and excludedServers are not (TC-LOAD-003, TC-LOAD-004, TC-LOAD-005)."""
-        response = execute_get_command(
+        response = execute_get_command_with_retry(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
             headers=model_registry_rest_headers,
             params={"pageSize": 1000},

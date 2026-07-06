@@ -3,7 +3,7 @@ from typing import Self
 import pytest
 import structlog
 
-from tests.ai_hub.utils import execute_get_command
+from tests.ai_hub.utils import execute_get_command_with_retry
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -25,7 +25,7 @@ class TestMCPServerOrdering:
         sort_order: str,
     ):
         """TC-API-014: Test ordering MCP servers by name ASC/DESC."""
-        response = execute_get_command(
+        response = execute_get_command_with_retry(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
             headers=model_registry_rest_headers,
             params={"orderBy": "name", "sortOrder": sort_order},
