@@ -114,7 +114,12 @@ class TestEvalHubSingleTenancyHealth:
         evalhub_st_route: Route,
         evalhub_st_ca_bundle_file: str,
     ) -> None:
-        """GET /api/v1/health → 200 {"status": "healthy"} without authentication."""
+        """Given: a ready single-tenancy EvalHub instance with a public route.
+
+        When: GET /api/v1/health is called without authentication.
+
+        Then: response is 200 with status "healthy".
+        """
         url = f"https://{evalhub_st_route.host}{EVALHUB_HEALTH_PATH}"
         response = requests.get(url=url, verify=evalhub_st_ca_bundle_file, timeout=10)
         assert response.status_code == 200, (
@@ -149,7 +154,12 @@ class TestEvalHubSingleTenancyAPIAccess:
         evalhub_st_ca_bundle_file: str,
         evalhub_st_user_token: str,
     ) -> None:
-        """GET /api/v1/evaluations/providers with X-Tenant: {own_ns} → 200."""
+        """Given: a user SA bound to evalhub-user Role in the workload namespace.
+
+        When: GET /api/v1/evaluations/providers with X-Tenant set to the caller's own namespace.
+
+        Then: response is 200.
+        """
         url = f"https://{evalhub_st_route.host}{EVALHUB_PROVIDERS_PATH}"
         response = requests.get(
             url=url,
@@ -169,7 +179,12 @@ class TestEvalHubSingleTenancyAPIAccess:
         evalhub_st_ca_bundle_file: str,
         evalhub_st_user_token: str,
     ) -> None:
-        """GET /api/v1/evaluations/collections with X-Tenant: {own_ns} → 200."""
+        """Given: a user SA bound to evalhub-user Role in the workload namespace.
+
+        When: GET /api/v1/evaluations/collections with X-Tenant set to the caller's own namespace.
+
+        Then: response is 200.
+        """
         url = f"https://{evalhub_st_route.host}{EVALHUB_COLLECTIONS_PATH}"
         response = requests.get(
             url=url,
@@ -189,7 +204,12 @@ class TestEvalHubSingleTenancyAPIAccess:
         evalhub_st_ca_bundle_file: str,
         evalhub_st_user_token: str,
     ) -> None:
-        """POST /api/v1/evaluations/jobs with X-Tenant: {own_ns} → 202 with resource.id."""
+        """Given: a user SA bound to evalhub-user Role in the workload namespace.
+
+        When: POST /api/v1/evaluations/jobs with X-Tenant set to the caller's own namespace.
+
+        Then: response is 202 with resource.id in the body.
+        """
         url = f"https://{evalhub_st_route.host}{EVALHUB_JOBS_PATH}"
         payload = _minimal_job_payload(tenant_namespace=model_namespace.name)
         response = requests.post(
@@ -212,7 +232,12 @@ class TestEvalHubSingleTenancyAPIAccess:
         evalhub_st_ca_bundle_file: str,
         evalhub_st_user_token: str,
     ) -> None:
-        """GET /api/v1/evaluations/jobs → 200 with a non-empty items list after a job is submitted."""
+        """Given: a user SA that has submitted a job in their own namespace.
+
+        When: GET /api/v1/evaluations/jobs with X-Tenant set to the caller's own namespace.
+
+        Then: response is 200 and the submitted job appears in items.
+        """
         # Submit a job first so the list is non-empty
         post_url = f"https://{evalhub_st_route.host}{EVALHUB_JOBS_PATH}"
         payload = _minimal_job_payload(
@@ -276,10 +301,11 @@ class TestEvalHubSingleTenancyCrossNamespaceRejection:
         evalhub_st_user_token: str,
         second_namespace: Namespace,
     ) -> None:
-        """POST with X-Tenant pointing to a namespace where the caller has no Role → 400/403.
+        """Given: a user SA with no Role in a second namespace.
 
-        In single-tenancy mode kube-rbac-proxy returns a plain-text Forbidden body
-        rather than EvalHub's structured JSON, so we assert on status code only.
+        When: POST /api/v1/evaluations/jobs with X-Tenant pointing to that namespace.
+
+        Then: response is 400 or 403 (kube-rbac-proxy Forbidden in single-tenancy mode).
         """
         payload = _minimal_job_payload(tenant_namespace=second_namespace.name)
         response = requests.post(
@@ -301,7 +327,12 @@ class TestEvalHubSingleTenancyCrossNamespaceRejection:
         evalhub_st_user_token: str,
         model_namespace: Namespace,
     ) -> None:
-        """POST without X-Tenant header → 400."""
+        """Given: an authenticated user SA in single-tenancy mode.
+
+        When: POST /api/v1/evaluations/jobs without an X-Tenant header.
+
+        Then: response is 400 Bad Request.
+        """
         payload = _minimal_job_payload(tenant_namespace=model_namespace.name)
         response = requests.post(
             url=f"https://{evalhub_st_route.host}{EVALHUB_JOBS_PATH}",
@@ -322,7 +353,12 @@ class TestEvalHubSingleTenancyCrossNamespaceRejection:
         evalhub_st_user_token: str,
         second_namespace: Namespace,
     ) -> None:
-        """GET providers with X-Tenant pointing to unauthorized namespace → 400/403."""
+        """Given: a user SA with no Role in a second namespace.
+
+        When: GET /api/v1/evaluations/providers with X-Tenant pointing to that namespace.
+
+        Then: response is 400 or 403.
+        """
         response = requests.get(
             url=f"https://{evalhub_st_route.host}{EVALHUB_PROVIDERS_PATH}",
             headers=build_headers(token=evalhub_st_user_token, tenant=second_namespace.name),
@@ -340,7 +376,12 @@ class TestEvalHubSingleTenancyCrossNamespaceRejection:
         evalhub_st_ca_bundle_file: str,
         evalhub_st_user_token: str,
     ) -> None:
-        """GET providers without X-Tenant → 400."""
+        """Given: an authenticated user SA in single-tenancy mode.
+
+        When: GET /api/v1/evaluations/providers without an X-Tenant header.
+
+        Then: response is 400 Bad Request.
+        """
         response = requests.get(
             url=f"https://{evalhub_st_route.host}{EVALHUB_PROVIDERS_PATH}",
             headers=build_headers(token=evalhub_st_user_token, tenant=None),
