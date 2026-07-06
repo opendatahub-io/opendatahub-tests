@@ -11,6 +11,7 @@ from datetime import datetime
 import pytest
 import requests
 import structlog
+from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from ocp_resources.evalhub import EvalHub
 from ocp_resources.namespace import Namespace
@@ -22,9 +23,7 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_METRICS_PATH,
     EVALHUB_PROVIDERS_PATH,
 )
-from utilities.certificates_utils import create_ca_bundle_file
 from utilities.guardrails import get_auth_headers
-from utilities.infra import current_client_token
 
 LOGGER = structlog.get_logger(name=__name__)
 
