@@ -7,6 +7,7 @@ OpenTelemetry metrics to OTLP-compatible backends.
 import re
 import time
 from datetime import datetime
+from typing import ClassVar
 
 import pytest
 import requests
@@ -16,6 +17,7 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.route import Route
+from ocp_resources.service import Service
 
 from tests.ai_safety.evalhub.constants import (
     EVALHUB_HEALTH_PATH,
@@ -36,33 +38,34 @@ LOGGER = structlog.get_logger(name=__name__)
     ],
     indirect=True,
 )
+@pytest.mark.ai_safety
 @pytest.mark.tier1
 class TestEvalHubOTEL:
     """Tests for EvalHub OpenTelemetry metrics integration."""
 
     # OTEL configuration patterns to verify in logs
-    OTEL_CONFIG_PATTERNS = [
+    OTEL_CONFIG_PATTERNS: ClassVar[tuple[str, ...]] = (
         "enable_metrics:true",
         "enableMetrics: true",
         "exporter_type",
         "exporterType",
-    ]
+    )
 
     # OTEL error patterns that indicate initialization failure
-    OTEL_ERROR_PATTERNS = [
+    OTEL_ERROR_PATTERNS: ClassVar[tuple[str, ...]] = (
         "failed to initialize meter",
         "meter provider error",
         "panic",
         "OTEL initialization failed",
-    ]
+    )
 
     # OTLP export indicators in collector logs
-    OTLP_INDICATORS = [
+    OTLP_INDICATORS: ClassVar[tuple[str, ...]] = (
         "ResourceMetrics",  # OTLP protobuf structure
         "ScopeMetrics",  # OTLP scope
         "http.server.request",  # OTEL semantic convention metric name
         "github.com/eval-hub",  # Service name in resource attributes
-    ]
+    )
 
     def test_meter_provider_initialization(
         self,
