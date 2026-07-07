@@ -43,7 +43,7 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
-from timeout_sampler import TimeoutExpiredError, TimeoutSampler
+from timeout_sampler import TimeoutSampler
 
 from tests.ai_safety.evalhub.constants import (
     EVALHUB_JOB_CONFIG_CLUSTERROLE,
@@ -123,19 +123,14 @@ class TestEvalHubInvalidPlacement:
         def _get_phase() -> str | None:
             return (invalid_placement_evalhub.instance.status or {}).get("phase")
 
-        try:
-            for phase in TimeoutSampler(
-                wait_timeout=120,
-                sleep=5,
-                func=_get_phase,
-            ):
-                if phase == "Error":
-                    LOGGER.info(f"InvalidPlacement error phase confirmed for '{invalid_placement_evalhub.name}'")
-                    return
-        except TimeoutExpiredError as err:
-            raise AssertionError(
-                f"EvalHub '{invalid_placement_evalhub.name}' did not reach Error phase within 120s"
-            ) from err
+        for phase in TimeoutSampler(
+            wait_timeout=120,
+            sleep=5,
+            func=_get_phase,
+        ):
+            if phase == "Error":
+                LOGGER.info(f"InvalidPlacement error phase confirmed for '{invalid_placement_evalhub.name}'")
+                return
 
     def test_invalid_placement_no_deployment(
         self,
@@ -226,15 +221,10 @@ class TestEvalHubModeSwitchSingleToMulti:
             )
             return not admin_role.exists and not user_role.exists and not binding.exists
 
-        try:
-            for gone in TimeoutSampler(wait_timeout=120, sleep=5, func=_roles_gone):
-                if gone:
-                    LOGGER.info("Convenience Roles removed after switch to multi mode")
-                    return
-        except TimeoutExpiredError as err:
-            raise AssertionError(
-                "Convenience Roles were not removed within 120s after switching spec.tenancy to multi"
-            ) from err
+        for gone in TimeoutSampler(wait_timeout=120, sleep=5, func=_roles_gone):
+            if gone:
+                LOGGER.info("Convenience Roles removed after switch to multi mode")
+                return
 
     def test_switch_to_multi_provisions_tenant_namespace(
         self,
@@ -262,16 +252,10 @@ class TestEvalHubModeSwitchSingleToMulti:
             )
             return has_job_writer and has_job_config
 
-        try:
-            for ready in TimeoutSampler(wait_timeout=180, sleep=5, func=_tenant_rbac_ready):
-                if ready:
-                    LOGGER.info(f"Multi-tenant RBAC provisioned in {labeled_tenant_namespace.name}")
-                    return
-        except TimeoutExpiredError as err:
-            raise AssertionError(
-                f"Operator did not provision jobs-writer + job-config RoleBindings "
-                f"in {labeled_tenant_namespace.name} within 180s after switch to multi"
-            ) from err
+        for ready in TimeoutSampler(wait_timeout=180, sleep=5, func=_tenant_rbac_ready):
+            if ready:
+                LOGGER.info(f"Multi-tenant RBAC provisioned in {labeled_tenant_namespace.name}")
+                return
 
 @pytest.mark.parametrize(
     "model_namespace",
@@ -308,15 +292,9 @@ class TestEvalHubModeSwitchMultiToSingle:
                 for rb in rbs
             )
 
-        try:
-            for ready in TimeoutSampler(wait_timeout=120, sleep=5, func=_rbac_ready):
-                if ready:
-                    return
-        except TimeoutExpiredError as err:
-            raise AssertionError(
-                f"Pre-condition failed: jobs-writer RoleBinding for '{cr_name}' "
-                f"not found in {labeled_tenant_namespace.name} within 120s"
-            ) from err
+        for ready in TimeoutSampler(wait_timeout=120, sleep=5, func=_rbac_ready):
+            if ready:
+                return
 
     def test_switch_to_single_creates_roles(
         self,
@@ -342,15 +320,10 @@ class TestEvalHubModeSwitchMultiToSingle:
             )
             return admin_role.exists and user_role.exists and binding.exists
 
-        try:
-            for exists in TimeoutSampler(wait_timeout=120, sleep=5, func=_roles_exist):
-                if exists:
-                    LOGGER.info("Convenience Roles created after switch to single mode")
-                    return
-        except TimeoutExpiredError as err:
-            raise AssertionError(
-                "Convenience Roles were not created within 120s after switching spec.tenancy to single"
-            ) from err
+        for exists in TimeoutSampler(wait_timeout=120, sleep=5, func=_roles_exist):
+            if exists:
+                LOGGER.info("Convenience Roles created after switch to single mode")
+                return
 
     def test_switch_to_single_removes_tenant_rbac(
         self,
@@ -377,16 +350,10 @@ class TestEvalHubModeSwitchMultiToSingle:
             )
             return not has_writer and not has_config
 
-        try:
-            for gone in TimeoutSampler(wait_timeout=120, sleep=5, func=_tenant_rbac_gone):
-                if gone:
-                    LOGGER.info(f"Cross-namespace RoleBindings cleaned from {labeled_tenant_namespace.name}")
-                    return
-        except TimeoutExpiredError as err:
-            raise AssertionError(
-                f"Cross-namespace RoleBindings for '{cr_name}' not cleaned from "
-                f"{labeled_tenant_namespace.name} within 120s after switch to single"
-            ) from err
+        for gone in TimeoutSampler(wait_timeout=120, sleep=5, func=_tenant_rbac_gone):
+            if gone:
+                LOGGER.info(f"Cross-namespace RoleBindings cleaned from {labeled_tenant_namespace.name}")
+                return
 
 @pytest.mark.parametrize(
     "model_namespace",
@@ -433,20 +400,14 @@ class TestEvalHubTenantConfigMapHotMount:
                 current_gen = evalhub_st_deployment.instance.metadata.generation or 0
                 return current_gen > initial_generation
 
-            try:
-                for updated in TimeoutSampler(wait_timeout=120, sleep=5, func=_deployment_updated):
-                    if updated:
-                        LOGGER.info(
-                            f"Deployment generation incremented: "
-                            f"{initial_generation} → "
-                            f"{evalhub_st_deployment.instance.metadata.generation}"
-                        )
-                        return
-            except TimeoutExpiredError as err:
-                raise AssertionError(
-                    f"Deployment generation did not increment within 120s after creating "
-                    f"tenant-labeled ConfigMap '{cm_name}' — operator may not be watching tenant CMs"
-                ) from err
+            for updated in TimeoutSampler(wait_timeout=120, sleep=5, func=_deployment_updated):
+                if updated:
+                    LOGGER.info(
+                        f"Deployment generation incremented: "
+                        f"{initial_generation} → "
+                        f"{evalhub_st_deployment.instance.metadata.generation}"
+                    )
+                    return
 
 @pytest.mark.parametrize(
     "model_namespace",
@@ -495,12 +456,7 @@ class TestEvalHubSingleTenancyDeletion:
             b = RoleBinding(client=admin_client, name=EVALHUB_TENANT_ADMIN_BINDING_NAME, namespace=model_namespace.name)
             return not a.exists and not u.exists and not b.exists
 
-        try:
-            for done in TimeoutSampler(wait_timeout=120, sleep=5, func=_rbac_gc_complete):
-                if done:
-                    LOGGER.info("Owner-ref'd RBAC objects garbage-collected after CR deletion")
-                    return
-        except TimeoutExpiredError as err:
-            raise AssertionError(
-                "Convenience Roles / RoleBinding not garbage-collected within 120s after CR deletion"
-            ) from err
+        for done in TimeoutSampler(wait_timeout=120, sleep=5, func=_rbac_gc_complete):
+            if done:
+                LOGGER.info("Owner-ref'd RBAC objects garbage-collected after CR deletion")
+                return

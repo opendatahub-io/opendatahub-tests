@@ -17,7 +17,7 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.route import Route
 from ocp_resources.service_account import ServiceAccount
-from timeout_sampler import TimeoutExpiredError, TimeoutSampler
+from timeout_sampler import TimeoutSampler
 
 from tests.ai_safety.evalhub.constants import EVALHUB_HEALTH_PATH, EVALHUB_TENANT_LABEL_KEY, EVALHUB_TENANT_LABEL_VALUE
 from tests.ai_safety.evalhub.single_tenancy.constants import (
@@ -101,24 +101,19 @@ def evalhub_st_ready(
     """
     url = f"https://{evalhub_st_route.host}{EVALHUB_HEALTH_PATH}"
     host = evalhub_st_route.host
-    try:
-        for sample in TimeoutSampler(
-            wait_timeout=120,
-            sleep=5,
-            func=lambda: probe_evalhub_health_endpoint(
-                url=url,
-                host=host,
-                ca_bundle_file=evalhub_st_ca_bundle_file,
-            ),
-            exceptions_dict=TRANSIENT_HEALTH_EXCEPTIONS,
-        ):
-            if sample.ok:
-                LOGGER.info(f"Single-tenant EvalHub at {host} is healthy")
-                return
-    except TimeoutExpiredError as err:
-        if err.last_exp is not None:
-            raise err.last_exp from err
-        raise RuntimeError(f"Single-tenant EvalHub at {host} did not become healthy within 120s") from err
+    for sample in TimeoutSampler(
+        wait_timeout=120,
+        sleep=5,
+        func=lambda: probe_evalhub_health_endpoint(
+            url=url,
+            host=host,
+            ca_bundle_file=evalhub_st_ca_bundle_file,
+        ),
+        exceptions_dict=TRANSIENT_HEALTH_EXCEPTIONS,
+    ):
+        if sample.ok:
+            LOGGER.info(f"Single-tenant EvalHub at {host} is healthy")
+            return
 
 @pytest.fixture(scope="class")
 def evalhub_st_user_sa(
