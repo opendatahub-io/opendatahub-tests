@@ -196,7 +196,7 @@ class TestEvalHubSingleTenancyRBAC:
         assert role.exists, f"Expected Role '{EVALHUB_TENANT_ADMIN_ROLE_NAME}' in {model_namespace.name}"
         rules = role.instance.rules or []
         assert rules, "evalhub-tenant-admin Role has no rules"
-        api_groups = [g for rule in rules for g in (rule.apiGroups or [])]
+        api_groups = [api_group for rule in rules for api_group in (rule.apiGroups or [])]
         assert EVALHUB_TRUSTYAI_API_GROUP in api_groups, (
             f"Expected apiGroup '{EVALHUB_TRUSTYAI_API_GROUP}' in admin Role, got: {api_groups}"
         )
@@ -288,9 +288,9 @@ class TestEvalHubSingleTenancyRBAC:
         subjects = rb.instance.subjects or []
         assert subjects, "evalhub-tenant-admin-binding has no subjects"
         expected_name = f"system:serviceaccounts:{model_namespace.name}"
-        subject_names = [s.name for s in subjects]
+        subject_names = [subject.name for subject in subjects]
         assert expected_name in subject_names, f"Expected subject '{expected_name}' in binding, got: {subject_names}"
-        ns_group = next(s for s in subjects if s.name == expected_name)
+        ns_group = next(subject for subject in subjects if subject.name == expected_name)
         assert ns_group.kind == "Group", f"Expected subject kind 'Group', got '{ns_group.kind}'"
 
     def test_admin_role_has_owner_reference(
@@ -313,7 +313,7 @@ class TestEvalHubSingleTenancyRBAC:
         )
         refs = role.instance.metadata.ownerReferences or []
         assert refs, f"Role '{EVALHUB_TENANT_ADMIN_ROLE_NAME}' has no ownerReferences"
-        evalhub_ref = next((r for r in refs if r.kind == "EvalHub"), None)
+        evalhub_ref = next((owner_ref for owner_ref in refs if owner_ref.kind == "EvalHub"), None)
         assert evalhub_ref is not None, f"No EvalHub ownerReference on Role '{EVALHUB_TENANT_ADMIN_ROLE_NAME}': {refs}"
         assert evalhub_ref.name == evalhub_st_cr.name, (
             f"ownerReference.name '{evalhub_ref.name}' != CR name '{evalhub_st_cr.name}'"
@@ -339,7 +339,7 @@ class TestEvalHubSingleTenancyRBAC:
         )
         refs = role.instance.metadata.ownerReferences or []
         assert refs, f"Role '{EVALHUB_USER_ROLE_NAME}' has no ownerReferences"
-        evalhub_ref = next((r for r in refs if r.kind == "EvalHub"), None)
+        evalhub_ref = next((owner_ref for owner_ref in refs if owner_ref.kind == "EvalHub"), None)
         assert evalhub_ref is not None, f"No EvalHub ownerReference on Role '{EVALHUB_USER_ROLE_NAME}': {refs}"
         assert evalhub_ref.name == evalhub_st_cr.name
 
@@ -363,7 +363,7 @@ class TestEvalHubSingleTenancyRBAC:
         )
         refs = rb.instance.metadata.ownerReferences or []
         assert refs, f"RoleBinding '{EVALHUB_TENANT_ADMIN_BINDING_NAME}' has no ownerReferences"
-        evalhub_ref = next((r for r in refs if r.kind == "EvalHub"), None)
+        evalhub_ref = next((owner_ref for owner_ref in refs if owner_ref.kind == "EvalHub"), None)
         assert evalhub_ref is not None, (
             f"No EvalHub ownerReference on RoleBinding '{EVALHUB_TENANT_ADMIN_BINDING_NAME}': {refs}"
         )
