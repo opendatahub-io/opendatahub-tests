@@ -77,7 +77,9 @@ def mlserver_probes_inference_service(
 
 
 @pytest.fixture
-def mlserver_probes_pod_resource(admin_client: DynamicClient, mlserver_probes_inference_service: InferenceService) -> Pod:
+def mlserver_probes_pod_resource(
+    admin_client: DynamicClient, mlserver_probes_inference_service: InferenceService
+) -> Pod:
     """Get the predictor pod for the MLServer probe InferenceService.
 
     Raises:
