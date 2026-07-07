@@ -221,8 +221,12 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
     yaml_config = None
     yaml_path = metafunc.config.getoption(name="model_car_yaml_path")
     if yaml_path:
-        with open(yaml_path, "r") as f:
-            yaml_config = yaml.safe_load(f)
+        try:
+            with open(yaml_path, "r") as f:
+                yaml_config = yaml.safe_load(f)
+        except FileNotFoundError:
+            LOGGER.warning(f"Model car YAML config not found at {yaml_path}, skipping parametrization")
+            return
 
     if not yaml_config or "model-car" not in yaml_config:
         return
