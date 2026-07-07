@@ -53,13 +53,15 @@ def mlserver_probes_inference_service(
     mlserver_model_service_account: ServiceAccount,
 ) -> Generator[InferenceService, Any, Any]:
     """MLServer InferenceService with probe-enabled runtime backed by S3 model storage."""
+    supported_formats = mlserver_probes_serving_runtime.instance.spec.supportedModelFormats
+    assert supported_formats, "ServingRuntime has no supportedModelFormats configured"
     isvc_kwargs: dict[str, Any] = {
         "client": admin_client,
         "name": request.param["name"],
         "namespace": model_namespace.name,
         "runtime": mlserver_probes_serving_runtime.name,
         "storage_uri": s3_models_storage_uri,
-        "model_format": mlserver_probes_serving_runtime.instance.spec.supportedModelFormats[0].name,
+        "model_format": supported_formats[0].name,
         "model_service_account": mlserver_model_service_account.name,
         "deployment_mode": request.param.get("deployment_mode", KServeDeploymentType.STANDARD),
         "external_route": True,
