@@ -1,8 +1,4 @@
-"""Kubernetes resource assertions for EvalHub single-tenancy mode.
-
-Run in isolation:
-    pytest tests/ai_safety/evalhub/single_tenancy/test_evalhub_single_tenancy_k8s.py -m ai_safety
-"""
+"""Kubernetes resource assertions for EvalHub single-tenancy mode."""
 
 import pytest
 from kubernetes.dynamic import DynamicClient
