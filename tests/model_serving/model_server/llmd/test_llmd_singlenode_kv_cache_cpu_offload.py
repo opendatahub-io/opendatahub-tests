@@ -48,6 +48,4 @@ class TestLlmdSinglenodeKvCacheCpuOffload:
         status, body = send_chat_completions(llmisvc=llmisvc, prompt=prompt)
         assert status == 200, f"Expected 200, got {status}: {body}"
         completion = parse_completion_text(response_body=body)
-        assert expected in completion.lower(), (
-            f"Expected '{expected}' in response, got: {completion}"
-        )
+        assert expected in completion.lower(), f"Expected '{expected}' in response, got: {completion}"

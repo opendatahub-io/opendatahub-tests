@@ -74,9 +74,7 @@ class TestLlmdSinglenodeKvCacheDiskOffload:
             assert container is not None, f"Pod {pod.name}: container '{_CONTAINER_NAME}' not found"
 
             mount_paths = [m.mountPath for m in (container.volumeMounts or [])]
-            assert _MOUNT_PATH in mount_paths, (
-                f"Pod {pod.name}: expected mount at '{_MOUNT_PATH}'; got {mount_paths}"
-            )
+            assert _MOUNT_PATH in mount_paths, f"Pod {pod.name}: expected mount at '{_MOUNT_PATH}'; got {mount_paths}"
 
             requests = (container.resources.requests or {}) if container.resources else {}
             assert "ephemeral-storage" in requests, (
@@ -96,6 +94,4 @@ class TestLlmdSinglenodeKvCacheDiskOffload:
         status, body = send_chat_completions(llmisvc=llmisvc, prompt=prompt)
         assert status == 200, f"Expected 200, got {status}: {body}"
         completion = parse_completion_text(response_body=body)
-        assert expected in completion.lower(), (
-            f"Expected '{expected}' in response, got: {completion}"
-        )
+        assert expected in completion.lower(), f"Expected '{expected}' in response, got: {completion}"
