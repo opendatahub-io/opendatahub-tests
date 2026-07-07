@@ -64,12 +64,6 @@ from tests.ai_safety.evalhub.single_tenancy.utils import SingleTenantEvalHub
 
 LOGGER = structlog.get_logger(name=__name__)
 
-
-# ---------------------------------------------------------------------------
-# InvalidPlacement: multi-tenant CR in tenant-labelled namespace
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.parametrize(
     "model_namespace",
     [pytest.param({"name": "test-evalhub-st-invalid-placement"})],
@@ -164,12 +158,6 @@ class TestEvalHubInvalidPlacement:
             f"Unexpected Deployment '{invalid_placement_evalhub.name}' found: "
             "operator must not create a Deployment for an InvalidPlacement CR"
         )
-
-
-# ---------------------------------------------------------------------------
-# Mode switch: single → multi
-# ---------------------------------------------------------------------------
-
 
 @pytest.mark.parametrize(
     "model_namespace",
@@ -284,12 +272,6 @@ class TestEvalHubModeSwitchSingleToMulti:
                 f"Operator did not provision jobs-writer + job-config RoleBindings "
                 f"in {labeled_tenant_namespace.name} within 180s after switch to multi"
             ) from err
-
-
-# ---------------------------------------------------------------------------
-# Mode switch: multi → single
-# ---------------------------------------------------------------------------
-
 
 @pytest.mark.parametrize(
     "model_namespace",
@@ -406,12 +388,6 @@ class TestEvalHubModeSwitchMultiToSingle:
                 f"{labeled_tenant_namespace.name} within 120s after switch to single"
             ) from err
 
-
-# ---------------------------------------------------------------------------
-# Tenant ConfigMap hot-mount
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.parametrize(
     "model_namespace",
     [pytest.param({"name": "test-evalhub-st-cm-hotmount"})],
@@ -471,12 +447,6 @@ class TestEvalHubTenantConfigMapHotMount:
                     f"Deployment generation did not increment within 120s after creating "
                     f"tenant-labeled ConfigMap '{cm_name}' — operator may not be watching tenant CMs"
                 ) from err
-
-
-# ---------------------------------------------------------------------------
-# Deletion: owner-ref GC removes Roles and RoleBinding
-# ---------------------------------------------------------------------------
-
 
 @pytest.mark.parametrize(
     "model_namespace",

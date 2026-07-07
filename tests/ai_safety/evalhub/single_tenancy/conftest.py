@@ -32,12 +32,6 @@ from utilities.infra import create_inference_token, create_ns
 
 LOGGER = structlog.get_logger(name=__name__)
 
-
-# ---------------------------------------------------------------------------
-# Core single-tenancy fixtures
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture(scope="class")
 def evalhub_st_cr(
     admin_client: DynamicClient,
@@ -59,7 +53,6 @@ def evalhub_st_cr(
     ) as evalhub:
         yield evalhub
 
-
 @pytest.fixture(scope="class")
 def evalhub_st_deployment(
     admin_client: DynamicClient,
@@ -75,7 +68,6 @@ def evalhub_st_deployment(
     deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_5MIN)
     return deployment
 
-
 @pytest.fixture(scope="class")
 def evalhub_st_route(
     admin_client: DynamicClient,
@@ -90,14 +82,12 @@ def evalhub_st_route(
         ensure_exists=True,
     )
 
-
 @pytest.fixture(scope="class")
 def evalhub_st_ca_bundle_file(
     admin_client: DynamicClient,
 ) -> str:
     """CA bundle file for TLS verification of the single-tenant EvalHub route."""
     return create_ca_bundle_file(client=admin_client)
-
 
 @pytest.fixture(scope="class")
 def evalhub_st_ready(
@@ -125,12 +115,6 @@ def evalhub_st_ready(
             f"Single-tenant EvalHub at {evalhub_st_route.host} did not become healthy within 120s"
         ) from err
 
-
-# ---------------------------------------------------------------------------
-# User SA + token fixtures (for API access tests)
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture(scope="class")
 def evalhub_st_user_sa(
     admin_client: DynamicClient,
@@ -150,7 +134,6 @@ def evalhub_st_user_sa(
         wait_for_resource=True,
     ) as sa:
         yield sa
-
 
 @pytest.fixture(scope="class")
 def evalhub_st_user_role_binding(
@@ -178,7 +161,6 @@ def evalhub_st_user_role_binding(
     ) as binding:
         yield binding
 
-
 @pytest.fixture(scope="class")
 def evalhub_st_user_token(
     evalhub_st_user_sa: ServiceAccount,
@@ -186,12 +168,6 @@ def evalhub_st_user_token(
 ) -> str:
     """Bearer token for the single-tenant test user ServiceAccount."""
     return create_inference_token(model_service_account=evalhub_st_user_sa)
-
-
-# ---------------------------------------------------------------------------
-# Second (unlabeled) namespace for cross-namespace isolation tests
-# ---------------------------------------------------------------------------
-
 
 @pytest.fixture(scope="class")
 def second_namespace(
@@ -204,12 +180,6 @@ def second_namespace(
         name=f"{model_namespace.name}-other",
     ) as ns:
         yield ns
-
-
-# ---------------------------------------------------------------------------
-# Tenant namespace fixtures for lifecycle tests (mode-switch, invalid placement)
-# ---------------------------------------------------------------------------
-
 
 @pytest.fixture(scope="class")
 def labeled_tenant_namespace(
@@ -227,12 +197,6 @@ def labeled_tenant_namespace(
         labels={EVALHUB_TENANT_LABEL_KEY: EVALHUB_TENANT_LABEL_VALUE},
     ) as ns:
         yield ns
-
-
-# ---------------------------------------------------------------------------
-# Multi-tenant EvalHub fixture for mode-switch tests (multi → single)
-# ---------------------------------------------------------------------------
-
 
 @pytest.fixture(scope="class")
 def evalhub_mt_for_switch(
@@ -252,7 +216,6 @@ def evalhub_mt_for_switch(
         wait_for_resource=True,
     ) as evalhub:
         yield evalhub
-
 
 @pytest.fixture(scope="class")
 def evalhub_mt_switch_deployment(

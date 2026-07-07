@@ -39,28 +39,23 @@ from tests.ai_safety.evalhub.utils import build_headers
 
 LOGGER = structlog.get_logger(name=__name__)
 
-
 class _JobBenchmarkParameters(TypedDict):
     num_examples: int
     tokenizer: Literal["google/flan-t5-small"]
-
 
 class _JobBenchmark(TypedDict):
     id: Literal["arc_easy"]
     provider_id: Literal["lm_evaluation_harness"]
     parameters: _JobBenchmarkParameters
 
-
 class _JobModel(TypedDict):
     url: str
     name: Literal["emulatedModel"]
-
 
 class _JobPayload(TypedDict):
     name: str
     model: _JobModel
     benchmarks: list[_JobBenchmark]
-
 
 def _minimal_job_payload(
     tenant_namespace: str,
@@ -89,12 +84,6 @@ def _minimal_job_payload(
             }
         ],
     }
-
-
-# ---------------------------------------------------------------------------
-# Health endpoint
-# ---------------------------------------------------------------------------
-
 
 @pytest.mark.parametrize(
     "model_namespace",
@@ -127,12 +116,6 @@ class TestEvalHubSingleTenancyHealth:
         assert data.get("status") == EVALHUB_HEALTH_STATUS_HEALTHY, (
             f"Expected status='{EVALHUB_HEALTH_STATUS_HEALTHY}', got: {data}"
         )
-
-
-# ---------------------------------------------------------------------------
-# Authorised API access using own namespace as X-Tenant
-# ---------------------------------------------------------------------------
-
 
 @pytest.mark.parametrize(
     "model_namespace",
@@ -268,12 +251,6 @@ class TestEvalHubSingleTenancyAPIAccess:
         items = data.get("items") or []
         job_ids = [(item.get("resource") or {}).get("id") for item in items]
         assert submitted_id in job_ids, f"Submitted job '{submitted_id}' not found in jobs list: {job_ids}"
-
-
-# ---------------------------------------------------------------------------
-# Cross-namespace and missing-tenant-header rejection
-# ---------------------------------------------------------------------------
-
 
 @pytest.mark.parametrize(
     "model_namespace",
