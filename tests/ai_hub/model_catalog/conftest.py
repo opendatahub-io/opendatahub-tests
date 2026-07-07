@@ -8,19 +8,18 @@ import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
-from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.route import Route
 from ocp_resources.service_account import ServiceAccount
 
 from tests.ai_hub.constants import (
+    CATALOG_CONTAINER,
     CUSTOM_CATALOG_ID1,
     DEFAULT_CUSTOM_MODEL_CATALOG,
     DEFAULT_MODEL_CATALOG_CM,
 )
 from tests.ai_hub.model_catalog.catalog_config.utils import get_models_from_database_by_source
 from tests.ai_hub.model_catalog.constants import (
-    CATALOG_CONTAINER,
     DEFAULT_CATALOG_FILE,
     DEFAULT_CATALOGS,
     REDHAT_AI_CATALOG_ID,
@@ -32,7 +31,7 @@ from tests.ai_hub.model_catalog.utils import (
     wait_for_model_catalog_api,
 )
 from tests.ai_hub.utils import (
-    execute_get_command,
+    execute_get_command_with_retry,
     get_model_catalog_pod,
     get_mr_user_token,
     get_rest_headers,
@@ -41,14 +40,6 @@ from tests.ai_hub.utils import (
 from utilities.infra import create_inference_token, get_openshift_token, login_with_user_password
 
 LOGGER = structlog.get_logger(name=__name__)
-
-
-@pytest.fixture(scope="class")
-def model_catalog_pod(admin_client: DynamicClient, model_registry_namespace: str) -> Pod:
-    """Get the first model catalog pod in the model registry namespace."""
-    pods = get_model_catalog_pod(client=admin_client, model_registry_namespace=model_registry_namespace)
-    assert pods, "No model catalog pods found"
-    return pods[0]
 
 
 @pytest.fixture()
@@ -76,7 +67,9 @@ def sparse_override_catalog_source(
     field_value = param["field_value"]
 
     # Capture CURRENT catalog state from API before applying sparse override
-    response = execute_get_command(url=f"{model_catalog_rest_url[0]}sources", headers=model_registry_rest_headers)
+    response = execute_get_command_with_retry(
+        url=f"{model_catalog_rest_url[0]}sources", headers=model_registry_rest_headers
+    )
     items = response.get("items", [])
     original_catalog = next((item for item in items if item.get("id") == catalog_id), None)
     assert original_catalog is not None, f"Original catalog '{catalog_id}' not found in sources"
@@ -263,7 +256,7 @@ def randomly_picked_model_from_catalog_api_by_source(
 
     if not model_name:
         LOGGER.info(f"Picking random model from catalog: {catalog_id} with header_type: {header_type}")
-        models_response = execute_get_command(
+        models_response = execute_get_command_with_retry(
             url=f"{model_catalog_rest_url[0]}models?source={catalog_id}&pageSize=100",
             headers=headers,
         )
@@ -278,7 +271,7 @@ def randomly_picked_model_from_catalog_api_by_source(
     else:
         LOGGER.info(f"Looking for pre-selected model: {model_name} from catalog: {catalog_id}")
         # check if the model exists:
-        random_model = execute_get_command(
+        random_model = execute_get_command_with_retry(
             url=f"{model_catalog_rest_url[0]}sources/{catalog_id}/models/{model_name}",
             headers=headers,
         )
@@ -320,7 +313,7 @@ def default_catalog_api_response(
     model_catalog_rest_url: list[str], model_registry_rest_headers: dict[str, str]
 ) -> dict[Any, Any]:
     """Fetch all models from default catalog API (used for data validation tests)"""
-    return execute_get_command(
+    return execute_get_command_with_retry(
         url=f"{model_catalog_rest_url[0]}models?source={REDHAT_AI_CATALOG_ID}&pageSize=100",
         headers=model_registry_rest_headers,
     )

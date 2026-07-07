@@ -1,13 +1,17 @@
 import copy
 import json
 import os
+from collections.abc import Generator
+from contextlib import contextmanager
 from typing import Any
 
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
+from ocp_resources.inference_service import InferenceService
 from pyhelper_utils.shell import run_command
+from timeout_sampler import retry
 
 from tests.ai_hub.exceptions import (
     ModelRegistryResourceNotCreated,
@@ -15,10 +19,12 @@ from tests.ai_hub.exceptions import (
 )
 from tests.ai_hub.model_registry.rest_api.constants import MODEL_REGISTER_DATA, MODEL_REGISTRY_BASE_URI
 from utilities.exceptions import ResourceValueMismatch
+from utilities.general import generate_random_name
 
 LOGGER = structlog.get_logger(name=__name__)
 
 
+@retry(wait_timeout=60, sleep=5, exceptions_dict={requests.exceptions.ConnectionError: []})
 def execute_model_registry_patch_command(
     url: str, headers: dict[str, str], data_json: dict[str, Any]
 ) -> dict[Any, Any]:
@@ -265,3 +271,66 @@ def get_register_model_data(num_models: int) -> list[dict[str, Any]]:
 
 def get_mr_deployment(admin_client: DynamicClient, mr_namespace: str) -> list[Deployment]:
     return list(Deployment.get(client=admin_client, namespace=mr_namespace))
+
+
+@contextmanager
+def create_model_registry_inference_service(
+    admin_client: DynamicClient,
+    namespace: str,
+    runtime_name: str,
+    connection_secret_name: str,
+    registered_model_rest_api: dict[str, Any],
+    extra_labels: dict[str, str] | None = None,
+) -> Generator[InferenceService, Any, Any]:
+    """Create an InferenceService for model registry testing."""
+    name = generate_random_name(prefix="mr-test-isvc", length=4)
+    register_model_data = registered_model_rest_api.get("register_model", {})
+    model_uri = register_model_data.get("external_id", "hf://jonburdo/test2")
+    model_name = register_model_data.get("name", "my-model")
+
+    resources = {"limits": {"cpu": "2", "memory": "4Gi"}, "requests": {"cpu": "2", "memory": "4Gi"}}
+
+    labels = {"opendatahub.io/dashboard": "true"}
+    if extra_labels:
+        labels.update(extra_labels)
+
+    annotations = {
+        "opendatahub.io/connections": connection_secret_name,
+        "opendatahub.io/hardware-profile-name": "default-profile",
+        "opendatahub.io/hardware-profile-namespace": "redhat-ods-applications",
+        "opendatahub.io/model-type": "predictive",
+        "openshift.io/description": f"Model from registry: {model_name}",
+        "openshift.io/display-name": f"registry/{name}",
+        "security.opendatahub.io/enable-auth": "false",
+        "serving.kserve.io/deploymentMode": "RawDeployment",
+    }
+
+    predictor_dict = {
+        "automountServiceAccountToken": False,
+        "deploymentStrategy": {"type": "RollingUpdate"},
+        "maxReplicas": 1,
+        "minReplicas": 1,
+        "model": {
+            "modelFormat": {"name": "onnx", "version": "1"},
+            "name": "",
+            "resources": resources,
+            "runtime": runtime_name,
+            "storageUri": model_uri,
+        },
+    }
+
+    with InferenceService(
+        client=admin_client,
+        name=name,
+        namespace=namespace,
+        annotations=annotations,
+        label=labels,
+        predictor=predictor_dict,
+        teardown=True,
+    ) as inference_service:
+        inference_service.wait_for_condition(
+            condition="Ready",
+            status="True",
+            timeout=600,
+        )
+        yield inference_service

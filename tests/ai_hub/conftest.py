@@ -11,6 +11,7 @@ from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.infrastructure import Infrastructure
 from ocp_resources.namespace import Namespace
+from ocp_resources.node import Node
 from ocp_resources.oauth import OAuth
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
@@ -22,6 +23,7 @@ from ocp_resources.service_account import ServiceAccount
 from pytest import Config, FixtureRequest, Item
 from pytest_testconfig import config as py_config
 
+import tests.ai_hub.constants as ai_hub_constants
 from tests.ai_hub.constants import (
     DB_BASE_RESOURCES_NAME,
     DB_RESOURCE_NAME,
@@ -34,6 +36,7 @@ from tests.ai_hub.constants import (
 from tests.ai_hub.utils import (
     generate_namespace_name,
     get_byoidc_user_credentials,
+    get_model_catalog_pod,
     get_model_registry_metadata_resources,
     get_model_registry_objects,
     get_rest_headers,
@@ -61,10 +64,12 @@ LOGGER = structlog.get_logger(name=__name__)
 
 
 def pytest_sessionstart(session: pytest.Session) -> None:
-    """Sets model registry namespace in global config."""
+    """Sets model registry namespace and adjusts DB image for cluster architecture."""
     config = session.config
     if config.getoption("--collect-only") or config.getoption("--setup-plan"):
         return
+
+    client = get_client()
 
     if config.getoption("--custom-namespace"):
         LOGGER.info(f"Running model registry tests against custom namespace: {MODEL_REGISTRY_CUSTOM_NAMESPACE}")
@@ -72,8 +77,16 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     else:
         LOGGER.info("Running model registry tests against default namespace")
         py_config["model_registry_namespace"] = get_data_science_cluster(
-            client=get_client()
+            client=client
         ).instance.spec.components.modelregistry.registriesNamespace
+
+    # Since clusters are not heterogeneous, all nodes share the same architecture
+    nodes = list(Node.get(dyn_client=client))
+    cluster_architecture = nodes[0].instance.status.nodeInfo.architecture
+    if cluster_architecture == "s390x":
+        LOGGER.info("s390x cluster detected, using Red Hat MySQL 8.4 image")
+        ai_hub_constants.MR_DB_IMAGE_DIGEST = ai_hub_constants.MR_DB_IMAGE_DIGEST_S390X
+        ai_hub_constants.MR_DB_MYSQL_ARGS = []
 
 
 @pytest.fixture(scope="session")
@@ -507,6 +520,14 @@ def model_catalog_routes(admin_client: DynamicClient, model_registry_namespace: 
     return list(
         Route.get(namespace=model_registry_namespace, label_selector="component=model-catalog", client=admin_client)
     )
+
+
+@pytest.fixture(scope="class")
+def model_catalog_pod(admin_client: DynamicClient, model_registry_namespace: str) -> Pod:
+    """Get the first catalog pod in the model registry namespace."""
+    pods = get_model_catalog_pod(client=admin_client, model_registry_namespace=model_registry_namespace)
+    assert pods, "No catalog pods found"
+    return pods[0]
 
 
 @pytest.fixture(scope="class")

@@ -10,6 +10,7 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_APP_LABEL,
     EVALHUB_COMPONENT_LABEL,
     EVALHUB_CONTAINER_NAME,
+    EVALHUB_KUBE_RBAC_PROXY_CONTAINER,
     EVALHUB_PLURAL,
     EVALHUB_SERVICE_NAME,
 )
@@ -46,7 +47,7 @@ def test_evalhub_crd_exists(
 class TestEvalHubDeployment:
     """Tests for EvalHub deployment topology (pods, containers, labels)."""
 
-    def test_evalhub_single_pod_single_container(
+    def test_evalhub_pod_has_expected_containers(
         self,
         admin_client: DynamicClient,
         model_namespace: Namespace,

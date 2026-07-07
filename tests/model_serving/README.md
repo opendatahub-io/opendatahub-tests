@@ -26,6 +26,8 @@ model_serving/
 │   ├── conftest.py
 │   ├── utils.py
 │   ├── image_validation/              # Runtime image validation
+│   ├── autogluon/                     # AutoGluon KServe runtime tests (tabular, timeseries)
+│   │   └── s3/                        # S3-backed AutoGluon models
 │   ├── mlserver/                      # MLServer runtime tests
 │   │   └── basic_model_deployment/    # LightGBM, ONNX, Sklearn, XGBoost
 │   ├── openvino/                      # OpenVINO Model Server (OVMS) tests
@@ -93,6 +95,7 @@ model_serving/
 | OpenVINO (OVMS) | General ML      | CPU-optimized inference                                 |
 | Triton          | Multi-framework | PyTorch, ONNX, TensorFlow, Keras, Python backend        |
 | MLServer        | Lightweight     | LightGBM, ONNX, Sklearn, XGBoost                        |
+| AutoGluon       | Tabular / TS    | AutoGluon `.pkl` models via autogluonserver runtime     |
 
 ## Storage Backends
 

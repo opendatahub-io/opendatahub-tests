@@ -59,7 +59,7 @@ def ibm_power_z_serving_runtime(
         name="vllm-runtime",
         namespace=model_namespace.name,
         template_name=template_name,
-        deployment_type=request.param["deployment_type"],
+        deployment_type=request.param["deployment_mode"],
         runtime_image=vllm_runtime_image,
         support_tgis_open_ai_endpoints=True,
     ) as model_runtime:
@@ -85,7 +85,7 @@ def ibm_power_z_inference_service(
         "storage_uri": s3_models_storage_uri,
         "model_format": ibm_power_z_serving_runtime.instance.spec.supportedModelFormats[0].name,
         "model_service_account": vllm_model_service_account.name,
-        "deployment_mode": request.param.get("deployment_mode", KServeDeploymentType.RAW_DEPLOYMENT),
+        "deployment_mode": request.param.get("deployment_mode", KServeDeploymentType.STANDARD),
         "external_route": True,
         "resources": deepcopy(x=IBM_POWER_Z_PREDICT_RESOURCES),
         "timeout": request.param.get("timeout", Timeout.TIMEOUT_30MIN),

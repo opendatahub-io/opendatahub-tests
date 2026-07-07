@@ -8,7 +8,7 @@ from tests.ai_hub.model_catalog.constants import (
     REDHAT_AI_CATALOG_ID,
     VALIDATED_CATALOG_ID,
 )
-from tests.ai_hub.utils import execute_get_command
+from tests.ai_hub.utils import execute_get_command_with_retry
 
 pytestmark = [pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace")]
 
@@ -34,7 +34,9 @@ class TestSourcesEndpoint:
         """
         Test that sources endpoint returns ALL sources regardless of enabled field value.
         """
-        response = execute_get_command(url=f"{model_catalog_rest_url[0]}sources", headers=model_registry_rest_headers)
+        response = execute_get_command_with_retry(
+            url=f"{model_catalog_rest_url[0]}sources", headers=model_registry_rest_headers
+        )
         items = response.get("items", [])
 
         assert len(items) > 1, "Expected multiple sources to be returned"
@@ -83,7 +85,9 @@ class TestAssetTypeFilter:
         if asset_type is not None:
             params["assetType"] = asset_type
 
-        response = execute_get_command(url=sources_url, headers=model_registry_rest_headers, params=params or None)
+        response = execute_get_command_with_retry(
+            url=sources_url, headers=model_registry_rest_headers, params=params or None
+        )
         source_ids = {item["id"] for item in response["items"]}
 
         assert source_ids == expected_ids

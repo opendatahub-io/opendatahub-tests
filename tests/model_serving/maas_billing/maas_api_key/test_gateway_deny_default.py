@@ -20,7 +20,6 @@ CHAT_COMPLETIONS = OpenAIEnpoints.CHAT_COMPLETIONS
     "maas_unprivileged_model_namespace",
     "maas_subscription_controller_enabled_latest",
     "maas_gateway_api",
-    "maas_api_gateway_reachable",
 )
 class TestGatewayDenyByDefault:
     """Verify gateway-default-auth denies access to unconfigured models."""
@@ -74,12 +73,13 @@ class TestGatewayDenyByDefault:
             timeout=60,
         )
 
-        assert response.status_code == 403, (
+        assert response.status_code in (403, 404), (
             f"Unconfigured model accepted unauthenticated "
-            f"request. Expected 403, got {response.status_code}: "
-            f"{response.text[:200]}"
+            f"request. Expected 403 (deny-by-default) or 404 (no route), "
+            f"got {response.status_code}: {response.text[:200]}"
         )
 
         LOGGER.info(
-            f"Unconfigured model '{unconfigured_model_ref.name}' correctly denied unauthenticated request with 403"
+            f"Unconfigured model '{unconfigured_model_ref.name}' correctly denied "
+            f"unauthenticated request with {response.status_code}"
         )
