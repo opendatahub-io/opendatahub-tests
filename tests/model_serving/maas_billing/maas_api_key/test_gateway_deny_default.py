@@ -20,7 +20,6 @@ CHAT_COMPLETIONS = OpenAIEnpoints.CHAT_COMPLETIONS
     "maas_unprivileged_model_namespace",
     "maas_subscription_controller_enabled_latest",
     "maas_gateway_api",
-    "maas_api_gateway_reachable",
 )
 class TestGatewayDenyByDefault:
     """Verify gateway-default-auth denies access to unconfigured models."""

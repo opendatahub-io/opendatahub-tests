@@ -6,11 +6,14 @@ Follows the established model server utils pattern for consistency.
 """
 
 import json
+import re
 import time
 from pathlib import Path
+from typing import Any
 
 import structlog
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.event import Event
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.node import Node
@@ -51,6 +54,95 @@ def detect_accelerators(client: DynamicClient) -> list[dict[str, int]]:
             accelerators.append(node_accelerators)
 
     return accelerators
+
+
+class AcceleratorConfigDiscoveryResult:
+    """Result of an LLMInferenceServiceConfig CR discovery attempt.
+
+    Attributes:
+        name: The name of the matched CR, or None if no CR matched all criteria.
+        all_cr_names: Every CR name found in the namespace (for diagnostics).
+        candidates: Human-readable descriptions of CRs that passed the name regex
+            filter, including their annotation values (for skip/error messages).
+    """
+
+    def __init__(self, name: str | None, all_cr_names: list[str], candidates: list[str]):
+        self.name = name
+        self.all_cr_names = all_cr_names
+        self.candidates = candidates
+
+
+def list_matching_accelerator_configs(
+    client: DynamicClient,
+    namespace: str,
+    accelerator: str,
+    topology: str,
+    name_regex: str = "",
+) -> AcceleratorConfigDiscoveryResult:
+    """Find an LLMInferenceServiceConfig CR matching accelerator, topology, and optional name regex.
+
+    Lists LLMInferenceServiceConfig CRs in the given namespace and filters by
+    ``opendatahub.io/recommended-accelerators`` and
+    ``opendatahub.io/supported-topologies`` annotations.  When ``name_regex``
+    is non-empty, only CRs whose name matches the regex are considered.
+
+    Args:
+        client: Kubernetes dynamic client.
+        namespace: The namespace where LLMInferenceServiceConfig CRs are deployed
+            (typically the DSCI applications namespace).
+        accelerator: The k8s accelerator resource name (e.g. ``nvidia.com/gpu``).
+        topology: The deployment topology to match (e.g. ``workload-single-node``).
+        name_regex: Optional regex to filter CR names (e.g. ``.*fast-1$``).
+
+    Returns:
+        AcceleratorConfigDiscoveryResult with the matched CR name (or None), all CR names in
+        the namespace, and details on candidate CRs for diagnostics.
+    """
+    try:
+        api = client.resources.get(
+            api_version="serving.kserve.io/v1alpha1",
+            kind="LLMInferenceServiceConfig",
+        )
+        all_crs = api.get(namespace=namespace)
+    except ResourceNotFoundError:
+        LOGGER.warning("[llmd] LLMInferenceServiceConfig CRD not found on cluster")
+        return AcceleratorConfigDiscoveryResult(name=None, all_cr_names=[], candidates=[])
+
+    all_cr_names = [cr.metadata.name for cr in all_crs.items]
+    LOGGER.info(f"[llmd] LLMInferenceServiceConfig CRs in '{namespace}': {all_cr_names}")
+
+    candidates = []
+    for cr in all_crs.items:
+        name = cr.metadata.name
+        if name_regex and not re.search(name_regex, name):
+            continue
+        annotations = cr.metadata.get("annotations") or {}
+        raw_accel = annotations.get("opendatahub.io/recommended-accelerators", "[]")
+        raw_topo = annotations.get("opendatahub.io/supported-topologies", "[]")
+        try:
+            recommended = json.loads(raw_accel)
+            topologies = json.loads(raw_topo)
+        except (ValueError, TypeError):  # fmt: skip
+            candidates.append(f"{name} (unparseable annotations)")
+            continue
+        candidates.append(f"{name} (accelerators={recommended}, topologies={topologies})")
+        if accelerator in recommended and topology in topologies:
+            LOGGER.info(
+                f"[llmd] Matched CR: {name} (accelerator={accelerator}, topology={topology}, regex='{name_regex}')"
+            )
+            return AcceleratorConfigDiscoveryResult(name=name, all_cr_names=all_cr_names, candidates=candidates)
+
+    LOGGER.warning(
+        f"[llmd] No LLMInferenceServiceConfig CR matched all criteria."
+        f" Searched namespace='{namespace}' for CRs with:"
+        f" opendatahub.io/recommended-accelerators containing '{accelerator}',"
+        f" opendatahub.io/supported-topologies containing '{topology}',"
+        f" name matching regex '{name_regex}'."
+        f" CRs that passed the name regex filter (with their annotations):"
+        f" {candidates or 'none'}."
+        f" All LLMInferenceServiceConfig CRs in '{namespace}': {all_cr_names or 'none'}"
+    )
+    return AcceleratorConfigDiscoveryResult(name=None, all_cr_names=all_cr_names, candidates=candidates)
 
 
 def ns_from_file(file: str) -> str:
@@ -238,30 +330,27 @@ def _log_curl_command(url: str, body: str, token: bool, ca_cert: str | None) -> 
     )
 
 
-def _curl_post(
+def _curl_request(
+    method: str,
     url: str,
-    body: str,
+    body: str | None = None,
     token: str | None = None,
     ca_cert: str | None = None,
     timeout: int = LLMEndpoint.DEFAULT_TIMEOUT,
 ) -> tuple[int, str]:
-    """POST to URL via curl. Returns (status_code, response_body)."""
+    """Execute an HTTP request via curl. Returns (status_code, response_body)."""
     cmd = [
         "curl",
         "-s",
         "-w",
         "\n%{http_code}",
-        "-X",
-        "POST",
-        "-H",
-        "Content-Type: application/json",
         "-H",
         "Accept: application/json",
-        "-d",
-        body,
         "--max-time",
         str(timeout),
     ]
+    if body is not None:
+        cmd.extend(["-X", "POST", "-H", "Content-Type: application/json", "-d", body])
     if token:
         cmd.extend(["-H", f"Authorization: Bearer {token}"])
     if ca_cert:
@@ -270,11 +359,14 @@ def _curl_post(
         cmd.append("--insecure")
     cmd.append(url)
 
-    _log_curl_command(url=url, body=body, token=bool(token), ca_cert=ca_cert)
+    if body is not None:
+        _log_curl_command(url=url, body=body, token=bool(token), ca_cert=ca_cert)
+    else:
+        LOGGER.info(f"{method} {url}")
 
     _, stdout, stderr = run_command(command=cmd, verify_stderr=False, check=False, hide_log_command=True)
     if not stdout.strip():
-        raise ConnectionError(f"curl failed with no output: {stderr}")
+        raise ConnectionError(f"curl {method} failed with no output: {stderr}")
 
     parts = stdout.rsplit("\n", 1)
     response_body = parts[0] if len(parts) > 1 else ""
@@ -283,6 +375,66 @@ def _curl_post(
     except ValueError:
         status_code = 0
     return status_code, response_body
+
+
+def _curl_post(
+    url: str,
+    body: str,
+    token: str | None = None,
+    ca_cert: str | None = None,
+    timeout: int = LLMEndpoint.DEFAULT_TIMEOUT,
+) -> tuple[int, str]:
+    """POST to URL via curl. Returns (status_code, response_body)."""
+    return _curl_request(method="POST", url=url, body=body, token=token, ca_cert=ca_cert, timeout=timeout)
+
+
+def _curl_get(
+    url: str,
+    token: str | None = None,
+    ca_cert: str | None = None,
+    timeout: int = LLMEndpoint.DEFAULT_TIMEOUT,
+) -> tuple[int, str]:
+    """GET a URL via curl. Returns (status_code, response_body)."""
+    return _curl_request(method="GET", url=url, token=token, ca_cert=ca_cert, timeout=timeout)
+
+
+def get_vllm_version(
+    llmisvc: LLMInferenceService,
+    token: str | None = None,
+    insecure: bool = True,
+) -> str:
+    """Query the vLLM /version endpoint and return the version string.
+
+    Args:
+        llmisvc: The LLMInferenceService to query.
+        token: Optional bearer token for authentication.
+        insecure: Skip TLS verification (default True).
+
+    Returns:
+        The vLLM version string (e.g. "0.8.5").
+
+    Raises:
+        ValueError: If the response cannot be parsed or the endpoint returns an error.
+    """
+    base_url = get_llm_inference_url(llm_service=llmisvc)
+    url = base_url + "/version"
+    ca_cert = None if insecure else _resolve_ca_cert(llmisvc.client)
+
+    LOGGER.info(f"Querying vLLM version from {llmisvc.name} at {url}")
+    status_code, response_body = _curl_get(url=url, token=token, ca_cert=ca_cert)
+    if status_code != 200:
+        raise ValueError(f"vLLM /version returned {status_code}: {response_body}")
+
+    try:
+        data: dict[str, Any] = json.loads(response_body)
+        version = data["version"]
+        if not isinstance(version, str):
+            raise TypeError(f"Expected version to be str, got {type(version).__name__}")
+    except (json.JSONDecodeError, KeyError, TypeError) as e:
+        raise ValueError(f"Failed to parse vLLM version response: {e}\nBody: {response_body[:500]}") from e
+
+    LOGGER.info(f"vLLM version for {llmisvc.name}: {version}")
+    return version
 
 
 def _get_model_name(llmisvc: LLMInferenceService) -> str:

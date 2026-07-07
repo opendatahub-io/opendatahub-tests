@@ -36,6 +36,7 @@ from tests.ai_hub.constants import (
 from tests.ai_hub.utils import (
     generate_namespace_name,
     get_byoidc_user_credentials,
+    get_model_catalog_pod,
     get_model_registry_metadata_resources,
     get_model_registry_objects,
     get_rest_headers,
@@ -519,6 +520,14 @@ def model_catalog_routes(admin_client: DynamicClient, model_registry_namespace: 
     return list(
         Route.get(namespace=model_registry_namespace, label_selector="component=model-catalog", client=admin_client)
     )
+
+
+@pytest.fixture(scope="class")
+def model_catalog_pod(admin_client: DynamicClient, model_registry_namespace: str) -> Pod:
+    """Get the first catalog pod in the model registry namespace."""
+    pods = get_model_catalog_pod(client=admin_client, model_registry_namespace=model_registry_namespace)
+    assert pods, "No catalog pods found"
+    return pods[0]
 
 
 @pytest.fixture(scope="class")

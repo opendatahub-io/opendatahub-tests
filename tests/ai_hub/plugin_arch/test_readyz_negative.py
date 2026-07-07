@@ -7,7 +7,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.pod import Pod
 from timeout_sampler import TimeoutSampler
 
-from tests.ai_hub.model_catalog.plugin_arch.utils import (
+from tests.ai_hub.plugin_arch.utils import (
     READYZ_RECOVERY_TIMEOUT,
     poll_readyz,
     run_superuser_sql,
