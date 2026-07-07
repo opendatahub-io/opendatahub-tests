@@ -27,8 +27,6 @@ from tests.workbenches.notebook_images.utils import (
     WorkbenchImageSpec,
 )
 
-pytestmark = [pytest.mark.tier2, pytest.mark.slow]
-
 
 class TestPreUpgradeJupyterElyraWorkbench:
     """Pre-upgrade survival checks for a JupyterElyra workbench pinned to the source image tag."""
