@@ -1,22 +1,5 @@
 """Kubernetes resource assertions for EvalHub single-tenancy mode.
 
-Three test classes run in isolated namespaces:
-
-  TestEvalHubSingleTenancyOperatorResources
-      Verifies the operator creates the expected Deployment, Service, Route,
-      metrics Service, and ServiceMonitor when spec.tenancy: single.
-
-  TestEvalHubSingleTenancyRBAC
-      Verifies the three convenience RBAC objects (evalhub-tenant-admin Role,
-      evalhub-user Role, evalhub-tenant-admin-binding RoleBinding) that the
-      operator creates exclusively in single-tenancy mode, and that each is
-      owner-ref'd to the EvalHub CR for automatic GC on deletion.
-
-  TestEvalHubSingleTenancyNoCrossNamespace
-      Verifies that a single-tenant EvalHub does not provision any resources
-      (discovery ConfigMap, job ServiceAccount, RoleBindings) in a second
-      unlabeled namespace.
-
 Run in isolation:
     pytest tests/ai_safety/evalhub/single_tenancy/test_evalhub_single_tenancy_k8s.py -m ai_safety
 """
@@ -52,7 +35,9 @@ from tests.ai_safety.evalhub.single_tenancy.utils import SingleTenantEvalHub
 @pytest.mark.smoke
 @pytest.mark.ai_safety
 class TestEvalHubSingleTenancyOperatorResources:
-    """Operator creates Deployment, Service, Route, metrics Service and ServiceMonitor in single mode."""
+    """Verifies the operator creates the expected Deployment, Service, Route,
+    metrics Service, and ServiceMonitor when spec.tenancy: single.
+    """
 
     def test_deployment_created_and_ready(
         self,
@@ -168,11 +153,13 @@ class TestEvalHubSingleTenancyOperatorResources:
 @pytest.mark.tier1
 @pytest.mark.ai_safety
 class TestEvalHubSingleTenancyRBAC:
-    """Operator creates evalhub-tenant-admin / evalhub-user Roles and binding in single mode.
+    """Verifies the three convenience RBAC objects (evalhub-tenant-admin Role,
+    evalhub-user Role, evalhub-tenant-admin-binding RoleBinding) that the
+    operator creates exclusively in single-tenancy mode, and that each is
+    owner-ref'd to the EvalHub CR for automatic GC on deletion.
 
     These three objects are exclusive to single-tenancy — the operator deletes them
     when the CR switches to multi mode and re-creates them on switch back.
-    Each is owner-referenced to the EvalHub CR so garbage collection is automatic.
     """
 
     def test_tenant_admin_role_created(
@@ -377,7 +364,9 @@ class TestEvalHubSingleTenancyRBAC:
 @pytest.mark.tier1
 @pytest.mark.ai_safety
 class TestEvalHubSingleTenancyNoCrossNamespace:
-    """Single-tenant EvalHub must not provision any resources in other namespaces.
+    """Verifies that a single-tenant EvalHub does not provision any resources
+    (discovery ConfigMap, job ServiceAccount, RoleBindings) in a second
+    unlabeled namespace.
 
     Unlike multi-tenancy, no discovery ConfigMaps, job ServiceAccounts, or RoleBindings
     should appear in namespaces other than the one where the EvalHub CR lives.
