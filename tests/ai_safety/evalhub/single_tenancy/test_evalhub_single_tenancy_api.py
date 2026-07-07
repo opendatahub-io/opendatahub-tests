@@ -30,6 +30,7 @@ from tests.ai_safety.evalhub.constants import (
 )
 from tests.ai_safety.evalhub.utils import build_evalhub_job_payload, build_headers, submit_evalhub_job
 
+
 @pytest.mark.parametrize(
     "model_namespace",
     [pytest.param({"name": "test-evalhub-st-health"})],
@@ -62,6 +63,7 @@ class TestEvalHubSingleTenancyHealth:
             f"Expected status='{EVALHUB_HEALTH_STATUS_HEALTHY}', got: {data}"
         )
 
+
 @pytest.fixture(scope="class")
 def evalhub_st_submitted_job_id(
     model_namespace: Namespace,
@@ -86,6 +88,7 @@ def evalhub_st_submitted_job_id(
     job_id = (data.get("resource") or {}).get("id")
     assert job_id, f"Expected resource.id in 202 response body, got: {data}"
     return job_id
+
 
 @pytest.mark.parametrize(
     "model_namespace",

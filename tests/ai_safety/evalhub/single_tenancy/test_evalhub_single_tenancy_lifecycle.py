@@ -64,6 +64,7 @@ from tests.ai_safety.evalhub.single_tenancy.utils import SingleTenantEvalHub
 
 LOGGER = structlog.get_logger(name=__name__)
 
+
 @pytest.mark.parametrize(
     "model_namespace",
     [pytest.param({"name": "test-evalhub-st-invalid-placement"})],
@@ -153,6 +154,7 @@ class TestEvalHubInvalidPlacement:
             f"Unexpected Deployment '{invalid_placement_evalhub.name}' found: "
             "operator must not create a Deployment for an InvalidPlacement CR"
         )
+
 
 @pytest.mark.parametrize(
     "model_namespace",
@@ -257,6 +259,7 @@ class TestEvalHubModeSwitchSingleToMulti:
                 LOGGER.info(f"Multi-tenant RBAC provisioned in {labeled_tenant_namespace.name}")
                 return
 
+
 @pytest.mark.parametrize(
     "model_namespace",
     [pytest.param({"name": "test-evalhub-mt-switch-to-st"})],
@@ -355,6 +358,7 @@ class TestEvalHubModeSwitchMultiToSingle:
                 LOGGER.info(f"Cross-namespace RoleBindings cleaned from {labeled_tenant_namespace.name}")
                 return
 
+
 @pytest.mark.parametrize(
     "model_namespace",
     [pytest.param({"name": "test-evalhub-st-cm-hotmount"})],
@@ -408,6 +412,7 @@ class TestEvalHubTenantConfigMapHotMount:
                         f"{evalhub_st_deployment.instance.metadata.generation}"
                     )
                     return
+
 
 @pytest.mark.parametrize(
     "model_namespace",
