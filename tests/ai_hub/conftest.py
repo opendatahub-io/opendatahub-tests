@@ -42,7 +42,12 @@ from tests.ai_hub.utils import (
     get_rest_headers,
     wait_for_default_resource_cleanedup,
 )
-from utilities.constants import MODEL_REGISTRY_CUSTOM_NAMESPACE, DscComponents, Labels
+from utilities.constants import (
+    MODEL_REGISTRY_CUSTOM_NAMESPACE, 
+    DscComponents, 
+    Labels,
+    RuntimeTemplates,
+)
 from utilities.general import (
     generate_random_name,
     wait_for_oauth_openshift_deployment,
@@ -87,6 +92,9 @@ def pytest_sessionstart(session: pytest.Session) -> None:
         LOGGER.info("s390x cluster detected, using Red Hat MySQL 8.4 image")
         ai_hub_constants.MR_DB_IMAGE_DIGEST = ai_hub_constants.MR_DB_IMAGE_DIGEST_S390X
         ai_hub_constants.MR_DB_MYSQL_ARGS = []
+        ai_hub_constants.MR_RUNTIME_TEMPLATE = RuntimeTemplates.VLLM_CPU_Z
+    else:
+        ai_hub_constants.MR_RUNTIME_TEMPLATE = RuntimeTemplates.VLLM_CPU_X86
 
 
 @pytest.fixture(scope="session")

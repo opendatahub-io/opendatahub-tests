@@ -33,6 +33,7 @@ MODEL_DICT: dict[str, Any] = {
 }
 MR_INSTANCE_BASE_NAME: str = "model-registry"
 MR_INSTANCE_NAME: str = f"{MR_INSTANCE_BASE_NAME}0"
+MR_RUNTIME_TEMPLATE = None
 SECURE_MR_NAME: str = "secure-db-mr"
 DB_BASE_RESOURCES_NAME: str = "db-model-registry"
 DB_RESOURCE_NAME: str = f"{DB_BASE_RESOURCES_NAME}0"

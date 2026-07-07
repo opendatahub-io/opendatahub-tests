@@ -30,6 +30,7 @@ from tests.ai_hub.constants import (
     KUBERBACPROXY_STR,
     SECURE_MR_NAME,
 )
+from tests.ai_hub import constants as ai_hub_constants
 from tests.ai_hub.model_registry.rest_api.constants import MODEL_REGISTER_DATA, MODEL_REGISTRY_BASE_URI
 from tests.ai_hub.model_registry.rest_api.utils import (
     create_model_registry_inference_service,
@@ -468,7 +469,6 @@ def model_registry_connection_secret(
     """
     resource_name = "mr-test-inference-service-connection"
     # Use the model URI from the registered model artifact
-    register_model_data = registered_model_rest_api.get("register_model", {})
     model_artifact = registered_model_rest_api.get("model_artifact", {})
     model_uri = model_artifact.get("uri", "hf://TinyLlama/TinyLlama-1.1B-Chat-v1.0")
 
@@ -509,13 +509,8 @@ def model_registry_serving_runtime(
 ) -> Generator[ServingRuntime, Any, Any]:
     """Create an vLLM CPU ServingRuntime from the cluster template for registered models."""
 
-    if get_cluster_architecture() == "s390x":
-        LOGGER.info(f"Switching to VLLM_CPU_Z.")
-        runtime_template = RuntimeTemplates.VLLM_CPU_Z
-    else:
-        LOGGER.info("Using vLLM CPU x86 runtime.")
-        runtime_template = RuntimeTemplates.VLLM_CPU_x86
-
+    runtime_template = ai_hub_constants.MR_RUNTIME_TEMPLATE
+    LOGGER.info("Using runtime template: %s", runtime_template)
 
     containers = {
         "kserve-container": {
@@ -623,7 +618,7 @@ def model_registry_model_portforward(
     model_registry_predictor_pod: Pod,
 ) -> Generator[str, Any]:
     """
-    Port-forwards the Model Registry OpenVINO model server pod to access the model API locally.
+    Port-forwards the Model Registry vLLM CPU model server pod to access the model API locally.
     Equivalent CLI:
       oc -n mr-deployment-ns port-forward pod/<pod-name> 8080:8888
     """
@@ -632,22 +627,17 @@ def model_registry_model_portforward(
     remote_port = 8080  # vLLM HTTP port
     local_url = f"http://localhost:{local_port}"
 
-    pf = portforward.forward(
-        pod_or_service=model_registry_predictor_pod.name,
-        namespace=namespace,
-        from_port=local_port,
-        to_port=remote_port,
-        waiting=30,
-    )
-
-    # IMPORTANT: explicitly start context
-    pf.__enter__()
-
-    LOGGER.info(f"Port-forward started: {local_url}")
-
-    yield local_url
     try:
-        pf.__exit__(None, None, None)
+        with portforward.forward(
+            pod_or_service=model_registry_predictor_pod.name,
+            namespace=namespace,
+            from_port=local_port,
+            to_port=remote_port,
+            waiting=30,
+        ):
+            LOGGER.info(f"Model Registry model port-forward established: {local_url}")
+            LOGGER.info(f"Test with: curl -s {local_url}/{model_registry_inference_service.name}")
+            yield local_url
     except Exception as expt:
         LOGGER.error(
             "Failed to tear down port-forward for pod %s: %s",

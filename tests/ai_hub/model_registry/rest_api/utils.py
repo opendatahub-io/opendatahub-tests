@@ -301,11 +301,6 @@ def get_register_model_data(num_models: int) -> list[dict[str, Any]]:
     return model_data
 
 
-def get_cluster_architecture() -> str:
-    client = get_client()
-    nodes = list(Node.get(dyn_client=client))
-    return nodes[0].instance.status.nodeInfo.architecture
-
 def get_mr_deployment(admin_client: DynamicClient, mr_namespace: str) -> list[Deployment]:
     return list(Deployment.get(client=admin_client, namespace=mr_namespace))
 
