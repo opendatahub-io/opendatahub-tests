@@ -550,9 +550,8 @@ def _create_llmisvc_from_config(
 
     LOGGER.info(f"\n{config_cls.format_describe(namespace=namespace)}")
 
-    kv_offloading = config_cls.kv_cache_offloading()
-    if kv_offloading is not None:
-        svc_kwargs["kv_cache_offloading"] = kv_offloading
+    if config_cls.kv_cache_offloading is not None:
+        svc_kwargs["kv_cache_offloading"] = config_cls.kv_cache_offloading
 
     with LLMInferenceService(**svc_kwargs) as llm_service:
         wait_for_llmisvc(llmisvc=llm_service, timeout=config_cls.wait_timeout)

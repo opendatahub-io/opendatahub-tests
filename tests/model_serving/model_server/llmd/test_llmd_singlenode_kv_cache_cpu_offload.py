@@ -1,7 +1,9 @@
+"""E2e smoke test for KV cache CPU offloading on a GPU cluster."""
+
 import pytest
 from ocp_resources.llm_inference_service import LLMInferenceService
 
-from tests.model_serving.model_server.llmd.llmd_configs import KvCacheCpuOffloadConfig
+from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaOciGpuConfig
 from tests.model_serving.model_server.llmd.utils import (
     ns_from_file,
     parse_completion_text,
@@ -13,10 +15,15 @@ pytestmark = [pytest.mark.smoke, pytest.mark.llmd_gpu]
 
 NAMESPACE = ns_from_file(file=__file__)
 
+_KvCacheCpuOffloadConfig = TinyLlamaOciGpuConfig.with_overrides(
+    name="llmisvc-kv-cache-cpu-offload",
+    kv_cache_offloading={"cpu": "4Gi", "evictionPolicy": "lru"},
+)
+
 
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, llmisvc",
-    [({"name": NAMESPACE}, KvCacheCpuOffloadConfig)],
+    [({"name": NAMESPACE}, _KvCacheCpuOffloadConfig)],
     indirect=True,
 )
 @pytest.mark.usefixtures("skip_if_disconnected")
@@ -32,12 +39,7 @@ class TestLlmdSinglenodeKvCacheCpuOffload:
         self,
         llmisvc: LLMInferenceService,
     ):
-        """Test steps:
-
-        1. Fixture wait_for_llmisvc_pods_ready ensures vLLM started successfully
-           with the --kv-transfer-config parameters kserve injected.
-        2. Send a chat completion request and assert a 200 response with the expected answer.
-        """
+        """Verify inference succeeds after vLLM starts with --kv-transfer-config injected."""
         prompt = "What is the capital of Italy?"
         expected = "rome"
 
@@ -46,4 +48,6 @@ class TestLlmdSinglenodeKvCacheCpuOffload:
         status, body = send_chat_completions(llmisvc=llmisvc, prompt=prompt)
         assert status == 200, f"Expected 200, got {status}: {body}"
         completion = parse_completion_text(response_body=body)
-        assert expected in completion.lower(), f"Expected '{expected}' in response, got: {completion}"
+        assert expected in completion.lower(), (
+            f"Expected '{expected}' in response, got: {completion}"
+        )

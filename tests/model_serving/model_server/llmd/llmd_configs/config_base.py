@@ -83,9 +83,7 @@ class LLMISvcConfig:
     def prefill_config(cls):
         return None
 
-    @classmethod
-    def kv_cache_offloading(cls):
-        return None
+    kv_cache_offloading = None
 
     @classmethod
     def labels(cls):
