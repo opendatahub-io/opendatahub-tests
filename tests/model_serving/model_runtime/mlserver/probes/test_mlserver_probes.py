@@ -17,7 +17,7 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
 
 @pytest.mark.smoke
 @pytest.mark.parametrize(
-    "model_namespace, s3_models_storage_uri, probes_serving_runtime, mlserver_probes_inference_service",
+    "model_namespace, s3_models_storage_uri, mlserver_probes_serving_runtime, mlserver_probes_inference_service",
     [
         pytest.param(
             {"name": "sklearn-probes"},

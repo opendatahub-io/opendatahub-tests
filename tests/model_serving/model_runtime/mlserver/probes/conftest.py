@@ -19,7 +19,7 @@ from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 
 @pytest.fixture(scope="class")
-def probes_serving_runtime(
+def mlserver_probes_serving_runtime(
     request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
@@ -48,7 +48,7 @@ def mlserver_probes_inference_service(
     request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    probes_serving_runtime: ServingRuntime,
+    mlserver_probes_serving_runtime: ServingRuntime,
     s3_models_storage_uri: str,
     mlserver_model_service_account: ServiceAccount,
 ) -> Generator[InferenceService, Any, Any]:
@@ -57,9 +57,9 @@ def mlserver_probes_inference_service(
         "client": admin_client,
         "name": request.param["name"],
         "namespace": model_namespace.name,
-        "runtime": probes_serving_runtime.name,
+        "runtime": mlserver_probes_serving_runtime.name,
         "storage_uri": s3_models_storage_uri,
-        "model_format": probes_serving_runtime.instance.spec.supportedModelFormats[0].name,
+        "model_format": mlserver_probes_serving_runtime.instance.spec.supportedModelFormats[0].name,
         "model_service_account": mlserver_model_service_account.name,
         "deployment_mode": request.param.get("deployment_mode", KServeDeploymentType.STANDARD),
         "external_route": True,
