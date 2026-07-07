@@ -398,8 +398,7 @@ def wait_for_bbr_plugins_configmap_data(
             gateway_namespace=gateway_namespace,
         ):
             LOGGER.info(
-                f"ConfigMap '{gateway_namespace}/{BBR_PLUGINS_CONFIGMAP_NAME}' has "
-                f"post-auth and pre-auth plugin keys"
+                f"ConfigMap '{gateway_namespace}/{BBR_PLUGINS_CONFIGMAP_NAME}' has post-auth and pre-auth plugin keys"
             )
             return config_map_data
     except TimeoutExpiredError:
@@ -420,9 +419,7 @@ def wait_for_bbr_plugins_configmap_data(
             f"Expected keys {BBR_POST_AUTH_CONFIGMAP_KEY!r} and {BBR_PRE_AUTH_CONFIGMAP_KEY!r}; "
             f"found: {found_keys!r}"
         )
-    raise AssertionError(
-        f"ConfigMap '{gateway_namespace}/{BBR_PLUGINS_CONFIGMAP_NAME}' plugin keys were not populated"
-    )
+    raise AssertionError(f"ConfigMap '{gateway_namespace}/{BBR_PLUGINS_CONFIGMAP_NAME}' plugin keys were not populated")
 
 
 def verify_bbr_plugins_configmap_has_expected_plugins(
