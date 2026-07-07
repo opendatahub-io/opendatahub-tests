@@ -6,7 +6,6 @@ OpenTelemetry metrics to OTLP-compatible backends.
 
 import re
 import time
-from typing import ClassVar
 
 import pytest
 import requests
@@ -22,6 +21,8 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_HEALTH_PATH,
     EVALHUB_METRICS_PATH,
     EVALHUB_PROVIDERS_PATH,
+    OTEL_ERROR_PATTERNS,
+    OTLP_INDICATORS,
 )
 from utilities.guardrails import get_auth_headers
 
@@ -41,30 +42,6 @@ LOGGER = structlog.get_logger(name=__name__)
 @pytest.mark.tier1
 class TestEvalHubOTEL:
     """Tests for EvalHub OpenTelemetry metrics integration."""
-
-    # OTEL configuration patterns to verify in logs
-    OTEL_CONFIG_PATTERNS: ClassVar[tuple[str, ...]] = (
-        "enable_metrics:true",
-        "enableMetrics: true",
-        "exporter_type",
-        "exporterType",
-    )
-
-    # OTEL error patterns that indicate initialization failure
-    OTEL_ERROR_PATTERNS: ClassVar[tuple[str, ...]] = (
-        "failed to initialize meter",
-        "meter provider error",
-        "panic",
-        "OTEL initialization failed",
-    )
-
-    # OTLP export indicators in collector logs
-    OTLP_INDICATORS: ClassVar[tuple[str, ...]] = (
-        "ResourceMetrics",  # OTLP protobuf structure
-        "ScopeMetrics",  # OTLP scope
-        "http.server.request",  # OTEL semantic convention metric name
-        "github.com/eval-hub",  # Service name in resource attributes
-    )
 
     def test_meter_provider_initialization(
         self,
@@ -92,7 +69,7 @@ class TestEvalHubOTEL:
         # Verify container is not restarting
         container_statuses = pod.instance.status.containerStatuses or []
         evalhub_container = next(
-            (c for c in container_statuses if c.name == "evalhub"),
+            (container for container in container_statuses if container.name == "evalhub"),
             None,
         )
         assert evalhub_container is not None, "evalhub container not found in pod"
@@ -100,18 +77,10 @@ class TestEvalHubOTEL:
             f"Container restarted {evalhub_container.restartCount} times - indicates initialization failure"
         )
 
-        # Check logs for OTEL configuration
+        # Check logs for OTEL errors
         logs = pod.log(container="evalhub")
 
-        # Verify OTEL configuration is present in logs
-        # EvalHub logs the OTEL config on startup
-        found_config = any(pattern in logs for pattern in self.OTEL_CONFIG_PATTERNS)
-        # If config not found in logs, that's okay - the pod running without errors is sufficient
-        if found_config:
-            LOGGER.info("OTEL configuration found in logs")
-
-        # Ensure no critical error logs related to OTEL
-        for pattern in self.OTEL_ERROR_PATTERNS:
+        for pattern in OTEL_ERROR_PATTERNS:
             assert pattern.lower() not in logs.lower(), f"Found error pattern '{pattern}' in logs"
 
         LOGGER.info("MeterProvider initialization verified successfully")
@@ -134,24 +103,24 @@ class TestEvalHubOTEL:
         url = f"https://{evalhub_otel_grpc_route.host}{EVALHUB_HEALTH_PATH}"
         headers = get_auth_headers(token=current_client_token)
 
-        for i in range(5):
+        for request_num in range(1, 6):
             response = requests.get(url=url, headers=headers, verify=evalhub_otel_ca_bundle_file, timeout=10)
-            assert response.status_code == 200, f"Health check {i + 1} failed: {response.status_code}"
+            assert response.status_code == 200, f"Health check {request_num} failed: {response.status_code}"
             time.sleep(1)
 
         LOGGER.info("Generated 5 health check requests")
 
-        # Wait for export interval (10s configured + buffer)
-        time.sleep(15)
+        # Wait for export interval (60s default + buffer)
+        time.sleep(70)
 
         # Check collector received metrics via gRPC
         collector_logs = otel_collector_pod.log(container="otel-collector", tail_lines=200)
 
         # Look for evidence of received OTLP metrics
-        found_indicators = [ind for ind in self.OTLP_INDICATORS if ind in collector_logs]
+        found_indicators = [ind for ind in OTLP_INDICATORS if ind in collector_logs]
         assert len(found_indicators) >= 2, (
             f"Expected OTLP metrics in collector logs. "
-            f"Found {len(found_indicators)}/{len(self.OTLP_INDICATORS)} indicators: {found_indicators}. "
+            f"Found {len(found_indicators)}/{len(OTLP_INDICATORS)} indicators: {found_indicators}. "
             "Collector may not be receiving gRPC exports."
         )
 
@@ -174,14 +143,15 @@ class TestEvalHubOTEL:
         url = f"https://{evalhub_otel_http_route.host}{EVALHUB_HEALTH_PATH}"
         headers = get_auth_headers(token=current_client_token)
 
-        for i in range(5):
+        for request_num in range(1, 6):
             response = requests.get(url=url, headers=headers, verify=evalhub_otel_ca_bundle_file, timeout=10)
-            assert response.status_code == 200, f"Health check {i + 1} failed: {response.status_code}"
+            assert response.status_code == 200, f"Health check {request_num} failed: {response.status_code}"
             time.sleep(1)
 
         LOGGER.info("Generated 5 health check requests for HTTP exporter test")
 
-        time.sleep(15)
+        # Wait for export interval (60s default + buffer)
+        time.sleep(70)
 
         collector_logs = otel_collector_pod.log(container="otel-collector", tail_lines=200)
 
@@ -212,7 +182,7 @@ class TestEvalHubOTEL:
         url = f"https://{evalhub_otel_grpc_route.host}{EVALHUB_HEALTH_PATH}"
         headers = get_auth_headers(token=current_client_token)
 
-        for i in range(5):
+        for _ in range(5):
             requests.get(url=url, headers=headers, verify=evalhub_otel_ca_bundle_file, timeout=10)
             time.sleep(1)
 
@@ -252,9 +222,9 @@ class TestEvalHubOTEL:
         url = f"https://{evalhub_otel_dual_sink_route.host}{EVALHUB_HEALTH_PATH}"
         headers = get_auth_headers(token=current_client_token)
 
-        for i in range(10):
+        for request_num in range(1, 11):
             response = requests.get(url=url, headers=headers, verify=evalhub_otel_ca_bundle_file, timeout=10)
-            assert response.status_code == 200, f"Request {i + 1} failed"
+            assert response.status_code == 200, f"Request {request_num} failed"
 
         LOGGER.info("Generated 10 health check requests for dual-sink test")
 
@@ -339,8 +309,8 @@ class TestEvalHubOTEL:
             assert response.status_code < 500, f"Endpoint {endpoint} crashed with status {response.status_code}"
             LOGGER.info(f"Accessed endpoint {endpoint}: {response.status_code}")
 
-        # Wait for metrics export
-        time.sleep(15)
+        # Wait for metrics export (60s default interval + buffer)
+        time.sleep(70)
 
         # Check collector received metrics
         collector_logs = otel_collector_pod.log(container="otel-collector", tail_lines=400)
@@ -354,6 +324,8 @@ class TestEvalHubOTEL:
         # Look for evidence of multiple instrumentation scopes (different packages using the meter)
         # OTLP includes "InstrumentationScope" or "Scope" fields
         scope_count = collector_logs.count("InstrumentationScope") + collector_logs.count("ScopeMetrics")
+
+        assert scope_count > 0, "No instrumentation scopes found - MeterProvider may not be globally accessible"
 
         LOGGER.info(f"Found {scope_count} instrumentation scope references in OTLP exports")
 
