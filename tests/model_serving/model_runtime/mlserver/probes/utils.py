@@ -8,8 +8,6 @@ from utilities.constants import Containers, Ports
 
 ProbeType = Literal["readinessProbe", "livenessProbe"]
 
-MLSERVER_HEALTH_PATHS: tuple[str, ...] = ("/v2/health/ready", "/v2/health/live", "/v2/models")
-
 MLSERVER_READINESS_PROBE: dict[str, Any] = {
     "httpGet": {"path": "/v2/health/ready", "port": Ports.REST_PORT, "scheme": "HTTP"},
     "initialDelaySeconds": 120,
@@ -125,15 +123,8 @@ def exec_http_probe(pod: Pod, http_get: dict[str, Any]) -> str:
 
 
 def exec_mlserver_health_check(pod: Pod, http_get: dict[str, Any]) -> str:
-    """Try configured and fallback MLServer health paths until one returns HTTP 200."""
-    paths = [http_get.get("path", "/v2/health/ready"), *MLSERVER_HEALTH_PATHS]
-    unique_paths = list(dict.fromkeys(path for path in paths if path))
-    last_status = "000"
-    for path in unique_paths:
-        last_status = exec_http_probe(pod=pod, http_get={**http_get, "path": path})
-        if last_status == "200":
-            return last_status
-    return last_status
+    """Execute health check probe on MLServer pod using the configured probe path."""
+    return exec_http_probe(pod=pod, http_get=http_get)
 
 
 def get_restart_counts(pod: Pod) -> dict[str, int]:
