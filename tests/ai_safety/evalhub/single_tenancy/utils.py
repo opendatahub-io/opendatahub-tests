@@ -10,14 +10,11 @@ from ocp_resources.evalhub import EvalHub
 def _is_evalhub_crd_available(admin_client: DynamicClient) -> bool:
     """Check if EvalHub CRD is installed on the cluster."""
     crd_name = "evalhubs.trustyai.opendatahub.io"
-    try:
-        crd = CustomResourceDefinition(
-            client=admin_client,
-            name=crd_name,
-        )
-        return crd.exists
-    except AttributeError, KeyError:
-        return False
+    crd = CustomResourceDefinition(
+        client=admin_client,
+        name=crd_name,
+    )
+    return crd.exists is not None
 
 
 class SingleTenantEvalHub(EvalHub):
