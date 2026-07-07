@@ -104,22 +104,16 @@ def agents_response(
 
 
 @pytest.fixture(scope="class")
-def default_agents(agents_response: dict) -> dict:
-    """Return the agents list loaded from the test agent catalog source."""
-    return agents_response
-
-
-@pytest.fixture(scope="class")
 def langgraph_framework_filter_query() -> str:
     """Return the filterQuery expression for LangGraph framework agents."""
     return f"framework='{LANGGRAPH_FRAMEWORK}'"
 
 
 @pytest.fixture(scope="class")
-def expected_langgraph_agent_names(default_agents: dict) -> set[str]:
+def expected_langgraph_agent_names(agents_response: dict) -> set[str]:
     """Return agent names from the test catalog that use the LangGraph framework."""
     names = {
-        agent["name"] for agent in default_agents.get("items", []) if agent.get("framework") == LANGGRAPH_FRAMEWORK
+        agent["name"] for agent in agents_response.get("items", []) if agent.get("framework") == LANGGRAPH_FRAMEWORK
     }
     assert names, f"No agents with framework '{LANGGRAPH_FRAMEWORK}' found in default catalog"
     assert names == TEST_LANGGRAPH_AGENT_NAMES, (

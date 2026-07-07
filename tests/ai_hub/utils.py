@@ -1110,13 +1110,11 @@ def wait_for_agent_catalog_api(
         LOGGER.info(
             f"Agent catalog API returned {current_size} agents (stable: {stable_count}/{consecutive_stable_checks})"
         )
-    final_size = data.get("size", 0)
-    if final_size < min_agents:
-        raise AssertionError(
-            f"Agent catalog API did not stabilize with at least {min_agents} agents "
-            f"within {wait_timeout}s (last size={final_size})"
-        )
-    return data
+    raise AssertionError(
+        f"Agent catalog API did not stabilize within {wait_timeout}s "
+        f"(last size={data.get('size', 0)}, required={min_agents}, "
+        f"stable_count={stable_count}/{consecutive_stable_checks})"
+    )
 
 
 def get_latest_job_pod(admin_client: DynamicClient, job: Job) -> Pod:

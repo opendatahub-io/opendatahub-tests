@@ -75,7 +75,6 @@ class TestAgentCatalogSearch:
             base_url=base_url,
             headers=model_registry_rest_headers,
             filter_query=langgraph_framework_filter_query,
-            page_size=1,
             order_params=order_params,
         )
 

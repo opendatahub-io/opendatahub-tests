@@ -1,8 +1,11 @@
 from typing import Any
 
 import structlog
+import yaml
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.config_map import ConfigMap
 
-from tests.ai_hub.mcp_servers.config.utils import get_catalog_sources_configmap
+from tests.ai_hub.constants import DEFAULT_CUSTOM_MODEL_CATALOG
 from tests.ai_hub.utils import execute_get_command_with_retry
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -10,31 +13,36 @@ LOGGER = structlog.get_logger(name=__name__)
 __all__ = [
     "assert_paginated_agents_unique_and_filtered",
     "get_agent_catalog_sources",
-    "get_catalog_sources_configmap",
     "paginate_filtered_agents",
 ]
 
-# Agent catalog sources are configured in the same runtime ConfigMap as MCP catalogs.
-get_agent_catalog_sources = get_catalog_sources_configmap
+
+def get_agent_catalog_sources(admin_client: DynamicClient, model_registry_namespace: str) -> tuple[ConfigMap, dict]:
+    """Return the user-editable catalog sources ConfigMap and its parsed sources.yaml data."""
+    catalog_config_map = ConfigMap(
+        name=DEFAULT_CUSTOM_MODEL_CATALOG,
+        client=admin_client,
+        namespace=model_registry_namespace,
+    )
+    current_data = yaml.safe_load(catalog_config_map.instance.data.get("sources.yaml", "{}") or "{}")
+    return catalog_config_map, current_data
 
 
 def paginate_filtered_agents(
     base_url: str,
     headers: dict[str, str],
     filter_query: str,
-    page_size: int = 1,
     order_params: dict[str, str] | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
-    """Paginate through all pages of filtered agent catalog results.
+    """Paginate through filtered agent catalog results one item at a time.
 
-    Fetches the total count, then walks each page with the given page size and
+    Fetches the total count, then walks each page with pageSize=1 and
     optional ordering parameters.
 
     Args:
         base_url: Agents list endpoint URL (e.g. ``.../agents``).
         headers: REST request headers.
         filter_query: filterQuery expression applied to every page request.
-        page_size: Number of items per page.
         order_params: Optional ordering parameters (orderBy, sortOrder).
 
     Returns:
@@ -59,7 +67,7 @@ def paginate_filtered_agents(
     for page_num in range(1, total_items + 1):
         params: dict[str, str] = {
             "filterQuery": filter_query,
-            "pageSize": str(page_size),
+            "pageSize": "1",
             **order_params,
         }
         if next_page_token:
@@ -71,7 +79,7 @@ def paginate_filtered_agents(
             params=params,
         )
         page_items = response.get("items", [])
-        assert len(page_items) == page_size, f"Expected {page_size} item(s) on page {page_num}, got {len(page_items)}"
+        assert len(page_items) == 1, f"Expected 1 item on page {page_num}, got {len(page_items)}"
         items.extend(page_items)
 
         next_page_token = response.get("nextPageToken")
