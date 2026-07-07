@@ -35,7 +35,7 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_PROVIDERS_PATH,
     EVALHUB_VLLM_EMULATOR_PORT,
 )
-from tests.ai_safety.evalhub.utils import build_headers
+from tests.ai_safety.evalhub.utils import build_headers, submit_evalhub_job
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -117,6 +117,27 @@ class TestEvalHubSingleTenancyHealth:
             f"Expected status='{EVALHUB_HEALTH_STATUS_HEALTHY}', got: {data}"
         )
 
+@pytest.fixture(scope="class")
+def evalhub_st_submitted_job_id(
+    model_namespace: Namespace,
+    evalhub_st_ready: None,
+    evalhub_st_route: Route,
+    evalhub_st_ca_bundle_file: str,
+    evalhub_st_user_token: str,
+) -> str:
+    """Minimal evaluation job submitted once per API access test class."""
+    payload = _minimal_job_payload(tenant_namespace=model_namespace.name)
+    data = submit_evalhub_job(
+        host=evalhub_st_route.host,
+        token=evalhub_st_user_token,
+        ca_bundle_file=evalhub_st_ca_bundle_file,
+        tenant=model_namespace.name,
+        payload=payload,
+    )
+    job_id = (data.get("resource") or {}).get("id")
+    assert job_id, f"Expected resource.id in 202 response body, got: {data}"
+    return job_id
+
 @pytest.mark.parametrize(
     "model_namespace",
     [pytest.param({"name": "test-evalhub-st-api"})],
@@ -163,11 +184,7 @@ class TestEvalHubSingleTenancyAPIAccess:
 
     def test_submit_job_with_own_namespace_tenant(
         self,
-        model_namespace: Namespace,
-        evalhub_st_ready: None,
-        evalhub_st_route: Route,
-        evalhub_st_ca_bundle_file: str,
-        evalhub_st_user_token: str,
+        evalhub_st_submitted_job_id: str,
     ) -> None:
         """Given: a user SA bound to evalhub-user Role in the workload namespace.
 
@@ -175,27 +192,15 @@ class TestEvalHubSingleTenancyAPIAccess:
 
         Then: response is 202 with resource.id in the body.
         """
-        url = f"https://{evalhub_st_route.host}{EVALHUB_JOBS_PATH}"
-        payload = _minimal_job_payload(tenant_namespace=model_namespace.name)
-        response = requests.post(
-            url=url,
-            headers=build_headers(token=evalhub_st_user_token, tenant=model_namespace.name),
-            json=payload,
-            verify=evalhub_st_ca_bundle_file,
-            timeout=30,
-        )
-        assert response.status_code == 202, f"Expected 202 from job submit, got {response.status_code}: {response.text}"
-        data = response.json()
-        job_id = (data.get("resource") or {}).get("id")
-        assert job_id, f"Expected resource.id in 202 response body, got: {data}"
+        assert evalhub_st_submitted_job_id, "Expected non-empty job id from class-scoped submission fixture"
 
     def test_list_jobs_after_submit(
         self,
         model_namespace: Namespace,
-        evalhub_st_ready: None,
         evalhub_st_route: Route,
         evalhub_st_ca_bundle_file: str,
         evalhub_st_user_token: str,
+        evalhub_st_submitted_job_id: str,
     ) -> None:
         """Given: a user SA that has submitted a job in their own namespace.
 
@@ -203,24 +208,6 @@ class TestEvalHubSingleTenancyAPIAccess:
 
         Then: response is 200 and the submitted job appears in items.
         """
-        # Submit a job first so the list is non-empty
-        post_url = f"https://{evalhub_st_route.host}{EVALHUB_JOBS_PATH}"
-        payload = _minimal_job_payload(
-            tenant_namespace=model_namespace.name,
-            job_name="evalhub-st-list-check-job",
-        )
-        post_resp = requests.post(
-            url=post_url,
-            headers=build_headers(token=evalhub_st_user_token, tenant=model_namespace.name),
-            json=payload,
-            verify=evalhub_st_ca_bundle_file,
-            timeout=30,
-        )
-        assert post_resp.status_code == 202, (
-            f"Pre-condition: job submission failed with {post_resp.status_code}: {post_resp.text}"
-        )
-        submitted_id = (post_resp.json().get("resource") or {}).get("id")
-
         list_url = f"https://{evalhub_st_route.host}{EVALHUB_JOBS_PATH}"
         list_resp = requests.get(
             url=list_url,
@@ -234,7 +221,9 @@ class TestEvalHubSingleTenancyAPIAccess:
         data = list_resp.json()
         items = data.get("items") or []
         job_ids = [(item.get("resource") or {}).get("id") for item in items]
-        assert submitted_id in job_ids, f"Submitted job '{submitted_id}' not found in jobs list: {job_ids}"
+        assert evalhub_st_submitted_job_id in job_ids, (
+            f"Submitted job '{evalhub_st_submitted_job_id}' not found in jobs list: {job_ids}"
+        )
 
 @pytest.mark.parametrize(
     "model_namespace",
