@@ -5,8 +5,6 @@ The SingleTenantEvalHub subclass injects spec.tenancy: single because the auto-g
 ocp_resources.EvalHub class has no tenancy parameter in its constructor.
 """
 
-from __future__ import annotations
-
 from collections.abc import Generator
 from typing import Any
 

@@ -1,7 +1,5 @@
 """Utilities for EvalHub single-tenancy integration tests."""
 
-from __future__ import annotations
-
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.evalhub import EvalHub

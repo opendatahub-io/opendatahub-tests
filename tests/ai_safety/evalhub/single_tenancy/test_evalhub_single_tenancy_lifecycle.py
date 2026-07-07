@@ -30,8 +30,6 @@ Run in isolation:
     pytest tests/ai_safety/evalhub/single_tenancy/test_evalhub_single_tenancy_lifecycle.py -m ai_safety
 """
 
-from __future__ import annotations
-
 from collections.abc import Generator
 from typing import Any
 
