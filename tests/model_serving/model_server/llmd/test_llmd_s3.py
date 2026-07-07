@@ -20,7 +20,7 @@ pytestmark = [
     [pytest.param({"name": "llmd-s3-test"}, {"name_suffix": "s3"}, id="s3-cpu-basic")],
     indirect=True,
 )
-@pytest.mark.usefixtures("valid_aws_config")
+@pytest.mark.usefixtures("skip_if_disconnected", "valid_aws_config")
 class TestLLMDS3Inference:
     """LLMD inference testing with S3 storage and CPU runtime using vLLM."""
 

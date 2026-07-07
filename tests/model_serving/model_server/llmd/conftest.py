@@ -92,7 +92,7 @@ def shared_llmd_gateway(
     with create_llmd_gateway(
         client=admin_client,
         namespace=gateway_namespace,
-        gateway_class_name=LLMDGateway.DEFAULT_CLASS,
+        gateway_class_name=LLMDGateway.DEFAULT_GATEWAY_CLASS,
         wait_for_condition=True,
         timeout=Timeout.TIMEOUT_5MIN,
         teardown=True,

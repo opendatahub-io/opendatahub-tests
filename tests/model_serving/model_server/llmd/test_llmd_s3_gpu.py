@@ -42,7 +42,7 @@ GPU_LLMD_PARAMS = [
     GPU_LLMD_PARAMS,
     indirect=True,
 )
-@pytest.mark.usefixtures("valid_aws_config")
+@pytest.mark.usefixtures("skip_if_disconnected", "valid_aws_config")
 class TestLLMDS3GPUInference:
     """LLMD inference testing with S3 storage and GPU runtime using vLLM."""
 

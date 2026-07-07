@@ -17,7 +17,7 @@ from timeout_sampler import retry, TimeoutWatch
 from utilities.certificates_utils import get_ca_bundle
 from utilities.constants import HTTPRequest, Timeout
 from utilities.exceptions import InferenceResponseError
-from utilities.infra import get_services_by_isvc_label
+from utilities.infra import get_services_by_isvc_label, is_disconnected_cluster
 from utilities.llmd_constants import (
     ContainerImages,
     LLMDGateway,
@@ -33,7 +33,7 @@ def create_llmd_gateway(
     client: DynamicClient,
     name: str = LLMDGateway.DEFAULT_NAME,
     namespace: str = LLMDGateway.DEFAULT_NAMESPACE,
-    gateway_class_name: str = LLMDGateway.DEFAULT_CLASS,
+    gateway_class_name: str = LLMDGateway.DEFAULT_GATEWAY_CLASS,
     listeners: Optional[list[Dict[str, Any]]] = None,
     infrastructure: Optional[Dict[str, Any]] = None,
     wait_for_condition: bool = True,
@@ -69,48 +69,57 @@ def create_llmd_gateway(
 
     if infrastructure is None:
         infrastructure = {"labels": {KServeGateway.LABEL: KServeGateway.INGRESS_GATEWAY}}
-    try:
-        existing_gateway = Gateway(
-            client=client,
-            name=name,
-            namespace=namespace,
-            api_group=KServeGateway.API_GROUP,
-        )
-        if existing_gateway.exists:
-            LOGGER.info(f"Cleaning up existing Gateway {name} in namespace {namespace}")
-            existing_gateway.delete(wait=True, timeout=Timeout.TIMEOUT_2MIN)
-    except Exception as e:
-        LOGGER.debug(f"No existing Gateway to clean up: {e}")
-    gateway_body = {
-        "apiVersion": f"{KServeGateway.API_GROUP}/v1",
-        "kind": "Gateway",
-        "metadata": {
-            "name": name,
-            "namespace": namespace,
-        },
-        "spec": {
-            "gatewayClassName": gateway_class_name,
-            "listeners": listeners,
-            "infrastructure": infrastructure,
-        },
-    }
-
-    with Gateway(
+    existing_gateway = Gateway(
         client=client,
-        teardown=teardown,
-        kind_dict=gateway_body,
-        api_group="gateway.networking.k8s.io",
-    ) as gateway:
+        name=name,
+        namespace=namespace,
+        api_group=KServeGateway.API_GROUP,
+    )
+    if existing_gateway.exists:
+        LOGGER.info(f"Reusing existing Gateway {name} in namespace {namespace}")
         if wait_for_condition:
-            LOGGER.info(f"Waiting for Gateway {name} to be programmed...")
-            gateway.wait_for_condition(
+            existing_gateway.wait_for_condition(
                 condition="Programmed",
                 status="True",
                 timeout=timeout,
             )
-            LOGGER.info(f"Gateway {name} is programmed and ready")
+        yield existing_gateway
+    elif is_disconnected_cluster(client=client):
+        raise RuntimeError(
+            f"Gateway {name} in namespace {namespace} does not exist on a disconnected cluster. "
+            "The gateway must be pre-created by CI using configure-llmd-gateway.sh."
+        )
+    else:
+        gateway_body = {
+            "apiVersion": f"{KServeGateway.API_GROUP}/v1",
+            "kind": "Gateway",
+            "metadata": {
+                "name": name,
+                "namespace": namespace,
+            },
+            "spec": {
+                "gatewayClassName": gateway_class_name,
+                "listeners": listeners,
+                "infrastructure": infrastructure,
+            },
+        }
 
-        yield gateway
+        with Gateway(
+            client=client,
+            teardown=teardown,
+            kind_dict=gateway_body,
+            api_group="gateway.networking.k8s.io",
+        ) as gateway:
+            if wait_for_condition:
+                LOGGER.info(f"Waiting for Gateway {name} to be programmed...")
+                gateway.wait_for_condition(
+                    condition="Programmed",
+                    status="True",
+                    timeout=timeout,
+                )
+                LOGGER.info(f"Gateway {name} is programmed and ready")
+
+            yield gateway
 
 
 def _get_llm_config_references(enable_prefill_decode: bool = False, disable_scheduler: bool = False) -> Dict[str, str]:
@@ -352,7 +361,11 @@ def get_llm_inference_url(llm_service: LLMInferenceService) -> str:
     """
     Get the inference URL for an LLMInferenceService.
 
-    This function attempts to resolve the URL in the following order:
+    On disconnected clusters the gateway uses ClusterIP instead of LoadBalancer,
+    so the internal service URL from LLMISVC status is not reachable from outside
+    the cluster. This function resolves the URL via the gateway Route instead.
+
+    On connected clusters, resolves the URL in the following order:
     1. External URL from service status
     2. Service discovery via labels
     3. Fallback to service name pattern
@@ -366,6 +379,9 @@ def get_llm_inference_url(llm_service: LLMInferenceService) -> str:
     Raises:
         ValueError: If the inference URL cannot be determined
     """
+    if is_disconnected_cluster(client=llm_service.client):
+        return _get_disconnected_inference_url(llm_service=llm_service)
+
     # Check for external URL from status.addresses first
     if llm_service.instance.status and llm_service.instance.status.get("addresses"):
         addresses = llm_service.instance.status["addresses"]
@@ -395,6 +411,31 @@ def get_llm_inference_url(llm_service: LLMInferenceService) -> str:
     fallback_url = f"http://{llm_service.name}.{llm_service.namespace}.svc.cluster.local"
     LOGGER.debug(f"Using fallback URL for {llm_service.name}: {fallback_url}")
     return fallback_url
+
+
+def _get_disconnected_inference_url(llm_service: LLMInferenceService) -> str:
+    """Build inference URL using the gateway Route for disconnected clusters."""
+    from ocp_resources.route import Route
+
+    route = Route(
+        client=llm_service.client,
+        name=LLMDGateway.DEFAULT_NAME,
+        namespace=LLMDGateway.DEFAULT_NAMESPACE,
+    )
+    if not route.exists:
+        raise RuntimeError(
+            f"Gateway Route {LLMDGateway.DEFAULT_NAME} not found in {LLMDGateway.DEFAULT_NAMESPACE}. "
+            "Disconnected clusters require the gateway Route to be configured."
+        )
+    host = route.instance.spec.host
+    if not host:
+        raise RuntimeError(
+            f"Gateway Route {LLMDGateway.DEFAULT_NAME} in {LLMDGateway.DEFAULT_NAMESPACE} "
+            "has no host set. Ensure the Route is fully configured."
+        )
+    url = f"https://{host}/{llm_service.namespace}/{llm_service.name}"
+    LOGGER.info(f"Using disconnected Route URL for {llm_service.name}: {url}")
+    return url
 
 
 def verify_inference_response_llmd(
