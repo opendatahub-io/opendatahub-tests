@@ -50,11 +50,18 @@ TRANSIENT_HEALTH_EXCEPTIONS: Final = {TransientEvalhubHealthError: []}
 
 def is_dns_resolution_error(err: BaseException) -> bool:
     """Return True when the exception chain includes a DNS resolution failure."""
+    seen: set[int] = set()
     exc: BaseException | None = err
-    while exc is not None:
+    while exc is not None and id(exc) not in seen:
+        seen.add(id(exc))
         if isinstance(exc, socket.gaierror):
             return True
-        exc = exc.__cause__
+        if exc.__cause__ is not None:
+            exc = exc.__cause__
+        elif exc.__context__ is not None and not exc.__suppress_context__:
+            exc = exc.__context__
+        else:
+            exc = None
     return False
 
 
