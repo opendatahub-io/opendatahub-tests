@@ -21,7 +21,6 @@ MAAS_GATEWAY_AUTH_POLICY_NAME = "maas-gateway-auth"
     "maas_unprivileged_model_namespace",
     "maas_subscription_controller_enabled_latest",
     "maas_gateway_api",
-    "maas_api_gateway_reachable",
     "maas_auth_policy_tinyllama_free",
 )
 class TestAuthPolicyApiKeyValidation:
@@ -57,6 +56,7 @@ class TestAuthPolicyApiKeyValidation:
         )
 
     @pytest.mark.smoke
+    @pytest.mark.usefixtures("maas_api_gateway_reachable")
     @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
     def test_api_key_can_list_models(
         self,
