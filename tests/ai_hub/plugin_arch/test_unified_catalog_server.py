@@ -31,6 +31,7 @@ class TestCatalogPluginArchitecture:
         assert "all plugins initialized" in log, "Plugin initialization did not complete successfully"
         assert "model plugin becoming leader" in log, "Model plugin did not become leader"
         assert "mcp plugin becoming leader" in log, "MCP plugin did not become leader"
+        assert "agent plugin becoming leader" in log, "Agent plugin did not become leader"
 
         LOGGER.info("Catalog pod initialized all plugins successfully")
 
@@ -57,6 +58,7 @@ class TestCatalogPluginArchitecture:
         [
             pytest.param("model", id="test_readyz_model_plugin"),
             pytest.param("mcp", id="test_readyz_mcp_plugin"),
+            pytest.param("agent", id="test_readyz_agent_plugin"),
         ],
     )
     def test_readyz_plugin_registered(
