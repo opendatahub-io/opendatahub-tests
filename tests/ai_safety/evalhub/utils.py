@@ -1,3 +1,6 @@
+import socket
+from typing import Final
+
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
@@ -32,6 +35,45 @@ from utilities.guardrails import get_auth_headers
 from utilities.kueue_utils import Workload
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+class TransientEvalhubHealthError(Exception):
+    """Recoverable failure while polling an EvalHub health endpoint."""
+
+
+_TRANSIENT_HEALTH_REQUEST_EXCEPTIONS: Final = (
+    requests.exceptions.ConnectTimeout,
+    requests.exceptions.ReadTimeout,
+)
+TRANSIENT_HEALTH_EXCEPTIONS: Final = {TransientEvalhubHealthError: []}
+
+
+def is_dns_resolution_error(err: BaseException) -> bool:
+    """Return True when the exception chain includes a DNS resolution failure."""
+    exc: BaseException | None = err
+    while exc is not None:
+        if isinstance(exc, socket.gaierror):
+            return True
+        exc = exc.__cause__
+    return False
+
+
+def probe_evalhub_health_endpoint(
+    url: str,
+    host: str,
+    ca_bundle_file: str,
+) -> requests.Response:
+    """GET the EvalHub health endpoint, retrying only on transient network failures."""
+    try:
+        return requests.get(url, verify=ca_bundle_file, timeout=10)
+    except requests.exceptions.ConnectionError as err:
+        if isinstance(err, requests.exceptions.SSLError) or is_dns_resolution_error(err):
+            raise
+        LOGGER.warning(f"Transient error checking EvalHub health at {host}: {err}")
+        raise TransientEvalhubHealthError(str(err)) from err
+    except _TRANSIENT_HEALTH_REQUEST_EXCEPTIONS as err:
+        LOGGER.warning(f"Transient error checking EvalHub health at {host}: {err}")
+        raise TransientEvalhubHealthError(str(err)) from err
 
 
 class EvalHubV1(EvalHub):

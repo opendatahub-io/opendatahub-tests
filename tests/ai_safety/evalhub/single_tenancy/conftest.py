@@ -9,7 +9,6 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
-import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
@@ -26,6 +25,7 @@ from tests.ai_safety.evalhub.single_tenancy.constants import (
     EVALHUB_USER_ROLE_NAME,
 )
 from tests.ai_safety.evalhub.single_tenancy.utils import SingleTenantEvalHub, _is_evalhub_crd_available
+from tests.ai_safety.evalhub.utils import TRANSIENT_HEALTH_EXCEPTIONS, probe_evalhub_health_endpoint
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import Timeout
 from utilities.infra import create_inference_token, create_ns
@@ -100,20 +100,25 @@ def evalhub_st_ready(
     causing transient 503 errors. This fixture waits until the route is actually serving.
     """
     url = f"https://{evalhub_st_route.host}{EVALHUB_HEALTH_PATH}"
+    host = evalhub_st_route.host
     try:
         for sample in TimeoutSampler(
             wait_timeout=120,
             sleep=5,
-            func=lambda: requests.get(url, verify=evalhub_st_ca_bundle_file, timeout=10),
-            exceptions_dict={Exception: []},
+            func=lambda: probe_evalhub_health_endpoint(
+                url=url,
+                host=host,
+                ca_bundle_file=evalhub_st_ca_bundle_file,
+            ),
+            exceptions_dict=TRANSIENT_HEALTH_EXCEPTIONS,
         ):
             if sample.ok:
-                LOGGER.info(f"Single-tenant EvalHub at {evalhub_st_route.host} is healthy")
+                LOGGER.info(f"Single-tenant EvalHub at {host} is healthy")
                 return
     except TimeoutExpiredError as err:
-        raise RuntimeError(
-            f"Single-tenant EvalHub at {evalhub_st_route.host} did not become healthy within 120s"
-        ) from err
+        if err.last_exp is not None:
+            raise err.last_exp from err
+        raise RuntimeError(f"Single-tenant EvalHub at {host} did not become healthy within 120s") from err
 
 @pytest.fixture(scope="class")
 def evalhub_st_user_sa(
