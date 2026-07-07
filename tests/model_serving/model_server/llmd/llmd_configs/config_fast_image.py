@@ -24,28 +24,26 @@ FAST_1_REGEX = ".*fast-1$"
 FAST_2_REGEX = ".*fast-2$"
 
 
-class FastImageConfig(TinyLlamaOciGpuConfig):
-    """Base class for fast image GPU inference.
-
-    Subclasses override ``accelerator_config_name_regex`` with a regex matching
-    the desired fast CR name (e.g. ``.*fast-1$``).  The base ``GpuConfig``
-    default regex (``_DEFAULT_ACCELERATOR_CONFIG_NAME_REGEX``) explicitly
-    excludes fast CRs, so only subclasses that override it will match them.
-
-    When no matching CR is found on the cluster, ``_resolve_accelerator``
-    detects that the regex differs from the default and calls ``pytest.skip``
-    instead of falling through to the default CUDA template.
-    """
+# config classes for fast images GPU inference.
+#
+# They override ``accelerator_config_name_regex`` with a regex matching
+# the desired fast CR name (e.g. ``.*fast-1$``).  The base ``GpuConfig``
+# default regex (``_DEFAULT_ACCELERATOR_CONFIG_NAME_REGEX``) explicitly
+# excludes fast CRs, so only subclasses that override it will match them.
+#
+# When no matching CR is found on the cluster, ``_resolve_accelerator``
+# detects that the regex differs from the default and calls ``pytest.skip``
+# instead of falling through to the default CUDA template.
 
 
-class TinyLlamaFast1Config(FastImageConfig):
+class TinyLlamaFast1Config(TinyLlamaOciGpuConfig):
     """TinyLlama via OCI, GPU inference with the fast-1 optimized vLLM image."""
 
     name = "llmisvc-tinyllama-oci-fast-1"
     accelerator_config_name_regex = FAST_1_REGEX
 
 
-class TinyLlamaFast2Config(FastImageConfig):
+class TinyLlamaFast2Config(TinyLlamaOciGpuConfig):
     """TinyLlama via OCI, GPU inference with the fast-2 optimized vLLM image."""
 
     name = "llmisvc-tinyllama-oci-fast-2"
