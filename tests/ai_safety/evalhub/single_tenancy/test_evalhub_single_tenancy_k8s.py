@@ -92,7 +92,7 @@ class TestEvalHubSingleTenancyOperatorResources:
         assert svc.exists, f"Expected Service '{EVALHUB_ST_CR_NAME}' in {model_namespace.name}"
 
         ports = svc.instance.spec.ports
-        port_numbers = [p.port for p in ports]
+        port_numbers = [port.port for port in ports]
         assert 8443 in port_numbers, f"Expected port 8443, found: {port_numbers}"
 
         selector = dict(svc.instance.spec.selector or {})
@@ -137,7 +137,7 @@ class TestEvalHubSingleTenancyOperatorResources:
         assert svc.exists, f"Expected metrics Service '{metrics_name}' in {model_namespace.name}"
 
         ports = svc.instance.spec.ports
-        port_numbers = [p.port for p in ports]
+        port_numbers = [port.port for port in ports]
         assert 8081 in port_numbers, f"Expected metrics port 8081, found: {port_numbers}"
 
     def test_service_monitor_created(
