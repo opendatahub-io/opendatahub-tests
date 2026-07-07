@@ -134,6 +134,48 @@ def assert_tenant_inference_response_has_choices(response: requests.Response) ->
     )
 
 
+def wait_for_tenant_inference_response(
+    session: requests.Session,
+    inference_url: str,
+    headers: dict[str, str],
+    payload: dict[str, Any],
+    expected_status: int = 200,
+    wait_timeout: int = TENANT_INFERENCE_READY_TIMEOUT_SECONDS,
+    sleep: int = TENANT_INFERENCE_READY_POLL_SECONDS,
+) -> requests.Response:
+    """Poll until a tenant inference POST returns the expected status with a valid response body."""
+    last_status_code = 0
+    last_response_text = ""
+    try:
+        for response in TimeoutSampler(
+            wait_timeout=wait_timeout,
+            sleep=sleep,
+            func=session.post,
+            url=inference_url,
+            headers=headers,
+            json=payload,
+            timeout=60,
+            exceptions_dict={requests.RequestException: []},
+        ):
+            last_status_code = response.status_code
+            last_response_text = response.text[:200]
+            if response.status_code == expected_status:
+                assert_tenant_inference_response_has_choices(response=response)
+                LOGGER.info(f"Tenant inference POST {inference_url} returned {response.status_code}")
+                return response
+            else:
+                LOGGER.warning(f"Tenant inference POST {inference_url} returned {response.status_code}; retrying")
+    except TimeoutExpiredError as error:
+        raise TimeoutExpiredError(
+            f"Timed out waiting for {expected_status} on tenant inference POST {inference_url} "
+            f"within {wait_timeout}s; last status={last_status_code}: {last_response_text}"
+        ) from error
+    raise TimeoutExpiredError(
+        f"Expected {expected_status} on tenant inference POST {inference_url}, "
+        f"last status={last_status_code}: {last_response_text}"
+    )
+
+
 def assert_tenant_inference_status(
     session: requests.Session,
     inference_url: str,
@@ -143,37 +185,14 @@ def assert_tenant_inference_status(
 ) -> None:
     """Verify a POST to a tenant Gateway inference endpoint returns the expected HTTP status."""
     if expected_status == 200:
-        last_status_code = 0
-        last_response_text = ""
-        try:
-            for response in TimeoutSampler(
-                wait_timeout=TENANT_INFERENCE_READY_TIMEOUT_SECONDS,
-                sleep=TENANT_INFERENCE_READY_POLL_SECONDS,
-                func=session.post,
-                url=inference_url,
-                headers=headers,
-                json=payload,
-                timeout=60,
-                exceptions_dict={requests.RequestException: []},
-            ):
-                last_status_code = response.status_code
-                last_response_text = response.text[:200]
-                if response.status_code != expected_status:
-                    LOGGER.warning(f"Tenant inference POST {inference_url} returned {response.status_code}; retrying")
-                    continue
-                assert_tenant_inference_response_has_choices(response=response)
-                LOGGER.info(f"Tenant inference POST {inference_url} returned {response.status_code}")
-                return
-        except TimeoutExpiredError as error:
-            raise AssertionError(
-                f"Timed out waiting for {expected_status} on tenant inference POST {inference_url} "
-                f"within {TENANT_INFERENCE_READY_TIMEOUT_SECONDS}s; "
-                f"last status={last_status_code}: {last_response_text}"
-            ) from error
-        raise AssertionError(
-            f"Expected {expected_status} on tenant inference POST {inference_url}, "
-            f"last status={last_status_code}: {last_response_text}"
+        wait_for_tenant_inference_response(
+            session=session,
+            inference_url=inference_url,
+            headers=headers,
+            payload=payload,
+            expected_status=expected_status,
         )
+        return
 
     response = session.post(url=inference_url, headers=headers, json=payload, timeout=60)
     assert response.status_code == expected_status, (
