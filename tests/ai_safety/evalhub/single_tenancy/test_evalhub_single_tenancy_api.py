@@ -1,6 +1,6 @@
-"""API behaviour tests for EvalHub single-tenancy mode.
+"""Positive API behaviour tests for EvalHub single-tenancy mode.
 
-Three test classes:
+Two test classes:
 
   TestEvalHubSingleTenancyHealth
       Verifies the /api/v1/health endpoint is accessible without tenant context.
@@ -10,20 +10,14 @@ Three test classes:
       list collections, submit a job, and list submitted jobs — all using
       X-Tenant: {own_namespace}.
 
-  TestEvalHubSingleTenancyCrossNamespaceRejection
-      Verifies that requests with X-Tenant pointing to a different namespace
-      (where the caller has no Role) are rejected, and that requests without
-      an X-Tenant header are also rejected.
+Negative tenant-header cases live in test_evalhub_single_tenancy_api_negative.py.
 
 Run in isolation:
     pytest tests/ai_safety/evalhub/single_tenancy/test_evalhub_single_tenancy_api.py -m ai_safety
 """
 
-from typing import Literal, TypedDict
-
 import pytest
 import requests
-import structlog
 from ocp_resources.namespace import Namespace
 from ocp_resources.route import Route
 
@@ -33,57 +27,8 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_HEALTH_STATUS_HEALTHY,
     EVALHUB_JOBS_PATH,
     EVALHUB_PROVIDERS_PATH,
-    EVALHUB_VLLM_EMULATOR_PORT,
 )
-from tests.ai_safety.evalhub.utils import build_headers, submit_evalhub_job
-
-LOGGER = structlog.get_logger(name=__name__)
-
-class _JobBenchmarkParameters(TypedDict):
-    num_examples: int
-    tokenizer: Literal["google/flan-t5-small"]
-
-class _JobBenchmark(TypedDict):
-    id: Literal["arc_easy"]
-    provider_id: Literal["lm_evaluation_harness"]
-    parameters: _JobBenchmarkParameters
-
-class _JobModel(TypedDict):
-    url: str
-    name: Literal["emulatedModel"]
-
-class _JobPayload(TypedDict):
-    name: str
-    model: _JobModel
-    benchmarks: list[_JobBenchmark]
-
-def _minimal_job_payload(
-    tenant_namespace: str,
-    job_name: str = "evalhub-st-api-test-job",
-) -> _JobPayload:
-    """Minimal job payload that targets a non-existent model URL.
-
-    The job will be accepted (202) and then fail when it tries to reach the
-    model — but we only assert on the submission response code, not completion.
-    """
-    model_url = f"http://evalhub-st-emulator.{tenant_namespace}.svc.cluster.local:{EVALHUB_VLLM_EMULATOR_PORT}/v1"
-    return {
-        "name": job_name,
-        "model": {
-            "url": model_url,
-            "name": "emulatedModel",
-        },
-        "benchmarks": [
-            {
-                "id": "arc_easy",
-                "provider_id": "lm_evaluation_harness",
-                "parameters": {
-                    "num_examples": 1,
-                    "tokenizer": "google/flan-t5-small",
-                },
-            }
-        ],
-    }
+from tests.ai_safety.evalhub.utils import build_evalhub_job_payload, build_headers, submit_evalhub_job
 
 @pytest.mark.parametrize(
     "model_namespace",
@@ -126,7 +71,11 @@ def evalhub_st_submitted_job_id(
     evalhub_st_user_token: str,
 ) -> str:
     """Minimal evaluation job submitted once per API access test class."""
-    payload = _minimal_job_payload(tenant_namespace=model_namespace.name)
+    payload = build_evalhub_job_payload(
+        model_service_name="evalhub-st-emulator",
+        tenant_namespace=model_namespace.name,
+        job_name="evalhub-st-api-test-job",
+    )
     data = submit_evalhub_job(
         host=evalhub_st_route.host,
         token=evalhub_st_user_token,
@@ -223,119 +172,4 @@ class TestEvalHubSingleTenancyAPIAccess:
         job_ids = [(item.get("resource") or {}).get("id") for item in items]
         assert evalhub_st_submitted_job_id in job_ids, (
             f"Submitted job '{evalhub_st_submitted_job_id}' not found in jobs list: {job_ids}"
-        )
-
-@pytest.mark.parametrize(
-    "model_namespace",
-    [pytest.param({"name": "test-evalhub-st-xns"})],
-    indirect=True,
-)
-@pytest.mark.tier2
-@pytest.mark.ai_safety
-class TestEvalHubSingleTenancyCrossNamespaceRejection:
-    """Requests with an unauthorized X-Tenant or no X-Tenant header are rejected.
-
-    In single-tenancy mode, kube-rbac-proxy still performs a SubjectAccessReview
-    against the X-Tenant namespace. If the caller's SA has no Role in that namespace,
-    the SAR returns NoOpinion → 400 unable_to_authorize_request. If no X-Tenant
-    header is sent at all, the server returns 400 immediately.
-    """
-
-    def test_cross_namespace_x_tenant_rejected(
-        self,
-        evalhub_st_ready: None,
-        evalhub_st_route: Route,
-        evalhub_st_ca_bundle_file: str,
-        evalhub_st_user_token: str,
-        second_namespace: Namespace,
-    ) -> None:
-        """Given: a user SA with no Role in a second namespace.
-
-        When: POST /api/v1/evaluations/jobs with X-Tenant pointing to that namespace.
-
-        Then: response is 400 or 403 (kube-rbac-proxy Forbidden in single-tenancy mode).
-        """
-        payload = _minimal_job_payload(tenant_namespace=second_namespace.name)
-        response = requests.post(
-            url=f"https://{evalhub_st_route.host}{EVALHUB_JOBS_PATH}",
-            headers=build_headers(token=evalhub_st_user_token, tenant=second_namespace.name),
-            json=payload,
-            verify=evalhub_st_ca_bundle_file,
-            timeout=30,
-        )
-        assert response.status_code in (400, 403), (
-            f"Expected 400 or 403 for cross-tenant POST, got {response.status_code}: {response.text}"
-        )
-
-    def test_missing_x_tenant_header_rejected(
-        self,
-        evalhub_st_ready: None,
-        evalhub_st_route: Route,
-        evalhub_st_ca_bundle_file: str,
-        evalhub_st_user_token: str,
-        model_namespace: Namespace,
-    ) -> None:
-        """Given: an authenticated user SA in single-tenancy mode.
-
-        When: POST /api/v1/evaluations/jobs without an X-Tenant header.
-
-        Then: response is 400 Bad Request.
-        """
-        payload = _minimal_job_payload(tenant_namespace=model_namespace.name)
-        response = requests.post(
-            url=f"https://{evalhub_st_route.host}{EVALHUB_JOBS_PATH}",
-            headers=build_headers(token=evalhub_st_user_token, tenant=None),
-            json=payload,
-            verify=evalhub_st_ca_bundle_file,
-            timeout=30,
-        )
-        assert response.status_code == 400, (
-            f"Expected 400 Bad Request for missing X-Tenant, got {response.status_code}: {response.text}"
-        )
-
-    def test_get_providers_cross_namespace_rejected(
-        self,
-        evalhub_st_ready: None,
-        evalhub_st_route: Route,
-        evalhub_st_ca_bundle_file: str,
-        evalhub_st_user_token: str,
-        second_namespace: Namespace,
-    ) -> None:
-        """Given: a user SA with no Role in a second namespace.
-
-        When: GET /api/v1/evaluations/providers with X-Tenant pointing to that namespace.
-
-        Then: response is 400 or 403.
-        """
-        response = requests.get(
-            url=f"https://{evalhub_st_route.host}{EVALHUB_PROVIDERS_PATH}",
-            headers=build_headers(token=evalhub_st_user_token, tenant=second_namespace.name),
-            verify=evalhub_st_ca_bundle_file,
-            timeout=10,
-        )
-        assert response.status_code in (400, 403), (
-            f"Expected 400 or 403 for cross-tenant GET providers, got {response.status_code}: {response.text}"
-        )
-
-    def test_get_providers_no_tenant_rejected(
-        self,
-        evalhub_st_ready: None,
-        evalhub_st_route: Route,
-        evalhub_st_ca_bundle_file: str,
-        evalhub_st_user_token: str,
-    ) -> None:
-        """Given: an authenticated user SA in single-tenancy mode.
-
-        When: GET /api/v1/evaluations/providers without an X-Tenant header.
-
-        Then: response is 400 Bad Request.
-        """
-        response = requests.get(
-            url=f"https://{evalhub_st_route.host}{EVALHUB_PROVIDERS_PATH}",
-            headers=build_headers(token=evalhub_st_user_token, tenant=None),
-            verify=evalhub_st_ca_bundle_file,
-            timeout=10,
-        )
-        assert response.status_code == 400, (
-            f"Expected 400 Bad Request for missing X-Tenant, got {response.status_code}: {response.text}"
         )
