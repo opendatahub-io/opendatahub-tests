@@ -127,8 +127,17 @@ class TestEvalHubSingleTenancyHealth:
 class TestEvalHubSingleTenancyAPIAccess:
     """A user SA bound to evalhub-user Role can access the API with X-Tenant: own namespace."""
 
-    def test_list_providers_with_own_namespace_tenant(
+    @pytest.mark.parametrize(
+        ("api_path", "endpoint_label"),
+        [
+            pytest.param(EVALHUB_PROVIDERS_PATH, "providers", id="test_providers"),
+            pytest.param(EVALHUB_COLLECTIONS_PATH, "collections", id="test_collections"),
+        ],
+    )
+    def test_list_resource_with_own_namespace_tenant(
         self,
+        api_path: str,
+        endpoint_label: str,
         model_namespace: Namespace,
         evalhub_st_ready: None,
         evalhub_st_route: Route,
@@ -137,11 +146,11 @@ class TestEvalHubSingleTenancyAPIAccess:
     ) -> None:
         """Given: a user SA bound to evalhub-user Role in the workload namespace.
 
-        When: GET /api/v1/evaluations/providers with X-Tenant set to the caller's own namespace.
+        When: GET a list endpoint with X-Tenant set to the caller's own namespace.
 
         Then: response is 200.
         """
-        url = f"https://{evalhub_st_route.host}{EVALHUB_PROVIDERS_PATH}"
+        url = f"https://{evalhub_st_route.host}{api_path}"
         response = requests.get(
             url=url,
             headers=build_headers(token=evalhub_st_user_token, tenant=model_namespace.name),
@@ -149,32 +158,7 @@ class TestEvalHubSingleTenancyAPIAccess:
             timeout=10,
         )
         assert response.status_code == 200, (
-            f"Expected 200 from providers endpoint, got {response.status_code}: {response.text}"
-        )
-
-    def test_list_collections_with_own_namespace_tenant(
-        self,
-        model_namespace: Namespace,
-        evalhub_st_ready: None,
-        evalhub_st_route: Route,
-        evalhub_st_ca_bundle_file: str,
-        evalhub_st_user_token: str,
-    ) -> None:
-        """Given: a user SA bound to evalhub-user Role in the workload namespace.
-
-        When: GET /api/v1/evaluations/collections with X-Tenant set to the caller's own namespace.
-
-        Then: response is 200.
-        """
-        url = f"https://{evalhub_st_route.host}{EVALHUB_COLLECTIONS_PATH}"
-        response = requests.get(
-            url=url,
-            headers=build_headers(token=evalhub_st_user_token, tenant=model_namespace.name),
-            verify=evalhub_st_ca_bundle_file,
-            timeout=10,
-        )
-        assert response.status_code == 200, (
-            f"Expected 200 from collections endpoint, got {response.status_code}: {response.text}"
+            f"Expected 200 from {endpoint_label} endpoint, got {response.status_code}: {response.text}"
         )
 
     def test_submit_job_with_own_namespace_tenant(
