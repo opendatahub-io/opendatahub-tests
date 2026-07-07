@@ -20,8 +20,8 @@ from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest_testconfig import config as py_config
 from timeout_sampler import retry
-from utilities.constants import ModelFormat
 
+from tests.ai_hub import constants as ai_hub_constants
 from tests.ai_hub.constants import (
     CA_CONFIGMAP_NAME,
     CA_FILE_PATH,
@@ -30,7 +30,6 @@ from tests.ai_hub.constants import (
     KUBERBACPROXY_STR,
     SECURE_MR_NAME,
 )
-from tests.ai_hub import constants as ai_hub_constants
 from tests.ai_hub.model_registry.rest_api.constants import MODEL_REGISTER_DATA, MODEL_REGISTRY_BASE_URI
 from tests.ai_hub.model_registry.rest_api.utils import (
     create_model_registry_inference_service,
@@ -38,7 +37,6 @@ from tests.ai_hub.model_registry.rest_api.utils import (
     generate_ca_and_server_cert,
     get_mr_deployment,
     register_model_rest_api,
-    get_cluster_architecture,
 )
 from tests.ai_hub.utils import (
     add_db_certs_volumes_to_deployment,
@@ -48,7 +46,6 @@ from tests.ai_hub.utils import (
     get_mr_standard_labels,
 )
 from utilities.certificates_utils import create_ca_bundle_with_router_cert, create_k8s_secret
-from utilities.constants import RuntimeTemplates
 from utilities.exceptions import MissingParameter
 from utilities.general import generate_random_name, wait_for_pods_running
 from utilities.infra import create_ns
@@ -83,9 +80,7 @@ def registered_model_rest_api(
     model_data["model_artifact_data"]["modelFormatName"] = "vLLM"
     model_data["model_artifact_data"]["uri"] = "hf://TinyLlama/TinyLlama-1.1B-Chat-v1.0"
     model_data["model_artifact_data"].setdefault("customProperties", {})
-    model_data["model_artifact_data"]["customProperties"][
-        "HF_HUB_ENABLE_HF_TRANSFER"
-    ] = {
+    model_data["model_artifact_data"]["customProperties"]["HF_HUB_ENABLE_HF_TRANSFER"] = {
         "string_value": "0",
         "metadataType": "MetadataStringValue",
     }
@@ -97,6 +92,7 @@ def registered_model_rest_api(
         model_registry_rest_headers=model_registry_rest_headers,
         data_dict=model_data,
     )
+
 
 @pytest.fixture()
 def updated_model_registry_resource(
@@ -502,6 +498,7 @@ def model_registry_connection_secret(
         )
         yield connection_secret
 
+
 @pytest.fixture(scope="class")
 def model_registry_serving_runtime(
     admin_client: DynamicClient,
@@ -519,9 +516,9 @@ def model_registry_serving_runtime(
                     "name": "VLLM_CPU_KVCACHE_SPACE",
                     "value": "4",
                 }
-             ]
-         }
-     }
+            ]
+        }
+    }
 
     with ServingRuntimeFromTemplate(
         client=admin_client,
@@ -534,6 +531,7 @@ def model_registry_serving_runtime(
         containers=containers,
     ) as serving_runtime:
         yield serving_runtime
+
 
 @pytest.fixture(scope="class")
 def model_registry_inference_service(
@@ -610,6 +608,7 @@ def model_registry_predictor_pod(
     pod = predictor_pods[0]  # Use the first predictor pod
     LOGGER.info(f"Found predictor pod: {pod.name} in namespace: {namespace}")
     return pod
+
 
 @pytest.fixture(scope="class")
 def model_registry_model_portforward(

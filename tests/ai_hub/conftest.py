@@ -43,8 +43,8 @@ from tests.ai_hub.utils import (
     wait_for_default_resource_cleanedup,
 )
 from utilities.constants import (
-    MODEL_REGISTRY_CUSTOM_NAMESPACE, 
-    DscComponents, 
+    MODEL_REGISTRY_CUSTOM_NAMESPACE,
+    DscComponents,
     Labels,
     RuntimeTemplates,
 )

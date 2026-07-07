@@ -10,8 +10,6 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
-from ocp_resources.node import Node
-from ocp_resources.resource import get_client
 from pyhelper_utils.shell import run_command
 from timeout_sampler import retry
 
@@ -120,6 +118,7 @@ def validate_resource_attributes(
         raise ResourceValueMismatch(f"Resource: {resource_name} has mismatched data: {errors}")
     LOGGER.info(f"Successfully validated resource: {resource_name}: {actual_resource_data['name']}")
 
+
 def validate_vllm_inference(endpoint: str, model: str) -> requests.Response:
     """Validate that a deployed vLLM model is reachable and can generate a completion."""
 
@@ -135,8 +134,7 @@ def validate_vllm_inference(endpoint: str, model: str) -> requests.Response:
     )
 
     assert response.status_code == 200, (
-        f"Completion endpoint returned status code "
-        f"{response.status_code}: {response.text}"
+        f"Completion endpoint returned status code {response.status_code}: {response.text}"
     )
 
     response_json = response.json()
@@ -147,8 +145,6 @@ def validate_vllm_inference(endpoint: str, model: str) -> requests.Response:
     assert response_json["choices"][0]["text"].strip()
 
     return response
-
-
 
 
 def generate_ca_and_server_cert(

@@ -1,7 +1,6 @@
 from typing import Any, Self
 
 import pytest
-import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
