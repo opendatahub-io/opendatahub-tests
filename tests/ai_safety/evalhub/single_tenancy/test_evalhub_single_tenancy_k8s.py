@@ -23,6 +23,7 @@ from tests.ai_safety.evalhub.single_tenancy.constants import (
 )
 from tests.ai_safety.evalhub.single_tenancy.utils import SingleTenantEvalHub
 
+
 @pytest.mark.parametrize(
     "model_namespace",
     [pytest.param({"name": "test-evalhub-st-resources"})],
@@ -140,6 +141,7 @@ class TestEvalHubSingleTenancyOperatorResources:
             namespace=model_namespace.name,
         )
         assert sm.exists, f"Expected ServiceMonitor '{sm_name}' in {model_namespace.name}"
+
 
 @pytest.mark.parametrize(
     "model_namespace",
@@ -351,6 +353,7 @@ class TestEvalHubSingleTenancyRBAC:
             f"No EvalHub ownerReference on RoleBinding '{EVALHUB_TENANT_ADMIN_BINDING_NAME}': {refs}"
         )
         assert evalhub_ref.name == evalhub_st_cr.name
+
 
 @pytest.mark.parametrize(
     "model_namespace",

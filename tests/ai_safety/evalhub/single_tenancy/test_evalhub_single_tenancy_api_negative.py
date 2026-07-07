@@ -136,9 +136,7 @@ class TestEvalHubSingleTenancyTenantHeaderRejection:
 
         payload = build_evalhub_job_payload(
             model_service_name="evalhub-st-emulator",
-            tenant_namespace=(
-                second_namespace.name if tenant_scenario == "cross_namespace" else model_namespace.name
-            ),
+            tenant_namespace=(second_namespace.name if tenant_scenario == "cross_namespace" else model_namespace.name),
             job_name=f"evalhub-st-neg-{endpoint_label}",
         )
 
