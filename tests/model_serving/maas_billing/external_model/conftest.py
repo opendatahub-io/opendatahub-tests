@@ -23,7 +23,6 @@ from tests.model_serving.maas_billing.external_model.utils import (
     INFERENCE_EXTERNAL_MODEL_API_GROUP,
     external_provider_ref,
     wait_for_httproute,
-    wait_for_inference_resource_phase,
 )
 from tests.model_serving.maas_billing.utils import create_api_key, revoke_api_key
 from utilities.general import generate_random_name
@@ -71,7 +70,7 @@ def external_provider_cr(
         teardown=True,
         wait_for_resource=True,
     ) as provider:
-        wait_for_inference_resource_phase(resource=provider, phase="Ready", timeout=300)
+        provider.wait_for_condition(condition="Ready", status="True", timeout=300)
         yield provider
 
 
@@ -90,7 +89,7 @@ def external_model_cr(
         teardown=True,
         wait_for_resource=True,
     ) as external_model:
-        wait_for_inference_resource_phase(resource=external_model, phase="Ready", timeout=300)
+        external_model.wait_for_condition(condition="Ready", status="True", timeout=300)
         wait_for_httproute(
             client=admin_client,
             name=external_model.name,

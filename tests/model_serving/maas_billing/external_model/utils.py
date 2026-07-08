@@ -2,11 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
-import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import NotFoundError, ResourceNotFoundError
-from ocp_resources.resource import Resource
 from ocp_resources.service import Service
 from timeout_sampler import TimeoutSampler
 
@@ -33,55 +31,6 @@ def external_provider_ref(provider_name: str, *, target_model: str = EXTERNAL_TA
         "targetModel": target_model,
         "apiFormat": EXTERNAL_API_FORMAT,
     }
-
-
-def _inference_resource_reconciliation_state(resource: Resource) -> str | None:
-    """Return Ready, Failed, or the current status.phase (may be None/Pending)."""
-    status = resource.instance.status
-    if not status:
-        return None
-
-    phase = getattr(status, "phase", None)
-    if phase in ("Ready", "Failed"):
-        return phase
-
-    for condition in status.conditions or []:
-        if condition.type != "Ready":
-            continue
-        if condition.status == "True":
-            return "Ready"
-        if condition.status == "False":
-            return "Failed"
-
-    return phase
-
-
-def wait_for_inference_resource_phase(
-    resource: Resource,
-    phase: str = "Ready",
-    timeout: int = 300,
-    sleep: int = 5,
-) -> None:
-    """Poll until an inference.opendatahub.io resource reaches the expected status.phase."""
-    last_state: str | None = None
-    for current_state in TimeoutSampler(
-        wait_timeout=timeout,
-        sleep=sleep,
-        func=lambda: _inference_resource_reconciliation_state(resource=resource),
-    ):
-        last_state = current_state
-        LOGGER.info(f"Waiting for {resource.kind}/{resource.name} state={current_state} expected={phase}")
-        if current_state == "Failed":
-            conditions = resource.instance.status.conditions if resource.instance.status else []
-            pytest.fail(f"{resource.kind}/{resource.name} reconciliation Failed: {conditions}")
-        if current_state == phase:
-            return
-
-    pytest.fail(
-        f"Timed out waiting for {resource.kind}/{resource.name} phase={phase}. "
-        f"Last state={last_state}. Ensure payload-processing is installed on the gateway namespace "
-        f"and ExternalModel/ExternalProvider CRDs (inference.opendatahub.io) are present."
-    )
 
 
 def get_httproute(
