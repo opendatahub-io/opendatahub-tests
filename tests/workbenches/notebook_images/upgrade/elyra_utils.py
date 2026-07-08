@@ -12,7 +12,6 @@ import structlog
 from ocp_resources.notebook import Notebook
 from ocp_resources.pod import ExecOnPodError, Pod
 
-from utilities.constants import Timeout
 from utilities.general import collect_pod_information
 
 if TYPE_CHECKING:
@@ -78,7 +77,7 @@ def list_runtime_configs(pod: Pod, container: str) -> list[str]:
         output = pod.execute(
             container=container,
             command=["sh", "-c", f"ls {ELYRA_RUNTIMES_DIR}/*.json 2>/dev/null || true"],
-            timeout=Timeout.TIMEOUT_1MIN,
+            timeout=60,
         )
     except ExecOnPodError as e:
         collect_pod_information(pod)
@@ -118,7 +117,7 @@ def read_runtime_config(pod: Pod, container: str, filename: str) -> dict[str, An
         output = pod.execute(
             container=container,
             command=["cat", file_path],
-            timeout=Timeout.TIMEOUT_1MIN,
+            timeout=60,
         )
     except ExecOnPodError as e:
         collect_pod_information(pod)
@@ -191,7 +190,7 @@ def verify_pre_upgrade_elyra_installed(
         output = pod.execute(
             container=notebook.name,
             command=["jupyter", "labextension", "list"],
-            timeout=Timeout.TIMEOUT_1MIN,
+            timeout=60,
         )
     except ExecOnPodError as e:
         LOGGER.error(f"Failed to execute 'jupyter labextension list' on pod '{pod.name}': {e}")
@@ -237,7 +236,7 @@ def verify_post_upgrade_elyra_extensions_preserved(
         output = pod.execute(
             container=notebook.name,
             command=["jupyter", "labextension", "list"],
-            timeout=Timeout.TIMEOUT_1MIN,
+            timeout=60,
         )
     except ExecOnPodError as e:
         collect_pod_information(pod)

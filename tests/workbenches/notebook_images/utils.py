@@ -985,7 +985,7 @@ def capture_workbench_baseline(
         labextension_output = pod.execute(
             container=container_name,
             command=["jupyter", "labextension", "list"],
-            timeout=Timeout.TIMEOUT_1MIN,
+            timeout=60,
         )
         elyra_extensions = parse_elyra_extensions(labextension_output=labextension_output)
 
