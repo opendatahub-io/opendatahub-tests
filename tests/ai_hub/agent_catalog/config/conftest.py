@@ -1,3 +1,5 @@
+from typing import Any
+
 import pytest
 import yaml
 from kubernetes.dynamic import DynamicClient
@@ -54,7 +56,7 @@ def agent_catalog_configmap(
 def catalog_container_spec(
     admin_client: DynamicClient,
     model_registry_namespace: str,
-) -> object:
+) -> Any:
     """Return the catalog container spec from the model-catalog deployment."""
     deployment = Deployment(
         name=MODEL_CATALOG_DEPLOYMENT_NAME,
