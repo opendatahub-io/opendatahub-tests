@@ -55,13 +55,9 @@ class TestSingleNodeEstimatedPrefixCache:
         llmd_gateway: Gateway,
         singlenode_estimated_prefix_cache: LLMInferenceService,
         authenticated_llmisvc_token: str,
-        gpu_count_on_cluster: int,
         prometheus: Prometheus,
     ):
         """Test single-node estimated prefix cache routing."""
-        if gpu_count_on_cluster < 2:
-            pytest.skip(f"Test requires at least 2 GPUs (found {gpu_count_on_cluster})")
-
         # Verify infrastructure is ready before testing routing
         assert verify_gateway_status(llmd_gateway), "Gateway should be ready"
         assert verify_llm_service_status(singlenode_estimated_prefix_cache), "LLMInferenceService should be ready"

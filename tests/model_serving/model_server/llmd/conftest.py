@@ -377,6 +377,7 @@ def llmd_inference_service_gpu(
     admin_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     llmd_s3_service_account: ServiceAccount,
+    gpu_count_on_cluster: int,
 ) -> Generator[LLMInferenceService, None, None]:
     """Create an LLMInferenceService with GPU resources for accelerated inference."""
     if isinstance(request.param, str):
@@ -385,6 +386,10 @@ def llmd_inference_service_gpu(
     else:
         name_suffix = request.param.get("name_suffix", "gpu-hf")
         kwargs = {k: v for k, v in request.param.items() if k != "name_suffix"}
+
+    required_gpus = (kwargs.get("replicas") or 1) + (kwargs.get("prefill_replicas") or 0)
+    if gpu_count_on_cluster < required_gpus:
+        pytest.skip(f"Test requires {required_gpus} GPU(s) (found {gpu_count_on_cluster})")
 
     service_name = kwargs.get("name", f"llm-{name_suffix}")
 
@@ -457,8 +462,11 @@ def singlenode_estimated_prefix_cache(
     llmd_s3_secret: Secret,
     llmd_s3_service_account: ServiceAccount,
     llmd_gateway: Gateway,
+    gpu_count_on_cluster: int,
 ) -> Generator[LLMInferenceService, None, None]:
     """LLMInferenceService fixture for single-node estimated prefix cache test."""
+    if gpu_count_on_cluster < 2:
+        pytest.skip(f"Test requires at least 2 GPUs (found {gpu_count_on_cluster})")
 
     llmisvc_name = "singlenode-estimated-prefix-cache"
 

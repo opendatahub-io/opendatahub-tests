@@ -46,12 +46,8 @@ GPU_LLMD_PARAMS = [
 class TestLLMDS3GPUInference:
     """LLMD inference testing with S3 storage and GPU runtime using vLLM."""
 
-    def test_llmd_s3_gpu(
-        self, unprivileged_client, llmd_gateway, llmd_inference_service_gpu, request, gpu_count_on_cluster
-    ):
+    def test_llmd_s3_gpu(self, unprivileged_client, llmd_gateway, llmd_inference_service_gpu, request):
         """Test LLMD inference with various GPU configurations using S3 storage."""
-        if gpu_count_on_cluster < 1:
-            pytest.skip("No GPUs available on cluster, skipping GPU test")
 
         assert verify_gateway_status(llmd_gateway), "Gateway should be ready"
         assert verify_llm_service_status(llmd_inference_service_gpu), "LLMInferenceService should be ready"
