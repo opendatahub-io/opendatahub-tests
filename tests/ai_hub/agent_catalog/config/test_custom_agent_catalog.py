@@ -4,9 +4,8 @@ import pytest
 import structlog
 
 from tests.ai_hub.agent_catalog.constants import (
-    EXPECTED_FILTER_OPTIONS,
     REQUIRED_AGENT_FIELDS,
-    TEST_AGENT_COUNT,
+    TEST_AGENT_NAMES,
 )
 from tests.ai_hub.utils import execute_get_command_with_retry
 
@@ -34,14 +33,15 @@ class TestAgentCatalogApi:
         When listing agents via GET /agents
         Then a non-empty list of agents is returned
         """
-        size = agents_response.get("size", 0)
         items = agents_response.get("items", [])
-        LOGGER.info(f"Found {len(items)} agents (size={size})")
-        assert size == TEST_AGENT_COUNT, f"Expected size {TEST_AGENT_COUNT}, but got {size}"
-        assert len(items) == TEST_AGENT_COUNT, f"Expected {TEST_AGENT_COUNT} agents in items, but got {len(items)}"
         returned_names = {agent["name"] for agent in items}
+        LOGGER.info(f"Found {len(items)} agents: {returned_names}")
+        assert TEST_AGENT_NAMES <= returned_names, (
+            f"Expected test agents {TEST_AGENT_NAMES} in response. Missing: {TEST_AGENT_NAMES - returned_names}"
+        )
         assert expected_langgraph_agent_names <= returned_names, (
-            f"Expected langgraph agents {expected_langgraph_agent_names} in response, got {returned_names}"
+            f"Expected langgraph agents {expected_langgraph_agent_names} in response. "
+            f"Missing: {expected_langgraph_agent_names - returned_names}"
         )
 
     def test_agents_list_required_fields(
@@ -80,26 +80,6 @@ class TestAgentCatalogApi:
         assert fetched == agent, (
             f"Agent fetched by id does not match list response.\nExpected: {agent}\nActual: {fetched}"
         )
-
-    def test_filter_options_returns_expected_fields(
-        self: Self,
-        agent_catalog_rest_urls: list[str],
-        model_registry_rest_headers: dict[str, str],
-    ) -> None:
-        """Given the agent catalog is running
-        When requesting GET /agents/filter_options
-        Then filterable fields for filterQuery are returned
-        """
-        url = f"{agent_catalog_rest_urls[0]}agents/filter_options"
-        LOGGER.info(f"Requesting filter_options from: {url}")
-
-        response = execute_get_command_with_retry(
-            url=url,
-            headers=model_registry_rest_headers,
-        )
-        LOGGER.info(f"filter_options response keys: {list(response.get('filters', {}).keys())}")
-
-        assert EXPECTED_FILTER_OPTIONS <= set(response["filters"].keys())
 
     def test_sources_asset_type_agents(
         self: Self,

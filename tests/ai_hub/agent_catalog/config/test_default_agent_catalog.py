@@ -130,16 +130,15 @@ class TestDefaultAgentCatalogApi:
 
     def test_default_agent_source_available(
         self: Self,
-        model_catalog_routes: list,
+        model_catalog_api_url: str,
         model_registry_rest_headers: dict[str, str],
     ) -> None:
         """Given the default agent catalog source is configured
         When requesting GET /sources?assetType=agents
         Then rh_agents source appears with status available
         """
-        url = f"https://{model_catalog_routes[0].instance.spec.host}:443/api/model_catalog/v1alpha1/sources"
         response = execute_get_command_with_retry(
-            url=url,
+            url=f"{model_catalog_api_url}sources",
             headers=model_registry_rest_headers,
             params={"assetType": "agents"},
         )

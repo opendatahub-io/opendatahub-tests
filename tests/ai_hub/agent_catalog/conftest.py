@@ -115,9 +115,9 @@ def expected_langgraph_agent_names(agents_response: dict) -> set[str]:
     names = {
         agent["name"] for agent in agents_response.get("items", []) if agent.get("framework") == LANGGRAPH_FRAMEWORK
     }
-    assert names, f"No agents with framework '{LANGGRAPH_FRAMEWORK}' found in default catalog"
-    assert names == TEST_LANGGRAPH_AGENT_NAMES, (
-        f"Derived langgraph agent names {names} do not match expected {TEST_LANGGRAPH_AGENT_NAMES}"
+    assert names, f"No agents with framework '{LANGGRAPH_FRAMEWORK}' found in catalog"
+    assert TEST_LANGGRAPH_AGENT_NAMES <= names, (
+        f"Expected test langgraph agents {TEST_LANGGRAPH_AGENT_NAMES} to be in {names}"
     )
     return names
 

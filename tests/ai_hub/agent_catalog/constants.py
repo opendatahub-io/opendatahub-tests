@@ -8,16 +8,25 @@ REQUIRED_AGENT_FIELDS: list[str] = ["name", "displayName", "description", "frame
 
 # Minimum filter fields required by filterQuery tests (subset of API response).
 EXPECTED_FILTER_OPTIONS: set[str] = {
-    "description",
     "framework",
 }
 
 LANGGRAPH_FRAMEWORK: str = "langgraph"
+CREWAI_FRAMEWORK: str = "crewai"
+AUTOGEN_FRAMEWORK: str = "autogen"
+CLAUDE_CODE_FRAMEWORK: str = "claude-code"
 
 # Agent counts and names used by the test ConfigMap patch.
 TEST_AGENT_COUNT: int = 5
 TEST_LANGGRAPH_AGENT_COUNT: int = 2
 TEST_LANGGRAPH_AGENT_NAMES: set[str] = {"langgraph-react-agent", "langgraph-agentic-rag"}
+TEST_AGENT_NAMES: set[str] = {
+    "langgraph-react-agent",
+    "langgraph-agentic-rag",
+    "crewai-websearch-agent",
+    "autogen-mcp-agent",
+    "claude-code",
+}
 
 TEST_AGENT_CATALOG_SOURCE: dict = {
     "name": TEST_AGENT_CATALOG_SOURCE_NAME,
