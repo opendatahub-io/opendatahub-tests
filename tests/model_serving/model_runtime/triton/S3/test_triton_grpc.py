@@ -181,7 +181,7 @@ class TestTritonGRPC:
             model_name: Name of the model being tested
             input_path: Path to gRPC protocol input JSON file
         """
-        resolved_input_path = resolve_repo_path(path=input_path)
+        resolved_input_path = resolve_repo_path(source=input_path)
         input_query = load_json(path=resolved_input_path)
 
         validate_inference_request(
