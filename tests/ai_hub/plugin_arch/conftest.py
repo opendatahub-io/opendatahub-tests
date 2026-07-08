@@ -4,8 +4,9 @@ from typing import Any
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.route import Route
 
-from tests.ai_hub.model_catalog.plugin_arch.utils import (
+from tests.ai_hub.plugin_arch.utils import (
     READYZ_RECOVERY_TIMEOUT,
     poll_readyz,
     restore_catalog,
@@ -15,9 +16,10 @@ LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")
-def catalog_base_url(model_catalog_rest_url: list[str]) -> str:
+def catalog_base_url(model_catalog_routes: list[Route]) -> str:
     """Base URL for the catalog server without the API path."""
-    return model_catalog_rest_url[0].split("/api/")[0]
+    assert model_catalog_routes, "Model catalog routes not found"
+    return f"https://{model_catalog_routes[0].instance.spec.host}:443"
 
 
 @pytest.fixture()

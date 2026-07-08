@@ -25,6 +25,11 @@ from pytest import FixtureRequest
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutSampler
 
+from tests.model_serving.maas_billing.maas_api_key.utils import (
+    MAAS_AUTH_POLICY_FIXTURE_NAMES,
+    MAAS_GATEWAY_AUTH_POLICY_NAME,
+    wait_for_auth_policy_accepted,
+)
 from tests.model_serving.maas_billing.maas_subscription.utils import (
     MAAS_SUBSCRIPTION_NAMESPACE,
     create_maas_subscription,
@@ -892,12 +897,36 @@ def authorino_tls_configured(admin_client: DynamicClient) -> Generator[None, Any
 
 
 @pytest.fixture(scope="class")
+def maas_gateway_auth_policy_ready(
+    admin_client: DynamicClient,
+    request: FixtureRequest,
+) -> None:
+    """Activate a MaaSAuthPolicy, then wait until maas-gateway-auth is Accepted."""
+    for fixture_name in MAAS_AUTH_POLICY_FIXTURE_NAMES:
+        if fixture_name in request.fixturenames:
+            request.getfixturevalue(argname=fixture_name)
+            break
+    else:
+        request.getfixturevalue(argname="maas_auth_policy_tinyllama_free")
+    wait_for_auth_policy_accepted(
+        admin_client=admin_client,
+        policy_name=MAAS_GATEWAY_AUTH_POLICY_NAME,
+        namespace=MAAS_GATEWAY_NAMESPACE,
+    )
+    LOGGER.info(
+        f"maas_gateway_auth_policy_ready: '{MAAS_GATEWAY_NAMESPACE}/{MAAS_GATEWAY_AUTH_POLICY_NAME}' is Accepted"
+    )
+
+
+@pytest.fixture(scope="class")
 def maas_api_gateway_reachable(
     request_session_http: requests.Session,
     base_url: str,
     maas_api_endpoints_ready: None,
     authorino_tls_configured: None,
+    maas_gateway_auth_policy_ready: None,
 ) -> None:
+    """Probe GET /v1/models via the gateway after maas-gateway-auth is reconciled."""
     probe_url = f"{base_url}/v1/models"
 
     for gateway_reachable, _status_code, _response_text in TimeoutSampler(
