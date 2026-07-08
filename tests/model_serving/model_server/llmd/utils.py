@@ -24,7 +24,6 @@ from timeout_sampler import TimeoutExpiredError, retry
 
 from tests.model_serving.model_server.llmd.constants import LLMD_TESTS_SUPPORTED_ACCELERATORS
 from utilities.certificates_utils import get_ca_bundle
-from utilities.constants import Timeout
 from utilities.jira import is_jira_issue_open
 from utilities.llmd_constants import LLMEndpoint
 from utilities.llmd_utils import get_llm_inference_url
@@ -261,7 +260,7 @@ def _log_llmisvc_debug_info(llmisvc: LLMInferenceService) -> None:
     LOGGER.error("\n".join(sections))
 
 
-def wait_for_llmisvc(llmisvc: LLMInferenceService, timeout: int = Timeout.TIMEOUT_5MIN) -> None:
+def wait_for_llmisvc(llmisvc: LLMInferenceService, timeout: int = 300) -> None:
     """Wait for LLMISVC to reach Ready condition. Raises on timeout."""
     try:
         llmisvc.wait_for_condition(
