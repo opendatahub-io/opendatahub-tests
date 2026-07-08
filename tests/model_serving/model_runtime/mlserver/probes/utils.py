@@ -125,27 +125,3 @@ def exec_http_probe(pod: Pod, http_get: dict[str, Any]) -> str:
 def exec_mlserver_health_check(pod: Pod, http_get: dict[str, Any]) -> str:
     """Execute health check probe on MLServer pod using the configured probe path."""
     return exec_http_probe(pod=pod, http_get=http_get)
-
-
-def get_restart_counts(pod: Pod) -> dict[str, int]:
-    """Return container restart counts for the pod.
-
-    Args:
-        pod: Predictor pod for the MLServer InferenceService.
-
-    Returns:
-        Mapping of container name to restartCount.
-    """
-    return {container.name: container.restartCount for container in (pod.instance.status.containerStatuses or [])}
-
-
-def pod_is_ready(pod: Pod) -> bool:
-    """Return True when the pod Ready condition is True.
-
-    Args:
-        pod: Predictor pod for the MLServer InferenceService.
-    """
-    for condition in pod.instance.status.conditions or []:
-        if condition.type == "Ready":
-            return condition.status == "True"
-    return False

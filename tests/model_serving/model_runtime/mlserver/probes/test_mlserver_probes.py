@@ -6,10 +6,9 @@ from tests.model_serving.model_runtime.mlserver.constant import BASE_RAW_DEPLOYM
 from tests.model_serving.model_runtime.mlserver.probes.utils import (
     exec_mlserver_health_check,
     get_probe,
-    get_restart_counts,
-    pod_is_ready,
     resolve_http_get,
 )
+from tests.model_serving.model_runtime.vllm.probes.utils import get_restart_counts, pod_is_ready
 from utilities.constants import KServeDeploymentType, ModelFormat
 
 pytestmark = pytest.mark.usefixtures("valid_aws_config")
