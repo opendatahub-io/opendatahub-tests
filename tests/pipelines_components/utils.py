@@ -150,6 +150,23 @@ def wait_for_pipeline_run(
     raise RuntimeError(msg)
 
 
+def get_pipeline_run(
+    api_url: str,
+    headers: dict[str, str],
+    run_id: str,
+    ca_bundle: str,
+) -> dict:
+    """Get a pipeline run by ID from the DSPA."""
+    resp = requests.get(
+        url=f"{api_url}/apis/v2beta1/runs/{run_id}",
+        headers=headers,
+        verify=ca_bundle,
+        timeout=60,
+    )
+    _raise_for_status(resp=resp)
+    return resp.json()
+
+
 def delete_pipeline(
     api_url: str,
     headers: dict[str, str],
