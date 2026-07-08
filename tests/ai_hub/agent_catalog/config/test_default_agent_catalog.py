@@ -112,21 +112,14 @@ class TestDefaultAgentCatalogApi:
 
     def test_default_agents_loaded(
         self: Self,
-        agent_catalog_rest_urls: list[str],
-        model_registry_rest_headers: dict[str, str],
+        default_agents: list,
     ) -> None:
         """Given the default Red Hat agent source is configured
         When listing agents via GET /agents
         Then at least one agent is returned
         """
-        response = execute_get_command_with_retry(
-            url=f"{agent_catalog_rest_urls[0]}agents",
-            headers=model_registry_rest_headers,
-            params={"pageSize": 1000},
-        )
-        size = response.get("size", 0)
-        LOGGER.info(f"Default agent catalog returned {size} agents")
-        assert size > 0, "Expected at least one agent from the default Red Hat source"
+        LOGGER.info(f"Default agent catalog returned {len(default_agents)} agents")
+        assert default_agents, "Expected at least one agent from the default Red Hat source"
 
     def test_default_agent_source_available(
         self: Self,

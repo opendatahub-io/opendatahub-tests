@@ -1,4 +1,5 @@
 from collections.abc import Generator
+from typing import Any
 
 import pytest
 import structlog
@@ -16,11 +17,9 @@ from tests.ai_hub.agent_catalog.config.constants import (
     TEST_AGENTS_YAML,
     TEST_LANGGRAPH_AGENT_NAMES,
 )
-from tests.ai_hub.agent_catalog.constants import (
-    AGENT_CATALOG_API_PATH,
-    LANGGRAPH_FRAMEWORK,
-)
+from tests.ai_hub.agent_catalog.constants import LANGGRAPH_FRAMEWORK
 from tests.ai_hub.agent_catalog.utils import get_agent_catalog_sources
+from tests.ai_hub.constants import AGENT_CATALOG_API_PATH
 from tests.ai_hub.utils import (
     execute_get_command_with_retry,
     wait_for_agent_catalog_api,
@@ -103,6 +102,22 @@ def agents_response(
     size = response.get("size", 0)
     assert size >= TEST_AGENT_COUNT, f"Expected at least {TEST_AGENT_COUNT} agents after catalog patch, got size={size}"
     return response
+
+
+@pytest.fixture(scope="class")
+def default_agents(
+    agent_catalog_rest_urls: list[str],
+    model_registry_rest_headers: dict[str, str],
+) -> list[dict[str, Any]]:
+    """Fetch all agents from the default catalog."""
+    response = execute_get_command_with_retry(
+        url=f"{agent_catalog_rest_urls[0]}agents",
+        headers=model_registry_rest_headers,
+        params={"pageSize": 1000},
+    )
+    items = response.get("items", [])
+    assert items, "Expected at least one agent in the default catalog"
+    return items
 
 
 @pytest.fixture(scope="class")
