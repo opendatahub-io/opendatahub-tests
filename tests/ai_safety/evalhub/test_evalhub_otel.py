@@ -5,7 +5,6 @@ OpenTelemetry metrics to OTLP-compatible backends.
 """
 
 import re
-import time
 
 import pytest
 import requests
@@ -16,6 +15,7 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 from ocp_resources.service import Service
+from timeout_sampler import TimeoutSampler
 
 from tests.ai_safety.evalhub.constants import (
     EVALHUB_HEALTH_PATH,
@@ -77,7 +77,6 @@ class TestEvalHubOTEL:
             f"Container restarted {evalhub_container.restartCount} times - indicates initialization failure"
         )
 
-        # Check logs for OTEL errors
         logs = pod.log(container="evalhub")
 
         for pattern in OTEL_ERROR_PATTERNS:
@@ -106,17 +105,20 @@ class TestEvalHubOTEL:
         for request_num in range(1, 6):
             response = requests.get(url=url, headers=headers, verify=evalhub_otel_ca_bundle_file, timeout=10)
             assert response.status_code == 200, f"Health check {request_num} failed: {response.status_code}"
-            time.sleep(1)
 
         LOGGER.info("Generated 5 health check requests")
 
-        # Wait for export interval (60s default + buffer)
-        time.sleep(70)
+        # Wait for metrics to appear in collector logs (60s export interval + buffer)
+        for sample in TimeoutSampler(
+            wait_timeout=80,
+            sleep=10,
+            func=lambda: otel_collector_pod.log(container="otel-collector", since_seconds=90),
+        ):
+            if any(ind in sample for ind in OTLP_INDICATORS):
+                collector_logs = sample
+                break
 
-        # Check collector received metrics via gRPC
-        collector_logs = otel_collector_pod.log(container="otel-collector", tail_lines=200)
-
-        # Look for evidence of received OTLP metrics
+        # Check for OTLP metrics in collector logs
         found_indicators = [ind for ind in OTLP_INDICATORS if ind in collector_logs]
         assert len(found_indicators) >= 2, (
             f"Expected OTLP metrics in collector logs. "
@@ -146,16 +148,19 @@ class TestEvalHubOTEL:
         for request_num in range(1, 6):
             response = requests.get(url=url, headers=headers, verify=evalhub_otel_ca_bundle_file, timeout=10)
             assert response.status_code == 200, f"Health check {request_num} failed: {response.status_code}"
-            time.sleep(1)
 
         LOGGER.info("Generated 5 health check requests for HTTP exporter test")
 
         # Wait for export interval (60s default + buffer)
-        time.sleep(70)
+        for sample in TimeoutSampler(
+            wait_timeout=80,
+            sleep=10,
+            func=lambda: otel_collector_pod.log(container="otel-collector", since_seconds=90),
+        ):
+            if "ResourceMetrics" in sample or "http.server.request" in sample:
+                collector_logs = sample
+                break
 
-        collector_logs = otel_collector_pod.log(container="otel-collector", tail_lines=200)
-
-        # Same indicators as gRPC - OTLP format is the same, just different transport
         assert "ResourceMetrics" in collector_logs or "http.server.request" in collector_logs, (
             "No OTLP metrics found in collector logs. HTTP export may not be working."
         )
@@ -184,16 +189,19 @@ class TestEvalHubOTEL:
 
         for _ in range(5):
             requests.get(url=url, headers=headers, verify=evalhub_otel_ca_bundle_file, timeout=10)
-            time.sleep(1)
 
         LOGGER.info("Generated 5 health check requests")
 
         # Wait for default export interval (60s + buffer)
-        LOGGER.info("Waiting 70s for metric export (60s default interval + 10s buffer)")
-        time.sleep(70)
-
-        # Verify metrics were exported
-        collector_logs = otel_collector_pod.log(container="otel-collector", tail_lines=300)
+        LOGGER.info("Waiting for metric export (60s default interval + buffer)")
+        for sample in TimeoutSampler(
+            wait_timeout=80,
+            sleep=10,
+            func=lambda: otel_collector_pod.log(container="otel-collector", since_seconds=90),
+        ):
+            if "ResourceMetrics" in sample or "http.server.request" in sample:
+                collector_logs = sample
+                break
 
         # Check for evidence of metric export
         assert "ResourceMetrics" in collector_logs or "http.server.request" in collector_logs, (
@@ -228,11 +236,8 @@ class TestEvalHubOTEL:
 
         LOGGER.info("Generated 10 health check requests for dual-sink test")
 
-        # Wait for metrics export
-        time.sleep(70)  # Wait for 60s default export interval + buffer
-
-        # Scrape Prometheus endpoint from metrics service (port 8081, not main route)
-        # Use a pod in-cluster to access the metrics service
+        # Wait for metrics export and scrape from both Prometheus and OTLP
+        LOGGER.info("Waiting for metric export to both sinks")
         pods = list(
             Pod.get(
                 client=admin_client,
@@ -242,14 +247,21 @@ class TestEvalHubOTEL:
         )
         evalhub_pod = pods[0]
 
-        # Exec curl from within the pod to access metrics service
-        prom_metrics = evalhub_pod.execute(command=["curl", "-s", "http://localhost:8081/metrics"], container="evalhub")
+        # Wait for Prometheus metrics to be available
+        for sample in TimeoutSampler(
+            wait_timeout=80,
+            sleep=10,
+            func=lambda: evalhub_pod.execute(
+                command=["curl", "-s", "http://localhost:8081/metrics"], container="evalhub"
+            ),
+        ):
+            if EVALHUB_HEALTH_PATH in sample:
+                prom_metrics = sample
+                break
 
-        # Verify the health path metric is present
         assert EVALHUB_HEALTH_PATH in prom_metrics, f"Expected '{EVALHUB_HEALTH_PATH}' metric in Prometheus output"
 
-        # Parse the counter value from Prometheus metrics
-        # Format: http_server_request_count_total{http_route="/api/v1/health",...} 10
+        # Parse counter: http_server_request_count_total{http_route="/api/v1/health",...} 10
         health_counter_pattern = (
             r'http_server_request_count_total\{[^}]*http_route="' + re.escape(EVALHUB_HEALTH_PATH) + r'"[^}]*\}\s+(\d+)'
         )
@@ -263,21 +275,14 @@ class TestEvalHubOTEL:
         LOGGER.info(f"Prometheus endpoint shows count: {prom_count}")
 
         # Check OTLP collector received metrics
-        collector_logs = otel_collector_pod.log(container="otel-collector", tail_lines=300)
+        collector_logs = otel_collector_pod.log(container="otel-collector", since_seconds=90)
 
         # Verify OTLP collector has the metric
         assert "http.server.request" in collector_logs or "ResourceMetrics" in collector_logs, (
             "OTLP collector did not receive http.server.request metric"
         )
 
-        # For a more detailed comparison, we'd query the collector's Prometheus endpoint
-        # This requires port-forwarding or creating a debug pod - simplified here
-
         LOGGER.info("Dual-sink behavior verified: metrics present in both Prometheus and OTLP")
-
-        # Additional check: both metrics should have similar values
-        # Since we can't easily parse OTLP values from logs, we verify presence
-        # In a real scenario, you'd query collector's Prometheus endpoint at :8889/metrics
 
     def test_global_meter_provider_access(
         self,
@@ -305,15 +310,18 @@ class TestEvalHubOTEL:
         for endpoint in endpoints:
             url = f"https://{evalhub_otel_grpc_route.host}{endpoint}"
             response = requests.get(url=url, headers=headers, verify=evalhub_otel_ca_bundle_file, timeout=10)
-            # Endpoints should respond (200, 400, 404, 401 all valid), just not crash (500, 502, 503)
             assert response.status_code < 500, f"Endpoint {endpoint} crashed with status {response.status_code}"
             LOGGER.info(f"Accessed endpoint {endpoint}: {response.status_code}")
 
         # Wait for metrics export (60s default interval + buffer)
-        time.sleep(70)
-
-        # Check collector received metrics
-        collector_logs = otel_collector_pod.log(container="otel-collector", tail_lines=400)
+        for sample in TimeoutSampler(
+            wait_timeout=80,
+            sleep=10,
+            func=lambda: otel_collector_pod.log(container="otel-collector", since_seconds=90),
+        ):
+            if "ResourceMetrics" in sample or "http.server.request" in sample:
+                collector_logs = sample
+                break
 
         # Verify metrics were exported (indicating global meter provider is working)
         assert "ResourceMetrics" in collector_logs or "http.server.request" in collector_logs, (
