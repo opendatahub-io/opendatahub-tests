@@ -43,7 +43,6 @@ from utilities.constants import (
     ModelVersion,
     Protocols,
     RuntimeTemplates,
-    Timeout,
 )
 from utilities.data_science_cluster_utils import get_dsc_ready_condition, wait_for_dsc_reconciliation
 from utilities.inference_utils import create_isvc
@@ -1045,7 +1044,7 @@ def llmisvc_upgrade_gateway(
     else:
         with create_llmd_gateway(
             client=admin_client,
-            timeout=Timeout.TIMEOUT_1MIN,
+            timeout=60,
             teardown=teardown_resources,
         ) as gateway:
             yield gateway

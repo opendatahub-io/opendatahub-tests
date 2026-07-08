@@ -7,10 +7,10 @@ from ocp_resources.resource import ResourceEditor
 from ocp_resources.trustyai_service import TrustyAIService
 from timeout_sampler import retry
 
-from utilities.constants import TRUSTYAI_SERVICE_NAME, Timeout
+from utilities.constants import TRUSTYAI_SERVICE_NAME
 
 
-@retry(wait_timeout=Timeout.TIMEOUT_5MIN, sleep=5)
+@retry(wait_timeout=300, sleep=5)
 def wait_for_trustyai_db_migration_complete_log(client: DynamicClient, trustyai_service: TrustyAIService) -> bool:
     pods = Pod.get(
         client=client,
