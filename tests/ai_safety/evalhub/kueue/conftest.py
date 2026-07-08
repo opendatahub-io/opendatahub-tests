@@ -41,7 +41,7 @@ from tests.ai_safety.evalhub.utils import (
     tenant_rbac_ready,
 )
 from utilities.certificates_utils import create_ca_bundle_file
-from utilities.constants import DscComponents, Labels, Protocols, Timeout
+from utilities.constants import DscComponents, Labels, Protocols
 from utilities.data_science_cluster_utils import get_dsc_ready_condition, wait_for_dsc_reconciliation
 from utilities.infra import create_inference_token, create_ns
 from utilities.kueue_utils import (
@@ -116,7 +116,7 @@ def evalhub_kueue_deployment(
         name=evalhub_kueue_cr.name,
         namespace=evalhub_kueue_namespace.name,
     )
-    deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_5MIN)
+    deployment.wait_for_replicas(timeout=300)
     return deployment
 
 
@@ -413,7 +413,7 @@ def evalhub_kueue_vllm_emulator_deployment(
         },
         replicas=1,
     ) as deployment:
-        deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_5MIN)
+        deployment.wait_for_replicas(timeout=300)
         yield deployment
 
 
