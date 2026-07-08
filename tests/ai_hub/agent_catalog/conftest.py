@@ -104,12 +104,6 @@ def agents_response(
 
 
 @pytest.fixture(scope="class")
-def langgraph_framework_filter_query() -> str:
-    """Return the filterQuery expression for LangGraph framework agents."""
-    return f"framework='{LANGGRAPH_FRAMEWORK}'"
-
-
-@pytest.fixture(scope="class")
 def expected_langgraph_agent_names(agents_response: dict) -> set[str]:
     """Return agent names from the test catalog that use the LangGraph framework."""
     names = {
