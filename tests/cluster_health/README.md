@@ -20,8 +20,7 @@ cluster_health/
 Tests use the following markers defined in `pytest.ini`:
 
 - `@pytest.mark.cluster_health` - Tests that verify the cluster is healthy to begin testing
-- `@pytest.mark.operator_health` - Tests that verify OpenDataHub/RHOAI operators are healthy and functioning correctly
-- `@pytest.mark.dsc_health` - DSC/DSCI and operator-namespace checks for shift-left component teardown (`scripts/dsc-health-validation.sh`)
+- `@pytest.mark.operator_health` - Tests that verify OpenDataHub/RHOAI operators are healthy and functioning correctly (also used by shift-left teardown via `scripts/dsc-health-validation.sh`)
 
 ## Test Details
 

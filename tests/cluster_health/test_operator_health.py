@@ -12,7 +12,6 @@ LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.operator_health
-@pytest.mark.dsc_health
 def test_data_science_cluster_initialization_healthy(dsci_resource: DSCInitialization) -> None:
     """
     Checks if a data science cluster initialization is healthy
@@ -21,7 +20,6 @@ def test_data_science_cluster_initialization_healthy(dsci_resource: DSCInitializ
 
 
 @pytest.mark.operator_health
-@pytest.mark.dsc_health
 def test_data_science_cluster_healthy(dsc_resource: DataScienceCluster) -> None:
     """
     Checks if a data science cluster is healthy
@@ -43,7 +41,6 @@ def test_data_science_cluster_healthy(dsc_resource: DataScienceCluster) -> None:
     ],
 )
 @pytest.mark.operator_health
-@pytest.mark.dsc_health
 def test_pods_cluster_healthy(admin_client: DynamicClient, namespace_name: str) -> None:
     """
     Checks if pods in a given namespace are all healthy
