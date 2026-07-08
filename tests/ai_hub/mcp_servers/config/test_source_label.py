@@ -7,7 +7,7 @@ from tests.ai_hub.mcp_servers.config.constants import (
     DEFAULT_MCP_LABEL,
     PARTNER_MCP_LABEL,
 )
-from tests.ai_hub.utils import execute_get_command
+from tests.ai_hub.utils import execute_get_command_with_retry
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -34,7 +34,7 @@ class TestMCPServerSourceLabel:
         """
         Validate MCP server filtering by source label (TC-API-036, TC-API-038, TC-API-039).
         """
-        size = execute_get_command(
+        size = execute_get_command_with_retry(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
             headers=model_registry_rest_headers,
             params=source_label_param or None,
@@ -48,17 +48,17 @@ class TestMCPServerSourceLabel:
         model_registry_rest_headers: dict[str, str],
     ):
         """Validate MCP server filtering by individual and combined source labels."""
-        default_label_size = execute_get_command(
+        default_label_size = execute_get_command_with_retry(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
             headers=model_registry_rest_headers,
             params={"sourceLabel": DEFAULT_MCP_LABEL},
         )["size"]
-        partner_label_size = execute_get_command(
+        partner_label_size = execute_get_command_with_retry(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
             headers=model_registry_rest_headers,
             params={"sourceLabel": PARTNER_MCP_LABEL},
         )["size"]
-        both_labeled_size = execute_get_command(
+        both_labeled_size = execute_get_command_with_retry(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
             headers=model_registry_rest_headers,
             params={"sourceLabel": f"{DEFAULT_MCP_LABEL},{PARTNER_MCP_LABEL}"},
@@ -84,7 +84,7 @@ class TestMCPServerSourceLabel:
         """
         Validate MCP server filtering by invalid source label (TC-API-037).
         """
-        invalid_size = execute_get_command(
+        invalid_size = execute_get_command_with_retry(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
             headers=model_registry_rest_headers,
             params={"sourceLabel": "invalid"},

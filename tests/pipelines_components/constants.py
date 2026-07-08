@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from typing import Any
 
 
 def _load_env_file(env_path: Path) -> None:
@@ -34,13 +35,46 @@ AUTOML_PIPELINE_YAML: str = os.environ.get("AUTOML_PIPELINE_YAML", "")
 
 # AutoML S3 source — CSV is downloaded from this external S3 path into DSPA MinIO
 AUTOML_S3_BUCKET: str = os.environ.get("AUTOML_S3_BUCKET", "")
-AUTOML_S3_TRAIN_DATA_KEY: str = os.getenv("AUTOML_S3_TRAIN_DATA_KEY", "datasets/regression/houses.csv")
+
+# AutoML task configurations for parametrized testing
+AUTOML_TASK_CONFIGS: dict[str, dict[str, Any]] = {
+    "regression": {
+        "s3_train_data_key": "datasets/regression/regression.csv",
+        "label_column": "price",
+        "task_type": "regression",
+        "top_n": 1,
+    },
+    "classification": {
+        "s3_train_data_key": "datasets/classification/classification.csv",
+        "label_column": "target",
+        "task_type": "binary",
+        "top_n": 1,
+    },
+    "multiclass": {
+        "s3_train_data_key": "datasets/classification/multiclass.csv",
+        "label_column": "target",
+        "task_type": "multiclass",
+        "top_n": 1,
+    },
+}
 
 # AutoML pipeline parameters — AUTOML_TRAIN_DATA_FILE_KEY is the destination key in DSPA MinIO
 AUTOML_TRAIN_DATA_FILE_KEY: str = os.getenv("AUTOML_TRAIN_DATA_FILE_KEY", "automl-smoke/train.csv")
-AUTOML_LABEL_COLUMN: str = os.getenv("AUTOML_LABEL_COLUMN", "median_house_value")
-AUTOML_TASK_TYPE: str = os.getenv("AUTOML_TASK_TYPE", "regression")
-AUTOML_TOP_N: int = int(os.getenv("AUTOML_TOP_N", "1"))
+
+# AutoML timeseries configuration
+AUTOML_TIMESERIES_CONFIG: dict[str, Any] = {
+    "id_column": "series_id",
+    "timestamp_column": "Month",
+    "target": "Sunspots",
+    "prediction_length": 1,
+    "top_n": 3,
+    "known_covariates_names": [],
+}
+AUTOML_TIMESERIES_TRAIN_DATA_FILE_KEY: str = os.getenv(
+    "AUTOML_TIMESERIES_TRAIN_DATA_FILE_KEY", "automl-smoke/timeseries-train.csv"
+)
+
+EXTERNAL_S3_SECRET: str = "external-s3-credentials"
 
 # Timeouts (seconds)
 AUTOML_PIPELINE_TIMEOUT: int = int(os.getenv("AUTOML_PIPELINE_TIMEOUT", "1800"))
@@ -86,6 +120,9 @@ AUTORAG_PIPELINE_TIMEOUT: int = int(os.getenv("AUTORAG_PIPELINE_TIMEOUT", "3600"
 # ---------------------------------------------------------------------------
 MANAGED_PIPELINE_AUTOML_TABULAR: str = os.getenv(
     "MANAGED_PIPELINE_AUTOML_TABULAR", "autogluon-tabular-training-pipeline"
+)
+MANAGED_PIPELINE_AUTOML_TIMESERIES: str = os.getenv(
+    "MANAGED_PIPELINE_AUTOML_TIMESERIES", "autogluon-timeseries-training-pipeline"
 )
 MANAGED_PIPELINE_AUTORAG: str = os.getenv("MANAGED_PIPELINE_AUTORAG", "documents-rag-optimization-pipeline")
 MANAGED_PIPELINES_IMAGE: str = os.getenv("MANAGED_PIPELINES_IMAGE", "")

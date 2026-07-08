@@ -74,7 +74,7 @@ def vllm_model_car_inference_service(
         "runtime": model_car_serving_runtime.name,
         "storage_uri": request.param.get("model_car_image_uri"),
         "model_format": model_car_serving_runtime.instance.spec.supportedModelFormats[0].name,
-        "deployment_mode": deployment_config.get("deployment_type", KServeDeploymentType.RAW_DEPLOYMENT),
+        "deployment_mode": deployment_config.get("deployment_type", KServeDeploymentType.STANDARD),
         "external_route": True,
     }
     add_image_pull_secrets_if_configured(
@@ -121,7 +121,7 @@ def vllm_model_car_inference_service(
 @pytest.fixture(scope="class")
 def deployment_config(request: FixtureRequest) -> dict[str, Any]:
     """Provide the base deployment configuration for modelcar raw deployments."""
-    deployment_type = request.param.get("deployment_type", KServeDeploymentType.RAW_DEPLOYMENT)
+    deployment_type = request.param.get("deployment_type", KServeDeploymentType.STANDARD)
     serving_argument = request.param.get("runtime_argument", [])
 
     config = BASE_RAW_DEPLOYMENT_CONFIG.copy()
@@ -141,10 +141,10 @@ def build_raw_params(
     execution_mode: str,
     model_output_type: str = "text",
 ) -> tuple[Any, str]:
-    test_id = f"{name}-raw"
-    deployment_type = KServeDeploymentType.RAW_DEPLOYMENT
+    test_id = f"{name}-standard"
+    deployment_type = KServeDeploymentType.STANDARD
     param = pytest.param(
-        {"name": "raw-model-validation"},
+        {"name": "standard-model-validation"},
         {"deployment_type": deployment_type},
         {
             "model_name": name,

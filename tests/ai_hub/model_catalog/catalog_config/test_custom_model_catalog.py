@@ -21,7 +21,7 @@ from tests.ai_hub.model_catalog.utils import (
     get_hf_catalog_str,
     get_sample_yaml_str,
 )
-from tests.ai_hub.utils import execute_get_command
+from tests.ai_hub.utils import execute_get_command, execute_get_command_with_retry
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -101,7 +101,7 @@ class TestModelCatalogCustom:
         """
         for expected_entry in expected_catalog_values:
             url = f"{model_catalog_rest_url[0]}models?source={expected_entry['id']}"
-            result = execute_get_command(
+            result = execute_get_command_with_retry(
                 url=url,
                 headers=model_registry_rest_headers,
             )["items"]
@@ -120,7 +120,7 @@ class TestModelCatalogCustom:
         for expected_entry in expected_catalog_values:
             model_name = expected_entry["model_name"]
             url = f"{model_catalog_rest_url[0]}sources/{expected_entry['id']}/models/{model_name}"
-            result = execute_get_command(
+            result = execute_get_command_with_retry(
                 url=url,
                 headers=model_registry_rest_headers,
             )
@@ -142,7 +142,7 @@ class TestModelCatalogCustom:
             model_name = expected_entry["model_name"]
             url = f"{model_catalog_rest_url[0]}sources/{expected_entry['id']}/models/{model_name}/artifacts"
 
-            artifacts = execute_get_command(
+            artifacts = execute_get_command_with_retry(
                 url=url,
                 headers=model_registry_rest_headers,
             )["items"]
@@ -163,7 +163,7 @@ class TestModelCatalogCustom:
         Add a model to a source and ensure it is added to the catalog
         """
         url = f"{model_catalog_rest_url[0]}sources/{CUSTOM_CATALOG_ID1}/models/{SAMPLE_MODEL_NAME3}"
-        result = execute_get_command(
+        result = execute_get_command_with_retry(
             url=url,
             headers=model_registry_rest_headers,
         )
