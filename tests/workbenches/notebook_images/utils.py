@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import pathlib
 import re
 import time
 from collections.abc import Generator
@@ -66,13 +67,20 @@ BLOCKED_LOG_KEYWORDS = (
 )
 
 ALLOWED_LOG_MESSAGES = (
+    # nginx reverse proxy logs this while the upstream IDE (code-server) is still starting
     "connect() failed (111: Connection refused) while connecting to upstream, client",
+    # workbench-trusted-ca-bundle ConfigMap is optional; absent in test namespaces
     "Skipping trusted CA bundle mount because the ConfigMap is not available",
     "WARNING: skipping notebook trusted CA setup because no bundle was mounted",
+    # RHAIENG-5767: jupyter-events package emits this on every JupyterLab start
     "JupyterEventsVersionWarning: The `version` property of an event schema must be a string.",
+    # RHAIENG-5766: Dashboard NOTEBOOK_ARGS uses deprecated ServerApp.token instead of IdentityProvider.token
     "ServerApp.token config is deprecated in 2.0. Use IdentityProvider.token.",
+    # RHAIENG-5644: TLS is provided by the OpenShift route / Gateway, not in-container Jupyter
     "WARNING: The Jupyter server is listening on all IP addresses and not using encryption.",
+    # RHAIENG-5644: Jupyter auth disabled in-container; kube-rbac-proxy / oauth-proxy provides external auth
     "WARNING: The Jupyter server is listening on all IP addresses and not using authentication.",
+    # RHOAIENG-22226: uuid.getnode() fails in containers with no persistent MAC address
     "Unable to retrieve mac address (unexpected format)",
 )
 
@@ -1045,14 +1053,6 @@ def load_workbench_baseline(config_map_data: dict[str, str], baseline_prefix: st
     return WorkbenchImageBaseline.from_configmap_data(prefix=baseline_prefix, data=config_map_data)
 
 
-def get_workbench_image_spec_by_ide(ide: str) -> WorkbenchImageSpec:
-    """Return the workbench IDE configuration for the requested IDE name."""
-    for spec in get_workbench_image_specs():
-        if spec.ide == ide:
-            return spec
-    raise KeyError(f"Unknown workbench IDE '{ide}'")
-
-
 def wait_for_notebook_deletion(
     unprivileged_client: DynamicClient,
     *,
@@ -1230,3 +1230,92 @@ def capture_or_load_workbench_baseline(
     ResourceEditor(patches={config_map: {"data": updated_data}}).update()
     LOGGER.info(f"Saved N-1 baseline for {spec.ide}: tag={baseline.image_tag}")
     return baseline
+
+
+_KERNEL_SCRIPTS_DIR = str(pathlib.Path(__file__).parent / "upgrade")
+
+
+def start_kernel_and_set_variable(
+    pod: Pod,
+    container_name: str,
+    namespace: str,
+    notebook_name: str,
+) -> str:
+    """Start a Jupyter kernel inside the pod and execute ``a = 3 + 4``."""
+    script = pathlib.Path(_KERNEL_SCRIPTS_DIR, "_kernel_start.py").read_text()
+    base_url = f"http://localhost:8888/notebook/{namespace}/{notebook_name}"
+    result = pod.execute(
+        container=container_name,
+        command=["python", "-c", script, base_url],
+        timeout=60,
+    )
+    kernel_id = result.strip()
+    LOGGER.info(f"Started kernel {kernel_id} and set a = 3 + 4")
+    return kernel_id
+
+
+def verify_kernel_variable(pod: Pod, container_name: str, kernel_id: str) -> str:
+    """Reconnect to a running Jupyter kernel and verify ``a * 6 == 42``."""
+    script = pathlib.Path(_KERNEL_SCRIPTS_DIR, "_kernel_verify.py").read_text()
+    try:
+        result = pod.execute(
+            container=container_name,
+            command=["python", "-c", script, kernel_id],
+            timeout=30,
+        )
+    except ExecOnPodError as exc:
+        raise AssertionError(
+            f"Kernel {kernel_id} did not retain variable 'a' across upgrade -- kernel process may have been restarted"
+        ) from exc
+    output = result.strip()
+    LOGGER.info(f"Kernel {kernel_id} returned: {output}")
+    return output
+
+
+def build_dashboard_image_patch(
+    notebook: Notebook,
+    resolved_image: ResolvedWorkbenchImage,
+) -> list[dict[str, Any]]:
+    """Build the same Notebook image patch payload the Dashboard UI applies.
+
+    Mirrors the ``patchNotebookImage()`` JSON patch that the RHOAI Dashboard
+    sends when a user bumps their workbench to a newer ImageStream tag.  Used
+    by the RHAIENG-5550 dashboard-driven image bump tests, *not* by the N-1
+    survival tests in this package.
+    """
+    env_list = notebook.instance.spec.template.spec.containers[0].env or []
+    jupyter_image_env_index = next(
+        (idx for idx, env in enumerate(env_list) if getattr(env, "name", None) == "JUPYTER_IMAGE"),
+        None,
+    )
+    if jupyter_image_env_index is None:
+        raise AssertionError("Notebook container is missing the JUPYTER_IMAGE environment variable")
+
+    patches: list[dict[str, Any]] = [
+        {
+            "op": "replace",
+            "path": "/metadata/annotations/notebooks.opendatahub.io~1last-image-selection",
+            "value": resolved_image.image_selection,
+        },
+        {
+            "op": "replace",
+            "path": "/spec/template/spec/containers/0/image",
+            "value": resolved_image.image_url,
+        },
+        {
+            "op": "replace",
+            "path": f"/spec/template/spec/containers/0/env/{jupyter_image_env_index}/value",
+            "value": resolved_image.image_url,
+        },
+    ]
+
+    if resolved_image.build_commit:
+        annotations = notebook.instance.metadata.annotations or {}
+        commit_annotation_key = "notebooks.opendatahub.io/last-image-version-git-commit-selection"
+        patches.append({
+            "op": "replace" if annotations.get(commit_annotation_key) else "add",
+            "path": "/metadata/annotations/notebooks.opendatahub.io~1last-image-version-git-commit-selection",
+            "value": resolved_image.build_commit,
+        })
+
+    return patches

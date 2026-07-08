@@ -6,11 +6,9 @@ Tests for validating notebook container images used by OpenDataHub/RHOAI workben
 
 Verifies that workbenches launched on N-1 (source-version) images remain healthy after a RHOAI platform upgrade.
 
-Per-IDE test modules:
+A single parametrized test module covers all IDEs:
 
-- `upgrade/test_upgrade_jupyterlab.py` — JupyterLab (`s2i-minimal-notebook` / `jupyter-minimal-notebook`)
-- `upgrade/test_upgrade_codeserver.py` — Code Server (`code-server-notebook`)
-- `upgrade/test_upgrade_rstudio.py` — RStudio (legacy EUS track only)
+- `upgrade/test_upgrade_workbench.py` — JupyterLab, Code Server, RStudio (parametrized via `get_workbench_image_specs()`)
 
 Pre-upgrade validation creates dashboard-faithful Notebook CRs, waits for controller reconciliation (kube-rbac-proxy, ReferenceGrant, HTTPRoute), captures a rich baseline (image selection, digest, restart counts, Notebook generation), and writes a PVC marker file.
 
@@ -24,18 +22,19 @@ Post-upgrade validation checks:
 - StatefulSet health (readyReplicas, no pending rollout)
 - PVC marker file still readable
 - Log cleanliness and in-pod HTTP health (JupyterLab and Code Server only)
+- Jupyter kernel in-memory state survived (JupyterLab only)
 
 ### Running
 
 ```bash
-# Pre-upgrade (on N-1 cluster) — 3 tests (1 per IDE)
+# Pre-upgrade (on N-1 cluster)
 uv run pytest --pre-upgrade tests/workbenches/notebook_images/upgrade/
 
-# Post-upgrade (on upgraded cluster) — 27 tests (9 per IDE)
+# Post-upgrade (on upgraded cluster)
 uv run pytest --post-upgrade tests/workbenches/notebook_images/upgrade/
 
-# Target a single IDE
-uv run pytest --post-upgrade tests/workbenches/notebook_images/upgrade/test_upgrade_jupyterlab.py
+# Target a single IDE via keyword
+uv run pytest --post-upgrade tests/workbenches/notebook_images/upgrade/ -k jupyterlab
 ```
 
 Optional overrides via pytest-testconfig:
