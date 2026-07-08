@@ -24,7 +24,6 @@ from tests.workbenches.notebooks_server.controller.utils import (
     resolve_notebook_image,
 )
 from utilities import constants
-from utilities.constants import Timeout
 from utilities.general import collect_pod_information
 from utilities.infra import create_ns
 from utilities.resources.http_route import HTTPRoute
@@ -160,14 +159,14 @@ def upgrade_notebook_pod(
         notebook_pod.wait_for_condition(
             condition=Pod.Condition.READY,
             status=Pod.Condition.Status.TRUE,
-            timeout=Timeout.TIMEOUT_5MIN,
+            timeout=300,
         )
     except (TimeoutError, TimeoutExpiredError) as e:
         if notebook_pod.exists:
             collect_pod_information(notebook_pod)
             raise AssertionError(
                 f"Pod '{upgrade_notebook.name}-0' failed to reach Ready state "
-                f"within {Timeout.TIMEOUT_5MIN} seconds.\n"
+                f"within (300) seconds.\n"
                 f"Original Error: {e}\n"
                 f"Pod information collected to must-gather directory for debugging."
             ) from e
@@ -406,7 +405,7 @@ def stopped_notebook_pre_upgrade_shutdown(
         notebook_pod.wait_for_condition(
             condition=Pod.Condition.READY,
             status=Pod.Condition.Status.TRUE,
-            timeout=Timeout.TIMEOUT_5MIN,
+            timeout=300,
         )
     except (TimeoutError, TimeoutExpiredError) as e:
         if notebook_pod.exists:
@@ -430,7 +429,7 @@ def stopped_notebook_pre_upgrade_shutdown(
         f"with timestamp '{stop_timestamp}'"
     )
 
-    notebook_pod.wait_deleted(timeout=Timeout.TIMEOUT_2MIN)
+    notebook_pod.wait_deleted(timeout=120)
     LOGGER.info(f"Pod '{notebook_pod.name}' terminated after stop annotation")
 
     replicas = stopped_notebook_statefulset.instance.spec.replicas
@@ -632,14 +631,14 @@ def new_notebook_pod(
         notebook_pod.wait_for_condition(
             condition=Pod.Condition.READY,
             status=Pod.Condition.Status.TRUE,
-            timeout=Timeout.TIMEOUT_5MIN,
+            timeout=300,
         )
     except (TimeoutError, TimeoutExpiredError) as e:
         if notebook_pod.exists:
             collect_pod_information(notebook_pod)
             raise AssertionError(
                 f"New notebook pod '{new_notebook.name}-0' failed to reach Ready state "
-                f"within {Timeout.TIMEOUT_5MIN} seconds on upgraded platform.\n"
+                f"within (300) seconds on upgraded platform.\n"
                 f"Original error: {e}"
             ) from e
 

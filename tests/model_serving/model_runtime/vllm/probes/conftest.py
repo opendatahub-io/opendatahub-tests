@@ -25,7 +25,7 @@ from tests.model_serving.model_runtime.vllm.utils import (
     skip_if_not_deployment_mode,
     validate_supported_quantization_schema,
 )
-from utilities.constants import Containers, KServeDeploymentType, RuntimeTemplates, Timeout
+from utilities.constants import Containers, KServeDeploymentType, RuntimeTemplates
 from utilities.inference_utils import create_isvc
 from utilities.infra import get_pods_by_isvc_label
 from utilities.serving_runtime import ServingRuntimeFromTemplate
@@ -84,7 +84,7 @@ def vllm_probes_inference_service(
         "resources": deepcopy(x=CPU_X86_PREDICT_RESOURCES),
         "volumes": CPU_X86_VOLUMES,
         "volumes_mounts": CPU_X86_VOLUME_MOUNTS,
-        "timeout": request.param.get("timeout", Timeout.TIMEOUT_20MIN),
+        "timeout": request.param.get("timeout", 1200),
     }
 
     if arguments := request.param.get("runtime_argument"):

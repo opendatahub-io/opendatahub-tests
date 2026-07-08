@@ -18,7 +18,6 @@ from tests.workbenches.notebook_images.utils import (
     verify_statefulset_healthy,
     wait_for_http_inside_pod,
 )
-from utilities.constants import Timeout
 
 
 def verify_pre_upgrade_health(
@@ -51,7 +50,7 @@ def verify_post_upgrade_exists(notebook: Notebook, pod: Pod) -> None:
     pod.wait_for_condition(
         condition=Pod.Condition.READY,
         status=Pod.Condition.Status.TRUE,
-        timeout=Timeout.TIMEOUT_5MIN,
+        timeout=300,
     )
 
 

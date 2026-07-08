@@ -23,16 +23,14 @@ from ocp_resources.service_account import ServiceAccount
 from ocp_resources.trustyai_service import TrustyAIService
 from timeout_sampler import TimeoutSampler, retry
 
-from utilities.constants import MARIA_DB_IMAGE, TRUSTYAI_SERVICE_NAME, Timeout
+from utilities.constants import MARIA_DB_IMAGE, TRUSTYAI_SERVICE_NAME
 from utilities.exceptions import TooManyPodsError, UnexpectedFailureError
 from utilities.general import validate_container_images, wait_for_pods_by_labels
 
 LOGGER = structlog.get_logger(name=__name__)
 
 
-def wait_for_mariadb_pods(
-    client: DynamicClient, deployment_name: str, namespace: str, timeout: int = Timeout.TIMEOUT_15MIN
-) -> None:
+def wait_for_mariadb_pods(client: DynamicClient, deployment_name: str, namespace: str, timeout: int = 900) -> None:
     def _get_mariadb_pods() -> list[Pod]:
         return list(
             Pod.get(
@@ -299,7 +297,7 @@ def create_standalone_mariadb(
 
 
 @retry(
-    wait_timeout=Timeout.TIMEOUT_2MIN,
+    wait_timeout=120,
     sleep=5,
     exceptions_dict={TooManyPodsError: [], UnexpectedFailureError: []},
 )
