@@ -16,7 +16,7 @@ from ocp_resources.trustyai_service import TrustyAIService
 from timeout_sampler import TimeoutSampler
 
 from utilities.certificates_utils import create_ca_bundle_file
-from utilities.constants import TRUSTYAI_SERVICE_NAME, Protocols, Timeout
+from utilities.constants import TRUSTYAI_SERVICE_NAME, Protocols
 from utilities.exceptions import MetricValidationError
 from utilities.general import create_isvc_label_selector_str
 from utilities.inference_utils import Inference, UserInference
@@ -363,7 +363,7 @@ def send_inferences_and_verify_trustyai_service_registered(
             )
             LOGGER.debug(f"Inference response: {res}")
             samples = TimeoutSampler(
-                wait_timeout=Timeout.TIMEOUT_5MIN,
+                wait_timeout=300,
                 sleep=1,
                 func=lambda: get_num_observations_from_trustyai_service(
                     client=client, token=token, trustyai_service=trustyai_service
@@ -414,7 +414,7 @@ def wait_for_isvc_deployment_registered_by_trustyai_service(
         )
 
     samples = TimeoutSampler(
-        wait_timeout=Timeout.TIMEOUT_20MIN,
+        wait_timeout=1200,
         sleep=1,
         func=_get_deployments,
     )

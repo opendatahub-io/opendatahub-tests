@@ -30,7 +30,7 @@ from tests.ai_hub.constants import (
     PORT_MAP,
 )
 from tests.ai_hub.exceptions import ModelRegistryResourceNotFoundError
-from utilities.constants import MARIA_DB_IMAGE, Annotations, PodNotFound, Protocols, Timeout
+from utilities.constants import MARIA_DB_IMAGE, Annotations, PodNotFound, Protocols
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
 from utilities.general import wait_for_pods_running
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
@@ -314,7 +314,7 @@ def get_model_registry_db_label_dict(db_resource_name: str) -> dict[str, str]:
     }
 
 
-@retry(exceptions_dict={TimeoutError: []}, wait_timeout=Timeout.TIMEOUT_2MIN, sleep=5)
+@retry(exceptions_dict={TimeoutError: []}, wait_timeout=120, sleep=5)
 def wait_for_new_running_mr_pod(
     admin_client: DynamicClient,
     orig_pod_name: str,

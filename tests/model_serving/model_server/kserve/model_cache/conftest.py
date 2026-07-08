@@ -27,7 +27,7 @@ from tests.model_serving.model_server.kserve.model_cache.utils import (
     LocalModelNodeGroup,
     wait_for_local_model_cache_nodes_downloaded,
 )
-from utilities.constants import KServeDeploymentType, ModelFormat, Protocols, Timeout
+from utilities.constants import KServeDeploymentType, ModelFormat, Protocols
 from utilities.inference_utils import create_isvc
 from utilities.infra import get_data_science_cluster, s3_endpoint_secret, wait_for_dsc_status_ready
 
@@ -80,7 +80,7 @@ def model_cache_infra_ready(
 
         try:
             for sample in TimeoutSampler(
-                wait_timeout=Timeout.TIMEOUT_5MIN,
+                wait_timeout=300,
                 sleep=10,
                 func=lambda: LocalModelNodeGroup(client=admin_client, name=LOCAL_MODEL_NODE_GROUP_NAME).exists,
             ):
@@ -89,7 +89,7 @@ def model_cache_infra_ready(
         except TimeoutExpiredError:
             pytest.fail(
                 f"LocalModelNodeGroup '{LOCAL_MODEL_NODE_GROUP_NAME}' did not appear "
-                f"within {Timeout.TIMEOUT_5MIN}s after enabling modelCache in DSC"
+                f"within {300}s after enabling modelCache in DSC"
             )
 
         agent = DaemonSet(
@@ -99,7 +99,7 @@ def model_cache_infra_ready(
         )
         try:
             for sample in TimeoutSampler(
-                wait_timeout=Timeout.TIMEOUT_5MIN,
+                wait_timeout=300,
                 sleep=10,
                 func=lambda: agent.exists,
             ):
@@ -107,8 +107,7 @@ def model_cache_infra_ready(
                     break
         except TimeoutExpiredError:
             pytest.fail(
-                f"DaemonSet '{MODEL_CACHE_AGENT_DAEMONSET}' did not appear in "
-                f"'{applications_namespace}' within {Timeout.TIMEOUT_5MIN}s"
+                f"DaemonSet '{MODEL_CACHE_AGENT_DAEMONSET}' did not appear in '{applications_namespace}' within {300}s"
             )
 
         yield dsc
@@ -185,7 +184,7 @@ def mnist_local_model_cache(
         node_groups=[LOCAL_MODEL_NODE_GROUP_NAME],
         storage={"key": model_cache_download_s3_secret.name},
     ) as cache:
-        wait_for_local_model_cache_nodes_downloaded(cache=cache, timeout=Timeout.TIMEOUT_10MIN)
+        wait_for_local_model_cache_nodes_downloaded(cache=cache, timeout=600)
         yield cache
 
 
@@ -212,6 +211,6 @@ def mnist_onnx_local_model_cache_inference_service(
         model_format=ovms_kserve_serving_runtime.instance.spec.supportedModelFormats[0].name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         external_route=True,
-        timeout=Timeout.TIMEOUT_15MIN,
+        timeout=900,
     ) as isvc:
         yield isvc

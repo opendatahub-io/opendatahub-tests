@@ -14,7 +14,7 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_serving.maas_billing.maas_subscription.utils import MAAS_SUBSCRIPTION_NAMESPACE
 from tests.model_serving.maas_billing.utils import verify_maas_gateway_programmed, verify_maas_tenant_ready
-from utilities.constants import MAAS_GATEWAY_NAMESPACE, ApiGroups
+from utilities.constants import MAAS_GATEWAY_NAME, MAAS_GATEWAY_NAMESPACE, ApiGroups
 from utilities.resources.aitenant import AITenant
 from utilities.resources.tenant import Tenant
 
@@ -103,16 +103,13 @@ def build_aitenant_spec(
     aitenant_name: str,
     gateway_name: str | None = None,
     oidc: dict[str, Any] | None = None,
-    rbac_admins: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
-    """Build an AITenant spec with gateway, oidc, and rbac fields."""
+    """Build an AITenant spec with gateway and optional oidc fields."""
     spec: dict[str, Any] = {}
     resolved_gateway_name = gateway_name or aitenant_name
     spec["gateway"] = {"name": resolved_gateway_name}
     if oidc is not None:
         spec["oidc"] = oidc
-    if rbac_admins is not None:
-        spec["rbac"] = {"admins": rbac_admins}
     return spec
 
 
@@ -163,8 +160,6 @@ def aitenant_from_spec(
         aitenant_kwargs["gateway"] = aitenant_spec["gateway"]
     if "oidc" in aitenant_spec:
         aitenant_kwargs["oidc"] = aitenant_spec["oidc"]
-    if "rbac" in aitenant_spec:
-        aitenant_kwargs["rbac"] = aitenant_spec["rbac"]
     return AITenant(**aitenant_kwargs)
 
 
@@ -231,7 +226,11 @@ def verify_aitenant_bootstrap_children(
     test_context: AITenantTestContext,
     infra_namespace: str = AITENANT_INFRA_NAMESPACE,
 ) -> None:
-    """Assert AITenant bootstrap created the expected namespace, Gateway, and Tenant resources."""
+    """Assert AITenant bootstrap created the expected namespace, Gateway, and Tenant resources.
+
+    The bootstrapped Tenant references the shared MaaS gateway (maas-default-gateway),
+    while AITenant status.gatewayRef tracks the per-tenant pre-provisioned bootstrap gateway.
+    """
     aitenant = test_context["aitenant"]
     aitenant_name = test_context["aitenant_name"]
     tenant_namespace_name = test_context["tenant_namespace_name"]
@@ -316,11 +315,11 @@ def verify_aitenant_bootstrap_children(
     assert tenant_gateway_ref is not None, (
         f"Tenant/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} spec.gatewayRef should be set after bootstrap"
     )
-    assert tenant_gateway_ref.name == gateway_name, (
-        f"Tenant gatewayRef.name expected {gateway_name!r}, got {tenant_gateway_ref.name!r}"
+    assert tenant_gateway_ref.name == MAAS_GATEWAY_NAME, (
+        f"Tenant gatewayRef.name expected {MAAS_GATEWAY_NAME!r}, got {tenant_gateway_ref.name!r}"
     )
-    assert tenant_gateway_ref.namespace == gateway_namespace, (
-        f"Tenant gatewayRef.namespace expected {gateway_namespace!r}, got {tenant_gateway_ref.namespace!r}"
+    assert tenant_gateway_ref.namespace == MAAS_GATEWAY_NAMESPACE, (
+        f"Tenant gatewayRef.namespace expected {MAAS_GATEWAY_NAMESPACE!r}, got {tenant_gateway_ref.namespace!r}"
     )
     LOGGER.info(
         f"AITenant '{aitenant_name}' bootstrap verified: namespace, gateway, and "
@@ -389,39 +388,65 @@ def verify_aitenant_role_binding(
         )
 
 
-def verify_aitenant_rbac_admins_bindings(
+def tenant_admin_role_binding_name(aitenant_name: str) -> str:
+    """Return a test RoleBinding name for tenant-admin access in the tenant namespace."""
+    return f"{tenant_admin_role_name(aitenant_name=aitenant_name)}-admins"
+
+
+def object_admin_role_binding_name(aitenant_name: str) -> str:
+    """Return a test RoleBinding name for object-admin access in the infra namespace."""
+    return f"{aitenant_object_admin_role_name(aitenant_name=aitenant_name)}-admins"
+
+
+@contextmanager
+def aitenant_admin_role_bindings(
     admin_client: DynamicClient,
     aitenant_name: str,
     tenant_namespace_name: str,
     infra_namespace: str,
-    expected_admins: list[dict[str, str]],
-) -> None:
-    """Assert tenant-admin and object-admin RoleBindings exist with spec.rbac.admins subjects."""
+    subjects: list[dict[str, str]],
+    teardown: bool = True,
+) -> Generator[tuple[RoleBinding, RoleBinding], Any, Any]:
+    """Create manual tenant-admin and object-admin RoleBindings for the given subjects."""
     tenant_admin_name = tenant_admin_role_name(aitenant_name=aitenant_name)
     object_admin_name = aitenant_object_admin_role_name(aitenant_name=aitenant_name)
-    verify_aitenant_role_binding(
-        admin_client=admin_client,
-        namespace=tenant_namespace_name,
-        binding_name=tenant_admin_name,
-        role_name=tenant_admin_name,
-        expected_subjects=expected_admins,
-    )
-    verify_aitenant_role_binding(
-        admin_client=admin_client,
-        namespace=infra_namespace,
-        binding_name=object_admin_name,
-        role_name=object_admin_name,
-        expected_subjects=expected_admins,
-    )
+    tenant_binding_name = tenant_admin_role_binding_name(aitenant_name=aitenant_name)
+    object_binding_name = object_admin_role_binding_name(aitenant_name=aitenant_name)
+    if len(subjects) != 1:
+        raise ValueError("aitenant_admin_role_bindings currently supports exactly one RBAC subject")
+    subject = subjects[0]
+    with (
+        RoleBinding(
+            client=admin_client,
+            namespace=tenant_namespace_name,
+            name=tenant_binding_name,
+            role_ref_name=tenant_admin_name,
+            role_ref_kind="Role",
+            subjects_kind=subject["kind"],
+            subjects_name=subject["name"],
+            teardown=teardown,
+        ) as tenant_role_binding,
+        RoleBinding(
+            client=admin_client,
+            namespace=infra_namespace,
+            name=object_binding_name,
+            role_ref_name=object_admin_name,
+            role_ref_kind="Role",
+            subjects_kind=subject["kind"],
+            subjects_name=subject["name"],
+            teardown=teardown,
+        ) as object_role_binding,
+    ):
+        yield tenant_role_binding, object_role_binding
 
 
-def verify_aitenant_rbac_roles_without_admin_bindings(
+def verify_aitenant_controller_creates_admin_roles_only(
     admin_client: DynamicClient,
     aitenant_name: str,
     tenant_namespace_name: str,
     infra_namespace: str,
 ) -> None:
-    """Assert Roles exist but admin RoleBindings are omitted when spec.rbac.admins is unset."""
+    """Assert the controller creates admin Roles but does not create RoleBindings."""
     tenant_admin_name = tenant_admin_role_name(aitenant_name=aitenant_name)
     object_admin_name = aitenant_object_admin_role_name(aitenant_name=aitenant_name)
     tenant_role = Role(client=admin_client, name=tenant_admin_name, namespace=tenant_namespace_name)
@@ -441,6 +466,32 @@ def verify_aitenant_rbac_roles_without_admin_bindings(
         binding_name=object_admin_name,
         role_name=object_admin_name,
         should_exist=False,
+    )
+
+
+def verify_manual_aitenant_admin_role_bindings(
+    admin_client: DynamicClient,
+    aitenant_name: str,
+    tenant_namespace_name: str,
+    infra_namespace: str,
+    expected_subjects: list[dict[str, str]],
+) -> None:
+    """Assert manually created tenant-admin and object-admin RoleBindings reference controller Roles."""
+    tenant_admin_name = tenant_admin_role_name(aitenant_name=aitenant_name)
+    object_admin_name = aitenant_object_admin_role_name(aitenant_name=aitenant_name)
+    verify_aitenant_role_binding(
+        admin_client=admin_client,
+        namespace=tenant_namespace_name,
+        binding_name=tenant_admin_role_binding_name(aitenant_name=aitenant_name),
+        role_name=tenant_admin_name,
+        expected_subjects=expected_subjects,
+    )
+    verify_aitenant_role_binding(
+        admin_client=admin_client,
+        namespace=infra_namespace,
+        binding_name=object_admin_role_binding_name(aitenant_name=aitenant_name),
+        role_name=object_admin_name,
+        expected_subjects=expected_subjects,
     )
 
 
@@ -469,7 +520,7 @@ def verify_aitenant_rbac_children_removed(
     infra_namespace: str,
     timeout: int = 300,
 ) -> None:
-    """Assert tenant-admin and object-admin Roles and RoleBindings were removed after AITenant deletion."""
+    """Assert controller-owned tenant-admin and object-admin Roles were removed after AITenant deletion."""
     tenant_admin_name = tenant_admin_role_name(aitenant_name=aitenant_name)
     object_admin_name = aitenant_object_admin_role_name(aitenant_name=aitenant_name)
     _wait_until_resource_absent(
@@ -485,17 +536,6 @@ def verify_aitenant_rbac_children_removed(
     )
     _wait_until_resource_absent(
         exists_check=lambda: (
-            RoleBinding(
-                client=admin_client,
-                name=tenant_admin_name,
-                namespace=tenant_namespace_name,
-            ).exists
-        ),
-        resource_label=f"RoleBinding '{tenant_namespace_name}/{tenant_admin_name}'",
-        timeout=timeout,
-    )
-    _wait_until_resource_absent(
-        exists_check=lambda: (
             Role(
                 client=admin_client,
                 name=object_admin_name,
@@ -503,17 +543,6 @@ def verify_aitenant_rbac_children_removed(
             ).exists
         ),
         resource_label=f"Role '{infra_namespace}/{object_admin_name}'",
-        timeout=timeout,
-    )
-    _wait_until_resource_absent(
-        exists_check=lambda: (
-            RoleBinding(
-                client=admin_client,
-                name=object_admin_name,
-                namespace=infra_namespace,
-            ).exists
-        ),
-        resource_label=f"RoleBinding '{infra_namespace}/{object_admin_name}'",
         timeout=timeout,
     )
 

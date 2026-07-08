@@ -34,7 +34,6 @@ from tests.pipelines_components.constants import (
     MINIO_UPLOADER_SECURITY_CONTEXT,
 )
 from utilities.certificates_utils import create_ca_bundle_file
-from utilities.constants import Timeout
 from utilities.general import collect_pod_information
 from utilities.infra import create_ns, get_rhods_subscription, wait_for_dsc_status_ready
 
@@ -171,7 +170,7 @@ def dspa(
             client=admin_client,
             name=DSPA_PIPELINE_DEPLOYMENT,
             namespace=pipelines_namespace.name,
-        ).wait_for_replicas(timeout=Timeout.TIMEOUT_5MIN)
+        ).wait_for_replicas(timeout=300)
 
         yield dspa_resource
 

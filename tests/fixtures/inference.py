@@ -22,7 +22,6 @@ from utilities.constants import (
     KServeDeploymentType,
     LLMdInferenceSimConfig,
     RuntimeTemplates,
-    Timeout,
     VLLMGPUConfig,
 )
 from utilities.inference_utils import create_isvc
@@ -159,7 +158,7 @@ def llm_d_inference_sim_isvc(
                 name=f"{isvc.name}-predictor",
                 namespace=model_namespace.name,
             )
-            deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_2MIN)
+            deployment.wait_for_replicas(timeout=120)
             yield isvc
 
 

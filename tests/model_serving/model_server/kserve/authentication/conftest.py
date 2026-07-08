@@ -22,7 +22,6 @@ from utilities.constants import (
     ModelName,
     Protocols,
     RuntimeTemplates,
-    Timeout,
 )
 from utilities.inference_utils import create_isvc
 from utilities.infra import (
@@ -91,7 +90,7 @@ def patched_remove_raw_authentication_isvc(
         http_s3_ovms_raw_inference_service.wait_for_condition(
             condition=http_s3_ovms_raw_inference_service.Condition.READY,
             status=http_s3_ovms_raw_inference_service.Condition.Status.TRUE,
-            timeout=Timeout.TIMEOUT_2MIN,
+            timeout=120,
         )
         wait_for_inference_deployment_replicas(
             client=unprivileged_client,
@@ -104,7 +103,7 @@ def patched_remove_raw_authentication_isvc(
     http_s3_ovms_raw_inference_service.wait_for_condition(
         condition=http_s3_ovms_raw_inference_service.Condition.READY,
         status=http_s3_ovms_raw_inference_service.Condition.Status.TRUE,
-        timeout=Timeout.TIMEOUT_2MIN,
+        timeout=120,
     )
     wait_for_inference_deployment_replicas(
         client=unprivileged_client,
