@@ -35,7 +35,6 @@ from utilities.constants import (
     LLM_D_CHAT_GENERATION_CONFIG,
     PROMPT_INJECTION_DETECTOR,
     LLMdInferenceSimConfig,
-    Timeout,
 )
 from utilities.plugins.constant import OpenAIEnpoints
 
@@ -409,7 +408,7 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
         Equivalent to clicking 'Find Traces' in the Tempo UI.
         """
 
-        @retry(wait_timeout=Timeout.TIMEOUT_1MIN, sleep=5)
+        @retry(wait_timeout=60, sleep=5)
         def check_traces():
             services = requests.get(f"{tempo_traces_service_portforward}/api/services").json().get("data") or []
             guardrails_services = [s for s in services if "guardrails" in s]

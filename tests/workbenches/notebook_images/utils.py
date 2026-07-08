@@ -25,7 +25,7 @@ from semver import Version
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.workbenches.notebooks_server.controller.utils import StatefulSet
-from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH, Labels, Timeout
+from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH, Labels
 from utilities.general import collect_pod_information
 from utilities.infra import check_internal_image_registry_available, get_product_version
 from utilities.resources.http_route import HTTPRoute
@@ -43,7 +43,7 @@ TRUSTED_CA_BUNDLE_NAME = "workbench-trusted-ca-bundle"
 PIPELINE_RUNTIME_IMAGES_NAME = "pipeline-runtime-images"
 RSTUDIO_BUILDCONFIG_NAME = "rstudio-server-rhel9"
 RSTUDIO_BUILD_SECRET_NAME = "rhel-subscription-secret"  # pragma: allowlist secret
-RSTUDIO_IMAGE_BUILD_TIMEOUT = Timeout.TIMEOUT_30MIN
+RSTUDIO_IMAGE_BUILD_TIMEOUT = 1800
 
 SEMVER_TAG_PATTERN = re.compile(r"^(?P<major>\d+)\.(?P<minor>\d+)$")
 LEGACY_TAG_PATTERN = re.compile(r"^(?P<year>\d{4})\.(?P<minor>\d+)$")
@@ -738,7 +738,7 @@ def wait_for_controller_reconciliation(
     notebook_name: str,
     notebook_namespace: str,
     notebook_pod: Pod,
-    timeout: int = Timeout.TIMEOUT_5MIN,
+    timeout: int = 300,
 ) -> None:
     """Wait for the notebook controller to finish reconciling auth and routing resources."""
     try:
@@ -838,7 +838,7 @@ def wait_for_http_inside_pod(
     container_name: str,
     namespace: str,
     notebook_name: str,
-    timeout: int = Timeout.TIMEOUT_2MIN,
+    timeout: int = 120,
 ) -> None:
     """Wait until the in-pod workbench HTTP endpoint responds successfully."""
     probe_url = f"http://localhost:{NOTEBOOK_PORT}/notebook/{namespace}/{notebook_name}/api"
@@ -1067,16 +1067,14 @@ def wait_for_notebook_deletion(
     }
     try:
         for notebook_deleted in TimeoutSampler(
-            wait_timeout=Timeout.TIMEOUT_5MIN,
+            wait_timeout=300,
             sleep=5,
             func=lambda: not Notebook(**notebook_kwargs).exists,
         ):
             if notebook_deleted:
                 return
     except TimeoutExpiredError as error:
-        raise AssertionError(
-            f"Notebook '{notebook_name}' was not deleted within {Timeout.TIMEOUT_5MIN} seconds"
-        ) from error
+        raise AssertionError(f"Notebook '{notebook_name}' was not deleted within (300) seconds") from error
 
 
 def manage_upgrade_persistent_volume_claim(
@@ -1196,7 +1194,7 @@ def get_ready_upgrade_notebook_pod(
         notebook_name=spec.notebook_name,
         notebook_namespace=notebook.namespace,
         notebook_pod=notebook_pod,
-        timeout=Timeout.TIMEOUT_10MIN,
+        timeout=600,
     )
     return notebook_pod
 

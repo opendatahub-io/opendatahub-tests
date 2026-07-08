@@ -1,10 +1,16 @@
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Literal
 
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 from timeout_sampler import retry
 
+from tests.ai_hub.model_catalog.constants import (
+    RECOMMENDED_ARTIFACT_PROPERTY,
+    REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
+    VALIDATED_CATALOG_ID,
+)
 from tests.ai_hub.model_catalog.db_constants import (
     GET_MODELS_BY_ACCURACY_DB_QUERY,
     GET_MODELS_BY_ACCURACY_WITH_TASK_FILTER_DB_QUERY,
@@ -17,6 +23,15 @@ from tests.ai_hub.model_catalog.utils import (
 )
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+@dataclass(frozen=True)
+class RecommendedBaseline:
+    """Baseline data from legacy recommendations=true for a given use case."""
+
+    model_names: list[str]
+    artifact_filter: str
+    use_case: str
 
 
 @retry(wait_timeout=60, sleep=5, exceptions_dict={requests.exceptions.ConnectionError: []})
@@ -571,3 +586,137 @@ def assert_model_sorting(
     assert validate_items_sorted_correctly(items=items, field=order_by, order=sort_order), (
         f"Items not sorted correctly by {order_by} {sort_order}. Values: {values}"
     )
+
+
+def assert_latency_ordering(latencies: list[float | None], expected_order: Literal["ASC", "DESC"]) -> None:
+    """Assert latency values are monotonic and all None values form a contiguous tail."""
+    first_none_idx = next((idx for idx, val in enumerate(latencies) if val is None), len(latencies))
+
+    assert all(latency is None for latency in latencies[first_none_idx:]), (
+        "All models without latency must form a contiguous tail"
+    )
+
+    latency_values = latencies[:first_none_idx]
+    if expected_order == "ASC":
+        assert latency_values == sorted(latency_values), f"Models with latency not sorted ASC. Values: {latency_values}"
+    else:
+        assert latency_values == sorted(latency_values, reverse=True), (
+            f"Models with latency not sorted DESC. Values: {latency_values}"
+        )
+
+
+def get_recommended_model_names(
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+    artifact_filter: str,
+    *,
+    sort_order: str | None = "ASC",
+    extra_params: str = "",
+    page_size: int = 1000,
+) -> list[str]:
+    """Fetch model names from the validated catalog with orderBy=RECOMMENDED."""
+    response = get_models_from_catalog_api(
+        model_catalog_rest_url=model_catalog_rest_url,
+        model_registry_rest_headers=model_registry_rest_headers,
+        source_label=REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
+        order_by="RECOMMENDED",
+        sort_order=sort_order,
+        page_size=page_size,
+        additional_params=f"&filterQuery=artifacts.{artifact_filter}{extra_params}",
+    )
+    return [model["name"] for model in response["items"]]
+
+
+def get_recommended_and_legacy_model_names(
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+    artifact_filter: str,
+    *,
+    sort_order: str | None,
+    extra_params: str = "",
+    page_size: int = 1000,
+) -> tuple[list[str], list[str]]:
+    """Fetch model names via orderBy=RECOMMENDED and legacy recommendations=true."""
+    filter_params = f"&filterQuery=artifacts.{artifact_filter}"
+
+    recommended_response = get_models_from_catalog_api(
+        model_catalog_rest_url=model_catalog_rest_url,
+        model_registry_rest_headers=model_registry_rest_headers,
+        source_label=REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
+        order_by="RECOMMENDED",
+        sort_order=sort_order,
+        page_size=page_size,
+        additional_params=f"{filter_params}{extra_params}",
+    )
+
+    legacy_response = get_models_from_catalog_api(
+        model_catalog_rest_url=model_catalog_rest_url,
+        model_registry_rest_headers=model_registry_rest_headers,
+        source_label=REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
+        sort_order=sort_order,
+        page_size=page_size,
+        additional_params=f"{filter_params}&recommendations=true{extra_params}",
+    )
+
+    return (
+        [model["name"] for model in recommended_response["items"]],
+        [model["name"] for model in legacy_response["items"]],
+    )
+
+
+def get_all_recommended_model_names_paginated(
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+    artifact_filter: str,
+    *,
+    page_size: int,
+    sort_order: str = "ASC",
+    max_pages: int,
+) -> list[str]:
+    """Fetch all model names across paginated orderBy=RECOMMENDED responses."""
+    all_model_names: list[str] = []
+    next_page_token: str | None = None
+
+    for _ in range(max_pages):
+        extra_params = ""
+        if next_page_token:
+            extra_params = f"&nextPageToken={next_page_token}"
+
+        response = get_models_from_catalog_api(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            source_label=REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
+            order_by="RECOMMENDED",
+            sort_order=sort_order,
+            page_size=page_size,
+            additional_params=f"&filterQuery=artifacts.{artifact_filter}{extra_params}",
+        )
+
+        all_model_names.extend(model["name"] for model in response["items"])
+        next_page_token = response.get("nextPageToken")
+
+        if not next_page_token:
+            break
+
+    return all_model_names
+
+
+def assert_recommended_latency_ordering(
+    model_names: list[str],
+    recommended_baseline: RecommendedBaseline,
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+    expected_order: Literal["ASC", "DESC"],
+) -> None:
+    """Assert recommended-sort latencies are monotonic in the given inter-model order."""
+    latencies = get_model_latencies(
+        model_names=model_names,
+        model_catalog_rest_url=model_catalog_rest_url,
+        model_registry_rest_headers=model_registry_rest_headers,
+        source_id=VALIDATED_CATALOG_ID,
+        property_field=RECOMMENDED_ARTIFACT_PROPERTY,
+        artifact_filter_query=recommended_baseline.artifact_filter,
+        sort_order="ASC",
+        recommendations=True,
+    )
+    assert_latency_ordering(latencies=latencies, expected_order=expected_order)

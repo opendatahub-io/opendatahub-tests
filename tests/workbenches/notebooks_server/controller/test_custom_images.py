@@ -11,7 +11,6 @@ from ocp_resources.notebook import Notebook
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import ExecOnPodError, Pod
 
-from utilities.constants import Timeout
 from utilities.general import collect_pod_information
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -319,7 +318,7 @@ class TestCustomImageValidation:
                 pod=notebook_pod,
                 container_name=default_notebook.name,
                 packages=packages_to_install,
-                timeout=Timeout.TIMEOUT_2MIN,
+                timeout=120,
             )
 
             failed_installs = [name for name, success in install_results.items() if not success]
@@ -334,7 +333,7 @@ class TestCustomImageValidation:
             pod=notebook_pod,
             container_name=default_notebook.name,
             packages=packages_to_verify,
-            timeout=Timeout.TIMEOUT_1MIN,
+            timeout=60,
         )
 
         # Assert all packages imported successfully
