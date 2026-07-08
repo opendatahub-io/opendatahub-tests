@@ -6,7 +6,6 @@ from utilities.constants import (
     Labels,
     Protocols,
     RuntimeTemplates,
-    Timeout,
 )
 
 TRITON_INPUT_BASE_PATH = "tests/model_serving/model_runtime/triton/S3"
@@ -76,7 +75,7 @@ BASE_RAW_DEPLOYMENT_CONFIG: dict[str, Any] = {
     "deployment_mode": KServeDeploymentType.STANDARD,
     "min-replicas": 1,
     "enable_external_route": False,
-    "timeout": Timeout.TIMEOUT_10MIN,
+    "timeout": 600,
 }
 
 ACCELERATOR_IDENTIFIER: dict[str, str] = {

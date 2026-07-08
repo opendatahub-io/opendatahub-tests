@@ -33,7 +33,6 @@ from utilities.constants import (
     ModelFormat,
     Protocols,
     RunTimeConfigs,
-    Timeout,
 )
 from utilities.inference_utils import Inference, create_isvc
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
@@ -95,7 +94,7 @@ class TestModelCacheDeletion:
         )
         try:
             cache.deploy()
-            wait_for_local_model_cache_nodes_downloaded(cache=cache, timeout=Timeout.TIMEOUT_10MIN)
+            wait_for_local_model_cache_nodes_downloaded(cache=cache, timeout=600)
 
             pvcs_after_cr_ns = {
                 pvc.name for pvc in PersistentVolumeClaim.get(dyn_client=admin_client, namespace=ns_name)
@@ -110,23 +109,21 @@ class TestModelCacheDeletion:
 
             try:
                 for sample in TimeoutSampler(
-                    wait_timeout=Timeout.TIMEOUT_2MIN,
+                    wait_timeout=120,
                     sleep=10,
                     func=lambda: not cache.exists,
                 ):
                     if sample:
                         break
             except TimeoutExpiredError:
-                pytest.fail(
-                    f"LocalModelNamespaceCache '{cache_name}' still exists {Timeout.TIMEOUT_2MIN}s after deletion"
-                )
+                pytest.fail(f"LocalModelNamespaceCache '{cache_name}' still exists {120}s after deletion")
 
             all_new_pvcs = [(name, ns_name) for name in new_pvcs_cr] + [(name, apps_ns) for name in new_pvcs_apps]
             for pvc_name, pvc_ns in all_new_pvcs:
                 pvc_ref = PersistentVolumeClaim(client=admin_client, name=pvc_name, namespace=pvc_ns)
                 try:
                     for sample in TimeoutSampler(
-                        wait_timeout=Timeout.TIMEOUT_2MIN,
+                        wait_timeout=120,
                         sleep=10,
                         func=lambda p=pvc_ref: not p.exists,
                     ):
@@ -180,7 +177,7 @@ class TestModelCacheReuse:
             model_format=model_format_name,
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
             external_route=True,
-            timeout=Timeout.TIMEOUT_15MIN,
+            timeout=900,
         ) as second_isvc:
             assert_predictor_uses_cached_pvc(
                 client=unprivileged_client,
@@ -380,7 +377,7 @@ class TestModelCacheInvalidCredentials:
             terminal_states = {"NodeDownloaded", "NodeDownloadError"}
             try:
                 for status in TimeoutSampler(
-                    wait_timeout=Timeout.TIMEOUT_2MIN,
+                    wait_timeout=120,
                     sleep=10,
                     func=lambda: cache_status_dict(cache=cache),
                 ):
