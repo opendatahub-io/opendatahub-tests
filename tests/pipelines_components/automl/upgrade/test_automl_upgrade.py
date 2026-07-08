@@ -161,9 +161,7 @@ class TestPostUpgradeAutoML:
         )
 
         runtime_config = run.get("runtime_config", {})
-        assert runtime_config.get("parameters"), (
-            f"Runtime config parameters missing from run {run_id} after upgrade"
-        )
+        assert runtime_config.get("parameters"), f"Runtime config parameters missing from run {run_id} after upgrade"
 
     @pytest.mark.post_upgrade
     @pytest.mark.dependency(depends=["automl_run_accessible"])
@@ -183,8 +181,7 @@ class TestPostUpgradeAutoML:
         )
 
         assert phase == WORKFLOW_SUCCEEDED, (
-            f"Argo Workflow for run {run_id} has phase '{phase}' after upgrade, "
-            f"expected '{WORKFLOW_SUCCEEDED}'"
+            f"Argo Workflow for run {run_id} has phase '{phase}' after upgrade, expected '{WORKFLOW_SUCCEEDED}'"
         )
 
     @pytest.mark.post_upgrade
@@ -215,12 +212,8 @@ class TestPostUpgradeAutoML:
         automl_managed_pipeline: dict[str, str] | None,
     ) -> None:
         """Verify the managed AutoML pipeline is still discoverable after upgrade."""
-        assert automl_managed_pipeline is not None, (
-            "Managed AutoML tabular pipeline not found after upgrade"
-        )
-        assert automl_managed_pipeline.get("pipeline_id"), (
-            "Managed pipeline has no pipeline_id after upgrade"
-        )
+        assert automl_managed_pipeline is not None, "Managed AutoML tabular pipeline not found after upgrade"
+        assert automl_managed_pipeline.get("pipeline_id"), "Managed pipeline has no pipeline_id after upgrade"
         assert automl_managed_pipeline.get("pipeline_version_id"), (
             "Managed pipeline has no pipeline_version_id after upgrade"
         )

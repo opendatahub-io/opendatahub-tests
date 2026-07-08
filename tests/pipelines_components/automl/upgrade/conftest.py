@@ -8,7 +8,6 @@ from typing import Any
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.config_map import ConfigMap
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.data_science_pipelines_application import DataSciencePipelinesApplication
 from ocp_resources.deployment import Deployment
@@ -45,6 +44,7 @@ from tests.pipelines_components.constants import (
 from tests.pipelines_components.utils import (
     create_pipeline_run,
     create_pipeline_run_managed,
+    resolve_pipeline_yaml,
     upload_pipeline,
     use_managed_pipelines,
     wait_for_managed_pipeline,
@@ -79,9 +79,7 @@ def pre_upgrade_pipelines_dsc_patch(
     if not pytestconfig.option.pre_upgrade:
         return dsc_resource
 
-    current_state = (
-        dsc_resource.instance.spec.components.get("aipipelines", {}).get("managementState")
-    )
+    current_state = dsc_resource.instance.spec.components.get("aipipelines", {}).get("managementState")
     if current_state != DscComponents.ManagementState.MANAGED:
         LOGGER.info("Setting AI Pipelines to Managed state")
         editor = ResourceEditor(
@@ -102,7 +100,6 @@ def pre_upgrade_pipelines_dsc_patch(
 def pipelines_namespace(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    teardown_resources: bool,
     pre_upgrade_pipelines_dsc_patch: DataScienceCluster,
 ) -> Generator[Namespace, Any, Any]:
     """Fixed-name namespace for AutoML upgrade tests."""
@@ -140,7 +137,6 @@ def dspa(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     pipelines_namespace: Namespace,
-    teardown_resources: bool,
 ) -> Generator[DataSciencePipelinesApplication, Any, Any]:
     """DataSciencePipelinesApplication — created pre-upgrade, referenced post-upgrade."""
     pre = pytestconfig.option.pre_upgrade
@@ -446,8 +442,6 @@ def upgrade_run_id(
             ca_bundle=dspa_ca_bundle_file,
         )
     else:
-        from tests.pipelines_components.utils import resolve_pipeline_yaml
-
         pipeline_yaml_path = resolve_pipeline_yaml(value=AUTOML_PIPELINE_YAML)
         pipeline_id = upload_pipeline(
             api_url=dspa_api_url,

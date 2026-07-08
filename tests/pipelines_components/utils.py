@@ -135,8 +135,7 @@ def get_workflow_completed_nodes(
 
     nodes = workflows[0].instance.get("status", {}).get("nodes", {})
     return [
-        node for node in nodes.values()
-        if node.get("phase") in WORKFLOW_TERMINAL_PHASES and node.get("type") == "Pod"
+        node for node in nodes.values() if node.get("phase") in WORKFLOW_TERMINAL_PHASES and node.get("type") == "Pod"
     ]
 
 
