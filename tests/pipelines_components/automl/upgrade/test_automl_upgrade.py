@@ -1,9 +1,21 @@
 """AutoML upgrade tests.
 
-Pre-upgrade tests deploy a DSPA, run a regression pipeline, and capture
-baseline state to a ConfigMap.
+Pre-upgrade tests deploy a DSPA, run a regression pipeline, verify it
+produces artifacts, and capture baseline state to a ConfigMap.
 Post-upgrade tests validate that the experiment run, its details, the
-Argo Workflow, and the managed pipeline survived the RHOAI upgrade.
+Argo Workflow, artifacts, and the managed pipeline survived the RHOAI upgrade.
+
+TODO(RHOAIENG-70979): Add model deployment and scoring tests.
+    The acceptance criteria require deploying the AutoML-trained model as an
+    InferenceService and running inference against it — both pre-upgrade
+    (to verify it works) and post-upgrade (to verify it survived).
+    This requires:
+      1. Extracting the model artifact S3 URI from the workflow outputs
+      2. Determining the correct serving runtime for AutoGluon models
+      3. Creating an InferenceService via utilities.inference_utils.create_isvc()
+      4. Sending inference requests and validating responses
+    There is no existing precedent in the repo for deploying models from
+    pipeline outputs, so this is deferred to a follow-up.
 """
 
 import pytest
@@ -15,6 +27,7 @@ from tests.pipelines_components.utils import (
     WORKFLOW_SUCCEEDED,
     collect_pipeline_pod_logs,
     get_pipeline_run,
+    get_workflow_completed_nodes,
     get_workflow_phase,
     wait_for_pipeline_run,
 )
@@ -30,9 +43,11 @@ class TestPreUpgradeAutoML:
         2. Upload regression training data
         3. Create and run a regression pipeline
         4. Verify the pipeline completes successfully
-        5. Save run_id and pipeline details to ConfigMap
+        5. Verify the pipeline produced output artifacts
+        6. Save run_id and pipeline details to ConfigMap
     """
 
+    @pytest.mark.dependency(name="automl_pre_upgrade_completes")
     @pytest.mark.pre_upgrade
     def test_automl_experiment_completes(
         self,
@@ -60,6 +75,26 @@ class TestPreUpgradeAutoML:
             f"expected '{WORKFLOW_SUCCEEDED}'"
         )
 
+    @pytest.mark.dependency(depends=["automl_pre_upgrade_completes"])
+    @pytest.mark.pre_upgrade
+    def test_automl_experiment_has_artifacts(
+        self,
+        admin_client: DynamicClient,
+        pipelines_namespace: Namespace,
+        upgrade_run_id: str,
+    ) -> None:
+        """Verify the completed pipeline has workflow nodes with execution records."""
+        workflow_nodes = get_workflow_completed_nodes(
+            admin_client=admin_client,
+            namespace=pipelines_namespace.name,
+            run_id=upgrade_run_id,
+        )
+
+        assert len(workflow_nodes) > 1, (
+            f"Pipeline run {upgrade_run_id} has {len(workflow_nodes)} completed workflow nodes, "
+            "expected multiple nodes for a multi-step AutoML pipeline"
+        )
+
 
 class TestPostUpgradeAutoML:
     """Validate that the pre-upgrade AutoML experiment survived the RHOAI upgrade.
@@ -69,15 +104,14 @@ class TestPostUpgradeAutoML:
         2. Verify the pipeline run is accessible via KFP API
         3. Verify the run details are intact
         4. Verify the Argo Workflow CRD still exists
-        5. Verify the managed pipeline is still discoverable
+        5. Verify the workflow artifacts survived
+        6. Verify the managed pipeline is still discoverable
     """
 
     @pytest.mark.post_upgrade
     @pytest.mark.dependency(name="automl_run_accessible")
     def test_automl_experiment_accessible(
         self,
-        admin_client: DynamicClient,
-        pipelines_namespace: Namespace,
         dspa_api_url: str,
         dspa_auth_headers: dict[str, str],
         dspa_ca_bundle_file: str,
@@ -151,6 +185,28 @@ class TestPostUpgradeAutoML:
         assert phase == WORKFLOW_SUCCEEDED, (
             f"Argo Workflow for run {run_id} has phase '{phase}' after upgrade, "
             f"expected '{WORKFLOW_SUCCEEDED}'"
+        )
+
+    @pytest.mark.post_upgrade
+    @pytest.mark.dependency(depends=["automl_run_accessible"])
+    def test_automl_artifacts_survived(
+        self,
+        admin_client: DynamicClient,
+        pipelines_namespace: Namespace,
+        automl_upgrade_baseline: dict,
+    ) -> None:
+        """Verify the workflow execution nodes survived the upgrade."""
+        run_id = automl_upgrade_baseline["run_id"]
+
+        workflow_nodes = get_workflow_completed_nodes(
+            admin_client=admin_client,
+            namespace=pipelines_namespace.name,
+            run_id=run_id,
+        )
+
+        assert len(workflow_nodes) > 1, (
+            f"Pipeline run {run_id} has {len(workflow_nodes)} completed workflow nodes after upgrade, "
+            "expected multiple nodes — execution records were lost"
         )
 
     @pytest.mark.post_upgrade

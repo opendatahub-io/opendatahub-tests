@@ -119,6 +119,27 @@ def get_workflow_phase(
     return None
 
 
+def get_workflow_completed_nodes(
+    admin_client: DynamicClient,
+    namespace: str,
+    run_id: str,
+) -> list[dict]:
+    """Get completed workflow nodes for a pipeline run.
+
+    Returns a list of node dicts that reached a terminal phase (Succeeded, Failed, etc.).
+    Useful for verifying that pipeline steps actually executed and their records persist.
+    """
+    workflows = list(Workflow.get(client=admin_client, namespace=namespace, label_selector=f"pipeline/runid={run_id}"))
+    if not workflows:
+        return []
+
+    nodes = workflows[0].instance.get("status", {}).get("nodes", {})
+    return [
+        node for node in nodes.values()
+        if node.get("phase") in WORKFLOW_TERMINAL_PHASES and node.get("type") == "Pod"
+    ]
+
+
 def wait_for_pipeline_run(
     admin_client: DynamicClient,
     namespace: str,
