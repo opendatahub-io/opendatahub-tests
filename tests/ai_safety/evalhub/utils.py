@@ -1,3 +1,6 @@
+import socket
+from typing import Final
+
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
@@ -32,6 +35,52 @@ from utilities.guardrails import get_auth_headers
 from utilities.kueue_utils import Workload
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+class TransientEvalhubHealthError(Exception):
+    """Recoverable failure while polling an EvalHub health endpoint."""
+
+
+_TRANSIENT_HEALTH_REQUEST_EXCEPTIONS: Final = (
+    requests.exceptions.ConnectTimeout,
+    requests.exceptions.ReadTimeout,
+)
+TRANSIENT_HEALTH_EXCEPTIONS: Final = {TransientEvalhubHealthError: []}
+
+
+def is_dns_resolution_error(err: BaseException) -> bool:
+    """Return True when the exception chain includes a DNS resolution failure."""
+    seen: set[int] = set()
+    exc: BaseException | None = err
+    while exc is not None and id(exc) not in seen:
+        seen.add(id(exc))
+        if isinstance(exc, socket.gaierror):
+            return True
+        if exc.__cause__ is not None:
+            exc = exc.__cause__
+        elif exc.__context__ is not None and not exc.__suppress_context__:
+            exc = exc.__context__
+        else:
+            exc = None
+    return False
+
+
+def probe_evalhub_health_endpoint(
+    url: str,
+    host: str,
+    ca_bundle_file: str,
+) -> requests.Response:
+    """GET the EvalHub health endpoint, retrying only on transient network failures."""
+    try:
+        return requests.get(url, verify=ca_bundle_file, timeout=10)
+    except requests.exceptions.ConnectionError as err:
+        if isinstance(err, requests.exceptions.SSLError) or is_dns_resolution_error(err):
+            raise
+        LOGGER.warning(f"Transient error checking EvalHub health at {host}: {err}")
+        raise TransientEvalhubHealthError(str(err)) from err
+    except _TRANSIENT_HEALTH_REQUEST_EXCEPTIONS as err:
+        LOGGER.warning(f"Transient error checking EvalHub health at {host}: {err}")
+        raise TransientEvalhubHealthError(str(err)) from err
 
 
 class EvalHubV1(EvalHub):
@@ -165,10 +214,16 @@ def validate_evalhub_request_denied(
     assert response.status_code in (400, 403), (
         f"Expected 400 or 403 for cross-tenant access, got {response.status_code}: {response.text}"
     )
-    data = response.json()
-    assert data.get("message_code") in ("unable_to_authorize_request", "forbidden"), (
-        f"Expected authorization denial, got message_code: {data.get('message_code')}"
-    )
+    try:
+        data = response.json()
+        assert data.get("message_code") in ("unable_to_authorize_request", "forbidden"), (
+            f"Expected authorization denial, got message_code: {data.get('message_code')}"
+        )
+    except ValueError:
+        # kube-rbac-proxy returns plain-text 403 with no JSON body
+        assert any(kw in response.text.lower() for kw in ("forbidden", "unauthorized", "auth")), (
+            f"Expected auth-related error in response body for cross-tenant GET, got: {response.text}"
+        )
 
 
 def validate_evalhub_request_no_tenant(
@@ -202,13 +257,14 @@ def validate_evalhub_request_no_tenant(
     )
     assert response.status_code == 400, f"Expected 400 Bad Request, got {response.status_code}: {response.text}"
     try:
-        body = response.json()
-    except ValueError:
-        body = {}
-    body_str = str(body).lower()
-    assert any(kw in body_str for kw in ("tenant", "missing tenant header", "x-tenant")), (
-        f"Expected tenant-header-related error in response body for no-tenant GET, got: {response.text}"
-    )
+        assert response.json().get("message_code") == "missing_tenant_header", (
+            f"Expected message_code 'missing_tenant_header' for no-tenant GET, got: {response.text}"
+        )
+    except requests.exceptions.JSONDecodeError:
+        body_str = response.text.lower()
+        assert any(kw in body_str for kw in ("tenant", "missing tenant header", "x-tenant", "malformed")), (
+            f"Expected tenant-header-related error in response body for no-tenant GET, got: {response.text}"
+        )
 
 
 def submit_evalhub_job(
@@ -285,10 +341,9 @@ def validate_evalhub_post_denied(
         f"Expected 400 or 403 for cross-tenant POST, got {response.status_code}: {response.text}"
     )
     try:
-        body = response.json()
+        body_str = str(response.json()).lower()
     except ValueError:
-        body = {}
-    body_str = str(body).lower()
+        body_str = response.text.lower()
     assert any(kw in body_str for kw in ("unauthorized", "forbidden", "auth")), (
         f"Expected auth-related error in response body for cross-tenant POST, got: {response.text}"
     )
@@ -325,13 +380,14 @@ def validate_evalhub_post_no_tenant(
     )
     assert response.status_code == 400, f"Expected 400 Bad Request, got {response.status_code}: {response.text}"
     try:
-        body = response.json()
-    except ValueError:
-        body = {}
-    body_str = str(body).lower()
-    assert any(kw in body_str for kw in ("tenant", "missing tenant header", "x-tenant")), (
-        f"Expected tenant-header-related error in response body for no-tenant POST, got: {response.text}"
-    )
+        assert response.json().get("message_code") == "missing_tenant_header", (
+            f"Expected message_code 'missing_tenant_header' for no-tenant POST, got: {response.text}"
+        )
+    except requests.exceptions.JSONDecodeError:
+        body_str = response.text.lower()
+        assert any(kw in body_str for kw in ("tenant", "missing tenant header", "x-tenant", "malformed")), (
+            f"Expected tenant-header-related error in response body for no-tenant POST, got: {response.text}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -536,10 +592,9 @@ def validate_evalhub_delete_denied(
         f"Expected 400 or 403 for cross-tenant DELETE, got {response.status_code}: {response.text}"
     )
     try:
-        body = response.json()
+        body_str = str(response.json()).lower()
     except ValueError:
-        body = {}
-    body_str = str(body).lower()
+        body_str = response.text.lower()
     assert any(kw in body_str for kw in ("unauthorized", "forbidden", "auth")), (
         f"Expected auth-related error in response body for cross-tenant DELETE, got: {response.text}"
     )
@@ -561,13 +616,14 @@ def validate_evalhub_delete_no_tenant(
     )
     assert response.status_code == 400, f"Expected 400 Bad Request, got {response.status_code}: {response.text}"
     try:
-        body = response.json()
-    except ValueError:
-        body = {}
-    body_str = str(body).lower()
-    assert any(kw in body_str for kw in ("tenant", "missing tenant header", "x-tenant")), (
-        f"Expected tenant-header-related error in response body for no-tenant DELETE, got: {response.text}"
-    )
+        assert response.json().get("message_code") == "missing_tenant_header", (
+            f"Expected message_code 'missing_tenant_header' for no-tenant DELETE, got: {response.text}"
+        )
+    except requests.exceptions.JSONDecodeError:
+        body_str = response.text.lower()
+        assert any(kw in body_str for kw in ("tenant", "missing tenant header", "x-tenant", "malformed")), (
+            f"Expected tenant-header-related error in response body for no-tenant DELETE, got: {response.text}"
+        )
 
 
 # ---------------------------------------------------------------------------
