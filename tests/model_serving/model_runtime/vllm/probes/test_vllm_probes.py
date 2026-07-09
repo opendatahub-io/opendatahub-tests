@@ -2,13 +2,13 @@ import pytest
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
 
+from tests.model_serving.model_runtime.utils import get_restart_counts, pod_is_ready
 from tests.model_serving.model_runtime.vllm.constant import BASE_RAW_DEPLOYMENT_CONFIG
 from tests.model_serving.model_runtime.vllm.cpu.cpu_x86.constant import (
     CPU_X86_ENV_VARIABLES,
     CPU_X86_SERVING_ARGUMENT,
     OPT_125M_MODEL_PATH,
 )
-from tests.model_serving.model_runtime.utils import get_restart_counts, pod_is_ready
 from tests.model_serving.model_runtime.vllm.probes.utils import (
     exec_vllm_health_check,
     get_probe,
