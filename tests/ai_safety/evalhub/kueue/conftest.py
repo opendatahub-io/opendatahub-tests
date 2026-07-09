@@ -155,8 +155,6 @@ _KUEUE_CHANNEL = "stable-v1.3"
 _CERT_MANAGER_OPERATOR_NS = "cert-manager-operator"
 _CERT_MANAGER_PACKAGE = "openshift-cert-manager-operator"
 _CERT_MANAGER_CHANNEL = "stable-v1"
-# cert-manager also creates a separate workload namespace that OLM does not clean up automatically
-_CERT_MANAGER_WORKLOAD_NS = "cert-manager"
 _KUEUE_VISIBILITY_API_GROUP = "visibility.kueue.x-k8s.io"  # gitleaks:allow
 
 
@@ -179,9 +177,6 @@ def installed_cert_manager_operator(admin_client: DynamicClient) -> Generator[No
         operator_namespace=_CERT_MANAGER_OPERATOR_NS,
         clean_up_namespace=True,
     )
-    cert_manager_workload_ns = Namespace(client=admin_client, name=_CERT_MANAGER_WORKLOAD_NS)
-    if cert_manager_workload_ns.exists:
-        cert_manager_workload_ns.clean_up(wait=True)
 
 
 @pytest.fixture(scope="session")
@@ -275,12 +270,15 @@ def kueue_unmanaged_dsc(
 def evalhub_kueue_namespace(
     admin_client: DynamicClient,
     kueue_unmanaged_dsc: None,
+    evalhub_kueue_multi_job_cluster_queue: ClusterQueue,
+    evalhub_kueue_single_job_cluster_queue: ClusterQueue,
 ) -> Generator[Namespace, Any, Any]:
     """Namespace with both EvalHub tenant label and Kueue opt-in label.
 
-    Depends on kueue_unmanaged_dsc so the namespace is deleted while the Kueue
-    controller is still running — Kueue must process its Workload finalizers
-    for the namespace to terminate cleanly.
+    Depends on both ClusterQueues to enforce teardown ordering: the namespace
+    (and all Workloads inside it) must be fully deleted before the ClusterQueues
+    are removed. Without this, ClusterQueue deletion fails because Workloads still
+    hold the kueue.x-k8s.io/resource-in-use finalizer on the ClusterQueue.
     """
     with create_ns(
         admin_client=admin_client,
