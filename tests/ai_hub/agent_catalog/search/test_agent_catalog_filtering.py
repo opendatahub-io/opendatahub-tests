@@ -131,26 +131,21 @@ class TestAgentCatalogFiltering:
         self: Self,
         agent_catalog_rest_urls: list[str],
         model_registry_rest_headers: dict[str, str],
+        all_agents: list[dict[str, Any]],
     ) -> None:
         """Given agents are configured with a default source label
         When filtering by a valid sourceLabel
-        Then the same agents are returned as without the filter
+        Then only agents from that source are returned
         """
-        unfiltered = execute_get_command_with_retry(
-            url=f"{agent_catalog_rest_urls[0]}agents",
-            headers=model_registry_rest_headers,
-            params={"pageSize": "1000"},
-        )
-        filtered = execute_get_command_with_retry(
+        response = execute_get_command_with_retry(
             url=f"{agent_catalog_rest_urls[0]}agents",
             headers=model_registry_rest_headers,
             params={"sourceLabel": DEFAULT_AGENT_SOURCE_LABEL, "pageSize": "1000"},
         )
-        unfiltered_names = {item["name"] for item in unfiltered.get("items", [])}
-        filtered_names = {item["name"] for item in filtered.get("items", [])}
-        assert filtered_names == unfiltered_names, (
-            f"Expected same agents with and without sourceLabel filter. "
-            f"Missing: {unfiltered_names - filtered_names}, Unexpected: {filtered_names - unfiltered_names}"
+        filtered_names = {item["name"] for item in response.get("items", [])}
+        expected_names = {agent["name"] for agent in all_agents if agent.get("source_id") == "rh_agents"}
+        assert filtered_names == expected_names, (
+            f"Missing: {expected_names - filtered_names}, Unexpected: {filtered_names - expected_names}"
         )
 
     def test_filter_invalid_source_label(
