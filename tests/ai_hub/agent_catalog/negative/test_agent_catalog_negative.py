@@ -8,11 +8,6 @@ from tests.ai_hub.utils import execute_get_command
 
 LOGGER = structlog.get_logger(name=__name__)
 
-pytestmark = [
-    pytest.mark.tier1,
-    pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace"),
-]
-
 
 class TestAgentCatalogNegative:
     """Negative and error handling tests for agent catalog API (RHOAIENG-70683)."""
