@@ -55,7 +55,7 @@ def get_gpu_node_zone_selector(
         allocatable = node.instance.status.allocatable or {}
         try:
             gpu_count = int(allocatable.get(gpu_resource, 0))
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             continue
         if gpu_count < min_gpus:
             continue

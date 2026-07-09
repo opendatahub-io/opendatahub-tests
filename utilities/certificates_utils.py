@@ -87,6 +87,7 @@ def get_ca_bundle(client: DynamicClient, deployment_mode: str) -> str:
     if deployment_mode in (
         KServeDeploymentType.SERVERLESS,
         KServeDeploymentType.RAW_DEPLOYMENT,
+        KServeDeploymentType.STANDARD,
     ):
         if is_managed_cluster(client):
             LOGGER.info("Running on managed cluster, not using ca bundle")

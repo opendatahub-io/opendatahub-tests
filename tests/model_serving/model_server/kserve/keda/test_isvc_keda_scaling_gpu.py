@@ -7,14 +7,17 @@ from ocp_resources.inference_service import InferenceService
 from utilities.constants import KServeDeploymentType
 from tests.model_serving.model_server.utils import verify_keda_scaledobject, verify_final_pod_count
 from tests.model_serving.model_runtime.vllm.constant import BASE_RAW_DEPLOYMENT_CONFIG
-from tests.model_serving.model_runtime.vllm.basic_model_deployment.test_granite_7b_starter import (
-    SERVING_ARGUMENT,
-    MODEL_PATH,
-)
 from utilities.monitoring import validate_metrics_field
 
 LOGGER = get_logger(name=__name__)
 
+SERVING_ARGUMENT: list[str] = [
+    "--model=/mnt/models",
+    "--uvicorn-log-level=debug",
+    "--dtype=float16",
+]
+
+MODEL_PATH: str = "granite-7b-starter"
 
 BASE_RAW_DEPLOYMENT_CONFIG["runtime_argument"] = SERVING_ARGUMENT
 
