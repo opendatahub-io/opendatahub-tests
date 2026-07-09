@@ -11,8 +11,9 @@ from tests.model_serving.model_server.llmd.llmd_configs import (
 )
 from tests.model_serving.model_server.llmd.utils import (
     assert_kv_transfer,
+    get_llmd_inference_pool_pods,
     get_llmd_pod_by_role,
-    get_llmd_workload_pods,
+    get_llmd_vllm_pods,
     ns_from_file,
     parse_prompt_tokens,
     scheduler_has_plugin,
@@ -92,9 +93,22 @@ class TestSingleNodePrefillDecode:
     ):
         """Assert the P/D deployment topology created by the controller."""
 
-        workload_pods = get_llmd_workload_pods(client=unprivileged_client, llmisvc=llmisvc)
+        vllm_pods = get_llmd_vllm_pods(client=unprivileged_client, llmisvc=llmisvc)
+        inferencepool_pods = get_llmd_inference_pool_pods(client=unprivileged_client, llmisvc=llmisvc)
+        # Single-node P/D: all vLLM pods (prefill + decode) are InferencePool members.
+        assert len(vllm_pods) == llmisvc.config.expected_vllm_pod_count, (
+            f"Expected {llmisvc.config.expected_vllm_pod_count} vLLM pods, found {len(vllm_pods)}"
+        )
+        assert len(inferencepool_pods) == llmisvc.config.expected_inference_pool_pod_count, (
+            f"Expected {llmisvc.config.expected_inference_pool_pod_count} InferencePool pods,"
+            f" found {len(inferencepool_pods)}"
+        )
+        assert len(vllm_pods) == len(inferencepool_pods), (
+            "Single-node P/D: all vLLM pods should be InferencePool members"
+        )
+
         roles = {}
-        for pod in workload_pods:
+        for pod in vllm_pods:
             role = pod.instance.metadata.labels.get("llm-d.ai/role", "unknown")
             roles.setdefault(role, []).append(pod.name)
 

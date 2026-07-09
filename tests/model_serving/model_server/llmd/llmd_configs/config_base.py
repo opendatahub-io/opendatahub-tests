@@ -84,6 +84,14 @@ class LLMISvcConfig:
         return None
 
     @classmethod
+    def worker_config(cls):
+        return None
+
+    @classmethod
+    def parallelism_config(cls):
+        return None
+
+    @classmethod
     def labels(cls):
         return {}
 

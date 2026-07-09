@@ -6,8 +6,9 @@ from ocp_resources.prometheus import Prometheus
 from tests.model_serving.model_server.llmd.llmd_configs import EstimatedPrefixCacheConfig
 from tests.model_serving.model_server.llmd.utils import (
     assert_prefix_cache_routing,
+    get_llmd_inference_pool_pods,
     get_llmd_router_scheduler_pod,
-    get_llmd_workload_pods,
+    get_llmd_vllm_pods,
     ns_from_file,
     send_prefix_cache_requests,
 )
@@ -54,8 +55,17 @@ class TestSingleNodeEstimatedPrefixCache:
         assert router_pod is not None, "Router-scheduler pod should exist"
         assert router_pod.instance.status.phase == "Running", "Router-scheduler pod should be running"
 
-        workload_pods = get_llmd_workload_pods(client=unprivileged_client, llmisvc=llmisvc)
-        assert len(workload_pods) == 2, f"Expected 2 workload pods, found {len(workload_pods)}"
+        vllm_pods = get_llmd_vllm_pods(client=unprivileged_client, llmisvc=llmisvc)
+        inferencepool_pods = get_llmd_inference_pool_pods(client=unprivileged_client, llmisvc=llmisvc)
+        # Single-node: all vLLM pods are InferencePool members (no headless workers).
+        assert len(vllm_pods) == llmisvc.config.expected_vllm_pod_count, (
+            f"Expected {llmisvc.config.expected_vllm_pod_count} vLLM pods, found {len(vllm_pods)}"
+        )
+        assert len(inferencepool_pods) == llmisvc.config.expected_inference_pool_pod_count, (
+            f"Expected {llmisvc.config.expected_inference_pool_pod_count} InferencePool pods,"
+            f" found {len(inferencepool_pods)}"
+        )
+        assert len(vllm_pods) == len(inferencepool_pods), "Single-node: all vLLM pods should be InferencePool members"
 
         successful = send_prefix_cache_requests(
             llmisvc=llmisvc,
@@ -67,7 +77,7 @@ class TestSingleNodeEstimatedPrefixCache:
         assert_prefix_cache_routing(
             prometheus=prometheus,
             llmisvc=llmisvc,
-            pods=workload_pods,
+            pods=inferencepool_pods,
             expected_requests=successful,
             block_size=EstimatedPrefixCacheConfig.block_size,
         )

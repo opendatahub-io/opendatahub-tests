@@ -295,6 +295,7 @@ def llmisvc(
     with _create_llmisvc_from_config(
         config_cls=config_cls, namespace=namespace, client=admin_client, service_account=service_account
     ) as svc:
+        svc.config = config_cls
         yield svc
 
 
@@ -546,6 +547,8 @@ def _create_llmisvc_from_config(
         "template": template,
         "base_refs": config_cls.base_refs,
         "prefill": prefill,
+        "worker": config_cls.worker_config(),
+        "parallelism": config_cls.parallelism_config(),
     }
 
     LOGGER.info(f"\n{config_cls.format_describe(namespace=namespace)}")
