@@ -43,7 +43,7 @@ from tests.ai_safety.evalhub.constants import (
 from tests.ai_safety.evalhub.kueue.constants import VLLM_EMULATOR, VLLM_EMULATOR_IMAGE
 from tests.ai_safety.evalhub.utils import tenant_rbac_ready, wait_for_service_account
 from utilities.certificates_utils import create_ca_bundle_file
-from utilities.constants import Labels, Protocols, Timeout
+from utilities.constants import Labels, Protocols
 from utilities.general import collect_pod_information
 from utilities.infra import create_inference_token, create_ns
 
@@ -138,7 +138,7 @@ def evalhub_mt_deployment(
         name=evalhub_mt_cr.name,
         namespace=model_namespace.name,
     )
-    deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_5MIN)
+    deployment.wait_for_replicas(timeout=300)
     return deployment
 
 
@@ -249,7 +249,7 @@ def evalhub_vllm_emulator_deployment(
         },
         replicas=1,
     ) as deployment:
-        deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_5MIN)
+        deployment.wait_for_replicas(timeout=300)
         yield deployment
 
 
@@ -289,7 +289,7 @@ def evalhub_deployment(
         name=evalhub_cr.name,
         namespace=model_namespace.name,
     )
-    deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_5MIN)
+    deployment.wait_for_replicas(timeout=300)
     return deployment
 
 
@@ -376,7 +376,7 @@ def mlflow_instance(
             name="mlflow",
             namespace=py_config["applications_namespace"],
         )
-        mlflow_deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_5MIN)
+        mlflow_deployment.wait_for_replicas(timeout=300)
         yield mlflow
 
 
@@ -417,7 +417,7 @@ def garak_evalhub_deployment(
         name=garak_evalhub_cr.name,
         namespace=model_namespace.name,
     )
-    deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_5MIN)
+    deployment.wait_for_replicas(timeout=300)
     return deployment
 
 
@@ -605,14 +605,14 @@ def tenant_dspa(
             name="ds-pipeline-dspa",
             namespace=tenant_namespace.name,
         )
-        dspa_deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_5MIN)
+        dspa_deployment.wait_for_replicas(timeout=300)
 
         sw_deployment = Deployment(
             client=admin_client,
             name="ds-pipeline-scheduledworkflow-dspa",
             namespace=tenant_namespace.name,
         )
-        sw_deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_2MIN)
+        sw_deployment.wait_for_replicas(timeout=120)
         yield dspa
 
 

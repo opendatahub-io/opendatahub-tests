@@ -19,7 +19,7 @@ from tests.model_serving.model_runtime.vllm.utils import (
     skip_if_not_deployment_mode,
     validate_supported_quantization_schema,
 )
-from utilities.constants import AcceleratorType, KServeDeploymentType, RuntimeTemplates, Timeout
+from utilities.constants import AcceleratorType, KServeDeploymentType, RuntimeTemplates
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -88,7 +88,7 @@ def ibm_power_z_inference_service(
         "deployment_mode": request.param.get("deployment_mode", KServeDeploymentType.STANDARD),
         "external_route": True,
         "resources": deepcopy(x=IBM_POWER_Z_PREDICT_RESOURCES),
-        "timeout": request.param.get("timeout", Timeout.TIMEOUT_30MIN),
+        "timeout": request.param.get("timeout", 1800),
     }
 
     if arguments := request.param.get("runtime_argument"):

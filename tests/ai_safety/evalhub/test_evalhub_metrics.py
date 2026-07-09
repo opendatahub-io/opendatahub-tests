@@ -1,10 +1,12 @@
 import pytest
 import requests
 from ocp_resources.route import Route
+from ocp_resources.service import Service
 
 from tests.ai_safety.evalhub.constants import (
     EVALHUB_HEALTH_PATH,
     EVALHUB_METRICS_PATH,
+    EVALHUB_METRICS_PORT,
 )
 from utilities.guardrails import get_auth_headers
 
@@ -27,17 +29,19 @@ class TestEvalHubMetrics:
         self,
         current_client_token: str,
         evalhub_ca_bundle_file: str,
-        evalhub_route: Route,
+        evalhub_metrics_service: Service,
     ) -> None:
-        """Verify /metrics returns 200 and includes expected Prometheus metrics."""
-        url = f"https://{evalhub_route.host}{EVALHUB_METRICS_PATH}"
-        headers = get_auth_headers(token=current_client_token)
-        response = requests.get(
-            url=url,
-            headers=headers,
-            verify=evalhub_ca_bundle_file,
-            timeout=10,
+        """Verify /metrics returns 200 and includes expected Prometheus metrics.
+
+        The metrics endpoint is on the cluster-internal port 8081 with no Route,
+        so it is accessed via the service DNS name rather than the API Route.
+        """
+        url = (
+            f"http://{evalhub_metrics_service.name}"
+            f".{evalhub_metrics_service.namespace}"
+            f".svc.cluster.local:{EVALHUB_METRICS_PORT}{EVALHUB_METRICS_PATH}"
         )
+        response = requests.get(url=url, timeout=10)
         assert response.status_code == 200, f"Expected 200 from /metrics, got {response.status_code}"
         body = response.text
         for metric in (
@@ -52,11 +56,16 @@ class TestEvalHubMetrics:
         current_client_token: str,
         evalhub_ca_bundle_file: str,
         evalhub_route: Route,
+        evalhub_metrics_service: Service,
     ) -> None:
-        """After hitting /api/v1/health, /metrics should show a request count for that path."""
+        """After hitting /api/v1/health, /metrics should show a request count for that path.
+
+        Health is hit via the Route (auth required); metrics are scraped from the
+        cluster-internal metrics service (no auth, no Route).
+        """
         headers = get_auth_headers(token=current_client_token)
 
-        # Hit the health endpoint to generate a metric entry
+        # Hit the health endpoint through the Route to generate a metric entry
         health_url = f"https://{evalhub_route.host}{EVALHUB_HEALTH_PATH}"
         health_resp = requests.get(
             url=health_url,
@@ -66,14 +75,13 @@ class TestEvalHubMetrics:
         )
         assert health_resp.status_code == 200
 
-        # Scrape metrics and verify the health path appears
-        metrics_url = f"https://{evalhub_route.host}{EVALHUB_METRICS_PATH}"
-        metrics_resp = requests.get(
-            url=metrics_url,
-            headers=headers,
-            verify=evalhub_ca_bundle_file,
-            timeout=10,
+        # Scrape metrics from the internal service and verify the health path appears
+        metrics_url = (
+            f"http://{evalhub_metrics_service.name}"
+            f".{evalhub_metrics_service.namespace}"
+            f".svc.cluster.local:{EVALHUB_METRICS_PORT}{EVALHUB_METRICS_PATH}"
         )
+        metrics_resp = requests.get(url=metrics_url, timeout=10)
         assert metrics_resp.status_code == 200
         assert EVALHUB_HEALTH_PATH in metrics_resp.text, (
             f"Expected request count for '{EVALHUB_HEALTH_PATH}' in /metrics output"

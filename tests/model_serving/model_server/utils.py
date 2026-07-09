@@ -13,7 +13,7 @@ from ocp_resources.utils.constants import DEFAULT_CLUSTER_RETRY_EXCEPTIONS
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler, TimeoutWatch
 
 from tests.model_serving.model_server.kserve.autoscaling.keda.utils import get_isvc_keda_scaledobject
-from utilities.constants import KServeDeploymentType, Protocols, Timeout
+from utilities.constants import KServeDeploymentType, Protocols
 from utilities.exceptions import (
     InferenceResponseError,
 )
@@ -186,7 +186,7 @@ def wait_for_raw_isvc_https_infer_ready(
     isvc: InferenceService,
     *,
     token: str | None = None,
-    timeout: int = Timeout.TIMEOUT_5MIN,
+    timeout: int = 300,
     sleep: int = 5,
 ) -> None:
     """Block until the same external HTTPS REST infer the suite uses succeeds.
@@ -385,7 +385,7 @@ def verify_final_pod_count(unprivileged_client: DynamicClient, isvc: InferenceSe
     for pods in inference_service_pods_sampler(
         client=unprivileged_client,
         isvc=isvc,
-        timeout=Timeout.TIMEOUT_5MIN,
+        timeout=300,
         sleep=10,
     ):
         if pods and len(pods) == final_pod_count:
@@ -393,9 +393,7 @@ def verify_final_pod_count(unprivileged_client: DynamicClient, isvc: InferenceSe
     raise AssertionError(f"Timed out waiting for {final_pod_count} pods. Current pod count: {len(pods) if pods else 0}")
 
 
-def verify_no_inference_pods(
-    client: DynamicClient, isvc: InferenceService, wait_timeout: int = Timeout.TIMEOUT_4MIN
-) -> bool:
+def verify_no_inference_pods(client: DynamicClient, isvc: InferenceService, wait_timeout: int = 240) -> bool:
     """
     Verify that no inference pods are running for the given InferenceService.
 
