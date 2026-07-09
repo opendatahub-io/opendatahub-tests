@@ -1,27 +1,24 @@
 """AutoML upgrade tests.
 
-Pre-upgrade tests deploy a DSPA, run a regression pipeline, verify it
-produces artifacts, and capture baseline state to a ConfigMap.
+Pre-upgrade tests deploy a DSPA, run a regression pipeline, deploy the
+trained model as an InferenceService, verify inference, and capture
+baseline state to a ConfigMap.
 Post-upgrade tests validate that the experiment run, its details, the
-Argo Workflow, artifacts, and the managed pipeline survived the RHOAI upgrade.
-
-TODO(RHOAIENG-70979): Add model deployment and scoring tests.
-    The acceptance criteria require deploying the AutoML-trained model as an
-    InferenceService and running inference against it — both pre-upgrade
-    (to verify it works) and post-upgrade (to verify it survived).
-    This requires:
-      1. Extracting the model artifact S3 URI from the workflow outputs
-      2. Determining the correct serving runtime for AutoGluon models
-      3. Creating an InferenceService via utilities.inference_utils.create_isvc()
-      4. Sending inference requests and validating responses
-    There is no existing precedent in the repo for deploying models from
-    pipeline outputs, so this is deferred to a follow-up.
+Argo Workflow, the managed pipeline, and the deployed model all
+survived the RHOAI upgrade.
 """
 
 import pytest
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 
+from tests.model_serving.model_runtime.autogluon.constant import ProtocolVersion  # noqa: NIT001
+from tests.model_serving.model_runtime.autogluon.utils import (  # noqa: NIT001
+    run_autogluon_inference,
+    validate_deterministic_response,
+)
+from tests.pipelines_components.automl.upgrade.utils import REGRESSION_V2_INPUT
 from tests.pipelines_components.constants import AUTOML_PIPELINE_TIMEOUT
 from tests.pipelines_components.utils import (
     WORKFLOW_SUCCEEDED,
@@ -31,11 +28,12 @@ from tests.pipelines_components.utils import (
     get_workflow_phase,
     wait_for_pipeline_run,
 )
+from utilities.constants import ModelVersion
 
 
 @pytest.mark.usefixtures("pre_upgrade_pipelines_dsc_patch", "automl_capture_upgrade_baseline")
 class TestPreUpgradeAutoML:
-    """Run an AutoML regression experiment before upgrade and capture baseline.
+    """Run an AutoML regression experiment before upgrade, deploy the model, and capture baseline.
 
     Steps:
         0. Enable AI Pipelines in DSC (non-reverting)
@@ -43,8 +41,10 @@ class TestPreUpgradeAutoML:
         2. Upload regression training data
         3. Create and run a regression pipeline
         4. Verify the pipeline completes successfully
-        5. Verify the pipeline produced output artifacts
-        6. Save run_id and pipeline details to ConfigMap
+        5. Verify the pipeline produced completed workflow nodes
+        6. Deploy the trained model as an InferenceService
+        7. Verify the model serves inference
+        8. Save baseline to ConfigMap
     """
 
     @pytest.mark.dependency(name="automl_pre_upgrade_completes")
@@ -95,17 +95,43 @@ class TestPreUpgradeAutoML:
             "expected multiple nodes for a multi-step AutoML pipeline"
         )
 
+    @pytest.mark.dependency(name="automl_model_deployed", depends=["automl_pre_upgrade_completes"])
+    @pytest.mark.pre_upgrade
+    def test_automl_model_deployed(
+        self,
+        upgrade_inference_service: InferenceService,
+    ) -> None:
+        """Verify the trained model is deployed and the InferenceService is Ready."""
+        assert upgrade_inference_service.exists, f"InferenceService {upgrade_inference_service.name} was not created"
+
+    @pytest.mark.dependency(depends=["automl_model_deployed"])
+    @pytest.mark.pre_upgrade
+    def test_automl_model_scoring(
+        self,
+        upgrade_inference_service: InferenceService,
+    ) -> None:
+        """Send a V2 inference request to the deployed model and verify the response."""
+        response = run_autogluon_inference(
+            isvc=upgrade_inference_service,
+            input_data=REGRESSION_V2_INPUT,
+            protocol_version=ProtocolVersion.V2,
+            model_version=ModelVersion.AUTOGLUON_1,
+        )
+        validate_deterministic_response(response=response)
+
 
 class TestPostUpgradeAutoML:
-    """Validate that the pre-upgrade AutoML experiment survived the RHOAI upgrade.
+    """Validate that the pre-upgrade AutoML experiment and model survived the RHOAI upgrade.
 
     Steps:
         1. Load baseline from ConfigMap
         2. Verify the pipeline run is accessible via KFP API
         3. Verify the run details are intact
         4. Verify the Argo Workflow CRD still exists
-        5. Verify the workflow artifacts survived
+        5. Verify the workflow nodes survived
         6. Verify the managed pipeline is still discoverable
+        7. Verify the InferenceService survived and is Ready
+        8. Verify the model still serves inference
     """
 
     @pytest.mark.post_upgrade
@@ -217,3 +243,29 @@ class TestPostUpgradeAutoML:
         assert automl_managed_pipeline.get("pipeline_version_id"), (
             "Managed pipeline has no pipeline_version_id after upgrade"
         )
+
+    @pytest.mark.post_upgrade
+    @pytest.mark.dependency(name="automl_model_survived")
+    def test_automl_model_survived_upgrade(
+        self,
+        upgrade_inference_service: InferenceService,
+    ) -> None:
+        """Verify the InferenceService still exists and is Ready after upgrade."""
+        assert upgrade_inference_service.exists, (
+            f"InferenceService {upgrade_inference_service.name} does not exist after upgrade"
+        )
+
+    @pytest.mark.post_upgrade
+    @pytest.mark.dependency(depends=["automl_model_survived"])
+    def test_automl_model_scoring_after_upgrade(
+        self,
+        upgrade_inference_service: InferenceService,
+    ) -> None:
+        """Verify the model still serves inference after upgrade."""
+        response = run_autogluon_inference(
+            isvc=upgrade_inference_service,
+            input_data=REGRESSION_V2_INPUT,
+            protocol_version=ProtocolVersion.V2,
+            model_version=ModelVersion.AUTOGLUON_1,
+        )
+        validate_deterministic_response(response=response)

@@ -11,14 +11,26 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.data_science_pipelines_application import DataSciencePipelinesApplication
 from ocp_resources.deployment import Deployment
+from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
+from ocp_resources.service_account import ServiceAccount
+from ocp_resources.serving_runtime import ServingRuntime
 from timeout_sampler import TimeoutExpiredError
 
+from tests.model_serving.model_runtime.autogluon.constant import (  # noqa: NIT001
+    PREDICT_RESOURCES,
+    build_serving_runtime_kwargs,
+)
+from tests.model_serving.model_runtime.autogluon.utils import (  # noqa: NIT001
+    get_autogluon_image_from_csv,
+    get_runtime_image_override,
+)
 from tests.pipelines_components.automl.upgrade.utils import (
+    discover_model_path,
     load_baseline_from_configmap,
     save_baseline_to_configmap,
 )
@@ -50,8 +62,16 @@ from tests.pipelines_components.utils import (
     wait_for_managed_pipeline,
 )
 from utilities.certificates_utils import create_ca_bundle_file
-from utilities.constants import DscComponents, Timeout
+from utilities.constants import (
+    DscComponents,
+    KServeDeploymentType,
+    ModelFormat,
+    ModelInferenceRuntime,
+    ModelVersion,
+    Timeout,
+)
 from utilities.general import collect_pod_information
+from utilities.inference_utils import create_isvc
 from utilities.infra import create_ns, wait_for_dsc_status_ready
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -59,6 +79,9 @@ LOGGER = structlog.get_logger(name=__name__)
 UPGRADE_NAMESPACE = "automl-upgrade"
 UPGRADE_TASK_TYPE = "regression"
 UPGRADE_RUN_DISPLAY_NAME = "automl-upgrade-regression"
+UPGRADE_ISVC_NAME = "automl-upgrade-model"
+KSERVE_S3_SECRET_NAME = "kserve-minio-credentials"  # pragma: allowlist secret
+KSERVE_SA_NAME = "automl-model-sa"
 
 
 # ---------------------------------------------------------------------------
@@ -482,6 +505,7 @@ def automl_capture_upgrade_baseline(
     baselines: dict[str, Any] = {
         "run_id": upgrade_run_id,
         "run_display_name": UPGRADE_RUN_DISPLAY_NAME,
+        "isvc_name": UPGRADE_ISVC_NAME,
     }
     if automl_managed_pipeline is not None:
         baselines["pipeline_id"] = automl_managed_pipeline["pipeline_id"]
@@ -508,3 +532,195 @@ def automl_upgrade_baseline(
         client=admin_client,
         namespace=pipelines_namespace.name,
     )
+
+
+# ---------------------------------------------------------------------------
+# Model deployment — AutoGluon serving runtime + InferenceService
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session")
+def autogluon_runtime_image(
+    admin_client: DynamicClient,
+) -> str:
+    """Resolve the AutoGluon serving runtime container image."""
+    override = get_runtime_image_override()
+    if override:
+        return override
+
+    from pytest_testconfig import config as py_config
+
+    apps_ns = py_config.get("applications_namespace", "redhat-ods-applications")
+    image = get_autogluon_image_from_csv(admin_client=admin_client, applications_namespace=apps_ns)
+    if image:
+        return image
+
+    pytest.skip(
+        "AutoGluon runtime image not found. Set AUTOGLUON_RUNTIME_IMAGE env var "
+        "or ensure kserve-autogluonserver is installed on the cluster."
+    )
+
+
+@pytest.fixture(scope="session")
+def upgrade_serving_runtime(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    pipelines_namespace: Namespace,
+    autogluon_runtime_image: str,
+) -> Generator[ServingRuntime, Any, Any]:
+    """AutoGluon ServingRuntime — created pre-upgrade, referenced post-upgrade."""
+    pre = pytestconfig.option.pre_upgrade
+    post = pytestconfig.option.post_upgrade
+    should_cleanup = not pre or post
+
+    runtime_name = ModelInferenceRuntime.AUTOGLUON_RUNTIME
+
+    if pre:
+        kwargs = build_serving_runtime_kwargs(
+            namespace=pipelines_namespace.name,
+            image=autogluon_runtime_image,
+            name=runtime_name,
+        )
+        sr = ServingRuntime(client=admin_client, teardown=should_cleanup, **kwargs)
+        sr.deploy()
+        yield sr
+    else:
+        sr = ServingRuntime(
+            client=admin_client,
+            name=runtime_name,
+            namespace=pipelines_namespace.name,
+        )
+        yield sr
+        if should_cleanup:
+            sr.clean_up()
+
+
+@pytest.fixture(scope="session")
+def kserve_minio_secret(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    pipelines_namespace: Namespace,
+    dspa_s3_credentials: Secret,
+) -> Generator[Secret, Any, Any]:
+    """KServe-annotated secret for DSPA MinIO access."""
+    pre = pytestconfig.option.pre_upgrade
+    post = pytestconfig.option.post_upgrade
+    should_cleanup = not pre or post
+
+    minio_endpoint = f"http://minio-{DSPA_NAME}.{pipelines_namespace.name}.svc.cluster.local:9000"
+    access_key = base64.b64decode(dspa_s3_credentials.instance.data.get("accesskey", "")).decode()
+    secret_key = base64.b64decode(dspa_s3_credentials.instance.data.get("secretkey", "")).decode()
+
+    if pre:
+        with Secret(
+            client=admin_client,
+            name=KSERVE_S3_SECRET_NAME,
+            namespace=pipelines_namespace.name,
+            annotations={
+                "serving.kserve.io/s3-endpoint": minio_endpoint,
+                "serving.kserve.io/s3-usehttps": "0",
+                "serving.kserve.io/s3-region": "us-east-1",
+            },
+            string_data={
+                "AWS_ACCESS_KEY_ID": access_key,
+                "AWS_SECRET_ACCESS_KEY": secret_key,
+            },
+            teardown=should_cleanup,
+        ) as secret:
+            yield secret
+    else:
+        secret = Secret(
+            client=admin_client,
+            name=KSERVE_S3_SECRET_NAME,
+            namespace=pipelines_namespace.name,
+        )
+        yield secret
+        if should_cleanup:
+            secret.clean_up()
+
+
+@pytest.fixture(scope="session")
+def kserve_model_service_account(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    pipelines_namespace: Namespace,
+    kserve_minio_secret: Secret,
+) -> Generator[ServiceAccount, Any, Any]:
+    """ServiceAccount referencing the KServe S3 secret for model pulling."""
+    pre = pytestconfig.option.pre_upgrade
+    post = pytestconfig.option.post_upgrade
+    should_cleanup = not pre or post
+
+    if pre:
+        sa = ServiceAccount(
+            client=admin_client,
+            name=KSERVE_SA_NAME,
+            namespace=pipelines_namespace.name,
+            secrets=[{"name": kserve_minio_secret.name}],
+            teardown=should_cleanup,
+        )
+        sa.deploy()
+        yield sa
+    else:
+        sa = ServiceAccount(
+            client=admin_client,
+            name=KSERVE_SA_NAME,
+            namespace=pipelines_namespace.name,
+        )
+        yield sa
+        if should_cleanup:
+            sa.clean_up()
+
+
+@pytest.fixture(scope="session")
+def upgrade_inference_service(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    pipelines_namespace: Namespace,
+    upgrade_serving_runtime: ServingRuntime,
+    upgrade_run_id: str,
+    dspa_s3_credentials: Secret,
+    kserve_model_service_account: ServiceAccount,
+) -> Generator[InferenceService, Any, Any]:
+    """AutoGluon InferenceService — deployed pre-upgrade, referenced post-upgrade.
+
+    During pre-upgrade, discovers the model artifact path in MinIO after
+    the pipeline completes (this fixture is only requested after
+    test_automl_experiment_completes passes via @pytest.mark.dependency).
+    """
+    pre = pytestconfig.option.pre_upgrade
+    post = pytestconfig.option.post_upgrade
+    should_cleanup = not pre or post
+
+    if pre:
+        model_path = discover_model_path(
+            admin_client=admin_client,
+            namespace=pipelines_namespace.name,
+            run_id=upgrade_run_id,
+        )
+        with create_isvc(
+            client=admin_client,
+            name=UPGRADE_ISVC_NAME,
+            namespace=pipelines_namespace.name,
+            model_format=ModelFormat.AUTOGLUON,
+            model_version=ModelVersion.AUTOGLUON_1,
+            runtime=upgrade_serving_runtime.name,
+            storage_uri=model_path,
+            model_service_account=kserve_model_service_account.name,
+            deployment_mode=KServeDeploymentType.STANDARD,
+            external_route=True,
+            protocol_version="v2",
+            resources=PREDICT_RESOURCES["resources"],
+            min_replicas=1,
+            teardown=should_cleanup,
+        ) as isvc:
+            yield isvc
+    else:
+        isvc = InferenceService(
+            client=admin_client,
+            name=UPGRADE_ISVC_NAME,
+            namespace=pipelines_namespace.name,
+        )
+        yield isvc
+        if should_cleanup:
+            isvc.clean_up()
