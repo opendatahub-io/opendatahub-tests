@@ -3,6 +3,7 @@ from typing import Any, Self
 import pytest
 import structlog
 
+from tests.ai_hub.agent_catalog.config.constants import DEFAULT_AGENT_SOURCE_LABEL
 from tests.ai_hub.agent_catalog.constants import (
     AUTOGEN_FRAMEWORK,
     CLAUDE_CODE_FRAMEWORK,
@@ -143,7 +144,7 @@ class TestAgentCatalogFiltering:
         filtered = execute_get_command_with_retry(
             url=f"{agent_catalog_rest_urls[0]}agents",
             headers=model_registry_rest_headers,
-            params={"sourceLabel": "Red Hat Agents", "pageSize": "1000"},
+            params={"sourceLabel": DEFAULT_AGENT_SOURCE_LABEL, "pageSize": "1000"},
         )
         unfiltered_names = {item["name"] for item in unfiltered.get("items", [])}
         filtered_names = {item["name"] for item in filtered.get("items", [])}

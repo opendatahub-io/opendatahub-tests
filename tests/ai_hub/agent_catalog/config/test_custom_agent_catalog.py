@@ -3,7 +3,7 @@ from typing import Self
 import pytest
 import structlog
 
-from tests.ai_hub.agent_catalog.constants import (
+from tests.ai_hub.agent_catalog.config.constants import (
     REQUIRED_AGENT_FIELDS,
     TEST_AGENT_NAMES,
 )

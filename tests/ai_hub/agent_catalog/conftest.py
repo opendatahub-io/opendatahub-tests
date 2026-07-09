@@ -7,9 +7,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.route import Route
 
-from tests.ai_hub.agent_catalog.config.constants import AGENT_CATALOG_API_PATH
-from tests.ai_hub.agent_catalog.constants import (
-    LANGGRAPH_FRAMEWORK,
+from tests.ai_hub.agent_catalog.config.constants import (
     TEST_AGENT_CATALOG_LABEL,
     TEST_AGENT_CATALOG_SOURCE,
     TEST_AGENT_CATALOG_SOURCE_ID,
@@ -17,6 +15,10 @@ from tests.ai_hub.agent_catalog.constants import (
     TEST_AGENT_LABEL_DEFINITION,
     TEST_AGENTS_YAML,
     TEST_LANGGRAPH_AGENT_NAMES,
+)
+from tests.ai_hub.agent_catalog.constants import (
+    AGENT_CATALOG_API_PATH,
+    LANGGRAPH_FRAMEWORK,
 )
 from tests.ai_hub.agent_catalog.utils import get_agent_catalog_sources
 from tests.ai_hub.utils import (

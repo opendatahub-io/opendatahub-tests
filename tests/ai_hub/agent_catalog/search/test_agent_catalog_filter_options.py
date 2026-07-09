@@ -3,7 +3,7 @@ from typing import Self
 import pytest
 import structlog
 
-from tests.ai_hub.agent_catalog.constants import EXPECTED_FILTER_OPTIONS
+from tests.ai_hub.agent_catalog.search.constants import EXPECTED_FILTER_OPTIONS
 from tests.ai_hub.utils import execute_get_command_with_retry
 
 LOGGER = structlog.get_logger(name=__name__)
