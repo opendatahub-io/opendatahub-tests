@@ -68,7 +68,6 @@ from utilities.constants import (
     MinIo,
     ModelCarImage,
     OCIRegistry,
-    Timeout,
 )
 from utilities.general import b64_encoded_string, get_s3_secret_dict
 from utilities.infra import get_openshift_token, is_managed_cluster
@@ -151,7 +150,7 @@ def installed_tas_operator(admin_client: DynamicClient) -> Generator[None, Any]:
             channel="stable",
             source=operator_source,
             operator_namespace=operator_ns.name,
-            timeout=Timeout.TIMEOUT_10MIN,
+            timeout=600,
             install_plan_approval="Manual",  # TAS operator requires manual approval
         )
 
