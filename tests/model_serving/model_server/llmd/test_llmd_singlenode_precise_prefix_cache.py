@@ -101,3 +101,15 @@ class TestSingleNodePrecisePrefixCache:
             block_size=request.node.callspec.params["llmisvc"].block_size,
         )
         assert_scheduler_routing(router_pod=router_pod, min_decisions=successful)
+
+    @pytest.mark.soak
+    @pytest.mark.order(after="test_singlenode_precise_prefix_cache")
+    @pytest.mark.parametrize("verification", OpenAICompatibilityValidator.ALL_VERIFICATIONS)
+    def test_openai_api_compat_soak(
+        self,
+        admin_client: DynamicClient,
+        llmisvc: LLMInferenceService,
+        verification: str,
+    ):
+        with OpenAICompatibilityValidator.from_llmisvc(client=admin_client, llmisvc=llmisvc) as v:
+            getattr(v, verification)(duration=SOAK_TEST_DURATION)
