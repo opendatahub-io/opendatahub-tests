@@ -16,11 +16,9 @@ from tests.ai_hub.agent_catalog.config.constants import (
     TEST_AGENTS_YAML,
     TEST_LANGGRAPH_AGENT_NAMES,
 )
-from tests.ai_hub.agent_catalog.constants import (
-    AGENT_CATALOG_API_PATH,
-    LANGGRAPH_FRAMEWORK,
-)
+from tests.ai_hub.agent_catalog.constants import LANGGRAPH_FRAMEWORK
 from tests.ai_hub.agent_catalog.utils import get_agent_catalog_sources
+from tests.ai_hub.constants import AGENT_CATALOG_API_PATH
 from tests.ai_hub.utils import (
     execute_get_command_with_retry,
     wait_for_agent_catalog_api,
