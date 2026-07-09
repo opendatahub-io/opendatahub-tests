@@ -41,7 +41,7 @@ from tests.ai_safety.evalhub.utils import (
     tenant_rbac_ready,
 )
 from utilities.certificates_utils import create_ca_bundle_file
-from utilities.constants import DscComponents, Labels, Protocols
+from utilities.constants import DscComponents, Labels, Protocols, Timeout
 from utilities.data_science_cluster_utils import get_dsc_ready_condition, wait_for_dsc_reconciliation
 from utilities.infra import create_inference_token, create_ns
 from utilities.kueue_utils import (

@@ -40,7 +40,10 @@ KUEUE_QUEUE_LABEL = "kueue.x-k8s.io/queue-name"
 
 
 def _log_job_kueue_labels(admin_client: DynamicClient, namespace: str, evalhub_job_id: str) -> None:
-    """Log the Kueue labels on the Kubernetes Job created by EvalHub."""
+    """Log the Kueue labels on the Kubernetes Job created by EvalHub.
+
+    Debugging helper — can be removed once Kueue label propagation is stable.
+    """
     selector = evalhub_runtime_label_selector(evalhub_job_id=evalhub_job_id)
     jobs = list(Job.get(client=admin_client, namespace=namespace, label_selector=selector))
     if not jobs:
@@ -84,17 +87,19 @@ def _wait_for_workload_absent(
     sleep: int = 5,
 ) -> None:
     """Poll until the Kueue Workload for the given EvalHub job no longer exists."""
-    for workload in TimeoutSampler(
-        wait_timeout=timeout,
-        sleep=sleep,
-        func=_get_evalhub_job_workload,
-        admin_client=admin_client,
-        namespace=namespace,
-        evalhub_job_id=evalhub_job_id,
-    ):
-        if workload is None:
-            return
-    raise TimeoutExpiredError(f"Kueue Workload for job {evalhub_job_id} still present after {timeout}s")
+    try:
+        for workload in TimeoutSampler(
+            wait_timeout=timeout,
+            sleep=sleep,
+            func=_get_evalhub_job_workload,
+            admin_client=admin_client,
+            namespace=namespace,
+            evalhub_job_id=evalhub_job_id,
+        ):
+            if workload is None:
+                return
+    except TimeoutExpiredError:
+        raise TimeoutExpiredError(f"Kueue Workload for job {evalhub_job_id} still present after {timeout}s") from None
 
 
 def _kueue_payload(local_queue: LocalQueue, **kwargs) -> dict:
