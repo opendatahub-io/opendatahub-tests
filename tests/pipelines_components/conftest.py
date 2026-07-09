@@ -138,7 +138,7 @@ def enabled_pipelines_in_dsc(
 
 
 @pytest.fixture(scope="class")
-def dspa(
+def dspa(  # noqa: UFN001
     admin_client: DynamicClient,
     pipelines_namespace: Namespace,
     enabled_pipelines_in_dsc: DataScienceCluster,
@@ -176,7 +176,7 @@ def dspa(
 
 
 @pytest.fixture(scope="class")
-def dspa_route(
+def dspa_route(  # noqa: UFN001
     admin_client: DynamicClient,
     pipelines_namespace: Namespace,
     dspa: DataSciencePipelinesApplication,
@@ -211,7 +211,7 @@ def dspa_ca_bundle_file(  # noqa: UFN001
 
 
 @pytest.fixture(scope="class")
-def dspa_s3_credentials(
+def dspa_s3_credentials(  # noqa: UFN001
     admin_client: DynamicClient,
     pipelines_namespace: Namespace,
     dspa: DataSciencePipelinesApplication,
@@ -244,7 +244,7 @@ def dspa_s3_credentials(
 
 
 @pytest.fixture(scope="class")
-def external_s3_secret(
+def external_s3_secret(  # noqa: UFN001
     admin_client: DynamicClient,
     pipelines_namespace: Namespace,
 ) -> Generator[Secret, Any, Any]:
