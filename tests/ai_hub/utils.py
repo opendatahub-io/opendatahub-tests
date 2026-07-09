@@ -1058,6 +1058,65 @@ def wait_for_mcp_catalog_api(
     return data
 
 
+def wait_for_agent_catalog_api(
+    url: str,
+    headers: dict[str, str],
+    consecutive_stable_checks: int = 3,
+    sleep: int = 5,
+    wait_timeout: int = 120,
+    min_agents: int = 1,
+) -> dict[str, Any]:
+    """Wait for agent catalog API to be ready and data fully loaded.
+
+    Polls the API until the agent count stabilizes across consecutive checks,
+    ensuring catalog data has been fully loaded after a pod restart.
+
+    Use ``min_agents=0`` on teardown to verify the API is reachable without
+    requiring any agents (e.g. after a test catalog patch is reverted).
+
+    Raises:
+        AssertionError: If the API does not stabilize with at least min_agents within wait_timeout.
+    """
+    agents_url = f"{url}agents"
+    LOGGER.info(f"Waiting for agent catalog API at {agents_url} (min_agents={min_agents})")
+    last_payload = None
+    stable_count = 0
+    data: dict[str, Any] = {}
+    sampler = TimeoutSampler(
+        wait_timeout=wait_timeout,
+        sleep=sleep,
+        func=execute_get_call,
+        exceptions_dict={
+            ResourceNotFoundError: [],
+            TransientUnauthorizedError: [],
+            requests.exceptions.ConnectionError: [],
+        },
+        url=agents_url,
+        headers=headers,
+        params={"pageSize": 1000},
+    )
+    for sample in sampler:
+        data = json.loads(sample.text)
+        current_size = data.get("size", 0)
+        payload_identity = json.dumps(data, sort_keys=True)
+        if current_size >= min_agents and payload_identity == last_payload:
+            stable_count += 1
+            if stable_count >= consecutive_stable_checks:
+                LOGGER.info(f"Agent catalog API stabilized with {current_size} agents after {stable_count} checks")
+                return data
+        else:
+            stable_count = 0
+        last_payload = payload_identity
+        LOGGER.info(
+            f"Agent catalog API returned {current_size} agents (stable: {stable_count}/{consecutive_stable_checks})"
+        )
+    raise AssertionError(
+        f"Agent catalog API did not stabilize within {wait_timeout}s "
+        f"(last size={data.get('size', 0)}, required={min_agents}, "
+        f"stable_count={stable_count}/{consecutive_stable_checks})"
+    )
+
+
 def get_latest_job_pod(admin_client: DynamicClient, job: Job) -> Pod:
     """Get the latest (most recently created) Pod created by a Job."""
     pods = list(
