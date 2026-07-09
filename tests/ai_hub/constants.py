@@ -77,6 +77,7 @@ SAMPLE_MODEL_NAME1 = "mistralai/Mistral-7B-Instruct-v0.3"
 CUSTOM_CATALOG_ID1: str = "sample_custom_catalog1"
 DEFAULT_MODEL_CATALOG_CM: str = "default-catalog-sources"
 MCP_CATALOG_API_PATH: str = "/api/mcp_catalog/v1alpha1/"
+AGENT_CATALOG_API_PATH: str = "/api/agent_catalog/v1alpha1/"
 KUBERBACPROXY_STR: str = "KubeRBACProxyAvailable"
 MR_POSTGRES_DB_OBJECT: dict[Any, str] = {
     Service: f"{MR_INSTANCE_NAME}-postgres",
