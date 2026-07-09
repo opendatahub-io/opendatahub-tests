@@ -546,7 +546,7 @@ def automl_upgrade_baseline(
 
 
 @pytest.fixture(scope="session")
-def autogluon_runtime_image(
+def autogluon_runtime_image(  # noqa: UFN001
     admin_client: DynamicClient,
 ) -> str:
     """Resolve the AutoGluon serving runtime container image."""
