@@ -97,7 +97,7 @@ def pre_upgrade_pipelines_dsc_patch(
 
 
 @pytest.fixture(scope="session")
-def pipelines_namespace(
+def pipelines_namespace(  # noqa: UFN001
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     pre_upgrade_pipelines_dsc_patch: DataScienceCluster,
@@ -133,7 +133,7 @@ def pipelines_namespace(
 
 
 @pytest.fixture(scope="session")
-def dspa(
+def dspa(  # noqa: UFN001
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     pipelines_namespace: Namespace,
@@ -195,7 +195,7 @@ def dspa(
 
 
 @pytest.fixture(scope="session")
-def dspa_route(
+def dspa_route(  # noqa: UFN001
     admin_client: DynamicClient,
     pipelines_namespace: Namespace,
     dspa: DataSciencePipelinesApplication,
@@ -209,17 +209,17 @@ def dspa_route(
 
 
 @pytest.fixture(scope="session")
-def dspa_api_url(dspa_route: Route) -> str:
+def dspa_api_url(dspa_route: Route) -> str:  # noqa: UFN001
     return f"https://{dspa_route.host}"
 
 
 @pytest.fixture(scope="session")
-def dspa_auth_headers(current_client_token: str) -> dict[str, str]:
+def dspa_auth_headers(current_client_token: str) -> dict[str, str]:  # noqa: UFN001
     return {"Authorization": f"Bearer {current_client_token}"}
 
 
 @pytest.fixture(scope="session")
-def dspa_ca_bundle_file(admin_client: DynamicClient) -> str:
+def dspa_ca_bundle_file(admin_client: DynamicClient) -> str:  # noqa: UFN001
     return create_ca_bundle_file(client=admin_client)
 
 
@@ -229,7 +229,7 @@ def dspa_ca_bundle_file(admin_client: DynamicClient) -> str:
 
 
 @pytest.fixture(scope="session")
-def dspa_s3_credentials(
+def dspa_s3_credentials(  # noqa: UFN001
     admin_client: DynamicClient,
     pipelines_namespace: Namespace,
     dspa: DataSciencePipelinesApplication,
@@ -262,7 +262,7 @@ def dspa_s3_credentials(
 
 
 @pytest.fixture(scope="session")
-def external_s3_secret(
+def external_s3_secret(  # noqa: UFN001
     admin_client: DynamicClient,
     pipelines_namespace: Namespace,
 ) -> Generator[Secret, Any, Any]:
@@ -378,7 +378,7 @@ def upgrade_train_data(
 
 
 @pytest.fixture(scope="session")
-def automl_managed_pipeline(
+def automl_managed_pipeline(  # noqa: UFN001
     dspa: DataSciencePipelinesApplication,
     dspa_api_url: str,
     dspa_auth_headers: dict[str, str],
