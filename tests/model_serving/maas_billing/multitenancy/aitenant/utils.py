@@ -14,7 +14,7 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_serving.maas_billing.maas_subscription.utils import MAAS_SUBSCRIPTION_NAMESPACE
 from tests.model_serving.maas_billing.utils import verify_maas_gateway_programmed, verify_maas_tenant_ready
-from utilities.constants import MAAS_GATEWAY_NAMESPACE, ApiGroups
+from utilities.constants import MAAS_GATEWAY_NAME, MAAS_GATEWAY_NAMESPACE, ApiGroups
 from utilities.resources.aitenant import AITenant
 from utilities.resources.tenant import Tenant
 
@@ -226,7 +226,11 @@ def verify_aitenant_bootstrap_children(
     test_context: AITenantTestContext,
     infra_namespace: str = AITENANT_INFRA_NAMESPACE,
 ) -> None:
-    """Assert AITenant bootstrap created the expected namespace, Gateway, and Tenant resources."""
+    """Assert AITenant bootstrap created the expected namespace, Gateway, and Tenant resources.
+
+    The bootstrapped Tenant references the shared MaaS gateway (maas-default-gateway),
+    while AITenant status.gatewayRef tracks the per-tenant pre-provisioned bootstrap gateway.
+    """
     aitenant = test_context["aitenant"]
     aitenant_name = test_context["aitenant_name"]
     tenant_namespace_name = test_context["tenant_namespace_name"]
@@ -311,11 +315,11 @@ def verify_aitenant_bootstrap_children(
     assert tenant_gateway_ref is not None, (
         f"Tenant/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} spec.gatewayRef should be set after bootstrap"
     )
-    assert tenant_gateway_ref.name == gateway_name, (
-        f"Tenant gatewayRef.name expected {gateway_name!r}, got {tenant_gateway_ref.name!r}"
+    assert tenant_gateway_ref.name == MAAS_GATEWAY_NAME, (
+        f"Tenant gatewayRef.name expected {MAAS_GATEWAY_NAME!r}, got {tenant_gateway_ref.name!r}"
     )
-    assert tenant_gateway_ref.namespace == gateway_namespace, (
-        f"Tenant gatewayRef.namespace expected {gateway_namespace!r}, got {tenant_gateway_ref.namespace!r}"
+    assert tenant_gateway_ref.namespace == MAAS_GATEWAY_NAMESPACE, (
+        f"Tenant gatewayRef.namespace expected {MAAS_GATEWAY_NAMESPACE!r}, got {tenant_gateway_ref.namespace!r}"
     )
     LOGGER.info(
         f"AITenant '{aitenant_name}' bootstrap verified: namespace, gateway, and "
