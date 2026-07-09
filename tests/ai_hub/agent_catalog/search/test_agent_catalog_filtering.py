@@ -85,7 +85,7 @@ class TestAgentCatalogFiltering:
         self: Self,
         agent_catalog_rest_urls: list[str],
         model_registry_rest_headers: dict[str, str],
-        all_agents: list[dict[str, Any]],
+        default_agents: list[dict[str, Any]],
         params: dict[str, str],
         criteria_groups: list[list[dict[str, str]]],
     ) -> None:
@@ -100,7 +100,7 @@ class TestAgentCatalogFiltering:
         )
         returned_names = {item["name"] for item in response.get("items", [])}
         LOGGER.info(f"Returned {returned_names} agents")
-        expected_names = filter_agents_match_criteria_or(agents=all_agents, criteria_groups=criteria_groups)
+        expected_names = filter_agents_match_criteria_or(agents=default_agents, criteria_groups=criteria_groups)
         LOGGER.info(f"Expected {expected_names} agents")
         assert returned_names == expected_names, (
             f"Missing: {expected_names - returned_names}, Unexpected: {returned_names - expected_names}"

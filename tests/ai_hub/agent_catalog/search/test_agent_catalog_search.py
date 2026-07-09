@@ -37,7 +37,7 @@ class TestAgentCatalogSearch:
         self: Self,
         agent_catalog_rest_urls: list[str],
         model_registry_rest_headers: dict[str, str],
-        all_agents: list[dict[str, Any]],
+        default_agents: list[dict[str, Any]],
         params: dict[str, str],
         criteria: list[dict[str, str]] | None,
     ) -> None:
@@ -53,7 +53,7 @@ class TestAgentCatalogSearch:
         returned_names = {item["name"] for item in response.get("items", [])}
         LOGGER.info(f"Returned agents names: {returned_names}")
         search_params = {key: val for key, val in params.items() if key in ("q", "name")}
-        expected_names = search_agents(agents=all_agents, params=search_params, criteria=criteria)
+        expected_names = search_agents(agents=default_agents, params=search_params, criteria=criteria)
         LOGGER.info(f"Expected agents names: {expected_names}")
         assert returned_names == expected_names, (
             f"Missing: {expected_names - returned_names}, Unexpected: {returned_names - expected_names}"

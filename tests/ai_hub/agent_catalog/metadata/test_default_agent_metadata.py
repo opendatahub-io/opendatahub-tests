@@ -8,7 +8,7 @@ from tests.ai_hub.utils import execute_get_command_with_retry
 
 LOGGER = structlog.get_logger(name=__name__)
 
-REQUIRED_AGENT_FIELDS: set[str] = {"id", "name", "description", "displayName", "source_id"}
+REQUIRED_API_AGENT_FIELDS: set[str] = {"id", "name", "description", "displayName", "source_id"}
 
 # Fields added by the API that are not in the source YAML
 API_ONLY_FIELDS: set[str] = {"id", "source_id", "createTimeSinceEpoch", "lastUpdateTimeSinceEpoch"}
@@ -22,7 +22,7 @@ pytestmark = [
 class TestDefaultAgentMetadata:
     """Tests for default agent catalog metadata validation (RHOAIENG-70682)."""
 
-    def test_all_agents_have_required_fields(
+    def test_default_agents_have_required_fields(
         self: Self,
         default_agents: list[dict[str, Any]],
     ) -> None:
@@ -33,10 +33,10 @@ class TestDefaultAgentMetadata:
         errors: list[str] = []
         for agent in default_agents:
             agent_name = agent.get("name", "<unknown>")
-            missing = REQUIRED_AGENT_FIELDS - set(agent.keys())
+            missing = REQUIRED_API_AGENT_FIELDS - set(agent.keys())
             if missing:
                 errors.append(f"Agent '{agent_name}' missing required fields: {missing}")
-            for field in REQUIRED_AGENT_FIELDS:
+            for field in REQUIRED_API_AGENT_FIELDS:
                 if not agent.get(field):
                     errors.append(f"Agent '{agent_name}' has empty required field '{field}'")
         assert not errors, "Required field validation failed:\n" + "\n".join(errors)
