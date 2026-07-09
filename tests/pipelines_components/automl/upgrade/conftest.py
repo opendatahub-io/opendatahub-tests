@@ -30,6 +30,7 @@ from tests.model_serving.model_runtime.autogluon.utils import (  # noqa: NIT001
     get_runtime_image_override,
 )
 from tests.pipelines_components.automl.upgrade.utils import (
+    TIMESERIES_UPGRADE_BASELINE_CONFIGMAP,
     discover_model_path,
     load_baseline_from_configmap,
     save_baseline_to_configmap,
@@ -38,6 +39,8 @@ from tests.pipelines_components.constants import (
     AUTOML_PIPELINE_YAML,
     AUTOML_S3_BUCKET,
     AUTOML_TASK_CONFIGS,
+    AUTOML_TIMESERIES_CONFIG,
+    AUTOML_TIMESERIES_TRAIN_DATA_FILE_KEY,
     AUTOML_TRAIN_DATA_FILE_KEY,
     DSPA_MINIO_IMAGE,
     DSPA_NAME,
@@ -47,6 +50,7 @@ from tests.pipelines_components.constants import (
     DSPA_S3_SECRET,
     EXTERNAL_S3_SECRET,
     MANAGED_PIPELINE_AUTOML_TABULAR,
+    MANAGED_PIPELINE_AUTOML_TIMESERIES,
     MANAGED_PIPELINE_POLL_INTERVAL,
     MANAGED_PIPELINE_WAIT_TIMEOUT,
     MANAGED_PIPELINES_IMAGE,
@@ -82,6 +86,8 @@ UPGRADE_RUN_DISPLAY_NAME = "automl-upgrade-regression"
 UPGRADE_ISVC_NAME = "automl-upgrade-model"
 KSERVE_S3_SECRET_NAME = "kserve-minio-credentials"  # pragma: allowlist secret
 KSERVE_SA_NAME = "automl-model-sa"
+UPGRADE_TS_RUN_DISPLAY_NAME = "automl-upgrade-timeseries"
+UPGRADE_TS_ISVC_NAME = "automl-upgrade-ts-model"
 
 
 # ---------------------------------------------------------------------------
@@ -719,6 +725,250 @@ def upgrade_inference_service(
         isvc = InferenceService(
             client=admin_client,
             name=UPGRADE_ISVC_NAME,
+            namespace=pipelines_namespace.name,
+        )
+        yield isvc
+        if should_cleanup:
+            isvc.clean_up()
+
+
+# ===========================================================================
+# Timeseries upgrade fixtures
+# ===========================================================================
+
+
+@pytest.fixture(scope="session")
+def ts_managed_pipeline(
+    dspa: DataSciencePipelinesApplication,
+    dspa_api_url: str,
+    dspa_auth_headers: dict[str, str],
+    dspa_ca_bundle_file: str,
+) -> dict[str, str]:
+    """Discover managed AutoML timeseries pipeline."""
+    return wait_for_managed_pipeline(
+        api_url=dspa_api_url,
+        headers=dspa_auth_headers,
+        display_name=MANAGED_PIPELINE_AUTOML_TIMESERIES,
+        ca_bundle=dspa_ca_bundle_file,
+        timeout=DSPA_READY_BUFFER_SECONDS + MANAGED_PIPELINE_WAIT_TIMEOUT,
+        poll_interval=MANAGED_PIPELINE_POLL_INTERVAL,
+    )
+
+
+@pytest.fixture(scope="session")
+def upgrade_ts_train_data(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    pipelines_namespace: Namespace,
+    dspa_s3_credentials: Secret,
+    external_s3_secret: Secret,
+) -> str | None:
+    """Upload timeseries training data to DSPA MinIO. No-op when pre-upgrade is not set."""
+    if not pytestconfig.option.pre_upgrade:
+        return None
+
+    env_var = "AUTOML_TIMESERIES_S3_TRAIN_DATA_KEY"
+    src_key_value = os.environ.get(env_var)
+    assert src_key_value, (
+        f"Environment variable '{env_var}' is not set. "
+        "Set it in .env or shell to provide the S3 key for timeseries training data."
+    )
+
+    src_bucket = shlex.quote(s=AUTOML_S3_BUCKET)
+    src_key = shlex.quote(s=src_key_value)
+    dst_bucket = shlex.quote(s=DSPA_S3_BUCKET)
+    dst_key = shlex.quote(s=AUTOML_TIMESERIES_TRAIN_DATA_FILE_KEY)
+
+    minio_endpoint = f"http://minio-{DSPA_NAME}.{pipelines_namespace.name}.svc.cluster.local:9000"
+    src_endpoint = os.environ.get("AWS_S3_ENDPOINT", "https://s3.amazonaws.com")
+
+    script = (
+        "export MC_CONFIG_DIR=/work/.mc && "
+        "mc alias set src $SRC_ENDPOINT $AWS_ACCESS_KEY_ID $AWS_SECRET_ACCESS_KEY && "
+        "mc alias set dspa $DST_ENDPOINT $DST_ACCESS_KEY $DST_SECRET_KEY && "
+        f"mc cp src/{src_bucket}/{src_key} /work/train.csv && "
+        f"mc cp /work/train.csv dspa/{dst_bucket}/{dst_key}"
+    )
+
+    pod_name = f"ts-upgrade-uploader-{uuid.uuid4().hex[:8]}"
+    with Pod(
+        client=admin_client,
+        name=pod_name,
+        namespace=pipelines_namespace.name,
+        restart_policy="Never",
+        volumes=[{"name": "work", "emptyDir": {}}],
+        containers=[
+            {
+                "name": "minio-uploader",
+                "image": MINIO_MC_IMAGE,
+                "command": ["/bin/sh", "-c"],
+                "args": [script],
+                "volumeMounts": [{"name": "work", "mountPath": "/work"}],
+                "securityContext": MINIO_UPLOADER_SECURITY_CONTEXT,
+                "env": [
+                    {"name": "SRC_ENDPOINT", "value": src_endpoint},
+                    {
+                        "name": "AWS_ACCESS_KEY_ID",
+                        "valueFrom": {"secretKeyRef": {"name": EXTERNAL_S3_SECRET, "key": "AWS_ACCESS_KEY_ID"}},
+                    },
+                    {
+                        "name": "AWS_SECRET_ACCESS_KEY",
+                        "valueFrom": {"secretKeyRef": {"name": EXTERNAL_S3_SECRET, "key": "AWS_SECRET_ACCESS_KEY"}},
+                    },
+                    {"name": "DST_ENDPOINT", "value": minio_endpoint},
+                    {
+                        "name": "DST_ACCESS_KEY",
+                        "valueFrom": {"secretKeyRef": {"name": DSPA_S3_SECRET, "key": "accesskey"}},
+                    },
+                    {
+                        "name": "DST_SECRET_KEY",
+                        "valueFrom": {"secretKeyRef": {"name": DSPA_S3_SECRET, "key": "secretkey"}},
+                    },
+                ],
+            }
+        ],
+        wait_for_resource=True,
+    ) as upload_pod:
+        try:
+            upload_pod.wait_for_status(status="Succeeded", timeout=120)
+        except TimeoutExpiredError:
+            collect_pod_information(pod=upload_pod)
+            raise
+
+    return AUTOML_TIMESERIES_TRAIN_DATA_FILE_KEY
+
+
+@pytest.fixture(scope="session")
+def upgrade_ts_run_id(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    pipelines_namespace: Namespace,
+    dspa_api_url: str,
+    dspa_auth_headers: dict[str, str],
+    dspa_ca_bundle_file: str,
+    ts_managed_pipeline: dict[str, str],
+    upgrade_ts_train_data: str | None,
+) -> str:
+    """Timeseries pipeline run ID — created pre-upgrade, loaded from ConfigMap otherwise."""
+    if not pytestconfig.option.pre_upgrade:
+        baselines = load_baseline_from_configmap(
+            client=admin_client,
+            namespace=pipelines_namespace.name,
+            configmap_name=TIMESERIES_UPGRADE_BASELINE_CONFIGMAP,
+        )
+        return baselines["run_id"]
+
+    parameters: dict[str, Any] = {
+        "train_data_secret_name": DSPA_S3_SECRET,
+        "train_data_bucket_name": DSPA_S3_BUCKET,
+        "train_data_file_key": AUTOML_TIMESERIES_TRAIN_DATA_FILE_KEY,
+        "id_column": AUTOML_TIMESERIES_CONFIG["id_column"],
+        "timestamp_column": AUTOML_TIMESERIES_CONFIG["timestamp_column"],
+        "target": AUTOML_TIMESERIES_CONFIG["target"],
+        "prediction_length": AUTOML_TIMESERIES_CONFIG["prediction_length"],
+        "top_n": AUTOML_TIMESERIES_CONFIG["top_n"],
+        "known_covariates_names": AUTOML_TIMESERIES_CONFIG["known_covariates_names"],
+    }
+
+    return create_pipeline_run_managed(
+        api_url=dspa_api_url,
+        headers=dspa_auth_headers,
+        pipeline_id=ts_managed_pipeline["pipeline_id"],
+        pipeline_version_id=ts_managed_pipeline["pipeline_version_id"],
+        run_name=UPGRADE_TS_RUN_DISPLAY_NAME,
+        parameters=parameters,
+        ca_bundle=dspa_ca_bundle_file,
+    )
+
+
+@pytest.fixture(scope="session")
+def ts_capture_upgrade_baseline(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    pipelines_namespace: Namespace,
+    upgrade_ts_run_id: str,
+    ts_managed_pipeline: dict[str, str],
+) -> None:
+    """Capture timeseries baseline to ConfigMap. No-op when pre-upgrade is not set."""
+    if not pytestconfig.option.pre_upgrade:
+        return
+
+    baselines: dict[str, Any] = {
+        "run_id": upgrade_ts_run_id,
+        "run_display_name": UPGRADE_TS_RUN_DISPLAY_NAME,
+        "isvc_name": UPGRADE_TS_ISVC_NAME,
+        "pipeline_id": ts_managed_pipeline["pipeline_id"],
+        "pipeline_version_id": ts_managed_pipeline["pipeline_version_id"],
+    }
+
+    save_baseline_to_configmap(
+        client=admin_client,
+        namespace=pipelines_namespace.name,
+        baselines=baselines,
+        configmap_name=TIMESERIES_UPGRADE_BASELINE_CONFIGMAP,
+    )
+
+
+@pytest.fixture(scope="session")
+def ts_upgrade_baseline(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    pipelines_namespace: Namespace,
+) -> dict:
+    """Load timeseries baseline. Returns empty dict when post-upgrade is not set."""
+    if not pytestconfig.option.post_upgrade:
+        return {}
+
+    return load_baseline_from_configmap(
+        client=admin_client,
+        namespace=pipelines_namespace.name,
+        configmap_name=TIMESERIES_UPGRADE_BASELINE_CONFIGMAP,
+    )
+
+
+@pytest.fixture(scope="session")
+def upgrade_ts_inference_service(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    pipelines_namespace: Namespace,
+    upgrade_serving_runtime: ServingRuntime,
+    upgrade_ts_run_id: str,
+    dspa_s3_credentials: Secret,
+    kserve_model_service_account: ServiceAccount,
+) -> Generator[InferenceService, Any, Any]:
+    """Timeseries InferenceService — deployed pre-upgrade, referenced post-upgrade."""
+    pre = pytestconfig.option.pre_upgrade
+    post = pytestconfig.option.post_upgrade
+    should_cleanup = not pre or post
+
+    if pre:
+        model_path = discover_model_path(
+            admin_client=admin_client,
+            namespace=pipelines_namespace.name,
+            run_id=upgrade_ts_run_id,
+            pipeline_name="autogluon-timeseries-training-pipeline",
+        )
+        with create_isvc(
+            client=admin_client,
+            name=UPGRADE_TS_ISVC_NAME,
+            namespace=pipelines_namespace.name,
+            model_format=ModelFormat.AUTOGLUON,
+            model_version=ModelVersion.AUTOGLUON_1,
+            runtime=upgrade_serving_runtime.name,
+            storage_uri=model_path,
+            model_service_account=kserve_model_service_account.name,
+            deployment_mode=KServeDeploymentType.STANDARD,
+            external_route=True,
+            protocol_version="v1",
+            resources=PREDICT_RESOURCES["resources"],
+            min_replicas=1,
+            teardown=should_cleanup,
+        ) as isvc:
+            yield isvc
+    else:
+        isvc = InferenceService(
+            client=admin_client,
+            name=UPGRADE_TS_ISVC_NAME,
             namespace=pipelines_namespace.name,
         )
         yield isvc

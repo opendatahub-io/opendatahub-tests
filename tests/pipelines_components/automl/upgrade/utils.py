@@ -20,6 +20,7 @@ from utilities.general import collect_pod_information
 LOGGER = structlog.get_logger(name=__name__)
 
 UPGRADE_BASELINE_CONFIGMAP = "automl-upgrade-baseline"
+TIMESERIES_UPGRADE_BASELINE_CONFIGMAP = "automl-timeseries-upgrade-baseline"
 
 REGRESSION_V2_INPUT: dict[str, Any] = {
     "inputs": [
@@ -28,25 +29,36 @@ REGRESSION_V2_INPUT: dict[str, Any] = {
     ]
 }
 
+TIMESERIES_SUNSPOTS_V1_INPUT: dict[str, Any] = {
+    "instances": [
+        {"item_id": "sunspots", "timestamp": "1749-01", "Sunspots": 58.0},
+        {"item_id": "sunspots", "timestamp": "1749-02", "Sunspots": 62.6},
+        {"item_id": "sunspots", "timestamp": "1749-03", "Sunspots": 70.0},
+        {"item_id": "sunspots", "timestamp": "1749-04", "Sunspots": 55.7},
+        {"item_id": "sunspots", "timestamp": "1749-05", "Sunspots": 85.0},
+    ]
+}
+
 
 def save_baseline_to_configmap(
     client: DynamicClient,
     namespace: str,
     baselines: dict,
+    configmap_name: str = UPGRADE_BASELINE_CONFIGMAP,
 ) -> None:
     """Save baseline data to a ConfigMap for post-upgrade verification."""
-    LOGGER.info(f"Saving baseline to ConfigMap {UPGRADE_BASELINE_CONFIGMAP} in namespace {namespace}")
+    LOGGER.info(f"Saving baseline to ConfigMap {configmap_name} in namespace {namespace}")
 
     cm = ConfigMap(
         client=client,
-        name=UPGRADE_BASELINE_CONFIGMAP,
+        name=configmap_name,
         namespace=namespace,
         data={"baselines.yaml": yaml.dump(baselines)},
     )
 
     if cm.exists:
         raise AssertionError(
-            f"ConfigMap {UPGRADE_BASELINE_CONFIGMAP} already exists in namespace {namespace}. "
+            f"ConfigMap {configmap_name} already exists in namespace {namespace}. "
             "This indicates a previous test run did not clean up properly."
         )
 
@@ -57,19 +69,20 @@ def save_baseline_to_configmap(
 def load_baseline_from_configmap(
     client: DynamicClient,
     namespace: str,
+    configmap_name: str = UPGRADE_BASELINE_CONFIGMAP,
 ) -> dict:
     """Load baseline data from ConfigMap saved during pre-upgrade."""
-    LOGGER.info(f"Loading baseline from ConfigMap {UPGRADE_BASELINE_CONFIGMAP} in namespace {namespace}")
+    LOGGER.info(f"Loading baseline from ConfigMap {configmap_name} in namespace {namespace}")
 
     cm = ConfigMap(
         client=client,
-        name=UPGRADE_BASELINE_CONFIGMAP,
+        name=configmap_name,
         namespace=namespace,
     )
 
     if not cm.exists:
         raise AssertionError(
-            f"Baseline ConfigMap {UPGRADE_BASELINE_CONFIGMAP} does not exist in namespace {namespace}. "
+            f"Baseline ConfigMap {configmap_name} does not exist in namespace {namespace}. "
             "Cannot load baseline for post-upgrade verification."
         )
 
@@ -84,14 +97,15 @@ def discover_model_path(
     admin_client: DynamicClient,
     namespace: str,
     run_id: str,
+    pipeline_name: str = "autogluon-tabular-training-pipeline",
 ) -> str:
     """Find the trained model predictor path in DSPA MinIO after a pipeline run completes.
 
     Uses an mc pod to list the pipeline artifacts and find the predictor directory.
-    Returns an S3 URI like s3://mlpipeline/autogluon-tabular-training-pipeline/<run_id>/.../predictor
+    Returns an S3 URI like s3://mlpipeline/<pipeline_name>/<run_id>/.../predictor
     """
     minio_endpoint = f"http://minio-{DSPA_NAME}.{namespace}.svc.cluster.local:9000"
-    run_prefix = f"{DSPA_S3_BUCKET}/autogluon-tabular-training-pipeline/{run_id}/"
+    run_prefix = f"{DSPA_S3_BUCKET}/{pipeline_name}/{run_id}/"
 
     script = (
         "export MC_CONFIG_DIR=/work/.mc && "
