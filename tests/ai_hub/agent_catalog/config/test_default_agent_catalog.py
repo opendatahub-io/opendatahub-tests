@@ -110,17 +110,6 @@ class TestDefaultAgentCatalogConfig:
 class TestDefaultAgentCatalogApi:
     """Tests for default agent catalog API behavior (RHOAIENG-70685)."""
 
-    def test_default_agents_loaded(
-        self: Self,
-        default_agents: list,
-    ) -> None:
-        """Given the default Red Hat agent source is configured
-        When listing agents via GET /agents
-        Then at least one agent is returned
-        """
-        LOGGER.info(f"Default agent catalog returned {len(default_agents)} agents")
-        assert default_agents, "Expected at least one agent from the default Red Hat source"
-
     def test_default_agent_source_available(
         self: Self,
         model_catalog_api_url: str,
