@@ -9,6 +9,7 @@ from tests.ai_hub.utils import execute_get_command
 LOGGER = structlog.get_logger(name=__name__)
 
 
+@pytest.mark.tier3
 class TestAgentCatalogNegative:
     """Negative and error handling tests for agent catalog API (RHOAIENG-70683)."""
 
