@@ -1,8 +1,7 @@
 """Precise prefix cache configuration for single-node LLMInferenceService."""
 
 import json
-
-import yaml
+import textwrap
 
 from .config_models import TinyLlamaHfGpuConfig
 
@@ -11,8 +10,6 @@ class PrecisePrefixCacheConfig(TinyLlamaHfGpuConfig):
     """Single-node precise prefix cache — TinyLlama via HuggingFace, 2 GPU replicas."""
 
     name = "llmisvc-precise-prefix"
-    # The precise-prefix-cache-scorer scheduler plugin downloads the tokenizer from
-    # HuggingFace using the model name. It must be the full HF repo ID, not an alias.
     model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
     replicas = 2
     min_gpus_per_node = 2
@@ -27,7 +24,7 @@ class PrecisePrefixCacheConfig(TinyLlamaHfGpuConfig):
         kv_events_config = {
             "enable_kv_cache_events": True,
             "publisher": "zmq",
-            "endpoint": f"tcp://{cls.name}-epp-service:5557",
+            "endpoint": "tcp://*:5557",
             "topic": "kv@$(POD_IP):8000@$(MODEL_NAME)",
         }
         return [
@@ -52,45 +49,52 @@ class PrecisePrefixCacheConfig(TinyLlamaHfGpuConfig):
 
     @classmethod
     def _scheduler_config(cls):
-        """EndpointPickerConfig — precise prefix cache with KV block index tracking."""
-        return {
-            "apiVersion": "inference.networking.x-k8s.io/v1alpha1",
-            "kind": "EndpointPickerConfig",
-            "plugins": [
-                {"type": "single-profile-handler"},
-                {
-                    "type": "precise-prefix-cache-scorer",
-                    "parameters": {
-                        "kvEventsConfig": {"zmqEndpoint": "tcp://*:5557", "topicFilter": "kv"},
-                        "indexerConfig": {
-                            "tokenProcessorConfig": {
-                                "blockSize": cls.block_size,
-                                "hashSeed": cls.hash_seed,
-                            },
-                            "kvBlockIndexConfig": {
-                                "enableMetrics": True,
-                                "metricsLoggingInterval": 60000000000,
-                            },
-                            "tokenizersPoolConfig": {
-                                "hf": {"tokenizersCacheDir": "/mnt/tokenizers"},
-                            },
-                        },
-                    },
-                },
-                {"type": "load-aware-scorer"},
-                {"type": "max-score-picker"},
-            ],
-            "schedulingProfiles": [
-                {
-                    "name": "default",
-                    "plugins": [
-                        {"pluginRef": "precise-prefix-cache-scorer", "weight": 2.0},
-                        {"pluginRef": "load-aware-scorer", "weight": 1.0},
-                        {"pluginRef": "max-score-picker"},
-                    ],
-                }
-            ],
-        }
+        """EndpointPickerConfig — precise prefix cache with split plugin architecture."""
+        return textwrap.dedent(f"""\
+            apiVersion: llm-d.ai/v1alpha1
+            kind: EndpointPickerConfig
+            plugins:
+              - type: single-profile-handler
+              - type: token-producer
+                parameters:
+                  modelName: {cls.model_name}
+                  vllm:
+                    url: https://{cls.name}-kserve-workload-svc.{{{{ .ObjectMeta.Namespace }}}}.svc:8000
+              - type: endpoint-notification-source
+              - type: metrics-data-source
+              - type: core-metrics-extractor
+              - type: precise-prefix-cache-producer
+                parameters:
+                  tokenProcessorConfig:
+                    blockSize: {cls.block_size}
+                    hashSeed: "{cls.hash_seed}"
+                  indexerConfig:
+                    kvBlockIndexConfig:
+                      enableMetrics: true
+                      metricsLoggingInterval: 60000000000
+                  kvEventsConfig:
+                    topicFilter: kv
+              - type: prefix-cache-scorer
+                parameters:
+                  prefixMatchInfoProducerName: precise-prefix-cache-producer
+              - type: load-aware-scorer
+              - type: max-score-picker
+            dataLayer:
+              sources:
+                - pluginRef: metrics-data-source
+                  extractors:
+                    - pluginRef: core-metrics-extractor
+                - pluginRef: endpoint-notification-source
+                  extractors:
+                    - pluginRef: precise-prefix-cache-producer
+            schedulingProfiles:
+              - name: default
+                plugins:
+                  - pluginRef: prefix-cache-scorer
+                    weight: 2.0
+                  - pluginRef: load-aware-scorer
+                    weight: 1.0
+                  - pluginRef: max-score-picker""")
 
     @classmethod
     def _scheduler_container(cls):
@@ -126,7 +130,7 @@ class PrecisePrefixCacheConfig(TinyLlamaHfGpuConfig):
                 "--cert-path",
                 "/var/run/kserve/tls",
                 "--config-text",
-                yaml.dump(cls._scheduler_config()),
+                cls._scheduler_config(),
             ],
         }
 
