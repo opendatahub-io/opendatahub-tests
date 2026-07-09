@@ -178,13 +178,16 @@ def get_gpu_identifier(accelerator_type: str | None) -> str:
 def get_template_name(protocol: str, accelerator_type: str | None) -> str:
     """
     Returns template name based on protocol and accelerator type.
-    Falls back to default TRITON_REST if not found.
+    Falls back to protocol-specific default template if not found.
     If accelerator_type is None, defaults to "nvidia".
     """
     if accelerator_type is None:
         accelerator_type = "nvidia"
     key = f"{protocol.lower()}_{accelerator_type.lower()}"
-    return TEMPLATE_MAP.get(key, RuntimeTemplates.TRITON_REST)
+
+    # Fallback to protocol-specific template if key not found
+    default_template = RuntimeTemplates.TRITON_GRPC if protocol == Protocols.GRPC else RuntimeTemplates.TRITON_REST
+    return TEMPLATE_MAP.get(key, default_template)
 
 
 def load_json(path: str) -> dict[str, Any]:

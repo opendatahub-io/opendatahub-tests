@@ -25,7 +25,7 @@ from tests.ai_safety.lm_eval.constants import (
     LMEVAL_OCI_TAG,
 )
 from tests.ai_safety.lm_eval.utils import get_lmevaljob_pod
-from utilities.constants import ApiGroups, KServeDeploymentType, Labels, MinIo, Protocols, RuntimeTemplates, Timeout
+from utilities.constants import ApiGroups, KServeDeploymentType, Labels, MinIo, Protocols, RuntimeTemplates
 from utilities.exceptions import MissingParameter
 from utilities.general import b64_encoded_string
 from utilities.inference_utils import create_isvc
@@ -298,7 +298,7 @@ def lmeval_data_downloader_pod(
         restart_policy="Never",
         volumes=[{"name": "pvc-volume", "persistentVolumeClaim": {"claimName": "lmeval-data"}}],
     ) as pod:
-        pod.wait_for_status(status=Pod.Status.SUCCEEDED, timeout=Timeout.TIMEOUT_20MIN)
+        pod.wait_for_status(status=Pod.Status.SUCCEEDED, timeout=1200)
         yield pod
 
 
@@ -412,7 +412,7 @@ def lmeval_minio_deployment(
         label=minio_app_label,
         wait_for_resource=True,
     ) as deployment:
-        deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_20MIN)
+        deployment.wait_for_replicas(timeout=1200)
         yield deployment
 
 
