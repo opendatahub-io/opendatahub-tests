@@ -1,6 +1,6 @@
 from collections.abc import Generator
 from typing import Any
-
+import os
 import portforward
 import pytest
 from kubernetes.dynamic import DynamicClient
@@ -41,6 +41,29 @@ from utilities.operator_utils import get_cluster_service_version
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 GUARDRAILS_ORCHESTRATOR_NAME = "guardrails-orchestrator"
+
+
+def patch_tempo_operator_for_rosa(deployment: Deployment, role_arn: str) -> None:
+    """
+    Patches the Tempo operator deployment with AWS Role ARN for ROSA clusters.
+
+    Args:
+        deployment: The Tempo operator deployment object
+        role_arn: AWS IAM Role ARN to be used by the operator
+    """
+    LOGGER.info(f"Patching Tempo operator deployment with ROLE ARN: {role_arn}")
+    deployment_dict = deployment.instance.to_dict()
+    containers = deployment_dict["spec"]["template"]["spec"]["containers"]
+
+    for container in containers:
+        if "env" not in container:
+            container["env"] = []
+        # Add ROLEARN environment variable
+        container["env"].append({"name": "ROLEARN", "value": role_arn})
+
+    deployment.update(deployment_dict)
+    deployment.wait_for_replicas()
+    LOGGER.info("Successfully patched Tempo operator deployment for ROSA")
 
 
 # ServingRuntimes, InferenceServices, and related resources
@@ -267,6 +290,14 @@ def installed_tempo_operator(admin_client: DynamicClient, model_namespace: Names
     tempo_operator_subscription = Subscription(client=admin_client, namespace=operator_ns.name, name=package_name)
 
     if not tempo_operator_subscription.exists:
+        # Check if TEMPO_ROLE_ARN is required but not set
+        tempo_role_arn = os.getenv("TEMPO_ROLE_ARN")
+        if not tempo_role_arn:
+            raise ValueError(
+                "TEMPO_ROLE_ARN environment variable is required for Tempo installation on ROSA clusters. "
+                "Please provide the AWS IAM Role ARN token."
+            )
+
         install_operator(
             admin_client=admin_client,
             target_namespaces=None,
@@ -276,7 +307,6 @@ def installed_tempo_operator(admin_client: DynamicClient, model_namespace: Names
             operator_namespace=operator_ns.name,
             timeout=Timeout.TIMEOUT_15MIN,
             install_plan_approval="Automatic",
-            starting_csv="tempo-operator.v0.19.0-2",
         )
 
         deployment = Deployment(
@@ -286,6 +316,10 @@ def installed_tempo_operator(admin_client: DynamicClient, model_namespace: Names
             wait_for_resource=True,
         )
         deployment.wait_for_replicas()
+
+        # For ROSA clusters, patch the deployment with ROLE ARN
+        LOGGER.info(f"ROSA cluster detected. Patching Tempo operator with ROLE ARN environment variable")
+        patch_tempo_operator_for_rosa(deployment=deployment, role_arn=tempo_role_arn)
 
         yield
 
