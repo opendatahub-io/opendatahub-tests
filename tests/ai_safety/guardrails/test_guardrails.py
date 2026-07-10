@@ -235,7 +235,8 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
 
 @pytest.mark.tier1
 @pytest.mark.parametrize(
-    "model_namespace, minio_pod, minio_data_connection, orchestrator_config, guardrails_gateway_config, guardrails_orchestrator",
+    "model_namespace, minio_pod, minio_data_connection, orchestrator_config, "
+    "guardrails_gateway_config, guardrails_orchestrator",
     [
         pytest.param(
             {"name": "test-guardrails-huggingface"},
