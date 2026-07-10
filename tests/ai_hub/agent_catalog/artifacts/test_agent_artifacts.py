@@ -7,6 +7,10 @@ from tests.ai_hub.agent_catalog.artifacts.constants import (
     ARTIFACT_IMAGE_COUNT,
     ARTIFACT_IMAGE_ONLY_COUNT,
     ARTIFACT_TEMPLATE_COUNT,
+    ARTIFACT_TEST_AGENTS_YAML,
+    ARTIFACT_TEST_LABEL,
+    ARTIFACT_TEST_LABEL_DEFINITION,
+    ARTIFACT_TEST_SOURCE,
     DEFAULT_TEMPLATE_NAME,
     EXPECTED_TEMPLATE_NAMES,
     TEMPLATE_ARTIFACT_TYPE,
@@ -15,7 +19,20 @@ from tests.ai_hub.utils import execute_get_command_with_retry
 
 LOGGER = structlog.get_logger(name=__name__)
 
+ARTIFACT_CONFIGMAP_PARAM: dict = {
+    "source": ARTIFACT_TEST_SOURCE,
+    "label": ARTIFACT_TEST_LABEL,
+    "label_definition": ARTIFACT_TEST_LABEL_DEFINITION,
+    "agents_yaml": ARTIFACT_TEST_AGENTS_YAML,
+    "min_agents": 4,
+}
 
+
+@pytest.mark.parametrize(
+    "agent_catalog_configmap_patch",
+    [pytest.param(ARTIFACT_CONFIGMAP_PARAM)],
+    indirect=True,
+)
 class TestAgentArtifacts:
     """Tests for agent catalog artifacts endpoint (RHOAIENG-75429)."""
 
@@ -78,6 +95,7 @@ class TestAgentArtifacts:
     def test_agent_artifact_types(
         self: Self,
         request: pytest.FixtureRequest,
+        agent_catalog_configmap_patch: None,
         agent_catalog_rest_urls: list[str],
         model_registry_rest_headers: dict[str, str],
         agent_fixture: str,
