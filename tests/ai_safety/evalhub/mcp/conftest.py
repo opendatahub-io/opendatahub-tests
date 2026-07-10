@@ -28,7 +28,6 @@ from tests.ai_safety.evalhub.mcp.utils import (
 )
 from tests.ai_safety.evalhub.utils import wait_for_service_account
 from utilities.certificates_utils import create_ca_bundle_file
-from utilities.constants import Timeout
 from utilities.infra import create_inference_token
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -219,7 +218,7 @@ def evalhub_mcp_mt_deployment(
         name=_mcp_deployment_name(EVALHUB_MCP_CR_NAME),
         namespace=model_namespace.name,
     )
-    deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_5MIN)
+    deployment.wait_for_replicas(timeout=300)
     return deployment
 
 

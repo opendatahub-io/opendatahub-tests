@@ -59,7 +59,7 @@ from tests.pipelines_components.utils import (
     use_managed_pipelines,
     wait_for_managed_pipeline,
 )
-from utilities.constants import Annotations, DscComponents, KServeDeploymentType, RuntimeTemplates, Timeout
+from utilities.constants import Annotations, DscComponents, KServeDeploymentType, RuntimeTemplates
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.exceptions import UnexpectedResourceCountError
 from utilities.general import generate_random_name
@@ -296,7 +296,7 @@ def autorag_inference_service(
         storage_uri=AUTORAG_INFERENCE_MODEL_URI,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         wait=True,
-        timeout=Timeout.TIMEOUT_30MIN,
+        timeout=1800,
         model_service_account=autorag_model_service_account.name,
         resources={
             "requests": {"cpu": "2", "memory": "4Gi"},
@@ -348,7 +348,7 @@ def autorag_embedding_service(
         storage_uri=AUTORAG_EMBEDDING_MODEL_URI,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         wait=True,
-        timeout=Timeout.TIMEOUT_30MIN,
+        timeout=1800,
         model_service_account=autorag_model_service_account.name,
         resources={
             "requests": {"cpu": "2", "memory": "4Gi"},
