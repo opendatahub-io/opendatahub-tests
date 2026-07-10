@@ -80,7 +80,7 @@ from utilities.infra import create_ns, wait_for_dsc_status_ready
 
 LOGGER = structlog.get_logger(name=__name__)
 
-UPGRADE_NAMESPACE = "automl-upgrade"
+UPGRADE_NAMESPACE = "automl-aqa-upgrade"
 UPGRADE_TASK_TYPE = "regression"
 UPGRADE_RUN_DISPLAY_NAME = "automl-upgrade-regression"
 UPGRADE_ISVC_NAME = "automl-upgrade-model"
