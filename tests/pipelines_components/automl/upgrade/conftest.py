@@ -90,11 +90,6 @@ UPGRADE_TS_RUN_DISPLAY_NAME = "automl-upgrade-timeseries"
 UPGRADE_TS_ISVC_NAME = "automl-upgrade-ts-model"
 
 
-# ---------------------------------------------------------------------------
-# DSC patch — enable AI Pipelines (non-reverting for upgrade persistence)
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture(scope="session")
 def pre_upgrade_pipelines_dsc_patch(
     pytestconfig: pytest.Config,
@@ -103,13 +98,18 @@ def pre_upgrade_pipelines_dsc_patch(
     """Enable AI Pipelines in DSC before upgrade tests.
 
     Uses ResourceEditor.update() (non-reverting) so the component stays
-    Managed through the upgrade boundary.  No-op during post-upgrade.
+    Managed through the upgrade boundary. No-op during post-upgrade.
     """
-    if not pytestconfig.option.pre_upgrade:
-        return dsc_resource
+    if pytestconfig.option.pre_upgrade:
+        current_state = dsc_resource.instance.spec.components.get("aipipelines", {}).get("managementState")
+        if current_state == DscComponents.ManagementState.MANAGED:
+            return dsc_resource
 
-    current_state = dsc_resource.instance.spec.components.get("aipipelines", {}).get("managementState")
-    if current_state != DscComponents.ManagementState.MANAGED:
+        assert current_state == DscComponents.ManagementState.REMOVED, (
+            f"AI Pipelines managementState is '{current_state}', expected 'Removed' or 'Managed'. "
+            "This indicates an unexpected DSC configuration."
+        )
+
         LOGGER.info("Setting AI Pipelines to Managed state")
         editor = ResourceEditor(
             patches={dsc_resource: {"spec": {"components": {"aipipelines": {"managementState": "Managed"}}}}}
@@ -120,16 +120,38 @@ def pre_upgrade_pipelines_dsc_patch(
     return dsc_resource
 
 
-# ---------------------------------------------------------------------------
-# Namespace — fixed name, conditional create/reference
-# ---------------------------------------------------------------------------
+@pytest.fixture(scope="session")
+def post_upgrade_pipelines_dsc_restore(
+    pytestconfig: pytest.Config,
+    dsc_resource: DataScienceCluster,
+) -> Generator[DataScienceCluster, Any, Any]:
+    """Restore AI Pipelines to Removed state after all upgrade resources are cleaned up.
+
+    upgrade_namespace depends on this fixture, so teardown order is:
+    namespace deleted first, then this fixture restores the DSC.
+    """
+    yield dsc_resource
+
+    if not pytestconfig.option.post_upgrade:
+        return
+
+    current_state = dsc_resource.instance.spec.components.get("aipipelines", {}).get("managementState")
+    if current_state == DscComponents.ManagementState.REMOVED:
+        return
+
+    LOGGER.info("Restoring AI Pipelines to Removed state")
+    editor = ResourceEditor(
+        patches={dsc_resource: {"spec": {"components": {"aipipelines": {"managementState": "Removed"}}}}}
+    )
+    editor.update()
 
 
 @pytest.fixture(scope="session")
-def pipelines_namespace(  # noqa: UFN001
+def upgrade_namespace(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     pre_upgrade_pipelines_dsc_patch: DataScienceCluster,
+    post_upgrade_pipelines_dsc_restore: DataScienceCluster,
 ) -> Generator[Namespace, Any, Any]:
     """Fixed-name namespace for AutoML upgrade tests."""
     pre = pytestconfig.option.pre_upgrade
@@ -156,16 +178,11 @@ def pipelines_namespace(  # noqa: UFN001
             ns.clean_up()
 
 
-# ---------------------------------------------------------------------------
-# DSPA — conditional create/reference
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture(scope="session")
-def dspa(  # noqa: UFN001
+def upgrade_dspa(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    pipelines_namespace: Namespace,
+    upgrade_namespace: Namespace,
 ) -> Generator[DataSciencePipelinesApplication, Any, Any]:
     """DataSciencePipelinesApplication — created pre-upgrade, referenced post-upgrade."""
     pre = pytestconfig.option.pre_upgrade
@@ -180,7 +197,7 @@ def dspa(  # noqa: UFN001
         with DataSciencePipelinesApplication(
             client=admin_client,
             name=DSPA_NAME,
-            namespace=pipelines_namespace.name,
+            namespace=upgrade_namespace.name,
             dsp_version="v2",
             api_server={
                 "enableSamplePipeline": False,
@@ -199,85 +216,75 @@ def dspa(  # noqa: UFN001
             Deployment(
                 client=admin_client,
                 name=DSPA_PIPELINE_DEPLOYMENT,
-                namespace=pipelines_namespace.name,
+                namespace=upgrade_namespace.name,
             ).wait_for_replicas(timeout=Timeout.TIMEOUT_5MIN)
             yield dspa_resource
     else:
         dspa_resource = DataSciencePipelinesApplication(
             client=admin_client,
             name=DSPA_NAME,
-            namespace=pipelines_namespace.name,
+            namespace=upgrade_namespace.name,
         )
         Deployment(
             client=admin_client,
             name=DSPA_PIPELINE_DEPLOYMENT,
-            namespace=pipelines_namespace.name,
+            namespace=upgrade_namespace.name,
         ).wait_for_replicas(timeout=Timeout.TIMEOUT_5MIN)
         yield dspa_resource
         if should_cleanup:
             dspa_resource.clean_up()
 
 
-# ---------------------------------------------------------------------------
-# DSPA API access fixtures (session-scoped overrides of parent class-scoped)
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture(scope="session")
-def dspa_route(  # noqa: UFN001
+def upgrade_dspa_route(
     admin_client: DynamicClient,
-    pipelines_namespace: Namespace,
-    dspa: DataSciencePipelinesApplication,
+    upgrade_namespace: Namespace,
+    upgrade_dspa: DataSciencePipelinesApplication,
 ) -> Route:
     return Route(
         client=admin_client,
         name=DSPA_PIPELINE_DEPLOYMENT,
-        namespace=pipelines_namespace.name,
+        namespace=upgrade_namespace.name,
         ensure_exists=True,
     )
 
 
 @pytest.fixture(scope="session")
-def dspa_api_url(dspa_route: Route) -> str:  # noqa: UFN001
-    return f"https://{dspa_route.host}"
+def upgrade_dspa_api_url(upgrade_dspa_route: Route) -> str:
+    return f"https://{upgrade_dspa_route.host}"
 
 
 @pytest.fixture(scope="session")
-def dspa_auth_headers(current_client_token: str) -> dict[str, str]:  # noqa: UFN001
+def upgrade_dspa_auth_headers(current_client_token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {current_client_token}"}
 
 
 @pytest.fixture(scope="session")
-def dspa_ca_bundle_file(admin_client: DynamicClient) -> str:  # noqa: UFN001
+def upgrade_dspa_ca_bundle_file(admin_client: DynamicClient) -> str:
     return create_ca_bundle_file(client=admin_client)
 
 
-# ---------------------------------------------------------------------------
-# S3 credentials (session-scoped overrides)
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture(scope="session")
-def dspa_s3_credentials(  # noqa: UFN001
+def upgrade_dspa_s3_credentials(
     admin_client: DynamicClient,
-    pipelines_namespace: Namespace,
-    dspa: DataSciencePipelinesApplication,
+    upgrade_namespace: Namespace,
+    upgrade_dspa: DataSciencePipelinesApplication,
 ) -> Secret:
     """Patch DSPA S3 secret with standard AWS credential fields."""
     secret = Secret(
         client=admin_client,
         name=DSPA_S3_SECRET,
-        namespace=pipelines_namespace.name,
+        namespace=upgrade_namespace.name,
     )
-    assert secret.exists, f"Secret '{DSPA_S3_SECRET}' not found in {pipelines_namespace.name}"
+    assert secret.exists, f"Secret '{DSPA_S3_SECRET}' not found in {upgrade_namespace.name}"
 
     access_key = base64.b64decode(secret.instance.data.get("accesskey", "")).decode()
     secret_key = base64.b64decode(secret.instance.data.get("secretkey", "")).decode()
-    endpoint = f"http://minio-{DSPA_NAME}.{pipelines_namespace.name}.svc.cluster.local:9000"
+    endpoint = f"http://minio-{DSPA_NAME}.{upgrade_namespace.name}.svc.cluster.local:9000"
 
     secret.update(
         resource_dict={
-            "metadata": {"name": secret.name, "namespace": pipelines_namespace.name},
+            "metadata": {"name": secret.name, "namespace": upgrade_namespace.name},
             "stringData": {
                 "AWS_ACCESS_KEY_ID": access_key,
                 "AWS_SECRET_ACCESS_KEY": secret_key,
@@ -291,9 +298,9 @@ def dspa_s3_credentials(  # noqa: UFN001
 
 
 @pytest.fixture(scope="session")
-def external_s3_secret(  # noqa: UFN001
+def upgrade_external_s3_secret(
     admin_client: DynamicClient,
-    pipelines_namespace: Namespace,
+    upgrade_namespace: Namespace,
 ) -> Generator[Secret, Any, Any]:
     """Transient secret for external AWS S3 credentials (training data download)."""
     aws_access_key_id = os.environ.get("AWS_ACCESS_KEY_ID")
@@ -304,7 +311,7 @@ def external_s3_secret(  # noqa: UFN001
     with Secret(
         client=admin_client,
         name=EXTERNAL_S3_SECRET,
-        namespace=pipelines_namespace.name,
+        namespace=upgrade_namespace.name,
         string_data={
             "AWS_ACCESS_KEY_ID": aws_access_key_id,
             "AWS_SECRET_ACCESS_KEY": aws_secret_access_key,
@@ -313,18 +320,13 @@ def external_s3_secret(  # noqa: UFN001
         yield secret
 
 
-# ---------------------------------------------------------------------------
-# Training data upload — only during pre-upgrade
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture(scope="session")
 def upgrade_train_data(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    pipelines_namespace: Namespace,
-    dspa_s3_credentials: Secret,
-    external_s3_secret: Secret,
+    upgrade_namespace: Namespace,
+    upgrade_dspa_s3_credentials: Secret,
+    upgrade_external_s3_secret: Secret,
 ) -> str | None:
     """Upload regression training data to DSPA MinIO. No-op when pre-upgrade is not set."""
     if not pytestconfig.option.pre_upgrade:
@@ -342,7 +344,7 @@ def upgrade_train_data(
     dst_bucket = shlex.quote(s=DSPA_S3_BUCKET)
     dst_key = shlex.quote(s=AUTOML_TRAIN_DATA_FILE_KEY)
 
-    minio_endpoint = f"http://minio-{DSPA_NAME}.{pipelines_namespace.name}.svc.cluster.local:9000"
+    minio_endpoint = f"http://minio-{DSPA_NAME}.{upgrade_namespace.name}.svc.cluster.local:9000"
     src_endpoint = os.environ.get("AWS_S3_ENDPOINT", "https://s3.amazonaws.com")
 
     script = (
@@ -357,7 +359,7 @@ def upgrade_train_data(
     with Pod(
         client=admin_client,
         name=pod_name,
-        namespace=pipelines_namespace.name,
+        namespace=upgrade_namespace.name,
         restart_policy="Never",
         volumes=[{"name": "work", "emptyDir": {}}],
         containers=[
@@ -401,52 +403,42 @@ def upgrade_train_data(
     return AUTOML_TRAIN_DATA_FILE_KEY
 
 
-# ---------------------------------------------------------------------------
-# Managed pipeline discovery
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture(scope="session")
-def automl_managed_pipeline(  # noqa: UFN001
-    dspa: DataSciencePipelinesApplication,
-    dspa_api_url: str,
-    dspa_auth_headers: dict[str, str],
-    dspa_ca_bundle_file: str,
+def upgrade_tabular_managed_pipeline(
+    upgrade_dspa: DataSciencePipelinesApplication,
+    upgrade_dspa_api_url: str,
+    upgrade_dspa_auth_headers: dict[str, str],
+    upgrade_dspa_ca_bundle_file: str,
 ) -> dict[str, str] | None:
     """Discover managed AutoML tabular pipeline. None in legacy YAML mode."""
     if not use_managed_pipelines(yaml_env_value=AUTOML_PIPELINE_YAML):
         return None
     return wait_for_managed_pipeline(
-        api_url=dspa_api_url,
-        headers=dspa_auth_headers,
+        api_url=upgrade_dspa_api_url,
+        headers=upgrade_dspa_auth_headers,
         display_name=MANAGED_PIPELINE_AUTOML_TABULAR,
-        ca_bundle=dspa_ca_bundle_file,
+        ca_bundle=upgrade_dspa_ca_bundle_file,
         timeout=DSPA_READY_BUFFER_SECONDS + MANAGED_PIPELINE_WAIT_TIMEOUT,
         poll_interval=MANAGED_PIPELINE_POLL_INTERVAL,
     )
-
-
-# ---------------------------------------------------------------------------
-# Pipeline run — created pre-upgrade, loaded from baseline post-upgrade
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture(scope="session")
 def upgrade_run_id(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    pipelines_namespace: Namespace,
-    dspa_api_url: str,
-    dspa_auth_headers: dict[str, str],
-    dspa_ca_bundle_file: str,
-    automl_managed_pipeline: dict[str, str] | None,
+    upgrade_namespace: Namespace,
+    upgrade_dspa_api_url: str,
+    upgrade_dspa_auth_headers: dict[str, str],
+    upgrade_dspa_ca_bundle_file: str,
+    upgrade_tabular_managed_pipeline: dict[str, str] | None,
     upgrade_train_data: str | None,
 ) -> str:
     """Pipeline run ID — created when pre-upgrade is set, loaded from ConfigMap otherwise."""
     if not pytestconfig.option.pre_upgrade:
         baselines = load_baseline_from_configmap(
             client=admin_client,
-            namespace=pipelines_namespace.name,
+            namespace=upgrade_namespace.name,
         )
         return baselines["run_id"]
 
@@ -460,49 +452,44 @@ def upgrade_run_id(
         "top_n": task_config["top_n"],
     }
 
-    if automl_managed_pipeline is not None:
+    if upgrade_tabular_managed_pipeline is not None:
         run_id = create_pipeline_run_managed(
-            api_url=dspa_api_url,
-            headers=dspa_auth_headers,
-            pipeline_id=automl_managed_pipeline["pipeline_id"],
-            pipeline_version_id=automl_managed_pipeline["pipeline_version_id"],
+            api_url=upgrade_dspa_api_url,
+            headers=upgrade_dspa_auth_headers,
+            pipeline_id=upgrade_tabular_managed_pipeline["pipeline_id"],
+            pipeline_version_id=upgrade_tabular_managed_pipeline["pipeline_version_id"],
             run_name=UPGRADE_RUN_DISPLAY_NAME,
             parameters=parameters,
-            ca_bundle=dspa_ca_bundle_file,
+            ca_bundle=upgrade_dspa_ca_bundle_file,
         )
     else:
         pipeline_yaml_path = resolve_pipeline_yaml(value=AUTOML_PIPELINE_YAML)
         pipeline_id = upload_pipeline(
-            api_url=dspa_api_url,
-            headers=dspa_auth_headers,
+            api_url=upgrade_dspa_api_url,
+            headers=upgrade_dspa_auth_headers,
             pipeline_yaml_path=pipeline_yaml_path,
-            pipeline_name=f"automl-upgrade-{pipelines_namespace.name}",
-            ca_bundle=dspa_ca_bundle_file,
+            pipeline_name=f"automl-upgrade-{upgrade_namespace.name}",
+            ca_bundle=upgrade_dspa_ca_bundle_file,
         )
         run_id = create_pipeline_run(
-            api_url=dspa_api_url,
-            headers=dspa_auth_headers,
+            api_url=upgrade_dspa_api_url,
+            headers=upgrade_dspa_auth_headers,
             pipeline_id=pipeline_id,
             run_name=UPGRADE_RUN_DISPLAY_NAME,
             parameters=parameters,
-            ca_bundle=dspa_ca_bundle_file,
+            ca_bundle=upgrade_dspa_ca_bundle_file,
         )
 
     return run_id
-
-
-# ---------------------------------------------------------------------------
-# Baseline capture / load
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture(scope="session")
 def automl_capture_upgrade_baseline(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    pipelines_namespace: Namespace,
+    upgrade_namespace: Namespace,
     upgrade_run_id: str,
-    automl_managed_pipeline: dict[str, str] | None,
+    upgrade_tabular_managed_pipeline: dict[str, str] | None,
 ) -> None:
     """Capture baseline after pre-upgrade experiment completes. No-op when pre-upgrade is not set."""
     if not pytestconfig.option.pre_upgrade:
@@ -513,13 +500,13 @@ def automl_capture_upgrade_baseline(
         "run_display_name": UPGRADE_RUN_DISPLAY_NAME,
         "isvc_name": UPGRADE_ISVC_NAME,
     }
-    if automl_managed_pipeline is not None:
-        baselines["pipeline_id"] = automl_managed_pipeline["pipeline_id"]
-        baselines["pipeline_version_id"] = automl_managed_pipeline["pipeline_version_id"]
+    if upgrade_tabular_managed_pipeline is not None:
+        baselines["pipeline_id"] = upgrade_tabular_managed_pipeline["pipeline_id"]
+        baselines["pipeline_version_id"] = upgrade_tabular_managed_pipeline["pipeline_version_id"]
 
     save_baseline_to_configmap(
         client=admin_client,
-        namespace=pipelines_namespace.name,
+        namespace=upgrade_namespace.name,
         baselines=baselines,
     )
 
@@ -528,7 +515,7 @@ def automl_capture_upgrade_baseline(
 def automl_upgrade_baseline(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    pipelines_namespace: Namespace,
+    upgrade_namespace: Namespace,
 ) -> dict:
     """Load pre-upgrade baseline. Returns empty dict when post-upgrade is not set."""
     if not pytestconfig.option.post_upgrade:
@@ -536,17 +523,12 @@ def automl_upgrade_baseline(
 
     return load_baseline_from_configmap(
         client=admin_client,
-        namespace=pipelines_namespace.name,
+        namespace=upgrade_namespace.name,
     )
 
 
-# ---------------------------------------------------------------------------
-# Model deployment — AutoGluon serving runtime + InferenceService
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture(scope="session")
-def autogluon_runtime_image(  # noqa: UFN001
+def upgrade_autogluon_runtime_image(
     admin_client: DynamicClient,
 ) -> str:
     """Resolve the AutoGluon serving runtime container image."""
@@ -571,8 +553,8 @@ def autogluon_runtime_image(  # noqa: UFN001
 def upgrade_serving_runtime(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    pipelines_namespace: Namespace,
-    autogluon_runtime_image: str,
+    upgrade_namespace: Namespace,
+    upgrade_autogluon_runtime_image: str,
 ) -> Generator[ServingRuntime, Any, Any]:
     """AutoGluon ServingRuntime — created pre-upgrade, referenced post-upgrade."""
     pre = pytestconfig.option.pre_upgrade
@@ -583,8 +565,8 @@ def upgrade_serving_runtime(
 
     if pre:
         kwargs = build_serving_runtime_kwargs(
-            namespace=pipelines_namespace.name,
-            image=autogluon_runtime_image,
+            namespace=upgrade_namespace.name,
+            image=upgrade_autogluon_runtime_image,
             name=runtime_name,
         )
         sr = ServingRuntime(client=admin_client, teardown=should_cleanup, **kwargs)
@@ -594,7 +576,7 @@ def upgrade_serving_runtime(
         sr = ServingRuntime(
             client=admin_client,
             name=runtime_name,
-            namespace=pipelines_namespace.name,
+            namespace=upgrade_namespace.name,
         )
         yield sr
         if should_cleanup:
@@ -605,23 +587,23 @@ def upgrade_serving_runtime(
 def kserve_minio_secret(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    pipelines_namespace: Namespace,
-    dspa_s3_credentials: Secret,
+    upgrade_namespace: Namespace,
+    upgrade_dspa_s3_credentials: Secret,
 ) -> Generator[Secret, Any, Any]:
     """KServe-annotated secret for DSPA MinIO access."""
     pre = pytestconfig.option.pre_upgrade
     post = pytestconfig.option.post_upgrade
     should_cleanup = not pre or post
 
-    minio_endpoint = f"http://minio-{DSPA_NAME}.{pipelines_namespace.name}.svc.cluster.local:9000"
-    access_key = base64.b64decode(dspa_s3_credentials.instance.data.get("accesskey", "")).decode()
-    secret_key = base64.b64decode(dspa_s3_credentials.instance.data.get("secretkey", "")).decode()
+    minio_endpoint = f"http://minio-{DSPA_NAME}.{upgrade_namespace.name}.svc.cluster.local:9000"
+    access_key = base64.b64decode(upgrade_dspa_s3_credentials.instance.data.get("accesskey", "")).decode()
+    secret_key = base64.b64decode(upgrade_dspa_s3_credentials.instance.data.get("secretkey", "")).decode()
 
     if pre:
         with Secret(
             client=admin_client,
             name=KSERVE_S3_SECRET_NAME,
-            namespace=pipelines_namespace.name,
+            namespace=upgrade_namespace.name,
             annotations={
                 "serving.kserve.io/s3-endpoint": minio_endpoint,
                 "serving.kserve.io/s3-usehttps": "0",
@@ -638,7 +620,7 @@ def kserve_minio_secret(
         secret = Secret(
             client=admin_client,
             name=KSERVE_S3_SECRET_NAME,
-            namespace=pipelines_namespace.name,
+            namespace=upgrade_namespace.name,
         )
         yield secret
         if should_cleanup:
@@ -649,7 +631,7 @@ def kserve_minio_secret(
 def kserve_model_service_account(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    pipelines_namespace: Namespace,
+    upgrade_namespace: Namespace,
     kserve_minio_secret: Secret,
 ) -> Generator[ServiceAccount, Any, Any]:
     """ServiceAccount referencing the KServe S3 secret for model pulling."""
@@ -661,7 +643,7 @@ def kserve_model_service_account(
         sa = ServiceAccount(
             client=admin_client,
             name=KSERVE_SA_NAME,
-            namespace=pipelines_namespace.name,
+            namespace=upgrade_namespace.name,
             secrets=[{"name": kserve_minio_secret.name}],
             teardown=should_cleanup,
         )
@@ -671,7 +653,7 @@ def kserve_model_service_account(
         sa = ServiceAccount(
             client=admin_client,
             name=KSERVE_SA_NAME,
-            namespace=pipelines_namespace.name,
+            namespace=upgrade_namespace.name,
         )
         yield sa
         if should_cleanup:
@@ -682,10 +664,10 @@ def kserve_model_service_account(
 def upgrade_inference_service(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    pipelines_namespace: Namespace,
+    upgrade_namespace: Namespace,
     upgrade_serving_runtime: ServingRuntime,
     upgrade_run_id: str,
-    dspa_s3_credentials: Secret,
+    upgrade_dspa_s3_credentials: Secret,
     kserve_model_service_account: ServiceAccount,
 ) -> Generator[InferenceService, Any, Any]:
     """AutoGluon InferenceService — deployed pre-upgrade, referenced post-upgrade.
@@ -701,13 +683,13 @@ def upgrade_inference_service(
     if pre:
         model_path = discover_model_path(
             admin_client=admin_client,
-            namespace=pipelines_namespace.name,
+            namespace=upgrade_namespace.name,
             run_id=upgrade_run_id,
         )
         with create_isvc(
             client=admin_client,
             name=UPGRADE_ISVC_NAME,
-            namespace=pipelines_namespace.name,
+            namespace=upgrade_namespace.name,
             model_format=ModelFormat.AUTOGLUON,
             model_version=ModelVersion.AUTOGLUON_1,
             runtime=upgrade_serving_runtime.name,
@@ -725,31 +707,26 @@ def upgrade_inference_service(
         isvc = InferenceService(
             client=admin_client,
             name=UPGRADE_ISVC_NAME,
-            namespace=pipelines_namespace.name,
+            namespace=upgrade_namespace.name,
         )
         yield isvc
         if should_cleanup:
             isvc.clean_up()
 
 
-# ===========================================================================
-# Timeseries upgrade fixtures
-# ===========================================================================
-
-
 @pytest.fixture(scope="session")
 def ts_managed_pipeline(
-    dspa: DataSciencePipelinesApplication,
-    dspa_api_url: str,
-    dspa_auth_headers: dict[str, str],
-    dspa_ca_bundle_file: str,
+    upgrade_dspa: DataSciencePipelinesApplication,
+    upgrade_dspa_api_url: str,
+    upgrade_dspa_auth_headers: dict[str, str],
+    upgrade_dspa_ca_bundle_file: str,
 ) -> dict[str, str]:
     """Discover managed AutoML timeseries pipeline."""
     return wait_for_managed_pipeline(
-        api_url=dspa_api_url,
-        headers=dspa_auth_headers,
+        api_url=upgrade_dspa_api_url,
+        headers=upgrade_dspa_auth_headers,
         display_name=MANAGED_PIPELINE_AUTOML_TIMESERIES,
-        ca_bundle=dspa_ca_bundle_file,
+        ca_bundle=upgrade_dspa_ca_bundle_file,
         timeout=DSPA_READY_BUFFER_SECONDS + MANAGED_PIPELINE_WAIT_TIMEOUT,
         poll_interval=MANAGED_PIPELINE_POLL_INTERVAL,
     )
@@ -759,9 +736,9 @@ def ts_managed_pipeline(
 def upgrade_ts_train_data(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    pipelines_namespace: Namespace,
-    dspa_s3_credentials: Secret,
-    external_s3_secret: Secret,
+    upgrade_namespace: Namespace,
+    upgrade_dspa_s3_credentials: Secret,
+    upgrade_external_s3_secret: Secret,
 ) -> str | None:
     """Upload timeseries training data to DSPA MinIO. No-op when pre-upgrade is not set."""
     if not pytestconfig.option.pre_upgrade:
@@ -779,7 +756,7 @@ def upgrade_ts_train_data(
     dst_bucket = shlex.quote(s=DSPA_S3_BUCKET)
     dst_key = shlex.quote(s=AUTOML_TIMESERIES_TRAIN_DATA_FILE_KEY)
 
-    minio_endpoint = f"http://minio-{DSPA_NAME}.{pipelines_namespace.name}.svc.cluster.local:9000"
+    minio_endpoint = f"http://minio-{DSPA_NAME}.{upgrade_namespace.name}.svc.cluster.local:9000"
     src_endpoint = os.environ.get("AWS_S3_ENDPOINT", "https://s3.amazonaws.com")
 
     script = (
@@ -794,7 +771,7 @@ def upgrade_ts_train_data(
     with Pod(
         client=admin_client,
         name=pod_name,
-        namespace=pipelines_namespace.name,
+        namespace=upgrade_namespace.name,
         restart_policy="Never",
         volumes=[{"name": "work", "emptyDir": {}}],
         containers=[
@@ -842,10 +819,10 @@ def upgrade_ts_train_data(
 def upgrade_ts_run_id(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    pipelines_namespace: Namespace,
-    dspa_api_url: str,
-    dspa_auth_headers: dict[str, str],
-    dspa_ca_bundle_file: str,
+    upgrade_namespace: Namespace,
+    upgrade_dspa_api_url: str,
+    upgrade_dspa_auth_headers: dict[str, str],
+    upgrade_dspa_ca_bundle_file: str,
     ts_managed_pipeline: dict[str, str],
     upgrade_ts_train_data: str | None,
 ) -> str:
@@ -853,7 +830,7 @@ def upgrade_ts_run_id(
     if not pytestconfig.option.pre_upgrade:
         baselines = load_baseline_from_configmap(
             client=admin_client,
-            namespace=pipelines_namespace.name,
+            namespace=upgrade_namespace.name,
             configmap_name=TIMESERIES_UPGRADE_BASELINE_CONFIGMAP,
         )
         return baselines["run_id"]
@@ -871,13 +848,13 @@ def upgrade_ts_run_id(
     }
 
     return create_pipeline_run_managed(
-        api_url=dspa_api_url,
-        headers=dspa_auth_headers,
+        api_url=upgrade_dspa_api_url,
+        headers=upgrade_dspa_auth_headers,
         pipeline_id=ts_managed_pipeline["pipeline_id"],
         pipeline_version_id=ts_managed_pipeline["pipeline_version_id"],
         run_name=UPGRADE_TS_RUN_DISPLAY_NAME,
         parameters=parameters,
-        ca_bundle=dspa_ca_bundle_file,
+        ca_bundle=upgrade_dspa_ca_bundle_file,
     )
 
 
@@ -885,7 +862,7 @@ def upgrade_ts_run_id(
 def ts_capture_upgrade_baseline(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    pipelines_namespace: Namespace,
+    upgrade_namespace: Namespace,
     upgrade_ts_run_id: str,
     ts_managed_pipeline: dict[str, str],
 ) -> None:
@@ -903,7 +880,7 @@ def ts_capture_upgrade_baseline(
 
     save_baseline_to_configmap(
         client=admin_client,
-        namespace=pipelines_namespace.name,
+        namespace=upgrade_namespace.name,
         baselines=baselines,
         configmap_name=TIMESERIES_UPGRADE_BASELINE_CONFIGMAP,
     )
@@ -913,7 +890,7 @@ def ts_capture_upgrade_baseline(
 def ts_upgrade_baseline(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    pipelines_namespace: Namespace,
+    upgrade_namespace: Namespace,
 ) -> dict:
     """Load timeseries baseline. Returns empty dict when post-upgrade is not set."""
     if not pytestconfig.option.post_upgrade:
@@ -921,7 +898,7 @@ def ts_upgrade_baseline(
 
     return load_baseline_from_configmap(
         client=admin_client,
-        namespace=pipelines_namespace.name,
+        namespace=upgrade_namespace.name,
         configmap_name=TIMESERIES_UPGRADE_BASELINE_CONFIGMAP,
     )
 
@@ -930,10 +907,10 @@ def ts_upgrade_baseline(
 def upgrade_ts_inference_service(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    pipelines_namespace: Namespace,
+    upgrade_namespace: Namespace,
     upgrade_serving_runtime: ServingRuntime,
     upgrade_ts_run_id: str,
-    dspa_s3_credentials: Secret,
+    upgrade_dspa_s3_credentials: Secret,
     kserve_model_service_account: ServiceAccount,
 ) -> Generator[InferenceService, Any, Any]:
     """Timeseries InferenceService — deployed pre-upgrade, referenced post-upgrade."""
@@ -944,14 +921,14 @@ def upgrade_ts_inference_service(
     if pre:
         model_path = discover_model_path(
             admin_client=admin_client,
-            namespace=pipelines_namespace.name,
+            namespace=upgrade_namespace.name,
             run_id=upgrade_ts_run_id,
             pipeline_name="autogluon-timeseries-training-pipeline",
         )
         with create_isvc(
             client=admin_client,
             name=UPGRADE_TS_ISVC_NAME,
-            namespace=pipelines_namespace.name,
+            namespace=upgrade_namespace.name,
             model_format=ModelFormat.AUTOGLUON,
             model_version=ModelVersion.AUTOGLUON_1,
             runtime=upgrade_serving_runtime.name,
@@ -969,7 +946,7 @@ def upgrade_ts_inference_service(
         isvc = InferenceService(
             client=admin_client,
             name=UPGRADE_TS_ISVC_NAME,
-            namespace=pipelines_namespace.name,
+            namespace=upgrade_namespace.name,
         )
         yield isvc
         if should_cleanup:

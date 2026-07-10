@@ -52,13 +52,13 @@ class TestPreUpgradeAutoML:
     def test_automl_experiment_completes(
         self,
         admin_client: DynamicClient,
-        pipelines_namespace: Namespace,
+        upgrade_namespace: Namespace,
         upgrade_run_id: str,
     ) -> None:
         """Given a DSPA with training data, when a regression pipeline run is submitted, then it succeeds."""
         phase = wait_for_pipeline_run(
             admin_client=admin_client,
-            namespace=pipelines_namespace.name,
+            namespace=upgrade_namespace.name,
             run_id=upgrade_run_id,
             timeout=AUTOML_PIPELINE_TIMEOUT,
         )
@@ -66,7 +66,7 @@ class TestPreUpgradeAutoML:
         if phase != WORKFLOW_SUCCEEDED:
             collect_pipeline_pod_logs(
                 admin_client=admin_client,
-                namespace=pipelines_namespace.name,
+                namespace=upgrade_namespace.name,
                 run_id=upgrade_run_id,
             )
 
@@ -80,13 +80,13 @@ class TestPreUpgradeAutoML:
     def test_automl_experiment_has_artifacts(
         self,
         admin_client: DynamicClient,
-        pipelines_namespace: Namespace,
+        upgrade_namespace: Namespace,
         upgrade_run_id: str,
     ) -> None:
         """Verify the completed pipeline has workflow nodes with execution records."""
         workflow_nodes = get_workflow_completed_nodes(
             admin_client=admin_client,
-            namespace=pipelines_namespace.name,
+            namespace=upgrade_namespace.name,
             run_id=upgrade_run_id,
         )
 
@@ -138,19 +138,19 @@ class TestPostUpgradeAutoML:
     @pytest.mark.dependency(name="automl_run_accessible")
     def test_automl_experiment_accessible(
         self,
-        dspa_api_url: str,
-        dspa_auth_headers: dict[str, str],
-        dspa_ca_bundle_file: str,
+        upgrade_dspa_api_url: str,
+        upgrade_dspa_auth_headers: dict[str, str],
+        upgrade_dspa_ca_bundle_file: str,
         automl_upgrade_baseline: dict,
     ) -> None:
         """Verify the pre-upgrade experiment run is accessible and still in SUCCEEDED state."""
         run_id = automl_upgrade_baseline["run_id"]
 
         run = get_pipeline_run(
-            api_url=dspa_api_url,
-            headers=dspa_auth_headers,
+            api_url=upgrade_dspa_api_url,
+            headers=upgrade_dspa_auth_headers,
             run_id=run_id,
-            ca_bundle=dspa_ca_bundle_file,
+            ca_bundle=upgrade_dspa_ca_bundle_file,
         )
 
         run_state = run.get("state", "")
@@ -162,9 +162,9 @@ class TestPostUpgradeAutoML:
     @pytest.mark.dependency(depends=["automl_run_accessible"])
     def test_automl_experiment_details_intact(
         self,
-        dspa_api_url: str,
-        dspa_auth_headers: dict[str, str],
-        dspa_ca_bundle_file: str,
+        upgrade_dspa_api_url: str,
+        upgrade_dspa_auth_headers: dict[str, str],
+        upgrade_dspa_ca_bundle_file: str,
         automl_upgrade_baseline: dict,
     ) -> None:
         """Verify the run details (display name, pipeline reference, parameters) are intact."""
@@ -172,10 +172,10 @@ class TestPostUpgradeAutoML:
         expected_display_name = automl_upgrade_baseline["run_display_name"]
 
         run = get_pipeline_run(
-            api_url=dspa_api_url,
-            headers=dspa_auth_headers,
+            api_url=upgrade_dspa_api_url,
+            headers=upgrade_dspa_auth_headers,
             run_id=run_id,
-            ca_bundle=dspa_ca_bundle_file,
+            ca_bundle=upgrade_dspa_ca_bundle_file,
         )
 
         assert run.get("display_name") == expected_display_name, (
@@ -194,7 +194,7 @@ class TestPostUpgradeAutoML:
     def test_automl_workflow_survived(
         self,
         admin_client: DynamicClient,
-        pipelines_namespace: Namespace,
+        upgrade_namespace: Namespace,
         automl_upgrade_baseline: dict,
     ) -> None:
         """Verify the Argo Workflow CRD still exists with Succeeded phase."""
@@ -202,7 +202,7 @@ class TestPostUpgradeAutoML:
 
         phase = get_workflow_phase(
             admin_client=admin_client,
-            namespace=pipelines_namespace.name,
+            namespace=upgrade_namespace.name,
             run_id=run_id,
         )
 
@@ -215,7 +215,7 @@ class TestPostUpgradeAutoML:
     def test_automl_artifacts_survived(
         self,
         admin_client: DynamicClient,
-        pipelines_namespace: Namespace,
+        upgrade_namespace: Namespace,
         automl_upgrade_baseline: dict,
     ) -> None:
         """Verify the workflow execution nodes survived the upgrade."""
@@ -223,7 +223,7 @@ class TestPostUpgradeAutoML:
 
         workflow_nodes = get_workflow_completed_nodes(
             admin_client=admin_client,
-            namespace=pipelines_namespace.name,
+            namespace=upgrade_namespace.name,
             run_id=run_id,
         )
 
@@ -235,12 +235,12 @@ class TestPostUpgradeAutoML:
     @pytest.mark.post_upgrade
     def test_automl_managed_pipeline_accessible(
         self,
-        automl_managed_pipeline: dict[str, str] | None,
+        upgrade_tabular_managed_pipeline: dict[str, str] | None,
     ) -> None:
         """Verify the managed AutoML pipeline is still discoverable after upgrade."""
-        assert automl_managed_pipeline is not None, "Managed AutoML tabular pipeline not found after upgrade"
-        assert automl_managed_pipeline.get("pipeline_id"), "Managed pipeline has no pipeline_id after upgrade"
-        assert automl_managed_pipeline.get("pipeline_version_id"), (
+        assert upgrade_tabular_managed_pipeline is not None, "Managed AutoML tabular pipeline not found after upgrade"
+        assert upgrade_tabular_managed_pipeline.get("pipeline_id"), "Managed pipeline has no pipeline_id after upgrade"
+        assert upgrade_tabular_managed_pipeline.get("pipeline_version_id"), (
             "Managed pipeline has no pipeline_version_id after upgrade"
         )
 
@@ -271,11 +271,6 @@ class TestPostUpgradeAutoML:
         validate_deterministic_response(response=response)
 
 
-# ===========================================================================
-# Timeseries upgrade tests
-# ===========================================================================
-
-
 @pytest.mark.usefixtures("pre_upgrade_pipelines_dsc_patch", "ts_capture_upgrade_baseline")
 class TestPreUpgradeAutoMLTimeseries:
     """Run an AutoML timeseries experiment before upgrade, deploy the model, and capture baseline."""
@@ -285,13 +280,13 @@ class TestPreUpgradeAutoMLTimeseries:
     def test_ts_experiment_completes(
         self,
         admin_client: DynamicClient,
-        pipelines_namespace: Namespace,
+        upgrade_namespace: Namespace,
         upgrade_ts_run_id: str,
     ) -> None:
         """Given a DSPA with timeseries data, when a timeseries pipeline run is submitted, then it succeeds."""
         phase = wait_for_pipeline_run(
             admin_client=admin_client,
-            namespace=pipelines_namespace.name,
+            namespace=upgrade_namespace.name,
             run_id=upgrade_ts_run_id,
             timeout=AUTOML_PIPELINE_TIMEOUT,
         )
@@ -299,7 +294,7 @@ class TestPreUpgradeAutoMLTimeseries:
         if phase != WORKFLOW_SUCCEEDED:
             collect_pipeline_pod_logs(
                 admin_client=admin_client,
-                namespace=pipelines_namespace.name,
+                namespace=upgrade_namespace.name,
                 run_id=upgrade_ts_run_id,
             )
 
@@ -313,13 +308,13 @@ class TestPreUpgradeAutoMLTimeseries:
     def test_ts_experiment_has_artifacts(
         self,
         admin_client: DynamicClient,
-        pipelines_namespace: Namespace,
+        upgrade_namespace: Namespace,
         upgrade_ts_run_id: str,
     ) -> None:
         """Verify the completed timeseries pipeline has workflow nodes with execution records."""
         workflow_nodes = get_workflow_completed_nodes(
             admin_client=admin_client,
-            namespace=pipelines_namespace.name,
+            namespace=upgrade_namespace.name,
             run_id=upgrade_ts_run_id,
         )
 
@@ -355,6 +350,7 @@ class TestPreUpgradeAutoMLTimeseries:
         validate_deterministic_response(response=response)
 
 
+@pytest.mark.usefixtures("post_upgrade_pipelines_dsc_restore")
 class TestPostUpgradeAutoMLTimeseries:
     """Validate that the pre-upgrade AutoML timeseries experiment and model survived the upgrade."""
 
@@ -362,19 +358,19 @@ class TestPostUpgradeAutoMLTimeseries:
     @pytest.mark.dependency(name="ts_run_accessible")
     def test_ts_experiment_accessible(
         self,
-        dspa_api_url: str,
-        dspa_auth_headers: dict[str, str],
-        dspa_ca_bundle_file: str,
+        upgrade_dspa_api_url: str,
+        upgrade_dspa_auth_headers: dict[str, str],
+        upgrade_dspa_ca_bundle_file: str,
         ts_upgrade_baseline: dict,
     ) -> None:
         """Verify the pre-upgrade timeseries run is accessible and still in SUCCEEDED state."""
         run_id = ts_upgrade_baseline["run_id"]
 
         run = get_pipeline_run(
-            api_url=dspa_api_url,
-            headers=dspa_auth_headers,
+            api_url=upgrade_dspa_api_url,
+            headers=upgrade_dspa_auth_headers,
             run_id=run_id,
-            ca_bundle=dspa_ca_bundle_file,
+            ca_bundle=upgrade_dspa_ca_bundle_file,
         )
 
         run_state = run.get("state", "")
@@ -386,9 +382,9 @@ class TestPostUpgradeAutoMLTimeseries:
     @pytest.mark.dependency(depends=["ts_run_accessible"])
     def test_ts_experiment_details_intact(
         self,
-        dspa_api_url: str,
-        dspa_auth_headers: dict[str, str],
-        dspa_ca_bundle_file: str,
+        upgrade_dspa_api_url: str,
+        upgrade_dspa_auth_headers: dict[str, str],
+        upgrade_dspa_ca_bundle_file: str,
         ts_upgrade_baseline: dict,
     ) -> None:
         """Verify the timeseries run details are intact after upgrade."""
@@ -396,10 +392,10 @@ class TestPostUpgradeAutoMLTimeseries:
         expected_display_name = ts_upgrade_baseline["run_display_name"]
 
         run = get_pipeline_run(
-            api_url=dspa_api_url,
-            headers=dspa_auth_headers,
+            api_url=upgrade_dspa_api_url,
+            headers=upgrade_dspa_auth_headers,
             run_id=run_id,
-            ca_bundle=dspa_ca_bundle_file,
+            ca_bundle=upgrade_dspa_ca_bundle_file,
         )
 
         assert run.get("display_name") == expected_display_name, (
@@ -416,7 +412,7 @@ class TestPostUpgradeAutoMLTimeseries:
     def test_ts_workflow_survived(
         self,
         admin_client: DynamicClient,
-        pipelines_namespace: Namespace,
+        upgrade_namespace: Namespace,
         ts_upgrade_baseline: dict,
     ) -> None:
         """Verify the timeseries Argo Workflow CRD still exists with Succeeded phase."""
@@ -424,7 +420,7 @@ class TestPostUpgradeAutoMLTimeseries:
 
         phase = get_workflow_phase(
             admin_client=admin_client,
-            namespace=pipelines_namespace.name,
+            namespace=upgrade_namespace.name,
             run_id=run_id,
         )
 
@@ -438,7 +434,7 @@ class TestPostUpgradeAutoMLTimeseries:
     def test_ts_artifacts_survived(
         self,
         admin_client: DynamicClient,
-        pipelines_namespace: Namespace,
+        upgrade_namespace: Namespace,
         ts_upgrade_baseline: dict,
     ) -> None:
         """Verify the timeseries workflow execution nodes survived the upgrade."""
@@ -446,7 +442,7 @@ class TestPostUpgradeAutoMLTimeseries:
 
         workflow_nodes = get_workflow_completed_nodes(
             admin_client=admin_client,
-            namespace=pipelines_namespace.name,
+            namespace=upgrade_namespace.name,
             run_id=run_id,
         )
 

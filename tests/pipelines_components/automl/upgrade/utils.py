@@ -158,8 +158,12 @@ def discover_model_path(
     predictor_paths = set()
     for line in logs.strip().splitlines():
         if "/predictor/" in line:
-            parts = line.strip().split()
-            file_path = parts[-1] if parts else ""
+            # mc ls format: "[date time zone] size class path" — split into at most 6 parts
+            # so the path (which may theoretically contain spaces) stays intact in parts[5]
+            parts = line.strip().split(None, 5)
+            if len(parts) < 6:
+                continue
+            file_path = parts[5]
             predictor_dir = file_path.split("/predictor/")[0] + "/predictor"
             predictor_paths.add(predictor_dir)
 
