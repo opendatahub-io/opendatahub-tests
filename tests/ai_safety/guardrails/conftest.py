@@ -32,6 +32,7 @@ from tests.ai_safety.guardrails.constants import (
     TEST_TLS_CERTIFICATE,
     TEST_TLS_PRIVATE_KEY,
 )
+from tests.ai_safety.guardrails.utils import patch_tempo_operator_for_rosa
 from utilities.constants import (
     KServeDeploymentType,
     RuntimeTemplates,
@@ -41,29 +42,6 @@ from utilities.operator_utils import get_cluster_service_version
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 GUARDRAILS_ORCHESTRATOR_NAME = "guardrails-orchestrator"
-
-
-def patch_tempo_operator_for_rosa(deployment: Deployment, role_arn: str) -> None:
-    """
-    Patches the Tempo operator deployment with AWS Role ARN for ROSA clusters.
-
-    Args:
-        deployment: The Tempo operator deployment object
-        role_arn: AWS IAM Role ARN to be used by the operator
-    """
-    LOGGER.info(f"Patching Tempo operator deployment with ROLE ARN: {role_arn}")
-    deployment_dict = deployment.instance.to_dict()
-    containers = deployment_dict["spec"]["template"]["spec"]["containers"]
-
-    for container in containers:
-        if "env" not in container:
-            container["env"] = []
-        # Add ROLEARN environment variable
-        container["env"].append({"name": "ROLEARN", "value": role_arn})
-
-    deployment.update(deployment_dict)
-    deployment.wait_for_replicas()
-    LOGGER.info("Successfully patched Tempo operator deployment for ROSA")
 
 
 # ServingRuntimes, InferenceServices, and related resources

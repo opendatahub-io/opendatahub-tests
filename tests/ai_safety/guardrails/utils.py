@@ -4,6 +4,7 @@ from typing import Any
 
 import requests
 import structlog
+from ocp_resources.deployment import Deployment
 from requests import Response
 from timeout_sampler import retry
 
@@ -12,6 +13,28 @@ from utilities.exceptions import UnexpectedValueError
 from utilities.guardrails import get_auth_headers
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+def patch_tempo_operator_for_rosa(deployment: Deployment, role_arn: str) -> None:
+    """
+    Patches the Tempo operator deployment with AWS Role ARN for ROSA clusters.
+
+    Args:
+        deployment: The Tempo operator deployment object
+        role_arn: AWS IAM Role ARN to be used by the operator
+    """
+    deployment_dict = deployment.instance.to_dict()
+    containers = deployment_dict["spec"]["template"]["spec"]["containers"]
+
+    for container in containers:
+        if "env" not in container:
+            container["env"] = []
+        # Add ROLEARN environment variable
+        container["env"].append({"name": "ROLEARN", "value": role_arn})
+
+    deployment.update(deployment_dict)
+    deployment.wait_for_replicas()
+    LOGGER.info("Successfully patched Tempo operator deployment for ROSA")
 
 
 def get_chat_detections_payload(content: str, model: str, detectors: dict[str, Any] | None = None) -> dict[str, Any]:
