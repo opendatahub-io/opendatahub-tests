@@ -42,6 +42,16 @@ class TestAgentCatalogNegative:
                 id="test_invalid_next_page_token",
                 marks=pytest.mark.tier2,
             ),
+            pytest.param(
+                "agents/999999/artifacts",
+                None,
+                id="test_artifacts_nonexistent_agent",
+            ),
+            pytest.param(
+                "agents/2/artifacts",
+                {"artifactType": "image-artifact"},
+                id="test_artifacts_invalid_artifact_type",
+            ),
         ],
     )
     def test_invalid_request_returns_error(
