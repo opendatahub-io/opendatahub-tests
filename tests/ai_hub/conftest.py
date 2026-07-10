@@ -94,7 +94,7 @@ def pytest_sessionstart(session: pytest.Session) -> None:
         ai_hub_constants.MR_DB_MYSQL_ARGS = []
         ai_hub_constants.MR_RUNTIME_TEMPLATE = RuntimeTemplates.VLLM_CPU_Z
     else:
-        ai_hub_constants.MR_RUNTIME_TEMPLATE = RuntimeTemplates.VLLM_CPU_X86
+        ai_hub_constants.MR_RUNTIME_TEMPLATE = RuntimeTemplates.VLLM_CPU_x86
 
 
 @pytest.fixture(scope="session")
