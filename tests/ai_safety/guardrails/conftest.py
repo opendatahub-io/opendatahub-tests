@@ -1,6 +1,7 @@
+import os
 from collections.abc import Generator
 from typing import Any
-import os
+
 import portforward
 import pytest
 from kubernetes.dynamic import DynamicClient
@@ -317,7 +318,7 @@ def installed_tempo_operator(admin_client: DynamicClient, model_namespace: Names
         deployment.wait_for_replicas()
 
         # For ROSA clusters, patch the deployment with ROLE ARN
-        LOGGER.info(f"ROSA cluster detected. Patching Tempo operator with ROLE ARN environment variable")
+        LOGGER.info("ROSA cluster detected. Patching Tempo operator with ROLE ARN environment variable")
         patch_tempo_operator_for_rosa(deployment=deployment, role_arn=tempo_role_arn)
 
         yield

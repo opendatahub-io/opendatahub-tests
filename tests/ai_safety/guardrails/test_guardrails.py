@@ -33,9 +33,9 @@ from utilities.constants import (
     BUILTIN_DETECTOR_CONFIG,
     HAP_DETECTOR,
     LLM_D_CHAT_GENERATION_CONFIG,
-    MinIo,
     PROMPT_INJECTION_DETECTOR,
     LLMdInferenceSimConfig,
+    MinIo,
 )
 from utilities.plugins.constant import OpenAIEnpoints
 
