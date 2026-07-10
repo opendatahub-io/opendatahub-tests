@@ -46,13 +46,13 @@ def test_evalhub_crd_exists(
 class TestEvalHubDeployment:
     """Tests for EvalHub deployment topology (pods, containers, labels)."""
 
-    def test_evalhub_single_pod_single_container(
+    def test_evalhub_pod_has_expected_containers(
         self,
         admin_client: DynamicClient,
         model_namespace: Namespace,
         evalhub_deployment: Deployment,
     ) -> None:
-        """Verify the EvalHub deployment runs exactly 1 pod with 1 container named 'evalhub'."""
+        """Verify the EvalHub deployment runs exactly 1 pod with evalhub and kube-rbac-proxy containers."""
         pods = list(
             Pod.get(
                 client=admin_client,
@@ -65,12 +65,14 @@ class TestEvalHubDeployment:
 
         pod = pods[0]
         containers = pod.instance.spec.containers
-        assert len(containers) == 1, (
-            f"Expected 1 container in EvalHub pod, found {len(containers)}: {[c.name for c in containers]}"
+        container_names = [container.name for container in containers]
+        assert EVALHUB_CONTAINER_NAME in container_names, (
+            f"Expected container '{EVALHUB_CONTAINER_NAME}' in pod, found: {container_names}"
         )
-        assert containers[0].name == EVALHUB_CONTAINER_NAME, (
-            f"Expected container name '{EVALHUB_CONTAINER_NAME}', got '{containers[0].name}'"
+        assert "kube-rbac-proxy" in container_names, (
+            f"Expected container 'kube-rbac-proxy' in pod, found: {container_names}"
         )
+        assert len(containers) == 2, f"Expected 2 containers in EvalHub pod, found {len(containers)}: {container_names}"
 
         # Verify pod labels match what the operator sets in deployment.go lines 64-68
         pod_labels = pod.instance.metadata.labels

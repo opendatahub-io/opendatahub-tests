@@ -7,6 +7,7 @@ import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
+from ocp_resources.node import Node
 from ocp_resources.secret import Secret
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -21,6 +22,85 @@ from utilities.plugins.constant import OpenAIEnpoints
 from utilities.plugins.openai_plugin import OpenAIClient
 
 LOGGER = structlog.get_logger(name=__name__)
+
+ZONE_LABEL = "topology.kubernetes.io/zone"
+
+
+def get_gpu_node_zone_selector(
+    client: DynamicClient,
+    gpu_resource: str,
+    min_gpus: int = 1,
+) -> dict[str, str] | None:
+    """Return a nodeSelector for the zone with the most allocatable GPU capacity.
+
+    Used to pin PVC download pods to the same availability zone as GPU worker nodes,
+    so ReadWriteOnce volumes bind where the vLLM predictor can schedule.
+
+    Args:
+        client: Kubernetes client for cluster introspection.
+        gpu_resource: Kubernetes extended resource name (e.g. nvidia.com/gpu).
+        min_gpus: Minimum allocatable GPUs required on a node to count it.
+
+    Returns:
+        A nodeSelector dict keyed by topology.kubernetes.io/zone, or None when no
+        worker node exposes the GPU resource with a zone label (on-prem clusters).
+
+    Note:
+        Only effective when the storage class uses WaitForFirstConsumer binding.
+        Immediate-binding storage classes may provision volumes before the download
+        pod runs, requiring cluster-level topology alignment instead.
+    """
+    zone_stats: dict[str, dict[str, int]] = {}
+    for node in Node.get(client=client, label_selector="node-role.kubernetes.io/worker"):
+        allocatable = node.instance.status.allocatable or {}
+        try:
+            gpu_count = int(allocatable.get(gpu_resource, 0))
+        except TypeError, ValueError:
+            continue
+        if gpu_count < min_gpus:
+            continue
+
+        zone = node.instance.metadata.labels.get(ZONE_LABEL)
+        if not zone:
+            LOGGER.info(
+                "GPU node %s has no %s label; skipping zone selection",
+                node.name,
+                ZONE_LABEL,
+            )
+            continue
+
+        if zone not in zone_stats:
+            zone_stats[zone] = {"total_gpus": 0, "node_count": 0}
+        zone_stats[zone]["total_gpus"] += gpu_count
+        zone_stats[zone]["node_count"] += 1
+
+    if not zone_stats:
+        LOGGER.info(
+            "No GPU worker nodes with zone labels found for %s; download pod will not be zone-pinned",
+            gpu_resource,
+        )
+        return None
+
+    selected_zone = max(
+        zone_stats,
+        key=lambda zone: (zone_stats[zone]["total_gpus"], zone_stats[zone]["node_count"]),
+    )
+    LOGGER.info(
+        "Selected zone %s for PVC download (%s GPU(s) on %s node(s))",
+        selected_zone,
+        zone_stats[selected_zone]["total_gpus"],
+        zone_stats[selected_zone]["node_count"],
+    )
+    return {ZONE_LABEL: selected_zone}
+
+
+def add_image_pull_secrets_if_configured(
+    isvc_kwargs: dict[str, Any],
+    kserve_registry_pull_secret: Secret | None,
+) -> None:
+    """Add imagePullSecrets to ISVC kwargs when a registry pull secret is configured."""
+    if kserve_registry_pull_secret is not None:
+        isvc_kwargs["image_pull_secrets"] = [kserve_registry_pull_secret.name]
 
 
 def dedupe_vllm_cli_args(arguments: list[str]) -> list[str]:

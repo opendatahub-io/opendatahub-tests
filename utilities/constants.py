@@ -15,6 +15,7 @@ class KServeDeploymentType:
 
 
 class ModelFormat:
+    AUTOGLUON: str = "autogluon"
     CAIKIT: str = "caikit"
     LIGHTGBM: str = "lightgbm"
     MLSERVER: str = "mlserver"
@@ -70,6 +71,7 @@ class ModelEndpoint:
 
 
 class ModelVersion:
+    AUTOGLUON_1: str = "1"
     OPSET1: str = "opset1"
     OPSET13: str = "opset13"
 
@@ -81,6 +83,8 @@ class RuntimeTemplates:
     CAIKIT_STANDALONE_SERVING: str = "caikit-standalone-serving-template"
     TGIS_GRPC_SERVING: str = "tgis-grpc-serving-template"
     VLLM_CUDA: str = "vllm-cuda-runtime-template"
+    VLLM_FAST_1_CUDA: str = "vllm-fast-1-cuda-runtime-template"
+    VLLM_FAST_2_CUDA: str = "vllm-fast-2-cuda-runtime-template"
     VLLM_ROCM: str = "vllm-rocm-runtime-template"
     VLLM_GAUDI: str = "vllm-gaudi-runtime-template"
     VLLM_SPYRE: str = "vllm-spyre-x86-runtime-template"
@@ -103,6 +107,7 @@ class ModelInferenceRuntime:
     VLLM_RUNTIME: str = f"{ModelFormat.VLLM}-runtime"
     TENSORFLOW_RUNTIME: str = f"{ModelFormat.TENSORFLOW}-runtime"
     MLSERVER_RUNTIME: str = f"{ModelFormat.MLSERVER}-runtime"
+    AUTOGLUON_RUNTIME: str = f"{ModelFormat.AUTOGLUON}-runtime"
 
 
 class Protocols:
@@ -148,7 +153,9 @@ class ApiGroups:
     KSERVE: str = "serving.kserve.io"
     KUADRANT_IO: str = "kuadrant.io"
     MAAS_IO: str = "maas.opendatahub.io"
+    INFERENCE_OPENDATAHUB_IO: str = "inference.opendatahub.io"
     AUTH_IO: str = "SERVICES_PLATFORM_OPENDATAHUB_IO"
+    SPARKOPERATOR_K8S_IO: str = "sparkoperator.k8s.io"
 
 
 class Annotations:
@@ -493,6 +500,8 @@ class ContainerImages:
 
 
 TRUSTYAI_SERVICE_NAME: str = "trustyai-service"
+QWEN_ISVC_NAME = "qwen-isvc"
+QWEN_MODEL_NAME: str = "qwen25-05b-instruct"
 
 LLM_D_INFERENCE_SIM_NAME = "llm-d-inference-sim"
 

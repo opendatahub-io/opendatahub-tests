@@ -51,6 +51,7 @@ def openvino_serving_runtime(
     request: pytest.FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
+    ovms_runtime_image: str,
 ) -> Generator[ServingRuntime]:
     """
     Provides a ServingRuntime resource for OpenVINO with the specified protocol and deployment type.
@@ -59,8 +60,7 @@ def openvino_serving_runtime(
         request (pytest.FixtureRequest): Pytest fixture request containing parameters.
         admin_client (DynamicClient): Kubernetes dynamic client.
         model_namespace (Namespace): Kubernetes namespace for model deployment.
-        openvino_runtime_image (str): The container image for the OpenVINO runtime.
-        protocol (str): The protocol to use (e.g., REST or GRPC).
+        ovms_runtime_image (str): The container image for the OpenVINO runtime.
 
     Yields:
         ServingRuntime: An instance of the OpenVINO ServingRuntime configured as per parameters.
@@ -70,7 +70,24 @@ def openvino_serving_runtime(
         name="openvino-runtime",
         namespace=model_namespace.name,
         template_name=RuntimeTemplates.OVMS_KSERVE,
-        deployment_type=request.param["deployment_type"],
+        deployment_type=request.param["deployment_mode"],
+    ) as model_runtime:
+        yield model_runtime
+
+
+@pytest.fixture(scope="class")
+def openvino_pvc_serving_runtime(
+    request: pytest.FixtureRequest,
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+) -> Generator[ServingRuntime]:
+    """OpenVINO ServingRuntime fixture for PVC tests."""
+    with ServingRuntimeFromTemplate(
+        client=admin_client,
+        name="openvino-runtime",
+        namespace=model_namespace.name,
+        template_name=RuntimeTemplates.OVMS_KSERVE,
+        deployment_type=request.param.get("deployment_mode", KServeDeploymentType.STANDARD),
     ) as model_runtime:
         yield model_runtime
 
@@ -108,7 +125,7 @@ def openvino_inference_service(
         "storage_uri": s3_models_storage_uri,
         "model_format": openvino_serving_runtime.instance.spec.supportedModelFormats[0].name,
         "model_service_account": openvino_model_service_account.name,
-        "deployment_mode": params.get("deployment_type", KServeDeploymentType.RAW_DEPLOYMENT),
+        "deployment_mode": params.get("deployment_mode", KServeDeploymentType.STANDARD),
         "external_route": params.get("enable_external_route", False),
     }
 

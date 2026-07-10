@@ -98,6 +98,7 @@ def download_model_data(
     model_path: str,
     use_sub_path: bool = False,
     restricted_scc_init: bool = False,
+    node_selector: dict[str, str] | None = None,
 ) -> str:
     """
     Downloads the model data from the bucket to the PVC
@@ -115,6 +116,7 @@ def download_model_data(
         use_sub_path (bool): Whether to use a sub path
         restricted_scc_init (bool): Use OpenShift restricted-SCC-safe init (no chmod,
             fsGroup from namespace, init container mounts full PVC when use_sub_path).
+        node_selector (dict[str, str] | None): Optional nodeSelector for the download pod.
 
     Returns:
         str: Path to the model path
@@ -191,6 +193,8 @@ def download_model_data(
             "fsGroup": fs_group,
             "seccompProfile": {"type": "RuntimeDefault"},
         }
+    if node_selector:
+        pod_kwargs["node_selector"] = node_selector
 
     with Pod(**pod_kwargs) as pod:
         pod.wait_for_status(status=Pod.Status.RUNNING)
@@ -474,7 +478,9 @@ def get_not_running_pods(pods: list[Pod]) -> list[dict[str, Any]]:
             ):
                 pods_not_running.append({pod.name: pod.status})
     except (ResourceNotFoundError, NotFoundError) as exc:
-        LOGGER.warning("Ignoring pod that disappeared during cluster sanity check: %s", exc)
+        LOGGER.warning(
+            "Ignoring pod '%s' that disappeared during cluster sanity check: %s", pod.name, type(exc).__name__
+        )
     return pods_not_running
 
 
@@ -490,8 +496,7 @@ def wait_for_pods_running(
     samples = TimeoutSampler(
         wait_timeout=180,
         sleep=5,
-        func=get_not_running_pods,
-        pods=list(Pod.get(client=admin_client, namespace=namespace_name)),
+        func=lambda: get_not_running_pods(pods=list(Pod.get(client=admin_client, namespace=namespace_name))),
         exceptions_dict={NotFoundError: [], ResourceNotFoundError: []},
     )
     sample = None

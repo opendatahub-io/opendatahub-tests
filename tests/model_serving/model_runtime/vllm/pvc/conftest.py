@@ -7,12 +7,15 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
+from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest import FixtureRequest
 
 from tests.model_serving.model_runtime.vllm.constant import ACCELERATOR_IDENTIFIER, PREDICT_RESOURCES
 from tests.model_serving.model_runtime.vllm.utils import (
+    add_image_pull_secrets_if_configured,
     dedupe_vllm_cli_args,
+    get_gpu_node_zone_selector,
     validate_supported_quantization_schema,
 )
 from utilities.constants import KServeDeploymentType, Labels
@@ -47,6 +50,7 @@ def pvc_downloaded_model_data(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     vllm_model_pvc: PersistentVolumeClaim,
+    supported_accelerator_type: str,
     aws_secret_access_key: str,
     aws_access_key_id: str,
     models_s3_bucket_name: str,
@@ -54,6 +58,11 @@ def pvc_downloaded_model_data(
     models_s3_bucket_region: str,
 ) -> str:
     """Download vLLM model data from the models S3 bucket into the PVC."""
+    gpu_resource = ACCELERATOR_IDENTIFIER.get(
+        supported_accelerator_type.lower(),
+        Labels.Nvidia.NVIDIA_COM_GPU,
+    )
+    node_selector = get_gpu_node_zone_selector(client=admin_client, gpu_resource=gpu_resource)
     return download_model_data(
         client=admin_client,
         aws_access_key_id=aws_access_key_id,
@@ -66,6 +75,7 @@ def pvc_downloaded_model_data(
         model_path=request.param["model-dir"],
         use_sub_path=True,
         restricted_scc_init=True,
+        node_selector=node_selector,
     )
 
 
@@ -78,6 +88,7 @@ def vllm_pvc_inference_service(
     supported_accelerator_type: str,
     vllm_model_pvc: PersistentVolumeClaim,
     pvc_downloaded_model_data: str,
+    kserve_registry_pull_secret: Secret | None,
 ) -> Generator[InferenceService, Any, Any]:
     """vLLM InferenceService backed by PVC storage."""
     isvc_kwargs: dict[str, Any] = {
@@ -87,7 +98,7 @@ def vllm_pvc_inference_service(
         "runtime": serving_runtime.name,
         "storage_uri": f"pvc://{vllm_model_pvc.name}/{pvc_downloaded_model_data}",
         "model_format": serving_runtime.instance.spec.supportedModelFormats[0].name,
-        "deployment_mode": request.param.get("deployment_mode", KServeDeploymentType.RAW_DEPLOYMENT),
+        "deployment_mode": request.param.get("deployment_mode", KServeDeploymentType.STANDARD),
         "external_route": True,
     }
 
@@ -126,6 +137,11 @@ def vllm_pvc_inference_service(
 
     if min_replicas := request.param.get("min-replicas"):
         isvc_kwargs["min_replicas"] = min_replicas
+
+    add_image_pull_secrets_if_configured(
+        isvc_kwargs=isvc_kwargs,
+        kserve_registry_pull_secret=kserve_registry_pull_secret,
+    )
 
     with create_isvc(**isvc_kwargs) as isvc:
         yield isvc

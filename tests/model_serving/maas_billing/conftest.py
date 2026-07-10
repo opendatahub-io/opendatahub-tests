@@ -25,6 +25,11 @@ from pytest import FixtureRequest
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutSampler
 
+from tests.model_serving.maas_billing.maas_api_key.utils import (
+    MAAS_AUTH_POLICY_FIXTURE_NAMES,
+    MAAS_GATEWAY_AUTH_POLICY_NAME,
+    wait_for_auth_policy_accepted,
+)
 from tests.model_serving.maas_billing.maas_subscription.utils import (
     MAAS_SUBSCRIPTION_NAMESPACE,
     create_maas_subscription,
@@ -892,12 +897,36 @@ def authorino_tls_configured(admin_client: DynamicClient) -> Generator[None, Any
 
 
 @pytest.fixture(scope="class")
+def maas_gateway_auth_policy_ready(
+    admin_client: DynamicClient,
+    request: FixtureRequest,
+) -> None:
+    """Activate a MaaSAuthPolicy, then wait until maas-gateway-auth is Accepted."""
+    for fixture_name in MAAS_AUTH_POLICY_FIXTURE_NAMES:
+        if fixture_name in request.fixturenames:
+            request.getfixturevalue(argname=fixture_name)
+            break
+    else:
+        request.getfixturevalue(argname="maas_auth_policy_tinyllama_free")
+    wait_for_auth_policy_accepted(
+        admin_client=admin_client,
+        policy_name=MAAS_GATEWAY_AUTH_POLICY_NAME,
+        namespace=MAAS_GATEWAY_NAMESPACE,
+    )
+    LOGGER.info(
+        f"maas_gateway_auth_policy_ready: '{MAAS_GATEWAY_NAMESPACE}/{MAAS_GATEWAY_AUTH_POLICY_NAME}' is Accepted"
+    )
+
+
+@pytest.fixture(scope="class")
 def maas_api_gateway_reachable(
     request_session_http: requests.Session,
     base_url: str,
     maas_api_endpoints_ready: None,
     authorino_tls_configured: None,
+    maas_gateway_auth_policy_ready: None,
 ) -> None:
+    """Probe GET /v1/models via the gateway after maas-gateway-auth is reconciled."""
     probe_url = f"{base_url}/v1/models"
 
     for gateway_reachable, _status_code, _response_text in TimeoutSampler(
@@ -1221,35 +1250,27 @@ def maas_subscription_tinyllama_free(
 @pytest.fixture(scope="class")
 def minimal_subscription_for_free_user(
     admin_client: DynamicClient,
-    maas_unprivileged_model_namespace,
-    maas_subscription_namespace,
-) -> Generator[Any, Any, Any]:
-    """Create a minimal MaaSModelRef + MaaSSubscription for system:authenticated."""
-    model_ns = maas_unprivileged_model_namespace.name
-    model_name = f"e2e-authz-model-{generate_random_name()}"
-    sub_name = f"e2e-authz-free-sub-{generate_random_name()}"
+    maas_subscription_namespace: Namespace,
+    maas_model_tinyllama_free: MaaSModelRef,
+) -> Generator[MaaSSubscription, Any, Any]:
+    """Active MaaSSubscription for system:authenticated on the shared TinyLlama model ref.
 
-    with (
-        MaaSModelRef(
-            client=admin_client,
-            name=model_name,
-            namespace=model_ns,
-            model_ref={"name": model_name, "namespace": model_ns, "kind": "LLMInferenceService"},
-            teardown=True,
-            wait_for_resource=True,
-        ) as model_ref,
-        create_maas_subscription(
-            admin_client=admin_client,
-            subscription_namespace=maas_subscription_namespace.name,
-            subscription_name=sub_name,
-            owner_group_name="system:authenticated",
-            model_name=model_ref.name,
-            model_namespace=model_ref.namespace,
-            tokens_per_minute=1000,
-            window="1m",
-            priority=0,
-            teardown=True,
-            wait_for_resource=True,
-        ) as subscription,
-    ):
+    Reuses maas_model_tinyllama_free so no duplicate MaaSModelRef is created.
+    Required for admin API key auto-select (SelectHighestPriority) to work correctly.
+    """
+    sub_name = f"e2e-authz-free-sub-{generate_random_name()}"
+    with create_maas_subscription(
+        admin_client=admin_client,
+        subscription_namespace=maas_subscription_namespace.name,
+        subscription_name=sub_name,
+        owner_group_name="system:authenticated",
+        model_name=maas_model_tinyllama_free.name,
+        model_namespace=maas_model_tinyllama_free.namespace,
+        tokens_per_minute=1000,
+        window="1m",
+        priority=0,
+        teardown=True,
+        wait_for_resource=True,
+    ) as subscription:
+        subscription.wait_for_condition(condition="Ready", status="True", timeout=300)
         yield subscription

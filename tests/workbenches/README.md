@@ -6,18 +6,25 @@ This directory contains tests for Jupyter notebook workbenches in OpenDataHub/RH
 
 ```text
 workbenches/
-├── notebooks_server/
-│   ├── controller/
-│   │   ├── conftest.py                   # Pytest fixtures (PVC, notebook image, notebook CR, pod)
-│   │   ├── utils.py                      # Shared utilities (image resolution, notebook CR building, username retrieval)
-│   │   ├── test_spawning.py              # Basic notebook spawning tests
-│   │   ├── test_custom_images.py         # Custom image package verification tests
-│   │   └── upgrade/
-│   │       ├── conftest.py               # Session-scoped fixtures for upgrade lifecycle
-│   │       └── test_upgrade.py           # Pre/post upgrade notebook survival tests
-│   └── operator/
-│       └── test_imagestream_health.py    # ImageStream validation tests
-└── notebook_images/                      # Notebook container image tests (placeholder)
+|-- notebooks_server/
+|   |-- controller/
+|   |   |-- conftest.py                   # Pytest fixtures (PVC, notebook image, notebook CR, pod)
+|   |   |-- utils.py                      # Shared utilities (image resolution, notebook CR building)
+|   |   |-- test_spawning.py              # Basic notebook spawning tests
+|   |   |-- test_custom_images.py         # Custom image package verification tests
+|   |   +-- upgrade/
+|   |       |-- conftest.py               # Session-scoped fixtures for upgrade lifecycle
+|   |       +-- test_upgrade.py           # Pre/post upgrade notebook survival tests
+|   +-- operator/
+|       +-- test_imagestream_health.py    # ImageStream validation tests
++-- notebook_images/                      # N-1 workbench image upgrade survival tests
+    |-- utils.py                          # Image resolution, log/HTTP validation helpers
+    +-- upgrade/
+        |-- conftest.py                   # Session-scoped upgrade fixtures per IDE
+        |-- survival_checks.py            # Shared pre/post-upgrade validation steps
+        |-- test_upgrade_jupyterlab.py    # JupyterLab survival tests
+        |-- test_upgrade_codeserver.py    # Code Server survival tests
+        +-- test_upgrade_rstudio.py       # RStudio survival tests (EUS only)
 ```
 
 ### Current Test Suites
@@ -26,6 +33,7 @@ workbenches/
 - **`notebooks_server/controller/test_spawning.py`** - Tests basic notebook creation via Notebook CR and validates pod creation. Also tests Auth proxy container resource customization via annotations
 - **`notebooks_server/controller/test_custom_images.py`** - Validates custom workbench images contain required Python packages by spawning a workbench, installing any missing packages, and executing import verification
 - **`notebooks_server/controller/upgrade/test_upgrade.py`** - Upgrade survival tests. Pre-upgrade creates a notebook and captures its pod creation timestamp to a ConfigMap. Post-upgrade verifies the pod was not restarted by comparing timestamps
+- **`notebook_images/upgrade/`** - Per-IDE N-1 workbench image survival tests for JupyterLab, Code Server, and RStudio (EUS). Pre-upgrade launches dashboard-faithful workbenches and captures baselines; post-upgrade verifies pod continuity, image invariants, StatefulSet health, PVC data, logs, and HTTP health
 
 ## Test Markers
 
@@ -62,6 +70,12 @@ uv run pytest --pre-upgrade tests/workbenches/notebooks_server/controller/upgrad
 
 # Run upgrade tests (post-upgrade phase)
 uv run pytest --post-upgrade tests/workbenches/notebooks_server/controller/upgrade/
+
+# Run N-1 image upgrade tests (pre-upgrade phase)
+uv run pytest --pre-upgrade tests/workbenches/notebook_images/upgrade/
+
+# Run N-1 image upgrade tests (post-upgrade phase)
+uv run pytest --post-upgrade tests/workbenches/notebook_images/upgrade/
 ```
 
 ### Run Tests with Markers

@@ -18,7 +18,6 @@ REDHAT_AI_FILTER: str = "Red+Hat+AI"
 REDHAT_AI_VALIDATED_FILTER = "Red+Hat+AI+Validated"
 OTHER_MODELS_CATALOG_ID: str = "other_models"
 SAMPLE_MODEL_NAME3 = "mistralai/Ministral-8B-Instruct-2410"
-CATALOG_CONTAINER: str = "catalog"
 REDHAT_AI_CATALOG_ID: str = "redhat_ai_models"
 OTHER_MODELS: str = "Other"
 VALIDATED_CATALOG_ID: str = "redhat_ai_validated_models"
@@ -56,6 +55,18 @@ PERFORMANCE_DATA_DIR: str = "/shared-benchmark-data"
 CATALOG_SOURCE_LABEL_KEY: str = "opendatahub.io/catalog-source"
 LABELED_SOURCES_PATH_PREFIX: str = "/data/labeled-sources/"
 MODEL_CATALOG_DEPLOYMENT_NAME: str = "model-catalog"
+RECOMMENDED_ARTIFACT_PROPERTY: str = "ttft_p90.double_value"
+RECOMMENDED_TARGET_RPS: int = 10
+RECOMMENDED_PARETO_QUERY_PARAMS: dict[str, str] = {
+    "targetRPS": str(RECOMMENDED_TARGET_RPS),
+    "latencyProperty": "ttft_p90",
+    "rpsProperty": "requests_per_second",
+    "hardwareCountProperty": "hardware_count",
+    "hardwareTypeProperty": "hardware_type",
+}
+RECOMMENDED_PARETO_ADDITIONAL_PARAMS: str = "".join(
+    f"&{param_key}={param_value}" for param_key, param_value in RECOMMENDED_PARETO_QUERY_PARAMS.items()
+)
 HF_SOURCE_ID: str = "huggingface_mixed"
 HF_MODEL_NAME: str = "ibm-granite/granite-speech-3.2-8b"
 # TODO: get a service account to host these models

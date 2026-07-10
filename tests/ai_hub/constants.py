@@ -39,6 +39,12 @@ DB_RESOURCE_NAME: str = f"{DB_BASE_RESOURCES_NAME}0"
 MR_DB_IMAGE_DIGEST: str = (
     "public.ecr.aws/docker/library/mysql@sha256:28540698ce89bd72f985044de942d65bd99c6fadb2db105327db57f3f70564f0"
 )
+MR_DB_MYSQL_ARGS: list[str] = ["--datadir", "/var/lib/mysql/datadir"]
+# MySQL 8.4 from registry.redhat.io — supports amd64/arm64/s390x/ppc64le.
+# Uses run-mysqld entrypoint which sets MYSQL_DATADIR internally, no args needed.
+MR_DB_IMAGE_DIGEST_S390X: str = (
+    "registry.redhat.io/rhel9/mysql-84@sha256:c16d572a6ff2ba6029a261ea4ba6342a14743f1e2615b23a32964a201bda9566"
+)
 MODEL_REGISTRY_DB_SECRET_STR_DATA: dict[str, str] = {
     "database-name": "model_registry",
     "database-password": "TheBlurstOfTimes",  # pragma: allowlist secret
@@ -71,6 +77,7 @@ SAMPLE_MODEL_NAME1 = "mistralai/Mistral-7B-Instruct-v0.3"
 CUSTOM_CATALOG_ID1: str = "sample_custom_catalog1"
 DEFAULT_MODEL_CATALOG_CM: str = "default-catalog-sources"
 MCP_CATALOG_API_PATH: str = "/api/mcp_catalog/v1alpha1/"
+AGENT_CATALOG_API_PATH: str = "/api/agent_catalog/v1alpha1/"
 KUBERBACPROXY_STR: str = "KubeRBACProxyAvailable"
 MR_POSTGRES_DB_OBJECT: dict[Any, str] = {
     Service: f"{MR_INSTANCE_NAME}-postgres",
@@ -79,3 +86,4 @@ MR_POSTGRES_DB_OBJECT: dict[Any, str] = {
     Secret: f"{MR_INSTANCE_NAME}-postgres-credentials",
 }
 MR_POSTGRES_DEPLOYMENT_NAME_STR = f"{MR_INSTANCE_NAME}-postgres"
+CATALOG_CONTAINER: str = "catalog"
