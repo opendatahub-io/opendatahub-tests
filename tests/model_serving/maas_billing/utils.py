@@ -68,8 +68,10 @@ def _first_ready_llmisvc(
 
 
 def detect_scheme_via_llmisvc(client, namespace: str = "llm") -> str:
-    """
-    Using LLMInferenceService's URL to infer the scheme.
+    """Return https for external MaaS gateway traffic.
+
+    LLMISVC status URLs may report http; using that causes HTTP→HTTPS redirects
+    that turn POST into GET.
     """
     service = _first_ready_llmisvc(client=client, namespace=namespace)
     if not service:
@@ -77,9 +79,10 @@ def detect_scheme_via_llmisvc(client, namespace: str = "llm") -> str:
 
     url = get_llm_inference_url(llm_service=service)
     scheme = (urlparse(url).scheme or "").lower()
-    if scheme in ("http", "https"):
-        return scheme
-
+    if scheme == "http":
+        LOGGER.info(
+            f"detect_scheme_via_llmisvc: LLMISVC URL is http ({url}); using https to avoid HTTP→HTTPS POST→GET redirect"
+        )
     return "https"
 
 
