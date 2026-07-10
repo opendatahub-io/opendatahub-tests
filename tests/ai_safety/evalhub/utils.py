@@ -17,7 +17,9 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_FULL_API_VERSION_V1ALPHA1,
     EVALHUB_HEALTH_PATH,
     EVALHUB_HEALTH_STATUS_HEALTHY,
+    EVALHUB_JOB_BENCHMARK_LOGS_PATH_TEMPLATE,
     EVALHUB_JOB_CONFIG_CLUSTERROLE,
+    EVALHUB_JOB_LOGS_PATH_TEMPLATE,
     EVALHUB_JOBS_PATH,
     EVALHUB_JOBS_WRITER_CLUSTERROLE,
     EVALHUB_K8S_LABEL_APP,
@@ -472,6 +474,55 @@ def wait_for_evalhub_job(
     raise TimeoutExpiredError(f"Job '{job_id}' did not reach a terminal state within {timeout}s")
 
 
+def wait_for_evalhub_job_state(
+    host: str,
+    token: str,
+    ca_bundle_file: str,
+    tenant: str,
+    job_id: str,
+    target_states: set[str],
+    *,
+    timeout: int = 180,
+    sleep: int = 5,
+) -> dict:
+    """Poll a job until its status.state is in ``target_states``.
+
+    Args:
+        host: Route host for the EvalHub service.
+        token: Bearer token for authentication.
+        ca_bundle_file: Path to CA bundle for TLS verification.
+        tenant: Namespace for the X-Tenant header.
+        job_id: ID of the job to poll.
+        target_states: Acceptable job states (e.g. ``{"running"}``).
+        timeout: Maximum seconds to wait.
+        sleep: Seconds between polls.
+
+    Returns:
+        Job response dict once a target state is observed.
+
+    Raises:
+        TimeoutExpiredError: If no target state is reached in time.
+    """
+    LOGGER.info(f"Waiting for job {job_id} to reach one of {sorted(target_states)} (timeout={timeout}s)")
+
+    for sample in TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=sleep,
+        func=_get_job_status,
+        host=host,
+        token=token,
+        ca_bundle_file=ca_bundle_file,
+        tenant=tenant,
+        job_id=job_id,
+    ):
+        state = sample.get("status", {}).get("state", "")
+        LOGGER.info(f"Job {job_id} state: {state}")
+        if state in target_states:
+            return sample
+
+    raise TimeoutExpiredError(f"Job '{job_id}' did not reach any of {sorted(target_states)} within {timeout}s")
+
+
 def validate_evalhub_job_completed(job_data: dict) -> None:
     """Assert that a job completed successfully with benchmark results.
 
@@ -664,6 +715,56 @@ def get_evalhub_job_http(
         verify=ca_bundle_file,
         timeout=10,
     )
+
+
+def evalhub_job_logs_path(job_id: str, *, benchmark_index: int | None = None) -> str:
+    """Build the logs API path for a job or a single benchmark."""
+    if benchmark_index is None:
+        return EVALHUB_JOB_LOGS_PATH_TEMPLATE.format(job_id=job_id)
+    return EVALHUB_JOB_BENCHMARK_LOGS_PATH_TEMPLATE.format(
+        job_id=job_id,
+        benchmark_index=benchmark_index,
+    )
+
+
+def get_evalhub_job_logs_http(
+    host: str,
+    token: str,
+    ca_bundle_file: str,
+    tenant: str,
+    job_id: str,
+    *,
+    benchmark_index: int | None = None,
+    params: dict[str, str] | None = None,
+    headers: dict[str, str] | None = None,
+) -> requests.Response:
+    """GET evaluation job or benchmark logs without asserting status."""
+    path = evalhub_job_logs_path(job_id=job_id, benchmark_index=benchmark_index)
+    url = f"https://{host}{path}"
+    request_headers = headers if headers is not None else build_headers(token=token, tenant=tenant)
+    return requests.get(
+        url=url,
+        headers=request_headers,
+        params=params,
+        verify=ca_bundle_file,
+        timeout=30,
+    )
+
+
+def build_failing_evalhub_job_payload(
+    tenant_namespace: str,
+    job_name: str = "evalhub-failing-job",
+) -> dict:
+    """Build a job payload that targets an unreachable in-cluster model endpoint."""
+    model_url = f"http://nonexistent-model.{tenant_namespace}.svc.cluster.local:{EVALHUB_VLLM_EMULATOR_PORT}/v1"
+    return {
+        "name": job_name,
+        "model": {
+            "url": model_url,
+            "name": "emulatedModel",
+        },
+        "benchmarks": [build_vllm_arc_easy_benchmark(num_examples=3)],
+    }
 
 
 def evalhub_runtime_label_selector(evalhub_job_id: str) -> str:
