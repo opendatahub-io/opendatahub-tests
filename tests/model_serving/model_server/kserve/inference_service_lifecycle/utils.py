@@ -13,7 +13,6 @@ from ocp_resources.resource import ResourceEditor
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_serving.model_server.utils import verify_no_inference_pods
-from utilities.constants import Timeout
 from utilities.infra import get_pods_by_isvc_label
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -100,7 +99,7 @@ def wait_for_new_running_inference_pods(
 
     try:
         for pods in TimeoutSampler(
-            wait_timeout=Timeout.TIMEOUT_10MIN,
+            wait_timeout=600,
             sleep=5,
             func=get_pods_by_isvc_label,
             client=isvc.client,

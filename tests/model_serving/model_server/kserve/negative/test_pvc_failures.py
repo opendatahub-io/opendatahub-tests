@@ -18,7 +18,6 @@ from tests.model_serving.model_server.kserve.negative.utils import (
     snapshot_kserve_control_plane_restart_totals,
     wait_for_isvc_ready_false,
 )
-from utilities.constants import Timeout
 
 pytestmark = [pytest.mark.rawdeployment]
 
@@ -47,7 +46,7 @@ class TestPvcFailures:
 
         try:
             for last_phase in TimeoutSampler(
-                wait_timeout=Timeout.TIMEOUT_2MIN,
+                wait_timeout=120,
                 sleep=2,
                 func=_pvc_phase,
             ):

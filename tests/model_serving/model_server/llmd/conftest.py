@@ -27,7 +27,6 @@ from tests.model_serving.model_server.llmd.utils import (
     wait_for_llmisvc,
     wait_for_llmisvc_pods_ready,
 )
-from utilities.constants import Timeout
 from utilities.infra import create_inference_token, s3_endpoint_secret, update_configmap_data
 from utilities.llmd_utils import create_llmd_gateway
 from utilities.logger import RedactedString
@@ -217,7 +216,7 @@ def shared_llmd_gateway(admin_client: DynamicClient) -> Generator[Gateway]:
     """Shared LLMD gateway for all tests."""
     with create_llmd_gateway(
         client=admin_client,
-        timeout=Timeout.TIMEOUT_1MIN,
+        timeout=60,
     ) as gateway:
         yield gateway
 

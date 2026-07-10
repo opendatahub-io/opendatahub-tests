@@ -17,7 +17,6 @@ from tests.ai_safety.lm_eval.constants import (
     MERGED_CA_BUNDLE_KEY,
     MERGED_CA_CONFIGMAP_SUFFIX,
 )
-from utilities.constants import Timeout
 from utilities.exceptions import (
     PodLogMissMatchError,
     UnexpectedFailureError,
@@ -28,7 +27,7 @@ from utilities.general import collect_pod_information
 LOGGER = structlog.get_logger(name=__name__)
 
 
-def get_lmevaljob_pod(client: DynamicClient, lmevaljob: LMEvalJob, timeout: int = Timeout.TIMEOUT_10MIN) -> Pod:
+def get_lmevaljob_pod(client: DynamicClient, lmevaljob: LMEvalJob, timeout: int = 600) -> Pod:
     """
     Gets the pod corresponding to a given LMEvalJob and waits for it to be ready.
 
@@ -199,7 +198,7 @@ def validate_ca_bundle_not_injected(pod: Pod, job_name: str) -> None:
 def wait_for_lmevaljob_state(
     lmevaljob: LMEvalJob,
     state: str,
-    timeout: int = Timeout.TIMEOUT_10MIN,
+    timeout: int = 600,
 ) -> None:
     """Wait for an LMEvalJob CR to reach a specific state.
 

@@ -181,3 +181,33 @@ class TestEvalHubCRDConversion:
             assert roundtrip.instance.spec.database.type == "sqlite"
             assert "lm-evaluation-harness" in roundtrip.instance.spec.providers
             assert "leaderboard-v2" in roundtrip.instance.spec.collections
+
+    def test_v1alpha1_omits_tenancy_on_roundtrip(
+        self,
+        admin_client: DynamicClient,
+        model_namespace: Namespace,
+    ) -> None:
+        """v1alpha1 omits spec.tenancy; conversion to v1 defaults to multi-tenant mode."""
+        with EvalHubV1Alpha1(
+            client=admin_client,
+            name="conv-tenancy-omit",
+            namespace=model_namespace.name,
+            database={"type": "sqlite"},
+        ) as evalhub:
+            v1alpha1_result = EvalHubV1Alpha1(
+                client=admin_client,
+                name=evalhub.name,
+                namespace=model_namespace.name,
+                ensure_exists=True,
+            )
+            spec_dict = v1alpha1_result.instance.spec.to_dict()
+            assert "tenancy" not in spec_dict, f"v1alpha1 spec should omit tenancy, got: {spec_dict}"
+
+            v1_result = EvalHubV1(
+                client=admin_client,
+                name=evalhub.name,
+                namespace=model_namespace.name,
+                ensure_exists=True,
+            )
+            tenancy = getattr(v1_result.instance.spec, "tenancy", None)
+            assert tenancy in (None, "", "multi"), f"Expected multi-tenant default, got tenancy={tenancy!r}"
