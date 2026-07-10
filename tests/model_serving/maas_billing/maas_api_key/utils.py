@@ -22,6 +22,7 @@ MAAS_AUTH_POLICY_FIXTURE_NAMES = (
     "external_model_auth_policy",
     "maas_auth_policy_tinyllama_premium",
     "maas_auth_policy_tinyllama_free",
+    "oidc_auth_policy_patched",
 )
 
 
