@@ -64,7 +64,7 @@ def get_cluster_architecture(client: DynamicClient) -> str:
 
 def get_minio_image(client: DynamicClient) -> str:
     """Return the appropriate MinIO image for the current cluster architecture."""
-    arch = get_cluster_architecture(client)
+    arch = get_cluster_architecture(client=client)
 
     if arch == "s390x":
         return MINIO_IMAGE_S390X
@@ -74,7 +74,7 @@ def get_minio_image(client: DynamicClient) -> str:
 
 def get_minio_mc_image(client: DynamicClient) -> str:
     """Return the appropriate MinIO Client image for the current cluster architecture."""
-    arch = get_cluster_architecture(client)
+    arch = get_cluster_architecture(client=client)
 
     if arch == "s390x":
         return MINIO_MC_IMAGE_S390X
