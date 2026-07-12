@@ -5,7 +5,7 @@ import structlog
 
 from tests.ai_hub.mcp_servers.config.constants import CALCULATOR_PROVIDER, CALCULATOR_SERVER_NAME
 from tests.ai_hub.mcp_servers.config.utils import exclude_default_mcp_servers
-from tests.ai_hub.utils import execute_get_command
+from tests.ai_hub.utils import execute_get_command_with_retry
 
 LOGGER = structlog.get_logger(name=__name__)
 pytestmark = [
@@ -41,7 +41,7 @@ class TestMCPServerNamedQueries:
         expected_custom_properties: dict[str, bool],
     ):
         """TC-API-011: Test executing a named query filters servers by custom properties."""
-        response = execute_get_command(
+        response = execute_get_command_with_retry(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
             headers=model_registry_rest_headers,
             params={"namedQuery": named_query, "pageSize": 1000},
@@ -82,7 +82,7 @@ class TestMCPServerNamedQueries:
         expected_names: set[str],
     ):
         """TC-API-013: Test combining namedQuery with filterQuery."""
-        response = execute_get_command(
+        response = execute_get_command_with_retry(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
             headers=model_registry_rest_headers,
             params={"namedQuery": "production_ready", "filterQuery": filter_query, "pageSize": 1000},
@@ -104,7 +104,7 @@ class TestMCPServerFilterOptionsNamedQueries:
         model_registry_rest_headers: dict[str, str],
     ):
         """Validate that MCP filter_options does not return any namedQueries."""
-        response = execute_get_command(
+        response = execute_get_command_with_retry(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers/filter_options",
             headers=model_registry_rest_headers,
         )

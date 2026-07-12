@@ -3,6 +3,7 @@ import subprocess
 from typing import Any
 
 import pytest
+import requests
 import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
@@ -23,7 +24,6 @@ from tests.ai_hub.model_catalog.utils import (
     parse_psql_output,
 )
 from tests.ai_hub.utils import execute_get_command, get_model_catalog_pod
-from utilities.constants import Timeout
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -384,7 +384,7 @@ def get_api_models_by_source_label(
 
 @retry(
     exceptions_dict={ValueError: [], Exception: []},
-    wait_timeout=Timeout.TIMEOUT_5MIN,
+    wait_timeout=300,
     sleep=10,
 )
 def wait_for_model_count_change(
@@ -420,7 +420,7 @@ def wait_for_model_count_change(
 
 @retry(
     exceptions_dict={AssertionError: [], Exception: []},
-    wait_timeout=Timeout.TIMEOUT_5MIN,
+    wait_timeout=300,
     sleep=10,
 )
 def wait_for_model_set_match(
@@ -463,7 +463,7 @@ def wait_for_model_set_match(
 
 @retry(
     exceptions_dict={subprocess.CalledProcessError: [], AssertionError: []},
-    wait_timeout=Timeout.TIMEOUT_2MIN,
+    wait_timeout=120,
     sleep=5,
 )
 def validate_cleanup_logging(
@@ -539,9 +539,15 @@ def models_with_source_id(models: set[str], source_id: str) -> set[str]:
     return {f"{source_id}:{model}" for model in models}
 
 
+@retry(
+    wait_timeout=60,
+    sleep=5,
+    exceptions_dict={requests.exceptions.ConnectionError: [], AssertionError: []},
+    print_func_args=False,
+)
 def validate_model_catalog_sources(
     model_catalog_sources_url: str, rest_headers: dict[str, str], expected_catalog_values: dict[str, str]
-) -> None:
+) -> bool:
     results = execute_get_command(
         url=model_catalog_sources_url,
         headers=rest_headers,
@@ -550,4 +556,6 @@ def validate_model_catalog_sources(
     ids_from_query = [result_entry["id"] for result_entry in results]
     ids_expected = [expected_entry["id"] for expected_entry in expected_catalog_values]
     LOGGER.info(f"IDs expected: {ids_expected}, IDs found: {ids_from_query}")
-    assert set(ids_expected).issubset(set(ids_from_query)), f"Expected: {expected_catalog_values}. Actual: {results}"
+    if set(ids_expected).issubset(set(ids_from_query)):
+        return True
+    raise AssertionError(f"Expected: {ids_expected}. Found: {ids_from_query}")

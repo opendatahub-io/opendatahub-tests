@@ -27,10 +27,6 @@ from tests.ai_safety.evalhub.mcp.utils import (
 class TestEvalHubMcpE2E:
     """End-to-end MCP workflow: discover providers, submit job, poll status."""
 
-    @pytest.mark.skip(
-        reason="Known bug RHOAIENG-70489: Job submission fails in 3.5 EA2. "
-        "Fixed in upstream PRs eval-hub/eval-hub#669 and #670"
-    )
     def test_submit_and_monitor_evaluation_via_mcp_tools(
         self,
         evalhub_mcp_client: EvalHubMcpClient,

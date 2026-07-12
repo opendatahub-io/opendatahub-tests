@@ -6,7 +6,7 @@ Each test submits a pipeline run to a DataSciencePipelinesApplication (DSPA) and
 
 ## Test Suites
 
-- **`automl/`** -- AutoGluon Tabular Training pipeline smoke test
+- **`automl/`** -- AutoGluon Tabular Training pipeline smoke tests (regression + classification)
 - **`autorag/`** -- Documents RAG Optimization pipeline smoke test
 
 Both suites are **fully self-contained**: they create a dedicated namespace, deploy all required infrastructure, run the pipeline, and clean up on teardown.
@@ -49,14 +49,27 @@ to fall back to manual YAML upload. URLs are downloaded automatically at test st
 
 ### AutoML
 
+The AutoML tabular test is parametrized by `task_type` (regression, classification, multiclass).
+
+The tabular pipeline accepts `task_type` values: `"binary"`, `"multiclass"`, `"regression"`.
+
+```bash
+# Run all AutoML tests (regression + classification + multiclass)
+pytest tests/pipelines_components/automl/ -v
+
+# Run only one task type
+pytest tests/pipelines_components/automl/ -k regression
+pytest tests/pipelines_components/automl/ -k classification
+pytest tests/pipelines_components/automl/ -k multiclass
+```
+
 | Variable | Description | Default |
 | --- | --- | --- |
 | `AUTOML_S3_BUCKET` | External S3 bucket with training data | _(required)_ |
-| `AUTOML_S3_TRAIN_DATA_KEY` | S3 key for training CSV in external bucket | `datasets/regression/houses.csv` |
+| `AUTOML_REGRESSION_S3_TRAIN_DATA_KEY` | S3 key for regression training CSV | `datasets/regression/regression.csv` |
+| `AUTOML_CLASSIFICATION_S3_TRAIN_DATA_KEY` | S3 key for binary classification training CSV | _(required)_ |
+| `AUTOML_MULTICLASS_S3_TRAIN_DATA_KEY` | S3 key for multiclass classification training CSV | _(required)_ |
 | `AUTOML_TRAIN_DATA_FILE_KEY` | Destination key in DSPA MinIO | `automl-smoke/train.csv` |
-| `AUTOML_LABEL_COLUMN` | Target column name in CSV | `median_house_value` |
-| `AUTOML_TASK_TYPE` | AutoGluon task type | `regression` |
-| `AUTOML_TOP_N` | Number of top models to refit | `1` |
 | `AUTOML_PIPELINE_YAML` | Legacy: path or URL to pipeline YAML | _(empty = managed mode)_ |
 | `AUTOML_PIPELINE_TIMEOUT` | Max wait for pipeline completion (sec) | `1800` |
 
@@ -96,10 +109,14 @@ to fall back to manual YAML upload. URLs are downloaded automatically at test st
 
 ## Running Tests
 
-### Run AutoML smoke test
+### Run AutoML smoke tests (regression + classification)
 
 ```bash
 uv run pytest tests/pipelines_components/automl/ -m smoke -v -s
+
+# Run only one task type
+uv run pytest tests/pipelines_components/automl/ -k regression -v -s
+uv run pytest tests/pipelines_components/automl/ -k classification -v -s
 ```
 
 ### Run AutoRAG smoke test
@@ -120,9 +137,9 @@ uv run pytest tests/pipelines_components/ -m smoke -v -s
 
 - Creates a dedicated namespace (`automl-aqa-<hash>`)
 - Deploys DSPA with built-in MinIO for object storage
-- Downloads training data from external S3 into DSPA MinIO
+- Downloads training data from external S3 into DSPA MinIO (dataset per task type)
 - Discovers managed pipeline or uploads YAML (legacy mode)
-- Submits pipeline run via DSPA REST API
+- Submits pipeline run via DSPA REST API (parametrized: regression + classification)
 - Cleans up namespace on teardown
 
 ### AutoRAG (fully self-contained)

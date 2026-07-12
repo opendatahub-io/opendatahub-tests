@@ -11,11 +11,11 @@ from tests.model_serving.maas_billing.maas_subscription.utils import MAAS_SUBSCR
 from tests.model_serving.maas_billing.multitenancy.aitenant.utils import (
     AIGATEWAY_NAME_ANNOTATION,
     AIGATEWAY_NAMESPACE_ANNOTATION,
-    AITENANT_INFRA_NAMESPACE,
     AITENANT_TEST_OIDC_SPEC,
     AITENANT_TEST_RBAC_ADMINS,
     AITenantPreexistingNamespaceContext,
     AITenantTestContext,
+    aitenant_admin_role_bindings,
     aitenant_from_spec,
     bootstrap_gateway_context,
     bootstrap_gateway_ref,
@@ -31,78 +31,6 @@ from utilities.resources.aitenant import AITenant
 class AITenantTestParams(TypedDict):
     aitenant_name: str
     aitenant_spec: dict[str, Any]
-
-
-@pytest.fixture(scope="session")
-def aitenant_infra_namespace(admin_client: DynamicClient) -> str:
-    """Return the infra namespace where AITenant objects are created."""
-    infra_namespace = Namespace(client=admin_client, name=AITENANT_INFRA_NAMESPACE)
-    assert infra_namespace.exists, (
-        f"Infra namespace '{AITENANT_INFRA_NAMESPACE}' not found — required for AITenant multitenancy tests"
-    )
-    return AITENANT_INFRA_NAMESPACE
-
-
-@pytest.fixture
-def aitenant_test_params() -> AITenantTestParams:
-    """Return the default AITenant name and spec for bootstrap tests."""
-    aitenant_name = f"e2e-aigw-{generate_random_name()}"
-    return AITenantTestParams(
-        aitenant_name=aitenant_name,
-        aitenant_spec=build_aitenant_spec(aitenant_name=aitenant_name),
-    )
-
-
-@pytest.fixture
-def aitenant_bootstrap_gateway(
-    admin_client: DynamicClient,
-    aitenant_test_params: AITenantTestParams,
-    teardown_resources: bool,
-) -> Generator[Gateway, Any, Any]:
-    """Pre-provision the bootstrap Gateway required by an AITenant."""
-    gateway_name, gateway_namespace = bootstrap_gateway_ref(
-        aitenant_name=aitenant_test_params["aitenant_name"],
-        aitenant_spec=aitenant_test_params["aitenant_spec"],
-    )
-    with bootstrap_gateway_context(
-        admin_client=admin_client,
-        gateway_name=gateway_name,
-        gateway_namespace=gateway_namespace,
-        teardown=teardown_resources,
-    ) as gateway:
-        yield gateway
-
-
-@pytest.fixture
-def aitenant(
-    admin_client: DynamicClient,
-    aitenant_infra_namespace: str,
-    aitenant_test_params: AITenantTestParams,
-    aitenant_bootstrap_gateway: Gateway,
-    teardown_resources: bool,
-) -> Generator[AITenant, Any, Any]:
-    """Deploy an AITenant CR after its bootstrap Gateway exists."""
-    with aitenant_from_spec(
-        admin_client=admin_client,
-        aitenant_name=aitenant_test_params["aitenant_name"],
-        cr_namespace=aitenant_infra_namespace,
-        aitenant_spec=aitenant_test_params["aitenant_spec"],
-        teardown=teardown_resources,
-    ) as aitenant:
-        yield aitenant
-
-
-@pytest.fixture
-def ready_aitenant(aitenant: AITenant) -> Generator[AITenant, Any, Any]:
-    """Wait until the deployed AITenant reports Ready with phase Active."""
-    deploy_and_verify_aitenant_ready(aitenant=aitenant)
-    yield aitenant
-
-
-@pytest.fixture
-def aitenant_for_test(ready_aitenant: AITenant) -> AITenantTestContext:
-    """Return bootstrap test context for a Ready AITenant."""
-    return build_aitenant_test_context(aitenant=ready_aitenant)
 
 
 @pytest.fixture
@@ -168,80 +96,29 @@ def aitenant_with_oidc(ready_aitenant_oidc: AITenant) -> AITenantTestContext:
 
 
 @pytest.fixture
-def aitenant_rbac_test_params() -> AITenantTestParams:
-    """Return an AITenant name and spec with rbac.admins configured."""
-    aitenant_name = f"e2e-aigw-rbac-{generate_random_name()}"
-    return AITenantTestParams(
-        aitenant_name=aitenant_name,
-        aitenant_spec=build_aitenant_spec(
-            aitenant_name=aitenant_name,
-            rbac_admins=AITENANT_TEST_RBAC_ADMINS,
-        ),
-    )
-
-
-@pytest.fixture
-def aitenant_rbac_bootstrap_gateway(
-    admin_client: DynamicClient,
-    aitenant_rbac_test_params: AITenantTestParams,
-    teardown_resources: bool,
-) -> Generator[Gateway, Any, Any]:
-    """Pre-provision the bootstrap Gateway for an rbac AITenant."""
-    gateway_name, gateway_namespace = bootstrap_gateway_ref(
-        aitenant_name=aitenant_rbac_test_params["aitenant_name"],
-        aitenant_spec=aitenant_rbac_test_params["aitenant_spec"],
-    )
-    with bootstrap_gateway_context(
-        admin_client=admin_client,
-        gateway_name=gateway_name,
-        gateway_namespace=gateway_namespace,
-        teardown=teardown_resources,
-    ) as gateway:
-        yield gateway
-
-
-@pytest.fixture
-def aitenant_rbac(
+def aitenant_with_manual_admin_role_bindings(
     admin_client: DynamicClient,
     aitenant_infra_namespace: str,
-    aitenant_rbac_test_params: AITenantTestParams,
-    aitenant_rbac_bootstrap_gateway: Gateway,
+    aitenant_for_test: AITenantTestContext,
     teardown_resources: bool,
-) -> Generator[AITenant, Any, Any]:
-    """Deploy an rbac AITenant CR after its bootstrap Gateway exists."""
-    with aitenant_from_spec(
+) -> Generator[AITenantTestContext, Any, Any]:
+    """Return a Ready AITenant context with manually created admin RoleBindings."""
+    test_context = aitenant_for_test
+    with aitenant_admin_role_bindings(
         admin_client=admin_client,
-        aitenant_name=aitenant_rbac_test_params["aitenant_name"],
-        cr_namespace=aitenant_infra_namespace,
-        aitenant_spec=aitenant_rbac_test_params["aitenant_spec"],
+        aitenant_name=test_context["aitenant_name"],
+        tenant_namespace_name=test_context["tenant_namespace_name"],
+        infra_namespace=aitenant_infra_namespace,
+        subjects=AITENANT_TEST_RBAC_ADMINS,
         teardown=teardown_resources,
-    ) as aitenant:
-        yield aitenant
-
-
-@pytest.fixture
-def ready_aitenant_rbac(aitenant_rbac: AITenant) -> Generator[AITenant, Any, Any]:
-    """Wait until the rbac AITenant reports Ready with phase Active."""
-    deploy_and_verify_aitenant_ready(aitenant=aitenant_rbac)
-    yield aitenant_rbac
-
-
-@pytest.fixture
-def aitenant_with_rbac_admins(ready_aitenant_rbac: AITenant) -> AITenantTestContext:
-    """Return bootstrap test context for a Ready rbac AITenant."""
-    return build_aitenant_test_context(aitenant=ready_aitenant_rbac)
+    ):
+        yield test_context
 
 
 @pytest.fixture
 def ready_aitenant_for_deletion(ready_aitenant: AITenant) -> AITenantTestContext:
     """Return bootstrap test context for deletion tests; test owns AITenant deletion."""
     return build_aitenant_test_context(aitenant=ready_aitenant)
-
-
-@pytest.fixture
-def aitenant_without_rbac_admins(aitenant_for_test: AITenantTestContext) -> AITenantTestContext:
-    """Return bootstrap test context for an AITenant without spec.rbac.admins."""
-    return aitenant_for_test
 
 
 @pytest.fixture
