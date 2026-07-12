@@ -31,7 +31,12 @@ from tests.workbenches.notebook_images.utils import (
 pytestmark = [
     pytest.mark.tier2,
     pytest.mark.slow,
-    pytest.mark.parametrize("n1_workbench_spec", get_workbench_image_specs(), indirect=True),
+    pytest.mark.parametrize(
+        "n1_workbench_spec",
+        get_workbench_image_specs(),
+        indirect=True,
+        ids=lambda spec: spec.ide,
+    ),
 ]
 
 
