@@ -95,6 +95,8 @@ class TestPostUpgradeBumpWorkbench:
         When the Dashboard-equivalent JSON patch is applied,
         Then the old pod terminates and a new pod reaches Ready.
         """
+        old_pod_uid = n1_bump_pod.instance.metadata.uid
+
         patch_ops = build_dashboard_image_patch(
             notebook=n1_bump_notebook,
             resolved_image=n1_bump_target_image,
@@ -104,31 +106,24 @@ class TestPostUpgradeBumpWorkbench:
             patch_ops=patch_ops,
         )
 
-        old_pod_name = n1_bump_baseline.pod_name
-        for sample in TimeoutSampler(
-            wait_timeout=Timeout.TIMEOUT_2MIN,
-            sleep=5,
-            func=lambda: (
-                not Pod(
-                    client=unprivileged_client,
-                    name=old_pod_name,
-                    namespace=n1_bump_notebook.namespace,
-                ).exists
-            ),
-        ):
-            if sample:
-                break
-
-        new_pod = Pod(
+        pod_ref = Pod(
             client=unprivileged_client,
             name=f"{n1_bump_notebook.name}-0",
             namespace=n1_bump_notebook.namespace,
         )
+        for sample in TimeoutSampler(
+            wait_timeout=Timeout.TIMEOUT_5MIN,
+            sleep=5,
+            func=lambda: pod_ref.exists and pod_ref.instance.metadata.uid != old_pod_uid,
+        ):
+            if sample:
+                break
+
         wait_for_controller_reconciliation(
             admin_client=admin_client,
             notebook_name=n1_bump_notebook.name,
             notebook_namespace=n1_bump_notebook.namespace,
-            notebook_pod=new_pod,
+            notebook_pod=pod_ref,
         )
 
     @pytest.mark.post_upgrade

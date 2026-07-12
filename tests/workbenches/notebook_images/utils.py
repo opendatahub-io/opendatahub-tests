@@ -1362,7 +1362,7 @@ from jupyter_client import BlockingKernelClient
 base_url = sys.argv[1]
 cj = http.cookiejar.CookieJar()
 opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
-opener.open(f"{base_url}/lab")
+opener.open(f"{base_url}/lab", timeout=30)
 xsrf = next(c.value for c in cj if c.name == "_xsrf")
 req = urllib.request.Request(
     f"{base_url}/api/kernels",
@@ -1423,7 +1423,7 @@ def start_kernel_and_set_variable(
     notebook_name: str,
 ) -> str:
     """Start a Jupyter kernel inside the pod and execute ``a = 3 + 4``."""
-    base_url = f"http://localhost:8888/notebook/{namespace}/{notebook_name}"
+    base_url = f"http://localhost:{NOTEBOOK_PORT}/notebook/{namespace}/{notebook_name}"
     result = pod.execute(
         container=container_name,
         command=["python", "-c", _KERNEL_START_SCRIPT, base_url],
