@@ -24,6 +24,10 @@ from tests.ai_safety.lm_eval.constants import (
     LMEVAL_OCI_REPO,
     LMEVAL_OCI_TAG,
 )
+from tests.ai_safety.utils import (
+    get_minio_image,
+    get_minio_mc_image,
+)
 from tests.ai_safety.lm_eval.utils import get_lmevaljob_pod
 from utilities.constants import ApiGroups, KServeDeploymentType, Labels, MinIo, Protocols, RuntimeTemplates
 from utilities.exceptions import MissingParameter
@@ -396,8 +400,7 @@ def lmeval_minio_deployment(
                 "containers": [
                     {
                         "name": MinIo.Metadata.NAME,
-                        "image": "quay.io/minio/minio"
-                        "@sha256:46b3009bf7041eefbd90bd0d2b38c6ddc24d20a35d609551a1802c558c1c958f",
+                        "image": get_minio_image(admin_client),
                         "args": ["server", "/data", "--console-address", ":9001"],
                         "env": [
                             {"name": "MINIO_ROOT_USER", "value": MinIo.Credentials.ACCESS_KEY_VALUE},
@@ -457,7 +460,7 @@ def lmeval_minio_copy_pod(
         containers=[
             {
                 "name": "minio-uploader",
-                "image": "quay.io/minio/mc@sha256:470f5546b596e16c7816b9c3fa7a78ce4076bb73c2c73f7faeec0c8043923123",
+                "image": get_minio_mc_image(admin_client),
                 "command": ["/bin/sh", "-c"],
                 "args": [
                     f"export MC_CONFIG_DIR=/shared/.mc && "
