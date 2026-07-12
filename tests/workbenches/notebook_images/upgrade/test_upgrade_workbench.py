@@ -73,7 +73,6 @@ class TestPostUpgradeWorkbench:
     """Post-upgrade survival checks for a workbench that should remain unchanged."""
 
     @pytest.mark.post_upgrade
-    @pytest.mark.dependency(name="workbench_exists")
     def test_post_upgrade_exists(
         self,
         n1_notebook: Notebook,
@@ -86,7 +85,6 @@ class TestPostUpgradeWorkbench:
         verify_post_upgrade_exists(notebook=n1_notebook, pod=n1_pod)
 
     @pytest.mark.post_upgrade
-    @pytest.mark.dependency(name="pod_not_recreated", depends=["workbench_exists"])
     def test_post_upgrade_pod_not_recreated(
         self,
         n1_pod: Pod,
@@ -99,7 +97,6 @@ class TestPostUpgradeWorkbench:
         verify_post_upgrade_pod_not_recreated(pod=n1_pod, baseline=n1_baseline)
 
     @pytest.mark.post_upgrade
-    @pytest.mark.dependency(name="image_selection_unchanged", depends=["pod_not_recreated"])
     def test_post_upgrade_image_selection_unchanged(
         self,
         n1_notebook: Notebook,
@@ -112,7 +109,6 @@ class TestPostUpgradeWorkbench:
         verify_post_upgrade_image_selection(notebook=n1_notebook, baseline=n1_baseline)
 
     @pytest.mark.post_upgrade
-    @pytest.mark.dependency(name="image_digest_unchanged", depends=["image_selection_unchanged"])
     def test_post_upgrade_image_digest_unchanged(
         self,
         n1_notebook: Notebook,
@@ -130,7 +126,6 @@ class TestPostUpgradeWorkbench:
         )
 
     @pytest.mark.post_upgrade
-    @pytest.mark.dependency(name="restart_counts_unchanged", depends=["image_digest_unchanged"])
     def test_post_upgrade_restart_counts_unchanged(
         self,
         n1_pod: Pod,
@@ -143,7 +138,6 @@ class TestPostUpgradeWorkbench:
         verify_post_upgrade_restart_counts(pod=n1_pod, baseline=n1_baseline)
 
     @pytest.mark.post_upgrade
-    @pytest.mark.dependency(name="notebook_generation_unchanged", depends=["restart_counts_unchanged"])
     def test_post_upgrade_notebook_generation_unchanged(
         self,
         n1_notebook: Notebook,
@@ -156,7 +150,6 @@ class TestPostUpgradeWorkbench:
         verify_post_upgrade_notebook_generation(notebook=n1_notebook, baseline=n1_baseline)
 
     @pytest.mark.post_upgrade
-    @pytest.mark.dependency(name="statefulset_healthy", depends=["notebook_generation_unchanged"])
     def test_post_upgrade_statefulset_healthy(
         self,
         n1_statefulset: StatefulSet,
@@ -168,7 +161,6 @@ class TestPostUpgradeWorkbench:
         verify_post_upgrade_statefulset(statefulset=n1_statefulset)
 
     @pytest.mark.post_upgrade
-    @pytest.mark.dependency(name="pvc_data_survives", depends=["statefulset_healthy"])
     def test_post_upgrade_pvc_data_survives(
         self,
         n1_pod: Pod,
@@ -186,7 +178,6 @@ class TestPostUpgradeWorkbench:
         )
 
     @pytest.mark.post_upgrade
-    @pytest.mark.dependency(depends=["pvc_data_survives"])
     def test_post_upgrade_health(
         self,
         n1_notebook: Notebook,
@@ -204,7 +195,6 @@ class TestPostUpgradeWorkbench:
         )
 
     @pytest.mark.post_upgrade
-    @pytest.mark.dependency(depends=["pvc_data_survives"])
     def test_post_upgrade_kernel_state_intact(
         self,
         n1_pod: Pod,

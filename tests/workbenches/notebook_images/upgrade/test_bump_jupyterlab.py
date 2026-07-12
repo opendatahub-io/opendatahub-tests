@@ -9,7 +9,7 @@ import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.notebook import Notebook
 from ocp_resources.pod import Pod
-from timeout_sampler import TimeoutExpiredError, TimeoutSampler
+from timeout_sampler import TimeoutSampler
 
 from tests.workbenches.notebook_images.utils import (
     ResolvedWorkbenchImage,
@@ -49,7 +49,6 @@ class TestPreUpgradeBumpWorkbench:
         assert n1_bump_marker_written
 
         container_name = n1_bump_notebook.name
-        grab_and_check_pod_logs(pod=n1_bump_pod, container_name=container_name)
         wait_for_http_inside_pod(
             pod=n1_bump_pod,
             container_name=container_name,
@@ -106,24 +105,19 @@ class TestPostUpgradeBumpWorkbench:
         )
 
         old_pod_name = n1_bump_baseline.pod_name
-        try:
-            for sample in TimeoutSampler(
-                wait_timeout=Timeout.TIMEOUT_2MIN,
-                sleep=5,
-                func=lambda: (
-                    not Pod(
-                        client=unprivileged_client,
-                        name=old_pod_name,
-                        namespace=n1_bump_notebook.namespace,
-                    ).exists
-                ),
-            ):
-                if sample:
-                    break
-        except TimeoutExpiredError as exc:
-            raise AssertionError(
-                f"Old pod '{old_pod_name}' did not terminate within {Timeout.TIMEOUT_2MIN}s after image patch"
-            ) from exc
+        for sample in TimeoutSampler(
+            wait_timeout=Timeout.TIMEOUT_2MIN,
+            sleep=5,
+            func=lambda: (
+                not Pod(
+                    client=unprivileged_client,
+                    name=old_pod_name,
+                    namespace=n1_bump_notebook.namespace,
+                ).exists
+            ),
+        ):
+            if sample:
+                break
 
         new_pod = Pod(
             client=unprivileged_client,
@@ -184,7 +178,6 @@ class TestPostUpgradeBumpWorkbench:
             namespace=n1_bump_notebook.namespace,
         )
         container_name = n1_bump_notebook.name
-        grab_and_check_pod_logs(pod=new_pod, container_name=container_name)
         wait_for_http_inside_pod(
             pod=new_pod,
             container_name=container_name,

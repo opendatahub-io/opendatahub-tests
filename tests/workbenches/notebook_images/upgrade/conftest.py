@@ -15,6 +15,7 @@ from pytest_testconfig import config as py_config
 
 from tests.workbenches.notebook_images.utils import (
     UPGRADE_BASELINE_CM_NAME,
+    UPGRADE_MARKER_CONTENT,
     UPGRADE_NAMESPACE,
     ResolvedWorkbenchImage,
     StatefulSet,
@@ -96,9 +97,6 @@ def n1_image_baseline_configmap(
             yield config_map
 
 
-# --- Parametrized per-IDE fixtures ---
-
-
 @pytest.fixture(scope="session")
 def n1_workbench_spec(
     request: pytest.FixtureRequest,
@@ -123,14 +121,12 @@ def n1_image(
     admin_client: DynamicClient,
     n1_workbench_spec: WorkbenchImageSpec,
     pytestconfig: pytest.Config,
-) -> ResolvedWorkbenchImage:
-    """Resolved pre-upgrade image for the current IDE."""
+) -> ResolvedWorkbenchImage | None:
+    """Resolved pre-upgrade image for the current IDE (None post-upgrade)."""
+    if pytestconfig.option.post_upgrade:
+        return None
     resolved_image = resolve_workbench_image(admin_client=admin_client, spec=n1_workbench_spec)
-    if (
-        not pytestconfig.option.post_upgrade
-        and n1_workbench_spec.require_eus_track
-        and not is_legacy_track_tag(tag_name=resolved_image.tag_name)
-    ):
+    if n1_workbench_spec.require_eus_track and not is_legacy_track_tag(tag_name=resolved_image.tag_name):
         pytest.skip(f"{n1_workbench_spec.ide} workbench survival tests require a legacy EUS workbench image tag")
     return resolved_image
 
@@ -258,11 +254,6 @@ def n1_kernel_id(
     return kernel_id
 
 
-# ---------------------------------------------------------------------------
-# Dashboard image bump fixtures (RHAIENG-5550)
-# ---------------------------------------------------------------------------
-
-
 def _bump_jupyterlab_spec() -> WorkbenchImageSpec:
     """Return a WorkbenchImageSpec for the JupyterLab dashboard bump scenario."""
     is_upstream = py_config.get("distribution") == "upstream"
@@ -383,7 +374,7 @@ def n1_bump_marker_written(
         return data[marker_key]
 
     write_pvc_upgrade_marker(pod=n1_bump_pod, container_name=n1_bump_spec.notebook_name)
-    marker_content = "n-minus-one-survival"
+    marker_content = UPGRADE_MARKER_CONTENT
     current_data = dict(n1_image_baseline_configmap.instance.data or {})
     current_data[marker_key] = marker_content
     ResourceEditor(patches={n1_image_baseline_configmap: {"data": current_data}}).update()

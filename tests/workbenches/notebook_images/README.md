@@ -8,7 +8,7 @@ Verifies that workbenches launched on N-1 (source-version) images remain healthy
 
 A single parametrized test module covers all IDEs:
 
-- `upgrade/test_upgrade_workbench.py` — JupyterLab, Code Server, RStudio (parametrized via `get_workbench_image_specs()`)
+- `upgrade/test_upgrade_workbench.py` -- JupyterLab, Code Server, RStudio (parametrized via `get_workbench_image_specs()`)
 
 Pre-upgrade validation creates dashboard-faithful Notebook CRs, waits for controller reconciliation (kube-rbac-proxy, ReferenceGrant, HTTPRoute), captures a rich baseline (image selection, digest, restart counts, Notebook generation), and writes a PVC marker file.
 

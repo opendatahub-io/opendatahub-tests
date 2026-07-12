@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import pathlib
 import re
 import time
 from collections.abc import Generator
@@ -1280,7 +1279,65 @@ def capture_or_load_workbench_baseline(
     return baseline
 
 
-_KERNEL_SCRIPTS_DIR = str(pathlib.Path(__file__).parent / "upgrade")
+# language=Python
+_KERNEL_START_SCRIPT = """\
+import http.cookiejar, json, sys, time, urllib.request
+from jupyter_client import BlockingKernelClient
+base_url = sys.argv[1]
+cj = http.cookiejar.CookieJar()
+opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+opener.open(f"{base_url}/lab")
+xsrf = next(c.value for c in cj if c.name == "_xsrf")
+req = urllib.request.Request(
+    f"{base_url}/api/kernels",
+    data=json.dumps({"name": "python3"}).encode(),
+    headers={"Content-Type": "application/json", "X-XSRFToken": xsrf},
+    method="POST",
+)
+resp = opener.open(req, timeout=30)
+kernel = json.loads(resp.read())
+kernel_id = kernel["id"]
+resp.close()
+time.sleep(2)
+conn_file = f"/opt/app-root/src/.local/share/jupyter/runtime/kernel-{kernel_id}.json"
+kc = BlockingKernelClient()
+kc.load_connection_file(connection_file=conn_file)
+kc.start_channels()
+kc.wait_for_ready(timeout=30)
+msg_id = kc.execute(code="a = 3 + 4")
+reply = kc.get_shell_msg(timeout=10)
+assert reply["content"]["status"] == "ok", f"Kernel execute failed: {reply['content']}"
+kc.stop_channels()
+print(kernel_id)
+"""
+
+# language=Python
+_KERNEL_VERIFY_SCRIPT = """\
+import queue, sys, time
+from jupyter_client import BlockingKernelClient
+kernel_id = sys.argv[1]
+conn_file = f"/opt/app-root/src/.local/share/jupyter/runtime/kernel-{kernel_id}.json"
+kc = BlockingKernelClient()
+kc.load_connection_file(connection_file=conn_file)
+kc.start_channels()
+kc.wait_for_ready(timeout=30)
+msg_id = kc.execute(code="print(a * 6)")
+reply = kc.get_shell_msg(timeout=10)
+assert reply["content"]["status"] == "ok", f"Kernel execute failed: {reply['content']}"
+time.sleep(1)
+output_text = ""
+while True:
+    try:
+        msg = kc.get_iopub_msg(timeout=2)
+        if msg["msg_type"] == "stream":
+            output_text += msg["content"]["text"]
+    except (queue.Empty, TimeoutError):
+        break
+kc.stop_channels()
+output_text = output_text.strip()
+assert output_text == "42", f"Expected '42', got '{output_text}'"
+print(output_text)
+"""
 
 
 def start_kernel_and_set_variable(
@@ -1290,11 +1347,10 @@ def start_kernel_and_set_variable(
     notebook_name: str,
 ) -> str:
     """Start a Jupyter kernel inside the pod and execute ``a = 3 + 4``."""
-    script = pathlib.Path(_KERNEL_SCRIPTS_DIR, "_kernel_start.py").read_text()
     base_url = f"http://localhost:8888/notebook/{namespace}/{notebook_name}"
     result = pod.execute(
         container=container_name,
-        command=["python", "-c", script, base_url],
+        command=["python", "-c", _KERNEL_START_SCRIPT, base_url],
         timeout=60,
     )
     kernel_id = result.strip()
@@ -1304,11 +1360,10 @@ def start_kernel_and_set_variable(
 
 def verify_kernel_variable(pod: Pod, container_name: str, kernel_id: str) -> str:
     """Reconnect to a running Jupyter kernel and verify ``a * 6 == 42``."""
-    script = pathlib.Path(_KERNEL_SCRIPTS_DIR, "_kernel_verify.py").read_text()
     try:
         result = pod.execute(
             container=container_name,
-            command=["python", "-c", script, kernel_id],
+            command=["python", "-c", _KERNEL_VERIFY_SCRIPT, kernel_id],
             timeout=30,
         )
     except ExecOnPodError as exc:
