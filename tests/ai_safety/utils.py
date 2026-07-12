@@ -1,14 +1,14 @@
 import re
 
-from ocp_resources.config_map import ConfigMap
-from ocp_resources.pod import Pod
-from ocp_resources.node import Node
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.config_map import ConfigMap
+from ocp_resources.node import Node
+from ocp_resources.pod import Pod
 
 from tests.ai_safety.constants import (
     MINIO_IMAGE,
-    MINIO_MC_IMAGE,
     MINIO_IMAGE_S390X,
+    MINIO_MC_IMAGE,
     MINIO_MC_IMAGE_S390X,
 )
 from utilities.general import SHA256_DIGEST_PATTERN
@@ -44,6 +44,7 @@ def validate_tai_component_images(
 
 
 _CLUSTER_ARCH: str | None = None
+
 
 def get_cluster_architecture(client: DynamicClient) -> str:
     """Return the cluster architecture."""

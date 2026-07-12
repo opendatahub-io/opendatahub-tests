@@ -24,11 +24,11 @@ from tests.ai_safety.lm_eval.constants import (
     LMEVAL_OCI_REPO,
     LMEVAL_OCI_TAG,
 )
+from tests.ai_safety.lm_eval.utils import get_lmevaljob_pod
 from tests.ai_safety.utils import (
     get_minio_image,
     get_minio_mc_image,
 )
-from tests.ai_safety.lm_eval.utils import get_lmevaljob_pod
 from utilities.constants import ApiGroups, KServeDeploymentType, Labels, MinIo, Protocols, RuntimeTemplates
 from utilities.exceptions import MissingParameter
 from utilities.general import b64_encoded_string
