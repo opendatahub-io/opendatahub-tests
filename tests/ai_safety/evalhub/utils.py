@@ -474,55 +474,6 @@ def wait_for_evalhub_job(
     raise TimeoutExpiredError(f"Job '{job_id}' did not reach a terminal state within {timeout}s")
 
 
-def wait_for_evalhub_job_state(
-    host: str,
-    token: str,
-    ca_bundle_file: str,
-    tenant: str,
-    job_id: str,
-    target_states: set[str],
-    *,
-    timeout: int = 180,
-    sleep: int = 5,
-) -> dict:
-    """Poll a job until its status.state is in ``target_states``.
-
-    Args:
-        host: Route host for the EvalHub service.
-        token: Bearer token for authentication.
-        ca_bundle_file: Path to CA bundle for TLS verification.
-        tenant: Namespace for the X-Tenant header.
-        job_id: ID of the job to poll.
-        target_states: Acceptable job states (e.g. ``{"running"}``).
-        timeout: Maximum seconds to wait.
-        sleep: Seconds between polls.
-
-    Returns:
-        Job response dict once a target state is observed.
-
-    Raises:
-        TimeoutExpiredError: If no target state is reached in time.
-    """
-    LOGGER.info(f"Waiting for job {job_id} to reach one of {sorted(target_states)} (timeout={timeout}s)")
-
-    for sample in TimeoutSampler(
-        wait_timeout=timeout,
-        sleep=sleep,
-        func=_get_job_status,
-        host=host,
-        token=token,
-        ca_bundle_file=ca_bundle_file,
-        tenant=tenant,
-        job_id=job_id,
-    ):
-        state = sample.get("status", {}).get("state", "")
-        LOGGER.info(f"Job {job_id} state: {state}")
-        if state in target_states:
-            return sample
-
-    raise TimeoutExpiredError(f"Job '{job_id}' did not reach any of {sorted(target_states)} within {timeout}s")
-
-
 def validate_evalhub_job_completed(job_data: dict) -> None:
     """Assert that a job completed successfully with benchmark results.
 
