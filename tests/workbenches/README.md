@@ -21,10 +21,12 @@ workbenches/
     |-- utils.py                          # Image resolution, log/HTTP validation helpers
     +-- upgrade/
         |-- conftest.py                   # Session-scoped upgrade fixtures per IDE
+        +-- elyra_utils.py                # Utilities for interacting with Elyra
         |-- survival_checks.py            # Shared pre/post-upgrade validation steps
         |-- test_upgrade_jupyterlab.py    # JupyterLab survival tests
         |-- test_upgrade_codeserver.py    # Code Server survival tests
         +-- test_upgrade_rstudio.py       # RStudio survival tests (EUS only)
+        +-- test_upgrade_jupyter_elyra.py # Elyra survival tests
 ```
 
 ### Current Test Suites
