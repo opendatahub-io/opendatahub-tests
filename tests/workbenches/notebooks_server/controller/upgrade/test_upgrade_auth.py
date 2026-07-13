@@ -147,12 +147,20 @@ class TestPreUpgradeStoppedNotebookAuth:
 class TestPostUpgradeNotebookAuth:
     """Verify kube-rbac-proxy auth resources survived the platform upgrade.
 
+    Skipped for 2.x-to-3.x upgrades: workbenches still have oauth-proxy until restarted.
+
     Steps:
         1. Verify the sidecar container is still present in the running notebook pod.
         2. Verify the kube-rbac-proxy Service still exists for both running and stopped notebooks.
         3. Verify the kube-rbac-proxy ConfigMap still exists for both running and stopped notebooks.
         4. Verify the auth-delegator ClusterRoleBinding still exists for both running and stopped notebooks.
     """
+
+    @pytest.fixture(autouse=True)
+    def _skip_on_2x_migration(self, is_migration_from_2x: bool) -> None:
+        """Skip all tests in this class when upgrading from 2.x (kube-rbac-proxy doesn't exist yet)."""
+        if is_migration_from_2x:
+            pytest.skip("kube-rbac-proxy resources do not exist for 2.x-sourced workbenches until restarted")
 
     @pytest.mark.post_upgrade
     def test_kube_rbac_proxy_sidecar_present_after_upgrade(

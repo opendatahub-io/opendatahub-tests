@@ -28,6 +28,12 @@ class MutatingWebhookConfiguration(Resource):
     api_group: str = Resource.ApiGroup.ADMISSIONREGISTRATION_K8S_IO
 
 
+class OAuthClient(Resource):
+    """OAuthClient resource (cluster-scoped, oauth.openshift.io/v1)."""
+
+    api_group: str = "oauth.openshift.io"
+
+
 def resolve_notebook_image(admin_client: DynamicClient) -> str:
     """Resolves the full image path for a minimal workbench notebook.
 

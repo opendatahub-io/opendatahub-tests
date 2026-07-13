@@ -174,6 +174,12 @@ def pytest_addoption(parser: Parser) -> None:
         help="Delete pre-upgrade resources; useful when debugging pre-upgrade tests",
     )
     upgrade_group.addoption(
+        "--self-migrate",
+        action="store_true",
+        help="Tests perform 2.x-to-3.x workbench migration themselves "
+        "(default: assume external migration scripts already ran)",
+    )
+    upgrade_group.addoption(
         "--upgrade-deployment-modes",
         help="Coma-separated str; specify inference service deployment modes tests to run in upgrade tests. "
         "If not set, all will be tested.",

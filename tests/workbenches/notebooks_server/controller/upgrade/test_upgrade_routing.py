@@ -112,6 +112,8 @@ class TestPreUpgradeNotebookRouting:
 class TestPostUpgradeNotebookRouting:
     """Verify notebook routing survived the platform upgrade.
 
+    Skipped for 2.x-to-3.x upgrades: HTTPRoute does not exist until the workbench is restarted.
+
     Steps:
         1. Verify HTTPRoute still exists and references the Gateway.
         2. Verify HTTPRoute spec was not modified (generation unchanged).
@@ -119,6 +121,12 @@ class TestPostUpgradeNotebookRouting:
         4. Verify no duplicate HTTPRoutes exist for this notebook.
         5. Verify ReferenceGrant still exists in the notebook namespace.
     """
+
+    @pytest.fixture(autouse=True)
+    def _skip_on_2x_migration(self, is_migration_from_2x: bool) -> None:
+        """Skip all tests in this class when upgrading from 2.x (HTTPRoute doesn't exist yet)."""
+        if is_migration_from_2x:
+            pytest.skip("HTTPRoute does not exist for 2.x-sourced workbenches until restarted")
 
     @pytest.mark.post_upgrade
     def test_httproute_exists_after_upgrade(
