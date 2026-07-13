@@ -16,7 +16,7 @@ from utilities.resources.securesign import Securesign
 
 LOGGER = structlog.get_logger(name=__name__)
 
-pytestmark = pytest.mark.usefixtures("skip_if_not_managed_cluster", "tas_connection_type")
+pytestmark = pytest.mark.usefixtures("tas_connection_type")
 
 
 class TestSigningInfrastructure:
@@ -81,7 +81,6 @@ class TestModelSigning:
         """
         Test model signing functionality.
         """
-
         LOGGER.info(f"Testing model signing in directory: {signed_model}")
         assert signed_model
         has_signature = check_model_signature_file(model_dir=str(signed_model))

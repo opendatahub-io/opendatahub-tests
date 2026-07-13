@@ -21,6 +21,7 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.job import Job
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
+from ocp_resources.resource import get_client
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
@@ -78,15 +79,24 @@ from utilities.resources.securesign import Securesign
 LOGGER = structlog.get_logger(name=__name__)
 
 
-@pytest.fixture(scope="package")
-def skip_if_not_managed_cluster(admin_client: DynamicClient) -> None:
-    """
-    Skip tests if the cluster is not managed.
-    """
-    if not is_managed_cluster(admin_client):
-        pytest.skip("Skipping tests - cluster is not managed")
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Deselect all signing tests when the cluster is not managed."""
+    if config.getoption("--collect-only", default=False) or config.getoption("--setup-plan", default=False):
+        return
 
-    LOGGER.info("Cluster is managed - proceeding with tests")
+    signing_package_path = os.path.dirname(__file__)
+    signing_items = [item for item in items if item.fspath.strpath.startswith(signing_package_path)]
+    if not signing_items:
+        return
+
+    client = get_client()
+    if is_managed_cluster(client=client):
+        return
+
+    LOGGER.info("Cluster is not managed — deselecting all signing tests")
+    remaining = [item for item in items if item not in signing_items]
+    config.hook.pytest_deselected(items=signing_items)
+    items[:] = remaining
 
 
 @pytest.fixture(scope="package")
