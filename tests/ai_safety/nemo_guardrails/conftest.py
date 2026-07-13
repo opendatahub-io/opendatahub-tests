@@ -617,24 +617,22 @@ def installed_istio(
 
     if envoy_filter_crd.exists:
         yield
-        return
+    else:
+        operator_name = "servicemeshoperator3"
+        operator_namespace = "openshift-operators"
 
-    operator_name = "servicemeshoperator3"
-    operator_namespace = "openshift-operators"
-
-    subscription = Subscription(
-        client=admin_client,
-        namespace=operator_namespace,
-        name=operator_name,
-    )
-
-    if not subscription.exists:
-        pytest.fail(
-            f"Failed to find {operator_namespace}.{operator_name} subscription, please install it"
+        subscription = Subscription(
+            client=admin_client,
+            namespace=operator_namespace,
+            name=operator_name,
         )
 
-    else:
-        yield
+        if not subscription.exists:
+            pytest.fail(
+                f"Failed to find {operator_namespace}.{operator_name} subscription, please install it"
+            )
+        else:
+            yield
 
 
 @pytest.fixture(scope="class")
