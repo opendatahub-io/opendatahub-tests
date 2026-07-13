@@ -137,7 +137,11 @@ def post_upgrade_pipelines_dsc_restore(
 
     current_state = dsc_resource.instance.spec.components.get("aipipelines", {}).get("managementState")
     if current_state == DscComponents.ManagementState.REMOVED:
-        return
+        pytest.fail(
+            "AI Pipelines managementState is already 'Removed' during post-upgrade teardown. "
+            "Expected 'Managed' — the pre-upgrade fixture should have set it. "
+            "This may indicate the upgrade reverted the DSC configuration."
+        )
 
     LOGGER.info("Restoring AI Pipelines to Removed state")
     editor = ResourceEditor(
