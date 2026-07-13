@@ -629,25 +629,10 @@ def installed_istio(
     )
 
     if not subscription.exists:
-        install_operator(
-            admin_client=admin_client,
-            target_namespaces=[operator_namespace],
-            name=operator_name,
-            channel="stable-3.0",
-            source="redhat-operators",
-            operator_namespace=operator_namespace,
-            timeout=Timeout.TIMEOUT_15MIN,
-            install_plan_approval="Automatic",
+        pytest.fail(
+            f"Failed to find {operator_namespace}.{operator_name} subscription, please install it"
         )
 
-        yield
-
-        uninstall_operator(
-            admin_client=admin_client,
-            name=operator_name,
-            operator_namespace=operator_namespace,
-            clean_up_namespace=False,
-        )
     else:
         yield
 
@@ -714,24 +699,8 @@ def installed_mcp_gateway(
     )
 
     if not subscription.exists:
-        install_operator(
-            admin_client=admin_client,
-            target_namespaces=[operator_namespace],
-            name=operator_name,
-            channel="preview",
-            source="redhat-operators",
-            operator_namespace=operator_namespace,
-            timeout=Timeout.TIMEOUT_15MIN,
-            install_plan_approval="Automatic",
-        )
-
-        yield
-
-        uninstall_operator(
-            admin_client=admin_client,
-            name=operator_name,
-            operator_namespace=operator_namespace,
-            clean_up_namespace=False,
+        pytest.fail(
+            f"Failed to find {operator_namespace}.{operator_name} subscription, please install it"
         )
     else:
         yield
