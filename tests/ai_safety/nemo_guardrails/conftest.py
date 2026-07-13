@@ -746,7 +746,7 @@ def gateway_crd(
     crd = CustomResourceDefinition(client=admin_client, name=crd_name)
 
     if not crd.exists:
-        pytest.skip(
+        pytest.fail(
             f"Gateway API CRD '{crd_name}' not found — OCP 4.19+ includes this CRD by default via the Ingress Operator."
         )
 
