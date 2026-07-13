@@ -26,6 +26,7 @@ from tests.model_serving.maas_billing.maas_subscription.utils import create_maas
 from tests.model_serving.maas_billing.multitenancy.aitenant.utils import (
     AIGATEWAY_BOOTSTRAPPED_TENANT_NAME,
     AIGATEWAY_GATEWAY_CLASS_NAME,
+    AITenantTestContext,
 )
 from tests.model_serving.maas_billing.utils import (
     assert_api_key_created_ok,
@@ -58,6 +59,9 @@ SHARED_MAAS_API_SERVICE_NAME = MAAS_API_DEPLOYMENT_NAME
 TENANT_ISOLATION_MODEL_NAME = "llm-s3-tinyllama-free"
 TENANT_MODELS_BUCKET_SECRET_NAME = "models-bucket-secret"  # pragma: allowlist secret
 TENANT_MODELS_BUCKET_SA_NAME = "models-bucket-sa"
+CROSS_TENANT_INFERENCE_REJECTED_STATUSES = frozenset({401, 403})
+TENANT_INFERENCE_READY_TIMEOUT_SECONDS = 120
+TENANT_INFERENCE_READY_POLL_SECONDS = 5
 
 
 class TenantIsolationGovernance(TypedDict):
@@ -106,6 +110,133 @@ def maas_api_base_url_for_gateway(gateway_name: str, maas_host: str, scheme: str
     """Return the external maas-api base URL for a tenant Gateway."""
     ingress_domain = ingress_domain_from_maas_host(maas_host=maas_host)
     return f"{scheme}://{gateway_name}.{ingress_domain}/maas-api"
+
+
+def tenant_gateway_inference_url(
+    gateway_name: str,
+    maas_host: str,
+    tenant_namespace_name: str,
+    model_name: str,
+    scheme: str = "https",
+) -> str:
+    """Return the external chat completions URL for a tenant-local model on a tenant Gateway."""
+    gateway_host = tenant_gateway_hostname(gateway_name=gateway_name, maas_host=maas_host)
+    return f"{scheme}://{gateway_host}/{tenant_namespace_name}/{model_name}/v1/chat/completions"
+
+
+def assert_tenant_inference_response_has_choices(response: requests.Response) -> None:
+    """Assert a successful tenant inference response contains non-empty chat completion choices."""
+    response_body: dict[str, Any] = response.json()
+    assert "choices" in response_body, f"'choices' field missing in tenant inference response: {response.text[:200]}"
+    completions_choices = response_body["choices"]
+    assert isinstance(completions_choices, list) and completions_choices, (
+        f"'choices' field empty in tenant inference response: {response.text[:200]}"
+    )
+
+
+def wait_for_tenant_inference_response(
+    session: requests.Session,
+    inference_url: str,
+    headers: dict[str, str],
+    payload: dict[str, Any],
+    expected_status: int = 200,
+    wait_timeout: int = TENANT_INFERENCE_READY_TIMEOUT_SECONDS,
+    sleep: int = TENANT_INFERENCE_READY_POLL_SECONDS,
+) -> requests.Response:
+    """Poll until a tenant inference POST returns the expected status with a valid response body."""
+    last_status_code = 0
+    last_response_text = ""
+    try:
+        for response in TimeoutSampler(
+            wait_timeout=wait_timeout,
+            sleep=sleep,
+            func=session.post,
+            url=inference_url,
+            headers=headers,
+            json=payload,
+            timeout=60,
+            exceptions_dict={requests.RequestException: []},
+        ):
+            last_status_code = response.status_code
+            last_response_text = response.text[:200]
+            if response.status_code == expected_status:
+                assert_tenant_inference_response_has_choices(response=response)
+                LOGGER.info(f"Tenant inference POST {inference_url} returned {response.status_code}")
+                return response
+            else:
+                LOGGER.warning(f"Tenant inference POST {inference_url} returned {response.status_code}; retrying")
+    except TimeoutExpiredError as error:
+        raise TimeoutExpiredError(
+            f"Timed out waiting for {expected_status} on tenant inference POST {inference_url} "
+            f"within {wait_timeout}s; last status={last_status_code}: {last_response_text}"
+        ) from error
+    raise TimeoutExpiredError(
+        f"Expected {expected_status} on tenant inference POST {inference_url}, "
+        f"last status={last_status_code}: {last_response_text}"
+    )
+
+
+def assert_tenant_inference_status(
+    session: requests.Session,
+    inference_url: str,
+    headers: dict[str, str],
+    payload: dict[str, Any],
+    expected_status: int,
+) -> None:
+    """Verify a POST to a tenant Gateway inference endpoint returns the expected HTTP status."""
+    if expected_status == 200:
+        wait_for_tenant_inference_response(
+            session=session,
+            inference_url=inference_url,
+            headers=headers,
+            payload=payload,
+            expected_status=expected_status,
+        )
+        return
+
+    response = session.post(url=inference_url, headers=headers, json=payload, timeout=60)
+    assert response.status_code == expected_status, (
+        f"Expected {expected_status} on tenant inference POST {inference_url}, "
+        f"got {response.status_code}: {response.text[:200]}"
+    )
+    LOGGER.info(f"Tenant inference POST {inference_url} returned {response.status_code}")
+
+
+def assert_tenant_cross_tenant_inference_rejected(
+    session: requests.Session,
+    inference_url: str,
+    headers: dict[str, str],
+    payload: dict[str, Any],
+) -> None:
+    """Verify cross-tenant inference is rejected with 401 or 403."""
+    response = session.post(url=inference_url, headers=headers, json=payload, timeout=60)
+    assert response.status_code in CROSS_TENANT_INFERENCE_REJECTED_STATUSES, (
+        f"Expected one of {sorted(CROSS_TENANT_INFERENCE_REJECTED_STATUSES)} "
+        f"for cross-tenant inference POST {inference_url}, "
+        f"got {response.status_code}: {response.text[:200]}"
+    )
+    LOGGER.info(f"Cross-tenant inference POST {inference_url} returned {response.status_code}")
+
+
+def verify_tenant_model_httproutes_for_contexts(
+    admin_client: DynamicClient,
+    test_contexts: tuple[AITenantTestContext, AITenantTestContext],
+    governance_contexts: list[TenantIsolationGovernance],
+) -> None:
+    """Verify each tenant-local KServe HTTPRoute is Accepted by its tenant Gateway."""
+    for test_context, governance in zip(test_contexts, governance_contexts, strict=True):
+        gateway_name, gateway_namespace = gateway_ref_from_aitenant(aitenant=test_context["aitenant"])
+        wait_for_httproute_accepted_on_gateway(
+            admin_client=admin_client,
+            route_name=tenant_model_kserve_route_name(model_name=governance["model_name"]),
+            route_namespace=governance["model_namespace"],
+            gateway_name=gateway_name,
+            gateway_namespace=gateway_namespace,
+        )
+        LOGGER.info(
+            f"KServe HTTPRoute for model={governance['model_name']} "
+            f"is Accepted on Gateway '{gateway_namespace}/{gateway_name}'"
+        )
 
 
 def wait_for_tenant_gateway_maas_api_reachable(
@@ -327,12 +458,47 @@ def isolation_tenant_api_key_id(
     key_id: str = api_key_body["id"]
     LOGGER.info(f"{fixture_label}: created key id={key_id} name={key_name}")
     yield key_id
-    revoke_response, _ = revoke_api_key(
+    revoke_response = revoke_api_key(
         request_session_http=request_session_http,
         base_url=base_url,
         key_id=key_id,
         ocp_user_token=ocp_user_token,
+    )[0]
+    if revoke_response.status_code not in (200, 404):
+        raise AssertionError(
+            f"Unexpected teardown status for {fixture_label} key id={key_id}: {revoke_response.status_code}"
+        )
+
+
+@contextmanager
+def isolation_tenant_api_key_plaintext(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_user_token: str,
+    subscription_name: str,
+    key_name_prefix: str,
+    fixture_label: str,
+) -> Generator[str, Any, Any]:
+    """Create a tenant-scoped API key, yield the plaintext key, then revoke it on teardown."""
+    key_name = f"{key_name_prefix}-{generate_random_name()}"
+    create_response, api_key_body = create_api_key(
+        base_url=base_url,
+        ocp_user_token=ocp_user_token,
+        request_session_http=request_session_http,
+        api_key_name=key_name,
+        subscription=subscription_name,
     )
+    assert_api_key_created_ok(resp=create_response, body=api_key_body, required_fields=("id", "key"))
+    key_id: str = api_key_body["id"]
+    plaintext_key: str = api_key_body["key"]
+    LOGGER.info(f"{fixture_label}: created key id={key_id} name={key_name}")
+    yield plaintext_key
+    revoke_response = revoke_api_key(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        key_id=key_id,
+        ocp_user_token=ocp_user_token,
+    )[0]
     if revoke_response.status_code not in (200, 404):
         raise AssertionError(
             f"Unexpected teardown status for {fixture_label} key id={key_id}: {revoke_response.status_code}"
