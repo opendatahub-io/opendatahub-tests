@@ -38,3 +38,18 @@ SUPPORTED_MODELCAR_REGISTRY_HOSTS: frozenset[str] = frozenset({
     "quay.io",
 })
 TIMEOUT_20MIN: int = 30 * 60
+OPENAI_ENDPOINT_NAME: str = "openai"
+AUDIO_FILE_URL: str = (
+    "https://raw.githubusercontent.com/realpython/python-speech-recognition/master/audio_files/harvard.wav"
+)
+AUDIO_FILE_LOCAL_PATH: str = "/tmp/harvard.wav"
+AUDIO_TRANSCRIPTION_KEYWORDS: list[str] = [
+    "beer",
+    "pickle",
+    "tacos",
+    "stale",
+    "ham",
+    "zest",
+    "odor",
+    "health",
+]

@@ -162,6 +162,8 @@ def registry_pull_secret(pytestconfig: pytest.Config) -> list[str]:
             "Registry pull secret is not set. "
             "Either pass with `--registry-pull-secret` or set `OCI_REGISTRY_PULL_SECRET` environment variable"
         )
+    if isinstance(registry_pull_secrets, str):
+        registry_pull_secrets = [registry_pull_secrets]
     try:
         for secret in registry_pull_secrets:
             base64.b64decode(s=secret, validate=True)
@@ -179,7 +181,8 @@ def registry_host(pytestconfig: pytest.Config) -> list[str]:
             "Registry host for OCI images is not set. "
             "Either pass with `--registry-host` or set `REGISTRY_HOST` environment variable"
         )
-    return registry_hosts
+    if isinstance(registry_hosts, str):
+        registry_hosts = [registry_hosts]
     return registry_hosts
 
 

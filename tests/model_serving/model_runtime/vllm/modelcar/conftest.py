@@ -9,7 +9,6 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest import FixtureRequest
-from utilities.infra import get_pods_by_isvc_label
 
 from tests.model_serving.model_runtime.vllm.constant import (
     ACCELERATOR_IDENTIFIER,
@@ -152,7 +151,7 @@ def kserve_registry_pull_secret(
         string_data={
             ".dockerconfigjson": docker_config_json,
             "ACCESS_TYPE": PULL_SECRET_ACCESS_TYPE,
-            "OCI_HOST": registry_host,
+            "OCI_HOST": json.dumps(registry_host),
         },
         type="kubernetes.io/dockerconfigjson",
         wait_for_resource=True,

@@ -429,13 +429,9 @@ def validate_raw_openai_inference_request(
     port: int = Ports.REST_PORT,
 ) -> None:
     if model_output_type == "audio":
-        if pod_name is None:
-            raise ValueError("pod_name is required for audio inference")
         LOGGER.info("Running audio inference test")
         model_info, completion_responses = run_audio_inference(
-            pod_name=pod_name,
-            isvc=isvc,
-            port=port,
+            url=get_exposed_isvc_url(isvc=isvc),
             endpoint=OPENAI_ENDPOINT_NAME,
             model_name=model_name,
         )
@@ -473,12 +469,8 @@ def validate_raw_openai_inference_request(
                 response_snapshot=response_snapshot,
             )
     elif model_output_type == "embedding":
-        if pod_name is None:
-            raise ValueError("pod_name is required for embedding inference")
         model_info, embedding_responses = run_embedding_inference(
-            pod_name=pod_name,
-            isvc=isvc,
-            port=port,
+            url=get_exposed_isvc_url(isvc=isvc),
             endpoint=OPENAI_ENDPOINT_NAME,
             embedding_query=EMBEDDING_QUERY,
             model_name=model_name,
