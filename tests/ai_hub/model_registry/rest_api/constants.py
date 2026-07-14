@@ -1,7 +1,5 @@
 from typing import Any
 
-from utilities.constants import ModelFormat
-
 MODEL_REGISTER: dict[str, Any] = {
     "name": "model-rest-api",
     "description": "Model created via rest call",
