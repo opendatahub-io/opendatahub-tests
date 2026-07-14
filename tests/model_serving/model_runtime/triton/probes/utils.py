@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from typing import Any, Literal
 
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.exceptions import ExecOnPodError
 from ocp_resources.pod import Pod
 from ocp_resources.template import Template
 from pytest_testconfig import config as py_config
@@ -132,7 +133,7 @@ def exec_http_probe(pod: Pod, http_get: dict[str, Any]) -> str:
     try:
         result = pod.execute(command=curl_cmd, container=Containers.KSERVE_CONTAINER_NAME)
         return result.strip()
-    except Exception as e:
+    except ExecOnPodError as e:
         raise RuntimeError(f"Failed to execute probe in pod {pod.name}: {e}") from e
 
 

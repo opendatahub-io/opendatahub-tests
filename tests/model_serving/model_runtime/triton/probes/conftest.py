@@ -12,11 +12,7 @@ from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.template import Template
 from pytest import FixtureRequest
 
-from tests.model_serving.model_runtime.triton.constant import (
-    PREDICT_RESOURCES,
-    TEMPLATE_MAP,
-    TRITON_IMAGE,
-)
+from tests.model_serving.model_runtime.triton.constant import PREDICT_RESOURCES, TRITON_IMAGE
 from tests.model_serving.model_runtime.triton.probes.utils import (
     TRITON_LIVENESS_PROBE,
     TRITON_READINESS_PROBE,
@@ -62,12 +58,11 @@ def triton_probes_serving_runtime(
     triton_probes_rest_serving_runtime_template: Template,
 ) -> Generator[ServingRuntime, Any, Any]:
     """Triton REST ServingRuntime with readiness and liveness httpGet probes on kserve-container."""
-    template_name = TEMPLATE_MAP.get("rest_nvidia")
     with ServingRuntimeFromTemplate(
         client=admin_client,
         name="triton-runtime",
         namespace=model_namespace.name,
-        template_name=template_name,
+        template_name=triton_probes_rest_serving_runtime_template.name,
         deployment_type=request.param["deployment_type"],
         runtime_image=triton_probes_runtime_image,
         containers={

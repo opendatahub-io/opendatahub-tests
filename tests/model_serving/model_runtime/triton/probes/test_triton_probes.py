@@ -29,28 +29,6 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
             },
             id="test_triton_onnx_standard_rest_probes",
         ),
-        # Example for larger models (commented out - uncomment and adjust for bigger models):
-        # pytest.param(
-        #     {"name": "triton-large-model-probes"},
-        #     {"model-dir": "triton/large_model_repository"},  # Your large model path
-        #     {"deployment_type": KServeDeploymentType.STANDARD},
-        #     {
-        #         "name": "triton-large-probes",
-        #         "deployment_mode": KServeDeploymentType.STANDARD,
-        #         "timeout": Timeout.TIMEOUT_30MIN,  # Increase for large models
-        #         "resources": {
-        #             "requests": {"cpu": "2", "memory": "8Gi"},  # Increase for large models
-        #             "limits": {"cpu": "4", "memory": "16Gi"},
-        #         },
-        #         "volumes": [
-        #             {"name": "shared-memory", "emptyDir": {"medium": "Memory", "sizeLimit": "32Gi"}},  # More SHM
-        #             {"name": "tmp", "emptyDir": {}},
-        #             {"name": "home", "emptyDir": {}},
-        #         ],
-        #     },
-        #     id="test_triton_large_model_probes",
-        #     marks=pytest.mark.tier2,
-        # ),
     ],
     indirect=True,
 )
