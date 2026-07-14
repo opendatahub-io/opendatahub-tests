@@ -66,8 +66,7 @@ class TestPreUpgradeAutoRAG:
             )
 
         assert phase == WORKFLOW_SUCCEEDED, (
-            f"AutoRAG upgrade pipeline run {upgrade_run_id} ended with phase '{phase}', "
-            f"expected '{WORKFLOW_SUCCEEDED}'"
+            f"AutoRAG upgrade pipeline run {upgrade_run_id} ended with phase '{phase}', expected '{WORKFLOW_SUCCEEDED}'"
         )
 
     @pytest.mark.dependency(depends=["autorag_pre_upgrade_completes"])
