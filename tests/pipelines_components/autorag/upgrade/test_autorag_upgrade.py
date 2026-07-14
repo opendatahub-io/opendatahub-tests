@@ -47,26 +47,27 @@ class TestPreUpgradeAutoRAG:
     def test_autorag_experiment_completes(
         self,
         admin_client: DynamicClient,
-        upgrade_namespace: Namespace,
-        upgrade_run_id: str,
+        autorag_upgrade_namespace: Namespace,
+        autorag_upgrade_run_id: str,
     ) -> None:
         """Given a DSPA with documents and OGX, when an AutoRAG pipeline run is submitted, then it succeeds."""
         phase = wait_for_pipeline_run(
             admin_client=admin_client,
-            namespace=upgrade_namespace.name,
-            run_id=upgrade_run_id,
+            namespace=autorag_upgrade_namespace.name,
+            run_id=autorag_upgrade_run_id,
             timeout=AUTORAG_PIPELINE_TIMEOUT,
         )
 
         if phase != WORKFLOW_SUCCEEDED:
             collect_pipeline_pod_logs(
                 admin_client=admin_client,
-                namespace=upgrade_namespace.name,
-                run_id=upgrade_run_id,
+                namespace=autorag_upgrade_namespace.name,
+                run_id=autorag_upgrade_run_id,
             )
 
         assert phase == WORKFLOW_SUCCEEDED, (
-            f"AutoRAG upgrade pipeline run {upgrade_run_id} ended with phase '{phase}', expected '{WORKFLOW_SUCCEEDED}'"
+            f"AutoRAG upgrade pipeline run {autorag_upgrade_run_id} ended with phase '{phase}', "
+            f"expected '{WORKFLOW_SUCCEEDED}'"
         )
 
     @pytest.mark.dependency(depends=["autorag_pre_upgrade_completes"])
@@ -74,18 +75,18 @@ class TestPreUpgradeAutoRAG:
     def test_autorag_experiment_has_artifacts(
         self,
         admin_client: DynamicClient,
-        upgrade_namespace: Namespace,
-        upgrade_run_id: str,
+        autorag_upgrade_namespace: Namespace,
+        autorag_upgrade_run_id: str,
     ) -> None:
         """Verify the completed pipeline has workflow nodes with execution records."""
         workflow_nodes = get_workflow_completed_nodes(
             admin_client=admin_client,
-            namespace=upgrade_namespace.name,
-            run_id=upgrade_run_id,
+            namespace=autorag_upgrade_namespace.name,
+            run_id=autorag_upgrade_run_id,
         )
 
         assert len(workflow_nodes) > 1, (
-            f"Pipeline run {upgrade_run_id} has {len(workflow_nodes)} completed workflow nodes, "
+            f"Pipeline run {autorag_upgrade_run_id} has {len(workflow_nodes)} completed workflow nodes, "
             "expected multiple nodes for a multi-step AutoRAG pipeline"
         )
 
@@ -93,18 +94,18 @@ class TestPreUpgradeAutoRAG:
     @pytest.mark.pre_upgrade
     def test_autorag_pattern_query(
         self,
-        upgrade_ogx_client: OgxClient,
-        upgrade_discovered_models: tuple[str, str],
+        autorag_upgrade_ogx_client: OgxClient,
+        autorag_upgrade_discovered_models: tuple[str, str],
     ) -> None:
         """Verify the AutoRAG pattern can query OGX via file_search after the pipeline completes."""
-        _, generation_model = upgrade_discovered_models
+        _, generation_model = autorag_upgrade_discovered_models
 
-        vector_stores = upgrade_ogx_client.vector_stores.list()
+        vector_stores = autorag_upgrade_ogx_client.vector_stores.list()
         assert vector_stores.data, "No vector stores found in OGX after pipeline completion"
 
         vector_store = vector_stores.data[0]
         assert_rag_query_works(
-            ogx_client=upgrade_ogx_client,
+            ogx_client=autorag_upgrade_ogx_client,
             model_id=generation_model,
             vector_store=vector_store,
         )
@@ -128,19 +129,19 @@ class TestPostUpgradeAutoRAG:
     @pytest.mark.dependency(name="autorag_run_accessible")
     def test_autorag_experiment_accessible(
         self,
-        upgrade_dspa_api_url: str,
-        upgrade_dspa_auth_headers: dict[str, str],
-        upgrade_dspa_ca_bundle_file: str,
+        autorag_upgrade_dspa_api_url: str,
+        autorag_upgrade_dspa_auth_headers: dict[str, str],
+        autorag_upgrade_dspa_ca_bundle_file: str,
         autorag_upgrade_baseline: dict,
     ) -> None:
         """Verify the pre-upgrade experiment run is accessible and still in SUCCEEDED state."""
         run_id = autorag_upgrade_baseline["run_id"]
 
         run = get_pipeline_run(
-            api_url=upgrade_dspa_api_url,
-            headers=upgrade_dspa_auth_headers,
+            api_url=autorag_upgrade_dspa_api_url,
+            headers=autorag_upgrade_dspa_auth_headers,
             run_id=run_id,
-            ca_bundle=upgrade_dspa_ca_bundle_file,
+            ca_bundle=autorag_upgrade_dspa_ca_bundle_file,
         )
 
         run_state = run.get("state", "")
@@ -152,9 +153,9 @@ class TestPostUpgradeAutoRAG:
     @pytest.mark.dependency(depends=["autorag_run_accessible"])
     def test_autorag_experiment_details_intact(
         self,
-        upgrade_dspa_api_url: str,
-        upgrade_dspa_auth_headers: dict[str, str],
-        upgrade_dspa_ca_bundle_file: str,
+        autorag_upgrade_dspa_api_url: str,
+        autorag_upgrade_dspa_auth_headers: dict[str, str],
+        autorag_upgrade_dspa_ca_bundle_file: str,
         autorag_upgrade_baseline: dict,
     ) -> None:
         """Verify the run details (display name, pipeline reference, parameters) are intact."""
@@ -162,10 +163,10 @@ class TestPostUpgradeAutoRAG:
         expected_display_name = autorag_upgrade_baseline["run_display_name"]
 
         run = get_pipeline_run(
-            api_url=upgrade_dspa_api_url,
-            headers=upgrade_dspa_auth_headers,
+            api_url=autorag_upgrade_dspa_api_url,
+            headers=autorag_upgrade_dspa_auth_headers,
             run_id=run_id,
-            ca_bundle=upgrade_dspa_ca_bundle_file,
+            ca_bundle=autorag_upgrade_dspa_ca_bundle_file,
         )
 
         assert run.get("display_name") == expected_display_name, (
@@ -184,7 +185,7 @@ class TestPostUpgradeAutoRAG:
     def test_autorag_workflow_survived(
         self,
         admin_client: DynamicClient,
-        upgrade_namespace: Namespace,
+        autorag_upgrade_namespace: Namespace,
         autorag_upgrade_baseline: dict,
     ) -> None:
         """Verify the Argo Workflow CRD still exists with Succeeded phase."""
@@ -192,7 +193,7 @@ class TestPostUpgradeAutoRAG:
 
         phase = get_workflow_phase(
             admin_client=admin_client,
-            namespace=upgrade_namespace.name,
+            namespace=autorag_upgrade_namespace.name,
             run_id=run_id,
         )
 
@@ -205,7 +206,7 @@ class TestPostUpgradeAutoRAG:
     def test_autorag_artifacts_survived(
         self,
         admin_client: DynamicClient,
-        upgrade_namespace: Namespace,
+        autorag_upgrade_namespace: Namespace,
         autorag_upgrade_baseline: dict,
     ) -> None:
         """Verify the workflow execution nodes survived the upgrade."""
@@ -213,7 +214,7 @@ class TestPostUpgradeAutoRAG:
 
         workflow_nodes = get_workflow_completed_nodes(
             admin_client=admin_client,
-            namespace=upgrade_namespace.name,
+            namespace=autorag_upgrade_namespace.name,
             run_id=run_id,
         )
 
@@ -225,31 +226,31 @@ class TestPostUpgradeAutoRAG:
     @pytest.mark.post_upgrade
     def test_autorag_managed_pipeline_accessible(
         self,
-        upgrade_managed_pipeline: dict[str, str] | None,
+        autorag_upgrade_managed_pipeline: dict[str, str] | None,
     ) -> None:
         """Verify the managed AutoRAG pipeline is still discoverable after upgrade."""
-        assert upgrade_managed_pipeline is not None, "Managed AutoRAG pipeline not found after upgrade"
-        assert upgrade_managed_pipeline.get("pipeline_id"), "Managed pipeline has no pipeline_id after upgrade"
-        assert upgrade_managed_pipeline.get("pipeline_version_id"), (
+        assert autorag_upgrade_managed_pipeline is not None, "Managed AutoRAG pipeline not found after upgrade"
+        assert autorag_upgrade_managed_pipeline.get("pipeline_id"), "Managed pipeline has no pipeline_id after upgrade"
+        assert autorag_upgrade_managed_pipeline.get("pipeline_version_id"), (
             "Managed pipeline has no pipeline_version_id after upgrade"
         )
 
     @pytest.mark.post_upgrade
     def test_autorag_pattern_query_after_upgrade(
         self,
-        upgrade_ogx_client: OgxClient,
-        upgrade_discovered_models: tuple[str, str],
+        autorag_upgrade_ogx_client: OgxClient,
+        autorag_upgrade_discovered_models: tuple[str, str],
         autorag_upgrade_baseline: dict,
     ) -> None:
         """Verify the AutoRAG pattern can still query OGX via file_search after upgrade."""
-        _, generation_model = upgrade_discovered_models
+        _, generation_model = autorag_upgrade_discovered_models
         vector_store_ids = autorag_upgrade_baseline.get("vector_store_ids", [])
 
         assert vector_store_ids, "No vector_store_ids found in upgrade baseline — cannot verify RAG query"
 
-        vector_store = upgrade_ogx_client.vector_stores.retrieve(vector_store_id=vector_store_ids[0])
+        vector_store = autorag_upgrade_ogx_client.vector_stores.retrieve(vector_store_id=vector_store_ids[0])
         assert_rag_query_works(
-            ogx_client=upgrade_ogx_client,
+            ogx_client=autorag_upgrade_ogx_client,
             model_id=generation_model,
             vector_store=vector_store,
         )

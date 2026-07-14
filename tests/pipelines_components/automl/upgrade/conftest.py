@@ -148,6 +148,7 @@ def post_upgrade_pipelines_dsc_restore(
         patches={dsc_resource: {"spec": {"components": {"aipipelines": {"managementState": "Removed"}}}}}
     )
     editor.update()
+    wait_for_dsc_status_ready(dsc_resource=dsc_resource)
 
 
 @pytest.fixture(scope="session")

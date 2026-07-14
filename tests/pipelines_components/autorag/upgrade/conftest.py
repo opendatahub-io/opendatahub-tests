@@ -23,27 +23,27 @@ from ocp_resources.service_account import ServiceAccount
 from ogx_client import OgxClient
 from timeout_sampler import TimeoutExpiredError
 
-from tests.pipelines_components.autorag.conftest import (
+from tests.pipelines_components.autorag.upgrade.utils import (
+    UPGRADE_BASELINE_CONFIGMAP,
+    discover_vector_store_ids,
+    load_baseline_from_configmap,
+    save_baseline_to_configmap,
+)
+from tests.pipelines_components.autorag.utils import (
     AUTORAG_EMBEDDING_MODEL_NAME,
     AUTORAG_EMBEDDING_MODEL_URI,
     AUTORAG_INFERENCE_MODEL_NAME,
     AUTORAG_INFERENCE_MODEL_URI,
     AUTORAG_OGX_SECRET_DATA,
     OGX_CLIENT_VERIFY_SSL,
-    _create_ogx_server,
-    _get_etcd_template,
-    _get_milvus_template,
-    _get_postgres_template,
-    _log_registered_models,
-    _resolve_model_id,
-    _wait_for_ogx_client_ready,
-    _wait_for_vllm_model_ready,
-)
-from tests.pipelines_components.autorag.upgrade.utils import (
-    UPGRADE_BASELINE_CONFIGMAP,
-    discover_vector_store_ids,
-    load_baseline_from_configmap,
-    save_baseline_to_configmap,
+    create_ogx_server,
+    get_etcd_template,
+    get_milvus_template,
+    get_postgres_template,
+    log_registered_models,
+    resolve_model_id,
+    wait_for_ogx_client_ready,
+    wait_for_vllm_model_ready,
 )
 from tests.pipelines_components.constants import (
     AUTORAG_EMBEDDING_MAX_MODEL_LEN,
@@ -178,6 +178,7 @@ def post_upgrade_autorag_dsc_restore(
         LOGGER.info("Restoring DSC components to Removed", components=list(patches.keys()))
         editor = ResourceEditor(patches={dsc_resource: {"spec": {"components": patches}}})
         editor.update()
+        wait_for_dsc_status_ready(dsc_resource=dsc_resource)
 
 
 # ---------------------------------------------------------------------------
@@ -186,7 +187,7 @@ def post_upgrade_autorag_dsc_restore(
 
 
 @pytest.fixture(scope="session")
-def upgrade_namespace(
+def autorag_upgrade_namespace(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     pre_upgrade_autorag_dsc_patch: DataScienceCluster,
@@ -223,10 +224,10 @@ def upgrade_namespace(
 
 
 @pytest.fixture(scope="session")
-def upgrade_dspa(
+def autorag_upgrade_dspa(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    upgrade_namespace: Namespace,
+    autorag_upgrade_namespace: Namespace,
 ) -> Generator[DataSciencePipelinesApplication, Any, Any]:
     """DataSciencePipelinesApplication — created pre-upgrade, referenced post-upgrade."""
     pre = pytestconfig.option.pre_upgrade
@@ -241,7 +242,7 @@ def upgrade_dspa(
         with DataSciencePipelinesApplication(
             client=admin_client,
             name=DSPA_NAME,
-            namespace=upgrade_namespace.name,
+            namespace=autorag_upgrade_namespace.name,
             dsp_version="v2",
             api_server={
                 "enableSamplePipeline": False,
@@ -260,19 +261,19 @@ def upgrade_dspa(
             Deployment(
                 client=admin_client,
                 name=DSPA_PIPELINE_DEPLOYMENT,
-                namespace=upgrade_namespace.name,
+                namespace=autorag_upgrade_namespace.name,
             ).wait_for_replicas(timeout=Timeout.TIMEOUT_5MIN)
             yield dspa_resource
     else:
         dspa_resource = DataSciencePipelinesApplication(
             client=admin_client,
             name=DSPA_NAME,
-            namespace=upgrade_namespace.name,
+            namespace=autorag_upgrade_namespace.name,
         )
         Deployment(
             client=admin_client,
             name=DSPA_PIPELINE_DEPLOYMENT,
-            namespace=upgrade_namespace.name,
+            namespace=autorag_upgrade_namespace.name,
         ).wait_for_replicas(timeout=Timeout.TIMEOUT_5MIN)
         yield dspa_resource
         if should_cleanup:
@@ -280,55 +281,55 @@ def upgrade_dspa(
 
 
 @pytest.fixture(scope="session")
-def upgrade_dspa_route(
+def autorag_upgrade_dspa_route(
     admin_client: DynamicClient,
-    upgrade_namespace: Namespace,
-    upgrade_dspa: DataSciencePipelinesApplication,
+    autorag_upgrade_namespace: Namespace,
+    autorag_upgrade_dspa: DataSciencePipelinesApplication,
 ) -> Route:
     return Route(
         client=admin_client,
         name=DSPA_PIPELINE_DEPLOYMENT,
-        namespace=upgrade_namespace.name,
+        namespace=autorag_upgrade_namespace.name,
         ensure_exists=True,
     )
 
 
 @pytest.fixture(scope="session")
-def upgrade_dspa_api_url(upgrade_dspa_route: Route) -> str:
-    return f"https://{upgrade_dspa_route.host}"
+def autorag_upgrade_dspa_api_url(autorag_upgrade_dspa_route: Route) -> str:
+    return f"https://{autorag_upgrade_dspa_route.host}"
 
 
 @pytest.fixture(scope="session")
-def upgrade_dspa_auth_headers(current_client_token: str) -> dict[str, str]:
+def autorag_upgrade_dspa_auth_headers(current_client_token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {current_client_token}"}
 
 
 @pytest.fixture(scope="session")
-def upgrade_dspa_ca_bundle_file(admin_client: DynamicClient) -> str:
+def autorag_upgrade_dspa_ca_bundle_file(admin_client: DynamicClient) -> str:
     return create_ca_bundle_file(client=admin_client)
 
 
 @pytest.fixture(scope="session")
-def upgrade_dspa_s3_credentials(
+def autorag_upgrade_dspa_s3_credentials(
     admin_client: DynamicClient,
-    upgrade_namespace: Namespace,
-    upgrade_dspa: DataSciencePipelinesApplication,
+    autorag_upgrade_namespace: Namespace,
+    autorag_upgrade_dspa: DataSciencePipelinesApplication,
 ) -> Secret:
     """Patch DSPA S3 secret with standard AWS credential fields."""
     secret = Secret(
         client=admin_client,
         name=DSPA_S3_SECRET,
-        namespace=upgrade_namespace.name,
+        namespace=autorag_upgrade_namespace.name,
     )
-    assert secret.exists, f"Secret '{DSPA_S3_SECRET}' not found in {upgrade_namespace.name}"
+    assert secret.exists, f"Secret '{DSPA_S3_SECRET}' not found in {autorag_upgrade_namespace.name}"
 
     access_key = base64.b64decode(secret.instance.data.get("accesskey", "")).decode()
     secret_key = base64.b64decode(secret.instance.data.get("secretkey", "")).decode()
-    endpoint = f"http://minio-{DSPA_NAME}.{upgrade_namespace.name}.svc.cluster.local:9000"
+    endpoint = f"http://minio-{DSPA_NAME}.{autorag_upgrade_namespace.name}.svc.cluster.local:9000"
 
     secret.update(
         resource_dict={
-            "metadata": {"name": secret.name, "namespace": upgrade_namespace.name},
+            "metadata": {"name": secret.name, "namespace": autorag_upgrade_namespace.name},
             "stringData": {
                 "AWS_ACCESS_KEY_ID": access_key,
                 "AWS_SECRET_ACCESS_KEY": secret_key,
@@ -347,10 +348,10 @@ def upgrade_dspa_s3_credentials(
 
 
 @pytest.fixture(scope="session")
-def upgrade_ogx_secret(
+def autorag_upgrade_ogx_secret(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    upgrade_namespace: Namespace,
+    autorag_upgrade_namespace: Namespace,
 ) -> Generator[Secret, Any, Any]:
     pre = pytestconfig.option.pre_upgrade
     post = pytestconfig.option.post_upgrade
@@ -360,7 +361,7 @@ def upgrade_ogx_secret(
     if pre:
         with Secret(
             client=admin_client,
-            namespace=upgrade_namespace.name,
+            namespace=autorag_upgrade_namespace.name,
             name=secret_name,
             type="Opaque",
             string_data=AUTORAG_OGX_SECRET_DATA,
@@ -371,7 +372,7 @@ def upgrade_ogx_secret(
         secret = Secret(
             client=admin_client,
             name=secret_name,
-            namespace=upgrade_namespace.name,
+            namespace=autorag_upgrade_namespace.name,
         )
         yield secret
         if should_cleanup:
@@ -379,11 +380,11 @@ def upgrade_ogx_secret(
 
 
 @pytest.fixture(scope="session")
-def upgrade_postgres_deployment(
+def autorag_upgrade_postgres_deployment(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    upgrade_namespace: Namespace,
-    upgrade_ogx_secret: Secret,
+    autorag_upgrade_namespace: Namespace,
+    autorag_upgrade_ogx_secret: Secret,
 ) -> Generator[Deployment, Any, Any]:
     pre = pytestconfig.option.pre_upgrade
     post = pytestconfig.option.post_upgrade
@@ -394,13 +395,13 @@ def upgrade_postgres_deployment(
     if pre:
         with Deployment(
             client=admin_client,
-            namespace=upgrade_namespace.name,
+            namespace=autorag_upgrade_namespace.name,
             name=deploy_name,
             min_ready_seconds=5,
             replicas=1,
             selector={"matchLabels": {"app": app_label}},
             strategy={"type": "Recreate"},
-            template=_get_postgres_template(secret_name=upgrade_ogx_secret.name, app_label=app_label),
+            template=get_postgres_template(secret_name=autorag_upgrade_ogx_secret.name, app_label=app_label),
             teardown=should_cleanup,
         ) as deployment:
             deployment.wait_for_replicas(deployed=True, timeout=240)
@@ -409,7 +410,7 @@ def upgrade_postgres_deployment(
         deployment = Deployment(
             client=admin_client,
             name=deploy_name,
-            namespace=upgrade_namespace.name,
+            namespace=autorag_upgrade_namespace.name,
         )
         deployment.wait_for_replicas(deployed=True, timeout=240)
         yield deployment
@@ -418,11 +419,11 @@ def upgrade_postgres_deployment(
 
 
 @pytest.fixture(scope="session")
-def upgrade_postgres_service(
+def autorag_upgrade_postgres_service(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    upgrade_namespace: Namespace,
-    upgrade_postgres_deployment: Deployment,
+    autorag_upgrade_namespace: Namespace,
+    autorag_upgrade_postgres_deployment: Deployment,
 ) -> Generator[Service, Any, Any]:
     pre = pytestconfig.option.pre_upgrade
     post = pytestconfig.option.post_upgrade
@@ -433,7 +434,7 @@ def upgrade_postgres_service(
     if pre:
         with Service(
             client=admin_client,
-            namespace=upgrade_namespace.name,
+            namespace=autorag_upgrade_namespace.name,
             name=svc_name,
             ports=[{"port": 5432, "targetPort": 5432}],
             selector={"app": app_label},
@@ -445,7 +446,7 @@ def upgrade_postgres_service(
         service = Service(
             client=admin_client,
             name=svc_name,
-            namespace=upgrade_namespace.name,
+            namespace=autorag_upgrade_namespace.name,
         )
         yield service
         if should_cleanup:
@@ -453,10 +454,10 @@ def upgrade_postgres_service(
 
 
 @pytest.fixture(scope="session")
-def upgrade_etcd_deployment(
+def autorag_upgrade_etcd_deployment(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    upgrade_namespace: Namespace,
+    autorag_upgrade_namespace: Namespace,
 ) -> Generator[Deployment, Any, Any]:
     pre = pytestconfig.option.pre_upgrade
     post = pytestconfig.option.post_upgrade
@@ -465,11 +466,11 @@ def upgrade_etcd_deployment(
     deploy_name = f"{AUTORAG_RESOURCE_PREFIX}-etcd"
 
     if pre:
-        template = _get_etcd_template(etcd_service_name=deploy_name)
+        template = get_etcd_template(etcd_service_name=deploy_name)
         template["metadata"]["labels"]["app"] = app_label
         with Deployment(
             client=admin_client,
-            namespace=upgrade_namespace.name,
+            namespace=autorag_upgrade_namespace.name,
             name=deploy_name,
             replicas=1,
             selector={"matchLabels": {"app": app_label}},
@@ -483,7 +484,7 @@ def upgrade_etcd_deployment(
         deployment = Deployment(
             client=admin_client,
             name=deploy_name,
-            namespace=upgrade_namespace.name,
+            namespace=autorag_upgrade_namespace.name,
         )
         deployment.wait_for_replicas(deployed=True, timeout=120)
         yield deployment
@@ -492,11 +493,11 @@ def upgrade_etcd_deployment(
 
 
 @pytest.fixture(scope="session")
-def upgrade_etcd_service(
+def autorag_upgrade_etcd_service(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    upgrade_namespace: Namespace,
-    upgrade_etcd_deployment: Deployment,
+    autorag_upgrade_namespace: Namespace,
+    autorag_upgrade_etcd_deployment: Deployment,
 ) -> Generator[Service, Any, Any]:
     pre = pytestconfig.option.pre_upgrade
     post = pytestconfig.option.post_upgrade
@@ -507,7 +508,7 @@ def upgrade_etcd_service(
     if pre:
         with Service(
             client=admin_client,
-            namespace=upgrade_namespace.name,
+            namespace=autorag_upgrade_namespace.name,
             name=svc_name,
             ports=[{"port": 2379, "targetPort": 2379}],
             selector={"app": app_label},
@@ -519,7 +520,7 @@ def upgrade_etcd_service(
         service = Service(
             client=admin_client,
             name=svc_name,
-            namespace=upgrade_namespace.name,
+            namespace=autorag_upgrade_namespace.name,
         )
         yield service
         if should_cleanup:
@@ -527,12 +528,12 @@ def upgrade_etcd_service(
 
 
 @pytest.fixture(scope="session")
-def upgrade_milvus_deployment(
+def autorag_upgrade_milvus_deployment(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    upgrade_namespace: Namespace,
-    upgrade_etcd_deployment: Deployment,
-    upgrade_etcd_service: Service,
+    autorag_upgrade_namespace: Namespace,
+    autorag_upgrade_etcd_deployment: Deployment,
+    autorag_upgrade_etcd_service: Service,
 ) -> Generator[Deployment, Any, Any]:
     pre = pytestconfig.option.pre_upgrade
     post = pytestconfig.option.post_upgrade
@@ -542,11 +543,11 @@ def upgrade_milvus_deployment(
     etcd_service_name = f"{AUTORAG_RESOURCE_PREFIX}-etcd"
 
     if pre:
-        template = _get_milvus_template(etcd_service_name=etcd_service_name)
+        template = get_milvus_template(etcd_service_name=etcd_service_name)
         template["metadata"]["labels"]["app"] = app_label
         with Deployment(
             client=admin_client,
-            namespace=upgrade_namespace.name,
+            namespace=autorag_upgrade_namespace.name,
             name=deploy_name,
             min_ready_seconds=5,
             replicas=1,
@@ -561,7 +562,7 @@ def upgrade_milvus_deployment(
         deployment = Deployment(
             client=admin_client,
             name=deploy_name,
-            namespace=upgrade_namespace.name,
+            namespace=autorag_upgrade_namespace.name,
         )
         deployment.wait_for_replicas(deployed=True, timeout=240)
         yield deployment
@@ -570,11 +571,11 @@ def upgrade_milvus_deployment(
 
 
 @pytest.fixture(scope="session")
-def upgrade_milvus_service(
+def autorag_upgrade_milvus_service(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    upgrade_namespace: Namespace,
-    upgrade_milvus_deployment: Deployment,
+    autorag_upgrade_namespace: Namespace,
+    autorag_upgrade_milvus_deployment: Deployment,
 ) -> Generator[Service, Any, Any]:
     pre = pytestconfig.option.pre_upgrade
     post = pytestconfig.option.post_upgrade
@@ -585,7 +586,7 @@ def upgrade_milvus_service(
     if pre:
         with Service(
             client=admin_client,
-            namespace=upgrade_namespace.name,
+            namespace=autorag_upgrade_namespace.name,
             name=svc_name,
             ports=[{"name": "grpc", "port": 19530, "targetPort": 19530}],
             selector={"app": app_label},
@@ -597,7 +598,7 @@ def upgrade_milvus_service(
         service = Service(
             client=admin_client,
             name=svc_name,
-            namespace=upgrade_namespace.name,
+            namespace=autorag_upgrade_namespace.name,
         )
         yield service
         if should_cleanup:
@@ -610,13 +611,13 @@ def upgrade_milvus_service(
 
 
 @pytest.fixture(scope="session")
-def upgrade_hf_token_secret(
+def autorag_upgrade_hf_token_secret(
     admin_client: DynamicClient,
-    upgrade_namespace: Namespace,
+    autorag_upgrade_namespace: Namespace,
 ) -> Generator[Secret, Any, Any]:
     existing = Secret(
         client=admin_client,
-        namespace=upgrade_namespace.name,
+        namespace=autorag_upgrade_namespace.name,
         name="hf-token-secret",
     )
     if existing.exists:
@@ -625,7 +626,7 @@ def upgrade_hf_token_secret(
         hf_token = os.environ.get("HF_TOKEN", "")
         with Secret(
             client=admin_client,
-            namespace=upgrade_namespace.name,
+            namespace=autorag_upgrade_namespace.name,
             name="hf-token-secret",
             type="Opaque",
             string_data={"token": hf_token},
@@ -634,29 +635,29 @@ def upgrade_hf_token_secret(
 
 
 @pytest.fixture(scope="session")
-def upgrade_model_service_account(
+def autorag_upgrade_model_service_account(
     admin_client: DynamicClient,
-    upgrade_namespace: Namespace,
-    upgrade_hf_token_secret: Secret,
+    autorag_upgrade_namespace: Namespace,
+    autorag_upgrade_hf_token_secret: Secret,
 ) -> Generator[ServiceAccount, Any, Any]:
     with ServiceAccount(
         client=admin_client,
-        namespace=upgrade_namespace.name,
+        namespace=autorag_upgrade_namespace.name,
         name=f"{AUTORAG_RESOURCE_PREFIX}-model-sa",
-        secrets=[{"name": upgrade_hf_token_secret.name}],
+        secrets=[{"name": autorag_upgrade_hf_token_secret.name}],
     ) as sa:
         yield sa
 
 
 @pytest.fixture(scope="session")
-def upgrade_inference_runtime(
+def autorag_upgrade_inference_runtime(
     admin_client: DynamicClient,
-    upgrade_namespace: Namespace,
+    autorag_upgrade_namespace: Namespace,
 ) -> Generator[ServingRuntimeFromTemplate, Any, Any]:
     with ServingRuntimeFromTemplate(
         client=admin_client,
         name=f"{AUTORAG_RESOURCE_PREFIX}-vllm-inf",
-        namespace=upgrade_namespace.name,
+        namespace=autorag_upgrade_namespace.name,
         template_name="vllm-cpu-runtime-template",
         multi_model=False,
         enable_http=True,
@@ -666,24 +667,24 @@ def upgrade_inference_runtime(
 
 
 @pytest.fixture(scope="session")
-def upgrade_inference_service(
+def autorag_upgrade_inference_service(
     admin_client: DynamicClient,
-    upgrade_namespace: Namespace,
-    upgrade_inference_runtime: ServingRuntimeFromTemplate,
-    upgrade_model_service_account: ServiceAccount,
+    autorag_upgrade_namespace: Namespace,
+    autorag_upgrade_inference_runtime: ServingRuntimeFromTemplate,
+    autorag_upgrade_model_service_account: ServiceAccount,
 ) -> Generator[InferenceService, Any, Any]:
     served_model_name = AUTORAG_LLAMA_STACK_INFERENCE_MODEL_ID or AUTORAG_INFERENCE_MODEL_NAME
     with create_isvc(
         client=admin_client,
         name=f"{AUTORAG_RESOURCE_PREFIX}-inference",
-        namespace=upgrade_namespace.name,
+        namespace=autorag_upgrade_namespace.name,
         model_format="vLLM",
-        runtime=upgrade_inference_runtime.name,
+        runtime=autorag_upgrade_inference_runtime.name,
         storage_uri=AUTORAG_INFERENCE_MODEL_URI,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         wait=True,
         timeout=1800,
-        model_service_account=upgrade_model_service_account.name,
+        model_service_account=autorag_upgrade_model_service_account.name,
         resources={
             "requests": {"cpu": "2", "memory": "4Gi"},
             "limits": {"cpu": "4", "memory": "8Gi"},
@@ -695,24 +696,24 @@ def upgrade_inference_service(
 
 
 @pytest.fixture(scope="session")
-def upgrade_inference_url(upgrade_inference_service: InferenceService) -> str:
-    url = upgrade_inference_service.instance.status.address.url
-    assert url, f"InferenceService {upgrade_inference_service.name} has no status.address.url"
+def autorag_upgrade_inference_url(autorag_upgrade_inference_service: InferenceService) -> str:
+    url = autorag_upgrade_inference_service.instance.status.address.url
+    assert url, f"InferenceService {autorag_upgrade_inference_service.name} has no status.address.url"
     return f"{url}/v1"
 
 
 @pytest.fixture(scope="session")
-def upgrade_inference_route(
+def autorag_upgrade_inference_route(
     admin_client: DynamicClient,
-    upgrade_namespace: Namespace,
-    upgrade_inference_service: InferenceService,
+    autorag_upgrade_namespace: Namespace,
+    autorag_upgrade_inference_service: InferenceService,
 ) -> Generator[Route, Any, Any]:
     route_name = generate_random_name(prefix=f"{AUTORAG_RESOURCE_PREFIX}-inf", length=12)
     with Route(
         client=admin_client,
-        namespace=upgrade_namespace.name,
+        namespace=autorag_upgrade_namespace.name,
         name=route_name,
-        service=f"{upgrade_inference_service.name}-predictor",
+        service=f"{autorag_upgrade_inference_service.name}-predictor",
         wait_for_resource=True,
     ) as route:
         ResourceEditor(
@@ -732,14 +733,14 @@ def upgrade_inference_route(
 
 
 @pytest.fixture(scope="session")
-def upgrade_embedding_runtime(
+def autorag_upgrade_embedding_runtime(
     admin_client: DynamicClient,
-    upgrade_namespace: Namespace,
+    autorag_upgrade_namespace: Namespace,
 ) -> Generator[ServingRuntimeFromTemplate, Any, Any]:
     with ServingRuntimeFromTemplate(
         client=admin_client,
         name=f"{AUTORAG_RESOURCE_PREFIX}-vllm-emb",
-        namespace=upgrade_namespace.name,
+        namespace=autorag_upgrade_namespace.name,
         template_name=RuntimeTemplates.VLLM_CPU_x86,
         multi_model=False,
         enable_http=True,
@@ -749,23 +750,23 @@ def upgrade_embedding_runtime(
 
 
 @pytest.fixture(scope="session")
-def upgrade_embedding_service(
+def autorag_upgrade_embedding_service(
     admin_client: DynamicClient,
-    upgrade_namespace: Namespace,
-    upgrade_embedding_runtime: ServingRuntimeFromTemplate,
-    upgrade_model_service_account: ServiceAccount,
+    autorag_upgrade_namespace: Namespace,
+    autorag_upgrade_embedding_runtime: ServingRuntimeFromTemplate,
+    autorag_upgrade_model_service_account: ServiceAccount,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=admin_client,
         name=f"{AUTORAG_RESOURCE_PREFIX}-embedding",
-        namespace=upgrade_namespace.name,
+        namespace=autorag_upgrade_namespace.name,
         model_format="vLLM",
-        runtime=upgrade_embedding_runtime.name,
+        runtime=autorag_upgrade_embedding_runtime.name,
         storage_uri=AUTORAG_EMBEDDING_MODEL_URI,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         wait=True,
         timeout=1800,
-        model_service_account=upgrade_model_service_account.name,
+        model_service_account=autorag_upgrade_model_service_account.name,
         resources={
             "requests": {"cpu": "2", "memory": "4Gi"},
             "limits": {"cpu": "4", "memory": "8Gi"},
@@ -789,9 +790,9 @@ def upgrade_embedding_service(
 
 
 @pytest.fixture(scope="session")
-def upgrade_embedding_url(upgrade_embedding_service: InferenceService) -> str:
-    url = upgrade_embedding_service.instance.status.address.url
-    assert url, f"InferenceService {upgrade_embedding_service.name} has no status.address.url"
+def autorag_upgrade_embedding_url(autorag_upgrade_embedding_service: InferenceService) -> str:
+    url = autorag_upgrade_embedding_service.instance.status.address.url
+    assert url, f"InferenceService {autorag_upgrade_embedding_service.name} has no status.address.url"
     return f"{url}/v1"
 
 
@@ -801,18 +802,18 @@ def upgrade_embedding_url(upgrade_embedding_service: InferenceService) -> str:
 
 
 @pytest.fixture(scope="session")
-def upgrade_ogx_server(
+def autorag_upgrade_ogx_server(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    upgrade_namespace: Namespace,
+    autorag_upgrade_namespace: Namespace,
     pre_upgrade_autorag_dsc_patch: DataScienceCluster,
-    upgrade_ogx_secret: Secret,
-    upgrade_postgres_deployment: Deployment,
-    upgrade_postgres_service: Service,
-    upgrade_milvus_service: Service,
-    upgrade_inference_url: str,
-    upgrade_embedding_url: str,
-    upgrade_inference_route: Route,
+    autorag_upgrade_ogx_secret: Secret,
+    autorag_upgrade_postgres_deployment: Deployment,
+    autorag_upgrade_postgres_service: Service,
+    autorag_upgrade_milvus_service: Service,
+    autorag_upgrade_inference_url: str,
+    autorag_upgrade_embedding_url: str,
+    autorag_upgrade_inference_route: Route,
 ) -> Generator[OgxServer, Any, Any]:
     pre = pytestconfig.option.pre_upgrade
     post = pytestconfig.option.post_upgrade
@@ -822,13 +823,13 @@ def upgrade_ogx_server(
     if pre:
         inference_catalog_model_id = AUTORAG_LLAMA_STACK_INFERENCE_MODEL_ID or AUTORAG_INFERENCE_MODEL_NAME
 
-        _wait_for_vllm_model_ready(
-            vllm_base_url=f"https://{upgrade_inference_route.host}/v1",
+        wait_for_vllm_model_ready(
+            vllm_base_url=f"https://{autorag_upgrade_inference_route.host}/v1",
             model_name=inference_catalog_model_id,
         )
 
-        secret_name = upgrade_ogx_secret.name
-        postgres_service_name = upgrade_postgres_service.name
+        secret_name = autorag_upgrade_ogx_secret.name
+        postgres_service_name = autorag_upgrade_postgres_service.name
 
         env_vars = [
             {"name": "INFERENCE_MODEL", "value": inference_catalog_model_id},
@@ -837,13 +838,13 @@ def upgrade_ogx_server(
                 "name": "VLLM_API_TOKEN",
                 "valueFrom": {"secretKeyRef": {"name": secret_name, "key": "vllm-api-token"}},
             },
-            {"name": "VLLM_URL", "value": upgrade_inference_url},
+            {"name": "VLLM_URL", "value": autorag_upgrade_inference_url},
             {"name": "VLLM_TLS_VERIFY", "value": "false"},
             {"name": "VLLM_MAX_TOKENS", "value": "128"},
             {"name": "FMS_ORCHESTRATOR_URL", "value": "http://localhost"},
             {"name": "EMBEDDING_MODEL", "value": AUTORAG_EMBEDDING_MODEL_NAME},
             {"name": "EMBEDDING_PROVIDER_MODEL_ID", "value": AUTORAG_EMBEDDING_MODEL_NAME},
-            {"name": "VLLM_EMBEDDING_URL", "value": upgrade_embedding_url},
+            {"name": "VLLM_EMBEDDING_URL", "value": autorag_upgrade_embedding_url},
             {
                 "name": "VLLM_EMBEDDING_API_TOKEN",
                 "valueFrom": {"secretKeyRef": {"name": secret_name, "key": "vllm-embedding-api-token"}},
@@ -862,7 +863,7 @@ def upgrade_ogx_server(
             },
             {"name": "POSTGRES_DB", "value": "ps_db"},
             {"name": "POSTGRES_TABLE_NAME", "value": "llamastack_kvstore"},
-            {"name": "MILVUS_ENDPOINT", "value": f"http://{upgrade_milvus_service.name}:19530"},
+            {"name": "MILVUS_ENDPOINT", "value": f"http://{autorag_upgrade_milvus_service.name}:19530"},
             {
                 "name": "MILVUS_TOKEN",
                 "valueFrom": {"secretKeyRef": {"name": secret_name, "key": "milvus-token"}},
@@ -883,10 +884,10 @@ def upgrade_ogx_server(
             },
         }
 
-        with _create_ogx_server(
+        with create_ogx_server(
             client=admin_client,
             name=ogx_name,
-            namespace=upgrade_namespace.name,
+            namespace=autorag_upgrade_namespace.name,
             config=ogx_config,
         ) as ogx_srv:
             ogx_srv.wait_for_status(status=OgxServer.Status.READY, timeout=900)
@@ -895,7 +896,7 @@ def upgrade_ogx_server(
         ogx_srv = OgxServer(
             client=admin_client,
             name=ogx_name,
-            namespace=upgrade_namespace.name,
+            namespace=autorag_upgrade_namespace.name,
         )
         ogx_srv.wait_for_status(status=OgxServer.Status.READY, timeout=900)
         yield ogx_srv
@@ -904,14 +905,14 @@ def upgrade_ogx_server(
 
 
 @pytest.fixture(scope="session")
-def upgrade_ogx_deployment(
+def autorag_upgrade_ogx_deployment(
     admin_client: DynamicClient,
-    upgrade_ogx_server: OgxServer,
+    autorag_upgrade_ogx_server: OgxServer,
 ) -> Deployment:
     deployment = Deployment(
         client=admin_client,
-        namespace=upgrade_ogx_server.namespace,
-        name=upgrade_ogx_server.name,
+        namespace=autorag_upgrade_ogx_server.namespace,
+        name=autorag_upgrade_ogx_server.name,
         min_ready_seconds=10,
     )
     deployment.timeout_seconds = 240
@@ -921,17 +922,17 @@ def upgrade_ogx_deployment(
 
 
 @pytest.fixture(scope="session")
-def upgrade_ogx_route(
+def autorag_upgrade_ogx_route(
     admin_client: DynamicClient,
-    upgrade_namespace: Namespace,
-    upgrade_ogx_deployment: Deployment,
+    autorag_upgrade_namespace: Namespace,
+    autorag_upgrade_ogx_deployment: Deployment,
 ) -> Generator[Route, Any, Any]:
     route_name = generate_random_name(prefix=f"{AUTORAG_RESOURCE_PREFIX}-ogx", length=12)
     with Route(
         client=admin_client,
-        namespace=upgrade_namespace.name,
+        namespace=autorag_upgrade_namespace.name,
         name=route_name,
-        service=f"{upgrade_ogx_deployment.name}-service",
+        service=f"{autorag_upgrade_ogx_deployment.name}-service",
         wait_for_resource=True,
     ) as route:
         ResourceEditor(
@@ -954,44 +955,44 @@ def upgrade_ogx_route(
 
 
 @pytest.fixture(scope="session")
-def upgrade_ogx_url(upgrade_ogx_route: Route) -> str:
-    return f"https://{upgrade_ogx_route.host}"
+def autorag_upgrade_ogx_url(autorag_upgrade_ogx_route: Route) -> str:
+    return f"https://{autorag_upgrade_ogx_route.host}"
 
 
 @pytest.fixture(scope="session")
-def upgrade_ogx_client(
-    upgrade_ogx_route: Route,
+def autorag_upgrade_ogx_client(
+    autorag_upgrade_ogx_route: Route,
 ) -> Generator[OgxClient, Any, Any]:
     http_client = httpx.Client(verify=OGX_CLIENT_VERIFY_SSL, timeout=300)
     try:
         client = OgxClient(
-            base_url=f"https://{upgrade_ogx_route.host}",
+            base_url=f"https://{autorag_upgrade_ogx_route.host}",
             max_retries=3,
             http_client=http_client,
             timeout=300,
         )
-        _wait_for_ogx_client_ready(client=client)
+        wait_for_ogx_client_ready(client=client)
         yield client
     finally:
         http_client.close()
 
 
 @pytest.fixture(scope="session")
-def upgrade_discovered_models(
-    upgrade_ogx_client: OgxClient,
+def autorag_upgrade_discovered_models(
+    autorag_upgrade_ogx_client: OgxClient,
 ) -> tuple[str, str]:
     """Discover embedding and generation model IDs from OGX."""
-    registered_ids = _log_registered_models(client=upgrade_ogx_client)
+    registered_ids = log_registered_models(client=autorag_upgrade_ogx_client)
 
-    embedding_id = _resolve_model_id(registered_ids=registered_ids, model_name=AUTORAG_EMBEDDING_MODEL_NAME)
+    embedding_id = resolve_model_id(registered_ids=registered_ids, model_name=AUTORAG_EMBEDDING_MODEL_NAME)
     assert embedding_id is not None, (
         f"Embedding model '{AUTORAG_EMBEDDING_MODEL_NAME}' not registered in OGX server. "
         f"Available: {sorted(registered_ids)}"
     )
 
-    generation_id = _resolve_model_id(registered_ids=registered_ids, model_name=AUTORAG_INFERENCE_MODEL_NAME)
+    generation_id = resolve_model_id(registered_ids=registered_ids, model_name=AUTORAG_INFERENCE_MODEL_NAME)
     if generation_id is None and AUTORAG_LLAMA_STACK_INFERENCE_MODEL_ID:
-        generation_id = _resolve_model_id(
+        generation_id = resolve_model_id(
             registered_ids=registered_ids, model_name=AUTORAG_LLAMA_STACK_INFERENCE_MODEL_ID
         )
     assert generation_id is not None, (
@@ -1011,31 +1012,31 @@ def upgrade_discovered_models(
 
 
 @pytest.fixture(scope="session")
-def upgrade_managed_pipeline(
-    upgrade_dspa: DataSciencePipelinesApplication,
-    upgrade_dspa_api_url: str,
-    upgrade_dspa_auth_headers: dict[str, str],
-    upgrade_dspa_ca_bundle_file: str,
+def autorag_upgrade_managed_pipeline(
+    autorag_upgrade_dspa: DataSciencePipelinesApplication,
+    autorag_upgrade_dspa_api_url: str,
+    autorag_upgrade_dspa_auth_headers: dict[str, str],
+    autorag_upgrade_dspa_ca_bundle_file: str,
 ) -> dict[str, str] | None:
     """Discover managed AutoRAG pipeline. None in legacy YAML mode."""
     if not use_managed_pipelines(yaml_env_value=AUTORAG_PIPELINE_YAML):
         return None
     return wait_for_managed_pipeline(
-        api_url=upgrade_dspa_api_url,
-        headers=upgrade_dspa_auth_headers,
+        api_url=autorag_upgrade_dspa_api_url,
+        headers=autorag_upgrade_dspa_auth_headers,
         display_name=MANAGED_PIPELINE_AUTORAG,
-        ca_bundle=upgrade_dspa_ca_bundle_file,
+        ca_bundle=autorag_upgrade_dspa_ca_bundle_file,
         timeout=DSPA_READY_BUFFER_SECONDS + MANAGED_PIPELINE_WAIT_TIMEOUT,
         poll_interval=MANAGED_PIPELINE_POLL_INTERVAL,
     )
 
 
 @pytest.fixture(scope="session")
-def upgrade_test_data(
+def autorag_upgrade_test_data(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    upgrade_namespace: Namespace,
-    upgrade_dspa_s3_credentials: Secret,
+    autorag_upgrade_namespace: Namespace,
+    autorag_upgrade_dspa_s3_credentials: Secret,
 ) -> None:
     """Upload AutoRAG test data to DSPA MinIO. No-op when pre-upgrade is not set."""
     if not pytestconfig.option.pre_upgrade:
@@ -1046,7 +1047,7 @@ def upgrade_test_data(
     src_test_key = shlex.quote(s=AUTORAG_TEST_DATA_KEY)
     dst_bucket = shlex.quote(s=DSPA_S3_BUCKET)
 
-    minio_endpoint = f"http://minio-{DSPA_NAME}.{upgrade_namespace.name}.svc.cluster.local:9000"
+    minio_endpoint = f"http://minio-{DSPA_NAME}.{autorag_upgrade_namespace.name}.svc.cluster.local:9000"
     src_endpoint = os.environ.get("AWS_S3_ENDPOINT", "https://s3.amazonaws.com")
     src_access_key = os.environ.get("AWS_ACCESS_KEY_ID", "")
     src_secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
@@ -1068,7 +1069,7 @@ def upgrade_test_data(
     with Pod(
         client=admin_client,
         name=pod_name,
-        namespace=upgrade_namespace.name,
+        namespace=autorag_upgrade_namespace.name,
         restart_policy="Never",
         volumes=[{"name": "work", "emptyDir": {}}],
         containers=[
@@ -1110,11 +1111,11 @@ def upgrade_test_data(
 
 
 @pytest.fixture(scope="session")
-def upgrade_ogx_url_secret(
+def autorag_upgrade_ogx_url_secret(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    upgrade_namespace: Namespace,
-    upgrade_ogx_url: str,
+    autorag_upgrade_namespace: Namespace,
+    autorag_upgrade_ogx_url: str,
 ) -> Generator[Secret, Any, Any]:
     pre = pytestconfig.option.pre_upgrade
     post = pytestconfig.option.post_upgrade
@@ -1125,9 +1126,9 @@ def upgrade_ogx_url_secret(
         with Secret(
             client=admin_client,
             name=secret_name,
-            namespace=upgrade_namespace.name,
+            namespace=autorag_upgrade_namespace.name,
             string_data={
-                "OGX_CLIENT_BASE_URL": upgrade_ogx_url,
+                "OGX_CLIENT_BASE_URL": autorag_upgrade_ogx_url,
                 "OGX_CLIENT_API_KEY": "unused",  # pragma: allowlist secret
             },
             teardown=should_cleanup,
@@ -1137,7 +1138,7 @@ def upgrade_ogx_url_secret(
         secret = Secret(
             client=admin_client,
             name=secret_name,
-            namespace=upgrade_namespace.name,
+            namespace=autorag_upgrade_namespace.name,
         )
         yield secret
         if should_cleanup:
@@ -1145,40 +1146,40 @@ def upgrade_ogx_url_secret(
 
 
 @pytest.fixture(scope="session")
-def upgrade_run_id(
+def autorag_upgrade_run_id(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    upgrade_namespace: Namespace,
-    upgrade_dspa_api_url: str,
-    upgrade_dspa_auth_headers: dict[str, str],
-    upgrade_dspa_ca_bundle_file: str,
-    upgrade_managed_pipeline: dict[str, str] | None,
-    upgrade_ogx_url_secret: Secret,
-    upgrade_discovered_models: tuple[str, str],
-    upgrade_inference_url: str,
-    upgrade_embedding_url: str,
-    upgrade_dspa_s3_credentials: Secret,
-    upgrade_test_data: None,
+    autorag_upgrade_namespace: Namespace,
+    autorag_upgrade_dspa_api_url: str,
+    autorag_upgrade_dspa_auth_headers: dict[str, str],
+    autorag_upgrade_dspa_ca_bundle_file: str,
+    autorag_upgrade_managed_pipeline: dict[str, str] | None,
+    autorag_upgrade_ogx_url_secret: Secret,
+    autorag_upgrade_discovered_models: tuple[str, str],
+    autorag_upgrade_inference_url: str,
+    autorag_upgrade_embedding_url: str,
+    autorag_upgrade_dspa_s3_credentials: Secret,
+    autorag_upgrade_test_data: None,
 ) -> str:
     """Pipeline run ID — created when pre-upgrade is set, loaded from ConfigMap otherwise."""
     if not pytestconfig.option.pre_upgrade:
         baselines = load_baseline_from_configmap(
             client=admin_client,
-            namespace=upgrade_namespace.name,
+            namespace=autorag_upgrade_namespace.name,
             configmap_name=UPGRADE_BASELINE_CONFIGMAP,
         )
         return baselines["run_id"]
 
-    embedding_model, generation_model = upgrade_discovered_models
+    embedding_model, generation_model = autorag_upgrade_discovered_models
 
     parameters: dict[str, Any] = {
-        "input_data_secret_name": upgrade_dspa_s3_credentials.name,
+        "input_data_secret_name": autorag_upgrade_dspa_s3_credentials.name,
         "input_data_bucket_name": DSPA_S3_BUCKET,
         "input_data_key": AUTORAG_INPUT_DATA_KEY,
-        "test_data_secret_name": upgrade_dspa_s3_credentials.name,
+        "test_data_secret_name": autorag_upgrade_dspa_s3_credentials.name,
         "test_data_bucket_name": DSPA_S3_BUCKET,
         "test_data_key": AUTORAG_TEST_DATA_KEY,
-        "ogx_secret_name": upgrade_ogx_url_secret.name,
+        "ogx_secret_name": autorag_upgrade_ogx_url_secret.name,
         "optimization_max_rag_patterns": AUTORAG_MAX_RAG_PATTERNS,
         "optimization_metric": AUTORAG_OPTIMIZATION_METRIC,
         "embedding_models": [embedding_model],
@@ -1186,32 +1187,32 @@ def upgrade_run_id(
         "vector_io_provider_id": "milvus-remote",
     }
 
-    if upgrade_managed_pipeline is not None:
+    if autorag_upgrade_managed_pipeline is not None:
         run_id = create_pipeline_run_managed(
-            api_url=upgrade_dspa_api_url,
-            headers=upgrade_dspa_auth_headers,
-            pipeline_id=upgrade_managed_pipeline["pipeline_id"],
-            pipeline_version_id=upgrade_managed_pipeline["pipeline_version_id"],
+            api_url=autorag_upgrade_dspa_api_url,
+            headers=autorag_upgrade_dspa_auth_headers,
+            pipeline_id=autorag_upgrade_managed_pipeline["pipeline_id"],
+            pipeline_version_id=autorag_upgrade_managed_pipeline["pipeline_version_id"],
             run_name=UPGRADE_RUN_DISPLAY_NAME,
             parameters=parameters,
-            ca_bundle=upgrade_dspa_ca_bundle_file,
+            ca_bundle=autorag_upgrade_dspa_ca_bundle_file,
         )
     else:
         pipeline_yaml_path = resolve_pipeline_yaml(value=AUTORAG_PIPELINE_YAML)
         pipeline_id = upload_pipeline(
-            api_url=upgrade_dspa_api_url,
-            headers=upgrade_dspa_auth_headers,
+            api_url=autorag_upgrade_dspa_api_url,
+            headers=autorag_upgrade_dspa_auth_headers,
             pipeline_yaml_path=pipeline_yaml_path,
-            pipeline_name=f"autorag-upgrade-{upgrade_namespace.name}",
-            ca_bundle=upgrade_dspa_ca_bundle_file,
+            pipeline_name=f"autorag-upgrade-{autorag_upgrade_namespace.name}",
+            ca_bundle=autorag_upgrade_dspa_ca_bundle_file,
         )
         run_id = create_pipeline_run(
-            api_url=upgrade_dspa_api_url,
-            headers=upgrade_dspa_auth_headers,
+            api_url=autorag_upgrade_dspa_api_url,
+            headers=autorag_upgrade_dspa_auth_headers,
             pipeline_id=pipeline_id,
             run_name=UPGRADE_RUN_DISPLAY_NAME,
             parameters=parameters,
-            ca_bundle=upgrade_dspa_ca_bundle_file,
+            ca_bundle=autorag_upgrade_dspa_ca_bundle_file,
         )
 
     return run_id
@@ -1226,29 +1227,29 @@ def upgrade_run_id(
 def autorag_capture_upgrade_baseline(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    upgrade_namespace: Namespace,
-    upgrade_run_id: str,
-    upgrade_managed_pipeline: dict[str, str] | None,
-    upgrade_ogx_client: OgxClient,
+    autorag_upgrade_namespace: Namespace,
+    autorag_upgrade_run_id: str,
+    autorag_upgrade_managed_pipeline: dict[str, str] | None,
+    autorag_upgrade_ogx_client: OgxClient,
 ) -> None:
     """Capture baseline after pre-upgrade experiment completes. No-op when pre-upgrade is not set."""
     if not pytestconfig.option.pre_upgrade:
         return
 
-    vector_store_ids = discover_vector_store_ids(ogx_client=upgrade_ogx_client)
+    vector_store_ids = discover_vector_store_ids(ogx_client=autorag_upgrade_ogx_client)
 
     baselines: dict[str, Any] = {
-        "run_id": upgrade_run_id,
+        "run_id": autorag_upgrade_run_id,
         "run_display_name": UPGRADE_RUN_DISPLAY_NAME,
         "vector_store_ids": vector_store_ids,
     }
-    if upgrade_managed_pipeline is not None:
-        baselines["pipeline_id"] = upgrade_managed_pipeline["pipeline_id"]
-        baselines["pipeline_version_id"] = upgrade_managed_pipeline["pipeline_version_id"]
+    if autorag_upgrade_managed_pipeline is not None:
+        baselines["pipeline_id"] = autorag_upgrade_managed_pipeline["pipeline_id"]
+        baselines["pipeline_version_id"] = autorag_upgrade_managed_pipeline["pipeline_version_id"]
 
     save_baseline_to_configmap(
         client=admin_client,
-        namespace=upgrade_namespace.name,
+        namespace=autorag_upgrade_namespace.name,
         baselines=baselines,
         configmap_name=UPGRADE_BASELINE_CONFIGMAP,
     )
@@ -1258,7 +1259,7 @@ def autorag_capture_upgrade_baseline(
 def autorag_upgrade_baseline(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    upgrade_namespace: Namespace,
+    autorag_upgrade_namespace: Namespace,
 ) -> dict:
     """Load pre-upgrade baseline. Returns empty dict when post-upgrade is not set."""
     if not pytestconfig.option.post_upgrade:
@@ -1266,6 +1267,6 @@ def autorag_upgrade_baseline(
 
     return load_baseline_from_configmap(
         client=admin_client,
-        namespace=upgrade_namespace.name,
+        namespace=autorag_upgrade_namespace.name,
         configmap_name=UPGRADE_BASELINE_CONFIGMAP,
     )
