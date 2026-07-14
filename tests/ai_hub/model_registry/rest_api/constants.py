@@ -25,14 +25,24 @@ MODEL_VERSION: dict[str, Any] = {
 MODEL_ARTIFACT: dict[str, Any] = {
     "name": "model-artifact-rest-api",
     "description": "Model artifact created via rest call",
-    "uri": "hf://jonburdo/test2",
+    "uri": "hf://TinyLlama/TinyLlama-1.1B-Chat-v1.0",
     "state": "UNKNOWN",
-    "modelFormatName": ModelFormat.ONNX,
+    "modelFormatName": "vLLM",
     "modelFormatVersion": "v1",
     "artifactType": "model-artifact",
     "customProperties": {
-        "test_ma_bool_property": {"bool_value": True, "metadataType": "MetadataBoolValue"},
-        "test_ma_str_property": {"string_value": "my_value", "metadataType": "MetadataStringValue"},
+        "HF_HUB_ENABLE_HF_TRANSFER": {
+            "string_value": "0",
+            "metadataType": "MetadataStringValue",
+        },
+        "test_ma_bool_property": {
+            "bool_value": True,
+            "metadataType": "MetadataBoolValue",
+        },
+        "test_ma_str_property": {
+            "string_value": "my_value",
+            "metadataType": "MetadataStringValue",
+        },
     },
 }
 MODEL_REGISTER_DATA = {
