@@ -49,7 +49,7 @@ def test_nemo_guardrails_crd_exists(
     [pytest.param({"name": "test-nemo-guardrails"})],
     indirect=True,
 )
-@pytest.mark.usefixtures("patched_dsc_kserve_headed")
+@pytest.mark.usefixtures("session_patched_dsc_kserve_headed")
 class TestNemoGuardrailsLLMAsJudge:
     """
     Tests for NeMo Guardrails server operations with LLM-as-a-Judge configuration.
@@ -90,7 +90,7 @@ class TestNemoGuardrailsLLMAsJudge:
 
     def test_nemo_llm_judge_deployment(
         self,
-        llm_d_inference_sim_isvc: InferenceService,
+        session_llm_d_inference_sim_isvc: InferenceService,
         nemo_guardrails_llm_judge: NemoGuardrails,
         nemo_guardrails_llm_judge_route: Route,
         nemo_guardrails_llm_judge_healthcheck,
@@ -111,7 +111,7 @@ class TestNemoGuardrailsLLMAsJudge:
         self,
         openshift_ca_bundle_file: str,
         current_client_token: str,
-        llm_d_inference_sim_isvc: InferenceService,
+        session_llm_d_inference_sim_isvc: InferenceService,
         nemo_guardrails_llm_judge: NemoGuardrails,
         nemo_guardrails_llm_judge_route: Route,
         nemo_guardrails_llm_judge_healthcheck,
@@ -151,7 +151,7 @@ class TestNemoGuardrailsLLMAsJudge:
     def test_nemo_llm_judge_with_authentication(
         self,
         openshift_ca_bundle_file: str,
-        llm_d_inference_sim_isvc: InferenceService,
+        session_llm_d_inference_sim_isvc: InferenceService,
         nemo_guardrails_llm_judge: NemoGuardrails,
         nemo_guardrails_llm_judge_route: Route,
         nemo_guardrails_llm_judge_healthcheck,
@@ -186,7 +186,7 @@ class TestNemoGuardrailsLLMAsJudge:
     [pytest.param({"name": "test-nemo-guardrails"})],
     indirect=True,
 )
-@pytest.mark.usefixtures("patched_dsc_kserve_headed")
+@pytest.mark.usefixtures("session_patched_dsc_kserve_headed")
 class TestNemoGuardrailsMultiServer:
     """
     Tests for multiple independent NeMo Guardrails servers in the same namespace.
@@ -204,7 +204,7 @@ class TestNemoGuardrailsMultiServer:
         admin_client: DynamicClient,
         model_namespace: Namespace,
         openshift_ca_bundle_file: str,
-        llm_d_inference_sim_isvc: InferenceService,
+        session_llm_d_inference_sim_isvc: InferenceService,
         nemo_guardrails_presidio: NemoGuardrails,
         nemo_guardrails_second_server: NemoGuardrails,
         nemo_guardrails_presidio_route: Route,
@@ -304,7 +304,7 @@ class TestNemoGuardrailsMultiServer:
     [pytest.param({"name": "test-nemo-guardrails"})],
     indirect=True,
 )
-@pytest.mark.usefixtures("patched_dsc_kserve_headed")
+@pytest.mark.usefixtures("session_patched_dsc_kserve_headed")
 class TestNemoGuardrailsMultiConfig:
     """
     Tests for a single NeMo Guardrails server with multiple named configurations.
@@ -319,7 +319,7 @@ class TestNemoGuardrailsMultiConfig:
     def test_nemo_multi_config_default_selection(
         self,
         openshift_ca_bundle_file: str,
-        llm_d_inference_sim_isvc: InferenceService,
+        session_llm_d_inference_sim_isvc: InferenceService,
         nemo_guardrails_multi_config: NemoGuardrails,
         nemo_guardrails_multi_config_route: Route,
         nemo_guardrails_multi_config_healthcheck,
@@ -362,7 +362,7 @@ class TestNemoGuardrailsMultiConfig:
     def test_nemo_multi_config(
         self,
         openshift_ca_bundle_file: str,
-        llm_d_inference_sim_isvc: InferenceService,
+        session_llm_d_inference_sim_isvc: InferenceService,
         nemo_guardrails_multi_config: NemoGuardrails,
         nemo_guardrails_multi_config_route: Route,
         nemo_guardrails_multi_config_healthcheck,
@@ -496,7 +496,7 @@ class TestNemoGuardrailsMultiConfig:
     [pytest.param({"name": "test-nemo-guardrails"})],
     indirect=True,
 )
-@pytest.mark.usefixtures("patched_dsc_kserve_headed")
+@pytest.mark.usefixtures("session_patched_dsc_kserve_headed")
 class TestNemoGuardrailsSecretMounting:
     """
     Tests for mounting model API tokens as secrets via environment variables.
@@ -550,7 +550,7 @@ class TestNemoGuardrailsSecretMounting:
         self,
         openshift_ca_bundle_file: str,
         current_client_token: str,
-        llm_d_inference_sim_isvc: InferenceService,
+        session_llm_d_inference_sim_isvc: InferenceService,
         nemo_guardrails_llm_judge: NemoGuardrails,
         nemo_guardrails_llm_judge_route: Route,
         nemo_guardrails_llm_judge_healthcheck,

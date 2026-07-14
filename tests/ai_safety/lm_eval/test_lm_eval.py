@@ -133,7 +133,7 @@ def test_lmeval_local_offline_builtin_tasks_flan_arceasy(
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("patched_dsc_kserve_headed")
+@pytest.mark.usefixtures("session_patched_dsc_kserve_headed")
 def test_lmeval_vllm_emulator(admin_client, model_namespace, lmevaljob_vllm_emulator_pod):
     """Basic test that verifies LMEval works with vLLM using a vLLM emulator for more efficient evaluation"""
     validate_lmeval_job_pod_and_logs(lmevaljob_pod=lmevaljob_vllm_emulator_pod)

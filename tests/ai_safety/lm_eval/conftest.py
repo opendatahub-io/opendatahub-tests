@@ -17,6 +17,7 @@ from ocp_resources.service import Service
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest import Config, FixtureRequest
 
+from tests.ai_safety.constants import VLLM_EMULATOR, VLLM_EMULATOR_PORT
 from tests.ai_safety.lm_eval.constants import (
     ACCELERATOR_IDENTIFIER,
     ARC_EASY_DATASET_IMAGE,
@@ -32,9 +33,14 @@ from utilities.inference_utils import create_isvc
 from utilities.resources.route import Route as TLSRoute
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
-VLLM_EMULATOR: str = "vllm-emulator"
-VLLM_EMULATOR_PORT: int = 8000
 LMEVALJOB_NAME: str = "lmeval-test-job"
+
+
+@pytest.fixture(scope="session")
+def shared_models_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:  # noqa: UFN001
+    from tests.ai_safety.utils import create_shared_models_ns
+
+    yield from create_shared_models_ns(admin_client=admin_client, name="ai-safety-lmeval-models")
 
 
 @pytest.fixture(scope="function")
@@ -204,10 +210,10 @@ def lmevaljob_local_offline_oci(
 def lmevaljob_vllm_emulator(
     admin_client: DynamicClient,
     model_namespace: Namespace,
+    shared_models_namespace: Namespace,
     patched_dsc_lmeval_allow_all: DataScienceCluster,
-    vllm_emulator_deployment: Deployment,
-    vllm_emulator_service: Service,
-    vllm_emulator_route: Route,
+    session_vllm_emulator_deployment: Deployment,
+    session_vllm_emulator_service: Service,
 ) -> Generator[LMEvalJob, Any, Any]:
     with LMEvalJob(
         client=admin_client,
@@ -224,7 +230,11 @@ def lmevaljob_vllm_emulator(
             {"name": "model", "value": "emulatedModel"},
             {
                 "name": "base_url",
-                "value": f"http://{vllm_emulator_service.name}:{VLLM_EMULATOR_PORT!s}/v1/completions",
+                "value": (
+                    f"http://{session_vllm_emulator_service.name}"
+                    f".{shared_models_namespace.name}.svc.cluster.local"
+                    f":{VLLM_EMULATOR_PORT!s}/v1/completions"
+                ),
             },
             {"name": "num_concurrent", "value": "1"},
             {"name": "max_retries", "value": "3"},

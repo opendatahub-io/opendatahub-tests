@@ -521,6 +521,15 @@ LLM_D_CHAT_GENERATION_CONFIG: dict[str, Any] = {
 }
 
 
+def get_llm_d_chat_generation_config(namespace: str) -> dict[str, Any]:
+    return {
+        "service": {
+            "hostname": f"{LLMdInferenceSimConfig.isvc_name}-predictor.{namespace}.svc.cluster.local",
+            "port": 80,
+        }
+    }
+
+
 @dataclass
 class VLLMGPUConfig:
     name: str = "vllm-gpu"

@@ -22,6 +22,7 @@ from utilities.constants import (
     KServeDeploymentType,
     LLMdInferenceSimConfig,
     RuntimeTemplates,
+    Timeout,
     VLLMGPUConfig,
 )
 from utilities.inference_utils import create_isvc
@@ -162,8 +163,117 @@ def llm_d_inference_sim_isvc(
             yield isvc
 
 
+@pytest.fixture(scope="session")
+def session_llm_d_inference_sim_serving_runtime(
+    admin_client: DynamicClient,
+    shared_models_namespace: Namespace,
+) -> Generator[ServingRuntime, Any, Any]:
+    """Session-scoped LLM-d sim ServingRuntime. No teardown — Jenkins handles cleanup."""
+    sr = ServingRuntime(
+        client=admin_client,
+        name=LLMdInferenceSimConfig.serving_runtime_name,
+        namespace=shared_models_namespace.name,
+        annotations={
+            "description": "LLM-d Simulator KServe",
+            "opendatahub.io/template-display-name": "LLM-d Inference Simulator Runtime",
+            "openshift.io/display-name": "LLM-d Inference Simulator Runtime",
+            "serving.kserve.io/enable-agent": "false",
+        },
+        label={
+            "app.kubernetes.io/component": LLMdInferenceSimConfig.name,
+            "app.kubernetes.io/instance": "llm-d-inference-sim-kserve",
+            "app.kubernetes.io/name": "llm-d-sim",
+            "app.kubernetes.io/version": "1.0.0",
+            "opendatahub.io/dashboard": "true",
+        },
+        spec_annotations={
+            "prometheus.io/path": "/metrics",
+            "prometheus.io/port": "8000",
+        },
+        spec_labels={
+            "opendatahub.io/dashboard": "true",
+        },
+        containers=[
+            {
+                "name": "kserve-container",
+                "image": "quay.io/trustyai_testing/llm-d-inference-sim-dataset-builtin"
+                "@sha256:79e525cfd57a0d72b7e71d5f1e2dd398eca9315cfbd061d9d3e535b1ae736239",
+                "imagePullPolicy": "Always",
+                "args": ["--model", LLMdInferenceSimConfig.model_name, "--port", str(LLMdInferenceSimConfig.port)],
+                "ports": [{"containerPort": LLMdInferenceSimConfig.port, "protocol": "TCP"}],
+                "securityContext": {
+                    "allowPrivilegeEscalation": False,
+                },
+                "livenessProbe": {
+                    "failureThreshold": 3,
+                    "httpGet": {"path": "/health", "port": LLMdInferenceSimConfig.port, "scheme": "HTTP"},
+                    "initialDelaySeconds": 15,
+                    "periodSeconds": 20,
+                    "timeoutSeconds": 5,
+                },
+                "readinessProbe": {
+                    "failureThreshold": 3,
+                    "httpGet": {"path": "/health", "port": LLMdInferenceSimConfig.port, "scheme": "HTTP"},
+                    "initialDelaySeconds": 5,
+                    "periodSeconds": 10,
+                    "timeoutSeconds": 5,
+                },
+            }
+        ],
+        multi_model=False,
+        supported_model_formats=[{"autoSelect": True, "name": LLMdInferenceSimConfig.name}],
+        teardown=False,
+    )
+    sr.deploy()
+    yield sr
+
+
+@pytest.fixture(scope="session")
+def session_llm_d_inference_sim_isvc(
+    admin_client: DynamicClient,
+    shared_models_namespace: Namespace,
+    session_llm_d_inference_sim_serving_runtime: ServingRuntime,
+    session_patched_dsc_kserve_headed: DataScienceCluster,
+) -> Generator[InferenceService, Any, Any]:
+    """Session-scoped LLM-d sim InferenceService. No teardown — Jenkins handles cleanup."""
+    isvc_name = LLMdInferenceSimConfig.isvc_name
+    with create_isvc(
+        client=admin_client,
+        name=isvc_name,
+        namespace=shared_models_namespace.name,
+        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+        model_format=LLMdInferenceSimConfig.name,
+        runtime=session_llm_d_inference_sim_serving_runtime.name,
+        wait_for_predictor_pods=False,
+        min_replicas=1,
+        max_replicas=1,
+        resources={
+            "requests": {"cpu": "1", "memory": "1Gi"},
+            "limits": {"cpu": "1", "memory": "1Gi"},
+        },
+        teardown=False,
+    ) as isvc:
+        deployment = Deployment(
+            client=admin_client,
+            name=f"{isvc.name}-predictor",
+            namespace=shared_models_namespace.name,
+        )
+        deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_2MIN)
+        yield isvc
+
+
 @pytest.fixture(scope="class")
 def kserve_controller_manager_deployment(admin_client: DynamicClient) -> Generator[Deployment, Any, Any]:
+    yield Deployment(
+        client=admin_client,
+        name="kserve-controller-manager",
+        namespace=py_config["applications_namespace"],
+        ensure_exists=True,
+    )
+
+
+@pytest.fixture(scope="session")
+def session_kserve_controller_manager_deployment(admin_client: DynamicClient) -> Generator[Deployment, Any, Any]:
     yield Deployment(
         client=admin_client,
         name="kserve-controller-manager",
@@ -202,6 +312,43 @@ def patched_dsc_kserve_headed(
         ):
             _wait_for_kserve_upgrade(dsc_resource=dsc)
             kserve_controller_manager_deployment.wait_for_replicas()
+            _wait_for_kserve_ready(dsc_resource=dsc)
+            yield dsc
+    else:
+        LOGGER.info("DSC already configured for Headed mode")
+        yield dsc
+
+
+@pytest.fixture(scope="session")
+def session_patched_dsc_kserve_headed(
+    admin_client, session_kserve_controller_manager_deployment: Deployment
+) -> Generator[DataScienceCluster]:
+    """Session-scoped: configure KServe in Headed mode once per session."""
+
+    def _kserve_status(dsc_resource: DataScienceCluster) -> str:
+        condition = next(
+            filter(lambda condition: condition["type"] == "KserveReady", dsc_resource.instance.status["conditions"]),
+            None,
+        )
+        if condition is None:
+            raise ValueError("KserveReady condition not found in DSC status")
+        return condition["status"]
+
+    @retry(wait_timeout=30, sleep=1)
+    def _wait_for_kserve_upgrade(dsc_resource: DataScienceCluster):
+        return _kserve_status(dsc_resource) != "True"
+
+    @retry(wait_timeout=60, sleep=5)
+    def _wait_for_kserve_ready(dsc_resource: DataScienceCluster) -> bool:
+        return _kserve_status(dsc_resource) == "True"
+
+    dsc = get_data_science_cluster(client=admin_client)
+    if dsc.instance.spec.components.kserve.rawDeploymentServiceConfig != "Headed":
+        with ResourceEditor(
+            patches={dsc: {"spec": {"components": {"kserve": {"rawDeploymentServiceConfig": "Headed"}}}}}
+        ):
+            _wait_for_kserve_upgrade(dsc_resource=dsc)
+            session_kserve_controller_manager_deployment.wait_for_replicas()
             _wait_for_kserve_ready(dsc_resource=dsc)
             yield dsc
     else:

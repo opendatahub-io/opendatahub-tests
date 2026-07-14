@@ -38,17 +38,17 @@ class TestEvalHubMcpMultitenancy:
     def test_mcp_submit_with_configured_tenant_succeeds(
         self,
         evalhub_mcp_client: EvalHubMcpClient,
-        tenant_a_namespace: Namespace,
-        evalhub_vllm_emulator_service: Service,
+        session_vllm_emulator_service: Service,
+        shared_models_namespace: Namespace,
     ) -> None:
         """
         Given: MCP client authenticated for tenant-a with proxy RBAC
-        When: submit_evaluation is called with a tenant-a model URL
+        When: submit_evaluation is called with the shared model endpoint URL
         Then: Job is created and job_id is returned
         """
         model_url = build_mcp_model_url(
-            service_name=evalhub_vllm_emulator_service.name,
-            tenant_namespace=tenant_a_namespace.name,
+            service_name=session_vllm_emulator_service.name,
+            tenant_namespace=shared_models_namespace.name,
         )
         submit_result = submit_evaluation_via_mcp(
             client=evalhub_mcp_client,
@@ -62,11 +62,11 @@ class TestEvalHubMcpMultitenancy:
     def test_mcp_submit_with_mismatched_tenant_header_still_creates_job(
         self,
         tenant_a_token: str,
-        tenant_a_namespace: Namespace,
         tenant_b_namespace: Namespace,
         evalhub_mcp_mt_route: Route,
         evalhub_mcp_mt_ca_bundle_file: str,
-        evalhub_vllm_emulator_service: Service,
+        session_vllm_emulator_service: Service,
+        shared_models_namespace: Namespace,
         evalhub_mcp_mt_ready: None,
     ) -> None:
         """
@@ -83,8 +83,8 @@ class TestEvalHubMcpMultitenancy:
         client.initialize()
 
         model_url = build_mcp_model_url(
-            service_name=evalhub_vllm_emulator_service.name,
-            tenant_namespace=tenant_a_namespace.name,
+            service_name=session_vllm_emulator_service.name,
+            tenant_namespace=shared_models_namespace.name,
         )
         result = call_mcp_tool(
             client=client,

@@ -32,11 +32,13 @@ from tests.ai_safety.utils import validate_tai_component_images
 from utilities.constants import (
     BUILTIN_DETECTOR_CONFIG,
     HAP_DETECTOR,
-    LLM_D_CHAT_GENERATION_CONFIG,
     PROMPT_INJECTION_DETECTOR,
     LLMdInferenceSimConfig,
+    get_llm_d_chat_generation_config,
 )
 from utilities.plugins.constant import OpenAIEnpoints
+
+GUARDRAILS_MODELS_NAMESPACE = "ai-safety-guardrails-models"
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -67,7 +69,7 @@ def test_guardrailsorchestrator_crd_exists(
             {
                 "orchestrator_config_data": {
                     "config.yaml": yaml.dump({
-                        "openai": LLM_D_CHAT_GENERATION_CONFIG,
+                        "openai": get_llm_d_chat_generation_config(GUARDRAILS_MODELS_NAMESPACE),
                         "detectors": BUILTIN_DETECTOR_CONFIG,
                     })
                 },
@@ -99,7 +101,7 @@ def test_validate_guardrails_orchestrator_images(
             {
                 "orchestrator_config_data": {
                     "config.yaml": yaml.dump({
-                        "openai": LLM_D_CHAT_GENERATION_CONFIG,
+                        "openai": get_llm_d_chat_generation_config(GUARDRAILS_MODELS_NAMESPACE),
                         "detectors": BUILTIN_DETECTOR_CONFIG,
                     })
                 },
@@ -137,7 +139,7 @@ def test_validate_guardrails_orchestrator_images(
     indirect=True,
 )
 @pytest.mark.rawdeployment
-@pytest.mark.usefixtures("patched_dsc_kserve_headed", "guardrails_gateway_config")
+@pytest.mark.usefixtures("session_patched_dsc_kserve_headed", "guardrails_gateway_config")
 class TestGuardrailsOrchestratorWithBuiltInDetectors:
     """
     Tests if basic functions of the GuardrailsOrchestrator are working properly with the built-in (regex) detectors.
@@ -156,7 +158,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         self,
         current_client_token,
         openshift_ca_bundle_file,
-        llm_d_inference_sim_isvc,
+        session_llm_d_inference_sim_isvc,
         orchestrator_config,
         guardrails_orchestrator_health_route,
         guardrails_healthcheck,
@@ -171,7 +173,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         self,
         current_client_token,
         openshift_ca_bundle_file,
-        llm_d_inference_sim_isvc,
+        session_llm_d_inference_sim_isvc,
         orchestrator_config,
         guardrails_orchestrator_gateway_route,
         guardrails_healthcheck,
@@ -188,7 +190,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         self,
         current_client_token,
         openshift_ca_bundle_file,
-        llm_d_inference_sim_isvc,
+        session_llm_d_inference_sim_isvc,
         orchestrator_config,
         guardrails_orchestrator_gateway_route,
         guardrails_healthcheck,
@@ -216,7 +218,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
         self,
         current_client_token,
         openshift_ca_bundle_file,
-        llm_d_inference_sim_isvc,
+        session_llm_d_inference_sim_isvc,
         orchestrator_config,
         guardrails_orchestrator_gateway_route,
         message,
@@ -241,7 +243,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
             {
                 "orchestrator_config_data": {
                     "config.yaml": yaml.dump({
-                        "openai": LLM_D_CHAT_GENERATION_CONFIG,
+                        "openai": get_llm_d_chat_generation_config(GUARDRAILS_MODELS_NAMESPACE),
                         "detectors": {
                             PROMPT_INJECTION_DETECTOR: {
                                 "type": "text_contents",
@@ -300,7 +302,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
 )
 @pytest.mark.rawdeployment
 @pytest.mark.usefixtures(
-    "patched_dsc_kserve_headed",
+    "session_patched_dsc_kserve_headed",
     "guardrails_gateway_config",
     "minio_pvc_otel",
     "minio_deployment_otel",
@@ -327,7 +329,7 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
     def test_guardrails_multi_detector_unsuitable_input(
         self,
         current_client_token,
-        llm_d_inference_sim_isvc,
+        session_llm_d_inference_sim_isvc,
         guardrails_orchestrator_route,
         prompt_injection_detector_route,
         hap_detector_route,
@@ -351,7 +353,7 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
     def test_guardrails_multi_detector_negative_detection(
         self,
         current_client_token,
-        llm_d_inference_sim_isvc,
+        session_llm_d_inference_sim_isvc,
         orchestrator_config,
         guardrails_orchestrator_route,
         hap_detector_route,
@@ -374,7 +376,7 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
         self,
         current_client_token,
         openshift_ca_bundle_file,
-        llm_d_inference_sim_isvc,
+        session_llm_d_inference_sim_isvc,
         orchestrator_config,
         guardrails_orchestrator_route,
         hap_detector_route,
@@ -447,7 +449,8 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
 @pytest.mark.rawdeployment
 class TestGuardrailsOrchestratorAutoConfig:
     """
-    These tests verify that the GuardrailsOrchestrator works as expected when configured through the AutoConfig feature.
+    AutoConfig requires the ISVC in the same namespace as the orchestrator,
+    so these tests use class-scoped llm_d_inference_sim_isvc (not session-scoped).
     """
 
     def test_guardrails_gateway_info_endpoint(
@@ -528,8 +531,8 @@ class TestGuardrailsOrchestratorAutoConfig:
 @pytest.mark.rawdeployment
 class TestGuardrailsOrchestratorAutoConfigWithGateway:
     """
-    These tests verify that the GuardrailsOrchestrator works as expected when configured
-    through the AutoConfig feature to use the gateway route.
+    AutoConfig requires the ISVC in the same namespace as the orchestrator,
+    so these tests use class-scoped llm_d_inference_sim_isvc (not session-scoped).
     """
 
     def test_guardrails_autoconfig_gateway_info_endpoint(
@@ -609,7 +612,7 @@ class TestGuardrailsOrchestratorAutoConfigWithGateway:
             {
                 "orchestrator_config_data": {
                     "config.yaml": yaml.dump({
-                        "openai": LLM_D_CHAT_GENERATION_CONFIG,
+                        "openai": get_llm_d_chat_generation_config(GUARDRAILS_MODELS_NAMESPACE),
                         "detectors": BUILTIN_DETECTOR_CONFIG,
                     })
                 },
@@ -620,7 +623,7 @@ class TestGuardrailsOrchestratorAutoConfigWithGateway:
     indirect=True,
 )
 @pytest.mark.rawdeployment
-@pytest.mark.usefixtures("patched_dsc_kserve_headed")
+@pytest.mark.usefixtures("session_patched_dsc_kserve_headed")
 class TestGuardrailsOrchestratorCustomTLS:
     """
     Tests custom TLS certificate mounting for the GuardrailsOrchestrator.
