@@ -29,8 +29,8 @@ RUN wget https://github.com/openshift/must-gather-clean/releases/download/v0.0.4
     && chmod +x /usr/bin/must-gather-clean \
     && rm -f must-gather-clean-linux-amd64.tar.gz
 
-# Install cosign
-COPY --from=quay.io/securesign/cli-cosign@sha256:ec84e6b8097fef6b1f774eb09f41669679ceed458bf855593f34d69480899152 /usr/local/bin/cosign /usr/bin/cosign
+# Install cosign (multi-arch, no expiration)
+COPY --from=quay.io/securesign/cli-cosign@sha256:a8289d488491991d454a32784de19476f2c984917eb7a33b4544e55512f2747c /usr/local/bin/cosign /usr/bin/cosign
 
 RUN useradd -ms /bin/bash $USER && chown -R $USER:$USER $HOME
 USER $USER
