@@ -11,7 +11,7 @@ Per-IDE test modules:
 - `upgrade/test_upgrade_jupyterlab.py` - JupyterLab (`s2i-minimal-notebook` / `jupyter-minimal-notebook`)
 - `upgrade/test_upgrade_codeserver.py` - Code Server (`code-server-notebook`)
 - `upgrade/test_upgrade_rstudio.py` - RStudio (legacy EUS track only)
-- `upgrade/test_upgrade_jupyter_elyra.py` - Elyra Jupyterlab extension (only on some Jupyterlab images)
+- `upgrade/test_upgrade_jupyter_elyra.py` - Elyra Jupyterlab extension (`jupyter-datascience-notebook` / `s2i-generic-data-science-notebook`)
 
 Pre-upgrade validation creates dashboard-faithful Notebook CRs, waits for controller reconciliation (kube-rbac-proxy, ReferenceGrant, HTTPRoute), captures a rich baseline (image selection, digest, restart counts, Notebook generation), and writes a PVC marker file.
 
