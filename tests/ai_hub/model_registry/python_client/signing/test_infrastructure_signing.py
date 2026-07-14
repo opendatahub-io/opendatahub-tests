@@ -133,13 +133,26 @@ class TestImageSigning:
         signer.sign_image(image=str(copied_model_to_oci_registry))
         LOGGER.info("Model signed successfully")
 
-        tags_after = requests.get(tags_url, verify=False, timeout=10).json()
-        LOGGER.info(f"Tags after signing: {json.dumps(tags_after, indent=2)}")
         digest = copied_model_to_oci_registry.split("@")[-1]
-        expected_sig_tag = f"{digest.replace(':', '-')}.sig"
-        assert expected_sig_tag in tags_after["tags"], (
-            f"Signature tag '{expected_sig_tag}' not found in registry tags: {tags_after['tags']}"
-        )
+
+        # cosign v3 stores signatures as OCI referrers, not .sig tags
+        # Check for signature via OCI referrers API or fall back to .sig tag
+        referrers_url = f"{registry_url}/v2/{SIGNING_OCI_REPO_NAME}/referrers/{digest}"
+        referrers_response = requests.get(referrers_url, verify=False, timeout=10)
+
+        if referrers_response.ok:
+            referrers = referrers_response.json()
+            manifests = referrers.get("manifests", [])
+            LOGGER.info(f"OCI referrers after signing: {json.dumps(referrers, indent=2)}")
+            assert manifests, f"Expected at least one OCI referrer (signature) for {digest}, got none"
+        else:
+            # cosign v2.x fallback: signatures stored as .sig tags
+            tags_after = requests.get(tags_url, verify=False, timeout=10).json()
+            LOGGER.info(f"Tags after signing: {json.dumps(tags_after, indent=2)}")
+            expected_sig_tag = f"{digest.replace(':', '-')}.sig"
+            assert expected_sig_tag in tags_after["tags"], (
+                f"Signature not found as OCI referrer or .sig tag in registry tags: {tags_after['tags']}"
+            )
 
     @pytest.mark.dependency(
         depends=[
