@@ -8,9 +8,10 @@ Verifies that workbenches launched on N-1 (source-version) images remain healthy
 
 Per-IDE test modules:
 
-- `upgrade/test_upgrade_jupyterlab.py` — JupyterLab (`s2i-minimal-notebook` / `jupyter-minimal-notebook`)
-- `upgrade/test_upgrade_codeserver.py` — Code Server (`code-server-notebook`)
-- `upgrade/test_upgrade_rstudio.py` — RStudio (legacy EUS track only)
+- `upgrade/test_upgrade_jupyterlab.py` - JupyterLab (`s2i-minimal-notebook` / `jupyter-minimal-notebook`)
+- `upgrade/test_upgrade_codeserver.py` - Code Server (`code-server-notebook`)
+- `upgrade/test_upgrade_rstudio.py` - RStudio (legacy EUS track only)
+- `upgrade/test_upgrade_jupyter_elyra.py` - Elyra Jupyterlab extension (only on some Jupyterlab images)
 
 Pre-upgrade validation creates dashboard-faithful Notebook CRs, waits for controller reconciliation (kube-rbac-proxy, ReferenceGrant, HTTPRoute), captures a rich baseline (image selection, digest, restart counts, Notebook generation), and writes a PVC marker file.
 
@@ -24,6 +25,8 @@ Post-upgrade validation checks:
 - StatefulSet health (readyReplicas, no pending rollout)
 - PVC marker file still readable
 - Log cleanliness and in-pod HTTP health (JupyterLab and Code Server only)
+- Elyra extension remains installed (Elyra only)
+- Elyra runtimes are unchanged and do not get deleted (Elyra only)
 
 ### Running
 
@@ -46,6 +49,9 @@ uv run pytest --pre-upgrade tests/workbenches/notebook_images/upgrade/ --tc work
 
 # Force stable (3.x major.minor) or legacy EUS (year.release) tag selection
 uv run pytest --pre-upgrade tests/workbenches/notebook_images/upgrade/ --tc workbench_upgrade_track=stable
+
+# Target Jupyter workbenches with Elyra
+uv run pytest tests/workbenches/notebook_images/upgrade/test_upgrade_jup
 ```
 
 ### Notes
