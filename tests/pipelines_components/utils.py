@@ -119,6 +119,26 @@ def get_workflow_phase(
     return None
 
 
+def get_workflow_completed_nodes(
+    admin_client: DynamicClient,
+    namespace: str,
+    run_id: str,
+) -> list[dict]:
+    """Get completed workflow nodes for a pipeline run.
+
+    Returns a list of node dicts that reached a terminal phase (Succeeded, Failed, etc.).
+    Useful for verifying that pipeline steps actually executed and their records persist.
+    """
+    workflows = list(Workflow.get(client=admin_client, namespace=namespace, label_selector=f"pipeline/runid={run_id}"))
+    if not workflows:
+        return []
+
+    nodes = workflows[0].instance.get("status", {}).get("nodes", {})
+    return [
+        node for node in nodes.values() if node.get("phase") in WORKFLOW_TERMINAL_PHASES and node.get("type") == "Pod"
+    ]
+
+
 def wait_for_pipeline_run(
     admin_client: DynamicClient,
     namespace: str,
@@ -148,6 +168,23 @@ def wait_for_pipeline_run(
 
     msg = f"Pipeline run {run_id} exited polling without reaching terminal state"
     raise RuntimeError(msg)
+
+
+def get_pipeline_run(
+    api_url: str,
+    headers: dict[str, str],
+    run_id: str,
+    ca_bundle: str,
+) -> dict:
+    """Get a pipeline run by ID from the DSPA."""
+    resp = requests.get(
+        url=f"{api_url}/apis/v2beta1/runs/{run_id}",
+        headers=headers,
+        verify=ca_bundle,
+        timeout=60,
+    )
+    _raise_for_status(resp=resp)
+    return resp.json()
 
 
 def delete_pipeline(

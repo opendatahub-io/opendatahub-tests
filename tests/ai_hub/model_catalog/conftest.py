@@ -319,11 +319,11 @@ def default_catalog_api_response(
     )
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="session")
 def catalog_openapi_schema() -> dict[Any, Any]:
-    """Fetch and cache the catalog OpenAPI schema (fetched once per class)"""
-    OPENAPI_SCHEMA_URL = "https://raw.githubusercontent.com/kubeflow/model-registry/main/api/openapi/catalog.yaml"
-    response = requests.get(OPENAPI_SCHEMA_URL, timeout=10)
+    """Fetch and cache the catalog OpenAPI schema (fetched once per session)."""
+    openapi_schema_url = "https://raw.githubusercontent.com/kubeflow/model-registry/main/api/openapi/catalog.yaml"
+    response = requests.get(openapi_schema_url, timeout=10)
     response.raise_for_status()
     return yaml.safe_load(response.text)
 
