@@ -163,3 +163,24 @@ class TestAgentCatalogFiltering:
             params={"sourceLabel": "nonexistent"},
         )
         assert response.get("size", 0) == 0, "Expected 0 agents for invalid sourceLabel"
+
+    def test_filter_agents_by_label(
+        self: Self,
+        agent_catalog_rest_urls: list[str],
+        model_registry_rest_headers: dict[str, str],
+    ) -> None:
+        """Given agents with labels exist in the catalog
+        When filtering by a specific label
+        Then only agents with that label are returned
+        """
+        response = execute_get_command_with_retry(
+            url=f"{agent_catalog_rest_urls[0]}agents",
+            headers=model_registry_rest_headers,
+            params={"filterQuery": "labels='rag'", "pageSize": 1000},
+        )
+        items = response.get("items", [])
+        assert items, "Expected at least one agent with label 'rag'"
+        for item in items:
+            assert "rag" in item.get("labels", []), (
+                f"Agent '{item['name']}' returned by rag filter but doesn't have 'rag' label"
+            )
