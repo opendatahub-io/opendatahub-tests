@@ -39,6 +39,9 @@ uv run pytest --post-upgrade tests/workbenches/notebook_images/upgrade/
 
 # Target a single IDE
 uv run pytest --post-upgrade tests/workbenches/notebook_images/upgrade/test_upgrade_jupyterlab.py
+
+# Target Jupyter workbenches with Elyra
+uv run pytest tests/workbenches/notebook_images/upgrade/test_upgrade_jupyter_elyra.py
 ```
 
 Optional overrides via pytest-testconfig:
@@ -49,9 +52,6 @@ uv run pytest --pre-upgrade tests/workbenches/notebook_images/upgrade/ --tc work
 
 # Force stable (3.x major.minor) or legacy EUS (year.release) tag selection
 uv run pytest --pre-upgrade tests/workbenches/notebook_images/upgrade/ --tc workbench_upgrade_track=stable
-
-# Target Jupyter workbenches with Elyra
-uv run pytest tests/workbenches/notebook_images/upgrade/test_upgrade_jup
 ```
 
 ### Notes
