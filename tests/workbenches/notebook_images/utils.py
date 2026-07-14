@@ -212,7 +212,7 @@ def get_workbench_image_specs() -> list[WorkbenchImageSpec]:
     is_upstream = py_config.get("distribution") == "upstream"
     jupyter_imagestream = "jupyter-minimal-notebook" if is_upstream else "s2i-minimal-notebook"
     datascience_imagestream = (
-        "jupyter-datascience-ubi9-python" if is_upstream else "jupyter-datascience-notebook-imagestream"
+        "jupyter-datascience-notebook" if is_upstream else "s2i-generic-data-science-notebook"
     )
 
     return [
