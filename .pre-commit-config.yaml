@@ -88,6 +88,13 @@ repos:
           language: python
           pass_filenames: false
 
+        - id: check-model-runtime-patterns
+          name: Check model runtime anti-patterns
+          entry: bash scripts/check_model_runtime_patterns.sh
+          language: system
+          pass_filenames: false
+          files: ^tests/model_serving/model_runtime/
+
   - repo: https://github.com/rhysd/actionlint
     rev: v1.7.12
     hooks:
