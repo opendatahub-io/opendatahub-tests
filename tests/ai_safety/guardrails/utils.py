@@ -26,7 +26,6 @@ def _verify_rolearn_in_containers(deployment: Deployment, expected_role_arn: str
     Returns:
         True if ROLEARN is set correctly in all containers, False otherwise
     """
-    deployment.wait_for_replicas()  # Refresh instance
     containers = deployment.instance.spec.template.spec.containers or []
 
     for container in containers:
@@ -37,13 +36,12 @@ def _verify_rolearn_in_containers(deployment: Deployment, expected_role_arn: str
             if env_var.get("name") == "ROLEARN":
                 if env_var.get("value") == expected_role_arn:
                     rolearn_found = True
-                    LOGGER.info(f"ROLEARN verified in container '{container.get('name')}': {expected_role_arn}")
+                    LOGGER.info(f"ROLEARN verified in container '{container.get('name')}'")
+
                     break
                 else:
-                    LOGGER.warning(
-                        f"ROLEARN mismatch in container '{container.get('name')}': "
-                        f"expected '{expected_role_arn}', got '{env_var.get('value')}'"
-                    )
+                    LOGGER.warning(f"ROLEARN mismatch in container '{container.get('name')}'")
+
                     return False
 
         if not rolearn_found:
