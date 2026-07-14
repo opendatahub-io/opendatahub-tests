@@ -932,7 +932,7 @@ def otel_collector_deployment(
             },
         },
     ) as deployment:
-        deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_5MIN)
+        deployment.wait_for_replicas(timeout=300)
         yield deployment
 
 
@@ -1103,7 +1103,7 @@ def evalhub_otel_grpc_deployment(
         name=evalhub_otel_grpc_cr.name,
         namespace=model_namespace.name,
     )
-    deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_5MIN)
+    deployment.wait_for_replicas(timeout=300)
     return deployment
 
 
@@ -1119,7 +1119,7 @@ def evalhub_otel_http_deployment(
         name=evalhub_otel_http_cr.name,
         namespace=model_namespace.name,
     )
-    deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_5MIN)
+    deployment.wait_for_replicas(timeout=300)
     return deployment
 
 
@@ -1135,7 +1135,7 @@ def evalhub_otel_dual_sink_deployment(
         name=evalhub_otel_dual_sink_cr.name,
         namespace=model_namespace.name,
     )
-    deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_5MIN)
+    deployment.wait_for_replicas(timeout=300)
     return deployment
 
 
