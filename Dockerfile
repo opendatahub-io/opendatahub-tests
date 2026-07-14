@@ -32,7 +32,7 @@ RUN wget https://github.com/openshift/must-gather-clean/releases/download/v0.0.4
 # Install cosign
 COPY --from=quay.io/securesign/cli-cosign@sha256:ec84e6b8097fef6b1f774eb09f41669679ceed458bf855593f34d69480899152 /usr/local/bin/cosign /usr/bin/cosign
 
-RUN useradd -ms /bin/bash $USER
+RUN useradd -ms /bin/bash $USER && chown -R $USER:$USER $HOME
 USER $USER
 WORKDIR $HOME_DIR
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx ${BIN_DIR}/
