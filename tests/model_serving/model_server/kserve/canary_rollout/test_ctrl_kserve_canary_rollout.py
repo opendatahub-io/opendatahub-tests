@@ -41,8 +41,6 @@ class TestCanaryRolloutController:
         ), "Expected one Deployment to reference the canary model storage"
 
         running_pods = [
-            deployment
-            for deployment in deployments
-            if deployment.instance.status.get("readyReplicas", 0) >= 1
+            deployment for deployment in deployments if deployment.instance.status.get("readyReplicas", 0) >= 1
         ]
         assert running_pods, "Expected at least one canary Deployment pod to be running"

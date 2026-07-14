@@ -1,6 +1,6 @@
 """Constants for KServe canary rollout (RawDeployment) tests."""
 
-from tests.model_serving.model_runtime.mlserver.constant import MODEL_PATH_PREFIX, MODEL_CONFIGS
+from tests.model_serving.model_runtime.mlserver.constant import MODEL_CONFIGS, MODEL_PATH_PREFIX
 from utilities.constants import KServeDeploymentType, ModelFormat
 
 CANARY_FEATURE_NAME: str = "kserve-canary-rollout"

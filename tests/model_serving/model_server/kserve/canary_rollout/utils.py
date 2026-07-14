@@ -21,8 +21,8 @@ from tests.model_serving.model_server.kserve.canary_rollout.constants import (
     TRAFFIC_TOLERANCE_PERCENT,
 )
 from utilities.constants import Annotations, KServeDeploymentType, Labels, Timeout
-from utilities.infra import get_model_route, verify_no_failed_pods, wait_for_inference_deployment_replicas
 from utilities.inference_utils import Inference
+from utilities.infra import get_model_route, verify_no_failed_pods, wait_for_inference_deployment_replicas
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -105,9 +105,7 @@ def assert_route_traffic_weights(
     primary_weight = route_spec["to"]["weight"]
     alternate_backends = route_spec.get("alternateBackends") or []
 
-    assert primary_weight == stable_weight, (
-        f"Expected stable Route weight {stable_weight}, got {primary_weight}"
-    )
+    assert primary_weight == stable_weight, f"Expected stable Route weight {stable_weight}, got {primary_weight}"
     assert alternate_backends, "Expected alternateBackends on Route for canary traffic split"
     assert alternate_backends[0]["weight"] == canary_weight, (
         f"Expected canary Route weight {canary_weight}, got {alternate_backends[0]['weight']}"
@@ -196,7 +194,7 @@ def create_canary_inference_service(
     model_service_account: str | None = None,
     teardown: bool = True,
     timeout: int = Timeout.TIMEOUT_15MIN,
-) -> Generator[InferenceService, None, None]:
+) -> Generator[InferenceService]:
     """Create a RawDeployment InferenceService with a canary array entry."""
     labels: dict[str, str] = {}
     if external_route and deployment_mode in KServeDeploymentType.RAW_DEPLOYMENT_MODES:
@@ -217,35 +215,37 @@ def create_canary_inference_service(
         model_service_account=model_service_account,
     )
 
-    with InferenceService(
-        client=client,
-        name=name,
-        namespace=namespace,
-        annotations=annotations,
-        label=labels,
-        predictor=predictor,
-        teardown=teardown,
-    ) as isvc:
-        with ResourceEditor(patches={isvc: {"spec": {"canary": [canary_entry]}}}):
-            verify_no_failed_pods(
-                client=client,
-                isvc=isvc,
-                runtime_name=runtime,
-                timeout=timeout,
-            )
-            wait_for_inference_deployment_replicas(
-                client=client,
-                isvc=isvc,
-                runtime_name=runtime,
-                expected_num_deployments=2,
-                timeout=timeout,
-            )
-            isvc.wait_for_condition(
-                condition=isvc.Condition.READY,
-                status=isvc.Condition.Status.TRUE,
-                timeout=timeout,
-            )
-            yield isvc
+    with (
+        InferenceService(
+            client=client,
+            name=name,
+            namespace=namespace,
+            annotations=annotations,
+            label=labels,
+            predictor=predictor,
+            teardown=teardown,
+        ) as isvc,
+        ResourceEditor(patches={isvc: {"spec": {"canary": [canary_entry]}}}),
+    ):
+        verify_no_failed_pods(
+            client=client,
+            isvc=isvc,
+            runtime_name=runtime,
+            timeout=timeout,
+        )
+        wait_for_inference_deployment_replicas(
+            client=client,
+            isvc=isvc,
+            runtime_name=runtime,
+            expected_num_deployments=2,
+            timeout=timeout,
+        )
+        isvc.wait_for_condition(
+            condition=isvc.Condition.READY,
+            status=isvc.Condition.Status.TRUE,
+            timeout=timeout,
+        )
+        yield isvc
 
 
 def promote_canary_to_stable(
