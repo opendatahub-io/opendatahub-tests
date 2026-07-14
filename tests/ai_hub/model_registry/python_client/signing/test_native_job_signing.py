@@ -39,7 +39,6 @@ pytestmark = pytest.mark.usefixtures("tas_connection_type")
 )
 @pytest.mark.custom_namespace
 @pytest.mark.downstream_only
-@pytest.mark.tier3
 class TestNativeJobSigningE2E:
     """
     End-to-end test: async job signs model and OCI image internally via MODEL_SYNC_SIGN=true.
