@@ -1,8 +1,6 @@
 """Upgrade test configuration for KServe raw deployment with Kueue integration."""
 
-from utilities.constants import Timeout
-
-KSERVE_KUEUE_QUEUE_LABEL: str = "kueue.x-k8s.io/queue-name"
+from utilities.constants import Labels, Timeout
 
 KSERVE_KUEUE_UPGRADE_NAMESPACE: str = "upgrade-kserve-kueue-raw"
 KSERVE_KUEUE_UPGRADE_ISVC_NAME: str = "upgrade-kserve-kueue-isvc"
@@ -34,7 +32,7 @@ KSERVE_KUEUE_SCALED_REPLICAS: int = 2
 KSERVE_KUEUE_EXPECTED_RUNNING_PODS: int = 1
 KSERVE_KUEUE_EXPECTED_GATED_PODS: int = 1
 
-KSERVE_KUEUE_ISVC_LABELS: dict[str, str] = {KSERVE_KUEUE_QUEUE_LABEL: KSERVE_KUEUE_LOCAL_QUEUE}
+KSERVE_KUEUE_ISVC_LABELS: dict[str, str] = {Labels.Kueue.QUEUE_NAME: KSERVE_KUEUE_LOCAL_QUEUE}
 
 UPGRADE_DSCI_SERVICEMESH_STATE_CM_NAME: str = "upgrade-dsci-servicemesh-state"
 

@@ -2,8 +2,8 @@ import json
 from typing import Any, TypedDict
 
 import pytest
-import structlog
 from kubernetes.dynamic import DynamicClient
+from simple_logger.logger import get_logger
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.dsc_initialization import DSCInitialization
 from ocp_resources.inference_service import InferenceService
@@ -35,7 +35,7 @@ KSERVE_DSCI_SERVICEMESH_CONTROL_PLANE_NAMESPACE = "istio-system"
 KSERVE_DSCI_SERVICEMESH_AUTH_AUDIENCE = "https://kubernetes.default.svc"
 
 
-LOGGER = structlog.get_logger(name=__name__)
+LOGGER = get_logger(name=__name__)
 
 
 def verify_pod_containers_not_restarted(client: DynamicClient, component_name: str) -> None:
@@ -335,8 +335,6 @@ def capture_isvc_baseline(client: DynamicClient, isvc: InferenceService) -> ISVC
     Returns:
         ISVCBaseline with isvc_observed_generation, runtime_generation, and pod_restart_counts
     """
-    logger = structlog.get_logger(name=__name__)
-
     baseline: ISVCBaseline = {
         "isvc_observed_generation": isvc.instance.status.observedGeneration,
         "runtime_name": "",
@@ -357,7 +355,7 @@ def capture_isvc_baseline(client: DynamicClient, isvc: InferenceService) -> ISVC
             }
 
     baseline["pod_restart_counts"] = pod_restart_counts
-    logger.info(f"Captured baseline for {isvc.name}: {baseline}")
+    LOGGER.info(f"Captured baseline for {isvc.name}: {baseline}")
     return baseline
 
 
@@ -411,7 +409,7 @@ def capture_isvc_kueue_baseline(client: DynamicClient, isvc: InferenceService) -
         "total_copies": total_copies,
         "min_replicas": min_replicas,
     }
-    structlog.get_logger(name=__name__).info(f"Captured Kueue baseline for {isvc.name}: {kueue_baseline}")
+    LOGGER.info(f"Captured Kueue baseline for {isvc.name}: {kueue_baseline}")
     return kueue_baseline
 
 

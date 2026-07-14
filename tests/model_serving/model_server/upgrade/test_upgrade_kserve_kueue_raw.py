@@ -1,8 +1,8 @@
 """Pre/post upgrade tests for raw-deployment InferenceService with Kueue admission control."""
 
 import pytest
-import structlog
 from kubernetes.dynamic import DynamicClient
+from simple_logger.logger import get_logger
 from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.serving_runtime import ServingRuntime
@@ -35,7 +35,7 @@ pytestmark = [
     pytest.mark.usefixtures("valid_aws_config", "skip_if_not_raw_deployment"),
 ]
 
-LOGGER = structlog.get_logger(name=__name__)
+LOGGER = get_logger(name=__name__)
 
 EXPECTED_DEPLOYMENTS = 1
 
@@ -76,9 +76,9 @@ class TestKserveKueueRawPreUpgrade:
         1. Verify the Kueue-integrated raw InferenceService exists on the cluster.
         """
         isvc = kserve_kueue_upgrade_inference_service
-        LOGGER.info(event=f"[PRE-UPGRADE] Checking ISVC '{isvc.name}' exists in namespace '{isvc.namespace}'")
+        LOGGER.info(f"[PRE-UPGRADE] Checking ISVC '{isvc.name}' exists in namespace '{isvc.namespace}'")
         assert isvc.exists, f"InferenceService {isvc.name} does not exist"
-        LOGGER.info(event=f"[PRE-UPGRADE] PASS: ISVC '{isvc.name}' is deployed")
+        LOGGER.info(f"[PRE-UPGRADE] PASS: ISVC '{isvc.name}' is deployed")
 
     @pytest.mark.pre_upgrade
     def test_initial_deployment_ready(
@@ -108,7 +108,7 @@ class TestKserveKueueRawPreUpgrade:
         assert replicas == KSERVE_KUEUE_MIN_REPLICAS, (
             f"Deployment should have {KSERVE_KUEUE_MIN_REPLICAS} replica, got {replicas}"
         )
-        LOGGER.info(event=f"[PRE-UPGRADE] PASS: Deployment '{deployment.name}' has {replicas} replica")
+        LOGGER.info(f"[PRE-UPGRADE] PASS: Deployment '{deployment.name}' has {replicas} replica")
 
     @pytest.mark.pre_upgrade
     def test_kueue_scale_and_gate(
@@ -126,7 +126,7 @@ class TestKserveKueueRawPreUpgrade:
         """
         isvc = kserve_kueue_upgrade_inference_service
         runtime_name = kserve_kueue_upgrade_serving_runtime.name
-        LOGGER.info(event=f"[PRE-UPGRADE] Scaling '{isvc.name}' to {KSERVE_KUEUE_SCALED_REPLICAS} replicas")
+        LOGGER.info(f"[PRE-UPGRADE] Scaling '{isvc.name}' to {KSERVE_KUEUE_SCALED_REPLICAS} replicas")
 
         isvc_dict = isvc.instance.to_dict()
         isvc_dict["spec"]["predictor"]["minReplicas"] = KSERVE_KUEUE_SCALED_REPLICAS
@@ -188,7 +188,7 @@ class TestKserveKueueRawPreUpgrade:
             f"InferenceService should have {KSERVE_KUEUE_EXPECTED_RUNNING_PODS} total model copy, got {total_copies}"
         )
         LOGGER.info(
-            event=f"[PRE-UPGRADE] PASS: Kueue gating active — {running_pods} running, "
+            f"[PRE-UPGRADE] PASS: Kueue gating active — {running_pods} running, "
             f"{gated_pods} gated, totalCopies={total_copies}"
         )
 
@@ -224,7 +224,7 @@ class TestKserveKueueRawPostUpgrade:
         """
         isvc = kserve_kueue_upgrade_inference_service
         assert isvc.exists, f"InferenceService '{isvc.name}' not found after upgrade"
-        LOGGER.info(event=f"[POST-UPGRADE] PASS: ISVC '{isvc.name}' exists")
+        LOGGER.info(f"[POST-UPGRADE] PASS: ISVC '{isvc.name}' exists")
 
     @pytest.mark.post_upgrade
     @pytest.mark.dependency(depends=["kserve_kueue_isvc_exists"])
@@ -239,7 +239,7 @@ class TestKserveKueueRawPostUpgrade:
         assert kserve_upgrade_kueue_resources.exists, (
             "Kueue LocalQueue not found after upgrade — Kueue resources did not survive"
         )
-        LOGGER.info(event=f"[POST-UPGRADE] PASS: LocalQueue '{kserve_upgrade_kueue_resources.name}' survived upgrade")
+        LOGGER.info(f"[POST-UPGRADE] PASS: LocalQueue '{kserve_upgrade_kueue_resources.name}' survived upgrade")
 
     @pytest.mark.post_upgrade
     @pytest.mark.dependency(depends=["kserve_kueue_isvc_exists"])
@@ -261,7 +261,7 @@ class TestKserveKueueRawPostUpgrade:
             isvc=kserve_kueue_upgrade_inference_service,
             runtime_name=kserve_kueue_upgrade_serving_runtime.name,
         )
-        LOGGER.info(event=f"[POST-UPGRADE] kueue_integration_stats: expected={expected}, current={current}")
+        LOGGER.info(f"[POST-UPGRADE] kueue_integration_stats: expected={expected}, current={current}")
         assert current == expected, f"kueue_integration_stats changed: {expected} -> {current}"
 
     @pytest.mark.post_upgrade
@@ -280,7 +280,7 @@ class TestKserveKueueRawPostUpgrade:
         total_copies = read_isvc_total_copies(isvc=isvc)
         expected = baseline["total_copies"]
         assert total_copies == expected, f"totalCopies changed after upgrade: expected {expected}, got {total_copies}"
-        LOGGER.info(event=f"[POST-UPGRADE] PASS: totalCopies={total_copies} unchanged")
+        LOGGER.info(f"[POST-UPGRADE] PASS: totalCopies={total_copies} unchanged")
 
     @pytest.mark.post_upgrade
     @pytest.mark.dependency(depends=["kserve_kueue_isvc_exists"])

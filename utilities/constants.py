@@ -159,10 +159,12 @@ class DscComponents:
     KSERVE: str = "kserve"
     MODELREGISTRY: str = "modelregistry"
     LLAMASTACKOPERATOR: str = "llamastackoperator"
+    KUEUE: str = "kueue"
 
     class ManagementState:
         MANAGED: str = "Managed"
         REMOVED: str = "Removed"
+        UNMANAGED: str = "Unmanaged"
 
     class ConditionType:
         MODEL_REGISTRY_READY: str = "ModelRegistryReady"
@@ -208,6 +210,7 @@ class Labels:
 
     class Kueue:
         MANAGED: str = "kueue.openshift.io/managed"
+        QUEUE_NAME: str = "kueue.x-k8s.io/queue-name"
 
 
 class Timeout:

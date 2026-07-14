@@ -2,6 +2,7 @@ from typing import Any, Generator
 
 import pytest
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.role import Role
@@ -24,9 +25,11 @@ from utilities.inference_utils import create_isvc
 from utilities.infra import create_inference_token, create_isvc_view_role, create_ns, s3_endpoint_secret
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
+from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.dsc_initialization import DSCInitialization
+from pytest_testconfig import config as py_config
 
 from tests.model_serving.model_runtime.vllm.utils import skip_if_not_deployment_mode
 from tests.model_serving.model_server.upgrade.kserve_kueue_upgrade_config import (
@@ -72,6 +75,46 @@ from utilities.kueue_utils import (
 
 
 LOGGER = get_logger(name=__name__)
+
+
+def _is_kueue_operator_installed(admin_client: DynamicClient) -> bool:
+    """Check if the Kueue operator is installed and ready."""
+    try:
+        csvs = list(
+            ClusterServiceVersion.get(
+                client=admin_client,
+                namespace=py_config.get("applications_namespace", "openshift-operators"),
+            )
+        )
+        for csv in csvs:
+            if csv.name.startswith("kueue") and csv.status == csv.Status.SUCCEEDED:
+                LOGGER.info(f"Found Kueue operator CSV: {csv.name}")
+                return True
+        return False
+    except ResourceNotFoundError:
+        return False
+
+
+def kueue_resource_groups(
+    flavor_name: str,
+    cpu_quota: int,
+    memory_quota: str,
+) -> list[dict[str, Any]]:
+    """Return Kueue ClusterQueue resource group spec for upgrade tests."""
+    return [
+        {
+            "coveredResources": ["cpu", "memory"],
+            "flavors": [
+                {
+                    "name": flavor_name,
+                    "resources": [
+                        {"name": "cpu", "nominalQuota": cpu_quota},
+                        {"name": "memory", "nominalQuota": memory_quota},
+                    ],
+                }
+            ],
+        }
+    ]
 
 
 @pytest.fixture(scope="session")
@@ -795,8 +838,6 @@ def _ensure_kueue_available_for_upgrade(
             kueue_dsc_state_cm_name=kueue_dsc_state_cm_name,
         )
     else:
-        from tests.model_serving.model_server.conftest import _is_kueue_operator_installed
-
         if not _is_kueue_operator_installed(admin_client):
             pytest.fail("Kueue operator is not installed. Upgrade lanes require Kueue to be available on the cluster.")
 
@@ -857,8 +898,6 @@ def _create_kueue_upgrade_resources(
     teardown_resources: bool,
 ) -> Generator[LocalQueue, Any, Any]:
     """Create or look up Kueue resources for upgrade tests."""
-    from tests.model_serving.model_server.conftest import kueue_resource_groups
-
     if pytestconfig.option.post_upgrade:
         local_queue = LocalQueue(
             client=admin_client,
@@ -1085,5 +1124,5 @@ def skip_if_not_raw_deployment(
     kserve_kueue_upgrade_inference_service.get()
     skip_if_not_deployment_mode(
         isvc=kserve_kueue_upgrade_inference_service,
-        deployment_types=KServeDeploymentType.RAW_DEPLOYMENT_MODES,
+        deployment_type=KServeDeploymentType.RAW_DEPLOYMENT,
     )
