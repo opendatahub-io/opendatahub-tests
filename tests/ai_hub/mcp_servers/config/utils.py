@@ -12,7 +12,7 @@ def exclude_default_mcp_servers(response: dict, default_mcp_servers: dict) -> li
 
 
 def get_mcp_catalog_sources(admin_client: DynamicClient, model_registry_namespace: str) -> tuple[ConfigMap, dict]:
-    """Return the catalog ConfigMap and its parsed sources.yaml data."""
+    """Return the MCP catalog ConfigMap and its parsed sources.yaml data."""
     catalog_config_map = ConfigMap(
         name=MCP_CATALOG_SOURCES_CM,
         client=admin_client,

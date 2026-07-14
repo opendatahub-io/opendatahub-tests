@@ -16,7 +16,6 @@ from tests.workbenches.notebooks_server.controller.utils import (
     resolve_notebook_image,
 )
 from utilities import constants
-from utilities.constants import Timeout
 from utilities.general import collect_pod_information
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -222,7 +221,7 @@ def notebook_pod(
         AssertionError: If pod fails to reach Ready state or is not created
     """
     params = getattr(request, "param", {})
-    pod_ready_timeout = params.get("timeout", Timeout.TIMEOUT_10MIN)
+    pod_ready_timeout = params.get("timeout", 600)
 
     # Error messages
     _ERR_POD_NOT_READY = (

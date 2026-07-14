@@ -5,8 +5,7 @@ from typing import Any
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
-from kubernetes.dynamic.exceptions import ResourceNotFoundError
-from ocp_resources.cluster_service_version import ClusterServiceVersion
+from ocp_resources.api_service import APIService
 from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
@@ -18,10 +17,11 @@ from ocp_resources.role_binding import RoleBinding
 from ocp_resources.route import Route
 from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
-from pytest_testconfig import config as py_config
+from ocp_utilities.operators import install_operator, uninstall_operator
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_safety.evalhub.constants import (
+    EVALHUB_JOBS_WRITER_CLUSTERROLE,
     EVALHUB_TENANT_LABEL_KEY,
     EVALHUB_USER_ROLE_RULES,
     EVALHUB_VLLM_EMULATOR_PORT,
@@ -46,6 +46,7 @@ from utilities.data_science_cluster_utils import get_dsc_ready_condition, wait_f
 from utilities.infra import create_inference_token, create_ns
 from utilities.kueue_utils import (
     ClusterQueue,
+    Kueue,
     LocalQueue,
     ResourceFlavor,
     create_cluster_queue,
@@ -81,7 +82,7 @@ def _is_evalhub_crd_available(admin_client: DynamicClient) -> bool:
 
 
 # Kueue-specific evalhub_mt_* fixtures (use evalhub_kueue_namespace instead of model_namespace)
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="session")
 def evalhub_kueue_cr(
     admin_client: DynamicClient,
     evalhub_kueue_namespace: Namespace,
@@ -104,7 +105,7 @@ def evalhub_kueue_cr(
         yield evalhub
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="session")
 def evalhub_kueue_deployment(
     admin_client: DynamicClient,
     evalhub_kueue_namespace: Namespace,
@@ -116,11 +117,11 @@ def evalhub_kueue_deployment(
         name=evalhub_kueue_cr.name,
         namespace=evalhub_kueue_namespace.name,
     )
-    deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_5MIN)
+    deployment.wait_for_replicas(timeout=300)
     return deployment
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="session")
 def evalhub_kueue_route(
     admin_client: DynamicClient,
     evalhub_kueue_namespace: Namespace,
@@ -135,7 +136,7 @@ def evalhub_kueue_route(
     )
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="session")
 def evalhub_kueue_ca_bundle_file(
     admin_client: DynamicClient,
 ) -> str:
@@ -148,59 +149,114 @@ def evalhub_kueue_ca_bundle_file(
 # ---------------------------------------------------------------------------
 
 
-def _is_kueue_operator_installed(admin_client: DynamicClient) -> bool:
-    """Check if the Kueue operator is installed and ready."""
-    try:
-        csvs = list(
-            ClusterServiceVersion.get(
-                client=admin_client,
-                namespace=py_config["applications_namespace"],
-            )
-        )
-        for csv in csvs:
-            # Check phase instead of status attribute, and verify package name precisely
-            if csv.instance.status.phase == "Succeeded" and "kueue" in csv.instance.spec.get("displayName", "").lower():
-                LOGGER.info(f"Found Kueue operator CSV: {csv.name}")
-                return True
-        return False
-    except ResourceNotFoundError:
-        return False
+_KUEUE_OPERATOR_NS = "openshift-kueue-operator"
+_KUEUE_PACKAGE = "kueue-operator"
+_KUEUE_CHANNEL = "stable-v1.3"
+_CERT_MANAGER_OPERATOR_NS = "cert-manager-operator"
+_CERT_MANAGER_PACKAGE = "openshift-cert-manager-operator"
+_CERT_MANAGER_CHANNEL = "stable-v1"
+_KUEUE_VISIBILITY_API_GROUP = "visibility.kueue.x-k8s.io"  # gitleaks:allow
 
 
 @pytest.fixture(scope="session")
-def kueue_unmanaged_dsc(admin_client: DynamicClient, dsc_resource: DataScienceCluster) -> Generator[None, Any, Any]:
-    """Set DSC Kueue to Unmanaged and wait for CRDs to be available."""
-    if not _is_kueue_operator_installed(admin_client):
-        pytest.fail("Kueue operator is not installed")
+def installed_cert_manager_operator(admin_client: DynamicClient) -> Generator[None, Any, Any]:
+    """Install the cert-manager operator (required by Kueue for webhook TLS), uninstall at session end."""
+    install_operator(
+        admin_client=admin_client,
+        target_namespaces=None,
+        name=_CERT_MANAGER_PACKAGE,
+        channel=_CERT_MANAGER_CHANNEL,
+        source="redhat-operators",
+        operator_namespace=_CERT_MANAGER_OPERATOR_NS,
+        timeout=Timeout.TIMEOUT_15MIN,
+    )
+    yield
+    uninstall_operator(
+        admin_client=admin_client,
+        name=_CERT_MANAGER_PACKAGE,
+        operator_namespace=_CERT_MANAGER_OPERATOR_NS,
+        clean_up_namespace=True,
+    )
 
-    # Check current Kueue state - narrow try/except to component lookup only
+
+@pytest.fixture(scope="session")
+def installed_kueue_operator(
+    admin_client: DynamicClient,
+    installed_cert_manager_operator: None,
+) -> Generator[None, Any, Any]:
+    """Install the Red Hat build of Kueue operator, uninstall at session end."""
+    install_operator(
+        admin_client=admin_client,
+        target_namespaces=None,
+        name=_KUEUE_PACKAGE,
+        channel=_KUEUE_CHANNEL,
+        source="redhat-operators",
+        operator_namespace=_KUEUE_OPERATOR_NS,
+        timeout=Timeout.TIMEOUT_15MIN,
+    )
+    yield
+    uninstall_operator(
+        admin_client=admin_client,
+        name=_KUEUE_PACKAGE,
+        operator_namespace=_KUEUE_OPERATOR_NS,
+        clean_up_namespace=True,
+    )
+
+
+@pytest.fixture(scope="session")
+def kueue_cr(
+    admin_client: DynamicClient,
+    installed_kueue_operator: None,
+) -> Generator[Kueue, Any, Any]:
+    """Create the Kueue CR — without it the operator does not deploy the Kueue controller."""
+    with Kueue(
+        client=admin_client,
+        name="cluster",
+        config={"integrations": {"frameworks": ["BatchJob"]}},
+        management_state="Managed",
+    ) as kueue:
+        wait_for_kueue_crds_available(client=admin_client)
+        yield kueue
+
+    # The controller's aggregated visibility APIService can outlive the CR; if left
+    # stale it breaks API discovery and blocks namespace deletion cluster-wide.
+    for api_service in APIService.get(client=admin_client):
+        if api_service.name.endswith(_KUEUE_VISIBILITY_API_GROUP):
+            LOGGER.info(f"Removing leftover Kueue APIService {api_service.name}")
+            api_service.clean_up(wait=True)
+
+
+@pytest.fixture(scope="session")
+def kueue_unmanaged_dsc(
+    dsc_resource: DataScienceCluster,
+    kueue_cr: Kueue,
+) -> Generator[None, Any, Any]:
+    """Ensure RHOAI recognizes the externally installed Kueue operator.
+
+    On a clean RHOAI 3.5 cluster the DSC Kueue component is either Removed or
+    Unmanaged. Unmanaged means RHOAI is aware of the external Kueue operator,
+    so patch the DSC only when needed; ResourceEditor restores the original
+    state at session end.
+    """
     try:
         kueue_management_state = dsc_resource.instance.spec.components[DscComponents.KUEUE].managementState
     except (AttributeError, KeyError) as e:
         pytest.fail(f"Kueue component not found in DSC: {e}")
 
     with ExitStack() as stack:
-        # Only patch if Kueue is not already Unmanaged
-        if kueue_management_state != DscComponents.ManagementState.UNMANAGED:
-            LOGGER.info(f"Patching Kueue from {kueue_management_state} to Unmanaged")
-            # Read timestamp BEFORE applying patch
+        if kueue_management_state == DscComponents.ManagementState.UNMANAGED:
+            LOGGER.info("DSC Kueue component is already Unmanaged, no patch needed")
+        else:
+            LOGGER.info(f"Patching DSC Kueue component from {kueue_management_state} to Unmanaged")
             ready_condition = get_dsc_ready_condition(dsc=dsc_resource)
             pre_patch_time = ready_condition.get("lastTransitionTime") if ready_condition else None
-
             dsc_dict = {
                 "spec": {
                     "components": {DscComponents.KUEUE: {"managementState": DscComponents.ManagementState.UNMANAGED}}
                 }
             }
             stack.enter_context(cm=ResourceEditor(patches={dsc_resource: dsc_dict}))
-
-            # Wait for DSC to reconcile the patch
             wait_for_dsc_reconciliation(dsc=dsc_resource, baseline_time=pre_patch_time)
-        else:
-            LOGGER.info("Kueue already Unmanaged, no patch needed")
-
-        # Always wait for Kueue CRDs and controller pods (regardless of patch)
-        wait_for_kueue_crds_available(client=admin_client)
         yield
 
 
@@ -210,24 +266,31 @@ def kueue_unmanaged_dsc(admin_client: DynamicClient, dsc_resource: DataScienceCl
 
 
 # Kueue-specific namespace fixture
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="session")
 def evalhub_kueue_namespace(
     admin_client: DynamicClient,
+    kueue_unmanaged_dsc: None,
+    evalhub_kueue_multi_job_cluster_queue: ClusterQueue,
+    evalhub_kueue_single_job_cluster_queue: ClusterQueue,
 ) -> Generator[Namespace, Any, Any]:
-    """Namespace with both EvalHub tenant label and Kueue opt-in label."""
+    """Namespace with both EvalHub tenant label and Kueue opt-in label.
+
+    Depends on both ClusterQueues to enforce teardown ordering: the namespace
+    (and all Workloads inside it) must be fully deleted before the ClusterQueues
+    are removed. Without this, ClusterQueue deletion fails because Workloads still
+    hold the kueue.x-k8s.io/resource-in-use finalizer on the ClusterQueue.
+    """
     with create_ns(
         admin_client=admin_client,
         name="test-evalhub-kueue",
-        labels={
-            EVALHUB_TENANT_LABEL_KEY: "true",
-            "kueue.x-k8s.io/managed": "true",  # Required for Kueue admission control
-        },
+        labels={EVALHUB_TENANT_LABEL_KEY: "true"},
+        add_kueue_label=True,
     ) as ns:
         yield ns
 
 
 # Multi-job quota fixtures
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="session")
 def evalhub_kueue_multi_job_resource_flavor(
     admin_client: DynamicClient,
     kueue_unmanaged_dsc: None,
@@ -240,7 +303,7 @@ def evalhub_kueue_multi_job_resource_flavor(
         yield resource_flavor
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="session")
 def evalhub_kueue_multi_job_cluster_queue(
     admin_client: DynamicClient,
     evalhub_kueue_multi_job_resource_flavor: ResourceFlavor,
@@ -271,7 +334,7 @@ def evalhub_kueue_multi_job_cluster_queue(
         yield cluster_queue
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="session")
 def evalhub_kueue_multi_job_local_queue(
     admin_client: DynamicClient,
     evalhub_kueue_namespace: Namespace,
@@ -289,7 +352,7 @@ def evalhub_kueue_multi_job_local_queue(
 
 
 # Single-job quota fixtures (for quota exhaustion tests)
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="session")
 def evalhub_kueue_single_job_resource_flavor(
     admin_client: DynamicClient,
     kueue_unmanaged_dsc: None,
@@ -302,7 +365,7 @@ def evalhub_kueue_single_job_resource_flavor(
         yield resource_flavor
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="session")
 def evalhub_kueue_single_job_cluster_queue(
     admin_client: DynamicClient,
     evalhub_kueue_single_job_resource_flavor: ResourceFlavor,
@@ -333,7 +396,7 @@ def evalhub_kueue_single_job_cluster_queue(
         yield cluster_queue
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="session")
 def evalhub_kueue_single_job_local_queue(
     admin_client: DynamicClient,
     evalhub_kueue_namespace: Namespace,
@@ -351,7 +414,7 @@ def evalhub_kueue_single_job_local_queue(
 
 
 # RBAC fixtures
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="session")
 def evalhub_kueue_tenant_rbac(
     admin_client: DynamicClient,
     evalhub_kueue_namespace: Namespace,
@@ -374,7 +437,7 @@ def evalhub_kueue_tenant_rbac(
 
 
 # vLLM emulator in Kueue namespace
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="session")
 def evalhub_kueue_vllm_emulator_deployment(
     admin_client: DynamicClient,
     evalhub_kueue_namespace: Namespace,
@@ -413,11 +476,11 @@ def evalhub_kueue_vllm_emulator_deployment(
         },
         replicas=1,
     ) as deployment:
-        deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_5MIN)
+        deployment.wait_for_replicas(timeout=300)
         yield deployment
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="session")
 def evalhub_kueue_vllm_service(
     admin_client: DynamicClient,
     evalhub_kueue_namespace: Namespace,
@@ -442,7 +505,7 @@ def evalhub_kueue_vllm_service(
 
 
 # User token fixture for API access
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="session")
 def evalhub_kueue_user_token(
     admin_client: DynamicClient,
     evalhub_kueue_namespace: Namespace,
@@ -471,6 +534,19 @@ def evalhub_kueue_user_token(
             subjects_namespace=evalhub_kueue_namespace.name,
             role_ref_kind="Role",
             role_ref_name=role.name,
+            wait_for_resource=True,
+        ),
+        # kube-rbac-proxy maps HTTP DELETE on /evaluations/jobs to delete on batch/jobs.
+        # Bind the SA to the ClusterRole that grants this permission.
+        RoleBinding(
+            client=admin_client,
+            name="evalhub-kueue-user-jobs-writer-binding",
+            namespace=evalhub_kueue_namespace.name,
+            subjects_kind="ServiceAccount",
+            subjects_name=sa.name,
+            subjects_namespace=evalhub_kueue_namespace.name,
+            role_ref_kind="ClusterRole",
+            role_ref_name=EVALHUB_JOBS_WRITER_CLUSTERROLE,
             wait_for_resource=True,
         ),
     ):
