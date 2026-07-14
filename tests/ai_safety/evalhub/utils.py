@@ -1003,7 +1003,9 @@ def _get_evalhub_job_workload(
     """Get the Kueue Workload for an EvalHub job.
 
     EvalHub creates batch Jobs with labels app=evalhub, component=evaluation-job, job_id={id}.
-    Kueue creates a Workload for each Job with matching owner reference.
+    Kueue creates a Workload for each Job labelled with kueue.x-k8s.io/job-uid={job.uid}.
+    Kueue Workloads do NOT inherit the Job's labels, so we must look up the Job first
+    to get its UID, then find the Workload by that UID.
 
     Args:
         admin_client: Kubernetes client with admin privileges.
@@ -1014,11 +1016,27 @@ def _get_evalhub_job_workload(
         Workload instance or None if not found.
     """
     selector = evalhub_runtime_label_selector(evalhub_job_id=evalhub_job_id)
+    jobs = list(Job.get(client=admin_client, namespace=namespace, label_selector=selector))
+    if not jobs:
+        return None
+
+    if len(jobs) > 1:
+        LOGGER.warning(
+            "Multiple Kubernetes Jobs matched one EvalHub job — using the first. "
+            "This can happen with multi-benchmark payloads.",
+            evalhub_job_id=evalhub_job_id,
+            job_names=[job.name for job in jobs],
+        )
+
+    job_uid = jobs[0].instance.metadata.uid
+    if not job_uid:
+        return None
+
     workloads = list(
         Workload.get(
             client=admin_client,
             namespace=namespace,
-            label_selector=selector,
+            label_selector=f"kueue.x-k8s.io/job-uid={job_uid}",
         )
     )
     return workloads[0] if workloads else None
