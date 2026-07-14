@@ -1,4 +1,4 @@
-from typing import Self
+from typing import Any, Self
 
 import pytest
 import structlog
@@ -42,6 +42,11 @@ class TestAgentCatalogNegative:
                 id="test_invalid_next_page_token",
                 marks=pytest.mark.tier2,
             ),
+            pytest.param(
+                "agents/999999/artifacts",
+                None,
+                id="test_artifacts_nonexistent_agent",
+            ),
         ],
     )
     def test_invalid_request_returns_error(
@@ -60,4 +65,22 @@ class TestAgentCatalogNegative:
                 url=f"{agent_catalog_rest_urls[0]}{path}",
                 headers=model_registry_rest_headers,
                 params=params,
+            )
+
+    def test_artifacts_invalid_artifact_type(
+        self: Self,
+        agent_catalog_rest_urls: list[str],
+        model_registry_rest_headers: dict[str, str],
+        default_agents: list[dict[str, Any]],
+    ) -> None:
+        """Given a valid agent ID
+        When requesting artifacts with artifactType=image-artifact
+        Then a 400 error is returned
+        """
+        agent_id = default_agents[0]["id"]
+        with pytest.raises(ResourceNotFoundError):
+            execute_get_command(
+                url=f"{agent_catalog_rest_urls[0]}agents/{agent_id}/artifacts",
+                headers=model_registry_rest_headers,
+                params={"artifactType": "image-artifact"},
             )

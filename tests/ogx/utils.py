@@ -149,35 +149,12 @@ def create_ogx_server(
         teardown: Whether to delete the resource on exit.
     """
 
-    # Starting with RHOAI 3.3, pods in the 'openshift-ingress' namespace must be allowed
-    # to access the ogx-service. This is required for the ogx_test_route
-    # to function properly.
-    network: dict[str, Any] = {
-        "policy": {
-            "ingress": [
-                {
-                    "from": [
-                        {
-                            "namespaceSelector": {
-                                "matchLabels": {
-                                    "kubernetes.io/metadata.name": "openshift-ingress",
-                                },
-                            },
-                        },
-                    ],
-                    "ports": [{"protocol": "TCP", "port": 8321}],
-                },
-            ],
-        },
-    }
-
     with OgxServer(
         client=client,
         name=name,
         namespace=namespace,
         distribution=config["distribution"],
         workload=config.get("workload"),
-        network=network,
         tls=config.get("tls"),
         wait_for_resource=True,
         teardown=teardown,
