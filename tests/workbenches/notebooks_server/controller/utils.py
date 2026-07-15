@@ -105,6 +105,7 @@ def build_notebook_dict(
     name: str,
     image_path: str,
     extra_annotations: dict[str, str] | None = None,
+    extra_labels: dict[str, str] | None = None,
     resources: dict[str, dict[str, str]] | None = None,
     extra_env_vars: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
@@ -115,6 +116,7 @@ def build_notebook_dict(
         name: Notebook resource name (also used for PVC claim, service account, container).
         image_path: Full container image reference.
         extra_annotations: Optional annotations merged into metadata (e.g. auth sidecar resources).
+        extra_labels: Optional labels merged into metadata (e.g. kueue queue-name).
         resources: Container resources dict with "limits" and/or "requests" keys.
             None uses sensible defaults; empty dict ``{}`` omits resources entirely
             (useful when a HardwareProfile webhook injects them).
@@ -153,16 +155,20 @@ def build_notebook_dict(
     if extra_annotations:
         annotations.update(extra_annotations)
 
+    labels: dict[str, str] = {
+        Labels.Openshift.APP: name,
+        Labels.OpenDataHub.DASHBOARD: "true",
+        "opendatahub.io/odh-managed": "true",
+    }
+    if extra_labels:
+        labels.update(extra_labels)
+
     return {
         "apiVersion": "kubeflow.org/v1",
         "kind": "Notebook",
         "metadata": {
             "annotations": annotations,
-            "labels": {
-                Labels.Openshift.APP: name,
-                Labels.OpenDataHub.DASHBOARD: "true",
-                "opendatahub.io/odh-managed": "true",
-            },
+            "labels": labels,
             "name": name,
             "namespace": namespace,
         },
