@@ -18,7 +18,7 @@ from utilities.constants import MinIo
 
 LOGGER = structlog.get_logger(name=__name__)
 
-pytestmark = pytest.mark.usefixtures("skip_if_not_managed_cluster", "tas_connection_type")
+pytestmark = pytest.mark.usefixtures("tas_connection_type")
 
 
 @pytest.mark.parametrize(
@@ -39,7 +39,6 @@ pytestmark = pytest.mark.usefixtures("skip_if_not_managed_cluster", "tas_connect
 )
 @pytest.mark.custom_namespace
 @pytest.mark.downstream_only
-@pytest.mark.tier3
 class TestNativeJobSigningE2E:
     """
     End-to-end test: async job signs model and OCI image internally via MODEL_SYNC_SIGN=true.
