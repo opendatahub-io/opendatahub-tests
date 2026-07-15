@@ -3,6 +3,9 @@
 from collections.abc import Generator
 from typing import Any
 
+DEMO_STRAY_IMAGE = "quay.io/example/not-in-constants:v1.0"
+ANOTHER_STRAY = "registry.redhat.io/rhel9/demo-image@sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
