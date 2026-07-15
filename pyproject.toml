@@ -103,7 +103,7 @@ dependencies = [
     "marshmallow>=4.0",
     "pytest-html>=4.1.1",
     "fire",
-    "ogx_client>=1.0.2,<2",
+    "ogx_client==1.1.3",
     "pytest-xdist==3.8.0",
     "dictdiffer>=0.9.0",
     "pytest>=9.0.0",

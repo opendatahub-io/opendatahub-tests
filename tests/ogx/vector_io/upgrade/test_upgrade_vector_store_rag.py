@@ -19,6 +19,8 @@ def _assert_minimal_rag_response(
         instructions="Always use the file_search tool to look up information before answering.",
         stream=False,
         max_output_tokens=4096,
+        tool_choice="required",
+        include=["file_search_call.results"],
         tools=[
             {
                 "type": "file_search",
@@ -111,7 +113,6 @@ class TestPreUpgradeOgxVectorStoreRag:
 @pytest.mark.rag
 class TestPostUpgradeOgxVectorStoreRag:
     @pytest.mark.post_upgrade
-    @pytest.mark.xfail(reason="RHAIENG-3650")
     def test_vector_store_rag_post_upgrade(
         self,
         ogx_client: OgxClient,

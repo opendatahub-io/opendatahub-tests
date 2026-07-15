@@ -83,6 +83,8 @@ class RuntimeTemplates:
     CAIKIT_STANDALONE_SERVING: str = "caikit-standalone-serving-template"
     TGIS_GRPC_SERVING: str = "tgis-grpc-serving-template"
     VLLM_CUDA: str = "vllm-cuda-runtime-template"
+    VLLM_FAST_1_CUDA: str = "vllm-fast-1-cuda-runtime-template"
+    VLLM_FAST_2_CUDA: str = "vllm-fast-2-cuda-runtime-template"
     VLLM_ROCM: str = "vllm-rocm-runtime-template"
     VLLM_GAUDI: str = "vllm-gaudi-runtime-template"
     VLLM_SPYRE: str = "vllm-spyre-x86-runtime-template"

@@ -4,11 +4,13 @@ from contextlib import ExitStack, contextmanager
 from typing import Any, NamedTuple
 
 import pytest
+import shortuuid
 import structlog
 import yaml
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.gateway import Gateway
 from ocp_resources.llm_inference_service import LLMInferenceService
@@ -16,18 +18,25 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.resource import Resource
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
+from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
+from pytest_testconfig import config as py_config
 
+from tests.model_serving.model_server.kserve.model_cache.utils import (
+    LOCAL_MODEL_NODE_GROUP_NAME,
+    LocalModelNamespaceCache,
+    wait_for_local_model_cache_nodes_downloaded,
+)
 from tests.model_serving.model_server.llmd.constants import (
     LLMD_DSC_CONDITION,
     LLMD_KSERVE_CONTROLLER_DEPLOYMENTS,
 )
-from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaOciConfig
+from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaOciConfig, TinyLlamaS3Config
 from tests.model_serving.model_server.llmd.utils import (
     wait_for_llmisvc,
     wait_for_llmisvc_pods_ready,
 )
-from utilities.constants import Timeout
+from utilities.constants import ModelStorage
 from utilities.infra import create_inference_token, s3_endpoint_secret, update_configmap_data
 from utilities.llmd_utils import create_llmd_gateway
 from utilities.logger import RedactedString
@@ -217,7 +226,7 @@ def shared_llmd_gateway(admin_client: DynamicClient) -> Generator[Gateway]:
     """Shared LLMD gateway for all tests."""
     with create_llmd_gateway(
         client=admin_client,
-        timeout=Timeout.TIMEOUT_1MIN,
+        timeout=60,
     ) as gateway:
         yield gateway
 
@@ -287,6 +296,84 @@ def llmisvc(
         config_cls=config_cls, namespace=namespace, client=admin_client, service_account=service_account
     ) as svc:
         yield svc
+
+
+@pytest.fixture(scope="class")
+def tinyllama_model_cache_download_secret(
+    admin_client: DynamicClient,
+    aws_access_key_id: str,
+    aws_secret_access_key: str,
+    models_s3_bucket_name: str,
+    models_s3_bucket_region: str,
+    models_s3_bucket_endpoint: str,
+) -> Generator[Secret]:
+    """S3 credential secret in the applications namespace for downloading the cached TinyLlama model.
+
+    Mirrors ``model_cache_download_s3_secret`` (``kserve/model_cache/conftest.py``) but targets
+    the ``models_s3_bucket_*`` credentials that back ``ModelStorage.S3.TINYLLAMA`` (a different
+    bucket than the generic ``ci_s3_bucket_*`` used for the MNIST ONNX cache).
+    """
+    applications_namespace: str = py_config["applications_namespace"]
+    with s3_endpoint_secret(
+        client=admin_client,
+        name=f"tinyllama-mc-dl-secret-{shortuuid.uuid()[:10].lower()}",
+        namespace=applications_namespace,
+        aws_access_key=aws_access_key_id,
+        aws_secret_access_key=aws_secret_access_key,
+        aws_s3_region=models_s3_bucket_region,
+        aws_s3_bucket=models_s3_bucket_name,
+        aws_s3_endpoint=models_s3_bucket_endpoint,
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="class")
+def tinyllama_local_model_cache(
+    admin_client: DynamicClient,
+    model_cache_infra_ready: DataScienceCluster,
+    tinyllama_model_cache_download_secret: Secret,
+    unprivileged_model_namespace: Namespace,
+) -> Generator[LocalModelNamespaceCache]:
+    """Create a ``LocalModelNamespaceCache`` for the TinyLlama model and wait for ``NodeDownloaded``."""
+    cache_name = f"tinyllama-{shortuuid.uuid()[:10].lower()}"
+    with LocalModelNamespaceCache(
+        client=admin_client,
+        name=cache_name,
+        namespace=unprivileged_model_namespace.name,
+        source_model_uri=ModelStorage.S3.TINYLLAMA,
+        model_size="5Gi",
+        node_groups=[LOCAL_MODEL_NODE_GROUP_NAME],
+        storage={"key": tinyllama_model_cache_download_secret.name},
+    ) as cache:
+        wait_for_local_model_cache_nodes_downloaded(cache=cache, timeout=900)
+        yield cache
+
+
+@pytest.fixture(scope="class")
+def tinyllama_llmisvc_local_model_cache(
+    admin_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+    s3_service_account: str,
+    tinyllama_local_model_cache: LocalModelNamespaceCache,
+) -> Generator[LLMInferenceService]:
+    """Deploy an ``LLMInferenceService`` whose model URI matches the cached TinyLlama model.
+
+    The LLMISVC defaulting webhook automatically detects a matching
+    ``LocalModelNamespaceCache.spec.sourceModelUri`` and rewrites the workload to
+    PVC-backed storage — no manual ``localmodel`` label is needed, same as for
+    ``InferenceService`` (see ``mnist_onnx_local_model_cache_inference_service``).
+
+    Depends directly on ``tinyllama_local_model_cache`` so the cache is guaranteed to
+    exist before the LLMISVC is created, since the rewrite is a create-time webhook check.
+    """
+    config_cls = TinyLlamaS3Config.with_overrides(name="tinyllama-lmcache").build(client=admin_client)
+    with _create_llmisvc_from_config(
+        config_cls=config_cls,
+        namespace=unprivileged_model_namespace.name,
+        client=admin_client,
+        service_account=s3_service_account,
+    ) as llmisvc:
+        yield llmisvc
 
 
 class AuthEntry(NamedTuple):

@@ -12,7 +12,6 @@ from pyhelper_utils.shell import run_command
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_serving.model_server.kserve.negative.constants import KSERVE_CONTROL_PLANE_DEPLOYMENTS
-from utilities.constants import Timeout
 from utilities.infra import get_pods_by_isvc_label
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
@@ -66,7 +65,7 @@ def wait_for_isvc_model_status_states(
     *,
     target_model_state: str,
     transition_status: str,
-    timeout: int = Timeout.TIMEOUT_15MIN,
+    timeout: int = 900,
     sleep: int = 5,
 ) -> None:
     """Poll until ``status.modelStatus`` matches the expected model and transition states.
@@ -116,7 +115,7 @@ def wait_for_isvc_model_status_states(
 def wait_for_isvc_ready_false(
     isvc: InferenceService,
     *,
-    timeout: int = Timeout.TIMEOUT_15MIN,
+    timeout: int = 900,
     sleep: int = 5,
 ) -> None:
     """Poll until ISVC ``status.conditions`` contains ``Ready=False``.

@@ -16,6 +16,15 @@ from utilities.resources.auth_policy import AuthPolicy
 
 LOGGER = structlog.get_logger(name=__name__)
 
+MAAS_GATEWAY_AUTH_POLICY_NAME = "maas-gateway-auth"
+
+MAAS_AUTH_POLICY_FIXTURE_NAMES = (
+    "external_model_auth_policy",
+    "maas_auth_policy_tinyllama_premium",
+    "maas_auth_policy_tinyllama_free",
+    "oidc_auth_policy_patched",
+)
+
 
 def assert_key_rejected_at_inference(
     request_session_http: requests.Session,

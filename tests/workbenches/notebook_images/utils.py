@@ -25,7 +25,7 @@ from semver import Version
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.workbenches.notebooks_server.controller.utils import StatefulSet
-from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH, Labels, Timeout
+from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH, Labels
 from utilities.general import collect_pod_information
 from utilities.infra import check_internal_image_registry_available, get_product_version
 from utilities.resources.http_route import HTTPRoute
@@ -43,7 +43,7 @@ TRUSTED_CA_BUNDLE_NAME = "workbench-trusted-ca-bundle"
 PIPELINE_RUNTIME_IMAGES_NAME = "pipeline-runtime-images"
 RSTUDIO_BUILDCONFIG_NAME = "rstudio-server-rhel9"
 RSTUDIO_BUILD_SECRET_NAME = "rhel-subscription-secret"  # pragma: allowlist secret
-RSTUDIO_IMAGE_BUILD_TIMEOUT = Timeout.TIMEOUT_30MIN
+RSTUDIO_IMAGE_BUILD_TIMEOUT = 1800
 
 SEMVER_TAG_PATTERN = re.compile(r"^(?P<major>\d+)\.(?P<minor>\d+)$")
 LEGACY_TAG_PATTERN = re.compile(r"^(?P<year>\d{4})\.(?P<minor>\d+)$")
@@ -143,6 +143,9 @@ class WorkbenchImageBaseline:
     restart_counts: dict[str, int]
     notebook_generation: int
     upgrade_marker: str = UPGRADE_MARKER_CONTENT
+    # Elyra fields (optional - None if Elyra not present in workbench image)
+    elyra_extensions: dict[str, Any] | None = None
+    runtime_configs: dict[str, Any] | None = None
 
     def to_configmap_data(self, prefix: str) -> dict[str, str]:
         """Convert the baseline into ConfigMap-friendly string data."""
@@ -157,6 +160,12 @@ class WorkbenchImageBaseline:
             f"{prefix}_restart_counts": json.dumps(self.restart_counts, sort_keys=True),
             f"{prefix}_notebook_generation": str(self.notebook_generation),
             f"{prefix}_upgrade_marker": self.upgrade_marker,
+            f"{prefix}_elyra_extensions": (
+                json.dumps(self.elyra_extensions, sort_keys=True) if self.elyra_extensions is not None else ""
+            ),
+            f"{prefix}_runtime_configs": (
+                json.dumps(self.runtime_configs, sort_keys=True) if self.runtime_configs is not None else ""
+            ),
         }
 
     @classmethod
@@ -178,6 +187,10 @@ class WorkbenchImageBaseline:
         if missing_keys:
             raise AssertionError(f"Baseline data for '{prefix}' is incomplete: missing {missing_keys}")
 
+        # Parse Elyra fields (optional)
+        elyra_extensions_str = data.get(f"{prefix}_elyra_extensions", "")
+        runtime_configs_str = data.get(f"{prefix}_runtime_configs", "")
+
         return cls(
             creation_timestamp=data[f"{prefix}_creation_timestamp"],
             image_tag=data[f"{prefix}_image_tag"],
@@ -189,6 +202,8 @@ class WorkbenchImageBaseline:
             restart_counts=json.loads(data[f"{prefix}_restart_counts"]),
             notebook_generation=int(data[f"{prefix}_notebook_generation"]),
             upgrade_marker=data[f"{prefix}_upgrade_marker"],
+            elyra_extensions=json.loads(elyra_extensions_str) if elyra_extensions_str else None,
+            runtime_configs=json.loads(runtime_configs_str) if runtime_configs_str else None,
         )
 
 
@@ -196,6 +211,7 @@ def get_workbench_image_specs() -> list[WorkbenchImageSpec]:
     """Return the IDE matrix for N-1 survival tests."""
     is_upstream = py_config.get("distribution") == "upstream"
     jupyter_imagestream = "jupyter-minimal-notebook" if is_upstream else "s2i-minimal-notebook"
+    datascience_imagestream = "jupyter-datascience-notebook" if is_upstream else "s2i-generic-data-science-notebook"
 
     return [
         WorkbenchImageSpec(
@@ -204,6 +220,13 @@ def get_workbench_image_specs() -> list[WorkbenchImageSpec]:
             notebook_name="upgrade-n1-jupyterlab",
             baseline_prefix="jupyterlab",
             pvc_name="upgrade-n1-jupyterlab-storage",
+        ),
+        WorkbenchImageSpec(
+            ide="jupyter-elyra",
+            imagestream_name=datascience_imagestream,
+            notebook_name="upgrade-n1-jupyter-elyra",
+            baseline_prefix="jupyter-elyra",
+            pvc_name="upgrade-n1-jupyter-elyra-storage",
         ),
         WorkbenchImageSpec(
             ide="code-server",
@@ -738,7 +761,7 @@ def wait_for_controller_reconciliation(
     notebook_name: str,
     notebook_namespace: str,
     notebook_pod: Pod,
-    timeout: int = Timeout.TIMEOUT_5MIN,
+    timeout: int = 300,
 ) -> None:
     """Wait for the notebook controller to finish reconciling auth and routing resources."""
     try:
@@ -838,7 +861,7 @@ def wait_for_http_inside_pod(
     container_name: str,
     namespace: str,
     notebook_name: str,
-    timeout: int = Timeout.TIMEOUT_2MIN,
+    timeout: int = 120,
 ) -> None:
     """Wait until the in-pod workbench HTTP endpoint responds successfully."""
     probe_url = f"http://localhost:{NOTEBOOK_PORT}/notebook/{namespace}/{notebook_name}/api"
@@ -946,6 +969,49 @@ def capture_workbench_baseline(
     notebook_annotations = notebook.instance.metadata.annotations or {}
     container_name = notebook.name
 
+    # Capture Elyra data (optional - Elyra not present in all workbench images)
+    elyra_extensions = None
+    runtime_configs = None
+
+    try:
+        from tests.workbenches.notebook_images.upgrade.elyra_utils import (
+            list_runtime_configs,
+            parse_elyra_extensions,
+            read_runtime_config,
+        )
+
+        labextension_output = pod.execute(
+            container=container_name,
+            command=["jupyter", "labextension", "list"],
+            timeout=60,
+        )
+        elyra_extensions = parse_elyra_extensions(labextension_output=labextension_output)
+
+        # Capture runtime configs only if Elyra extensions found
+        if elyra_extensions:
+            runtime_files = list_runtime_configs(pod=pod, container=container_name)
+            runtime_configs = {}
+            for filename in runtime_files:
+                config = read_runtime_config(pod=pod, container=container_name, filename=filename)
+                runtime_configs[filename] = {
+                    "display_name": config.get("display_name"),
+                    "schema_name": config.get("schema_name"),
+                    "metadata": {
+                        "runtime_type": config.get("metadata", {}).get("runtime_type"),
+                        "api_endpoint": config.get("metadata", {}).get("api_endpoint"),
+                    },
+                }
+            # Set to empty dict if no configs found (but Elyra is installed)
+            if not runtime_configs:
+                runtime_configs = {}  # Elyra installed, but no runtime configs yet
+        # Set to None if no Elyra extensions found
+        if not elyra_extensions:
+            elyra_extensions = None
+    except (ExecOnPodError, json.JSONDecodeError, AssertionError) as e:
+        LOGGER.warning(f"Failed to capture Elyra baseline: {e}")
+        elyra_extensions = None
+        runtime_configs = None
+
     return WorkbenchImageBaseline(
         creation_timestamp=pod.instance.metadata.creationTimestamp,
         image_tag=resolved_image.tag_name,
@@ -957,6 +1023,8 @@ def capture_workbench_baseline(
         restart_counts=get_container_restart_counts(pod=pod),
         notebook_generation=int(notebook.instance.metadata.generation),
         upgrade_marker=upgrade_marker,
+        elyra_extensions=elyra_extensions,
+        runtime_configs=runtime_configs,
     )
 
 
@@ -1067,16 +1135,14 @@ def wait_for_notebook_deletion(
     }
     try:
         for notebook_deleted in TimeoutSampler(
-            wait_timeout=Timeout.TIMEOUT_5MIN,
+            wait_timeout=300,
             sleep=5,
             func=lambda: not Notebook(**notebook_kwargs).exists,
         ):
             if notebook_deleted:
                 return
     except TimeoutExpiredError as error:
-        raise AssertionError(
-            f"Notebook '{notebook_name}' was not deleted within {Timeout.TIMEOUT_5MIN} seconds"
-        ) from error
+        raise AssertionError(f"Notebook '{notebook_name}' was not deleted within (300) seconds") from error
 
 
 def manage_upgrade_persistent_volume_claim(
@@ -1196,7 +1262,7 @@ def get_ready_upgrade_notebook_pod(
         notebook_name=spec.notebook_name,
         notebook_namespace=notebook.namespace,
         notebook_pod=notebook_pod,
-        timeout=Timeout.TIMEOUT_10MIN,
+        timeout=600,
     )
     return notebook_pod
 

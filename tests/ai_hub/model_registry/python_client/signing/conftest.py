@@ -21,6 +21,7 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.job import Job
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
+from ocp_resources.resource import get_client
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
@@ -68,7 +69,6 @@ from utilities.constants import (
     MinIo,
     ModelCarImage,
     OCIRegistry,
-    Timeout,
 )
 from utilities.general import b64_encoded_string, get_s3_secret_dict
 from utilities.infra import get_openshift_token, is_managed_cluster
@@ -79,15 +79,24 @@ from utilities.resources.securesign import Securesign
 LOGGER = structlog.get_logger(name=__name__)
 
 
-@pytest.fixture(scope="package")
-def skip_if_not_managed_cluster(admin_client: DynamicClient) -> None:
-    """
-    Skip tests if the cluster is not managed.
-    """
-    if not is_managed_cluster(admin_client):
-        pytest.skip("Skipping tests - cluster is not managed")
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Deselect all signing tests when the cluster is not managed."""
+    if config.getoption("--collect-only", default=False) or config.getoption("--setup-plan", default=False):
+        return
 
-    LOGGER.info("Cluster is managed - proceeding with tests")
+    signing_package_path = os.path.dirname(__file__)
+    signing_items = [item for item in items if item.fspath.strpath.startswith(signing_package_path)]
+    if not signing_items:
+        return
+
+    client = get_client()
+    if is_managed_cluster(client=client):
+        return
+
+    LOGGER.info("Cluster is not managed — deselecting all signing tests")
+    remaining = [item for item in items if item not in signing_items]
+    config.hook.pytest_deselected(items=signing_items)
+    items[:] = remaining
 
 
 @pytest.fixture(scope="package")
@@ -151,7 +160,7 @@ def installed_tas_operator(admin_client: DynamicClient) -> Generator[None, Any]:
             channel="stable",
             source=operator_source,
             operator_namespace=operator_ns.name,
-            timeout=Timeout.TIMEOUT_10MIN,
+            timeout=600,
             install_plan_approval="Manual",  # TAS operator requires manual approval
         )
 
@@ -471,6 +480,7 @@ def set_environment_variables(securesign_instance: Securesign) -> Generator[None
     os.environ["SIGSTORE_TSA_URL"] = service_urls["tsa"]
     os.environ["ROOT_CHECKSUM"] = get_root_checksum(sigstore_tuf_url=service_urls["tuf"])
     os.environ["ROOT_URL"] = os.environ["SIGSTORE_TUF_URL"] + "/root.json"
+    os.environ["COSIGN_USE_SIGNING_CONFIG"] = "0"
 
     LOGGER.info("Environment variables set for signing tests")
     yield
@@ -484,6 +494,7 @@ def set_environment_variables(securesign_instance: Securesign) -> Generator[None
         "SIGSTORE_TSA_URL",
         "ROOT_CHECKSUM",
         "ROOT_URL",
+        "COSIGN_USE_SIGNING_CONFIG",
     ]:
         os.environ.pop(var_name, None)
 

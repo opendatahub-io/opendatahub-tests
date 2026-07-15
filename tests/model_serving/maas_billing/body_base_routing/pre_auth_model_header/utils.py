@@ -12,6 +12,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
 from ocp_resources.service import Service
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_serving.maas_billing.utils import create_api_key, revoke_api_key
 from utilities.constants import MAAS_GATEWAY_NAMESPACE
@@ -30,8 +31,8 @@ BBR_POST_PROCESSING_SERVICE_NAME: str = "payload-processing"
 BBR_POST_PROCESSING_GRPC_PORT: int = 9004
 BBR_POST_PROCESSING_DESTINATION_RULE_NAME: str = "payload-processing"
 BBR_ENVOY_FILTER_NAME: str = "payload-processing"
-BBR_PRE_FILTER_NAME: str = "envoy.filters.http.ext_proc.bbr-pre"
-BBR_POST_FILTER_NAME: str = "envoy.filters.http.ext_proc.bbr"
+BBR_PRE_FILTER_NAME: str = "envoy.filters.http.ext_proc.ipp-pre"
+BBR_POST_FILTER_NAME: str = "envoy.filters.http.ext_proc.ipp"
 ENVOY_FILTER_INSERT_BEFORE: str = "INSERT_BEFORE"
 ENVOY_FILTER_INSERT_AFTER: str = "INSERT_AFTER"
 BBR_PLUGINS_CONFIGMAP_NAME: str = "payload-processing-plugins"
@@ -356,11 +357,11 @@ def verify_bbr_post_processing_destination_rule_exists(
     LOGGER.info(f"DestinationRule '{gateway_namespace}/{BBR_POST_PROCESSING_DESTINATION_RULE_NAME}' exists")
 
 
-def verify_bbr_plugins_configmap_has_expected_plugins(
+def _fetch_bbr_plugins_configmap_data_if_ready(
     admin_client: DynamicClient,
-    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
-) -> None:
-    """Assert the payload-processing-plugins ConfigMap exists with expected post-auth and pre-auth plugin types."""
+    gateway_namespace: str,
+) -> dict[str, str]:
+    """Return ConfigMap data when both plugin config keys are populated."""
     config_map = ConfigMap(
         client=admin_client,
         name=BBR_PLUGINS_CONFIGMAP_NAME,
@@ -371,10 +372,70 @@ def verify_bbr_plugins_configmap_has_expected_plugins(
         "expected to be created by the controller after reconciliation"
     )
     config_map_data: dict[str, str] = config_map.instance.data or {}
-
-    assert BBR_POST_AUTH_CONFIGMAP_KEY in config_map_data, (
+    assert config_map_data.get(BBR_POST_AUTH_CONFIGMAP_KEY), (
         f"Key '{BBR_POST_AUTH_CONFIGMAP_KEY}' missing from ConfigMap '{BBR_PLUGINS_CONFIGMAP_NAME}'"
     )
+    assert config_map_data.get(BBR_PRE_AUTH_CONFIGMAP_KEY), (
+        f"Key '{BBR_PRE_AUTH_CONFIGMAP_KEY}' missing from ConfigMap '{BBR_PLUGINS_CONFIGMAP_NAME}'"
+    )
+    return config_map_data
+
+
+def wait_for_bbr_plugins_configmap_data(
+    admin_client: DynamicClient,
+    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+    timeout: int = 300,
+    sleep: int = 5,
+) -> dict[str, str]:
+    """Poll until the BBR plugins ConfigMap exists with post-auth and pre-auth keys populated."""
+    try:
+        for config_map_data in TimeoutSampler(
+            wait_timeout=timeout,
+            sleep=sleep,
+            func=_fetch_bbr_plugins_configmap_data_if_ready,
+            exceptions_dict={AssertionError: []},
+            admin_client=admin_client,
+            gateway_namespace=gateway_namespace,
+        ):
+            LOGGER.info(
+                f"ConfigMap '{gateway_namespace}/{BBR_PLUGINS_CONFIGMAP_NAME}' has post-auth and pre-auth plugin keys"
+            )
+            return config_map_data
+    except TimeoutExpiredError:
+        pending_config_map = ConfigMap(
+            client=admin_client,
+            name=BBR_PLUGINS_CONFIGMAP_NAME,
+            namespace=gateway_namespace,
+        )
+        if not pending_config_map.exists:
+            pytest.fail(
+                f"ConfigMap '{gateway_namespace}/{BBR_PLUGINS_CONFIGMAP_NAME}' not found after {timeout}s — "
+                "expected to be created by the controller after reconciliation"
+            )
+        found_keys = list((pending_config_map.instance.data or {}).keys())
+        pytest.fail(
+            f"Timed out after {timeout}s waiting for plugin keys in "
+            f"ConfigMap '{gateway_namespace}/{BBR_PLUGINS_CONFIGMAP_NAME}'. "
+            f"Expected keys {BBR_POST_AUTH_CONFIGMAP_KEY!r} and {BBR_PRE_AUTH_CONFIGMAP_KEY!r}; "
+            f"found: {found_keys!r}"
+        )
+    raise AssertionError(f"ConfigMap '{gateway_namespace}/{BBR_PLUGINS_CONFIGMAP_NAME}' plugin keys were not populated")
+
+
+def verify_bbr_plugins_configmap_has_expected_plugins(
+    admin_client: DynamicClient,
+    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+    timeout: int = 300,
+    sleep: int = 5,
+) -> None:
+    """Assert the payload-processing-plugins ConfigMap exists with expected post-auth and pre-auth plugin types."""
+    config_map_data = wait_for_bbr_plugins_configmap_data(
+        admin_client=admin_client,
+        gateway_namespace=gateway_namespace,
+        timeout=timeout,
+        sleep=sleep,
+    )
+
     post_auth_config = yaml.safe_load(config_map_data[BBR_POST_AUTH_CONFIGMAP_KEY])
     assert "plugins" in post_auth_config, (
         f"No 'plugins' key in '{BBR_POST_AUTH_CONFIGMAP_KEY}' of ConfigMap '{BBR_PLUGINS_CONFIGMAP_NAME}'"

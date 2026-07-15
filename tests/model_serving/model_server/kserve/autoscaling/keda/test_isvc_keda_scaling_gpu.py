@@ -31,7 +31,11 @@ VLLM_MODEL_NAME = "granite-vllm-keda"
 VLLM_METRICS_QUERY_REQUESTS = f'vllm:num_requests_running{{namespace="{VLLM_MODEL_NAME}",pod=~"{VLLM_MODEL_NAME}.*"}}'
 VLLM_METRICS_THRESHOLD_REQUESTS = 4
 
-pytestmark = [pytest.mark.keda, pytest.mark.usefixtures("skip_if_no_supported_gpu_type", "valid_aws_config")]
+pytestmark = [
+    pytest.mark.keda,
+    pytest.mark.gpu,
+    pytest.mark.usefixtures("skip_if_no_supported_gpu_type", "valid_aws_config"),
+]
 
 
 @pytest.mark.parametrize(

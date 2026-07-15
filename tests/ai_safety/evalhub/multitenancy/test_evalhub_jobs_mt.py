@@ -867,7 +867,11 @@ class TestEvalHubJobsMT:
         method: str,
         path_suffix: str,
     ) -> None:
-        """Evaluation endpoints reject unsupported HTTP methods with 405."""
+        """Evaluation endpoints reject unsupported HTTP methods with 405 or 403.
+
+        kube-rbac-proxy may reject unrecognised verb/resource combinations with 403
+        before the request reaches the server's method-not-allowed handler.
+        """
         url = f"https://{evalhub_mt_route.host}{EVALHUB_JOBS_PATH}{path_suffix}"
         response = getattr(requests, method)(
             url=url,
@@ -876,8 +880,8 @@ class TestEvalHubJobsMT:
             verify=evalhub_mt_ca_bundle_file,
             timeout=10,
         )
-        assert response.status_code == 405, (
-            f"Expected 405 for {method.upper()} {path_suffix}, got {response.status_code}"
+        assert response.status_code in (403, 405), (
+            f"Expected 403 or 405 for {method.upper()} {path_suffix}, got {response.status_code}"
         )
 
     # --- Event-based status update tests ---

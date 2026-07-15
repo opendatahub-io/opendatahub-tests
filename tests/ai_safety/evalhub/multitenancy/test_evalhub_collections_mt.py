@@ -573,7 +573,11 @@ class TestEvalHubCollectionsFeature:
         path_suffix: str,
         json_body: dict | list | None,
     ) -> None:
-        """Request against a non-existent or empty collection id returns 404."""
+        """Request against a non-existent or empty collection id returns 404.
+
+        An empty path suffix ("/") routes to the collection root, where some methods
+        are rejected with 403 before any existence check, so 403 is also accepted.
+        """
         url = f"https://{evalhub_mt_route.host}{EVALHUB_COLLECTIONS_PATH}{path_suffix}"
         resp = requests.request(
             method=method,
@@ -583,7 +587,14 @@ class TestEvalHubCollectionsFeature:
             verify=evalhub_mt_ca_bundle_file,
             timeout=10,
         )
-        assert resp.status_code == 404, f"Expected 404 for {method} {path_suffix}, got {resp.status_code}: {resp.text}"
+        if path_suffix == "/":
+            assert resp.status_code in (403, 404), (
+                f"Expected 403 or 404 for {method} {path_suffix}, got {resp.status_code}: {resp.text}"
+            )
+        else:
+            assert resp.status_code == 404, (
+                f"Expected 404 for {method} {path_suffix}, got {resp.status_code}: {resp.text}"
+            )
 
     # ------------------------------------------------------------------
     # Update (PUT) lifecycle
