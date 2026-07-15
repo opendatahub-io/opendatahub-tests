@@ -658,7 +658,7 @@ def autorag_upgrade_inference_runtime(
         client=admin_client,
         name=f"{AUTORAG_RESOURCE_PREFIX}-vllm-inf",
         namespace=autorag_upgrade_namespace.name,
-        template_name="vllm-cpu-runtime-template",
+        template_name=RuntimeTemplates.VLLM_CPU_x86,
         multi_model=False,
         enable_http=True,
         enable_grpc=False,
