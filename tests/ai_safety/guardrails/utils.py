@@ -267,13 +267,16 @@ def _send_guardrails_orchestrator_post_request(
     ca_bundle_file: str,
     payload: dict[str, Any],
 ) -> requests.Response:
-    response = requests.post(
-        url=url,
-        headers=get_auth_headers(token=token),
-        json=payload,
-        verify=ca_bundle_file,
-        timeout=30,
-    )
+    try:
+        response = requests.post(
+            url=url,
+            headers=get_auth_headers(token=token),
+            json=payload,
+            verify=ca_bundle_file,
+            timeout=30,
+        )
+    except requests.exceptions.ReadTimeout as e:
+        raise TimeoutError(f"Request timed out: {e}") from e
 
     if response.status_code != http.HTTPStatus.OK:
         raise TimeoutError(f"Endpoint not available. Status code: {response.status_code}, response: {response.text}")
