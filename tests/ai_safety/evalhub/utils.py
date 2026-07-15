@@ -684,7 +684,6 @@ def get_evalhub_job_logs_http(
     ca_bundle_file: str,
     tenant: str,
     job_id: str,
-    *,
     benchmark_index: int | None = None,
     params: dict[str, str] | None = None,
     headers: dict[str, str] | None = None,

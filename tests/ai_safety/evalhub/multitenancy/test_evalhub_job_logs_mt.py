@@ -68,7 +68,6 @@ def _fetch_evalhub_job_logs_while_running(
     ca_bundle_file: str,
     tenant: str,
     job_id: str,
-    *,
     timeout: int = 180,
     sleep: int = 2,
 ) -> str:
