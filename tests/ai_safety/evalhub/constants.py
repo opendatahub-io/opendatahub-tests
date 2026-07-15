@@ -92,3 +92,25 @@ EVALHUB_METRICS_SERVICE_SUFFIX: str = "-metrics"
 EVALHUB_METRICS_PORT: int = 8081
 EVALHUB_METRICS_COMPONENT_LABEL: str = "metrics"
 EVALHUB_SCRAPE_INTERVAL: str = "30s"
+
+# OTEL Collector constants
+OTEL_COLLECTOR_NAMESPACE: str = "otel-collector"
+OTEL_COLLECTOR_GRPC_PORT: int = 4317
+OTEL_COLLECTOR_HTTP_PORT: int = 4318
+OTEL_COLLECTOR_PROMETHEUS_PORT: int = 8889
+
+# OTEL error patterns that indicate initialization failure
+OTEL_ERROR_PATTERNS: tuple[str, ...] = (
+    "failed to initialize meter",
+    "meter provider error",
+    "panic",
+    "OTEL initialization failed",
+)
+
+# OTLP export indicators in collector logs
+OTLP_INDICATORS: tuple[str, ...] = (
+    "ResourceMetrics",
+    "ScopeMetrics",
+    "http.server.request",
+    "github.com/eval-hub",
+)

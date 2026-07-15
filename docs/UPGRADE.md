@@ -54,6 +54,9 @@ uv run pytest --post-upgrade tests/workbenches/notebook_images/upgrade/
 
 # Target a single IDE
 uv run pytest --post-upgrade tests/workbenches/notebook_images/upgrade/test_upgrade_jupyterlab.py
+
+# Target Jupyter workbenches with Elyra
+uv run pytest tests/workbenches/notebook_images/upgrade/test_upgrade_jupyter_elyra.py
 ```
 
 Override ImageStream tag selection when needed:
