@@ -10,8 +10,7 @@ from tests.model_serving.model_server.utils import (
     verify_final_pod_count,
     run_inference_multiple_times,
 )
-from tests.model_serving.model_runtime.vllm.constant import BASE_RAW_DEPLOYMENT_CONFIG
-from tests.model_serving.model_runtime.vllm.basic_model_deployment.test_granite_7b_starter import SERVING_ARGUMENT
+from tests.model_serving.model_runtime.vllm.constant import BASE_RAW_DEPLOYMENT_CONFIG, GRANITE_SERVING_ARGUMENT
 from utilities.constants import ModelFormat, ModelVersion, RunTimeConfigs, Protocols, Timeout
 from utilities.monitoring import validate_metrics_field
 from utilities.inference_utils import Inference
@@ -21,7 +20,7 @@ from utilities.jira import is_jira_open
 LOGGER = get_logger(name=__name__)
 
 
-BASE_RAW_DEPLOYMENT_CONFIG["runtime_argument"] = SERVING_ARGUMENT
+BASE_RAW_DEPLOYMENT_CONFIG["runtime_argument"] = GRANITE_SERVING_ARGUMENT
 
 INITIAL_POD_COUNT = 1
 FINAL_POD_COUNT = 5

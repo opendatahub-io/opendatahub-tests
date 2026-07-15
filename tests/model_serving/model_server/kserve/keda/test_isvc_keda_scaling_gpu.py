@@ -6,17 +6,13 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.inference_service import InferenceService
 from utilities.constants import KServeDeploymentType
 from tests.model_serving.model_server.utils import verify_keda_scaledobject, verify_final_pod_count
-from tests.model_serving.model_runtime.vllm.constant import BASE_RAW_DEPLOYMENT_CONFIG
-from tests.model_serving.model_runtime.vllm.basic_model_deployment.test_granite_7b_starter import (
-    SERVING_ARGUMENT,
-    MODEL_PATH,
-)
+from tests.model_serving.model_runtime.vllm.constant import BASE_RAW_DEPLOYMENT_CONFIG, GRANITE_SERVING_ARGUMENT
 from utilities.monitoring import validate_metrics_field
 
 LOGGER = get_logger(name=__name__)
 
-
-BASE_RAW_DEPLOYMENT_CONFIG["runtime_argument"] = SERVING_ARGUMENT
+MODEL_PATH: str = "granite-7b-starter"
+BASE_RAW_DEPLOYMENT_CONFIG["runtime_argument"] = GRANITE_SERVING_ARGUMENT
 
 INITIAL_POD_COUNT = 1
 FINAL_POD_COUNT = 5

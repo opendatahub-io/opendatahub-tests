@@ -104,8 +104,8 @@ def pytest_addoption(parser: Parser) -> None:
     # Runtime options
     runtime_group.addoption(
         "--supported-accelerator-type",
-        default=os.environ.get("SUPPORTED_ACCLERATOR_TYPE"),
-        help="Supported accelerator type : Nvidia,AMD,Gaudi",
+        default=os.environ.get("SUPPORTED_ACCELERATOR_TYPE"),
+        help="Supported accelerator type: nvidia, amd, gaudi, spyre, cpu_x86, cpu_power, cpu_z",
     )
     runtime_group.addoption(
         "--vllm-runtime-image",
