@@ -113,31 +113,12 @@ def _create_ogx_server(
     namespace: str,
     config: dict[str, Any],
 ) -> Generator[OgxServer, Any, Any]:
-    network: dict[str, Any] = {
-        "policy": {
-            "ingress": [
-                {
-                    "from": [
-                        {
-                            "namespaceSelector": {
-                                "matchLabels": {
-                                    "kubernetes.io/metadata.name": "openshift-ingress",
-                                },
-                            },
-                        },
-                    ],
-                    "ports": [{"protocol": "TCP", "port": 8321}],
-                },
-            ],
-        },
-    }
     with OgxServer(
         client=client,
         name=name,
         namespace=namespace,
         distribution=config["distribution"],
         workload=config.get("workload"),
-        network=network,
         tls=config.get("tls"),
         wait_for_resource=True,
     ) as ogx_srv:
