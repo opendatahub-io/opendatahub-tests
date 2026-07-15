@@ -5,7 +5,17 @@ EVALHUB_HEALTH_PATH: str = "/api/v1/health"
 EVALHUB_METRICS_PATH: str = "/metrics"
 EVALHUB_PROVIDERS_PATH: str = "/api/v1/evaluations/providers"
 EVALHUB_JOBS_PATH: str = "/api/v1/evaluations/jobs"
+EVALHUB_JOB_LOGS_PATH_TEMPLATE: str = "/api/v1/evaluations/jobs/{job_id}/logs"
+EVALHUB_JOB_BENCHMARK_LOGS_PATH_TEMPLATE: str = "/api/v1/evaluations/jobs/{job_id}/benchmarks/{benchmark_index}/logs"
 EVALHUB_HEALTH_STATUS_HEALTHY: str = "healthy"
+
+# Job log API (RHAISTRAT-1437 / eval-hub HTTP API)
+EVALHUB_LOG_CONTENT_TYPE: str = "text/plain"
+EVALHUB_LOG_SECTION_PREFIX: str = "=== pod="
+EVALHUB_LOG_ADAPTER_CONTAINER: str = "adapter"
+EVALHUB_LOG_COMPLETED_MARKER: str = "EVALUATION COMPLETE"
+EVALHUB_LOG_DEFAULT_TAIL_LINES: int = 1000
+EVALHUB_LOG_MAX_TAIL_LINES: int = 10000
 
 EVALHUB_APP_LABEL: str = "eval-hub"
 EVALHUB_CONTAINER_NAME: str = "evalhub"
@@ -82,3 +92,25 @@ EVALHUB_METRICS_SERVICE_SUFFIX: str = "-metrics"
 EVALHUB_METRICS_PORT: int = 8081
 EVALHUB_METRICS_COMPONENT_LABEL: str = "metrics"
 EVALHUB_SCRAPE_INTERVAL: str = "30s"
+
+# OTEL Collector constants
+OTEL_COLLECTOR_NAMESPACE: str = "otel-collector"
+OTEL_COLLECTOR_GRPC_PORT: int = 4317
+OTEL_COLLECTOR_HTTP_PORT: int = 4318
+OTEL_COLLECTOR_PROMETHEUS_PORT: int = 8889
+
+# OTEL error patterns that indicate initialization failure
+OTEL_ERROR_PATTERNS: tuple[str, ...] = (
+    "failed to initialize meter",
+    "meter provider error",
+    "panic",
+    "OTEL initialization failed",
+)
+
+# OTLP export indicators in collector logs
+OTLP_INDICATORS: tuple[str, ...] = (
+    "ResourceMetrics",
+    "ScopeMetrics",
+    "http.server.request",
+    "github.com/eval-hub",
+)

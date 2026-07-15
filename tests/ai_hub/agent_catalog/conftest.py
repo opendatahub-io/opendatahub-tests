@@ -38,31 +38,51 @@ def agent_catalog_rest_urls(model_registry_namespace: str, model_catalog_routes:
 
 @pytest.fixture(scope="class")
 def agent_catalog_configmap_patch(
+    request: pytest.FixtureRequest,
     admin_client: DynamicClient,
     model_registry_namespace: str,
     agent_catalog_rest_urls: list[str],
     model_registry_rest_headers: dict[str, str],
 ) -> Generator[None]:
-    """Patch the catalog sources ConfigMap with a test agent catalog YAML source."""
+    """Patch the catalog sources ConfigMap with a test agent catalog source.
+
+    Accepts config via request.param dict containing:
+    - source: catalog source dict (name, id, type, properties, labels)
+    - label: source label name
+    - label_definition: label definition dict
+    - agents_yaml: YAML content for the agents catalog file
+    - min_agents: minimum agent count to wait for after patching
+
+    If not parametrized, uses the default custom agent test constants.
+    """
+    param = getattr(request, "param", None) or {
+        "source": TEST_AGENT_CATALOG_SOURCE,
+        "label": TEST_AGENT_CATALOG_LABEL,
+        "label_definition": TEST_AGENT_LABEL_DEFINITION,
+        "agents_yaml": TEST_AGENTS_YAML,
+        "min_agents": TEST_AGENT_COUNT,
+    }
+
+    source = param["source"]
     catalog_config_map, current_data = get_agent_catalog_sources(
         admin_client=admin_client, model_registry_namespace=model_registry_namespace
     )
     if "agent_catalogs" not in current_data:
         current_data["agent_catalogs"] = []
     current_data["agent_catalogs"] = [
-        entry for entry in current_data["agent_catalogs"] if entry.get("id") != TEST_AGENT_CATALOG_SOURCE_ID
+        entry for entry in current_data["agent_catalogs"] if entry.get("id") != source["id"]
     ]
-    current_data["agent_catalogs"].append(TEST_AGENT_CATALOG_SOURCE)
+    current_data["agent_catalogs"].append(source)
 
     labels = current_data.get("labels", [])
-    if not any(label.get("name") == TEST_AGENT_CATALOG_LABEL for label in labels):
-        labels.append(TEST_AGENT_LABEL_DEFINITION)
+    if not any(label.get("name") == param["label"] for label in labels):
+        labels.append(param["label_definition"])
     current_data["labels"] = labels
 
     patches = {
         "data": {
             "sources.yaml": yaml.dump(current_data, default_flow_style=False),
-            TEST_AGENT_CATALOG_SOURCE["properties"]["yamlCatalogPath"]: TEST_AGENTS_YAML,
+            source["properties"]["yamlCatalogPath"]: param["agents_yaml"],
         }
     }
 
@@ -73,7 +93,7 @@ def agent_catalog_configmap_patch(
         wait_for_agent_catalog_api(
             url=agent_catalog_rest_urls[0],
             headers=model_registry_rest_headers,
-            min_agents=TEST_AGENT_COUNT,
+            min_agents=param["min_agents"],
         )
         yield
 

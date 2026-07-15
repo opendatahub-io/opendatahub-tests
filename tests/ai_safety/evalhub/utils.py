@@ -17,7 +17,9 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_FULL_API_VERSION_V1ALPHA1,
     EVALHUB_HEALTH_PATH,
     EVALHUB_HEALTH_STATUS_HEALTHY,
+    EVALHUB_JOB_BENCHMARK_LOGS_PATH_TEMPLATE,
     EVALHUB_JOB_CONFIG_CLUSTERROLE,
+    EVALHUB_JOB_LOGS_PATH_TEMPLATE,
     EVALHUB_JOBS_PATH,
     EVALHUB_JOBS_WRITER_CLUSTERROLE,
     EVALHUB_K8S_LABEL_APP,
@@ -666,6 +668,55 @@ def get_evalhub_job_http(
     )
 
 
+def evalhub_job_logs_path(job_id: str, *, benchmark_index: int | None = None) -> str:
+    """Build the logs API path for a job or a single benchmark."""
+    if benchmark_index is None:
+        return EVALHUB_JOB_LOGS_PATH_TEMPLATE.format(job_id=job_id)
+    return EVALHUB_JOB_BENCHMARK_LOGS_PATH_TEMPLATE.format(
+        job_id=job_id,
+        benchmark_index=benchmark_index,
+    )
+
+
+def get_evalhub_job_logs_http(
+    host: str,
+    token: str,
+    ca_bundle_file: str,
+    tenant: str,
+    job_id: str,
+    benchmark_index: int | None = None,
+    params: dict[str, str] | None = None,
+    headers: dict[str, str] | None = None,
+) -> requests.Response:
+    """GET evaluation job or benchmark logs without asserting status."""
+    path = evalhub_job_logs_path(job_id=job_id, benchmark_index=benchmark_index)
+    url = f"https://{host}{path}"
+    request_headers = headers if headers is not None else build_headers(token=token, tenant=tenant)
+    return requests.get(
+        url=url,
+        headers=request_headers,
+        params=params,
+        verify=ca_bundle_file,
+        timeout=30,
+    )
+
+
+def build_failing_evalhub_job_payload(
+    tenant_namespace: str,
+    job_name: str = "evalhub-failing-job",
+) -> dict:
+    """Build a job payload that targets an unreachable in-cluster model endpoint."""
+    model_url = f"http://nonexistent-model.{tenant_namespace}.svc.cluster.local:{EVALHUB_VLLM_EMULATOR_PORT}/v1"
+    return {
+        "name": job_name,
+        "model": {
+            "url": model_url,
+            "name": "emulatedModel",
+        },
+        "benchmarks": [build_vllm_arc_easy_benchmark(num_examples=3)],
+    }
+
+
 def evalhub_runtime_label_selector(evalhub_job_id: str) -> str:
     """Label selector for batch Jobs and spec ConfigMaps created for one EvalHub job id."""
     return (
@@ -1003,7 +1054,9 @@ def _get_evalhub_job_workload(
     """Get the Kueue Workload for an EvalHub job.
 
     EvalHub creates batch Jobs with labels app=evalhub, component=evaluation-job, job_id={id}.
-    Kueue creates a Workload for each Job with matching owner reference.
+    Kueue creates a Workload for each Job labelled with kueue.x-k8s.io/job-uid={job.uid}.
+    Kueue Workloads do NOT inherit the Job's labels, so we must look up the Job first
+    to get its UID, then find the Workload by that UID.
 
     Args:
         admin_client: Kubernetes client with admin privileges.
@@ -1014,11 +1067,27 @@ def _get_evalhub_job_workload(
         Workload instance or None if not found.
     """
     selector = evalhub_runtime_label_selector(evalhub_job_id=evalhub_job_id)
+    jobs = list(Job.get(client=admin_client, namespace=namespace, label_selector=selector))
+    if not jobs:
+        return None
+
+    if len(jobs) > 1:
+        LOGGER.warning(
+            "Multiple Kubernetes Jobs matched one EvalHub job — using the first. "
+            "This can happen with multi-benchmark payloads.",
+            evalhub_job_id=evalhub_job_id,
+            job_names=[job.name for job in jobs],
+        )
+
+    job_uid = jobs[0].instance.metadata.uid
+    if not job_uid:
+        return None
+
     workloads = list(
         Workload.get(
             client=admin_client,
             namespace=namespace,
-            label_selector=selector,
+            label_selector=f"kueue.x-k8s.io/job-uid={job_uid}",
         )
     )
     return workloads[0] if workloads else None
