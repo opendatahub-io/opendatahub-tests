@@ -5,6 +5,7 @@ from typing import Any
 import requests
 import structlog
 from requests import Response
+from requests.exceptions import ReadTimeout
 from timeout_sampler import retry
 
 from tests.ai_safety.guardrails.constants import GuardrailsDetectionPrompt
@@ -267,16 +268,13 @@ def _send_guardrails_orchestrator_post_request(
     ca_bundle_file: str,
     payload: dict[str, Any],
 ) -> requests.Response:
-    try:
-        response = requests.post(
-            url=url,
-            headers=get_auth_headers(token=token),
-            json=payload,
-            verify=ca_bundle_file,
-            timeout=30,
-        )
-    except requests.exceptions.ReadTimeout as e:
-        raise TimeoutError(f"Request timed out: {e}") from e
+    response = requests.post(
+        url=url,
+        headers=get_auth_headers(token=token),
+        json=payload,
+        verify=ca_bundle_file,
+        timeout=30,
+    )
 
     if response.status_code != http.HTTPStatus.OK:
         raise TimeoutError(f"Endpoint not available. Status code: {response.status_code}, response: {response.text}")
@@ -298,7 +296,7 @@ def send_chat_detections_request(
     )
 
 
-@retry(exceptions_dict={TimeoutError: []}, wait_timeout=120, sleep=4)
+@retry(exceptions_dict={TimeoutError: [], ReadTimeout: []}, wait_timeout=120, sleep=4)
 def send_and_verify_unsuitable_input_detection(
     url: str,
     token: str,
@@ -322,7 +320,7 @@ def send_and_verify_unsuitable_input_detection(
     return response
 
 
-@retry(exceptions_dict={TimeoutError: []}, wait_timeout=120, sleep=1)
+@retry(exceptions_dict={TimeoutError: [], ReadTimeout: []}, wait_timeout=120, sleep=1)
 def send_and_verify_unsuitable_output_detection(
     url: str,
     token: str,
@@ -346,7 +344,7 @@ def send_and_verify_unsuitable_output_detection(
     return response
 
 
-@retry(exceptions_dict={TimeoutError: []}, wait_timeout=10, sleep=1)
+@retry(exceptions_dict={TimeoutError: [], ReadTimeout: []}, wait_timeout=10, sleep=1)
 def send_and_verify_negative_detection(
     url: str,
     token: str,
@@ -365,7 +363,7 @@ def send_and_verify_negative_detection(
     return response
 
 
-@retry(exceptions_dict={TimeoutError: []}, wait_timeout=10, sleep=1)
+@retry(exceptions_dict={TimeoutError: [], ReadTimeout: []}, wait_timeout=10, sleep=1)
 def send_and_verify_standalone_detection(
     url: str,
     token: str,
