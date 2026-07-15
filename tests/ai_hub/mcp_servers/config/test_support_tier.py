@@ -18,7 +18,6 @@ pytestmark = [
 ]
 
 
-@pytest.mark.smoke
 @pytest.mark.tier1
 @pytest.mark.install
 @pytest.mark.pre_upgrade
@@ -99,7 +98,7 @@ class TestSupportTierFiltering:
         response = execute_get_command_with_retry(
             url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
             headers=model_registry_rest_headers,
-            params={"filterQuery": filter_query},
+            params={"filterQuery": filter_query, "pageSize": 1000},
         )
         items = response.get("items", [])
 
@@ -112,13 +111,13 @@ class TestSupportTierFiltering:
             f"No default servers found with {SUPPORT_TIER_FIELD}='{support_tier}' in baseline; "
             "cannot validate filter results"
         )
-        assert len(items) >= len(expected_names), (
+        assert len(items) == len(expected_names), (
             f"Filter '{filter_query}' returned {len(items)} server(s), "
             f"expected at least {len(expected_names)} (known defaults: {expected_names})"
         )
 
         returned_names = {item["name"] for item in items}
-        assert expected_names <= returned_names, (
+        assert expected_names == returned_names, (
             f"Known default servers {expected_names} missing from filtered results {returned_names}"
         )
 
