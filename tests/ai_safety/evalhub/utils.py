@@ -469,6 +469,7 @@ def wait_for_evalhub_job(
         state = sample.get("status", {}).get("state", "")
         LOGGER.info(f"Job {job_id} state: {state}")
         if state in EVALHUB_JOB_TERMINAL_STATES:
+            LOGGER.debug(f"Job {job_id} final result: {sample}")
             return sample
 
     raise TimeoutExpiredError(f"Job '{job_id}' did not reach a terminal state within {timeout}s")
