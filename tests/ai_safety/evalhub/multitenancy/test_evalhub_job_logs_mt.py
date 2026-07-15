@@ -28,6 +28,7 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_LOG_SECTION_PREFIX,
 )
 from tests.ai_safety.evalhub.utils import (
+    EVALHUB_JOB_TERMINAL_STATES,
     build_evalhub_job_payload,
     build_failing_evalhub_job_payload,
     build_headers,
@@ -83,7 +84,13 @@ def _fetch_evalhub_job_logs_while_running(
         job_id=job_id,
     ):
         status_response.raise_for_status()
-        if status_response.json().get("status", {}).get("state") != "running":
+        state = status_response.json().get("status", {}).get("state", "")
+        if state in EVALHUB_JOB_TERMINAL_STATES:
+            pytest.fail(
+                f"Job '{job_id}' reached terminal state '{state}' before running; "
+                "cannot verify in-progress log retrieval"
+            )
+        if state != "running":
             continue
 
         response = get_evalhub_job_logs_http(
@@ -291,7 +298,12 @@ class TestEvalHubJobLogsMT:
         evalhub_vllm_emulator_service: Service,
         admin_client: DynamicClient,
     ) -> None:
-        """Given a cancelled job, When GET /jobs/{id}/logs, Then logs remain retrievable."""
+        """Given a cancelled job, When GET /jobs/{id}/logs, Then logs remain retrievable.
+
+        Waits for the batch Job to exist, then polls until the API reports ``running``
+        before soft DELETE. If a terminal state is observed first, the test fails rather
+        than cancelling an already-finished job or polling until timeout.
+        """
         payload = build_evalhub_job_payload(
             model_service_name=evalhub_vllm_emulator_service.name,
             tenant_namespace=tenant_a_namespace.name,
@@ -311,6 +323,30 @@ class TestEvalHubJobLogsMT:
             evalhub_job_id=job_id,
             minimum=1,
         )
+
+        # Poll until the API reports ``running`` (then cancel) or a terminal state
+        # (job finished too fast — fail rather than loop until timeout).
+        for status_response in TimeoutSampler(
+            wait_timeout=180,
+            sleep=2,
+            func=get_evalhub_job_http,
+            host=evalhub_mt_route.host,
+            token=tenant_a_token,
+            ca_bundle_file=evalhub_mt_ca_bundle_file,
+            tenant=tenant_a_namespace.name,
+            job_id=job_id,
+        ):
+            status_response.raise_for_status()
+            state = status_response.json().get("status", {}).get("state", "")
+            if state == "running":
+                break
+            if state in EVALHUB_JOB_TERMINAL_STATES:
+                pytest.fail(
+                    f"Job '{job_id}' reached terminal state '{state}' before running; "
+                    "cannot verify cancel-in-progress log retrieval"
+                )
+        else:
+            raise TimeoutExpiredError(f"Job '{job_id}' did not reach running state within 180s before cancel")
 
         cancel_response = delete_evalhub_job(
             host=evalhub_mt_route.host,
