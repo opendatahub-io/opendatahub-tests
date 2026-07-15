@@ -9,6 +9,7 @@ from model_registry.types import RegisteredModel
 from ocp_resources.pod import Pod
 
 from tests.ai_hub.constants import MODEL_DICT, MODEL_NAME
+from tests.ai_hub.model_registry.utils import get_registered_model_with_retry
 from tests.ai_hub.utils import (
     execute_model_registry_get_command,
     validate_mlmd_removal_in_model_registry_pod_log,
@@ -49,7 +50,7 @@ class TestModelRegistryCreation:
         model_registry_client: list[ModelRegistryClient],
         registered_model: RegisteredModel,
     ):
-        model = model_registry_client[0].get_registered_model(name=MODEL_NAME)
+        model = get_registered_model_with_retry(client=model_registry_client[0], name=MODEL_NAME)
         expected_attrs = {
             "id": registered_model.id,
             "name": registered_model.name,
