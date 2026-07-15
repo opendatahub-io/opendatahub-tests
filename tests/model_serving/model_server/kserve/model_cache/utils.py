@@ -5,14 +5,18 @@ from typing import Any
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
+from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.resource import Resource
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
+from tests.model_serving.model_server.llmd.utils import get_llmd_workload_pods
 from utilities.constants import ApiGroups
 from utilities.infra import get_pods_by_isvc_label
 from utilities.resources.local_model_namespace_cache import LocalModelNamespaceCache
 
+KSERVE_LOCALMODEL_LABEL: str = f"internal.{ApiGroups.KSERVE}/localmodel"
 KSERVE_LOCALMODEL_PVC_ANNOTATION: str = f"internal.{ApiGroups.KSERVE}/localmodel-pvc-name"
+KSERVE_PVC_SOURCE_VOLUME_NAME: str = "kserve-pvc-source"
 LOCAL_MODEL_NODE_GROUP_NAME: str = "workers"
 MODEL_CACHE_AGENT_DAEMONSET: str = "kserve-localmodelnode-agent"
 MODEL_CACHE_NODE_PVC_NAME: str = "kserve-localmodelnode-pvc"
@@ -97,6 +101,20 @@ def _cache_download_state_sample(*, cache: LocalModelNamespaceCache) -> dict[str
     return {"ready": bool(all_downloaded and copies_ok), "status": status}
 
 
+def _assert_pod_has_pvc_source_volume(*, pod: Any) -> None:
+    """Assert a Pod mounts the ``kserve-pvc-source`` volume and it is PVC-backed."""
+    spec = pod.instance.spec
+    volume_names = [vol.name for vol in (spec.volumes or [])]
+    pvc_volumes = [vol for vol in (spec.volumes or []) if vol.name == KSERVE_PVC_SOURCE_VOLUME_NAME]
+    assert pvc_volumes, (
+        f"Expected '{KSERVE_PVC_SOURCE_VOLUME_NAME}' PVC volume on pod {pod.name}; volumes={volume_names!r}"
+    )
+    assert any(
+        getattr(vol, "persistent_volume_claim", None) or getattr(vol, "persistentVolumeClaim", None)
+        for vol in pvc_volumes
+    ), f"Volume '{KSERVE_PVC_SOURCE_VOLUME_NAME}' on pod {pod.name} exists but is not PVC-backed"
+
+
 def assert_predictor_uses_cached_pvc(
     *,
     client: DynamicClient,
@@ -113,17 +131,41 @@ def assert_predictor_uses_cached_pvc(
     pods = get_pods_by_isvc_label(client=client, isvc=isvc, runtime_name=runtime_name)
     assert pods, f"No predictor pods found for InferenceService {isvc.namespace}/{isvc.name}"
     pod = pods[0]
-    spec = pod.instance.spec
-
-    volume_names = [v.name for v in (spec.volumes or [])]
-    pvc_volumes = [v for v in (spec.volumes or []) if v.name == "kserve-pvc-source"]
-    assert pvc_volumes, f"Expected 'kserve-pvc-source' PVC volume on predictor pod; volumes={volume_names!r}"
-    assert any(
-        getattr(v, "persistent_volume_claim", None) or getattr(v, "persistentVolumeClaim", None) for v in pvc_volumes
-    ), "Volume 'kserve-pvc-source' exists but is not PVC-backed"
+    _assert_pod_has_pvc_source_volume(pod=pod)
 
     meta = pod.instance.metadata
     annotations = (meta.annotations or {}) if meta else {}
     assert annotations.get(KSERVE_LOCALMODEL_PVC_ANNOTATION), (
         f"Missing {KSERVE_LOCALMODEL_PVC_ANNOTATION} annotation on predictor pod {pod.name}"
     )
+
+
+def assert_llmisvc_uses_cached_pvc(
+    client: DynamicClient,
+    llmisvc: LLMInferenceService,
+) -> None:
+    """Assert the local model cache PVC rewrite is active for an ``LLMInferenceService``.
+
+    Unlike ``InferenceService`` (where the pod admission webhook injects the PVC
+    volume), the LLMISVC controller rewrites ``spec.model.uri`` to a ``pvc://`` URI
+    directly in the reconciler, keyed off the ``internal.kserve.io/localmodel*``
+    label/annotation that the LLMISVC defaulting webhook sets on the CR itself. Verify
+    both the CR-level markers and the resulting workload Pod volume mount.
+    """
+    llmisvc.get()
+    meta = llmisvc.instance.metadata
+    labels = (meta.labels or {}) if meta else {}
+    annotations = (meta.annotations or {}) if meta else {}
+
+    assert labels.get(KSERVE_LOCALMODEL_LABEL), (
+        f"Missing {KSERVE_LOCALMODEL_LABEL} label on LLMInferenceService {llmisvc.namespace}/{llmisvc.name}"
+    )
+    assert annotations.get(KSERVE_LOCALMODEL_PVC_ANNOTATION), (
+        f"Missing {KSERVE_LOCALMODEL_PVC_ANNOTATION} annotation on LLMInferenceService "
+        f"{llmisvc.namespace}/{llmisvc.name}"
+    )
+
+    pods = get_llmd_workload_pods(client=client, llmisvc=llmisvc)
+    assert pods, f"No workload pods found for LLMInferenceService {llmisvc.namespace}/{llmisvc.name}"
+    for pod in pods:
+        _assert_pod_has_pvc_source_volume(pod=pod)
