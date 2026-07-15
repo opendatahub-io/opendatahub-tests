@@ -91,8 +91,8 @@ class TestEvalHubMcpRoute:
             ):
                 if "config.yaml" in data:
                     break
-        except TimeoutExpiredError:
-            raise AssertionError(f"Expected config.yaml in {configmap_name}")
+        except TimeoutExpiredError as e:
+            raise AssertionError(f"Expected config.yaml in {configmap_name}") from e
 
     def test_evalhub_mcp_auth_secret_exists(
         self,
