@@ -13,6 +13,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.resource import ResourceEditor
+from ocp_resources.route import Route
 from timeout_sampler import TimeoutSampler
 
 from tests.model_serving.model_runtime.mlserver.constant import PREDICT_RESOURCES
@@ -198,6 +199,38 @@ def wait_for_canary_ready_condition(isvc: InferenceService, timeout: int = Timeo
     raise TimeoutError(f"InferenceService {isvc.name} canary readiness condition not True within {timeout}s")
 
 
+def wait_for_route_admitted(
+    client: DynamicClient,
+    isvc: InferenceService,
+    timeout: int = Timeout.TIMEOUT_15MIN,
+) -> Route:
+    """Wait until the ISVC's OpenShift Route exists and has Admitted=True."""
+
+    def _route_admitted() -> Route | None:
+        routes = list(
+            Route.get(
+                client=client,
+                namespace=isvc.namespace,
+                label_selector=f"inferenceservice-name={isvc.name}",
+            )
+        )
+        if not routes:
+            return None
+        route = routes[0]
+        for ingress in route.instance.status.get("ingress") or []:
+            for condition in ingress.get("conditions") or []:
+                if condition.get("type") == "Admitted" and condition.get("status") == "True":
+                    return route
+        return None
+
+    for route in TimeoutSampler(wait_timeout=timeout, sleep=5, func=_route_admitted):
+        if route:
+            LOGGER.info("route admitted", route=route.name, isvc=isvc.name)
+            return route
+
+    raise TimeoutError(f"Route for InferenceService {isvc.name} not admitted within {timeout}s")
+
+
 @contextmanager
 def create_canary_inference_service(
     *,
@@ -213,6 +246,8 @@ def create_canary_inference_service(
     deployment_mode: str = KServeDeploymentType.STANDARD,
     external_route: bool = True,
     model_service_account: str | None = None,
+    extra_labels: dict[str, str] | None = None,
+    extra_annotations: dict[str, str] | None = None,
     teardown: bool = True,
     timeout: int = Timeout.TIMEOUT_15MIN,
 ) -> Generator[InferenceService]:
@@ -220,8 +255,12 @@ def create_canary_inference_service(
     labels: dict[str, str] = {}
     if external_route and deployment_mode in KServeDeploymentType.RAW_DEPLOYMENT_MODES:
         labels[Labels.Kserve.NETWORKING_KSERVE_IO] = Labels.Kserve.EXPOSED
+    if extra_labels:
+        labels.update(extra_labels)
 
     annotations = {Annotations.KserveIo.DEPLOYMENT_MODE: deployment_mode}
+    if extra_annotations:
+        annotations.update(extra_annotations)
     predictor = build_predictor_spec(
         model_format=stable_model_format,
         runtime=runtime,
@@ -266,6 +305,8 @@ def create_canary_inference_service(
             status=isvc.Condition.Status.TRUE,
             timeout=timeout,
         )
+        if external_route:
+            wait_for_route_admitted(client=client, isvc=isvc, timeout=timeout)
         yield isvc
 
 
