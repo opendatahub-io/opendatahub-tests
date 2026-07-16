@@ -53,7 +53,12 @@ from tests.ai_safety.evalhub.constants import (
     SIMPLE_MINIO_SECRET_KEY,
 )
 from tests.ai_safety.evalhub.kueue.constants import VLLM_EMULATOR, VLLM_EMULATOR_IMAGE
-from tests.ai_safety.evalhub.utils import MLflowWithWorkspaces, submit_garak_job, tenant_rbac_ready, wait_for_service_account
+from tests.ai_safety.evalhub.utils import (
+    MLflowWithWorkspaces,
+    submit_garak_job,
+    tenant_rbac_ready,
+    wait_for_service_account,
+)
 from tests.ai_safety.image_constants import AiSafetyImages
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import Labels, LLMdInferenceSimConfig, Protocols
@@ -788,9 +793,7 @@ def intents_garak_job_id(
                         "run": {"generations": 1},
                     },
                     "intents_s3_key": f"/test_data/{simple_intents_csv}",
-                    "intents_models": {
-                        "judge": {"url": garak_sim_isvc_url, "name": LLMdInferenceSimConfig.model_name}
-                    },
+                    "intents_models": {"judge": {"url": garak_sim_isvc_url, "name": LLMdInferenceSimConfig.model_name}},
                 },
                 "test_data_ref": {
                     "s3": {
