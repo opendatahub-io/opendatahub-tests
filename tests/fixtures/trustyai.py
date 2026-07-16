@@ -46,8 +46,9 @@ def patched_dsc_lmeval_allow_all(
             }
         }
     ):
-        num_replicas: int = trustyai_operator_deployment.replicas
+        num_replicas: int = trustyai_operator_deployment.replicas or 1
         trustyai_operator_deployment.scale_replicas(replica_count=0)
+        trustyai_operator_deployment.wait_for_replicas()
         trustyai_operator_deployment.scale_replicas(replica_count=num_replicas)
         trustyai_operator_deployment.wait_for_replicas()
         yield dsc
