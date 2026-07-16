@@ -61,7 +61,7 @@ LOGGER = structlog.get_logger(name=__name__)
 
 
 class MLflowWithWorkspaces(MLflow):
-    """MLflow CR with workspaceLabelSelector support (not yet in ocp_resources)."""
+    """MLflow CR with workspaceLabelSelector support."""
 
     def __init__(self, workspace_label_selector: dict[str, Any] | None = None, **kwargs: Any) -> None:
         super().__init__(**kwargs)
