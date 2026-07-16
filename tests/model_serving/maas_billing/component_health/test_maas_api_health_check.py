@@ -18,23 +18,22 @@ class TestMaaSApiComponentHealth:
         self,
         dsc_resource: DataScienceCluster,
     ) -> None:
-        """Verify modelsAsService managementState is MANAGED in DSC."""
-        assert (
-            dsc_resource.instance.spec.components[DscComponents.KSERVE].modelsAsService.managementState
-            == DscComponents.ManagementState.MANAGED
-        )
+        """Verify aigateway and modelsAsAService managementState are MANAGED in DSC."""
+        aigateway = dsc_resource.instance.spec.components[DscComponents.AIGATEWAY]
+        assert aigateway.managementState == DscComponents.ManagementState.MANAGED
+        assert aigateway.modelsAsAService.managementState == DscComponents.ManagementState.MANAGED
 
     def test_maas_condition_in_dsc(
         self,
         dsc_resource: DataScienceCluster,
     ) -> None:
-        """Verify ModelsAsServiceReady condition is True in DSC."""
+        """Verify AIGatewayReady condition is True in DSC."""
         for condition in dsc_resource.instance.status.conditions:
-            if condition.type == "ModelsAsServiceReady":
+            if condition.type == DscComponents.ConditionType.AIGATEWAY_READY:
                 assert condition.status == "True"
                 break
         else:
-            pytest.fail("ModelsAsServiceReady condition not found in DSC")
+            pytest.fail(f"{DscComponents.ConditionType.AIGATEWAY_READY} condition not found in DSC")
 
     def test_maas_api_deployment_available(
         self,

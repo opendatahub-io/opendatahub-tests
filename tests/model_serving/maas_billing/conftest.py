@@ -46,6 +46,7 @@ from tests.model_serving.maas_billing.utils import (
     host_from_ingress_domain,
     maas_gateway_listeners,
     maas_gateway_rate_limits_patched,
+    maas_under_aigateway_component_patch,
     mint_token,
     patch_llmisvc_with_maas_router,
     revoke_token,
@@ -729,17 +730,17 @@ def maas_controller_enabled_latest(
     maas_request_ratelimit_policy: None,
 ) -> Generator[DataScienceCluster]:
     """
-    Ensure MaaS (KServe modelsAsService) is MANAGED for the session.
+    Ensure MaaS under AIGateway (aigateway.modelsAsAService) is MANAGED for the session.
     Restore DSC to original state on teardown.
     """
-
-    component_patch = {
-        DscComponents.KSERVE: {"modelsAsService": {"managementState": DscComponents.ManagementState.MANAGED}}
-    }
+    component_patch = maas_under_aigateway_component_patch(
+        models_as_a_service_state=DscComponents.ManagementState.MANAGED,
+        aigateway_state=DscComponents.ManagementState.MANAGED,
+    )
 
     with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
         dsc_resource.wait_for_condition(
-            condition="ModelsAsServiceReady",
+            condition=DscComponents.ConditionType.AIGATEWAY_READY,
             status="True",
             timeout=900,
         )
@@ -1116,15 +1117,16 @@ def maas_subscription_controller_enabled_latest(
     maas_subscription_namespace: Namespace,
 ) -> Generator[DataScienceCluster, Any, Any]:
     """
-    Ensures subscription namespace exists before MaaS is switched to Managed.
+    Ensures subscription namespace exists before MaaS under AIGateway is switched to Managed.
     """
-    component_patch = {
-        DscComponents.KSERVE: {"modelsAsService": {"managementState": DscComponents.ManagementState.MANAGED}}
-    }
+    component_patch = maas_under_aigateway_component_patch(
+        models_as_a_service_state=DscComponents.ManagementState.MANAGED,
+        aigateway_state=DscComponents.ManagementState.MANAGED,
+    )
 
     with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
         dsc_resource.wait_for_condition(
-            condition="ModelsAsServiceReady",
+            condition=DscComponents.ConditionType.AIGATEWAY_READY,
             status="True",
             timeout=900,
         )
