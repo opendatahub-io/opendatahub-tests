@@ -50,7 +50,7 @@ from tests.ai_safety.evalhub.constants import (
     SIMPLE_MINIO_SECRET_KEY,
 )
 from tests.ai_safety.evalhub.kueue.constants import VLLM_EMULATOR, VLLM_EMULATOR_IMAGE
-from tests.ai_safety.evalhub.utils import tenant_rbac_ready, wait_for_service_account
+from tests.ai_safety.evalhub.utils import MLflowWithWorkspaces, tenant_rbac_ready, wait_for_service_account
 from tests.ai_safety.image_constants import AiSafetyImages
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import Labels, Protocols
@@ -60,20 +60,6 @@ from utilities.infra import create_inference_token, create_ns
 LOGGER = structlog.get_logger(name=__name__)
 
 
-class MLflowWithWorkspaces(MLflow):
-    """MLflow CR with workspaceLabelSelector support."""
-
-    def __init__(self, workspace_label_selector: dict[str, Any] | None = None, **kwargs: Any) -> None:
-        super().__init__(**kwargs)
-        self._workspace_label_selector = workspace_label_selector
-
-    def to_dict(self) -> None:
-        super().to_dict()
-        if self._workspace_label_selector is not None and "spec" in self.res:
-            self.res["spec"]["workspaceLabelSelector"] = self._workspace_label_selector
-
-
-# ---------------------------------------------------------------------------
 # Helper Functions
 
 
