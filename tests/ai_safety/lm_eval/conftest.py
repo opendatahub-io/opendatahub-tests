@@ -17,6 +17,7 @@ from ocp_resources.service import Service
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest import Config, FixtureRequest
 
+from tests.ai_safety.image_constants import AiSafetyImages
 from tests.ai_safety.lm_eval.constants import (
     ACCELERATOR_IDENTIFIER,
     ARC_EASY_DATASET_IMAGE,
@@ -324,8 +325,7 @@ def vllm_emulator_deployment(
             "spec": {
                 "containers": [
                     {
-                        "image": "quay.io/trustyai_testing/vllm_emulator"
-                        "@sha256:c4bdd5bb93171dee5b4c8454f36d7c42b58b2a4ceb74f29dba5760ac53b5c12d",
+                        "image": AiSafetyImages.VLLM_EMULATOR,
                         "name": "vllm-emulator",
                         "securityContext": {
                             "allowPrivilegeEscalation": False,
@@ -396,8 +396,7 @@ def lmeval_minio_deployment(
                 "containers": [
                     {
                         "name": MinIo.Metadata.NAME,
-                        "image": "quay.io/minio/minio"
-                        "@sha256:46b3009bf7041eefbd90bd0d2b38c6ddc24d20a35d609551a1802c558c1c958f",
+                        "image": AiSafetyImages.MINIO_SERVER,
                         "args": ["server", "/data", "--console-address", ":9001"],
                         "env": [
                             {"name": "MINIO_ROOT_USER", "value": MinIo.Credentials.ACCESS_KEY_VALUE},
@@ -457,7 +456,7 @@ def lmeval_minio_copy_pod(
         containers=[
             {
                 "name": "minio-uploader",
-                "image": "quay.io/minio/mc@sha256:470f5546b596e16c7816b9c3fa7a78ce4076bb73c2c73f7faeec0c8043923123",
+                "image": AiSafetyImages.MINIO_MC,
                 "command": ["/bin/sh", "-c"],
                 "args": [
                     f"export MC_CONFIG_DIR=/shared/.mc && "

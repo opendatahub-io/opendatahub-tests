@@ -36,6 +36,9 @@ fcn_exclude_functions =
     writelines
     temp_file
     sleep
+    Path
+    subprocess
+    parser
 
 enable-extensions =
     FCN,

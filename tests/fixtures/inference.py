@@ -93,7 +93,14 @@ def llm_d_inference_sim_serving_runtime(
                     "image": "quay.io/trustyai_testing/llm-d-inference-sim-dataset-builtin"
                     "@sha256:79e525cfd57a0d72b7e71d5f1e2dd398eca9315cfbd061d9d3e535b1ae736239",
                     "imagePullPolicy": "Always",
-                    "args": ["--model", LLMdInferenceSimConfig.model_name, "--port", str(LLMdInferenceSimConfig.port)],
+                    "args": [
+                        "--model",
+                        LLMdInferenceSimConfig.model_name,
+                        "--port",
+                        str(LLMdInferenceSimConfig.port),
+                        "--max-model-len",
+                        str(LLMdInferenceSimConfig.max_model_len),
+                    ],
                     "ports": [{"containerPort": LLMdInferenceSimConfig.port, "protocol": "TCP"}],
                     "securityContext": {
                         "allowPrivilegeEscalation": False,
@@ -289,34 +296,36 @@ def get_vllm_chat_config(namespace: str) -> dict[str, Any]:
     }
 
 
-@pytest.fixture(scope="class")
-def patched_dsc_garak_kfp(admin_client) -> Generator[DataScienceCluster]:
-    """Configure the DataScienceCluster for Garak and KFP (Kubeflow Pipelines) testing.
-
-    This fixture patches the DataScienceCluster to enable:
-        - KServe in Headed mode (using Service port instead of Pod port)
-        - AI Pipelines component in Managed state
-        - MLflow operator in Managed state
-
-    Waits for the DSC to be ready before yielding.
-    """
-
+def _patched_dsc_garak(admin_client, components: dict) -> Generator[DataScienceCluster]:
     dsc = get_data_science_cluster(client=admin_client)
-    with ResourceEditor(
-        patches={
-            dsc: {
-                "spec": {
-                    "components": {
-                        "kserve": {"rawDeploymentServiceConfig": "Headed"},
-                        "aipipelines": {"managementState": "Managed"},
-                        "mlflowoperator": {"managementState": "Managed"},
-                    }
-                }
-            }
-        }
-    ):
+    with ResourceEditor(patches={dsc: {"spec": {"components": components}}}):
         wait_for_dsc_status_ready(dsc_resource=dsc)
         yield dsc
+
+
+@pytest.fixture(scope="class")
+def patched_dsc_garak(admin_client) -> Generator[DataScienceCluster]:
+    """Configure DSC for Garak simple mode: KServe Headed + MLflow."""
+    yield from _patched_dsc_garak(
+        admin_client=admin_client,
+        components={
+            "kserve": {"rawDeploymentServiceConfig": "Headed"},
+            "mlflowoperator": {"managementState": "Managed"},
+        },
+    )
+
+
+@pytest.fixture(scope="class")
+def patched_dsc_garak_kfp(admin_client) -> Generator[DataScienceCluster]:
+    """Configure DSC for Garak KFP mode: KServe Headed + MLflow + AI Pipelines."""
+    yield from _patched_dsc_garak(
+        admin_client=admin_client,
+        components={
+            "kserve": {"rawDeploymentServiceConfig": "Headed"},
+            "aipipelines": {"managementState": "Managed"},
+            "mlflowoperator": {"managementState": "Managed"},
+        },
+    )
 
 
 @pytest.fixture(scope="class")
