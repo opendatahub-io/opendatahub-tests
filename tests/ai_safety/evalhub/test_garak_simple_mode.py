@@ -83,7 +83,7 @@ class TestGarakSimpleMode:
         )
 
     # ------------------------------------------------------------------
-    # Quick benchmark (smoke test)
+    # Quick benchmark
     # ------------------------------------------------------------------
 
     @pytest.mark.dependency(name="garak_simple_quick_submit", depends=["garak_simple_providers"])
