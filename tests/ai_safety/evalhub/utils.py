@@ -17,7 +17,9 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_FULL_API_VERSION_V1ALPHA1,
     EVALHUB_HEALTH_PATH,
     EVALHUB_HEALTH_STATUS_HEALTHY,
+    EVALHUB_JOB_BENCHMARK_LOGS_PATH_TEMPLATE,
     EVALHUB_JOB_CONFIG_CLUSTERROLE,
+    EVALHUB_JOB_LOGS_PATH_TEMPLATE,
     EVALHUB_JOBS_PATH,
     EVALHUB_JOBS_WRITER_CLUSTERROLE,
     EVALHUB_K8S_LABEL_APP,
@@ -664,6 +666,55 @@ def get_evalhub_job_http(
         verify=ca_bundle_file,
         timeout=10,
     )
+
+
+def evalhub_job_logs_path(job_id: str, *, benchmark_index: int | None = None) -> str:
+    """Build the logs API path for a job or a single benchmark."""
+    if benchmark_index is None:
+        return EVALHUB_JOB_LOGS_PATH_TEMPLATE.format(job_id=job_id)
+    return EVALHUB_JOB_BENCHMARK_LOGS_PATH_TEMPLATE.format(
+        job_id=job_id,
+        benchmark_index=benchmark_index,
+    )
+
+
+def get_evalhub_job_logs_http(
+    host: str,
+    token: str,
+    ca_bundle_file: str,
+    tenant: str,
+    job_id: str,
+    benchmark_index: int | None = None,
+    params: dict[str, str] | None = None,
+    headers: dict[str, str] | None = None,
+) -> requests.Response:
+    """GET evaluation job or benchmark logs without asserting status."""
+    path = evalhub_job_logs_path(job_id=job_id, benchmark_index=benchmark_index)
+    url = f"https://{host}{path}"
+    request_headers = headers if headers is not None else build_headers(token=token, tenant=tenant)
+    return requests.get(
+        url=url,
+        headers=request_headers,
+        params=params,
+        verify=ca_bundle_file,
+        timeout=30,
+    )
+
+
+def build_failing_evalhub_job_payload(
+    tenant_namespace: str,
+    job_name: str = "evalhub-failing-job",
+) -> dict:
+    """Build a job payload that targets an unreachable in-cluster model endpoint."""
+    model_url = f"http://nonexistent-model.{tenant_namespace}.svc.cluster.local:{EVALHUB_VLLM_EMULATOR_PORT}/v1"
+    return {
+        "name": job_name,
+        "model": {
+            "url": model_url,
+            "name": "emulatedModel",
+        },
+        "benchmarks": [build_vllm_arc_easy_benchmark(num_examples=3)],
+    }
 
 
 def evalhub_runtime_label_selector(evalhub_job_id: str) -> str:
