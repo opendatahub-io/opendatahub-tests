@@ -15,16 +15,22 @@ from ocp_resources.inference_service import InferenceService
 from ocp_resources.resource import ResourceEditor
 from timeout_sampler import TimeoutSampler
 
+from tests.model_serving.model_runtime.mlserver.constant import PREDICT_RESOURCES
 from tests.model_serving.model_server.kserve.canary_rollout.constants import (
-    STABLE_INFERENCE_INPUT,
+    TRAFFIC_INFERENCE_INPUT,
     TRAFFIC_SAMPLE_SIZE,
     TRAFFIC_TOLERANCE_PERCENT,
+    V2_INFER_PATH_TEMPLATE,
 )
 from utilities.constants import Annotations, KServeDeploymentType, Labels, Timeout
 from utilities.inference_utils import Inference
 from utilities.infra import get_model_route, verify_no_failed_pods, wait_for_inference_deployment_replicas
 
 LOGGER = structlog.get_logger(name=__name__)
+
+# HTTP fingerprint: stable sklearn 1.0 → 200, canary mixedtype → 500 for TRAFFIC_INFERENCE_INPUT.
+_STABLE_STATUS = 200
+_CANARY_STATUS = 500
 
 
 def build_predictor_spec(
@@ -34,6 +40,7 @@ def build_predictor_spec(
     storage_uri: str,
     min_replicas: int = 1,
     model_service_account: str | None = None,
+    name: str | None = None,
 ) -> dict[str, Any]:
     """Build a KServe predictor spec fragment."""
     predictor: dict[str, Any] = {
@@ -41,9 +48,13 @@ def build_predictor_spec(
             "modelFormat": {"name": model_format},
             "runtime": runtime,
             "storageUri": storage_uri,
+            "resources": PREDICT_RESOURCES["resources"],
         },
         "minReplicas": min_replicas,
     }
+    # Canary webhook requires predictor.name; Deployments become {isvc}-{name}-predictor.
+    if name:
+        predictor["name"] = name
     if model_service_account:
         predictor["serviceAccountName"] = model_service_account
     return predictor
@@ -57,8 +68,9 @@ def build_canary_entry(
     canary_traffic_percent: int,
     min_replicas: int = 1,
     model_service_account: str | None = None,
+    predictor_name: str = "canary",
 ) -> dict[str, Any]:
-    """Build one canary array entry for the InferenceService spec."""
+    """Build one canary array entry matching canary-spec-status API."""
     return {
         "predictor": build_predictor_spec(
             model_format=model_format,
@@ -66,8 +78,9 @@ def build_canary_entry(
             storage_uri=storage_uri,
             min_replicas=min_replicas,
             model_service_account=model_service_account,
+            name=predictor_name,
         ),
-        "canaryTrafficPercent": canary_traffic_percent,
+        "trafficPercent": canary_traffic_percent,
     }
 
 
@@ -112,50 +125,58 @@ def assert_route_traffic_weights(
     )
 
 
-def _classify_rest_response(response: dict[str, Any]) -> str:
-    """Classify an MLServer REST response as stable (sklearn) or canary (lightgbm)."""
-    output_name = response["outputs"][0]["name"]
-    if "sklearn" in output_name:
-        return "stable"
-    if "lightgbm" in output_name:
-        return "canary"
-    raise AssertionError(f"Unexpected inference output name: {output_name}")
-
-
-def send_canary_traffic_samples(
+def assert_canary_traffic_by_status_codes(
     isvc: InferenceService,
     *,
+    expected_percent: int,
     sample_size: int = TRAFFIC_SAMPLE_SIZE,
-) -> dict[str, int]:
-    """Send inference requests via the exposed Route and classify responses."""
+    tolerance_percent: int = TRAFFIC_TOLERANCE_PERCENT,
+    model_name: str | None = None,
+) -> None:
+    """Assert Route traffic split by HTTP status fingerprint (200=stable, 500=canary)."""
     inference = Inference(inference_service=isvc)
     host = inference.get_inference_url()
-    model_name = isvc.name
-    counts = {"stable": 0, "canary": 0}
-    rest_url = f"https://{host}/v2/models/{model_name}/infer"
+    predict_model = model_name or isvc.name
+    rest_url = f"https://{host}{V2_INFER_PATH_TEMPLATE.format(model_name=predict_model)}"
+
+    stable_hits = 0
+    canary_hits = 0
+    other_statuses: dict[int, int] = {}
 
     for _ in range(sample_size):
-        response = requests.post(url=rest_url, json=STABLE_INFERENCE_INPUT, verify=False, timeout=60)
-        response.raise_for_status()
-        counts[_classify_rest_response(response.json())] += 1
+        response = requests.post(url=rest_url, json=TRAFFIC_INFERENCE_INPUT, verify=False, timeout=60)
+        status = response.status_code
+        if status == _STABLE_STATUS:
+            stable_hits += 1
+        elif status == _CANARY_STATUS:
+            canary_hits += 1
+        else:
+            other_statuses[status] = other_statuses.get(status, 0) + 1
+        LOGGER.debug("canary traffic sample", status=status, url=rest_url)
 
-    return counts
+    total = stable_hits + canary_hits
+    LOGGER.info(
+        "canary traffic by status",
+        stable_200=stable_hits,
+        canary_500=canary_hits,
+        total=total,
+        other=other_statuses,
+        url=rest_url,
+    )
 
-
-def assert_canary_traffic_percent(
-    counts: dict[str, int],
-    *,
-    expected_percent: int,
-    tolerance_percent: int = TRAFFIC_TOLERANCE_PERCENT,
-) -> None:
-    """Assert observed canary traffic is within tolerance of the configured percentage."""
-    total = counts["stable"] + counts["canary"]
-    observed_percent = (counts["canary"] / total) * 100
+    assert not other_statuses, (
+        f"Unexpected HTTP statuses while sampling canary traffic via {rest_url}: {other_statuses}"
+    )
+    assert total == sample_size, (
+        f"Expected {sample_size} classifiable responses, got {total} (stable={stable_hits}, canary={canary_hits})"
+    )
+    observed_percent = (canary_hits / total) * 100
     lower_bound = expected_percent - tolerance_percent
     upper_bound = expected_percent + tolerance_percent
     assert lower_bound <= observed_percent <= upper_bound, (
         f"Canary traffic {observed_percent:.1f}% outside expected "
-        f"{expected_percent}% +/- {tolerance_percent}% (counts={counts})"
+        f"{expected_percent}% +/- {tolerance_percent}% "
+        f"(stable_200={stable_hits}, canary_500={canary_hits})"
     )
 
 
@@ -256,13 +277,17 @@ def promote_canary_to_stable(
     model_format: str,
     timeout: int = Timeout.TIMEOUT_15MIN,
 ) -> None:
-    """Promote canary by replacing stable storage and clearing the canary array."""
+    """Promote canary by replacing stable storage and clearing the canary array.
+
+    Uses a permanent patch (not a ResourceEditor context manager) so promotion is
+    not undone when the helper returns.
+    """
     promoted_predictor = build_predictor_spec(
         model_format=model_format,
         runtime=runtime,
         storage_uri=promoted_storage_uri,
     )
-    with ResourceEditor(
+    ResourceEditor(
         patches={
             isvc: {
                 "spec": {
@@ -271,11 +296,11 @@ def promote_canary_to_stable(
                 },
             },
         },
-    ):
-        wait_for_inference_deployment_replicas(
-            client=isvc.client,
-            isvc=isvc,
-            runtime_name=runtime,
-            expected_num_deployments=1,
-            timeout=timeout,
-        )
+    ).update()
+    wait_for_inference_deployment_replicas(
+        client=isvc.client,
+        isvc=isvc,
+        runtime_name=runtime,
+        expected_num_deployments=1,
+        timeout=timeout,
+    )

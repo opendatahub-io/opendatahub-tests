@@ -4,7 +4,7 @@ import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 
-from tests.model_serving.model_server.kserve.canary_rollout.constants import CANARY_MODEL_DIR
+from tests.model_serving.model_server.kserve.canary_rollout.constants import CANARY_STORAGE_URI
 from tests.model_serving.model_server.kserve.canary_rollout.utils import (
     deployment_contains_storage_uri,
     get_isvc_deployments,
@@ -35,10 +35,10 @@ class TestCanaryRolloutController:
         )
         assert len(deployments) == 2
 
-        canary_storage_fragment = CANARY_MODEL_DIR.split("/")[-1]
+        canary_storage_fragment = CANARY_STORAGE_URI.rstrip("/").split("/")[-1]
         assert any(
             deployment_contains_storage_uri(deployment, canary_storage_fragment) for deployment in deployments
-        ), "Expected one Deployment to reference the canary model storage"
+        ), f"Expected one Deployment to reference canary storage ({canary_storage_fragment})"
 
         running_pods = [
             deployment for deployment in deployments if deployment.instance.status.get("readyReplicas", 0) >= 1

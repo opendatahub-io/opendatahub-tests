@@ -23,4 +23,5 @@ class TestCanaryRolloutCrd:
         canary_spec = canary_sklearn_inference_service.instance.spec.get("canary") or []
         assert isinstance(canary_spec, list), "Expected spec.canary to be an array"
         assert canary_spec, "Expected at least one canary array entry"
-        assert canary_spec[0]["canaryTrafficPercent"] == DEFAULT_CANARY_TRAFFIC_PERCENT
+        assert canary_spec[0]["trafficPercent"] == DEFAULT_CANARY_TRAFFIC_PERCENT
+        assert canary_spec[0]["predictor"]["name"] == "canary"
