@@ -88,9 +88,7 @@ def intents_garak_job_id(
                         "run": {"generations": 1},
                     },
                     "intents_s3_key": f"/test_data/{simple_intents_csv}",
-                    "intents_models": {
-                        "judge": {"url": garak_sim_isvc_url, "name": LLMdInferenceSimConfig.model_name}
-                    },
+                    "intents_models": {"judge": {"url": garak_sim_isvc_url, "name": LLMdInferenceSimConfig.model_name}},
                 },
                 "test_data_ref": {
                     "s3": {
@@ -240,7 +238,7 @@ class TestGarakSimpleMode:
                 job_id=intents_garak_job_id,
                 timeout=900,
             )
-        except (AssertionError, TimeoutExpiredError):
+        except AssertionError, TimeoutExpiredError:
             for pod in Pod.get(client=admin_client, namespace=tenant_namespace.name):
                 if intents_garak_job_id[:8] in pod.name:
                     collect_pod_information(pod=pod)
