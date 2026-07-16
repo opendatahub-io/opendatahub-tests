@@ -19,6 +19,102 @@ from utilities.constants import LLMdInferenceSimConfig
 from utilities.general import collect_pod_information
 
 
+@pytest.fixture(scope="class")
+def quick_garak_job_id(
+    tenant_user_token: str,
+    evalhub_ca_bundle_file: str,
+    garak_evalhub_route: Route,
+    tenant_namespace,
+    garak_tenant_rbac_ready: None,
+    garak_sim_isvc_url: str,
+) -> str:
+    """Submit a quick garak benchmark and return the job ID."""
+    payload = {
+        "name": "garak-quick-smoke-test",
+        "model": {
+            "url": garak_sim_isvc_url,
+            "name": LLMdInferenceSimConfig.model_name,
+        },
+        "benchmarks": [
+            {
+                "id": GARAK_QUICK_BENCHMARK_ID,
+                "provider_id": GARAK_SIMPLE_PROVIDER_ID,
+            }
+        ],
+        "experiment": {
+            "name": "garak-quick-smoke-test",
+        },
+    }
+
+    return submit_garak_job(
+        host=garak_evalhub_route.host,
+        token=tenant_user_token,
+        ca_bundle_file=evalhub_ca_bundle_file,
+        tenant_namespace=tenant_namespace.name,
+        payload=payload,
+    )
+
+
+@pytest.fixture(scope="class")
+def intents_garak_job_id(
+    tenant_user_token: str,
+    evalhub_ca_bundle_file: str,
+    garak_evalhub_route: Route,
+    tenant_namespace,
+    garak_sim_isvc_url: str,
+    simple_minio_secret: Secret,
+    simple_intents_csv: str,
+) -> str:
+    """Submit a garak intents benchmark and return the job ID.
+
+    Uses a minimal MinIO with test_data_ref to provide intents CSV without DSPA.
+    """
+    payload = {
+        "name": "garak-simple-intents-test",
+        "model": {
+            "url": garak_sim_isvc_url,
+            "name": LLMdInferenceSimConfig.model_name,
+        },
+        "benchmarks": [
+            {
+                "id": GARAK_BENCHMARK_ID,
+                "provider_id": GARAK_SIMPLE_PROVIDER_ID,
+                "parameters": {
+                    "garak_config": {
+                        "plugins": {
+                            "probe_spec": "spo.SPOIntent",
+                            "detector_spec": "always.Pass",
+                        },
+                        "run": {"generations": 1},
+                    },
+                    "intents_s3_key": f"/test_data/{simple_intents_csv}",
+                    "intents_models": {
+                        "judge": {"url": garak_sim_isvc_url, "name": LLMdInferenceSimConfig.model_name}
+                    },
+                },
+                "test_data_ref": {
+                    "s3": {
+                        "bucket": "evalhub-data",
+                        "key": simple_intents_csv,
+                        "secret_ref": simple_minio_secret.name,
+                    }
+                },
+            }
+        ],
+        "experiment": {
+            "name": "garak-simple-intents-test",
+        },
+    }
+
+    return submit_garak_job(
+        host=garak_evalhub_route.host,
+        token=tenant_user_token,
+        ca_bundle_file=evalhub_ca_bundle_file,
+        tenant_namespace=tenant_namespace.name,
+        payload=payload,
+    )
+
+
 @pytest.mark.parametrize(
     "model_namespace",
     [
@@ -36,16 +132,9 @@ class TestGarakSimpleMode:
     Test order:
     1. Health check
     2. Provider availability
-    3. Quick benchmark (smoke test - 1 probe)
-    4. Quick benchmark completion + results
-    5. Intents benchmark (full intents scan)
-    6. Intents completion + results
+    3. Quick benchmark completion + results
+    4. Intents benchmark completion + results
     """
-
-    quick_job_id = None
-    quick_job_result = None
-    intents_job_id = None
-    intents_job_result = None
 
     # ------------------------------------------------------------------
     # Infrastructure validation
@@ -86,50 +175,14 @@ class TestGarakSimpleMode:
     # Quick benchmark
     # ------------------------------------------------------------------
 
-    @pytest.mark.dependency(name="garak_simple_quick_submit", depends=["garak_simple_providers"])
-    def test_submit_quick_garak_job(
-        self,
-        tenant_user_token: str,
-        evalhub_ca_bundle_file: str,
-        garak_evalhub_route: Route,
-        tenant_namespace,
-        garak_tenant_rbac_ready: None,
-        garak_sim_isvc_url: str,
-    ) -> None:
-        """Submit a quick garak benchmark (1 probe) to validate end-to-end pipeline."""
-        payload = {
-            "name": "garak-quick-smoke-test",
-            "model": {
-                "url": garak_sim_isvc_url,
-                "name": LLMdInferenceSimConfig.model_name,
-            },
-            "benchmarks": [
-                {
-                    "id": GARAK_QUICK_BENCHMARK_ID,
-                    "provider_id": GARAK_SIMPLE_PROVIDER_ID,
-                }
-            ],
-            "experiment": {
-                "name": "garak-quick-smoke-test",
-            },
-        }
-
-        job_id = submit_garak_job(
-            host=garak_evalhub_route.host,
-            token=tenant_user_token,
-            ca_bundle_file=evalhub_ca_bundle_file,
-            tenant_namespace=tenant_namespace.name,
-            payload=payload,
-        )
-        self.__class__.quick_job_id = job_id
-
-    @pytest.mark.dependency(name="garak_simple_quick_completes", depends=["garak_simple_quick_submit"])
+    @pytest.mark.dependency(name="garak_simple_quick_completes", depends=["garak_simple_providers"])
     def test_quick_garak_job_completes(
         self,
         tenant_user_token: str,
         evalhub_ca_bundle_file: str,
         garak_evalhub_route: Route,
         tenant_namespace,
+        quick_garak_job_id: str,
     ) -> None:
         """Poll and verify that the quick garak job completes successfully."""
         result = wait_for_job_completion(
@@ -137,7 +190,7 @@ class TestGarakSimpleMode:
             token=tenant_user_token,
             ca_bundle_file=evalhub_ca_bundle_file,
             tenant_namespace=tenant_namespace.name,
-            job_id=self.__class__.quick_job_id,
+            job_id=quick_garak_job_id,
             timeout=600,
         )
         assert result, "Quick mode job completion returned empty result"
@@ -159,74 +212,15 @@ class TestGarakSimpleMode:
 
         benchmark = benchmarks[0]
         assert benchmark.get("id") == GARAK_QUICK_BENCHMARK_ID, f"Unexpected benchmark ID: {benchmark.get('id')}"
-        assert benchmark.get("provider_id") == "garak", f"Expected garak provider, got: {benchmark.get('provider_id')}"
-
-    # ------------------------------------------------------------------
-    # Intents benchmark (full scan)
-    # ------------------------------------------------------------------
-
-    @pytest.mark.dependency(name="garak_simple_intents_submit", depends=["garak_simple_quick_results"])
-    def test_submit_intents_garak_job(
-        self,
-        tenant_user_token: str,
-        evalhub_ca_bundle_file: str,
-        garak_evalhub_route: Route,
-        tenant_namespace,
-        garak_sim_isvc_url: str,
-        simple_minio_secret: Secret,
-        simple_intents_csv: str,
-    ) -> None:
-        """Submit a garak intents benchmark evaluation job using simple (non-KFP) mode.
-
-        Uses a minimal MinIO with test_data_ref to provide intents CSV without DSPA.
-        """
-        payload = {
-            "name": "garak-simple-intents-test",
-            "model": {
-                "url": garak_sim_isvc_url,
-                "name": LLMdInferenceSimConfig.model_name,
-            },
-            "benchmarks": [
-                {
-                    "id": GARAK_BENCHMARK_ID,
-                    "provider_id": GARAK_SIMPLE_PROVIDER_ID,
-                    "parameters": {
-                        "garak_config": {
-                            "plugins": {
-                                "probe_spec": "spo.SPOIntent",
-                                "detector_spec": "always.Pass",
-                            },
-                            "run": {"generations": 1},
-                        },
-                        "intents_s3_key": f"/test_data/{simple_intents_csv}",
-                        "intents_models": {
-                            "judge": {"url": garak_sim_isvc_url, "name": LLMdInferenceSimConfig.model_name}
-                        },
-                    },
-                    "test_data_ref": {
-                        "s3": {
-                            "bucket": "evalhub-data",
-                            "key": simple_intents_csv,
-                            "secret_ref": simple_minio_secret.name,
-                        }
-                    },
-                }
-            ],
-            "experiment": {
-                "name": "garak-simple-intents-test",
-            },
-        }
-
-        job_id = submit_garak_job(
-            host=garak_evalhub_route.host,
-            token=tenant_user_token,
-            ca_bundle_file=evalhub_ca_bundle_file,
-            tenant_namespace=tenant_namespace.name,
-            payload=payload,
+        assert benchmark.get("provider_id") == GARAK_SIMPLE_PROVIDER_ID, (
+            f"Expected garak provider, got: {benchmark.get('provider_id')}"
         )
-        self.__class__.intents_job_id = job_id
 
-    @pytest.mark.dependency(name="garak_simple_intents_completes", depends=["garak_simple_intents_submit"])
+    # ------------------------------------------------------------------
+    # Intents benchmark
+    # ------------------------------------------------------------------
+
+    @pytest.mark.dependency(name="garak_simple_intents_completes", depends=["garak_simple_quick_results"])
     def test_intents_garak_job_completes(
         self,
         admin_client,
@@ -234,6 +228,7 @@ class TestGarakSimpleMode:
         evalhub_ca_bundle_file: str,
         garak_evalhub_route: Route,
         tenant_namespace,
+        intents_garak_job_id: str,
     ) -> None:
         """Poll and verify that the intents garak evaluation job completes successfully."""
         try:
@@ -242,12 +237,12 @@ class TestGarakSimpleMode:
                 token=tenant_user_token,
                 ca_bundle_file=evalhub_ca_bundle_file,
                 tenant_namespace=tenant_namespace.name,
-                job_id=self.__class__.intents_job_id,
+                job_id=intents_garak_job_id,
                 timeout=900,
             )
-        except AssertionError, TimeoutExpiredError:
+        except (AssertionError, TimeoutExpiredError):
             for pod in Pod.get(client=admin_client, namespace=tenant_namespace.name):
-                if self.__class__.intents_job_id[:8] in pod.name:
+                if intents_garak_job_id[:8] in pod.name:
                     collect_pod_information(pod=pod)
             raise
         assert result, "Intents mode job completion returned empty result"
@@ -255,7 +250,7 @@ class TestGarakSimpleMode:
 
     @pytest.mark.dependency(depends=["garak_simple_intents_completes"])
     def test_intents_garak_results_structure(self) -> None:
-        """Verify intents job results have expected structure (no S3 artifacts in simple mode)."""
+        """Verify intents job results have expected structure."""
         result = self.__class__.intents_job_result
         assert result, "No intents job result available"
 
@@ -269,5 +264,6 @@ class TestGarakSimpleMode:
 
         benchmark = benchmarks[0]
         assert benchmark.get("id") == GARAK_BENCHMARK_ID, f"Unexpected benchmark ID: {benchmark.get('id')}"
-        assert benchmark.get("provider_id") == "garak", f"Expected garak provider, got: {benchmark.get('provider_id')}"
-        print(f"  Metrics available: {'metrics' in benchmark}")
+        assert benchmark.get("provider_id") == GARAK_SIMPLE_PROVIDER_ID, (
+            f"Expected garak provider, got: {benchmark.get('provider_id')}"
+        )
