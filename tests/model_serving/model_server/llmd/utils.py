@@ -101,6 +101,12 @@ def find_matching_llminferenceserviceconfig(
         )
 
     matched = None
+    # TODO: Remove fallback when all supported RHOAI versions ship topology annotations.
+    # Topology annotation introduced in RHOAI 3.6 (PR: opendatahub-io/kserve#1685).
+    # Empty list means annotation not set — use as fallback if no exact topology match.
+    fallback = None
+    # END TODO
+
     for llmisvcconfig in llminferenceserviceconfigs:
         if name_regex and not re.search(name_regex, llmisvcconfig.name):
             continue
@@ -108,13 +114,9 @@ def find_matching_llminferenceserviceconfig(
         if accelerator not in llmisvcconfig.accelerators:
             continue
 
-        # TODO: Remove this block when all supported RHOAI versions ship topology annotations.
-        # Topology annotation introduced in RHOAI 3.6 (PR: opendatahub-io/kserve#1685).
-        # Empty list means annotation not set — skip topology check in that case.
         if not llmisvcconfig.topologies:
-            matched = llmisvcconfig.name
-            break
-        # END TODO — keep only the topology check below.
+            fallback = fallback or llmisvcconfig.name
+            continue
 
         if topology not in llmisvcconfig.topologies:
             continue
@@ -122,7 +124,7 @@ def find_matching_llminferenceserviceconfig(
         matched = llmisvcconfig.name
         break
 
-    return BaseRefsResult(matched=matched, configs=llminferenceserviceconfigs, namespace=namespace)
+    return BaseRefsResult(matched=matched or fallback, configs=llminferenceserviceconfigs, namespace=namespace)
 
 
 def ns_from_file(file: str) -> str:

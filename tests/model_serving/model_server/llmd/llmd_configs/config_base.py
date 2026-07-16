@@ -196,7 +196,11 @@ class GpuConfig(LLMISvcConfig):
         3. Return a derived config class with both bound.
         """
         accelerator = cls._select_accelerator(client=client)
-        base_refs = cls.base_refs or cls._select_base_refs(client=client, accelerator=accelerator)
+        base_refs = (
+            cls.base_refs
+            if cls.base_refs is not None
+            else cls._select_base_refs(client=client, accelerator=accelerator)
+        )
         return cls.with_overrides(accelerator=accelerator, base_refs=base_refs)
 
     @classmethod

@@ -5,10 +5,9 @@ RHOAI operator.  They provide pre-optimized vLLM container images for specific
 GPU architectures (e.g. NVIDIA CUDA).  CR names follow the pattern
 ``<version-prefix>kserve-config-llm-…-fast-1`` / ``…-fast-2``.
 
-Subclasses override ``accelerator_config_name_regex`` with a positive regex
-that selects the desired fast CR variant.  The base ``GpuConfig._select_base_refs``
-detects the non-default regex and calls ``pytest.skip`` (instead of ``pytest.fail``)
-when the CR is not present on the cluster.
+Subclasses override ``accelerator_config_name_regex`` to select the desired
+fast CR and set ``optional_base_refs = True``. ``GpuConfig._select_base_refs``
+then calls ``pytest.skip`` when no matching CR is present.
 """
 
 from .config_models import TinyLlamaOciGpuConfig
