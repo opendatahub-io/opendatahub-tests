@@ -296,7 +296,7 @@ def get_vllm_chat_config(namespace: str) -> dict[str, Any]:
     }
 
 
-def _patched_dsc_garak(admin_client, components: dict) -> Generator[DataScienceCluster]:
+def _patched_dsc_garak(admin_client: DynamicClient, components: dict) -> Generator[DataScienceCluster]:
     dsc = get_data_science_cluster(client=admin_client)
     with ResourceEditor(patches={dsc: {"spec": {"components": components}}}):
         wait_for_dsc_status_ready(dsc_resource=dsc)
@@ -304,7 +304,7 @@ def _patched_dsc_garak(admin_client, components: dict) -> Generator[DataScienceC
 
 
 @pytest.fixture(scope="class")
-def patched_dsc_garak(admin_client) -> Generator[DataScienceCluster]:
+def patched_dsc_garak(admin_client: DynamicClient) -> Generator[DataScienceCluster]:
     """Configure DSC for Garak simple mode: KServe Headed + MLflow."""
     yield from _patched_dsc_garak(
         admin_client=admin_client,
@@ -316,7 +316,7 @@ def patched_dsc_garak(admin_client) -> Generator[DataScienceCluster]:
 
 
 @pytest.fixture(scope="class")
-def patched_dsc_garak_kfp(admin_client) -> Generator[DataScienceCluster]:
+def patched_dsc_garak_kfp(admin_client: DynamicClient) -> Generator[DataScienceCluster]:
     """Configure DSC for Garak KFP mode: KServe Headed + MLflow + AI Pipelines."""
     yield from _patched_dsc_garak(
         admin_client=admin_client,
