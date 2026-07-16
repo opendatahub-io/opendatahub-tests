@@ -6,8 +6,8 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.evalhub import EvalHub
-from ocp_resources.mlflow import MLflow
 from ocp_resources.job import Job
+from ocp_resources.mlflow import MLflow
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.service_account import ServiceAccount
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
