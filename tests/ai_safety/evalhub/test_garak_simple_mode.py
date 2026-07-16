@@ -1,7 +1,6 @@
 import pytest
 from ocp_resources.pod import Pod
 from ocp_resources.route import Route
-from ocp_resources.secret import Secret
 from timeout_sampler import TimeoutExpiredError
 
 from tests.ai_safety.evalhub.constants import (
@@ -10,107 +9,11 @@ from tests.ai_safety.evalhub.constants import (
     GARAK_SIMPLE_PROVIDER_ID,
 )
 from tests.ai_safety.evalhub.utils import (
-    submit_garak_job,
     validate_evalhub_health,
     validate_evalhub_providers,
     wait_for_job_completion,
 )
-from utilities.constants import LLMdInferenceSimConfig
 from utilities.general import collect_pod_information
-
-
-@pytest.fixture(scope="class")
-def quick_garak_job_id(
-    tenant_user_token: str,
-    evalhub_ca_bundle_file: str,
-    garak_evalhub_route: Route,
-    tenant_namespace,
-    garak_tenant_rbac_ready: None,
-    garak_sim_isvc_url: str,
-) -> str:
-    """Submit a quick garak benchmark and return the job ID."""
-    payload = {
-        "name": "garak-quick-smoke-test",
-        "model": {
-            "url": garak_sim_isvc_url,
-            "name": LLMdInferenceSimConfig.model_name,
-        },
-        "benchmarks": [
-            {
-                "id": GARAK_QUICK_BENCHMARK_ID,
-                "provider_id": GARAK_SIMPLE_PROVIDER_ID,
-            }
-        ],
-        "experiment": {
-            "name": "garak-quick-smoke-test",
-        },
-    }
-
-    return submit_garak_job(
-        host=garak_evalhub_route.host,
-        token=tenant_user_token,
-        ca_bundle_file=evalhub_ca_bundle_file,
-        tenant_namespace=tenant_namespace.name,
-        payload=payload,
-    )
-
-
-@pytest.fixture(scope="class")
-def intents_garak_job_id(
-    tenant_user_token: str,
-    evalhub_ca_bundle_file: str,
-    garak_evalhub_route: Route,
-    tenant_namespace,
-    garak_sim_isvc_url: str,
-    simple_minio_secret: Secret,
-    simple_intents_csv: str,
-) -> str:
-    """Submit a garak intents benchmark and return the job ID.
-
-    Uses a minimal MinIO with test_data_ref to provide intents CSV without DSPA.
-    """
-    payload = {
-        "name": "garak-simple-intents-test",
-        "model": {
-            "url": garak_sim_isvc_url,
-            "name": LLMdInferenceSimConfig.model_name,
-        },
-        "benchmarks": [
-            {
-                "id": GARAK_BENCHMARK_ID,
-                "provider_id": GARAK_SIMPLE_PROVIDER_ID,
-                "parameters": {
-                    "garak_config": {
-                        "plugins": {
-                            "probe_spec": "spo.SPOIntent",
-                            "detector_spec": "always.Pass",
-                        },
-                        "run": {"generations": 1},
-                    },
-                    "intents_s3_key": f"/test_data/{simple_intents_csv}",
-                    "intents_models": {"judge": {"url": garak_sim_isvc_url, "name": LLMdInferenceSimConfig.model_name}},
-                },
-                "test_data_ref": {
-                    "s3": {
-                        "bucket": "evalhub-data",
-                        "key": simple_intents_csv,
-                        "secret_ref": simple_minio_secret.name,
-                    }
-                },
-            }
-        ],
-        "experiment": {
-            "name": "garak-simple-intents-test",
-        },
-    }
-
-    return submit_garak_job(
-        host=garak_evalhub_route.host,
-        token=tenant_user_token,
-        ca_bundle_file=evalhub_ca_bundle_file,
-        tenant_namespace=tenant_namespace.name,
-        payload=payload,
-    )
 
 
 @pytest.mark.parametrize(

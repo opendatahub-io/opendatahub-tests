@@ -37,7 +37,10 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_TENANT_LABEL_VALUE,
     EVALHUB_USER_ROLE_RULES,
     EVALHUB_VLLM_EMULATOR_PORT,
+    GARAK_BENCHMARK_ID,
     GARAK_INTENTS_S3_KEY,
+    GARAK_QUICK_BENCHMARK_ID,
+    GARAK_SIMPLE_PROVIDER_ID,
     MINIO_MC_IMAGE,
     MINIO_UPLOADER_SECURITY_CONTEXT,
     OTEL_COLLECTOR_GRPC_PORT,
@@ -50,10 +53,10 @@ from tests.ai_safety.evalhub.constants import (
     SIMPLE_MINIO_SECRET_KEY,
 )
 from tests.ai_safety.evalhub.kueue.constants import VLLM_EMULATOR, VLLM_EMULATOR_IMAGE
-from tests.ai_safety.evalhub.utils import MLflowWithWorkspaces, tenant_rbac_ready, wait_for_service_account
+from tests.ai_safety.evalhub.utils import MLflowWithWorkspaces, submit_garak_job, tenant_rbac_ready, wait_for_service_account
 from tests.ai_safety.image_constants import AiSafetyImages
 from utilities.certificates_utils import create_ca_bundle_file
-from utilities.constants import Labels, Protocols
+from utilities.constants import Labels, LLMdInferenceSimConfig, Protocols
 from utilities.general import collect_pod_information
 from utilities.infra import create_inference_token, create_ns
 
@@ -714,6 +717,102 @@ def garak_sim_isvc_url(llm_d_inference_sim_isvc: InferenceService) -> str:
     predictor service has a ClusterIP and port 80 → targetPort translation works.
     """
     return f"http://{llm_d_inference_sim_isvc.name}-predictor.{llm_d_inference_sim_isvc.namespace}.svc.cluster.local/v1"
+
+
+@pytest.fixture(scope="class")
+def quick_garak_job_id(
+    tenant_user_token: str,
+    evalhub_ca_bundle_file: str,
+    garak_evalhub_route: Route,
+    tenant_namespace,
+    garak_tenant_rbac_ready: None,
+    garak_sim_isvc_url: str,
+) -> str:
+    """Submit a quick garak benchmark and return the job ID."""
+    payload = {
+        "name": "garak-quick-smoke-test",
+        "model": {
+            "url": garak_sim_isvc_url,
+            "name": LLMdInferenceSimConfig.model_name,
+        },
+        "benchmarks": [
+            {
+                "id": GARAK_QUICK_BENCHMARK_ID,
+                "provider_id": GARAK_SIMPLE_PROVIDER_ID,
+            }
+        ],
+        "experiment": {
+            "name": "garak-quick-smoke-test",
+        },
+    }
+
+    return submit_garak_job(
+        host=garak_evalhub_route.host,
+        token=tenant_user_token,
+        ca_bundle_file=evalhub_ca_bundle_file,
+        tenant_namespace=tenant_namespace.name,
+        payload=payload,
+    )
+
+
+@pytest.fixture(scope="class")
+def intents_garak_job_id(
+    tenant_user_token: str,
+    evalhub_ca_bundle_file: str,
+    garak_evalhub_route: Route,
+    tenant_namespace,
+    garak_sim_isvc_url: str,
+    simple_minio_secret: Secret,
+    simple_intents_csv: str,
+) -> str:
+    """Submit a garak intents benchmark and return the job ID.
+
+    Uses a minimal MinIO with test_data_ref to provide intents CSV without DSPA.
+    """
+    payload = {
+        "name": "garak-simple-intents-test",
+        "model": {
+            "url": garak_sim_isvc_url,
+            "name": LLMdInferenceSimConfig.model_name,
+        },
+        "benchmarks": [
+            {
+                "id": GARAK_BENCHMARK_ID,
+                "provider_id": GARAK_SIMPLE_PROVIDER_ID,
+                "parameters": {
+                    "garak_config": {
+                        "plugins": {
+                            "probe_spec": "spo.SPOIntent",
+                            "detector_spec": "always.Pass",
+                        },
+                        "run": {"generations": 1},
+                    },
+                    "intents_s3_key": f"/test_data/{simple_intents_csv}",
+                    "intents_models": {
+                        "judge": {"url": garak_sim_isvc_url, "name": LLMdInferenceSimConfig.model_name}
+                    },
+                },
+                "test_data_ref": {
+                    "s3": {
+                        "bucket": "evalhub-data",
+                        "key": simple_intents_csv,
+                        "secret_ref": simple_minio_secret.name,
+                    }
+                },
+            }
+        ],
+        "experiment": {
+            "name": "garak-simple-intents-test",
+        },
+    }
+
+    return submit_garak_job(
+        host=garak_evalhub_route.host,
+        token=tenant_user_token,
+        ca_bundle_file=evalhub_ca_bundle_file,
+        tenant_namespace=tenant_namespace.name,
+        payload=payload,
+    )
 
 
 @pytest.fixture(scope="class")
