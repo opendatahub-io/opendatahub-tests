@@ -39,6 +39,7 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_VLLM_EMULATOR_PORT,
     GARAK_BENCHMARK_ID,
     GARAK_INTENTS_S3_KEY,
+    GARAK_PROVIDER_ID,
     GARAK_QUICK_BENCHMARK_ID,
     GARAK_SIMPLE_PROVIDER_ID,
     MINIO_MC_IMAGE,
@@ -49,7 +50,6 @@ from tests.ai_safety.evalhub.constants import (
     OTEL_COLLECTOR_PROMETHEUS_PORT,
     SIMPLE_MINIO_ACCESS_KEY,
     SIMPLE_MINIO_BUCKET,
-    SIMPLE_MINIO_IMAGE,
     SIMPLE_MINIO_SECRET_KEY,
 )
 from tests.ai_safety.evalhub.kueue.constants import VLLM_EMULATOR, VLLM_EMULATOR_IMAGE
@@ -783,6 +783,117 @@ def evalhub_service_secret_reader(
 
 
 @pytest.fixture(scope="class")
+def quick_kfp_garak_job_id(
+    tenant_user_token: str,
+    evalhub_ca_bundle_file: str,
+    garak_evalhub_route: Route,
+    tenant_namespace,
+    tenant_dspa: DataSciencePipelinesApplication,
+    dspa_secret_patch: Secret,
+    model_auth_secret_sidecar: Secret,
+    dsp_access_for_job_sa,
+    garak_tenant_rbac_ready: None,
+    evalhub_service_secret_reader,
+    garak_sim_isvc_url: str,
+) -> str:
+    """Submit a quick garak benchmark via KFP and return the job ID."""
+    payload = {
+        "name": "garak-kfp-quick-test",
+        "model": {
+            "url": garak_sim_isvc_url,
+            "name": LLMdInferenceSimConfig.model_name,
+            "auth": {"secret_ref": model_auth_secret_sidecar.name},
+        },
+        "benchmarks": [
+            {
+                "id": GARAK_QUICK_BENCHMARK_ID,
+                "provider_id": GARAK_PROVIDER_ID,
+                "parameters": {
+                    "kfp_config": {
+                        "namespace": tenant_namespace.name,
+                        "s3_secret_name": dspa_secret_patch.name,
+                        "verify_ssl": False,
+                        "model_url": garak_sim_isvc_url,
+                    },
+                },
+            }
+        ],
+        "experiment": {
+            "name": "garak-kfp-quick-test",
+        },
+    }
+
+    return submit_garak_job(
+        host=garak_evalhub_route.host,
+        token=tenant_user_token,
+        ca_bundle_file=evalhub_ca_bundle_file,
+        tenant_namespace=tenant_namespace.name,
+        payload=payload,
+    )
+
+
+@pytest.fixture(scope="class")
+def intents_kfp_garak_job_id(
+    tenant_user_token: str,
+    evalhub_ca_bundle_file: str,
+    garak_evalhub_route: Route,
+    tenant_namespace,
+    tenant_dspa: DataSciencePipelinesApplication,
+    dspa_secret_patch: Secret,
+    model_auth_secret_sidecar: Secret,
+    dsp_access_for_job_sa,
+    garak_tenant_rbac_ready: None,
+    garak_sim_isvc_url: str,
+    garak_intents_csv: str,
+) -> str:
+    """Submit a garak intents benchmark via KFP and return the job ID."""
+    payload = {
+        "name": "garak-intents-test",
+        "model": {
+            "url": garak_sim_isvc_url,
+            "name": LLMdInferenceSimConfig.model_name,
+            "auth": {"secret_ref": model_auth_secret_sidecar.name},
+        },
+        "benchmarks": [
+            {
+                "id": GARAK_BENCHMARK_ID,
+                "provider_id": GARAK_PROVIDER_ID,
+                "parameters": {
+                    "kfp_config": {
+                        "namespace": tenant_namespace.name,
+                        "s3_secret_name": dspa_secret_patch.name,
+                        "verify_ssl": False,
+                        "model_url": garak_sim_isvc_url,
+                    },
+                    "intents_s3_key": garak_intents_csv,
+                    "intents_models": {
+                        "judge": {"url": garak_sim_isvc_url, "name": LLMdInferenceSimConfig.model_name}
+                    },
+                    "garak_config": {
+                        "plugins": {
+                            "probe_spec": "spo.SPOIntent",
+                            "detector_spec": "always.Fail",
+                        },
+                        "run": {"generations": 1},
+                    },
+                },
+            }
+        ],
+        "experiment": {
+            "name": "garak-intents-test",
+        },
+    }
+
+    return submit_garak_job(
+        host=garak_evalhub_route.host,
+        token=tenant_user_token,
+        ca_bundle_file=evalhub_ca_bundle_file,
+        tenant_namespace=tenant_namespace.name,
+        payload=payload,
+    )
+
+
+@pytest.fixture(scope="class")
 def dsp_access_for_job_sa(
     admin_client: DynamicClient,
     tenant_namespace: Namespace,
@@ -956,7 +1067,7 @@ def simple_minio(
                 "containers": [
                     {
                         "name": "minio",
-                        "image": SIMPLE_MINIO_IMAGE,
+                        "image": AiSafetyImages.SIMPLE_MINIO,
                         "args": ["server", "/data"],
                         "env": [
                             {"name": "MINIO_ACCESS_KEY", "value": SIMPLE_MINIO_ACCESS_KEY},

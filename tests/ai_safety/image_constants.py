@@ -10,6 +10,9 @@ class AiSafetyImages:
         "quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e"
     )
     MINIO_DSPA: str = "quay.io/opendatahub/minio:RELEASE.2019-08-14T20-37-41Z-license-compliance"
+    SIMPLE_MINIO: str = (
+        "quay.io/opendatahub/minio@sha256:587abc14be9bbeed794473cf7290c40e377062f2f77f5e4e27742a77680f08e0"
+    )
     FLAN_T5: str = (
         "quay.io/trustyai_testing/lmeval-assets-flan-t5-base"
         "@sha256:f7326d5b4069e9aa0b12ab77b1e8aa8dd25dd0bffd77b08fcc84988ea8869f7f"
