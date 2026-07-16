@@ -29,7 +29,6 @@ from utilities.general import collect_pod_information
     indirect=True,
 )
 @pytest.mark.tier1
-@pytest.mark.ai_safety
 @pytest.mark.usefixtures("patched_dsc_garak", "garak_evalhub_cr")
 class TestGarakSimpleMode:
     """Tests for running garak security evaluation via EvalHub with simple (non-KFP) provider.
