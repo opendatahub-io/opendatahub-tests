@@ -134,10 +134,6 @@ class TestGarakSimpleMode:
     4. Intents benchmark completion + results
     """
 
-    # ------------------------------------------------------------------
-    # Infrastructure validation
-    # ------------------------------------------------------------------
-
     @pytest.mark.dependency(name="garak_simple_health")
     def test_evalhub_health(
         self,
@@ -168,10 +164,6 @@ class TestGarakSimpleMode:
             tenant_namespace=tenant_namespace.name,
             expected_providers=[GARAK_SIMPLE_PROVIDER_ID],
         )
-
-    # ------------------------------------------------------------------
-    # Quick benchmark
-    # ------------------------------------------------------------------
 
     @pytest.mark.dependency(name="garak_simple_quick_completes", depends=["garak_simple_providers"])
     def test_quick_garak_job_completes(
@@ -213,10 +205,6 @@ class TestGarakSimpleMode:
         assert benchmark.get("provider_id") == GARAK_SIMPLE_PROVIDER_ID, (
             f"Expected garak provider, got: {benchmark.get('provider_id')}"
         )
-
-    # ------------------------------------------------------------------
-    # Intents benchmark
-    # ------------------------------------------------------------------
 
     @pytest.mark.dependency(name="garak_simple_intents_completes", depends=["garak_simple_quick_results"])
     def test_intents_garak_job_completes(
