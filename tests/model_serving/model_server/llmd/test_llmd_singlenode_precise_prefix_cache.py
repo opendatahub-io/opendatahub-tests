@@ -58,7 +58,7 @@ class TestSingleNodePrecisePrefixCache:
         llmisvc: LLMInferenceService,
         llmisvc_token: str,
         prometheus: Prometheus,
-    ):
+    ) -> None:
         """Test steps:
 
         1. Assert the router-scheduler pod exists and is Running.

@@ -27,7 +27,7 @@ class PrecisePrefixCacheScorerConfig(TinyLlamaHfGpuConfig):
     wait_timeout = 720
 
     @classmethod
-    def container_env(cls):
+    def container_env(cls) -> list[dict]:
         kv_events_config = {
             "enable_kv_cache_events": True,
             "publisher": "zmq",
@@ -55,7 +55,7 @@ class PrecisePrefixCacheScorerConfig(TinyLlamaHfGpuConfig):
         ]
 
     @classmethod
-    def _scheduler_config(cls):
+    def _scheduler_config(cls) -> dict:
         """EndpointPickerConfig dict — legacy precise-prefix-cache-scorer plugin.
 
         Returns a dict consumed by yaml.dump() in _scheduler_container().
@@ -100,7 +100,7 @@ class PrecisePrefixCacheScorerConfig(TinyLlamaHfGpuConfig):
         }
 
     @classmethod
-    def _scheduler_container(cls):
+    def _scheduler_container(cls) -> dict:
         """Scheduler container with ZMQ ports and tokenizer volume mounts."""
         return {
             "name": "main",
@@ -138,7 +138,7 @@ class PrecisePrefixCacheScorerConfig(TinyLlamaHfGpuConfig):
         }
 
     @classmethod
-    def router_config(cls):
+    def router_config(cls) -> dict:
         return {
             "scheduler": {
                 "template": {
@@ -170,7 +170,7 @@ class PrecisePrefixCacheProducerConfig(TinyLlamaOciGpuConfig):
     wait_timeout = 720
 
     @classmethod
-    def container_env(cls):
+    def container_env(cls) -> list[dict]:
         kv_events_config = {
             "enable_kv_cache_events": True,
             "publisher": "zmq",
@@ -198,7 +198,7 @@ class PrecisePrefixCacheProducerConfig(TinyLlamaOciGpuConfig):
         ]
 
     @classmethod
-    def _scheduler_config(cls):
+    def _scheduler_config(cls) -> str:
         """EndpointPickerConfig YAML string — precise-prefix-cache-producer + prefix-cache-scorer.
 
         Returns a raw YAML string to preserve Go template variables.
@@ -250,7 +250,7 @@ class PrecisePrefixCacheProducerConfig(TinyLlamaOciGpuConfig):
                   - pluginRef: max-score-picker""")
 
     @classmethod
-    def _scheduler_container(cls):
+    def _scheduler_container(cls) -> dict:
         """Scheduler container — no tokenizer volume needed with token-producer."""
         return {
             "name": "main",
@@ -286,7 +286,7 @@ class PrecisePrefixCacheProducerConfig(TinyLlamaOciGpuConfig):
         }
 
     @classmethod
-    def router_config(cls):
+    def router_config(cls) -> dict:
         return {
             "scheduler": {
                 "template": {
