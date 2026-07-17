@@ -155,6 +155,7 @@ def create_ogx_server(
         namespace=namespace,
         distribution=config["distribution"],
         workload=config.get("workload"),
+        network=config.get("network"),
         tls=config.get("tls"),
         wait_for_resource=True,
         teardown=teardown,
