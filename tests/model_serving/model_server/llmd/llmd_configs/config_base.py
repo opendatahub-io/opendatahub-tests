@@ -5,9 +5,13 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 
 from tests.model_serving.model_server.llmd.constants import LLMD_TESTS_SUPPORTED_ACCELERATORS
-from tests.model_serving.model_server.llmd.utils import detect_accelerators, list_matching_accelerator_configs
+from tests.model_serving.model_server.llmd.utils import (
+    detect_accelerators,
+    find_matching_llminferenceserviceconfig,
+    log_accelerator_selection,
+    log_base_refs_selection,
+)
 from utilities.constants import ContainerImages, Labels
-from utilities.infra import get_dsci_applications_namespace
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -98,6 +102,7 @@ class LLMISvcConfig:
             f"  container_image: {cls.container_image or '(default)'}",
             f"  auth:            {cls.annotations().get('security.opendatahub.io/enable-auth', 'false')}",
             f"  resources:       {cls.container_resources() or '(none)'}",
+            f"  wait_timeout:    {cls.wait_timeout}",
         ]
         return lines
 
@@ -112,7 +117,7 @@ class LLMISvcConfig:
     @classmethod
     def build(cls, client: DynamicClient) -> type:
         """No-op for non-GPU configs. GpuConfig overrides with actual detection."""
-        LOGGER.info(f"[llmd] No accelerator needed for {cls.__name__}")
+        LOGGER.info(f"No accelerator needed for {cls.__name__}")
         return cls
 
     @classmethod
@@ -160,6 +165,7 @@ class GpuConfig(LLMISvcConfig):
     min_gpus_per_node = 1
     min_nodes = 1
     supported_accelerators = LLMD_TESTS_SUPPORTED_ACCELERATORS
+
     # supported-topologies values must be consistent with the samples
     # API and Dashboard usage.  See odh-model-controller docs:
     # features/samples/llm-d/llm-d-ui-flow-mechanics.md
@@ -170,56 +176,59 @@ class GpuConfig(LLMISvcConfig):
     # Overridden by build() after accelerator detection (e.g. "amd.com/gpu" on AMD clusters).
     accelerator = "nvidia.com/gpu"
 
-    # Negative lookahead that excludes fast-image CRs (e.g. "…fast-1",
-    # "…fast-2") so that standard GPU configs only match the regular
-    # CUDA/ROCm templates.  Used as the default for
-    # accelerator_config_name_regex below and as sentinel in
-    # _resolve_accelerator to distinguish standard configs from fast
-    # image configs that override the regex.
-    _DEFAULT_ACCELERATOR_CONFIG_NAME_REGEX = "^(?!.*fast-)"
+    # Excludes fast-image CRs by default. Fast image subclasses override
+    # with a positive regex (e.g. ".*fast-1$").
+    accelerator_config_name_regex = "^(?!.*fast-)"
 
-    # Regex matched against LLMInferenceServiceConfig CR names during
-    # discovery.  Fast image subclasses override this with a positive
-    # regex (e.g. ".*fast-1$").
-    accelerator_config_name_regex = _DEFAULT_ACCELERATOR_CONFIG_NAME_REGEX
+    # When True, pytest.skip instead of pytest.fail when no CR matches.
+    # Fast image subclasses set this to True.
+    optional_base_refs = False
 
-    # Resolved by _resolve_base_refs at build time; set explicitly to skip discovery.
+    # Resolved by _select_base_refs at build time; set explicitly to skip discovery.
     base_refs = None
 
     @classmethod
     def build(cls, client: DynamicClient) -> type:
-        """Resolve all cluster-dependent config."""
-        return cls._resolve_accelerator(client=client)
+        """Resolve all cluster-dependent config.
+
+        1. Detect which GPU accelerator to use.
+        2. Resolve which LLMInferenceServiceConfig CR (base_refs) to use.
+        3. Return a derived config class with both bound.
+        """
+        accelerator = cls._select_accelerator(client=client)
+        base_refs = (
+            cls.base_refs
+            if cls.base_refs is not None
+            else cls._select_base_refs(client=client, accelerator=accelerator)
+        )
+        return cls.with_overrides(accelerator=accelerator, base_refs=base_refs)
 
     @classmethod
-    def _resolve_accelerator(cls, client: DynamicClient) -> type:
-        """Detect cluster GPU accelerators and resolve the config for the best match.
+    def _select_accelerator(cls, client: DynamicClient) -> str:
+        """Select the GPU accelerator to use for this test.
 
-        Scans worker nodes for GPU resources, filters to types supported by the
-        current test's config class, and skips the test if the cluster doesn't meet
-        ``min_gpus_per_node`` and ``min_nodes`` requirements.
+        Scans worker nodes, filters to ``cls.supported_accelerators``, and
+        picks the type with the most total GPUs (node count as tiebreaker).
+        Skips the test if no accelerator meets ``min_gpus_per_node`` / ``min_nodes``.
 
-        When multiple accelerator types qualify, picks the one with the most
-        total GPUs available, using node count as tiebreaker.
+        Uses ``cls.supported_accelerators``, ``cls.min_gpus_per_node``,
+        and ``cls.min_nodes`` to filter and qualify.
 
-        After selecting the accelerator, discovers the matching
-        LLMInferenceServiceConfig CR via ``_resolve_base_refs`` (annotation-based
-        discovery filtered by ``accelerator_config_name_regex``).  For NVIDIA GPUs,
-        an empty result falls through to the default CUDA template; for non-NVIDIA
-        accelerators (e.g. AMD ROCm), a missing CR is a hard failure.
+        Args:
+            client: Kubernetes dynamic client.
 
-        Returns a derived config class with ``accelerator`` and ``base_refs`` bound.
+        Returns:
+            The accelerator resource name (e.g. ``nvidia.com/gpu``).
         """
-        # node_accelerators is a list where each entry is a worker node's GPU resources,
-        # e.g. [{"amd.com/gpu": 8}, {"amd.com/gpu": 8}]
-        node_accelerators = detect_accelerators(client=client)
+        # detected_nodes is a list of {"name": node_name, "resources": {resource: count}}
+        detected_nodes = detect_accelerators(client=client)
 
         # Keep only accelerator types that this config supports (e.g. nvidia.com/gpu, amd.com/gpu)
         supported_nodes = []
-        for node in node_accelerators:
+        for node in detected_nodes:
             supported = {
                 resource_name: resource_count
-                for resource_name, resource_count in node.items()
+                for resource_name, resource_count in node["resources"].items()
                 if resource_name in cls.supported_accelerators
             }
             if supported:
@@ -245,12 +254,14 @@ class GpuConfig(LLMISvcConfig):
 
         # Skip the test if no accelerator type meets the requirements
         if not qualified:
-            pytest.skip(
+            msg = (
                 f"Skipping test: no supported accelerator found for {cls.__name__}."
-                f" Required: {cls.min_gpus_per_node} GPU(s)/node on {cls.min_nodes} node(s),"
+                f" Required: {cls.min_nodes} node(s) with at least {cls.min_gpus_per_node} GPU(s) each,"
                 f" supported types: {cls.supported_accelerators}."
-                f" Found: {candidates or 'none'}"
+                f" Found: {candidates or 'no GPU nodes'}"
             )
+            LOGGER.warning(msg)
+            pytest.skip(msg)
 
         # Pick the accelerator type with the most GPUs, then most nodes as tiebreaker
         selected_resource = max(
@@ -261,61 +272,75 @@ class GpuConfig(LLMISvcConfig):
             ),
         )
         selected_stats = qualified[selected_resource]
-
-        # Discover the LLMInferenceServiceConfig CR matching this config's accelerator,
-        # topology, and name regex.  Uses annotation-based discovery via _resolve_base_refs.
-        # If base_refs is already set explicitly on the config class, discovery is skipped.
-        base_refs = cls.base_refs or cls._resolve_base_refs(client=client)
-
-        if len(base_refs) == 0:
-            _is_default_regex = cls.accelerator_config_name_regex == cls._DEFAULT_ACCELERATOR_CONFIG_NAME_REGEX
-            _is_nvidia = selected_resource == Labels.Nvidia.NVIDIA_COM_GPU
-
-            _no_cr_msg = (
-                f"No LLMInferenceServiceConfig CR found"
-                f" for {cls.__name__}."
-                f" accelerator_config_name_regex:"
-                f" '{cls.accelerator_config_name_regex}',"
-                f" accelerator: '{selected_resource}',"
-                f" topology: '{cls.supported_topology}'."
-                f" The cluster does not have an"
-                f" LLMInferenceServiceConfig CR with"
-                f" opendatahub.io/recommended-accelerators"
-                f" containing '{selected_resource}'"
-                f" AND opendatahub.io/supported-topologies"
-                f" containing '{cls.supported_topology}'"
-                f" AND name matching regex"
-                f" '{cls.accelerator_config_name_regex}'."
-                f" Hardware: {cls.min_gpus_per_node} GPU(s)/node"
-                f" on {cls.min_nodes} node(s),"
-                f" supported types:"
-                f" {cls.supported_accelerators}."
-                f" Candidates found on cluster:"
-                f" {candidates or 'none'}"
-            )
-
-            if not _is_default_regex:
-                # Config targets a specific CR variant (e.g. fast-1,
-                # fast-2) that is not present on this cluster.  Skip
-                # rather than silently falling back to a wrong template.
-                pytest.skip(_no_cr_msg)
-            elif not _is_nvidia:
-                # Non-NVIDIA accelerator (e.g. AMD ROCm) with standard
-                # regex: a matching CR is required because there is no
-                # built-in fallback template.  This is a hard failure.
-                pytest.fail(_no_cr_msg)
-            # else: standard NVIDIA with default regex — fall through
-            # to the default CUDA template (no CR override needed).
-
-        LOGGER.info(
-            f"[llmd] Selected accelerator for {cls.__name__}: {selected_resource}"
-            f" ({selected_stats['total_gpus']} GPU(s) on"
-            f" {selected_stats['qualifying_nodes']} node(s)),"
-            f" base_refs: {base_refs or '(default CUDA — no CR override)'}"
+        log_accelerator_selection(
+            config_name=cls.__name__,
+            detected_nodes=detected_nodes,
+            selected=selected_resource,
+            total_gpus=selected_stats["total_gpus"],
+            qualifying_nodes=selected_stats["qualifying_nodes"],
         )
-        return cls.with_overrides(
-            accelerator=selected_resource,
-            base_refs=base_refs,
+        return selected_resource
+
+    @classmethod
+    def _select_base_refs(cls, client: DynamicClient, accelerator: str) -> list[dict[str, str]]:
+        """Select the LLMInferenceServiceConfig CR (base_refs) for this test.
+
+        - **NVIDIA** (non-optional): returns ``[]`` — the controller uses
+          the built-in CUDA template.
+        - **Non-NVIDIA** (non-optional): discovers the matching CR.
+          Fails if not found (no built-in fallback).
+        - **optional_base_refs=True**: discovers the CR.
+          Skips if not found.
+
+        Uses ``cls.accelerator_config_name_regex`` and ``cls.supported_topology``
+        to filter CRs.
+
+        Args:
+            client: Kubernetes dynamic client.
+            accelerator: The accelerator resource name from ``_select_accelerator``.
+
+        Returns:
+            ``[{"name": cr_name}]`` if a CR is selected, or ``[]`` for default CUDA.
+        """
+        is_nvidia = accelerator == Labels.Nvidia.NVIDIA_COM_GPU
+
+        if is_nvidia and not cls.optional_base_refs:
+            log_base_refs_selection(
+                accelerator=accelerator,
+                topology=cls.supported_topology,
+                name_regex=cls.accelerator_config_name_regex,
+            )
+            return []
+
+        result = find_matching_llminferenceserviceconfig(
+            client=client,
+            accelerator=accelerator,
+            topology=cls.supported_topology,
+            name_regex=cls.accelerator_config_name_regex,
+        )
+        log_base_refs_selection(
+            accelerator=accelerator,
+            topology=cls.supported_topology,
+            name_regex=cls.accelerator_config_name_regex,
+            result=result,
+        )
+
+        if result.matched:
+            return [{"name": result.matched}]
+
+        if cls.optional_base_refs:
+            msg = (
+                f"No LLMInferenceServiceConfig CR matching '{cls.accelerator_config_name_regex}'"
+                f" for accelerator='{accelerator}' topology='{cls.supported_topology}'."
+                f" optional_base_refs=True — skipping. See logs above for details."
+            )
+            LOGGER.warning(msg)
+            pytest.skip(msg)
+
+        pytest.fail(
+            f"No LLMInferenceServiceConfig CR matched accelerator='{accelerator}'"
+            f" topology='{cls.supported_topology}'. See logs above for details.",
+            pytrace=False,
         )
 
     @classmethod
@@ -332,52 +357,6 @@ class GpuConfig(LLMISvcConfig):
     def gpu_resource_name(cls):
         """Return the Kubernetes GPU resource name (e.g. nvidia.com/gpu, amd.com/gpu)."""
         return cls.accelerator
-
-    @classmethod
-    def _resolve_base_refs(cls, client: DynamicClient) -> list[dict[str, str]]:
-        """Discover the LLMInferenceServiceConfig CR matching this config's requirements.
-
-        Searches the DSCI applications namespace for LLMInferenceServiceConfig CRs
-        and filters by three criteria:
-
-        1. **Name regex** (``cls.accelerator_config_name_regex``): the CR name must
-           match this regex.  The default ``^(?!.*fast-)`` excludes fast-image CRs;
-           fast image subclasses override with a positive pattern like ``.*fast-1$``.
-        2. **Accelerator annotation** (``opendatahub.io/recommended-accelerators``):
-           the JSON array must contain ``cls.accelerator`` (e.g. ``nvidia.com/gpu``).
-        3. **Topology annotation** (``opendatahub.io/supported-topologies``):
-           the JSON array must contain ``cls.supported_topology``
-           (e.g. ``workload-single-node``).
-
-        Returns:
-            A single-element list ``[{"name": cr_name}]`` if a matching CR is found,
-            or an empty list if no CR matches.  The caller decides whether to fail
-            (non-NVIDIA) or fall back to the default CUDA template (NVIDIA).
-        """
-        namespace = get_dsci_applications_namespace(client=client)
-        LOGGER.info(
-            f"[llmd] Resolving base_refs for {cls.__name__}:"
-            f" accelerator='{cls.accelerator}',"
-            f" topology='{cls.supported_topology}',"
-            f" name_regex='{cls.accelerator_config_name_regex}',"
-            f" namespace='{namespace}'"
-        )
-        result = list_matching_accelerator_configs(
-            client=client,
-            namespace=namespace,
-            accelerator=cls.accelerator,
-            topology=cls.supported_topology,
-            name_regex=cls.accelerator_config_name_regex,
-        )
-        if result.name:
-            LOGGER.info(f"[llmd] Resolved base_refs for {cls.__name__}: [{{name: {result.name}}}]")
-            return [{"name": result.name}]
-        LOGGER.warning(
-            f"[llmd] No matching CR found for {cls.__name__}."
-            f" All CRs in '{namespace}': {result.all_cr_names or 'none'}."
-            f" Candidates after regex/annotation filtering: {result.candidates or 'none'}"
-        )
-        return []
 
     @classmethod
     def container_resources(cls):
