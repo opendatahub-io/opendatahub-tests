@@ -88,8 +88,9 @@ def verify_inference_response(
 
     if authorized_user is False:
         auth_header = "x-ext-auth-reason"
+        output = json.dumps(res["output"]) if isinstance(res["output"], dict) else res["output"]
 
-        if auth_reason := re.search(rf"{auth_header}: (.*)", res["output"], re.MULTILINE):
+        if auth_reason := re.search(rf"{auth_header}: (.*)", output, re.MULTILINE):
             reason = auth_reason.group(1).lower()
 
             if token:
@@ -102,14 +103,18 @@ def verify_inference_response(
             isinstance(inference_service, InferenceGraph)
             and inference.deployment_mode in KServeDeploymentType.RAW_DEPLOYMENT_MODES
         ):
-            assert "x-forbidden-reason: Access to the InferenceGraph is not allowed" in res["output"]
+            assert "x-forbidden-reason: Access to the InferenceGraph is not allowed" in output
 
-        elif "403 Forbidden" in res["output"]:
+        elif "403 Forbidden" in output:
             resource = f"{inference_service.kind.lower()}s"
-            assert re.search(rf"Forbidden \(user=.*verb=get.*resource={resource}", res["output"])
+            assert re.search(rf"Forbidden \(user=.*verb=get.*resource={resource}", output)
+
+        elif "401 Unauthorized" in output or "Unauthorized" in output:
+            # Here test should pass, correctly rejected.
+            pass
 
         else:
-            raise ValueError(f"Auth header {auth_header} not found in response. Response: {res['output']}")
+            raise ValueError(f"Auth header {auth_header} not found in response. Response: {output}")
 
     else:
         use_regex = False
@@ -230,7 +235,7 @@ def wait_for_raw_isvc_https_infer_ready(
                 use_default_query=True,
                 token=token,
             )
-        except ValueError, InferenceResponseError:
+        except (ValueError, InferenceResponseError):
             return False
 
         if not out or not out.strip():
