@@ -1,9 +1,10 @@
 from contextlib import contextmanager
-from typing import Optional, Dict, Any, List, Generator
+from typing import Any, Dict, Generator, List, Optional
+
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.resource import NamespacedResource, Resource, MissingRequiredArgumentError
 from ocp_resources.deployment import Deployment
 from ocp_resources.pod import Pod
+from ocp_resources.resource import MissingRequiredArgumentError, NamespacedResource, Resource
 
 
 class ResourceFlavor(Resource):
