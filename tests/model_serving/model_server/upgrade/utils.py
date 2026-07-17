@@ -1031,7 +1031,7 @@ def verify_llmisvc_config_refs_exist(
 
     Steps:
         1. Get config ref names from the pre-upgrade baseline.
-        2. Look up each LLMInferenceServiceConfig CR in redhat-ods-applications.
+        2. Look up each LLMInferenceServiceConfig CR in the applications namespace.
         3. Assert all config CRs still exist.
 
     Skips if config_ref_names is empty and pre-upgrade was 3.3 (refs not captured).
@@ -1045,10 +1045,11 @@ def verify_llmisvc_config_refs_exist(
         AssertionError: If any config CR is missing after upgrade.
     """
     import pytest
+    from pytest_testconfig import config as py_config
 
     from utilities.resources.llm_inference_service_config import LLMInferenceServiceConfig
 
-    LLMISVC_CONFIG_NAMESPACE = "redhat-ods-applications"
+    LLMISVC_CONFIG_NAMESPACE = py_config["applications_namespace"]
     config_ref_names = baseline["config_ref_names"]
     pre_upgrade_rhoai_version = baseline.get("pre_upgrade_rhoai_version")
     if not config_ref_names and (pre_upgrade_rhoai_version is None or pre_upgrade_rhoai_version.startswith("3.3")):
@@ -1075,7 +1076,7 @@ def verify_llmisvc_controller_healthy(client: DynamicClient) -> None:
     """Verify llmisvc-controller-manager Deployment is Available.
 
     Steps:
-        1. Get the llmisvc-controller-manager Deployment in redhat-ods-applications.
+        1. Get the llmisvc-controller-manager Deployment in the applications namespace.
         2. Assert the Available condition is True.
 
     Args:
@@ -1084,9 +1085,11 @@ def verify_llmisvc_controller_healthy(client: DynamicClient) -> None:
     Raises:
         AssertionError: If the Deployment does not exist or is not Available.
     """
+    from pytest_testconfig import config as py_config
 
+    apps_namespace = py_config["applications_namespace"]
     LOGGER.info(event="[POST-UPGRADE] Checking llmisvc-controller-manager health")
-    deploy = Deployment(client=client, name="llmisvc-controller-manager", namespace="redhat-ods-applications")
+    deploy = Deployment(client=client, name="llmisvc-controller-manager", namespace=apps_namespace)
     assert deploy.exists, "llmisvc-controller-manager Deployment not found"
     conditions = deploy.instance.status.conditions or []
     available = next((condition for condition in conditions if condition.type == "Available"), None)
