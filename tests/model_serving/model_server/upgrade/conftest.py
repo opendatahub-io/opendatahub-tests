@@ -1,11 +1,9 @@
 from typing import Any, Generator
 
 import pytest
-from _pytest.config import Config
 from _pytest.nodes import Item
 from _pytest.runner import CallInfo
 from kubernetes.dynamic import DynamicClient
-from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.role import Role
@@ -28,7 +26,6 @@ from utilities.inference_utils import create_isvc
 from utilities.infra import create_inference_token, create_isvc_view_role, create_ns, s3_endpoint_secret
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
-from pytest_testconfig import config as py_config
 
 from tests.model_serving.model_runtime.vllm.utils import skip_if_not_deployment_mode
 from tests.model_serving.model_server.upgrade.kserve_kueue_upgrade_config import (

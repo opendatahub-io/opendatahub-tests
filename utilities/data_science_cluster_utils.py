@@ -4,7 +4,6 @@ from typing import Any, Generator
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.resource import ResourceEditor
 from simple_logger.logger import get_logger
-from timeout_sampler import retry
 
 from utilities.constants import DscComponents, Timeout
 
