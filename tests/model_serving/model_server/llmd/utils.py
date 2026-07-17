@@ -9,11 +9,10 @@ import json
 import re
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import structlog
 from kubernetes.dynamic import DynamicClient
-from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.event import Event
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.node import Node
@@ -24,23 +23,24 @@ from timeout_sampler import TimeoutExpiredError, retry
 
 from tests.model_serving.model_server.llmd.constants import LLMD_TESTS_SUPPORTED_ACCELERATORS
 from utilities.certificates_utils import get_ca_bundle
+from utilities.infra import get_dsci_applications_namespace
 from utilities.jira import is_jira_issue_open
 from utilities.llmd_constants import LLMEndpoint
 from utilities.llmd_utils import get_llm_inference_url
 from utilities.monitoring import get_metrics_value
+from utilities.resources.llm_inference_service_config import LLMInferenceServiceConfig
 
 LOGGER = structlog.get_logger(name=__name__)
 
 
-def detect_accelerators(client: DynamicClient) -> list[dict[str, int]]:
+def detect_accelerators(client: DynamicClient) -> list[dict[str, Any]]:
     """Detect accelerator resources available on cluster worker nodes.
 
     Returns:
-        List of dicts, one per accelerator node. Each dict maps accelerator
-        resource name to available count.
-        Example: [{"amd.com/gpu": 8}, {"amd.com/gpu": 4}]
+        List of dicts, one per accelerator node with node name and resources.
+        Example: [{"name": "worker-0", "resources": {"amd.com/gpu": 8}}]
     """
-    accelerators: list[dict[str, int]] = []
+    accelerators: list[dict[str, Any]] = []
     for node in Node.get(client=client, label_selector="node-role.kubernetes.io/worker"):
         allocatable = node.instance.status.allocatable or {}
         node_accelerators = {
@@ -49,99 +49,82 @@ def detect_accelerators(client: DynamicClient) -> list[dict[str, int]]:
             if int(allocatable.get(resource, 0)) > 0
         }
         if node_accelerators:
-            LOGGER.info(f"[llmd] Accelerator node {node.name}: {node_accelerators}")
-            accelerators.append(node_accelerators)
+            accelerators.append({"name": node.name, "resources": node_accelerators})
 
     return accelerators
 
 
-class AcceleratorConfigDiscoveryResult:
-    """Result of an LLMInferenceServiceConfig CR discovery attempt.
-
-    Attributes:
-        name: The name of the matched CR, or None if no CR matched all criteria.
-        all_cr_names: Every CR name found in the namespace (for diagnostics).
-        candidates: Human-readable descriptions of CRs that passed the name regex
-            filter, including their annotation values (for skip/error messages).
-    """
-
-    def __init__(self, name: str | None, all_cr_names: list[str], candidates: list[str]):
-        self.name = name
-        self.all_cr_names = all_cr_names
-        self.candidates = candidates
+class LLMInferenceServiceConfigDetails(NamedTuple):
+    name: str
+    accelerators: list[str]
+    topologies: list[str]
 
 
-def list_matching_accelerator_configs(
+class BaseRefsResult(NamedTuple):
+    matched: str | None
+    configs: list[LLMInferenceServiceConfigDetails]
+    namespace: str
+
+
+def find_matching_llminferenceserviceconfig(
     client: DynamicClient,
-    namespace: str,
     accelerator: str,
     topology: str,
     name_regex: str = "",
-) -> AcceleratorConfigDiscoveryResult:
+) -> BaseRefsResult:
     """Find an LLMInferenceServiceConfig CR matching accelerator, topology, and optional name regex.
 
-    Lists LLMInferenceServiceConfig CRs in the given namespace and filters by
+    Lists CRs in the DSCI applications namespace, filters by
     ``opendatahub.io/recommended-accelerators`` and
-    ``opendatahub.io/supported-topologies`` annotations.  When ``name_regex``
-    is non-empty, only CRs whose name matches the regex are considered.
+    ``opendatahub.io/supported-topologies`` annotations.
 
     Args:
         client: Kubernetes dynamic client.
-        namespace: The namespace where LLMInferenceServiceConfig CRs are deployed
-            (typically the DSCI applications namespace).
         accelerator: The k8s accelerator resource name (e.g. ``nvidia.com/gpu``).
         topology: The deployment topology to match (e.g. ``workload-single-node``).
         name_regex: Optional regex to filter CR names (e.g. ``.*fast-1$``).
 
     Returns:
-        AcceleratorConfigDiscoveryResult with the matched CR name (or None), all CR names in
-        the namespace, and details on candidate CRs for diagnostics.
+        BaseRefsResult with the matched CR name (or None), CR details, and near misses.
     """
-    try:
-        api = client.resources.get(
-            api_version="serving.kserve.io/v1alpha1",
-            kind="LLMInferenceServiceConfig",
-        )
-        all_crs = api.get(namespace=namespace)
-    except ResourceNotFoundError:
-        LOGGER.warning("[llmd] LLMInferenceServiceConfig CRD not found on cluster")
-        return AcceleratorConfigDiscoveryResult(name=None, all_cr_names=[], candidates=[])
+    namespace = get_dsci_applications_namespace(client=client)
 
-    all_cr_names = [cr.metadata.name for cr in all_crs.items]
-    LOGGER.info(f"[llmd] LLMInferenceServiceConfig CRs in '{namespace}': {all_cr_names}")
-
-    candidates = []
-    for cr in all_crs.items:
-        name = cr.metadata.name
-        if name_regex and not re.search(name_regex, name):
-            continue
-        annotations = cr.metadata.get("annotations") or {}
-        raw_accel = annotations.get("opendatahub.io/recommended-accelerators", "[]")
-        raw_topo = annotations.get("opendatahub.io/supported-topologies", "[]")
-        try:
-            recommended = json.loads(raw_accel)
-            topologies = json.loads(raw_topo)
-        except (ValueError, TypeError):  # fmt: skip
-            candidates.append(f"{name} (unparseable annotations)")
-            continue
-        candidates.append(f"{name} (accelerators={recommended}, topologies={topologies})")
-        if accelerator in recommended and topology in topologies:
-            LOGGER.info(
-                f"[llmd] Matched CR: {name} (accelerator={accelerator}, topology={topology}, regex='{name_regex}')"
+    llminferenceserviceconfigs = []
+    for cr in LLMInferenceServiceConfig.get(client=client, namespace=namespace):
+        annotations = cr.instance.metadata.get("annotations") or {}
+        llminferenceserviceconfigs.append(
+            LLMInferenceServiceConfigDetails(
+                name=cr.name,
+                accelerators=json.loads(annotations.get("opendatahub.io/recommended-accelerators", "[]")),
+                topologies=json.loads(annotations.get("opendatahub.io/supported-topologies", "[]")),
             )
-            return AcceleratorConfigDiscoveryResult(name=name, all_cr_names=all_cr_names, candidates=candidates)
+        )
 
-    LOGGER.warning(
-        f"[llmd] No LLMInferenceServiceConfig CR matched all criteria."
-        f" Searched namespace='{namespace}' for CRs with:"
-        f" opendatahub.io/recommended-accelerators containing '{accelerator}',"
-        f" opendatahub.io/supported-topologies containing '{topology}',"
-        f" name matching regex '{name_regex}'."
-        f" CRs that passed the name regex filter (with their annotations):"
-        f" {candidates or 'none'}."
-        f" All LLMInferenceServiceConfig CRs in '{namespace}': {all_cr_names or 'none'}"
-    )
-    return AcceleratorConfigDiscoveryResult(name=None, all_cr_names=all_cr_names, candidates=candidates)
+    matched = None
+    # TODO: Remove fallback when all supported RHOAI versions ship topology annotations.
+    # Topology annotation introduced in RHOAI 3.6 (PR: opendatahub-io/kserve#1685).
+    # Empty list means annotation not set — use as fallback if no exact topology match.
+    fallback = None
+    # END TODO
+
+    for llmisvcconfig in llminferenceserviceconfigs:
+        if name_regex and not re.search(name_regex, llmisvcconfig.name):
+            continue
+
+        if accelerator not in llmisvcconfig.accelerators:
+            continue
+
+        if not llmisvcconfig.topologies:
+            fallback = fallback or llmisvcconfig.name
+            continue
+
+        if topology not in llmisvcconfig.topologies:
+            continue
+
+        matched = llmisvcconfig.name
+        break
+
+    return BaseRefsResult(matched=matched or fallback, configs=llminferenceserviceconfigs, namespace=namespace)
 
 
 def ns_from_file(file: str) -> str:
@@ -150,114 +133,6 @@ def ns_from_file(file: str) -> str:
     Example: __file__ of test_llmd_smoke.py → "llmd-smoke"
     """
     return Path(file).stem.removeprefix("test_").replace("_", "-")[:63]
-
-
-def _debug_info_conditions(llmisvc: LLMInferenceService) -> str:
-    """Return debug info containing LLMISVC status conditions."""
-    conditions = llmisvc.instance.status.get("conditions", [])
-    lines = []
-    for condition in conditions:
-        line = f"  * {condition['type']}: {condition['status']}"
-        if condition.get("reason"):
-            line += f" reason={condition['reason']}"
-        if condition.get("message"):
-            line += f" message={condition['message']}"
-        lines.append(line)
-    return "\n".join(lines) or "  (no conditions)"
-
-
-def _debug_info_pod_statuses(llmisvc: LLMInferenceService) -> str:
-    """Return debug info containing pod phase, restart count, and waiting reasons."""
-    pods = list(
-        Pod.get(
-            client=llmisvc.client,
-            namespace=llmisvc.namespace,
-            label_selector=(
-                f"{Pod.ApiGroup.APP_KUBERNETES_IO}/part-of=llminferenceservice,"
-                f"{Pod.ApiGroup.APP_KUBERNETES_IO}/name={llmisvc.name}"
-            ),
-        )
-    )
-    if not pods:
-        return "  (no pods found)"
-
-    lines = []
-    for pod in pods:
-        phase = pod.instance.status.phase
-        all_statuses = (pod.instance.status.get("initContainerStatuses") or []) + (
-            pod.instance.status.get("containerStatuses") or []
-        )
-        restarts = sum(container_status.get("restartCount", 0) for container_status in all_statuses)
-        parts = [f"* pod={pod.name} phase={phase} restarts={restarts}"]
-
-        for container_status in all_statuses:
-            state = container_status.get("state") or {}
-            waiting = state.get("waiting")
-            if waiting:
-                # Container is currently waiting (e.g. CrashLoopBackOff, ImagePullBackOff)
-                reason = waiting.get("reason", "Unknown")
-                message = waiting.get("message", "")
-                parts.append(f"{reason}" + (f": {message}" if message else ""))
-            elif container_status.get("restartCount", 0) > 0:
-                # Container is running but has restarted — show why it last crashed
-                terminated = (container_status.get("lastState") or {}).get("terminated")
-                if terminated:
-                    parts.append(
-                        f" {container_status['name']}: last terminated"
-                        f" reason={terminated.get('reason', 'Unknown')}"
-                        f" exitCode={terminated.get('exitCode', '?')}"
-                    )
-
-        lines.append("  " + " | ".join(parts))
-    return "\n".join(lines)
-
-
-def _debug_info_events(llmisvc: LLMInferenceService) -> str:
-    """Collect recent warning events from the LLMISVC namespace."""
-    events = Event.list(
-        client=llmisvc.client,
-        namespace=llmisvc.namespace,
-        field_selector="type=Warning",
-        since_seconds=600,
-    )
-    if not events:
-        return "  (no warning events)"
-
-    lines = []
-    for event in events:
-        timestamp = str(event.get("lastTimestamp") or event.get("eventTime") or "")
-        if "T" in timestamp:
-            timestamp = timestamp.split("T")[1][:8]
-        reason = event.get("reason", "")
-        obj = event.get("involvedObject") or {}
-        obj_name = obj.get("name", "")
-        msg = " ".join(event.get("message", "").split())
-        count = event.get("count", 1)
-        count_str = f" (x{count})" if count and count > 1 else ""
-        lines.append(f"  * {reason}{count_str} — {msg} [{obj_name}][{timestamp}]")
-    return "\n".join(lines)
-
-
-def _log_llmisvc_debug_info(llmisvc: LLMInferenceService) -> None:
-    """Log debug info related to LLMISVC timeout: conditions, pod statuses, and events."""
-    name, ns = llmisvc.name, llmisvc.namespace
-    separator = "=" * 60
-    sections = [
-        f"\n{separator}",
-        f"  LLMISVC {name} timed out in {ns}",
-        separator,
-    ]
-    for label, func in [
-        ("Conditions", lambda: _debug_info_conditions(llmisvc)),
-        ("Pods", lambda: _debug_info_pod_statuses(llmisvc)),
-        ("Events", lambda: _debug_info_events(llmisvc)),
-    ]:
-        try:
-            sections.append(f"\n {label}:\n{func()}")
-        except Exception:  # noqa: BLE001
-            sections.append(f"\n {label}:\n  (failed to collect)")
-    sections.append(separator + "\n")
-    LOGGER.error("\n".join(sections))
 
 
 def wait_for_llmisvc(llmisvc: LLMInferenceService, timeout: int = 300) -> None:
@@ -313,20 +188,6 @@ def _resolve_ca_cert(client: DynamicClient) -> str:
         return get_ca_bundle(client=client, deployment_mode="raw")
     except Exception:  # noqa: BLE001
         return ""
-
-
-def _log_curl_command(url: str, body: str, token: bool, ca_cert: str | None) -> None:
-    """Log a human-readable curl command with token redacted and payload formatted."""
-    formatted_body = json.dumps(json.loads(body), indent=2)
-    auth_header = "\n  -H 'Authorization: Bearer ***REDACTED***'" if token else ""
-    tls_flag = f"\n  --cacert {ca_cert}" if ca_cert else "\n  --insecure"
-    LOGGER.info(
-        f"curl -s -X POST \\\n"
-        f"  -H 'Content-Type: application/json' \\\n"
-        f"  -H 'Accept: application/json' \\{auth_header}\n"
-        f"  -d '{formatted_body}' \\{tls_flag}\n"
-        f"  {url}"
-    )
 
 
 def _curl_request(
@@ -909,3 +770,184 @@ def _send_warm_up_request(llmisvc: LLMInferenceService, prompt: str) -> bool:
     status, body = send_chat_completions(llmisvc=llmisvc, prompt=prompt)
     LOGGER.info(f"RHOAIENG-55154: warm up returned {status}")
     return not (status == 503 and "no healthy upstream" in body)
+
+
+# ---------------------------------------------------------------------------
+#  Structured log helpers
+# ---------------------------------------------------------------------------
+
+
+def log_accelerator_selection(
+    config_name: str,
+    detected_nodes: list[dict],
+    selected: str,
+    total_gpus: int,
+    qualifying_nodes: int,
+) -> None:
+    node_lines = "\n".join(
+        f"  {res} x{count}  {node['name']}" for node in detected_nodes for res, count in node["resources"].items()
+    )
+    LOGGER.info(
+        f"\n{'=' * 60}\n"
+        f"  Accelerator selection — {config_name}\n"
+        f"{'=' * 60}\n"
+        f"{node_lines or '  (no accelerator nodes found)'}\n"
+        f"------------------------------------------------------------\n"
+        f"  Selected: {selected} ({total_gpus} GPU(s) on {qualifying_nodes} node(s))\n"
+        f"{'=' * 60}\n"
+    )
+
+
+def log_base_refs_selection(
+    accelerator: str,
+    topology: str,
+    name_regex: str,
+    result: BaseRefsResult | None = None,
+) -> None:
+    """Log base refs selection block. Pass result=None for NVIDIA default (no discovery)."""
+    sections = [
+        f"\n{'=' * 60}",
+        "  Base refs selection",
+        f"{'=' * 60}",
+        f"  Accelerator:  {accelerator}",
+        f"  Topology:     {topology}",
+        f"  Name regex:   {name_regex}",
+    ]
+
+    if result is None:
+        sections.append(f"{'-' * 60}")
+        sections.append("  Selected: (default CUDA — no CR override needed)")
+    else:
+        sections.append(f"  Namespace:    {result.namespace}")
+        sections.append(f"{'-' * 60}")
+        sections.append("  LLMInferenceServiceConfig CRs:")
+        if result.configs:
+            for c in result.configs:
+                sections.append(f"  {c.name}  accelerators={c.accelerators or '[]'}  topologies={c.topologies or '[]'}")
+        else:
+            sections.append("  (none)")
+        sections.append(f"{'-' * 60}")
+        sections.append(f"  Selected: {result.matched}" if result.matched else "  No match found")
+
+    sections.append(f"{'=' * 60}")
+    LOGGER.info("\n".join(sections) + "\n")
+
+
+def _log_curl_command(url: str, body: str, token: bool, ca_cert: str | None) -> None:
+    """Log a human-readable curl command with token redacted and payload formatted."""
+    formatted_body = json.dumps(json.loads(body), indent=2)
+    auth_header = "\n  -H 'Authorization: Bearer ***REDACTED***'" if token else ""
+    tls_flag = f"\n  --cacert {ca_cert}" if ca_cert else "\n  --insecure"
+    LOGGER.info(
+        f"curl -s -X POST \\\n"
+        f"  -H 'Content-Type: application/json' \\\n"
+        f"  -H 'Accept: application/json' \\{auth_header}\n"
+        f"  -d '{formatted_body}' \\{tls_flag}\n"
+        f"  {url}"
+    )
+
+
+def _debug_info_conditions(llmisvc: LLMInferenceService) -> str:
+    """Return debug info containing LLMISVC status conditions."""
+    conditions = llmisvc.instance.status.get("conditions", [])
+    lines = []
+    for condition in conditions:
+        line = f"  * {condition['type']}: {condition['status']}"
+        if condition.get("reason"):
+            line += f" reason={condition['reason']}"
+        if condition.get("message"):
+            line += f" message={condition['message']}"
+        lines.append(line)
+    return "\n".join(lines) or "  (no conditions)"
+
+
+def _debug_info_pod_statuses(llmisvc: LLMInferenceService) -> str:
+    """Return debug info containing pod phase, restart count, and waiting reasons."""
+    pods = list(
+        Pod.get(
+            client=llmisvc.client,
+            namespace=llmisvc.namespace,
+            label_selector=(
+                f"{Pod.ApiGroup.APP_KUBERNETES_IO}/part-of=llminferenceservice,"
+                f"{Pod.ApiGroup.APP_KUBERNETES_IO}/name={llmisvc.name}"
+            ),
+        )
+    )
+    if not pods:
+        return "  (no pods found)"
+
+    lines = []
+    for pod in pods:
+        phase = pod.instance.status.phase
+        all_statuses = (pod.instance.status.get("initContainerStatuses") or []) + (
+            pod.instance.status.get("containerStatuses") or []
+        )
+        restarts = sum(container_status.get("restartCount", 0) for container_status in all_statuses)
+        parts = [f"* pod={pod.name} phase={phase} restarts={restarts}"]
+
+        for container_status in all_statuses:
+            state = container_status.get("state") or {}
+            waiting = state.get("waiting")
+            if waiting:
+                reason = waiting.get("reason", "Unknown")
+                message = waiting.get("message", "")
+                parts.append(f"{reason}" + (f": {message}" if message else ""))
+            elif container_status.get("restartCount", 0) > 0:
+                terminated = (container_status.get("lastState") or {}).get("terminated")
+                if terminated:
+                    parts.append(
+                        f" {container_status['name']}: last terminated"
+                        f" reason={terminated.get('reason', 'Unknown')}"
+                        f" exitCode={terminated.get('exitCode', '?')}"
+                    )
+
+        lines.append("  " + " | ".join(parts))
+    return "\n".join(lines)
+
+
+def _debug_info_events(llmisvc: LLMInferenceService) -> str:
+    """Collect recent warning events from the LLMISVC namespace."""
+    events = Event.list(
+        client=llmisvc.client,
+        namespace=llmisvc.namespace,
+        field_selector="type=Warning",
+        since_seconds=600,
+    )
+    if not events:
+        return "  (no warning events)"
+
+    lines = []
+    for event in events:
+        timestamp = str(event.get("lastTimestamp") or event.get("eventTime") or "")
+        if "T" in timestamp:
+            timestamp = timestamp.split("T")[1][:8]
+        reason = event.get("reason", "")
+        obj = event.get("involvedObject") or {}
+        obj_name = obj.get("name", "")
+        msg = " ".join(event.get("message", "").split())
+        count = event.get("count", 1)
+        count_str = f" (x{count})" if count and count > 1 else ""
+        lines.append(f"  * {reason}{count_str} — {msg} [{obj_name}][{timestamp}]")
+    return "\n".join(lines)
+
+
+def _log_llmisvc_debug_info(llmisvc: LLMInferenceService) -> None:
+    """Log debug info related to LLMISVC timeout: conditions, pod statuses, and events."""
+    name, ns = llmisvc.name, llmisvc.namespace
+    separator = "=" * 60
+    sections = [
+        f"\n{separator}",
+        f"  LLMISVC {name} timed out in {ns}",
+        separator,
+    ]
+    for label, func in [
+        ("Conditions", lambda: _debug_info_conditions(llmisvc)),
+        ("Pods", lambda: _debug_info_pod_statuses(llmisvc)),
+        ("Events", lambda: _debug_info_events(llmisvc)),
+    ]:
+        try:
+            sections.append(f"\n {label}:\n{func()}")
+        except Exception:  # noqa: BLE001
+            sections.append(f"\n {label}:\n  (failed to collect)")
+    sections.append(separator + "\n")
+    LOGGER.error("\n".join(sections))

@@ -96,9 +96,6 @@ MINIO_UPLOADER_SECURITY_CONTEXT = {
 SIMPLE_MINIO_ACCESS_KEY: str = "minioadmin"
 SIMPLE_MINIO_SECRET_KEY: str = "minioadmin"
 SIMPLE_MINIO_BUCKET: str = "evalhub-data"
-SIMPLE_MINIO_IMAGE: str = (
-    "quay.io/opendatahub/minio@sha256:587abc14be9bbeed794473cf7290c40e377062f2f77f5e4e27742a77680f08e0"
-)
 
 # ServiceMonitor and metrics Service
 EVALHUB_METRICS_SERVICE_SUFFIX: str = "-metrics"
