@@ -12,7 +12,7 @@ from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.service_monitor import ServiceMonitor
 
-from tests.ai_safety.evalhub.constants import EVALHUB_METRICS_SERVICE_SUFFIX
+from tests.ai_safety.evalhub.constants import EVALHUB_METRICS_SERVICE_SUFFIX, EVALHUB_PLURAL
 from tests.ai_safety.evalhub.single_tenancy.constants import (
     EVALHUB_DISCOVERY_CM_NAME,
     EVALHUB_ST_CR_NAME,
@@ -353,6 +353,76 @@ class TestEvalHubSingleTenancyRBAC:
             f"No EvalHub ownerReference on RoleBinding '{EVALHUB_TENANT_ADMIN_BINDING_NAME}': {refs}"
         )
         assert evalhub_ref.name == evalhub_st_cr.name
+
+    def test_tenant_admin_role_grants_evalhubs_read(
+        self,
+        admin_client: DynamicClient,
+        model_namespace: Namespace,
+        evalhub_st_cr: SingleTenantEvalHub,
+        evalhub_st_deployment: Deployment,
+    ) -> None:
+        """Given: a single-tenancy EvalHub instance in a workload namespace.
+
+        When: the policy rules of the evalhub-tenant-admin Role are inspected.
+
+        Then: a rule granting get and list on evalhubs exists, so the BFF can
+        look up Status.URL directly from the EvalHub CR without a discovery ConfigMap.
+        """
+        role = Role(
+            client=admin_client,
+            name=EVALHUB_TENANT_ADMIN_ROLE_NAME,
+            namespace=model_namespace.name,
+            ensure_exists=True,
+        )
+        evalhubs_rule = next(
+            (
+                rule
+                for rule in (role.instance.rules or [])
+                if EVALHUB_TRUSTYAI_API_GROUP in (rule.apiGroups or []) and EVALHUB_PLURAL in (rule.resources or [])
+            ),
+            None,
+        )
+        assert evalhubs_rule is not None, (
+            f"Role '{EVALHUB_TENANT_ADMIN_ROLE_NAME}' has no rule for '{EVALHUB_TRUSTYAI_API_GROUP}/{EVALHUB_PLURAL}'"
+        )
+        verbs = list(evalhubs_rule.verbs or [])
+        assert "get" in verbs, f"Expected 'get' in evalhubs rule verbs, got: {verbs}"
+        assert "list" in verbs, f"Expected 'list' in evalhubs rule verbs, got: {verbs}"
+
+    def test_tenant_user_role_grants_evalhubs_read(
+        self,
+        admin_client: DynamicClient,
+        model_namespace: Namespace,
+        evalhub_st_cr: SingleTenantEvalHub,
+        evalhub_st_deployment: Deployment,
+    ) -> None:
+        """Given: a single-tenancy EvalHub instance in a workload namespace.
+
+        When: the policy rules of the evalhub-user Role are inspected.
+
+        Then: a rule granting get and list on evalhubs exists, so the BFF can
+        look up Status.URL directly from the EvalHub CR without a discovery ConfigMap.
+        """
+        role = Role(
+            client=admin_client,
+            name=EVALHUB_USER_ROLE_NAME,
+            namespace=model_namespace.name,
+            ensure_exists=True,
+        )
+        evalhubs_rule = next(
+            (
+                rule
+                for rule in (role.instance.rules or [])
+                if EVALHUB_TRUSTYAI_API_GROUP in (rule.apiGroups or []) and EVALHUB_PLURAL in (rule.resources or [])
+            ),
+            None,
+        )
+        assert evalhubs_rule is not None, (
+            f"Role '{EVALHUB_USER_ROLE_NAME}' has no rule for '{EVALHUB_TRUSTYAI_API_GROUP}/{EVALHUB_PLURAL}'"
+        )
+        verbs = list(evalhubs_rule.verbs or [])
+        assert "get" in verbs, f"Expected 'get' in evalhubs rule verbs, got: {verbs}"
+        assert "list" in verbs, f"Expected 'list' in evalhubs rule verbs, got: {verbs}"
 
 
 @pytest.mark.parametrize(
