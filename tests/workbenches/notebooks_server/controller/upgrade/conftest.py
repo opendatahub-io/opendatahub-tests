@@ -14,18 +14,42 @@ from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.service import Service
 from pytest_testconfig import config as py_config
-from timeout_sampler import TimeoutExpiredError
 
+from tests.workbenches.notebooks_server.controller.upgrade.kueue_constants import (
+    NEW_KUEUE_NOTEBOOK_NAME,
+    UPGRADE_KUEUE_BASELINE_CM_NAME,
+    UPGRADE_KUEUE_CLUSTER_QUEUE_NAME,
+    UPGRADE_KUEUE_HARDWARE_PROFILE_NAME,
+    UPGRADE_KUEUE_LOCAL_QUEUE_NAME,
+    UPGRADE_KUEUE_NAMESPACE,
+    UPGRADE_KUEUE_NOTEBOOK_NAME,
+    UPGRADE_KUEUE_RESOURCE_FLAVOR_NAME,
+    UPGRADE_KUEUE_STOPPED_NOTEBOOK_NAME,
+)
 from tests.workbenches.notebooks_server.controller.utils import (
+    KUBEFLOW_STOPPED_ANNOTATION,
     WORKBENCH_TRUSTED_CA_BUNDLE_NAME,
+    HardwareProfile,
     MutatingWebhookConfiguration,
     StatefulSet,
     build_notebook_dict,
     resolve_notebook_image,
+    wait_for_notebook_pod_ready,
 )
 from utilities import constants
-from utilities.general import collect_pod_information
 from utilities.infra import create_ns
+from utilities.kueue_utils import (
+    KUEUE_CLUSTER_QUEUE_LABEL,
+    KUEUE_LOCAL_QUEUE_LABEL,
+    KUEUE_MANAGED_LABEL,
+    KUEUE_QUEUE_NAME_LABEL,
+    ClusterQueue,
+    LocalQueue,
+    ResourceFlavor,
+    create_cluster_queue,
+    create_local_queue,
+    create_resource_flavor,
+)
 from utilities.resources.http_route import HTTPRoute
 from utilities.resources.reference_grant import ReferenceGrant
 
@@ -154,24 +178,7 @@ def upgrade_notebook_pod(
     if pytestconfig.option.post_upgrade:
         return notebook_pod
 
-    try:
-        notebook_pod.wait()
-        notebook_pod.wait_for_condition(
-            condition=Pod.Condition.READY,
-            status=Pod.Condition.Status.TRUE,
-            timeout=300,
-        )
-    except (TimeoutError, TimeoutExpiredError) as e:
-        if notebook_pod.exists:
-            collect_pod_information(notebook_pod)
-            raise AssertionError(
-                f"Pod '{upgrade_notebook.name}-0' failed to reach Ready state "
-                f"within (300) seconds.\n"
-                f"Original Error: {e}\n"
-                f"Pod information collected to must-gather directory for debugging."
-            ) from e
-
-        raise AssertionError(f"Pod '{upgrade_notebook.name}-0' was not created. Check notebook controller logs.") from e
+    wait_for_notebook_pod_ready(notebook_pod=notebook_pod, context="Upgrade notebook")
 
     return notebook_pod
 
@@ -400,32 +407,17 @@ def stopped_notebook_pre_upgrade_shutdown(
         name=f"{stopped_notebook.name}-0",
     )
 
-    try:
-        notebook_pod.wait()
-        notebook_pod.wait_for_condition(
-            condition=Pod.Condition.READY,
-            status=Pod.Condition.Status.TRUE,
-            timeout=300,
-        )
-    except (TimeoutError, TimeoutExpiredError) as e:
-        if notebook_pod.exists:
-            collect_pod_information(notebook_pod)
-            raise AssertionError(
-                f"Pod '{stopped_notebook.name}-0' failed to reach Ready state "
-                f"before stop. Cannot proceed with upgrade test. Original error: {e}"
-            ) from e
-
-        raise AssertionError(f"Pod '{stopped_notebook.name}-0' was not created. Check notebook controller logs.") from e
+    wait_for_notebook_pod_ready(notebook_pod=notebook_pod, context="Stopped notebook (pre-stop)")
 
     stop_timestamp = datetime.now(tz=UTC).strftime(format="%Y-%m-%dT%H:%M:%SZ")
     stopped_notebook.update({
         "metadata": {
             "name": stopped_notebook.name,
-            "annotations": {"kubeflow-resource-stopped": stop_timestamp},
+            "annotations": {KUBEFLOW_STOPPED_ANNOTATION: stop_timestamp},
         }
     })
     LOGGER.info(
-        f"Stopped notebook '{stopped_notebook.name}' via kubeflow-resource-stopped annotation "
+        f"Stopped notebook '{stopped_notebook.name}' via {KUBEFLOW_STOPPED_ANNOTATION} annotation "
         f"with timestamp '{stop_timestamp}'"
     )
 
@@ -511,7 +503,7 @@ def capture_notebook_baseline(
     )
     httproute_generation = upgrade_notebook_httproute.instance.metadata.generation
 
-    stopped_annotation = stopped_notebook.instance.metadata.annotations.get("kubeflow-resource-stopped")
+    stopped_annotation = stopped_notebook.instance.metadata.annotations.get(KUBEFLOW_STOPPED_ANNOTATION)
 
     assert workbench_trusted_ca_bundle.exists, (
         f"ConfigMap '{WORKBENCH_TRUSTED_CA_BUNDLE_NAME}' not found in "
@@ -626,25 +618,7 @@ def new_notebook_pod(
         name=f"{new_notebook.name}-0",
     )
 
-    try:
-        notebook_pod.wait()
-        notebook_pod.wait_for_condition(
-            condition=Pod.Condition.READY,
-            status=Pod.Condition.Status.TRUE,
-            timeout=300,
-        )
-    except (TimeoutError, TimeoutExpiredError) as e:
-        if notebook_pod.exists:
-            collect_pod_information(notebook_pod)
-            raise AssertionError(
-                f"New notebook pod '{new_notebook.name}-0' failed to reach Ready state "
-                f"within (300) seconds on upgraded platform.\n"
-                f"Original error: {e}"
-            ) from e
-
-        raise AssertionError(
-            f"New notebook pod '{new_notebook.name}-0' was not created on upgraded platform.\nOriginal error: {e}"
-        ) from e
+    wait_for_notebook_pod_ready(notebook_pod=notebook_pod, context="New notebook (post-upgrade)")
 
     return notebook_pod
 
@@ -726,3 +700,561 @@ def new_notebook_auth_delegator_crb(
         client=admin_client,
         name=f"{new_notebook.name}-rbac-{new_notebook.namespace}-auth-delegator",
     )
+
+
+# ---------------------------------------------------------------------------
+# Kueue Upgrade Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session")
+def upgrade_kueue_namespace(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    unprivileged_client: DynamicClient,
+    teardown_resources: bool,
+) -> Generator[Namespace, Any, Any]:
+    """Namespace with kueue.openshift.io/managed=true for kueue upgrade tests."""
+    ns = Namespace(client=unprivileged_client, name=UPGRADE_KUEUE_NAMESPACE)
+
+    if pytestconfig.option.post_upgrade:
+        yield ns
+        if teardown_resources:
+            ns.client = admin_client
+            ns.clean_up()
+    else:
+        with create_ns(
+            admin_client=admin_client,
+            unprivileged_client=unprivileged_client,
+            name=UPGRADE_KUEUE_NAMESPACE,
+            add_kueue_label=True,
+            teardown=teardown_resources,
+        ) as ns:
+            yield ns
+
+
+@pytest.fixture(scope="session")
+def upgrade_kueue_resource_flavor(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    teardown_resources: bool,
+) -> Generator[ResourceFlavor, Any, Any]:
+    """ResourceFlavor for kueue upgrade tests."""
+    if pytestconfig.option.post_upgrade:
+        rf = ResourceFlavor(
+            client=admin_client,
+            name=UPGRADE_KUEUE_RESOURCE_FLAVOR_NAME,
+        )
+        yield rf
+        if teardown_resources:
+            rf.clean_up()
+    else:
+        with create_resource_flavor(
+            client=admin_client,
+            name=UPGRADE_KUEUE_RESOURCE_FLAVOR_NAME,
+            teardown=teardown_resources,
+        ) as resource_flavor:
+            yield resource_flavor
+
+
+@pytest.fixture(scope="session")
+def upgrade_kueue_cluster_queue(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    upgrade_kueue_resource_flavor: ResourceFlavor,
+    teardown_resources: bool,
+) -> Generator[ClusterQueue, Any, Any]:
+    """ClusterQueue for kueue upgrade tests with generous quotas."""
+    if pytestconfig.option.post_upgrade:
+        cq = ClusterQueue(
+            client=admin_client,
+            name=UPGRADE_KUEUE_CLUSTER_QUEUE_NAME,
+        )
+        yield cq
+        if teardown_resources:
+            cq.clean_up()
+    else:
+        resource_groups = [
+            {
+                "coveredResources": ["cpu", "memory"],
+                "flavors": [
+                    {
+                        "name": upgrade_kueue_resource_flavor.name,
+                        "resources": [
+                            {"name": "cpu", "nominalQuota": "4"},
+                            {"name": "memory", "nominalQuota": "8Gi"},
+                        ],
+                    }
+                ],
+            }
+        ]
+
+        with create_cluster_queue(
+            client=admin_client,
+            name=UPGRADE_KUEUE_CLUSTER_QUEUE_NAME,
+            resource_groups=resource_groups,
+            namespace_selector={"matchLabels": {"kubernetes.io/metadata.name": UPGRADE_KUEUE_NAMESPACE}},
+            teardown=teardown_resources,
+        ) as cluster_queue:
+            yield cluster_queue
+
+
+@pytest.fixture(scope="session")
+def upgrade_kueue_local_queue(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    upgrade_kueue_namespace: Namespace,
+    upgrade_kueue_cluster_queue: ClusterQueue,
+    teardown_resources: bool,
+) -> Generator[LocalQueue, Any, Any]:
+    """LocalQueue for kueue upgrade tests."""
+    if pytestconfig.option.post_upgrade:
+        lq = LocalQueue(
+            client=admin_client,
+            name=UPGRADE_KUEUE_LOCAL_QUEUE_NAME,
+            namespace=upgrade_kueue_namespace.name,
+            cluster_queue=UPGRADE_KUEUE_CLUSTER_QUEUE_NAME,
+        )
+        yield lq
+        if teardown_resources:
+            lq.clean_up()
+    else:
+        with create_local_queue(
+            client=admin_client,
+            name=UPGRADE_KUEUE_LOCAL_QUEUE_NAME,
+            cluster_queue=upgrade_kueue_cluster_queue.name,
+            namespace=upgrade_kueue_namespace.name,
+            teardown=teardown_resources,
+        ) as local_queue:
+            yield local_queue
+
+
+@pytest.fixture(scope="session")
+def upgrade_kueue_hardware_profile(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    upgrade_kueue_namespace: Namespace,
+    upgrade_kueue_local_queue: LocalQueue,
+    teardown_resources: bool,
+) -> Generator[HardwareProfile, Any, Any]:
+    """HardwareProfile with Kueue queue-based scheduling for upgrade tests."""
+    hwp_kwargs = {
+        "client": admin_client,
+        "name": UPGRADE_KUEUE_HARDWARE_PROFILE_NAME,
+        "namespace": upgrade_kueue_namespace.name,
+    }
+
+    if pytestconfig.option.post_upgrade:
+        hwp = HardwareProfile(**hwp_kwargs)
+        yield hwp
+        if teardown_resources:
+            hwp.clean_up()
+    else:
+        kind_dict: dict[str, Any] = {
+            "apiVersion": "infrastructure.opendatahub.io/v1",
+            "kind": "HardwareProfile",
+            "metadata": {
+                "name": UPGRADE_KUEUE_HARDWARE_PROFILE_NAME,
+                "namespace": upgrade_kueue_namespace.name,
+            },
+            "spec": {
+                "identifiers": [
+                    {
+                        "displayName": "CPU",
+                        "identifier": "cpu",
+                        "minCount": "500m",
+                        "maxCount": "2",
+                        "defaultCount": "1",
+                        "resourceType": "CPU",
+                    },
+                    {
+                        "displayName": "Memory",
+                        "identifier": "memory",
+                        "minCount": "512Mi",
+                        "maxCount": "4Gi",
+                        "defaultCount": "1Gi",
+                        "resourceType": "Memory",
+                    },
+                ],
+                "scheduling": {
+                    "type": "Queue",
+                    "kueue": {
+                        "localQueueName": upgrade_kueue_local_queue.name,
+                    },
+                },
+            },
+        }
+
+        with HardwareProfile(client=admin_client, kind_dict=kind_dict, teardown=teardown_resources) as hwp:
+            yield hwp
+
+
+@pytest.fixture(scope="session")
+def upgrade_kueue_notebook_pvc(
+    pytestconfig: pytest.Config,
+    unprivileged_client: DynamicClient,
+    upgrade_kueue_namespace: Namespace,
+    teardown_resources: bool,
+) -> Generator[PersistentVolumeClaim, Any, Any]:
+    """PVC for the kueue upgrade notebook."""
+    pvc_kwargs = {
+        "client": unprivileged_client,
+        "name": UPGRADE_KUEUE_NOTEBOOK_NAME,
+        "namespace": upgrade_kueue_namespace.name,
+    }
+
+    if pytestconfig.option.post_upgrade:
+        yield PersistentVolumeClaim(**pvc_kwargs)
+    else:
+        with PersistentVolumeClaim(
+            **pvc_kwargs,
+            label={constants.Labels.OpenDataHub.DASHBOARD: "true"},
+            accessmodes=PersistentVolumeClaim.AccessMode.RWO,
+            size="1Gi",
+            volume_mode=PersistentVolumeClaim.VolumeMode.FILE,
+            teardown=teardown_resources,
+        ) as pvc:
+            yield pvc
+
+
+@pytest.fixture(scope="session")
+def upgrade_kueue_notebook(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    unprivileged_client: DynamicClient,
+    upgrade_kueue_namespace: Namespace,
+    upgrade_kueue_notebook_pvc: PersistentVolumeClaim,
+    upgrade_kueue_hardware_profile: HardwareProfile,
+    upgrade_notebook_image: str,
+    teardown_resources: bool,
+) -> Generator[Notebook, Any, Any]:
+    """Notebook CR referencing a Kueue-enabled HardwareProfile for upgrade tests."""
+    notebook_kwargs = {
+        "client": unprivileged_client,
+        "name": UPGRADE_KUEUE_NOTEBOOK_NAME,
+        "namespace": upgrade_kueue_namespace.name,
+    }
+
+    if pytestconfig.option.post_upgrade:
+        nb = Notebook(**notebook_kwargs)
+        yield nb
+        if teardown_resources:
+            nb.client = admin_client
+            nb.clean_up()
+    else:
+        notebook_dict = build_notebook_dict(
+            namespace=upgrade_kueue_namespace.name,
+            name=UPGRADE_KUEUE_NOTEBOOK_NAME,
+            image_path=upgrade_notebook_image,
+            extra_annotations={
+                "opendatahub.io/hardware-profile-name": upgrade_kueue_hardware_profile.name,
+            },
+            resources={},
+        )
+
+        with Notebook(client=unprivileged_client, kind_dict=notebook_dict, teardown=teardown_resources) as nb:
+            yield nb
+
+
+@pytest.fixture(scope="session")
+def upgrade_kueue_notebook_pod(
+    pytestconfig: pytest.Config,
+    unprivileged_client: DynamicClient,
+    upgrade_kueue_notebook: Notebook,
+) -> Pod:
+    """Kueue-managed notebook pod for upgrade tests.
+
+    Pre-upgrade: waits for Ready state.
+    Post-upgrade: wraps the existing pod.
+    """
+    notebook_pod = Pod(
+        client=unprivileged_client,
+        namespace=upgrade_kueue_notebook.namespace,
+        name=f"{upgrade_kueue_notebook.name}-0",
+    )
+
+    if pytestconfig.option.post_upgrade:
+        return notebook_pod
+
+    wait_for_notebook_pod_ready(notebook_pod=notebook_pod, context="Kueue notebook")
+
+    return notebook_pod
+
+
+@pytest.fixture(scope="session")
+def upgrade_kueue_notebook_statefulset(
+    unprivileged_client: DynamicClient,
+    upgrade_kueue_notebook: Notebook,
+) -> StatefulSet:
+    """StatefulSet owned by the kueue Notebook CR."""
+    return StatefulSet(
+        client=unprivileged_client,
+        name=upgrade_kueue_notebook.name,
+        namespace=upgrade_kueue_notebook.namespace,
+    )
+
+
+@pytest.fixture(scope="session")
+def upgrade_kueue_stopped_notebook_pvc(
+    pytestconfig: pytest.Config,
+    unprivileged_client: DynamicClient,
+    upgrade_kueue_namespace: Namespace,
+    teardown_resources: bool,
+) -> Generator[PersistentVolumeClaim, Any, Any]:
+    """PVC for the stopped kueue notebook."""
+    pvc_kwargs = {
+        "client": unprivileged_client,
+        "name": UPGRADE_KUEUE_STOPPED_NOTEBOOK_NAME,
+        "namespace": upgrade_kueue_namespace.name,
+    }
+
+    if pytestconfig.option.post_upgrade:
+        yield PersistentVolumeClaim(**pvc_kwargs)
+    else:
+        with PersistentVolumeClaim(
+            **pvc_kwargs,
+            label={constants.Labels.OpenDataHub.DASHBOARD: "true"},
+            accessmodes=PersistentVolumeClaim.AccessMode.RWO,
+            size="1Gi",
+            volume_mode=PersistentVolumeClaim.VolumeMode.FILE,
+            teardown=teardown_resources,
+        ) as pvc:
+            yield pvc
+
+
+@pytest.fixture(scope="session")
+def upgrade_kueue_stopped_notebook(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    unprivileged_client: DynamicClient,
+    upgrade_kueue_namespace: Namespace,
+    upgrade_kueue_stopped_notebook_pvc: PersistentVolumeClaim,
+    upgrade_kueue_hardware_profile: HardwareProfile,
+    upgrade_notebook_image: str,
+    teardown_resources: bool,
+) -> Generator[Notebook, Any, Any]:
+    """Notebook CR referencing a Kueue-enabled HardwareProfile, stopped before upgrade."""
+    notebook_kwargs = {
+        "client": unprivileged_client,
+        "name": UPGRADE_KUEUE_STOPPED_NOTEBOOK_NAME,
+        "namespace": upgrade_kueue_namespace.name,
+    }
+
+    if pytestconfig.option.post_upgrade:
+        nb = Notebook(**notebook_kwargs)
+        yield nb
+        if teardown_resources:
+            nb.client = admin_client
+            nb.clean_up()
+    else:
+        notebook_dict = build_notebook_dict(
+            namespace=upgrade_kueue_namespace.name,
+            name=UPGRADE_KUEUE_STOPPED_NOTEBOOK_NAME,
+            image_path=upgrade_notebook_image,
+            extra_annotations={
+                "opendatahub.io/hardware-profile-name": upgrade_kueue_hardware_profile.name,
+            },
+            resources={},
+        )
+
+        with Notebook(client=unprivileged_client, kind_dict=notebook_dict, teardown=teardown_resources) as nb:
+            yield nb
+
+
+@pytest.fixture(scope="session")
+def upgrade_kueue_stopped_notebook_statefulset(
+    unprivileged_client: DynamicClient,
+    upgrade_kueue_stopped_notebook: Notebook,
+) -> StatefulSet:
+    """StatefulSet for the stopped kueue notebook."""
+    return StatefulSet(
+        client=unprivileged_client,
+        name=upgrade_kueue_stopped_notebook.name,
+        namespace=upgrade_kueue_stopped_notebook.namespace,
+    )
+
+
+@pytest.fixture(scope="session")
+def upgrade_kueue_stopped_pre_upgrade_shutdown(
+    pytestconfig: pytest.Config,
+    unprivileged_client: DynamicClient,
+    upgrade_kueue_stopped_notebook: Notebook,
+    upgrade_kueue_stopped_notebook_statefulset: StatefulSet,
+) -> None:
+    """Pre-upgrade: stop the kueue notebook, verify pod terminated and replicas=0.
+
+    No-op during post-upgrade runs.
+    """
+    if pytestconfig.option.post_upgrade:
+        return
+
+    notebook_pod = Pod(
+        client=unprivileged_client,
+        namespace=upgrade_kueue_stopped_notebook.namespace,
+        name=f"{upgrade_kueue_stopped_notebook.name}-0",
+    )
+
+    wait_for_notebook_pod_ready(notebook_pod=notebook_pod, context="Kueue stopped notebook (pre-stop)")
+
+    stop_timestamp = datetime.now(tz=UTC).strftime(format="%Y-%m-%dT%H:%M:%SZ")
+    upgrade_kueue_stopped_notebook.update({
+        "metadata": {
+            "name": upgrade_kueue_stopped_notebook.name,
+            "annotations": {KUBEFLOW_STOPPED_ANNOTATION: stop_timestamp},
+        }
+    })
+    LOGGER.info(f"Stopped kueue notebook '{upgrade_kueue_stopped_notebook.name}' with timestamp '{stop_timestamp}'")
+
+    notebook_pod.wait_deleted(timeout=120)
+    LOGGER.info(f"Pod '{notebook_pod.name}' terminated after stop annotation")
+
+    replicas = upgrade_kueue_stopped_notebook_statefulset.instance.spec.replicas
+    assert replicas == 0, (
+        f"StatefulSet '{upgrade_kueue_stopped_notebook_statefulset.name}' "
+        f"has {replicas} replicas after stop, expected 0"
+    )
+
+
+@pytest.fixture(scope="session")
+def capture_kueue_baseline(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    upgrade_kueue_notebook: Notebook,
+    upgrade_kueue_notebook_pod: Pod,
+    upgrade_kueue_resource_flavor: ResourceFlavor,
+    upgrade_kueue_cluster_queue: ClusterQueue,
+    upgrade_kueue_local_queue: LocalQueue,
+    upgrade_kueue_stopped_notebook: Notebook,
+    upgrade_kueue_stopped_pre_upgrade_shutdown: None,
+) -> None:
+    """Capture kueue notebook resource metadata to a ConfigMap before upgrade.
+
+    No-op during post-upgrade runs.
+    """
+    if pytestconfig.option.post_upgrade:
+        return
+
+    creation_timestamp = upgrade_kueue_notebook_pod.instance.metadata.creationTimestamp
+    assert creation_timestamp, f"Kueue notebook pod '{upgrade_kueue_notebook_pod.name}' has no creationTimestamp"
+
+    pod_labels = upgrade_kueue_notebook_pod.instance.metadata.labels or {}
+    notebook_generation = upgrade_kueue_notebook.instance.metadata.generation
+
+    for _label in (KUEUE_MANAGED_LABEL, KUEUE_QUEUE_NAME_LABEL, KUEUE_CLUSTER_QUEUE_LABEL, KUEUE_LOCAL_QUEUE_LABEL):
+        assert pod_labels.get(_label), (
+            f"Pre-upgrade kueue pod '{upgrade_kueue_notebook_pod.name}' missing label '{_label}'; "
+            f"refusing to capture an empty baseline. Labels: {list(pod_labels.keys())}"
+        )
+
+    stopped_annotation = upgrade_kueue_stopped_notebook.instance.metadata.annotations.get(KUBEFLOW_STOPPED_ANNOTATION)
+
+    baseline = {
+        "pod_creation_timestamp": creation_timestamp,
+        "pod_kueue_managed_label": pod_labels.get(KUEUE_MANAGED_LABEL, ""),
+        "pod_queue_name_label": pod_labels.get(KUEUE_QUEUE_NAME_LABEL, ""),
+        "pod_cluster_queue_label": pod_labels.get(KUEUE_CLUSTER_QUEUE_LABEL, ""),
+        "pod_local_queue_label": pod_labels.get(KUEUE_LOCAL_QUEUE_LABEL, ""),
+        "notebook_generation": notebook_generation,
+        "cluster_queue_name": UPGRADE_KUEUE_CLUSTER_QUEUE_NAME,
+        "local_queue_name": UPGRADE_KUEUE_LOCAL_QUEUE_NAME,
+        "resource_flavor_name": UPGRADE_KUEUE_RESOURCE_FLAVOR_NAME,
+        "stopped_annotation_value": stopped_annotation,
+    }
+
+    ConfigMap(
+        client=admin_client,
+        name=UPGRADE_KUEUE_BASELINE_CM_NAME,
+        namespace=UPGRADE_KUEUE_NAMESPACE,
+        data={"baseline": json.dumps(baseline)},
+    ).deploy()
+
+    LOGGER.info(f"Saved kueue upgrade baseline: {baseline}")
+
+
+@pytest.fixture(scope="session")
+def upgrade_kueue_baseline(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+) -> dict[str, Any]:
+    """Load the pre-upgrade kueue baseline from the ConfigMap.
+
+    Returns an empty dict during pre-upgrade runs.
+    """
+    if not pytestconfig.option.post_upgrade:
+        return {}
+
+    cm = ConfigMap(
+        client=admin_client,
+        name=UPGRADE_KUEUE_BASELINE_CM_NAME,
+        namespace=UPGRADE_KUEUE_NAMESPACE,
+    )
+
+    assert cm.exists, (
+        f"Kueue baseline ConfigMap '{UPGRADE_KUEUE_BASELINE_CM_NAME}' not found in "
+        f"namespace '{UPGRADE_KUEUE_NAMESPACE}'. Ensure pre-upgrade tests ran successfully."
+    )
+
+    cm_data = cm.instance.data or {}
+    raw = cm_data.get("baseline")
+    assert raw, f"Kueue baseline ConfigMap '{UPGRADE_KUEUE_BASELINE_CM_NAME}' has no 'baseline' key."
+
+    return json.loads(raw)
+
+
+@pytest.fixture(scope="session")
+def new_kueue_notebook_pvc(
+    unprivileged_client: DynamicClient,
+    upgrade_kueue_namespace: Namespace,
+) -> Generator[PersistentVolumeClaim, Any, Any]:
+    """PVC for the post-upgrade new kueue notebook."""
+    with PersistentVolumeClaim(
+        client=unprivileged_client,
+        name=NEW_KUEUE_NOTEBOOK_NAME,
+        namespace=upgrade_kueue_namespace.name,
+        label={constants.Labels.OpenDataHub.DASHBOARD: "true"},
+        accessmodes=PersistentVolumeClaim.AccessMode.RWO,
+        size="1Gi",
+        volume_mode=PersistentVolumeClaim.VolumeMode.FILE,
+        teardown=True,
+    ) as pvc:
+        yield pvc
+
+
+@pytest.fixture(scope="session")
+def new_kueue_notebook(
+    unprivileged_client: DynamicClient,
+    upgrade_kueue_namespace: Namespace,
+    upgrade_kueue_hardware_profile: HardwareProfile,
+    upgrade_notebook_image: str,
+    new_kueue_notebook_pvc: PersistentVolumeClaim,
+) -> Generator[Notebook, Any, Any]:
+    """Fresh kueue-managed Notebook CR created post-upgrade via HardwareProfile."""
+    notebook_dict = build_notebook_dict(
+        namespace=upgrade_kueue_namespace.name,
+        name=NEW_KUEUE_NOTEBOOK_NAME,
+        image_path=upgrade_notebook_image,
+        extra_annotations={
+            "opendatahub.io/hardware-profile-name": upgrade_kueue_hardware_profile.name,
+        },
+        resources={},
+    )
+
+    with Notebook(client=unprivileged_client, kind_dict=notebook_dict, teardown=True) as nb:
+        yield nb
+
+
+@pytest.fixture(scope="session")
+def new_kueue_notebook_pod(
+    unprivileged_client: DynamicClient,
+    new_kueue_notebook: Notebook,
+) -> Pod:
+    """Pod for the post-upgrade new kueue notebook; waits for Ready state."""
+    notebook_pod = Pod(
+        client=unprivileged_client,
+        namespace=new_kueue_notebook.namespace,
+        name=f"{new_kueue_notebook.name}-0",
+    )
+
+    wait_for_notebook_pod_ready(notebook_pod=notebook_pod, context="New kueue notebook (post-upgrade)")
+
+    return notebook_pod
