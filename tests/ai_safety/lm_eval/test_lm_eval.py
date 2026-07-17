@@ -7,6 +7,7 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 
+from tests.ai_safety.image_constants import AiSafetyImages
 from tests.ai_safety.lm_eval.constants import (
     ARC_EASY_DATASET_IMAGE,
     CUSTOM_UNITXT_TASK_DATA,
@@ -190,10 +191,7 @@ def test_verify_lmeval_pod_images(lmevaljob_s3_offline_pod, trustyai_operator_co
         pytest.param(
             {"name": "test-lmeval-local-offline-unitxt"},
             OCIRegistry.PodConfig.REGISTRY_BASE_CONFIG,
-            {
-                "dataset_image": "quay.io/trustyai_testing/lmeval-assets-20newsgroups"
-                "@sha256:106023a7ee0c93afad5d27ae50130809ccc232298b903c8b12ea452e9faafce2"
-            },
+            {"dataset_image": AiSafetyImages.NEWSGROUPS_DATASET},
             {
                 "task_list": {
                     "taskRecipes": [
