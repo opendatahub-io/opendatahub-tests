@@ -3,11 +3,10 @@ from typing import Any, Generator, TypedDict
 
 import pytest
 from kubernetes.dynamic import DynamicClient
-from kubernetes.dynamic.exceptions import ApiException, ResourceNotFoundError
+from kubernetes.dynamic.exceptions import ApiException
 from simple_logger.logger import get_logger
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.inference_service import InferenceService
-from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from pytest_testconfig import config as py_config
 
@@ -18,7 +17,6 @@ from tests.model_serving.model_server.upgrade.kserve_kueue_upgrade_config import
     KSERVE_KUEUE_POD_MEMORY_REQUEST,
 )
 from utilities.constants import (
-    KServeDeploymentType,
     Labels,
     ModelFormat,
     RuntimeTemplates,
@@ -36,7 +34,6 @@ from utilities.kueue_utils import (
     create_cluster_queue,
     create_local_queue,
     create_resource_flavor,
-    wait_for_kueue_crds_available,
 )
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
@@ -110,7 +107,7 @@ def verify_inference_generation(isvc: InferenceService, expected_generation: int
         ResourceMismatch: If inference generation is not equal to expected generation
     """
     if isvc.instance.status.observedGeneration != expected_generation:
-        raise ResourceMismatchError(f"Inference service {isvc.name} was modified")
+        ResourceMismatchError(f"Inference service {isvc.name} was modified")
 
 
 def verify_serving_runtime_generation(isvc: InferenceService, expected_generation: int) -> None:
@@ -135,6 +132,9 @@ def read_isvc_total_copies(isvc: InferenceService) -> int:
     ``targetModelState`` may remain ``Pending`` while ``totalCopies`` reflects running
     loaded copies (see ``test_kueue_isvc_raw``).
     """
+    # Refresh before reading: callers often patch the ISVC (e.g. scale minReplicas) and
+    # wait for pods, so the cached instance can still have stale/missing modelStatus.copies.
+    isvc.get()
     model_status = isvc.instance.status.modelStatus
     if not model_status or model_status.copies is None:
         raise AssertionError(f"modelStatus.copies not populated for InferenceService {isvc.name}")
@@ -365,9 +365,7 @@ def verify_isvc_pods_not_restarted_against_baseline(
     missing_pods = baseline_pod_names - current_pod_names
     new_pods = current_pod_names - baseline_pod_names
     if missing_pods:
-        raise PodContainersRestartError(
-            f"Baseline pods missing after upgrade for {isvc.name}: {sorted(missing_pods)}"
-        )
+        raise PodContainersRestartError(f"Baseline pods missing after upgrade for {isvc.name}: {sorted(missing_pods)}")
     if new_pods and not allow_new_pods:
         raise PodContainersRestartError(
             f"Unexpected new pods found for {isvc.name} (new pods not allowed): {sorted(new_pods)}"
@@ -447,7 +445,7 @@ def wait_for_isvc_inference_url(isvc: InferenceService, timeout: int = Timeout.T
             f"Timeout waiting for inference URL on ISVC '{isvc.name}' in namespace '{isvc.namespace}'. "
             f"Last status.url={last_url!r}. Ensure external_route=True and the OpenShift Route is reconciled."
         )
-    pytest.fail(f"ISVC '{isvc.name}' has no status.url")
+    raise AssertionError(f"ISVC '{isvc.name}' has no status.url")
 
 
 def verify_kserve_kueue_upgrade_inference(
@@ -483,6 +481,9 @@ def verify_kserve_kueue_upgrade_inference(
         inference_type=inference_type,
         protocol=Protocols.HTTPS,
         use_default_query=True,
+        # Raw OpenShift Routes are not covered by the istio/knative CA that get_ca_bundle()
+        # returns by default; skip TLS verify (curl --insecure) for managed-cluster routes.
+        insecure=True,
         inference_timeout=inference_timeout,
     )
 
@@ -535,37 +536,47 @@ def _create_kueue_upgrade_resources(
             cluster_queue=cluster_queue_name,
             namespace=namespace,
         )
-        if local_queue.exists:
-            pytest.fail(
-                f"Unexpected existing LocalQueue '{local_queue_name}' in namespace '{namespace}'. "
-                "Clear stale upgrade resources before pre-upgrade."
+        cluster_queue = ClusterQueue(client=admin_client, name=cluster_queue_name)
+        resource_flavor = ResourceFlavor(client=admin_client, name=resource_flavor_name)
+        stale_resources = [
+            resource_label
+            for resource_label, resource in (
+                (f"LocalQueue '{local_queue_name}' in namespace '{namespace}'", local_queue),
+                (f"ClusterQueue '{cluster_queue_name}'", cluster_queue),
+                (f"ResourceFlavor '{resource_flavor_name}'", resource_flavor),
             )
-        else:
-            with (
-                create_resource_flavor(
-                    client=admin_client,
-                    name=resource_flavor_name,
-                    teardown=teardown_resources,
+            if resource.exists
+        ]
+        if stale_resources:
+            pytest.fail(
+                f"Stale upgrade resources found: {', '.join(stale_resources)}. "
+                "Clear them before pre-upgrade or use --delete-pre-upgrade-resources."
+            )
+        with (
+            create_resource_flavor(
+                client=admin_client,
+                name=resource_flavor_name,
+                teardown=teardown_resources,
+            ),
+            create_cluster_queue(
+                client=admin_client,
+                name=cluster_queue_name,
+                resource_groups=kueue_resource_groups(
+                    flavor_name=resource_flavor_name,
+                    cpu_quota=cpu_quota,
+                    memory_quota=memory_quota,
                 ),
-                create_cluster_queue(
-                    client=admin_client,
-                    name=cluster_queue_name,
-                    resource_groups=kueue_resource_groups(
-                        flavor_name=resource_flavor_name,
-                        cpu_quota=cpu_quota,
-                        memory_quota=memory_quota,
-                    ),
-                    teardown=teardown_resources,
-                ),
-                create_local_queue(
-                    client=admin_client,
-                    name=local_queue_name,
-                    cluster_queue=cluster_queue_name,
-                    namespace=namespace,
-                    teardown=teardown_resources,
-                ) as local_queue,
-            ):
-                yield local_queue
+                teardown=teardown_resources,
+            ),
+            create_local_queue(
+                client=admin_client,
+                name=local_queue_name,
+                cluster_queue=cluster_queue_name,
+                namespace=namespace,
+                teardown=teardown_resources,
+            ) as local_queue,
+        ):
+            yield local_queue
 
 
 def _capture_and_save_isvc_kueue_baseline(

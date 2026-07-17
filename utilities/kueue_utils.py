@@ -5,12 +5,6 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from ocp_resources.pod import Pod
 from ocp_resources.resource import MissingRequiredArgumentError, NamespacedResource, Resource
-from simple_logger.logger import get_logger
-from timeout_sampler import retry
-
-from utilities.constants import Timeout
-
-LOGGER = get_logger(name=__name__)
 
 
 class ResourceFlavor(Resource):
@@ -189,33 +183,3 @@ def check_gated_pods_and_running_pods(
             ):
                 gated_pods += 1
     return running_pods, gated_pods
-
-
-@retry(
-    wait_timeout=Timeout.TIMEOUT_4MIN,
-    sleep=5,
-)
-def wait_for_kueue_crds_available(client: DynamicClient) -> bool:
-    """Wait for Kueue CRDs and controller to be fully available."""
-    list(ResourceFlavor.get(client=client))
-
-    pods = list(
-        Pod.get(
-            label_selector="control-plane=controller-manager,app.kubernetes.io/name=kueue",
-            namespace="openshift-kueue-operator",
-            client=client,
-        )
-    )
-    all_pods_ready = pods and all(
-        any(
-            condition.type == Pod.Condition.READY and condition.status == Pod.Condition.Status.TRUE
-            for condition in pod.instance.status.conditions or []
-        )
-        for pod in pods
-    )
-    if not all_pods_ready:
-        LOGGER.info("Kueue controller pods not ready yet, retrying...")
-        return False
-
-    LOGGER.info(f"Kueue is ready: CRDs available and {len(pods)} controller pod(s) running")
-    return True

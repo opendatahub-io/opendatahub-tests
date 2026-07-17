@@ -169,7 +169,7 @@ class TestKserveKueueRawPreUpgrade:
         gated_pods = 0
         try:
             for running_pods, gated_pods in TimeoutSampler(
-                wait_timeout=Timeout.TIMEOUT_2MIN,
+                wait_timeout=Timeout.TIMEOUT_5MIN,
                 sleep=5,
                 func=lambda: check_gated_pods_and_running_pods(pod_labels, isvc.namespace, admin_client),
             ):
@@ -368,4 +368,8 @@ class TestKserveKueueRawPostUpgrade:
 
 
 def _get_deployment_status_replicas(deployment: Deployment) -> int:
-    return deployment.instance.status.replicas
+    # Refresh each sampler iteration; without this we re-read a stale cached Deployment.
+    # status.replicas is None until the controller populates it — treat as 0 so the
+    # comparison against the expected count can progress cleanly.
+    deployment.get()
+    return deployment.instance.status.replicas or 0

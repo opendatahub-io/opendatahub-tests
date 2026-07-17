@@ -445,12 +445,6 @@ def enabled_modelmesh_in_dsc(
 def enabled_kserve_in_dsc(
     dsc_resource: DataScienceCluster,
 ) -> Generator[DataScienceCluster, Any, Any]:
-    # Set by ensure_kserve_enabled_for_upgrade so upgrade lanes own DSC/DSCI KServe setup
-    # and this fixture does not conflict (or restore) that state on teardown.
-    if py_config.get("kserve_enablement_handled_by_upgrade"):
-        yield dsc_resource
-        return
-
     with update_components_in_dsc(
         dsc=dsc_resource,
         components={DscComponents.KSERVE: DscComponents.ManagementState.MANAGED},

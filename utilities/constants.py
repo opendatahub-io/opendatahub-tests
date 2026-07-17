@@ -171,12 +171,14 @@ class DscComponents:
         KSERVE_READY: str = "KserveReady"
         MODEL_MESH_SERVING_READY: str = "ModelMeshServingReady"
         LLAMA_STACK_OPERATOR_READY: str = "LlamaStackOperatorReady"
+        KUEUE_READY: str = "KueueReady"
 
     COMPONENT_MAPPING: dict[str, str] = {
         MODELMESHSERVING: ConditionType.MODEL_MESH_SERVING_READY,
         KSERVE: ConditionType.KSERVE_READY,
         MODELREGISTRY: ConditionType.MODEL_REGISTRY_READY,
         LLAMASTACKOPERATOR: ConditionType.LLAMA_STACK_OPERATOR_READY,
+        KUEUE: ConditionType.KUEUE_READY,
     }
 
 
