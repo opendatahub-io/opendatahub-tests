@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 IMAGE_SOURCES: dict[str, str] = {
     "ai_safety": "tests.ai_safety.image_constants.AiSafetyImages",
-    "shared": "utilities.constants.ContainerImages",
+    "shared": "utilities.image_constants.SharedImages",
 }
 
 KNOWN_REGISTRIES: tuple[str, ...] = (
