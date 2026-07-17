@@ -28,6 +28,7 @@ def patched_dsc_lmeval_allow_all(
 ) -> Generator[DataScienceCluster, None, None]:
     """Enable LMEval PermitOnline and PermitCodeExecution flags in the Datascience cluster."""
     dsc = get_data_science_cluster(client=admin_client)
+    num_replicas: int = trustyai_operator_deployment.replicas or 1
     with ResourceEditor(
         patches={
             dsc: {
@@ -46,5 +47,7 @@ def patched_dsc_lmeval_allow_all(
             }
         }
     ):
+        trustyai_operator_deployment.scale_replicas(replica_count=0)
+        trustyai_operator_deployment.scale_replicas(replica_count=num_replicas)
         trustyai_operator_deployment.wait_for_replicas()
         yield dsc
