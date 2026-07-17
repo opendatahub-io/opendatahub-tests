@@ -35,7 +35,7 @@ class TestCanaryRolloutE2E:
         Then only one Deployment remains and Route alternateBackends are cleared
         """
         runtime_name = canary_e2e_inference_service.instance.spec.predictor["model"]["runtime"]
-        wait_for_canary_ready_condition(canary_e2e_inference_service)
+        wait_for_canary_ready_condition(isvc=canary_e2e_inference_service)
 
         deployments = get_isvc_deployments(
             client=admin_client,
@@ -46,19 +46,19 @@ class TestCanaryRolloutE2E:
         assert len(deployments) == 2
 
         assert_route_traffic_weights(
-            canary_e2e_inference_service,
+            isvc=canary_e2e_inference_service,
             stable_weight=100 - DEFAULT_CANARY_TRAFFIC_PERCENT,
             canary_weight=DEFAULT_CANARY_TRAFFIC_PERCENT,
         )
 
         assert_canary_traffic_by_status_codes(
-            canary_e2e_inference_service,
+            isvc=canary_e2e_inference_service,
             expected_percent=DEFAULT_CANARY_TRAFFIC_PERCENT,
             sample_size=200,
         )
 
         promote_canary_to_stable(
-            canary_e2e_inference_service,
+            isvc=canary_e2e_inference_service,
             promoted_storage_uri=CANARY_STORAGE_URI,
             runtime=runtime_name,
             model_format=CANARY_MODEL_FORMAT,

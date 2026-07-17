@@ -26,12 +26,12 @@ class TestCanaryRolloutRoute:
         """
         stable_weight = 100 - DEFAULT_CANARY_TRAFFIC_PERCENT
         assert_route_traffic_weights(
-            canary_sklearn_inference_service,
+            isvc=canary_sklearn_inference_service,
             stable_weight=stable_weight,
             canary_weight=DEFAULT_CANARY_TRAFFIC_PERCENT,
         )
 
         assert_canary_traffic_by_status_codes(
-            canary_sklearn_inference_service,
+            isvc=canary_sklearn_inference_service,
             expected_percent=DEFAULT_CANARY_TRAFFIC_PERCENT,
         )
