@@ -13,6 +13,9 @@ REQUIRED_API_AGENT_FIELDS: set[str] = {"id", "name", "description", "displayName
 # Fields added by the API that are not in the source YAML
 API_ONLY_FIELDS: set[str] = {"id", "source_id", "createTimeSinceEpoch", "lastUpdateTimeSinceEpoch"}
 
+# Fields present in the YAML but served via a separate API endpoint (artifacts)
+YAML_ONLY_FIELDS: set[str] = {"templates"}
+
 pytestmark = [
     pytest.mark.tier1,
     pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace"),
@@ -60,7 +63,9 @@ class TestDefaultAgentMetadata:
             api_agent = api_agents.get(agent_name)
             assert api_agent, f"Agent '{agent_name}' found in YAML but not in API response"
 
-            yaml_fields = {key: value for key, value in yaml_agent.items() if key not in API_ONLY_FIELDS}
+            yaml_fields = {
+                key: value for key, value in yaml_agent.items() if key not in API_ONLY_FIELDS | YAML_ONLY_FIELDS
+            }
             api_fields = {key: value for key, value in api_agent.items() if key in yaml_fields}
 
             differences = list(diff(yaml_fields, api_fields))

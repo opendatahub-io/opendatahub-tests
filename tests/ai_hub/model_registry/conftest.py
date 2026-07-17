@@ -5,7 +5,6 @@ from typing import Any
 
 import pytest
 import structlog
-from aiohttp import ClientConnectionError, ClientResponseError, ServerDisconnectedError
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from model_registry import ModelRegistry as ModelRegistryClient
@@ -24,6 +23,7 @@ from tests.ai_hub.constants import (
     MODEL_REGISTRY_POD_FILTER,
     MR_INSTANCE_NAME,
 )
+from tests.ai_hub.model_registry.utils import MR_RETRY_EXCEPTIONS
 from tests.ai_hub.utils import (
     get_endpoint_from_mr_service,
     get_mr_service_by_label,
@@ -73,11 +73,7 @@ def model_registry_client(
     return mr_clients
 
 
-@retry(
-    wait_timeout=60,
-    sleep=5,
-    exceptions_dict={ClientConnectionError: [], ServerDisconnectedError: [], ClientResponseError: []},
-)
+@retry(wait_timeout=60, sleep=5, exceptions_dict=MR_RETRY_EXCEPTIONS)
 def _register_model_with_retry(client: ModelRegistryClient, params: dict[str, Any]) -> RegisteredModel:
     return client.register_model(
         name=params.get("model_name"),

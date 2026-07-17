@@ -181,6 +181,69 @@ Run tox:
 tox
 ```
 
+## Container Images
+
+Tests that deploy containers (MinIO, model servers, emulators, etc.) must use centralized
+image constants so that all required images are discoverable for **disconnected/air-gapped testing**.
+
+### How it works
+
+Each component has an `image_constants.py` file with a class containing all container images:
+
+```python
+# tests/ai_safety/image_constants.py
+class AiSafetyImages:
+    VLLM_EMULATOR: str = "quay.io/trustyai_testing/vllm_emulator@sha256:c4bdd5..."
+    MINIO_MC: str = "quay.io/minio/mc@sha256:470f55..."
+```
+
+These are registered in `scripts/generate_image_manifest.py`:
+
+```python
+IMAGE_SOURCES = {
+    "ai_safety": "tests.ai_safety.image_constants.AiSafetyImages",
+    "shared": "utilities.constants.ContainerImages",
+}
+```
+
+The manifest is embedded as an OCI label on the `odh-tests` container image during build,
+allowing disconnected environments to discover and mirror all required images via
+`skopeo inspect`.
+
+### Adding a new image
+
+1. Add the image to the appropriate `image_constants.py` file
+2. Use it in your test code: `from tests.ai_safety.image_constants import AiSafetyImages`
+3. Reference it as `AiSafetyImages.YOUR_IMAGE`
+
+### Adding a new component
+
+1. Create `tests/<component>/image_constants.py` with a class containing all images
+2. Register it in `scripts/generate_image_manifest.py` under `IMAGE_SOURCES`
+
+### Stray image checker
+
+A GHA workflow detects hardcoded container image strings not in any registered constants
+class. If your image is intentionally not centralized (e.g., only used in tests skipped on
+disconnected clusters), suppress the check with:
+
+```python
+MY_IMAGE = "quay.io/example/image:v1"  # noqa: IMG001
+```
+
+Run locally:
+
+```bash
+# Full scan
+python scripts/check_stray_images.py
+
+# PR mode (only new additions)
+python scripts/check_stray_images.py --diff-base main
+
+# Validate all image formats
+python scripts/generate_image_manifest.py --validate
+```
+
 ## Adding new runtime
 
 To add a new runtime, you need to:

@@ -21,9 +21,11 @@ workbenches/
     |-- utils.py                          # Image resolution, log/HTTP validation helpers
     +-- upgrade/
         |-- conftest.py                   # Session-scoped parametrized upgrade fixtures
+        |-- elyra_utils.py                # Utilities for interacting with Elyra
         |-- survival_checks.py            # Shared pre/post-upgrade validation steps
         |-- test_upgrade_workbench.py     # Parametrized N-1 survival checks (all IDEs)
-        +-- test_bump_jupyterlab.py      # Dashboard-driven N-1 to N image bump test
+        |-- test_upgrade_jupyter_elyra.py # Elyra survival tests
+        +-- test_bump_jupyterlab.py       # Dashboard-driven N-1 to N image bump test
 ```
 
 ### Current Test Suites
@@ -32,7 +34,7 @@ workbenches/
 - **`notebooks_server/controller/test_spawning.py`** - Tests basic notebook creation via Notebook CR and validates pod creation. Also tests Auth proxy container resource customization via annotations
 - **`notebooks_server/controller/test_custom_images.py`** - Validates custom workbench images contain required Python packages by spawning a workbench, installing any missing packages, and executing import verification
 - **`notebooks_server/controller/upgrade/test_upgrade.py`** - Upgrade survival tests. Pre-upgrade creates a notebook and captures its pod creation timestamp to a ConfigMap. Post-upgrade verifies the pod was not restarted by comparing timestamps
-- **`notebook_images/upgrade/`** - Parametrized N-1 workbench image survival tests for JupyterLab, Code Server, and RStudio (EUS). Pre-upgrade launches dashboard-faithful workbenches and captures baselines; post-upgrade verifies pod continuity, image invariants, StatefulSet health, PVC data, kernel state (JupyterLab), logs, and HTTP health
+- **`notebook_images/upgrade/`** - Parametrized N-1 workbench image survival tests for JupyterLab, Code Server, RStudio (EUS), and Elyra. Pre-upgrade launches dashboard-faithful workbenches and captures baselines; post-upgrade verifies pod continuity, image invariants, StatefulSet health, PVC data, kernel state (JupyterLab), Elyra extension preservation, logs, and HTTP health
 
 ## Test Markers
 

@@ -1,3 +1,7 @@
+from tests.ai_safety.image_constants import AiSafetyImages
+
+MINIO_MC_IMAGE: str = AiSafetyImages.MINIO_MC
+
 EVALHUB_SERVICE_NAME: str = "evalhub"
 EVALHUB_SERVICE_PORT: int = 8443
 EVALHUB_CONTAINER_PORT: int = 8080
@@ -5,7 +9,17 @@ EVALHUB_HEALTH_PATH: str = "/api/v1/health"
 EVALHUB_METRICS_PATH: str = "/metrics"
 EVALHUB_PROVIDERS_PATH: str = "/api/v1/evaluations/providers"
 EVALHUB_JOBS_PATH: str = "/api/v1/evaluations/jobs"
+EVALHUB_JOB_LOGS_PATH_TEMPLATE: str = "/api/v1/evaluations/jobs/{job_id}/logs"
+EVALHUB_JOB_BENCHMARK_LOGS_PATH_TEMPLATE: str = "/api/v1/evaluations/jobs/{job_id}/benchmarks/{benchmark_index}/logs"
 EVALHUB_HEALTH_STATUS_HEALTHY: str = "healthy"
+
+# Job log API (RHAISTRAT-1437 / eval-hub HTTP API)
+EVALHUB_LOG_CONTENT_TYPE: str = "text/plain"
+EVALHUB_LOG_SECTION_PREFIX: str = "=== pod="
+EVALHUB_LOG_ADAPTER_CONTAINER: str = "adapter"
+EVALHUB_LOG_COMPLETED_MARKER: str = "EVALUATION COMPLETE"
+EVALHUB_LOG_DEFAULT_TAIL_LINES: int = 1000
+EVALHUB_LOG_MAX_TAIL_LINES: int = 10000
 
 EVALHUB_APP_LABEL: str = "eval-hub"
 EVALHUB_CONTAINER_NAME: str = "evalhub"
@@ -58,8 +72,10 @@ EVALHUB_USER_ROLE_RULES: list[dict[str, list[str]]] = [
 ]
 
 # Garak provider
+GARAK_SIMPLE_PROVIDER_ID: str = "garak"
 GARAK_PROVIDER_ID: str = "garak-kfp"
 GARAK_BENCHMARK_ID: str = "intents"
+GARAK_QUICK_BENCHMARK_ID: str = "quick"
 GARAK_JOB_TIMEOUT: int = 1800  # 30 minutes
 GARAK_JOB_POLL_INTERVAL: int = 30  # seconds
 
@@ -69,7 +85,6 @@ EVALHUB_JOB_SA_SUFFIX: str = "-job"
 
 # Garak intents CSV
 GARAK_INTENTS_S3_KEY: str = "intents/misinformation_prompts.csv"
-MINIO_MC_IMAGE = "quay.io/minio/mc@sha256:470f5546b596e16c7816b9c3fa7a78ce4076bb73c2c73f7faeec0c8043923123"
 MINIO_UPLOADER_SECURITY_CONTEXT = {
     "allowPrivilegeEscalation": False,
     "capabilities": {"drop": ["ALL"]},
@@ -77,8 +92,35 @@ MINIO_UPLOADER_SECURITY_CONTEXT = {
     "seccompProfile": {"type": "RuntimeDefault"},
 }
 
+# Minimal MinIO for simple-mode intents (no DSPA needed)
+SIMPLE_MINIO_ACCESS_KEY: str = "minioadmin"
+SIMPLE_MINIO_SECRET_KEY: str = "minioadmin"
+SIMPLE_MINIO_BUCKET: str = "evalhub-data"
+
 # ServiceMonitor and metrics Service
 EVALHUB_METRICS_SERVICE_SUFFIX: str = "-metrics"
 EVALHUB_METRICS_PORT: int = 8081
 EVALHUB_METRICS_COMPONENT_LABEL: str = "metrics"
 EVALHUB_SCRAPE_INTERVAL: str = "30s"
+
+# OTEL Collector constants
+OTEL_COLLECTOR_NAMESPACE: str = "otel-collector"
+OTEL_COLLECTOR_GRPC_PORT: int = 4317
+OTEL_COLLECTOR_HTTP_PORT: int = 4318
+OTEL_COLLECTOR_PROMETHEUS_PORT: int = 8889
+
+# OTEL error patterns that indicate initialization failure
+OTEL_ERROR_PATTERNS: tuple[str, ...] = (
+    "failed to initialize meter",
+    "meter provider error",
+    "panic",
+    "OTEL initialization failed",
+)
+
+# OTLP export indicators in collector logs
+OTLP_INDICATORS: tuple[str, ...] = (
+    "ResourceMetrics",
+    "ScopeMetrics",
+    "http.server.request",
+    "github.com/eval-hub",
+)

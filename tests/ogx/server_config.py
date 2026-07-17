@@ -144,6 +144,7 @@ def build_ogx_server_config(
 
     config: dict[str, Any] = {
         "distribution": {"name": "rh"},
+        "network": {"externalAccess": {"enabled": True}},
         "workload": {
             "resources": {
                 "requests": {"cpu": cpu_requests, "memory": "1Gi"},

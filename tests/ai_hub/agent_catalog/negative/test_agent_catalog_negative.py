@@ -1,10 +1,10 @@
-from typing import Self
+from typing import Any, Self
 
 import pytest
 import structlog
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 
-from tests.ai_hub.utils import execute_get_command
+from tests.ai_hub.utils import execute_get_command, execute_get_command_with_retry
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -42,6 +42,11 @@ class TestAgentCatalogNegative:
                 id="test_invalid_next_page_token",
                 marks=pytest.mark.tier2,
             ),
+            pytest.param(
+                "agents/999999/artifacts",
+                None,
+                id="test_artifacts_nonexistent_agent",
+            ),
         ],
     )
     def test_invalid_request_returns_error(
@@ -60,4 +65,38 @@ class TestAgentCatalogNegative:
                 url=f"{agent_catalog_rest_urls[0]}{path}",
                 headers=model_registry_rest_headers,
                 params=params,
+            )
+
+    def test_filter_nonexistent_label_returns_empty(
+        self: Self,
+        agent_catalog_rest_urls: list[str],
+        model_registry_rest_headers: dict[str, str],
+    ) -> None:
+        """Given no agents have the given label
+        When filtering by a nonexistent label
+        Then an empty result set is returned
+        """
+        response = execute_get_command_with_retry(
+            url=f"{agent_catalog_rest_urls[0]}agents",
+            headers=model_registry_rest_headers,
+            params={"filterQuery": "labels='nonexistent-label-xyz'", "pageSize": 1000},
+        )
+        assert response.get("size", 0) == 0, "Expected 0 agents for nonexistent label"
+
+    def test_artifacts_invalid_artifact_type(
+        self: Self,
+        agent_catalog_rest_urls: list[str],
+        model_registry_rest_headers: dict[str, str],
+        default_agents: list[dict[str, Any]],
+    ) -> None:
+        """Given a valid agent ID
+        When requesting artifacts with artifactType=image-artifact
+        Then a 400 error is returned
+        """
+        agent_id = default_agents[0]["id"]
+        with pytest.raises(ResourceNotFoundError):
+            execute_get_command(
+                url=f"{agent_catalog_rest_urls[0]}agents/{agent_id}/artifacts",
+                headers=model_registry_rest_headers,
+                params={"artifactType": "image-artifact"},
             )
