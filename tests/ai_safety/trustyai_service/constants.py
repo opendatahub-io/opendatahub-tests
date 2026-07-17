@@ -1,5 +1,6 @@
 from typing import Any
 
+from tests.ai_safety.image_constants import AiSafetyImages
 from utilities.constants import ApiGroups, Ports
 
 DRIFT_BASE_DATA_PATH: str = "./tests/ai_safety/trustyai_service/drift/model_data"
@@ -21,10 +22,7 @@ MLFLOW: str = "mlflow"
 
 GAUSSIAN_CREDIT_MODEL: str = "gaussian-credit-model"
 GAUSSIAN_CREDIT_MODEL_STORAGE_PATH: str = f"{SKLEARN}/{GAUSSIAN_CREDIT_MODEL.replace('-', '_')}/1"
-GAUSSIAN_CREDIT_MODEL_STORAGE_URI: str = (
-    "oci://quay.io/trustyai_testing/gaussian-credit-model-modelcar"
-    "@sha256:323dbb70c980c7f57bb6a884f5d46ee1c620c0b193368d13a469b49e7c9054c4"
-)
+GAUSSIAN_CREDIT_MODEL_STORAGE_URI: str = AiSafetyImages.GAUSSIAN_CREDIT_MODEL
 GAUSSIAN_CREDIT_MODEL_RESOURCES: dict[str, dict[str, str]] = {
     "requests": {"cpu": "1", "memory": "500Mi"},
     "limits": {"cpu": "1", "memory": "500Mi"},
@@ -44,8 +42,7 @@ KSERVE_MLSERVER_SUPPORTED_MODEL_FORMATS: list[dict[str, Any]] = [
 KSERVE_MLSERVER_CONTAINERS: list[dict[str, Any]] = [
     {
         "name": "kserve-container",
-        "image": "quay.io/trustyai_testing/mlserver"
-        "@sha256:68a4cd74fff40a3c4f29caddbdbdc9e54888aba54bf3c5f78c8ffd577c3a1c89",
+        "image": AiSafetyImages.MLSERVER,
         "env": [
             {"name": "MLSERVER_MODEL_IMPLEMENTATION", "value": "{{.Labels.modelClass}}"},
             {"name": "MLSERVER_HTTP_PORT", "value": str(Ports.REST_PORT)},
