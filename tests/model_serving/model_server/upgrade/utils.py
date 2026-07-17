@@ -107,7 +107,7 @@ def verify_inference_generation(isvc: InferenceService, expected_generation: int
         ResourceMismatch: If inference generation is not equal to expected generation
     """
     if isvc.instance.status.observedGeneration != expected_generation:
-        ResourceMismatchError(f"Inference service {isvc.name} was modified")
+        raise ResourceMismatchError(f"Inference service {isvc.name} was modified")
 
 
 def verify_serving_runtime_generation(isvc: InferenceService, expected_generation: int) -> None:
