@@ -808,6 +808,7 @@ def native_signing_async_job(
         {"name": "SIGSTORE_TSA_URL", "value": service_urls["tsa"]},
         {"name": "SIGSTORE_TUF_URL", "value": service_urls["tuf"]},
         {"name": "COSIGN_ALLOW_INSECURE_REGISTRY", "value": "true"},
+        {"name": "COSIGN_USE_SIGNING_CONFIG", "value": "0"},
     ]
 
     yield from create_async_upload_job(
