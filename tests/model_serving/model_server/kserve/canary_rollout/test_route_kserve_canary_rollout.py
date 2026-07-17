@@ -9,7 +9,10 @@ from tests.model_serving.model_server.kserve.canary_rollout.utils import (
     assert_route_traffic_weights,
 )
 
-pytestmark = pytest.mark.usefixtures("canary_sklearn_inference_service")
+pytestmark = [
+    pytest.mark.slow,
+    pytest.mark.usefixtures("canary_sklearn_inference_service"),
+]
 
 
 class TestCanaryRolloutRoute:

@@ -32,7 +32,8 @@ class TestCanaryRolloutE2E:
         """
         Given a canary rollout at 10% traffic on a RawDeployment InferenceService
         When traffic is verified and the canary revision is promoted
-        Then only one Deployment remains and Route alternateBackends are cleared
+        Then only one Deployment remains, Route alternateBackends are cleared,
+        and all traffic hits the promoted (mixedtype) model
         """
         runtime_name = canary_e2e_inference_service.instance.spec.predictor["model"]["runtime"]
         wait_for_canary_ready_condition(isvc=canary_e2e_inference_service)
@@ -75,3 +76,11 @@ class TestCanaryRolloutE2E:
         route = get_model_route(client=admin_client, isvc=canary_e2e_inference_service)
         alternate_backends = route.instance.spec.get("alternateBackends") or []
         assert not alternate_backends, "Expected Route alternateBackends to be cleared after promotion"
+
+        # Promoted stable is mixedtype — fingerprint status is 500 for every request.
+        assert_canary_traffic_by_status_codes(
+            isvc=canary_e2e_inference_service,
+            expected_percent=100,
+            sample_size=50,
+            tolerance_percent=0,
+        )

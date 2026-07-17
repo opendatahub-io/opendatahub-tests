@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
@@ -18,6 +19,7 @@ from timeout_sampler import TimeoutSampler
 
 from tests.model_serving.model_runtime.mlserver.constant import PREDICT_RESOURCES
 from tests.model_serving.model_server.kserve.canary_rollout.constants import (
+    PROMOTION_WAIT_TIMEOUT,
     TRAFFIC_INFERENCE_INPUT,
     TRAFFIC_SAMPLE_SIZE,
     TRAFFIC_TOLERANCE_PERCENT,
@@ -32,6 +34,10 @@ LOGGER = structlog.get_logger(name=__name__)
 # HTTP fingerprint: stable sklearn 1.0 → 200, canary mixedtype → 500 for TRAFFIC_INFERENCE_INPUT.
 _STABLE_STATUS = 200
 _CANARY_STATUS = 500
+_TRANSIENT_STATUSES = frozenset({502, 503, 504})
+_TRAFFIC_WARMUP_REQUESTS = 5
+_TRAFFIC_TRANSIENT_RETRIES = 3
+_TRAFFIC_RETRY_SLEEP_SECONDS = 1
 
 
 def build_predictor_spec(
@@ -107,23 +113,56 @@ def get_isvc_deployments(
     )
 
 
+def _stable_predictor_service_name(isvc: InferenceService) -> str:
+    return f"{isvc.name}-predictor"
+
+
+def _canary_predictor_service_name(isvc: InferenceService, predictor_name: str = "canary") -> str:
+    return f"{isvc.name}-{predictor_name}-predictor"
+
+
 def assert_route_traffic_weights(
     isvc: InferenceService,
     *,
     stable_weight: int,
     canary_weight: int,
 ) -> None:
-    """Assert OpenShift Route primary and alternate backend weights."""
+    """Assert OpenShift Route primary and alternate backend names and weights."""
     route = get_model_route(client=isvc.client, isvc=isvc)
     route_spec = route.instance.spec
-    primary_weight = route_spec["to"]["weight"]
+    primary = route_spec["to"]
     alternate_backends = route_spec.get("alternateBackends") or []
 
-    assert primary_weight == stable_weight, f"Expected stable Route weight {stable_weight}, got {primary_weight}"
+    expected_stable = _stable_predictor_service_name(isvc=isvc)
+    expected_canary = _canary_predictor_service_name(isvc=isvc)
+
+    assert primary["name"] == expected_stable, f"Expected stable Route backend {expected_stable}, got {primary['name']}"
+    assert primary["weight"] == stable_weight, f"Expected stable Route weight {stable_weight}, got {primary['weight']}"
     assert alternate_backends, "Expected alternateBackends on Route for canary traffic split"
+    assert alternate_backends[0]["name"] == expected_canary, (
+        f"Expected canary Route backend {expected_canary}, got {alternate_backends[0]['name']}"
+    )
     assert alternate_backends[0]["weight"] == canary_weight, (
         f"Expected canary Route weight {canary_weight}, got {alternate_backends[0]['weight']}"
     )
+
+
+def _post_inference_with_retries(session: requests.Session, *, url: str) -> requests.Response:
+    """POST inference payload, retrying transient gateway errors."""
+    last_response: requests.Response | None = None
+    for attempt in range(_TRAFFIC_TRANSIENT_RETRIES):
+        last_response = session.post(url=url, json=TRAFFIC_INFERENCE_INPUT, verify=False, timeout=60)
+        if last_response.status_code not in _TRANSIENT_STATUSES:
+            return last_response
+        LOGGER.debug(
+            "transient gateway status during canary traffic sample",
+            status=last_response.status_code,
+            attempt=attempt + 1,
+            url=url,
+        )
+        time.sleep(_TRAFFIC_RETRY_SLEEP_SECONDS)
+    assert last_response is not None
+    return last_response
 
 
 def assert_canary_traffic_by_status_codes(
@@ -144,16 +183,20 @@ def assert_canary_traffic_by_status_codes(
     canary_hits = 0
     other_statuses: dict[int, int] = {}
 
-    for _ in range(sample_size):
-        response = requests.post(url=rest_url, json=TRAFFIC_INFERENCE_INPUT, verify=False, timeout=60)
-        status = response.status_code
-        if status == _STABLE_STATUS:
-            stable_hits += 1
-        elif status == _CANARY_STATUS:
-            canary_hits += 1
-        else:
-            other_statuses[status] = other_statuses.get(status, 0) + 1
-        LOGGER.debug("canary traffic sample", status=status, url=rest_url)
+    with requests.Session() as session:
+        for _ in range(_TRAFFIC_WARMUP_REQUESTS):
+            _post_inference_with_retries(session=session, url=rest_url)
+
+        for _ in range(sample_size):
+            response = _post_inference_with_retries(session=session, url=rest_url)
+            status = response.status_code
+            if status == _STABLE_STATUS:
+                stable_hits += 1
+            elif status == _CANARY_STATUS:
+                canary_hits += 1
+            else:
+                other_statuses[status] = other_statuses.get(status, 0) + 1
+            LOGGER.debug("canary traffic sample", status=status, url=rest_url)
 
     total = stable_hits + canary_hits
     LOGGER.info(
@@ -182,15 +225,17 @@ def assert_canary_traffic_by_status_codes(
 
 
 def wait_for_canary_ready_condition(isvc: InferenceService, timeout: int = Timeout.TIMEOUT_15MIN) -> None:
-    """Wait until a canary-related Ready condition is True, if present."""
+    """Wait until a canary-related Ready condition is True.
+
+    Does not fall back to generic Ready — a present-but-False canary condition must stay False.
+    """
 
     def _canary_ready() -> bool:
         conditions = isvc.instance.status.get("conditions") or []
-        for condition in conditions:
-            condition_type = condition.get("type", "")
-            if "canary" in condition_type.lower() and condition.get("status") == "True":
-                return True
-        return isvc.instance.status.get("ready", False) is True
+        canary_conditions = [condition for condition in conditions if "canary" in condition.get("type", "").lower()]
+        if not canary_conditions:
+            return False
+        return any(condition.get("status") == "True" for condition in canary_conditions)
 
     for ready in TimeoutSampler(wait_timeout=timeout, sleep=5, func=_canary_ready):
         if ready:
@@ -229,6 +274,27 @@ def wait_for_route_admitted(
             return route
 
     raise TimeoutError(f"Route for InferenceService {isvc.name} not admitted within {timeout}s")
+
+
+def wait_for_route_alternate_backends_cleared(
+    isvc: InferenceService,
+    timeout: int = PROMOTION_WAIT_TIMEOUT,
+) -> Route:
+    """Wait until the ISVC Route has no alternateBackends (post-promotion)."""
+
+    def _alternate_backends_cleared() -> Route | None:
+        route = get_model_route(client=isvc.client, isvc=isvc)
+        alternate_backends = route.instance.spec.get("alternateBackends") or []
+        if alternate_backends:
+            return None
+        return route
+
+    for route in TimeoutSampler(wait_timeout=timeout, sleep=5, func=_alternate_backends_cleared):
+        if route:
+            LOGGER.info("route alternateBackends cleared", route=route.name, isvc=isvc.name)
+            return route
+
+    raise TimeoutError(f"Route alternateBackends for InferenceService {isvc.name} not cleared within {timeout}s")
 
 
 @contextmanager
@@ -316,17 +382,24 @@ def promote_canary_to_stable(
     promoted_storage_uri: str,
     runtime: str,
     model_format: str,
+    model_service_account: str | None = None,
     timeout: int = Timeout.TIMEOUT_15MIN,
+    route_timeout: int = PROMOTION_WAIT_TIMEOUT,
 ) -> None:
     """Promote canary by replacing stable storage and clearing the canary array.
 
     Uses a permanent patch (not a ResourceEditor context manager) so promotion is
-    not undone when the helper returns.
+    not undone when the helper returns. Waits for a single Deployment, Ready, and
+    cleared Route alternateBackends.
     """
+    if model_service_account is None:
+        model_service_account = isvc.instance.spec.predictor.get("serviceAccountName")
+
     promoted_predictor = build_predictor_spec(
         model_format=model_format,
         runtime=runtime,
         storage_uri=promoted_storage_uri,
+        model_service_account=model_service_account,
     )
     ResourceEditor(
         patches={
@@ -345,3 +418,9 @@ def promote_canary_to_stable(
         expected_num_deployments=1,
         timeout=timeout,
     )
+    isvc.wait_for_condition(
+        condition=isvc.Condition.READY,
+        status=isvc.Condition.Status.TRUE,
+        timeout=timeout,
+    )
+    wait_for_route_alternate_backends_cleared(isvc=isvc, timeout=route_timeout)
