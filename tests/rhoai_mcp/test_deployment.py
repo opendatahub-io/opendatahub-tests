@@ -1,7 +1,6 @@
 import pytest
 import requests
 from ocp_resources.deployment import Deployment
-from ocp_resources.route import Route
 
 from tests.rhoai_mcp.constants import RHOAI_MCP_HEALTH_PATH
 
@@ -21,7 +20,7 @@ class TestRhoaiMcpDeployment:
     @pytest.mark.smoke
     def test_health_endpoint(
         self,
-        rhoai_mcp_route: Route,
+        rhoai_mcp_base_url: str,
         rhoai_mcp_ca_bundle: str,
         rhoai_mcp_ready: None,
     ) -> None:
@@ -29,14 +28,14 @@ class TestRhoaiMcpDeployment:
         When the /health endpoint is polled via the Route
         Then it returns a healthy response
         """
-        url = f"https://{rhoai_mcp_route.host}{RHOAI_MCP_HEALTH_PATH}"
+        url = f"{rhoai_mcp_base_url}{RHOAI_MCP_HEALTH_PATH}"
         response = requests.get(url, verify=rhoai_mcp_ca_bundle, timeout=10)
         assert response.ok
 
-    @pytest.mark.tier2
+    @pytest.mark.smoke
     def test_unauthenticated_sse_rejected(
         self,
-        rhoai_mcp_route: Route,
+        rhoai_mcp_base_url: str,
         rhoai_mcp_ca_bundle: str,
         rhoai_mcp_ready: None,
     ) -> None:
@@ -44,15 +43,15 @@ class TestRhoaiMcpDeployment:
         When an unauthenticated request is sent to the /sse endpoint
         Then the server returns 401 with a WWW-Authenticate: Bearer header
         """
-        url = f"https://{rhoai_mcp_route.host}/sse"
+        url = f"{rhoai_mcp_base_url}/sse"
         response = requests.get(url, verify=rhoai_mcp_ca_bundle, timeout=10)
         assert response.status_code == 401
         assert "Bearer" in response.headers.get("WWW-Authenticate", "")
 
-    @pytest.mark.tier2
+    @pytest.mark.smoke
     def test_authenticated_sse_succeeds(
         self,
-        rhoai_mcp_route: Route,
+        rhoai_mcp_base_url: str,
         rhoai_mcp_ca_bundle: str,
         rhoai_mcp_ready: None,
         current_client_token: str,
@@ -63,7 +62,7 @@ class TestRhoaiMcpDeployment:
         """
         # Uses admin token for now; will swap with create_inference_token(sa)
         # for dedicated test identity in future tests
-        url = f"https://{rhoai_mcp_route.host}/sse"
+        url = f"{rhoai_mcp_base_url}/sse"
         with requests.get(
             url,
             headers={"Authorization": f"Bearer {current_client_token}"},

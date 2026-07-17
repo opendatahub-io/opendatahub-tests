@@ -2,7 +2,6 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
-import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.cluster_role import ClusterRole
@@ -22,77 +21,15 @@ from tests.rhoai_mcp.constants import (
     RHOAI_MCP_NAMESPACE,
     RHOAI_MCP_PORT,
 )
-from tests.rhoai_mcp.image_constants import RhoaiMcpImages
+from tests.rhoai_mcp.utils import (
+    TRANSIENT_HEALTH_EXCEPTIONS,
+    get_deployment_template,
+    probe_health,
+)
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.infra import create_ns
 
 LOGGER = structlog.get_logger(name=__name__)
-
-
-class _TransientHealthError(Exception):
-    """Recoverable failure while polling the rhoai-mcp health endpoint."""
-
-
-_TRANSIENT_HEALTH_EXCEPTIONS: dict[type, list[Any]] = {_TransientHealthError: []}
-
-
-def _get_deployment_template() -> dict[str, Any]:
-    """Return the Kubernetes pod template for the rhoai-mcp Deployment."""
-    labels = {
-        "app.kubernetes.io/component": "server",
-        "app.kubernetes.io/name": RHOAI_MCP_APP_NAME,
-    }
-    return {
-        "metadata": {"labels": labels},
-        "spec": {
-            "containers": [
-                {
-                    "name": RHOAI_MCP_APP_NAME,
-                    "image": RhoaiMcpImages.RHOAI_MCP,
-                    "imagePullPolicy": "Always",
-                    "args": ["--transport", "sse"],
-                    "envFrom": [{"configMapRef": {"name": f"{RHOAI_MCP_APP_NAME}-config"}}],
-                    "ports": [
-                        {
-                            "containerPort": RHOAI_MCP_PORT,
-                            "name": "http",
-                            "protocol": "TCP",
-                        }
-                    ],
-                    "livenessProbe": {
-                        "httpGet": {"path": RHOAI_MCP_HEALTH_PATH, "port": "http"},
-                        "initialDelaySeconds": 10,
-                        "periodSeconds": 30,
-                        "timeoutSeconds": 5,
-                        "failureThreshold": 3,
-                    },
-                    "readinessProbe": {
-                        "httpGet": {"path": RHOAI_MCP_HEALTH_PATH, "port": "http"},
-                        "initialDelaySeconds": 5,
-                        "periodSeconds": 10,
-                        "timeoutSeconds": 5,
-                        "failureThreshold": 3,
-                    },
-                    "resources": {
-                        "requests": {"cpu": "100m", "memory": "128Mi"},
-                        "limits": {"cpu": "500m", "memory": "512Mi"},
-                    },
-                    "securityContext": {
-                        "allowPrivilegeEscalation": False,
-                        "capabilities": {"drop": ["ALL"]},
-                        "readOnlyRootFilesystem": True,
-                    },
-                    "volumeMounts": [{"name": "tmp", "mountPath": "/tmp"}],
-                }
-            ],
-            "securityContext": {
-                "runAsNonRoot": True,
-                "seccompProfile": {"type": "RuntimeDefault"},
-            },
-            "serviceAccountName": RHOAI_MCP_APP_NAME,
-            "volumes": [{"name": "tmp", "emptyDir": {}}],
-        },
-    }
 
 
 @pytest.fixture(scope="class")
@@ -262,7 +199,7 @@ def rhoai_mcp_deployment(
         replicas=1,
         label=labels,
         selector={"matchLabels": labels},
-        template=_get_deployment_template(),
+        template=get_deployment_template(),
     ) as deployment:
         deployment.wait_for_replicas(timeout=300)
         yield deployment
@@ -313,18 +250,25 @@ def rhoai_mcp_ca_bundle(admin_client: DynamicClient) -> str:
 
 
 @pytest.fixture(scope="class")
+def rhoai_mcp_base_url(rhoai_mcp_route: Route) -> str:
+    """Base URL (scheme + host) for the rhoai-mcp route."""
+    return f"https://{rhoai_mcp_route.host}"
+
+
+@pytest.fixture(scope="class")
 def rhoai_mcp_ready(
+    rhoai_mcp_base_url: str,
     rhoai_mcp_route: Route,
     rhoai_mcp_ca_bundle: str,
 ) -> None:
     """Wait until the rhoai-mcp health endpoint responds on the route."""
-    url = f"https://{rhoai_mcp_route.host}{RHOAI_MCP_HEALTH_PATH}"
+    url = f"{rhoai_mcp_base_url}{RHOAI_MCP_HEALTH_PATH}"
     try:
         for sample in TimeoutSampler(
             wait_timeout=120,
             sleep=5,
-            func=lambda: _probe_health(url=url, ca_bundle_file=rhoai_mcp_ca_bundle),
-            exceptions_dict=_TRANSIENT_HEALTH_EXCEPTIONS,
+            func=lambda: probe_health(url=url, ca_bundle_file=rhoai_mcp_ca_bundle),
+            exceptions_dict=TRANSIENT_HEALTH_EXCEPTIONS,
         ):
             if sample.ok:
                 LOGGER.info(f"rhoai-mcp at {rhoai_mcp_route.host} is healthy")
@@ -333,18 +277,3 @@ def rhoai_mcp_ready(
         if err.last_exp is not None:
             raise err.last_exp from err
         raise RuntimeError(f"rhoai-mcp at {rhoai_mcp_route.host} did not become healthy within 120s") from err
-
-
-def _probe_health(url: str, ca_bundle_file: str) -> requests.Response:
-    """GET the health endpoint, retrying only on transient network failures."""
-    try:
-        return requests.get(url, verify=ca_bundle_file, timeout=10)
-    except (
-        requests.exceptions.ConnectTimeout,
-        requests.exceptions.ReadTimeout,
-        requests.exceptions.ConnectionError,
-    ) as err:
-        if isinstance(err, requests.exceptions.SSLError):
-            raise
-        LOGGER.warning(f"Transient error checking rhoai-mcp health: {err}")
-        raise _TransientHealthError(str(err)) from err

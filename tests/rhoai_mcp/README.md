@@ -9,6 +9,7 @@ tests/rhoai_mcp/
 ├── conftest.py          # Deployment fixtures (namespace, RBAC, configmap, deployment, service, route, health)
 ├── constants.py         # Resource names, port, namespace
 ├── image_constants.py   # Container image constant
+├── utils.py             # Helper functions (deployment template, health probing)
 ├── test_deployment.py   # Smoke and E2E tests
 └── README.md
 ```
@@ -16,8 +17,7 @@ tests/rhoai_mcp/
 ## Markers
 
 - `rhoai_mcp` — component marker for all rhoai-mcp tests
-- `smoke` — deployment readiness and health checks
-- `tier2` — authentication tests, endpoint tests
+- `smoke` — deployment readiness and health checks, authentication tests, endpoint tests
 
 ## Running
 
