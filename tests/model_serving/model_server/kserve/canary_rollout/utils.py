@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import time
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -92,9 +91,14 @@ def build_canary_entry(
 
 
 def deployment_contains_storage_uri(deployment: Deployment, storage_uri: str) -> bool:
-    """Return True if the deployment pod spec references the storage URI."""
-    deployment_json = json.dumps(deployment.instance.to_dict())
-    return storage_uri in deployment_json
+    """Return True if a container env value references the storage URI fragment."""
+    pod_spec = deployment.instance.spec.template.spec
+    for container in list(pod_spec.get("containers") or []) + list(pod_spec.get("initContainers") or []):
+        for env in container.get("env") or []:
+            value = env.get("value")
+            if value and storage_uri in value:
+                return True
+    return False
 
 
 def get_isvc_deployments(
@@ -231,7 +235,9 @@ def wait_for_canary_ready_condition(isvc: InferenceService, timeout: int = Timeo
     """
 
     def _canary_ready() -> bool:
-        conditions = isvc.instance.status.get("conditions") or []
+        # Live GET each poll — do not reuse a previously held ResourceInstance snapshot.
+        live = isvc.api.get(name=isvc.name, namespace=isvc.namespace)
+        conditions = live.status.get("conditions") or []
         canary_conditions = [condition for condition in conditions if "canary" in condition.get("type", "").lower()]
         if not canary_conditions:
             return False
@@ -341,6 +347,10 @@ def create_canary_inference_service(
         model_service_account=model_service_account,
     )
 
+    # Canary is patched in via ResourceEditor because InferenceService construction
+    # only accepts the stable predictor. There is a brief window between create and
+    # patch where the controller could reconcile a stable-only ISVC; in practice
+    # first reconciliation is slower than the patch, so the canary entry wins.
     with (
         InferenceService(
             client=client,

@@ -5,7 +5,10 @@ from utilities.constants import KServeDeploymentType, ModelFormat
 CANARY_FEATURE_NAME: str = "kserve-canary-rollout"
 CANARY_NAMESPACE_PREFIX: str = "kserve-canary"
 
-# Both revisions are sklearn; canary mixedtype returns HTTP 500 for TRAFFIC_INFERENCE_INPUT.
+# Both revisions are sklearn. Traffic assertions rely on this public GCS pair:
+# stable (1.0) → HTTP 200 and canary (1.3/mixedtype) → HTTP 500 for TRAFFIC_INFERENCE_INPUT.
+# If Google changes or removes these artifacts, fingerprinting breaks — prefer a
+# self-hosted pair long-term.
 STABLE_MODEL_FORMAT: str = ModelFormat.SKLEARN
 CANARY_MODEL_FORMAT: str = ModelFormat.SKLEARN
 

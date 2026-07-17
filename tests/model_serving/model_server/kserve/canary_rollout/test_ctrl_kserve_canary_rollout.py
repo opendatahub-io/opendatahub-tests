@@ -37,10 +37,11 @@ class TestCanaryRolloutController:
 
         canary_storage_fragment = CANARY_STORAGE_URI.rstrip("/").split("/")[-1]
         assert any(
-            deployment_contains_storage_uri(deployment, canary_storage_fragment) for deployment in deployments
+            deployment_contains_storage_uri(deployment=deployment, storage_uri=canary_storage_fragment)
+            for deployment in deployments
         ), f"Expected one Deployment to reference canary storage ({canary_storage_fragment})"
 
-        running_pods = [
+        deployments_with_ready_pods = [
             deployment for deployment in deployments if deployment.instance.status.get("readyReplicas", 0) >= 1
         ]
-        assert running_pods, "Expected at least one canary Deployment pod to be running"
+        assert deployments_with_ready_pods, "Expected at least one Deployment with readyReplicas >= 1"

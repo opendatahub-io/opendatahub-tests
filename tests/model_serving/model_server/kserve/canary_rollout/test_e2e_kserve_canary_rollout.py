@@ -78,9 +78,10 @@ class TestCanaryRolloutE2E:
         assert not alternate_backends, "Expected Route alternateBackends to be cleared after promotion"
 
         # Promoted stable is mixedtype — fingerprint status is 500 for every request.
+        # Allow a small tolerance for straggler responses during pod termination.
         assert_canary_traffic_by_status_codes(
             isvc=canary_e2e_inference_service,
             expected_percent=100,
             sample_size=50,
-            tolerance_percent=0,
+            tolerance_percent=2,
         )
