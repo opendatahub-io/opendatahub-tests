@@ -73,3 +73,9 @@ class TestRhoaiMcpDeployment:
             assert response.status_code == 200
             content_type = response.headers.get("content-type", "")
             assert "text/event-stream" in content_type
+            for line in response.iter_lines(decode_unicode=True):
+                if line:
+                    assert line.startswith((":", "data:", "event:", "id:", "retry:"))
+                    break
+            else:
+                pytest.fail("rhoai-mcp closed the SSE stream without emitting an event")
