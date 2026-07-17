@@ -2,16 +2,20 @@ from typing import Any
 
 import structlog
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.pod import Pod
 from ocp_resources.resource import NamespacedResource, Resource
 from pytest_testconfig import config as py_config
+from timeout_sampler import TimeoutExpiredError
 
 from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH, Labels
+from utilities.general import collect_pod_information
 from utilities.infra import check_internal_image_registry_available, get_product_version
 
 LOGGER = structlog.get_logger(name=__name__)
 
-WORKBENCH_TRUSTED_CA_BUNDLE_NAME = "workbench-trusted-ca-bundle"
-CA_BUNDLE_CERT_KEY = "ca-bundle.crt"
+WORKBENCH_TRUSTED_CA_BUNDLE_NAME: str = "workbench-trusted-ca-bundle"
+CA_BUNDLE_CERT_KEY: str = "ca-bundle.crt"
+KUBEFLOW_STOPPED_ANNOTATION: str = "kubeflow-resource-stopped"
 
 
 class StatefulSet(NamespacedResource):
@@ -24,6 +28,12 @@ class MutatingWebhookConfiguration(Resource):
     """MutatingWebhookConfiguration resource (admissionregistration.k8s.io/v1)."""
 
     api_group: str = Resource.ApiGroup.ADMISSIONREGISTRATION_K8S_IO
+
+
+class HardwareProfile(NamespacedResource):
+    """HardwareProfile resource (infrastructure.opendatahub.io/v1)."""
+
+    api_group: str = "infrastructure.opendatahub.io"
 
 
 def resolve_notebook_image(admin_client: DynamicClient) -> str:
@@ -61,6 +71,7 @@ def build_notebook_dict(
     name: str,
     image_path: str,
     extra_annotations: dict[str, str] | None = None,
+    resources: dict[str, dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     """Builds a Notebook CR dict for the kubeflow.org/v1 API.
 
@@ -69,6 +80,9 @@ def build_notebook_dict(
         name: Notebook resource name (also used for PVC claim, service account, container).
         image_path: Full container image reference.
         extra_annotations: Optional annotations merged into metadata (e.g. auth sidecar resources).
+        resources: Container resources dict with "limits" and/or "requests" keys.
+            None uses sensible defaults; empty dict ``{}`` omits resources entirely
+            (useful when a HardwareProfile webhook injects them).
 
     Returns:
         A dict suitable for passing to ``Notebook(kind_dict=...)``.
@@ -85,6 +99,15 @@ def build_notebook_dict(
         "successThreshold": 1,
         "timeoutSeconds": 1,
     }
+
+    container_resources: dict[str, dict[str, str]] | None = (
+        resources
+        if resources is not None
+        else {
+            "limits": {"cpu": "2", "memory": "4Gi"},
+            "requests": {"cpu": "1", "memory": "1Gi"},
+        }
+    )
 
     annotations: dict[str, str] = {
         Labels.Notebook.INJECT_AUTH: "true",
@@ -137,10 +160,7 @@ def build_notebook_dict(
                             "name": name,
                             "ports": [{"containerPort": 8888, "name": "notebook-port", "protocol": "TCP"}],
                             "readinessProbe": probe_config,
-                            "resources": {
-                                "limits": {"cpu": "2", "memory": "4Gi"},
-                                "requests": {"cpu": "1", "memory": "1Gi"},
-                            },
+                            **({"resources": container_resources} if container_resources else {}),
                             "volumeMounts": [
                                 {"mountPath": "/opt/app-root/src", "name": name},
                                 {"mountPath": "/dev/shm", "name": "shm"},
@@ -169,3 +189,35 @@ def build_notebook_dict(
             }
         },
     }
+
+
+def wait_for_notebook_pod_ready(notebook_pod: Pod, *, context: str, timeout: int = 300) -> None:
+    """Wait for a notebook pod to reach Ready state, with diagnostic collection on failure.
+
+    Args:
+        notebook_pod: The Pod resource to wait on.
+        context: Human-readable context for error messages (e.g. "Kueue notebook").
+        timeout: Maximum seconds to wait for the pod to become Ready.
+
+    Raises:
+        AssertionError: If the pod does not reach Ready within *timeout* seconds
+            or is never created.
+    """
+    try:
+        notebook_pod.wait(timeout=timeout)
+        notebook_pod.wait_for_condition(
+            condition=Pod.Condition.READY,
+            status=Pod.Condition.Status.TRUE,
+            timeout=timeout,
+        )
+    except (TimeoutError, TimeoutExpiredError) as e:
+        if notebook_pod.exists:
+            collect_pod_information(notebook_pod)
+            raise AssertionError(
+                f"{context} pod '{notebook_pod.name}' failed to reach Ready state "
+                f"within {timeout} seconds.\nOriginal error: {e}"
+            ) from e
+
+        raise AssertionError(
+            f"{context} pod '{notebook_pod.name}' was not created. Check notebook controller logs."
+        ) from e
