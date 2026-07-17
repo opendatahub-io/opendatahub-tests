@@ -136,7 +136,7 @@ uv run pytest tests/model_serving/maas_billing/upgrade/test_maas_upgrade.py \
 | MaaSSubscription | Create and verify | Verify survives, spec not mutated | 3.4 → 3.5 |
 | MaaS Deployments | — | Verify Available | 3.4 → 3.5 |
 | MaaS CRDs | — | Verify all present | 3.4 → 3.5 |
-| ModelsAsService CR | Verify absent | Verify bootstrapped | 3.4 → 3.5 |
+| AIGateway CR | Verify absent | Verify bootstrapped | 3.4 → 3.5 |
 | MaaS Config CR | Verify absent | Verify bootstrapped | 3.4 → 3.5 |
 | Gateway probe | — | Verify reachable | 3.4 → 3.5 |
 | API compatibility | — | Create new MaaSModelRef | 3.4 → 3.5 |
