@@ -94,7 +94,7 @@ MINIO_UPLOADER_SECURITY_CONTEXT = {
 
 # Minimal MinIO for simple-mode intents (no DSPA needed)
 SIMPLE_MINIO_ACCESS_KEY: str = "minioadmin"
-SIMPLE_MINIO_SECRET_KEY: str = "minioadmin"  # noqa: S105
+SIMPLE_MINIO_SECRET_KEY: str = "minioadmin"
 SIMPLE_MINIO_BUCKET: str = "evalhub-data"
 
 # ServiceMonitor and metrics Service

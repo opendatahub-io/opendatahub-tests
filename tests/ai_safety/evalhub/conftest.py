@@ -691,6 +691,7 @@ def _get_combined_ca_certificate(admin_client: DynamicClient, namespace: str) ->
     except (KeyError, AttributeError, TimeoutExpiredError) as e:
         LOGGER.warning(f"Failed to get real CA certificates, using fallback: {e}")
         from utilities.certificates_utils import get_ca_bundle
+
         ca_bundle_path = get_ca_bundle(admin_client)
         if ca_bundle_path:
             with open(ca_bundle_path, "r") as f:
@@ -711,7 +712,7 @@ def model_auth_secret_sidecar(
     """
     try:
         k8s_api_url = admin_client.client.configuration.host
-    except (AttributeError, KeyError):
+    except AttributeError, KeyError:
         k8s_api_url = "https://kubernetes.default.svc:443"
 
     access_key = base64.b64decode(dspa_secret_patch.instance.data.get("accesskey", "")).decode()
@@ -764,7 +765,9 @@ def evalhub_service_secret_reader(
             client=admin_client,
             name="evalhub-service-secret-reader",
             namespace=tenant_namespace.name,
-            rules=[{"apiGroups": [""], "resources": ["secrets"], "verbs": ["get", "list", "create", "update", "delete"]}],
+            rules=[
+                {"apiGroups": [""], "resources": ["secrets"], "verbs": ["get", "list", "create", "update", "delete"]}
+            ],
             wait_for_resource=True,
         ) as role,
         RoleBinding(
@@ -866,9 +869,7 @@ def intents_kfp_garak_job_id(
                         "model_url": garak_sim_isvc_url,
                     },
                     "intents_s3_key": garak_intents_csv,
-                    "intents_models": {
-                        "judge": {"url": garak_sim_isvc_url, "name": LLMdInferenceSimConfig.model_name}
-                    },
+                    "intents_models": {"judge": {"url": garak_sim_isvc_url, "name": LLMdInferenceSimConfig.model_name}},
                     "garak_config": {
                         "plugins": {
                             "probe_spec": "spo.SPOIntent",
