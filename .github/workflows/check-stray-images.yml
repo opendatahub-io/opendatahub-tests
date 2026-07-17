@@ -1,0 +1,51 @@
+name: Check Stray Container Images
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - 'tests/**/*.py'
+      - 'utilities/**/*.py'
+
+permissions:
+  contents: read
+
+jobs:
+  check-stray-images:
+    runs-on: ubuntu-latest
+
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.3.2
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run stray image check
+        run: |
+          git fetch origin ${{ github.base_ref }}
+          uv run python scripts/check_stray_images.py \
+            --diff-base origin/${{ github.base_ref }} --json > findings.json 2>stderr.log || true
+          if [ -s stderr.log ]; then
+            cat stderr.log >&2
+          fi
+          jq empty findings.json 2>/dev/null || echo '[]' > findings.json
+
+          count=$(jq length findings.json)
+          if [ "$count" -eq 0 ]; then
+            echo "No stray images found."
+            exit 0
+          fi
+
+          echo "Found $count stray container image(s):"
+          echo ""
+          jq -r '.[] | "::warning file=\(.file),line=\(.line)::Stray container image: \(.image) — move to \(if .component == "utilities" then "utilities/constants.py" else "tests/\(.component)/image_constants.py" end) or suppress with # noqa: IMG001"' findings.json

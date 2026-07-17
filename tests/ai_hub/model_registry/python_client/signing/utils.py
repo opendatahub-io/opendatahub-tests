@@ -10,6 +10,7 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.job import Job
 from ocp_resources.pod import Pod
+from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from pyhelper_utils.shell import run_command
@@ -26,8 +27,7 @@ from tests.ai_hub.model_registry.python_client.signing.constants import (
     SECURESIGN_ORGANIZATION_EMAIL,
     SECURESIGN_ORGANIZATION_NAME,
 )
-from tests.ai_hub.utils import get_endpoint_from_mr_service, get_mr_service_by_label
-from utilities.constants import MinIo, OCIRegistry, Protocols
+from utilities.constants import MinIo, OCIRegistry
 from utilities.general import collect_pod_information
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 
@@ -37,6 +37,7 @@ LOGGER = structlog.get_logger(name=__name__)
 def get_organization_config() -> dict[str, str]:
     """Get organization configuration for certificates."""
     return {
+        "commonName": SECURESIGN_ORGANIZATION_NAME,
         "organizationName": SECURESIGN_ORGANIZATION_NAME,
         "organizationEmail": SECURESIGN_ORGANIZATION_EMAIL,
     }
@@ -262,13 +263,19 @@ def get_model_registry_host(
     model_registry_namespace: str,
     model_registry_instance: list[ModelRegistry],
 ) -> str:
-    """Resolve the Model Registry REST host from the first instance."""
+    """Resolve the Model Registry REST host from the first instance.
+
+    Uses the direct REST route rather than the gateway annotation, because the
+    ModelRegistry Python client constructs API paths from the base URL and does
+    not support the gateway path prefix.
+    """
     mr_instance = model_registry_instance[0]
-    mr_service = get_mr_service_by_label(
-        client=admin_client, namespace_name=model_registry_namespace, mr_instance=mr_instance
+    rest_route = Route(
+        client=admin_client,
+        name=f"{mr_instance.name}-https",
+        namespace=model_registry_namespace,
     )
-    address, _ = get_endpoint_from_mr_service(svc=mr_service, protocol=Protocols.REST)
-    return address.split("/")[0]
+    return rest_route.instance.spec.host
 
 
 def create_async_upload_job(

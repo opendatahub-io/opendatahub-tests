@@ -7,6 +7,8 @@ import structlog
 from ocp_resources.deployment import Deployment
 from requests import Response
 from timeout_sampler import TimeoutSampler, retry
+from requests.exceptions import ReadTimeout
+from timeout_sampler import retry
 
 from tests.ai_safety.guardrails.constants import GuardrailsDetectionPrompt
 from utilities.exceptions import UnexpectedValueError
@@ -367,7 +369,7 @@ def send_chat_detections_request(
     )
 
 
-@retry(exceptions_dict={TimeoutError: []}, wait_timeout=120, sleep=4)
+@retry(exceptions_dict={TimeoutError: [], ReadTimeout: []}, wait_timeout=120, sleep=4)
 def send_and_verify_unsuitable_input_detection(
     url: str,
     token: str,
@@ -391,7 +393,7 @@ def send_and_verify_unsuitable_input_detection(
     return response
 
 
-@retry(exceptions_dict={TimeoutError: []}, wait_timeout=120, sleep=1)
+@retry(exceptions_dict={TimeoutError: [], ReadTimeout: []}, wait_timeout=120, sleep=1)
 def send_and_verify_unsuitable_output_detection(
     url: str,
     token: str,
@@ -415,7 +417,7 @@ def send_and_verify_unsuitable_output_detection(
     return response
 
 
-@retry(exceptions_dict={TimeoutError: []}, wait_timeout=10, sleep=1)
+@retry(exceptions_dict={TimeoutError: [], ReadTimeout: []}, wait_timeout=10, sleep=1)
 def send_and_verify_negative_detection(
     url: str,
     token: str,
@@ -434,7 +436,7 @@ def send_and_verify_negative_detection(
     return response
 
 
-@retry(exceptions_dict={TimeoutError: []}, wait_timeout=10, sleep=1)
+@retry(exceptions_dict={TimeoutError: [], ReadTimeout: []}, wait_timeout=10, sleep=1)
 def send_and_verify_standalone_detection(
     url: str,
     token: str,
