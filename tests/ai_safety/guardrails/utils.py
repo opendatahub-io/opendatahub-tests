@@ -6,9 +6,8 @@ import requests
 import structlog
 from ocp_resources.deployment import Deployment
 from requests import Response
-from timeout_sampler import TimeoutSampler, retry
 from requests.exceptions import ReadTimeout
-from timeout_sampler import retry
+from timeout_sampler import TimeoutSampler, retry
 
 from tests.ai_safety.guardrails.constants import GuardrailsDetectionPrompt
 from utilities.exceptions import UnexpectedValueError
