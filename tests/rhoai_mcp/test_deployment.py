@@ -61,7 +61,8 @@ class TestRhoaiMcpDeployment:
         When an authenticated request is sent to the /sse endpoint
         Then the server returns 200 and begins an SSE event stream
         """
-        # Uses admin token for now; will swap with create_inference_token(sa) for dedicated test identity in future tests
+        # Uses admin token for now; will swap with create_inference_token(sa)
+        # for dedicated test identity in future tests
         url = f"https://{rhoai_mcp_route.host}/sse"
         with requests.get(
             url,
