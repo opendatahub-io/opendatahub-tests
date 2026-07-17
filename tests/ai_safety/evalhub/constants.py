@@ -72,8 +72,10 @@ EVALHUB_USER_ROLE_RULES: list[dict[str, list[str]]] = [
 ]
 
 # Garak provider
+GARAK_SIMPLE_PROVIDER_ID: str = "garak"
 GARAK_PROVIDER_ID: str = "garak-kfp"
 GARAK_BENCHMARK_ID: str = "intents"
+GARAK_QUICK_BENCHMARK_ID: str = "quick"
 GARAK_JOB_TIMEOUT: int = 1800  # 30 minutes
 GARAK_JOB_POLL_INTERVAL: int = 30  # seconds
 
@@ -89,6 +91,11 @@ MINIO_UPLOADER_SECURITY_CONTEXT = {
     "runAsNonRoot": True,
     "seccompProfile": {"type": "RuntimeDefault"},
 }
+
+# Minimal MinIO for simple-mode intents (no DSPA needed)
+SIMPLE_MINIO_ACCESS_KEY: str = "minioadmin"
+SIMPLE_MINIO_SECRET_KEY: str = "minioadmin"
+SIMPLE_MINIO_BUCKET: str = "evalhub-data"
 
 # ServiceMonitor and metrics Service
 EVALHUB_METRICS_SERVICE_SUFFIX: str = "-metrics"

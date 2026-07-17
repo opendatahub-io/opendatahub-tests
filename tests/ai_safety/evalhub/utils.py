@@ -1,5 +1,5 @@
 import socket
-from typing import Final
+from typing import Any, Final
 
 import requests
 import structlog
@@ -7,6 +7,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.evalhub import EvalHub
 from ocp_resources.job import Job
+from ocp_resources.mlflow import MLflow
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.service_account import ServiceAccount
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
@@ -37,6 +38,19 @@ from utilities.guardrails import get_auth_headers
 from utilities.kueue_utils import Workload
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+class MLflowWithWorkspaces(MLflow):
+    """MLflow CR with workspaceLabelSelector support."""
+
+    def __init__(self, workspace_label_selector: dict[str, Any] | None = None, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._workspace_label_selector = workspace_label_selector
+
+    def to_dict(self) -> None:
+        super().to_dict()
+        if self._workspace_label_selector is not None and "spec" in self.res:
+            self.res["spec"]["workspaceLabelSelector"] = self._workspace_label_selector
 
 
 class TransientEvalhubHealthError(Exception):
@@ -469,6 +483,7 @@ def wait_for_evalhub_job(
         state = sample.get("status", {}).get("state", "")
         LOGGER.info(f"Job {job_id} state: {state}")
         if state in EVALHUB_JOB_TERMINAL_STATES:
+            LOGGER.debug(f"Job {job_id} final result: {sample}")
             return sample
 
     raise TimeoutExpiredError(f"Job '{job_id}' did not reach a terminal state within {timeout}s")
