@@ -9,9 +9,7 @@ from ocp_resources.service import Service
 
 from tests.ai_safety.evalhub.utils import (
     build_pvc_job_payload,
-    delete_evalhub_job,
     managed_evalhub_job,
-    submit_evalhub_job,
     validate_evalhub_job_completed,
     wait_for_evalhub_job,
     wait_for_evalhub_runtime_job_count,
@@ -120,23 +118,21 @@ class TestEvalHubPVCStorage:
             claim_name=evalhub_test_data_populated.name,
             sub_path="provider_a",
         )
-        data = submit_evalhub_job(
+        with managed_evalhub_job(
             host=evalhub_mt_route.host,
             token=tenant_a_token,
             ca_bundle_file=evalhub_mt_ca_bundle_file,
             tenant=tenant_a_namespace.name,
             payload=payload,
-        )
-        job_id = data["resource"]["id"]
-
-        job_data = wait_for_evalhub_job(
-            host=evalhub_mt_route.host,
-            token=tenant_a_token,
-            ca_bundle_file=evalhub_mt_ca_bundle_file,
-            tenant=tenant_a_namespace.name,
-            job_id=job_id,
-        )
-        validate_evalhub_job_completed(job_data=job_data)
+        ) as job_id:
+            job_data = wait_for_evalhub_job(
+                host=evalhub_mt_route.host,
+                token=tenant_a_token,
+                ca_bundle_file=evalhub_mt_ca_bundle_file,
+                tenant=tenant_a_namespace.name,
+                job_id=job_id,
+            )
+            validate_evalhub_job_completed(job_data=job_data)
 
     def test_missing_pvc_job_fails(
         self,
@@ -156,16 +152,13 @@ class TestEvalHubPVCStorage:
             job_name="pvc-missing-test",
             claim_name="nonexistent-pvc",
         )
-        data = submit_evalhub_job(
+        with managed_evalhub_job(
             host=evalhub_mt_route.host,
             token=tenant_a_token,
             ca_bundle_file=evalhub_mt_ca_bundle_file,
             tenant=tenant_a_namespace.name,
             payload=payload,
-        )
-        job_id = data["resource"]["id"]
-
-        try:
+        ) as job_id:
             job_data = wait_for_evalhub_job(
                 host=evalhub_mt_route.host,
                 token=tenant_a_token,
@@ -175,15 +168,6 @@ class TestEvalHubPVCStorage:
             )
             assert job_data["status"]["state"] == "failed", (
                 f"Expected job to fail with missing PVC, got state: {job_data['status']['state']}"
-            )
-        finally:
-            delete_evalhub_job(
-                host=evalhub_mt_route.host,
-                token=tenant_a_token,
-                ca_bundle_file=evalhub_mt_ca_bundle_file,
-                tenant=tenant_a_namespace.name,
-                job_id=job_id,
-                hard_delete=True,
             )
 
     def test_pvc_read_only_mount(
@@ -205,49 +189,49 @@ class TestEvalHubPVCStorage:
             job_name="pvc-readonly-test",
             claim_name=evalhub_test_data_populated.name,
         )
-        data = submit_evalhub_job(
+        with managed_evalhub_job(
             host=evalhub_mt_route.host,
             token=tenant_a_token,
             ca_bundle_file=evalhub_mt_ca_bundle_file,
             tenant=tenant_a_namespace.name,
             payload=payload,
-        )
-        job_id = data["resource"]["id"]
+        ) as job_id:
+            batch_jobs = wait_for_evalhub_runtime_job_count(
+                admin_client=admin_client,
+                namespace=tenant_a_namespace.name,
+                evalhub_job_id=job_id,
+                minimum=1,
+            )
+            batch_job = batch_jobs[0]
+            spec = batch_job.instance.spec.template.spec
 
-        batch_jobs = wait_for_evalhub_runtime_job_count(
-            admin_client=admin_client,
-            namespace=tenant_a_namespace.name,
-            evalhub_job_id=job_id,
-            minimum=1,
-        )
-        batch_job = batch_jobs[0]
-        spec = batch_job.instance.spec.template.spec
+            pvc_volumes = [
+                volume
+                for volume in (spec.volumes or [])
+                if getattr(volume, "persistentVolumeClaim", None) is not None
+            ]
+            assert len(pvc_volumes) >= 1, "Expected PVC volume in pod spec"
+            assert pvc_volumes[0].persistentVolumeClaim.readOnly is True, "PVC must be mounted read-only"
 
-        pvc_volumes = [
-            volume for volume in (spec.volumes or []) if getattr(volume, "persistentVolumeClaim", None) is not None
-        ]
-        assert len(pvc_volumes) >= 1, "Expected PVC volume in pod spec"
-        assert pvc_volumes[0].persistentVolumeClaim.readOnly is True, "PVC must be mounted read-only"
+            adapter_container = next(
+                (container for container in spec.containers if container.name == "adapter"), None
+            )
+            assert adapter_container is not None
+            pvc_mount = next(
+                (mount for mount in (adapter_container.volumeMounts or []) if mount.name == pvc_volumes[0].name),
+                None,
+            )
+            assert pvc_mount is not None, "Adapter container should have the PVC volume mount"
+            assert pvc_mount.readOnly is True, "Adapter PVC volume mount must be read-only"
 
-        adapter_container = next(
-            (container for container in spec.containers if container.name == "adapter"), None
-        )
-        assert adapter_container is not None
-        pvc_mount = next(
-            (mount for mount in (adapter_container.volumeMounts or []) if mount.name == pvc_volumes[0].name),
-            None,
-        )
-        assert pvc_mount is not None, "Adapter container should have the PVC volume mount"
-        assert pvc_mount.readOnly is True, "Adapter PVC volume mount must be read-only"
-
-        job_data = wait_for_evalhub_job(
-            host=evalhub_mt_route.host,
-            token=tenant_a_token,
-            ca_bundle_file=evalhub_mt_ca_bundle_file,
-            tenant=tenant_a_namespace.name,
-            job_id=job_id,
-        )
-        validate_evalhub_job_completed(job_data=job_data)
+            job_data = wait_for_evalhub_job(
+                host=evalhub_mt_route.host,
+                token=tenant_a_token,
+                ca_bundle_file=evalhub_mt_ca_bundle_file,
+                tenant=tenant_a_namespace.name,
+                job_id=job_id,
+            )
+            validate_evalhub_job_completed(job_data=job_data)
 
     def test_multiple_providers_same_pvc(
         self,
@@ -276,36 +260,32 @@ class TestEvalHubPVCStorage:
             sub_path="provider_b",
         )
 
-        data_a = submit_evalhub_job(
+        with managed_evalhub_job(
             host=evalhub_mt_route.host,
             token=tenant_a_token,
             ca_bundle_file=evalhub_mt_ca_bundle_file,
             tenant=tenant_a_namespace.name,
             payload=payload_a,
-        )
-        data_b = submit_evalhub_job(
+        ) as job_id_a, managed_evalhub_job(
             host=evalhub_mt_route.host,
             token=tenant_a_token,
             ca_bundle_file=evalhub_mt_ca_bundle_file,
             tenant=tenant_a_namespace.name,
             payload=payload_b,
-        )
-        job_id_a = data_a["resource"]["id"]
-        job_id_b = data_b["resource"]["id"]
-
-        job_data_a = wait_for_evalhub_job(
-            host=evalhub_mt_route.host,
-            token=tenant_a_token,
-            ca_bundle_file=evalhub_mt_ca_bundle_file,
-            tenant=tenant_a_namespace.name,
-            job_id=job_id_a,
-        )
-        job_data_b = wait_for_evalhub_job(
-            host=evalhub_mt_route.host,
-            token=tenant_a_token,
-            ca_bundle_file=evalhub_mt_ca_bundle_file,
-            tenant=tenant_a_namespace.name,
-            job_id=job_id_b,
-        )
-        validate_evalhub_job_completed(job_data=job_data_a)
-        validate_evalhub_job_completed(job_data=job_data_b)
+        ) as job_id_b:
+            job_data_a = wait_for_evalhub_job(
+                host=evalhub_mt_route.host,
+                token=tenant_a_token,
+                ca_bundle_file=evalhub_mt_ca_bundle_file,
+                tenant=tenant_a_namespace.name,
+                job_id=job_id_a,
+            )
+            job_data_b = wait_for_evalhub_job(
+                host=evalhub_mt_route.host,
+                token=tenant_a_token,
+                ca_bundle_file=evalhub_mt_ca_bundle_file,
+                tenant=tenant_a_namespace.name,
+                job_id=job_id_b,
+            )
+            validate_evalhub_job_completed(job_data=job_data_a)
+            validate_evalhub_job_completed(job_data=job_data_b)

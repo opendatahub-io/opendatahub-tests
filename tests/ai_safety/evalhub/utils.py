@@ -1,4 +1,4 @@
-import contextlib
+from contextlib import  contextmanager
 import socket
 from collections.abc import Generator
 from typing import Any, Final
@@ -900,7 +900,7 @@ def build_pvc_job_payload(
     return payload
 
 
-@contextlib.contextmanager
+@contextmanager
 def managed_evalhub_job(
     host: str,
     token: str,
