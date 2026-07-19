@@ -1,4 +1,4 @@
-"""PVC as a storage source for evaluation provider test data (RHOAIENG-75554)."""
+"""PVC as a storage source for evaluation provider test data."""
 
 import pytest
 from kubernetes.dynamic import DynamicClient
