@@ -1697,8 +1697,8 @@ def evalhub_test_data_populated(
     """Populate the test data PVC with marker files at two sub-paths."""
     populate_script = (
         "mkdir -p /data/provider_a /data/provider_b && "
-        "echo '{\"provider\": \"a\", \"benchmark\": \"arc_easy\"}' > /data/provider_a/data.json && "
-        "echo '{\"provider\": \"b\", \"benchmark\": \"arc_easy\"}' > /data/provider_b/data.json && "
+        'echo \'{"provider": "a", "benchmark": "arc_easy"}\' > /data/provider_a/data.json && '
+        'echo \'{"provider": "b", "benchmark": "arc_easy"}\' > /data/provider_b/data.json && '
         "echo 'PVC data population complete'"
     )
 

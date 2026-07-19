@@ -1,6 +1,6 @@
-from contextlib import  contextmanager
 import socket
 from collections.abc import Generator
+from contextlib import contextmanager
 from typing import Any, Final
 
 import requests

@@ -69,9 +69,7 @@ class TestEvalHubPVCStorage:
             spec = batch_job.instance.spec.template.spec
 
             pvc_volumes = [
-                volume
-                for volume in (spec.volumes or [])
-                if getattr(volume, "persistentVolumeClaim", None) is not None
+                volume for volume in (spec.volumes or []) if getattr(volume, "persistentVolumeClaim", None) is not None
             ]
             assert len(pvc_volumes) >= 1, (
                 f"Expected PVC volume in pod spec, got volumes: {[volume.name for volume in spec.volumes]}"
@@ -81,16 +79,12 @@ class TestEvalHubPVCStorage:
             assert pvc_volume.persistentVolumeClaim.readOnly is True
 
             init_containers = spec.initContainers or []
-            init_container_names = [
-                container.name for container in init_containers if "init" in container.name.lower()
-            ]
+            init_container_names = [container.name for container in init_containers if "init" in container.name.lower()]
             assert "eval-runtime-init" not in init_container_names, (
                 "PVC jobs should not have an init container for data download"
             )
 
-            adapter_container = next(
-                (container for container in spec.containers if container.name == "adapter"), None
-            )
+            adapter_container = next((container for container in spec.containers if container.name == "adapter"), None)
             assert adapter_container is not None, "Expected adapter container in pod spec"
             s3_env_names = {
                 env_var.name
@@ -206,16 +200,12 @@ class TestEvalHubPVCStorage:
             spec = batch_job.instance.spec.template.spec
 
             pvc_volumes = [
-                volume
-                for volume in (spec.volumes or [])
-                if getattr(volume, "persistentVolumeClaim", None) is not None
+                volume for volume in (spec.volumes or []) if getattr(volume, "persistentVolumeClaim", None) is not None
             ]
             assert len(pvc_volumes) >= 1, "Expected PVC volume in pod spec"
             assert pvc_volumes[0].persistentVolumeClaim.readOnly is True, "PVC must be mounted read-only"
 
-            adapter_container = next(
-                (container for container in spec.containers if container.name == "adapter"), None
-            )
+            adapter_container = next((container for container in spec.containers if container.name == "adapter"), None)
             assert adapter_container is not None
             pvc_mount = next(
                 (mount for mount in (adapter_container.volumeMounts or []) if mount.name == pvc_volumes[0].name),
@@ -260,19 +250,22 @@ class TestEvalHubPVCStorage:
             sub_path="provider_b",
         )
 
-        with managed_evalhub_job(
-            host=evalhub_mt_route.host,
-            token=tenant_a_token,
-            ca_bundle_file=evalhub_mt_ca_bundle_file,
-            tenant=tenant_a_namespace.name,
-            payload=payload_a,
-        ) as job_id_a, managed_evalhub_job(
-            host=evalhub_mt_route.host,
-            token=tenant_a_token,
-            ca_bundle_file=evalhub_mt_ca_bundle_file,
-            tenant=tenant_a_namespace.name,
-            payload=payload_b,
-        ) as job_id_b:
+        with (
+            managed_evalhub_job(
+                host=evalhub_mt_route.host,
+                token=tenant_a_token,
+                ca_bundle_file=evalhub_mt_ca_bundle_file,
+                tenant=tenant_a_namespace.name,
+                payload=payload_a,
+            ) as job_id_a,
+            managed_evalhub_job(
+                host=evalhub_mt_route.host,
+                token=tenant_a_token,
+                ca_bundle_file=evalhub_mt_ca_bundle_file,
+                tenant=tenant_a_namespace.name,
+                payload=payload_b,
+            ) as job_id_b,
+        ):
             job_data_a = wait_for_evalhub_job(
                 host=evalhub_mt_route.host,
                 token=tenant_a_token,
