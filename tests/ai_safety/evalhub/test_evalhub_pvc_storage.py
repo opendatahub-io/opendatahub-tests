@@ -7,9 +7,8 @@ from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.route import Route
 from ocp_resources.service import Service
 
+from tests.ai_safety.evalhub.conftest import build_pvc_job_payload
 from tests.ai_safety.evalhub.utils import (
-    build_evalhub_job_payload,
-    build_pvc_test_data_ref,
     delete_evalhub_job,
     submit_evalhub_job,
     validate_evalhub_job_completed,
@@ -18,22 +17,6 @@ from tests.ai_safety.evalhub.utils import (
 )
 
 PVC_MODEL_NAMESPACE = pytest.param({"name": "test-evalhub-pvc-storage"})
-
-
-def _build_pvc_job_payload(
-    model_service_name: str,
-    tenant_namespace: str,
-    job_name: str,
-    claim_name: str,
-    sub_path: str | None = None,
-) -> dict:
-    payload = build_evalhub_job_payload(
-        model_service_name=model_service_name,
-        tenant_namespace=tenant_namespace,
-        job_name=job_name,
-    )
-    payload["test_data_ref"] = build_pvc_test_data_ref(claim_name=claim_name, sub_path=sub_path)
-    return payload
 
 
 @pytest.mark.parametrize("model_namespace", [PVC_MODEL_NAMESPACE], indirect=True)
@@ -55,7 +38,7 @@ class TestEvalHubPVCStorage:
         """Given a PVC with test data in the tenant namespace,
         when an evaluation job is submitted with test_data_ref.pvc,
         then the job completes successfully and results are persisted."""
-        payload = _build_pvc_job_payload(
+        payload = build_pvc_job_payload(
             model_service_name=evalhub_vllm_emulator_service.name,
             tenant_namespace=tenant_a_namespace.name,
             job_name="pvc-mount-test",
@@ -117,7 +100,7 @@ class TestEvalHubPVCStorage:
         """Given a PVC with data at a specific sub-path,
         when an evaluation job specifies test_data_ref.pvc with sub_path,
         then the job completes successfully using data from that sub-path."""
-        payload = _build_pvc_job_payload(
+        payload = build_pvc_job_payload(
             model_service_name=evalhub_vllm_emulator_service.name,
             tenant_namespace=tenant_a_namespace.name,
             job_name="pvc-sub-path-test",
@@ -154,7 +137,7 @@ class TestEvalHubPVCStorage:
         """Given a job referencing a PVC that does not exist,
         when the job is submitted,
         then the API accepts it but the job fails because K8s cannot mount the volume."""
-        payload = _build_pvc_job_payload(
+        payload = build_pvc_job_payload(
             model_service_name=evalhub_vllm_emulator_service.name,
             tenant_namespace=tenant_a_namespace.name,
             job_name="pvc-missing-test",
@@ -203,7 +186,7 @@ class TestEvalHubPVCStorage:
         """Given a PVC-backed evaluation job,
         when the pod spec is inspected,
         then the PVC volume mount has readOnly: true."""
-        payload = _build_pvc_job_payload(
+        payload = build_pvc_job_payload(
             model_service_name=evalhub_vllm_emulator_service.name,
             tenant_namespace=tenant_a_namespace.name,
             job_name="pvc-readonly-test",
@@ -263,14 +246,14 @@ class TestEvalHubPVCStorage:
         """Given a PVC with multiple provider datasets at different sub-paths,
         when separate evaluation jobs reference different sub-paths,
         then both jobs complete independently."""
-        payload_a = _build_pvc_job_payload(
+        payload_a = build_pvc_job_payload(
             model_service_name=evalhub_vllm_emulator_service.name,
             tenant_namespace=tenant_a_namespace.name,
             job_name="pvc-multi-provider-a",
             claim_name=evalhub_test_data_populated.name,
             sub_path="provider_a",
         )
-        payload_b = _build_pvc_job_payload(
+        payload_b = build_pvc_job_payload(
             model_service_name=evalhub_vllm_emulator_service.name,
             tenant_namespace=tenant_a_namespace.name,
             job_name="pvc-multi-provider-b",
