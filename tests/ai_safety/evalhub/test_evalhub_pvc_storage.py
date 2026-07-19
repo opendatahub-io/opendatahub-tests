@@ -10,6 +10,7 @@ from ocp_resources.service import Service
 from tests.ai_safety.evalhub.utils import (
     build_pvc_job_payload,
     delete_evalhub_job,
+    managed_evalhub_job,
     submit_evalhub_job,
     validate_evalhub_job_completed,
     wait_for_evalhub_job,
@@ -44,16 +45,13 @@ class TestEvalHubPVCStorage:
             job_name="pvc-mount-test",
             claim_name=evalhub_test_data_populated.name,
         )
-        data = submit_evalhub_job(
+        with managed_evalhub_job(
             host=evalhub_mt_route.host,
             token=tenant_a_token,
             ca_bundle_file=evalhub_mt_ca_bundle_file,
             tenant=tenant_a_namespace.name,
             payload=payload,
-        )
-        job_id = data["resource"]["id"]
-
-        try:
+        ) as job_id:
             job_data = wait_for_evalhub_job(
                 host=evalhub_mt_route.host,
                 token=tenant_a_token,
@@ -102,15 +100,6 @@ class TestEvalHubPVCStorage:
                 if "AWS" in env_var.name or "S3" in env_var.name.upper()
             }
             assert not s3_env_names, f"PVC jobs should not have S3 credential env vars, found: {s3_env_names}"
-        finally:
-            delete_evalhub_job(
-                host=evalhub_mt_route.host,
-                token=tenant_a_token,
-                ca_bundle_file=evalhub_mt_ca_bundle_file,
-                tenant=tenant_a_namespace.name,
-                job_id=job_id,
-                hard_delete=True,
-            )
 
     def test_pvc_sub_path_loading(
         self,

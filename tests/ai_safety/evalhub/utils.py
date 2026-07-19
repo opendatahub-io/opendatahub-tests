@@ -1,4 +1,6 @@
+import contextlib
 import socket
+from collections.abc import Generator
 from typing import Any, Final
 
 import requests
@@ -896,6 +898,36 @@ def build_pvc_job_payload(
     )
     payload["test_data_ref"] = build_pvc_test_data_ref(claim_name=claim_name, sub_path=sub_path)
     return payload
+
+
+@contextlib.contextmanager
+def managed_evalhub_job(
+    host: str,
+    token: str,
+    ca_bundle_file: str,
+    tenant: str,
+    payload: dict,
+) -> Generator[str, Any, Any]:
+    """Submit an EvalHub job and guarantee cleanup via hard delete on exit."""
+    data = submit_evalhub_job(
+        host=host,
+        token=token,
+        ca_bundle_file=ca_bundle_file,
+        tenant=tenant,
+        payload=payload,
+    )
+    job_id = data["resource"]["id"]
+    try:
+        yield job_id
+    finally:
+        delete_evalhub_job(
+            host=host,
+            token=token,
+            ca_bundle_file=ca_bundle_file,
+            tenant=tenant,
+            job_id=job_id,
+            hard_delete=True,
+        )
 
 
 def submit_evalhub_collection(
