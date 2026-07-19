@@ -881,6 +881,23 @@ def build_pvc_test_data_ref(claim_name: str, sub_path: str | None = None) -> dic
     return {"pvc": pvc_ref}
 
 
+def build_pvc_job_payload(
+    model_service_name: str,
+    tenant_namespace: str,
+    job_name: str,
+    claim_name: str,
+    sub_path: str | None = None,
+) -> dict:
+    """Build an EvalHub job payload with PVC-backed test data."""
+    payload = build_evalhub_job_payload(
+        model_service_name=model_service_name,
+        tenant_namespace=tenant_namespace,
+        job_name=job_name,
+    )
+    payload["test_data_ref"] = build_pvc_test_data_ref(claim_name=claim_name, sub_path=sub_path)
+    return payload
+
+
 def submit_evalhub_collection(
     host: str,
     token: str,

@@ -7,8 +7,8 @@ from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.route import Route
 from ocp_resources.service import Service
 
-from tests.ai_safety.evalhub.conftest import build_pvc_job_payload
 from tests.ai_safety.evalhub.utils import (
+    build_pvc_job_payload,
     delete_evalhub_job,
     submit_evalhub_job,
     validate_evalhub_job_completed,

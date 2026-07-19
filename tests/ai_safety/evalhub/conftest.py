@@ -60,8 +60,6 @@ from tests.ai_safety.evalhub.constants import (
 from tests.ai_safety.evalhub.kueue.constants import VLLM_EMULATOR, VLLM_EMULATOR_IMAGE
 from tests.ai_safety.evalhub.utils import (
     MLflowWithWorkspaces,
-    build_evalhub_job_payload,
-    build_pvc_test_data_ref,
     submit_garak_job,
     tenant_rbac_ready,
     wait_for_service_account,
@@ -1733,20 +1731,3 @@ def evalhub_test_data_populated(
         LOGGER.info("PVC test data population complete")
 
     return evalhub_test_data_pvc
-
-
-def build_pvc_job_payload(
-    model_service_name: str,
-    tenant_namespace: str,
-    job_name: str,
-    claim_name: str,
-    sub_path: str | None = None,
-) -> dict:
-    """Build an EvalHub job payload with PVC-backed test data."""
-    payload = build_evalhub_job_payload(
-        model_service_name=model_service_name,
-        tenant_namespace=tenant_namespace,
-        job_name=job_name,
-    )
-    payload["test_data_ref"] = build_pvc_test_data_ref(claim_name=claim_name, sub_path=sub_path)
-    return payload
