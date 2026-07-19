@@ -101,9 +101,6 @@ SIMPLE_MINIO_BUCKET: str = "evalhub-data"
 PVC_TEST_DATA_NAME: str = "evalhub-test-data"
 PVC_TEST_DATA_SIZE: str = "1Gi"
 PVC_TEST_DATA_MOUNT_PATH: str = "/test_data"
-PVC_DATA_WRITER_IMAGE: str = (
-    "registry.access.redhat.com/ubi9/ubi-minimal@sha256:dab61a381cceb00e26bfe34b0bdc7a47a93e2873eeb3a0e77fb0778e0a5a1232"
-)
 PVC_DATA_WRITER_SECURITY_CONTEXT: dict = {
     "allowPrivilegeEscalation": False,
     "capabilities": {"drop": ["ALL"]},

@@ -49,7 +49,6 @@ from tests.ai_safety.evalhub.constants import (
     OTEL_COLLECTOR_HTTP_PORT,
     OTEL_COLLECTOR_NAMESPACE,
     OTEL_COLLECTOR_PROMETHEUS_PORT,
-    PVC_DATA_WRITER_IMAGE,
     PVC_DATA_WRITER_SECURITY_CONTEXT,
     PVC_TEST_DATA_NAME,
     PVC_TEST_DATA_SIZE,
@@ -1713,7 +1712,7 @@ def evalhub_test_data_populated(
         containers=[
             {
                 "name": "data-writer",
-                "image": PVC_DATA_WRITER_IMAGE,
+                "image": MINIO_MC_IMAGE,
                 "command": ["/bin/sh", "-c"],
                 "args": [populate_script],
                 "volumeMounts": [{"name": "test-data", "mountPath": "/data"}],
