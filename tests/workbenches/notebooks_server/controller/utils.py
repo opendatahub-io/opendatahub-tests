@@ -28,6 +28,12 @@ class MutatingWebhookConfiguration(Resource):
     api_group: str = Resource.ApiGroup.ADMISSIONREGISTRATION_K8S_IO
 
 
+class HardwareProfile(NamespacedResource):
+    """HardwareProfile resource (infrastructure.opendatahub.io/v1)."""
+
+    api_group: str = "infrastructure.opendatahub.io"
+
+
 def resolve_notebook_image(admin_client: DynamicClient) -> str:
     """Resolves the full image path for a minimal workbench notebook.
 
@@ -108,7 +114,9 @@ def build_notebook_dict(
         name: Notebook resource name (also used for PVC claim, service account, container).
         image_path: Full container image reference.
         extra_annotations: Optional annotations merged into metadata (e.g. auth sidecar resources).
-        resources: Optional container resources dict with "limits" and/or "requests" keys.
+        resources: Container resources dict with "limits" and/or "requests" keys.
+            None uses sensible defaults; empty dict ``{}`` omits resources entirely
+            (useful when a HardwareProfile webhook injects them).
 
     Returns:
         A dict suitable for passing to ``Notebook(kind_dict=...)``.
@@ -126,7 +134,7 @@ def build_notebook_dict(
         "timeoutSeconds": 1,
     }
 
-    container_resources = (
+    container_resources: dict[str, dict[str, str]] | None = (
         resources
         if resources is not None
         else {
@@ -183,7 +191,7 @@ def build_notebook_dict(
                             "name": name,
                             "ports": [{"containerPort": 8888, "name": "notebook-port", "protocol": "TCP"}],
                             "readinessProbe": probe_config,
-                            "resources": container_resources,
+                            **({"resources": container_resources} if container_resources else {}),
                             "volumeMounts": [
                                 {"mountPath": "/opt/app-root/src", "name": name},
                                 {"mountPath": "/dev/shm", "name": "shm"},
