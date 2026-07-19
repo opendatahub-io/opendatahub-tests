@@ -72,20 +72,30 @@ class TestEvalHubPVCStorage:
         spec = batch_job.instance.spec.template.spec
 
         pvc_volumes = [
-            v for v in (spec.volumes or []) if getattr(v, "persistentVolumeClaim", None) is not None
+            volume for volume in (spec.volumes or []) if getattr(volume, "persistentVolumeClaim", None) is not None
         ]
-        assert len(pvc_volumes) >= 1, f"Expected PVC volume in pod spec, got volumes: {[v.name for v in spec.volumes]}"
-        pvc_vol = pvc_volumes[0]
-        assert pvc_vol.persistentVolumeClaim.claimName == evalhub_test_data_populated.name
-        assert pvc_vol.persistentVolumeClaim.readOnly is True
+        assert len(pvc_volumes) >= 1, (
+            f"Expected PVC volume in pod spec, got volumes: {[volume.name for volume in spec.volumes]}"
+        )
+        pvc_volume = pvc_volumes[0]
+        assert pvc_volume.persistentVolumeClaim.claimName == evalhub_test_data_populated.name
+        assert pvc_volume.persistentVolumeClaim.readOnly is True
 
         init_containers = spec.initContainers or []
-        init_data_names = [c.name for c in init_containers if "init" in c.name.lower()]
-        assert "eval-runtime-init" not in init_data_names, "PVC jobs should not have an init container for data download"
+        init_container_names = [container.name for container in init_containers if "init" in container.name.lower()]
+        assert "eval-runtime-init" not in init_container_names, (
+            "PVC jobs should not have an init container for data download"
+        )
 
-        adapter = next((c for c in spec.containers if c.name == "adapter"), None)
-        assert adapter is not None, "Expected adapter container in pod spec"
-        s3_env_names = {e.name for e in (adapter.env or []) if "AWS" in e.name or "S3" in e.name.upper()}
+        adapter_container = next(
+            (container for container in spec.containers if container.name == "adapter"), None
+        )
+        assert adapter_container is not None, "Expected adapter container in pod spec"
+        s3_env_names = {
+            env_var.name
+            for env_var in (adapter_container.env or [])
+            if "AWS" in env_var.name or "S3" in env_var.name.upper()
+        }
         assert not s3_env_names, f"PVC jobs should not have S3 credential env vars, found: {s3_env_names}"
 
     def test_pvc_sub_path_loading(
@@ -211,15 +221,17 @@ class TestEvalHubPVCStorage:
         spec = batch_job.instance.spec.template.spec
 
         pvc_volumes = [
-            v for v in (spec.volumes or []) if getattr(v, "persistentVolumeClaim", None) is not None
+            volume for volume in (spec.volumes or []) if getattr(volume, "persistentVolumeClaim", None) is not None
         ]
         assert len(pvc_volumes) >= 1, "Expected PVC volume in pod spec"
         assert pvc_volumes[0].persistentVolumeClaim.readOnly is True, "PVC must be mounted read-only"
 
-        adapter = next((c for c in spec.containers if c.name == "adapter"), None)
-        assert adapter is not None
+        adapter_container = next(
+            (container for container in spec.containers if container.name == "adapter"), None
+        )
+        assert adapter_container is not None
         pvc_mount = next(
-            (m for m in (adapter.volumeMounts or []) if m.name == pvc_volumes[0].name),
+            (mount for mount in (adapter_container.volumeMounts or []) if mount.name == pvc_volumes[0].name),
             None,
         )
         assert pvc_mount is not None, "Adapter container should have the PVC volume mount"
