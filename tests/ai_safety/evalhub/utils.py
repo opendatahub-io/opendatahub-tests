@@ -873,6 +873,14 @@ def build_evalhub_job_payload(
     }
 
 
+def build_pvc_test_data_ref(claim_name: str, sub_path: str | None = None) -> dict:
+    """Build the test_data_ref.pvc portion of an EvalHub job payload."""
+    pvc_ref: dict[str, str] = {"claim_name": claim_name}
+    if sub_path is not None:
+        pvc_ref["sub_path"] = sub_path
+    return {"pvc": pvc_ref}
+
+
 def submit_evalhub_collection(
     host: str,
     token: str,

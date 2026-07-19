@@ -1,0 +1,313 @@
+"""PVC as a storage source for evaluation provider test data (RHOAIENG-75554)."""
+
+import pytest
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.namespace import Namespace
+from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
+from ocp_resources.route import Route
+from ocp_resources.service import Service
+
+from tests.ai_safety.evalhub.utils import (
+    build_evalhub_job_payload,
+    build_pvc_test_data_ref,
+    delete_evalhub_job,
+    submit_evalhub_job,
+    validate_evalhub_job_completed,
+    wait_for_evalhub_job,
+    wait_for_evalhub_runtime_job_count,
+)
+
+PVC_MODEL_NAMESPACE = pytest.param({"name": "test-evalhub-pvc-storage"})
+
+
+def _build_pvc_job_payload(
+    model_service_name: str,
+    tenant_namespace: str,
+    job_name: str,
+    claim_name: str,
+    sub_path: str | None = None,
+) -> dict:
+    payload = build_evalhub_job_payload(
+        model_service_name=model_service_name,
+        tenant_namespace=tenant_namespace,
+        job_name=job_name,
+    )
+    payload["test_data_ref"] = build_pvc_test_data_ref(claim_name=claim_name, sub_path=sub_path)
+    return payload
+
+
+@pytest.mark.parametrize("model_namespace", [PVC_MODEL_NAMESPACE], indirect=True)
+@pytest.mark.tier2
+@pytest.mark.ai_safety
+class TestEvalHubPVCStorage:
+    """PVC-backed test data source for evaluation jobs."""
+
+    def test_pvc_mount_job_completes(
+        self,
+        admin_client: DynamicClient,
+        tenant_a_token: str,
+        tenant_a_namespace: Namespace,
+        evalhub_mt_ca_bundle_file: str,
+        evalhub_mt_route: Route,
+        evalhub_vllm_emulator_service: Service,
+        evalhub_test_data_populated: PersistentVolumeClaim,
+    ) -> None:
+        """Given a PVC with test data in the tenant namespace,
+        when an evaluation job is submitted with test_data_ref.pvc,
+        then the job completes successfully and results are persisted."""
+        payload = _build_pvc_job_payload(
+            model_service_name=evalhub_vllm_emulator_service.name,
+            tenant_namespace=tenant_a_namespace.name,
+            job_name="pvc-mount-test",
+            claim_name=evalhub_test_data_populated.name,
+        )
+        data = submit_evalhub_job(
+            host=evalhub_mt_route.host,
+            token=tenant_a_token,
+            ca_bundle_file=evalhub_mt_ca_bundle_file,
+            tenant=tenant_a_namespace.name,
+            payload=payload,
+        )
+        job_id = data["resource"]["id"]
+
+        job_data = wait_for_evalhub_job(
+            host=evalhub_mt_route.host,
+            token=tenant_a_token,
+            ca_bundle_file=evalhub_mt_ca_bundle_file,
+            tenant=tenant_a_namespace.name,
+            job_id=job_id,
+        )
+        validate_evalhub_job_completed(job_data=job_data)
+
+        batch_jobs = wait_for_evalhub_runtime_job_count(
+            admin_client=admin_client,
+            namespace=tenant_a_namespace.name,
+            evalhub_job_id=job_id,
+            minimum=1,
+        )
+        batch_job = batch_jobs[0]
+        spec = batch_job.instance.spec.template.spec
+
+        pvc_volumes = [
+            v for v in (spec.volumes or []) if getattr(v, "persistentVolumeClaim", None) is not None
+        ]
+        assert len(pvc_volumes) >= 1, f"Expected PVC volume in pod spec, got volumes: {[v.name for v in spec.volumes]}"
+        pvc_vol = pvc_volumes[0]
+        assert pvc_vol.persistentVolumeClaim.claimName == evalhub_test_data_populated.name
+        assert pvc_vol.persistentVolumeClaim.readOnly is True
+
+        init_containers = spec.initContainers or []
+        init_data_names = [c.name for c in init_containers if "init" in c.name.lower()]
+        assert "eval-runtime-init" not in init_data_names, "PVC jobs should not have an init container for data download"
+
+        adapter = next((c for c in spec.containers if c.name == "adapter"), None)
+        assert adapter is not None, "Expected adapter container in pod spec"
+        s3_env_names = {e.name for e in (adapter.env or []) if "AWS" in e.name or "S3" in e.name.upper()}
+        assert not s3_env_names, f"PVC jobs should not have S3 credential env vars, found: {s3_env_names}"
+
+    def test_pvc_sub_path_loading(
+        self,
+        tenant_a_token: str,
+        tenant_a_namespace: Namespace,
+        evalhub_mt_ca_bundle_file: str,
+        evalhub_mt_route: Route,
+        evalhub_vllm_emulator_service: Service,
+        evalhub_test_data_populated: PersistentVolumeClaim,
+    ) -> None:
+        """Given a PVC with data at a specific sub-path,
+        when an evaluation job specifies test_data_ref.pvc with sub_path,
+        then the job completes successfully using data from that sub-path."""
+        payload = _build_pvc_job_payload(
+            model_service_name=evalhub_vllm_emulator_service.name,
+            tenant_namespace=tenant_a_namespace.name,
+            job_name="pvc-sub-path-test",
+            claim_name=evalhub_test_data_populated.name,
+            sub_path="provider_a",
+        )
+        data = submit_evalhub_job(
+            host=evalhub_mt_route.host,
+            token=tenant_a_token,
+            ca_bundle_file=evalhub_mt_ca_bundle_file,
+            tenant=tenant_a_namespace.name,
+            payload=payload,
+        )
+        job_id = data["resource"]["id"]
+
+        job_data = wait_for_evalhub_job(
+            host=evalhub_mt_route.host,
+            token=tenant_a_token,
+            ca_bundle_file=evalhub_mt_ca_bundle_file,
+            tenant=tenant_a_namespace.name,
+            job_id=job_id,
+        )
+        validate_evalhub_job_completed(job_data=job_data)
+
+    def test_missing_pvc_job_fails(
+        self,
+        tenant_a_token: str,
+        tenant_a_namespace: Namespace,
+        evalhub_mt_ca_bundle_file: str,
+        evalhub_mt_route: Route,
+        evalhub_vllm_emulator_service: Service,
+        evalhub_mt_deployment,
+    ) -> None:
+        """Given a job referencing a PVC that does not exist,
+        when the job is submitted,
+        then the API accepts it but the job fails because K8s cannot mount the volume."""
+        payload = _build_pvc_job_payload(
+            model_service_name=evalhub_vllm_emulator_service.name,
+            tenant_namespace=tenant_a_namespace.name,
+            job_name="pvc-missing-test",
+            claim_name="nonexistent-pvc",
+        )
+        data = submit_evalhub_job(
+            host=evalhub_mt_route.host,
+            token=tenant_a_token,
+            ca_bundle_file=evalhub_mt_ca_bundle_file,
+            tenant=tenant_a_namespace.name,
+            payload=payload,
+        )
+        job_id = data["resource"]["id"]
+
+        try:
+            job_data = wait_for_evalhub_job(
+                host=evalhub_mt_route.host,
+                token=tenant_a_token,
+                ca_bundle_file=evalhub_mt_ca_bundle_file,
+                tenant=tenant_a_namespace.name,
+                job_id=job_id,
+            )
+            assert job_data["status"]["state"] == "failed", (
+                f"Expected job to fail with missing PVC, got state: {job_data['status']['state']}"
+            )
+        finally:
+            delete_evalhub_job(
+                host=evalhub_mt_route.host,
+                token=tenant_a_token,
+                ca_bundle_file=evalhub_mt_ca_bundle_file,
+                tenant=tenant_a_namespace.name,
+                job_id=job_id,
+                hard_delete=True,
+            )
+
+    def test_pvc_read_only_mount(
+        self,
+        admin_client: DynamicClient,
+        tenant_a_token: str,
+        tenant_a_namespace: Namespace,
+        evalhub_mt_ca_bundle_file: str,
+        evalhub_mt_route: Route,
+        evalhub_vllm_emulator_service: Service,
+        evalhub_test_data_populated: PersistentVolumeClaim,
+    ) -> None:
+        """Given a PVC-backed evaluation job,
+        when the pod spec is inspected,
+        then the PVC volume mount has readOnly: true."""
+        payload = _build_pvc_job_payload(
+            model_service_name=evalhub_vllm_emulator_service.name,
+            tenant_namespace=tenant_a_namespace.name,
+            job_name="pvc-readonly-test",
+            claim_name=evalhub_test_data_populated.name,
+        )
+        data = submit_evalhub_job(
+            host=evalhub_mt_route.host,
+            token=tenant_a_token,
+            ca_bundle_file=evalhub_mt_ca_bundle_file,
+            tenant=tenant_a_namespace.name,
+            payload=payload,
+        )
+        job_id = data["resource"]["id"]
+
+        batch_jobs = wait_for_evalhub_runtime_job_count(
+            admin_client=admin_client,
+            namespace=tenant_a_namespace.name,
+            evalhub_job_id=job_id,
+            minimum=1,
+        )
+        batch_job = batch_jobs[0]
+        spec = batch_job.instance.spec.template.spec
+
+        pvc_volumes = [
+            v for v in (spec.volumes or []) if getattr(v, "persistentVolumeClaim", None) is not None
+        ]
+        assert len(pvc_volumes) >= 1, "Expected PVC volume in pod spec"
+        assert pvc_volumes[0].persistentVolumeClaim.readOnly is True, "PVC must be mounted read-only"
+
+        adapter = next((c for c in spec.containers if c.name == "adapter"), None)
+        assert adapter is not None
+        pvc_mount = next(
+            (m for m in (adapter.volumeMounts or []) if m.name == pvc_volumes[0].name),
+            None,
+        )
+        assert pvc_mount is not None, "Adapter container should have the PVC volume mount"
+        assert pvc_mount.readOnly is True, "Adapter PVC volume mount must be read-only"
+
+        job_data = wait_for_evalhub_job(
+            host=evalhub_mt_route.host,
+            token=tenant_a_token,
+            ca_bundle_file=evalhub_mt_ca_bundle_file,
+            tenant=tenant_a_namespace.name,
+            job_id=job_id,
+        )
+        validate_evalhub_job_completed(job_data=job_data)
+
+    def test_multiple_providers_same_pvc(
+        self,
+        tenant_a_token: str,
+        tenant_a_namespace: Namespace,
+        evalhub_mt_ca_bundle_file: str,
+        evalhub_mt_route: Route,
+        evalhub_vllm_emulator_service: Service,
+        evalhub_test_data_populated: PersistentVolumeClaim,
+    ) -> None:
+        """Given a PVC with multiple provider datasets at different sub-paths,
+        when separate evaluation jobs reference different sub-paths,
+        then both jobs complete independently."""
+        payload_a = _build_pvc_job_payload(
+            model_service_name=evalhub_vllm_emulator_service.name,
+            tenant_namespace=tenant_a_namespace.name,
+            job_name="pvc-multi-provider-a",
+            claim_name=evalhub_test_data_populated.name,
+            sub_path="provider_a",
+        )
+        payload_b = _build_pvc_job_payload(
+            model_service_name=evalhub_vllm_emulator_service.name,
+            tenant_namespace=tenant_a_namespace.name,
+            job_name="pvc-multi-provider-b",
+            claim_name=evalhub_test_data_populated.name,
+            sub_path="provider_b",
+        )
+
+        data_a = submit_evalhub_job(
+            host=evalhub_mt_route.host,
+            token=tenant_a_token,
+            ca_bundle_file=evalhub_mt_ca_bundle_file,
+            tenant=tenant_a_namespace.name,
+            payload=payload_a,
+        )
+        data_b = submit_evalhub_job(
+            host=evalhub_mt_route.host,
+            token=tenant_a_token,
+            ca_bundle_file=evalhub_mt_ca_bundle_file,
+            tenant=tenant_a_namespace.name,
+            payload=payload_b,
+        )
+        job_id_a = data_a["resource"]["id"]
+        job_id_b = data_b["resource"]["id"]
+
+        job_data_a = wait_for_evalhub_job(
+            host=evalhub_mt_route.host,
+            token=tenant_a_token,
+            ca_bundle_file=evalhub_mt_ca_bundle_file,
+            tenant=tenant_a_namespace.name,
+            job_id=job_id_a,
+        )
+        job_data_b = wait_for_evalhub_job(
+            host=evalhub_mt_route.host,
+            token=tenant_a_token,
+            ca_bundle_file=evalhub_mt_ca_bundle_file,
+            tenant=tenant_a_namespace.name,
+            job_id=job_id_b,
+        )
+        validate_evalhub_job_completed(job_data=job_data_a)
+        validate_evalhub_job_completed(job_data=job_data_b)

@@ -15,6 +15,7 @@ from ocp_resources.evalhub import EvalHub
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.mlflow import MLflow
 from ocp_resources.namespace import Namespace
+from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
@@ -48,6 +49,10 @@ from tests.ai_safety.evalhub.constants import (
     OTEL_COLLECTOR_HTTP_PORT,
     OTEL_COLLECTOR_NAMESPACE,
     OTEL_COLLECTOR_PROMETHEUS_PORT,
+    PVC_DATA_WRITER_IMAGE,
+    PVC_DATA_WRITER_SECURITY_CONTEXT,
+    PVC_TEST_DATA_NAME,
+    PVC_TEST_DATA_SIZE,
     SIMPLE_MINIO_ACCESS_KEY,
     SIMPLE_MINIO_BUCKET,
     SIMPLE_MINIO_SECRET_KEY,
@@ -1665,3 +1670,64 @@ def evalhub_otel_dual_sink_route(
 def evalhub_otel_ca_bundle_file(admin_client: DynamicClient) -> str:
     """CA bundle file for EvalHub OTEL routes."""
     return create_ca_bundle_file(client=admin_client)
+
+
+@pytest.fixture(scope="class")
+def evalhub_test_data_pvc(
+    admin_client: DynamicClient,
+    tenant_a_namespace: Namespace,
+) -> Generator[PersistentVolumeClaim, Any, Any]:
+    """Create a PVC for evaluation test data in the tenant namespace."""
+    with PersistentVolumeClaim(
+        client=admin_client,
+        name=PVC_TEST_DATA_NAME,
+        namespace=tenant_a_namespace.name,
+        accessmodes=PersistentVolumeClaim.AccessMode.RWO,
+        volume_mode=PersistentVolumeClaim.VolumeMode.FILE,
+        size=PVC_TEST_DATA_SIZE,
+    ) as pvc:
+        yield pvc
+
+
+@pytest.fixture(scope="class")
+def evalhub_test_data_populated(
+    admin_client: DynamicClient,
+    tenant_a_namespace: Namespace,
+    evalhub_test_data_pvc: PersistentVolumeClaim,
+) -> PersistentVolumeClaim:
+    """Populate the test data PVC with marker files at two sub-paths."""
+    populate_script = (
+        "mkdir -p /data/provider_a /data/provider_b && "
+        "echo '{\"provider\": \"a\", \"benchmark\": \"arc_easy\"}' > /data/provider_a/data.json && "
+        "echo '{\"provider\": \"b\", \"benchmark\": \"arc_easy\"}' > /data/provider_b/data.json && "
+        "echo 'PVC data population complete'"
+    )
+
+    pod_name = f"pvc-data-writer-{uuid.uuid4().hex[:8]}"
+    with Pod(
+        client=admin_client,
+        name=pod_name,
+        namespace=tenant_a_namespace.name,
+        restart_policy="Never",
+        volumes=[{"name": "test-data", "persistentVolumeClaim": {"claimName": evalhub_test_data_pvc.name}}],
+        containers=[
+            {
+                "name": "data-writer",
+                "image": PVC_DATA_WRITER_IMAGE,
+                "command": ["/bin/sh", "-c"],
+                "args": [populate_script],
+                "volumeMounts": [{"name": "test-data", "mountPath": "/data"}],
+                "securityContext": PVC_DATA_WRITER_SECURITY_CONTEXT,
+            }
+        ],
+        wait_for_resource=True,
+    ) as writer_pod:
+        LOGGER.info(f"Running PVC data writer pod in {tenant_a_namespace.name}")
+        try:
+            writer_pod.wait_for_status(status="Succeeded", timeout=120)
+        except TimeoutExpiredError:
+            collect_pod_information(pod=writer_pod)
+            raise
+        LOGGER.info("PVC test data population complete")
+
+    return evalhub_test_data_pvc
