@@ -22,13 +22,13 @@ from tests.model_serving.maas_billing.upgrade.utils import (
 from tests.model_serving.maas_billing.utils import (
     gateway_probe_reaches_maas_api,
     verify_maas_gateway_programmed,
-    verify_maas_tenant_ready,
+    verify_maas_tenant_config_ready,
 )
 from utilities.constants import ApiGroups
 from utilities.general import generate_random_name
 from utilities.resources.aigateway import AIGateway
 from utilities.resources.maas_config import Config as MaaSConfig
-from utilities.resources.tenant import Tenant
+from utilities.resources.maastenantconfig import MaasTenantConfig
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -40,7 +40,7 @@ class TestPreUpgradeMaaS:
 
     Steps:
         1. Verify MaaS Gateway is Programmed.
-        2. Verify default-tenant Tenant CR is Ready and Active.
+        2. Verify default-tenant MaasTenantConfig CR is Ready.
         3. Verify MaaSModelRef was created successfully.
         4. Verify MaaSAuthPolicy was created successfully.
         5. Verify MaaSSubscription exists.
@@ -58,10 +58,10 @@ class TestPreUpgradeMaaS:
 
     def test_maas_tenant_ready(
         self,
-        maas_upgrade_tenant: Tenant,
+        maas_upgrade_tenant: MaasTenantConfig,
     ) -> None:
-        """Verify default-tenant Tenant CR is Ready before upgrade."""
-        verify_maas_tenant_ready(tenant=maas_upgrade_tenant)
+        """Verify default-tenant MaasTenantConfig CR is Ready before upgrade."""
+        verify_maas_tenant_config_ready(maas_tenant_config=maas_upgrade_tenant)
 
     def test_maas_model_ref_created(
         self,
@@ -122,7 +122,7 @@ class TestPostUpgradeMaaS:
     """Validate that MaaS control plane state survived the operator upgrade.
 
     Steps:
-        1. Verify default-tenant Tenant CR survived (root gate — controller health indicator).
+        1. Verify default-tenant MaasTenantConfig CR survived (root gate — controller health indicator).
         2. Verify MaaS Gateway still exists and is Programmed.
         3. Verify MaaSModelRef, MaaSAuthPolicy, MaaSSubscription all survived.
         4. Verify MaaSSubscription was not mutated (generation unchanged).
@@ -136,10 +136,10 @@ class TestPostUpgradeMaaS:
     @pytest.mark.dependency(name="test_default_tenant_survives_upgrade")
     def test_default_tenant_survives_upgrade(
         self,
-        maas_upgrade_tenant: Tenant,
+        maas_upgrade_tenant: MaasTenantConfig,
     ) -> None:
-        """Verify default-tenant survived the operator upgrade."""
-        verify_maas_tenant_ready(tenant=maas_upgrade_tenant)
+        """Verify default-tenant MaasTenantConfig survived the operator upgrade."""
+        verify_maas_tenant_config_ready(maas_tenant_config=maas_upgrade_tenant)
 
     @pytest.mark.dependency(
         name="test_maas_gateway_survives_upgrade",
@@ -235,6 +235,7 @@ class TestPostUpgradeMaaS:
             f"maasmodelrefs.{ApiGroups.MAAS_IO}",
             f"maasauthpolicies.{ApiGroups.MAAS_IO}",
             f"maassubscriptions.{ApiGroups.MAAS_IO}",
+            f"maastenantconfigs.{ApiGroups.MAAS_IO}",
             f"tenants.{ApiGroups.MAAS_IO}",
         )
         missing_crds = [
