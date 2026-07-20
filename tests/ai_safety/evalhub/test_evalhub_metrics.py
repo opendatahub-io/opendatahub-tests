@@ -8,7 +8,7 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_METRICS_PATH,
     EVALHUB_METRICS_PORT,
 )
-from utilities.guardrails import get_auth_headers
+from tests.ai_safety.evalhub.utils import build_headers
 
 
 @pytest.mark.parametrize(
@@ -57,13 +57,14 @@ class TestEvalHubMetrics:
         evalhub_ca_bundle_file: str,
         evalhub_route: Route,
         evalhub_metrics_service: Service,
+        model_namespace,
     ) -> None:
         """After hitting /api/v1/health, /metrics should show a request count for that path.
 
         Health is hit via the Route (auth required); metrics are scraped from the
         cluster-internal metrics service (no auth, no Route).
         """
-        headers = get_auth_headers(token=current_client_token)
+        headers = build_headers(token=current_client_token, tenant=model_namespace.name)
 
         # Hit the health endpoint through the Route to generate a metric entry
         health_url = f"https://{evalhub_route.host}{EVALHUB_HEALTH_PATH}"
