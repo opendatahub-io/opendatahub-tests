@@ -15,7 +15,6 @@ from ocp_resources.nemo_guardrails import NemoGuardrails
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.subscription import Subscription
-from ocp_utilities.operators import install_operator, uninstall_operator
 
 from tests.ai_safety.nemo_guardrails.constants import (
     BBR_SUB_FILTER_NAME,
@@ -30,7 +29,7 @@ from tests.ai_safety.nemo_guardrails.utils import (
     wait_for_nemo_guardrails_health,
 )
 from utilities.certificates_utils import get_tls_verify
-from utilities.constants import LLMdInferenceSimConfig, Timeout
+from utilities.constants import LLMdInferenceSimConfig
 from utilities.resources.envoy_filter import EnvoyFilter
 from utilities.resources.mcp_gateway_extension import MCPGatewayExtension
 
@@ -615,7 +614,6 @@ def installed_istio(
         name="envoyfilters.networking.istio.io",
     )
 
-
     if envoy_filter_crd.exists:
         operator_name = "servicemeshoperator3"
         operator_namespace = "openshift-operators"
@@ -627,10 +625,9 @@ def installed_istio(
         )
 
         if not subscription.exists:
-            pytest.fail(
-                f"Failed to find {operator_namespace}.{operator_name} subscription, please install it"
-            )
+            pytest.fail(f"Failed to find {operator_namespace}.{operator_name} subscription, please install it")
         yield
+
 
 @pytest.fixture(scope="class")
 def bbr_envoy_filter(
@@ -694,9 +691,7 @@ def installed_mcp_gateway(
     )
 
     if not subscription.exists:
-        pytest.fail(
-            f"Failed to find {operator_namespace}.{operator_name} subscription, please install it"
-        )
+        pytest.fail(f"Failed to find {operator_namespace}.{operator_name} subscription, please install it")
     else:
         yield
 
