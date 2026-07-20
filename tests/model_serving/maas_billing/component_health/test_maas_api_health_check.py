@@ -3,8 +3,8 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
-from pytest_testconfig import config as py_config
 
+from tests.model_serving.maas_billing.utils import maas_api_namespace
 from utilities.constants import DscComponents
 from utilities.general import wait_for_pods_running
 
@@ -39,13 +39,13 @@ class TestMaaSApiComponentHealth:
         self,
         admin_client: DynamicClient,
     ) -> None:
-        """Verify maas-api deployment Available=True."""
-        applications_namespace = py_config["applications_namespace"]
+        """Verify maas-api deployment Available=True in the infrastructure namespace."""
+        api_namespace = maas_api_namespace(admin_client=admin_client)
 
         maas_api_deployment = Deployment(
             client=admin_client,
             name="maas-api",
-            namespace=applications_namespace,
+            namespace=api_namespace,
             ensure_exists=True,
         )
         maas_api_deployment.wait_for_condition(
@@ -58,8 +58,8 @@ class TestMaaSApiComponentHealth:
         self,
         admin_client: DynamicClient,
     ) -> None:
-        """Verify maas-api pods are Running/Ready."""
-        applications_namespace = py_config["applications_namespace"]
-        LOGGER.info(f"Checking maas-api pods in namespace {applications_namespace}")
+        """Verify maas-api pods are Running/Ready in the infrastructure namespace."""
+        api_namespace = maas_api_namespace(admin_client=admin_client)
+        LOGGER.info(f"Checking maas-api pods in namespace {api_namespace}")
 
-        wait_for_pods_running(admin_client=admin_client, namespace_name=applications_namespace)
+        wait_for_pods_running(admin_client=admin_client, namespace_name=api_namespace)
