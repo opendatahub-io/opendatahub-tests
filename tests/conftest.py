@@ -212,40 +212,15 @@ def ci_s3_bucket_endpoint(pytestconfig: pytest.Config) -> str:
 
 
 @pytest.fixture(scope="session")
-def serving_argument(pytestconfig: pytest.Config, modelcar_yaml_config: dict[str, Any] | None) -> tuple[list[str], int]:
-    if modelcar_yaml_config:
-        val = modelcar_yaml_config.get("serving_arguments", {})
-        if isinstance(val, dict):
-            args = val.get("args", [])
-            gpu_count = val.get("gpu_count", 1)
-        return args, gpu_count
-
+def serving_argument(pytestconfig: pytest.Config) -> tuple[list[str], int]:
     raw_arg = pytestconfig.option.serving_argument
     try:
         return json.loads(raw_arg)
     except json.JSONDecodeError:
         raise ValueError(
             "Serving arguments should be a valid JSON list. "
-            "Either pass with `--serving-argument` or set it correctly in modelcar.yaml"
+            "Pass with `--serving-argument`"
         )
-
-
-@pytest.fixture(scope="session")
-def modelcar_yaml_config(pytestconfig: pytest.Config) -> dict[str, Any] | None:
-    """
-    Fixture to get the path to the modelcar.yaml file.
-    """
-    config_path = pytestconfig.option.model_car_yaml_path
-    if not config_path:
-        return None
-    with open(config_path, "r") as file:
-        try:
-            modelcar_yaml = yaml.safe_load(file)
-            if not isinstance(modelcar_yaml, dict):
-                raise ValueError("modelcar.yaml should contain a dictionary.")
-            return modelcar_yaml
-        except yaml.YAMLError as e:
-            raise ValueError(f"Error parsing modelcar.yaml: {e}") from e
 
 
 @pytest.fixture(scope="session")

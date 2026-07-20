@@ -52,7 +52,6 @@ def pytest_addoption(parser: Parser) -> None:
     cluster_sanity_group = parser.getgroup(name="ClusterSanity")
     ociregistry_group = parser.getgroup(name="OCI Registry")
     serving_arguments_group = parser.getgroup(name="Serving arguments")
-    model_validation_automation_group = parser.getgroup(name="Model Validation Automation")
     hf_group = parser.getgroup(name="Hugging Face")
     model_registry_group = parser.getgroup(name="Model Registry options")
     # AWS config and credentials options
@@ -140,13 +139,6 @@ def pytest_addoption(parser: Parser) -> None:
         "--serving-argument",
         default=os.environ.get("SERVING_ARGUMENTS"),
         help="Serving arguments to use for the tests",
-    )
-
-    # Model Validation Automation options
-    model_validation_automation_group.addoption(
-        "--model_car_yaml_path",
-        default=os.environ.get("MODEL_YAML_PATH"),
-        help="Path to the modelcar yaml file",
     )
 
     # Upgrade options
