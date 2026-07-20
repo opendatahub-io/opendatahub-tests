@@ -66,13 +66,20 @@ BLOCKED_LOG_KEYWORDS = (
 )
 
 ALLOWED_LOG_MESSAGES = (
+    # nginx reverse proxy logs this while the upstream IDE (code-server) is still starting
     "connect() failed (111: Connection refused) while connecting to upstream, client",
+    # workbench-trusted-ca-bundle ConfigMap is optional; absent in test namespaces
     "Skipping trusted CA bundle mount because the ConfigMap is not available",
     "WARNING: skipping notebook trusted CA setup because no bundle was mounted",
+    # RHAIENG-5767: jupyter-events package emits this on every JupyterLab start
     "JupyterEventsVersionWarning: The `version` property of an event schema must be a string.",
+    # RHAIENG-5766: Dashboard NOTEBOOK_ARGS uses deprecated ServerApp.token instead of IdentityProvider.token
     "ServerApp.token config is deprecated in 2.0. Use IdentityProvider.token.",
+    # RHAIENG-5644: TLS is provided by the OpenShift route / Gateway, not in-container Jupyter
     "WARNING: The Jupyter server is listening on all IP addresses and not using encryption.",
+    # RHAIENG-5644: Jupyter auth disabled in-container; kube-rbac-proxy / oauth-proxy provides external auth
     "WARNING: The Jupyter server is listening on all IP addresses and not using authentication.",
+    # RHOAIENG-22226: uuid.getnode() fails in containers with no persistent MAC address
     "Unable to retrieve mac address (unexpected format)",
 )
 
@@ -594,6 +601,54 @@ def resolve_workbench_image(admin_client: DynamicClient, spec: WorkbenchImageSpe
     """Resolve the N-1 image for a parametrized workbench IDE spec."""
     imagestream_name = effective_imagestream_name(admin_client=admin_client, spec=spec)
     return resolve_n_minus_one_image(admin_client=admin_client, imagestream_name=imagestream_name)
+
+
+def resolve_current_image(admin_client: DynamicClient, imagestream_name: str) -> ResolvedWorkbenchImage:
+    """Resolve the current (N) workbench image tag matching the cluster's product version.
+
+    Unlike ``resolve_n_minus_one_image`` which selects the pre-upgrade tag,
+    this function always resolves the tag matching the running product version,
+    intended as the target when bumping a workbench from N-1 to N.
+    """
+    applications_namespace = _applications_namespace()
+    imagestream = ImageStream(client=admin_client, name=imagestream_name, namespace=applications_namespace)
+    if not imagestream.exists:
+        raise AssertionError(f"ImageStream {imagestream_name} does not exist in namespace {applications_namespace}")
+
+    imagestream_data = imagestream.instance.to_dict()
+    status_tag_data = _get_imagestream_status_tag_data(imagestream_data=imagestream_data)
+    spec_tag_data = _get_imagestream_spec_tag_data(imagestream_data=imagestream_data)
+    current_product_version = get_product_version(admin_client=admin_client)
+
+    tag_name = f"{current_product_version.major}.{current_product_version.minor}"
+    if tag_name not in status_tag_data:
+        available_tags = sorted(status_tag_data)
+        raise AssertionError(
+            f"ImageStream {imagestream_name} does not have tag '{tag_name}' "
+            f"for product version {current_product_version}. "
+            f"Available tags: {available_tags}"
+        )
+
+    image_repository = _resolve_image_repository(
+        admin_client=admin_client,
+        imagestream_data=imagestream_data,
+        imagestream_name=imagestream_name,
+    )
+    tag_digest = _resolve_tag_digest(
+        status_tag_data=status_tag_data[tag_name],
+        imagestream_name=imagestream_name,
+        tag_name=tag_name,
+    )
+    build_commit = spec_tag_data.get(tag_name, {}).get("annotations", {}).get("opendatahub.io/notebook-build-commit")
+
+    return ResolvedWorkbenchImage(
+        imagestream_name=imagestream_name,
+        tag_name=tag_name,
+        image_url=f"{image_repository}:{tag_name}",
+        image_selection=f"{imagestream_name}:{tag_name}",
+        image_digest=tag_digest,
+        build_commit=str(build_commit) if build_commit else None,
+    )
 
 
 def find_rstudio_imagestream_name(admin_client: DynamicClient) -> str | None:
@@ -1296,3 +1351,166 @@ def capture_or_load_workbench_baseline(
     ResourceEditor(patches={config_map: {"data": updated_data}}).update()
     LOGGER.info(f"Saved N-1 baseline for {spec.ide}: tag={baseline.image_tag}")
     return baseline
+
+
+# language=Python
+_KERNEL_START_SCRIPT = """\
+import http.cookiejar, json, sys, time, urllib.request
+from jupyter_client import BlockingKernelClient
+base_url = sys.argv[1]
+cj = http.cookiejar.CookieJar()
+opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+opener.open(f"{base_url}/lab", timeout=30)
+xsrf = next(c.value for c in cj if c.name == "_xsrf")
+req = urllib.request.Request(
+    f"{base_url}/api/kernels",
+    data=json.dumps({"name": "python3"}).encode(),
+    headers={"Content-Type": "application/json", "X-XSRFToken": xsrf},
+    method="POST",
+)
+resp = opener.open(req, timeout=30)
+kernel = json.loads(resp.read())
+kernel_id = kernel["id"]
+resp.close()
+time.sleep(2)
+conn_file = f"/opt/app-root/src/.local/share/jupyter/runtime/kernel-{kernel_id}.json"
+kc = BlockingKernelClient()
+kc.load_connection_file(connection_file=conn_file)
+kc.start_channels()
+kc.wait_for_ready(timeout=30)
+msg_id = kc.execute(code="a = 3 + 4")
+reply = kc.get_shell_msg(timeout=10)
+assert reply["content"]["status"] == "ok", f"Kernel execute failed: {reply['content']}"
+kc.stop_channels()
+print(kernel_id)
+"""
+
+# language=Python
+_KERNEL_VERIFY_SCRIPT = """\
+import queue, sys, time
+from jupyter_client import BlockingKernelClient
+kernel_id = sys.argv[1]
+conn_file = f"/opt/app-root/src/.local/share/jupyter/runtime/kernel-{kernel_id}.json"
+kc = BlockingKernelClient()
+kc.load_connection_file(connection_file=conn_file)
+kc.start_channels()
+kc.wait_for_ready(timeout=30)
+msg_id = kc.execute(code="print(a * 6)")
+reply = kc.get_shell_msg(timeout=10)
+assert reply["content"]["status"] == "ok", f"Kernel execute failed: {reply['content']}"
+time.sleep(1)
+output_text = ""
+while True:
+    try:
+        msg = kc.get_iopub_msg(timeout=2)
+        if msg["msg_type"] == "stream":
+            output_text += msg["content"]["text"]
+    except (queue.Empty, TimeoutError):
+        break
+kc.stop_channels()
+output_text = output_text.strip()
+assert output_text == "42", f"Expected '42', got '{output_text}'"
+print(output_text)
+"""
+
+
+def start_kernel_and_set_variable(
+    pod: Pod,
+    container_name: str,
+    namespace: str,
+    notebook_name: str,
+) -> str:
+    """Start a Jupyter kernel inside the pod and execute ``a = 3 + 4``."""
+    base_url = f"http://localhost:{NOTEBOOK_PORT}/notebook/{namespace}/{notebook_name}"
+    result = pod.execute(
+        container=container_name,
+        command=["python", "-c", _KERNEL_START_SCRIPT, base_url],
+        timeout=60,
+    )
+    kernel_id = result.strip()
+    LOGGER.info(f"Started kernel {kernel_id} and set a = 3 + 4")
+    return kernel_id
+
+
+def verify_kernel_variable(pod: Pod, container_name: str, kernel_id: str) -> str:
+    """Reconnect to a running Jupyter kernel and verify ``a * 6 == 42``."""
+    try:
+        result = pod.execute(
+            container=container_name,
+            command=["python", "-c", _KERNEL_VERIFY_SCRIPT, kernel_id],
+            timeout=30,
+        )
+    except ExecOnPodError as exc:
+        raise AssertionError(
+            f"Kernel {kernel_id} did not retain variable 'a' across upgrade -- kernel process may have been restarted"
+        ) from exc
+    output = result.strip()
+    LOGGER.info(f"Kernel {kernel_id} returned: {output}")
+    return output
+
+
+def build_dashboard_image_patch(
+    notebook: Notebook,
+    resolved_image: ResolvedWorkbenchImage,
+) -> list[dict[str, Any]]:
+    """Build the same Notebook image patch payload the Dashboard UI applies.
+
+    Mirrors the ``patchNotebookImage()`` JSON patch that the RHOAI Dashboard
+    sends when a user bumps their workbench to a newer ImageStream tag.  Used
+    by the RHAIENG-5550 dashboard-driven image bump tests, *not* by the N-1
+    survival tests in this package.
+    """
+    env_list = notebook.instance.spec.template.spec.containers[0].env or []
+    jupyter_image_env_index = next(
+        (idx for idx, env in enumerate(env_list) if getattr(env, "name", None) == "JUPYTER_IMAGE"),
+        None,
+    )
+    if jupyter_image_env_index is None:
+        raise AssertionError("Notebook container is missing the JUPYTER_IMAGE environment variable")
+
+    patches: list[dict[str, Any]] = [
+        {
+            "op": "replace",
+            "path": "/metadata/annotations/notebooks.opendatahub.io~1last-image-selection",
+            "value": resolved_image.image_selection,
+        },
+        {
+            "op": "replace",
+            "path": "/spec/template/spec/containers/0/image",
+            "value": resolved_image.image_url,
+        },
+        {
+            "op": "replace",
+            "path": f"/spec/template/spec/containers/0/env/{jupyter_image_env_index}/value",
+            "value": resolved_image.image_url,
+        },
+    ]
+
+    if resolved_image.build_commit:
+        annotations = notebook.instance.metadata.annotations or {}
+        commit_annotation_key = "notebooks.opendatahub.io/last-image-version-git-commit-selection"
+        patches.append({
+            "op": "replace" if annotations.get(commit_annotation_key) else "add",
+            "path": "/metadata/annotations/notebooks.opendatahub.io~1last-image-version-git-commit-selection",
+            "value": resolved_image.build_commit,
+        })
+
+    return patches
+
+
+def apply_dashboard_image_patch(
+    notebook: Notebook,
+    patch_ops: list[dict[str, Any]],
+) -> None:
+    """Apply a JSON Patch to a Notebook CR, replicating the Dashboard's patchNotebookImage().
+
+    Uses ``application/json-patch+json`` content type so the Kubernetes API
+    interprets the body as RFC 6902 operations, matching how the Dashboard
+    frontend patches notebook images.
+    """
+    notebook.api.patch(
+        body=patch_ops,
+        name=notebook.name,
+        namespace=notebook.namespace,
+        content_type="application/json-patch+json",
+    )
