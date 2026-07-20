@@ -615,9 +615,8 @@ def installed_istio(
         name="envoyfilters.networking.istio.io",
     )
 
+
     if envoy_filter_crd.exists:
-        yield
-    else:
         operator_name = "servicemeshoperator3"
         operator_namespace = "openshift-operators"
 
@@ -631,9 +630,7 @@ def installed_istio(
             pytest.fail(
                 f"Failed to find {operator_namespace}.{operator_name} subscription, please install it"
             )
-        else:
-            yield
-
+        yield
 
 @pytest.fixture(scope="class")
 def bbr_envoy_filter(
