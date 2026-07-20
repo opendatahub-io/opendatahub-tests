@@ -4,6 +4,8 @@ from typing import Any
 import pytest
 import structlog
 import yaml
+from _pytest.nodes import Item
+from _pytest.runner import CallInfo
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.data_science_cluster import DataScienceCluster
@@ -46,6 +48,7 @@ from tests.model_serving.model_server.upgrade.utils import (
     _create_kueue_upgrade_resources,
     _ensure_kueue_available_for_upgrade,
     _kserve_kueue_upgrade_runtime_template_kwargs,
+    capture_and_save_isvc_kueue_baseline,
     capture_isvc_baseline,
     capture_llmisvc_baseline,
     kueue_resource_groups,
@@ -94,6 +97,18 @@ METRICS_UPGRADE_NAMESPACE = "upgrade-metrics"
 PRIVATE_ENDPOINT_UPGRADE_NAMESPACE = "upgrade-pvt-ep"
 NEW_ISVC_UPGRADE_NAMESPACE = "upgrade-new-isvc"
 S3_CONNECTION = "upgrade-connection"
+
+
+@pytest.hookimpl(tryfirst=True, hookwrapper=True)
+def pytest_runtest_makereport(item: Item, call: CallInfo[None]) -> Generator[None, Any, Any]:
+    """Track pre-upgrade test failures to prevent baseline capture on failure."""
+    outcome = yield
+    report = outcome.get_result()
+
+    # Only track failures during the actual test execution (not setup/teardown)
+    if call.when == "call" and report.failed and "pre_upgrade" in item.keywords:
+        # Mark that a pre-upgrade test failed so baseline capture is skipped
+        item.config._pre_upgrade_test_failed = True  # type: ignore[attr-defined]
 
 
 @pytest.fixture(scope="session")
@@ -1595,6 +1610,19 @@ def kserve_kueue_upgrade_inference_service(
             **isvc_kwargs,
         ) as isvc:
             yield isvc
+            # Only capture baseline if no pre-upgrade tests failed.
+            # The baseline represents the scaled and gated state after all validations pass.
+            if not getattr(pytestconfig, "_pre_upgrade_test_failed", False):
+                capture_and_save_isvc_kueue_baseline(
+                    pytestconfig=pytestconfig,
+                    admin_client=admin_client,
+                    isvc=isvc,
+                )
+            else:
+                LOGGER.warning(
+                    "Skipping baseline capture: pre-upgrade test(s) failed. "
+                    "Post-upgrade tests will not have a valid baseline for comparison."
+                )
 
 
 @pytest.fixture
@@ -1602,8 +1630,6 @@ def skip_if_not_raw_deployment(
     kserve_kueue_upgrade_inference_service: InferenceService,
 ) -> None:
     """Skip tests when the Kueue upgrade ISVC is not deployed in RawDeployment mode."""
-    # Refresh ISVC before reading deployment mode from status/annotations.
-    kserve_kueue_upgrade_inference_service.get()
     skip_if_not_deployment_mode(
         isvc=kserve_kueue_upgrade_inference_service,
         deployment_types=KServeDeploymentType.RAW_DEPLOYMENT_MODES,

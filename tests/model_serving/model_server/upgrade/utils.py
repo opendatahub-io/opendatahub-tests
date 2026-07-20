@@ -191,13 +191,6 @@ def read_isvc_total_copies(isvc: InferenceService) -> int:
     return model_status.copies.totalCopies
 
 
-def _read_isvc_status_url(isvc: InferenceService) -> str:
-    """Refresh the ISVC and return status.url when present."""
-    # TimeoutSampler must re-fetch; instance alone can retain a stale empty URL.
-    isvc.get()
-    return isvc.instance.status.url or ""
-
-
 def wait_for_isvc_inference_url(isvc: InferenceService, timeout: int = Timeout.TIMEOUT_2MIN) -> str:
     """Wait until the ISVC status reports an external inference URL.
 
@@ -213,7 +206,7 @@ def wait_for_isvc_inference_url(isvc: InferenceService, timeout: int = Timeout.T
         for last_url in TimeoutSampler(
             wait_timeout=timeout,
             sleep=5,
-            func=lambda: _read_isvc_status_url(isvc),
+            func=lambda: isvc.instance.status.url or "",
         ):
             if last_url:
                 LOGGER.info(f"ISVC '{isvc.name}' inference URL ready: {last_url}")
@@ -533,8 +526,6 @@ def capture_isvc_kueue_baseline(client: DynamicClient, isvc: InferenceService) -
     """Capture pre-upgrade baseline for a Kueue-integrated raw InferenceService."""
     baseline = capture_isvc_baseline(client=client, isvc=isvc)
     runtime_name = baseline["runtime_name"]
-    # Refresh ISVC to get current modelStatus.copies after baseline pod capture.
-    isvc.get()
     total_copies = read_isvc_total_copies(isvc=isvc)
     min_replicas = isvc.instance.spec.predictor.get("minReplicas", 1)
     kueue_baseline: ISVCKueueBaseline = {

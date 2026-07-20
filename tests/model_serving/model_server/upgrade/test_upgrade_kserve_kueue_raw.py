@@ -19,7 +19,6 @@ from tests.model_serving.model_server.upgrade.kserve_kueue_upgrade_config import
 )
 from tests.model_serving.model_server.upgrade.utils import (
     ISVCKueueBaseline,
-    capture_and_save_isvc_kueue_baseline,
     get_isvc_kueue_integration_stats,
     load_baseline_from_configmap,
     read_isvc_total_copies,
@@ -116,7 +115,6 @@ class TestKserveKueueRawPreUpgrade:
     @pytest.mark.pre_upgrade
     def test_kueue_scale_and_gate(
         self,
-        pytestconfig: pytest.Config,
         admin_client: DynamicClient,
         kserve_kueue_upgrade_inference_service: InferenceService,
         kserve_kueue_upgrade_serving_runtime: ServingRuntime,
@@ -127,7 +125,9 @@ class TestKserveKueueRawPreUpgrade:
         2. Wait for the Deployment to reflect 2 desired replicas.
         3. Assert 1 running + 1 gated pod.
         4. Assert ISVC status reports 1 total model copy.
-        5. Capture baseline after all assertions pass (scaled + gated state).
+
+        Baseline capture runs on ISVC fixture teardown after all pre-upgrade
+        tests pass (skipped if any pre-upgrade test failed).
         """
         isvc = kserve_kueue_upgrade_inference_service
         runtime_name = kserve_kueue_upgrade_serving_runtime.name
@@ -153,9 +153,8 @@ class TestKserveKueueRawPreUpgrade:
             for status_replicas in TimeoutSampler(
                 wait_timeout=Timeout.TIMEOUT_2MIN,
                 sleep=5,
-                # Refresh Deployment each poll; status.replicas is otherwise stale.
                 # wait_for_replicas() is not used: with Kueue gating, ready < desired.
-                func=lambda: (deployment.get() or True) and deployment.instance.status.replicas,
+                func=lambda: deployment.instance.status.replicas or 0,
             ):
                 if status_replicas == KSERVE_KUEUE_SCALED_REPLICAS:
                     break
@@ -193,8 +192,6 @@ class TestKserveKueueRawPreUpgrade:
                 f"got {running_pods} running + {gated_pods} gated"
             )
 
-        # Refresh ISVC so modelStatus.copies reflects post-scale gating state.
-        isvc.get()
         total_copies = read_isvc_total_copies(isvc=isvc)
         assert total_copies == KSERVE_KUEUE_EXPECTED_RUNNING_PODS, (
             f"InferenceService should have {KSERVE_KUEUE_EXPECTED_RUNNING_PODS} total model copy, got {total_copies}"
@@ -202,13 +199,6 @@ class TestKserveKueueRawPreUpgrade:
         LOGGER.info(
             event=f"[PRE-UPGRADE] PASS: Kueue gating active — {running_pods} running, "
             f"{gated_pods} gated, totalCopies={total_copies}"
-        )
-
-        # Capture after assertions so post-upgrade never compares against a failed pre-upgrade state.
-        capture_and_save_isvc_kueue_baseline(
-            pytestconfig=pytestconfig,
-            admin_client=admin_client,
-            isvc=isvc,
         )
 
 
@@ -293,8 +283,6 @@ class TestKserveKueueRawPostUpgrade:
         1. Verify ISVC status.totalCopies matches the pre-upgrade baseline.
         """
         isvc = kserve_kueue_upgrade_inference_service
-        # Refresh ISVC so totalCopies is read from current post-upgrade status.
-        isvc.get()
         total_copies = read_isvc_total_copies(isvc=isvc)
         expected = baseline["total_copies"]
         assert total_copies == expected, f"totalCopies changed after upgrade: expected {expected}, got {total_copies}"
