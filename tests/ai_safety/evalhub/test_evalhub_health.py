@@ -56,9 +56,7 @@ class TestEvalHub:
             verify=evalhub_ca_bundle_file,
             timeout=10,
         )
-        assert response.status_code == 400, (
-            f"Expected 400 without X-Tenant, got {response.status_code}"
-        )
+        assert response.status_code == 400, f"Expected 400 without X-Tenant, got {response.status_code}"
 
     def test_evalhub_healthz_is_tenant_agnostic(
         self,

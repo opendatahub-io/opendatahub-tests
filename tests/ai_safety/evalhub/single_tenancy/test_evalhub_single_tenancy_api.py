@@ -84,9 +84,7 @@ class TestEvalHubSingleTenancyHealth:
         """
         url = f"https://{evalhub_st_route.host}{EVALHUB_HEALTHZ_PATH}"
         response = requests.get(url=url, verify=evalhub_st_ca_bundle_file, timeout=10)
-        assert response.status_code == 200, (
-            f"Expected 200 from /healthz, got {response.status_code}: {response.text}"
-        )
+        assert response.status_code == 200, f"Expected 200 from /healthz, got {response.status_code}: {response.text}"
         assert response.json().get("status") == EVALHUB_HEALTH_STATUS_HEALTHY
 
 
