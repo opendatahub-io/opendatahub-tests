@@ -44,6 +44,11 @@ def update_components_in_dsc(
 
     for component_name, desired_state in components.items():
         orig_state = _get_component_spec_management_state(dsc=dsc, component_name=component_name)
+        if orig_state is None:
+            LOGGER.warning(
+                f"Component {component_name} not present in DSC spec; "
+                f"proceeding to set managementState to {desired_state}"
+            )
         if orig_state != desired_state:
             dsc_dict.setdefault("spec", {}).setdefault("components", {})[component_name] = {
                 "managementState": desired_state

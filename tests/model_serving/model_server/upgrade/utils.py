@@ -34,11 +34,13 @@ from utilities.constants import (
 )
 from utilities.data_science_cluster_utils import get_dsc_ready_condition, wait_for_dsc_reconciliation
 from utilities.exceptions import PodContainersRestartError, ResourceMismatchError
+from utilities.general import create_isvc_label_selector_str
 from utilities.infra import get_inference_serving_runtime, get_pods_by_isvc_label
 from utilities.kueue_utils import (
     ClusterQueue,
     LocalQueue,
     ResourceFlavor,
+    check_gated_pods_and_running_pods,
     create_cluster_queue,
     create_local_queue,
     create_resource_flavor,
@@ -512,9 +514,6 @@ def get_isvc_kueue_integration_stats(
     Returns:
         Dict with ``running`` and ``gated`` pod counts.
     """
-    from utilities.general import create_isvc_label_selector_str
-    from utilities.kueue_utils import check_gated_pods_and_running_pods
-
     pod_labels = [
         create_isvc_label_selector_str(
             isvc=isvc,
@@ -689,8 +688,8 @@ def _create_kueue_upgrade_resources(
         yield local_queue
         if teardown_resources:
             local_queue.clean_up()
-            ClusterQueue(client=admin_client, name=cluster_queue_name).clean_up()
-            ResourceFlavor(client=admin_client, name=resource_flavor_name).clean_up()
+            cluster_queue.clean_up()
+            resource_flavor.clean_up()
     else:
         local_queue = LocalQueue(
             client=admin_client,

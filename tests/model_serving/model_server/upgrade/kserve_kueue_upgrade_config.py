@@ -17,7 +17,7 @@ KSERVE_KUEUE_RESOURCE_FLAVOR: str = "upgrade-kserve-flavor"
 # 200m CPU + 1088Mi memory when the model container requests 100m / 1Gi.
 KSERVE_KUEUE_POD_CPU_REQUEST: str = "100m"
 KSERVE_KUEUE_POD_MEMORY_REQUEST: str = "1Gi"
-KSERVE_KUEUE_POD_CPU_LIMIT: int = 1
+KSERVE_KUEUE_POD_CPU_LIMIT: str = "1"
 KSERVE_KUEUE_POD_MEMORY_LIMIT: str = "2Gi"
 
 # Quota sized so 1 pod fits and 2 pods do not:
@@ -27,7 +27,7 @@ KSERVE_KUEUE_POD_MEMORY_LIMIT: str = "2Gi"
 KSERVE_KUEUE_CPU_QUOTA: int = 2
 KSERVE_KUEUE_MEMORY_QUOTA: str = "2Gi"
 
-KSERVE_KUEUE_ISVC_RESOURCES: dict[str, dict[str, str | int]] = {
+KSERVE_KUEUE_ISVC_RESOURCES: dict[str, dict[str, str]] = {
     "requests": {"cpu": KSERVE_KUEUE_POD_CPU_REQUEST, "memory": KSERVE_KUEUE_POD_MEMORY_REQUEST},
     "limits": {"cpu": KSERVE_KUEUE_POD_CPU_LIMIT, "memory": KSERVE_KUEUE_POD_MEMORY_LIMIT},
 }

@@ -1523,7 +1523,7 @@ def ensure_kueue_for_kserve_upgrade(
 def kserve_upgrade_kueue_resources(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    ensure_kueue_for_kserve_upgrade,
+    ensure_kueue_for_kserve_upgrade: None,
     kserve_kueue_upgrade_namespace: Namespace,
     teardown_resources: bool,
 ) -> Generator[LocalQueue, Any, Any]:
