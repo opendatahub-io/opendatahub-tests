@@ -217,10 +217,7 @@ def serving_argument(pytestconfig: pytest.Config) -> tuple[list[str], int]:
     try:
         return json.loads(raw_arg)
     except json.JSONDecodeError:
-        raise ValueError(
-            "Serving arguments should be a valid JSON list. "
-            "Pass with `--serving-argument`"
-        )
+        raise ValueError("Serving arguments should be a valid JSON list. Pass with `--serving-argument`")
 
 
 @pytest.fixture(scope="session")
