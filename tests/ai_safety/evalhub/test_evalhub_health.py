@@ -32,7 +32,10 @@ class TestEvalHub:
         evalhub_route: Route,
         model_namespace,
     ) -> None:
-        """Verify the EvalHub service responds with healthy status."""
+        """Given: a running EvalHub instance.
+        When: GET /api/v1/health is called with X-Tenant header.
+        Then: response is 200 with status 'healthy'.
+        """
         validate_evalhub_health(
             host=evalhub_route.host,
             token=current_client_token,
@@ -46,7 +49,10 @@ class TestEvalHub:
         evalhub_ca_bundle_file: str,
         evalhub_route: Route,
     ) -> None:
-        """/api/v1/health requires X-Tenant header."""
+        """Given: a running EvalHub instance.
+        When: GET /api/v1/health is called without X-Tenant header.
+        Then: response is 400 (missing tenant header).
+        """
         url = f"https://{evalhub_route.host}{EVALHUB_HEALTH_PATH}"
         headers = build_headers(token=current_client_token)
 
@@ -64,7 +70,9 @@ class TestEvalHub:
         evalhub_ca_bundle_file: str,
         evalhub_route: Route,
     ) -> None:
-        """/healthz works without X-Tenant header.
+        """Given: a running EvalHub instance.
+        When: GET /healthz is called without X-Tenant header.
+        Then: response is 200 with status 'healthy'.
 
         /healthz is the kubelet probe endpoint — unauthenticated and
         does not require identity headers, unlike /api/v1/health.
@@ -90,7 +98,10 @@ class TestEvalHub:
         model_namespace,
         method: str,
     ) -> None:
-        """Health endpoint rejects POST, PUT, and DELETE with 405."""
+        """Given: a running EvalHub instance.
+        When: a non-GET method is sent to /api/v1/health with X-Tenant.
+        Then: response is 405 (method not allowed).
+        """
         url = f"https://{evalhub_route.host}{EVALHUB_HEALTH_PATH}"
         headers = build_headers(token=current_client_token, tenant=model_namespace.name)
         response = getattr(requests, method)(
