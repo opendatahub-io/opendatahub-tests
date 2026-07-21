@@ -23,7 +23,7 @@ from tests.model_serving.maas_billing.upgrade.utils import (
 from tests.model_serving.maas_billing.utils import host_from_ingress_domain
 from utilities.constants import MAAS_GATEWAY_NAME, MAAS_GATEWAY_NAMESPACE
 from utilities.infra import create_ns
-from utilities.resources.maastenantconfig import MaasTenantConfig
+from utilities.resources.tenant import Tenant
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -189,18 +189,19 @@ def maas_upgrade_tenant(
     admin_client: DynamicClient,
     maas_subscription_namespace: Namespace,
     maas_subscription_controller_enabled_latest: DataScienceCluster,
-) -> MaasTenantConfig:
-    """Return the default-tenant MaasTenantConfig CR bootstrapped by AITenant / maas-controller.
+) -> Tenant:
+    """Return the default-tenant Tenant CR bootstrapped by the MaaS operator in 3.4.
 
     Depends on maas_subscription_controller_enabled_latest to ensure MaaS is
-    MANAGED and MaasTenantConfig has been reconciled before it is accessed.
+    MANAGED and the Tenant has been reconciled before it is accessed.
     """
-    return MaasTenantConfig(
+    tenant = Tenant(
         client=admin_client,
         name="default-tenant",
         namespace=maas_subscription_namespace.name,
         ensure_exists=True,
     )
+    return tenant
 
 
 @pytest.fixture(scope="session")
@@ -230,7 +231,7 @@ def capture_maas_upgrade_baseline(
     maas_upgrade_model_ref: MaaSModelRef,
     maas_upgrade_auth_policy: MaaSAuthPolicy,
     maas_upgrade_subscription: MaaSSubscription,
-    maas_upgrade_tenant: MaasTenantConfig,
+    maas_upgrade_tenant: Tenant,
 ) -> None:
     """Capture and persist MaaS state snapshot to ConfigMap before upgrade.
 
