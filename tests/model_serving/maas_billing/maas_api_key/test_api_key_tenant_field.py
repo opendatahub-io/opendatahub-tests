@@ -82,10 +82,14 @@ class TestAPIKeyTenantField:
             f"Expected 200 on POST /v1/api-keys/search, got {list_resp.status_code}: {list_resp.text[:200]}"
         )
 
-        items: list[dict] = list_body.get("items") or list_body.get("data")
-        assert items is not None, (
-            f"Expected 'items' or 'data' key in search response, got keys: {list(list_body.keys())}"
-        )
+        if "items" in list_body:
+            items: list[dict] = list_body["items"]
+        elif "data" in list_body:
+            items = list_body["data"]
+        else:
+            raise AssertionError(
+                f"Expected 'items' or 'data' key in search response, got keys: {list(list_body.keys())}"
+            )
         assert len(items) == len(two_active_api_key_ids), (
             f"Expected {len(two_active_api_key_ids)} active keys, got {len(items)}"
         )
