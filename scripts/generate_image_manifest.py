@@ -6,7 +6,7 @@ registry patterns. Output is used as an OCI label on the odh-tests
 container image so disconnected environments can discover which images
 to mirror.
 
-To add a new component, add an entry to IMAGE_SOURCES below.
+To add a new component, add an entry to IMAGE_CLASS_MAP below.
 """
 
 import argparse
@@ -19,9 +19,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-IMAGE_SOURCES: dict[str, str] = {
+IMAGE_CLASS_MAP: dict[str, str] = {
     "ai_safety": "tests.ai_safety.image_constants.AiSafetyImages",
-    "shared": "utilities.constants.ContainerImages",
+    "shared": "utilities.image_constants.SharedImages",
 }
 
 KNOWN_REGISTRIES: tuple[str, ...] = (
@@ -80,7 +80,7 @@ def validate_image_format(image: str) -> str | None:
 
 def generate_manifest() -> dict[str, list[str]]:
     manifest: dict[str, list[str]] = {}
-    for component, class_path in sorted(IMAGE_SOURCES.items()):
+    for component, class_path in sorted(IMAGE_CLASS_MAP.items()):
         module_path, class_name = class_path.rsplit(".", 1)
         module = importlib.import_module(name=module_path)
         cls = getattr(module, class_name)
