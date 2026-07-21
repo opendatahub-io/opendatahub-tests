@@ -15,13 +15,13 @@ from tests.model_serving.maas_billing.maas_cleanup.utils import (
 @pytest.mark.tier3
 @pytest.mark.usefixtures("dsc_with_maas_disabled")
 class TestMaaSDisableCleanup:
-    """Verify MaaS controller bundle is fully cleaned up when managementState is set to Removed."""
+    """Verify MaaS controller bundle is cleaned up when aigateway.modelsAsAService is Removed."""
 
     def test_disable_maas_removes_controller_deployment(
         self,
         admin_client: DynamicClient,
     ) -> None:
-        """Verify maas-controller Deployment is deleted after managementState is set to Removed."""
+        """Verify maas-controller Deployment is deleted after modelsAsAService is set to Removed."""
         applications_namespace = py_config["applications_namespace"]
         controller_deployment = Deployment(
             client=admin_client,
@@ -30,7 +30,7 @@ class TestMaaSDisableCleanup:
         )
         assert not controller_deployment.exists, (
             f"maas-controller Deployment still exists in namespace '{applications_namespace}'"
-            f" after managementState set to Removed"
+            f" after aigateway.modelsAsAService set to Removed"
         )
 
     def test_disable_maas_removes_cluster_rbac(
@@ -54,20 +54,21 @@ class TestMaaSDisableCleanup:
         }
         surviving_rbac = [label for label, resource in rbac_resources.items() if resource.exists]
         assert not surviving_rbac, (
-            f"MaaS RBAC resources still present after managementState set to Removed: {', '.join(surviving_rbac)}"
+            f"MaaS RBAC resources still present after aigateway.modelsAsAService set to Removed: "
+            f"{', '.join(surviving_rbac)}"
         )
 
     def test_disable_maas_no_bundle_resources_remain(
         self,
         admin_client: DynamicClient,
     ) -> None:
-        """Verify no maas-controller bundle resources remain after managementState is set to Removed."""
+        """Verify no maas-controller bundle resources remain after modelsAsAService is set to Removed."""
         applications_namespace = py_config["applications_namespace"]
         surviving_resources = get_surviving_maas_controller_resources(
             admin_client=admin_client,
             applications_namespace=applications_namespace,
         )
         assert not surviving_resources, (
-            f"maas-controller bundle resources still present after managementState set to Removed:"
+            f"maas-controller bundle resources still present after aigateway.modelsAsAService set to Removed:"
             f" {', '.join(surviving_resources)}"
         )

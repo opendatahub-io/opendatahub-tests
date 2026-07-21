@@ -11,18 +11,21 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 
 # from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
+from ocp_resources.deployment import Deployment
 from ocp_resources.endpoints import Endpoints
 from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.group import Group
 from ocp_resources.ingress_config_openshift_io import Ingress as IngressConfig
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.resource import ResourceEditor
+from pytest_testconfig import config as py_config
 from requests import Response
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from utilities.constants import (
     MAAS_GATEWAY_NAME,
     MAAS_GATEWAY_NAMESPACE,
+    DscComponents,
 )
 from utilities.llmd_utils import get_llm_inference_url
 from utilities.plugins.constant import OpenAIEnpoints, RestHeader
@@ -32,6 +35,65 @@ from utilities.resources.token_rate_limit_policy import TokenRateLimitPolicy
 
 LOGGER = structlog.get_logger(name=__name__)
 MODELS_INFO = OpenAIEnpoints.MODELS_INFO
+
+
+def maas_under_aigateway_component_patch(
+    models_as_a_service_state: str = DscComponents.ManagementState.MANAGED,
+    aigateway_state: str = DscComponents.ManagementState.MANAGED,
+) -> dict[str, Any]:
+    """Build DSC components patch for MaaS nested under AIGateway.
+
+    Args:
+        models_as_a_service_state: Management state for aigateway.modelsAsAService.
+        aigateway_state: Management state for aigateway itself.
+
+    Returns:
+        Dict suitable for ResourceEditor under spec.components.
+    """
+    return {
+        DscComponents.AIGATEWAY: {
+            "managementState": aigateway_state,
+            "modelsAsAService": {"managementState": models_as_a_service_state},
+        }
+    }
+
+
+def maas_api_namespace(admin_client: DynamicClient) -> str:
+    """Return the namespace where the default maas-api Deployment runs.
+
+    Resolves from maas-controller ``INFRA_NAMESPACE``. When empty or ``AUTO``,
+    derives the infra namespace the same way the controller does (RHOAI/ODH
+    defaults); otherwise uses the applications namespace.
+
+    Args:
+        admin_client: Cluster admin dynamic client.
+
+    Returns:
+        Namespace name for the default ``maas-api`` Deployment.
+    """
+    applications_namespace = py_config["applications_namespace"]
+    controller_deployment = Deployment(
+        client=admin_client,
+        name="maas-controller",
+        namespace=applications_namespace,
+        ensure_exists=True,
+    )
+    infra_namespace = ""
+    for container in controller_deployment.instance.spec.template.spec.containers:
+        for env_var in container.env or []:
+            if env_var.name == "INFRA_NAMESPACE":
+                infra_namespace = (env_var.value or "").strip()
+                break
+        if infra_namespace:
+            break
+
+    if not infra_namespace or infra_namespace.upper() == "AUTO":
+        if applications_namespace == "redhat-ods-applications":
+            return "redhat-ai-gateway-infra"
+        if applications_namespace == "opendatahub":
+            return "odh-ai-gateway-infra"
+        return applications_namespace
+    return infra_namespace
 
 
 def host_from_ingress_domain(client) -> str:
