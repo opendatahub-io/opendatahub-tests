@@ -19,7 +19,7 @@ from tests.model_serving.model_runtime.vllm.utils import (
     skip_if_not_deployment_mode,
     validate_supported_quantization_schema,
 )
-from utilities.constants import AcceleratorType, KServeDeploymentType, RuntimeTemplates
+from utilities.constants import AcceleratorType, KServeDeploymentType, RuntimeTemplates, Timeout
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -34,7 +34,11 @@ SUPPORTED_IBM_POWER_Z_ACCELERATORS: set[str] = {
 @pytest.fixture(scope="session")
 def skip_if_no_supported_ibm_power_z_accelerator_type(supported_accelerator_type: str | None) -> None:
     """Skip test unless the cluster provides a supported IBM Power or Z CPU accelerator."""
-    if not supported_accelerator_type or supported_accelerator_type.lower() not in SUPPORTED_IBM_POWER_Z_ACCELERATORS:
+    if (
+        not supported_accelerator_type
+        or supported_accelerator_type.lower()
+        not in SUPPORTED_IBM_POWER_Z_ACCELERATORS
+    ):
         pytest.skip(
             f"Test requires a supported vLLM IBM Power or Z CPU accelerator. "
             f"Found: '{supported_accelerator_type or 'None'}'. "
@@ -51,7 +55,11 @@ def ibm_power_z_serving_runtime(
     supported_accelerator_type: str,
     vllm_runtime_image: str,
 ) -> Generator[ServingRuntime]:
-    """ServingRuntime backed by the vLLM CPU Power or Z runtime template."""
+    """ServingRuntime backed by the vLLM CPU Power/Z runtime template.
+
+    Both cpu_power and cpu_z accelerator types share a single cluster template
+    (vllm-cpu-runtime-template) on ppc64le/s390x clusters.
+    """
     accelerator_type = supported_accelerator_type.lower()
     template_name = TEMPLATE_MAP.get(accelerator_type, RuntimeTemplates.VLLM_CPU_POWER)
     with ServingRuntimeFromTemplate(
@@ -87,8 +95,8 @@ def ibm_power_z_inference_service(
         "model_service_account": vllm_model_service_account.name,
         "deployment_mode": request.param.get("deployment_mode", KServeDeploymentType.STANDARD),
         "external_route": True,
-        "resources": deepcopy(x=IBM_POWER_Z_PREDICT_RESOURCES),
-        "timeout": request.param.get("timeout", 1800),
+        "resources": deepcopy(x=request.param.get("resources", IBM_POWER_Z_PREDICT_RESOURCES)),
+        "timeout": request.param.get("timeout", Timeout.TIMEOUT_30MIN),
     }
 
     if arguments := request.param.get("runtime_argument"):
@@ -100,6 +108,9 @@ def ibm_power_z_inference_service(
 
     if min_replicas := request.param.get("min-replicas"):
         isvc_kwargs["min_replicas"] = min_replicas
+
+    if model_env_variables := request.param.get("model_env_variables"):
+        isvc_kwargs["model_env_variables"] = model_env_variables
 
     add_image_pull_secrets_if_configured(
         isvc_kwargs=isvc_kwargs,

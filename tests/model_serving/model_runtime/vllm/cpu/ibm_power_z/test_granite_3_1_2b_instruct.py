@@ -7,7 +7,7 @@ from ocp_resources.inference_service import InferenceService
 
 from tests.model_serving.model_runtime.vllm.constant import BASE_RAW_DEPLOYMENT_CONFIG
 from tests.model_serving.model_runtime.vllm.cpu.ibm_power_z.constant import (
-    GRANITE_3_1_8B_INSTRUCT_MODEL_PATH,
+    GRANITE_3_1_2B_INSTRUCT_MODEL_PATH,
     IBM_POWER_Z_CHAT_INFERENCE_REQUEST,
     IBM_POWER_Z_MODEL_ENV_VARIABLES,
     IBM_POWER_Z_SERVING_ARGUMENT,
@@ -32,17 +32,17 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_ibm_power_z_accelerat
     ),
     [
         pytest.param(
-            {"name": "granite-3-1-8b-cpu"},
-            {"model-dir": GRANITE_3_1_8B_INSTRUCT_MODEL_PATH},
+            {"name": "granite-3-1-2b-cpu"},
+            {"model-dir": GRANITE_3_1_2B_INSTRUCT_MODEL_PATH},
             {"deployment_mode": KServeDeploymentType.STANDARD},
             {
                 **BASE_RAW_DEPLOYMENT_CONFIG,
-                "name": "granite-3-1-8b-cpu",
+                "name": "granite-3-1-2b-cpu",
                 "runtime_argument": IBM_POWER_Z_SERVING_ARGUMENT,
                 "model_env_variables": IBM_POWER_Z_MODEL_ENV_VARIABLES,
             },
             IBM_POWER_Z_CHAT_INFERENCE_REQUEST,
-            id="test_granite_3_1_8b_cpu",
+            id="test_granite_3_1_2b_cpu",
         ),
     ],
     indirect=[
@@ -52,10 +52,10 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_ibm_power_z_accelerat
         "ibm_power_z_inference_service",
     ],
 )
-class TestGranite318BInstruct:
-    """Deploy Granite-3.1-8B-Instruct on IBM Power or Z and verify chat completions inference."""
+class TestGranite312BInstruct:
+    """Deploy Granite-3.1-2B-Instruct on IBM Power or Z and verify chat completions inference."""
 
-    def test_granite_3_1_8b_instruct_chat_inference(
+    def test_granite_3_1_2b_instruct_chat_inference(
         self,
         ibm_power_z_inference_service: Generator[InferenceService, Any, Any],
         skip_if_not_ibm_power_z_raw_deployment: Any,
@@ -63,7 +63,7 @@ class TestGranite318BInstruct:
     ):
         """Test steps:
 
-        Given a vLLM CPU ServingRuntime and Granite-3.1-8B-Instruct backed by S3 storage
+        Given a vLLM CPU ServingRuntime and Granite-3.1-2B-Instruct backed by S3 storage
         When a POST request is sent to /v1/chat/completions
         Then the response status is 200 and the completion text is non-empty
         """

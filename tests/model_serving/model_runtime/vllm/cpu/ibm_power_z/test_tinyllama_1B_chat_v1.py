@@ -7,10 +7,10 @@ from ocp_resources.inference_service import InferenceService
 
 from tests.model_serving.model_runtime.vllm.constant import BASE_RAW_DEPLOYMENT_CONFIG
 from tests.model_serving.model_runtime.vllm.cpu.ibm_power_z.constant import (
-    GRANITE_3_1_8B_INSTRUCT_MODEL_PATH,
     IBM_POWER_Z_CHAT_INFERENCE_REQUEST,
     IBM_POWER_Z_MODEL_ENV_VARIABLES,
     IBM_POWER_Z_SERVING_ARGUMENT,
+    TINYLLAMA_1_1B_CHAT_V1_0_MODEL_PATH,
 )
 from tests.model_serving.model_runtime.vllm.cpu.ibm_power_z.utils import validate_ibm_power_z_chat_completions_request
 from utilities.constants import KServeDeploymentType
@@ -32,17 +32,17 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_ibm_power_z_accelerat
     ),
     [
         pytest.param(
-            {"name": "granite-3-1-8b-cpu"},
-            {"model-dir": GRANITE_3_1_8B_INSTRUCT_MODEL_PATH},
+            {"name": "tinyllama-1-1b-chat-cpu"},
+            {"model-dir": TINYLLAMA_1_1B_CHAT_V1_0_MODEL_PATH},
             {"deployment_mode": KServeDeploymentType.STANDARD},
             {
                 **BASE_RAW_DEPLOYMENT_CONFIG,
-                "name": "granite-3-1-8b-cpu",
+                "name": "tinyllama-1-1b-chat-cpu",
                 "runtime_argument": IBM_POWER_Z_SERVING_ARGUMENT,
                 "model_env_variables": IBM_POWER_Z_MODEL_ENV_VARIABLES,
             },
             IBM_POWER_Z_CHAT_INFERENCE_REQUEST,
-            id="test_granite_3_1_8b_cpu",
+            id="test_tinyllama_1_1b_chat_cpu",
         ),
     ],
     indirect=[
@@ -52,10 +52,10 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_ibm_power_z_accelerat
         "ibm_power_z_inference_service",
     ],
 )
-class TestGranite318BInstruct:
-    """Deploy Granite-3.1-8B-Instruct on IBM Power or Z and verify chat completions inference."""
+class TestTinyLlama11BChatV10:
+    """Deploy TinyLlama-1.1B-Chat-v1.0 on IBM Power or Z and verify chat completions inference."""
 
-    def test_granite_3_1_8b_instruct_chat_inference(
+    def test_tinyllama_1_1b_chat_v1_0_chat_inference(
         self,
         ibm_power_z_inference_service: Generator[InferenceService, Any, Any],
         skip_if_not_ibm_power_z_raw_deployment: Any,
@@ -63,7 +63,7 @@ class TestGranite318BInstruct:
     ):
         """Test steps:
 
-        Given a vLLM CPU ServingRuntime and Granite-3.1-8B-Instruct backed by S3 storage
+        Given a vLLM CPU ServingRuntime and TinyLlama-1.1B-Chat-v1.0 backed by S3 storage
         When a POST request is sent to /v1/chat/completions
         Then the response status is 200 and the completion text is non-empty
         """

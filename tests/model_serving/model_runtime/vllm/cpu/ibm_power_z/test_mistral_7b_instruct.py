@@ -8,6 +8,7 @@ from ocp_resources.inference_service import InferenceService
 from tests.model_serving.model_runtime.vllm.constant import BASE_RAW_DEPLOYMENT_CONFIG
 from tests.model_serving.model_runtime.vllm.cpu.ibm_power_z.constant import (
     IBM_POWER_Z_CHAT_INFERENCE_REQUEST,
+    IBM_POWER_Z_MODEL_ENV_VARIABLES,
     IBM_POWER_Z_SERVING_ARGUMENT,
     MISTRAL_7B_INSTRUCT_MODEL_PATH,
 )
@@ -31,16 +32,17 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_ibm_power_z_accelerat
     ),
     [
         pytest.param(
-            {"name": "mistral-7b-instruct-standard-cpu"},
+            {"name": "mistral-7b-cpu"},
             {"model-dir": MISTRAL_7B_INSTRUCT_MODEL_PATH},
             {"deployment_mode": KServeDeploymentType.STANDARD},
             {
                 **BASE_RAW_DEPLOYMENT_CONFIG,
-                "name": "mistral-7b-instruct-standard-cpu",
+                "name": "mistral-7b-cpu",
                 "runtime_argument": IBM_POWER_Z_SERVING_ARGUMENT,
+                "model_env_variables": IBM_POWER_Z_MODEL_ENV_VARIABLES,
             },
             IBM_POWER_Z_CHAT_INFERENCE_REQUEST,
-            id="test_mistral_7b_instruct_standard_cpu",
+            id="test_mistral_7b_cpu",
         ),
     ],
     indirect=[
