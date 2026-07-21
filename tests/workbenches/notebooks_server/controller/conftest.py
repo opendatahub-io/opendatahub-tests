@@ -12,11 +12,22 @@ from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError
 
 from tests.workbenches.notebooks_server.controller.utils import (
+    HardwareProfile,
     build_notebook_dict,
     resolve_notebook_image,
 )
 from utilities import constants
 from utilities.general import collect_pod_information
+from utilities.infra import create_ns
+from utilities.kueue_utils import (
+    ClusterQueue,
+    Kueue,
+    LocalQueue,
+    ResourceFlavor,
+    create_cluster_queue,
+    create_local_queue,
+    create_resource_flavor,
+)
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -186,12 +197,16 @@ def default_notebook(
     # Optional custom resource requests/limits for the notebook container
     custom_resources = request.param.get("resources")
 
+    # Optional extra environment variables for the notebook container
+    extra_env_vars = request.param.get("extra_env_vars")
+
     notebook_dict = build_notebook_dict(
         namespace=namespace,
         name=name,
         image_path=notebook_image,
         extra_annotations=auth_annotations or None,
         resources=custom_resources,
+        extra_env_vars=extra_env_vars,
     )
 
     with Notebook(client=unprivileged_client, kind_dict=notebook_dict) as nb:
@@ -282,3 +297,202 @@ def notebook_pod(
             raise AssertionError(_ERR_POD_NOT_CREATED.format(pod_name=default_notebook.name)) from e
 
     return notebook_pod
+
+
+# ---------------------------------------------------------------------------
+# Kueue Integration Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="class")
+def kueue_statefulset_framework_check(admin_client: DynamicClient) -> None:
+    """Verify that the Kueue CR has StatefulSet framework enabled.
+
+    Notebooks are backed by StatefulSets, so the Red Hat build of Kueue operator
+    must have 'StatefulSet' listed in config.integrations.frameworks for workbench
+    scheduling to work. Fails the test with a clear message if misconfigured.
+    """
+    kueue_cr = Kueue(
+        client=admin_client,
+        name="cluster",
+        ensure_exists=True,
+    )
+    spec = kueue_cr.instance.to_dict().get("spec", {})
+    frameworks: list[str] = spec.get("config", {}).get("integrations", {}).get("frameworks", [])
+
+    assert "StatefulSet" in frameworks, (
+        f"Kueue CR 'cluster' does not have 'StatefulSet' in config.integrations.frameworks. "
+        f"Current frameworks: {frameworks}. "
+        f"Notebooks require StatefulSet integration. "
+        f"Patch the Kueue CR to add 'StatefulSet' to spec.config.integrations.frameworks."
+    )
+
+
+@pytest.fixture(scope="class")
+def kueue_notebook_namespace(
+    request: pytest.FixtureRequest,
+    admin_client: DynamicClient,
+    unprivileged_client: DynamicClient,
+) -> Generator[Namespace]:
+    """Namespace with kueue.openshift.io/managed=true label for kueue workload management."""
+    with create_ns(
+        admin_client=admin_client,
+        name=request.param["name"],
+        unprivileged_client=unprivileged_client,
+        add_kueue_label=True,
+    ) as ns:
+        yield ns
+
+
+@pytest.fixture(scope="class")
+def kueue_resource_flavor(
+    request: pytest.FixtureRequest,
+    admin_client: DynamicClient,
+) -> Generator[ResourceFlavor]:
+    """ResourceFlavor for kueue notebook workloads."""
+    with create_resource_flavor(
+        client=admin_client,
+        name=request.param["name"],
+    ) as resource_flavor:
+        yield resource_flavor
+
+
+@pytest.fixture(scope="class")
+def kueue_cluster_queue(
+    request: pytest.FixtureRequest,
+    admin_client: DynamicClient,
+    kueue_resource_flavor: ResourceFlavor,
+) -> Generator[ClusterQueue]:
+    """ClusterQueue with CPU/memory quotas for notebook workloads."""
+    resource_groups = [
+        {
+            "coveredResources": ["cpu", "memory"],
+            "flavors": [
+                {
+                    "name": kueue_resource_flavor.name,
+                    "resources": [
+                        {"name": "cpu", "nominalQuota": request.param["cpu_quota"]},
+                        {"name": "memory", "nominalQuota": request.param["memory_quota"]},
+                    ],
+                }
+            ],
+        }
+    ]
+
+    with create_cluster_queue(
+        client=admin_client,
+        name=request.param["name"],
+        resource_groups=resource_groups,
+        namespace_selector=request.param.get("namespace_selector", {}),
+    ) as cluster_queue:
+        yield cluster_queue
+
+
+@pytest.fixture(scope="class")
+def kueue_local_queue(
+    request: pytest.FixtureRequest,
+    admin_client: DynamicClient,
+    kueue_notebook_namespace: Namespace,
+    kueue_cluster_queue: ClusterQueue,
+) -> Generator[LocalQueue]:
+    """LocalQueue in the kueue-enabled namespace, bound to the ClusterQueue."""
+    with create_local_queue(
+        client=admin_client,
+        name=request.param["name"],
+        cluster_queue=kueue_cluster_queue.name,
+        namespace=kueue_notebook_namespace.name,
+    ) as local_queue:
+        yield local_queue
+
+
+@pytest.fixture(scope="class")
+def kueue_notebook_pvc(
+    request: pytest.FixtureRequest,
+    unprivileged_client: DynamicClient,
+    kueue_notebook_namespace: Namespace,
+) -> Generator[PersistentVolumeClaim]:
+    """PVC for notebook storage in the kueue-enabled namespace."""
+    with PersistentVolumeClaim(
+        client=unprivileged_client,
+        name=request.param["name"],
+        namespace=kueue_notebook_namespace.name,
+        label={constants.Labels.OpenDataHub.DASHBOARD: "true"},
+        accessmodes=PersistentVolumeClaim.AccessMode.RWO,
+        size="10Gi",
+        volume_mode=PersistentVolumeClaim.VolumeMode.FILE,
+    ) as pvc:
+        yield pvc
+
+
+@pytest.fixture(scope="class")
+def kueue_hardware_profile(
+    request: pytest.FixtureRequest,
+    admin_client: DynamicClient,
+    kueue_notebook_namespace: Namespace,
+    kueue_local_queue: LocalQueue,
+) -> Generator[HardwareProfile]:
+    """HardwareProfile with scheduling.type=Queue for Kueue-backed workbenches."""
+    hwp_dict = {
+        "apiVersion": "infrastructure.opendatahub.io/v1",
+        "kind": "HardwareProfile",
+        "metadata": {
+            "name": request.param["name"],
+            "namespace": kueue_notebook_namespace.name,
+        },
+        "spec": {
+            "identifiers": [
+                {
+                    "displayName": "CPU",
+                    "identifier": "cpu",
+                    "minCount": "100m",
+                    "maxCount": request.param.get("cpu_max", "4"),
+                    "defaultCount": request.param["cpu_default"],
+                    "resourceType": "CPU",
+                },
+                {
+                    "displayName": "Memory",
+                    "identifier": "memory",
+                    "minCount": "128Mi",
+                    "maxCount": request.param.get("memory_max", "8Gi"),
+                    "defaultCount": request.param["memory_default"],
+                    "resourceType": "Memory",
+                },
+            ],
+            "scheduling": {
+                "type": "Queue",
+                "kueue": {
+                    "localQueueName": kueue_local_queue.name,
+                },
+            },
+        },
+    }
+
+    with HardwareProfile(client=admin_client, kind_dict=hwp_dict) as hwp:
+        yield hwp
+
+
+@pytest.fixture(scope="class")
+def kueue_notebook(
+    request: pytest.FixtureRequest,
+    admin_client: DynamicClient,
+    unprivileged_client: DynamicClient,
+    kueue_notebook_namespace: Namespace,
+    kueue_notebook_pvc: PersistentVolumeClaim,
+    kueue_hardware_profile: HardwareProfile,
+) -> Generator[Notebook]:
+    """Notebook CR annotated with a HardwareProfile for Kueue scheduling.
+
+    The HWP webhook injects the kueue.x-k8s.io/queue-name label and container
+    resources (from HWP identifiers.defaultCount) into the Notebook CR.
+    """
+    notebook_image = resolve_notebook_image(admin_client=admin_client)
+    notebook_dict = build_notebook_dict(
+        namespace=kueue_notebook_namespace.name,
+        name=request.param["name"],
+        image_path=notebook_image,
+        extra_annotations={"opendatahub.io/hardware-profile-name": kueue_hardware_profile.name},
+        resources={},
+    )
+
+    with Notebook(client=unprivileged_client, kind_dict=notebook_dict) as nb:
+        yield nb
