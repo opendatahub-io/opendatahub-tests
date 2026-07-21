@@ -295,7 +295,6 @@ def llmisvc(
     with _create_llmisvc_from_config(
         config_cls=config_cls, namespace=namespace, client=admin_client, service_account=service_account
     ) as svc:
-        svc.config = config_cls
         yield svc
 
 

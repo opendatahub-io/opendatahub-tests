@@ -7,7 +7,7 @@ from .config_fast_image import (
     TinyLlamaFast2Config,
 )
 from .config_models import (
-    Qwen3MoeTinyRandomGpuConfig,
+    Qwen3MoeDummyGpuConfig,
     TinyLlamaHfConfig,
     TinyLlamaHfGpuConfig,
     TinyLlamaOciConfig,
@@ -25,7 +25,7 @@ __all__ = [
     "MultinodeMoeDpEpConfig",
     "PrecisePrefixCacheProducerConfig",
     "PrecisePrefixCacheScorerConfig",
-    "Qwen3MoeTinyRandomGpuConfig",
+    "Qwen3MoeDummyGpuConfig",
     "SingleNodePDFast1Config",
     "SingleNodePDFast2Config",
     "SingleNodePrefillDecodeConfig",

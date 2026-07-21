@@ -68,6 +68,8 @@ class TestSingleNodePrecisePrefixCache:
         4. Query Prometheus and assert all traffic was routed to a single pod with correct prefix cache hit counts.
         5. Assert the scheduler made at least the expected number of routing decisions.
         """
+        config = request.node.callspec.params["llmisvc"]
+
         router_pod = get_llmd_router_scheduler_pod(client=unprivileged_client, llmisvc=llmisvc)
         assert router_pod is not None, "Router-scheduler pod should exist"
         assert router_pod.instance.status.phase == "Running", "Router-scheduler pod should be running"
@@ -75,12 +77,11 @@ class TestSingleNodePrecisePrefixCache:
         vllm_pods = get_llmd_vllm_pods(client=unprivileged_client, llmisvc=llmisvc)
         inferencepool_pods = get_llmd_inference_pool_pods(client=unprivileged_client, llmisvc=llmisvc)
         # Single-node: all vLLM pods are InferencePool members (no headless workers).
-        assert len(vllm_pods) == llmisvc.config.expected_vllm_pod_count, (
-            f"Expected {llmisvc.config.expected_vllm_pod_count} vLLM pods, found {len(vllm_pods)}"
+        assert len(vllm_pods) == config.expected_vllm_pod_count, (
+            f"Expected {config.expected_vllm_pod_count} vLLM pods, found {len(vllm_pods)}"
         )
-        assert len(inferencepool_pods) == llmisvc.config.expected_inference_pool_pod_count, (
-            f"Expected {llmisvc.config.expected_inference_pool_pod_count} InferencePool pods,"
-            f" found {len(inferencepool_pods)}"
+        assert len(inferencepool_pods) == config.expected_inference_pool_pod_count, (
+            f"Expected {config.expected_inference_pool_pod_count} InferencePool pods, found {len(inferencepool_pods)}"
         )
         assert len(vllm_pods) == len(inferencepool_pods), "Single-node: all vLLM pods should be InferencePool members"
 

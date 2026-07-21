@@ -2,10 +2,10 @@
 
 from utilities.constants import Labels
 
-from .config_models import Qwen3MoeTinyRandomGpuConfig
+from .config_models import Qwen3MoeDummyGpuConfig
 
 
-class MultinodeMoeDpEpConfig(Qwen3MoeTinyRandomGpuConfig):
+class MultinodeMoeDpEpConfig(Qwen3MoeDummyGpuConfig):
     """Multinode MoE with data parallelism + expert parallelism (DP+EP).
 
     Deploys across 2 GPU nodes using LeaderWorkerSet. The controller creates a head

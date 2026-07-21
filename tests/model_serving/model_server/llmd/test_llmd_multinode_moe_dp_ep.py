@@ -33,6 +33,7 @@ class TestMultinodeMoeDpEp:
 
     def test_vllm_pod_count(
         self,
+        request: pytest.FixtureRequest,
         unprivileged_client: DynamicClient,
         llmisvc: LLMInferenceService,
     ):
@@ -41,13 +42,15 @@ class TestMultinodeMoeDpEp:
         1. Get all vLLM pods (leader + workers) for the LLMInferenceService.
         2. Assert the count matches the expected number from the config.
         """
+        config = request.node.callspec.params["llmisvc"]
         vllm_pods = get_llmd_vllm_pods(client=unprivileged_client, llmisvc=llmisvc)
-        assert len(vllm_pods) == llmisvc.config.expected_vllm_pod_count, (
-            f"Expected {llmisvc.config.expected_vllm_pod_count} vLLM pods, found {len(vllm_pods)}"
+        assert len(vllm_pods) == config.expected_vllm_pod_count, (
+            f"Expected {config.expected_vllm_pod_count} vLLM pods, found {len(vllm_pods)}"
         )
 
     def test_inference_pool_pod_count(
         self,
+        request: pytest.FixtureRequest,
         unprivileged_client: DynamicClient,
         llmisvc: LLMInferenceService,
     ):
@@ -56,10 +59,10 @@ class TestMultinodeMoeDpEp:
         1. Get pods matching the InferencePool selector (kserve.io/component=workload).
         2. Assert the count matches the expected number from the config.
         """
+        config = request.node.callspec.params["llmisvc"]
         inferencepool_pods = get_llmd_inference_pool_pods(client=unprivileged_client, llmisvc=llmisvc)
-        assert len(inferencepool_pods) == llmisvc.config.expected_inference_pool_pod_count, (
-            f"Expected {llmisvc.config.expected_inference_pool_pod_count} InferencePool pods,"
-            f" found {len(inferencepool_pods)}"
+        assert len(inferencepool_pods) == config.expected_inference_pool_pod_count, (
+            f"Expected {config.expected_inference_pool_pod_count} InferencePool pods, found {len(inferencepool_pods)}"
         )
 
     def test_router_scheduler(
