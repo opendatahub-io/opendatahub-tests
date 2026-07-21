@@ -113,14 +113,21 @@ class TestAgentReadmeContent:
         errors: list[str] = []
         for agent in default_agents:
             agent_name = agent.get("name", "<unknown>")
-            if agent.get("repositoryUrl") and not agent.get("readme"):
+            readme = agent.get("readme")
+            if agent.get("repositoryUrl") and (not isinstance(readme, str) or not readme.strip()):
                 errors.append(f"Agent '{agent_name}' has repositoryUrl but missing readme")
         assert not errors, "README auto-population failed:\n" + "\n".join(errors)
 
     @pytest.mark.parametrize(
         "pattern_name, pattern",
         [
-            ("relative markdown link", re.compile(r"\[([^\]]*)\]\((?!https?://|ftp://|mailto:|//)([^)]+)\)")),
+            (
+                "relative markdown link",
+                re.compile(
+                    r"(?<!!)\[([^\]]+)\]\((?!https?://|ftp://|mailto:|//)"
+                    r"([^)\s]+)(?:\s+[\"'].*?[\"'])?\)"
+                ),
+            ),
             ("relative markdown image", re.compile(r"!\[([^\]]*)\]\((?!https?://|ftp://|mailto:|//)([^)]+)\)")),
             (
                 "relative HTML img",
