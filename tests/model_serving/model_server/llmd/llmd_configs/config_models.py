@@ -55,3 +55,18 @@ class TinyLlamaHfGpuConfig(GpuConfig):
     name = "llmisvc-tinyllama-hf-gpu"
     storage_uri = ModelStorage.HuggingFace.TINYLLAMA
     model_name = ModelName.TINYLLAMA
+
+
+class Qwen3MoeDummyGpuConfig(GpuConfig):
+    """Qwen3-MoE dummy model via HuggingFace, GPU inference.
+
+    ~20M randomly initialized Qwen3-MoE with 8 experts. Produces garbage output
+    but uses a real MoE architecture (qwen3_moe), so vLLM loads and serves it
+    correctly. Useful for fast validation of MoE deployment plumbing without
+    waiting for a real model to download.
+    """
+
+    enable_auth = False
+    name = "llmisvc-qwen3-moe-dummy"
+    storage_uri = "hf://threcc/qwen3-moe-dummy:93b3d84e2aa41d09bcd473fb8241f6bfa0a0363b"
+    model_name = "qwen3-moe-dummy"
