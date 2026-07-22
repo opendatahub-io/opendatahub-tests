@@ -25,6 +25,41 @@ jobs:
           else
               echo "TAG=${{ github.event.pull_request.base.ref }}" >> "$GITHUB_ENV"
           fi
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.3.2
+
+      - name: Generate image manifest
+        id: manifest
+        continue-on-error: true
+        run: echo "json=$(uv run python scripts/generate_image_manifest.py --compact)" >> "$GITHUB_OUTPUT"
+
+      - name: Compute manifest checksum
+        id: checksum
+        if: steps.manifest.outcome == 'success'
+        env:
+          MANIFEST: ${{ steps.manifest.outputs.json }}
+        run: echo "sha256=$(echo -n "$MANIFEST" | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare image labels
+        id: labels
+        env:
+          MANIFEST_JSON: ${{ steps.manifest.outputs.json }}
+          MANIFEST_SHA: ${{ steps.checksum.outputs.sha256 }}
+          MANIFEST_OUTCOME: ${{ steps.manifest.outcome }}
+        run: |
+          if [ "$MANIFEST_OUTCOME" == "success" ]; then
+            {
+              echo "--label=io.opendatahub.tests.required-images=$MANIFEST_JSON"
+              echo "--label=io.opendatahub.tests.required-images.sha256=$MANIFEST_SHA"
+            } > /tmp/extra-labels.txt
+            echo "args<<EOF" >> "$GITHUB_OUTPUT"
+            cat /tmp/extra-labels.txt >> "$GITHUB_OUTPUT"
+            echo "EOF" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Image manifest generation failed — building without manifest labels"
+            echo "args=" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build Image
         id: build-image
         uses: redhat-actions/buildah-build@v2
@@ -33,6 +68,8 @@ jobs:
           tags: ${{ env.TAG }}
           containerfiles: |
             ./Dockerfile
+          extra-args: |
+            ${{ steps.labels.outputs.args }}
 
       - name: Push To Image Registry
         id: push-to-registry
@@ -55,4 +92,4 @@ jobs:
             $URL \
             -H "Content-Type: application/json" \
             -H "Authorization: token $GITHUB_TOKEN" \
-            --data '{ "body": "Status of building tag ${{ env.TAG }}: ${{ steps.build-image.outcome }}. \nStatus of pushing tag ${{ env.TAG }} to image registry: ${{ steps.push-to-registry.outcome }}." }'
+            --data '{ "body": "Status of building tag ${{ env.TAG }}: ${{ steps.build-image.outcome }}. \nStatus of pushing tag ${{ env.TAG }} to image registry: ${{ steps.push-to-registry.outcome }}. \nImage manifest label: ${{ steps.manifest.outcome }}." }'
