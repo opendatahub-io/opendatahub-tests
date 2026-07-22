@@ -17,7 +17,6 @@ from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.storage_class import StorageClass
-from pytest_testconfig import config as py_config
 
 from utilities.constants import (
     DscComponents,
