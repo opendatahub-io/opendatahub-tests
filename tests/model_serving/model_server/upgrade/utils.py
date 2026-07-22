@@ -564,6 +564,19 @@ def _restore_kueue_dsc_state(
             f"'original_management_state'. Cannot restore safely without discarding recovery state."
         )
 
+    original_frameworks = state_cm.instance.data.get("original_kueue_frameworks")
+    if original_frameworks is not None:
+        frameworks = [f for f in original_frameworks.split(",") if f]
+        LOGGER.info(f"Restoring Kueue integrations frameworks to {frameworks}")
+        kueue_crs = list(Kueue.get(client=admin_client))
+        if kueue_crs:
+            kueue_crs[0].update(
+                resource_dict={
+                    "metadata": {"name": kueue_crs[0].name},
+                    "spec": {"config": {"integrations": {"frameworks": frameworks}}},
+                }
+            )
+
     LOGGER.info(f"Restoring Kueue managementState to '{original_state}' in DSC")
     dsc_resource.update(
         resource_dict={
@@ -577,16 +590,21 @@ def _restore_kueue_dsc_state(
 BATCH_JOB_FRAMEWORK = "BatchJob"
 
 
-def _ensure_batch_job_framework(admin_client: DynamicClient) -> None:
+def _ensure_batch_job_framework(
+    admin_client: DynamicClient,
+    namespace: str,
+    kueue_dsc_state_cm_name: str = UPGRADE_KUEUE_DSC_STATE_CM_NAME,
+) -> None:
     """Ensure the Kueue CR includes BatchJob in its integrations frameworks list.
 
     RHOAI's default Kueue CR does not include BatchJob, so Kueue will not create
-    Workloads for batch/v1 Jobs unless it is explicitly added.
+    Workloads for batch/v1 Jobs unless it is explicitly added. The original
+    frameworks list is persisted to the upgrade state ConfigMap so teardown
+    can restore it.
     """
     kueue_crs = list(Kueue.get(client=admin_client))
     if not kueue_crs:
-        LOGGER.warning("No Kueue CR found, skipping BatchJob framework check")
-        return
+        pytest.fail("No Kueue CR found — cannot configure BatchJob framework for upgrade test")
 
     kueue_cr = kueue_crs[0]
     spec = kueue_cr.instance.spec
@@ -596,6 +614,12 @@ def _ensure_batch_job_framework(admin_client: DynamicClient) -> None:
     if BATCH_JOB_FRAMEWORK in frameworks:
         LOGGER.info("BatchJob already in Kueue integrations frameworks")
         return
+
+    state_cm = ConfigMap(client=admin_client, name=kueue_dsc_state_cm_name, namespace=namespace)
+    if state_cm.exists:
+        LOGGER.info(f"Saving original Kueue frameworks {frameworks} to state ConfigMap")
+        state_cm.instance.data["original_kueue_frameworks"] = ",".join(frameworks)
+        state_cm.update(resource_dict={"data": dict(state_cm.instance.data)})
 
     frameworks.append(BATCH_JOB_FRAMEWORK)
     LOGGER.info(f"Adding BatchJob to Kueue integrations frameworks: {frameworks}")
@@ -663,7 +687,7 @@ def _ensure_kueue_available_for_upgrade(
             LOGGER.info("Kueue already Unmanaged, no patch needed")
 
         wait_for_kueue_crds_available(client=admin_client)
-        _ensure_batch_job_framework(admin_client=admin_client)
+        _ensure_batch_job_framework(admin_client=admin_client, namespace=namespace)
         yield
 
         if teardown_resources:
