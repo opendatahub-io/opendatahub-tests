@@ -36,6 +36,7 @@ def verify_inference_response(
     insecure: bool = False,
     token: str | None = None,
     authorized_user: bool | None = None,
+    inference_timeout: int | None = None,
 ) -> None:
     """
     Verify the inference response.
@@ -52,6 +53,7 @@ def verify_inference_response(
         insecure (bool): Insecure mode.
         token (str): Token.
         authorized_user (bool): Authorized user.
+        inference_timeout (int | None): Retry timeout in seconds for the inference request.
 
     Raises:
         InvalidInferenceResponseError: If inference response is invalid.
@@ -73,6 +75,7 @@ def verify_inference_response(
         use_default_query=use_default_query,
         token=token,
         insecure=insecure,
+        inference_timeout=inference_timeout,
     )
 
     if authorized_user is False:
