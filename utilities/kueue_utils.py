@@ -336,11 +336,38 @@ def check_workload_quota_reserved(workload: Workload) -> bool:
     )
 
 
+def check_admission_check_active(admission_check: AdmissionCheck) -> bool:
+    """Check if an AdmissionCheck has Active=True condition."""
+    conditions = getattr(admission_check.instance.status, "conditions", None) or []
+    return any(
+        (c.get("type") if isinstance(c, dict) else getattr(c, "type", None)) == "Active"
+        and (c.get("status") if isinstance(c, dict) else getattr(c, "status", None)) == "True"
+        for c in conditions
+    )
+
+
+def check_cluster_queue_has_admission_check(cluster_queue: "ClusterQueue", admission_check_name: str) -> bool:
+    """Check if a ClusterQueue still references an AdmissionCheck in its admissionChecksStrategy."""
+    spec = cluster_queue.instance.spec
+    strategy = getattr(spec, "admissionChecksStrategy", None)
+    if not strategy:
+        return False
+    checks = getattr(strategy, "admissionChecks", None) or []
+    return any(
+        (c.get("name") if isinstance(c, dict) else getattr(c, "name", None)) == admission_check_name for c in checks
+    )
+
+
 def activate_admission_check(
     client: DynamicClient,
     admission_check_name: str,
 ) -> None:
-    """Patch an AdmissionCheck's status to Active=True so the ClusterQueue can admit workloads."""
+    """Patch an AdmissionCheck's status to Active=True so the ClusterQueue can admit workloads.
+
+    Acts as a fake AdmissionCheck Controller for upgrade testing. Uses a merge-patch
+    to set Active=True with a synthetic reason, avoiding the need to deploy a real
+    controller (e.g. ProvisioningRequest/MultiKueue).
+    """
     api = client.resources.get(
         api_version=AdmissionCheck.api_version,
         kind="AdmissionCheck",
@@ -369,7 +396,13 @@ def approve_admission_check_on_workload(
     workload: Workload,
     admission_check_name: str,
 ) -> None:
-    """Patch a Workload's status to set an AdmissionCheck state to Ready."""
+    """Patch a Workload's status to set an AdmissionCheck state to Ready.
+
+    Uses JSON merge-patch, which replaces ``status.admissionChecks`` entirely.
+    Safe while there is exactly one AdmissionCheck and no reliance on sibling
+    fields like ``podSetUpdates``. Callers with multiple checks should
+    read-modify-write instead.
+    """
     api = client.resources.get(
         api_version=Workload.api_version,
         kind="Workload",

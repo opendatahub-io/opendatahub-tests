@@ -37,6 +37,10 @@ from tests.model_serving.model_server.upgrade.admission_check_upgrade_config imp
     AC_CLUSTER_QUEUE,
     AC_CONTROLLER_NAME,
     AC_CPU_QUOTA,
+    AC_JOB_CPU_LIMIT,
+    AC_JOB_CPU_REQUEST,
+    AC_JOB_MEMORY_LIMIT,
+    AC_JOB_MEMORY_REQUEST,
     AC_JOB_NAME,
     AC_LOCAL_QUEUE,
     AC_MEMORY_QUOTA,
@@ -1855,7 +1859,8 @@ def admission_check_job(
                                     "image": "registry.access.redhat.com/ubi9/ubi-minimal:latest",
                                     "command": ["echo", "admission-check-test"],
                                     "resources": {
-                                        "requests": {"cpu": "100m", "memory": "64Mi"},
+                                        "requests": {"cpu": AC_JOB_CPU_REQUEST, "memory": AC_JOB_MEMORY_REQUEST},
+                                        "limits": {"cpu": AC_JOB_CPU_LIMIT, "memory": AC_JOB_MEMORY_LIMIT},
                                     },
                                 }
                             ],
