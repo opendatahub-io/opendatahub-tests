@@ -182,7 +182,9 @@ def spark_role_fixture(
             f"No spark-related Roles found in namespace {apps_namespace}. "
             "Ensure the Spark Operator is enabled and has created RBAC resources."
         )
-        LOGGER.info(f"Discovered {len(source_roles)} spark Role(s) in {apps_namespace}: {[r.name for r in source_roles]}")
+        LOGGER.info(
+            f"Discovered {len(source_roles)} spark Role(s) in {apps_namespace}: {[r.name for r in source_roles]}"
+        )
 
         created_roles = []
         for source_role in source_roles:
@@ -207,7 +209,8 @@ def service_account_fixture(
 ) -> Generator[list[ServiceAccount], Any, Any]:
     """Discover spark ServiceAccounts, RoleBindings, and NetworkPolicies from the applications namespace and recreate.
 
-    Pre-upgrade: Discovers SAs, RoleBindings, and NetworkPolicies from operator's namespace, recreates in upgrade namespace
+    Pre-upgrade: Discovers SAs, RoleBindings, and NetworkPolicies from operator's namespace, recreates in upgrade
+    namespace
     Post-upgrade: References existing SAs in upgrade namespace
     """
     if pytestconfig.option.post_upgrade:
@@ -215,17 +218,17 @@ def service_account_fixture(
     else:
         apps_namespace = py_config["applications_namespace"]
 
-        source_sas = get_spark_service_accounts(client=admin_client, namespace=apps_namespace)
-        assert source_sas, (
+        src_sas = get_spark_service_accounts(client=admin_client, namespace=apps_namespace)
+        assert src_sas, (
             f"No spark-related ServiceAccounts found in namespace {apps_namespace}. "
             "Ensure the Spark Operator is enabled and has created RBAC resources."
         )
         LOGGER.info(
-            f"Discovered {len(source_sas)} spark ServiceAccount(s) in {apps_namespace}: {[sa.name for sa in source_sas]}"
+            f"Discovered {len(src_sas)} spark ServiceAccount(s) in {apps_namespace}: {[sa.name for sa in src_sas]}"
         )
 
         created_sas = []
-        for source_sa in source_sas:
+        for source_sa in src_sas:
             sa = recreate_service_account_in_namespace(
                 client=admin_client,
                 source_sa=source_sa,
