@@ -1,3 +1,5 @@
+from tests.ai_hub.image_constants import AiHubImages
+
 # Job identification
 ASYNC_UPLOAD_JOB_NAME = "model-sync-async-job"
 
@@ -20,9 +22,7 @@ MODEL_SYNC_CONFIG = {
     "SOURCE_TYPE": "s3",
     "DESTINATION_TYPE": "oci",
     "SOURCE_AWS_KEY": "my-model",
-    "DESTINATION_OCI_BASE_IMAGE": (
-        "public.ecr.aws/docker/library/busybox@sha256:1487d0af5f52b4ba31c7e465126ee2123fe3f2305d638e7827681e7cf6c83d5e"
-    ),
+    "DESTINATION_OCI_BASE_IMAGE": AiHubImages.BUSYBOX,
     "DESTINATION_OCI_ENABLE_TLS_VERIFY": "false",
 }
 
