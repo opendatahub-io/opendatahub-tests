@@ -38,6 +38,7 @@ from utilities.general import create_isvc_label_selector_str
 from utilities.infra import get_inference_serving_runtime, get_pods_by_isvc_label
 from utilities.kueue_utils import (
     ClusterQueue,
+    Kueue,
     LocalQueue,
     ResourceFlavor,
     check_gated_pods_and_running_pods,
@@ -573,6 +574,39 @@ def _restore_kueue_dsc_state(
     state_cm.clean_up()
 
 
+BATCH_JOB_FRAMEWORK = "BatchJob"
+
+
+def _ensure_batch_job_framework(admin_client: DynamicClient) -> None:
+    """Ensure the Kueue CR includes BatchJob in its integrations frameworks list.
+
+    RHOAI's default Kueue CR does not include BatchJob, so Kueue will not create
+    Workloads for batch/v1 Jobs unless it is explicitly added.
+    """
+    kueue_crs = list(Kueue.get(client=admin_client))
+    if not kueue_crs:
+        LOGGER.warning("No Kueue CR found, skipping BatchJob framework check")
+        return
+
+    kueue_cr = kueue_crs[0]
+    spec = kueue_cr.instance.spec
+    config = getattr(spec, "config", None)
+    integrations = getattr(config, "integrations", None) if config else None
+    frameworks = list(getattr(integrations, "frameworks", None) or []) if integrations else []
+    if BATCH_JOB_FRAMEWORK in frameworks:
+        LOGGER.info("BatchJob already in Kueue integrations frameworks")
+        return
+
+    frameworks.append(BATCH_JOB_FRAMEWORK)
+    LOGGER.info(f"Adding BatchJob to Kueue integrations frameworks: {frameworks}")
+    kueue_cr.update(
+        resource_dict={
+            "metadata": {"name": kueue_cr.name},
+            "spec": {"config": {"integrations": {"frameworks": frameworks}}},
+        }
+    )
+
+
 def _ensure_kueue_available_for_upgrade(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
@@ -629,6 +663,7 @@ def _ensure_kueue_available_for_upgrade(
             LOGGER.info("Kueue already Unmanaged, no patch needed")
 
         wait_for_kueue_crds_available(client=admin_client)
+        _ensure_batch_job_framework(admin_client=admin_client)
         yield
 
         if teardown_resources:

@@ -128,7 +128,9 @@ class ClusterQueue(Resource):
             if self.resource_groups:
                 _spec["resourceGroups"] = self.resource_groups
             if self.admission_checks:
-                _spec["admissionChecks"] = self.admission_checks
+                _spec["admissionChecksStrategy"] = {
+                    "admissionChecks": [{"name": ac} for ac in self.admission_checks],
+                }
 
 
 class AdmissionCheck(Resource):

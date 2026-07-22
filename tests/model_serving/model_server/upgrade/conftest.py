@@ -1841,14 +1841,12 @@ def admission_check_job(
                 "metadata": {
                     "name": AC_JOB_NAME,
                     "namespace": namespace,
+                    "labels": {"kueue.x-k8s.io/queue-name": local_queue.name},
                 },
                 "spec": {
                     "suspend": True,
                     "backoffLimit": 0,
                     "template": {
-                        "metadata": {
-                            "labels": {"kueue.x-k8s.io/queue-name": local_queue.name},
-                        },
                         "spec": {
                             "restartPolicy": "Never",
                             "containers": [
@@ -1856,6 +1854,9 @@ def admission_check_job(
                                     "name": "test",
                                     "image": "registry.access.redhat.com/ubi9/ubi-minimal:latest",
                                     "command": ["echo", "admission-check-test"],
+                                    "resources": {
+                                        "requests": {"cpu": "100m", "memory": "64Mi"},
+                                    },
                                 }
                             ],
                         },
