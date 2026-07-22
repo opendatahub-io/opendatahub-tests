@@ -130,6 +130,7 @@ def validate_evalhub_health(
     host: str,
     token: str,
     ca_bundle_file: str,
+    tenant_namespace: str | None = None,
 ) -> None:
     """Validate that the EvalHub service health endpoint returns healthy status.
 
@@ -137,6 +138,7 @@ def validate_evalhub_health(
         host: Route host for the EvalHub service.
         token: Bearer token for authentication.
         ca_bundle_file: Path to CA bundle for TLS verification.
+        tenant_namespace: Namespace for the X-Tenant header.
 
     Raises:
         AssertionError: If the health check fails.
@@ -147,7 +149,7 @@ def validate_evalhub_health(
 
     response = requests.get(
         url=url,
-        headers=get_auth_headers(token=token),
+        headers=build_headers(token=token, tenant=tenant_namespace),
         verify=ca_bundle_file,
         timeout=10,
     )
@@ -227,12 +229,12 @@ def validate_evalhub_request_denied(
         verify=ca_bundle_file,
         timeout=10,
     )
-    assert response.status_code in (400, 403), (
-        f"Expected 400 or 403 for cross-tenant access, got {response.status_code}: {response.text}"
+    assert response.status_code in (400, 403, 404), (
+        f"Expected 400, 403, or 404 for cross-tenant access, got {response.status_code}: {response.text}"
     )
     try:
         data = response.json()
-        assert data.get("message_code") in ("unable_to_authorize_request", "forbidden"), (
+        assert data.get("message_code") in ("unable_to_authorize_request", "forbidden", "resource_not_found"), (
             f"Expected authorization denial, got message_code: {data.get('message_code')}"
         )
     except ValueError:

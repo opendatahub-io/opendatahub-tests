@@ -24,7 +24,7 @@ from tests.ai_safety.evalhub.constants import (
     OTEL_ERROR_PATTERNS,
     OTLP_INDICATORS,
 )
-from utilities.guardrails import get_auth_headers
+from tests.ai_safety.evalhub.utils import build_headers
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -100,7 +100,7 @@ class TestEvalHubOTEL:
         """
         # Generate traffic to create metrics
         url = f"https://{evalhub_otel_grpc_route.host}{EVALHUB_HEALTH_PATH}"
-        headers = get_auth_headers(token=current_client_token)
+        headers = build_headers(token=current_client_token, tenant=model_namespace.name)
 
         for request_num in range(1, 6):
             response = requests.get(url=url, headers=headers, verify=evalhub_otel_ca_bundle_file, timeout=10)
@@ -143,7 +143,7 @@ class TestEvalHubOTEL:
         the HTTP transport when `OTELConfig.ExporterType` is set to `otlp-http`.
         """
         url = f"https://{evalhub_otel_http_route.host}{EVALHUB_HEALTH_PATH}"
-        headers = get_auth_headers(token=current_client_token)
+        headers = build_headers(token=current_client_token, tenant=model_namespace.name)
 
         for request_num in range(1, 6):
             response = requests.get(url=url, headers=headers, verify=evalhub_otel_ca_bundle_file, timeout=10)
@@ -185,7 +185,7 @@ class TestEvalHubOTEL:
         """
         # Generate traffic
         url = f"https://{evalhub_otel_grpc_route.host}{EVALHUB_HEALTH_PATH}"
-        headers = get_auth_headers(token=current_client_token)
+        headers = build_headers(token=current_client_token, tenant=model_namespace.name)
 
         for _ in range(5):
             requests.get(url=url, headers=headers, verify=evalhub_otel_ca_bundle_file, timeout=10)
@@ -228,7 +228,7 @@ class TestEvalHubOTEL:
         """
         # Generate exactly 10 health check requests
         url = f"https://{evalhub_otel_dual_sink_route.host}{EVALHUB_HEALTH_PATH}"
-        headers = get_auth_headers(token=current_client_token)
+        headers = build_headers(token=current_client_token, tenant=model_namespace.name)
 
         for request_num in range(1, 11):
             response = requests.get(url=url, headers=headers, verify=evalhub_otel_ca_bundle_file, timeout=10)
@@ -298,7 +298,7 @@ class TestEvalHubOTEL:
         Test Case 7: Verify that the globally registered MeterProvider is accessible via
         `otel.GetMeterProvider()` from packages outside `internal/otel`.
         """
-        headers = get_auth_headers(token=current_client_token)
+        headers = build_headers(token=current_client_token, tenant=model_namespace.name)
 
         # Hit multiple endpoints that would use different packages/handlers
         endpoints = [
