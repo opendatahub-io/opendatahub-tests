@@ -353,6 +353,8 @@ def create_model_registry_inference_service(
     }
     if MR_ISVC_ARGS:
         model_spec["args"] = MR_ISVC_ARGS
+    if MR_ISVC_VOLUME_MOUNTS:
+        model_spec["volumeMounts"] = MR_ISVC_VOLUME_MOUNTS
 
     predictor_dict: dict[str, Any] = {
         "automountServiceAccountToken": False,
@@ -363,8 +365,6 @@ def create_model_registry_inference_service(
     }
     if MR_ISVC_VOLUMES:
         predictor_dict["volumes"] = MR_ISVC_VOLUMES
-    if MR_ISVC_VOLUME_MOUNTS:
-        predictor_dict["volumeMounts"] = MR_ISVC_VOLUME_MOUNTS
 
     with InferenceService(
         client=admin_client,
