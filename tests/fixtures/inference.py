@@ -100,15 +100,15 @@ def llm_d_inference_sim_serving_runtime(
                         str(LLMdInferenceSimConfig.port),
                         "--max-model-len",
                         str(LLMdInferenceSimConfig.max_model_len),
-                         "--tokenizers-cache-dir",
-                         "/data/tokenizers_cache",
+                        "--tokenizers-cache-dir",
+                        "/data/tokenizers_cache",
                     ],
                     "ports": [{"containerPort": LLMdInferenceSimConfig.port, "protocol": "TCP"}],
-                     "volumeMounts": [
-                    {
-                        "name": "tokenizers-cache",
-                        "mountPath": "/data/tokenizers_cache",
-                    }
+                    "volumeMounts": [
+                        {
+                            "name": "tokenizers-cache",
+                            "mountPath": "/data/tokenizers_cache",
+                        }
                     ],
                     "securityContext": {
                         "allowPrivilegeEscalation": False,
@@ -130,10 +130,10 @@ def llm_d_inference_sim_serving_runtime(
                 }
             ],
             volumes=[
-            {
-                "name": "tokenizers-cache",
-                "emptyDir": {},
-            }
+                {
+                    "name": "tokenizers-cache",
+                    "emptyDir": {},
+                }
             ],
             multi_model=False,
             supported_model_formats=[{"autoSelect": True, "name": LLMdInferenceSimConfig.name}],
