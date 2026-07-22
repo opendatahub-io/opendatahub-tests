@@ -29,6 +29,7 @@ from utilities.constants import (
 )
 from utilities.llmd_utils import get_llm_inference_url
 from utilities.plugins.constant import OpenAIEnpoints, RestHeader
+from utilities.resources.maastenantconfig import MaasTenantConfig
 from utilities.resources.rate_limit_policy import RateLimitPolicy
 from utilities.resources.tenant import Tenant
 from utilities.resources.token_rate_limit_policy import TokenRateLimitPolicy
@@ -738,3 +739,11 @@ def verify_maas_tenant_ready(tenant: Tenant) -> None:
     """Assert that the Tenant CR exists and has Ready=True."""
     assert tenant.exists, f"Tenant '{tenant.name}' not found in namespace '{tenant.namespace}'"
     tenant.wait_for_condition(condition="Ready", status="True", timeout=300)
+
+
+def verify_maas_tenant_config_ready(maas_tenant_config: MaasTenantConfig) -> None:
+    """Assert that the MaasTenantConfig CR exists and has Ready=True."""
+    assert maas_tenant_config.exists, (
+        f"MaasTenantConfig '{maas_tenant_config.name}' not found in namespace '{maas_tenant_config.namespace}'"
+    )
+    maas_tenant_config.wait_for_condition(condition="Ready", status="True", timeout=300)
