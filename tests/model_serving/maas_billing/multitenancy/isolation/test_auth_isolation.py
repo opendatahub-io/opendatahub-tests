@@ -14,7 +14,6 @@ from tests.model_serving.maas_billing.multitenancy.utils import (
 from tests.model_serving.maas_billing.utils import (
     assert_api_key_created_ok,
     create_api_key,
-    maas_api_namespace,
     revoke_api_key,
 )
 from utilities.general import generate_random_name
@@ -42,11 +41,11 @@ class TestMultitenancyAuthIsolation:
         self,
         admin_client: DynamicClient,
         two_aitenant_test_contexts: tuple[AITenantTestContext, AITenantTestContext],
+        maas_api_infra_namespace: str,
     ) -> None:
         """Given Ready AITenants with tenant MaaSAuthPolicies, when reading each Gateway MaaS AuthPolicy,
         then the apiKeyValidation callback URL targets maas-api-{tenant} in the maas-api namespace.
         """
-        api_namespace = maas_api_namespace(admin_client=admin_client)
         for test_context in two_aitenant_test_contexts:
             gateway_name, gateway_namespace = gateway_ref_from_aitenant(aitenant=test_context["aitenant"])
             verify_tenant_gateway_auth_policy_callback_url(
@@ -54,7 +53,7 @@ class TestMultitenancyAuthIsolation:
                 gateway_name=gateway_name,
                 gateway_namespace=gateway_namespace,
                 aitenant_name=test_context["aitenant_name"],
-                api_namespace=api_namespace,
+                api_namespace=maas_api_infra_namespace,
             )
 
     @pytest.mark.tier2

@@ -774,15 +774,21 @@ def maas_tier_mapping_cm(
     return config_map
 
 
+@pytest.fixture(scope="session")
+def maas_api_infra_namespace(admin_client: DynamicClient) -> str:
+    """Return the maas-api infrastructure namespace (resolved once per session)."""
+    return maas_api_namespace(admin_client=admin_client)
+
+
 @pytest.fixture(scope="class")
 def maas_api_deployment_available(
     admin_client: DynamicClient,
+    maas_api_infra_namespace: str,
 ) -> None:
-    api_namespace = maas_api_namespace(admin_client=admin_client)
     maas_api_deployment = Deployment(
         client=admin_client,
         name="maas-api",
-        namespace=api_namespace,
+        namespace=maas_api_infra_namespace,
         ensure_exists=True,
     )
     maas_api_deployment.wait_for_condition(
@@ -796,14 +802,14 @@ def maas_api_deployment_available(
 def maas_api_endpoints_ready(
     admin_client: DynamicClient,
     maas_api_deployment_available: None,
+    maas_api_infra_namespace: str,
 ) -> None:
-    api_namespace = maas_api_namespace(admin_client=admin_client)
     for ready in TimeoutSampler(
         wait_timeout=300,
         sleep=5,
         func=endpoints_have_ready_addresses,
         admin_client=admin_client,
-        namespace=api_namespace,
+        namespace=maas_api_infra_namespace,
         name="maas-api",
     ):
         if ready:

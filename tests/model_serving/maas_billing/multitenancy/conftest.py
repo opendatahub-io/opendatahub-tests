@@ -38,7 +38,6 @@ from tests.model_serving.maas_billing.multitenancy.utils import (
     verify_tenant_gateway_auth_policy_callback_url,
     wait_for_tenant_gateway_maas_api_reachable,
 )
-from tests.model_serving.maas_billing.utils import maas_api_namespace
 from utilities.general import generate_random_name
 from utilities.resources.aitenant import AITenant
 from utilities.resources.route import Route
@@ -130,6 +129,7 @@ def isolation_primary_aitenant_test_params() -> dict[str, Any]:
 def isolation_primary_aitenant_bootstrap_gateway(
     admin_client: DynamicClient,
     isolation_primary_aitenant_test_params: dict[str, Any],
+    maas_api_infra_namespace: str,
     teardown_resources: bool,
 ) -> Generator[Gateway, Any, Any]:
     """Pre-provision the bootstrap Gateway for the primary auth isolation AITenant."""
@@ -137,11 +137,10 @@ def isolation_primary_aitenant_bootstrap_gateway(
         aitenant_name=isolation_primary_aitenant_test_params["aitenant_name"],
         aitenant_spec=isolation_primary_aitenant_test_params["aitenant_spec"],
     )
-    api_namespace = maas_api_namespace(admin_client=admin_client)
     with isolation_bootstrap_gateway_context(
         admin_client=admin_client,
         gateway_name=gateway_name,
-        api_namespace=api_namespace,
+        api_namespace=maas_api_infra_namespace,
         gateway_namespace=gateway_namespace,
         teardown=teardown_resources,
     ) as gateway:
@@ -230,6 +229,7 @@ def isolation_secondary_aitenant_test_params() -> dict[str, Any]:
 def isolation_secondary_aitenant_bootstrap_gateway(
     admin_client: DynamicClient,
     isolation_secondary_aitenant_test_params: dict[str, Any],
+    maas_api_infra_namespace: str,
     teardown_resources: bool,
 ) -> Generator[Gateway, Any, Any]:
     """Pre-provision the bootstrap Gateway for the secondary auth isolation AITenant."""
@@ -237,11 +237,10 @@ def isolation_secondary_aitenant_bootstrap_gateway(
         aitenant_name=isolation_secondary_aitenant_test_params["aitenant_name"],
         aitenant_spec=isolation_secondary_aitenant_test_params["aitenant_spec"],
     )
-    api_namespace = maas_api_namespace(admin_client=admin_client)
     with isolation_bootstrap_gateway_context(
         admin_client=admin_client,
         gateway_name=gateway_name,
-        api_namespace=api_namespace,
+        api_namespace=maas_api_infra_namespace,
         gateway_namespace=gateway_namespace,
         teardown=teardown_resources,
     ) as gateway:
@@ -411,6 +410,7 @@ def per_tenant_maas_api_ready(
     isolation_tenant_governance: list[TenantIsolationGovernance],
     isolation_primary_gateway_route: Route,
     isolation_secondary_gateway_route: Route,
+    maas_api_infra_namespace: str,
     maas_host: str,
     request_session_http: requests.Session,
 ) -> None:
@@ -418,7 +418,6 @@ def per_tenant_maas_api_ready(
     _ = isolation_tenant_governance
     _ = isolation_primary_gateway_route
     _ = isolation_secondary_gateway_route
-    api_namespace = maas_api_namespace(admin_client=admin_client)
     for test_context in two_aitenant_test_contexts:
         gateway_name, gateway_namespace = gateway_ref_from_aitenant(aitenant=test_context["aitenant"])
         label_namespace_gateway_access(
@@ -428,13 +427,13 @@ def per_tenant_maas_api_ready(
         )
         verify_maas_api_deployment_for_aitenant(
             admin_client=admin_client,
-            api_namespace=api_namespace,
+            api_namespace=maas_api_infra_namespace,
             aitenant_name=test_context["aitenant_name"],
             tenant_namespace_name=test_context["tenant_namespace_name"],
         )
         verify_maas_api_httproute_attached_to_gateway(
             admin_client=admin_client,
-            api_namespace=api_namespace,
+            api_namespace=maas_api_infra_namespace,
             aitenant_name=test_context["aitenant_name"],
             tenant_namespace_name=test_context["tenant_namespace_name"],
             gateway_name=gateway_name,
@@ -445,7 +444,7 @@ def per_tenant_maas_api_ready(
             gateway_name=gateway_name,
             gateway_namespace=gateway_namespace,
             aitenant_name=test_context["aitenant_name"],
-            api_namespace=api_namespace,
+            api_namespace=maas_api_infra_namespace,
         )
         wait_for_tenant_gateway_maas_api_reachable(
             request_session_http=request_session_http,

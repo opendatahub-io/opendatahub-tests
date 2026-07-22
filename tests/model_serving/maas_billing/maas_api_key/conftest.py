@@ -27,7 +27,6 @@ from tests.model_serving.maas_billing.utils import (
     assert_api_key_created_ok,
     create_and_yield_api_key_id,
     create_api_key,
-    maas_api_namespace,
     revoke_api_key,
 )
 from utilities.general import generate_random_name
@@ -222,53 +221,53 @@ def short_expiration_api_key_id(
 @pytest.fixture()
 def maas_cleanup_cronjob(
     admin_client: DynamicClient,
+    maas_api_infra_namespace: str,
 ) -> CronJob:
     """Return the maas-api-key-cleanup CronJob, asserting it exists."""
-    api_namespace = maas_api_namespace(admin_client=admin_client)
     cronjob = CronJob(
         client=admin_client,
         name="maas-api-key-cleanup",
-        namespace=api_namespace,
+        namespace=maas_api_infra_namespace,
     )
-    assert cronjob.exists, f"CronJob maas-api-key-cleanup not found in {api_namespace}"
+    assert cronjob.exists, f"CronJob maas-api-key-cleanup not found in {maas_api_infra_namespace}"
     return cronjob
 
 
 @pytest.fixture()
 def maas_cleanup_networkpolicy(
     admin_client: DynamicClient,
+    maas_api_infra_namespace: str,
 ) -> NetworkPolicy:
     """Return the maas-api-cleanup-restrict NetworkPolicy, asserting it exists."""
-    api_namespace = maas_api_namespace(admin_client=admin_client)
     network_policy = NetworkPolicy(
         client=admin_client,
         name="maas-api-cleanup-restrict",
-        namespace=api_namespace,
+        namespace=maas_api_infra_namespace,
     )
-    assert network_policy.exists, f"NetworkPolicy maas-api-cleanup-restrict not found in {api_namespace}"
+    assert network_policy.exists, f"NetworkPolicy maas-api-cleanup-restrict not found in {maas_api_infra_namespace}"
     return network_policy
 
 
 @pytest.fixture()
 def maas_api_pod_name(
     admin_client: DynamicClient,
+    maas_api_infra_namespace: str,
 ) -> str:
     """Return the name of a running maas-api pod."""
-    api_namespace = maas_api_namespace(admin_client=admin_client)
-    deployment = Deployment(client=admin_client, name="maas-api", namespace=api_namespace)
-    assert deployment.exists, f"Deployment maas-api not found in {api_namespace}"
+    deployment = Deployment(client=admin_client, name="maas-api", namespace=maas_api_infra_namespace)
+    assert deployment.exists, f"Deployment maas-api not found in {maas_api_infra_namespace}"
     match_labels = deployment.instance.spec.selector.matchLabels
     label_selector = ",".join(f"{k}={v}" for k, v in match_labels.items())
     all_pods = list(
         Pod.get(
             client=admin_client,
-            namespace=api_namespace,
+            namespace=maas_api_infra_namespace,
             label_selector=label_selector,
         )
     )
     running_pods = [pod for pod in all_pods if pod.instance.status.phase == "Running"]
     assert len(running_pods) >= 1, (
-        f"Expected at least 1 running maas-api pod in {api_namespace}, "
+        f"Expected at least 1 running maas-api pod in {maas_api_infra_namespace}, "
         f"found {len(running_pods)} running out of {len(all_pods)} total"
     )
     return running_pods[0].name
