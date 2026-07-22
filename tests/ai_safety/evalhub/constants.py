@@ -101,14 +101,6 @@ SIMPLE_MINIO_BUCKET: str = "evalhub-data"
 # PVC storage test data
 PVC_TEST_DATA_NAME: str = "evalhub-test-data"
 PVC_TEST_DATA_SIZE: str = "1Gi"
-PVC_TEST_DATA_MOUNT_PATH: str = "/test_data"
-PVC_DATA_WRITER_SECURITY_CONTEXT: dict = {
-    "allowPrivilegeEscalation": False,
-    "capabilities": {"drop": ["ALL"]},
-    "readOnlyRootFilesystem": True,
-    "runAsNonRoot": True,
-    "seccompProfile": {"type": "RuntimeDefault"},
-}
 
 # ServiceMonitor and metrics Service
 EVALHUB_METRICS_SERVICE_SUFFIX: str = "-metrics"
