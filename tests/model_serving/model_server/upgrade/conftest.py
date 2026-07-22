@@ -47,7 +47,10 @@ from tests.model_serving.model_server.upgrade.admission_check_upgrade_config imp
     AC_CLUSTER_QUEUE,
     AC_CONTROLLER_NAME,
     AC_CPU_QUOTA,
-    AC_DSC_STATE_CM,
+    AC_JOB_CPU_LIMIT,
+    AC_JOB_CPU_REQUEST,
+    AC_JOB_MEMORY_LIMIT,
+    AC_JOB_MEMORY_REQUEST,
     AC_JOB_NAME,
     AC_LOCAL_QUEUE,
     AC_MEMORY_QUOTA,
@@ -125,6 +128,66 @@ def _restore_kueue_dsc_state(
         }
     )
     state_cm.clean_up()
+
+
+def _ensure_kueue_dsc_for_upgrade(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    dsc_resource: DataScienceCluster,
+    namespace: str,
+    teardown_resources: bool,
+) -> Generator[None, Any, Any]:
+    """Ensure Kueue DSC state for upgrade tests: save, patch Unmanaged, yield, restore.
+
+    Shared helper used by both KServe and AdmissionCheck upgrade fixtures.
+    Each caller passes its own namespace; the ConfigMap name is fixed.
+    """
+    if pytestconfig.option.post_upgrade:
+        yield
+        _restore_kueue_dsc_state(
+            admin_client=admin_client,
+            dsc_resource=dsc_resource,
+            namespace=namespace,
+        )
+        return
+
+    kueue_management_state = dsc_resource.instance.spec.components[DscComponents.KUEUE].managementState
+    state_cm = ConfigMap(
+        client=admin_client,
+        name=UPGRADE_KUEUE_DSC_STATE_CM_NAME,
+        namespace=namespace,
+        data={"original_management_state": kueue_management_state},
+    )
+    if state_cm.exists:
+        pytest.fail(
+            f"Unexpected existing Kueue DSC state ConfigMap '{UPGRADE_KUEUE_DSC_STATE_CM_NAME}' in "
+            f"namespace '{namespace}'. Clear stale upgrade state before pre-upgrade."
+        )
+    LOGGER.info(f"Saving original Kueue managementState '{kueue_management_state}' to ConfigMap")
+    state_cm.deploy()
+
+    if kueue_management_state != DscComponents.ManagementState.UNMANAGED:
+        LOGGER.info(f"Patching Kueue from {kueue_management_state} to Unmanaged")
+        dsc_resource.update(
+            resource_dict={
+                "metadata": {"name": dsc_resource.name},
+                "spec": {
+                    "components": {DscComponents.KUEUE: {"managementState": DscComponents.ManagementState.UNMANAGED}}
+                },
+            }
+        )
+        wait_for_dsc_status_ready(dsc_resource=dsc_resource)
+    else:
+        LOGGER.info("Kueue already Unmanaged, no patch needed")
+
+    yield
+
+    if teardown_resources:
+        _restore_kueue_dsc_state(
+            admin_client=admin_client,
+            dsc_resource=dsc_resource,
+            namespace=namespace,
+        )
 
 
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
@@ -742,60 +805,14 @@ def ensure_kueue_for_kserve_upgrade(
     kserve_kueue_upgrade_namespace: Namespace,
     teardown_resources: bool,
 ) -> Generator[None, Any, Any]:
-    """Ensure Kueue DSC state for KServe raw ISVC upgrade tests.
-
-    Pre-upgrade: save original managementState to a ConfigMap and leave Kueue
-    Unmanaged (direct DSC update, not ResourceEditor) so state survives upgrade.
-    Post-upgrade: restore from that ConfigMap (same contract as mainline).
-    """
-    namespace = kserve_kueue_upgrade_namespace.name
-
-    if pytestconfig.option.post_upgrade:
-        yield
-        _restore_kueue_dsc_state(
-            admin_client=admin_client,
-            dsc_resource=dsc_resource,
-            namespace=namespace,
-        )
-        return
-
-    kueue_management_state = dsc_resource.instance.spec.components[DscComponents.KUEUE].managementState
-    state_cm = ConfigMap(
-        client=admin_client,
-        name=UPGRADE_KUEUE_DSC_STATE_CM_NAME,
-        namespace=namespace,
-        data={"original_management_state": kueue_management_state},
+    """Ensure Kueue DSC state for KServe raw ISVC upgrade tests."""
+    yield from _ensure_kueue_dsc_for_upgrade(
+        pytestconfig=pytestconfig,
+        admin_client=admin_client,
+        dsc_resource=dsc_resource,
+        namespace=kserve_kueue_upgrade_namespace.name,
+        teardown_resources=teardown_resources,
     )
-    if state_cm.exists:
-        pytest.fail(
-            f"Unexpected existing Kueue DSC state ConfigMap '{UPGRADE_KUEUE_DSC_STATE_CM_NAME}' in "
-            f"namespace '{namespace}'. Clear stale upgrade state before pre-upgrade."
-        )
-    LOGGER.info(f"Saving original Kueue managementState '{kueue_management_state}' to ConfigMap")
-    state_cm.deploy()
-
-    if kueue_management_state != DscComponents.ManagementState.UNMANAGED:
-        LOGGER.info(f"Patching Kueue from {kueue_management_state} to Unmanaged")
-        dsc_resource.update(
-            resource_dict={
-                "metadata": {"name": dsc_resource.name},
-                "spec": {
-                    "components": {DscComponents.KUEUE: {"managementState": DscComponents.ManagementState.UNMANAGED}}
-                },
-            }
-        )
-        wait_for_dsc_status_ready(dsc_resource=dsc_resource)
-    else:
-        LOGGER.info("Kueue already Unmanaged, no patch needed")
-
-    yield
-
-    if teardown_resources:
-        _restore_kueue_dsc_state(
-            admin_client=admin_client,
-            dsc_resource=dsc_resource,
-            namespace=namespace,
-        )
 
 
 @pytest.fixture(scope="session")
@@ -942,62 +959,14 @@ def ensure_kueue_for_ac_upgrade(
     admission_check_namespace: Namespace,
     teardown_resources: bool,
 ) -> Generator[None, Any, Any]:
-    """Ensure Kueue DSC state for AdmissionCheck upgrade tests.
-
-    Pre-upgrade: save original managementState to a ConfigMap and leave Kueue
-    Unmanaged so state survives upgrade.
-    Post-upgrade: restore from that ConfigMap.
-    """
-    namespace = admission_check_namespace.name
-
-    if pytestconfig.option.post_upgrade:
-        yield
-        _restore_kueue_dsc_state(
-            admin_client=admin_client,
-            dsc_resource=dsc_resource,
-            namespace=namespace,
-            configmap_name=AC_DSC_STATE_CM,
-        )
-        return
-
-    kueue_management_state = dsc_resource.instance.spec.components[DscComponents.KUEUE].managementState
-    state_cm = ConfigMap(
-        client=admin_client,
-        name=AC_DSC_STATE_CM,
-        namespace=namespace,
-        data={"original_management_state": kueue_management_state},
+    """Ensure Kueue DSC state for AdmissionCheck upgrade tests."""
+    yield from _ensure_kueue_dsc_for_upgrade(
+        pytestconfig=pytestconfig,
+        admin_client=admin_client,
+        dsc_resource=dsc_resource,
+        namespace=admission_check_namespace.name,
+        teardown_resources=teardown_resources,
     )
-    if state_cm.exists:
-        pytest.fail(
-            f"Unexpected existing Kueue DSC state ConfigMap '{AC_DSC_STATE_CM}' in "
-            f"namespace '{namespace}'. Clear stale upgrade state before pre-upgrade."
-        )
-    LOGGER.info(f"Saving original Kueue managementState '{kueue_management_state}' to ConfigMap")
-    state_cm.deploy()
-
-    if kueue_management_state != DscComponents.ManagementState.UNMANAGED:
-        LOGGER.info(f"Patching Kueue from {kueue_management_state} to Unmanaged")
-        dsc_resource.update(
-            resource_dict={
-                "metadata": {"name": dsc_resource.name},
-                "spec": {
-                    "components": {DscComponents.KUEUE: {"managementState": DscComponents.ManagementState.UNMANAGED}}
-                },
-            }
-        )
-        wait_for_dsc_status_ready(dsc_resource=dsc_resource)
-    else:
-        LOGGER.info("Kueue already Unmanaged, no patch needed")
-
-    yield
-
-    if teardown_resources:
-        _restore_kueue_dsc_state(
-            admin_client=admin_client,
-            dsc_resource=dsc_resource,
-            namespace=namespace,
-            configmap_name=AC_DSC_STATE_CM,
-        )
 
 
 @pytest.fixture(scope="session")
@@ -1132,14 +1101,12 @@ def admission_check_job(
                 "metadata": {
                     "name": AC_JOB_NAME,
                     "namespace": namespace,
+                    "labels": {"kueue.x-k8s.io/queue-name": local_queue.name},
                 },
                 "spec": {
                     "suspend": True,
                     "backoffLimit": 0,
                     "template": {
-                        "metadata": {
-                            "labels": {"kueue.x-k8s.io/queue-name": local_queue.name},
-                        },
                         "spec": {
                             "restartPolicy": "Never",
                             "containers": [
@@ -1147,6 +1114,10 @@ def admission_check_job(
                                     "name": "test",
                                     "image": "registry.access.redhat.com/ubi9/ubi-minimal:latest",
                                     "command": ["echo", "admission-check-test"],
+                                    "resources": {
+                                        "requests": {"cpu": AC_JOB_CPU_REQUEST, "memory": AC_JOB_MEMORY_REQUEST},
+                                        "limits": {"cpu": AC_JOB_CPU_LIMIT, "memory": AC_JOB_MEMORY_LIMIT},
+                                    },
                                 }
                             ],
                         },

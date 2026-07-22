@@ -6,10 +6,17 @@ from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from utilities.constants import Timeout
+from tests.model_serving.model_server.upgrade.admission_check_upgrade_config import (
+    AC_ADMISSION_CHECK_NAME,
+    AC_CLUSTER_QUEUE,
+)
 from utilities.kueue_utils import (
     AdmissionCheck,
+    ClusterQueue,
     Workload,
     approve_admission_check_on_workload,
+    check_admission_check_active,
+    check_cluster_queue_has_admission_check,
     check_workload_admitted,
     check_workload_quota_reserved,
 )
@@ -77,19 +84,29 @@ class TestAdmissionCheckPostUpgrade:
     def test_admission_check_exists(
         self,
         admin_client: DynamicClient,
-        admission_check_kueue_resources: dict,
     ) -> None:
         """Test steps:
 
         1. Verify AdmissionCheck resource still exists after upgrade.
+        2. Verify AdmissionCheck is still Active.
+        3. Verify ClusterQueue still references the AdmissionCheck in its strategy.
         """
-        ac_name = admission_check_kueue_resources["admission_check_name"]
-        ac = AdmissionCheck(
-            client=admin_client,
-            name=ac_name,
+        ac = AdmissionCheck(client=admin_client, name=AC_ADMISSION_CHECK_NAME)
+        assert ac.exists, f"AdmissionCheck '{AC_ADMISSION_CHECK_NAME}' not found after upgrade"
+        assert check_admission_check_active(ac), (
+            f"AdmissionCheck '{AC_ADMISSION_CHECK_NAME}' is not Active after upgrade"
         )
-        assert ac.exists, f"AdmissionCheck '{ac_name}' not found after upgrade"
-        LOGGER.info(f"[POST-UPGRADE] PASS: AdmissionCheck survived upgrade, name={ac_name}")
+
+        cq = ClusterQueue(client=admin_client, name=AC_CLUSTER_QUEUE)
+        assert cq.exists, f"ClusterQueue '{AC_CLUSTER_QUEUE}' not found after upgrade"
+        assert check_cluster_queue_has_admission_check(cq, AC_ADMISSION_CHECK_NAME), (
+            f"ClusterQueue '{AC_CLUSTER_QUEUE}' no longer references AdmissionCheck '{AC_ADMISSION_CHECK_NAME}'"
+        )
+
+        LOGGER.info(
+            f"[POST-UPGRADE] PASS: AdmissionCheck and ClusterQueue strategy survived upgrade, "
+            f"admission_check={AC_ADMISSION_CHECK_NAME}, cluster_queue={AC_CLUSTER_QUEUE}"
+        )
 
     @pytest.mark.post_upgrade
     @pytest.mark.dependency(name="ac_workload_still_gated", depends=["ac_exists"])
@@ -121,7 +138,6 @@ class TestAdmissionCheckPostUpgrade:
         admission_check_namespace: Namespace,
         admission_check_job: Job,
         admission_check_workload: Workload,
-        admission_check_kueue_resources: dict,
     ) -> None:
         """Test steps:
 
@@ -129,16 +145,14 @@ class TestAdmissionCheckPostUpgrade:
         2. Wait for Workload to become Admitted.
         3. Wait for Job to complete (unsuspended by Kueue).
         """
-        ac_name = admission_check_kueue_resources["admission_check_name"]
-
         approve_admission_check_on_workload(
             client=admin_client,
             workload=admission_check_workload,
-            admission_check_name=ac_name,
+            admission_check_name=AC_ADMISSION_CHECK_NAME,
         )
         LOGGER.info(
             f"[POST-UPGRADE] Approved AdmissionCheck on Workload, "
-            f"admission_check={ac_name}, workload={admission_check_workload.name}"
+            f"admission_check={AC_ADMISSION_CHECK_NAME}, workload={admission_check_workload.name}"
         )
 
         try:
@@ -155,7 +169,8 @@ class TestAdmissionCheckPostUpgrade:
                     break
         except TimeoutExpiredError:
             pytest.fail(
-                f"Workload '{admission_check_workload.name}' not Admitted after approving AdmissionCheck '{ac_name}'"
+                f"Workload '{admission_check_workload.name}' not Admitted after approving "
+                f"AdmissionCheck '{AC_ADMISSION_CHECK_NAME}'"
             )
         LOGGER.info("[POST-UPGRADE] PASS: Workload admitted after AdmissionCheck approval")
 
