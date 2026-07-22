@@ -6,7 +6,7 @@ from ocp_resources.llm_inference_service import LLMInferenceService
 
 from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaOciGpuConfig
 from tests.model_serving.model_server.llmd.utils import (
-    get_llmd_workload_pods,
+    get_llmd_inference_pool_pods,
     ns_from_file,
     parse_completion_text,
     send_chat_completions,
@@ -52,7 +52,7 @@ class TestLlmdSinglenodeKvCacheDiskOffload:
         llmisvc: LLMInferenceService,
     ):
         """Verify every workload pod has the ephemeral secondary KV cache volume and mount."""
-        pods = get_llmd_workload_pods(client=unprivileged_client, llmisvc=llmisvc)
+        pods = get_llmd_inference_pool_pods(client=unprivileged_client, llmisvc=llmisvc)
         assert pods, f"No workload pods found for {llmisvc.name}"
 
         for pod in pods:
