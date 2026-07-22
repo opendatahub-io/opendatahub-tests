@@ -14,7 +14,6 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.network_policy import NetworkPolicy
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
-from pytest_testconfig import config as py_config
 
 from tests.model_serving.maas_billing.maas_api_key.utils import (
     build_chat_payload,
@@ -28,6 +27,7 @@ from tests.model_serving.maas_billing.utils import (
     assert_api_key_created_ok,
     create_and_yield_api_key_id,
     create_api_key,
+    maas_api_namespace,
     revoke_api_key,
 )
 from utilities.general import generate_random_name
@@ -224,13 +224,13 @@ def maas_cleanup_cronjob(
     admin_client: DynamicClient,
 ) -> CronJob:
     """Return the maas-api-key-cleanup CronJob, asserting it exists."""
-    applications_namespace = py_config["applications_namespace"]
+    api_namespace = maas_api_namespace(admin_client=admin_client)
     cronjob = CronJob(
         client=admin_client,
         name="maas-api-key-cleanup",
-        namespace=applications_namespace,
+        namespace=api_namespace,
     )
-    assert cronjob.exists, f"CronJob maas-api-key-cleanup not found in {applications_namespace}"
+    assert cronjob.exists, f"CronJob maas-api-key-cleanup not found in {api_namespace}"
     return cronjob
 
 
@@ -239,13 +239,13 @@ def maas_cleanup_networkpolicy(
     admin_client: DynamicClient,
 ) -> NetworkPolicy:
     """Return the maas-api-cleanup-restrict NetworkPolicy, asserting it exists."""
-    applications_namespace = py_config["applications_namespace"]
+    api_namespace = maas_api_namespace(admin_client=admin_client)
     network_policy = NetworkPolicy(
         client=admin_client,
         name="maas-api-cleanup-restrict",
-        namespace=applications_namespace,
+        namespace=api_namespace,
     )
-    assert network_policy.exists, f"NetworkPolicy maas-api-cleanup-restrict not found in {applications_namespace}"
+    assert network_policy.exists, f"NetworkPolicy maas-api-cleanup-restrict not found in {api_namespace}"
     return network_policy
 
 
@@ -254,21 +254,21 @@ def maas_api_pod_name(
     admin_client: DynamicClient,
 ) -> str:
     """Return the name of a running maas-api pod."""
-    applications_namespace = py_config["applications_namespace"]
-    deployment = Deployment(client=admin_client, name="maas-api", namespace=applications_namespace)
-    assert deployment.exists, f"Deployment maas-api not found in {applications_namespace}"
+    api_namespace = maas_api_namespace(admin_client=admin_client)
+    deployment = Deployment(client=admin_client, name="maas-api", namespace=api_namespace)
+    assert deployment.exists, f"Deployment maas-api not found in {api_namespace}"
     match_labels = deployment.instance.spec.selector.matchLabels
     label_selector = ",".join(f"{k}={v}" for k, v in match_labels.items())
     all_pods = list(
         Pod.get(
             client=admin_client,
-            namespace=applications_namespace,
+            namespace=api_namespace,
             label_selector=label_selector,
         )
     )
     running_pods = [pod for pod in all_pods if pod.instance.status.phase == "Running"]
     assert len(running_pods) >= 1, (
-        f"Expected at least 1 running maas-api pod in {applications_namespace}, "
+        f"Expected at least 1 running maas-api pod in {api_namespace}, "
         f"found {len(running_pods)} running out of {len(all_pods)} total"
     )
     return running_pods[0].name

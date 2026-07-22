@@ -3,13 +3,13 @@ from __future__ import annotations
 import pytest
 import requests
 import structlog
-from pytest_testconfig import config as py_config
+from kubernetes.dynamic import DynamicClient
 
 from tests.model_serving.maas_billing.maas_api_key.utils import (
     get_auth_policy_callback_url,
     wait_for_auth_policy_accepted,
 )
-from tests.model_serving.maas_billing.utils import get_maas_models_response
+from tests.model_serving.maas_billing.utils import get_maas_models_response, maas_api_namespace
 from utilities.constants import MAAS_GATEWAY_NAMESPACE
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -30,10 +30,10 @@ class TestAuthPolicyApiKeyValidation:
     @pytest.mark.smoke
     def test_auth_policy_callback_url_uses_correct_namespace(
         self,
-        admin_client,
+        admin_client: DynamicClient,
     ) -> None:
         """Given a reconciled MaaSAuthPolicy, when reading maas-gateway-auth,
-        then the callback URL uses applications_namespace.
+        then the callback URL uses the maas-api infrastructure namespace.
         """
         wait_for_auth_policy_accepted(
             admin_client=admin_client,
@@ -46,15 +46,14 @@ class TestAuthPolicyApiKeyValidation:
             namespace=MAAS_GATEWAY_NAMESPACE,
         )
 
-        expected_host = f"maas-api.{py_config['applications_namespace']}.svc.cluster.local"
+        api_namespace = maas_api_namespace(admin_client=admin_client)
+        expected_host = f"maas-api.{api_namespace}.svc.cluster.local"
         assert expected_host in callback_url, (
             f"apiKeyValidation callback URL uses wrong namespace. "
             f"Expected '{expected_host}' in URL, got: {callback_url}"
         )
 
-        LOGGER.info(
-            f"AuthPolicy callback URL correctly uses namespace '{py_config['applications_namespace']}': {callback_url}"
-        )
+        LOGGER.info(f"AuthPolicy callback URL correctly uses namespace '{api_namespace}': {callback_url}")
 
     @pytest.mark.smoke
     @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
