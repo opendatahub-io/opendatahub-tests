@@ -15,8 +15,6 @@ from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.storage_class import StorageClass
 from ocp_resources.data_science_cluster import DataScienceCluster
-from ocp_resources.cluster_service_version import ClusterServiceVersion
-from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from utilities.kueue_utils import (
     ClusterQueue,
     LocalQueue,
@@ -27,7 +25,6 @@ from utilities.kueue_utils import (
     is_kueue_operator_installed,
     wait_for_kueue_crds_available,
 )
-from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 
 from utilities.constants import (
