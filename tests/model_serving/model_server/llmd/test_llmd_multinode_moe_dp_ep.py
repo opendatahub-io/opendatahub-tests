@@ -14,7 +14,7 @@ from tests.model_serving.model_server.llmd.utils import (
 
 NAMESPACE = ns_from_file(file=__file__)
 
-pytestmark = [pytest.mark.tier2, pytest.mark.llmd_gpu, pytest.mark.multinode]
+pytestmark = [pytest.mark.llmd_gpu]
 
 
 @pytest.mark.parametrize(
