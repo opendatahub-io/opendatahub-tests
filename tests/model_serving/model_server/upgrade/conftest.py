@@ -23,6 +23,14 @@ from ocp_resources.serving_runtime import ServingRuntime
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_serving.model_runtime.vllm.utils import skip_if_not_deployment_mode
+from tests.model_serving.model_server.llmd.llmd_configs.config_upgrade import (
+    LLMD_KUEUE_CLUSTER_QUEUE,
+    LLMD_KUEUE_CPU_QUOTA,
+    LLMD_KUEUE_LOCAL_QUEUE,
+    LLMD_KUEUE_MEMORY_QUOTA,
+    LLMD_KUEUE_RESOURCE_FLAVOR,
+    UpgradeAuthKueueConfig,
+)
 from tests.model_serving.model_server.upgrade.admission_check_upgrade_config import (
     AC_ADMISSION_CHECK_NAME,
     AC_BASELINE_CM,
@@ -34,14 +42,6 @@ from tests.model_serving.model_server.upgrade.admission_check_upgrade_config imp
     AC_MEMORY_QUOTA,
     AC_NAMESPACE,
     AC_RESOURCE_FLAVOR,
-)
-from tests.model_serving.model_server.llmd.llmd_configs.config_upgrade import (
-    LLMD_KUEUE_CLUSTER_QUEUE,
-    LLMD_KUEUE_CPU_QUOTA,
-    LLMD_KUEUE_LOCAL_QUEUE,
-    LLMD_KUEUE_MEMORY_QUOTA,
-    LLMD_KUEUE_RESOURCE_FLAVOR,
-    UpgradeAuthKueueConfig,
 )
 from tests.model_serving.model_server.upgrade.kserve_kueue_upgrade_config import (
     KSERVE_KUEUE_CLUSTER_QUEUE,
@@ -81,6 +81,7 @@ from utilities.constants import (
     ModelVersion,
     Protocols,
     RuntimeTemplates,
+    Timeout,
 )
 from utilities.inference_utils import create_isvc
 from utilities.infra import (
@@ -90,7 +91,6 @@ from utilities.infra import (
     s3_endpoint_secret,
     update_configmap_data,
 )
-from utilities.constants import Timeout
 from utilities.kueue_utils import (
     AdmissionCheck,
     ClusterQueue,
@@ -1672,8 +1672,7 @@ def admission_check_namespace(
     if pytestconfig.option.post_upgrade:
         if not ns.exists:
             pytest.fail(
-                f"[POST-UPGRADE] Namespace '{ns.name}' not found. "
-                "Ensure pre-upgrade tests completed successfully."
+                f"[POST-UPGRADE] Namespace '{ns.name}' not found. Ensure pre-upgrade tests completed successfully."
             )
         yield ns
         if teardown_resources:
