@@ -24,9 +24,10 @@ _CONTAINER_NAME = "main"
 _KvCacheDiskOffloadConfig = TinyLlamaOciGpuConfig.with_overrides(
     name="llmisvc-kv-cache-disk-offload",
     kv_cache_offloading={
+        "cpu": "4Gi",
         "secondary": [
             {"fileSystem": {"emptyDir": {"size": "20Gi"}}},
-        ]
+        ],
     },
 )
 
@@ -63,8 +64,12 @@ class TestLlmdSinglenodeKvCacheDiskOffload:
             )
 
             ephemeral_vol = next(v for v in spec.volumes if v.name == _VOLUME_NAME)
-            assert getattr(ephemeral_vol, "ephemeral", None) is not None, (
-                f"Pod {pod.name}: volume '{_VOLUME_NAME}' is not an ephemeral volume"
+            assert (
+                getattr(ephemeral_vol, "emptyDir", None) is not None
+                or getattr(ephemeral_vol, "ephemeral", None) is not None
+            ), (
+                f"Pod {pod.name}: volume '{_VOLUME_NAME}' is not a local storage volume "
+                f"(got {dict(ephemeral_vol)})"
             )
 
             container = next(
@@ -76,9 +81,9 @@ class TestLlmdSinglenodeKvCacheDiskOffload:
             mount_paths = [m.mountPath for m in (container.volumeMounts or [])]
             assert _MOUNT_PATH in mount_paths, f"Pod {pod.name}: expected mount at '{_MOUNT_PATH}'; got {mount_paths}"
 
-            requests = (container.resources.requests or {}) if container.resources else {}
+            requests = dict(container.resources.requests or {}) if container.resources else {}
             assert "ephemeral-storage" in requests, (
-                f"Pod {pod.name}: expected ephemeral-storage resource request; got {dict(requests)}"
+                f"Pod {pod.name}: expected ephemeral-storage resource request; got {requests}"
             )
 
     def test_llmd_singlenode_kv_cache_disk_offload(
