@@ -13,9 +13,13 @@ from ocp_resources.role_binding import RoleBinding
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_serving.maas_billing.maas_subscription.utils import MAAS_SUBSCRIPTION_NAMESPACE
-from tests.model_serving.maas_billing.utils import verify_maas_gateway_programmed, verify_maas_tenant_ready
-from utilities.constants import MAAS_GATEWAY_NAME, MAAS_GATEWAY_NAMESPACE, ApiGroups
+from tests.model_serving.maas_billing.utils import (
+    verify_maas_gateway_programmed,
+    verify_maas_tenant_config_ready,
+)
+from utilities.constants import MAAS_GATEWAY_NAMESPACE, ApiGroups
 from utilities.resources.aitenant import AITenant
+from utilities.resources.maastenantconfig import MaasTenantConfig
 from utilities.resources.tenant import Tenant
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -226,10 +230,10 @@ def verify_aitenant_bootstrap_children(
     test_context: AITenantTestContext,
     infra_namespace: str = AITENANT_INFRA_NAMESPACE,
 ) -> None:
-    """Assert AITenant bootstrap created the expected namespace, Gateway, and Tenant resources.
+    """Assert AITenant bootstrap created the expected namespace, Gateway, and MaasTenantConfig.
 
-    The bootstrapped Tenant references the shared MaaS gateway (maas-default-gateway),
-    while AITenant status.gatewayRef tracks the per-tenant pre-provisioned bootstrap gateway.
+    AITenant status.gatewayRef tracks the per-tenant pre-provisioned bootstrap gateway.
+    The controller also creates MaasTenantConfig/default-tenant in the tenant namespace.
     """
     aitenant = test_context["aitenant"]
     aitenant_name = test_context["aitenant_name"]
@@ -298,32 +302,23 @@ def verify_aitenant_bootstrap_children(
     )
     verify_maas_gateway_programmed(gateway=tenant_gateway)
 
-    bootstrapped_tenant = Tenant(
+    bootstrapped_tenant_config = MaasTenantConfig(
         client=admin_client,
         name=AIGATEWAY_BOOTSTRAPPED_TENANT_NAME,
         namespace=tenant_namespace_name,
         ensure_exists=True,
     )
-    assert bootstrapped_tenant.exists, (
-        f"Tenant/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} was not created in '{tenant_namespace_name}'"
+    assert bootstrapped_tenant_config.exists, (
+        f"MaasTenantConfig/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} was not created in '{tenant_namespace_name}'"
     )
-    tenant_labels = dict(bootstrapped_tenant.instance.metadata.labels or {})
-    assert tenant_labels.get(AIGATEWAY_MANAGED_BY_LABEL) is not None, (
-        f"Tenant/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} should have label {AIGATEWAY_MANAGED_BY_LABEL}"
+    tenant_config_labels = dict(bootstrapped_tenant_config.instance.metadata.labels or {})
+    assert tenant_config_labels.get(AIGATEWAY_MANAGED_BY_LABEL) is not None, (
+        f"MaasTenantConfig/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} should have label {AIGATEWAY_MANAGED_BY_LABEL}"
     )
-    tenant_gateway_ref = getattr(bootstrapped_tenant.instance.spec, "gatewayRef", None)
-    assert tenant_gateway_ref is not None, (
-        f"Tenant/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} spec.gatewayRef should be set after bootstrap"
-    )
-    assert tenant_gateway_ref.name == MAAS_GATEWAY_NAME, (
-        f"Tenant gatewayRef.name expected {MAAS_GATEWAY_NAME!r}, got {tenant_gateway_ref.name!r}"
-    )
-    assert tenant_gateway_ref.namespace == MAAS_GATEWAY_NAMESPACE, (
-        f"Tenant gatewayRef.namespace expected {MAAS_GATEWAY_NAMESPACE!r}, got {tenant_gateway_ref.namespace!r}"
-    )
+    verify_maas_tenant_config_ready(maas_tenant_config=bootstrapped_tenant_config)
     LOGGER.info(
         f"AITenant '{aitenant_name}' bootstrap verified: namespace, gateway, and "
-        f"Tenant/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} exist with expected metadata"
+        f"MaasTenantConfig/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} exist with expected metadata"
     )
 
 
@@ -595,7 +590,7 @@ def verify_aitenant_bootstrap_children_removed(
     infra_namespace: str = AITENANT_INFRA_NAMESPACE,
     timeout: int = 300,
 ) -> None:
-    """Assert controller-owned Tenant and RBAC children were removed after AITenant deletion."""
+    """Assert controller-owned MaasTenantConfig and RBAC children were removed after AITenant deletion."""
     aitenant = test_context["aitenant"]
     aitenant_name = test_context["aitenant_name"]
     tenant_namespace_name = test_context["tenant_namespace_name"]
@@ -609,13 +604,13 @@ def verify_aitenant_bootstrap_children_removed(
 
     _wait_until_resource_absent(
         exists_check=lambda: (
-            Tenant(
+            MaasTenantConfig(
                 client=admin_client,
                 name=AIGATEWAY_BOOTSTRAPPED_TENANT_NAME,
                 namespace=tenant_namespace_name,
             ).exists
         ),
-        resource_label=(f"Tenant/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} in '{tenant_namespace_name}'"),
+        resource_label=(f"MaasTenantConfig/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} in '{tenant_namespace_name}'"),
         timeout=timeout,
     )
 
@@ -719,14 +714,14 @@ def verify_derived_tenant_namespace_name(
 
 
 def verify_default_maas_tenant_unaffected(admin_client: DynamicClient) -> None:
-    """Assert the cluster default-tenant in models-as-a-service is still Ready."""
-    default_tenant = Tenant(
+    """Assert the cluster default-tenant MaasTenantConfig in models-as-a-service is still Ready."""
+    default_maas_tenant_config = MaasTenantConfig(
         client=admin_client,
         name=AIGATEWAY_BOOTSTRAPPED_TENANT_NAME,
         namespace=MAAS_SUBSCRIPTION_NAMESPACE,
     )
-    verify_maas_tenant_ready(tenant=default_tenant)
+    verify_maas_tenant_config_ready(maas_tenant_config=default_maas_tenant_config)
     LOGGER.info(
-        f"Regression check passed: Tenant/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} in "
+        f"Regression check passed: MaasTenantConfig/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} in "
         f"'{MAAS_SUBSCRIPTION_NAMESPACE}' is still Ready"
     )

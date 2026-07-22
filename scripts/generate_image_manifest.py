@@ -20,8 +20,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 IMAGE_CLASS_MAP: dict[str, str] = {
+    "ai_hub": "tests.ai_hub.image_constants.AiHubImages",
     "ai_safety": "tests.ai_safety.image_constants.AiSafetyImages",
+    "fixtures": "tests.fixtures.image_constants.FixturesImages",
     "shared": "utilities.image_constants.SharedImages",
+    "spark": "tests.spark.image_constants.SparkImages",
 }
 
 KNOWN_REGISTRIES: tuple[str, ...] = (
