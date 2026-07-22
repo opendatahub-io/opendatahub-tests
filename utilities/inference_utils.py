@@ -374,6 +374,7 @@ class UserInference(Inference):
         use_default_query: bool = False,
         insecure: bool = False,
         token: Optional[str] = None,
+        inference_timeout: int | None = None,
     ) -> dict[str, Any]:
         """
         Run inference full flow - generate command and run it
@@ -384,6 +385,7 @@ class UserInference(Inference):
             use_default_query (bool): use default query from inference config
             insecure (bool): Use insecure connection
             token (str): Token to use for authentication
+            inference_timeout (int | None): Retry timeout in seconds for the inference request
 
         Returns:
             dict: inference response dict with response headers and response output
@@ -395,6 +397,7 @@ class UserInference(Inference):
             use_default_query=use_default_query,
             insecure=insecure,
             token=token,
+            inference_timeout=inference_timeout,
         )
 
         try:
@@ -426,7 +429,6 @@ class UserInference(Inference):
         except JSONDecodeError:
             return {"output": out}
 
-    @retry(wait_timeout=Timeout.TIMEOUT_30SEC, sleep=5)
     def run_inference(
         self,
         model_name: str,
@@ -434,6 +436,7 @@ class UserInference(Inference):
         use_default_query: bool = False,
         insecure: bool = False,
         token: Optional[str] = None,
+        inference_timeout: int | None = None,
     ) -> str:
         """
         Run inference command
@@ -444,6 +447,7 @@ class UserInference(Inference):
             use_default_query (bool): use default query from inference config
             insecure (bool): Use insecure connection
             token (str): Token to use for authentication
+            inference_timeout (int | None): Retry timeout in seconds for the inference request
 
         Returns:
             str: inference output
@@ -452,7 +456,48 @@ class UserInference(Inference):
             ValueError: If inference fails
 
         """
+        wait_timeout = inference_timeout if inference_timeout is not None else Timeout.TIMEOUT_30SEC
 
+        @retry(wait_timeout=wait_timeout, sleep=5)
+        def _execute_inference() -> str:
+            return self._run_inference_once(
+                model_name=model_name,
+                inference_input=inference_input,
+                use_default_query=use_default_query,
+                insecure=insecure,
+                token=token,
+            )
+
+        return _execute_inference()
+
+    def _run_inference_once(
+        self,
+        model_name: str,
+        inference_input: str | None = None,
+        use_default_query: bool = False,
+        insecure: bool = False,
+        token: str | None = None,
+    ) -> str:
+        """Perform a single inference attempt against the model server.
+
+        Builds the inference command, sets up port-forwarding for non-exposed
+        services, executes the request, and maps HTTP error responses to raised
+        exceptions.
+
+        Args:
+            model_name: Name of the model to query.
+            inference_input: Optional custom inference payload.
+            use_default_query: Use the default query payload when True.
+            insecure: Use an insecure connection when True.
+            token: Optional auth token for the request.
+
+        Returns:
+            Inference output from the model server.
+
+        Raises:
+            InferenceResponseError: When the service is unavailable or returns 5xx.
+            ValueError: When the inference command fails.
+        """
         cmd = self.generate_command(
             model_name=model_name,
             inference_input=inference_input,

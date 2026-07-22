@@ -18,12 +18,13 @@ from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.cluster_service_version import ClusterServiceVersion
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from utilities.kueue_utils import (
-    create_local_queue,
-    create_cluster_queue,
-    create_resource_flavor,
-    LocalQueue,
     ClusterQueue,
+    LocalQueue,
     ResourceFlavor,
+    create_cluster_queue,
+    create_local_queue,
+    create_resource_flavor,
+    is_kueue_operator_installed,
     wait_for_kueue_crds_available,
 )
 from pytest_testconfig import config as py_config
@@ -431,31 +432,13 @@ def gpu_model_car_inference_service(
 
 
 # Kueue Fixtures
-def _is_kueue_operator_installed(admin_client: DynamicClient) -> bool:
-    """Check if the Kueue operator is installed and ready."""
-    try:
-        csvs = list(
-            ClusterServiceVersion.get(
-                client=admin_client,
-                namespace=py_config.get("applications_namespace", "openshift-operators"),
-            )
-        )
-        for csv in csvs:
-            if csv.name.startswith("kueue") and csv.status == csv.Status.SUCCEEDED:
-                LOGGER.info(f"Found Kueue operator CSV: {csv.name}")
-                return True
-        return False
-    except ResourceNotFoundError:
-        return False
-
-
 @pytest.fixture(scope="session")
 def ensure_kueue_unmanaged_in_dsc(
     admin_client: DynamicClient, dsc_resource: DataScienceCluster
 ) -> Generator[None, Any, None]:
     """Set DSC Kueue to Unmanaged and wait for CRDs to be available."""
     try:
-        if not _is_kueue_operator_installed(admin_client):
+        if not is_kueue_operator_installed(admin_client):
             pytest.skip("Kueue operator is not installed, skipping Kueue tests")
 
         # Check current Kueue state
