@@ -9,7 +9,7 @@ from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.resource import Resource
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
-from tests.model_serving.model_server.llmd.utils import get_llmd_workload_pods
+from tests.model_serving.model_server.llmd.utils import get_llmd_vllm_pods
 from utilities.constants import ApiGroups
 from utilities.infra import get_pods_by_isvc_label
 from utilities.resources.local_model_namespace_cache import LocalModelNamespaceCache
@@ -165,7 +165,7 @@ def assert_llmisvc_uses_cached_pvc(
         f"{llmisvc.namespace}/{llmisvc.name}"
     )
 
-    pods = get_llmd_workload_pods(client=client, llmisvc=llmisvc)
+    pods = get_llmd_vllm_pods(client=client, llmisvc=llmisvc)
     assert pods, f"No workload pods found for LLMInferenceService {llmisvc.namespace}/{llmisvc.name}"
     for pod in pods:
         _assert_pod_has_pvc_source_volume(pod=pod)
