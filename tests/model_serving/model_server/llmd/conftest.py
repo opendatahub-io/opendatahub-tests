@@ -546,6 +546,8 @@ def _create_llmisvc_from_config(
         "template": template,
         "base_refs": config_cls.base_refs,
         "prefill": prefill,
+        "worker": config_cls.worker_config(),
+        "parallelism": config_cls.parallelism_config(),
     }
 
     LOGGER.info(f"\n{config_cls.format_describe(namespace=namespace)}")

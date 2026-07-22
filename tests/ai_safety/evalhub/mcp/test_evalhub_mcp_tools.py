@@ -75,7 +75,7 @@ class TestEvalHubMcpTools:
     @pytest.mark.parametrize(
         "arguments,expected_fragment",
         [
-            pytest.param({}, "benchmarks", id="test_missing_benchmarks_and_collection"),
+            pytest.param({}, "name", id="test_missing_required_fields"),
             pytest.param(
                 {
                     "name": "invalid-job",

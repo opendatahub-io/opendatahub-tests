@@ -63,6 +63,7 @@ from utilities.constants import Annotations, DscComponents, KServeDeploymentType
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.exceptions import UnexpectedResourceCountError
 from utilities.general import generate_random_name
+from utilities.image_constants import SharedImages
 from utilities.inference_utils import create_isvc
 from utilities.infra import create_ns
 from utilities.resources.ogx_server import OgxServer
@@ -74,13 +75,7 @@ AUTORAG_RESOURCE_PREFIX: str = "autorag-smoke"
 
 OGX_CLIENT_VERIFY_SSL: bool = os.getenv("OGX_CLIENT_VERIFY_SSL", "false").lower() == "true"
 OGX_CORE_POD_FILTER: str = "app=ogx"
-POSTGRES_IMAGE: str = os.getenv(
-    "OGX_VECTOR_IO_POSTGRES_IMAGE",
-    (
-        "registry.redhat.io/rhel9/postgresql-15@sha256:"
-        "90ec347a35ab8a5d530c8d09f5347b13cc71df04f3b994bfa8b1a409b1171d59"  # pragma: allowlist secret
-    ),
-)
+POSTGRES_IMAGE: str = os.getenv("OGX_VECTOR_IO_POSTGRES_IMAGE", SharedImages.POSTGRESQL_15)
 
 # User-provided env vars for the models to deploy
 AUTORAG_INFERENCE_MODEL_URI: str = os.environ.get("AUTORAG_INFERENCE_MODEL_URI", "")

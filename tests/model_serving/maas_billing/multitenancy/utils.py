@@ -42,8 +42,8 @@ from utilities.llmd_utils import create_llmisvc
 from utilities.resources.aitenant import AITenant
 from utilities.resources.auth_policy import AuthPolicy
 from utilities.resources.http_route import HTTPRoute
+from utilities.resources.maastenantconfig import MaasTenantConfig
 from utilities.resources.route import Route
-from utilities.resources.tenant import Tenant
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -631,20 +631,20 @@ def wait_for_bootstrapped_tenant_deployments_available(
     admin_client: DynamicClient,
     tenant_namespace_name: str,
     timeout: int = 300,
-) -> Tenant:
-    """Wait until the bootstrapped Tenant reports DeploymentsAvailable=True."""
-    bootstrapped_tenant = Tenant(
+) -> MaasTenantConfig:
+    """Wait until the bootstrapped MaasTenantConfig reports DeploymentsAvailable=True."""
+    bootstrapped_tenant_config = MaasTenantConfig(
         client=admin_client,
         name=AIGATEWAY_BOOTSTRAPPED_TENANT_NAME,
         namespace=tenant_namespace_name,
         ensure_exists=True,
     )
-    bootstrapped_tenant.wait_for_condition(
+    bootstrapped_tenant_config.wait_for_condition(
         condition="DeploymentsAvailable",
         status="True",
         timeout=timeout,
     )
-    return bootstrapped_tenant
+    return bootstrapped_tenant_config
 
 
 def verify_maas_api_deployment_for_aitenant(

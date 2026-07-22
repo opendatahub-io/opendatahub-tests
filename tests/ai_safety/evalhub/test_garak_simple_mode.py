@@ -43,12 +43,14 @@ class TestGarakSimpleMode:
         tenant_user_token: str,
         evalhub_ca_bundle_file: str,
         garak_evalhub_route: Route,
+        tenant_namespace,
     ) -> None:
         """Verify the EvalHub service is healthy before running garak benchmark."""
         validate_evalhub_health(
             host=garak_evalhub_route.host,
             token=tenant_user_token,
             ca_bundle_file=evalhub_ca_bundle_file,
+            tenant_namespace=tenant_namespace.name,
         )
 
     @pytest.mark.dependency(name="garak_simple_providers", depends=["garak_simple_health"])

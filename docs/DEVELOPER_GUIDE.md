@@ -200,7 +200,7 @@ class AiSafetyImages:
 These are registered in `scripts/generate_image_manifest.py`:
 
 ```python
-IMAGE_SOURCES = {
+IMAGE_CLASS_MAP = {
     "ai_safety": "tests.ai_safety.image_constants.AiSafetyImages",
     "shared": "utilities.constants.ContainerImages",
 }
@@ -208,41 +208,36 @@ IMAGE_SOURCES = {
 
 The manifest is embedded as an OCI label on the `odh-tests` container image during build,
 allowing disconnected environments to discover and mirror all required images via
-`skopeo inspect`.
+`skopeo inspect`. A SHA-256 checksum of the manifest JSON is stored in a companion label
+so consumers can verify integrity.
+
+See [CONSUMING_IMAGE_MANIFEST.md](CONSUMING_IMAGE_MANIFEST.md) for label details,
+extraction, verification, and output format options.
 
 ### Adding a new image
 
-1. Add the image to the appropriate `image_constants.py` file
-2. Use it in your test code: `from tests.ai_safety.image_constants import AiSafetyImages`
-3. Reference it as `AiSafetyImages.YOUR_IMAGE`
+1. Add the image to the appropriate `image_constants.py` file:
+   - **Component-specific**: `tests/<component>/image_constants.py`
+   - **Shared across components**: `utilities/image_constants.py`
+2. Import and reference in your test code:
+   - **Component-specific**: `from tests.<component>.image_constants import <ComponentImages>` -> `<ComponentImages>.YOUR_IMAGE`
+   - **Shared**: `from utilities.image_constants import SharedImages` -> `SharedImages.YOUR_IMAGE`
+
+   Example: `from tests.ai_safety.image_constants import AiSafetyImages` -> `AiSafetyImages.VLLM_EMULATOR`
 
 ### Adding a new component
 
 1. Create `tests/<component>/image_constants.py` with a class containing all images
-2. Register it in `scripts/generate_image_manifest.py` under `IMAGE_SOURCES`
+2. Register it in `scripts/generate_image_manifest.py` under `IMAGE_CLASS_MAP`
 
-### Stray image checker
+### CI image checks
 
-A GHA workflow detects hardcoded container image strings not in any registered constants
-class. If your image is intentionally not centralized (e.g., only used in tests skipped on
-disconnected clusters), suppress the check with:
+The **PR Container Image Checks** workflow runs on every PR that touches Python files
+and enforces three rules: IMG001 (stray images), IMG002 (missing digests), and
+IMG003 (DockerHub images).
 
-```python
-MY_IMAGE = "quay.io/example/image:v1"  # noqa: IMG001
-```
-
-Run locally:
-
-```bash
-# Full scan
-python scripts/check_stray_images.py
-
-# PR mode (only new additions)
-python scripts/check_stray_images.py --diff-base main
-
-# Validate all image formats
-python scripts/generate_image_manifest.py --validate
-```
+See [IMAGE_CHECK_RULES.md](IMAGE_CHECK_RULES.md) for details on each rule, fixes,
+and suppression codes.
 
 ## Adding new runtime
 
