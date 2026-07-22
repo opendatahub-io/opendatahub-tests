@@ -10,7 +10,7 @@ LOGGER = structlog.get_logger(name=__name__)
 
 pytestmark = pytest.mark.usefixtures("tas_connection_type")
 
-INVALID_IMAGE_REF = "quay.io/invalid-no-access-repo/nonexistent-image:latest"
+INVALID_IMAGE_REF = "quay.io/invalid-no-access-repo/nonexistent-image:latest"  # noqa: IMG001
 
 
 @pytest.mark.tier3
