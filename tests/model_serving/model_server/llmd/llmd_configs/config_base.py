@@ -32,6 +32,10 @@ class LLMISvcConfig:
     wait_timeout = 300
     base_refs = None
 
+    # default values for expectation pods count
+    expected_vllm_pod_count = 1
+    expected_inference_pool_pod_count = 1
+
     @classmethod
     def container_resources(cls):
         return {}
