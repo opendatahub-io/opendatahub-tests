@@ -915,8 +915,7 @@ def admission_check_namespace(
     if pytestconfig.option.post_upgrade:
         if not ns.exists:
             pytest.fail(
-                f"[POST-UPGRADE] Namespace '{ns.name}' not found. "
-                "Ensure pre-upgrade tests completed successfully."
+                f"[POST-UPGRADE] Namespace '{ns.name}' not found. Ensure pre-upgrade tests completed successfully."
             )
         yield ns
         if teardown_resources:
