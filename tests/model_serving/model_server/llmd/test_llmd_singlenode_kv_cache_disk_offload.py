@@ -67,10 +67,7 @@ class TestLlmdSinglenodeKvCacheDiskOffload:
             assert (
                 getattr(ephemeral_vol, "emptyDir", None) is not None
                 or getattr(ephemeral_vol, "ephemeral", None) is not None
-            ), (
-                f"Pod {pod.name}: volume '{_VOLUME_NAME}' is not a local storage volume "
-                f"(got {dict(ephemeral_vol)})"
-            )
+            ), f"Pod {pod.name}: volume '{_VOLUME_NAME}' is not a local storage volume (got {dict(ephemeral_vol)})"
 
             container = next(
                 (c for c in (spec.containers or []) if c.name == _CONTAINER_NAME),
