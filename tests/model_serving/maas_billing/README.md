@@ -130,13 +130,13 @@ uv run pytest tests/model_serving/maas_billing/upgrade/test_maas_upgrade.py \
 | Component | Pre-upgrade | Post-upgrade | Upgrade Paths |
 | --- | --- | --- | --- |
 | MaaS Gateway | Verify Programmed | Verify still Programmed | 3.4 → 3.5 |
-| Tenant CR | Verify Ready | Verify survives | 3.4 → 3.5 |
+| MaasTenantConfig CR | Verify Ready | Verify survives | 3.4 → 3.5 |
 | MaaSModelRef | Create and verify | Verify survives | 3.4 → 3.5 |
 | MaaSAuthPolicy | Create and verify | Verify survives | 3.4 → 3.5 |
 | MaaSSubscription | Create and verify | Verify survives, spec not mutated | 3.4 → 3.5 |
 | MaaS Deployments | — | Verify Available | 3.4 → 3.5 |
 | MaaS CRDs | — | Verify all present | 3.4 → 3.5 |
-| ModelsAsService CR | Verify absent | Verify bootstrapped | 3.4 → 3.5 |
+| AIGateway CR | Verify absent | Verify bootstrapped | 3.4 → 3.5 |
 | MaaS Config CR | Verify absent | Verify bootstrapped | 3.4 → 3.5 |
 | Gateway probe | — | Verify reachable | 3.4 → 3.5 |
 | API compatibility | — | Create new MaaSModelRef | 3.4 → 3.5 |

@@ -190,6 +190,7 @@ class DscComponents:
     MODELREGISTRY: str = "modelregistry"
     OGX: str = "ogx"
     KUEUE: str = "kueue"
+    AIGATEWAY: str = "aigateway"
 
     class ManagementState:
         MANAGED: str = "Managed"
@@ -201,12 +202,14 @@ class DscComponents:
         KSERVE_READY: str = "KserveReady"
         MODEL_MESH_SERVING_READY: str = "ModelMeshServingReady"
         OGX_READY: str = "OGXReady"
+        AIGATEWAY_READY: str = "AIGatewayReady"
 
     COMPONENT_MAPPING: dict[str, str] = {  # noqa: RUF012
         MODELMESHSERVING: ConditionType.MODEL_MESH_SERVING_READY,
         KSERVE: ConditionType.KSERVE_READY,
         MODELREGISTRY: ConditionType.MODEL_REGISTRY_READY,
         OGX: ConditionType.OGX_READY,
+        AIGATEWAY: ConditionType.AIGATEWAY_READY,
     }
 
 

@@ -37,12 +37,14 @@ class TestPreUpgradeEvalHub:
         current_client_token: str,
         evalhub_ca_bundle_file: str,
         evalhub_route: Route,
+        model_namespace,
     ) -> None:
         """Verify EvalHub health endpoint responds before upgrade."""
         validate_evalhub_health(
             host=evalhub_route.host,
             token=current_client_token,
             ca_bundle_file=evalhub_ca_bundle_file,
+            tenant_namespace=model_namespace.name,
         )
 
     @pytest.mark.pre_upgrade
@@ -126,12 +128,14 @@ class TestPostUpgradeEvalHub:
         current_client_token: str,
         evalhub_ca_bundle_file: str,
         evalhub_route: Route,
+        model_namespace,
     ) -> None:
         """Verify EvalHub health endpoint still responds after upgrade."""
         validate_evalhub_health(
             host=evalhub_route.host,
             token=current_client_token,
             ca_bundle_file=evalhub_ca_bundle_file,
+            tenant_namespace=model_namespace.name,
         )
 
     @pytest.mark.post_upgrade
