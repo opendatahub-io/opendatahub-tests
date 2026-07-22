@@ -21,16 +21,13 @@ from ocp_resources.serving_runtime import ServingRuntime
 from pytest_testconfig import config as py_config
 from timeout_sampler import retry
 
+import tests.ai_hub.constants as ai_hub_constants
 from tests.ai_hub.constants import (
     CA_CONFIGMAP_NAME,
     CA_FILE_PATH,
     CA_MOUNT_PATH,
     DB_RESOURCE_NAME,
     KUBERBACPROXY_STR,
-    MR_MODEL_SERVER_PORT,
-    MR_MODEL_SERVER_URL_PATH,
-    MR_RUNTIME_CONTAINERS,
-    MR_RUNTIME_TEMPLATE,
     SECURE_MR_NAME,
 )
 from tests.ai_hub.model_registry.rest_api.constants import MODEL_REGISTER_DATA, MODEL_REGISTRY_BASE_URI
@@ -499,13 +496,13 @@ def model_registry_serving_runtime(
         "client": admin_client,
         "name": "mr-test-runtime",
         "namespace": model_registry_deployment_ns.name,
-        "template_name": MR_RUNTIME_TEMPLATE,
+        "template_name": ai_hub_constants.MR_RUNTIME_TEMPLATE,
         "multi_model": False,
         "enable_http": True,
         "enable_grpc": False,
     }
-    if MR_RUNTIME_CONTAINERS:
-        kwargs["containers"] = MR_RUNTIME_CONTAINERS
+    if ai_hub_constants.MR_RUNTIME_CONTAINERS:
+        kwargs["containers"] = ai_hub_constants.MR_RUNTIME_CONTAINERS
 
     with ServingRuntimeFromTemplate(**kwargs) as serving_runtime:
         yield serving_runtime
@@ -597,8 +594,8 @@ def model_registry_model_portforward(
     """Port-forwards the Model Registry model server pod to access the model API locally."""
     namespace = model_registry_deployment_ns.name
     local_port = 9998
-    remote_port = MR_MODEL_SERVER_PORT
-    local_url = f"http://localhost:{local_port}{MR_MODEL_SERVER_URL_PATH}"
+    remote_port = ai_hub_constants.MR_MODEL_SERVER_PORT
+    local_url = f"http://localhost:{local_port}{ai_hub_constants.MR_MODEL_SERVER_URL_PATH}"
 
     try:
         with portforward.forward(

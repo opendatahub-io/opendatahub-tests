@@ -12,7 +12,8 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.serving_runtime import ServingRuntime
 
-from tests.ai_hub.constants import MR_ISVC_VLLM_INFERENCE, MR_POSTGRES_DB_OBJECT
+import tests.ai_hub.constants as ai_hub_constants
+from tests.ai_hub.constants import MR_POSTGRES_DB_OBJECT
 from tests.ai_hub.model_registry.rest_api.constants import (
     CUSTOM_PROPERTY,
     MODEL_ARTIFACT,
@@ -387,5 +388,5 @@ class TestModelRegistryDeployment:
         validate_model_inference(
             endpoint=model_registry_model_portforward,
             model=model_registry_inference_service.name,
-            vllm=MR_ISVC_VLLM_INFERENCE,
+            vllm=ai_hub_constants.MR_ISVC_VLLM_INFERENCE,
         )
