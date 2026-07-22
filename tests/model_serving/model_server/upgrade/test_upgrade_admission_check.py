@@ -5,11 +5,11 @@ from ocp_resources.job import Job
 from ocp_resources.namespace import Namespace
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
-from utilities.constants import Timeout
 from tests.model_serving.model_server.upgrade.admission_check_upgrade_config import (
     AC_ADMISSION_CHECK_NAME,
     AC_CLUSTER_QUEUE,
 )
+from utilities.constants import Timeout
 from utilities.kueue_utils import (
     AdmissionCheck,
     ClusterQueue,

@@ -346,7 +346,7 @@ def check_admission_check_active(admission_check: AdmissionCheck) -> bool:
     )
 
 
-def check_cluster_queue_has_admission_check(cluster_queue: "ClusterQueue", admission_check_name: str) -> bool:
+def check_cluster_queue_has_admission_check(cluster_queue: ClusterQueue, admission_check_name: str) -> bool:
     """Check if a ClusterQueue still references an AdmissionCheck in its admissionChecksStrategy."""
     spec = cluster_queue.instance.spec
     strategy = getattr(spec, "admissionChecksStrategy", None)
