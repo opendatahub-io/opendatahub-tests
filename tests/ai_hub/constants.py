@@ -6,9 +6,8 @@ from ocp_resources.resource import Resource
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 
-from utilities.constants import ModelCarImage, ModelFormat, RuntimeTemplates
 from tests.ai_hub.image_constants import AiHubImages
-
+from utilities.constants import ModelCarImage, ModelFormat, RuntimeTemplates
 
 
 class ModelRegistryEndpoints:
