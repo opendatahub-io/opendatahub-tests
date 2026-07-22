@@ -19,7 +19,10 @@ EXPECTED_AGENT_LABEL_DEFINITION: dict = {
     "name": DEFAULT_AGENT_SOURCE_LABEL,
     "assetType": "agents",
     "displayName": "Agent templates",
-    "description": "Pre-built agent templates from the Red Hat agentic starter kits collection.",
+    "description": (
+        "Browse templates from the Red Hat agentic starter kits collection."
+        " An agent template is a pre-built starting point for deploying agents."
+    ),
 }
 
 # Custom test catalog injected via ConfigMap patch.
