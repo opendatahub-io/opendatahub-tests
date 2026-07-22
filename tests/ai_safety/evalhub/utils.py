@@ -896,7 +896,9 @@ def build_pvc_job_payload(
         tenant_namespace=tenant_namespace,
         job_name=job_name,
     )
-    payload["test_data_ref"] = build_pvc_test_data_ref(claim_name=claim_name, sub_path=sub_path)
+    pvc_ref = build_pvc_test_data_ref(claim_name=claim_name, sub_path=sub_path)
+    for benchmark in payload["benchmarks"]:
+        benchmark["test_data_ref"] = pvc_ref
     return payload
 
 

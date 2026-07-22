@@ -1,7 +1,7 @@
 import base64
 import shlex
 import uuid
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from typing import Any
 
 import pytest
@@ -49,7 +49,6 @@ from tests.ai_safety.evalhub.constants import (
     OTEL_COLLECTOR_HTTP_PORT,
     OTEL_COLLECTOR_NAMESPACE,
     OTEL_COLLECTOR_PROMETHEUS_PORT,
-    PVC_DATA_WRITER_SECURITY_CONTEXT,
     PVC_TEST_DATA_NAME,
     PVC_TEST_DATA_SIZE,
     SIMPLE_MINIO_ACCESS_KEY,
@@ -59,6 +58,9 @@ from tests.ai_safety.evalhub.constants import (
 from tests.ai_safety.evalhub.kueue.constants import VLLM_EMULATOR, VLLM_EMULATOR_IMAGE
 from tests.ai_safety.evalhub.utils import (
     MLflowWithWorkspaces,
+    build_pvc_job_payload,
+    delete_evalhub_job,
+    submit_evalhub_job,
     submit_garak_job,
     tenant_rbac_ready,
     wait_for_service_account,
@@ -1694,7 +1696,7 @@ def evalhub_test_data_populated(
     tenant_a_namespace: Namespace,
     evalhub_test_data_pvc: PersistentVolumeClaim,
 ) -> PersistentVolumeClaim:
-    """Populate the test data PVC with marker files at two sub-paths."""
+    """Populate the PVC with provider marker data at two sub-paths."""
     populate_script = (
         "mkdir -p /data/provider_a /data/provider_b && "
         'echo \'{"provider": "a", "benchmark": "arc_easy"}\' > /data/provider_a/data.json && '
@@ -1716,7 +1718,7 @@ def evalhub_test_data_populated(
                 "command": ["/bin/sh", "-c"],
                 "args": [populate_script],
                 "volumeMounts": [{"name": "test-data", "mountPath": "/data"}],
-                "securityContext": PVC_DATA_WRITER_SECURITY_CONTEXT,
+                "securityContext": MINIO_UPLOADER_SECURITY_CONTEXT,
             }
         ],
         wait_for_resource=True,
@@ -1730,3 +1732,50 @@ def evalhub_test_data_populated(
         LOGGER.info("PVC test data population complete")
 
     return evalhub_test_data_pvc
+
+
+@pytest.fixture()
+def submit_pvc_job(
+    tenant_a_token: str,
+    tenant_a_namespace: Namespace,
+    evalhub_mt_ca_bundle_file: str,
+    evalhub_mt_route: Route,
+    evalhub_vllm_emulator_service: Service,
+) -> Generator[Callable[..., str], Any, Any]:
+    """Factory fixture: submit PVC evaluation jobs with guaranteed cleanup."""
+    job_ids: list[str] = []
+
+    def _submit(
+        claim_name: str,
+        sub_path: str | None = None,
+        job_name: str = "pvc-test",
+    ) -> str:
+        payload = build_pvc_job_payload(
+            model_service_name=evalhub_vllm_emulator_service.name,
+            tenant_namespace=tenant_a_namespace.name,
+            job_name=job_name,
+            claim_name=claim_name,
+            sub_path=sub_path,
+        )
+        data = submit_evalhub_job(
+            host=evalhub_mt_route.host,
+            token=tenant_a_token,
+            ca_bundle_file=evalhub_mt_ca_bundle_file,
+            tenant=tenant_a_namespace.name,
+            payload=payload,
+        )
+        job_id = data["resource"]["id"]
+        job_ids.append(job_id)
+        return job_id
+
+    yield _submit
+
+    for job_id in job_ids:
+        delete_evalhub_job(
+            host=evalhub_mt_route.host,
+            token=tenant_a_token,
+            ca_bundle_file=evalhub_mt_ca_bundle_file,
+            tenant=tenant_a_namespace.name,
+            job_id=job_id,
+            hard_delete=True,
+        )
