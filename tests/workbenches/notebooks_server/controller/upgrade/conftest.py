@@ -10,11 +10,15 @@ from ocp_resources.notebook import Notebook
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.route import Route
+from ocp_resources.secret import Secret
 from ocp_resources.service import Service
+from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError
 
 from tests.workbenches.notebooks_server.controller.utils import (
+    WORKBENCH_TRUSTED_CA_BUNDLE_NAME,
+    MutatingWebhookConfiguration,
     StatefulSet,
     build_notebook_dict,
     get_dashboard_route_host,
@@ -24,14 +28,17 @@ from tests.workbenches.notebooks_server.controller.utils import (
 from utilities import constants
 from utilities.constants import Timeout
 from utilities.general import collect_pod_information
-from utilities.infra import create_ns
+from utilities.infra import create_ns, get_product_version
 
 LOGGER = get_logger(name=__name__)
 
 UPGRADE_NAMESPACE = "upgrade-workbenches"
 UPGRADE_NOTEBOOK_NAME = "upgrade-workbenches"
 UPGRADE_STOPPED_NOTEBOOK_NAME = "upgrade-wb-stopped"
+NEW_NOTEBOOK_NAME = "upgrade-wb-new"
 UPGRADE_BASELINE_CM_NAME = "upgrade-workbenches-baseline"
+ODH_TRUSTED_CA_BUNDLE_NAME = "odh-trusted-ca-bundle"
+NOTEBOOK_MUTATING_WEBHOOK_NAME = "odh-notebook-controller-mutating-webhook-configuration"
 
 
 @pytest.fixture(scope="session")
@@ -161,7 +168,7 @@ def upgrade_notebook_pod(
             status=Pod.Condition.Status.TRUE,
             timeout=Timeout.TIMEOUT_5MIN,
         )
-    except (TimeoutError, TimeoutExpiredError, RuntimeError) as e:
+    except (TimeoutError, TimeoutExpiredError) as e:
         if notebook_pod.exists:
             collect_pod_information(notebook_pod)
             raise AssertionError(
@@ -225,6 +232,71 @@ def upgrade_notebook_route(
         client=admin_client,
         name=upgrade_notebook.name,
         namespace=upgrade_notebook.namespace,
+    )
+
+
+@pytest.fixture(scope="session")
+def auth_oauth_config_secret(
+    unprivileged_client: DynamicClient,
+    upgrade_notebook: Notebook,
+) -> Secret:
+    """oauth-proxy config Secret for the notebook ({name}-oauth-config)."""
+    return Secret(
+        client=unprivileged_client,
+        name=f"{upgrade_notebook.name}-oauth-config",
+        namespace=upgrade_notebook.namespace,
+    )
+
+
+@pytest.fixture(scope="session")
+def auth_tls_secret(
+    unprivileged_client: DynamicClient,
+    upgrade_notebook: Notebook,
+) -> Secret:
+    """TLS Secret for the notebook's oauth-proxy ({name}-tls)."""
+    return Secret(
+        client=unprivileged_client,
+        name=f"{upgrade_notebook.name}-tls",
+        namespace=upgrade_notebook.namespace,
+    )
+
+
+@pytest.fixture(scope="session")
+def stopped_auth_oauth_config_secret(
+    unprivileged_client: DynamicClient,
+    stopped_notebook: Notebook,
+) -> Secret:
+    """oauth-proxy config Secret for the stopped notebook."""
+    return Secret(
+        client=unprivileged_client,
+        name=f"{stopped_notebook.name}-oauth-config",
+        namespace=stopped_notebook.namespace,
+    )
+
+
+@pytest.fixture(scope="session")
+def stopped_auth_tls_secret(
+    unprivileged_client: DynamicClient,
+    stopped_notebook: Notebook,
+) -> Secret:
+    """TLS Secret for the stopped notebook's oauth-proxy."""
+    return Secret(
+        client=unprivileged_client,
+        name=f"{stopped_notebook.name}-tls",
+        namespace=stopped_notebook.namespace,
+    )
+
+
+@pytest.fixture(scope="session")
+def stopped_tls_service(
+    unprivileged_client: DynamicClient,
+    stopped_notebook: Notebook,
+) -> Service:
+    """TLS Service for the stopped notebook ({name}-tls)."""
+    return Service(
+        client=unprivileged_client,
+        name=f"{stopped_notebook.name}-tls",
+        namespace=stopped_notebook.namespace,
     )
 
 
@@ -336,7 +408,7 @@ def stopped_notebook_pre_upgrade_shutdown(
             status=Pod.Condition.Status.TRUE,
             timeout=Timeout.TIMEOUT_5MIN,
         )
-    except (TimeoutError, TimeoutExpiredError, RuntimeError) as e:
+    except (TimeoutError, TimeoutExpiredError) as e:
         if notebook_pod.exists:
             collect_pod_information(notebook_pod)
             raise AssertionError(
@@ -369,6 +441,42 @@ def stopped_notebook_pre_upgrade_shutdown(
 
 
 @pytest.fixture(scope="session")
+def notebook_mutating_webhook(
+    admin_client: DynamicClient,
+) -> MutatingWebhookConfiguration:
+    """The notebook controller MutatingWebhookConfiguration (cluster-scoped)."""
+    return MutatingWebhookConfiguration(
+        client=admin_client,
+        name=NOTEBOOK_MUTATING_WEBHOOK_NAME,
+    )
+
+
+@pytest.fixture(scope="session")
+def workbench_trusted_ca_bundle(
+    unprivileged_client: DynamicClient,
+    upgrade_notebook_namespace: Namespace,
+) -> ConfigMap:
+    """The workbench-trusted-ca-bundle ConfigMap created by the ODH controller."""
+    return ConfigMap(
+        client=unprivileged_client,
+        name=WORKBENCH_TRUSTED_CA_BUNDLE_NAME,
+        namespace=upgrade_notebook_namespace.name,
+    )
+
+
+@pytest.fixture(scope="session")
+def odh_trusted_ca_bundle(
+    admin_client: DynamicClient,
+) -> ConfigMap:
+    """The odh-trusted-ca-bundle ConfigMap in the applications namespace (source of trust)."""
+    return ConfigMap(
+        client=admin_client,
+        name=ODH_TRUSTED_CA_BUNDLE_NAME,
+        namespace=py_config["applications_namespace"],
+    )
+
+
+@pytest.fixture(scope="session")
 def capture_notebook_baseline(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
@@ -380,6 +488,8 @@ def capture_notebook_baseline(
     upgrade_notebook_route: Route,
     stopped_notebook: Notebook,
     stopped_notebook_pre_upgrade_shutdown: None,
+    workbench_trusted_ca_bundle: ConfigMap,
+    odh_trusted_ca_bundle: ConfigMap,
 ) -> None:
     """Capture notebook resource metadata to a ConfigMap before upgrade.
 
@@ -415,6 +525,25 @@ def capture_notebook_baseline(
 
     stopped_annotation = stopped_notebook.instance.metadata.annotations.get("kubeflow-resource-stopped")
 
+    assert workbench_trusted_ca_bundle.exists, (
+        f"ConfigMap '{WORKBENCH_TRUSTED_CA_BUNDLE_NAME}' not found in "
+        f"'{upgrade_notebook.namespace}' during baseline capture"
+    )
+    ca_bundle_resource_version = workbench_trusted_ca_bundle.instance.metadata.resourceVersion
+
+    assert odh_trusted_ca_bundle.exists, (
+        f"ConfigMap '{ODH_TRUSTED_CA_BUNDLE_NAME}' not found in "
+        f"'{py_config['applications_namespace']}' during baseline capture"
+    )
+    odh_ca_bundle_resource_version = odh_trusted_ca_bundle.instance.metadata.resourceVersion
+
+    source_version = get_product_version(admin_client=admin_client)
+
+    containers = upgrade_notebook_pod.instance.spec.containers
+    sidecar_names = {"oauth-proxy", "kube-rbac-proxy"}
+    main_container = next((c for c in containers if c.name not in sidecar_names), None)
+    notebook_image = main_container.image if main_container else ""
+
     baseline = {
         "ntb_creation_timestamp": creation_timestamp,
         "notebook_generation": notebook_generation,
@@ -427,6 +556,10 @@ def capture_notebook_baseline(
         "route_host": route_host,
         "route_tls_termination": route_tls_termination,
         "stopped_annotation_value": stopped_annotation,
+        "ca_bundle_resource_version": ca_bundle_resource_version,
+        "odh_ca_bundle_resource_version": odh_ca_bundle_resource_version,
+        "source_rhoai_version": str(source_version),
+        "notebook_image": notebook_image,
     }
 
     ConfigMap(
@@ -467,3 +600,160 @@ def upgrade_notebook_baseline(
     assert raw, f"Baseline ConfigMap '{UPGRADE_BASELINE_CM_NAME}' has no 'baseline' key in data."
 
     return json.loads(raw)
+
+
+@pytest.fixture(scope="session")
+def new_notebook_pvc(
+    unprivileged_client: DynamicClient,
+    upgrade_notebook_namespace: Namespace,
+) -> Generator[PersistentVolumeClaim, Any, Any]:
+    """PVC for the post-upgrade new notebook creation test."""
+    with PersistentVolumeClaim(
+        client=unprivileged_client,
+        name=NEW_NOTEBOOK_NAME,
+        namespace=upgrade_notebook_namespace.name,
+        label={constants.Labels.OpenDataHub.DASHBOARD: "true"},
+        accessmodes=PersistentVolumeClaim.AccessMode.RWO,
+        size="1Gi",
+        volume_mode=PersistentVolumeClaim.VolumeMode.FILE,
+        teardown=True,
+    ) as pvc:
+        yield pvc
+
+
+@pytest.fixture(scope="session")
+def new_notebook(
+    admin_client: DynamicClient,
+    unprivileged_client: DynamicClient,
+    upgrade_notebook_namespace: Namespace,
+    upgrade_notebook_image: str,
+    new_notebook_pvc: PersistentVolumeClaim,
+) -> Generator[Notebook, Any, Any]:
+    """Fresh Notebook CR created post-upgrade to verify controller functionality."""
+    route_host = get_dashboard_route_host(admin_client=admin_client)
+    username = get_username(client=unprivileged_client)
+    assert username, "Failed to determine username from the cluster"
+
+    notebook_dict = build_notebook_dict(
+        namespace=upgrade_notebook_namespace.name,
+        name=NEW_NOTEBOOK_NAME,
+        image_path=upgrade_notebook_image,
+        route_host=route_host,
+        username=username,
+    )
+
+    with Notebook(client=unprivileged_client, kind_dict=notebook_dict, teardown=True) as nb:
+        yield nb
+
+
+@pytest.fixture(scope="session")
+def new_notebook_pod(
+    unprivileged_client: DynamicClient,
+    new_notebook: Notebook,
+) -> Pod:
+    """Pod for the post-upgrade new notebook; waits for Ready state."""
+    notebook_pod = Pod(
+        client=unprivileged_client,
+        namespace=new_notebook.namespace,
+        name=f"{new_notebook.name}-0",
+    )
+
+    try:
+        notebook_pod.wait()
+        notebook_pod.wait_for_condition(
+            condition=Pod.Condition.READY,
+            status=Pod.Condition.Status.TRUE,
+            timeout=Timeout.TIMEOUT_5MIN,
+        )
+    except (TimeoutError, TimeoutExpiredError) as e:
+        if notebook_pod.exists:
+            collect_pod_information(notebook_pod)
+            raise AssertionError(
+                f"New notebook pod '{new_notebook.name}-0' failed to reach Ready state "
+                f"within {Timeout.TIMEOUT_5MIN} seconds on upgraded platform.\n"
+                f"Original error: {e}"
+            ) from e
+
+        raise AssertionError(
+            f"New notebook pod '{new_notebook.name}-0' was not created on upgraded platform.\nOriginal error: {e}"
+        ) from e
+
+    return notebook_pod
+
+
+@pytest.fixture(scope="session")
+def new_notebook_statefulset(
+    unprivileged_client: DynamicClient,
+    new_notebook: Notebook,
+) -> StatefulSet:
+    """StatefulSet owned by the post-upgrade new Notebook CR."""
+    return StatefulSet(
+        client=unprivileged_client,
+        name=new_notebook.name,
+        namespace=new_notebook.namespace,
+    )
+
+
+@pytest.fixture(scope="session")
+def new_notebook_service(
+    unprivileged_client: DynamicClient,
+    new_notebook: Notebook,
+) -> Service:
+    """Service owned by the post-upgrade new Notebook CR."""
+    return Service(
+        client=unprivileged_client,
+        name=new_notebook.name,
+        namespace=new_notebook.namespace,
+    )
+
+
+@pytest.fixture(scope="session")
+def new_notebook_tls_service(
+    unprivileged_client: DynamicClient,
+    new_notebook: Notebook,
+) -> Service:
+    """TLS Service for the post-upgrade new notebook ({name}-tls)."""
+    return Service(
+        client=unprivileged_client,
+        name=f"{new_notebook.name}-tls",
+        namespace=new_notebook.namespace,
+    )
+
+
+@pytest.fixture(scope="session")
+def new_notebook_route(
+    admin_client: DynamicClient,
+    new_notebook: Notebook,
+) -> Route:
+    """Route created for the post-upgrade new notebook."""
+    return Route(
+        client=admin_client,
+        name=new_notebook.name,
+        namespace=new_notebook.namespace,
+    )
+
+
+@pytest.fixture(scope="session")
+def new_notebook_oauth_config_secret(
+    unprivileged_client: DynamicClient,
+    new_notebook: Notebook,
+) -> Secret:
+    """oauth-config Secret for the post-upgrade new notebook."""
+    return Secret(
+        client=unprivileged_client,
+        name=f"{new_notebook.name}-oauth-config",
+        namespace=new_notebook.namespace,
+    )
+
+
+@pytest.fixture(scope="session")
+def new_notebook_tls_secret(
+    unprivileged_client: DynamicClient,
+    new_notebook: Notebook,
+) -> Secret:
+    """TLS Secret for the post-upgrade new notebook."""
+    return Secret(
+        client=unprivileged_client,
+        name=f"{new_notebook.name}-tls",
+        namespace=new_notebook.namespace,
+    )

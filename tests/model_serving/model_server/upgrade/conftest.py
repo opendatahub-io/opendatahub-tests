@@ -1,7 +1,11 @@
 from typing import Any, Generator
 
 import pytest
+from _pytest.nodes import Item
+from _pytest.runner import CallInfo
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.config_map import ConfigMap
+from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.role import Role
@@ -12,6 +16,7 @@ from ocp_resources.serving_runtime import ServingRuntime
 from simple_logger.logger import get_logger
 
 from utilities.constants import (
+    DscComponents,
     KServeDeploymentType,
     ModelAndFormat,
     ModelFormat,
@@ -21,11 +26,87 @@ from utilities.constants import (
     RuntimeTemplates,
 )
 from utilities.inference_utils import create_isvc
-from utilities.infra import create_inference_token, create_isvc_view_role, create_ns, s3_endpoint_secret
+from utilities.infra import (
+    create_inference_token,
+    create_isvc_view_role,
+    create_ns,
+    s3_endpoint_secret,
+    wait_for_dsc_status_ready,
+)
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 
+from tests.model_serving.model_runtime.vllm.utils import skip_if_not_deployment_mode
+from tests.model_serving.model_server.upgrade.kserve_kueue_upgrade_config import (
+    KSERVE_KUEUE_CLUSTER_QUEUE,
+    KSERVE_KUEUE_CPU_QUOTA,
+    KSERVE_KUEUE_ISVC_LABELS,
+    KSERVE_KUEUE_ISVC_RESOURCES,
+    KSERVE_KUEUE_LOCAL_QUEUE,
+    KSERVE_KUEUE_MAX_REPLICAS,
+    KSERVE_KUEUE_MEMORY_QUOTA,
+    KSERVE_KUEUE_MIN_REPLICAS,
+    KSERVE_KUEUE_RESOURCE_FLAVOR,
+    KSERVE_KUEUE_UPGRADE_ISVC_NAME,
+    KSERVE_KUEUE_UPGRADE_NAMESPACE,
+    KSERVE_KUEUE_UPGRADE_RUNTIME_NAME,
+    KSERVE_KUEUE_UPGRADE_S3_SECRET,
+)
+from tests.model_serving.model_server.upgrade.utils import (
+    _capture_and_save_isvc_kueue_baseline,
+    _create_kueue_upgrade_resources,
+    _kserve_kueue_upgrade_runtime_template_kwargs,
+)
+from utilities.kueue_utils import LocalQueue
+
+
 LOGGER = get_logger(name=__name__)
+
+# Must match mainline post-upgrade restore contract (upgrade-kueue-dsc-state CM).
+UPGRADE_KUEUE_DSC_STATE_CM_NAME = "upgrade-kueue-dsc-state"
+
+
+def _restore_kueue_dsc_state(
+    admin_client: DynamicClient,
+    dsc_resource: DataScienceCluster,
+    namespace: str,
+) -> None:
+    """Restore original Kueue managementState from the pre-upgrade ConfigMap."""
+    state_cm = ConfigMap(client=admin_client, name=UPGRADE_KUEUE_DSC_STATE_CM_NAME, namespace=namespace)
+    if not state_cm.exists:
+        pytest.fail(
+            f"Kueue DSC state ConfigMap '{UPGRADE_KUEUE_DSC_STATE_CM_NAME}' not found in namespace "
+            f"'{namespace}'. Ensure pre-upgrade tests saved the original state."
+        )
+
+    original_state = state_cm.instance.data.get("original_management_state")
+    if not original_state:
+        pytest.fail(
+            f"Kueue DSC state ConfigMap '{UPGRADE_KUEUE_DSC_STATE_CM_NAME}' is missing required key "
+            f"'original_management_state'. Cannot restore safely without discarding recovery state."
+        )
+
+    LOGGER.info(f"Restoring Kueue managementState to '{original_state}' in DSC")
+    dsc_resource.update(
+        resource_dict={
+            "metadata": {"name": dsc_resource.name},
+            "spec": {"components": {DscComponents.KUEUE: {"managementState": original_state}}},
+        }
+    )
+    state_cm.clean_up()
+
+
+@pytest.hookimpl(tryfirst=True, hookwrapper=True)
+def pytest_runtest_makereport(item: Item, call: CallInfo[None]) -> Generator[None, Any, Any]:
+    """Track pre-upgrade test failures to prevent baseline capture on failure."""
+    outcome = yield
+    report = outcome.get_result()
+
+    # Only track failures during the actual test execution (not setup/teardown)
+    if call.when == "call" and report.failed:
+        if "pre_upgrade" in item.keywords:
+            # Mark that a pre-upgrade test failed so baseline capture is skipped
+            item.config._pre_upgrade_test_failed = True  # type: ignore[attr-defined]
 
 
 @pytest.fixture(scope="session")
@@ -495,3 +576,294 @@ def ovms_authenticated_serverless_inference_service_scope_session(
             **isvc_kwargs,
         ) as isvc:
             yield isvc
+
+
+@pytest.fixture(scope="session")
+def kserve_kueue_upgrade_s3_secret(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    kserve_kueue_upgrade_namespace: Namespace,
+    valid_aws_config: tuple[str, str],
+    teardown_resources: bool,
+) -> Generator[Secret, Any, Any]:
+    """S3 connection secret for the KServe Kueue upgrade ISVC."""
+    _ = valid_aws_config
+    secret_kwargs = {
+        "client": admin_client,
+        "name": KSERVE_KUEUE_UPGRADE_S3_SECRET,
+        "namespace": kserve_kueue_upgrade_namespace.name,
+    }
+    secret = Secret(**secret_kwargs)
+
+    if pytestconfig.option.post_upgrade:
+        if not secret.exists:
+            pytest.fail(
+                f"[POST-UPGRADE] S3 secret '{secret.name}' not found in namespace "
+                f"'{secret.namespace}'. Ensure pre-upgrade tests completed successfully."
+            )
+        yield secret
+        if teardown_resources:
+            secret.clean_up()
+    elif secret.exists:
+        pytest.fail(
+            f"Unexpected existing S3 secret '{secret.name}' in namespace '{secret.namespace}'. "
+            "Clear stale upgrade resources before pre-upgrade."
+        )
+    else:
+        with s3_endpoint_secret(
+            **secret_kwargs,
+            aws_access_key=pytestconfig.option.aws_access_key_id,
+            aws_secret_access_key=pytestconfig.option.aws_secret_access_key,
+            aws_s3_region=pytestconfig.option.ci_s3_bucket_region,
+            aws_s3_bucket=pytestconfig.option.ci_s3_bucket_name,
+            aws_s3_endpoint=pytestconfig.option.ci_s3_bucket_endpoint,
+            teardown=teardown_resources,
+        ) as configured_secret:
+            yield configured_secret
+
+
+@pytest.fixture(scope="session")
+def kserve_kueue_upgrade_model_storage() -> dict[str, str]:
+    """Return model storage path and version for external S3."""
+    return {
+        "storage_path": ModelStoragePath.OPENVINO_EXAMPLE_MODEL,
+        "model_version": ModelVersion.OPSET13,
+    }
+
+
+@pytest.fixture(scope="session")
+def kserve_kueue_upgrade_serving_runtime(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    kserve_kueue_upgrade_namespace: Namespace,
+    teardown_resources: bool,
+) -> Generator[ServingRuntime, Any, Any]:
+    """OVMS ServingRuntime for KServe Kueue upgrade tests."""
+    runtime_kwargs = {
+        "client": admin_client,
+        "name": KSERVE_KUEUE_UPGRADE_RUNTIME_NAME,
+        "namespace": kserve_kueue_upgrade_namespace.name,
+    }
+    model_runtime = ServingRuntime(**runtime_kwargs)
+
+    if pytestconfig.option.post_upgrade:
+        if not model_runtime.exists:
+            pytest.fail(
+                f"[POST-UPGRADE] ServingRuntime '{model_runtime.name}' not found in namespace "
+                f"'{model_runtime.namespace}'. Ensure pre-upgrade KServe+Kueue tests completed successfully."
+            )
+        yield model_runtime
+        if teardown_resources:
+            model_runtime.clean_up()
+    elif model_runtime.exists:
+        pytest.fail(
+            f"Unexpected existing ServingRuntime '{model_runtime.name}' in namespace "
+            f"'{model_runtime.namespace}'. Clear stale upgrade resources before pre-upgrade."
+        )
+    else:
+        with ServingRuntimeFromTemplate(
+            **_kserve_kueue_upgrade_runtime_template_kwargs(
+                runtime_kwargs=runtime_kwargs,
+                teardown_resources=teardown_resources,
+            ),
+        ) as model_runtime:
+            yield model_runtime
+
+
+@pytest.fixture(scope="session")
+def kserve_kueue_upgrade_namespace(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    teardown_resources: bool,
+) -> Generator[Namespace, Any, Any]:
+    """Namespace for KServe raw ISVC + Kueue upgrade tests."""
+    ns = Namespace(client=admin_client, name=KSERVE_KUEUE_UPGRADE_NAMESPACE)
+
+    if pytestconfig.option.post_upgrade:
+        if not ns.exists:
+            pytest.fail(
+                f"[POST-UPGRADE] Namespace '{ns.name}' not found. "
+                "Ensure pre-upgrade KServe+Kueue tests completed successfully."
+            )
+        yield ns
+        if teardown_resources:
+            ns.clean_up()
+    else:
+        if ns.exists:
+            pytest.fail(f"Unexpected existing namespace '{ns.name}'. Clear stale upgrade resources before pre-upgrade.")
+        else:
+            with create_ns(
+                admin_client=admin_client,
+                name=KSERVE_KUEUE_UPGRADE_NAMESPACE,
+                model_mesh_enabled=False,
+                add_dashboard_label=True,
+                add_kueue_label=True,
+                teardown=teardown_resources,
+            ) as ns:
+                yield ns
+
+
+@pytest.fixture(scope="session")
+def ensure_kueue_for_kserve_upgrade(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    dsc_resource: DataScienceCluster,
+    kserve_kueue_upgrade_namespace: Namespace,
+    teardown_resources: bool,
+) -> Generator[None, Any, Any]:
+    """Ensure Kueue DSC state for KServe raw ISVC upgrade tests.
+
+    Pre-upgrade: save original managementState to a ConfigMap and leave Kueue
+    Unmanaged (direct DSC update, not ResourceEditor) so state survives upgrade.
+    Post-upgrade: restore from that ConfigMap (same contract as mainline).
+    """
+    namespace = kserve_kueue_upgrade_namespace.name
+
+    if pytestconfig.option.post_upgrade:
+        yield
+        _restore_kueue_dsc_state(
+            admin_client=admin_client,
+            dsc_resource=dsc_resource,
+            namespace=namespace,
+        )
+        return
+
+    kueue_management_state = dsc_resource.instance.spec.components[DscComponents.KUEUE].managementState
+    state_cm = ConfigMap(
+        client=admin_client,
+        name=UPGRADE_KUEUE_DSC_STATE_CM_NAME,
+        namespace=namespace,
+        data={"original_management_state": kueue_management_state},
+    )
+    if state_cm.exists:
+        pytest.fail(
+            f"Unexpected existing Kueue DSC state ConfigMap '{UPGRADE_KUEUE_DSC_STATE_CM_NAME}' in "
+            f"namespace '{namespace}'. Clear stale upgrade state before pre-upgrade."
+        )
+    LOGGER.info(f"Saving original Kueue managementState '{kueue_management_state}' to ConfigMap")
+    state_cm.deploy()
+
+    if kueue_management_state != DscComponents.ManagementState.UNMANAGED:
+        LOGGER.info(f"Patching Kueue from {kueue_management_state} to Unmanaged")
+        dsc_resource.update(
+            resource_dict={
+                "metadata": {"name": dsc_resource.name},
+                "spec": {
+                    "components": {DscComponents.KUEUE: {"managementState": DscComponents.ManagementState.UNMANAGED}}
+                },
+            }
+        )
+        wait_for_dsc_status_ready(dsc_resource=dsc_resource)
+    else:
+        LOGGER.info("Kueue already Unmanaged, no patch needed")
+
+    yield
+
+    if teardown_resources:
+        _restore_kueue_dsc_state(
+            admin_client=admin_client,
+            dsc_resource=dsc_resource,
+            namespace=namespace,
+        )
+
+
+@pytest.fixture(scope="session")
+def kserve_upgrade_kueue_resources(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    ensure_kueue_for_kserve_upgrade: None,
+    kserve_kueue_upgrade_namespace: Namespace,
+    teardown_resources: bool,
+) -> Generator[LocalQueue, Any, Any]:
+    """Kueue ResourceFlavor, ClusterQueue, and LocalQueue for KServe upgrade tests.
+
+    Pre-upgrade: ensure_kueue_for_kserve_upgrade saves DSC state and patches Kueue.
+    Post-upgrade: looks up queues; ensure fixture restores DSC from the ConfigMap.
+    """
+    yield from _create_kueue_upgrade_resources(
+        pytestconfig=pytestconfig,
+        admin_client=admin_client,
+        namespace=kserve_kueue_upgrade_namespace.name,
+        local_queue_name=KSERVE_KUEUE_LOCAL_QUEUE,
+        cluster_queue_name=KSERVE_KUEUE_CLUSTER_QUEUE,
+        resource_flavor_name=KSERVE_KUEUE_RESOURCE_FLAVOR,
+        cpu_quota=KSERVE_KUEUE_CPU_QUOTA,
+        memory_quota=KSERVE_KUEUE_MEMORY_QUOTA,
+        teardown_resources=teardown_resources,
+    )
+
+
+@pytest.fixture(scope="session")
+def kserve_kueue_upgrade_inference_service(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    kserve_kueue_upgrade_namespace: Namespace,
+    kserve_kueue_upgrade_serving_runtime: ServingRuntime,
+    kserve_kueue_upgrade_s3_secret: Secret,
+    kserve_kueue_upgrade_model_storage: dict[str, str],
+    kserve_upgrade_kueue_resources: LocalQueue,
+    teardown_resources: bool,
+) -> Generator[InferenceService, Any, Any]:
+    """Raw-deployment InferenceService with Kueue queue label for upgrade tests."""
+    isvc_kwargs = {
+        "client": admin_client,
+        "name": KSERVE_KUEUE_UPGRADE_ISVC_NAME,
+        "namespace": kserve_kueue_upgrade_namespace.name,
+    }
+    isvc = InferenceService(**isvc_kwargs)
+
+    if pytestconfig.option.post_upgrade:
+        if not isvc.exists:
+            pytest.fail(
+                f"[POST-UPGRADE] InferenceService '{isvc.name}' not found in namespace "
+                f"'{isvc.namespace}'. Ensure pre-upgrade KServe+Kueue tests completed successfully."
+            )
+        yield isvc
+        if teardown_resources:
+            isvc.clean_up()
+    elif isvc.exists:
+        pytest.fail(
+            f"Unexpected existing InferenceService '{isvc.name}' in namespace '{isvc.namespace}'. "
+            "Clear stale upgrade resources before pre-upgrade."
+        )
+    else:
+        with create_isvc(
+            runtime=kserve_kueue_upgrade_serving_runtime.name,
+            model_format=ModelAndFormat.OPENVINO_IR,
+            deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+            storage_key=kserve_kueue_upgrade_s3_secret.name,
+            storage_path=kserve_kueue_upgrade_model_storage["storage_path"],
+            model_version=kserve_kueue_upgrade_model_storage["model_version"],
+            external_route=True,
+            min_replicas=KSERVE_KUEUE_MIN_REPLICAS,
+            max_replicas=KSERVE_KUEUE_MAX_REPLICAS,
+            resources=KSERVE_KUEUE_ISVC_RESOURCES,
+            labels=KSERVE_KUEUE_ISVC_LABELS,
+            teardown=teardown_resources,
+            **isvc_kwargs,
+        ) as isvc:
+            yield isvc
+            # Only capture baseline if no pre-upgrade tests failed.
+            # The baseline represents the scaled and gated state after all validations pass.
+            if not getattr(pytestconfig, "_pre_upgrade_test_failed", False):
+                _capture_and_save_isvc_kueue_baseline(
+                    pytestconfig=pytestconfig,
+                    admin_client=admin_client,
+                    isvc=isvc,
+                )
+            else:
+                LOGGER.warning(
+                    "Skipping baseline capture: pre-upgrade test(s) failed. "
+                    "Post-upgrade tests will not have a valid baseline for comparison."
+                )
+
+
+@pytest.fixture
+def skip_if_not_raw_deployment(
+    kserve_kueue_upgrade_inference_service: InferenceService,
+) -> None:
+    """Skip tests when the Kueue upgrade ISVC is not deployed in RawDeployment mode."""
+    skip_if_not_deployment_mode(
+        isvc=kserve_kueue_upgrade_inference_service,
+        deployment_type=KServeDeploymentType.RAW_DEPLOYMENT,
+    )

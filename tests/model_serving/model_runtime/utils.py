@@ -1,3 +1,5 @@
+import os
+import subprocess
 from typing import Any, Iterable, Optional
 
 import portforward
@@ -5,19 +7,29 @@ from ocp_resources.inference_service import InferenceService
 from simple_logger.logger import get_logger
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from tests.model_serving.model_runtime.model_validation.constant import (
-    COMPLETION_QUERY,
-    OPENAI_ENDPOINT_NAME,
-    AUDIO_FILE_URL,
-    AUDIO_FILE_LOCAL_PATH,
-)
 from utilities.constants import Ports
 from utilities.exceptions import NotSupportedError
 from utilities.plugins.constant import OpenAIEnpoints
 from utilities.plugins.openai_plugin import OpenAIClient
 from utilities.plugins.tgis_grpc_plugin import TGISGRPCPlugin
-import subprocess
-import os
+
+COMPLETION_QUERY: list[dict[str, str]] = [
+    {
+        "text": "What are the key benefits of renewable energy sources compared to fossil fuels?",
+    },
+    {"text": "Translate the following English sentence into Spanish, German, and Mandarin: 'Knowledge is power.'"},
+    {"text": "Write a poem about the beauty of the night sky and the mysteries it holds."},
+    {"text": "Explain the significance of the Great Wall of China in history and its impact on modern tourism."},
+    {"text": "Discuss the ethical implications of using artificial intelligence in healthcare decision-making."},
+    {
+        "text": "Summarize the main events of the Apollo 11 moon landing and its importance in space exploration history."  # noqa: E501
+    },
+]
+OPENAI_ENDPOINT_NAME: str = "openai"
+AUDIO_FILE_URL: str = (
+    "https://raw.githubusercontent.com/realpython/python-speech-recognition/master/audio_files/harvard.wav"
+)
+AUDIO_FILE_LOCAL_PATH: str = "/tmp/harvard.wav"
 
 LOGGER = get_logger(name=__name__)
 

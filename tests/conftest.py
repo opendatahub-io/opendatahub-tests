@@ -212,40 +212,12 @@ def ci_s3_bucket_endpoint(pytestconfig: pytest.Config) -> str:
 
 
 @pytest.fixture(scope="session")
-def serving_argument(pytestconfig: pytest.Config, modelcar_yaml_config: dict[str, Any] | None) -> tuple[list[str], int]:
-    if modelcar_yaml_config:
-        val = modelcar_yaml_config.get("serving_arguments", {})
-        if isinstance(val, dict):
-            args = val.get("args", [])
-            gpu_count = val.get("gpu_count", 1)
-        return args, gpu_count
-
+def serving_argument(pytestconfig: pytest.Config) -> tuple[list[str], int]:
     raw_arg = pytestconfig.option.serving_argument
     try:
         return json.loads(raw_arg)
     except json.JSONDecodeError:
-        raise ValueError(
-            "Serving arguments should be a valid JSON list. "
-            "Either pass with `--serving-argument` or set it correctly in modelcar.yaml"
-        )
-
-
-@pytest.fixture(scope="session")
-def modelcar_yaml_config(pytestconfig: pytest.Config) -> dict[str, Any] | None:
-    """
-    Fixture to get the path to the modelcar.yaml file.
-    """
-    config_path = pytestconfig.option.model_car_yaml_path
-    if not config_path:
-        return None
-    with open(config_path, "r") as file:
-        try:
-            modelcar_yaml = yaml.safe_load(file)
-            if not isinstance(modelcar_yaml, dict):
-                raise ValueError("modelcar.yaml should contain a dictionary.")
-            return modelcar_yaml
-        except yaml.YAMLError as e:
-            raise ValueError(f"Error parsing modelcar.yaml: {e}") from e
+        raise ValueError("Serving arguments should be a valid JSON list. Pass with `--serving-argument`")
 
 
 @pytest.fixture(scope="session")
@@ -337,7 +309,9 @@ def use_unprivileged_client(pytestconfig: pytest.Config) -> bool:
 
 
 @pytest.fixture(scope="session")
-def non_admin_user_password(admin_client: DynamicClient, use_unprivileged_client: bool) -> tuple[str, str] | None:
+def non_admin_user_password(
+    admin_client: DynamicClient, use_unprivileged_client: bool
+) -> tuple[str, RedactedString] | None:
     def _decode_split_data(_data: str) -> list[str]:
         return base64.b64decode(_data).decode().split(",")
 
@@ -354,9 +328,10 @@ def non_admin_user_password(admin_client: DynamicClient, use_unprivileged_client
         data = ldap_Secret[0].instance.data
         users = _decode_split_data(_data=data.users)
         passwords = _decode_split_data(_data=data.passwords)
-        first_user_index = next(index for index, user in enumerate(users) if "user" in user)
+        first_user_index = next((index for index, user in enumerate(users) if "user" in user), None)
 
-        return users[first_user_index], passwords[first_user_index]
+        if first_user_index is not None:
+            return users[first_user_index], RedactedString(value=passwords[first_user_index])
 
     LOGGER.error("ldap secret not found")
     return None
@@ -378,7 +353,7 @@ def unprivileged_client(
     admin_client: DynamicClient,
     use_unprivileged_client: bool,
     kubconfig_filepath: str,
-    non_admin_user_password: tuple[str, str],
+    non_admin_user_password: tuple[str, RedactedString] | None,
 ) -> Generator[DynamicClient, Any, Any]:
     """
     Provides none privileged API client. If non_admin_user_password is None, then it will raise.

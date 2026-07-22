@@ -1,5 +1,4 @@
-from collections.abc import Generator
-from typing import Any
+from typing import Generator, Any
 
 import pytest
 from kubernetes.dynamic import DynamicClient
@@ -37,25 +36,38 @@ def vllm_cpu_runtime(
     minio_pod: Pod,
     minio_service: Service,
     minio_data_connection: Secret,
+    pytestconfig: pytest.Config,
+    teardown_resources: bool,
 ) -> Generator[ServingRuntime, Any, Any]:
-    with ServingRuntimeFromTemplate(
-        client=admin_client,
-        name="vllm-runtime-cpu-fp16",
-        namespace=model_namespace.name,
-        template_name=RuntimeTemplates.VLLM_CUDA,
-        deployment_type=KServeDeploymentType.RAW_DEPLOYMENT,
-        runtime_image="quay.io/rh-aiservices-bu/vllm-cpu-openai-ubi9"
-        "@sha256:ada6b3ba98829eb81ae4f89364d9b431c0222671eafb9a04aa16f31628536af2",
-        containers={
-            "kserve-container": {
-                "args": ["--port=8032", "--model=/mnt/models", "--served-model-name={{.Name}}"],
-                "ports": [{"containerPort": 8032, "protocol": "TCP"}],
-                "volumeMounts": [{"mountPath": "/dev/shm", "name": "shm"}],
-            }
-        },
-        volumes=[{"emptyDir": {"medium": "Memory", "sizeLimit": "2Gi"}, "name": "shm"}],
-    ) as serving_runtime:
+    if pytestconfig.option.post_upgrade:
+        # During post-upgrade, reuse existing ServingRuntime
+        serving_runtime = ServingRuntime(
+            client=admin_client,
+            name="vllm-runtime-cpu-fp16",
+            namespace=model_namespace.name,
+        )
         yield serving_runtime
+        if teardown_resources:
+            serving_runtime.clean_up()
+    else:
+        with ServingRuntimeFromTemplate(
+            client=admin_client,
+            name="vllm-runtime-cpu-fp16",
+            namespace=model_namespace.name,
+            template_name=RuntimeTemplates.VLLM_CUDA,
+            deployment_type=KServeDeploymentType.RAW_DEPLOYMENT,
+            runtime_image="quay.io/rh-aiservices-bu/vllm-cpu-openai-ubi9"
+            "@sha256:ada6b3ba98829eb81ae4f89364d9b431c0222671eafb9a04aa16f31628536af2",
+            containers={
+                "kserve-container": {
+                    "args": ["--port=8032", "--model=/mnt/models", "--served-model-name={{.Name}}"],
+                    "ports": [{"containerPort": 8032, "protocol": "TCP"}],
+                    "volumeMounts": [{"mountPath": "/dev/shm", "name": "shm"}],
+                }
+            },
+            volumes=[{"emptyDir": {"medium": "Memory", "sizeLimit": "2Gi"}, "name": "shm"}],
+        ) as serving_runtime:
+            yield serving_runtime
 
 
 @pytest.fixture(scope="class")
@@ -66,24 +78,39 @@ def qwen_isvc(
     minio_service: Service,
     minio_data_connection: Secret,
     vllm_cpu_runtime: ServingRuntime,
+    pytestconfig: pytest.Config,
+    teardown_resources: bool,
 ) -> Generator[InferenceService, Any, Any]:
-    with create_isvc(
-        client=admin_client,
-        name=QWEN_MODEL_NAME,
-        namespace=model_namespace.name,
-        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-        model_format="vLLM",
-        runtime=vllm_cpu_runtime.name,
-        storage_key=minio_data_connection.name,
-        storage_path="Qwen2.5-0.5B-Instruct",
-        wait_for_predictor_pods=False,
-        enable_auth=False,
-        resources={
-            "requests": {"cpu": "1", "memory": "6Gi"},
-            "limits": {"cpu": "2", "memory": "12Gi"},
-        },
-    ) as isvc:
+    if pytestconfig.option.post_upgrade:
+        # During post-upgrade, reuse existing InferenceService
+        isvc = InferenceService(
+            client=admin_client,
+            name=QWEN_MODEL_NAME,
+            namespace=model_namespace.name,
+        )
         yield isvc
+        if teardown_resources:
+            isvc.clean_up()
+    else:
+        # During pre-upgrade or normal tests, create new InferenceService
+        with create_isvc(
+            client=admin_client,
+            name=QWEN_MODEL_NAME,
+            namespace=model_namespace.name,
+            deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+            model_format="vLLM",
+            runtime=vllm_cpu_runtime.name,
+            storage_key=minio_data_connection.name,
+            storage_path="Qwen2.5-0.5B-Instruct",
+            wait_for_predictor_pods=False,
+            enable_auth=False,
+            resources={
+                "requests": {"cpu": "2", "memory": "10Gi"},
+                "limits": {"cpu": "2", "memory": "12Gi"},
+            },
+            teardown=teardown_resources,
+        ) as isvc:
+            yield isvc
 
 
 @pytest.fixture(scope="class")
@@ -120,7 +147,8 @@ def llm_d_inference_sim_serving_runtime(
                 f"does not exist in namespace {model_namespace.name} after upgrade"
             )
         yield serving_runtime
-        serving_runtime.clean_up()
+        if teardown_resources:
+            serving_runtime.clean_up()
 
     else:
         with ServingRuntime(
@@ -195,7 +223,8 @@ def llm_d_inference_sim_isvc(
             client=admin_client, name=LLMdInferenceSimConfig.isvc_name, namespace=model_namespace.name
         )
         yield isvc
-        isvc.clean_up()
+        if teardown_resources:
+            isvc.clean_up()
     else:
         with create_isvc(
             client=admin_client,

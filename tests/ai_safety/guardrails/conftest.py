@@ -32,7 +32,6 @@ from utilities.inference_utils import create_isvc, LOGGER
 from utilities.operator_utils import get_cluster_service_version
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
-
 GUARDRAILS_ORCHESTRATOR_NAME = "guardrails-orchestrator"
 
 
@@ -59,30 +58,49 @@ def prompt_injection_detector_isvc(
     model_namespace: Namespace,
     minio_data_connection: Secret,
     huggingface_sr: ServingRuntime,
+    pytestconfig: pytest.Config,
+    teardown_resources: bool,
 ) -> Generator[InferenceService, Any, Any]:
-    with create_isvc(
-        client=admin_client,
-        name="prompt-injection-detector",
-        namespace=model_namespace.name,
-        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-        model_format="guardrails-detector-huggingface",
-        runtime=huggingface_sr.name,
-        storage_key=minio_data_connection.name,
-        storage_path="deberta-v3-base-prompt-injection-v2",
-        wait_for_predictor_pods=False,
-        enable_auth=False,
-        resources={
-            "requests": {"cpu": "1", "memory": "2Gi", "nvidia.com/gpu": "0"},
-            "limits": {"cpu": "1", "memory": "2Gi", "nvidia.com/gpu": "0"},
-        },
-        max_replicas=1,
-        min_replicas=1,
-        labels={
-            "opendatahub.io/dashboard": "true",
-            AUTOCONFIG_DETECTOR_LABEL: "true",
-        },
-    ) as isvc:
+    if pytestconfig.option.post_upgrade:
+        isvc = InferenceService(
+            client=admin_client,
+            name="prompt-injection-detector",
+            namespace=model_namespace.name,
+        )
+        isvc.wait_for_condition(
+            condition=isvc.Condition.READY,
+            status=isvc.Condition.Status.TRUE,
+            timeout=600,
+        )
         yield isvc
+        if teardown_resources:
+            isvc.clean_up()
+    else:
+        # During pre-upgrade or normal tests, create new InferenceService
+        with create_isvc(
+            client=admin_client,
+            name="prompt-injection-detector",
+            namespace=model_namespace.name,
+            deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+            model_format="guardrails-detector-huggingface",
+            runtime=huggingface_sr.name,
+            storage_key=minio_data_connection.name,
+            storage_path="deberta-v3-base-prompt-injection-v2",
+            wait_for_predictor_pods=False,
+            enable_auth=False,
+            resources={
+                "requests": {"cpu": "1", "memory": "2Gi", "nvidia.com/gpu": "0"},
+                "limits": {"cpu": "1", "memory": "2Gi", "nvidia.com/gpu": "0"},
+            },
+            max_replicas=1,
+            min_replicas=1,
+            labels={
+                "opendatahub.io/dashboard": "true",
+                AUTOCONFIG_DETECTOR_LABEL: "true",
+            },
+            teardown=teardown_resources,
+        ) as isvc:
+            yield isvc
 
 
 @pytest.fixture(scope="class")
@@ -90,13 +108,31 @@ def prompt_injection_detector_route(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     prompt_injection_detector_isvc: InferenceService,
+    pytestconfig: pytest.Config,
+    teardown_resources: bool,
 ) -> Generator[Route, Any, Any]:
-    yield Route(
-        name="prompt-injection-detector-route",
-        namespace=model_namespace.name,
-        service=prompt_injection_detector_isvc.name,
-        wait_for_resource=True,
-    )
+    if pytestconfig.option.post_upgrade:
+        # During post-upgrade, reuse existing Route
+        route = Route(
+            client=admin_client,
+            name="prompt-injection-detector-route",
+            namespace=model_namespace.name,
+        )
+        yield route
+        if teardown_resources:
+            route.clean_up()
+    else:
+        # During pre-upgrade or normal tests, create new Route
+        route = Route(
+            client=admin_client,
+            name="prompt-injection-detector-route",
+            namespace=model_namespace.name,
+            service=prompt_injection_detector_isvc.name,
+            wait_for_resource=True,
+            teardown=teardown_resources,
+        )
+        route.deploy()
+        yield route
 
 
 # Other "helper" fixtures
@@ -113,30 +149,50 @@ def hap_detector_isvc(
     model_namespace: Namespace,
     minio_data_connection: Secret,
     huggingface_sr: ServingRuntime,
+    pytestconfig: pytest.Config,
+    teardown_resources: bool,
 ) -> Generator[InferenceService, Any, Any]:
-    with create_isvc(
-        client=admin_client,
-        name="hap-detector",
-        namespace=model_namespace.name,
-        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-        model_format="guardrails-detector-huggingface",
-        runtime=huggingface_sr.name,
-        storage_key=minio_data_connection.name,
-        storage_path="granite-guardian-hap-38m",
-        wait_for_predictor_pods=False,
-        enable_auth=False,
-        resources={
-            "requests": {"cpu": "1", "memory": "4Gi", "nvidia.com/gpu": "0"},
-            "limits": {"cpu": "1", "memory": "4Gi", "nvidia.com/gpu": "0"},
-        },
-        max_replicas=1,
-        min_replicas=1,
-        labels={
-            "opendatahub.io/dashboard": "true",
-            AUTOCONFIG_DETECTOR_LABEL: "true",
-        },
-    ) as isvc:
+    if pytestconfig.option.post_upgrade:
+        # During post-upgrade, reuse existing InferenceService
+        isvc = InferenceService(
+            client=admin_client,
+            name="hap-detector",
+            namespace=model_namespace.name,
+        )
+        isvc.wait_for_condition(
+            condition=isvc.Condition.READY,
+            status=isvc.Condition.Status.TRUE,
+            timeout=600,
+        )
         yield isvc
+        if teardown_resources:
+            isvc.clean_up()
+    else:
+        # During pre-upgrade or normal tests, create new InferenceService
+        with create_isvc(
+            client=admin_client,
+            name="hap-detector",
+            namespace=model_namespace.name,
+            deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+            model_format="guardrails-detector-huggingface",
+            runtime=huggingface_sr.name,
+            storage_key=minio_data_connection.name,
+            storage_path="granite-guardian-hap-38m",
+            wait_for_predictor_pods=False,
+            enable_auth=False,
+            resources={
+                "requests": {"cpu": "1", "memory": "4Gi", "nvidia.com/gpu": "0"},
+                "limits": {"cpu": "1", "memory": "4Gi", "nvidia.com/gpu": "0"},
+            },
+            max_replicas=1,
+            min_replicas=1,
+            labels={
+                "opendatahub.io/dashboard": "true",
+                AUTOCONFIG_DETECTOR_LABEL: "true",
+            },
+            teardown=teardown_resources,
+        ) as isvc:
+            yield isvc
 
 
 @pytest.fixture(scope="class")
@@ -144,17 +200,37 @@ def hap_detector_route(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     hap_detector_isvc: InferenceService,
+    pytestconfig: pytest.Config,
+    teardown_resources: bool,
 ) -> Generator[Route, Any, Any]:
-    yield Route(
-        name="hap-detector-route",
-        namespace=model_namespace.name,
-        service=hap_detector_isvc.name,
-        wait_for_resource=True,
-    )
+    if pytestconfig.option.post_upgrade:
+        # During post-upgrade, reuse existing Route
+        route = Route(
+            client=admin_client,
+            name="hap-detector-route",
+            namespace=model_namespace.name,
+        )
+        yield route
+        if teardown_resources:
+            route.clean_up()
+    else:
+        # During pre-upgrade or normal tests, create new Route
+        route = Route(
+            client=admin_client,
+            name="hap-detector-route",
+            namespace=model_namespace.name,
+            service=hap_detector_isvc.name,
+            wait_for_resource=True,
+            teardown=teardown_resources,
+        )
+        route.deploy()
+        yield route
 
 
 @pytest.fixture(scope="class")
-def installed_tempo_operator(admin_client: DynamicClient, model_namespace: Namespace) -> Generator[None, Any, None]:
+def installed_tempo_operator(
+    admin_client: DynamicClient, model_namespace: Namespace, pytestconfig: pytest.Config, teardown_resources: bool
+) -> Generator[None, Any, None]:
     """
     Installs the Tempo operator and waits for its deployment.
     """
@@ -190,12 +266,13 @@ def installed_tempo_operator(admin_client: DynamicClient, model_namespace: Names
 
         yield
 
-        uninstall_operator(
-            admin_client=admin_client,
-            name=package_name,
-            operator_namespace=operator_ns.name,
-            clean_up_namespace=False,
-        )
+        if teardown_resources:
+            uninstall_operator(
+                admin_client=admin_client,
+                name=package_name,
+                operator_namespace=operator_ns.name,
+                clean_up_namespace=False,
+            )
     else:
         yield
 
@@ -205,66 +282,88 @@ def tempo_stack(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     minio_secret_otel: Secret,
+    pytestconfig: pytest.Config,
+    teardown_resources: bool,
 ) -> Generator[TempoStack, Any, None]:
     """
     Create a TempoStack CR in the test namespace, configured to use MinIO backend.
     """
-    csv_prefix = "tempo-operator"
     tempo_name = "my-tempo-stack"
 
-    # Get the installed Tempo operator CSV
-    tempo_csv: ClusterServiceVersion = get_cluster_service_version(
-        client=admin_client,
-        prefix=csv_prefix,
-        namespace="openshift-tempo-operator",
-    )
-
-    # Retrieve ALM examples and pick TempoStack CR
-    alm_examples: list[dict[str, Any]] = tempo_csv.get_alm_examples()
-    tempo_stack_dict = next(
-        (
-            example
-            for example in alm_examples
-            if example["kind"] == "TempoStack" and example["apiVersion"].startswith("tempo.grafana.com/")
-        ),
-        None,
-    )
-    if not tempo_stack_dict:
-        raise ResourceNotFoundError(f"No TempoStack dict found in ALM examples for CSV {tempo_csv.name}")
-
-    # Customize metadata
-    tempo_stack_dict["metadata"]["namespace"] = model_namespace.name
-    tempo_stack_dict["metadata"]["name"] = tempo_name
-
-    # Override spec with MinIO backend and resource constraints
-    tempo_stack_dict["spec"]["storage"] = {
-        "secret": {
-            "name": minio_secret_otel.name,
-            "type": "s3",
-        }
-    }
-    tempo_stack_dict["spec"]["storageSize"] = "1Gi"
-    tempo_stack_dict["spec"]["resources"] = {
-        "total": {
-            "limits": {"memory": "2Gi", "cpu": "2000m"},
-        }
-    }
-    tempo_stack_dict["spec"]["template"] = {
-        "queryFrontend": {"jaegerQuery": {"enabled": True}},
-    }
-
-    with TempoStack(kind_dict=tempo_stack_dict) as tempo_cr:
+    if pytestconfig.option.post_upgrade:
+        # During post-upgrade, reuse existing TempoStack
+        tempo_cr = TempoStack(
+            client=admin_client,
+            name=tempo_name,
+            namespace=model_namespace.name,
+        )
         tempo_cr.wait_for_condition(
             condition="Ready",
             status="True",
             timeout=Timeout.TIMEOUT_10MIN,
         )
-
         yield tempo_cr
+        if teardown_resources:
+            tempo_cr.clean_up()
+    else:
+        # During pre-upgrade or normal tests, create new TempoStack
+        csv_prefix = "tempo-operator"
+
+        # Get the installed Tempo operator CSV
+        tempo_csv: ClusterServiceVersion = get_cluster_service_version(
+            client=admin_client,
+            prefix=csv_prefix,
+            namespace="openshift-tempo-operator",
+        )
+
+        # Retrieve ALM examples and pick TempoStack CR
+        alm_examples: list[dict[str, Any]] = tempo_csv.get_alm_examples()
+        tempo_stack_dict = next(
+            (
+                example
+                for example in alm_examples
+                if example["kind"] == "TempoStack" and example["apiVersion"].startswith("tempo.grafana.com/")
+            ),
+            None,
+        )
+        if not tempo_stack_dict:
+            raise ResourceNotFoundError(f"No TempoStack dict found in ALM examples for CSV {tempo_csv.name}")
+
+        # Customize metadata
+        tempo_stack_dict["metadata"]["namespace"] = model_namespace.name
+        tempo_stack_dict["metadata"]["name"] = tempo_name
+
+        # Override spec with MinIO backend and resource constraints
+        tempo_stack_dict["spec"]["storage"] = {
+            "secret": {
+                "name": minio_secret_otel.name,
+                "type": "s3",
+            }
+        }
+        tempo_stack_dict["spec"]["storageSize"] = "1Gi"
+        tempo_stack_dict["spec"]["resources"] = {
+            "total": {
+                "limits": {"memory": "2Gi", "cpu": "2000m"},
+            }
+        }
+        tempo_stack_dict["spec"]["template"] = {
+            "queryFrontend": {"jaegerQuery": {"enabled": True}},
+        }
+
+        with TempoStack(kind_dict=tempo_stack_dict, teardown=teardown_resources) as tempo_cr:
+            tempo_cr.wait_for_condition(
+                condition="Ready",
+                status="True",
+                timeout=Timeout.TIMEOUT_10MIN,
+            )
+
+            yield tempo_cr
 
 
 @pytest.fixture(scope="class")
-def installed_opentelemetry_operator(admin_client: DynamicClient) -> Generator[None, Any, None]:
+def installed_opentelemetry_operator(
+    admin_client: DynamicClient, pytestconfig: pytest.Config, teardown_resources: bool
+) -> Generator[None, Any, None]:
     """
     Installs the Red Hat OpenTelemetry Operator and waits for its deployment.
     """
@@ -275,38 +374,42 @@ def installed_opentelemetry_operator(admin_client: DynamicClient) -> Generator[N
 
     package_name = "opentelemetry-product"
 
-    opentelemetry_subscription = Subscription(client=admin_client, namespace=operator_ns.name, name=package_name)
-
-    if not opentelemetry_subscription.exists:
-        install_operator(
-            admin_client=admin_client,
-            target_namespaces=None,
-            name=package_name,
-            channel="stable",
-            source="redhat-operators",
-            operator_namespace=operator_ns.name,
-            timeout=Timeout.TIMEOUT_15MIN,
-            install_plan_approval="Automatic",
-            starting_csv="opentelemetry-operator.v0.140.0-1",
-        )
-
-        deployment = Deployment(
-            client=admin_client,
-            namespace=operator_ns.name,
-            name="opentelemetry-operator-controller-manager",
-            wait_for_resource=True,
-        )
-        deployment.wait_for_replicas()
-
+    if pytestconfig.option.post_upgrade:
+        # Post-upgrade: reuse existing operator
         yield
 
-        uninstall_operator(
-            admin_client=admin_client,
-            name=package_name,
-            operator_namespace=operator_ns.name,
-            clean_up_namespace=False,
-        )
+        # Cleanup after post-upgrade tests
+        if teardown_resources:
+            uninstall_operator(
+                admin_client=admin_client,
+                name=package_name,
+                operator_namespace=operator_namespace,
+                clean_up_namespace=False,
+            )
     else:
+        # Pre-upgrade: install operator
+        opentelemetry_subscription = Subscription(client=admin_client, namespace=operator_ns.name, name=package_name)
+
+        if not opentelemetry_subscription.exists:
+            install_operator(
+                admin_client=admin_client,
+                target_namespaces=None,
+                name=package_name,
+                channel="stable",
+                source="redhat-operators",
+                operator_namespace=operator_ns.name,
+                timeout=Timeout.TIMEOUT_15MIN,
+                install_plan_approval="Automatic",
+            )
+
+            deployment = Deployment(
+                client=admin_client,
+                namespace=operator_ns.name,
+                name="opentelemetry-operator-controller-manager",
+                wait_for_resource=True,
+            )
+            deployment.wait_for_replicas()
+
         yield
 
 
@@ -315,73 +418,98 @@ def otel_collector(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     minio_service_otel,
+    tempo_stack: TempoStack,
+    pytestconfig: pytest.Config,
+    teardown_resources: bool,
 ) -> Generator[OpenTelemetryCollector, Any, Any]:
     """
     Create an OpenTelemetryCollector CR in the test namespace.
     Dynamically uses the Operator CSV example and adjusts configuration for Tempo.
     """
-    # Get the OTel Operator CSV
-    otel_csv: ClusterServiceVersion = get_cluster_service_version(
-        client=admin_client,
-        prefix="opentelemetry",
-        namespace="openshift-opentelemetry-operator",
-    )
-
-    # Extract OpenTelemetryCollector CR example from ALM examples
-    alm_examples: list[dict[str, Any]] = otel_csv.get_alm_examples()
-    otel_cr_dict: dict[str, Any] = next(
-        example
-        for example in alm_examples
-        if example["kind"] == "OpenTelemetryCollector" and example["apiVersion"] == "opentelemetry.io/v1beta1"
-    )
-
-    if not otel_cr_dict:
-        raise ResourceNotFoundError(f"No OpenTelemetryCollector example found in ALM examples for {otel_csv.name}")
-
-    # Update the metadata and spec to match test namespace and Tempo endpoint
+    otel_name = "my-otelcol"
     namespace = model_namespace.name
-    otel_cr_dict["metadata"]["namespace"] = namespace
-    otel_cr_dict["metadata"]["name"] = "my-otelcol"
 
-    # Override the Tempo exporter endpoint (ensures proper linkage)
-    otel_cr_dict["spec"]["config"] = {
-        "exporters": {
-            "otlp": {
-                "endpoint": (
-                    f"tempo-{tempo_stack.name}-distributor.{namespace}.svc.cluster.local:{OTEL_EXPORTER_PORT}"
-                ),
-                "tls": {"insecure": True},
-            }
-        },
-        "receivers": {
-            "otlp": {
-                "protocols": {
-                    "grpc": {"endpoint": "0.0.0.0:4317"},
-                    "http": {"endpoint": "0.0.0.0:4318"},
-                }
-            }
-        },
-        "service": {
-            "pipelines": {
-                "traces": {
-                    "exporters": ["otlp"],
-                    "receivers": ["otlp"],
-                }
-            },
-            "telemetry": {
-                "metrics": {"readers": [{"pull": {"exporter": {"prometheus": {"host": "0.0.0.0", "port": 8888}}}}]}
-            },
-        },
-    }
-    otel_cr_dict["spec"]["mode"] = "deployment"
-
-    with OpenTelemetryCollector(kind_dict=otel_cr_dict) as otel_cr:
+    if pytestconfig.option.post_upgrade:
+        # During post-upgrade, reuse existing OpenTelemetryCollector
+        otel_cr = OpenTelemetryCollector(
+            client=admin_client,
+            name=otel_name,
+            namespace=namespace,
+        )
         wait_for_pods_by_label(
             client=admin_client,
             namespace=namespace,
             label_selector="app.kubernetes.io/component=opentelemetry-collector",
         )
         yield otel_cr
+        if teardown_resources:
+            otel_cr.clean_up()
+    else:
+        # During pre-upgrade or normal tests, create new OpenTelemetryCollector
+        # Get the OTel Operator CSV
+        otel_csv: ClusterServiceVersion = get_cluster_service_version(
+            client=admin_client,
+            prefix="opentelemetry",
+            namespace="openshift-opentelemetry-operator",
+        )
+
+        # Extract OpenTelemetryCollector CR example from ALM examples
+        alm_examples: list[dict[str, Any]] = otel_csv.get_alm_examples()
+        otel_cr_dict: dict[str, Any] = next(
+            (
+                example
+                for example in alm_examples
+                if example["kind"] == "OpenTelemetryCollector" and example["apiVersion"] == "opentelemetry.io/v1beta1"
+            ),
+            None,
+        )
+
+        if not otel_cr_dict:
+            raise ResourceNotFoundError(f"No OpenTelemetryCollector example found in ALM examples for {otel_csv.name}")
+
+        # Update the metadata and spec to match test namespace and Tempo endpoint
+        otel_cr_dict["metadata"]["namespace"] = namespace
+        otel_cr_dict["metadata"]["name"] = otel_name
+
+        # Override the Tempo exporter endpoint (ensures proper linkage)
+        otel_cr_dict["spec"]["config"] = {
+            "exporters": {
+                "otlp": {
+                    "endpoint": (
+                        f"tempo-{tempo_stack.name}-distributor.{namespace}.svc.cluster.local:{OTEL_EXPORTER_PORT}"
+                    ),
+                    "tls": {"insecure": True},
+                }
+            },
+            "receivers": {
+                "otlp": {
+                    "protocols": {
+                        "grpc": {"endpoint": "0.0.0.0:4317"},
+                        "http": {"endpoint": "0.0.0.0:4318"},
+                    }
+                }
+            },
+            "service": {
+                "pipelines": {
+                    "traces": {
+                        "exporters": ["otlp"],
+                        "receivers": ["otlp"],
+                    }
+                },
+                "telemetry": {
+                    "metrics": {"readers": [{"pull": {"exporter": {"prometheus": {"host": "0.0.0.0", "port": 8888}}}}]}
+                },
+            },
+        }
+        otel_cr_dict["spec"]["mode"] = "deployment"
+
+        with OpenTelemetryCollector(kind_dict=otel_cr_dict, teardown=teardown_resources) as otel_cr:
+            wait_for_pods_by_label(
+                client=admin_client,
+                namespace=namespace,
+                label_selector="app.kubernetes.io/component=opentelemetry-collector",
+            )
+            yield otel_cr
 
 
 def wait_for_pods_by_label(
@@ -442,7 +570,8 @@ def minio_pvc_otel(
             client=admin_client,
         )
         yield pvc
-        pvc.clean_up()
+        if teardown_resources:
+            pvc.clean_up()
     else:
         # During pre-upgrade or normal tests, create new PVC
         pvc_kwargs = {
@@ -471,7 +600,8 @@ def minio_deployment_otel(
         )
         deployment.wait_for_replicas()
         yield deployment
-        deployment.clean_up()
+        if teardown_resources:
+            deployment.clean_up()
     else:
         # During pre-upgrade or normal tests, create new Deployment
         selector = {"matchLabels": {"app.kubernetes.io/name": "minio"}}
@@ -527,7 +657,8 @@ def minio_service_otel(
             namespace=model_namespace.name,
         )
         yield service
-        service.clean_up()
+        if teardown_resources:
+            service.clean_up()
     else:
         # During pre-upgrade or normal tests, create new Service
         ports = [
@@ -567,7 +698,8 @@ def minio_secret_otel(
             namespace=model_namespace.name,
         )
         yield secret
-        secret.clean_up()
+        if teardown_resources:
+            secret.clean_up()
     else:
         # During pre-upgrade or normal tests, create new Secret
         secret = Secret(
@@ -585,26 +717,6 @@ def minio_secret_otel(
         )
         secret.deploy()
         yield secret
-
-
-@pytest.fixture(scope="class")
-def otelcol_metrics_endpoint(admin_client: DynamicClient, model_namespace: Namespace):
-    """
-    Returns the metrics endpoint for the OpenTelemetryCollector by grepping the service name.
-    """
-
-    service = next(
-        Service.get(
-            client=admin_client,
-            namespace=model_namespace.name,
-            label_selector="app.kubernetes.io/component=opentelemetry-collector",
-        )
-    )
-
-    service_name = service.name
-
-    port = OTEL_EXPORTER_PORT
-    return f"http://{service_name}.{model_namespace.name}.svc.cluster.local:{port}"
 
 
 @pytest.fixture(scope="class")

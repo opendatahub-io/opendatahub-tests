@@ -14,7 +14,7 @@ from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutSampler
 
 from utilities.certificates_utils import create_ca_bundle_file
-from utilities.constants import Protocols, Timeout, TRUSTYAI_SERVICE_NAME
+from utilities.constants import TRUSTYAI_SERVICE_NAME, KServeDeploymentType, Protocols, Timeout
 from utilities.exceptions import MetricValidationError
 from utilities.general import create_isvc_label_selector_str
 from utilities.inference_utils import Inference, UserInference
@@ -106,7 +106,7 @@ class TrustyAIServiceClient:
             ValueError: If method is not GET, POST or DELETE.
         """
 
-        url = f"https://{self.service_route.host}/{endpoint}"
+        url = f"https://{self.service_route.host}/{endpoint.lstrip('/')}"
         base_kwargs = {"url": url, "headers": self.headers, "verify": self.cert_path}
 
         method = method.upper()
@@ -351,6 +351,9 @@ def wait_for_isvc_deployment_registered_by_trustyai_service(
     pod_label_selector = create_isvc_label_selector_str(isvc=isvc, resource_type="pod", runtime_name=runtime_name)
     trustyai_service = TrustyAIService(name=TRUSTYAI_SERVICE_NAME, namespace=isvc.namespace, ensure_exists=True)
 
+    deployment_mode = isvc.instance.metadata.annotations.get("serving.kserve.io/deploymentMode", "")
+    scheme = "https" if deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT else "http"
+
     def _get_deployments() -> list[Deployment]:
         return list(
             Deployment.get(
@@ -383,7 +386,7 @@ def wait_for_isvc_deployment_registered_by_trustyai_service(
         for deployment in deployments:
             if (
                 deployment.instance.metadata.annotations.get("internal.serving.kserve.io/logger-sink-url")
-                == f"https://{trustyai_service.name}.{isvc.namespace}.svc.cluster.local"
+                == f"{scheme}://{trustyai_service.name}.{isvc.namespace}.svc.cluster.local"
             ):
                 deployment.wait_for_replicas()
                 deployment.wait_for_condition(condition="Available", status="True")
