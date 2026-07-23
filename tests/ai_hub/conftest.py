@@ -83,10 +83,20 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     # Since clusters are not heterogeneous, all nodes share the same architecture
     nodes = list(Node.get(dyn_client=client))
     cluster_architecture = nodes[0].instance.status.nodeInfo.architecture
+    py_config["cluster_architecture"] = cluster_architecture
     if cluster_architecture == "s390x":
-        LOGGER.info("s390x cluster detected, using Red Hat MySQL 8.4 image")
+        LOGGER.info("s390x cluster detected, using Red Hat MySQL 8.4 image and vLLM runtime")
         ai_hub_constants.MR_DB_IMAGE_DIGEST = ai_hub_constants.MR_DB_IMAGE_DIGEST_S390X
         ai_hub_constants.MR_DB_MYSQL_ARGS = []
+        ai_hub_constants.MR_RUNTIME_TEMPLATE = ai_hub_constants.MR_RUNTIME_TEMPLATE_Z
+        ai_hub_constants.MODEL_ARTIFACT.update(ai_hub_constants.MODEL_ARTIFACT_VLLM)
+        ai_hub_constants.MR_ISVC_RESOURCES.update(ai_hub_constants.MR_ISVC_RESOURCES_Z)
+        ai_hub_constants.MR_ISVC_ARGS[:] = ai_hub_constants.MR_ISVC_ARGS_Z
+        ai_hub_constants.MR_ISVC_VOLUMES[:] = ai_hub_constants.MR_ISVC_VOLUMES_Z
+        ai_hub_constants.MR_ISVC_VOLUME_MOUNTS[:] = ai_hub_constants.MR_ISVC_VOLUME_MOUNTS_Z
+        ai_hub_constants.MR_RUNTIME_CONTAINERS.update(ai_hub_constants.MR_RUNTIME_CONTAINERS_Z)
+        ai_hub_constants.MR_MODEL_SERVER_URL_PATH = ai_hub_constants.MR_MODEL_SERVER_URL_PATH_Z
+        ai_hub_constants.MR_ISVC_VLLM_INFERENCE = True
 
 
 @pytest.fixture(scope="session")
