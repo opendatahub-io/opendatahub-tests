@@ -1718,7 +1718,7 @@ def evalhub_test_data_populated(
                 "command": ["/bin/sh", "-c"],
                 "args": [populate_script],
                 "volumeMounts": [{"name": "test-data", "mountPath": "/data"}],
-                "securityContext": MINIO_UPLOADER_SECURITY_CONTEXT,
+                "securityContext": {**MINIO_UPLOADER_SECURITY_CONTEXT, "readOnlyRootFilesystem": True},
             }
         ],
         wait_for_resource=True,
