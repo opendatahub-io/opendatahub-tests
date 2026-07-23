@@ -22,7 +22,7 @@ NAMESPACE = ns_from_file(file=__file__)
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("valid_aws_config", "skip_if_disconnected")
+@pytest.mark.usefixtures("valid_aws_config")
 class TestLlmdConnectionCpu:
     """Deploy TinyLlama on CPU via S3 and HuggingFace and verify chat completions."""
 

@@ -13,6 +13,7 @@ from tests.model_serving.model_server.llmd.utils import (
 )
 from tests.model_serving.model_server.utils import skip_test
 from utilities.constants import ContainerImages, Labels
+from utilities.infra import is_disconnected_cluster
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -129,7 +130,12 @@ class LLMISvcConfig:
 
     @classmethod
     def build(cls, client: DynamicClient) -> type:
-        """No-op for non-GPU configs. GpuConfig overrides with actual detection."""
+        """Skip on disconnected clusters when the model storage is HuggingFace.
+
+        GpuConfig overrides with GPU detection.
+        """
+        if cls.storage_uri.startswith("hf://") and is_disconnected_cluster(client=client):
+            skip_test(reason="HuggingFace storage not available on disconnected clusters")
         LOGGER.info(f"No accelerator needed for {cls.__name__}")
         return cls
 
@@ -204,10 +210,13 @@ class GpuConfig(LLMISvcConfig):
     def build(cls, client: DynamicClient) -> type:
         """Resolve all cluster-dependent config.
 
-        1. Detect which GPU accelerator to use.
-        2. Resolve which LLMInferenceServiceConfig CR (base_refs) to use.
-        3. Return a derived config class with both bound.
+        1. Skip on disconnected clusters when the model storage is HuggingFace.
+        2. Detect which GPU accelerator to use.
+        3. Resolve which LLMInferenceServiceConfig CR (base_refs) to use.
+        4. Return a derived config class with both bound.
         """
+        if cls.storage_uri.startswith("hf://") and is_disconnected_cluster(client=client):
+            skip_test(reason="HuggingFace storage not available on disconnected clusters")
         accelerator = cls._select_accelerator(client=client)
         base_refs = (
             cls.base_refs

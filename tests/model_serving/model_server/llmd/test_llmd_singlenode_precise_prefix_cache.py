@@ -38,7 +38,7 @@ pytestmark = [pytest.mark.llmd_gpu]
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("valid_aws_config", "skip_if_disconnected")
+@pytest.mark.usefixtures("valid_aws_config")
 class TestSingleNodePrecisePrefixCache:
     """Deploy TinyLlama on GPU with 2 replicas and precise prefix cache routing,
     then verify cache hits via Prometheus metrics.

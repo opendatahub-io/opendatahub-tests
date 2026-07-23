@@ -63,7 +63,6 @@ PROMPTS = [
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("skip_if_disconnected")
 class TestSingleNodePrefillDecode:
     """Single-node P/D LLMISVC with controller-generated scheduler config.
 

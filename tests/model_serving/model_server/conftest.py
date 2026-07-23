@@ -340,7 +340,7 @@ def model_car_inference_service(
 def skip_if_disconnected(admin_client: DynamicClient) -> None:
     """Skip test if running on a disconnected (air-gapped) cluster."""
     if is_disconnected_cluster(client=admin_client):
-        skip_test(reason="S3/HuggingFace storage not available on disconnected clusters")
+        skip_test(reason="HuggingFace storage not available on disconnected clusters")
 
 
 @pytest.fixture(scope="session")
