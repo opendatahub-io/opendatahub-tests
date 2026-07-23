@@ -27,7 +27,7 @@ class S3GpuNoSchedulerConfig(TinyLlamaS3GpuConfig):
     [pytest.param({"name": NAMESPACE}, S3GpuNoSchedulerConfig, id="no-scheduler")],
     indirect=True,
 )
-@pytest.mark.usefixtures("valid_aws_config", "skip_if_disconnected")
+@pytest.mark.usefixtures("valid_aws_config")
 class TestLlmdNoScheduler:
     """Deploy TinyLlama on GPU with the scheduler disabled and verify chat completions."""
 
