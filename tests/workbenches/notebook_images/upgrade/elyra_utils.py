@@ -26,9 +26,8 @@ ELYRA_RUNTIMES_DIR = "/opt/app-root/src/.local/share/jupyter/metadata/runtimes"
 def parse_elyra_extensions(labextension_output: str) -> dict[str, dict[str, Any]]:
     """Parse jupyter labextension list output to extract Elyra-related extensions.
 
-    Uses re.search (not re.match) so leading indentation, bullets, or other
-    formatting differences across JupyterLab versions and environments won't
-    break parsing. Matches any line containing "elyra" (case-insensitive).
+    Uses re.search so parsing is not affected by formatting differences.
+    Matches any line containing "elyra" (case-insensitive).
 
     Args:
         labextension_output: Raw output from `jupyter labextension list` command
