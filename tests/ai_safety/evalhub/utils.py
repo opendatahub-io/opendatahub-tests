@@ -1245,11 +1245,6 @@ def wait_for_evalhub_job_workload_inadmissible(
     raise TimeoutExpiredError(f"Workload for job {evalhub_job_id} did not become inadmissible within {timeout}s")
 
 
-# ---------------------------------------------------------------------------
-# Job log response helpers
-# ---------------------------------------------------------------------------
-
-
 def assert_plain_text_logs_response(response: requests.Response) -> str:
     """Assert OpenAPI-conformant 200 text/plain log response and return the body."""
     assert response.status_code == 200, f"Expected 200 for job logs, got {response.status_code}: {response.text}"
