@@ -15,7 +15,7 @@ NAMESPACE = ns_from_file(file=__file__)
 
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, llmisvc",
-    [({"name": NAMESPACE}, TinyLlamaOciConfig)],
+    [pytest.param({"name": NAMESPACE}, TinyLlamaOciConfig, id="smoke")],
     indirect=True,
 )
 class TestLLMDSmoke:

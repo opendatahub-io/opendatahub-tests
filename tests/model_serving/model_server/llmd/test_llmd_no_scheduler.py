@@ -24,7 +24,7 @@ class S3GpuNoSchedulerConfig(TinyLlamaS3GpuConfig):
 
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, llmisvc",
-    [({"name": NAMESPACE}, S3GpuNoSchedulerConfig)],
+    [pytest.param({"name": NAMESPACE}, S3GpuNoSchedulerConfig, id="no-scheduler")],
     indirect=True,
 )
 @pytest.mark.usefixtures("valid_aws_config", "skip_if_disconnected")

@@ -25,7 +25,9 @@ pytestmark = [
 NAMESPACE = ns_from_file(file=__file__)
 
 
-@pytest.mark.parametrize("unprivileged_model_namespace", [{"name": NAMESPACE}], indirect=True)
+@pytest.mark.parametrize(
+    "unprivileged_model_namespace", [pytest.param({"name": NAMESPACE}, id="model-cache")], indirect=True
+)
 class TestLLMDModelCacheSmoke:
     """Smoke coverage for KServe local model namespace cache with ``LLMInferenceService`` workloads.
 

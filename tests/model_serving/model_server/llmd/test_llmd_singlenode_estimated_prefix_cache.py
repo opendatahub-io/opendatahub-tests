@@ -28,7 +28,7 @@ pytestmark = [pytest.mark.tier2, pytest.mark.llmd_gpu]
 
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, llmisvc",
-    [({"name": NAMESPACE}, EstimatedPrefixCacheConfig)],
+    [pytest.param({"name": NAMESPACE}, EstimatedPrefixCacheConfig, id="estimated")],
     indirect=True,
 )
 @pytest.mark.usefixtures("valid_aws_config", "skip_if_disconnected")
