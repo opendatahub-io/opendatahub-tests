@@ -82,7 +82,7 @@ def evalhub_logs_completed_job_id(
         payload=payload,
     )
     job_id = data["resource"]["id"]
-    wait_for_evalhub_job(
+    job_result = wait_for_evalhub_job(
         host=evalhub_mt_route.host,
         token=tenant_a_token,
         ca_bundle_file=evalhub_mt_ca_bundle_file,
@@ -90,6 +90,7 @@ def evalhub_logs_completed_job_id(
         job_id=job_id,
         timeout=600,
     )
+    assert job_result.get("status", {}).get("state") == "completed"
     return job_id
 
 

@@ -1256,6 +1256,7 @@ def assert_plain_text_logs_response(response: requests.Response) -> str:
 
 
 def count_non_empty_lines(text: str) -> int:
+    """Return the number of non-whitespace-only lines in ``text``."""
     return len([line for line in text.splitlines() if line.strip()])
 
 
