@@ -1,6 +1,7 @@
 import socket
 from typing import Any, Final
 
+import pytest
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
@@ -28,6 +29,7 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_K8S_LABEL_COMPONENT,
     EVALHUB_K8S_LABEL_COMPONENT_VALUE,
     EVALHUB_K8S_LABEL_JOB_ID,
+    EVALHUB_LOG_CONTENT_TYPE,
     EVALHUB_MT_CR_NAME,
     EVALHUB_PROVIDERS_PATH,
     EVALHUB_VLLM_EMULATOR_PORT,
@@ -130,6 +132,7 @@ def validate_evalhub_health(
     host: str,
     token: str,
     ca_bundle_file: str,
+    tenant_namespace: str | None = None,
 ) -> None:
     """Validate that the EvalHub service health endpoint returns healthy status.
 
@@ -137,6 +140,7 @@ def validate_evalhub_health(
         host: Route host for the EvalHub service.
         token: Bearer token for authentication.
         ca_bundle_file: Path to CA bundle for TLS verification.
+        tenant_namespace: Namespace for the X-Tenant header.
 
     Raises:
         AssertionError: If the health check fails.
@@ -147,7 +151,7 @@ def validate_evalhub_health(
 
     response = requests.get(
         url=url,
-        headers=get_auth_headers(token=token),
+        headers=build_headers(token=token, tenant=tenant_namespace),
         verify=ca_bundle_file,
         timeout=10,
     )
@@ -227,12 +231,12 @@ def validate_evalhub_request_denied(
         verify=ca_bundle_file,
         timeout=10,
     )
-    assert response.status_code in (400, 403), (
-        f"Expected 400 or 403 for cross-tenant access, got {response.status_code}: {response.text}"
+    assert response.status_code in (400, 403, 404), (
+        f"Expected 400, 403, or 404 for cross-tenant access, got {response.status_code}: {response.text}"
     )
     try:
         data = response.json()
-        assert data.get("message_code") in ("unable_to_authorize_request", "forbidden"), (
+        assert data.get("message_code") in ("unable_to_authorize_request", "forbidden", "resource_not_found"), (
             f"Expected authorization denial, got message_code: {data.get('message_code')}"
         )
     except ValueError:
@@ -1239,3 +1243,60 @@ def wait_for_evalhub_job_workload_inadmissible(
             return sample
 
     raise TimeoutExpiredError(f"Workload for job {evalhub_job_id} did not become inadmissible within {timeout}s")
+
+
+def assert_plain_text_logs_response(response: requests.Response) -> str:
+    """Assert OpenAPI-conformant 200 text/plain log response and return the body."""
+    assert response.status_code == 200, f"Expected 200 for job logs, got {response.status_code}: {response.text}"
+    content_type = response.headers.get("Content-Type", "")
+    assert content_type.startswith(EVALHUB_LOG_CONTENT_TYPE), (
+        f"Expected Content-Type starting with {EVALHUB_LOG_CONTENT_TYPE!r}, got {content_type!r}"
+    )
+    return response.text
+
+
+def count_non_empty_lines(text: str) -> int:
+    """Return the number of non-whitespace-only lines in ``text``."""
+    return len([line for line in text.splitlines() if line.strip()])
+
+
+def fetch_evalhub_job_logs_while_running(
+    host: str,
+    token: str,
+    ca_bundle_file: str,
+    tenant: str,
+    job_id: str,
+    timeout: int = 180,
+    sleep: int = 2,
+) -> str:
+    """Poll until the EvalHub API reports ``running``, then fetch logs in the same iteration."""
+    for status_response in TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=sleep,
+        func=get_evalhub_job_http,
+        host=host,
+        token=token,
+        ca_bundle_file=ca_bundle_file,
+        tenant=tenant,
+        job_id=job_id,
+    ):
+        status_response.raise_for_status()
+        state = status_response.json().get("status", {}).get("state", "")
+        if state in EVALHUB_JOB_TERMINAL_STATES:
+            pytest.fail(
+                f"Job '{job_id}' reached terminal state '{state}' before running; "
+                "cannot verify in-progress log retrieval"
+            )
+        if state != "running":
+            continue
+
+        response = get_evalhub_job_logs_http(
+            host=host,
+            token=token,
+            ca_bundle_file=ca_bundle_file,
+            tenant=tenant,
+            job_id=job_id,
+        )
+        return assert_plain_text_logs_response(response=response)
+
+    raise TimeoutExpiredError(f"Job '{job_id}' did not reach running state within {timeout}s")

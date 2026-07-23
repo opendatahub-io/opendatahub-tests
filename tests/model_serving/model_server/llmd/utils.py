@@ -497,19 +497,28 @@ def get_llmd_pod_by_role(
     raise RuntimeError(f"No pod with role={role} for {llmisvc.name} in {llmisvc.namespace}")
 
 
-def get_llmd_workload_pods(
+def get_llmd_inference_pool_pods(
     client: DynamicClient,
     llmisvc: LLMInferenceService,
 ) -> list[Pod]:
-    """
-    Get all workload pods for an LLMInferenceService.
+    """Get pods selected by the InferencePool for an LLMInferenceService.
+
+    The InferencePool uses the label selector kserve.io/component=workload
+    to route traffic from the scheduler to model-serving pods. Only pods
+    with this label receive inference requests.
+
+    In single-node deployments, every Deployment pod (1 or more replicas)
+    has this label — all of them are InferencePool members.
+    In single-node P/D, both the main and prefill Deployment pods have it.
+    In multinode (LWS) deployments, only the leader pod has it — worker
+    pods are headless data-parallel participants and are not pool members.
 
     Args:
-        client: DynamicClient instance
-        llmisvc: The LLMInferenceService to get pods for
+        client: Kubernetes dynamic client.
+        llmisvc: The LLMInferenceService to get pods for.
 
     Returns:
-        List of workload Pod objects
+        List of Pod objects that are members of the InferencePool.
     """
     pods = []
     for pod in Pod.get(
@@ -522,6 +531,49 @@ def get_llmd_workload_pods(
     ):
         labels = pod.instance.metadata.get("labels", {})
         if labels.get("kserve.io/component") == "workload":
+            pods.append(pod)
+    return pods
+
+
+def get_llmd_vllm_pods(
+    client: DynamicClient,
+    llmisvc: LLMInferenceService,
+) -> list[Pod]:
+    """Get all pods running the vLLM model engine for an LLMInferenceService.
+
+    Matches pods by app.kubernetes.io/component starting with
+    "llminferenceservice-workload". This includes every pod running the
+    model, regardless of whether it serves traffic directly:
+
+    - Single-node: the Deployment pod (llminferenceservice-workload)
+    - Multinode leader: the LWS head pod (llminferenceservice-workload-leader)
+    - Multinode worker: headless DP participants (llminferenceservice-workload-worker)
+    - Prefill variants: prefill leader and worker pods
+
+    Excludes the router-scheduler pod (llminferenceservice-router-scheduler).
+
+    Use get_llmd_inference_pool_pods when you only need pods that receive
+    inference traffic via the InferencePool.
+
+    Args:
+        client: Kubernetes dynamic client.
+        llmisvc: The LLMInferenceService to get pods for.
+
+    Returns:
+        List of all Pod objects running vLLM for this LLMInferenceService.
+    """
+    pods = []
+    for pod in Pod.get(
+        client=client,
+        namespace=llmisvc.namespace,
+        label_selector=(
+            f"{Pod.ApiGroup.APP_KUBERNETES_IO}/part-of=llminferenceservice,"
+            f"{Pod.ApiGroup.APP_KUBERNETES_IO}/name={llmisvc.name}"
+        ),
+    ):
+        labels = pod.instance.metadata.get("labels", {})
+        component = labels.get(f"{Pod.ApiGroup.APP_KUBERNETES_IO}/component", "")
+        if component.startswith("llminferenceservice-workload"):
             pods.append(pod)
     return pods
 

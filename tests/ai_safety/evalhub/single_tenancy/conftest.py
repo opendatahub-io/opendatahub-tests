@@ -19,7 +19,7 @@ from ocp_resources.route import Route
 from ocp_resources.service_account import ServiceAccount
 from timeout_sampler import TimeoutSampler
 
-from tests.ai_safety.evalhub.constants import EVALHUB_HEALTH_PATH, EVALHUB_TENANT_LABEL_KEY, EVALHUB_TENANT_LABEL_VALUE
+from tests.ai_safety.evalhub.constants import EVALHUB_HEALTHZ_PATH, EVALHUB_TENANT_LABEL_KEY, EVALHUB_TENANT_LABEL_VALUE
 from tests.ai_safety.evalhub.single_tenancy.constants import (
     EVALHUB_ST_CR_NAME,
     EVALHUB_USER_ROLE_NAME,
@@ -103,8 +103,12 @@ def evalhub_st_ready(
 
     The deployment may report ready before the OpenShift router backend is configured,
     causing transient 503 errors. This fixture waits until the route is actually serving.
+
+    Uses /healthz instead of /api/v1/health because this readiness wait
+    runs before any tenant namespace is created, and /api/v1/health
+    requires X-Tenant in cluster mode.
     """
-    url = f"https://{evalhub_st_route.host}{EVALHUB_HEALTH_PATH}"
+    url = f"https://{evalhub_st_route.host}{EVALHUB_HEALTHZ_PATH}"
     host = evalhub_st_route.host
     for sample in TimeoutSampler(
         wait_timeout=120,

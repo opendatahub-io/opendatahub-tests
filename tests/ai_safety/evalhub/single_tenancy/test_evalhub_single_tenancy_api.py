@@ -25,6 +25,7 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_COLLECTIONS_PATH,
     EVALHUB_HEALTH_PATH,
     EVALHUB_HEALTH_STATUS_HEALTHY,
+    EVALHUB_HEALTHZ_PATH,
     EVALHUB_JOBS_PATH,
     EVALHUB_PROVIDERS_PATH,
 )
@@ -39,22 +40,25 @@ from tests.ai_safety.evalhub.utils import build_evalhub_job_payload, build_heade
 @pytest.mark.tier1
 @pytest.mark.ai_safety
 class TestEvalHubSingleTenancyHealth:
-    """Health endpoint is unauthenticated and always returns healthy."""
+    """Health endpoint tests for single-tenancy mode."""
 
     def test_health_endpoint_returns_healthy(
         self,
         evalhub_st_ready: None,
         evalhub_st_route: Route,
         evalhub_st_ca_bundle_file: str,
+        current_client_token: str,
+        model_namespace,
     ) -> None:
         """Given: a ready single-tenancy EvalHub instance with a public route.
 
-        When: GET /api/v1/health is called without authentication.
+        When: GET /api/v1/health is called with X-Tenant header.
 
         Then: response is 200 with status "healthy".
         """
         url = f"https://{evalhub_st_route.host}{EVALHUB_HEALTH_PATH}"
-        response = requests.get(url=url, verify=evalhub_st_ca_bundle_file, timeout=10)
+        headers = build_headers(token=current_client_token, tenant=model_namespace.name)
+        response = requests.get(url=url, headers=headers, verify=evalhub_st_ca_bundle_file, timeout=10)
         assert response.status_code == 200, (
             f"Expected 200 from health endpoint, got {response.status_code}: {response.text}"
         )
@@ -62,6 +66,26 @@ class TestEvalHubSingleTenancyHealth:
         assert data.get("status") == EVALHUB_HEALTH_STATUS_HEALTHY, (
             f"Expected status='{EVALHUB_HEALTH_STATUS_HEALTHY}', got: {data}"
         )
+
+    def test_healthz_endpoint_no_auth(
+        self,
+        evalhub_st_ready: None,
+        evalhub_st_route: Route,
+        evalhub_st_ca_bundle_file: str,
+    ) -> None:
+        """Given: a ready single-tenancy EvalHub instance.
+
+        When: GET /healthz is called without any headers.
+
+        Then: response is 200 with status "healthy".
+
+        /healthz is the kubelet probe endpoint — unauthenticated and
+        does not require identity headers, unlike /api/v1/health.
+        """
+        url = f"https://{evalhub_st_route.host}{EVALHUB_HEALTHZ_PATH}"
+        response = requests.get(url=url, verify=evalhub_st_ca_bundle_file, timeout=10)
+        assert response.status_code == 200, f"Expected 200 from /healthz, got {response.status_code}: {response.text}"
+        assert response.json().get("status") == EVALHUB_HEALTH_STATUS_HEALTHY
 
 
 @pytest.fixture(scope="class")
