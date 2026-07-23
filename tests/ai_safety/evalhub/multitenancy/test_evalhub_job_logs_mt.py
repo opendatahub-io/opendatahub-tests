@@ -13,7 +13,6 @@ from __future__ import annotations
 from typing import Literal
 
 import pytest
-import requests
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
 from ocp_resources.route import Route
@@ -23,16 +22,18 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 from tests.ai_safety.evalhub.constants import (
     EVALHUB_LOG_ADAPTER_CONTAINER,
     EVALHUB_LOG_COMPLETED_MARKER,
-    EVALHUB_LOG_CONTENT_TYPE,
     EVALHUB_LOG_MAX_TAIL_LINES,
     EVALHUB_LOG_SECTION_PREFIX,
 )
 from tests.ai_safety.evalhub.utils import (
     EVALHUB_JOB_TERMINAL_STATES,
+    assert_plain_text_logs_response,
     build_evalhub_job_payload,
     build_failing_evalhub_job_payload,
     build_headers,
+    count_non_empty_lines,
     delete_evalhub_job,
+    fetch_evalhub_job_logs_while_running,
     get_evalhub_job_http,
     get_evalhub_job_logs_http,
     submit_evalhub_job,
@@ -47,135 +48,6 @@ LOGS_MODEL_NAMESPACE = pytest.param({"name": "test-evalhub-job-logs-mt"})
 
 AuthScenario = Literal["cross_namespace", "missing_tenant", "unauthenticated"]
 InvalidLogsScenario = Literal["tail_lines_zero", "tail_lines_over_max", "invalid_benchmark_index"]
-
-
-def _assert_plain_text_logs_response(response: requests.Response) -> str:
-    """Assert OpenAPI-conformant 200 text/plain log response and return the body."""
-    assert response.status_code == 200, f"Expected 200 for job logs, got {response.status_code}: {response.text}"
-    content_type = response.headers.get("Content-Type", "")
-    assert content_type.startswith(EVALHUB_LOG_CONTENT_TYPE), (
-        f"Expected Content-Type starting with {EVALHUB_LOG_CONTENT_TYPE!r}, got {content_type!r}"
-    )
-    return response.text
-
-
-def _count_non_empty_lines(text: str) -> int:
-    return len([line for line in text.splitlines() if line.strip()])
-
-
-def _fetch_evalhub_job_logs_while_running(
-    host: str,
-    token: str,
-    ca_bundle_file: str,
-    tenant: str,
-    job_id: str,
-    timeout: int = 180,
-    sleep: int = 2,
-) -> str:
-    """Poll until the EvalHub API reports ``running``, then fetch logs in the same iteration."""
-    for status_response in TimeoutSampler(
-        wait_timeout=timeout,
-        sleep=sleep,
-        func=get_evalhub_job_http,
-        host=host,
-        token=token,
-        ca_bundle_file=ca_bundle_file,
-        tenant=tenant,
-        job_id=job_id,
-    ):
-        status_response.raise_for_status()
-        state = status_response.json().get("status", {}).get("state", "")
-        if state in EVALHUB_JOB_TERMINAL_STATES:
-            pytest.fail(
-                f"Job '{job_id}' reached terminal state '{state}' before running; "
-                "cannot verify in-progress log retrieval"
-            )
-        if state != "running":
-            continue
-
-        response = get_evalhub_job_logs_http(
-            host=host,
-            token=token,
-            ca_bundle_file=ca_bundle_file,
-            tenant=tenant,
-            job_id=job_id,
-        )
-        return _assert_plain_text_logs_response(response=response)
-
-    raise TimeoutExpiredError(f"Job '{job_id}' did not reach running state within {timeout}s")
-
-
-@pytest.fixture(scope="class")
-def evalhub_logs_completed_job_id(
-    tenant_a_token: str,
-    tenant_a_namespace: Namespace,
-    evalhub_mt_ca_bundle_file: str,
-    evalhub_mt_route: Route,
-    evalhub_vllm_emulator_service: Service,
-) -> str:
-    """Submit one arc_easy job and wait for completion (shared by log retrieval tests)."""
-    payload = build_evalhub_job_payload(
-        model_service_name=evalhub_vllm_emulator_service.name,
-        tenant_namespace=tenant_a_namespace.name,
-        job_name="evalhub-logs-completed-job",
-    )
-    data = submit_evalhub_job(
-        host=evalhub_mt_route.host,
-        token=tenant_a_token,
-        ca_bundle_file=evalhub_mt_ca_bundle_file,
-        tenant=tenant_a_namespace.name,
-        payload=payload,
-    )
-    job_id = data["resource"]["id"]
-    wait_for_evalhub_job(
-        host=evalhub_mt_route.host,
-        token=tenant_a_token,
-        ca_bundle_file=evalhub_mt_ca_bundle_file,
-        tenant=tenant_a_namespace.name,
-        job_id=job_id,
-        timeout=600,
-    )
-    return job_id
-
-
-@pytest.fixture(scope="class")
-def evalhub_logs_completed_job_logs(
-    tenant_a_token: str,
-    tenant_a_namespace: Namespace,
-    evalhub_mt_ca_bundle_file: str,
-    evalhub_mt_route: Route,
-    evalhub_logs_completed_job_id: str,
-) -> str:
-    """Validated full job logs for a completed evaluation job (fetched once per class)."""
-    response = get_evalhub_job_logs_http(
-        host=evalhub_mt_route.host,
-        token=tenant_a_token,
-        ca_bundle_file=evalhub_mt_ca_bundle_file,
-        tenant=tenant_a_namespace.name,
-        job_id=evalhub_logs_completed_job_id,
-        params={"tail_lines": str(EVALHUB_LOG_MAX_TAIL_LINES)},
-    )
-    return _assert_plain_text_logs_response(response=response)
-
-
-@pytest.fixture(scope="class")
-def evalhub_logs_completed_benchmark_logs(
-    tenant_a_token: str,
-    tenant_a_namespace: Namespace,
-    evalhub_mt_ca_bundle_file: str,
-    evalhub_mt_route: Route,
-    evalhub_logs_completed_job_id: str,
-) -> str:
-    """Validated benchmark logs for a completed evaluation job (fetched once per class)."""
-    response = get_evalhub_job_logs_http(
-        host=evalhub_mt_route.host,
-        token=tenant_a_token,
-        ca_bundle_file=evalhub_mt_ca_bundle_file,
-        tenant=tenant_a_namespace.name,
-        job_id=evalhub_logs_completed_job_id,
-        benchmark_index=0,
-    )
-    return _assert_plain_text_logs_response(response=response)
 
 
 @pytest.mark.parametrize("model_namespace", [LOGS_MODEL_NAMESPACE], indirect=True)
@@ -238,7 +110,7 @@ class TestEvalHubJobLogsMT:
             minimum=1,
         )
 
-        body = _fetch_evalhub_job_logs_while_running(
+        body = fetch_evalhub_job_logs_while_running(
             host=evalhub_mt_route.host,
             token=tenant_a_token,
             ca_bundle_file=evalhub_mt_ca_bundle_file,
@@ -285,7 +157,7 @@ class TestEvalHubJobLogsMT:
             tenant=tenant_a_namespace.name,
             job_id=job_id,
         )
-        body = _assert_plain_text_logs_response(response=response)
+        body = assert_plain_text_logs_response(response=response)
         assert EVALHUB_LOG_SECTION_PREFIX in body
         assert "benchmark_id=arc_easy" in body
 
@@ -371,7 +243,7 @@ class TestEvalHubJobLogsMT:
             tenant=tenant_a_namespace.name,
             job_id=job_id,
         )
-        body = _assert_plain_text_logs_response(response=response)
+        body = assert_plain_text_logs_response(response=response)
         assert EVALHUB_LOG_SECTION_PREFIX in body
         assert "benchmark_id=arc_easy" in body
 
@@ -394,8 +266,8 @@ class TestEvalHubJobLogsMT:
             job_id=evalhub_logs_completed_job_id,
             params={"tail_lines": "1"},
         )
-        tail_body = _assert_plain_text_logs_response(response=tail_response)
-        assert _count_non_empty_lines(tail_body) <= _count_non_empty_lines(full_body)
+        tail_body = assert_plain_text_logs_response(response=tail_response)
+        assert count_non_empty_lines(tail_body) <= count_non_empty_lines(full_body)
         assert EVALHUB_LOG_COMPLETED_MARKER in full_body
         assert EVALHUB_LOG_SECTION_PREFIX in tail_body
 
@@ -416,7 +288,7 @@ class TestEvalHubJobLogsMT:
             job_id=evalhub_logs_completed_job_id,
             params={"since_seconds": "3600", "timestamps": "true"},
         )
-        _assert_plain_text_logs_response(response=response)
+        assert_plain_text_logs_response(response=response)
 
 
 @pytest.mark.parametrize("model_namespace", [LOGS_MODEL_NAMESPACE], indirect=True)

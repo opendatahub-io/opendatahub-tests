@@ -25,7 +25,6 @@ from tests.ai_hub.model_catalog.search.utils import (
 )
 from tests.ai_hub.model_catalog.utils import get_models_from_catalog_api
 from tests.ai_hub.utils import execute_get_command
-from utilities.jira import is_jira_issue_open
 
 LOGGER = structlog.get_logger(name=__name__)
 pytestmark = [pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace")]
@@ -335,7 +334,6 @@ class TestSearchModelsByFilterQuery:
         assert is_valid, f"API filter query results do not match database query: {errors}"
 
     # Performance data are available only in downstream
-    @pytest.mark.xfail(condition=is_jira_issue_open(jira_id="RHOAIENG-62057"), reason="RHOAIENG-62057", run=False)
     @pytest.mark.downstream_only
     def test_presence_performance_data_on_pod(
         self: Self,
