@@ -633,7 +633,7 @@ def verify_tenant_gateway_auth_policy_callback_url(
 
 def maas_api_route_name_for_aitenant(aitenant_name: str) -> str:
     """Return the per-tenant maas-api HTTPRoute name applied by the Tenant reconciler post-render."""
-    return f"{MAAS_API_DEPLOYMENT_NAME}-{aitenant_name}-route"
+    return f"{MAAS_API_DEPLOYMENT_NAME}-route-{aitenant_name}"
 
 
 def gateway_ref_from_aitenant(aitenant: AITenant) -> tuple[str, str]:
