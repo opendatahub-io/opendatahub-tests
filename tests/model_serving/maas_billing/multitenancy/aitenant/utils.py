@@ -20,7 +20,6 @@ from tests.model_serving.maas_billing.utils import (
 from utilities.constants import MAAS_GATEWAY_NAMESPACE, ApiGroups
 from utilities.resources.aitenant import AITenant
 from utilities.resources.maastenantconfig import MaasTenantConfig
-from utilities.resources.tenant import Tenant
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -43,7 +42,26 @@ AITENANT_TEST_OIDC_SPEC = {
 }
 AITENANT_TEST_RBAC_ADMINS = [{"kind": "Group", "name": TEST_RBAC_GROUP_NAME}]
 AIGATEWAY_GATEWAY_CLASS_NAME = "openshift-default"
-AIGATEWAY_BOOTSTRAP_GATEWAY_LISTENERS = [{"name": "http", "port": 80, "protocol": "HTTP"}]
+AIGATEWAY_BOOTSTRAP_GATEWAY_LISTENERS = [
+    {
+        "name": "http",
+        "port": 80,
+        "protocol": "HTTP",
+        "allowedRoutes": {"namespaces": {"from": "All"}},
+    },
+    {
+        "name": "https",
+        "port": 443,
+        "protocol": "HTTPS",
+        "allowedRoutes": {"namespaces": {"from": "All"}},
+        "tls": {
+            "mode": "Terminate",
+            "certificateRefs": [
+                {"group": "", "kind": "Secret", "name": "data-science-gateway-service-tls"},
+            ],
+        },
+    },
+]
 AIGATEWAY_MANAGED_BY_LABEL = "maas.opendatahub.io/managed-by-aitenant"
 AIGATEWAY_TENANT_LABEL = "ai-gateway.opendatahub.io/tenant"
 
@@ -322,27 +340,18 @@ def verify_aitenant_bootstrap_children(
     )
 
 
-def verify_bootstrapped_tenant_oidc(
-    admin_client: DynamicClient,
-    tenant_namespace_name: str,
+def verify_aitenant_oidc_stays_in_spec(
+    aitenant: AITenant,
     expected_oidc: dict[str, Any],
 ) -> None:
-    """Assert bootstrapped Tenant externalOIDC mirrors the AITenant oidc spec."""
-    bootstrapped_tenant = Tenant(
-        client=admin_client,
-        name=AIGATEWAY_BOOTSTRAPPED_TENANT_NAME,
-        namespace=tenant_namespace_name,
-        ensure_exists=True,
-    )
-    tenant_oidc = bootstrapped_tenant.instance.spec.externalOIDC
-    assert tenant_oidc is not None, (
-        f"Tenant/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} in '{tenant_namespace_name}' "
-        "should mirror AITenant oidc into externalOIDC"
-    )
+    """Assert AITenant.spec.oidc remains on the AITenant (not copied to Tenant/MaasTenantConfig)."""
+    fresh_aitenant = _fresh_aitenant(aitenant=aitenant)
+    aitenant_oidc = getattr(fresh_aitenant.instance.spec, "oidc", None)
+    assert aitenant_oidc is not None, f"AITenant '{aitenant.namespace}/{aitenant.name}' should retain spec.oidc"
     for field_name, expected_value in expected_oidc.items():
-        actual_value = getattr(tenant_oidc, field_name, None)
+        actual_value = getattr(aitenant_oidc, field_name, None)
         assert actual_value == expected_value, (
-            f"Tenant externalOIDC.{field_name} expected {expected_value!r}, got {actual_value!r}"
+            f"AITenant spec.oidc.{field_name} expected {expected_value!r}, got {actual_value!r}"
         )
 
 

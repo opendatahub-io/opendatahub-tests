@@ -40,7 +40,7 @@ class TestMultiTenantMaaSApi:
         aitenant_for_test: AITenantTestContext,
         maas_api_infra_namespace: str,
     ) -> None:
-        """Given a Ready AITenant with a programmed Gateway, when checking maas-api-{tenant}-route,
+        """Given a Ready AITenant with a programmed Gateway, when checking maas-api-route-{tenant},
         then parentRefs target that Gateway.
         """
         gateway_name, gateway_namespace = gateway_ref_from_aitenant(aitenant=aitenant_for_test["aitenant"])
