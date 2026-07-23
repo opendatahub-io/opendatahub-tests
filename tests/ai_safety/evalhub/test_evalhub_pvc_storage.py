@@ -152,9 +152,7 @@ class TestEvalHubPVCStorage:
             job_id=job_id,
             timeout=600,
         )
-        assert job_data.get("status", {}).get("state") == "failed", (
-            "Job referencing a nonexistent PVC should fail"
-        )
+        assert job_data.get("status", {}).get("state") == "failed", "Job referencing a nonexistent PVC should fail"
 
     def test_pvc_read_only_mount(
         self,
