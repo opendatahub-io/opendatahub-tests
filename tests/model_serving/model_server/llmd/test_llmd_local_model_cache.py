@@ -18,8 +18,7 @@ from tests.model_serving.model_server.llmd.utils import (
 
 pytestmark = [
     pytest.mark.smoke,
-    pytest.mark.llmd_cpu,
-    pytest.mark.usefixtures("valid_aws_config", "skip_if_disconnected"),
+    pytest.mark.usefixtures("valid_aws_config"),
 ]
 
 NAMESPACE = ns_from_file(file=__file__)

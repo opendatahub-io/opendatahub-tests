@@ -24,8 +24,6 @@ from tests.model_serving.model_server.upgrade.utils import (
 )
 from utilities.kueue_utils import check_gated_pods_and_running_pods
 
-pytestmark = [pytest.mark.llmd_cpu]
-
 LOGGER = structlog.get_logger(name=__name__)
 
 PROMPT = "What is the capital of Italy?"
