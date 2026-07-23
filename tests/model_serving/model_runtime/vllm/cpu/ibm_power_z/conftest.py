@@ -34,11 +34,7 @@ SUPPORTED_IBM_POWER_Z_ACCELERATORS: set[str] = {
 @pytest.fixture(scope="session")
 def skip_if_no_supported_ibm_power_z_accelerator_type(supported_accelerator_type: str | None) -> None:
     """Skip test unless the cluster provides a supported IBM Power or Z CPU accelerator."""
-    if (
-        not supported_accelerator_type
-        or supported_accelerator_type.lower()
-        not in SUPPORTED_IBM_POWER_Z_ACCELERATORS
-    ):
+    if not supported_accelerator_type or supported_accelerator_type.lower() not in SUPPORTED_IBM_POWER_Z_ACCELERATORS:
         pytest.skip(
             f"Test requires a supported vLLM IBM Power or Z CPU accelerator. "
             f"Found: '{supported_accelerator_type or 'None'}'. "
