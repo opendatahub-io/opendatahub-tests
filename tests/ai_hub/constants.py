@@ -123,10 +123,10 @@ MODEL_ARTIFACT_VLLM: dict[str, Any] = {
     },
 }
 MR_ISVC_RESOURCES_Z: dict[str, dict[str, str]] = {
-    "limits": {"cpu": "8", "memory": "12Gi"},
-    "requests": {"cpu": "4", "memory": "8Gi"},
+    "limits": {"cpu": "6", "memory": "12Gi"},
+    "requests": {"cpu": "2", "memory": "8Gi"},
 }
-MR_ISVC_ARGS_Z: list[str] = ["--enforce-eager", "--max-model-len=256", "--max-num-seqs=20"]
+MR_ISVC_ARGS_Z: list[str] = ["--enforce-eager", "--max-model-len=256", "--max-num-seqs=20", "--dtype=float"]
 MR_ISVC_VOLUMES_Z: list[dict[str, Any]] = [
     {"name": "shared-memory", "emptyDir": {"medium": "Memory", "sizeLimit": "32Gi"}},
     {"name": "tmp", "emptyDir": {}},
@@ -141,6 +141,7 @@ MR_RUNTIME_CONTAINERS_Z: dict[str, Any] = {
     "kserve-container": {
         "env": [
             {"name": "VLLM_CPU_KVCACHE_SPACE", "value": "4"},
+            {"name": "TORCH_COMPILE_DISABLE", "value": "1"},
             {"name": "VLLM_WORKER_MULTIPROC_METHOD", "value": "spawn"},
             {"name": "OMP_NUM_THREADS", "value": "8"},
         ]
