@@ -96,7 +96,6 @@ from utilities.infra import (
     update_configmap_data,
 )
 from utilities.kueue_utils import (
-    AdmissionCheck,
     ClusterQueue,
     LocalQueue,
     ResourceFlavor,
@@ -111,6 +110,7 @@ from utilities.kueue_utils import (
 from utilities.llmd_constants import KServeGateway, LLMDGateway
 from utilities.llmd_utils import create_llmd_gateway
 from utilities.logger import RedactedString
+from utilities.resources.admission_check import AdmissionCheck
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -1918,10 +1918,13 @@ def admission_check_workload(
 
         LOGGER.info(f"Kueue created Workload '{workload.name}' for Job '{admission_check_job.name}'")
         baseline = json.dumps({"workload_name": workload.name})
-        ConfigMap(
+        cm = ConfigMap(
             client=admin_client,
             name=AC_BASELINE_CM,
             namespace=namespace,
             data={"baseline": baseline},
-        ).deploy()
+        )
+        cm.deploy()
         yield workload
+        if teardown_resources:
+            cm.clean_up()

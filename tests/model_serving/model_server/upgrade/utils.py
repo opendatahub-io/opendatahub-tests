@@ -566,7 +566,7 @@ def _restore_kueue_dsc_state(
 
     original_frameworks = state_cm.instance.data.get("original_kueue_frameworks")
     if original_frameworks is not None:
-        frameworks = [f for f in original_frameworks.split(",") if f]
+        frameworks = [framework for framework in original_frameworks.split(",") if framework]
         LOGGER.info(f"Restoring Kueue integrations frameworks to {frameworks}")
         kueue_crs = list(Kueue.get(client=admin_client))
         if kueue_crs:
@@ -590,6 +590,34 @@ def _restore_kueue_dsc_state(
 BATCH_JOB_FRAMEWORK = "BatchJob"
 
 
+def _save_original_frameworks_to_cm(
+    admin_client: DynamicClient,
+    namespace: str,
+    frameworks: list[str],
+    kueue_dsc_state_cm_name: str = UPGRADE_KUEUE_DSC_STATE_CM_NAME,
+) -> None:
+    """Persist the original Kueue frameworks list to the upgrade state ConfigMap."""
+    state_cm = ConfigMap(client=admin_client, name=kueue_dsc_state_cm_name, namespace=namespace)
+    if state_cm.exists:
+        LOGGER.info(f"Saving original Kueue frameworks {frameworks} to state ConfigMap")
+        state_cm.instance.data["original_kueue_frameworks"] = ",".join(frameworks)
+        state_cm.update(resource_dict={"data": dict(state_cm.instance.data)})
+
+
+def _get_kueue_frameworks(admin_client: DynamicClient) -> tuple[Kueue, list[str]]:
+    """Return the Kueue CR and its current integrations frameworks list."""
+    kueue_crs = list(Kueue.get(client=admin_client))
+    if not kueue_crs:
+        pytest.fail("No Kueue CR found — cannot configure BatchJob framework for upgrade test")
+
+    kueue_cr = kueue_crs[0]
+    spec = kueue_cr.instance.spec
+    config = getattr(spec, "config", None)
+    integrations = getattr(config, "integrations", None) if config else None
+    frameworks = list(getattr(integrations, "frameworks", None) or []) if integrations else []
+    return kueue_cr, frameworks
+
+
 def _ensure_batch_job_framework(
     admin_client: DynamicClient,
     namespace: str,
@@ -602,24 +630,17 @@ def _ensure_batch_job_framework(
     frameworks list is persisted to the upgrade state ConfigMap so teardown
     can restore it.
     """
-    kueue_crs = list(Kueue.get(client=admin_client))
-    if not kueue_crs:
-        pytest.fail("No Kueue CR found — cannot configure BatchJob framework for upgrade test")
-
-    kueue_cr = kueue_crs[0]
-    spec = kueue_cr.instance.spec
-    config = getattr(spec, "config", None)
-    integrations = getattr(config, "integrations", None) if config else None
-    frameworks = list(getattr(integrations, "frameworks", None) or []) if integrations else []
+    kueue_cr, frameworks = _get_kueue_frameworks(admin_client=admin_client)
     if BATCH_JOB_FRAMEWORK in frameworks:
         LOGGER.info("BatchJob already in Kueue integrations frameworks")
         return
 
-    state_cm = ConfigMap(client=admin_client, name=kueue_dsc_state_cm_name, namespace=namespace)
-    if state_cm.exists:
-        LOGGER.info(f"Saving original Kueue frameworks {frameworks} to state ConfigMap")
-        state_cm.instance.data["original_kueue_frameworks"] = ",".join(frameworks)
-        state_cm.update(resource_dict={"data": dict(state_cm.instance.data)})
+    _save_original_frameworks_to_cm(
+        admin_client=admin_client,
+        namespace=namespace,
+        frameworks=frameworks,
+        kueue_dsc_state_cm_name=kueue_dsc_state_cm_name,
+    )
 
     frameworks.append(BATCH_JOB_FRAMEWORK)
     LOGGER.info(f"Adding BatchJob to Kueue integrations frameworks: {frameworks}")

@@ -11,7 +11,6 @@ from tests.model_serving.model_server.upgrade.admission_check_upgrade_config imp
 )
 from utilities.constants import Timeout
 from utilities.kueue_utils import (
-    AdmissionCheck,
     ClusterQueue,
     Workload,
     approve_admission_check_on_workload,
@@ -20,6 +19,7 @@ from utilities.kueue_utils import (
     check_workload_admitted,
     check_workload_quota_reserved,
 )
+from utilities.resources.admission_check import AdmissionCheck
 
 pytestmark = [pytest.mark.kueue]
 
@@ -30,22 +30,28 @@ class TestAdmissionCheckPreUpgrade:
     """Pre-upgrade: submit Job gated by AdmissionCheck, verify it is blocked."""
 
     @pytest.mark.pre_upgrade
-    def test_job_gated_by_admission_check(
+    @pytest.mark.dependency(name="ac_pre_job_exists")
+    def test_job_exists(
+        self,
+        admission_check_job: Job,
+    ) -> None:
+        """Verify the batch Job exists on the cluster."""
+        assert admission_check_job.exists, f"Job '{admission_check_job.name}' not found"
+        LOGGER.info(
+            "[PRE-UPGRADE] PASS: Job exists",
+            job=admission_check_job.name,
+        )
+
+    @pytest.mark.pre_upgrade
+    @pytest.mark.dependency(name="ac_pre_quota_reserved", depends=["ac_pre_job_exists"])
+    def test_workload_quota_reserved(
         self,
         admin_client: DynamicClient,
         admission_check_namespace: Namespace,
         admission_check_job: Job,
         admission_check_workload: Workload,
     ) -> None:
-        """Test steps:
-
-        1. Verify the batch Job exists on the cluster.
-        2. Verify Kueue created a Workload for the Job.
-        3. Wait for Workload to have QuotaReserved=True.
-        4. Verify Workload is NOT Admitted (blocked by AdmissionCheck).
-        """
-        assert admission_check_job.exists, f"Job '{admission_check_job.name}' not found"
-
+        """Verify Kueue created a Workload and it has QuotaReserved=True."""
         assert admission_check_workload is not None, f"No Workload found for Job '{admission_check_job.name}'"
 
         try:
@@ -58,21 +64,35 @@ class TestAdmissionCheckPreUpgrade:
                     namespace=admission_check_namespace.name,
                 ),
             ):
-                if workload.exists and check_workload_quota_reserved(workload):
+                if workload.exists and check_workload_quota_reserved(workload=workload):
                     break
         except TimeoutExpiredError:
             pytest.fail(f"Workload '{admission_check_workload.name}' did not reach QuotaReserved=True")
 
+        LOGGER.info(
+            "[PRE-UPGRADE] PASS: Workload has QuotaReserved=True",
+            workload=admission_check_workload.name,
+        )
+
+    @pytest.mark.pre_upgrade
+    @pytest.mark.dependency(depends=["ac_pre_quota_reserved"])
+    def test_workload_not_admitted(
+        self,
+        admin_client: DynamicClient,
+        admission_check_namespace: Namespace,
+        admission_check_workload: Workload,
+    ) -> None:
+        """Verify Workload is NOT Admitted (blocked by AdmissionCheck)."""
         refreshed = Workload(
             client=admin_client,
             name=admission_check_workload.name,
             namespace=admission_check_namespace.name,
         )
-        assert not check_workload_admitted(refreshed), "Workload should NOT be Admitted — AdmissionCheck is pending"
-
+        assert not check_workload_admitted(workload=refreshed), (
+            "Workload should NOT be Admitted — AdmissionCheck is pending"
+        )
         LOGGER.info(
-            "[PRE-UPGRADE] PASS: Job is gated by AdmissionCheck",
-            job=admission_check_job.name,
+            "[PRE-UPGRADE] PASS: Workload is gated by AdmissionCheck",
             workload=admission_check_workload.name,
         )
 
@@ -86,45 +106,44 @@ class TestAdmissionCheckPostUpgrade:
         self,
         admin_client: DynamicClient,
     ) -> None:
-        """Test steps:
-
-        1. Verify AdmissionCheck resource still exists after upgrade.
-        2. Verify AdmissionCheck is still Active.
-        3. Verify ClusterQueue still references the AdmissionCheck in its strategy.
-        """
+        """Verify AdmissionCheck resource still exists and is Active after upgrade."""
         ac = AdmissionCheck(client=admin_client, name=AC_ADMISSION_CHECK_NAME)
         assert ac.exists, f"AdmissionCheck '{AC_ADMISSION_CHECK_NAME}' not found after upgrade"
-        assert check_admission_check_active(ac), (
+        assert check_admission_check_active(admission_check=ac), (
             f"AdmissionCheck '{AC_ADMISSION_CHECK_NAME}' is not Active after upgrade"
         )
-
-        cq = ClusterQueue(client=admin_client, name=AC_CLUSTER_QUEUE)
-        assert cq.exists, f"ClusterQueue '{AC_CLUSTER_QUEUE}' not found after upgrade"
-        assert check_cluster_queue_has_admission_check(cq, AC_ADMISSION_CHECK_NAME), (
-            f"ClusterQueue '{AC_CLUSTER_QUEUE}' no longer references AdmissionCheck '{AC_ADMISSION_CHECK_NAME}'"
-        )
-
         LOGGER.info(
-            "[POST-UPGRADE] PASS: AdmissionCheck and ClusterQueue strategy survived upgrade",
+            "[POST-UPGRADE] PASS: AdmissionCheck survived upgrade and is Active",
             admission_check=AC_ADMISSION_CHECK_NAME,
-            cluster_queue=AC_CLUSTER_QUEUE,
         )
 
     @pytest.mark.post_upgrade
-    @pytest.mark.dependency(name="ac_workload_still_gated", depends=["ac_exists"])
-    def test_workload_still_gated(
+    @pytest.mark.dependency(name="ac_cq_references_check", depends=["ac_exists"])
+    def test_cluster_queue_references_admission_check(
         self,
         admin_client: DynamicClient,
-        admission_check_namespace: Namespace,
+    ) -> None:
+        """Verify ClusterQueue still references the AdmissionCheck in its strategy."""
+        cq = ClusterQueue(client=admin_client, name=AC_CLUSTER_QUEUE)
+        assert cq.exists, f"ClusterQueue '{AC_CLUSTER_QUEUE}' not found after upgrade"
+        assert check_cluster_queue_has_admission_check(
+            cluster_queue=cq, admission_check_name=AC_ADMISSION_CHECK_NAME
+        ), f"ClusterQueue '{AC_CLUSTER_QUEUE}' no longer references AdmissionCheck '{AC_ADMISSION_CHECK_NAME}'"
+        LOGGER.info(
+            "[POST-UPGRADE] PASS: ClusterQueue strategy survived upgrade",
+            cluster_queue=AC_CLUSTER_QUEUE,
+            admission_check=AC_ADMISSION_CHECK_NAME,
+        )
+
+    @pytest.mark.post_upgrade
+    @pytest.mark.dependency(name="ac_workload_still_gated", depends=["ac_cq_references_check"])
+    def test_workload_still_gated(
+        self,
         admission_check_workload: Workload,
     ) -> None:
-        """Test steps:
-
-        1. Verify the Workload still exists after upgrade.
-        2. Verify it is still NOT Admitted (AdmissionCheck still pending).
-        """
+        """Verify the Workload still exists and is NOT Admitted after upgrade."""
         assert admission_check_workload.exists, f"Workload '{admission_check_workload.name}' not found after upgrade"
-        assert not check_workload_admitted(admission_check_workload), (
+        assert not check_workload_admitted(workload=admission_check_workload), (
             "Workload should still be gated by AdmissionCheck after upgrade"
         )
         LOGGER.info(
@@ -133,22 +152,15 @@ class TestAdmissionCheckPostUpgrade:
         )
 
     @pytest.mark.post_upgrade
-    @pytest.mark.dependency(depends=["ac_workload_still_gated"])
+    @pytest.mark.dependency(name="ac_approved", depends=["ac_workload_still_gated"])
     def test_approve_and_admit(
         self,
         admin_client: DynamicClient,
         admission_check_namespace: Namespace,
-        admission_check_job: Job,
         admission_check_workload: Workload,
     ) -> None:
-        """Test steps:
-
-        1. Approve AdmissionCheck by patching Workload status.
-        2. Wait for Workload to become Admitted.
-        3. Wait for Job to complete (unsuspended by Kueue).
-        """
+        """Approve AdmissionCheck and verify Workload becomes Admitted."""
         approve_admission_check_on_workload(
-            client=admin_client,
             workload=admission_check_workload,
             admission_check_name=AC_ADMISSION_CHECK_NAME,
         )
@@ -168,7 +180,7 @@ class TestAdmissionCheckPostUpgrade:
                     namespace=admission_check_namespace.name,
                 ),
             ):
-                if workload.exists and check_workload_admitted(workload):
+                if workload.exists and check_workload_admitted(workload=workload):
                     break
         except TimeoutExpiredError:
             pytest.fail(
@@ -177,6 +189,13 @@ class TestAdmissionCheckPostUpgrade:
             )
         LOGGER.info("[POST-UPGRADE] PASS: Workload admitted after AdmissionCheck approval")
 
+    @pytest.mark.post_upgrade
+    @pytest.mark.dependency(depends=["ac_approved"])
+    def test_job_completes_after_admission(
+        self,
+        admission_check_job: Job,
+    ) -> None:
+        """Verify Job completes after Workload is admitted."""
         admission_check_job.wait_for_condition(
             condition="Complete",
             status="True",
