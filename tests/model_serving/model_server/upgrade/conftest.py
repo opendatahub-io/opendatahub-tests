@@ -1416,5 +1416,5 @@ def skip_if_not_raw_deployment(
     """Skip tests when the Kueue upgrade ISVC is not deployed in RawDeployment mode."""
     skip_if_not_deployment_mode(
         isvc=kserve_kueue_upgrade_inference_service,
-        deployment_types=KServeDeploymentType.RAW_DEPLOYMENT_MODES,
+        deployment_types=KServeDeploymentType.RAW_DEPLOYMENT,
     )
