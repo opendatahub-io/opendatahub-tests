@@ -185,9 +185,6 @@ class TestModelCleanupLifecycle:
         LOGGER.info("Testing model cleanup on exclusion filter change")
 
         granite_models = filter_models_by_pattern(all_models=baseline_redhat_ai_models["api_models"], pattern="granite")
-        prometheus_models = filter_models_by_pattern(
-            all_models=baseline_redhat_ai_models["api_models"], pattern="prometheus"
-        )
 
         # Phase 1: Include only granite models
         phase1_patch = modify_catalog_source(
@@ -240,29 +237,29 @@ class TestModelCleanupLifecycle:
                 wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
 
                 # Verify granite models are removed (cleanup behavior)
+                expected_non_granite = baseline_redhat_ai_models["api_models"] - granite_models
                 try:
                     phase2_api_models = wait_for_model_set_match(
                         model_catalog_rest_url=model_catalog_rest_url,
                         model_registry_rest_headers=model_registry_rest_headers,
                         source_label=REDHAT_AI_CATALOG_NAME,
-                        expected_models=prometheus_models,
+                        expected_models=expected_non_granite,
                         source_id=REDHAT_AI_CATALOG_ID,
                     )
                 except TimeoutExpiredError as e:
-                    pytest.fail(f"Phase 2: Timeout waiting for prometheus models {prometheus_models}: {e}")
+                    pytest.fail(f"Phase 2: Timeout waiting for non-granite models {expected_non_granite}: {e}")
 
                 phase2_db_models = get_models_from_database_by_source(
                     admin_client=admin_client, source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace
                 )
 
-                # Should only have prometheus models now
-                assert phase2_api_models == prometheus_models, (
-                    f"Phase 2: Expected only prometheus {prometheus_models}, got {phase2_api_models}"
+                assert phase2_api_models == expected_non_granite, (
+                    f"Phase 2: Expected non-granite {expected_non_granite}, got {phase2_api_models}"
                 )
-                assert phase2_db_models == prometheus_models, "Phase 2: DB should match API"
+                assert phase2_db_models == expected_non_granite, "Phase 2: DB should match API"
 
                 LOGGER.info(
-                    f"Phase 2 SUCCESS: Granite models cleaned up, {len(phase2_api_models)} prometheus models remain"
+                    f"Phase 2 SUCCESS: Granite models cleaned up, {len(phase2_api_models)} non-granite models remain"
                 )
         finally:
             # Ensure clean up of the configpams

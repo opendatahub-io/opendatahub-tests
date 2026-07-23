@@ -6,6 +6,7 @@ EVALHUB_SERVICE_NAME: str = "evalhub"
 EVALHUB_SERVICE_PORT: int = 8443
 EVALHUB_CONTAINER_PORT: int = 8080
 EVALHUB_HEALTH_PATH: str = "/api/v1/health"
+EVALHUB_HEALTHZ_PATH: str = "/healthz"
 EVALHUB_METRICS_PATH: str = "/metrics"
 EVALHUB_PROVIDERS_PATH: str = "/api/v1/evaluations/providers"
 EVALHUB_JOBS_PATH: str = "/api/v1/evaluations/jobs"
@@ -17,7 +18,7 @@ EVALHUB_HEALTH_STATUS_HEALTHY: str = "healthy"
 EVALHUB_LOG_CONTENT_TYPE: str = "text/plain"
 EVALHUB_LOG_SECTION_PREFIX: str = "=== pod="
 EVALHUB_LOG_ADAPTER_CONTAINER: str = "adapter"
-EVALHUB_LOG_COMPLETED_MARKER: str = "EVALUATION COMPLETE"
+EVALHUB_LOG_COMPLETED_MARKER: str = "Evaluation completed successfully"
 EVALHUB_LOG_DEFAULT_TAIL_LINES: int = 1000
 EVALHUB_LOG_MAX_TAIL_LINES: int = 10000
 

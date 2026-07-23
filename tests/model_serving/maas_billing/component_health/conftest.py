@@ -2,21 +2,23 @@ import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
 
-from utilities.resources.tenant import Tenant
+from utilities.resources.maastenantconfig import MaasTenantConfig
 
-TENANT_NAME = "default-tenant"
+MAAS_TENANT_CONFIG_NAME = "default-tenant"
 
 
 @pytest.fixture(scope="class")
-def default_tenant(
+def default_maas_tenant_config(
     admin_client: DynamicClient,
     maas_subscription_namespace: Namespace,
-) -> Tenant:
-    """Return the default-tenant CR, asserting it exists."""
-    tenant = Tenant(
+) -> MaasTenantConfig:
+    """Return the default MaasTenantConfig CR, asserting it exists."""
+    maas_tenant_config = MaasTenantConfig(
         client=admin_client,
-        name=TENANT_NAME,
+        name=MAAS_TENANT_CONFIG_NAME,
         namespace=maas_subscription_namespace.name,
     )
-    assert tenant.exists, f"Tenant '{TENANT_NAME}' not found in namespace '{maas_subscription_namespace.name}'"
-    return tenant
+    assert maas_tenant_config.exists, (
+        f"MaasTenantConfig '{MAAS_TENANT_CONFIG_NAME}' not found in namespace '{maas_subscription_namespace.name}'"
+    )
+    return maas_tenant_config

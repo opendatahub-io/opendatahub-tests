@@ -20,6 +20,11 @@ class PrecisePrefixCacheScorerConfig(TinyLlamaHfGpuConfig):
     model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
     replicas = 2
     min_gpus_per_node = 2
+
+    # 2 single-node replicas, both are InferencePool members
+    expected_vllm_pod_count = 2
+    expected_inference_pool_pod_count = 2
+
     block_size = 64
     hash_algo = "sha256_cbor"
     hash_seed = "42"
@@ -163,6 +168,11 @@ class PrecisePrefixCacheProducerConfig(TinyLlamaOciGpuConfig):
     name = "llmisvc-precise-prefix-producer"
     replicas = 2
     min_gpus_per_node = 2
+
+    # 2 single-node replicas, both are InferencePool members
+    expected_vllm_pod_count = 2
+    expected_inference_pool_pod_count = 2
+
     block_size = 64
     hash_algo = "sha256_cbor"
     hash_seed = "42"

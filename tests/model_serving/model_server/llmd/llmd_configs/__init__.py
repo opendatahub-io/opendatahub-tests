@@ -7,6 +7,7 @@ from .config_fast_image import (
     TinyLlamaFast2Config,
 )
 from .config_models import (
+    Qwen3MoeDummyGpuConfig,
     TinyLlamaHfConfig,
     TinyLlamaHfGpuConfig,
     TinyLlamaOciConfig,
@@ -14,14 +15,17 @@ from .config_models import (
     TinyLlamaS3Config,
     TinyLlamaS3GpuConfig,
 )
+from .config_multinode_moe import MultinodeMoeDpEpConfig
 from .config_precise_prefix_cache import PrecisePrefixCacheProducerConfig, PrecisePrefixCacheScorerConfig
 from .config_singlenode_prefill_decode import SingleNodePrefillDecodeConfig
 
 __all__ = [
     "EstimatedPrefixCacheConfig",
     "LLMISvcConfig",
+    "MultinodeMoeDpEpConfig",
     "PrecisePrefixCacheProducerConfig",
     "PrecisePrefixCacheScorerConfig",
+    "Qwen3MoeDummyGpuConfig",
     "SingleNodePDFast1Config",
     "SingleNodePDFast2Config",
     "SingleNodePrefillDecodeConfig",

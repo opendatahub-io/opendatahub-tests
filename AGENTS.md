@@ -104,6 +104,40 @@ utilities/                # Shared utility functions
 - Skip pre-commit or type checking
 - Create abstractions for single-use code
 
+## Container Image Management
+
+All container images used in tests MUST be centralized in constants classes so they appear in the OCI manifest label on the built `odh-tests` image. This enables disconnected (air-gapped) environments to discover and mirror required images.
+
+### Rules
+
+- **Component-specific images**: declare in `tests/<component>/image_constants.py`
+- **Shared images**: declare in `utilities/image_constants.py`
+- All image references MUST use `@sha256:` digest pinning (no mutable `:tag` references)
+- Prefer `quay.io` or `registry.redhat.io` over `docker.io` (DockerHub has rate limits)
+- Never hardcode image strings directly in test files -- always import from a constants class
+
+### Adding an image
+
+1. Add the constant to the appropriate `image_constants.py` with type annotation:
+
+   ```python
+   MY_IMAGE: str = "quay.io/org/image@sha256:abc123..."
+   ```
+
+2. If creating a new component's constants class, register it in `scripts/generate_image_manifest.py` under `IMAGE_CLASS_MAP`
+
+### CI checks
+
+Three automated rules run on PRs touching Python files:
+
+- **IMG001**: stray image not in a registered constants class
+- **IMG002**: image uses tag instead of digest (blocks PR)
+- **IMG003**: image sourced from DockerHub (warning)
+
+Suppress with `# noqa: IMG001`, `# noqa: IMG002`, or `# noqa: IMG003` when justified.
+
+See [IMAGE_CHECK_RULES.md](./docs/IMAGE_CHECK_RULES.md) for full details.
+
 ## Documentation Reference
 
 Consult these for detailed guidance:
