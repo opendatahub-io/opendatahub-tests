@@ -347,17 +347,20 @@ def label_namespace_gateway_access(
 def isolation_bootstrap_gateway_context(
     admin_client: DynamicClient,
     gateway_name: str,
-    applications_namespace: str,
+    api_namespace: str,
     gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
     teardown: bool = True,
 ) -> Generator[Gateway, Any, Any]:
-    """Yield a bootstrap Gateway with gateway-access labels and a tenant-scoped HTTP listener."""
-    applications_ns = Namespace(client=admin_client, name=applications_namespace, ensure_exists=True)
-    assert applications_ns.exists, f"Applications namespace '{applications_namespace}' not found"
+    """Yield a bootstrap Gateway with gateway-access labels and a tenant-scoped HTTP listener.
+
+    Labels the maas-api namespace so per-tenant maas-api HTTPRoutes can attach.
+    """
+    api_ns = Namespace(client=admin_client, name=api_namespace, ensure_exists=True)
+    assert api_ns.exists, f"MaaS API namespace '{api_namespace}' not found"
     with (
         ResourceEditor(
             patches={
-                applications_ns: {
+                api_ns: {
                     "metadata": {"labels": gateway_access_namespace_labels(gateway_name=gateway_name)},
                 },
             },
@@ -515,15 +518,15 @@ def tenant_gateway_maas_auth_policy_name(gateway_name: str) -> str:
     return f"{gateway_name}{TENANT_GATEWAY_MAAS_AUTH_POLICY_SUFFIX}"
 
 
-def maas_api_service_host_for_aitenant(aitenant_name: str, applications_namespace: str) -> str:
+def maas_api_service_host_for_aitenant(aitenant_name: str, api_namespace: str) -> str:
     """Return the in-cluster Service hostname for a per-tenant maas-api Deployment."""
     deployment_name = maas_api_deployment_name_for_aitenant(aitenant_name=aitenant_name)
-    return f"{deployment_name}.{applications_namespace}.svc.cluster.local"
+    return f"{deployment_name}.{api_namespace}.svc.cluster.local"
 
 
-def shared_maas_api_service_host(applications_namespace: str) -> str:
+def shared_maas_api_service_host(api_namespace: str) -> str:
     """Return the in-cluster Service hostname for the shared maas-api Deployment."""
-    return f"{SHARED_MAAS_API_SERVICE_NAME}.{applications_namespace}.svc.cluster.local"
+    return f"{SHARED_MAAS_API_SERVICE_NAME}.{api_namespace}.svc.cluster.local"
 
 
 def wait_for_tenant_gateway_maas_auth_policy(
@@ -572,15 +575,15 @@ def verify_tenant_gateway_auth_policy_callback_url(
     gateway_name: str,
     gateway_namespace: str,
     aitenant_name: str,
-    applications_namespace: str,
+    api_namespace: str,
 ) -> str:
     """Assert the tenant Gateway MaaS AuthPolicy callback targets the per-tenant maas-api Service."""
     policy_name = tenant_gateway_maas_auth_policy_name(gateway_name=gateway_name)
     expected_host = maas_api_service_host_for_aitenant(
         aitenant_name=aitenant_name,
-        applications_namespace=applications_namespace,
+        api_namespace=api_namespace,
     )
-    shared_host = shared_maas_api_service_host(applications_namespace=applications_namespace)
+    shared_host = shared_maas_api_service_host(api_namespace=api_namespace)
 
     wait_for_tenant_gateway_maas_auth_policy(
         admin_client=admin_client,
@@ -649,11 +652,11 @@ def wait_for_bootstrapped_tenant_deployments_available(
 
 def verify_maas_api_deployment_for_aitenant(
     admin_client: DynamicClient,
-    applications_namespace: str,
+    api_namespace: str,
     aitenant_name: str,
     tenant_namespace_name: str,
 ) -> None:
-    """Assert the per-tenant maas-api Deployment is Available in the applications namespace."""
+    """Assert the per-tenant maas-api Deployment is Available in the maas-api namespace."""
     wait_for_bootstrapped_tenant_deployments_available(
         admin_client=admin_client,
         tenant_namespace_name=tenant_namespace_name,
@@ -662,12 +665,12 @@ def verify_maas_api_deployment_for_aitenant(
     maas_api_deployment = Deployment(
         client=admin_client,
         name=deployment_name,
-        namespace=applications_namespace,
+        namespace=api_namespace,
         ensure_exists=True,
     )
-    assert maas_api_deployment.exists, f"Deployment/{deployment_name} not found in namespace '{applications_namespace}'"
+    assert maas_api_deployment.exists, f"Deployment/{deployment_name} not found in namespace '{api_namespace}'"
     maas_api_deployment.wait_for_condition(condition="Available", status="True", timeout=300)
-    LOGGER.info(f"Deployment/{deployment_name} is Available in applications namespace '{applications_namespace}'")
+    LOGGER.info(f"Deployment/{deployment_name} is Available in maas-api namespace '{api_namespace}'")
 
 
 def get_maas_api_httproute(
@@ -985,14 +988,14 @@ def wait_for_httproute_accepted_on_gateway(
 
 def verify_maas_api_httproute_attached_to_gateway(
     admin_client: DynamicClient,
-    applications_namespace: str,
+    api_namespace: str,
     aitenant_name: str,
     tenant_namespace_name: str,
     gateway_name: str,
     gateway_namespace: str,
     timeout: int = 300,
 ) -> None:
-    """Assert the per-tenant maas-api HTTPRoute exists in the applications namespace.
+    """Assert the per-tenant maas-api HTTPRoute exists in the maas-api namespace.
 
     Also assert the route attaches to the tenant Gateway via parentRefs.
     """
@@ -1007,7 +1010,7 @@ def verify_maas_api_httproute_attached_to_gateway(
     maas_api_route = wait_for_maas_api_httproute(
         admin_client=admin_client,
         route_name=route_name,
-        route_namespace=applications_namespace,
+        route_namespace=api_namespace,
         timeout=timeout,
     )
     assert httproute_references_gateway(
@@ -1015,18 +1018,17 @@ def verify_maas_api_httproute_attached_to_gateway(
         gateway_name=gateway_name,
         gateway_namespace=gateway_namespace,
     ), (
-        f"HTTPRoute/{route_name} in '{applications_namespace}' should reference "
+        f"HTTPRoute/{route_name} in '{api_namespace}' should reference "
         f"Gateway '{gateway_namespace}/{gateway_name}' in parentRefs"
     )
     wait_for_httproute_accepted_on_gateway(
         admin_client=admin_client,
         route_name=route_name,
-        route_namespace=applications_namespace,
+        route_namespace=api_namespace,
         gateway_name=gateway_name,
         gateway_namespace=gateway_namespace,
         timeout=timeout,
     )
     LOGGER.info(
-        f"HTTPRoute/{route_name} in '{applications_namespace}' is attached to "
-        f"Gateway '{gateway_namespace}/{gateway_name}'"
+        f"HTTPRoute/{route_name} in '{api_namespace}' is attached to Gateway '{gateway_namespace}/{gateway_name}'"
     )
