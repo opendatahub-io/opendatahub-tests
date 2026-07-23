@@ -7,7 +7,7 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 
 from tests.ai_hub.image_constants import AiHubImages
-from utilities.constants import ModelFormat
+from utilities.constants import ModelCarImage, ModelFormat, RuntimeTemplates
 
 
 class ModelRegistryEndpoints:
@@ -34,6 +34,7 @@ MODEL_DICT: dict[str, Any] = {
 }
 MR_INSTANCE_BASE_NAME: str = "model-registry"
 MR_INSTANCE_NAME: str = f"{MR_INSTANCE_BASE_NAME}0"
+MR_RUNTIME_TEMPLATE: str = RuntimeTemplates.MLSERVER
 SECURE_MR_NAME: str = "secure-db-mr"
 DB_BASE_RESOURCES_NAME: str = "db-model-registry"
 DB_RESOURCE_NAME: str = f"{DB_BASE_RESOURCES_NAME}0"
@@ -84,3 +85,65 @@ MR_POSTGRES_DB_OBJECT: dict[Any, str] = {
 }
 MR_POSTGRES_DEPLOYMENT_NAME_STR = f"{MR_INSTANCE_NAME}-postgres"
 CATALOG_CONTAINER: str = "catalog"
+MODEL_REGISTRY_BASE_URI: str = "/api/model_registry/v1alpha3/"
+MODEL_ARTIFACT: dict[str, Any] = {
+    "name": "model-artifact-rest-api",
+    "description": "Model artifact created via rest call",
+    "uri": ModelCarImage.MLSERVER_ONNX,
+    "state": "UNKNOWN",
+    "modelFormatName": ModelFormat.ONNX,
+    "modelFormatVersion": "v1",
+    "artifactType": "model-artifact",
+    "customProperties": {
+        "test_ma_bool_property": {"bool_value": True, "metadataType": "MetadataBoolValue"},
+        "test_ma_str_property": {"string_value": "my_value", "metadataType": "MetadataStringValue"},
+    },
+}
+
+# Model Registry InferenceService defaults (MLServer / onnx)
+MR_ISVC_RESOURCES: dict[str, dict[str, str]] = {
+    "limits": {"cpu": "2", "memory": "4Gi"},
+    "requests": {"cpu": "2", "memory": "4Gi"},
+}
+MR_ISVC_ARGS: list[str] = []
+MR_ISVC_VOLUMES: list[dict[str, Any]] = []
+MR_ISVC_VOLUME_MOUNTS: list[dict[str, str]] = []
+MR_RUNTIME_CONTAINERS: dict[str, Any] = {}
+MR_MODEL_SERVER_PORT: int = 8080
+MR_MODEL_SERVER_URL_PATH: str = "/v2/models"
+MR_ISVC_VLLM_INFERENCE: bool = False
+
+# s390x (vLLM) overrides — applied via pytest_sessionstart when cluster_architecture == "s390x"
+MR_RUNTIME_TEMPLATE_Z: str = "vllm-cpu-runtime-template"
+MODEL_ARTIFACT_VLLM: dict[str, Any] = {
+    "uri": "hf://TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+    "modelFormatName": "vLLM",
+    "customProperties": {
+        "HF_HUB_ENABLE_HF_TRANSFER": {"metadataType": "MetadataStringValue", "string_value": "0"},
+    },
+}
+MR_ISVC_RESOURCES_Z: dict[str, dict[str, str]] = {
+    "limits": {"cpu": "8", "memory": "12Gi"},
+    "requests": {"cpu": "4", "memory": "8Gi"},
+}
+MR_ISVC_ARGS_Z: list[str] = ["--enforce-eager", "--max-model-len=256", "--max-num-seqs=20"]
+MR_ISVC_VOLUMES_Z: list[dict[str, Any]] = [
+    {"name": "shared-memory", "emptyDir": {"medium": "Memory", "sizeLimit": "32Gi"}},
+    {"name": "tmp", "emptyDir": {}},
+    {"name": "home", "emptyDir": {}},
+]
+MR_ISVC_VOLUME_MOUNTS_Z: list[dict[str, str]] = [
+    {"name": "shared-memory", "mountPath": "/dev/shm"},
+    {"name": "tmp", "mountPath": "/tmp"},
+    {"name": "home", "mountPath": "/home/vllm"},
+]
+MR_RUNTIME_CONTAINERS_Z: dict[str, Any] = {
+    "kserve-container": {
+        "env": [
+            {"name": "VLLM_CPU_KVCACHE_SPACE", "value": "4"},
+            {"name": "VLLM_WORKER_MULTIPROC_METHOD", "value": "spawn"},
+            {"name": "OMP_NUM_THREADS", "value": "8"},
+        ]
+    },
+}
+MR_MODEL_SERVER_URL_PATH_Z: str = ""

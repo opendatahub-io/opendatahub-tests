@@ -24,6 +24,7 @@ IMAGE_CLASS_MAP: dict[str, str] = {
     "ai_safety": "tests.ai_safety.image_constants.AiSafetyImages",
     "fixtures": "tests.fixtures.image_constants.FixturesImages",
     "shared": "utilities.image_constants.SharedImages",
+    "workbenches": "tests.workbenches.image_constants.WorkbenchesImages",
     "spark": "tests.spark.image_constants.SparkImages",
 }
 
