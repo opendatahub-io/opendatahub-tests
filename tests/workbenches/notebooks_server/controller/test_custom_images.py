@@ -11,6 +11,7 @@ from ocp_resources.notebook import Notebook
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import ExecOnPodError, Pod
 
+from tests.workbenches.image_constants import WorkbenchesImages
 from utilities.general import collect_pod_information
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -234,11 +235,7 @@ class TestCustomImageValidation:
                     "name": "test-sdg-hub",
                 },
                 {
-                    "custom_image": (
-                        "quay.io/opendatahub/"
-                        "odh-workbench-jupyter-minimal-cuda-py312-ubi9@sha256:"
-                        "9458a764d861cbe0a782a53e0f5a13a4bcba35d279145d87088ab3cdfabcad1d"  # pragma: allowlist secret
-                    ),  # Placeholder - update with sdg_hub image
+                    "custom_image": WorkbenchesImages.JUPYTER_MINIMAL_CUDA,  # Placeholder - update with sdg_hub image
                 },
                 ["sdg_hub"],
                 id="sdg_hub_image",
@@ -260,11 +257,7 @@ class TestCustomImageValidation:
                     "name": "test-datascience",
                 },
                 {
-                    "custom_image": (
-                        "quay.io/opendatahub/"
-                        "odh-workbench-jupyter-minimal-cuda-py312-ubi9@sha256:"
-                        "9458a764d861cbe0a782a53e0f5a13a4bcba35d279145d87088ab3cdfabcad1d"  # pragma: allowlist secret
-                    ),
+                    "custom_image": WorkbenchesImages.JUPYTER_MINIMAL_CUDA,
                 },
                 ["numpy", "pandas", "matplotlib"],
                 id="datascience_image",

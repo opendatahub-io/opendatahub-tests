@@ -154,7 +154,7 @@ def notebook_image(
         # Validation Logic: Only digest references are accepted
         _ERR_INVALID_CUSTOM_IMAGE = (
             "custom_image must be a valid OCI image reference with a digest (@sha256:digest), "
-            "e.g., 'quay.io/org/image@sha256:abc123...', "
+            "e.g., 'quay.io/org/image@sha256:abc123...', "  # noqa: IMG001
             "got: '{custom_image}'"
         )
         # Check for valid digest: @sha256: must be followed by non-empty content
