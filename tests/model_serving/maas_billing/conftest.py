@@ -44,7 +44,6 @@ from tests.model_serving.maas_billing.utils import (
     get_maas_models_response,
     get_total_tokens,
     host_from_ingress_domain,
-    maas_api_namespace,
     maas_gateway_listeners,
     maas_gateway_rate_limits_patched,
     maas_under_aigateway_component_patch,
@@ -774,15 +773,48 @@ def maas_tier_mapping_cm(
     return config_map
 
 
+@pytest.fixture(scope="session")
+def maas_api_infra_namespace(admin_client: DynamicClient) -> str:
+    """Return the maas-api infrastructure namespace (resolved once per session).
+
+    Resolves from maas-controller ``INFRA_NAMESPACE``. When empty or ``AUTO``,
+    derives the infra namespace the same way the controller does (RHOAI/ODH
+    defaults); otherwise uses the applications namespace.
+    """
+    applications_namespace = py_config["applications_namespace"]
+    controller_deployment = Deployment(
+        client=admin_client,
+        name="maas-controller",
+        namespace=applications_namespace,
+        ensure_exists=True,
+    )
+    infra_namespace = ""
+    for container in controller_deployment.instance.spec.template.spec.containers:
+        for env_var in container.env or []:
+            if env_var.name == "INFRA_NAMESPACE":
+                infra_namespace = (env_var.value or "").strip()
+                break
+        if infra_namespace:
+            break
+
+    if not infra_namespace or infra_namespace.upper() == "AUTO":
+        if applications_namespace == "redhat-ods-applications":
+            return "redhat-ai-gateway-infra"
+        if applications_namespace == "opendatahub":
+            return "odh-ai-gateway-infra"
+        return applications_namespace
+    return infra_namespace
+
+
 @pytest.fixture(scope="class")
 def maas_api_deployment_available(
     admin_client: DynamicClient,
+    maas_api_infra_namespace: str,
 ) -> None:
-    api_namespace = maas_api_namespace(admin_client=admin_client)
     maas_api_deployment = Deployment(
         client=admin_client,
         name="maas-api",
-        namespace=api_namespace,
+        namespace=maas_api_infra_namespace,
         ensure_exists=True,
     )
     maas_api_deployment.wait_for_condition(
@@ -796,14 +828,14 @@ def maas_api_deployment_available(
 def maas_api_endpoints_ready(
     admin_client: DynamicClient,
     maas_api_deployment_available: None,
+    maas_api_infra_namespace: str,
 ) -> None:
-    api_namespace = maas_api_namespace(admin_client=admin_client)
     for ready in TimeoutSampler(
         wait_timeout=300,
         sleep=5,
         func=endpoints_have_ready_addresses,
         admin_client=admin_client,
-        namespace=api_namespace,
+        namespace=maas_api_infra_namespace,
         name="maas-api",
     ):
         if ready:

@@ -6,6 +6,7 @@ import pytest
 import structlog
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.config_map import ConfigMap
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
@@ -18,6 +19,7 @@ from ogx_client.types.vector_store import VectorStore
 from semver import Version
 
 from tests.ogx.constants import (
+    HTTPS_PROXY,
     OGX_CLIENT_VERIFY_SSL,
     OGX_OPENSHIFT_MINIMAL_VERSION,
     OGX_SERVER_SECRET_DATA,
@@ -144,6 +146,15 @@ def ogx_server(
         yield ogx_srv
         ogx_srv.clean_up()
         return
+
+    if is_disconnected_cluster and HTTPS_PROXY:
+        cm = ConfigMap(
+            client=unprivileged_client,
+            name="odh-trusted-ca-bundle",
+            namespace=unprivileged_model_namespace.name,
+        )
+        cm.wait(timeout=5)
+        ResourceEditor(patches={cm: {"metadata": {"labels": {"ogx.io/watch": "true"}}}}).update()
 
     with create_ogx_server(
         client=unprivileged_client,
