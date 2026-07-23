@@ -26,6 +26,17 @@ MAAS_AUTH_POLICY_FIXTURE_NAMES = (
 )
 
 
+def assert_tenant_field_empty(body: dict, context: str) -> None:
+    """Assert that the response body contains a 'tenant' field defaulting to empty string.
+
+    Args:
+        body: Parsed JSON response body from a MaaS API key endpoint.
+        context: Human-readable label for assertion error messages (e.g. "POST /v1/api-keys").
+    """
+    assert "tenant" in body, f"Expected 'tenant' field in {context} response, got keys: {list(body.keys())}"
+    assert body["tenant"] == "", f"Expected tenant='' (empty string) in {context} response, got: {body['tenant']!r}"
+
+
 def assert_key_rejected_at_inference(
     request_session_http: requests.Session,
     inference_url: str,
@@ -101,7 +112,7 @@ def get_api_key(
 ) -> tuple[Response, dict[str, Any]]:
     """Fetch a single API key by ID via MaaS API (GET /v1/api-keys/{id})."""
     url = f"{base_url}/v1/api-keys/{quote(key_id, safe='')}"
-    request_headers = {"Authorization": f"Bearer {ocp_user_token}"}
+    request_headers = build_maas_headers(token=ocp_user_token)
     if extra_headers is not None:
         request_headers.update(extra_headers)
     response = request_session_http.get(
@@ -139,7 +150,7 @@ def list_api_keys(
     if pagination is not None:
         payload["pagination"] = pagination
 
-    request_headers = {"Authorization": f"Bearer {ocp_user_token}"}
+    request_headers = build_maas_headers(token=ocp_user_token)
     if extra_headers is not None:
         request_headers.update(extra_headers)
     response = request_session_http.post(
