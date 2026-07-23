@@ -1771,11 +1771,14 @@ def submit_pvc_job(
     yield _submit
 
     for job_id in job_ids:
-        delete_evalhub_job(
-            host=evalhub_mt_route.host,
-            token=tenant_a_token,
-            ca_bundle_file=evalhub_mt_ca_bundle_file,
-            tenant=tenant_a_namespace.name,
-            job_id=job_id,
-            hard_delete=True,
-        )
+        try:
+            delete_evalhub_job(
+                host=evalhub_mt_route.host,
+                token=tenant_a_token,
+                ca_bundle_file=evalhub_mt_ca_bundle_file,
+                tenant=tenant_a_namespace.name,
+                job_id=job_id,
+                hard_delete=True,
+            )
+        except Exception:  # noqa: BLE001
+            LOGGER.warning(f"Failed to delete PVC evaluation job {job_id} during teardown")

@@ -9,7 +9,6 @@ from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.route import Route
 
 from tests.ai_safety.evalhub.utils import (
-    get_evalhub_job_http,
     validate_evalhub_job_completed,
     wait_for_evalhub_job,
     wait_for_evalhub_runtime_job_count,
@@ -122,7 +121,7 @@ class TestEvalHubPVCStorage:
     ) -> None:
         """Given a job referencing a PVC that does not exist,
         when the job is submitted,
-        then the pod spec references the missing PVC and the job cannot complete."""
+        then the pod spec references the missing PVC and the job fails."""
         job_id = submit_pvc_job(
             claim_name="nonexistent-pvc",
             job_name="pvc-missing-test",
@@ -145,15 +144,16 @@ class TestEvalHubPVCStorage:
         )
         assert pvc_volumes[0].persistentVolumeClaim.claimName == "nonexistent-pvc"
 
-        job_data = get_evalhub_job_http(
+        job_data = wait_for_evalhub_job(
             host=evalhub_mt_route.host,
             token=tenant_a_token,
             ca_bundle_file=evalhub_mt_ca_bundle_file,
             tenant=tenant_a_namespace.name,
             job_id=job_id,
-        ).json()
-        assert job_data["status"]["state"] != "completed", (
-            "Job referencing a nonexistent PVC should not complete successfully"
+            timeout=600,
+        )
+        assert job_data.get("status", {}).get("state") == "failed", (
+            "Job referencing a nonexistent PVC should fail"
         )
 
     def test_pvc_read_only_mount(
@@ -216,17 +216,15 @@ class TestEvalHubPVCStorage:
         evalhub_test_data_populated: PersistentVolumeClaim,
     ) -> None:
         """Given a PVC with multiple provider datasets at different sub-paths,
-        when separate evaluation jobs reference different sub-paths,
-        then both jobs complete independently."""
+        when separate evaluation jobs reference different sub-paths sequentially,
+        then both jobs complete independently.
+
+        Jobs run sequentially because the PVC uses ReadWriteOnce access mode
+        (EBS gp3-csi), which does not support multi-node attachment."""
         job_id_a = submit_pvc_job(
             claim_name=evalhub_test_data_populated.name,
             job_name="pvc-multi-provider-a",
             sub_path="provider_a",
-        )
-        job_id_b = submit_pvc_job(
-            claim_name=evalhub_test_data_populated.name,
-            job_name="pvc-multi-provider-b",
-            sub_path="provider_b",
         )
         job_data_a = wait_for_evalhub_job(
             host=evalhub_mt_route.host,
@@ -235,6 +233,13 @@ class TestEvalHubPVCStorage:
             tenant=tenant_a_namespace.name,
             job_id=job_id_a,
         )
+        validate_evalhub_job_completed(job_data=job_data_a)
+
+        job_id_b = submit_pvc_job(
+            claim_name=evalhub_test_data_populated.name,
+            job_name="pvc-multi-provider-b",
+            sub_path="provider_b",
+        )
         job_data_b = wait_for_evalhub_job(
             host=evalhub_mt_route.host,
             token=tenant_a_token,
@@ -242,5 +247,4 @@ class TestEvalHubPVCStorage:
             tenant=tenant_a_namespace.name,
             job_id=job_id_b,
         )
-        validate_evalhub_job_completed(job_data=job_data_a)
         validate_evalhub_job_completed(job_data=job_data_b)
