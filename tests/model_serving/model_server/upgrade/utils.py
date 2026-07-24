@@ -600,8 +600,10 @@ def _save_original_frameworks_to_cm(
     state_cm = ConfigMap(client=admin_client, name=kueue_dsc_state_cm_name, namespace=namespace)
     if state_cm.exists:
         LOGGER.info(f"Saving original Kueue frameworks {frameworks} to state ConfigMap")
-        state_cm.instance.data["original_kueue_frameworks"] = ",".join(frameworks)
-        state_cm.update(resource_dict={"data": dict(state_cm.instance.data)})
+        resource_dict = state_cm.instance.to_dict()
+        resource_dict.setdefault("data", {})
+        resource_dict["data"]["original_kueue_frameworks"] = ",".join(frameworks)
+        state_cm.update(resource_dict=resource_dict)
 
 
 def _get_kueue_frameworks(admin_client: DynamicClient) -> tuple[Kueue, list[str]]:

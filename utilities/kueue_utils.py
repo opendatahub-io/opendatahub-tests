@@ -293,7 +293,7 @@ def get_workload_for_job(
         )
     )
     if len(workloads) > 1:
-        LOGGER.warning(f"Multiple Workloads ({len(workloads)}) found for Job UID {job_uid}, using first")
+        raise ValueError(f"Multiple Workloads ({len(workloads)}) found for Job UID {job_uid}")
     return workloads[0] if workloads else None
 
 
