@@ -17,7 +17,7 @@ EVALHUB_HEALTH_STATUS_HEALTHY: str = "healthy"
 EVALHUB_LOG_CONTENT_TYPE: str = "text/plain"
 EVALHUB_LOG_SECTION_PREFIX: str = "=== pod="
 EVALHUB_LOG_ADAPTER_CONTAINER: str = "adapter"
-EVALHUB_LOG_COMPLETED_MARKER: str = "EVALUATION COMPLETE"
+EVALHUB_LOG_COMPLETED_MARKER: str = "Evaluation completed successfully"
 EVALHUB_LOG_DEFAULT_TAIL_LINES: int = 1000
 EVALHUB_LOG_MAX_TAIL_LINES: int = 10000
 
@@ -96,6 +96,10 @@ MINIO_UPLOADER_SECURITY_CONTEXT = {
 SIMPLE_MINIO_ACCESS_KEY: str = "minioadmin"
 SIMPLE_MINIO_SECRET_KEY: str = "minioadmin"
 SIMPLE_MINIO_BUCKET: str = "evalhub-data"
+
+# PVC storage test data
+PVC_TEST_DATA_NAME: str = "evalhub-test-data"
+PVC_TEST_DATA_SIZE: str = "1Gi"
 
 # ServiceMonitor and metrics Service
 EVALHUB_METRICS_SERVICE_SUFFIX: str = "-metrics"

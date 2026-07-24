@@ -1,3 +1,4 @@
+import re
 from typing import Any, Self
 
 import pytest
@@ -77,21 +78,6 @@ class TestDefaultAgentMetadata:
             f"Found differences in {len(agents_with_differences)} agent(s): {agents_with_differences}"
         )
 
-    def test_agents_with_repository_url_have_readme(
-        self: Self,
-        default_agents: list[dict[str, Any]],
-    ) -> None:
-        """Given agents with repositoryUrl exist in the default catalog
-        When inspecting each agent
-        Then agents with repositoryUrl also have a non-empty readme
-        """
-        errors: list[str] = []
-        for agent in default_agents:
-            agent_name = agent.get("name", "<unknown>")
-            if agent.get("repositoryUrl") and not agent.get("readme"):
-                errors.append(f"Agent '{agent_name}' has repositoryUrl but missing readme")
-        assert not errors, "README auto-population failed:\n" + "\n".join(errors)
-
     def test_agent_get_by_id_matches_list(
         self: Self,
         agent_catalog_rest_urls: list[str],
@@ -111,3 +97,63 @@ class TestDefaultAgentMetadata:
         assert fetched == agent, (
             f"Agent fetched by ID does not match list response.\nExpected: {agent}\nActual: {fetched}"
         )
+
+
+class TestAgentReadmeContent:
+    """Tests for agent README population and sanitization (RHOAIENG-76762, RHOAIENG-76987)."""
+
+    def test_agents_with_repository_url_have_readme(
+        self: Self,
+        default_agents: list[dict[str, Any]],
+    ) -> None:
+        """Given agents with repositoryUrl exist in the default catalog
+        When inspecting each agent
+        Then agents with repositoryUrl also have a non-empty readme
+        """
+        errors: list[str] = []
+        for agent in default_agents:
+            agent_name = agent.get("name", "<unknown>")
+            readme = agent.get("readme")
+            if agent.get("repositoryUrl") and (not isinstance(readme, str) or not readme.strip()):
+                errors.append(f"Agent '{agent_name}' has repositoryUrl but missing readme")
+        assert not errors, "README auto-population failed:\n" + "\n".join(errors)
+
+    @pytest.mark.parametrize(
+        "pattern_name, pattern",
+        [
+            (
+                "relative markdown link",
+                re.compile(
+                    r"(?<!!)\[([^\]]+)\]\((?!https?://|ftp://|mailto:|//)"
+                    r"([^)\s]+)(?:\s+[\"'].*?[\"'])?\)"
+                ),
+            ),
+            ("relative markdown image", re.compile(r"!\[([^\]]*)\]\((?!https?://|ftp://|mailto:|//)([^)]+)\)")),
+            (
+                "relative HTML img",
+                re.compile(r"<img\s[^>]*src=[\"'](?!https?://|ftp://|mailto:|//)([^\"']+)[\"']", re.IGNORECASE),
+            ),
+        ],
+        ids=["markdown-links", "markdown-images", "html-images"],
+    )
+    def test_agent_readmes_have_no_relative_references(
+        self: Self,
+        default_agents: list[dict[str, Any]],
+        pattern_name: str,
+        pattern: re.Pattern,
+    ) -> None:
+        """Given agents with README content exist in the default catalog
+        When inspecting each agent's readme field
+        Then no relative references of the given type remain
+        """
+        errors: list[str] = []
+        for agent in default_agents:
+            agent_name = agent.get("name", "<unknown>")
+            readme = agent.get("readme", "")
+            if not readme:
+                continue
+            matches = pattern.findall(string=readme)
+            for match in matches:
+                ref = match if isinstance(match, str) else match[1] if len(match) > 1 else match[0]
+                errors.append(f"Agent '{agent_name}': {pattern_name} with relative ref '{ref}'")
+        assert not errors, f"Unsanitized {pattern_name}s found:\n" + "\n".join(errors)

@@ -58,10 +58,9 @@ class TestEvalHubMetrics:
         evalhub_route: Route,
         evalhub_metrics_service: Service,
     ) -> None:
-        """After hitting /api/v1/health, /metrics should show a request count for that path.
-
-        Health is hit via the Route (auth required); metrics are scraped from the
-        cluster-internal metrics service (no auth, no Route).
+        """Given: a running EvalHub instance with metrics service.
+        When: GET /api/v1/health is called, then /metrics is scraped.
+        Then: /metrics contains a request count for the health path.
         """
         headers = get_auth_headers(token=current_client_token)
 

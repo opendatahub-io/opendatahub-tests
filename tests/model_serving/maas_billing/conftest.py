@@ -46,6 +46,7 @@ from tests.model_serving.maas_billing.utils import (
     host_from_ingress_domain,
     maas_gateway_listeners,
     maas_gateway_rate_limits_patched,
+    maas_under_aigateway_component_patch,
     mint_token,
     patch_llmisvc_with_maas_router,
     revoke_token,
@@ -729,17 +730,17 @@ def maas_controller_enabled_latest(
     maas_request_ratelimit_policy: None,
 ) -> Generator[DataScienceCluster]:
     """
-    Ensure MaaS (KServe modelsAsService) is MANAGED for the session.
+    Ensure MaaS under AIGateway (aigateway.modelsAsAService) is MANAGED for the session.
     Restore DSC to original state on teardown.
     """
-
-    component_patch = {
-        DscComponents.KSERVE: {"modelsAsService": {"managementState": DscComponents.ManagementState.MANAGED}}
-    }
+    component_patch = maas_under_aigateway_component_patch(
+        models_as_a_service_state=DscComponents.ManagementState.MANAGED,
+        aigateway_state=DscComponents.ManagementState.MANAGED,
+    )
 
     with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
         dsc_resource.wait_for_condition(
-            condition="ModelsAsServiceReady",
+            condition=DscComponents.ConditionType.AIGATEWAY_READY,
             status="True",
             timeout=900,
         )
@@ -772,14 +773,48 @@ def maas_tier_mapping_cm(
     return config_map
 
 
+@pytest.fixture(scope="session")
+def maas_api_infra_namespace(admin_client: DynamicClient) -> str:
+    """Return the maas-api infrastructure namespace (resolved once per session).
+
+    Resolves from maas-controller ``INFRA_NAMESPACE``. When empty or ``AUTO``,
+    derives the infra namespace the same way the controller does (RHOAI/ODH
+    defaults); otherwise uses the applications namespace.
+    """
+    applications_namespace = py_config["applications_namespace"]
+    controller_deployment = Deployment(
+        client=admin_client,
+        name="maas-controller",
+        namespace=applications_namespace,
+        ensure_exists=True,
+    )
+    infra_namespace = ""
+    for container in controller_deployment.instance.spec.template.spec.containers:
+        for env_var in container.env or []:
+            if env_var.name == "INFRA_NAMESPACE":
+                infra_namespace = (env_var.value or "").strip()
+                break
+        if infra_namespace:
+            break
+
+    if not infra_namespace or infra_namespace.upper() == "AUTO":
+        if applications_namespace == "redhat-ods-applications":
+            return "redhat-ai-gateway-infra"
+        if applications_namespace == "opendatahub":
+            return "odh-ai-gateway-infra"
+        return applications_namespace
+    return infra_namespace
+
+
 @pytest.fixture(scope="class")
 def maas_api_deployment_available(
     admin_client: DynamicClient,
+    maas_api_infra_namespace: str,
 ) -> None:
     maas_api_deployment = Deployment(
         client=admin_client,
         name="maas-api",
-        namespace=py_config["applications_namespace"],
+        namespace=maas_api_infra_namespace,
         ensure_exists=True,
     )
     maas_api_deployment.wait_for_condition(
@@ -793,13 +828,14 @@ def maas_api_deployment_available(
 def maas_api_endpoints_ready(
     admin_client: DynamicClient,
     maas_api_deployment_available: None,
+    maas_api_infra_namespace: str,
 ) -> None:
     for ready in TimeoutSampler(
         wait_timeout=300,
         sleep=5,
         func=endpoints_have_ready_addresses,
         admin_client=admin_client,
-        namespace=py_config["applications_namespace"],
+        namespace=maas_api_infra_namespace,
         name="maas-api",
     ):
         if ready:
@@ -1116,15 +1152,16 @@ def maas_subscription_controller_enabled_latest(
     maas_subscription_namespace: Namespace,
 ) -> Generator[DataScienceCluster, Any, Any]:
     """
-    Ensures subscription namespace exists before MaaS is switched to Managed.
+    Ensures subscription namespace exists before MaaS under AIGateway is switched to Managed.
     """
-    component_patch = {
-        DscComponents.KSERVE: {"modelsAsService": {"managementState": DscComponents.ManagementState.MANAGED}}
-    }
+    component_patch = maas_under_aigateway_component_patch(
+        models_as_a_service_state=DscComponents.ManagementState.MANAGED,
+        aigateway_state=DscComponents.ManagementState.MANAGED,
+    )
 
     with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
         dsc_resource.wait_for_condition(
-            condition="ModelsAsServiceReady",
+            condition=DscComponents.ConditionType.AIGATEWAY_READY,
             status="True",
             timeout=900,
         )

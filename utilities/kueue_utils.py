@@ -4,13 +4,39 @@ from typing import Any
 
 import structlog
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
+from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.pod import Pod
 from ocp_resources.resource import MissingRequiredArgumentError, NamespacedResource, Resource
+from pytest_testconfig import config as py_config
 from timeout_sampler import retry
 
 from utilities.constants import Timeout
 
 LOGGER = structlog.get_logger(name=__name__)
+
+KUEUE_QUEUE_NAME_LABEL: str = "kueue.x-k8s.io/queue-name"
+KUEUE_MANAGED_LABEL: str = "kueue.x-k8s.io/managed"
+KUEUE_CLUSTER_QUEUE_LABEL: str = "kueue.x-k8s.io/cluster-queue-name"
+KUEUE_LOCAL_QUEUE_LABEL: str = "kueue.x-k8s.io/local-queue-name"
+
+
+def is_kueue_operator_installed(admin_client: DynamicClient) -> bool:
+    """Return True if a succeeded Kueue operator CSV is present."""
+    try:
+        csvs = list(
+            ClusterServiceVersion.get(
+                client=admin_client,
+                namespace=py_config.get("applications_namespace", "openshift-operators"),
+            )
+        )
+        for csv in csvs:
+            if csv.name.startswith("kueue") and csv.status == csv.Status.SUCCEEDED:
+                LOGGER.info(f"Found Kueue operator CSV: {csv.name}")
+                return True
+        return False
+    except ResourceNotFoundError:
+        return False
 
 
 class ResourceFlavor(Resource):

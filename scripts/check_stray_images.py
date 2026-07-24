@@ -2,7 +2,7 @@
 """Check for container image strings not centralized in constants classes.
 
 Scans Python files under tests/ and utilities/ for hardcoded image
-references that are not defined in a registered IMAGE_SOURCES class.
+references that are not defined in a registered IMAGE_CLASS_MAP class.
 Reports findings so developers can move images to the appropriate
 constants file.
 
@@ -14,41 +14,40 @@ Modes:
     python scripts/check_stray_images.py --diff-base main
 
 Exit codes:
-  0  — no stray images found
-  1  — stray images detected
+  0  -- no stray images found
+  1  -- stray images detected
 
 Override: add '# noqa: IMG001' on the line to suppress the check.
 """
 
 import argparse
 import json
-import re
-import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-SUPPRESS_MARKER: str = "noqa: IMG001"
+from scripts.image_check_utils import (  # noqa: E402
+    build_image_regex,
+    get_diff_lines,
+    is_suppressed,
+    read_lines,
+    scan_python_files,
+)
+
+SUPPRESS_CODE: str = "IMG001"
 
 
-def _build_image_regex() -> re.Pattern[str]:
-    from scripts.generate_image_manifest import KNOWN_REGISTRIES
+def _get_image_constants_files() -> set[str]:
+    """Return paths to image_constants.py files — the only files exempt from stray checks."""
+    from scripts.generate_image_manifest import IMAGE_CLASS_MAP
 
-    return re.compile(
-        r"""(['"])"""  # opening quote
-        r"((?:oci://)?"
-        r"(?:" + "|".join(re.escape(r) for r in KNOWN_REGISTRIES) + r")"
-        r"/[^'\"]+)"  # rest of image ref
-        r"\1"  # closing quote
-    )
-
-
-def _get_constants_files() -> set[str]:
-    from scripts.generate_image_manifest import IMAGE_SOURCES
-
-    return {class_path.rsplit(".", 1)[0].replace(".", "/") + ".py" for class_path in IMAGE_SOURCES.values()}
+    return {
+        class_path.rsplit(".", 1)[0].replace(".", "/") + ".py"
+        for class_path in IMAGE_CLASS_MAP.values()
+        if "image_constants" in class_path
+    }
 
 
 def _collect_known_images() -> set[str]:
@@ -62,25 +61,20 @@ def _collect_known_images() -> set[str]:
 
 
 def _scan_file(path: Path, known: set[str], only_lines: set[int] | None = None) -> list[tuple[int, str]]:
-    """Return (line_number, image_ref) for stray images.
-
-    If only_lines is set, only check those line numbers (for diff mode).
-    """
     findings = []
-    try:
-        lines = path.read_text().splitlines()
-    except OSError, UnicodeDecodeError:
+    lines = read_lines(path=path)
+    if lines is None:
         return findings
 
     rel = str(path.relative_to(ROOT))
-    if rel in _get_constants_files():
+    if rel in _get_image_constants_files():
         return findings
 
-    image_re = _build_image_regex()
+    image_re = build_image_regex()
     for i, line in enumerate(lines, 1):
         if only_lines is not None and i not in only_lines:
             continue
-        if SUPPRESS_MARKER in line:
+        if is_suppressed(line=line, code=SUPPRESS_CODE):
             continue
         for match in image_re.finditer(line):
             image = match.group(2)
@@ -91,7 +85,6 @@ def _scan_file(path: Path, known: set[str], only_lines: set[int] | None = None) 
 
 
 def _file_to_component(rel_path: str) -> str | None:
-    """Extract component name from a relative path, e.g. 'tests/ai_safety/foo.py' -> 'ai_safety'."""
     parts = Path(rel_path).parts
     if len(parts) >= 2 and parts[0] == "tests":
         return parts[1]
@@ -100,59 +93,17 @@ def _file_to_component(rel_path: str) -> str | None:
     return None
 
 
-def _get_diff_info(base: str) -> dict[str, set[int]]:
-    """Get added lines per file from git diff against base.
-
-    Returns {relative_path: set of added line numbers}.
-    """
-    result = subprocess.run(
-        ["git", "diff", f"{base}...HEAD", "--unified=0", "--diff-filter=ACMR", "--", "*.py"],
-        capture_output=True,
-        text=True,
-        check=False,
-        cwd=ROOT,
-    )
-    if result.returncode != 0:
-        print(f"git diff failed: {result.stderr.strip()}", file=sys.stderr)
-        sys.exit(2)
-
-    file_lines: dict[str, set[int]] = {}
-    current_file = None
-
-    for line in result.stdout.splitlines():
-        if line.startswith("+++ b/"):
-            current_file = line[6:]
-            if current_file not in file_lines:
-                file_lines[current_file] = set()
-        elif line.startswith("@@ ") and current_file:
-            hunk_header = line.split("@@")[1].strip()
-            plus_part = hunk_header.split("+")[1].split(" ")[0]
-            if "," in plus_part:
-                start, count = plus_part.split(",")
-                start, count = int(start), int(count)
-            else:
-                start, count = int(plus_part), 1
-            for ln in range(start, start + count):
-                file_lines[current_file].add(ln)
-
-    return file_lines
-
-
 def _full_scan(known: set[str]) -> list[tuple[str, int, str]]:
-    scan_dirs = [ROOT / "tests", ROOT / "utilities"]
     all_findings: list[tuple[str, int, str]] = []
-    for scan_dir in scan_dirs:
-        if not scan_dir.exists():
-            continue
-        for py_file in sorted(scan_dir.rglob("*.py")):
-            rel = str(py_file.relative_to(ROOT))
-            for line_no, image in _scan_file(path=py_file, known=known):
-                all_findings.append((rel, line_no, image))
+    for py_file in scan_python_files():
+        rel = str(py_file.relative_to(ROOT))
+        for line_no, image in _scan_file(path=py_file, known=known):
+            all_findings.append((rel, line_no, image))
     return all_findings
 
 
 def _diff_scan(known: set[str], base: str) -> list[tuple[str, int, str]]:
-    diff_info = _get_diff_info(base=base)
+    diff_info = get_diff_lines(base=base)
     if not diff_info:
         return []
 
@@ -212,13 +163,13 @@ def main() -> int:
         return 1 if all_findings else 0
 
     if not all_findings:
-        print(f"No stray images found — {mode} ({len(known)} known images).")
+        print(f"No stray images found -- {mode} ({len(known)} known images).")
         return 0
 
     print(f"[{mode}] Found {len(all_findings)} stray image(s) not in constants classes:\n")
     for rel, line_no, image in all_findings:
         print(f"  {rel}:{line_no}: {image}")
-    print(f"\nMove these to a constants class or suppress with '# {SUPPRESS_MARKER}'")
+    print(f"\nMove these to a constants class or suppress with '# noqa: {SUPPRESS_CODE}'")
     return 1
 
 

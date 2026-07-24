@@ -9,8 +9,6 @@ from urllib.parse import quote, urlparse
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
-
-# from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.endpoints import Endpoints
 from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.group import Group
@@ -23,15 +21,37 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 from utilities.constants import (
     MAAS_GATEWAY_NAME,
     MAAS_GATEWAY_NAMESPACE,
+    DscComponents,
 )
 from utilities.llmd_utils import get_llm_inference_url
 from utilities.plugins.constant import OpenAIEnpoints, RestHeader
+from utilities.resources.maastenantconfig import MaasTenantConfig
 from utilities.resources.rate_limit_policy import RateLimitPolicy
-from utilities.resources.tenant import Tenant
 from utilities.resources.token_rate_limit_policy import TokenRateLimitPolicy
 
 LOGGER = structlog.get_logger(name=__name__)
 MODELS_INFO = OpenAIEnpoints.MODELS_INFO
+
+
+def maas_under_aigateway_component_patch(
+    models_as_a_service_state: str = DscComponents.ManagementState.MANAGED,
+    aigateway_state: str = DscComponents.ManagementState.MANAGED,
+) -> dict[str, Any]:
+    """Build DSC components patch for MaaS nested under AIGateway.
+
+    Args:
+        models_as_a_service_state: Management state for aigateway.modelsAsAService.
+        aigateway_state: Management state for aigateway itself.
+
+    Returns:
+        Dict suitable for ResourceEditor under spec.components.
+    """
+    return {
+        DscComponents.AIGATEWAY: {
+            "managementState": aigateway_state,
+            "modelsAsAService": {"managementState": models_as_a_service_state},
+        }
+    }
 
 
 def host_from_ingress_domain(client) -> str:
@@ -672,7 +692,9 @@ def verify_maas_gateway_programmed(gateway: Gateway) -> None:
     gateway.wait_for_condition(condition="Programmed", status="True", timeout=300)
 
 
-def verify_maas_tenant_ready(tenant: Tenant) -> None:
-    """Assert that the Tenant CR exists and has Ready=True."""
-    assert tenant.exists, f"Tenant '{tenant.name}' not found in namespace '{tenant.namespace}'"
-    tenant.wait_for_condition(condition="Ready", status="True", timeout=300)
+def verify_maas_tenant_config_ready(maas_tenant_config: MaasTenantConfig) -> None:
+    """Assert that the MaasTenantConfig CR exists and has Ready=True."""
+    assert maas_tenant_config.exists, (
+        f"MaasTenantConfig '{maas_tenant_config.name}' not found in namespace '{maas_tenant_config.namespace}'"
+    )
+    maas_tenant_config.wait_for_condition(condition="Ready", status="True", timeout=300)

@@ -7,8 +7,6 @@ import structlog
 import yaml
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
-from kubernetes.dynamic.exceptions import ResourceNotFoundError
-from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.daemonset import DaemonSet
 from ocp_resources.data_science_cluster import DataScienceCluster
@@ -31,6 +29,7 @@ from tests.model_serving.model_server.kserve.model_cache.utils import (
     MODEL_CACHE_SIZE,
     LocalModelNodeGroup,
 )
+from tests.model_serving.model_server.utils import skip_test
 from utilities.constants import (
     DscComponents,
     KServeDeploymentType,
@@ -59,6 +58,7 @@ from utilities.kueue_utils import (
     create_cluster_queue,
     create_local_queue,
     create_resource_flavor,
+    is_kueue_operator_installed,
     wait_for_kueue_crds_available,
 )
 from utilities.serving_runtime import ServingRuntimeFromTemplate
@@ -340,7 +340,7 @@ def model_car_inference_service(
 def skip_if_disconnected(admin_client: DynamicClient) -> None:
     """Skip test if running on a disconnected (air-gapped) cluster."""
     if is_disconnected_cluster(client=admin_client):
-        pytest.skip("S3/HuggingFace storage not available on disconnected clusters")
+        skip_test(reason="HuggingFace storage not available on disconnected clusters")
 
 
 @pytest.fixture(scope="session")
@@ -499,32 +499,14 @@ def model_cache_infra_ready(
 
 
 # Kueue Fixtures
-def _is_kueue_operator_installed(admin_client: DynamicClient) -> bool:
-    """Check if the Kueue operator is installed and ready."""
-    try:
-        csvs = list(
-            ClusterServiceVersion.get(
-                client=admin_client,
-                namespace=py_config.get("applications_namespace", "openshift-operators"),
-            )
-        )
-        for csv in csvs:
-            if csv.name.startswith("kueue") and csv.status == csv.Status.SUCCEEDED:
-                LOGGER.info(f"Found Kueue operator CSV: {csv.name}")
-                return True
-        return False
-    except ResourceNotFoundError:
-        return False
-
-
 @pytest.fixture(scope="session")
 def ensure_kueue_unmanaged_in_dsc(
     admin_client: DynamicClient, dsc_resource: DataScienceCluster
 ) -> Generator[None, Any]:
     """Set DSC Kueue to Unmanaged and wait for CRDs to be available."""
     try:
-        if not _is_kueue_operator_installed(admin_client):
-            pytest.skip("Kueue operator is not installed, skipping Kueue tests")
+        if not is_kueue_operator_installed(admin_client):
+            skip_test(reason="Kueue operator is not installed, skipping Kueue tests")
 
         # Check current Kueue state
         kueue_management_state = dsc_resource.instance.spec.components[DscComponents.KUEUE].managementState
@@ -556,7 +538,7 @@ def ensure_kueue_unmanaged_in_dsc(
             yield
 
     except (AttributeError, KeyError) as e:
-        pytest.skip(f"Kueue component not found in DSC: {e}")
+        skip_test(reason=f"Kueue component not found in DSC: {e}")
 
 
 def kueue_resource_groups(

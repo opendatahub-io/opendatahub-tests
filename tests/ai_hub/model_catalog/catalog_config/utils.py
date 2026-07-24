@@ -503,8 +503,9 @@ def validate_cleanup_logging(
 
 
 def filter_models_by_pattern(all_models: set[str], pattern: str) -> set[str]:
-    """Helper function to filter models by a given pattern."""
-    return {model for model in all_models if pattern in model}
+    """Helper function to filter models by a given pattern (case-insensitive)."""
+    pattern_lower = pattern.lower()
+    return {model for model in all_models if pattern_lower in model.lower()}
 
 
 @retry(wait_timeout=300, sleep=10, exceptions_dict={Exception: []}, print_log=False)
