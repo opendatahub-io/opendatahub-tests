@@ -12,7 +12,7 @@ import structlog
 from ocp_resources.notebook import Notebook
 from ocp_resources.pod import ExecOnPodError, Pod
 
-from utilities.general import collect_pod_information
+from utilities.general import collect_pod_information, strip_ansi
 
 if TYPE_CHECKING:
     from tests.workbenches.notebook_images.utils import WorkbenchImageBaseline, WorkbenchImageSpec
@@ -26,8 +26,8 @@ ELYRA_RUNTIMES_DIR = "/opt/app-root/src/.local/share/jupyter/metadata/runtimes"
 def parse_elyra_extensions(labextension_output: str) -> dict[str, dict[str, Any]]:
     """Parse jupyter labextension list output to extract Elyra-related extensions.
 
-    Matches any extension with "elyra" in the name (case-insensitive).
-    Extension names can include: @, /, ., -, and alphanumerics
+    Uses re.search so parsing is not affected by formatting differences.
+    Matches any line containing "elyra" (case-insensitive).
 
     Args:
         labextension_output: Raw output from `jupyter labextension list` command
@@ -36,25 +36,26 @@ def parse_elyra_extensions(labextension_output: str) -> dict[str, dict[str, Any]
         Dict mapping extension names to metadata (version, enabled, status)
 
     Example:
-        Input: "odh-elyra v1.0.0 enabled OK"
-        Output: {"odh-elyra": {"version": "1.0.0", "enabled": True, "status": "OK"}}
+        Input: "  @elyra/code-snippet-extension v4.3.2 enabled OK"
+        Output: {"@elyra/code-snippet-extension": {"version": "4.3.2", "enabled": True, "status": "OK"}}
     """
     elyra_extensions = {}
 
-    for line in labextension_output.split("\n"):
+    for line in strip_ansi(text=labextension_output).split("\n"):
         line = line.strip()
 
         if not line or "elyra" not in line.lower():
             continue
 
-        # Match extension line format: name v1.2.3 enabled/disabled OK/other-status
-        match = re.match(r"^([\w@/.-]+)\s+v([\d.]+)\s+(enabled|disabled)\s+(\S+)", line)
+        match = re.search(
+            r"(?P<name>[\w@/.-]+)\s+v(?P<version>[\d.]+)\s+(?P<state>enabled|disabled)\s+(?P<status>\S+)",
+            line,
+        )
         if match:
-            name, version, enabled_str, status = match.groups()
-            elyra_extensions[name] = {
-                "version": version,
-                "enabled": enabled_str == "enabled",
-                "status": status,
+            elyra_extensions[match.group("name")] = {
+                "version": match.group("version"),
+                "enabled": match.group("state") == "enabled",
+                "status": match.group("status"),
             }
 
     return elyra_extensions
@@ -85,6 +86,7 @@ def list_runtime_configs(pod: Pod, container: str) -> list[str]:
             f"Failed to list runtime configs in '{ELYRA_RUNTIMES_DIR}' on pod '{pod.name}': {e}"
         ) from e
 
+    output = strip_ansi(text=output) if output else output
     if not output or not output.strip():
         return []
 
@@ -123,6 +125,7 @@ def read_runtime_config(pod: Pod, container: str, filename: str) -> dict[str, An
         collect_pod_information(pod)
         raise AssertionError(f"Failed to read runtime config '{file_path}' on pod '{pod.name}': {e}") from e
 
+    output = strip_ansi(text=output)
     try:
         return json.loads(output)
     except json.JSONDecodeError as e:
@@ -189,7 +192,7 @@ def verify_pre_upgrade_elyra_installed(
     try:
         output = pod.execute(
             container=notebook.name,
-            command=["jupyter", "labextension", "list"],
+            command=["sh", "-c", "jupyter labextension list 2>&1"],
             timeout=60,
         )
     except ExecOnPodError as e:
@@ -235,7 +238,7 @@ def verify_post_upgrade_elyra_extensions_preserved(
     try:
         output = pod.execute(
             container=notebook.name,
-            command=["jupyter", "labextension", "list"],
+            command=["sh", "-c", "jupyter labextension list 2>&1"],
             timeout=60,
         )
     except ExecOnPodError as e:
