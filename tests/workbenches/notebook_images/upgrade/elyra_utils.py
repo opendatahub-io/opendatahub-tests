@@ -41,7 +41,7 @@ def parse_elyra_extensions(labextension_output: str) -> dict[str, dict[str, Any]
     """
     elyra_extensions = {}
 
-    for line in strip_ansi(labextension_output).split("\n"):
+    for line in strip_ansi(text=labextension_output).split("\n"):
         line = line.strip()
 
         if not line or "elyra" not in line.lower():
@@ -86,7 +86,7 @@ def list_runtime_configs(pod: Pod, container: str) -> list[str]:
             f"Failed to list runtime configs in '{ELYRA_RUNTIMES_DIR}' on pod '{pod.name}': {e}"
         ) from e
 
-    output = strip_ansi(output) if output else output
+    output = strip_ansi(text=output) if output else output
     if not output or not output.strip():
         return []
 
@@ -125,7 +125,7 @@ def read_runtime_config(pod: Pod, container: str, filename: str) -> dict[str, An
         collect_pod_information(pod)
         raise AssertionError(f"Failed to read runtime config '{file_path}' on pod '{pod.name}': {e}") from e
 
-    output = strip_ansi(output)
+    output = strip_ansi(text=output)
     try:
         return json.loads(output)
     except json.JSONDecodeError as e:
