@@ -1,8 +1,9 @@
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any
 
+import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
@@ -10,7 +11,7 @@ from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.pod import Pod
 from ocp_resources.resource import MissingRequiredArgumentError, NamespacedResource, Resource
 from pytest_testconfig import config as py_config
-from timeout_sampler import retry
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
 
 from utilities.constants import Timeout
 from utilities.resources.admission_check import AdmissionCheck
@@ -295,6 +296,31 @@ def get_workload_for_job(
     if len(workloads) > 1:
         raise ValueError(f"Multiple Workloads ({len(workloads)}) found for Job UID {job_uid}")
     return workloads[0] if workloads else None
+
+
+def wait_for_workload_condition(
+    client: DynamicClient,
+    workload_name: str,
+    namespace: str,
+    condition_check: Callable[[Workload], bool],
+    condition_name: str,
+    timeout: int = Timeout.TIMEOUT_2MIN,
+) -> None:
+    """Poll a Workload until a condition is met, or fail the test."""
+    try:
+        for workload in TimeoutSampler(
+            wait_timeout=timeout,
+            sleep=5,
+            func=lambda: Workload(
+                client=client,
+                name=workload_name,
+                namespace=namespace,
+            ),
+        ):
+            if workload.exists and condition_check(workload):
+                return
+    except TimeoutExpiredError:
+        pytest.fail(f"Workload '{workload_name}' did not reach {condition_name}")
 
 
 def check_workload_admitted(workload: Workload) -> bool:

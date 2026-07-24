@@ -3,7 +3,6 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.job import Job
 from ocp_resources.namespace import Namespace
-from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_serving.model_server.upgrade.admission_check_upgrade_config import (
     AC_ADMISSION_CHECK_NAME,
@@ -18,6 +17,7 @@ from utilities.kueue_utils import (
     check_cluster_queue_has_admission_check,
     check_workload_admitted,
     check_workload_quota_reserved,
+    wait_for_workload_condition,
 )
 from utilities.resources.admission_check import AdmissionCheck
 
@@ -54,20 +54,13 @@ class TestAdmissionCheckPreUpgrade:
         """Verify Kueue created a Workload and it has QuotaReserved=True."""
         assert admission_check_workload is not None, f"No Workload found for Job '{admission_check_job.name}'"
 
-        try:
-            for workload in TimeoutSampler(
-                wait_timeout=Timeout.TIMEOUT_2MIN,
-                sleep=5,
-                func=lambda: Workload(
-                    client=admin_client,
-                    name=admission_check_workload.name,
-                    namespace=admission_check_namespace.name,
-                ),
-            ):
-                if workload.exists and check_workload_quota_reserved(workload=workload):
-                    break
-        except TimeoutExpiredError:
-            pytest.fail(f"Workload '{admission_check_workload.name}' did not reach QuotaReserved=True")
+        wait_for_workload_condition(
+            client=admin_client,
+            workload_name=admission_check_workload.name,
+            namespace=admission_check_namespace.name,
+            condition_check=check_workload_quota_reserved,
+            condition_name="QuotaReserved=True",
+        )
 
         LOGGER.info(
             "[PRE-UPGRADE] PASS: Workload has QuotaReserved=True",
@@ -170,23 +163,13 @@ class TestAdmissionCheckPostUpgrade:
             workload=admission_check_workload.name,
         )
 
-        try:
-            for workload in TimeoutSampler(
-                wait_timeout=Timeout.TIMEOUT_2MIN,
-                sleep=5,
-                func=lambda: Workload(
-                    client=admin_client,
-                    name=admission_check_workload.name,
-                    namespace=admission_check_namespace.name,
-                ),
-            ):
-                if workload.exists and check_workload_admitted(workload=workload):
-                    break
-        except TimeoutExpiredError:
-            pytest.fail(
-                f"Workload '{admission_check_workload.name}' not Admitted after approving "
-                f"AdmissionCheck '{AC_ADMISSION_CHECK_NAME}'"
-            )
+        wait_for_workload_condition(
+            client=admin_client,
+            workload_name=admission_check_workload.name,
+            namespace=admission_check_namespace.name,
+            condition_check=check_workload_admitted,
+            condition_name=f"Admitted after approving AdmissionCheck '{AC_ADMISSION_CHECK_NAME}'",
+        )
         LOGGER.info("[POST-UPGRADE] PASS: Workload admitted after AdmissionCheck approval")
 
     @pytest.mark.post_upgrade
