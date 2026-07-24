@@ -56,8 +56,8 @@ model_serving/
     │   ├── platform/                  # DSC deployment modes
     │   ├── private_endpoint/          # Private endpoint access
     │   └── storage/                   # S3, PVC, OCI, MinIO backends
-    ├── llmd/                          # LLM Deployment (LLMD) tests
-    │   ├── llmd_configs/              # LLMD configuration files
+    ├── llmd/                          # LLM Deployment (llm-d) tests
+    │   ├── llmd_configs/              # llm-d configuration files
     │   └── test_llmd_*.py             # Smoke, auth, CPU/GPU, scheduler
     └── upgrade/                       # Upgrade tests
         └── test_upgrade*.py           # Metrics, auth, private endpoint, llmd
@@ -67,27 +67,36 @@ model_serving/
 
 - **`maas_billing/`** - MaaS billing tests including token management, rate limiting, RBAC, subscription lifecycle, API key CRUD/authorization, and cascade deletion
 - **`model_runtime/`** - Runtime validation for vLLM (S3 and OCI modelcar), OpenVINO (CPU-optimized inference), Triton (multi-framework), and MLServer (lightweight serving)
-- **`model_server/`** - Server platform tests for KServe deployment modes (raw, serverless), storage backends (S3, PVC, OCI, MinIO), authentication, autoscaling (KEDA, Kueue), inference graphs, lifecycle management, observability, negative testing, LLMD, and upgrade scenarios
+- **`model_server/`** - Server platform tests for KServe deployment modes (raw, serverless), storage backends (S3, PVC, OCI, MinIO), authentication, autoscaling (KEDA, Kueue), inference graphs, lifecycle management, observability, negative testing, llm-d, and upgrade scenarios
 
 ## Test Markers
 
+<!-- Quality gate mapping defined in: https://gitlab.cee.redhat.com/ods/jenkins/-/blob/master/resources/configs/components-testing/components/model-server/main.yaml -->
+
 ```python
-@pytest.mark.smoke                 # Critical smoke tests
-@pytest.mark.tier1                 # Tier 1 tests
-@pytest.mark.tier2                 # Tier 2 tests
+# Quality gates (mapped to Jenkins pipelines)
+@pytest.mark.smoke                 # Critical smoke tests (CPU only)
+@pytest.mark.tier1                 # Tier 1 tests (CPU only)
+@pytest.mark.tier2                 # Tier 2 tests (CPU only)
+@pytest.mark.llmd_gpu              # llm-d GPU tests (Quality Gates: vllm-nvidia-1gpu, vllm-nvidia-multigpus, vllm-amd-gpu)
+@pytest.mark.gpu                   # KServe/Triton GPU tests
+@pytest.mark.multinode             # Multi-node GPU deployment (Quality Gates: nvidia-multinode-gpu)
 @pytest.mark.rawdeployment         # KServe raw deployment mode
-@pytest.mark.gpu                   # Requires GPU
-@pytest.mark.multinode             # Multi-node deployment
+@pytest.mark.pre_upgrade           # Pre-upgrade tests
+@pytest.mark.post_upgrade          # Post-upgrade tests
+
+# Feature markers
 @pytest.mark.minio                 # MinIO storage tests
 @pytest.mark.tls                   # TLS/SSL tests
 @pytest.mark.metrics               # Metrics tests
 @pytest.mark.kueue                 # Kueue integration
-@pytest.mark.pre_upgrade           # Pre-upgrade tests
-@pytest.mark.post_upgrade          # Post-upgrade tests
-@pytest.mark.skip_on_disconnected  # Requires internet connectivity
+@pytest.mark.skip_on_disconnected  # Requires internet (skipped on disconnected clusters)
 ```
 
 ## Model Runtimes
+
+<!-- model-runtime quality gate mapping: https://gitlab.cee.redhat.com/ods/jenkins/-/blob/master/resources/configs/components-testing/components/model-runtime/main.yaml -->
+
 
 | Runtime         | Framework       | Use Case                                                |
 | --------------- | --------------- | ------------------------------------------------------- |
@@ -129,7 +138,7 @@ uv run pytest tests/model_serving/model_server/kserve/
 # Run MaaS billing tests
 uv run pytest tests/model_serving/maas_billing/
 
-# Run LLMD tests
+# Run llm-d tests
 uv run pytest tests/model_serving/model_server/llmd/
 ```
 
