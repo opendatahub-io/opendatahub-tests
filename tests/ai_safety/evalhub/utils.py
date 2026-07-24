@@ -877,6 +877,33 @@ def build_evalhub_job_payload(
     }
 
 
+def build_pvc_test_data_ref(claim_name: str, sub_path: str | None = None) -> dict:
+    """Build the test_data_ref.pvc portion of an EvalHub job payload."""
+    pvc_ref: dict[str, str] = {"claim_name": claim_name}
+    if sub_path is not None:
+        pvc_ref["sub_path"] = sub_path
+    return {"pvc": pvc_ref}
+
+
+def build_pvc_job_payload(
+    model_service_name: str,
+    tenant_namespace: str,
+    job_name: str,
+    claim_name: str,
+    sub_path: str | None = None,
+) -> dict:
+    """Build an EvalHub job payload with PVC-backed test data."""
+    payload = build_evalhub_job_payload(
+        model_service_name=model_service_name,
+        tenant_namespace=tenant_namespace,
+        job_name=job_name,
+    )
+    pvc_ref = build_pvc_test_data_ref(claim_name=claim_name, sub_path=sub_path)
+    for benchmark in payload["benchmarks"]:
+        benchmark["test_data_ref"] = pvc_ref
+    return payload
+
+
 def submit_evalhub_collection(
     host: str,
     token: str,

@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed, wait
 from string import Template
 from typing import Any
 
+import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
@@ -22,6 +23,13 @@ from utilities.infra import get_pods_by_isvc_label
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+def skip_test(reason: str) -> None:
+    """Log a visible skip banner and call pytest.skip."""
+    border = "=" * 60
+    LOGGER.warning("\n".join(["", border, f"  SKIP — {reason}", border, ""]))
+    pytest.skip(reason)
 
 
 def verify_inference_response(

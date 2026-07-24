@@ -23,15 +23,15 @@ PREFIX_CACHE_PROMPT = (
 
 NAMESPACE = ns_from_file(file=__file__)
 
-pytestmark = [pytest.mark.tier2, pytest.mark.llmd_gpu]
+pytestmark = [pytest.mark.llmd_gpu]
 
 
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, llmisvc",
-    [({"name": NAMESPACE}, EstimatedPrefixCacheConfig)],
+    [pytest.param({"name": NAMESPACE}, EstimatedPrefixCacheConfig, id="estimated")],
     indirect=True,
 )
-@pytest.mark.usefixtures("valid_aws_config", "skip_if_disconnected")
+@pytest.mark.usefixtures("valid_aws_config")
 class TestSingleNodeEstimatedPrefixCache:
     """Deploy TinyLlama on GPU with 2 replicas and estimated prefix cache routing,
     then verify cache hits via Prometheus metrics.

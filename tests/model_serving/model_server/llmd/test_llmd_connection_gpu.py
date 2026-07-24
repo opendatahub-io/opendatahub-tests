@@ -9,7 +9,7 @@ from tests.model_serving.model_server.llmd.utils import (
     workaround_503_no_healthy_upstream,
 )
 
-pytestmark = [pytest.mark.tier1, pytest.mark.llmd_gpu]
+pytestmark = [pytest.mark.llmd_gpu]
 
 NAMESPACE = ns_from_file(file=__file__)
 
@@ -22,7 +22,7 @@ NAMESPACE = ns_from_file(file=__file__)
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("valid_aws_config", "skip_if_disconnected")
+@pytest.mark.usefixtures("valid_aws_config")
 class TestLlmdConnectionGpu:
     """Deploy TinyLlama on GPU via S3 and HuggingFace and verify chat completions."""
 

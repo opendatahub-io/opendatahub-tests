@@ -53,6 +53,8 @@ TENANT_GATEWAY_SERVICE_SUFFIX = "-openshift-default"
 TENANT_GATEWAY_ROUTE_SUFFIX = "-route"
 GATEWAY_ACCESS_LABEL_PREFIX = "maas.opendatahub.io/gateway-access-"
 GATEWAY_HTTP_PORT = 80
+GATEWAY_HTTPS_PORT = 443
+GATEWAY_TLS_CERTIFICATE_SECRET_NAME = "data-science-gateway-service-tls"  # pragma: allowlist secret
 AUTHORINO_TLS_BOOTSTRAP_ANNOTATION = "security.opendatahub.io/authorino-tls-bootstrap"
 TENANT_GATEWAY_MAAS_AUTH_POLICY_SUFFIX = "-maas-auth"
 SHARED_MAAS_API_SERVICE_NAME = MAAS_API_DEPLOYMENT_NAME
@@ -291,11 +293,21 @@ def isolation_bootstrap_gateway_body(
     gateway_name: str,
     gateway_namespace: str,
 ) -> dict[str, Any]:
-    """Build a tenant Gateway that accepts labeled maas-api HTTPRoutes on HTTP.
+    """Build a tenant Gateway that accepts labeled maas-api HTTPRoutes on HTTP and HTTPS.
 
     External hostnames are configured on the OpenShift Route, not on the Gateway listener.
     """
     gateway_access_label = gateway_access_label_key(gateway_name=gateway_name)
+    allowed_routes = {
+        "namespaces": {
+            "from": "Selector",
+            "selector": {
+                "matchLabels": {
+                    gateway_access_label: "true",
+                },
+            },
+        },
+    }
     return {
         "apiVersion": "gateway.networking.k8s.io/v1",
         "kind": "Gateway",
@@ -313,15 +325,22 @@ def isolation_bootstrap_gateway_body(
                     "name": "http",
                     "port": GATEWAY_HTTP_PORT,
                     "protocol": "HTTP",
-                    "allowedRoutes": {
-                        "namespaces": {
-                            "from": "Selector",
-                            "selector": {
-                                "matchLabels": {
-                                    gateway_access_label: "true",
-                                },
+                    "allowedRoutes": allowed_routes,
+                },
+                {
+                    "name": "https",
+                    "port": GATEWAY_HTTPS_PORT,
+                    "protocol": "HTTPS",
+                    "allowedRoutes": allowed_routes,
+                    "tls": {
+                        "mode": "Terminate",
+                        "certificateRefs": [
+                            {
+                                "group": "",
+                                "kind": "Secret",
+                                "name": GATEWAY_TLS_CERTIFICATE_SECRET_NAME,
                             },
-                        },
+                        ],
                     },
                 },
             ],
@@ -351,7 +370,7 @@ def isolation_bootstrap_gateway_context(
     gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
     teardown: bool = True,
 ) -> Generator[Gateway, Any, Any]:
-    """Yield a bootstrap Gateway with gateway-access labels and a tenant-scoped HTTP listener.
+    """Yield a bootstrap Gateway with gateway-access labels and tenant-scoped HTTP/HTTPS listeners.
 
     Labels the maas-api namespace so per-tenant maas-api HTTPRoutes can attach.
     """
@@ -614,7 +633,7 @@ def verify_tenant_gateway_auth_policy_callback_url(
 
 def maas_api_route_name_for_aitenant(aitenant_name: str) -> str:
     """Return the per-tenant maas-api HTTPRoute name applied by the Tenant reconciler post-render."""
-    return f"{MAAS_API_DEPLOYMENT_NAME}-{aitenant_name}-route"
+    return f"{MAAS_API_DEPLOYMENT_NAME}-route-{aitenant_name}"
 
 
 def gateway_ref_from_aitenant(aitenant: AITenant) -> tuple[str, str]:

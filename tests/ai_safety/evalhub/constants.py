@@ -98,6 +98,10 @@ SIMPLE_MINIO_ACCESS_KEY: str = "minioadmin"
 SIMPLE_MINIO_SECRET_KEY: str = "minioadmin"
 SIMPLE_MINIO_BUCKET: str = "evalhub-data"
 
+# PVC storage test data
+PVC_TEST_DATA_NAME: str = "evalhub-test-data"
+PVC_TEST_DATA_SIZE: str = "1Gi"
+
 # ServiceMonitor and metrics Service
 EVALHUB_METRICS_SERVICE_SUFFIX: str = "-metrics"
 EVALHUB_METRICS_PORT: int = 8081
