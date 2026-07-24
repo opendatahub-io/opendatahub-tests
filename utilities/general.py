@@ -28,7 +28,6 @@ LOGGER = structlog.get_logger(name=__name__)
 _ANSI_ESCAPE_RE = re.compile(r"\x1b(?:\[[?!>]?[0-9;:]*[A-Za-z]|\][^\x07]*(?:\x07|\x1b\\)|[()][A-B0-2]|[=>NODMHc78])")
 
 
-
 def strip_ansi(text: str) -> str:
     """Remove ANSI escape sequences from a string."""
     return _ANSI_ESCAPE_RE.sub(repl="", string=text)
