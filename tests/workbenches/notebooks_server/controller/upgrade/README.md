@@ -41,6 +41,22 @@ Session-scoped fixtures in `conftest.py` own almost all lifecycle logic. Tests a
 
 All Notebook CRs are built via `build_notebook_dict()` with `notebooks.opendatahub.io/inject-auth=true`, so auth sidecar and Gateway API routing are always in scope.
 
+### Kueue resources (namespace `upgrade-kueue-workbenches`)
+
+| Resource | Name | Role |
+| --- | --- | --- |
+| Namespace | `upgrade-kueue-workbenches` | Kueue-labeled namespace for queue-scheduled workbenches |
+| ResourceFlavor | `upgrade-kueue-flavor` | Generic resource flavor for the ClusterQueue |
+| ClusterQueue | `upgrade-kueue-cluster-queue` | Cluster-wide queue with CPU/memory quotas |
+| LocalQueue | `upgrade-kueue-local-queue` | Namespace-scoped queue pointing to the ClusterQueue |
+| HardwareProfile | `upgrade-kueue-hwp` | Queue-based scheduling profile (`scheduling.type=Queue`) |
+| Running notebook + PVC | `upgrade-kueue-notebook` | Kueue-admitted notebook survival subject |
+| Stopped notebook + PVC | `upgrade-kueue-stopped` | Kueue notebook stopped before upgrade |
+| New notebook + PVC | `upgrade-kueue-new` | Created post-upgrade to prove Kueue admission still works |
+| Baseline ConfigMap | `upgrade-kueue-baseline` | Bridge between pre and post phases (labels, generations) |
+
+Kueue notebooks use `resources={}` in `build_notebook_dict()` and annotate with `opendatahub.io/hardware-profile-name`, exercising the HardwareProfile webhook injection path.
+
 ### Baseline ConfigMap contract
 
 `capture_notebook_baseline` (pre-upgrade, no-op post-upgrade) writes JSON under key `baseline`:
@@ -131,7 +147,38 @@ Covered for both the **running** and **stopped** notebooks (stopped: Service/Con
 | `kubeflow-resource-stopped` annotation present | set by fixture | yes  |
 | Annotation timestamp value unchanged           | baseline       | yes  |
 
-### 5. Post-upgrade creation + webhook (`test_upgrade_creation.py`)
+### 5. Kueue scheduling (`test_upgrade_kueue.py`)
+
+Verifies that notebooks scheduled through Kueue queues (via HardwareProfile with `scheduling.type=Queue`) survive a platform upgrade with their management labels, queue infrastructure, and lifecycle state preserved.
+
+Operates in a **separate namespace** (`upgrade-kueue-workbenches`) with its own Kueue infrastructure and baseline ConfigMap. Constants live in `kueue_constants.py`.
+
+| Concern | Pre-upgrade | Post-upgrade |
+| --- | --- | --- |
+| Running notebook pod Ready with Kueue labels | yes | yes |
+| `kueue.x-k8s.io/managed`, `queue-name`, `cluster-queue-name`, `local-queue-name` labels present | yes | yes (preserved from baseline) |
+| Notebook CR generation unchanged | baseline | yes |
+| ResourceFlavor / ClusterQueue / LocalQueue exist | yes | yes |
+| Workload admitted to correct ClusterQueue | yes | yes |
+| Stopped notebook StatefulSet replicas = 0 | yes | yes |
+| Stopped notebook `kubeflow-resource-stopped` annotation preserved | set by fixture | yes (value unchanged) |
+| New kueue-managed notebook created post-upgrade | — | yes (pod Ready + labels + Workload admitted) |
+
+#### Kueue fixture dependency shape
+
+```text
+upgrade_kueue_namespace
+|-- upgrade_kueue_resource_flavor
+|-- upgrade_kueue_cluster_queue
+|-- upgrade_kueue_local_queue
+|-- upgrade_kueue_hardware_profile
+|-- upgrade_kueue_notebook_pvc --> upgrade_kueue_notebook --> upgrade_kueue_notebook_pod
+|-- upgrade_kueue_stopped_notebook_pvc --> upgrade_kueue_stopped_notebook --> upgrade_kueue_stopped_pre_upgrade_shutdown
+|-- capture_kueue_baseline (depends on running + stopped shutdown)
++-- (post only) new_kueue_notebook_pvc --> new_kueue_notebook --> new_kueue_notebook_pod
+```
+
+### 6. Post-upgrade creation + webhook (`test_upgrade_creation.py`)
 
 Post-upgrade only. Proves the upgraded controller and webhook can still reconcile a fresh Notebook CR (`upgrade-wb-new`).
 
@@ -154,11 +201,13 @@ Post-upgrade only. Proves the upgraded controller and webhook can still reconcil
 upgrade/
 |-- README.md                 # This document
 |-- conftest.py               # Session fixtures, baseline capture/load, stop lifecycle
+|-- kueue_constants.py        # Shared constants for Kueue upgrade test resources
 |-- test_upgrade.py           # Running notebook survival + CA bundles
 |-- test_upgrade_auth.py      # kube-rbac-proxy for running and stopped notebooks
+|-- test_upgrade_creation.py  # New notebook + mutating webhook (post only)
+|-- test_upgrade_kueue.py     # Kueue-managed notebook scheduling survival
 |-- test_upgrade_routing.py   # HTTPRoute + ReferenceGrant
-|-- test_upgrade_stopped.py   # Stopped notebook stays stopped
-+-- test_upgrade_creation.py  # New notebook + mutating webhook (post only)
++-- test_upgrade_stopped.py   # Stopped notebook stays stopped
 ```
 
 ## Running
@@ -189,5 +238,8 @@ uv run pytest --post-upgrade tests/workbenches/notebooks_server/controller/upgra
 ## Notes
 
 - Namespace `upgrade-workbenches` must not collide with `upgrade-notebook-images` used by the image upgrade suite.
-- Pre-upgrade tests that need a complete baseline should depend on (or use) `capture_notebook_baseline` via `@pytest.mark.usefixtures("capture_notebook_baseline")`.
+- Namespace `upgrade-kueue-workbenches` is separate from the main upgrade namespace because Kueue requires the `kueue.openshift.io/managed=true` label on the namespace.
+- Pre-upgrade tests that need a complete baseline should depend on (or use) `capture_notebook_baseline` / `capture_kueue_baseline` via `@pytest.mark.usefixtures(...)`.
+- Kueue upgrade tests require the Red Hat build of Kueue operator installed with `StatefulSet` in the supported frameworks and DSC Kueue component set to `Unmanaged`.
+- The `kueue_statefulset_framework_check` fixture (inherited from `controller/conftest.py`) validates the Kueue operator prerequisite before any Kueue tests run.
 - Most of the behavioural complexity lives in `conftest.py`; review fixtures before changing assertions.
