@@ -3,7 +3,7 @@ from typing import Any
 import pytest
 import structlog
 from ragas import EvaluationDataset, SingleTurnSample, evaluate
-from ragas.metrics.collections import AnswerRelevancy, ContextPrecision, ContextRecall, Faithfulness
+from ragas.metrics import AnswerRelevancy, ContextPrecision, ContextRecall, Faithfulness
 
 from tests.ogx.constants import (
     ANSWER_RELEVANCY_THRESHOLD,
