@@ -29,6 +29,7 @@ from tests.model_serving.model_server.kserve.model_cache.utils import (
     MODEL_CACHE_SIZE,
     LocalModelNodeGroup,
 )
+from tests.model_serving.model_server.utils import skip_test
 from utilities.constants import (
     DscComponents,
     KServeDeploymentType,
@@ -339,7 +340,7 @@ def model_car_inference_service(
 def skip_if_disconnected(admin_client: DynamicClient) -> None:
     """Skip test if running on a disconnected (air-gapped) cluster."""
     if is_disconnected_cluster(client=admin_client):
-        pytest.skip("S3/HuggingFace storage not available on disconnected clusters")
+        skip_test(reason="HuggingFace storage not available on disconnected clusters")
 
 
 @pytest.fixture(scope="session")
@@ -505,7 +506,7 @@ def ensure_kueue_unmanaged_in_dsc(
     """Set DSC Kueue to Unmanaged and wait for CRDs to be available."""
     try:
         if not is_kueue_operator_installed(admin_client):
-            pytest.skip("Kueue operator is not installed, skipping Kueue tests")
+            skip_test(reason="Kueue operator is not installed, skipping Kueue tests")
 
         # Check current Kueue state
         kueue_management_state = dsc_resource.instance.spec.components[DscComponents.KUEUE].managementState
@@ -537,7 +538,7 @@ def ensure_kueue_unmanaged_in_dsc(
             yield
 
     except (AttributeError, KeyError) as e:
-        pytest.skip(f"Kueue component not found in DSC: {e}")
+        skip_test(reason=f"Kueue component not found in DSC: {e}")
 
 
 def kueue_resource_groups(

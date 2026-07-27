@@ -448,7 +448,7 @@ def verify_bbr_plugins_configmap_has_expected_plugins(
         )
     LOGGER.info(f"Post-auth plugins verified: {post_auth_plugin_types!r}")
 
-    assert BBR_PRE_AUTH_CONFIGMAP_KEY in config_map_data, (
+    assert config_map_data.get(BBR_PRE_AUTH_CONFIGMAP_KEY), (
         f"Key '{BBR_PRE_AUTH_CONFIGMAP_KEY}' missing from ConfigMap '{BBR_PLUGINS_CONFIGMAP_NAME}'"
     )
     pre_auth_config = yaml.safe_load(config_map_data[BBR_PRE_AUTH_CONFIGMAP_KEY])

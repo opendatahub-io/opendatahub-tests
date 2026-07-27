@@ -132,7 +132,6 @@ def validate_evalhub_health(
     host: str,
     token: str,
     ca_bundle_file: str,
-    tenant_namespace: str | None = None,
 ) -> None:
     """Validate that the EvalHub service health endpoint returns healthy status.
 
@@ -140,7 +139,6 @@ def validate_evalhub_health(
         host: Route host for the EvalHub service.
         token: Bearer token for authentication.
         ca_bundle_file: Path to CA bundle for TLS verification.
-        tenant_namespace: Namespace for the X-Tenant header.
 
     Raises:
         AssertionError: If the health check fails.
@@ -151,7 +149,7 @@ def validate_evalhub_health(
 
     response = requests.get(
         url=url,
-        headers=build_headers(token=token, tenant=tenant_namespace),
+        headers=get_auth_headers(token=token),
         verify=ca_bundle_file,
         timeout=10,
     )

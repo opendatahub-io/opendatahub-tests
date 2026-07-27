@@ -4,16 +4,20 @@ from typing import Any
 
 import structlog
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.pod import Pod
 from ocp_resources.resource import NamespacedResource, Resource
 from ocp_resources.service_account import ServiceAccount
 from pytest_testconfig import config as py_config
+from timeout_sampler import TimeoutExpiredError
 
 from utilities.constants import Labels
+from utilities.general import collect_pod_information
 
 LOGGER = structlog.get_logger(name=__name__)
 
-WORKBENCH_TRUSTED_CA_BUNDLE_NAME = "workbench-trusted-ca-bundle"
-CA_BUNDLE_CERT_KEY = "ca-bundle.crt"
+WORKBENCH_TRUSTED_CA_BUNDLE_NAME: str = "workbench-trusted-ca-bundle"
+CA_BUNDLE_CERT_KEY: str = "ca-bundle.crt"
+KUBEFLOW_STOPPED_ANNOTATION: str = "kubeflow-resource-stopped"
 
 
 class StatefulSet(NamespacedResource):
@@ -218,3 +222,35 @@ def build_notebook_dict(
             }
         },
     }
+
+
+def wait_for_notebook_pod_ready(notebook_pod: Pod, *, context: str, timeout: int = 300) -> None:
+    """Wait for a notebook pod to reach Ready state, with diagnostic collection on failure.
+
+    Args:
+        notebook_pod: The Pod resource to wait on.
+        context: Human-readable context for error messages (e.g. "Kueue notebook").
+        timeout: Maximum seconds to wait for the pod to become Ready.
+
+    Raises:
+        AssertionError: If the pod does not reach Ready within *timeout* seconds
+            or is never created.
+    """
+    try:
+        notebook_pod.wait(timeout=timeout)
+        notebook_pod.wait_for_condition(
+            condition=Pod.Condition.READY,
+            status=Pod.Condition.Status.TRUE,
+            timeout=timeout,
+        )
+    except (TimeoutError, TimeoutExpiredError) as e:
+        if notebook_pod.exists:
+            collect_pod_information(notebook_pod)
+            raise AssertionError(
+                f"{context} pod '{notebook_pod.name}' failed to reach Ready state "
+                f"within {timeout} seconds.\nOriginal error: {e}"
+            ) from e
+
+        raise AssertionError(
+            f"{context} pod '{notebook_pod.name}' was not created. Check notebook controller logs."
+        ) from e

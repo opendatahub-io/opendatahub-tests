@@ -19,6 +19,7 @@ MAAS_GATEWAY_AUTH_POLICY_NAME = "maas-gateway-auth"
 MAAS_OIDC_REALM = "openshift-ai-maas"
 MAAS_OIDC_GROUP = "maas-users"
 OIDC_CLIENT_ID = "maas-client"
+DEFAULT_AITENANT_NAME = "models-as-a-service"
 JWT_WHEN_PREDICATE = (
     '!request.headers.authorization.startsWith("Bearer sk-oai-") && '
     'request.headers.authorization.matches("^Bearer [^.]+\\\\.[^.]+\\\\.[^.]+$")'

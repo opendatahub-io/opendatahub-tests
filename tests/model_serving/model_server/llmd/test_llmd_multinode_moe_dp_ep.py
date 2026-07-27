@@ -22,7 +22,6 @@ pytestmark = [pytest.mark.llmd_gpu]
     [pytest.param({"name": NAMESPACE}, MultinodeMoeDpEpConfig, id="dp-ep")],
     indirect=True,
 )
-@pytest.mark.usefixtures("skip_if_disconnected")
 class TestMultinodeMoeDpEp:
     """Deploy a MoE model across 2 GPU nodes with data parallelism + expert parallelism.
 

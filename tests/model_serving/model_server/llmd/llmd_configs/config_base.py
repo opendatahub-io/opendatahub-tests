@@ -11,7 +11,9 @@ from tests.model_serving.model_server.llmd.utils import (
     log_accelerator_selection,
     log_base_refs_selection,
 )
+from tests.model_serving.model_server.utils import skip_test
 from utilities.constants import ContainerImages, Labels
+from utilities.infra import is_disconnected_cluster
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -128,7 +130,12 @@ class LLMISvcConfig:
 
     @classmethod
     def build(cls, client: DynamicClient) -> type:
-        """No-op for non-GPU configs. GpuConfig overrides with actual detection."""
+        """Skip on disconnected clusters when the model storage is HuggingFace.
+
+        GpuConfig overrides with GPU detection.
+        """
+        if cls.storage_uri.startswith("hf://") and is_disconnected_cluster(client=client):
+            skip_test(reason="HuggingFace storage not available on disconnected clusters")
         LOGGER.info(f"No accelerator needed for {cls.__name__}")
         return cls
 
@@ -203,10 +210,13 @@ class GpuConfig(LLMISvcConfig):
     def build(cls, client: DynamicClient) -> type:
         """Resolve all cluster-dependent config.
 
-        1. Detect which GPU accelerator to use.
-        2. Resolve which LLMInferenceServiceConfig CR (base_refs) to use.
-        3. Return a derived config class with both bound.
+        1. Skip on disconnected clusters when the model storage is HuggingFace.
+        2. Detect which GPU accelerator to use.
+        3. Resolve which LLMInferenceServiceConfig CR (base_refs) to use.
+        4. Return a derived config class with both bound.
         """
+        if cls.storage_uri.startswith("hf://") and is_disconnected_cluster(client=client):
+            skip_test(reason="HuggingFace storage not available on disconnected clusters")
         accelerator = cls._select_accelerator(client=client)
         base_refs = (
             cls.base_refs
@@ -246,15 +256,21 @@ class GpuConfig(LLMISvcConfig):
             if supported:
                 supported_nodes.append(supported)
 
-        # For each accelerator type, count nodes that meet min_gpus_per_node and sum their GPUs.
-        # Nodes with fewer GPUs than required are skipped — they can't run the workload.
+        # For each accelerator type, count total nodes/GPUs and qualifying nodes/GPUs.
         candidates: dict[str, dict[str, int]] = {}
         for node in supported_nodes:
             for resource_name, resource_count in node.items():
                 if resource_name not in candidates:
-                    candidates[resource_name] = {"total_gpus": 0, "qualifying_nodes": 0}
+                    candidates[resource_name] = {
+                        "total_gpus": 0,
+                        "total_nodes": 0,
+                        "qualifying_gpus": 0,
+                        "qualifying_nodes": 0,
+                    }
+                candidates[resource_name]["total_gpus"] += resource_count
+                candidates[resource_name]["total_nodes"] += 1
                 if resource_count >= cls.min_gpus_per_node:
-                    candidates[resource_name]["total_gpus"] += resource_count
+                    candidates[resource_name]["qualifying_gpus"] += resource_count
                     candidates[resource_name]["qualifying_nodes"] += 1
 
         # Keep only accelerator types with enough qualifying nodes for the current test
@@ -266,20 +282,34 @@ class GpuConfig(LLMISvcConfig):
 
         # Skip the test if no accelerator type meets the requirements
         if not qualified:
-            msg = (
-                f"Skipping test: no supported accelerator found for {cls.__name__}."
-                f" Required: {cls.min_nodes} node(s) with at least {cls.min_gpus_per_node} GPU(s) each,"
-                f" supported types: {cls.supported_accelerators}."
-                f" Found: {candidates or 'no GPU nodes'}"
+            supported = ", ".join(cls.supported_accelerators)
+            if not detected_nodes:
+                cluster_state = "No GPU nodes detected in the cluster."
+            else:
+                if candidates:
+                    gpu_summary = {r: (s["total_gpus"], s["total_nodes"]) for r, s in candidates.items()}
+                else:
+                    gpu_summary: dict[str, tuple[int, int]] = {}
+                    for node in detected_nodes:
+                        for r, count in node["resources"].items():
+                            gpus, nodes = gpu_summary.get(r, (0, 0))
+                            gpu_summary[r] = (gpus + count, nodes + 1)
+                parts = [f"{r}: {gpus} GPU(s) across {nodes} node(s)" for r, (gpus, nodes) in gpu_summary.items()]
+                cluster_state = "Detected " + ", ".join(parts) + "."
+            reason = (
+                f"No supported accelerator found for {cls.__name__}.\n"
+                f"  This test can run on [{supported}] and requires:\n"
+                f"  - at least {cls.min_gpus_per_node} GPU(s) per node\n"
+                f"  - at least {cls.min_nodes} node(s) with GPU\n"
+                f"  {cluster_state}"
             )
-            LOGGER.warning(msg)
-            pytest.skip(msg)
+            skip_test(reason=reason)
 
-        # Pick the accelerator type with the most GPUs, then most nodes as tiebreaker
+        # Pick the accelerator type with the most qualifying GPUs, then most nodes as tiebreaker
         selected_resource = max(
             qualified,
             key=lambda resource_name: (
-                qualified[resource_name]["total_gpus"],
+                qualified[resource_name]["qualifying_gpus"],
                 qualified[resource_name]["qualifying_nodes"],
             ),
         )
@@ -288,7 +318,7 @@ class GpuConfig(LLMISvcConfig):
             config_name=cls.__name__,
             detected_nodes=detected_nodes,
             selected=selected_resource,
-            total_gpus=selected_stats["total_gpus"],
+            qualifying_gpus=selected_stats["qualifying_gpus"],
             qualifying_nodes=selected_stats["qualifying_nodes"],
         )
         return selected_resource
@@ -341,13 +371,12 @@ class GpuConfig(LLMISvcConfig):
             return [{"name": result.matched}]
 
         if cls.optional_base_refs:
-            msg = (
-                f"No LLMInferenceServiceConfig CR matching '{cls.accelerator_config_name_regex}'"
-                f" for accelerator='{accelerator}' topology='{cls.supported_topology}'."
-                f" optional_base_refs=True — skipping. See logs above for details."
+            reason = (
+                f"No LLMInferenceServiceConfig CR matching '{cls.accelerator_config_name_regex}'\n"
+                f"  accelerator='{accelerator}' topology='{cls.supported_topology}'\n"
+                f"  optional_base_refs=True — skipping. See logs above for details."
             )
-            LOGGER.warning(msg)
-            pytest.skip(msg)
+            skip_test(reason=reason)
 
         pytest.fail(
             f"No LLMInferenceServiceConfig CR matched accelerator='{accelerator}'"
