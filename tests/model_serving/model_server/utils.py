@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed, wait
 from string import Template
 from typing import Any
 
+import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
@@ -24,6 +25,13 @@ from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 LOGGER = structlog.get_logger(name=__name__)
 
 
+def skip_test(reason: str) -> None:
+    """Log a visible skip banner and call pytest.skip."""
+    border = "=" * 60
+    LOGGER.warning("\n".join(["", border, f"  SKIP — {reason}", border, ""]))
+    pytest.skip(reason)
+
+
 def verify_inference_response(
     inference_service: InferenceService | InferenceGraph,
     inference_config: dict[str, Any],
@@ -36,6 +44,7 @@ def verify_inference_response(
     insecure: bool = False,
     token: str | None = None,
     authorized_user: bool | None = None,
+    inference_timeout: int | None = None,
 ) -> None:
     """
     Verify the inference response.
@@ -52,6 +61,7 @@ def verify_inference_response(
         insecure (bool): Insecure mode.
         token (str): Token.
         authorized_user (bool): Authorized user.
+        inference_timeout (int | None): Retry timeout in seconds for the inference request.
 
     Raises:
         InvalidInferenceResponseError: If inference response is invalid.
@@ -73,6 +83,7 @@ def verify_inference_response(
         use_default_query=use_default_query,
         token=token,
         insecure=insecure,
+        inference_timeout=inference_timeout,
     )
 
     if authorized_user is False:

@@ -5,6 +5,8 @@ import semver
 from ogx_client.types import Model
 from semver import VersionInfo
 
+from utilities.image_constants import SharedImages
+
 
 class ModelInfo(NamedTuple):
     """Container for model information from OGX client."""
@@ -21,13 +23,7 @@ OGX_CLIENT_VERIFY_SSL = os.getenv("OGX_CLIENT_VERIFY_SSL", "false").lower() == "
 OGX_CORE_POD_FILTER: str = "app=ogx"
 OGX_OPENSHIFT_MINIMAL_VERSION: VersionInfo = semver.VersionInfo.parse("4.17.0")
 
-POSTGRES_IMAGE = os.getenv(
-    "OGX_VECTOR_IO_POSTGRES_IMAGE",
-    (
-        "registry.redhat.io/rhel9/postgresql-15@sha256:"
-        "90ec347a35ab8a5d530c8d09f5347b13cc71df04f3b994bfa8b1a409b1171d59"  # postgres 15 # pragma: allowlist secret
-    ),
-)
+POSTGRES_IMAGE = os.getenv("OGX_VECTOR_IO_POSTGRES_IMAGE", SharedImages.POSTGRESQL_15)
 POSTGRESQL_USER = os.getenv("OGX_VECTOR_IO_POSTGRESQL_USER", "ps_user")
 POSTGRESQL_PASSWORD = os.getenv("OGX_VECTOR_IO_POSTGRESQL_PASSWORD", "ps_password")
 

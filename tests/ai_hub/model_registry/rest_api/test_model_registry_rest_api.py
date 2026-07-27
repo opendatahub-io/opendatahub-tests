@@ -1,7 +1,6 @@
 from typing import Any, Self
 
 import pytest
-import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
@@ -13,6 +12,7 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.serving_runtime import ServingRuntime
 
+import tests.ai_hub.constants as ai_hub_constants
 from tests.ai_hub.constants import MR_POSTGRES_DB_OBJECT
 from tests.ai_hub.model_registry.rest_api.constants import (
     CUSTOM_PROPERTY,
@@ -28,7 +28,7 @@ from tests.ai_hub.model_registry.rest_api.constants import (
     STATE_ARCHIVED,
     STATE_LIVE,
 )
-from tests.ai_hub.model_registry.rest_api.utils import validate_resource_attributes
+from tests.ai_hub.model_registry.rest_api.utils import validate_model_inference, validate_resource_attributes
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -385,13 +385,8 @@ class TestModelRegistryDeployment:
 
         LOGGER.info(f"Testing deployment of registered model: {model_name}")
 
-        # Test model endpoint accessibility
-        model_endpoint = f"{model_registry_model_portforward}/{model_registry_inference_service.name}"
-        LOGGER.info(f"Testing registered model endpoint: {model_endpoint}")
-
-        model_response = requests.get(model_endpoint, timeout=10)
-        LOGGER.info(f"Model endpoint status: {model_response.status_code}")
-
-        assert model_response.status_code == 200, (
-            f"Model endpoint returned status code:{model_response.status_code}: response text{model_response.text}"
+        validate_model_inference(
+            endpoint=model_registry_model_portforward,
+            model=model_registry_inference_service.name,
+            vllm=ai_hub_constants.MR_ISVC_VLLM_INFERENCE,
         )

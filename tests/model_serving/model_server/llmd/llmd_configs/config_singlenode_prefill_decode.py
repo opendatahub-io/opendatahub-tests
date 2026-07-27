@@ -35,6 +35,10 @@ class SingleNodePrefillDecodeConfig(TinyLlamaOciGpuConfig):
     supported_accelerators = (Labels.Nvidia.NVIDIA_COM_GPU,)
     supported_topology = "workload-single-node-pd"
 
+    # 1 decode + 1 prefill Deployment pod, both are InferencePool members
+    expected_vllm_pod_count = 2
+    expected_inference_pool_pod_count = 2
+
     @classmethod
     def container_env(cls):
         return super().container_env() + [

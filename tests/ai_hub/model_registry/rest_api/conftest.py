@@ -21,6 +21,7 @@ from ocp_resources.serving_runtime import ServingRuntime
 from pytest_testconfig import config as py_config
 from timeout_sampler import retry
 
+import tests.ai_hub.constants as ai_hub_constants
 from tests.ai_hub.constants import (
     CA_CONFIGMAP_NAME,
     CA_FILE_PATH,
@@ -45,7 +46,6 @@ from tests.ai_hub.utils import (
     get_mr_standard_labels,
 )
 from utilities.certificates_utils import create_ca_bundle_with_router_cert, create_k8s_secret
-from utilities.constants import RuntimeTemplates
 from utilities.exceptions import MissingParameter
 from utilities.general import generate_random_name, wait_for_pods_running
 from utilities.infra import create_ns
@@ -452,9 +452,8 @@ def model_registry_connection_secret(
     with the opendatahub.io/connections annotation.
     """
     resource_name = "mr-test-inference-service-connection"
-    # Use the model URI from the registered model
-    register_model_data = registered_model_rest_api.get("register_model", {})
-    model_uri = register_model_data.get("external_id", "hf://jonburdo/test2")
+    model_artifact = registered_model_rest_api.get("model_artifact", {})
+    model_uri = model_artifact.get("uri", "hf://jonburdo/test2")
 
     # Base64 encode the model URI
     encoded_uri = base64.b64encode(model_uri.encode()).decode()
@@ -492,16 +491,20 @@ def model_registry_serving_runtime(
     admin_client: DynamicClient,
     model_registry_deployment_ns: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
-    """Create an OVMS ServingRuntime from the cluster template for registered models."""
-    with ServingRuntimeFromTemplate(
-        client=admin_client,
-        name="mr-test-runtime",
-        namespace=model_registry_deployment_ns.name,
-        template_name=RuntimeTemplates.OVMS_KSERVE,
-        multi_model=False,
-        enable_http=True,
-        enable_grpc=False,
-    ) as serving_runtime:
+    """Create a ServingRuntime from the cluster template for registered models."""
+    kwargs: dict[str, Any] = {
+        "client": admin_client,
+        "name": "mr-test-runtime",
+        "namespace": model_registry_deployment_ns.name,
+        "template_name": ai_hub_constants.MR_RUNTIME_TEMPLATE,
+        "multi_model": False,
+        "enable_http": True,
+        "enable_grpc": False,
+    }
+    if ai_hub_constants.MR_RUNTIME_CONTAINERS:
+        kwargs["containers"] = ai_hub_constants.MR_RUNTIME_CONTAINERS
+
+    with ServingRuntimeFromTemplate(**kwargs) as serving_runtime:
         yield serving_runtime
 
 
@@ -588,15 +591,11 @@ def model_registry_model_portforward(
     model_registry_inference_service: InferenceService,
     model_registry_predictor_pod: Pod,
 ) -> Generator[str, Any]:
-    """
-    Port-forwards the Model Registry OpenVINO model server pod to access the model API locally.
-    Equivalent CLI:
-      oc -n mr-deployment-ns port-forward pod/<pod-name> 8080:8888
-    """
+    """Port-forwards the Model Registry model server pod to access the model API locally."""
     namespace = model_registry_deployment_ns.name
-    local_port = 9998  # Different from HF to avoid conflicts
-    remote_port = 8888  # OpenVINO Model Server REST port
-    local_url = f"http://localhost:{local_port}/v1/models"
+    local_port = 9998
+    remote_port = ai_hub_constants.MR_MODEL_SERVER_PORT
+    local_url = f"http://localhost:{local_port}{ai_hub_constants.MR_MODEL_SERVER_URL_PATH}"
 
     try:
         with portforward.forward(

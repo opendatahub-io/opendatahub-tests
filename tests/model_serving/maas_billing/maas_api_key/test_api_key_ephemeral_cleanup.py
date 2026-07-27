@@ -6,7 +6,6 @@ import requests
 import structlog
 from ocp_resources.cron_job import CronJob
 from ocp_resources.network_policy import NetworkPolicy
-from pytest_testconfig import config as py_config
 
 from tests.model_serving.maas_billing.maas_api_key.utils import search_active_api_keys
 from tests.model_serving.maas_billing.utils import build_maas_headers
@@ -126,18 +125,21 @@ class TestEphemeralKeyCleanup:
         ocp_token_for_actor: str,
         ephemeral_api_key: dict[str, Any],
         maas_api_pod_name: str,
+        maas_api_infra_namespace: str,
     ) -> None:
         """Verify the cleanup endpoint does not delete active (non-expired) ephemeral keys."""
-        applications_namespace = py_config["applications_namespace"]
         key_id = ephemeral_api_key["id"]
         api_keys_endpoint = f"{base_url}/v1/api-keys"
         auth_header = build_maas_headers(token=ocp_token_for_actor)
 
-        LOGGER.info(f"[ephemeral] Triggering cleanup via port-forward into pod={maas_api_pod_name}")
+        LOGGER.info(
+            f"[ephemeral] Triggering cleanup via port-forward into pod={maas_api_pod_name} "
+            f"namespace={maas_api_infra_namespace}"
+        )
 
         with portforward.forward(
             pod_or_service=maas_api_pod_name,
-            namespace=applications_namespace,
+            namespace=maas_api_infra_namespace,
             from_port=28443,
             to_port=8443,
             waiting=20,
