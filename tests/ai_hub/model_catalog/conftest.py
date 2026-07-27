@@ -8,7 +8,6 @@ import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
-from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.route import Route
 from ocp_resources.service_account import ServiceAccount
@@ -41,14 +40,6 @@ from tests.ai_hub.utils import (
 from utilities.infra import create_inference_token, get_openshift_token, login_with_user_password
 
 LOGGER = structlog.get_logger(name=__name__)
-
-
-@pytest.fixture(scope="class")
-def model_catalog_pod(admin_client: DynamicClient, model_registry_namespace: str) -> Pod:
-    """Get the first model catalog pod in the model registry namespace."""
-    pods = get_model_catalog_pod(client=admin_client, model_registry_namespace=model_registry_namespace)
-    assert pods, "No model catalog pods found"
-    return pods[0]
 
 
 @pytest.fixture()
@@ -328,11 +319,11 @@ def default_catalog_api_response(
     )
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="session")
 def catalog_openapi_schema() -> dict[Any, Any]:
-    """Fetch and cache the catalog OpenAPI schema (fetched once per class)"""
-    OPENAPI_SCHEMA_URL = "https://raw.githubusercontent.com/kubeflow/model-registry/main/api/openapi/catalog.yaml"
-    response = requests.get(OPENAPI_SCHEMA_URL, timeout=10)
+    """Fetch and cache the catalog OpenAPI schema (fetched once per session)."""
+    openapi_schema_url = "https://raw.githubusercontent.com/kubeflow/model-registry/main/api/openapi/catalog.yaml"
+    response = requests.get(openapi_schema_url, timeout=10)
     response.raise_for_status()
     return yaml.safe_load(response.text)
 

@@ -25,6 +25,11 @@ from pytest import FixtureRequest
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutSampler
 
+from tests.model_serving.maas_billing.maas_api_key.utils import (
+    MAAS_AUTH_POLICY_FIXTURE_NAMES,
+    MAAS_GATEWAY_AUTH_POLICY_NAME,
+    wait_for_auth_policy_accepted,
+)
 from tests.model_serving.maas_billing.maas_subscription.utils import (
     MAAS_SUBSCRIPTION_NAMESPACE,
     create_maas_subscription,
@@ -41,6 +46,7 @@ from tests.model_serving.maas_billing.utils import (
     host_from_ingress_domain,
     maas_gateway_listeners,
     maas_gateway_rate_limits_patched,
+    maas_under_aigateway_component_patch,
     mint_token,
     patch_llmisvc_with_maas_router,
     revoke_token,
@@ -724,17 +730,17 @@ def maas_controller_enabled_latest(
     maas_request_ratelimit_policy: None,
 ) -> Generator[DataScienceCluster]:
     """
-    Ensure MaaS (KServe modelsAsService) is MANAGED for the session.
+    Ensure MaaS under AIGateway (aigateway.modelsAsAService) is MANAGED for the session.
     Restore DSC to original state on teardown.
     """
-
-    component_patch = {
-        DscComponents.KSERVE: {"modelsAsService": {"managementState": DscComponents.ManagementState.MANAGED}}
-    }
+    component_patch = maas_under_aigateway_component_patch(
+        models_as_a_service_state=DscComponents.ManagementState.MANAGED,
+        aigateway_state=DscComponents.ManagementState.MANAGED,
+    )
 
     with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
         dsc_resource.wait_for_condition(
-            condition="ModelsAsServiceReady",
+            condition=DscComponents.ConditionType.AIGATEWAY_READY,
             status="True",
             timeout=900,
         )
@@ -767,14 +773,48 @@ def maas_tier_mapping_cm(
     return config_map
 
 
+@pytest.fixture(scope="session")
+def maas_api_infra_namespace(admin_client: DynamicClient) -> str:
+    """Return the maas-api infrastructure namespace (resolved once per session).
+
+    Resolves from maas-controller ``INFRA_NAMESPACE``. When empty or ``AUTO``,
+    derives the infra namespace the same way the controller does (RHOAI/ODH
+    defaults); otherwise uses the applications namespace.
+    """
+    applications_namespace = py_config["applications_namespace"]
+    controller_deployment = Deployment(
+        client=admin_client,
+        name="maas-controller",
+        namespace=applications_namespace,
+        ensure_exists=True,
+    )
+    infra_namespace = ""
+    for container in controller_deployment.instance.spec.template.spec.containers:
+        for env_var in container.env or []:
+            if env_var.name == "INFRA_NAMESPACE":
+                infra_namespace = (env_var.value or "").strip()
+                break
+        if infra_namespace:
+            break
+
+    if not infra_namespace or infra_namespace.upper() == "AUTO":
+        if applications_namespace == "redhat-ods-applications":
+            return "redhat-ai-gateway-infra"
+        if applications_namespace == "opendatahub":
+            return "odh-ai-gateway-infra"
+        return applications_namespace
+    return infra_namespace
+
+
 @pytest.fixture(scope="class")
 def maas_api_deployment_available(
     admin_client: DynamicClient,
+    maas_api_infra_namespace: str,
 ) -> None:
     maas_api_deployment = Deployment(
         client=admin_client,
         name="maas-api",
-        namespace=py_config["applications_namespace"],
+        namespace=maas_api_infra_namespace,
         ensure_exists=True,
     )
     maas_api_deployment.wait_for_condition(
@@ -788,13 +828,14 @@ def maas_api_deployment_available(
 def maas_api_endpoints_ready(
     admin_client: DynamicClient,
     maas_api_deployment_available: None,
+    maas_api_infra_namespace: str,
 ) -> None:
     for ready in TimeoutSampler(
         wait_timeout=300,
         sleep=5,
         func=endpoints_have_ready_addresses,
         admin_client=admin_client,
-        namespace=py_config["applications_namespace"],
+        namespace=maas_api_infra_namespace,
         name="maas-api",
     ):
         if ready:
@@ -892,12 +933,36 @@ def authorino_tls_configured(admin_client: DynamicClient) -> Generator[None, Any
 
 
 @pytest.fixture(scope="class")
+def maas_gateway_auth_policy_ready(
+    admin_client: DynamicClient,
+    request: FixtureRequest,
+) -> None:
+    """Activate a MaaSAuthPolicy, then wait until maas-gateway-auth is Accepted."""
+    for fixture_name in MAAS_AUTH_POLICY_FIXTURE_NAMES:
+        if fixture_name in request.fixturenames:
+            request.getfixturevalue(argname=fixture_name)
+            break
+    else:
+        request.getfixturevalue(argname="maas_auth_policy_tinyllama_free")
+    wait_for_auth_policy_accepted(
+        admin_client=admin_client,
+        policy_name=MAAS_GATEWAY_AUTH_POLICY_NAME,
+        namespace=MAAS_GATEWAY_NAMESPACE,
+    )
+    LOGGER.info(
+        f"maas_gateway_auth_policy_ready: '{MAAS_GATEWAY_NAMESPACE}/{MAAS_GATEWAY_AUTH_POLICY_NAME}' is Accepted"
+    )
+
+
+@pytest.fixture(scope="class")
 def maas_api_gateway_reachable(
     request_session_http: requests.Session,
     base_url: str,
     maas_api_endpoints_ready: None,
     authorino_tls_configured: None,
+    maas_gateway_auth_policy_ready: None,
 ) -> None:
+    """Probe GET /v1/models via the gateway after maas-gateway-auth is reconciled."""
     probe_url = f"{base_url}/v1/models"
 
     for gateway_reachable, _status_code, _response_text in TimeoutSampler(
@@ -1087,15 +1152,16 @@ def maas_subscription_controller_enabled_latest(
     maas_subscription_namespace: Namespace,
 ) -> Generator[DataScienceCluster, Any, Any]:
     """
-    Ensures subscription namespace exists before MaaS is switched to Managed.
+    Ensures subscription namespace exists before MaaS under AIGateway is switched to Managed.
     """
-    component_patch = {
-        DscComponents.KSERVE: {"modelsAsService": {"managementState": DscComponents.ManagementState.MANAGED}}
-    }
+    component_patch = maas_under_aigateway_component_patch(
+        models_as_a_service_state=DscComponents.ManagementState.MANAGED,
+        aigateway_state=DscComponents.ManagementState.MANAGED,
+    )
 
     with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
         dsc_resource.wait_for_condition(
-            condition="ModelsAsServiceReady",
+            condition=DscComponents.ConditionType.AIGATEWAY_READY,
             status="True",
             timeout=900,
         )

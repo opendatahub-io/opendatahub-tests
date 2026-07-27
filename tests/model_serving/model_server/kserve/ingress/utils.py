@@ -10,7 +10,7 @@ from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
 
-from utilities.constants import Protocols, Timeout
+from utilities.constants import Protocols
 from utilities.exceptions import ProtocolNotSupportedError
 from utilities.infra import get_model_route
 
@@ -41,7 +41,7 @@ def assert_ingress_status_changed(client: DynamicClient, inference_service: Infe
     initial_transition_time = initial_status["lastTransitionTime"]
     initial_status_value = initial_status["status"]
 
-    route.delete(wait=True, timeout=Timeout.TIMEOUT_1MIN)
+    route.delete(wait=True, timeout=60)
 
     if not route.exists:
         raise ResourceNotFoundError("Route after deletion not found: No active route is currently available.")

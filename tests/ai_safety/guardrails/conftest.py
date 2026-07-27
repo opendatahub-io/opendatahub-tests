@@ -31,10 +31,10 @@ from tests.ai_safety.guardrails.constants import (
     TEST_TLS_CERTIFICATE,
     TEST_TLS_PRIVATE_KEY,
 )
+from tests.ai_safety.image_constants import AiSafetyImages
 from utilities.constants import (
     KServeDeploymentType,
     RuntimeTemplates,
-    Timeout,
 )
 from utilities.inference_utils import LOGGER, create_isvc
 from utilities.operator_utils import get_cluster_service_version
@@ -274,7 +274,7 @@ def installed_tempo_operator(admin_client: DynamicClient, model_namespace: Names
             channel="stable",
             source="redhat-operators",
             operator_namespace=operator_ns.name,
-            timeout=Timeout.TIMEOUT_15MIN,
+            timeout=900,
             install_plan_approval="Automatic",
             starting_csv="tempo-operator.v0.19.0-2",
         )
@@ -322,7 +322,7 @@ def tempo_stack(
         tempo_cr.wait_for_condition(
             condition="Ready",
             status="True",
-            timeout=Timeout.TIMEOUT_10MIN,
+            timeout=600,
         )
         yield tempo_cr
         if teardown_resources:
@@ -376,7 +376,7 @@ def tempo_stack(
             tempo_cr.wait_for_condition(
                 condition="Ready",
                 status="True",
-                timeout=Timeout.TIMEOUT_10MIN,
+                timeout=600,
             )
 
             yield tempo_cr
@@ -420,7 +420,7 @@ def installed_opentelemetry_operator(
                 channel="stable",
                 source="redhat-operators",
                 operator_namespace=operator_ns.name,
-                timeout=Timeout.TIMEOUT_15MIN,
+                timeout=900,
                 install_plan_approval="Automatic",
             )
 
@@ -538,7 +538,7 @@ def wait_for_pods_by_label(
     client: DynamicClient,
     namespace: str,
     label_selector: str,
-    timeout: int = Timeout.TIMEOUT_15MIN,
+    timeout: int = 900,
 ) -> None:
     """
     Wait for all pods with a specific label selector in a namespace to be ready.
@@ -659,8 +659,7 @@ def minio_deployment_otel(admin_client, model_namespace, minio_pvc_otel):
             "containers": [
                 {
                     "name": "minio",
-                    "image": "quay.io/minio/minio"
-                    "@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e",
+                    "image": AiSafetyImages.MINIO_SERVER_OTEL,
                     "command": ["/bin/sh", "-c", "mkdir -p /storage/tempo && minio server /storage"],
                     "env": [
                         {"name": "MINIO_ACCESS_KEY", "value": TEMPO},

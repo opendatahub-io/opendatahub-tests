@@ -3,12 +3,11 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 
 from tests.model_serving.maas_billing.multitenancy.aitenant.utils import (
-    AIGATEWAY_BOOTSTRAPPED_TENANT_NAME,
     AITENANT_TEST_OIDC_SPEC,
     AITenantTestContext,
     verify_aitenant_bootstrap_children,
+    verify_aitenant_oidc_stays_in_spec,
     verify_aitenant_ready,
-    verify_bootstrapped_tenant_oidc,
 )
 from utilities.resources.aitenant import AITenant
 
@@ -17,7 +16,7 @@ LOGGER = structlog.get_logger(name=__name__)
 
 @pytest.mark.usefixtures("maas_subscription_controller_enabled_latest", "aitenant_infra_namespace")
 class TestAITenantBootstrapFeatures:
-    """Check AITenant bootstrap readiness and OIDC mirroring."""
+    """Check AITenant bootstrap readiness and OIDC retention on AITenant.spec."""
 
     @pytest.mark.tier1
     def test_aitenant_bootstrap_children_stay_ready(
@@ -53,18 +52,15 @@ class TestAITenantBootstrapFeatures:
         )
 
     @pytest.mark.tier2
-    def test_aitenant_oidc_mirrored_to_bootstrapped_tenant(
+    def test_aitenant_oidc_stays_in_aitenant_spec(
         self,
-        admin_client: DynamicClient,
         aitenant_with_oidc: AITenantTestContext,
     ) -> None:
-        """Verify spec.oidc is mirrored to Tenant/default-tenant externalOIDC."""
-        verify_bootstrapped_tenant_oidc(
-            admin_client=admin_client,
-            tenant_namespace_name=aitenant_with_oidc["tenant_namespace_name"],
+        """Given an AITenant with spec.oidc, when bootstrap completes,
+        then OIDC remains on AITenant.spec.oidc (not copied to Tenant/MaasTenantConfig).
+        """
+        verify_aitenant_oidc_stays_in_spec(
+            aitenant=aitenant_with_oidc["aitenant"],
             expected_oidc=AITENANT_TEST_OIDC_SPEC,
         )
-        LOGGER.info(
-            f"AITenant oidc mirrored to Tenant/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} in "
-            f"'{aitenant_with_oidc['tenant_namespace_name']}'"
-        )
+        LOGGER.info(f"AITenant '{aitenant_with_oidc['aitenant_name']}' retained spec.oidc after bootstrap")

@@ -446,21 +446,29 @@ def nemo_guardrails_config_update(
         yield nemo_cr
 
 
-# ===========================
-# Route Fixtures
-# ===========================
+def create_nemo_guardrails_route(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    nemo_cr: NemoGuardrails,
+) -> Route:
+    return Route(
+        client=admin_client,
+        name=nemo_cr.name,
+        namespace=model_namespace.name,
+        wait_for_resource=True,
+    )
+
+
 @pytest.fixture(scope="class")
 def nemo_guardrails_llm_judge_route(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     nemo_guardrails_llm_judge: NemoGuardrails,
 ) -> Generator[Route, Any, Any]:
-    """Route for LLM-as-a-judge NeMo Guardrails."""
-    yield Route(
-        client=admin_client,
-        name=nemo_guardrails_llm_judge.name,  # Operator creates route with same name as CR
-        namespace=model_namespace.name,
-        wait_for_resource=True,
+    yield create_nemo_guardrails_route(
+        admin_client=admin_client,
+        model_namespace=model_namespace,
+        nemo_cr=nemo_guardrails_llm_judge,
     )
 
 
@@ -470,12 +478,10 @@ def nemo_guardrails_presidio_route(
     model_namespace: Namespace,
     nemo_guardrails_presidio: NemoGuardrails,
 ) -> Generator[Route, Any, Any]:
-    """Route for Presidio NeMo Guardrails."""
-    yield Route(
-        client=admin_client,
-        name=nemo_guardrails_presidio.name,  # Operator creates route with same name as CR
-        namespace=model_namespace.name,
-        wait_for_resource=True,
+    yield create_nemo_guardrails_route(
+        admin_client=admin_client,
+        model_namespace=model_namespace,
+        nemo_cr=nemo_guardrails_presidio,
     )
 
 
@@ -485,12 +491,10 @@ def nemo_guardrails_multi_config_route(
     model_namespace: Namespace,
     nemo_guardrails_multi_config: NemoGuardrails,
 ) -> Generator[Route, Any, Any]:
-    """Route for multi-config NeMo Guardrails."""
-    yield Route(
-        client=admin_client,
-        name=nemo_guardrails_multi_config.name,  # Operator creates route with same name as CR
-        namespace=model_namespace.name,
-        wait_for_resource=True,
+    yield create_nemo_guardrails_route(
+        admin_client=admin_client,
+        model_namespace=model_namespace,
+        nemo_cr=nemo_guardrails_multi_config,
     )
 
 
@@ -500,12 +504,10 @@ def nemo_guardrails_second_server_route(
     model_namespace: Namespace,
     nemo_guardrails_second_server: NemoGuardrails,
 ) -> Generator[Route, Any, Any]:
-    """Route for second NeMo Guardrails server."""
-    yield Route(
-        client=admin_client,
-        name=nemo_guardrails_second_server.name,  # Operator creates route with same name as CR
-        namespace=model_namespace.name,
-        wait_for_resource=True,
+    yield create_nemo_guardrails_route(
+        admin_client=admin_client,
+        model_namespace=model_namespace,
+        nemo_cr=nemo_guardrails_second_server,
     )
 
 
@@ -515,22 +517,23 @@ def nemo_guardrails_config_update_route(
     model_namespace: Namespace,
     nemo_guardrails_config_update: NemoGuardrails,
 ) -> Generator[Route, Any, Any]:
-    """Route for config update test NeMo Guardrails."""
-    yield Route(
-        client=admin_client,
-        name=nemo_guardrails_config_update.name,  # Operator creates route with same name as CR
-        namespace=model_namespace.name,
-        wait_for_resource=True,
+    yield create_nemo_guardrails_route(
+        admin_client=admin_client,
+        model_namespace=model_namespace,
+        nemo_cr=nemo_guardrails_config_update,
     )
 
 
-# ===========================
-# Helper Fixtures
-# ===========================
-
-# ===========================
-# Health Check Fixtures
-# ===========================
+def verify_guardrails_healthcheck(
+    route: Route,
+    openshift_ca_bundle_file: str,
+    token: str | None = None,
+) -> None:
+    wait_for_nemo_guardrails_health(
+        host=route.host,
+        token=token,
+        ca_bundle_file=openshift_ca_bundle_file,
+    )
 
 
 @pytest.fixture(scope="class")
@@ -540,9 +543,9 @@ def nemo_guardrails_llm_judge_healthcheck(
     nemo_guardrails_llm_judge_route: Route,
     current_client_token: str,
 ) -> None:
-    """Wait for LLM-as-a-judge NeMo Guardrails to be healthy and serving requests."""
-    wait_for_nemo_guardrails_health(
-        host=nemo_guardrails_llm_judge_route.host,
+    verify_guardrails_healthcheck(
+        route=nemo_guardrails_llm_judge_route,
+        openshift_ca_bundle_file=openshift_ca_bundle_file,
         token=current_client_token,
         ca_bundle_file=get_tls_verify(client=admin_client),
     )

@@ -1,4 +1,10 @@
-"""Pytest fixtures for KServe ``LocalModelNamespaceCache`` tests."""
+"""Pytest fixtures for KServe ``LocalModelNamespaceCache`` tests.
+
+``model_cache_infra_ready`` (the DSC ``modelCache`` toggle shared with the
+``LLMInferenceService`` local model cache tests in ``llmd/``) lives in the
+parent ``tests/model_serving/model_server/conftest.py`` so it is visible to
+both sibling test packages.
+"""
 
 from collections.abc import Generator
 from typing import Any
@@ -6,112 +12,22 @@ from typing import Any
 import pytest
 import shortuuid
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.daemonset import DaemonSet
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
-from ocp_resources.node import Node
-from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest_testconfig import config as py_config
-from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_serving.model_server.kserve.model_cache.utils import (
     LOCAL_MODEL_NODE_GROUP_NAME,
     MINT_ONNX_STORAGE_PATH,
-    MODEL_CACHE_AGENT_DAEMONSET,
-    MODEL_CACHE_NODE_COUNT,
-    MODEL_CACHE_SIZE,
     LocalModelNamespaceCache,
-    LocalModelNodeGroup,
     wait_for_local_model_cache_nodes_downloaded,
 )
-from utilities.constants import KServeDeploymentType, ModelFormat, Protocols, Timeout
+from utilities.constants import KServeDeploymentType, ModelFormat, Protocols
 from utilities.inference_utils import create_isvc
-from utilities.infra import get_data_science_cluster, s3_endpoint_secret, wait_for_dsc_status_ready
-
-
-@pytest.fixture(scope="session")
-def model_cache_infra_ready(
-    admin_client: DynamicClient,
-) -> Generator[DataScienceCluster, Any, Any]:
-    """Enable ``kserve.modelCache`` in the DSC and wait for the agent DaemonSet.
-
-    Patches the DSC to set ``modelCache.managementState: Managed`` with a
-    ``cacheSize`` and two worker ``nodeNames``.  On teardown the
-    ``ResourceEditor`` restores the original DSC spec automatically.
-    """
-    dsc = get_data_science_cluster(client=admin_client)
-    applications_namespace: str = py_config["applications_namespace"]
-
-    already_labeled = sorted(
-        [node.name for node in Node.get(client=admin_client, label_selector="kserve/localmodel=worker")],
-    )
-    all_workers = sorted(
-        [node.name for node in Node.get(client=admin_client, label_selector="node-role.kubernetes.io/worker")],
-    )
-
-    if len(already_labeled) >= MODEL_CACHE_NODE_COUNT:
-        selected_nodes = already_labeled[:MODEL_CACHE_NODE_COUNT]
-    elif len(all_workers) >= MODEL_CACHE_NODE_COUNT:
-        selected_nodes = all_workers[:MODEL_CACHE_NODE_COUNT]
-    else:
-        pytest.fail(f"Need at least {MODEL_CACHE_NODE_COUNT} worker nodes for model cache; found {len(all_workers)}")
-
-    with ResourceEditor(
-        patches={
-            dsc: {
-                "spec": {
-                    "components": {
-                        "kserve": {
-                            "modelCache": {
-                                "managementState": "Managed",
-                                "cacheSize": MODEL_CACHE_SIZE,
-                                "nodeNames": selected_nodes,
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    ):
-        wait_for_dsc_status_ready(dsc_resource=dsc)
-
-        try:
-            for sample in TimeoutSampler(
-                wait_timeout=Timeout.TIMEOUT_5MIN,
-                sleep=10,
-                func=lambda: LocalModelNodeGroup(client=admin_client, name=LOCAL_MODEL_NODE_GROUP_NAME).exists,
-            ):
-                if sample:
-                    break
-        except TimeoutExpiredError:
-            pytest.fail(
-                f"LocalModelNodeGroup '{LOCAL_MODEL_NODE_GROUP_NAME}' did not appear "
-                f"within {Timeout.TIMEOUT_5MIN}s after enabling modelCache in DSC"
-            )
-
-        agent = DaemonSet(
-            client=admin_client,
-            name=MODEL_CACHE_AGENT_DAEMONSET,
-            namespace=applications_namespace,
-        )
-        try:
-            for sample in TimeoutSampler(
-                wait_timeout=Timeout.TIMEOUT_5MIN,
-                sleep=10,
-                func=lambda: agent.exists,
-            ):
-                if sample:
-                    break
-        except TimeoutExpiredError:
-            pytest.fail(
-                f"DaemonSet '{MODEL_CACHE_AGENT_DAEMONSET}' did not appear in "
-                f"'{applications_namespace}' within {Timeout.TIMEOUT_5MIN}s"
-            )
-
-        yield dsc
+from utilities.infra import s3_endpoint_secret
 
 
 @pytest.fixture(scope="class")
@@ -132,7 +48,7 @@ def model_cache_download_s3_secret(
     applications_namespace: str = py_config["applications_namespace"]
     with s3_endpoint_secret(
         client=admin_client,
-        name="model-cache-download-secret",
+        name=f"model-cache-download-secret-{shortuuid.uuid()[:10].lower()}",
         namespace=applications_namespace,
         aws_access_key=aws_access_key_id,
         aws_secret_access_key=aws_secret_access_key,
@@ -154,7 +70,7 @@ def invalid_s3_download_secret(
     applications_namespace: str = py_config["applications_namespace"]
     with s3_endpoint_secret(
         client=admin_client,
-        name="model-cache-invalid-secret",
+        name=f"model-cache-invalid-secret-{shortuuid.uuid()[:10].lower()}",
         namespace=applications_namespace,
         aws_access_key="INVALIDACCESSKEY12345",
         aws_secret_access_key="INVALIDSECRETACCESSKEY6789",  # pragma: allowlist secret
@@ -185,7 +101,7 @@ def mnist_local_model_cache(
         node_groups=[LOCAL_MODEL_NODE_GROUP_NAME],
         storage={"key": model_cache_download_s3_secret.name},
     ) as cache:
-        wait_for_local_model_cache_nodes_downloaded(cache=cache, timeout=Timeout.TIMEOUT_10MIN)
+        wait_for_local_model_cache_nodes_downloaded(cache=cache, timeout=600)
         yield cache
 
 
@@ -205,13 +121,13 @@ def mnist_onnx_local_model_cache_inference_service(
     """
     with create_isvc(
         client=unprivileged_client,
-        name=f"{Protocols.HTTP}-{ModelFormat.ONNX}-lmcache",
+        name=f"{Protocols.HTTP}-{ModelFormat.ONNX}-lmcache-{shortuuid.uuid()[:8].lower()}",
         namespace=unprivileged_model_namespace.name,
         runtime=ovms_kserve_serving_runtime.name,
         storage_uri=f"s3://{ci_s3_bucket_name}/{MINT_ONNX_STORAGE_PATH}/",
         model_format=ovms_kserve_serving_runtime.instance.spec.supportedModelFormats[0].name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         external_route=True,
-        timeout=Timeout.TIMEOUT_15MIN,
+        timeout=900,
     ) as isvc:
         yield isvc

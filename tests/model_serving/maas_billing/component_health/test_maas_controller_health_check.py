@@ -8,7 +8,7 @@ from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from pytest_testconfig import config as py_config
 
-from utilities.constants import ApiGroups
+from utilities.constants import ApiGroups, DscComponents
 from utilities.general import wait_for_pods_running
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -21,13 +21,13 @@ class TestMaaSController:
         self,
         dsc_resource: DataScienceCluster,
     ) -> None:
-        """Verify ModelsAsServiceReady condition is True in DSC (MR-style loop + break + else fail)."""
+        """Verify AIGatewayReady condition is True in DSC (MR-style loop + break + else fail)."""
         for condition in dsc_resource.instance.status.conditions:
-            if condition.type == "ModelsAsServiceReady":
+            if condition.type == DscComponents.ConditionType.AIGATEWAY_READY:
                 assert condition.status == "True"
                 break
         else:
-            pytest.fail("ModelsAsServiceReady condition not found in DSC")
+            pytest.fail(f"{DscComponents.ConditionType.AIGATEWAY_READY} condition not found in DSC")
 
     def test_maas_controller_crds_exist(
         self,

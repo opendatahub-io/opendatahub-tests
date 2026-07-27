@@ -83,6 +83,8 @@ class RuntimeTemplates:
     CAIKIT_STANDALONE_SERVING: str = "caikit-standalone-serving-template"
     TGIS_GRPC_SERVING: str = "tgis-grpc-serving-template"
     VLLM_CUDA: str = "vllm-cuda-runtime-template"
+    VLLM_FAST_1_CUDA: str = "vllm-fast-1-cuda-runtime-template"
+    VLLM_FAST_2_CUDA: str = "vllm-fast-2-cuda-runtime-template"
     VLLM_ROCM: str = "vllm-rocm-runtime-template"
     VLLM_GAUDI: str = "vllm-gaudi-runtime-template"
     VLLM_SPYRE: str = "vllm-spyre-x86-runtime-template"
@@ -189,6 +191,7 @@ class DscComponents:
     MODELREGISTRY: str = "modelregistry"
     OGX: str = "ogx"
     KUEUE: str = "kueue"
+    AIGATEWAY: str = "aigateway"
 
     class ManagementState:
         MANAGED: str = "Managed"
@@ -200,12 +203,14 @@ class DscComponents:
         KSERVE_READY: str = "KserveReady"
         MODEL_MESH_SERVING_READY: str = "ModelMeshServingReady"
         OGX_READY: str = "OGXReady"
+        AIGATEWAY_READY: str = "AIGatewayReady"
 
     COMPONENT_MAPPING: dict[str, str] = {  # noqa: RUF012
         MODELMESHSERVING: ConditionType.MODEL_MESH_SERVING_READY,
         KSERVE: ConditionType.KSERVE_READY,
         MODELREGISTRY: ConditionType.MODEL_REGISTRY_READY,
         OGX: ConditionType.OGX_READY,
+        AIGATEWAY: ConditionType.AIGATEWAY_READY,
     }
 
 

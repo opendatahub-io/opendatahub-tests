@@ -59,10 +59,11 @@ from tests.pipelines_components.utils import (
     use_managed_pipelines,
     wait_for_managed_pipeline,
 )
-from utilities.constants import Annotations, DscComponents, KServeDeploymentType, RuntimeTemplates, Timeout
+from utilities.constants import Annotations, DscComponents, KServeDeploymentType, RuntimeTemplates
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.exceptions import UnexpectedResourceCountError
 from utilities.general import generate_random_name
+from utilities.image_constants import SharedImages
 from utilities.inference_utils import create_isvc
 from utilities.infra import create_ns
 from utilities.resources.ogx_server import OgxServer
@@ -74,13 +75,7 @@ AUTORAG_RESOURCE_PREFIX: str = "autorag-smoke"
 
 OGX_CLIENT_VERIFY_SSL: bool = os.getenv("OGX_CLIENT_VERIFY_SSL", "false").lower() == "true"
 OGX_CORE_POD_FILTER: str = "app=ogx"
-POSTGRES_IMAGE: str = os.getenv(
-    "OGX_VECTOR_IO_POSTGRES_IMAGE",
-    (
-        "registry.redhat.io/rhel9/postgresql-15@sha256:"
-        "90ec347a35ab8a5d530c8d09f5347b13cc71df04f3b994bfa8b1a409b1171d59"  # pragma: allowlist secret
-    ),
-)
+POSTGRES_IMAGE: str = os.getenv("OGX_VECTOR_IO_POSTGRES_IMAGE", SharedImages.POSTGRESQL_15)
 
 # User-provided env vars for the models to deploy
 AUTORAG_INFERENCE_MODEL_URI: str = os.environ.get("AUTORAG_INFERENCE_MODEL_URI", "")
@@ -113,31 +108,12 @@ def _create_ogx_server(
     namespace: str,
     config: dict[str, Any],
 ) -> Generator[OgxServer, Any, Any]:
-    network: dict[str, Any] = {
-        "policy": {
-            "ingress": [
-                {
-                    "from": [
-                        {
-                            "namespaceSelector": {
-                                "matchLabels": {
-                                    "kubernetes.io/metadata.name": "openshift-ingress",
-                                },
-                            },
-                        },
-                    ],
-                    "ports": [{"protocol": "TCP", "port": 8321}],
-                },
-            ],
-        },
-    }
     with OgxServer(
         client=client,
         name=name,
         namespace=namespace,
         distribution=config["distribution"],
         workload=config.get("workload"),
-        network=network,
         tls=config.get("tls"),
         wait_for_resource=True,
     ) as ogx_srv:
@@ -296,7 +272,7 @@ def autorag_inference_service(
         storage_uri=AUTORAG_INFERENCE_MODEL_URI,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         wait=True,
-        timeout=Timeout.TIMEOUT_30MIN,
+        timeout=1800,
         model_service_account=autorag_model_service_account.name,
         resources={
             "requests": {"cpu": "2", "memory": "4Gi"},
@@ -348,7 +324,7 @@ def autorag_embedding_service(
         storage_uri=AUTORAG_EMBEDDING_MODEL_URI,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         wait=True,
-        timeout=Timeout.TIMEOUT_30MIN,
+        timeout=1800,
         model_service_account=autorag_model_service_account.name,
         resources={
             "requests": {"cpu": "2", "memory": "4Gi"},

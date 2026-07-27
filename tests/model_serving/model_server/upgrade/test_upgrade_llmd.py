@@ -24,8 +24,6 @@ from tests.model_serving.model_server.upgrade.utils import (
     verify_llmisvc_url_unchanged,
 )
 
-pytestmark = [pytest.mark.llmd_cpu]
-
 LOGGER = structlog.get_logger(name=__name__)
 
 PROMPT = "What is the capital of Italy?"

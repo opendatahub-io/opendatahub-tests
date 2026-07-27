@@ -1,8 +1,10 @@
 """Constants for NeMo Guardrails tests."""
 
+from tests.ai_safety.image_constants import AiSafetyImages
 from utilities.constants import LLMdInferenceSimConfig
 
 # NeMo Guardrails server configuration
+NEMO_GUARDRAILS_IMAGE: str = AiSafetyImages.NEMO_GUARDRAILS
 NEMO_GUARDRAILS_PORT_AUTH = 8443
 NEMO_GUARDRAILS_PORT_NO_AUTH = 8000
 
