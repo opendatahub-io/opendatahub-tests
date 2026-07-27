@@ -12,7 +12,9 @@ from ocp_resources.resource import ResourceEditor
 from timeout_sampler import TimeoutSampler
 
 from tests.model_serving.maas_billing.maas_api_key.utils import wait_for_auth_policy_accepted
+from tests.model_serving.maas_billing.multitenancy.aitenant.utils import AITENANT_INFRA_NAMESPACE
 from tests.model_serving.maas_billing.oidc_tests.utils import (
+    DEFAULT_AITENANT_NAME,
     MAAS_GATEWAY_AUTH_POLICY_NAME,
     MAAS_OIDC_GROUP,
     OIDC_CLIENT_ID,
@@ -27,10 +29,9 @@ from tests.model_serving.maas_billing.utils import (
 )
 from utilities.constants import MAAS_GATEWAY_NAMESPACE
 from utilities.general import generate_random_name
-from utilities.resources.tenant import Tenant
+from utilities.resources.aitenant import AITenant
 
 LOGGER = structlog.get_logger(name=__name__)
-TENANT_NAME = "default-tenant"
 
 
 @pytest.fixture(scope="class")
@@ -130,36 +131,36 @@ def oidc_maas_auth_policy(
 def oidc_auth_policy_patched(
     is_byoidc: bool,
     admin_client: DynamicClient,
-    maas_subscription_namespace: Any,
     oidc_maas_auth_policy: MaaSAuthPolicy,
 ) -> Generator[None, Any, Any]:
-    """Enable OIDC on the Tenant CR so the maas-controller patches the AuthPolicy."""
+    """Enable OIDC on the default AITenant so the controller patches the AuthPolicy."""
     if not is_byoidc:
         pytest.skip("External OIDC tests require a byoidc cluster")
 
     LOGGER.info(
         f"oidc_auth_policy_patched: using MaaSAuthPolicy '{oidc_maas_auth_policy.name}' "
-        "to ensure maas-gateway-auth exists before enabling externalOIDC"
+        "to ensure maas-gateway-auth exists before enabling AITenant.spec.oidc"
     )
     oidc_issuer_url = get_maas_oidc_issuer_url(admin_client=admin_client)
-    LOGGER.info(f"oidc_auth_policy_patched: enabling externalOIDC with issuer '{oidc_issuer_url}'")
+    LOGGER.info(f"oidc_auth_policy_patched: enabling AITenant.spec.oidc with issuer '{oidc_issuer_url}'")
 
-    tenant_cr = Tenant(
+    aitenant = AITenant(
         client=admin_client,
-        name=TENANT_NAME,
-        namespace=maas_subscription_namespace.name,
+        name=DEFAULT_AITENANT_NAME,
+        namespace=AITENANT_INFRA_NAMESPACE,
     )
+    assert aitenant.exists, f"AITenant '{DEFAULT_AITENANT_NAME}' not found in namespace '{AITENANT_INFRA_NAMESPACE}'"
 
     oidc_patch = {
         "spec": {
-            "externalOIDC": {
+            "oidc": {
                 "issuerUrl": oidc_issuer_url,
                 "clientId": OIDC_CLIENT_ID,
             }
         }
     }
 
-    with ResourceEditor(patches={tenant_cr: oidc_patch}):
+    with ResourceEditor(patches={aitenant: oidc_patch}):
         maas_auth_policy = wait_for_auth_policy_accepted(
             admin_client=admin_client,
             policy_name=MAAS_GATEWAY_AUTH_POLICY_NAME,
@@ -172,7 +173,7 @@ def oidc_auth_policy_patched(
         LOGGER.info("oidc_auth_policy_patched: operator applied OIDC rules to AuthPolicy")
         yield
 
-    LOGGER.info("oidc_auth_policy_patched: externalOIDC removed, operator restoring AuthPolicy")
+    LOGGER.info("oidc_auth_policy_patched: restored previous AITenant.spec.oidc, operator restoring AuthPolicy")
 
 
 @pytest.fixture(scope="class")

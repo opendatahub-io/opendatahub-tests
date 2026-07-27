@@ -28,9 +28,16 @@ from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
-from tests.workbenches.notebooks_server.controller.utils import HardwareProfile
+from tests.workbenches.notebooks_server.controller.utils import (
+    KUBEFLOW_STOPPED_ANNOTATION,
+    HardwareProfile,
+)
 from utilities.constants import Timeout
 from utilities.kueue_utils import (
+    KUEUE_CLUSTER_QUEUE_LABEL,
+    KUEUE_LOCAL_QUEUE_LABEL,
+    KUEUE_MANAGED_LABEL,
+    KUEUE_QUEUE_NAME_LABEL,
     ClusterQueue,
     LocalQueue,
     ResourceFlavor,
@@ -40,15 +47,8 @@ from utilities.kueue_utils import (
 
 LOGGER = structlog.get_logger(name=__name__)
 
-_KUEUE_QUEUE_NAME_LABEL = "kueue.x-k8s.io/queue-name"
-_KUEUE_MANAGED_LABEL = "kueue.x-k8s.io/managed"
-_KUEUE_CLUSTER_QUEUE_LABEL = "kueue.x-k8s.io/cluster-queue-name"
-_KUEUE_LOCAL_QUEUE_LABEL = "kueue.x-k8s.io/local-queue-name"
-_KUBEFLOW_STOPPED_ANNOTATION = "kubeflow-resource-stopped"
-
 pytestmark = [
-    pytest.mark.kueue,
-    pytest.mark.smoke,
+    pytest.mark.tier1,
 ]
 
 
@@ -68,14 +68,14 @@ def _workload_is_admitted(workload: Workload) -> bool:
 def _assert_kueue_pod_labels(pod: Pod, cluster_queue_name: str, local_queue_name: str) -> None:
     """Assert that a pod carries the full set of Kueue scheduling labels."""
     labels = pod.instance.metadata.labels or {}
-    assert labels.get(_KUEUE_MANAGED_LABEL) == "true", (
-        f"Pod should have '{_KUEUE_MANAGED_LABEL}=true'. Labels: {list(labels.keys())}"
+    assert labels.get(KUEUE_MANAGED_LABEL) == "true", (
+        f"Pod should have '{KUEUE_MANAGED_LABEL}=true'. Labels: {list(labels.keys())}"
     )
-    assert labels.get(_KUEUE_CLUSTER_QUEUE_LABEL) == cluster_queue_name, (
-        f"Pod should have cluster-queue label '{cluster_queue_name}', got: '{labels.get(_KUEUE_CLUSTER_QUEUE_LABEL)}'"
+    assert labels.get(KUEUE_CLUSTER_QUEUE_LABEL) == cluster_queue_name, (
+        f"Pod should have cluster-queue label '{cluster_queue_name}', got: '{labels.get(KUEUE_CLUSTER_QUEUE_LABEL)}'"
     )
-    assert labels.get(_KUEUE_LOCAL_QUEUE_LABEL) == local_queue_name, (
-        f"Pod should have local-queue label '{local_queue_name}', got: '{labels.get(_KUEUE_LOCAL_QUEUE_LABEL)}'"
+    assert labels.get(KUEUE_LOCAL_QUEUE_LABEL) == local_queue_name, (
+        f"Pod should have local-queue label '{local_queue_name}', got: '{labels.get(KUEUE_LOCAL_QUEUE_LABEL)}'"
     )
 
 
@@ -200,9 +200,9 @@ class TestKueueNotebookIntegration:
         assert kueue_notebook.exists, "Notebook CR should be created successfully"
 
         notebook_labels = kueue_notebook.instance.metadata.labels or {}
-        assert notebook_labels.get(_KUEUE_QUEUE_NAME_LABEL) == kueue_local_queue.name, (
+        assert notebook_labels.get(KUEUE_QUEUE_NAME_LABEL) == kueue_local_queue.name, (
             f"Webhook should inject queue-name label '{kueue_local_queue.name}' from HWP scheduling config, "
-            f"got: {notebook_labels.get(_KUEUE_QUEUE_NAME_LABEL)}"
+            f"got: {notebook_labels.get(KUEUE_QUEUE_NAME_LABEL)}"
         )
 
         notebook_container = kueue_notebook.instance.spec.template.spec.containers[0]
@@ -295,7 +295,7 @@ class TestKueueNotebookIntegration:
                 wait_timeout=30,
                 sleep=2,
                 func=check_gated_pods_and_running_pods,
-                labels=[f"{_KUEUE_QUEUE_NAME_LABEL}={kueue_local_queue.name}"],
+                labels=[f"{KUEUE_QUEUE_NAME_LABEL}={kueue_local_queue.name}"],
                 namespace=kueue_notebook_namespace.name,
                 admin_client=admin_client,
             ):
@@ -304,7 +304,7 @@ class TestKueueNotebookIntegration:
                     break
         except TimeoutExpiredError:
             running_pods, gated_pods = check_gated_pods_and_running_pods(
-                labels=[f"{_KUEUE_QUEUE_NAME_LABEL}={kueue_local_queue.name}"],
+                labels=[f"{KUEUE_QUEUE_NAME_LABEL}={kueue_local_queue.name}"],
                 namespace=kueue_notebook_namespace.name,
                 admin_client=admin_client,
             )
@@ -378,7 +378,7 @@ class TestKueueNotebookIntegration:
         stop_timestamp = datetime.now(tz=UTC).strftime(format="%Y-%m-%dT%H:%M:%SZ")
         kueue_notebook.get()
         current_annotations = dict(kueue_notebook.instance.metadata.annotations or {})
-        current_annotations[_KUBEFLOW_STOPPED_ANNOTATION] = stop_timestamp
+        current_annotations[KUBEFLOW_STOPPED_ANNOTATION] = stop_timestamp
 
         ResourceEditor(patches={kueue_notebook: {"metadata": {"annotations": current_annotations}}}).update()
 
@@ -388,7 +388,7 @@ class TestKueueNotebookIntegration:
         # Start the workbench by removing the stopped annotation (set to None for merge-patch deletion)
         kueue_notebook.get()
         ResourceEditor(
-            patches={kueue_notebook: {"metadata": {"annotations": {_KUBEFLOW_STOPPED_ANNOTATION: None}}}}
+            patches={kueue_notebook: {"metadata": {"annotations": {KUBEFLOW_STOPPED_ANNOTATION: None}}}}
         ).update()
 
         restarted_pod = Pod(

@@ -1,7 +1,7 @@
 import base64
 import shlex
 import uuid
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from typing import Any
 
 import pytest
@@ -15,6 +15,7 @@ from ocp_resources.evalhub import EvalHub
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.mlflow import MLflow
 from ocp_resources.namespace import Namespace
+from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
@@ -48,6 +49,8 @@ from tests.ai_safety.evalhub.constants import (
     OTEL_COLLECTOR_HTTP_PORT,
     OTEL_COLLECTOR_NAMESPACE,
     OTEL_COLLECTOR_PROMETHEUS_PORT,
+    PVC_TEST_DATA_NAME,
+    PVC_TEST_DATA_SIZE,
     SIMPLE_MINIO_ACCESS_KEY,
     SIMPLE_MINIO_BUCKET,
     SIMPLE_MINIO_SECRET_KEY,
@@ -55,6 +58,9 @@ from tests.ai_safety.evalhub.constants import (
 from tests.ai_safety.evalhub.kueue.constants import VLLM_EMULATOR, VLLM_EMULATOR_IMAGE
 from tests.ai_safety.evalhub.utils import (
     MLflowWithWorkspaces,
+    build_pvc_job_payload,
+    delete_evalhub_job,
+    submit_evalhub_job,
     submit_garak_job,
     tenant_rbac_ready,
     wait_for_service_account,
@@ -1665,3 +1671,114 @@ def evalhub_otel_dual_sink_route(
 def evalhub_otel_ca_bundle_file(admin_client: DynamicClient) -> str:
     """CA bundle file for EvalHub OTEL routes."""
     return create_ca_bundle_file(client=admin_client)
+
+
+@pytest.fixture(scope="class")
+def evalhub_test_data_pvc(
+    admin_client: DynamicClient,
+    tenant_a_namespace: Namespace,
+) -> Generator[PersistentVolumeClaim, Any, Any]:
+    """Create a PVC for evaluation test data in the tenant namespace."""
+    with PersistentVolumeClaim(
+        client=admin_client,
+        name=PVC_TEST_DATA_NAME,
+        namespace=tenant_a_namespace.name,
+        accessmodes=PersistentVolumeClaim.AccessMode.RWO,
+        volume_mode=PersistentVolumeClaim.VolumeMode.FILE,
+        size=PVC_TEST_DATA_SIZE,
+    ) as pvc:
+        yield pvc
+
+
+@pytest.fixture(scope="class")
+def evalhub_test_data_populated(
+    admin_client: DynamicClient,
+    tenant_a_namespace: Namespace,
+    evalhub_test_data_pvc: PersistentVolumeClaim,
+) -> PersistentVolumeClaim:
+    """Populate the PVC with provider marker data at two sub-paths."""
+    populate_script = (
+        "mkdir -p /data/provider_a /data/provider_b && "
+        'echo \'{"provider": "a", "benchmark": "arc_easy"}\' > /data/provider_a/data.json && '
+        'echo \'{"provider": "b", "benchmark": "arc_easy"}\' > /data/provider_b/data.json && '
+        "echo 'PVC data population complete'"
+    )
+
+    pod_name = f"pvc-data-writer-{uuid.uuid4().hex[:8]}"
+    with Pod(
+        client=admin_client,
+        name=pod_name,
+        namespace=tenant_a_namespace.name,
+        restart_policy="Never",
+        volumes=[{"name": "test-data", "persistentVolumeClaim": {"claimName": evalhub_test_data_pvc.name}}],
+        containers=[
+            {
+                "name": "data-writer",
+                "image": MINIO_MC_IMAGE,
+                "command": ["/bin/sh", "-c"],
+                "args": [populate_script],
+                "volumeMounts": [{"name": "test-data", "mountPath": "/data"}],
+                "securityContext": {**MINIO_UPLOADER_SECURITY_CONTEXT, "readOnlyRootFilesystem": True},
+            }
+        ],
+        wait_for_resource=True,
+    ) as writer_pod:
+        LOGGER.info(f"Running PVC data writer pod in {tenant_a_namespace.name}")
+        try:
+            writer_pod.wait_for_status(status="Succeeded", timeout=120)
+        except TimeoutExpiredError:
+            collect_pod_information(pod=writer_pod)
+            raise
+        LOGGER.info("PVC test data population complete")
+
+    return evalhub_test_data_pvc
+
+
+@pytest.fixture()
+def submit_pvc_job(
+    tenant_a_token: str,
+    tenant_a_namespace: Namespace,
+    evalhub_mt_ca_bundle_file: str,
+    evalhub_mt_route: Route,
+    evalhub_vllm_emulator_service: Service,
+) -> Generator[Callable[..., str], Any, Any]:
+    """Factory fixture: submit PVC evaluation jobs with guaranteed cleanup."""
+    job_ids: list[str] = []
+
+    def _submit(
+        claim_name: str,
+        sub_path: str | None = None,
+        job_name: str = "pvc-test",
+    ) -> str:
+        payload = build_pvc_job_payload(
+            model_service_name=evalhub_vllm_emulator_service.name,
+            tenant_namespace=tenant_a_namespace.name,
+            job_name=job_name,
+            claim_name=claim_name,
+            sub_path=sub_path,
+        )
+        data = submit_evalhub_job(
+            host=evalhub_mt_route.host,
+            token=tenant_a_token,
+            ca_bundle_file=evalhub_mt_ca_bundle_file,
+            tenant=tenant_a_namespace.name,
+            payload=payload,
+        )
+        job_id = data["resource"]["id"]
+        job_ids.append(job_id)
+        return job_id
+
+    yield _submit
+
+    for job_id in job_ids:
+        try:
+            delete_evalhub_job(
+                host=evalhub_mt_route.host,
+                token=tenant_a_token,
+                ca_bundle_file=evalhub_mt_ca_bundle_file,
+                tenant=tenant_a_namespace.name,
+                job_id=job_id,
+                hard_delete=True,
+            )
+        except Exception:  # noqa: BLE001
+            LOGGER.warning(f"Failed to delete PVC evaluation job {job_id} during teardown")
