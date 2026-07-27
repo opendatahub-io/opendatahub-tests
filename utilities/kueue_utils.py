@@ -40,7 +40,10 @@ def is_kueue_operator_installed(admin_client: DynamicClient) -> bool:
 
 
 class ResourceFlavor(Resource):
+    """Kueue ResourceFlavor resource."""
+
     api_group: str = "kueue.x-k8s.io"
+    api_version: str = "kueue.x-k8s.io/v1beta2"
 
     def __init__(self, **kwargs: Any):
         """
@@ -58,7 +61,10 @@ class ResourceFlavor(Resource):
 
 
 class LocalQueue(NamespacedResource):
+    """Kueue LocalQueue resource."""
+
     api_group: str = "kueue.x-k8s.io"
+    api_version: str = "kueue.x-k8s.io/v1beta2"
 
     def __init__(
         self,
@@ -86,7 +92,10 @@ class LocalQueue(NamespacedResource):
 
 
 class ClusterQueue(Resource):
+    """Kueue ClusterQueue resource."""
+
     api_group: str = "kueue.x-k8s.io"
+    api_version: str = "kueue.x-k8s.io/v1beta2"
 
     def __init__(
         self,
@@ -119,6 +128,48 @@ class ClusterQueue(Resource):
                 _spec["namespaceSelector"] = {}
             if self.resource_groups:
                 _spec["resourceGroups"] = self.resource_groups
+
+
+class Workload(NamespacedResource):
+    """Kueue Workload resource (kueue.x-k8s.io/v1beta2)."""
+
+    api_group: str = "kueue.x-k8s.io"
+    api_version: str = "kueue.x-k8s.io/v1beta2"
+
+
+class Kueue(Resource):
+    """Kueue CR of the Red Hat build of Kueue operator (kueue.openshift.io/v1)."""
+
+    api_group: str = "kueue.openshift.io"
+    api_version: str = "kueue.openshift.io/v1"
+
+    def __init__(
+        self,
+        config: dict[str, Any] | None = None,
+        management_state: str | None = None,
+        **kwargs: Any,
+    ):
+        """
+        Args:
+            config: Kueue controller configuration (e.g. framework integrations)
+            management_state: managementState for the Kueue controller
+            kwargs: Keyword arguments to pass to the Kueue constructor
+        """
+        super().__init__(
+            **kwargs,
+        )
+        self.config = config
+        self.management_state = management_state
+
+    def to_dict(self) -> None:
+        super().to_dict()
+        if not self.kind_dict and not self.yaml_file:
+            self.res["spec"] = {}
+            _spec = self.res["spec"]
+            if self.config is not None:
+                _spec["config"] = self.config
+            if self.management_state is not None:
+                _spec["managementState"] = self.management_state
 
 
 @contextmanager
