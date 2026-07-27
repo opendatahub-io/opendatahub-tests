@@ -543,9 +543,9 @@ def nemo_guardrails_llm_judge_healthcheck(
     nemo_guardrails_llm_judge_route: Route,
     current_client_token: str,
 ) -> None:
-    verify_guardrails_healthcheck(
-        route=nemo_guardrails_llm_judge_route,
-        openshift_ca_bundle_file=openshift_ca_bundle_file,
+    """Wait for LLM-as-a-judge NeMo Guardrails to be healthy and serving requests."""
+    wait_for_nemo_guardrails_health(
+        host=nemo_guardrails_llm_judge_route.host,
         token=current_client_token,
         ca_bundle_file=get_tls_verify(client=admin_client),
     )
