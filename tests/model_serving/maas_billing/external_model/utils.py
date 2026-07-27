@@ -18,6 +18,7 @@ EXTERNAL_PROVIDER_NAME = "e2e-external-provider"
 EXTERNAL_ENDPOINT = "httpbin.org"
 EXTERNAL_TARGET_MODEL = "gpt-3.5-turbo"
 EXTERNAL_API_FORMAT = "openai-chat"
+EXTERNAL_PROVIDER_PATH = "/v1/chat/completions"
 EXTERNAL_AUTH_POLICY_NAME = "e2e-external-access"
 EXTERNAL_SUBSCRIPTION_NAME = "e2e-external-subscription"
 EXTERNAL_SECRET_NAME = f"{EXTERNAL_MODEL_NAME}-api-key"
@@ -30,6 +31,7 @@ def external_provider_ref(provider_name: str, *, target_model: str = EXTERNAL_TA
         "ref": {"name": provider_name},
         "targetModel": target_model,
         "apiFormat": EXTERNAL_API_FORMAT,
+        "path": EXTERNAL_PROVIDER_PATH,
     }
 
 
