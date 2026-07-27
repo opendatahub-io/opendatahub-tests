@@ -81,6 +81,8 @@ ALLOWED_LOG_MESSAGES = (
     "WARNING: The Jupyter server is listening on all IP addresses and not using authentication.",
     # RHOAIENG-22226: uuid.getnode() fails in containers with no persistent MAC address
     "Unable to retrieve mac address (unexpected format)",
+    # RHOAIENG-68292: JupyterLab may log this warning during startup if it finds an expired cookie
+    "Clearing invalid/expired login cookie",
 )
 
 _SENSITIVE_LOG_VALUE_RE = re.compile(
@@ -1037,7 +1039,7 @@ def capture_workbench_baseline(
 
         labextension_output = pod.execute(
             container=container_name,
-            command=["jupyter", "labextension", "list"],
+            command=["sh", "-c", "jupyter labextension list 2>&1"],
             timeout=60,
         )
         elyra_extensions = parse_elyra_extensions(labextension_output=labextension_output)
