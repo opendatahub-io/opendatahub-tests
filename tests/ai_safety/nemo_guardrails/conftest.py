@@ -611,7 +611,7 @@ def nemo_guardrails_config_update_healthcheck(
 def installed_istio(
     admin_client: DynamicClient,
 ) -> Generator[None, Any, Any]:
-    """Install OpenShift Service Mesh 3 if not already present; yield if Istio CRDs already exist."""
+    """Validate if OpenShift Service Mesh 3 exists; yield if Istio CRDs and subscription exist."""
     envoy_filter_crd = CustomResourceDefinition(
         client=admin_client,
         name="envoyfilters.networking.istio.io",
