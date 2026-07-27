@@ -1,18 +1,27 @@
-"""Negative tests for EvalHub Kueue integration.
-
-This module contains negative test cases that validate error handling and
-edge cases for EvalHub when integrated with Kueue admission control.
-"""
-
 import pytest
 import requests
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
+from ocp_resources.resource import ResourceEditor
 from ocp_resources.route import Route
 from ocp_resources.service import Service
+from timeout_sampler import TimeoutExpiredError
 
-from tests.ai_safety.evalhub.utils import build_evalhub_job_payload, get_evalhub_job_http
-from utilities.kueue_utils import LocalQueue, Workload
+from tests.ai_safety.evalhub.constants import EVALHUB_JOBS_PATH
+from tests.ai_safety.evalhub.utils import (
+    build_evalhub_kueue_job_payload,
+    build_headers,
+    cleanup_evalhub_job,
+    get_evalhub_job_http,
+    log_job_kueue_labels,
+    submit_evalhub_job,
+    wait_for_evalhub_job,
+    wait_for_evalhub_job_workload_inadmissible,
+)
+from utilities.kueue_utils import ClusterQueue, LocalQueue, Workload
+
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.kueue
@@ -93,12 +102,12 @@ class TestEvalHubKueueNegative:
         """
         if method == "POST":
             # Test unauthorized POST request
-            payload = build_evalhub_job_payload(
+            payload = build_evalhub_kueue_job_payload(
+                queue_name=evalhub_kueue_multi_job_local_queue.name,
                 model_service_name=evalhub_kueue_vllm_service.name,
                 tenant_namespace=evalhub_kueue_namespace.name,
                 job_name="tc-neg-003-unauth",
             )
-            payload["queue"] = {"kind": "kueue", "name": evalhub_kueue_multi_job_local_queue.name}
 
             url = f"https://{evalhub_kueue_route.host}/api/v1/evaluations/jobs"
             headers = {
@@ -158,3 +167,99 @@ class TestEvalHubKueueNegative:
         assert response.status_code in (400, 403), (
             f"Expected 400 or 403 for cross-tenant access, got {response.status_code}: {response.text}"
         )
+
+
+@pytest.mark.kueue
+@pytest.mark.tier2
+class TestEvalHubKueueListFiltering:
+    """Verify EvalHub job list filtering is accurate in a Kueue environment."""
+
+    def test_list_jobs_filtered_by_status(
+        self,
+        admin_client: DynamicClient,
+        evalhub_kueue_namespace: Namespace,
+        evalhub_kueue_multi_job_local_queue: LocalQueue,
+        evalhub_kueue_vllm_service: Service,
+        evalhub_kueue_request_common: dict[str, str],
+    ) -> None:
+        """TC-STATUS-001: GET /jobs?status=completed filters correctly.
+
+        Submits two jobs: job1 runs to completion, job2 is held by a stopped
+        ClusterQueue so it never reaches completed state. Verifies that
+        ?status=completed returns job1 but not job2, and that every item in
+        the filtered response has state == 'completed'.
+
+        Note: Kueue-gated jobs are not exposed as 'pending' in EvalHub's API —
+        EvalHub tracks state independently of Kueue admission. Testing the
+        'completed' filter avoids relying on transient Kueue-specific states.
+        """
+        common = evalhub_kueue_request_common
+        job_ids: list[str] = []
+
+        try:
+            payload1 = build_evalhub_kueue_job_payload(
+                queue_name=evalhub_kueue_multi_job_local_queue.name,
+                model_service_name=evalhub_kueue_vllm_service.name,
+                tenant_namespace=evalhub_kueue_namespace.name,
+                job_name="tc-status-001-job1",
+            )
+            data1 = submit_evalhub_job(**common, payload=payload1)
+            job1_id = data1["resource"]["id"]
+            job_ids.append(job1_id)
+
+            job1_result = wait_for_evalhub_job(**common, job_id=job1_id, timeout=600)
+            assert job1_result["status"]["state"] == "completed", (
+                f"Job1 must complete before validating the completed filter, got: {job1_result['status']}"
+            )
+
+            cluster_queue_name = evalhub_kueue_multi_job_local_queue.instance.spec.clusterQueue
+            cluster_queue = ClusterQueue(client=admin_client, name=cluster_queue_name)
+
+            with ResourceEditor(patches={cluster_queue: {"spec": {"stopPolicy": "HoldAndDrain"}}}):
+                payload2 = build_evalhub_kueue_job_payload(
+                    queue_name=evalhub_kueue_multi_job_local_queue.name,
+                    model_service_name=evalhub_kueue_vllm_service.name,
+                    tenant_namespace=evalhub_kueue_namespace.name,
+                    job_name="tc-status-001-job2",
+                )
+                data2 = submit_evalhub_job(**common, payload=payload2)
+                job2_id = data2["resource"]["id"]
+                job_ids.append(job2_id)
+
+                try:
+                    wait_for_evalhub_job_workload_inadmissible(
+                        admin_client=admin_client,
+                        namespace=evalhub_kueue_namespace.name,
+                        evalhub_job_id=job2_id,
+                    )
+                except TimeoutExpiredError:
+                    log_job_kueue_labels(admin_client, evalhub_kueue_namespace.name, job2_id)
+                    raise
+
+                url = f"https://{common['host']}{EVALHUB_JOBS_PATH}?status=completed&limit=50"
+                resp = requests.get(
+                    url=url,
+                    headers=build_headers(token=common["token"], tenant=common["tenant"]),
+                    verify=common["ca_bundle_file"],
+                    timeout=10,
+                )
+                assert resp.status_code == 200, f"Expected 200 from list endpoint, got {resp.status_code}: {resp.text}"
+
+                body = resp.json()
+                items = body.get("items", [])
+                job_ids_in_list = [item.get("resource", {}).get("id") for item in items]
+
+                assert job1_id in job_ids_in_list, (
+                    f"Completed job {job1_id} not found in ?status=completed results: {job_ids_in_list}"
+                )
+                assert job2_id not in job_ids_in_list, (
+                    f"Non-completed job {job2_id} appeared in ?status=completed results: {job_ids_in_list}"
+                )
+                for item in items:
+                    state = item.get("status", {}).get("state")
+                    assert state == "completed", (
+                        f"Expected all items to be completed when filtering by status=completed, got state={state}"
+                    )
+        finally:
+            for jid in job_ids:
+                cleanup_evalhub_job(**common, job_id=jid)
