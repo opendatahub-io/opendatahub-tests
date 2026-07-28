@@ -15,6 +15,7 @@ LOGGER = structlog.get_logger(name=__name__)
 
 MAAS_UPGRADE_BASELINE_CM_NAME = "maas-upgrade-test-baseline"
 MAAS_UPGRADE_BASELINE_CM_KEY = "maas_baseline"
+DEFAULT_AITENANT_NAME = "models-as-a-service"
 
 
 class MaaSBaseline(TypedDict):
