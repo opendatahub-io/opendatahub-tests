@@ -20,63 +20,62 @@ class TransientHealthError(Exception):
 TRANSIENT_HEALTH_EXCEPTIONS: dict[type, list[Any]] = {TransientHealthError: []}
 
 
-def get_deployment_template() -> dict[str, Any]:
-    """Return the Kubernetes pod template for the rhoai-mcp Deployment."""
-    labels = {
-        "app.kubernetes.io/component": "server",
-        "app.kubernetes.io/name": RHOAI_MCP_APP_NAME,
-    }
-    return {
-        "metadata": {"labels": labels},
-        "spec": {
-            "containers": [
-                {
-                    "name": RHOAI_MCP_APP_NAME,
-                    "image": RhoaiMcpImages.RHOAI_MCP,
-                    "imagePullPolicy": "Always",
-                    "args": ["--transport", "sse"],
-                    "envFrom": [{"configMapRef": {"name": f"{RHOAI_MCP_APP_NAME}-config"}}],
-                    "ports": [
-                        {
-                            "containerPort": RHOAI_MCP_PORT,
-                            "name": "http",
-                            "protocol": "TCP",
-                        }
-                    ],
-                    "livenessProbe": {
-                        "httpGet": {"path": RHOAI_MCP_HEALTH_PATH, "port": "http"},
-                        "initialDelaySeconds": 10,
-                        "periodSeconds": 30,
-                        "timeoutSeconds": 5,
-                        "failureThreshold": 3,
-                    },
-                    "readinessProbe": {
-                        "httpGet": {"path": RHOAI_MCP_HEALTH_PATH, "port": "http"},
-                        "initialDelaySeconds": 5,
-                        "periodSeconds": 10,
-                        "timeoutSeconds": 5,
-                        "failureThreshold": 3,
-                    },
-                    "resources": {
-                        "requests": {"cpu": "100m", "memory": "128Mi"},
-                        "limits": {"cpu": "500m", "memory": "512Mi"},
-                    },
-                    "securityContext": {
-                        "allowPrivilegeEscalation": False,
-                        "capabilities": {"drop": ["ALL"]},
-                        "readOnlyRootFilesystem": True,
-                    },
-                    "volumeMounts": [{"name": "tmp", "mountPath": "/tmp"}],
-                }
-            ],
-            "securityContext": {
-                "runAsNonRoot": True,
-                "seccompProfile": {"type": "RuntimeDefault"},
-            },
-            "serviceAccountName": RHOAI_MCP_APP_NAME,
-            "volumes": [{"name": "tmp", "emptyDir": {}}],
+DEPLOYMENT_TEMPLATE: dict[str, Any] = {
+    "metadata": {
+        "labels": {
+            "app.kubernetes.io/component": "server",
+            "app.kubernetes.io/name": RHOAI_MCP_APP_NAME,
         },
-    }
+    },
+    "spec": {
+        "containers": [
+            {
+                "name": RHOAI_MCP_APP_NAME,
+                "image": RhoaiMcpImages.RHOAI_MCP,
+                "imagePullPolicy": "Always",
+                "args": ["--transport", "sse"],
+                "envFrom": [{"configMapRef": {"name": f"{RHOAI_MCP_APP_NAME}-config"}}],
+                "ports": [
+                    {
+                        "containerPort": RHOAI_MCP_PORT,
+                        "name": "http",
+                        "protocol": "TCP",
+                    }
+                ],
+                "livenessProbe": {
+                    "httpGet": {"path": RHOAI_MCP_HEALTH_PATH, "port": "http"},
+                    "initialDelaySeconds": 10,
+                    "periodSeconds": 30,
+                    "timeoutSeconds": 5,
+                    "failureThreshold": 3,
+                },
+                "readinessProbe": {
+                    "httpGet": {"path": RHOAI_MCP_HEALTH_PATH, "port": "http"},
+                    "initialDelaySeconds": 5,
+                    "periodSeconds": 10,
+                    "timeoutSeconds": 5,
+                    "failureThreshold": 3,
+                },
+                "resources": {
+                    "requests": {"cpu": "100m", "memory": "128Mi"},
+                    "limits": {"cpu": "500m", "memory": "512Mi"},
+                },
+                "securityContext": {
+                    "allowPrivilegeEscalation": False,
+                    "capabilities": {"drop": ["ALL"]},
+                    "readOnlyRootFilesystem": True,
+                },
+                "volumeMounts": [{"name": "tmp", "mountPath": "/tmp"}],
+            }
+        ],
+        "securityContext": {
+            "runAsNonRoot": True,
+            "seccompProfile": {"type": "RuntimeDefault"},
+        },
+        "serviceAccountName": RHOAI_MCP_APP_NAME,
+        "volumes": [{"name": "tmp", "emptyDir": {}}],
+    },
+}
 
 
 def probe_health(url: str, ca_bundle_file: str) -> requests.Response:

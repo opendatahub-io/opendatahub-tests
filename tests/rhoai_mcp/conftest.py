@@ -22,8 +22,8 @@ from tests.rhoai_mcp.constants import (
     RHOAI_MCP_PORT,
 )
 from tests.rhoai_mcp.utils import (
+    DEPLOYMENT_TEMPLATE,
     TRANSIENT_HEALTH_EXCEPTIONS,
-    get_deployment_template,
     probe_health,
 )
 from utilities.certificates_utils import create_ca_bundle_file
@@ -199,7 +199,7 @@ def rhoai_mcp_deployment(
         replicas=1,
         label=labels,
         selector={"matchLabels": labels},
-        template=get_deployment_template(),
+        template=DEPLOYMENT_TEMPLATE,
     ) as deployment:
         deployment.wait_for_replicas(timeout=300)
         yield deployment
