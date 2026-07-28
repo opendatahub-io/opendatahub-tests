@@ -1,11 +1,17 @@
+from collections.abc import Callable
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any, Dict, Generator, List, Optional
 
+import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from ocp_resources.pod import Pod
 from ocp_resources.resource import MissingRequiredArgumentError, NamespacedResource, Resource
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
+
+from utilities.constants import Timeout
+from utilities.resources.admission_check import AdmissionCheck
 
 
 class ResourceFlavor(Resource):
@@ -95,25 +101,6 @@ class ClusterQueue(Resource):
                 _spec["admissionChecksStrategy"] = {
                     "admissionChecks": [{"name": ac} for ac in self.admission_checks],
                 }
-
-
-class AdmissionCheck(Resource):
-    api_group: str = "kueue.x-k8s.io"
-
-    def __init__(
-        self,
-        controller_name: Optional[str] = None,
-        **kwargs: Any,
-    ):
-        super().__init__(**kwargs)
-        self.controller_name = controller_name
-
-    def to_dict(self) -> None:
-        super().to_dict()
-        if not self.kind_dict and not self.yaml_file:
-            if not self.controller_name:
-                raise MissingRequiredArgumentError(argument="controller_name")
-            self.res["spec"] = {"controllerName": self.controller_name}
 
 
 class Workload(NamespacedResource):
@@ -224,6 +211,8 @@ def get_workload_for_job(
             label_selector=f"kueue.x-k8s.io/job-uid={job_uid}",
         )
     )
+    if len(workloads) > 1:
+        raise ValueError(f"Multiple Workloads ({len(workloads)}) found for Job UID {job_uid}")
     return workloads[0] if workloads else None
 
 
@@ -231,9 +220,9 @@ def check_workload_admitted(workload: Workload) -> bool:
     """Check if a Kueue Workload has Admitted=True condition."""
     conditions = getattr(workload.instance.status, "conditions", None) or []
     return any(
-        (c.get("type") if isinstance(c, dict) else getattr(c, "type", None)) == "Admitted"
-        and (c.get("status") if isinstance(c, dict) else getattr(c, "status", None)) == "True"
-        for c in conditions
+        (condition.get("type") if isinstance(condition, dict) else getattr(condition, "type", None)) == "Admitted"
+        and (condition.get("status") if isinstance(condition, dict) else getattr(condition, "status", None)) == "True"
+        for condition in conditions
     )
 
 
@@ -241,9 +230,9 @@ def check_workload_quota_reserved(workload: Workload) -> bool:
     """Check if a Kueue Workload has QuotaReserved=True condition."""
     conditions = getattr(workload.instance.status, "conditions", None) or []
     return any(
-        (c.get("type") if isinstance(c, dict) else getattr(c, "type", None)) == "QuotaReserved"
-        and (c.get("status") if isinstance(c, dict) else getattr(c, "status", None)) == "True"
-        for c in conditions
+        (condition.get("type") if isinstance(condition, dict) else getattr(condition, "type", None)) == "QuotaReserved"
+        and (condition.get("status") if isinstance(condition, dict) else getattr(condition, "status", None)) == "True"
+        for condition in conditions
     )
 
 
@@ -251,13 +240,13 @@ def check_admission_check_active(admission_check: AdmissionCheck) -> bool:
     """Check if an AdmissionCheck has Active=True condition."""
     conditions = getattr(admission_check.instance.status, "conditions", None) or []
     return any(
-        (c.get("type") if isinstance(c, dict) else getattr(c, "type", None)) == "Active"
-        and (c.get("status") if isinstance(c, dict) else getattr(c, "status", None)) == "True"
-        for c in conditions
+        (condition.get("type") if isinstance(condition, dict) else getattr(condition, "type", None)) == "Active"
+        and (condition.get("status") if isinstance(condition, dict) else getattr(condition, "status", None)) == "True"
+        for condition in conditions
     )
 
 
-def check_cluster_queue_has_admission_check(cluster_queue: "ClusterQueue", admission_check_name: str) -> bool:
+def check_cluster_queue_has_admission_check(cluster_queue: ClusterQueue, admission_check_name: str) -> bool:
     """Check if a ClusterQueue still references an AdmissionCheck in its admissionChecksStrategy."""
     spec = cluster_queue.instance.spec
     strategy = getattr(spec, "admissionChecksStrategy", None)
@@ -265,8 +254,34 @@ def check_cluster_queue_has_admission_check(cluster_queue: "ClusterQueue", admis
         return False
     checks = getattr(strategy, "admissionChecks", None) or []
     return any(
-        (c.get("name") if isinstance(c, dict) else getattr(c, "name", None)) == admission_check_name for c in checks
+        (check.get("name") if isinstance(check, dict) else getattr(check, "name", None)) == admission_check_name
+        for check in checks
     )
+
+
+def wait_for_workload_condition(
+    client: DynamicClient,
+    workload_name: str,
+    namespace: str,
+    condition_check: Callable[[Workload], bool],
+    condition_name: str,
+    timeout: int = Timeout.TIMEOUT_2MIN,
+) -> None:
+    """Poll a Workload until a condition is met, or fail the test."""
+    try:
+        for workload in TimeoutSampler(
+            wait_timeout=timeout,
+            sleep=5,
+            func=lambda: Workload(
+                client=client,
+                name=workload_name,
+                namespace=namespace,
+            ),
+        ):
+            if workload.exists and condition_check(workload):
+                return
+    except TimeoutExpiredError:
+        pytest.fail(f"Workload '{workload_name}' did not reach {condition_name}")
 
 
 def activate_admission_check(
@@ -278,13 +293,14 @@ def activate_admission_check(
     Acts as a fake AdmissionCheck Controller for upgrade testing. Uses a merge-patch
     to set Active=True with a synthetic reason, avoiding the need to deploy a real
     controller (e.g. ProvisioningRequest/MultiKueue).
+
+    Uses ``api.status.patch()`` because this targets the Kubernetes ``/status``
+    subresource endpoint.  ``ResourceEditor`` and ``Resource.update()`` only patch
+    the main resource endpoint; the API server silently ignores status fields there.
     """
-    api = client.resources.get(
-        api_version=AdmissionCheck.api_group + "/v1beta1",
-        kind="AdmissionCheck",
-    )
-    api.status.patch(
-        name=admission_check_name,
+    admission_check = AdmissionCheck(client=client, name=admission_check_name)
+    admission_check.api.status.patch(
+        name=admission_check.name,
         body={
             "status": {
                 "conditions": [
@@ -303,7 +319,6 @@ def activate_admission_check(
 
 
 def approve_admission_check_on_workload(
-    client: DynamicClient,
     workload: Workload,
     admission_check_name: str,
 ) -> None:
@@ -313,12 +328,12 @@ def approve_admission_check_on_workload(
     Safe while there is exactly one AdmissionCheck and no reliance on sibling
     fields like ``podSetUpdates``. Callers with multiple checks should
     read-modify-write instead.
+
+    Uses ``api.status.patch()`` because this targets the Kubernetes ``/status``
+    subresource endpoint.  ``ResourceEditor`` and ``Resource.update()`` only patch
+    the main resource endpoint; the API server silently ignores status fields there.
     """
-    api = client.resources.get(
-        api_version=Workload.api_group + "/v1beta1",
-        kind="Workload",
-    )
-    api.status.patch(
+    workload.api.status.patch(
         name=workload.name,
         namespace=workload.namespace,
         body={

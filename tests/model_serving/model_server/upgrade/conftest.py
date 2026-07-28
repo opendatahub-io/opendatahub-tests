@@ -79,7 +79,6 @@ from tests.model_serving.model_server.upgrade.utils import (
     kueue_resource_groups,
 )
 from utilities.kueue_utils import (
-    AdmissionCheck,
     ClusterQueue,
     LocalQueue,
     ResourceFlavor,
@@ -91,6 +90,7 @@ from utilities.kueue_utils import (
     create_resource_flavor,
     get_workload_for_job,
 )
+from utilities.resources.admission_check import AdmissionCheck
 
 
 LOGGER = get_logger(name=__name__)
