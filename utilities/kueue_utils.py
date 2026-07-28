@@ -1,7 +1,9 @@
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from typing import Any
 
+import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
@@ -9,9 +11,10 @@ from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.pod import Pod
 from ocp_resources.resource import MissingRequiredArgumentError, NamespacedResource, Resource
 from pytest_testconfig import config as py_config
-from timeout_sampler import retry
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
 
 from utilities.constants import Timeout
+from utilities.resources.admission_check import AdmissionCheck
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -101,12 +104,14 @@ class ClusterQueue(Resource):
         self,
         namespace_selector: dict[str, Any] | None = None,
         resource_groups: list[dict[str, Any]] | None = None,
+        admission_checks: list[str] | None = None,
         **kwargs: Any,
     ):
         """
         Args:
             namespace_selector: Namespace selector to use
             resource_groups: Resource groups to use
+            admission_checks: List of AdmissionCheck names to require on this queue
             kwargs: Keyword arguments to pass to the ClusterQueue constructor
         """
         super().__init__(
@@ -114,6 +119,7 @@ class ClusterQueue(Resource):
         )
         self.namespace_selector = namespace_selector
         self.resource_groups = resource_groups
+        self.admission_checks = admission_checks
 
     def to_dict(self) -> None:
         super().to_dict()
@@ -128,6 +134,10 @@ class ClusterQueue(Resource):
                 _spec["namespaceSelector"] = {}
             if self.resource_groups:
                 _spec["resourceGroups"] = self.resource_groups
+            if self.admission_checks:
+                _spec["admissionChecksStrategy"] = {
+                    "admissionChecks": [{"name": ac} for ac in self.admission_checks],
+                }
 
 
 class Workload(NamespacedResource):
@@ -211,11 +221,31 @@ def create_local_queue(
 
 
 @contextmanager
+def create_admission_check(
+    client: DynamicClient,
+    name: str,
+    controller_name: str,
+    teardown: bool = True,
+) -> Generator[AdmissionCheck, Any, Any]:
+    """
+    Context manager to create and optionally delete an AdmissionCheck.
+    """
+    with AdmissionCheck(
+        client=client,
+        name=name,
+        controller_name=controller_name,
+        teardown=teardown,
+    ) as admission_check:
+        yield admission_check
+
+
+@contextmanager
 def create_cluster_queue(
     client: DynamicClient,
     name: str,
     resource_groups: list[dict[str, Any]],
     namespace_selector: dict[str, Any] | None = None,
+    admission_checks: list[str] | None = None,
     teardown: bool = True,
 ) -> Generator[ClusterQueue, Any, Any]:
     """
@@ -226,6 +256,7 @@ def create_cluster_queue(
         name=name,
         resource_groups=resource_groups,
         namespace_selector=namespace_selector,
+        admission_checks=admission_checks,
         teardown=teardown,
     ) as cluster_queue:
         yield cluster_queue
@@ -252,6 +283,160 @@ def check_gated_pods_and_running_pods(
         ):
             gated_pods += 1
     return running_pods, gated_pods
+
+
+def get_workload_for_job(
+    client: DynamicClient,
+    job_uid: str,
+    namespace: str,
+) -> Workload | None:
+    """Find the Kueue Workload auto-created for a batch Job."""
+    workloads = list(
+        Workload.get(
+            client=client,
+            namespace=namespace,
+            label_selector=f"kueue.x-k8s.io/job-uid={job_uid}",
+        )
+    )
+    if len(workloads) > 1:
+        raise ValueError(f"Multiple Workloads ({len(workloads)}) found for Job UID {job_uid}")
+    return workloads[0] if workloads else None
+
+
+def wait_for_workload_condition(
+    client: DynamicClient,
+    workload_name: str,
+    namespace: str,
+    condition_check: Callable[[Workload], bool],
+    condition_name: str,
+    timeout: int = Timeout.TIMEOUT_2MIN,
+) -> None:
+    """Poll a Workload until a condition is met, or fail the test."""
+    try:
+        for workload in TimeoutSampler(
+            wait_timeout=timeout,
+            sleep=5,
+            func=lambda: Workload(
+                client=client,
+                name=workload_name,
+                namespace=namespace,
+            ),
+        ):
+            if workload.exists and condition_check(workload):
+                return
+    except TimeoutExpiredError:
+        pytest.fail(f"Workload '{workload_name}' did not reach {condition_name}")
+
+
+def check_workload_admitted(workload: Workload) -> bool:
+    """Check if a Kueue Workload has Admitted=True condition."""
+    conditions = getattr(workload.instance.status, "conditions", None) or []
+    return any(
+        (condition.get("type") if isinstance(condition, dict) else getattr(condition, "type", None)) == "Admitted"
+        and (condition.get("status") if isinstance(condition, dict) else getattr(condition, "status", None)) == "True"
+        for condition in conditions
+    )
+
+
+def check_workload_quota_reserved(workload: Workload) -> bool:
+    """Check if a Kueue Workload has QuotaReserved=True condition."""
+    conditions = getattr(workload.instance.status, "conditions", None) or []
+    return any(
+        (condition.get("type") if isinstance(condition, dict) else getattr(condition, "type", None)) == "QuotaReserved"
+        and (condition.get("status") if isinstance(condition, dict) else getattr(condition, "status", None)) == "True"
+        for condition in conditions
+    )
+
+
+def check_admission_check_active(admission_check: AdmissionCheck) -> bool:
+    """Check if an AdmissionCheck has Active=True condition."""
+    conditions = getattr(admission_check.instance.status, "conditions", None) or []
+    return any(
+        (condition.get("type") if isinstance(condition, dict) else getattr(condition, "type", None)) == "Active"
+        and (condition.get("status") if isinstance(condition, dict) else getattr(condition, "status", None)) == "True"
+        for condition in conditions
+    )
+
+
+def check_cluster_queue_has_admission_check(cluster_queue: ClusterQueue, admission_check_name: str) -> bool:
+    """Check if a ClusterQueue still references an AdmissionCheck in its admissionChecksStrategy."""
+    spec = cluster_queue.instance.spec
+    strategy = getattr(spec, "admissionChecksStrategy", None)
+    if not strategy:
+        return False
+    checks = getattr(strategy, "admissionChecks", None) or []
+    return any(
+        (check.get("name") if isinstance(check, dict) else getattr(check, "name", None)) == admission_check_name
+        for check in checks
+    )
+
+
+def activate_admission_check(
+    client: DynamicClient,
+    admission_check_name: str,
+) -> None:
+    """Patch an AdmissionCheck's status to Active=True so the ClusterQueue can admit workloads.
+
+    Acts as a fake AdmissionCheck Controller for upgrade testing. Uses a merge-patch
+    to set Active=True with a synthetic reason, avoiding the need to deploy a real
+    controller (e.g. ProvisioningRequest/MultiKueue).
+
+    Uses ``api.status.patch()`` because this targets the Kubernetes ``/status``
+    subresource endpoint.  ``ResourceEditor`` and ``Resource.update()`` only patch
+    the main resource endpoint; the API server silently ignores status fields there.
+    """
+    ac = AdmissionCheck(client=client, name=admission_check_name)
+    ac.api.status.patch(
+        name=ac.name,
+        body={
+            "status": {
+                "conditions": [
+                    {
+                        "type": "Active",
+                        "status": "True",
+                        "reason": "FakeControllerReady",
+                        "message": "Simulated controller for upgrade testing",
+                        "lastTransitionTime": datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    }
+                ]
+            }
+        },
+        content_type="application/merge-patch+json",
+    )
+
+
+def approve_admission_check_on_workload(
+    workload: Workload,
+    admission_check_name: str,
+) -> None:
+    """Patch a Workload's status to set an AdmissionCheck state to Ready.
+
+    Uses JSON merge-patch, which replaces ``status.admissionChecks`` entirely.
+    Safe while there is exactly one AdmissionCheck and no reliance on sibling
+    fields like ``podSetUpdates``. Callers with multiple checks should
+    read-modify-write instead.
+
+    Uses ``api.status.patch()`` because this targets the Kubernetes ``/status``
+    subresource endpoint.  ``ResourceEditor`` and ``Resource.update()`` only patch
+    the main resource endpoint; the API server silently ignores status fields there.
+    """
+    workload.api.status.patch(
+        name=workload.name,
+        namespace=workload.namespace,
+        body={
+            "status": {
+                "admissionChecks": [
+                    {
+                        "name": admission_check_name,
+                        "state": "Ready",
+                        "message": "Approved by upgrade test",
+                        "lastTransitionTime": datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    }
+                ]
+            }
+        },
+        content_type="application/merge-patch+json",
+    )
 
 
 @retry(

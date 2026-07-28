@@ -2,7 +2,7 @@ class AiSafetyImages:
     """Container images used by ai_safety tests."""
 
     VLLM_EMULATOR: str = (
-        "quay.io/trustyai_testing/vllm_emulator@sha256:c4bdd5bb93171dee5b4c8454f36d7c42b58b2a4ceb74f29dba5760ac53b5c12d"
+        "quay.io/trustyai_testing/vllm_emulator@sha256:32b5f26b5ec1c5c8052afa26c6d9769dbc864df27a058716c8df62d827cf1d07"
     )
     MINIO_MC: str = "quay.io/minio/mc@sha256:470f5546b596e16c7816b9c3fa7a78ce4076bb73c2c73f7faeec0c8043923123"
     MINIO_SERVER: str = "quay.io/minio/minio@sha256:46b3009bf7041eefbd90bd0d2b38c6ddc24d20a35d609551a1802c558c1c958f"
