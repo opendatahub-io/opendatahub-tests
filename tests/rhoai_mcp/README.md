@@ -16,8 +16,11 @@ tests/rhoai_mcp/
 
 ## Markers
 
-- `rhoai_mcp` — component marker for all rhoai-mcp tests
 - `smoke` — deployment readiness and health checks, authentication tests, endpoint tests
+
+No component marker is needed. Jenkins uses `tests/<component_name>` as the entry point
+already. Unless there will be tests that would be part of another component, there is otherwise
+no need for a component marker.
 
 ## Running
 
@@ -30,7 +33,4 @@ uv run pytest tests/rhoai_mcp/ -m smoke -v
 
 # Run all rhoai-mcp tests
 uv run pytest tests/rhoai_mcp/ -v
-
-# Run with partially ready DSC
-uv run pytest tests/rhoai_mcp/ -m rhoai_mcp -v --cluster-sanity-skip-check
 ```

@@ -5,7 +5,6 @@ from ocp_resources.deployment import Deployment
 from tests.rhoai_mcp.constants import RHOAI_MCP_HEALTH_PATH
 
 
-@pytest.mark.rhoai_mcp
 class TestRhoaiMcpDeployment:
     """Verify rhoai-mcp deploys successfully and becomes healthy."""
 
