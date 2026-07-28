@@ -30,7 +30,12 @@ _KvCacheCpuOffloadConfig = TinyLlamaOciGpuConfig.with_overrides(
 class TestLlmdSinglenodeKvCacheCpuOffload:
     """Deploy TinyLlama on GPU with KV cache CPU offloading and verify inference succeeds.
 
-    If kserve generates invalid --kv-transfer-config parameters, vLLM rejects them
+    Steps:
+        1. Deploy TinyLlama on GPU with KV cache CPU offloading configured (4Gi CPU tier, lru eviction policy).
+        2. Send a chat completions request to the deployed model.
+        3. Verify the response status is HTTP 200 and the response text contains the expected answer.
+
+    Note: If kserve generates invalid --kv-transfer-config parameters, vLLM rejects them
     at startup and the pod never becomes Ready — so a successful inference response
     is sufficient proof that the controller produced a valid OffloadingConnector config.
     """
