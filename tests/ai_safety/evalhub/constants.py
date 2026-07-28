@@ -6,7 +6,6 @@ EVALHUB_SERVICE_NAME: str = "evalhub"
 EVALHUB_SERVICE_PORT: int = 8443
 EVALHUB_CONTAINER_PORT: int = 8080
 EVALHUB_HEALTH_PATH: str = "/api/v1/health"
-EVALHUB_HEALTHZ_PATH: str = "/healthz"
 EVALHUB_METRICS_PATH: str = "/metrics"
 EVALHUB_PROVIDERS_PATH: str = "/api/v1/evaluations/providers"
 EVALHUB_JOBS_PATH: str = "/api/v1/evaluations/jobs"
@@ -71,6 +70,9 @@ EVALHUB_USER_ROLE_RULES: list[dict[str, list[str]]] = [
         "verbs": ["create", "get"],
     },
 ]
+
+# Provider IDs for system providers
+LM_EVALUATION_HARNESS_PROVIDER_ID: str = "lm_evaluation_harness"
 
 # Garak provider
 GARAK_SIMPLE_PROVIDER_ID: str = "garak"
