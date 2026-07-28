@@ -2,7 +2,6 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
-import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.cluster_role import ClusterRole
 from ocp_resources.cluster_role_binding import ClusterRoleBinding
@@ -12,8 +11,6 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.route import Route
 from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
-from timeout_sampler import TimeoutSampler
-
 from tests.rhoai_mcp.constants import (
     RHOAI_MCP_APP_NAME,
     RHOAI_MCP_CLUSTERROLE_NAME,
@@ -23,13 +20,10 @@ from tests.rhoai_mcp.constants import (
 )
 from tests.rhoai_mcp.utils import (
     DEPLOYMENT_TEMPLATE,
-    TRANSIENT_HEALTH_EXCEPTIONS,
     probe_health,
 )
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.infra import create_ns
-
-LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")
@@ -258,17 +252,10 @@ def rhoai_mcp_base_url(rhoai_mcp_route: Route) -> str:
 @pytest.fixture(scope="class")
 def rhoai_mcp_ready(
     rhoai_mcp_base_url: str,
-    rhoai_mcp_route: Route,
     rhoai_mcp_ca_bundle: str,
 ) -> None:
     """Wait until the rhoai-mcp health endpoint responds on the route."""
-    url = f"{rhoai_mcp_base_url}{RHOAI_MCP_HEALTH_PATH}"
-    for sample in TimeoutSampler(
-        wait_timeout=120,
-        sleep=5,
-        func=lambda: probe_health(url=url, ca_bundle_file=rhoai_mcp_ca_bundle),
-        exceptions_dict=TRANSIENT_HEALTH_EXCEPTIONS,
-    ):
-        if sample.ok:
-            LOGGER.info(f"rhoai-mcp at {rhoai_mcp_route.host} is healthy")
-            return
+    probe_health(
+        url=f"{rhoai_mcp_base_url}{RHOAI_MCP_HEALTH_PATH}",
+        ca_bundle_file=rhoai_mcp_ca_bundle,
+    )

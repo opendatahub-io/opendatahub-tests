@@ -1,7 +1,7 @@
 from typing import Any
 
 import requests
-import structlog
+from timeout_sampler import retry
 
 from tests.rhoai_mcp.constants import (
     RHOAI_MCP_APP_NAME,
@@ -10,14 +10,11 @@ from tests.rhoai_mcp.constants import (
 )
 from tests.rhoai_mcp.image_constants import RhoaiMcpImages
 
-LOGGER = structlog.get_logger(name=__name__)
-
-
-class TransientHealthError(Exception):
-    """Recoverable failure while polling the rhoai-mcp health endpoint."""
-
-
-TRANSIENT_HEALTH_EXCEPTIONS: dict[type, list[Any]] = {TransientHealthError: []}
+_RETRY_EXCEPTIONS: dict[type, list] = {
+    requests.exceptions.ConnectTimeout: [],
+    requests.exceptions.ReadTimeout: [],
+    requests.exceptions.ConnectionError: [lambda exc: not isinstance(exc, requests.exceptions.SSLError)],
+}
 
 
 DEPLOYMENT_TEMPLATE: dict[str, Any] = {
@@ -78,16 +75,7 @@ DEPLOYMENT_TEMPLATE: dict[str, Any] = {
 }
 
 
+@retry(wait_timeout=120, sleep=5, exceptions_dict=_RETRY_EXCEPTIONS)
 def probe_health(url: str, ca_bundle_file: str) -> requests.Response:
-    """GET the health endpoint, retrying only on transient network failures."""
-    try:
-        return requests.get(url, verify=ca_bundle_file, timeout=10)
-    except (
-        requests.exceptions.ConnectTimeout,
-        requests.exceptions.ReadTimeout,
-        requests.exceptions.ConnectionError,
-    ) as err:
-        if isinstance(err, requests.exceptions.SSLError):
-            raise
-        LOGGER.warning(f"Transient error checking rhoai-mcp health: {err}")
-        raise TransientHealthError(str(err)) from err
+    """GET the health endpoint, retrying on transient network failures."""
+    return requests.get(url, verify=ca_bundle_file, timeout=10)
