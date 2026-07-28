@@ -1,14 +1,15 @@
 from typing import Any
 
-from ocp_resources.deployment import Deployment
-from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
-from ocp_resources.resource import Resource
-from ocp_resources.secret import Secret
-from ocp_resources.service import Service
-
 from tests.ai_hub.image_constants import AiHubImages
 from utilities.constants import ModelFormat, RuntimeTemplates
 from utilities.image_constants import SharedImages
+from utilities.constants import ModelCarImage, ModelFormat, RuntimeTemplates
+from utilities.openshift_resources.deployment import Deployment
+from utilities.openshift_resources.persistent_volume_claim import PersistentVolumeClaim
+from utilities.openshift_resources.secret import Secret
+from utilities.openshift_resources.service import Service
+
+TEMPLATE_OPENSHIFT_IO: str = "template.openshift.io"
 
 
 class ModelRegistryEndpoints:
@@ -50,9 +51,9 @@ MODEL_REGISTRY_DB_SECRET_STR_DATA: dict[str, str] = {
     "database-user": "mlmduser",  # pragma: allowlist secret
 }
 MODEL_REGISTRY_DB_SECRET_ANNOTATIONS = {
-    f"{Resource.ApiGroup.TEMPLATE_OPENSHIFT_IO}/expose-database_name": "'{.data[''database-name'']}'",
-    f"{Resource.ApiGroup.TEMPLATE_OPENSHIFT_IO}/expose-password": "'{.data[''database-password'']}'",
-    f"{Resource.ApiGroup.TEMPLATE_OPENSHIFT_IO}/expose-username": "'{.data[''database-user'']}'",
+    f"{TEMPLATE_OPENSHIFT_IO}/expose-database_name": "'{.data[''database-name'']}'",
+    f"{TEMPLATE_OPENSHIFT_IO}/expose-password": "'{.data[''database-password'']}'",
+    f"{TEMPLATE_OPENSHIFT_IO}/expose-username": "'{.data[''database-user'']}'",
 }
 
 CA_CONFIGMAP_NAME = "odh-trusted-ca-bundle"

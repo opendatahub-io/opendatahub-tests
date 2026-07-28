@@ -3,7 +3,8 @@ from contextlib import contextmanager
 
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.group import Group
+
+from utilities.openshift_resources.group import Group
 
 LOGGER = structlog.get_logger(name=__name__)
 

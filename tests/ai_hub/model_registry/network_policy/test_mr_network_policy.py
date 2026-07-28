@@ -1,10 +1,10 @@
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.network_policy import NetworkPolicy
 
-from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
-from utilities.resources.pod import Pod
+from utilities.openshift_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.openshift_resources.network_policy import NetworkPolicy
+from utilities.openshift_resources.pod import Pod
 
 LOGGER = structlog.get_logger(name=__name__)
 

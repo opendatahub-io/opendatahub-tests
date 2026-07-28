@@ -4,12 +4,12 @@ import pytest
 import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.route import Route
 
 from tests.ai_hub.constants import CATALOG_CONTAINER
 from tests.ai_hub.mcp_servers.preview.utils import build_mcp_preview_config, post_stateless_preview
 from tests.ai_hub.utils import execute_authenticated_post, get_model_catalog_pod
 from utilities.infra import get_openshift_token
+from utilities.openshift_resources.route_route_openshift_io import Route
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -21,9 +21,7 @@ MODEL_CATALOG_API_PATH: str = "/api/model_catalog/v1alpha1/"
 @pytest.fixture(scope="class")
 def model_catalog_preview_url(model_registry_namespace: str, admin_client: DynamicClient) -> str:
     """Base URL for the model catalog API (preview endpoint lives here, not on the MCP catalog API)."""
-    routes = list(
-        Route.get(namespace=model_registry_namespace, label_selector="component=model-catalog", client=admin_client)
-    )
+    routes = list(Route.list_resources(namespace=model_registry_namespace, label_selector="component=model-catalog"))
     assert routes, f"Model catalog routes do not exist in {model_registry_namespace}"
     return f"https://{routes[0].instance.spec.host}:443{MODEL_CATALOG_API_PATH}"
 

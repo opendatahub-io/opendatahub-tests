@@ -4,8 +4,6 @@ import pytest
 import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.config_map import ConfigMap
-from ocp_resources.resource import ResourceEditor
 
 from tests.ai_hub.mcp_servers.config.constants import (
     MCP_CATALOG_SOURCE,
@@ -13,6 +11,7 @@ from tests.ai_hub.mcp_servers.config.constants import (
 )
 from tests.ai_hub.mcp_servers.config.utils import get_mcp_catalog_sources
 from tests.ai_hub.utils import wait_for_mcp_catalog_api, wait_for_model_catalog_pod_ready_after_deletion
+from utilities.openshift_resources.config_map import ConfigMap
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -39,7 +38,7 @@ def pre_upgrade_mcp_config_map_update(
         }
     }
 
-    ResourceEditor(patches={catalog_config_map: patches}).update()
+    catalog_config_map.edit(patch=patches)
     wait_for_model_catalog_pod_ready_after_deletion(
         client=admin_client, model_registry_namespace=model_registry_namespace
     )

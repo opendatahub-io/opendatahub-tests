@@ -3,10 +3,10 @@ from typing import Any
 import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.config_map import ConfigMap
 
 from tests.ai_hub.constants import DEFAULT_CUSTOM_MODEL_CATALOG
 from tests.ai_hub.utils import execute_get_command_with_retry
+from utilities.openshift_resources.config_map import ConfigMap
 
 LOGGER = structlog.get_logger(name=__name__)
 

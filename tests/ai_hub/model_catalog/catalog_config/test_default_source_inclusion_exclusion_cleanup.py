@@ -1,7 +1,6 @@
 import pytest
 import structlog
 from kubernetes.dynamic.client import DynamicClient
-from ocp_resources.resource import ResourceEditor
 from timeout_sampler import TimeoutExpiredError
 
 from tests.ai_hub.model_catalog.catalog_config.utils import (
@@ -195,7 +194,7 @@ class TestModelCleanupLifecycle:
         )
 
         try:
-            with ResourceEditor(patches={phase1_patch["configmap"]: phase1_patch["patch"]}):
+            with phase1_patch["configmap"].patch_and_restore(patch=phase1_patch["patch"]):
                 wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
 
                 # Verify granite models are present
@@ -232,7 +231,7 @@ class TestModelCleanupLifecycle:
 
                 # Apply new filter without exiting context
 
-                phase1_patch["configmap"].update(phase2_patch["patch"])
+                phase1_patch["configmap"].edit(patch=phase2_patch["patch"])
 
                 wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
 

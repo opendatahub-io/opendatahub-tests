@@ -1,8 +1,8 @@
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.deployment import Deployment
 
-from utilities.resources.http_route import HTTPRoute
+from utilities.openshift_resources.deployment import Deployment
+from utilities.openshift_resources.http_route import HTTPRoute
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -13,8 +13,7 @@ DATA_SCIENCE_GATEWAY_NAMESPACE = "openshift-ingress"
 def get_gateway_domain_from_operator(client: DynamicClient, namespace: str) -> str | None:
     """Extract GATEWAY_DOMAIN from the model-registry-operator deployment env vars."""
     deployments = list(
-        Deployment.get(
-            client=client,
+        Deployment.list_resources(
             namespace=namespace,
             label_selector="control-plane=model-registry-operator",
         )
@@ -33,7 +32,7 @@ def get_gateway_domain_from_operator(client: DynamicClient, namespace: str) -> s
 
 def get_model_registry_httproutes(client: DynamicClient, namespace: str) -> list[HTTPRoute]:
     """Get HTTPRoutes in a namespace that route to model registry via data-science-gateway."""
-    all_routes = list(HTTPRoute.get(client=client, namespace=namespace))
+    all_routes = list(HTTPRoute.list_resources(namespace=namespace))
 
     matched = []
     for route in all_routes:

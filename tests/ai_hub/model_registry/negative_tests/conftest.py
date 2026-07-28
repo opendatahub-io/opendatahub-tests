@@ -4,13 +4,6 @@ from typing import Any
 import pytest
 from _pytest.config import Config
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.data_science_cluster import DataScienceCluster
-from ocp_resources.deployment import Deployment
-from ocp_resources.namespace import Namespace
-from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
-from ocp_resources.pod import Pod
-from ocp_resources.secret import Secret
-from ocp_resources.service import Service
 from pytest_testconfig import config as py_config
 
 from tests.ai_hub.constants import (
@@ -27,6 +20,13 @@ from tests.ai_hub.utils import get_model_registry_db_label_dict, get_model_regis
 from utilities.constants import MODEL_REGISTRY_CUSTOM_NAMESPACE
 from utilities.general import wait_for_pods_by_labels
 from utilities.infra import create_ns
+from utilities.openshift_resources.data_science_cluster import DataScienceCluster
+from utilities.openshift_resources.deployment import Deployment
+from utilities.openshift_resources.namespace import Namespace
+from utilities.openshift_resources.persistent_volume_claim import PersistentVolumeClaim
+from utilities.openshift_resources.pod import Pod
+from utilities.openshift_resources.secret import Secret
+from utilities.openshift_resources.service import Service
 
 DB_RESOURCES_NAME_NEGATIVE = "db-model-registry-negative"
 
@@ -82,11 +82,10 @@ def model_registry_db_pvc_for_negative_tests(
     model_registry_namespace_for_negative_tests: Namespace,
 ) -> Generator[PersistentVolumeClaim, Any, Any]:
     with PersistentVolumeClaim(
-        accessmodes="ReadWriteOnce",
+        access_modes=["ReadWriteOnce"],
         name=DB_RESOURCES_NAME_NEGATIVE,
         namespace=model_registry_namespace_for_negative_tests.name,
-        client=admin_client,
-        size="5Gi",
+        resources={"requests": {"storage": "5Gi"}},
         label=get_model_registry_db_label_dict(db_resource_name=DB_RESOURCES_NAME_NEGATIVE),
     ) as pvc:
         yield pvc
@@ -135,7 +134,7 @@ def model_registry_db_deployment_negative_test(
         ),
         wait_for_resource=True,
     ) as mr_db_deployment:
-        mr_db_deployment.wait_for_replicas(deployed=True)
+        mr_db_deployment.wait_for_replicas()
         yield mr_db_deployment
 
 

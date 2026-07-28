@@ -4,7 +4,6 @@ import pytest
 import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.resource import ResourceEditor
 
 from tests.ai_hub.mcp_servers.config.constants import (
     EXPECTED_ALL_MCP_SERVER_NAMES,
@@ -79,7 +78,7 @@ class TestMCPServerMultiSource:
 
         patches = {"data": {"sources.yaml": yaml.dump(current_data, default_flow_style=False)}}
 
-        with ResourceEditor(patches={catalog_config_map: patches}):
+        with catalog_config_map.patch_and_restore(patch=patches):
             wait_for_model_catalog_pod_ready_after_deletion(
                 client=admin_client, model_registry_namespace=model_registry_namespace
             )

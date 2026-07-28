@@ -9,14 +9,6 @@ from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import NotFoundError, ResourceNotFoundError
 from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import RegisteredModel
-from ocp_resources.config_map import ConfigMap
-from ocp_resources.deployment import Deployment
-from ocp_resources.endpoints import Endpoints
-from ocp_resources.job import Job
-from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
-from ocp_resources.pod import Pod
-from ocp_resources.secret import Secret
-from ocp_resources.service import Service
 from timeout_sampler import TimeoutSampler, retry
 
 import tests.ai_hub.constants as ai_hub_constants
@@ -34,7 +26,15 @@ from tests.ai_hub.image_constants import AiHubImages
 from utilities.constants import MARIA_DB_IMAGE, Annotations, PodNotFound, Protocols
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
 from utilities.general import wait_for_pods_running
-from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.openshift_resources.config_map import ConfigMap
+from utilities.openshift_resources.deployment import Deployment
+from utilities.openshift_resources.endpoints import Endpoints
+from utilities.openshift_resources.job import Job
+from utilities.openshift_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.openshift_resources.persistent_volume_claim import PersistentVolumeClaim
+from utilities.openshift_resources.pod import Pod
+from utilities.openshift_resources.secret import Secret
+from utilities.openshift_resources.service import Service
 from utilities.user_utils import get_byoidc_cli_client_id, get_byoidc_issuer_url, get_oidc_token_endpoint
 
 ADDRESS_ANNOTATION_PREFIX: str = "routing.opendatahub.io/external-address-"
@@ -57,8 +57,7 @@ def get_mr_service_by_label(client: DynamicClient, namespace_name: str, mr_insta
     """
     if svc := [
         svcs
-        for svcs in Service.get(
-            client=client,
+        for svcs in Service.list_resources(
             namespace=namespace_name,
             label_selector=f"app={mr_instance.name},component=model-registry",
         )
@@ -337,13 +336,17 @@ def wait_for_new_running_mr_pod(
     """
     LOGGER.info("Waiting for pod to be replaced")
     pods = list(
-        Pod.get(
-            client=admin_client,
+        Pod.list_resources(
             namespace=namespace,
             label_selector=MODEL_REGISTRY_POD_FILTER,
         )
     )
-    if pods and len(pods) == 1 and pods[0].name != orig_pod_name and pods[0].status == Pod.Status.RUNNING:
+    if (
+        pods
+        and len(pods) == 1
+        and pods[0].name != orig_pod_name
+        and pods[0].instance.status.phase == Pod.Status.RUNNING
+    ):
         return pods[0]
     raise TimeoutError(f"Timeout waiting for pod {orig_pod_name} to be replaced")
 
@@ -600,11 +603,10 @@ def get_mr_pvc_objects(
         name = f"{base_name}{num_pvc}"
         pvcs.append(
             PersistentVolumeClaim(
-                accessmodes="ReadWriteOnce",
+                access_modes=["ReadWriteOnce"],
                 name=name,
                 namespace=namespace,
-                client=client,
-                size="3Gi",
+                resources={"requests": {"storage": "3Gi"}},
                 label=get_model_registry_db_label_dict(db_resource_name=name),
                 teardown=teardown_resources,
             )
@@ -807,9 +809,9 @@ def validate_mlmd_removal_in_model_registry_pod_log(
 
 
 def get_model_catalog_pod(
-    client: DynamicClient, model_registry_namespace: str, label_selector: str = "app.kubernetes.io/name=model-catalog"
+    model_registry_namespace: str, label_selector: str = "app.kubernetes.io/name=model-catalog", **kwargs: Any
 ) -> list[Pod]:
-    return list(Pod.get(namespace=model_registry_namespace, label_selector=label_selector, client=client))
+    return list(Pod.list_resources(namespace=model_registry_namespace, label_selector=label_selector))
 
 
 def get_rest_headers(token: str) -> dict[str, str]:
@@ -1119,8 +1121,7 @@ def wait_for_agent_catalog_api(
 def get_latest_job_pod(admin_client: DynamicClient, job: Job) -> Pod:
     """Get the latest (most recently created) Pod created by a Job."""
     pods = list(
-        Pod.get(
-            client=admin_client,
+        Pod.list_resources(
             namespace=job.namespace,
             label_selector=f"job-name={job.name}",
         )
@@ -1154,3 +1155,23 @@ def execute_authenticated_post(url: str, token: str, files: dict[str, tuple[str,
         LOGGER.error(f"POST failed: {response.status_code} — {response.text}")
     response.raise_for_status()
     return response.json()
+
+
+class OAuthDeploymentNotReady(Exception):
+    pass
+
+
+@retry(wait_timeout=240, sleep=5, exceptions_dict={OAuthDeploymentNotReady: []})
+def _wait_for_oauth_pods_ready() -> bool:
+    """Wait for all OAuth deployment replicas to be ready."""
+    deployment = Deployment(name="oauth-openshift", namespace="openshift-authentication")
+    instance = deployment.instance
+    ready_replicas = instance.status.readyReplicas or 0
+    desired_replicas = instance.spec.replicas or 1
+    updated_replicas = instance.status.updatedReplicas or 0
+    if ready_replicas >= desired_replicas and updated_replicas >= desired_replicas:
+        LOGGER.info(f"OAuth deployment ready: ready={ready_replicas}/{desired_replicas}")
+        return True
+    raise OAuthDeploymentNotReady(
+        f"OAuth not ready: ready={ready_replicas}/{desired_replicas}, updated={updated_replicas}"
+    )

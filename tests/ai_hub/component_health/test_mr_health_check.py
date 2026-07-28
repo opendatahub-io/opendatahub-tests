@@ -1,12 +1,12 @@
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.data_science_cluster import DataScienceCluster
-from ocp_resources.namespace import Namespace
 from pytest_testconfig import config as py_config
 
 from utilities.constants import DscComponents
 from utilities.general import wait_for_pods_running
+from utilities.openshift_resources.data_science_cluster import DataScienceCluster
+from utilities.openshift_resources.namespace import Namespace
 
 LOGGER = structlog.get_logger(name=__name__)
 

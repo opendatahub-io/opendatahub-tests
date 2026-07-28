@@ -18,7 +18,7 @@ from tests.ai_hub.utils import (
 )
 from utilities.constants import Protocols
 from utilities.general import wait_for_pods_running
-from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.openshift_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 
 LOGGER = structlog.get_logger(name=__name__)
 MR_DEFAULT_DB_NAME: str = f"{MR_INSTANCE_BASE_NAME}1"

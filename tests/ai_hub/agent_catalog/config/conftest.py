@@ -3,12 +3,12 @@ from typing import Any
 import pytest
 import yaml
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.config_map import ConfigMap
-from ocp_resources.deployment import Deployment
 
 from tests.ai_hub.agent_catalog.config.constants import AGENT_CATALOG_SOURCES_CM
 from tests.ai_hub.constants import CATALOG_CONTAINER, DEFAULT_MODEL_CATALOG_CM
 from tests.ai_hub.model_catalog.constants import MODEL_CATALOG_DEPLOYMENT_NAME
+from utilities.openshift_resources.config_map import ConfigMap
+from utilities.openshift_resources.deployment import Deployment
 
 
 @pytest.fixture(scope="class")

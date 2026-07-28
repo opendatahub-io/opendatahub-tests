@@ -5,7 +5,6 @@ from typing import Any
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.pod import Pod
 from timeout_sampler import retry
 
 from tests.ai_hub.constants import CATALOG_CONTAINER
@@ -24,6 +23,7 @@ from tests.ai_hub.model_catalog.db_constants import (
 )
 from tests.ai_hub.model_catalog.utils import execute_database_query, parse_psql_output
 from tests.ai_hub.utils import execute_get_command
+from utilities.openshift_resources.pod import Pod
 
 LOGGER = structlog.get_logger(name=__name__)
 

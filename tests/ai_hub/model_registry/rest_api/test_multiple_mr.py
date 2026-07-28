@@ -3,8 +3,6 @@ from typing import Self
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.config_map import ConfigMap
-from ocp_resources.pod import Pod
 
 from tests.ai_hub.constants import (
     DEFAULT_CUSTOM_MODEL_CATALOG,
@@ -18,7 +16,9 @@ from tests.ai_hub.model_registry.rest_api.utils import (
     validate_resource_attributes,
 )
 from tests.ai_hub.utils import get_model_catalog_pod
-from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.openshift_resources.config_map import ConfigMap
+from utilities.openshift_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.openshift_resources.pod import Pod
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -64,7 +64,7 @@ class TestModelRegistryMultipleInstances:
         expected_number_config_maps: int = 2
         config_map_names = [
             config_map.name
-            for config_map in list(ConfigMap.get(namespace=model_registry_namespace, client=admin_client))
+            for config_map in list(ConfigMap.list_resources(namespace=model_registry_namespace))
             if config_map.name.startswith((DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM))
         ]
         assert len(config_map_names) == expected_number_config_maps, (

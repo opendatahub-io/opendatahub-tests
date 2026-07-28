@@ -8,8 +8,6 @@ from typing import Any
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.deployment import Deployment
-from ocp_resources.inference_service import InferenceService
 from pyhelper_utils.shell import run_command
 from timeout_sampler import retry
 
@@ -26,6 +24,8 @@ from tests.ai_hub.exceptions import (
 from tests.ai_hub.model_registry.rest_api.constants import MODEL_REGISTER_DATA, MODEL_REGISTRY_BASE_URI
 from utilities.exceptions import ResourceValueMismatch
 from utilities.general import generate_random_name
+from utilities.openshift_resources.deployment import Deployment
+from utilities.openshift_resources.inference_service import InferenceService
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -302,7 +302,7 @@ def get_register_model_data(num_models: int) -> list[dict[str, Any]]:
 
 
 def get_mr_deployment(admin_client: DynamicClient, mr_namespace: str) -> list[Deployment]:
-    return list(Deployment.get(client=admin_client, namespace=mr_namespace))
+    return list(Deployment.list_resources(namespace=mr_namespace))
 
 
 @contextmanager

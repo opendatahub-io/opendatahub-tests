@@ -2,9 +2,10 @@ from typing import Any
 
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.deployment import Deployment
-from ocp_resources.pod import Pod
-from ocp_resources.resource import NamespacedResource
+
+from utilities.openshift_resources.deployment import Deployment
+from utilities.openshift_resources.namespace_scoped_resource import NamespaceScopedResource
+from utilities.openshift_resources.pod import Pod
 
 KEYS_TO_VALIDATE = ["runAsGroup", "runAsUser", "allowPrivilegeEscalation", "capabilities"]
 
@@ -18,7 +19,7 @@ def get_uid_from_namespace(namespace_scc: dict[str, str]) -> str:
 def validate_pod_security_context(
     pod_security_context: dict[str, Any],
     namespace_scc: dict[str, str],
-    model_registry_pod: NamespacedResource,
+    model_registry_pod: NamespaceScopedResource,
     ns_uid: str,
 ) -> list[str]:
     """
@@ -60,7 +61,7 @@ def validate_containers_pod_security_context(model_registry_pod: Pod, namespace_
             LOGGER.info(f"key: {container.securityContext.get(key)}, type: {type(container.securityContext.get(key))}")
             field_value = container.securityContext.get(key)
             if key == "capabilities" and field_value:
-                field_value = field_value.to_dict()
+                field_value = dict(field_value)
             if field_value == expected_value[key]:
                 LOGGER.info(
                     f"For container: {container.name}, {key} validation: {expected_value[key]} completed successfully"
@@ -95,8 +96,7 @@ def get_pod_by_deployment_name(admin_client: DynamicClient, namespace: str, depl
     # Get pods using the deployment's label selector
     label_selector = ",".join([f"{k}={v}" for k, v in deployment_instance.spec.selector.matchLabels.items()])
     pods = list(
-        Pod.get(
-            client=admin_client,
+        Pod.list_resources(
             namespace=namespace,
             label_selector=label_selector,
         )

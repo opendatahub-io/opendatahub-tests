@@ -3,15 +3,15 @@ from datetime import UTC, datetime
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.network_policy import NetworkPolicy
-from ocp_resources.pod import Pod
-from ocp_resources.secret import Secret
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutSampler
 
 from tests.ai_hub.constants import MR_OPERATOR_NAME
 from utilities.constants import Labels
 from utilities.general import wait_for_pods_by_labels
+from utilities.openshift_resources.network_policy import NetworkPolicy
+from utilities.openshift_resources.pod import Pod
+from utilities.openshift_resources.secret import Secret
 
 from .utils import extract_secret_values
 
@@ -84,7 +84,7 @@ def deleted_network_policy_original_spec(
     request: pytest.FixtureRequest, admin_client: DynamicClient, model_registry_namespace: str
 ) -> dict:
     """Save the NetworkPolicy spec and owner references, then delete it. Returns the originals."""
-    np = NetworkPolicy(
+    network_policy = NetworkPolicy(
         client=admin_client,
         name=request.param,
         namespace=model_registry_namespace,
@@ -92,13 +92,13 @@ def deleted_network_policy_original_spec(
     )
     original = {
         "name": request.param,
-        "spec": np.instance.spec.to_dict(),
-        "ownerReferences": [ref.to_dict() for ref in (np.instance.metadata.ownerReferences or [])],
+        "spec": network_policy.instance.spec.to_dict(),
+        "ownerReferences": [ref.to_dict() for ref in (network_policy.instance.metadata.ownerReferences or [])],
     }
 
     LOGGER.info(f"Deleting NetworkPolicy {request.param}")
     original["deleted_at"] = datetime.now(tz=UTC)
-    np.delete()
+    network_policy.delete()
 
     return original
 

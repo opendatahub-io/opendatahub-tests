@@ -8,11 +8,6 @@ import yaml
 from dictdiffer import diff
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
-from ocp_resources.config_map import ConfigMap
-from ocp_resources.deployment import Deployment
-from ocp_resources.pod import Pod
-from ocp_resources.route import Route
-from ocp_resources.service import Service
 from timeout_sampler import TimeoutSampler
 
 from tests.ai_hub.constants import CATALOG_CONTAINER, DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
@@ -30,6 +25,11 @@ from tests.ai_hub.utils import (
     get_model_catalog_pod,
     get_rest_headers,
 )
+from utilities.openshift_resources.config_map import ConfigMap
+from utilities.openshift_resources.deployment import Deployment
+from utilities.openshift_resources.pod import Pod
+from utilities.openshift_resources.route_route_openshift_io import Route
+from utilities.openshift_resources.service import Service
 from utilities.user_utils import UserTestSession
 
 LOGGER = structlog.get_logger(name=__name__)

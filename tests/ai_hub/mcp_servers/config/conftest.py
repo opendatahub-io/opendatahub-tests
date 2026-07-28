@@ -4,8 +4,6 @@ import pytest
 import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.config_map import ConfigMap
-from ocp_resources.resource import ResourceEditor
 
 from tests.ai_hub.constants import DEFAULT_MODEL_CATALOG_CM
 from tests.ai_hub.mcp_servers.config.constants import (
@@ -25,6 +23,7 @@ from tests.ai_hub.utils import (
     wait_for_mcp_catalog_api,
     wait_for_model_catalog_pod_ready_after_deletion,
 )
+from utilities.openshift_resources.config_map import ConfigMap
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -111,7 +110,7 @@ def disable_default_mcp_source(
 
     patches = {"data": {"sources.yaml": yaml.dump(current_data, default_flow_style=False)}}
 
-    with ResourceEditor(patches={catalog_config_map: patches}):
+    with catalog_config_map.patch_and_restore(patch=patches):
         wait_for_model_catalog_pod_ready_after_deletion(
             client=admin_client, model_registry_namespace=model_registry_namespace
         )
@@ -150,7 +149,7 @@ def mcp_multi_source_configmap_patch(
         }
     }
 
-    with ResourceEditor(patches={catalog_config_map: patches}):
+    with catalog_config_map.patch_and_restore(patch=patches):
         wait_for_model_catalog_pod_ready_after_deletion(
             client=admin_client, model_registry_namespace=model_registry_namespace
         )
@@ -190,7 +189,7 @@ def mcp_invalid_yaml_configmap_patch(
         }
     }
 
-    with ResourceEditor(patches={catalog_config_map: patches}):
+    with catalog_config_map.patch_and_restore(patch=patches):
         wait_for_model_catalog_pod_ready_after_deletion(
             client=admin_client, model_registry_namespace=model_registry_namespace
         )
@@ -248,7 +247,7 @@ def mcp_included_excluded_configmap_patch(
         }
     }
 
-    with ResourceEditor(patches={catalog_config_map: patches}):
+    with catalog_config_map.patch_and_restore(patch=patches):
         wait_for_model_catalog_pod_ready_after_deletion(
             client=admin_client, model_registry_namespace=model_registry_namespace
         )
@@ -295,7 +294,7 @@ def mcp_servers_configmap_patch(
             }
         }
 
-        with ResourceEditor(patches={catalog_config_map: patches}):
+        with catalog_config_map.patch_and_restore(patch=patches):
             wait_for_model_catalog_pod_ready_after_deletion(
                 client=admin_client, model_registry_namespace=model_registry_namespace
             )

@@ -5,9 +5,6 @@ from datetime import UTC, datetime
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.deployment import Deployment
-from ocp_resources.network_policy import NetworkPolicy
-from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_hub.constants import CATALOG_CONTAINER
@@ -24,6 +21,9 @@ from tests.ai_hub.model_catalog.utils import (
 from tests.ai_hub.utils import (
     wait_for_model_catalog_pod_ready_after_deletion,
 )
+from utilities.openshift_resources.deployment import Deployment
+from utilities.openshift_resources.network_policy import NetworkPolicy
+from utilities.openshift_resources.persistent_volume_claim import PersistentVolumeClaim
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -121,7 +121,7 @@ class TestModelCatalogPostgresEphemeralStorage:
         Then the data volume should be emptyDir, not a PVC
         """
         deployments = list(
-            Deployment.get(
+            Deployment.list_resources(
                 client=admin_client,
                 namespace=model_registry_namespace,
                 label_selector="app.kubernetes.io/name=model-catalog-postgres",

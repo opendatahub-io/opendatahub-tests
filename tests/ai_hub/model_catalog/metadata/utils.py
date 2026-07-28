@@ -4,8 +4,6 @@ from typing import Any, Literal
 import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.config_map import ConfigMap
-from ocp_resources.pod import Pod
 
 from tests.ai_hub.constants import CATALOG_CONTAINER, DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
 from tests.ai_hub.model_catalog.search.utils import fetch_all_artifacts_with_dynamic_paging
@@ -15,6 +13,8 @@ from tests.ai_hub.utils import (
     get_rest_headers,
     should_include_by_pattern,
 )
+from utilities.openshift_resources.config_map import ConfigMap
+from utilities.openshift_resources.pod import Pod
 
 LOGGER = structlog.get_logger(name=__name__)
 

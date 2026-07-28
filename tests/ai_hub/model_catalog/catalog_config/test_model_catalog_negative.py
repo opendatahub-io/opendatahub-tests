@@ -2,13 +2,12 @@ from typing import Self
 
 import pytest
 import structlog
-from ocp_resources.config_map import ConfigMap
-from ocp_resources.resource import ResourceEditor
 
 from tests.ai_hub.constants import DEFAULT_MODEL_CATALOG_CM
 from tests.ai_hub.model_catalog.catalog_config.utils import validate_model_catalog_configmap_data
 from tests.ai_hub.model_catalog.constants import DEFAULT_CATALOGS
 from tests.ai_hub.model_catalog.utils import assert_source_error_state_message
+from utilities.openshift_resources.config_map import ConfigMap
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -53,7 +52,7 @@ catalogs:
         # Attempt to modify the configmap - this should raise an exception
         patches = {"data": {"sources.yaml": modified_sources_yaml}}
 
-        with ResourceEditor(patches={model_catalog_config_map: patches}):
+        with model_catalog_config_map.patch_and_restore(patch=patches):
             # This block should raise an exception due to configmap protection
             LOGGER.info("Attempting to modify protected configmap")
 

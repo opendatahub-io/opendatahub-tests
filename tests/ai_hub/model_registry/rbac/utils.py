@@ -5,11 +5,11 @@ from typing import Any
 from kubernetes.dynamic import DynamicClient
 from model_registry import ModelRegistry as ModelRegistryClient
 from mr_openapi.exceptions import ForbiddenException
-from ocp_resources.role import Role
-from ocp_resources.role_binding import RoleBinding
 
 from utilities.constants import Protocols
 from utilities.infra import get_openshift_token
+from utilities.openshift_resources.role import Role
+from utilities.openshift_resources.role_binding import RoleBinding
 
 LOGGER = logging.getLogger(__name__)
 
@@ -63,13 +63,20 @@ def create_role_binding(
     subjects_name: str,
 ) -> Generator[RoleBinding]:
     with RoleBinding(
-        client=admin_client,
         namespace=model_registry_namespace,
         name=name,
-        role_ref_name=mr_access_role.name,
-        role_ref_kind=mr_access_role.kind,
-        subjects_kind=subjects_kind,
-        subjects_name=subjects_name,
+        role_ref={
+            "kind": mr_access_role.kind,
+            "name": mr_access_role.name,
+            "apiGroup": "rbac.authorization.k8s.io",
+        },
+        subjects=[
+            {
+                "kind": subjects_kind,
+                "name": subjects_name,
+                "apiGroup": "rbac.authorization.k8s.io",
+            }
+        ],
     ) as mr_access_role_binding:
         yield mr_access_role_binding
 
@@ -90,25 +97,29 @@ def grant_mr_access(
         "app.kubernetes.io/component": "model-registry-test-rbac-multitenancy",
     }
     role = Role(
-        client=admin_client,
         name=f"{user}-{mr_instance_name}-role",
         namespace=model_registry_namespace,
         rules=role_rules,
         label=role_labels,
-        wait_for_resource=True,
     )
-    _ = role.create(wait=True)
+    role.create()
     rb = RoleBinding(
-        client=admin_client,
         namespace=model_registry_namespace,
         name=f"{user}-{mr_instance_name}-access",
-        role_ref_name=f"{user}-{mr_instance_name}-role",
-        role_ref_kind="Role",
-        subjects_kind="User",
-        subjects_name=user,
-        wait_for_resource=True,
+        role_ref={
+            "kind": "Role",
+            "name": f"{user}-{mr_instance_name}-role",
+            "apiGroup": "rbac.authorization.k8s.io",
+        },
+        subjects=[
+            {
+                "kind": "User",
+                "name": user,
+                "apiGroup": "rbac.authorization.k8s.io",
+            }
+        ],
     )
-    _ = rb.create(wait=True)
+    rb.create()
     LOGGER.info(f"Role {role.name} created successfully.")
     LOGGER.info(f"RoleBinding {rb.name} created successfully.")
     return role, rb

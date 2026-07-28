@@ -2,11 +2,11 @@ import pytest
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.inference_service import InferenceService
-from ocp_resources.namespace import Namespace
-from ocp_resources.serving_runtime import ServingRuntime
 
 from tests.ai_hub.model_catalog.utils import get_hf_catalog_str
+from utilities.openshift_resources.inference_service import InferenceService
+from utilities.openshift_resources.namespace import Namespace
+from utilities.openshift_resources.serving_runtime import ServingRuntime
 
 LOGGER = structlog.get_logger(name=__name__)
 

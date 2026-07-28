@@ -7,10 +7,6 @@ import requests
 import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.config_map import ConfigMap
-from ocp_resources.resource import ResourceEditor
-from ocp_resources.route import Route
-from ocp_resources.service_account import ServiceAccount
 
 from tests.ai_hub.constants import (
     CATALOG_CONTAINER,
@@ -38,6 +34,9 @@ from tests.ai_hub.utils import (
     wait_for_model_catalog_pod_ready_after_deletion,
 )
 from utilities.infra import create_inference_token, get_openshift_token, login_with_user_password
+from utilities.openshift_resources.config_map import ConfigMap
+from utilities.openshift_resources.route_route_openshift_io import Route
+from utilities.openshift_resources.service_account import ServiceAccount
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -89,7 +88,7 @@ def sparse_override_catalog_source(
     )
     patches = {"data": {"sources.yaml": sparse_catalog_yaml}}
 
-    with ResourceEditor(patches={sources_cm: patches}):
+    with sources_cm.patch_and_restore(patch=patches):
         wait_for_model_catalog_pod_ready_after_deletion(
             client=admin_client, model_registry_namespace=model_registry_namespace
         )
@@ -135,7 +134,7 @@ def updated_catalog_config_map(
             for key in request.param["sample_yaml"]:
                 patches["data"][key] = request.param["sample_yaml"][key]
 
-        with ResourceEditor(patches={catalog_config_map: patches}):
+        with catalog_config_map.patch_and_restore(patch=patches):
             wait_for_model_catalog_pod_ready_after_deletion(
                 client=admin_client, model_registry_namespace=model_registry_namespace
             )
@@ -163,7 +162,7 @@ def update_configmap_data_add_model(
 ) -> Generator[ConfigMap]:
     patches = catalog_config_map.instance.to_dict()
     patches["data"][f"{CUSTOM_CATALOG_ID1.replace('_', '-')}.yaml"] += get_model_str(model=SAMPLE_MODEL_NAME3)
-    with ResourceEditor(patches={catalog_config_map: patches}):
+    with catalog_config_map.patch_and_restore(patch=patches):
         wait_for_model_catalog_pod_ready_after_deletion(
             client=admin_client, model_registry_namespace=model_registry_namespace
         )
@@ -386,7 +385,7 @@ def labels_configmap_patch(
 
     patches = {"data": {"sources.yaml": yaml.dump(current_data, default_flow_style=False)}}
 
-    with ResourceEditor(patches={sources_cm: patches}):
+    with sources_cm.patch_and_restore(patch=patches):
         wait_for_model_catalog_pod_ready_after_deletion(
             client=admin_client, model_registry_namespace=model_registry_namespace
         )
@@ -409,7 +408,7 @@ def updated_catalog_config_map_scope_function(
     model_registry_rest_headers: dict[str, str],
 ) -> Generator[ConfigMap]:
     patches = {"data": {"sources.yaml": request.param}}
-    with ResourceEditor(patches={catalog_config_map: patches}):
+    with catalog_config_map.patch_and_restore(patch=patches):
         wait_for_model_catalog_pod_ready_after_deletion(
             client=admin_client, model_registry_namespace=model_registry_namespace
         )

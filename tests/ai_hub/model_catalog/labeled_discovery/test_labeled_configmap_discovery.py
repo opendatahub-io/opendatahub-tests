@@ -11,7 +11,6 @@ from urllib.parse import quote
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.config_map import ConfigMap
 
 from tests.ai_hub.model_catalog.constants import (
     CATALOG_SOURCE_LABEL_KEY,
@@ -34,6 +33,7 @@ from tests.ai_hub.utils import (
     execute_get_command,
     wait_for_model_catalog_pod_ready_after_deletion,
 )
+from utilities.openshift_resources.config_map import ConfigMap
 
 LOGGER = structlog.get_logger(name=__name__)
 

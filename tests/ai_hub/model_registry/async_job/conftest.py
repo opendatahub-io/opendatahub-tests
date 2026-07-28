@@ -7,11 +7,6 @@ import shortuuid
 from kubernetes.dynamic import DynamicClient
 from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import RegisteredModel
-from ocp_resources.job import Job
-from ocp_resources.role_binding import RoleBinding
-from ocp_resources.secret import Secret
-from ocp_resources.service import Service
-from ocp_resources.service_account import ServiceAccount
 from pytest import FixtureRequest
 
 from tests.ai_hub.model_registry.async_job.constants import (
@@ -26,7 +21,12 @@ from tests.ai_hub.model_registry.async_job.utils import upload_test_model_to_min
 from tests.ai_hub.utils import get_endpoint_from_mr_service, get_mr_service_by_label
 from utilities.constants import ApiGroups, Labels, MinIo, OCIRegistry, Protocols
 from utilities.general import b64_encoded_string, get_s3_secret_dict
-from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.openshift_resources.job import Job
+from utilities.openshift_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.openshift_resources.role_binding import RoleBinding
+from utilities.openshift_resources.secret import Secret
+from utilities.openshift_resources.service import Service
+from utilities.openshift_resources.service_account import ServiceAccount
 
 
 @pytest.fixture(scope="class")
@@ -42,10 +42,9 @@ def s3_secret_for_async_job(
     )
 
     with Secret(
-        client=admin_client,
         name=f"async-job-s3-connection-{shortuuid.uuid().lower()}",
         namespace=service_account.namespace,
-        data_dict=get_s3_secret_dict(
+        data=get_s3_secret_dict(
             aws_access_key=MinIo.Credentials.ACCESS_KEY_VALUE,
             aws_secret_access_key=MinIo.Credentials.SECRET_KEY_VALUE,
             aws_s3_bucket=MinIo.Buckets.MODELMESH_EXAMPLE_MODELS,
@@ -92,7 +91,7 @@ def oci_secret_for_async_job(
         client=admin_client,
         name=f"async-job-oci-connection-{shortuuid.uuid().lower()}",
         namespace=service_account.namespace,
-        data_dict=data_dict,
+        data=data_dict,
         label={
             Labels.OpenDataHub.DASHBOARD: "true",
             Labels.OpenDataHubIo.MANAGED: "true",
@@ -196,24 +195,27 @@ def model_sync_async_job(
     ]
 
     with Job(
-        client=admin_client,
         name=ASYNC_UPLOAD_JOB_NAME,
         namespace=service_account.namespace,
         label=ASYNC_JOB_LABELS,
         annotations=ASYNC_JOB_ANNOTATIONS,
-        restart_policy="Never",
-        containers=[
-            {
-                "name": "async-upload",
-                "image": async_upload_image,
-                "volumeMounts": volume_mounts,
-                "env": environment_variables,
+        template={
+            "spec": {
+                "restartPolicy": "Never",
+                "containers": [
+                    {
+                        "name": "async-upload",
+                        "image": async_upload_image,
+                        "volumeMounts": volume_mounts,
+                        "env": environment_variables,
+                    }
+                ],
+                "volumes": [
+                    {"name": "source-credentials", "secret": {"secretName": s3_secret_for_async_job.name}},
+                    {"name": "destination-credentials", "secret": {"secretName": oci_secret_for_async_job.name}},
+                ],
             }
-        ],
-        volumes=[
-            {"name": "source-credentials", "secret": {"secretName": s3_secret_for_async_job.name}},
-            {"name": "destination-credentials", "secret": {"secretName": oci_secret_for_async_job.name}},
-        ],
+        },
         teardown=teardown_resources,
     ) as job:
         job.wait_for_condition(condition="Complete", status="True")

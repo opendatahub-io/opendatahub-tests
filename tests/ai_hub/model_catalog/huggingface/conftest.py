@@ -8,12 +8,6 @@ import pytest
 import structlog
 from huggingface_hub import HfApi
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.config_map import ConfigMap
-from ocp_resources.inference_service import InferenceService
-from ocp_resources.namespace import Namespace
-from ocp_resources.pod import Pod
-from ocp_resources.secret import Secret
-from ocp_resources.serving_runtime import ServingRuntime
 
 import tests.ai_hub.constants as ai_hub_constants
 from tests.ai_hub.constants import (
@@ -26,6 +20,12 @@ from tests.ai_hub.model_catalog.constants import HF_CUSTOM_MODE
 from tests.ai_hub.model_catalog.huggingface.utils import get_huggingface_model_from_api
 from tests.ai_hub.model_catalog.utils import get_models_from_catalog_api
 from utilities.infra import create_ns
+from utilities.openshift_resources.config_map import ConfigMap
+from utilities.openshift_resources.inference_service import InferenceService
+from utilities.openshift_resources.namespace import Namespace
+from utilities.openshift_resources.pod import Pod
+from utilities.openshift_resources.secret import Secret
+from utilities.openshift_resources.serving_runtime import ServingRuntime
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -180,7 +180,7 @@ def huggingface_connection_secret(
         namespace=hugging_face_deployment_ns.name,
         annotations=annotations,
         label=labels,
-        data_dict={"URI": encoded_uri},
+        data={"URI": encoded_uri},
         teardown=True,
     ) as connection_secret:
         LOGGER.info(
@@ -299,7 +299,7 @@ def huggingface_predictor_pod(
     namespace = hugging_face_deployment_ns.name
     label_selector = f"serving.kserve.io/inferenceservice={huggingface_inference_service.name}"
 
-    pods = Pod.get(
+    pods = Pod.list_resources(
         client=admin_client,
         namespace=namespace,
         label_selector=label_selector,

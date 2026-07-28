@@ -16,17 +16,7 @@ from kubernetes.dynamic import DynamicClient
 from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.signing import Signer
 from model_registry.types import RegisteredModel
-from ocp_resources.config_map import ConfigMap
-from ocp_resources.deployment import Deployment
-from ocp_resources.job import Job
-from ocp_resources.namespace import Namespace
-from ocp_resources.pod import Pod
 from ocp_resources.resource import get_client
-from ocp_resources.role_binding import RoleBinding
-from ocp_resources.secret import Secret
-from ocp_resources.service import Service
-from ocp_resources.service_account import ServiceAccount
-from ocp_resources.subscription import Subscription
 from ocp_utilities.operators import install_operator, uninstall_operator
 from pyhelper_utils.shell import run_command
 from pytest_testconfig import config as py_config
@@ -72,7 +62,17 @@ from utilities.constants import (
 )
 from utilities.general import b64_encoded_string, get_s3_secret_dict
 from utilities.infra import get_openshift_token, is_managed_cluster
-from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.openshift_resources.config_map import ConfigMap
+from utilities.openshift_resources.deployment import Deployment
+from utilities.openshift_resources.job import Job
+from utilities.openshift_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.openshift_resources.namespace import Namespace
+from utilities.openshift_resources.pod import Pod
+from utilities.openshift_resources.role_binding import RoleBinding
+from utilities.openshift_resources.secret import Secret
+from utilities.openshift_resources.service import Service
+from utilities.openshift_resources.service_account import ServiceAccount
+from utilities.openshift_resources.subscription import Subscription
 from utilities.resources.route import Route
 from utilities.resources.securesign import Securesign
 
@@ -635,7 +635,7 @@ def signing_s3_secret(
         client=admin_client,
         name=f"signing-s3-{shortuuid.uuid().lower()}",
         namespace=service_account.namespace,
-        data_dict=get_s3_secret_dict(
+        data=get_s3_secret_dict(
             aws_access_key=MinIo.Credentials.ACCESS_KEY_VALUE,
             aws_secret_access_key=MinIo.Credentials.SECRET_KEY_VALUE,
             aws_s3_bucket=MinIo.Buckets.MODELMESH_EXAMPLE_MODELS,
@@ -682,7 +682,7 @@ def signing_oci_secret(
         client=admin_client,
         name=f"signing-oci-{shortuuid.uuid().lower()}",
         namespace=service_account.namespace,
-        data_dict=data_dict,
+        data=data_dict,
         label={
             Labels.OpenDataHub.DASHBOARD: "true",
             Labels.OpenDataHubIo.MANAGED: "true",
@@ -756,7 +756,7 @@ def identity_token_secret(
         client=admin_client,
         name=f"signing-identity-token-{shortuuid.uuid().lower()}",
         namespace=service_account.namespace,
-        data_dict={
+        data={
             "token": b64_encoded_string(token_content),
         },
     ) as secret:

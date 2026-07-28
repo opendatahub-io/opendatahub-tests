@@ -2,14 +2,14 @@ from typing import Self
 
 import pytest
 import structlog
-from ocp_resources.deployment import Deployment
-from ocp_resources.pod import Pod
 
 from tests.ai_hub.constants import MR_INSTANCE_NAME, MR_POSTGRES_DEPLOYMENT_NAME_STR
 from tests.ai_hub.scc.utils import (
     validate_deployment_scc,
     validate_pod_scc,
 )
+from utilities.openshift_resources.deployment import Deployment
+from utilities.openshift_resources.pod import Pod
 
 LOGGER = structlog.get_logger(name=__name__)
 

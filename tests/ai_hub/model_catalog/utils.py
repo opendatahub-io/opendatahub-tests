@@ -5,7 +5,6 @@ import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
-from ocp_resources.pod import Pod
 from timeout_sampler import retry
 
 from tests.ai_hub.model_catalog.constants import HF_MODELS
@@ -15,6 +14,7 @@ from tests.ai_hub.utils import (
     execute_get_command,
     execute_get_command_with_retry,
 )
+from utilities.openshift_resources.pod import Pod
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -22,7 +22,7 @@ LOGGER = structlog.get_logger(name=__name__)
 def get_postgres_pod_in_namespace(admin_client: DynamicClient, namespace: str = "rhoai-model-registries") -> Pod:
     """Get the PostgreSQL pod for model catalog database."""
     postgres_pods = list(
-        Pod.get(
+        Pod.list_resources(
             client=admin_client, namespace=namespace, label_selector="app.kubernetes.io/name=model-catalog-postgres"
         )
     )

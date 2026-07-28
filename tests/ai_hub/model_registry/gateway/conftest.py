@@ -9,8 +9,8 @@ from tests.ai_hub.model_registry.gateway.utils import (
     get_gateway_domain_from_operator,
     get_model_registry_httproutes,
 )
-from utilities.resources.http_route import HTTPRoute
-from utilities.resources.reference_grant import ReferenceGrant
+from utilities.openshift_resources.http_route import HTTPRoute
+from utilities.openshift_resources.reference_grant import ReferenceGrant
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -100,7 +100,7 @@ def model_registry_reference_grants(
     model_registry_namespace: str,
 ) -> list[ReferenceGrant]:
     """Get ReferenceGrants in model registry namespace."""
-    grants = list(ReferenceGrant.get(client=admin_client, namespace=model_registry_namespace))
+    grants = list(ReferenceGrant.list_resources(namespace=model_registry_namespace))
     assert grants, f"No ReferenceGrants found in {model_registry_namespace}"
     LOGGER.info(f"Found {len(grants)} ReferenceGrants in {model_registry_namespace}")
     return grants

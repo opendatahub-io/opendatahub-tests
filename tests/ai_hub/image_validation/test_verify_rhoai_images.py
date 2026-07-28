@@ -11,12 +11,12 @@ from typing import Self
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.pod import Pod
 from pytest_testconfig import config as py_config
 
 from tests.ai_hub.constants import MR_INSTANCE_NAME, MR_OPERATOR_NAME, MR_POSTGRES_DEPLOYMENT_NAME_STR
 from tests.ai_hub.image_validation.utils import validate_images
 from utilities.constants import Labels
+from utilities.openshift_resources.pod import Pod
 
 LOGGER = structlog.get_logger(name=__name__)
 pytestmark = [

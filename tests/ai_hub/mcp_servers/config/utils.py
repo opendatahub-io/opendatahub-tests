@@ -1,6 +1,7 @@
 import yaml
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.config_map import ConfigMap
+
+from utilities.openshift_resources.config_map import ConfigMap
 
 MCP_CATALOG_SOURCES_CM: str = "mcp-catalog-sources"
 

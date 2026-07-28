@@ -10,14 +10,6 @@ import pytest
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.config_map import ConfigMap
-from ocp_resources.deployment import Deployment
-from ocp_resources.inference_service import InferenceService
-from ocp_resources.namespace import Namespace
-from ocp_resources.pod import Pod
-from ocp_resources.resource import ResourceEditor
-from ocp_resources.secret import Secret
-from ocp_resources.serving_runtime import ServingRuntime
 from pytest_testconfig import config as py_config
 from timeout_sampler import retry
 
@@ -49,7 +41,14 @@ from utilities.certificates_utils import create_ca_bundle_with_router_cert, crea
 from utilities.exceptions import MissingParameter
 from utilities.general import generate_random_name, wait_for_pods_running
 from utilities.infra import create_ns
-from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.openshift_resources.config_map import ConfigMap
+from utilities.openshift_resources.deployment import Deployment
+from utilities.openshift_resources.inference_service import InferenceService
+from utilities.openshift_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.openshift_resources.namespace import Namespace
+from utilities.openshift_resources.pod import Pod
+from utilities.openshift_resources.secret import Secret
+from utilities.openshift_resources.serving_runtime import ServingRuntime
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -140,7 +139,7 @@ def patch_invalid_ca(
         },
         "data": ca_data,
     }
-    with ResourceEditor(patches={ca_configmap: patch}):
+    with ca_configmap.patch_and_restore(patch=patch):
         LOGGER.info(f"Patched the {ca_configmap_name} ConfigMap with an invalid CA certificate: {ca_file_path}")
         yield ca_file_path
 
@@ -329,7 +328,7 @@ def patch_external_deployment_with_ssl_ca(
     )
 
     patch = {"spec": {"template": {"spec": {"volumes": volumes, "containers": [db_container]}}}}
-    with ResourceEditor(patches={model_registry_db_deployments[0]: patch}):
+    with model_registry_db_deployments[0].patch_and_restore(patch=patch):
         wait_for_pods_running(
             admin_client=admin_client, namespace_name=model_registry_namespace, number_of_consecutive_checks=3
         )
@@ -476,7 +475,7 @@ def model_registry_connection_secret(
         namespace=model_registry_deployment_ns.name,
         annotations=annotations,
         label=labels,
-        data_dict={"URI": encoded_uri},
+        data={"URI": encoded_uri},
         teardown=True,
     ) as connection_secret:
         LOGGER.info(
@@ -568,7 +567,7 @@ def model_registry_predictor_pod(
     namespace = model_registry_deployment_ns.name
     label_selector = f"serving.kserve.io/inferenceservice={model_registry_inference_service.name}"
 
-    pods = Pod.get(
+    pods = Pod.list_resources(
         client=admin_client,
         namespace=namespace,
         label_selector=label_selector,

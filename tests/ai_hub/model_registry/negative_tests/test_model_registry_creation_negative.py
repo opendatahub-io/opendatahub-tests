@@ -3,11 +3,6 @@ from typing import Self
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
-from kubernetes.dynamic.exceptions import ForbiddenError
-from ocp_resources.data_science_cluster import DataScienceCluster
-from ocp_resources.deployment import Deployment
-from ocp_resources.namespace import Namespace
-from ocp_resources.secret import Secret
 from pytest_testconfig import config as py_config
 
 from tests.ai_hub.constants import (
@@ -16,7 +11,12 @@ from tests.ai_hub.constants import (
     MR_OPERATOR_NAME,
 )
 from utilities.constants import Annotations
-from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.openshift_resources.data_science_cluster import DataScienceCluster
+from utilities.openshift_resources.deployment import Deployment
+from utilities.openshift_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.openshift_resources.namespace import Namespace
+from utilities.openshift_resources.oc import ForbiddenError
+from utilities.openshift_resources.secret import Secret
 
 LOGGER = structlog.get_logger(name=__name__)
 

@@ -1,12 +1,12 @@
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.pod import Pod
-from ocp_resources.service import Service
 from timeout_sampler import TimeoutExpiredError
 
 from tests.ai_hub.utils import get_latest_job_pod
 from utilities.constants import MinIo
 from utilities.general import collect_pod_information
+from utilities.openshift_resources.pod import Pod
+from utilities.openshift_resources.service import Service
 
 LOGGER = structlog.get_logger(name=__name__)
 

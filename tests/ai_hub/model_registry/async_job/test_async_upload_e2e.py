@@ -7,7 +7,6 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import ArtifactState, RegisteredModelState
-from ocp_resources.job import Job
 
 from tests.ai_hub.constants import MODEL_DICT
 from tests.ai_hub.model_registry.async_job.constants import (
@@ -20,6 +19,7 @@ from tests.ai_hub.model_registry.async_job.utils import (
     get_latest_job_pod,
 )
 from utilities.constants import MinIo, OCIRegistry
+from utilities.openshift_resources.job import Job
 from utilities.registry_utils import pull_manifest_from_oci_registry
 
 LOGGER = structlog.get_logger(name=__name__)

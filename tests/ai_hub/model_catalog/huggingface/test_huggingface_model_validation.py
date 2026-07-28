@@ -5,7 +5,6 @@ import pytest
 import structlog
 from huggingface_hub import HfApi
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.config_map import ConfigMap
 
 from tests.ai_hub.model_catalog.constants import HF_MODELS, HF_SOURCE_ID
 from tests.ai_hub.model_catalog.huggingface.utils import (
@@ -18,6 +17,7 @@ from tests.ai_hub.model_catalog.huggingface.utils import (
 from tests.ai_hub.model_catalog.utils import (
     get_hf_catalog_str,
 )
+from utilities.openshift_resources.config_map import ConfigMap
 
 LOGGER = structlog.get_logger(name=__name__)
 

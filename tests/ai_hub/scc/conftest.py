@@ -2,12 +2,12 @@ import pytest
 import structlog
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.deployment import Deployment
-from ocp_resources.namespace import Namespace
-from ocp_resources.pod import Pod
 
 from tests.ai_hub.constants import MR_INSTANCE_NAME
 from tests.ai_hub.scc.utils import get_pod_by_deployment_name
+from utilities.openshift_resources.deployment import Deployment
+from utilities.openshift_resources.namespace import Namespace
+from utilities.openshift_resources.pod import Pod
 
 LOGGER = structlog.get_logger(name=__name__)
 

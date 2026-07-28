@@ -9,12 +9,6 @@ from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import RegisteredModel
-from ocp_resources.deployment import Deployment
-from ocp_resources.namespace import Namespace
-from ocp_resources.pod import Pod
-from ocp_resources.role import Role
-from ocp_resources.role_binding import RoleBinding
-from ocp_resources.service_account import ServiceAccount
 from pyhelper_utils.shell import run_command
 from pytest import FixtureRequest
 from timeout_sampler import retry
@@ -30,6 +24,12 @@ from tests.ai_hub.utils import (
 )
 from utilities.constants import Protocols
 from utilities.general import wait_for_pods_by_labels
+from utilities.openshift_resources.deployment import Deployment
+from utilities.openshift_resources.namespace import Namespace
+from utilities.openshift_resources.pod import Pod
+from utilities.openshift_resources.role import Role
+from utilities.openshift_resources.role_binding import RoleBinding
+from utilities.openshift_resources.service_account import ServiceAccount
 
 LOGGER = structlog.get_logger(name=__name__)
 DEFAULT_TOKEN_DURATION = "10m"
@@ -222,18 +222,21 @@ def mr_access_role_binding(
     }
 
     with RoleBinding(
-        client=admin_client,
         name=binding_name,
         namespace=model_registry_namespace,
-        # Subject parameters
-        subjects_kind="Group",
-        subjects_name=f"system:serviceaccounts:{sa_namespace.name}",
-        subjects_api_group="rbac.authorization.k8s.io",  # This is the default apiGroup for Group kind
-        # Role reference parameters
-        role_ref_kind=mr_access_role.kind,
-        role_ref_name=mr_access_role.name,
+        subjects=[
+            {
+                "kind": "Group",
+                "name": f"system:serviceaccounts:{sa_namespace.name}",
+                "apiGroup": "rbac.authorization.k8s.io",
+            }
+        ],
+        role_ref={
+            "kind": mr_access_role.kind,
+            "name": mr_access_role.name,
+            "apiGroup": "rbac.authorization.k8s.io",
+        },
         label=binding_labels,
-        wait_for_resource=True,
     ) as binding:
         LOGGER.info(f"RoleBinding {binding.name} created successfully.")
         yield binding

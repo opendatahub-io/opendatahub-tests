@@ -6,20 +6,7 @@ from typing import Any
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.config_map import ConfigMap
-from ocp_resources.data_science_cluster import DataScienceCluster
-from ocp_resources.deployment import Deployment
-from ocp_resources.infrastructure import Infrastructure
-from ocp_resources.namespace import Namespace
-from ocp_resources.node import Node
-from ocp_resources.oauth import OAuth
-from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
-from ocp_resources.pod import Pod
-from ocp_resources.resource import ResourceEditor, get_client
-from ocp_resources.route import Route
-from ocp_resources.secret import Secret
-from ocp_resources.service import Service
-from ocp_resources.service_account import ServiceAccount
+from ocp_resources.resource import get_client
 from pytest import Config, FixtureRequest, Item
 from pytest_testconfig import config as py_config
 
@@ -34,6 +21,7 @@ from tests.ai_hub.constants import (
     MR_OPERATOR_NAME,
 )
 from tests.ai_hub.utils import (
+    _wait_for_oauth_pods_ready,
     generate_namespace_name,
     get_byoidc_user_credentials,
     get_model_catalog_pod,
@@ -45,7 +33,6 @@ from tests.ai_hub.utils import (
 from utilities.constants import MODEL_REGISTRY_CUSTOM_NAMESPACE, DscComponents, Labels
 from utilities.general import (
     generate_random_name,
-    wait_for_oauth_openshift_deployment,
     wait_for_pods_by_labels,
     wait_for_pods_running,
 )
@@ -55,8 +42,20 @@ from utilities.infra import (
     login_with_user_password,
     wait_for_dsc_status_ready,
 )
-from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
-from utilities.resources.pod import Pod as UtilPod
+from utilities.openshift_resources.config_map import ConfigMap
+from utilities.openshift_resources.data_science_cluster import DataScienceCluster
+from utilities.openshift_resources.deployment import Deployment
+from utilities.openshift_resources.infrastructure import Infrastructure
+from utilities.openshift_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.openshift_resources.namespace import Namespace
+from utilities.openshift_resources.node import Node
+from utilities.openshift_resources.o_auth import OAuth
+from utilities.openshift_resources.persistent_volume_claim import PersistentVolumeClaim
+from utilities.openshift_resources.pod import Pod
+from utilities.openshift_resources.route_route_openshift_io import Route
+from utilities.openshift_resources.secret import Secret
+from utilities.openshift_resources.service import Service
+from utilities.openshift_resources.service_account import ServiceAccount
 from utilities.user_utils import UserTestSession, create_htpasswd_file, wait_for_user_creation
 
 DEFAULT_TOKEN_DURATION = "10m"
@@ -81,7 +80,7 @@ def pytest_sessionstart(session: pytest.Session) -> None:
         ).instance.spec.components.modelregistry.registriesNamespace
 
     # Since clusters are not heterogeneous, all nodes share the same architecture
-    nodes = list(Node.get(dyn_client=client))
+    nodes = list(Node.list_resources())
     cluster_architecture = nodes[0].instance.status.nodeInfo.architecture
     py_config["cluster_architecture"] = cluster_architecture
     if cluster_architecture == "s390x":
@@ -130,42 +129,35 @@ def updated_dsc_component_state_scope_session(
     dsc_resource = get_data_science_cluster(client=admin_client)
     original_namespace_name = dsc_resource.instance.spec.components.modelregistry.registriesNamespace
     if pytestconfig.option.custom_namespace:
-        resource_editor = ResourceEditor(
-            patches={
-                dsc_resource: {
-                    "spec": {
-                        "components": {
-                            DscComponents.MODELREGISTRY: {
-                                "managementState": DscComponents.ManagementState.REMOVED,
-                                "registriesNamespace": original_namespace_name,
-                            },
-                        }
-                    }
+        disable_patch = {
+            "spec": {
+                "components": {
+                    DscComponents.MODELREGISTRY: {
+                        "managementState": DscComponents.ManagementState.REMOVED,
+                        "registriesNamespace": original_namespace_name,
+                    },
                 }
             }
-        )
+        }
+        enable_patch = {
+            "spec": {
+                "components": {
+                    DscComponents.MODELREGISTRY: {
+                        "managementState": DscComponents.ManagementState.MANAGED,
+                        "registriesNamespace": py_config["model_registry_namespace"],
+                    },
+                }
+            }
+        }
         try:
             # first disable MR
-            resource_editor.update(backup_resources=True)
+            dsc_resource.edit(patch=disable_patch)
             wait_for_dsc_status_ready(dsc_resource=dsc_resource)
             # now delete the original namespace:
             original_namespace = Namespace(client=admin_client, name=original_namespace_name, wait_for_resource=True)
             original_namespace.delete(wait=True)
             # Now enable it with the custom namespace
-            with ResourceEditor(
-                patches={
-                    dsc_resource: {
-                        "spec": {
-                            "components": {
-                                DscComponents.MODELREGISTRY: {
-                                    "managementState": DscComponents.ManagementState.MANAGED,
-                                    "registriesNamespace": py_config["model_registry_namespace"],
-                                },
-                            }
-                        }
-                    }
-                }
-            ):
+            with dsc_resource.patch_and_restore(patch=enable_patch):
                 namespace = Namespace(
                     client=admin_client, name=py_config["model_registry_namespace"], wait_for_resource=True
                 )
@@ -182,7 +174,18 @@ def updated_dsc_component_state_scope_session(
                 )
                 yield dsc_resource
         finally:
-            resource_editor.restore()
+            dsc_resource.edit(
+                patch={
+                    "spec": {
+                        "components": {
+                            DscComponents.MODELREGISTRY: {
+                                "managementState": DscComponents.ManagementState.MANAGED,
+                                "registriesNamespace": original_namespace_name,
+                            },
+                        }
+                    }
+                }
+            )
             Namespace(client=admin_client, name=py_config["model_registry_namespace"]).delete(wait=True)
             # create the original namespace object again, so that we can wait for it to be created first
             original_namespace = Namespace(client=admin_client, name=original_namespace_name, wait_for_resource=True)
@@ -284,12 +287,9 @@ def created_htpasswd_secret(
         try:
             LOGGER.info(f"Creating secret {user_credentials_rbac['secret_name']} in openshift-config namespace")
             with Secret(
-                client=admin_client,
                 name=user_credentials_rbac["secret_name"],
                 namespace="openshift-config",
-                htpasswd=htpasswd_b64,
-                type="Opaque",
-                wait_for_resource=True,
+                data={"htpasswd": htpasswd_b64},
             ) as secret:
                 yield secret
         finally:
@@ -317,14 +317,14 @@ def updated_oauth_config(
         updated_providers = identity_providers + [new_idp]
 
         LOGGER.info("Updating OAuth")
-        identity_providers_patch = ResourceEditor(patches={oauth: {"spec": {"identityProviders": updated_providers}}})
-        identity_providers_patch.update(backup_resources=True)
-        # Wait for OAuth server to be ready
-        wait_for_oauth_openshift_deployment(client=admin_client)
+        oauth_patch = {"spec": {"identityProviders": updated_providers}}
+        original_providers = {"spec": {"identityProviders": identity_providers}}
+        oauth.edit(patch=oauth_patch)
+        _wait_for_oauth_pods_ready()
         LOGGER.info(f"Added IDP {user_credentials_rbac['idp_name']} to OAuth configuration")
         yield
-        identity_providers_patch.restore()
-        wait_for_oauth_openshift_deployment(client=admin_client)
+        oauth.edit(patch=original_providers)
+        _wait_for_oauth_pods_ready()
 
 
 @pytest.fixture(scope="module")
@@ -456,7 +456,7 @@ def model_registry_metadata_db_resources(
                             stack.enter_context(resource_obj) for resource_obj in resources[kind_name]
                         ]
                 for deployment in resources_instances[Deployment]:
-                    deployment.wait_for_replicas(deployed=True)
+                    deployment.wait_for_replicas()
                 yield resources_instances
 
 
@@ -527,9 +527,7 @@ def service_account(admin_client: DynamicClient, sa_namespace: Namespace) -> Gen
 
 @pytest.fixture(scope="class")
 def model_catalog_routes(admin_client: DynamicClient, model_registry_namespace: str) -> list[Route]:
-    return list(
-        Route.get(namespace=model_registry_namespace, label_selector="component=model-catalog", client=admin_client)
-    )
+    return list(Route.list_resources(namespace=model_registry_namespace, label_selector="component=model-catalog"))
 
 
 @pytest.fixture(scope="class")
@@ -582,10 +580,10 @@ def pytest_collection_modifyitems(items: list[Item], config: pytest.Config) -> N
 
 
 @pytest.fixture(scope="class")
-def dashboard_pod(admin_client: DynamicClient) -> UtilPod:
+def dashboard_pod(admin_client: DynamicClient) -> Pod:
     """Get a running dashboard pod from the applications namespace."""
     pods = list(
-        UtilPod.get(
+        Pod.list_resources(
             client=admin_client,
             namespace=py_config["applications_namespace"],
             label_selector="app=rhods-dashboard",

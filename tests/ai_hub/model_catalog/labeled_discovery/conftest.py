@@ -3,7 +3,6 @@ from collections.abc import Generator
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.config_map import ConfigMap
 
 from tests.ai_hub.model_catalog.constants import CATALOG_SOURCE_LABEL_KEY
 from tests.ai_hub.model_catalog.labeled_discovery.utils import (
@@ -18,6 +17,7 @@ from tests.ai_hub.model_catalog.labeled_discovery.utils import (
 )
 from tests.ai_hub.model_catalog.utils import wait_for_model_catalog_api
 from tests.ai_hub.utils import wait_for_model_catalog_pod_ready_after_deletion
+from utilities.openshift_resources.config_map import ConfigMap
 
 LOGGER = structlog.get_logger(name=__name__)
 

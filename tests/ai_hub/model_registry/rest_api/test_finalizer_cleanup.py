@@ -3,12 +3,12 @@ from typing import Self
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.inference_service import InferenceService
-from ocp_resources.namespace import Namespace
 from timeout_sampler import TimeoutSampler
 
 from tests.ai_hub.model_registry.rest_api.constants import MODEL_REGISTER_DATA
-from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.openshift_resources.inference_service import InferenceService
+from utilities.openshift_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.openshift_resources.namespace import Namespace
 
 LOGGER = structlog.get_logger(name=__name__)
 
