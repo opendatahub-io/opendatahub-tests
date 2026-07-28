@@ -12,7 +12,7 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.route import Route
 from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
-from timeout_sampler import TimeoutExpiredError, TimeoutSampler
+from timeout_sampler import TimeoutSampler
 
 from tests.rhoai_mcp.constants import (
     RHOAI_MCP_APP_NAME,
@@ -263,17 +263,12 @@ def rhoai_mcp_ready(
 ) -> None:
     """Wait until the rhoai-mcp health endpoint responds on the route."""
     url = f"{rhoai_mcp_base_url}{RHOAI_MCP_HEALTH_PATH}"
-    try:
-        for sample in TimeoutSampler(
-            wait_timeout=120,
-            sleep=5,
-            func=lambda: probe_health(url=url, ca_bundle_file=rhoai_mcp_ca_bundle),
-            exceptions_dict=TRANSIENT_HEALTH_EXCEPTIONS,
-        ):
-            if sample.ok:
-                LOGGER.info(f"rhoai-mcp at {rhoai_mcp_route.host} is healthy")
-                return
-    except TimeoutExpiredError as err:
-        if err.last_exp is not None:
-            raise err.last_exp from err
-        raise RuntimeError(f"rhoai-mcp at {rhoai_mcp_route.host} did not become healthy within 120s") from err
+    for sample in TimeoutSampler(
+        wait_timeout=120,
+        sleep=5,
+        func=lambda: probe_health(url=url, ca_bundle_file=rhoai_mcp_ca_bundle),
+        exceptions_dict=TRANSIENT_HEALTH_EXCEPTIONS,
+    ):
+        if sample.ok:
+            LOGGER.info(f"rhoai-mcp at {rhoai_mcp_route.host} is healthy")
+            return
