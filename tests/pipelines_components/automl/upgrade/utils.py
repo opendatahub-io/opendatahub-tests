@@ -169,7 +169,7 @@ def discover_model_path(
 
     assert predictor_paths, f"No predictor directory found in MinIO under {run_prefix}. mc ls output:\n{logs}"
 
-    relative_path = sorted(predictor_paths)[0]
+    relative_path = min(predictor_paths)
     storage_uri = f"s3://{run_prefix}{relative_path.rstrip('/')}/"
 
     LOGGER.info(f"Discovered model path: {storage_uri}")
