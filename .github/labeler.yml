@@ -22,6 +22,10 @@
 - changed-files:
   - any-glob-to-any-file: "docs/**"
 
+"RHOAI-MCP":
+- changed-files:
+  - any-glob-to-any-file: "tests/rhoai_mcp/**"
+
 "Utilities":
 - changed-files:
   - any-glob-to-any-file: "utilities/**"

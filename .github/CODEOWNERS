@@ -18,4 +18,5 @@ tests/model_serving/model_runtime/             @Raghul-M @brettmthompson
 tests/model_serving/model_server/              @threcc @mwaykole
 tests/model_serving/maas_billing/              @SB159
 tests/llama_stack/                             @Artemon-line @Bobbins228 @ChristianZaccaria @jgarciao @jiripetrlik @Ygnas
+tests/rhoai_mcp/                               @tarilabs @opendatahub-io/rhoai-mcp
 tests/workbenches                              @jstourac @andyatmiami @jiridanek @harshad16
