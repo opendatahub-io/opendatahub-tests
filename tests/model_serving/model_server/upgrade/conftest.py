@@ -952,28 +952,9 @@ def admission_check_namespace(
 
 
 @pytest.fixture(scope="session")
-def ensure_kueue_for_ac_upgrade(
-    pytestconfig: pytest.Config,
-    admin_client: DynamicClient,
-    dsc_resource: DataScienceCluster,
-    admission_check_namespace: Namespace,
-    teardown_resources: bool,
-) -> Generator[None, Any, Any]:
-    """Ensure Kueue DSC state for AdmissionCheck upgrade tests."""
-    yield from _ensure_kueue_dsc_for_upgrade(
-        pytestconfig=pytestconfig,
-        admin_client=admin_client,
-        dsc_resource=dsc_resource,
-        namespace=admission_check_namespace.name,
-        teardown_resources=teardown_resources,
-    )
-
-
-@pytest.fixture(scope="session")
 def admission_check_kueue_resources(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    ensure_kueue_for_ac_upgrade: None,
     admission_check_namespace: Namespace,
     teardown_resources: bool,
 ) -> Generator[dict, Any, Any]:
