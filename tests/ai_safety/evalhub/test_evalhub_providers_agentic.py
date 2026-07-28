@@ -20,7 +20,6 @@ from tests.ai_safety.evalhub.utils import build_headers
     indirect=True,
 )
 @pytest.mark.ai_safety
-@pytest.mark.tier1
 @pytest.mark.usefixtures("evalhub_cr")
 class TestEvalHubProvidersAgentic:
     """Tests for the agent metadata fields on EvalHub providers and benchmarks.
@@ -29,8 +28,9 @@ class TestEvalHubProvidersAgentic:
     summary, score_ranges, etc.) in both the list and single-resource endpoints.
     """
 
-    _VALID_TARGET_TYPES = {"model", "agent", "inference_server"}
+    _VALID_TARGET_TYPES: frozenset[str] = frozenset({"model", "agent", "inference_server"})
 
+    @pytest.mark.tier1
     def test_lmeval_provider_has_agent_metadata(
         self,
         current_client_token: str,
@@ -58,6 +58,7 @@ class TestEvalHubProvidersAgentic:
             f"Provider '{LM_EVALUATION_HARNESS_PROVIDER_ID}' missing 'agent' metadata block"
         )
 
+    @pytest.mark.tier2
     def test_lmeval_agent_target_type_is_model(
         self,
         current_client_token: str,
@@ -79,6 +80,7 @@ class TestEvalHubProvidersAgentic:
         assert agent, f"Provider '{LM_EVALUATION_HARNESS_PROVIDER_ID}' has no 'agent' field"
         assert agent.get("target_type") == "model", f"Expected target_type='model', got '{agent.get('target_type')}'"
 
+    @pytest.mark.tier2
     def test_lmeval_agent_evaluates_is_non_empty(
         self,
         current_client_token: str,
@@ -103,6 +105,7 @@ class TestEvalHubProvidersAgentic:
                 f"Expected category '{expected_category}' in agent.evaluates, got: {evaluates}"
             )
 
+    @pytest.mark.tier2
     def test_lmeval_agent_summary_present_and_bounded(
         self,
         current_client_token: str,
@@ -124,6 +127,7 @@ class TestEvalHubProvidersAgentic:
         assert isinstance(summary, str) and summary, f"Expected non-empty string for agent.summary, got: {summary!r}"
         assert len(summary) <= 200, f"agent.summary exceeds 200 characters ({len(summary)}): {summary!r}"
 
+    @pytest.mark.tier2
     def test_all_providers_with_agent_have_valid_target_type(
         self,
         current_client_token: str,
@@ -153,6 +157,7 @@ class TestEvalHubProvidersAgentic:
 
         assert not invalid, f"Providers with invalid target_type (must be one of {self._VALID_TARGET_TYPES}): {invalid}"
 
+    @pytest.mark.tier2
     def test_single_provider_endpoint_exposes_agent_metadata(
         self,
         current_client_token: str,
@@ -179,6 +184,7 @@ class TestEvalHubProvidersAgentic:
             f"Expected agent.target_type='model', got '{body['agent'].get('target_type')}'"
         )
 
+    @pytest.mark.tier2
     def test_benchmark_agent_score_ranges(
         self,
         current_client_token: str,
