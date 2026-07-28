@@ -61,6 +61,7 @@ from tests.model_serving.model_server.upgrade.utils import (
     capture_and_save_isvc_kueue_baseline,
     capture_isvc_baseline,
     capture_llmisvc_baseline,
+    kueue_resource_groups,
     load_auth_token_from_secret,
     load_baseline_from_configmap,
     save_auth_token_to_secret,
