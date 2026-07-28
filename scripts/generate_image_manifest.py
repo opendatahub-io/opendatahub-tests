@@ -23,6 +23,7 @@ IMAGE_CLASS_MAP: dict[str, str] = {
     "ai_hub": "tests.ai_hub.image_constants.AiHubImages",
     "ai_safety": "tests.ai_safety.image_constants.AiSafetyImages",
     "fixtures": "tests.fixtures.image_constants.FixturesImages",
+    "rhoai_mcp": "tests.rhoai_mcp.image_constants.RhoaiMcpImages",
     "shared": "utilities.image_constants.SharedImages",
     "workbenches": "tests.workbenches.image_constants.WorkbenchesImages",
     "spark": "tests.spark.image_constants.SparkImages",
