@@ -17,11 +17,13 @@ from ocp_resources.role_binding import RoleBinding
 from ocp_resources.service_account import ServiceAccount
 from pyhelper_utils.shell import run_command
 from pytest import FixtureRequest
+from timeout_sampler import retry
 
 from tests.ai_hub.constants import (
     MODEL_REGISTRY_POD_FILTER,
     MR_INSTANCE_NAME,
 )
+from tests.ai_hub.model_registry.utils import MR_RETRY_EXCEPTIONS
 from tests.ai_hub.utils import (
     get_endpoint_from_mr_service,
     get_mr_service_by_label,
@@ -71,21 +73,26 @@ def model_registry_client(
     return mr_clients
 
 
+@retry(wait_timeout=60, sleep=5, exceptions_dict=MR_RETRY_EXCEPTIONS)
+def _register_model_with_retry(client: ModelRegistryClient, params: dict[str, Any]) -> RegisteredModel:
+    return client.register_model(
+        name=params.get("model_name"),
+        uri=params.get("model_uri"),
+        version=params.get("model_version"),
+        version_description=params.get("model_description"),
+        model_format_name=params.get("model_format"),
+        model_format_version=params.get("model_format_version"),
+        storage_key=params.get("model_storage_key"),
+        storage_path=params.get("model_storage_path"),
+        metadata=params.get("model_metadata"),
+    )
+
+
 @pytest.fixture(scope="class")
 def registered_model(
     request: FixtureRequest, model_registry_client: list[ModelRegistryClient]
 ) -> Generator[RegisteredModel]:
-    yield model_registry_client[0].register_model(
-        name=request.param.get("model_name"),
-        uri=request.param.get("model_uri"),
-        version=request.param.get("model_version"),
-        version_description=request.param.get("model_description"),
-        model_format_name=request.param.get("model_format"),
-        model_format_version=request.param.get("model_format_version"),
-        storage_key=request.param.get("model_storage_key"),
-        storage_path=request.param.get("model_storage_path"),
-        metadata=request.param.get("model_metadata"),
-    )
+    yield _register_model_with_retry(client=model_registry_client[0], params=request.param)
 
 
 @pytest.fixture(scope="class")

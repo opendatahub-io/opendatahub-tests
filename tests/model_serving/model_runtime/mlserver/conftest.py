@@ -98,7 +98,7 @@ def mlserver_inference_service(
         "storage_uri": s3_models_storage_uri,
         "model_format": mlserver_serving_runtime.instance.spec.supportedModelFormats[0].name,
         "model_service_account": mlserver_model_service_account.name,
-        "deployment_mode": params.get("deployment_mode", KServeDeploymentType.RAW_DEPLOYMENT),
+        "deployment_mode": params.get("deployment_mode", KServeDeploymentType.STANDARD),
         "external_route": params.get("enable_external_route", False),
     }
 
@@ -170,7 +170,7 @@ def mlserver_model_car_inference_service(
     if not storage_uri:
         raise ValueError("storage-uri is required in params")
 
-    deployment_mode = params.get("deployment_mode", KServeDeploymentType.RAW_DEPLOYMENT)
+    deployment_mode = params.get("deployment_mode", KServeDeploymentType.STANDARD)
     model_format = params.get("model-format")
     if not model_format:
         raise ValueError("model-format is required in params")

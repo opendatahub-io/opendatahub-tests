@@ -1,24 +1,36 @@
 import copy
 import json
 import os
+from collections.abc import Generator
+from contextlib import contextmanager
 from typing import Any
 
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
+from ocp_resources.inference_service import InferenceService
 from pyhelper_utils.shell import run_command
+from timeout_sampler import retry
 
+from tests.ai_hub.constants import (
+    MR_ISVC_ARGS,
+    MR_ISVC_RESOURCES,
+    MR_ISVC_VOLUME_MOUNTS,
+    MR_ISVC_VOLUMES,
+)
 from tests.ai_hub.exceptions import (
     ModelRegistryResourceNotCreated,
     ModelRegistryResourceNotUpdated,
 )
 from tests.ai_hub.model_registry.rest_api.constants import MODEL_REGISTER_DATA, MODEL_REGISTRY_BASE_URI
 from utilities.exceptions import ResourceValueMismatch
+from utilities.general import generate_random_name
 
 LOGGER = structlog.get_logger(name=__name__)
 
 
+@retry(wait_timeout=60, sleep=5, exceptions_dict={requests.exceptions.ConnectionError: []})
 def execute_model_registry_patch_command(
     url: str, headers: dict[str, str], data_json: dict[str, Any]
 ) -> dict[Any, Any]:
@@ -111,6 +123,32 @@ def validate_resource_attributes(
     ]:
         raise ResourceValueMismatch(f"Resource: {resource_name} has mismatched data: {errors}")
     LOGGER.info(f"Successfully validated resource: {resource_name}: {actual_resource_data['name']}")
+
+
+def validate_model_inference(endpoint: str, model: str, vllm: bool = False) -> None:
+    """Validate that a deployed model server is reachable and responds."""
+    if vllm:
+        response = requests.post(
+            f"{endpoint}/v1/completions",
+            json={"model": model, "prompt": "Hello", "max_tokens": 10, "temperature": 0},
+            timeout=300,
+        )
+        assert response.status_code == 200, (
+            f"Completion endpoint returned status code {response.status_code}: {response.text}"
+        )
+        response_json = response.json()
+        assert "choices" in response_json
+        assert response_json["choices"]
+        assert "text" in response_json["choices"][0]
+        assert response_json["choices"][0]["text"].strip()
+    else:
+        model_endpoint = f"{endpoint}/{model}"
+        LOGGER.info(f"Testing model endpoint: {model_endpoint}")
+        response = requests.get(model_endpoint, timeout=10)
+        LOGGER.info(f"Model endpoint status: {response.status_code}")
+        assert response.status_code == 200, (
+            f"Model endpoint returned status code:{response.status_code}: response text{response.text}"
+        )
 
 
 def generate_ca_and_server_cert(
@@ -265,3 +303,81 @@ def get_register_model_data(num_models: int) -> list[dict[str, Any]]:
 
 def get_mr_deployment(admin_client: DynamicClient, mr_namespace: str) -> list[Deployment]:
     return list(Deployment.get(client=admin_client, namespace=mr_namespace))
+
+
+@contextmanager
+def create_model_registry_inference_service(
+    admin_client: DynamicClient,
+    namespace: str,
+    runtime_name: str,
+    connection_secret_name: str,
+    registered_model_rest_api: dict[str, Any],
+    extra_labels: dict[str, str] | None = None,
+) -> Generator[InferenceService, Any, Any]:
+    """Create an InferenceService for model registry testing."""
+    name = generate_random_name(prefix="mr-test-isvc", length=4)
+    register_model_data = registered_model_rest_api.get("register_model", {})
+    model_artifact = registered_model_rest_api.get("model_artifact", {})
+    model_uri = model_artifact.get("uri", "hf://jonburdo/test2")
+    model_name = register_model_data.get("name", "my-model")
+
+    labels = {"opendatahub.io/dashboard": "true"}
+    if extra_labels:
+        labels.update(extra_labels)
+
+    annotations = {
+        "opendatahub.io/connections": connection_secret_name,
+        "opendatahub.io/hardware-profile-name": "default-profile",
+        "opendatahub.io/hardware-profile-namespace": "redhat-ods-applications",
+        "opendatahub.io/model-type": "predictive",
+        "openshift.io/description": f"Model from registry: {model_name}",
+        "openshift.io/display-name": f"registry/{name}",
+        "security.opendatahub.io/enable-auth": "false",
+        "serving.kserve.io/deploymentMode": "RawDeployment",
+    }
+
+    LOGGER.info(
+        "Creating InferenceService for model '%s' using format '%s'.",
+        model_name,
+        model_artifact.get("modelFormatName"),
+    )
+
+    model_spec: dict[str, Any] = {
+        "modelFormat": {
+            "name": model_artifact.get("modelFormatName", "onnx"),
+        },
+        "name": "",
+        "resources": MR_ISVC_RESOURCES,
+        "runtime": runtime_name,
+        "storageUri": model_uri,
+    }
+    if MR_ISVC_ARGS:
+        model_spec["args"] = MR_ISVC_ARGS
+    if MR_ISVC_VOLUME_MOUNTS:
+        model_spec["volumeMounts"] = MR_ISVC_VOLUME_MOUNTS
+
+    predictor_dict: dict[str, Any] = {
+        "automountServiceAccountToken": False,
+        "deploymentStrategy": {"type": "RollingUpdate"},
+        "maxReplicas": 1,
+        "minReplicas": 1,
+        "model": model_spec,
+    }
+    if MR_ISVC_VOLUMES:
+        predictor_dict["volumes"] = MR_ISVC_VOLUMES
+
+    with InferenceService(
+        client=admin_client,
+        name=name,
+        namespace=namespace,
+        annotations=annotations,
+        label=labels,
+        predictor=predictor_dict,
+        teardown=True,
+    ) as inference_service:
+        inference_service.wait_for_condition(
+            condition="Ready",
+            status="True",
+            timeout=600,
+        )
+        yield inference_service

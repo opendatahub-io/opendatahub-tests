@@ -7,6 +7,7 @@ from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 
 from tests.ai_hub.model_catalog.constants import (
+    OTHER_MODELS,
     OTHER_MODELS_CATALOG_ID,
     REDHAT_AI_CATALOG_ID,
     REDHAT_AI_CATALOG_NAME,
@@ -23,6 +24,7 @@ from tests.ai_hub.model_catalog.search.utils import (
     validate_search_results_against_database,
 )
 from tests.ai_hub.model_catalog.utils import get_models_from_catalog_api
+from tests.ai_hub.utils import execute_get_command
 
 LOGGER = structlog.get_logger(name=__name__)
 pytestmark = [pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace")]
@@ -39,34 +41,50 @@ class TestSearchModelCatalog:
         Validate search model catalog by source label
         """
 
+        page_size = 1000
         redhat_ai_filter_models_size = get_models_from_catalog_api(
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
             source_label=REDHAT_AI_CATALOG_NAME,
+            page_size=page_size,
         )["size"]
         redhat_ai_validated_filter_models_size = get_models_from_catalog_api(
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
             source_label=REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
+            page_size=page_size,
         )["size"]
         null_label_models_size = get_models_from_catalog_api(
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
             source_label="null",
+            page_size=page_size,
         )["size"]
         no_filtered_models_size = get_models_from_catalog_api(
-            model_catalog_rest_url=model_catalog_rest_url, model_registry_rest_headers=model_registry_rest_headers
-        )["size"]
-        both_labeled_models_size = get_models_from_catalog_api(
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
-            source_label=f"{REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME},{REDHAT_AI_CATALOG_NAME}",
+            page_size=page_size,
+        )["size"]
+        other_models_size = get_models_from_catalog_api(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            source_label=OTHER_MODELS,
+            page_size=page_size,
+        )["size"]
+        all_labeled_models_size = get_models_from_catalog_api(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            source_label=f"{REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME},{REDHAT_AI_CATALOG_NAME},{OTHER_MODELS}",
+            page_size=page_size,
         )["size"]
         LOGGER.info(f"no_filtered_models_size: {no_filtered_models_size}")
         assert no_filtered_models_size > 0
         assert null_label_models_size >= 0
-        assert redhat_ai_filter_models_size + redhat_ai_validated_filter_models_size == both_labeled_models_size
-        assert no_filtered_models_size == both_labeled_models_size + null_label_models_size
+        assert (
+            redhat_ai_filter_models_size + redhat_ai_validated_filter_models_size + other_models_size
+            == all_labeled_models_size
+        )
+        assert no_filtered_models_size == all_labeled_models_size + null_label_models_size
 
     @pytest.mark.tier3
     def test_search_model_catalog_invalid_source_label(
@@ -290,10 +308,10 @@ class TestSearchModelsByFilterQuery:
         """
         non_existing_filter_query = "fake IN ('gemma','modified-mit'))"
         with pytest.raises(ResourceNotFoundError, match="invalid filter query"):
-            get_models_from_catalog_api(
-                model_catalog_rest_url=model_catalog_rest_url,
-                model_registry_rest_headers=model_registry_rest_headers,
-                additional_params=f"&filterQuery={non_existing_filter_query}",
+            execute_get_command(
+                url=f"{model_catalog_rest_url[0]}models",
+                headers=model_registry_rest_headers,
+                params={"filterQuery": non_existing_filter_query},
             )
         # Test with a valid filter query that should return zero results
         no_result_licenses = "'fake'"

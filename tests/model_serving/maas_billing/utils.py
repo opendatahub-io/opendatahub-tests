@@ -9,8 +9,6 @@ from urllib.parse import quote, urlparse
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
-
-# from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.endpoints import Endpoints
 from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.group import Group
@@ -18,19 +16,42 @@ from ocp_resources.ingress_config_openshift_io import Ingress as IngressConfig
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.resource import ResourceEditor
 from requests import Response
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from utilities.constants import (
     MAAS_GATEWAY_NAME,
     MAAS_GATEWAY_NAMESPACE,
+    DscComponents,
 )
 from utilities.llmd_utils import get_llm_inference_url
 from utilities.plugins.constant import OpenAIEnpoints, RestHeader
+from utilities.resources.maastenantconfig import MaasTenantConfig
 from utilities.resources.rate_limit_policy import RateLimitPolicy
-from utilities.resources.tenant import Tenant
 from utilities.resources.token_rate_limit_policy import TokenRateLimitPolicy
 
 LOGGER = structlog.get_logger(name=__name__)
 MODELS_INFO = OpenAIEnpoints.MODELS_INFO
+
+
+def maas_under_aigateway_component_patch(
+    models_as_a_service_state: str = DscComponents.ManagementState.MANAGED,
+    aigateway_state: str = DscComponents.ManagementState.MANAGED,
+) -> dict[str, Any]:
+    """Build DSC components patch for MaaS nested under AIGateway.
+
+    Args:
+        models_as_a_service_state: Management state for aigateway.modelsAsAService.
+        aigateway_state: Management state for aigateway itself.
+
+    Returns:
+        Dict suitable for ResourceEditor under spec.components.
+    """
+    return {
+        DscComponents.AIGATEWAY: {
+            "managementState": aigateway_state,
+            "modelsAsAService": {"managementState": models_as_a_service_state},
+        }
+    }
 
 
 def host_from_ingress_domain(client) -> str:
@@ -67,8 +88,10 @@ def _first_ready_llmisvc(
 
 
 def detect_scheme_via_llmisvc(client, namespace: str = "llm") -> str:
-    """
-    Using LLMInferenceService's URL to infer the scheme.
+    """Return https for external MaaS gateway traffic.
+
+    LLMISVC status URLs may report http; using that causes HTTP→HTTPS redirects
+    that turn POST into GET.
     """
     service = _first_ready_llmisvc(client=client, namespace=namespace)
     if not service:
@@ -76,9 +99,10 @@ def detect_scheme_via_llmisvc(client, namespace: str = "llm") -> str:
 
     url = get_llm_inference_url(llm_service=service)
     scheme = (urlparse(url).scheme or "").lower()
-    if scheme in ("http", "https"):
-        return scheme
-
+    if scheme == "http":
+        LOGGER.info(
+            f"detect_scheme_via_llmisvc: LLMISVC URL is http ({url}); using https to avoid HTTP→HTTPS POST→GET redirect"
+        )
     return "https"
 
 
@@ -518,6 +542,7 @@ def create_api_key(
     raise_on_error: bool = True,
     subscription: str | None = None,
     ephemeral: bool = False,
+    extra_headers: dict[str, str] | None = None,
 ) -> tuple[Response, dict[str, Any]]:
     """Create an API key via MaaS API and return (response, parsed_body).
 
@@ -532,6 +557,7 @@ def create_api_key(
             responses. Set to False when testing error cases (e.g. 400 rejection).
         subscription: Optional MaaSSubscription name to bind at mint time.
         ephemeral: When True, marks the key as short-lived/programmatic.
+        extra_headers: Optional additional HTTP headers (for example X-MaaS-Tenant).
     """
     api_keys_url = f"{base_url}/v1/api-keys"
     payload: dict[str, Any] = {"name": api_key_name}
@@ -542,17 +568,37 @@ def create_api_key(
     if ephemeral:
         payload["ephemeral"] = True
 
-    response = request_session_http.post(
-        url=api_keys_url,
-        headers={"Authorization": f"Bearer {ocp_user_token}", "Content-Type": "application/json"},
-        json=payload,
-        timeout=request_timeout_seconds,
-    )
-    LOGGER.info(f"create_api_key: url={api_keys_url} status={response.status_code}")
-    if response.status_code not in (200, 201):
+    request_headers = {"Authorization": f"Bearer {ocp_user_token}", "Content-Type": "application/json"}
+    if extra_headers is not None:
+        request_headers.update(extra_headers)
+
+    response: requests.Response | None = None
+    try:
+        for response in TimeoutSampler(
+            wait_timeout=90,
+            sleep=5,
+            func=request_session_http.post,
+            url=api_keys_url,
+            headers=request_headers,
+            json=payload,
+            timeout=request_timeout_seconds,
+        ):
+            LOGGER.info(f"create_api_key: url={api_keys_url} status={response.status_code}")
+            if response.status_code in (200, 201):
+                break
+            if response.status_code == 403 and not (response.text or "").strip():
+                LOGGER.info("create_api_key: empty 403 (Authorino propagation delay) — retrying")
+                continue
+            break
+    except TimeoutExpiredError:
+        LOGGER.info("create_api_key: timed out after 90s waiting for non-403 response")
+
+    if response is None or response.status_code not in (200, 201):
+        status = response.status_code if response is not None else "no response"
+        body = response.text[:500] if response is not None else "timed out with persistent empty 403"
         if raise_on_error:
-            raise AssertionError(f"api-key create failed: status={response.status_code} body={response.text[:500]}")
-        return response, {}
+            raise AssertionError(f"api-key create failed: status={status} body={body}")
+        return response, {}  # type: ignore[return-value]
 
     try:
         parsed_body: dict[str, Any] = json.loads(response.text)
@@ -572,12 +618,16 @@ def revoke_api_key(
     key_id: str,
     ocp_user_token: str,
     request_timeout_seconds: int = 60,
+    extra_headers: dict[str, str] | None = None,
 ) -> tuple[Response, dict[str, Any]]:
     """Revoke an API key via MaaS API (DELETE /v1/api-keys/{id})."""
     url = f"{base_url}/v1/api-keys/{quote(key_id, safe='')}"
+    request_headers = {"Authorization": f"Bearer {ocp_user_token}"}
+    if extra_headers is not None:
+        request_headers.update(extra_headers)
     response = request_session_http.delete(
         url=url,
-        headers={"Authorization": f"Bearer {ocp_user_token}"},
+        headers=request_headers,
         timeout=request_timeout_seconds,
     )
     LOGGER.info(f"revoke_api_key: url={url} key_id={key_id} status={response.status_code}")
@@ -642,7 +692,9 @@ def verify_maas_gateway_programmed(gateway: Gateway) -> None:
     gateway.wait_for_condition(condition="Programmed", status="True", timeout=300)
 
 
-def verify_maas_tenant_ready(tenant: Tenant) -> None:
-    """Assert that the Tenant CR exists and has Ready=True."""
-    assert tenant.exists, f"Tenant '{tenant.name}' not found in namespace '{tenant.namespace}'"
-    tenant.wait_for_condition(condition="Ready", status="True", timeout=300)
+def verify_maas_tenant_config_ready(maas_tenant_config: MaasTenantConfig) -> None:
+    """Assert that the MaasTenantConfig CR exists and has Ready=True."""
+    assert maas_tenant_config.exists, (
+        f"MaasTenantConfig '{maas_tenant_config.name}' not found in namespace '{maas_tenant_config.namespace}'"
+    )
+    maas_tenant_config.wait_for_condition(condition="Ready", status="True", timeout=300)

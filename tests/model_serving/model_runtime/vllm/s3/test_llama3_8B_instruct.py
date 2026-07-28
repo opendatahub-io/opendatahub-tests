@@ -36,15 +36,15 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "v
     "model_namespace, s3_models_storage_uri, serving_runtime, vllm_inference_service",
     [
         pytest.param(
-            {"name": "llama-instruct-8b-raw"},
+            {"name": "llama-instruct-8b-standard"},
             {"model-dir": MODEL_PATH},
-            {"deployment_type": KServeDeploymentType.RAW_DEPLOYMENT},
+            {"deployment_mode": KServeDeploymentType.STANDARD},
             {
                 **BASE_RAW_DEPLOYMENT_CONFIG,
                 "gpu_count": 1,
-                "name": "llama-instruct-raw",
+                "name": "llama-instruct-standard",
             },
-            id="llama-instruct-8b-raw-single-gpu",
+            id="llama-instruct-8b-standard-single-gpu",
         ),
     ],
     indirect=True,

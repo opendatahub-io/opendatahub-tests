@@ -1,5 +1,6 @@
 import base64
 import json
+from fnmatch import fnmatch
 from typing import Any
 
 import requests
@@ -18,27 +19,26 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from timeout_sampler import TimeoutSampler, retry
 
+import tests.ai_hub.constants as ai_hub_constants
 from tests.ai_hub.constants import (
     DB_BASE_RESOURCES_NAME,
     MARIADB_MY_CNF,
     MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
     MODEL_REGISTRY_DB_SECRET_STR_DATA,
     MODEL_REGISTRY_POD_FILTER,
-    MR_DB_IMAGE_DIGEST,
     MR_POSTGRES_DB_OBJECT,
     PORT_MAP,
 )
 from tests.ai_hub.exceptions import ModelRegistryResourceNotFoundError
-from utilities.constants import MARIA_DB_IMAGE, Annotations, PodNotFound, Protocols, Timeout
+from tests.ai_hub.image_constants import AiHubImages
+from utilities.constants import MARIA_DB_IMAGE, Annotations, PodNotFound, Protocols
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
 from utilities.general import wait_for_pods_running
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from utilities.user_utils import get_byoidc_cli_client_id, get_byoidc_issuer_url, get_oidc_token_endpoint
 
 ADDRESS_ANNOTATION_PREFIX: str = "routing.opendatahub.io/external-address-"
-POSTGRES_DB_IMAGE = (
-    "public.ecr.aws/docker/library/postgres@sha256:6e9bbed548cc1ca776dd4685cfea9efe60d58df91186ec6bad7328fd03b388a5"
-)
+POSTGRES_DB_IMAGE = AiHubImages.POSTGRES
 LOGGER = structlog.get_logger(name=__name__)
 
 
@@ -155,8 +155,7 @@ def get_database_image(db_backend: str) -> str:
     elif db_backend == "mariadb":
         return MARIA_DB_IMAGE
     else:
-        # MySQL
-        return MR_DB_IMAGE_DIGEST
+        return ai_hub_constants.MR_DB_IMAGE_DIGEST
 
 
 def get_database_health_probes(db_backend: str) -> dict[str, dict[str, Any]]:
@@ -296,9 +295,8 @@ def get_model_registry_deployment_template_dict(
         },
     }
 
-    # Add args only for MySQL backend
-    if db_backend == "mysql":
-        base_dict["spec"]["containers"][0]["args"] = ["--datadir", "/var/lib/mysql/datadir"]
+    if db_backend == "mysql" and ai_hub_constants.MR_DB_MYSQL_ARGS:
+        base_dict["spec"]["containers"][0]["args"] = ai_hub_constants.MR_DB_MYSQL_ARGS
 
     if db_backend == "mariadb":
         base_dict["metadata"]["labels"]["app"] = db_backend
@@ -315,7 +313,7 @@ def get_model_registry_db_label_dict(db_resource_name: str) -> dict[str, str]:
     }
 
 
-@retry(exceptions_dict={TimeoutError: []}, wait_timeout=Timeout.TIMEOUT_2MIN, sleep=5)
+@retry(exceptions_dict={TimeoutError: []}, wait_timeout=120, sleep=5)
 def wait_for_new_running_mr_pod(
     admin_client: DynamicClient,
     orig_pod_name: str,
@@ -500,6 +498,7 @@ def get_and_validate_registered_model(
     ]
 
 
+@retry(wait_timeout=60, sleep=5, exceptions_dict={requests.exceptions.ConnectionError: []})
 def execute_model_registry_get_command(url: str, headers: dict[str, str], json_output: bool = True) -> dict[Any, Any]:
     """
     Executes model registry get commands against model registry rest end point
@@ -945,6 +944,13 @@ def execute_get_command(
         raise
 
 
+@retry(wait_timeout=60, sleep=5, exceptions_dict={requests.exceptions.ConnectionError: []})
+def execute_get_command_with_retry(
+    url: str, headers: dict[str, str], verify: bool | str = False, params: dict[str, Any] | None = None
+) -> dict[Any, Any]:
+    return execute_get_command(url=url, headers=headers, verify=verify, params=params)
+
+
 def get_endpoint_ips(client: DynamicClient, namespace: str, service_name: str = "model-catalog") -> set[str]:
     endpoints = Endpoints(name=service_name, namespace=namespace, client=client)
     assert endpoints.exists, f"Endpoints for service {service_name} not found in {namespace}"
@@ -1024,7 +1030,11 @@ def wait_for_mcp_catalog_api(
         wait_timeout=wait_timeout,
         sleep=sleep,
         func=execute_get_call,
-        exceptions_dict={ResourceNotFoundError: [], TransientUnauthorizedError: []},
+        exceptions_dict={
+            ResourceNotFoundError: [],
+            TransientUnauthorizedError: [],
+            requests.exceptions.ConnectionError: [],
+        },
         url=servers_url,
         headers=headers,
         params={"pageSize": 1000},
@@ -1047,6 +1057,65 @@ def wait_for_mcp_catalog_api(
     return data
 
 
+def wait_for_agent_catalog_api(
+    url: str,
+    headers: dict[str, str],
+    consecutive_stable_checks: int = 3,
+    sleep: int = 5,
+    wait_timeout: int = 120,
+    min_agents: int = 1,
+) -> dict[str, Any]:
+    """Wait for agent catalog API to be ready and data fully loaded.
+
+    Polls the API until the agent count stabilizes across consecutive checks,
+    ensuring catalog data has been fully loaded after a pod restart.
+
+    Use ``min_agents=0`` on teardown to verify the API is reachable without
+    requiring any agents (e.g. after a test catalog patch is reverted).
+
+    Raises:
+        AssertionError: If the API does not stabilize with at least min_agents within wait_timeout.
+    """
+    agents_url = f"{url}agents"
+    LOGGER.info(f"Waiting for agent catalog API at {agents_url} (min_agents={min_agents})")
+    last_payload = None
+    stable_count = 0
+    data: dict[str, Any] = {}
+    sampler = TimeoutSampler(
+        wait_timeout=wait_timeout,
+        sleep=sleep,
+        func=execute_get_call,
+        exceptions_dict={
+            ResourceNotFoundError: [],
+            TransientUnauthorizedError: [],
+            requests.exceptions.ConnectionError: [],
+        },
+        url=agents_url,
+        headers=headers,
+        params={"pageSize": 1000},
+    )
+    for sample in sampler:
+        data = json.loads(sample.text)
+        current_size = data.get("size", 0)
+        payload_identity = json.dumps(data, sort_keys=True)
+        if current_size >= min_agents and payload_identity == last_payload:
+            stable_count += 1
+            if stable_count >= consecutive_stable_checks:
+                LOGGER.info(f"Agent catalog API stabilized with {current_size} agents after {stable_count} checks")
+                return data
+        else:
+            stable_count = 0
+        last_payload = payload_identity
+        LOGGER.info(
+            f"Agent catalog API returned {current_size} agents (stable: {stable_count}/{consecutive_stable_checks})"
+        )
+    raise AssertionError(
+        f"Agent catalog API did not stabilize within {wait_timeout}s "
+        f"(last size={data.get('size', 0)}, required={min_agents}, "
+        f"stable_count={stable_count}/{consecutive_stable_checks})"
+    )
+
+
 def get_latest_job_pod(admin_client: DynamicClient, job: Job) -> Pod:
     """Get the latest (most recently created) Pod created by a Job."""
     pods = list(
@@ -1065,3 +1134,23 @@ def get_latest_job_pod(admin_client: DynamicClient, job: Job) -> Pod:
     latest_pod = sorted_pods[0]
     LOGGER.info(f"Found {len(pods)} pod(s) for job {job.name}, using latest: {latest_pod.name}")
     return latest_pod
+
+
+def should_include_by_pattern(
+    name: str, included_patterns: list[str] | None = None, excluded_patterns: list[str] | None = None
+) -> bool:
+    """Determine if a name should be included based on include/exclude glob patterns."""
+    matches_included = any(fnmatch(name, pattern) for pattern in included_patterns) if included_patterns else True
+    matches_excluded = any(fnmatch(name, pattern) for pattern in excluded_patterns) if excluded_patterns else False
+    return matches_included and not matches_excluded
+
+
+def execute_authenticated_post(url: str, token: str, files: dict[str, tuple[str, str, str]]) -> dict[str, Any]:
+    """Execute an authenticated POST with multipart/form-data and return parsed JSON."""
+    headers = {"Authorization": f"Bearer {token}"}
+    LOGGER.info(f"Executing POST: {url}")
+    response = requests.post(url=url, headers=headers, files=files, verify=False, timeout=60)
+    if not response.ok:
+        LOGGER.error(f"POST failed: {response.status_code} — {response.text}")
+    response.raise_for_status()
+    return response.json()

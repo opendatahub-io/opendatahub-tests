@@ -15,10 +15,11 @@ from utilities.user_utils import get_byoidc_issuer_url
 
 LOGGER = structlog.get_logger(name=__name__)
 
-MAAS_API_AUTH_POLICY_NAME = "maas-api-auth-policy"
+MAAS_GATEWAY_AUTH_POLICY_NAME = "maas-gateway-auth"
 MAAS_OIDC_REALM = "openshift-ai-maas"
 MAAS_OIDC_GROUP = "maas-users"
 OIDC_CLIENT_ID = "maas-client"
+DEFAULT_AITENANT_NAME = "models-as-a-service"
 JWT_WHEN_PREDICATE = (
     '!request.headers.authorization.startsWith("Bearer sk-oai-") && '
     'request.headers.authorization.matches("^Bearer [^.]+\\\\.[^.]+\\\\.[^.]+$")'

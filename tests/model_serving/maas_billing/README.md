@@ -19,7 +19,12 @@ maas_billing/
 │
 ├── maas_subscription/             # Subscription enforcement and access control tests
 │
-├── multitenancy/                  # AIGateway multitenancy tests
+├── multitenancy/                  # AITenant multitenancy tests
+│   ├── conftest.py                # Shared AITenant bootstrap fixtures
+│   ├── utils.py                   # Per-tenant maas-api verification helpers
+│   ├── aitenant/                  # AITenant bootstrap and cleanup (scenario fixtures)
+│   ├── isolation/                 # Tenant-scoped API key auth isolation
+│   └── maas_api/                  # Per-tenant maas-api deployment and routing
 │
 ├── oidc_tests/                    # OIDC authentication flow tests
 │
@@ -39,7 +44,7 @@ maas_billing/
 - **`maas_api_key/`** - API key CRUD, authorization, expiration, bulk operations, gateway rejection, and negative tests
 - **`maas_cleanup/`** - Validates that disabling MaaS in DSC cleans up operator-managed resources
 - **`maas_subscription/`** - Subscription enforcement, access control, filtering, rate limit exemptions, cascade deletion, multi-subscription and multi-auth-policy scenarios
-- **`multitenancy/`** - AIGateway tenant setup and cleanup for multitenancy scenarios
+- **`multitenancy/`** - AITenant bootstrap, per-tenant maas-api deployment/routing, auth isolation, and cross-gateway inference
 - **`oidc_tests/`** - OIDC token flow, model access, multi-user, and header injection tests
 - **`upgrade/`** - Pre/post-upgrade tests validating MaaS control plane survival across operator upgrades
 - **`test_maas_endpoints.py`** - Core MaaS API endpoint validation
@@ -125,13 +130,13 @@ uv run pytest tests/model_serving/maas_billing/upgrade/test_maas_upgrade.py \
 | Component | Pre-upgrade | Post-upgrade | Upgrade Paths |
 | --- | --- | --- | --- |
 | MaaS Gateway | Verify Programmed | Verify still Programmed | 3.4 → 3.5 |
-| Tenant CR | Verify Ready | Verify survives | 3.4 → 3.5 |
+| MaasTenantConfig CR | Verify Ready | Verify survives | 3.4 → 3.5 |
 | MaaSModelRef | Create and verify | Verify survives | 3.4 → 3.5 |
 | MaaSAuthPolicy | Create and verify | Verify survives | 3.4 → 3.5 |
 | MaaSSubscription | Create and verify | Verify survives, spec not mutated | 3.4 → 3.5 |
 | MaaS Deployments | — | Verify Available | 3.4 → 3.5 |
 | MaaS CRDs | — | Verify all present | 3.4 → 3.5 |
-| ModelsAsService CR | Verify absent | Verify bootstrapped | 3.4 → 3.5 |
+| AIGateway CR | Verify absent | Verify bootstrapped | 3.4 → 3.5 |
 | MaaS Config CR | Verify absent | Verify bootstrapped | 3.4 → 3.5 |
 | Gateway probe | — | Verify reachable | 3.4 → 3.5 |
 | API compatibility | — | Create new MaaSModelRef | 3.4 → 3.5 |

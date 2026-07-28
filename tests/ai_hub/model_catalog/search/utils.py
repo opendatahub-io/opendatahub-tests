@@ -2,12 +2,14 @@
 
 from typing import Any
 
+import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.pod import Pod
+from timeout_sampler import retry
 
+from tests.ai_hub.constants import CATALOG_CONTAINER
 from tests.ai_hub.model_catalog.constants import (
-    CATALOG_CONTAINER,
     PERFORMANCE_DATA_DIR,
     REDHAT_AI_CATALOG_ID,
     REDHAT_AI_CATALOG_NAME,
@@ -276,6 +278,7 @@ def validate_filter_query_results_against_database(
     )
 
 
+@retry(wait_timeout=60, sleep=5, exceptions_dict={requests.exceptions.ConnectionError: []}, print_func_args=False)
 def fetch_all_artifacts_with_dynamic_paging(
     url_with_pagesize: str,
     headers: dict[str, str],

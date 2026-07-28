@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed, wait
 from string import Template
 from typing import Any
 
+import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
@@ -13,7 +14,7 @@ from ocp_resources.utils.constants import DEFAULT_CLUSTER_RETRY_EXCEPTIONS
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler, TimeoutWatch
 
 from tests.model_serving.model_server.kserve.autoscaling.keda.utils import get_isvc_keda_scaledobject
-from utilities.constants import KServeDeploymentType, Protocols, Timeout
+from utilities.constants import KServeDeploymentType, Protocols
 from utilities.exceptions import (
     InferenceResponseError,
 )
@@ -22,6 +23,13 @@ from utilities.infra import get_pods_by_isvc_label
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+def skip_test(reason: str) -> None:
+    """Log a visible skip banner and call pytest.skip."""
+    border = "=" * 60
+    LOGGER.warning("\n".join(["", border, f"  SKIP — {reason}", border, ""]))
+    pytest.skip(reason)
 
 
 def verify_inference_response(
@@ -36,6 +44,7 @@ def verify_inference_response(
     insecure: bool = False,
     token: str | None = None,
     authorized_user: bool | None = None,
+    inference_timeout: int | None = None,
 ) -> None:
     """
     Verify the inference response.
@@ -52,6 +61,7 @@ def verify_inference_response(
         insecure (bool): Insecure mode.
         token (str): Token.
         authorized_user (bool): Authorized user.
+        inference_timeout (int | None): Retry timeout in seconds for the inference request.
 
     Raises:
         InvalidInferenceResponseError: If inference response is invalid.
@@ -73,6 +83,7 @@ def verify_inference_response(
         use_default_query=use_default_query,
         token=token,
         insecure=insecure,
+        inference_timeout=inference_timeout,
     )
 
     if authorized_user is False:
@@ -186,7 +197,7 @@ def wait_for_raw_isvc_https_infer_ready(
     isvc: InferenceService,
     *,
     token: str | None = None,
-    timeout: int = Timeout.TIMEOUT_5MIN,
+    timeout: int = 300,
     sleep: int = 5,
 ) -> None:
     """Block until the same external HTTPS REST infer the suite uses succeeds.
@@ -385,7 +396,7 @@ def verify_final_pod_count(unprivileged_client: DynamicClient, isvc: InferenceSe
     for pods in inference_service_pods_sampler(
         client=unprivileged_client,
         isvc=isvc,
-        timeout=Timeout.TIMEOUT_5MIN,
+        timeout=300,
         sleep=10,
     ):
         if pods and len(pods) == final_pod_count:
@@ -393,9 +404,7 @@ def verify_final_pod_count(unprivileged_client: DynamicClient, isvc: InferenceSe
     raise AssertionError(f"Timed out waiting for {final_pod_count} pods. Current pod count: {len(pods) if pods else 0}")
 
 
-def verify_no_inference_pods(
-    client: DynamicClient, isvc: InferenceService, wait_timeout: int = Timeout.TIMEOUT_4MIN
-) -> bool:
+def verify_no_inference_pods(client: DynamicClient, isvc: InferenceService, wait_timeout: int = 240) -> bool:
     """
     Verify that no inference pods are running for the given InferenceService.
 

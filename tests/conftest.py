@@ -55,7 +55,6 @@ from utilities.constants import (
     OCIRegistry,
     Protocols,
     RuntimeTemplates,
-    Timeout,
 )
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.exceptions import ClusterLoginError
@@ -757,8 +756,8 @@ def cluster_sanity_scope_session(
 ) -> None:
     # Skip cluster sanity check when running tests that have cluster_health or operator_health markers
     selected_markers = {mark.name for item in request.session.items for mark in item.iter_markers()}
-    if {"cluster_health", "operator_health"} & selected_markers:
-        LOGGER.info("Skipping cluster sanity check because selected tests include cluster/operator health")
+    if {"cluster_health", "operator_health", "component_health"} & selected_markers:
+        LOGGER.info("Skipping cluster sanity check because selected tests include cluster/operator/component health")
         return
 
     verify_cluster_sanity(
@@ -854,7 +853,7 @@ def installed_mariadb_operator(admin_client: DynamicClient) -> Generator[None, A
             channel="alpha",
             source="community-operators",
             operator_namespace=operator_ns.name,
-            timeout=Timeout.TIMEOUT_15MIN,
+            timeout=900,
             install_plan_approval="Manual",
             starting_csv=f"{operator_name}.v25.8.2",
         )
@@ -900,7 +899,7 @@ def mariadb_operator_cr(
             mariadb_operator_cr = stack.enter_context(cm=MariadbOperator(kind_dict=mariadb_operator_cr_dict))
 
         mariadb_operator_cr.wait_for_condition(
-            condition="Deployed", status=mariadb_operator_cr.Condition.Status.TRUE, timeout=Timeout.TIMEOUT_10MIN
+            condition="Deployed", status=mariadb_operator_cr.Condition.Status.TRUE, timeout=600
         )
         wait_for_mariadb_operator_deployments(mariadb_operator=mariadb_operator_cr, client=admin_client)
 

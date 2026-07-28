@@ -5,10 +5,12 @@ from datetime import UTC, datetime
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.deployment import Deployment
 from ocp_resources.network_policy import NetworkPolicy
+from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
-from tests.ai_hub.model_catalog.constants import CATALOG_CONTAINER
+from tests.ai_hub.constants import CATALOG_CONTAINER
 from tests.ai_hub.model_catalog.db_check.utils import (
     find_language_mismatches_between_api_and_db,
     parse_language_properties_from_db,
@@ -73,15 +75,68 @@ class TestModelCatalogDBSecret:
 
 
 class TestModelCatalogLoaderHealth:
-    def test_no_duplicate_key_errors_in_catalog_logs(self, model_catalog_pod):
+    @pytest.mark.parametrize(
+        "error_substring, failure_message",
+        [
+            pytest.param(
+                "duplicated key not allowed",
+                "Found duplicate key errors in catalog logs — property upsert may have regressed",
+                id="test_no_duplicate_key_errors",
+            ),
+            pytest.param(
+                "Duplicate benchmark",
+                "Found duplicate benchmark entries in catalog logs — benchmark data has duplicates",
+                id="test_no_duplicate_benchmark_entries",
+            ),
+        ],
+    )
+    def test_no_loader_errors_in_catalog_logs(self, model_catalog_pod, error_substring, failure_message):
         """Given a model catalog pod with default data loaded
         When checking the catalog container logs
-        Then no 'duplicated key not allowed' errors should be present
+        Then no error patterns should be present
         """
         catalog_log = model_catalog_pod.log(container=CATALOG_CONTAINER)
-        assert "duplicated key not allowed" not in catalog_log, (
-            "Found duplicate key errors in catalog logs — property upsert may have regressed"
+        assert error_substring not in catalog_log, failure_message
+
+
+@pytest.mark.post_upgrade
+class TestModelCatalogPostgresEphemeralStorage:
+    def test_no_pvc_for_catalog_postgres(self, admin_client: DynamicClient, model_registry_namespace: str) -> None:
+        """Given a model catalog postgres deployment
+        When listing PVCs in the model registry namespace
+        Then no PVC should exist for catalog postgres
+        """
+        pvcs = list(
+            PersistentVolumeClaim.get(
+                client=admin_client,
+                namespace=model_registry_namespace,
+                label_selector="component=model-catalog",
+            )
         )
+        assert not pvcs, f"Catalog postgres should not have a PVC, found: {[pvc.name for pvc in pvcs]}"
+
+    def test_postgres_uses_emptydir_volume(self, admin_client: DynamicClient, model_registry_namespace: str) -> None:
+        """Given a model catalog postgres deployment
+        When inspecting the volume configuration
+        Then the data volume should be emptyDir, not a PVC
+        """
+        deployments = list(
+            Deployment.get(
+                client=admin_client,
+                namespace=model_registry_namespace,
+                label_selector="app.kubernetes.io/name=model-catalog-postgres",
+            )
+        )
+        assert deployments, "No model-catalog-postgres deployment found"
+        volumes = deployments[0].instance.spec.template.spec.volumes
+        for volume in volumes:
+            assert not hasattr(volume, "persistentVolumeClaim") or volume.persistentVolumeClaim is None, (
+                f"Volume '{volume.name}' uses a PVC — catalog postgres should use ephemeral storage only"
+            )
+            if "postgres" in volume.name or "data" in volume.name:
+                assert volume.emptyDir is not None, (
+                    f"Data volume '{volume.name}' should be emptyDir for ephemeral storage"
+                )
 
 
 @pytest.mark.parametrize(

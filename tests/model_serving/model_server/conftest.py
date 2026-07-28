@@ -7,12 +7,12 @@ import structlog
 import yaml
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
-from kubernetes.dynamic.exceptions import ResourceNotFoundError
-from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.daemonset import DaemonSet
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
+from ocp_resources.node import Node
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
@@ -20,7 +20,16 @@ from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.storage_class import StorageClass
 from pytest_testconfig import config as py_config
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
+from tests.model_serving.model_server.kserve.model_cache.utils import (
+    LOCAL_MODEL_NODE_GROUP_NAME,
+    MODEL_CACHE_AGENT_DAEMONSET,
+    MODEL_CACHE_NODE_COUNT,
+    MODEL_CACHE_SIZE,
+    LocalModelNodeGroup,
+)
+from tests.model_serving.model_server.utils import skip_test
 from utilities.constants import (
     DscComponents,
     KServeDeploymentType,
@@ -36,9 +45,11 @@ from utilities.data_science_cluster_utils import (
 )
 from utilities.inference_utils import create_isvc
 from utilities.infra import (
+    get_data_science_cluster,
     is_disconnected_cluster,
     s3_endpoint_secret,
     update_configmap_data,
+    wait_for_dsc_status_ready,
 )
 from utilities.kueue_utils import (
     ClusterQueue,
@@ -47,6 +58,7 @@ from utilities.kueue_utils import (
     create_cluster_queue,
     create_local_queue,
     create_resource_flavor,
+    is_kueue_operator_installed,
     wait_for_kueue_crds_available,
 )
 from utilities.serving_runtime import ServingRuntimeFromTemplate
@@ -328,7 +340,7 @@ def model_car_inference_service(
 def skip_if_disconnected(admin_client: DynamicClient) -> None:
     """Skip test if running on a disconnected (air-gapped) cluster."""
     if is_disconnected_cluster(client=admin_client):
-        pytest.skip("S3/HuggingFace storage not available on disconnected clusters")
+        skip_test(reason="HuggingFace storage not available on disconnected clusters")
 
 
 @pytest.fixture(scope="session")
@@ -378,33 +390,123 @@ def gpu_model_car_inference_service(
         yield isvc
 
 
-# Kueue Fixtures
-def _is_kueue_operator_installed(admin_client: DynamicClient) -> bool:
-    """Check if the Kueue operator is installed and ready."""
-    try:
-        csvs = list(
-            ClusterServiceVersion.get(
-                client=admin_client,
-                namespace=py_config.get("applications_namespace", "openshift-operators"),
+def _is_node_ready_and_schedulable(*, node: Node) -> bool:
+    """Return ``True`` if the node is ``Ready`` and not cordoned/unschedulable."""
+    conditions = node.instance.status.get("conditions") or []
+    is_ready = any(cond.get("type") == "Ready" and cond.get("status") == "True" for cond in conditions)
+    is_unschedulable = bool(node.instance.spec.get("unschedulable"))
+    return is_ready and not is_unschedulable
+
+
+@pytest.fixture(scope="session")
+def model_cache_infra_ready(
+    admin_client: DynamicClient,
+) -> Generator[DataScienceCluster, Any, Any]:
+    """Enable ``kserve.modelCache`` in the DSC and wait for the agent DaemonSet.
+
+    Patches the DSC to set ``modelCache.managementState: Managed`` with a
+    ``cacheSize`` and two worker ``nodeNames``.  On teardown the
+    ``ResourceEditor`` restores the original DSC spec automatically.
+
+    Session scope is intentional: the DSC is a cluster singleton, and toggling
+    ``modelCache`` triggers operator reconciliation (~minutes).  Bundling the
+    DSC patch, readiness wait, ``LocalModelNodeGroup`` existence check, and
+    agent ``DaemonSet`` readiness into one fixture avoids paying that cost per
+    test class while keeping the setup/teardown atomic.
+
+    Shared by both ``InferenceService`` (``kserve/model_cache``) and
+    ``LLMInferenceService`` (``llmd``) local model cache tests, since the
+    ``LocalModelNamespaceCache`` controller and its DSC toggle are common
+    infrastructure regardless of the workload CRD.
+    """
+    dsc = get_data_science_cluster(client=admin_client)
+    applications_namespace: str = py_config["applications_namespace"]
+
+    already_labeled = sorted(
+        [
+            node.name
+            for node in Node.get(client=admin_client, label_selector="kserve/localmodel=worker")
+            if _is_node_ready_and_schedulable(node=node)
+        ],
+    )
+    all_workers = sorted(
+        [
+            node.name
+            for node in Node.get(client=admin_client, label_selector="node-role.kubernetes.io/worker")
+            if _is_node_ready_and_schedulable(node=node)
+        ],
+    )
+
+    if len(already_labeled) >= MODEL_CACHE_NODE_COUNT:
+        selected_nodes = already_labeled[:MODEL_CACHE_NODE_COUNT]
+    elif len(all_workers) >= MODEL_CACHE_NODE_COUNT:
+        selected_nodes = all_workers[:MODEL_CACHE_NODE_COUNT]
+    else:
+        pytest.fail(f"Need at least {MODEL_CACHE_NODE_COUNT} worker nodes for model cache; found {len(all_workers)}")
+
+    with ResourceEditor(
+        patches={
+            dsc: {
+                "spec": {
+                    "components": {
+                        "kserve": {
+                            "modelCache": {
+                                "managementState": "Managed",
+                                "cacheSize": MODEL_CACHE_SIZE,
+                                "nodeNames": selected_nodes,
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ):
+        wait_for_dsc_status_ready(dsc_resource=dsc)
+
+        try:
+            for sample in TimeoutSampler(
+                wait_timeout=300,
+                sleep=10,
+                func=lambda: LocalModelNodeGroup(client=admin_client, name=LOCAL_MODEL_NODE_GROUP_NAME).exists,
+            ):
+                if sample:
+                    break
+        except TimeoutExpiredError:
+            pytest.fail(
+                f"LocalModelNodeGroup '{LOCAL_MODEL_NODE_GROUP_NAME}' did not appear "
+                f"within {300}s after enabling modelCache in DSC"
             )
+
+        agent = DaemonSet(
+            client=admin_client,
+            name=MODEL_CACHE_AGENT_DAEMONSET,
+            namespace=applications_namespace,
         )
-        for csv in csvs:
-            if csv.name.startswith("kueue") and csv.status == csv.Status.SUCCEEDED:
-                LOGGER.info(f"Found Kueue operator CSV: {csv.name}")
-                return True
-        return False
-    except ResourceNotFoundError:
-        return False
+        try:
+            for sample in TimeoutSampler(
+                wait_timeout=300,
+                sleep=10,
+                func=lambda: agent.exists,
+            ):
+                if sample:
+                    break
+        except TimeoutExpiredError:
+            pytest.fail(
+                f"DaemonSet '{MODEL_CACHE_AGENT_DAEMONSET}' did not appear in '{applications_namespace}' within {300}s"
+            )
+
+        yield dsc
 
 
+# Kueue Fixtures
 @pytest.fixture(scope="session")
 def ensure_kueue_unmanaged_in_dsc(
     admin_client: DynamicClient, dsc_resource: DataScienceCluster
 ) -> Generator[None, Any]:
     """Set DSC Kueue to Unmanaged and wait for CRDs to be available."""
     try:
-        if not _is_kueue_operator_installed(admin_client):
-            pytest.skip("Kueue operator is not installed, skipping Kueue tests")
+        if not is_kueue_operator_installed(admin_client):
+            skip_test(reason="Kueue operator is not installed, skipping Kueue tests")
 
         # Check current Kueue state
         kueue_management_state = dsc_resource.instance.spec.components[DscComponents.KUEUE].managementState
@@ -436,7 +538,7 @@ def ensure_kueue_unmanaged_in_dsc(
             yield
 
     except (AttributeError, KeyError) as e:
-        pytest.skip(f"Kueue component not found in DSC: {e}")
+        skip_test(reason=f"Kueue component not found in DSC: {e}")
 
 
 def kueue_resource_groups(

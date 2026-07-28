@@ -14,7 +14,6 @@ LOGGER = structlog.get_logger(name=__name__)
 
 @pytest.mark.install
 @pytest.mark.pre_upgrade
-@pytest.mark.post_upgrade
 @pytest.mark.usefixtures("mcp_servers_configmap_patch")
 class TestMCPServerLoading:
     """Tests for loading Custom MCP servers from YAML into the catalog (TC-LOAD-001)."""

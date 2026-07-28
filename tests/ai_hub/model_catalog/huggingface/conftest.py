@@ -14,50 +14,25 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
-from pytest_testconfig import py_config
 
+import tests.ai_hub.constants as ai_hub_constants
+from tests.ai_hub.constants import (
+    MR_ISVC_ARGS,
+    MR_ISVC_RESOURCES,
+    MR_ISVC_VOLUME_MOUNTS,
+    MR_ISVC_VOLUMES,
+)
 from tests.ai_hub.model_catalog.constants import HF_CUSTOM_MODE
 from tests.ai_hub.model_catalog.huggingface.utils import get_huggingface_model_from_api
 from tests.ai_hub.model_catalog.utils import get_models_from_catalog_api
 from utilities.infra import create_ns
-from utilities.operator_utils import get_cluster_service_version
+from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 LOGGER = structlog.get_logger(name=__name__)
 
 
-class OpenVINOImageNotFoundError(Exception):
-    """Exception raised when OpenVINO image is not found in RHOAI CSV relatedImages."""
-
-
 class PredictorPodNotFoundError(Exception):
     """Exception raised when predictor pods are not found for an InferenceService."""
-
-
-def get_openvino_image_from_rhoai_csv(admin_client: DynamicClient) -> str:
-    """
-    Get the OpenVINO model server image from the RHOAI ClusterServiceVersion.
-
-    Returns:
-        str: The OpenVINO model server image URL from RHOAI CSV
-
-    Raises:
-        Exception: If unable to find the image in the CSV
-    """
-    # Get the RHOAI CSV using the utility function
-    csv = get_cluster_service_version(
-        client=admin_client, prefix="rhods-operator", namespace=py_config["applications_namespace"]
-    )
-
-    # Look for OpenVINO image in spec.relatedImages
-    related_images = csv.instance.spec.get("relatedImages", [])
-
-    for image_info in related_images:
-        image_url = image_info.get("image", "")
-        if "odh-openvino-model-server" in image_url:
-            LOGGER.info(f"Found OpenVINO image from RHOAI CSV: {image_url}")
-            return image_url
-
-    raise OpenVINOImageNotFoundError("Could not find odh-openvino-model-server image in RHOAI CSV relatedImages")
 
 
 @pytest.fixture()
@@ -234,17 +209,12 @@ def huggingface_inference_service(
     hf_model_uri = f"hf://{HF_CUSTOM_MODE}"
     runtime_name = huggingface_serving_runtime.name
 
-    # Resources matching the manually created example
-    resources = {"limits": {"cpu": "2", "memory": "4Gi"}, "requests": {"cpu": "2", "memory": "4Gi"}}
-
-    # Labels for ODH dashboard integration
     labels = {
         "opendatahub.io/dashboard": "true",
     }
 
-    # Comprehensive annotations matching the manually created examples with full ODH integration
     annotations = {
-        "opendatahub.io/connections": huggingface_connection_secret.name,  # Reference to connection secret
+        "opendatahub.io/connections": huggingface_connection_secret.name,
         "opendatahub.io/hardware-profile-name": "default-profile",
         "opendatahub.io/hardware-profile-namespace": "redhat-ods-applications",
         "opendatahub.io/model-type": "predictive",
@@ -254,20 +224,27 @@ def huggingface_inference_service(
         "serving.kserve.io/deploymentMode": "RawDeployment",
     }
 
-    # Predictor configuration matching the manually created example
-    predictor_dict = {
+    model_spec: dict[str, Any] = {
+        "modelFormat": {"name": huggingface_serving_runtime.instance.spec.supportedModelFormats[0].name},
+        "name": "",
+        "resources": MR_ISVC_RESOURCES,
+        "runtime": runtime_name,
+        "storageUri": hf_model_uri,
+    }
+    if MR_ISVC_ARGS:
+        model_spec["args"] = MR_ISVC_ARGS
+    if MR_ISVC_VOLUME_MOUNTS:
+        model_spec["volumeMounts"] = MR_ISVC_VOLUME_MOUNTS
+
+    predictor_dict: dict[str, Any] = {
         "automountServiceAccountToken": False,
         "deploymentStrategy": {"type": "RollingUpdate"},
         "maxReplicas": 1,
         "minReplicas": 1,
-        "model": {
-            "modelFormat": {"name": "onnx", "version": "1"},
-            "name": "",
-            "resources": resources,
-            "runtime": runtime_name,
-            "storageUri": hf_model_uri,
-        },
+        "model": model_spec,
     }
+    if MR_ISVC_VOLUMES:
+        predictor_dict["volumes"] = MR_ISVC_VOLUMES
 
     with InferenceService(
         client=admin_client,
@@ -293,85 +270,20 @@ def huggingface_serving_runtime(
     admin_client: DynamicClient,
     hugging_face_deployment_ns: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
-    """
-    Create a ServingRuntime for OpenVINO Model Server to support Hugging Face models.
-    Based on the manually created examples with complete ODH dashboard integration.
-    Includes all template metadata annotations for full compatibility.
-    """
-    runtime_name = "hf-test-runtime"
-
-    # Complete annotations matching manually created examples
-    annotations = {
-        "opendatahub.io/apiProtocol": "REST",
-        "opendatahub.io/recommended-accelerators": '["nvidia.com/gpu"]',
-        "opendatahub.io/runtime-version": "v2025.4",
-        "opendatahub.io/serving-runtime-scope": "global",
-        "opendatahub.io/template-display-name": "OpenVINO Model Server",
-        "opendatahub.io/template-name": "kserve-ovms",
-        "openshift.io/display-name": "OpenVINO Model Server",
+    """Create a ServingRuntime from the cluster template for Hugging Face models."""
+    kwargs: dict[str, Any] = {
+        "client": admin_client,
+        "name": "hf-test-runtime",
+        "namespace": hugging_face_deployment_ns.name,
+        "template_name": ai_hub_constants.MR_RUNTIME_TEMPLATE,
+        "multi_model": False,
+        "enable_http": True,
+        "enable_grpc": False,
     }
+    if ai_hub_constants.MR_RUNTIME_CONTAINERS:
+        kwargs["containers"] = ai_hub_constants.MR_RUNTIME_CONTAINERS
 
-    # Labels for ODH dashboard integration
-    labels = {
-        "opendatahub.io/dashboard": "true",
-    }
-
-    # Supported model formats matching the example YAML
-    supported_model_formats = [
-        {"autoSelect": True, "name": "openvino_ir", "version": "opset13"},
-        {"name": "onnx", "version": "1"},
-        {"autoSelect": True, "name": "tensorflow", "version": "1"},
-        {"autoSelect": True, "name": "tensorflow", "version": "2"},
-        {"autoSelect": True, "name": "paddle", "version": "2"},
-        {"autoSelect": True, "name": "pytorch", "version": "2"},
-    ]
-
-    # Complete ServingRuntime specification
-    runtime_spec = {
-        "annotations": {
-            "opendatahub.io/kserve-runtime": "ovms",
-            "prometheus.io/path": "/metrics",
-            "prometheus.io/port": "8888",
-        },
-        "containers": [
-            {
-                "args": [
-                    "--model_name={{.Name}}",
-                    "--port=8001",
-                    "--rest_port=8888",
-                    "--model_path=/mnt/models",
-                    "--file_system_poll_wait_seconds=0",
-                    "--metrics_enable",
-                ],
-                "image": get_openvino_image_from_rhoai_csv(admin_client),
-                "name": "kserve-container",
-                "ports": [{"containerPort": 8888, "protocol": "TCP"}],
-            }
-        ],
-        "multiModel": False,
-        "protocolVersions": ["v2", "grpc-v2"],
-        "supportedModelFormats": supported_model_formats,
-    }
-
-    # Create the ServingRuntime with complete configuration
-    runtime_dict = {
-        "apiVersion": "serving.kserve.io/v1alpha1",
-        "kind": "ServingRuntime",
-        "metadata": {
-            "name": runtime_name,
-            "namespace": hugging_face_deployment_ns.name,
-            "annotations": annotations,
-            "labels": labels,
-        },
-        "spec": runtime_spec,
-    }
-
-    with ServingRuntime(
-        client=admin_client,
-        kind_dict=runtime_dict,
-        teardown=True,
-    ) as serving_runtime:
-        LOGGER.info(f"Created OpenVINO ServingRuntime: {runtime_name} in namespace: {hugging_face_deployment_ns.name}")
+    with ServingRuntimeFromTemplate(**kwargs) as serving_runtime:
         yield serving_runtime
 
 
@@ -410,15 +322,11 @@ def huggingface_model_portforward(
     huggingface_inference_service: InferenceService,
     huggingface_predictor_pod: Pod,
 ) -> Generator[str, Any]:
-    """
-    Port-forwards the HuggingFace OpenVINO model server pod to access the model API locally.
-    Equivalent CLI:
-      oc -n hf-deployment-ns port-forward pod/<pod-name> 8080:8888
-    """
+    """Port-forwards the HuggingFace model server pod to access the model API locally."""
     namespace = hugging_face_deployment_ns.name
     local_port = 9999
-    remote_port = 8888  # OpenVINO Model Server REST port
-    local_url = f"http://localhost:{local_port}/v1/models"
+    remote_port = ai_hub_constants.MR_MODEL_SERVER_PORT
+    local_url = f"http://localhost:{local_port}{ai_hub_constants.MR_MODEL_SERVER_URL_PATH}"
 
     try:
         with portforward.forward(

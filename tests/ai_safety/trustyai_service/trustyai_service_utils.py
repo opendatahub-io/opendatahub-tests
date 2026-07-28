@@ -16,7 +16,7 @@ from ocp_resources.trustyai_service import TrustyAIService
 from timeout_sampler import TimeoutSampler
 
 from utilities.certificates_utils import create_ca_bundle_file
-from utilities.constants import TRUSTYAI_SERVICE_NAME, Protocols, Timeout
+from utilities.constants import TRUSTYAI_SERVICE_NAME, Protocols
 from utilities.exceptions import MetricValidationError
 from utilities.general import create_isvc_label_selector_str
 from utilities.inference_utils import Inference, UserInference
@@ -108,7 +108,7 @@ class TrustyAIServiceClient:
             ValueError: If method is not GET, POST or DELETE.
         """
 
-        url = f"https://{self.service_route.host}/{endpoint}"
+        url = f"https://{self.service_route.host}/{endpoint.lstrip('/')}"
         headers = {**self.headers, **(extra_headers or {})}
         base_kwargs = {"url": url, "headers": headers, "verify": self.cert_path}
 
@@ -363,7 +363,7 @@ def send_inferences_and_verify_trustyai_service_registered(
             )
             LOGGER.debug(f"Inference response: {res}")
             samples = TimeoutSampler(
-                wait_timeout=Timeout.TIMEOUT_5MIN,
+                wait_timeout=300,
                 sleep=1,
                 func=lambda: get_num_observations_from_trustyai_service(
                     client=client, token=token, trustyai_service=trustyai_service
@@ -414,7 +414,7 @@ def wait_for_isvc_deployment_registered_by_trustyai_service(
         )
 
     samples = TimeoutSampler(
-        wait_timeout=Timeout.TIMEOUT_20MIN,
+        wait_timeout=1200,
         sleep=1,
         func=_get_deployments,
     )
@@ -641,6 +641,32 @@ def verify_upload_data_to_trustyai_service(
     )
 
 
+def verify_trustyai_service_metric_registered_post_upgrade(
+    client: DynamicClient, trustyai_service: TrustyAIService, token: str, metric_name: str
+) -> None:
+    """Verifies that a metric scheduled pre-upgrade was re-registered by TrustyAI after upgrade.
+
+    Fails with a clear message if the metric is missing, pointing to known 3.5 breaking changes:
+    referenceTag is now required and must exist in logged data; fitColumns must use original
+    column names, not mapped names.
+    """
+    tas_client = TrustyAIServiceClient(token=token, service=trustyai_service, client=client)
+    metrics_response = tas_client.get_metrics(metric_name=metric_name)
+    assert metrics_response.status_code == HTTPStatus.OK, (
+        f"Failed to fetch {metric_name} metrics: "
+        f"HTTP {metrics_response.status_code}. Response body: {metrics_response.text!r}"
+    )
+    metrics_data = json.loads(metrics_response.text)
+    num_metrics = len(metrics_data.get("requests", []))
+
+    assert num_metrics >= 1, (
+        f"Pre-upgrade {metric_name} metric was not re-registered by TrustyAI after upgrade. "
+        f"Known causes: (1) referenceTag is now required and must exist in logged data, "
+        f"(2) fitColumns must use original column names, not mapped names. "
+        f"Check TrustyAI service logs for re-registration errors."
+    )
+
+
 def verify_trustyai_service_metric_delete_request(
     client: DynamicClient, trustyai_service: TrustyAIService, token: str, metric_name: str
 ) -> None:
@@ -671,7 +697,8 @@ def verify_trustyai_service_metric_delete_request(
     delete_response = tas_client.delete_metric(metric_name=metric_name, request_id=request_id)
 
     assert delete_response.status_code == HTTPStatus.OK, (
-        f"Delete request failed with status code: {delete_response.status_code}"
+        f"Delete request failed with status code: {delete_response.status_code}. "
+        f"Response body: {delete_response.text!r}"
     )
 
     # Verify the number of metrics after deletion is N-1
