@@ -90,11 +90,7 @@ class TestRhoaiMcpDeployment:
             timeout=30,
         )
         assert response.status_code == 200
-        data_lines = [
-            line.removeprefix("data: ")
-            for line in response.text.splitlines()
-            if line.startswith("data: ")
-        ]
+        data_lines = [line.removeprefix("data: ") for line in response.text.splitlines() if line.startswith("data: ")]
         assert data_lines, "No SSE data lines in response"
         body = json.loads(data_lines[0])
         assert body["jsonrpc"] == "2.0"
