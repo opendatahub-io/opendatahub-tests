@@ -323,7 +323,12 @@ def wait_for_auth_policy_accepted(
     timeout: int = 300,
     reconciliation_hint: str = ("Ensure a MaaSAuthPolicy exists to trigger gateway auth reconciliation."),
 ) -> AuthPolicy:
-    """Poll until an AuthPolicy exists and its Accepted condition is True."""
+    """Poll until an AuthPolicy exists and Accepted and Enforced conditions are True.
+
+    Accepted alone is not enough for ExtAuth: Authorino may still be reconciling, so
+    unauthenticated /maas-api calls can return 200 and API key create can fail with
+    AUTH_FAILURE (missing X-MaaS-Username). Wait for Enforced before probing the API.
+    """
     auth_policy = AuthPolicy(
         client=admin_client,
         name=policy_name,
@@ -344,14 +349,26 @@ def wait_for_auth_policy_accepted(
                 namespace=namespace,
                 condition_type="Accepted",
             )
-            if accepted_condition is not None and accepted_condition.get("status") == "True":
-                LOGGER.info(f"AuthPolicy '{namespace}/{policy_name}' is Accepted after MaaSAuthPolicy reconciliation")
+            enforced_condition = get_auth_policy_condition(
+                admin_client=admin_client,
+                policy_name=policy_name,
+                namespace=namespace,
+                condition_type="Enforced",
+            )
+            accepted = accepted_condition is not None and accepted_condition.get("status") == "True"
+            enforced = enforced_condition is not None and enforced_condition.get("status") == "True"
+            if accepted and enforced:
+                LOGGER.info(
+                    f"AuthPolicy '{namespace}/{policy_name}' is Accepted and Enforced "
+                    "after MaaSAuthPolicy reconciliation"
+                )
                 return auth_policy
     except TimeoutExpiredError as error:
         raise AssertionError(
-            f"Timed out waiting for AuthPolicy '{namespace}/{policy_name}' to become Accepted. {reconciliation_hint}"
+            f"Timed out waiting for AuthPolicy '{namespace}/{policy_name}' to become "
+            f"Accepted and Enforced. {reconciliation_hint}"
         ) from error
-    raise AssertionError(f"AuthPolicy '{namespace}/{policy_name}' did not become Accepted")
+    raise AssertionError(f"AuthPolicy '{namespace}/{policy_name}' did not become Accepted and Enforced")
 
 
 def get_auth_policy_callback_url(
