@@ -34,3 +34,9 @@ uv run pytest tests/rhoai_mcp/ -m smoke -v
 # Run all rhoai-mcp tests
 uv run pytest tests/rhoai_mcp/ -v
 ```
+
+## Development
+
+```bash
+OC_BINARY_PATH=$(which oc) uv run pytest tests/rhoai_mcp/test_deployment.py -s -v --cluster-sanity-skip-check
+```

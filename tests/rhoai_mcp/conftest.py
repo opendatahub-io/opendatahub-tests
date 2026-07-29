@@ -2,6 +2,7 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
+from fastmcp.client.transports import StreamableHttpTransport
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.cluster_role import ClusterRole
 from ocp_resources.cluster_role_binding import ClusterRoleBinding
@@ -240,6 +241,21 @@ def rhoai_mcp_route(
         },
     ) as route:
         yield route
+
+
+@pytest.fixture(scope="class")
+def rhoai_mcp_transport(
+    rhoai_mcp_endpoint_url: str,
+    rhoai_mcp_ca_bundle: str,
+    rhoai_mcp_ready: None,
+    current_client_token: str,
+) -> StreamableHttpTransport:
+    """Configured StreamableHttpTransport for FastMCP Client."""
+    return StreamableHttpTransport(
+        url=rhoai_mcp_endpoint_url,
+        auth=str(current_client_token),
+        verify=rhoai_mcp_ca_bundle,
+    )
 
 
 @pytest.fixture(scope="class")
