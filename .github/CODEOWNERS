@@ -12,6 +12,7 @@
 
 # Test directory specific rules
 tests/ai_safety/                    @sheltoncyril @kpunwatk
+tests/ai_safety/evalhub/            @kpunwatk @ruivieira
 tests/ai_hub/                          @dbasunag @lugi0 @fege
 tests/model_serving/                           @mwaykole @Raghul-M @brettmthompson @threcc @SB159
 tests/model_serving/model_runtime/             @Raghul-M @brettmthompson
