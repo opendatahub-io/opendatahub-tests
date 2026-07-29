@@ -107,4 +107,6 @@ class TestRhoaiMcpCapabilities:
             prompts = await client.list_prompts()
             assert prompts, "Expected at least one prompt"
             for prompt in prompts:
-                assert prompt.description and prompt.description.strip(), f"Prompt '{prompt.name}' is missing a description"
+                assert prompt.description and prompt.description.strip(), (
+                    f"Prompt '{prompt.name}' is missing a description"
+                )
