@@ -21,41 +21,19 @@ from tests.rhoai_mcp.constants import (
 class TestRhoaiMcpCapabilities:
     """Verify rhoai-mcp advertises expected MCP tools, resources, and prompts."""
 
-    async def test_server_advertises_tools_capability(
+    async def test_server_advertises_capabilities(
         self,
         rhoai_mcp_transport: StreamableHttpTransport,
     ) -> None:
         """Given rhoai-mcp is deployed and healthy
         When an authenticated MCP client initializes a session
-        Then the server advertises tools capability
+        Then the server advertises tools, resources, and prompts capabilities
         """
         async with Client(rhoai_mcp_transport) as client:
-            tools = await client.list_tools()
-            assert tools is not None
-
-    async def test_server_advertises_resources_capability(
-        self,
-        rhoai_mcp_transport: StreamableHttpTransport,
-    ) -> None:
-        """Given rhoai-mcp is deployed and healthy
-        When an authenticated MCP client initializes a session
-        Then the server advertises resources capability
-        """
-        async with Client(rhoai_mcp_transport) as client:
-            resources = await client.list_resources()
-            assert resources is not None
-
-    async def test_server_advertises_prompts_capability(
-        self,
-        rhoai_mcp_transport: StreamableHttpTransport,
-    ) -> None:
-        """Given rhoai-mcp is deployed and healthy
-        When an authenticated MCP client initializes a session
-        Then the server advertises prompts capability
-        """
-        async with Client(rhoai_mcp_transport) as client:
-            prompts = await client.list_prompts()
-            assert prompts is not None
+            caps = client.initialize_result.capabilities
+            assert caps.tools is not None, "Server did not advertise tools capability"
+            assert caps.resources is not None, "Server did not advertise resources capability"
+            assert caps.prompts is not None, "Server did not advertise prompts capability"
 
     async def test_list_tools_includes_serving_and_catalog_tools(
         self,
@@ -84,7 +62,7 @@ class TestRhoaiMcpCapabilities:
             tools = await client.list_tools()
             assert tools, "Expected at least one tool"
             for tool in tools:
-                assert tool.description, f"Tool '{tool.name}' is missing a description"
+                assert tool.description and tool.description.strip(), f"Tool '{tool.name}' is missing a description"
 
     async def test_all_tools_have_input_schemas(
         self,
@@ -129,4 +107,4 @@ class TestRhoaiMcpCapabilities:
             prompts = await client.list_prompts()
             assert prompts, "Expected at least one prompt"
             for prompt in prompts:
-                assert prompt.description, f"Prompt '{prompt.name}' is missing a description"
+                assert prompt.description and prompt.description.strip(), f"Prompt '{prompt.name}' is missing a description"
