@@ -15,6 +15,7 @@ from ocp_resources.service_account import ServiceAccount
 from tests.rhoai_mcp.constants import (
     RHOAI_MCP_APP_NAME,
     RHOAI_MCP_CLUSTERROLE_NAME,
+    RHOAI_MCP_ENDPOINT_PATH,
     RHOAI_MCP_HEALTH_PATH,
     RHOAI_MCP_NAMESPACE,
     RHOAI_MCP_PORT,
@@ -135,7 +136,7 @@ def rhoai_mcp_config(
             "RHOAI_MCP_HOST": "0.0.0.0",
             "RHOAI_MCP_PORT": str(RHOAI_MCP_PORT),
             "RHOAI_MCP_LOG_LEVEL": "INFO",
-            "RHOAI_MCP_TRANSPORT": "sse",
+            "RHOAI_MCP_TRANSPORT": "streamable-http",
             "RHOAI_MCP_AUTH_MODE": "auto",
             "RHOAI_MCP_OIDC_ENABLED": "true",
             "RHOAI_MCP_OIDC_TOKEN_MODE": "token-review",
@@ -215,6 +216,9 @@ def rhoai_mcp_route(
             "metadata": {
                 "name": RHOAI_MCP_APP_NAME,
                 "namespace": rhoai_mcp_namespace.name,
+                "annotations": {
+                    "haproxy.router.openshift.io/timeout": "300s",
+                },
                 "labels": {
                     "app.kubernetes.io/component": "route",
                     "app.kubernetes.io/name": RHOAI_MCP_APP_NAME,
@@ -248,6 +252,12 @@ def rhoai_mcp_ca_bundle(admin_client: DynamicClient) -> str:
 def rhoai_mcp_base_url(rhoai_mcp_route: Route) -> str:
     """Base URL (scheme + host) for the rhoai-mcp route."""
     return f"https://{rhoai_mcp_route.host}"
+
+
+@pytest.fixture(scope="class")
+def rhoai_mcp_endpoint_url(rhoai_mcp_base_url: str) -> str:
+    """Full URL for the rhoai-mcp streamable-http endpoint."""
+    return f"{rhoai_mcp_base_url}{RHOAI_MCP_ENDPOINT_PATH}"
 
 
 @pytest.fixture(scope="class")
