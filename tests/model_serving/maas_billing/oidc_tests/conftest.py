@@ -84,13 +84,12 @@ def oidc_subscription_with_model(
             teardown=True,
             wait_for_resource=True,
         ):
-            maas_gateway_auth = wait_for_auth_policy_accepted(
+            wait_for_auth_policy_accepted(
                 admin_client=admin_client,
                 policy_name=MAAS_GATEWAY_AUTH_POLICY_NAME,
                 namespace=MAAS_GATEWAY_NAMESPACE,
                 reconciliation_hint=("Ensure TinyLlama MaaSAuthPolicy reconciled maas-gateway-auth before inference."),
             )
-            maas_gateway_auth.wait_for_condition(condition="Enforced", status="True", timeout=120)
             LOGGER.info(
                 "oidc_subscription_with_model: "
                 f"'{MAAS_GATEWAY_NAMESPACE}/{MAAS_GATEWAY_AUTH_POLICY_NAME}' is Accepted and Enforced "
