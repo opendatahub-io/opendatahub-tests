@@ -30,7 +30,7 @@ DEPLOYMENT_TEMPLATE: dict[str, Any] = {
                 "name": RHOAI_MCP_APP_NAME,
                 "image": RhoaiMcpImages.RHOAI_MCP,
                 "imagePullPolicy": "Always",
-                "args": ["--transport", "sse"],
+                "args": ["--transport", "$(RHOAI_MCP_TRANSPORT)"],
                 "envFrom": [{"configMapRef": {"name": f"{RHOAI_MCP_APP_NAME}-config"}}],
                 "ports": [
                     {
