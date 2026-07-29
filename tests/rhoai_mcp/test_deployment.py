@@ -45,7 +45,7 @@ class TestRhoaiMcpDeployment:
         Then the server returns 401 with a WWW-Authenticate: Bearer header
         """
         response = requests.post(
-            rhoai_mcp_endpoint_url,
+            url=rhoai_mcp_endpoint_url,
             json={"jsonrpc": "2.0", "id": 1, "method": "initialize"},
             headers={
                 "Content-Type": "application/json",
@@ -70,7 +70,7 @@ class TestRhoaiMcpDeployment:
         Then the server returns 200 with server capabilities and a session ID
         """
         response = requests.post(
-            rhoai_mcp_endpoint_url,
+            url=rhoai_mcp_endpoint_url,
             json={
                 "jsonrpc": "2.0",
                 "id": 1,
