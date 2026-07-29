@@ -88,9 +88,7 @@ def oidc_subscription_with_model(
                 admin_client=admin_client,
                 policy_name=MAAS_GATEWAY_AUTH_POLICY_NAME,
                 namespace=MAAS_GATEWAY_NAMESPACE,
-                reconciliation_hint=(
-                    "Ensure TinyLlama MaaSAuthPolicy reconciled maas-gateway-auth before inference."
-                ),
+                reconciliation_hint=("Ensure TinyLlama MaaSAuthPolicy reconciled maas-gateway-auth before inference."),
             )
             maas_gateway_auth.wait_for_condition(condition="Enforced", status="True", timeout=120)
             LOGGER.info(
