@@ -1696,7 +1696,7 @@ def evalhub_test_data_populated(
     tenant_a_namespace: Namespace,
     evalhub_test_data_pvc: PersistentVolumeClaim,
 ) -> PersistentVolumeClaim:
-    """Populate the PVC with provider marker data at two sub-paths."""
+    """Populate the PVC with tokenizer model files and provider marker data."""
     populate_script = (
         "mkdir -p /data/provider_a /data/provider_b && "
         'echo \'{"provider": "a", "benchmark": "arc_easy"}\' > /data/provider_a/data.json && '
@@ -1710,7 +1710,29 @@ def evalhub_test_data_populated(
         name=pod_name,
         namespace=tenant_a_namespace.name,
         restart_policy="Never",
+        security_context={"fsGroup": 1000, "seccompProfile": {"type": "RuntimeDefault"}},
         volumes=[{"name": "test-data", "persistentVolumeClaim": {"claimName": evalhub_test_data_pvc.name}}],
+        init_containers=[
+            {
+                "name": "tokenizer-copy",
+                "image": AiSafetyImages.FLAN_T5,
+                "command": [
+                    "/bin/sh",
+                    "-c",
+                    "mkdir -p /data/tokenizer && "
+                    "cp /mnt/data/flan/tokenizer.json /mnt/data/flan/tokenizer_config.json "
+                    "/mnt/data/flan/special_tokens_map.json /mnt/data/flan/spiece.model "
+                    "/mnt/data/flan/config.json /data/tokenizer/",
+                ],
+                "volumeMounts": [{"name": "test-data", "mountPath": "/data"}],
+                "securityContext": {
+                    "runAsUser": 1000,
+                    "runAsNonRoot": True,
+                    "allowPrivilegeEscalation": False,
+                    "capabilities": {"drop": ["ALL"]},
+                },
+            }
+        ],
         containers=[
             {
                 "name": "data-writer",
@@ -1718,14 +1740,18 @@ def evalhub_test_data_populated(
                 "command": ["/bin/sh", "-c"],
                 "args": [populate_script],
                 "volumeMounts": [{"name": "test-data", "mountPath": "/data"}],
-                "securityContext": {**MINIO_UPLOADER_SECURITY_CONTEXT, "readOnlyRootFilesystem": True},
+                "securityContext": {
+                    **MINIO_UPLOADER_SECURITY_CONTEXT,
+                    "readOnlyRootFilesystem": True,
+                    "runAsUser": 1000,
+                },
             }
         ],
         wait_for_resource=True,
     ) as writer_pod:
         LOGGER.info(f"Running PVC data writer pod in {tenant_a_namespace.name}")
         try:
-            writer_pod.wait_for_status(status="Succeeded", timeout=120)
+            writer_pod.wait_for_status(status="Succeeded", timeout=300)
         except TimeoutExpiredError:
             collect_pod_information(pod=writer_pod)
             raise
@@ -1749,6 +1775,7 @@ def submit_pvc_job(
         claim_name: str,
         sub_path: str | None = None,
         job_name: str = "pvc-test",
+        tokenizer_path: str | None = None,
     ) -> str:
         payload = build_pvc_job_payload(
             model_service_name=evalhub_vllm_emulator_service.name,
@@ -1756,6 +1783,7 @@ def submit_pvc_job(
             job_name=job_name,
             claim_name=claim_name,
             sub_path=sub_path,
+            tokenizer_path=tokenizer_path,
         )
         data = submit_evalhub_job(
             host=evalhub_mt_route.host,

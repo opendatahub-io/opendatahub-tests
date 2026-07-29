@@ -8,6 +8,7 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.route import Route
 
+from tests.ai_safety.evalhub.constants import PVC_TOKENIZER_PATH
 from tests.ai_safety.evalhub.utils import (
     validate_evalhub_job_completed,
     wait_for_evalhub_job,
@@ -39,6 +40,7 @@ class TestEvalHubPVCStorage:
         job_id = submit_pvc_job(
             claim_name=evalhub_test_data_populated.name,
             job_name="pvc-mount-test",
+            tokenizer_path=PVC_TOKENIZER_PATH,
         )
         job_data = wait_for_evalhub_job(
             host=evalhub_mt_route.host,
@@ -170,6 +172,7 @@ class TestEvalHubPVCStorage:
         job_id = submit_pvc_job(
             claim_name=evalhub_test_data_populated.name,
             job_name="pvc-readonly-test",
+            tokenizer_path=PVC_TOKENIZER_PATH,
         )
         batch_jobs = wait_for_evalhub_runtime_job_count(
             admin_client=admin_client,
