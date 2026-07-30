@@ -44,9 +44,11 @@ def upload_test_model_to_minio_from_image(
                 "command": ["/bin/sh", "-c"],
                 "args": [
                     # Create a test model file for upload testing
-                    "echo 'Creating test model file for async upload pipeline testing...' && "
-                    "echo 'Test model file for validating the async upload pipeline' > /upload-data/model.onnx && "
-                    "echo 'Test model file created successfully'"
+                    (
+                        "echo 'Creating test model file for async upload pipeline testing...' && "
+                        "echo 'Test model file for validating the async upload pipeline' > /upload-data/model.onnx && "
+                        "echo 'Test model file created successfully'"
+                    )
                 ],
                 "volumeMounts": [{"name": "upload-data", "mountPath": "/upload-data"}],
                 "securityContext": {
@@ -64,15 +66,18 @@ def upload_test_model_to_minio_from_image(
                 "command": ["/bin/sh", "-c"],
                 "args": [
                     # Upload the test model file to MinIO
-                    f"echo 'Model file details:' && ls -la /upload-data/model.onnx && "
-                    f"echo 'Model file content preview:' && head -c 100 /upload-data/model.onnx && echo && "
-                    f"export MC_CONFIG_DIR=/upload-data/.mc && "
-                    f"mc alias set testminio {mc_url}"
-                    f"{MinIo.Credentials.ACCESS_KEY_VALUE} {MinIo.Credentials.SECRET_KEY_VALUE} && "
-                    f"mc mb --ignore-existing testminio/{MinIo.Buckets.MODELMESH_EXAMPLE_MODELS} && "
-                    f"mc cp /upload-data/model.onnx testminio/{MinIo.Buckets.MODELMESH_EXAMPLE_MODELS}/{object_key} && "
-                    f"mc ls testminio/{MinIo.Buckets.MODELMESH_EXAMPLE_MODELS}/my-model/ && "
-                    f"echo 'Upload completed successfully'"
+                    (
+                        f"echo 'Model file details:' && ls -la /upload-data/model.onnx && "
+                        f"echo 'Model file content preview:' && head -c 100 /upload-data/model.onnx && echo && "
+                        f"export MC_CONFIG_DIR=/upload-data/.mc && "
+                        f"mc alias set testminio {mc_url}"
+                        f"{MinIo.Credentials.ACCESS_KEY_VALUE} {MinIo.Credentials.SECRET_KEY_VALUE} && "
+                        f"mc mb --ignore-existing testminio/{MinIo.Buckets.MODELMESH_EXAMPLE_MODELS} && "
+                        f"mc cp /upload-data/model.onnx "
+                        f"testminio/{MinIo.Buckets.MODELMESH_EXAMPLE_MODELS}/{object_key} && "
+                        f"mc ls testminio/{MinIo.Buckets.MODELMESH_EXAMPLE_MODELS}/my-model/ && "
+                        f"echo 'Upload completed successfully'"
+                    )
                 ],
                 "volumeMounts": [{"name": "upload-data", "mountPath": "/upload-data"}],
                 "securityContext": {

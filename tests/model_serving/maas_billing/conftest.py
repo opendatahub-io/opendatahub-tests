@@ -937,7 +937,7 @@ def maas_gateway_auth_policy_ready(
     admin_client: DynamicClient,
     request: FixtureRequest,
 ) -> None:
-    """Activate a MaaSAuthPolicy, then wait until maas-gateway-auth is Accepted."""
+    """Activate a MaaSAuthPolicy, then wait until maas-gateway-auth is Accepted and Enforced."""
     for fixture_name in MAAS_AUTH_POLICY_FIXTURE_NAMES:
         if fixture_name in request.fixturenames:
             request.getfixturevalue(argname=fixture_name)
@@ -950,7 +950,8 @@ def maas_gateway_auth_policy_ready(
         namespace=MAAS_GATEWAY_NAMESPACE,
     )
     LOGGER.info(
-        f"maas_gateway_auth_policy_ready: '{MAAS_GATEWAY_NAMESPACE}/{MAAS_GATEWAY_AUTH_POLICY_NAME}' is Accepted"
+        f"maas_gateway_auth_policy_ready: '{MAAS_GATEWAY_NAMESPACE}/{MAAS_GATEWAY_AUTH_POLICY_NAME}' "
+        "is Accepted and Enforced"
     )
 
 

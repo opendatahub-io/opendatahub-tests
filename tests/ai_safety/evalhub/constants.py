@@ -71,6 +71,9 @@ EVALHUB_USER_ROLE_RULES: list[dict[str, list[str]]] = [
     },
 ]
 
+# Provider IDs for system providers
+LM_EVALUATION_HARNESS_PROVIDER_ID: str = "lm_evaluation_harness"
+
 # Garak provider
 GARAK_SIMPLE_PROVIDER_ID: str = "garak"
 GARAK_PROVIDER_ID: str = "garak-kfp"
@@ -99,7 +102,8 @@ SIMPLE_MINIO_BUCKET: str = "evalhub-data"
 
 # PVC storage test data
 PVC_TEST_DATA_NAME: str = "evalhub-test-data"
-PVC_TEST_DATA_SIZE: str = "1Gi"
+PVC_TEST_DATA_SIZE: str = "2Gi"
+PVC_TOKENIZER_PATH: str = "/test_data/tokenizer"
 
 # ServiceMonitor and metrics Service
 EVALHUB_METRICS_SERVICE_SUFFIX: str = "-metrics"
