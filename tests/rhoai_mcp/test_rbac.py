@@ -66,8 +66,8 @@ class TestRhoaiMcpRbac:
         async with Client(rbac_reader_transport) as client:
             with pytest.raises(ToolError, match=r"deploy_model.*not permitted for the current user"):
                 await client.call_tool(
-                    "deploy_model",
-                    {
+                    name="deploy_model",
+                    arguments={
                         "name": "rbac-denied-test",
                         "namespace": RHOAI_MCP_NAMESPACE,
                         "runtime": "vllm-runtime",
