@@ -58,6 +58,8 @@ def oidc_subscription_with_model(
     """Create a MaaSSubscription referencing the deployed TinyLlama model.
 
     Used by tests that need ``/v1/models`` to return a real model for inference.
+    After the TinyLlama MaaSAuthPolicy is created, wait for gateway AuthPolicy
+    Accepted and Enforced so inference does not race an outdated model_access map.
     """
     auth_policy_name = f"e2e-oidc-auth-{generate_random_name()}"
 
@@ -82,6 +84,17 @@ def oidc_subscription_with_model(
             teardown=True,
             wait_for_resource=True,
         ):
+            wait_for_auth_policy_accepted(
+                admin_client=admin_client,
+                policy_name=MAAS_GATEWAY_AUTH_POLICY_NAME,
+                namespace=MAAS_GATEWAY_NAMESPACE,
+                reconciliation_hint=("Ensure TinyLlama MaaSAuthPolicy reconciled maas-gateway-auth before inference."),
+            )
+            LOGGER.info(
+                "oidc_subscription_with_model: "
+                f"'{MAAS_GATEWAY_NAMESPACE}/{MAAS_GATEWAY_AUTH_POLICY_NAME}' is Accepted and Enforced "
+                f"after MaaSAuthPolicy '{auth_policy_name}'"
+            )
             yield subscription
 
 
