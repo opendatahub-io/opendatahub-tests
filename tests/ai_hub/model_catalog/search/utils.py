@@ -313,6 +313,14 @@ def fetch_all_artifacts_with_dynamic_paging(
         page_size += page_size_increment
 
 
+SECURITY_ONLY_MODELS: set[str] = {
+    "Mistral-Medium-3.5-128B",
+    "Qwen3-VL-30B-A3B-Instruct",
+    "Trinity-Large-Thinking-NVFP4",
+    "gemma-4-E4B-it",
+}
+
+
 def validate_performance_data_files_on_pod(model_catalog_pod: Pod) -> dict[str, list[str]]:
     """
     Validate that performance data files exist for all models in the catalog pod.
@@ -332,15 +340,10 @@ def validate_performance_data_files_on_pod(model_catalog_pod: Pod) -> dict[str, 
     providers = model_catalog_pod.execute(container=CATALOG_CONTAINER, command=["ls", PERFORMANCE_DATA_DIR])
 
     for provider in providers.splitlines():
-        required_files = ["metadata.json", "performance.ndjson", "evaluations.ndjson"]
         # skip the files manifest.json and variant-groups.ndjson
         if provider in ["manifest.json", "variant-groups.ndjson"]:
             continue
         LOGGER.info(f"Checking provider: {provider}")
-        # Only for RedHatAI model we expect performance.ndjson file, based on edge case definition
-        # https://docs.google.com/document/d/1K6SQi7Se8zljfB0UvXKKqV8VWVh5Pfq4HqKPtNvIQzg/edit?tab=t.0#heading=h.rh09auvgvlxd
-        if provider != "RedHatAI":
-            required_files.remove("performance.ndjson")
         models = model_catalog_pod.execute(
             container=CATALOG_CONTAINER, command=["ls", f"{PERFORMANCE_DATA_DIR}/{provider}"]
         )
@@ -348,9 +351,17 @@ def validate_performance_data_files_on_pod(model_catalog_pod: Pod) -> dict[str, 
         for model in models.splitlines():
             if model == "provider.json":
                 continue
+            required_files = ["metadata.json", "performance.ndjson", "evaluations.ndjson"]
+            # Only for RedHatAI model we expect performance.ndjson file, based on edge case definition
+            # https://docs.google.com/document/d/1K6SQi7Se8zljfB0UvXKKqV8VWVh5Pfq4HqKPtNvIQzg/edit?tab=t.0#heading=h.rh09auvgvlxd
+            if provider != "RedHatAI":
+                required_files.remove("performance.ndjson")
             # Remove data for specific RH models based on
             # https://redhat-internal.slack.com/archives/C09570S9VV0/p1762164394782969?thread_ts=1761834621.645019&cid=C09570S9VV0
-            if model == "Mistral-Small-24B-Instruct-2501":
+            if model in SECURITY_ONLY_MODELS:
+                required_files.remove("performance.ndjson")
+                required_files.append("security-evaluations.ndjson")
+            if model in ("Mistral-Small-24B-Instruct-2501", "Mistral-Small-4-119B-2603"):
                 required_files.remove("evaluations.ndjson")
             elif model == "granite-3.1-8b-instruct-quantized.w8a8":
                 required_files.remove("performance.ndjson")
