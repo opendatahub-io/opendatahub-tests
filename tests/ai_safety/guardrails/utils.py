@@ -4,15 +4,87 @@ from typing import Any
 
 import requests
 import structlog
+from ocp_resources.deployment import Deployment
 from requests import Response
 from requests.exceptions import ReadTimeout
-from timeout_sampler import retry
+from timeout_sampler import TimeoutSampler, retry
 
 from tests.ai_safety.guardrails.constants import GuardrailsDetectionPrompt
 from utilities.exceptions import UnexpectedValueError
 from utilities.guardrails import get_auth_headers
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+def _verify_rolearn_in_containers(deployment: Deployment, expected_role_arn: str) -> bool:
+    """
+    Verify that ROLEARN environment variable is set in all containers.
+
+    Args:
+        deployment: The Deployment resource to check
+        expected_role_arn: The expected ROLEARN value
+
+    Returns:
+        True if ROLEARN is set correctly in all containers, False otherwise
+    """
+    containers = deployment.instance.spec.template.spec.containers or []
+
+    for container in containers:
+        env_vars = container.get("env", [])
+        rolearn_found = False
+
+        for env_var in env_vars:
+            if env_var.get("name") == "ROLEARN":
+                if env_var.get("value") == expected_role_arn:
+                    rolearn_found = True
+                    LOGGER.info(f"ROLEARN verified in container '{container.get('name')}'")
+
+                    break
+                else:
+                    LOGGER.warning(f"ROLEARN mismatch in container '{container.get('name')}'")
+
+                    return False
+
+        if not rolearn_found:
+            LOGGER.warning(f"ROLEARN not found in container '{container.get('name')}'")
+            return False
+
+    return True
+
+
+def patch_tempo_operator_for_rosa(deployment: Deployment, role_arn: str) -> None:
+    """
+    Patches the Tempo operator deployment with AWS Role ARN for ROSA clusters.
+    Waits for deployment to reconcile and verifies ROLEARN is set in containers.
+
+    Args:
+        deployment: The Tempo operator deployment object
+        role_arn: AWS IAM Role ARN to be used by the operator
+    """
+    deployment_dict = deployment.instance.to_dict()
+    containers = deployment_dict["spec"]["template"]["spec"]["containers"]
+
+    for container in containers:
+        if "env" not in container:
+            container["env"] = []
+        container["env"].append({"name": "ROLEARN", "value": role_arn})
+
+    deployment.update(deployment_dict)
+    deployment.wait_for_replicas()
+
+    # Verify ROLEARN is actually set in the containers
+    for sample in TimeoutSampler(
+        wait_timeout=60,
+        sleep=5,
+        func=_verify_rolearn_in_containers,
+        deployment=deployment,
+        expected_role_arn=role_arn,
+    ):
+        if sample:
+            LOGGER.info("Successfully patched and verified Tempo operator deployment for ROSA")
+            return
+
+    raise RuntimeError("Timeout waiting for ROLEARN environment variable to be set in Tempo operator containers")
 
 
 def get_chat_detections_payload(content: str, model: str, detectors: dict[str, Any] | None = None) -> dict[str, Any]:

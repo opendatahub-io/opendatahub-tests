@@ -1,3 +1,4 @@
+import os
 from collections.abc import Generator
 from typing import Any
 
@@ -31,6 +32,7 @@ from tests.ai_safety.guardrails.constants import (
     TEST_TLS_CERTIFICATE,
     TEST_TLS_PRIVATE_KEY,
 )
+from tests.ai_safety.guardrails.utils import patch_tempo_operator_for_rosa
 from tests.ai_safety.image_constants import AiSafetyImages
 from utilities.constants import (
     KServeDeploymentType,
@@ -267,6 +269,14 @@ def installed_tempo_operator(admin_client: DynamicClient, model_namespace: Names
     tempo_operator_subscription = Subscription(client=admin_client, namespace=operator_ns.name, name=package_name)
 
     if not tempo_operator_subscription.exists:
+        # Check if TEMPO_ROLE_ARN is required but not set
+        tempo_role_arn = os.getenv("TEMPO_ROLE_ARN")
+        if not tempo_role_arn:
+            raise ValueError(
+                "TEMPO_ROLE_ARN environment variable is required for Tempo installation on ROSA clusters. "
+                "Please provide the AWS IAM Role ARN token."
+            )
+
         install_operator(
             admin_client=admin_client,
             target_namespaces=None,
@@ -276,7 +286,6 @@ def installed_tempo_operator(admin_client: DynamicClient, model_namespace: Names
             operator_namespace=operator_ns.name,
             timeout=900,
             install_plan_approval="Automatic",
-            starting_csv="tempo-operator.v0.19.0-2",
         )
 
         deployment = Deployment(
@@ -286,6 +295,10 @@ def installed_tempo_operator(admin_client: DynamicClient, model_namespace: Names
             wait_for_resource=True,
         )
         deployment.wait_for_replicas()
+
+        # For ROSA clusters, patch the deployment with ROLE ARN
+        LOGGER.info("ROSA cluster detected. Patching Tempo operator with ROLE ARN environment variable")
+        patch_tempo_operator_for_rosa(deployment=deployment, role_arn=tempo_role_arn)
 
         yield
 
