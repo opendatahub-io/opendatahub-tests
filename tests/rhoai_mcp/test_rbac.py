@@ -65,13 +65,16 @@ class TestRhoaiMcpRbac:
         """
         async with Client(rbac_reader_transport) as client:
             with pytest.raises(ToolError, match=r"deploy_model.*not permitted for the current user"):
-                await client.call_tool("deploy_model", {
-                    "name": "rbac-denied-test",
-                    "namespace": RHOAI_MCP_NAMESPACE,
-                    "runtime": "vllm-runtime",
-                    "model_format": "vLLM",
-                    "storage_uri": "hf://instructlab/granite-7b-lab",
-                })
+                await client.call_tool(
+                    "deploy_model",
+                    {
+                        "name": "rbac-denied-test",
+                        "namespace": RHOAI_MCP_NAMESPACE,
+                        "runtime": "vllm-runtime",
+                        "model_format": "vLLM",
+                        "storage_uri": "hf://instructlab/granite-7b-lab",
+                    },
+                )
 
     async def test_deployer_sees_read_and_deploy_tools(
         self,
@@ -86,7 +89,11 @@ class TestRhoaiMcpRbac:
             tools = await client.list_tools()
             tool_names = {tool.name for tool in tools}
 
-            expected_visible = set(RHOAI_MCP_INFERENCE_READ_TOOLS) | set(RHOAI_MCP_INFERENCE_DEPLOY_TOOLS) | set(RHOAI_MCP_EXPECTED_CATALOG_TOOLS)
+            expected_visible = (
+                set(RHOAI_MCP_INFERENCE_READ_TOOLS)
+                | set(RHOAI_MCP_INFERENCE_DEPLOY_TOOLS)
+                | set(RHOAI_MCP_EXPECTED_CATALOG_TOOLS)
+            )
             missing = expected_visible - tool_names
             assert not missing, f"Expected tools not visible to deployer: {missing}"
 
