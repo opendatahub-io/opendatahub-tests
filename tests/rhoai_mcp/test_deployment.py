@@ -1,3 +1,5 @@
+import json
+
 import pytest
 import requests
 from ocp_resources.deployment import Deployment
@@ -32,49 +34,68 @@ class TestRhoaiMcpDeployment:
         assert response.ok
 
     @pytest.mark.smoke
-    def test_unauthenticated_sse_rejected(
+    def test_unauthenticated_mcp_rejected(
         self,
-        rhoai_mcp_base_url: str,
+        rhoai_mcp_endpoint_url: str,
         rhoai_mcp_ca_bundle: str,
         rhoai_mcp_ready: None,
     ) -> None:
         """Given rhoai-mcp is deployed with OIDC authentication enabled
-        When an unauthenticated request is sent to the /sse endpoint
+        When an unauthenticated request is sent to the /mcp endpoint
         Then the server returns 401 with a WWW-Authenticate: Bearer header
         """
-        url = f"{rhoai_mcp_base_url}/sse"
-        response = requests.get(url, verify=rhoai_mcp_ca_bundle, timeout=10)
+        response = requests.post(
+            url=rhoai_mcp_endpoint_url,
+            json={"jsonrpc": "2.0", "id": 1, "method": "initialize"},
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json, text/event-stream",
+            },
+            verify=rhoai_mcp_ca_bundle,
+            timeout=10,
+        )
         assert response.status_code == 401
         assert "Bearer" in response.headers.get("WWW-Authenticate", "")
 
     @pytest.mark.smoke
-    def test_authenticated_sse_succeeds(
+    def test_authenticated_mcp_succeeds(
         self,
-        rhoai_mcp_base_url: str,
+        rhoai_mcp_endpoint_url: str,
         rhoai_mcp_ca_bundle: str,
         rhoai_mcp_ready: None,
         current_client_token: str,
     ) -> None:
         """Given rhoai-mcp is deployed with OIDC authentication enabled
-        When an authenticated request is sent to the /sse endpoint
-        Then the server returns 200 and begins an SSE event stream
+        When an authenticated JSON-RPC initialize request is sent to the /mcp endpoint
+        Then the server returns 200 with server capabilities and a session ID
         """
-        # Uses admin token for now; will swap with create_inference_token(sa)
-        # for dedicated test identity in future tests
-        url = f"{rhoai_mcp_base_url}/sse"
-        with requests.get(
-            url,
-            headers={"Authorization": f"Bearer {current_client_token}"},
+        response = requests.post(
+            url=rhoai_mcp_endpoint_url,
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-03-26",
+                    "capabilities": {},
+                    "clientInfo": {"name": "test-client", "version": "0.1.0"},
+                },
+            },
+            headers={
+                "Authorization": f"Bearer {current_client_token}",
+                "Content-Type": "application/json",
+                "Accept": "application/json, text/event-stream",
+            },
             verify=rhoai_mcp_ca_bundle,
             timeout=30,
-            stream=True,
-        ) as response:
-            assert response.status_code == 200
-            content_type = response.headers.get("content-type", "")
-            assert "text/event-stream" in content_type
-            for line in response.iter_lines(decode_unicode=True):
-                if line:
-                    assert line.startswith((":", "data:", "event:", "id:", "retry:"))
-                    break
-            else:
-                pytest.fail("rhoai-mcp closed the SSE stream without emitting an event")
+        )
+        assert response.status_code == 200
+        data_lines = [line.removeprefix("data: ") for line in response.text.splitlines() if line.startswith("data: ")]
+        assert data_lines, "No SSE data lines in response"
+        body = json.loads(data_lines[0])
+        assert body["jsonrpc"] == "2.0"
+        assert body["id"] == 1
+        result = body["result"]
+        assert "serverInfo" in result
+        assert "capabilities" in result
+        assert response.headers.get("mcp-session-id")

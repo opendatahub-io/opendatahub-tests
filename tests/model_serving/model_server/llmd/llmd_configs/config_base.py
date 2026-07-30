@@ -89,6 +89,8 @@ class LLMISvcConfig:
     def prefill_config(cls):
         return None
 
+    kv_cache_offloading = None
+
     @classmethod
     def worker_config(cls):
         return None
