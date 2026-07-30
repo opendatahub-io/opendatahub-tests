@@ -31,3 +31,27 @@ RHOAI_MCP_EXPECTED_PROMPTS: tuple[str, ...] = (
     "deploy-llm",
     "find-gpus",
 )
+
+RHOAI_MCP_RBAC_READER_ROLE_NAME: str = "test-rhoai-mcp-reader"
+RHOAI_MCP_RBAC_DEPLOYER_ROLE_NAME: str = "test-rhoai-mcp-deployer"
+
+RHOAI_MCP_INFERENCE_READ_TOOLS: tuple[str, ...] = (
+    "list_inference_services",
+    "get_inference_service",
+    "list_serving_runtimes",
+    "get_model_endpoint",
+    "test_model_endpoint",
+    "check_deployment_prerequisites",
+    "estimate_serving_resources",
+    "recommend_serving_runtime",
+)
+
+RHOAI_MCP_INFERENCE_DEPLOY_TOOLS: tuple[str, ...] = (
+    "deploy_model",
+    "prepare_model_deployment",
+)
+
+RHOAI_MCP_INFERENCE_RESTRICTED_TOOLS: tuple[str, ...] = (
+    "delete_inference_service",
+    "create_serving_runtime",
+)
