@@ -685,19 +685,22 @@ def get_model_route(client: DynamicClient, isvc: InferenceService) -> Route:
     raise ResourceNotFoundError(f"{isvc.name} has no routes")
 
 
-def create_inference_token(model_service_account: ServiceAccount) -> str:
+def create_inference_token(model_service_account: ServiceAccount, duration: str = "24h") -> str:
     """
     Generates an inference token for the given model service account.
 
     Args:
         model_service_account (ServiceAccount): An object containing the namespace and name
                                of the service account.
+        duration (str): Token validity duration (default "24h").
 
     Returns:
         str: The generated inference token.
     """
     return run_command(
-        shlex.split(f"oc create token -n {model_service_account.namespace} {model_service_account.name}")
+        shlex.split(
+            f"oc create token -n {model_service_account.namespace} {model_service_account.name} --duration={duration}"
+        )
     )[1].strip()
 
 
