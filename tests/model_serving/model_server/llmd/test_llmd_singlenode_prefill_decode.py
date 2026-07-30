@@ -23,7 +23,7 @@ from tests.model_serving.model_server.llmd.utils import (
 
 LOGGER = structlog.get_logger(name=__name__)
 
-pytestmark = [pytest.mark.tier2, pytest.mark.llmd_gpu]
+pytestmark = [pytest.mark.llmd_gpu]
 
 NAMESPACE = ns_from_file(file=__file__)
 
@@ -58,22 +58,11 @@ PROMPTS = [
     "unprivileged_model_namespace, llmisvc",
     [
         pytest.param({"name": NAMESPACE}, SingleNodePrefillDecodeConfig, id="standard"),
-        pytest.param(
-            {"name": NAMESPACE},
-            SingleNodePDFast1Config,
-            id="fast-1",
-            marks=pytest.mark.fast_vllm,
-        ),
-        pytest.param(
-            {"name": NAMESPACE},
-            SingleNodePDFast2Config,
-            id="fast-2",
-            marks=pytest.mark.fast_vllm,
-        ),
+        pytest.param({"name": NAMESPACE}, SingleNodePDFast1Config, id="fast-1"),
+        pytest.param({"name": NAMESPACE}, SingleNodePDFast2Config, id="fast-2"),
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("skip_if_disconnected")
 class TestSingleNodePrefillDecode:
     """Single-node P/D LLMISVC with controller-generated scheduler config.
 

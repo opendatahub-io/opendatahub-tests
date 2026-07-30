@@ -833,7 +833,7 @@ def log_accelerator_selection(
     config_name: str,
     detected_nodes: list[dict],
     selected: str,
-    total_gpus: int,
+    qualifying_gpus: int,
     qualifying_nodes: int,
 ) -> None:
     node_lines = "\n".join(
@@ -845,7 +845,7 @@ def log_accelerator_selection(
         f"{'=' * 60}\n"
         f"{node_lines or '  (no accelerator nodes found)'}\n"
         f"------------------------------------------------------------\n"
-        f"  Selected: {selected} ({total_gpus} GPU(s) on {qualifying_nodes} node(s))\n"
+        f"  Selected: {selected} ({qualifying_gpus} GPU(s) on {qualifying_nodes} node(s))\n"
         f"{'=' * 60}\n"
     )
 

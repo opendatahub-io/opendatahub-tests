@@ -132,7 +132,6 @@ def validate_evalhub_health(
     host: str,
     token: str,
     ca_bundle_file: str,
-    tenant_namespace: str | None = None,
 ) -> None:
     """Validate that the EvalHub service health endpoint returns healthy status.
 
@@ -140,7 +139,6 @@ def validate_evalhub_health(
         host: Route host for the EvalHub service.
         token: Bearer token for authentication.
         ca_bundle_file: Path to CA bundle for TLS verification.
-        tenant_namespace: Namespace for the X-Tenant header.
 
     Raises:
         AssertionError: If the health check fails.
@@ -151,7 +149,7 @@ def validate_evalhub_health(
 
     response = requests.get(
         url=url,
-        headers=build_headers(token=token, tenant=tenant_namespace),
+        headers=get_auth_headers(token=token),
         verify=ca_bundle_file,
         timeout=10,
     )
@@ -875,6 +873,36 @@ def build_evalhub_job_payload(
         },
         "benchmarks": [build_vllm_arc_easy_benchmark()],
     }
+
+
+def build_pvc_test_data_ref(claim_name: str, sub_path: str | None = None) -> dict:
+    """Build the test_data_ref.pvc portion of an EvalHub job payload."""
+    pvc_ref: dict[str, str] = {"claim_name": claim_name}
+    if sub_path is not None:
+        pvc_ref["sub_path"] = sub_path
+    return {"pvc": pvc_ref}
+
+
+def build_pvc_job_payload(
+    model_service_name: str,
+    tenant_namespace: str,
+    job_name: str,
+    claim_name: str,
+    sub_path: str | None = None,
+    tokenizer_path: str | None = None,
+) -> dict:
+    """Build an EvalHub job payload with PVC-backed test data."""
+    payload = build_evalhub_job_payload(
+        model_service_name=model_service_name,
+        tenant_namespace=tenant_namespace,
+        job_name=job_name,
+    )
+    pvc_ref = build_pvc_test_data_ref(claim_name=claim_name, sub_path=sub_path)
+    for benchmark in payload["benchmarks"]:
+        benchmark["test_data_ref"] = pvc_ref
+        if tokenizer_path:
+            benchmark["parameters"]["tokenizer"] = tokenizer_path
+    return payload
 
 
 def submit_evalhub_collection(
