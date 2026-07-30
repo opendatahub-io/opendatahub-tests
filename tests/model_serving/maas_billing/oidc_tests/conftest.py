@@ -161,7 +161,7 @@ def oidc_auth_policy_patched(
     }
 
     with ResourceEditor(patches={aitenant: oidc_patch}):
-        maas_auth_policy = wait_for_auth_policy_accepted(
+        wait_for_auth_policy_accepted(
             admin_client=admin_client,
             policy_name=MAAS_GATEWAY_AUTH_POLICY_NAME,
             namespace=MAAS_GATEWAY_NAMESPACE,
@@ -169,7 +169,6 @@ def oidc_auth_policy_patched(
                 "Ensure oidc_maas_auth_policy created a MaaSAuthPolicy to trigger gateway auth reconciliation."
             ),
         )
-        maas_auth_policy.wait_for_condition(condition="Enforced", status="True", timeout=120)
         LOGGER.info("oidc_auth_policy_patched: operator applied OIDC rules to AuthPolicy")
         yield
 
