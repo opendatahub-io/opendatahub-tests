@@ -40,6 +40,7 @@ def ci_bucket_downloaded_model_data(
         aws_default_region=ci_s3_bucket_region,
         model_path=request.param["model-dir"],
         use_sub_path=True,
+        restricted_scc_init=True,
     )
 
 
