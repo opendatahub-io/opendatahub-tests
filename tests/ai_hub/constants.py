@@ -1,9 +1,8 @@
 from typing import Any
 
 from tests.ai_hub.image_constants import AiHubImages
-from utilities.constants import ModelFormat, RuntimeTemplates
 from utilities.image_constants import SharedImages
-from utilities.constants import ModelCarImage, ModelFormat, RuntimeTemplates
+from utilities.constants import ModelFormat, RuntimeTemplates
 from utilities.openshift_resources.deployment import Deployment
 from utilities.openshift_resources.persistent_volume_claim import PersistentVolumeClaim
 from utilities.openshift_resources.secret import Secret
