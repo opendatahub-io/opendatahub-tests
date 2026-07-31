@@ -49,10 +49,9 @@ def model_registry_namespace_for_negative_tests(
 
 @pytest.fixture(scope="class")
 def model_registry_db_service_for_negative_tests(
-    admin_client: DynamicClient, model_registry_namespace_for_negative_tests: Namespace
+    model_registry_namespace_for_negative_tests: Namespace,
 ) -> Generator[Service, Any, Any]:
     with Service(
-        client=admin_client,
         name=DB_RESOURCES_NAME_NEGATIVE,
         namespace=model_registry_namespace_for_negative_tests.name,
         ports=[
@@ -78,7 +77,6 @@ def model_registry_db_service_for_negative_tests(
 
 @pytest.fixture(scope="class")
 def model_registry_db_pvc_for_negative_tests(
-    admin_client: DynamicClient,
     model_registry_namespace_for_negative_tests: Namespace,
 ) -> Generator[PersistentVolumeClaim, Any, Any]:
     with PersistentVolumeClaim(
@@ -93,11 +91,9 @@ def model_registry_db_pvc_for_negative_tests(
 
 @pytest.fixture(scope="class")
 def model_registry_db_secret_negative_test(
-    admin_client: DynamicClient,
     model_registry_namespace_for_negative_tests: Namespace,
 ) -> Generator[Secret, Any, Any]:
     with Secret(
-        client=admin_client,
         name=DB_RESOURCES_NAME_NEGATIVE,
         namespace=model_registry_namespace_for_negative_tests.name,
         string_data=MODEL_REGISTRY_DB_SECRET_STR_DATA,
@@ -109,14 +105,12 @@ def model_registry_db_secret_negative_test(
 
 @pytest.fixture(scope="class")
 def model_registry_db_deployment_negative_test(
-    admin_client: DynamicClient,
     model_registry_namespace_for_negative_tests: Namespace,
     model_registry_db_secret_negative_test: Secret,
     model_registry_db_pvc_for_negative_tests: PersistentVolumeClaim,
     model_registry_db_service_for_negative_tests: Service,
 ) -> Generator[Deployment, Any, Any]:
     with Deployment(
-        client=admin_client,
         name=DB_RESOURCES_NAME_NEGATIVE,
         namespace=model_registry_namespace_for_negative_tests.name,
         annotations={
@@ -166,9 +160,9 @@ def model_registry_db_instance_pod(admin_client: DynamicClient) -> Generator[Pod
 
 
 @pytest.fixture()
-def delete_mr_deployment(admin_client: DynamicClient) -> None:
+def delete_mr_deployment() -> None:
     """Delete the model registry deployment"""
     mr_deployment = Deployment(
-        client=admin_client, name=MR_INSTANCE_NAME, namespace=py_config["model_registry_namespace"], ensure_exists=True
+        name=MR_INSTANCE_NAME, namespace=py_config["model_registry_namespace"], ensure_exists=True
     )
     mr_deployment.delete(wait=True)

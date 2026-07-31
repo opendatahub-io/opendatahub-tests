@@ -96,7 +96,6 @@ def gateway_model_registry_url(
 
 @pytest.fixture(scope="class")
 def model_registry_reference_grants(
-    admin_client: DynamicClient,
     model_registry_namespace: str,
 ) -> list[ReferenceGrant]:
     """Get ReferenceGrants in model registry namespace."""

@@ -2,7 +2,6 @@ from typing import Self
 
 import pytest
 import structlog
-from kubernetes.dynamic import DynamicClient
 from pytest_testconfig import config as py_config
 
 from tests.ai_hub.constants import (
@@ -32,7 +31,6 @@ class TestModelRegistryCreationNegative:
     @pytest.mark.tier3
     def test_registering_model_negative(
         self: Self,
-        admin_client: DynamicClient,
         current_client_token: str,
         model_registry_namespace_for_negative_tests: Namespace,
         updated_dsc_component_state_scope_session: DataScienceCluster,
@@ -53,7 +51,6 @@ class TestModelRegistryCreationNegative:
             match=f"namespace must be {py_config['model_registry_namespace']}",
         ):
             with ModelRegistry(
-                client=admin_client,
                 name=MR_INSTANCE_NAME,
                 namespace=model_registry_namespace_for_negative_tests.name,
                 label={

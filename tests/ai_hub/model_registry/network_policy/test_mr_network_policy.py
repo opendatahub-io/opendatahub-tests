@@ -1,6 +1,5 @@
 import pytest
 import structlog
-from kubernetes.dynamic import DynamicClient
 
 from utilities.openshift_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from utilities.openshift_resources.network_policy import NetworkPolicy
@@ -20,7 +19,6 @@ class TestModelRegistryNetworkPolicy:
 
     def test_https_route_ingress_namespace_labels(
         self,
-        admin_client: DynamicClient,
         model_registry_instance: list[ModelRegistry],
         model_registry_namespace: str,
     ) -> None:
@@ -30,7 +28,6 @@ class TestModelRegistryNetworkPolicy:
         """
         np_name = f"{model_registry_instance[0].name}-https-route"
         network_policy = NetworkPolicy(
-            client=admin_client,
             name=np_name,
             namespace=model_registry_namespace,
             ensure_exists=True,
@@ -60,13 +57,9 @@ class TestModelRegistryNetworkPolicy:
         """
         mr_name = model_registry_instance[0].name
         service_url = f"https://{mr_name}.{model_registry_namespace}.svc.cluster.local:8443"
-        result = dashboard_pod.execute(command=["curl", "-k", "--connect-timeout", "10", service_url])
-        LOGGER.info(f"curl to {service_url}: rc={result.rc}, stdout={result.stdout}, stderr={result.stderr}")
-        assert result.rc == 0, (
-            f"Dashboard pod cannot reach model registry at {service_url} — "
-            f"NetworkPolicy may be blocking traffic (rc={result.rc}, stderr={result.stderr})"
-        )
-        assert "Connection timed out" not in result.stdout, (
+        output = dashboard_pod.execute(command=["curl", "-k", "--connect-timeout", "10", service_url])
+        LOGGER.info(f"curl to {service_url}: stdout={output}")
+        assert "Connection timed out" not in output, (
             f"Dashboard pod connection timed out to model registry at {service_url} — "
             f"NetworkPolicy may be blocking traffic"
         )

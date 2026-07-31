@@ -74,7 +74,7 @@ def build_labeled_configmap_data(source_id: str, source_name: str, model_name: s
     return {"sources.yaml": sources_yaml, "catalog-data.yaml": catalog_data_yaml}
 
 
-def get_deployment_catalog_args(admin_client: DynamicClient, namespace: str) -> list[str]:
+def get_deployment_catalog_args(namespace: str) -> list[str]:
     """Retrieve the container args from the model-catalog deployment.
 
     Args:
@@ -84,9 +84,7 @@ def get_deployment_catalog_args(admin_client: DynamicClient, namespace: str) -> 
     Returns:
         List of container argument strings.
     """
-    deployment = Deployment(
-        name=MODEL_CATALOG_DEPLOYMENT_NAME, namespace=namespace, client=admin_client, ensure_exists=True
-    )
+    deployment = Deployment(name=MODEL_CATALOG_DEPLOYMENT_NAME, namespace=namespace, ensure_exists=True)
     catalog_container = next(
         (
             container

@@ -41,13 +41,11 @@ LOGGER = structlog.get_logger(name=__name__)
 class TestModelRegistryMultipleInstances:
     def test_validate_multiple_model_registry(
         self: Self,
-        admin_client: DynamicClient,
         model_registry_instance: list[ModelRegistry],
         model_registry_namespace: str,
     ):
         for num in range(NUM_RESOURCES["num_resources"]):
             mr = ModelRegistry(
-                client=admin_client,
                 name=f"{MR_INSTANCE_BASE_NAME}{num}",
                 namespace=model_registry_namespace,
                 ensure_exists=True,
@@ -55,9 +53,7 @@ class TestModelRegistryMultipleInstances:
             LOGGER.info(f"{mr.name} found")
 
     @pytest.mark.tier2
-    def test_validate_one_model_catalog_configmap(
-        self: Self, admin_client: DynamicClient, model_registry_namespace: str
-    ):
+    def test_validate_one_model_catalog_configmap(self: Self, model_registry_namespace: str):
         """
         Validate that when multiple MR exists on a cluster, only two model catalog configmaps are created
         """

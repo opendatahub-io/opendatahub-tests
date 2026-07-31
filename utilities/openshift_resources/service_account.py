@@ -48,3 +48,13 @@ class ServiceAccount(NamespaceScopedResource):
             resource["secrets"] = self.secrets
 
         return resource
+
+    async def create_service_account_token(self, expiration_seconds: int = 86400) -> dict[str, Any]:
+        """Create a token for this service account via oc create token."""
+        from utilities.openshift_resources.oc import run_oc
+        from utilities.openshift_resources.resource_dict import ResourceDict
+
+        result = await run_oc(
+            args=["create", "token", self.name, "-n", self.namespace, f"--duration={expiration_seconds}s"],
+        )
+        return ResourceDict({"status": {"token": result.stdout.strip()}})  # noqa: FCN001

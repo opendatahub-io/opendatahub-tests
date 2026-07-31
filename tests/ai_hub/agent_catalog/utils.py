@@ -2,7 +2,6 @@ from typing import Any
 
 import structlog
 import yaml
-from kubernetes.dynamic import DynamicClient
 
 from tests.ai_hub.constants import DEFAULT_CUSTOM_MODEL_CATALOG
 from tests.ai_hub.utils import execute_get_command_with_retry
@@ -11,11 +10,10 @@ from utilities.openshift_resources.config_map import ConfigMap
 LOGGER = structlog.get_logger(name=__name__)
 
 
-def get_agent_catalog_sources(admin_client: DynamicClient, model_registry_namespace: str) -> tuple[ConfigMap, dict]:
+def get_agent_catalog_sources(model_registry_namespace: str) -> tuple[ConfigMap, dict]:
     """Return the user-editable catalog sources ConfigMap and its parsed sources.yaml data."""
     catalog_config_map = ConfigMap(
         name=DEFAULT_CUSTOM_MODEL_CATALOG,
-        client=admin_client,
         namespace=model_registry_namespace,
     )
     current_data = yaml.safe_load(catalog_config_map.instance.data.get("sources.yaml", "{}") or "{}")

@@ -9,7 +9,7 @@ class ResourceDict(dict):
     """Dict that allows attribute-style access to nested keys.
 
     Nested dicts are wrapped recursively. Lists of dicts are wrapped too.
-    Missing keys raise AttributeError (not KeyError) for clean dot-access.
+    Missing keys return None for clean dot-access chaining.
     """
 
     def __getattr__(self, name: str) -> Any:

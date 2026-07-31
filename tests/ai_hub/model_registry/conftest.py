@@ -36,12 +36,10 @@ DEFAULT_TOKEN_DURATION = "10m"
 
 
 @pytest.fixture(scope="class")
-def model_registry_instance_rest_endpoint(
-    admin_client: DynamicClient, model_registry_instance: list
-) -> list[tuple[str, int]]:
+def model_registry_instance_rest_endpoint(model_registry_instance: list) -> list[tuple[str, int]]:
     """REST endpoint address and port for each model registry instance."""
     mr_services = [
-        get_mr_service_by_label(client=admin_client, namespace_name=mr_instance.namespace, mr_instance=mr_instance)
+        get_mr_service_by_label(namespace_name=mr_instance.namespace, mr_instance=mr_instance)
         for mr_instance in model_registry_instance
     ]
     if not mr_services:
@@ -103,10 +101,10 @@ def model_registry_rest_url(model_registry_instance_rest_endpoint: list[tuple[st
 
 @pytest.fixture(scope="class")
 def model_registry_deployment_containers(
-    admin_client: DynamicClient, model_registry_namespace: str
+    model_registry_namespace: str,
 ) -> list[dict[str, Any]]:
     return Deployment(
-        client=admin_client, name=MR_INSTANCE_NAME, namespace=model_registry_namespace, ensure_exists=True
+        name=MR_INSTANCE_NAME, namespace=model_registry_namespace, ensure_exists=True
     ).instance.spec.template.spec.containers
 
 
@@ -166,7 +164,6 @@ def sa_token(service_account: ServiceAccount) -> str:
 
 @pytest.fixture(scope="class")
 def mr_access_role(
-    admin_client: DynamicClient,
     model_registry_namespace: str,
     sa_namespace: Namespace,
 ) -> Generator[Role]:
@@ -190,7 +187,6 @@ def mr_access_role(
     }
 
     with Role(
-        client=admin_client,
         name=role_name,
         namespace=model_registry_namespace,
         rules=role_rules,
@@ -202,7 +198,6 @@ def mr_access_role(
 
 @pytest.fixture(scope="class")
 def mr_access_role_binding(
-    admin_client: DynamicClient,
     model_registry_namespace: str,
     mr_access_role: Role,
     sa_namespace: Namespace,

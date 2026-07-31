@@ -187,7 +187,6 @@ class TestModelCleanupLifecycle:
 
         # Phase 1: Include only granite models
         phase1_patch = modify_catalog_source(
-            admin_client=admin_client,
             namespace=model_registry_namespace,
             source_id=REDHAT_AI_CATALOG_ID,
             included_models=["*granite*"],
@@ -222,7 +221,6 @@ class TestModelCleanupLifecycle:
 
                 # Phase 2: Change to exclude granite models (should trigger cleanup)
                 phase2_patch = modify_catalog_source(
-                    admin_client=admin_client,
                     namespace=model_registry_namespace,
                     source_id=REDHAT_AI_CATALOG_ID,
                     included_models=["*"],  # Include all

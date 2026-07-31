@@ -4,7 +4,6 @@ Test suite for verifying RBAC permissions for Model Catalog ConfigMaps.
 
 import pytest
 import structlog
-from kubernetes.dynamic import DynamicClient
 
 from tests.ai_hub.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
 from utilities.openshift_resources.config_map import ConfigMap
@@ -35,7 +34,6 @@ class TestCatalogRBAC:
     )
     def test_admin_can_read_catalog_configmaps(
         self,
-        admin_client: DynamicClient,
         model_registry_namespace: str,
         configmap_name: str,
     ):
@@ -53,7 +51,6 @@ class TestCatalogRBAC:
         catalog_cm = ConfigMap(
             name=configmap_name,
             namespace=model_registry_namespace,
-            client=admin_client,
         )
 
         assert catalog_cm.exists, f"ConfigMap '{configmap_name}' not found in namespace '{model_registry_namespace}'"

@@ -74,6 +74,7 @@ classifiers = [
 ]
 
 dependencies = [
+    "aiohttp>=3.9",
     "bcrypt>=4.0.0",
     "cryptography>=43.0.0",
     "ipython>=8.18.1",

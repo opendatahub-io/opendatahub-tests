@@ -1,7 +1,6 @@
 import pytest
 import requests
 import structlog
-from kubernetes.dynamic import DynamicClient
 
 from tests.ai_hub.model_catalog.utils import get_hf_catalog_str
 from utilities.openshift_resources.inference_service import InferenceService
@@ -36,7 +35,6 @@ class TestHuggingFaceModelDeployment:
     @pytest.mark.tier2
     def test_huggingface_model_deployment_end_to_end(
         self,
-        admin_client: DynamicClient,
         hugging_face_deployment_ns: Namespace,
         huggingface_serving_runtime: ServingRuntime,
         huggingface_inference_service: InferenceService,

@@ -19,7 +19,7 @@ MODEL_CATALOG_API_PATH: str = "/api/model_catalog/v1alpha1/"
 
 
 @pytest.fixture(scope="class")
-def model_catalog_preview_url(model_registry_namespace: str, admin_client: DynamicClient) -> str:
+def model_catalog_preview_url(model_registry_namespace: str) -> str:
     """Base URL for the model catalog API (preview endpoint lives here, not on the MCP catalog API)."""
     routes = list(Route.list_resources(namespace=model_registry_namespace, label_selector="component=model-catalog"))
     assert routes, f"Model catalog routes do not exist in {model_registry_namespace}"

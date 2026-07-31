@@ -4,7 +4,6 @@ from typing import Any
 
 import pytest
 import shortuuid
-from kubernetes.dynamic import DynamicClient
 from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import RegisteredModel
 from pytest import FixtureRequest
@@ -31,7 +30,6 @@ from utilities.openshift_resources.service_account import ServiceAccount
 
 @pytest.fixture(scope="class")
 def s3_secret_for_async_job(
-    admin_client: DynamicClient,
     service_account: ServiceAccount,
     minio_service: Service,
 ) -> Generator[Secret, Any, Any]:
@@ -65,7 +63,6 @@ def s3_secret_for_async_job(
 
 @pytest.fixture(scope="class")
 def oci_secret_for_async_job(
-    admin_client: DynamicClient,
     service_account: ServiceAccount,
     oci_registry_host: str,
 ) -> Generator[Secret, Any, Any]:
@@ -88,7 +85,6 @@ def oci_secret_for_async_job(
     }
 
     with Secret(
-        client=admin_client,
         name=f"async-job-oci-connection-{shortuuid.uuid().lower()}",
         namespace=service_account.namespace,
         data=data_dict,
@@ -100,14 +96,13 @@ def oci_secret_for_async_job(
             f"{ApiGroups.OPENDATAHUB_IO}/connection-type-ref": "oci-v1",
             "openshift.io/display-name": "My OCI Credentials",
         },
-        type="kubernetes.io/dockerconfigjson",
+        type_="kubernetes.io/dockerconfigjson",
     ) as secret:
         yield secret
 
 
 @pytest.fixture(scope="class")
 def model_sync_async_job(
-    admin_client: DynamicClient,
     sa_token: str,
     service_account: ServiceAccount,
     model_registry_namespace: str,
@@ -147,9 +142,7 @@ def model_sync_async_job(
 
     # Get Model Registry service endpoint for connection
     mr_instance = model_registry_instance[0]
-    mr_service = get_mr_service_by_label(
-        client=admin_client, namespace_name=model_registry_namespace, mr_instance=mr_instance
-    )
+    mr_service = get_mr_service_by_label(namespace_name=model_registry_namespace, mr_instance=mr_instance)
     mr_address, mr_port = get_endpoint_from_mr_service(svc=mr_service, protocol=Protocols.REST)
     mr_host, _, mr_path = mr_address.partition("/")
     mr_server_address = f"https://{mr_host}:{mr_port}/{mr_path}" if mr_path else f"https://{mr_host}:{mr_port}"
@@ -225,12 +218,10 @@ def model_sync_async_job(
 @pytest.fixture(scope="class")
 def create_test_data_in_minio_from_image(
     minio_service: Service,
-    admin_client: DynamicClient,
     model_registry_namespace: str,
 ) -> None:
     """Extract and upload test model from KSERVE_MINIO_IMAGE to MinIO"""
     upload_test_model_to_minio_from_image(
-        admin_client=admin_client,
         namespace=model_registry_namespace,
         minio_service=minio_service,
         object_key="my-model/model.onnx",

@@ -143,13 +143,13 @@ def installed_tas_operator(admin_client: DynamicClient) -> Generator[None, Any]:
         None: Operator is ready for use
     """
     distribution = py_config["distribution"]
-    operator_ns = Namespace(client=admin_client, name=OPENSHIFT_OPERATORS, ensure_exists=True)
+    operator_ns = Namespace(name=OPENSHIFT_OPERATORS, ensure_exists=True)
     package_name = "rhtas-operator"
 
     # Determine operator source: ODH uses community-operators, RHOAI uses redhat-operators
     operator_source = "community-operators" if distribution == "upstream" else "redhat-operators"
 
-    tas_operator_subscription = Subscription(client=admin_client, namespace=operator_ns.name, name=package_name)
+    tas_operator_subscription = Subscription(namespace=operator_ns.name, name=package_name)
 
     if not tas_operator_subscription.exists:
         LOGGER.info(f"TAS operator not found in {OPENSHIFT_OPERATORS}. Installing from {operator_source}...")
@@ -166,7 +166,6 @@ def installed_tas_operator(admin_client: DynamicClient) -> Generator[None, Any]:
 
         # Wait for operator deployment to be ready
         deployment = Deployment(
-            client=admin_client,
             namespace=operator_ns.name,
             name="rhtas-operator-controller-manager",
             wait_for_resource=True,
@@ -184,7 +183,7 @@ def installed_tas_operator(admin_client: DynamicClient) -> Generator[None, Any]:
             clean_up_namespace=False,
         )
         # Ensure namespace exists for Securesign
-        ns = Namespace(client=admin_client, name=SECURESIGN_NAMESPACE)
+        ns = Namespace(name=SECURESIGN_NAMESPACE)
         if ns.exists:
             ns.delete(wait=True)
     else:
@@ -217,7 +216,7 @@ def securesign_instance(
         Resource: Securesign resource instance
     """
     # Ensure namespace exists for Securesign
-    ns = Namespace(client=admin_client, name=SECURESIGN_NAMESPACE)
+    ns = Namespace(name=SECURESIGN_NAMESPACE)
     ns.wait_for_status(status=Namespace.Status.ACTIVE)
 
     # Build Securesign CR spec
@@ -280,7 +279,7 @@ def securesign_instance(
 
 
 @pytest.fixture(scope="package")
-def tas_connection_type(admin_client: DynamicClient, securesign_instance: Securesign) -> Generator[ConfigMap, Any]:
+def tas_connection_type(securesign_instance: Securesign) -> Generator[ConfigMap, Any]:
     """Create ODH Connection Type ConfigMap for TAS (Trusted Artifact Signer).
 
     Provides TAS service endpoints for programmatic access to signing services.
@@ -355,7 +354,7 @@ def tas_connection_type(admin_client: DynamicClient, securesign_instance: Secure
         },
     }
 
-    with ConfigMap(kind_dict=configmap_data, client=admin_client) as connection_type:
+    with ConfigMap(kind_dict=configmap_data) as connection_type:
         LOGGER.info(f"TAS Connection Type '{TAS_CONNECTION_TYPE_NAME}' created in namespace '{app_namespace}'")
         yield connection_type
 
@@ -364,7 +363,6 @@ def tas_connection_type(admin_client: DynamicClient, securesign_instance: Secure
 
 @pytest.fixture(scope="class")
 def oci_registry_pod(
-    admin_client: DynamicClient,
     oci_namespace: Namespace,
 ) -> Generator[Pod, Any]:
     """Create a simple OCI registry (Zot) pod with local emptyDir storage.
@@ -380,7 +378,6 @@ def oci_registry_pod(
         Pod: Ready OCI registry pod
     """
     with Pod(
-        client=admin_client,
         name=OCIRegistry.Metadata.NAME,
         namespace=oci_namespace.name,
         containers=[
@@ -422,14 +419,13 @@ def oci_registry_pod(
 
 
 @pytest.fixture(scope="class")
-def ai_hub_oci_registry_route(admin_client: DynamicClient, oci_registry_service: Service) -> Generator[Route, Any]:
+def ai_hub_oci_registry_route(oci_registry_service: Service) -> Generator[Route, Any]:
     """Override the default Route with edge TLS termination.
 
     Cosign requires HTTPS. Edge termination lets the OpenShift router handle TLS
     and forward plain HTTP to the Zot backend.
     """
     with Route(
-        client=admin_client,
         name=OCIRegistry.Metadata.NAME,
         namespace=oci_registry_service.namespace,
         to={"kind": "Service", "name": oci_registry_service.name},
@@ -622,7 +618,6 @@ def signed_model(signer, downloaded_model_dir) -> Path:
 
 @pytest.fixture(scope="class")
 def signing_s3_secret(
-    admin_client: DynamicClient,
     service_account: ServiceAccount,
     minio_service: Service,
 ) -> Generator[Secret, Any, Any]:
@@ -632,7 +627,6 @@ def signing_s3_secret(
     )
 
     with Secret(
-        client=admin_client,
         name=f"signing-s3-{shortuuid.uuid().lower()}",
         namespace=service_account.namespace,
         data=get_s3_secret_dict(
@@ -656,7 +650,6 @@ def signing_s3_secret(
 
 @pytest.fixture(scope="class")
 def signing_oci_secret(
-    admin_client: DynamicClient,
     service_account: ServiceAccount,
     oci_registry_service: Service,
 ) -> Generator[Secret, Any, Any]:
@@ -679,7 +672,6 @@ def signing_oci_secret(
     }
 
     with Secret(
-        client=admin_client,
         name=f"signing-oci-{shortuuid.uuid().lower()}",
         namespace=service_account.namespace,
         data=data_dict,
@@ -715,7 +707,6 @@ def signing_registered_model(
 
 @pytest.fixture(scope="class")
 def upload_unsigned_model_to_minio(
-    admin_client: DynamicClient,
     model_registry_namespace: str,
     minio_service: Service,
 ) -> None:
@@ -724,7 +715,6 @@ def upload_unsigned_model_to_minio(
     bucket = MinIo.Buckets.MODELMESH_EXAMPLE_MODELS
 
     run_minio_uploader_pod(
-        admin_client=admin_client,
         namespace=model_registry_namespace,
         minio_service=minio_service,
         pod_name="unsigned-model-uploader",
@@ -739,7 +729,6 @@ def upload_unsigned_model_to_minio(
 
 @pytest.fixture(scope="class")
 def identity_token_secret(
-    admin_client: DynamicClient,
     service_account: ServiceAccount,
     securesign_instance: Securesign,
 ) -> Generator[Secret, Any, Any]:
@@ -753,7 +742,6 @@ def identity_token_secret(
         token_content = f.read()
 
     with Secret(
-        client=admin_client,
         name=f"signing-identity-token-{shortuuid.uuid().lower()}",
         namespace=service_account.namespace,
         data={
@@ -766,7 +754,6 @@ def identity_token_secret(
 
 @pytest.fixture(scope="class")
 def native_signing_async_job(
-    admin_client: DynamicClient,
     sa_token: str,
     service_account: ServiceAccount,
     model_registry_namespace: str,
@@ -788,7 +775,6 @@ def native_signing_async_job(
     variables so the job signs both the model and the OCI image internally.
     """
     mr_host = get_model_registry_host(
-        admin_client=admin_client,
         model_registry_namespace=model_registry_namespace,
         model_registry_instance=model_registry_instance,
     )
@@ -809,7 +795,6 @@ def native_signing_async_job(
     ]
 
     yield from create_async_upload_job(
-        admin_client=admin_client,
         job_name=f"{ASYNC_UPLOAD_JOB_NAME}-native-signing",
         namespace=service_account.namespace,
         async_upload_image=async_upload_image,
@@ -834,11 +819,10 @@ def native_signing_async_job(
 
 @pytest.fixture(scope="class")
 def native_signing_job_pod(
-    admin_client: DynamicClient,
     native_signing_async_job: Job,
 ) -> Pod:
     """Get the pod created by the native signing async job."""
-    return get_latest_job_pod(admin_client=admin_client, job=native_signing_async_job)
+    return get_latest_job_pod(job=native_signing_async_job)
 
 
 @pytest.fixture(scope="class")

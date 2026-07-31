@@ -40,16 +40,13 @@ def recreated_model_catalog_configmap(
         LOGGER.info(f"Skipping ConfigMap {DEFAULT_CUSTOM_MODEL_CATALOG} recreation during upgrade testing")
         return ConfigMap(
             name=DEFAULT_CUSTOM_MODEL_CATALOG,
-            client=admin_client,
             namespace=namespace_name,
             ensure_exists=True,
         )
 
     # TODO: would require changing this to look for configmaps based on label
     # Get the existing ConfigMap
-    configmap = ConfigMap(
-        name=DEFAULT_CUSTOM_MODEL_CATALOG, client=admin_client, namespace=namespace_name, ensure_exists=True
-    )
+    configmap = ConfigMap(name=DEFAULT_CUSTOM_MODEL_CATALOG, namespace=namespace_name, ensure_exists=True)
 
     LOGGER.info(f"Deleting ConfigMap {DEFAULT_CUSTOM_MODEL_CATALOG} to test recreation")
 
@@ -61,7 +58,6 @@ def recreated_model_catalog_configmap(
     # Wait for it to be recreated using TimeoutSampler
     recreated_configmap = ConfigMap(
         name=DEFAULT_CUSTOM_MODEL_CATALOG,
-        client=admin_client,
         namespace=namespace_name,
     )
 
@@ -175,7 +171,7 @@ def redhat_ai_models_with_filter(
 
     # Apply filters
     patch_info = modify_catalog_source(
-        admin_client=admin_client, namespace=model_registry_namespace, source_id=REDHAT_AI_CATALOG_ID, **modify_kwargs
+        namespace=model_registry_namespace, source_id=REDHAT_AI_CATALOG_ID, **modify_kwargs
     )
 
     with patch_info["configmap"].patch_and_restore(patch=patch_info["patch"]):
@@ -214,7 +210,6 @@ def disabled_redhat_ai_source(
     """
     # Disable the source
     disable_patch = modify_catalog_source(
-        admin_client=admin_client,
         namespace=model_registry_namespace,
         source_id=REDHAT_AI_CATALOG_ID,
         enabled=False,

@@ -63,9 +63,7 @@ def agent_catalog_configmap_patch(
     }
 
     source = param["source"]
-    catalog_config_map, current_data = get_agent_catalog_sources(
-        admin_client=admin_client, model_registry_namespace=model_registry_namespace
-    )
+    catalog_config_map, current_data = get_agent_catalog_sources(model_registry_namespace=model_registry_namespace)
     if "agent_catalogs" not in current_data:
         current_data["agent_catalogs"] = []
     current_data["agent_catalogs"] = [

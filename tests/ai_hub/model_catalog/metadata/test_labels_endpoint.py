@@ -2,7 +2,6 @@ from typing import Any, Literal
 
 import pytest
 import structlog
-from kubernetes.dynamic import DynamicClient
 from timeout_sampler import TimeoutSampler
 
 from tests.ai_hub.model_catalog.metadata.utils import (
@@ -68,7 +67,6 @@ class TestLabelsEndpoint:
     @pytest.mark.tier1
     def test_labels_endpoint_configmap_updates(
         self,
-        admin_client: DynamicClient,
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         labels_configmap_patch: dict[str, Any],
@@ -80,9 +78,7 @@ class TestLabelsEndpoint:
 
         def _check_updated_labels():
             # Get updated expected labels from ConfigMaps
-            all_expected_labels = get_labels_from_configmaps(
-                admin_client=admin_client, namespace=model_registry_namespace
-            )
+            all_expected_labels = get_labels_from_configmaps(namespace=model_registry_namespace)
 
             token = get_openshift_token()
             url = model_catalog_rest_url[0]

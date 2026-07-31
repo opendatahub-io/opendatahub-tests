@@ -11,6 +11,7 @@ from utilities.openshift_resources.namespace_scoped_resource import NamespaceSco
 class InferenceService(NamespaceScopedResource):
     """<empty>"""
 
+    api_group: str = "serving.kserve.io"
     api_version: str = "v1beta1"
 
     def __init__(

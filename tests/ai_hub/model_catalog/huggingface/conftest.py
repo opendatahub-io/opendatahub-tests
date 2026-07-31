@@ -148,7 +148,6 @@ def hugging_face_deployment_ns(admin_client: DynamicClient) -> Generator[Namespa
 
 @pytest.fixture(scope="class")
 def huggingface_connection_secret(
-    admin_client: DynamicClient,
     hugging_face_deployment_ns: Namespace,
 ) -> Generator[Secret, Any, Any]:
     """
@@ -175,7 +174,6 @@ def huggingface_connection_secret(
     }
 
     with Secret(
-        client=admin_client,
         name=resource_name,
         namespace=hugging_face_deployment_ns.name,
         annotations=annotations,
@@ -191,7 +189,6 @@ def huggingface_connection_secret(
 
 @pytest.fixture(scope="class")
 def huggingface_inference_service(
-    admin_client: DynamicClient,
     hugging_face_deployment_ns: Namespace,
     huggingface_serving_runtime: ServingRuntime,
     huggingface_connection_secret: Secret,
@@ -247,7 +244,6 @@ def huggingface_inference_service(
         predictor_dict["volumes"] = MR_ISVC_VOLUMES
 
     with InferenceService(
-        client=admin_client,
         name=name,
         namespace=hugging_face_deployment_ns.name,
         annotations=annotations,

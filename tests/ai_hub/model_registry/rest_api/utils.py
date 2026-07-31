@@ -7,7 +7,6 @@ from typing import Any
 
 import requests
 import structlog
-from kubernetes.dynamic import DynamicClient
 from pyhelper_utils.shell import run_command
 from timeout_sampler import retry
 
@@ -301,13 +300,12 @@ def get_register_model_data(num_models: int) -> list[dict[str, Any]]:
     return model_data
 
 
-def get_mr_deployment(admin_client: DynamicClient, mr_namespace: str) -> list[Deployment]:
+def get_mr_deployment(mr_namespace: str) -> list[Deployment]:
     return list(Deployment.list_resources(namespace=mr_namespace))
 
 
 @contextmanager
 def create_model_registry_inference_service(
-    admin_client: DynamicClient,
     namespace: str,
     runtime_name: str,
     connection_secret_name: str,
@@ -367,7 +365,6 @@ def create_model_registry_inference_service(
         predictor_dict["volumes"] = MR_ISVC_VOLUMES
 
     with InferenceService(
-        client=admin_client,
         name=name,
         namespace=namespace,
         annotations=annotations,

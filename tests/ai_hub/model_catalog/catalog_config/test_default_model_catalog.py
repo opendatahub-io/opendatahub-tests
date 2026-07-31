@@ -113,14 +113,12 @@ class TestModelCatalogGeneral:
     @pytest.mark.install
     def test_model_catalog_resources_exists(
         self: Self,
-        admin_client: DynamicClient,
         model_registry_namespace: str,
         resource_name: Any,
         expected_resource_count: int,
     ):
         validate_model_catalog_resource(
             kind=resource_name,
-            admin_client=admin_client,
             namespace=model_registry_namespace,
             expected_resource_count=expected_resource_count,
         )

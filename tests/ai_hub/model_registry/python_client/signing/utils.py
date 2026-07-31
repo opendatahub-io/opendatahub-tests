@@ -7,7 +7,6 @@ from typing import Any
 
 import requests
 import structlog
-from kubernetes.dynamic import DynamicClient
 from pyhelper_utils.shell import run_command
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
@@ -155,7 +154,6 @@ def check_model_signature_file(model_dir: str) -> bool:
 
 
 def run_minio_uploader_pod(
-    admin_client: DynamicClient,
     namespace: str,
     minio_service: Service,
     pod_name: str,
@@ -199,7 +197,6 @@ def run_minio_uploader_pod(
     )
 
     with Pod(
-        client=admin_client,
         name=pod_name,
         namespace=namespace,
         restart_policy="Never",
@@ -259,7 +256,6 @@ def get_oci_internal_endpoint(oci_registry_service: Service) -> str:
 
 
 def get_model_registry_host(
-    admin_client: DynamicClient,
     model_registry_namespace: str,
     model_registry_instance: list[ModelRegistry],
 ) -> str:
@@ -271,7 +267,6 @@ def get_model_registry_host(
     """
     mr_instance = model_registry_instance[0]
     rest_route = Route(
-        client=admin_client,
         name=f"{mr_instance.name}-https",
         namespace=model_registry_namespace,
     )
@@ -279,7 +274,6 @@ def get_model_registry_host(
 
 
 def create_async_upload_job(
-    admin_client: DynamicClient,
     job_name: str,
     namespace: str,
     async_upload_image: str,

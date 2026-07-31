@@ -160,7 +160,6 @@ class TestModelRegistryCreationRest:
     @pytest.mark.test_requires_default_db
     def test_default_postgres_db_pod_log(
         self: Self,
-        admin_client: DynamicClient,
         model_registry_namespace: str,
         model_registry_default_postgres_deployment_match_label: dict[str, str],
     ):
@@ -178,7 +177,6 @@ class TestModelRegistryCreationRest:
 
     def test_model_registry_validate_api_version(
         self: Self,
-        admin_client: DynamicClient,
         model_registry_instance: list[ModelRegistry],
     ):
         api_version = ModelRegistry(
@@ -365,7 +363,6 @@ class TestModelRegistryDeployment:
 
     def test_registered_model_deployment(
         self,
-        admin_client: DynamicClient,
         model_registry_deployment_ns: Namespace,
         model_registry_serving_runtime: ServingRuntime,
         model_registry_inference_service: InferenceService,

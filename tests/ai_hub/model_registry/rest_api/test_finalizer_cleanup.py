@@ -2,7 +2,6 @@ from typing import Self
 
 import pytest
 import structlog
-from kubernetes.dynamic import DynamicClient
 from timeout_sampler import TimeoutSampler
 
 from tests.ai_hub.model_registry.rest_api.constants import MODEL_REGISTER_DATA
@@ -45,7 +44,6 @@ class TestModelRegistryFinalizerCleanup:
     @pytest.mark.tier1
     def test_inference_service_deletion_after_model_registry_deleted(
         self: Self,
-        admin_client: DynamicClient,
         model_registry_instance: list[ModelRegistry],
         model_registry_linked_inference_service: InferenceService,
         model_registry_deployment_ns: Namespace,
@@ -59,11 +57,13 @@ class TestModelRegistryFinalizerCleanup:
         inference_service_name = model_registry_linked_inference_service.name
         inference_service_namespace = model_registry_deployment_ns.name
 
-        finalizers = model_registry_linked_inference_service.instance.metadata.get("finalizers", [])
-        assert MODEL_REGISTRY_FINALIZER in finalizers, (
-            f"InferenceService '{inference_service_name}' missing finalizer '{MODEL_REGISTRY_FINALIZER}', "
-            f"found: {finalizers}"
-        )
+        for sample in TimeoutSampler(
+            wait_timeout=120,
+            sleep=5,
+            func=lambda: model_registry_linked_inference_service.instance.metadata.get("finalizers", []),
+        ):
+            if MODEL_REGISTRY_FINALIZER in sample:
+                break
 
         LOGGER.info(f"Deleting ModelRegistry '{model_registry.name}' while InferenceService exists")
         model_registry.delete(wait=True)
@@ -75,7 +75,6 @@ class TestModelRegistryFinalizerCleanup:
             sleep=5,
             func=lambda: (
                 not InferenceService(
-                    client=admin_client,
                     name=inference_service_name,
                     namespace=inference_service_namespace,
                 ).exists

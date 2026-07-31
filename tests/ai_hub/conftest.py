@@ -104,10 +104,9 @@ def model_registry_namespace(updated_dsc_component_state_scope_session: DataScie
 
 
 @pytest.fixture(scope="session")
-def async_upload_image(admin_client: DynamicClient) -> str:
+def async_upload_image() -> str:
     """Async upload job image from the model-registry-operator-parameters ConfigMap."""
     config_map = ConfigMap(
-        client=admin_client,
         name="model-registry-operator-parameters",
         namespace=py_config["applications_namespace"],
     )
@@ -154,13 +153,11 @@ def updated_dsc_component_state_scope_session(
             dsc_resource.edit(patch=disable_patch)
             wait_for_dsc_status_ready(dsc_resource=dsc_resource)
             # now delete the original namespace:
-            original_namespace = Namespace(client=admin_client, name=original_namespace_name, wait_for_resource=True)
+            original_namespace = Namespace(name=original_namespace_name, wait_for_resource=True)
             original_namespace.delete(wait=True)
             # Now enable it with the custom namespace
             with dsc_resource.patch_and_restore(patch=enable_patch):
-                namespace = Namespace(
-                    client=admin_client, name=py_config["model_registry_namespace"], wait_for_resource=True
-                )
+                namespace = Namespace(name=py_config["model_registry_namespace"], wait_for_resource=True)
                 namespace.wait_for_status(status=Namespace.Status.ACTIVE)
                 wait_for_pods_running(
                     admin_client=admin_client,
@@ -186,9 +183,9 @@ def updated_dsc_component_state_scope_session(
                     }
                 }
             )
-            Namespace(client=admin_client, name=py_config["model_registry_namespace"]).delete(wait=True)
+            Namespace(name=py_config["model_registry_namespace"]).delete(wait=True)
             # create the original namespace object again, so that we can wait for it to be created first
-            original_namespace = Namespace(client=admin_client, name=original_namespace_name, wait_for_resource=True)
+            original_namespace = Namespace(name=original_namespace_name, wait_for_resource=True)
             original_namespace.wait_for_status(status=Namespace.Status.ACTIVE)
             wait_for_pods_running(
                 admin_client=admin_client,
@@ -261,17 +258,17 @@ def test_idp_user(
 
 
 @pytest.fixture(scope="session")
-def api_server_url(admin_client: DynamicClient) -> str:
+def api_server_url() -> str:
     """
     Get api server url from the cluster.
     """
-    infrastructure = Infrastructure(client=admin_client, name="cluster", ensure_exists=True)
+    infrastructure = Infrastructure(name="cluster", ensure_exists=True)
     return infrastructure.instance.status.apiServerURL
 
 
 @pytest.fixture(scope="module")
 def created_htpasswd_secret(
-    is_byoidc: bool, admin_client: DynamicClient, original_user: str, user_credentials_rbac: dict[str, str]
+    is_byoidc: bool, original_user: str, user_credentials_rbac: dict[str, str]
 ) -> Generator[UserTestSession | None]:
     """
     Session-scoped fixture that creates a test IDP user and cleans it up after all tests.
@@ -298,14 +295,12 @@ def created_htpasswd_secret(
 
 
 @pytest.fixture(scope="module")
-def updated_oauth_config(
-    is_byoidc: bool, admin_client: DynamicClient, original_user: str, user_credentials_rbac: dict[str, str]
-) -> Generator[Any]:
+def updated_oauth_config(is_byoidc: bool, original_user: str, user_credentials_rbac: dict[str, str]) -> Generator[Any]:
     if is_byoidc:
         yield
     else:
         # Get current providers and add the new one
-        oauth = OAuth(client=admin_client, name="cluster")
+        oauth = OAuth(name="cluster")
         identity_providers = oauth.instance.spec.identityProviders
 
         new_idp = {
@@ -361,15 +356,12 @@ def model_registry_instance(
 ) -> Generator[list[Any], Any, Any]:
     param = getattr(request, "param", {})
     if pytestconfig.option.post_upgrade:
-        mr_instance = ModelRegistry(
-            client=admin_client, name=MR_INSTANCE_NAME, namespace=model_registry_namespace, ensure_exists=True
-        )
+        mr_instance = ModelRegistry(name=MR_INSTANCE_NAME, namespace=model_registry_namespace, ensure_exists=True)
         yield [mr_instance]
         mr_instance.delete(wait=True)
     else:
         db_name = param.get("db_name", "mysql")
         mr_objects = get_model_registry_objects(
-            client=admin_client,
             namespace=model_registry_namespace,
             base_name=MR_INSTANCE_BASE_NAME,
             num=param.get("num_resources", 1),
@@ -403,33 +395,15 @@ def model_registry_metadata_db_resources(
 
     if pytestconfig.option.post_upgrade:
         resources = {
-            Secret: [
-                Secret(
-                    client=admin_client, name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True
-                )
-            ],
+            Secret: [Secret(name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True)],
             PersistentVolumeClaim: [
-                PersistentVolumeClaim(
-                    client=admin_client, name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True
-                )
+                PersistentVolumeClaim(name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True)
             ],
-            Service: [
-                Service(
-                    client=admin_client, name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True
-                )
-            ],
-            ConfigMap: [
-                ConfigMap(
-                    client=admin_client, name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True
-                )
-            ]
+            Service: [Service(name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True)],
+            ConfigMap: [ConfigMap(name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True)]
             if db_backend == "mariadb"
             else [],
-            Deployment: [
-                Deployment(
-                    client=admin_client, name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True
-                )
-            ],
+            Deployment: [Deployment(name=DB_RESOURCE_NAME, namespace=model_registry_namespace, ensure_exists=True)],
         }
         yield resources
         for kind in [Deployment, ConfigMap, Service, PersistentVolumeClaim, Secret]:
@@ -446,7 +420,6 @@ def model_registry_metadata_db_resources(
                 num_resources=num_resources,
                 db_backend=db_backend,
                 teardown_resources=teardown_resources,
-                client=admin_client,
             )
             with ExitStack() as stack:
                 for kind_name in [Secret, PersistentVolumeClaim, Service, ConfigMap, Deployment]:
@@ -466,7 +439,7 @@ def model_registry_rest_headers(current_client_token: str) -> dict[str, str]:
 
 
 @pytest.fixture(scope="class")
-def sa_namespace(request: pytest.FixtureRequest, admin_client: DynamicClient) -> Generator[Namespace]:
+def sa_namespace(request: pytest.FixtureRequest) -> Generator[Namespace]:
     """
     Creates a namespace
     """
@@ -474,7 +447,7 @@ def sa_namespace(request: pytest.FixtureRequest, admin_client: DynamicClient) ->
     test_file = os.path.relpath(request.fspath.strpath, start=os.path.dirname(__file__))
     ns_name = generate_namespace_name(file_path=test_file)
     LOGGER.info(f"Creating temporary namespace: {ns_name}")
-    with Namespace(client=admin_client, name=ns_name) as ns:
+    with Namespace(name=ns_name) as ns:
         ns.wait_for_status(status=Namespace.Status.ACTIVE, timeout=120)
         yield ns
 
@@ -514,19 +487,19 @@ def login_as_test_user(is_byoidc: bool, api_server_url: str, original_user: str,
 
 
 @pytest.fixture(scope="class")
-def service_account(admin_client: DynamicClient, sa_namespace: Namespace) -> Generator[Any]:
+def service_account(sa_namespace: Namespace) -> Generator[Any]:
     """
     Creates a ServiceAccount.
     """
 
     sa_name = generate_random_name(prefix="mr-test-user")
     LOGGER.info(f"Creating ServiceAccount: {sa_name} in namespace {sa_namespace.name}")
-    with ServiceAccount(client=admin_client, name=sa_name, namespace=sa_namespace.name, wait_for_resource=True) as sa:
+    with ServiceAccount(name=sa_name, namespace=sa_namespace.name, wait_for_resource=True) as sa:
         yield sa
 
 
 @pytest.fixture(scope="class")
-def model_catalog_routes(admin_client: DynamicClient, model_registry_namespace: str) -> list[Route]:
+def model_catalog_routes(model_registry_namespace: str) -> list[Route]:
     return list(Route.list_resources(namespace=model_registry_namespace, label_selector="component=model-catalog"))
 
 
@@ -580,11 +553,10 @@ def pytest_collection_modifyitems(items: list[Item], config: pytest.Config) -> N
 
 
 @pytest.fixture(scope="class")
-def dashboard_pod(admin_client: DynamicClient) -> Pod:
+def dashboard_pod() -> Pod:
     """Get a running dashboard pod from the applications namespace."""
     pods = list(
         Pod.list_resources(
-            client=admin_client,
             namespace=py_config["applications_namespace"],
             label_selector="app=rhods-dashboard",
         )

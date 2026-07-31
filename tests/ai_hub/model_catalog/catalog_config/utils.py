@@ -36,9 +36,7 @@ def validate_model_catalog_enabled(pod: Pod) -> bool:
     return False
 
 
-def validate_model_catalog_resource(
-    kind: Any, admin_client: DynamicClient, namespace: str, expected_resource_count: int
-) -> None:
+def validate_model_catalog_resource(kind: Any, namespace: str, expected_resource_count: int) -> None:
     resource = list(kind.list_resources(namespace=namespace, label_selector="component=model-catalog"))
     assert resource
     LOGGER.info(f"Validating resource: {kind}: Found {len(resource)}")
@@ -264,7 +262,6 @@ def validate_source_disabling_result(
 
 
 def modify_catalog_source(
-    admin_client: DynamicClient,
     namespace: str,
     source_id: str,
     enabled: bool | None = None,
@@ -289,7 +286,6 @@ def modify_catalog_source(
     # Get current ConfigMap (model-catalog-sources)
     sources_cm = ConfigMap(
         name=DEFAULT_CUSTOM_MODEL_CATALOG,
-        client=admin_client,
         namespace=namespace,
     )
 
@@ -311,7 +307,6 @@ def modify_catalog_source(
         # Get default sources ConfigMap (default-catalog-sources)
         default_sources_cm = ConfigMap(
             name=DEFAULT_MODEL_CATALOG_CM,
-            client=admin_client,
             namespace=namespace,
         )
 

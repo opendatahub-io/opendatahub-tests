@@ -10,7 +10,6 @@ from typing import Self
 
 import pytest
 import structlog
-from kubernetes.dynamic import DynamicClient
 from pytest_testconfig import config as py_config
 
 from tests.ai_hub.constants import MR_INSTANCE_NAME, MR_OPERATOR_NAME, MR_POSTGRES_DEPLOYMENT_NAME_STR
@@ -48,7 +47,6 @@ class TestAIHubResourcesImages:
     )
     def test_verify_pod_images(
         self: Self,
-        admin_client: DynamicClient,
         resource_pods: list[Pod],
         related_images_refs: set[str],
     ):
@@ -95,7 +93,6 @@ class TestAIHubResourcesImages:
 class TestModelRegistryImages:
     def test_verify_model_registry_pod_images(
         self: Self,
-        admin_client: DynamicClient,
         model_registry_instance_pods_by_label: list[Pod],
         related_images_refs: set[str],
     ):

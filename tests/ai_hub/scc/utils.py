@@ -1,7 +1,6 @@
 from typing import Any
 
 import structlog
-from kubernetes.dynamic import DynamicClient
 
 from utilities.openshift_resources.deployment import Deployment
 from utilities.openshift_resources.namespace_scoped_resource import NamespaceScopedResource
@@ -74,7 +73,7 @@ def validate_containers_pod_security_context(model_registry_pod: Pod, namespace_
     return errors
 
 
-def get_pod_by_deployment_name(admin_client: DynamicClient, namespace: str, deployment_name: str) -> Pod:
+def get_pod_by_deployment_name(namespace: str, deployment_name: str) -> Pod:
     """
     Get a pod by deployment name. First ensures the deployment exists, then finds its associated pod.
 
@@ -90,7 +89,7 @@ def get_pod_by_deployment_name(admin_client: DynamicClient, namespace: str, depl
         AssertionError: If exactly one pod is not found
     """
     # First ensure the deployment exists
-    deployment = Deployment(client=admin_client, name=deployment_name, namespace=namespace, ensure_exists=True)
+    deployment = Deployment(name=deployment_name, namespace=namespace, ensure_exists=True)
     deployment_instance = deployment.instance
 
     # Get pods using the deployment's label selector

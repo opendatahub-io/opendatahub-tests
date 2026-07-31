@@ -3,7 +3,6 @@ from typing import Any, Self
 import pytest
 import requests
 import structlog
-from kubernetes.dynamic import DynamicClient
 
 from tests.ai_hub.model_registry.rest_api.utils import register_model_rest_api, validate_resource_attributes
 from tests.ai_hub.utils import get_endpoint_from_mr_service, get_mr_service_by_label
@@ -51,7 +50,6 @@ class TestModelRegistryWithSecureDB:
     )
     def test_register_model_with_invalid_ca(
         self: Self,
-        admin_client: DynamicClient,
         model_registry_namespace: str,
         model_registry_rest_headers: dict[str, str],
         local_ca_bundle: str,
@@ -62,9 +60,7 @@ class TestModelRegistryWithSecureDB:
         Test that model registration fails with an SSLError when the Model Registry is deployed
         with an invalid CA certificate.
         """
-        service = get_mr_service_by_label(
-            client=admin_client, namespace_name=model_registry_namespace, mr_instance=deploy_secure_db_mr
-        )
+        service = get_mr_service_by_label(namespace_name=model_registry_namespace, mr_instance=deploy_secure_db_mr)
         model_registry_rest_address, _ = get_endpoint_from_mr_service(svc=service, protocol=Protocols.REST)
 
         with pytest.raises(requests.exceptions.SSLError) as exc_info:
@@ -101,7 +97,6 @@ class TestModelRegistryWithSecureDB:
     )
     def test_register_model_with_valid_ca(
         self: Self,
-        admin_client: DynamicClient,
         model_registry_namespace: str,
         model_registry_rest_headers: dict[str, str],
         local_ca_bundle: str,
@@ -109,9 +104,7 @@ class TestModelRegistryWithSecureDB:
         model_data_for_test: dict[str, Any],
         db_backend_under_test: str,
     ):
-        service = get_mr_service_by_label(
-            client=admin_client, namespace_name=model_registry_namespace, mr_instance=deploy_secure_db_mr
-        )
+        service = get_mr_service_by_label(namespace_name=model_registry_namespace, mr_instance=deploy_secure_db_mr)
         model_registry_rest_address, _ = get_endpoint_from_mr_service(svc=service, protocol=Protocols.REST)
 
         result = register_model_rest_api(

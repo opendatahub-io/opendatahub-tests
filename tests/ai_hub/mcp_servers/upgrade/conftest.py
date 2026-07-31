@@ -24,9 +24,7 @@ def pre_upgrade_mcp_config_map_update(
     model_registry_rest_headers: dict[str, str],
 ) -> ConfigMap:
     """Patches MCP catalog ConfigMap with a custom source before upgrade."""
-    catalog_config_map, current_data = get_mcp_catalog_sources(
-        admin_client=admin_client, model_registry_namespace=model_registry_namespace
-    )
+    catalog_config_map, current_data = get_mcp_catalog_sources(model_registry_namespace=model_registry_namespace)
     if "mcp_catalogs" not in current_data:
         current_data["mcp_catalogs"] = []
     current_data["mcp_catalogs"].append(MCP_CATALOG_SOURCE)
@@ -52,9 +50,7 @@ def post_upgrade_mcp_config_map(
     model_registry_namespace: str,
 ) -> Generator[ConfigMap]:
     """Yields the MCP catalog ConfigMap for post-upgrade validation, cleans up on teardown."""
-    catalog_config_map, _ = get_mcp_catalog_sources(
-        admin_client=admin_client, model_registry_namespace=model_registry_namespace
-    )
+    catalog_config_map, _ = get_mcp_catalog_sources(model_registry_namespace=model_registry_namespace)
     yield catalog_config_map
     catalog_config_map.delete()
     wait_for_model_catalog_pod_ready_after_deletion(

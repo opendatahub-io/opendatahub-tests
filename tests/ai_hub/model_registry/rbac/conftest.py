@@ -39,7 +39,6 @@ LOGGER = structlog.get_logger(name=__name__)
 
 @pytest.fixture(scope="function")
 def add_user_to_group(
-    admin_client: DynamicClient,
     test_idp_user: UserTestSession,
 ) -> Generator[str]:
     """
@@ -55,7 +54,6 @@ def add_user_to_group(
     """
     group_name = "test-model-registry-group"
     with create_group(
-        admin_client=admin_client,
         group_name=group_name,
         users=[test_idp_user.username],
     ) as group_name:
@@ -128,7 +126,6 @@ def model_registry_group_with_user(
     else:
         group_name = f"{MR_INSTANCE_NAME}-users"
         group = Group(
-            client=admin_client,
             name=group_name,
             wait_for_resource=True,
         )
@@ -146,14 +143,12 @@ def model_registry_group_with_user(
 
 @pytest.fixture(scope="function")
 def created_role_binding_group(
-    admin_client: DynamicClient,
     model_registry_namespace: str,
     mr_access_role: Role,
     test_idp_user: UserTestSession,
     add_user_to_group: str,
 ) -> Generator[RoleBinding]:
     yield from create_role_binding(
-        admin_client=admin_client,
         model_registry_namespace=model_registry_namespace,
         name="test-model-registry-group-edit",
         mr_access_role=mr_access_role,
@@ -165,7 +160,6 @@ def created_role_binding_group(
 @pytest.fixture(scope="function")
 def created_role_binding_user(
     is_byoidc: bool,
-    admin_client: DynamicClient,
     model_registry_namespace: str,
     mr_access_role: Role,
     user_credentials_rbac: dict[str, str],
@@ -174,7 +168,6 @@ def created_role_binding_user(
     username = "mr-non-admin" if is_byoidc else user_credentials_rbac["username"]
     LOGGER.info(f"Using user {username}")
     yield from create_role_binding(
-        admin_client=admin_client,
         model_registry_namespace=model_registry_namespace,
         name="test-model-registry-access",
         mr_access_role=mr_access_role,
@@ -187,16 +180,13 @@ def created_role_binding_user(
 # RESOURCE FIXTURES PARMETRIZED
 # =============================================================================
 @pytest.fixture(scope="class")
-def db_secret_parametrized(
-    request: FixtureRequest, admin_client: DynamicClient, teardown_resources: bool
-) -> Generator[list[Secret], Any, Any]:
+def db_secret_parametrized(request: FixtureRequest, teardown_resources: bool) -> Generator[list[Secret], Any, Any]:
     """Create DB Secret parametrized"""
     with ExitStack() as stack:
         secrets = [
             stack.enter_context(
                 Secret(
                     **param,
-                    client=admin_client,
                     teardown=teardown_resources,
                 )
             )
@@ -207,7 +197,7 @@ def db_secret_parametrized(
 
 @pytest.fixture(scope="class")
 def db_pvc_parametrized(
-    request: FixtureRequest, admin_client: DynamicClient, teardown_resources: bool
+    request: FixtureRequest, teardown_resources: bool
 ) -> Generator[list[PersistentVolumeClaim], Any, Any]:
     """Create DB PVC parametrized"""
     with ExitStack() as stack:
@@ -215,7 +205,6 @@ def db_pvc_parametrized(
             stack.enter_context(
                 PersistentVolumeClaim(
                     **param,
-                    client=admin_client,
                     teardown=teardown_resources,
                 )
             )
@@ -225,16 +214,13 @@ def db_pvc_parametrized(
 
 
 @pytest.fixture(scope="class")
-def db_service_parametrized(
-    request: FixtureRequest, admin_client: DynamicClient, teardown_resources: bool
-) -> Generator[list[Service], Any, Any]:
+def db_service_parametrized(request: FixtureRequest, teardown_resources: bool) -> Generator[list[Service], Any, Any]:
     """Create DB Service parametrized"""
     with ExitStack() as stack:
         services = [
             stack.enter_context(
                 Service(
                     **param,
-                    client=admin_client,
                     teardown=teardown_resources,
                 )
             )
@@ -245,7 +231,7 @@ def db_service_parametrized(
 
 @pytest.fixture(scope="class")
 def db_deployment_parametrized(
-    request: FixtureRequest, admin_client: DynamicClient, teardown_resources: bool
+    request: FixtureRequest, teardown_resources: bool
 ) -> Generator[list[Deployment], Any, Any]:
     """Create DB Deployment parametrized"""
     with ExitStack() as stack:
@@ -253,7 +239,6 @@ def db_deployment_parametrized(
             stack.enter_context(
                 Deployment(
                     **param,
-                    client=admin_client,
                     teardown=teardown_resources,
                 )
             )
@@ -268,7 +253,7 @@ def db_deployment_parametrized(
 
 @pytest.fixture(scope="class")
 def model_registry_instance_parametrized(
-    request: FixtureRequest, admin_client: DynamicClient, teardown_resources: bool
+    request: FixtureRequest, teardown_resources: bool
 ) -> Generator[list[ModelRegistry], Any, Any]:
     """Create Model Registry instance parametrized"""
     if len(request.param) != NUM_MR_INSTANCES:
@@ -276,7 +261,7 @@ def model_registry_instance_parametrized(
 
     with ExitStack() as stack:
         model_registry_instances = []
-        mr_instances = [stack.enter_context(ModelRegistry(**param, client=admin_client)) for param in request.param]
+        mr_instances = [stack.enter_context(ModelRegistry(**param)) for param in request.param]
         for mr_instance in mr_instances:
             mr_instance.wait_for_condition(condition="Available", status="True")
             mr_instance.wait_for_condition(condition=KUBERBACPROXY_STR, status="True")
@@ -297,7 +282,6 @@ def mr_endpoints_parametrized(
     mr_data = []
     for mr_instance in model_registry_instance_parametrized:
         service = get_mr_service_by_label(
-            client=None,
             namespace_name=model_registry_namespace,
             mr_instance=mr_instance,
         )
@@ -320,8 +304,10 @@ def test_user_token(
         return get_mr_user_token(admin_client=admin_client, user_credentials_rbac=user_credentials_rbac)
 
     login_with_user_password(api_address=api_server_url, user=test_idp_user.username, password=test_idp_user.password)
-    token = get_openshift_token()
-    login_with_user_password(api_address=api_server_url, user=original_user)
+    try:
+        token = get_openshift_token()
+    finally:
+        login_with_user_password(api_address=api_server_url, user=original_user)
     return token
 
 
@@ -331,7 +317,6 @@ def granted_mr_instance_access(
     mr_endpoints_parametrized: list[dict[str, Any]],
     model_registry_namespace: str,
     user_credentials_rbac: dict[str, str],
-    admin_client: DynamicClient,
 ) -> Generator[Generator[int], Any, Any]:
     """Yield a generator that grants access to each MR instance one at a time, revoking on each advance."""
     rbac_username = "mr-non-admin" if is_byoidc else user_credentials_rbac["username"]
@@ -340,7 +325,6 @@ def granted_mr_instance_access(
     def _grant_each() -> Generator[int]:
         for idx, mr_data in enumerate(mr_endpoints_parametrized):
             grant_mr_access(
-                admin_client=admin_client,
                 user=rbac_username,
                 mr_instance_name=mr_data["name"],
                 model_registry_namespace=model_registry_namespace,
@@ -348,7 +332,6 @@ def granted_mr_instance_access(
             granted_instances.append(mr_data["name"])
             yield idx
             revoke_mr_access(
-                admin_client=admin_client,
                 user=rbac_username,
                 mr_instance_name=mr_data["name"],
                 model_registry_namespace=model_registry_namespace,
@@ -359,7 +342,6 @@ def granted_mr_instance_access(
 
     for instance_name in granted_instances:
         revoke_mr_access(
-            admin_client=admin_client,
             user=rbac_username,
             mr_instance_name=instance_name,
             model_registry_namespace=model_registry_namespace,

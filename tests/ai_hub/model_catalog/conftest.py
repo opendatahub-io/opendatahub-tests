@@ -83,7 +83,6 @@ def sparse_override_catalog_source(
     # Write sparse override to custom ConfigMap
     sources_cm = ConfigMap(
         name=DEFAULT_CUSTOM_MODEL_CATALOG,
-        client=admin_client,
         namespace=model_registry_namespace,
     )
     patches = {"data": {"sources.yaml": sparse_catalog_yaml}}
@@ -107,13 +106,11 @@ def sparse_override_catalog_source(
 
 
 @pytest.fixture(scope="class")
-def model_catalog_config_map(
-    request: pytest.FixtureRequest, admin_client: DynamicClient, model_registry_namespace: str
-) -> ConfigMap:
+def model_catalog_config_map(request: pytest.FixtureRequest, model_registry_namespace: str) -> ConfigMap:
     """Parameterized fixture that takes a dict with configmap_name key and ensures it exists"""
     param = getattr(request, "param", {})
     configmap_name = param.get("configmap_name", DEFAULT_MODEL_CATALOG_CM)
-    return ConfigMap(name=configmap_name, client=admin_client, namespace=model_registry_namespace, ensure_exists=True)
+    return ConfigMap(name=configmap_name, namespace=model_registry_namespace, ensure_exists=True)
 
 
 @pytest.fixture(scope="class")
@@ -361,7 +358,7 @@ def labels_configmap_patch(
     model_registry_rest_headers: dict[str, str],
 ) -> Generator[dict[str, Any]]:
     # Get the editable ConfigMap
-    sources_cm = ConfigMap(name=DEFAULT_CUSTOM_MODEL_CATALOG, client=admin_client, namespace=model_registry_namespace)
+    sources_cm = ConfigMap(name=DEFAULT_CUSTOM_MODEL_CATALOG, namespace=model_registry_namespace)
 
     # Parse current data and add test label
     current_data = yaml.safe_load(sources_cm.instance.data["sources.yaml"])
@@ -421,8 +418,8 @@ def updated_catalog_config_map_scope_function(
 
 
 @pytest.fixture(scope="class")
-def catalog_config_map(admin_client: DynamicClient, model_registry_namespace: str) -> ConfigMap:
-    return ConfigMap(name=DEFAULT_CUSTOM_MODEL_CATALOG, client=admin_client, namespace=model_registry_namespace)
+def catalog_config_map(model_registry_namespace: str) -> ConfigMap:
+    return ConfigMap(name=DEFAULT_CUSTOM_MODEL_CATALOG, namespace=model_registry_namespace)
 
 
 @pytest.fixture(scope="class")

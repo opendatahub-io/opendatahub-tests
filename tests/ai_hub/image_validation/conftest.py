@@ -29,7 +29,7 @@ def model_registry_instance_pods_by_label(
 
 
 @pytest.fixture(scope="function")
-def resource_pods(request: FixtureRequest, admin_client: DynamicClient) -> list[Pod]:
+def resource_pods(request: FixtureRequest) -> list[Pod]:
     namespace = request.param.get("namespace")
     label_selector = request.param.get("label_selector")
     assert namespace
@@ -38,7 +38,6 @@ def resource_pods(request: FixtureRequest, admin_client: DynamicClient) -> list[
 
 @pytest.fixture(scope="class")
 def async_job_pod(
-    admin_client: DynamicClient,
     async_upload_image: str,
     model_registry_namespace: str,
 ) -> Generator[Pod, Any, Any]:
@@ -60,4 +59,4 @@ def async_job_pod(
         },
     ) as job:
         job.wait_for_condition(condition="Complete", status="True")
-        yield get_latest_job_pod(admin_client=admin_client, job=job)
+        yield get_latest_job_pod(job=job)

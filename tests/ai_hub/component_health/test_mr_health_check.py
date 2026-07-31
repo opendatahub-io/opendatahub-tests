@@ -20,12 +20,9 @@ class TestMrDefault:
             == DscComponents.ManagementState.MANAGED
         )
 
-    def test_mr_namespace_exists_and_active(
-        self, admin_client: DynamicClient, dsc_resource: DataScienceCluster
-    ) -> None:
+    def test_mr_namespace_exists_and_active(self, dsc_resource: DataScienceCluster) -> None:
         """Verify MR namespace exists and is in Active state."""
         namespace = Namespace(
-            client=admin_client,
             name=dsc_resource.instance.spec.components[DscComponents.MODELREGISTRY].registriesNamespace,
             ensure_exists=True,
         )

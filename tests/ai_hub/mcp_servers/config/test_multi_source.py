@@ -62,9 +62,7 @@ class TestMCPServerMultiSource:
         cleanup_action: str,
     ):
         """TC-LOAD-011/012: Verify that disabling or removing a source removes its servers from the catalog."""
-        catalog_config_map, current_data = get_mcp_catalog_sources(
-            admin_client=admin_client, model_registry_namespace=model_registry_namespace
-        )
+        catalog_config_map, current_data = get_mcp_catalog_sources(model_registry_namespace=model_registry_namespace)
 
         if cleanup_action == "disable":
             for source in current_data.get("mcp_catalogs", []):

@@ -105,7 +105,6 @@ class TestLabeledConfigMapDiscovery:
     @pytest.mark.tier1
     def test_labeled_configmap_deployment_args_updated(
         self: Self,
-        admin_client: DynamicClient,
         model_registry_namespace: str,
         labeled_configmap_alpha: ConfigMap,
     ) -> None:
@@ -116,7 +115,7 @@ class TestLabeledConfigMapDiscovery:
         Then the labeled source path prefix is present in at least one --catalogs-path arg
         And the specific ConfigMap name appears in the labeled args.
         """
-        args = get_deployment_catalog_args(admin_client=admin_client, namespace=model_registry_namespace)
+        args = get_deployment_catalog_args(namespace=model_registry_namespace)
         labeled_args = [arg for arg in args if LABELED_SOURCES_PATH_PREFIX in arg]
         assert labeled_args, f"No labeled source args found in deployment: {args}"
         assert any("test-labeled-alpha" in arg for arg in labeled_args), (
@@ -130,7 +129,6 @@ class TestMultipleLabeledConfigMaps:
     @pytest.mark.tier1
     def test_multiple_labeled_configmaps_alphabetical_order(
         self: Self,
-        admin_client: DynamicClient,
         model_registry_namespace: str,
         labeled_configmap_alpha: ConfigMap,
         labeled_configmap_beta: ConfigMap,
@@ -142,7 +140,7 @@ class TestMultipleLabeledConfigMaps:
         Then alpha appears before beta in the labeled args
         And all labeled args appear after the default/user-managed source args.
         """
-        args = get_deployment_catalog_args(admin_client=admin_client, namespace=model_registry_namespace)
+        args = get_deployment_catalog_args(namespace=model_registry_namespace)
         catalogs_args = [arg for arg in args if "--catalogs-path=" in arg]
 
         default_indices = [idx for idx, arg in enumerate(catalogs_args) if LABELED_SOURCES_PATH_PREFIX not in arg]
@@ -256,7 +254,6 @@ class TestLabeledConfigMapDeletion:
         cm = ConfigMap(
             name=cm_name,
             namespace=model_registry_namespace,
-            client=admin_client,
             label={CATALOG_SOURCE_LABEL_KEY: "true"},
             data=build_labeled_configmap_data(
                 source_id=deletion_source_id,

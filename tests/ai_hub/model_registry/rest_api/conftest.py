@@ -114,7 +114,6 @@ def updated_model_registry_resource(
 
 @pytest.fixture(scope="class")
 def patch_invalid_ca(
-    admin_client: DynamicClient,
     model_registry_namespace: str,
     request: pytest.FixtureRequest,
 ) -> Generator[str, Any, Any]:
@@ -127,7 +126,6 @@ def patch_invalid_ca(
     LOGGER.info(f"Patching the {ca_configmap_name} ConfigMap with an invalid CA certificate: {ca_file_path}")
     ca_data = {ca_file_name: "-----BEGIN CERTIFICATE-----\nINVALIDCERTIFICATE\n-----END CERTIFICATE-----"}
     ca_configmap = ConfigMap(
-        client=admin_client,
         name=ca_configmap_name,
         namespace=model_registry_namespace,
         ensure_exists=True,
@@ -218,7 +216,6 @@ def deploy_secure_db_mr(
     if "sslRootCertificateConfigMap" in param:
         db_config["sslRootCertificateConfigMap"] = param["sslRootCertificateConfigMap"]
     with ModelRegistry(
-        client=admin_client,
         name=SECURE_MR_NAME,
         namespace=model_registry_namespace,
         label=get_mr_standard_labels(resource_name=SECURE_MR_NAME),
@@ -260,7 +257,6 @@ def local_ca_bundle(request: pytest.FixtureRequest, admin_client: DynamicClient)
 
 @pytest.fixture(scope="class")
 def ca_configmap_for_test(
-    admin_client: DynamicClient,
     model_registry_namespace: str,
     external_db_ssl_artifact_paths: dict[str, Any],
 ) -> Generator[ConfigMap]:
@@ -282,7 +278,6 @@ def ca_configmap_for_test(
         raise MissingParameter("CA content is empty")
     cm_name = "db-ca-configmap"
     with ConfigMap(
-        client=admin_client,
         name=cm_name,
         namespace=model_registry_namespace,
         data={"ca-bundle.crt": ca_content},
@@ -302,7 +297,7 @@ def patch_external_deployment_with_ssl_ca(
     Patch the external database deployment to use the test CA bundle,
     and mount the server cert/key for SSL.
     """
-    model_registry_db_deployments = get_mr_deployment(admin_client=admin_client, mr_namespace=model_registry_namespace)
+    model_registry_db_deployments = get_mr_deployment(mr_namespace=model_registry_namespace)
     if request.param.get("ca_configmap_for_test"):
         LOGGER.info("Invoking ca_configmap_for_test fixture")
         request.getfixturevalue(argname="ca_configmap_for_test")
@@ -407,13 +402,12 @@ def model_data_for_test() -> Generator[dict[str, Any]]:
 
 @pytest.fixture()
 def model_registry_default_postgres_deployment_match_label(
-    model_registry_namespace: str, admin_client: DynamicClient, model_registry_instance: list[ModelRegistry]
+    model_registry_namespace: str, model_registry_instance: list[ModelRegistry]
 ) -> dict[str, str]:
     """
     Returns the matchLabels from the default postgres deployment for filtering pods.
     """
     deployment = Deployment(
-        client=admin_client,
         namespace=model_registry_namespace,
         name=f"{model_registry_instance[0].name}-postgres",
         ensure_exists=True,
@@ -441,7 +435,6 @@ def model_registry_deployment_ns(admin_client: DynamicClient) -> Generator[Names
 
 @pytest.fixture(scope="class")
 def model_registry_connection_secret(
-    admin_client: DynamicClient,
     model_registry_deployment_ns: Namespace,
     registered_model_rest_api: dict[str, Any],
 ) -> Generator[Secret, Any, Any]:
@@ -470,7 +463,6 @@ def model_registry_connection_secret(
     }
 
     with Secret(
-        client=admin_client,
         name=resource_name,
         namespace=model_registry_deployment_ns.name,
         annotations=annotations,
@@ -509,7 +501,6 @@ def model_registry_serving_runtime(
 
 @pytest.fixture(scope="class")
 def model_registry_inference_service(
-    admin_client: DynamicClient,
     model_registry_deployment_ns: Namespace,
     model_registry_serving_runtime: ServingRuntime,
     model_registry_connection_secret: Secret,
@@ -517,7 +508,6 @@ def model_registry_inference_service(
 ) -> Generator[InferenceService, Any, Any]:
     """Create an InferenceService for testing registered models."""
     with create_model_registry_inference_service(
-        admin_client=admin_client,
         namespace=model_registry_deployment_ns.name,
         runtime_name=model_registry_serving_runtime.name,
         connection_secret_name=model_registry_connection_secret.name,
@@ -528,7 +518,6 @@ def model_registry_inference_service(
 
 @pytest.fixture(scope="class")
 def model_registry_linked_inference_service(
-    admin_client: DynamicClient,
     model_registry_deployment_ns: Namespace,
     model_registry_serving_runtime: ServingRuntime,
     model_registry_connection_secret: Secret,
@@ -541,7 +530,6 @@ def model_registry_linked_inference_service(
     model_version_id = registered_model_rest_api.get("model_version", {}).get("id", "")
 
     with create_model_registry_inference_service(
-        admin_client=admin_client,
         namespace=model_registry_deployment_ns.name,
         runtime_name=model_registry_serving_runtime.name,
         connection_secret_name=model_registry_connection_secret.name,

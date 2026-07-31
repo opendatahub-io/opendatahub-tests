@@ -38,7 +38,6 @@ def labeled_configmap_alpha(
     cm = ConfigMap(
         name=cm_name,
         namespace=model_registry_namespace,
-        client=admin_client,
         label={CATALOG_SOURCE_LABEL_KEY: "true"},
         data=build_labeled_configmap_data(
             source_id=TEST_SOURCE_ALPHA_ID,
@@ -91,7 +90,6 @@ def labeled_configmap_beta(
     cm = ConfigMap(
         name=cm_name,
         namespace=model_registry_namespace,
-        client=admin_client,
         label={CATALOG_SOURCE_LABEL_KEY: "true"},
         data=build_labeled_configmap_data(
             source_id=TEST_SOURCE_BETA_ID,

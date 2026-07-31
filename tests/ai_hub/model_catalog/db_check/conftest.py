@@ -19,10 +19,9 @@ LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")
-def model_catalog_postgres_secret(admin_client: DynamicClient, model_registry_namespace: str) -> Secret:
+def model_catalog_postgres_secret(model_registry_namespace: str) -> Secret:
     """Get the model-catalog-postgres secret from model registry namespace"""
     return Secret(
-        client=admin_client,
         name="model-catalog-postgres",
         namespace=model_registry_namespace,
         ensure_exists=True,
@@ -67,12 +66,9 @@ def recreated_model_catalog_postgres_secret(
 
 
 @pytest.fixture()
-def model_catalog_network_policy(
-    request: pytest.FixtureRequest, admin_client: DynamicClient, model_registry_namespace: str
-) -> NetworkPolicy:
+def model_catalog_network_policy(request: pytest.FixtureRequest, model_registry_namespace: str) -> NetworkPolicy:
     """Get a model-catalog NetworkPolicy by name (parameterized)"""
     return NetworkPolicy(
-        client=admin_client,
         name=request.param,
         namespace=model_registry_namespace,
         ensure_exists=True,
@@ -80,12 +76,9 @@ def model_catalog_network_policy(
 
 
 @pytest.fixture(scope="class")
-def deleted_network_policy_original_spec(
-    request: pytest.FixtureRequest, admin_client: DynamicClient, model_registry_namespace: str
-) -> dict:
+def deleted_network_policy_original_spec(request: pytest.FixtureRequest, model_registry_namespace: str) -> dict:
     """Save the NetworkPolicy spec and owner references, then delete it. Returns the originals."""
     network_policy = NetworkPolicy(
-        client=admin_client,
         name=request.param,
         namespace=model_registry_namespace,
         ensure_exists=True,
@@ -166,10 +159,9 @@ def restarted_operator_pod(admin_client: DynamicClient) -> Pod:
 
 
 @pytest.fixture()
-def non_catalog_network_policy(admin_client: DynamicClient, model_registry_namespace: str) -> NetworkPolicy:
+def non_catalog_network_policy(model_registry_namespace: str) -> NetworkPolicy:
     """Create a NetworkPolicy without catalog labels in the model registry namespace."""
     with NetworkPolicy(
-        client=admin_client,
         name="non-catalog-test-np",
         namespace=model_registry_namespace,
         pod_selector={"matchLabels": {"app": "non-catalog-app"}},

@@ -2,7 +2,6 @@ from collections.abc import Generator
 from contextlib import contextmanager
 
 import structlog
-from kubernetes.dynamic import DynamicClient
 
 from utilities.openshift_resources.group import Group
 
@@ -11,7 +10,6 @@ LOGGER = structlog.get_logger(name=__name__)
 
 @contextmanager
 def create_group(
-    admin_client: DynamicClient,
     group_name: str,
     users: list[str] | None = None,
     wait_for_resource: bool = True,
@@ -30,7 +28,6 @@ def create_group(
         The group name
     """
     with Group(
-        client=admin_client,
         name=group_name,
         users=users or [],
         wait_for_resource=wait_for_resource,

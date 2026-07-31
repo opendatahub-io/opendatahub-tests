@@ -1,7 +1,6 @@
 import pytest
 import requests
 import structlog
-from kubernetes.dynamic import DynamicClient
 from pytest_testconfig import config as py_config
 
 from tests.ai_hub.model_registry.gateway.utils import DATA_SCIENCE_GATEWAY_NAME, DATA_SCIENCE_GATEWAY_NAMESPACE
@@ -131,7 +130,6 @@ class TestModelRegistryGatewayDomain:
 
     def test_no_standalone_routes_with_gateway_domain(
         self,
-        admin_client: DynamicClient,
         gateway_domain: str,
         model_registry_namespace: str,
     ):

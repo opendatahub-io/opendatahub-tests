@@ -42,10 +42,9 @@ POSTGRES_DB_IMAGE = AiHubImages.POSTGRES
 LOGGER = structlog.get_logger(name=__name__)
 
 
-def get_mr_service_by_label(client: DynamicClient, namespace_name: str, mr_instance: ModelRegistry) -> Service:
+def get_mr_service_by_label(namespace_name: str, mr_instance: ModelRegistry) -> Service:
     """
     Args:
-        client (DynamicClient): OCP Client to use.
         namespace_name (str): Namespace name associated with the service
         mr_instance (ModelRegistry): Model Registry instance
 
@@ -314,7 +313,6 @@ def get_model_registry_db_label_dict(db_resource_name: str) -> dict[str, str]:
 
 @retry(exceptions_dict={TimeoutError: []}, wait_timeout=120, sleep=5)
 def wait_for_new_running_mr_pod(
-    admin_client: DynamicClient,
     orig_pod_name: str,
     namespace: str,
     instance_name: str,
@@ -323,10 +321,8 @@ def wait_for_new_running_mr_pod(
     Wait for the model registry pod to be replaced.
 
     Args:
-        admin_client (DynamicClient): The admin client.
         orig_pod_name (str): The name of the original pod.
         namespace (str): The namespace of the pod.
-        instance_name (str): The name of the instance.
     Returns:
         Pod object.
 
@@ -532,7 +528,6 @@ def execute_model_registry_get_command(url: str, headers: dict[str, str], json_o
 def get_mr_service_objects(
     base_name: str,
     namespace: str,
-    client: DynamicClient,
     teardown_resources: bool,
     num: int,
     db_backend: str = "mysql",
@@ -546,7 +541,6 @@ def get_mr_service_objects(
         name = f"{base_name}{num_service}"
         services.append(
             Service(
-                client=client,
                 name=name,
                 namespace=namespace,
                 ports=[
@@ -573,7 +567,6 @@ def get_mr_service_objects(
 def get_mr_configmap_objects(
     base_name: str,
     namespace: str,
-    client: DynamicClient,
     teardown_resources: bool,
     num: int,
     db_backend: str,
@@ -584,7 +577,6 @@ def get_mr_configmap_objects(
             name = f"{base_name}{num_config_map}"
             config_maps.append(
                 ConfigMap(
-                    client=client,
                     name=name,
                     namespace=namespace,
                     data={"my.cnf": MARIADB_MY_CNF},
@@ -596,7 +588,7 @@ def get_mr_configmap_objects(
 
 
 def get_mr_pvc_objects(
-    base_name: str, namespace: str, client: DynamicClient, teardown_resources: bool, num: int
+    base_name: str, namespace: str, teardown_resources: bool, num: int
 ) -> list[PersistentVolumeClaim]:
     pvcs = []
     for num_pvc in range(num):
@@ -614,15 +606,12 @@ def get_mr_pvc_objects(
     return pvcs
 
 
-def get_mr_secret_objects(
-    base_name: str, namespace: str, client: DynamicClient, teardown_resources: bool, num: int
-) -> list[Secret]:
+def get_mr_secret_objects(base_name: str, namespace: str, teardown_resources: bool, num: int) -> list[Secret]:
     secrets = []
     for num_secret in range(num):
         name = f"{base_name}{num_secret}"
         secrets.append(
             Secret(
-                client=client,
                 name=name,
                 namespace=namespace,
                 string_data=MODEL_REGISTRY_DB_SECRET_STR_DATA,
@@ -637,7 +626,6 @@ def get_mr_secret_objects(
 def get_mr_deployment_objects(
     base_name: str,
     namespace: str,
-    client: DynamicClient,
     teardown_resources: bool,
     db_backend: str,
     num: int,
@@ -654,7 +642,6 @@ def get_mr_deployment_objects(
         deployments.append(
             Deployment(
                 name=name,
-                client=client,
                 namespace=namespace,
                 annotations={
                     "template.alpha.openshift.io/wait-for-ready": "true",
@@ -686,7 +673,6 @@ def get_mr_standard_labels(resource_name: str) -> dict[str, str]:
 def get_model_registry_objects(
     base_name: str,
     namespace: str,
-    client: DynamicClient,
     teardown_resources: bool,
     params: dict[str, Any],
     num: int,
@@ -708,7 +694,6 @@ def get_model_registry_objects(
 
         model_registry_objects.append(
             ModelRegistry(
-                client=client,
                 name=name,
                 namespace=namespace,
                 label=get_mr_standard_labels(resource_name=name),
@@ -726,28 +711,24 @@ def get_model_registry_objects(
 def get_model_registry_metadata_resources(
     base_name: str,
     namespace: str,
-    client: DynamicClient,
     teardown_resources: bool,
     num_resources: int,
     db_backend: str,
 ) -> dict[Any, Any]:
     return {
         Secret: get_mr_secret_objects(
-            client=client,
             namespace=namespace,
             base_name=base_name,
             num=num_resources,
             teardown_resources=teardown_resources,
         ),
         PersistentVolumeClaim: get_mr_pvc_objects(
-            client=client,
             namespace=namespace,
             base_name=base_name,
             num=num_resources,
             teardown_resources=teardown_resources,
         ),
         Service: get_mr_service_objects(
-            client=client,
             namespace=namespace,
             base_name=base_name,
             num=num_resources,
@@ -755,7 +736,6 @@ def get_model_registry_metadata_resources(
             db_backend=db_backend,
         ),
         ConfigMap: get_mr_configmap_objects(
-            client=client,
             namespace=namespace,
             base_name=base_name,
             num=num_resources,
@@ -763,7 +743,6 @@ def get_model_registry_metadata_resources(
             db_backend=db_backend,
         ),
         Deployment: get_mr_deployment_objects(
-            client=client,
             namespace=namespace,
             base_name=base_name,
             num=num_resources,
@@ -827,11 +806,11 @@ class ResourceNotDeleted(Exception):
 
 
 @retry(wait_timeout=360, sleep=5, exceptions_dict={ResourceNotDeleted: []})
-def wait_for_default_resource_cleanedup(admin_client: DynamicClient, namespace_name: str) -> bool:
+def wait_for_default_resource_cleanedup(namespace_name: str, **kwargs: Any) -> bool:
     objects_not_deleted = []
     for kind in [Service, PersistentVolumeClaim, Deployment, Secret]:
         LOGGER.info(f"Checking if {kind} {MR_POSTGRES_DB_OBJECT[kind]} is deleted")
-        kind_obj = kind(client=admin_client, namespace=namespace_name, name=MR_POSTGRES_DB_OBJECT[kind])
+        kind_obj = kind(namespace=namespace_name, name=MR_POSTGRES_DB_OBJECT[kind])
         if kind_obj.exists:
             objects_not_deleted.append(f"{kind_obj.kind} - {kind_obj.name}")
     if not objects_not_deleted:
@@ -1118,7 +1097,7 @@ def wait_for_agent_catalog_api(
     )
 
 
-def get_latest_job_pod(admin_client: DynamicClient, job: Job) -> Pod:
+def get_latest_job_pod(job: Job) -> Pod:
     """Get the latest (most recently created) Pod created by a Job."""
     pods = list(
         Pod.list_resources(

@@ -2,7 +2,6 @@ import logging
 from collections.abc import Generator
 from typing import Any
 
-from kubernetes.dynamic import DynamicClient
 from model_registry import ModelRegistry as ModelRegistryClient
 from mr_openapi.exceptions import ForbiddenException
 
@@ -55,7 +54,6 @@ def assert_positive_mr_registry(
 
 
 def create_role_binding(
-    admin_client: DynamicClient,
     model_registry_namespace: str,
     mr_access_role: Role,
     name: str,
@@ -81,9 +79,7 @@ def create_role_binding(
         yield mr_access_role_binding
 
 
-def grant_mr_access(
-    admin_client: DynamicClient, user: str, mr_instance_name: str, model_registry_namespace: str
-) -> tuple[Role, RoleBinding]:
+def grant_mr_access(user: str, mr_instance_name: str, model_registry_namespace: str) -> tuple[Role, RoleBinding]:
     """Grant a user access to a Model Registry instance."""
     role_rules: list[dict[str, Any]] = [
         {
@@ -125,18 +121,14 @@ def grant_mr_access(
     return role, rb
 
 
-def revoke_mr_access(
-    admin_client: DynamicClient, user: str, mr_instance_name: str, model_registry_namespace: str
-) -> None:
+def revoke_mr_access(user: str, mr_instance_name: str, model_registry_namespace: str) -> None:
     """Revoke a user's access to a Model Registry instance."""
     rb = RoleBinding(
-        client=admin_client,
         namespace=model_registry_namespace,
         name=f"{user}-{mr_instance_name}-access",
     )
     rb.delete(wait=True)
     role = Role(
-        client=admin_client,
         namespace=model_registry_namespace,
         name=f"{user}-{mr_instance_name}-role",
     )
