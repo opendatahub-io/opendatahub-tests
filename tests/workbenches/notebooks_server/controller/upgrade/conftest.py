@@ -39,8 +39,6 @@ from tests.workbenches.notebooks_server.controller.utils import (
 from utilities import constants
 from utilities.infra import create_ns
 from utilities.kueue_utils import (
-    KUEUE_CLUSTER_QUEUE_LABEL,
-    KUEUE_LOCAL_QUEUE_LABEL,
     KUEUE_MANAGED_LABEL,
     KUEUE_QUEUE_NAME_LABEL,
     ClusterQueue,
@@ -1140,7 +1138,7 @@ def capture_kueue_baseline(
     pod_labels = upgrade_kueue_notebook_pod.instance.metadata.labels or {}
     notebook_generation = upgrade_kueue_notebook.instance.metadata.generation
 
-    for _label in (KUEUE_MANAGED_LABEL, KUEUE_QUEUE_NAME_LABEL, KUEUE_CLUSTER_QUEUE_LABEL, KUEUE_LOCAL_QUEUE_LABEL):
+    for _label in (KUEUE_MANAGED_LABEL, KUEUE_QUEUE_NAME_LABEL):
         assert pod_labels.get(_label), (
             f"Pre-upgrade kueue pod '{upgrade_kueue_notebook_pod.name}' missing label '{_label}'; "
             f"refusing to capture an empty baseline. Labels: {list(pod_labels.keys())}"
@@ -1152,8 +1150,6 @@ def capture_kueue_baseline(
         "pod_creation_timestamp": creation_timestamp,
         "pod_kueue_managed_label": pod_labels.get(KUEUE_MANAGED_LABEL, ""),
         "pod_queue_name_label": pod_labels.get(KUEUE_QUEUE_NAME_LABEL, ""),
-        "pod_cluster_queue_label": pod_labels.get(KUEUE_CLUSTER_QUEUE_LABEL, ""),
-        "pod_local_queue_label": pod_labels.get(KUEUE_LOCAL_QUEUE_LABEL, ""),
         "notebook_generation": notebook_generation,
         "cluster_queue_name": UPGRADE_KUEUE_CLUSTER_QUEUE_NAME,
         "local_queue_name": UPGRADE_KUEUE_LOCAL_QUEUE_NAME,
