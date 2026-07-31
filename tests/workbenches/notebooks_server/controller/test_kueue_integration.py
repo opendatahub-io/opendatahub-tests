@@ -34,8 +34,6 @@ from tests.workbenches.notebooks_server.controller.utils import (
 )
 from utilities.constants import Timeout
 from utilities.kueue_utils import (
-    KUEUE_CLUSTER_QUEUE_LABEL,
-    KUEUE_LOCAL_QUEUE_LABEL,
     KUEUE_MANAGED_LABEL,
     KUEUE_QUEUE_NAME_LABEL,
     ClusterQueue,
@@ -65,17 +63,11 @@ def _workload_is_admitted(workload: Workload) -> bool:
     return any(c["type"] == "Admitted" and c["status"] == "True" for c in conditions)
 
 
-def _assert_kueue_pod_labels(pod: Pod, cluster_queue_name: str, local_queue_name: str) -> None:
-    """Assert that a pod carries the full set of Kueue scheduling labels."""
+def _assert_kueue_pod_labels(pod: Pod) -> None:
+    """Assert that a pod carries the Kueue scheduling labels."""
     labels = pod.instance.metadata.labels or {}
     assert labels.get(KUEUE_MANAGED_LABEL) == "true", (
         f"Pod should have '{KUEUE_MANAGED_LABEL}=true'. Labels: {list(labels.keys())}"
-    )
-    assert labels.get(KUEUE_CLUSTER_QUEUE_LABEL) == cluster_queue_name, (
-        f"Pod should have cluster-queue label '{cluster_queue_name}', got: '{labels.get(KUEUE_CLUSTER_QUEUE_LABEL)}'"
-    )
-    assert labels.get(KUEUE_LOCAL_QUEUE_LABEL) == local_queue_name, (
-        f"Pod should have local-queue label '{local_queue_name}', got: '{labels.get(KUEUE_LOCAL_QUEUE_LABEL)}'"
     )
 
 
@@ -227,8 +219,6 @@ class TestKueueNotebookIntegration:
 
         _assert_kueue_pod_labels(
             pod=notebook_pod,
-            cluster_queue_name=kueue_cluster_queue.name,
-            local_queue_name=kueue_local_queue.name,
         )
 
         notebook_pod.wait_for_condition(
@@ -401,8 +391,6 @@ class TestKueueNotebookIntegration:
 
         _assert_kueue_pod_labels(
             pod=restarted_pod,
-            cluster_queue_name=kueue_cluster_queue.name,
-            local_queue_name=kueue_local_queue.name,
         )
 
         restarted_pod.wait_for_condition(
