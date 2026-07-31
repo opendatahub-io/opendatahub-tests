@@ -1,5 +1,4 @@
 import base64
-import binascii
 import os
 import shutil
 from ast import literal_eval
@@ -155,35 +154,20 @@ def aws_secret_access_key(pytestconfig: Config) -> str:
 
 @pytest.fixture(scope="session")
 def registry_pull_secret(pytestconfig: pytest.Config) -> list[str]:
-    """Return base64 registry auth strings paired with registry_host by index."""
-    registry_pull_secrets = pytestconfig.option.registry_pull_secret
-    if not registry_pull_secrets:
-        raise ValueError(
-            "Registry pull secret is not set. "
-            "Either pass with `--registry-pull-secret` or set `OCI_REGISTRY_PULL_SECRET` environment variable"
-        )
-    if isinstance(registry_pull_secrets, str):
-        registry_pull_secrets = [registry_pull_secrets]
-    try:
-        for secret in registry_pull_secrets:
-            base64.b64decode(s=secret, validate=True)
-        return registry_pull_secrets
-    except binascii.Error:
-        raise ValueError("Registry pull secret is not a valid base64 encoded string")
+    """Return OCI registry pull secrets for configured vLLM registry hosts."""
+    from tests.model_serving.model_runtime.vllm.modelcar.utils import collect_modelcar_registry_credentials
+
+    _, secrets = collect_modelcar_registry_credentials(pytestconfig=pytestconfig, required=False)
+    return secrets
 
 
 @pytest.fixture(scope="session")
 def registry_host(pytestconfig: pytest.Config) -> list[str]:
-    """Return registry hosts paired with registry_pull_secret by index."""
-    registry_hosts = pytestconfig.option.registry_host
-    if not registry_hosts:
-        raise ValueError(
-            "Registry host for OCI images is not set. "
-            "Either pass with `--registry-host` or set `REGISTRY_HOST` environment variable"
-        )
-    if isinstance(registry_hosts, str):
-        registry_hosts = [registry_hosts]
-    return registry_hosts
+    """Return OCI registry hosts with configured vLLM pull secrets."""
+    from tests.model_serving.model_runtime.vllm.modelcar.utils import collect_modelcar_registry_credentials
+
+    hosts, _ = collect_modelcar_registry_credentials(pytestconfig=pytestconfig, required=False)
+    return hosts
 
 
 @pytest.fixture(scope="session")

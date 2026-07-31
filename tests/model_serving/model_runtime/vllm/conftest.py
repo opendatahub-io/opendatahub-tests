@@ -1,4 +1,6 @@
-from typing import Any, Generator
+import json
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 from kubernetes.dynamic import DynamicClient
@@ -11,6 +13,15 @@ from pytest import FixtureRequest
 from simple_logger.logger import get_logger
 
 from tests.model_serving.model_runtime.vllm.constant import ACCELERATOR_IDENTIFIER, PREDICT_RESOURCES, TEMPLATE_MAP
+from tests.model_serving.model_runtime.vllm.modelcar.constant import (
+    PULL_SECRET_ACCESS_TYPE,
+    PULL_SECRET_NAME,
+    SUPPORTED_MODELCAR_REGISTRY_HOSTS,
+)
+from tests.model_serving.model_runtime.vllm.modelcar.utils import (
+    normalize_registry_pull_auth,
+    validate_registry_pull_auth,
+)
 from tests.model_serving.model_runtime.vllm.utils import (
     dedupe_vllm_cli_args,
     kserve_s3_endpoint_secret,
@@ -140,6 +151,50 @@ def kserve_endpoint_s3_secret(
         aws_secret_access_key=aws_secret_access_key,
         aws_s3_region=models_s3_bucket_region,
         aws_s3_endpoint=models_s3_bucket_endpoint,
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="class")
+def kserve_registry_pull_secret(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    registry_pull_secret: list[str],
+    registry_host: list[str],
+) -> Generator[Secret | None, Any, Any]:
+    """Create a dockerconfigjson pull secret when OCI registry credentials are configured."""
+    if not registry_host:
+        yield None
+        return
+
+    if len(registry_host) != len(registry_pull_secret):
+        raise ValueError(
+            f"registry_host count ({len(registry_host)}) must match "
+            f"registry_pull_secret count ({len(registry_pull_secret)})"
+        )
+
+    unsupported_hosts = set(registry_host) - SUPPORTED_MODELCAR_REGISTRY_HOSTS
+    if unsupported_hosts:
+        raise ValueError(f"Unsupported OCI registry hosts: {sorted(unsupported_hosts)}")
+
+    auths: dict[str, dict[str, str]] = {}
+    for host, raw_auth in zip(registry_host, registry_pull_secret):
+        auth = normalize_registry_pull_auth(raw_value=raw_auth, expected_host=host)
+        validate_registry_pull_auth(auth=auth)
+        auths[host] = {"auth": auth}
+
+    docker_config_json = json.dumps({"auths": auths})
+    with Secret(
+        client=admin_client,
+        name=PULL_SECRET_NAME,
+        namespace=model_namespace.name,
+        string_data={
+            ".dockerconfigjson": docker_config_json,
+            "ACCESS_TYPE": PULL_SECRET_ACCESS_TYPE,
+            "OCI_HOST": json.dumps(list(registry_host)),
+        },
+        type="kubernetes.io/dockerconfigjson",
+        wait_for_resource=True,
     ) as secret:
         yield secret
 
