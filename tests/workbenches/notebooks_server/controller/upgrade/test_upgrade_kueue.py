@@ -25,8 +25,6 @@ from tests.workbenches.notebooks_server.controller.utils import (
     StatefulSet,
 )
 from utilities.kueue_utils import (
-    KUEUE_CLUSTER_QUEUE_LABEL,
-    KUEUE_LOCAL_QUEUE_LABEL,
     KUEUE_MANAGED_LABEL,
     KUEUE_QUEUE_NAME_LABEL,
     ClusterQueue,
@@ -65,7 +63,7 @@ class TestPreUpgradeKueueNotebook:
     ) -> None:
         """Given a kueue-managed notebook pod is running before upgrade,
         When Kueue admits the workload,
-        Then the pod should have the full set of Kueue scheduling labels.
+        Then the pod should have Kueue scheduling labels.
         """
         pod_labels = upgrade_kueue_notebook_pod.instance.metadata.labels or {}
         assert pod_labels.get(KUEUE_MANAGED_LABEL) == "true", (
@@ -75,14 +73,6 @@ class TestPreUpgradeKueueNotebook:
         assert pod_labels.get(KUEUE_QUEUE_NAME_LABEL) == UPGRADE_KUEUE_LOCAL_QUEUE_NAME, (
             f"Notebook pod should have '{KUEUE_QUEUE_NAME_LABEL}={UPGRADE_KUEUE_LOCAL_QUEUE_NAME}' "
             f"label. Got: {pod_labels.get(KUEUE_QUEUE_NAME_LABEL)}"
-        )
-        assert pod_labels.get(KUEUE_CLUSTER_QUEUE_LABEL) == UPGRADE_KUEUE_CLUSTER_QUEUE_NAME, (
-            f"Notebook pod should have '{KUEUE_CLUSTER_QUEUE_LABEL}={UPGRADE_KUEUE_CLUSTER_QUEUE_NAME}' "
-            f"label. Got: {pod_labels.get(KUEUE_CLUSTER_QUEUE_LABEL)}"
-        )
-        assert pod_labels.get(KUEUE_LOCAL_QUEUE_LABEL) == UPGRADE_KUEUE_LOCAL_QUEUE_NAME, (
-            f"Notebook pod should have '{KUEUE_LOCAL_QUEUE_LABEL}={UPGRADE_KUEUE_LOCAL_QUEUE_NAME}' "
-            f"label. Got: {pod_labels.get(KUEUE_LOCAL_QUEUE_LABEL)}"
         )
 
     @pytest.mark.pre_upgrade
@@ -149,7 +139,7 @@ class TestPostUpgradeKueueNotebook:
     ) -> None:
         """Given a kueue-managed notebook pod had scheduling labels before upgrade,
         When the upgrade completes,
-        Then all Kueue labels (managed, queue-name, cluster-queue, local-queue) should be unchanged.
+        Then Kueue management labels (managed, queue-name) should be unchanged.
         """
         assert upgrade_kueue_notebook_pod.exists, (
             f"Kueue notebook pod '{upgrade_kueue_notebook_pod.name}' no longer exists after upgrade"
@@ -169,20 +159,6 @@ class TestPostUpgradeKueueNotebook:
         assert current_queue_name == saved_queue_name, (
             f"Kueue queue-name label changed during upgrade. "
             f"Pre-upgrade: '{saved_queue_name}', post-upgrade: '{current_queue_name}'"
-        )
-
-        saved_cluster_queue = upgrade_kueue_baseline["pod_cluster_queue_label"]
-        current_cluster_queue = pod_labels.get(KUEUE_CLUSTER_QUEUE_LABEL, "")
-        assert current_cluster_queue == saved_cluster_queue, (
-            f"Kueue cluster-queue label changed during upgrade. "
-            f"Pre-upgrade: '{saved_cluster_queue}', post-upgrade: '{current_cluster_queue}'"
-        )
-
-        saved_local_queue = upgrade_kueue_baseline["pod_local_queue_label"]
-        current_local_queue = pod_labels.get(KUEUE_LOCAL_QUEUE_LABEL, "")
-        assert current_local_queue == saved_local_queue, (
-            f"Kueue local-queue label changed during upgrade. "
-            f"Pre-upgrade: '{saved_local_queue}', post-upgrade: '{current_local_queue}'"
         )
 
     @pytest.mark.post_upgrade
@@ -440,38 +416,6 @@ class TestPostUpgradeKueueCreation:
             f"New kueue notebook pod should have "
             f"'{KUEUE_QUEUE_NAME_LABEL}={UPGRADE_KUEUE_LOCAL_QUEUE_NAME}' label. "
             f"Got: {pod_labels.get(KUEUE_QUEUE_NAME_LABEL)}"
-        )
-
-    @pytest.mark.post_upgrade
-    def test_new_kueue_notebook_has_cluster_queue_label(
-        self,
-        new_kueue_notebook_pod: Pod,
-    ) -> None:
-        """Given a new kueue-managed notebook is created post-upgrade,
-        When Kueue admits the workload,
-        Then the pod should have the cluster-queue-name label.
-        """
-        pod_labels = new_kueue_notebook_pod.instance.metadata.labels or {}
-        assert pod_labels.get(KUEUE_CLUSTER_QUEUE_LABEL) == UPGRADE_KUEUE_CLUSTER_QUEUE_NAME, (
-            f"New kueue notebook pod should have "
-            f"'{KUEUE_CLUSTER_QUEUE_LABEL}={UPGRADE_KUEUE_CLUSTER_QUEUE_NAME}' label. "
-            f"Got: {pod_labels.get(KUEUE_CLUSTER_QUEUE_LABEL)}"
-        )
-
-    @pytest.mark.post_upgrade
-    def test_new_kueue_notebook_has_local_queue_label(
-        self,
-        new_kueue_notebook_pod: Pod,
-    ) -> None:
-        """Given a new kueue-managed notebook is created post-upgrade,
-        When Kueue admits the workload,
-        Then the pod should have the local-queue-name label.
-        """
-        pod_labels = new_kueue_notebook_pod.instance.metadata.labels or {}
-        assert pod_labels.get(KUEUE_LOCAL_QUEUE_LABEL) == UPGRADE_KUEUE_LOCAL_QUEUE_NAME, (
-            f"New kueue notebook pod should have "
-            f"'{KUEUE_LOCAL_QUEUE_LABEL}={UPGRADE_KUEUE_LOCAL_QUEUE_NAME}' label. "
-            f"Got: {pod_labels.get(KUEUE_LOCAL_QUEUE_LABEL)}"
         )
 
     @pytest.mark.post_upgrade

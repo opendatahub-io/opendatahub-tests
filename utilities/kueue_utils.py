@@ -13,8 +13,6 @@ from utilities.resources.workload import Workload as Workload  # noqa: F401
 
 KUEUE_QUEUE_NAME_LABEL: str = "kueue.x-k8s.io/queue-name"
 KUEUE_MANAGED_LABEL: str = "kueue.x-k8s.io/managed"
-KUEUE_CLUSTER_QUEUE_LABEL: str = "kueue.x-k8s.io/cluster-queue-name"
-KUEUE_LOCAL_QUEUE_LABEL: str = "kueue.x-k8s.io/local-queue-name"
 
 
 @contextmanager
