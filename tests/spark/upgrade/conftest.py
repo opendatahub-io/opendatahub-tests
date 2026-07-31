@@ -9,8 +9,10 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.namespace import Namespace
+from ocp_resources.network_policy import NetworkPolicy
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.role import Role
+from ocp_resources.role_binding import RoleBinding
 from ocp_resources.service_account import ServiceAccount
 from pytest_testconfig import config as py_config
 
@@ -204,13 +206,11 @@ def service_account_fixture(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     spark_namespace_fixture: Namespace,
-    spark_role_fixture: list[Role],
     teardown_resources: bool,
 ) -> Generator[list[ServiceAccount], Any, Any]:
-    """Discover spark ServiceAccounts, RoleBindings, and NetworkPolicies from the applications namespace and recreate.
+    """Discover spark ServiceAccounts from the applications namespace and recreate in upgrade namespace.
 
-    Pre-upgrade: Discovers SAs, RoleBindings, and NetworkPolicies from operator's namespace, recreates in upgrade
-    namespace
+    Pre-upgrade: Discovers SAs from operator's namespace, recreates in upgrade namespace
     Post-upgrade: References existing SAs in upgrade namespace
     """
     if pytestconfig.option.post_upgrade:
@@ -237,31 +237,79 @@ def service_account_fixture(
             )
             created_sas.append(sa)
 
+        yield created_sas
+
+
+@pytest.fixture(scope="session")
+def role_binding_fixture(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    spark_namespace_fixture: Namespace,
+    service_account_fixture: list[ServiceAccount],
+    spark_role_fixture: list[Role],
+    teardown_resources: bool,
+) -> Generator[list[RoleBinding], Any, Any]:
+    """Discover spark RoleBindings from the applications namespace and recreate in upgrade namespace.
+
+    Pre-upgrade: Discovers RoleBindings from operator's namespace, recreates in upgrade namespace
+    Post-upgrade: References existing RoleBindings in upgrade namespace
+    """
+    if pytestconfig.option.post_upgrade:
+        yield get_spark_role_bindings(client=admin_client, namespace=spark_namespace_fixture.name)
+    else:
+        apps_namespace = py_config["applications_namespace"]
+
         source_rbs = get_spark_role_bindings(client=admin_client, namespace=apps_namespace)
         LOGGER.info(
             f"Discovered {len(source_rbs)} spark RoleBinding(s) in {apps_namespace}: {[rb.name for rb in source_rbs]}"
         )
+
+        created_rbs = []
         for source_rb in source_rbs:
-            recreate_role_binding_in_namespace(
+            rb = recreate_role_binding_in_namespace(
                 client=admin_client,
                 source_rb=source_rb,
                 target_namespace=spark_namespace_fixture.name,
                 teardown=teardown_resources,
             )
+            created_rbs.append(rb)
+
+        yield created_rbs
+
+
+@pytest.fixture(scope="session")
+def network_policy_fixture(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    spark_namespace_fixture: Namespace,
+    teardown_resources: bool,
+) -> Generator[list[NetworkPolicy], Any, Any]:
+    """Discover spark NetworkPolicies from the applications namespace and recreate in upgrade namespace.
+
+    Pre-upgrade: Discovers NetworkPolicies from operator's namespace, recreates in upgrade namespace
+    Post-upgrade: References existing NetworkPolicies in upgrade namespace
+    """
+    if pytestconfig.option.post_upgrade:
+        yield get_spark_network_policies(client=admin_client, namespace=spark_namespace_fixture.name)
+    else:
+        apps_namespace = py_config["applications_namespace"]
 
         source_nps = get_spark_network_policies(client=admin_client, namespace=apps_namespace)
         LOGGER.info(
             f"Discovered {len(source_nps)} spark NetworkPolicy(s) in {apps_namespace}: {[np.name for np in source_nps]}"
         )
+
+        created_nps = []
         for source_np in source_nps:
-            recreate_network_policy_in_namespace(
+            np = recreate_network_policy_in_namespace(
                 client=admin_client,
                 source_np=source_np,
                 target_namespace=spark_namespace_fixture.name,
                 teardown=teardown_resources,
             )
+            created_nps.append(np)
 
-        yield created_sas
+        yield created_nps
 
 
 @pytest.fixture(scope="session")
@@ -270,6 +318,8 @@ def spark_application_fixture(
     admin_client: DynamicClient,
     spark_namespace_fixture: Namespace,
     service_account_fixture: list[ServiceAccount],
+    role_binding_fixture: list[RoleBinding],
+    network_policy_fixture: list[NetworkPolicy],
     teardown_resources: bool,
 ) -> Generator[SparkApplication, Any, Any]:
     """Create or reference a SparkApplication for upgrade testing.
@@ -311,6 +361,8 @@ def new_spark_application_fixture(
     admin_client: DynamicClient,
     spark_namespace_fixture: Namespace,
     service_account_fixture: list[ServiceAccount],
+    role_binding_fixture: list[RoleBinding],
+    network_policy_fixture: list[NetworkPolicy],
     teardown_resources: bool,
 ) -> Generator[SparkApplication | None, Any, Any]:
     """Create a new SparkApplication post-upgrade to test control plane.

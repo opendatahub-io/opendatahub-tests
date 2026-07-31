@@ -390,7 +390,11 @@ def recreate_service_account_in_namespace(
     target_namespace: str,
     teardown: bool,
 ) -> ServiceAccount:
-    sa = ServiceAccount(client=client, name=source_sa.name, namespace=target_namespace, teardown=teardown)
+    source_dict = source_sa.instance.to_dict()
+    source_dict["metadata"] = {"name": source_sa.name, "namespace": target_namespace}
+    # secrets are auto-managed by the API server and must not be copied from the source
+    source_dict.pop("secrets", None)
+    sa = ServiceAccount(client=client, kind_dict=source_dict, teardown=teardown)
     sa.deploy()
     return sa
 
