@@ -7,7 +7,8 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 
 from tests.ai_hub.image_constants import AiHubImages
-from utilities.constants import ModelCarImage, ModelFormat, RuntimeTemplates
+from utilities.constants import ModelFormat, RuntimeTemplates
+from utilities.image_constants import SharedImages
 
 
 class ModelRegistryEndpoints:
@@ -89,7 +90,7 @@ MODEL_REGISTRY_BASE_URI: str = "/api/model_registry/v1alpha3/"
 MODEL_ARTIFACT: dict[str, Any] = {
     "name": "model-artifact-rest-api",
     "description": "Model artifact created via rest call",
-    "uri": ModelCarImage.MLSERVER_ONNX,
+    "uri": SharedImages.MLSERVER_ONNX,
     "state": "UNKNOWN",
     "modelFormatName": ModelFormat.ONNX,
     "modelFormatVersion": "v1",
