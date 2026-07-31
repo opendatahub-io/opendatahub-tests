@@ -13,7 +13,7 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.gateway import Gateway
-from ocp_resources.llm_inference_service import LLMInferenceService
+from utilities.resources.llm_inference_service import LLMInferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.resource import Resource
 from ocp_resources.role import Role

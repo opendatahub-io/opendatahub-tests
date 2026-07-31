@@ -10,7 +10,7 @@ from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.gateway import Gateway
 from ocp_resources.inference_service import InferenceService
-from ocp_resources.llm_inference_service import LLMInferenceService
+from utilities.resources.llm_inference_service import LLMInferenceService
 from ocp_resources.prometheus import Prometheus
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret

@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
-from ocp_resources.llm_inference_service import LLMInferenceService
+from utilities.resources.llm_inference_service import LLMInferenceService
 from ocp_resources.resource import Resource
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 

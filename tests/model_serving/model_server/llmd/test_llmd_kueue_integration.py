@@ -1,6 +1,6 @@
 import pytest
 from ocp_resources.deployment import Deployment
-from ocp_resources.llm_inference_service import LLMInferenceService
+from utilities.resources.llm_inference_service import LLMInferenceService
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaOciConfig

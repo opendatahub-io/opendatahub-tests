@@ -1,7 +1,7 @@
 """E2e smoke test for KV cache CPU offloading on a GPU cluster."""
 
 import pytest
-from ocp_resources.llm_inference_service import LLMInferenceService
+from utilities.resources.llm_inference_service import LLMInferenceService
 
 from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaOciGpuConfig
 from tests.model_serving.model_server.llmd.utils import (

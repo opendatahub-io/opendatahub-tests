@@ -14,7 +14,7 @@ from typing import Any, NamedTuple
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.event import Event
-from ocp_resources.llm_inference_service import LLMInferenceService
+from utilities.resources.llm_inference_service import LLMInferenceService
 from ocp_resources.node import Node
 from ocp_resources.pod import Pod
 from ocp_resources.prometheus import Prometheus

@@ -1,7 +1,7 @@
 import pytest
 import structlog
 from ocp_resources.gateway import Gateway
-from ocp_resources.llm_inference_service import LLMInferenceService
+from utilities.resources.llm_inference_service import LLMInferenceService
 
 from tests.model_serving.model_server.llmd.utils import (
     parse_completion_text,

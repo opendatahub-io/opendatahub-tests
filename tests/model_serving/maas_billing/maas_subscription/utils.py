@@ -10,7 +10,7 @@ import pytest
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.llm_inference_service import LLMInferenceService
+from utilities.resources.llm_inference_service import LLMInferenceService
 from ocp_resources.maas_subscription import MaaSSubscription
 from ocp_resources.resource import ResourceEditor
 from timeout_sampler import TimeoutSampler

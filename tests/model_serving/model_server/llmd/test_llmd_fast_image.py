@@ -1,7 +1,7 @@
 import re
 
 import pytest
-from ocp_resources.llm_inference_service import LLMInferenceService
+from utilities.resources.llm_inference_service import LLMInferenceService
 
 from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaFast1Config, TinyLlamaFast2Config
 from tests.model_serving.model_server.llmd.utils import (

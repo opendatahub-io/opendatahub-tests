@@ -1,5 +1,5 @@
 import pytest
-from ocp_resources.llm_inference_service import LLMInferenceService
+from utilities.resources.llm_inference_service import LLMInferenceService
 
 from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaHfGpuConfig, TinyLlamaS3GpuConfig
 from tests.model_serving.model_server.llmd.utils import (

@@ -13,7 +13,7 @@ from ocp_resources.endpoints import Endpoints
 from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.group import Group
 from ocp_resources.ingress_config_openshift_io import Ingress as IngressConfig
-from ocp_resources.llm_inference_service import LLMInferenceService
+from utilities.resources.llm_inference_service import LLMInferenceService
 from ocp_resources.resource import ResourceEditor
 from requests import Response
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler

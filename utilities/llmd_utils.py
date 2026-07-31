@@ -8,7 +8,7 @@ from typing import Any
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.gateway import Gateway
-from ocp_resources.llm_inference_service import LLMInferenceService
+from utilities.resources.llm_inference_service import LLMInferenceService
 from ocp_resources.route import Route
 from timeout_sampler import TimeoutWatch
 

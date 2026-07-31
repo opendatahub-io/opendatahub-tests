@@ -2,7 +2,7 @@ from typing import Any
 
 import pytest
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.llm_inference_service import LLMInferenceService
+from utilities.resources.llm_inference_service import LLMInferenceService
 
 from tests.model_serving.model_server.kserve.model_cache.utils import (
     LocalModelNamespaceCache,
