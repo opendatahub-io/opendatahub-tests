@@ -1719,10 +1719,12 @@ def evalhub_test_data_populated(
                 "command": [
                     "/bin/sh",
                     "-c",
-                    "mkdir -p /data/tokenizer && "
-                    "cp /mnt/data/flan/tokenizer.json /mnt/data/flan/tokenizer_config.json "
-                    "/mnt/data/flan/special_tokens_map.json /mnt/data/flan/spiece.model "
-                    "/mnt/data/flan/config.json /data/tokenizer/",
+                    (
+                        "mkdir -p /data/tokenizer && "
+                        "cp /mnt/data/flan/tokenizer.json /mnt/data/flan/tokenizer_config.json "
+                        "/mnt/data/flan/special_tokens_map.json /mnt/data/flan/spiece.model "
+                        "/mnt/data/flan/config.json /data/tokenizer/"
+                    ),
                 ],
                 "volumeMounts": [{"name": "test-data", "mountPath": "/data"}],
                 "securityContext": {
