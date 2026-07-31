@@ -144,6 +144,7 @@ def mlserver_pvc_inference_service(
         "storage_uri": storage_uri,
         "model_format": mlserver_serving_runtime.instance.spec.supportedModelFormats[0].name,
         "deployment_mode": deployment_mode,
+        "external_route": request.param.get("enable_external_route", False),
         "wait_for_predictor_pods": True,
     }
 
