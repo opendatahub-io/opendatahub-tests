@@ -1,6 +1,7 @@
 import json
 
 import pytest
+from ocp_resources.inference_service import InferenceService
 
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import Protocols, RuntimeTemplates
@@ -38,6 +39,7 @@ ISVC_NAME = "sentiment-analysis"
 
 
 @pytest.mark.rawdeployment
+@pytest.mark.smoke
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, transformer_auth_inference_service",
     [
@@ -62,8 +64,12 @@ class TestTransformerAuthEnforcement:
         3. Query the model with a valid token and verify successful inference (200).
     """
 
-    def test_unauthenticated_request_rejected(self, transformer_auth_inference_service):
-        """Request without token is rejected by kube-rbac-proxy."""
+    def test_unauthenticated_request_rejected(self, transformer_auth_inference_service: InferenceService) -> None:
+        """Given an auth-enabled transformer ISVC.
+
+        When an inference request is sent without a token,
+        Then the request is rejected by kube-rbac-proxy.
+        """
         verify_inference_response(
             inference_service=transformer_auth_inference_service,
             inference_config=SENTIMENT_INFERENCE_CONFIG,
@@ -74,8 +80,14 @@ class TestTransformerAuthEnforcement:
             authorized_user=False,
         )
 
-    def test_authenticated_request_succeeds(self, transformer_auth_inference_service, transformer_inference_token):
-        """Request with valid token succeeds through kube-rbac-proxy to transformer."""
+    def test_authenticated_request_succeeds(
+        self, transformer_auth_inference_service: InferenceService, transformer_inference_token: str
+    ) -> None:
+        """Given an auth-enabled transformer ISVC and a valid token.
+
+        When an inference request is sent with the token,
+        Then the request succeeds through kube-rbac-proxy to the transformer.
+        """
         verify_inference_response(
             inference_service=transformer_auth_inference_service,
             inference_config=SENTIMENT_INFERENCE_CONFIG,

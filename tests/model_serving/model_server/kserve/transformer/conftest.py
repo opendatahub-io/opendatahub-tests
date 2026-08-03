@@ -10,13 +10,11 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.service_account import ServiceAccount
-from ocp_resources.serving_runtime import ServingRuntime
 
 from utilities.constants import (
     Annotations,
     KServeDeploymentType,
     Labels,
-    RuntimeTemplates,
 )
 from utilities.infra import (
     create_inference_token,
@@ -25,6 +23,17 @@ from utilities.infra import (
 )
 from utilities.logger import RedactedString
 from utilities.serving_runtime import ServingRuntimeFromTemplate
+
+DEFAULT_TRANSFORMER_IMAGE = (
+    "quay.io/spolti/kserve-sentiment-custom-transformer"
+    "@sha256:6af753f5d13e07fd2d0d3da9e55ddbcd4d5cabcd9d5f4c1fbbdce06fb1e08c67"
+)
+
+
+@pytest.fixture(scope="session")
+def use_unprivileged_client() -> bool:  # noqa: UFN001
+    """Transformer tests use admin client — no unprivileged user setup needed."""
+    return False
 
 
 @pytest.fixture(scope="class")
@@ -57,10 +66,7 @@ def transformer_auth_inference_service(
     Yields:
         InferenceService: The ready ISVC; torn down after the test class.
     """
-    transformer_image = os.environ.get(
-        "IMAGE_TRANSFORMER_IMG_TAG",
-        "quay.io/spolti/kserve-sentiment-custom-transformer:latest",
-    )
+    transformer_image = os.environ.get("IMAGE_TRANSFORMER_IMG_TAG", DEFAULT_TRANSFORMER_IMAGE)
 
     isvc_name = "sentiment-analysis"
     template_name = request.param["template-name"]
@@ -107,7 +113,7 @@ def transformer_auth_inference_service(
                     {
                         "name": "kserve-container",
                         "image": transformer_image,
-                        "imagePullPolicy": "Always",
+                        "imagePullPolicy": "IfNotPresent",
                         "args": [
                             f"--model-name={isvc_name}",
                             "--tokenizer_name=optimum/distilbert-base-uncased-finetuned-sst-2-english",
