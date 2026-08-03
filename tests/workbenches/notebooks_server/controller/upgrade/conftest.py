@@ -14,6 +14,7 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.workbenches.notebooks_server.controller.upgrade.kueue_constants import (
     NEW_KUEUE_NOTEBOOK_NAME,
@@ -47,6 +48,7 @@ from utilities.kueue_utils import (
     ClusterQueue,
     LocalQueue,
     ResourceFlavor,
+    Workload,
     create_cluster_queue,
     create_local_queue,
     create_resource_flavor,
@@ -970,6 +972,21 @@ def upgrade_kueue_notebook(
         if teardown_resources:
             nb.client = admin_client
             nb.clean_up()
+            try:
+                for sample in TimeoutSampler(
+                    wait_timeout=60,
+                    sleep=5,
+                    func=lambda: list(Workload.get(client=admin_client, namespace=upgrade_kueue_namespace.name)),
+                ):
+                    if not sample:
+                        break
+            except TimeoutExpiredError:
+                remaining = list(Workload.get(client=admin_client, namespace=upgrade_kueue_namespace.name))
+                pytest.fail(
+                    f"Kueue did not clean up {len(remaining)} Workload(s) within 60s after notebook deletion: "
+                    f"{[wl.name for wl in remaining]}. "
+                    f"This indicates Kueue is not garbage-collecting Workloads for deleted StatefulSets."
+                )
     else:
         route_host = get_dashboard_route_host(admin_client=admin_client)
         username = get_username(client=unprivileged_client)
