@@ -6,6 +6,7 @@ from typing import Any, TypedDict
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.config_map import ConfigMap
 from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.namespace import Namespace
 from ocp_resources.role import Role
@@ -185,21 +186,38 @@ def aitenant_from_spec(
     return AITenant(**aitenant_kwargs)
 
 
+def bootstrap_gateway_infrastructure_configmap_data(gateway_name: str) -> dict[str, str]:
+    """Return Gateway infrastructure ConfigMap data (ClusterIP Service + serving cert)."""
+    return {
+        "service": (
+            "metadata:\n"
+            "  annotations:\n"
+            f'    service.beta.openshift.io/serving-cert-secret-name: "{gateway_name}-service-tls"\n'
+            "spec:\n"
+            "  type: ClusterIP\n"
+        ),
+    }
+
+
 def aitenant_bootstrap_gateway(
     admin_client: DynamicClient,
     gateway_name: str,
     gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
     teardown: bool = True,
+    infrastructure: dict[str, Any] | None = None,
 ) -> Gateway:
     """Return a bootstrap Gateway that must exist before AITenant reconciliation."""
-    return Gateway(
-        client=admin_client,
-        name=gateway_name,
-        namespace=gateway_namespace,
-        gateway_class_name=AIGATEWAY_GATEWAY_CLASS_NAME,
-        listeners=AIGATEWAY_BOOTSTRAP_GATEWAY_LISTENERS,
-        teardown=teardown,
-    )
+    gateway_kwargs: dict[str, Any] = {
+        "client": admin_client,
+        "name": gateway_name,
+        "namespace": gateway_namespace,
+        "gateway_class_name": AIGATEWAY_GATEWAY_CLASS_NAME,
+        "listeners": AIGATEWAY_BOOTSTRAP_GATEWAY_LISTENERS,
+        "teardown": teardown,
+    }
+    if infrastructure is not None:
+        gateway_kwargs["infrastructure"] = infrastructure
+    return Gateway(**gateway_kwargs)
 
 
 @contextmanager
@@ -209,13 +227,29 @@ def bootstrap_gateway_context(
     gateway_namespace: str,
     teardown: bool,
 ) -> Generator[Gateway]:
-    """Yield a pre-provisioned bootstrap Gateway for the duration of the context."""
-    with aitenant_bootstrap_gateway(
-        admin_client=admin_client,
-        gateway_name=gateway_name,
-        gateway_namespace=gateway_namespace,
-        teardown=teardown,
-    ) as gateway:
+    """Yield a bootstrap Gateway with a ClusterIP infrastructure ConfigMap."""
+    with (
+        ConfigMap(
+            client=admin_client,
+            name=f"{gateway_name}-config",
+            namespace=gateway_namespace,
+            data=bootstrap_gateway_infrastructure_configmap_data(gateway_name=gateway_name),
+            teardown=teardown,
+        ) as infra_config_map,
+        aitenant_bootstrap_gateway(
+            admin_client=admin_client,
+            gateway_name=gateway_name,
+            gateway_namespace=gateway_namespace,
+            teardown=teardown,
+            infrastructure={
+                "parametersRef": {
+                    "group": "",
+                    "kind": "ConfigMap",
+                    "name": infra_config_map.name,
+                },
+            },
+        ) as gateway,
+    ):
         yield gateway
 
 
