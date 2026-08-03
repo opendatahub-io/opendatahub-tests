@@ -36,13 +36,15 @@ class TestEvalHubKueueQueueRecovery:
         evalhub_kueue_vllm_service: Service,
         evalhub_kueue_request_common: dict[str, str],
     ) -> None:
-        """TC-QM-001: A new job completes after a stopped ClusterQueue is re-enabled.
+        """TC-QM-001: A gated job resumes and completes after a stopped ClusterQueue is re-enabled.
 
-        EvalHub proactively fails jobs whose workloads are inadmissible (the
-        sidecar reports a queue_error within seconds). Auto-resume of the
-        original job is therefore not possible. This test verifies the more
-        important operational property: after a ClusterQueue is stopped and
-        re-enabled, the queue is fully functional and new jobs complete.
+        Kueue does not discard a workload that is held while its ClusterQueue is
+        stopped (`HoldAndDrain`); the workload stays pending until the queue is
+        re-enabled, at which point Kueue admits it and the job runs to
+        completion. EvalHub does not proactively fail inadmissible jobs. This
+        test verifies both properties: the originally-gated job recovers and
+        completes once the queue is restored, and a freshly submitted job also
+        completes.
         """
         common = evalhub_kueue_request_common
 
@@ -74,10 +76,8 @@ class TestEvalHubKueueQueueRecovery:
                     log_job_kueue_labels(admin_client, evalhub_kueue_namespace.name, gated_job_id)
                     raise
 
-            gated_result = wait_for_evalhub_job(**common, job_id=gated_job_id, timeout=60)
-            assert gated_result["status"]["state"] == "failed", (
-                f"Expected gated job to fail with queue_error, got: {gated_result['status']}"
-            )
+            gated_result = wait_for_evalhub_job(**common, job_id=gated_job_id, timeout=Timeout.TIMEOUT_10MIN)
+            validate_evalhub_job_completed(job_data=gated_result)
 
             data = submit_evalhub_job(
                 **common,
