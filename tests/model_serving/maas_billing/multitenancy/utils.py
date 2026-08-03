@@ -9,7 +9,6 @@ from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import NotFoundError, ResourceNotFoundError
 from ocp_resources.deployment import Deployment
 from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
-from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.maas_auth_policy import MaaSAuthPolicy
 from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.maas_subscription import MaaSSubscription
@@ -42,6 +41,7 @@ from utilities.llmd_utils import create_llmisvc
 from utilities.resources.aitenant import AITenant
 from utilities.resources.auth_policy import AuthPolicy
 from utilities.resources.http_route import HTTPRoute
+from utilities.resources.llm_inference_service import LLMInferenceService
 from utilities.resources.maastenantconfig import MaasTenantConfig
 from utilities.resources.route import Route
 

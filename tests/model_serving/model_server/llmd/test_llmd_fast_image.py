@@ -1,7 +1,6 @@
 import re
 
 import pytest
-from ocp_resources.llm_inference_service import LLMInferenceService
 
 from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaFast1Config, TinyLlamaFast2Config
 from tests.model_serving.model_server.llmd.utils import (
@@ -11,6 +10,7 @@ from tests.model_serving.model_server.llmd.utils import (
     send_chat_completions,
     workaround_503_no_healthy_upstream,
 )
+from utilities.resources.llm_inference_service import LLMInferenceService
 
 pytestmark = [pytest.mark.llmd_gpu]
 
