@@ -2,7 +2,7 @@ name: Build and Push Container Image On PR Merge
 
 on:
   pull_request_target:
-    types: [closed]
+    #types: [closed]
 
 permissions:
   pull-requests: write
