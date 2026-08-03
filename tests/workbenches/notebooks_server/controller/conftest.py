@@ -1,14 +1,17 @@
-from typing import Generator
+from typing import Any, Generator
 
 import pytest
+import yaml
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
+from ocp_resources.config_map import ConfigMap
 from ocp_resources.namespace import Namespace
 from ocp_resources.notebook import Notebook
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
-from timeout_sampler import TimeoutExpiredError
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.workbenches.notebooks_server.controller.utils import (
     HardwareProfile,
@@ -165,28 +168,152 @@ def notebook_pod(
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture(scope="class")
-def kueue_statefulset_framework_check(admin_client: DynamicClient) -> None:
-    """Verify that the Kueue CR has StatefulSet framework enabled.
+KUEUE_CONTROLLER_NAMESPACE: str = "redhat-ods-applications"
+KUEUE_MANAGER_CONFIG_CM: str = "kueue-manager-config"
+KUEUE_CONTROLLER_LABEL: str = "app.kubernetes.io/name=kueue"
 
-    Notebooks are backed by StatefulSets, so the Red Hat build of Kueue operator
-    must have 'StatefulSet' listed in config.integrations.frameworks for workbench
-    scheduling to work. Fails the test with a clear message if misconfigured.
+
+def _restart_kueue_controller(admin_client: DynamicClient) -> None:
+    """Delete the Kueue controller pod and wait for a new one to become Ready."""
+    pods = list(
+        Pod.get(
+            dyn_client=admin_client,
+            namespace=KUEUE_CONTROLLER_NAMESPACE,
+            label_selector=KUEUE_CONTROLLER_LABEL,
+        )
+    )
+    for pod in pods:
+        pod.delete(wait=True)
+
+    for sample in TimeoutSampler(
+        wait_timeout=120,
+        sleep=5,
+        func=lambda: list(
+            Pod.get(
+                dyn_client=admin_client,
+                namespace=KUEUE_CONTROLLER_NAMESPACE,
+                label_selector=KUEUE_CONTROLLER_LABEL,
+            )
+        ),
+    ):
+        if sample and all(
+            pod.status == Pod.Status.RUNNING
+            and any(
+                c.get("type") == "Ready" and c.get("status") == "True" for c in (pod.instance.status.conditions or [])
+            )
+            for pod in sample
+        ):
+            break
+
+
+@pytest.fixture(scope="session")
+def kueue_statefulset_framework_check(admin_client: DynamicClient) -> Generator[None, None, None]:
+    """Ensure Kueue has StatefulSet framework enabled for notebook scheduling.
+
+    Notebooks are backed by StatefulSets, so Kueue must have 'pod' and 'statefulset'
+    listed in integrations.frameworks for Workload objects to be created.
+
+    For unmanaged mode (Red Hat build of Kueue operator), checks the Kueue CR.
+    For managed mode (embedded in RHOAI), reads the kueue-manager-config ConfigMap
+    and patches it if statefulset is missing, then restores it on teardown.
     """
-    kueue_cr = Kueue(
-        client=admin_client,
-        name="cluster",
-        ensure_exists=True,
-    )
-    spec = kueue_cr.instance.to_dict().get("spec", {})
-    frameworks: list[str] = spec.get("config", {}).get("integrations", {}).get("frameworks", [])
+    # Try unmanaged mode first (Red Hat build of Kueue operator with Kueue CR)
+    try:
+        kueue_cr = Kueue(
+            client=admin_client,
+            name="cluster",
+        )
+        if kueue_cr.exists:
+            spec = kueue_cr.instance.to_dict().get("spec", {})
+            frameworks: list[str] = spec.get("config", {}).get("integrations", {}).get("frameworks", [])
+            assert "StatefulSet" in frameworks, (
+                f"Kueue CR 'cluster' does not have 'StatefulSet' in config.integrations.frameworks. "
+                f"Current frameworks: {frameworks}. "
+                f"Notebooks require StatefulSet integration. "
+                f"Patch the Kueue CR to add 'StatefulSet' to spec.config.integrations.frameworks."
+            )
+            yield
+            return
+    except (ResourceNotFoundError, TimeoutExpiredError, NotImplementedError):
+        LOGGER.info("Kueue CR not found via kueue.openshift.io — checking managed/embedded mode")
 
-    assert "StatefulSet" in frameworks, (
-        f"Kueue CR 'cluster' does not have 'StatefulSet' in config.integrations.frameworks. "
-        f"Current frameworks: {frameworks}. "
-        f"Notebooks require StatefulSet integration. "
-        f"Patch the Kueue CR to add 'StatefulSet' to spec.config.integrations.frameworks."
+    # Managed/embedded mode: read the kueue-manager-config ConfigMap
+    cm = ConfigMap(
+        client=admin_client,
+        name=KUEUE_MANAGER_CONFIG_CM,
+        namespace=KUEUE_CONTROLLER_NAMESPACE,
     )
+    assert cm.exists, (
+        f"ConfigMap '{KUEUE_MANAGER_CONFIG_CM}' not found in namespace "
+        f"'{KUEUE_CONTROLLER_NAMESPACE}'. Cannot verify Kueue configuration."
+    )
+
+    config_yaml_str = cm.instance.data["controller_manager_config.yaml"]
+    config_data = yaml.safe_load(config_yaml_str)
+    integrations: dict[str, Any] = config_data.setdefault("integrations", {})
+    frameworks_list: list[str] = integrations.get("frameworks", [])
+
+    needs_pod = "pod" not in frameworks_list
+    needs_statefulset = "statefulset" not in frameworks_list
+
+    if not needs_pod and not needs_statefulset:
+        LOGGER.info("Kueue config already has pod+statefulset frameworks enabled")
+        yield
+        return
+
+    # Patch: add missing frameworks
+    original_config_yaml = config_yaml_str
+    if needs_pod:
+        frameworks_list.append("pod")
+    if needs_statefulset:
+        frameworks_list.append("statefulset")
+    integrations["frameworks"] = frameworks_list
+
+    # Add podOptions.namespaceSelector to avoid managing system namespaces
+    if "podOptions" not in integrations:
+        integrations["podOptions"] = {
+            "namespaceSelector": {
+                "matchExpressions": [
+                    {
+                        "key": "kubernetes.io/metadata.name",
+                        "operator": "NotIn",
+                        "values": ["kube-system", "kueue-system", KUEUE_CONTROLLER_NAMESPACE],
+                    }
+                ]
+            }
+        }
+
+    new_config_yaml = yaml.dump(config_data, default_flow_style=False)
+    LOGGER.info(
+        f"Patching Kueue config to add frameworks: "
+        f"{'pod ' if needs_pod else ''}{'statefulset ' if needs_statefulset else ''}"
+    )
+
+    # Set opendatahub.io/managed=false to prevent the RHOAI operator from
+    # reconciling the ConfigMap back to its original state.
+    cm_body = cm.instance.to_dict()
+    annotations = cm_body["metadata"].setdefault("annotations", {})
+    original_managed_value = annotations.get("opendatahub.io/managed")
+    annotations["opendatahub.io/managed"] = "false"
+    cm_body["data"]["controller_manager_config.yaml"] = new_config_yaml
+    cm.update_replace(resource_dict=cm_body)
+
+    _restart_kueue_controller(admin_client=admin_client)
+    LOGGER.info("Kueue controller restarted with statefulset framework enabled")
+
+    yield
+
+    # Restore original config and remove the opt-out annotation
+    LOGGER.info("Restoring original Kueue config (removing statefulset framework)")
+    cm_body = cm.instance.to_dict()
+    cm_body["data"]["controller_manager_config.yaml"] = original_config_yaml
+    if original_managed_value is not None:
+        cm_body["metadata"]["annotations"]["opendatahub.io/managed"] = original_managed_value
+    else:
+        cm_body["metadata"]["annotations"].pop("opendatahub.io/managed", None)
+    cm.update_replace(resource_dict=cm_body)
+    _restart_kueue_controller(admin_client=admin_client)
+    LOGGER.info("Kueue controller restored to original configuration")
 
 
 @pytest.fixture(scope="class")
