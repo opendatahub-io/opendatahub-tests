@@ -3,6 +3,12 @@ from __future__ import annotations
 from contextlib import ExitStack
 from typing import TYPE_CHECKING, Protocol, Self, runtime_checkable
 
+from ocp_resources.role import Role
+from ocp_resources.role_binding import RoleBinding
+from ocp_resources.service_account import ServiceAccount
+
+from utilities.infra import create_inference_token
+
 if TYPE_CHECKING:
     from types import TracebackType
 
@@ -50,12 +56,6 @@ class ServiceAccountTokenProvider:
         self._token: str | None = None
 
     def __enter__(self) -> Self:
-        from ocp_resources.role import Role
-        from ocp_resources.role_binding import RoleBinding
-        from ocp_resources.service_account import ServiceAccount
-
-        from utilities.infra import create_inference_token
-
         self._stack = ExitStack()
         sa = self._stack.enter_context(  # noqa: FCN001
             ServiceAccount(

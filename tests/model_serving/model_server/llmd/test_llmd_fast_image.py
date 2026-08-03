@@ -2,7 +2,6 @@ import re
 
 import pytest
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.llm_inference_service import LLMInferenceService
 
 from tests.model_serving.model_server.llmd.api_compat import OpenAICompatibilityValidator
 from tests.model_serving.model_server.llmd.constants import SOAK_TEST_DURATION

@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Self
 import httpx
 import openai
 import structlog
+from ocp_resources.event import Event
 from openai import OpenAI
 from openai.types import ResponseFormatJSONObject
 from openai.types.chat import (
@@ -25,7 +26,8 @@ from tests.model_serving.model_server.llmd.api_compat.auth import (
     NoAuthProvider,
     ServiceAccountTokenProvider,
 )
-from tests.model_serving.model_server.llmd.utils import workaround_503_no_healthy_upstream
+from tests.model_serving.model_server.llmd.utils import get_llmd_vllm_pods, workaround_503_no_healthy_upstream
+from utilities.llmd_utils import get_llm_inference_url
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -169,8 +171,6 @@ class OpenAICompatibilityValidator:
         llmisvc: LLMInferenceService,
         insecure: bool = True,
     ) -> OpenAICompatibilityValidator:
-        from utilities.llmd_utils import get_llm_inference_url
-
         workaround_503_no_healthy_upstream(llmisvc=llmisvc, prompt="What is the capital of Italy?")
 
         base_url = get_llm_inference_url(llm_service=llmisvc)
@@ -211,10 +211,6 @@ class OpenAICompatibilityValidator:
         if self._llmisvc is None:
             return "(no LLMInferenceService — raw URL mode, no cluster diagnostics available)"
 
-        from tests.model_serving.model_server.llmd.utils import (
-            get_llmd_workload_pods,
-        )
-
         llmisvc = self._llmisvc
         separator = "-" * 60
         sections: list[str] = [separator, f"  Diagnostics for {llmisvc.name} in {llmisvc.namespace}", separator]
@@ -229,7 +225,7 @@ class OpenAICompatibilityValidator:
             sections.append("\n Conditions:\n  (failed to collect)")
 
         try:
-            pods = get_llmd_workload_pods(client=llmisvc.client, llmisvc=llmisvc)
+            pods = get_llmd_vllm_pods(client=llmisvc.client, llmisvc=llmisvc)
             pod_lines = []
             for pod in pods:
                 phase = pod.instance.status.get("phase", "Unknown")
@@ -242,8 +238,6 @@ class OpenAICompatibilityValidator:
             sections.append("\n Pods:\n  (failed to collect)")
 
         try:
-            from ocp_resources.event import Event
-
             events = Event.list(
                 client=llmisvc.client,
                 namespace=llmisvc.namespace,
