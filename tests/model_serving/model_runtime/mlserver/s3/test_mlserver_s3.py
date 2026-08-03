@@ -2,14 +2,13 @@
 Test module for model deployment using the MLServer runtime.
 
 This module contains parameterized tests to validate model inference
-across REST protocol and RawDeployment mode.
+across REST protocol and Standard deployment mode.
 """
 
 from typing import Any
 
 import pytest
 from ocp_resources.inference_service import InferenceService
-from ocp_resources.pod import Pod
 
 from tests.model_serving.model_runtime.mlserver.constant import (
     MODEL_CONFIGS,
@@ -113,26 +112,23 @@ class TestMLServerModels:
 
     This class validates inference functionality across multiple configurations:
     - Protocols: REST
-    - Deployment modes: Raw
+    - Deployment modes: Standard
     - Response validation against predefined snapshots
     """
 
     def test_mlserver_model_inference(
         self,
         mlserver_inference_service: InferenceService,
-        mlserver_pod_resource: Pod,
         mlserver_response_snapshot: Any,
         model_format: str,
     ) -> None:
         """
-        Test model inference using MLServer with REST protocol and RawDeployment mode.
+        Test model inference using MLServer with REST protocol.
 
-        This test sends inference requests using REST protocol and compares
-        the actual response with the expected snapshot for validation.
+        Uses external route when available, port-forward fallback otherwise.
 
         Args:
             mlserver_inference_service (InferenceService): The deployed inference service instance.
-            mlserver_pod_resource (Pod): The Kubernetes pod running the MLServer.
             mlserver_response_snapshot (Any): The expected model response for snapshot-based validation.
             model_format (str): Identifier for the model framework (e.g., "sklearn").
         """
@@ -142,7 +138,6 @@ class TestMLServerModels:
         model_format_config = MODEL_CONFIGS[model_format]
 
         validate_inference_request(
-            pod_name=mlserver_pod_resource.name,
             isvc=mlserver_inference_service,
             response_snapshot=mlserver_response_snapshot,
             input_query=model_format_config["rest_query"],
