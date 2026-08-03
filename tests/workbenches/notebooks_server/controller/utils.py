@@ -38,7 +38,7 @@ class MutatingWebhookConfiguration(Resource):
 
 
 class HardwareProfile(NamespacedResource):
-    """HardwareProfile resource (infrastructure.opendatahub.io/v1)."""
+    """HardwareProfile resource (infrastructure.opendatahub.io/v1alpha1)."""
 
     api_group: str = "infrastructure.opendatahub.io"
 

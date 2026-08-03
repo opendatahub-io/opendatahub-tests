@@ -880,7 +880,7 @@ def upgrade_kueue_hardware_profile(
             hwp.clean_up()
     else:
         kind_dict: dict[str, Any] = {
-            "apiVersion": "infrastructure.opendatahub.io/v1",
+            "apiVersion": "infrastructure.opendatahub.io/v1alpha1",
             "kind": "HardwareProfile",
             "metadata": {
                 "name": UPGRADE_KUEUE_HARDWARE_PROFILE_NAME,

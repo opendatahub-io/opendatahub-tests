@@ -294,7 +294,7 @@ def kueue_hardware_profile(
 ) -> Generator[HardwareProfile, None, None]:
     """HardwareProfile with scheduling.type=Queue for Kueue-backed workbenches."""
     hwp_dict = {
-        "apiVersion": "infrastructure.opendatahub.io/v1",
+        "apiVersion": "infrastructure.opendatahub.io/v1alpha1",
         "kind": "HardwareProfile",
         "metadata": {
             "name": request.param["name"],
