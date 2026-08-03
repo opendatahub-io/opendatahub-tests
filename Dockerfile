@@ -11,6 +11,12 @@ ENV UV_NO_CACHE=1
 ENV BIN_DIR="$HOME_DIR/.local/bin"
 ENV PATH="$PATH:$BIN_DIR"
 
+ARG TARGETARCH
+ARG TARGETPLATFORM
+
+RUN echo "Architecture: ${TARGETARCH}" && \
+    echo "Platform: ${TARGETPLATFORM}"
+
 # Install system dependencies using dnf
 RUN dnf update -y \
     && dnf install -y python3 python3-pip python3-devel ssh gnupg curl gpg wget vim rsync openssl openssl-devel skopeo gcc-c++\
@@ -35,11 +41,11 @@ COPY --from=quay.io/securesign/cli-cosign@sha256:3df09cd1b4915e61d4de9c67416827b
 RUN useradd -ms /bin/bash $USER && chown -R $USER:$USER $HOME
 USER $USER
 WORKDIR $HOME_DIR
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx ${BIN_DIR}/
 
 WORKDIR $TESTS_DIR
 COPY --chown=$USER:$USER . $TESTS_DIR
+ENV PATH="$HOME/.local/bin:${PATH}"
 
-RUN uv sync
+RUN python -V && python -m pip install uv && $HOME/.local/bin/uv sync
 
 ENTRYPOINT ["uv", "run", "pytest"]
