@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Generator
 from typing import Any
 
@@ -11,10 +12,13 @@ from ocp_resources.resource import ResourceEditor
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest import FixtureRequest
 
+from tests.model_serving.model_server.kserve.storage.pvc.utils import wait_for_rollout_complete
 from utilities.constants import KServeDeploymentType
 from utilities.general import download_model_data
 from utilities.inference_utils import create_isvc
-from utilities.infra import get_pods_by_isvc_label, verify_no_failed_pods, wait_for_inference_deployment_replicas
+from utilities.infra import get_pods_by_isvc_label
+
+LOGGER = logging.getLogger(__name__)
 
 
 @pytest.fixture(scope="class")
@@ -70,32 +74,31 @@ def patched_read_only_isvc(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
     pvc_inference_service: InferenceService,
-    first_predictor_pod: Pod,
 ) -> Generator[InferenceService, Any, Any]:
-    """Patch the storage.kserve.io/readonly annotation on the ISVC.
+    """Patch the storage.kserve.io/readonly annotation and wait for rollout.
+
+    On teardown, ResourceEditor restores the original annotation and the
+    fixture waits for that rollout too, so the next test sees a clean state.
 
     Expects request.param with:
         readonly (str): The annotation value to set ("true" or "false").
-        rollout (bool): Whether the patch changes the effective readOnly mount mode. When True,
-            waits for the old predictor pod to be deleted before proceeding (a deployment rollout
-            replaces it). When False, skips the wait — the pod spec is unchanged so no rollout
-            occurs (e.g. patching absent → "true", both resolve to readOnly=true).
     """
+    readonly_value = request.param["readonly"]
+    LOGGER.info(f"patched_read_only_isvc: patching readonly={readonly_value}")
     with ResourceEditor(
         patches={
             pvc_inference_service: {
                 "metadata": {
-                    "annotations": {"storage.kserve.io/readonly": request.param["readonly"]},
+                    "annotations": {"storage.kserve.io/readonly": readonly_value},
                 }
             }
         }
     ):
-        if request.param.get("rollout", True):
-            first_predictor_pod.wait_deleted()
-
-        verify_no_failed_pods(client=unprivileged_client, isvc=pvc_inference_service)
-        wait_for_inference_deployment_replicas(client=unprivileged_client, isvc=pvc_inference_service)
+        wait_for_rollout_complete(client=unprivileged_client, isvc=pvc_inference_service)
         yield pvc_inference_service
+    # ResourceEditor restores the annotation to None, triggering a rollout.
+    # Wait for it to settle so the next test sees a clean state.
+    wait_for_rollout_complete(client=unprivileged_client, isvc=pvc_inference_service)
 
 
 @pytest.fixture(scope="class")

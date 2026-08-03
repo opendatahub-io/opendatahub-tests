@@ -1,69 +1,22 @@
 import logging
-import shlex
 
 import pytest
-from kubernetes.dynamic import DynamicClient
-from ocp_resources.inference_service import InferenceService
-from ocp_resources.pod import Pod
 
 from tests.model_serving.model_server.kserve.storage.constants import (
     INFERENCE_SERVICE_PARAMS,
     KSERVE_OVMS_SERVING_RUNTIME_PARAMS,
 )
-from utilities.constants import Containers, KServeDeploymentType, StorageClassName
-from utilities.infra import get_pods_by_isvc_label
+from tests.model_serving.model_server.kserve.storage.pvc.utils import (
+    get_mount_mode,
+    get_running_predictor_pod,
+    get_volume_mount_readonly,
+    wait_for_rollout_complete,
+)
+from utilities.constants import KServeDeploymentType, StorageClassName
 
 LOGGER = logging.getLogger(__name__)
 
 pytestmark = [pytest.mark.tier1, pytest.mark.usefixtures("skip_if_no_nfs_storage_class", "valid_aws_config")]
-
-MOUNT_CHECK_COMMAND: list[str] = shlex.split("cat /proc/mounts")
-MODELS_MOUNT_PATH = "/mnt/models"
-
-
-def get_volume_mount_readonly(pod: Pod, container: str = Containers.KSERVE_CONTAINER_NAME) -> bool:
-    """Return the readOnly field from the pod spec for the /mnt/models volumeMount.
-
-    Inspects the Kubernetes pod spec (the webhook's output) to check whether the
-    admission webhook set volumeMount.readOnly on the /mnt/models mount. Returns
-    True if readOnly is set, False otherwise (including when the field is absent,
-    which Kubernetes treats as read-write).
-
-    Raises AssertionError if /mnt/models is not found in the container's volumeMounts.
-    """
-    for container_spec in pod.instance.spec.containers:
-        if container_spec.name == container:
-            for vm in container_spec.volumeMounts:
-                if vm.mountPath == MODELS_MOUNT_PATH:
-                    return bool(vm.readOnly)
-    raise AssertionError(f"volumeMount for {MODELS_MOUNT_PATH} not found in container {container}")
-
-
-def get_mount_mode(pod: Pod, container: str = Containers.KSERVE_CONTAINER_NAME) -> str:
-    """Return 'ro' or 'rw' for the /mnt/models mount by inspecting /proc/mounts.
-
-    Reads the container's /proc/mounts and parses each line in fstab(5) format
-    (device, mountpoint, fstype, options, dump, pass). Looks for entries where
-    the mountpoint matches /mnt/models and extracts 'ro' or 'rw' from the
-    comma-separated mount options field. Returns the mode from the last matching
-    entry, since the kernel honours the last mount for a given path.
-
-    Raises AssertionError if /mnt/models is not found in /proc/mounts.
-    """
-    output = pod.execute(container=container, command=MOUNT_CHECK_COMMAND)
-    mode = None
-    for line in output.splitlines():
-        parts = line.split()
-        if len(parts) >= 4 and parts[1] == MODELS_MOUNT_PATH:
-            LOGGER.info(f"Pod {pod.name} /mnt/models mount: {line}")
-            mount_opts = parts[3].split(",")
-            if "ro" in mount_opts:
-                mode = "ro"
-            elif "rw" in mount_opts:
-                mode = "rw"
-    if mode:
-        return mode
-    raise AssertionError(f"Mount point {MODELS_MOUNT_PATH} not found in /proc/mounts")
 
 
 @pytest.mark.parametrize(
@@ -81,15 +34,15 @@ def get_mount_mode(pod: Pod, container: str = Containers.KSERVE_CONTAINER_NAME) 
     indirect=True,
 )
 class TestKservePVCWriteAccess:
-    """Validate PVC write access control via the KServe read-only storage annotation.
+    """Validate PVC write access control via the storage.kserve.io/readonly annotation.
 
-    Steps:
-        1. Deploy a raw deployment ISVC with a ReadWriteMany NFS PVC and no explicit read-only annotation.
-        2. Verify no pod containers have restarted.
-        3. Verify the read-only annotation is not set by default.
-        4. Verify write access is denied by default (touch command fails).
-        5. Patch the ISVC with readonly=false and verify write access is allowed.
-        6. Patch the ISVC with readonly=true and verify write access is denied again.
+    Deploys a raw deployment ISVC with a ReadWriteMany NFS PVC and verifies:
+        1. Default state: no annotation, pod spec readOnly=true, /mnt/models mounted ro.
+        2. None→false→true: patch to false (rw), then toggle to true (ro).
+        3. None→true→false: patch to true (ro), then toggle to false (rw).
+
+    Each step checks the ISVC annotation, pod spec volumeMount.readOnly, and
+    /proc/mounts inside the container.
     """
 
     def test_pod_containers_not_restarted(self, first_predictor_pod):
@@ -109,12 +62,22 @@ class TestKservePVCWriteAccess:
 
     def test_isvc_read_only_pod_spec_default(self, first_predictor_pod):
         """Test that the pod spec has readOnly=true by default (webhook contract)"""
+        LOGGER.info(
+            f"pod={first_predictor_pod.name} "
+            f"created={first_predictor_pod.instance.metadata.creationTimestamp} "
+            f"uid={first_predictor_pod.instance.metadata.uid}"
+        )
         assert get_volume_mount_readonly(pod=first_predictor_pod), (
             "Expected volumeMount.readOnly=true on /mnt/models by default"
         )
 
     def test_isvc_read_only_mount_default(self, first_predictor_pod):
         """Test that /mnt/models is mounted read-only by default (runtime effect)"""
+        LOGGER.info(
+            f"pod={first_predictor_pod.name} "
+            f"created={first_predictor_pod.instance.metadata.creationTimestamp} "
+            f"uid={first_predictor_pod.instance.metadata.uid}"
+        )
         assert get_mount_mode(pod=first_predictor_pod) == "ro", (
             "Expected /mnt/models to be mounted read-only by default"
         )
@@ -128,125 +91,81 @@ class TestKservePVCWriteAccess:
         ],
         indirect=True,
     )
-    def test_isvc_read_only_pod_spec_false(self, unprivileged_client, patched_read_only_isvc):
-        """Test that the pod spec has readOnly=false when annotation is false (webhook contract)"""
-        new_pod = get_pods_by_isvc_label(
-            client=unprivileged_client,
-            isvc=patched_read_only_isvc,
-        )[0]
-        assert not get_volume_mount_readonly(pod=new_pod), (
-            "Expected volumeMount.readOnly=false on /mnt/models with readonly=false"
-        )
+    def test_isvc_read_only_false(self, unprivileged_client, patched_read_only_isvc):
+        """Test None→false→true transition.
 
-    @pytest.mark.parametrize(
-        "patched_read_only_isvc",
-        [
-            pytest.param(
-                {"readonly": "false"},
-            ),
-        ],
-        indirect=True,
-    )
-    def test_isvc_read_only_mount_false(self, unprivileged_client, patched_read_only_isvc):
-        """Test that /mnt/models is mounted read-write when annotation is false (runtime effect)"""
-        new_pod = get_pods_by_isvc_label(
-            client=unprivileged_client,
-            isvc=patched_read_only_isvc,
-        )[0]
-        assert get_mount_mode(pod=new_pod) == "rw", "Expected /mnt/models to be mounted read-write with readonly=false"
-
-    @pytest.mark.parametrize(
-        "patched_read_only_isvc",
-        [
-            pytest.param(
-                {"readonly": "true", "rollout": False},
-            ),
-        ],
-        indirect=True,
-    )
-    def test_isvc_read_only_pod_spec_true(self, unprivileged_client, patched_read_only_isvc):
-        """Verify that the pod spec has readOnly=true when annotation is true (webhook contract)."""
-        new_pod = get_pods_by_isvc_label(
-            client=unprivileged_client,
-            isvc=patched_read_only_isvc,
-        )[0]
-        assert get_volume_mount_readonly(pod=new_pod), (
-            "Expected volumeMount.readOnly=true on /mnt/models with readonly=true"
-        )
-
-    @pytest.mark.parametrize(
-        "patched_read_only_isvc",
-        [
-            pytest.param(
-                {"readonly": "true", "rollout": False},
-            ),
-        ],
-        indirect=True,
-    )
-    def test_isvc_read_only_mount_true(self, unprivileged_client, patched_read_only_isvc):
-        """Verify that /mnt/models is mounted read-only when annotation is true (runtime effect)."""
-        new_pod = get_pods_by_isvc_label(
-            client=unprivileged_client,
-            isvc=patched_read_only_isvc,
-        )[0]
-        assert get_mount_mode(pod=new_pod) == "ro", "Expected /mnt/models to be mounted read-only with readonly=true"
-
-    @pytest.mark.parametrize(
-        "patched_read_only_isvc, expected_mode",
-        [
-            pytest.param({"readonly": "false"}, "rw", id="test_readonly_annotation_false"),
-            pytest.param({"readonly": "true"}, "ro", id="test_readonly_annotation_true"),
-        ],
-        indirect=["patched_read_only_isvc"],
-    )
-    def test_isvc_readonly_toggle_pod_spec(
-        self,
-        unprivileged_client: DynamicClient,
-        patched_read_only_isvc: InferenceService,
-        expected_mode: str,
-    ) -> None:
-        """Verify pod spec readOnly reflects each annotation toggle on a live ISVC (webhook contract).
-
-        Regression coverage: RHOAIENG-8288 — annotation toggle on a live ISVC did not update
-        the effective mount access mode across transitions.
+        1. Fixture patches annotation to readonly=false and waits for rollout.
+        2. Verify annotation is "false".
+        3. Verify pod spec has volumeMount.readOnly=false.
+        4. Verify /mnt/models is mounted rw via /proc/mounts.
+        5. Patch annotation to readonly=true and wait for rollout.
+        6. Verify annotation is "true".
+        7. Verify pod spec has volumeMount.readOnly=true.
+        8. Verify /mnt/models is mounted ro via /proc/mounts.
         """
-        expected_annotation = "true" if expected_mode == "ro" else "false"
-        assert (
-            patched_read_only_isvc.instance.metadata.annotations.get("storage.kserve.io/readonly")
-            == expected_annotation
-        ), f"Expected annotation readonly={expected_annotation} was not applied"
+        annotation = patched_read_only_isvc.instance.metadata.annotations.get("storage.kserve.io/readonly")
+        assert annotation == "false", f"Expected annotation readonly=false after patch, got {annotation}"
+        pod = get_running_predictor_pod(client=unprivileged_client, isvc=patched_read_only_isvc)
+        LOGGER.info(f"pod={pod.name} created={pod.instance.metadata.creationTimestamp} uid={pod.instance.metadata.uid}")
+        assert not get_volume_mount_readonly(pod=pod), "Expected volumeMount.readOnly=false with readonly=false"
+        assert get_mount_mode(pod=pod) == "rw", "Expected /mnt/models mounted rw with readonly=false"
 
-        new_pod = get_pods_by_isvc_label(
-            client=unprivileged_client,
-            isvc=patched_read_only_isvc,
-        )[0]
-        expected_readonly = expected_mode == "ro"
-        assert get_volume_mount_readonly(pod=new_pod) == expected_readonly, (
-            f"Expected volumeMount.readOnly={expected_readonly} with readonly={expected_annotation}"
+        patched_read_only_isvc.update(
+            resource_dict={
+                "metadata": {
+                    "name": patched_read_only_isvc.name,
+                    "annotations": {"storage.kserve.io/readonly": "true"},
+                }
+            }
         )
+        wait_for_rollout_complete(client=unprivileged_client, isvc=patched_read_only_isvc)
+        annotation = patched_read_only_isvc.instance.metadata.annotations.get("storage.kserve.io/readonly")
+        assert annotation == "true", f"Expected annotation readonly=true after toggle, got {annotation}"
+        pod = get_running_predictor_pod(client=unprivileged_client, isvc=patched_read_only_isvc)
+        LOGGER.info(f"pod={pod.name} created={pod.instance.metadata.creationTimestamp} uid={pod.instance.metadata.uid}")
+        assert get_volume_mount_readonly(pod=pod), "Expected volumeMount.readOnly=true after toggle false→true"
+        assert get_mount_mode(pod=pod) == "ro", "Expected /mnt/models mounted ro after toggle false→true"
 
     @pytest.mark.parametrize(
-        "patched_read_only_isvc, expected_mode",
+        "patched_read_only_isvc",
         [
-            pytest.param({"readonly": "false"}, "rw", id="test_readonly_annotation_false"),
-            pytest.param({"readonly": "true"}, "ro", id="test_readonly_annotation_true"),
+            pytest.param(
+                {"readonly": "true"},
+            ),
         ],
-        indirect=["patched_read_only_isvc"],
+        indirect=True,
     )
-    def test_isvc_readonly_toggle_mount(
-        self,
-        unprivileged_client: DynamicClient,
-        patched_read_only_isvc: InferenceService,
-        expected_mode: str,
-    ) -> None:
-        """Verify /mnt/models mount mode reflects each annotation toggle on a live ISVC (runtime effect).
+    def test_isvc_read_only_true(self, unprivileged_client, patched_read_only_isvc):
+        """Test None→true→false transition.
 
-        Regression coverage: RHOAIENG-8288 — annotation toggle on a live ISVC did not update
-        the effective mount access mode across transitions.
+        1. Fixture patches annotation to readonly=true and waits for rollout.
+        2. Verify annotation is "true".
+        3. Verify pod spec has volumeMount.readOnly=true.
+        4. Verify /mnt/models is mounted ro via /proc/mounts.
+        5. Patch annotation to readonly=false and wait for rollout.
+        6. Verify annotation is "false".
+        7. Verify pod spec has volumeMount.readOnly=false.
+        8. Verify /mnt/models is mounted rw via /proc/mounts.
         """
-        new_pod = get_pods_by_isvc_label(
-            client=unprivileged_client,
-            isvc=patched_read_only_isvc,
-        )[0]
-        actual_mode = get_mount_mode(pod=new_pod)
-        assert actual_mode == expected_mode, f"Expected /mnt/models to be mounted {expected_mode}, got {actual_mode}"
+        annotation = patched_read_only_isvc.instance.metadata.annotations.get("storage.kserve.io/readonly")
+        assert annotation == "true", f"Expected annotation readonly=true after patch, got {annotation}"
+        pod = get_running_predictor_pod(client=unprivileged_client, isvc=patched_read_only_isvc)
+        LOGGER.info(f"pod={pod.name} created={pod.instance.metadata.creationTimestamp} uid={pod.instance.metadata.uid}")
+        assert get_volume_mount_readonly(pod=pod), "Expected volumeMount.readOnly=true with readonly=true"
+        assert get_mount_mode(pod=pod) == "ro", "Expected /mnt/models mounted ro with readonly=true"
+
+        patched_read_only_isvc.update(
+            resource_dict={
+                "metadata": {
+                    "name": patched_read_only_isvc.name,
+                    "annotations": {"storage.kserve.io/readonly": "false"},
+                }
+            }
+        )
+        wait_for_rollout_complete(client=unprivileged_client, isvc=patched_read_only_isvc)
+        annotation = patched_read_only_isvc.instance.metadata.annotations.get("storage.kserve.io/readonly")
+        assert annotation == "false", f"Expected annotation readonly=false after toggle, got {annotation}"
+        pod = get_running_predictor_pod(client=unprivileged_client, isvc=patched_read_only_isvc)
+        LOGGER.info(f"pod={pod.name} created={pod.instance.metadata.creationTimestamp} uid={pod.instance.metadata.uid}")
+        assert not get_volume_mount_readonly(pod=pod), "Expected volumeMount.readOnly=false after toggle true→false"
+        assert get_mount_mode(pod=pod) == "rw", "Expected /mnt/models mounted rw after toggle true→false"
