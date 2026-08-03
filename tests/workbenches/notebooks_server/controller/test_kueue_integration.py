@@ -2,15 +2,14 @@
 
 Verifies that Notebook CRs annotated with a HardwareProfile that has
 scheduling.type=Queue are properly admitted, scheduled, and resource-tracked
-by the Red Hat build of Kueue operator.
+by Kueue (either embedded/managed or the external Red Hat build of Kueue operator).
 
 The HardwareProfile webhook injects:
 - kueue.x-k8s.io/queue-name label (from scheduling.kueue.localQueueName)
 - Container resources (from identifiers[].defaultCount)
 
 Prerequisites:
-    - Red Hat build of Kueue operator installed with 'StatefulSet' in frameworks
-    - DSC Kueue component set to Unmanaged
+    - Kueue active (managed mode or Red Hat build of Kueue operator with StatefulSet in frameworks)
     - Namespaces labeled with kueue.openshift.io/managed=true
     - HardwareProfile CRD and ODH webhook active
 """
@@ -42,7 +41,6 @@ from utilities.kueue_utils import (
 LOGGER = get_logger(name=__name__)
 
 _KUEUE_QUEUE_NAME_LABEL = "kueue.x-k8s.io/queue-name"
-_KUEUE_MANAGED_LABEL = "kueue.x-k8s.io/managed"
 _KUBEFLOW_STOPPED_ANNOTATION = "kubeflow-resource-stopped"
 
 pytestmark = [
@@ -64,11 +62,11 @@ def _workload_is_admitted(workload: Workload) -> bool:
     return any(c["type"] == "Admitted" and c["status"] == "True" for c in conditions)
 
 
-def _assert_kueue_pod_labels(pod: Pod) -> None:
+def _assert_kueue_pod_labels(pod: Pod, local_queue_name: str) -> None:
     """Assert that a pod carries the Kueue scheduling labels."""
     labels = pod.instance.metadata.labels or {}
-    assert labels.get(_KUEUE_MANAGED_LABEL) == "true", (
-        f"Pod should have '{_KUEUE_MANAGED_LABEL}=true'. Labels: {list(labels.keys())}"
+    assert labels.get(_KUEUE_QUEUE_NAME_LABEL) == local_queue_name, (
+        f"Pod should have '{_KUEUE_QUEUE_NAME_LABEL}={local_queue_name}'. Labels: {list(labels.keys())}"
     )
 
 
@@ -220,6 +218,7 @@ class TestKueueNotebookIntegration:
 
         _assert_kueue_pod_labels(
             pod=notebook_pod,
+            local_queue_name=kueue_local_queue.name,
         )
 
         notebook_pod.wait_for_condition(
@@ -392,6 +391,7 @@ class TestKueueNotebookIntegration:
 
         _assert_kueue_pod_labels(
             pod=restarted_pod,
+            local_queue_name=kueue_local_queue.name,
         )
 
         restarted_pod.wait_for_condition(

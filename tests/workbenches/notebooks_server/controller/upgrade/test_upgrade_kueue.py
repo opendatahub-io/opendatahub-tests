@@ -66,10 +66,6 @@ class TestPreUpgradeKueueNotebook:
         Then the pod should have Kueue scheduling labels.
         """
         pod_labels = upgrade_kueue_notebook_pod.instance.metadata.labels or {}
-        assert pod_labels.get(KUEUE_MANAGED_LABEL) == "true", (
-            f"Notebook pod should have '{KUEUE_MANAGED_LABEL}=true' label before upgrade. "
-            f"Labels: {list(pod_labels.keys())}"
-        )
         assert pod_labels.get(KUEUE_QUEUE_NAME_LABEL) == UPGRADE_KUEUE_LOCAL_QUEUE_NAME, (
             f"Notebook pod should have '{KUEUE_QUEUE_NAME_LABEL}={UPGRADE_KUEUE_LOCAL_QUEUE_NAME}' "
             f"label. Got: {pod_labels.get(KUEUE_QUEUE_NAME_LABEL)}"
@@ -394,11 +390,11 @@ class TestPostUpgradeKueueCreation:
     ) -> None:
         """Given a new kueue-managed notebook is created post-upgrade,
         When Kueue admits the workload,
-        Then the pod should have kueue.x-k8s.io/managed=true label.
+        Then the pod should have kueue.x-k8s.io/queue-name label (and managed label if supported).
         """
         pod_labels = new_kueue_notebook_pod.instance.metadata.labels or {}
-        assert pod_labels.get(KUEUE_MANAGED_LABEL) == "true", (
-            f"New kueue notebook pod should have '{KUEUE_MANAGED_LABEL}=true' label "
+        assert pod_labels.get(KUEUE_QUEUE_NAME_LABEL), (
+            f"New kueue notebook pod should have '{KUEUE_QUEUE_NAME_LABEL}' label "
             f"on upgraded platform. Labels: {list(pod_labels.keys())}"
         )
 

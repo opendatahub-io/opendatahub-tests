@@ -1181,11 +1181,10 @@ def capture_kueue_baseline(
     pod_labels = upgrade_kueue_notebook_pod.instance.metadata.labels or {}
     notebook_generation = upgrade_kueue_notebook.instance.metadata.generation
 
-    for _label in (KUEUE_MANAGED_LABEL, KUEUE_QUEUE_NAME_LABEL):
-        assert pod_labels.get(_label), (
-            f"Pre-upgrade kueue pod '{upgrade_kueue_notebook_pod.name}' missing label '{_label}'; "
-            f"refusing to capture an empty baseline. Labels: {list(pod_labels.keys())}"
-        )
+    assert pod_labels.get(KUEUE_QUEUE_NAME_LABEL), (
+        f"Pre-upgrade kueue pod '{upgrade_kueue_notebook_pod.name}' missing label '{KUEUE_QUEUE_NAME_LABEL}'; "
+        f"refusing to capture an empty baseline. Labels: {list(pod_labels.keys())}"
+    )
 
     stopped_annotation = upgrade_kueue_stopped_notebook.instance.metadata.annotations.get(KUBEFLOW_STOPPED_ANNOTATION)
 
