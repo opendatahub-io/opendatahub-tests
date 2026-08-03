@@ -34,8 +34,9 @@ if TYPE_CHECKING:
     from types import TracebackType
 
     from kubernetes.dynamic import DynamicClient
-    from utilities.resources.llm_inference_service import LLMInferenceService
     from openai.types.chat import ChatCompletion
+
+    from utilities.resources.llm_inference_service import LLMInferenceService
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -199,6 +200,9 @@ class OpenAICompatibilityValidator:
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> None:
+        if self._client is not None:
+            self._client.close()
+            self._client = None
         if self._sa_provider is not None:
             self._sa_provider.__exit__(exc_type, exc_val, exc_tb)  # noqa: FCN001
 
@@ -614,12 +618,12 @@ class OpenAICompatibilityValidator:
         content = response.choices[0].message.content or ""
         try:
             parsed = json.loads(content)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
             raise AssertionError(
                 f"JSON mode response is not valid JSON.\n"
                 f"  Raw content: {content!r}\n"
                 f"  Full response: {response.model_dump()}"
-            )
+            ) from e
         assert isinstance(parsed, dict), (
             f"JSON mode response is not a JSON object, got {type(parsed).__name__}: {content!r}. "
             f"Full response: {response.model_dump()}"
@@ -927,12 +931,12 @@ class OpenAICompatibilityValidator:
             assert function_name, f"Streamed tool call has id={tool_call_id} but no function name"
             try:
                 parsed_args = json.loads(function_arguments)
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as e:
                 raise AssertionError(
                     f"Streamed tool call arguments are not valid JSON.\n"
                     f"  function: {function_name}\n"
                     f"  raw arguments: {function_arguments!r}"
-                )
+                ) from e
             LOGGER.info(f"Tool calling streaming OK — {function_name}({json.dumps(parsed_args)})")
         else:
             assembled = "".join(content_parts)
@@ -1205,10 +1209,10 @@ class OpenAICompatibilityValidator:
             assert tc.function.name, f"Tool call #{i} has empty function name. Full tool_call: {tc.model_dump()}"
             try:
                 json.loads(tc.function.arguments)
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as e:
                 raise AssertionError(
                     f"Tool call #{i} arguments are not valid JSON.\n"
                     f"  function: {tc.function.name}\n"
                     f"  raw arguments: {tc.function.arguments!r}\n"
                     f"  Full tool_call: {tc.model_dump()}"
-                )
+                ) from e
