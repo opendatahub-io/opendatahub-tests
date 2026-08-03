@@ -2,6 +2,8 @@ import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.prometheus import Prometheus
 
+from tests.model_serving.model_server.llmd.api_compat import OpenAICompatibilityValidator
+from tests.model_serving.model_server.llmd.constants import SOAK_TEST_DURATION
 from tests.model_serving.model_server.llmd.llmd_configs import (
     PrecisePrefixCacheProducerConfig,
     PrecisePrefixCacheScorerConfig,

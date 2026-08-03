@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     from types import TracebackType
 
     from kubernetes.dynamic import DynamicClient
-    from ocp_resources.llm_inference_service import LLMInferenceService
+    from utilities.resources.llm_inference_service import LLMInferenceService
     from openai.types.chat import ChatCompletion
 
 LOGGER = structlog.get_logger(name=__name__)
