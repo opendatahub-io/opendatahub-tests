@@ -589,13 +589,18 @@ def create_api_key(
             if response.status_code == 403 and not (response.text or "").strip():
                 LOGGER.info("create_api_key: empty 403 (Authorino propagation delay) — retrying")
                 continue
+            if response.status_code == 500 and "AUTH_FAILURE" in (response.text or ""):
+                LOGGER.info("create_api_key: 500 AUTH_FAILURE (Authorino identity not ready) — retrying")
+                continue
             break
     except TimeoutExpiredError:
-        LOGGER.info("create_api_key: timed out after 90s waiting for non-403 response")
+        LOGGER.info(
+            "create_api_key: timed out after 90s waiting for successful create (retryable empty 403 / AUTH_FAILURE)"
+        )
 
     if response is None or response.status_code not in (200, 201):
         status = response.status_code if response is not None else "no response"
-        body = response.text[:500] if response is not None else "timed out with persistent empty 403"
+        body = response.text[:500] if response is not None else "timed out with persistent empty 403 / AUTH_FAILURE"
         if raise_on_error:
             raise AssertionError(f"api-key create failed: status={status} body={body}")
         return response, {}  # type: ignore[return-value]
