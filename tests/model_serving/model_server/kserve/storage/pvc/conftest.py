@@ -14,7 +14,7 @@ from pytest import FixtureRequest
 from utilities.constants import KServeDeploymentType
 from utilities.general import download_model_data
 from utilities.inference_utils import create_isvc
-from utilities.infra import get_pods_by_isvc_label
+from utilities.infra import get_pods_by_isvc_label, verify_no_failed_pods, wait_for_inference_deployment_replicas
 
 
 @pytest.fixture(scope="class")
@@ -67,8 +67,20 @@ def predictor_pods_scope_class(
 
 @pytest.fixture()
 def patched_read_only_isvc(
-    request: FixtureRequest, pvc_inference_service: InferenceService, first_predictor_pod: Pod
+    request: FixtureRequest,
+    unprivileged_client: DynamicClient,
+    pvc_inference_service: InferenceService,
+    first_predictor_pod: Pod,
 ) -> Generator[InferenceService, Any, Any]:
+    """Patch the storage.kserve.io/readonly annotation on the ISVC.
+
+    Expects request.param with:
+        readonly (str): The annotation value to set ("true" or "false").
+        rollout (bool): Whether the patch changes the effective readOnly mount mode. When True,
+            waits for the old predictor pod to be deleted before proceeding (a deployment rollout
+            replaces it). When False, skips the wait — the pod spec is unchanged so no rollout
+            occurs (e.g. patching absent → "true", both resolve to readOnly=true).
+    """
     with ResourceEditor(
         patches={
             pvc_inference_service: {
@@ -78,7 +90,11 @@ def patched_read_only_isvc(
             }
         }
     ):
-        first_predictor_pod.wait_deleted()
+        if request.param.get("rollout", True):
+            first_predictor_pod.wait_deleted()
+
+        verify_no_failed_pods(client=unprivileged_client, isvc=pvc_inference_service)
+        wait_for_inference_deployment_replicas(client=unprivileged_client, isvc=pvc_inference_service)
         yield pvc_inference_service
 
 

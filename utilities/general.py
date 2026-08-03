@@ -215,7 +215,6 @@ def download_model_data(
         pod_kwargs["node_selector"] = node_selector
 
     with Pod(**pod_kwargs) as pod:
-        pod.wait_for_status(status=Pod.Status.RUNNING)
         LOGGER.info("Waiting for model download to complete")
         pod.wait_for_status(status=Pod.Status.SUCCEEDED, timeout=25 * 60)
 
