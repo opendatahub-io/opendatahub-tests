@@ -18,10 +18,7 @@ def _get_component_deployment(
     component: str,
 ) -> Deployment:
     """Retrieve the deployment for a specific ISVC component (predictor or transformer)."""
-    label_selector = (
-        f"serving.kserve.io/inferenceservice={isvc.name},"
-        f"serving.kserve.io/component={component}"
-    )
+    label_selector = f"serving.kserve.io/inferenceservice={isvc.name},component={component}"
     deployments = list(Deployment.get(client=client, namespace=isvc.namespace, label_selector=label_selector))
     assert deployments, f"No {component} deployment found for ISVC {isvc.name}"
     return deployments[0]
@@ -39,7 +36,8 @@ def _get_kserve_container(deployment: Deployment):
     )
 
 
-@pytest.mark.rawdeployment
+@pytest.mark.tls
+@pytest.mark.tier1
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, transformer_auth_inference_service",
     [
@@ -69,9 +67,7 @@ class TestTransformerTLSInfrastructure:
     The predictor deployment should NOT receive these env vars.
     """
 
-    def test_transformer_has_ca_bundle_volume(
-        self, unprivileged_client, transformer_auth_inference_service
-    ):
+    def test_transformer_has_ca_bundle_volume(self, unprivileged_client, transformer_auth_inference_service):
         """Transformer deployment has openshift-service-ca-bundle volume from ConfigMap."""
         deployment = _get_component_deployment(
             client=unprivileged_client,
@@ -90,9 +86,7 @@ class TestTransformerTLSInfrastructure:
             f"Expected ConfigMap name {CA_BUNDLE_CONFIGMAP_NAME}, got {ca_volume.configMap.name}"
         )
 
-    def test_transformer_has_ca_bundle_volume_mount(
-        self, unprivileged_client, transformer_auth_inference_service
-    ):
+    def test_transformer_has_ca_bundle_volume_mount(self, unprivileged_client, transformer_auth_inference_service):
         """kserve-container has CA bundle mount at /etc/odh/openshift-service-ca-bundle."""
         deployment = _get_component_deployment(
             client=unprivileged_client,
@@ -112,10 +106,8 @@ class TestTransformerTLSInfrastructure:
         )
         assert ca_mount.readOnly is True, "CA bundle mount should be read-only"
 
-    def test_transformer_has_tls_env_vars(
-        self, unprivileged_client, transformer_auth_inference_service
-    ):
-        """kserve-container has SSL_CERT_DIR, REQUESTS_CA_BUNDLE, PREDICTOR_HOST/PORT/PROTOCOL."""
+    def test_transformer_has_tls_env_vars_and_ssl_arg(self, unprivileged_client, transformer_auth_inference_service):
+        """kserve-container has TLS env vars and --predictor_use_ssl arg."""
         deployment = _get_component_deployment(
             client=unprivileged_client,
             isvc=transformer_auth_inference_service,
@@ -125,8 +117,7 @@ class TestTransformerTLSInfrastructure:
         env_map = {env.name: env.value for env in container.env}
 
         expected_predictor_host = (
-            f"{transformer_auth_inference_service.name}-predictor"
-            f".{transformer_auth_inference_service.namespace}.svc"
+            f"{transformer_auth_inference_service.name}-predictor.{transformer_auth_inference_service.namespace}.svc"
         )
 
         assert env_map.get("SSL_CERT_DIR") == CA_BUNDLE_MOUNT_PATH, (
@@ -145,9 +136,15 @@ class TestTransformerTLSInfrastructure:
             f"Expected PREDICTOR_PROTOCOL=https, got: {env_map.get('PREDICTOR_PROTOCOL')}"
         )
 
-    def test_predictor_does_not_have_tls_env_vars(
-        self, unprivileged_client, transformer_auth_inference_service
-    ):
+        # Controller also appends --predictor_use_ssl true to container args
+        args = container.args or []
+        assert "--predictor_use_ssl" in args, f"Expected --predictor_use_ssl in transformer container args, got: {args}"
+        ssl_idx = args.index("--predictor_use_ssl")
+        assert ssl_idx + 1 < len(args) and args[ssl_idx + 1] == "true", (
+            f"Expected --predictor_use_ssl true, got: {args[ssl_idx:]}"
+        )
+
+    def test_predictor_does_not_have_tls_env_vars(self, unprivileged_client, transformer_auth_inference_service):
         """Predictor deployment must NOT have PREDICTOR_HOST/PORT/PROTOCOL env vars."""
         deployment = _get_component_deployment(
             client=unprivileged_client,

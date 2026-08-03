@@ -88,7 +88,15 @@ def verify_inference_response(
 
     if authorized_user is False:
         auth_header = "x-ext-auth-reason"
-        output = json.dumps(res["output"]) if isinstance(res["output"], dict) else res["output"]
+
+        if isinstance(res["output"], dict):
+            # Response body was parsed to JSON (e.g. FastAPI HTTPException).
+            # Reconstruct full response text from parsed headers so existing
+            # status-line / header checks work unchanged.
+            output = "\n".join(f"{k}: {v}" for k, v in res.items() if k != "output" and isinstance(v, str))
+            output += "\n" + json.dumps(res["output"])
+        else:
+            output = res["output"]
 
         if auth_reason := re.search(rf"{auth_header}: (.*)", output, re.MULTILINE):
             reason = auth_reason.group(1).lower()
@@ -109,8 +117,8 @@ def verify_inference_response(
             resource = f"{inference_service.kind.lower()}s"
             assert re.search(rf"Forbidden \(user=.*verb=get.*resource={resource}", output)
 
-        elif "401 Unauthorized" in output or "Unauthorized" in output:
-            # Here test should pass, correctly rejected.
+        elif "401 Unauthorized" in output:
+            # HTTP status line carries 401 — correctly rejected.
             pass
 
         else:
@@ -235,7 +243,7 @@ def wait_for_raw_isvc_https_infer_ready(
                 use_default_query=True,
                 token=token,
             )
-        except (ValueError, InferenceResponseError):
+        except ValueError, InferenceResponseError:
             return False
 
         if not out or not out.strip():
