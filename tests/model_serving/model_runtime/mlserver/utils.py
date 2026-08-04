@@ -8,19 +8,27 @@ This module provides functions for:
 - Generating test configuration dictionaries
 """
 
+import time
 from typing import Any
 
 import portforward
 import requests
+import structlog
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.inference_service import InferenceService
 
 from tests.model_serving.model_runtime.mlserver.constant import (
     BASE_RAW_DEPLOYMENT_CONFIG,
     LOCALHOST_URL,
+    MODEL_CONFIGS,
     MODEL_PATH_PREFIX,
     OutputType,
 )
 from utilities.constants import KServeDeploymentType, Ports, Protocols
+from utilities.inference_utils import Inference, get_exposed_isvc_url
+from utilities.infra import get_pods_by_isvc_label
+
+LOGGER = structlog.get_logger(name=__name__)
 
 
 def send_rest_request(url: str, input_data: dict[str, Any], verify: bool = False) -> Any:
@@ -44,40 +52,51 @@ def send_rest_request(url: str, input_data: dict[str, Any], verify: bool = False
 
 
 def run_mlserver_inference(
-    pod_name: str, isvc: InferenceService, input_data: dict[str, Any], model_version: str, protocol: str
+    isvc: InferenceService,
+    input_data: dict[str, Any],
+    model_version: str,
+    protocol: str,
 ) -> Any:
-    """
-    Run inference against an MLServer-hosted model using REST protocol.
-    Supports RawDeployment(Standard) modes.
+    """Run inference against an MLServer-hosted model using REST protocol.
+
+    Uses external route when ISVC has a routable URL. Falls back to port-forward
+    only when no external route was requested. If external route was requested
+    (visibility=exposed) but no routable URL exists, raises ValueError.
 
     Args:
-        pod_name (str): Name of the pod running the MLServer model.
-        isvc (InferenceService): The KServe InferenceService object.
-        input_data (dict[str, Any]): The input data payload for inference.
-        model_version (str): The version of the model to target, if applicable.
-        protocol (str): Protocol to use for inference ('REST').
+        isvc: The KServe InferenceService object.
+        input_data: The input data payload for inference.
+        model_version: The version of the model to target, if applicable.
+        protocol: Protocol to use for inference ('REST').
 
     Returns:
-        Any: The inference result from the model.
+        The inference result from the model.
 
     Raises:
-        ValueError: If the protocol is not REST or deployment mode is not RAW_DEPLOYMENT.
-
-    Notes:
-        - REST calls expect the model to support V2 REST inference APIs.
-        - Uses port-forwarding for RawDeployment(Standard) modes.
+        ValueError: If protocol is not REST, or if external route was requested but not available.
+        RuntimeError: If no predictor pods found when falling back to port-forward.
     """
-    deployment_mode = isvc.instance.metadata.annotations.get("serving.kserve.io/deploymentMode")
+    if protocol != Protocols.REST:
+        raise ValueError(f"Unsupported protocol: {protocol}. Only REST is supported.")
+
     model_name = isvc.instance.metadata.name
     version_suffix = f"/versions/{model_version}" if model_version else ""
     rest_endpoint = f"/v2/models/{model_name}{version_suffix}/infer"
 
-    if protocol != Protocols.REST:
-        raise ValueError(f"Unsupported protocol: {protocol}. Only REST is supported.")
+    if Inference(inference_service=isvc).visibility_exposed:
+        base_url = get_exposed_isvc_url(isvc=isvc)
+        return send_rest_request(url=f"{base_url}{rest_endpoint}", input_data=input_data, verify=False)
 
-    supported_modes = (KServeDeploymentType.RAW_DEPLOYMENT, KServeDeploymentType.STANDARD)
-    if deployment_mode not in supported_modes:
-        raise ValueError(f"Unsupported deployment mode: {deployment_mode}. Supported modes: {supported_modes}")
+    LOGGER.warning(
+        event="ISVC has no external route, falling back to port-forward",
+        model_name=model_name,
+    )
+
+    try:
+        pods = get_pods_by_isvc_label(client=isvc.client, isvc=isvc)
+    except ResourceNotFoundError as exc:
+        raise RuntimeError(f"No predictor pods found for InferenceService '{model_name}'") from exc
+    pod_name = pods[0].name
 
     port = Ports.REST_PORT
     with portforward.forward(pod_or_service=pod_name, namespace=isvc.namespace, from_port=port, to_port=port):
@@ -86,33 +105,29 @@ def run_mlserver_inference(
 
 
 def validate_inference_request(
-    pod_name: str,
     isvc: InferenceService,
-    response_snapshot: Any,
     input_query: Any,
     model_version: str,
     model_output_type: str,
     protocol: str,
+    response_snapshot: Any = None,
 ) -> None:
-    """
-    Runs an inference request against an MLServer model and validates
-    that the response matches the expected snapshot.
+    """Runs an inference request against an MLServer model and validates the response.
+
+    Automatically uses external route if available, port-forward otherwise.
 
     Args:
-        pod_name (str): The pod name where the model is running.
-        isvc (InferenceService): The KServe InferenceService instance.
-        response_snapshot (Any): The expected inference output to compare against.
-        input_query (Any): The input data to send to the model.
-        model_version (str): The version of the model to target.
-        model_output_type (str): The type of output (deterministic or non_deterministic).
-        protocol (str): The protocol to use for inference ('REST').
+        isvc: The KServe InferenceService instance.
+        input_query: The input data to send to the model.
+        model_version: The version of the model to target.
+        model_output_type: The type of output (deterministic or non_deterministic).
+        protocol: The protocol to use for inference ('REST').
+        response_snapshot: Optional snapshot for comparison (unused in fuzzy validation).
 
     Raises:
         AssertionError: If the actual response does not match the snapshot.
     """
-
     response = run_mlserver_inference(
-        pod_name=pod_name,
         isvc=isvc,
         input_data=input_query,
         model_version=model_version,
@@ -125,7 +140,7 @@ def validate_inference_request(
         validate_nondeterministic_snapshot(response=response, protocol=protocol)
 
 
-def validate_deterministic_snapshot(response: Any, response_snapshot: Any) -> None:
+def validate_deterministic_snapshot(response: Any, response_snapshot: Any = None) -> None:
     """
     Validates a deterministic model inference response using fuzzy validation.
 
@@ -135,7 +150,7 @@ def validate_deterministic_snapshot(response: Any, response_snapshot: Any) -> No
 
     Args:
         response (Any): The actual inference response from the model.
-        response_snapshot (Any): The stored snapshot representing the expected output (unused for fuzzy validation).
+        response_snapshot (Any): Optional stored snapshot (unused for fuzzy validation).
 
     Raises:
         AssertionError: If the response structure is invalid or data is empty.
@@ -214,15 +229,15 @@ def get_model_storage_uri_dict(
                        For model car (modelcar=True): {"storage-uri": "oci://quay.io/...", "model-format": "sklearn"}
     """
     if modelcar:
-        from utilities.constants import ModelCarImage
+        from utilities.image_constants import SharedImages
 
         attr_name = f"MLSERVER_{model_format_name.upper()}"
-        if not hasattr(ModelCarImage, attr_name):
+        if not hasattr(SharedImages, attr_name):
             raise ValueError(
-                f"No ModelCarImage constant found for model format '{model_format_name}' (expected {attr_name})"
+                f"No SharedImages constant found for model format '{model_format_name}' (expected {attr_name})"
             )
 
-        storage_uri = getattr(ModelCarImage, attr_name)
+        storage_uri = getattr(SharedImages, attr_name)
 
         config: dict[str, Any] = {
             "storage-uri": storage_uri,
@@ -234,7 +249,9 @@ def get_model_storage_uri_dict(
 
         return config
     else:
-        return {"model-dir": f"{MODEL_PATH_PREFIX.rstrip('/')}/{model_format_name.lstrip('/')}"}
+        model_config = MODEL_CONFIGS.get(model_format_name, {})
+        dir_name = model_config.get("s3_model_dir", model_format_name)
+        return {"model-dir": f"{MODEL_PATH_PREFIX.rstrip('/')}/{dir_name.lstrip('/')}"}
 
 
 def get_model_namespace_dict(
@@ -283,7 +300,13 @@ def get_deployment_config_dict(
     deployment_config_dict = {}
 
     if deployment_mode == KServeDeploymentType.STANDARD:
-        deployment_config_dict = {"name": model_format_name, **BASE_RAW_DEPLOYMENT_CONFIG}
+        model_config = MODEL_CONFIGS.get(model_format_name, {})
+        isvc_name = model_config.get("s3_model_dir", model_format_name)
+        deployment_config_dict = {
+            "name": isvc_name,
+            "model_format": model_format_name,
+            **BASE_RAW_DEPLOYMENT_CONFIG,
+        }
 
     return deployment_config_dict
 
@@ -308,3 +331,29 @@ def get_test_case_id(
     storage_type = "modelcar" if modelcar else "s3"
     base_id = f"{model_format_name.strip()}-{storage_type}-{deployment_mode.strip().lower()}"
     return base_id
+
+
+def measure_average_latency(
+    isvc: InferenceService,
+    input_data: dict[str, Any],
+    request_count: int,
+) -> float:
+    """Measure average round-trip inference latency over N sequential requests.
+
+    Args:
+        isvc: InferenceService to target (must have external route).
+        input_data: V2 inference protocol request payload.
+        request_count: Number of sequential requests to send.
+
+    Returns:
+        Average latency in seconds across all requests.
+    """
+    base_url = get_exposed_isvc_url(isvc=isvc)
+    model_name = isvc.instance.metadata.name
+    endpoint = f"/v2/models/{model_name}/infer"
+    total_latency: float = 0.0
+    for _ in range(request_count):
+        start = time.perf_counter()
+        send_rest_request(url=f"{base_url}{endpoint}", input_data=input_data)
+        total_latency += time.perf_counter() - start
+    return total_latency / request_count

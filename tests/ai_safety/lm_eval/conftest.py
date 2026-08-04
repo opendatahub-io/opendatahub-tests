@@ -459,12 +459,14 @@ def lmeval_minio_copy_pod(
                 "image": AiSafetyImages.MINIO_MC,
                 "command": ["/bin/sh", "-c"],
                 "args": [
-                    f"export MC_CONFIG_DIR=/shared/.mc && "
-                    f"mc alias set myminio http://{minio_service.name}:{MinIo.Metadata.DEFAULT_PORT} "
-                    f"{MinIo.Credentials.ACCESS_KEY_VALUE} {MinIo.Credentials.SECRET_KEY_VALUE} && "
-                    "mc mb --ignore-existing myminio/models && "
-                    "mc cp --recursive /shared/datasets/ myminio/models/datasets/ && "
-                    "mc cp --recursive /shared/flan/ myminio/models/flan/"
+                    (
+                        f"export MC_CONFIG_DIR=/shared/.mc && "
+                        f"mc alias set myminio http://{minio_service.name}:{MinIo.Metadata.DEFAULT_PORT} "
+                        f"{MinIo.Credentials.ACCESS_KEY_VALUE} {MinIo.Credentials.SECRET_KEY_VALUE} && "
+                        "mc mb --ignore-existing myminio/models && "
+                        "mc cp --recursive /shared/datasets/ myminio/models/datasets/ && "
+                        "mc cp --recursive /shared/flan/ myminio/models/flan/"
+                    )
                 ],
                 "volumeMounts": [{"name": "shared-data", "mountPath": "/shared"}],
                 "securityContext": {

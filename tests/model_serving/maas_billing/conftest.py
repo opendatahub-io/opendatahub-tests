@@ -11,7 +11,6 @@ from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.infrastructure import Infrastructure
-from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.maas_auth_policy import MaaSAuthPolicy
 from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.maas_subscription import MaaSSubscription
@@ -66,6 +65,7 @@ from utilities.infra import create_ns, get_openshift_token, login_with_user_pass
 from utilities.llmd_utils import create_llmisvc
 from utilities.plugins.constant import OpenAIEnpoints
 from utilities.resources.authorino import Authorino
+from utilities.resources.llm_inference_service import LLMInferenceService
 from utilities.resources.rate_limit_policy import RateLimitPolicy
 from utilities.resources.token_rate_limit_policy import TokenRateLimitPolicy
 from utilities.user_utils import UserTestSession, create_htpasswd_file, wait_for_user_creation
@@ -937,7 +937,7 @@ def maas_gateway_auth_policy_ready(
     admin_client: DynamicClient,
     request: FixtureRequest,
 ) -> None:
-    """Activate a MaaSAuthPolicy, then wait until maas-gateway-auth is Accepted."""
+    """Activate a MaaSAuthPolicy, then wait until maas-gateway-auth is Accepted and Enforced."""
     for fixture_name in MAAS_AUTH_POLICY_FIXTURE_NAMES:
         if fixture_name in request.fixturenames:
             request.getfixturevalue(argname=fixture_name)
@@ -950,7 +950,8 @@ def maas_gateway_auth_policy_ready(
         namespace=MAAS_GATEWAY_NAMESPACE,
     )
     LOGGER.info(
-        f"maas_gateway_auth_policy_ready: '{MAAS_GATEWAY_NAMESPACE}/{MAAS_GATEWAY_AUTH_POLICY_NAME}' is Accepted"
+        f"maas_gateway_auth_policy_ready: '{MAAS_GATEWAY_NAMESPACE}/{MAAS_GATEWAY_AUTH_POLICY_NAME}' "
+        "is Accepted and Enforced"
     )
 
 

@@ -55,6 +55,7 @@ class PrecisePrefixCacheScorerConfig(TinyLlamaHfGpuConfig):
                     f"--prefix-caching-hash-algo {cls.hash_algo} "
                     f"--block-size {cls.block_size} "
                     f"--kv-events-config '{json.dumps(kv_events_config)}'"
+                    f" --enable-auto-tool-choice --tool-call-parser hermes"
                 ),
             },
         ]

@@ -222,7 +222,8 @@ def test_lmeval_local_offline_unitxt_tasks_flan_20newsgroups_oci_artifacts(
     LOGGER.info("Manifest found in OCI registry")
 
 
-@pytest.mark.gpu
+@pytest.mark.vllm_nvidia_single_gpu
+@pytest.mark.vllm_amd_gpu
 @pytest.mark.tier2
 @pytest.mark.skip_on_disconnected
 @pytest.mark.parametrize(

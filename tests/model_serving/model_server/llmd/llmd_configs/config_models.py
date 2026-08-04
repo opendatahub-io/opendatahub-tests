@@ -38,6 +38,15 @@ class TinyLlamaOciGpuConfig(GpuConfig):
     storage_uri = ModelStorage.OCI.TINYLLAMA
     model_name = ModelName.TINYLLAMA
 
+    @classmethod
+    def container_env(cls):
+        return super().container_env() + [
+            {
+                "name": "VLLM_ADDITIONAL_ARGS",
+                "value": "--enable-auto-tool-choice --tool-call-parser hermes",
+            },
+        ]
+
 
 class TinyLlamaS3GpuConfig(GpuConfig):
     """TinyLlama via S3 bucket, GPU inference."""
@@ -47,6 +56,22 @@ class TinyLlamaS3GpuConfig(GpuConfig):
     storage_uri = ModelStorage.S3.TINYLLAMA
     model_name = ModelName.TINYLLAMA
 
+    @classmethod
+    def container_env(cls):
+        return super().container_env() + [
+            {
+                "name": "VLLM_ADDITIONAL_ARGS",
+                "value": "--enable-auto-tool-choice --tool-call-parser hermes",
+            },
+        ]
+
+
+class TinyLlamaOciGpuAuthConfig(TinyLlamaOciGpuConfig):
+    """TinyLlama via OCI, GPU inference with auth enabled."""
+
+    enable_auth = True
+    name = "llmisvc-tinyllama-oci-gpu-auth"
+
 
 class TinyLlamaHfGpuConfig(GpuConfig):
     """TinyLlama via HuggingFace, GPU inference."""
@@ -55,6 +80,15 @@ class TinyLlamaHfGpuConfig(GpuConfig):
     name = "llmisvc-tinyllama-hf-gpu"
     storage_uri = ModelStorage.HuggingFace.TINYLLAMA
     model_name = ModelName.TINYLLAMA
+
+    @classmethod
+    def container_env(cls):
+        return super().container_env() + [
+            {
+                "name": "VLLM_ADDITIONAL_ARGS",
+                "value": "--enable-auto-tool-choice --tool-call-parser hermes",
+            },
+        ]
 
 
 class Qwen3MoeDummyGpuConfig(GpuConfig):

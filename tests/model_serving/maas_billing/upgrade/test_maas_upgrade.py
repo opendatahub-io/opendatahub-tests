@@ -12,7 +12,12 @@ from ocp_resources.namespace import Namespace
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
+from tests.model_serving.maas_billing.multitenancy.aitenant.utils import (
+    AITENANT_INFRA_NAMESPACE,
+    verify_aitenant_ready,
+)
 from tests.model_serving.maas_billing.upgrade.utils import (
+    DEFAULT_AITENANT_NAME,
     MaaSBaseline,
     verify_maas_auth_policy_exists,
     verify_maas_model_ref_exists,
@@ -27,6 +32,7 @@ from tests.model_serving.maas_billing.utils import (
 from utilities.constants import ApiGroups
 from utilities.general import generate_random_name
 from utilities.resources.aigateway import AIGateway
+from utilities.resources.aitenant import AITenant
 from utilities.resources.maas_config import Config as MaaSConfig
 from utilities.resources.maastenantconfig import MaasTenantConfig
 
@@ -126,11 +132,12 @@ class TestPostUpgradeMaaS:
         2. Verify MaaS Gateway still exists and is Programmed.
         3. Verify MaaSModelRef, MaaSAuthPolicy, MaaSSubscription all survived.
         4. Verify MaaSSubscription was not mutated (generation unchanged).
-        5. Verify maas-controller and maas-api Deployments are Available.
-        6. Verify MaaS CRDs still exist.
+        5. Verify maas-controller (applications NS) and maas-api (infra NS) Deployments are Available.
+        6. Verify MaaS CRDs still exist (including AITenant).
         7. Verify AIGateway CR is present (bootstrapped by ODH operator post-upgrade).
         8. Verify MaaS Config CR is present (bootstrapped by maas-controller post-upgrade).
-        9. Verify the MaaS API gateway is reachable via probe.
+        9. Verify default AITenant is Ready (Config bootstrap).
+        10. Verify the MaaS API gateway is reachable via probe.
     """
 
     @pytest.mark.dependency(name="test_default_tenant_survives_upgrade")
@@ -215,12 +222,13 @@ class TestPostUpgradeMaaS:
     def test_maas_api_deployment_available(
         self,
         admin_client: DynamicClient,
+        maas_api_infra_namespace: str,
     ) -> None:
-        """Verify maas-api Deployment is Available after upgrade."""
+        """Verify maas-api Deployment is Available in the infrastructure namespace after upgrade."""
         api_deployment = Deployment(
             client=admin_client,
             name="maas-api",
-            namespace=py_config["applications_namespace"],
+            namespace=maas_api_infra_namespace,
             ensure_exists=True,
         )
         api_deployment.wait_for_condition(condition="Available", status="True", timeout=300)
@@ -237,6 +245,7 @@ class TestPostUpgradeMaaS:
             f"maassubscriptions.{ApiGroups.MAAS_IO}",
             f"maastenantconfigs.{ApiGroups.MAAS_IO}",
             f"tenants.{ApiGroups.MAAS_IO}",
+            f"aitenants.{ApiGroups.MAAS_IO}",
         )
         missing_crds = [
             crd_name
@@ -262,7 +271,10 @@ class TestPostUpgradeMaaS:
             "AIGateway/default-aigateway not found after upgrade — ODH operator did not bootstrap the component CR."
         )
 
-    @pytest.mark.dependency(depends=["test_aigateway_cr_present_post_upgrade"])
+    @pytest.mark.dependency(
+        name="test_maas_config_cr_present_post_upgrade",
+        depends=["test_aigateway_cr_present_post_upgrade"],
+    )
     def test_maas_config_cr_present_post_upgrade(
         self,
         admin_client: DynamicClient,
@@ -276,6 +288,19 @@ class TestPostUpgradeMaaS:
             "MaaS Config/default not found after upgrade — "
             "maas-controller did not bootstrap the cluster-scoped Config CR."
         )
+
+    @pytest.mark.dependency(depends=["test_maas_config_cr_present_post_upgrade"])
+    def test_default_aitenant_ready_post_upgrade(
+        self,
+        admin_client: DynamicClient,
+    ) -> None:
+        """Given upgrade completed, when checking default AITenant, then it should be Ready."""
+        aitenant = AITenant(
+            client=admin_client,
+            name=DEFAULT_AITENANT_NAME,
+            namespace=AITENANT_INFRA_NAMESPACE,
+        )
+        verify_aitenant_ready(aitenant=aitenant)
 
     @pytest.mark.dependency(depends=["test_maas_gateway_survives_upgrade"])
     @pytest.mark.usefixtures("authorino_tls_configured")

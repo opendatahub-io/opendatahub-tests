@@ -7,7 +7,6 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.cron_job import CronJob
 from ocp_resources.deployment import Deployment
-from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.maas_subscription import MaaSSubscription
 from ocp_resources.namespace import Namespace
@@ -32,6 +31,7 @@ from tests.model_serving.maas_billing.utils import (
 from utilities.general import generate_random_name
 from utilities.infra import get_openshift_token
 from utilities.resources.auth import Auth
+from utilities.resources.llm_inference_service import LLMInferenceService
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -303,35 +303,6 @@ def ephemeral_api_key(
     if revoke_response.status_code not in (200, 404):
         raise AssertionError(
             f"Unexpected teardown status for ephemeral key id={api_key_data['id']}: {revoke_response.status_code}"
-        )
-
-
-@pytest.fixture(scope="function")
-def active_api_key_with_plaintext(
-    request_session_http: requests.Session,
-    base_url: str,
-    ocp_token_for_actor: str,
-) -> Generator[dict[str, Any], Any, Any]:
-    """Create an API key, yield the full response including plaintext key, and revoke on teardown."""
-    key_name = f"e2e-auth-policy-{generate_random_name()}"
-    _, api_key_data = create_api_key(
-        base_url=base_url,
-        ocp_user_token=ocp_token_for_actor,
-        request_session_http=request_session_http,
-        api_key_name=key_name,
-    )
-    LOGGER.info(f"active_api_key_with_plaintext: created key id={api_key_data['id']} name={key_name}")
-    yield api_key_data
-
-    revoke_response, _ = revoke_api_key(
-        request_session_http=request_session_http,
-        base_url=base_url,
-        key_id=api_key_data["id"],
-        ocp_user_token=ocp_token_for_actor,
-    )
-    if revoke_response.status_code not in (200, 404):
-        raise AssertionError(
-            f"Unexpected teardown status for key id={api_key_data['id']}: {revoke_response.status_code}"
         )
 
 

@@ -480,7 +480,6 @@ def set_environment_variables(securesign_instance: Securesign) -> Generator[None
     os.environ["SIGSTORE_TSA_URL"] = service_urls["tsa"]
     os.environ["ROOT_CHECKSUM"] = get_root_checksum(sigstore_tuf_url=service_urls["tuf"])
     os.environ["ROOT_URL"] = os.environ["SIGSTORE_TUF_URL"] + "/root.json"
-    os.environ["COSIGN_USE_SIGNING_CONFIG"] = "0"
 
     LOGGER.info("Environment variables set for signing tests")
     yield
@@ -494,7 +493,6 @@ def set_environment_variables(securesign_instance: Securesign) -> Generator[None
         "SIGSTORE_TSA_URL",
         "ROOT_CHECKSUM",
         "ROOT_URL",
-        "COSIGN_USE_SIGNING_CONFIG",
     ]:
         os.environ.pop(var_name, None)
 
@@ -808,7 +806,6 @@ def native_signing_async_job(
         {"name": "SIGSTORE_TSA_URL", "value": service_urls["tsa"]},
         {"name": "SIGSTORE_TUF_URL", "value": service_urls["tuf"]},
         {"name": "COSIGN_ALLOW_INSECURE_REGISTRY", "value": "true"},
-        {"name": "COSIGN_USE_SIGNING_CONFIG", "value": "0"},
     ]
 
     yield from create_async_upload_job(
