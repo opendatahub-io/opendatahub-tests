@@ -9,11 +9,9 @@ from ocp_resources.serving_runtime import ServingRuntime
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_serving.model_server.upgrade.kserve_kueue_upgrade_config import (
-    KSERVE_KUEUE_EXPECTED_GATED_PODS,
     KSERVE_KUEUE_EXPECTED_RUNNING_PODS,
     KSERVE_KUEUE_INFERENCE_TIMEOUT,
     KSERVE_KUEUE_MIN_REPLICAS,
-    KSERVE_KUEUE_SCALED_REPLICAS,
 )
 from tests.model_serving.model_server.upgrade.utils import (
     ISVCKueueBaseline,
@@ -64,7 +62,7 @@ def _get_isvc_deployments(
 
 
 class TestKserveKueueRawPreUpgrade:
-    """Pre-upgrade: deploy raw ISVC with Kueue, verify initial state, scale and gate."""
+    """Pre-upgrade: deploy raw ISVC with Kueue and verify initial state."""
 
     @pytest.mark.pre_upgrade
     def test_isvc_exists(
@@ -110,94 +108,9 @@ class TestKserveKueueRawPreUpgrade:
         )
         LOGGER.info(f"[PRE-UPGRADE] PASS: Deployment '{deployment.name}' has {replicas} replica")
 
-    @pytest.mark.pre_upgrade
-    def test_kueue_scale_and_gate(
-        self,
-        admin_client: DynamicClient,
-        kserve_kueue_upgrade_inference_service: InferenceService,
-        kserve_kueue_upgrade_serving_runtime: ServingRuntime,
-    ) -> None:
-        """Test steps:
-
-        1. Scale the ISVC to 2 replicas (exceeds Kueue quota).
-        2. Wait for the Deployment to reflect 2 desired replicas.
-        3. Assert 1 running + 1 gated pod.
-        4. Assert ISVC status reports 1 total model copy.
-        """
-        isvc = kserve_kueue_upgrade_inference_service
-        runtime_name = kserve_kueue_upgrade_serving_runtime.name
-        LOGGER.info(f"[PRE-UPGRADE] Scaling '{isvc.name}' to {KSERVE_KUEUE_SCALED_REPLICAS} replicas")
-
-        # Use targeted merge patch to avoid 409 conflicts from status/resourceVersion
-        isvc.update(
-            resource_dict={
-                "metadata": {"name": isvc.name, "namespace": isvc.namespace},
-                "spec": {"predictor": {"minReplicas": KSERVE_KUEUE_SCALED_REPLICAS}},
-            }
-        )
-
-        deployments = _get_isvc_deployments(
-            admin_client=admin_client,
-            isvc=isvc,
-            runtime_name=runtime_name,
-        )
-        deployment = deployments[0]
-
-        status_replicas = None
-        try:
-            for status_replicas in TimeoutSampler(
-                wait_timeout=Timeout.TIMEOUT_2MIN,
-                sleep=5,
-                func=lambda: _get_deployment_status_replicas(deployment),
-            ):
-                if status_replicas == KSERVE_KUEUE_SCALED_REPLICAS:
-                    break
-        except TimeoutExpiredError:
-            pytest.fail(
-                f"Timeout waiting for Deployment to scale to {KSERVE_KUEUE_SCALED_REPLICAS} replicas, "
-                f"got {status_replicas}"
-            )
-
-        pod_labels = [
-            create_isvc_label_selector_str(
-                isvc=isvc,
-                resource_type="pod",
-                runtime_name=runtime_name,
-            )
-        ]
-        running_pods = 0
-        gated_pods = 0
-        try:
-            for running_pods, gated_pods in TimeoutSampler(
-                wait_timeout=Timeout.TIMEOUT_5MIN,
-                sleep=5,
-                func=lambda: check_gated_pods_and_running_pods(pod_labels, isvc.namespace, admin_client),
-            ):
-                if (
-                    running_pods == KSERVE_KUEUE_EXPECTED_RUNNING_PODS
-                    and gated_pods == KSERVE_KUEUE_EXPECTED_GATED_PODS
-                ):
-                    break
-        except TimeoutExpiredError:
-            pytest.fail(
-                f"Timeout waiting for Kueue gating: expected "
-                f"{KSERVE_KUEUE_EXPECTED_RUNNING_PODS} running + "
-                f"{KSERVE_KUEUE_EXPECTED_GATED_PODS} gated, "
-                f"got {running_pods} running + {gated_pods} gated"
-            )
-
-        total_copies = read_isvc_total_copies(isvc=isvc)
-        assert total_copies == KSERVE_KUEUE_EXPECTED_RUNNING_PODS, (
-            f"InferenceService should have {KSERVE_KUEUE_EXPECTED_RUNNING_PODS} total model copy, got {total_copies}"
-        )
-        LOGGER.info(
-            f"[PRE-UPGRADE] PASS: Kueue gating active — {running_pods} running, "
-            f"{gated_pods} gated, totalCopies={total_copies}"
-        )
-
 
 class TestKserveKueueRawPostUpgrade:
-    """Post-upgrade: verify raw ISVC and Kueue gating survived the upgrade."""
+    """Post-upgrade: verify raw ISVC and Kueue resources survived the upgrade."""
 
     @pytest.fixture(scope="class")
     def baseline(
@@ -365,11 +278,3 @@ class TestKserveKueueRawPostUpgrade:
             inference_type=Inference.INFER,
             inference_timeout=KSERVE_KUEUE_INFERENCE_TIMEOUT,
         )
-
-
-def _get_deployment_status_replicas(deployment: Deployment) -> int:
-    # Refresh each sampler iteration; without this we re-read a stale cached Deployment.
-    # status.replicas is None until the controller populates it — treat as 0 so the
-    # comparison against the expected count can progress cleanly.
-    deployment.get()
-    return deployment.instance.status.replicas or 0

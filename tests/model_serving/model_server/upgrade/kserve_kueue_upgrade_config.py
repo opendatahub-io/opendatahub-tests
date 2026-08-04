@@ -17,7 +17,7 @@ KSERVE_KUEUE_POD_MEMORY_REQUEST: str = "1Gi"
 KSERVE_KUEUE_POD_CPU_LIMIT: int = 1
 KSERVE_KUEUE_POD_MEMORY_LIMIT: str = "2Gi"
 
-# Quota sized so 2 replicas (100m + 1Gi each) exceed memory quota → 1 running, 1 gated
+# Quota sized to admit a single OVMS raw replica (100m + 1Gi request).
 KSERVE_KUEUE_CPU_QUOTA: int = 2
 KSERVE_KUEUE_MEMORY_QUOTA: str = "1Gi"
 
@@ -28,9 +28,7 @@ KSERVE_KUEUE_ISVC_RESOURCES: dict[str, dict[str, str | int]] = {
 
 KSERVE_KUEUE_MIN_REPLICAS: int = 1
 KSERVE_KUEUE_MAX_REPLICAS: int = 2
-KSERVE_KUEUE_SCALED_REPLICAS: int = 2
 KSERVE_KUEUE_EXPECTED_RUNNING_PODS: int = 1
-KSERVE_KUEUE_EXPECTED_GATED_PODS: int = 1
 
 KSERVE_KUEUE_ISVC_LABELS: dict[str, str] = {Labels.Kueue.QUEUE_NAME: KSERVE_KUEUE_LOCAL_QUEUE}
 

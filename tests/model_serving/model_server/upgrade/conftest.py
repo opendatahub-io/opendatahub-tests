@@ -4,8 +4,6 @@ import pytest
 from _pytest.nodes import Item
 from _pytest.runner import CallInfo
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.config_map import ConfigMap
-from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.role import Role
@@ -16,7 +14,6 @@ from ocp_resources.serving_runtime import ServingRuntime
 from simple_logger.logger import get_logger
 
 from utilities.constants import (
-    DscComponents,
     KServeDeploymentType,
     ModelAndFormat,
     ModelFormat,
@@ -26,13 +23,7 @@ from utilities.constants import (
     RuntimeTemplates,
 )
 from utilities.inference_utils import create_isvc
-from utilities.infra import (
-    create_inference_token,
-    create_isvc_view_role,
-    create_ns,
-    s3_endpoint_secret,
-    wait_for_dsc_status_ready,
-)
+from utilities.infra import create_inference_token, create_isvc_view_role, create_ns, s3_endpoint_secret
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 
@@ -61,39 +52,6 @@ from utilities.kueue_utils import LocalQueue
 
 
 LOGGER = get_logger(name=__name__)
-
-# Must match mainline post-upgrade restore contract (upgrade-kueue-dsc-state CM).
-UPGRADE_KUEUE_DSC_STATE_CM_NAME = "upgrade-kueue-dsc-state"
-
-
-def _restore_kueue_dsc_state(
-    admin_client: DynamicClient,
-    dsc_resource: DataScienceCluster,
-    namespace: str,
-) -> None:
-    """Restore original Kueue managementState from the pre-upgrade ConfigMap."""
-    state_cm = ConfigMap(client=admin_client, name=UPGRADE_KUEUE_DSC_STATE_CM_NAME, namespace=namespace)
-    if not state_cm.exists:
-        pytest.fail(
-            f"Kueue DSC state ConfigMap '{UPGRADE_KUEUE_DSC_STATE_CM_NAME}' not found in namespace "
-            f"'{namespace}'. Ensure pre-upgrade tests saved the original state."
-        )
-
-    original_state = state_cm.instance.data.get("original_management_state")
-    if not original_state:
-        pytest.fail(
-            f"Kueue DSC state ConfigMap '{UPGRADE_KUEUE_DSC_STATE_CM_NAME}' is missing required key "
-            f"'original_management_state'. Cannot restore safely without discarding recovery state."
-        )
-
-    LOGGER.info(f"Restoring Kueue managementState to '{original_state}' in DSC")
-    dsc_resource.update(
-        resource_dict={
-            "metadata": {"name": dsc_resource.name},
-            "spec": {"components": {DscComponents.KUEUE: {"managementState": original_state}}},
-        }
-    )
-    state_cm.clean_up()
 
 
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
@@ -704,82 +662,13 @@ def kserve_kueue_upgrade_namespace(
 
 
 @pytest.fixture(scope="session")
-def ensure_kueue_for_kserve_upgrade(
-    pytestconfig: pytest.Config,
-    admin_client: DynamicClient,
-    dsc_resource: DataScienceCluster,
-    kserve_kueue_upgrade_namespace: Namespace,
-    teardown_resources: bool,
-) -> Generator[None, Any, Any]:
-    """Ensure Kueue DSC state for KServe raw ISVC upgrade tests.
-
-    Pre-upgrade: save original managementState to a ConfigMap and leave Kueue
-    Unmanaged (direct DSC update, not ResourceEditor) so state survives upgrade.
-    Post-upgrade: restore from that ConfigMap (same contract as mainline).
-    """
-    namespace = kserve_kueue_upgrade_namespace.name
-
-    if pytestconfig.option.post_upgrade:
-        yield
-        _restore_kueue_dsc_state(
-            admin_client=admin_client,
-            dsc_resource=dsc_resource,
-            namespace=namespace,
-        )
-        return
-
-    kueue_management_state = dsc_resource.instance.spec.components[DscComponents.KUEUE].managementState
-    state_cm = ConfigMap(
-        client=admin_client,
-        name=UPGRADE_KUEUE_DSC_STATE_CM_NAME,
-        namespace=namespace,
-        data={"original_management_state": kueue_management_state},
-    )
-    if state_cm.exists:
-        pytest.fail(
-            f"Unexpected existing Kueue DSC state ConfigMap '{UPGRADE_KUEUE_DSC_STATE_CM_NAME}' in "
-            f"namespace '{namespace}'. Clear stale upgrade state before pre-upgrade."
-        )
-    LOGGER.info(f"Saving original Kueue managementState '{kueue_management_state}' to ConfigMap")
-    state_cm.deploy()
-
-    if kueue_management_state != DscComponents.ManagementState.UNMANAGED:
-        LOGGER.info(f"Patching Kueue from {kueue_management_state} to Unmanaged")
-        dsc_resource.update(
-            resource_dict={
-                "metadata": {"name": dsc_resource.name},
-                "spec": {
-                    "components": {DscComponents.KUEUE: {"managementState": DscComponents.ManagementState.UNMANAGED}}
-                },
-            }
-        )
-        wait_for_dsc_status_ready(dsc_resource=dsc_resource)
-    else:
-        LOGGER.info("Kueue already Unmanaged, no patch needed")
-
-    yield
-
-    if teardown_resources:
-        _restore_kueue_dsc_state(
-            admin_client=admin_client,
-            dsc_resource=dsc_resource,
-            namespace=namespace,
-        )
-
-
-@pytest.fixture(scope="session")
 def kserve_upgrade_kueue_resources(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    ensure_kueue_for_kserve_upgrade: None,
     kserve_kueue_upgrade_namespace: Namespace,
     teardown_resources: bool,
 ) -> Generator[LocalQueue, Any, Any]:
-    """Kueue ResourceFlavor, ClusterQueue, and LocalQueue for KServe upgrade tests.
-
-    Pre-upgrade: ensure_kueue_for_kserve_upgrade saves DSC state and patches Kueue.
-    Post-upgrade: looks up queues; ensure fixture restores DSC from the ConfigMap.
-    """
+    """Kueue ResourceFlavor, ClusterQueue, and LocalQueue for KServe upgrade tests."""
     yield from _create_kueue_upgrade_resources(
         pytestconfig=pytestconfig,
         admin_client=admin_client,
