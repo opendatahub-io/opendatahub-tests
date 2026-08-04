@@ -60,7 +60,7 @@ class OpenAIClient:
         data = self._construct_request_data(endpoint, query, extra_param)
         try:
             url = f"{self.host}{endpoint}"
-            response = requests.post(url, headers=headers, json=data, verify=False)
+            response = requests.post(url, headers=headers, json=data, verify=False, timeout=600)
             LOGGER.info(response)
             response.raise_for_status()
             message = response.json()
@@ -93,7 +93,7 @@ class OpenAIClient:
         tokens = []
         try:
             url = f"{self.host}{endpoint}"
-            response = requests.post(url, headers=headers, json=data, verify=False, stream=True)
+            response = requests.post(url, headers=headers, json=data, verify=False, stream=True, timeout=600)
             LOGGER.info(response)
             response.raise_for_status()
             for line in response.iter_lines():
@@ -167,7 +167,7 @@ class OpenAIClient:
             url = f"{self.host}{endpoint}"
             with open(audio_file_path, "rb") as audio_file:
                 files = {"file": (filename, audio_file, "audio/wav")}
-                response = requests.post(url, headers=headers, files=files, data=data, verify=False)
+                response = requests.post(url, headers=headers, files=files, data=data, verify=False, timeout=300)
             LOGGER.info(response)
             response.raise_for_status()
             message = response.json()

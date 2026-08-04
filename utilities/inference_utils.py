@@ -605,6 +605,7 @@ def create_isvc(
     protocol_version: str | None = None,
     labels: dict[str, str] | None = None,
     auto_scaling: dict[str, Any] | None = None,
+    custom_annotations: dict[str, str] | None = None,
 ) -> Generator[InferenceService, Any, Any]:
     """
     Create InferenceService object.
@@ -640,6 +641,7 @@ def create_isvc(
         teardown (bool): Teardown
         protocol_version (str): Protocol version of the model server
         auto_scaling (dict[str, Any]): Auto scaling configuration for the model
+        custom_annotations (dict[str, str]): Custom annotations to add to InferenceService metadata
 
     Yields:
         InferenceService: InferenceService object
@@ -665,8 +667,7 @@ def create_isvc(
     if model_version:
         predictor_dict["model"]["modelFormat"]["version"] = model_version
 
-    if storage_uri or storage_path or storage_key:
-        _check_storage_arguments(storage_uri=storage_uri, storage_key=storage_key, storage_path=storage_path)
+    _check_storage_arguments(storage_uri=storage_uri, storage_key=storage_key, storage_path=storage_path)
     if storage_uri:
         predictor_dict["model"]["storageUri"] = storage_uri
     elif storage_key:
@@ -721,6 +722,9 @@ def create_isvc(
 
     if stop_resume:
         _annotations[Annotations.KserveIo.FORCE_STOP_RUNTIME] = str(stop_resume)
+
+    if custom_annotations:
+        _annotations.update(custom_annotations)
 
     if multi_node_worker_spec is not None:
         predictor_dict["workerSpec"] = multi_node_worker_spec

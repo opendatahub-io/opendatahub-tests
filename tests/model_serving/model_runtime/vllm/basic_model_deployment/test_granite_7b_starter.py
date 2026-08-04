@@ -58,6 +58,11 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "v
                 **BASE_SEVERRLESS_DEPLOYMENT_CONFIG,
                 "gpu_count": 1,
                 "name": "granite-starter-ser",
+                "custom_annotations": {
+                    "queue.serving.knative.dev/timeout-seconds": "600",
+                    "haproxy.router.openshift.io/timeout": "600s",
+                    "serving.knative.dev/progress-deadline": "10m",
+                },
             },
             id="granite-starter-serverless-single-gpu",
         ),
@@ -133,6 +138,11 @@ class TestGraniteStarterModel:
                 **BASE_SEVERRLESS_DEPLOYMENT_CONFIG,
                 "gpu_count": 2,
                 "name": "granite-starter-sm",
+                "custom_annotations": {
+                    "queue.serving.knative.dev/timeout-seconds": "600",
+                    "haproxy.router.openshift.io/timeout": "600s",
+                    "serving.knative.dev/progress-deadline": "10m",
+                },
             },
             id="granite-starter-serverless-multi-gpu",
         ),
