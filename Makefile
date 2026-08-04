@@ -24,7 +24,7 @@ build:
 	else \
 		echo "WARNING: Image manifest generation failed — building without manifest labels"; \
 		if [ -s /tmp/manifest-err.log ]; then cat /tmp/manifest-err.log >&2; fi; \
-		$(IMAGE_BUILD_CMD) build -t $(FULL_OPERATOR_IMAGE) .; \
+		$(IMAGE_BUILD_CMD) buildx build --load  --platform linux/amd64,linux/ppc64le -t $(FULL_OPERATOR_IMAGE) .; \
 	fi
 
 push:

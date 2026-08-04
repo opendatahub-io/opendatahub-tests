@@ -7,6 +7,15 @@ import pytest
 import structlog
 from ogx_client import OgxClient
 from ogx_client.types.vector_store import VectorStore
+
+import platform
+
+if platform.machine() == "ppc64le":
+    pytest.skip(
+        "ragas is not supported on PPC64LE",
+        allow_module_level=True,
+    )
+
 from ragas import SingleTurnSample
 
 from tests.ogx.constants import (
