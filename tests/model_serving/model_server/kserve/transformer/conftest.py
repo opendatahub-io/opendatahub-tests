@@ -31,6 +31,7 @@ DEFAULT_TRANSFORMER_IMAGE = (
     "@sha256:6af753f5d13e07fd2d0d3da9e55ddbcd4d5cabcd9d5f4c1fbbdce06fb1e08c67"
 )
 
+
 @pytest.fixture(scope="class")
 def transformer_auth_inference_service(
     request: FixtureRequest,
