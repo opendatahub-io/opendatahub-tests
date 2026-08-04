@@ -1,6 +1,7 @@
 import os
 from typing import Any
 
+from tests.model_serving.image_constants import ModelServingImages
 from utilities.constants import (
     KServeDeploymentType,
     Labels,
@@ -32,10 +33,7 @@ TRITON_REST_PORT: int = 8080
 TRITON_GRPC_PORT: int = 9000
 
 
-# Updated to 25.02 - last Triton release with TensorFlow backend included by default
-# TensorFlow backend was deprecated in 25.03 and removed in 26.x+
-# See: https://docs.nvidia.com/deeplearning/triton-inference-server/release-notes/
-TRITON_IMAGE: str = "nvcr.io/nvidia/tritonserver:25.02-py3"
+TRITON_IMAGE: str = ModelServingImages.TRITON
 
 
 MODEL_PATH_PREFIX_KERAS: str = "triton_resnet/model_repository"
