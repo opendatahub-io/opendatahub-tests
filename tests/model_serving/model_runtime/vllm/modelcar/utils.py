@@ -3,6 +3,10 @@ import binascii
 import json
 import re
 
+import pytest
+
+from tests.model_serving.model_runtime.vllm.modelcar.constant import MODELCAR_REGISTRIES
+
 
 def normalize_registry_pull_auth(raw_value: str, expected_host: str | None = None) -> str:
     """Return base64 auth from a plain string or JSON registry credentials object.
@@ -77,6 +81,42 @@ def validate_registry_pull_auth(auth: str) -> None:
         base64.b64decode(s=auth, validate=True)
     except binascii.Error as exc:
         raise ValueError("Registry pull secret is not a valid base64 encoded string") from exc
+
+
+def collect_modelcar_registry_credentials(
+    pytestconfig: pytest.Config,
+    *,
+    required: bool = False,
+) -> tuple[list[str], list[str]]:
+    """Collect modelcar OCI registry hosts and pull secrets from pytest CLI/env config.
+
+    Args:
+        pytestconfig: Pytest config with per-registry pull-secret options.
+        required: When True, raise if no registry pull secret is configured.
+
+    Returns:
+        Tuple of (registry_hosts, pull_secrets) for configured registries.
+
+    Raises:
+        ValueError: If required is True and no pull secret is configured, or auth is invalid.
+    """
+    hosts: list[str] = []
+    secrets: list[str] = []
+
+    for registry in MODELCAR_REGISTRIES:
+        raw_secret = getattr(pytestconfig.option, registry.option_dest, None)
+        if not raw_secret:
+            continue
+        auth = normalize_registry_pull_auth(raw_value=raw_secret, expected_host=registry.host)
+        validate_registry_pull_auth(auth=auth)
+        hosts.append(registry.host)
+        secrets.append(raw_secret)
+
+    if not hosts and required:
+        options_help = ", ".join(f"`{registry.cli_option}` or `{registry.env_var}`" for registry in MODELCAR_REGISTRIES)
+        raise ValueError(f"No modelcar registry pull secret is configured. Set at least one of: {options_help}")
+
+    return hosts, secrets
 
 
 def safe_k8s_name(model_name: str, max_length: int = 20) -> str:
