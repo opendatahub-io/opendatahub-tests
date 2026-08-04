@@ -27,6 +27,7 @@ IMAGE_CLASS_MAP: dict[str, str] = {
     "shared": "utilities.image_constants.SharedImages",
     "workbenches": "tests.workbenches.image_constants.WorkbenchesImages",
     "spark": "tests.spark.image_constants.SparkImages",
+    "model_serving": "tests.model_serving.image_constants.ModelServingImages",
 }
 
 KNOWN_REGISTRIES: tuple[str, ...] = (

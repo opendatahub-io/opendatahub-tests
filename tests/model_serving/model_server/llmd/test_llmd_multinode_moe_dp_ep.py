@@ -1,6 +1,5 @@
 import pytest
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.llm_inference_service import LLMInferenceService
 
 from tests.model_serving.model_server.llmd.llmd_configs import MultinodeMoeDpEpConfig
 from tests.model_serving.model_server.llmd.utils import (
@@ -11,6 +10,7 @@ from tests.model_serving.model_server.llmd.utils import (
     parse_completion_text,
     send_chat_completions,
 )
+from utilities.resources.llm_inference_service import LLMInferenceService
 
 NAMESPACE = ns_from_file(file=__file__)
 

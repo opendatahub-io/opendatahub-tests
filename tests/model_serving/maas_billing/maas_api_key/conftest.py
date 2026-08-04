@@ -7,7 +7,6 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.cron_job import CronJob
 from ocp_resources.deployment import Deployment
-from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.maas_subscription import MaaSSubscription
 from ocp_resources.namespace import Namespace
@@ -32,6 +31,7 @@ from tests.model_serving.maas_billing.utils import (
 from utilities.general import generate_random_name
 from utilities.infra import get_openshift_token
 from utilities.resources.auth import Auth
+from utilities.resources.llm_inference_service import LLMInferenceService
 
 LOGGER = structlog.get_logger(name=__name__)
 

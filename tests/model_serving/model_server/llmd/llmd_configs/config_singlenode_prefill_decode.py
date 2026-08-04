@@ -41,10 +41,14 @@ class SingleNodePrefillDecodeConfig(TinyLlamaOciGpuConfig):
 
     @classmethod
     def container_env(cls):
-        return super().container_env() + [
+        base = [e for e in super().container_env() if e["name"] != "VLLM_ADDITIONAL_ARGS"]
+        return base + [
             {
                 "name": "VLLM_ADDITIONAL_ARGS",
-                "value": '--kv_transfer_config \'{"kv_connector":"NixlConnector","kv_role":"kv_both"}\'',
+                "value": (
+                    '--kv_transfer_config \'{"kv_connector":"NixlConnector","kv_role":"kv_both"}\''
+                    " --enable-auto-tool-choice --tool-call-parser hermes"
+                ),
             },
             {
                 "name": "VLLM_NIXL_SIDE_CHANNEL_HOST",
