@@ -246,11 +246,58 @@ def wait_for_notebook_pod_ready(notebook_pod: Pod, *, context: str, timeout: int
     except (TimeoutError, TimeoutExpiredError) as e:
         if notebook_pod.exists:
             collect_pod_information(notebook_pod)
+            diagnostics = _collect_pod_diagnostics(notebook_pod)
             raise AssertionError(
                 f"{context} pod '{notebook_pod.name}' failed to reach Ready state "
-                f"within {timeout} seconds.\nOriginal error: {e}"
+                f"within {timeout} seconds.\n{diagnostics}\nOriginal error: {e}"
             ) from e
 
         raise AssertionError(
             f"{context} pod '{notebook_pod.name}' was not created. Check notebook controller logs."
         ) from e
+
+
+def _collect_pod_diagnostics(pod: Pod) -> str:
+    """Collect pod state diagnostics for inclusion in assertion error messages."""
+    lines: list[str] = []
+    try:
+        instance = pod.instance
+        status = instance.status
+
+        lines.append(f"Phase: {status.phase}")
+
+        scheduling_gates = instance.spec.get("schedulingGates") or []
+        if scheduling_gates:
+            gate_names = [gate.get("name", "unknown") for gate in scheduling_gates]
+            lines.append(f"Scheduling gates: {gate_names}")
+
+        conditions = status.conditions or []
+        if conditions:
+            lines.append("Conditions:")
+            for condition in conditions:
+                lines.append(
+                    f"  {condition.type}: {condition.status} (reason={condition.get('reason', 'N/A')}, "
+                    f"message={condition.get('message', 'N/A')})"
+                )
+
+        container_statuses = status.containerStatuses or []
+        init_container_statuses = status.initContainerStatuses or []
+        for container_status in init_container_statuses + container_statuses:
+            if not container_status.get("ready", False):
+                state = container_status.get("state", {})
+                waiting = state.get("waiting")
+                terminated = state.get("terminated")
+                if waiting:
+                    lines.append(
+                        f"Container '{container_status['name']}' waiting: "
+                        f"reason={waiting.get('reason', 'N/A')}, message={waiting.get('message', 'N/A')}"
+                    )
+                elif terminated:
+                    lines.append(
+                        f"Container '{container_status['name']}' terminated: "
+                        f"reason={terminated.get('reason', 'N/A')}, exitCode={terminated.get('exitCode', 'N/A')}"
+                    )
+    except Exception as diag_err:  # noqa: BLE001
+        lines.append(f"(diagnostics collection failed: {diag_err})")
+
+    return "Pod diagnostics:\n" + "\n".join(lines) if lines else "Pod diagnostics: unavailable"
