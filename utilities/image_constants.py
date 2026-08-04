@@ -17,3 +17,8 @@ class SharedImages:
     MLSERVER_ONNX: str = (
         "oci://quay.io/syedali/mlserver-onnx@sha256:1724ae50e1178a11c3b8dd3c65c03e85d3f416e5994c80c63bcc556c71189e9d"  # noqa: E501
     )
+
+    BUSYBOX: str = (
+        "quay.io/quay/busybox"
+        "@sha256:92f3298bf80a1ba949140d77987f5de081f010337880cd771f7e7fc928f8c74d"  # pragma: allowlist secret
+    )

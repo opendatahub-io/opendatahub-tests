@@ -1,8 +1,8 @@
-import logging
 from collections.abc import Generator
 from typing import Any
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
@@ -18,7 +18,7 @@ from utilities.general import download_model_data
 from utilities.inference_utils import create_isvc
 from utilities.infra import get_pods_by_isvc_label
 
-LOGGER = logging.getLogger(__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")
