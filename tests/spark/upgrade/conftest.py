@@ -176,29 +176,29 @@ def spark_role_fixture(
     Post-upgrade: References existing Roles in upgrade namespace
     """
     if pytestconfig.option.post_upgrade:
-        yield get_spark_roles(client=admin_client, namespace=spark_namespace_fixture.name)
-    else:
-        apps_namespace = py_config["applications_namespace"]
-        source_roles = get_spark_roles(client=admin_client, namespace=apps_namespace)
-        assert source_roles, (
-            f"No spark-related Roles found in namespace {apps_namespace}. "
-            "Ensure the Spark Operator is enabled and has created RBAC resources."
-        )
-        LOGGER.info(
-            f"Discovered {len(source_roles)} spark Role(s) in {apps_namespace}: {[r.name for r in source_roles]}"
-        )
+        stale_roles = get_spark_roles(client=admin_client, namespace=spark_namespace_fixture.name)
+        for role in stale_roles:
+            role.clean_up()
 
-        created_roles = []
-        for source_role in source_roles:
-            role = recreate_role_in_namespace(
-                client=admin_client,
-                source_role=source_role,
-                target_namespace=spark_namespace_fixture.name,
-                teardown=teardown_resources,
-            )
-            created_roles.append(role)
+    apps_namespace = py_config["applications_namespace"]
+    source_roles = get_spark_roles(client=admin_client, namespace=apps_namespace)
+    assert source_roles, (
+        f"No spark-related Roles found in namespace {apps_namespace}. "
+        "Ensure the Spark Operator is enabled and has created RBAC resources."
+    )
+    LOGGER.info(f"Discovered {len(source_roles)} spark Role(s) in {apps_namespace}: {[r.name for r in source_roles]}")
 
-        yield created_roles
+    created_roles = []
+    for source_role in source_roles:
+        role = recreate_role_in_namespace(
+            client=admin_client,
+            source_role=source_role,
+            target_namespace=spark_namespace_fixture.name,
+            teardown=teardown_resources,
+        )
+        created_roles.append(role)
+
+    yield created_roles
 
 
 @pytest.fixture(scope="session")
@@ -214,30 +214,29 @@ def service_account_fixture(
     Post-upgrade: References existing SAs in upgrade namespace
     """
     if pytestconfig.option.post_upgrade:
-        yield get_spark_service_accounts(client=admin_client, namespace=spark_namespace_fixture.name)
-    else:
-        apps_namespace = py_config["applications_namespace"]
+        stale_sas = get_spark_service_accounts(client=admin_client, namespace=spark_namespace_fixture.name)
+        for sa in stale_sas:
+            sa.clean_up()
 
-        src_sas = get_spark_service_accounts(client=admin_client, namespace=apps_namespace)
-        assert src_sas, (
-            f"No spark-related ServiceAccounts found in namespace {apps_namespace}. "
-            "Ensure the Spark Operator is enabled and has created RBAC resources."
+    apps_namespace = py_config["applications_namespace"]
+    src_sas = get_spark_service_accounts(client=admin_client, namespace=apps_namespace)
+    assert src_sas, (
+        f"No spark-related ServiceAccounts found in namespace {apps_namespace}. "
+        "Ensure the Spark Operator is enabled and has created RBAC resources."
+    )
+    LOGGER.info(f"Discovered {len(src_sas)} spark ServiceAccount(s) in {apps_namespace}: {[sa.name for sa in src_sas]}")
+
+    created_sas = []
+    for source_sa in src_sas:
+        sa = recreate_service_account_in_namespace(
+            client=admin_client,
+            source_sa=source_sa,
+            target_namespace=spark_namespace_fixture.name,
+            teardown=teardown_resources,
         )
-        LOGGER.info(
-            f"Discovered {len(src_sas)} spark ServiceAccount(s) in {apps_namespace}: {[sa.name for sa in src_sas]}"
-        )
+        created_sas.append(sa)
 
-        created_sas = []
-        for source_sa in src_sas:
-            sa = recreate_service_account_in_namespace(
-                client=admin_client,
-                source_sa=source_sa,
-                target_namespace=spark_namespace_fixture.name,
-                teardown=teardown_resources,
-            )
-            created_sas.append(sa)
-
-        yield created_sas
+    yield created_sas
 
 
 @pytest.fixture(scope="session")
@@ -255,26 +254,27 @@ def role_binding_fixture(
     Post-upgrade: References existing RoleBindings in upgrade namespace
     """
     if pytestconfig.option.post_upgrade:
-        yield get_spark_role_bindings(client=admin_client, namespace=spark_namespace_fixture.name)
-    else:
-        apps_namespace = py_config["applications_namespace"]
+        stale_rbs = get_spark_role_bindings(client=admin_client, namespace=spark_namespace_fixture.name)
+        for rb in stale_rbs:
+            rb.clean_up()
 
-        source_rbs = get_spark_role_bindings(client=admin_client, namespace=apps_namespace)
-        LOGGER.info(
-            f"Discovered {len(source_rbs)} spark RoleBinding(s) in {apps_namespace}: {[rb.name for rb in source_rbs]}"
+    apps_namespace = py_config["applications_namespace"]
+    source_rbs = get_spark_role_bindings(client=admin_client, namespace=apps_namespace)
+    LOGGER.info(
+        f"Discovered {len(source_rbs)} spark RoleBinding(s) in {apps_namespace}: {[rb.name for rb in source_rbs]}"
+    )
+
+    created_rbs = []
+    for source_rb in source_rbs:
+        rb = recreate_role_binding_in_namespace(
+            client=admin_client,
+            source_rb=source_rb,
+            target_namespace=spark_namespace_fixture.name,
+            teardown=teardown_resources,
         )
+        created_rbs.append(rb)
 
-        created_rbs = []
-        for source_rb in source_rbs:
-            rb = recreate_role_binding_in_namespace(
-                client=admin_client,
-                source_rb=source_rb,
-                target_namespace=spark_namespace_fixture.name,
-                teardown=teardown_resources,
-            )
-            created_rbs.append(rb)
-
-        yield created_rbs
+    yield created_rbs
 
 
 @pytest.fixture(scope="session")
@@ -290,26 +290,27 @@ def network_policy_fixture(
     Post-upgrade: References existing NetworkPolicies in upgrade namespace
     """
     if pytestconfig.option.post_upgrade:
-        yield get_spark_network_policies(client=admin_client, namespace=spark_namespace_fixture.name)
-    else:
-        apps_namespace = py_config["applications_namespace"]
+        stale_nps = get_spark_network_policies(client=admin_client, namespace=spark_namespace_fixture.name)
+        for np in stale_nps:
+            np.clean_up()
 
-        source_nps = get_spark_network_policies(client=admin_client, namespace=apps_namespace)
-        LOGGER.info(
-            f"Discovered {len(source_nps)} spark NetworkPolicy(s) in {apps_namespace}: {[np.name for np in source_nps]}"
+    apps_namespace = py_config["applications_namespace"]
+    source_nps = get_spark_network_policies(client=admin_client, namespace=apps_namespace)
+    LOGGER.info(
+        f"Discovered {len(source_nps)} spark NetworkPolicy(s) in {apps_namespace}: {[np.name for np in source_nps]}"
+    )
+
+    created_nps = []
+    for source_np in source_nps:
+        np = recreate_network_policy_in_namespace(
+            client=admin_client,
+            source_np=source_np,
+            target_namespace=spark_namespace_fixture.name,
+            teardown=teardown_resources,
         )
+        created_nps.append(np)
 
-        created_nps = []
-        for source_np in source_nps:
-            np = recreate_network_policy_in_namespace(
-                client=admin_client,
-                source_np=source_np,
-                target_namespace=spark_namespace_fixture.name,
-                teardown=teardown_resources,
-            )
-            created_nps.append(np)
-
-        yield created_nps
+    yield created_nps
 
 
 @pytest.fixture(scope="session")
