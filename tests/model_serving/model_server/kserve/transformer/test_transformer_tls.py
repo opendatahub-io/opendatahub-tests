@@ -38,6 +38,7 @@ def _get_kserve_container(deployment: Deployment):
 
 @pytest.mark.tls
 @pytest.mark.tier1
+@pytest.mark.rawdeployment
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, transformer_auth_inference_service",
     [
@@ -47,7 +48,7 @@ def _get_kserve_container(deployment: Deployment):
                 "name": "onnx",
                 "template-name": RuntimeTemplates.MLSERVER,
                 "multi-model": False,
-                "storage-uri": "hf://optimum/distilbert-base-uncased-finetuned-sst-2-english",
+                "model-dir": "sentiment-analysis",
             },
         )
     ],

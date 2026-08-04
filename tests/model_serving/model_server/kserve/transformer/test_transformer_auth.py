@@ -49,7 +49,7 @@ ISVC_NAME = "sentiment-analysis"
                 "name": "onnx",
                 "template-name": RuntimeTemplates.MLSERVER,
                 "multi-model": False,
-                "storage-uri": "hf://optimum/distilbert-base-uncased-finetuned-sst-2-english",
+                "model-dir": "sentiment-analysis",
             },
         )
     ],
