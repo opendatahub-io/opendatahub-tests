@@ -2,20 +2,24 @@ from typing import Any
 
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
+from ocp_resources.pod import Pod
 from ocp_resources.resource import NamespacedResource, Resource
 from ocp_resources.route import Route
 from ocp_resources.self_subject_review import SelfSubjectReview
 from ocp_resources.user import User
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
+from timeout_sampler import TimeoutExpiredError
 
 from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH, Labels
+from utilities.general import collect_pod_information
 from utilities.infra import check_internal_image_registry_available
 
 LOGGER = get_logger(name=__name__)
 
 WORKBENCH_TRUSTED_CA_BUNDLE_NAME = "workbench-trusted-ca-bundle"
 CA_BUNDLE_CERT_KEY = "ca-bundle.crt"
+KUBEFLOW_STOPPED_ANNOTATION: str = "kubeflow-resource-stopped"
 
 
 class StatefulSet(NamespacedResource):
@@ -31,6 +35,12 @@ class MutatingWebhookConfiguration(Resource):
     """
 
     api_group: str = Resource.ApiGroup.ADMISSIONREGISTRATION_K8S_IO
+
+
+class HardwareProfile(NamespacedResource):
+    """HardwareProfile resource (infrastructure.opendatahub.io/v1alpha1)."""
+
+    api_group: str = "infrastructure.opendatahub.io"
 
 
 def get_username(client: DynamicClient) -> str | None:
@@ -96,6 +106,8 @@ def build_notebook_dict(
     route_host: str,
     username: str,
     extra_annotations: dict[str, str] | None = None,
+    extra_labels: dict[str, str] | None = None,
+    resources: dict[str, dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     """Builds a Notebook CR dict for the kubeflow.org/v1 API (2.25 oauth-proxy style).
 
@@ -106,6 +118,10 @@ def build_notebook_dict(
         route_host: Dashboard route hostname (for oauth-proxy logout URL and tornado_settings).
         username: Cluster username (for tornado_settings).
         extra_annotations: Optional annotations merged into metadata (e.g. oauth sidecar resources).
+        extra_labels: Optional labels merged into metadata (e.g. kueue queue-name).
+        resources: Container resources dict with "limits" and/or "requests" keys.
+            None uses sensible defaults; empty dict ``{}`` omits resources entirely
+            (useful when a HardwareProfile webhook injects them).
 
     Returns:
         A dict suitable for passing to ``Notebook(kind_dict=...)``.
@@ -132,17 +148,60 @@ def build_notebook_dict(
     if extra_annotations:
         annotations.update(extra_annotations)
 
+    labels: dict[str, str] = {
+        Labels.Openshift.APP: name,
+        Labels.OpenDataHub.DASHBOARD: "true",
+        "opendatahub.io/odh-managed": "true",
+        "sidecar.istio.io/inject": "false",
+    }
+    if extra_labels:
+        labels.update(extra_labels)
+
+    container: dict[str, Any] = {
+        "env": [
+            {
+                "name": "NOTEBOOK_ARGS",
+                "value": "--ServerApp.port=8888\n"
+                "                  "
+                "--ServerApp.token=''\n"
+                "                  "
+                "--ServerApp.password=''\n"
+                "                  "
+                f"--ServerApp.base_url=/notebook/{namespace}/{name}\n"
+                "                  "
+                "--ServerApp.quit_button=False\n"
+                "                  "
+                f'--ServerApp.tornado_settings={{"user":"{username}","hub_host":"https://{route_host}","hub_prefix":"/projects/{namespace}"}}',  # noqa: E501 line too long
+            },
+            {"name": "JUPYTER_IMAGE", "value": image_path},
+        ],
+        "image": image_path,
+        "imagePullPolicy": "Always",
+        "livenessProbe": probe_config,
+        "name": name,
+        "ports": [{"containerPort": 8888, "name": "notebook-port", "protocol": "TCP"}],
+        "readinessProbe": probe_config,
+        "volumeMounts": [
+            {"mountPath": "/opt/app-root/src", "name": name},
+            {"mountPath": "/dev/shm", "name": "shm"},
+        ],
+        "workingDir": "/opt/app-root/src",
+    }
+
+    if resources is None:
+        container["resources"] = {
+            "limits": {"cpu": "2", "memory": "4Gi"},
+            "requests": {"cpu": "1", "memory": "1Gi"},
+        }
+    elif resources:
+        container["resources"] = resources
+
     return {
         "apiVersion": "kubeflow.org/v1",
         "kind": "Notebook",
         "metadata": {
             "annotations": annotations,
-            "labels": {
-                Labels.Openshift.APP: name,
-                Labels.OpenDataHub.DASHBOARD: "true",
-                "opendatahub.io/odh-managed": "true",
-                "sidecar.istio.io/inject": "false",
-            },
+            "labels": labels,
             "name": name,
             "namespace": namespace,
         },
@@ -151,40 +210,7 @@ def build_notebook_dict(
                 "spec": {
                     "affinity": {},
                     "containers": [
-                        {
-                            "env": [
-                                {
-                                    "name": "NOTEBOOK_ARGS",
-                                    "value": "--ServerApp.port=8888\n"
-                                    "                  "
-                                    "--ServerApp.token=''\n"
-                                    "                  "
-                                    "--ServerApp.password=''\n"
-                                    "                  "
-                                    f"--ServerApp.base_url=/notebook/{namespace}/{name}\n"
-                                    "                  "
-                                    "--ServerApp.quit_button=False\n"
-                                    "                  "
-                                    f'--ServerApp.tornado_settings={{"user":"{username}","hub_host":"https://{route_host}","hub_prefix":"/projects/{namespace}"}}',  # noqa: E501 line too long
-                                },
-                                {"name": "JUPYTER_IMAGE", "value": image_path},
-                            ],
-                            "image": image_path,
-                            "imagePullPolicy": "Always",
-                            "livenessProbe": probe_config,
-                            "name": name,
-                            "ports": [{"containerPort": 8888, "name": "notebook-port", "protocol": "TCP"}],
-                            "readinessProbe": probe_config,
-                            "resources": {
-                                "limits": {"cpu": "2", "memory": "4Gi"},
-                                "requests": {"cpu": "1", "memory": "1Gi"},
-                            },
-                            "volumeMounts": [
-                                {"mountPath": "/opt/app-root/src", "name": name},
-                                {"mountPath": "/dev/shm", "name": "shm"},
-                            ],
-                            "workingDir": "/opt/app-root/src",
-                        },
+                        container,
                         {
                             "args": [
                                 "--provider=openshift",
@@ -250,3 +276,35 @@ def build_notebook_dict(
             }
         },
     }
+
+
+def wait_for_notebook_pod_ready(notebook_pod: Pod, *, context: str, timeout: int = 300) -> None:
+    """Wait for a notebook pod to reach Ready state, with diagnostic collection on failure.
+
+    Args:
+        notebook_pod: The Pod resource to wait on.
+        context: Human-readable context for error messages (e.g. "Kueue notebook").
+        timeout: Maximum seconds to wait for the pod to become Ready.
+
+    Raises:
+        AssertionError: If the pod does not reach Ready within *timeout* seconds
+            or is never created.
+    """
+    try:
+        notebook_pod.wait(timeout=timeout)
+        notebook_pod.wait_for_condition(
+            condition=Pod.Condition.READY,
+            status=Pod.Condition.Status.TRUE,
+            timeout=timeout,
+        )
+    except (TimeoutError, TimeoutExpiredError) as e:
+        if notebook_pod.exists:
+            collect_pod_information(notebook_pod)
+            raise AssertionError(
+                f"{context} pod '{notebook_pod.name}' failed to reach Ready state "
+                f"within {timeout} seconds.\nOriginal error: {e}"
+            ) from e
+
+        raise AssertionError(
+            f"{context} pod '{notebook_pod.name}' was not created. Check notebook controller logs."
+        ) from e
