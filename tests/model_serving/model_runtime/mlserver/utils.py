@@ -226,7 +226,7 @@ def get_model_storage_uri_dict(
 
     Returns:
         dict[str, Any]: For S3 (modelcar=False): {"model-dir": "/mnt/models/sklearn"}
-                       For model car (modelcar=True): {"storage-uri": "oci://quay.io/...", "model-format": "sklearn"}
+                       For model car (modelcar=True): {"storage-uri": "<oci-modelcar-uri>", "model-format": "sklearn"}
     """
     if modelcar:
         from utilities.image_constants import SharedImages
