@@ -243,7 +243,7 @@ def wait_for_raw_isvc_https_infer_ready(
                 use_default_query=True,
                 token=token,
             )
-        except ValueError, InferenceResponseError:
+        except (ValueError, InferenceResponseError):
             return False
 
         if not out or not out.strip():

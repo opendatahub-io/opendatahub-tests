@@ -1,6 +1,7 @@
 import os
 from collections.abc import Generator
 from typing import Any
+from urllib.parse import urlparse
 
 import pytest
 from _pytest.fixtures import FixtureRequest
@@ -9,6 +10,7 @@ from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
+from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 
 from utilities.constants import (
@@ -29,18 +31,13 @@ DEFAULT_TRANSFORMER_IMAGE = (
     "@sha256:6af753f5d13e07fd2d0d3da9e55ddbcd4d5cabcd9d5f4c1fbbdce06fb1e08c67"
 )
 
-
-@pytest.fixture(scope="session")
-def use_unprivileged_client() -> bool:  # noqa: UFN001
-    """Transformer tests use admin client — no unprivileged user setup needed."""
-    return False
-
-
 @pytest.fixture(scope="class")
 def transformer_auth_inference_service(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
+    ci_s3_bucket_name: str,
+    ci_endpoint_s3_secret: Secret,
     model_service_account: ServiceAccount,
 ) -> Generator[InferenceService, Any, Any]:
     """InferenceService with a custom transformer and auth enabled.
@@ -53,7 +50,7 @@ def transformer_auth_inference_service(
     Expected ``request.param`` keys:
         template-name: ODH runtime template name (e.g. ``RuntimeTemplates.MLSERVER``).
         multi-model: Whether the runtime supports multi-model serving.
-        storage-uri: Model storage URI for the predictor.
+        model-dir: S3 key prefix inside the CI bucket for the model artifacts.
         name (optional): Model format name override; defaults to the first
             format advertised by the template.
 
@@ -61,7 +58,9 @@ def transformer_auth_inference_service(
         request: Pytest request providing indirect parametrisation.
         unprivileged_client: OpenShift client scoped to an unprivileged user.
         unprivileged_model_namespace: Namespace where resources are created.
-        model_service_account: ServiceAccount used by the ISVC.
+        ci_s3_bucket_name: CI S3 bucket name from env/CLI.
+        ci_endpoint_s3_secret: Secret with S3 credentials and KServe annotations.
+        model_service_account: ServiceAccount referencing the S3 secret.
 
     Yields:
         InferenceService: The ready ISVC; torn down after the test class.
@@ -71,7 +70,7 @@ def transformer_auth_inference_service(
     isvc_name = "sentiment-analysis"
     template_name = request.param["template-name"]
     multi_model = request.param.get("multi-model", False)
-    storage_uri = request.param["storage-uri"]
+    storage_uri = f"s3://{ci_s3_bucket_name}/{request.param['model-dir']}/"
 
     with ServingRuntimeFromTemplate(
         client=unprivileged_client,
@@ -96,11 +95,15 @@ def transformer_auth_inference_service(
                 Labels.Kserve.NETWORKING_KSERVE_IO: Labels.Kserve.EXPOSED,
             },
             predictor={
+                "serviceAccountName": model_service_account.name,
                 "minReplicas": 1,
                 "model": {
                     "modelFormat": {"name": model_format},
                     "runtime": runtime.name,
-                    "storageUri": storage_uri,
+                    "storage": {
+                        "key": ci_endpoint_s3_secret.name,
+                        "path": urlparse(storage_uri).path,
+                    },
                     "resources": {
                         "requests": {"cpu": "10m", "memory": "256Mi"},
                         "limits": {"cpu": "1", "memory": "2Gi"},
