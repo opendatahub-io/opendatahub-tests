@@ -34,6 +34,10 @@ class AiSafetyImages:
         "oci://quay.io/trustyai_testing/gaussian-credit-model-modelcar"
         "@sha256:323dbb70c980c7f57bb6a884f5d46ee1c620c0b193368d13a469b49e7c9054c4"
     )
+    LOAN_MODEL_ALPHA: str = (
+        "oci://quay.io/trustyai_testing/loan-model-alpha-modelcar"
+        "@sha256:519c05826b987615f0f12cb341715060108054fef88a462c9902084992af3054"
+    )
     MLSERVER: str = (
         "quay.io/trustyai_testing/mlserver@sha256:68a4cd74fff40a3c4f29caddbdbdc9e54888aba54bf3c5f78c8ffd577c3a1c89"
     )
