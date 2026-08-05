@@ -248,7 +248,7 @@ def _validate_imagestreams_with_label(
             id="test_runtime_imagestreams",
         ),
         pytest.param(
-            "opendatahub.io/notebook-image=true,app.kubernetes.io/part-of=trainer",
+            "opendatahub.io/notebook-image=true,platform.opendatahub.io/part-of=trainer",
             3,
             False,
             id="test_trainer_imagestreams",
