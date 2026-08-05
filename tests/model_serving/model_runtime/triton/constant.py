@@ -1,40 +1,39 @@
 import os
 from typing import Any
 
+from tests.model_serving.image_constants import ModelServingImages
 from utilities.constants import (
     KServeDeploymentType,
     Labels,
     Protocols,
     RuntimeTemplates,
-    Timeout,
 )
 
-TRITON_INPUT_BASE_PATH = "tests/model_serving/model_runtime/triton/basic_model_deployment"
+TRITON_INPUT_BASE_PATH = "tests/model_serving/model_runtime/triton/S3"
+TRITON_REST_INPUT_PATH = os.path.join(TRITON_INPUT_BASE_PATH, "rest-input")
+TRITON_GRPC_INPUT_PATH = os.path.join(TRITON_INPUT_BASE_PATH, "grpc-input")
 
-TRITON_REST_ONNX_INPUT_PATH = os.path.join(TRITON_INPUT_BASE_PATH, "kserve-triton-onnx-rest-input.json")
-TRITON_GRPC_ONNX_INPUT_PATH = os.path.join(TRITON_INPUT_BASE_PATH, "kserve-triton-onnx-gRPC-input.json")
-TRITON_REST_PYTHON_INPUT_PATH = os.path.join(TRITON_INPUT_BASE_PATH, "kserve-triton-python-rest-input.json")
-TRITON_GRPC_PYTHON_INPUT_PATH = os.path.join(TRITON_INPUT_BASE_PATH, "kserve-triton-python-gRPC-input.json")
-TRITON_REST_KERAS_INPUT_PATH = os.path.join(TRITON_INPUT_BASE_PATH, "kserve-keras-triton-resnet-rest-input.json")
-TRITON_GRPC_KERAS_INPUT_PATH = os.path.join(TRITON_INPUT_BASE_PATH, "kserve-keras-triton-resnet-gRPC-input.json")
-TRITON_REST_TF_INPUT_PATH = os.path.join(TRITON_INPUT_BASE_PATH, "kserve-triton-tensorflow-rest-input.json")
-TRITON_GRPC_TF_INPUT_PATH = os.path.join(TRITON_INPUT_BASE_PATH, "kserve-triton-tensorflow-gRPC-input.json")
-TRITON_REST_PYTORCH_INPUT_PATH = os.path.join(TRITON_INPUT_BASE_PATH, "kserve-triton-resnet-rest-input.json")
-TRITON_GRPC_PYTORCH_INPUT_PATH = os.path.join(TRITON_INPUT_BASE_PATH, "kserve-triton-resnet-gRPC-input.json")
-TRITON_REST_DALI_INPUT_PATH = os.path.join(TRITON_INPUT_BASE_PATH, "kserve-triton-dali-rest-input.json")
-TRITON_GRPC_DALI_INPUT_PATH = os.path.join(TRITON_INPUT_BASE_PATH, "kserve-triton-dali-gRPC-input.json")
-TRITON_REST_FIL_INPUT_PATH = os.path.join(TRITON_INPUT_BASE_PATH, "kserve-triton-fil-rest-input.json")
-TRITON_GRPC_FIL_INPUT_PATH = os.path.join(TRITON_INPUT_BASE_PATH, "kserve-triton-fil-gRPC-input.json")
+TRITON_REST_ONNX_INPUT_PATH = os.path.join(TRITON_REST_INPUT_PATH, "kserve-triton-onnx-rest-input.json")
+TRITON_GRPC_ONNX_INPUT_PATH = os.path.join(TRITON_GRPC_INPUT_PATH, "kserve-triton-onnx-gRPC-input.json")
+TRITON_REST_PYTHON_INPUT_PATH = os.path.join(TRITON_REST_INPUT_PATH, "kserve-triton-python-rest-input.json")
+TRITON_GRPC_PYTHON_INPUT_PATH = os.path.join(TRITON_GRPC_INPUT_PATH, "kserve-triton-python-gRPC-input.json")
+TRITON_REST_KERAS_INPUT_PATH = os.path.join(TRITON_REST_INPUT_PATH, "kserve-keras-triton-resnet-rest-input.json")
+TRITON_GRPC_KERAS_INPUT_PATH = os.path.join(TRITON_GRPC_INPUT_PATH, "kserve-keras-triton-resnet-gRPC-input.json")
+TRITON_REST_TF_INPUT_PATH = os.path.join(TRITON_REST_INPUT_PATH, "kserve-triton-tensorflow-rest-input.json")
+TRITON_GRPC_TF_INPUT_PATH = os.path.join(TRITON_GRPC_INPUT_PATH, "kserve-triton-tensorflow-gRPC-input.json")
+TRITON_REST_PYTORCH_INPUT_PATH = os.path.join(TRITON_REST_INPUT_PATH, "kserve-triton-resnet-rest-input.json")
+TRITON_GRPC_PYTORCH_INPUT_PATH = os.path.join(TRITON_GRPC_INPUT_PATH, "kserve-triton-resnet-gRPC-input.json")
+TRITON_REST_DALI_INPUT_PATH = os.path.join(TRITON_REST_INPUT_PATH, "kserve-triton-dali-rest-input.json")
+TRITON_GRPC_DALI_INPUT_PATH = os.path.join(TRITON_GRPC_INPUT_PATH, "kserve-triton-dali-gRPC-input.json")
+TRITON_REST_FIL_INPUT_PATH = os.path.join(TRITON_REST_INPUT_PATH, "kserve-triton-fil-rest-input.json")
+TRITON_GRPC_FIL_INPUT_PATH = os.path.join(TRITON_GRPC_INPUT_PATH, "kserve-triton-fil-gRPC-input.json")
 
 LOCAL_HOST_URL: str = "http://localhost"
 TRITON_REST_PORT: int = 8080
 TRITON_GRPC_PORT: int = 9000
 
 
-# Updated to 25.02 - last Triton release with TensorFlow backend included by default
-# TensorFlow backend was deprecated in 25.03 and removed in 26.x+
-# See: https://docs.nvidia.com/deeplearning/triton-inference-server/release-notes/
-TRITON_IMAGE: str = "nvcr.io/nvidia/tritonserver:25.02-py3"
+TRITON_IMAGE: str = ModelServingImages.TRITON
 
 
 MODEL_PATH_PREFIX_KERAS: str = "triton_resnet/model_repository"
@@ -74,7 +73,7 @@ BASE_RAW_DEPLOYMENT_CONFIG: dict[str, Any] = {
     "deployment_mode": KServeDeploymentType.STANDARD,
     "min-replicas": 1,
     "enable_external_route": False,
-    "timeout": Timeout.TIMEOUT_10MIN,
+    "timeout": 600,
 }
 
 ACCELERATOR_IDENTIFIER: dict[str, str] = {

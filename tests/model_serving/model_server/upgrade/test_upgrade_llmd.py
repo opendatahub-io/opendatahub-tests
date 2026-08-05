@@ -1,7 +1,6 @@
 import pytest
 import structlog
 from ocp_resources.gateway import Gateway
-from ocp_resources.llm_inference_service import LLMInferenceService
 
 from tests.model_serving.model_server.llmd.utils import (
     parse_completion_text,
@@ -23,8 +22,7 @@ from tests.model_serving.model_server.upgrade.utils import (
     verify_llmisvc_restart_counts_unchanged,
     verify_llmisvc_url_unchanged,
 )
-
-pytestmark = [pytest.mark.llmd_cpu]
+from utilities.resources.llm_inference_service import LLMInferenceService
 
 LOGGER = structlog.get_logger(name=__name__)
 

@@ -10,7 +10,6 @@ import pytest
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.maas_subscription import MaaSSubscription
 from ocp_resources.resource import ResourceEditor
 from timeout_sampler import TimeoutSampler
@@ -21,6 +20,7 @@ from utilities.constants import (
     ApiGroups,
 )
 from utilities.resources.auth import Auth
+from utilities.resources.llm_inference_service import LLMInferenceService
 
 LOGGER = structlog.get_logger(name=__name__)
 MAAS_SUBSCRIPTION_NAMESPACE = "models-as-a-service"

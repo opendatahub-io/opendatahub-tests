@@ -3,9 +3,12 @@ from __future__ import annotations
 import pytest
 import requests
 import structlog
-from pytest_testconfig import config as py_config
+from kubernetes.dynamic import DynamicClient
 
-from tests.model_serving.maas_billing.maas_api_key.utils import get_auth_policy_callback_url
+from tests.model_serving.maas_billing.maas_api_key.utils import (
+    get_auth_policy_callback_url,
+    wait_for_auth_policy_accepted,
+)
 from tests.model_serving.maas_billing.utils import get_maas_models_response
 from utilities.constants import MAAS_GATEWAY_NAMESPACE
 
@@ -19,6 +22,7 @@ MAAS_GATEWAY_AUTH_POLICY_NAME = "maas-gateway-auth"
     "maas_subscription_controller_enabled_latest",
     "maas_gateway_api",
     "maas_api_gateway_reachable",
+    "maas_auth_policy_tinyllama_free",
 )
 class TestAuthPolicyApiKeyValidation:
     """Verify the gateway AuthPolicy callback URL uses the correct namespace."""
@@ -26,27 +30,32 @@ class TestAuthPolicyApiKeyValidation:
     @pytest.mark.smoke
     def test_auth_policy_callback_url_uses_correct_namespace(
         self,
-        admin_client,
+        admin_client: DynamicClient,
+        maas_api_infra_namespace: str,
     ) -> None:
-        """Verify the apiKeyValidation callback URL does not reference the wrong namespace."""
+        """Given a reconciled MaaSAuthPolicy, when reading maas-gateway-auth,
+        then the callback URL uses the maas-api infrastructure namespace.
+        """
+        wait_for_auth_policy_accepted(
+            admin_client=admin_client,
+            policy_name=MAAS_GATEWAY_AUTH_POLICY_NAME,
+            namespace=MAAS_GATEWAY_NAMESPACE,
+        )
         callback_url = get_auth_policy_callback_url(
             admin_client=admin_client,
             policy_name=MAAS_GATEWAY_AUTH_POLICY_NAME,
             namespace=MAAS_GATEWAY_NAMESPACE,
         )
 
-        expected_host = f"maas-api.{py_config['applications_namespace']}.svc.cluster.local"
+        expected_host = f"maas-api.{maas_api_infra_namespace}.svc.cluster.local"
         assert expected_host in callback_url, (
             f"apiKeyValidation callback URL uses wrong namespace. "
             f"Expected '{expected_host}' in URL, got: {callback_url}"
         )
 
-        LOGGER.info(
-            f"AuthPolicy callback URL correctly uses namespace '{py_config['applications_namespace']}': {callback_url}"
-        )
+        LOGGER.info(f"AuthPolicy callback URL correctly uses namespace '{maas_api_infra_namespace}': {callback_url}")
 
     @pytest.mark.smoke
-    @pytest.mark.usefixtures("maas_auth_policy_tinyllama_free")
     @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
     def test_api_key_can_list_models(
         self,

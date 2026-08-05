@@ -481,7 +481,11 @@ class TestEvalHubProvidersFeature:
         evalhub_mt_ca_bundle_file: str,
         evalhub_mt_route: Route,
     ) -> None:
-        """PUT /providers/ (trailing slash, no id) returns 404."""
+        """PUT /providers/ (trailing slash, no id) returns 404 or 403.
+
+        An empty path routes to the providers root, where PUT is rejected with 403
+        before any existence check, so 403 is also accepted.
+        """
         url = f"https://{evalhub_mt_route.host}{EVALHUB_PROVIDERS_PATH}/"
         response = requests.put(
             url=url,
@@ -490,8 +494,8 @@ class TestEvalHubProvidersFeature:
             verify=evalhub_mt_ca_bundle_file,
             timeout=10,
         )
-        assert response.status_code == 404, (
-            f"Expected 404 for empty provider PUT path, got {response.status_code}: {response.text}"
+        assert response.status_code in (403, 404), (
+            f"Expected 403 or 404 for empty provider PUT path, got {response.status_code}: {response.text}"
         )
 
     # ------------------------------------------------------------------

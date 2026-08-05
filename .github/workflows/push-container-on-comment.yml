@@ -19,7 +19,7 @@ jobs:
         with:
           ref: refs/pull/${{ github.event.issue.number }}/head
       - name: Install uv
-        uses: astral-sh/setup-uv@v8.2.0
+        uses: astral-sh/setup-uv@v9.0.0
 
       - name: Check if the user is authorized
         env:
@@ -38,7 +38,7 @@ jobs:
           echo "TAG=pr-${{ github.event.issue.number }}" >> "$GITHUB_ENV"
       - name: Build Image to push
         id: build-image
-        uses: redhat-actions/buildah-build@v2
+        uses: redhat-actions/buildah-build@v3
         with:
           image: opendatahub-tests
           tags: ${{ env.TAG }}
@@ -46,7 +46,7 @@ jobs:
             ./Dockerfile
       - name: Push To Image Registry
         id: push-to-registry
-        uses: redhat-actions/push-to-registry@v2
+        uses: redhat-actions/push-to-registry@v3
         with:
           image: ${{ steps.build-image.outputs.image }}
           tags: ${{ steps.build-image.outputs.tags }}

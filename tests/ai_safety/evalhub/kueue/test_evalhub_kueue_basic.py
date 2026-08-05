@@ -95,12 +95,22 @@ class TestEvalHubKueueBasic:
 
         # 3. Verify pod is running (not gated)
         selector = evalhub_runtime_label_selector(evalhub_job_id=job_id)
-        running_pods, gated_pods = check_gated_pods_and_running_pods(
-            labels=[selector],
-            namespace=evalhub_kueue_namespace.name,
-            admin_client=admin_client,
-        )
-        assert running_pods >= 1, f"Expected >=1 running pod, got {running_pods}"
+        running_pods, gated_pods = 0, 0
+        try:
+            for sample in TimeoutSampler(
+                wait_timeout=120,
+                sleep=5,
+                func=check_gated_pods_and_running_pods,
+                labels=[selector],
+                namespace=evalhub_kueue_namespace.name,
+                admin_client=admin_client,
+            ):
+                running_pods, gated_pods = sample
+                if running_pods >= 1:
+                    break
+        except TimeoutExpiredError:
+            pytest.fail(f"Expected >=1 running pod, got {running_pods} running, {gated_pods} gated")
+
         assert gated_pods == 0, f"Expected 0 gated pods, got {gated_pods}"
 
         # 4. Wait for EvalHub API to report completion

@@ -25,7 +25,6 @@ from kubernetes.dynamic.exceptions import (
 )
 from ocp_resources.authentication_config_openshift_io import Authentication
 from ocp_resources.cluster_service_version import ClusterServiceVersion
-from ocp_resources.config_imageregistry_operator_openshift_io import Config
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.console_cli_download import ConsoleCLIDownload
 from ocp_resources.data_science_cluster import DataScienceCluster
@@ -686,20 +685,21 @@ def get_model_route(client: DynamicClient, isvc: InferenceService) -> Route:
     raise ResourceNotFoundError(f"{isvc.name} has no routes")
 
 
-def create_inference_token(model_service_account: ServiceAccount) -> str:
+def create_inference_token(model_service_account: ServiceAccount, expiration_seconds: int = 86400) -> str:
     """
     Generates an inference token for the given model service account.
 
     Args:
         model_service_account (ServiceAccount): An object containing the namespace and name
                                of the service account.
+        expiration_seconds (int): Token validity duration in seconds (default 86400 = 24h).
 
     Returns:
         str: The generated inference token.
     """
-    return run_command(
-        shlex.split(f"oc create token -n {model_service_account.namespace} {model_service_account.name}")
-    )[1].strip()
+    return model_service_account.create_service_account_token(
+        expiration_seconds=expiration_seconds,
+    ).status.token
 
 
 @contextmanager
@@ -1202,18 +1202,17 @@ def download_oc_console_cli(admin_client: DynamicClient, tmpdir: LocalPath) -> s
 
 
 def check_internal_image_registry_available(admin_client: DynamicClient) -> bool:
-    """Check if internal image registry is available by checking the imageregistry config managementState"""
-    try:
-        # Access the imageregistry.operator.openshift.io/v1 Config resource named "cluster"
-        config_instance = Config(client=admin_client, name="cluster")
+    """Check if internal image registry is available by checking the imageregistry config managementState."""
+    from ocp_resources.config_imageregistry_operator_openshift_io import Config
 
+    try:
+        config_instance = Config(client=admin_client, name="cluster")
         management_state = config_instance.instance.spec.get("managementState", "").lower()
         is_available = management_state == "managed"
-
         LOGGER.info(f"Image registry management state: {management_state}, available: {is_available}")
         return is_available
-    except (ResourceNotFoundError, Exception) as e:  # noqa: BLE001
-        LOGGER.warning(f"Failed to check image registry config: {e}")
+    except (ResourceNotFoundError, Exception) as error:  # noqa: BLE001
+        LOGGER.warning(f"Failed to check image registry config: {error}")
         return False
 
 

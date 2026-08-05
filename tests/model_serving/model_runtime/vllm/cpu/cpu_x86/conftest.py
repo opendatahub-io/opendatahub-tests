@@ -23,7 +23,7 @@ from tests.model_serving.model_runtime.vllm.utils import (
     skip_if_not_deployment_mode,
     validate_supported_quantization_schema,
 )
-from utilities.constants import KServeDeploymentType, RuntimeTemplates, Timeout
+from utilities.constants import KServeDeploymentType, RuntimeTemplates
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -72,12 +72,12 @@ def cpu_x86_inference_service(
         "storage_uri": s3_models_storage_uri,
         "model_format": cpu_x86_serving_runtime.instance.spec.supportedModelFormats[0].name,
         "model_service_account": vllm_model_service_account.name,
-        "deployment_mode": request.param.get("deployment_mode", KServeDeploymentType.RAW_DEPLOYMENT),
+        "deployment_mode": request.param.get("deployment_mode", KServeDeploymentType.STANDARD),
         "external_route": True,
         "resources": deepcopy(x=CPU_X86_PREDICT_RESOURCES),
         "volumes": CPU_X86_VOLUMES,
         "volumes_mounts": CPU_X86_VOLUME_MOUNTS,
-        "timeout": request.param.get("timeout", Timeout.TIMEOUT_20MIN),
+        "timeout": request.param.get("timeout", 1200),
     }
 
     if arguments := request.param.get("runtime_argument"):

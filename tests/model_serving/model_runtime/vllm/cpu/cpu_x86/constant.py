@@ -1,7 +1,6 @@
 from typing import Any
 
 OPT_125M_MODEL_PATH: str = "opt-125m"
-TINYLLAMA_MODEL_PATH: str = "TinyLlama/tinyllama-1.1b-chat-v1.0"
 
 CPU_X86_ENV_VARIABLES: list[dict[str, str]] = [
     {"name": "VLLM_CPU_KVCACHE_SPACE", "value": "4"},
@@ -36,10 +35,5 @@ CPU_X86_VOLUME_MOUNTS: list[dict[str, str]] = [
 
 OPT_125M_COMPLETION_REQUEST: dict[str, Any] = {
     "prompt": "What is Kubernetes?",
-    "max_tokens": 50,
-}
-
-TINYLLAMA_CHAT_COMPLETION_REQUEST: dict[str, Any] = {
-    "messages": [{"role": "user", "content": "What is the capital of Italy?"}],
     "max_tokens": 50,
 }

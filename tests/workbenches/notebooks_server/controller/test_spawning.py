@@ -4,8 +4,6 @@ from ocp_resources.notebook import Notebook
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 
-from utilities.constants import Timeout
-
 
 class TestNotebook:
     @pytest.mark.smoke
@@ -22,7 +20,7 @@ class TestNotebook:
                     "namespace": "test-odh-notebook",
                     "name": "test-odh-notebook",
                 },
-                {"timeout": Timeout.TIMEOUT_2MIN},
+                {"timeout": 120},
             )
         ],
         indirect=True,
@@ -64,7 +62,7 @@ class TestNotebook:
                         "notebooks.opendatahub.io/auth-sidecar-memory-limit": "256Mi",
                     },
                 },
-                {"timeout": Timeout.TIMEOUT_2MIN},
+                {"timeout": 120},
             )
         ],
         indirect=True,

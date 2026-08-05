@@ -9,12 +9,13 @@ from ocp_resources.maas_auth_policy import MaaSAuthPolicy
 from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.maas_subscription import MaaSSubscription
 
-from utilities.resources.tenant import Tenant
+from utilities.resources.maastenantconfig import MaasTenantConfig
 
 LOGGER = structlog.get_logger(name=__name__)
 
 MAAS_UPGRADE_BASELINE_CM_NAME = "maas-upgrade-test-baseline"
 MAAS_UPGRADE_BASELINE_CM_KEY = "maas_baseline"
+DEFAULT_AITENANT_NAME = "models-as-a-service"
 
 
 class MaaSBaseline(TypedDict):
@@ -37,7 +38,7 @@ def capture_maas_baseline(
     model_ref: MaaSModelRef,
     auth_policy: MaaSAuthPolicy,
     subscription: MaaSSubscription,
-    tenant: Tenant,
+    tenant: MaasTenantConfig,
 ) -> MaaSBaseline:
     """Snapshot MaaS control plane state before upgrade."""
     baseline: MaaSBaseline = {

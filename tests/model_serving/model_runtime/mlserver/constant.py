@@ -7,7 +7,14 @@ and input queries used across MLServer runtime tests for different frameworks.
 
 from typing import Any
 
-from utilities.constants import KServeDeploymentType, ModelFormat
+from utilities.constants import (
+    AcceleratorType,
+    KServeDeploymentType,
+    Labels,
+    ModelFormat,
+    ModelInferenceRuntime,
+    RuntimeTemplates,
+)
 
 
 class OutputType:
@@ -37,7 +44,7 @@ PREDICT_RESOURCES: dict[str, list[dict[str, str | dict[str, str]]] | dict[str, d
 BASE_RAW_DEPLOYMENT_CONFIG: dict[str, Any] = {
     "deployment_mode": KServeDeploymentType.STANDARD,
     "min-replicas": 1,
-    "enable_external_route": False,
+    "enable_external_route": True,
 }
 
 SKLEARN_REST_INPUT_QUERY: dict[str, Any] = {
@@ -88,6 +95,22 @@ ONNX_REST_INPUT_QUERY = {
     ],
 }
 
+
+_RESNET50_INPUT_SIZE: int = 3 * 224 * 224
+
+ONNX_RESNET50_REST_INPUT_QUERY: dict[str, Any] = {
+    "id": "resnet50",
+    "inputs": [
+        {
+            "name": "pixel_values",
+            "shape": [1, 3, 224, 224],
+            "datatype": "FP32",
+            "data": [0.5] * _RESNET50_INPUT_SIZE,
+        }
+    ],
+}
+
+
 MODEL_CONFIGS: dict[str, dict[str, Any]] = {
     ModelFormat.LIGHTGBM: {
         "model_name": ModelFormat.LIGHTGBM,
@@ -97,9 +120,10 @@ MODEL_CONFIGS: dict[str, dict[str, Any]] = {
     },
     ModelFormat.ONNX: {
         "model_name": ModelFormat.ONNX,
-        "model_version": "v1.0.0",
-        "rest_query": ONNX_REST_INPUT_QUERY,
+        "model_version": "",
+        "rest_query": ONNX_RESNET50_REST_INPUT_QUERY,
         "output_type": OutputType.DETERMINISTIC,
+        "s3_model_dir": "resnet-50-onnx",
     },
     ModelFormat.SKLEARN: {
         "model_name": ModelFormat.SKLEARN,
@@ -114,3 +138,20 @@ MODEL_CONFIGS: dict[str, dict[str, Any]] = {
         "output_type": OutputType.DETERMINISTIC,
     },
 }
+
+
+MLSERVER_TEMPLATE_MAP: dict[str, str] = {
+    AcceleratorType.NVIDIA: RuntimeTemplates.MLSERVER_CUDA,
+}
+
+MLSERVER_ACCELERATOR_IDENTIFIER: dict[str, str] = {
+    AcceleratorType.NVIDIA: Labels.Nvidia.NVIDIA_COM_GPU,
+}
+
+MLSERVER_RUNTIME_NAME_MAP: dict[str, str] = {
+    AcceleratorType.NVIDIA: ModelInferenceRuntime.MLSERVER_CUDA_RUNTIME,
+}
+
+
+RESNET50_INFERENCE_REQUEST_COUNT: int = 10
+GPU_SPEEDUP_THRESHOLD_RATIO: float = 1.5

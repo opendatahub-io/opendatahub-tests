@@ -6,13 +6,14 @@ Follows the established model server utils pattern for consistency.
 """
 
 import json
+import re
 import time
 from pathlib import Path
+from typing import Any, NamedTuple
 
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.event import Event
-from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.node import Node
 from ocp_resources.pod import Pod
 from ocp_resources.prometheus import Prometheus
@@ -21,24 +22,25 @@ from timeout_sampler import TimeoutExpiredError, retry
 
 from tests.model_serving.model_server.llmd.constants import LLMD_TESTS_SUPPORTED_ACCELERATORS
 from utilities.certificates_utils import get_ca_bundle
-from utilities.constants import Timeout
+from utilities.infra import get_dsci_applications_namespace
 from utilities.jira import is_jira_issue_open
 from utilities.llmd_constants import LLMEndpoint
 from utilities.llmd_utils import get_llm_inference_url
 from utilities.monitoring import get_metrics_value
+from utilities.resources.llm_inference_service import LLMInferenceService
+from utilities.resources.llm_inference_service_config import LLMInferenceServiceConfig
 
 LOGGER = structlog.get_logger(name=__name__)
 
 
-def detect_accelerators(client: DynamicClient) -> list[dict[str, int]]:
+def detect_accelerators(client: DynamicClient) -> list[dict[str, Any]]:
     """Detect accelerator resources available on cluster worker nodes.
 
     Returns:
-        List of dicts, one per accelerator node. Each dict maps accelerator
-        resource name to available count.
-        Example: [{"amd.com/gpu": 8}, {"amd.com/gpu": 4}]
+        List of dicts, one per accelerator node with node name and resources.
+        Example: [{"name": "worker-0", "resources": {"amd.com/gpu": 8}}]
     """
-    accelerators: list[dict[str, int]] = []
+    accelerators: list[dict[str, Any]] = []
     for node in Node.get(client=client, label_selector="node-role.kubernetes.io/worker"):
         allocatable = node.instance.status.allocatable or {}
         node_accelerators = {
@@ -47,10 +49,82 @@ def detect_accelerators(client: DynamicClient) -> list[dict[str, int]]:
             if int(allocatable.get(resource, 0)) > 0
         }
         if node_accelerators:
-            LOGGER.info(f"[llmd] Accelerator node {node.name}: {node_accelerators}")
-            accelerators.append(node_accelerators)
+            accelerators.append({"name": node.name, "resources": node_accelerators})
 
     return accelerators
+
+
+class LLMInferenceServiceConfigDetails(NamedTuple):
+    name: str
+    accelerators: list[str]
+    topologies: list[str]
+
+
+class BaseRefsResult(NamedTuple):
+    matched: str | None
+    configs: list[LLMInferenceServiceConfigDetails]
+    namespace: str
+
+
+def find_matching_llminferenceserviceconfig(
+    client: DynamicClient,
+    accelerator: str,
+    topology: str,
+    name_regex: str = "",
+) -> BaseRefsResult:
+    """Find an LLMInferenceServiceConfig CR matching accelerator, topology, and optional name regex.
+
+    Lists CRs in the DSCI applications namespace, filters by
+    ``opendatahub.io/recommended-accelerators`` and
+    ``opendatahub.io/supported-topologies`` annotations.
+
+    Args:
+        client: Kubernetes dynamic client.
+        accelerator: The k8s accelerator resource name (e.g. ``nvidia.com/gpu``).
+        topology: The deployment topology to match (e.g. ``workload-single-node``).
+        name_regex: Optional regex to filter CR names (e.g. ``.*fast-1$``).
+
+    Returns:
+        BaseRefsResult with the matched CR name (or None), CR details, and near misses.
+    """
+    namespace = get_dsci_applications_namespace(client=client)
+
+    llminferenceserviceconfigs = []
+    for cr in LLMInferenceServiceConfig.get(client=client, namespace=namespace):
+        annotations = cr.instance.metadata.get("annotations") or {}
+        llminferenceserviceconfigs.append(
+            LLMInferenceServiceConfigDetails(
+                name=cr.name,
+                accelerators=json.loads(annotations.get("opendatahub.io/recommended-accelerators", "[]")),
+                topologies=json.loads(annotations.get("opendatahub.io/supported-topologies", "[]")),
+            )
+        )
+
+    matched = None
+    # TODO: Remove fallback when all supported RHOAI versions ship topology annotations.
+    # Topology annotation introduced in RHOAI 3.6 (PR: opendatahub-io/kserve#1685).
+    # Empty list means annotation not set — use as fallback if no exact topology match.
+    fallback = None
+    # END TODO
+
+    for llmisvcconfig in llminferenceserviceconfigs:
+        if name_regex and not re.search(name_regex, llmisvcconfig.name):
+            continue
+
+        if accelerator not in llmisvcconfig.accelerators:
+            continue
+
+        if not llmisvcconfig.topologies:
+            fallback = fallback or llmisvcconfig.name
+            continue
+
+        if topology not in llmisvcconfig.topologies:
+            continue
+
+        matched = llmisvcconfig.name
+        break
+
+    return BaseRefsResult(matched=matched or fallback, configs=llminferenceserviceconfigs, namespace=namespace)
 
 
 def ns_from_file(file: str) -> str:
@@ -61,115 +135,7 @@ def ns_from_file(file: str) -> str:
     return Path(file).stem.removeprefix("test_").replace("_", "-")[:63]
 
 
-def _debug_info_conditions(llmisvc: LLMInferenceService) -> str:
-    """Return debug info containing LLMISVC status conditions."""
-    conditions = llmisvc.instance.status.get("conditions", [])
-    lines = []
-    for condition in conditions:
-        line = f"  * {condition['type']}: {condition['status']}"
-        if condition.get("reason"):
-            line += f" reason={condition['reason']}"
-        if condition.get("message"):
-            line += f" message={condition['message']}"
-        lines.append(line)
-    return "\n".join(lines) or "  (no conditions)"
-
-
-def _debug_info_pod_statuses(llmisvc: LLMInferenceService) -> str:
-    """Return debug info containing pod phase, restart count, and waiting reasons."""
-    pods = list(
-        Pod.get(
-            client=llmisvc.client,
-            namespace=llmisvc.namespace,
-            label_selector=(
-                f"{Pod.ApiGroup.APP_KUBERNETES_IO}/part-of=llminferenceservice,"
-                f"{Pod.ApiGroup.APP_KUBERNETES_IO}/name={llmisvc.name}"
-            ),
-        )
-    )
-    if not pods:
-        return "  (no pods found)"
-
-    lines = []
-    for pod in pods:
-        phase = pod.instance.status.phase
-        all_statuses = (pod.instance.status.get("initContainerStatuses") or []) + (
-            pod.instance.status.get("containerStatuses") or []
-        )
-        restarts = sum(container_status.get("restartCount", 0) for container_status in all_statuses)
-        parts = [f"* pod={pod.name} phase={phase} restarts={restarts}"]
-
-        for container_status in all_statuses:
-            state = container_status.get("state") or {}
-            waiting = state.get("waiting")
-            if waiting:
-                # Container is currently waiting (e.g. CrashLoopBackOff, ImagePullBackOff)
-                reason = waiting.get("reason", "Unknown")
-                message = waiting.get("message", "")
-                parts.append(f"{reason}" + (f": {message}" if message else ""))
-            elif container_status.get("restartCount", 0) > 0:
-                # Container is running but has restarted — show why it last crashed
-                terminated = (container_status.get("lastState") or {}).get("terminated")
-                if terminated:
-                    parts.append(
-                        f" {container_status['name']}: last terminated"
-                        f" reason={terminated.get('reason', 'Unknown')}"
-                        f" exitCode={terminated.get('exitCode', '?')}"
-                    )
-
-        lines.append("  " + " | ".join(parts))
-    return "\n".join(lines)
-
-
-def _debug_info_events(llmisvc: LLMInferenceService) -> str:
-    """Collect recent warning events from the LLMISVC namespace."""
-    events = Event.list(
-        client=llmisvc.client,
-        namespace=llmisvc.namespace,
-        field_selector="type=Warning",
-        since_seconds=600,
-    )
-    if not events:
-        return "  (no warning events)"
-
-    lines = []
-    for event in events:
-        timestamp = str(event.get("lastTimestamp") or event.get("eventTime") or "")
-        if "T" in timestamp:
-            timestamp = timestamp.split("T")[1][:8]
-        reason = event.get("reason", "")
-        obj = event.get("involvedObject") or {}
-        obj_name = obj.get("name", "")
-        msg = " ".join(event.get("message", "").split())
-        count = event.get("count", 1)
-        count_str = f" (x{count})" if count and count > 1 else ""
-        lines.append(f"  * {reason}{count_str} — {msg} [{obj_name}][{timestamp}]")
-    return "\n".join(lines)
-
-
-def _log_llmisvc_debug_info(llmisvc: LLMInferenceService) -> None:
-    """Log debug info related to LLMISVC timeout: conditions, pod statuses, and events."""
-    name, ns = llmisvc.name, llmisvc.namespace
-    separator = "=" * 60
-    sections = [
-        f"\n{separator}",
-        f"  LLMISVC {name} timed out in {ns}",
-        separator,
-    ]
-    for label, func in [
-        ("Conditions", lambda: _debug_info_conditions(llmisvc)),
-        ("Pods", lambda: _debug_info_pod_statuses(llmisvc)),
-        ("Events", lambda: _debug_info_events(llmisvc)),
-    ]:
-        try:
-            sections.append(f"\n {label}:\n{func()}")
-        except Exception:  # noqa: BLE001
-            sections.append(f"\n {label}:\n  (failed to collect)")
-    sections.append(separator + "\n")
-    LOGGER.error("\n".join(sections))
-
-
-def wait_for_llmisvc(llmisvc: LLMInferenceService, timeout: int = Timeout.TIMEOUT_5MIN) -> None:
+def wait_for_llmisvc(llmisvc: LLMInferenceService, timeout: int = 300) -> None:
     """Wait for LLMISVC to reach Ready condition. Raises on timeout."""
     try:
         llmisvc.wait_for_condition(
@@ -224,18 +190,51 @@ def _resolve_ca_cert(client: DynamicClient) -> str:
         return ""
 
 
-def _log_curl_command(url: str, body: str, token: bool, ca_cert: str | None) -> None:
-    """Log a human-readable curl command with token redacted and payload formatted."""
-    formatted_body = json.dumps(json.loads(body), indent=2)
-    auth_header = "\n  -H 'Authorization: Bearer ***REDACTED***'" if token else ""
-    tls_flag = f"\n  --cacert {ca_cert}" if ca_cert else "\n  --insecure"
-    LOGGER.info(
-        f"curl -s -X POST \\\n"
-        f"  -H 'Content-Type: application/json' \\\n"
-        f"  -H 'Accept: application/json' \\{auth_header}\n"
-        f"  -d '{formatted_body}' \\{tls_flag}\n"
-        f"  {url}"
-    )
+def _curl_request(
+    method: str,
+    url: str,
+    body: str | None = None,
+    token: str | None = None,
+    ca_cert: str | None = None,
+    timeout: int = LLMEndpoint.DEFAULT_TIMEOUT,
+) -> tuple[int, str]:
+    """Execute an HTTP request via curl. Returns (status_code, response_body)."""
+    cmd = [
+        "curl",
+        "-s",
+        "-w",
+        "\n%{http_code}",
+        "-H",
+        "Accept: application/json",
+        "--max-time",
+        str(timeout),
+    ]
+    if body is not None:
+        cmd.extend(["-X", "POST", "-H", "Content-Type: application/json", "-d", body])
+    if token:
+        cmd.extend(["-H", f"Authorization: Bearer {token}"])
+    if ca_cert:
+        cmd.extend(["--cacert", ca_cert])
+    else:
+        cmd.append("--insecure")
+    cmd.append(url)
+
+    if body is not None:
+        _log_curl_command(url=url, body=body, token=bool(token), ca_cert=ca_cert)
+    else:
+        LOGGER.info(f"{method} {url}")
+
+    _, stdout, stderr = run_command(command=cmd, verify_stderr=False, check=False, hide_log_command=True)
+    if not stdout.strip():
+        raise ConnectionError(f"curl {method} failed with no output: {stderr}")
+
+    parts = stdout.rsplit("\n", 1)
+    response_body = parts[0] if len(parts) > 1 else ""
+    try:
+        status_code = int(parts[-1].strip())
+    except ValueError:
+        status_code = 0
+    return status_code, response_body
 
 
 def _curl_post(
@@ -246,43 +245,56 @@ def _curl_post(
     timeout: int = LLMEndpoint.DEFAULT_TIMEOUT,
 ) -> tuple[int, str]:
     """POST to URL via curl. Returns (status_code, response_body)."""
-    cmd = [
-        "curl",
-        "-s",
-        "-w",
-        "\n%{http_code}",
-        "-X",
-        "POST",
-        "-H",
-        "Content-Type: application/json",
-        "-H",
-        "Accept: application/json",
-        "-d",
-        body,
-        "--max-time",
-        str(timeout),
-    ]
-    if token:
-        cmd.extend(["-H", f"Authorization: Bearer {token}"])
-    if ca_cert:
-        cmd.extend(["--cacert", ca_cert])
-    else:
-        cmd.append("--insecure")
-    cmd.append(url)
+    return _curl_request(method="POST", url=url, body=body, token=token, ca_cert=ca_cert, timeout=timeout)
 
-    _log_curl_command(url=url, body=body, token=bool(token), ca_cert=ca_cert)
 
-    _, stdout, stderr = run_command(command=cmd, verify_stderr=False, check=False, hide_log_command=True)
-    if not stdout.strip():
-        raise ConnectionError(f"curl failed with no output: {stderr}")
+def _curl_get(
+    url: str,
+    token: str | None = None,
+    ca_cert: str | None = None,
+    timeout: int = LLMEndpoint.DEFAULT_TIMEOUT,
+) -> tuple[int, str]:
+    """GET a URL via curl. Returns (status_code, response_body)."""
+    return _curl_request(method="GET", url=url, token=token, ca_cert=ca_cert, timeout=timeout)
 
-    parts = stdout.rsplit("\n", 1)
-    response_body = parts[0] if len(parts) > 1 else ""
+
+def get_vllm_version(
+    llmisvc: LLMInferenceService,
+    token: str | None = None,
+    insecure: bool = True,
+) -> str:
+    """Query the vLLM /version endpoint and return the version string.
+
+    Args:
+        llmisvc: The LLMInferenceService to query.
+        token: Optional bearer token for authentication.
+        insecure: Skip TLS verification (default True).
+
+    Returns:
+        The vLLM version string (e.g. "0.8.5").
+
+    Raises:
+        ValueError: If the response cannot be parsed or the endpoint returns an error.
+    """
+    base_url = get_llm_inference_url(llm_service=llmisvc)
+    url = base_url + "/version"
+    ca_cert = None if insecure else _resolve_ca_cert(llmisvc.client)
+
+    LOGGER.info(f"Querying vLLM version from {llmisvc.name} at {url}")
+    status_code, response_body = _curl_get(url=url, token=token, ca_cert=ca_cert)
+    if status_code != 200:
+        raise ValueError(f"vLLM /version returned {status_code}: {response_body}")
+
     try:
-        status_code = int(parts[-1].strip())
-    except ValueError:
-        status_code = 0
-    return status_code, response_body
+        data: dict[str, Any] = json.loads(response_body)
+        version = data["version"]
+        if not isinstance(version, str):
+            raise TypeError(f"Expected version to be str, got {type(version).__name__}")
+    except (json.JSONDecodeError, KeyError, TypeError) as e:
+        raise ValueError(f"Failed to parse vLLM version response: {e}\nBody: {response_body[:500]}") from e
+
+    LOGGER.info(f"vLLM version for {llmisvc.name}: {version}")
+    return version
 
 
 def _get_model_name(llmisvc: LLMInferenceService) -> str:
@@ -384,19 +396,26 @@ def assert_kv_transfer(
 ) -> bool:
     """Assert P/D KV transfer metrics match expected values.
 
-    Asserts the following invariants on kserve_vllm:prompt_tokens_by_source_total:
-    - decode.external_kv_transfer == expected_transferred_tokens: all prompt tokens received from prefill
-    - decode.local_compute == num_requests: vLLM recomputes 1 token per request locally
-      (the model needs at least 1 input token to run a forward pass)
-    - prefill.local_compute == expected_transferred_tokens: prefill computes all prompt tokens locally
-    - prefill.external_kv_transfer == 0: prefill only sends KV cache, never receives
+    In Prefill/Decode disaggregation, the prefill engine computes all prompt tokens
+    locally and transfers the KV cache to the decode engine via NIXL. The decode
+    engine receives all tokens externally and reports 0 local compute.
+
+    Note: the decode engine actually recomputes 1 token per request for the forward
+    pass, but vLLM 0.21+ has a metrics bug where this is not reflected in the
+    local_compute counter (the metric snapshot is taken before the recomputation).
+
+    Expected metric values on kserve_vllm:prompt_tokens_by_source_total:
+    - prefill pod, source=local_compute: all prompt tokens (prefill did the work)
+    - prefill pod, source=external_kv_transfer: 0 (prefill never receives KV)
+    - decode pod, source=external_kv_transfer: all prompt tokens (received from prefill)
+    - decode pod, source=local_compute: 0 (see note above about vLLM metrics bug)
 
     Args:
         prometheus: Prometheus client for querying metrics.
         unprivileged_client: DynamicClient instance.
         llmisvc: The LLMInferenceService under test.
         expected_transferred_tokens: sum of prompt_tokens from all responses.
-        num_requests: number of requests sent.
+        num_requests: number of requests sent (unused, kept for future upstream fix).
 
     Returns:
         True when all assertions pass (required by @retry to stop retrying).
@@ -432,8 +451,13 @@ def assert_kv_transfer(
     assert decode_kv == expected_transferred_tokens, (
         f"decode.external_kv_transfer={decode_kv} != expected {expected_transferred_tokens}"
     )
-    assert decode_local == num_requests, (
-        f"decode.local_compute={decode_local} != num_requests {num_requests} (expected 1 recomputed token per request)"
+    # In P/D mode the decode engine receives ALL prompt tokens via KV transfer from
+    # the prefill engine. It then recomputes 1 token locally to run a forward pass
+    # for sampling. However, vLLM 0.21+ has a metrics bug: the metric snapshot is
+    # taken BEFORE that recomputation happens, so local_compute reports 0 instead
+    # of 1 per request. The actual model behavior is correct — only the metric is wrong.
+    assert decode_local == 0, (
+        f"decode.local_compute={decode_local} != 0 (vLLM 0.21+ does not count the recomputed token in PD mode metrics)"
     )
     assert prefill_compute == expected_transferred_tokens, (
         f"prefill.local_compute={prefill_compute} != expected {expected_transferred_tokens}"
@@ -473,19 +497,28 @@ def get_llmd_pod_by_role(
     raise RuntimeError(f"No pod with role={role} for {llmisvc.name} in {llmisvc.namespace}")
 
 
-def get_llmd_workload_pods(
+def get_llmd_inference_pool_pods(
     client: DynamicClient,
     llmisvc: LLMInferenceService,
 ) -> list[Pod]:
-    """
-    Get all workload pods for an LLMInferenceService.
+    """Get pods selected by the InferencePool for an LLMInferenceService.
+
+    The InferencePool uses the label selector kserve.io/component=workload
+    to route traffic from the scheduler to model-serving pods. Only pods
+    with this label receive inference requests.
+
+    In single-node deployments, every Deployment pod (1 or more replicas)
+    has this label — all of them are InferencePool members.
+    In single-node P/D, both the main and prefill Deployment pods have it.
+    In multinode (LWS) deployments, only the leader pod has it — worker
+    pods are headless data-parallel participants and are not pool members.
 
     Args:
-        client: DynamicClient instance
-        llmisvc: The LLMInferenceService to get pods for
+        client: Kubernetes dynamic client.
+        llmisvc: The LLMInferenceService to get pods for.
 
     Returns:
-        List of workload Pod objects
+        List of Pod objects that are members of the InferencePool.
     """
     pods = []
     for pod in Pod.get(
@@ -498,6 +531,49 @@ def get_llmd_workload_pods(
     ):
         labels = pod.instance.metadata.get("labels", {})
         if labels.get("kserve.io/component") == "workload":
+            pods.append(pod)
+    return pods
+
+
+def get_llmd_vllm_pods(
+    client: DynamicClient,
+    llmisvc: LLMInferenceService,
+) -> list[Pod]:
+    """Get all pods running the vLLM model engine for an LLMInferenceService.
+
+    Matches pods by app.kubernetes.io/component starting with
+    "llminferenceservice-workload". This includes every pod running the
+    model, regardless of whether it serves traffic directly:
+
+    - Single-node: the Deployment pod (llminferenceservice-workload)
+    - Multinode leader: the LWS head pod (llminferenceservice-workload-leader)
+    - Multinode worker: headless DP participants (llminferenceservice-workload-worker)
+    - Prefill variants: prefill leader and worker pods
+
+    Excludes the router-scheduler pod (llminferenceservice-router-scheduler).
+
+    Use get_llmd_inference_pool_pods when you only need pods that receive
+    inference traffic via the InferencePool.
+
+    Args:
+        client: Kubernetes dynamic client.
+        llmisvc: The LLMInferenceService to get pods for.
+
+    Returns:
+        List of all Pod objects running vLLM for this LLMInferenceService.
+    """
+    pods = []
+    for pod in Pod.get(
+        client=client,
+        namespace=llmisvc.namespace,
+        label_selector=(
+            f"{Pod.ApiGroup.APP_KUBERNETES_IO}/part-of=llminferenceservice,"
+            f"{Pod.ApiGroup.APP_KUBERNETES_IO}/name={llmisvc.name}"
+        ),
+    ):
+        labels = pod.instance.metadata.get("labels", {})
+        component = labels.get(f"{Pod.ApiGroup.APP_KUBERNETES_IO}/component", "")
+        if component.startswith("llminferenceservice-workload"):
             pods.append(pod)
     return pods
 
@@ -746,3 +822,184 @@ def _send_warm_up_request(llmisvc: LLMInferenceService, prompt: str) -> bool:
     status, body = send_chat_completions(llmisvc=llmisvc, prompt=prompt)
     LOGGER.info(f"RHOAIENG-55154: warm up returned {status}")
     return not (status == 503 and "no healthy upstream" in body)
+
+
+# ---------------------------------------------------------------------------
+#  Structured log helpers
+# ---------------------------------------------------------------------------
+
+
+def log_accelerator_selection(
+    config_name: str,
+    detected_nodes: list[dict],
+    selected: str,
+    qualifying_gpus: int,
+    qualifying_nodes: int,
+) -> None:
+    node_lines = "\n".join(
+        f"  {res} x{count}  {node['name']}" for node in detected_nodes for res, count in node["resources"].items()
+    )
+    LOGGER.info(
+        f"\n{'=' * 60}\n"
+        f"  Accelerator selection — {config_name}\n"
+        f"{'=' * 60}\n"
+        f"{node_lines or '  (no accelerator nodes found)'}\n"
+        f"------------------------------------------------------------\n"
+        f"  Selected: {selected} ({qualifying_gpus} GPU(s) on {qualifying_nodes} node(s))\n"
+        f"{'=' * 60}\n"
+    )
+
+
+def log_base_refs_selection(
+    accelerator: str,
+    topology: str,
+    name_regex: str,
+    result: BaseRefsResult | None = None,
+) -> None:
+    """Log base refs selection block. Pass result=None for NVIDIA default (no discovery)."""
+    sections = [
+        f"\n{'=' * 60}",
+        "  Base refs selection",
+        f"{'=' * 60}",
+        f"  Accelerator:  {accelerator}",
+        f"  Topology:     {topology}",
+        f"  Name regex:   {name_regex}",
+    ]
+
+    if result is None:
+        sections.append(f"{'-' * 60}")
+        sections.append("  Selected: (default CUDA — no CR override needed)")
+    else:
+        sections.append(f"  Namespace:    {result.namespace}")
+        sections.append(f"{'-' * 60}")
+        sections.append("  LLMInferenceServiceConfig CRs:")
+        if result.configs:
+            for c in result.configs:
+                sections.append(f"  {c.name}  accelerators={c.accelerators or '[]'}  topologies={c.topologies or '[]'}")
+        else:
+            sections.append("  (none)")
+        sections.append(f"{'-' * 60}")
+        sections.append(f"  Selected: {result.matched}" if result.matched else "  No match found")
+
+    sections.append(f"{'=' * 60}")
+    LOGGER.info("\n".join(sections) + "\n")
+
+
+def _log_curl_command(url: str, body: str, token: bool, ca_cert: str | None) -> None:
+    """Log a human-readable curl command with token redacted and payload formatted."""
+    formatted_body = json.dumps(json.loads(body), indent=2)
+    auth_header = "\n  -H 'Authorization: Bearer ***REDACTED***'" if token else ""
+    tls_flag = f"\n  --cacert {ca_cert}" if ca_cert else "\n  --insecure"
+    LOGGER.info(
+        f"curl -s -X POST \\\n"
+        f"  -H 'Content-Type: application/json' \\\n"
+        f"  -H 'Accept: application/json' \\{auth_header}\n"
+        f"  -d '{formatted_body}' \\{tls_flag}\n"
+        f"  {url}"
+    )
+
+
+def _debug_info_conditions(llmisvc: LLMInferenceService) -> str:
+    """Return debug info containing LLMISVC status conditions."""
+    conditions = llmisvc.instance.status.get("conditions", [])
+    lines = []
+    for condition in conditions:
+        line = f"  * {condition['type']}: {condition['status']}"
+        if condition.get("reason"):
+            line += f" reason={condition['reason']}"
+        if condition.get("message"):
+            line += f" message={condition['message']}"
+        lines.append(line)
+    return "\n".join(lines) or "  (no conditions)"
+
+
+def _debug_info_pod_statuses(llmisvc: LLMInferenceService) -> str:
+    """Return debug info containing pod phase, restart count, and waiting reasons."""
+    pods = list(
+        Pod.get(
+            client=llmisvc.client,
+            namespace=llmisvc.namespace,
+            label_selector=(
+                f"{Pod.ApiGroup.APP_KUBERNETES_IO}/part-of=llminferenceservice,"
+                f"{Pod.ApiGroup.APP_KUBERNETES_IO}/name={llmisvc.name}"
+            ),
+        )
+    )
+    if not pods:
+        return "  (no pods found)"
+
+    lines = []
+    for pod in pods:
+        phase = pod.instance.status.phase
+        all_statuses = (pod.instance.status.get("initContainerStatuses") or []) + (
+            pod.instance.status.get("containerStatuses") or []
+        )
+        restarts = sum(container_status.get("restartCount", 0) for container_status in all_statuses)
+        parts = [f"* pod={pod.name} phase={phase} restarts={restarts}"]
+
+        for container_status in all_statuses:
+            state = container_status.get("state") or {}
+            waiting = state.get("waiting")
+            if waiting:
+                reason = waiting.get("reason", "Unknown")
+                message = waiting.get("message", "")
+                parts.append(f"{reason}" + (f": {message}" if message else ""))
+            elif container_status.get("restartCount", 0) > 0:
+                terminated = (container_status.get("lastState") or {}).get("terminated")
+                if terminated:
+                    parts.append(
+                        f" {container_status['name']}: last terminated"
+                        f" reason={terminated.get('reason', 'Unknown')}"
+                        f" exitCode={terminated.get('exitCode', '?')}"
+                    )
+
+        lines.append("  " + " | ".join(parts))
+    return "\n".join(lines)
+
+
+def _debug_info_events(llmisvc: LLMInferenceService) -> str:
+    """Collect recent warning events from the LLMISVC namespace."""
+    events = Event.list(
+        client=llmisvc.client,
+        namespace=llmisvc.namespace,
+        field_selector="type=Warning",
+        since_seconds=600,
+    )
+    if not events:
+        return "  (no warning events)"
+
+    lines = []
+    for event in events:
+        timestamp = str(event.get("lastTimestamp") or event.get("eventTime") or "")
+        if "T" in timestamp:
+            timestamp = timestamp.split("T")[1][:8]
+        reason = event.get("reason", "")
+        obj = event.get("involvedObject") or {}
+        obj_name = obj.get("name", "")
+        msg = " ".join(event.get("message", "").split())
+        count = event.get("count", 1)
+        count_str = f" (x{count})" if count and count > 1 else ""
+        lines.append(f"  * {reason}{count_str} — {msg} [{obj_name}][{timestamp}]")
+    return "\n".join(lines)
+
+
+def _log_llmisvc_debug_info(llmisvc: LLMInferenceService) -> None:
+    """Log debug info related to LLMISVC timeout: conditions, pod statuses, and events."""
+    name, ns = llmisvc.name, llmisvc.namespace
+    separator = "=" * 60
+    sections = [
+        f"\n{separator}",
+        f"  LLMISVC {name} timed out in {ns}",
+        separator,
+    ]
+    for label, func in [
+        ("Conditions", lambda: _debug_info_conditions(llmisvc)),
+        ("Pods", lambda: _debug_info_pod_statuses(llmisvc)),
+        ("Events", lambda: _debug_info_events(llmisvc)),
+    ]:
+        try:
+            sections.append(f"\n {label}:\n{func()}")
+        except Exception:  # noqa: BLE001
+            sections.append(f"\n {label}:\n  (failed to collect)")
+    sections.append(separator + "\n")
+    LOGGER.error("\n".join(sections))

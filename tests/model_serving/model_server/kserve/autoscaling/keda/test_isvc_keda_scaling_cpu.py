@@ -13,7 +13,7 @@ from tests.model_serving.model_server.utils import (
     verify_final_pod_count,
     verify_keda_scaledobject,
 )
-from utilities.constants import ModelFormat, ModelVersion, Protocols, RunTimeConfigs, Timeout
+from utilities.constants import ModelFormat, ModelVersion, Protocols, RunTimeConfigs
 from utilities.inference_utils import Inference
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 from utilities.monitoring import validate_metrics_field
@@ -107,7 +107,7 @@ class TestOVMSKedaScaling:
             metrics_query=OVMS_METRICS_QUERY,
             expected_value=OVMS_METRICS_THRESHOLD,
             greater_than=True,
-            timeout=Timeout.TIMEOUT_5MIN,
+            timeout=300,
         )
 
     def test_ovms_keda_scaling_verify_final_pod_count(

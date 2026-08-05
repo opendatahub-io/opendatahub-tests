@@ -95,7 +95,7 @@ def create_llm_judge_config(namespace: str, model_isvc_name: str, model_name: st
                 "type": "main",
                 "engine": "openai",
                 "parameters": {
-                    "openai_api_base": f"http://{model_isvc_name}-predictor.{namespace}.svc.cluster.local/v1",
+                    "base_url": f"http://{model_isvc_name}-predictor.{namespace}.svc.cluster.local/v1",
                     "model_name": model_name,
                 },
             }
@@ -108,8 +108,8 @@ def create_llm_judge_config(namespace: str, model_isvc_name: str, model_name: st
 
     prompts_yml = {
         "prompts": [
-            {"task": "self_check_input", "content": INPUT_PROMPT_TEMPLATE},
-            {"task": "self_check_output", "content": OUTPUT_PROMPT_TEMPLATE},
+            {"task": "self_check_input", "content": INPUT_PROMPT_TEMPLATE, "max_tokens": 10},
+            {"task": "self_check_output", "content": OUTPUT_PROMPT_TEMPLATE, "max_tokens": 10},
         ]
     }
     rails_co = ""
@@ -147,7 +147,7 @@ def create_presidio_config(
                 "type": "main",
                 "engine": "openai",
                 "parameters": {
-                    "openai_api_base": f"http://{model_isvc_name}-predictor.{namespace}.svc.cluster.local/v1",
+                    "base_url": f"http://{model_isvc_name}-predictor.{namespace}.svc.cluster.local/v1",
                     "model_name": model_name,
                 },
             }

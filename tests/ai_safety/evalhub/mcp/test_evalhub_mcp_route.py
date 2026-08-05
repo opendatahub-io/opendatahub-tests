@@ -5,6 +5,7 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_safety.evalhub.mcp.constants import (
     EVALHUB_MCP_CONFIGMAP_SUFFIX,
@@ -82,8 +83,16 @@ class TestEvalHubMcpRoute:
             namespace=model_namespace.name,
             ensure_exists=True,
         )
-        data = configmap.instance.data or {}
-        assert "config.yaml" in data, f"Expected config.yaml in {configmap_name}"
+        try:
+            for data in TimeoutSampler(
+                wait_timeout=60,
+                sleep=5,
+                func=lambda: configmap.instance.data or {},
+            ):
+                if "config.yaml" in data:
+                    break
+        except TimeoutExpiredError as e:
+            raise AssertionError(f"Expected config.yaml in {configmap_name}") from e
 
     def test_evalhub_mcp_auth_secret_exists(
         self,

@@ -1,24 +1,31 @@
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.prometheus import Prometheus
 
-from tests.model_serving.model_server.llmd.llmd_configs import SingleNodePrefillDecodeConfig
+from tests.model_serving.model_server.llmd.api_compat import OpenAICompatibilityValidator
+from tests.model_serving.model_server.llmd.constants import SOAK_TEST_DURATION
+from tests.model_serving.model_server.llmd.llmd_configs import (
+    SingleNodePDFast1Config,
+    SingleNodePDFast2Config,
+    SingleNodePrefillDecodeConfig,
+)
 from tests.model_serving.model_server.llmd.utils import (
     assert_kv_transfer,
+    get_llmd_inference_pool_pods,
     get_llmd_pod_by_role,
-    get_llmd_workload_pods,
+    get_llmd_vllm_pods,
     ns_from_file,
     parse_prompt_tokens,
     scheduler_has_plugin,
     send_chat_completions,
     send_completions,
 )
+from utilities.resources.llm_inference_service import LLMInferenceService
 
 LOGGER = structlog.get_logger(name=__name__)
 
-pytestmark = [pytest.mark.tier2, pytest.mark.llmd_gpu]
+pytestmark = [pytest.mark.llmd_gpu]
 
 NAMESPACE = ns_from_file(file=__file__)
 
@@ -51,10 +58,13 @@ PROMPTS = [
 
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, llmisvc",
-    [({"name": NAMESPACE}, SingleNodePrefillDecodeConfig)],
+    [
+        pytest.param({"name": NAMESPACE}, SingleNodePrefillDecodeConfig, id="standard"),
+        pytest.param({"name": NAMESPACE}, SingleNodePDFast1Config, id="fast-1"),
+        pytest.param({"name": NAMESPACE}, SingleNodePDFast2Config, id="fast-2"),
+    ],
     indirect=True,
 )
-@pytest.mark.usefixtures("skip_if_disconnected")
 class TestSingleNodePrefillDecode:
     """Single-node P/D LLMISVC with controller-generated scheduler config.
 
@@ -69,14 +79,28 @@ class TestSingleNodePrefillDecode:
 
     def test_prefill_decode_topology(
         self,
+        request: pytest.FixtureRequest,
         unprivileged_client: DynamicClient,
         llmisvc: LLMInferenceService,
     ):
         """Assert the P/D deployment topology created by the controller."""
+        config = request.node.callspec.params["llmisvc"]
 
-        workload_pods = get_llmd_workload_pods(client=unprivileged_client, llmisvc=llmisvc)
+        vllm_pods = get_llmd_vllm_pods(client=unprivileged_client, llmisvc=llmisvc)
+        inferencepool_pods = get_llmd_inference_pool_pods(client=unprivileged_client, llmisvc=llmisvc)
+        # Single-node P/D: all vLLM pods (prefill + decode) are InferencePool members.
+        assert len(vllm_pods) == config.expected_vllm_pod_count, (
+            f"Expected {config.expected_vllm_pod_count} vLLM pods, found {len(vllm_pods)}"
+        )
+        assert len(inferencepool_pods) == config.expected_inference_pool_pod_count, (
+            f"Expected {config.expected_inference_pool_pod_count} InferencePool pods, found {len(inferencepool_pods)}"
+        )
+        assert len(vllm_pods) == len(inferencepool_pods), (
+            "Single-node P/D: all vLLM pods should be InferencePool members"
+        )
+
         roles = {}
-        for pod in workload_pods:
+        for pod in vllm_pods:
             role = pod.instance.metadata.labels.get("llm-d.ai/role", "unknown")
             roles.setdefault(role, []).append(pod.name)
 
@@ -148,3 +172,15 @@ class TestSingleNodePrefillDecode:
             expected_transferred_tokens=total_prompt_tokens,
             num_requests=len(PROMPTS),
         )
+
+    @pytest.mark.soak
+    @pytest.mark.order(after="test_kv_transfer")
+    @pytest.mark.parametrize("verification", OpenAICompatibilityValidator.ALL_VERIFICATIONS)
+    def test_openai_api_compat_soak(
+        self,
+        admin_client: DynamicClient,
+        llmisvc: LLMInferenceService,
+        verification: str,
+    ):
+        with OpenAICompatibilityValidator.from_llmisvc(client=admin_client, llmisvc=llmisvc) as v:
+            getattr(v, verification)(duration=SOAK_TEST_DURATION)
