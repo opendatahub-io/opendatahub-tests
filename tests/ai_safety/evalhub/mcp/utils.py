@@ -9,7 +9,7 @@ import requests
 import structlog
 from timeout_sampler import TimeoutSampler
 
-from tests.ai_safety.evalhub.constants import EVALHUB_VLLM_EMULATOR_PORT
+from tests.ai_safety.evalhub.constants import EVALHUB_DEFAULT_HARDWARE_PROFILE, EVALHUB_VLLM_EMULATOR_PORT
 from tests.ai_safety.evalhub.mcp.constants import (
     EVALHUB_MCP_CLIENT_NAME,
     EVALHUB_MCP_CLIENT_VERSION,
@@ -317,7 +317,13 @@ def build_mcp_evaluation_arguments(
     elif benchmark_id == EVALHUB_MCP_DEFAULT_BENCHMARK_ID and provider_id == EVALHUB_MCP_DEFAULT_PROVIDER_ID:
         arguments["benchmarks"] = [build_vllm_arc_easy_benchmark()]
     else:
-        arguments["benchmarks"] = [{"id": benchmark_id, "provider_id": provider_id}]
+        arguments["benchmarks"] = [{
+            "id": benchmark_id,
+            "provider_id": provider_id,
+            "hardware_config": {
+                "hardware_profile_ref": {"name": EVALHUB_DEFAULT_HARDWARE_PROFILE},
+            },
+        }]
     return arguments
 
 

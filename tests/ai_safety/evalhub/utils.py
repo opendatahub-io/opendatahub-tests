@@ -32,6 +32,7 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_LOG_CONTENT_TYPE,
     EVALHUB_MT_CR_NAME,
     EVALHUB_PROVIDERS_PATH,
+    EVALHUB_DEFAULT_HARDWARE_PROFILE,
     EVALHUB_VLLM_EMULATOR_PORT,
     GARAK_JOB_POLL_INTERVAL,
     GARAK_JOB_TIMEOUT,
@@ -812,6 +813,9 @@ def build_vllm_arc_easy_benchmark(num_examples: int = 10) -> dict:
             "num_examples": num_examples,
             "tokenizer": "google/flan-t5-small",
         },
+        "hardware_config": {
+            "hardware_profile_ref": {"name": EVALHUB_DEFAULT_HARDWARE_PROFILE},
+        },
     }
 
 
@@ -836,6 +840,9 @@ def build_evalhub_multi_benchmark_job_payload(
                     "num_examples": 8,
                     "tokenizer": "google/flan-t5-small",
                 },
+                "hardware_config": {
+                    "hardware_profile_ref": {"name": EVALHUB_DEFAULT_HARDWARE_PROFILE},
+                },
             },
             {
                 "id": "arc_easy",
@@ -843,6 +850,9 @@ def build_evalhub_multi_benchmark_job_payload(
                 "parameters": {
                     "num_examples": 3,
                     "tokenizer": "google/flan-t5-small",
+                },
+                "hardware_config": {
+                    "hardware_profile_ref": {"name": EVALHUB_DEFAULT_HARDWARE_PROFILE},
                 },
             },
         ],
