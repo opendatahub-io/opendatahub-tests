@@ -73,6 +73,18 @@ rfc3161-client = [
     { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
     { index = "pypi", marker = "platform_machine != 'ppc64le'" },
 ]
+pyyaml = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+psutil = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+pyzmq = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
 
 
 [[tool.uv.index]]
@@ -134,6 +146,7 @@ dependencies = [
     "pytest-dependency>=0.6.0",
     "pytest-progress",
     "structlog>=24.1.0",
+    "pyyaml==6.0.3; platform_machine == 'ppc64le'",
     "pyyaml",
     "tenacity",
     "types-requests>=2.32.0.20241016",

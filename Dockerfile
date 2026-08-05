@@ -33,7 +33,7 @@ RUN if [[ $(uname -m) == "ppc64le" ]]; then \
      git clone https://github.com/openshift/must-gather-clean -b v0.0.4 && \
      cd must-gather-clean && \
      dnf install -y make go && \
-     make ; \
+     make && dnf remove make go git -y && dnf clean all && rm -rf must-gather-clean; \
    elif [[ $(uname -m) == "x86_64" ]] ; then \
      wget https://github.com/openshift/must-gather-clean/releases/download/v0.0.4/must-gather-clean-linux-amd64.tar.gz -q \
      && tar xzf must-gather-clean-linux-amd64.tar.gz \
