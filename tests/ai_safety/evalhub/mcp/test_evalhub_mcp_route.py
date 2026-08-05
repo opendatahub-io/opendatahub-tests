@@ -87,7 +87,7 @@ class TestEvalHubMcpRoute:
             for data in TimeoutSampler(
                 wait_timeout=60,
                 sleep=5,
-                func=lambda: configmap.instance.data or {},
+                func=lambda: dict(configmap.instance.data or {}),
             ):
                 if "config.yaml" in data:
                     break
