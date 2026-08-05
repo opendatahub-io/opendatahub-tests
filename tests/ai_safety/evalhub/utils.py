@@ -15,6 +15,7 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_safety.evalhub.constants import (
     EVALHUB_COLLECTIONS_PATH,
+    EVALHUB_DEFAULT_HARDWARE_PROFILE,
     EVALHUB_FULL_API_VERSION_V1,
     EVALHUB_FULL_API_VERSION_V1ALPHA1,
     EVALHUB_HEALTH_PATH,
@@ -32,7 +33,6 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_LOG_CONTENT_TYPE,
     EVALHUB_MT_CR_NAME,
     EVALHUB_PROVIDERS_PATH,
-    EVALHUB_DEFAULT_HARDWARE_PROFILE,
     EVALHUB_VLLM_EMULATOR_PORT,
     GARAK_JOB_POLL_INTERVAL,
     GARAK_JOB_TIMEOUT,
