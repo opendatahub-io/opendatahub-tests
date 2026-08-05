@@ -1215,6 +1215,51 @@ def download_oc_console_cli(admin_client: DynamicClient, tmpdir: LocalPath) -> s
     return binary_path
 
 
+def get_helm_console_cli_download_link(admin_client: DynamicClient) -> str:
+    """
+    Build the download URL for the `helm` binary from the `helm-download-links` ConsoleCLIDownload.
+
+    Unlike `oc-cli-downloads`, this CR exposes a single link to a mirror directory (not one link
+    per OS/arch), e.g. https://mirror.openshift.com/pub/openshift-v4/clients/helm/latest, which
+    serves the raw platform binary directly (no archive) at `<link>/helm-<os>-<arch>[.exe]`.
+    """
+    helm_console_cli_download = ConsoleCLIDownload(client=admin_client, name="helm-download-links", ensure_exists=True)
+    helm_links = helm_console_cli_download.instance.spec.links
+    if not helm_links:
+        raise ValueError("No links found in the 'helm-download-links' ConsoleCLIDownload")
+
+    os_system = platform.system().lower()  # mirror uses "darwin", unlike oc's "mac" naming
+    machine_platform = get_machine_platform()
+    binary_suffix = ".exe" if os_system == "windows" else ""
+    return f"{helm_links[0].href.rstrip('/')}/helm-{os_system}-{machine_platform}{binary_suffix}"
+
+
+def download_helm_console_cli(admin_client: DynamicClient, tmpdir: LocalPath) -> str:
+    """
+    Download the helm CLI binary.
+
+    Unlike the oc download, the helm mirror serves the raw binary directly, so no archive
+    extraction step is needed.
+
+    Args:
+        admin_client (DynamicClient): admin client
+        tmpdir (str): Directory to download the binary to
+
+    Returns:
+        str: Path to the downloaded binary
+    """
+    helm_console_cli_download_link = get_helm_console_cli_download_link(admin_client=admin_client)
+    LOGGER.info(f"Downloading helm binary using: url={helm_console_cli_download_link}")
+    urllib3.disable_warnings()  # TODO: remove when cert issue is addressed for managed clusters
+    binary_path = os.path.join(tmpdir, helm_console_cli_download_link.split("/")[-1])
+    with _download_with_retry(url=helm_console_cli_download_link) as created_request:
+        content_iterator = created_request.iter_content(chunk_size=8192)
+        with open(binary_path, "wb") as file_downloaded:
+            file_downloaded.writelines(content_iterator)
+    os.chmod(binary_path, stat.S_IRUSR | stat.S_IXUSR)
+    return binary_path
+
+
 def check_internal_image_registry_available(admin_client: DynamicClient) -> bool:
     """Check if internal image registry is available by checking the imageregistry config managementState."""
     from ocp_resources.config_imageregistry_operator_openshift_io import Config
