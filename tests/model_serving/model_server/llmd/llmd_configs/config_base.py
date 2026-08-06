@@ -90,6 +90,14 @@ class LLMISvcConfig:
         return None
 
     @classmethod
+    def kv_cache_offloading(cls):
+        return None
+
+    @classmethod
+    def template_volumes(cls):
+        return None
+
+    @classmethod
     def worker_config(cls):
         return None
 
