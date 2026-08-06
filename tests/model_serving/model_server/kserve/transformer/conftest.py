@@ -13,6 +13,7 @@ from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 
+from tests.model_serving.image_constants import ModelServingImages
 from utilities.constants import (
     Annotations,
     KServeDeploymentType,
@@ -25,8 +26,6 @@ from utilities.infra import (
 )
 from utilities.logger import RedactedString
 from utilities.serving_runtime import ServingRuntimeFromTemplate
-
-from tests.model_serving.image_constants import ModelServingImages
 
 DEFAULT_TRANSFORMER_IMAGE: str = ModelServingImages.TRANSFORMER_IMAGE
 
