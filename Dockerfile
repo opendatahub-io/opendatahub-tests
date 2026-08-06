@@ -19,13 +19,12 @@ RUN echo "Architecture: ${TARGETARCH}" && \
 
 # Install system dependencies using dnf
 RUN dnf update -y \
-    && dnf install -y python3 python3-pip python3-devel ssh gnupg curl gpg wget vim rsync git openssl openssl-devel skopeo gcc-c++\
-    && dnf clean all \
-    && rm -rf /var/cache/dnf
+    && dnf install -y python3 python3-pip python3-devel ssh gnupg curl gpg wget vim rsync git openssl openssl-devel skopeo gcc-c++
+    #&& dnf clean all \
+    #&& rm -rf /var/cache/dnf
 
 # Install grpcurl
-RUN ARCH=$(uname -m) && curl -sSL "https://github.com/fullstorydev/grpcurl/releases/download/v1.9.2/grpcurl_1.9.2_linux_${ARCH}.tar.gz" --output /tmp/grpcurl_1.2.tar.gz \
-    && tar xvf /tmp/grpcurl_1.2.tar.gz --no-same-owner \
+RUN ARCH=$(uname -m) && curl -sSL "https://github.com/fullstorydev/grpcurl/releases/download/v1.9.2/grpcurl_1.9.2_linux_${ARCH}.tar.gz" --output /tmp/grpcurl_1.2.tar.gz && tar xvf /tmp/grpcurl_1.2.tar.gz --no-same-owner \
     && mv grpcurl /usr/bin/grpcurl
 
 # Install must-gather-clean

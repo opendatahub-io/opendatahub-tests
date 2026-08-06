@@ -85,6 +85,11 @@ pyzmq = [
     { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
     { index = "pypi", marker = "platform_machine != 'ppc64le'" },
 ]
+ipykernel = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+
 
 
 [[tool.uv.index]]
@@ -183,7 +188,8 @@ dependencies = [
     "numpy>=2.1.0,<2.5.0;platform_machine == 'ppc64le'",
     "scipy>=1.13.0,<1.18.0;platform_machine == 'ppc64le'",
     "langchain-community<0.4.2",
-    "ipykernel>=7.3.0",
+    "ipykernel>=7.3.0;platform_machine != 'ppc64le'",
+    "ipykernel==6.29.5;platform_machine == 'ppc64le'",
     "boto3>=1.43.33",
 ]
 
