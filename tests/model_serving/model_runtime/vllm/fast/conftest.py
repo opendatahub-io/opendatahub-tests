@@ -17,7 +17,7 @@ def serving_runtime(  # noqa: UFN001
     admin_client: DynamicClient,
     model_namespace: Namespace,
 ) -> Generator[ServingRuntime]:
-    """ServingRuntime from a fast template; fails if the template is absent."""
+    """ServingRuntime from a fast template; skips if the template is absent."""
     template_name: str = request.param["template_name"]
     template = Template(
         client=admin_client,
@@ -25,7 +25,7 @@ def serving_runtime(  # noqa: UFN001
         namespace=py_config["applications_namespace"],
     )
     if not template.exists:
-        pytest.fail(
+        pytest.skip(
             f"Fast template {template_name} not present on cluster "
             "(fast image SHAs may match stable; see RHOAIENG-68181)"
         )
