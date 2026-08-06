@@ -56,13 +56,30 @@ def execute_model_registry_post_command(
 
     if resp.status_code not in [200, 201]:
         raise ModelRegistryResourceNotCreated(
-            f"Failed to create ModelRegistry resource: {url}, {resp.status_code}: {resp.text}"
+            f"Failed to create ModelRegistry resource: {url}, {resp.status_code}: {resp.text}",
+            status_code=resp.status_code,
         )
     try:
         return json.loads(resp.text)
     except json.JSONDecodeError:
         LOGGER.error(f"Unable to parse {resp.text}")
         raise
+
+
+def is_transient_server_error(exception: ModelRegistryResourceNotCreated) -> bool:
+    """Return True if the exception represents a transient HTTP 5xx server error.
+
+    Used as a timeout_sampler retry filter so that only transient 5xx responses
+    (e.g. the router's HTTP 503 during Model Registry route warm-up) are retried,
+    while permanent 4xx responses fail immediately.
+
+    Args:
+        exception: The raised ModelRegistryResourceNotCreated exception.
+
+    Returns:
+        bool: True if the exception carries a 5xx status code, False otherwise.
+    """
+    return exception.status_code is not None and 500 <= exception.status_code <= 599
 
 
 def register_model_rest_api(

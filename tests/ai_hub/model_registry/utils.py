@@ -1,6 +1,9 @@
+from typing import Any
+
 from aiohttp import ClientConnectionError, ClientResponseError, ServerDisconnectedError
 from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import RegisteredModel
+from mr_openapi.exceptions import ServiceException
 from timeout_sampler import retry
 
 MR_RETRY_EXCEPTIONS: dict[type[Exception], list[str]] = {
@@ -14,3 +17,9 @@ MR_RETRY_EXCEPTIONS: dict[type[Exception], list[str]] = {
 def get_registered_model_with_retry(client: ModelRegistryClient, name: str) -> RegisteredModel | None:
     """Get a registered model, retrying on transient connection errors."""
     return client.get_registered_model(name=name)
+
+
+@retry(wait_timeout=60, sleep=5, exceptions_dict={ServiceException: []}, print_func_args=False)
+def get_model_registry_client_with_retry(**kwargs: Any) -> ModelRegistryClient:
+    """Build a ModelRegistryClient, retrying transient 503s while the MR route warms up."""
+    return ModelRegistryClient(**kwargs)
