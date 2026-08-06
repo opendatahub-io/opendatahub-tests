@@ -9,7 +9,6 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.data_science_pipelines_application import DataSciencePipelinesApplication
 from ocp_resources.deployment import Deployment
-from ocp_resources.evalhub import EvalHub
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.mlflow import MLflow
 from ocp_resources.namespace import Namespace
@@ -34,6 +33,7 @@ from tests.ai_safety.evalhub.constants import (
     MINIO_MC_IMAGE,
     MINIO_UPLOADER_SECURITY_CONTEXT,
 )
+from tests.ai_safety.evalhub.constants import EvalHubV1Alpha1 as EvalHub
 from tests.ai_safety.evalhub.utils import wait_for_service_account
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import Timeout

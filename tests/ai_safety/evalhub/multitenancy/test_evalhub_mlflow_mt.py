@@ -15,7 +15,6 @@ import pytest
 import requests
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
-from ocp_resources.evalhub import EvalHub
 from ocp_resources.namespace import Namespace
 from ocp_resources.route import Route
 from ocp_resources.service import Service
@@ -23,6 +22,7 @@ from ocp_resources.service import Service
 from tests.ai_safety.evalhub.constants import (
     EVALHUB_JOBS_PATH,
 )
+from tests.ai_safety.evalhub.constants import EvalHubV1Alpha1 as EvalHub
 from tests.ai_safety.evalhub.utils import (
     build_evalhub_job_payload,
     build_headers,

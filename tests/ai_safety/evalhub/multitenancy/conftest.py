@@ -7,7 +7,6 @@ import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
-from ocp_resources.evalhub import EvalHub
 from ocp_resources.namespace import Namespace
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
@@ -21,6 +20,7 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_TENANT_LABEL_KEY,
     EVALHUB_VLLM_EMULATOR_PORT,
 )
+from tests.ai_safety.evalhub.constants import EvalHubV1Alpha1 as EvalHub
 from tests.ai_safety.evalhub.utils import tenant_rbac_ready
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import Labels, Protocols, Timeout

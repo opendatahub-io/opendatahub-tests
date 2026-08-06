@@ -1,3 +1,11 @@
+from ocp_resources.evalhub import EvalHub
+from ocp_resources.resource import NamespacedResource
+
+
+class EvalHubV1Alpha1(EvalHub):
+    api_version: str = f"{NamespacedResource.ApiGroup.TRUSTYAI_OPENDATAHUB_IO}/v1alpha1"
+
+
 EVALHUB_SERVICE_NAME: str = "evalhub"
 EVALHUB_SERVICE_PORT: int = 8443
 EVALHUB_CONTAINER_PORT: int = 8080
