@@ -26,10 +26,9 @@ from utilities.infra import (
 from utilities.logger import RedactedString
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
-DEFAULT_TRANSFORMER_IMAGE = (
-    "quay.io/spolti/kserve-sentiment-custom-transformer"
-    "@sha256:6af753f5d13e07fd2d0d3da9e55ddbcd4d5cabcd9d5f4c1fbbdce06fb1e08c67"
-)
+from tests.model_serving.image_constants import ModelServingImages
+
+DEFAULT_TRANSFORMER_IMAGE: str = ModelServingImages.TRANSFORMER_IMAGE
 
 
 @pytest.fixture(scope="class")
