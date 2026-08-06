@@ -33,13 +33,14 @@ RUN if [[ $(uname -m) == "ppc64le" ]]; then \
      git clone https://github.com/openshift/must-gather-clean -b v0.0.4 && \
      cd must-gather-clean && \
      dnf install -y make go && \
-     make && dnf remove make go git -y && dnf clean all && rm -rf must-gather-clean; \
+     make && dnf remove make go git -y && \
+     cp ./must-gather-clean /usr/bin/must-gather-clean && cd .. && rm -rf must-gather-clean; \
    elif [[ $(uname -m) == "x86_64" ]] ; then \
      wget https://github.com/openshift/must-gather-clean/releases/download/v0.0.4/must-gather-clean-linux-amd64.tar.gz -q \
      && tar xzf must-gather-clean-linux-amd64.tar.gz \
-     && rm -f must-gather-clean-linux-amd64.tar.gz; \
+     && rm -f must-gather-clean-linux-amd64.tar.gz \
+     && mv must-gather-clean /usr/bin/must-gather-clean; \
    fi \
-    && mv must-gather-clean /usr/bin/must-gather-clean \
     && chmod +x /usr/bin/must-gather-clean
 
 # Install cosign v3.0.4 (multi-arch, no expiration)
