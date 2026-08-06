@@ -22,6 +22,7 @@ from tests.ai_safety.nemo_guardrails.utils import (
     validate_nemo_guardrails_images,
     verify_auth_required,
 )
+from utilities.certificates_utils import get_tls_verify
 
 
 @pytest.mark.smoke
@@ -39,6 +40,20 @@ def test_nemo_guardrails_crd_exists(
     )
 
     assert crd_resource.exists, f"CRD {crd_name} does not exist on the cluster"
+
+
+@pytest.mark.smoke
+@pytest.mark.ai_safety
+def test_mcp_gateway_extension_crd_exists(
+    admin_client: DynamicClient,
+) -> None:
+    """Verify mcpgatewayextensions CRD exists on the cluster."""
+    crd = CustomResourceDefinition(
+        client=admin_client,
+        name="mcpgatewayextensions.mcp.kuadrant.io",
+        ensure_exists=True,
+    )
+    assert crd.exists, "mcpgatewayextensions.mcp.kuadrant.io CRD is not installed"
 
 
 @pytest.mark.tier1
@@ -109,7 +124,7 @@ class TestNemoGuardrailsLLMAsJudge:
     @pytest.mark.parametrize("endpoint", [CHAT_ENDPOINT, CHECK_ENDPOINT])
     def test_nemo_llm_judge_backend_communication(
         self,
-        openshift_ca_bundle_file: str,
+        admin_client: DynamicClient,
         current_client_token: str,
         llm_d_inference_sim_isvc: InferenceService,
         nemo_guardrails_llm_judge: NemoGuardrails,
@@ -129,7 +144,7 @@ class TestNemoGuardrailsLLMAsJudge:
         response = send_request(
             url=url,
             token=current_client_token,
-            ca_bundle_file=openshift_ca_bundle_file,
+            ca_bundle_file=get_tls_verify(client=admin_client),
             message=SAFE_PROMPTS[0],
             model=MODEL_NAME,
             configuration=None,
@@ -150,7 +165,7 @@ class TestNemoGuardrailsLLMAsJudge:
     @pytest.mark.parametrize("endpoint", [CHAT_ENDPOINT, CHECK_ENDPOINT])
     def test_nemo_llm_judge_with_authentication(
         self,
-        openshift_ca_bundle_file: str,
+        admin_client: DynamicClient,
         llm_d_inference_sim_isvc: InferenceService,
         nemo_guardrails_llm_judge: NemoGuardrails,
         nemo_guardrails_llm_judge_route: Route,
@@ -169,7 +184,7 @@ class TestNemoGuardrailsLLMAsJudge:
         response = send_request(
             url=url,
             token=None,  # No token
-            ca_bundle_file=openshift_ca_bundle_file,
+            ca_bundle_file=get_tls_verify(client=admin_client),
             message=SAFE_PROMPTS[0],
             model=MODEL_NAME,
             configuration=None,
@@ -203,7 +218,6 @@ class TestNemoGuardrailsMultiServer:
         self,
         admin_client: DynamicClient,
         model_namespace: Namespace,
-        openshift_ca_bundle_file: str,
         llm_d_inference_sim_isvc: InferenceService,
         nemo_guardrails_presidio: NemoGuardrails,
         nemo_guardrails_second_server: NemoGuardrails,
@@ -225,7 +239,7 @@ class TestNemoGuardrailsMultiServer:
         response1 = send_request(
             url=url1,
             token=None,
-            ca_bundle_file=openshift_ca_bundle_file,
+            ca_bundle_file=get_tls_verify(client=admin_client),
             message=CLEAN_PROMPT,
             model=MODEL_NAME,
             configuration=None,
@@ -244,7 +258,7 @@ class TestNemoGuardrailsMultiServer:
         response2 = send_request(
             url=url2,
             token=None,
-            ca_bundle_file=openshift_ca_bundle_file,
+            ca_bundle_file=get_tls_verify(client=admin_client),
             message=CLEAN_PROMPT,
             model=MODEL_NAME,
             configuration=None,
@@ -318,7 +332,7 @@ class TestNemoGuardrailsMultiConfig:
     @pytest.mark.parametrize("endpoint", [CHAT_ENDPOINT, CHECK_ENDPOINT])
     def test_nemo_multi_config_default_selection(
         self,
-        openshift_ca_bundle_file: str,
+        admin_client: DynamicClient,
         llm_d_inference_sim_isvc: InferenceService,
         nemo_guardrails_multi_config: NemoGuardrails,
         nemo_guardrails_multi_config_route: Route,
@@ -338,7 +352,7 @@ class TestNemoGuardrailsMultiConfig:
         response = send_request(
             url=url,
             token=None,
-            ca_bundle_file=openshift_ca_bundle_file,
+            ca_bundle_file=get_tls_verify(client=admin_client),
             message=SAFE_PROMPTS[0],
             model=MODEL_NAME,
             configuration=None,
@@ -361,7 +375,7 @@ class TestNemoGuardrailsMultiConfig:
     @pytest.mark.parametrize("endpoint", [CHAT_ENDPOINT, CHECK_ENDPOINT])
     def test_nemo_multi_config(
         self,
-        openshift_ca_bundle_file: str,
+        admin_client: DynamicClient,
         llm_d_inference_sim_isvc: InferenceService,
         nemo_guardrails_multi_config: NemoGuardrails,
         nemo_guardrails_multi_config_route: Route,
@@ -381,7 +395,7 @@ class TestNemoGuardrailsMultiConfig:
         response = send_request(
             url=url,
             token=None,
-            ca_bundle_file=openshift_ca_bundle_file,
+            ca_bundle_file=get_tls_verify(client=admin_client),
             message=SAFE_PROMPTS[0],
             model=MODEL_NAME,
             configuration="config-a",
@@ -405,7 +419,7 @@ class TestNemoGuardrailsMultiConfig:
         response = send_request(
             url=url,
             token=None,
-            ca_bundle_file=openshift_ca_bundle_file,
+            ca_bundle_file=get_tls_verify(client=admin_client),
             message=PII_PROMPT,
             model=MODEL_NAME,
             configuration="config-b",
@@ -548,7 +562,7 @@ class TestNemoGuardrailsSecretMounting:
     @pytest.mark.parametrize("endpoint", [CHAT_ENDPOINT, CHECK_ENDPOINT])
     def test_nemo_secret_used_for_auth(
         self,
-        openshift_ca_bundle_file: str,
+        admin_client: DynamicClient,
         current_client_token: str,
         llm_d_inference_sim_isvc: InferenceService,
         nemo_guardrails_llm_judge: NemoGuardrails,
@@ -568,7 +582,7 @@ class TestNemoGuardrailsSecretMounting:
         response = send_request(
             url=url,
             token=current_client_token,
-            ca_bundle_file=openshift_ca_bundle_file,
+            ca_bundle_file=get_tls_verify(client=admin_client),
             message=SAFE_PROMPTS[0],
             model=MODEL_NAME,
             configuration=None,
