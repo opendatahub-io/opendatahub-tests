@@ -90,8 +90,8 @@ class Deployment(NamespaceScopedResource):
         poll_interval: int = 5,
         replicas: int | None = None,
     ) -> None:
-        deadline = asyncio.get_event_loop().time() + timeout
-        while asyncio.get_event_loop().time() < deadline:
+        deadline = asyncio.get_running_loop().time() + timeout
+        while asyncio.get_running_loop().time() < deadline:
             try:
                 data = await self._get_json()
                 desired = replicas if replicas is not None else data.get("spec", {}).get("replicas", 1)

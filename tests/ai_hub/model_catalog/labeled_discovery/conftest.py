@@ -50,9 +50,7 @@ def labeled_configmap_alpha(
 
     with cm as created_cm:
         LOGGER.info(f"Created labeled ConfigMap: {cm_name}")
-        wait_for_deployment_args_contain(
-            admin_client=admin_client, namespace=model_registry_namespace, expected_substring=cm_name
-        )
+        wait_for_deployment_args_contain(namespace=model_registry_namespace, expected_substring=cm_name)
         wait_for_model_catalog_pod_ready_after_deletion(
             client=admin_client, model_registry_namespace=model_registry_namespace
         )
@@ -65,9 +63,7 @@ def labeled_configmap_alpha(
         yield created_cm
 
     LOGGER.info(f"Teardown: waiting for deployment to reconcile after deleting {cm_name}")
-    wait_for_deployment_args_not_contain(
-        admin_client=admin_client, namespace=model_registry_namespace, unwanted_substring=cm_name
-    )
+    wait_for_deployment_args_not_contain(namespace=model_registry_namespace, unwanted_substring=cm_name)
     wait_for_model_catalog_pod_ready_after_deletion(
         client=admin_client, model_registry_namespace=model_registry_namespace
     )
@@ -102,9 +98,7 @@ def labeled_configmap_beta(
 
     with cm as created_cm:
         LOGGER.info(f"Created labeled ConfigMap: {cm_name}")
-        wait_for_deployment_args_contain(
-            admin_client=admin_client, namespace=model_registry_namespace, expected_substring=cm_name
-        )
+        wait_for_deployment_args_contain(namespace=model_registry_namespace, expected_substring=cm_name)
         wait_for_model_catalog_pod_ready_after_deletion(
             client=admin_client, model_registry_namespace=model_registry_namespace
         )
@@ -117,9 +111,7 @@ def labeled_configmap_beta(
         yield created_cm
 
     LOGGER.info(f"Teardown: waiting for deployment to reconcile after deleting {cm_name}")
-    wait_for_deployment_args_not_contain(
-        admin_client=admin_client, namespace=model_registry_namespace, unwanted_substring=cm_name
-    )
+    wait_for_deployment_args_not_contain(namespace=model_registry_namespace, unwanted_substring=cm_name)
     wait_for_model_catalog_pod_ready_after_deletion(
         client=admin_client, model_registry_namespace=model_registry_namespace
     )

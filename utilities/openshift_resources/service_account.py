@@ -5,7 +5,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from utilities.openshift_resources._sync import _run_sync
 from utilities.openshift_resources.namespace_scoped_resource import NamespaceScopedResource
+from utilities.openshift_resources.oc import run_oc
+from utilities.openshift_resources.resource_dict import ResourceDict
 
 
 class ServiceAccount(NamespaceScopedResource):
@@ -49,12 +52,12 @@ class ServiceAccount(NamespaceScopedResource):
 
         return resource
 
-    async def create_service_account_token(self, expiration_seconds: int = 86400) -> dict[str, Any]:
+    async def _async_create_service_account_token(self, expiration_seconds: int = 86400) -> dict[str, Any]:
         """Create a token for this service account via oc create token."""
-        from utilities.openshift_resources.oc import run_oc
-        from utilities.openshift_resources.resource_dict import ResourceDict
-
         result = await run_oc(
             args=["create", "token", self.name, "-n", self.namespace, f"--duration={expiration_seconds}s"],
         )
         return ResourceDict({"status": {"token": result.stdout.strip()}})  # noqa: FCN001
+
+    def create_service_account_token(self, expiration_seconds: int = 86400) -> dict[str, Any]:
+        return _run_sync(coro=self._async_create_service_account_token(expiration_seconds=expiration_seconds))

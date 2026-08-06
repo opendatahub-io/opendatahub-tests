@@ -20,7 +20,7 @@ import structlog
 import yaml
 
 from utilities.openshift_resources._sync import _run_sync
-from utilities.openshift_resources.client import ApiClient, _k8s_plural, api_path
+from utilities.openshift_resources.client import ApiClient, api_path
 from utilities.openshift_resources.oc import OCError, ResourceNotFoundError, oc_get_json, run_oc
 from utilities.openshift_resources.resource_dict import ResourceDict
 
@@ -28,7 +28,7 @@ logger = structlog.get_logger()
 
 # -- SIGINT / cleanup safety ----------------------------------------------
 
-_ACTIVE_RESOURCES: set[ClusterScopedResource] = set()
+_ACTIVE_RESOURCES: set = set()
 
 
 def _atexit_cleanup() -> None:
@@ -45,6 +45,43 @@ def _atexit_cleanup() -> None:
 
 
 atexit.register(_atexit_cleanup)  # noqa: FCN001
+
+
+_API_RESOURCES_CACHE: dict[str, str] | None = None
+
+
+def _api_resource_name(kind: str) -> str:
+    """Return the REST resource name for a kind by querying `oc api-resources`.
+
+    Results are cached after the first call. Raises RuntimeError if the
+    cluster is unreachable or the kind is not found.
+    """
+    global _API_RESOURCES_CACHE
+    if _API_RESOURCES_CACHE is None:
+        try:
+            result = subprocess.run(
+                ["oc", "api-resources", "--no-headers"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=False,
+            )
+            if result.returncode != 0:
+                raise RuntimeError(f"oc api-resources failed (rc={result.returncode}): {result.stderr.strip()}")
+            _API_RESOURCES_CACHE = {}
+            for line in result.stdout.splitlines():
+                parts = line.split()
+                if len(parts) >= 3:
+                    _API_RESOURCES_CACHE[parts[-1]] = parts[0]
+        except FileNotFoundError:
+            raise RuntimeError("oc binary not found on PATH")
+        except subprocess.TimeoutExpired:
+            raise RuntimeError("oc api-resources timed out — is the cluster reachable?")
+
+    name = _API_RESOURCES_CACHE.get(kind)
+    if name is None:
+        raise RuntimeError(f"Kind {kind!r} not found in api-resources — is the CRD installed?")
+    return name
 
 
 async def _collect(async_gen: AsyncGenerator) -> list:
@@ -93,7 +130,8 @@ class ClusterScopedResource:
     def _resource_plural(cls) -> str:
         if hasattr(cls, "plural"):
             return cls.plural
-        return _k8s_plural(kind=cls.kind)
+        cls.plural = _api_resource_name(kind=cls.kind)
+        return cls.plural
 
     def __init__(
         self,
@@ -157,8 +195,8 @@ class ClusterScopedResource:
             )
 
     async def _async_wait_until_exists(self, timeout: int = 300, poll_interval: int = 5) -> None:
-        deadline = asyncio.get_event_loop().time() + timeout
-        while asyncio.get_event_loop().time() < deadline:
+        deadline = asyncio.get_running_loop().time() + timeout
+        while asyncio.get_running_loop().time() < deadline:
             if await self._async_exists():
                 return
             await asyncio.sleep(poll_interval)
@@ -321,8 +359,8 @@ class ClusterScopedResource:
         poll_interval: int = 5,
         stop_condition: str | None = None,
     ) -> None:
-        deadline = asyncio.get_event_loop().time() + timeout
-        while asyncio.get_event_loop().time() < deadline:
+        deadline = asyncio.get_running_loop().time() + timeout
+        while asyncio.get_running_loop().time() < deadline:
             try:
                 conditions = (await self._get_json()).get("status", {}).get("conditions", [])
                 for cond in conditions:
@@ -344,8 +382,8 @@ class ClusterScopedResource:
         poll_interval: int = 5,
         stop_status: str | None = None,
     ) -> None:
-        deadline = asyncio.get_event_loop().time() + timeout
-        while asyncio.get_event_loop().time() < deadline:
+        deadline = asyncio.get_running_loop().time() + timeout
+        while asyncio.get_running_loop().time() < deadline:
             try:
                 phase = (await self._get_json()).get("status", {}).get("phase")
                 if phase == status:
@@ -358,8 +396,8 @@ class ClusterScopedResource:
         raise TimeoutError(f"{self.kind}/{self.name}: status {status} not reached within {timeout}s")
 
     async def _async_wait_deleted(self, timeout: int = 120, poll_interval: int = 5) -> None:
-        deadline = asyncio.get_event_loop().time() + timeout
-        while asyncio.get_event_loop().time() < deadline:
+        deadline = asyncio.get_running_loop().time() + timeout
+        while asyncio.get_running_loop().time() < deadline:
             if not await self._async_exists():
                 return
             await asyncio.sleep(poll_interval)
@@ -550,6 +588,27 @@ class ClusterScopedResource:
             resource["metadata"]["labels"] = self._label
         if self._annotations:
             resource["metadata"]["annotations"] = self._annotations
+
+        for camel, attr in getattr(self, "_TOP_REQUIRED", {}).items():
+            resource[camel] = getattr(self, attr)
+        for camel, attr in getattr(self, "_TOP_OPTIONAL", {}).items():
+            value = getattr(self, attr)
+            if value is not None:
+                resource[camel] = value
+
+        spec_required = getattr(self, "_SPEC_REQUIRED", {})
+        spec_optional = getattr(self, "_SPEC_OPTIONAL", {})
+        if spec_required or spec_optional:
+            spec: dict[str, Any] = {}
+            for camel, attr in spec_required.items():
+                spec[camel] = getattr(self, attr)
+            for camel, attr in spec_optional.items():
+                value = getattr(self, attr)
+                if value is not None:
+                    spec[camel] = value
+            if spec:
+                resource["spec"] = spec
+
         return resource
 
     async def _write(self, resource_dict: dict[str, Any], verb: str) -> Self:

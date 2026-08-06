@@ -3,7 +3,6 @@ from typing import Any
 
 import requests
 import structlog
-from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from timeout_sampler import retry
 
@@ -19,18 +18,16 @@ from utilities.openshift_resources.pod import Pod
 LOGGER = structlog.get_logger(name=__name__)
 
 
-def get_postgres_pod_in_namespace(admin_client: DynamicClient, namespace: str = "rhoai-model-registries") -> Pod:
+def get_postgres_pod_in_namespace(namespace: str = "rhoai-model-registries", **kwargs: Any) -> Pod:
     """Get the PostgreSQL pod for model catalog database."""
     postgres_pods = list(
-        Pod.list_resources(
-            client=admin_client, namespace=namespace, label_selector="app.kubernetes.io/name=model-catalog-postgres"
-        )
+        Pod.list_resources(namespace=namespace, label_selector="app.kubernetes.io/name=model-catalog-postgres")
     )
     assert postgres_pods, f"No PostgreSQL pod found in namespace {namespace}"
     return postgres_pods[0]
 
 
-def execute_database_query(admin_client: DynamicClient, query: str, namespace: str = "rhoai-model-registries") -> str:
+def execute_database_query(query: str, namespace: str = "rhoai-model-registries", **kwargs: Any) -> str:
     """
     Execute a SQL query against the model catalog database.
 
@@ -41,7 +38,7 @@ def execute_database_query(admin_client: DynamicClient, query: str, namespace: s
     Returns:
         Raw database query result as string
     """
-    postgres_pod = get_postgres_pod_in_namespace(admin_client=admin_client, namespace=namespace)
+    postgres_pod = get_postgres_pod_in_namespace(namespace=namespace)
 
     return postgres_pod.execute(
         command=["psql", "-U", "catalog_user", "-d", "model_catalog", "-c", query],

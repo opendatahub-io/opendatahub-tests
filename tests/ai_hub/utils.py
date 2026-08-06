@@ -932,8 +932,8 @@ def execute_get_command_with_retry(
     return execute_get_command(url=url, headers=headers, verify=verify, params=params)
 
 
-def get_endpoint_ips(client: DynamicClient, namespace: str, service_name: str = "model-catalog") -> set[str]:
-    endpoints = Endpoints(name=service_name, namespace=namespace, client=client)
+def get_endpoint_ips(namespace: str, service_name: str = "model-catalog") -> set[str]:
+    endpoints = Endpoints(name=service_name, namespace=namespace)
     assert endpoints.exists, f"Endpoints for service {service_name} not found in {namespace}"
     ips: set[str] = set()
     for subset in endpoints.instance.subsets or []:
@@ -947,10 +947,8 @@ class EndpointsNotUpdated(Exception):
 
 
 @retry(wait_timeout=60, sleep=5, exceptions_dict={EndpointsNotUpdated: []})
-def wait_for_endpoints_updated(
-    client: DynamicClient, namespace: str, old_ips: set[str], service_name: str = "model-catalog"
-) -> bool:
-    current_ips = get_endpoint_ips(client=client, namespace=namespace, service_name=service_name)
+def wait_for_endpoints_updated(namespace: str, old_ips: set[str], service_name: str = "model-catalog") -> bool:
+    current_ips = get_endpoint_ips(namespace=namespace, service_name=service_name)
     LOGGER.info(f"Endpoint check: old_ips={old_ips}, current_ips={current_ips}")
     if current_ips and not current_ips & old_ips:
         return True
@@ -960,9 +958,8 @@ def wait_for_endpoints_updated(
 def wait_for_model_catalog_pod_ready_after_deletion(
     client: DynamicClient, model_registry_namespace: str, consecutive_try: int = 6
 ) -> bool:
-    old_endpoint_ips = get_endpoint_ips(client=client, namespace=model_registry_namespace)
+    old_endpoint_ips = get_endpoint_ips(namespace=model_registry_namespace)
     model_catalog_pods = get_model_catalog_pod(
-        client=client,
         model_registry_namespace=model_registry_namespace,
     )
     # We can wait for the pods to reflect updated catalog, however, deleting them ensures the updated config is
@@ -973,22 +970,22 @@ def wait_for_model_catalog_pod_ready_after_deletion(
         except NotFoundError:
             pass
     # After the deletion, we need to wait for the pod to be spinned up and get to ready state.
-    assert wait_for_model_catalog_pod_created(client=client, model_registry_namespace=model_registry_namespace)
+    assert wait_for_model_catalog_pod_created(model_registry_namespace=model_registry_namespace)
     wait_for_pods_running(
         admin_client=client, namespace_name=model_registry_namespace, number_of_consecutive_checks=consecutive_try
     )
-    current_ips = get_endpoint_ips(client=client, namespace=model_registry_namespace)
+    current_ips = get_endpoint_ips(namespace=model_registry_namespace)
     if current_ips & old_endpoint_ips:
         LOGGER.warning(
             f"Service endpoints still point to old pod IPs after restart: old={old_endpoint_ips}, current={current_ips}"
         )
-    wait_for_endpoints_updated(client=client, namespace=model_registry_namespace, old_ips=old_endpoint_ips)
+    wait_for_endpoints_updated(namespace=model_registry_namespace, old_ips=old_endpoint_ips)
     return True
 
 
 @retry(wait_timeout=30, sleep=5, exceptions_dict={PodNotFound: []})
-def wait_for_model_catalog_pod_created(client: DynamicClient, model_registry_namespace: str) -> bool:
-    pods = get_model_catalog_pod(client=client, model_registry_namespace=model_registry_namespace)
+def wait_for_model_catalog_pod_created(model_registry_namespace: str) -> bool:
+    pods = get_model_catalog_pod(model_registry_namespace=model_registry_namespace)
     if pods:
         return True
     raise PodNotFound("Model catalog pod not found")

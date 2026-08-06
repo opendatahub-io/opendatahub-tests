@@ -1,6 +1,7 @@
+from typing import Any
+
 import structlog
 import yaml
-from kubernetes.dynamic import DynamicClient
 from timeout_sampler import TimeoutSampler
 
 from tests.ai_hub.constants import CATALOG_CONTAINER
@@ -78,7 +79,6 @@ def get_deployment_catalog_args(namespace: str) -> list[str]:
     """Retrieve the container args from the model-catalog deployment.
 
     Args:
-        admin_client: Kubernetes dynamic client.
         namespace: Namespace of the model-catalog deployment.
 
     Returns:
@@ -98,15 +98,14 @@ def get_deployment_catalog_args(namespace: str) -> list[str]:
 
 
 def wait_for_deployment_args_contain(
-    admin_client: DynamicClient,
     namespace: str,
     expected_substring: str,
     timeout: int = 120,
+    **kwargs: Any,
 ) -> None:
     """Wait until the model-catalog deployment args contain the expected substring.
 
     Args:
-        admin_client: Kubernetes dynamic client.
         namespace: Namespace of the model-catalog deployment.
         expected_substring: Substring expected to appear in deployment args.
         timeout: Maximum time to wait in seconds.
@@ -115,7 +114,6 @@ def wait_for_deployment_args_contain(
         wait_timeout=timeout,
         sleep=10,
         func=get_deployment_catalog_args,
-        admin_client=admin_client,
         namespace=namespace,
     ):
         if any(expected_substring in arg for arg in sample):
@@ -123,15 +121,14 @@ def wait_for_deployment_args_contain(
 
 
 def wait_for_deployment_args_not_contain(
-    admin_client: DynamicClient,
     namespace: str,
     unwanted_substring: str,
     timeout: int = 120,
+    **kwargs: Any,
 ) -> None:
     """Wait until the model-catalog deployment args no longer contain the substring.
 
     Args:
-        admin_client: Kubernetes dynamic client.
         namespace: Namespace of the model-catalog deployment.
         unwanted_substring: Substring that should no longer appear in deployment args.
         timeout: Maximum time to wait in seconds.
@@ -140,7 +137,6 @@ def wait_for_deployment_args_not_contain(
         wait_timeout=timeout,
         sleep=10,
         func=get_deployment_catalog_args,
-        admin_client=admin_client,
         namespace=namespace,
     ):
         if not any(unwanted_substring in arg for arg in sample):

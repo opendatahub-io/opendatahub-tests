@@ -545,7 +545,6 @@ def model_registry_linked_inference_service(
 
 @pytest.fixture(scope="class")
 def model_registry_predictor_pod(
-    admin_client: DynamicClient,
     model_registry_deployment_ns: Namespace,
     model_registry_inference_service: InferenceService,
 ) -> Pod:
@@ -556,7 +555,6 @@ def model_registry_predictor_pod(
     label_selector = f"serving.kserve.io/inferenceservice={model_registry_inference_service.name}"
 
     pods = Pod.list_resources(
-        client=admin_client,
         namespace=namespace,
         label_selector=label_selector,
     )

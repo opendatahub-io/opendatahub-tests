@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import random
 import ssl
 import tempfile
 from pathlib import Path
@@ -20,6 +19,7 @@ from utilities.openshift_resources.oc import (
     ForbiddenError,
     OCError,
     ResourceNotFoundError,
+    _jitter,
     run_oc,
 )
 
@@ -28,16 +28,6 @@ logger = structlog.get_logger()
 _IN_CLUSTER_TOKEN_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/token"
 _IN_CLUSTER_CA_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
 _IN_CLUSTER_NAMESPACE_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
-
-
-def _k8s_plural(kind: str) -> str:
-    """Derive the Kubernetes plural resource name from a kind."""
-    lower = kind.lower()
-    if lower.endswith(("s", "x", "z", "ch", "sh")):
-        return f"{lower}es"
-    if lower.endswith("y") and len(lower) > 1 and lower[-2] not in "aeiou":
-        return f"{lower[:-1]}ies"
-    return f"{lower}s"
 
 
 def api_path(
@@ -105,7 +95,7 @@ class ApiClient:
                         body = {"message": text} if text else {}
 
                     if resp.status in _RETRYABLE_STATUSES and attempt < self._max_retries:
-                        wait = self._retry_backoff * (2**attempt) + random.uniform(0, 0.1)
+                        wait = self._retry_backoff * (2**attempt) + _jitter()
                         logger.warning(event="api_retry", status=resp.status, attempt=attempt + 1, wait=f"{wait:.1f}s")
                         await asyncio.sleep(wait)
                         continue
@@ -118,7 +108,7 @@ class ApiClient:
             except (TimeoutError, aiohttp.ClientError) as exc:
                 last_error = exc
                 if attempt < self._max_retries:
-                    wait = self._retry_backoff * (2**attempt) + random.uniform(0, 0.1)
+                    wait = self._retry_backoff * (2**attempt) + _jitter()
                     logger.warning(event="api_retry_connection", error=str(exc), attempt=attempt + 1)
                     await asyncio.sleep(wait)
                     continue

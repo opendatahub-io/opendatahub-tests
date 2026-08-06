@@ -285,7 +285,6 @@ def huggingface_serving_runtime(
 
 @pytest.fixture(scope="class")
 def huggingface_predictor_pod(
-    admin_client: DynamicClient,
     hugging_face_deployment_ns: Namespace,
     huggingface_inference_service: InferenceService,
 ) -> Pod:
@@ -296,7 +295,6 @@ def huggingface_predictor_pod(
     label_selector = f"serving.kserve.io/inferenceservice={huggingface_inference_service.name}"
 
     pods = Pod.list_resources(
-        client=admin_client,
         namespace=namespace,
         label_selector=label_selector,
     )

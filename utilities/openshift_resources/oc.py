@@ -14,6 +14,10 @@ import structlog
 logger = structlog.get_logger()
 
 
+def _jitter() -> float:
+    return random.uniform(a=0, b=0.1)
+
+
 _SENSITIVE_FLAGS: set[str] = {"--token", "-p"}
 
 
@@ -145,7 +149,7 @@ async def run_oc(
 
         if check and proc.returncode != 0:
             if attempt < retries and _is_retryable(stderr):
-                wait = retry_backoff * (2**attempt) + random.uniform(0, 0.1)
+                wait = retry_backoff * (2**attempt) + _jitter()
                 logger.warning(event="run_oc_retry", stderr=stderr, attempt=attempt + 1, wait=f"{wait:.1f}s")
                 await asyncio.sleep(wait)
                 continue

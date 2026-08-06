@@ -36,7 +36,7 @@ def model_catalog_postgres_secret_values(model_catalog_postgres_secret: Secret) 
 
 @pytest.fixture(scope="class")
 def recreated_model_catalog_postgres_secret(
-    admin_client: DynamicClient, model_catalog_postgres_secret: Secret
+    model_catalog_postgres_secret: Secret,
 ) -> dict[str, str]:
     """Delete model-catalog-postgres secret and wait for it to be recreated"""
     model_registry_namespace = py_config["model_registry_namespace"]
@@ -53,7 +53,6 @@ def recreated_model_catalog_postgres_secret(
         wait_timeout=120,
         sleep=10,
         func=Secret,
-        client=admin_client,
         name=resource_name,
         namespace=model_registry_namespace,
     ):
@@ -99,7 +98,6 @@ def deleted_network_policy_original_spec(request: pytest.FixtureRequest, model_r
 @pytest.fixture(scope="class")
 def recreated_network_policy(
     request: pytest.FixtureRequest,
-    admin_client: DynamicClient,
     deleted_network_policy_original_spec,
     model_registry_namespace: str,
 ) -> NetworkPolicy:
@@ -108,7 +106,6 @@ def recreated_network_policy(
         wait_timeout=15,
         sleep=5,
         func=NetworkPolicy,
-        client=admin_client,
         name=request.param,
         namespace=model_registry_namespace,
     ):
@@ -120,7 +117,6 @@ def recreated_network_policy(
 @pytest.fixture()
 def recreated_network_policy_scope_function(
     request: pytest.FixtureRequest,
-    admin_client: DynamicClient,
     deleted_network_policy_original_spec,
     model_registry_namespace: str,
 ) -> NetworkPolicy:
@@ -129,7 +125,6 @@ def recreated_network_policy_scope_function(
         wait_timeout=60,
         sleep=5,
         func=NetworkPolicy,
-        client=admin_client,
         name=request.param,
         namespace=model_registry_namespace,
     ):

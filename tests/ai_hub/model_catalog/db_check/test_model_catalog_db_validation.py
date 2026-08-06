@@ -101,28 +101,26 @@ class TestModelCatalogLoaderHealth:
 
 @pytest.mark.post_upgrade
 class TestModelCatalogPostgresEphemeralStorage:
-    def test_no_pvc_for_catalog_postgres(self, admin_client: DynamicClient, model_registry_namespace: str) -> None:
+    def test_no_pvc_for_catalog_postgres(self, model_registry_namespace: str) -> None:
         """Given a model catalog postgres deployment
         When listing PVCs in the model registry namespace
         Then no PVC should exist for catalog postgres
         """
         pvcs = list(
-            PersistentVolumeClaim.get(
-                client=admin_client,
+            PersistentVolumeClaim.list_resources(
                 namespace=model_registry_namespace,
                 label_selector="component=model-catalog",
             )
         )
         assert not pvcs, f"Catalog postgres should not have a PVC, found: {[pvc.name for pvc in pvcs]}"
 
-    def test_postgres_uses_emptydir_volume(self, admin_client: DynamicClient, model_registry_namespace: str) -> None:
+    def test_postgres_uses_emptydir_volume(self, model_registry_namespace: str) -> None:
         """Given a model catalog postgres deployment
         When inspecting the volume configuration
         Then the data volume should be emptyDir, not a PVC
         """
         deployments = list(
             Deployment.list_resources(
-                client=admin_client,
                 namespace=model_registry_namespace,
                 label_selector="app.kubernetes.io/name=model-catalog-postgres",
             )
@@ -294,7 +292,6 @@ class TestModelCatalogDBNetworkPolicyNoReconciliationStorm:
 class TestNonCatalogNetworkPolicyNotRecreated:
     def test_non_catalog_network_policy_not_recreated(
         self,
-        admin_client: DynamicClient,
         non_catalog_network_policy,
         model_registry_namespace: str,
     ):
@@ -305,7 +302,6 @@ class TestNonCatalogNetworkPolicyNotRecreated:
                 wait_timeout=30,
                 sleep=5,
                 func=NetworkPolicy,
-                client=admin_client,
                 name=non_catalog_network_policy.name,
                 namespace=model_registry_namespace,
             ):
