@@ -50,7 +50,7 @@ def model_registry_instance_rest_endpoint(
     return [get_endpoint_from_mr_service(svc=svc, protocol=Protocols.REST) for svc in mr_services]
 
 
-@retry(wait_timeout=60, sleep=5, exceptions_dict={ServiceException: []})
+@retry(wait_timeout=60, sleep=5, exceptions_dict={ServiceException: []}, print_func_args=False)
 def _model_registry_client_with_retry(**kwargs: Any) -> ModelRegistryClient:
     """Build a ModelRegistryClient, retrying transient 503s while the MR route warms up."""
     return ModelRegistryClient(**kwargs)
