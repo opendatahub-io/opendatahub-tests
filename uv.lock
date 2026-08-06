@@ -1267,22 +1267,55 @@ wheels = [
 
 [[package]]
 name = "ipykernel"
+version = "6.29.5+ppc64le1"
+source = { registry = "https://wheels.developerfirst.ibm.com/ppc64le/linux/+simple/" }
+resolution-markers = [
+    "platform_machine == 'ppc64le' and sys_platform == 'win32'",
+    "platform_machine == 'ppc64le' and sys_platform == 'emscripten'",
+    "platform_machine == 'ppc64le' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+]
+dependencies = [
+    { name = "appnope", marker = "platform_machine == 'ppc64le' and sys_platform == 'darwin'" },
+    { name = "comm", marker = "platform_machine == 'ppc64le'" },
+    { name = "debugpy", marker = "platform_machine == 'ppc64le'" },
+    { name = "ipython", marker = "platform_machine == 'ppc64le'" },
+    { name = "jupyter-client", marker = "platform_machine == 'ppc64le'" },
+    { name = "jupyter-core", marker = "platform_machine == 'ppc64le'" },
+    { name = "matplotlib-inline", marker = "platform_machine == 'ppc64le'" },
+    { name = "nest-asyncio", marker = "platform_machine == 'ppc64le'" },
+    { name = "packaging", marker = "platform_machine == 'ppc64le'" },
+    { name = "psutil", marker = "platform_machine == 'ppc64le'" },
+    { name = "pyzmq", marker = "platform_machine == 'ppc64le'" },
+    { name = "tornado", marker = "platform_machine == 'ppc64le'" },
+    { name = "traitlets", marker = "platform_machine == 'ppc64le'" },
+]
+wheels = [
+    { url = "https://wheels.developerfirst.ibm.com/ppc64le/linux/+f/ac6/5142e9f6f2989/ipykernel-6.29.5+ppc64le1-py3-none-any.whl", hash = "sha256:ac65142e9f6f298902849b6d6b4848e1da83f67a568a0f75ac3409d854ccac5a" },
+]
+
+[[package]]
+name = "ipykernel"
 version = "7.3.0"
 source = { registry = "https://pypi.org/simple/" }
+resolution-markers = [
+    "platform_machine != 'ppc64le' and sys_platform == 'win32'",
+    "platform_machine != 'ppc64le' and sys_platform == 'emscripten'",
+    "platform_machine != 'ppc64le' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+]
 dependencies = [
-    { name = "appnope", marker = "sys_platform == 'darwin'" },
-    { name = "comm" },
-    { name = "debugpy" },
-    { name = "ipython" },
-    { name = "jupyter-client" },
-    { name = "jupyter-core" },
-    { name = "matplotlib-inline" },
-    { name = "nest-asyncio2" },
-    { name = "packaging" },
-    { name = "psutil" },
-    { name = "pyzmq" },
-    { name = "tornado" },
-    { name = "traitlets" },
+    { name = "appnope", marker = "platform_machine != 'ppc64le' and sys_platform == 'darwin'" },
+    { name = "comm", marker = "platform_machine != 'ppc64le'" },
+    { name = "debugpy", marker = "platform_machine != 'ppc64le'" },
+    { name = "ipython", marker = "platform_machine != 'ppc64le'" },
+    { name = "jupyter-client", marker = "platform_machine != 'ppc64le'" },
+    { name = "jupyter-core", marker = "platform_machine != 'ppc64le'" },
+    { name = "matplotlib-inline", marker = "platform_machine != 'ppc64le'" },
+    { name = "nest-asyncio2", marker = "platform_machine != 'ppc64le'" },
+    { name = "packaging", marker = "platform_machine != 'ppc64le'" },
+    { name = "psutil", marker = "platform_machine != 'ppc64le'" },
+    { name = "pyzmq", marker = "platform_machine != 'ppc64le'" },
+    { name = "tornado", marker = "platform_machine != 'ppc64le'" },
+    { name = "traitlets", marker = "platform_machine != 'ppc64le'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/3d/c4/e4a38f579de4225a561305666f7541cdabb30075def2aa1ac17bd73c1fb5/ipykernel-7.3.0.tar.gz", hash = "sha256:9acaaaf97d16355166e4085afe9d225bfbdf2b7ef520f9df3be8f2b248275e09", size = 184899, upload-time = "2026-06-10T08:41:25.481Z" }
 wheels = [
@@ -2177,7 +2210,8 @@ dependencies = [
     { name = "grpcio-reflection", version = "1.80.0", source = { registry = "https://pypi.org/simple/" }, marker = "platform_machine == 'ppc64le'" },
     { name = "grpcio-reflection", version = "1.83.0", source = { registry = "https://pypi.org/simple/" }, marker = "platform_machine != 'ppc64le'" },
     { name = "huggingface-hub" },
-    { name = "ipykernel" },
+    { name = "ipykernel", version = "6.29.5+ppc64le1", source = { registry = "https://wheels.developerfirst.ibm.com/ppc64le/linux/+simple/" }, marker = "platform_machine == 'ppc64le'" },
+    { name = "ipykernel", version = "7.3.0", source = { registry = "https://pypi.org/simple/" }, marker = "platform_machine != 'ppc64le'" },
     { name = "ipython" },
     { name = "jira" },
     { name = "langchain-community" },
@@ -2238,7 +2272,8 @@ requires-dist = [
     { name = "grpcio-reflection", marker = "platform_machine != 'ppc64le'" },
     { name = "grpcio-reflection", marker = "platform_machine == 'ppc64le'", specifier = ">=1.60.0,<1.81.0" },
     { name = "huggingface-hub", specifier = ">=1.2.3" },
-    { name = "ipykernel", specifier = ">=7.3.0" },
+    { name = "ipykernel", marker = "platform_machine != 'ppc64le'", specifier = ">=7.3.0", index = "https://pypi.org/simple/" },
+    { name = "ipykernel", marker = "platform_machine == 'ppc64le'", specifier = "==6.29.5", index = "https://wheels.developerfirst.ibm.com/ppc64le/linux/+simple/" },
     { name = "ipython", specifier = ">=8.18.1" },
     { name = "jira", specifier = ">=3.8.0" },
     { name = "langchain-community", specifier = "<0.4.2" },
