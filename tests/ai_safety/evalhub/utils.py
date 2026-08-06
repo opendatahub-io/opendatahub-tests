@@ -814,7 +814,7 @@ def build_vllm_arc_easy_benchmark(num_examples: int = 10) -> dict:
             "tokenizer": "google/flan-t5-small",
         },
         "hardware_config": {
-            "hardware_profile_ref": {"name": EVALHUB_DEFAULT_HARDWARE_PROFILE},
+            "hardware_profile_name": EVALHUB_DEFAULT_HARDWARE_PROFILE,
         },
     }
 
@@ -840,9 +840,6 @@ def build_evalhub_multi_benchmark_job_payload(
                     "num_examples": 8,
                     "tokenizer": "google/flan-t5-small",
                 },
-                "hardware_config": {
-                    "hardware_profile_ref": {"name": EVALHUB_DEFAULT_HARDWARE_PROFILE},
-                },
             },
             {
                 "id": "arc_easy",
@@ -850,9 +847,6 @@ def build_evalhub_multi_benchmark_job_payload(
                 "parameters": {
                     "num_examples": 3,
                     "tokenizer": "google/flan-t5-small",
-                },
-                "hardware_config": {
-                    "hardware_profile_ref": {"name": EVALHUB_DEFAULT_HARDWARE_PROFILE},
                 },
             },
         ],
