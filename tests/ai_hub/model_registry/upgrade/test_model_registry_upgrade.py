@@ -98,7 +98,7 @@ class TestPostUpgradeModelRegistry:
     ):
         # the following is valid for 2.22+
         api_version = model_registry_instance[0].instance.apiVersion
-        expected_version = f"{ModelRegistry.ApiGroup.MODELREGISTRY_OPENDATAHUB_IO}/{ModelRegistry.ApiVersion.V1BETA1}"
+        expected_version = ModelRegistry.full_api_version()
         assert api_version == expected_version
 
     @pytest.mark.post_upgrade
