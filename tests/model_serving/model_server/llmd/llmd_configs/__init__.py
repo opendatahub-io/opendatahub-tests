@@ -17,12 +17,14 @@ from .config_models import (
     TinyLlamaS3GpuConfig,
 )
 from .config_multinode_moe import MultinodeMoeDpEpConfig
+from .config_multinode_moe_dp_ep_prefill_decode import MultinodeMoeDpEPPrefillDecodeConfig
 from .config_precise_prefix_cache import PrecisePrefixCacheProducerConfig, PrecisePrefixCacheScorerConfig
 from .config_singlenode_prefill_decode import SingleNodePrefillDecodeConfig
 
 __all__ = [
     "EstimatedPrefixCacheConfig",
     "LLMISvcConfig",
+    "MultinodeMoeDpEPPrefillDecodeConfig",
     "MultinodeMoeDpEpConfig",
     "PrecisePrefixCacheProducerConfig",
     "PrecisePrefixCacheScorerConfig",
