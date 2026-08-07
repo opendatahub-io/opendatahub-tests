@@ -46,6 +46,7 @@ RUN if [[ $(uname -m) == "ppc64le" ]]; then \
 COPY --from=quay.io/securesign/cli-cosign@sha256:3df09cd1b4915e61d4de9c67416827b94e5900763e936e2909fd4d78e1ead8e8 /usr/local/bin/cosign /usr/bin/cosign
 
 RUN useradd -ms /bin/bash $USER && chown -R $USER:$USER $HOME
+RUN dnf install gcc-c++ -y
 USER $USER
 WORKDIR $HOME
 
