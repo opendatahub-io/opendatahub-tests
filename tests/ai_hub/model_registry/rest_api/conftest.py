@@ -37,7 +37,7 @@ from tests.ai_hub.model_registry.rest_api.utils import (
     execute_model_registry_patch_command,
     generate_ca_and_server_cert,
     get_mr_deployment,
-    is_transient_server_error,
+    is_transient_warmup_error,
     register_model_rest_api,
 )
 from tests.ai_hub.utils import (
@@ -65,7 +65,7 @@ POSTGRES_FILE_PATH: str = "/etc/server-cert"
     sleep=5,
     exceptions_dict={
         requests.exceptions.ConnectionError: [],
-        ModelRegistryResourceNotCreated: [is_transient_server_error],
+        ModelRegistryResourceNotCreated: [is_transient_warmup_error],
     },
 )
 def _register_model_rest_api_with_retry(
