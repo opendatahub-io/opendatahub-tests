@@ -83,6 +83,8 @@ class RuntimeTemplates:
     CAIKIT_STANDALONE_SERVING: str = "caikit-standalone-serving-template"
     TGIS_GRPC_SERVING: str = "tgis-grpc-serving-template"
     VLLM_CUDA: str = "vllm-cuda-runtime-template"
+    VLLM_FAST_1_CUDA: str = "vllm-fast-1-cuda-runtime-template"
+    VLLM_FAST_2_CUDA: str = "vllm-fast-2-cuda-runtime-template"
     VLLM_ROCM: str = "vllm-rocm-runtime-template"
     VLLM_GAUDI: str = "vllm-gaudi-runtime-template"
     VLLM_SPYRE: str = "vllm-spyre-x86-runtime-template"
@@ -90,6 +92,7 @@ class RuntimeTemplates:
     VLLM_CPU_POWER: str = "vllm-cpu-power-runtime-template"
     VLLM_CPU_Z: str = "vllm-cpu-z-runtime-template"
     MLSERVER: str = f"{ModelFormat.MLSERVER}-runtime-template"
+    MLSERVER_CUDA: str = "mlserver-cuda-runtime-template"
     TRITON_REST: str = "triton-rest-runtime-template"
     TRITON_GRPC: str = "triton-grpc-runtime-template"
     GUARDRAILS_DETECTOR_HUGGINGFACE: str = "guardrails-detector-huggingface-serving-template"
@@ -105,6 +108,7 @@ class ModelInferenceRuntime:
     VLLM_RUNTIME: str = f"{ModelFormat.VLLM}-runtime"
     TENSORFLOW_RUNTIME: str = f"{ModelFormat.TENSORFLOW}-runtime"
     MLSERVER_RUNTIME: str = f"{ModelFormat.MLSERVER}-runtime"
+    MLSERVER_CUDA_RUNTIME: str = "mlserver-cuda-runtime"
     AUTOGLUON_RUNTIME: str = f"{ModelFormat.AUTOGLUON}-runtime"
 
 
@@ -150,6 +154,7 @@ class ApiGroups:
     OPENDATAHUB_IO: str = "opendatahub.io"
     KSERVE: str = "serving.kserve.io"
     KUADRANT_IO: str = "kuadrant.io"
+    MCP_KUADRANT_IO: str = "mcp.kuadrant.io"
     MAAS_IO: str = "maas.opendatahub.io"
     INFERENCE_OPENDATAHUB_IO: str = "inference.opendatahub.io"
     AUTH_IO: str = "SERVICES_PLATFORM_OPENDATAHUB_IO"
@@ -188,6 +193,7 @@ class DscComponents:
     MODELREGISTRY: str = "modelregistry"
     OGX: str = "ogx"
     KUEUE: str = "kueue"
+    AIGATEWAY: str = "aigateway"
 
     class ManagementState:
         MANAGED: str = "Managed"
@@ -199,12 +205,14 @@ class DscComponents:
         KSERVE_READY: str = "KserveReady"
         MODEL_MESH_SERVING_READY: str = "ModelMeshServingReady"
         OGX_READY: str = "OGXReady"
+        AIGATEWAY_READY: str = "AIGatewayReady"
 
     COMPONENT_MAPPING: dict[str, str] = {  # noqa: RUF012
         MODELMESHSERVING: ConditionType.MODEL_MESH_SERVING_READY,
         KSERVE: ConditionType.KSERVE_READY,
         MODELREGISTRY: ConditionType.MODEL_REGISTRY_READY,
         OGX: ConditionType.OGX_READY,
+        AIGATEWAY: ConditionType.AIGATEWAY_READY,
     }
 
 
@@ -309,14 +317,6 @@ class ModelCarImage:
     )
     GRANITE_8B_CODE_INSTRUCT: str = "oci://registry.redhat.io/rhelai1/modelcar-granite-8b-code-instruct:1.4"
 
-    # MLServer model car images - update URIs when images are available
-    MLSERVER_SKLEARN: str = "oci://quay.io/jooholee/mlserver-sklearn@sha256:ec9bc6b520909c52bd1d4accc2b2d28adb04981bd4c3ce94f17f23dd573e1f55"  # noqa: E501
-    MLSERVER_XGBOOST: str = "oci://quay.io/jooholee/mlserver-xgboost@sha256:5b6982bdc939b53a7a1210f56aa52bf7de0f0cbc693668db3fd1f496571bff29"  # noqa: E501
-    MLSERVER_LIGHTGBM: str = "oci://quay.io/jooholee/mlserver-lightgbm@sha256:77eb15a2eccefa3756faaf2ee4bc1e63990b746427d323957c461f33a4f1a6a3"  # noqa: E501
-    MLSERVER_ONNX: str = (
-        "oci://quay.io/jooholee/mlserver-onnx@sha256:d0ad00fb6f2caa8f02a0250fc44a576771d0846b2ac8d164ec203b10ec5d604b"  # noqa: E501
-    )
-
 
 class ModelStorage:
     """Model storage URIs for different storage backends."""
@@ -398,11 +398,6 @@ class MinIo:
             **MINIO_BASE_LABELS_ANNOTATIONS,
         }
 
-        MODEL_MESH_MINIO_CONFIG: dict[str, Any] = {  # noqa: RUF012
-            "image": "quay.io/trustyai_testing/modelmesh-minio-examples@sha256:d2ccbe92abf9aa5085b594b2cae6c65de2bf06306c30ff5207956eb949bb49da",  # noqa: E501
-            **MINIO_BASE_CONFIG,
-        }
-
         QWEN_MINIO_CONFIG: dict[str, Any] = {  # noqa: RUF012
             "image": "quay.io/trustyai_testing/hf-llm-minio@sha256:2404a37d578f2a9c7adb3971e26a7438fedbe7e2e59814f396bfa47cd5fe93bb",  # noqa: E501
             **MINIO_BASE_CONFIG,
@@ -423,10 +418,6 @@ class MinIo:
             "args": ["server", "/data"],
             **MINIO_BASE_LABELS_ANNOTATIONS,
         }
-
-    class RunTimeConfig:
-        # TODO: Remove runtime_image once ovms/loan_model_alpha model works with latest ovms
-        IMAGE = "quay.io/opendatahub/openvino_model_server@sha256:564664371d3a21b9e732a5c1b4b40bacad714a5144c0a9aaf675baec4a04b148"  # noqa: E501
 
 
 MODEL_REGISTRY: str = "model-registry"
@@ -483,7 +474,6 @@ class ContainerImages:
         KSERVE: str = (
             "quay.io/jooholee/model-minio@sha256:b9554be19a223830cf792d5de984ccc57fc140b954949f5ffc6560fab977ca7a"
         )
-        MODEL_MESH: str = "quay.io/trustyai_testing/modelmesh-minio-examples@sha256:d2ccbe92abf9aa5085b594b2cae6c65de2bf06306c30ff5207956eb949bb49da"  # noqa: E501
         QWEN: str = "quay.io/trustyai_testing/hf-llm-minio@sha256:2404a37d578f2a9c7adb3971e26a7438fedbe7e2e59814f396bfa47cd5fe93bb"  # noqa: E501
         QWEN_HAP_BPIV2: str = "quay.io/trustyai_testing/qwen2.5-0.5b-instruct-hap-bpiv2-minio@sha256:eac1ca56f62606e887c80b4a358b3061c8d67f0b071c367c0aa12163967d5b2b"  # noqa: E501
         MODEL_REGISTRY: str = (

@@ -6,6 +6,7 @@ from typing import Any, TypedDict
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.config_map import ConfigMap
 from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.namespace import Namespace
 from ocp_resources.role import Role
@@ -13,10 +14,13 @@ from ocp_resources.role_binding import RoleBinding
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_serving.maas_billing.maas_subscription.utils import MAAS_SUBSCRIPTION_NAMESPACE
-from tests.model_serving.maas_billing.utils import verify_maas_gateway_programmed, verify_maas_tenant_ready
+from tests.model_serving.maas_billing.utils import (
+    verify_maas_gateway_programmed,
+    verify_maas_tenant_config_ready,
+)
 from utilities.constants import MAAS_GATEWAY_NAMESPACE, ApiGroups
 from utilities.resources.aitenant import AITenant
-from utilities.resources.tenant import Tenant
+from utilities.resources.maastenantconfig import MaasTenantConfig
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -39,7 +43,26 @@ AITENANT_TEST_OIDC_SPEC = {
 }
 AITENANT_TEST_RBAC_ADMINS = [{"kind": "Group", "name": TEST_RBAC_GROUP_NAME}]
 AIGATEWAY_GATEWAY_CLASS_NAME = "openshift-default"
-AIGATEWAY_BOOTSTRAP_GATEWAY_LISTENERS = [{"name": "http", "port": 80, "protocol": "HTTP"}]
+AIGATEWAY_BOOTSTRAP_GATEWAY_LISTENERS = [
+    {
+        "name": "http",
+        "port": 80,
+        "protocol": "HTTP",
+        "allowedRoutes": {"namespaces": {"from": "All"}},
+    },
+    {
+        "name": "https",
+        "port": 443,
+        "protocol": "HTTPS",
+        "allowedRoutes": {"namespaces": {"from": "All"}},
+        "tls": {
+            "mode": "Terminate",
+            "certificateRefs": [
+                {"group": "", "kind": "Secret", "name": "data-science-gateway-service-tls"},
+            ],
+        },
+    },
+]
 AIGATEWAY_MANAGED_BY_LABEL = "maas.opendatahub.io/managed-by-aitenant"
 AIGATEWAY_TENANT_LABEL = "ai-gateway.opendatahub.io/tenant"
 
@@ -103,16 +126,13 @@ def build_aitenant_spec(
     aitenant_name: str,
     gateway_name: str | None = None,
     oidc: dict[str, Any] | None = None,
-    rbac_admins: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
-    """Build an AITenant spec with gateway, oidc, and rbac fields."""
+    """Build an AITenant spec with gateway and optional oidc fields."""
     spec: dict[str, Any] = {}
     resolved_gateway_name = gateway_name or aitenant_name
     spec["gateway"] = {"name": resolved_gateway_name}
     if oidc is not None:
         spec["oidc"] = oidc
-    if rbac_admins is not None:
-        spec["rbac"] = {"admins": rbac_admins}
     return spec
 
 
@@ -163,9 +183,20 @@ def aitenant_from_spec(
         aitenant_kwargs["gateway"] = aitenant_spec["gateway"]
     if "oidc" in aitenant_spec:
         aitenant_kwargs["oidc"] = aitenant_spec["oidc"]
-    if "rbac" in aitenant_spec:
-        aitenant_kwargs["rbac"] = aitenant_spec["rbac"]
     return AITenant(**aitenant_kwargs)
+
+
+def bootstrap_gateway_infrastructure_configmap_data(gateway_name: str) -> dict[str, str]:
+    """Return Gateway infrastructure ConfigMap data (ClusterIP Service + serving cert)."""
+    return {
+        "service": (
+            "metadata:\n"
+            "  annotations:\n"
+            f'    service.beta.openshift.io/serving-cert-secret-name: "{gateway_name}-service-tls"\n'
+            "spec:\n"
+            "  type: ClusterIP\n"
+        ),
+    }
 
 
 def aitenant_bootstrap_gateway(
@@ -173,16 +204,20 @@ def aitenant_bootstrap_gateway(
     gateway_name: str,
     gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
     teardown: bool = True,
+    infrastructure: dict[str, Any] | None = None,
 ) -> Gateway:
     """Return a bootstrap Gateway that must exist before AITenant reconciliation."""
-    return Gateway(
-        client=admin_client,
-        name=gateway_name,
-        namespace=gateway_namespace,
-        gateway_class_name=AIGATEWAY_GATEWAY_CLASS_NAME,
-        listeners=AIGATEWAY_BOOTSTRAP_GATEWAY_LISTENERS,
-        teardown=teardown,
-    )
+    gateway_kwargs: dict[str, Any] = {
+        "client": admin_client,
+        "name": gateway_name,
+        "namespace": gateway_namespace,
+        "gateway_class_name": AIGATEWAY_GATEWAY_CLASS_NAME,
+        "listeners": AIGATEWAY_BOOTSTRAP_GATEWAY_LISTENERS,
+        "teardown": teardown,
+    }
+    if infrastructure is not None:
+        gateway_kwargs["infrastructure"] = infrastructure
+    return Gateway(**gateway_kwargs)
 
 
 @contextmanager
@@ -192,13 +227,29 @@ def bootstrap_gateway_context(
     gateway_namespace: str,
     teardown: bool,
 ) -> Generator[Gateway]:
-    """Yield a pre-provisioned bootstrap Gateway for the duration of the context."""
-    with aitenant_bootstrap_gateway(
-        admin_client=admin_client,
-        gateway_name=gateway_name,
-        gateway_namespace=gateway_namespace,
-        teardown=teardown,
-    ) as gateway:
+    """Yield a bootstrap Gateway with a ClusterIP infrastructure ConfigMap."""
+    with (
+        ConfigMap(
+            client=admin_client,
+            name=f"{gateway_name}-config",
+            namespace=gateway_namespace,
+            data=bootstrap_gateway_infrastructure_configmap_data(gateway_name=gateway_name),
+            teardown=teardown,
+        ) as infra_config_map,
+        aitenant_bootstrap_gateway(
+            admin_client=admin_client,
+            gateway_name=gateway_name,
+            gateway_namespace=gateway_namespace,
+            teardown=teardown,
+            infrastructure={
+                "parametersRef": {
+                    "group": "",
+                    "kind": "ConfigMap",
+                    "name": infra_config_map.name,
+                },
+            },
+        ) as gateway,
+    ):
         yield gateway
 
 
@@ -231,7 +282,11 @@ def verify_aitenant_bootstrap_children(
     test_context: AITenantTestContext,
     infra_namespace: str = AITENANT_INFRA_NAMESPACE,
 ) -> None:
-    """Assert AITenant bootstrap created the expected namespace, Gateway, and Tenant resources."""
+    """Assert AITenant bootstrap created the expected namespace, Gateway, and MaasTenantConfig.
+
+    AITenant status.gatewayRef tracks the per-tenant pre-provisioned bootstrap gateway.
+    The controller also creates MaasTenantConfig/default-tenant in the tenant namespace.
+    """
     aitenant = test_context["aitenant"]
     aitenant_name = test_context["aitenant_name"]
     tenant_namespace_name = test_context["tenant_namespace_name"]
@@ -299,56 +354,38 @@ def verify_aitenant_bootstrap_children(
     )
     verify_maas_gateway_programmed(gateway=tenant_gateway)
 
-    bootstrapped_tenant = Tenant(
+    bootstrapped_tenant_config = MaasTenantConfig(
         client=admin_client,
         name=AIGATEWAY_BOOTSTRAPPED_TENANT_NAME,
         namespace=tenant_namespace_name,
         ensure_exists=True,
     )
-    assert bootstrapped_tenant.exists, (
-        f"Tenant/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} was not created in '{tenant_namespace_name}'"
+    assert bootstrapped_tenant_config.exists, (
+        f"MaasTenantConfig/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} was not created in '{tenant_namespace_name}'"
     )
-    tenant_labels = dict(bootstrapped_tenant.instance.metadata.labels or {})
-    assert tenant_labels.get(AIGATEWAY_MANAGED_BY_LABEL) is not None, (
-        f"Tenant/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} should have label {AIGATEWAY_MANAGED_BY_LABEL}"
+    tenant_config_labels = dict(bootstrapped_tenant_config.instance.metadata.labels or {})
+    assert tenant_config_labels.get(AIGATEWAY_MANAGED_BY_LABEL) is not None, (
+        f"MaasTenantConfig/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} should have label {AIGATEWAY_MANAGED_BY_LABEL}"
     )
-    tenant_gateway_ref = getattr(bootstrapped_tenant.instance.spec, "gatewayRef", None)
-    assert tenant_gateway_ref is not None, (
-        f"Tenant/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} spec.gatewayRef should be set after bootstrap"
-    )
-    assert tenant_gateway_ref.name == gateway_name, (
-        f"Tenant gatewayRef.name expected {gateway_name!r}, got {tenant_gateway_ref.name!r}"
-    )
-    assert tenant_gateway_ref.namespace == gateway_namespace, (
-        f"Tenant gatewayRef.namespace expected {gateway_namespace!r}, got {tenant_gateway_ref.namespace!r}"
-    )
+    verify_maas_tenant_config_ready(maas_tenant_config=bootstrapped_tenant_config)
     LOGGER.info(
         f"AITenant '{aitenant_name}' bootstrap verified: namespace, gateway, and "
-        f"Tenant/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} exist with expected metadata"
+        f"MaasTenantConfig/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} exist with expected metadata"
     )
 
 
-def verify_bootstrapped_tenant_oidc(
-    admin_client: DynamicClient,
-    tenant_namespace_name: str,
+def verify_aitenant_oidc_stays_in_spec(
+    aitenant: AITenant,
     expected_oidc: dict[str, Any],
 ) -> None:
-    """Assert bootstrapped Tenant externalOIDC mirrors the AITenant oidc spec."""
-    bootstrapped_tenant = Tenant(
-        client=admin_client,
-        name=AIGATEWAY_BOOTSTRAPPED_TENANT_NAME,
-        namespace=tenant_namespace_name,
-        ensure_exists=True,
-    )
-    tenant_oidc = bootstrapped_tenant.instance.spec.externalOIDC
-    assert tenant_oidc is not None, (
-        f"Tenant/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} in '{tenant_namespace_name}' "
-        "should mirror AITenant oidc into externalOIDC"
-    )
+    """Assert AITenant.spec.oidc remains on the AITenant (not copied to Tenant/MaasTenantConfig)."""
+    fresh_aitenant = _fresh_aitenant(aitenant=aitenant)
+    aitenant_oidc = getattr(fresh_aitenant.instance.spec, "oidc", None)
+    assert aitenant_oidc is not None, f"AITenant '{aitenant.namespace}/{aitenant.name}' should retain spec.oidc"
     for field_name, expected_value in expected_oidc.items():
-        actual_value = getattr(tenant_oidc, field_name, None)
+        actual_value = getattr(aitenant_oidc, field_name, None)
         assert actual_value == expected_value, (
-            f"Tenant externalOIDC.{field_name} expected {expected_value!r}, got {actual_value!r}"
+            f"AITenant spec.oidc.{field_name} expected {expected_value!r}, got {actual_value!r}"
         )
 
 
@@ -389,39 +426,65 @@ def verify_aitenant_role_binding(
         )
 
 
-def verify_aitenant_rbac_admins_bindings(
+def tenant_admin_role_binding_name(aitenant_name: str) -> str:
+    """Return a test RoleBinding name for tenant-admin access in the tenant namespace."""
+    return f"{tenant_admin_role_name(aitenant_name=aitenant_name)}-admins"
+
+
+def object_admin_role_binding_name(aitenant_name: str) -> str:
+    """Return a test RoleBinding name for object-admin access in the infra namespace."""
+    return f"{aitenant_object_admin_role_name(aitenant_name=aitenant_name)}-admins"
+
+
+@contextmanager
+def aitenant_admin_role_bindings(
     admin_client: DynamicClient,
     aitenant_name: str,
     tenant_namespace_name: str,
     infra_namespace: str,
-    expected_admins: list[dict[str, str]],
-) -> None:
-    """Assert tenant-admin and object-admin RoleBindings exist with spec.rbac.admins subjects."""
+    subjects: list[dict[str, str]],
+    teardown: bool = True,
+) -> Generator[tuple[RoleBinding, RoleBinding], Any, Any]:
+    """Create manual tenant-admin and object-admin RoleBindings for the given subjects."""
     tenant_admin_name = tenant_admin_role_name(aitenant_name=aitenant_name)
     object_admin_name = aitenant_object_admin_role_name(aitenant_name=aitenant_name)
-    verify_aitenant_role_binding(
-        admin_client=admin_client,
-        namespace=tenant_namespace_name,
-        binding_name=tenant_admin_name,
-        role_name=tenant_admin_name,
-        expected_subjects=expected_admins,
-    )
-    verify_aitenant_role_binding(
-        admin_client=admin_client,
-        namespace=infra_namespace,
-        binding_name=object_admin_name,
-        role_name=object_admin_name,
-        expected_subjects=expected_admins,
-    )
+    tenant_binding_name = tenant_admin_role_binding_name(aitenant_name=aitenant_name)
+    object_binding_name = object_admin_role_binding_name(aitenant_name=aitenant_name)
+    if len(subjects) != 1:
+        raise ValueError("aitenant_admin_role_bindings currently supports exactly one RBAC subject")
+    subject = subjects[0]
+    with (
+        RoleBinding(
+            client=admin_client,
+            namespace=tenant_namespace_name,
+            name=tenant_binding_name,
+            role_ref_name=tenant_admin_name,
+            role_ref_kind="Role",
+            subjects_kind=subject["kind"],
+            subjects_name=subject["name"],
+            teardown=teardown,
+        ) as tenant_role_binding,
+        RoleBinding(
+            client=admin_client,
+            namespace=infra_namespace,
+            name=object_binding_name,
+            role_ref_name=object_admin_name,
+            role_ref_kind="Role",
+            subjects_kind=subject["kind"],
+            subjects_name=subject["name"],
+            teardown=teardown,
+        ) as object_role_binding,
+    ):
+        yield tenant_role_binding, object_role_binding
 
 
-def verify_aitenant_rbac_roles_without_admin_bindings(
+def verify_aitenant_controller_creates_admin_roles_only(
     admin_client: DynamicClient,
     aitenant_name: str,
     tenant_namespace_name: str,
     infra_namespace: str,
 ) -> None:
-    """Assert Roles exist but admin RoleBindings are omitted when spec.rbac.admins is unset."""
+    """Assert the controller creates admin Roles but does not create RoleBindings."""
     tenant_admin_name = tenant_admin_role_name(aitenant_name=aitenant_name)
     object_admin_name = aitenant_object_admin_role_name(aitenant_name=aitenant_name)
     tenant_role = Role(client=admin_client, name=tenant_admin_name, namespace=tenant_namespace_name)
@@ -441,6 +504,32 @@ def verify_aitenant_rbac_roles_without_admin_bindings(
         binding_name=object_admin_name,
         role_name=object_admin_name,
         should_exist=False,
+    )
+
+
+def verify_manual_aitenant_admin_role_bindings(
+    admin_client: DynamicClient,
+    aitenant_name: str,
+    tenant_namespace_name: str,
+    infra_namespace: str,
+    expected_subjects: list[dict[str, str]],
+) -> None:
+    """Assert manually created tenant-admin and object-admin RoleBindings reference controller Roles."""
+    tenant_admin_name = tenant_admin_role_name(aitenant_name=aitenant_name)
+    object_admin_name = aitenant_object_admin_role_name(aitenant_name=aitenant_name)
+    verify_aitenant_role_binding(
+        admin_client=admin_client,
+        namespace=tenant_namespace_name,
+        binding_name=tenant_admin_role_binding_name(aitenant_name=aitenant_name),
+        role_name=tenant_admin_name,
+        expected_subjects=expected_subjects,
+    )
+    verify_aitenant_role_binding(
+        admin_client=admin_client,
+        namespace=infra_namespace,
+        binding_name=object_admin_role_binding_name(aitenant_name=aitenant_name),
+        role_name=object_admin_name,
+        expected_subjects=expected_subjects,
     )
 
 
@@ -469,7 +558,7 @@ def verify_aitenant_rbac_children_removed(
     infra_namespace: str,
     timeout: int = 300,
 ) -> None:
-    """Assert tenant-admin and object-admin Roles and RoleBindings were removed after AITenant deletion."""
+    """Assert controller-owned tenant-admin and object-admin Roles were removed after AITenant deletion."""
     tenant_admin_name = tenant_admin_role_name(aitenant_name=aitenant_name)
     object_admin_name = aitenant_object_admin_role_name(aitenant_name=aitenant_name)
     _wait_until_resource_absent(
@@ -485,17 +574,6 @@ def verify_aitenant_rbac_children_removed(
     )
     _wait_until_resource_absent(
         exists_check=lambda: (
-            RoleBinding(
-                client=admin_client,
-                name=tenant_admin_name,
-                namespace=tenant_namespace_name,
-            ).exists
-        ),
-        resource_label=f"RoleBinding '{tenant_namespace_name}/{tenant_admin_name}'",
-        timeout=timeout,
-    )
-    _wait_until_resource_absent(
-        exists_check=lambda: (
             Role(
                 client=admin_client,
                 name=object_admin_name,
@@ -503,17 +581,6 @@ def verify_aitenant_rbac_children_removed(
             ).exists
         ),
         resource_label=f"Role '{infra_namespace}/{object_admin_name}'",
-        timeout=timeout,
-    )
-    _wait_until_resource_absent(
-        exists_check=lambda: (
-            RoleBinding(
-                client=admin_client,
-                name=object_admin_name,
-                namespace=infra_namespace,
-            ).exists
-        ),
-        resource_label=f"RoleBinding '{infra_namespace}/{object_admin_name}'",
         timeout=timeout,
     )
 
@@ -566,7 +633,7 @@ def verify_aitenant_bootstrap_children_removed(
     infra_namespace: str = AITENANT_INFRA_NAMESPACE,
     timeout: int = 300,
 ) -> None:
-    """Assert controller-owned Tenant and RBAC children were removed after AITenant deletion."""
+    """Assert controller-owned MaasTenantConfig and RBAC children were removed after AITenant deletion."""
     aitenant = test_context["aitenant"]
     aitenant_name = test_context["aitenant_name"]
     tenant_namespace_name = test_context["tenant_namespace_name"]
@@ -580,13 +647,13 @@ def verify_aitenant_bootstrap_children_removed(
 
     _wait_until_resource_absent(
         exists_check=lambda: (
-            Tenant(
+            MaasTenantConfig(
                 client=admin_client,
                 name=AIGATEWAY_BOOTSTRAPPED_TENANT_NAME,
                 namespace=tenant_namespace_name,
             ).exists
         ),
-        resource_label=(f"Tenant/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} in '{tenant_namespace_name}'"),
+        resource_label=(f"MaasTenantConfig/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} in '{tenant_namespace_name}'"),
         timeout=timeout,
     )
 
@@ -690,14 +757,14 @@ def verify_derived_tenant_namespace_name(
 
 
 def verify_default_maas_tenant_unaffected(admin_client: DynamicClient) -> None:
-    """Assert the cluster default-tenant in models-as-a-service is still Ready."""
-    default_tenant = Tenant(
+    """Assert the cluster default-tenant MaasTenantConfig in models-as-a-service is still Ready."""
+    default_maas_tenant_config = MaasTenantConfig(
         client=admin_client,
         name=AIGATEWAY_BOOTSTRAPPED_TENANT_NAME,
         namespace=MAAS_SUBSCRIPTION_NAMESPACE,
     )
-    verify_maas_tenant_ready(tenant=default_tenant)
+    verify_maas_tenant_config_ready(maas_tenant_config=default_maas_tenant_config)
     LOGGER.info(
-        f"Regression check passed: Tenant/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} in "
+        f"Regression check passed: MaasTenantConfig/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} in "
         f"'{MAAS_SUBSCRIPTION_NAMESPACE}' is still Ready"
     )

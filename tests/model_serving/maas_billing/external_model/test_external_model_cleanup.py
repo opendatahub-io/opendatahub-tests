@@ -22,7 +22,6 @@ CLEANUP_TEST_MODEL_NAME = "e2e-cleanup-test"
     "maas_unprivileged_model_namespace",
     "maas_subscription_controller_enabled_latest",
     "maas_gateway_api",
-    "maas_api_gateway_reachable",
     "external_model_credential_secret",
     "external_provider_cr",
 )

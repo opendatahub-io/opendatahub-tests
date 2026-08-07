@@ -7,7 +7,6 @@ import pytest
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.maas_subscription import MaaSSubscription
 from ocp_resources.namespace import Namespace
@@ -22,6 +21,7 @@ from tests.model_serving.maas_billing.body_base_routing.pre_auth_model_header.ut
 from tests.model_serving.maas_billing.utils import build_maas_headers
 from utilities.constants import MAAS_GATEWAY_NAMESPACE
 from utilities.general import generate_random_name
+from utilities.resources.llm_inference_service import LLMInferenceService
 
 LOGGER = structlog.get_logger(name=__name__)
 

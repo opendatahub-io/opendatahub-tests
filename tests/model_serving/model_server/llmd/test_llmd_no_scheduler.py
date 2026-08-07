@@ -1,5 +1,4 @@
 import pytest
-from ocp_resources.llm_inference_service import LLMInferenceService
 
 from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaS3GpuConfig
 from tests.model_serving.model_server.llmd.utils import (
@@ -8,8 +7,9 @@ from tests.model_serving.model_server.llmd.utils import (
     send_chat_completions,
     workaround_503_no_healthy_upstream,
 )
+from utilities.resources.llm_inference_service import LLMInferenceService
 
-pytestmark = [pytest.mark.tier2, pytest.mark.llmd_gpu]
+pytestmark = [pytest.mark.llmd_gpu]
 
 NAMESPACE = ns_from_file(file=__file__)
 
@@ -24,10 +24,10 @@ class S3GpuNoSchedulerConfig(TinyLlamaS3GpuConfig):
 
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, llmisvc",
-    [({"name": NAMESPACE}, S3GpuNoSchedulerConfig)],
+    [pytest.param({"name": NAMESPACE}, S3GpuNoSchedulerConfig, id="no-scheduler")],
     indirect=True,
 )
-@pytest.mark.usefixtures("valid_aws_config", "skip_if_disconnected")
+@pytest.mark.usefixtures("valid_aws_config")
 class TestLlmdNoScheduler:
     """Deploy TinyLlama on GPU with the scheduler disabled and verify chat completions."""
 

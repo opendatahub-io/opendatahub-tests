@@ -1,9 +1,10 @@
 """Constants for NeMo Guardrails tests."""
 
+from tests.ai_safety.image_constants import AiSafetyImages
 from utilities.constants import LLMdInferenceSimConfig
 
 # NeMo Guardrails server configuration
-NEMO_GUARDRAILS_IMAGE = "quay.io/trustyai_testing/nemo-guardrails:latest"
+NEMO_GUARDRAILS_IMAGE: str = AiSafetyImages.NEMO_GUARDRAILS
 NEMO_GUARDRAILS_PORT_AUTH = 8443
 NEMO_GUARDRAILS_PORT_NO_AUTH = 8000
 
@@ -12,6 +13,14 @@ NEMO_GUARDRAILS_PORT_NO_AUTH = 8000
 MODEL_NAME = LLMdInferenceSimConfig.model_name  # "Qwen2.5-1.5B-Instruct"
 ISVC_NAME = LLMdInferenceSimConfig.isvc_name  # "llm-d-inference-sim-isvc"
 PORT = LLMdInferenceSimConfig.port  # 8032
+
+# Test MCP Gateway configuration
+
+MCP_GATEWAY_NAME = "mcp-gateway"
+MCP_GATEWAY_NAMESPACE = "mcp-system"
+MCP_ENVOY_FILTER_NAME = "mcp-sse-strip"
+BBR_SUB_FILTER_NAME = "envoy.filters.http.ext_proc.bbr"
+BBR_ENVOY_FILTER_NAME = "mcp-payload-processing"
 
 
 # Presidio entity types

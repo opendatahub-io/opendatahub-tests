@@ -7,14 +7,12 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.cron_job import CronJob
 from ocp_resources.deployment import Deployment
-from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.maas_subscription import MaaSSubscription
 from ocp_resources.namespace import Namespace
 from ocp_resources.network_policy import NetworkPolicy
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
-from pytest_testconfig import config as py_config
 
 from tests.model_serving.maas_billing.maas_api_key.utils import (
     build_chat_payload,
@@ -33,6 +31,7 @@ from tests.model_serving.maas_billing.utils import (
 from utilities.general import generate_random_name
 from utilities.infra import get_openshift_token
 from utilities.resources.auth import Auth
+from utilities.resources.llm_inference_service import LLMInferenceService
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -222,53 +221,53 @@ def short_expiration_api_key_id(
 @pytest.fixture()
 def maas_cleanup_cronjob(
     admin_client: DynamicClient,
+    maas_api_infra_namespace: str,
 ) -> CronJob:
     """Return the maas-api-key-cleanup CronJob, asserting it exists."""
-    applications_namespace = py_config["applications_namespace"]
     cronjob = CronJob(
         client=admin_client,
         name="maas-api-key-cleanup",
-        namespace=applications_namespace,
+        namespace=maas_api_infra_namespace,
     )
-    assert cronjob.exists, f"CronJob maas-api-key-cleanup not found in {applications_namespace}"
+    assert cronjob.exists, f"CronJob maas-api-key-cleanup not found in {maas_api_infra_namespace}"
     return cronjob
 
 
 @pytest.fixture()
 def maas_cleanup_networkpolicy(
     admin_client: DynamicClient,
+    maas_api_infra_namespace: str,
 ) -> NetworkPolicy:
     """Return the maas-api-cleanup-restrict NetworkPolicy, asserting it exists."""
-    applications_namespace = py_config["applications_namespace"]
     network_policy = NetworkPolicy(
         client=admin_client,
         name="maas-api-cleanup-restrict",
-        namespace=applications_namespace,
+        namespace=maas_api_infra_namespace,
     )
-    assert network_policy.exists, f"NetworkPolicy maas-api-cleanup-restrict not found in {applications_namespace}"
+    assert network_policy.exists, f"NetworkPolicy maas-api-cleanup-restrict not found in {maas_api_infra_namespace}"
     return network_policy
 
 
 @pytest.fixture()
 def maas_api_pod_name(
     admin_client: DynamicClient,
+    maas_api_infra_namespace: str,
 ) -> str:
     """Return the name of a running maas-api pod."""
-    applications_namespace = py_config["applications_namespace"]
-    deployment = Deployment(client=admin_client, name="maas-api", namespace=applications_namespace)
-    assert deployment.exists, f"Deployment maas-api not found in {applications_namespace}"
+    deployment = Deployment(client=admin_client, name="maas-api", namespace=maas_api_infra_namespace)
+    assert deployment.exists, f"Deployment maas-api not found in {maas_api_infra_namespace}"
     match_labels = deployment.instance.spec.selector.matchLabels
     label_selector = ",".join(f"{k}={v}" for k, v in match_labels.items())
     all_pods = list(
         Pod.get(
             client=admin_client,
-            namespace=applications_namespace,
+            namespace=maas_api_infra_namespace,
             label_selector=label_selector,
         )
     )
     running_pods = [pod for pod in all_pods if pod.instance.status.phase == "Running"]
     assert len(running_pods) >= 1, (
-        f"Expected at least 1 running maas-api pod in {applications_namespace}, "
+        f"Expected at least 1 running maas-api pod in {maas_api_infra_namespace}, "
         f"found {len(running_pods)} running out of {len(all_pods)} total"
     )
     return running_pods[0].name
@@ -304,35 +303,6 @@ def ephemeral_api_key(
     if revoke_response.status_code not in (200, 404):
         raise AssertionError(
             f"Unexpected teardown status for ephemeral key id={api_key_data['id']}: {revoke_response.status_code}"
-        )
-
-
-@pytest.fixture(scope="function")
-def active_api_key_with_plaintext(
-    request_session_http: requests.Session,
-    base_url: str,
-    ocp_token_for_actor: str,
-) -> Generator[dict[str, Any], Any, Any]:
-    """Create an API key, yield the full response including plaintext key, and revoke on teardown."""
-    key_name = f"e2e-auth-policy-{generate_random_name()}"
-    _, api_key_data = create_api_key(
-        base_url=base_url,
-        ocp_user_token=ocp_token_for_actor,
-        request_session_http=request_session_http,
-        api_key_name=key_name,
-    )
-    LOGGER.info(f"active_api_key_with_plaintext: created key id={api_key_data['id']} name={key_name}")
-    yield api_key_data
-
-    revoke_response, _ = revoke_api_key(
-        request_session_http=request_session_http,
-        base_url=base_url,
-        key_id=api_key_data["id"],
-        ocp_user_token=ocp_token_for_actor,
-    )
-    if revoke_response.status_code not in (200, 404):
-        raise AssertionError(
-            f"Unexpected teardown status for key id={api_key_data['id']}: {revoke_response.status_code}"
         )
 
 

@@ -7,6 +7,7 @@ from typing import Any
 import requests
 import structlog
 import yaml
+from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.pod import Pod
 from requests import Response
@@ -18,6 +19,7 @@ from tests.ai_safety.nemo_guardrails.constants import (
 )
 from utilities.general import SHA256_DIGEST_PATTERN
 from utilities.guardrails import get_auth_headers
+from utilities.resources.envoy_filter import EnvoyFilter
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -95,7 +97,7 @@ def create_llm_judge_config(namespace: str, model_isvc_name: str, model_name: st
                 "type": "main",
                 "engine": "openai",
                 "parameters": {
-                    "openai_api_base": f"http://{model_isvc_name}-predictor.{namespace}.svc.cluster.local/v1",
+                    "base_url": f"http://{model_isvc_name}-predictor.{namespace}.svc.cluster.local/v1",
                     "model_name": model_name,
                 },
             }
@@ -108,8 +110,8 @@ def create_llm_judge_config(namespace: str, model_isvc_name: str, model_name: st
 
     prompts_yml = {
         "prompts": [
-            {"task": "self_check_input", "content": INPUT_PROMPT_TEMPLATE},
-            {"task": "self_check_output", "content": OUTPUT_PROMPT_TEMPLATE},
+            {"task": "self_check_input", "content": INPUT_PROMPT_TEMPLATE, "max_tokens": 10},
+            {"task": "self_check_output", "content": OUTPUT_PROMPT_TEMPLATE, "max_tokens": 10},
         ]
     }
     rails_co = ""
@@ -147,7 +149,7 @@ def create_presidio_config(
                 "type": "main",
                 "engine": "openai",
                 "parameters": {
-                    "openai_api_base": f"http://{model_isvc_name}-predictor.{namespace}.svc.cluster.local/v1",
+                    "base_url": f"http://{model_isvc_name}-predictor.{namespace}.svc.cluster.local/v1",
                     "model_name": model_name,
                 },
             }
@@ -273,6 +275,31 @@ def verify_health_response(response: Response) -> None:
         f"Expected service to be responsive, got {response.status_code}: {response.text[:200]}"
     )
     LOGGER.info(f"Health check passed: {response.status_code} (service is responding)")
+
+
+@retry(exceptions_dict={AssertionError: []}, wait_timeout=120, sleep=5)
+def wait_for_envoy_filter(
+    admin_client: DynamicClient,
+    namespace: str,
+    name: str,
+) -> EnvoyFilter:
+    """
+    Wait for an EnvoyFilter to be created by the TrustyAI operator.
+
+    Args:
+        admin_client: Kubernetes dynamic client
+        namespace: Namespace to search in
+        name: Name of the EnvoyFilter resource
+
+    Returns:
+        The matching EnvoyFilter
+
+    Raises:
+        AssertionError: If the EnvoyFilter is not found within the timeout
+    """
+    envoy_filter = EnvoyFilter(client=admin_client, namespace=namespace, name=name)
+    assert envoy_filter.exists, f"EnvoyFilter {name!r} not found in {namespace!r}"
+    return envoy_filter
 
 
 @retry(exceptions_dict={AssertionError: []}, wait_timeout=300, sleep=5)

@@ -9,13 +9,10 @@ from urllib.parse import quote, urlparse
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
-
-# from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.endpoints import Endpoints
 from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.group import Group
 from ocp_resources.ingress_config_openshift_io import Ingress as IngressConfig
-from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.resource import ResourceEditor
 from requests import Response
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
@@ -23,15 +20,38 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 from utilities.constants import (
     MAAS_GATEWAY_NAME,
     MAAS_GATEWAY_NAMESPACE,
+    DscComponents,
 )
 from utilities.llmd_utils import get_llm_inference_url
 from utilities.plugins.constant import OpenAIEnpoints, RestHeader
+from utilities.resources.llm_inference_service import LLMInferenceService
+from utilities.resources.maastenantconfig import MaasTenantConfig
 from utilities.resources.rate_limit_policy import RateLimitPolicy
-from utilities.resources.tenant import Tenant
 from utilities.resources.token_rate_limit_policy import TokenRateLimitPolicy
 
 LOGGER = structlog.get_logger(name=__name__)
 MODELS_INFO = OpenAIEnpoints.MODELS_INFO
+
+
+def maas_under_aigateway_component_patch(
+    models_as_a_service_state: str = DscComponents.ManagementState.MANAGED,
+    aigateway_state: str = DscComponents.ManagementState.MANAGED,
+) -> dict[str, Any]:
+    """Build DSC components patch for MaaS nested under AIGateway.
+
+    Args:
+        models_as_a_service_state: Management state for aigateway.modelsAsAService.
+        aigateway_state: Management state for aigateway itself.
+
+    Returns:
+        Dict suitable for ResourceEditor under spec.components.
+    """
+    return {
+        DscComponents.AIGATEWAY: {
+            "managementState": aigateway_state,
+            "modelsAsAService": {"managementState": models_as_a_service_state},
+        }
+    }
 
 
 def host_from_ingress_domain(client) -> str:
@@ -68,8 +88,10 @@ def _first_ready_llmisvc(
 
 
 def detect_scheme_via_llmisvc(client, namespace: str = "llm") -> str:
-    """
-    Using LLMInferenceService's URL to infer the scheme.
+    """Return https for external MaaS gateway traffic.
+
+    LLMISVC status URLs may report http; using that causes HTTP→HTTPS redirects
+    that turn POST into GET.
     """
     service = _first_ready_llmisvc(client=client, namespace=namespace)
     if not service:
@@ -77,9 +99,10 @@ def detect_scheme_via_llmisvc(client, namespace: str = "llm") -> str:
 
     url = get_llm_inference_url(llm_service=service)
     scheme = (urlparse(url).scheme or "").lower()
-    if scheme in ("http", "https"):
-        return scheme
-
+    if scheme == "http":
+        LOGGER.info(
+            f"detect_scheme_via_llmisvc: LLMISVC URL is http ({url}); using https to avoid HTTP→HTTPS POST→GET redirect"
+        )
     return "https"
 
 
@@ -566,13 +589,18 @@ def create_api_key(
             if response.status_code == 403 and not (response.text or "").strip():
                 LOGGER.info("create_api_key: empty 403 (Authorino propagation delay) — retrying")
                 continue
+            if response.status_code == 500 and "AUTH_FAILURE" in (response.text or ""):
+                LOGGER.info("create_api_key: 500 AUTH_FAILURE (Authorino identity not ready) — retrying")
+                continue
             break
     except TimeoutExpiredError:
-        LOGGER.info("create_api_key: timed out after 90s waiting for non-403 response")
+        LOGGER.info(
+            "create_api_key: timed out after 90s waiting for successful create (retryable empty 403 / AUTH_FAILURE)"
+        )
 
     if response is None or response.status_code not in (200, 201):
         status = response.status_code if response is not None else "no response"
-        body = response.text[:500] if response is not None else "timed out with persistent empty 403"
+        body = response.text[:500] if response is not None else "timed out with persistent empty 403 / AUTH_FAILURE"
         if raise_on_error:
             raise AssertionError(f"api-key create failed: status={status} body={body}")
         return response, {}  # type: ignore[return-value]
@@ -669,7 +697,9 @@ def verify_maas_gateway_programmed(gateway: Gateway) -> None:
     gateway.wait_for_condition(condition="Programmed", status="True", timeout=300)
 
 
-def verify_maas_tenant_ready(tenant: Tenant) -> None:
-    """Assert that the Tenant CR exists and has Ready=True."""
-    assert tenant.exists, f"Tenant '{tenant.name}' not found in namespace '{tenant.namespace}'"
-    tenant.wait_for_condition(condition="Ready", status="True", timeout=300)
+def verify_maas_tenant_config_ready(maas_tenant_config: MaasTenantConfig) -> None:
+    """Assert that the MaasTenantConfig CR exists and has Ready=True."""
+    assert maas_tenant_config.exists, (
+        f"MaasTenantConfig '{maas_tenant_config.name}' not found in namespace '{maas_tenant_config.namespace}'"
+    )
+    maas_tenant_config.wait_for_condition(condition="Ready", status="True", timeout=300)

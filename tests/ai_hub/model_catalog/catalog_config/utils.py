@@ -24,7 +24,6 @@ from tests.ai_hub.model_catalog.utils import (
     parse_psql_output,
 )
 from tests.ai_hub.utils import execute_get_command, get_model_catalog_pod
-from utilities.constants import Timeout
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -385,7 +384,7 @@ def get_api_models_by_source_label(
 
 @retry(
     exceptions_dict={ValueError: [], Exception: []},
-    wait_timeout=Timeout.TIMEOUT_5MIN,
+    wait_timeout=300,
     sleep=10,
 )
 def wait_for_model_count_change(
@@ -421,7 +420,7 @@ def wait_for_model_count_change(
 
 @retry(
     exceptions_dict={AssertionError: [], Exception: []},
-    wait_timeout=Timeout.TIMEOUT_5MIN,
+    wait_timeout=300,
     sleep=10,
 )
 def wait_for_model_set_match(
@@ -464,7 +463,7 @@ def wait_for_model_set_match(
 
 @retry(
     exceptions_dict={subprocess.CalledProcessError: [], AssertionError: []},
-    wait_timeout=Timeout.TIMEOUT_2MIN,
+    wait_timeout=120,
     sleep=5,
 )
 def validate_cleanup_logging(
@@ -504,8 +503,9 @@ def validate_cleanup_logging(
 
 
 def filter_models_by_pattern(all_models: set[str], pattern: str) -> set[str]:
-    """Helper function to filter models by a given pattern."""
-    return {model for model in all_models if pattern in model}
+    """Helper function to filter models by a given pattern (case-insensitive)."""
+    pattern_lower = pattern.lower()
+    return {model for model in all_models if pattern_lower in model.lower()}
 
 
 @retry(wait_timeout=300, sleep=10, exceptions_dict={Exception: []}, print_log=False)

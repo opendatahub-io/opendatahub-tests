@@ -30,7 +30,10 @@ class TestEvalHub:
         evalhub_ca_bundle_file: str,
         evalhub_route: Route,
     ) -> None:
-        """Verify the EvalHub service responds with healthy status."""
+        """Given: a running EvalHub instance.
+        When: GET /api/v1/health is called.
+        Then: response is 200 with status 'healthy'.
+        """
         validate_evalhub_health(
             host=evalhub_route.host,
             token=current_client_token,
@@ -43,11 +46,9 @@ class TestEvalHub:
         evalhub_ca_bundle_file: str,
         evalhub_route: Route,
     ) -> None:
-        """Health endpoint works without X-Tenant header.
-
-        The health endpoint is not in auth.yaml, so it should not
-        require tenant authorization. It should also tolerate an
-        X-Tenant header being present (ignored, not rejected).
+        """Given: a running EvalHub instance.
+        When: GET /api/v1/health is called with and without X-Tenant header.
+        Then: both responses are 200 with status 'healthy'.
         """
         url = f"https://{evalhub_route.host}{EVALHUB_HEALTH_PATH}"
         headers = get_auth_headers(token=current_client_token)
@@ -81,7 +82,10 @@ class TestEvalHub:
         evalhub_route: Route,
         method: str,
     ) -> None:
-        """Health endpoint rejects POST, PUT, and DELETE with 405."""
+        """Given: a running EvalHub instance.
+        When: a non-GET method is sent to /api/v1/health.
+        Then: response is 405 (method not allowed).
+        """
         url = f"https://{evalhub_route.host}{EVALHUB_HEALTH_PATH}"
         headers = get_auth_headers(token=current_client_token)
         response = getattr(requests, method)(

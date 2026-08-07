@@ -7,10 +7,14 @@ import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.maas_auth_policy import MaaSAuthPolicy
+from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.resource import ResourceEditor
 from timeout_sampler import TimeoutSampler
 
+from tests.model_serving.maas_billing.maas_api_key.utils import wait_for_auth_policy_accepted
+from tests.model_serving.maas_billing.multitenancy.aitenant.utils import AITENANT_INFRA_NAMESPACE
 from tests.model_serving.maas_billing.oidc_tests.utils import (
+    DEFAULT_AITENANT_NAME,
     MAAS_GATEWAY_AUTH_POLICY_NAME,
     MAAS_OIDC_GROUP,
     OIDC_CLIENT_ID,
@@ -25,11 +29,9 @@ from tests.model_serving.maas_billing.utils import (
 )
 from utilities.constants import MAAS_GATEWAY_NAMESPACE
 from utilities.general import generate_random_name
-from utilities.resources.auth_policy import AuthPolicy
-from utilities.resources.tenant import Tenant
+from utilities.resources.aitenant import AITenant
 
 LOGGER = structlog.get_logger(name=__name__)
-TENANT_NAME = "default-tenant"
 
 
 @pytest.fixture(scope="class")
@@ -56,6 +58,8 @@ def oidc_subscription_with_model(
     """Create a MaaSSubscription referencing the deployed TinyLlama model.
 
     Used by tests that need ``/v1/models`` to return a real model for inference.
+    After the TinyLlama MaaSAuthPolicy is created, wait for gateway AuthPolicy
+    Accepted and Enforced so inference does not race an outdated model_access map.
     """
     auth_policy_name = f"e2e-oidc-auth-{generate_random_name()}"
 
@@ -80,49 +84,108 @@ def oidc_subscription_with_model(
             teardown=True,
             wait_for_resource=True,
         ):
+            wait_for_auth_policy_accepted(
+                admin_client=admin_client,
+                policy_name=MAAS_GATEWAY_AUTH_POLICY_NAME,
+                namespace=MAAS_GATEWAY_NAMESPACE,
+                reconciliation_hint=("Ensure TinyLlama MaaSAuthPolicy reconciled maas-gateway-auth before inference."),
+            )
+            LOGGER.info(
+                "oidc_subscription_with_model: "
+                f"'{MAAS_GATEWAY_NAMESPACE}/{MAAS_GATEWAY_AUTH_POLICY_NAME}' is Accepted and Enforced "
+                f"after MaaSAuthPolicy '{auth_policy_name}'"
+            )
             yield subscription
+
+
+@pytest.fixture(scope="class")
+def oidc_maas_auth_policy(
+    admin_client: DynamicClient,
+    maas_unprivileged_model_namespace: Any,
+    maas_subscription_namespace: Any,
+) -> Generator[MaaSAuthPolicy, Any, Any]:
+    """Create a MaaSAuthPolicy for the OIDC group to trigger maas-gateway-auth reconciliation."""
+    model_name = f"e2e-oidc-authz-model-{generate_random_name()}"
+    auth_policy_name = f"e2e-oidc-gateway-auth-{generate_random_name()}"
+
+    with (
+        MaaSModelRef(
+            client=admin_client,
+            name=model_name,
+            namespace=maas_unprivileged_model_namespace.name,
+            model_ref={
+                "name": model_name,
+                "namespace": maas_unprivileged_model_namespace.name,
+                "kind": "LLMInferenceService",
+            },
+            teardown=True,
+            wait_for_resource=True,
+        ),
+        MaaSAuthPolicy(
+            client=admin_client,
+            name=auth_policy_name,
+            namespace=maas_subscription_namespace.name,
+            model_refs=[
+                {
+                    "name": model_name,
+                    "namespace": maas_unprivileged_model_namespace.name,
+                }
+            ],
+            subjects={"groups": [{"name": MAAS_OIDC_GROUP}]},
+            teardown=True,
+            wait_for_resource=True,
+        ) as auth_policy,
+    ):
+        LOGGER.info(f"oidc_maas_auth_policy: created MaaSAuthPolicy '{auth_policy_name}' for group '{MAAS_OIDC_GROUP}'")
+        yield auth_policy
 
 
 @pytest.fixture(scope="class")
 def oidc_auth_policy_patched(
     is_byoidc: bool,
     admin_client: DynamicClient,
-    maas_subscription_namespace: Any,
+    oidc_maas_auth_policy: MaaSAuthPolicy,
 ) -> Generator[None, Any, Any]:
-    """Enable OIDC on the Tenant CR so the maas-controller patches the AuthPolicy."""
+    """Enable OIDC on the default AITenant so the controller patches the AuthPolicy."""
     if not is_byoidc:
         pytest.skip("External OIDC tests require a byoidc cluster")
 
-    oidc_issuer_url = get_maas_oidc_issuer_url(admin_client=admin_client)
-    LOGGER.info(f"oidc_auth_policy_patched: enabling externalOIDC with issuer '{oidc_issuer_url}'")
-
-    tenant_cr = Tenant(
-        client=admin_client,
-        name=TENANT_NAME,
-        namespace=maas_subscription_namespace.name,
+    LOGGER.info(
+        f"oidc_auth_policy_patched: using MaaSAuthPolicy '{oidc_maas_auth_policy.name}' "
+        "to ensure maas-gateway-auth exists before enabling AITenant.spec.oidc"
     )
+    oidc_issuer_url = get_maas_oidc_issuer_url(admin_client=admin_client)
+    LOGGER.info(f"oidc_auth_policy_patched: enabling AITenant.spec.oidc with issuer '{oidc_issuer_url}'")
+
+    aitenant = AITenant(
+        client=admin_client,
+        name=DEFAULT_AITENANT_NAME,
+        namespace=AITENANT_INFRA_NAMESPACE,
+    )
+    assert aitenant.exists, f"AITenant '{DEFAULT_AITENANT_NAME}' not found in namespace '{AITENANT_INFRA_NAMESPACE}'"
 
     oidc_patch = {
         "spec": {
-            "externalOIDC": {
+            "oidc": {
                 "issuerUrl": oidc_issuer_url,
                 "clientId": OIDC_CLIENT_ID,
             }
         }
     }
 
-    with ResourceEditor(patches={tenant_cr: oidc_patch}):
-        maas_auth_policy = AuthPolicy(
-            client=admin_client,
-            name=MAAS_GATEWAY_AUTH_POLICY_NAME,
+    with ResourceEditor(patches={aitenant: oidc_patch}):
+        wait_for_auth_policy_accepted(
+            admin_client=admin_client,
+            policy_name=MAAS_GATEWAY_AUTH_POLICY_NAME,
             namespace=MAAS_GATEWAY_NAMESPACE,
-            ensure_exists=True,
+            reconciliation_hint=(
+                "Ensure oidc_maas_auth_policy created a MaaSAuthPolicy to trigger gateway auth reconciliation."
+            ),
         )
-        maas_auth_policy.wait_for_condition(condition="Enforced", status="True", timeout=120)
         LOGGER.info("oidc_auth_policy_patched: operator applied OIDC rules to AuthPolicy")
         yield
 
-    LOGGER.info("oidc_auth_policy_patched: externalOIDC removed, operator restoring AuthPolicy")
+    LOGGER.info("oidc_auth_policy_patched: restored previous AITenant.spec.oidc, operator restoring AuthPolicy")
 
 
 @pytest.fixture(scope="class")
@@ -253,7 +316,9 @@ def oidc_minted_api_key(
         if response.status_code in (200, 201):
             api_key_body = body
             break
-        LOGGER.warning(f"oidc_minted_api_key: retrying create, status={response.status_code}")
+        LOGGER.warning(
+            f"oidc_minted_api_key: retrying create, status={response.status_code} body={(response.text or '')[:500]}"
+        )
 
     if not api_key_body:
         raise AssertionError(f"oidc_minted_api_key: failed to create API key '{key_name}' within timeout")
@@ -295,7 +360,10 @@ def second_user_minted_api_key(
         if response.status_code in (200, 201):
             api_key_body = body
             break
-        LOGGER.warning(f"second_user_minted_api_key: retrying create, status={response.status_code}")
+        LOGGER.warning(
+            f"second_user_minted_api_key: retrying create, status={response.status_code} "
+            f"body={(response.text or '')[:500]}"
+        )
 
     if not api_key_body:
         raise AssertionError(f"second_user_minted_api_key: failed to create API key '{key_name}' within timeout")

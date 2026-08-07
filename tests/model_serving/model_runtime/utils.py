@@ -7,6 +7,7 @@ from typing import Any
 import portforward
 import structlog
 from ocp_resources.inference_service import InferenceService
+from ocp_resources.pod import Pod
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from tests.model_serving.model_runtime.vllm.modelcar.constant import (
@@ -502,6 +503,30 @@ def download_audio_file(audio_file_url: str = AUDIO_FILE_URL, destination_path: 
         stderr = e.stderr.decode() if e.stderr else str(e)
         LOGGER.error("Failed to download audio file: %s", stderr)
         raise RuntimeError(f"Failed to download audio file: {stderr}") from e
+
+
+def get_restart_counts(pod: Pod) -> dict[str, int]:
+    """Return container restart counts for the pod.
+
+    Args:
+        pod: Predictor pod for the InferenceService.
+
+    Returns:
+        Mapping of container name to restartCount.
+    """
+    return {container.name: container.restartCount for container in (pod.instance.status.containerStatuses or [])}
+
+
+def pod_is_ready(pod: Pod) -> bool:
+    """Return True when the pod Ready condition is True.
+
+    Args:
+        pod: Predictor pod for the InferenceService.
+    """
+    for condition in pod.instance.status.conditions or []:
+        if condition.type == "Ready":
+            return condition.status == "True"
+    return False
 
 
 def fetch_openai_response(

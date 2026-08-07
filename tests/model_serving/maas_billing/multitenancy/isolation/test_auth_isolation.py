@@ -2,7 +2,6 @@ import pytest
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
-from pytest_testconfig import config as py_config
 
 from tests.model_serving.maas_billing.maas_api_key.utils import get_api_key, list_api_keys
 from tests.model_serving.maas_billing.multitenancy.aitenant.utils import AITenantTestContext
@@ -12,7 +11,11 @@ from tests.model_serving.maas_billing.multitenancy.utils import (
     gateway_ref_from_aitenant,
     verify_tenant_gateway_auth_policy_callback_url,
 )
-from tests.model_serving.maas_billing.utils import assert_api_key_created_ok, create_api_key, revoke_api_key
+from tests.model_serving.maas_billing.utils import (
+    assert_api_key_created_ok,
+    create_api_key,
+    revoke_api_key,
+)
 from utilities.general import generate_random_name
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -38,11 +41,11 @@ class TestMultitenancyAuthIsolation:
         self,
         admin_client: DynamicClient,
         two_aitenant_test_contexts: tuple[AITenantTestContext, AITenantTestContext],
+        maas_api_infra_namespace: str,
     ) -> None:
         """Given Ready AITenants with tenant MaaSAuthPolicies, when reading each Gateway MaaS AuthPolicy,
-        then the apiKeyValidation callback URL targets maas-api-{tenant} in the applications namespace.
+        then the apiKeyValidation callback URL targets maas-api-{tenant} in the maas-api namespace.
         """
-        applications_namespace = py_config["applications_namespace"]
         for test_context in two_aitenant_test_contexts:
             gateway_name, gateway_namespace = gateway_ref_from_aitenant(aitenant=test_context["aitenant"])
             verify_tenant_gateway_auth_policy_callback_url(
@@ -50,7 +53,7 @@ class TestMultitenancyAuthIsolation:
                 gateway_name=gateway_name,
                 gateway_namespace=gateway_namespace,
                 aitenant_name=test_context["aitenant_name"],
-                applications_namespace=applications_namespace,
+                api_namespace=maas_api_infra_namespace,
             )
 
     @pytest.mark.tier2

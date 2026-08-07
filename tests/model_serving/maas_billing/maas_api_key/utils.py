@@ -16,6 +16,30 @@ from utilities.resources.auth_policy import AuthPolicy
 
 LOGGER = structlog.get_logger(name=__name__)
 
+MAAS_GATEWAY_AUTH_POLICY_NAME = "maas-gateway-auth"
+
+MAAS_AUTH_POLICY_FIXTURE_NAMES = (
+    "external_model_auth_policy",
+    "maas_auth_policy_tinyllama_premium",
+    "maas_auth_policy_tinyllama_free",
+    "oidc_auth_policy_patched",
+)
+
+
+DEFAULT_MAAS_TENANT: str = "models-as-a-service"
+
+
+def assert_tenant_field(body: dict[str, Any], context: str, expected: str = DEFAULT_MAAS_TENANT) -> None:
+    """Assert that the response body contains a 'tenant' field with the expected value.
+
+    Args:
+        body: Parsed JSON response body from a MaaS API key endpoint.
+        context: Human-readable label for assertion error messages (e.g. "GET /v1/api-keys/{id}").
+        expected: Expected tenant value. Defaults to the product default tenant namespace.
+    """
+    assert "tenant" in body, f"Expected 'tenant' field in {context} response, got keys: {list(body.keys())}"
+    assert body["tenant"] == expected, f"Expected tenant={expected!r} in {context} response, got: {body['tenant']!r}"
+
 
 def assert_key_rejected_at_inference(
     request_session_http: requests.Session,
@@ -92,7 +116,7 @@ def get_api_key(
 ) -> tuple[Response, dict[str, Any]]:
     """Fetch a single API key by ID via MaaS API (GET /v1/api-keys/{id})."""
     url = f"{base_url}/v1/api-keys/{quote(key_id, safe='')}"
-    request_headers = {"Authorization": f"Bearer {ocp_user_token}"}
+    request_headers = build_maas_headers(token=ocp_user_token)
     if extra_headers is not None:
         request_headers.update(extra_headers)
     response = request_session_http.get(
@@ -130,7 +154,7 @@ def list_api_keys(
     if pagination is not None:
         payload["pagination"] = pagination
 
-    request_headers = {"Authorization": f"Bearer {ocp_user_token}"}
+    request_headers = build_maas_headers(token=ocp_user_token)
     if extra_headers is not None:
         request_headers.update(extra_headers)
     response = request_session_http.post(
@@ -299,7 +323,12 @@ def wait_for_auth_policy_accepted(
     timeout: int = 300,
     reconciliation_hint: str = ("Ensure a MaaSAuthPolicy exists to trigger gateway auth reconciliation."),
 ) -> AuthPolicy:
-    """Poll until an AuthPolicy exists and its Accepted condition is True."""
+    """Poll until an AuthPolicy exists and Accepted and Enforced conditions are True.
+
+    Accepted alone is not enough for ExtAuth: Authorino may still be reconciling, so
+    unauthenticated /maas-api calls can return 200 and API key create can fail with
+    AUTH_FAILURE (missing X-MaaS-Username). Wait for Enforced before probing the API.
+    """
     auth_policy = AuthPolicy(
         client=admin_client,
         name=policy_name,
@@ -320,14 +349,26 @@ def wait_for_auth_policy_accepted(
                 namespace=namespace,
                 condition_type="Accepted",
             )
-            if accepted_condition is not None and accepted_condition.get("status") == "True":
-                LOGGER.info(f"AuthPolicy '{namespace}/{policy_name}' is Accepted after MaaSAuthPolicy reconciliation")
+            enforced_condition = get_auth_policy_condition(
+                admin_client=admin_client,
+                policy_name=policy_name,
+                namespace=namespace,
+                condition_type="Enforced",
+            )
+            accepted = accepted_condition is not None and accepted_condition.get("status") == "True"
+            enforced = enforced_condition is not None and enforced_condition.get("status") == "True"
+            if accepted and enforced:
+                LOGGER.info(
+                    f"AuthPolicy '{namespace}/{policy_name}' is Accepted and Enforced "
+                    "after MaaSAuthPolicy reconciliation"
+                )
                 return auth_policy
     except TimeoutExpiredError as error:
         raise AssertionError(
-            f"Timed out waiting for AuthPolicy '{namespace}/{policy_name}' to become Accepted. {reconciliation_hint}"
+            f"Timed out waiting for AuthPolicy '{namespace}/{policy_name}' to become "
+            f"Accepted and Enforced. {reconciliation_hint}"
         ) from error
-    raise AssertionError(f"AuthPolicy '{namespace}/{policy_name}' did not become Accepted")
+    raise AssertionError(f"AuthPolicy '{namespace}/{policy_name}' did not become Accepted and Enforced")
 
 
 def get_auth_policy_callback_url(

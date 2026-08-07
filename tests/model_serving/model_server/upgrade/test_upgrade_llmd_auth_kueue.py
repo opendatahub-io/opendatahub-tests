@@ -1,6 +1,5 @@
 import pytest
 import structlog
-from ocp_resources.llm_inference_service import LLMInferenceService
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_serving.model_server.llmd.utils import (
@@ -23,8 +22,7 @@ from tests.model_serving.model_server.upgrade.utils import (
     verify_llmisvc_url_unchanged,
 )
 from utilities.kueue_utils import check_gated_pods_and_running_pods
-
-pytestmark = [pytest.mark.llmd_cpu]
+from utilities.resources.llm_inference_service import LLMInferenceService
 
 LOGGER = structlog.get_logger(name=__name__)
 

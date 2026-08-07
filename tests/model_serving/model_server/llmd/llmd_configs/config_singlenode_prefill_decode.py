@@ -9,7 +9,9 @@ This config covers single-node P/D: Prefill is set, Worker is nil → standard D
 Physical co-location on the same host is via pod affinity (user responsibility), not controller.
 
 No custom scheduler config is specified. The controller auto-generates the full P/D
-EndpointPickerConfig with all disaggregation plugins when spec.prefill != nil
+EndpointPickerConfig with all disaggregation plugins when spec.prefill != nil.
+
+Fast image variants live in ``config_fast_image.py`` alongside other fast configs.
 """
 
 from utilities.constants import Labels
@@ -31,13 +33,22 @@ class SingleNodePrefillDecodeConfig(TinyLlamaOciGpuConfig):
     min_nodes = 1
     min_gpus_per_node = 2
     supported_accelerators = (Labels.Nvidia.NVIDIA_COM_GPU,)
+    supported_topology = "workload-single-node-pd"
+
+    # 1 decode + 1 prefill Deployment pod, both are InferencePool members
+    expected_vllm_pod_count = 2
+    expected_inference_pool_pod_count = 2
 
     @classmethod
     def container_env(cls):
-        return super().container_env() + [
+        base = [e for e in super().container_env() if e["name"] != "VLLM_ADDITIONAL_ARGS"]
+        return base + [
             {
                 "name": "VLLM_ADDITIONAL_ARGS",
-                "value": '--kv_transfer_config \'{"kv_connector":"NixlConnector","kv_role":"kv_both"}\'',
+                "value": (
+                    '--kv_transfer_config \'{"kv_connector":"NixlConnector","kv_role":"kv_both"}\''
+                    " --enable-auto-tool-choice --tool-call-parser hermes"
+                ),
             },
             {
                 "name": "VLLM_NIXL_SIDE_CHANNEL_HOST",
