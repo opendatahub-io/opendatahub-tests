@@ -56,13 +56,38 @@ def execute_model_registry_post_command(
 
     if resp.status_code not in [200, 201]:
         raise ModelRegistryResourceNotCreated(
-            f"Failed to create ModelRegistry resource: {url}, {resp.status_code}: {resp.text}"
+            f"Failed to create ModelRegistry resource: {url}, {resp.status_code}: {resp.text}",
+            status_code=resp.status_code,
         )
     try:
         return json.loads(resp.text)
     except json.JSONDecodeError:
         LOGGER.error(f"Unable to parse {resp.text}")
         raise
+
+
+def is_transient_warmup_error(exception: ModelRegistryResourceNotCreated) -> bool:
+    """Return True if the exception represents a transient warm-up error.
+
+    Used as a timeout_sampler retry filter so that only transient warm-up
+    responses are retried:
+      - transient HTTP 401 while the kube-rbac-proxy sidecar warms up and is not
+        yet validating tokens (even after the CR conditions report True), and
+      - transient HTTP 5xx (e.g. the router's HTTP 503) during Model Registry
+        route warm-up.
+    Permanent 4xx responses (e.g. 403/404) still fail immediately.
+
+    Args:
+        exception: The raised ModelRegistryResourceNotCreated exception.
+
+    Returns:
+        bool: True if the exception carries a transient 401 or 5xx status code,
+            False otherwise.
+    """
+    status_code = exception.status_code
+    if status_code is None:
+        return False
+    return status_code == 401 or 500 <= status_code <= 599
 
 
 def register_model_rest_api(

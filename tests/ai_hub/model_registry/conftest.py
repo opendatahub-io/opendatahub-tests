@@ -23,7 +23,7 @@ from tests.ai_hub.constants import (
     MODEL_REGISTRY_POD_FILTER,
     MR_INSTANCE_NAME,
 )
-from tests.ai_hub.model_registry.utils import MR_RETRY_EXCEPTIONS
+from tests.ai_hub.model_registry.utils import MR_RETRY_EXCEPTIONS, get_model_registry_client_with_retry
 from tests.ai_hub.utils import (
     get_endpoint_from_mr_service,
     get_mr_service_by_label,
@@ -60,7 +60,7 @@ def model_registry_client(
         host, _, path = address.partition("/")
         server_url = f"{Protocols.HTTPS}://{host}:{port}/{path}" if path else f"{Protocols.HTTPS}://{host}:{port}"
         mr_clients.append(
-            ModelRegistryClient(
+            get_model_registry_client_with_retry(
                 server_address=server_url,
                 port=port,
                 author="opendatahub-test",

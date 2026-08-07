@@ -385,6 +385,15 @@ def model_registry_instance(
                 wait_for_pods_running(
                     admin_client=admin_client, namespace_name=model_registry_namespace, number_of_consecutive_checks=6
                 )
+                # NOTE: CR conditions and pod readiness can go True a few seconds before the
+                # Model Registry actually serves authenticated traffic:
+                #   - the OpenShift route briefly returns HTTP 503 while it warms up, and
+                #   - the kube-rbac-proxy sidecar can return a transient HTTP 401 during its
+                #     own warm-up (before it validates tokens) even after the CR conditions
+                #     (Available / KubeRBACProxyAvailable) report True.
+                # Both warm-up windows are absorbed by the retries in
+                # _register_model_rest_api_with_retry (rest_api/conftest.py) and
+                # get_model_registry_client_with_retry (model_registry/utils.py).
             yield mr_instances
         if db_name == "default":
             wait_for_default_resource_cleanedup(admin_client=admin_client, namespace_name=model_registry_namespace)
