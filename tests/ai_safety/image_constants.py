@@ -36,7 +36,7 @@ class AiSafetyImages:
     )
     LOAN_MODEL_ALPHA: str = (
         "oci://quay.io/trustyai_testing/loan-model-alpha-modelcar"
-        "@sha256:519c05826b987615f0f12cb341715060108054fef88a462c9902084992af3054"
+        "@sha256:837ca7b3064a08c5fa1a33c3cc557e96c7c2a70d0a8353076a2f8e95abcb6e60"
     )
     MLSERVER: str = (
         "quay.io/trustyai_testing/mlserver@sha256:68a4cd74fff40a3c4f29caddbdbdc9e54888aba54bf3c5f78c8ffd577c3a1c89"
