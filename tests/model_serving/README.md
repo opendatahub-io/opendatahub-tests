@@ -55,7 +55,8 @@ model_serving/
     │   ├── observability/             # Metrics and monitoring
     │   ├── platform/                  # DSC deployment modes
     │   ├── private_endpoint/          # Private endpoint access
-    │   └── storage/                   # S3, PVC, OCI, MinIO backends
+    │   ├── storage/                   # S3, PVC, OCI, MinIO backends
+    │   └── transformer/               # Transformer with auth and TLS injection
     ├── llmd/                          # LLM Deployment (llm-d) tests
     │   ├── llmd_configs/              # llm-d configuration files
     │   └── test_llmd_*.py             # Smoke, auth, CPU/GPU, scheduler
@@ -67,7 +68,7 @@ model_serving/
 
 - **`maas_billing/`** - MaaS billing tests including token management, rate limiting, RBAC, subscription lifecycle, API key CRUD/authorization, and cascade deletion
 - **`model_runtime/`** - Runtime validation for vLLM (S3 and OCI modelcar), OpenVINO (CPU-optimized inference), Triton (multi-framework), and MLServer (lightweight serving)
-- **`model_server/`** - Server platform tests for KServe deployment modes (raw, serverless), storage backends (S3, PVC, OCI, MinIO), authentication, autoscaling (KEDA, Kueue), inference graphs, lifecycle management, observability, negative testing, llm-d, and upgrade scenarios
+- **`model_server/`** - Server platform tests for KServe deployment modes (raw, serverless), storage backends (S3, PVC, OCI, MinIO), authentication, autoscaling (KEDA, Kueue), inference graphs, lifecycle management, observability, negative testing, transformer auth/TLS injection, llm-d, and upgrade scenarios
 
 ## Test Markers
 
