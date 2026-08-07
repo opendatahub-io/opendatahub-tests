@@ -29,6 +29,12 @@ RUN wget https://github.com/openshift/must-gather-clean/releases/download/v0.0.4
     && chmod +x /usr/bin/must-gather-clean \
     && rm -f must-gather-clean-linux-amd64.tar.gz
 
+# Install oc (OpenShift CLI)
+RUN curl -sSL "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz" -o /tmp/oc.tar.gz \
+    && tar xzf /tmp/oc.tar.gz -C /usr/bin oc \
+    && chmod +x /usr/bin/oc \
+    && rm -f /tmp/oc.tar.gz
+
 # Install cosign v3.0.4 (multi-arch, no expiration)
 COPY --from=quay.io/securesign/cli-cosign@sha256:3df09cd1b4915e61d4de9c67416827b94e5900763e936e2909fd4d78e1ead8e8 /usr/local/bin/cosign /usr/bin/cosign
 
