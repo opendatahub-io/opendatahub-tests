@@ -1,26 +1,15 @@
 # Model Serving Tests
 
-This directory contains the most comprehensive test suite in the repository, covering all aspects of model serving functionality in OpenDataHub/RHOAI. It validates model runtimes, model server configurations, storage backends, deployment modes, and MaaS (Model as a Service) billing.
+This directory contains the most comprehensive test suite in the repository, covering all aspects of model serving functionality in OpenDataHub/RHOAI. It validates model runtimes, model server configurations, storage backends, and deployment modes.
+
+> **Note:** MaaS (Model as a Service) billing tests moved to
+> [`tests/ai_gateway/models_as_a_service/`](../ai_gateway/models_as_a_service/README.md).
 
 ## Directory Structure
 
 ```text
 model_serving/
 ├── conftest.py                        # Module-level fixtures (S3 secrets, protocols)
-│
-├── maas_billing/                      # MaaS billing and subscription tests
-│   ├── conftest.py
-│   ├── utils.py
-│   ├── test_maas_endpoints.py         # /v1/models, /v1/chat/completions
-│   ├── test_maas_token_*.py           # Token minting and revocation
-│   ├── test_maas_*_rate_limits.py     # Request and token-based rate limiting
-│   ├── test_maas_rbac_e2e.py          # Multi-tier user access control
-│   └── maas_subscription/             # Subscription and API key management
-│       ├── conftest.py
-│       ├── test_api_key_*.py          # API key CRUD and authorization
-│       ├── test_*_subscriptions_*.py  # Multi-subscription enforcement
-│       ├── test_cascade_deletion.py   # Cascade deletion
-│       └── component_health/          # MaaS controller and API health
 │
 ├── model_runtime/                     # Runtime validation tests
 │   ├── conftest.py
@@ -65,7 +54,6 @@ model_serving/
 
 ### Current Test Suites
 
-- **`maas_billing/`** - MaaS billing tests including token management, rate limiting, RBAC, subscription lifecycle, API key CRUD/authorization, and cascade deletion
 - **`model_runtime/`** - Runtime validation for vLLM (S3 and OCI modelcar), OpenVINO (CPU-optimized inference), Triton (multi-framework), and MLServer (lightweight serving)
 - **`model_server/`** - Server platform tests for KServe deployment modes (raw, serverless), storage backends (S3, PVC, OCI, MinIO), authentication, autoscaling (KEDA, Kueue), inference graphs, lifecycle management, observability, negative testing, llm-d, and upgrade scenarios
 
@@ -134,9 +122,6 @@ uv run pytest tests/model_serving/model_runtime/openvino/
 
 # Run KServe platform tests
 uv run pytest tests/model_serving/model_server/kserve/
-
-# Run MaaS billing tests
-uv run pytest tests/model_serving/maas_billing/
 
 # Run llm-d tests
 uv run pytest tests/model_serving/model_server/llmd/
