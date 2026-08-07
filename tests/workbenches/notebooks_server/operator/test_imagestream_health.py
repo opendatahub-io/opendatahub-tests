@@ -236,14 +236,14 @@ def _validate_imagestreams_with_label(
     "label_selector, expected_imagestream_count, latest_tags_only",
     [
         pytest.param(
-            "opendatahub.io/notebook-image=true,platform.opendatahub.io/part-of=workbenches",
+            "opendatahub.io/notebook-image=true,app.kubernetes.io/part-of=workbenches",
             11,
             True,
             id="test_notebook_imagestreams",
         ),
         pytest.param(
-            "opendatahub.io/runtime-image=true,platform.opendatahub.io/part-of=workbenches",
-            7,
+            "opendatahub.io/runtime-image=true,app.kubernetes.io/part-of=workbenches",
+            14,
             False,
             id="test_runtime_imagestreams",
         ),
@@ -298,7 +298,7 @@ def test_workbench_imagestreams_health(
     "label_selector, expected_imagestream_count",
     [
         pytest.param(
-            "opendatahub.io/notebook-image=true,platform.opendatahub.io/part-of=workbenches",
+            "opendatahub.io/notebook-image=true,app.kubernetes.io/part-of=workbenches",
             11,
             id="test_notebook_imagestreams",
         ),
