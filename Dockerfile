@@ -19,7 +19,7 @@ RUN echo "Architecture: ${TARGETARCH}" && \
 
 # Install system dependencies using dnf
 RUN dnf update -y \
-    && dnf install -y python3 python3-pip python3-devel ssh gnupg curl gpg wget vim rsync git openssl openssl-devel skopeo gcc-c++
+    && dnf install -y python3 python3-pip python3-devel ssh gnupg curl gpg wget vim rsync git openssl openssl-devel skopeo gcc-c++ \
     && dnf clean all \
     && rm -rf /var/cache/dnf
 

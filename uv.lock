@@ -655,7 +655,7 @@ dependencies = [
     { name = "multiprocess" },
     { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple/" } },
     { name = "packaging" },
-    { name = "pandas" },
+    { name = "pandas", version = "3.0.5", source = { registry = "https://pypi.org/simple/" } },
     { name = "pyarrow" },
     { name = "pyyaml", version = "6.0.3", source = { registry = "https://pypi.org/simple/" } },
     { name = "requests" },
@@ -2170,7 +2170,8 @@ dependencies = [
     { name = "distro" },
     { name = "fire" },
     { name = "httpx" },
-    { name = "pandas" },
+    { name = "pandas", version = "3.0.3+ppc64le1", source = { registry = "https://wheels.developerfirst.ibm.com/ppc64le/linux/+simple/" }, marker = "platform_machine == 'ppc64le'" },
+    { name = "pandas", version = "3.0.5", source = { registry = "https://pypi.org/simple/" }, marker = "platform_machine != 'ppc64le'" },
     { name = "prompt-toolkit" },
     { name = "pyaml" },
     { name = "pydantic" },
@@ -2247,6 +2248,7 @@ dependencies = [
     { name = "openai" },
     { name = "openshift-python-utilities" },
     { name = "openshift-python-wrapper" },
+    { name = "pandas", version = "3.0.3+ppc64le1", source = { registry = "https://wheels.developerfirst.ibm.com/ppc64le/linux/+simple/" }, marker = "platform_machine == 'ppc64le'" },
     { name = "portforward" },
     { name = "protobuf" },
     { name = "psutil", version = "7.2.2", source = { registry = "https://pypi.org/simple/" }, marker = "platform_machine != 'ppc64le'" },
@@ -2315,6 +2317,7 @@ requires-dist = [
     { name = "openai", specifier = ">=2.36" },
     { name = "openshift-python-utilities", specifier = ">=5.0.71" },
     { name = "openshift-python-wrapper", specifier = ">=11.0.132" },
+    { name = "pandas", marker = "platform_machine == 'ppc64le'", specifier = "==3.0.3", index = "https://wheels.developerfirst.ibm.com/ppc64le/linux/+simple/" },
     { name = "portforward", specifier = ">=0.7.1" },
     { name = "protobuf" },
     { name = "psutil", marker = "platform_machine != 'ppc64le'", specifier = "==7.2.2", index = "https://pypi.org/simple/" },
@@ -2506,11 +2509,33 @@ wheels = [
 
 [[package]]
 name = "pandas"
+version = "3.0.3+ppc64le1"
+source = { registry = "https://wheels.developerfirst.ibm.com/ppc64le/linux/+simple/" }
+resolution-markers = [
+    "platform_machine == 'ppc64le' and sys_platform == 'win32'",
+    "platform_machine == 'ppc64le' and sys_platform == 'emscripten'",
+    "platform_machine == 'ppc64le' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+]
+dependencies = [
+    { name = "numpy", version = "2.4.6+ppc64le1", source = { registry = "https://wheels.developerfirst.ibm.com/ppc64le/linux/+simple/" } },
+    { name = "python-dateutil" },
+    { name = "tzdata", marker = "sys_platform == 'emscripten' or sys_platform == 'win32'" },
+]
+wheels = [
+    { url = "https://wheels.developerfirst.ibm.com/ppc64le/linux/+f/ff7/d071e808c5e8e/pandas-3.0.3+ppc64le1-cp314-cp314-manylinux_2_34_ppc64le.whl", hash = "sha256:ff7d071e808c5e8e2bf7605e5de8ca40c61e4b5b7ee5dd02d64370cbd38d7026" },
+]
+
+[[package]]
+name = "pandas"
 version = "3.0.5"
 source = { registry = "https://pypi.org/simple/" }
+resolution-markers = [
+    "platform_machine != 'ppc64le' and sys_platform == 'win32'",
+    "platform_machine != 'ppc64le' and sys_platform == 'emscripten'",
+    "platform_machine != 'ppc64le' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+]
 dependencies = [
-    { name = "numpy", version = "2.4.6+ppc64le1", source = { registry = "https://wheels.developerfirst.ibm.com/ppc64le/linux/+simple/" }, marker = "platform_machine == 'ppc64le'" },
-    { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple/" }, marker = "platform_machine != 'ppc64le'" },
+    { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple/" } },
     { name = "python-dateutil" },
     { name = "tzdata", marker = "sys_platform == 'emscripten' or sys_platform == 'win32'" },
 ]
