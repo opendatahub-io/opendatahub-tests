@@ -1,12 +1,13 @@
+from typing import Any
+
 import structlog
 import yaml
-from kubernetes.dynamic import DynamicClient
-from ocp_resources.deployment import Deployment
 from timeout_sampler import TimeoutSampler
 
 from tests.ai_hub.constants import CATALOG_CONTAINER
 from tests.ai_hub.model_catalog.constants import MODEL_CATALOG_DEPLOYMENT_NAME
 from tests.ai_hub.utils import execute_get_command
+from utilities.openshift_resources.deployment import Deployment
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -74,19 +75,16 @@ def build_labeled_configmap_data(source_id: str, source_name: str, model_name: s
     return {"sources.yaml": sources_yaml, "catalog-data.yaml": catalog_data_yaml}
 
 
-def get_deployment_catalog_args(admin_client: DynamicClient, namespace: str) -> list[str]:
+def get_deployment_catalog_args(namespace: str) -> list[str]:
     """Retrieve the container args from the model-catalog deployment.
 
     Args:
-        admin_client: Kubernetes dynamic client.
         namespace: Namespace of the model-catalog deployment.
 
     Returns:
         List of container argument strings.
     """
-    deployment = Deployment(
-        name=MODEL_CATALOG_DEPLOYMENT_NAME, namespace=namespace, client=admin_client, ensure_exists=True
-    )
+    deployment = Deployment(name=MODEL_CATALOG_DEPLOYMENT_NAME, namespace=namespace, ensure_exists=True)
     catalog_container = next(
         (
             container
@@ -100,15 +98,14 @@ def get_deployment_catalog_args(admin_client: DynamicClient, namespace: str) -> 
 
 
 def wait_for_deployment_args_contain(
-    admin_client: DynamicClient,
     namespace: str,
     expected_substring: str,
     timeout: int = 120,
+    **kwargs: Any,
 ) -> None:
     """Wait until the model-catalog deployment args contain the expected substring.
 
     Args:
-        admin_client: Kubernetes dynamic client.
         namespace: Namespace of the model-catalog deployment.
         expected_substring: Substring expected to appear in deployment args.
         timeout: Maximum time to wait in seconds.
@@ -117,7 +114,6 @@ def wait_for_deployment_args_contain(
         wait_timeout=timeout,
         sleep=10,
         func=get_deployment_catalog_args,
-        admin_client=admin_client,
         namespace=namespace,
     ):
         if any(expected_substring in arg for arg in sample):
@@ -125,15 +121,14 @@ def wait_for_deployment_args_contain(
 
 
 def wait_for_deployment_args_not_contain(
-    admin_client: DynamicClient,
     namespace: str,
     unwanted_substring: str,
     timeout: int = 120,
+    **kwargs: Any,
 ) -> None:
     """Wait until the model-catalog deployment args no longer contain the substring.
 
     Args:
-        admin_client: Kubernetes dynamic client.
         namespace: Namespace of the model-catalog deployment.
         unwanted_substring: Substring that should no longer appear in deployment args.
         timeout: Maximum time to wait in seconds.
@@ -142,7 +137,6 @@ def wait_for_deployment_args_not_contain(
         wait_timeout=timeout,
         sleep=10,
         func=get_deployment_catalog_args,
-        admin_client=admin_client,
         namespace=namespace,
     ):
         if not any(unwanted_substring in arg for arg in sample):

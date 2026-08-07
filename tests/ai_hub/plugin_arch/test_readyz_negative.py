@@ -4,7 +4,6 @@ import pytest
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.pod import Pod
 from timeout_sampler import TimeoutSampler
 
 from tests.ai_hub.plugin_arch.utils import (
@@ -13,6 +12,7 @@ from tests.ai_hub.plugin_arch.utils import (
     run_superuser_sql,
 )
 from tests.ai_hub.utils import get_model_catalog_pod
+from utilities.openshift_resources.pod import Pod
 
 LOGGER = structlog.get_logger(name=__name__)
 

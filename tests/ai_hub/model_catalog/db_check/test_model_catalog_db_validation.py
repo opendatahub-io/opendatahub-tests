@@ -5,9 +5,6 @@ from datetime import UTC, datetime
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.deployment import Deployment
-from ocp_resources.network_policy import NetworkPolicy
-from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_hub.constants import CATALOG_CONTAINER
@@ -24,6 +21,9 @@ from tests.ai_hub.model_catalog.utils import (
 from tests.ai_hub.utils import (
     wait_for_model_catalog_pod_ready_after_deletion,
 )
+from utilities.openshift_resources.deployment import Deployment
+from utilities.openshift_resources.network_policy import NetworkPolicy
+from utilities.openshift_resources.persistent_volume_claim import PersistentVolumeClaim
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -101,28 +101,26 @@ class TestModelCatalogLoaderHealth:
 
 @pytest.mark.post_upgrade
 class TestModelCatalogPostgresEphemeralStorage:
-    def test_no_pvc_for_catalog_postgres(self, admin_client: DynamicClient, model_registry_namespace: str) -> None:
+    def test_no_pvc_for_catalog_postgres(self, model_registry_namespace: str) -> None:
         """Given a model catalog postgres deployment
         When listing PVCs in the model registry namespace
         Then no PVC should exist for catalog postgres
         """
         pvcs = list(
-            PersistentVolumeClaim.get(
-                client=admin_client,
+            PersistentVolumeClaim.list_resources(
                 namespace=model_registry_namespace,
                 label_selector="component=model-catalog",
             )
         )
         assert not pvcs, f"Catalog postgres should not have a PVC, found: {[pvc.name for pvc in pvcs]}"
 
-    def test_postgres_uses_emptydir_volume(self, admin_client: DynamicClient, model_registry_namespace: str) -> None:
+    def test_postgres_uses_emptydir_volume(self, model_registry_namespace: str) -> None:
         """Given a model catalog postgres deployment
         When inspecting the volume configuration
         Then the data volume should be emptyDir, not a PVC
         """
         deployments = list(
-            Deployment.get(
-                client=admin_client,
+            Deployment.list_resources(
                 namespace=model_registry_namespace,
                 label_selector="app.kubernetes.io/name=model-catalog-postgres",
             )
@@ -198,13 +196,9 @@ class TestModelCatalogNetworkPolicyConnectivity:
         Then the connection is not blocked by the NetworkPolicy
         """
         service_url = f"https://model-catalog.{model_registry_namespace}.svc.cluster.local:8443"
-        result = dashboard_pod.execute(command=["curl", "-k", "--connect-timeout", "10", service_url])
-        LOGGER.info(f"curl to {service_url}: rc={result.rc}, stdout={result.stdout}, stderr={result.stderr}")
-        assert result.rc == 0, (
-            f"Dashboard pod cannot reach model-catalog at {service_url} — "
-            f"NetworkPolicy may be blocking traffic (rc={result.rc}, stderr={result.stderr})"
-        )
-        assert "Connection timed out" not in result.stdout, (
+        output = dashboard_pod.execute(command=["curl", "-k", "--connect-timeout", "10", service_url])
+        LOGGER.info(f"curl to {service_url}: stdout={output}")
+        assert "Connection timed out" not in output, (
             f"Dashboard pod connection timed out to model-catalog at {service_url} — "
             f"NetworkPolicy may be blocking traffic"
         )
@@ -298,7 +292,6 @@ class TestModelCatalogDBNetworkPolicyNoReconciliationStorm:
 class TestNonCatalogNetworkPolicyNotRecreated:
     def test_non_catalog_network_policy_not_recreated(
         self,
-        admin_client: DynamicClient,
         non_catalog_network_policy,
         model_registry_namespace: str,
     ):
@@ -309,7 +302,6 @@ class TestNonCatalogNetworkPolicyNotRecreated:
                 wait_timeout=30,
                 sleep=5,
                 func=NetworkPolicy,
-                client=admin_client,
                 name=non_catalog_network_policy.name,
                 namespace=model_registry_namespace,
             ):

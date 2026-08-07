@@ -3,9 +3,6 @@ from typing import Any, Literal
 
 import structlog
 import yaml
-from kubernetes.dynamic import DynamicClient
-from ocp_resources.config_map import ConfigMap
-from ocp_resources.pod import Pod
 
 from tests.ai_hub.constants import CATALOG_CONTAINER, DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
 from tests.ai_hub.model_catalog.search.utils import fetch_all_artifacts_with_dynamic_paging
@@ -15,6 +12,8 @@ from tests.ai_hub.utils import (
     get_rest_headers,
     should_include_by_pattern,
 )
+from utilities.openshift_resources.config_map import ConfigMap
+from utilities.openshift_resources.pod import Pod
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -422,7 +421,7 @@ def compare_filter_options_with_database(
     return is_valid, comparison_errors
 
 
-def get_labels_from_configmaps(admin_client: DynamicClient, namespace: str) -> list[dict[str, Any]]:
+def get_labels_from_configmaps(namespace: str) -> list[dict[str, Any]]:
     """
     Get all labels from both model catalog ConfigMaps.
 
@@ -436,13 +435,13 @@ def get_labels_from_configmaps(admin_client: DynamicClient, namespace: str) -> l
     labels = []
 
     # Get labels from default ConfigMap
-    default_cm = ConfigMap(name=DEFAULT_MODEL_CATALOG_CM, client=admin_client, namespace=namespace)
+    default_cm = ConfigMap(name=DEFAULT_MODEL_CATALOG_CM, namespace=namespace)
     default_data = yaml.safe_load(default_cm.instance.data["sources.yaml"])
     if "labels" in default_data:
         labels.extend(default_data["labels"])
 
     # Get labels from sources ConfigMap
-    sources_cm = ConfigMap(name=DEFAULT_CUSTOM_MODEL_CATALOG, client=admin_client, namespace=namespace)
+    sources_cm = ConfigMap(name=DEFAULT_CUSTOM_MODEL_CATALOG, namespace=namespace)
     sources_data = yaml.safe_load(sources_cm.instance.data["sources.yaml"])
     if "labels" in sources_data:
         labels.extend(sources_data["labels"])

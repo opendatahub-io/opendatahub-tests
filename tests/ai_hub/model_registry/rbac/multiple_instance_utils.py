@@ -34,8 +34,8 @@ db_pvc_params = [
     {
         "name": resource_name,
         "namespace": ns_name,
-        "accessmodes": "ReadWriteOnce",
-        "size": "4Gi",
+        "access_modes": ["ReadWriteOnce"],
+        "resources": {"requests": {"storage": "4Gi"}},
         "label": get_model_registry_db_label_dict(db_resource_name=resource_name),
     }
     for resource_name in resource_names

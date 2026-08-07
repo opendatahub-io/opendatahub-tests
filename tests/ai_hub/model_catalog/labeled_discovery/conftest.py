@@ -3,7 +3,6 @@ from collections.abc import Generator
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.config_map import ConfigMap
 
 from tests.ai_hub.model_catalog.constants import CATALOG_SOURCE_LABEL_KEY
 from tests.ai_hub.model_catalog.labeled_discovery.utils import (
@@ -18,6 +17,7 @@ from tests.ai_hub.model_catalog.labeled_discovery.utils import (
 )
 from tests.ai_hub.model_catalog.utils import wait_for_model_catalog_api
 from tests.ai_hub.utils import wait_for_model_catalog_pod_ready_after_deletion
+from utilities.openshift_resources.config_map import ConfigMap
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -38,7 +38,6 @@ def labeled_configmap_alpha(
     cm = ConfigMap(
         name=cm_name,
         namespace=model_registry_namespace,
-        client=admin_client,
         label={CATALOG_SOURCE_LABEL_KEY: "true"},
         data=build_labeled_configmap_data(
             source_id=TEST_SOURCE_ALPHA_ID,
@@ -51,9 +50,7 @@ def labeled_configmap_alpha(
 
     with cm as created_cm:
         LOGGER.info(f"Created labeled ConfigMap: {cm_name}")
-        wait_for_deployment_args_contain(
-            admin_client=admin_client, namespace=model_registry_namespace, expected_substring=cm_name
-        )
+        wait_for_deployment_args_contain(namespace=model_registry_namespace, expected_substring=cm_name)
         wait_for_model_catalog_pod_ready_after_deletion(
             client=admin_client, model_registry_namespace=model_registry_namespace
         )
@@ -66,9 +63,7 @@ def labeled_configmap_alpha(
         yield created_cm
 
     LOGGER.info(f"Teardown: waiting for deployment to reconcile after deleting {cm_name}")
-    wait_for_deployment_args_not_contain(
-        admin_client=admin_client, namespace=model_registry_namespace, unwanted_substring=cm_name
-    )
+    wait_for_deployment_args_not_contain(namespace=model_registry_namespace, unwanted_substring=cm_name)
     wait_for_model_catalog_pod_ready_after_deletion(
         client=admin_client, model_registry_namespace=model_registry_namespace
     )
@@ -91,7 +86,6 @@ def labeled_configmap_beta(
     cm = ConfigMap(
         name=cm_name,
         namespace=model_registry_namespace,
-        client=admin_client,
         label={CATALOG_SOURCE_LABEL_KEY: "true"},
         data=build_labeled_configmap_data(
             source_id=TEST_SOURCE_BETA_ID,
@@ -104,9 +98,7 @@ def labeled_configmap_beta(
 
     with cm as created_cm:
         LOGGER.info(f"Created labeled ConfigMap: {cm_name}")
-        wait_for_deployment_args_contain(
-            admin_client=admin_client, namespace=model_registry_namespace, expected_substring=cm_name
-        )
+        wait_for_deployment_args_contain(namespace=model_registry_namespace, expected_substring=cm_name)
         wait_for_model_catalog_pod_ready_after_deletion(
             client=admin_client, model_registry_namespace=model_registry_namespace
         )
@@ -119,9 +111,7 @@ def labeled_configmap_beta(
         yield created_cm
 
     LOGGER.info(f"Teardown: waiting for deployment to reconcile after deleting {cm_name}")
-    wait_for_deployment_args_not_contain(
-        admin_client=admin_client, namespace=model_registry_namespace, unwanted_substring=cm_name
-    )
+    wait_for_deployment_args_not_contain(namespace=model_registry_namespace, unwanted_substring=cm_name)
     wait_for_model_catalog_pod_ready_after_deletion(
         client=admin_client, model_registry_namespace=model_registry_namespace
     )

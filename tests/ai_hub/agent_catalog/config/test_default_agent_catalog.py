@@ -3,7 +3,6 @@ from typing import Self
 import pytest
 import structlog
 import yaml
-from ocp_resources.config_map import ConfigMap
 
 from tests.ai_hub.agent_catalog.config.constants import (
     AGENT_SOURCES_CATALOGS_PATH_ARG,
@@ -12,6 +11,7 @@ from tests.ai_hub.agent_catalog.config.constants import (
     EXPECTED_DEFAULT_AGENT_CATALOG,
 )
 from tests.ai_hub.utils import execute_get_command_with_retry
+from utilities.openshift_resources.config_map import ConfigMap
 
 LOGGER = structlog.get_logger(name=__name__)
 

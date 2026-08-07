@@ -3,11 +3,11 @@ from typing import Any, Self
 
 import pytest
 import structlog
-from ocp_resources.config_map import ConfigMap
 
 from tests.ai_hub.constants import CUSTOM_CATALOG_ID1
 from tests.ai_hub.model_catalog.utils import get_catalog_str, get_models_from_catalog_api
 from tests.ai_hub.utils import execute_get_command
+from utilities.openshift_resources.config_map import ConfigMap
 
 TOOL_CALLING_README_HEADING = "## vLLM Deployment with Tool Calling"
 

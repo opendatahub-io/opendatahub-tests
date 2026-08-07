@@ -1,8 +1,8 @@
 import pytest
 import structlog
-from ocp_resources.pod import Pod
 
 from utilities.general import validate_container_images
+from utilities.openshift_resources.pod import Pod
 
 LOGGER = structlog.get_logger(name=__name__)
 

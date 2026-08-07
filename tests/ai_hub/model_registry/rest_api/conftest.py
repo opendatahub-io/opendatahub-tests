@@ -10,14 +10,6 @@ import pytest
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.config_map import ConfigMap
-from ocp_resources.deployment import Deployment
-from ocp_resources.inference_service import InferenceService
-from ocp_resources.namespace import Namespace
-from ocp_resources.pod import Pod
-from ocp_resources.resource import ResourceEditor
-from ocp_resources.secret import Secret
-from ocp_resources.serving_runtime import ServingRuntime
 from pytest_testconfig import config as py_config
 from timeout_sampler import retry
 
@@ -49,7 +41,14 @@ from utilities.certificates_utils import create_ca_bundle_with_router_cert, crea
 from utilities.exceptions import MissingParameter
 from utilities.general import generate_random_name, wait_for_pods_running
 from utilities.infra import create_ns
-from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.openshift_resources.config_map import ConfigMap
+from utilities.openshift_resources.deployment import Deployment
+from utilities.openshift_resources.inference_service import InferenceService
+from utilities.openshift_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.openshift_resources.namespace import Namespace
+from utilities.openshift_resources.pod import Pod
+from utilities.openshift_resources.secret import Secret
+from utilities.openshift_resources.serving_runtime import ServingRuntime
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -115,7 +114,6 @@ def updated_model_registry_resource(
 
 @pytest.fixture(scope="class")
 def patch_invalid_ca(
-    admin_client: DynamicClient,
     model_registry_namespace: str,
     request: pytest.FixtureRequest,
 ) -> Generator[str, Any, Any]:
@@ -128,7 +126,6 @@ def patch_invalid_ca(
     LOGGER.info(f"Patching the {ca_configmap_name} ConfigMap with an invalid CA certificate: {ca_file_path}")
     ca_data = {ca_file_name: "-----BEGIN CERTIFICATE-----\nINVALIDCERTIFICATE\n-----END CERTIFICATE-----"}
     ca_configmap = ConfigMap(
-        client=admin_client,
         name=ca_configmap_name,
         namespace=model_registry_namespace,
         ensure_exists=True,
@@ -140,7 +137,7 @@ def patch_invalid_ca(
         },
         "data": ca_data,
     }
-    with ResourceEditor(patches={ca_configmap: patch}):
+    with ca_configmap.patch_and_restore(patch=patch):
         LOGGER.info(f"Patched the {ca_configmap_name} ConfigMap with an invalid CA certificate: {ca_file_path}")
         yield ca_file_path
 
@@ -219,7 +216,6 @@ def deploy_secure_db_mr(
     if "sslRootCertificateConfigMap" in param:
         db_config["sslRootCertificateConfigMap"] = param["sslRootCertificateConfigMap"]
     with ModelRegistry(
-        client=admin_client,
         name=SECURE_MR_NAME,
         namespace=model_registry_namespace,
         label=get_mr_standard_labels(resource_name=SECURE_MR_NAME),
@@ -261,7 +257,6 @@ def local_ca_bundle(request: pytest.FixtureRequest, admin_client: DynamicClient)
 
 @pytest.fixture(scope="class")
 def ca_configmap_for_test(
-    admin_client: DynamicClient,
     model_registry_namespace: str,
     external_db_ssl_artifact_paths: dict[str, Any],
 ) -> Generator[ConfigMap]:
@@ -283,7 +278,6 @@ def ca_configmap_for_test(
         raise MissingParameter("CA content is empty")
     cm_name = "db-ca-configmap"
     with ConfigMap(
-        client=admin_client,
         name=cm_name,
         namespace=model_registry_namespace,
         data={"ca-bundle.crt": ca_content},
@@ -303,7 +297,7 @@ def patch_external_deployment_with_ssl_ca(
     Patch the external database deployment to use the test CA bundle,
     and mount the server cert/key for SSL.
     """
-    model_registry_db_deployments = get_mr_deployment(admin_client=admin_client, mr_namespace=model_registry_namespace)
+    model_registry_db_deployments = get_mr_deployment(mr_namespace=model_registry_namespace)
     if request.param.get("ca_configmap_for_test"):
         LOGGER.info("Invoking ca_configmap_for_test fixture")
         request.getfixturevalue(argname="ca_configmap_for_test")
@@ -329,7 +323,7 @@ def patch_external_deployment_with_ssl_ca(
     )
 
     patch = {"spec": {"template": {"spec": {"volumes": volumes, "containers": [db_container]}}}}
-    with ResourceEditor(patches={model_registry_db_deployments[0]: patch}):
+    with model_registry_db_deployments[0].patch_and_restore(patch=patch):
         wait_for_pods_running(
             admin_client=admin_client, namespace_name=model_registry_namespace, number_of_consecutive_checks=3
         )
@@ -408,13 +402,12 @@ def model_data_for_test() -> Generator[dict[str, Any]]:
 
 @pytest.fixture()
 def model_registry_default_postgres_deployment_match_label(
-    model_registry_namespace: str, admin_client: DynamicClient, model_registry_instance: list[ModelRegistry]
+    model_registry_namespace: str, model_registry_instance: list[ModelRegistry]
 ) -> dict[str, str]:
     """
     Returns the matchLabels from the default postgres deployment for filtering pods.
     """
     deployment = Deployment(
-        client=admin_client,
         namespace=model_registry_namespace,
         name=f"{model_registry_instance[0].name}-postgres",
         ensure_exists=True,
@@ -442,7 +435,6 @@ def model_registry_deployment_ns(admin_client: DynamicClient) -> Generator[Names
 
 @pytest.fixture(scope="class")
 def model_registry_connection_secret(
-    admin_client: DynamicClient,
     model_registry_deployment_ns: Namespace,
     registered_model_rest_api: dict[str, Any],
 ) -> Generator[Secret, Any, Any]:
@@ -471,12 +463,11 @@ def model_registry_connection_secret(
     }
 
     with Secret(
-        client=admin_client,
         name=resource_name,
         namespace=model_registry_deployment_ns.name,
         annotations=annotations,
         label=labels,
-        data_dict={"URI": encoded_uri},
+        data={"URI": encoded_uri},
         teardown=True,
     ) as connection_secret:
         LOGGER.info(
@@ -510,7 +501,6 @@ def model_registry_serving_runtime(
 
 @pytest.fixture(scope="class")
 def model_registry_inference_service(
-    admin_client: DynamicClient,
     model_registry_deployment_ns: Namespace,
     model_registry_serving_runtime: ServingRuntime,
     model_registry_connection_secret: Secret,
@@ -518,7 +508,6 @@ def model_registry_inference_service(
 ) -> Generator[InferenceService, Any, Any]:
     """Create an InferenceService for testing registered models."""
     with create_model_registry_inference_service(
-        admin_client=admin_client,
         namespace=model_registry_deployment_ns.name,
         runtime_name=model_registry_serving_runtime.name,
         connection_secret_name=model_registry_connection_secret.name,
@@ -529,7 +518,6 @@ def model_registry_inference_service(
 
 @pytest.fixture(scope="class")
 def model_registry_linked_inference_service(
-    admin_client: DynamicClient,
     model_registry_deployment_ns: Namespace,
     model_registry_serving_runtime: ServingRuntime,
     model_registry_connection_secret: Secret,
@@ -542,7 +530,6 @@ def model_registry_linked_inference_service(
     model_version_id = registered_model_rest_api.get("model_version", {}).get("id", "")
 
     with create_model_registry_inference_service(
-        admin_client=admin_client,
         namespace=model_registry_deployment_ns.name,
         runtime_name=model_registry_serving_runtime.name,
         connection_secret_name=model_registry_connection_secret.name,
@@ -558,7 +545,6 @@ def model_registry_linked_inference_service(
 
 @pytest.fixture(scope="class")
 def model_registry_predictor_pod(
-    admin_client: DynamicClient,
     model_registry_deployment_ns: Namespace,
     model_registry_inference_service: InferenceService,
 ) -> Pod:
@@ -568,8 +554,7 @@ def model_registry_predictor_pod(
     namespace = model_registry_deployment_ns.name
     label_selector = f"serving.kserve.io/inferenceservice={model_registry_inference_service.name}"
 
-    pods = Pod.get(
-        client=admin_client,
+    pods = Pod.list_resources(
         namespace=namespace,
         label_selector=label_selector,
     )

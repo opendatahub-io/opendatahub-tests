@@ -1,9 +1,9 @@
 import pytest
 import requests
 import structlog
-from ocp_resources.pod import Pod
 
 from tests.ai_hub.constants import CATALOG_CONTAINER
+from utilities.openshift_resources.pod import Pod
 
 LOGGER = structlog.get_logger(name=__name__)
 

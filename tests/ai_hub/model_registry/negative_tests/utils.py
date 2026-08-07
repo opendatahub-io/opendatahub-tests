@@ -1,8 +1,7 @@
 import base64
 
-from ocp_resources.pod import Pod
-
 from tests.ai_hub.constants import MODEL_REGISTRY_DB_SECRET_STR_DATA
+from utilities.openshift_resources.pod import Pod
 
 
 def create_mysql_credentials_file(model_registry_db_instance_pod: Pod) -> None:

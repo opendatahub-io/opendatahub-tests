@@ -5,8 +5,6 @@ import pytest
 import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.resource import ResourceEditor
-from ocp_resources.route import Route
 
 from tests.ai_hub.agent_catalog.config.constants import (
     TEST_AGENT_CATALOG_LABEL,
@@ -25,6 +23,7 @@ from tests.ai_hub.utils import (
     wait_for_agent_catalog_api,
     wait_for_model_catalog_pod_ready_after_deletion,
 )
+from utilities.openshift_resources.route_route_openshift_io import Route
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -64,9 +63,7 @@ def agent_catalog_configmap_patch(
     }
 
     source = param["source"]
-    catalog_config_map, current_data = get_agent_catalog_sources(
-        admin_client=admin_client, model_registry_namespace=model_registry_namespace
-    )
+    catalog_config_map, current_data = get_agent_catalog_sources(model_registry_namespace=model_registry_namespace)
     if "agent_catalogs" not in current_data:
         current_data["agent_catalogs"] = []
     current_data["agent_catalogs"] = [
@@ -86,7 +83,7 @@ def agent_catalog_configmap_patch(
         }
     }
 
-    with ResourceEditor(patches={catalog_config_map: patches}):
+    with catalog_config_map.patch_and_restore(patch=patches):
         wait_for_model_catalog_pod_ready_after_deletion(
             client=admin_client, model_registry_namespace=model_registry_namespace
         )

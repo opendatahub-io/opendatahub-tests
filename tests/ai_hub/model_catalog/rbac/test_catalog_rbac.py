@@ -4,12 +4,9 @@ Test suite for verifying RBAC permissions for Model Catalog ConfigMaps.
 
 import pytest
 import structlog
-from kubernetes.client.rest import ApiException
-from kubernetes.dynamic import DynamicClient
-from ocp_resources.config_map import ConfigMap
-from ocp_resources.resource import get_client
 
 from tests.ai_hub.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
+from utilities.openshift_resources.config_map import ConfigMap
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -37,7 +34,6 @@ class TestCatalogRBAC:
     )
     def test_admin_can_read_catalog_configmaps(
         self,
-        admin_client: DynamicClient,
         model_registry_namespace: str,
         configmap_name: str,
     ):
@@ -55,7 +51,6 @@ class TestCatalogRBAC:
         catalog_cm = ConfigMap(
             name=configmap_name,
             namespace=model_registry_namespace,
-            client=admin_client,
         )
 
         assert catalog_cm.exists, f"ConfigMap '{configmap_name}' not found in namespace '{model_registry_namespace}'"
@@ -90,20 +85,18 @@ class TestCatalogRBAC:
         if is_byoidc:
             pytest.skip(reason="BYOIDC test users may have pre-configured group memberships")
 
-        # get_client() uses the current kubeconfig context (set by login_as_test_user fixture)
-        user_client = get_client()
+        from utilities.openshift_resources.oc import OCError
 
-        with pytest.raises(ApiException) as exc_info:
+        with pytest.raises(OCError) as exc_info:
             catalog_cm = ConfigMap(
                 name=configmap_name,
                 namespace=model_registry_namespace,
-                client=user_client,
             )
-            _ = catalog_cm.instance  # Access the ConfigMap instance to trigger the API call
+            _ = catalog_cm.instance
 
-        assert exc_info.value.status == 403, (
-            f"Expected HTTP 403 Forbidden for non-admin user accessing '{configmap_name}', "
-            f"but got {exc_info.value.status}: {exc_info.value.reason}"
+        assert "Forbidden" in exc_info.value.stderr, (
+            f"Expected Forbidden error for non-admin user accessing '{configmap_name}', "
+            f"but got: {exc_info.value.stderr}"
         )
         LOGGER.info(
             f"Non-admin user '{user_credentials_rbac['username']}' correctly denied access "

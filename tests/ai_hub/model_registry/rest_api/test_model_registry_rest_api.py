@@ -2,15 +2,6 @@ from typing import Any, Self
 
 import pytest
 import structlog
-from kubernetes.dynamic import DynamicClient
-from ocp_resources.deployment import Deployment
-from ocp_resources.inference_service import InferenceService
-from ocp_resources.namespace import Namespace
-from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
-from ocp_resources.pod import Pod
-from ocp_resources.secret import Secret
-from ocp_resources.service import Service
-from ocp_resources.serving_runtime import ServingRuntime
 
 import tests.ai_hub.constants as ai_hub_constants
 from tests.ai_hub.constants import MR_POSTGRES_DB_OBJECT
@@ -29,7 +20,15 @@ from tests.ai_hub.model_registry.rest_api.constants import (
     STATE_LIVE,
 )
 from tests.ai_hub.model_registry.rest_api.utils import validate_model_inference, validate_resource_attributes
-from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.openshift_resources.deployment import Deployment
+from utilities.openshift_resources.inference_service import InferenceService
+from utilities.openshift_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.openshift_resources.namespace import Namespace
+from utilities.openshift_resources.persistent_volume_claim import PersistentVolumeClaim
+from utilities.openshift_resources.pod import Pod
+from utilities.openshift_resources.secret import Secret
+from utilities.openshift_resources.service import Service
+from utilities.openshift_resources.serving_runtime import ServingRuntime
 
 LOGGER = structlog.get_logger(name=__name__)
 CONNECTION_STRING: str = "/var/run/postgresql:5432 - accepting connections"
@@ -137,7 +136,6 @@ class TestModelRegistryCreationRest:
     @pytest.mark.test_requires_default_db
     def test_default_postgres_db_resource_exists(
         self: Self,
-        admin_client: DynamicClient,
         kind: Any,
         resource_name: str,
         model_registry_instance: list[ModelRegistry],
@@ -147,7 +145,7 @@ class TestModelRegistryCreationRest:
         Check resources created for default postgres database
         """
         model_registry = model_registry_instance[0]
-        resource = kind(client=admin_client, name=resource_name, namespace=model_registry_namespace)
+        resource = kind(name=resource_name, namespace=model_registry_namespace)
         if not resource.exists:
             pytest.fail(f"Resource: {resource_name} is not created, in {model_registry_namespace}")
         owner_reference = resource.instance.metadata.ownerReferences
@@ -160,7 +158,6 @@ class TestModelRegistryCreationRest:
     @pytest.mark.test_requires_default_db
     def test_default_postgres_db_pod_log(
         self: Self,
-        admin_client: DynamicClient,
         model_registry_namespace: str,
         model_registry_default_postgres_deployment_match_label: dict[str, str],
     ):
@@ -168,7 +165,7 @@ class TestModelRegistryCreationRest:
             f"{k}={v}" for k, v in model_registry_default_postgres_deployment_match_label.items()
         ])
         LOGGER.info(label_selector)
-        pods = list(Pod.get(client=admin_client, namespace=model_registry_namespace, label_selector=label_selector))
+        pods = list(Pod.list_resources(namespace=model_registry_namespace, label_selector=label_selector))
         assert pods, (
             "No pods found for default postgres deployment with "
             f"label: {model_registry_default_postgres_deployment_match_label}"
@@ -178,18 +175,14 @@ class TestModelRegistryCreationRest:
 
     def test_model_registry_validate_api_version(
         self: Self,
-        admin_client: DynamicClient,
         model_registry_instance: list[ModelRegistry],
     ):
         api_version = ModelRegistry(
-            client=admin_client,
             name=model_registry_instance[0].name,
             namespace=model_registry_instance[0].namespace,
-            ensure_exists=True,
         ).instance.apiVersion
         LOGGER.info(f"Validating apiversion {api_version} for model registry")
-        expected_version = f"{ModelRegistry.ApiGroup.MODELREGISTRY_OPENDATAHUB_IO}/{ModelRegistry.ApiVersion.V1BETA1}"
-        assert api_version == expected_version
+        assert api_version == ModelRegistry.full_api_version()
 
     def test_model_registry_validate_kuberbacproxy_enabled(
         self: Self,
@@ -368,7 +361,6 @@ class TestModelRegistryDeployment:
 
     def test_registered_model_deployment(
         self,
-        admin_client: DynamicClient,
         model_registry_deployment_ns: Namespace,
         model_registry_serving_runtime: ServingRuntime,
         model_registry_inference_service: InferenceService,

@@ -5,8 +5,6 @@ import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import NotFoundError
-from ocp_resources.config_map import ConfigMap
-from ocp_resources.resource import ResourceEditor
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutSampler
 
@@ -19,6 +17,7 @@ from tests.ai_hub.model_catalog.catalog_config.utils import (
 from tests.ai_hub.model_catalog.constants import REDHAT_AI_CATALOG_ID, REDHAT_AI_CATALOG_NAME
 from tests.ai_hub.model_catalog.utils import get_models_from_catalog_api, wait_for_model_catalog_api
 from tests.ai_hub.utils import get_model_catalog_pod, wait_for_model_catalog_pod_ready_after_deletion
+from utilities.openshift_resources.config_map import ConfigMap
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -41,16 +40,13 @@ def recreated_model_catalog_configmap(
         LOGGER.info(f"Skipping ConfigMap {DEFAULT_CUSTOM_MODEL_CATALOG} recreation during upgrade testing")
         return ConfigMap(
             name=DEFAULT_CUSTOM_MODEL_CATALOG,
-            client=admin_client,
             namespace=namespace_name,
             ensure_exists=True,
         )
 
     # TODO: would require changing this to look for configmaps based on label
     # Get the existing ConfigMap
-    configmap = ConfigMap(
-        name=DEFAULT_CUSTOM_MODEL_CATALOG, client=admin_client, namespace=namespace_name, ensure_exists=True
-    )
+    configmap = ConfigMap(name=DEFAULT_CUSTOM_MODEL_CATALOG, namespace=namespace_name, ensure_exists=True)
 
     LOGGER.info(f"Deleting ConfigMap {DEFAULT_CUSTOM_MODEL_CATALOG} to test recreation")
 
@@ -62,7 +58,6 @@ def recreated_model_catalog_configmap(
     # Wait for it to be recreated using TimeoutSampler
     recreated_configmap = ConfigMap(
         name=DEFAULT_CUSTOM_MODEL_CATALOG,
-        client=admin_client,
         namespace=namespace_name,
     )
 
@@ -176,10 +171,10 @@ def redhat_ai_models_with_filter(
 
     # Apply filters
     patch_info = modify_catalog_source(
-        admin_client=admin_client, namespace=model_registry_namespace, source_id=REDHAT_AI_CATALOG_ID, **modify_kwargs
+        namespace=model_registry_namespace, source_id=REDHAT_AI_CATALOG_ID, **modify_kwargs
     )
 
-    with ResourceEditor(patches={patch_info["configmap"]: patch_info["patch"]}):
+    with patch_info["configmap"].patch_and_restore(patch=patch_info["patch"]):
         wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
 
         # Add pod readiness checks if log_cleanup is requested explicitly
@@ -215,13 +210,12 @@ def disabled_redhat_ai_source(
     """
     # Disable the source
     disable_patch = modify_catalog_source(
-        admin_client=admin_client,
         namespace=model_registry_namespace,
         source_id=REDHAT_AI_CATALOG_ID,
         enabled=False,
     )
 
-    with ResourceEditor(patches={disable_patch["configmap"]: disable_patch["patch"]}):
+    with disable_patch["configmap"].patch_and_restore(patch=disable_patch["patch"]):
         wait_for_model_catalog_pod_ready_after_deletion(
             client=admin_client, model_registry_namespace=model_registry_namespace
         )

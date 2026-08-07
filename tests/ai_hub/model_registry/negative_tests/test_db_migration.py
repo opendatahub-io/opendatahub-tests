@@ -2,13 +2,12 @@ from typing import Self
 
 import pytest
 import structlog
-from kubernetes.dynamic.client import DynamicClient
-from ocp_resources.pod import Pod
 from pytest_testconfig import config as py_config
 
 from tests.ai_hub.constants import MR_INSTANCE_NAME
 from tests.ai_hub.utils import wait_for_new_running_mr_pod
 from utilities.general import wait_for_container_status
+from utilities.openshift_resources.pod import Pod
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -20,7 +19,6 @@ class TestDBMigration:
     @pytest.mark.tier3
     def test_db_migration_negative(
         self: Self,
-        admin_client: DynamicClient,
         model_registry_db_instance_pod: Pod,
         set_mr_db_dirty: int,
         model_registry_pod: Pod,
@@ -36,7 +34,6 @@ class TestDBMigration:
         """
         LOGGER.info(f"Model registry pod: {model_registry_pod.name}")
         mr_pod = wait_for_new_running_mr_pod(
-            admin_client=admin_client,
             orig_pod_name=model_registry_pod.name,
             namespace=py_config["model_registry_namespace"],
             instance_name=MR_INSTANCE_NAME,

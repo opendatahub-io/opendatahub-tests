@@ -2,10 +2,10 @@ from typing import Self
 
 import pytest
 import structlog
-from ocp_resources.config_map import ConfigMap
 
 from tests.ai_hub.model_catalog.utils import get_hf_catalog_str, get_models_from_catalog_api
 from tests.ai_hub.utils import execute_get_command_with_retry
+from utilities.openshift_resources.config_map import ConfigMap
 
 LOGGER = structlog.get_logger(name=__name__)
 

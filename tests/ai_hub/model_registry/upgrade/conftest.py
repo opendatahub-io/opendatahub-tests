@@ -18,7 +18,7 @@ from tests.ai_hub.utils import (
 )
 from utilities.constants import Protocols
 from utilities.general import wait_for_pods_running
-from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.openshift_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 
 LOGGER = structlog.get_logger(name=__name__)
 MR_DEFAULT_DB_NAME: str = f"{MR_INSTANCE_BASE_NAME}1"
@@ -37,9 +37,7 @@ def model_registry_instance_default_db(
     """
     if pytestconfig.option.post_upgrade:
         # In post-upgrade, connect to existing instance
-        mr_instance = ModelRegistry(
-            client=admin_client, name=MR_DEFAULT_DB_NAME, namespace=model_registry_namespace, ensure_exists=True
-        )
+        mr_instance = ModelRegistry(name=MR_DEFAULT_DB_NAME, namespace=model_registry_namespace, ensure_exists=True)
         yield mr_instance
         mr_instance.delete(wait=True)
         # Clean up default postgres resources
@@ -48,7 +46,6 @@ def model_registry_instance_default_db(
     else:
         # In pre-upgrade, create new instance with default postgres
         with ModelRegistry(
-            client=admin_client,
             name=MR_DEFAULT_DB_NAME,
             namespace=model_registry_namespace,
             label=get_mr_standard_labels(resource_name=MR_DEFAULT_DB_NAME),
@@ -69,14 +66,13 @@ def model_registry_instance_default_db(
 
 @pytest.fixture(scope="class")
 def model_registry_default_db_instance_rest_endpoint(
-    admin_client: DynamicClient, model_registry_instance_default_db: ModelRegistry
+    model_registry_instance_default_db: ModelRegistry,
 ) -> str:
     """
     Get the REST endpoint(s) for the model registry instance.
     """
     # get all the services:
     mr_service = get_mr_service_by_label(
-        client=admin_client,
         namespace_name=model_registry_instance_default_db.namespace,
         mr_instance=model_registry_instance_default_db,
     )

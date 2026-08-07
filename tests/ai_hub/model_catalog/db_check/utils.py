@@ -3,7 +3,8 @@ import binascii
 import json
 
 import structlog
-from ocp_resources.secret import Secret
+
+from utilities.openshift_resources.secret import Secret
 
 LOGGER = structlog.get_logger(name=__name__)
 
