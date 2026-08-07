@@ -26,7 +26,78 @@ override-dependencies = [
     "marshmallow>=4.0",
 ]
 
+# Add IBM Power wheels repository for ppc64le architecture
+[[tool.uv.index]]
+name = "ibm-power-wheels"
+url = "https://wheels.developerfirst.ibm.com/ppc64le/linux/+simple/"
+explicit = true
+
 [tool.uv.sources]
+pyarrow = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+numpy = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+scipy = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+scikit-learn = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+grpcio = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+pynacl = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+bcrypt = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+tiktoken = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+pillow = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+rfc3161-client = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+pyyaml = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+psutil = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+pyzmq = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+ipykernel = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+pandas = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+
+[[tool.uv.index]]
+name = "pypi"
+url = "https://pypi.org/simple/"
+default = true
 
 [tool.pyrefly]
 preset = "legacy"  # Start mypy-compatible, tighten later
@@ -82,7 +153,11 @@ dependencies = [
     "pytest-dependency>=0.6.0",
     "pytest-progress",
     "structlog>=24.1.0",
+    "pyyaml==6.0.3; platform_machine == 'ppc64le'",
     "pyyaml",
+    "pandas==3.0.3; platform_machine == 'ppc64le'",
+    "markupsafe==3.0.3",
+    "pynacl==1.6.2",
     "tenacity",
     "types-requests>=2.32.0.20241016",
     "requests",
@@ -90,7 +165,9 @@ dependencies = [
     "pytest-asyncio",
     "syrupy",
     "protobuf",
-    "grpcio-reflection",
+    "grpcio>=1.60.0,<1.81.0;platform_machine == 'ppc64le'",
+    "grpcio-reflection>=1.60.0,<1.81.0;platform_machine == 'ppc64le'",
+    "grpcio-reflection; platform_machine != 'ppc64le'",
     "portforward>=0.7.1",
     "pytest-testconfig>=0.2.0",
     "pygithub>=2.5.0",
@@ -110,9 +187,16 @@ dependencies = [
     "pytest>=9.0.0",
     "huggingface-hub>=1.2.3",
     "openai>=2.36",
-    "ragas>=0.4",
+    "tiktoken==0.12.0; platform_machine == 'ppc64le'",
+    "pyzmq==27.1.0",
+    "psutil==7.2.2",
+    "rfc3161-client==1.0.6; platform_machine == 'ppc64le'",
+    "ragas>=0.4; platform_machine != 'ppc64le'",
+    "numpy>=2.1.0,<2.5.0;platform_machine == 'ppc64le'",
+    "scipy>=1.13.0,<1.18.0;platform_machine == 'ppc64le'",
     "langchain-community<0.4.2",
-    "ipykernel>=7.3.0",
+    "ipykernel>=7.3.0;platform_machine != 'ppc64le'",
+    "ipykernel==6.29.5;platform_machine == 'ppc64le'",
     "boto3>=1.43.33",
 ]
 
