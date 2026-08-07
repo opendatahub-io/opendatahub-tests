@@ -53,6 +53,8 @@ def validate_ibm_power_z_chat_completions_request(
     max_tokens = int(inference_request["max_tokens"])
     messages = inference_request["messages"]
     request_timeout = int(inference_request.get("request_timeout", 300))
-    body = send_chat_completions_request(isvc=isvc, messages=messages, max_tokens=max_tokens, request_timeout=request_timeout)
+    body = send_chat_completions_request(
+        isvc=isvc, messages=messages, max_tokens=max_tokens, request_timeout=request_timeout
+    )
     completion_text = body["choices"][0]["message"]["content"]
     assert completion_text.strip(), f"Expected non-empty chat completion text, got: {body!r}"

@@ -20,7 +20,7 @@ from tests.model_serving.model_runtime.vllm.utils import (
     skip_if_not_deployment_mode,
     validate_supported_quantization_schema,
 )
-from utilities.constants import Annotations, AcceleratorType, KServeDeploymentType, RuntimeTemplates
+from utilities.constants import AcceleratorType, Annotations, KServeDeploymentType, RuntimeTemplates
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
