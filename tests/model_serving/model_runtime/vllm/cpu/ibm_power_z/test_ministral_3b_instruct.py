@@ -8,7 +8,6 @@ from ocp_resources.inference_service import InferenceService
 from tests.model_serving.model_runtime.vllm.constant import BASE_RAW_DEPLOYMENT_CONFIG
 from tests.model_serving.model_runtime.vllm.cpu.ibm_power_z.constant import (
     IBM_POWER_Z_CHAT_INFERENCE_REQUEST,
-    IBM_POWER_Z_MODEL_ENV_VARIABLES,
     IBM_POWER_Z_SERVING_ARGUMENT,
     MINISTRAL_3B_INSTRUCT_MODEL_PATH,
 )
@@ -21,7 +20,6 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_ibm_power_z_accelerat
 
 
 @pytest.mark.vllm_cpu_power
-@pytest.mark.vllm_cpu_z
 @pytest.mark.parametrize(
     (
         "model_namespace",
@@ -39,7 +37,6 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_ibm_power_z_accelerat
                 **BASE_RAW_DEPLOYMENT_CONFIG,
                 "name": "ministral-3b-cpu",
                 "runtime_argument": IBM_POWER_Z_SERVING_ARGUMENT,
-                "model_env_variables": IBM_POWER_Z_MODEL_ENV_VARIABLES,
             },
             IBM_POWER_Z_CHAT_INFERENCE_REQUEST,
             id="test_ministral_3b_cpu",
@@ -53,7 +50,7 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_ibm_power_z_accelerat
     ],
 )
 class TestMinistral3BInstruct:
-    """Deploy Ministral-3B-Instruct on IBM Power or Z and verify chat completions inference."""
+    """Deploy Ministral-3B-Instruct on IBM Power and verify chat completions inference."""
 
     def test_ministral_3b_instruct_chat_inference(
         self,

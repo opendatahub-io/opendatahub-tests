@@ -9,7 +9,6 @@ from tests.model_serving.model_runtime.vllm.constant import BASE_RAW_DEPLOYMENT_
 from tests.model_serving.model_runtime.vllm.cpu.ibm_power_z.constant import (
     GRANITE_3_1_8B_INSTRUCT_MODEL_PATH,
     IBM_POWER_Z_CHAT_INFERENCE_REQUEST,
-    IBM_POWER_Z_MODEL_ENV_VARIABLES,
     IBM_POWER_Z_SERVING_ARGUMENT,
 )
 from tests.model_serving.model_runtime.vllm.cpu.ibm_power_z.utils import validate_ibm_power_z_chat_completions_request
@@ -32,17 +31,16 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_ibm_power_z_accelerat
     ),
     [
         pytest.param(
-            {"name": "granite-3-1-8b-cpu"},
+            {"name": "granite-3-1-8b-instruct"},
             {"model-dir": GRANITE_3_1_8B_INSTRUCT_MODEL_PATH},
             {"deployment_mode": KServeDeploymentType.STANDARD},
             {
                 **BASE_RAW_DEPLOYMENT_CONFIG,
-                "name": "granite-3-1-8b-cpu",
+                "name": "granite-3-1-8b-instruct",
                 "runtime_argument": IBM_POWER_Z_SERVING_ARGUMENT,
-                "model_env_variables": IBM_POWER_Z_MODEL_ENV_VARIABLES,
             },
             IBM_POWER_Z_CHAT_INFERENCE_REQUEST,
-            id="test_granite_3_1_8b_cpu",
+            id="test_granite_3_1_8b_instruct_standard_cpu",
         ),
     ],
     indirect=[

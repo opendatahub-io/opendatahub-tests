@@ -7,10 +7,9 @@ from ocp_resources.inference_service import InferenceService
 
 from tests.model_serving.model_runtime.vllm.constant import BASE_RAW_DEPLOYMENT_CONFIG
 from tests.model_serving.model_runtime.vllm.cpu.ibm_power_z.constant import (
+    ELYZA_JAPANESE_LLAMA_2_7B_INSTRUCT_MODEL_PATH,
+    ELYZA_SERVING_ARGUMENT,
     IBM_POWER_Z_CHAT_INFERENCE_REQUEST,
-    IBM_POWER_Z_MODEL_ENV_VARIABLES,
-    IBM_POWER_Z_SERVING_ARGUMENT,
-    TINYLLAMA_1_1B_CHAT_V1_0_MODEL_PATH,
 )
 from tests.model_serving.model_runtime.vllm.cpu.ibm_power_z.utils import validate_ibm_power_z_chat_completions_request
 from utilities.constants import KServeDeploymentType
@@ -21,7 +20,6 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_ibm_power_z_accelerat
 
 
 @pytest.mark.vllm_cpu_power
-@pytest.mark.vllm_cpu_z
 @pytest.mark.parametrize(
     (
         "model_namespace",
@@ -32,17 +30,16 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_ibm_power_z_accelerat
     ),
     [
         pytest.param(
-            {"name": "tinyllama-1-1b-chat-cpu"},
-            {"model-dir": TINYLLAMA_1_1B_CHAT_V1_0_MODEL_PATH},
+            {"name": "elyza-japanese-7b-cpu"},
+            {"model-dir": ELYZA_JAPANESE_LLAMA_2_7B_INSTRUCT_MODEL_PATH},
             {"deployment_mode": KServeDeploymentType.STANDARD},
             {
                 **BASE_RAW_DEPLOYMENT_CONFIG,
-                "name": "tinyllama-1-1b-chat-cpu",
-                "runtime_argument": IBM_POWER_Z_SERVING_ARGUMENT,
-                "model_env_variables": IBM_POWER_Z_MODEL_ENV_VARIABLES,
+                "name": "elyza-japanese-7b-cpu",
+                "runtime_argument": ELYZA_SERVING_ARGUMENT,
             },
             IBM_POWER_Z_CHAT_INFERENCE_REQUEST,
-            id="test_tinyllama_1_1b_chat_cpu",
+            id="test_elyza_japanese_7b_cpu",
         ),
     ],
     indirect=[
@@ -52,10 +49,10 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_ibm_power_z_accelerat
         "ibm_power_z_inference_service",
     ],
 )
-class TestTinyLlama11BChatV10:
-    """Deploy TinyLlama-1.1B-Chat-v1.0 on IBM Power or Z and verify chat completions inference."""
+class TestELYZAJapaneseLlama27BInstruct:
+    """Deploy ELYZA-japanese-Llama-2-7b-instruct on IBM Power and verify chat completions inference."""
 
-    def test_tinyllama_1_1b_chat_v1_0_chat_inference(
+    def test_elyza_japanese_llama_2_7b_instruct_chat_inference(
         self,
         ibm_power_z_inference_service: Generator[InferenceService, Any, Any],
         skip_if_not_ibm_power_z_raw_deployment: Any,
@@ -63,7 +60,7 @@ class TestTinyLlama11BChatV10:
     ):
         """Test steps:
 
-        Given a vLLM CPU ServingRuntime and TinyLlama-1.1B-Chat-v1.0 backed by S3 storage
+        Given a vLLM CPU ServingRuntime and ELYZA-japanese-Llama-2-7b-instruct backed by S3 storage
         When a POST request is sent to /v1/chat/completions
         Then the response status is 200 and the completion text is non-empty
         """

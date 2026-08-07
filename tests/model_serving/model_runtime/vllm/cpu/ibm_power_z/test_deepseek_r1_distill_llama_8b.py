@@ -9,7 +9,6 @@ from tests.model_serving.model_runtime.vllm.constant import BASE_RAW_DEPLOYMENT_
 from tests.model_serving.model_runtime.vllm.cpu.ibm_power_z.constant import (
     DEEPSEEK_R1_DISTILL_LLAMA_8B_MODEL_PATH,
     IBM_POWER_Z_CHAT_INFERENCE_REQUEST,
-    IBM_POWER_Z_MODEL_ENV_VARIABLES,
     IBM_POWER_Z_SERVING_ARGUMENT,
 )
 from tests.model_serving.model_runtime.vllm.cpu.ibm_power_z.utils import validate_ibm_power_z_chat_completions_request
@@ -21,7 +20,6 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_ibm_power_z_accelerat
 
 
 @pytest.mark.vllm_cpu_power
-@pytest.mark.vllm_cpu_z
 @pytest.mark.parametrize(
     (
         "model_namespace",
@@ -39,7 +37,6 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_ibm_power_z_accelerat
                 **BASE_RAW_DEPLOYMENT_CONFIG,
                 "name": "deepseek-r1-8b-cpu",
                 "runtime_argument": IBM_POWER_Z_SERVING_ARGUMENT,
-                "model_env_variables": IBM_POWER_Z_MODEL_ENV_VARIABLES,
             },
             IBM_POWER_Z_CHAT_INFERENCE_REQUEST,
             id="test_deepseek_r1_8b_cpu",
@@ -53,7 +50,7 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_ibm_power_z_accelerat
     ],
 )
 class TestDeepSeekR1DistillLlama8B:
-    """Deploy DeepSeek-R1-Distill-Llama-8B on IBM Power or Z and verify chat completions inference."""
+    """Deploy DeepSeek-R1-Distill-Llama-8B on IBM Power and verify chat completions inference."""
 
     def test_deepseek_r1_distill_llama_8b_chat_inference(
         self,

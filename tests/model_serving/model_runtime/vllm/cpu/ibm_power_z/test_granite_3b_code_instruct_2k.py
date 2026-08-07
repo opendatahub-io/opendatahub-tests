@@ -9,7 +9,6 @@ from tests.model_serving.model_runtime.vllm.constant import BASE_RAW_DEPLOYMENT_
 from tests.model_serving.model_runtime.vllm.cpu.ibm_power_z.constant import (
     GRANITE_3B_CODE_INSTRUCT_2K_MODEL_PATH,
     IBM_POWER_Z_CHAT_INFERENCE_REQUEST,
-    IBM_POWER_Z_MODEL_ENV_VARIABLES,
     IBM_POWER_Z_SERVING_ARGUMENT,
 )
 from tests.model_serving.model_runtime.vllm.cpu.ibm_power_z.utils import validate_ibm_power_z_chat_completions_request
@@ -21,7 +20,6 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_ibm_power_z_accelerat
 
 
 @pytest.mark.vllm_cpu_power
-@pytest.mark.vllm_cpu_z
 @pytest.mark.parametrize(
     (
         "model_namespace",
@@ -39,7 +37,6 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_ibm_power_z_accelerat
                 **BASE_RAW_DEPLOYMENT_CONFIG,
                 "name": "granite-3b-code-2k-cpu",
                 "runtime_argument": IBM_POWER_Z_SERVING_ARGUMENT,
-                "model_env_variables": IBM_POWER_Z_MODEL_ENV_VARIABLES,
             },
             IBM_POWER_Z_CHAT_INFERENCE_REQUEST,
             id="test_granite_3b_code_2k_cpu",
@@ -53,7 +50,7 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_ibm_power_z_accelerat
     ],
 )
 class TestGranite3BCodeInstruct2K:
-    """Deploy Granite-3B-Code-Instruct-2K on IBM Power or Z and verify chat completions inference."""
+    """Deploy Granite-3B-Code-Instruct-2K on IBM Power and verify chat completions inference."""
 
     def test_granite_3b_code_instruct_2k_chat_inference(
         self,

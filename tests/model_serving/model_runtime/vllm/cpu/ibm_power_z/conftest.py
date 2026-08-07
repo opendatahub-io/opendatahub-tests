@@ -7,6 +7,7 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
+from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest import FixtureRequest
@@ -19,9 +20,14 @@ from tests.model_serving.model_runtime.vllm.utils import (
     skip_if_not_deployment_mode,
     validate_supported_quantization_schema,
 )
-from utilities.constants import AcceleratorType, KServeDeploymentType, RuntimeTemplates, Timeout
+from utilities.constants import Annotations, AcceleratorType, KServeDeploymentType, RuntimeTemplates
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
+
+# CPU inference on IBM Power is slow; the default HAProxy route timeout is 30s
+# which is not enough for CPU inference. Annotate the ISVC so KServe propagates
+# this to the Route it creates.
+IBM_POWER_ROUTE_TIMEOUT: str = "300s"
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -51,11 +57,7 @@ def ibm_power_z_serving_runtime(
     supported_accelerator_type: str,
     vllm_runtime_image: str,
 ) -> Generator[ServingRuntime]:
-    """ServingRuntime backed by the vLLM CPU Power/Z runtime template.
-
-    Both cpu_power and cpu_z accelerator types share a single cluster template
-    (vllm-cpu-runtime-template) on ppc64le/s390x clusters.
-    """
+    """ServingRuntime backed by the vLLM CPU Power or Z runtime template."""
     accelerator_type = supported_accelerator_type.lower()
     template_name = TEMPLATE_MAP.get(accelerator_type, RuntimeTemplates.VLLM_CPU_POWER)
     with ServingRuntimeFromTemplate(
@@ -91,8 +93,8 @@ def ibm_power_z_inference_service(
         "model_service_account": vllm_model_service_account.name,
         "deployment_mode": request.param.get("deployment_mode", KServeDeploymentType.STANDARD),
         "external_route": True,
-        "resources": deepcopy(x=request.param.get("resources", IBM_POWER_Z_PREDICT_RESOURCES)),
-        "timeout": request.param.get("timeout", Timeout.TIMEOUT_30MIN),
+        "resources": deepcopy(x=IBM_POWER_Z_PREDICT_RESOURCES),
+        "timeout": request.param.get("timeout", 1800),
     }
 
     if arguments := request.param.get("runtime_argument"):
@@ -105,15 +107,21 @@ def ibm_power_z_inference_service(
     if min_replicas := request.param.get("min-replicas"):
         isvc_kwargs["min_replicas"] = min_replicas
 
-    if model_env_variables := request.param.get("model_env_variables"):
-        isvc_kwargs["model_env_variables"] = model_env_variables
-
     add_image_pull_secrets_if_configured(
         isvc_kwargs=isvc_kwargs,
         kserve_registry_pull_secret=kserve_registry_pull_secret,
     )
 
     with create_isvc(**isvc_kwargs) as isvc:
+        ResourceEditor(
+            patches={
+                isvc: {
+                    "metadata": {
+                        "annotations": {Annotations.HaproxyRouterOpenshiftIo.TIMEOUT: IBM_POWER_ROUTE_TIMEOUT},
+                    }
+                }
+            }
+        ).update()
         yield isvc
 
 
