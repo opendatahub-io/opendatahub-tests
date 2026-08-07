@@ -1200,6 +1200,13 @@ def delete_evalhub_runtime_k8s_job(admin_client: DynamicClient, namespace: str, 
     Uses the admin client to delete the Job directly, bypassing the EvalHub
     API. This is required because the operator-managed kube-rbac-proxy
     auth.yaml lacks rules for individual job paths.
+
+    Deletes with ``propagationPolicy: Background`` so the Kubernetes garbage
+    collector cascade-deletes the Job's dependents — most importantly the Kueue
+    Workload, which Kueue creates with a controller ownerReference back to the
+    Job. Without an explicit policy the API server applies the ``batch/v1`` Job
+    default (Orphan), which *strips* that ownerReference and leaves the Workload
+    behind holding reserved quota instead of deleting it.
     """
     selector = evalhub_runtime_label_selector(evalhub_job_id=evalhub_job_id)
     jobs = list(Job.get(client=admin_client, namespace=namespace, label_selector=selector))
@@ -1208,7 +1215,7 @@ def delete_evalhub_runtime_k8s_job(admin_client: DynamicClient, namespace: str, 
         return
     for job in jobs:
         LOGGER.info(f"Deleting Kubernetes Job {job.name} for EvalHub job {evalhub_job_id}")
-        job.delete(wait=True)
+        job.delete(wait=True, body={"propagationPolicy": "Background"})
     LOGGER.info(f"Kubernetes Job(s) for EvalHub job {evalhub_job_id} deleted")
 
 
