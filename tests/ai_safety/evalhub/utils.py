@@ -15,6 +15,7 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_safety.evalhub.constants import (
     EVALHUB_COLLECTIONS_PATH,
+    EVALHUB_DEFAULT_HARDWARE_PROFILE,
     EVALHUB_FULL_API_VERSION_V1,
     EVALHUB_FULL_API_VERSION_V1ALPHA1,
     EVALHUB_HEALTH_PATH,
@@ -811,6 +812,9 @@ def build_vllm_arc_easy_benchmark(num_examples: int = 10) -> dict:
         "parameters": {
             "num_examples": num_examples,
             "tokenizer": "google/flan-t5-small",
+        },
+        "hardware_config": {
+            "hardware_profile_name": EVALHUB_DEFAULT_HARDWARE_PROFILE,
         },
     }
 
