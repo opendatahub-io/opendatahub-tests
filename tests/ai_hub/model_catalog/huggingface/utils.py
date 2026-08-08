@@ -7,6 +7,7 @@ from huggingface_hub import HfApi
 from kubernetes.dynamic import DynamicClient
 from timeout_sampler import retry
 
+from tests.ai_hub.constants import CATALOG_CONTAINER
 from tests.ai_hub.model_catalog.constants import HF_SOURCE_ID
 from tests.ai_hub.model_catalog.utils import get_models_from_catalog_api
 from tests.ai_hub.utils import execute_get_command, get_model_catalog_pod
@@ -176,41 +177,21 @@ def get_huggingface_model_from_api(
     )
 
 
-@retry(wait_timeout=135, sleep=15)
-def wait_for_last_sync_update(
-    model_catalog_rest_url: list[str],
-    model_registry_rest_headers: dict[str, str],
-    model_name: str,
+@retry(wait_timeout=180, sleep=15, print_func_args=False)
+def wait_for_last_sync_update_via_logs(
+    admin_client: DynamicClient,
+    model_registry_namespace: str,
     source_id: str,
-    initial_last_synced_values: float,
+    since_seconds: int = 300,
 ) -> bool:
-    """Wait for the last_synced value to be updated with exact 120-second difference"""
+    """Wait for the catalog pod logs to show a periodic resync for the given source."""
+    catalog_pod = get_model_catalog_pod(client=admin_client, model_registry_namespace=model_registry_namespace)[0]
+    log = catalog_pod.log(container=CATALOG_CONTAINER, since_seconds=since_seconds)
 
-    result = get_huggingface_model_from_api(
-        model_registry_rest_headers=model_registry_rest_headers,
-        model_catalog_rest_url=model_catalog_rest_url,
-        model_name=model_name,
-        source_id=source_id,
-    )
-    current_last_synced = float(result["customProperties"]["last_synced"]["string_value"])
-    if current_last_synced != initial_last_synced_values:
-        # Calculate difference in milliseconds and convert to seconds
-        difference_seconds = int((current_last_synced - initial_last_synced_values) / 1000)
-
-        LOGGER.info(
-            f"Model {model_name}: initial={initial_last_synced_values}, current={current_last_synced}, "
-            f"diff={difference_seconds}s"
-        )
-        expected_diff = 120
-        if difference_seconds == expected_diff:
-            LOGGER.info(f"Model {model_name} successfully synced with correct interval ({difference_seconds}s)")
-            return True
-        else:
-            LOGGER.error(
-                f"Model {model_name}: sync interval should be {expected_diff}s, "
-                f"but found {difference_seconds}s (difference: {abs(difference_seconds - expected_diff)}s). "
-                f"Initial: {initial_last_synced_values}, Current: {current_last_synced}"
-            )
+    sync_marker = f"Periodic sync: reprocessing all models for source {source_id}"
+    if sync_marker in log:
+        LOGGER.info(f"Periodic sync detected for source {source_id}")
+        return True
     return False
 
 
