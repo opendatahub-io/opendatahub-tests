@@ -22,7 +22,7 @@ from tests.ai_hub.constants import (
     MR_ISVC_VOLUME_MOUNTS,
     MR_ISVC_VOLUMES,
 )
-from tests.ai_hub.model_catalog.constants import HF_CUSTOM_MODE
+from tests.ai_hub.model_catalog.constants import HF_CUSTOM_MODE, HF_LAST_SYNCED_SOURCE_ID
 from tests.ai_hub.model_catalog.huggingface.utils import get_huggingface_model_from_api
 from tests.ai_hub.model_catalog.utils import get_models_from_catalog_api
 from utilities.infra import create_ns
@@ -88,7 +88,7 @@ def initial_last_synced_values(
         model_registry_rest_headers=model_registry_rest_headers,
         model_catalog_rest_url=model_catalog_rest_url,
         model_name=request.param,
-        source_id="hf_id",
+        source_id=HF_LAST_SYNCED_SOURCE_ID,
     )
 
     return result["customProperties"]["last_synced"]["string_value"]
