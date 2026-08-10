@@ -195,6 +195,49 @@ def wait_for_last_sync_update_via_logs(
     return False
 
 
+@retry(wait_timeout=60, sleep=5, exceptions_dict={requests.exceptions.ConnectionError: [], AssertionError: []})
+def wait_for_last_synced_interval_match(
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+    model_name: str,
+    source_id: str,
+    initial_last_synced: str,
+    expected_interval: int = 120,
+    tolerance: int = 10,
+) -> bool:
+    """Fetch the model from the catalog API and assert the sync interval is within tolerance.
+
+    Args:
+        model_catalog_rest_url: REST URL for model catalog.
+        model_registry_rest_headers: Headers for model registry REST API.
+        model_name: Name of the model to fetch.
+        source_id: Source ID for the catalog.
+        initial_last_synced: Initial last_synced epoch-millis value.
+        expected_interval: Expected sync interval in seconds.
+        tolerance: Allowed deviation in seconds.
+
+    Returns:
+        True when the sync interval matches within tolerance.
+
+    Raises:
+        AssertionError: If the sync interval difference exceeds the tolerance.
+    """
+    result = get_huggingface_model_from_api(
+        model_catalog_rest_url=model_catalog_rest_url,
+        model_registry_rest_headers=model_registry_rest_headers,
+        model_name=model_name,
+        source_id=source_id,
+    )
+    current_last_synced = float(result["customProperties"]["last_synced"]["string_value"])
+    difference_seconds = (current_last_synced - float(initial_last_synced)) / 1000
+    assert abs(difference_seconds - expected_interval) <= tolerance, (
+        f"Model {model_name}: expected ~{expected_interval}s sync interval, "
+        f"got {difference_seconds:.1f}s. "
+        f"Initial: {initial_last_synced}, Current: {current_last_synced}"
+    )
+    return True
+
+
 def assert_accessible_models_via_catalog_api(
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
