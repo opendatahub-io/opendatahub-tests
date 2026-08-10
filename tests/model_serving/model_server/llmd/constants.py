@@ -1,5 +1,7 @@
 """Constants for LLMD tests."""
 
+import os
+
 from utilities.constants import Labels
 
 # List of accelerators supported by llm-d tests
@@ -14,3 +16,5 @@ LLMD_KSERVE_CONTROLLER_DEPLOYMENTS: list[str] = [
     "odh-model-controller",
     "llmisvc-controller-manager",
 ]
+
+SOAK_TEST_DURATION: int = int(os.environ.get("SOAK_TEST_DURATION", "10"))
