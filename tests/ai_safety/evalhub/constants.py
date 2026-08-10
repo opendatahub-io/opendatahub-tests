@@ -105,6 +105,9 @@ PVC_TEST_DATA_NAME: str = "evalhub-test-data"
 PVC_TEST_DATA_SIZE: str = "2Gi"
 PVC_TOKENIZER_PATH: str = "/test_data/tokenizer"
 
+# Hardware profile
+EVALHUB_DEFAULT_HARDWARE_PROFILE: str = "default-profile"
+
 # ServiceMonitor and metrics Service
 EVALHUB_METRICS_SERVICE_SUFFIX: str = "-metrics"
 EVALHUB_METRICS_PORT: int = 8081

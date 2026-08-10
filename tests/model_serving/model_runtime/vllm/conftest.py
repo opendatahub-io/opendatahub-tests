@@ -38,6 +38,21 @@ LOGGER = structlog.get_logger(name=__name__)
 SUPPORTED_CPU_X86_ACCELERATORS: set[str] = {AcceleratorType.CPU_x86}
 
 
+# TODO: Remove this hook when fast runtime templates are available
+def pytest_collection_modifyitems(items: list[pytest.Item], config: pytest.Config) -> None:
+    """Deselect fast template tests until fast images are available."""
+    deselected = []
+    remaining = []
+    for item in items:
+        if "/fast/" in str(item.fspath):
+            deselected.append(item)
+        else:
+            remaining.append(item)
+    if deselected:
+        config.hook.pytest_deselected(items=deselected)
+        items[:] = remaining
+
+
 @pytest.fixture(scope="session")
 def skip_if_no_supported_cpu_x86_accelerator_type(supported_accelerator_type: str | None) -> None:
     """Skip test unless the cluster provides the x86 CPU accelerator."""
