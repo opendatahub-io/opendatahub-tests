@@ -8,7 +8,7 @@ import pytest
 import structlog
 from ogx_client import OgxClient
 
-from tests.ogx.constants import GEMINI_PROVIDER_TYPE, ModelInfo
+from tests.ogx.constants import GEMINI_PROVIDER_ID, GEMINI_PROVIDER_TYPE
 from tests.ogx.gemini.utils import list_provider_types
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -20,6 +20,21 @@ def _resolve_model_id(ogx_client: OgxClient, provider_id: str, model_type: str) 
         metadata = getattr(model, "custom_metadata", None) or {}
         if metadata.get("provider_id") == provider_id and metadata.get("model_type") == model_type:
             return model.id
+    return None
+
+
+def _resolve_non_gemini_llm(ogx_client: OgxClient) -> tuple[str, str] | None:
+    """Return ``(model_id, provider_id)`` of the first non-Gemini LLM, or None.
+
+    Selecting a model whose ``provider_id`` is explicitly not the Gemini provider
+    guarantees TC-REG-002 exercises a *different* provider than remote::gemini,
+    rather than accidentally routing back through Gemini.
+    """
+    for model in ogx_client.models.list().data:
+        metadata = getattr(model, "custom_metadata", None) or {}
+        provider_id = metadata.get("provider_id")
+        if metadata.get("model_type") == "llm" and provider_id and provider_id != GEMINI_PROVIDER_ID:
+            return model.id, provider_id
     return None
 
 
@@ -67,16 +82,12 @@ class TestGeminiRegression:
             LOGGER.info("No remote::openai embedding model configured; skipping the embeddings half of TC-REG-001")
 
     @pytest.mark.tier2
-    def test_other_providers_unaffected(
-        self,
-        ogx_client: OgxClient,
-        ogx_models: ModelInfo,
-    ) -> None:
+    def test_other_providers_unaffected(self, ogx_client: OgxClient) -> None:
         """Verify non-Gemini providers remain listed and functional (TC-REG-002).
 
         Given: a distribution with remote::gemini plus the default (vLLM) providers.
-        When: the provider list is queried and inference is run through the default
-            (non-Gemini) model.
+        When: the provider list is queried and inference is run through a model that
+            is verified to belong to a non-Gemini provider.
         Then: remote::gemini is listed alongside the pre-existing providers, and the
             non-Gemini inference request returns a valid response.
         """
@@ -85,11 +96,17 @@ class TestGeminiRegression:
         non_gemini = [ptype for ptype in provider_types if ptype != GEMINI_PROVIDER_TYPE]
         assert non_gemini, "No providers other than remote::gemini are listed"
 
+        resolved = _resolve_non_gemini_llm(ogx_client=ogx_client)
+        if not resolved:
+            pytest.skip(reason="No non-Gemini LLM model is registered; cannot exercise TC-REG-002 inference")
+        model_id, provider_id = resolved
+        LOGGER.info(f"Running TC-REG-002 inference through non-Gemini model {model_id!r} (provider {provider_id!r})")
+
         response = ogx_client.chat.completions.create(
-            model=ogx_models.model_id,
+            model=model_id,
             messages=[{"role": "user", "content": "Just respond ACK."}],
             temperature=0,
         )
         assert response.choices and response.choices[0].message.content, (
-            "Inference through a non-Gemini provider failed"
+            f"Inference through non-Gemini provider {provider_id!r} failed"
         )

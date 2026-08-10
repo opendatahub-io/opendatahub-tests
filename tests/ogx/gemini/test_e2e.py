@@ -7,7 +7,7 @@ workflow against a distribution deployed with remote::gemini enabled (via the
 """
 
 import json
-import numbers
+import math
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -108,7 +108,9 @@ class TestGeminiEndToEnd:
             model=gemini_model_id,
             messages=[{"role": "user", "content": "What is the weather in Paris?"}],
             tools=[WEATHER_TOOL],
+            tool_choice="auto",
         )
+        assert first.choices, "First tool-calling request returned no choices"
         first_choice = first.choices[0]
         tool_calls = first_choice.message.tool_calls
         assert tool_calls, "First request did not return tool_calls"
@@ -176,8 +178,9 @@ class TestGeminiEndToEnd:
         for response in (short, long):
             assert response.data, "Embedding response contained no data"
             vector = response.data[0].embedding
-            assert vector and all(isinstance(value, numbers.Real) for value in vector), (
-                "Embedding vector is empty or contains non-numeric values"
+            assert vector, "Embedding vector is empty"
+            assert all(isinstance(value, float) and math.isfinite(value) for value in vector), (
+                "Embedding vector contains non-float or non-finite values"
             )
 
         assert len(short.data[0].embedding) == len(long.data[0].embedding), (

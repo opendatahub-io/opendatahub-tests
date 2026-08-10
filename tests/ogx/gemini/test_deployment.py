@@ -80,10 +80,19 @@ class TestGeminiDeployment:
                 f"searched {CONFIG_SEARCH_PATHS!r}. Confirm the config path to complete TC-DEP-002."
             )
 
-        first_config = config_files.splitlines()[0].strip()
-        contents = ogx_gemini_pod.execute(command=["sh", "-c", f"cat {first_config}"])
-        assert "${env.GEMINI_API_KEY:+gemini-inference}" in contents, (
-            f"Conditional activation pattern not found in {first_config!r}"
+        # grep -l can match several candidate files; the conditional activation
+        # pattern may live in any one of them, so check every match rather than
+        # only the first.
+        candidate_files = [line.strip() for line in config_files.splitlines() if line.strip()]
+        pattern = "${env.GEMINI_API_KEY:+gemini-inference}"
+        matched_file = None
+        for candidate in candidate_files:
+            contents = ogx_gemini_pod.execute(command=["sh", "-c", f"cat {candidate}"])
+            if pattern in contents:
+                matched_file = candidate
+                break
+        assert matched_file, (
+            f"Conditional activation pattern {pattern!r} not found in any candidate config file: {candidate_files!r}"
         )
 
     @pytest.mark.tier1
