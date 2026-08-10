@@ -34,8 +34,9 @@ from tests.ai_gateway.models_as_a_service.utils import (
     revoke_api_key,
     verify_maas_gateway_programmed,
 )
-from utilities.constants import MAAS_GATEWAY_NAMESPACE, ApiGroups, ContainerImages, ModelStorage
+from utilities.constants import MAAS_GATEWAY_NAMESPACE, ApiGroups, ModelStorage
 from utilities.general import generate_random_name
+from utilities.image_constants import SharedImages
 from utilities.infra import s3_endpoint_secret
 from utilities.llmd_utils import create_llmisvc
 from utilities.resources.aitenant import AITenant
@@ -848,7 +849,7 @@ def provision_tenant_model(
                 name=model_name,
                 namespace=tenant_namespace_name,
                 storage_uri=ModelStorage.S3.TINYLLAMA,
-                container_image=ContainerImages.VLLM.CPU,
+                container_image=SharedImages.VLLM_CPU,
                 container_resources={
                     "limits": {"cpu": "2", "memory": "12Gi"},
                     "requests": {"cpu": "1", "memory": "8Gi"},

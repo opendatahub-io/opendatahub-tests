@@ -56,11 +56,11 @@ from utilities.constants import (
     MAAS_GATEWAY_NAMESPACE,
     MAAS_RATE_LIMIT_POLICY_NAME,
     MAAS_TOKEN_RATE_LIMIT_POLICY_NAME,
-    ContainerImages,
     DscComponents,
     ModelStorage,
 )
 from utilities.general import generate_random_name, wait_for_oauth_openshift_deployment
+from utilities.image_constants import SharedImages
 from utilities.infra import create_ns, get_openshift_token, login_with_user_password, s3_endpoint_secret
 from utilities.llmd_utils import create_llmisvc
 from utilities.plugins.constant import OpenAIEnpoints
@@ -657,7 +657,7 @@ def maas_inference_service_tinyllama(
             name="llm-s3-tinyllama",
             namespace=maas_unprivileged_model_namespace.name,
             storage_uri=ModelStorage.S3.TINYLLAMA,
-            container_image=ContainerImages.VLLM.CPU,
+            container_image=SharedImages.VLLM_CPU,
             container_resources={
                 "limits": {"cpu": "2", "memory": "12Gi"},
                 "requests": {"cpu": "1", "memory": "8Gi"},
@@ -1189,7 +1189,7 @@ def maas_inference_service_tinyllama_free(
             name="llm-s3-tinyllama-free",
             namespace=maas_unprivileged_model_namespace.name,
             storage_uri=ModelStorage.S3.TINYLLAMA,
-            container_image=ContainerImages.VLLM.CPU,
+            container_image=SharedImages.VLLM_CPU,
             container_resources={
                 "limits": {"cpu": "2", "memory": "12Gi"},
                 "requests": {"cpu": "1", "memory": "8Gi"},

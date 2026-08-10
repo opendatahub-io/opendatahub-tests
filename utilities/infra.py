@@ -1058,9 +1058,23 @@ def wait_for_dsc_status_ready(dsc_resource: DataScienceCluster) -> bool:
     LOGGER.info(f"Wait for DSC {dsc_resource.name} are {dsc_resource.Status.READY}.")
     if dsc_resource.status == dsc_resource.Status.READY:
         return True
-    raise ResourceNotReadyError(
-        f"DSC {dsc_resource.name} is not ready.\nCurrent status: {dsc_resource.instance.status}"
+
+    conditions = dsc_resource.instance.status.conditions
+    not_ready_conditions = [
+        condition for condition in conditions if condition.status != "True" and condition.get("reason") != "Removed"
+    ]
+    removed_components = [
+        condition.type.removesuffix("Ready") for condition in conditions if condition.get("reason") == "Removed"
+    ]
+
+    summary = "\n".join(
+        f"  {condition.type}: {condition.get('message', condition.reason)}" for condition in not_ready_conditions
     )
+    message = f"DSC {dsc_resource.name} is not ready:\n{summary}"
+    if removed_components:
+        message += f"\nRemoved components: {', '.join(removed_components)}"
+
+    raise ResourceNotReadyError(message)
 
 
 def verify_cluster_sanity(
