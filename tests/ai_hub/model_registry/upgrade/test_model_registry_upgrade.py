@@ -8,7 +8,7 @@ from model_registry.types import RegisteredModel
 from tests.ai_hub.constants import MODEL_DICT, MODEL_NAME
 from tests.ai_hub.model_registry.upgrade.utils import validate_upgrade_model_registration
 from utilities.constants import ModelFormat
-from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.openshift_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 
 LOGGER = structlog.get_logger(name=__name__)
 MODEL_NAME_DEFAULT_DB: str = f"{MODEL_NAME}-default-db"
@@ -98,7 +98,7 @@ class TestPostUpgradeModelRegistry:
     ):
         # the following is valid for 2.22+
         api_version = model_registry_instance[0].instance.apiVersion
-        expected_version = f"{ModelRegistry.ApiGroup.MODELREGISTRY_OPENDATAHUB_IO}/{ModelRegistry.ApiVersion.V1BETA1}"
+        expected_version = ModelRegistry.full_api_version()
         assert api_version == expected_version
 
     @pytest.mark.post_upgrade

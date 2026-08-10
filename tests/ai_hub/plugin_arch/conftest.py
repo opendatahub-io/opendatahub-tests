@@ -4,13 +4,13 @@ from typing import Any
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.route import Route
 
 from tests.ai_hub.plugin_arch.utils import (
     READYZ_RECOVERY_TIMEOUT,
     poll_readyz,
     restore_catalog,
 )
+from utilities.openshift_resources.route_route_openshift_io import Route
 
 LOGGER = structlog.get_logger(name=__name__)
 

@@ -5,11 +5,11 @@ import pytest
 import structlog
 from model_registry import ModelRegistry as ModelRegistryClient
 from mr_openapi.exceptions import ForbiddenException, UnauthorizedException
-from ocp_resources.service_account import ServiceAccount
 from timeout_sampler import TimeoutSampler, retry
 
 from tests.ai_hub.model_registry.rbac.utils import build_mr_client_args
 from utilities.infra import create_inference_token
+from utilities.openshift_resources.service_account import ServiceAccount
 
 LOGGER = structlog.get_logger(name=__name__)
 

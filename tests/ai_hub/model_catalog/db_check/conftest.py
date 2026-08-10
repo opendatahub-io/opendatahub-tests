@@ -3,15 +3,15 @@ from datetime import UTC, datetime
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.network_policy import NetworkPolicy
-from ocp_resources.pod import Pod
-from ocp_resources.secret import Secret
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutSampler
 
 from tests.ai_hub.constants import MR_OPERATOR_NAME
 from utilities.constants import Labels
 from utilities.general import wait_for_pods_by_labels
+from utilities.openshift_resources.network_policy import NetworkPolicy
+from utilities.openshift_resources.pod import Pod
+from utilities.openshift_resources.secret import Secret
 
 from .utils import extract_secret_values
 
@@ -19,10 +19,9 @@ LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")
-def model_catalog_postgres_secret(admin_client: DynamicClient, model_registry_namespace: str) -> Secret:
+def model_catalog_postgres_secret(model_registry_namespace: str) -> Secret:
     """Get the model-catalog-postgres secret from model registry namespace"""
     return Secret(
-        client=admin_client,
         name="model-catalog-postgres",
         namespace=model_registry_namespace,
         ensure_exists=True,
@@ -37,7 +36,7 @@ def model_catalog_postgres_secret_values(model_catalog_postgres_secret: Secret) 
 
 @pytest.fixture(scope="class")
 def recreated_model_catalog_postgres_secret(
-    admin_client: DynamicClient, model_catalog_postgres_secret: Secret
+    model_catalog_postgres_secret: Secret,
 ) -> dict[str, str]:
     """Delete model-catalog-postgres secret and wait for it to be recreated"""
     model_registry_namespace = py_config["model_registry_namespace"]
@@ -54,7 +53,6 @@ def recreated_model_catalog_postgres_secret(
         wait_timeout=120,
         sleep=10,
         func=Secret,
-        client=admin_client,
         name=resource_name,
         namespace=model_registry_namespace,
     ):
@@ -67,12 +65,9 @@ def recreated_model_catalog_postgres_secret(
 
 
 @pytest.fixture()
-def model_catalog_network_policy(
-    request: pytest.FixtureRequest, admin_client: DynamicClient, model_registry_namespace: str
-) -> NetworkPolicy:
+def model_catalog_network_policy(request: pytest.FixtureRequest, model_registry_namespace: str) -> NetworkPolicy:
     """Get a model-catalog NetworkPolicy by name (parameterized)"""
     return NetworkPolicy(
-        client=admin_client,
         name=request.param,
         namespace=model_registry_namespace,
         ensure_exists=True,
@@ -80,25 +75,22 @@ def model_catalog_network_policy(
 
 
 @pytest.fixture(scope="class")
-def deleted_network_policy_original_spec(
-    request: pytest.FixtureRequest, admin_client: DynamicClient, model_registry_namespace: str
-) -> dict:
+def deleted_network_policy_original_spec(request: pytest.FixtureRequest, model_registry_namespace: str) -> dict:
     """Save the NetworkPolicy spec and owner references, then delete it. Returns the originals."""
-    np = NetworkPolicy(
-        client=admin_client,
+    network_policy = NetworkPolicy(
         name=request.param,
         namespace=model_registry_namespace,
         ensure_exists=True,
     )
     original = {
         "name": request.param,
-        "spec": np.instance.spec.to_dict(),
-        "ownerReferences": [ref.to_dict() for ref in (np.instance.metadata.ownerReferences or [])],
+        "spec": network_policy.instance.spec.to_dict(),
+        "ownerReferences": [ref.to_dict() for ref in (network_policy.instance.metadata.ownerReferences or [])],
     }
 
     LOGGER.info(f"Deleting NetworkPolicy {request.param}")
     original["deleted_at"] = datetime.now(tz=UTC)
-    np.delete()
+    network_policy.delete()
 
     return original
 
@@ -106,7 +98,6 @@ def deleted_network_policy_original_spec(
 @pytest.fixture(scope="class")
 def recreated_network_policy(
     request: pytest.FixtureRequest,
-    admin_client: DynamicClient,
     deleted_network_policy_original_spec,
     model_registry_namespace: str,
 ) -> NetworkPolicy:
@@ -115,7 +106,6 @@ def recreated_network_policy(
         wait_timeout=15,
         sleep=5,
         func=NetworkPolicy,
-        client=admin_client,
         name=request.param,
         namespace=model_registry_namespace,
     ):
@@ -127,7 +117,6 @@ def recreated_network_policy(
 @pytest.fixture()
 def recreated_network_policy_scope_function(
     request: pytest.FixtureRequest,
-    admin_client: DynamicClient,
     deleted_network_policy_original_spec,
     model_registry_namespace: str,
 ) -> NetworkPolicy:
@@ -136,7 +125,6 @@ def recreated_network_policy_scope_function(
         wait_timeout=60,
         sleep=5,
         func=NetworkPolicy,
-        client=admin_client,
         name=request.param,
         namespace=model_registry_namespace,
     ):
@@ -166,10 +154,9 @@ def restarted_operator_pod(admin_client: DynamicClient) -> Pod:
 
 
 @pytest.fixture()
-def non_catalog_network_policy(admin_client: DynamicClient, model_registry_namespace: str) -> NetworkPolicy:
+def non_catalog_network_policy(model_registry_namespace: str) -> NetworkPolicy:
     """Create a NetworkPolicy without catalog labels in the model registry namespace."""
     with NetworkPolicy(
-        client=admin_client,
         name="non-catalog-test-np",
         namespace=model_registry_namespace,
         pod_selector={"matchLabels": {"app": "non-catalog-app"}},

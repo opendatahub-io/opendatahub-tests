@@ -7,8 +7,6 @@ import requests
 import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.config_map import ConfigMap
-from ocp_resources.pod import Pod
 from timeout_sampler import TimeoutExpiredError, retry
 
 from tests.ai_hub.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
@@ -24,6 +22,8 @@ from tests.ai_hub.model_catalog.utils import (
     parse_psql_output,
 )
 from tests.ai_hub.utils import execute_get_command, get_model_catalog_pod
+from utilities.openshift_resources.config_map import ConfigMap
+from utilities.openshift_resources.pod import Pod
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -36,10 +36,8 @@ def validate_model_catalog_enabled(pod: Pod) -> bool:
     return False
 
 
-def validate_model_catalog_resource(
-    kind: Any, admin_client: DynamicClient, namespace: str, expected_resource_count: int
-) -> None:
-    resource = list(kind.get(namespace=namespace, label_selector="component=model-catalog", client=admin_client))
+def validate_model_catalog_resource(kind: Any, namespace: str, expected_resource_count: int) -> None:
+    resource = list(kind.list_resources(namespace=namespace, label_selector="component=model-catalog"))
     assert resource
     LOGGER.info(f"Validating resource: {kind}: Found {len(resource)}")
     assert len(resource) == expected_resource_count, (
@@ -264,7 +262,6 @@ def validate_source_disabling_result(
 
 
 def modify_catalog_source(
-    admin_client: DynamicClient,
     namespace: str,
     source_id: str,
     enabled: bool | None = None,
@@ -289,7 +286,6 @@ def modify_catalog_source(
     # Get current ConfigMap (model-catalog-sources)
     sources_cm = ConfigMap(
         name=DEFAULT_CUSTOM_MODEL_CATALOG,
-        client=admin_client,
         namespace=namespace,
     )
 
@@ -311,7 +307,6 @@ def modify_catalog_source(
         # Get default sources ConfigMap (default-catalog-sources)
         default_sources_cm = ConfigMap(
             name=DEFAULT_MODEL_CATALOG_CM,
-            client=admin_client,
             namespace=namespace,
         )
 

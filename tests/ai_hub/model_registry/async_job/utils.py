@@ -1,12 +1,11 @@
 import structlog
-from kubernetes.dynamic import DynamicClient
-from ocp_resources.pod import Pod
-from ocp_resources.service import Service
 from timeout_sampler import TimeoutExpiredError
 
 from tests.ai_hub.utils import get_latest_job_pod
 from utilities.constants import MinIo
 from utilities.general import collect_pod_information
+from utilities.openshift_resources.pod import Pod
+from utilities.openshift_resources.service import Service
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -14,7 +13,6 @@ __all__ = ["get_latest_job_pod"]
 
 
 def upload_test_model_to_minio_from_image(
-    admin_client: DynamicClient,
     namespace: str,
     minio_service: Service,
     object_key: str = "my-model/model.onnx",
@@ -24,7 +22,6 @@ def upload_test_model_to_minio_from_image(
     Extract and upload test model to MinIO from a container image
 
     Args:
-        admin_client: Kubernetes client
         namespace: Namespace to create upload pod in
         minio_service: MinIO service resource
         object_key: S3 object key path
@@ -32,7 +29,6 @@ def upload_test_model_to_minio_from_image(
     """
     mc_url = f"http://{minio_service.name}.{minio_service.namespace}.svc.cluster.local:{MinIo.Metadata.DEFAULT_PORT} "
     with Pod(
-        client=admin_client,
         name="test-model-uploader-from-image",
         namespace=namespace,
         restart_policy="Never",

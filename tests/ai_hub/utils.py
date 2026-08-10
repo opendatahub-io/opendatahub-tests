@@ -9,14 +9,6 @@ from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import NotFoundError, ResourceNotFoundError
 from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import RegisteredModel
-from ocp_resources.config_map import ConfigMap
-from ocp_resources.deployment import Deployment
-from ocp_resources.endpoints import Endpoints
-from ocp_resources.job import Job
-from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
-from ocp_resources.pod import Pod
-from ocp_resources.secret import Secret
-from ocp_resources.service import Service
 from timeout_sampler import TimeoutSampler, retry
 
 import tests.ai_hub.constants as ai_hub_constants
@@ -34,7 +26,15 @@ from tests.ai_hub.image_constants import AiHubImages
 from utilities.constants import MARIA_DB_IMAGE, Annotations, PodNotFound, Protocols
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
 from utilities.general import wait_for_pods_running
-from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.openshift_resources.config_map import ConfigMap
+from utilities.openshift_resources.deployment import Deployment
+from utilities.openshift_resources.endpoints import Endpoints
+from utilities.openshift_resources.job import Job
+from utilities.openshift_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.openshift_resources.persistent_volume_claim import PersistentVolumeClaim
+from utilities.openshift_resources.pod import Pod
+from utilities.openshift_resources.secret import Secret
+from utilities.openshift_resources.service import Service
 from utilities.user_utils import get_byoidc_cli_client_id, get_byoidc_issuer_url, get_oidc_token_endpoint
 
 ADDRESS_ANNOTATION_PREFIX: str = "routing.opendatahub.io/external-address-"
@@ -42,10 +42,9 @@ POSTGRES_DB_IMAGE = AiHubImages.POSTGRES
 LOGGER = structlog.get_logger(name=__name__)
 
 
-def get_mr_service_by_label(client: DynamicClient, namespace_name: str, mr_instance: ModelRegistry) -> Service:
+def get_mr_service_by_label(namespace_name: str, mr_instance: ModelRegistry) -> Service:
     """
     Args:
-        client (DynamicClient): OCP Client to use.
         namespace_name (str): Namespace name associated with the service
         mr_instance (ModelRegistry): Model Registry instance
 
@@ -57,8 +56,7 @@ def get_mr_service_by_label(client: DynamicClient, namespace_name: str, mr_insta
     """
     if svc := [
         svcs
-        for svcs in Service.get(
-            client=client,
+        for svcs in Service.list_resources(
             namespace=namespace_name,
             label_selector=f"app={mr_instance.name},component=model-registry",
         )
@@ -315,7 +313,6 @@ def get_model_registry_db_label_dict(db_resource_name: str) -> dict[str, str]:
 
 @retry(exceptions_dict={TimeoutError: []}, wait_timeout=120, sleep=5)
 def wait_for_new_running_mr_pod(
-    admin_client: DynamicClient,
     orig_pod_name: str,
     namespace: str,
     instance_name: str,
@@ -324,10 +321,8 @@ def wait_for_new_running_mr_pod(
     Wait for the model registry pod to be replaced.
 
     Args:
-        admin_client (DynamicClient): The admin client.
         orig_pod_name (str): The name of the original pod.
         namespace (str): The namespace of the pod.
-        instance_name (str): The name of the instance.
     Returns:
         Pod object.
 
@@ -337,13 +332,17 @@ def wait_for_new_running_mr_pod(
     """
     LOGGER.info("Waiting for pod to be replaced")
     pods = list(
-        Pod.get(
-            client=admin_client,
+        Pod.list_resources(
             namespace=namespace,
             label_selector=MODEL_REGISTRY_POD_FILTER,
         )
     )
-    if pods and len(pods) == 1 and pods[0].name != orig_pod_name and pods[0].status == Pod.Status.RUNNING:
+    if (
+        pods
+        and len(pods) == 1
+        and pods[0].name != orig_pod_name
+        and pods[0].instance.status.phase == Pod.Status.RUNNING
+    ):
         return pods[0]
     raise TimeoutError(f"Timeout waiting for pod {orig_pod_name} to be replaced")
 
@@ -529,7 +528,6 @@ def execute_model_registry_get_command(url: str, headers: dict[str, str], json_o
 def get_mr_service_objects(
     base_name: str,
     namespace: str,
-    client: DynamicClient,
     teardown_resources: bool,
     num: int,
     db_backend: str = "mysql",
@@ -543,7 +541,6 @@ def get_mr_service_objects(
         name = f"{base_name}{num_service}"
         services.append(
             Service(
-                client=client,
                 name=name,
                 namespace=namespace,
                 ports=[
@@ -570,7 +567,6 @@ def get_mr_service_objects(
 def get_mr_configmap_objects(
     base_name: str,
     namespace: str,
-    client: DynamicClient,
     teardown_resources: bool,
     num: int,
     db_backend: str,
@@ -581,7 +577,6 @@ def get_mr_configmap_objects(
             name = f"{base_name}{num_config_map}"
             config_maps.append(
                 ConfigMap(
-                    client=client,
                     name=name,
                     namespace=namespace,
                     data={"my.cnf": MARIADB_MY_CNF},
@@ -593,18 +588,17 @@ def get_mr_configmap_objects(
 
 
 def get_mr_pvc_objects(
-    base_name: str, namespace: str, client: DynamicClient, teardown_resources: bool, num: int
+    base_name: str, namespace: str, teardown_resources: bool, num: int
 ) -> list[PersistentVolumeClaim]:
     pvcs = []
     for num_pvc in range(num):
         name = f"{base_name}{num_pvc}"
         pvcs.append(
             PersistentVolumeClaim(
-                accessmodes="ReadWriteOnce",
+                access_modes=["ReadWriteOnce"],
                 name=name,
                 namespace=namespace,
-                client=client,
-                size="3Gi",
+                resources={"requests": {"storage": "3Gi"}},
                 label=get_model_registry_db_label_dict(db_resource_name=name),
                 teardown=teardown_resources,
             )
@@ -612,15 +606,12 @@ def get_mr_pvc_objects(
     return pvcs
 
 
-def get_mr_secret_objects(
-    base_name: str, namespace: str, client: DynamicClient, teardown_resources: bool, num: int
-) -> list[Secret]:
+def get_mr_secret_objects(base_name: str, namespace: str, teardown_resources: bool, num: int) -> list[Secret]:
     secrets = []
     for num_secret in range(num):
         name = f"{base_name}{num_secret}"
         secrets.append(
             Secret(
-                client=client,
                 name=name,
                 namespace=namespace,
                 string_data=MODEL_REGISTRY_DB_SECRET_STR_DATA,
@@ -635,7 +626,6 @@ def get_mr_secret_objects(
 def get_mr_deployment_objects(
     base_name: str,
     namespace: str,
-    client: DynamicClient,
     teardown_resources: bool,
     db_backend: str,
     num: int,
@@ -652,7 +642,6 @@ def get_mr_deployment_objects(
         deployments.append(
             Deployment(
                 name=name,
-                client=client,
                 namespace=namespace,
                 annotations={
                     "template.alpha.openshift.io/wait-for-ready": "true",
@@ -684,7 +673,6 @@ def get_mr_standard_labels(resource_name: str) -> dict[str, str]:
 def get_model_registry_objects(
     base_name: str,
     namespace: str,
-    client: DynamicClient,
     teardown_resources: bool,
     params: dict[str, Any],
     num: int,
@@ -706,7 +694,6 @@ def get_model_registry_objects(
 
         model_registry_objects.append(
             ModelRegistry(
-                client=client,
                 name=name,
                 namespace=namespace,
                 label=get_mr_standard_labels(resource_name=name),
@@ -724,28 +711,24 @@ def get_model_registry_objects(
 def get_model_registry_metadata_resources(
     base_name: str,
     namespace: str,
-    client: DynamicClient,
     teardown_resources: bool,
     num_resources: int,
     db_backend: str,
 ) -> dict[Any, Any]:
     return {
         Secret: get_mr_secret_objects(
-            client=client,
             namespace=namespace,
             base_name=base_name,
             num=num_resources,
             teardown_resources=teardown_resources,
         ),
         PersistentVolumeClaim: get_mr_pvc_objects(
-            client=client,
             namespace=namespace,
             base_name=base_name,
             num=num_resources,
             teardown_resources=teardown_resources,
         ),
         Service: get_mr_service_objects(
-            client=client,
             namespace=namespace,
             base_name=base_name,
             num=num_resources,
@@ -753,7 +736,6 @@ def get_model_registry_metadata_resources(
             db_backend=db_backend,
         ),
         ConfigMap: get_mr_configmap_objects(
-            client=client,
             namespace=namespace,
             base_name=base_name,
             num=num_resources,
@@ -761,7 +743,6 @@ def get_model_registry_metadata_resources(
             db_backend=db_backend,
         ),
         Deployment: get_mr_deployment_objects(
-            client=client,
             namespace=namespace,
             base_name=base_name,
             num=num_resources,
@@ -807,9 +788,9 @@ def validate_mlmd_removal_in_model_registry_pod_log(
 
 
 def get_model_catalog_pod(
-    client: DynamicClient, model_registry_namespace: str, label_selector: str = "app.kubernetes.io/name=model-catalog"
+    model_registry_namespace: str, label_selector: str = "app.kubernetes.io/name=model-catalog", **kwargs: Any
 ) -> list[Pod]:
-    return list(Pod.get(namespace=model_registry_namespace, label_selector=label_selector, client=client))
+    return list(Pod.list_resources(namespace=model_registry_namespace, label_selector=label_selector))
 
 
 def get_rest_headers(token: str) -> dict[str, str]:
@@ -825,11 +806,11 @@ class ResourceNotDeleted(Exception):
 
 
 @retry(wait_timeout=360, sleep=5, exceptions_dict={ResourceNotDeleted: []})
-def wait_for_default_resource_cleanedup(admin_client: DynamicClient, namespace_name: str) -> bool:
+def wait_for_default_resource_cleanedup(namespace_name: str, **kwargs: Any) -> bool:
     objects_not_deleted = []
     for kind in [Service, PersistentVolumeClaim, Deployment, Secret]:
         LOGGER.info(f"Checking if {kind} {MR_POSTGRES_DB_OBJECT[kind]} is deleted")
-        kind_obj = kind(client=admin_client, namespace=namespace_name, name=MR_POSTGRES_DB_OBJECT[kind])
+        kind_obj = kind(namespace=namespace_name, name=MR_POSTGRES_DB_OBJECT[kind])
         if kind_obj.exists:
             objects_not_deleted.append(f"{kind_obj.kind} - {kind_obj.name}")
     if not objects_not_deleted:
@@ -951,8 +932,8 @@ def execute_get_command_with_retry(
     return execute_get_command(url=url, headers=headers, verify=verify, params=params)
 
 
-def get_endpoint_ips(client: DynamicClient, namespace: str, service_name: str = "model-catalog") -> set[str]:
-    endpoints = Endpoints(name=service_name, namespace=namespace, client=client)
+def get_endpoint_ips(namespace: str, service_name: str = "model-catalog") -> set[str]:
+    endpoints = Endpoints(name=service_name, namespace=namespace)
     assert endpoints.exists, f"Endpoints for service {service_name} not found in {namespace}"
     ips: set[str] = set()
     for subset in endpoints.instance.subsets or []:
@@ -966,10 +947,8 @@ class EndpointsNotUpdated(Exception):
 
 
 @retry(wait_timeout=60, sleep=5, exceptions_dict={EndpointsNotUpdated: []})
-def wait_for_endpoints_updated(
-    client: DynamicClient, namespace: str, old_ips: set[str], service_name: str = "model-catalog"
-) -> bool:
-    current_ips = get_endpoint_ips(client=client, namespace=namespace, service_name=service_name)
+def wait_for_endpoints_updated(namespace: str, old_ips: set[str], service_name: str = "model-catalog") -> bool:
+    current_ips = get_endpoint_ips(namespace=namespace, service_name=service_name)
     LOGGER.info(f"Endpoint check: old_ips={old_ips}, current_ips={current_ips}")
     if current_ips and not current_ips & old_ips:
         return True
@@ -979,9 +958,8 @@ def wait_for_endpoints_updated(
 def wait_for_model_catalog_pod_ready_after_deletion(
     client: DynamicClient, model_registry_namespace: str, consecutive_try: int = 6
 ) -> bool:
-    old_endpoint_ips = get_endpoint_ips(client=client, namespace=model_registry_namespace)
+    old_endpoint_ips = get_endpoint_ips(namespace=model_registry_namespace)
     model_catalog_pods = get_model_catalog_pod(
-        client=client,
         model_registry_namespace=model_registry_namespace,
     )
     # We can wait for the pods to reflect updated catalog, however, deleting them ensures the updated config is
@@ -992,22 +970,22 @@ def wait_for_model_catalog_pod_ready_after_deletion(
         except NotFoundError:
             pass
     # After the deletion, we need to wait for the pod to be spinned up and get to ready state.
-    assert wait_for_model_catalog_pod_created(client=client, model_registry_namespace=model_registry_namespace)
+    assert wait_for_model_catalog_pod_created(model_registry_namespace=model_registry_namespace)
     wait_for_pods_running(
         admin_client=client, namespace_name=model_registry_namespace, number_of_consecutive_checks=consecutive_try
     )
-    current_ips = get_endpoint_ips(client=client, namespace=model_registry_namespace)
+    current_ips = get_endpoint_ips(namespace=model_registry_namespace)
     if current_ips & old_endpoint_ips:
         LOGGER.warning(
             f"Service endpoints still point to old pod IPs after restart: old={old_endpoint_ips}, current={current_ips}"
         )
-    wait_for_endpoints_updated(client=client, namespace=model_registry_namespace, old_ips=old_endpoint_ips)
+    wait_for_endpoints_updated(namespace=model_registry_namespace, old_ips=old_endpoint_ips)
     return True
 
 
 @retry(wait_timeout=30, sleep=5, exceptions_dict={PodNotFound: []})
-def wait_for_model_catalog_pod_created(client: DynamicClient, model_registry_namespace: str) -> bool:
-    pods = get_model_catalog_pod(client=client, model_registry_namespace=model_registry_namespace)
+def wait_for_model_catalog_pod_created(model_registry_namespace: str) -> bool:
+    pods = get_model_catalog_pod(model_registry_namespace=model_registry_namespace)
     if pods:
         return True
     raise PodNotFound("Model catalog pod not found")
@@ -1116,11 +1094,10 @@ def wait_for_agent_catalog_api(
     )
 
 
-def get_latest_job_pod(admin_client: DynamicClient, job: Job) -> Pod:
+def get_latest_job_pod(job: Job) -> Pod:
     """Get the latest (most recently created) Pod created by a Job."""
     pods = list(
-        Pod.get(
-            client=admin_client,
+        Pod.list_resources(
             namespace=job.namespace,
             label_selector=f"job-name={job.name}",
         )
@@ -1154,3 +1131,23 @@ def execute_authenticated_post(url: str, token: str, files: dict[str, tuple[str,
         LOGGER.error(f"POST failed: {response.status_code} — {response.text}")
     response.raise_for_status()
     return response.json()
+
+
+class OAuthDeploymentNotReady(Exception):
+    pass
+
+
+@retry(wait_timeout=240, sleep=5, exceptions_dict={OAuthDeploymentNotReady: []})
+def _wait_for_oauth_pods_ready() -> bool:
+    """Wait for all OAuth deployment replicas to be ready."""
+    deployment = Deployment(name="oauth-openshift", namespace="openshift-authentication")
+    instance = deployment.instance
+    ready_replicas = instance.status.readyReplicas or 0
+    desired_replicas = instance.spec.replicas or 1
+    updated_replicas = instance.status.updatedReplicas or 0
+    if ready_replicas >= desired_replicas and updated_replicas >= desired_replicas:
+        LOGGER.info(f"OAuth deployment ready: ready={ready_replicas}/{desired_replicas}")
+        return True
+    raise OAuthDeploymentNotReady(
+        f"OAuth not ready: ready={ready_replicas}/{desired_replicas}, updated={updated_replicas}"
+    )

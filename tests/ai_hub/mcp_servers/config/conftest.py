@@ -4,8 +4,6 @@ import pytest
 import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.config_map import ConfigMap
-from ocp_resources.resource import ResourceEditor
 
 from tests.ai_hub.constants import DEFAULT_MODEL_CATALOG_CM
 from tests.ai_hub.mcp_servers.config.constants import (
@@ -25,20 +23,19 @@ from tests.ai_hub.utils import (
     wait_for_mcp_catalog_api,
     wait_for_model_catalog_pod_ready_after_deletion,
 )
+from utilities.openshift_resources.config_map import ConfigMap
 
 LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")
 def default_catalog_sources_data(
-    admin_client: DynamicClient,
     model_registry_namespace: str,
 ) -> dict:
     """Return the parsed sources.yaml data from the default catalog sources ConfigMap."""
 
     configmap = ConfigMap(
         name=DEFAULT_MODEL_CATALOG_CM,
-        client=admin_client,
         namespace=model_registry_namespace,
     )
     return yaml.safe_load(configmap.instance.data.get("sources.yaml", "{}") or "{}")
@@ -98,9 +95,7 @@ def disable_default_mcp_source(
     Yields the catalog ID of the disabled source.
     """
     expected_catalog = request.param
-    catalog_config_map, current_data = get_mcp_catalog_sources(
-        admin_client=admin_client, model_registry_namespace=model_registry_namespace
-    )
+    catalog_config_map, current_data = get_mcp_catalog_sources(model_registry_namespace=model_registry_namespace)
     current_data["mcp_catalogs"] = [
         {
             "name": expected_catalog["name"],
@@ -111,7 +106,7 @@ def disable_default_mcp_source(
 
     patches = {"data": {"sources.yaml": yaml.dump(current_data, default_flow_style=False)}}
 
-    with ResourceEditor(patches={catalog_config_map: patches}):
+    with catalog_config_map.patch_and_restore(patch=patches):
         wait_for_model_catalog_pod_ready_after_deletion(
             client=admin_client, model_registry_namespace=model_registry_namespace
         )
@@ -135,9 +130,7 @@ def mcp_multi_source_configmap_patch(
     Class-scoped fixture that patches the model-catalog-sources ConfigMap
     with two MCP catalog sources pointing to two different YAML files.
     """
-    catalog_config_map, current_data = get_mcp_catalog_sources(
-        admin_client=admin_client, model_registry_namespace=model_registry_namespace
-    )
+    catalog_config_map, current_data = get_mcp_catalog_sources(model_registry_namespace=model_registry_namespace)
     if "mcp_catalogs" not in current_data:
         current_data["mcp_catalogs"] = []
     current_data["mcp_catalogs"].extend([MCP_CATALOG_SOURCE, MCP_CATALOG_SOURCE2])
@@ -150,7 +143,7 @@ def mcp_multi_source_configmap_patch(
         }
     }
 
-    with ResourceEditor(patches={catalog_config_map: patches}):
+    with catalog_config_map.patch_and_restore(patch=patches):
         wait_for_model_catalog_pod_ready_after_deletion(
             client=admin_client, model_registry_namespace=model_registry_namespace
         )
@@ -175,9 +168,7 @@ def mcp_invalid_yaml_configmap_patch(
     Class-scoped fixture that patches the ConfigMap with a valid MCP source
     plus an invalid one (parameterized via request.param as the invalid YAML content).
     """
-    catalog_config_map, current_data = get_mcp_catalog_sources(
-        admin_client=admin_client, model_registry_namespace=model_registry_namespace
-    )
+    catalog_config_map, current_data = get_mcp_catalog_sources(model_registry_namespace=model_registry_namespace)
     if "mcp_catalogs" not in current_data:
         current_data["mcp_catalogs"] = []
     current_data["mcp_catalogs"].extend([MCP_CATALOG_SOURCE, MCP_CATALOG_INVALID_SOURCE])
@@ -190,7 +181,7 @@ def mcp_invalid_yaml_configmap_patch(
         }
     }
 
-    with ResourceEditor(patches={catalog_config_map: patches}):
+    with catalog_config_map.patch_and_restore(patch=patches):
         wait_for_model_catalog_pod_ready_after_deletion(
             client=admin_client, model_registry_namespace=model_registry_namespace
         )
@@ -234,9 +225,7 @@ def mcp_included_excluded_configmap_patch(
     if "excludedServers" in filter_params:
         source_config["excludedServers"] = filter_params["excludedServers"]
 
-    catalog_config_map, current_data = get_mcp_catalog_sources(
-        admin_client=admin_client, model_registry_namespace=model_registry_namespace
-    )
+    catalog_config_map, current_data = get_mcp_catalog_sources(model_registry_namespace=model_registry_namespace)
     if "mcp_catalogs" not in current_data:
         current_data["mcp_catalogs"] = []
     current_data["mcp_catalogs"].append(source_config)
@@ -248,7 +237,7 @@ def mcp_included_excluded_configmap_patch(
         }
     }
 
-    with ResourceEditor(patches={catalog_config_map: patches}):
+    with catalog_config_map.patch_and_restore(patch=patches):
         wait_for_model_catalog_pod_ready_after_deletion(
             client=admin_client, model_registry_namespace=model_registry_namespace
         )
@@ -280,9 +269,7 @@ def mcp_servers_configmap_patch(
     if pytestconfig.option.post_upgrade or pytestconfig.option.pre_upgrade:
         yield
     else:
-        catalog_config_map, current_data = get_mcp_catalog_sources(
-            admin_client=admin_client, model_registry_namespace=model_registry_namespace
-        )
+        catalog_config_map, current_data = get_mcp_catalog_sources(model_registry_namespace=model_registry_namespace)
         if "mcp_catalogs" not in current_data:
             current_data["mcp_catalogs"] = []
         current_data["mcp_catalogs"].append(MCP_CATALOG_SOURCE)
@@ -295,7 +282,7 @@ def mcp_servers_configmap_patch(
             }
         }
 
-        with ResourceEditor(patches={catalog_config_map: patches}):
+        with catalog_config_map.patch_and_restore(patch=patches):
             wait_for_model_catalog_pod_ready_after_deletion(
                 client=admin_client, model_registry_namespace=model_registry_namespace
             )

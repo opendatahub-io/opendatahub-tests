@@ -6,12 +6,12 @@ from typing import Self
 import pytest
 import requests
 import structlog
-from ocp_resources.config_map import ConfigMap
 
 from tests.ai_hub.model_registry.python_client.signing.constants import (
     SIGNING_OCI_REPO_NAME,
 )
 from tests.ai_hub.model_registry.python_client.signing.utils import check_model_signature_file
+from utilities.openshift_resources.config_map import ConfigMap
 from utilities.resources.securesign import Securesign
 
 LOGGER = structlog.get_logger(name=__name__)

@@ -1,6 +1,7 @@
+from typing import Any
+
 import requests
 import structlog
-from kubernetes.dynamic import DynamicClient
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_hub.model_catalog.utils import get_postgres_pod_in_namespace
@@ -12,9 +13,9 @@ RESTORE_LOGIN_SQL: str = "ALTER USER catalog_user LOGIN;"
 CLEAR_STALE_LOCK_SQL: str = "DELETE FROM locks WHERE name = 'catalog-leader';"
 
 
-def run_superuser_sql(admin_client: DynamicClient, namespace: str, sql: str) -> str:
+def run_superuser_sql(namespace: str, sql: str, **kwargs: Any) -> str:
     """Execute SQL as the postgres superuser on the catalog database pod."""
-    pod = get_postgres_pod_in_namespace(admin_client=admin_client, namespace=namespace)
+    pod = get_postgres_pod_in_namespace(namespace=namespace)
     return pod.execute(
         command=["psql", "-U", "postgres", "-d", "model_catalog", "-c", sql],
         container="postgresql",
@@ -39,7 +40,7 @@ def poll_readyz(url: str, headers: dict[str, str], expected_code: int, timeout: 
         raise AssertionError(f"/readyz did not return {expected_code} within {timeout}s")
 
 
-def restore_catalog(admin_client: DynamicClient, namespace: str) -> None:
+def restore_catalog(namespace: str, **kwargs: Any) -> None:
     """Restore DB login and clear stale leader locks."""
     for sql in (RESTORE_LOGIN_SQL, CLEAR_STALE_LOCK_SQL):
-        run_superuser_sql(admin_client=admin_client, namespace=namespace, sql=sql)
+        run_superuser_sql(namespace=namespace, sql=sql)

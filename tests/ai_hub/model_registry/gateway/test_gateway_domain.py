@@ -1,11 +1,10 @@
 import pytest
 import requests
 import structlog
-from kubernetes.dynamic import DynamicClient
-from ocp_resources.route import Route
 from pytest_testconfig import config as py_config
 
 from tests.ai_hub.model_registry.gateway.utils import DATA_SCIENCE_GATEWAY_NAME, DATA_SCIENCE_GATEWAY_NAMESPACE
+from utilities.openshift_resources.route_route_openshift_io import Route
 from utilities.resources.http_route import HTTPRoute
 from utilities.resources.reference_grant import ReferenceGrant
 
@@ -131,7 +130,6 @@ class TestModelRegistryGatewayDomain:
 
     def test_no_standalone_routes_with_gateway_domain(
         self,
-        admin_client: DynamicClient,
         gateway_domain: str,
         model_registry_namespace: str,
     ):
@@ -139,7 +137,7 @@ class TestModelRegistryGatewayDomain:
         When checking OpenShift Routes in the model registry namespace
         Then no Route has a host matching the gateway domain
         """
-        routes = list(Route.get(client=admin_client, namespace=model_registry_namespace))
+        routes = list(Route.list_resources(namespace=model_registry_namespace))
 
         gateway_domain_routes = [route for route in routes if gateway_domain in (route.instance.spec.host or "")]
 

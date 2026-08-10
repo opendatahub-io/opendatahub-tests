@@ -3,9 +3,9 @@ from typing import Self
 import pytest
 import structlog
 import yaml
-from ocp_resources.config_map import ConfigMap
 
 from tests.ai_hub.mcp_servers.config.constants import MCP_CATALOG_SOURCE_ID
+from utilities.openshift_resources.config_map import ConfigMap
 
 LOGGER = structlog.get_logger(name=__name__)
 

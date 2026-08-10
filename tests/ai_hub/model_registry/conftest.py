@@ -9,12 +9,6 @@ from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import RegisteredModel
-from ocp_resources.deployment import Deployment
-from ocp_resources.namespace import Namespace
-from ocp_resources.pod import Pod
-from ocp_resources.role import Role
-from ocp_resources.role_binding import RoleBinding
-from ocp_resources.service_account import ServiceAccount
 from pyhelper_utils.shell import run_command
 from pytest import FixtureRequest
 from timeout_sampler import retry
@@ -30,18 +24,22 @@ from tests.ai_hub.utils import (
 )
 from utilities.constants import Protocols
 from utilities.general import wait_for_pods_by_labels
+from utilities.openshift_resources.deployment import Deployment
+from utilities.openshift_resources.namespace import Namespace
+from utilities.openshift_resources.pod import Pod
+from utilities.openshift_resources.role import Role
+from utilities.openshift_resources.role_binding import RoleBinding
+from utilities.openshift_resources.service_account import ServiceAccount
 
 LOGGER = structlog.get_logger(name=__name__)
 DEFAULT_TOKEN_DURATION = "10m"
 
 
 @pytest.fixture(scope="class")
-def model_registry_instance_rest_endpoint(
-    admin_client: DynamicClient, model_registry_instance: list
-) -> list[tuple[str, int]]:
+def model_registry_instance_rest_endpoint(model_registry_instance: list) -> list[tuple[str, int]]:
     """REST endpoint address and port for each model registry instance."""
     mr_services = [
-        get_mr_service_by_label(client=admin_client, namespace_name=mr_instance.namespace, mr_instance=mr_instance)
+        get_mr_service_by_label(namespace_name=mr_instance.namespace, mr_instance=mr_instance)
         for mr_instance in model_registry_instance
     ]
     if not mr_services:
@@ -103,10 +101,10 @@ def model_registry_rest_url(model_registry_instance_rest_endpoint: list[tuple[st
 
 @pytest.fixture(scope="class")
 def model_registry_deployment_containers(
-    admin_client: DynamicClient, model_registry_namespace: str
+    model_registry_namespace: str,
 ) -> list[dict[str, Any]]:
     return Deployment(
-        client=admin_client, name=MR_INSTANCE_NAME, namespace=model_registry_namespace, ensure_exists=True
+        name=MR_INSTANCE_NAME, namespace=model_registry_namespace, ensure_exists=True
     ).instance.spec.template.spec.containers
 
 
@@ -166,7 +164,6 @@ def sa_token(service_account: ServiceAccount) -> str:
 
 @pytest.fixture(scope="class")
 def mr_access_role(
-    admin_client: DynamicClient,
     model_registry_namespace: str,
     sa_namespace: Namespace,
 ) -> Generator[Role]:
@@ -190,7 +187,6 @@ def mr_access_role(
     }
 
     with Role(
-        client=admin_client,
         name=role_name,
         namespace=model_registry_namespace,
         rules=role_rules,
@@ -202,7 +198,6 @@ def mr_access_role(
 
 @pytest.fixture(scope="class")
 def mr_access_role_binding(
-    admin_client: DynamicClient,
     model_registry_namespace: str,
     mr_access_role: Role,
     sa_namespace: Namespace,
@@ -222,18 +217,21 @@ def mr_access_role_binding(
     }
 
     with RoleBinding(
-        client=admin_client,
         name=binding_name,
         namespace=model_registry_namespace,
-        # Subject parameters
-        subjects_kind="Group",
-        subjects_name=f"system:serviceaccounts:{sa_namespace.name}",
-        subjects_api_group="rbac.authorization.k8s.io",  # This is the default apiGroup for Group kind
-        # Role reference parameters
-        role_ref_kind=mr_access_role.kind,
-        role_ref_name=mr_access_role.name,
+        subjects=[
+            {
+                "kind": "Group",
+                "name": f"system:serviceaccounts:{sa_namespace.name}",
+                "apiGroup": "rbac.authorization.k8s.io",
+            }
+        ],
+        role_ref={
+            "kind": mr_access_role.kind,
+            "name": mr_access_role.name,
+            "apiGroup": "rbac.authorization.k8s.io",
+        },
         label=binding_labels,
-        wait_for_resource=True,
     ) as binding:
         LOGGER.info(f"RoleBinding {binding.name} created successfully.")
         yield binding

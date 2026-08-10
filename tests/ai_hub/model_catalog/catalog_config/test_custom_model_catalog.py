@@ -3,7 +3,6 @@ from typing import Self
 import pytest
 import structlog
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
-from ocp_resources.config_map import ConfigMap
 
 from tests.ai_hub.constants import CUSTOM_CATALOG_ID1, SAMPLE_MODEL_NAME1
 from tests.ai_hub.model_catalog.catalog_config.utils import validate_model_catalog_sources
@@ -22,6 +21,7 @@ from tests.ai_hub.model_catalog.utils import (
     get_sample_yaml_str,
 )
 from tests.ai_hub.utils import execute_get_command, execute_get_command_with_retry
+from utilities.openshift_resources.config_map import ConfigMap
 
 LOGGER = structlog.get_logger(name=__name__)
 

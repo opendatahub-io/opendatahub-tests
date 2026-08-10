@@ -2,9 +2,9 @@ from typing import Self
 
 import pytest
 import structlog
-from ocp_resources.config_map import ConfigMap
 
 from tests.ai_hub.model_catalog.utils import assert_source_error_state_message
+from utilities.openshift_resources.config_map import ConfigMap
 
 LOGGER = structlog.get_logger(name=__name__)
 

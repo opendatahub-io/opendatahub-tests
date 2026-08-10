@@ -3,9 +3,9 @@ from typing import Self
 import pytest
 import requests
 import structlog
-from ocp_resources.route import Route
 
 from tests.ai_hub.constants import MCP_CATALOG_API_PATH
+from utilities.openshift_resources.route_route_openshift_io import Route
 
 LOGGER = structlog.get_logger(name=__name__)
 MODEL_CATALOG_API_PATH = "/api/model_catalog/v1alpha1/"

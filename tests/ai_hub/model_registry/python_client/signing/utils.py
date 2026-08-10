@@ -7,12 +7,6 @@ from typing import Any
 
 import requests
 import structlog
-from kubernetes.dynamic import DynamicClient
-from ocp_resources.job import Job
-from ocp_resources.pod import Pod
-from ocp_resources.route import Route
-from ocp_resources.secret import Secret
-from ocp_resources.service import Service
 from pyhelper_utils.shell import run_command
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
@@ -29,7 +23,12 @@ from tests.ai_hub.model_registry.python_client.signing.constants import (
 )
 from utilities.constants import MinIo, OCIRegistry
 from utilities.general import collect_pod_information
-from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.openshift_resources.job import Job
+from utilities.openshift_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.openshift_resources.pod import Pod
+from utilities.openshift_resources.route_route_openshift_io import Route
+from utilities.openshift_resources.secret import Secret
+from utilities.openshift_resources.service import Service
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -155,7 +154,6 @@ def check_model_signature_file(model_dir: str) -> bool:
 
 
 def run_minio_uploader_pod(
-    admin_client: DynamicClient,
     namespace: str,
     minio_service: Service,
     pod_name: str,
@@ -199,7 +197,6 @@ def run_minio_uploader_pod(
     )
 
     with Pod(
-        client=admin_client,
         name=pod_name,
         namespace=namespace,
         restart_policy="Never",
@@ -259,7 +256,6 @@ def get_oci_internal_endpoint(oci_registry_service: Service) -> str:
 
 
 def get_model_registry_host(
-    admin_client: DynamicClient,
     model_registry_namespace: str,
     model_registry_instance: list[ModelRegistry],
 ) -> str:
@@ -271,7 +267,6 @@ def get_model_registry_host(
     """
     mr_instance = model_registry_instance[0]
     rest_route = Route(
-        client=admin_client,
         name=f"{mr_instance.name}-https",
         namespace=model_registry_namespace,
     )
@@ -279,7 +274,6 @@ def get_model_registry_host(
 
 
 def create_async_upload_job(
-    admin_client: DynamicClient,
     job_name: str,
     namespace: str,
     async_upload_image: str,
@@ -306,21 +300,24 @@ def create_async_upload_job(
         volumes.extend(extra_volumes)
 
     with Job(
-        client=admin_client,
         name=job_name,
         namespace=namespace,
         label=ASYNC_JOB_LABELS,
         annotations=ASYNC_JOB_ANNOTATIONS,
-        restart_policy="Never",
-        containers=[
-            {
-                "name": "async-upload",
-                "image": async_upload_image,
-                "volumeMounts": volume_mounts,
-                "env": environment_variables,
+        template={
+            "spec": {
+                "restartPolicy": "Never",
+                "containers": [
+                    {
+                        "name": "async-upload",
+                        "image": async_upload_image,
+                        "volumeMounts": volume_mounts,
+                        "env": environment_variables,
+                    }
+                ],
+                "volumes": volumes,
             }
-        ],
-        volumes=volumes,
+        },
         teardown=teardown,
     ) as job:
         job.wait_for_condition(condition="Complete", status="True")

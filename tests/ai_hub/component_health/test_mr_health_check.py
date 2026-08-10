@@ -1,12 +1,12 @@
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.data_science_cluster import DataScienceCluster
-from ocp_resources.namespace import Namespace
 from pytest_testconfig import config as py_config
 
 from utilities.constants import DscComponents
 from utilities.general import wait_for_pods_running
+from utilities.openshift_resources.data_science_cluster import DataScienceCluster
+from utilities.openshift_resources.namespace import Namespace
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -20,12 +20,9 @@ class TestMrDefault:
             == DscComponents.ManagementState.MANAGED
         )
 
-    def test_mr_namespace_exists_and_active(
-        self, admin_client: DynamicClient, dsc_resource: DataScienceCluster
-    ) -> None:
+    def test_mr_namespace_exists_and_active(self, dsc_resource: DataScienceCluster) -> None:
         """Verify MR namespace exists and is in Active state."""
         namespace = Namespace(
-            client=admin_client,
             name=dsc_resource.instance.spec.components[DscComponents.MODELREGISTRY].registriesNamespace,
             ensure_exists=True,
         )

@@ -1,10 +1,10 @@
 from typing import Self
 
 import pytest
-from ocp_resources.config_map import ConfigMap
 
 from tests.ai_hub.model_catalog.sorting.utils import assert_model_sorting
 from tests.ai_hub.model_catalog.utils import get_hf_catalog_str
+from utilities.openshift_resources.config_map import ConfigMap
 
 pytestmark = [pytest.mark.skip_on_disconnected]
 

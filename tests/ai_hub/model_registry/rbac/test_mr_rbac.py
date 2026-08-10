@@ -9,40 +9,34 @@ This suite tests various RBAC scenarios including:
 """
 
 from collections.abc import Generator
-from typing import Self
+from typing import Any, Self
 
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
 from model_registry import ModelRegistry as ModelRegistryClient
 from mr_openapi.exceptions import ForbiddenException
-from ocp_resources.data_science_cluster import DataScienceCluster
-from ocp_resources.deployment import Deployment
-from ocp_resources.group import Group
-from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
-from ocp_resources.role_binding import RoleBinding
-from ocp_resources.secret import Secret
-from ocp_resources.service import Service
 from timeout_sampler import TimeoutSampler
 
-from tests.ai_hub.constants import NUM_MR_INSTANCES
 from tests.ai_hub.model_registry.rbac.multiple_instance_utils import MR_MULTIPROJECT_TEST_SCENARIO_PARAMS
 from tests.ai_hub.model_registry.rbac.utils import (
     assert_forbidden_access,
     assert_positive_mr_registry,
     build_mr_client_args,
-    grant_mr_access,
-    revoke_mr_access,
 )
 from tests.ai_hub.utils import (
     get_byoidc_user_credentials,
-    get_endpoint_from_mr_service,
-    get_mr_service_by_label,
     get_mr_user_token,
 )
-from utilities.constants import Protocols
 from utilities.infra import get_openshift_token
-from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.openshift_resources.data_science_cluster import DataScienceCluster
+from utilities.openshift_resources.deployment import Deployment
+from utilities.openshift_resources.group import Group
+from utilities.openshift_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.openshift_resources.persistent_volume_claim import PersistentVolumeClaim
+from utilities.openshift_resources.role_binding import RoleBinding
+from utilities.openshift_resources.secret import Secret
+from utilities.openshift_resources.service import Service
 from utilities.user_utils import UserTestSession
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -154,18 +148,20 @@ class TestUserPermission:
         """
         if is_byoidc:
             mr_non_admin_creds = get_byoidc_user_credentials(client=admin_client, username="mr-non-admin")
-            sampler = TimeoutSampler(
-                wait_timeout=120,
-                sleep=5,
-                func=assert_positive_mr_registry,
-                model_registry_instance_rest_endpoint=model_registry_instance_rest_endpoint[0],
-                token=get_mr_user_token(admin_client=admin_client, user_credentials_rbac=mr_non_admin_creds),
-            )
-            for _ in sampler:
-                break  # Break after first successful iteration
-            LOGGER.info("Successfully accessed Model Registry")
+            token = get_mr_user_token(admin_client=admin_client, user_credentials_rbac=mr_non_admin_creds)
         else:
-            assert_positive_mr_registry(model_registry_instance_rest_endpoint=model_registry_instance_rest_endpoint[0])
+            token = get_openshift_token()
+
+        sampler = TimeoutSampler(
+            wait_timeout=120,
+            sleep=5,
+            func=assert_positive_mr_registry,
+            model_registry_instance_rest_endpoint=model_registry_instance_rest_endpoint[0],
+            token=token,
+        )
+        for _ in sampler:
+            break
+        LOGGER.info("Successfully accessed Model Registry")
 
 
 class TestUserMultiProjectPermission:
@@ -187,108 +183,50 @@ class TestUserMultiProjectPermission:
     @pytest.mark.tier2
     def test_user_permission_multi_project_parametrized(
         self: Self,
-        is_byoidc: bool,
-        test_idp_user: UserTestSession,
-        admin_client: DynamicClient,
         updated_dsc_component_state_scope_session: DataScienceCluster,
-        model_registry_namespace: str,
         db_secret_parametrized: list[Secret],
         db_pvc_parametrized: list[PersistentVolumeClaim],
         db_service_parametrized: list[Service],
         db_deployment_parametrized: list[Deployment],
-        user_credentials_rbac: dict[str, str],
         model_registry_instance_parametrized: list[ModelRegistry],
-        login_as_test_user: None,
+        mr_endpoints_parametrized: list[dict[str, Any]],
+        granted_mr_instance_access: Generator[int],
+        test_user_token: str,
     ):
         """
-        Verify that a user can be granted access to one MR instance at a time.
-        All resources (MR instances and databases) are created in the same dynamically generated namespace.
+        Given multiple MR instances exist,
+        When a user is granted access to one instance at a time,
+        Then access succeeds only for the granted instance and is forbidden for all others.
         """
-        if len(model_registry_instance_parametrized) != NUM_MR_INSTANCES:
-            raise ValueError(
-                f"Expected {NUM_MR_INSTANCES} MR instances, but got {len(model_registry_instance_parametrized)}"
+        for idx in granted_mr_instance_access:
+            current_mr_data = mr_endpoints_parametrized[idx]
+            current_name = current_mr_data["name"]
+            current_endpoint = current_mr_data["endpoint"]
+
+            LOGGER.info(f"Testing access to MR instance {idx + 1}/{len(mr_endpoints_parametrized)}: {current_name}")
+
+            sampler = TimeoutSampler(
+                wait_timeout=240,
+                sleep=5,
+                func=assert_positive_mr_registry,
+                model_registry_instance_rest_endpoint=current_endpoint,
+                token=test_user_token,
             )
+            for _ in sampler:
+                break
 
-        LOGGER.info(f"Model Registry namespace: {model_registry_namespace}")
-
-        # Prepare MR instances and endpoints
-        mr_data = []
-        for mr_instance in model_registry_instance_parametrized:
-            service = get_mr_service_by_label(
-                client=admin_client,
-                namespace_name=model_registry_namespace,
-                mr_instance=mr_instance,
-            )
-            endpoint = get_endpoint_from_mr_service(svc=service, protocol=Protocols.REST)
-            mr_data.append({"instance": mr_instance, "endpoint": endpoint, "name": mr_instance.name})
-
-        if is_byoidc:
-            token = get_mr_user_token(admin_client=admin_client, user_credentials_rbac=user_credentials_rbac)
-            rbac_username = "mr-non-admin"
-        else:
-            token = get_openshift_token()
-            rbac_username = user_credentials_rbac["username"]
-
-        # Test each MR instance sequentially
-        granted_instances: list[str] = []
-        try:
-            for idx, current_mr_data in enumerate(mr_data):
-                current_mr = current_mr_data["instance"]
-                current_endpoint = current_mr_data["endpoint"]
-
-                LOGGER.info(f"Testing access to MR instance {idx + 1}/{len(mr_data)}: {current_mr.name}")
-
-                # Grant access to current instance
-                grant_mr_access(
-                    admin_client=admin_client,
-                    user=rbac_username,
-                    mr_instance_name=current_mr.name,
-                    model_registry_namespace=model_registry_namespace,
-                )
-                granted_instances.append(current_mr.name)
-
-                # Verify access to current instance
-                sampler = TimeoutSampler(
-                    wait_timeout=240,
-                    sleep=5,
-                    func=assert_positive_mr_registry,
-                    model_registry_instance_rest_endpoint=current_endpoint,
-                    token=token,
-                )
-                for _ in sampler:
-                    break
-
-                # Verify NO access to other instances
-                other_mr_names = [mr["name"] for other_idx, mr in enumerate(mr_data) if other_idx != idx]
-                for other_idx, other_mr_data in enumerate(mr_data):
-                    if idx != other_idx:
-                        # Wait for role reconciliation - retry until ForbiddenException is raised
-                        sampler = TimeoutSampler(
-                            wait_timeout=360,
-                            sleep=10,
-                            func=assert_forbidden_access,
-                            endpoint=other_mr_data["endpoint"],
-                            token=token,
-                        )
-                        for _ in sampler:
-                            break
-
-                LOGGER.info(f"User has access to {current_mr.name}, but not to: {', '.join(other_mr_names)}")
-
-                # Revoke access (except for the last instance)
-                if idx < len(mr_data) - 1:
-                    revoke_mr_access(
-                        admin_client=admin_client,
-                        user=rbac_username,
-                        mr_instance_name=current_mr.name,
-                        model_registry_namespace=model_registry_namespace,
+            other_mr_names = []
+            for other_idx, other_mr_data in enumerate(mr_endpoints_parametrized):
+                if other_idx != idx:
+                    other_mr_names.append(other_mr_data["name"])
+                    sampler = TimeoutSampler(
+                        wait_timeout=360,
+                        sleep=10,
+                        func=assert_forbidden_access,
+                        endpoint=other_mr_data["endpoint"],
+                        token=test_user_token,
                     )
-                    granted_instances.remove(current_mr.name)
-        finally:
-            for instance_name in granted_instances:
-                revoke_mr_access(
-                    admin_client=admin_client,
-                    user=rbac_username,
-                    mr_instance_name=instance_name,
-                    model_registry_namespace=model_registry_namespace,
-                )
+                    for _ in sampler:
+                        break
+
+            LOGGER.info(f"User has access to {current_name}, but not to: {', '.join(other_mr_names)}")

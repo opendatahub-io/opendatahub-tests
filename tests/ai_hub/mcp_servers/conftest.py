@@ -1,10 +1,9 @@
 import pytest
 import structlog
-from kubernetes.dynamic import DynamicClient
-from ocp_resources.route import Route
 
 from tests.ai_hub.constants import MCP_CATALOG_API_PATH
 from tests.ai_hub.utils import execute_get_command_with_retry, get_rest_headers
+from utilities.openshift_resources.route_route_openshift_io import Route
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -12,12 +11,9 @@ LOGGER = structlog.get_logger(name=__name__)
 @pytest.fixture(scope="session")
 def mcp_catalog_rest_urls_scope_session(
     model_registry_namespace: str,
-    admin_client: DynamicClient,
 ) -> list[str]:
     """Session-scoped MCP catalog REST URLs."""
-    routes = list(
-        Route.get(namespace=model_registry_namespace, label_selector="component=model-catalog", client=admin_client)
-    )
+    routes = list(Route.list_resources(namespace=model_registry_namespace, label_selector="component=model-catalog"))
     assert routes, f"Model catalog routes do not exist in {model_registry_namespace}"
     return [f"https://{route.instance.spec.host}:443{MCP_CATALOG_API_PATH}" for route in routes]
 

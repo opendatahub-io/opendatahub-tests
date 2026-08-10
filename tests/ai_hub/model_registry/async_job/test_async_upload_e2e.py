@@ -4,10 +4,8 @@ from typing import Self
 
 import pytest
 import structlog
-from kubernetes.dynamic import DynamicClient
 from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import ArtifactState, RegisteredModelState
-from ocp_resources.job import Job
 
 from tests.ai_hub.constants import MODEL_DICT
 from tests.ai_hub.model_registry.async_job.constants import (
@@ -20,6 +18,7 @@ from tests.ai_hub.model_registry.async_job.utils import (
     get_latest_job_pod,
 )
 from utilities.constants import MinIo, OCIRegistry
+from utilities.openshift_resources.job import Job
 from utilities.registry_utils import pull_manifest_from_oci_registry
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -70,7 +69,6 @@ class TestAsyncUploadE2E:
     @pytest.mark.dependency(name="job_creation_and_pod_spawning")
     def test_job_creation_and_pod_spawning(
         self: Self,
-        admin_client: DynamicClient,
         model_sync_async_job: Job,
     ) -> None:
         """
@@ -79,13 +77,12 @@ class TestAsyncUploadE2E:
         LOGGER.info("Verifying job creation and pod spawning")
 
         # Wait for job to create a pod
-        job_pod = get_latest_job_pod(admin_client=admin_client, job=model_sync_async_job)
+        job_pod = get_latest_job_pod(job=model_sync_async_job)
         assert job_pod.name.startswith(ASYNC_UPLOAD_JOB_NAME)
 
     @pytest.mark.dependency(name="termination_message_verification", depends=["job_creation_and_pod_spawning"])
     def test_termination_message_contains_created_ids(
         self: Self,
-        admin_client: DynamicClient,
         model_sync_async_job: Job,
         model_registry_client: list[ModelRegistryClient],
     ) -> None:
@@ -98,7 +95,7 @@ class TestAsyncUploadE2E:
         LOGGER.info("Verifying termination message contains created IDs")
 
         # Get the job pod
-        job_pod = get_latest_job_pod(admin_client=admin_client, job=model_sync_async_job)
+        job_pod = get_latest_job_pod(job=model_sync_async_job)
 
         # Access container status and termination message
         container_statuses = job_pod.instance.status.containerStatuses

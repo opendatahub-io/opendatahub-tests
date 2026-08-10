@@ -4,7 +4,6 @@ import pytest
 import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.resource import ResourceEditor
 
 from tests.ai_hub.mcp_servers.config.constants import (
     EXPECTED_ALL_MCP_SERVER_NAMES,
@@ -63,9 +62,7 @@ class TestMCPServerMultiSource:
         cleanup_action: str,
     ):
         """TC-LOAD-011/012: Verify that disabling or removing a source removes its servers from the catalog."""
-        catalog_config_map, current_data = get_mcp_catalog_sources(
-            admin_client=admin_client, model_registry_namespace=model_registry_namespace
-        )
+        catalog_config_map, current_data = get_mcp_catalog_sources(model_registry_namespace=model_registry_namespace)
 
         if cleanup_action == "disable":
             for source in current_data.get("mcp_catalogs", []):
@@ -79,7 +76,7 @@ class TestMCPServerMultiSource:
 
         patches = {"data": {"sources.yaml": yaml.dump(current_data, default_flow_style=False)}}
 
-        with ResourceEditor(patches={catalog_config_map: patches}):
+        with catalog_config_map.patch_and_restore(patch=patches):
             wait_for_model_catalog_pod_ready_after_deletion(
                 client=admin_client, model_registry_namespace=model_registry_namespace
             )

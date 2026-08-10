@@ -5,9 +5,6 @@ import structlog
 from model_registry import ModelRegistry as ModelRegistryClient
 from model_registry.types import RegisteredModel
 
-# ocp_resources imports
-from ocp_resources.pod import Pod
-
 from tests.ai_hub.constants import MODEL_DICT, MODEL_NAME
 from tests.ai_hub.model_registry.utils import get_registered_model_with_retry
 from tests.ai_hub.utils import (
@@ -15,6 +12,9 @@ from tests.ai_hub.utils import (
     validate_mlmd_removal_in_model_registry_pod_log,
     validate_no_grpc_container,
 )
+
+# ocp_resources imports
+from utilities.openshift_resources.pod import Pod
 
 LOGGER = structlog.get_logger(name=__name__)
 
