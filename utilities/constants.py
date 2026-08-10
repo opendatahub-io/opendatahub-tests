@@ -6,6 +6,8 @@ from ocp_resources.resource import Resource
 class KServeDeploymentType:
     SERVERLESS: str = "Serverless"
     RAW_DEPLOYMENT: str = "RawDeployment"
+    STANDARD: str = "Standard"
+    KNATIVE: str = "Knative"
     MODEL_MESH: str = "ModelMesh"
 
 
