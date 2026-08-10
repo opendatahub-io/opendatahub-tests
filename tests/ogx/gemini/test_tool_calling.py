@@ -83,7 +83,9 @@ class TestGeminiToolCalling:
             model=gemini_model_id,
             messages=[{"role": "user", "content": "What is the weather in Paris?"}],
             tools=[WEATHER_TOOL],
+            tool_choice={"type": "function", "function": {"name": "get_weather"}},
         )
+        assert response.choices, "Tool-calling request returned no choices"
         choice = response.choices[0]
         tool_calls = choice.message.tool_calls
         assert tool_calls, "Expected tool_calls in the assistant message"

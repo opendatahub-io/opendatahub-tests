@@ -89,7 +89,3 @@ class TestGeminiProviders:
         assert is_gemini_provider_active(ogx_client=ogx_client), (
             "remote::gemini should be active when GEMINI_API_KEY is injected"
         )
-        pytest.skip(
-            reason="Negative half (redeploy without GEMINI_API_KEY) requires a separate no-key deployment; "
-            "positive activation asserted above"
-        )

@@ -4,7 +4,7 @@ Covers test cases TC-EMB-001 and TC-EMB-002 from the remote_gemini_provider
 test plan (RHAISTRAT-1245).
 """
 
-import numbers
+import math
 
 import pytest
 import structlog
@@ -50,8 +50,8 @@ class TestGeminiEmbeddings:
         embedding = response.data[0].embedding
         assert isinstance(embedding, list), f"Expected a list embedding, got {type(embedding).__name__}"
         assert len(embedding) > 0, "Embedding vector has zero dimension"
-        assert all(isinstance(value, numbers.Real) for value in embedding), (
-            "Embedding vector contains non-numeric values"
+        assert all(isinstance(value, float) and math.isfinite(value) for value in embedding), (
+            "Embedding vector contains non-float or non-finite values"
         )
 
     @pytest.mark.tier1

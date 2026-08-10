@@ -64,8 +64,11 @@ class TestGeminiSecurity:
                 "cannot verify absence in logs/responses for TC-SEC-001"
             )
 
-        logs = ogx_gemini_pod.log(container=containers[0].name)
-        assert GEMINI_API_KEY not in logs, "Gemini API key value leaked into container logs"
+        # Inspect logs from every container in the pod (including any sidecars), not
+        # just the first — a leak in any container's logs is a CWE-532 exposure.
+        for container in containers:
+            logs = ogx_gemini_pod.log(container=container.name)
+            assert GEMINI_API_KEY not in logs, f"Gemini API key value leaked into logs of container {container.name!r}"
 
         providers_dump = str(list(ogx_client.providers.list()))
         assert GEMINI_API_KEY not in providers_dump, "Gemini API key value leaked into /v1/providers response"

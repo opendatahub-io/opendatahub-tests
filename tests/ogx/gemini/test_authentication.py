@@ -6,7 +6,7 @@ test plan (RHAISTRAT-1245).
 
 import pytest
 import structlog
-from ogx_client import APIError, OgxClient
+from ogx_client import APIStatusError, OgxClient
 
 from tests.ogx.constants import GEMINI_API_KEY_SECONDARY
 from tests.ogx.gemini.utils import provider_data_headers
@@ -78,12 +78,24 @@ class TestGeminiPerRequestAuth:
         Then: the invalid-key request raises an API error, and the follow-up using
             the config-level key succeeds.
         """
-        with pytest.raises(APIError):
+        with pytest.raises(APIStatusError) as exc_info:
             ogx_client.chat.completions.create(
                 model=gemini_model_id,
                 messages=[{"role": "user", "content": "Hello"}],
                 extra_headers=provider_data_headers(gemini_api_key="invalid-key-12345"),
             )
+
+        # The failure must be a client-side rejection of the bad key (4xx), not a
+        # transient 5xx/connection error that pytest.raises(APIError) would also accept.
+        status_code = exc_info.value.status_code
+        assert 400 <= status_code < 500, f"Expected a 4xx client error for an invalid key, got {status_code}"
+        # The error payload should identify an authentication / invalid-argument problem
+        # rather than an unrelated failure. Match tolerantly to avoid coupling to exact
+        # provider wording, but still verify the error is about the key.
+        error_text = str(exc_info.value.body or exc_info.value).lower()
+        assert any(marker in error_text for marker in ("api_key", "api key", "invalid", "argument", "auth")), (
+            f"Invalid-key error did not describe an authentication/argument problem: {error_text!r}"
+        )
 
         follow_up = ogx_client.chat.completions.create(
             model=gemini_model_id,
