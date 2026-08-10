@@ -1,0 +1,94 @@
+"""Per-request API key override tests for the remote::gemini provider.
+
+Covers test cases TC-AUTH-001 and TC-AUTH-002 from the remote_gemini_provider
+test plan (RHAISTRAT-1245).
+"""
+
+import pytest
+import structlog
+from ogx_client import APIError, OgxClient
+
+from tests.ogx.constants import GEMINI_API_KEY_SECONDARY
+from tests.ogx.gemini.utils import provider_data_headers
+
+LOGGER = structlog.get_logger(name=__name__)
+
+
+@pytest.mark.parametrize(
+    "unprivileged_model_namespace, ogx_server",
+    [
+        pytest.param(
+            {"name": "test-gemini-auth", "randomize_name": True},
+            {"enable_gemini": True},
+            id="gemini",
+        ),
+    ],
+    indirect=True,
+)
+@pytest.mark.ogx
+class TestGeminiPerRequestAuth:
+    """Per-request Gemini API key override via the x-ogx-provider-data header."""
+
+    @pytest.mark.tier2
+    def test_per_request_api_key_override(
+        self,
+        ogx_client: OgxClient,
+        gemini_model_id: str,
+    ) -> None:
+        """Verify a per-request key override authenticates the request (TC-AUTH-001).
+
+        Given: an active remote::gemini provider with a config-level key and a
+            secondary valid key.
+        When: a request is sent without the header, then with x-ogx-provider-data
+            carrying the secondary key.
+        Then: both requests succeed, showing the per-request override is honored
+            without affecting the config-level key.
+        """
+        if not GEMINI_API_KEY_SECONDARY:
+            pytest.skip(reason="OGX_CORE_GEMINI_API_KEY_SECONDARY not set; cannot test per-request key override")
+
+        # Baseline: config-level key.
+        baseline = ogx_client.chat.completions.create(
+            model=gemini_model_id,
+            messages=[{"role": "user", "content": "Hello"}],
+        )
+        assert baseline.choices and baseline.choices[0].message.content, "Baseline request did not succeed"
+
+        # Per-request override with the secondary key.
+        overridden = ogx_client.chat.completions.create(
+            model=gemini_model_id,
+            messages=[{"role": "user", "content": "Hello"}],
+            extra_headers=provider_data_headers(gemini_api_key=GEMINI_API_KEY_SECONDARY),
+        )
+        assert overridden.choices and overridden.choices[0].message.content, (
+            "Request with per-request key override did not succeed"
+        )
+
+    @pytest.mark.tier2
+    def test_invalid_per_request_api_key_errors(
+        self,
+        ogx_client: OgxClient,
+        gemini_model_id: str,
+    ) -> None:
+        """Verify an invalid per-request key errors without corrupting config key (TC-AUTH-002).
+
+        Given: an active remote::gemini provider with a valid config-level key.
+        When: a request is sent with an invalid key in x-ogx-provider-data, then a
+            follow-up request is sent without the header.
+        Then: the invalid-key request raises an API error, and the follow-up using
+            the config-level key succeeds.
+        """
+        with pytest.raises(APIError):
+            ogx_client.chat.completions.create(
+                model=gemini_model_id,
+                messages=[{"role": "user", "content": "Hello"}],
+                extra_headers=provider_data_headers(gemini_api_key="invalid-key-12345"),
+            )
+
+        follow_up = ogx_client.chat.completions.create(
+            model=gemini_model_id,
+            messages=[{"role": "user", "content": "Hello"}],
+        )
+        assert follow_up.choices and follow_up.choices[0].message.content, (
+            "Follow-up request with the config-level key did not succeed after an invalid override"
+        )
