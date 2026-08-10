@@ -12,6 +12,7 @@ from ocp_resources.job import Job
 from tests.ai_hub.constants import MODEL_DICT
 from tests.ai_hub.model_registry.async_job.constants import (
     ASYNC_UPLOAD_JOB_NAME,
+    CA_BUNDLE_CONFIG,
     MODEL_SYNC_CONFIG,
     REPO_NAME,
     TAG,
@@ -23,6 +24,8 @@ from utilities.constants import MinIo, OCIRegistry
 from utilities.registry_utils import pull_manifest_from_oci_registry
 
 LOGGER = structlog.get_logger(name=__name__)
+
+pytestmark = [pytest.mark.custom_namespace, pytest.mark.downstream_only]
 
 MODEL_NAME = f"async-test-model-{int(time.time())}"
 MODEL_DATA = {
@@ -54,7 +57,6 @@ MODEL_DATA = {
     "oci_registry_pod_with_minio",
     "registered_model_from_image",
 )
-@pytest.mark.custom_namespace
 @pytest.mark.parametrize(
     "registered_model_from_image",
     [
@@ -62,7 +64,6 @@ MODEL_DATA = {
     ],
     indirect=True,
 )
-@pytest.mark.downstream_only
 class TestAsyncUploadE2E:
     """
     Test for async upload job with real MinIO, OCI registry, Connection Secrets and Model Registry"""
@@ -194,3 +195,122 @@ class TestAsyncUploadE2E:
         assert model_artifact.storage_path == MODEL_DATA["model_storage_path"]
 
         LOGGER.info("Async upload job test with KSERVE_MINIO_IMAGE: PASSED")
+
+
+@pytest.mark.tier2
+@pytest.mark.custom_namespace
+@pytest.mark.downstream_only
+@pytest.mark.parametrize(
+    "minio_pod, oci_registry_pod_with_minio",
+    [
+        pytest.param(
+            MinIo.PodConfig.MODEL_REGISTRY_MINIO_CONFIG,
+            OCIRegistry.PodConfig.REGISTRY_BASE_CONFIG,
+        )
+    ],
+    indirect=True,
+)
+@pytest.mark.usefixtures(
+    "updated_dsc_component_state_scope_session",
+    "model_registry_namespace",
+    "model_registry_metadata_db_resources",
+    "minio_pod",
+    "create_test_data_in_minio_from_image",
+    "s3_secret_for_async_job",
+    "oci_secret_for_async_job",
+    "oci_registry_pod_with_minio",
+    "registered_model_from_image",
+)
+@pytest.mark.parametrize(
+    "registered_model_from_image",
+    [
+        pytest.param(MODEL_DATA, id="test_model_from_image"),
+    ],
+    indirect=True,
+)
+class TestAsyncJobCABundle:
+    """Test async upload job with CA bundle support"""
+
+    def test_async_job_ca_bundle_volume_spec(
+        self: Self,
+        async_job_with_optional_ca_bundle: Job,
+    ) -> None:
+        """
+        Verify that async job spec includes CA bundle ConfigMap volume with optional flag.
+
+        Given the async job is created
+        When the job spec is examined
+        Then it should include CA bundle ConfigMap volume marked as optional
+        """
+        LOGGER.info("Verifying async job CA bundle volume spec")
+
+        job_spec = async_job_with_optional_ca_bundle.instance.spec.template.spec
+        volumes = job_spec.volumes or []
+
+        ca_bundle_volumes = [
+            volume
+            for volume in volumes
+            if volume.configMap and volume.configMap.name == CA_BUNDLE_CONFIG["CONFIG_MAP_NAME"]
+        ]
+        assert ca_bundle_volumes, "CA bundle ConfigMap volume not found in job spec"
+
+        ca_bundle_volume = ca_bundle_volumes[0]
+        assert ca_bundle_volume.name == "ca-bundle", f"Expected volume name 'ca-bundle', got {ca_bundle_volume.name}"
+        assert ca_bundle_volume.configMap.optional is True, (
+            "CA bundle volume should be optional for graceful degradation"
+        )
+
+        LOGGER.info("CA bundle volume spec is correct")
+
+    def test_async_job_ca_bundle_volume_mount(
+        self: Self,
+        async_job_with_optional_ca_bundle: Job,
+    ) -> None:
+        """
+        Verify that async job container includes CA bundle volume mount with correct path.
+
+        Given the async job is created
+        When the container spec is examined
+        Then it should include CA bundle volume mount at the correct path
+        """
+        LOGGER.info("Verifying async job CA bundle volume mount")
+
+        job_spec = async_job_with_optional_ca_bundle.instance.spec.template.spec
+        container = job_spec.containers[0]
+        volume_mounts = container.volumeMounts or []
+
+        ca_bundle_mount = next((mount for mount in volume_mounts if mount.name == "ca-bundle"), None)
+        assert ca_bundle_mount, "CA bundle volume mount not found in container spec"
+        assert ca_bundle_mount.mountPath == CA_BUNDLE_CONFIG["MOUNT_PATH"], (
+            f"Expected mount path {CA_BUNDLE_CONFIG['MOUNT_PATH']}, got {ca_bundle_mount.mountPath}"
+        )
+        assert ca_bundle_mount.readOnly is True, "CA bundle volume mount should be read-only"
+
+        LOGGER.info("CA bundle volume mount is correct")
+
+    def test_async_job_ca_bundle_env_var(
+        self: Self,
+        async_job_with_optional_ca_bundle: Job,
+    ) -> None:
+        """
+        Verify that async job container includes CA bundle environment variable.
+
+        Given the async job is created
+        When the container environment is examined
+        Then it should include MODEL_SYNC_REGISTRY_CUSTOM_CA pointing to the mounted file
+        """
+        LOGGER.info("Verifying async job CA bundle environment variable")
+
+        job_spec = async_job_with_optional_ca_bundle.instance.spec.template.spec
+        container = job_spec.containers[0]
+        env_vars = container.env or []
+
+        ca_env_var = next((env_var for env_var in env_vars if env_var.name == CA_BUNDLE_CONFIG["ENV_VAR"]), None)
+        assert ca_env_var, f"Environment variable {CA_BUNDLE_CONFIG['ENV_VAR']} not found"
+
+        expected_env_value = f"{CA_BUNDLE_CONFIG['MOUNT_PATH']}/{CA_BUNDLE_CONFIG['CA_FILE']}"
+        assert ca_env_var.value == expected_env_value, (
+            f"Expected env value {expected_env_value}, got {ca_env_var.value}"
+        )
+
+        LOGGER.info("CA bundle environment variable is correct")
