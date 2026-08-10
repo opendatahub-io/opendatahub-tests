@@ -276,7 +276,6 @@ def installed_tempo_operator(admin_client: DynamicClient, model_namespace: Names
             operator_namespace=operator_ns.name,
             timeout=900,
             install_plan_approval="Automatic",
-            starting_csv="tempo-operator.v0.19.0-2",
         )
 
         deployment = Deployment(
