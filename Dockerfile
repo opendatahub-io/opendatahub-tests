@@ -1,3 +1,24 @@
+FROM fedora:43 AS must-gather-clean-builder
+
+RUN if [[ $(uname -m) == "ppc64le" ]]; then \
+     dnf install -y git && \
+     git clone https://github.com/openshift/must-gather-clean /tmp/must-gather-clean && \
+     cd /tmp/must-gather-clean && \
+     git reset --hard 1d2b91033362d2848207236cebabcd5ca2c366ed && \
+     dnf install -y make go && \
+     make && \
+     mkdir -p /out && cp ./must-gather-clean /out/must-gather-clean && \
+     cd / && rm -rf /tmp/must-gather-clean && \
+     dnf clean all && rm -rf /var/cache/dnf; \
+   elif [[ $(uname -m) == "x86_64" ]]; then \
+     curl -sSL "https://github.com/openshift/must-gather-clean/releases/download/v0.0.4/must-gather-clean-linux-amd64.tar.gz" \
+          --output /tmp/must-gather-clean.tar.gz && \
+     echo "29e90cc94b593c6bf992923790a975ecf54bc1579c1e999b4acce90167b41235  /tmp/must-gather-clean.tar.gz" | sha256sum --check --strict - && \
+     tar xzf /tmp/must-gather-clean.tar.gz -C /tmp && \
+     rm -f /tmp/must-gather-clean.tar.gz && \
+     mkdir -p /out && mv /tmp/must-gather-clean /out/must-gather-clean; \
+   fi
+
 FROM fedora:43
 
 ARG USER=odh
@@ -46,29 +67,8 @@ RUN ARCH=$(uname -m) && \
     mv /tmp/grpcurl /usr/bin/grpcurl && \
     rm /tmp/grpcurl.tar.gz
 
-# Pinned commit SHA for must-gather-clean v0.0.4 (lightweight tag → commit SHA)
-# SHA: 1d2b91033362d2848207236cebabcd5ca2c366ed
-# Pinned SHA-256 digest for the amd64 pre-built binary tarball (no upstream checksums file)
-# amd64 tarball: 29e90cc94b593c6bf992923790a975ecf54bc1579c1e999b4acce90167b41235
-# Install must-gather-clean
-RUN if [[ $(uname -m) == "ppc64le" ]]; then \
-     dnf install -y git && \
-     git clone https://github.com/openshift/must-gather-clean /tmp/must-gather-clean && \
-     cd /tmp/must-gather-clean && \
-     git reset --hard 1d2b91033362d2848207236cebabcd5ca2c366ed && \
-     dnf install -y make go && \
-     make && dnf remove make go git -y && \
-     cp ./must-gather-clean /usr/bin/must-gather-clean && \
-     cd / && rm -rf /tmp/must-gather-clean; \
-   elif [[ $(uname -m) == "x86_64" ]] ; then \
-     curl -sSL "https://github.com/openshift/must-gather-clean/releases/download/v0.0.4/must-gather-clean-linux-amd64.tar.gz" \
-          --output /tmp/must-gather-clean.tar.gz && \
-     echo "29e90cc94b593c6bf992923790a975ecf54bc1579c1e999b4acce90167b41235  /tmp/must-gather-clean.tar.gz" | sha256sum --check --strict - && \
-     tar xzf /tmp/must-gather-clean.tar.gz -C /tmp && \
-     rm -f /tmp/must-gather-clean.tar.gz && \
-     mv /tmp/must-gather-clean /usr/bin/must-gather-clean; \
-   fi \
-    && chmod +x /usr/bin/must-gather-clean
+# Install must-gather-clean (binary built in must-gather-clean-builder stage)
+COPY --from=must-gather-clean-builder /out/must-gather-clean /usr/bin/must-gather-clean
 
 # Install cosign v3.0.4 (multi-arch, no expiration)
 COPY --from=quay.io/securesign/cli-cosign@sha256:3df09cd1b4915e61d4de9c67416827b94e5900763e936e2909fd4d78e1ead8e8 /usr/local/bin/cosign /usr/bin/cosign
