@@ -9,7 +9,8 @@ from ocp_resources.maas_auth_policy import MaaSAuthPolicy
 from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.maas_subscription import MaaSSubscription
 from ocp_resources.resource import NamespacedResource
-from tests.ai_gateway.models_as_a_service.utils import MaaSTenantResource
+
+from tests.model_serving.maas_billing.utils import MaaSTenantResource
 
 LOGGER = structlog.get_logger(name=__name__)
 
