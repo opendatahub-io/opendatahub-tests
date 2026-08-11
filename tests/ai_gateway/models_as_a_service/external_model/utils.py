@@ -45,7 +45,7 @@ def get_httproute(
         route = HTTPRoute(client=client, name=name, namespace=namespace)
         if route.exists:
             return route
-    except (NotFoundError, ResourceNotFoundError):
+    except NotFoundError, ResourceNotFoundError:
         LOGGER.debug(f"HTTPRoute {namespace}/{name} not found")
     return None
 
@@ -60,7 +60,7 @@ def get_service(
         svc = Service(client=client, name=name, namespace=namespace)
         if svc.exists:
             return svc
-    except (NotFoundError, ResourceNotFoundError):
+    except NotFoundError, ResourceNotFoundError:
         LOGGER.debug(f"Service {namespace}/{name} not found")
     return None
 
