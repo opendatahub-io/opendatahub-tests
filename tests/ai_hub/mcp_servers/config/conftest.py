@@ -21,12 +21,30 @@ from tests.ai_hub.mcp_servers.config.constants import (
 )
 from tests.ai_hub.mcp_servers.config.utils import get_mcp_catalog_sources
 from tests.ai_hub.utils import (
+    count_items_in_catalog_yaml,
     execute_get_command_with_retry,
-    wait_for_mcp_catalog_api,
+    get_catalog_api_size,
+    wait_for_catalog_api,
+    wait_for_mcp_source_absent,
+    wait_for_mcp_source_present,
     wait_for_model_catalog_pod_ready_after_deletion,
 )
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def default_mcp_server_count(
+    mcp_catalog_rest_urls_scope_session: list[str],
+    model_registry_rest_headers_scope_session: dict[str, str],
+) -> int:
+    """Capture the default MCP server count before any test patches it."""
+    count = get_catalog_api_size(
+        url=f"{mcp_catalog_rest_urls_scope_session[0]}mcp_servers",
+        headers=model_registry_rest_headers_scope_session,
+    )
+    LOGGER.info(f"Default MCP server count: {count}")
+    return count
 
 
 @pytest.fixture(scope="class")
@@ -91,6 +109,7 @@ def disable_default_mcp_source(
     model_registry_namespace: str,
     mcp_catalog_rest_urls: list[str],
     model_registry_rest_headers: dict[str, str],
+    default_mcp_server_count: int,
 ) -> Generator[str]:
     """Class-scoped fixture that disables a default MCP catalog source and restores it after.
 
@@ -111,17 +130,31 @@ def disable_default_mcp_source(
 
     patches = {"data": {"sources.yaml": yaml.dump(current_data, default_flow_style=False)}}
 
+    # Snapshot current size and the disabled source's server count
+    pre_patch_size = get_catalog_api_size(
+        url=f"{mcp_catalog_rest_urls[0]}mcp_servers", headers=model_registry_rest_headers
+    )
+    LOGGER.info(f"disable_default_mcp_source: pre_patch={pre_patch_size}")
+
     with ResourceEditor(patches={catalog_config_map: patches}):
-        wait_for_model_catalog_pod_ready_after_deletion(
-            client=admin_client, model_registry_namespace=model_registry_namespace
+        wait_for_mcp_source_absent(
+            url=mcp_catalog_rest_urls[0],
+            headers=model_registry_rest_headers,
+            source_id=expected_catalog["id"],
         )
-        wait_for_mcp_catalog_api(url=mcp_catalog_rest_urls[0], headers=model_registry_rest_headers)
         yield expected_catalog["id"]
 
-    wait_for_model_catalog_pod_ready_after_deletion(
-        client=admin_client, model_registry_namespace=model_registry_namespace
+    pre_teardown_size = get_catalog_api_size(
+        url=f"{mcp_catalog_rest_urls[0]}mcp_servers", headers=model_registry_rest_headers
     )
-    wait_for_mcp_catalog_api(url=mcp_catalog_rest_urls[0], headers=model_registry_rest_headers)
+    wait_for_catalog_api(
+        endpoint="mcp_servers",
+        item_name="MCP servers",
+        url=mcp_catalog_rest_urls[0],
+        headers=model_registry_rest_headers,
+        previous_size=pre_teardown_size,
+        expected_size=default_mcp_server_count,
+    )
 
 
 @pytest.fixture(scope="class")
@@ -130,6 +163,7 @@ def mcp_multi_source_configmap_patch(
     model_registry_namespace: str,
     mcp_catalog_rest_urls: list[str],
     model_registry_rest_headers: dict[str, str],
+    default_mcp_server_count: int,
 ) -> Generator[None]:
     """
     Class-scoped fixture that patches the model-catalog-sources ConfigMap
@@ -150,17 +184,33 @@ def mcp_multi_source_configmap_patch(
         }
     }
 
+    pre_patch_size = get_catalog_api_size(
+        url=f"{mcp_catalog_rest_urls[0]}mcp_servers", headers=model_registry_rest_headers
+    )
+    added_count = count_items_in_catalog_yaml(
+        catalog_yaml=MCP_SERVERS_YAML, key="mcp_servers"
+    ) + count_items_in_catalog_yaml(catalog_yaml=MCP_SERVERS_YAML2, key="mcp_servers")
+    expected_setup_size = pre_patch_size + added_count
+
     with ResourceEditor(patches={catalog_config_map: patches}):
-        wait_for_model_catalog_pod_ready_after_deletion(
-            client=admin_client, model_registry_namespace=model_registry_namespace
+        stable_data = wait_for_catalog_api(
+            endpoint="mcp_servers",
+            item_name="MCP servers",
+            url=mcp_catalog_rest_urls[0],
+            headers=model_registry_rest_headers,
+            previous_size=pre_patch_size,
+            expected_size=expected_setup_size,
         )
-        wait_for_mcp_catalog_api(url=mcp_catalog_rest_urls[0], headers=model_registry_rest_headers)
         yield
 
-    wait_for_model_catalog_pod_ready_after_deletion(
-        client=admin_client, model_registry_namespace=model_registry_namespace
+    wait_for_catalog_api(
+        endpoint="mcp_servers",
+        item_name="MCP servers",
+        url=mcp_catalog_rest_urls[0],
+        headers=model_registry_rest_headers,
+        previous_size=stable_data.get("size", 0),
+        expected_size=default_mcp_server_count,
     )
-    wait_for_mcp_catalog_api(url=mcp_catalog_rest_urls[0], headers=model_registry_rest_headers)
 
 
 @pytest.fixture(scope="class")
@@ -170,6 +220,7 @@ def mcp_invalid_yaml_configmap_patch(
     model_registry_namespace: str,
     mcp_catalog_rest_urls: list[str],
     model_registry_rest_headers: dict[str, str],
+    default_mcp_server_count: int,
 ) -> Generator[None]:
     """
     Class-scoped fixture that patches the ConfigMap with a valid MCP source
@@ -190,17 +241,42 @@ def mcp_invalid_yaml_configmap_patch(
         }
     }
 
+    pre_patch_size = get_catalog_api_size(
+        url=f"{mcp_catalog_rest_urls[0]}mcp_servers", headers=model_registry_rest_headers
+    )
+
     with ResourceEditor(patches={catalog_config_map: patches}):
-        wait_for_model_catalog_pod_ready_after_deletion(
-            client=admin_client, model_registry_namespace=model_registry_namespace
+        wait_for_mcp_source_present(
+            url=mcp_catalog_rest_urls[0],
+            headers=model_registry_rest_headers,
+            source_id=MCP_CATALOG_SOURCE_ID,
         )
-        wait_for_mcp_catalog_api(url=mcp_catalog_rest_urls[0], headers=model_registry_rest_headers)
+        # Wait for stabilization to ensure the invalid source has also been processed and error logged
+        wait_for_catalog_api(
+            endpoint="mcp_servers",
+            item_name="MCP servers",
+            url=mcp_catalog_rest_urls[0],
+            headers=model_registry_rest_headers,
+            previous_size=pre_patch_size,
+        )
         yield
 
-    wait_for_model_catalog_pod_ready_after_deletion(
-        client=admin_client, model_registry_namespace=model_registry_namespace
+    wait_for_mcp_source_absent(
+        url=mcp_catalog_rest_urls[0],
+        headers=model_registry_rest_headers,
+        source_id=MCP_CATALOG_SOURCE_ID,
     )
-    wait_for_mcp_catalog_api(url=mcp_catalog_rest_urls[0], headers=model_registry_rest_headers)
+    pre_teardown_size = get_catalog_api_size(
+        url=f"{mcp_catalog_rest_urls[0]}mcp_servers", headers=model_registry_rest_headers
+    )
+    wait_for_catalog_api(
+        endpoint="mcp_servers",
+        item_name="MCP servers",
+        url=mcp_catalog_rest_urls[0],
+        headers=model_registry_rest_headers,
+        previous_size=pre_teardown_size,
+        expected_size=default_mcp_server_count,
+    )
 
 
 @pytest.fixture(scope="class")
@@ -210,6 +286,7 @@ def mcp_included_excluded_configmap_patch(
     model_registry_namespace: str,
     mcp_catalog_rest_urls: list[str],
     model_registry_rest_headers: dict[str, str],
+    default_mcp_server_count: int,
 ) -> Generator[None]:
     """
     Class-scoped fixture that patches the ConfigMap with an MCP source
@@ -248,17 +325,28 @@ def mcp_included_excluded_configmap_patch(
         }
     }
 
+    pre_patch_size = get_catalog_api_size(
+        url=f"{mcp_catalog_rest_urls[0]}mcp_servers", headers=model_registry_rest_headers
+    )
+
     with ResourceEditor(patches={catalog_config_map: patches}):
-        wait_for_model_catalog_pod_ready_after_deletion(
-            client=admin_client, model_registry_namespace=model_registry_namespace
+        stable_data = wait_for_catalog_api(
+            endpoint="mcp_servers",
+            item_name="MCP servers",
+            url=mcp_catalog_rest_urls[0],
+            headers=model_registry_rest_headers,
+            previous_size=pre_patch_size,
         )
-        wait_for_mcp_catalog_api(url=mcp_catalog_rest_urls[0], headers=model_registry_rest_headers)
         yield
 
-    wait_for_model_catalog_pod_ready_after_deletion(
-        client=admin_client, model_registry_namespace=model_registry_namespace
+    wait_for_catalog_api(
+        endpoint="mcp_servers",
+        item_name="MCP servers",
+        url=mcp_catalog_rest_urls[0],
+        headers=model_registry_rest_headers,
+        previous_size=stable_data.get("size", 0),
+        expected_size=default_mcp_server_count,
     )
-    wait_for_mcp_catalog_api(url=mcp_catalog_rest_urls[0], headers=model_registry_rest_headers)
 
 
 @pytest.fixture(scope="class")
@@ -268,6 +356,7 @@ def mcp_servers_configmap_patch(
     model_registry_namespace: str,
     mcp_catalog_rest_urls: list[str],
     model_registry_rest_headers: dict[str, str],
+    default_mcp_server_count: int,
 ) -> Generator[None]:
     """
     Class-scoped fixture that patches the model-catalog-sources ConfigMap.
@@ -295,14 +384,35 @@ def mcp_servers_configmap_patch(
             }
         }
 
+        pre_patch_size = get_catalog_api_size(
+            url=f"{mcp_catalog_rest_urls[0]}mcp_servers", headers=model_registry_rest_headers
+        )
+        expected_setup_size = pre_patch_size + count_items_in_catalog_yaml(
+            catalog_yaml=MCP_SERVERS_YAML, key="mcp_servers"
+        )
+
         with ResourceEditor(patches={catalog_config_map: patches}):
+            stable_data = wait_for_catalog_api(
+                endpoint="mcp_servers",
+                item_name="MCP servers",
+                url=mcp_catalog_rest_urls[0],
+                headers=model_registry_rest_headers,
+                previous_size=pre_patch_size,
+                expected_size=expected_setup_size,
+            )
+            yield
+
+        wait_for_catalog_api(
+            endpoint="mcp_servers",
+            item_name="MCP servers",
+            url=mcp_catalog_rest_urls[0],
+            headers=model_registry_rest_headers,
+            previous_size=stable_data.get("size", 0),
+            expected_size=default_mcp_server_count,
+        )
+        # Workaround for RHOAIENG-82805: named queries are not cleared from the
+        # in-memory MCPSourceCollection on config reload; restart the pod to evict them.
+        if current_data.get("namedQueries"):
             wait_for_model_catalog_pod_ready_after_deletion(
                 client=admin_client, model_registry_namespace=model_registry_namespace
             )
-            wait_for_mcp_catalog_api(url=mcp_catalog_rest_urls[0], headers=model_registry_rest_headers)
-            yield
-
-        wait_for_model_catalog_pod_ready_after_deletion(
-            client=admin_client, model_registry_namespace=model_registry_namespace
-        )
-        wait_for_mcp_catalog_api(url=mcp_catalog_rest_urls[0], headers=model_registry_rest_headers)

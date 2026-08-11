@@ -5,6 +5,7 @@ from typing import Any
 
 import requests
 import structlog
+import yaml
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import NotFoundError, ResourceNotFoundError
 from model_registry import ModelRegistry as ModelRegistryClient
@@ -1013,71 +1014,99 @@ def wait_for_model_catalog_pod_created(client: DynamicClient, model_registry_nam
     raise PodNotFound("Model catalog pod not found")
 
 
-def wait_for_mcp_catalog_api(
-    url: str, headers: dict[str, str], consecutive_stable_checks: int = 3, sleep: int = 5, wait_timeout: int = 120
-) -> dict[str, Any]:
-    """Wait for MCP catalog API to be ready and data fully loaded.
+def count_items_in_catalog_yaml(catalog_yaml: str, key: str) -> int:
+    """Count items in a catalog YAML string under the given top-level key.
 
-    Polls the API until the server count stabilizes across consecutive checks,
-    ensuring catalog data has been fully loaded after a pod restart.
+    Args:
+        catalog_yaml: YAML content string.
+        key: Top-level key to count items under (e.g. 'mcp_servers' or 'agents').
     """
-    servers_url = f"{url}mcp_servers"
-    LOGGER.info(f"Waiting for MCP catalog API at {servers_url}")
-    last_payload = None
-    stable_count = 0
-    data = {}
-    sampler = TimeoutSampler(
-        wait_timeout=wait_timeout,
-        sleep=sleep,
-        func=execute_get_call,
-        exceptions_dict={
-            ResourceNotFoundError: [],
-            TransientUnauthorizedError: [],
-            requests.exceptions.ConnectionError: [],
-        },
-        url=servers_url,
-        headers=headers,
-        params={"pageSize": 1000},
-    )
-    for sample in sampler:
-        data = json.loads(sample.text)
-        current_size = data.get("size", 0)
-        payload_identity = json.dumps(data, sort_keys=True)
-        if current_size > 0 and payload_identity == last_payload:
-            stable_count += 1
-            if stable_count >= consecutive_stable_checks:
-                LOGGER.info(f"MCP catalog API stabilized with {current_size} servers after {stable_count} checks")
-                return data
-        else:
-            stable_count = 0
-        last_payload = payload_identity
-        LOGGER.info(
-            f"MCP catalog API returned {current_size} servers (stable: {stable_count}/{consecutive_stable_checks})"
-        )
-    return data
+    parsed = yaml.safe_load(catalog_yaml)
+    if not parsed:
+        return 0
+    return len(parsed.get(key, []))
 
 
-def wait_for_agent_catalog_api(
+def get_catalog_api_size(url: str, headers: dict[str, Any], params: dict[str, Any] | None = None) -> int:
+    """Return the current item count from a catalog API endpoint.
+
+    Args:
+        url: Full URL of the catalog API list endpoint.
+        headers: Request headers.
+        params: Optional query parameters (e.g. sourceLabel filter).
+    """
+    response = execute_get_command_with_retry(url=url, headers=headers, params={**(params or {}), "pageSize": 1000})
+    return response.get("size", 0)
+
+
+class McpSourceStillPresent(Exception):
+    pass
+
+
+class McpSourceNotYetPresent(Exception):
+    pass
+
+
+@retry(wait_timeout=300, sleep=5, exceptions_dict={McpSourceNotYetPresent: []})
+def wait_for_mcp_source_present(url: str, headers: dict[str, Any], source_id: str) -> bool:
+    """Wait until at least one MCP server from source_id appears in the catalog API.
+
+    Args:
+        url: Base URL of the MCP catalog API.
+        headers: Request headers.
+        source_id: The source_id to wait for.
+    """
+    response = execute_get_command_with_retry(url=f"{url}mcp_servers", headers=headers, params={"pageSize": 1000})
+    source_ids = {server["source_id"] for server in response.get("items", [])}
+    if source_id not in source_ids:
+        raise McpSourceNotYetPresent(f"Source '{source_id}' not yet present in MCP catalog")
+    LOGGER.info(f"Source '{source_id}' is now present in MCP catalog")
+    return True
+
+
+@retry(wait_timeout=300, sleep=5, exceptions_dict={McpSourceStillPresent: []})
+def wait_for_mcp_source_absent(url: str, headers: dict[str, Any], source_id: str) -> bool:
+    """Wait until no MCP servers from source_id appear in the catalog API.
+
+    Args:
+        url: Base URL of the MCP catalog API.
+        headers: Request headers.
+        source_id: The source_id to wait for absence of.
+    """
+    response = execute_get_command_with_retry(url=f"{url}mcp_servers", headers=headers, params={"pageSize": 1000})
+    source_ids = {server["source_id"] for server in response.get("items", [])}
+    if source_id in source_ids:
+        raise McpSourceStillPresent(f"Source '{source_id}' still present in MCP catalog")
+    LOGGER.info(f"Source '{source_id}' no longer present in MCP catalog")
+    return True
+
+
+def wait_for_catalog_api(
     url: str,
     headers: dict[str, str],
+    endpoint: str,
+    item_name: str,
     consecutive_stable_checks: int = 3,
     sleep: int = 5,
-    wait_timeout: int = 120,
-    min_agents: int = 1,
+    wait_timeout: int = 300,
+    previous_size: int | None = None,
+    expected_size: int | None = None,
 ) -> dict[str, Any]:
-    """Wait for agent catalog API to be ready and data fully loaded.
+    """Wait for a catalog API endpoint to reflect a change and stabilize.
 
-    Polls the API until the agent count stabilizes across consecutive checks,
-    ensuring catalog data has been fully loaded after a pod restart.
-
-    Use ``min_agents=0`` on teardown to verify the API is reachable without
-    requiring any agents (e.g. after a test catalog patch is reverted).
-
-    Raises:
-        AssertionError: If the API does not stabilize with at least min_agents within wait_timeout.
+    Args:
+        url: Base URL of the catalog API.
+        headers: Request headers.
+        endpoint: API endpoint suffix (e.g. 'mcp_servers' or 'agents').
+        item_name: Display name for log messages (e.g. 'servers' or 'agents').
+        consecutive_stable_checks: Number of identical responses required to consider stable.
+        sleep: Seconds between poll attempts.
+        wait_timeout: Total seconds to wait.
+        previous_size: Count before the patch. Waits until current_size != previous_size.
+        expected_size: Exact count expected. Takes precedence over previous_size.
     """
-    agents_url = f"{url}agents"
-    LOGGER.info(f"Waiting for agent catalog API at {agents_url} (min_agents={min_agents})")
+    full_url = f"{url}{endpoint}"
+    LOGGER.info(f"Waiting for catalog API at {full_url} (previous={previous_size}, expected={expected_size})")
     last_payload = None
     stable_count = 0
     data: dict[str, Any] = {}
@@ -1090,7 +1119,7 @@ def wait_for_agent_catalog_api(
             TransientUnauthorizedError: [],
             requests.exceptions.ConnectionError: [],
         },
-        url=agents_url,
+        url=full_url,
         headers=headers,
         params={"pageSize": 1000},
     )
@@ -1098,22 +1127,28 @@ def wait_for_agent_catalog_api(
         data = json.loads(sample.text)
         current_size = data.get("size", 0)
         payload_identity = json.dumps(data, sort_keys=True)
-        if current_size >= min_agents and payload_identity == last_payload:
+        if expected_size is not None:
+            size_ok = current_size == expected_size
+        elif previous_size is not None:
+            size_ok = current_size != previous_size
+        else:
+            size_ok = current_size > 0
+        if size_ok and payload_identity == last_payload:
             stable_count += 1
             if stable_count >= consecutive_stable_checks:
-                LOGGER.info(f"Agent catalog API stabilized with {current_size} agents after {stable_count} checks")
+                LOGGER.info(f"Catalog API stabilized with {current_size} {item_name} after {stable_count} checks")
                 return data
         else:
             stable_count = 0
         last_payload = payload_identity
-        LOGGER.info(
-            f"Agent catalog API returned {current_size} agents (stable: {stable_count}/{consecutive_stable_checks})"
+        target = (
+            expected_size if expected_size is not None else f"!={previous_size}" if previous_size is not None else ">0"
         )
-    raise AssertionError(
-        f"Agent catalog API did not stabilize within {wait_timeout}s "
-        f"(last size={data.get('size', 0)}, required={min_agents}, "
-        f"stable_count={stable_count}/{consecutive_stable_checks})"
-    )
+        LOGGER.info(
+            f"Catalog API returned {current_size} {item_name}"
+            f" (waiting for {target}, stable: {stable_count}/{consecutive_stable_checks}, size_ok={size_ok})"
+        )
+    return data
 
 
 def get_latest_job_pod(admin_client: DynamicClient, job: Job) -> Pod:

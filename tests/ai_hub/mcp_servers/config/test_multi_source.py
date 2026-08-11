@@ -14,8 +14,8 @@ from tests.ai_hub.mcp_servers.config.constants import (
 from tests.ai_hub.mcp_servers.config.utils import get_mcp_catalog_sources
 from tests.ai_hub.utils import (
     execute_get_command_with_retry,
-    wait_for_mcp_catalog_api,
-    wait_for_model_catalog_pod_ready_after_deletion,
+    wait_for_catalog_api,
+    wait_for_mcp_source_absent,
 )
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -79,11 +79,13 @@ class TestMCPServerMultiSource:
 
         patches = {"data": {"sources.yaml": yaml.dump(current_data, default_flow_style=False)}}
 
+        pre_patch_size = len(custom_mcp_servers)
         with ResourceEditor(patches={catalog_config_map: patches}):
-            wait_for_model_catalog_pod_ready_after_deletion(
-                client=admin_client, model_registry_namespace=model_registry_namespace
+            wait_for_mcp_source_absent(
+                url=mcp_catalog_rest_urls[0],
+                headers=model_registry_rest_headers,
+                source_id=MCP_CATALOG_SOURCE2_ID,
             )
-            wait_for_mcp_catalog_api(url=mcp_catalog_rest_urls[0], headers=model_registry_rest_headers)
 
             response = execute_get_command_with_retry(
                 url=f"{mcp_catalog_rest_urls[0]}mcp_servers",
@@ -95,7 +97,10 @@ class TestMCPServerMultiSource:
                 f"got {remaining_names}"
             )
 
-        wait_for_model_catalog_pod_ready_after_deletion(
-            client=admin_client, model_registry_namespace=model_registry_namespace
+        wait_for_catalog_api(
+            url=mcp_catalog_rest_urls[0],
+            headers=model_registry_rest_headers,
+            endpoint="mcp_servers",
+            item_name="MCP servers",
+            previous_size=pre_patch_size,
         )
-        wait_for_mcp_catalog_api(url=mcp_catalog_rest_urls[0], headers=model_registry_rest_headers)
