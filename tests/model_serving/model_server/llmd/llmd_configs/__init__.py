@@ -6,11 +6,13 @@ from .config_fast_image import (
     TinyLlamaFast1Config,
     TinyLlamaFast2Config,
 )
+from .config_kv_cache_offload import KvCacheCpuOffloadConfig, KvCacheDiskOffloadConfig
 from .config_models import (
     Qwen3MoeDummyGpuConfig,
     TinyLlamaHfConfig,
     TinyLlamaHfGpuConfig,
     TinyLlamaOciConfig,
+    TinyLlamaOciGpuAuthConfig,
     TinyLlamaOciGpuConfig,
     TinyLlamaS3Config,
     TinyLlamaS3GpuConfig,
@@ -21,6 +23,8 @@ from .config_singlenode_prefill_decode import SingleNodePrefillDecodeConfig
 
 __all__ = [
     "EstimatedPrefixCacheConfig",
+    "KvCacheCpuOffloadConfig",
+    "KvCacheDiskOffloadConfig",
     "LLMISvcConfig",
     "MultinodeMoeDpEpConfig",
     "PrecisePrefixCacheProducerConfig",
@@ -34,6 +38,7 @@ __all__ = [
     "TinyLlamaHfConfig",
     "TinyLlamaHfGpuConfig",
     "TinyLlamaOciConfig",
+    "TinyLlamaOciGpuAuthConfig",
     "TinyLlamaOciGpuConfig",
     "TinyLlamaS3Config",
     "TinyLlamaS3GpuConfig",

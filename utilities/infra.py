@@ -685,20 +685,21 @@ def get_model_route(client: DynamicClient, isvc: InferenceService) -> Route:
     raise ResourceNotFoundError(f"{isvc.name} has no routes")
 
 
-def create_inference_token(model_service_account: ServiceAccount) -> str:
+def create_inference_token(model_service_account: ServiceAccount, expiration_seconds: int = 86400) -> str:
     """
     Generates an inference token for the given model service account.
 
     Args:
         model_service_account (ServiceAccount): An object containing the namespace and name
                                of the service account.
+        expiration_seconds (int): Token validity duration in seconds (default 86400 = 24h).
 
     Returns:
         str: The generated inference token.
     """
-    return run_command(
-        shlex.split(f"oc create token -n {model_service_account.namespace} {model_service_account.name}")
-    )[1].strip()
+    return model_service_account.create_service_account_token(
+        expiration_seconds=expiration_seconds,
+    ).status.token
 
 
 @contextmanager
@@ -1057,9 +1058,23 @@ def wait_for_dsc_status_ready(dsc_resource: DataScienceCluster) -> bool:
     LOGGER.info(f"Wait for DSC {dsc_resource.name} are {dsc_resource.Status.READY}.")
     if dsc_resource.status == dsc_resource.Status.READY:
         return True
-    raise ResourceNotReadyError(
-        f"DSC {dsc_resource.name} is not ready.\nCurrent status: {dsc_resource.instance.status}"
+
+    conditions = dsc_resource.instance.status.conditions
+    not_ready_conditions = [
+        condition for condition in conditions if condition.status != "True" and condition.get("reason") != "Removed"
+    ]
+    removed_components = [
+        condition.type.removesuffix("Ready") for condition in conditions if condition.get("reason") == "Removed"
+    ]
+
+    summary = "\n".join(
+        f"  {condition.type}: {condition.get('message', condition.reason)}" for condition in not_ready_conditions
     )
+    message = f"DSC {dsc_resource.name} is not ready:\n{summary}"
+    if removed_components:
+        message += f"\nRemoved components: {', '.join(removed_components)}"
+
+    raise ResourceNotReadyError(message)
 
 
 def verify_cluster_sanity(

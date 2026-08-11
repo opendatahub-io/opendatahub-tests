@@ -15,6 +15,7 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_safety.evalhub.constants import (
     EVALHUB_COLLECTIONS_PATH,
+    EVALHUB_DEFAULT_HARDWARE_PROFILE,
     EVALHUB_FULL_API_VERSION_V1,
     EVALHUB_FULL_API_VERSION_V1ALPHA1,
     EVALHUB_HEALTH_PATH,
@@ -812,6 +813,9 @@ def build_vllm_arc_easy_benchmark(num_examples: int = 10) -> dict:
             "num_examples": num_examples,
             "tokenizer": "google/flan-t5-small",
         },
+        "hardware_config": {
+            "hardware_profile_name": EVALHUB_DEFAULT_HARDWARE_PROFILE,
+        },
     }
 
 
@@ -889,6 +893,7 @@ def build_pvc_job_payload(
     job_name: str,
     claim_name: str,
     sub_path: str | None = None,
+    tokenizer_path: str | None = None,
 ) -> dict:
     """Build an EvalHub job payload with PVC-backed test data."""
     payload = build_evalhub_job_payload(
@@ -899,6 +904,8 @@ def build_pvc_job_payload(
     pvc_ref = build_pvc_test_data_ref(claim_name=claim_name, sub_path=sub_path)
     for benchmark in payload["benchmarks"]:
         benchmark["test_data_ref"] = pvc_ref
+        if tokenizer_path:
+            benchmark["parameters"]["tokenizer"] = tokenizer_path
     return payload
 
 

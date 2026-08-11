@@ -18,6 +18,7 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
 import utilities.infra
 from utilities.constants import MODELMESH_SERVING, Annotations, KServeDeploymentType
 from utilities.exceptions import ResourceValueMismatch, UnexpectedResourceCountError
+from utilities.image_constants import SharedImages
 
 # Constants for image validation
 SHA256_DIGEST_PATTERN = r"@sha256:[a-f0-9]{64}$"
@@ -156,35 +157,45 @@ def download_model_data(
         ]
         download_destination = pvc_model_path
 
-    init_containers = [
-        {
-            "name": "init-container",
-            "image": "quay.io/quay/busybox@sha256:92f3298bf80a1ba949140d77987f5de081f010337880cd771f7e7fc928f8c74d",
-            "command": init_command,
-            "args": init_container_args,
-            "volumeMounts": [init_volume_mount],
-        }
-    ]
-    containers = [
-        {
-            "name": "model-downloader",
-            "image": utilities.infra.get_kserve_storage_initialize_image(client=client),
-            "args": [
-                f"s3://{bucket_name}/{model_path}/",
-                download_destination,
-            ],
-            "env": [
-                {"name": "AWS_ACCESS_KEY_ID", "value": aws_access_key_id},
-                {"name": "AWS_SECRET_ACCESS_KEY", "value": aws_secret_access_key},
-                {"name": "S3_USE_HTTPS", "value": "1"},
-                {"name": "AWS_ENDPOINT_URL", "value": aws_endpoint_url},
-                {"name": "AWS_DEFAULT_REGION", "value": aws_default_region},
-                {"name": "S3_VERIFY_SSL", "value": "false"},
-                {"name": "awsAnonymousCredential", "value": "false"},
-            ],
-            "volumeMounts": [volume_mount],
-        }
-    ]
+    restricted_security_context = {
+        "allowPrivilegeEscalation": False,
+        "capabilities": {"drop": ["ALL"]},
+        "runAsNonRoot": True,
+        "seccompProfile": {"type": "RuntimeDefault"},
+    }
+
+    init_container: dict[str, Any] = {
+        "name": "init-container",
+        "image": SharedImages.BUSYBOX,
+        "command": init_command,
+        "args": init_container_args,
+        "volumeMounts": [init_volume_mount],
+    }
+    downloader_container: dict[str, Any] = {
+        "name": "model-downloader",
+        "image": utilities.infra.get_kserve_storage_initialize_image(client=client),
+        "args": [
+            f"s3://{bucket_name}/{model_path}/",
+            download_destination,
+        ],
+        "env": [
+            {"name": "AWS_ACCESS_KEY_ID", "value": aws_access_key_id},
+            {"name": "AWS_SECRET_ACCESS_KEY", "value": aws_secret_access_key},
+            {"name": "S3_USE_HTTPS", "value": "1"},
+            {"name": "AWS_ENDPOINT_URL", "value": aws_endpoint_url},
+            {"name": "AWS_DEFAULT_REGION", "value": aws_default_region},
+            {"name": "S3_VERIFY_SSL", "value": "false"},
+            {"name": "awsAnonymousCredential", "value": "false"},
+        ],
+        "volumeMounts": [volume_mount],
+    }
+
+    if restricted_scc_init:
+        init_container["securityContext"] = restricted_security_context
+        downloader_container["securityContext"] = restricted_security_context
+
+    init_containers = [init_container]
+    containers = [downloader_container]
     volumes = [{"name": model_pvc_name, "persistentVolumeClaim": {"claimName": model_pvc_name}}]
 
     pod_kwargs: dict[str, Any] = {
@@ -205,7 +216,6 @@ def download_model_data(
         pod_kwargs["node_selector"] = node_selector
 
     with Pod(**pod_kwargs) as pod:
-        pod.wait_for_status(status=Pod.Status.RUNNING)
         LOGGER.info("Waiting for model download to complete")
         pod.wait_for_status(status=Pod.Status.SUCCEEDED, timeout=25 * 60)
 

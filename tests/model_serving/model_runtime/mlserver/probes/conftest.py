@@ -64,7 +64,7 @@ def mlserver_probes_inference_service(
         "model_format": supported_formats[0].name,
         "model_service_account": mlserver_model_service_account.name,
         "deployment_mode": request.param.get("deployment_mode", KServeDeploymentType.STANDARD),
-        "external_route": True,
+        "external_route": request.param.get("enable_external_route", False),
         "resources": PREDICT_RESOURCES.get("resources"),
         "volumes": PREDICT_RESOURCES.get("volumes"),
         "volumes_mounts": PREDICT_RESOURCES.get("volume_mounts"),

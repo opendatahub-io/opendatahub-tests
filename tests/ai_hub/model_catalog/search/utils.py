@@ -313,6 +313,66 @@ def fetch_all_artifacts_with_dynamic_paging(
         page_size += page_size_increment
 
 
+SECURITY_ONLY_MODELS: set[str] = {
+    "Mistral-Medium-3.5-128B",
+    "Qwen3-VL-30B-A3B-Instruct",
+    "Trinity-Large-Thinking-NVFP4",
+    "gemma-4-E4B-it",
+    "Llama-3_1-Nemotron-Ultra-253B-v1",
+    "Mistral-Small-3.2-24B-Instruct-2506",
+    "Molmo2-4B",
+    "Molmo2-8B",
+    "diffusiongemma-26B-A4B-it-FP8-dynamic",
+    "diffusiongemma-26B-A4B-it-NVFP4",
+    "gemma-3-12b-it",
+    "translategemma-4b-it",
+    "GLM-5.2-FP8",
+    "NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16-FP8-BLOCK",
+    "NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16-W4A16-G128",
+    "NVIDIA-Nemotron-3-Ultra-550B-A55B-FP8-Dynamic",
+    "NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4",
+    "Qwen3.6-35B-A3B",
+    "Qwen3.6-35B-A3B-FP8",
+    "Qwen3.6-35B-A3B-FP8-dynamic",
+    "Qwen3.6-35B-A3B-NVFP4",
+    "gemma-4-12B-it-FP8-Dynamic",
+    "gemma-4-12B-it-NVFP4",
+    "gemma-4-26B-A4B-it",
+    "gemma-4-26B-A4B-it-FP8-Dynamic",
+    "gemma-4-26B-A4B-it-NVFP4",
+    "gemma-4-26b-a4b",
+    "gemma-4-31B",
+    "gemma-4-31B-it",
+    "gemma-4-31B-it-FP8-Dynamic",
+    "gemma-4-31B-it-FP8-block",
+    "gemma-4-31B-it-NVFP4",
+    "olmOCR-2-7B-1025-FP8",
+    "granite-docling-258m",
+    "granite-guardian-3.2-5b",
+    "llama-3.1-8b-instruct",
+    "Magistral-Small-2509",
+    "Llama-3.1-Nemotron-Safety-Guard-8B-v3",
+    "gpt-oss-safeguard-120b",
+    "gpt-oss-safeguard-20b",
+}
+
+# Models with metadata.json pulled in for RHOAI-3.5 GA but no performance/evaluation
+# data yet — see https://github.com/red-hat-data-services/models-perf-benchmark-data/pull/187
+MODELS_PENDING_BENCHMARK_DATA: set[str] = {
+    "DeepSeek-V4-Pro",
+    "Foundation-Sec-8B-Instruct",
+    "Laguna-XS.2-FP8",
+    "Laguna-XS.2-NVFP4",
+    "Llama-Guard-4-12B",
+    "Phi-4-reasoning",
+    "Qwen3-Embedding-8B",
+    "snowflake-arctic-embed-l-v2.0",
+    "Llama-2-7b-chat-hf",
+    "Whisper-Large-V3",
+    "Qwen3-Next-80B-A3B-Instruct-FP8",
+}
+
+
 def validate_performance_data_files_on_pod(model_catalog_pod: Pod) -> dict[str, list[str]]:
     """
     Validate that performance data files exist for all models in the catalog pod.
@@ -332,15 +392,10 @@ def validate_performance_data_files_on_pod(model_catalog_pod: Pod) -> dict[str, 
     providers = model_catalog_pod.execute(container=CATALOG_CONTAINER, command=["ls", PERFORMANCE_DATA_DIR])
 
     for provider in providers.splitlines():
-        required_files = ["metadata.json", "performance.ndjson", "evaluations.ndjson"]
         # skip the files manifest.json and variant-groups.ndjson
         if provider in ["manifest.json", "variant-groups.ndjson"]:
             continue
         LOGGER.info(f"Checking provider: {provider}")
-        # Only for RedHatAI model we expect performance.ndjson file, based on edge case definition
-        # https://docs.google.com/document/d/1K6SQi7Se8zljfB0UvXKKqV8VWVh5Pfq4HqKPtNvIQzg/edit?tab=t.0#heading=h.rh09auvgvlxd
-        if provider != "RedHatAI":
-            required_files.remove("performance.ndjson")
         models = model_catalog_pod.execute(
             container=CATALOG_CONTAINER, command=["ls", f"{PERFORMANCE_DATA_DIR}/{provider}"]
         )
@@ -348,9 +403,23 @@ def validate_performance_data_files_on_pod(model_catalog_pod: Pod) -> dict[str, 
         for model in models.splitlines():
             if model == "provider.json":
                 continue
+            if model in MODELS_PENDING_BENCHMARK_DATA:
+                continue
+            required_files = ["metadata.json", "performance.ndjson", "evaluations.ndjson"]
+            # Only for RedHatAI model we expect performance.ndjson file, based on edge case definition
+            # https://docs.google.com/document/d/1K6SQi7Se8zljfB0UvXKKqV8VWVh5Pfq4HqKPtNvIQzg/edit?tab=t.0#heading=h.rh09auvgvlxd
+            if provider != "RedHatAI":
+                required_files.remove("performance.ndjson")
             # Remove data for specific RH models based on
             # https://redhat-internal.slack.com/archives/C09570S9VV0/p1762164394782969?thread_ts=1761834621.645019&cid=C09570S9VV0
-            if model == "Mistral-Small-24B-Instruct-2501":
+            if model in SECURITY_ONLY_MODELS:
+                required_files = [
+                    filename
+                    for filename in required_files
+                    if filename not in ("performance.ndjson", "evaluations.ndjson")
+                ]
+                required_files.append("security-evaluations.ndjson")
+            if model in ("Mistral-Small-24B-Instruct-2501", "Mistral-Small-4-119B-2603"):
                 required_files.remove("evaluations.ndjson")
             elif model == "granite-3.1-8b-instruct-quantized.w8a8":
                 required_files.remove("performance.ndjson")
@@ -358,9 +427,10 @@ def validate_performance_data_files_on_pod(model_catalog_pod: Pod) -> dict[str, 
             result = model_catalog_pod.execute(
                 container=CATALOG_CONTAINER, command=["ls", f"{PERFORMANCE_DATA_DIR}/{provider}/{model}"]
             )
+            present_files = set(result.splitlines())
 
             # Check which required files are missing
-            missing_files = [f for f in required_files if f not in result]
+            missing_files = [filename for filename in required_files if filename not in present_files]
 
             if missing_files:
                 model_key = f"{provider}/{model}"
