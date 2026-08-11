@@ -12,7 +12,8 @@ from tests.model_serving.model_server.llmd.utils import (
     log_base_refs_selection,
 )
 from tests.model_serving.model_server.utils import skip_test
-from utilities.constants import ContainerImages, Labels
+from utilities.constants import Labels
+from utilities.image_constants import SharedImages
 from utilities.infra import is_disconnected_cluster
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -89,7 +90,13 @@ class LLMISvcConfig:
     def prefill_config(cls):
         return None
 
-    kv_cache_offloading = None
+    @classmethod
+    def kv_cache_offloading(cls):
+        return None
+
+    @classmethod
+    def template_volumes(cls):
+        return None
 
     @classmethod
     def worker_config(cls):
@@ -152,7 +159,7 @@ class CpuConfig(LLMISvcConfig):
 
     enable_auth = False
     wait_timeout = 420
-    container_image = ContainerImages.VLLM.CPU
+    container_image = SharedImages.VLLM_CPU
 
     @classmethod
     def container_env(cls):
