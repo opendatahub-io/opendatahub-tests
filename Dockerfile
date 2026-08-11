@@ -33,14 +33,14 @@ ARG GRPCURL_SHA256_PPC64LE=f39edc1745c705988c29921697d058e052e9dd0c05f0df2552182
 
 # Install grpcurl
 RUN ARCH=$(uname -m) && \
-    curl -sSL "https://github.com/fullstorydev/grpcurl/releases/download/v1.9.2/grpcurl_1.9.2_linux_${ARCH}.tar.gz" \
-         --output /tmp/grpcurl.tar.gz && \
     case "${ARCH}" in \
       x86_64)  GRPCURL_SHA256="${GRPCURL_SHA256_X86_64}" ;; \
-      aarch64) GRPCURL_SHA256="${GRPCURL_SHA256_AARCH64}" ;; \
       ppc64le) GRPCURL_SHA256="${GRPCURL_SHA256_PPC64LE}" ;; \
       *) echo "Unsupported architecture: ${ARCH}" && exit 1 ;; \
     esac && \
+
+    curl -sSL "https://github.com/fullstorydev/grpcurl/releases/download/v1.9.2/grpcurl_1.9.2_linux_${ARCH}.tar.gz" \
+         --output /tmp/grpcurl.tar.gz && \
     echo "${GRPCURL_SHA256}  /tmp/grpcurl.tar.gz" | sha256sum --check --strict - && \
     tar xf /tmp/grpcurl.tar.gz --no-same-owner -C /tmp && \
     mv /tmp/grpcurl /usr/bin/grpcurl && \
