@@ -19,5 +19,5 @@ tests/model_serving/model_runtime/             @Raghul-M @brettmthompson
 tests/model_serving/model_server/              @threcc @mwaykole
 tests/ai_gateway/                              @SB159
 tests/llama_stack/                             @Artemon-line @Bobbins228 @ChristianZaccaria @jgarciao @jiripetrlik @Ygnas
-tests/rhoai_mcp/                               @tarilabs @amito
+tests/rhoai_mcp/                               @tarilabs
 tests/workbenches                              @jstourac @andyatmiami @jiridanek @harshad16
