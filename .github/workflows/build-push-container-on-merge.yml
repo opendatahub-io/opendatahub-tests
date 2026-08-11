@@ -74,14 +74,14 @@ jobs:
           password: ${{ secrets.QUAY_PASSWORD }}
 
       - name: Build and Push Multi-Arch Image
+        id: build-and-push
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64,linux/ppc64le
           push: true
-          tags: |
-            ${{ steps.build-image.outputs.tags }}
+          tags: quay.io/opendatahub/odh-tests:${{ env.TAG }}
           labels: |
             ${{ steps.labels.outputs.args }}
 
@@ -96,4 +96,4 @@ jobs:
             $URL \
             -H "Content-Type: application/json" \
             -H "Authorization: token $GITHUB_TOKEN" \
-            --data '{ "body": "Status of building tag ${{ env.TAG }}: ${{ steps.build-image.outcome }}. \nStatus of pushing tag ${{ env.TAG }} to image registry: ${{ steps.push-to-registry.outcome }}. \nImage manifest label: ${{ steps.manifest.outcome }}." }'
+            --data '{ "body": "Status of building and pushing tag ${{ env.TAG }}: ${{ steps.build-and-push.outcome }}. \nImage manifest label: ${{ steps.manifest.outcome }}." }'

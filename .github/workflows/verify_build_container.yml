@@ -15,14 +15,12 @@ jobs:
 
     steps:
       - name: Set up QEMU emulation
-        uses: docker/setup-qemu-action@v2
+        uses: docker/setup-qemu-action@v3
         with:
           platforms: all
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-        with:
-          install: true
 
       - name: Login to Docker (if needed)
         if: env.DOCKER_USERNAME != ''
