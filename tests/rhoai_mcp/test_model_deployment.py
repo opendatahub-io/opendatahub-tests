@@ -41,7 +41,7 @@ async def _wait_for_model_ready(client: Client, name: str, namespace: str) -> di
         name="get_inference_service",
         arguments={"name": name, "namespace": namespace},
     )
-    return _parse_tool_result(result)
+    return _parse_tool_result(result=result)
 
 
 @pytest.mark.asyncio
@@ -78,7 +78,7 @@ class TestRhoaiMcpModelDeployment:
                     "include_templates": True,
                 },
             )
-        data = _parse_tool_result(result)
+        data = _parse_tool_result(result=result)
 
         runtimes = data["result"]
         assert runtimes, "No serving runtimes found (including templates)"
@@ -110,7 +110,7 @@ class TestRhoaiMcpModelDeployment:
                     "storage_uri": STORAGE_URI,
                 },
             )
-        data = _parse_tool_result(result)
+        data = _parse_tool_result(result=result)
 
         checks = {c["name"]: c for c in data["checks"]}
 
@@ -136,7 +136,7 @@ class TestRhoaiMcpModelDeployment:
                     "template_name": RHOAI_MCP_MODEL_DEPLOY_RUNTIME_TEMPLATE,
                 },
             )
-        data = _parse_tool_result(result)
+        data = _parse_tool_result(result=result)
 
         assert data.get("success") is True, f"create_serving_runtime failed: {data}"
         assert RHOAI_MCP_MODEL_DEPLOY_FORMAT in data.get("supported_formats", []), (
@@ -162,7 +162,7 @@ class TestRhoaiMcpModelDeployment:
                     "include_templates": False,
                 },
             )
-            rt_data = _parse_tool_result(rt_result)
+            rt_data = _parse_tool_result(result=rt_result)
             existing_runtimes = rt_data["result"]
             assert existing_runtimes, "No serving runtime found in namespace after creation"
             runtime_name = existing_runtimes[0]["name"]
@@ -177,7 +177,7 @@ class TestRhoaiMcpModelDeployment:
                     "storage_uri": STORAGE_URI,
                 },
             )
-        data = _parse_tool_result(result)
+        data = _parse_tool_result(result=result)
 
         assert data["name"] == RHOAI_MCP_MODEL_DEPLOY_NAME
         assert data["namespace"] == mcp_model_deploy_namespace.name
@@ -194,9 +194,9 @@ class TestRhoaiMcpModelDeployment:
         """
         async with Client(mcp_model_deployer_transport) as client:
             data = await _wait_for_model_ready(
-                client,
-                RHOAI_MCP_MODEL_DEPLOY_NAME,
-                mcp_model_deploy_namespace.name,
+                client=client,
+                name=RHOAI_MCP_MODEL_DEPLOY_NAME,
+                namespace=mcp_model_deploy_namespace.name,
             )
 
         assert data["status"] == "Ready"
@@ -221,7 +221,7 @@ class TestRhoaiMcpModelDeployment:
                     "namespace": mcp_model_deploy_namespace.name,
                 },
             )
-            endpoint_data = _parse_tool_result(endpoint_result)
+            endpoint_data = _parse_tool_result(result=endpoint_result)
 
             assert endpoint_data["status"] == "Ready"
             assert endpoint_data.get("url"), "Model endpoint URL is empty"
@@ -233,7 +233,7 @@ class TestRhoaiMcpModelDeployment:
                     "namespace": mcp_model_deploy_namespace.name,
                 },
             )
-            test_data = _parse_tool_result(test_result)
+            test_data = _parse_tool_result(result=test_result)
 
         assert test_data["accessible"] is True, f"Model endpoint not accessible: {test_data.get('issues')}"
 
@@ -252,7 +252,7 @@ class TestRhoaiMcpModelDeployment:
                 name="list_inference_services",
                 arguments={"namespace": mcp_model_deploy_namespace.name},
             )
-        data = _parse_tool_result(result)
+        data = _parse_tool_result(result=result)
 
         items = data.get("items", [])
         names = [item["name"] for item in items]
@@ -285,7 +285,7 @@ class TestRhoaiMcpModelDeployment:
                     "confirm": True,
                 },
             )
-        data = _parse_tool_result(result)
+        data = _parse_tool_result(result=result)
 
         assert data["deleted"] is True
         assert data["name"] == RHOAI_MCP_MODEL_DEPLOY_NAME

@@ -308,7 +308,7 @@ def mcp_model_deploy_namespace(
         yield ns
 
 
-# Model deployment test persona – wider than the RBAC test personas (rbac_reader/rbac_deployer)
+# Model deployment test persona: wider than the RBAC test personas (rbac_reader/rbac_deployer)
 # which are intentionally narrow to verify tool-filtering. This persona needs the full set of
 # permissions to succeed at every step of the deployment lifecycle: namespace read for
 # check_deployment_prerequisites, template read + SR create for create_serving_runtime,
