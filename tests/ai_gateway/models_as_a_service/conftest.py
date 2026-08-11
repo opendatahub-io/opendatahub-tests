@@ -36,20 +36,24 @@ from tests.ai_gateway.models_as_a_service.maas_subscription.utils import (
 )
 from tests.ai_gateway.models_as_a_service.utils import (
     build_maas_headers,
+    capture_maas_dsc_components_patch,
     create_maas_group,
     detect_scheme_via_llmisvc,
+    dsc_uses_aigateway_maas_schema,
     endpoints_have_ready_addresses,
     gateway_probe_reaches_maas_api,
     get_maas_models_response,
     get_total_tokens,
     host_from_ingress_domain,
+    maas_component_patch,
     maas_gateway_listeners,
     maas_gateway_rate_limits_patched,
-    maas_under_aigateway_component_patch,
     mint_token,
     patch_llmisvc_with_maas_router,
+    restore_maas_dsc_components_patch,
     revoke_token,
     verify_chat_completions,
+    wait_for_maas_controller_ready,
 )
 from utilities.constants import (
     MAAS_GATEWAY_NAME,
@@ -730,28 +734,31 @@ def maas_controller_enabled_latest(
     maas_request_ratelimit_policy: None,
 ) -> Generator[DataScienceCluster]:
     """
-    Ensure MaaS under AIGateway (aigateway.modelsAsAService) is MANAGED for the session.
+    Ensure MaaS is MANAGED for the session using the DSC field supported by the cluster version.
     Restore DSC to original state on teardown.
     """
-    component_patch = maas_under_aigateway_component_patch(
+    uses_aigateway_maas_schema = dsc_uses_aigateway_maas_schema(admin_client=dsc_resource.client)
+    original_components_patch = capture_maas_dsc_components_patch(
+        dsc_resource=dsc_resource,
+        uses_aigateway_maas_schema=uses_aigateway_maas_schema,
+    )
+    component_patch = maas_component_patch(
+        admin_client=dsc_resource.client,
         models_as_a_service_state=DscComponents.ManagementState.MANAGED,
         aigateway_state=DscComponents.ManagementState.MANAGED,
     )
 
     with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
-        dsc_resource.wait_for_condition(
-            condition=DscComponents.ConditionType.AIGATEWAY_READY,
-            status="True",
-            timeout=900,
-        )
-        dsc_resource.wait_for_condition(
-            condition="Ready",
-            status="True",
-            timeout=600,
+        wait_for_maas_controller_ready(
+            dsc_resource=dsc_resource,
+            uses_aigateway_maas_schema=uses_aigateway_maas_schema,
         )
         yield dsc_resource
 
-    dsc_resource.wait_for_condition(condition="Ready", status="True", timeout=600)
+    restore_maas_dsc_components_patch(
+        dsc_resource=dsc_resource,
+        original_components_patch=original_components_patch,
+    )
 
 
 @pytest.fixture(scope="session")
@@ -1153,27 +1160,30 @@ def maas_subscription_controller_enabled_latest(
     maas_subscription_namespace: Namespace,
 ) -> Generator[DataScienceCluster, Any, Any]:
     """
-    Ensures subscription namespace exists before MaaS under AIGateway is switched to Managed.
+    Ensures subscription namespace exists before MaaS is switched to Managed.
     """
-    component_patch = maas_under_aigateway_component_patch(
+    uses_aigateway_maas_schema = dsc_uses_aigateway_maas_schema(admin_client=dsc_resource.client)
+    original_components_patch = capture_maas_dsc_components_patch(
+        dsc_resource=dsc_resource,
+        uses_aigateway_maas_schema=uses_aigateway_maas_schema,
+    )
+    component_patch = maas_component_patch(
+        admin_client=dsc_resource.client,
         models_as_a_service_state=DscComponents.ManagementState.MANAGED,
         aigateway_state=DscComponents.ManagementState.MANAGED,
     )
 
     with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
-        dsc_resource.wait_for_condition(
-            condition=DscComponents.ConditionType.AIGATEWAY_READY,
-            status="True",
-            timeout=900,
-        )
-        dsc_resource.wait_for_condition(
-            condition="Ready",
-            status="True",
-            timeout=600,
+        wait_for_maas_controller_ready(
+            dsc_resource=dsc_resource,
+            uses_aigateway_maas_schema=uses_aigateway_maas_schema,
         )
         yield dsc_resource
 
-    dsc_resource.wait_for_condition(condition="Ready", status="True", timeout=600)
+    restore_maas_dsc_components_patch(
+        dsc_resource=dsc_resource,
+        original_components_patch=original_components_patch,
+    )
 
 
 @pytest.fixture(scope="class")

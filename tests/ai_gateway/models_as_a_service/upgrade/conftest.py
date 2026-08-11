@@ -20,10 +20,13 @@ from tests.ai_gateway.models_as_a_service.upgrade.utils import (
     load_maas_baseline_from_configmap,
     save_maas_baseline_to_configmap,
 )
-from tests.ai_gateway.models_as_a_service.utils import host_from_ingress_domain
+from tests.ai_gateway.models_as_a_service.utils import (
+    MaaSTenantResource,
+    get_default_maas_tenant,
+    host_from_ingress_domain,
+)
 from utilities.constants import MAAS_GATEWAY_NAME, MAAS_GATEWAY_NAMESPACE
 from utilities.infra import create_ns
-from utilities.resources.maastenantconfig import MaasTenantConfig
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -43,7 +46,6 @@ def maas_upgrade_namespace(
     namespace = Namespace(client=admin_client, name=MAAS_UPGRADE_NAMESPACE)
     if pytestconfig.option.post_upgrade:
         yield namespace
-        namespace.clean_up()
     else:
         with create_ns(
             admin_client=admin_client,
@@ -93,9 +95,7 @@ def maas_upgrade_model_ref(
         "namespace": maas_upgrade_namespace.name,
     }
     if pytestconfig.option.post_upgrade:
-        model_ref = MaaSModelRef(**model_ref_kwargs)
-        yield model_ref
-        model_ref.clean_up()
+        yield MaaSModelRef(**model_ref_kwargs)
     else:
         with MaaSModelRef(
             **model_ref_kwargs,
@@ -125,9 +125,7 @@ def maas_upgrade_auth_policy(
         "namespace": maas_subscription_namespace.name,
     }
     if pytestconfig.option.post_upgrade:
-        auth_policy = MaaSAuthPolicy(**auth_policy_kwargs)
-        yield auth_policy
-        auth_policy.clean_up()
+        yield MaaSAuthPolicy(**auth_policy_kwargs)
     else:
         with MaaSAuthPolicy(
             **auth_policy_kwargs,
@@ -164,9 +162,7 @@ def maas_upgrade_subscription(
         "namespace": maas_subscription_namespace.name,
     }
     if pytestconfig.option.post_upgrade:
-        subscription = MaaSSubscription(**subscription_kwargs)
-        yield subscription
-        subscription.clean_up()
+        yield MaaSSubscription(**subscription_kwargs)
     else:
         with create_maas_subscription(
             admin_client=admin_client,
@@ -189,17 +185,15 @@ def maas_upgrade_tenant(
     admin_client: DynamicClient,
     maas_subscription_namespace: Namespace,
     maas_subscription_controller_enabled_latest: DataScienceCluster,
-) -> MaasTenantConfig:
-    """Return the default-tenant MaasTenantConfig CR bootstrapped by AITenant / maas-controller.
+) -> MaaSTenantResource:
+    """Return the default-tenant MaaS CR bootstrapped by maas-controller or AITenant.
 
     Depends on maas_subscription_controller_enabled_latest to ensure MaaS is
-    MANAGED and MaasTenantConfig has been reconciled before it is accessed.
+    MANAGED and the tenant CR has been reconciled before it is accessed.
     """
-    return MaasTenantConfig(
-        client=admin_client,
-        name="default-tenant",
+    return get_default_maas_tenant(
+        admin_client=admin_client,
         namespace=maas_subscription_namespace.name,
-        ensure_exists=True,
     )
 
 
@@ -230,7 +224,7 @@ def capture_maas_upgrade_baseline(
     maas_upgrade_model_ref: MaaSModelRef,
     maas_upgrade_auth_policy: MaaSAuthPolicy,
     maas_upgrade_subscription: MaaSSubscription,
-    maas_upgrade_tenant: MaasTenantConfig,
+    maas_upgrade_tenant: MaaSTenantResource,
 ) -> None:
     """Capture and persist MaaS state snapshot to ConfigMap before upgrade.
 
