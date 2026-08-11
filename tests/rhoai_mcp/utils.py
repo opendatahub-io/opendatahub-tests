@@ -1,6 +1,9 @@
+import copy
 from typing import Any
 
 import requests
+from kubernetes.dynamic import DynamicClient
+from pytest_testconfig import config as py_config
 from timeout_sampler import retry
 
 from tests.rhoai_mcp.constants import (
@@ -9,6 +12,7 @@ from tests.rhoai_mcp.constants import (
     RHOAI_MCP_PORT,
 )
 from tests.rhoai_mcp.image_constants import RhoaiMcpImages
+from utilities.infra import is_disconnected_cluster
 
 _RETRY_EXCEPTIONS: dict[type, list] = {
     requests.exceptions.ConnectTimeout: [],
@@ -17,7 +21,27 @@ _RETRY_EXCEPTIONS: dict[type, list] = {
 }
 
 
-DEPLOYMENT_TEMPLATE: dict[str, Any] = {
+def get_rhoai_mcp_image(client: DynamicClient) -> str:
+    """Return the rhoai-mcp container image appropriate for the target cluster."""
+    if is_disconnected_cluster(client=client):
+        return RhoaiMcpImages.RHOAI_MCP
+
+    if py_config["distribution"] == "upstream":
+        return RhoaiMcpImages.RHOAI_MCP_ODH_STABLE
+
+    # py_config["distribution"] == "downstream"
+    # (waiting for Konflux onboarding)
+    return RhoaiMcpImages.RHOAI_MCP_ODH_STABLE
+
+
+def deployment_template_with_image(image: str) -> dict[str, Any]:
+    """Return a deep copy of the pod template with *image* set on the main container."""
+    template = copy.deepcopy(_DEPLOYMENT_TEMPLATE)
+    template["spec"]["containers"][0]["image"] = image
+    return template
+
+
+_DEPLOYMENT_TEMPLATE: dict[str, Any] = {
     "metadata": {
         "labels": {
             "app.kubernetes.io/component": "server",
@@ -28,7 +52,7 @@ DEPLOYMENT_TEMPLATE: dict[str, Any] = {
         "containers": [
             {
                 "name": RHOAI_MCP_APP_NAME,
-                "image": RhoaiMcpImages.RHOAI_MCP,
+                "image": "",
                 "imagePullPolicy": "Always",
                 "args": ["--transport", "$(RHOAI_MCP_TRANSPORT)"],
                 "envFrom": [{"configMapRef": {"name": f"{RHOAI_MCP_APP_NAME}-config"}}],

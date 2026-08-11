@@ -24,7 +24,8 @@ from tests.rhoai_mcp.constants import (
     RHOAI_MCP_RBAC_READER_ROLE_NAME,
 )
 from tests.rhoai_mcp.utils import (
-    DEPLOYMENT_TEMPLATE,
+    deployment_template_with_image,
+    get_rhoai_mcp_image,
     probe_health,
 )
 from utilities.certificates_utils import create_ca_bundle_file
@@ -191,6 +192,7 @@ def rhoai_mcp_deployment(
         "app.kubernetes.io/component": "server",
         "app.kubernetes.io/name": RHOAI_MCP_APP_NAME,
     }
+    image = get_rhoai_mcp_image(client=admin_client)
     with Deployment(
         client=admin_client,
         name=RHOAI_MCP_APP_NAME,
@@ -198,7 +200,7 @@ def rhoai_mcp_deployment(
         replicas=1,
         label=labels,
         selector={"matchLabels": labels},
-        template=DEPLOYMENT_TEMPLATE,
+        template=deployment_template_with_image(image),
     ) as deployment:
         deployment.wait_for_replicas(timeout=300)
         yield deployment
