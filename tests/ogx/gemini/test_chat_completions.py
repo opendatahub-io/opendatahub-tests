@@ -98,19 +98,21 @@ class TestGeminiChatCompletions:
         ogx_client: OgxClient,
         gemini_model_id: str,
     ) -> None:
-        """Verify the temperature parameter is accepted and honored (TC-CHAT-003).
+        """Verify the temperature parameter is accepted across its range (TC-CHAT-003).
 
         Given: an active remote::gemini provider.
         When: the same prompt is sent three times at temperature 0 and three times
             at temperature 1.0.
         Then: every request succeeds with valid content, demonstrating the provider
-            accepts and forwards the temperature parameter across its range.
+            accepts the temperature parameter across its range.
 
-        Note: response-text variability is *not* asserted. A compliant provider may
-        legitimately return identical outputs at temperature 1.0 (especially for a
-        constrained "one word" prompt), so a variability comparison would be
-        probabilistic and flaky. Asserting the parameter is honored on the wire would
-        require request-capture tooling that the pytest harness does not provide.
+        Note: neither response-text variability nor that the provider honors/forwards
+        the temperature on the wire is asserted. A compliant provider may legitimately
+        return identical outputs at temperature 1.0 (especially for a constrained
+        "one word" prompt), so a variability comparison would be probabilistic and
+        flaky. Confirming the value is honored on the wire would require request-capture
+        tooling that the pytest harness does not provide, so this test scopes its claim
+        to parameter acceptance only.
         """
         prompt = "Reply with exactly one word: yes or no."
 
