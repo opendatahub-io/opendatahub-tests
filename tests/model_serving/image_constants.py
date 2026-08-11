@@ -12,3 +12,8 @@ class ModelServingImages:
         "nvcr.io/nvidia/tritonserver"
         "@sha256:cac5c60eb969f6881e3d2c473e331a5232e1fd510d3fca56cc96e1835af5519d"  # pragma: allowlist secret
     )
+
+    TRANSFORMER_IMAGE: str = (
+        "quay.io/spolti/kserve-sentiment-custom-transformer"
+        "@sha256:6af753f5d13e07fd2d0d3da9e55ddbcd4d5cabcd9d5f4c1fbbdce06fb1e08c67"  # pragma: allowlist secret
+    )

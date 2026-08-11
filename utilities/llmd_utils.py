@@ -11,7 +11,8 @@ from ocp_resources.gateway import Gateway
 from ocp_resources.route import Route
 from timeout_sampler import TimeoutWatch
 
-from utilities.constants import ContainerImages, Timeout
+from utilities.constants import Timeout
+from utilities.image_constants import SharedImages
 from utilities.infra import is_disconnected_cluster
 from utilities.llmd_constants import (
     KServeGateway,
@@ -186,7 +187,7 @@ def create_llmisvc(
         client: DynamicClient object
         name: LLMInferenceService name
         namespace: Namespace name
-        storage_uri: Storage URI (e.g., 'oci://quay.io/user/model:tag') - used if storage_key/storage_path not provided
+        storage_uri: Storage URI (e.g., 'oci://quay.io/user/model:tag'); alt to storage_key/storage_path  # noqa: IMG001
         storage_key: S3 secret name for authentication (alternative to storage_uri)
         storage_path: S3 path to model (alternative to storage_uri)
         replicas: Number of replicas
@@ -253,7 +254,7 @@ def create_llmisvc(
     if container_env is None:
         container_env = [{"name": "VLLM_LOGGING_LEVEL", "value": "DEBUG"}]
         # Add FIPS-compatible env vars for vLLM CPU image
-        if container_image == ContainerImages.VLLM.CPU:
+        if container_image == SharedImages.VLLM_CPU:
             container_env.extend([
                 {"name": "VLLM_ADDITIONAL_ARGS", "value": "--ssl-ciphers ECDHE+AESGCM:DHE+AESGCM"},
                 {"name": "VLLM_CPU_KVCACHE_SPACE", "value": "4"},
