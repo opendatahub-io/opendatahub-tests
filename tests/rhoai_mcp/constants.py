@@ -55,3 +55,9 @@ RHOAI_MCP_INFERENCE_RESTRICTED_TOOLS: tuple[str, ...] = (
     "delete_inference_service",
     "create_serving_runtime",
 )
+
+RHOAI_MCP_MODEL_DEPLOY_NAMESPACE: str = "test-mcp-model-deploy"
+RHOAI_MCP_MODEL_DEPLOY_NAME: str = "mcp-mnist-test"
+RHOAI_MCP_MODEL_DEPLOY_FORMAT: str = "openvino_ir"
+RHOAI_MCP_MODEL_DEPLOY_RUNTIME_TEMPLATE: str = "kserve-ovms"
+RHOAI_MCP_MODEL_DEPLOYER_ROLE_NAME: str = "test-rhoai-mcp-model-deployer"
