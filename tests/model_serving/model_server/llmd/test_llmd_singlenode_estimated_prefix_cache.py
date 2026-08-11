@@ -1,6 +1,5 @@
 import pytest
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.prometheus import Prometheus
 
 from tests.model_serving.model_server.llmd.llmd_configs import EstimatedPrefixCacheConfig
@@ -12,6 +11,7 @@ from tests.model_serving.model_server.llmd.utils import (
     ns_from_file,
     send_prefix_cache_requests,
 )
+from utilities.resources.llm_inference_service import LLMInferenceService
 
 NUM_REQUESTS = 12
 PREFIX_CACHE_PROMPT = (

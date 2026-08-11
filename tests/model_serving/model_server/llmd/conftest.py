@@ -13,7 +13,6 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.gateway import Gateway
-from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.resource import Resource
 from ocp_resources.role import Role
@@ -42,6 +41,7 @@ from utilities.llmd_utils import create_llmd_gateway
 from utilities.logger import RedactedString
 from utilities.resources.kuadrant import Kuadrant
 from utilities.resources.leader_worker_set_operator import LeaderWorkerSetOperator
+from utilities.resources.llm_inference_service import LLMInferenceService
 
 LOGGER = structlog.get_logger(name=__name__)
 logging.getLogger("timeout_sampler").setLevel(logging.WARNING)
@@ -529,6 +529,10 @@ def _create_llmisvc_from_config(
     if service_account:
         template["serviceAccountName"] = service_account
 
+    volumes = config_cls.template_volumes()
+    if volumes:
+        template["volumes"] = volumes
+
     prefill = config_cls.prefill_config()
     if prefill and service_account and "template" in prefill:
         prefill["template"]["serviceAccountName"] = service_account
@@ -548,6 +552,7 @@ def _create_llmisvc_from_config(
         "prefill": prefill,
         "worker": config_cls.worker_config(),
         "parallelism": config_cls.parallelism_config(),
+        "kv_cache_offloading": config_cls.kv_cache_offloading(),
     }
 
     LOGGER.info(f"\n{config_cls.format_describe(namespace=namespace)}")
