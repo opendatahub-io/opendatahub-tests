@@ -34,7 +34,7 @@ class MultinodeMoeDpEPPrefillDecodeConfig(Qwen3MoeDummyGpuConfig):
 
     # 2 decode (LWS leader+worker) + 2 prefill (LWS leader+worker)
     expected_vllm_pod_count = 4
-    # Only decode pods are InferencePool members
+    # Decode leader + prefill leader; workers lack kserve.io/component=workload
     expected_inference_pool_pod_count = 2
 
     @classmethod
@@ -45,11 +45,11 @@ class MultinodeMoeDpEPPrefillDecodeConfig(Qwen3MoeDummyGpuConfig):
         }
 
     @classmethod
-    def container_env(cls):
-        return super().container_env() + [
+    def _nixl_env(cls, kv_role: str) -> list[dict]:
+        return [
             {
                 "name": "VLLM_ADDITIONAL_ARGS",
-                "value": '--kv_transfer_config \'{"kv_connector":"NixlConnector","kv_role":"kv_both"}\'',
+                "value": f'--kv_transfer_config \'{{"kv_connector":"NixlConnector","kv_role":"{kv_role}"}}\'',
             },
             {
                 "name": "VLLM_NIXL_SIDE_CHANNEL_HOST",
@@ -58,14 +58,12 @@ class MultinodeMoeDpEPPrefillDecodeConfig(Qwen3MoeDummyGpuConfig):
         ]
 
     @classmethod
-    def readiness_probe(cls):
-        return {
-            "httpGet": {"path": "/health", "port": 8000, "scheme": "HTTPS"},
-            "initialDelaySeconds": 180,
-            "periodSeconds": 10,
-            "timeoutSeconds": 5,
-            "failureThreshold": 12,
-        }
+    def container_env(cls):
+        return super().container_env() + cls._nixl_env(kv_role="kv_consumer")
+
+    @classmethod
+    def prefill_env(cls):
+        return super().container_env() + cls._nixl_env(kv_role="kv_producer")
 
     @classmethod
     def router_config(cls):
@@ -92,9 +90,11 @@ class MultinodeMoeDpEPPrefillDecodeConfig(Qwen3MoeDummyGpuConfig):
                 "containers": [
                     {
                         "name": "main",
-                        "env": cls.container_env(),
+                        "env": cls.prefill_env(),
                         "resources": cls.container_resources(),
+                        "startupProbe": cls.startup_probe(),
                         "livenessProbe": cls.liveness_probe(),
+                        "readinessProbe": cls.readiness_probe(),
                     }
                 ],
             },

@@ -31,13 +31,10 @@ class MultinodeMoeDpEpConfig(Qwen3MoeDummyGpuConfig):
     supported_topology = "workload-multi-node-data-parallel"
 
     @classmethod
-    def readiness_probe(cls):
+    def container_resources(cls):
         return {
-            "httpGet": {"path": "/health", "port": 8000, "scheme": "HTTPS"},
-            "initialDelaySeconds": 180,
-            "periodSeconds": 10,
-            "timeoutSeconds": 5,
-            "failureThreshold": 12,
+            "limits": {"cpu": "2", "memory": "64Gi", "nvidia.com/gpu": "1"},
+            "requests": {"cpu": "1", "memory": "32Gi", "nvidia.com/gpu": "1"},
         }
 
     @classmethod

@@ -57,20 +57,6 @@ class LLMISvcConfig:
         ]
 
     @classmethod
-    def liveness_probe(cls):
-        return {
-            "httpGet": {"path": "/health", "port": 8000, "scheme": "HTTPS"},
-            "initialDelaySeconds": 240,
-            "periodSeconds": 60,
-            "timeoutSeconds": 60,
-            "failureThreshold": 10,
-        }
-
-    @classmethod
-    def readiness_probe(cls):
-        return None
-
-    @classmethod
     def router_config(cls):
         return {
             "scheduler": {"configRef": "kserve-config-llm-scheduler"},
@@ -152,6 +138,41 @@ class LLMISvcConfig:
     def with_overrides(cls, **overrides):
         """Create a derived config class with overridden attributes."""
         return type(f"{cls.__name__}_custom", (cls,), overrides)
+
+    # ── Probes ─────────────────────────────────────────────────────────
+    # Probes are set permissively so they never interfere with tests.
+    # The test's wait_timeout is the only gate for pass/fail.
+    # Override in a subclass only if a test explicitly validates probe behavior.
+
+    @classmethod
+    def startup_probe(cls):
+        return {
+            "httpGet": {"path": "/health", "port": 8000, "scheme": "HTTPS"},
+            "initialDelaySeconds": 0,
+            "periodSeconds": 10,
+            "timeoutSeconds": 5,
+            "failureThreshold": 360,
+        }
+
+    @classmethod
+    def liveness_probe(cls):
+        return {
+            "httpGet": {"path": "/health", "port": 8000, "scheme": "HTTPS"},
+            "initialDelaySeconds": 3600,
+            "periodSeconds": 60,
+            "timeoutSeconds": 60,
+            "failureThreshold": 10,
+        }
+
+    @classmethod
+    def readiness_probe(cls):
+        return {
+            "httpGet": {"path": "/health", "port": 8000, "scheme": "HTTPS"},
+            "initialDelaySeconds": 0,
+            "periodSeconds": 10,
+            "timeoutSeconds": 5,
+            "failureThreshold": 360,
+        }
 
 
 class CpuConfig(LLMISvcConfig):
