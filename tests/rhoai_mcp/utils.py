@@ -1,9 +1,13 @@
 import copy
+import json
 from typing import Any
 
 import requests
+from fastmcp import Client
 from kubernetes.dynamic import DynamicClient
 from pytest_testconfig import config as py_config
+from tenacity import retry as tenacity_retry
+from tenacity import retry_if_not_result, stop_after_delay, wait_exponential
 from timeout_sampler import retry
 
 from tests.rhoai_mcp.constants import (
@@ -103,3 +107,22 @@ _DEPLOYMENT_TEMPLATE: dict[str, Any] = {
 def probe_health(url: str, ca_bundle_file: str) -> requests.Response:
     """GET the health endpoint, retrying on transient network failures."""
     return requests.get(url, verify=ca_bundle_file, timeout=10)
+
+
+def parse_tool_result(result: object) -> dict:
+    """Parse the JSON payload from a call_tool response."""
+    return json.loads(result.content[0].text)
+
+
+@tenacity_retry(
+    stop=stop_after_delay(300),
+    wait=wait_exponential(min=5, max=30),
+    retry=retry_if_not_result(lambda data: data.get("status") == "Ready"),
+)
+async def wait_for_model_ready(client: Client, name: str, namespace: str) -> dict:
+    """Poll get_inference_service until the model reports Ready or timeout."""
+    result = await client.call_tool(
+        name="get_inference_service",
+        arguments={"name": name, "namespace": namespace},
+    )
+    return parse_tool_result(result=result)
