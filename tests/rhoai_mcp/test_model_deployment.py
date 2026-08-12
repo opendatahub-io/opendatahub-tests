@@ -11,6 +11,7 @@ import json
 import pytest
 from fastmcp import Client
 from fastmcp.client.transports import StreamableHttpTransport
+from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from tenacity import retry as tenacity_retry
 from tenacity import retry_if_not_result, stop_after_delay, wait_exponential
@@ -151,7 +152,7 @@ class TestRhoaiMcpModelDeployment:
     ) -> None:
         """Given a namespace with an OVMS serving runtime
         When deploy_model is called with the MNIST OCI ModelCar image
-        Then an InferenceService is created successfully
+        Then an InferenceService is created successfully with managed-by ownership label
         """
         async with Client(mcp_model_deployer_transport) as client:
             # Discover the runtime name that was created from the template
@@ -181,6 +182,15 @@ class TestRhoaiMcpModelDeployment:
 
         assert data["name"] == RHOAI_MCP_MODEL_DEPLOY_NAME
         assert data["namespace"] == mcp_model_deploy_namespace.name
+
+        isvc = InferenceService(
+            name=RHOAI_MCP_MODEL_DEPLOY_NAME,
+            namespace=mcp_model_deploy_namespace.name,
+        )
+        labels = isvc.instance.metadata.labels or {}
+        assert labels.get("app.kubernetes.io/managed-by") == "rhoai-mcp", (
+            f"InferenceService missing managed-by label: {labels}"
+        )
 
     @pytest.mark.dependency(name="model_ready", depends=["deploy_model"])
     async def test_model_reaches_ready(
@@ -263,16 +273,47 @@ class TestRhoaiMcpModelDeployment:
         model_entry = next(i for i in items if i["name"] == RHOAI_MCP_MODEL_DEPLOY_NAME)
         assert model_entry["status"] == "Ready"
 
-    # Namespace teardown handles cleanup for now; will enable this test once
-    # owned operations are allowed in the rhoai-mcp codebase.
-    @pytest.mark.skip(reason="Requires owned operations are allowed in the rhoai-mcp, to be enabled later")
-    @pytest.mark.dependency(depends=["model_ready"])
+    @pytest.mark.dependency(name="delete_no_confirm", depends=["model_ready"])
+    async def test_delete_inference_service_without_confirm(
+        self,
+        mcp_model_deployer_transport: StreamableHttpTransport,
+        mcp_model_deploy_namespace: Namespace,
+    ) -> None:
+        """Given a deployed model with managed-by ownership label
+        When delete_inference_service is called without confirm
+        Then the deletion is rejected and the model is not deleted
+        """
+        async with Client(mcp_model_deployer_transport) as client:
+            result = await client.call_tool(
+                name="delete_inference_service",
+                arguments={
+                    "name": RHOAI_MCP_MODEL_DEPLOY_NAME,
+                    "namespace": mcp_model_deploy_namespace.name,
+                },
+            )
+            data = _parse_tool_result(result=result)
+
+            assert "error" in data, f"Expected error response when confirm is not passed, got: {data}"
+            assert "confirm" in data.get("message", "").lower(), f"Expected confirmation prompt in message, got: {data}"
+
+            verify_result = await client.call_tool(
+                name="get_inference_service",
+                arguments={
+                    "name": RHOAI_MCP_MODEL_DEPLOY_NAME,
+                    "namespace": mcp_model_deploy_namespace.name,
+                },
+            )
+            verify_data = _parse_tool_result(result=verify_result)
+
+        assert verify_data["status"] == "Ready", "Model should still be Ready after rejected deletion"
+
+    @pytest.mark.dependency(depends=["delete_no_confirm"])
     async def test_delete_inference_service(
         self,
         mcp_model_deployer_transport: StreamableHttpTransport,
         mcp_model_deploy_namespace: Namespace,
     ) -> None:
-        """Given a deployed model
+        """Given a deployed model with managed-by ownership label
         When delete_inference_service is called with confirm=True
         Then the model is deleted successfully
         """
