@@ -28,14 +28,13 @@ _RETRY_EXCEPTIONS: dict[type, list] = {
 def get_rhoai_mcp_image(client: DynamicClient) -> str:
     """Return the rhoai-mcp container image appropriate for the target cluster."""
     if is_disconnected_cluster(client=client):
-        return RhoaiMcpImages.RHOAI_MCP
+        return RhoaiMcpImages.RHOAI_MCP_RHOAI_DIGEST
 
     if py_config["distribution"] == "upstream":
         return RhoaiMcpImages.RHOAI_MCP_ODH_STABLE
 
     # py_config["distribution"] == "downstream"
-    # (waiting for Konflux onboarding)
-    return RhoaiMcpImages.RHOAI_MCP_ODH_STABLE
+    return RhoaiMcpImages.RHOAI_MCP_RHOAI_VERSION
 
 
 def deployment_template_with_image(image: str) -> dict[str, Any]:
