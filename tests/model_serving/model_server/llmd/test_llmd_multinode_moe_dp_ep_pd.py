@@ -1,7 +1,7 @@
 import pytest
 from kubernetes.dynamic import DynamicClient
 
-from tests.model_serving.model_server.llmd.llmd_configs import MultinodeMoeDpEPPrefillDecodeConfig
+from tests.model_serving.model_server.llmd.llmd_configs import MultinodeMoeDpEpPrefillDecodeConfig
 from tests.model_serving.model_server.llmd.utils import (
     get_llmd_inference_pool_pods,
     get_llmd_pod_by_role,
@@ -22,10 +22,10 @@ pytestmark = [pytest.mark.llmd_gpu]
 
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, llmisvc",
-    [pytest.param({"name": NAMESPACE}, MultinodeMoeDpEPPrefillDecodeConfig, id="dp-ep-pd")],
+    [pytest.param({"name": NAMESPACE}, MultinodeMoeDpEpPrefillDecodeConfig, id="dp-ep-pd")],
     indirect=True,
 )
-class TestMultinodeMoeDpEPPrefillDecode:
+class TestMultinodeMoeDpEpPrefillDecode:
     """Multinode MoE with DP+EP parallelism and disaggregated Prefill/Decode.
 
     Validates that combining multinode data-parallel + expert-parallel with P/D

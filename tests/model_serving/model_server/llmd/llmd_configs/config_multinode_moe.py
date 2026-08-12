@@ -32,9 +32,10 @@ class MultinodeMoeDpEpConfig(Qwen3MoeDummyGpuConfig):
 
     @classmethod
     def container_resources(cls):
+        gpu_name = cls.gpu_resource_name()
         return {
-            "limits": {"cpu": "2", "memory": "64Gi", "nvidia.com/gpu": "1"},
-            "requests": {"cpu": "1", "memory": "32Gi", "nvidia.com/gpu": "1"},
+            "limits": {"cpu": "2", "memory": "64Gi", gpu_name: "1"},
+            "requests": {"cpu": "1", "memory": "32Gi", gpu_name: "1"},
         }
 
     @classmethod

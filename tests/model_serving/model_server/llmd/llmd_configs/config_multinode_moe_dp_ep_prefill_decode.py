@@ -15,7 +15,7 @@ from utilities.constants import Labels
 from .config_models import Qwen3MoeDummyGpuConfig
 
 
-class MultinodeMoeDpEPPrefillDecodeConfig(Qwen3MoeDummyGpuConfig):
+class MultinodeMoeDpEpPrefillDecodeConfig(Qwen3MoeDummyGpuConfig):
     """Multinode MoE with DP+EP and disaggregated Prefill/Decode.
 
     Deploys across 2 GPU nodes, each with 2 GPUs (1 decode + 1 prefill).
@@ -39,9 +39,10 @@ class MultinodeMoeDpEPPrefillDecodeConfig(Qwen3MoeDummyGpuConfig):
 
     @classmethod
     def container_resources(cls):
+        gpu_name = cls.gpu_resource_name()
         return {
-            "limits": {"cpu": "2", "memory": "64Gi", "nvidia.com/gpu": "1"},
-            "requests": {"cpu": "1", "memory": "32Gi", "nvidia.com/gpu": "1"},
+            "limits": {"cpu": "2", "memory": "64Gi", gpu_name: "1"},
+            "requests": {"cpu": "1", "memory": "32Gi", gpu_name: "1"},
         }
 
     @classmethod
