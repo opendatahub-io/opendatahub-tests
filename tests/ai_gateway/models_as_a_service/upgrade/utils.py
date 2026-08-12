@@ -8,8 +8,9 @@ from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.maas_auth_policy import MaaSAuthPolicy
 from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.maas_subscription import MaaSSubscription
+from ocp_resources.resource import NamespacedResource
 
-from utilities.resources.maastenantconfig import MaasTenantConfig
+from tests.ai_gateway.models_as_a_service.utils import MaaSTenantResource
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -33,12 +34,21 @@ class MaaSBaseline(TypedDict):
     tenant_phase: str
 
 
+def _tenant_status_phase(tenant: NamespacedResource) -> str:
+    """Read tenant status.phase when present on MaasTenantConfig or legacy Tenant."""
+    tenant_status = tenant.instance.status
+    if not hasattr(tenant_status, "phase"):
+        return ""
+    tenant_phase = tenant_status.phase
+    return tenant_phase or ""
+
+
 def capture_maas_baseline(
     gateway: Gateway,
     model_ref: MaaSModelRef,
     auth_policy: MaaSAuthPolicy,
     subscription: MaaSSubscription,
-    tenant: MaasTenantConfig,
+    tenant: MaaSTenantResource,
 ) -> MaaSBaseline:
     """Snapshot MaaS control plane state before upgrade."""
     baseline: MaaSBaseline = {
@@ -53,7 +63,7 @@ def capture_maas_baseline(
         "subscription_generation": subscription.instance.metadata.generation or 0,
         "tenant_name": tenant.name,
         "tenant_namespace": tenant.namespace,
-        "tenant_phase": getattr(tenant.instance.status, "phase", "") or "",
+        "tenant_phase": _tenant_status_phase(tenant=tenant),
     }
     LOGGER.info(f"Captured MaaS upgrade baseline: {baseline}")
     return baseline
@@ -93,12 +103,12 @@ def load_maas_baseline_from_configmap(
         f"MaaS baseline ConfigMap '{MAAS_UPGRADE_BASELINE_CM_NAME}' not found in '{namespace}'. "
         "Ensure pre-upgrade tests ran successfully."
     )
-    cm_data = config_map.instance.data or {}
-    raw_baseline = cm_data.get(MAAS_UPGRADE_BASELINE_CM_KEY)
-    assert raw_baseline, (
+    config_map_data = config_map.instance.data or {}
+    assert config_map_data.get(MAAS_UPGRADE_BASELINE_CM_KEY), (
         f"MaaS baseline ConfigMap '{MAAS_UPGRADE_BASELINE_CM_NAME}' is missing "
         f"the '{MAAS_UPGRADE_BASELINE_CM_KEY}' key."
     )
+    raw_baseline = config_map_data[MAAS_UPGRADE_BASELINE_CM_KEY]
     return json.loads(raw_baseline)
 
 
