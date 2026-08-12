@@ -11,6 +11,7 @@ import json
 import pytest
 from fastmcp import Client
 from fastmcp.client.transports import StreamableHttpTransport
+from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from tenacity import retry as tenacity_retry
@@ -147,6 +148,7 @@ class TestRhoaiMcpModelDeployment:
     @pytest.mark.dependency(name="deploy_model", depends=["create_runtime"])
     async def test_deploy_model(
         self,
+        admin_client: DynamicClient,
         mcp_model_deployer_transport: StreamableHttpTransport,
         mcp_model_deploy_namespace: Namespace,
     ) -> None:
@@ -184,6 +186,7 @@ class TestRhoaiMcpModelDeployment:
         assert data["namespace"] == mcp_model_deploy_namespace.name
 
         isvc = InferenceService(
+            client=admin_client,
             name=RHOAI_MCP_MODEL_DEPLOY_NAME,
             namespace=mcp_model_deploy_namespace.name,
         )
