@@ -56,12 +56,12 @@ class SingleNodePrefillDecodeConfig(TinyLlamaOciGpuConfig):
         ]
 
     @classmethod
-    def container_env(cls):
+    def container_env(cls) -> list[dict]:
         base = [e for e in super().container_env() if e["name"] != "VLLM_ADDITIONAL_ARGS"]
         return base + cls._nixl_env(kv_role="kv_consumer")
 
     @classmethod
-    def prefill_env(cls):
+    def prefill_env(cls) -> list[dict]:
         base = [e for e in super().container_env() if e["name"] != "VLLM_ADDITIONAL_ARGS"]
         return base + cls._nixl_env(kv_role="kv_producer")
 

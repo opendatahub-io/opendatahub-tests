@@ -145,7 +145,7 @@ class LLMISvcConfig:
     # Override in a subclass only if a test explicitly validates probe behavior.
 
     @classmethod
-    def startup_probe(cls):
+    def startup_probe(cls) -> dict:
         return {
             "httpGet": {"path": "/health", "port": 8000, "scheme": "HTTPS"},
             "initialDelaySeconds": 0,
@@ -155,7 +155,7 @@ class LLMISvcConfig:
         }
 
     @classmethod
-    def liveness_probe(cls):
+    def liveness_probe(cls) -> dict:
         return {
             "httpGet": {"path": "/health", "port": 8000, "scheme": "HTTPS"},
             "initialDelaySeconds": 3600,
@@ -165,7 +165,7 @@ class LLMISvcConfig:
         }
 
     @classmethod
-    def readiness_probe(cls):
+    def readiness_probe(cls) -> dict:
         return {
             "httpGet": {"path": "/health", "port": 8000, "scheme": "HTTPS"},
             "initialDelaySeconds": 0,

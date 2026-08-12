@@ -38,7 +38,7 @@ class MultinodeMoeDpEpPrefillDecodeConfig(Qwen3MoeDummyGpuConfig):
     expected_inference_pool_pod_count = 2
 
     @classmethod
-    def container_resources(cls):
+    def container_resources(cls) -> dict:
         gpu_name = cls.gpu_resource_name()
         return {
             "limits": {"cpu": "2", "memory": "64Gi", gpu_name: "1"},
@@ -59,15 +59,15 @@ class MultinodeMoeDpEpPrefillDecodeConfig(Qwen3MoeDummyGpuConfig):
         ]
 
     @classmethod
-    def container_env(cls):
+    def container_env(cls) -> list[dict]:
         return super().container_env() + cls._nixl_env(kv_role="kv_consumer")
 
     @classmethod
-    def prefill_env(cls):
+    def prefill_env(cls) -> list[dict]:
         return super().container_env() + cls._nixl_env(kv_role="kv_producer")
 
     @classmethod
-    def router_config(cls):
+    def router_config(cls) -> dict:
         return {
             "scheduler": {},
             "route": {},
@@ -75,15 +75,15 @@ class MultinodeMoeDpEpPrefillDecodeConfig(Qwen3MoeDummyGpuConfig):
         }
 
     @classmethod
-    def parallelism_config(cls):
+    def parallelism_config(cls) -> dict:
         return {"data": 2, "dataLocal": 1, "expert": True}
 
     @classmethod
-    def worker_config(cls):
+    def worker_config(cls) -> dict:
         return {"containers": [{"name": "main", "resources": cls.container_resources()}]}
 
     @classmethod
-    def prefill_config(cls):
+    def prefill_config(cls) -> dict:
         return {
             "replicas": 1,
             "parallelism": cls.parallelism_config(),

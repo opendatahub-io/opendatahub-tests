@@ -39,7 +39,7 @@ class TestMultinodeMoeDpEpPrefillDecode:
         request: pytest.FixtureRequest,
         unprivileged_client: DynamicClient,
         llmisvc: LLMInferenceService,
-    ):
+    ) -> None:
         """Test steps:
 
         1. Get all vLLM pods (decode + prefill, leaders + workers).
@@ -55,7 +55,7 @@ class TestMultinodeMoeDpEpPrefillDecode:
         self,
         admin_client: DynamicClient,
         llmisvc: LLMInferenceService,
-    ):
+    ) -> None:
         """Test steps:
 
         1. List all LeaderWorkerSet objects in the namespace.
@@ -94,7 +94,7 @@ class TestMultinodeMoeDpEpPrefillDecode:
         request: pytest.FixtureRequest,
         unprivileged_client: DynamicClient,
         llmisvc: LLMInferenceService,
-    ):
+    ) -> None:
         """Test steps:
 
         1. Get pods matching the InferencePool selector.
@@ -110,7 +110,7 @@ class TestMultinodeMoeDpEpPrefillDecode:
         self,
         unprivileged_client: DynamicClient,
         llmisvc: LLMInferenceService,
-    ):
+    ) -> None:
         """Test steps:
 
         1. Get the router-scheduler pod.
@@ -124,7 +124,7 @@ class TestMultinodeMoeDpEpPrefillDecode:
         self,
         unprivileged_client: DynamicClient,
         llmisvc: LLMInferenceService,
-    ):
+    ) -> None:
         """Test steps:
 
         1. Get all vLLM pods and inspect llm-d.ai/role labels.
@@ -160,7 +160,7 @@ class TestMultinodeMoeDpEpPrefillDecode:
         self,
         unprivileged_client: DynamicClient,
         llmisvc: LLMInferenceService,
-    ):
+    ) -> None:
         """Test steps:
 
         1. Check the scheduler config for all expected P/D plugins.
@@ -181,7 +181,7 @@ class TestMultinodeMoeDpEpPrefillDecode:
         self,
         unprivileged_client: DynamicClient,
         llmisvc: LLMInferenceService,
-    ):
+    ) -> None:
         """Test steps:
 
         1. Get all vLLM pods and InferencePool pods.
@@ -211,7 +211,7 @@ class TestMultinodeMoeDpEpPrefillDecode:
         request: pytest.FixtureRequest,
         unprivileged_client: DynamicClient,
         llmisvc: LLMInferenceService,
-    ):
+    ) -> None:
         """Test steps:
 
         1. Get all vLLM pods for the LLMInferenceService.
@@ -228,7 +228,7 @@ class TestMultinodeMoeDpEpPrefillDecode:
     def test_inference(
         self,
         llmisvc: LLMInferenceService,
-    ):
+    ) -> None:
         """Test steps:
 
         1. Send a chat completion request.

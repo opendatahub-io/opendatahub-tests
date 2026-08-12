@@ -31,7 +31,7 @@ class MultinodeMoeDpEpConfig(Qwen3MoeDummyGpuConfig):
     supported_topology = "workload-multi-node-data-parallel"
 
     @classmethod
-    def container_resources(cls):
+    def container_resources(cls) -> dict:
         gpu_name = cls.gpu_resource_name()
         return {
             "limits": {"cpu": "2", "memory": "64Gi", gpu_name: "1"},

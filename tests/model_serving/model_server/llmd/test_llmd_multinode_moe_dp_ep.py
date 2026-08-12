@@ -35,7 +35,7 @@ class TestMultinodeMoeDpEp:
         request: pytest.FixtureRequest,
         unprivileged_client: DynamicClient,
         llmisvc: LLMInferenceService,
-    ):
+    ) -> None:
         """Test steps:
 
         1. Get all vLLM pods (leader + workers) for the LLMInferenceService.
@@ -52,7 +52,7 @@ class TestMultinodeMoeDpEp:
         request: pytest.FixtureRequest,
         unprivileged_client: DynamicClient,
         llmisvc: LLMInferenceService,
-    ):
+    ) -> None:
         """Test steps:
 
         1. Get pods matching the InferencePool selector (kserve.io/component=workload).
@@ -68,7 +68,7 @@ class TestMultinodeMoeDpEp:
         self,
         unprivileged_client: DynamicClient,
         llmisvc: LLMInferenceService,
-    ):
+    ) -> None:
         """Test steps:
 
         1. Get the router-scheduler pod for the LLMInferenceService.
@@ -83,7 +83,7 @@ class TestMultinodeMoeDpEp:
         self,
         unprivileged_client: DynamicClient,
         llmisvc: LLMInferenceService,
-    ):
+    ) -> None:
         """Test steps:
 
         1. Get all vLLM pods for the LLMInferenceService.
@@ -120,7 +120,7 @@ class TestMultinodeMoeDpEp:
         request: pytest.FixtureRequest,
         unprivileged_client: DynamicClient,
         llmisvc: LLMInferenceService,
-    ):
+    ) -> None:
         """Test steps:
 
         1. Get all vLLM pods for the LLMInferenceService.
@@ -138,7 +138,7 @@ class TestMultinodeMoeDpEp:
         self,
         unprivileged_client: DynamicClient,
         llmisvc: LLMInferenceService,
-    ):
+    ) -> None:
         """Test steps:
 
         1. Get all vLLM pods and InferencePool pods.
@@ -166,7 +166,7 @@ class TestMultinodeMoeDpEp:
     def test_inference(
         self,
         llmisvc: LLMInferenceService,
-    ):
+    ) -> None:
         """Test steps:
 
         1. Send a chat completion request to /v1/chat/completions.
