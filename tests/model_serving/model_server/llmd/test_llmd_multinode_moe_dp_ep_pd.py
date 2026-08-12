@@ -12,6 +12,7 @@ from tests.model_serving.model_server.llmd.utils import (
     scheduler_has_plugin,
     send_chat_completions,
 )
+from utilities.resources.leader_worker_set import LeaderWorkerSet
 from utilities.resources.llm_inference_service import LLMInferenceService
 
 NAMESPACE = ns_from_file(file=__file__)
@@ -49,6 +50,44 @@ class TestMultinodeMoeDpEPPrefillDecode:
         assert len(vllm_pods) == config.expected_vllm_pod_count, (
             f"Expected {config.expected_vllm_pod_count} vLLM pods, found {len(vllm_pods)}"
         )
+
+    def test_lws_count(
+        self,
+        admin_client: DynamicClient,
+        llmisvc: LLMInferenceService,
+    ):
+        """Test steps:
+
+        1. List all LeaderWorkerSet objects in the namespace.
+        2. Assert exactly 2 LWS exist (decode + prefill).
+        3. Assert one LWS name ends with '-kserve-mn' (decode) and one ends with '-kserve-mn-prefill' (prefill).
+        4. Assert both have readyReplicas matching their spec.replicas.
+        """
+        lws_list = list(
+            LeaderWorkerSet.get(
+                client=admin_client,
+                namespace=llmisvc.namespace,
+            )
+        )
+        lws_names = sorted(lws.name for lws in lws_list)
+
+        assert len(lws_list) == 2, f"Expected 2 LeaderWorkerSet objects, found {len(lws_list)}: {lws_names}"
+
+        decode_lws = [lws for lws in lws_list if lws.name.endswith("-kserve-mn")]
+        prefill_lws = [lws for lws in lws_list if lws.name.endswith("-kserve-mn-prefill")]
+        assert len(decode_lws) == 1, (
+            f"Expected 1 LWS ending with '-kserve-mn' (decode), found {len(decode_lws)}: {lws_names}"
+        )
+        assert len(prefill_lws) == 1, (
+            f"Expected 1 LWS ending with '-kserve-mn-prefill' (prefill), found {len(prefill_lws)}: {lws_names}"
+        )
+
+        for lws in lws_list:
+            spec_replicas = lws.instance.spec.get("replicas", 1)
+            ready_replicas = lws.instance.get("status", {}).get("readyReplicas", 0)
+            assert ready_replicas == spec_replicas, (
+                f"LWS {lws.name}: readyReplicas ({ready_replicas}) != spec.replicas ({spec_replicas})"
+            )
 
     def test_inference_pool_pod_count(
         self,
@@ -137,6 +176,54 @@ class TestMultinodeMoeDpEPPrefillDecode:
             assert scheduler_has_plugin(client=unprivileged_client, llmisvc=llmisvc, plugin_name=expected_plugin), (
                 f"Scheduler config missing expected P/D plugin: {expected_plugin}"
             )
+
+    def test_workers_excluded_from_pool(
+        self,
+        unprivileged_client: DynamicClient,
+        llmisvc: LLMInferenceService,
+    ):
+        """Test steps:
+
+        1. Get all vLLM pods and InferencePool pods.
+        2. Identify worker pods (vLLM pods not in the pool).
+        3. Assert each worker pod does NOT have label kserve.io/component.
+        4. Assert each worker pod does NOT have label llm-d.ai/role.
+        """
+        vllm_pods = get_llmd_vllm_pods(client=unprivileged_client, llmisvc=llmisvc)
+        pool_pods = get_llmd_inference_pool_pods(client=unprivileged_client, llmisvc=llmisvc)
+        pool_pod_names = {pod.name for pod in pool_pods}
+        worker_pods = [pod for pod in vllm_pods if pod.name not in pool_pod_names]
+
+        assert worker_pods, "Expected at least one worker pod not in the InferencePool"
+
+        for pod in worker_pods:
+            labels = pod.instance.metadata.labels or {}
+            assert "kserve.io/component" not in labels, (
+                f"Worker pod {pod.name} should NOT have label kserve.io/component,"
+                f" got: {labels.get('kserve.io/component')}"
+            )
+            assert "llm-d.ai/role" not in labels, (
+                f"Worker pod {pod.name} should NOT have label llm-d.ai/role, got: {labels.get('llm-d.ai/role')}"
+            )
+
+    def test_multinode_spread(
+        self,
+        request: pytest.FixtureRequest,
+        unprivileged_client: DynamicClient,
+        llmisvc: LLMInferenceService,
+    ):
+        """Test steps:
+
+        1. Get all vLLM pods for the LLMInferenceService.
+        2. Extract the node name from each pod.
+        3. Assert pods are spread across at least min_nodes distinct nodes.
+        """
+        config = request.node.callspec.params["llmisvc"]
+        vllm_pods = get_llmd_vllm_pods(client=unprivileged_client, llmisvc=llmisvc)
+        unique_nodes = {pod.instance.spec.nodeName for pod in vllm_pods}
+        assert len(unique_nodes) >= config.min_nodes, (
+            f"Expected pods on >= {config.min_nodes} nodes, found {len(unique_nodes)}: {unique_nodes}"
+        )
 
     def test_inference(
         self,
