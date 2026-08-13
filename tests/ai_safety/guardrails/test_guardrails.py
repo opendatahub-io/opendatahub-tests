@@ -35,6 +35,7 @@ from utilities.constants import (
     LLM_D_CHAT_GENERATION_CONFIG,
     PROMPT_INJECTION_DETECTOR,
     LLMdInferenceSimConfig,
+    MinIo,
 )
 from utilities.plugins.constant import OpenAIEnpoints
 
@@ -234,10 +235,13 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
 
 @pytest.mark.tier1
 @pytest.mark.parametrize(
-    "model_namespace, orchestrator_config, guardrails_gateway_config,guardrails_orchestrator",
+    "model_namespace, minio_pod, minio_data_connection, orchestrator_config, "
+    "guardrails_gateway_config, guardrails_orchestrator",
     [
         pytest.param(
             {"name": "test-guardrails-huggingface"},
+            MinIo.PodConfig.QWEN_HAP_BPIV2_MINIO_CONFIG,
+            {"bucket": "llms"},
             {
                 "orchestrator_config_data": {
                     "config.yaml": yaml.dump({
@@ -301,6 +305,8 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
 @pytest.mark.rawdeployment
 @pytest.mark.usefixtures(
     "patched_dsc_kserve_headed",
+    "minio_pod",
+    "minio_data_connection",
     "guardrails_gateway_config",
     "minio_pvc_otel",
     "minio_deployment_otel",
