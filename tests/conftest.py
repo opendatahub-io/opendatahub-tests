@@ -1076,7 +1076,7 @@ def _extract_secret_key(
 ) -> None:
     """Read a base64-encoded key from a K8s Secret and write the decoded PEM to dest."""
     secret = Secret(client=admin_client, name=secret_name, namespace=namespace, ensure_exists=True)
-    b64_data = secret.instance.data.get(key)
+    b64_data = (secret.instance.data or {}).get(key)
     if not b64_data:
         raise ValueError(f"Secret {secret_name} in {namespace} missing '{key}' key")
     dest.write_text(data=base64.b64decode(b64_data).decode(encoding="utf-8"))
