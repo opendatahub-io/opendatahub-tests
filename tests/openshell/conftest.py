@@ -38,9 +38,9 @@ _OPENCODE_BUILD_HOSTS: list[str] = [
 ]
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="session")
 def skip_if_missing_open_shell_config() -> None:
-    """Skip the entire open_shell suite if required env vars are not set."""
+    """Skip tests that need vLLM env vars. Not autouse — install tests run without it."""
     missing = [name for name, value in _REQUIRED_ENV_VARS.items() if not value]
     if missing:
         pytest.skip(reason=f"Missing required env vars for open_shell tests: {', '.join(missing)}")
@@ -118,6 +118,7 @@ def _network_policy_rules() -> list[openshell_pb2.PolicyMergeOperation]:
 
 @pytest.fixture(scope="session")
 def sandbox_client(
+    skip_if_missing_open_shell_config: None,
     installed_openshell_release: str,
     openshell_gateway_route: Route,
     openshell_tls_dir: pathlib.Path,
@@ -282,34 +283,35 @@ def sandbox(
 
     LOGGER.info("Creating OpenShell sandbox", name=sandbox_name)
     sandbox_ref = sandbox_client.create(spec=spec, name=sandbox_name)  # noqa: FCN001
-    sandbox_client.wait_ready(sandbox_ref.name)  # noqa: FCN001
-
-    # TODO(openshell-sdk): replace _stub.AttachSandboxProvider with public API
-    # when the SDK exposes a high-level wrapper for provider attachment.
-    LOGGER.info("Attaching inference provider to sandbox", sandbox=sandbox_ref.name, provider=provider)
-    sandbox_client._stub.AttachSandboxProvider(  # noqa: FCN001
-        openshell_pb2.AttachSandboxProviderRequest(
-            sandbox_name=sandbox_ref.name,
-            provider_name=provider,
-        ),
-        timeout=sandbox_client._timeout,
-    )
-
-    # TODO(openshell-sdk): replace _stub.UpdateConfig with public API
-    # when the SDK exposes a high-level wrapper for sandbox config updates.
-    LOGGER.info("Adding network policy rules to sandbox", sandbox=sandbox_ref.name)
-    sandbox_client._stub.UpdateConfig(  # noqa: FCN001
-        openshell_pb2.UpdateConfigRequest(
-            name=sandbox_ref.name,
-            merge_operations=_network_policy_rules(),
-        ),
-        timeout=sandbox_client._timeout,
-    )
-
-    session = SandboxSession(sandbox_client, sandbox_ref)  # noqa: FCN001
-    _write_opencode_config(session=session, model=model)
 
     try:
+        sandbox_client.wait_ready(sandbox_ref.name)  # noqa: FCN001
+
+        # TODO(openshell-sdk): replace _stub.AttachSandboxProvider with public API
+        # when the SDK exposes a high-level wrapper for provider attachment.
+        LOGGER.info("Attaching inference provider to sandbox", sandbox=sandbox_ref.name, provider=provider)
+        sandbox_client._stub.AttachSandboxProvider(  # noqa: FCN001
+            openshell_pb2.AttachSandboxProviderRequest(
+                sandbox_name=sandbox_ref.name,
+                provider_name=provider,
+            ),
+            timeout=sandbox_client._timeout,
+        )
+
+        # TODO(openshell-sdk): replace _stub.UpdateConfig with public API
+        # when the SDK exposes a high-level wrapper for sandbox config updates.
+        LOGGER.info("Adding network policy rules to sandbox", sandbox=sandbox_ref.name)
+        sandbox_client._stub.UpdateConfig(  # noqa: FCN001
+            openshell_pb2.UpdateConfigRequest(
+                name=sandbox_ref.name,
+                merge_operations=_network_policy_rules(),
+            ),
+            timeout=sandbox_client._timeout,
+        )
+
+        session = SandboxSession(sandbox_client, sandbox_ref)  # noqa: FCN001
+        _write_opencode_config(session=session, model=model)
+
         yield session
     finally:
         if teardown_resources:
