@@ -9,17 +9,20 @@ from urllib.parse import quote, urlparse
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.custom_resource_definition import CustomResourceDefinition
+from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.endpoints import Endpoints
 from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.group import Group
 from ocp_resources.ingress_config_openshift_io import Ingress as IngressConfig
-from ocp_resources.resource import ResourceEditor
+from ocp_resources.resource import NamespacedResource, ResourceEditor
 from requests import Response
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from utilities.constants import (
     MAAS_GATEWAY_NAME,
     MAAS_GATEWAY_NAMESPACE,
+    ApiGroups,
     DscComponents,
 )
 from utilities.llmd_utils import get_llm_inference_url
@@ -27,10 +30,150 @@ from utilities.plugins.constant import OpenAIEnpoints, RestHeader
 from utilities.resources.llm_inference_service import LLMInferenceService
 from utilities.resources.maastenantconfig import MaasTenantConfig
 from utilities.resources.rate_limit_policy import RateLimitPolicy
+from utilities.resources.tenant import Tenant
 from utilities.resources.token_rate_limit_policy import TokenRateLimitPolicy
 
 LOGGER = structlog.get_logger(name=__name__)
 MODELS_INFO = OpenAIEnpoints.MODELS_INFO
+DSC_CRD_NAME = "datascienceclusters.datasciencecluster.opendatahub.io"
+MAAS_TENANT_CONFIG_CRD_NAME = f"maastenantconfigs.{ApiGroups.MAAS_IO}"
+LEGACY_TENANT_CRD_NAME = f"tenants.{ApiGroups.MAAS_IO}"
+DEFAULT_MAAS_TENANT_NAME = "default-tenant"
+MaaSTenantResource = MaasTenantConfig | Tenant
+
+
+def dsc_uses_aigateway_maas_schema(admin_client: DynamicClient) -> bool:
+    """True if DSC CRD has aigateway.modelsAsAService (3.5+); else use kserve.modelsAsService."""
+    crd = CustomResourceDefinition(client=admin_client, name=DSC_CRD_NAME, ensure_exists=True)
+    for version in crd.instance.spec.versions:
+        if not getattr(version, "storage", False):
+            continue
+        try:
+            aigateway_properties = version["schema"]["openAPIV3Schema"]["properties"]["spec"]["properties"][
+                "components"
+            ]["properties"]["aigateway"]["properties"]
+            models_as_a_service_property = aigateway_properties["modelsAsAService"]
+        except KeyError, TypeError:
+            return False
+        return models_as_a_service_property is not None
+    return False
+
+
+def cluster_has_maas_tenant_config_crd(admin_client: DynamicClient) -> bool:
+    """True if the cluster has the MaasTenantConfig CRD (3.5+)."""
+    tenant_config_crd = CustomResourceDefinition(client=admin_client, name=MAAS_TENANT_CONFIG_CRD_NAME)
+    return bool(tenant_config_crd.exists)
+
+
+def cluster_has_legacy_tenant_crd(admin_client: DynamicClient) -> bool:
+    """True if the cluster has the legacy Tenant CRD (pre-3.5)."""
+    legacy_tenant_crd = CustomResourceDefinition(client=admin_client, name=LEGACY_TENANT_CRD_NAME)
+    return bool(legacy_tenant_crd.exists)
+
+
+def get_default_maas_tenant(
+    admin_client: DynamicClient,
+    namespace: str,
+) -> MaaSTenantResource:
+    """Return the default MaaS tenant CR using the kind supported by the cluster."""
+    if cluster_has_maas_tenant_config_crd(admin_client):
+        return MaasTenantConfig(
+            client=admin_client,
+            name=DEFAULT_MAAS_TENANT_NAME,
+            namespace=namespace,
+            ensure_exists=True,
+        )
+    if cluster_has_legacy_tenant_crd(admin_client):
+        return Tenant(
+            client=admin_client,
+            name=DEFAULT_MAAS_TENANT_NAME,
+            namespace=namespace,
+            ensure_exists=True,
+        )
+    raise RuntimeError(f"No MaaS tenant CRD found on cluster for namespace '{namespace}'")
+
+
+def capture_maas_dsc_components_patch(
+    dsc_resource: DataScienceCluster,
+    uses_aigateway_maas_schema: bool,
+) -> dict[str, Any] | None:
+    """Capture the current MaaS-related DSC components slice for teardown restore."""
+    components = dsc_resource.instance.spec.components
+    if uses_aigateway_maas_schema:
+        try:
+            aigateway = components[DscComponents.AIGATEWAY]
+            return {
+                DscComponents.AIGATEWAY: {
+                    "managementState": aigateway.managementState,
+                    "modelsAsAService": {
+                        "managementState": aigateway.modelsAsAService.managementState,
+                    },
+                }
+            }
+        except AttributeError, KeyError, TypeError:
+            return None
+    try:
+        kserve = components[DscComponents.KSERVE]
+        return {
+            DscComponents.KSERVE: {
+                "modelsAsService": {
+                    "managementState": kserve.modelsAsService.managementState,
+                },
+            }
+        }
+    except AttributeError, KeyError, TypeError:
+        return None
+
+
+def restore_maas_dsc_components_patch(
+    dsc_resource: DataScienceCluster,
+    original_components_patch: dict[str, Any] | None,
+) -> None:
+    """Restore DSC MaaS components after a ResourceEditor session patch."""
+    if original_components_patch is not None:
+        with ResourceEditor(patches={dsc_resource: {"spec": {"components": original_components_patch}}}):
+            pass
+    dsc_resource.wait_for_condition(condition="Ready", status="True", timeout=600)
+
+
+def maas_under_kserve_component_patch(
+    models_as_a_service_state: str = DscComponents.ManagementState.MANAGED,
+) -> dict[str, Any]:
+    """Build DSC components patch for legacy MaaS under kserve (pre-3.5)."""
+    return {
+        DscComponents.KSERVE: {
+            "modelsAsService": {"managementState": models_as_a_service_state},
+        }
+    }
+
+
+def maas_component_patch(
+    admin_client: DynamicClient,
+    models_as_a_service_state: str = DscComponents.ManagementState.MANAGED,
+    aigateway_state: str = DscComponents.ManagementState.MANAGED,
+) -> dict[str, Any]:
+    """Build a version-aware DSC components patch for enabling or disabling MaaS."""
+    if dsc_uses_aigateway_maas_schema(admin_client):
+        return maas_under_aigateway_component_patch(
+            models_as_a_service_state=models_as_a_service_state,
+            aigateway_state=aigateway_state,
+        )
+    return maas_under_kserve_component_patch(models_as_a_service_state=models_as_a_service_state)
+
+
+def wait_for_maas_controller_ready(
+    dsc_resource: DataScienceCluster,
+    uses_aigateway_maas_schema: bool,
+    timeout: int = 900,
+) -> None:
+    """Wait for the MaaS controller readiness condition appropriate to the cluster version."""
+    maas_ready_condition = (
+        DscComponents.ConditionType.AIGATEWAY_READY
+        if uses_aigateway_maas_schema
+        else DscComponents.ConditionType.MODELS_AS_SERVICE_READY
+    )
+    dsc_resource.wait_for_condition(condition=maas_ready_condition, status="True", timeout=timeout)
+    dsc_resource.wait_for_condition(condition="Ready", status="True", timeout=600)
 
 
 def maas_under_aigateway_component_patch(
@@ -697,9 +840,14 @@ def verify_maas_gateway_programmed(gateway: Gateway) -> None:
     gateway.wait_for_condition(condition="Programmed", status="True", timeout=300)
 
 
+def verify_maas_tenant_ready(tenant_resource: NamespacedResource) -> None:
+    """Assert that the MaaS tenant CR exists and has Ready=True."""
+    assert tenant_resource.exists, (
+        f"{tenant_resource.kind} '{tenant_resource.name}' not found in namespace '{tenant_resource.namespace}'"
+    )
+    tenant_resource.wait_for_condition(condition="Ready", status="True", timeout=300)
+
+
 def verify_maas_tenant_config_ready(maas_tenant_config: MaasTenantConfig) -> None:
     """Assert that the MaasTenantConfig CR exists and has Ready=True."""
-    assert maas_tenant_config.exists, (
-        f"MaasTenantConfig '{maas_tenant_config.name}' not found in namespace '{maas_tenant_config.namespace}'"
-    )
-    maas_tenant_config.wait_for_condition(condition="Ready", status="True", timeout=300)
+    verify_maas_tenant_ready(tenant_resource=maas_tenant_config)

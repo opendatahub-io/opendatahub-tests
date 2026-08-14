@@ -208,6 +208,7 @@ class DscComponents:
         MODEL_MESH_SERVING_READY: str = "ModelMeshServingReady"
         OGX_READY: str = "OGXReady"
         AIGATEWAY_READY: str = "AIGatewayReady"
+        MODELS_AS_SERVICE_READY: str = "ModelsAsServiceReady"
 
     COMPONENT_MAPPING: dict[str, str] = {  # noqa: RUF012
         MODELMESHSERVING: ConditionType.MODEL_MESH_SERVING_READY,
