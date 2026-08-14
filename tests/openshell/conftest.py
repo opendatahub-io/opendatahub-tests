@@ -5,7 +5,6 @@ from typing import Any
 
 import pytest
 import structlog
-from _pytest.fixtures import FixtureRequest
 from ocp_resources.route import Route
 from openshell._proto import datamodel_pb2, openshell_pb2, sandbox_pb2
 from openshell.sandbox import InferenceRouteClient, SandboxClient, SandboxSession, TlsConfig
@@ -94,7 +93,7 @@ def _write_opencode_config(session: SandboxSession, model: str) -> None:
 
 
 def _network_policy_rules() -> list[openshell_pb2.PolicyMergeOperation]:
-    """Build merge operations to allow sandbox egress to inference.local and models.opencode.ai."""
+    """Build merge operations to allow sandbox egress to inference.local."""
     return [
         openshell_pb2.PolicyMergeOperation(
             add_rule=openshell_pb2.AddNetworkRule(
@@ -102,15 +101,6 @@ def _network_policy_rules() -> list[openshell_pb2.PolicyMergeOperation]:
                 rule=sandbox_pb2.NetworkPolicyRule(
                     name="inference",
                     endpoints=[sandbox_pb2.NetworkEndpoint(host="inference.local", port=443)],
-                ),
-            ),
-        ),
-        openshell_pb2.PolicyMergeOperation(
-            add_rule=openshell_pb2.AddNetworkRule(
-                rule_name="allow_models_opencode_ai",
-                rule=sandbox_pb2.NetworkPolicyRule(
-                    name="allow_models_opencode_ai",
-                    endpoints=[sandbox_pb2.NetworkEndpoint(host="models.opencode.ai", port=443)],
                 ),
             ),
         ),
@@ -195,60 +185,43 @@ def vllm_provider(
 
 
 @pytest.fixture(scope="class")
-def inference_route(sandbox_client: SandboxClient, vllm_provider: str, request: FixtureRequest) -> None:
-    """Configures the vLLM inference route at cluster level.
-
-    Accepts indirect parametrization with a dict containing:
-    - ``provider`` (str): vLLM provider name (default: OPENSHELL_VLLM_PROVIDER env var)
-    - ``model`` (str): vLLM model ID (default: OPENSHELL_VLLM_MODEL env var)
-    """
-    params = getattr(request, "param", {}) or {}
-    provider = params.get("provider", OPENSHELL_VLLM_PROVIDER)
-    model = params.get("model", OPENSHELL_VLLM_MODEL)
-
-    LOGGER.info("Setting vLLM inference route (cluster-level)", provider=provider, model=model)
+def inference_route(sandbox_client: SandboxClient, vllm_provider: str) -> None:
+    """Configures the vLLM inference route at cluster level."""
+    LOGGER.info(
+        "Setting vLLM inference route (cluster-level)", provider=OPENSHELL_VLLM_PROVIDER, model=OPENSHELL_VLLM_MODEL
+    )
     route_client = InferenceRouteClient.from_sandbox_client(client=sandbox_client)
     route_client.set_cluster(
-        provider_name=provider,
-        model_id=model,
+        provider_name=OPENSHELL_VLLM_PROVIDER,
+        model_id=OPENSHELL_VLLM_MODEL,
         no_verify=True,
     )
 
 
 @pytest.fixture(scope="class")
 def sandbox(
-    request: FixtureRequest,
     sandbox_client: SandboxClient,
     inference_route: None,
     teardown_resources: bool,
 ) -> Generator[SandboxSession, Any, Any]:
     """An OpenShell sandbox routed through the privacy router.
 
-    Accepts indirect parametrization with a dict containing:
-    - ``provider`` (str): vLLM provider name (default: OPENSHELL_VLLM_PROVIDER env var)
-    - ``model`` (str): vLLM model ID (default: OPENSHELL_VLLM_MODEL env var)
-    - ``image`` (str): custom sandbox image override (default: OPENSHELL_SANDBOX_OPENCODE_IMAGE env var)
-
     Sets up the sandbox with:
     - Network policy rules for inference.local
     - The vLLM inference provider attached for credential injection
     - OPENAI_BASE_URL pointing to the privacy router
     """
-    params = getattr(request, "param", {}) or {}
-    provider = params.get("provider", OPENSHELL_VLLM_PROVIDER)
-    model = params.get("model", OPENSHELL_VLLM_MODEL)
-    image = params.get("image", OPENSHELL_SANDBOX_OPENCODE_IMAGE)
 
     template_kwargs: dict = {
         "environment": {
             "OPENAI_BASE_URL": "https://inference.local/v1",
-            "OPENAI_MODEL": model,
+            "OPENAI_MODEL": OPENSHELL_VLLM_MODEL,
             "OPENAI_API_KEY": "unused",  # pragma: allowlist secret
         }
     }
-    if image:
-        LOGGER.info("Using custom sandbox image", image=image)
-        template_kwargs["image"] = image
+    if OPENSHELL_SANDBOX_OPENCODE_IMAGE:
+        LOGGER.info("Using custom sandbox image", image=OPENSHELL_SANDBOX_OPENCODE_IMAGE)
+        template_kwargs["image"] = OPENSHELL_SANDBOX_OPENCODE_IMAGE
 
     spec = openshell_pb2.SandboxSpec(template=openshell_pb2.SandboxTemplate(**template_kwargs))
     sandbox_name = generate_random_name(prefix="open-shell")
@@ -261,11 +234,13 @@ def sandbox(
 
         # TODO(openshell-sdk): replace _stub.AttachSandboxProvider with public API
         # when the SDK exposes a high-level wrapper for provider attachment.
-        LOGGER.info("Attaching inference provider to sandbox", sandbox=sandbox_ref.name, provider=provider)
+        LOGGER.info(
+            "Attaching inference provider to sandbox", sandbox=sandbox_ref.name, provider=OPENSHELL_VLLM_PROVIDER
+        )
         sandbox_client._stub.AttachSandboxProvider(  # noqa: FCN001
             openshell_pb2.AttachSandboxProviderRequest(
                 sandbox_name=sandbox_ref.name,
-                provider_name=provider,
+                provider_name=OPENSHELL_VLLM_PROVIDER,
             ),
             timeout=sandbox_client._timeout,
         )
@@ -282,7 +257,7 @@ def sandbox(
         )
 
         session = SandboxSession(sandbox_client, sandbox_ref)  # noqa: FCN001
-        _write_opencode_config(session=session, model=model)
+        _write_opencode_config(session=session, model=OPENSHELL_VLLM_MODEL)
 
         yield session
     finally:
