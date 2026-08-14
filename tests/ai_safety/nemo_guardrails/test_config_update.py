@@ -29,7 +29,7 @@ from tests.ai_safety.nemo_guardrails.utils import send_request
     [pytest.param({"name": "test-nemo-guardrails"})],
     indirect=True,
 )
-@pytest.mark.usefixtures("patched_dsc_kserve_headed")
+@pytest.mark.usefixtures("session_patched_dsc_kserve_headed")
 class TestNemoGuardrailsConfigUpdate:
     """
     Tests for NeMo Guardrails configuration updates.
