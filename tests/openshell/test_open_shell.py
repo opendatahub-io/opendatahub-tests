@@ -48,7 +48,7 @@ class TestOpenShell:
         """
         LOGGER.info("Executing OpenCode proof-of-life prompt inside sandbox")
         result = sandbox.exec(
-            ["opencode", "run", "explain openshift in one sentence"],
+            ["opencode", "run", "--model", f"rhoai/{OPENSHELL_VLLM_MODEL}", "explain openshift in one sentence"],
             timeout_seconds=300,
         )
 

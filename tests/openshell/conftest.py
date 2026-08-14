@@ -31,12 +31,6 @@ _REQUIRED_ENV_VARS: dict[str, str] = {
     "OPENSHELL_VLLM_ENDPOINT": OPENSHELL_VLLM_ENDPOINT,
 }
 
-_OPENCODE_BUILD_HOSTS: list[str] = [
-    "opencode.ai",
-    "registry.npmjs.org",
-    "models.opencode.ai",
-]
-
 
 @pytest.fixture(scope="session")
 def skip_if_missing_open_shell_config() -> None:
@@ -61,7 +55,11 @@ def _build_tls_config() -> TlsConfig | None:
 
 
 def _opencode_config(model: str) -> dict:
-    """Build the opencode.json config for the given model."""
+    """Provide model metadata that OpenCode normally fetches from models.opencode.ai.
+
+    The sandbox cannot reach models.opencode.ai (403), so we supply the
+    provider + model definition explicitly.
+    """
     return {
         "$schema": "https://opencode.ai/config.json",
         "provider": {
@@ -70,26 +68,34 @@ def _opencode_config(model: str) -> dict:
                 "name": "RHOAI",
                 "options": {"baseURL": "https://inference.local/v1"},
                 "models": {
-                    model: {
-                        "name": model,
-                        "limit": {"context": 32768, "output": 4096},
-                    },
+                    model: {"name": model},
                 },
             },
         },
         "model": f"rhoai/{model}",
-        "small_model": f"rhoai/{model}",
     }
 
 
-# OpenCode requires an auth.json entry but the privacy router injects real credentials,
-# so the key value is never sent to the upstream provider.
-_OPENCODE_AUTH = {"rhoai": {"type": "api", "key": "unused"}}  # pragma: allowlist secret
+def _write_opencode_config(session: SandboxSession, model: str) -> None:
+    """Write opencode.json into the sandbox so OpenCode can resolve the model."""
+    LOGGER.info("Writing OpenCode config into sandbox")
+    session.exec(["mkdir", "-p", "/sandbox/.config/opencode"], timeout_seconds=5)
+    session.exec(
+        [
+            "sh",
+            "-c",
+            (
+                "cat > /sandbox/.config/opencode/opencode.json << 'EOFCONFIG'\n"
+                f"{json.dumps(_opencode_config(model), indent=2)}\nEOFCONFIG"
+            ),
+        ],
+        timeout_seconds=5,
+    )
 
 
 def _network_policy_rules() -> list[openshell_pb2.PolicyMergeOperation]:
-    """Build merge operations for inference.local and opencode build-time hosts."""
-    rules = [
+    """Build merge operations to allow sandbox egress to inference.local and models.opencode.ai."""
+    return [
         openshell_pb2.PolicyMergeOperation(
             add_rule=openshell_pb2.AddNetworkRule(
                 rule_name="inference",
@@ -99,21 +105,16 @@ def _network_policy_rules() -> list[openshell_pb2.PolicyMergeOperation]:
                 ),
             ),
         ),
-    ]
-    for host in _OPENCODE_BUILD_HOSTS:
-        rule_name = f"allow_{host.replace('.', '_')}"
-        rules.append(
-            openshell_pb2.PolicyMergeOperation(
-                add_rule=openshell_pb2.AddNetworkRule(
-                    rule_name=rule_name,
-                    rule=sandbox_pb2.NetworkPolicyRule(
-                        name=rule_name,
-                        endpoints=[sandbox_pb2.NetworkEndpoint(host=host, port=443)],
-                    ),
+        openshell_pb2.PolicyMergeOperation(
+            add_rule=openshell_pb2.AddNetworkRule(
+                rule_name="allow_models_opencode_ai",
+                rule=sandbox_pb2.NetworkPolicyRule(
+                    name="allow_models_opencode_ai",
+                    endpoints=[sandbox_pb2.NetworkEndpoint(host="models.opencode.ai", port=443)],
                 ),
             ),
-        )
-    return rules
+        ),
+    ]
 
 
 @pytest.fixture(scope="session")
@@ -214,34 +215,6 @@ def inference_route(sandbox_client: SandboxClient, vllm_provider: str, request: 
     )
 
 
-def _write_opencode_config(session: SandboxSession, model: str) -> None:
-    """Write opencode.json + auth.json into the sandbox at the XDG paths OpenCode expects."""
-    LOGGER.info("Writing OpenCode config files into sandbox")
-    session.exec(["mkdir", "-p", "/sandbox/.config/opencode", "/sandbox/.local/share/opencode"], timeout_seconds=5)
-    session.exec(
-        [
-            "sh",
-            "-c",
-            (
-                "cat > /sandbox/.config/opencode/opencode.json << 'EOFCONFIG'\n"
-                f"{json.dumps(_opencode_config(model), indent=2)}\nEOFCONFIG"
-            ),
-        ],
-        timeout_seconds=5,
-    )
-    session.exec(
-        [
-            "sh",
-            "-c",
-            (
-                "cat > /sandbox/.local/share/opencode/auth.json << 'EOFAUTH'\n"
-                f"{json.dumps(_OPENCODE_AUTH, indent=2)}\nEOFAUTH"
-            ),
-        ],
-        timeout_seconds=5,
-    )
-
-
 @pytest.fixture(scope="class")
 def sandbox(
     request: FixtureRequest,
@@ -249,7 +222,7 @@ def sandbox(
     inference_route: None,
     teardown_resources: bool,
 ) -> Generator[SandboxSession, Any, Any]:
-    """An OpenShell sandbox running OpenCode, routed through the OpenShell privacy router.
+    """An OpenShell sandbox routed through the privacy router.
 
     Accepts indirect parametrization with a dict containing:
     - ``provider`` (str): vLLM provider name (default: OPENSHELL_VLLM_PROVIDER env var)
@@ -257,8 +230,7 @@ def sandbox(
     - ``image`` (str): custom sandbox image override (default: OPENSHELL_SANDBOX_OPENCODE_IMAGE env var)
 
     Sets up the sandbox with:
-    - OpenCode config files (opencode.json + auth.json) at the expected XDG paths
-    - Network policy rules for inference.local and opencode's build-time dependencies
+    - Network policy rules for inference.local
     - The vLLM inference provider attached for credential injection
     - OPENAI_BASE_URL pointing to the privacy router
     """
