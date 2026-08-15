@@ -7,20 +7,20 @@ Validates inference using REST and gRPC protocols with raw deployment mode.
 from typing import Any
 
 import pytest
+import structlog
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
-from simple_logger.logger import get_logger
 
-from utilities.constants import Protocols
-from tests.model_serving.model_runtime.triton.basic_model_deployment.utils import validate_inference_request, load_json
+from tests.model_serving.model_runtime.triton.basic_model_deployment.utils import load_json, validate_inference_request
 from tests.model_serving.model_runtime.triton.constant import (
     BASE_RAW_DEPLOYMENT_CONFIG,
     MODEL_PATH_PREFIX,
     TRITON_GRPC_PYTORCH_INPUT_PATH,
     TRITON_REST_PYTORCH_INPUT_PATH,
 )
+from utilities.constants import Protocols
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 PYTORCH_MODEL_NAME = "resnet50"
 
@@ -31,31 +31,32 @@ pytestmark = pytest.mark.usefixtures(
 )
 
 
-@pytest.mark.sanity
 @pytest.mark.parametrize(
     ("protocol", "model_namespace", "s3_models_storage_uri", "triton_serving_runtime", "triton_inference_service"),
     [
         pytest.param(
             {"protocol_type": Protocols.REST},
-            {"name": "pytorch-raw"},
+            {"name": "pytorch-standard"},
             MODEL_STORAGE_URI_DICT,
             {**BASE_RAW_DEPLOYMENT_CONFIG},
             {
-                "name": "pytorch-raw-rest",
+                "name": "pytorch-standard-rest",
                 **BASE_RAW_DEPLOYMENT_CONFIG,
             },
-            id="pytorch-raw-rest-deployment",
+            id="pytorch-standard-rest-deployment",
+            marks=pytest.mark.tier1,
         ),
         pytest.param(
             {"protocol_type": Protocols.GRPC},
-            {"name": "pytorch-raw"},
+            {"name": "pytorch-standard"},
             MODEL_STORAGE_URI_DICT,
             {**BASE_RAW_DEPLOYMENT_CONFIG},
             {
-                "name": "pytorch-raw-grpc",
+                "name": "pytorch-standard-grpc",
                 **BASE_RAW_DEPLOYMENT_CONFIG,
             },
-            id="pytorch-raw-grpc-deployment",
+            id="pytorch-standard-grpc-deployment",
+            marks=pytest.mark.tier1,
         ),
     ],
     indirect=True,

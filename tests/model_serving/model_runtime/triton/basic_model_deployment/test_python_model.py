@@ -7,20 +7,20 @@ Validates inference using REST and gRPC protocols with raw deployment mode.
 from typing import Any
 
 import pytest
+import structlog
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
-from simple_logger.logger import get_logger
 
-from utilities.constants import Protocols
-from tests.model_serving.model_runtime.triton.basic_model_deployment.utils import validate_inference_request, load_json
+from tests.model_serving.model_runtime.triton.basic_model_deployment.utils import load_json, validate_inference_request
 from tests.model_serving.model_runtime.triton.constant import (
     BASE_RAW_DEPLOYMENT_CONFIG,
     MODEL_PATH_PREFIX,
     TRITON_GRPC_PYTHON_INPUT_PATH,
     TRITON_REST_PYTHON_INPUT_PATH,
 )
+from utilities.constants import Protocols
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 PYTHON_MODEL_NAME = "python"
 
@@ -36,25 +36,27 @@ pytestmark = pytest.mark.usefixtures(
     [
         pytest.param(
             {"protocol_type": Protocols.REST},
-            {"name": "python-raw"},
+            {"name": "python-standard"},
             MODEL_STORAGE_URI_DICT,
             {**BASE_RAW_DEPLOYMENT_CONFIG},
             {
-                "name": "python-raw-rest",
+                "name": "python-standard-rest",
                 **BASE_RAW_DEPLOYMENT_CONFIG,
             },
-            id="python-raw-rest-deployment",
+            id="python-standard-rest-deployment",
+            marks=pytest.mark.tier1,
         ),
         pytest.param(
             {"protocol_type": Protocols.GRPC},
-            {"name": "python-raw"},
+            {"name": "python-standard"},
             MODEL_STORAGE_URI_DICT,
             {**BASE_RAW_DEPLOYMENT_CONFIG},
             {
-                "name": "python-raw-grpc",
+                "name": "python-standard-grpc",
                 **BASE_RAW_DEPLOYMENT_CONFIG,
             },
-            id="python-raw-grpc-deployment",
+            id="python-standard-grpc-deployment",
+            marks=pytest.mark.tier1,
         ),
     ],
     indirect=True,

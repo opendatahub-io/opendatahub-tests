@@ -7,20 +7,20 @@ Validates inference using REST and gRPC protocols with raw deployment mode.
 from typing import Any
 
 import pytest
+import structlog
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
-from simple_logger.logger import get_logger
 
-from utilities.constants import Protocols
-from tests.model_serving.model_runtime.triton.basic_model_deployment.utils import validate_inference_request, load_json
+from tests.model_serving.model_runtime.triton.basic_model_deployment.utils import load_json, validate_inference_request
 from tests.model_serving.model_runtime.triton.constant import (
     BASE_RAW_DEPLOYMENT_CONFIG,
     MODEL_PATH_PREFIX,
     TRITON_GRPC_ONNX_INPUT_PATH,
     TRITON_REST_ONNX_INPUT_PATH,
 )
+from utilities.constants import Protocols
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 ONNX_MODEL_NAME = "densenetonnx"
 
@@ -31,31 +31,32 @@ pytestmark = pytest.mark.usefixtures(
 )
 
 
-@pytest.mark.sanity
 @pytest.mark.parametrize(
     ("protocol", "model_namespace", "s3_models_storage_uri", "triton_serving_runtime", "triton_inference_service"),
     [
         pytest.param(
             {"protocol_type": Protocols.REST},
-            {"name": "onnx-raw"},
+            {"name": "onnx-standard"},
             MODEL_STORAGE_URI_DICT,
             {**BASE_RAW_DEPLOYMENT_CONFIG},
             {
-                "name": "densenetonnx-raw-rest",
+                "name": "densenetonnx-standard-rest",
                 **BASE_RAW_DEPLOYMENT_CONFIG,
             },
-            id="densenetonnx-raw-rest-deployment",
+            id="densenetonnx-standard-rest-deployment",
+            marks=pytest.mark.tier1,
         ),
         pytest.param(
             {"protocol_type": Protocols.GRPC},
-            {"name": "onnx-raw"},
+            {"name": "onnx-standard"},
             MODEL_STORAGE_URI_DICT,
             {**BASE_RAW_DEPLOYMENT_CONFIG},
             {
-                "name": "densenetonnx-raw-grpc",
+                "name": "densenetonnx-standard-grpc",
                 **BASE_RAW_DEPLOYMENT_CONFIG,
             },
-            id="densenetonnx-raw-grpc-deployment",
+            id="densenetonnx-standard-grpc-deployment",
+            marks=pytest.mark.tier1,
         ),
     ],
     indirect=True,

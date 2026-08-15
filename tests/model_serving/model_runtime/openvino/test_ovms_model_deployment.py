@@ -13,11 +13,10 @@ from simple_logger.logger import get_logger
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
 
-from utilities.constants import Protocols, ModelFormat
+from utilities.constants import KServeDeploymentType, ModelFormat, Protocols
 
 from tests.model_serving.model_runtime.openvino.constant import (
     MODEL_CONFIGS,
-    RAW_DEPLOYMENT_TYPE,
     REST_PROTOCOL_TYPE_DICT,
 )
 
@@ -50,16 +49,20 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
             REST_PROTOCOL_TYPE_DICT,
             get_model_namespace_dict(
                 model_format_name=ModelFormat.ONNX,
-                deployment_type=RAW_DEPLOYMENT_TYPE,
+                deployment_mode=KServeDeploymentType.STANDARD,
                 protocol_type=Protocols.REST,
             ),
-            get_deployment_config_dict(model_format_name=ModelFormat.ONNX, deployment_type=RAW_DEPLOYMENT_TYPE),
+            get_deployment_config_dict(
+                model_format_name=ModelFormat.ONNX, deployment_mode=KServeDeploymentType.STANDARD
+            ),
             get_model_storage_uri_dict(model_format_name=ModelFormat.ONNX),
-            get_deployment_config_dict(model_format_name=ModelFormat.ONNX, deployment_type=RAW_DEPLOYMENT_TYPE),
+            get_deployment_config_dict(
+                model_format_name=ModelFormat.ONNX, deployment_mode=KServeDeploymentType.STANDARD
+            ),
             ModelFormat.ONNX,
             id=get_test_case_id(
                 model_format_name=ModelFormat.ONNX,
-                deployment_type=RAW_DEPLOYMENT_TYPE,
+                deployment_mode=KServeDeploymentType.STANDARD,
                 protocol_type=Protocols.REST,
             ),
         ),
@@ -67,16 +70,20 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
             REST_PROTOCOL_TYPE_DICT,
             get_model_namespace_dict(
                 model_format_name=ModelFormat.TENSORFLOW,
-                deployment_type=RAW_DEPLOYMENT_TYPE,
+                deployment_mode=KServeDeploymentType.STANDARD,
                 protocol_type=Protocols.REST,
             ),
-            get_deployment_config_dict(model_format_name=ModelFormat.TENSORFLOW, deployment_type=RAW_DEPLOYMENT_TYPE),
+            get_deployment_config_dict(
+                model_format_name=ModelFormat.TENSORFLOW, deployment_mode=KServeDeploymentType.STANDARD
+            ),
             get_model_storage_uri_dict(model_format_name=ModelFormat.TENSORFLOW),
-            get_deployment_config_dict(model_format_name=ModelFormat.TENSORFLOW, deployment_type=RAW_DEPLOYMENT_TYPE),
+            get_deployment_config_dict(
+                model_format_name=ModelFormat.TENSORFLOW, deployment_mode=KServeDeploymentType.STANDARD
+            ),
             ModelFormat.TENSORFLOW,
             id=get_test_case_id(
                 model_format_name=ModelFormat.TENSORFLOW,
-                deployment_type=RAW_DEPLOYMENT_TYPE,
+                deployment_mode=KServeDeploymentType.STANDARD,
                 protocol_type=Protocols.REST,
             ),
         ),
@@ -84,16 +91,20 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
             REST_PROTOCOL_TYPE_DICT,
             get_model_namespace_dict(
                 model_format_name=ModelFormat.OPENVINO,
-                deployment_type=RAW_DEPLOYMENT_TYPE,
+                deployment_mode=KServeDeploymentType.STANDARD,
                 protocol_type=Protocols.REST,
             ),
-            get_deployment_config_dict(model_format_name=ModelFormat.OPENVINO, deployment_type=RAW_DEPLOYMENT_TYPE),
+            get_deployment_config_dict(
+                model_format_name=ModelFormat.OPENVINO, deployment_mode=KServeDeploymentType.STANDARD
+            ),
             get_model_storage_uri_dict(model_format_name=ModelFormat.OPENVINO),
-            get_deployment_config_dict(model_format_name=ModelFormat.OPENVINO, deployment_type=RAW_DEPLOYMENT_TYPE),
+            get_deployment_config_dict(
+                model_format_name=ModelFormat.OPENVINO, deployment_mode=KServeDeploymentType.STANDARD
+            ),
             ModelFormat.OPENVINO,
             id=get_test_case_id(
                 model_format_name=ModelFormat.OPENVINO,
-                deployment_type=RAW_DEPLOYMENT_TYPE,
+                deployment_mode=KServeDeploymentType.STANDARD,
                 protocol_type=Protocols.REST,
             ),
         ),

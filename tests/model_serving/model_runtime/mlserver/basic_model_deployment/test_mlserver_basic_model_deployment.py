@@ -12,11 +12,10 @@ import pytest
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
 
-from utilities.constants import ModelFormat, Protocols
+from utilities.constants import KServeDeploymentType, ModelFormat, Protocols
 
 from tests.model_serving.model_runtime.mlserver.constant import (
     MODEL_CONFIGS,
-    RAW_DEPLOYMENT_TYPE,
 )
 
 from tests.model_serving.model_runtime.mlserver.utils import (
@@ -41,45 +40,64 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
     ),
     [
         pytest.param(
-            get_model_namespace_dict(
-                model_format_name=ModelFormat.LIGHTGBM,
-                deployment_type=RAW_DEPLOYMENT_TYPE,
+            get_model_namespace_dict(model_format_name=ModelFormat.LIGHTGBM),
+            get_deployment_config_dict(
+                model_format_name=ModelFormat.LIGHTGBM, deployment_mode=KServeDeploymentType.STANDARD
             ),
-            get_deployment_config_dict(model_format_name=ModelFormat.LIGHTGBM, deployment_type=RAW_DEPLOYMENT_TYPE),
             get_model_storage_uri_dict(model_format_name=ModelFormat.LIGHTGBM),
-            get_deployment_config_dict(model_format_name=ModelFormat.LIGHTGBM, deployment_type=RAW_DEPLOYMENT_TYPE),
+            get_deployment_config_dict(
+                model_format_name=ModelFormat.LIGHTGBM, deployment_mode=KServeDeploymentType.STANDARD
+            ),
             ModelFormat.LIGHTGBM,
             id=get_test_case_id(
                 model_format_name=ModelFormat.LIGHTGBM,
-                deployment_type=RAW_DEPLOYMENT_TYPE,
+                deployment_mode=KServeDeploymentType.STANDARD,
             ),
         ),
         pytest.param(
-            get_model_namespace_dict(
-                model_format_name=ModelFormat.SKLEARN,
-                deployment_type=RAW_DEPLOYMENT_TYPE,
+            get_model_namespace_dict(model_format_name=ModelFormat.ONNX),
+            get_deployment_config_dict(
+                model_format_name=ModelFormat.ONNX, deployment_mode=KServeDeploymentType.STANDARD
             ),
-            get_deployment_config_dict(model_format_name=ModelFormat.SKLEARN, deployment_type=RAW_DEPLOYMENT_TYPE),
+            get_model_storage_uri_dict(model_format_name=ModelFormat.ONNX),
+            get_deployment_config_dict(
+                model_format_name=ModelFormat.ONNX, deployment_mode=KServeDeploymentType.STANDARD
+            ),
+            ModelFormat.ONNX,
+            id=get_test_case_id(
+                model_format_name=ModelFormat.ONNX,
+                deployment_mode=KServeDeploymentType.STANDARD,
+            ),
+            marks=pytest.mark.tier1,
+        ),
+        pytest.param(
+            get_model_namespace_dict(model_format_name=ModelFormat.SKLEARN),
+            get_deployment_config_dict(
+                model_format_name=ModelFormat.SKLEARN, deployment_mode=KServeDeploymentType.STANDARD
+            ),
             get_model_storage_uri_dict(model_format_name=ModelFormat.SKLEARN),
-            get_deployment_config_dict(model_format_name=ModelFormat.SKLEARN, deployment_type=RAW_DEPLOYMENT_TYPE),
+            get_deployment_config_dict(
+                model_format_name=ModelFormat.SKLEARN, deployment_mode=KServeDeploymentType.STANDARD
+            ),
             ModelFormat.SKLEARN,
             id=get_test_case_id(
                 model_format_name=ModelFormat.SKLEARN,
-                deployment_type=RAW_DEPLOYMENT_TYPE,
+                deployment_mode=KServeDeploymentType.STANDARD,
             ),
         ),
         pytest.param(
-            get_model_namespace_dict(
-                model_format_name=ModelFormat.XGBOOST,
-                deployment_type=RAW_DEPLOYMENT_TYPE,
+            get_model_namespace_dict(model_format_name=ModelFormat.XGBOOST),
+            get_deployment_config_dict(
+                model_format_name=ModelFormat.XGBOOST, deployment_mode=KServeDeploymentType.STANDARD
             ),
-            get_deployment_config_dict(model_format_name=ModelFormat.XGBOOST, deployment_type=RAW_DEPLOYMENT_TYPE),
             get_model_storage_uri_dict(model_format_name=ModelFormat.XGBOOST),
-            get_deployment_config_dict(model_format_name=ModelFormat.XGBOOST, deployment_type=RAW_DEPLOYMENT_TYPE),
+            get_deployment_config_dict(
+                model_format_name=ModelFormat.XGBOOST, deployment_mode=KServeDeploymentType.STANDARD
+            ),
             ModelFormat.XGBOOST,
             id=get_test_case_id(
                 model_format_name=ModelFormat.XGBOOST,
-                deployment_type=RAW_DEPLOYMENT_TYPE,
+                deployment_mode=KServeDeploymentType.STANDARD,
             ),
         ),
     ],
