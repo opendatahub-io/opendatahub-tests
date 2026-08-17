@@ -151,6 +151,31 @@ def lifecycle_signals_tenant_rbac(
         raise RuntimeError(f"Operator RBAC not provisioned in {lifecycle_signals_namespace.name} within 120s") from exc
 
 
+@pytest.fixture(scope="class")
+def lifecycle_signals_tenant_a_rbac(
+    admin_client: DynamicClient,
+    tenant_a_namespace: Namespace,
+    lifecycle_signals_deployment: Deployment,
+) -> None:
+    """Wait for operator to provision EvalHub job RBAC in tenant-a for lifecycle signals."""
+    try:
+        for ready in TimeoutSampler(
+            wait_timeout=120,
+            sleep=5,
+            func=tenant_rbac_ready,
+            admin_client=admin_client,
+            namespace=tenant_a_namespace.name,
+            evalhub_instance_name=LIFECYCLE_SIGNALS_CR_NAME,
+        ):
+            if ready:
+                LOGGER.info(f"Operator RBAC provisioned in {tenant_a_namespace.name}")
+                return
+    except TimeoutExpiredError as exc:
+        raise RuntimeError(
+            f"Operator RBAC not provisioned in {tenant_a_namespace.name} within 120s"
+        ) from exc
+
+
 @pytest.fixture(scope="session")
 def lifecycle_signals_route(
     admin_client: DynamicClient,

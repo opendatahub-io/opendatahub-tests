@@ -134,9 +134,10 @@ class TestRbacVerification:
         lifecycle_signals_ready: None,
         lifecycle_signals_route: Route,
         lifecycle_signals_ca_bundle_file: str,
-        lifecycle_signals_token: str,
         lifecycle_signals_namespace: Namespace,
         lifecycle_signals_vllm_service: Service,
+        lifecycle_signals_tenant_a_rbac: None,
+        tenant_a_token: str,
         tenant_a_namespace: Namespace,
         tenant_b_namespace: Namespace,
     ) -> None:
@@ -145,28 +146,40 @@ class TestRbacVerification:
         then the tenant-a EvaluationStarted Event appears in tenant-a but not in tenant-b."""
         host = lifecycle_signals_route.host
         lifecycle_ns = lifecycle_signals_namespace.name
+        tenant_a_ns = tenant_a_namespace.name
         payload = build_evalhub_job_payload(
             model_service_name=lifecycle_signals_vllm_service.name,
             tenant_namespace=lifecycle_ns,
             job_name="tc-rbac-004",
         )
-        job_id = submit_evalhub_job(host, lifecycle_signals_token, lifecycle_signals_ca_bundle_file, lifecycle_ns, payload)["resource"]["id"]
-        job_name = wait_for_evaluation_job_name(admin_client, lifecycle_ns, job_id)
-        wait_for_event(admin_client, job_name, lifecycle_ns, LIFECYCLE_REASON_STARTED)
+        job_id = submit_evalhub_job(
+            host,
+            tenant_a_token,
+            lifecycle_signals_ca_bundle_file,
+            tenant_a_ns,
+            payload,
+        )["resource"]["id"]
+        job_name = wait_for_evaluation_job_name(admin_client, tenant_a_ns, job_id)
+        wait_for_event(admin_client, job_name, tenant_a_ns, LIFECYCLE_REASON_STARTED)
 
-        lifecycle_events = list_events_for_job(admin_client, job_name, lifecycle_ns, reason=LIFECYCLE_REASON_STARTED)
-
-        tenant_a_events = list_events_for_job(admin_client, job_name, tenant_a_namespace.name, reason=LIFECYCLE_REASON_STARTED)
-        tenant_b_events = list_events_for_job(admin_client, job_name, tenant_b_namespace.name, reason=LIFECYCLE_REASON_STARTED)
-
-        assert lifecycle_events, (
-            f"Expected EvaluationStarted Event in {lifecycle_ns}, found none"
+        lifecycle_events = list_events_for_job(
+            admin_client, job_name, lifecycle_ns, reason=LIFECYCLE_REASON_STARTED
         )
-        assert not tenant_a_events, (
-            f"Event for job {job_name} should not appear in {tenant_a_namespace.name}; "
-            f"found {len(tenant_a_events)} event(s)"
+        tenant_a_events = list_events_for_job(
+            admin_client, job_name, tenant_a_ns, reason=LIFECYCLE_REASON_STARTED
+        )
+        tenant_b_events = list_events_for_job(
+            admin_client, job_name, tenant_b_namespace.name, reason=LIFECYCLE_REASON_STARTED
+        )
+
+        assert tenant_a_events, (
+            f"Expected EvaluationStarted Event in {tenant_a_ns}, found none"
         )
         assert not tenant_b_events, (
             f"Event for job {job_name} should not appear in {tenant_b_namespace.name}; "
             f"found {len(tenant_b_events)} event(s)"
+        )
+        assert not lifecycle_events, (
+            f"Event for job {job_name} should not appear in {lifecycle_ns}; "
+            f"found {len(lifecycle_events)} event(s)"
         )
