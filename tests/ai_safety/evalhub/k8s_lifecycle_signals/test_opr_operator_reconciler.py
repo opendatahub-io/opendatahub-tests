@@ -95,18 +95,17 @@ class TestOprOperatorReconciler:
             reason=LIFECYCLE_REASON_FAILED,
         )
         operator_events = filter_events_by_source(events=events, source_component=LIFECYCLE_SOURCE_OPERATOR)
-        event = operator_events[0]
-
         assert operator_events, "Expected at least one EvaluationFailed Event from the operator (not evalhub-server)"
+        event = operator_events[0]
         assert event.get("type") == "Warning", (
             f"Expected type=Warning for OOM EvaluationFailed, got {event.get('type')}"
         )
-        operator_component = (operator_events[0].get("source") or {}).get("component")
+        operator_component = (event.get("source") or {}).get("component")
         assert operator_component, "Expected non-empty source.component on operator Event"
         assert operator_component != LIFECYCLE_SOURCE_SERVER, (
             f"Operator Event should not have source.component={LIFECYCLE_SOURCE_SERVER}"
         )
-        assert operator_events[0].get("message"), "Expected non-empty message referencing OOM failure"
+        assert event.get("message"), "Expected non-empty message referencing OOM failure"
 
     @pytest.mark.smoke
     def test_opr_002_operator_emits_failed_event_for_image_pull_failure(
