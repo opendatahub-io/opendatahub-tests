@@ -346,12 +346,19 @@ class TestEvtEventEmission:
             (fail_job, LIFECYCLE_REASON_FAILED, "Warning"),
             (threshold_job, LIFECYCLE_REASON_THRESHOLD_VIOLATED, "Warning"),
         ]:
+            wait_for_event(
+                admin_client=admin_client,
+                job_name=job_name,
+                namespace=ns,
+                reason=reason,
+            )
             events = list_events_for_job(
                 admin_client=admin_client,
                 job_name=job_name,
                 namespace=ns,
                 reason=reason,
             )
+            assert events, f"Expected at least one event for reason={reason} on job {job_name}"
             for event in events:
                 assert event.get("type") == expected_type, (
                     f"Reason={reason} should have type={expected_type}, got {event.get('type')}"
