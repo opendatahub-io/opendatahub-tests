@@ -124,24 +124,20 @@ class TestEvtEventEmission:
             tenant_namespace=ns,
             job_name="tc-evt-002",
         )
-        job_id = submit_evalhub_job(
+        job_id, job_name = submit_evalhub_job_and_capture_runtime_job(
+            admin_client=admin_client,
             host=host,
             token=lifecycle_signals_token,
             ca_bundle_file=lifecycle_signals_ca_bundle_file,
             tenant=ns,
             payload=payload,
-        )["resource"]["id"]
+        )
         wait_for_evalhub_job(
             host=host,
             token=lifecycle_signals_token,
             ca_bundle_file=lifecycle_signals_ca_bundle_file,
             tenant=ns,
             job_id=job_id,
-        )
-        job_name = wait_for_evaluation_job_name(
-            admin_client=admin_client,
-            namespace=ns,
-            evalhub_job_id=job_id,
         )
 
         event = wait_for_event(
@@ -242,24 +238,20 @@ class TestEvtEventEmission:
             namespace=ns,
             job_name="tc-evt-004",
         )
-        job_id = submit_evalhub_job(
+        job_id, job_name = submit_evalhub_job_and_capture_runtime_job(
+            admin_client=admin_client,
             host=host,
             token=lifecycle_signals_token,
             ca_bundle_file=lifecycle_signals_ca_bundle_file,
             tenant=ns,
             payload=payload,
-        )["resource"]["id"]
+        )
         wait_for_evalhub_job(
             host=host,
             token=lifecycle_signals_token,
             ca_bundle_file=lifecycle_signals_ca_bundle_file,
             tenant=ns,
             job_id=job_id,
-        )
-        job_name = wait_for_evaluation_job_name(
-            admin_client=admin_client,
-            namespace=ns,
-            evalhub_job_id=job_id,
         )
 
         event = wait_for_event(
@@ -459,24 +451,20 @@ class TestEvtEventEmission:
             tenant_namespace=ns,
             job_name="tc-evt-007",
         )
-        job_id = submit_evalhub_job(
+        job_id, job_name = submit_evalhub_job_and_capture_runtime_job(
+            admin_client=admin_client,
             host=host,
             token=lifecycle_signals_token,
             ca_bundle_file=lifecycle_signals_ca_bundle_file,
             tenant=ns,
             payload=payload,
-        )["resource"]["id"]
+        )
         wait_for_evalhub_job(
             host=host,
             token=lifecycle_signals_token,
             ca_bundle_file=lifecycle_signals_ca_bundle_file,
             tenant=ns,
             job_id=job_id,
-        )
-        job_name = wait_for_evaluation_job_name(
-            admin_client=admin_client,
-            namespace=ns,
-            evalhub_job_id=job_id,
         )
 
         events = list_events_for_job(

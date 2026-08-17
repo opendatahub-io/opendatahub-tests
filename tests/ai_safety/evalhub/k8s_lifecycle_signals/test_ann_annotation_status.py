@@ -20,6 +20,7 @@ from tests.ai_safety.evalhub.k8s_lifecycle_signals.constants import (
 from tests.ai_safety.evalhub.k8s_lifecycle_signals.utils import (
     get_job_annotation,
     parse_status_annotation,
+    submit_evalhub_job_and_capture_runtime_job,
     wait_for_evaluation_job_name,
     wait_for_job_label,
     wait_for_success_phase_signals,
@@ -60,11 +61,15 @@ class TestAnnAnnotationStatus:
             tenant_namespace=ns,
             job_name="tc-ann-001",
         )
-        job_id = submit_evalhub_job(host, lifecycle_signals_token, lifecycle_signals_ca_bundle_file, ns, payload)[
-            "resource"
-        ]["id"]
+        job_id, job_name = submit_evalhub_job_and_capture_runtime_job(
+            admin_client=admin_client,
+            host=host,
+            token=lifecycle_signals_token,
+            ca_bundle_file=lifecycle_signals_ca_bundle_file,
+            tenant=ns,
+            payload=payload,
+        )
         wait_for_evalhub_job(host, lifecycle_signals_token, lifecycle_signals_ca_bundle_file, ns, job_id)
-        job_name = wait_for_evaluation_job_name(admin_client, ns, job_id)
 
         raw = get_job_annotation(admin_client, job_name, ns, LIFECYCLE_STATUS_ANNOTATION)
 
@@ -96,11 +101,15 @@ class TestAnnAnnotationStatus:
             tenant_namespace=ns,
             job_name="tc-ann-002",
         )
-        job_id = submit_evalhub_job(host, lifecycle_signals_token, lifecycle_signals_ca_bundle_file, ns, payload)[
-            "resource"
-        ]["id"]
+        job_id, job_name = submit_evalhub_job_and_capture_runtime_job(
+            admin_client=admin_client,
+            host=host,
+            token=lifecycle_signals_token,
+            ca_bundle_file=lifecycle_signals_ca_bundle_file,
+            tenant=ns,
+            payload=payload,
+        )
         wait_for_evalhub_job(host, lifecycle_signals_token, lifecycle_signals_ca_bundle_file, ns, job_id)
-        job_name = wait_for_evaluation_job_name(admin_client, ns, job_id)
 
         raw = get_job_annotation(admin_client, job_name, ns, LIFECYCLE_STATUS_ANNOTATION)
         assert raw is not None, f"Missing annotation {LIFECYCLE_STATUS_ANNOTATION}"
@@ -200,11 +209,15 @@ class TestAnnAnnotationStatus:
             tenant_namespace=ns,
             job_name="tc-ann-004",
         )
-        job_id = submit_evalhub_job(host, lifecycle_signals_token, lifecycle_signals_ca_bundle_file, ns, payload)[
-            "resource"
-        ]["id"]
+        job_id, job_name = submit_evalhub_job_and_capture_runtime_job(
+            admin_client=admin_client,
+            host=host,
+            token=lifecycle_signals_token,
+            ca_bundle_file=lifecycle_signals_ca_bundle_file,
+            tenant=ns,
+            payload=payload,
+        )
         wait_for_evalhub_job(host, lifecycle_signals_token, lifecycle_signals_ca_bundle_file, ns, job_id)
-        job_name = wait_for_evaluation_job_name(admin_client, ns, job_id)
 
         raw = get_job_annotation(admin_client, job_name, ns, LIFECYCLE_STATUS_ANNOTATION)
         assert raw is not None, f"Missing annotation {LIFECYCLE_STATUS_ANNOTATION}"
