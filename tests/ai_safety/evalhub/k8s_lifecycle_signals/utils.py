@@ -363,13 +363,14 @@ def list_events_for_job(
     if reason:
         field_selector += f",reason={reason}"
 
-    events = list(
-        Event.list(
+    events = [
+        event.to_dict()
+        for event in Event.list(
             client=admin_client,
             namespace=namespace,
             field_selector=field_selector,
         )
-    )
+    ]
 
     if source_component:
         events = filter_events_by_source(events=events, source_component=source_component)
@@ -735,9 +736,9 @@ def find_evalhub_events_role_binding(
         if binding.name.startswith(evalhub_cr_name)
         and binding.instance.roleRef.name == EVALHUB_EVENTS_CLUSTERROLE
         and any(
-            subject.get("kind") == "ServiceAccount"
-            and subject.get("name") == evalhub_sa_name
-            and subject.get("namespace") == evalhub_sa_namespace
+            subject.kind == "ServiceAccount"
+            and subject.name == evalhub_sa_name
+            and subject.namespace == evalhub_sa_namespace
             for subject in (binding.instance.subjects or [])
         )
     ]
@@ -803,13 +804,15 @@ def wait_until_events_create_denied(
         for denied in TimeoutSampler(
             wait_timeout=timeout,
             sleep=2,
-            func=lambda: not check_rbac_can_i(
-                admin_client=admin_client,
-                verb="create",
-                resource="events",
-                sa_namespace=evalhub_sa_namespace,
-                sa_name=evalhub_sa_name,
-                target_namespace=tenant_namespace,
+            func=lambda: (
+                not check_rbac_can_i(
+                    admin_client=admin_client,
+                    verb="create",
+                    resource="events",
+                    sa_namespace=evalhub_sa_namespace,
+                    sa_name=evalhub_sa_name,
+                    target_namespace=tenant_namespace,
+                )
             ),
         ):
             if denied:
