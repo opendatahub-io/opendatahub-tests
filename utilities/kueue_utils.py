@@ -9,12 +9,15 @@ from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.pod import Pod
-from ocp_resources.resource import MissingRequiredArgumentError, NamespacedResource, Resource
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
 
 from utilities.constants import Timeout
 from utilities.resources.admission_check import AdmissionCheck
+from utilities.resources.cluster_queue import ClusterQueue
+from utilities.resources.local_queue import LocalQueue
+from utilities.resources.resource_flavor import ResourceFlavor
+from utilities.resources.workload import Workload
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -40,146 +43,6 @@ def is_kueue_operator_installed(admin_client: DynamicClient) -> bool:
         return False
     except ResourceNotFoundError:
         return False
-
-
-class ResourceFlavor(Resource):
-    """Kueue ResourceFlavor resource."""
-
-    api_group: str = "kueue.x-k8s.io"
-    api_version: str = "kueue.x-k8s.io/v1beta2"
-
-    def __init__(self, **kwargs: Any):
-        """
-        Args:
-            kwargs: Keyword arguments to pass to the ResourceFlavor constructor
-        """
-        super().__init__(
-            **kwargs,
-        )
-
-    def to_dict(self) -> None:
-        super().to_dict()
-        if not self.kind_dict and not self.yaml_file:
-            self.res["spec"] = {}
-
-
-class LocalQueue(NamespacedResource):
-    """Kueue LocalQueue resource."""
-
-    api_group: str = "kueue.x-k8s.io"
-    api_version: str = "kueue.x-k8s.io/v1beta2"
-
-    def __init__(
-        self,
-        cluster_queue: str,
-        **kwargs: Any,
-    ):
-        """
-        Args:
-            cluster_queue: Name of the cluster queue to use
-            kwargs: Keyword arguments to pass to the LocalQueue constructor
-        """
-        super().__init__(
-            **kwargs,
-        )
-        self.cluster_queue = cluster_queue
-
-    def to_dict(self) -> None:
-        super().to_dict()
-        if not self.kind_dict and not self.yaml_file:
-            if not self.cluster_queue:
-                raise MissingRequiredArgumentError(argument="cluster_queue")
-            self.res["spec"] = {}
-            _spec = self.res["spec"]
-            _spec["clusterQueue"] = self.cluster_queue
-
-
-class ClusterQueue(Resource):
-    """Kueue ClusterQueue resource."""
-
-    api_group: str = "kueue.x-k8s.io"
-    api_version: str = "kueue.x-k8s.io/v1beta2"
-
-    def __init__(
-        self,
-        namespace_selector: dict[str, Any] | None = None,
-        resource_groups: list[dict[str, Any]] | None = None,
-        admission_checks: list[str] | None = None,
-        **kwargs: Any,
-    ):
-        """
-        Args:
-            namespace_selector: Namespace selector to use
-            resource_groups: Resource groups to use
-            admission_checks: List of AdmissionCheck names to require on this queue
-            kwargs: Keyword arguments to pass to the ClusterQueue constructor
-        """
-        super().__init__(
-            **kwargs,
-        )
-        self.namespace_selector = namespace_selector
-        self.resource_groups = resource_groups
-        self.admission_checks = admission_checks
-
-    def to_dict(self) -> None:
-        super().to_dict()
-        if not self.kind_dict and not self.yaml_file:
-            if not self.resource_groups:
-                raise MissingRequiredArgumentError(argument="resource_groups")
-            self.res["spec"] = {}
-            _spec = self.res["spec"]
-            if self.namespace_selector is not None:
-                _spec["namespaceSelector"] = self.namespace_selector
-            else:
-                _spec["namespaceSelector"] = {}
-            if self.resource_groups:
-                _spec["resourceGroups"] = self.resource_groups
-            if self.admission_checks:
-                _spec["admissionChecksStrategy"] = {
-                    "admissionChecks": [{"name": ac} for ac in self.admission_checks],
-                }
-
-
-class Workload(NamespacedResource):
-    """Kueue Workload resource (kueue.x-k8s.io/v1beta2)."""
-
-    api_group: str = "kueue.x-k8s.io"
-    api_version: str = "kueue.x-k8s.io/v1beta2"
-
-
-class Kueue(Resource):
-    """Kueue CR of the Red Hat build of Kueue operator (kueue.openshift.io/v1)."""
-
-    api_group: str = "kueue.openshift.io"
-    api_version: str = "kueue.openshift.io/v1"
-
-    def __init__(
-        self,
-        config: dict[str, Any] | None = None,
-        management_state: str | None = None,
-        **kwargs: Any,
-    ):
-        """
-        Args:
-            config: Kueue controller configuration (e.g. framework integrations)
-            management_state: managementState for the Kueue controller
-            kwargs: Keyword arguments to pass to the Kueue constructor
-        """
-        super().__init__(
-            **kwargs,
-        )
-        self.config = config
-        self.management_state = management_state
-
-    def to_dict(self) -> None:
-        super().to_dict()
-        if not self.kind_dict and not self.yaml_file:
-            self.res["spec"] = {}
-            _spec = self.res["spec"]
-            if self.config is not None:
-                _spec["config"] = self.config
-            if self.management_state is not None:
-                _spec["managementState"] = self.management_state
 
 
 @contextmanager
