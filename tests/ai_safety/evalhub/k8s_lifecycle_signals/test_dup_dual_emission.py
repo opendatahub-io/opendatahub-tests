@@ -5,6 +5,8 @@ per failure, that the operator checks the server-set label before emitting, and
 that both emitters use consistent reason codes.
 """
 
+import time
+
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
@@ -12,6 +14,7 @@ from ocp_resources.route import Route
 from ocp_resources.service import Service
 
 from tests.ai_safety.evalhub.k8s_lifecycle_signals.constants import (
+    LIFECYCLE_EVENT_EMISSION_TIMEOUT,
     LIFECYCLE_REASON_FAILED,
     LIFECYCLE_SOURCE_OPERATOR,
     LIFECYCLE_SOURCE_SERVER,
@@ -83,6 +86,7 @@ class TestDupDualEmission:
             reason=LIFECYCLE_REASON_FAILED,
             timeout=60,
         )
+        time.sleep(LIFECYCLE_EVENT_EMISSION_TIMEOUT)
         all_failed_events = list_events_for_job(
             admin_client=admin_client,
             job_name=job_name,
