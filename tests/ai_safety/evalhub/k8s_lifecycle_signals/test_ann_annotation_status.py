@@ -36,8 +36,17 @@ from tests.ai_safety.evalhub.utils import (
 class TestAnnAnnotationStatus:
     """TC-ANN: trustyai.opendatahub.io/evaluation-status annotation verification.
 
-    Verifies that the status annotation is present, valid JSON, contains required fields,
-    is updated at lifecycle transitions, and stays within the 256 KB Kubernetes limit.
+    Verifies that the status annotation is present on evaluation batch Jobs, contains
+    valid JSON with required fields, is updated at each lifecycle transition, and stays
+    within the 256 KB Kubernetes limit.
+
+    Given a session-scoped EvalHub deployment with lifecycle signals fixtures ready and
+    an evaluation job submitted through the EvalHub API in the tenant namespace,
+    When the trustyai.opendatahub.io/evaluation-status annotation is read from the
+    runtime batch Job,
+    Then the annotation is valid JSON with required fields (phase, timestamp,
+    evaluationId, summaryMetrics), reflects lifecycle transitions, and remains below
+    the 262144-byte Kubernetes annotation size limit.
     """
 
     @pytest.mark.tier1
