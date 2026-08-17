@@ -1,4 +1,4 @@
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from typing import Any
 
 import pytest
@@ -30,6 +30,46 @@ from utilities.infra import get_data_science_cluster, wait_for_dsc_status_ready
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+def get_or_create_isvc(
+    admin_client: DynamicClient,
+    name: str,
+    namespace: str,
+    pytestconfig: pytest.Config,
+    teardown: bool,
+    wait_for_ready_post_upgrade: bool = False,
+    ready_timeout: int = 600,
+    gate_post_upgrade_cleanup_by_teardown: bool = False,
+    post_create_hook: Callable[[InferenceService], None] | None = None,
+    **create_isvc_kwargs: Any,
+) -> Generator[InferenceService, Any, Any]:
+    """Create an InferenceService, or reference the one created during pre-upgrade tests and
+    clean it up afterwards, honoring the shared pre/post-upgrade fixture pattern duplicated
+    across ai_safety sub-component conftest.py files.
+    """
+    if pytestconfig.option.post_upgrade:
+        isvc = InferenceService(client=admin_client, name=name, namespace=namespace)
+        if wait_for_ready_post_upgrade:
+            isvc.wait_for_condition(
+                condition=isvc.Condition.READY,
+                status=isvc.Condition.Status.TRUE,
+                timeout=ready_timeout,
+            )
+        yield isvc
+        if (not gate_post_upgrade_cleanup_by_teardown) or teardown:
+            isvc.clean_up()
+    else:
+        with create_isvc(
+            client=admin_client,
+            name=name,
+            namespace=namespace,
+            teardown=teardown,
+            **create_isvc_kwargs,
+        ) as isvc:
+            if post_create_hook is not None:
+                post_create_hook(isvc)
+            yield isvc
 
 
 @pytest.fixture(scope="class")

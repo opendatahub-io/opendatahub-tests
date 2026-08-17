@@ -43,6 +43,7 @@ from tests.ai_safety.trustyai_service.utils import (
     create_standalone_mariadb,
     create_trustyai_service,
 )
+from tests.fixtures.inference import get_or_create_isvc  # noqa: NIT001
 from utilities.constants import (
     MARIADB,
     TRUSTYAI_SERVICE_NAME,
@@ -50,7 +51,6 @@ from utilities.constants import (
     KServeDeploymentType,
     RuntimeTemplates,
 )
-from utilities.inference_utils import create_isvc
 from utilities.infra import create_inference_token, get_kserve_storage_initialize_image, update_configmap_data
 from utilities.logger import RedactedString
 from utilities.serving_runtime import ServingRuntimeFromTemplate
@@ -322,35 +322,26 @@ def gaussian_credit_model(
     kserve_logger_ca_bundle: ConfigMap,
     teardown_resources: bool,
 ) -> Generator[InferenceService, Any, Any]:
-    gaussian_credit_model_kwargs = {
-        "client": admin_client,
-        "namespace": model_namespace.name,
-        "name": GAUSSIAN_CREDIT_MODEL,
-    }
-
-    if pytestconfig.option.post_upgrade:
-        isvc = InferenceService(**gaussian_credit_model_kwargs)
-        yield isvc
-        isvc.clean_up()
-    else:
-        with create_isvc(
-            deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-            model_format=XGBOOST,
-            runtime=mlserver_runtime.name,
-            storage_uri=GAUSSIAN_CREDIT_MODEL_STORAGE_URI,
-            enable_auth=True,
-            external_route=True,
-            wait_for_predictor_pods=False,
-            resources=GAUSSIAN_CREDIT_MODEL_RESOURCES,
-            teardown=teardown_resources,
-            **gaussian_credit_model_kwargs,
-        ) as isvc:
-            wait_for_isvc_deployment_registered_by_trustyai_service(
-                client=admin_client,
-                isvc=isvc,
-                runtime_name=mlserver_runtime.name,
-            )
-            yield isvc
+    yield from get_or_create_isvc(
+        admin_client=admin_client,
+        name=GAUSSIAN_CREDIT_MODEL,
+        namespace=model_namespace.name,
+        pytestconfig=pytestconfig,
+        teardown=teardown_resources,
+        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+        model_format=XGBOOST,
+        runtime=mlserver_runtime.name,
+        storage_uri=GAUSSIAN_CREDIT_MODEL_STORAGE_URI,
+        enable_auth=True,
+        external_route=True,
+        wait_for_predictor_pods=False,
+        resources=GAUSSIAN_CREDIT_MODEL_RESOURCES,
+        post_create_hook=lambda isvc: wait_for_isvc_deployment_registered_by_trustyai_service(
+            client=admin_client,
+            isvc=isvc,
+            runtime_name=mlserver_runtime.name,
+        ),
+    )
 
 
 @pytest.fixture(scope="class")
