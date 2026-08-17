@@ -561,5 +561,5 @@ class TestEvtEventEmission:
             key=LIFECYCLE_PHASE_LABEL,
         )
         assert phase_label is not None, (
-            f"Expected label {LIFECYCLE_PHASE_LABEL} on Job {job_name}, labels={phase_label!r}"
+            f"Expected label key {LIFECYCLE_PHASE_LABEL} on Job {job_name}, got {phase_label!r}"
         )
