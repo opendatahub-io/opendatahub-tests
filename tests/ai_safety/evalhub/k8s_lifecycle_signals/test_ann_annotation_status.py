@@ -5,6 +5,8 @@ annotation is present on batch Jobs, contains valid JSON with required fields, i
 updated at each lifecycle transition, and stays within the 256 KB size limit.
 """
 
+from datetime import datetime
+
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
@@ -101,10 +103,8 @@ class TestAnnAnnotationStatus:
     ) -> None:
         """Given a successful evaluation has completed,
         when the evaluation-status annotation is parsed,
-        then it contains phase (str), timestamp (ISO 8601 str), evaluationId (str),
+        then it contains phase (str), timestamp (RFC 3339 UTC str), evaluationId (str),
         and summaryMetrics (object) as required fields."""
-        import re
-
         host = lifecycle_signals_route.host
         ns = lifecycle_signals_namespace.name
         payload = build_evalhub_job_payload(
@@ -130,10 +130,12 @@ class TestAnnAnnotationStatus:
         assert isinstance(data["phase"], str) and data["phase"], "phase must be a non-empty string"
 
         assert "timestamp" in data, f"Missing 'timestamp' field in annotation: {data}"
-        iso8601_pattern = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}"
-        assert re.match(iso8601_pattern, str(data["timestamp"])), (
-            f"timestamp does not look like ISO 8601: {data['timestamp']!r}"
-        )
+        ts = data["timestamp"]
+        assert isinstance(ts, str), f"timestamp must be a string, got {type(ts)}"
+        try:
+            datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ")
+        except ValueError as exc:
+            raise AssertionError(f"timestamp is not a valid RFC 3339 UTC value: {ts!r}") from exc
 
         assert "evaluationId" in data, f"Missing 'evaluationId' field in annotation: {data}"
         assert isinstance(data["evaluationId"], str) and data["evaluationId"], "evaluationId must be a non-empty string"
