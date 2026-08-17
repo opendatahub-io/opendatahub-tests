@@ -1,6 +1,8 @@
 import json
 import re
 import subprocess
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
 import structlog
@@ -8,8 +10,10 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.event import Event
 from ocp_resources.job import Job
+from ocp_resources.role_binding import RoleBinding
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
+from tests.ai_safety.evalhub.constants import EVALHUB_EVENTS_CLUSTERROLE
 from tests.ai_safety.evalhub.k8s_lifecycle_signals.constants import (
     EVALHUB_VLLM_EMULATOR_PORT,
     LIFECYCLE_EVENT_EMISSION_TIMEOUT,
@@ -687,6 +691,147 @@ def check_rbac_can_i(
         check=False,
     )
     return result.stdout.strip() == "yes"
+
+
+def find_evalhub_events_role_binding(
+    admin_client: DynamicClient,
+    *,
+    evalhub_cr_name: str,
+    evalhub_sa_namespace: str,
+    tenant_namespace: str,
+) -> RoleBinding:
+    """Return the operator-provisioned events RoleBinding for the EvalHub API ServiceAccount."""
+    evalhub_sa_name = f"{evalhub_cr_name}-service"
+    bindings = list(RoleBinding.get(client=admin_client, namespace=tenant_namespace))
+    events_bindings = [
+        binding
+        for binding in bindings
+        if binding.name.startswith(evalhub_cr_name)
+        and binding.instance.roleRef.name == EVALHUB_EVENTS_CLUSTERROLE
+        and any(
+            subject.get("kind") == "ServiceAccount"
+            and subject.get("name") == evalhub_sa_name
+            and subject.get("namespace") == evalhub_sa_namespace
+            for subject in (binding.instance.subjects or [])
+        )
+    ]
+    if len(events_bindings) != 1:
+        binding_names = [binding.name for binding in bindings if binding.name.startswith(evalhub_cr_name)]
+        raise AssertionError(
+            f"Expected exactly one events RoleBinding for SA {evalhub_sa_name!r} in {tenant_namespace!r}, "
+            f"found {len(events_bindings)} (candidate bindings: {binding_names})"
+        )
+    return events_bindings[0]
+
+
+def _role_binding_restore_body(binding: RoleBinding, tenant_namespace: str) -> dict[str, Any]:
+    """Build a create-ready RoleBinding manifest from an existing binding."""
+    subjects: list[dict[str, str]] = []
+    for subject in binding.instance.subjects or []:
+        entry: dict[str, str] = {"kind": subject.kind, "name": subject.name}
+        if subject.namespace:
+            entry["namespace"] = subject.namespace
+        if subject.apiGroup:
+            entry["apiGroup"] = subject.apiGroup
+        subjects.append(entry)
+    return {
+        "apiVersion": "rbac.authorization.k8s.io/v1",
+        "kind": "RoleBinding",
+        "metadata": {
+            "name": binding.name,
+            "namespace": tenant_namespace,
+            "labels": dict(binding.instance.metadata.labels or {}),
+        },
+        "roleRef": {
+            "apiGroup": binding.instance.roleRef.apiGroup,
+            "kind": binding.instance.roleRef.kind,
+            "name": binding.instance.roleRef.name,
+        },
+        "subjects": subjects,
+    }
+
+
+def _restore_role_binding(admin_client: DynamicClient, body: dict[str, Any]) -> None:
+    """Recreate a RoleBinding when the operator has not already restored it."""
+    name = body["metadata"]["name"]
+    namespace = body["metadata"]["namespace"]
+    existing = RoleBinding(client=admin_client, name=name, namespace=namespace)
+    if existing.exists:
+        LOGGER.info("Events RoleBinding already present; skipping restore", name=name, namespace=namespace)
+        return
+    api = admin_client.resources.get(api_version="rbac.authorization.k8s.io/v1", kind="RoleBinding")
+    api.create(body=body)
+    LOGGER.info("Restored events RoleBinding", name=name, namespace=namespace)
+
+
+def wait_until_events_create_denied(
+    *,
+    evalhub_sa_namespace: str,
+    evalhub_sa_name: str,
+    tenant_namespace: str,
+    timeout: int = 30,
+) -> None:
+    """Wait until kubectl auth can-i reports events create is denied for the EvalHub SA."""
+    try:
+        for denied in TimeoutSampler(
+            wait_timeout=timeout,
+            sleep=2,
+            func=lambda: not check_rbac_can_i(
+                verb="create",
+                resource="events",
+                sa_namespace=evalhub_sa_namespace,
+                sa_name=evalhub_sa_name,
+                target_namespace=tenant_namespace,
+            ),
+        ):
+            if denied:
+                return
+    except TimeoutExpiredError as exc:
+        raise AssertionError(
+            f"EvalHub SA {evalhub_sa_name!r} still has events create permission in {tenant_namespace!r} "
+            f"after RoleBinding deletion"
+        ) from exc
+    raise AssertionError(
+        f"EvalHub SA {evalhub_sa_name!r} still has events create permission in {tenant_namespace!r} "
+        f"after RoleBinding deletion"
+    )
+
+
+@contextmanager
+def revoked_evalhub_events_create_permission(
+    admin_client: DynamicClient,
+    *,
+    evalhub_cr_name: str,
+    evalhub_sa_namespace: str,
+    tenant_namespace: str,
+) -> Iterator[None]:
+    """Temporarily revoke EvalHub events create permission by deleting its events RoleBinding."""
+    evalhub_sa_name = f"{evalhub_cr_name}-service"
+    binding = find_evalhub_events_role_binding(
+        admin_client=admin_client,
+        evalhub_cr_name=evalhub_cr_name,
+        evalhub_sa_namespace=evalhub_sa_namespace,
+        tenant_namespace=tenant_namespace,
+    )
+    restore_body = _role_binding_restore_body(binding=binding, tenant_namespace=tenant_namespace)
+    binding.delete(wait=True)
+    wait_until_events_create_denied(
+        evalhub_sa_namespace=evalhub_sa_namespace,
+        evalhub_sa_name=evalhub_sa_name,
+        tenant_namespace=tenant_namespace,
+    )
+    try:
+        yield
+    finally:
+        try:
+            _restore_role_binding(admin_client=admin_client, body=restore_body)
+        except Exception:
+            LOGGER.exception(
+                "Failed to restore events RoleBinding after test",
+                name=restore_body["metadata"]["name"],
+                namespace=tenant_namespace,
+            )
+            raise
 
 
 def is_valid_camel_case(s: str) -> bool:

@@ -15,6 +15,9 @@ from tests.ai_safety.evalhub.k8s_lifecycle_signals.constants import (
     LIFECYCLE_PHASE_LABEL,
     LIFECYCLE_PHASE_SUCCEEDED,
     LIFECYCLE_REASON_STARTED,
+    LIFECYCLE_SIGNALS_CP_NAMESPACE,
+    LIFECYCLE_SIGNALS_CR_NAME,
+    LIFECYCLE_SOURCE_SERVER,
     LIFECYCLE_STATUS_ANNOTATION,
 )
 from tests.ai_safety.evalhub.k8s_lifecycle_signals.utils import (
@@ -23,6 +26,7 @@ from tests.ai_safety.evalhub.k8s_lifecycle_signals.utils import (
     list_events_for_job,
     parse_status_annotation,
     read_job_label,
+    revoked_evalhub_events_create_permission,
     submit_evalhub_job_and_capture_runtime_job,
     wait_for_evaluation_job_name,
     wait_for_success_phase_signals,
@@ -58,40 +62,72 @@ class TestNegNegativeError:
         confirming that Event emission is best-effort and does not gate the evaluation lifecycle."""
         host = lifecycle_signals_route.host
         ns = lifecycle_signals_namespace.name
+        evalhub_sa_name = f"{LIFECYCLE_SIGNALS_CR_NAME}-service"
 
-        # Submit evaluation with Events permission blocked (simulated by a denying Role)
-        # In a real cluster this would use a NetworkPolicy or RBAC deny — here we verify
-        # that the evaluation job API reports completion regardless of Event emission state.
-        payload = build_evalhub_job_payload(
-            model_service_name=lifecycle_signals_vllm_service.name,
+        with revoked_evalhub_events_create_permission(
+            admin_client=admin_client,
+            evalhub_cr_name=LIFECYCLE_SIGNALS_CR_NAME,
+            evalhub_sa_namespace=LIFECYCLE_SIGNALS_CP_NAMESPACE,
             tenant_namespace=ns,
-            job_name="tc-neg-001",
-        )
-        job_id = submit_evalhub_job(
-            host=host,
-            token=lifecycle_signals_token,
-            ca_bundle_file=lifecycle_signals_ca_bundle_file,
-            tenant=ns,
-            payload=payload,
-        )["resource"]["id"]
-        job_result = wait_for_evalhub_job(
-            host=host,
-            token=lifecycle_signals_token,
-            ca_bundle_file=lifecycle_signals_ca_bundle_file,
-            tenant=ns,
-            job_id=job_id,
-        )
+        ):
+            assert not check_rbac_can_i(
+                verb="create",
+                resource="events",
+                sa_namespace=LIFECYCLE_SIGNALS_CP_NAMESPACE,
+                sa_name=evalhub_sa_name,
+                target_namespace=ns,
+            ), (
+                f"Precondition failed: {evalhub_sa_name!r} must not be able to create Events in {ns!r}"
+            )
 
-        assert job_result.get("status", {}).get("state") in ("completed", "failed", "partially_failed"), (
-            f"Evaluation should reach a terminal state regardless of Event emission; "
+            payload = build_evalhub_job_payload(
+                model_service_name=lifecycle_signals_vllm_service.name,
+                tenant_namespace=ns,
+                job_name="tc-neg-001",
+            )
+            job_id = submit_evalhub_job(
+                host=host,
+                token=lifecycle_signals_token,
+                ca_bundle_file=lifecycle_signals_ca_bundle_file,
+                tenant=ns,
+                payload=payload,
+            )["resource"]["id"]
+            job_name = wait_for_evaluation_job_name(
+                admin_client=admin_client,
+                namespace=ns,
+                evalhub_job_id=job_id,
+            )
+
+            started_events = list_events_for_job(
+                admin_client=admin_client,
+                job_name=job_name,
+                namespace=ns,
+                reason=LIFECYCLE_REASON_STARTED,
+                source_component=LIFECYCLE_SOURCE_SERVER,
+            )
+            assert not started_events, (
+                "EvalHub server must not emit EvaluationStarted when events create is denied; "
+                f"found {len(started_events)} event(s)"
+            )
+
+            job_result = wait_for_evalhub_job(
+                host=host,
+                token=lifecycle_signals_token,
+                ca_bundle_file=lifecycle_signals_ca_bundle_file,
+                tenant=ns,
+                job_id=job_id,
+            )
+
+        assert job_result.get("status", {}).get("state") == "completed", (
+            f"Evaluation must complete successfully when Event emission is blocked; "
             f"got state={job_result.get('status', {}).get('state')!r}"
         )
-        job_name = wait_for_evaluation_job_name(
+        assert job_name, "Batch Job must exist even when Event emission was blocked"
+        wait_for_success_phase_signals(
             admin_client=admin_client,
+            job_name=job_name,
             namespace=ns,
-            evalhub_job_id=job_id,
         )
-        assert job_name, "Batch Job must exist even if Event emission was blocked"
 
     @pytest.mark.tier1
     def test_neg_002_restricted_user_cannot_list_events(
