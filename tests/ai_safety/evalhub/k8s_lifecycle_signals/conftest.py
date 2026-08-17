@@ -375,13 +375,17 @@ def lifecycle_signals_bad_image_provider(
         verify=lifecycle_signals_ca_bundle_file,
         timeout=30,
     )
-    if create_resp.status_code != 201:
-        pytest.fail(f"Failed to create bad-image provider: {create_resp.status_code} {create_resp.text}")
-    provider_id = create_resp.json()["resource"]["id"]
-    yield provider_id
-    requests.delete(
-        url=f"https://{host}{EVALHUB_PROVIDERS_PATH}/{provider_id}",
-        headers=headers,
-        verify=lifecycle_signals_ca_bundle_file,
-        timeout=30,
-    )
+    provider_id: str | None = None
+    try:
+        if create_resp.status_code != 201:
+            pytest.fail(f"Failed to create bad-image provider: {create_resp.status_code} {create_resp.text}")
+        provider_id = create_resp.json()["resource"]["id"]
+        yield provider_id
+    finally:
+        if provider_id is not None:
+            requests.delete(
+                url=f"https://{host}{EVALHUB_PROVIDERS_PATH}/{provider_id}",
+                headers=headers,
+                verify=lifecycle_signals_ca_bundle_file,
+                timeout=30,
+            )

@@ -846,13 +846,13 @@ def revoked_evalhub_events_create_permission(
     )
     restore_body = _role_binding_restore_body(binding=binding, tenant_namespace=tenant_namespace)
     binding.delete(wait=True)
-    wait_until_events_create_denied(
-        admin_client=admin_client,
-        evalhub_sa_namespace=evalhub_sa_namespace,
-        evalhub_sa_name=evalhub_sa_name,
-        tenant_namespace=tenant_namespace,
-    )
     try:
+        wait_until_events_create_denied(
+            admin_client=admin_client,
+            evalhub_sa_namespace=evalhub_sa_namespace,
+            evalhub_sa_name=evalhub_sa_name,
+            tenant_namespace=tenant_namespace,
+        )
         yield
     finally:
         try:
