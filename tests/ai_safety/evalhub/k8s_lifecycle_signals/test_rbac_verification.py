@@ -51,10 +51,11 @@ class TestRbacVerification:
     ) -> None:
         """Given the EvalHub ServiceAccount exists in the control-plane namespace,
         when its permission to create Events is queried in the tenant namespace,
-        then kubectl auth can-i returns yes and a RoleBinding granting this exists."""
+        then SubjectAccessReview reports allowed and a RoleBinding granting this exists."""
         tenant_ns = lifecycle_signals_namespace.name
 
         can_create = check_rbac_can_i(
+            admin_client=admin_client,
             verb="create",
             resource="events",
             sa_namespace=LIFECYCLE_SIGNALS_CP_NAMESPACE,
@@ -84,15 +85,17 @@ class TestRbacVerification:
     @pytest.mark.tier1
     def test_rbac_002_evalhub_sa_can_patch_jobs(
         self,
+        admin_client: DynamicClient,
         lifecycle_signals_ready: None,
         lifecycle_signals_namespace: Namespace,
     ) -> None:
         """Given the EvalHub ServiceAccount exists in the control-plane namespace,
         when its permission to patch batch/v1 Jobs is queried in the tenant namespace,
-        then kubectl auth can-i returns yes."""
+        then SubjectAccessReview reports allowed."""
         tenant_ns = lifecycle_signals_namespace.name
 
         can_patch = check_rbac_can_i(
+            admin_client=admin_client,
             verb="patch",
             resource="jobs",
             sa_namespace=LIFECYCLE_SIGNALS_CP_NAMESPACE,
@@ -108,13 +111,15 @@ class TestRbacVerification:
     @pytest.mark.tier1
     def test_rbac_003_operator_sa_can_create_events(
         self,
+        admin_client: DynamicClient,
         lifecycle_signals_ready: None,
     ) -> None:
         """Given the TrustyAI Operator ServiceAccount exists,
         when its permission to create Events is queried in the lifecycle signals namespace,
-        then kubectl auth can-i returns yes."""
+        then SubjectAccessReview reports allowed."""
         operator_ns = py_config["applications_namespace"]
         can_create = check_rbac_can_i(
+            admin_client=admin_client,
             verb="create",
             resource="events",
             sa_namespace=operator_ns,

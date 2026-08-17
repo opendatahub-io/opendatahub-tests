@@ -1,6 +1,5 @@
 import json
 import re
-import subprocess
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
@@ -661,7 +660,14 @@ def parse_status_annotation(annotation_value: str) -> dict[str, Any]:
         raise ValueError(f"evaluation-status annotation is not valid JSON: {annotation_value!r}") from exc
 
 
+_RESOURCE_API_GROUPS: dict[str, str] = {
+    "events": "",
+    "jobs": "batch",
+}
+
+
 def check_rbac_can_i(
+    admin_client: DynamicClient,
     verb: str,
     resource: str,
     sa_namespace: str,
@@ -669,9 +675,10 @@ def check_rbac_can_i(
     *,
     target_namespace: str | None = None,
 ) -> bool:
-    """Run kubectl auth can-i to check if a ServiceAccount has a permission.
+    """Check if a ServiceAccount has a permission via SubjectAccessReview.
 
     Args:
+        admin_client: Cluster client with permission to create SubjectAccessReviews.
         verb: RBAC verb (e.g. create, patch).
         resource: Resource name (e.g. events, jobs).
         sa_namespace: Namespace where the ServiceAccount lives.
@@ -680,17 +687,36 @@ def check_rbac_can_i(
 
     Returns:
         True if allowed, False if denied.
+
+    Raises:
+        Exception: Kubernetes API errors from the SubjectAccessReview request.
     """
+    if resource not in _RESOURCE_API_GROUPS:
+        raise ValueError(f"Unsupported resource for RBAC check: {resource!r}")
+
     permission_ns = target_namespace if target_namespace is not None else sa_namespace
     as_user = f"system:serviceaccount:{sa_namespace}:{sa_name}"
-    result = subprocess.run(
-        ["kubectl", "auth", "can-i", verb, resource, "--as", as_user, "-n", permission_ns],
-        capture_output=True,
-        text=True,
-        timeout=30,
-        check=False,
+    sar_api = admin_client.resources.get(
+        api_version="authorization.k8s.io/v1",
+        kind="SubjectAccessReview",
     )
-    return result.stdout.strip() == "yes"
+    review = sar_api.create(
+        body={
+            "apiVersion": "authorization.k8s.io/v1",
+            "kind": "SubjectAccessReview",
+            "spec": {
+                "user": as_user,
+                "resourceAttributes": {
+                    "namespace": permission_ns,
+                    "verb": verb,
+                    "group": _RESOURCE_API_GROUPS[resource],
+                    "resource": resource,
+                    "version": "v1",
+                },
+            },
+        }
+    )
+    return bool(review.status.allowed)
 
 
 def find_evalhub_events_role_binding(
@@ -765,18 +791,20 @@ def _restore_role_binding(admin_client: DynamicClient, body: dict[str, Any]) -> 
 
 
 def wait_until_events_create_denied(
+    admin_client: DynamicClient,
     *,
     evalhub_sa_namespace: str,
     evalhub_sa_name: str,
     tenant_namespace: str,
     timeout: int = 30,
 ) -> None:
-    """Wait until kubectl auth can-i reports events create is denied for the EvalHub SA."""
+    """Wait until SubjectAccessReview reports events create is denied for the EvalHub SA."""
     try:
         for denied in TimeoutSampler(
             wait_timeout=timeout,
             sleep=2,
             func=lambda: not check_rbac_can_i(
+                admin_client=admin_client,
                 verb="create",
                 resource="events",
                 sa_namespace=evalhub_sa_namespace,
@@ -816,6 +844,7 @@ def revoked_evalhub_events_create_permission(
     restore_body = _role_binding_restore_body(binding=binding, tenant_namespace=tenant_namespace)
     binding.delete(wait=True)
     wait_until_events_create_denied(
+        admin_client=admin_client,
         evalhub_sa_namespace=evalhub_sa_namespace,
         evalhub_sa_name=evalhub_sa_name,
         tenant_namespace=tenant_namespace,

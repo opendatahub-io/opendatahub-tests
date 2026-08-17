@@ -71,6 +71,7 @@ class TestNegNegativeError:
             tenant_namespace=ns,
         ):
             assert not check_rbac_can_i(
+                admin_client=admin_client,
                 verb="create",
                 resource="events",
                 sa_namespace=LIFECYCLE_SIGNALS_CP_NAMESPACE,
@@ -132,16 +133,18 @@ class TestNegNegativeError:
     @pytest.mark.tier1
     def test_neg_002_restricted_user_cannot_list_events(
         self,
+        admin_client: DynamicClient,
         lifecycle_signals_ready: None,
         lifecycle_signals_namespace: Namespace,
     ) -> None:
         """Given a ServiceAccount with no Events list permission in the lifecycle signals namespace,
         when its permission to list Events is queried,
-        then kubectl auth can-i returns no, confirming restricted users cannot observe lifecycle Events."""
+        then SubjectAccessReview reports denied, confirming restricted users cannot observe lifecycle Events."""
         ns = lifecycle_signals_namespace.name
         restricted_sa = "default"  # default SA has no Events list permission by default
 
         can_list = check_rbac_can_i(
+            admin_client=admin_client,
             verb="list",
             resource="events",
             sa_namespace=ns,
@@ -150,7 +153,7 @@ class TestNegNegativeError:
 
         assert not can_list, (
             f"SA {restricted_sa!r} in {ns} should NOT have permission to list Events, "
-            f"but kubectl auth can-i returned yes"
+            f"but SubjectAccessReview reported allowed"
         )
 
     @pytest.mark.tier2
