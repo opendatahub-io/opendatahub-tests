@@ -433,6 +433,9 @@ class TestEvtEventEmission:
         unexpected = server_reasons - LIFECYCLE_EXPECTED_REASONS
         assert not unexpected, f"Unexpected reason codes from evalhub-server: {unexpected}"
 
+        missing = LIFECYCLE_EXPECTED_REASONS - server_reasons
+        assert not missing, f"Missing expected reason codes from evalhub-server: {missing}"
+
         for reason in server_reasons:
             assert is_valid_camel_case(reason), f"Reason {reason!r} is not CamelCase"
 
