@@ -238,9 +238,9 @@ class TestE2eLifecycle:
             namespace=ns,
             key=LIFECYCLE_STATUS_ANNOTATION,
         )
-        if raw:
-            data = parse_status_annotation(annotation_value=raw)
-            assert data.get("phase") == "Failed"
+        assert raw is not None
+        data = parse_status_annotation(annotation_value=raw)
+        assert data.get("phase") == "Failed"
 
         # Verify no operator EvaluationFailed duplicate
         all_failed = list_events_for_job(
@@ -388,10 +388,10 @@ class TestE2eLifecycle:
             namespace=ns,
             key=LIFECYCLE_STATUS_ANNOTATION,
         )
-        if raw:
-            data = parse_status_annotation(annotation_value=raw)
-            assert data.get("phase") in ("Succeeded", "ThresholdViolated")
-            assert "evaluationId" in data
+        assert raw is not None
+        data = parse_status_annotation(annotation_value=raw)
+        assert data.get("phase") in ("Succeeded", "ThresholdViolated")
+        assert "evaluationId" in data
 
         # No EvaluationFailed Event (this is a threshold violation, not a failure)
         failed_events = list_events_for_job(

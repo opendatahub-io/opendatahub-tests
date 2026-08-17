@@ -162,11 +162,9 @@ class TestAnnAnnotationStatus:
         # Read annotation while job is Running
         wait_for_job_label(admin_client, job_name, ns, LIFECYCLE_PHASE_LABEL, LIFECYCLE_PHASE_RUNNING, timeout=60)
         running_raw = get_job_annotation(admin_client, job_name, ns, LIFECYCLE_STATUS_ANNOTATION)
-        if running_raw:
-            running_data = parse_status_annotation(running_raw)
-            running_phase = running_data.get("phase", "")
-        else:
-            running_phase = ""
+        assert running_raw is not None, "Missing annotation while job is Running"
+        running_data = parse_status_annotation(running_raw)
+        running_phase = running_data.get("phase", "")
 
         # Wait for completion and read again
         wait_for_evalhub_job(host, lifecycle_signals_token, lifecycle_signals_ca_bundle_file, ns, job_id)
@@ -179,9 +177,8 @@ class TestAnnAnnotationStatus:
         assert completed_data.get("phase") in ("Completed", "Succeeded"), (
             f"Expected phase=Completed or Succeeded after job completion, got {completed_data.get('phase')!r}"
         )
-        if running_phase:
-            assert running_phase in ("Running",), f"Expected phase=Running during execution, got {running_phase!r}"
-        if running_raw and running_raw != completed_raw:
+        assert running_phase in ("Running",), f"Expected phase=Running during execution, got {running_phase!r}"
+        if running_raw != completed_raw:
             running_ts = parse_status_annotation(running_raw).get("timestamp", "")
             completed_ts = completed_data.get("timestamp", "")
             assert completed_ts >= running_ts, (
