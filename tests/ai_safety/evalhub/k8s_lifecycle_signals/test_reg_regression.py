@@ -100,7 +100,16 @@ class TestRegRegression:
         complete_conditions = [c for c in conditions if c.get("type") == "Complete" and c.get("status") == "True"]
         failed_conditions = [c for c in conditions if c.get("type") == "Failed" and c.get("status") == "True"]
 
-        assert complete_conditions or not failed_conditions, (
+        condition_types = [c.get("type") for c in conditions]
+        assert conditions, (
+            f"Batch Job {job_name} must have terminal status conditions; "
+            f"conditions: {condition_types}"
+        )
+        assert not failed_conditions, (
+            f"Batch Job {job_name} must not have Failed=True condition; "
+            f"conditions: {condition_types}"
+        )
+        assert complete_conditions, (
             f"Batch Job {job_name} should reach Complete condition; "
-            f"conditions: {[c.get('type') for c in conditions]}"
+            f"conditions: {condition_types}"
         )
