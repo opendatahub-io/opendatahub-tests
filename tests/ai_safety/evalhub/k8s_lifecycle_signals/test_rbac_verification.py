@@ -10,6 +10,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.route import Route
+from ocp_resources.service import Service
 from pytest_testconfig import config as py_config
 
 from tests.ai_safety.evalhub.k8s_lifecycle_signals.constants import (
@@ -135,7 +136,7 @@ class TestRbacVerification:
         lifecycle_signals_ca_bundle_file: str,
         lifecycle_signals_token: str,
         lifecycle_signals_namespace: Namespace,
-        lifecycle_signals_vllm_service: Route,
+        lifecycle_signals_vllm_service: Service,
         tenant_a_namespace: Namespace,
         tenant_b_namespace: Namespace,
     ) -> None:
