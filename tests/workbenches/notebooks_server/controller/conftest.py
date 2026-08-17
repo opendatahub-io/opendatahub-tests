@@ -22,13 +22,13 @@ from utilities.general import collect_pod_information
 from utilities.infra import create_ns
 from utilities.kueue_utils import (
     ClusterQueue,
-    Kueue,
     LocalQueue,
     ResourceFlavor,
     create_cluster_queue,
     create_local_queue,
     create_resource_flavor,
 )
+from utilities.resources.kueue import Kueue
 
 LOGGER = structlog.get_logger(name=__name__)
 
