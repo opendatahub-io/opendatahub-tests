@@ -1,6 +1,7 @@
 from tests.ai_safety.image_constants import AiSafetyImages
 
 MINIO_MC_IMAGE: str = AiSafetyImages.MINIO_MC
+VLLM_EMULATOR_IMAGE: str = AiSafetyImages.VLLM_EMULATOR
 
 EVALHUB_SERVICE_NAME: str = "evalhub"
 EVALHUB_SERVICE_PORT: int = 8443

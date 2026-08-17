@@ -25,6 +25,7 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_TENANT_LABEL_KEY,
     EVALHUB_USER_ROLE_RULES,
     EVALHUB_VLLM_EMULATOR_PORT,
+    VLLM_EMULATOR_IMAGE,
 )
 from tests.ai_safety.evalhub.kueue.constants import (
     MULTI_JOB_CPU_QUOTA,
@@ -32,7 +33,6 @@ from tests.ai_safety.evalhub.kueue.constants import (
     SINGLE_JOB_CPU_QUOTA,
     SINGLE_JOB_MEMORY_QUOTA,
     VLLM_EMULATOR,
-    VLLM_EMULATOR_IMAGE,
 )
 from tests.ai_safety.evalhub.utils import (
     build_evalhub_job_payload,
