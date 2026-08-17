@@ -517,6 +517,7 @@ def _create_llmisvc_from_config(
             "image": config_cls.container_image,
             "resources": config_cls.container_resources(),
             "env": config_cls.container_env(),
+            "startupProbe": config_cls.startup_probe(),
             "livenessProbe": config_cls.liveness_probe(),
             "readinessProbe": config_cls.readiness_probe(),
         }.items()
