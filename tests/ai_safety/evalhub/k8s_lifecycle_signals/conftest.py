@@ -171,9 +171,7 @@ def lifecycle_signals_tenant_a_rbac(
                 LOGGER.info(f"Operator RBAC provisioned in {tenant_a_namespace.name}")
                 return
     except TimeoutExpiredError as exc:
-        raise RuntimeError(
-            f"Operator RBAC not provisioned in {tenant_a_namespace.name} within 120s"
-        ) from exc
+        raise RuntimeError(f"Operator RBAC not provisioned in {tenant_a_namespace.name} within 120s") from exc
 
 
 @pytest.fixture(scope="session")

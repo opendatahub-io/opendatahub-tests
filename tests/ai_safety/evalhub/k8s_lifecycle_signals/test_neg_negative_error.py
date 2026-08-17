@@ -77,9 +77,7 @@ class TestNegNegativeError:
                 sa_namespace=LIFECYCLE_SIGNALS_CP_NAMESPACE,
                 sa_name=evalhub_sa_name,
                 target_namespace=ns,
-            ), (
-                f"Precondition failed: {evalhub_sa_name!r} must not be able to create Events in {ns!r}"
-            )
+            ), f"Precondition failed: {evalhub_sa_name!r} must not be able to create Events in {ns!r}"
 
             payload = build_evalhub_job_payload(
                 model_service_name=lifecycle_signals_vllm_service.name,

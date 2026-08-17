@@ -89,7 +89,9 @@ class TestRegRegression:
             tenant_namespace=ns,
             job_name="tc-reg-002",
         )
-        job_id = submit_evalhub_job(host, lifecycle_signals_token, lifecycle_signals_ca_bundle_file, ns, payload)["resource"]["id"]
+        job_id = submit_evalhub_job(host, lifecycle_signals_token, lifecycle_signals_ca_bundle_file, ns, payload)[
+            "resource"
+        ]["id"]
         wait_for_evalhub_job(host, lifecycle_signals_token, lifecycle_signals_ca_bundle_file, ns, job_id)
         job_name = wait_for_evaluation_job_name(admin_client, ns, job_id)
 
@@ -101,15 +103,10 @@ class TestRegRegression:
         failed_conditions = [c for c in conditions if c.get("type") == "Failed" and c.get("status") == "True"]
 
         condition_types = [c.get("type") for c in conditions]
-        assert conditions, (
-            f"Batch Job {job_name} must have terminal status conditions; "
-            f"conditions: {condition_types}"
-        )
+        assert conditions, f"Batch Job {job_name} must have terminal status conditions; conditions: {condition_types}"
         assert not failed_conditions, (
-            f"Batch Job {job_name} must not have Failed=True condition; "
-            f"conditions: {condition_types}"
+            f"Batch Job {job_name} must not have Failed=True condition; conditions: {condition_types}"
         )
         assert complete_conditions, (
-            f"Batch Job {job_name} should reach Complete condition; "
-            f"conditions: {condition_types}"
+            f"Batch Job {job_name} should reach Complete condition; conditions: {condition_types}"
         )

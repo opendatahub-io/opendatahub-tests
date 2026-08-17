@@ -357,9 +357,7 @@ class TestLblJobLabelPhase:
         assert fail_job_name not in succeeded_names, (
             f"Failed job {fail_job_name!r} incorrectly appeared in Succeeded selector results"
         )
-        assert fail_job_name in failed_names, (
-            f"Failed job {fail_job_name!r} not found in Failed selector results"
-        )
+        assert fail_job_name in failed_names, f"Failed job {fail_job_name!r} not found in Failed selector results"
         assert success_job_name not in failed_names, (
             f"Succeeded job {success_job_name!r} incorrectly appeared in Failed selector results"
         )

@@ -69,7 +69,8 @@ class TestRbacVerification:
         )
         bindings = list(RoleBinding.get(client=admin_client, namespace=tenant_ns))
         evalhub_bindings = [
-            b for b in bindings
+            b
+            for b in bindings
             if any(
                 s.get("name") == _EVALHUB_SERVER_SA
                 and s.get("kind") == "ServiceAccount"
@@ -78,8 +79,7 @@ class TestRbacVerification:
             )
         ]
         assert evalhub_bindings, (
-            f"No RoleBinding found for SA {_EVALHUB_SERVER_SA} "
-            f"({LIFECYCLE_SIGNALS_CP_NAMESPACE}) in {tenant_ns}"
+            f"No RoleBinding found for SA {_EVALHUB_SERVER_SA} ({LIFECYCLE_SIGNALS_CP_NAMESPACE}) in {tenant_ns}"
         )
 
     @pytest.mark.tier1
@@ -167,24 +167,17 @@ class TestRbacVerification:
         job_name = wait_for_evaluation_job_name(admin_client, tenant_a_ns, job_id)
         wait_for_event(admin_client, job_name, tenant_a_ns, LIFECYCLE_REASON_STARTED)
 
-        lifecycle_events = list_events_for_job(
-            admin_client, job_name, lifecycle_ns, reason=LIFECYCLE_REASON_STARTED
-        )
-        tenant_a_events = list_events_for_job(
-            admin_client, job_name, tenant_a_ns, reason=LIFECYCLE_REASON_STARTED
-        )
+        lifecycle_events = list_events_for_job(admin_client, job_name, lifecycle_ns, reason=LIFECYCLE_REASON_STARTED)
+        tenant_a_events = list_events_for_job(admin_client, job_name, tenant_a_ns, reason=LIFECYCLE_REASON_STARTED)
         tenant_b_events = list_events_for_job(
             admin_client, job_name, tenant_b_namespace.name, reason=LIFECYCLE_REASON_STARTED
         )
 
-        assert tenant_a_events, (
-            f"Expected EvaluationStarted Event in {tenant_a_ns}, found none"
-        )
+        assert tenant_a_events, f"Expected EvaluationStarted Event in {tenant_a_ns}, found none"
         assert not tenant_b_events, (
             f"Event for job {job_name} should not appear in {tenant_b_namespace.name}; "
             f"found {len(tenant_b_events)} event(s)"
         )
         assert not lifecycle_events, (
-            f"Event for job {job_name} should not appear in {lifecycle_ns}; "
-            f"found {len(lifecycle_events)} event(s)"
+            f"Event for job {job_name} should not appear in {lifecycle_ns}; found {len(lifecycle_events)} event(s)"
         )
