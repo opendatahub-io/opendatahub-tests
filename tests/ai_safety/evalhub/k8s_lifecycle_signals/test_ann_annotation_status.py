@@ -38,11 +38,13 @@ class TestAnnAnnotationStatus:
 
     Verifies that the status annotation is present on evaluation batch Jobs, contains
     valid JSON with required fields, is updated at each lifecycle transition, and stays
-    within the 256 KB Kubernetes limit.
+    within the 256 KB Kubernetes limit. All tests share the session-scoped EvalHub
+    deployment and lifecycle signals fixtures.
 
-    Given a session-scoped EvalHub deployment with lifecycle signals fixtures ready and
-    an evaluation job submitted through the EvalHub API in the tenant namespace,
-    When the trustyai.opendatahub.io/evaluation-status annotation is read from the
+    Given the session-scoped EvalHub deployment with lifecycle signals fixtures ready
+    (tenant namespace, Route, vLLM emulator, and RBAC),
+    When an evaluation job is submitted through the EvalHub API in the tenant namespace
+    and the trustyai.opendatahub.io/evaluation-status annotation is read from the
     runtime batch Job,
     Then the annotation is valid JSON with required fields (phase, timestamp,
     evaluationId, summaryMetrics), reflects lifecycle transitions, and remains below
