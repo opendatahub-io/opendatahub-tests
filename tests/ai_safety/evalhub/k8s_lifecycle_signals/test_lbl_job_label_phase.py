@@ -324,13 +324,6 @@ class TestLblJobLabelPhase:
             namespace=ns,
             key=LIFECYCLE_PHASE_LABEL,
         )
-        fail_label = read_job_label(
-            admin_client=admin_client,
-            job_name=fail_job_name,
-            namespace=ns,
-            key=LIFECYCLE_PHASE_LABEL,
-        )
-        fail_job = Job(client=admin_client, name=fail_job_name, namespace=ns)
         assert success_label == LIFECYCLE_PHASE_SUCCEEDED, (
             f"Expected success job label {LIFECYCLE_PHASE_SUCCEEDED!r}, got {success_label!r}"
         )
@@ -364,8 +357,9 @@ class TestLblJobLabelPhase:
         assert fail_job_name not in succeeded_names, (
             f"Failed job {fail_job_name!r} incorrectly appeared in Succeeded selector results"
         )
-        if fail_job.exists and fail_label == LIFECYCLE_PHASE_FAILED:
-            assert fail_job_name in failed_names, f"Failed job {fail_job_name!r} not found in Failed selector results"
+        assert fail_job_name in failed_names, (
+            f"Failed job {fail_job_name!r} not found in Failed selector results"
+        )
         assert success_job_name not in failed_names, (
             f"Succeeded job {success_job_name!r} incorrectly appeared in Failed selector results"
         )
