@@ -68,7 +68,7 @@ PREDICT_RESOURCES: dict[str, Union[list[dict[str, Union[str, dict[str, str]]]], 
 }
 
 BASE_RAW_DEPLOYMENT_CONFIG: dict[str, Any] = {
-    "deployment_type": KServeDeploymentType.RAW_DEPLOYMENT,
+    "deployment_mode": KServeDeploymentType.STANDARD,
     "min-replicas": 1,
     "enable_external_route": False,
     "timeout": Timeout.TIMEOUT_10MIN,

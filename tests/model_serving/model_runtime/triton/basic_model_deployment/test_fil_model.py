@@ -7,20 +7,20 @@ Validates inference using REST and gRPC protocols with raw deployment mode.
 from typing import Any
 
 import pytest
+import structlog
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
-from simple_logger.logger import get_logger
 
-from utilities.constants import Protocols
-from tests.model_serving.model_runtime.triton.basic_model_deployment.utils import validate_inference_request, load_json
+from tests.model_serving.model_runtime.triton.basic_model_deployment.utils import load_json, validate_inference_request
 from tests.model_serving.model_runtime.triton.constant import (
     BASE_RAW_DEPLOYMENT_CONFIG,
     MODEL_PATH_PREFIX,
     TRITON_GRPC_FIL_INPUT_PATH,
     TRITON_REST_FIL_INPUT_PATH,
 )
+from utilities.constants import Protocols
 
-LOGGER = get_logger(name=__name__)
+LOGGER = structlog.get_logger(name=__name__)
 
 FIL_MODEL_NAME = "fil"
 MODEL_STORAGE_URI_DICT = {"model-dir": f"{MODEL_PATH_PREFIX}"}
@@ -35,25 +35,27 @@ pytestmark = pytest.mark.usefixtures(
     [
         pytest.param(
             {"protocol_type": Protocols.REST},
-            {"name": "fil-raw"},
+            {"name": "fil-standard"},
             MODEL_STORAGE_URI_DICT,
             {**BASE_RAW_DEPLOYMENT_CONFIG},
             {
-                "name": "fil-raw-rest",
+                "name": "fil-standard-rest",
                 **BASE_RAW_DEPLOYMENT_CONFIG,
             },
-            id="fil-raw-rest-deployment",
+            id="fil-standard-rest-deployment",
+            marks=pytest.mark.tier1,
         ),
         pytest.param(
             {"protocol_type": Protocols.GRPC},
-            {"name": "fil-raw"},
+            {"name": "fil-standard"},
             MODEL_STORAGE_URI_DICT,
             {**BASE_RAW_DEPLOYMENT_CONFIG},
             {
-                "name": "fil-raw-grpc",
+                "name": "fil-standard-grpc",
                 **BASE_RAW_DEPLOYMENT_CONFIG,
             },
-            id="fil-raw-grpc-deployment",
+            id="fil-standard-grpc-deployment",
+            marks=pytest.mark.tier1,
         ),
     ],
     indirect=True,
