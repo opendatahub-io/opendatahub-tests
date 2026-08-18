@@ -1421,8 +1421,9 @@ def metric_value_sum(
 def parse_trace_spans_from_logs(logs: str) -> list[dict[str, Any]]:
     """Extract OTEL trace span information from collector debug exporter logs.
 
-    The debug exporter outputs span data in a structured format. This parser
-    extracts span names, trace IDs, span IDs, parent span IDs, and attributes.
+    Handles the OTEL collector debug exporter output format where each span
+    begins at a "Span #N" boundary line and contains fields like "Trace ID",
+    "Parent ID", "ID", "Name", "Status code", and key-value attributes.
 
     Args:
         logs: Raw stdout log output from the OTEL collector pod.
@@ -1436,45 +1437,62 @@ def parse_trace_spans_from_logs(logs: str) -> list[dict[str, Any]]:
     spans: list[dict[str, Any]] = []
     current_span: dict[str, Any] = {}
 
+    def _new_span() -> dict[str, Any]:
+        return {
+            "name": "",
+            "trace_id": "",
+            "span_id": "",
+            "parent_span_id": "",
+            "status": "",
+            "attributes": {},
+        }
+
     for line in logs.splitlines():
         line = line.strip()
 
-        name_match = re.search(r"Name\s*:\s*(.+)", line)
-        if name_match:
+        if re.match(r"Span\s*#\d+", line):
             if current_span.get("name"):
                 spans.append(current_span)
-            current_span = {
-                "name": name_match.group(1).strip(),
-                "trace_id": "",
-                "span_id": "",
-                "parent_span_id": "",
-                "status": "",
-                "attributes": {},
-            }
+            current_span = _new_span()
             continue
 
-        trace_id_match = re.search(r"TraceID\s*:\s*([0-9a-fA-F]+)", line)
-        if trace_id_match and current_span:
+        name_match = re.search(r"Name\s*:\s*(.+)", line)
+        if name_match:
+            if not current_span:
+                current_span = _new_span()
+            elif current_span.get("name"):
+                spans.append(current_span)
+                current_span = _new_span()
+            current_span["name"] = name_match.group(1).strip()
+            continue
+
+        trace_id_match = re.search(r"(?:Trace\s*ID|TraceID)\s*:\s*([0-9a-fA-F]+)", line)
+        if trace_id_match and current_span is not None:
             current_span["trace_id"] = trace_id_match.group(1)
             continue
 
-        span_id_match = re.search(r"SpanID\s*:\s*([0-9a-fA-F]+)", line)
-        if span_id_match and current_span:
+        span_id_match = re.search(r"(?:^|\s)ID\s*:\s*([0-9a-fA-F]+)", line)
+        if span_id_match and current_span is not None:
             current_span["span_id"] = span_id_match.group(1)
             continue
 
-        parent_match = re.search(r"ParentSpanID\s*:\s*([0-9a-fA-F]+)", line)
-        if parent_match and current_span:
+        span_id_match2 = re.search(r"SpanID\s*:\s*([0-9a-fA-F]+)", line)
+        if span_id_match2 and current_span is not None:
+            current_span["span_id"] = span_id_match2.group(1)
+            continue
+
+        parent_match = re.search(r"(?:Parent\s*ID|ParentSpanID)\s*:\s*([0-9a-fA-F]+)", line)
+        if parent_match and current_span is not None:
             current_span["parent_span_id"] = parent_match.group(1)
             continue
 
-        status_match = re.search(r"Status\s*:\s*(\w+)", line)
-        if status_match and current_span:
+        status_match = re.search(r"(?:Status\s*code|Status)\s*:\s*(\w+)", line)
+        if status_match and current_span is not None:
             current_span["status"] = status_match.group(1)
             continue
 
         attr_match = re.search(r"->\s*([a-zA-Z0-9_.]+)\s*:\s*(.+)", line)
-        if attr_match and current_span:
+        if attr_match and current_span is not None:
             current_span["attributes"][attr_match.group(1).strip()] = attr_match.group(2).strip()
 
     if current_span.get("name"):

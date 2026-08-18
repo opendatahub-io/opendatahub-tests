@@ -351,10 +351,11 @@ class TestEvalHubReconcileMetrics:
         )
         metrics = parse_prometheus_text(text=raw_metrics)
         samples = get_metric_samples(metrics=metrics, metric_name=JOB_FAILURE_EVENTS_METRIC)
-        if samples:
-            assert all(METRIC_LABEL_FAILURE_REASON in s["labels"] for s in samples), (
-                "Job failure metric missing failure_reason label"
-            )
+        if not samples:
+            pytest.skip("No job failure events recorded — requires triggering a failing job")
+        assert all(METRIC_LABEL_FAILURE_REASON in s["labels"] for s in samples), (
+            "Job failure metric missing failure_reason label"
+        )
 
     def test_managed_instances_gauge(
         self,
@@ -534,17 +535,20 @@ class TestEvalHubReconcileTracing:
         }
         evalhub_reconcile_cr.update()
 
-        time.sleep(5)
+        for logs in TimeoutSampler(
+            wait_timeout=TRACE_POLL_TIMEOUT,
+            sleep=TRACE_POLL_INTERVAL,
+            func=_fetch_trace_collector_logs,
+            trace_collector_pod=otel_trace_collector_pod,
+        ):
+            spans = parse_trace_spans_from_logs(logs=logs)
+            parent_spans = filter_spans_by_name(spans=spans, name=SPAN_RECONCILE)
+            if len(parent_spans) >= 2:
+                trace_ids = {s["trace_id"] for s in parent_spans}
+                assert len(trace_ids) >= 2, "Multiple reconciliations should produce distinct trace IDs"
+                return
 
-        logs = _fetch_trace_collector_logs(trace_collector_pod=otel_trace_collector_pod)
-        spans = parse_trace_spans_from_logs(logs=logs)
-        parent_spans = filter_spans_by_name(spans=spans, name=SPAN_RECONCILE)
-
-        if len(parent_spans) >= 2:
-            trace_ids = {s["trace_id"] for s in parent_spans}
-            assert len(trace_ids) >= 2, "Multiple reconciliations should produce distinct trace IDs"
-        else:
-            pytest.skip("Fewer than 2 reconcile spans detected — need more reconciliation triggers")
+        pytest.skip("Fewer than 2 reconcile spans detected within timeout")
 
     def test_failed_sub_reconciler_span_error_status(
         self,
@@ -592,7 +596,6 @@ class TestEvalHubReconcileErrors:
     def test_nil_error_no_panic(
         self,
         admin_client: DynamicClient,
-        operator_metrics_token: str,
         evalhub_reconcile_cr: EvalHub,
     ) -> None:
         """Given a successful reconciliation (nil error), the operator does not panic.
@@ -672,10 +675,9 @@ class TestEvalHubReconcileErrors:
         spans = parse_trace_spans_from_logs(logs=logs)
         failure_spans = filter_spans_by_name(spans=spans, name=SPAN_JOB_FAILURE_RECONCILE)
 
-        if metric_samples or failure_spans:
-            pass
-        else:
+        if not metric_samples and not failure_spans:
             pytest.skip("No job failure events detected — requires triggering a failing job")
+        assert metric_samples or failure_spans, "Expected either a job failure metric or a job failure trace span"
 
     def test_rapid_errors_no_metric_loss(
         self,
@@ -685,8 +687,8 @@ class TestEvalHubReconcileErrors:
     ) -> None:
         """Given rapid error reconciliations, no metric increments are lost.
 
-        TC-ERR-004: Verify rapid error reconciliations do not cause metric
-        loss — the total error count only increases or stays the same.
+        TC-ERR-004: When a failure CR triggers multiple error reconciliations,
+        the error counter monotonically increases — no samples are dropped.
         """
         raw_before = _fetch_operator_metrics(
             admin_client=admin_client,
@@ -699,21 +701,29 @@ class TestEvalHubReconcileErrors:
             label_filter={METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE},
         )
 
-        time.sleep(15)
-
-        raw_after = _fetch_operator_metrics(
+        expected_increase = 1
+        for raw_after in TimeoutSampler(
+            wait_timeout=METRICS_POLL_TIMEOUT,
+            sleep=METRICS_POLL_INTERVAL,
+            func=_fetch_operator_metrics,
             admin_client=admin_client,
             operator_metrics_token=operator_metrics_token,
-        )
-        metrics_after = parse_prometheus_text(text=raw_after)
-        errors_after = metric_value_sum(
-            metrics=metrics_after,
-            metric_name=RECONCILE_ERRORS_METRIC,
-            label_filter={METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE},
-        )
+        ):
+            metrics_after = parse_prometheus_text(text=raw_after)
+            errors_after = metric_value_sum(
+                metrics=metrics_after,
+                metric_name=RECONCILE_ERRORS_METRIC,
+                label_filter={METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE},
+            )
+            assert errors_after >= errors_before, (
+                f"Error counter decreased: {errors_before} -> {errors_after} (metric loss detected)"
+            )
+            if errors_after >= errors_before + expected_increase:
+                return
 
-        assert errors_after >= errors_before, (
-            f"Error counter decreased: {errors_before} -> {errors_after} (metric loss detected)"
+        pytest.fail(
+            f"Error counter did not increase by {expected_increase} within timeout "
+            f"(before={errors_before}, after={errors_after})"
         )
 
 
@@ -732,16 +742,16 @@ class TestEvalHubReconcileErrors:
 class TestEvalHubReconcilePerformance:
     """TC-PRF-001 through TC-PRF-003: Performance overhead."""
 
-    def test_instrumentation_overhead_sub_millisecond(
+    def test_instrumentation_overhead_within_bounds(
         self,
         admin_client: DynamicClient,
         operator_metrics_token: str,
         evalhub_reconcile_cr: EvalHub,
     ) -> None:
-        """Given instrumented reconciliation, the overhead per cycle is sub-millisecond.
+        """Given instrumented reconciliation, average cycle duration stays below 5 seconds.
 
-        TC-PRF-001: Verify instrumentation overhead is sub-millisecond per
-        reconciliation cycle by checking duration histogram remains reasonable.
+        TC-PRF-001: Verify the average reconciliation duration (including
+        instrumentation) does not exceed 5s, indicating negligible overhead.
         """
         for raw_metrics in TimeoutSampler(
             wait_timeout=METRICS_POLL_TIMEOUT,
@@ -782,10 +792,10 @@ class TestEvalHubReconcilePerformance:
         model_namespace: Namespace,
         evalhub_reconcile_cr: EvalHub,
     ) -> None:
-        """Given multiple managed CRs, instrumentation overhead remains constant.
+        """Given multiple managed CRs, average reconciliation stays below 10 seconds.
 
-        TC-PRF-002: Verify that the per-reconciliation instrumentation overhead
-        does not scale with the number of managed CR instances.
+        TC-PRF-002: Verify that the per-reconciliation duration does not scale
+        linearly with the number of managed CR instances (stays under 10s).
         """
         raw_metrics = _fetch_operator_metrics(
             admin_client=admin_client,
@@ -814,24 +824,54 @@ class TestEvalHubReconcilePerformance:
         self,
         admin_client: DynamicClient,
         operator_metrics_token: str,
+        operator_with_otel_tracing: Deployment,
+        otel_trace_collector_deployment: Deployment,
         evalhub_reconcile_cr: EvalHub,
     ) -> None:
         """Given an unavailable collector, the OTEL exporter does not block reconciliation.
 
-        TC-PRF-003: Verify the OTLP exporter does not block the reconciliation
-        loop when the collector is unavailable.
+        TC-PRF-003: When the trace collector is scaled to zero, the reconcile
+        counter still advances — proving the exporter is non-blocking.
         """
-        raw_metrics = _fetch_operator_metrics(
+        raw_before = _fetch_operator_metrics(
             admin_client=admin_client,
             operator_metrics_token=operator_metrics_token,
         )
-        metrics = parse_prometheus_text(text=raw_metrics)
-        total = metric_value_sum(
-            metrics=metrics,
+        metrics_before = parse_prometheus_text(text=raw_before)
+        total_before = metric_value_sum(
+            metrics=metrics_before,
             metric_name=RECONCILE_TOTAL_METRIC,
             label_filter={METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE},
         )
-        assert total > 0, "Reconciliation did not proceed — exporter may be blocking"
+
+        otel_trace_collector_deployment.scale_replicas(replica_count=0)
+        try:
+            evalhub_reconcile_cr.instance.metadata.annotations = {
+                **(evalhub_reconcile_cr.instance.metadata.annotations or {}),
+                "test-trigger": f"no-collector-{time.time()}",
+            }
+            evalhub_reconcile_cr.update()
+
+            for raw_after in TimeoutSampler(
+                wait_timeout=METRICS_POLL_TIMEOUT,
+                sleep=METRICS_POLL_INTERVAL,
+                func=_fetch_operator_metrics,
+                admin_client=admin_client,
+                operator_metrics_token=operator_metrics_token,
+            ):
+                metrics_after = parse_prometheus_text(text=raw_after)
+                total_after = metric_value_sum(
+                    metrics=metrics_after,
+                    metric_name=RECONCILE_TOTAL_METRIC,
+                    label_filter={METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE},
+                )
+                if total_after > total_before:
+                    return
+
+            pytest.fail("Reconciliation counter did not advance with collector unavailable")
+        finally:
+            otel_trace_collector_deployment.scale_replicas(replica_count=1)
+            otel_trace_collector_deployment.wait_for_replicas(timeout=120)
 
 
 # ---------------------------------------------------------------------------
@@ -899,15 +939,12 @@ class TestEvalHubReconcileIntegration:
         assert pods, "No operator pod found"
         pod = pods[0]
 
-        try:
-            response = requests.get(
-                f"https://{pod.instance.status.podIP}:{OPERATOR_METRICS_PORT}/metrics",
-                verify=False,
-                timeout=5,
-            )
-            assert response.status_code in (401, 403), f"Expected 401/403 without auth, got {response.status_code}"
-        except requests.exceptions.ConnectionError:
-            pass
+        response = requests.get(
+            f"https://{pod.instance.status.podIP}:{OPERATOR_METRICS_PORT}/metrics",
+            verify=False,
+            timeout=5,
+        )
+        assert response.status_code in (401, 403), f"Expected 401/403 without auth, got {response.status_code}"
 
     def test_otlp_exporter_delivers_traces(
         self,
@@ -949,10 +986,17 @@ class TestEvalHubReconcileIntegration:
             operator_metrics_token=operator_metrics_token,
         )
         sensitive_patterns = ["password", "secret", "token", "credential", "apikey"]
-        lower_metrics = raw_metrics.lower()
-        for pattern in sensitive_patterns:
-            label_context = f'="{pattern}'
-            assert label_context not in lower_metrics, f"Sensitive pattern '{pattern}' found in metric label values"
+        metrics = parse_prometheus_text(text=raw_metrics)
+        for metric_name, samples in metrics.items():
+            for sample in samples:
+                for label_key, label_value in sample["labels"].items():
+                    for pattern in sensitive_patterns:
+                        assert pattern not in label_key.lower(), (
+                            f"Sensitive pattern '{pattern}' found in label name of {metric_name}"
+                        )
+                        assert pattern not in label_value.lower(), (
+                            f"Sensitive pattern '{pattern}' found in label value of {metric_name}"
+                        )
 
 
 # ---------------------------------------------------------------------------
@@ -1011,6 +1055,11 @@ class TestEvalHubReconcileRegression:
         )
         controllers_seen = {s["labels"].get("controller", "") for s in reconcile_samples}
         assert controllers_seen, "No controller_runtime_reconcile_total samples found"
+        expected_controllers = {"lmevaljob", "guardrailsorchestrator"}
+        missing = expected_controllers - controllers_seen
+        assert not missing, (
+            f"Expected controllers {expected_controllers} in metrics, missing: {missing}. Found: {controllers_seen}"
+        )
 
     def test_existing_otel_traces_unaffected(
         self,
@@ -1026,16 +1075,15 @@ class TestEvalHubReconcileRegression:
         """
         logs = _fetch_trace_collector_logs(trace_collector_pod=otel_trace_collector_pod)
         spans = parse_trace_spans_from_logs(logs=logs)
-        evalhub_spans = [s for s in spans if s["name"].startswith("evalhub.")]
-        non_evalhub_spans = [s for s in spans if not s["name"].startswith("evalhub.")]
-
-        if non_evalhub_spans:
-            for span in non_evalhub_spans:
-                assert span.get("trace_id"), f"Non-EvalHub span {span['name']} missing trace_id"
-        elif evalhub_spans:
-            pass
-        else:
+        if not spans:
             pytest.skip("No spans detected — collector may not have received traces yet")
+
+        non_evalhub_spans = [s for s in spans if not s["name"].startswith("evalhub.")]
+        if not non_evalhub_spans:
+            pytest.skip("Only EvalHub spans found — no other controller traces to verify")
+
+        for span in non_evalhub_spans:
+            assert span.get("trace_id"), f"Non-EvalHub span {span['name']} missing trace_id"
 
 
 # ---------------------------------------------------------------------------
@@ -1156,10 +1204,11 @@ class TestEvalHubReconcileE2E:
         logs = _fetch_trace_collector_logs(trace_collector_pod=otel_trace_collector_pod)
         spans = parse_trace_spans_from_logs(logs=logs)
         reconcile_spans = filter_spans_by_name(spans=spans, name=SPAN_RECONCILE)
-        if reconcile_spans:
-            span = reconcile_spans[0]
-            assert span.get("trace_id"), "Span missing trace_id for correlation"
-            assert span.get("span_id"), "Span missing span_id for drill-down"
+        if not reconcile_spans:
+            pytest.skip("No reconcile spans found — trace collector may not have received spans yet")
+        span = reconcile_spans[0]
+        assert span.get("trace_id"), "Span missing trace_id for correlation"
+        assert span.get("span_id"), "Span missing span_id for drill-down"
 
     def test_job_failure_observable_metrics_and_traces(
         self,
@@ -1200,6 +1249,8 @@ class TestEvalHubReconcileE2E:
     indirect=True,
 )
 @pytest.mark.ai_safety
+@pytest.mark.tier1
+@pytest.mark.slow
 class TestEvalHubReconcileUpgrade:
     """TC-UPG-001 through TC-UPG-003: Upgrade testing."""
 
@@ -1255,7 +1306,7 @@ class TestEvalHubReconcileUpgrade:
             "Standard controller-runtime work metrics missing after upgrade"
         )
 
-    @pytest.mark.pre_upgrade
+    @pytest.mark.post_upgrade
     def test_rollback_removes_new_metrics(
         self,
         admin_client: DynamicClient,
@@ -1272,5 +1323,9 @@ class TestEvalHubReconcileUpgrade:
             operator_metrics_token=operator_metrics_token,
         )
         assert "controller_runtime_reconcile_total" in raw_metrics, (
-            "Base controller-runtime metrics should exist in the pre-upgrade version"
+            "Base controller-runtime metrics should exist after rollback"
         )
+        for metric_name in EVALHUB_RECONCILE_METRICS:
+            assert metric_name not in raw_metrics, (
+                f"Metric {metric_name} still present after rollback — expected clean removal"
+            )

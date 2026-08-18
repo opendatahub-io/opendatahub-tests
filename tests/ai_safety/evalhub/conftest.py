@@ -1380,7 +1380,7 @@ def otel_collector_deployment(
                 "containers": [
                     {
                         "name": "otel-collector",
-                        "image": "otel/opentelemetry-collector:0.96.0",
+                        "image": AiSafetyImages.OTEL_COLLECTOR,
                         "args": ["--config=/etc/otel/config.yaml"],
                         "ports": [
                             {
@@ -1889,7 +1889,7 @@ def otel_trace_collector_deployment(
                 "containers": [
                     {
                         "name": "otel-collector",
-                        "image": "otel/opentelemetry-collector:0.96.0",
+                        "image": AiSafetyImages.OTEL_COLLECTOR,
                         "args": ["--config=/etc/otel/config.yaml"],
                         "ports": [
                             {
@@ -2064,7 +2064,7 @@ def evalhub_failure_cr(
         name="evalhub-failure-test",
         namespace=model_namespace.name,
         database={"type": "sqlite"},
-        image="quay.io/invalid/nonexistent-image:does-not-exist",
+        image=AiSafetyImages.EVALHUB_INVALID_IMAGE,
         wait_for_resource=True,
     ) as evalhub:
         yield evalhub
