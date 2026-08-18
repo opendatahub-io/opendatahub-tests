@@ -371,7 +371,7 @@ def lifecycle_signals_bad_image_provider(
         headers=headers,
         json=provider_payload,
         verify=lifecycle_signals_ca_bundle_file,
-        timeout=30,
+        timeout=Timeout.TIMEOUT_30SEC,
     )
     provider_id: str | None = None
     try:
@@ -385,5 +385,5 @@ def lifecycle_signals_bad_image_provider(
                 url=f"https://{host}{EVALHUB_PROVIDERS_PATH}/{provider_id}",
                 headers=headers,
                 verify=lifecycle_signals_ca_bundle_file,
-                timeout=30,
+                timeout=Timeout.TIMEOUT_30SEC,
             )
