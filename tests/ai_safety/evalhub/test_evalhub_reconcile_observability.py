@@ -401,6 +401,7 @@ class TestEvalHubReconcileMetrics:
         TC-MET-010: Verify all five evalhub controller metrics are registered
         with the controller-runtime metrics registry.
         """
+        found: set[str] = set()
         try:
             for raw_metrics in TimeoutSampler(
                 wait_timeout=METRICS_POLL_TIMEOUT,
@@ -722,6 +723,7 @@ class TestEvalHubReconcileErrors:
         )
 
         expected_increase = 1
+        errors_after = errors_before
         try:
             for raw_after in TimeoutSampler(
                 wait_timeout=METRICS_POLL_TIMEOUT,
@@ -1290,6 +1292,7 @@ class TestEvalHubReconcileUpgrade:
         TC-UPG-001: Verify new evalhub_controller_* metrics appear on the
         operator metrics endpoint after upgrading from a version without them.
         """
+        found: set[str] = set()
         try:
             for raw_metrics in TimeoutSampler(
                 wait_timeout=METRICS_POLL_TIMEOUT,
