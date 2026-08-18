@@ -1332,3 +1332,178 @@ def fetch_evalhub_job_logs_while_running(
         return assert_plain_text_logs_response(response=response)
 
     raise TimeoutExpiredError(f"Job '{job_id}' did not reach running state within {timeout}s")
+
+
+# ---------------------------------------------------------------------------
+# Operator reconciliation observability helpers (RHAISTRAT-1606 / RHAI-241)
+# ---------------------------------------------------------------------------
+
+
+def parse_prometheus_text(text: str) -> dict[str, list[dict[str, Any]]]:
+    """Parse Prometheus text-format exposition into a dict keyed by metric name.
+
+    Each entry maps to a list of sample dicts with keys ``labels`` and ``value``.
+
+    Args:
+        text: Raw text from the operator /metrics endpoint.
+
+    Returns:
+        Mapping of metric family name to list of samples.
+    """
+    import re
+
+    metrics: dict[str, list[dict[str, Any]]] = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        match = re.match(r"^([a-zA-Z_:][a-zA-Z0-9_:]*)(\{(.+?)\})?\s+(.+?)(\s+\d+)?$", line)
+        if not match:
+            continue
+        name = match.group(1)
+        labels_raw = match.group(3) or ""
+        value_str = match.group(4)
+
+        labels: dict[str, str] = {}
+        if labels_raw:
+            for label_match in re.finditer(r'(\w+)="([^"]*)"', labels_raw):
+                labels[label_match.group(1)] = label_match.group(2)
+
+        try:
+            value: float | str = float(value_str)
+        except ValueError:
+            value = value_str
+
+        metrics.setdefault(name, []).append({"labels": labels, "value": value})
+    return metrics
+
+
+def get_metric_samples(
+    metrics: dict[str, list[dict[str, Any]]],
+    metric_name: str,
+    label_filter: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    """Filter parsed Prometheus samples by metric name and optional label match.
+
+    Args:
+        metrics: Output from ``parse_prometheus_text``.
+        metric_name: Metric family name (e.g. ``evalhub_controller_reconcile_total``).
+        label_filter: Optional dict of label key/value pairs that must all match.
+
+    Returns:
+        List of matching sample dicts.
+    """
+    samples = metrics.get(metric_name, [])
+    if not label_filter:
+        return samples
+    return [s for s in samples if all(s["labels"].get(key) == val for key, val in label_filter.items())]
+
+
+def metric_value_sum(
+    metrics: dict[str, list[dict[str, Any]]],
+    metric_name: str,
+    label_filter: dict[str, str] | None = None,
+) -> float:
+    """Sum all sample values for a metric, optionally filtered by labels.
+
+    Args:
+        metrics: Output from ``parse_prometheus_text``.
+        metric_name: Metric family name.
+        label_filter: Optional label filter.
+
+    Returns:
+        Sum of matching sample values.
+    """
+    samples = get_metric_samples(metrics=metrics, metric_name=metric_name, label_filter=label_filter)
+    return sum(float(s["value"]) for s in samples)
+
+
+def parse_trace_spans_from_logs(logs: str) -> list[dict[str, Any]]:
+    """Extract OTEL trace span information from collector debug exporter logs.
+
+    The debug exporter outputs span data in a structured format. This parser
+    extracts span names, trace IDs, span IDs, parent span IDs, and attributes.
+
+    Args:
+        logs: Raw stdout log output from the OTEL collector pod.
+
+    Returns:
+        List of span dicts with keys: name, trace_id, span_id, parent_span_id,
+        status, attributes.
+    """
+    import re
+
+    spans: list[dict[str, Any]] = []
+    current_span: dict[str, Any] = {}
+
+    for line in logs.splitlines():
+        line = line.strip()
+
+        name_match = re.search(r"Name\s*:\s*(.+)", line)
+        if name_match:
+            if current_span.get("name"):
+                spans.append(current_span)
+            current_span = {
+                "name": name_match.group(1).strip(),
+                "trace_id": "",
+                "span_id": "",
+                "parent_span_id": "",
+                "status": "",
+                "attributes": {},
+            }
+            continue
+
+        trace_id_match = re.search(r"TraceID\s*:\s*([0-9a-fA-F]+)", line)
+        if trace_id_match and current_span:
+            current_span["trace_id"] = trace_id_match.group(1)
+            continue
+
+        span_id_match = re.search(r"SpanID\s*:\s*([0-9a-fA-F]+)", line)
+        if span_id_match and current_span:
+            current_span["span_id"] = span_id_match.group(1)
+            continue
+
+        parent_match = re.search(r"ParentSpanID\s*:\s*([0-9a-fA-F]+)", line)
+        if parent_match and current_span:
+            current_span["parent_span_id"] = parent_match.group(1)
+            continue
+
+        status_match = re.search(r"Status\s*:\s*(\w+)", line)
+        if status_match and current_span:
+            current_span["status"] = status_match.group(1)
+            continue
+
+        attr_match = re.search(r"->\s*([a-zA-Z0-9_.]+)\s*:\s*(.+)", line)
+        if attr_match and current_span:
+            current_span["attributes"][attr_match.group(1).strip()] = attr_match.group(2).strip()
+
+    if current_span.get("name"):
+        spans.append(current_span)
+
+    return spans
+
+
+def filter_spans_by_name(spans: list[dict[str, Any]], name: str) -> list[dict[str, Any]]:
+    """Filter parsed spans to those matching a specific span name.
+
+    Args:
+        spans: List of span dicts from ``parse_trace_spans_from_logs``.
+        name: Exact span name to match.
+
+    Returns:
+        List of matching span dicts.
+    """
+    return [s for s in spans if s["name"] == name]
+
+
+def get_child_spans(spans: list[dict[str, Any]], parent_span_id: str) -> list[dict[str, Any]]:
+    """Get all spans that are children of a given parent span ID.
+
+    Args:
+        spans: List of span dicts from ``parse_trace_spans_from_logs``.
+        parent_span_id: The span ID of the parent.
+
+    Returns:
+        List of child span dicts.
+    """
+    return [s for s in spans if s["parent_span_id"] == parent_span_id]
