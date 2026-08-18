@@ -1814,9 +1814,7 @@ def submit_pvc_job(
             LOGGER.warning(f"Failed to delete PVC evaluation job {job_id} during teardown")
 
 
-# ---------------------------------------------------------------------------
 # Operator Reconciliation Observability Fixtures (RHAISTRAT-1606 / RHAI-241)
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture(scope="class")
@@ -1872,19 +1870,21 @@ def otel_trace_collector_deployment(
     otel_trace_collector_config: ConfigMap,
 ) -> Generator[Deployment, Any, Any]:
     """Deploy OTEL collector with traces pipeline for operator span capture."""
-    from tests.ai_safety.evalhub.constants import OTEL_COLLECTOR_GRPC_PORT
-
-    labels = {"app": "otel-trace-collector"}
+    from tests.ai_safety.evalhub.constants import (
+        OTEL_COLLECTOR_GRPC_PORT,
+        OTEL_TRACE_COLLECTOR_LABELS,
+        OTEL_TRACE_COLLECTOR_NAME,
+    )
 
     with Deployment(
         client=admin_client,
         namespace=otel_trace_collector_namespace.name,
-        name="otel-trace-collector",
-        label=labels,
-        selector={"matchLabels": labels},
+        name=OTEL_TRACE_COLLECTOR_NAME,
+        label=OTEL_TRACE_COLLECTOR_LABELS,
+        selector={"matchLabels": OTEL_TRACE_COLLECTOR_LABELS},
         replicas=1,
         template={
-            "metadata": {"labels": labels},
+            "metadata": {"labels": OTEL_TRACE_COLLECTOR_LABELS},
             "spec": {
                 "containers": [
                     {
@@ -1925,13 +1925,17 @@ def otel_trace_collector_service(
     otel_trace_collector_deployment: Deployment,
 ) -> Generator[Service, Any, Any]:
     """Service for the OTEL trace collector (gRPC endpoint for operator)."""
-    from tests.ai_safety.evalhub.constants import OTEL_COLLECTOR_GRPC_PORT
+    from tests.ai_safety.evalhub.constants import (
+        OTEL_COLLECTOR_GRPC_PORT,
+        OTEL_TRACE_COLLECTOR_LABELS,
+        OTEL_TRACE_COLLECTOR_NAME,
+    )
 
     with Service(
         client=admin_client,
         namespace=otel_trace_collector_namespace.name,
-        name="otel-trace-collector",
-        selector={"app": "otel-trace-collector"},
+        name=OTEL_TRACE_COLLECTOR_NAME,
+        selector=OTEL_TRACE_COLLECTOR_LABELS,
         ports=[
             {
                 "name": "otlp-grpc",
@@ -1951,11 +1955,14 @@ def otel_trace_collector_pod(
     otel_trace_collector_deployment: Deployment,
 ) -> Pod:
     """Get OTEL trace collector pod for log inspection."""
+    from tests.ai_safety.evalhub.constants import OTEL_TRACE_COLLECTOR_LABELS
+
+    label_selector = ",".join(f"{k}={v}" for k, v in OTEL_TRACE_COLLECTOR_LABELS.items())
     pods = list(
         Pod.get(
             client=admin_client,
             namespace=otel_trace_collector_namespace.name,
-            label_selector="app=otel-trace-collector",
+            label_selector=label_selector,
         )
     )
     assert len(pods) == 1, f"Expected 1 OTEL trace collector pod, found {len(pods)}"

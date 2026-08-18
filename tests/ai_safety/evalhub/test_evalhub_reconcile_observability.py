@@ -15,6 +15,7 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.evalhub import EvalHub
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
+from ocp_resources.resource import ResourceEditor
 from ocp_resources.service_monitor import ServiceMonitor
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
@@ -32,6 +33,7 @@ from tests.ai_safety.evalhub.constants import (
     METRIC_LABEL_FAILURE_REASON,
     METRIC_LABEL_RESULT,
     OPERATOR_METRICS_PORT,
+    OPERATOR_POD_LABEL_SELECTOR,
     RECONCILE_DURATION_METRIC,
     RECONCILE_ERRORS_METRIC,
     RECONCILE_TOTAL_METRIC,
@@ -49,6 +51,8 @@ from tests.ai_safety.evalhub.constants import (
     SPAN_RECONCILE_DEPLOYMENT,
 )
 from tests.ai_safety.evalhub.utils import (
+    fetch_operator_metrics,
+    fetch_trace_collector_logs,
     filter_spans_by_name,
     get_child_spans,
     get_metric_samples,
@@ -65,39 +69,7 @@ TRACE_POLL_TIMEOUT: int = 60
 TRACE_POLL_INTERVAL: int = 5
 
 
-def _fetch_operator_metrics(
-    admin_client: DynamicClient,
-    operator_metrics_token: str,
-) -> str:
-    """Fetch raw Prometheus text from the operator metrics endpoint via port-forward."""
-    operator_ns = py_config["applications_namespace"]
-    pods = list(
-        Pod.get(
-            client=admin_client,
-            namespace=operator_ns,
-            label_selector="control-plane=controller-manager,app.kubernetes.io/name=trustyai-service-operator",
-        )
-    )
-    assert pods, "No operator pod found"
-    pod = pods[0]
-    response = requests.get(
-        f"https://{pod.instance.status.podIP}:{OPERATOR_METRICS_PORT}/metrics",
-        headers={"Authorization": f"Bearer {operator_metrics_token}"},
-        verify=False,
-        timeout=10,
-    )
-    response.raise_for_status()
-    return response.text
-
-
-def _fetch_trace_collector_logs(trace_collector_pod: Pod) -> str:
-    """Fetch logs from the OTEL trace collector pod."""
-    return trace_collector_pod.log(container="otel-collector")
-
-
-# ---------------------------------------------------------------------------
 # TC-MET: Prometheus Metrics (10 tests)
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -125,7 +97,7 @@ class TestEvalHubReconcileMetrics:
             for raw_metrics in TimeoutSampler(
                 wait_timeout=METRICS_POLL_TIMEOUT,
                 sleep=METRICS_POLL_INTERVAL,
-                func=_fetch_operator_metrics,
+                func=fetch_operator_metrics,
                 admin_client=admin_client,
                 operator_metrics_token=operator_metrics_token,
             ):
@@ -151,7 +123,7 @@ class TestEvalHubReconcileMetrics:
             for raw_metrics in TimeoutSampler(
                 wait_timeout=METRICS_POLL_TIMEOUT,
                 sleep=METRICS_POLL_INTERVAL,
-                func=_fetch_operator_metrics,
+                func=fetch_operator_metrics,
                 admin_client=admin_client,
                 operator_metrics_token=operator_metrics_token,
             ):
@@ -182,7 +154,7 @@ class TestEvalHubReconcileMetrics:
             for raw_metrics in TimeoutSampler(
                 wait_timeout=METRICS_POLL_TIMEOUT,
                 sleep=METRICS_POLL_INTERVAL,
-                func=_fetch_operator_metrics,
+                func=fetch_operator_metrics,
                 admin_client=admin_client,
                 operator_metrics_token=operator_metrics_token,
             ):
@@ -212,17 +184,16 @@ class TestEvalHubReconcileMetrics:
         TC-MET-004: Verify evalhub_controller_reconcile_total counter increments
         when a reconciliation returns requeue.
         """
-        evalhub_reconcile_cr.instance.metadata.annotations = {
-            **(evalhub_reconcile_cr.instance.metadata.annotations or {}),
-            "test-trigger": f"requeue-{time.time()}",
-        }
-        evalhub_reconcile_cr.update()
+        with ResourceEditor(
+            patches={evalhub_reconcile_cr: {"metadata": {"annotations": {"test-trigger": f"requeue-{time.time()}"}}}}
+        ):
+            pass
 
         try:
             for raw_metrics in TimeoutSampler(
                 wait_timeout=METRICS_POLL_TIMEOUT,
                 sleep=METRICS_POLL_INTERVAL,
-                func=_fetch_operator_metrics,
+                func=fetch_operator_metrics,
                 admin_client=admin_client,
                 operator_metrics_token=operator_metrics_token,
             ):
@@ -255,7 +226,7 @@ class TestEvalHubReconcileMetrics:
             for raw_metrics in TimeoutSampler(
                 wait_timeout=METRICS_POLL_TIMEOUT,
                 sleep=METRICS_POLL_INTERVAL,
-                func=_fetch_operator_metrics,
+                func=fetch_operator_metrics,
                 admin_client=admin_client,
                 operator_metrics_token=operator_metrics_token,
             ):
@@ -288,7 +259,7 @@ class TestEvalHubReconcileMetrics:
             for raw_metrics in TimeoutSampler(
                 wait_timeout=METRICS_POLL_TIMEOUT,
                 sleep=METRICS_POLL_INTERVAL,
-                func=_fetch_operator_metrics,
+                func=fetch_operator_metrics,
                 admin_client=admin_client,
                 operator_metrics_token=operator_metrics_token,
             ):
@@ -322,7 +293,7 @@ class TestEvalHubReconcileMetrics:
             for raw_metrics in TimeoutSampler(
                 wait_timeout=METRICS_POLL_TIMEOUT,
                 sleep=METRICS_POLL_INTERVAL,
-                func=_fetch_operator_metrics,
+                func=fetch_operator_metrics,
                 admin_client=admin_client,
                 operator_metrics_token=operator_metrics_token,
             ):
@@ -352,7 +323,7 @@ class TestEvalHubReconcileMetrics:
         TC-MET-008: Verify evalhub_job_failure_events_total records failures
         with the failure_reason label.
         """
-        raw_metrics = _fetch_operator_metrics(
+        raw_metrics = fetch_operator_metrics(
             admin_client=admin_client,
             operator_metrics_token=operator_metrics_token,
         )
@@ -379,7 +350,7 @@ class TestEvalHubReconcileMetrics:
             for raw_metrics in TimeoutSampler(
                 wait_timeout=METRICS_POLL_TIMEOUT,
                 sleep=METRICS_POLL_INTERVAL,
-                func=_fetch_operator_metrics,
+                func=fetch_operator_metrics,
                 admin_client=admin_client,
                 operator_metrics_token=operator_metrics_token,
             ):
@@ -406,7 +377,7 @@ class TestEvalHubReconcileMetrics:
             for raw_metrics in TimeoutSampler(
                 wait_timeout=METRICS_POLL_TIMEOUT,
                 sleep=METRICS_POLL_INTERVAL,
-                func=_fetch_operator_metrics,
+                func=fetch_operator_metrics,
                 admin_client=admin_client,
                 operator_metrics_token=operator_metrics_token,
             ):
@@ -425,9 +396,7 @@ class TestEvalHubReconcileMetrics:
             pytest.fail(f"Not all metrics registered. Found: {found}, expected: {set(EVALHUB_RECONCILE_METRICS)}")
 
 
-# ---------------------------------------------------------------------------
 # TC-TRC: OTEL Distributed Tracing (5 tests)
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -457,7 +426,7 @@ class TestEvalHubReconcileTracing:
             for logs in TimeoutSampler(
                 wait_timeout=TRACE_POLL_TIMEOUT,
                 sleep=TRACE_POLL_INTERVAL,
-                func=_fetch_trace_collector_logs,
+                func=fetch_trace_collector_logs,
                 trace_collector_pod=otel_trace_collector_pod,
             ):
                 spans = parse_trace_spans_from_logs(logs=logs)
@@ -490,7 +459,7 @@ class TestEvalHubReconcileTracing:
             for logs in TimeoutSampler(
                 wait_timeout=TRACE_POLL_TIMEOUT,
                 sleep=TRACE_POLL_INTERVAL,
-                func=_fetch_trace_collector_logs,
+                func=fetch_trace_collector_logs,
                 trace_collector_pod=otel_trace_collector_pod,
             ):
                 spans = parse_trace_spans_from_logs(logs=logs)
@@ -520,7 +489,7 @@ class TestEvalHubReconcileTracing:
         TC-TRC-003: Verify evalhub.job_failure_reconcile span includes job_name,
         failure_reason, and exit_code attributes.
         """
-        logs = _fetch_trace_collector_logs(trace_collector_pod=otel_trace_collector_pod)
+        logs = fetch_trace_collector_logs(trace_collector_pod=otel_trace_collector_pod)
         spans = parse_trace_spans_from_logs(logs=logs)
         failure_spans = filter_spans_by_name(spans=spans, name=SPAN_JOB_FAILURE_RECONCILE)
 
@@ -545,17 +514,18 @@ class TestEvalHubReconcileTracing:
         TC-TRC-004: Verify span hierarchy is preserved across multiple
         reconciliation cycles (distinct trace IDs per cycle).
         """
-        evalhub_reconcile_cr.instance.metadata.annotations = {
-            **(evalhub_reconcile_cr.instance.metadata.annotations or {}),
-            "test-trigger": f"multi-reconcile-{time.time()}",
-        }
-        evalhub_reconcile_cr.update()
+        with ResourceEditor(
+            patches={
+                evalhub_reconcile_cr: {"metadata": {"annotations": {"test-trigger": f"multi-reconcile-{time.time()}"}}}
+            }
+        ):
+            pass
 
         try:
             for logs in TimeoutSampler(
                 wait_timeout=TRACE_POLL_TIMEOUT,
                 sleep=TRACE_POLL_INTERVAL,
-                func=_fetch_trace_collector_logs,
+                func=fetch_trace_collector_logs,
                 trace_collector_pod=otel_trace_collector_pod,
             ):
                 spans = parse_trace_spans_from_logs(logs=logs)
@@ -584,7 +554,7 @@ class TestEvalHubReconcileTracing:
             for logs in TimeoutSampler(
                 wait_timeout=TRACE_POLL_TIMEOUT,
                 sleep=TRACE_POLL_INTERVAL,
-                func=_fetch_trace_collector_logs,
+                func=fetch_trace_collector_logs,
                 trace_collector_pod=otel_trace_collector_pod,
             ):
                 spans = parse_trace_spans_from_logs(logs=logs)
@@ -596,9 +566,7 @@ class TestEvalHubReconcileTracing:
             pytest.fail(f"No error-status span found for {SPAN_RECONCILE_DEPLOYMENT}")
 
 
-# ---------------------------------------------------------------------------
 # TC-ERR: Error Classification (4 tests)
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -626,7 +594,7 @@ class TestEvalHubReconcileErrors:
             Pod.get(
                 client=admin_client,
                 namespace=operator_ns,
-                label_selector="control-plane=controller-manager,app.kubernetes.io/name=trustyai-service-operator",
+                label_selector=OPERATOR_POD_LABEL_SELECTOR,
             )
         )
         assert pods, "No operator pod found"
@@ -653,7 +621,7 @@ class TestEvalHubReconcileErrors:
             for raw_metrics in TimeoutSampler(
                 wait_timeout=METRICS_POLL_TIMEOUT,
                 sleep=METRICS_POLL_INTERVAL,
-                func=_fetch_operator_metrics,
+                func=fetch_operator_metrics,
                 admin_client=admin_client,
                 operator_metrics_token=operator_metrics_token,
             ):
@@ -685,14 +653,14 @@ class TestEvalHubReconcileErrors:
         TC-ERR-003: Verify a job failure event produces both the
         evalhub_job_failure_events_total metric and a trace span.
         """
-        raw_metrics = _fetch_operator_metrics(
+        raw_metrics = fetch_operator_metrics(
             admin_client=admin_client,
             operator_metrics_token=operator_metrics_token,
         )
         metrics = parse_prometheus_text(text=raw_metrics)
         metric_samples = get_metric_samples(metrics=metrics, metric_name=JOB_FAILURE_EVENTS_METRIC)
 
-        logs = _fetch_trace_collector_logs(trace_collector_pod=otel_trace_collector_pod)
+        logs = fetch_trace_collector_logs(trace_collector_pod=otel_trace_collector_pod)
         spans = parse_trace_spans_from_logs(logs=logs)
         failure_spans = filter_spans_by_name(spans=spans, name=SPAN_JOB_FAILURE_RECONCILE)
 
@@ -710,7 +678,7 @@ class TestEvalHubReconcileErrors:
         TC-ERR-004: When a failure CR triggers multiple error reconciliations,
         the error counter monotonically increases — no samples are dropped.
         """
-        raw_before = _fetch_operator_metrics(
+        raw_before = fetch_operator_metrics(
             admin_client=admin_client,
             operator_metrics_token=operator_metrics_token,
         )
@@ -727,7 +695,7 @@ class TestEvalHubReconcileErrors:
             for raw_after in TimeoutSampler(
                 wait_timeout=METRICS_POLL_TIMEOUT,
                 sleep=METRICS_POLL_INTERVAL,
-                func=_fetch_operator_metrics,
+                func=fetch_operator_metrics,
                 admin_client=admin_client,
                 operator_metrics_token=operator_metrics_token,
             ):
@@ -749,9 +717,7 @@ class TestEvalHubReconcileErrors:
             )
 
 
-# ---------------------------------------------------------------------------
 # TC-PRF: Performance (3 tests)
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -779,7 +745,7 @@ class TestEvalHubReconcilePerformance:
             for raw_metrics in TimeoutSampler(
                 wait_timeout=METRICS_POLL_TIMEOUT,
                 sleep=METRICS_POLL_INTERVAL,
-                func=_fetch_operator_metrics,
+                func=fetch_operator_metrics,
                 admin_client=admin_client,
                 operator_metrics_token=operator_metrics_token,
             ):
@@ -820,7 +786,7 @@ class TestEvalHubReconcilePerformance:
         TC-PRF-002: Verify that the per-reconciliation duration does not scale
         linearly with the number of managed CR instances (stays under 10s).
         """
-        raw_metrics = _fetch_operator_metrics(
+        raw_metrics = fetch_operator_metrics(
             admin_client=admin_client,
             operator_metrics_token=operator_metrics_token,
         )
@@ -856,7 +822,7 @@ class TestEvalHubReconcilePerformance:
         TC-PRF-003: When the trace collector is scaled to zero, the reconcile
         counter still advances — proving the exporter is non-blocking.
         """
-        raw_before = _fetch_operator_metrics(
+        raw_before = fetch_operator_metrics(
             admin_client=admin_client,
             operator_metrics_token=operator_metrics_token,
         )
@@ -869,17 +835,18 @@ class TestEvalHubReconcilePerformance:
 
         otel_trace_collector_deployment.scale_replicas(replica_count=0)
         try:
-            evalhub_reconcile_cr.instance.metadata.annotations = {
-                **(evalhub_reconcile_cr.instance.metadata.annotations or {}),
-                "test-trigger": f"no-collector-{time.time()}",
-            }
-            evalhub_reconcile_cr.update()
+            with ResourceEditor(
+                patches={
+                    evalhub_reconcile_cr: {"metadata": {"annotations": {"test-trigger": f"no-collector-{time.time()}"}}}
+                }
+            ):
+                pass
 
             try:
                 for raw_after in TimeoutSampler(
                     wait_timeout=METRICS_POLL_TIMEOUT,
                     sleep=METRICS_POLL_INTERVAL,
-                    func=_fetch_operator_metrics,
+                    func=fetch_operator_metrics,
                     admin_client=admin_client,
                     operator_metrics_token=operator_metrics_token,
                 ):
@@ -898,9 +865,7 @@ class TestEvalHubReconcilePerformance:
             otel_trace_collector_deployment.wait_for_replicas(timeout=120)
 
 
-# ---------------------------------------------------------------------------
 # TC-INT: Integration (4 tests)
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -934,7 +899,7 @@ class TestEvalHubReconcileIntegration:
         operator_sm = [sm for sm in service_monitors if "trustyai" in sm.name and "operator" in sm.name]
         assert operator_sm, "No operator ServiceMonitor found in applications namespace"
 
-        raw_metrics = _fetch_operator_metrics(
+        raw_metrics = fetch_operator_metrics(
             admin_client=admin_client,
             operator_metrics_token=operator_metrics_token,
         )
@@ -957,7 +922,7 @@ class TestEvalHubReconcileIntegration:
             Pod.get(
                 client=admin_client,
                 namespace=operator_ns,
-                label_selector="control-plane=controller-manager,app.kubernetes.io/name=trustyai-service-operator",
+                label_selector=OPERATOR_POD_LABEL_SELECTOR,
             )
         )
         assert pods, "No operator pod found"
@@ -986,7 +951,7 @@ class TestEvalHubReconcileIntegration:
             for logs in TimeoutSampler(
                 wait_timeout=TRACE_POLL_TIMEOUT,
                 sleep=TRACE_POLL_INTERVAL,
-                func=_fetch_trace_collector_logs,
+                func=fetch_trace_collector_logs,
                 trace_collector_pod=otel_trace_collector_pod,
             ):
                 spans = parse_trace_spans_from_logs(logs=logs)
@@ -1006,7 +971,7 @@ class TestEvalHubReconcileIntegration:
         TC-INT-004: Verify metrics do not expose sensitive information
         (secrets, tokens, passwords) in label values.
         """
-        raw_metrics = _fetch_operator_metrics(
+        raw_metrics = fetch_operator_metrics(
             admin_client=admin_client,
             operator_metrics_token=operator_metrics_token,
         )
@@ -1024,9 +989,7 @@ class TestEvalHubReconcileIntegration:
                         )
 
 
-# ---------------------------------------------------------------------------
 # TC-REG: Regression (3 tests)
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -1050,7 +1013,7 @@ class TestEvalHubReconcileRegression:
         TC-REG-001: Verify existing TrustyAI Service (TAS) controller metrics
         are unaffected by the new EvalHub instrumentation.
         """
-        raw_metrics = _fetch_operator_metrics(
+        raw_metrics = fetch_operator_metrics(
             admin_client=admin_client,
             operator_metrics_token=operator_metrics_token,
         )
@@ -1069,7 +1032,7 @@ class TestEvalHubReconcileRegression:
         TC-REG-002: Verify existing LMES and GORCH controller metrics are
         unaffected by the new EvalHub reconciliation observability code.
         """
-        raw_metrics = _fetch_operator_metrics(
+        raw_metrics = fetch_operator_metrics(
             admin_client=admin_client,
             operator_metrics_token=operator_metrics_token,
         )
@@ -1098,7 +1061,7 @@ class TestEvalHubReconcileRegression:
         TC-REG-003: Verify existing OTEL traces for other controllers are
         not disrupted by the EvalHub tracing additions.
         """
-        logs = _fetch_trace_collector_logs(trace_collector_pod=otel_trace_collector_pod)
+        logs = fetch_trace_collector_logs(trace_collector_pod=otel_trace_collector_pod)
         spans = parse_trace_spans_from_logs(logs=logs)
         if not spans:
             pytest.skip("No spans detected — collector may not have received traces yet")
@@ -1111,9 +1074,7 @@ class TestEvalHubReconcileRegression:
             assert span.get("trace_id"), f"Non-EvalHub span {span['name']} missing trace_id"
 
 
-# ---------------------------------------------------------------------------
 # TC-E2E: End-to-End (4 tests)
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -1141,7 +1102,7 @@ class TestEvalHubReconcileE2E:
             for raw_metrics in TimeoutSampler(
                 wait_timeout=METRICS_POLL_TIMEOUT,
                 sleep=METRICS_POLL_INTERVAL,
-                func=_fetch_operator_metrics,
+                func=fetch_operator_metrics,
                 admin_client=admin_client,
                 operator_metrics_token=operator_metrics_token,
             ):
@@ -1181,7 +1142,7 @@ class TestEvalHubReconcileE2E:
             for raw_metrics in TimeoutSampler(
                 wait_timeout=METRICS_POLL_TIMEOUT,
                 sleep=METRICS_POLL_INTERVAL,
-                func=_fetch_operator_metrics,
+                func=fetch_operator_metrics,
                 admin_client=admin_client,
                 operator_metrics_token=operator_metrics_token,
             ):
@@ -1196,7 +1157,7 @@ class TestEvalHubReconcileE2E:
         except TimeoutExpiredError:
             pytest.fail("Error metric not recorded for failed reconciliation")
 
-        logs = _fetch_trace_collector_logs(trace_collector_pod=otel_trace_collector_pod)
+        logs = fetch_trace_collector_logs(trace_collector_pod=otel_trace_collector_pod)
         spans = parse_trace_spans_from_logs(logs=logs)
         error_spans = [s for s in spans if "error" in s.get("status", "").lower()]
         assert error_spans, "No error-status trace spans found for failed reconciliation"
@@ -1214,7 +1175,7 @@ class TestEvalHubReconcileE2E:
         TC-E2E-003: Verify the SRE diagnosis workflow — metrics identify the
         problem exists, traces pinpoint which sub-reconciler phase failed.
         """
-        raw_metrics = _fetch_operator_metrics(
+        raw_metrics = fetch_operator_metrics(
             admin_client=admin_client,
             operator_metrics_token=operator_metrics_token,
         )
@@ -1226,7 +1187,7 @@ class TestEvalHubReconcileE2E:
         )
         assert total > 0, "No reconciliation metrics available for diagnosis"
 
-        logs = _fetch_trace_collector_logs(trace_collector_pod=otel_trace_collector_pod)
+        logs = fetch_trace_collector_logs(trace_collector_pod=otel_trace_collector_pod)
         spans = parse_trace_spans_from_logs(logs=logs)
         reconcile_spans = filter_spans_by_name(spans=spans, name=SPAN_RECONCILE)
         if not reconcile_spans:
@@ -1248,14 +1209,14 @@ class TestEvalHubReconcileE2E:
         TC-E2E-004: Verify a job failure event is observable through both
         the evalhub_job_failure_events_total metric and trace spans.
         """
-        raw_metrics = _fetch_operator_metrics(
+        raw_metrics = fetch_operator_metrics(
             admin_client=admin_client,
             operator_metrics_token=operator_metrics_token,
         )
         metrics = parse_prometheus_text(text=raw_metrics)
         job_failure_samples = get_metric_samples(metrics=metrics, metric_name=JOB_FAILURE_EVENTS_METRIC)
 
-        logs = _fetch_trace_collector_logs(trace_collector_pod=otel_trace_collector_pod)
+        logs = fetch_trace_collector_logs(trace_collector_pod=otel_trace_collector_pod)
         spans = parse_trace_spans_from_logs(logs=logs)
         failure_spans = filter_spans_by_name(spans=spans, name=SPAN_JOB_FAILURE_RECONCILE)
 
@@ -1263,9 +1224,7 @@ class TestEvalHubReconcileE2E:
             pytest.skip("No job failure events detected — requires triggering a failing evaluation job")
 
 
-# ---------------------------------------------------------------------------
 # TC-UPG: Upgrade (3 tests)
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -1296,7 +1255,7 @@ class TestEvalHubReconcileUpgrade:
             for raw_metrics in TimeoutSampler(
                 wait_timeout=METRICS_POLL_TIMEOUT,
                 sleep=METRICS_POLL_INTERVAL,
-                func=_fetch_operator_metrics,
+                func=fetch_operator_metrics,
                 admin_client=admin_client,
                 operator_metrics_token=operator_metrics_token,
             ):
@@ -1326,7 +1285,7 @@ class TestEvalHubReconcileUpgrade:
         TC-UPG-002: Verify existing operator metrics (controller_runtime_*)
         and dashboards are unaffected by the upgrade.
         """
-        raw_metrics = _fetch_operator_metrics(
+        raw_metrics = fetch_operator_metrics(
             admin_client=admin_client,
             operator_metrics_token=operator_metrics_token,
         )
@@ -1337,7 +1296,7 @@ class TestEvalHubReconcileUpgrade:
             "Standard controller-runtime work metrics missing after upgrade"
         )
 
-    @pytest.mark.post_upgrade
+    @pytest.mark.pre_upgrade
     def test_rollback_removes_new_metrics(
         self,
         admin_client: DynamicClient,
@@ -1349,7 +1308,7 @@ class TestEvalHubReconcileUpgrade:
         TC-UPG-003: Verify rolling back the operator removes the new
         evalhub_controller_* metrics without affecting existing ones.
         """
-        raw_metrics = _fetch_operator_metrics(
+        raw_metrics = fetch_operator_metrics(
             admin_client=admin_client,
             operator_metrics_token=operator_metrics_token,
         )

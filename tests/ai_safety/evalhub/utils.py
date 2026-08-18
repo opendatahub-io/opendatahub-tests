@@ -1334,9 +1334,57 @@ def fetch_evalhub_job_logs_while_running(
     raise TimeoutExpiredError(f"Job '{job_id}' did not reach running state within {timeout}s")
 
 
-# ---------------------------------------------------------------------------
 # Operator reconciliation observability helpers (RHAISTRAT-1606 / RHAI-241)
-# ---------------------------------------------------------------------------
+
+
+def fetch_operator_metrics(
+    admin_client: DynamicClient,
+    operator_metrics_token: str,
+) -> str:
+    """Fetch raw Prometheus text from the operator metrics endpoint.
+
+    Args:
+        admin_client: Authenticated Kubernetes client.
+        operator_metrics_token: Bearer token for kube-rbac-proxy authentication.
+
+    Returns:
+        Raw Prometheus text-format string from the /metrics endpoint.
+    """
+    from ocp_resources.pod import Pod
+    from pytest_testconfig import config as py_config
+
+    from tests.ai_safety.evalhub.constants import OPERATOR_METRICS_PORT, OPERATOR_POD_LABEL_SELECTOR
+
+    operator_ns = py_config["applications_namespace"]
+    pods = list(
+        Pod.get(
+            client=admin_client,
+            namespace=operator_ns,
+            label_selector=OPERATOR_POD_LABEL_SELECTOR,
+        )
+    )
+    assert pods, "No operator pod found"
+    pod = pods[0]
+    response = requests.get(
+        f"https://{pod.instance.status.podIP}:{OPERATOR_METRICS_PORT}/metrics",
+        headers={"Authorization": f"Bearer {operator_metrics_token}"},
+        verify=False,
+        timeout=10,
+    )
+    response.raise_for_status()
+    return response.text
+
+
+def fetch_trace_collector_logs(trace_collector_pod: Any) -> str:
+    """Fetch logs from the OTEL trace collector pod.
+
+    Args:
+        trace_collector_pod: Pod resource for the OTEL collector.
+
+    Returns:
+        Raw log output from the otel-collector container.
+    """
+    return trace_collector_pod.log(container="otel-collector")
 
 
 def parse_prometheus_text(text: str) -> dict[str, list[dict[str, Any]]]:

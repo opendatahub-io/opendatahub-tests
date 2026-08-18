@@ -136,9 +136,7 @@ OTLP_INDICATORS: tuple[str, ...] = (
     "github.com/eval-hub",
 )
 
-# ---------------------------------------------------------------------------
 # Operator Reconciliation Observability (RHAISTRAT-1606 / RHAI-241)
-# ---------------------------------------------------------------------------
 
 # Prometheus metric names exposed on operator :8080
 RECONCILE_DURATION_METRIC: str = "evalhub_controller_reconcile_duration_seconds"
@@ -211,6 +209,10 @@ SPAN_ATTR_EXIT_CODE: str = "exit_code"
 # OTEL trace collector for operator reconcile spans
 OTEL_TRACE_COLLECTOR_NAMESPACE: str = "otel-trace-collector"
 OTEL_TRACE_COLLECTOR_NAME: str = "otel-trace-collector"
+OTEL_TRACE_COLLECTOR_LABELS: dict[str, str] = {"app": "otel-trace-collector"}
+
+# Operator pod label selector
+OPERATOR_POD_LABEL_SELECTOR: str = "control-plane=controller-manager,app.kubernetes.io/name=trustyai-service-operator"
 
 # Operator service name in OTEL traces
 OPERATOR_OTEL_SERVICE_NAME: str = "trustyai-service-operator"
