@@ -8,7 +8,6 @@ import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
-from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.data_science_pipelines_application import DataSciencePipelinesApplication
 from ocp_resources.deployment import Deployment
 from ocp_resources.evalhub import EvalHub
@@ -60,6 +59,7 @@ from tests.ai_safety.evalhub.utils import (
     MLflowWithWorkspaces,
     build_pvc_job_payload,
     delete_evalhub_job,
+    is_evalhub_crd_available,
     submit_evalhub_job,
     submit_garak_job,
     tenant_rbac_ready,
@@ -72,22 +72,6 @@ from utilities.general import collect_pod_information
 from utilities.infra import create_inference_token, create_ns
 
 LOGGER = structlog.get_logger(name=__name__)
-
-
-# Helper Functions
-
-
-def _is_evalhub_crd_available(admin_client: DynamicClient) -> bool:
-    """Check if EvalHub CRD is installed on the cluster."""
-    crd_name = "evalhubs.trustyai.opendatahub.io"
-    try:
-        crd = CustomResourceDefinition(
-            client=admin_client,
-            name=crd_name,
-        )
-        return crd.exists
-    except AttributeError, KeyError:
-        return False
 
 
 # Shared EvalHub fixtures (used by health tests and garak tests)
@@ -127,7 +111,7 @@ def evalhub_mt_cr(
     Note: This creates a Custom Resource (CR) instance, not the CustomResourceDefinition (CRD).
     The CRD must already be installed by the EvalHub/TrustyAI operator.
     """
-    if not _is_evalhub_crd_available(admin_client):
+    if not is_evalhub_crd_available(admin_client):
         pytest.fail(
             "EvalHub CRD 'evalhubs.trustyai.opendatahub.io' not available on this cluster. "
             "Install the TrustyAI/EvalHub operator first."

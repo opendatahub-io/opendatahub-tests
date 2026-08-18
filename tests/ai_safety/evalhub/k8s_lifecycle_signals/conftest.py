@@ -5,7 +5,6 @@ import pytest
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.deployment import Deployment
 from ocp_resources.evalhub import EvalHub
 from ocp_resources.namespace import Namespace
@@ -34,6 +33,7 @@ from tests.ai_safety.evalhub.kueue.constants import VLLM_EMULATOR, VLLM_EMULATOR
 from tests.ai_safety.evalhub.utils import (
     TRANSIENT_HEALTH_EXCEPTIONS,
     build_headers,
+    is_evalhub_crd_available,
     probe_evalhub_health_endpoint,
     tenant_rbac_ready,
 )
@@ -58,15 +58,6 @@ _USER_SA_NAME = "evalhub-lifecycle-user"
 _USER_ROLE_NAME = "evalhub-lifecycle-user-role"
 _USER_BINDING_NAME = "evalhub-lifecycle-user-binding"
 _USER_JOBS_WRITER_BINDING = "evalhub-lifecycle-jobs-writer-binding"
-
-
-def _is_evalhub_crd_available(admin_client: DynamicClient) -> bool:
-    """Check if EvalHub CRD is installed on the cluster."""
-    try:
-        crd = CustomResourceDefinition(client=admin_client, name="evalhubs.trustyai.opendatahub.io")
-        return crd.exists
-    except AttributeError, KeyError:
-        return False
 
 
 @pytest.fixture(scope="session")
@@ -98,7 +89,7 @@ def lifecycle_signals_evalhub_cr(
     lifecycle_signals_cp_namespace: Namespace,
 ) -> Generator[EvalHub, Any, Any]:
     """Single EvalHub CR in the control plane namespace, shared across all lifecycle signal tests."""
-    if not _is_evalhub_crd_available(admin_client):
+    if not is_evalhub_crd_available(admin_client):
         pytest.fail(
             "EvalHub CRD 'evalhubs.trustyai.opendatahub.io' not available. Install the TrustyAI/EvalHub operator first."
         )

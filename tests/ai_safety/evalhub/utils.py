@@ -6,6 +6,7 @@ import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.evalhub import EvalHub
 from ocp_resources.job import Job
 from ocp_resources.mlflow import MLflow
@@ -15,6 +16,7 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_safety.evalhub.constants import (
     EVALHUB_COLLECTIONS_PATH,
+    EVALHUB_CRD_NAME,
     EVALHUB_DEFAULT_HARDWARE_PROFILE,
     EVALHUB_FULL_API_VERSION_V1,
     EVALHUB_FULL_API_VERSION_V1ALPHA1,
@@ -41,6 +43,15 @@ from utilities.guardrails import get_auth_headers
 from utilities.kueue_utils import Workload
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+def is_evalhub_crd_available(admin_client: DynamicClient) -> bool:
+    """Return True when the EvalHub CRD is installed on the cluster."""
+    try:
+        crd = CustomResourceDefinition(client=admin_client, name=EVALHUB_CRD_NAME)
+        return crd.exists
+    except AttributeError, KeyError:
+        return False
 
 
 class MLflowWithWorkspaces(MLflow):
