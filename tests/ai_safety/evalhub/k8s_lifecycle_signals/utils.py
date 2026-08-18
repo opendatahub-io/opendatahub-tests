@@ -785,8 +785,7 @@ def _restore_role_binding(admin_client: DynamicClient, body: dict[str, Any]) -> 
     if existing.exists:
         LOGGER.info("Events RoleBinding already present; skipping restore", name=name, namespace=namespace)
         return
-    api = admin_client.resources.get(api_version="rbac.authorization.k8s.io/v1", kind="RoleBinding")
-    api.create(body=body)
+    RoleBinding(client=admin_client, kind_dict=body, teardown=False).create(wait=True)
     LOGGER.info("Restored events RoleBinding", name=name, namespace=namespace)
 
 
