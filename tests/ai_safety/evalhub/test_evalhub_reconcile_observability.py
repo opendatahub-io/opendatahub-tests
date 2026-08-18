@@ -17,7 +17,7 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.service_monitor import ServiceMonitor
 from pytest_testconfig import config as py_config
-from timeout_sampler import TimeoutSampler
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_safety.evalhub.constants import (
     ERROR_TYPE_OTHER,
@@ -121,19 +121,20 @@ class TestEvalHubReconcileMetrics:
         TC-MET-001: Verify evalhub_controller_reconcile_duration_seconds histogram
         is registered and exposed on the operator metrics endpoint.
         """
-        for raw_metrics in TimeoutSampler(
-            wait_timeout=METRICS_POLL_TIMEOUT,
-            sleep=METRICS_POLL_INTERVAL,
-            func=_fetch_operator_metrics,
-            admin_client=admin_client,
-            operator_metrics_token=operator_metrics_token,
-        ):
-            metrics = parse_prometheus_text(text=raw_metrics)
-            bucket_key = f"{RECONCILE_DURATION_METRIC}_bucket"
-            if bucket_key in metrics or RECONCILE_DURATION_METRIC in metrics:
-                return
-
-        pytest.fail(f"{RECONCILE_DURATION_METRIC} histogram not found on operator metrics endpoint")
+        try:
+            for raw_metrics in TimeoutSampler(
+                wait_timeout=METRICS_POLL_TIMEOUT,
+                sleep=METRICS_POLL_INTERVAL,
+                func=_fetch_operator_metrics,
+                admin_client=admin_client,
+                operator_metrics_token=operator_metrics_token,
+            ):
+                metrics = parse_prometheus_text(text=raw_metrics)
+                bucket_key = f"{RECONCILE_DURATION_METRIC}_bucket"
+                if bucket_key in metrics or RECONCILE_DURATION_METRIC in metrics:
+                    return
+        except TimeoutExpiredError:
+            pytest.fail(f"{RECONCILE_DURATION_METRIC} histogram not found on operator metrics endpoint")
 
     def test_duration_histogram_captures_latency(
         self,
@@ -146,24 +147,25 @@ class TestEvalHubReconcileMetrics:
         TC-MET-002: Verify duration histogram captures accurate latency values
         after a reconciliation cycle completes.
         """
-        for raw_metrics in TimeoutSampler(
-            wait_timeout=METRICS_POLL_TIMEOUT,
-            sleep=METRICS_POLL_INTERVAL,
-            func=_fetch_operator_metrics,
-            admin_client=admin_client,
-            operator_metrics_token=operator_metrics_token,
-        ):
-            metrics = parse_prometheus_text(text=raw_metrics)
-            sum_key = f"{RECONCILE_DURATION_METRIC}_sum"
-            samples = get_metric_samples(
-                metrics=metrics,
-                metric_name=sum_key,
-                label_filter={METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE},
-            )
-            if samples and float(samples[0]["value"]) > 0:
-                return
-
-        pytest.fail("Duration histogram sum is not positive after reconciliation")
+        try:
+            for raw_metrics in TimeoutSampler(
+                wait_timeout=METRICS_POLL_TIMEOUT,
+                sleep=METRICS_POLL_INTERVAL,
+                func=_fetch_operator_metrics,
+                admin_client=admin_client,
+                operator_metrics_token=operator_metrics_token,
+            ):
+                metrics = parse_prometheus_text(text=raw_metrics)
+                sum_key = f"{RECONCILE_DURATION_METRIC}_sum"
+                samples = get_metric_samples(
+                    metrics=metrics,
+                    metric_name=sum_key,
+                    label_filter={METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE},
+                )
+                if samples and float(samples[0]["value"]) > 0:
+                    return
+        except TimeoutExpiredError:
+            pytest.fail("Duration histogram sum is not positive after reconciliation")
 
     def test_total_counter_success(
         self,
@@ -176,26 +178,27 @@ class TestEvalHubReconcileMetrics:
         TC-MET-003: Verify evalhub_controller_reconcile_total counter increments
         for a successful reconciliation outcome.
         """
-        for raw_metrics in TimeoutSampler(
-            wait_timeout=METRICS_POLL_TIMEOUT,
-            sleep=METRICS_POLL_INTERVAL,
-            func=_fetch_operator_metrics,
-            admin_client=admin_client,
-            operator_metrics_token=operator_metrics_token,
-        ):
-            metrics = parse_prometheus_text(text=raw_metrics)
-            total = metric_value_sum(
-                metrics=metrics,
-                metric_name=RECONCILE_TOTAL_METRIC,
-                label_filter={
-                    METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE,
-                    METRIC_LABEL_RESULT: RESULT_SUCCESS,
-                },
-            )
-            if total > 0:
-                return
-
-        pytest.fail(f"{RECONCILE_TOTAL_METRIC}{{result=success}} not incremented")
+        try:
+            for raw_metrics in TimeoutSampler(
+                wait_timeout=METRICS_POLL_TIMEOUT,
+                sleep=METRICS_POLL_INTERVAL,
+                func=_fetch_operator_metrics,
+                admin_client=admin_client,
+                operator_metrics_token=operator_metrics_token,
+            ):
+                metrics = parse_prometheus_text(text=raw_metrics)
+                total = metric_value_sum(
+                    metrics=metrics,
+                    metric_name=RECONCILE_TOTAL_METRIC,
+                    label_filter={
+                        METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE,
+                        METRIC_LABEL_RESULT: RESULT_SUCCESS,
+                    },
+                )
+                if total > 0:
+                    return
+        except TimeoutExpiredError:
+            pytest.fail(f"{RECONCILE_TOTAL_METRIC}{{result=success}} not incremented")
 
     def test_total_counter_requeue(
         self,
@@ -215,26 +218,27 @@ class TestEvalHubReconcileMetrics:
         }
         evalhub_reconcile_cr.update()
 
-        for raw_metrics in TimeoutSampler(
-            wait_timeout=METRICS_POLL_TIMEOUT,
-            sleep=METRICS_POLL_INTERVAL,
-            func=_fetch_operator_metrics,
-            admin_client=admin_client,
-            operator_metrics_token=operator_metrics_token,
-        ):
-            metrics = parse_prometheus_text(text=raw_metrics)
-            total = metric_value_sum(
-                metrics=metrics,
-                metric_name=RECONCILE_TOTAL_METRIC,
-                label_filter={
-                    METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE,
-                    METRIC_LABEL_RESULT: RESULT_REQUEUE,
-                },
-            )
-            if total > 0:
-                return
-
-        pytest.fail(f"{RECONCILE_TOTAL_METRIC}{{result=requeue}} not incremented after update")
+        try:
+            for raw_metrics in TimeoutSampler(
+                wait_timeout=METRICS_POLL_TIMEOUT,
+                sleep=METRICS_POLL_INTERVAL,
+                func=_fetch_operator_metrics,
+                admin_client=admin_client,
+                operator_metrics_token=operator_metrics_token,
+            ):
+                metrics = parse_prometheus_text(text=raw_metrics)
+                total = metric_value_sum(
+                    metrics=metrics,
+                    metric_name=RECONCILE_TOTAL_METRIC,
+                    label_filter={
+                        METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE,
+                        METRIC_LABEL_RESULT: RESULT_REQUEUE,
+                    },
+                )
+                if total > 0:
+                    return
+        except TimeoutExpiredError:
+            pytest.fail(f"{RECONCILE_TOTAL_METRIC}{{result=requeue}} not incremented after update")
 
     def test_total_counter_error(
         self,
@@ -247,26 +251,27 @@ class TestEvalHubReconcileMetrics:
         TC-MET-005: Verify evalhub_controller_reconcile_total counter increments
         when a reconciliation results in an error.
         """
-        for raw_metrics in TimeoutSampler(
-            wait_timeout=METRICS_POLL_TIMEOUT,
-            sleep=METRICS_POLL_INTERVAL,
-            func=_fetch_operator_metrics,
-            admin_client=admin_client,
-            operator_metrics_token=operator_metrics_token,
-        ):
-            metrics = parse_prometheus_text(text=raw_metrics)
-            total = metric_value_sum(
-                metrics=metrics,
-                metric_name=RECONCILE_TOTAL_METRIC,
-                label_filter={
-                    METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE,
-                    METRIC_LABEL_RESULT: RESULT_ERROR,
-                },
-            )
-            if total > 0:
-                return
-
-        pytest.fail(f"{RECONCILE_TOTAL_METRIC}{{result=error}} not incremented for failure CR")
+        try:
+            for raw_metrics in TimeoutSampler(
+                wait_timeout=METRICS_POLL_TIMEOUT,
+                sleep=METRICS_POLL_INTERVAL,
+                func=_fetch_operator_metrics,
+                admin_client=admin_client,
+                operator_metrics_token=operator_metrics_token,
+            ):
+                metrics = parse_prometheus_text(text=raw_metrics)
+                total = metric_value_sum(
+                    metrics=metrics,
+                    metric_name=RECONCILE_TOTAL_METRIC,
+                    label_filter={
+                        METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE,
+                        METRIC_LABEL_RESULT: RESULT_ERROR,
+                    },
+                )
+                if total > 0:
+                    return
+        except TimeoutExpiredError:
+            pytest.fail(f"{RECONCILE_TOTAL_METRIC}{{result=error}} not incremented for failure CR")
 
     def test_error_counter_classifies_by_type(
         self,
@@ -279,27 +284,28 @@ class TestEvalHubReconcileMetrics:
         TC-MET-006: Verify evalhub_controller_reconcile_errors_total classifies
         errors by type (e.g. deployment_create_failed).
         """
-        for raw_metrics in TimeoutSampler(
-            wait_timeout=METRICS_POLL_TIMEOUT,
-            sleep=METRICS_POLL_INTERVAL,
-            func=_fetch_operator_metrics,
-            admin_client=admin_client,
-            operator_metrics_token=operator_metrics_token,
-        ):
-            metrics = parse_prometheus_text(text=raw_metrics)
-            samples = get_metric_samples(
-                metrics=metrics,
-                metric_name=RECONCILE_ERRORS_METRIC,
-                label_filter={METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE},
-            )
-            if samples:
-                error_types_seen = {s["labels"].get(METRIC_LABEL_ERROR_TYPE) for s in samples}
-                assert error_types_seen.intersection(set(EVALHUB_ERROR_TYPES)), (
-                    f"Expected known error_type, got: {error_types_seen}"
+        try:
+            for raw_metrics in TimeoutSampler(
+                wait_timeout=METRICS_POLL_TIMEOUT,
+                sleep=METRICS_POLL_INTERVAL,
+                func=_fetch_operator_metrics,
+                admin_client=admin_client,
+                operator_metrics_token=operator_metrics_token,
+            ):
+                metrics = parse_prometheus_text(text=raw_metrics)
+                samples = get_metric_samples(
+                    metrics=metrics,
+                    metric_name=RECONCILE_ERRORS_METRIC,
+                    label_filter={METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE},
                 )
-                return
-
-        pytest.fail(f"{RECONCILE_ERRORS_METRIC} not recorded for failure CR")
+                if samples:
+                    error_types_seen = {s["labels"].get(METRIC_LABEL_ERROR_TYPE) for s in samples}
+                    assert error_types_seen.intersection(set(EVALHUB_ERROR_TYPES)), (
+                        f"Expected known error_type, got: {error_types_seen}"
+                    )
+                    return
+        except TimeoutExpiredError:
+            pytest.fail(f"{RECONCILE_ERRORS_METRIC} not recorded for failure CR")
 
     def test_unexpected_error_mapped_to_other(
         self,
@@ -312,26 +318,27 @@ class TestEvalHubReconcileMetrics:
         TC-MET-007: Verify that unexpected/unclassified errors are mapped to
         the 'other' error_type bucket.
         """
-        for raw_metrics in TimeoutSampler(
-            wait_timeout=METRICS_POLL_TIMEOUT,
-            sleep=METRICS_POLL_INTERVAL,
-            func=_fetch_operator_metrics,
-            admin_client=admin_client,
-            operator_metrics_token=operator_metrics_token,
-        ):
-            metrics = parse_prometheus_text(text=raw_metrics)
-            samples = get_metric_samples(
-                metrics=metrics,
-                metric_name=RECONCILE_ERRORS_METRIC,
-                label_filter={
-                    METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE,
-                    METRIC_LABEL_ERROR_TYPE: ERROR_TYPE_OTHER,
-                },
-            )
-            if samples and float(samples[0]["value"]) > 0:
-                return
-
-        pytest.fail(f"{RECONCILE_ERRORS_METRIC}{{error_type=other}} not populated")
+        try:
+            for raw_metrics in TimeoutSampler(
+                wait_timeout=METRICS_POLL_TIMEOUT,
+                sleep=METRICS_POLL_INTERVAL,
+                func=_fetch_operator_metrics,
+                admin_client=admin_client,
+                operator_metrics_token=operator_metrics_token,
+            ):
+                metrics = parse_prometheus_text(text=raw_metrics)
+                samples = get_metric_samples(
+                    metrics=metrics,
+                    metric_name=RECONCILE_ERRORS_METRIC,
+                    label_filter={
+                        METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE,
+                        METRIC_LABEL_ERROR_TYPE: ERROR_TYPE_OTHER,
+                    },
+                )
+                if samples and float(samples[0]["value"]) > 0:
+                    return
+        except TimeoutExpiredError:
+            pytest.fail(f"{RECONCILE_ERRORS_METRIC}{{error_type=other}} not populated")
 
     def test_job_failure_counter(
         self,
@@ -368,19 +375,20 @@ class TestEvalHubReconcileMetrics:
         TC-MET-009: Verify evalhub_managed_instances_total gauge reflects the
         number of active EvalHub CR instances.
         """
-        for raw_metrics in TimeoutSampler(
-            wait_timeout=METRICS_POLL_TIMEOUT,
-            sleep=METRICS_POLL_INTERVAL,
-            func=_fetch_operator_metrics,
-            admin_client=admin_client,
-            operator_metrics_token=operator_metrics_token,
-        ):
-            metrics = parse_prometheus_text(text=raw_metrics)
-            samples = get_metric_samples(metrics=metrics, metric_name=MANAGED_INSTANCES_METRIC)
-            if samples and float(samples[0]["value"]) >= 1:
-                return
-
-        pytest.fail(f"{MANAGED_INSTANCES_METRIC} not >= 1 with active EvalHub CR")
+        try:
+            for raw_metrics in TimeoutSampler(
+                wait_timeout=METRICS_POLL_TIMEOUT,
+                sleep=METRICS_POLL_INTERVAL,
+                func=_fetch_operator_metrics,
+                admin_client=admin_client,
+                operator_metrics_token=operator_metrics_token,
+            ):
+                metrics = parse_prometheus_text(text=raw_metrics)
+                samples = get_metric_samples(metrics=metrics, metric_name=MANAGED_INSTANCES_METRIC)
+                if samples and float(samples[0]["value"]) >= 1:
+                    return
+        except TimeoutExpiredError:
+            pytest.fail(f"{MANAGED_INSTANCES_METRIC} not >= 1 with active EvalHub CR")
 
     def test_all_metrics_registered(
         self,
@@ -393,22 +401,27 @@ class TestEvalHubReconcileMetrics:
         TC-MET-010: Verify all five evalhub controller metrics are registered
         with the controller-runtime metrics registry.
         """
-        for raw_metrics in TimeoutSampler(
-            wait_timeout=METRICS_POLL_TIMEOUT,
-            sleep=METRICS_POLL_INTERVAL,
-            func=_fetch_operator_metrics,
-            admin_client=admin_client,
-            operator_metrics_token=operator_metrics_token,
-        ):
-            metrics = parse_prometheus_text(text=raw_metrics)
-            found = set()
-            for metric_name in EVALHUB_RECONCILE_METRICS:
-                if metric_name in metrics or f"{metric_name}_bucket" in metrics or f"{metric_name}_total" in metrics:
-                    found.add(metric_name)
-            if found == set(EVALHUB_RECONCILE_METRICS):
-                return
-
-        pytest.fail(f"Not all metrics registered. Found: {found}, expected: {set(EVALHUB_RECONCILE_METRICS)}")
+        try:
+            for raw_metrics in TimeoutSampler(
+                wait_timeout=METRICS_POLL_TIMEOUT,
+                sleep=METRICS_POLL_INTERVAL,
+                func=_fetch_operator_metrics,
+                admin_client=admin_client,
+                operator_metrics_token=operator_metrics_token,
+            ):
+                metrics = parse_prometheus_text(text=raw_metrics)
+                found = set()
+                for metric_name in EVALHUB_RECONCILE_METRICS:
+                    if (
+                        metric_name in metrics
+                        or f"{metric_name}_bucket" in metrics
+                        or f"{metric_name}_total" in metrics
+                    ):
+                        found.add(metric_name)
+                if found == set(EVALHUB_RECONCILE_METRICS):
+                    return
+        except TimeoutExpiredError:
+            pytest.fail(f"Not all metrics registered. Found: {found}, expected: {set(EVALHUB_RECONCILE_METRICS)}")
 
 
 # ---------------------------------------------------------------------------
@@ -439,24 +452,25 @@ class TestEvalHubReconcileTracing:
         TC-TRC-001: Verify evalhub.reconcile parent span is created with
         k8s.namespace, evalhub.name, and reconcile.generation attributes.
         """
-        for logs in TimeoutSampler(
-            wait_timeout=TRACE_POLL_TIMEOUT,
-            sleep=TRACE_POLL_INTERVAL,
-            func=_fetch_trace_collector_logs,
-            trace_collector_pod=otel_trace_collector_pod,
-        ):
-            spans = parse_trace_spans_from_logs(logs=logs)
-            parent_spans = filter_spans_by_name(spans=spans, name=SPAN_RECONCILE)
-            if parent_spans:
-                span = parent_spans[0]
-                assert SPAN_ATTR_K8S_NAMESPACE in span["attributes"], f"Missing {SPAN_ATTR_K8S_NAMESPACE} attribute"
-                assert SPAN_ATTR_EVALHUB_NAME in span["attributes"], f"Missing {SPAN_ATTR_EVALHUB_NAME} attribute"
-                assert SPAN_ATTR_RECONCILE_GENERATION in span["attributes"], (
-                    f"Missing {SPAN_ATTR_RECONCILE_GENERATION} attribute"
-                )
-                return
-
-        pytest.fail(f"No {SPAN_RECONCILE} parent span found in collector logs")
+        try:
+            for logs in TimeoutSampler(
+                wait_timeout=TRACE_POLL_TIMEOUT,
+                sleep=TRACE_POLL_INTERVAL,
+                func=_fetch_trace_collector_logs,
+                trace_collector_pod=otel_trace_collector_pod,
+            ):
+                spans = parse_trace_spans_from_logs(logs=logs)
+                parent_spans = filter_spans_by_name(spans=spans, name=SPAN_RECONCILE)
+                if parent_spans:
+                    span = parent_spans[0]
+                    assert SPAN_ATTR_K8S_NAMESPACE in span["attributes"], f"Missing {SPAN_ATTR_K8S_NAMESPACE} attribute"
+                    assert SPAN_ATTR_EVALHUB_NAME in span["attributes"], f"Missing {SPAN_ATTR_EVALHUB_NAME} attribute"
+                    assert SPAN_ATTR_RECONCILE_GENERATION in span["attributes"], (
+                        f"Missing {SPAN_ATTR_RECONCILE_GENERATION} attribute"
+                    )
+                    return
+        except TimeoutExpiredError:
+            pytest.fail(f"No {SPAN_RECONCILE} parent span found in collector logs")
 
     def test_child_spans_for_sub_reconcilers(
         self,
@@ -471,25 +485,26 @@ class TestEvalHubReconcileTracing:
         TC-TRC-002: Verify child spans exist for configmap, deployment, service,
         route, and rbac sub-reconciler phases.
         """
-        for logs in TimeoutSampler(
-            wait_timeout=TRACE_POLL_TIMEOUT,
-            sleep=TRACE_POLL_INTERVAL,
-            func=_fetch_trace_collector_logs,
-            trace_collector_pod=otel_trace_collector_pod,
-        ):
-            spans = parse_trace_spans_from_logs(logs=logs)
-            parent_spans = filter_spans_by_name(spans=spans, name=SPAN_RECONCILE)
-            if not parent_spans:
-                continue
+        try:
+            for logs in TimeoutSampler(
+                wait_timeout=TRACE_POLL_TIMEOUT,
+                sleep=TRACE_POLL_INTERVAL,
+                func=_fetch_trace_collector_logs,
+                trace_collector_pod=otel_trace_collector_pod,
+            ):
+                spans = parse_trace_spans_from_logs(logs=logs)
+                parent_spans = filter_spans_by_name(spans=spans, name=SPAN_RECONCILE)
+                if not parent_spans:
+                    continue
 
-            parent_span_id = parent_spans[0]["span_id"]
-            children = get_child_spans(spans=spans, parent_span_id=parent_span_id)
-            child_names = {c["name"] for c in children}
+                parent_span_id = parent_spans[0]["span_id"]
+                children = get_child_spans(spans=spans, parent_span_id=parent_span_id)
+                child_names = {c["name"] for c in children}
 
-            if set(EVALHUB_RECONCILE_CHILD_SPANS).issubset(child_names):
-                return
-
-        pytest.fail(f"Not all child spans found. Expected: {set(EVALHUB_RECONCILE_CHILD_SPANS)}")
+                if set(EVALHUB_RECONCILE_CHILD_SPANS).issubset(child_names):
+                    return
+        except TimeoutExpiredError:
+            pytest.fail(f"Not all child spans found. Expected: {set(EVALHUB_RECONCILE_CHILD_SPANS)}")
 
     def test_job_failure_span_includes_details(
         self,
@@ -535,20 +550,21 @@ class TestEvalHubReconcileTracing:
         }
         evalhub_reconcile_cr.update()
 
-        for logs in TimeoutSampler(
-            wait_timeout=TRACE_POLL_TIMEOUT,
-            sleep=TRACE_POLL_INTERVAL,
-            func=_fetch_trace_collector_logs,
-            trace_collector_pod=otel_trace_collector_pod,
-        ):
-            spans = parse_trace_spans_from_logs(logs=logs)
-            parent_spans = filter_spans_by_name(spans=spans, name=SPAN_RECONCILE)
-            if len(parent_spans) >= 2:
-                trace_ids = {s["trace_id"] for s in parent_spans}
-                assert len(trace_ids) >= 2, "Multiple reconciliations should produce distinct trace IDs"
-                return
-
-        pytest.skip("Fewer than 2 reconcile spans detected within timeout")
+        try:
+            for logs in TimeoutSampler(
+                wait_timeout=TRACE_POLL_TIMEOUT,
+                sleep=TRACE_POLL_INTERVAL,
+                func=_fetch_trace_collector_logs,
+                trace_collector_pod=otel_trace_collector_pod,
+            ):
+                spans = parse_trace_spans_from_logs(logs=logs)
+                parent_spans = filter_spans_by_name(spans=spans, name=SPAN_RECONCILE)
+                if len(parent_spans) >= 2:
+                    trace_ids = {s["trace_id"] for s in parent_spans}
+                    assert len(trace_ids) >= 2, "Multiple reconciliations should produce distinct trace IDs"
+                    return
+        except TimeoutExpiredError:
+            pytest.skip("Fewer than 2 reconcile spans detected within timeout")
 
     def test_failed_sub_reconciler_span_error_status(
         self,
@@ -563,19 +579,20 @@ class TestEvalHubReconcileTracing:
         TC-TRC-005: Verify that a failed sub-reconciler phase span records
         an error status code.
         """
-        for logs in TimeoutSampler(
-            wait_timeout=TRACE_POLL_TIMEOUT,
-            sleep=TRACE_POLL_INTERVAL,
-            func=_fetch_trace_collector_logs,
-            trace_collector_pod=otel_trace_collector_pod,
-        ):
-            spans = parse_trace_spans_from_logs(logs=logs)
-            deployment_spans = filter_spans_by_name(spans=spans, name=SPAN_RECONCILE_DEPLOYMENT)
-            error_spans = [s for s in deployment_spans if "error" in s.get("status", "").lower()]
-            if error_spans:
-                return
-
-        pytest.fail(f"No error-status span found for {SPAN_RECONCILE_DEPLOYMENT}")
+        try:
+            for logs in TimeoutSampler(
+                wait_timeout=TRACE_POLL_TIMEOUT,
+                sleep=TRACE_POLL_INTERVAL,
+                func=_fetch_trace_collector_logs,
+                trace_collector_pod=otel_trace_collector_pod,
+            ):
+                spans = parse_trace_spans_from_logs(logs=logs)
+                deployment_spans = filter_spans_by_name(spans=spans, name=SPAN_RECONCILE_DEPLOYMENT)
+                error_spans = [s for s in deployment_spans if "error" in s.get("status", "").lower()]
+                if error_spans:
+                    return
+        except TimeoutExpiredError:
+            pytest.fail(f"No error-status span found for {SPAN_RECONCILE_DEPLOYMENT}")
 
 
 # ---------------------------------------------------------------------------
@@ -631,25 +648,28 @@ class TestEvalHubReconcileErrors:
         TC-ERR-002: Verify that multiple failure types within the same
         reconciliation cycle are all recorded in the errors metric.
         """
-        for raw_metrics in TimeoutSampler(
-            wait_timeout=METRICS_POLL_TIMEOUT,
-            sleep=METRICS_POLL_INTERVAL,
-            func=_fetch_operator_metrics,
-            admin_client=admin_client,
-            operator_metrics_token=operator_metrics_token,
-        ):
-            metrics = parse_prometheus_text(text=raw_metrics)
-            samples = get_metric_samples(
-                metrics=metrics,
-                metric_name=RECONCILE_ERRORS_METRIC,
-                label_filter={METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE},
-            )
-            if samples:
-                error_types_seen = {s["labels"].get(METRIC_LABEL_ERROR_TYPE) for s in samples if float(s["value"]) > 0}
-                if error_types_seen:
-                    return
-
-        pytest.fail("No error types recorded in errors metric")
+        try:
+            for raw_metrics in TimeoutSampler(
+                wait_timeout=METRICS_POLL_TIMEOUT,
+                sleep=METRICS_POLL_INTERVAL,
+                func=_fetch_operator_metrics,
+                admin_client=admin_client,
+                operator_metrics_token=operator_metrics_token,
+            ):
+                metrics = parse_prometheus_text(text=raw_metrics)
+                samples = get_metric_samples(
+                    metrics=metrics,
+                    metric_name=RECONCILE_ERRORS_METRIC,
+                    label_filter={METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE},
+                )
+                if samples:
+                    error_types_seen = {
+                        s["labels"].get(METRIC_LABEL_ERROR_TYPE) for s in samples if float(s["value"]) > 0
+                    }
+                    if error_types_seen:
+                        return
+        except TimeoutExpiredError:
+            pytest.fail("No error types recorded in errors metric")
 
     def test_job_failure_produces_metric_and_trace(
         self,
@@ -702,29 +722,30 @@ class TestEvalHubReconcileErrors:
         )
 
         expected_increase = 1
-        for raw_after in TimeoutSampler(
-            wait_timeout=METRICS_POLL_TIMEOUT,
-            sleep=METRICS_POLL_INTERVAL,
-            func=_fetch_operator_metrics,
-            admin_client=admin_client,
-            operator_metrics_token=operator_metrics_token,
-        ):
-            metrics_after = parse_prometheus_text(text=raw_after)
-            errors_after = metric_value_sum(
-                metrics=metrics_after,
-                metric_name=RECONCILE_ERRORS_METRIC,
-                label_filter={METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE},
+        try:
+            for raw_after in TimeoutSampler(
+                wait_timeout=METRICS_POLL_TIMEOUT,
+                sleep=METRICS_POLL_INTERVAL,
+                func=_fetch_operator_metrics,
+                admin_client=admin_client,
+                operator_metrics_token=operator_metrics_token,
+            ):
+                metrics_after = parse_prometheus_text(text=raw_after)
+                errors_after = metric_value_sum(
+                    metrics=metrics_after,
+                    metric_name=RECONCILE_ERRORS_METRIC,
+                    label_filter={METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE},
+                )
+                assert errors_after >= errors_before, (
+                    f"Error counter decreased: {errors_before} -> {errors_after} (metric loss detected)"
+                )
+                if errors_after >= errors_before + expected_increase:
+                    return
+        except TimeoutExpiredError:
+            pytest.fail(
+                f"Error counter did not increase by {expected_increase} within timeout "
+                f"(before={errors_before}, after={errors_after})"
             )
-            assert errors_after >= errors_before, (
-                f"Error counter decreased: {errors_before} -> {errors_after} (metric loss detected)"
-            )
-            if errors_after >= errors_before + expected_increase:
-                return
-
-        pytest.fail(
-            f"Error counter did not increase by {expected_increase} within timeout "
-            f"(before={errors_before}, after={errors_after})"
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -753,37 +774,38 @@ class TestEvalHubReconcilePerformance:
         TC-PRF-001: Verify the average reconciliation duration (including
         instrumentation) does not exceed 5s, indicating negligible overhead.
         """
-        for raw_metrics in TimeoutSampler(
-            wait_timeout=METRICS_POLL_TIMEOUT,
-            sleep=METRICS_POLL_INTERVAL,
-            func=_fetch_operator_metrics,
-            admin_client=admin_client,
-            operator_metrics_token=operator_metrics_token,
-        ):
-            metrics = parse_prometheus_text(text=raw_metrics)
-            sum_key = f"{RECONCILE_DURATION_METRIC}_sum"
-            count_key = f"{RECONCILE_DURATION_METRIC}_count"
-            sum_samples = get_metric_samples(
-                metrics=metrics,
-                metric_name=sum_key,
-                label_filter={METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE},
-            )
-            count_samples = get_metric_samples(
-                metrics=metrics,
-                metric_name=count_key,
-                label_filter={METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE},
-            )
-            if sum_samples and count_samples:
-                total_duration = float(sum_samples[0]["value"])
-                total_count = float(count_samples[0]["value"])
-                if total_count > 0:
-                    avg_duration_ms = (total_duration / total_count) * 1000
-                    assert avg_duration_ms < 5000, (
-                        f"Average reconciliation duration {avg_duration_ms:.2f}ms exceeds 5s threshold"
-                    )
-                    return
-
-        pytest.fail("Could not calculate average reconciliation duration")
+        try:
+            for raw_metrics in TimeoutSampler(
+                wait_timeout=METRICS_POLL_TIMEOUT,
+                sleep=METRICS_POLL_INTERVAL,
+                func=_fetch_operator_metrics,
+                admin_client=admin_client,
+                operator_metrics_token=operator_metrics_token,
+            ):
+                metrics = parse_prometheus_text(text=raw_metrics)
+                sum_key = f"{RECONCILE_DURATION_METRIC}_sum"
+                count_key = f"{RECONCILE_DURATION_METRIC}_count"
+                sum_samples = get_metric_samples(
+                    metrics=metrics,
+                    metric_name=sum_key,
+                    label_filter={METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE},
+                )
+                count_samples = get_metric_samples(
+                    metrics=metrics,
+                    metric_name=count_key,
+                    label_filter={METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE},
+                )
+                if sum_samples and count_samples:
+                    total_duration = float(sum_samples[0]["value"])
+                    total_count = float(count_samples[0]["value"])
+                    if total_count > 0:
+                        avg_duration_ms = (total_duration / total_count) * 1000
+                        assert avg_duration_ms < 5000, (
+                            f"Average reconciliation duration {avg_duration_ms:.2f}ms exceeds 5s threshold"
+                        )
+                        return
+        except TimeoutExpiredError:
+            pytest.fail("Could not calculate average reconciliation duration")
 
     def test_overhead_does_not_scale_with_cr_count(
         self,
@@ -852,23 +874,24 @@ class TestEvalHubReconcilePerformance:
             }
             evalhub_reconcile_cr.update()
 
-            for raw_after in TimeoutSampler(
-                wait_timeout=METRICS_POLL_TIMEOUT,
-                sleep=METRICS_POLL_INTERVAL,
-                func=_fetch_operator_metrics,
-                admin_client=admin_client,
-                operator_metrics_token=operator_metrics_token,
-            ):
-                metrics_after = parse_prometheus_text(text=raw_after)
-                total_after = metric_value_sum(
-                    metrics=metrics_after,
-                    metric_name=RECONCILE_TOTAL_METRIC,
-                    label_filter={METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE},
-                )
-                if total_after > total_before:
-                    return
-
-            pytest.fail("Reconciliation counter did not advance with collector unavailable")
+            try:
+                for raw_after in TimeoutSampler(
+                    wait_timeout=METRICS_POLL_TIMEOUT,
+                    sleep=METRICS_POLL_INTERVAL,
+                    func=_fetch_operator_metrics,
+                    admin_client=admin_client,
+                    operator_metrics_token=operator_metrics_token,
+                ):
+                    metrics_after = parse_prometheus_text(text=raw_after)
+                    total_after = metric_value_sum(
+                        metrics=metrics_after,
+                        metric_name=RECONCILE_TOTAL_METRIC,
+                        label_filter={METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE},
+                    )
+                    if total_after > total_before:
+                        return
+            except TimeoutExpiredError:
+                pytest.fail("Reconciliation counter did not advance with collector unavailable")
         finally:
             otel_trace_collector_deployment.scale_replicas(replica_count=1)
             otel_trace_collector_deployment.wait_for_replicas(timeout=120)
@@ -958,17 +981,18 @@ class TestEvalHubReconcileIntegration:
         TC-INT-003: Verify the OTLP exporter successfully delivers trace spans
         to the OTEL collector.
         """
-        for logs in TimeoutSampler(
-            wait_timeout=TRACE_POLL_TIMEOUT,
-            sleep=TRACE_POLL_INTERVAL,
-            func=_fetch_trace_collector_logs,
-            trace_collector_pod=otel_trace_collector_pod,
-        ):
-            spans = parse_trace_spans_from_logs(logs=logs)
-            if spans:
-                return
-
-        pytest.fail("No trace spans delivered to collector")
+        try:
+            for logs in TimeoutSampler(
+                wait_timeout=TRACE_POLL_TIMEOUT,
+                sleep=TRACE_POLL_INTERVAL,
+                func=_fetch_trace_collector_logs,
+                trace_collector_pod=otel_trace_collector_pod,
+            ):
+                spans = parse_trace_spans_from_logs(logs=logs)
+                if spans:
+                    return
+        except TimeoutExpiredError:
+            pytest.fail("No trace spans delivered to collector")
 
     def test_metrics_no_sensitive_labels(
         self,
@@ -1112,31 +1136,32 @@ class TestEvalHubReconcileE2E:
         TC-E2E-001: Verify a successful reconciliation produces metrics that
         are queryable via the Prometheus-compatible metrics endpoint.
         """
-        for raw_metrics in TimeoutSampler(
-            wait_timeout=METRICS_POLL_TIMEOUT,
-            sleep=METRICS_POLL_INTERVAL,
-            func=_fetch_operator_metrics,
-            admin_client=admin_client,
-            operator_metrics_token=operator_metrics_token,
-        ):
-            metrics = parse_prometheus_text(text=raw_metrics)
-            success_total = metric_value_sum(
-                metrics=metrics,
-                metric_name=RECONCILE_TOTAL_METRIC,
-                label_filter={
-                    METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE,
-                    METRIC_LABEL_RESULT: RESULT_SUCCESS,
-                },
-            )
-            duration_sum = metric_value_sum(
-                metrics=metrics,
-                metric_name=f"{RECONCILE_DURATION_METRIC}_sum",
-                label_filter={METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE},
-            )
-            if success_total > 0 and duration_sum > 0:
-                return
-
-        pytest.fail("Successful reconciliation metrics not queryable from endpoint")
+        try:
+            for raw_metrics in TimeoutSampler(
+                wait_timeout=METRICS_POLL_TIMEOUT,
+                sleep=METRICS_POLL_INTERVAL,
+                func=_fetch_operator_metrics,
+                admin_client=admin_client,
+                operator_metrics_token=operator_metrics_token,
+            ):
+                metrics = parse_prometheus_text(text=raw_metrics)
+                success_total = metric_value_sum(
+                    metrics=metrics,
+                    metric_name=RECONCILE_TOTAL_METRIC,
+                    label_filter={
+                        METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE,
+                        METRIC_LABEL_RESULT: RESULT_SUCCESS,
+                    },
+                )
+                duration_sum = metric_value_sum(
+                    metrics=metrics,
+                    metric_name=f"{RECONCILE_DURATION_METRIC}_sum",
+                    label_filter={METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE},
+                )
+                if success_total > 0 and duration_sum > 0:
+                    return
+        except TimeoutExpiredError:
+            pytest.fail("Successful reconciliation metrics not queryable from endpoint")
 
     def test_failed_reconcile_error_metrics_and_traces(
         self,
@@ -1151,25 +1176,24 @@ class TestEvalHubReconcileE2E:
         TC-E2E-002: Verify a failed reconciliation produces both error metrics
         (evalhub_controller_reconcile_errors_total) and error trace spans.
         """
-        has_error_metric = False
-        for raw_metrics in TimeoutSampler(
-            wait_timeout=METRICS_POLL_TIMEOUT,
-            sleep=METRICS_POLL_INTERVAL,
-            func=_fetch_operator_metrics,
-            admin_client=admin_client,
-            operator_metrics_token=operator_metrics_token,
-        ):
-            metrics = parse_prometheus_text(text=raw_metrics)
-            errors = metric_value_sum(
-                metrics=metrics,
-                metric_name=RECONCILE_ERRORS_METRIC,
-                label_filter={METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE},
-            )
-            if errors > 0:
-                has_error_metric = True
-                break
-
-        assert has_error_metric, "Error metric not recorded for failed reconciliation"
+        try:
+            for raw_metrics in TimeoutSampler(
+                wait_timeout=METRICS_POLL_TIMEOUT,
+                sleep=METRICS_POLL_INTERVAL,
+                func=_fetch_operator_metrics,
+                admin_client=admin_client,
+                operator_metrics_token=operator_metrics_token,
+            ):
+                metrics = parse_prometheus_text(text=raw_metrics)
+                errors = metric_value_sum(
+                    metrics=metrics,
+                    metric_name=RECONCILE_ERRORS_METRIC,
+                    label_filter={METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE},
+                )
+                if errors > 0:
+                    break
+        except TimeoutExpiredError:
+            pytest.fail("Error metric not recorded for failed reconciliation")
 
         logs = _fetch_trace_collector_logs(trace_collector_pod=otel_trace_collector_pod)
         spans = parse_trace_spans_from_logs(logs=logs)
@@ -1266,22 +1290,27 @@ class TestEvalHubReconcileUpgrade:
         TC-UPG-001: Verify new evalhub_controller_* metrics appear on the
         operator metrics endpoint after upgrading from a version without them.
         """
-        for raw_metrics in TimeoutSampler(
-            wait_timeout=METRICS_POLL_TIMEOUT,
-            sleep=METRICS_POLL_INTERVAL,
-            func=_fetch_operator_metrics,
-            admin_client=admin_client,
-            operator_metrics_token=operator_metrics_token,
-        ):
-            metrics = parse_prometheus_text(text=raw_metrics)
-            found = set()
-            for metric_name in EVALHUB_RECONCILE_METRICS:
-                if metric_name in metrics or f"{metric_name}_bucket" in metrics or f"{metric_name}_total" in metrics:
-                    found.add(metric_name)
-            if found == set(EVALHUB_RECONCILE_METRICS):
-                return
-
-        pytest.fail(f"Not all new metrics appeared after upgrade. Found: {found}")
+        try:
+            for raw_metrics in TimeoutSampler(
+                wait_timeout=METRICS_POLL_TIMEOUT,
+                sleep=METRICS_POLL_INTERVAL,
+                func=_fetch_operator_metrics,
+                admin_client=admin_client,
+                operator_metrics_token=operator_metrics_token,
+            ):
+                metrics = parse_prometheus_text(text=raw_metrics)
+                found = set()
+                for metric_name in EVALHUB_RECONCILE_METRICS:
+                    if (
+                        metric_name in metrics
+                        or f"{metric_name}_bucket" in metrics
+                        or f"{metric_name}_total" in metrics
+                    ):
+                        found.add(metric_name)
+                if found == set(EVALHUB_RECONCILE_METRICS):
+                    return
+        except TimeoutExpiredError:
+            pytest.fail(f"Not all new metrics appeared after upgrade. Found: {found}")
 
     @pytest.mark.post_upgrade
     def test_existing_metrics_unaffected_by_upgrade(
