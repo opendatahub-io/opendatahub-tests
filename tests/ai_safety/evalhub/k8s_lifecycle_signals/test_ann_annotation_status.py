@@ -82,12 +82,23 @@ class TestAnnAnnotationStatus:
             tenant=ns,
             payload=payload,
         )
-        wait_for_evalhub_job(host, lifecycle_signals_token, lifecycle_signals_ca_bundle_file, ns, job_id)
+        wait_for_evalhub_job(
+            host=host,
+            token=lifecycle_signals_token,
+            ca_bundle_file=lifecycle_signals_ca_bundle_file,
+            tenant=ns,
+            job_id=job_id,
+        )
 
-        raw = get_job_annotation(admin_client, job_name, ns, LIFECYCLE_STATUS_ANNOTATION)
+        raw = get_job_annotation(
+            admin_client=admin_client,
+            job_name=job_name,
+            namespace=ns,
+            key=LIFECYCLE_STATUS_ANNOTATION,
+        )
 
         assert raw is not None, f"Expected annotation {LIFECYCLE_STATUS_ANNOTATION} on Job {job_name!r} in {ns}"
-        parsed = parse_status_annotation(raw)
+        parsed = parse_status_annotation(annotation_value=raw)
         assert isinstance(parsed, dict), f"Expected JSON object, got {type(parsed)}"
 
     @pytest.mark.tier1
@@ -120,11 +131,22 @@ class TestAnnAnnotationStatus:
             tenant=ns,
             payload=payload,
         )
-        wait_for_evalhub_job(host, lifecycle_signals_token, lifecycle_signals_ca_bundle_file, ns, job_id)
+        wait_for_evalhub_job(
+            host=host,
+            token=lifecycle_signals_token,
+            ca_bundle_file=lifecycle_signals_ca_bundle_file,
+            tenant=ns,
+            job_id=job_id,
+        )
 
-        raw = get_job_annotation(admin_client, job_name, ns, LIFECYCLE_STATUS_ANNOTATION)
+        raw = get_job_annotation(
+            admin_client=admin_client,
+            job_name=job_name,
+            namespace=ns,
+            key=LIFECYCLE_STATUS_ANNOTATION,
+        )
         assert raw is not None, f"Missing annotation {LIFECYCLE_STATUS_ANNOTATION}"
-        data = parse_status_annotation(raw)
+        data = parse_status_annotation(annotation_value=raw)
 
         assert "phase" in data, f"Missing 'phase' field in annotation: {data}"
         assert isinstance(data["phase"], str) and data["phase"], "phase must be a non-empty string"
@@ -133,7 +155,7 @@ class TestAnnAnnotationStatus:
         ts = data["timestamp"]
         assert isinstance(ts, str), f"timestamp must be a string, got {type(ts)}"
         try:
-            datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ")
+            datetime.fromisoformat(date_string=ts.replace(old="Z", new="+00:00"))
         except ValueError as exc:
             raise AssertionError(f"timestamp is not a valid RFC 3339 UTC value: {ts!r}") from exc
 
@@ -167,32 +189,67 @@ class TestAnnAnnotationStatus:
             tenant_namespace=ns,
             job_name="tc-ann-003",
         )
-        job_id = submit_evalhub_job(host, lifecycle_signals_token, lifecycle_signals_ca_bundle_file, ns, payload)[
-            "resource"
-        ]["id"]
-        job_name = wait_for_evaluation_job_name(admin_client, ns, job_id)
+        job_id = submit_evalhub_job(
+            host=host,
+            token=lifecycle_signals_token,
+            ca_bundle_file=lifecycle_signals_ca_bundle_file,
+            tenant=ns,
+            payload=payload,
+        )["resource"]["id"]
+        job_name = wait_for_evaluation_job_name(
+            admin_client=admin_client,
+            namespace=ns,
+            evalhub_job_id=job_id,
+        )
 
         # Read annotation while job is Running
-        wait_for_job_label(admin_client, job_name, ns, LIFECYCLE_PHASE_LABEL, LIFECYCLE_PHASE_RUNNING, timeout=60)
-        running_raw = get_job_annotation(admin_client, job_name, ns, LIFECYCLE_STATUS_ANNOTATION)
+        wait_for_job_label(
+            admin_client=admin_client,
+            job_name=job_name,
+            namespace=ns,
+            key=LIFECYCLE_PHASE_LABEL,
+            expected_value=LIFECYCLE_PHASE_RUNNING,
+            timeout=60,
+        )
+        running_raw = get_job_annotation(
+            admin_client=admin_client,
+            job_name=job_name,
+            namespace=ns,
+            key=LIFECYCLE_STATUS_ANNOTATION,
+        )
         assert running_raw is not None, "Missing annotation while job is Running"
-        running_data = parse_status_annotation(running_raw)
+        running_data = parse_status_annotation(annotation_value=running_raw)
         running_phase = running_data.get("phase", "")
 
         # Wait for completion and read again
-        wait_for_evalhub_job(host, lifecycle_signals_token, lifecycle_signals_ca_bundle_file, ns, job_id)
-        wait_for_success_phase_signals(admin_client, job_name, ns)
-        completed_raw = get_job_annotation(admin_client, job_name, ns, LIFECYCLE_STATUS_ANNOTATION)
+        wait_for_evalhub_job(
+            host=host,
+            token=lifecycle_signals_token,
+            ca_bundle_file=lifecycle_signals_ca_bundle_file,
+            tenant=ns,
+            job_id=job_id,
+        )
+        wait_for_success_phase_signals(
+            admin_client=admin_client,
+            job_name=job_name,
+            namespace=ns,
+        )
+        completed_raw = get_job_annotation(
+            admin_client=admin_client,
+            job_name=job_name,
+            namespace=ns,
+            key=LIFECYCLE_STATUS_ANNOTATION,
+        )
 
         assert completed_raw is not None, "Missing annotation after job completion"
-        completed_data = parse_status_annotation(completed_raw)
+        completed_data = parse_status_annotation(annotation_value=completed_raw)
 
         assert completed_data.get("phase") in ("Completed", "Succeeded"), (
             f"Expected phase=Completed or Succeeded after job completion, got {completed_data.get('phase')!r}"
         )
         assert running_phase in ("Running",), f"Expected phase=Running during execution, got {running_phase!r}"
         if running_raw != completed_raw:
-            running_ts = parse_status_annotation(running_raw).get("timestamp", "")
+            running_ts = parse_status_annotation(annotation_value=running_raw).get("timestamp", "")
             completed_ts = completed_data.get("timestamp", "")
             assert completed_ts >= running_ts, (
                 f"Completed timestamp {completed_ts!r} should be >= running timestamp {running_ts!r}"
@@ -227,9 +284,20 @@ class TestAnnAnnotationStatus:
             tenant=ns,
             payload=payload,
         )
-        wait_for_evalhub_job(host, lifecycle_signals_token, lifecycle_signals_ca_bundle_file, ns, job_id)
+        wait_for_evalhub_job(
+            host=host,
+            token=lifecycle_signals_token,
+            ca_bundle_file=lifecycle_signals_ca_bundle_file,
+            tenant=ns,
+            job_id=job_id,
+        )
 
-        raw = get_job_annotation(admin_client, job_name, ns, LIFECYCLE_STATUS_ANNOTATION)
+        raw = get_job_annotation(
+            admin_client=admin_client,
+            job_name=job_name,
+            namespace=ns,
+            key=LIFECYCLE_STATUS_ANNOTATION,
+        )
         assert raw is not None, f"Missing annotation {LIFECYCLE_STATUS_ANNOTATION}"
 
         annotation_bytes = len(raw.encode("utf-8"))

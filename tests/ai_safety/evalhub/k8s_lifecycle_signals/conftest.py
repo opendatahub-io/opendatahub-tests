@@ -72,7 +72,7 @@ def _is_evalhub_crd_available(admin_client: DynamicClient) -> bool:
 @pytest.fixture(scope="session")
 def lifecycle_signals_cp_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
     """Control plane namespace — EvalHub CR and Deployment live here."""
-    _cleanup_ns_if_exists(admin_client, LIFECYCLE_SIGNALS_CP_NAMESPACE)
+    _cleanup_ns_if_exists(admin_client=admin_client, name=LIFECYCLE_SIGNALS_CP_NAMESPACE)
     with create_ns(
         admin_client=admin_client,
         name=LIFECYCLE_SIGNALS_CP_NAMESPACE,
@@ -83,7 +83,7 @@ def lifecycle_signals_cp_namespace(admin_client: DynamicClient) -> Generator[Nam
 @pytest.fixture(scope="session")
 def lifecycle_signals_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
     """Tenant namespace — workloads run here (labelled with tenant label)."""
-    _cleanup_ns_if_exists(admin_client, LIFECYCLE_SIGNALS_NAMESPACE)
+    _cleanup_ns_if_exists(admin_client=admin_client, name=LIFECYCLE_SIGNALS_NAMESPACE)
     with create_ns(
         admin_client=admin_client,
         name=LIFECYCLE_SIGNALS_NAMESPACE,

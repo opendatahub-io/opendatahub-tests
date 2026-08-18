@@ -50,13 +50,25 @@ class TestRegRegression:
             job_name="tc-reg-001",
         )
 
-        data = submit_evalhub_job(host, lifecycle_signals_token, lifecycle_signals_ca_bundle_file, ns, payload)
+        data = submit_evalhub_job(
+            host=host,
+            token=lifecycle_signals_token,
+            ca_bundle_file=lifecycle_signals_ca_bundle_file,
+            tenant=ns,
+            payload=payload,
+        )
         assert "resource" in data, f"Expected 'resource' key in submit response: {data}"
         assert "id" in data["resource"], f"Expected 'id' in resource: {data['resource']}"
         job_id: str = data["resource"]["id"]
         assert job_id, "Job ID must be a non-empty string"
 
-        result = wait_for_evalhub_job(host, lifecycle_signals_token, lifecycle_signals_ca_bundle_file, ns, job_id)
+        result = wait_for_evalhub_job(
+            host=host,
+            token=lifecycle_signals_token,
+            ca_bundle_file=lifecycle_signals_ca_bundle_file,
+            tenant=ns,
+            job_id=job_id,
+        )
 
         assert result.get("status", {}).get("state") in ("completed", "failed", "partially_failed"), (
             f"Expected terminal state, got {result.get('status', {}).get('state')!r}"
@@ -89,11 +101,25 @@ class TestRegRegression:
             tenant_namespace=ns,
             job_name="tc-reg-002",
         )
-        job_id = submit_evalhub_job(host, lifecycle_signals_token, lifecycle_signals_ca_bundle_file, ns, payload)[
-            "resource"
-        ]["id"]
-        wait_for_evalhub_job(host, lifecycle_signals_token, lifecycle_signals_ca_bundle_file, ns, job_id)
-        job_name = wait_for_evaluation_job_name(admin_client, ns, job_id)
+        job_id = submit_evalhub_job(
+            host=host,
+            token=lifecycle_signals_token,
+            ca_bundle_file=lifecycle_signals_ca_bundle_file,
+            tenant=ns,
+            payload=payload,
+        )["resource"]["id"]
+        wait_for_evalhub_job(
+            host=host,
+            token=lifecycle_signals_token,
+            ca_bundle_file=lifecycle_signals_ca_bundle_file,
+            tenant=ns,
+            job_id=job_id,
+        )
+        job_name = wait_for_evaluation_job_name(
+            admin_client=admin_client,
+            namespace=ns,
+            evalhub_job_id=job_id,
+        )
 
         k8s_job = Job(client=admin_client, name=job_name, namespace=ns)
         assert k8s_job.exists, f"Batch Job {job_name} must exist in {ns} after completion"

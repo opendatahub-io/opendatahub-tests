@@ -158,19 +158,41 @@ class TestRbacVerification:
             job_name="tc-rbac-004",
         )
         job_id = submit_evalhub_job(
-            host,
-            tenant_a_token,
-            lifecycle_signals_ca_bundle_file,
-            tenant_a_ns,
-            payload,
+            host=host,
+            token=tenant_a_token,
+            ca_bundle_file=lifecycle_signals_ca_bundle_file,
+            tenant=tenant_a_ns,
+            payload=payload,
         )["resource"]["id"]
-        job_name = wait_for_evaluation_job_name(admin_client, tenant_a_ns, job_id)
-        wait_for_event(admin_client, job_name, tenant_a_ns, LIFECYCLE_REASON_STARTED)
+        job_name = wait_for_evaluation_job_name(
+            admin_client=admin_client,
+            namespace=tenant_a_ns,
+            evalhub_job_id=job_id,
+        )
+        wait_for_event(
+            admin_client=admin_client,
+            job_name=job_name,
+            namespace=tenant_a_ns,
+            reason=LIFECYCLE_REASON_STARTED,
+        )
 
-        lifecycle_events = list_events_for_job(admin_client, job_name, lifecycle_ns, reason=LIFECYCLE_REASON_STARTED)
-        tenant_a_events = list_events_for_job(admin_client, job_name, tenant_a_ns, reason=LIFECYCLE_REASON_STARTED)
+        lifecycle_events = list_events_for_job(
+            admin_client=admin_client,
+            job_name=job_name,
+            namespace=lifecycle_ns,
+            reason=LIFECYCLE_REASON_STARTED,
+        )
+        tenant_a_events = list_events_for_job(
+            admin_client=admin_client,
+            job_name=job_name,
+            namespace=tenant_a_ns,
+            reason=LIFECYCLE_REASON_STARTED,
+        )
         tenant_b_events = list_events_for_job(
-            admin_client, job_name, tenant_b_namespace.name, reason=LIFECYCLE_REASON_STARTED
+            admin_client=admin_client,
+            job_name=job_name,
+            namespace=tenant_b_namespace.name,
+            reason=LIFECYCLE_REASON_STARTED,
         )
 
         assert tenant_a_events, f"Expected EvaluationStarted Event in {tenant_a_ns}, found none"
