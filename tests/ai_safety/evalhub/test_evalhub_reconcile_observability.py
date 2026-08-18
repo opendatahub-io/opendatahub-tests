@@ -698,7 +698,6 @@ class TestEvalHubReconcileErrors:
 
         if not metric_samples and not failure_spans:
             pytest.skip("No job failure events detected — requires triggering a failing job")
-        assert metric_samples or failure_spans, "Expected either a job failure metric or a job failure trace span"
 
     def test_rapid_errors_no_metric_loss(
         self,
