@@ -1,7 +1,3 @@
-from tests.ai_safety.evalhub.constants import EVALHUB_VLLM_EMULATOR_PORT
-
-__all__ = ["EVALHUB_VLLM_EMULATOR_PORT"]
-
 # Lifecycle phase label applied to evaluation batch Jobs
 LIFECYCLE_PHASE_LABEL = "trustyai.opendatahub.io/evaluation-phase"
 

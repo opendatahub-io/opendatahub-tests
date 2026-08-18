@@ -12,9 +12,8 @@ from ocp_resources.job import Job
 from ocp_resources.role_binding import RoleBinding
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
-from tests.ai_safety.evalhub.constants import EVALHUB_EVENTS_CLUSTERROLE
+from tests.ai_safety.evalhub.constants import EVALHUB_EVENTS_CLUSTERROLE, EVALHUB_VLLM_EMULATOR_PORT
 from tests.ai_safety.evalhub.k8s_lifecycle_signals.constants import (
-    EVALHUB_VLLM_EMULATOR_PORT,
     LIFECYCLE_EVENT_EMISSION_TIMEOUT,
     LIFECYCLE_INVALID_MODEL_URL,
     LIFECYCLE_JOB_LABEL_TIMEOUT,
