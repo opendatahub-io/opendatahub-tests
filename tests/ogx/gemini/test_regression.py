@@ -61,6 +61,14 @@ class TestGeminiRegression:
         When: chat and embedding requests are sent through remote::openai models.
         Then: both succeed with valid responses.
         """
+        # Guard the coexistence premise: if remote::gemini is not active this
+        # test would otherwise pass on a plain OpenAI-only distribution and give
+        # false confidence that OpenAI is "unaffected by Gemini".
+        provider_types = list_provider_types(ogx_client=ogx_client)
+        assert GEMINI_PROVIDER_TYPE in provider_types, (
+            f"remote::gemini must be active for the TC-REG-001 coexistence scenario; got {provider_types!r}"
+        )
+
         openai_llm = _resolve_model_id(ogx_client=ogx_client, provider_id="openai", model_type="llm")
         if not openai_llm:
             pytest.skip(reason="No remote::openai LLM model configured; cannot assert TC-REG-001")

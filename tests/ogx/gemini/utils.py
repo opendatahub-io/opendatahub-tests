@@ -8,6 +8,7 @@ OgxServer pod for injected environment variables and logs.
 """
 
 import json
+import re
 from typing import Any
 
 import structlog
@@ -61,7 +62,13 @@ def resolve_gemini_model_id(ogx_client: OgxClient, model_type: str = "llm") -> s
 
     Returns:
         The model id, or ``None`` if no matching Gemini model is registered.
+
+    Raises:
+        ValueError: If ``model_type`` is not ``"llm"`` or ``"embedding"``.
     """
+    if model_type not in ("llm", "embedding"):
+        raise ValueError(f"Unsupported model_type {model_type!r}; expected 'llm' or 'embedding'")
+
     override = GEMINI_INFERENCE_MODEL if model_type == "llm" else GEMINI_EMBEDDING_MODEL
     if override:
         return override
@@ -100,6 +107,14 @@ def pod_env_var_is_set(pod: Any, name: str) -> bool:
 
     Returns:
         True if the variable is set and non-empty inside the container.
+
+    Raises:
+        ValueError: If ``name`` is not a valid shell environment-variable
+            identifier. Guards against shell injection (CWE-78) since ``name``
+            is interpolated into an ``sh -c`` command.
     """
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+        raise ValueError(f"Invalid environment variable name {name!r}")
+
     output = pod.execute(command=["sh", "-c", f'test -n "${{{name}}}" && echo SET || echo UNSET'])
-    return "SET" in output
+    return output.strip() == "SET"

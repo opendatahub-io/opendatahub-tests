@@ -46,12 +46,17 @@ def gemini_model_id(ogx_client: OgxClient) -> str:
     """The id of a Gemini LLM model served via the remote::gemini provider.
 
     Resolved dynamically from ``GET /v1/models`` (or an explicit override in
-    constants). Skips the requesting test if the Gemini provider registered no
-    LLM model.
+    constants). Fails the requesting test if the Gemini provider registered no
+    LLM model: the suite only reaches this point with ``enable_gemini`` set and
+    the provider active, so a missing model is a real provider/distribution
+    defect to be triaged, not a skippable environment gap.
     """
     model_id = resolve_gemini_model_id(ogx_client=ogx_client, model_type="llm")
     if not model_id:
-        pytest.skip(reason="No Gemini LLM model is registered by the remote::gemini provider")
+        pytest.fail(
+            reason="remote::gemini is active but registered no LLM model; "
+            "expected at least one Gemini LLM model to be served by the distribution"
+        )
     LOGGER.info(f"Resolved Gemini LLM model: {model_id}")
     return model_id
 
@@ -61,12 +66,16 @@ def gemini_embedding_model_id(ogx_client: OgxClient) -> str:
     """The id of a Gemini embedding model served via the remote::gemini provider.
 
     Resolved dynamically from ``GET /v1/models`` (or an explicit override in
-    constants). Skips the requesting test if the Gemini provider registered no
-    embedding model.
+    constants). Fails the requesting test if the Gemini provider registered no
+    embedding model: with the provider active, a missing embedding model is a
+    real provider/distribution defect to be triaged, not a skippable gap.
     """
     model_id = resolve_gemini_model_id(ogx_client=ogx_client, model_type="embedding")
     if not model_id:
-        pytest.skip(reason="No Gemini embedding model is registered by the remote::gemini provider")
+        pytest.fail(
+            reason="remote::gemini is active but registered no embedding model; "
+            "expected at least one Gemini embedding model to be served by the distribution"
+        )
     LOGGER.info(f"Resolved Gemini embedding model: {model_id}")
     return model_id
 
