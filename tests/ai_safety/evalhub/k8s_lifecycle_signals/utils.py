@@ -15,7 +15,6 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 from tests.ai_safety.evalhub.constants import EVALHUB_EVENTS_CLUSTERROLE, EVALHUB_VLLM_EMULATOR_PORT
 from tests.ai_safety.evalhub.k8s_lifecycle_signals.constants import (
     LIFECYCLE_EVENT_EMISSION_TIMEOUT,
-    LIFECYCLE_INVALID_MODEL_URL,
     LIFECYCLE_JOB_LABEL_TIMEOUT,
     LIFECYCLE_JOB_SUBMIT_TIMEOUT,
     LIFECYCLE_OOM_MEMORY_LIMIT,
@@ -532,9 +531,10 @@ def build_nonexistent_adapter_payload(
     The adapter cannot reach the model endpoint, so EvalHub reports failure and emits
     EvaluationFailed (same pattern as eval-hub FVT evalcard_invalid_model.jsonnet).
     """
+    model_url = f"http://nonexistent-model.{namespace}.svc.cluster.local:{EVALHUB_VLLM_EMULATOR_PORT}/v1"
     return {
         "name": job_name,
-        "model": {"url": LIFECYCLE_INVALID_MODEL_URL, "name": "invalid-model"},
+        "model": {"url": model_url, "name": "invalid-model"},
         "benchmarks": [build_vllm_arc_easy_benchmark(num_examples=3)],
     }
 

@@ -45,8 +45,7 @@ LIFECYCLE_JOB_SUBMIT_TIMEOUT = 600
 
 # Infrastructure failure constants
 LIFECYCLE_OOM_MEMORY_LIMIT = "10Mi"
-LIFECYCLE_BAD_IMAGE = "quay.io/trustyai/eval-adapter:does-not-exist"
-LIFECYCLE_INVALID_MODEL_URL = "http://invalid-model.test/v1"
+LIFECYCLE_BAD_IMAGE = "quay.io/trustyai/eval-adapter:does-not-exist"  # noqa: IMG001
 
 # lm_evaluation_harness k8s runtime entrypoint (matches eval-hub bundled provider)
 LIFECYCLE_LM_EVAL_K8S_ENTRYPOINT: list[str] = [
