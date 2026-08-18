@@ -1,8 +1,8 @@
+import platform
 from typing import Any
 
 import pytest
 import structlog
-import platform
 
 if platform.machine() == "ppc64le":
     pytest.skip(

@@ -1,4 +1,5 @@
 import os
+import platform
 from collections.abc import Generator
 from typing import Any
 
@@ -7,8 +8,6 @@ import pytest
 import structlog
 from ogx_client import OgxClient
 from ogx_client.types.vector_store import VectorStore
-
-import platform
 
 if platform.machine() == "ppc64le":
     pytest.skip(
