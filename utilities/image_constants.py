@@ -48,3 +48,6 @@ class SharedImages:
     VLLM_CPU: str = "quay.io/pierdipi/vllm-cpu@sha256:ce3a0c057394b2c332498f9742a17fd31b5cc2ef07db882d579fd157fe2c9a98"
 
     OPENVINO_MODEL_SERVER: str = "quay.io/opendatahub/openvino_model_server@sha256:564664371d3a21b9e732a5c1b4b40bacad714a5144c0a9aaf675baec4a04b148"  # noqa: E501
+
+    # Helm OCI chart
+    OPENSHELL_HELM_CHART: str = "oci://ghcr.io/nvidia/openshell/helm-chart@sha256:87d9c5fe300f400b6c01434b3dc8fabbcf2bcc65f6fbb76ae93d6615a40a5053"  # noqa: E501

@@ -1,3 +1,7 @@
+# rhoai-mcp is not managed by an Operator; use the floating tag to test the latest build from the MCP catalog.
+RHOAI_MCP_ODH_STABLE: str = "quay.io/opendatahub/odh-rhoai-mcp:odh-stable"  # noqa: IMG001
+RHOAI_MCP_RHOAI_VERSION: str = "registry.redhat.io/rhoai/odh-rhoai-mcp-rhel9:rhoai-3.6-ea.1"  # noqa: IMG001
+
 RHOAI_MCP_APP_NAME: str = "rhoai-mcp"
 RHOAI_MCP_NAMESPACE: str = "test-rhoai-mcp"
 RHOAI_MCP_PORT: int = 8000
