@@ -97,10 +97,15 @@ def build_ogx_server_config(
         raise ValueError(f"Unsupported embeddings provider: {embedding_provider}")
 
     # Remote Gemini inference provider (remote::gemini).
-    # The distribution's config.yaml activates the provider conditionally with
-    # ${env.GEMINI_API_KEY:+gemini-inference}, so injecting a non-empty
-    # GEMINI_API_KEY (sourced from the ogx-distribution-secret) is what enables it.
+    # The distribution's config.yaml gates the provider on ENABLE_GEMINI:
+    #   - provider_id: ${env.ENABLE_GEMINI:+gemini}
+    #     provider_type: remote::gemini
+    #     config:
+    #       api_key: ${env.GEMINI_API_KEY:=}
+    # so ENABLE_GEMINI is what makes the provider appear, and GEMINI_API_KEY
+    # (sourced from the ogx-distribution-secret) is what authenticates it.
     if params.get("enable_gemini"):
+        env_vars.append({"name": "ENABLE_GEMINI", "value": "1"})
         env_vars.append(
             {
                 "name": "GEMINI_API_KEY",
