@@ -45,10 +45,14 @@ from tests.ai_safety.evalhub.constants import (
     GARAK_SIMPLE_PROVIDER_ID,
     MINIO_MC_IMAGE,
     MINIO_UPLOADER_SECURITY_CONTEXT,
+    OPERATOR_OTEL_SERVICE_NAME,
     OTEL_COLLECTOR_GRPC_PORT,
     OTEL_COLLECTOR_HTTP_PORT,
     OTEL_COLLECTOR_NAMESPACE,
     OTEL_COLLECTOR_PROMETHEUS_PORT,
+    OTEL_TRACE_COLLECTOR_LABELS,
+    OTEL_TRACE_COLLECTOR_NAME,
+    OTEL_TRACE_COLLECTOR_NAMESPACE,
     PVC_TEST_DATA_NAME,
     PVC_TEST_DATA_SIZE,
     SIMPLE_MINIO_ACCESS_KEY,
@@ -1820,8 +1824,6 @@ def submit_pvc_job(
 @pytest.fixture(scope="class")
 def otel_trace_collector_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
     """Create namespace for OTEL trace collector (operator reconcile spans)."""
-    from tests.ai_safety.evalhub.constants import OTEL_TRACE_COLLECTOR_NAMESPACE
-
     with create_ns(
         admin_client=admin_client,
         name=OTEL_TRACE_COLLECTOR_NAMESPACE,
@@ -1835,8 +1837,6 @@ def otel_trace_collector_config(
     otel_trace_collector_namespace: Namespace,
 ) -> Generator[ConfigMap, Any, Any]:
     """Collector config with traces pipeline and debug exporter for operator spans."""
-    from tests.ai_safety.evalhub.constants import OTEL_COLLECTOR_GRPC_PORT
-
     config_yaml = f"""
 receivers:
   otlp:
@@ -1870,12 +1870,6 @@ def otel_trace_collector_deployment(
     otel_trace_collector_config: ConfigMap,
 ) -> Generator[Deployment, Any, Any]:
     """Deploy OTEL collector with traces pipeline for operator span capture."""
-    from tests.ai_safety.evalhub.constants import (
-        OTEL_COLLECTOR_GRPC_PORT,
-        OTEL_TRACE_COLLECTOR_LABELS,
-        OTEL_TRACE_COLLECTOR_NAME,
-    )
-
     with Deployment(
         client=admin_client,
         namespace=otel_trace_collector_namespace.name,
@@ -1925,12 +1919,6 @@ def otel_trace_collector_service(
     otel_trace_collector_deployment: Deployment,
 ) -> Generator[Service, Any, Any]:
     """Service for the OTEL trace collector (gRPC endpoint for operator)."""
-    from tests.ai_safety.evalhub.constants import (
-        OTEL_COLLECTOR_GRPC_PORT,
-        OTEL_TRACE_COLLECTOR_LABELS,
-        OTEL_TRACE_COLLECTOR_NAME,
-    )
-
     with Service(
         client=admin_client,
         namespace=otel_trace_collector_namespace.name,
@@ -1955,8 +1943,6 @@ def otel_trace_collector_pod(
     otel_trace_collector_deployment: Deployment,
 ) -> Pod:
     """Get OTEL trace collector pod for log inspection."""
-    from tests.ai_safety.evalhub.constants import OTEL_TRACE_COLLECTOR_LABELS
-
     label_selector = ",".join(f"{k}={v}" for k, v in OTEL_TRACE_COLLECTOR_LABELS.items())
     pods = list(
         Pod.get(
@@ -1982,11 +1968,6 @@ def operator_with_otel_tracing(
     ResourceEditor restores original state and the operator is restarted again.
     """
     from ocp_resources.resource import ResourceEditor
-
-    from tests.ai_safety.evalhub.constants import (
-        OPERATOR_OTEL_SERVICE_NAME,
-        OTEL_COLLECTOR_GRPC_PORT,
-    )
 
     endpoint = (
         f"http://{otel_trace_collector_service.name}"
