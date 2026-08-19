@@ -169,10 +169,19 @@ class TestTransformerTLSInfrastructure:
         model_name_from_arg = _get_container_arg_value(container=container, key="--model-name")
         assert model_name_from_arg, "Transformer should include --model-name=<name> argument"
 
+        expected_predictor_host = (
+            f"{transformer_auth_inference_service.name}-predictor.{transformer_auth_inference_service.namespace}.svc"
+        )
         expected_predictor_endpoint = f"/v2/models/{model_name_from_arg}/infer"
-        assert env_map.get("PREDICTOR_HOST"), "Expected PREDICTOR_HOST to be injected"
-        assert env_map.get("PREDICTOR_PORT"), "Expected PREDICTOR_PORT to be injected"
-        assert env_map.get("PREDICTOR_PROTOCOL"), "Expected PREDICTOR_PROTOCOL to be injected"
+        assert env_map.get("PREDICTOR_HOST") == expected_predictor_host, (
+            f"Expected PREDICTOR_HOST={expected_predictor_host}, got: {env_map.get('PREDICTOR_HOST')}"
+        )
+        assert env_map.get("PREDICTOR_PORT") == "8443", (
+            f"Expected PREDICTOR_PORT=8443, got: {env_map.get('PREDICTOR_PORT')}"
+        )
+        assert env_map.get("PREDICTOR_PROTOCOL") == "https", (
+            f"Expected PREDICTOR_PROTOCOL=https, got: {env_map.get('PREDICTOR_PROTOCOL')}"
+        )
 
         assert env_map.get("INFERENCE_SERVICE_NAME") == model_name_from_arg, (
             f"Expected INFERENCE_SERVICE_NAME={model_name_from_arg}, got: {env_map.get('INFERENCE_SERVICE_NAME')}"
