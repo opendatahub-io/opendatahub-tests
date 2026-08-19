@@ -12,6 +12,9 @@ model-car:
   - name: whisper-large-v3
     image: oci://registry.redhat.io/rhelai1/modelcar-whisper-large-v2-w4a16-g128:1.5
     model_output_type: audio
+    # ASR/encoder-decoder architecture is not supported by Spyre vLLM.
+    unsupported_accelerators:
+      - spyre
     serving_arguments:
       args:
         - "--uvicorn-log-level=info"
@@ -23,6 +26,9 @@ model-car:
   - name: embedding-gemma
     image: oci://registry.redhat.io/rhelai1/modelcar-embeddinggemma-300m:1.5
     model_output_type: embedding
+    # Embedding/pooling architecture is not supported by Spyre vLLM.
+    unsupported_accelerators:
+      - spyre
     serving_arguments:
       args:
         - "--uvicorn-log-level=info"
