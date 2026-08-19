@@ -1467,7 +1467,7 @@ def metric_value_sum(
     for s in samples:
         try:
             total += float(s["value"])
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             pass
     return total
 
