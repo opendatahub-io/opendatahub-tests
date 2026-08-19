@@ -9,8 +9,10 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.evalhub import EvalHub
 from ocp_resources.job import Job
 from ocp_resources.mlflow import MLflow
+from ocp_resources.pod import Pod
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.service_account import ServiceAccount
+from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_safety.evalhub.constants import (
@@ -36,6 +38,8 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_VLLM_EMULATOR_PORT,
     GARAK_JOB_POLL_INTERVAL,
     GARAK_JOB_TIMEOUT,
+    OPERATOR_METRICS_PORT,
+    OPERATOR_POD_LABEL_SELECTOR,
 )
 from utilities.guardrails import get_auth_headers
 from utilities.kueue_utils import Workload
@@ -1350,11 +1354,6 @@ def fetch_operator_metrics(
     Returns:
         Raw Prometheus text-format string from the /metrics endpoint.
     """
-    from ocp_resources.pod import Pod
-    from pytest_testconfig import config as py_config
-
-    from tests.ai_safety.evalhub.constants import OPERATOR_METRICS_PORT, OPERATOR_POD_LABEL_SELECTOR
-
     operator_ns = py_config["applications_namespace"]
     pods = list(
         Pod.get(
@@ -1375,7 +1374,7 @@ def fetch_operator_metrics(
     return response.text
 
 
-def fetch_trace_collector_logs(trace_collector_pod: Any) -> str:
+def fetch_trace_collector_logs(trace_collector_pod: Pod) -> str:
     """Fetch logs from the OTEL trace collector pod.
 
     Args:

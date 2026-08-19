@@ -9,7 +9,6 @@ import time
 
 import pytest
 import requests
-import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from ocp_resources.evalhub import EvalHub
@@ -60,8 +59,6 @@ from tests.ai_safety.evalhub.utils import (
     parse_prometheus_text,
     parse_trace_spans_from_logs,
 )
-
-LOGGER = structlog.get_logger(name=__name__)
 
 METRICS_POLL_TIMEOUT: int = 120
 METRICS_POLL_INTERVAL: int = 10

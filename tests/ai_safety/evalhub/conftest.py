@@ -17,6 +17,7 @@ from ocp_resources.mlflow import MLflow
 from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
+from ocp_resources.resource import ResourceEditor
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.route import Route
@@ -1967,8 +1968,6 @@ def operator_with_otel_tracing(
     scales the operator down/up so the new env vars take effect. On teardown,
     ResourceEditor restores original state and the operator is restarted again.
     """
-    from ocp_resources.resource import ResourceEditor
-
     endpoint = (
         f"http://{otel_trace_collector_service.name}"
         f".{otel_trace_collector_service.namespace}"
