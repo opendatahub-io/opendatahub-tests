@@ -12,11 +12,12 @@ from utilities.plugins.constant import OpenAIEnpoints, RestHeader
 LOGGER = structlog.get_logger(name=__name__)
 
 
-@retry(stop=stop_after_attempt(5), wait=wait_exponential(min=1, max=6))
+@retry(stop=stop_after_attempt(5), wait=wait_exponential(min=5, max=30))
 def send_chat_completions_request(
     isvc: InferenceService,
     messages: list[dict[str, str]],
     max_tokens: int,
+    request_timeout: int = 300,
 ) -> dict[str, Any]:
     """Send a POST request to /v1/chat/completions matching the OpenAI chat API."""
     url = f"{get_exposed_isvc_url(isvc=isvc)}{OpenAIEnpoints.CHAT_COMPLETIONS}"
@@ -37,7 +38,7 @@ def send_chat_completions_request(
         headers=RestHeader.HEADERS,
         json=payload,
         verify=ca_bundle or True,
-        timeout=30,
+        timeout=request_timeout,
     )
     LOGGER.info("Chat completions response", status_code=response.status_code)
     response.raise_for_status()
@@ -51,6 +52,9 @@ def validate_ibm_power_z_chat_completions_request(
     """Validate that the InferenceService returns a non-empty /v1/chat/completions response."""
     max_tokens = int(inference_request["max_tokens"])
     messages = inference_request["messages"]
-    body = send_chat_completions_request(isvc=isvc, messages=messages, max_tokens=max_tokens)
+    request_timeout = int(inference_request.get("request_timeout", 300))
+    body = send_chat_completions_request(
+        isvc=isvc, messages=messages, max_tokens=max_tokens, request_timeout=request_timeout
+    )
     completion_text = body["choices"][0]["message"]["content"]
     assert completion_text.strip(), f"Expected non-empty chat completion text, got: {body!r}"
