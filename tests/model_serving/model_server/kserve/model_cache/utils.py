@@ -5,13 +5,13 @@ from typing import Any
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
-from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.resource import Resource
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_serving.model_server.llmd.utils import get_llmd_vllm_pods
 from utilities.constants import ApiGroups
 from utilities.infra import get_pods_by_isvc_label
+from utilities.resources.llm_inference_service import LLMInferenceService
 from utilities.resources.local_model_namespace_cache import LocalModelNamespaceCache
 
 KSERVE_LOCALMODEL_LABEL: str = f"internal.{ApiGroups.KSERVE}/localmodel"
@@ -22,7 +22,7 @@ MODEL_CACHE_AGENT_DAEMONSET: str = "kserve-localmodelnode-agent"
 MODEL_CACHE_NODE_PVC_NAME: str = "kserve-localmodelnode-pvc"
 MODEL_CACHE_HOST_PATH: str = "/var/lib/kserve/models"
 MODEL_CACHE_STORAGE_CLASS: str = "local-storage"
-MODEL_CACHE_SIZE: str = "10Gi"
+MODEL_CACHE_SIZE: str = "1Gi"
 MODEL_CACHE_NODE_COUNT: int = 2
 MINT_ONNX_STORAGE_PATH: str = "test-dir"
 

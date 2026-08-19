@@ -1,21 +1,20 @@
-import shlex
-
 import pytest
-from kubernetes.dynamic import DynamicClient
-from ocp_resources.inference_service import InferenceService
-from ocp_resources.pod import ExecOnPodError
 
 from tests.model_serving.model_server.kserve.storage.constants import (
     INFERENCE_SERVICE_PARAMS,
     KSERVE_OVMS_SERVING_RUNTIME_PARAMS,
 )
-from utilities.constants import Containers, KServeDeploymentType, StorageClassName
-from utilities.infra import get_pods_by_isvc_label
+from tests.model_serving.model_server.kserve.storage.pvc.utils import (
+    chmod_model_directory,
+    get_mount_mode,
+    get_running_predictor_pod,
+    get_volume_mount_readonly,
+    try_write_file,
+    wait_for_rollout_complete,
+)
+from utilities.constants import KServeDeploymentType, StorageClassName
 
 pytestmark = [pytest.mark.tier1, pytest.mark.usefixtures("skip_if_no_nfs_storage_class", "valid_aws_config")]
-
-
-POD_TOUCH_SPLIT_COMMAND: list[str] = shlex.split("touch /mnt/models/test")
 
 
 @pytest.mark.parametrize(
@@ -33,15 +32,23 @@ POD_TOUCH_SPLIT_COMMAND: list[str] = shlex.split("touch /mnt/models/test")
     indirect=True,
 )
 class TestKservePVCWriteAccess:
-    """Validate PVC write access control via the KServe read-only storage annotation.
+    """Validate PVC write access control via the storage.kserve.io/readonly annotation.
 
-    Steps:
-        1. Deploy a raw deployment ISVC with a ReadWriteMany NFS PVC and no explicit read-only annotation.
-        2. Verify no pod containers have restarted.
-        3. Verify the read-only annotation is not set by default.
-        4. Verify write access is denied by default (touch command fails).
-        5. Patch the ISVC with readonly=false and verify write access is allowed.
-        6. Patch the ISVC with readonly=true and verify write access is denied again.
+    Deploys a raw deployment ISVC with a ReadWriteMany NFS PVC and verifies:
+        1. Default state: no annotation, pod spec readOnly=true, /mnt/models mounted ro,
+           write blocked.
+        2. None→false→true: patch to false (rw mount, chmod 777 model dir, write succeeds),
+           then toggle to true (ro mount, write blocked by kernel).
+        3. None→true→false: patch to true (ro mount, write blocked), then toggle to false
+           (rw mount, chmod 777 model dir, write succeeds).
+
+    Each transition checks the ISVC annotation, pod spec volumeMount.readOnly,
+    /proc/mounts inside the container, and actual write access.
+
+    Write tests chmod the model directory to 777 before asserting, simulating a
+    customer preparing a PVC for read-write serving. This is needed because the
+    download pod (busybox, UID 1000) creates directories with 755 permissions,
+    while the serving pod runs under the namespace SCC UID range.
     """
 
     def test_pod_containers_not_restarted(self, first_predictor_pod):
@@ -59,13 +66,21 @@ class TestKservePVCWriteAccess:
             "Read only annotation is set"
         )
 
-    def test_isvc_read_only_annotation_default_value(self, first_predictor_pod):
-        """Test that write access is denied by default"""
-        with pytest.raises(ExecOnPodError):
-            first_predictor_pod.execute(
-                container=Containers.KSERVE_CONTAINER_NAME,
-                command=POD_TOUCH_SPLIT_COMMAND,
-            )
+    def test_isvc_read_only_pod_spec_default(self, first_predictor_pod):
+        """Test that the pod spec has readOnly=true by default (webhook contract)"""
+        assert get_volume_mount_readonly(pod=first_predictor_pod), (
+            "Expected volumeMount.readOnly=true on /mnt/models by default"
+        )
+
+    def test_isvc_read_only_mount_default(self, first_predictor_pod):
+        """Test that /mnt/models is mounted read-only by default (runtime effect)"""
+        assert get_mount_mode(pod=first_predictor_pod) == "ro", (
+            "Expected /mnt/models to be mounted read-only by default"
+        )
+
+    def test_isvc_write_blocked_by_default(self, first_predictor_pod):
+        """Test that writing to /mnt/models is blocked when mounted read-only (default)"""
+        assert not try_write_file(pod=first_predictor_pod), "Expected write to /mnt/models to fail on read-only mount"
 
     @pytest.mark.parametrize(
         "patched_read_only_isvc",
@@ -76,16 +91,51 @@ class TestKservePVCWriteAccess:
         ],
         indirect=True,
     )
-    def test_isvc_read_only_annotation_false(self, unprivileged_client, patched_read_only_isvc):
-        """Test that write access is allowed when the read only annotation is set to false"""
-        new_pod = get_pods_by_isvc_label(
-            client=unprivileged_client,
-            isvc=patched_read_only_isvc,
-        )[0]
-        new_pod.execute(
-            container=Containers.KSERVE_CONTAINER_NAME,
-            command=POD_TOUCH_SPLIT_COMMAND,
+    def test_isvc_read_only_false(
+        self,
+        admin_client,
+        unprivileged_client,
+        model_pvc,
+        ci_bucket_downloaded_model_data,
+        patched_read_only_isvc,
+    ):
+        """Test None→false→true transition.
+
+        1. Fixture patches annotation to readonly=false and waits for rollout.
+        2. Verify annotation, pod spec readOnly=false, /proc/mounts rw.
+        3. chmod 777 the model directory (simulates customer PVC prep), verify write succeeds.
+        4. Toggle annotation to readonly=true and wait for rollout.
+        5. Verify annotation, pod spec readOnly=true, /proc/mounts ro, write fails.
+        """
+        annotation = patched_read_only_isvc.instance.metadata.annotations.get("storage.kserve.io/readonly")
+        assert annotation == "false", f"Expected annotation readonly=false after patch, got {annotation}"
+        pod = get_running_predictor_pod(client=unprivileged_client, isvc=patched_read_only_isvc)
+        assert not get_volume_mount_readonly(pod=pod), "Expected volumeMount.readOnly=false with readonly=false"
+        assert get_mount_mode(pod=pod) == "rw", "Expected /mnt/models mounted rw with readonly=false"
+
+        chmod_model_directory(
+            client=admin_client,
+            namespace=patched_read_only_isvc.namespace,
+            pvc_name=model_pvc.name,
+            model_path=ci_bucket_downloaded_model_data,
         )
+        assert try_write_file(pod=pod), "Expected write to /mnt/models to succeed with readonly=false"
+
+        patched_read_only_isvc.update(
+            resource_dict={
+                "metadata": {
+                    "name": patched_read_only_isvc.name,
+                    "annotations": {"storage.kserve.io/readonly": "true"},
+                }
+            }
+        )
+        wait_for_rollout_complete(client=unprivileged_client, isvc=patched_read_only_isvc)
+        annotation = patched_read_only_isvc.instance.metadata.annotations.get("storage.kserve.io/readonly")
+        assert annotation == "true", f"Expected annotation readonly=true after toggle, got {annotation}"
+        pod = get_running_predictor_pod(client=unprivileged_client, isvc=patched_read_only_isvc)
+        assert get_volume_mount_readonly(pod=pod), "Expected volumeMount.readOnly=true after toggle false→true"
+        assert get_mount_mode(pod=pod) == "ro", "Expected /mnt/models mounted ro after toggle false→true"
+        assert not try_write_file(pod=pod), "Expected write to /mnt/models to fail after toggle false→true"
 
     @pytest.mark.parametrize(
         "patched_read_only_isvc",
@@ -96,63 +146,48 @@ class TestKservePVCWriteAccess:
         ],
         indirect=True,
     )
-    def test_isvc_read_only_annotation_true(self, unprivileged_client, patched_read_only_isvc):
-        """Verify that write access is denied when the read-only annotation is set to true."""
-        new_pod = get_pods_by_isvc_label(
-            client=unprivileged_client,
-            isvc=patched_read_only_isvc,
-        )[0]
-        with pytest.raises(ExecOnPodError):
-            new_pod.execute(
-                container=Containers.KSERVE_CONTAINER_NAME,
-                command=POD_TOUCH_SPLIT_COMMAND,
-            )
-
-    @pytest.mark.parametrize(
-        "patched_read_only_isvc, expected_raises",
-        [
-            pytest.param({"readonly": "false"}, False, id="test_readonly_annotation_false"),
-            pytest.param({"readonly": "true"}, True, id="test_readonly_annotation_true"),
-        ],
-        indirect=["patched_read_only_isvc"],
-    )
-    def test_isvc_readonly_annotation_toggle_lifecycle(
+    def test_isvc_read_only_true(
         self,
-        unprivileged_client: DynamicClient,
-        patched_read_only_isvc: InferenceService,
-        expected_raises: bool,
-    ) -> None:
-        """Verify write access reflects each annotation toggle on a live ISVC.
+        admin_client,
+        unprivileged_client,
+        model_pvc,
+        ci_bucket_downloaded_model_data,
+        patched_read_only_isvc,
+    ):
+        """Test None→true→false transition.
 
-        Given a PVC-backed ISVC with the read-only annotation patched to 'false',
-        When a write operation is attempted inside the predictor container after the pod rolls out,
-        Then the write succeeds (no ExecOnPodError).
-
-        Given the same ISVC with the annotation patched to 'true',
-        When the same write operation is attempted after the new pod comes up,
-        Then the write is denied (ExecOnPodError raised).
-
-        Regression coverage: RHOAIENG-8288 — annotation toggle on a live ISVC did not update
-        the effective mount access mode across transitions.
+        1. Fixture patches annotation to readonly=true and waits for rollout.
+        2. Verify annotation, pod spec readOnly=true, /proc/mounts ro, write fails.
+        3. Toggle annotation to readonly=false and wait for rollout.
+        4. Verify annotation, pod spec readOnly=false, /proc/mounts rw.
+        5. chmod 777 the model directory (simulates customer PVC prep), verify write succeeds.
         """
-        expected_annotation = "true" if expected_raises else "false"
-        assert (
-            patched_read_only_isvc.instance.metadata.annotations.get("storage.kserve.io/readonly")
-            == expected_annotation
-        ), f"Expected annotation readonly={expected_annotation} was not applied"
+        annotation = patched_read_only_isvc.instance.metadata.annotations.get("storage.kserve.io/readonly")
+        assert annotation == "true", f"Expected annotation readonly=true after patch, got {annotation}"
+        pod = get_running_predictor_pod(client=unprivileged_client, isvc=patched_read_only_isvc)
+        assert get_volume_mount_readonly(pod=pod), "Expected volumeMount.readOnly=true with readonly=true"
+        assert get_mount_mode(pod=pod) == "ro", "Expected /mnt/models mounted ro with readonly=true"
+        assert not try_write_file(pod=pod), "Expected write to /mnt/models to fail with readonly=true"
 
-        new_pod = get_pods_by_isvc_label(
-            client=unprivileged_client,
-            isvc=patched_read_only_isvc,
-        )[0]
-        if expected_raises:
-            with pytest.raises(ExecOnPodError):
-                new_pod.execute(
-                    container=Containers.KSERVE_CONTAINER_NAME,
-                    command=POD_TOUCH_SPLIT_COMMAND,
-                )
-        else:
-            new_pod.execute(
-                container=Containers.KSERVE_CONTAINER_NAME,
-                command=POD_TOUCH_SPLIT_COMMAND,
-            )
+        patched_read_only_isvc.update(
+            resource_dict={
+                "metadata": {
+                    "name": patched_read_only_isvc.name,
+                    "annotations": {"storage.kserve.io/readonly": "false"},
+                }
+            }
+        )
+        wait_for_rollout_complete(client=unprivileged_client, isvc=patched_read_only_isvc)
+        annotation = patched_read_only_isvc.instance.metadata.annotations.get("storage.kserve.io/readonly")
+        assert annotation == "false", f"Expected annotation readonly=false after toggle, got {annotation}"
+        pod = get_running_predictor_pod(client=unprivileged_client, isvc=patched_read_only_isvc)
+        assert not get_volume_mount_readonly(pod=pod), "Expected volumeMount.readOnly=false after toggle true→false"
+        assert get_mount_mode(pod=pod) == "rw", "Expected /mnt/models mounted rw after toggle true→false"
+
+        chmod_model_directory(
+            client=admin_client,
+            namespace=patched_read_only_isvc.namespace,
+            pvc_name=model_pvc.name,
+            model_path=ci_bucket_downloaded_model_data,
+        )
+        assert try_write_file(pod=pod), "Expected write to /mnt/models to succeed after toggle true→false"

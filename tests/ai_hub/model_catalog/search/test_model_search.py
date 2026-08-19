@@ -401,7 +401,7 @@ class TestSearchModelsByFilterQuery:
     )
     def test_filter_query_advanced_model_search(
         self: Self,
-        models_from_filter_query: list[str],
+        models_from_filter_query: list[tuple[str, str]],
         expected_value: list[dict[str, Any]],
         logic_type: str,
         model_catalog_rest_url: list[str],
@@ -413,8 +413,8 @@ class TestSearchModelsByFilterQuery:
         errors = []
 
         # Additional validation: ensure returned models match the filter criteria
-        for model_name in models_from_filter_query:
-            url = f"{model_catalog_rest_url[0]}sources/{VALIDATED_CATALOG_ID}/models/{model_name}/artifacts?pageSize"
+        for model_name, source_id in models_from_filter_query:
+            url = f"{model_catalog_rest_url[0]}sources/{source_id}/models/{model_name}/artifacts?pageSize"
             LOGGER.info(f"Validating model: {model_name} with {len(expected_value)} {logic_type.upper()} validation(s)")
 
             # Fetch all artifacts with dynamic page size adjustment

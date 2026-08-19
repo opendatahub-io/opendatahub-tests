@@ -12,7 +12,8 @@ from tests.model_serving.model_server.llmd.utils import (
     log_base_refs_selection,
 )
 from tests.model_serving.model_server.utils import skip_test
-from utilities.constants import ContainerImages, Labels
+from utilities.constants import Labels
+from utilities.image_constants import SharedImages
 from utilities.infra import is_disconnected_cluster
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -56,20 +57,6 @@ class LLMISvcConfig:
         ]
 
     @classmethod
-    def liveness_probe(cls):
-        return {
-            "httpGet": {"path": "/health", "port": 8000, "scheme": "HTTPS"},
-            "initialDelaySeconds": 240,
-            "periodSeconds": 60,
-            "timeoutSeconds": 60,
-            "failureThreshold": 10,
-        }
-
-    @classmethod
-    def readiness_probe(cls):
-        return None
-
-    @classmethod
     def router_config(cls):
         return {
             "scheduler": {"configRef": "kserve-config-llm-scheduler"},
@@ -89,7 +76,13 @@ class LLMISvcConfig:
     def prefill_config(cls):
         return None
 
-    kv_cache_offloading = None
+    @classmethod
+    def kv_cache_offloading(cls):
+        return None
+
+    @classmethod
+    def template_volumes(cls):
+        return None
 
     @classmethod
     def worker_config(cls):
@@ -146,13 +139,48 @@ class LLMISvcConfig:
         """Create a derived config class with overridden attributes."""
         return type(f"{cls.__name__}_custom", (cls,), overrides)
 
+    # ── Probes ─────────────────────────────────────────────────────────
+    # Probes are set permissively so they never interfere with tests.
+    # The test's wait_timeout is the only gate for pass/fail.
+    # Override in a subclass only if a test explicitly validates probe behavior.
+
+    @classmethod
+    def startup_probe(cls) -> dict:
+        return {
+            "httpGet": {"path": "/health", "port": 8000, "scheme": "HTTPS"},
+            "initialDelaySeconds": 0,
+            "periodSeconds": 10,
+            "timeoutSeconds": 5,
+            "failureThreshold": 360,
+        }
+
+    @classmethod
+    def liveness_probe(cls) -> dict:
+        return {
+            "httpGet": {"path": "/health", "port": 8000, "scheme": "HTTPS"},
+            "initialDelaySeconds": 3600,
+            "periodSeconds": 60,
+            "timeoutSeconds": 60,
+            "failureThreshold": 10,
+        }
+
+    @classmethod
+    def readiness_probe(cls) -> dict:
+        return {
+            "httpGet": {"path": "/health", "port": 8000, "scheme": "HTTPS"},
+            "initialDelaySeconds": 0,
+            "periodSeconds": 10,
+            "timeoutSeconds": 5,
+            "failureThreshold": 360,
+        }
+
 
 class CpuConfig(LLMISvcConfig):
     """CPU inference base. Sets vLLM CPU image, CPU env vars, and CPU resource limits."""
 
     enable_auth = False
     wait_timeout = 420
-    container_image = ContainerImages.VLLM.CPU
+    container_image = SharedImages.VLLM_CPU
 
     @classmethod
     def container_env(cls):

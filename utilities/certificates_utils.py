@@ -89,6 +89,27 @@ def get_ca_bundle(client: DynamicClient) -> str:
     return create_ca_bundle_file(client=client)
 
 
+def get_tls_verify(client: DynamicClient) -> str | bool:
+    """
+    Return the appropriate TLS verify value for requests.
+
+    On managed clusters (e.g. ROSA), the router cert is signed by a public CA
+    so the system trust store is used (True). On self-managed clusters the
+    extracted CA bundle file path is returned.
+
+    Args:
+        client (DynamicClient): DynamicClient object
+
+    Returns:
+        str | bool: CA bundle file path, or True to use the system CA store.
+    """
+    if is_managed_cluster(client):
+        LOGGER.info("Running on managed cluster, using system CA store for TLS verification")
+        return True
+
+    return create_ca_bundle_file(client=client)
+
+
 def create_k8s_secret(
     client: DynamicClient,
     namespace: str,

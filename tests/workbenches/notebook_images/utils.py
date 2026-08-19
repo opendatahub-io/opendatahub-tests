@@ -658,7 +658,7 @@ def find_rstudio_imagestream_name(admin_client: DynamicClient) -> str | None:
     imagestreams = ImageStream.get(
         client=admin_client,
         namespace=_applications_namespace(),
-        label_selector="opendatahub.io/notebook-image=true,platform.opendatahub.io/part-of=workbenches",
+        label_selector="opendatahub.io/notebook-image=true,app.kubernetes.io/part-of=workbenches",
     )
 
     for imagestream in imagestreams:

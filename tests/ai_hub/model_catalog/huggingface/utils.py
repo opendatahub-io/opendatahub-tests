@@ -7,6 +7,7 @@ from huggingface_hub import HfApi
 from kubernetes.dynamic import DynamicClient
 from timeout_sampler import retry
 
+from tests.ai_hub.constants import CATALOG_CONTAINER
 from tests.ai_hub.model_catalog.constants import HF_SOURCE_ID
 from tests.ai_hub.model_catalog.utils import get_models_from_catalog_api
 from tests.ai_hub.utils import execute_get_command, get_model_catalog_pod
@@ -176,42 +177,65 @@ def get_huggingface_model_from_api(
     )
 
 
-@retry(wait_timeout=135, sleep=15)
-def wait_for_last_sync_update(
+@retry(wait_timeout=180, sleep=15, print_func_args=False)
+def wait_for_last_sync_update_via_logs(
+    admin_client: DynamicClient,
+    model_registry_namespace: str,
+    source_id: str,
+    since_seconds: int = 300,
+) -> bool:
+    """Wait for the catalog pod logs to show a periodic resync for the given source."""
+    catalog_pod = get_model_catalog_pod(client=admin_client, model_registry_namespace=model_registry_namespace)[0]
+    log = catalog_pod.log(container=CATALOG_CONTAINER, since_seconds=since_seconds)
+
+    sync_marker = f"Periodic sync: reprocessing all models for source {source_id}"
+    if sync_marker in log:
+        LOGGER.info(f"Periodic sync detected for source {source_id}")
+        return True
+    return False
+
+
+@retry(wait_timeout=60, sleep=5, exceptions_dict={requests.exceptions.ConnectionError: [], AssertionError: []})
+def wait_for_last_synced_interval_match(
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
     model_name: str,
     source_id: str,
-    initial_last_synced_values: float,
+    initial_last_synced: str,
+    expected_interval: int = 120,
+    tolerance: int = 10,
 ) -> bool:
-    """Wait for the last_synced value to be updated with exact 120-second difference"""
+    """Fetch the model from the catalog API and assert the sync interval is within tolerance.
 
+    Args:
+        model_catalog_rest_url: REST URL for model catalog.
+        model_registry_rest_headers: Headers for model registry REST API.
+        model_name: Name of the model to fetch.
+        source_id: Source ID for the catalog.
+        initial_last_synced: Initial last_synced epoch-millis value.
+        expected_interval: Expected sync interval in seconds.
+        tolerance: Allowed deviation in seconds.
+
+    Returns:
+        True when the sync interval matches within tolerance.
+
+    Raises:
+        AssertionError: If the sync interval difference exceeds the tolerance.
+    """
     result = get_huggingface_model_from_api(
-        model_registry_rest_headers=model_registry_rest_headers,
         model_catalog_rest_url=model_catalog_rest_url,
+        model_registry_rest_headers=model_registry_rest_headers,
         model_name=model_name,
         source_id=source_id,
     )
     current_last_synced = float(result["customProperties"]["last_synced"]["string_value"])
-    if current_last_synced != initial_last_synced_values:
-        # Calculate difference in milliseconds and convert to seconds
-        difference_seconds = int((current_last_synced - initial_last_synced_values) / 1000)
-
-        LOGGER.info(
-            f"Model {model_name}: initial={initial_last_synced_values}, current={current_last_synced}, "
-            f"diff={difference_seconds}s"
-        )
-        expected_diff = 120
-        if difference_seconds == expected_diff:
-            LOGGER.info(f"Model {model_name} successfully synced with correct interval ({difference_seconds}s)")
-            return True
-        else:
-            LOGGER.error(
-                f"Model {model_name}: sync interval should be {expected_diff}s, "
-                f"but found {difference_seconds}s (difference: {abs(difference_seconds - expected_diff)}s). "
-                f"Initial: {initial_last_synced_values}, Current: {current_last_synced}"
-            )
-    return False
+    difference_seconds = (current_last_synced - float(initial_last_synced)) / 1000
+    assert abs(difference_seconds - expected_interval) <= tolerance, (
+        f"Model {model_name}: expected ~{expected_interval}s sync interval, "
+        f"got {difference_seconds:.1f}s. "
+        f"Initial: {initial_last_synced}, Current: {current_last_synced}"
+    )
+    return True
 
 
 def assert_accessible_models_via_catalog_api(

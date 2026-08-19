@@ -333,10 +333,14 @@ def models_from_filter_query(
     request,
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
-) -> list[str]:
+) -> list[tuple[str, str]]:
     """
     Fixture that runs get_models_from_catalog_api with the given filter_query,
-    asserts that models are returned, and returns list of model names.
+    asserts that models are returned, and returns list of (name, source_id) tuples.
+
+    The general /models endpoint spans every catalog source on the cluster, so
+    each model's actual source_id must travel with its name for any follow-up
+    per-model lookups to target the right source.
     """
     filter_query = request.param
 
@@ -348,10 +352,13 @@ def models_from_filter_query(
 
     assert models, f"No models returned from filter query: {filter_query}"
 
-    model_names = [model["name"] for model in models]
-    LOGGER.info(f"Filter query '{filter_query}' returned {len(model_names)} models: {', '.join(model_names)}")
+    models_with_source = [(model["name"], model["source_id"]) for model in models]
+    LOGGER.info(
+        f"Filter query '{filter_query}' returned {len(models_with_source)} models: "
+        f"{', '.join(name for name, _ in models_with_source)}"
+    )
 
-    return model_names
+    return models_with_source
 
 
 @pytest.fixture()

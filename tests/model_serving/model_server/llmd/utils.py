@@ -14,7 +14,6 @@ from typing import Any, NamedTuple
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.event import Event
-from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.node import Node
 from ocp_resources.pod import Pod
 from ocp_resources.prometheus import Prometheus
@@ -28,6 +27,7 @@ from utilities.jira import is_jira_issue_open
 from utilities.llmd_constants import LLMEndpoint
 from utilities.llmd_utils import get_llm_inference_url
 from utilities.monitoring import get_metrics_value
+from utilities.resources.llm_inference_service import LLMInferenceService
 from utilities.resources.llm_inference_service_config import LLMInferenceServiceConfig
 
 LOGGER = structlog.get_logger(name=__name__)

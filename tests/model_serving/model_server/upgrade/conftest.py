@@ -13,7 +13,6 @@ from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.gateway import Gateway
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.job import Job
-from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
@@ -111,6 +110,7 @@ from utilities.llmd_constants import KServeGateway, LLMDGateway
 from utilities.llmd_utils import create_llmd_gateway
 from utilities.logger import RedactedString
 from utilities.resources.admission_check import AdmissionCheck
+from utilities.resources.llm_inference_service import LLMInferenceService
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 LOGGER = structlog.get_logger(name=__name__)

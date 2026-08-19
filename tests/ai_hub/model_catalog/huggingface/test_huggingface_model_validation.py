@@ -7,13 +7,14 @@ from huggingface_hub import HfApi
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 
-from tests.ai_hub.model_catalog.constants import HF_MODELS, HF_SOURCE_ID
+from tests.ai_hub.model_catalog.constants import HF_LAST_SYNCED_SOURCE_ID, HF_MODELS, HF_SOURCE_ID
 from tests.ai_hub.model_catalog.huggingface.utils import (
     assert_huggingface_values_matches_model_catalog_api_values,
     get_huggingface_model_from_api,
     wait_for_hugging_face_model_import,
     wait_for_huggingface_retrival_match,
-    wait_for_last_sync_update,
+    wait_for_last_sync_update_via_logs,
+    wait_for_last_synced_interval_match,
 )
 from tests.ai_hub.model_catalog.utils import (
     get_hf_catalog_str,
@@ -31,10 +32,10 @@ class TestLastSyncedMetadataValidation:
         "updated_catalog_config_map_scope_function, initial_last_synced_values, model_name",
         [
             pytest.param(
-                """
+                f"""
 catalogs:
   - name: HuggingFace Hub
-    id: hf_id
+    id: {HF_LAST_SYNCED_SOURCE_ID}
     type: hf
     enabled: true
     includedModels:
@@ -53,6 +54,8 @@ catalogs:
         self: Self,
         updated_catalog_config_map_scope_function: Generator[ConfigMap],
         initial_last_synced_values: str,
+        admin_client: DynamicClient,
+        model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         model_name: str,
@@ -60,13 +63,17 @@ catalogs:
         """
         Custom test for HuggingFace model last synced validation
         """
-        # Get the model name from the parametrized test
-        wait_for_last_sync_update(
-            model_registry_rest_headers=model_registry_rest_headers,
+        wait_for_last_sync_update_via_logs(
+            admin_client=admin_client,
+            model_registry_namespace=model_registry_namespace,
+            source_id=HF_LAST_SYNCED_SOURCE_ID,
+        )
+        wait_for_last_synced_interval_match(
             model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
             model_name=model_name,
-            source_id="hf_id",
-            initial_last_synced_values=float(initial_last_synced_values),
+            source_id=HF_LAST_SYNCED_SOURCE_ID,
+            initial_last_synced=initial_last_synced_values,
         )
 
 

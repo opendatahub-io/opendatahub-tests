@@ -2,7 +2,6 @@ from typing import Any
 
 import pytest
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.llm_inference_service import LLMInferenceService
 
 from tests.model_serving.model_server.kserve.model_cache.utils import (
     LocalModelNamespaceCache,
@@ -15,6 +14,7 @@ from tests.model_serving.model_server.llmd.utils import (
     send_chat_completions,
     workaround_503_no_healthy_upstream,
 )
+from utilities.resources.llm_inference_service import LLMInferenceService
 
 pytestmark = [
     pytest.mark.smoke,

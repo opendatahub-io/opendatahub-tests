@@ -13,7 +13,6 @@ TAI_DB_STORAGE_CONFIG: dict[str, str] = {
     "databaseConfigurations": "db-credentials",
 }
 
-SKLEARN: str = "sklearn"
 MLSERVER: str = "mlserver"
 MLSERVER_RUNTIME_NAME: str = f"{MLSERVER}-1.x"
 XGBOOST: str = "xgboost"
@@ -21,7 +20,6 @@ LIGHTGBM: str = "lightgbm"
 MLFLOW: str = "mlflow"
 
 GAUSSIAN_CREDIT_MODEL: str = "gaussian-credit-model"
-GAUSSIAN_CREDIT_MODEL_STORAGE_PATH: str = f"{SKLEARN}/{GAUSSIAN_CREDIT_MODEL.replace('-', '_')}/1"
 GAUSSIAN_CREDIT_MODEL_STORAGE_URI: str = AiSafetyImages.GAUSSIAN_CREDIT_MODEL
 GAUSSIAN_CREDIT_MODEL_RESOURCES: dict[str, dict[str, str]] = {
     "requests": {"cpu": "1", "memory": "500Mi"},

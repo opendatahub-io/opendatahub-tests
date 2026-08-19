@@ -8,23 +8,16 @@ from tests.ai_safety.trustyai_service.trustyai_service_utils import (
     verify_trustyai_service_metric_scheduling_request,
     verify_upload_data_to_trustyai_service,
 )
-from utilities.constants import MinIo
 from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
 
 
-@pytest.mark.usefixtures("minio_pod")
 @pytest.mark.parametrize(
-    "model_namespaces, minio_pod, minio_data_connection_multi_ns",
+    "model_namespaces",
     [
         pytest.param(
             [
                 {"name": "test-trustyaiservice-multins-1"},
                 {"name": "test-trustyaiservice-multins-2"},
-            ],
-            MinIo.PodConfig.MODEL_MESH_MINIO_CONFIG,
-            [
-                {"bucket": MinIo.Buckets.MODELMESH_EXAMPLE_MODELS},
-                {"bucket": MinIo.Buckets.MODELMESH_EXAMPLE_MODELS},
             ],
         ),
     ],
@@ -97,7 +90,6 @@ class TestTrustyAIServiceMultipleNS:
         self,
         admin_client,
         current_client_token,
-        minio_data_connection_multi_ns,
         trustyai_service_with_pvc_storage_multi_ns,
     ):
         for tai in trustyai_service_with_pvc_storage_multi_ns:
@@ -110,20 +102,17 @@ class TestTrustyAIServiceMultipleNS:
 
 
 @pytest.mark.parametrize(
-    "model_namespaces, minio_pod, minio_data_connection_multi_ns",
+    "model_namespaces",
     [
         pytest.param(
             [
                 {"name": "test-trustyaiservice-multins-1"},
                 {"name": "test-trustyaiservice-multins-2"},
             ],
-            MinIo.PodConfig.MODEL_MESH_MINIO_CONFIG,
-            [{"bucket": MinIo.Buckets.MODELMESH_EXAMPLE_MODELS}] * 2,
         ),
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("minio_pod")
 @pytest.mark.rawdeployment
 class TestDriftMetricsWithDBStorageMultiNs:
     """
@@ -158,7 +147,6 @@ class TestDriftMetricsWithDBStorageMultiNs:
         admin_client,
         current_client_token,
         trustyai_service_with_db_storage_multi_ns,
-        minio_data_connection_multi_ns,
     ):
         for tai in trustyai_service_with_db_storage_multi_ns:
             verify_upload_data_to_trustyai_service(
@@ -190,7 +178,6 @@ class TestDriftMetricsWithDBStorageMultiNs:
     def test_drift_metric_delete_with_db_storage(
         self,
         admin_client,
-        minio_data_connection_multi_ns,
         current_client_token,
         trustyai_service_with_db_storage_multi_ns,
     ):

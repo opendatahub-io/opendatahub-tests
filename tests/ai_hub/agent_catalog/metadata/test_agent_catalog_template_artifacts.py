@@ -1,3 +1,5 @@
+import base64
+import xml.etree.ElementTree as ET
 from typing import Any, Self
 
 import pytest
@@ -70,3 +72,33 @@ class TestAgentTemplates:
                     )
 
         assert not errors, "Template/agent metadata mismatch:\n" + "\n".join(errors)
+
+    def test_agent_template_logo_is_valid_svg_data_uri(
+        self: Self,
+        agent_template_artifacts: dict[str, dict],
+    ) -> None:
+        """Given agents have template artifacts with a logo field
+        When validating the logo value
+        Then it is a valid base64-encoded SVG data URI
+        """
+        prefix = "data:image/svg+xml;base64,"
+        errors: list[str] = []
+        for name, content in agent_template_artifacts.items():
+            logo = content.get("logo", "")
+            if not logo:
+                errors.append(f"Agent '{name}' logo is empty")
+                continue
+            if not logo.startswith(prefix):
+                errors.append(f"Agent '{name}' logo is not a base64 SVG data URI: {logo[:50]!r}")
+                continue
+            try:
+                svg_bytes = base64.b64decode(s=logo.removeprefix(prefix))
+            except ValueError:
+                errors.append(f"Agent '{name}' logo base64 decoding failed")
+                continue
+            try:
+                ET.fromstring(text=svg_bytes.decode(encoding="utf-8"))
+            except ET.ParseError as parse_error:
+                errors.append(f"Agent '{name}' logo SVG is not valid XML: {parse_error}")
+
+        assert not errors, "Logo validation failed:\n" + "\n".join(errors)

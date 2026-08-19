@@ -35,3 +35,11 @@ VOLUME_MOUNTS = {
 
 REPO_NAME = "async-job-test/model-artifact"
 TAG = "latest"
+
+# CA bundle configuration for self-signed certificate support
+CA_BUNDLE_CONFIG = {
+    "CONFIG_MAP_NAME": "odh-trusted-ca-bundle",
+    "MOUNT_PATH": "/etc/pki/tls/custom",
+    "CA_FILE": "ca-bundle.crt",
+    "ENV_VAR": "MODEL_SYNC_REGISTRY_CUSTOM_CA",
+}

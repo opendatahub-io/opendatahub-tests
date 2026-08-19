@@ -4,8 +4,12 @@ class AiSafetyImages:
     VLLM_EMULATOR: str = (
         "quay.io/trustyai_testing/vllm_emulator@sha256:32b5f26b5ec1c5c8052afa26c6d9769dbc864df27a058716c8df62d827cf1d07"
     )
-    MINIO_MC: str = "quay.io/minio/mc@sha256:470f5546b596e16c7816b9c3fa7a78ce4076bb73c2c73f7faeec0c8043923123"
-    MINIO_SERVER: str = "quay.io/minio/minio@sha256:46b3009bf7041eefbd90bd0d2b38c6ddc24d20a35d609551a1802c558c1c958f"
+    MINIO_MC: str = (
+        "quay.io/trustyai_testing/minio-mc@sha256:f857d815d4dfb95ccfb6e374cf949f3daebbe05a952d44bbbde3f2552d28e6c0"
+    )
+    MINIO_SERVER: str = (
+        "quay.io/trustyai_testing/minio@sha256:cf222021b0727b0b3efe1794dd3f1af898071b684c1c67b1ef345ccef636501a"
+    )
     MINIO_SERVER_OTEL: str = (
         "quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e"
     )
@@ -29,6 +33,10 @@ class AiSafetyImages:
     GAUSSIAN_CREDIT_MODEL: str = (
         "oci://quay.io/trustyai_testing/gaussian-credit-model-modelcar"
         "@sha256:323dbb70c980c7f57bb6a884f5d46ee1c620c0b193368d13a469b49e7c9054c4"
+    )
+    LOAN_MODEL_ALPHA: str = (
+        "oci://quay.io/trustyai_testing/loan-model-alpha-modelcar"
+        "@sha256:837ca7b3064a08c5fa1a33c3cc557e96c7c2a70d0a8353076a2f8e95abcb6e60"
     )
     MLSERVER: str = (
         "quay.io/trustyai_testing/mlserver@sha256:68a4cd74fff40a3c4f29caddbdbdc9e54888aba54bf3c5f78c8ffd577c3a1c89"

@@ -1,9 +1,10 @@
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.prometheus import Prometheus
 
+from tests.model_serving.model_server.llmd.api_compat import OpenAICompatibilityValidator
+from tests.model_serving.model_server.llmd.constants import SOAK_TEST_DURATION
 from tests.model_serving.model_server.llmd.llmd_configs import (
     SingleNodePDFast1Config,
     SingleNodePDFast2Config,
@@ -20,6 +21,7 @@ from tests.model_serving.model_server.llmd.utils import (
     send_chat_completions,
     send_completions,
 )
+from utilities.resources.llm_inference_service import LLMInferenceService
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -170,3 +172,15 @@ class TestSingleNodePrefillDecode:
             expected_transferred_tokens=total_prompt_tokens,
             num_requests=len(PROMPTS),
         )
+
+    @pytest.mark.soak
+    @pytest.mark.order(after="test_kv_transfer")
+    @pytest.mark.parametrize("verification", OpenAICompatibilityValidator.ALL_VERIFICATIONS)
+    def test_openai_api_compat_soak(
+        self,
+        admin_client: DynamicClient,
+        llmisvc: LLMInferenceService,
+        verification: str,
+    ):
+        with OpenAICompatibilityValidator.from_llmisvc(client=admin_client, llmisvc=llmisvc) as v:
+            getattr(v, verification)(duration=SOAK_TEST_DURATION)

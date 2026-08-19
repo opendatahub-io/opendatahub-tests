@@ -1,6 +1,5 @@
 import pytest
 from ocp_resources.deployment import Deployment
-from ocp_resources.llm_inference_service import LLMInferenceService
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaOciConfig
@@ -12,6 +11,7 @@ from tests.model_serving.model_server.llmd.utils import (
 from utilities.constants import Labels
 from utilities.exceptions import UnexpectedResourceCountError
 from utilities.kueue_utils import check_gated_pods_and_running_pods
+from utilities.resources.llm_inference_service import LLMInferenceService
 
 pytestmark = [pytest.mark.tier2]
 

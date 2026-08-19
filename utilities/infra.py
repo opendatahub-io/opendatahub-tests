@@ -1058,9 +1058,23 @@ def wait_for_dsc_status_ready(dsc_resource: DataScienceCluster) -> bool:
     LOGGER.info(f"Wait for DSC {dsc_resource.name} are {dsc_resource.Status.READY}.")
     if dsc_resource.status == dsc_resource.Status.READY:
         return True
-    raise ResourceNotReadyError(
-        f"DSC {dsc_resource.name} is not ready.\nCurrent status: {dsc_resource.instance.status}"
+
+    conditions = dsc_resource.instance.status.conditions
+    not_ready_conditions = [
+        condition for condition in conditions if condition.status != "True" and condition.get("reason") != "Removed"
+    ]
+    removed_components = [
+        condition.type.removesuffix("Ready") for condition in conditions if condition.get("reason") == "Removed"
+    ]
+
+    summary = "\n".join(
+        f"  {condition.type}: {condition.get('message', condition.reason)}" for condition in not_ready_conditions
     )
+    message = f"DSC {dsc_resource.name} is not ready:\n{summary}"
+    if removed_components:
+        message += f"\nRemoved components: {', '.join(removed_components)}"
+
+    raise ResourceNotReadyError(message)
 
 
 def verify_cluster_sanity(
@@ -1197,6 +1211,51 @@ def download_oc_console_cli(admin_client: DynamicClient, tmpdir: LocalPath) -> s
     if os.path.isfile(local_file_name):
         os.remove(local_file_name)
     binary_path = os.path.join(tmpdir, extracted_filenames[0])
+    os.chmod(binary_path, stat.S_IRUSR | stat.S_IXUSR)
+    return binary_path
+
+
+def get_helm_console_cli_download_link(admin_client: DynamicClient) -> str:
+    """
+    Build the download URL for the `helm` binary from the `helm-download-links` ConsoleCLIDownload.
+
+    Unlike `oc-cli-downloads`, this CR exposes a single link to a mirror directory (not one link
+    per OS/arch), e.g. https://mirror.openshift.com/pub/openshift-v4/clients/helm/latest, which
+    serves the raw platform binary directly (no archive) at `<link>/helm-<os>-<arch>[.exe]`.
+    """
+    helm_console_cli_download = ConsoleCLIDownload(client=admin_client, name="helm-download-links", ensure_exists=True)
+    helm_links = helm_console_cli_download.instance.spec.links
+    if not helm_links:
+        raise ValueError("No links found in the 'helm-download-links' ConsoleCLIDownload")
+
+    os_system = platform.system().lower()  # mirror uses "darwin", unlike oc's "mac" naming
+    machine_platform = get_machine_platform()
+    binary_suffix = ".exe" if os_system == "windows" else ""
+    return f"{helm_links[0].href.rstrip('/')}/helm-{os_system}-{machine_platform}{binary_suffix}"
+
+
+def download_helm_console_cli(admin_client: DynamicClient, tmpdir: LocalPath) -> str:
+    """
+    Download the helm CLI binary.
+
+    Unlike the oc download, the helm mirror serves the raw binary directly, so no archive
+    extraction step is needed.
+
+    Args:
+        admin_client (DynamicClient): admin client
+        tmpdir (str): Directory to download the binary to
+
+    Returns:
+        str: Path to the downloaded binary
+    """
+    helm_console_cli_download_link = get_helm_console_cli_download_link(admin_client=admin_client)
+    LOGGER.info(f"Downloading helm binary using: url={helm_console_cli_download_link}")
+    urllib3.disable_warnings()  # TODO: remove when cert issue is addressed for managed clusters
+    binary_path = os.path.join(tmpdir, helm_console_cli_download_link.split("/")[-1])
+    with _download_with_retry(url=helm_console_cli_download_link) as created_request:
+        content_iterator = created_request.iter_content(chunk_size=8192)
+        with open(binary_path, "wb") as file_downloaded:
+            file_downloaded.writelines(content_iterator)
     os.chmod(binary_path, stat.S_IRUSR | stat.S_IXUSR)
     return binary_path
 

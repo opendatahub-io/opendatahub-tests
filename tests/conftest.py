@@ -58,8 +58,10 @@ from utilities.constants import (
 )
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.exceptions import ClusterLoginError
+from utilities.image_constants import SharedImages
 from utilities.infra import (
     create_ns,
+    download_helm_console_cli,
     download_oc_console_cli,
     get_cluster_authentication,
     get_openshift_token,
@@ -70,6 +72,7 @@ from utilities.infra import (
 from utilities.logger import RedactedString
 from utilities.mariadb_utils import wait_for_mariadb_operator_deployments
 from utilities.minio import create_minio_data_connection_secret
+from utilities.openshell_utils import get_cluster_apps_domain, wait_for_openshell_gateway_pod
 from utilities.operator_utils import get_cluster_service_version, get_csv_related_images
 from utilities.serving_runtime import get_runtime_image_from_template
 from utilities.user_utils import get_byoidc_issuer_url, get_oidc_tokens
@@ -826,6 +829,17 @@ def oc_binary_path(admin_client: DynamicClient, bin_directory: LocalPath) -> str
     return download_oc_console_cli(admin_client=admin_client, tmpdir=bin_directory)
 
 
+@pytest.fixture(scope="session")
+def helm_binary_path(admin_client: DynamicClient, bin_directory: LocalPath) -> str:
+    """Not part of `autouse_fixtures`; only downloaded lazily by tests that actually need helm."""
+    installed_helm_binary_path = os.getenv("HELM_BINARY_PATH")
+    if installed_helm_binary_path:
+        LOGGER.warning(f"Using previously installed: {installed_helm_binary_path}")
+        return installed_helm_binary_path
+
+    return download_helm_console_cli(admin_client=admin_client, tmpdir=bin_directory)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def autouse_fixtures(
     admin_client: DynamicClient,
@@ -904,6 +918,152 @@ def mariadb_operator_cr(
         wait_for_mariadb_operator_deployments(mariadb_operator=mariadb_operator_cr, client=admin_client)
 
         yield mariadb_operator_cr
+
+
+@pytest.fixture(scope="session")
+def installed_agent_sandbox_operator(admin_client: DynamicClient) -> Generator[None, Any, Any]:
+    operator_name = "agent-sandbox-operator"
+    agent_sandbox_subscription = Subscription(client=admin_client, namespace=OPENSHIFT_OPERATORS, name=operator_name)
+
+    installed_by_fixture = not agent_sandbox_subscription.exists
+    if installed_by_fixture:
+        install_operator(
+            admin_client=admin_client,
+            target_namespaces=[OPENSHIFT_OPERATORS],
+            name=operator_name,
+            channel="preview-0.9",
+            source="redhat-operators",
+            operator_namespace=OPENSHIFT_OPERATORS,
+            timeout=900,
+            install_plan_approval="Manual",
+        )
+
+    yield
+
+    if installed_by_fixture:
+        uninstall_operator(
+            admin_client=admin_client,
+            name=operator_name,
+            operator_namespace=OPENSHIFT_OPERATORS,
+            clean_up_namespace=False,
+        )
+
+
+OPENSHELL_GATEWAY_IMAGE_REPOSITORY_ENV_VAR = "OPENSHELL_GATEWAY_IMAGE_REPOSITORY"
+OPENSHELL_GATEWAY_IMAGE_DIGEST_ENV_VAR = "OPENSHELL_GATEWAY_IMAGE_DIGEST"
+OPENSHELL_SUPERVISOR_IMAGE_REPOSITORY_ENV_VAR = "OPENSHELL_SUPERVISOR_IMAGE_REPOSITORY"
+OPENSHELL_SUPERVISOR_IMAGE_DIGEST_ENV_VAR = "OPENSHELL_SUPERVISOR_IMAGE_DIGEST"
+
+
+@pytest.fixture(scope="session")
+def installed_openshell_release(
+    admin_client: DynamicClient,
+    helm_binary_path: str,
+    oc_binary_path: str,
+    installed_agent_sandbox_operator: None,
+) -> Generator[str, Any, Any]:
+    namespace = "openshell"
+    release_name = "openshell"
+
+    with Namespace(client=admin_client, name=namespace) as openshell_namespace:
+        run_command(
+            command=[
+                oc_binary_path,
+                "adm",
+                "policy",
+                "add-scc-to-user",
+                "privileged",
+                "-z",
+                "openshell-sandbox",
+                "-n",
+                openshell_namespace.name,
+            ]
+        )
+
+        try:
+            route_host = f"{release_name}-{namespace}.{get_cluster_apps_domain(admin_client=admin_client)}"
+
+            helm_set_args = [
+                "--set",
+                "podSecurityContext.fsGroup=null",
+                "--set",
+                "securityContext.runAsUser=null",
+                "--set",
+                "server.auth.allowUnauthenticatedUsers=true",
+                "--set",
+                f"pkiInitJob.serverDnsNames[0]={route_host}",
+            ]
+
+            if gateway_image_repository := os.getenv(OPENSHELL_GATEWAY_IMAGE_REPOSITORY_ENV_VAR):
+                helm_set_args += ["--set", f"image.repository={gateway_image_repository}"]
+            if gateway_image_digest := os.getenv(OPENSHELL_GATEWAY_IMAGE_DIGEST_ENV_VAR):
+                helm_set_args += ["--set", f"image.digest={gateway_image_digest}"]
+            if supervisor_image_repository := os.getenv(OPENSHELL_SUPERVISOR_IMAGE_REPOSITORY_ENV_VAR):
+                helm_set_args += ["--set", f"supervisor.image.repository={supervisor_image_repository}"]
+            if supervisor_image_digest := os.getenv(OPENSHELL_SUPERVISOR_IMAGE_DIGEST_ENV_VAR):
+                helm_set_args += ["--set", f"supervisor.image.digest={supervisor_image_digest}"]
+
+            run_command(
+                command=[
+                    helm_binary_path,
+                    "upgrade",
+                    "--install",
+                    release_name,
+                    SharedImages.OPENSHELL_HELM_CHART,
+                    "--version",
+                    "0.0.85",
+                    "--namespace",
+                    openshell_namespace.name,
+                    *helm_set_args,
+                ],
+                verify_stderr=False,
+            )
+
+            wait_for_openshell_gateway_pod(client=admin_client, namespace=openshell_namespace.name)
+
+            yield route_host
+        finally:
+            try:
+                run_command(
+                    command=[helm_binary_path, "uninstall", release_name, "--namespace", openshell_namespace.name],
+                    verify_stderr=False,
+                )
+            finally:
+                run_command(
+                    command=[
+                        oc_binary_path,
+                        "adm",
+                        "policy",
+                        "remove-scc-from-user",
+                        "privileged",
+                        "-z",
+                        "openshell-sandbox",
+                        "-n",
+                        openshell_namespace.name,
+                    ]
+                )
+
+
+@pytest.fixture(scope="class")
+def openshell_gateway_route(
+    admin_client: DynamicClient, installed_openshell_release: str
+) -> Generator[Route, Any, Any]:
+    route_host = installed_openshell_release
+    with Route(
+        client=admin_client,
+        kind_dict={
+            "apiVersion": "route.openshift.io/v1",
+            "kind": "Route",
+            "metadata": {"name": "openshell", "namespace": "openshell"},
+            "spec": {
+                "host": route_host,
+                "to": {"kind": "Service", "name": "openshell"},
+                "port": {"targetPort": 8080},
+                "tls": {"termination": "passthrough"},
+            },
+        },
+    ) as route:
+        yield route
 
 
 @pytest.fixture(scope="session")
@@ -1074,6 +1234,7 @@ def skip_if_no_supported_accelerator_type(supported_accelerator_type: str | None
         AcceleratorType.NVIDIA,
         AcceleratorType.AMD,
         AcceleratorType.GAUDI,
+        AcceleratorType.SPYRE,
     }
 
     if not supported_accelerator_type or supported_accelerator_type.lower() not in supported_gpu_accelerators:
