@@ -10,6 +10,7 @@ CA_BUNDLE_CONFIGMAP_NAME = "openshift-service-ca.crt"
 CA_BUNDLE_MOUNT_PATH = "/etc/odh/openshift-service-ca-bundle"
 CA_BUNDLE_CERT_FILE = "service-ca.crt"
 KSERVE_CONTAINER_NAME = "kserve-container"
+MODEL_NAME_ARG_PREFIX = "--model-name="
 
 
 def _get_component_deployment(
@@ -36,6 +37,14 @@ def _get_kserve_container(deployment: Deployment):
     )
 
 
+def _get_container_arg_value(container, key: str) -> str | None:
+    """Get value for a '--key=value' style argument from container args."""
+    for argument in container.args or []:
+        if argument.startswith(f"{key}="):
+            return argument.split("=", maxsplit=1)[1]
+    return None
+
+
 @pytest.mark.tls
 @pytest.mark.tier1
 @pytest.mark.parametrize(
@@ -47,7 +56,7 @@ def _get_kserve_container(deployment: Deployment):
                 "name": "onnx",
                 "template-name": RuntimeTemplates.MLSERVER,
                 "multi-model": False,
-                "model-dir": "sentiment-analysis",
+                "storage-uri": "hf://optimum/distilbert-base-uncased-finetuned-sst-2-english",
             },
         )
     ],
@@ -143,6 +152,32 @@ class TestTransformerTLSInfrastructure:
         assert ssl_idx + 1 < len(args) and args[ssl_idx + 1] == "true", (
             f"Expected --predictor_use_ssl true, got: {args[ssl_idx:]}"
         )
+
+    def test_transformer_has_predictor_endpoint_configuration(
+        self, unprivileged_client, transformer_auth_inference_service
+    ) -> None:
+        """Transformer has model identity plus predictor host/port/protocol injection."""
+        deployment = _get_component_deployment(
+            client=unprivileged_client,
+            isvc=transformer_auth_inference_service,
+            component="transformer",
+        )
+        container = _get_kserve_container(deployment=deployment)
+        env_map = {env.name: env.value for env in container.env}
+
+        model_name_from_arg = _get_container_arg_value(container=container, key="--model-name")
+        assert model_name_from_arg, "Transformer should include --model-name=<name> argument"
+
+        expected_predictor_endpoint = f"/v2/models/{model_name_from_arg}/infer"
+        assert env_map.get("PREDICTOR_HOST"), "Expected PREDICTOR_HOST to be injected"
+        assert env_map.get("PREDICTOR_PORT"), "Expected PREDICTOR_PORT to be injected"
+        assert env_map.get("PREDICTOR_PROTOCOL"), "Expected PREDICTOR_PROTOCOL to be injected"
+
+        assert env_map.get("INFERENCE_SERVICE_NAME") == model_name_from_arg, (
+            f"Expected INFERENCE_SERVICE_NAME={model_name_from_arg}, got: {env_map.get('INFERENCE_SERVICE_NAME')}"
+        )
+        # Endpoint path is not injected directly today; it is derived from model identity.
+        assert expected_predictor_endpoint == f"/v2/models/{env_map['INFERENCE_SERVICE_NAME']}/infer"
 
     def test_predictor_does_not_have_tls_env_vars(self, unprivileged_client, transformer_auth_inference_service):
         """Predictor deployment must NOT have PREDICTOR_HOST/PORT/PROTOCOL env vars."""
