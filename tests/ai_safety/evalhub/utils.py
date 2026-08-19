@@ -1524,6 +1524,11 @@ def parse_trace_spans_from_logs(logs: str) -> list[dict[str, Any]]:
             current_span["trace_id"] = trace_id_match.group(1)
             continue
 
+        parent_match = re.search(r"(?:Parent\s*ID|ParentSpanID)\s*:\s*([0-9a-fA-F]+)", line)
+        if parent_match and current_span:
+            current_span["parent_span_id"] = parent_match.group(1)
+            continue
+
         span_id_match = re.search(r"(?:^|\s)ID\s*:\s*([0-9a-fA-F]+)", line)
         if span_id_match and current_span:
             current_span["span_id"] = span_id_match.group(1)
@@ -1532,11 +1537,6 @@ def parse_trace_spans_from_logs(logs: str) -> list[dict[str, Any]]:
         span_id_match2 = re.search(r"SpanID\s*:\s*([0-9a-fA-F]+)", line)
         if span_id_match2 and current_span:
             current_span["span_id"] = span_id_match2.group(1)
-            continue
-
-        parent_match = re.search(r"(?:Parent\s*ID|ParentSpanID)\s*:\s*([0-9a-fA-F]+)", line)
-        if parent_match and current_span:
-            current_span["parent_span_id"] = parent_match.group(1)
             continue
 
         status_match = re.search(r"(?:Status\s*code|Status)\s*:\s*(\w+)", line)
