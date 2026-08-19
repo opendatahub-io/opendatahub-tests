@@ -9,7 +9,7 @@ from tests.model_serving.model_runtime.vllm.constant import BASE_RAW_DEPLOYMENT_
 from tests.model_serving.model_runtime.vllm.cpu.ibm_power_z.constant import (
     IBM_POWER_Z_CHAT_INFERENCE_REQUEST,
     IBM_POWER_Z_SERVING_ARGUMENT,
-    LLAMA_3_2_1B_INSTRUCT_MODEL_PATH,
+    MINISTRAL_3B_INSTRUCT_MODEL_PATH,
 )
 from tests.model_serving.model_runtime.vllm.cpu.ibm_power_z.utils import validate_ibm_power_z_chat_completions_request
 from utilities.constants import KServeDeploymentType
@@ -20,7 +20,6 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_ibm_power_z_accelerat
 
 
 @pytest.mark.vllm_cpu_power
-@pytest.mark.vllm_cpu_z
 @pytest.mark.parametrize(
     (
         "model_namespace",
@@ -31,16 +30,16 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_ibm_power_z_accelerat
     ),
     [
         pytest.param(
-            {"name": "llama-32-1b-instruct"},
-            {"model-dir": LLAMA_3_2_1B_INSTRUCT_MODEL_PATH},
+            {"name": "ministral-3b-cpu"},
+            {"model-dir": MINISTRAL_3B_INSTRUCT_MODEL_PATH},
             {"deployment_mode": KServeDeploymentType.STANDARD},
             {
                 **BASE_RAW_DEPLOYMENT_CONFIG,
-                "name": "llama-32-1b-instruct",
+                "name": "ministral-3b-cpu",
                 "runtime_argument": IBM_POWER_Z_SERVING_ARGUMENT,
             },
             IBM_POWER_Z_CHAT_INFERENCE_REQUEST,
-            id="test_llama_32_1b_instruct_standard_cpu",
+            id="test_ministral_3b_cpu",
         ),
     ],
     indirect=[
@@ -50,10 +49,10 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_ibm_power_z_accelerat
         "ibm_power_z_inference_service",
     ],
 )
-class TestLlama321BInstruct:
-    """Deploy Llama-3.2-1B-Instruct on IBM Power or Z and verify chat completions inference."""
+class TestMinistral3BInstruct:
+    """Deploy Ministral-3B-Instruct on IBM Power and verify chat completions inference."""
 
-    def test_llama_3_2_1b_instruct_chat_inference(
+    def test_ministral_3b_instruct_chat_inference(
         self,
         ibm_power_z_inference_service: Generator[InferenceService, Any, Any],
         skip_if_not_ibm_power_z_raw_deployment: Any,
@@ -61,7 +60,7 @@ class TestLlama321BInstruct:
     ):
         """Test steps:
 
-        Given a vLLM CPU ServingRuntime and Llama-3.2-1B-Instruct backed by S3 storage
+        Given a vLLM CPU ServingRuntime and Ministral-3B-Instruct backed by S3 storage
         When a POST request is sent to /v1/chat/completions
         Then the response status is 200 and the completion text is non-empty
         """
