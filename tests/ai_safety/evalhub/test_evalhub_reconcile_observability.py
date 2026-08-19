@@ -705,16 +705,17 @@ class TestEvalHubReconcileErrors:
                     metric_name=RECONCILE_ERRORS_METRIC,
                     label_filter={METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE},
                 )
-                assert errors_after >= errors_before, (
-                    f"Error counter decreased: {errors_before} -> {errors_after} (metric loss detected)"
-                )
                 if errors_after >= errors_before + expected_increase:
                     return
         except TimeoutExpiredError:
-            pytest.fail(
-                f"Error counter did not increase by {expected_increase} within timeout "
-                f"(before={errors_before}, after={errors_after})"
-            )
+            pass
+
+        if errors_after < errors_before:
+            pytest.fail(f"Error counter decreased: {errors_before} -> {errors_after} (metric loss)")
+        pytest.fail(
+            f"Error counter did not increase by {expected_increase} within timeout "
+            f"(before={errors_before}, after={errors_after})"
+        )
 
 
 # TC-PRF: Performance (3 tests)

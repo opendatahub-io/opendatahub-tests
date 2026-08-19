@@ -1463,7 +1463,13 @@ def metric_value_sum(
         Sum of matching sample values.
     """
     samples = get_metric_samples(metrics=metrics, metric_name=metric_name, label_filter=label_filter)
-    return sum(float(s["value"]) for s in samples)
+    total = 0.0
+    for s in samples:
+        try:
+            total += float(s["value"])
+        except (TypeError, ValueError):
+            pass
+    return total
 
 
 def parse_trace_spans_from_logs(logs: str) -> list[dict[str, Any]]:
@@ -1515,32 +1521,32 @@ def parse_trace_spans_from_logs(logs: str) -> list[dict[str, Any]]:
             continue
 
         trace_id_match = re.search(r"(?:Trace\s*ID|TraceID)\s*:\s*([0-9a-fA-F]+)", line)
-        if trace_id_match and current_span is not None:
+        if trace_id_match and current_span:
             current_span["trace_id"] = trace_id_match.group(1)
             continue
 
         span_id_match = re.search(r"(?:^|\s)ID\s*:\s*([0-9a-fA-F]+)", line)
-        if span_id_match and current_span is not None:
+        if span_id_match and current_span:
             current_span["span_id"] = span_id_match.group(1)
             continue
 
         span_id_match2 = re.search(r"SpanID\s*:\s*([0-9a-fA-F]+)", line)
-        if span_id_match2 and current_span is not None:
+        if span_id_match2 and current_span:
             current_span["span_id"] = span_id_match2.group(1)
             continue
 
         parent_match = re.search(r"(?:Parent\s*ID|ParentSpanID)\s*:\s*([0-9a-fA-F]+)", line)
-        if parent_match and current_span is not None:
+        if parent_match and current_span:
             current_span["parent_span_id"] = parent_match.group(1)
             continue
 
         status_match = re.search(r"(?:Status\s*code|Status)\s*:\s*(\w+)", line)
-        if status_match and current_span is not None:
+        if status_match and current_span:
             current_span["status"] = status_match.group(1)
             continue
 
         attr_match = re.search(r"->\s*([a-zA-Z0-9_.]+)\s*:\s*(.+)", line)
-        if attr_match and current_span is not None:
+        if attr_match and current_span:
             current_span["attributes"][attr_match.group(1).strip()] = attr_match.group(2).strip()
 
     if current_span.get("name"):
