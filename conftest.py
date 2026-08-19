@@ -116,6 +116,11 @@ def pytest_addoption(parser: Parser) -> None:
         help="Supported accelerator type: nvidia, amd, gaudi, spyre, cpu_x86, cpu_power, cpu_z",
     )
     runtime_group.addoption(
+        "--cluster-arch",
+        default=os.environ.get("CLUSTER_ARCH", "auto"),
+        help="Cluster CPU architecture: auto|amd64|arm64 (auto=detect from worker nodes)",
+    )
+    runtime_group.addoption(
         "--vllm-runtime-image",
         default=os.environ.get("VLLM_RUNTIME_IMAGE"),
         help="Specify the runtime image to use for the tests",
