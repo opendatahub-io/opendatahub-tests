@@ -1,4 +1,2 @@
 class RhoaiMcpImages:
-    RHOAI_MCP: str = (
-        "quay.io/opendatahub/odh-rhoai-mcp@sha256:845f5bc5516c5681ecb886db6f154ee3c2eec995f40cada75f0c8a24a6b1c858"
-    )
+    RHOAI_MCP_RHOAI_DIGEST: str = "registry.redhat.io/rhoai/odh-rhoai-mcp-rhel9@sha256:985b3251644445cd5375d7deb2ae5d7853529b199ac10c1af9cb1d445ef539e3"  # noqa: E501

@@ -517,6 +517,7 @@ def _create_llmisvc_from_config(
             "image": config_cls.container_image,
             "resources": config_cls.container_resources(),
             "env": config_cls.container_env(),
+            "startupProbe": config_cls.startup_probe(),
             "livenessProbe": config_cls.liveness_probe(),
             "readinessProbe": config_cls.readiness_probe(),
         }.items()
@@ -528,6 +529,10 @@ def _create_llmisvc_from_config(
     }
     if service_account:
         template["serviceAccountName"] = service_account
+
+    volumes = config_cls.template_volumes()
+    if volumes:
+        template["volumes"] = volumes
 
     prefill = config_cls.prefill_config()
     if prefill and service_account and "template" in prefill:
@@ -548,12 +553,10 @@ def _create_llmisvc_from_config(
         "prefill": prefill,
         "worker": config_cls.worker_config(),
         "parallelism": config_cls.parallelism_config(),
+        "kv_cache_offloading": config_cls.kv_cache_offloading(),
     }
 
     LOGGER.info(f"\n{config_cls.format_describe(namespace=namespace)}")
-
-    if config_cls.kv_cache_offloading is not None:
-        svc_kwargs["kv_cache_offloading"] = config_cls.kv_cache_offloading
 
     with LLMInferenceService(**svc_kwargs) as llm_service:
         wait_for_llmisvc(llmisvc=llm_service, timeout=config_cls.wait_timeout)

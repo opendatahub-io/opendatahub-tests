@@ -48,7 +48,7 @@ EXCLUDE_MARKERS_FROM_DEFAULT_TIER2: set[str] = {"smoke", "tier1", "tier2", "tier
 DEFAULT_TIER2_MARKER_TEST_PATHS: tuple[str, ...] = (
     "tests/ai_hub",
     "tests/ai_safety",
-    "tests/model_serving/maas_billing",
+    "tests/ai_gateway/models_as_a_service",
 )
 
 
