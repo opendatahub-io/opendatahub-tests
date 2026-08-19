@@ -65,9 +65,7 @@ class TestArchAwareModelCar:
             isvc=arch_model_car_isvc,
         )[0]
         restarted_containers = [
-            container.name
-            for container in pod.instance.status.containerStatuses
-            if container.restartCount > 2
+            container.name for container in pod.instance.status.containerStatuses if container.restartCount > 2
         ]
         assert not restarted_containers, f"Containers {restarted_containers} restarted"
 

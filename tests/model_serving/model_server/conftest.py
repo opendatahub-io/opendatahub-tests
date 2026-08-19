@@ -630,9 +630,7 @@ def cluster_arch(request, admin_client: DynamicClient) -> str:
     if opt != "auto":
         return opt
 
-    workers = list(
-        Node.get(client=admin_client, label_selector="node-role.kubernetes.io/worker")
-    )
+    workers = list(Node.get(client=admin_client, label_selector="node-role.kubernetes.io/worker"))
     if not workers:
         workers = list(Node.get(client=admin_client))
 
@@ -679,10 +677,7 @@ def arch_runtime_profile(cluster_arch: str, request: FixtureRequest):
     profile = get_runtime_profile(arch=cluster_arch, model_format=model_format)
     if profile is None:
         supported = get_supported_formats(arch=cluster_arch)
-        pytest.skip(
-            f"Model format '{model_format}' not supported on {cluster_arch}. "
-            f"Supported formats: {supported}"
-        )
+        pytest.skip(f"Model format '{model_format}' not supported on {cluster_arch}. Supported formats: {supported}")
     return profile
 
 
