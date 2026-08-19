@@ -1234,6 +1234,7 @@ def skip_if_no_supported_accelerator_type(supported_accelerator_type: str | None
         AcceleratorType.NVIDIA,
         AcceleratorType.AMD,
         AcceleratorType.GAUDI,
+        AcceleratorType.SPYRE,
     }
 
     if not supported_accelerator_type or supported_accelerator_type.lower() not in supported_gpu_accelerators:
