@@ -7,6 +7,8 @@ from typing import Any
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.cluster_role import ClusterRole
+from ocp_resources.cluster_role_binding import ClusterRoleBinding
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.data_science_pipelines_application import DataSciencePipelinesApplication
@@ -14,8 +16,6 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.evalhub import EvalHub
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.mlflow import MLflow
-from ocp_resources.cluster_role import ClusterRole
-from ocp_resources.cluster_role_binding import ClusterRoleBinding
 from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
@@ -2024,25 +2024,29 @@ def operator_metrics_token(
     """Authenticated token for querying operator metrics endpoint via kube-rbac-proxy."""
     sa_name = "evalhub-metrics-reader"
     cr_name = f"{sa_name}-{model_namespace.name}"
-    with ServiceAccount(
-        client=admin_client,
-        name=sa_name,
-        namespace=model_namespace.name,
-    ) as sa, ClusterRole(
-        client=admin_client,
-        name=cr_name,
-        rules=[{"nonResourceURLs": ["/metrics"], "verbs": ["get"]}],
-    ) as cluster_role, ClusterRoleBinding(
-        client=admin_client,
-        name=cr_name,
-        cluster_role=cluster_role.name,
-        subjects=[
-            {
-                "kind": "ServiceAccount",
-                "name": sa.name,
-                "namespace": model_namespace.name,
-            }
-        ],
+    with (
+        ServiceAccount(
+            client=admin_client,
+            name=sa_name,
+            namespace=model_namespace.name,
+        ) as sa,
+        ClusterRole(
+            client=admin_client,
+            name=cr_name,
+            rules=[{"nonResourceURLs": ["/metrics"], "verbs": ["get"]}],
+        ) as cluster_role,
+        ClusterRoleBinding(
+            client=admin_client,
+            name=cr_name,
+            cluster_role=cluster_role.name,
+            subjects=[
+                {
+                    "kind": "ServiceAccount",
+                    "name": sa.name,
+                    "namespace": model_namespace.name,
+                }
+            ],
+        ),
     ):
         yield create_inference_token(model_service_account=sa)
 

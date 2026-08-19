@@ -1553,7 +1553,7 @@ def parse_trace_spans_from_logs(logs: str) -> list[dict[str, Any]]:
             spans.append(current_span)
 
         return spans
-    except (re.error, KeyError, IndexError, TypeError):
+    except re.error, KeyError, IndexError, TypeError:
         return []
 
 

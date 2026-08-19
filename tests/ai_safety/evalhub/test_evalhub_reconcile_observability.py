@@ -996,11 +996,7 @@ class TestEvalHubReconcileIntegration:
         )
         sensitive_patterns = ["password", "secret", "token", "credential", "apikey"]
         metrics = parse_prometheus_text(text=raw_metrics)
-        evalhub_metric_names = {
-            name
-            for name in metrics
-            if any(name.startswith(m) for m in EVALHUB_RECONCILE_METRICS)
-        }
+        evalhub_metric_names = {name for name in metrics if any(name.startswith(m) for m in EVALHUB_RECONCILE_METRICS)}
         for metric_name in evalhub_metric_names:
             for sample in metrics[metric_name]:
                 for label_key, label_value in sample["labels"].items():
