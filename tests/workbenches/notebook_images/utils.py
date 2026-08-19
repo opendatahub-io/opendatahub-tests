@@ -83,6 +83,8 @@ ALLOWED_LOG_MESSAGES = (
     "Unable to retrieve mac address (unexpected format)",
     # RHOAIENG-68292: JupyterLab may log this warning during startup if it finds an expired cookie
     "Clearing invalid/expired login cookie",
+    # Elyra tests do not currently require pipeline configuration - test will be adjusted in future
+    "ElyraApp] No components could be found in any catalog for platform type",
 )
 
 _SENSITIVE_LOG_VALUE_RE = re.compile(
