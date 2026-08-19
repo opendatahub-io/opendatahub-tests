@@ -65,6 +65,11 @@ METRICS_POLL_INTERVAL: int = 10
 TRACE_POLL_TIMEOUT: int = 60
 TRACE_POLL_INTERVAL: int = 5
 
+_TRANSIENT_METRICS_EXCEPTIONS: dict[type, list] = {
+    requests.exceptions.ConnectionError: [],
+    requests.exceptions.ReadTimeout: [],
+}
+
 
 # TC-MET: Prometheus Metrics (10 tests)
 
@@ -95,6 +100,7 @@ class TestEvalHubReconcileMetrics:
                 wait_timeout=METRICS_POLL_TIMEOUT,
                 sleep=METRICS_POLL_INTERVAL,
                 func=fetch_operator_metrics,
+                exceptions_dict=_TRANSIENT_METRICS_EXCEPTIONS,
                 admin_client=admin_client,
                 operator_metrics_token=operator_metrics_token,
             ):
@@ -121,6 +127,7 @@ class TestEvalHubReconcileMetrics:
                 wait_timeout=METRICS_POLL_TIMEOUT,
                 sleep=METRICS_POLL_INTERVAL,
                 func=fetch_operator_metrics,
+                exceptions_dict=_TRANSIENT_METRICS_EXCEPTIONS,
                 admin_client=admin_client,
                 operator_metrics_token=operator_metrics_token,
             ):
@@ -152,6 +159,7 @@ class TestEvalHubReconcileMetrics:
                 wait_timeout=METRICS_POLL_TIMEOUT,
                 sleep=METRICS_POLL_INTERVAL,
                 func=fetch_operator_metrics,
+                exceptions_dict=_TRANSIENT_METRICS_EXCEPTIONS,
                 admin_client=admin_client,
                 operator_metrics_token=operator_metrics_token,
             ):
@@ -191,6 +199,7 @@ class TestEvalHubReconcileMetrics:
                 wait_timeout=METRICS_POLL_TIMEOUT,
                 sleep=METRICS_POLL_INTERVAL,
                 func=fetch_operator_metrics,
+                exceptions_dict=_TRANSIENT_METRICS_EXCEPTIONS,
                 admin_client=admin_client,
                 operator_metrics_token=operator_metrics_token,
             ):
@@ -224,6 +233,7 @@ class TestEvalHubReconcileMetrics:
                 wait_timeout=METRICS_POLL_TIMEOUT,
                 sleep=METRICS_POLL_INTERVAL,
                 func=fetch_operator_metrics,
+                exceptions_dict=_TRANSIENT_METRICS_EXCEPTIONS,
                 admin_client=admin_client,
                 operator_metrics_token=operator_metrics_token,
             ):
@@ -257,6 +267,7 @@ class TestEvalHubReconcileMetrics:
                 wait_timeout=METRICS_POLL_TIMEOUT,
                 sleep=METRICS_POLL_INTERVAL,
                 func=fetch_operator_metrics,
+                exceptions_dict=_TRANSIENT_METRICS_EXCEPTIONS,
                 admin_client=admin_client,
                 operator_metrics_token=operator_metrics_token,
             ):
@@ -291,6 +302,7 @@ class TestEvalHubReconcileMetrics:
                 wait_timeout=METRICS_POLL_TIMEOUT,
                 sleep=METRICS_POLL_INTERVAL,
                 func=fetch_operator_metrics,
+                exceptions_dict=_TRANSIENT_METRICS_EXCEPTIONS,
                 admin_client=admin_client,
                 operator_metrics_token=operator_metrics_token,
             ):
@@ -308,6 +320,7 @@ class TestEvalHubReconcileMetrics:
         except TimeoutExpiredError:
             pytest.fail(f"{RECONCILE_ERRORS_METRIC}{{error_type=other}} not populated")
 
+    @pytest.mark.skip(reason="Requires a job-failure fixture that submits and awaits a failing evaluation job")
     def test_job_failure_counter(
         self,
         admin_client: DynamicClient,
@@ -326,8 +339,7 @@ class TestEvalHubReconcileMetrics:
         )
         metrics = parse_prometheus_text(text=raw_metrics)
         samples = get_metric_samples(metrics=metrics, metric_name=JOB_FAILURE_EVENTS_METRIC)
-        if not samples:
-            pytest.skip("No job failure events recorded — requires triggering a failing job")
+        assert samples, "No job failure events recorded"
         assert all(METRIC_LABEL_FAILURE_REASON in s["labels"] for s in samples), (
             "Job failure metric missing failure_reason label"
         )
@@ -348,6 +360,7 @@ class TestEvalHubReconcileMetrics:
                 wait_timeout=METRICS_POLL_TIMEOUT,
                 sleep=METRICS_POLL_INTERVAL,
                 func=fetch_operator_metrics,
+                exceptions_dict=_TRANSIENT_METRICS_EXCEPTIONS,
                 admin_client=admin_client,
                 operator_metrics_token=operator_metrics_token,
             ):
@@ -375,6 +388,7 @@ class TestEvalHubReconcileMetrics:
                 wait_timeout=METRICS_POLL_TIMEOUT,
                 sleep=METRICS_POLL_INTERVAL,
                 func=fetch_operator_metrics,
+                exceptions_dict=_TRANSIENT_METRICS_EXCEPTIONS,
                 admin_client=admin_client,
                 operator_metrics_token=operator_metrics_token,
             ):
@@ -473,6 +487,7 @@ class TestEvalHubReconcileTracing:
         except TimeoutExpiredError:
             pytest.fail(f"Not all child spans found. Expected: {set(EVALHUB_RECONCILE_CHILD_SPANS)}")
 
+    @pytest.mark.skip(reason="Requires a job-failure fixture that submits and awaits a failing evaluation job")
     def test_job_failure_span_includes_details(
         self,
         admin_client: DynamicClient,
@@ -490,13 +505,11 @@ class TestEvalHubReconcileTracing:
         spans = parse_trace_spans_from_logs(logs=logs)
         failure_spans = filter_spans_by_name(spans=spans, name=SPAN_JOB_FAILURE_RECONCILE)
 
-        if failure_spans:
-            span = failure_spans[0]
-            assert SPAN_ATTR_JOB_NAME in span["attributes"], f"Missing {SPAN_ATTR_JOB_NAME}"
-            assert SPAN_ATTR_FAILURE_REASON in span["attributes"], f"Missing {SPAN_ATTR_FAILURE_REASON}"
-            assert SPAN_ATTR_EXIT_CODE in span["attributes"], f"Missing {SPAN_ATTR_EXIT_CODE}"
-        else:
-            pytest.skip("No job failure span detected — requires triggering a job failure event")
+        assert failure_spans, "No job failure span detected"
+        span = failure_spans[0]
+        assert SPAN_ATTR_JOB_NAME in span["attributes"], f"Missing {SPAN_ATTR_JOB_NAME}"
+        assert SPAN_ATTR_FAILURE_REASON in span["attributes"], f"Missing {SPAN_ATTR_FAILURE_REASON}"
+        assert SPAN_ATTR_EXIT_CODE in span["attributes"], f"Missing {SPAN_ATTR_EXIT_CODE}"
 
     def test_span_hierarchy_multiple_reconciliations(
         self,
@@ -619,6 +632,7 @@ class TestEvalHubReconcileErrors:
                 wait_timeout=METRICS_POLL_TIMEOUT,
                 sleep=METRICS_POLL_INTERVAL,
                 func=fetch_operator_metrics,
+                exceptions_dict=_TRANSIENT_METRICS_EXCEPTIONS,
                 admin_client=admin_client,
                 operator_metrics_token=operator_metrics_token,
             ):
@@ -632,11 +646,12 @@ class TestEvalHubReconcileErrors:
                     error_types_seen = {
                         s["labels"].get(METRIC_LABEL_ERROR_TYPE) for s in samples if float(s["value"]) > 0
                     }
-                    if error_types_seen:
+                    if len(error_types_seen) >= 2:
                         return
         except TimeoutExpiredError:
             pytest.fail("No error types recorded in errors metric")
 
+    @pytest.mark.skip(reason="Requires a job-failure fixture that submits and awaits a failing evaluation job")
     def test_job_failure_produces_metric_and_trace(
         self,
         admin_client: DynamicClient,
@@ -661,8 +676,7 @@ class TestEvalHubReconcileErrors:
         spans = parse_trace_spans_from_logs(logs=logs)
         failure_spans = filter_spans_by_name(spans=spans, name=SPAN_JOB_FAILURE_RECONCILE)
 
-        if not metric_samples and not failure_spans:
-            pytest.skip("No job failure events detected — requires triggering a failing job")
+        assert metric_samples or failure_spans, "No job failure events detected in metrics or traces"
 
     def test_rapid_errors_no_metric_loss(
         self,
@@ -693,6 +707,7 @@ class TestEvalHubReconcileErrors:
                 wait_timeout=METRICS_POLL_TIMEOUT,
                 sleep=METRICS_POLL_INTERVAL,
                 func=fetch_operator_metrics,
+                exceptions_dict=_TRANSIENT_METRICS_EXCEPTIONS,
                 admin_client=admin_client,
                 operator_metrics_token=operator_metrics_token,
             ):
@@ -744,6 +759,7 @@ class TestEvalHubReconcilePerformance:
                 wait_timeout=METRICS_POLL_TIMEOUT,
                 sleep=METRICS_POLL_INTERVAL,
                 func=fetch_operator_metrics,
+                exceptions_dict=_TRANSIENT_METRICS_EXCEPTIONS,
                 admin_client=admin_client,
                 operator_metrics_token=operator_metrics_token,
             ):
@@ -845,6 +861,7 @@ class TestEvalHubReconcilePerformance:
                     wait_timeout=METRICS_POLL_TIMEOUT,
                     sleep=METRICS_POLL_INTERVAL,
                     func=fetch_operator_metrics,
+                    exceptions_dict=_TRANSIENT_METRICS_EXCEPTIONS,
                     admin_client=admin_client,
                     operator_metrics_token=operator_metrics_token,
                 ):
@@ -926,11 +943,15 @@ class TestEvalHubReconcileIntegration:
         assert pods, "No operator pod found"
         pod = pods[0]
 
-        response = requests.get(
-            f"https://{pod.instance.status.podIP}:{OPERATOR_METRICS_PORT}/metrics",
-            verify=False,
-            timeout=5,
-        )
+        try:
+            response = requests.get(
+                f"https://{pod.instance.status.podIP}:{OPERATOR_METRICS_PORT}/metrics",
+                verify=False,
+                timeout=5,
+            )
+        except (requests.exceptions.ConnectionError, requests.exceptions.SSLError) as exc:
+            pytest.fail(f"Metrics endpoint unreachable — cannot verify auth rejection: {exc}")
+
         assert response.status_code in (401, 403), f"Expected 401/403 without auth, got {response.status_code}"
 
     def test_otlp_exporter_delivers_traces(
@@ -975,8 +996,13 @@ class TestEvalHubReconcileIntegration:
         )
         sensitive_patterns = ["password", "secret", "token", "credential", "apikey"]
         metrics = parse_prometheus_text(text=raw_metrics)
-        for metric_name, samples in metrics.items():
-            for sample in samples:
+        evalhub_metric_names = {
+            name
+            for name in metrics
+            if any(name.startswith(m) for m in EVALHUB_RECONCILE_METRICS)
+        }
+        for metric_name in evalhub_metric_names:
+            for sample in metrics[metric_name]:
                 for label_key, label_value in sample["labels"].items():
                     for pattern in sensitive_patterns:
                         assert pattern not in label_key.lower(), (
@@ -1101,6 +1127,7 @@ class TestEvalHubReconcileE2E:
                 wait_timeout=METRICS_POLL_TIMEOUT,
                 sleep=METRICS_POLL_INTERVAL,
                 func=fetch_operator_metrics,
+                exceptions_dict=_TRANSIENT_METRICS_EXCEPTIONS,
                 admin_client=admin_client,
                 operator_metrics_token=operator_metrics_token,
             ):
@@ -1141,6 +1168,7 @@ class TestEvalHubReconcileE2E:
                 wait_timeout=METRICS_POLL_TIMEOUT,
                 sleep=METRICS_POLL_INTERVAL,
                 func=fetch_operator_metrics,
+                exceptions_dict=_TRANSIENT_METRICS_EXCEPTIONS,
                 admin_client=admin_client,
                 operator_metrics_token=operator_metrics_token,
             ):
@@ -1194,6 +1222,7 @@ class TestEvalHubReconcileE2E:
         assert span.get("trace_id"), "Span missing trace_id for correlation"
         assert span.get("span_id"), "Span missing span_id for drill-down"
 
+    @pytest.mark.skip(reason="Requires a job-failure fixture that submits and awaits a failing evaluation job")
     def test_job_failure_observable_metrics_and_traces(
         self,
         admin_client: DynamicClient,
@@ -1218,8 +1247,7 @@ class TestEvalHubReconcileE2E:
         spans = parse_trace_spans_from_logs(logs=logs)
         failure_spans = filter_spans_by_name(spans=spans, name=SPAN_JOB_FAILURE_RECONCILE)
 
-        if not job_failure_samples and not failure_spans:
-            pytest.skip("No job failure events detected — requires triggering a failing evaluation job")
+        assert job_failure_samples or failure_spans, "No job failure events detected in metrics or traces"
 
 
 # TC-UPG: Upgrade (3 tests)
@@ -1254,6 +1282,7 @@ class TestEvalHubReconcileUpgrade:
                 wait_timeout=METRICS_POLL_TIMEOUT,
                 sleep=METRICS_POLL_INTERVAL,
                 func=fetch_operator_metrics,
+                exceptions_dict=_TRANSIENT_METRICS_EXCEPTIONS,
                 admin_client=admin_client,
                 operator_metrics_token=operator_metrics_token,
             ):

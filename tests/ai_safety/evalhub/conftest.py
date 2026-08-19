@@ -14,6 +14,8 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.evalhub import EvalHub
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.mlflow import MLflow
+from ocp_resources.cluster_role import ClusterRole
+from ocp_resources.cluster_role_binding import ClusterRoleBinding
 from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
@@ -1945,14 +1947,16 @@ def otel_trace_collector_pod(
 ) -> Pod:
     """Get OTEL trace collector pod for log inspection."""
     label_selector = ",".join(f"{k}={v}" for k, v in OTEL_TRACE_COLLECTOR_LABELS.items())
-    pods = list(
-        Pod.get(
+    pods = [
+        pod
+        for pod in Pod.get(
             client=admin_client,
             namespace=otel_trace_collector_namespace.name,
             label_selector=label_selector,
         )
-    )
-    assert len(pods) == 1, f"Expected 1 OTEL trace collector pod, found {len(pods)}"
+        if pod.instance.status.phase == "Running"
+    ]
+    assert len(pods) == 1, f"Expected 1 Running OTEL trace collector pod, found {len(pods)}"
     return pods[0]
 
 
@@ -2013,15 +2017,34 @@ def operator_with_otel_tracing(
 
 
 @pytest.fixture(scope="class")
-def operator_metrics_token(admin_client: DynamicClient) -> str:
+def operator_metrics_token(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+) -> Generator[str, Any, Any]:
     """Authenticated token for querying operator metrics endpoint via kube-rbac-proxy."""
-    sa = ServiceAccount(
+    sa_name = "evalhub-metrics-reader"
+    cr_name = f"{sa_name}-{model_namespace.name}"
+    with ServiceAccount(
         client=admin_client,
-        name="prometheus-k8s",
-        namespace="openshift-monitoring",
-        ensure_exists=True,
-    )
-    return create_inference_token(model_service_account=sa)
+        name=sa_name,
+        namespace=model_namespace.name,
+    ) as sa, ClusterRole(
+        client=admin_client,
+        name=cr_name,
+        rules=[{"nonResourceURLs": ["/metrics"], "verbs": ["get"]}],
+    ) as cluster_role, ClusterRoleBinding(
+        client=admin_client,
+        name=cr_name,
+        cluster_role=cluster_role.name,
+        subjects=[
+            {
+                "kind": "ServiceAccount",
+                "name": sa.name,
+                "namespace": model_namespace.name,
+            }
+        ],
+    ):
+        yield create_inference_token(model_service_account=sa)
 
 
 @pytest.fixture(scope="class")
@@ -2045,13 +2068,18 @@ def evalhub_failure_cr(
     admin_client: DynamicClient,
     model_namespace: Namespace,
 ) -> Generator[EvalHub, Any, Any]:
-    """EvalHub CR configured to trigger sub-reconciler failure (invalid image)."""
+    """EvalHub CR with overlong name that causes child resource creation to fail.
+
+    The 65-character name exceeds the 63-character Kubernetes label value
+    limit, so the operator's reconcile loop errors when it attempts to set
+    labels on child resources using the CR name.
+    """
+    overlong_name = "evalhub-failure-" + "x" * (65 - len("evalhub-failure-"))
     with EvalHub(
         client=admin_client,
-        name="evalhub-failure-test",
+        name=overlong_name,
         namespace=model_namespace.name,
         database={"type": "sqlite"},
-        image=AiSafetyImages.EVALHUB_INVALID_IMAGE,
         wait_for_resource=True,
     ) as evalhub:
         yield evalhub
