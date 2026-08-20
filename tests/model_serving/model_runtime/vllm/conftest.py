@@ -160,14 +160,34 @@ def vllm_inference_service(
     resources["requests"][identifier] = gpu_count
     resources["limits"][identifier] = gpu_count
     isvc_kwargs["resources"] = resources
+
+    if identifier == Labels.Spyre.SPYRE_COM_GPU:
+        isvc_kwargs["scheduler_name"] = "spyre-scheduler"
+        resources["requests"] = {
+            "ibm.com/spyre_pf": gpu_count,
+        }
+        resources["limits"] = {
+            "ibm.com/spyre_pf": gpu_count,
+        }
+
     if timeout:
         isvc_kwargs["timeout"] = timeout
     if gpu_count > 1:
         isvc_kwargs["volumes"] = PREDICT_RESOURCES["volumes"]
         isvc_kwargs["volumes_mounts"] = PREDICT_RESOURCES["volume_mounts"]
     if arguments := request.param.get("runtime_argument"):
-        arguments = [arg for arg in arguments if not arg.startswith(("--tensor-parallel-size", "--quantization"))]
+        strip_prefixes = ["--tensor-parallel-size", "--quantization"]
+        if identifier == Labels.Spyre.SPYRE_COM_GPU:
+            # Spyre compiles the entire KV cache into card memory during warmup. Without an
+            # explicit bound vLLM uses the model's full context (4k-8k) x max_num_seqs, which
+            # overflows device memory and aborts the compile (DtException "Need to find a valid
+            # memory space for KV cache" / "Failed to compile graphs"). Cap max-model-len to a
+            # size known to fit, matching the passing modelcar tests.
+            strip_prefixes.append("--max-model-len")
+        arguments = [arg for arg in arguments if not arg.startswith(tuple(strip_prefixes))]
         arguments.append(f"--tensor-parallel-size={gpu_count}")
+        if identifier == Labels.Spyre.SPYRE_COM_GPU:
+            arguments.append("--max-model-len=1024")
         if quantization := request.param.get("quantization"):
             validate_supported_quantization_schema(q_type=quantization)
             arguments.append(f"--quantization={quantization}")
