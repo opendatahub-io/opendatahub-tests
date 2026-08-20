@@ -197,6 +197,7 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
 
     model_car_data = yaml_config["model-car"]
     default_serving_config = yaml_config.get("default", {})
+    accelerator_type = (metafunc.config.getoption(name="supported_accelerator_type") or "").lower()
 
     if not isinstance(model_car_data, list):
         raise TypeError("Invalid format for `model-car` in YAML. Expected a list of objects.")
@@ -219,6 +220,12 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
         )
 
         if not name or not image:
+            continue
+
+        # Skip models that are not supported on the current accelerator (e.g. non-decoder
+        # architectures such as ASR/embedding models on Spyre).
+        unsupported_accelerators = [a.lower() for a in model_car.get("unsupported_accelerators", [])]
+        if accelerator_type and accelerator_type in unsupported_accelerators:
             continue
 
         model_output_type = model_car.get("model_output_type", "text")

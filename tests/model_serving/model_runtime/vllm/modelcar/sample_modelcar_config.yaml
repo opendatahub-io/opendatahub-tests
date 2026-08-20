@@ -9,9 +9,22 @@ model-car:
         - "--trust-remote-code"
       gpu_count: 1
 
+  - name: llama-3.1-8b-instruct
+    image: oci://registry.redhat.io/rhelai1/modelcar-llama-3-1-8b-instruct:1.5
+    model_output_type: text
+    serving_arguments:
+      args:
+        - "--uvicorn-log-level=info"
+        - "--max-model-len=1024"
+        - "--trust-remote-code"
+      gpu_count: 1
+
   - name: whisper-large-v3
     image: oci://registry.redhat.io/rhelai1/modelcar-whisper-large-v2-w4a16-g128:1.5
     model_output_type: audio
+    # ASR/encoder-decoder architecture is not supported by Spyre vLLM.
+    unsupported_accelerators:
+      - spyre
     serving_arguments:
       args:
         - "--uvicorn-log-level=info"
@@ -23,6 +36,9 @@ model-car:
   - name: embedding-gemma
     image: oci://registry.redhat.io/rhelai1/modelcar-embeddinggemma-300m:1.5
     model_output_type: embedding
+    # Embedding/pooling architecture is not supported by Spyre vLLM.
+    unsupported_accelerators:
+      - spyre
     serving_arguments:
       args:
         - "--uvicorn-log-level=info"

@@ -160,6 +160,16 @@ def vllm_inference_service(
     resources["requests"][identifier] = gpu_count
     resources["limits"][identifier] = gpu_count
     isvc_kwargs["resources"] = resources
+
+    if identifier == Labels.Spyre.SPYRE_COM_GPU:
+        isvc_kwargs["scheduler_name"] = "spyre-scheduler"
+        resources["requests"] = {
+            "ibm.com/spyre_pf": gpu_count,
+        }
+        resources["limits"] = {
+            "ibm.com/spyre_pf": gpu_count,
+        }
+
     if timeout:
         isvc_kwargs["timeout"] = timeout
     if gpu_count > 1:
