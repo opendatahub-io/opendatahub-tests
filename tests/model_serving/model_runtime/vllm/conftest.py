@@ -7,6 +7,7 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
+from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
@@ -29,13 +30,18 @@ from tests.model_serving.model_runtime.vllm.utils import (
     skip_if_not_deployment_mode,
     validate_supported_quantization_schema,
 )
-from utilities.constants import AcceleratorType, KServeDeploymentType, Labels, RuntimeTemplates
+from utilities.constants import AcceleratorType, Annotations, KServeDeploymentType, Labels, RuntimeTemplates
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 LOGGER = structlog.get_logger(name=__name__)
 
 SUPPORTED_CPU_X86_ACCELERATORS: set[str] = {AcceleratorType.CPU_x86}
+
+# Spyre inference is slow (~7 tok/s); a max_tokens=256 completion runs ~35s, exceeding the
+# default 30s HAProxy route timeout and returning 504. Annotate the ISVC so KServe propagates
+# a longer timeout to the Route it creates.
+SPYRE_ROUTE_TIMEOUT: str = "300s"
 
 
 # TODO: Remove this hook when fast runtime templates are available
@@ -160,14 +166,34 @@ def vllm_inference_service(
     resources["requests"][identifier] = gpu_count
     resources["limits"][identifier] = gpu_count
     isvc_kwargs["resources"] = resources
+
+    if identifier == Labels.Spyre.SPYRE_COM_GPU:
+        isvc_kwargs["scheduler_name"] = "spyre-scheduler"
+        resources["requests"] = {
+            "ibm.com/spyre_pf": gpu_count,
+        }
+        resources["limits"] = {
+            "ibm.com/spyre_pf": gpu_count,
+        }
+
     if timeout:
         isvc_kwargs["timeout"] = timeout
     if gpu_count > 1:
         isvc_kwargs["volumes"] = PREDICT_RESOURCES["volumes"]
         isvc_kwargs["volumes_mounts"] = PREDICT_RESOURCES["volume_mounts"]
     if arguments := request.param.get("runtime_argument"):
-        arguments = [arg for arg in arguments if not arg.startswith(("--tensor-parallel-size", "--quantization"))]
+        strip_prefixes = ["--tensor-parallel-size", "--quantization"]
+        if identifier == Labels.Spyre.SPYRE_COM_GPU:
+            # Spyre compiles the entire KV cache into card memory during warmup. Without an
+            # explicit bound vLLM uses the model's full context (4k-8k) x max_num_seqs, which
+            # overflows device memory and aborts the compile (DtException "Need to find a valid
+            # memory space for KV cache" / "Failed to compile graphs"). Cap max-model-len to a
+            # size known to fit, matching the passing modelcar tests.
+            strip_prefixes.append("--max-model-len")
+        arguments = [arg for arg in arguments if not arg.startswith(tuple(strip_prefixes))]
         arguments.append(f"--tensor-parallel-size={gpu_count}")
+        if identifier == Labels.Spyre.SPYRE_COM_GPU:
+            arguments.append("--max-model-len=1024")
         if quantization := request.param.get("quantization"):
             validate_supported_quantization_schema(q_type=quantization)
             arguments.append(f"--quantization={quantization}")
@@ -182,6 +208,16 @@ def vllm_inference_service(
     )
 
     with create_isvc(**isvc_kwargs) as isvc:
+        if identifier == Labels.Spyre.SPYRE_COM_GPU:
+            ResourceEditor(
+                patches={
+                    isvc: {
+                        "metadata": {
+                            "annotations": {Annotations.HaproxyRouterOpenshiftIo.TIMEOUT: SPYRE_ROUTE_TIMEOUT},
+                        }
+                    }
+                }
+            ).update()
         yield isvc
 
 
