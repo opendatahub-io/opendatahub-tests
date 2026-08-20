@@ -7,6 +7,7 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
+from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
@@ -29,13 +30,18 @@ from tests.model_serving.model_runtime.vllm.utils import (
     skip_if_not_deployment_mode,
     validate_supported_quantization_schema,
 )
-from utilities.constants import AcceleratorType, KServeDeploymentType, Labels, RuntimeTemplates
+from utilities.constants import AcceleratorType, Annotations, KServeDeploymentType, Labels, RuntimeTemplates
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 LOGGER = structlog.get_logger(name=__name__)
 
 SUPPORTED_CPU_X86_ACCELERATORS: set[str] = {AcceleratorType.CPU_x86}
+
+# Spyre inference is slow (~7 tok/s); a max_tokens=256 completion runs ~35s, exceeding the
+# default 30s HAProxy route timeout and returning 504. Annotate the ISVC so KServe propagates
+# a longer timeout to the Route it creates.
+SPYRE_ROUTE_TIMEOUT: str = "300s"
 
 
 # TODO: Remove this hook when fast runtime templates are available on 3.5.z
@@ -202,6 +208,16 @@ def vllm_inference_service(
     )
 
     with create_isvc(**isvc_kwargs) as isvc:
+        if identifier == Labels.Spyre.SPYRE_COM_GPU:
+            ResourceEditor(
+                patches={
+                    isvc: {
+                        "metadata": {
+                            "annotations": {Annotations.HaproxyRouterOpenshiftIo.TIMEOUT: SPYRE_ROUTE_TIMEOUT},
+                        }
+                    }
+                }
+            ).update()
         yield isvc
 
 
