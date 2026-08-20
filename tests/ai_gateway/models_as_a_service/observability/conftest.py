@@ -7,6 +7,7 @@ from ocp_utilities.monitoring import Prometheus
 
 from tests.ai_gateway.models_as_a_service.observability.constants import (
     LIMITADOR_SERVICE_MONITOR_NAME,
+    OTEL_COLLECTOR_CRD_NAME,
     RHOAI_THANOS_QUERIER_ROUTE_NAME,
     SERVICE_MONITOR_CRD_NAME,
 )
@@ -14,6 +15,7 @@ from tests.ai_gateway.models_as_a_service.observability.utils import (
     get_maas_config_default,
     limitador_is_deployed,
     monitoring_namespace_exists,
+    opentelemetry_collector_crd_installed,
     resolve_maas_monitoring_namespace,
     wait_for_limitador_service_monitor,
 )
@@ -49,6 +51,15 @@ def servicemonitor_crd_available(admin_client: DynamicClient) -> None:
     if not service_monitor_crd.exists:
         pytest.fail(
             f"ServiceMonitor CRD '{SERVICE_MONITOR_CRD_NAME}' not installed; Limitador metrics scrape requires it"
+        )
+
+
+@pytest.fixture(scope="session")
+def opentelemetry_collector_crd_available(admin_client: DynamicClient) -> None:
+    """Fail when the OpenTelemetryCollector CRD is not installed."""
+    if not opentelemetry_collector_crd_installed(admin_client=admin_client):
+        pytest.fail(
+            f"{OTEL_COLLECTOR_CRD_NAME} not installed; usage-logs collector bundle requires it"
         )
 
 
