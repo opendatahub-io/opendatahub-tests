@@ -6,6 +6,7 @@ from tests.ai_gateway.models_as_a_service.observability.constants import (
     LIMITADOR_SCRAPE_INTERVAL_TEST_VALUE,
 )
 from tests.ai_gateway.models_as_a_service.observability.utils import (
+    expected_limitador_scrape_interval,
     maas_config_usage_logging_enabled,
     patch_maas_config_limitador_scrape_interval,
     verify_limitador_scrape_interval_on_servicemonitor,
@@ -40,6 +41,12 @@ class TestMaaSObservabilityEnablePath:
                 maas_config=maas_config_default,
                 monitoring_namespace=maas_monitoring_namespace,
             )
+
+        verify_usage_logging_resources_removed(
+            admin_client=admin_client,
+            maas_config=maas_config_default,
+            monitoring_namespace=maas_monitoring_namespace,
+        )
 
     def test_usage_logging_patch_enable_verify_restore(
         self,
@@ -83,6 +90,7 @@ class TestMaaSObservabilityEnablePath:
         assert limitador_service_monitor.exists, (
             f"ServiceMonitor '{limitador_service_monitor.name}' must exist before scrape interval patch"
         )
+        original_interval = expected_limitador_scrape_interval(maas_config=maas_config_default)
         with patch_maas_config_limitador_scrape_interval(
             maas_config=maas_config_default,
             scrape_interval=LIMITADOR_SCRAPE_INTERVAL_TEST_VALUE,
@@ -93,3 +101,10 @@ class TestMaaSObservabilityEnablePath:
                 monitoring_namespace=maas_monitoring_namespace,
                 expected_interval=LIMITADOR_SCRAPE_INTERVAL_TEST_VALUE,
             )
+
+        verify_limitador_scrape_interval_on_servicemonitor(
+            admin_client=admin_client,
+            maas_config=maas_config_default,
+            monitoring_namespace=maas_monitoring_namespace,
+            expected_interval=original_interval,
+        )

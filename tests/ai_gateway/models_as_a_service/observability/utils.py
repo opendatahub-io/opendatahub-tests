@@ -157,6 +157,19 @@ def config_owner_reference_present(
     return False
 
 
+def config_controller_owner_reference_present(
+    owner_references: list[object] | None,
+    config_uid: str,
+) -> bool:
+    """Return True when ownerReferences include Config/default as controller owner."""
+    if not owner_references:
+        return False
+    for owner_ref in owner_references:
+        if owner_ref.uid == config_uid and owner_ref.controller is True:
+            return True
+    return False
+
+
 def opentelemetry_collector_crd_installed(admin_client: DynamicClient) -> bool:
     """Return True when the OpenTelemetryCollector CRD is registered on the cluster."""
     otel_crd = CustomResourceDefinition(client=admin_client, name=OTEL_COLLECTOR_CRD_NAME)
@@ -278,6 +291,32 @@ def usage_logging_resources_present(
     return bool(usage_logs_crb.exists)
 
 
+def usage_logging_resources_absent(
+    admin_client: DynamicClient,
+    monitoring_namespace: str,
+) -> bool:
+    """Return True when all usage-log observability resources are absent."""
+    usage_logs_envoy_filter = EnvoyFilter(
+        client=admin_client,
+        name=USAGE_LOGS_ENVOY_FILTER_NAME,
+        namespace=MAAS_GATEWAY_NAMESPACE,
+    )
+    if usage_logs_envoy_filter.exists:
+        return False
+
+    if usage_logs_collector_exists(
+        admin_client=admin_client,
+        namespace=monitoring_namespace,
+    ):
+        return False
+
+    usage_logs_crb = ClusterRoleBinding(
+        client=admin_client,
+        name=USAGE_LOGS_CRB_NAME,
+    )
+    return not usage_logs_crb.exists
+
+
 def wait_for_usage_logging_resources(
     admin_client: DynamicClient,
     monitoring_namespace: str,
@@ -311,11 +350,9 @@ def wait_for_usage_logging_resources_absent(
         for resources_removed in TimeoutSampler(
             wait_timeout=timeout,
             sleep=5,
-            func=lambda: (
-                not usage_logging_resources_present(
-                    admin_client=admin_client,
-                    monitoring_namespace=monitoring_namespace,
-                )
+            func=lambda: usage_logging_resources_absent(
+                admin_client=admin_client,
+                monitoring_namespace=monitoring_namespace,
             ),
         ):
             if resources_removed:
@@ -392,7 +429,7 @@ def assert_usage_logging_resources_present(
         namespace=monitoring_namespace,
         ensure_exists=True,
     )
-    assert config_owner_reference_present(
+    assert config_controller_owner_reference_present(
         owner_references=collector.instance.metadata.ownerReferences,
         config_uid=config_uid,
     ), (
@@ -405,7 +442,7 @@ def assert_usage_logging_resources_present(
         name=USAGE_LOGS_CRB_NAME,
         ensure_exists=True,
     )
-    assert config_owner_reference_present(
+    assert config_controller_owner_reference_present(
         owner_references=usage_logs_crb.instance.metadata.ownerReferences,
         config_uid=config_uid,
     ), f"Expected Config/default UID '{config_uid}' in ClusterRoleBinding '{USAGE_LOGS_CRB_NAME}' ownerReferences"
