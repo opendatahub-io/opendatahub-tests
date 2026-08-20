@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import os
+import pathlib
 import shutil
 from ast import literal_eval
 from collections.abc import Callable, Generator
@@ -1044,7 +1045,7 @@ def installed_openshell_release(
                 )
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="session")
 def openshell_gateway_route(
     admin_client: DynamicClient, installed_openshell_release: str
 ) -> Generator[Route, Any, Any]:
@@ -1064,6 +1065,68 @@ def openshell_gateway_route(
         },
     ) as route:
         yield route
+
+
+def _extract_secret_key(
+    admin_client: DynamicClient,
+    secret_name: str,
+    namespace: str,
+    key: str,
+    dest: pathlib.Path,
+) -> None:
+    """Read a base64-encoded key from a K8s Secret and write the decoded PEM to dest."""
+    secret = Secret(client=admin_client, name=secret_name, namespace=namespace, ensure_exists=True)
+    b64_data = (secret.instance.data or {}).get(key)
+    if not b64_data:
+        raise ValueError(f"Secret {secret_name} in {namespace} missing '{key}' key")
+    dest.write_text(data=base64.b64decode(b64_data).decode(encoding="utf-8"))
+
+
+@pytest.fixture(scope="session")
+def openshell_tls_dir(
+    admin_client: DynamicClient,
+    installed_openshell_release: str,
+    tmp_path_factory: TempPathFactory,
+) -> pathlib.Path:
+    """Extract mTLS material from the openshell PKI secrets.
+
+    The helm chart's pkiInitJob creates server and client TLS secrets.
+    The gateway requires mTLS (client certificate), so we extract:
+    - Server CA from ``openshell-server-tls`` (to verify the gateway)
+    - Client cert + key from ``openshell-client-tls`` (to authenticate to the gateway)
+    """
+    from tests.openshell.constants import (
+        OPENSHELL_NAMESPACE,
+        OPENSHELL_TLS_CLIENT_SECRET_NAME,
+        OPENSHELL_TLS_SERVER_SECRET_NAME,
+    )
+
+    tls_dir = tmp_path_factory.mktemp(basename="openshell-tls")
+
+    _extract_secret_key(
+        admin_client=admin_client,
+        secret_name=OPENSHELL_TLS_SERVER_SECRET_NAME,
+        namespace=OPENSHELL_NAMESPACE,
+        key="ca.crt",
+        dest=tls_dir / "ca.crt",
+    )
+    _extract_secret_key(
+        admin_client=admin_client,
+        secret_name=OPENSHELL_TLS_CLIENT_SECRET_NAME,
+        namespace=OPENSHELL_NAMESPACE,
+        key="tls.crt",
+        dest=tls_dir / "tls.crt",
+    )
+    _extract_secret_key(
+        admin_client=admin_client,
+        secret_name=OPENSHELL_TLS_CLIENT_SECRET_NAME,
+        namespace=OPENSHELL_NAMESPACE,
+        key="tls.key",
+        dest=tls_dir / "tls.key",
+    )
+
+    LOGGER.info("Extracted OpenShell mTLS material", path=str(tls_dir))
+    return tls_dir
 
 
 @pytest.fixture(scope="session")
