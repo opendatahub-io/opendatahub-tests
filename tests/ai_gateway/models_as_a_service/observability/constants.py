@@ -31,4 +31,5 @@ LIMITADOR_SERVICE_MONITOR_WAIT_TIMEOUT: int = 120
 
 def limitador_scrape_target_up_query() -> str:
     """Build a PromQL query that confirms Limitador metrics are scraped."""
-    return LIMITADOR_UP_METRIC_QUERY
+    namespaces = "|".join(LIMITADOR_DEPLOYMENT_NAMESPACES)
+    return f'{LIMITADOR_UP_METRIC_QUERY}{{namespace=~"{namespaces}"}}'
