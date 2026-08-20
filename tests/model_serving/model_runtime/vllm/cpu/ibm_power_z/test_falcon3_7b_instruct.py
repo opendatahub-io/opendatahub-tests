@@ -31,12 +31,12 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_ibm_power_z_accelerat
     ),
     [
         pytest.param(
-            {"name": "falcon3-7b-instruct-standard-cpu"},
+            {"name": "falcon3-7b-instruct"},
             {"model-dir": FALCON3_7B_INSTRUCT_MODEL_PATH},
             {"deployment_mode": KServeDeploymentType.STANDARD},
             {
                 **BASE_RAW_DEPLOYMENT_CONFIG,
-                "name": "falcon3-7b-instruct-standard-cpu",
+                "name": "falcon3-7b-instruct",
                 "runtime_argument": IBM_POWER_Z_SERVING_ARGUMENT,
             },
             IBM_POWER_Z_CHAT_INFERENCE_REQUEST,

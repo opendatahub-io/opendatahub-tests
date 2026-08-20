@@ -34,6 +34,7 @@ EVALHUB_FULL_API_VERSION_V1: str = f"{EVALHUB_API_GROUP}/v1"
 EVALHUB_FULL_API_VERSION_V1ALPHA1: str = f"{EVALHUB_API_GROUP}/v1alpha1"
 EVALHUB_KIND: str = "EvalHub"
 EVALHUB_PLURAL: str = "evalhubs"
+EVALHUB_CRD_NAME: str = f"{EVALHUB_PLURAL}.{EVALHUB_API_GROUP}"
 
 # Multi-tenancy
 EVALHUB_TENANT_LABEL_KEY: str = "evalhub.trustyai.opendatahub.io/tenant"
@@ -46,6 +47,7 @@ EVALHUB_VLLM_EMULATOR_PORT: int = 8000
 # ClusterRole names (kustomize namePrefix applied by operator install)
 EVALHUB_JOBS_WRITER_CLUSTERROLE: str = "trustyai-service-operator-evalhub-jobs-writer"
 EVALHUB_JOB_CONFIG_CLUSTERROLE: str = "trustyai-service-operator-evalhub-job-config"
+EVALHUB_EVENTS_CLUSTERROLE: str = "trustyai-service-operator-evalhub-events"
 
 # EvalHub Kubernetes runtime (batch Job / ConfigMap) — mirrors eval-hub job_builders.go
 EVALHUB_K8S_LABEL_APP: str = "app"
@@ -135,3 +137,84 @@ OTLP_INDICATORS: tuple[str, ...] = (
     "http.server.request",
     "github.com/eval-hub",
 )
+
+# Operator Reconciliation Observability (RHAISTRAT-1606 / RHAI-241)
+
+# Prometheus metric names exposed on operator :8080
+RECONCILE_DURATION_METRIC: str = "evalhub_controller_reconcile_duration_seconds"
+RECONCILE_TOTAL_METRIC: str = "evalhub_controller_reconcile_total"
+RECONCILE_ERRORS_METRIC: str = "evalhub_controller_reconcile_errors_total"
+MANAGED_INSTANCES_METRIC: str = "evalhub_managed_instances_total"
+JOB_FAILURE_EVENTS_METRIC: str = "evalhub_job_failure_events_total"
+
+EVALHUB_RECONCILE_METRICS: tuple[str, ...] = (
+    RECONCILE_DURATION_METRIC,
+    RECONCILE_TOTAL_METRIC,
+    RECONCILE_ERRORS_METRIC,
+    MANAGED_INSTANCES_METRIC,
+    JOB_FAILURE_EVENTS_METRIC,
+)
+
+# Metric label keys
+METRIC_LABEL_CONTROLLER: str = "controller"
+METRIC_LABEL_RESULT: str = "result"
+METRIC_LABEL_ERROR_TYPE: str = "error_type"
+METRIC_LABEL_FAILURE_REASON: str = "failure_reason"
+
+# Metric label values — reconciliation results
+RESULT_SUCCESS: str = "success"
+RESULT_REQUEUE: str = "requeue"
+RESULT_ERROR: str = "error"
+
+# Metric label values — bounded error_type enumeration
+ERROR_TYPE_DEPLOYMENT_CREATE_FAILED: str = "deployment_create_failed"
+ERROR_TYPE_SERVICE_UPDATE_FAILED: str = "service_update_failed"
+ERROR_TYPE_OTHER: str = "other"
+
+EVALHUB_ERROR_TYPES: tuple[str, ...] = (
+    ERROR_TYPE_DEPLOYMENT_CREATE_FAILED,
+    ERROR_TYPE_SERVICE_UPDATE_FAILED,
+    ERROR_TYPE_OTHER,
+)
+
+# Controller label value used in all metrics
+EVALHUB_CONTROLLER_LABEL_VALUE: str = "evalhub"
+
+# Operator metrics port (kube-rbac-proxy)
+OPERATOR_METRICS_PORT: int = 8080
+
+# OTEL trace span names emitted by the EvalHub controller
+SPAN_RECONCILE: str = "evalhub.reconcile"
+SPAN_RECONCILE_CONFIGMAP: str = "evalhub.reconcile.configmap"
+SPAN_RECONCILE_DEPLOYMENT: str = "evalhub.reconcile.deployment"
+SPAN_RECONCILE_SERVICE: str = "evalhub.reconcile.service"
+SPAN_RECONCILE_ROUTE: str = "evalhub.reconcile.route"
+SPAN_RECONCILE_RBAC: str = "evalhub.reconcile.rbac"
+SPAN_JOB_FAILURE_RECONCILE: str = "evalhub.job_failure_reconcile"
+
+EVALHUB_RECONCILE_CHILD_SPANS: tuple[str, ...] = (
+    SPAN_RECONCILE_CONFIGMAP,
+    SPAN_RECONCILE_DEPLOYMENT,
+    SPAN_RECONCILE_SERVICE,
+    SPAN_RECONCILE_ROUTE,
+    SPAN_RECONCILE_RBAC,
+)
+
+# Span attribute keys
+SPAN_ATTR_K8S_NAMESPACE: str = "k8s.namespace"
+SPAN_ATTR_EVALHUB_NAME: str = "evalhub.name"
+SPAN_ATTR_RECONCILE_GENERATION: str = "reconcile.generation"
+SPAN_ATTR_JOB_NAME: str = "job_name"
+SPAN_ATTR_FAILURE_REASON: str = "failure_reason"
+SPAN_ATTR_EXIT_CODE: str = "exit_code"
+
+# OTEL trace collector for operator reconcile spans
+OTEL_TRACE_COLLECTOR_NAMESPACE: str = "otel-trace-collector"
+OTEL_TRACE_COLLECTOR_NAME: str = "otel-trace-collector"
+OTEL_TRACE_COLLECTOR_LABELS: dict[str, str] = {"app": "otel-trace-collector"}
+
+# Operator pod label selector
+OPERATOR_POD_LABEL_SELECTOR: str = "control-plane=controller-manager,app.kubernetes.io/name=trustyai-service-operator"
+
+# Operator service name in OTEL traces
+OPERATOR_OTEL_SERVICE_NAME: str = "trustyai-service-operator"
