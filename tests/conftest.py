@@ -73,7 +73,7 @@ from utilities.logger import RedactedString
 from utilities.mariadb_utils import wait_for_mariadb_operator_deployments
 from utilities.minio import create_minio_data_connection_secret
 from utilities.openshell_utils import get_cluster_apps_domain, wait_for_openshell_gateway_pod
-from utilities.operator_utils import get_cluster_service_version, get_csv_related_images
+from utilities.operator_utils import get_cluster_service_version, get_csv_related_images, get_expected_image_registry
 from utilities.serving_runtime import get_runtime_image_from_template
 from utilities.user_utils import get_byoidc_issuer_url, get_oidc_tokens
 
@@ -786,6 +786,12 @@ def prometheus(admin_client: DynamicClient) -> Prometheus:
 def related_images_refs(admin_client: DynamicClient) -> set[str]:
     related_images = get_csv_related_images(admin_client=admin_client)
     return {img["image"] for img in related_images}
+
+
+@pytest.fixture(scope="session")
+def expected_image_registry(admin_client: DynamicClient) -> str:
+    """The registry product images are expected to be served from, based on the operator subscription channel."""
+    return get_expected_image_registry(admin_client=admin_client)
 
 
 @pytest.fixture(scope="session")
