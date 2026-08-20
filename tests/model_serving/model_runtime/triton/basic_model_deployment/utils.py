@@ -110,7 +110,7 @@ def run_triton_inference(
 
     is_rest = protocol == Protocols.REST
 
-    if deployment_mode == KServeDeploymentType.RAW_DEPLOYMENT:
+    if deployment_mode in (KServeDeploymentType.RAW_DEPLOYMENT, KServeDeploymentType.STANDARD):
         port = TRITON_REST_PORT if is_rest else TRITON_GRPC_PORT
         with portforward.forward(pod_or_service=pod_name, namespace=isvc.namespace, from_port=port, to_port=port):
             host = f"{LOCAL_HOST_URL}:{port}" if is_rest else get_grpc_url(base_url=LOCAL_HOST_URL, port=port)
@@ -120,7 +120,7 @@ def run_triton_inference(
                 else send_grpc_request(host, input_data, root_dir)
             )
 
-    elif deployment_mode == KServeDeploymentType.SERVERLESS:
+    elif deployment_mode in (KServeDeploymentType.SERVERLESS, KServeDeploymentType.KNATIVE):
         base_url = isvc.instance.status.url.rstrip("/")
         if is_rest:
             return send_rest_request(f"{base_url}{rest_endpoint}", input_data)
