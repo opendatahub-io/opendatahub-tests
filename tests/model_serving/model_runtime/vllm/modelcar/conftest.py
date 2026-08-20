@@ -107,8 +107,17 @@ def vllm_model_car_inference_service(
         isvc_kwargs["volumes_mounts"] = PREDICT_RESOURCES["volume_mounts"]
 
     if arguments := deployment_config.get("runtime_argument"):
-        arguments = [arg for arg in arguments if not arg.startswith("--tensor-parallel-size")]
+        strip_prefixes = ["--tensor-parallel-size"]
+        if identifier == Labels.Spyre.SPYRE_COM_GPU:
+            # Spyre compiles the entire KV cache into card memory during warmup. Without an
+            # explicit bound vLLM uses the model's full context (4k-8k) x max_num_seqs, which
+            # overflows device memory and aborts the compile (kserve-container exit 1). Cap
+            # max-model-len to a size known to fit, matching the S3 path (see vllm/conftest.py).
+            strip_prefixes.append("--max-model-len")
+        arguments = [arg for arg in arguments if not arg.startswith(tuple(strip_prefixes))]
         arguments.append(f"--tensor-parallel-size={gpu_count}")
+        if identifier == Labels.Spyre.SPYRE_COM_GPU:
+            arguments.append("--max-model-len=1024")
         isvc_kwargs["argument"] = dedupe_vllm_cli_args(arguments=arguments)
 
     if min_replicas := request.param.get("min-replicas"):
