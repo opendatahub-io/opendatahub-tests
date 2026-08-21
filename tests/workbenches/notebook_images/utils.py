@@ -365,30 +365,107 @@ def _get_imagestream_spec_tag_data(imagestream_data: dict[str, Any]) -> dict[str
     }
 
 
-def _resolve_tag_digest(status_tag_data: dict[str, Any], imagestream_name: str, tag_name: str) -> str:
-    """Extract a digest reference from ImageStream status data."""
+def _resolve_docker_image_reference(status_tag_data: dict[str, Any], imagestream_name: str, tag_name: str) -> str:
+    """Return the digest-pinned dockerImageReference from ImageStream status."""
     for item in status_tag_data.get("items") or []:
         docker_image_reference = str(item.get("dockerImageReference", ""))
         if "@sha256:" in docker_image_reference:
-            return docker_image_reference.split("@", maxsplit=1)[1]
+            return docker_image_reference
 
     raise AssertionError(
         f"ImageStream {imagestream_name}:{tag_name} does not have a resolved dockerImageReference in status.tags.items"
     )
 
 
-def _resolve_image_repository(
+def _resolve_tag_digest(status_tag_data: dict[str, Any], imagestream_name: str, tag_name: str) -> str:
+    """Extract a digest reference from ImageStream status data."""
+    docker_image_reference = _resolve_docker_image_reference(
+        status_tag_data=status_tag_data,
+        imagestream_name=imagestream_name,
+        tag_name=tag_name,
+    )
+    return docker_image_reference.split("@", maxsplit=1)[1]
+
+
+def _resolve_integrated_registry_repository(
     admin_client: DynamicClient, imagestream_data: dict[str, Any], imagestream_name: str
-) -> str:
-    """Resolve the repository used by the Dashboard for a workbench ImageStream."""
+) -> str | None:
+    """Return the integrated-registry ImageStream repository, or None when it is unavailable.
+
+    Disconnected clusters typically remove the OpenShift integrated registry, which leaves
+    ``status.dockerImageRepository`` empty. Callers must then pull via the source
+    ``dockerImageReference`` (rewritten by ICSP/IDMS).
+    """
+    if not check_internal_image_registry_available(admin_client=admin_client):
+        return None
+
     status_data = imagestream_data.get("status", {})
-    if image_repository := status_data.get("dockerImageRepository") or status_data.get("publicDockerImageRepository"):
-        return str(image_repository)
+    if image_repository := str(
+        status_data.get("dockerImageRepository") or status_data.get("publicDockerImageRepository") or ""
+    ).strip():
+        return image_repository
 
-    if check_internal_image_registry_available(admin_client=admin_client):
-        return f"{INTERNAL_IMAGE_REGISTRY_PATH}/{_applications_namespace()}/{imagestream_name}"
+    return f"{INTERNAL_IMAGE_REGISTRY_PATH}/{_applications_namespace()}/{imagestream_name}"
 
-    raise AssertionError(f"ImageStream {imagestream_name} does not expose a usable docker image repository")
+
+def _resolve_image_url(
+    admin_client: DynamicClient,
+    imagestream_data: dict[str, Any],
+    imagestream_name: str,
+    tag_name: str,
+    docker_image_reference: str,
+) -> str:
+    """Resolve a pullable container image URL for a workbench ImageStream tag.
+
+    When the OpenShift integrated registry is available, return the ImageStream
+    ``repository:tag`` form used by Dashboard. When it is not, return the
+    digest-pinned ``dockerImageReference`` from ``status.tags.items``.
+    """
+    if image_repository := _resolve_integrated_registry_repository(
+        admin_client=admin_client,
+        imagestream_data=imagestream_data,
+        imagestream_name=imagestream_name,
+    ):
+        image_url = f"{image_repository}:{tag_name}"
+        LOGGER.info(f"Resolved ImageStream {imagestream_name}:{tag_name} via integrated registry: {image_url}")
+        return image_url
+
+    LOGGER.info(
+        f"Integrated registry unavailable; resolved ImageStream {imagestream_name}:{tag_name} "
+        f"via dockerImageReference: {docker_image_reference}"
+    )
+    return docker_image_reference
+
+
+def _build_resolved_workbench_image(
+    admin_client: DynamicClient,
+    imagestream_data: dict[str, Any],
+    imagestream_name: str,
+    tag_name: str,
+) -> ResolvedWorkbenchImage:
+    """Build resolved image metadata for one imported ImageStream tag."""
+    status_tag_data = _get_imagestream_status_tag_data(imagestream_data=imagestream_data)[tag_name]
+    spec_tag_data = _get_imagestream_spec_tag_data(imagestream_data=imagestream_data)
+    docker_image_reference = _resolve_docker_image_reference(
+        status_tag_data=status_tag_data,
+        imagestream_name=imagestream_name,
+        tag_name=tag_name,
+    )
+    build_commit = spec_tag_data.get(tag_name, {}).get("annotations", {}).get("opendatahub.io/notebook-build-commit")
+    return ResolvedWorkbenchImage(
+        imagestream_name=imagestream_name,
+        tag_name=tag_name,
+        image_url=_resolve_image_url(
+            admin_client=admin_client,
+            imagestream_data=imagestream_data,
+            imagestream_name=imagestream_name,
+            tag_name=tag_name,
+            docker_image_reference=docker_image_reference,
+        ),
+        image_selection=f"{imagestream_name}:{tag_name}",
+        image_digest=docker_image_reference.split("@", maxsplit=1)[1],
+        build_commit=str(build_commit) if build_commit else None,
+    )
 
 
 def _resolve_requested_tag_name(
@@ -553,7 +630,6 @@ def resolve_n_minus_one_image(admin_client: DynamicClient, imagestream_name: str
 
     imagestream_data = imagestream.instance.to_dict()
     status_tag_data = _get_imagestream_status_tag_data(imagestream_data=imagestream_data)
-    spec_tag_data = _get_imagestream_spec_tag_data(imagestream_data=imagestream_data)
     current_product_version = get_product_version(admin_client=admin_client)
     tag_name = _resolve_requested_tag_name(
         imagestream_name=imagestream_name,
@@ -570,32 +646,17 @@ def resolve_n_minus_one_image(admin_client: DynamicClient, imagestream_name: str
                 buildconfig_name=RSTUDIO_BUILDCONFIG_NAME,
             )
             status_tag_data = _get_imagestream_status_tag_data(imagestream_data=imagestream_data)
-            spec_tag_data = _get_imagestream_spec_tag_data(imagestream_data=imagestream_data)
         if tag_name not in status_tag_data:
             raise AssertionError(
                 f"ImageStream {imagestream_name}:{tag_name} is missing from status.tags "
                 "and cannot be used for upgrade tests"
             )
 
-    image_repository = _resolve_image_repository(
+    return _build_resolved_workbench_image(
         admin_client=admin_client,
         imagestream_data=imagestream_data,
         imagestream_name=imagestream_name,
-    )
-    tag_digest = _resolve_tag_digest(
-        status_tag_data=status_tag_data[tag_name],
-        imagestream_name=imagestream_name,
         tag_name=tag_name,
-    )
-    build_commit = spec_tag_data.get(tag_name, {}).get("annotations", {}).get("opendatahub.io/notebook-build-commit")
-
-    return ResolvedWorkbenchImage(
-        imagestream_name=imagestream_name,
-        tag_name=tag_name,
-        image_url=f"{image_repository}:{tag_name}",
-        image_selection=f"{imagestream_name}:{tag_name}",
-        image_digest=tag_digest,
-        build_commit=str(build_commit) if build_commit else None,
     )
 
 
@@ -619,7 +680,6 @@ def resolve_current_image(admin_client: DynamicClient, imagestream_name: str) ->
 
     imagestream_data = imagestream.instance.to_dict()
     status_tag_data = _get_imagestream_status_tag_data(imagestream_data=imagestream_data)
-    spec_tag_data = _get_imagestream_spec_tag_data(imagestream_data=imagestream_data)
     current_product_version = get_product_version(admin_client=admin_client)
 
     tag_name = f"{current_product_version.major}.{current_product_version.minor}"
@@ -631,25 +691,11 @@ def resolve_current_image(admin_client: DynamicClient, imagestream_name: str) ->
             f"Available tags: {available_tags}"
         )
 
-    image_repository = _resolve_image_repository(
+    return _build_resolved_workbench_image(
         admin_client=admin_client,
         imagestream_data=imagestream_data,
         imagestream_name=imagestream_name,
-    )
-    tag_digest = _resolve_tag_digest(
-        status_tag_data=status_tag_data[tag_name],
-        imagestream_name=imagestream_name,
         tag_name=tag_name,
-    )
-    build_commit = spec_tag_data.get(tag_name, {}).get("annotations", {}).get("opendatahub.io/notebook-build-commit")
-
-    return ResolvedWorkbenchImage(
-        imagestream_name=imagestream_name,
-        tag_name=tag_name,
-        image_url=f"{image_repository}:{tag_name}",
-        image_selection=f"{imagestream_name}:{tag_name}",
-        image_digest=tag_digest,
-        build_commit=str(build_commit) if build_commit else None,
     )
 
 
