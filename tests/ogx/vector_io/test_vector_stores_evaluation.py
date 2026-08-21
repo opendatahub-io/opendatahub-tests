@@ -2,8 +2,18 @@ from typing import Any
 
 import pytest
 import structlog
-from ragas import EvaluationDataset, SingleTurnSample, evaluate
-from ragas.metrics import AnswerRelevancy, ContextPrecision, ContextRecall, Faithfulness
+
+try:
+    from ragas import EvaluationDataset, SingleTurnSample, evaluate
+    from ragas.metrics import AnswerRelevancy, ContextPrecision, ContextRecall, Faithfulness
+except ImportError:
+    EvaluationDataset = None
+    SingleTurnSample = Any
+    evaluate = None
+    AnswerRelevancy = None
+    ContextPrecision = None
+    ContextRecall = None
+    Faithfulness = None
 
 from tests.ogx.constants import (
     ANSWER_RELEVANCY_THRESHOLD,
@@ -17,6 +27,8 @@ from tests.ogx.datasets import (
 from tests.ogx.utils import (
     mean_ragas_score,
 )
+
+pytestmark = pytest.mark.skip_on_arch_s390x
 
 LOGGER = structlog.get_logger(name=__name__)
 
