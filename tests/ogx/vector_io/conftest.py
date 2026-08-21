@@ -1,4 +1,5 @@
 import os
+import platform
 from collections.abc import Generator
 from typing import Any
 
@@ -7,6 +8,13 @@ import pytest
 import structlog
 from ogx_client import OgxClient
 from ogx_client.types.vector_store import VectorStore
+
+if platform.machine() in ("ppc64le", "s390x"):
+    pytest.skip(
+        "ragas is not supported on this architecture",
+        allow_module_level=True,
+    )
+
 from ragas import SingleTurnSample
 
 from tests.ogx.constants import (

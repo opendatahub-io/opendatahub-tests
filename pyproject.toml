@@ -91,7 +91,7 @@ dev = [
     "ipdb>=0.13.13",
     "ipython>=8.12.3",
     "pre-commit>=4.3.0",
-    "pyrefly>=1.0",
+    "pyrefly>=1.0; platform_machine != 's390x' and platform_machine != 'ppc64le'",
 ]
 
 [project]
@@ -118,7 +118,7 @@ dependencies = [
     "pytest-progress",
     "structlog>=24.1.0",
     "pyyaml",
-    "pyarrow>=23.0.0",
+    "pyarrow>=23.0.0; platform_machine != 's390x'",
     "tenacity",
     "types-requests>=2.32.0.20241016",
     "requests",
@@ -149,9 +149,9 @@ dependencies = [
     "pytest>=9.0.0",
     "huggingface-hub>=1.2.3",
     "openai>=2.36",
-    "ragas>=0.4",
-    "numpy>=2.1.0,<2.5.0",
-    "scipy>=1.13.0,<1.18.0",
+    "ragas>=0.4; platform_machine != 's390x' and platform_machine != 'ppc64le'",
+    "numpy>=2.1.0,<2.5.0; platform_machine != 's390x'",
+    "scipy>=1.13.0,<1.18.0; platform_machine != 's390x'",
     "langchain-community<0.4.2",
     "ipykernel>=7.3.0",
     "boto3>=1.43.33",

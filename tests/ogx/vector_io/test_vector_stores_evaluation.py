@@ -1,7 +1,15 @@
+import platform
 from typing import Any
 
 import pytest
 import structlog
+
+if platform.machine() in ("ppc64le", "s390x"):
+    pytest.skip(
+        "ragas is not supported on this architecture",
+        allow_module_level=True,
+    )
+
 from ragas import EvaluationDataset, SingleTurnSample, evaluate
 from ragas.metrics import AnswerRelevancy, ContextPrecision, ContextRecall, Faithfulness
 
