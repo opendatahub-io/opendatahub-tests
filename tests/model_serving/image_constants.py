@@ -17,3 +17,9 @@ class ModelServingImages:
         "quay.io/spolti/kserve-sentiment-custom-transformer"
         "@sha256:6af753f5d13e07fd2d0d3da9e55ddbcd4d5cabcd9d5f4c1fbbdce06fb1e08c67"  # pragma: allowlist secret
     )
+
+    VLLM_OMNI_MODELCAR: str = (
+        "quay.io/opendatahub/modelcar-vllm-omni"
+        ":qwen3-tts-12hz-1.7b-customvoice-v1"
+        "@sha256:aa3e5a9583e06f8952d5329195f84a13d0475dd9350aec3896423e1c9cd20706"  # pragma: allowlist secret
+    )
