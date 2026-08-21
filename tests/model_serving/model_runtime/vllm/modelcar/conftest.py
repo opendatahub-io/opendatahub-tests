@@ -107,8 +107,17 @@ def vllm_model_car_inference_service(
         isvc_kwargs["volumes_mounts"] = PREDICT_RESOURCES["volume_mounts"]
 
     if arguments := deployment_config.get("runtime_argument"):
-        arguments = [arg for arg in arguments if not arg.startswith("--tensor-parallel-size")]
+        strip_prefixes = ["--tensor-parallel-size"]
+        if identifier == Labels.Spyre.SPYRE_COM_GPU:
+            # Spyre compiles the entire KV cache into card memory during warmup. Without an
+            # explicit bound vLLM uses the model's full context (4k-8k) x max_num_seqs, which
+            # overflows device memory and aborts the compile (kserve-container exit 1). Cap
+            # max-model-len to a size known to fit, matching the S3 path (see vllm/conftest.py).
+            strip_prefixes.append("--max-model-len")
+        arguments = [arg for arg in arguments if not arg.startswith(tuple(strip_prefixes))]
         arguments.append(f"--tensor-parallel-size={gpu_count}")
+        if identifier == Labels.Spyre.SPYRE_COM_GPU:
+            arguments.append("--max-model-len=1024")
         isvc_kwargs["argument"] = dedupe_vllm_cli_args(arguments=arguments)
 
     if min_replicas := request.param.get("min-replicas"):
@@ -197,6 +206,7 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
 
     model_car_data = yaml_config["model-car"]
     default_serving_config = yaml_config.get("default", {})
+    accelerator_type = (metafunc.config.getoption(name="supported_accelerator_type") or "").lower()
 
     if not isinstance(model_car_data, list):
         raise TypeError("Invalid format for `model-car` in YAML. Expected a list of objects.")
@@ -219,6 +229,12 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
         )
 
         if not name or not image:
+            continue
+
+        # Skip models that are not supported on the current accelerator (e.g. non-decoder
+        # architectures such as ASR/embedding models on Spyre).
+        unsupported_accelerators = [a.lower() for a in model_car.get("unsupported_accelerators", [])]
+        if accelerator_type and accelerator_type in unsupported_accelerators:
             continue
 
         model_output_type = model_car.get("model_output_type", "text")

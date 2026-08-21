@@ -46,7 +46,6 @@ from utilities.data_science_cluster_utils import get_dsc_ready_condition, wait_f
 from utilities.infra import create_inference_token, create_ns
 from utilities.kueue_utils import (
     ClusterQueue,
-    Kueue,
     LocalQueue,
     ResourceFlavor,
     create_cluster_queue,
@@ -54,6 +53,7 @@ from utilities.kueue_utils import (
     create_resource_flavor,
     wait_for_kueue_crds_available,
 )
+from utilities.resources.kueue import Kueue
 
 LOGGER = structlog.get_logger(name=__name__)
 
