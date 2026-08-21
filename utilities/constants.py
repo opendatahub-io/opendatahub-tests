@@ -312,9 +312,7 @@ class RunTimeConfigs:
 
 
 class ModelCarImage:
-    MNIST_8_1: str = (
-        "oci://quay.io/mwaykole/test@sha256:cb7d25c43e52c755e85f5b59199346f30e03b7112ef38b74ed4597aec8748743"
-    )
+    MNIST_8_1: str = "oci://quay.io/opendatahub/modelcar-openvino@sha256:c92d7d0cb4a1e798ab6a6c4370259a081c6f335bad26627a99046607873b0e42"  # noqa: E501
     GRANITE_8B_CODE_INSTRUCT: str = "oci://registry.redhat.io/rhelai1/modelcar-granite-8b-code-instruct:1.4"
 
 
@@ -322,9 +320,7 @@ class ModelStorage:
     """Model storage URIs for different storage backends."""
 
     class OCI:
-        TINYLLAMA: str = (
-            "oci://quay.io/mwaykole/test@sha256:8bfd02132b03977ebbca93789e81c4549d8f724ee78fa378616d9ae4387717c8"
-        )
+        TINYLLAMA: str = "oci://quay.io/opendatahub/modelcar-vllm@sha256:45e325523fb05f122f6f27b29d0fe767bc9162a90563a15150c8d4773df4265d"  # noqa: E501
         MNIST_8_1: str = ModelCarImage.MNIST_8_1
         GRANITE_8B_CODE_INSTRUCT: str = ModelCarImage.GRANITE_8B_CODE_INSTRUCT
 

@@ -11,9 +11,7 @@ class SharedImages:
     )
 
     # MLServer model car images (shared across model_serving and ai_hub)
-    MLSERVER_SKLEARN: str = "oci://quay.io/jooholee/mlserver-sklearn@sha256:ec9bc6b520909c52bd1d4accc2b2d28adb04981bd4c3ce94f17f23dd573e1f55"  # noqa: E501
-    MLSERVER_XGBOOST: str = "oci://quay.io/jooholee/mlserver-xgboost@sha256:5b6982bdc939b53a7a1210f56aa52bf7de0f0cbc693668db3fd1f496571bff29"  # noqa: E501
-    MLSERVER_LIGHTGBM: str = "oci://quay.io/jooholee/mlserver-lightgbm@sha256:77eb15a2eccefa3756faaf2ee4bc1e63990b746427d323957c461f33a4f1a6a3"  # noqa: E501
-    MLSERVER_ONNX: str = (
-        "oci://quay.io/syedali/mlserver-onnx@sha256:1724ae50e1178a11c3b8dd3c65c03e85d3f416e5994c80c63bcc556c71189e9d"  # noqa: E501
-    )
+    MLSERVER_SKLEARN: str = "oci://quay.io/opendatahub/modelcar-mlserver-sklearn@sha256:671379c7d10c5f7ea3e7ad493ec563733d615556496c0d350df0f5a87f562c61"  # noqa: E501
+    MLSERVER_XGBOOST: str = "oci://quay.io/opendatahub/modelcar-mlserver-xgboost@sha256:b4de2418d3c843d486b977777346f1cf2518b56df0780f78e2b55c01e6274b02"  # noqa: E501
+    MLSERVER_LIGHTGBM: str = "oci://quay.io/opendatahub/modelcar-mlserver-lightgbm@sha256:2e4c2aff76656b3547e8af21728818eb586080202ae23a8b5155ac59f57d8328"  # noqa: E501
+    MLSERVER_ONNX: str = "oci://quay.io/opendatahub/modelcar-mlserver-onnx@sha256:d7747270ba666c0585dc20f38425811e3d901f150618237d4ab94781b3ab31b7"  # noqa: E501
