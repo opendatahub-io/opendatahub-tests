@@ -137,10 +137,14 @@ def evalhub_mcp_mt_cr(
         wait_for_resource=False,
     ) as evalhub:
         # evalhub.wait() only checks that the object exists, not that the operator
-        # has finished reconciling it, so poll status.ready instead.
-        for sample in TimeoutSampler(wait_timeout=300, sleep=2, func=lambda: evalhub.instance.status.get("ready")):
-            if sample == "True":
+        # has finished reconciling it, so poll status instead. Fail fast on phase
+        # "Error" rather than waiting out the full timeout; "Pending" is the normal
+        # in-progress state and must not be treated as a failure.
+        for sample in TimeoutSampler(wait_timeout=300, sleep=2, func=lambda: evalhub.instance.status):
+            if sample.get("ready") == "True":
                 break
+            if sample.get("phase") == "Error":
+                pytest.fail(f"EvalHub {EVALHUB_MCP_CR_NAME} entered Error phase: {sample.get('conditions')}")
         yield evalhub
 
 
