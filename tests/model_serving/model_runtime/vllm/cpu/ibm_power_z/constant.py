@@ -12,8 +12,8 @@ MINISTRAL_3B_INSTRUCT_MODEL_PATH: str = "models/ministral-3b-instruct"
 GRANITE_3B_CODE_INSTRUCT_2K_MODEL_PATH: str = "models/granite-3b-code-instruct-2k"
 
 IBM_POWER_Z_PREDICT_RESOURCES: dict[str, dict[str, str]] = {
-    "requests": {"cpu": "12", "memory": "64Gi"},
-    "limits": {"cpu": "12", "memory": "64Gi"},
+    "requests": {"cpu": "8", "memory": "48Gi"},
+    "limits": {"cpu": "8", "memory": "48Gi"},
 }
 
 IBM_POWER_Z_SERVING_ARGUMENT: list[str] = [
