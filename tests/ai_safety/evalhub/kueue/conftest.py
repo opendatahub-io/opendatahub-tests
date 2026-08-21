@@ -6,7 +6,6 @@ import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.api_service import APIService
-from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.evalhub import EvalHub
@@ -37,6 +36,7 @@ from tests.ai_safety.evalhub.kueue.constants import (
 from tests.ai_safety.evalhub.utils import (
     build_evalhub_job_payload,
     delete_evalhub_job,
+    is_evalhub_crd_available,
     submit_evalhub_job,
     tenant_rbac_ready,
 )
@@ -59,24 +59,6 @@ LOGGER = structlog.get_logger(name=__name__)
 
 
 # ---------------------------------------------------------------------------
-# Helper Functions
-# ---------------------------------------------------------------------------
-
-
-def _is_evalhub_crd_available(admin_client: DynamicClient) -> bool:
-    """Check if EvalHub CRD is installed on the cluster."""
-    crd_name = "evalhubs.trustyai.opendatahub.io"
-    try:
-        crd = CustomResourceDefinition(
-            client=admin_client,
-            name=crd_name,
-        )
-        return crd.exists
-    except AttributeError, KeyError:
-        return False
-
-
-# ---------------------------------------------------------------------------
 # EvalHub Multi-Tenancy Fixtures (for Kueue tests)
 # ---------------------------------------------------------------------------
 
@@ -88,7 +70,7 @@ def evalhub_kueue_cr(
     evalhub_kueue_namespace: Namespace,
 ) -> Generator[EvalHub, Any, Any]:
     """Create an EvalHub CR for Kueue tests."""
-    if not _is_evalhub_crd_available(admin_client):
+    if not is_evalhub_crd_available(admin_client):
         pytest.fail(
             "EvalHub CRD 'evalhubs.trustyai.opendatahub.io' not available on this cluster. "
             "Install the TrustyAI/EvalHub operator first."
