@@ -40,7 +40,10 @@ SUPPORTED_CPU_X86_ACCELERATORS: set[str] = {AcceleratorType.CPU_x86}
 
 # TODO: Remove this hook when fast runtime templates are available
 def pytest_collection_modifyitems(items: list[pytest.Item], config: pytest.Config) -> None:
-    """Deselect fast template tests until fast images are available."""
+    """Deselect fast template tests unless --include-fast-templates is passed."""
+    if config.getoption("--include-fast-templates", default=False):
+        return
+
     deselected = []
     remaining = []
     for item in items:

@@ -56,6 +56,14 @@ def pytest_addoption(parser: Parser) -> None:
     aws_group = parser.getgroup(name="AWS")
     buckets_group = parser.getgroup(name="Buckets")
     runtime_group = parser.getgroup(name="Runtime details")
+    fast_templates_group = parser.getgroup(name="Fast templates")
+    fast_templates_group.addoption(
+        "--include-fast-templates",
+        action="store_true",
+        default=os.environ.get("INCLUDE_FAST_TEMPLATES", "").lower() in ("true", "1", "yes"),
+        help="Include fast template tests (deselected by default until fast images are available). "
+        "Can also be set via INCLUDE_FAST_TEMPLATES=true environment variable.",
+    )
     upgrade_group = parser.getgroup(name="Upgrade options")
     must_gather_group = parser.getgroup(name="MustGather")
     cluster_sanity_group = parser.getgroup(name="ClusterSanity")
@@ -134,6 +142,11 @@ def pytest_addoption(parser: Parser) -> None:
         "--ovms-runtime-image",
         default=os.environ.get("OVMS_RUNTIME_IMAGE"),
         help="Specify the OVMS runtime image to use for the tests",
+    )
+    runtime_group.addoption(
+        "--vllm-omni-runtime-image",
+        default=os.environ.get("VLLM_OMNI_RUNTIME_IMAGE"),
+        help="Specify the vLLM-Omni runtime image to use for tests (overrides template default)",
     )
 
     # OCI Registry options (vLLM modelcar)
