@@ -88,6 +88,22 @@ ONNX_REST_INPUT_QUERY = {
     ],
 }
 
+
+_RESNET50_INPUT_SIZE: int = 3 * 224 * 224
+
+ONNX_RESNET50_REST_INPUT_QUERY: dict[str, Any] = {
+    "id": "resnet50",
+    "inputs": [
+        {
+            "name": "pixel_values",
+            "shape": [1, 3, 224, 224],
+            "datatype": "FP32",
+            "data": [0.5] * _RESNET50_INPUT_SIZE,
+        }
+    ],
+}
+
+
 MODEL_CONFIGS: dict[str, dict[str, Any]] = {
     ModelFormat.LIGHTGBM: {
         "model_name": ModelFormat.LIGHTGBM,
@@ -97,9 +113,10 @@ MODEL_CONFIGS: dict[str, dict[str, Any]] = {
     },
     ModelFormat.ONNX: {
         "model_name": ModelFormat.ONNX,
-        "model_version": "v1.0.0",
-        "rest_query": ONNX_REST_INPUT_QUERY,
+        "model_version": "",
+        "rest_query": ONNX_RESNET50_REST_INPUT_QUERY,
         "output_type": OutputType.DETERMINISTIC,
+        "s3_model_dir": "resnet-50-onnx",
     },
     ModelFormat.SKLEARN: {
         "model_name": ModelFormat.SKLEARN,

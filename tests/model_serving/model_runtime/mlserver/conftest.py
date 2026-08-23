@@ -96,7 +96,9 @@ def mlserver_inference_service(
         "namespace": model_namespace.name,
         "runtime": mlserver_serving_runtime.name,
         "storage_uri": s3_models_storage_uri,
-        "model_format": mlserver_serving_runtime.instance.spec.supportedModelFormats[0].name,
+        "model_format": params.get(
+            "model_format", mlserver_serving_runtime.instance.spec.supportedModelFormats[0].name
+        ),
         "model_service_account": mlserver_model_service_account.name,
         "deployment_mode": params.get("deployment_mode", KServeDeploymentType.STANDARD),
         "external_route": params.get("enable_external_route", False),
@@ -111,9 +113,9 @@ def mlserver_inference_service(
         identifier = Labels.Nvidia.NVIDIA_COM_GPU
         resources["requests"][identifier] = gpu_count
         resources["limits"][identifier] = gpu_count
-        service_config["volumes"] = copy.deepcopy(PREDICT_RESOURCES["volumes"])
-        service_config["volumes_mounts"] = copy.deepcopy(PREDICT_RESOURCES["volume_mounts"])
     service_config["resources"] = resources
+    service_config["volumes"] = copy.deepcopy(PREDICT_RESOURCES["volumes"])
+    service_config["volumes_mounts"] = copy.deepcopy(PREDICT_RESOURCES["volume_mounts"])
 
     if timeout:
         service_config["timeout"] = timeout
