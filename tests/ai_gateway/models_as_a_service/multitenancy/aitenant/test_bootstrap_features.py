@@ -8,6 +8,7 @@ from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import (
     verify_aitenant_bootstrap_children,
     verify_aitenant_oidc_stays_in_spec,
     verify_aitenant_ready,
+    verify_tenant_namespace_gateway_access_label_present,
 )
 from utilities.resources.aitenant import AITenant
 
@@ -17,6 +18,20 @@ LOGGER = structlog.get_logger(name=__name__)
 @pytest.mark.usefixtures("maas_subscription_controller_enabled_latest", "aitenant_infra_namespace")
 class TestAITenantBootstrapFeatures:
     """Check AITenant bootstrap readiness and OIDC retention on AITenant.spec."""
+
+    @pytest.mark.tier1
+    def test_aitenant_bootstrap_applies_gateway_access_label(
+        self,
+        admin_client: DynamicClient,
+        aitenant_for_test: AITenantTestContext,
+    ) -> None:
+        """Given a bootstrapped Ready AITenant, when the tenant namespace is inspected,
+        then maas.opendatahub.io/gateway-access=true is present.
+        """
+        verify_tenant_namespace_gateway_access_label_present(
+            admin_client=admin_client,
+            tenant_namespace_name=aitenant_for_test["tenant_namespace_name"],
+        )
 
     @pytest.mark.tier1
     def test_aitenant_bootstrap_children_stay_ready(
