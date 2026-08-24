@@ -65,6 +65,8 @@ AIGATEWAY_BOOTSTRAP_GATEWAY_LISTENERS = [
 ]
 AIGATEWAY_MANAGED_BY_LABEL = "maas.opendatahub.io/managed-by-aitenant"
 AIGATEWAY_TENANT_LABEL = "ai-gateway.opendatahub.io/tenant"
+GATEWAY_ACCESS_LABEL = "maas.opendatahub.io/gateway-access"
+GATEWAY_ACCESS_LABEL_VALUE = "true"
 
 
 class AITenantTestContext(TypedDict):
@@ -317,6 +319,11 @@ def verify_aitenant_bootstrap_children(
     assert namespace_labels.get(AIGATEWAY_TENANT_LABEL) == aitenant_name, (
         f"Tenant namespace '{tenant_namespace_name}' label {AIGATEWAY_TENANT_LABEL} expected {aitenant_name!r}, "
         f"got {namespace_labels.get(AIGATEWAY_TENANT_LABEL)!r}"
+    )
+    verify_tenant_namespace_gateway_access_label_present(
+        admin_client=admin_client,
+        tenant_namespace_name=tenant_namespace_name,
+        namespace_labels=namespace_labels,
     )
     assert namespace_annotations.get(AIGATEWAY_NAME_ANNOTATION) == aitenant_name, (
         f"Tenant namespace {AIGATEWAY_NAME_ANNOTATION} expected {aitenant_name!r}, "
@@ -601,6 +608,69 @@ def verify_preprovisioned_bootstrap_gateway_preserved(
     )
 
 
+def delete_aitenant_and_wait(aitenant: AITenant, timeout: int = 300) -> None:
+    """Delete an AITenant CR and wait until it is removed from the API."""
+    aitenant.delete()
+    aitenant.wait_deleted(timeout=timeout)
+
+
+def verify_gateway_access_label_removed_after_aitenant_delete(
+    admin_client: DynamicClient,
+    tenant_namespace_name: str,
+    aitenant: AITenant,
+    timeout: int = 300,
+) -> None:
+    """Assert gateway-access is present before delete and absent after AITenant deletion."""
+    verify_tenant_namespace_gateway_access_label_present(
+        admin_client=admin_client,
+        tenant_namespace_name=tenant_namespace_name,
+    )
+    delete_aitenant_and_wait(aitenant=aitenant, timeout=timeout)
+    verify_tenant_namespace_preserved(
+        admin_client=admin_client,
+        tenant_namespace_name=tenant_namespace_name,
+    )
+    verify_tenant_namespace_gateway_access_label_absent(
+        admin_client=admin_client,
+        tenant_namespace_name=tenant_namespace_name,
+    )
+
+
+def verify_tenant_namespace_gateway_access_label_present(
+    admin_client: DynamicClient,
+    tenant_namespace_name: str,
+    namespace_labels: dict[str, str] | None = None,
+) -> None:
+    """Assert the tenant namespace has maas.opendatahub.io/gateway-access=true."""
+    if namespace_labels is None:
+        tenant_namespace = Namespace(
+            client=admin_client,
+            name=tenant_namespace_name,
+            ensure_exists=True,
+        )
+        namespace_labels = dict(tenant_namespace.instance.metadata.labels or {})
+    assert namespace_labels.get(GATEWAY_ACCESS_LABEL) == GATEWAY_ACCESS_LABEL_VALUE, (
+        f"Tenant namespace '{tenant_namespace_name}' label {GATEWAY_ACCESS_LABEL} expected "
+        f"{GATEWAY_ACCESS_LABEL_VALUE!r}, got {namespace_labels.get(GATEWAY_ACCESS_LABEL)!r}"
+    )
+
+
+def verify_tenant_namespace_gateway_access_label_absent(
+    admin_client: DynamicClient,
+    tenant_namespace_name: str,
+) -> None:
+    """Assert maas.opendatahub.io/gateway-access was removed from the tenant namespace."""
+    tenant_namespace = Namespace(
+        client=admin_client,
+        name=tenant_namespace_name,
+        ensure_exists=True,
+    )
+    labels = tenant_namespace.instance.metadata.labels or {}
+    assert labels.get(GATEWAY_ACCESS_LABEL) is None, (
+        f"Tenant namespace '{tenant_namespace_name}' should not retain {GATEWAY_ACCESS_LABEL}"
+    )
+
+
 def verify_tenant_namespace_aitenant_metadata_stripped(
     admin_client: DynamicClient,
     tenant_namespace_name: str,
@@ -618,6 +688,9 @@ def verify_tenant_namespace_aitenant_metadata_stripped(
     )
     assert labels.get(AIGATEWAY_TENANT_LABEL) is None, (
         f"Tenant namespace '{tenant_namespace_name}' should not retain {AIGATEWAY_TENANT_LABEL}"
+    )
+    assert labels.get(GATEWAY_ACCESS_LABEL) is None, (
+        f"Tenant namespace '{tenant_namespace_name}' should not retain {GATEWAY_ACCESS_LABEL}"
     )
     assert annotations.get(AIGATEWAY_NAME_ANNOTATION) is None, (
         f"Tenant namespace '{tenant_namespace_name}' should not retain {AIGATEWAY_NAME_ANNOTATION}"

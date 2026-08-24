@@ -44,7 +44,7 @@ from tests.ai_safety.evalhub.constants import (
     OPERATOR_POD_LABEL_SELECTOR,
 )
 from utilities.guardrails import get_auth_headers
-from utilities.kueue_utils import Workload
+from utilities.kueue_utils import KUEUE_QUEUE_NAME_LABEL, LocalQueue, Workload
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -441,7 +441,7 @@ EVALHUB_JOB_TERMINAL_STATES: set[str] = {
 # ---------------------------------------------------------------------------
 
 
-def _get_job_status(
+def get_job_status(
     host: str,
     token: str,
     ca_bundle_file: str,
@@ -491,7 +491,7 @@ def wait_for_evalhub_job(
     for sample in TimeoutSampler(
         wait_timeout=timeout,
         sleep=sleep,
-        func=_get_job_status,
+        func=get_job_status,
         host=host,
         token=token,
         ca_bundle_file=ca_bundle_file,
@@ -606,6 +606,34 @@ def delete_evalhub_job(
         verify=ca_bundle_file,
         timeout=10,
     )
+
+
+def cleanup_evalhub_job(
+    host: str,
+    token: str,
+    ca_bundle_file: str,
+    tenant: str,
+    job_id: str,
+) -> None:
+    """Hard delete an EvalHub job record during test cleanup.
+
+    Intended for test cleanup paths (``finally`` blocks). A job that is already
+    gone (HTTP 404) is treated as success; any other failure is logged as a
+    warning so that it does not mask the original test error.
+    """
+    response = delete_evalhub_job(
+        host=host,
+        token=token,
+        ca_bundle_file=ca_bundle_file,
+        tenant=tenant,
+        job_id=job_id,
+        hard_delete=True,
+    )
+    if response.status_code == requests.codes.not_found:
+        LOGGER.warning(f"Job {job_id} already absent during cleanup, nothing to delete")
+        return
+    if not response.ok:
+        LOGGER.warning(f"Cleanup of EvalHub job {job_id} failed with HTTP {response.status_code}: {response.text}")
 
 
 def validate_evalhub_delete_denied(
@@ -757,6 +785,40 @@ def evalhub_runtime_label_selector(evalhub_job_id: str) -> str:
         f"{EVALHUB_K8S_LABEL_COMPONENT}={EVALHUB_K8S_LABEL_COMPONENT_VALUE},"
         f"{EVALHUB_K8S_LABEL_JOB_ID}={evalhub_job_id}"
     )
+
+
+def log_job_kueue_labels(admin_client: DynamicClient, namespace: str, evalhub_job_id: str) -> None:
+    """Log the Kueue queue-name label on the Kubernetes Job created by EvalHub.
+
+    Debugging helper called on test failure paths (typically from a
+    ``TimeoutExpiredError`` handler) to diagnose whether EvalHub propagated the
+    Kueue queue-name label to the Job. Failures here are diagnostic-only and
+    must not replace the original timeout, so all lookup/logging errors are
+    swallowed and logged instead of raised. Can be removed once Kueue label
+    propagation is stable.
+    """
+    try:
+        selector = evalhub_runtime_label_selector(evalhub_job_id=evalhub_job_id)
+        jobs = list(Job.get(client=admin_client, namespace=namespace, label_selector=selector))
+        if not jobs:
+            LOGGER.warning("No Kubernetes Job found for EvalHub job", evalhub_job_id=evalhub_job_id)
+            return
+        for job in jobs:
+            labels = job.instance.metadata.labels or {}
+            queue_label = labels.get(KUEUE_QUEUE_NAME_LABEL)
+            LOGGER.info(
+                "Kubernetes Job kueue label check",
+                job_name=job.name,
+                kueue_queue_name_label=queue_label,
+                has_kueue_label=queue_label is not None,
+                all_labels=dict(labels),
+            )
+    except Exception:
+        LOGGER.warning(
+            "Failed to look up/log Kueue labels for EvalHub job's Kubernetes Job",
+            evalhub_job_id=evalhub_job_id,
+            exc_info=True,
+        )
 
 
 def wait_for_evalhub_runtime_job_count(
@@ -921,6 +983,40 @@ def build_pvc_job_payload(
         benchmark["test_data_ref"] = pvc_ref
         if tokenizer_path:
             benchmark["parameters"]["tokenizer"] = tokenizer_path
+    return payload
+
+
+def build_evalhub_kueue_job_payload(
+    queue_name: str,
+    model_service_name: str,
+    tenant_namespace: str,
+    job_name: str = "evalhub-mt-test-job",
+) -> dict:
+    """Build an EvalHub job payload with the Kueue queue field set.
+
+    Without ``payload["queue"]`` EvalHub creates a plain batch Job that Kueue
+    ignores — no Workload is ever created for it. Every Kueue test must submit
+    through this helper (or set the queue field explicitly).
+
+    Args:
+        queue_name: LocalQueue name the job should be submitted to.
+        model_service_name: Kubernetes Service name for the vLLM emulator.
+        tenant_namespace: Namespace where the service runs.
+        job_name: Name for the evaluation job.
+
+    Returns:
+        Job request body dict with the ``queue`` field populated.
+
+        queue:
+            kind: kueue
+            name: your-local-queue-name
+    """
+    payload = build_evalhub_job_payload(
+        model_service_name=model_service_name,
+        tenant_namespace=tenant_namespace,
+        job_name=job_name,
+    )
+    payload["queue"] = {"kind": "kueue", "name": queue_name}
     return payload
 
 
@@ -1112,7 +1208,37 @@ def wait_for_service_account(
 # ---------------------------------------------------------------------------
 
 
-def _get_evalhub_job_workload(
+def cluster_queue_name(local_queue: LocalQueue) -> str:
+    """Return the ClusterQueue name backing this LocalQueue."""
+    return local_queue.instance.spec.clusterQueue
+
+
+def delete_evalhub_runtime_k8s_job(admin_client: DynamicClient, namespace: str, evalhub_job_id: str) -> None:
+    """Delete the Kubernetes batch Job for a given EvalHub job ID.
+
+    Uses the admin client to delete the Job directly, bypassing the EvalHub
+    API. This is required because the operator-managed kube-rbac-proxy
+    auth.yaml lacks rules for individual job paths.
+
+    Deletes with ``propagationPolicy: Background`` so the Kubernetes garbage
+    collector cascade-deletes the Job's dependents — most importantly the Kueue
+    Workload, which Kueue creates with a controller ownerReference back to the
+    Job. Without an explicit policy the API server applies the ``batch/v1`` Job
+    default (Orphan), which *strips* that ownerReference and leaves the Workload
+    behind holding reserved quota instead of deleting it.
+    """
+    selector = evalhub_runtime_label_selector(evalhub_job_id=evalhub_job_id)
+    jobs = list(Job.get(client=admin_client, namespace=namespace, label_selector=selector))
+    if not jobs:
+        LOGGER.warning("No Kubernetes Job found to delete", evalhub_job_id=evalhub_job_id)
+        return
+    for job in jobs:
+        LOGGER.info(f"Deleting Kubernetes Job {job.name} for EvalHub job {evalhub_job_id}")
+        job.delete(wait=True, body={"propagationPolicy": "Background"})
+    LOGGER.info(f"Kubernetes Job(s) for EvalHub job {evalhub_job_id} deleted")
+
+
+def get_evalhub_job_workload(
     admin_client: DynamicClient,
     namespace: str,
     evalhub_job_id: str,
@@ -1159,7 +1285,7 @@ def _get_evalhub_job_workload(
     return workloads[0] if workloads else None
 
 
-def _check_workload_admitted(workload: Workload) -> bool:
+def check_workload_admitted(workload: Workload) -> bool:
     """Check if a Kueue Workload is admitted.
 
     Args:
@@ -1191,8 +1317,16 @@ def check_workload_quota_reserved(workload: Workload) -> bool:
     return False
 
 
-def _check_workload_inadmissible(workload: Workload) -> bool:
-    """Check if a Kueue Workload is inadmissible (quota exhausted).
+WORKLOAD_INADMISSIBLE_REASONS: set[str] = {
+    "Inadmissible",
+    # Kueue >= 0.19 with the UnadmittedWorkloadsObservability feature gate
+    # reports workloads gated by a stopped queue as Suspended instead.
+    "Suspended",
+}
+
+
+def check_workload_inadmissible(workload: Workload) -> bool:
+    """Check if a Kueue Workload is inadmissible (quota exhausted or queue stopped).
 
     Per Kueue docs: QuotaReserved condition with reason=Inadmissible and status=False
     indicates the workload cannot be admitted due to quota constraints.
@@ -1201,14 +1335,14 @@ def _check_workload_inadmissible(workload: Workload) -> bool:
         workload: Workload instance.
 
     Returns:
-        True if the workload has QuotaReserved=False with reason=Inadmissible.
+        True if the workload has QuotaReserved=False with an inadmissible reason.
     """
     conditions = (workload.instance.status or {}).get("conditions", [])
     for condition in conditions:
         if (
             condition.get("type") == "QuotaReserved"
             and condition.get("status") == "False"
-            and condition.get("reason") == "Inadmissible"
+            and condition.get("reason") in WORKLOAD_INADMISSIBLE_REASONS
         ):
             return True
     return False
@@ -1241,12 +1375,12 @@ def wait_for_evalhub_job_workload_admitted(
     for sample in TimeoutSampler(
         wait_timeout=timeout,
         sleep=sleep,
-        func=_get_evalhub_job_workload,
+        func=get_evalhub_job_workload,
         admin_client=admin_client,
         namespace=namespace,
         evalhub_job_id=evalhub_job_id,
     ):
-        if sample and _check_workload_admitted(sample):
+        if sample and check_workload_admitted(sample):
             LOGGER.info(f"Workload for job {evalhub_job_id} admitted")
             return sample
 
@@ -1280,16 +1414,45 @@ def wait_for_evalhub_job_workload_inadmissible(
     for sample in TimeoutSampler(
         wait_timeout=timeout,
         sleep=sleep,
-        func=_get_evalhub_job_workload,
+        func=get_evalhub_job_workload,
         admin_client=admin_client,
         namespace=namespace,
         evalhub_job_id=evalhub_job_id,
     ):
-        if sample and _check_workload_inadmissible(sample):
+        if sample and check_workload_inadmissible(sample):
             LOGGER.info(f"Workload for job {evalhub_job_id} is inadmissible")
             return sample
 
     raise TimeoutExpiredError(f"Workload for job {evalhub_job_id} did not become inadmissible within {timeout}s")
+
+
+def wait_for_evalhub_job_workload_absent(
+    admin_client: DynamicClient,
+    namespace: str,
+    workload_name: str,
+    timeout: int = 60,
+    sleep: int = 5,
+) -> None:
+    """Poll until the named Kueue Workload no longer exists.
+
+    Callers must resolve the Workload's name (e.g. via `get_evalhub_job_workload`)
+    *before* deleting the underlying Kubernetes Job. Once the Job is gone,
+    `get_evalhub_job_workload` can no longer resolve the Workload by job UID
+    (it looks up the Job first), so it would report "absent" immediately even
+    if the Workload itself is still leaking quota. Polling the specific
+    Workload by name avoids that false positive.
+    """
+    workload = Workload(client=admin_client, namespace=namespace, name=workload_name)
+    try:
+        for exists in TimeoutSampler(
+            wait_timeout=timeout,
+            sleep=sleep,
+            func=lambda: workload.exists is not None,
+        ):
+            if not exists:
+                return
+    except TimeoutExpiredError:
+        raise TimeoutExpiredError(f"Kueue Workload {workload_name} still present after {timeout}s") from None
 
 
 def assert_plain_text_logs_response(response: requests.Response) -> str:
