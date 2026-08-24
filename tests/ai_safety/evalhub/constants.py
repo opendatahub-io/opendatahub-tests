@@ -34,6 +34,7 @@ EVALHUB_FULL_API_VERSION_V1: str = f"{EVALHUB_API_GROUP}/v1"
 EVALHUB_FULL_API_VERSION_V1ALPHA1: str = f"{EVALHUB_API_GROUP}/v1alpha1"
 EVALHUB_KIND: str = "EvalHub"
 EVALHUB_PLURAL: str = "evalhubs"
+EVALHUB_CRD_NAME: str = f"{EVALHUB_PLURAL}.{EVALHUB_API_GROUP}"
 
 # Multi-tenancy
 EVALHUB_TENANT_LABEL_KEY: str = "evalhub.trustyai.opendatahub.io/tenant"
