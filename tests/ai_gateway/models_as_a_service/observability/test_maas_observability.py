@@ -19,6 +19,7 @@ class TestMaaSObservability:
 
     def test_limitador_servicemonitor_exists(
         self,
+        admin_client: DynamicClient,
         maas_config_default: MaaSConfig,
         limitador_service_monitor: ServiceMonitor,
     ) -> None:
@@ -28,6 +29,7 @@ class TestMaaSObservability:
         scrape configuration and Config/default owner reference.
         """
         validate_limitador_service_monitor_spec(
+            admin_client=admin_client,
             limitador_service_monitor=limitador_service_monitor,
             maas_config=maas_config_default,
         )

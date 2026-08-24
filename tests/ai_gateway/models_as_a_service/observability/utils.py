@@ -33,6 +33,7 @@ from tests.ai_gateway.models_as_a_service.observability.constants import (
 from utilities.constants import MAAS_GATEWAY_NAMESPACE
 from utilities.monitoring import validate_metrics_field
 from utilities.resources.envoy_filter import EnvoyFilter
+from utilities.resources.kuadrant import Kuadrant
 from utilities.resources.maas_config import Config as MaaSConfig
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -91,6 +92,34 @@ def limitador_is_deployed(admin_client: DynamicClient) -> bool:
         if pods:
             return True
     return False
+
+
+def resolve_kuadrant_namespace(admin_client: DynamicClient) -> str:
+    """Return the namespace of the Kuadrant CR that hosts the Limitador policy engine."""
+    kuadrant_instances = list(Kuadrant.get(client=admin_client))
+    if not kuadrant_instances:
+        raise AssertionError(
+            "Kuadrant CR not found cluster-wide; cannot validate Limitador ServiceMonitor namespaceSelector"
+        )
+
+    preferred_namespaces = set(LIMITADOR_DEPLOYMENT_NAMESPACES)
+    for kuadrant in kuadrant_instances:
+        if kuadrant.namespace in preferred_namespaces:
+            return kuadrant.namespace
+
+    return kuadrant_instances[0].namespace
+
+
+def limitador_namespace_selector_matches_kuadrant_namespace(
+    namespace_selector: object,
+    kuadrant_namespace: str,
+) -> bool:
+    """Return True when the ServiceMonitor namespaceSelector includes the Kuadrant namespace."""
+    if getattr(namespace_selector, "any", False):
+        return True
+
+    match_names = getattr(namespace_selector, "matchNames", None) or []
+    return kuadrant_namespace in match_names
 
 
 def get_maas_config_default(admin_client: DynamicClient) -> MaaSConfig:
@@ -178,6 +207,7 @@ def wait_for_limitador_service_monitor(
 
 
 def validate_limitador_service_monitor_spec(
+    admin_client: DynamicClient,
     limitador_service_monitor: ServiceMonitor,
     maas_config: MaaSConfig,
 ) -> None:
@@ -208,8 +238,15 @@ def validate_limitador_service_monitor_spec(
     selector_labels = dict(spec.selector.matchLabels or {})
     assert selector_labels.get("app") == LIMITADOR_APP_LABEL
 
+    kuadrant_namespace = resolve_kuadrant_namespace(admin_client=admin_client)
     namespace_selector = spec.namespaceSelector
-    assert namespace_selector.any is True, "Expected namespaceSelector.any=true for cross-namespace Limitador scrape"
+    assert limitador_namespace_selector_matches_kuadrant_namespace(
+        namespace_selector=namespace_selector,
+        kuadrant_namespace=kuadrant_namespace,
+    ), (
+        f"Expected ServiceMonitor namespaceSelector to match Kuadrant namespace "
+        f"'{kuadrant_namespace}', got namespaceSelector={namespace_selector}"
+    )
 
 
 def validate_limitador_metrics_in_prometheus(
