@@ -10,9 +10,8 @@ from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError
 
-from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH, Labels
+from utilities.constants import Labels
 from utilities.general import collect_pod_information
-from utilities.infra import check_internal_image_registry_available
 
 LOGGER = get_logger(name=__name__)
 

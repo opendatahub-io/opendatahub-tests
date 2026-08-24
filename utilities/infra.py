@@ -1214,7 +1214,6 @@ def download_oc_console_cli(admin_client: DynamicClient, tmpdir: LocalPath) -> s
 
 def check_internal_image_registry_available(admin_client: DynamicClient) -> bool:
     """Check if internal image registry is available by checking the imageregistry config managementState."""
-    from ocp_resources.config_imageregistry_operator_openshift_io import Config
 
     try:
         config_instance = Config(client=admin_client, name="cluster")
