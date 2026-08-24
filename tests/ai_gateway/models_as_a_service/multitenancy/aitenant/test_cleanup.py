@@ -26,11 +26,10 @@ class TestAITenantCleanup:
         when the AITenant is deleted,
         then maas.opendatahub.io/gateway-access is removed from the preserved namespace.
         """
-        test_context = ready_aitenant_for_deletion
         verify_gateway_access_label_removed_after_aitenant_delete(
             admin_client=admin_client,
-            tenant_namespace_name=test_context["tenant_namespace_name"],
-            aitenant=test_context["aitenant"],
+            tenant_namespace_name=ready_aitenant_for_deletion["tenant_namespace_name"],
+            aitenant=ready_aitenant_for_deletion["aitenant"],
         )
 
     @pytest.mark.tier1
@@ -68,11 +67,10 @@ class TestAITenantCleanup:
         then maas.opendatahub.io/gateway-access=true is present,
         and when the AITenant is deleted the label is removed.
         """
-        test_context = aitenant_on_preexisting_derived_tenant_namespace
         verify_gateway_access_label_removed_after_aitenant_delete(
             admin_client=admin_client,
-            tenant_namespace_name=test_context["tenant_namespace_name"],
-            aitenant=test_context["aitenant"],
+            tenant_namespace_name=aitenant_on_preexisting_derived_tenant_namespace["tenant_namespace_name"],
+            aitenant=aitenant_on_preexisting_derived_tenant_namespace["aitenant"],
         )
 
     @pytest.mark.tier2

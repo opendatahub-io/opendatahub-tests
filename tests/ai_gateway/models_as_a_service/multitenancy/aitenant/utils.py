@@ -642,17 +642,16 @@ def verify_tenant_namespace_gateway_access_label_present(
     namespace_labels: dict[str, str] | None = None,
 ) -> None:
     """Assert the tenant namespace has maas.opendatahub.io/gateway-access=true."""
-    labels = namespace_labels
-    if labels is None:
+    if namespace_labels is None:
         tenant_namespace = Namespace(
             client=admin_client,
             name=tenant_namespace_name,
             ensure_exists=True,
         )
-        labels = dict(tenant_namespace.instance.metadata.labels or {})
-    assert labels.get(GATEWAY_ACCESS_LABEL) == GATEWAY_ACCESS_LABEL_VALUE, (
+        namespace_labels = dict(tenant_namespace.instance.metadata.labels or {})
+    assert namespace_labels.get(GATEWAY_ACCESS_LABEL) == GATEWAY_ACCESS_LABEL_VALUE, (
         f"Tenant namespace '{tenant_namespace_name}' label {GATEWAY_ACCESS_LABEL} expected "
-        f"{GATEWAY_ACCESS_LABEL_VALUE!r}, got {labels.get(GATEWAY_ACCESS_LABEL)!r}"
+        f"{GATEWAY_ACCESS_LABEL_VALUE!r}, got {namespace_labels.get(GATEWAY_ACCESS_LABEL)!r}"
     )
 
 

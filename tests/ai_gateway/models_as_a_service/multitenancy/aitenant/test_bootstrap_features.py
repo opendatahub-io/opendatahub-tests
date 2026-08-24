@@ -28,10 +28,9 @@ class TestAITenantBootstrapFeatures:
         """Given a bootstrapped Ready AITenant, when the tenant namespace is inspected,
         then maas.opendatahub.io/gateway-access=true is present.
         """
-        test_context = aitenant_for_test
         verify_tenant_namespace_gateway_access_label_present(
             admin_client=admin_client,
-            tenant_namespace_name=test_context["tenant_namespace_name"],
+            tenant_namespace_name=aitenant_for_test["tenant_namespace_name"],
         )
 
     @pytest.mark.tier1
