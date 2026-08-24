@@ -1,3 +1,4 @@
+import time
 from collections.abc import Generator
 from contextlib import ExitStack
 from typing import Any
@@ -5,10 +6,10 @@ from typing import Any
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.api_service import APIService
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.evalhub import EvalHub
+from ocp_resources.exceptions import ResourceTeardownError
 from ocp_resources.namespace import Namespace
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.role import Role
@@ -16,6 +17,7 @@ from ocp_resources.role_binding import RoleBinding
 from ocp_resources.route import Route
 from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
+from ocp_resources.subscription import Subscription
 from ocp_utilities.operators import install_operator, uninstall_operator
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
@@ -26,16 +28,15 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_VLLM_EMULATOR_PORT,
 )
 from tests.ai_safety.evalhub.kueue.constants import (
-    MULTI_JOB_CPU_QUOTA,
-    MULTI_JOB_MEMORY_QUOTA,
-    SINGLE_JOB_CPU_QUOTA,
-    SINGLE_JOB_MEMORY_QUOTA,
+    KUEUE_CPU_QUOTA,
+    KUEUE_MEMORY_QUOTA,
     VLLM_EMULATOR,
     VLLM_EMULATOR_IMAGE,
 )
 from tests.ai_safety.evalhub.utils import (
     build_evalhub_job_payload,
-    delete_evalhub_job,
+    build_evalhub_kueue_job_payload,
+    cleanup_evalhub_job,
     is_evalhub_crd_available,
     submit_evalhub_job,
     tenant_rbac_ready,
@@ -45,6 +46,7 @@ from utilities.constants import DscComponents, Labels, Protocols, Timeout
 from utilities.data_science_cluster_utils import get_dsc_ready_condition, wait_for_dsc_reconciliation
 from utilities.infra import create_inference_token, create_ns
 from utilities.kueue_utils import (
+    KUEUE_OPERATOR_NAMESPACE,
     ClusterQueue,
     Kueue,
     LocalQueue,
@@ -52,10 +54,25 @@ from utilities.kueue_utils import (
     create_cluster_queue,
     create_local_queue,
     create_resource_flavor,
+    drain_namespace_kueue_resources,
+    full_kueue_controller_cleanup,
+    get_kueue_controller_pod_uids,
+    pause_kueue_controller,
+    remove_kueue_visibility_api_services,
+    resume_kueue_controller,
+    wait_for_kueue_controller_rollout,
     wait_for_kueue_crds_available,
+    wait_for_queue_active,
 )
 
 LOGGER = structlog.get_logger(name=__name__)
+
+KUEUE_TENANT_NS = "test-evalhub-kueue"
+KUEUE_MODEL_NS = "test-evalhub-kueue-model"
+MULTI_JOB_FLAVOR_NAME = "evalhub-multi-flavor"
+SINGLE_JOB_FLAVOR_NAME = "evalhub-single-flavor"
+MULTI_JOB_CLUSTER_QUEUE_NAME = "evalhub-multi-cluster-queue"
+SINGLE_JOB_CLUSTER_QUEUE_NAME = "evalhub-single-cluster-queue"
 
 
 # ---------------------------------------------------------------------------
@@ -63,13 +80,79 @@ LOGGER = structlog.get_logger(name=__name__)
 # ---------------------------------------------------------------------------
 
 
-# Kueue-specific evalhub_mt_* fixtures (use evalhub_kueue_namespace instead of model_namespace)
+@pytest.fixture(scope="session")
+def trustyai_pods_log_rbac(
+    admin_client: DynamicClient,
+    evalhub_kueue_model_namespace: Namespace,
+    evalhub_kueue_namespace: Namespace,
+) -> Generator[None, Any, Any]:
+    """Give the TrustyAI operator permission to read pod logs in test namespaces.
+
+    In RHOAI 3.5.0, TrustyAI creates an EvalHub Role that includes permission
+    to read pod logs, but the TrustyAI operator itself does not have this
+    permission. Namespace-scoped Roles limit the grant to test namespaces
+    instead of cluster-wide access.
+    """
+    sa_name = "trustyai-service-operator-controller-manager"
+    sa_namespace = "redhat-ods-applications"
+    role_name = "trustyai-pods-log-grant"
+
+    with ExitStack() as stack:
+        for ns in [evalhub_kueue_model_namespace.name, evalhub_kueue_namespace.name]:
+            stack.enter_context(
+                cm=Role(
+                    client=admin_client,
+                    name=role_name,
+                    namespace=ns,
+                    rules=[{"apiGroups": [""], "resources": ["pods/log"], "verbs": ["get"]}],
+                )
+            )
+            stack.enter_context(
+                cm=RoleBinding(
+                    client=admin_client,
+                    name=f"{role_name}-binding",
+                    namespace=ns,
+                    subjects_kind="ServiceAccount",
+                    subjects_name=sa_name,
+                    subjects_namespace=sa_namespace,
+                    role_ref_kind="Role",
+                    role_ref_name=role_name,
+                )
+            )
+        yield
+
+
+@pytest.fixture(scope="session")
+def evalhub_kueue_model_namespace(
+    admin_client: DynamicClient,
+    clean_stale_kueue_state: None,
+) -> Generator[Namespace, Any, Any]:
+    """Namespace for the EvalHub CR and deployment.
+
+    Must NOT carry the evalhub tenant label — TrustyAI rejects EvalHub CRs
+    placed in a namespace marked as a tenant namespace.
+    """
+    with create_ns(
+        admin_client=admin_client,
+        name=KUEUE_MODEL_NS,
+    ) as namespace:
+        yield namespace
+
+
 @pytest.fixture(scope="session")
 def evalhub_kueue_cr(
     admin_client: DynamicClient,
-    evalhub_kueue_namespace: Namespace,
+    evalhub_kueue_model_namespace: Namespace,
+    kueue_unmanaged_dsc: None,
+    trustyai_pods_log_rbac: None,
 ) -> Generator[EvalHub, Any, Any]:
-    """Create an EvalHub CR for Kueue tests."""
+    """Create an EvalHub CR for Kueue tests.
+
+    Depends on kueue_unmanaged_dsc to ensure DSC reconciliation is fully
+    complete before creating the EvalHub CR. DSC reconciliation can trigger
+    a TrustyAI operator restart; creating the CR during that window causes
+    TrustyAI to miss the creation event and never deploy the service.
+    """
     if not is_evalhub_crd_available(admin_client):
         pytest.fail(
             "EvalHub CRD 'evalhubs.trustyai.opendatahub.io' not available on this cluster. "
@@ -79,7 +162,7 @@ def evalhub_kueue_cr(
     with EvalHub(
         client=admin_client,
         name="evalhub-mt",
-        namespace=evalhub_kueue_namespace.name,
+        namespace=evalhub_kueue_model_namespace.name,
         database={"type": "sqlite"},
         collections=["leaderboard-v2"],
         wait_for_resource=True,
@@ -90,30 +173,30 @@ def evalhub_kueue_cr(
 @pytest.fixture(scope="session")
 def evalhub_kueue_deployment(
     admin_client: DynamicClient,
-    evalhub_kueue_namespace: Namespace,
+    evalhub_kueue_model_namespace: Namespace,
     evalhub_kueue_cr: EvalHub,
 ) -> Deployment:
     """Wait for the EvalHub deployment to become available."""
     deployment = Deployment(
         client=admin_client,
         name=evalhub_kueue_cr.name,
-        namespace=evalhub_kueue_namespace.name,
+        namespace=evalhub_kueue_model_namespace.name,
     )
-    deployment.wait_for_replicas(timeout=300)
+    deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_10MIN)
     return deployment
 
 
 @pytest.fixture(scope="session")
 def evalhub_kueue_route(
     admin_client: DynamicClient,
-    evalhub_kueue_namespace: Namespace,
+    evalhub_kueue_model_namespace: Namespace,
     evalhub_kueue_deployment: Deployment,
 ) -> Route:
     """Get the Route for the EvalHub service."""
     return Route(
         client=admin_client,
         name=evalhub_kueue_deployment.name,
-        namespace=evalhub_kueue_namespace.name,
+        namespace=evalhub_kueue_model_namespace.name,
         ensure_exists=True,
     )
 
@@ -126,39 +209,42 @@ def evalhub_kueue_ca_bundle_file(
     return create_ca_bundle_file(client=admin_client)
 
 
-# ---------------------------------------------------------------------------
-# Kueue Fixtures
-# ---------------------------------------------------------------------------
-
-
-_KUEUE_OPERATOR_NS = "openshift-kueue-operator"
-_KUEUE_PACKAGE = "kueue-operator"
-_KUEUE_CHANNEL = "stable-v1.3"
-_CERT_MANAGER_OPERATOR_NS = "cert-manager-operator"
-_CERT_MANAGER_PACKAGE = "openshift-cert-manager-operator"
-_CERT_MANAGER_CHANNEL = "stable-v1"
-_KUEUE_VISIBILITY_API_GROUP = "visibility.kueue.x-k8s.io"  # gitleaks:allow
-
-
 @pytest.fixture(scope="session")
 def installed_cert_manager_operator(admin_client: DynamicClient) -> Generator[None, Any, Any]:
-    """Install the cert-manager operator (required by Kueue for webhook TLS), uninstall at session end."""
-    install_operator(
-        admin_client=admin_client,
-        target_namespaces=None,
-        name=_CERT_MANAGER_PACKAGE,
-        channel=_CERT_MANAGER_CHANNEL,
-        source="redhat-operators",
-        operator_namespace=_CERT_MANAGER_OPERATOR_NS,
-        timeout=Timeout.TIMEOUT_15MIN,
+    """Install the cert-manager operator if not already present; uninstall only if this fixture installed it."""
+    operator_namespace = "cert-manager-operator"
+    package_name = "openshift-cert-manager-operator"
+    channel = "stable-v1"
+
+    cert_manager_subscription = Subscription(
+        client=admin_client,
+        namespace=operator_namespace,
+        name=package_name,
     )
+    installed_by_fixture = not cert_manager_subscription.exists
+    if installed_by_fixture:
+        LOGGER.warning(
+            "cert-manager not found on this cluster; installing it for this session. "
+            "On CI clusters cert-manager is expected to be pre-provisioned — if this "
+            "fires in a Jenkins run, the cluster is misconfigured."
+        )
+        install_operator(
+            admin_client=admin_client,
+            target_namespaces=None,
+            name=package_name,
+            channel=channel,
+            source="redhat-operators",
+            operator_namespace=operator_namespace,
+            timeout=Timeout.TIMEOUT_15MIN,
+        )
     yield
-    uninstall_operator(
-        admin_client=admin_client,
-        name=_CERT_MANAGER_PACKAGE,
-        operator_namespace=_CERT_MANAGER_OPERATOR_NS,
-        clean_up_namespace=True,
-    )
+    if installed_by_fixture:
+        uninstall_operator(
+            admin_client=admin_client,
+            name=package_name,
+            operator_namespace=operator_namespace,
+            clean_up_namespace=True,
+        )
 
 
 @pytest.fixture(scope="session")
@@ -166,23 +252,37 @@ def installed_kueue_operator(
     admin_client: DynamicClient,
     installed_cert_manager_operator: None,
 ) -> Generator[None, Any, Any]:
-    """Install the Red Hat build of Kueue operator, uninstall at session end."""
-    install_operator(
-        admin_client=admin_client,
-        target_namespaces=None,
-        name=_KUEUE_PACKAGE,
-        channel=_KUEUE_CHANNEL,
-        source="redhat-operators",
-        operator_namespace=_KUEUE_OPERATOR_NS,
-        timeout=Timeout.TIMEOUT_15MIN,
+    """Install the Red Hat build of Kueue operator if not already present.
+
+    Uninstalls only if this fixture performed the installation.
+    """
+    package_name = "kueue-operator"
+    channel = "stable-v1.3"
+
+    kueue_subscription = Subscription(
+        client=admin_client,
+        namespace=KUEUE_OPERATOR_NAMESPACE,
+        name=package_name,
     )
+    installed_by_fixture = not kueue_subscription.exists
+    if installed_by_fixture:
+        install_operator(
+            admin_client=admin_client,
+            target_namespaces=None,
+            name=package_name,
+            channel=channel,
+            source="redhat-operators",
+            operator_namespace=KUEUE_OPERATOR_NAMESPACE,
+            timeout=Timeout.TIMEOUT_15MIN,
+        )
     yield
-    uninstall_operator(
-        admin_client=admin_client,
-        name=_KUEUE_PACKAGE,
-        operator_namespace=_KUEUE_OPERATOR_NS,
-        clean_up_namespace=True,
-    )
+    if installed_by_fixture:
+        uninstall_operator(
+            admin_client=admin_client,
+            name=package_name,
+            operator_namespace=KUEUE_OPERATOR_NAMESPACE,
+            clean_up_namespace=True,
+        )
 
 
 @pytest.fixture(scope="session")
@@ -190,22 +290,48 @@ def kueue_cr(
     admin_client: DynamicClient,
     installed_kueue_operator: None,
 ) -> Generator[Kueue, Any, Any]:
-    """Create the Kueue CR — without it the operator does not deploy the Kueue controller."""
-    with Kueue(
-        client=admin_client,
-        name="cluster",
-        config={"integrations": {"frameworks": ["BatchJob"]}},
-        management_state="Managed",
-    ) as kueue:
-        wait_for_kueue_crds_available(client=admin_client)
-        yield kueue
+    """Create the Kueue CR and ensure BatchJob framework integration is enabled.
 
-    # The controller's aggregated visibility APIService can outlive the CR; if left
-    # stale it breaks API discovery and blocks namespace deletion cluster-wide.
-    for api_service in APIService.get(client=admin_client):
-        if api_service.name.endswith(_KUEUE_VISIBILITY_API_GROUP):
-            LOGGER.info(f"Removing leftover Kueue APIService {api_service.name}")
-            api_service.clean_up(wait=True)
+    If it already exists, adds the BatchJob patch when not already configured
+    and waits for the controller rollout to complete before proceeding.
+    """
+    required_frameworks = {"BatchJob"}
+    created_by_fixture = False
+    with ExitStack() as stack:
+        existing = Kueue(client=admin_client, name="cluster")
+        if existing.exists:
+            LOGGER.info("Kueue CR 'cluster' already exists, checking frameworks")
+            current_frameworks = set(
+                (existing.instance.spec.get("config") or {}).get("integrations", {}).get("frameworks", [])
+            )
+            missing = required_frameworks - current_frameworks
+            if missing:
+                LOGGER.info(f"Adding missing Kueue frameworks: {missing}")
+                updated = list(current_frameworks | required_frameworks)
+                baseline_pod_uids = get_kueue_controller_pod_uids(client=admin_client)
+                stack.enter_context(
+                    cm=ResourceEditor(
+                        patches={existing: {"spec": {"config": {"integrations": {"frameworks": updated}}}}}
+                    )
+                )
+                wait_for_kueue_controller_rollout(client=admin_client, baseline_pod_uids=baseline_pod_uids)
+            wait_for_kueue_crds_available(client=admin_client)
+            yield existing
+        else:
+            created_by_fixture = True
+            kueue = stack.enter_context(
+                cm=Kueue(
+                    client=admin_client,
+                    name="cluster",
+                    config={"integrations": {"frameworks": ["BatchJob"]}},
+                    management_state="Managed",
+                )
+            )
+            wait_for_kueue_crds_available(client=admin_client)
+            yield kueue
+
+        if created_by_fixture:
+            full_kueue_controller_cleanup(admin_client=admin_client)
 
 
 @pytest.fixture(scope="session")
@@ -238,13 +364,89 @@ def kueue_unmanaged_dsc(
                 }
             }
             stack.enter_context(cm=ResourceEditor(patches={dsc_resource: dsc_dict}))
-            wait_for_dsc_reconciliation(dsc=dsc_resource, baseline_time=pre_patch_time)
+            try:
+                wait_for_dsc_reconciliation(dsc=dsc_resource, baseline_time=pre_patch_time)
+            except TimeoutExpiredError:
+                ready_condition = get_dsc_ready_condition(dsc=dsc_resource)
+                if not (ready_condition and ready_condition.get("status") == DataScienceCluster.Condition.Status.TRUE):
+                    raise
+                LOGGER.info("DSC Ready condition never transitioned after the Kueue patch; treating DSC as reconciled")
         yield
 
 
-# ---------------------------------------------------------------------------
-# Namespace and Queue Fixtures
-# ---------------------------------------------------------------------------
+@pytest.fixture(scope="session")
+def clean_stale_kueue_state(
+    admin_client: DynamicClient,
+    kueue_unmanaged_dsc: None,
+) -> None:
+    """Delete test resources left behind by a previous failed run.
+
+    Session fixtures create resources with `with` context managers that fail
+    with 409 Conflict if the resources already exist. Namespaces are removed
+    first — their Workloads hold the kueue.x-k8s.io/resource-in-use finalizer
+    on the ClusterQueues — then the cluster-scoped ClusterQueues and
+    ResourceFlavors.
+    """
+    SLOW_CLEANUP_THRESHOLD = 40
+
+    remove_kueue_visibility_api_services(admin_client=admin_client, wait=True)
+
+    for ns_name in [KUEUE_TENANT_NS, KUEUE_MODEL_NS]:
+        namespace = Namespace(client=admin_client, name=ns_name)
+        if not namespace.exists:
+            continue
+        LOGGER.warning(f"Stale namespace {ns_name} found from previous run, cleaning up")
+        start = time.monotonic()
+        drain_namespace_kueue_resources(admin_client=admin_client, namespace=ns_name)
+        namespace.delete(wait=False)
+        try:
+            for sample in TimeoutSampler(
+                wait_timeout=240,
+                sleep=5,
+                func=lambda n=ns_name: not Namespace(client=admin_client, name=n).exists,
+            ):
+                elapsed = time.monotonic() - start
+                if elapsed > SLOW_CLEANUP_THRESHOLD:
+                    LOGGER.warning(
+                        f"Stale namespace {ns_name} cleanup is slow ({elapsed:.0f}s elapsed). "
+                        f"This usually means Kueue Workloads with finalizers are blocking deletion. "
+                        f"If this keeps happening, manually run: "
+                        f"oc delete workloads --all -n {ns_name} --force --grace-period=0"
+                    )
+                if sample:
+                    break
+        except TimeoutExpiredError:
+            LOGGER.warning(f"Namespace {ns_name} stuck after 240s, force-finalizing")
+            namespace = Namespace(client=admin_client, name=ns_name)
+            if namespace.exists:
+                ns_json = namespace.instance.to_dict()
+                ns_json["spec"]["finalizers"] = []
+                admin_client.request("PUT", f"/api/v1/namespaces/{ns_name}/finalize", body=ns_json)
+                try:
+                    for done in TimeoutSampler(
+                        wait_timeout=30,
+                        sleep=2,
+                        func=lambda n=ns_name: not Namespace(client=admin_client, name=n).exists,
+                    ):
+                        if done:
+                            break
+                except TimeoutExpiredError:
+                    LOGGER.warning(
+                        f"Namespace {ns_name} still present after force-finalizing; "
+                        "continuing, but session fixtures may fail with 409 Conflict"
+                    )
+        elapsed = time.monotonic() - start
+        LOGGER.info(f"Stale namespace {ns_name} cleaned up in {elapsed:.0f}s")
+
+    for resource in [
+        ClusterQueue(client=admin_client, name=MULTI_JOB_CLUSTER_QUEUE_NAME),
+        ClusterQueue(client=admin_client, name=SINGLE_JOB_CLUSTER_QUEUE_NAME),
+        ResourceFlavor(client=admin_client, name=MULTI_JOB_FLAVOR_NAME),
+        ResourceFlavor(client=admin_client, name=SINGLE_JOB_FLAVOR_NAME),
+    ]:
+        if resource.exists:
+            LOGGER.warning(f"Stale {resource.kind} {resource.name} found from previous run, cleaning up")
+            resource.delete(wait=True)
 
 
 # Kueue-specific namespace fixture
@@ -254,6 +456,7 @@ def evalhub_kueue_namespace(
     kueue_unmanaged_dsc: None,
     evalhub_kueue_multi_job_cluster_queue: ClusterQueue,
     evalhub_kueue_single_job_cluster_queue: ClusterQueue,
+    clean_stale_kueue_state: None,
 ) -> Generator[Namespace, Any, Any]:
     """Namespace with both EvalHub tenant label and Kueue opt-in label.
 
@@ -262,13 +465,24 @@ def evalhub_kueue_namespace(
     are removed. Without this, ClusterQueue deletion fails because Workloads still
     hold the kueue.x-k8s.io/resource-in-use finalizer on the ClusterQueue.
     """
-    with create_ns(
-        admin_client=admin_client,
-        name="test-evalhub-kueue",
-        labels={EVALHUB_TENANT_LABEL_KEY: "true"},
-        add_kueue_label=True,
-    ) as ns:
-        yield ns
+    original_replicas = 0
+    try:
+        with create_ns(
+            admin_client=admin_client,
+            name=KUEUE_TENANT_NS,
+            labels={EVALHUB_TENANT_LABEL_KEY: "true"},
+            add_kueue_label=True,
+            delete_timeout=Timeout.TIMEOUT_10MIN,
+        ) as namespace:
+            yield namespace
+            drain_namespace_kueue_resources(admin_client=admin_client, namespace=namespace.name)
+            original_replicas = pause_kueue_controller(admin_client=admin_client)
+    except ResourceTeardownError:
+        LOGGER.warning(
+            f"Namespace {KUEUE_TENANT_NS} teardown timed out; clean_stale_kueue_state will recover it on the next run"
+        )
+    finally:
+        resume_kueue_controller(admin_client=admin_client, replicas=original_replicas)
 
 
 # Multi-job quota fixtures
@@ -276,10 +490,11 @@ def evalhub_kueue_namespace(
 def evalhub_kueue_multi_job_resource_flavor(
     admin_client: DynamicClient,
     kueue_unmanaged_dsc: None,
+    clean_stale_kueue_state: None,
 ) -> Generator[ResourceFlavor, Any, Any]:
     """ResourceFlavor for multi-job quota tests."""
     with create_resource_flavor(
-        name="evalhub-multi-flavor",
+        name=MULTI_JOB_FLAVOR_NAME,
         client=admin_client,
     ) as resource_flavor:
         yield resource_flavor
@@ -291,7 +506,12 @@ def evalhub_kueue_multi_job_cluster_queue(
     evalhub_kueue_multi_job_resource_flavor: ResourceFlavor,
     kueue_unmanaged_dsc: None,
 ) -> Generator[ClusterQueue, Any, Any]:
-    """ClusterQueue with quota for multiple EvalHub jobs."""
+    """ClusterQueue used by tests that submit more than one EvalHub job.
+
+    Carries the same CPU/memory quota as the single-job queue. It is kept
+    separate so that tests which stop or drain one queue do not interfere with
+    tests using the other, not because it grants more capacity.
+    """
     resource_groups = [
         {
             "coveredResources": ["cpu", "memory"],
@@ -299,8 +519,8 @@ def evalhub_kueue_multi_job_cluster_queue(
                 {
                     "name": evalhub_kueue_multi_job_resource_flavor.name,
                     "resources": [
-                        {"name": "cpu", "nominalQuota": MULTI_JOB_CPU_QUOTA},
-                        {"name": "memory", "nominalQuota": MULTI_JOB_MEMORY_QUOTA},
+                        {"name": "cpu", "nominalQuota": KUEUE_CPU_QUOTA},
+                        {"name": "memory", "nominalQuota": KUEUE_MEMORY_QUOTA},
                     ],
                 }
             ],
@@ -308,11 +528,12 @@ def evalhub_kueue_multi_job_cluster_queue(
     ]
 
     with create_cluster_queue(
-        name="evalhub-multi-cluster-queue",
+        name=MULTI_JOB_CLUSTER_QUEUE_NAME,
         client=admin_client,
         resource_groups=resource_groups,
         namespace_selector={},
     ) as cluster_queue:
+        wait_for_queue_active(queue=cluster_queue, timeout=Timeout.TIMEOUT_5MIN)
         yield cluster_queue
 
 
@@ -330,6 +551,7 @@ def evalhub_kueue_multi_job_local_queue(
         cluster_queue=evalhub_kueue_multi_job_cluster_queue.name,
         client=admin_client,
     ) as local_queue:
+        wait_for_queue_active(queue=local_queue)
         yield local_queue
 
 
@@ -338,10 +560,11 @@ def evalhub_kueue_multi_job_local_queue(
 def evalhub_kueue_single_job_resource_flavor(
     admin_client: DynamicClient,
     kueue_unmanaged_dsc: None,
+    clean_stale_kueue_state: None,
 ) -> Generator[ResourceFlavor, Any, Any]:
     """ResourceFlavor for single-job quota tests."""
     with create_resource_flavor(
-        name="evalhub-single-flavor",
+        name=SINGLE_JOB_FLAVOR_NAME,
         client=admin_client,
     ) as resource_flavor:
         yield resource_flavor
@@ -353,7 +576,14 @@ def evalhub_kueue_single_job_cluster_queue(
     evalhub_kueue_single_job_resource_flavor: ResourceFlavor,
     kueue_unmanaged_dsc: None,
 ) -> Generator[ClusterQueue, Any, Any]:
-    """ClusterQueue with quota for exactly 1 EvalHub job."""
+    """ClusterQueue with a small fixed CPU/memory quota for EvalHub Kueue tests.
+
+    The quota does not by itself guarantee that only one job is admitted — Kueue
+    admits on the sum of the pods' resource requests, and the EvalHub job payload
+    does not set any. Tests that need a job to be gated do so with
+    ``stopPolicy: HoldAndDrain`` rather than relying on quota exhaustion. A
+    ``pods`` nominalQuota would be the deterministic way to cap concurrency.
+    """
     resource_groups = [
         {
             "coveredResources": ["cpu", "memory"],
@@ -361,8 +591,8 @@ def evalhub_kueue_single_job_cluster_queue(
                 {
                     "name": evalhub_kueue_single_job_resource_flavor.name,
                     "resources": [
-                        {"name": "cpu", "nominalQuota": SINGLE_JOB_CPU_QUOTA},
-                        {"name": "memory", "nominalQuota": SINGLE_JOB_MEMORY_QUOTA},
+                        {"name": "cpu", "nominalQuota": KUEUE_CPU_QUOTA},
+                        {"name": "memory", "nominalQuota": KUEUE_MEMORY_QUOTA},
                     ],
                 }
             ],
@@ -370,11 +600,12 @@ def evalhub_kueue_single_job_cluster_queue(
     ]
 
     with create_cluster_queue(
-        name="evalhub-single-cluster-queue",
+        name=SINGLE_JOB_CLUSTER_QUEUE_NAME,
         client=admin_client,
         resource_groups=resource_groups,
         namespace_selector={},
     ) as cluster_queue:
+        wait_for_queue_active(queue=cluster_queue, timeout=Timeout.TIMEOUT_5MIN)
         yield cluster_queue
 
 
@@ -392,6 +623,7 @@ def evalhub_kueue_single_job_local_queue(
         cluster_queue=evalhub_kueue_single_job_cluster_queue.name,
         client=admin_client,
     ) as local_queue:
+        wait_for_queue_active(queue=local_queue)
         yield local_queue
 
 
@@ -458,7 +690,7 @@ def evalhub_kueue_vllm_emulator_deployment(
         },
         replicas=1,
     ) as deployment:
-        deployment.wait_for_replicas(timeout=300)
+        deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_10MIN)
         yield deployment
 
 
@@ -519,7 +751,7 @@ def evalhub_kueue_user_token(
             wait_for_resource=True,
         ),
         # kube-rbac-proxy maps HTTP DELETE on /evaluations/jobs to delete on batch/jobs.
-        # Bind the SA to the ClusterRole that grants this permission.
+        # Bind the ServiceAccount to the ClusterRole that grants this permission.
         RoleBinding(
             client=admin_client,
             name="evalhub-kueue-user-jobs-writer-binding",
@@ -535,9 +767,20 @@ def evalhub_kueue_user_token(
         yield create_inference_token(model_service_account=sa)
 
 
-# ---------------------------------------------------------------------------
-# Negative Test Fixtures
-# ---------------------------------------------------------------------------
+@pytest.fixture(scope="session")
+def evalhub_kueue_request_common(
+    evalhub_kueue_route: Route,
+    evalhub_kueue_user_token: str,
+    evalhub_kueue_ca_bundle_file: str,
+    evalhub_kueue_namespace: Namespace,
+) -> dict[str, str]:
+    """Shared EvalHub Kueue request configuration (host, token, CA bundle, tenant)."""
+    return {
+        "host": evalhub_kueue_route.host,
+        "token": evalhub_kueue_user_token,
+        "ca_bundle_file": evalhub_kueue_ca_bundle_file,
+        "tenant": evalhub_kueue_namespace.name,
+    }
 
 
 @pytest.fixture
@@ -549,12 +792,12 @@ def evalhub_job_with_nonexistent_queue(
     evalhub_kueue_ca_bundle_file: str,
 ):
     """Fixture that submits a job with non-existent queue and ensures cleanup."""
-    payload = build_evalhub_job_payload(
+    payload = build_evalhub_kueue_job_payload(
+        queue_name="nonexistent-queue",
         model_service_name=evalhub_kueue_vllm_service.name,
         tenant_namespace=evalhub_kueue_namespace.name,
         job_name="tc-neg-001-invalid-queue",
     )
-    payload["queue"] = {"kind": "kueue", "name": "nonexistent-queue"}
 
     data = submit_evalhub_job(
         host=evalhub_kueue_route.host,
@@ -574,13 +817,12 @@ def evalhub_job_with_nonexistent_queue(
     }
 
     # Cleanup - always executes even if test fails
-    delete_evalhub_job(
+    cleanup_evalhub_job(
         host=evalhub_kueue_route.host,
         token=evalhub_kueue_user_token,
         ca_bundle_file=evalhub_kueue_ca_bundle_file,
         tenant=evalhub_kueue_namespace.name,
         job_id=job_id,
-        hard_delete=True,
     )
 
 
@@ -592,13 +834,16 @@ def evalhub_job_without_queue_spec(
     evalhub_kueue_user_token: str,
     evalhub_kueue_ca_bundle_file: str,
 ):
-    """Fixture that submits a job without queue spec and ensures cleanup."""
+    """Fixture that submits a job without queue spec and ensures cleanup.
+
+    build_evalhub_job_payload deliberately omits the queue field — EvalHub
+    must run such jobs as plain batch Jobs without Kueue management.
+    """
     payload = build_evalhub_job_payload(
         model_service_name=evalhub_kueue_vllm_service.name,
         tenant_namespace=evalhub_kueue_namespace.name,
         job_name="tc-neg-002-no-queue",
     )
-    payload.pop("queue", None)
 
     data = submit_evalhub_job(
         host=evalhub_kueue_route.host,
@@ -618,13 +863,12 @@ def evalhub_job_without_queue_spec(
     }
 
     # Cleanup - always executes even if test fails
-    delete_evalhub_job(
+    cleanup_evalhub_job(
         host=evalhub_kueue_route.host,
         token=evalhub_kueue_user_token,
         ca_bundle_file=evalhub_kueue_ca_bundle_file,
         tenant=evalhub_kueue_namespace.name,
         job_id=job_id,
-        hard_delete=True,
     )
 
 
@@ -638,12 +882,12 @@ def evalhub_job_for_cross_tenant_test(
     evalhub_kueue_ca_bundle_file: str,
 ):
     """Fixture that submits a job for cross-tenant access testing and ensures cleanup."""
-    payload = build_evalhub_job_payload(
+    payload = build_evalhub_kueue_job_payload(
+        queue_name=evalhub_kueue_multi_job_local_queue.name,
         model_service_name=evalhub_kueue_vllm_service.name,
         tenant_namespace=evalhub_kueue_namespace.name,
         job_name="tc-neg-004-cross-tenant",
     )
-    payload["queue"] = {"kind": "kueue", "name": evalhub_kueue_multi_job_local_queue.name}
 
     data = submit_evalhub_job(
         host=evalhub_kueue_route.host,
@@ -663,11 +907,10 @@ def evalhub_job_for_cross_tenant_test(
     }
 
     # Cleanup - always executes even if test fails
-    delete_evalhub_job(
+    cleanup_evalhub_job(
         host=evalhub_kueue_route.host,
         token=evalhub_kueue_user_token,
         ca_bundle_file=evalhub_kueue_ca_bundle_file,
         tenant=evalhub_kueue_namespace.name,
         job_id=job_id,
-        hard_delete=True,
     )
