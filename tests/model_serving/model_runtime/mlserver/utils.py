@@ -17,6 +17,7 @@ from ocp_resources.inference_service import InferenceService
 from tests.model_serving.model_runtime.mlserver.constant import (
     BASE_RAW_DEPLOYMENT_CONFIG,
     LOCALHOST_URL,
+    MODEL_CONFIGS,
     MODEL_PATH_PREFIX,
     OutputType,
 )
@@ -234,7 +235,9 @@ def get_model_storage_uri_dict(
 
         return config
     else:
-        return {"model-dir": f"{MODEL_PATH_PREFIX.rstrip('/')}/{model_format_name.lstrip('/')}"}
+        model_config = MODEL_CONFIGS.get(model_format_name, {})
+        dir_name = str(model_config.get("s3_model_dir", model_format_name))
+        return {"model-dir": f"{MODEL_PATH_PREFIX.rstrip('/')}/{dir_name.lstrip('/')}"}
 
 
 def get_model_namespace_dict(
@@ -283,7 +286,11 @@ def get_deployment_config_dict(
     deployment_config_dict = {}
 
     if deployment_mode == KServeDeploymentType.STANDARD:
-        deployment_config_dict = {"name": model_format_name, **BASE_RAW_DEPLOYMENT_CONFIG}
+        deployment_config_dict = {
+            "name": model_format_name,
+            "model_format": model_format_name,
+            **BASE_RAW_DEPLOYMENT_CONFIG,
+        }
 
     return deployment_config_dict
 
