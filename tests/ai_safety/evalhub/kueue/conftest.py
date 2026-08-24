@@ -6,7 +6,6 @@ from typing import Any
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.evalhub import EvalHub
@@ -38,6 +37,7 @@ from tests.ai_safety.evalhub.utils import (
     build_evalhub_job_payload,
     build_evalhub_kueue_job_payload,
     cleanup_evalhub_job,
+    is_evalhub_crd_available,
     submit_evalhub_job,
     tenant_rbac_ready,
 )
@@ -75,17 +75,9 @@ MULTI_JOB_CLUSTER_QUEUE_NAME = "evalhub-multi-cluster-queue"
 SINGLE_JOB_CLUSTER_QUEUE_NAME = "evalhub-single-cluster-queue"
 
 
-def is_evalhub_crd_available(admin_client: DynamicClient) -> bool:
-    """Check if EvalHub CRD is installed on the cluster."""
-    crd_name = "evalhubs.trustyai.opendatahub.io"
-    try:
-        crd = CustomResourceDefinition(
-            client=admin_client,
-            name=crd_name,
-        )
-        return crd.exists
-    except AttributeError, KeyError:
-        return False
+# ---------------------------------------------------------------------------
+# EvalHub Multi-Tenancy Fixtures (for Kueue tests)
+# ---------------------------------------------------------------------------
 
 
 @pytest.fixture(scope="session")

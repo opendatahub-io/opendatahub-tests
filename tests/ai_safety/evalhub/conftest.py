@@ -7,8 +7,9 @@ from typing import Any
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.cluster_role import ClusterRole
+from ocp_resources.cluster_role_binding import ClusterRoleBinding
 from ocp_resources.config_map import ConfigMap
-from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.data_science_pipelines_application import DataSciencePipelinesApplication
 from ocp_resources.deployment import Deployment
 from ocp_resources.evalhub import EvalHub
@@ -17,6 +18,7 @@ from ocp_resources.mlflow import MLflow
 from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
+from ocp_resources.resource import ResourceEditor
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.route import Route
@@ -45,10 +47,14 @@ from tests.ai_safety.evalhub.constants import (
     GARAK_SIMPLE_PROVIDER_ID,
     MINIO_MC_IMAGE,
     MINIO_UPLOADER_SECURITY_CONTEXT,
+    OPERATOR_OTEL_SERVICE_NAME,
     OTEL_COLLECTOR_GRPC_PORT,
     OTEL_COLLECTOR_HTTP_PORT,
     OTEL_COLLECTOR_NAMESPACE,
     OTEL_COLLECTOR_PROMETHEUS_PORT,
+    OTEL_TRACE_COLLECTOR_LABELS,
+    OTEL_TRACE_COLLECTOR_NAME,
+    OTEL_TRACE_COLLECTOR_NAMESPACE,
     PVC_TEST_DATA_NAME,
     PVC_TEST_DATA_SIZE,
     SIMPLE_MINIO_ACCESS_KEY,
@@ -60,6 +66,7 @@ from tests.ai_safety.evalhub.utils import (
     MLflowWithWorkspaces,
     build_pvc_job_payload,
     delete_evalhub_job,
+    is_evalhub_crd_available,
     submit_evalhub_job,
     submit_garak_job,
     tenant_rbac_ready,
@@ -72,22 +79,6 @@ from utilities.general import collect_pod_information
 from utilities.infra import create_inference_token, create_ns
 
 LOGGER = structlog.get_logger(name=__name__)
-
-
-# Helper Functions
-
-
-def _is_evalhub_crd_available(admin_client: DynamicClient) -> bool:
-    """Check if EvalHub CRD is installed on the cluster."""
-    crd_name = "evalhubs.trustyai.opendatahub.io"
-    try:
-        crd = CustomResourceDefinition(
-            client=admin_client,
-            name=crd_name,
-        )
-        return crd.exists
-    except AttributeError, KeyError:
-        return False
 
 
 # Shared EvalHub fixtures (used by health tests and garak tests)
@@ -127,7 +118,7 @@ def evalhub_mt_cr(
     Note: This creates a Custom Resource (CR) instance, not the CustomResourceDefinition (CRD).
     The CRD must already be installed by the EvalHub/TrustyAI operator.
     """
-    if not _is_evalhub_crd_available(admin_client):
+    if not is_evalhub_crd_available(admin_client):
         pytest.fail(
             "EvalHub CRD 'evalhubs.trustyai.opendatahub.io' not available on this cluster. "
             "Install the TrustyAI/EvalHub operator first."
@@ -1380,7 +1371,7 @@ def otel_collector_deployment(
                 "containers": [
                     {
                         "name": "otel-collector",
-                        "image": "otel/opentelemetry-collector:0.96.0",
+                        "image": AiSafetyImages.OTEL_COLLECTOR,
                         "args": ["--config=/etc/otel/config.yaml"],
                         "ports": [
                             {
@@ -1812,3 +1803,271 @@ def submit_pvc_job(
             )
         except Exception:  # noqa: BLE001
             LOGGER.warning(f"Failed to delete PVC evaluation job {job_id} during teardown")
+
+
+# Operator Reconciliation Observability Fixtures (RHAISTRAT-1606 / RHAI-241)
+
+
+@pytest.fixture(scope="class")
+def otel_trace_collector_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
+    """Create namespace for OTEL trace collector (operator reconcile spans)."""
+    with create_ns(
+        admin_client=admin_client,
+        name=OTEL_TRACE_COLLECTOR_NAMESPACE,
+    ) as ns:
+        yield ns
+
+
+@pytest.fixture(scope="class")
+def otel_trace_collector_config(
+    admin_client: DynamicClient,
+    otel_trace_collector_namespace: Namespace,
+) -> Generator[ConfigMap, Any, Any]:
+    """Collector config with traces pipeline and debug exporter for operator spans."""
+    config_yaml = f"""
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:{OTEL_COLLECTOR_GRPC_PORT}
+
+exporters:
+  debug:
+    verbosity: detailed
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
+"""
+    with ConfigMap(
+        client=admin_client,
+        name="otel-trace-collector-config",
+        namespace=otel_trace_collector_namespace.name,
+        data={"config.yaml": config_yaml},
+    ) as cm:
+        yield cm
+
+
+@pytest.fixture(scope="class")
+def otel_trace_collector_deployment(
+    admin_client: DynamicClient,
+    otel_trace_collector_namespace: Namespace,
+    otel_trace_collector_config: ConfigMap,
+) -> Generator[Deployment, Any, Any]:
+    """Deploy OTEL collector with traces pipeline for operator span capture."""
+    with Deployment(
+        client=admin_client,
+        namespace=otel_trace_collector_namespace.name,
+        name=OTEL_TRACE_COLLECTOR_NAME,
+        label=OTEL_TRACE_COLLECTOR_LABELS,
+        selector={"matchLabels": OTEL_TRACE_COLLECTOR_LABELS},
+        replicas=1,
+        template={
+            "metadata": {"labels": OTEL_TRACE_COLLECTOR_LABELS},
+            "spec": {
+                "containers": [
+                    {
+                        "name": "otel-collector",
+                        "image": AiSafetyImages.OTEL_COLLECTOR,
+                        "args": ["--config=/etc/otel/config.yaml"],
+                        "ports": [
+                            {
+                                "containerPort": OTEL_COLLECTOR_GRPC_PORT,
+                                "name": "otlp-grpc",
+                                "protocol": Protocols.TCP,
+                            },
+                        ],
+                        "volumeMounts": [{"name": "config", "mountPath": "/etc/otel"}],
+                        "resources": {
+                            "limits": {"memory": "256Mi", "cpu": "250m"},
+                            "requests": {"memory": "128Mi", "cpu": "50m"},
+                        },
+                        "securityContext": {
+                            "allowPrivilegeEscalation": False,
+                            "capabilities": {"drop": ["ALL"]},
+                            "seccompProfile": {"type": "RuntimeDefault"},
+                        },
+                    }
+                ],
+                "volumes": [{"name": "config", "configMap": {"name": otel_trace_collector_config.name}}],
+            },
+        },
+    ) as deployment:
+        deployment.wait_for_replicas(timeout=300)
+        yield deployment
+
+
+@pytest.fixture(scope="class")
+def otel_trace_collector_service(
+    admin_client: DynamicClient,
+    otel_trace_collector_namespace: Namespace,
+    otel_trace_collector_deployment: Deployment,
+) -> Generator[Service, Any, Any]:
+    """Service for the OTEL trace collector (gRPC endpoint for operator)."""
+    with Service(
+        client=admin_client,
+        namespace=otel_trace_collector_namespace.name,
+        name=OTEL_TRACE_COLLECTOR_NAME,
+        selector=OTEL_TRACE_COLLECTOR_LABELS,
+        ports=[
+            {
+                "name": "otlp-grpc",
+                "port": OTEL_COLLECTOR_GRPC_PORT,
+                "targetPort": OTEL_COLLECTOR_GRPC_PORT,
+                "protocol": Protocols.TCP,
+            },
+        ],
+    ) as service:
+        yield service
+
+
+@pytest.fixture(scope="class")
+def otel_trace_collector_pod(
+    admin_client: DynamicClient,
+    otel_trace_collector_namespace: Namespace,
+    otel_trace_collector_deployment: Deployment,
+) -> Pod:
+    """Get OTEL trace collector pod for log inspection."""
+    label_selector = ",".join(f"{k}={v}" for k, v in OTEL_TRACE_COLLECTOR_LABELS.items())
+    pods = [
+        pod
+        for pod in Pod.get(
+            client=admin_client,
+            namespace=otel_trace_collector_namespace.name,
+            label_selector=label_selector,
+        )
+        if pod.instance.status.phase == "Running"
+    ]
+    assert len(pods) == 1, f"Expected 1 Running OTEL trace collector pod, found {len(pods)}"
+    return pods[0]
+
+
+@pytest.fixture(scope="class")
+def operator_with_otel_tracing(
+    admin_client: DynamicClient,
+    trustyai_operator_deployment: Deployment,
+    otel_trace_collector_service: Service,
+) -> Generator[Deployment, Any, Any]:
+    """Patch operator deployment with OTEL env vars and restart.
+
+    Injects OTEL_EXPORTER_OTLP_ENDPOINT pointing to the trace collector, then
+    scales the operator down/up so the new env vars take effect. On teardown,
+    ResourceEditor restores original state and the operator is restarted again.
+    """
+    endpoint = (
+        f"http://{otel_trace_collector_service.name}"
+        f".{otel_trace_collector_service.namespace}"
+        f".svc.cluster.local:{OTEL_COLLECTOR_GRPC_PORT}"
+    )
+    num_replicas: int = trustyai_operator_deployment.instance.spec.replicas
+
+    env_patch = [
+        {"name": "OTEL_EXPORTER_OTLP_ENDPOINT", "value": endpoint},
+        {"name": "OTEL_SERVICE_NAME", "value": OPERATOR_OTEL_SERVICE_NAME},
+        {"name": "OTEL_TRACES_EXPORTER", "value": "otlp"},
+    ]
+
+    containers = trustyai_operator_deployment.instance.spec.template.spec.containers
+    manager_idx = next((idx for idx, c in enumerate(containers) if c.name == "manager"), 0)
+
+    with ResourceEditor(
+        patches={
+            trustyai_operator_deployment: {
+                "spec": {
+                    "template": {
+                        "spec": {
+                            "containers": [
+                                {
+                                    "name": containers[manager_idx].name,
+                                    "env": env_patch,
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+    ):
+        trustyai_operator_deployment.scale_replicas(replica_count=0)
+        trustyai_operator_deployment.scale_replicas(replica_count=num_replicas)
+        trustyai_operator_deployment.wait_for_replicas(timeout=300)
+        yield trustyai_operator_deployment
+
+    trustyai_operator_deployment.scale_replicas(replica_count=0)
+    trustyai_operator_deployment.scale_replicas(replica_count=num_replicas)
+    trustyai_operator_deployment.wait_for_replicas(timeout=300)
+
+
+@pytest.fixture(scope="class")
+def operator_metrics_token(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+) -> Generator[str, Any, Any]:
+    """Authenticated token for querying operator metrics endpoint via kube-rbac-proxy."""
+    sa_name = "evalhub-metrics-reader"
+    cr_name = f"{sa_name}-{model_namespace.name}"
+    with (
+        ServiceAccount(
+            client=admin_client,
+            name=sa_name,
+            namespace=model_namespace.name,
+        ) as sa,
+        ClusterRole(
+            client=admin_client,
+            name=cr_name,
+            rules=[{"nonResourceURLs": ["/metrics"], "verbs": ["get"]}],
+        ) as cluster_role,
+        ClusterRoleBinding(
+            client=admin_client,
+            name=cr_name,
+            cluster_role=cluster_role.name,
+            subjects=[
+                {
+                    "kind": "ServiceAccount",
+                    "name": sa.name,
+                    "namespace": model_namespace.name,
+                }
+            ],
+        ),
+    ):
+        yield create_inference_token(model_service_account=sa)
+
+
+@pytest.fixture(scope="class")
+def evalhub_reconcile_cr(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+) -> Generator[EvalHub, Any, Any]:
+    """EvalHub CR that triggers a successful reconciliation."""
+    with EvalHub(
+        client=admin_client,
+        name="evalhub-reconcile-test",
+        namespace=model_namespace.name,
+        database={"type": "sqlite"},
+        wait_for_resource=True,
+    ) as evalhub:
+        yield evalhub
+
+
+@pytest.fixture(scope="class")
+def evalhub_failure_cr(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+) -> Generator[EvalHub, Any, Any]:
+    """EvalHub CR with overlong name that causes child resource creation to fail.
+
+    The 65-character name exceeds the 63-character Kubernetes label value
+    limit, so the operator's reconcile loop errors when it attempts to set
+    labels on child resources using the CR name.
+    """
+    overlong_name = "evalhub-failure-" + "x" * (65 - len("evalhub-failure-"))
+    with EvalHub(
+        client=admin_client,
+        name=overlong_name,
+        namespace=model_namespace.name,
+        database={"type": "sqlite"},
+        wait_for_resource=True,
+    ) as evalhub:
+        yield evalhub
