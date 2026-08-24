@@ -10,9 +10,8 @@ from ocp_resources.service_account import ServiceAccount
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError
 
-from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH, Labels
+from utilities.constants import Labels
 from utilities.general import collect_pod_information
-from utilities.infra import check_internal_image_registry_available, get_product_version
 
 LOGGER = structlog.get_logger(name=__name__)
 
