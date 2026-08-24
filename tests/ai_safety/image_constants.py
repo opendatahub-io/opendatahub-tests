@@ -41,3 +41,11 @@ class AiSafetyImages:
     MLSERVER: str = (
         "quay.io/trustyai_testing/mlserver@sha256:68a4cd74fff40a3c4f29caddbdbdc9e54888aba54bf3c5f78c8ffd577c3a1c89"
     )
+    OTEL_COLLECTOR: str = (
+        "ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector"
+        "@sha256:62c84db5d6fa6e7c3dfc8e63d60b8d4e9e4f8dfded5b6c4056e44c6d3e78ac63"
+    )
+    EVALHUB_INVALID_IMAGE: str = (  # noqa: IMG002
+        "quay.io/trustyai_testing/nonexistent-image"
+        "@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    )
