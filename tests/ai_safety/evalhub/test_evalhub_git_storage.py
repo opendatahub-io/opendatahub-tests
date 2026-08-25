@@ -35,6 +35,7 @@ GIT_MODEL_NAMESPACE = pytest.param({"name": "test-evalhub-git-storage"})
 @pytest.mark.parametrize("model_namespace", [GIT_MODEL_NAMESPACE], indirect=True)
 @pytest.mark.tier1
 @pytest.mark.ai_safety
+@pytest.mark.skip_on_disconnected
 class TestEvalHubGitStorage:
     """Git-backed test data source for evaluation jobs (test_data_ref.git)."""
 
@@ -53,7 +54,7 @@ class TestEvalHubGitStorage:
         then the job completes successfully with the full repository cloned by the
         git-clone init container, and no S3 credentials leak into the adapter."""
         job_id = submit_git_job(
-            repository_url=git_public_repo_config["url"],
+            url=git_public_repo_config["url"],
             ref=git_public_repo_config["ref"],
             tokenizer_path=GIT_FULL_REPO_TOKENIZER_PATH,
             job_name="git-public-clone-test",
@@ -97,7 +98,7 @@ class TestEvalHubGitStorage:
         then the job completes successfully using data cloned from that sub-path,
         narrowed so the sub-path's contents appear at the /test_data/ mount root."""
         job_id = submit_git_job(
-            repository_url=git_public_repo_config["url"],
+            url=git_public_repo_config["url"],
             ref=git_public_repo_config["ref"],
             sub_path=git_public_repo_config["sub_path"],
             tokenizer_path=GIT_TOKENIZER_PATH,
@@ -125,7 +126,7 @@ class TestEvalHubGitStorage:
         when GET /api/v1/evaluations/jobs/{id} is called,
         then the response includes the resolved commit SHA of the cloned ref."""
         job_id = submit_git_job(
-            repository_url=git_public_repo_config["url"],
+            url=git_public_repo_config["url"],
             ref=git_public_repo_config["ref"],
             sub_path=git_public_repo_config["sub_path"],
             tokenizer_path=GIT_TOKENIZER_PATH,
@@ -140,10 +141,10 @@ class TestEvalHubGitStorage:
         )
         validate_evalhub_job_completed(job_data=job_data)
 
-        commit_sha = job_data.get("git_commit_sha")
-        assert commit_sha, f"Expected 'git_commit_sha' in job metadata, got: {job_data}"
+        commit_sha = job_data.get("resolved_sha")
+        assert commit_sha, f"Expected 'resolved_sha' in job metadata, got: {job_data}"
         assert GIT_COMMIT_SHA_PATTERN.match(commit_sha), (
-            f"'git_commit_sha' value '{commit_sha}' is not a valid commit hash"
+            f"'resolved_sha' value '{commit_sha}' is not a valid commit hash"
         )
 
     def test_missing_repository_job_fails(
@@ -158,7 +159,7 @@ class TestEvalHubGitStorage:
         when the job is submitted,
         then the git-clone init container fails and the job reaches a failed state."""
         job_id = submit_git_job(
-            repository_url=GIT_NONEXISTENT_REPO_URL,
+            url=GIT_NONEXISTENT_REPO_URL,
             ref="main",
             job_name="git-missing-repo-test",
         )
@@ -197,7 +198,7 @@ class TestEvalHubGitStorage:
                     "key": "some-key",
                     "secret_ref": "some-secret",  # pragma: allowlist secret
                 },
-                "git": {"repository_url": GIT_NONEXISTENT_REPO_URL, "ref": "main"},
+                "git": {"url": GIT_NONEXISTENT_REPO_URL, "ref": "main"},
             }
 
         response = post_evalhub_job_raw(

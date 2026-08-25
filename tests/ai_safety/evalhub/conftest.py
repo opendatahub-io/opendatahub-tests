@@ -1840,7 +1840,7 @@ def submit_git_job(
     job_ids: list[str] = []
 
     def _submit(
-        repository_url: str,
+        url: str,
         ref: str,
         sub_path: str | None = None,
         secret_ref: str | None = None,
@@ -1851,7 +1851,7 @@ def submit_git_job(
             model_service_name=evalhub_vllm_emulator_service.name,
             tenant_namespace=tenant_a_namespace.name,
             job_name=job_name,
-            repository_url=repository_url,
+            url=url,
             ref=ref,
             sub_path=sub_path,
             secret_ref=secret_ref,

@@ -110,7 +110,7 @@ PVC_TEST_DATA_SIZE: str = "2Gi"
 PVC_TOKENIZER_PATH: str = "/test_data/tokenizer"
 
 # Git storage source test data (RHAISTRAT-2058)
-# Field names below (test_data_ref.git.*, git_commit_sha) follow the test plan's documented
+# Field names below (test_data_ref.git.*, resolved_sha) follow the test plan's documented
 # example payloads; the strategy marks the exact API schema as TBD pending implementation docs.
 # Defaults point at eval-hub's own vendored offline lm-eval cache (tests/git-testdata), which
 # exists specifically so FVT can exercise git clone/checkout without live Hugging Face downloads;
