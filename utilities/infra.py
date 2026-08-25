@@ -1213,18 +1213,16 @@ def download_oc_console_cli(admin_client: DynamicClient, tmpdir: LocalPath) -> s
 
 
 def check_internal_image_registry_available(admin_client: DynamicClient) -> bool:
-    """Check if internal image registry is available by checking the imageregistry config managementState"""
-    try:
-        # Access the imageregistry.operator.openshift.io/v1 Config resource named "cluster"
-        config_instance = Config(client=admin_client, name="cluster")
+    """Check if internal image registry is available by checking the imageregistry config managementState."""
 
+    try:
+        config_instance = Config(client=admin_client, name="cluster")
         management_state = config_instance.instance.spec.get("managementState", "").lower()
         is_available = management_state == "managed"
-
         LOGGER.info(f"Image registry management state: {management_state}, available: {is_available}")
         return is_available
-    except (ResourceNotFoundError, Exception) as e:
-        LOGGER.warning(f"Failed to check image registry config: {e}")
+    except (ResourceNotFoundError, Exception) as error:  # noqa: BLE001
+        LOGGER.warning(f"Failed to check image registry config: {error}")
         return False
 
 
