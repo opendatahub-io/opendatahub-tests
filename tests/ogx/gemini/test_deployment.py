@@ -17,6 +17,9 @@ from tests.ogx.gemini.utils import is_gemini_provider_active, pod_env_var_is_set
 
 LOGGER = structlog.get_logger(name=__name__)
 
+# These tests require live Gemini API access and must not run on disconnected clusters.
+pytestmark = [pytest.mark.skip_on_disconnected]
+
 # Candidate locations for the distribution run/config file inside the pod.
 CONFIG_SEARCH_PATHS = ("/app", "/opt/app-root", "/etc/ogx", "/root/.ogx")
 

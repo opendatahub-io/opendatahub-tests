@@ -14,6 +14,9 @@ from tests.ogx.gemini.utils import is_gemini_provider_active
 
 LOGGER = structlog.get_logger(name=__name__)
 
+# These tests require live Gemini API access and must not run on disconnected clusters.
+pytestmark = [pytest.mark.skip_on_disconnected]
+
 
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, ogx_server",

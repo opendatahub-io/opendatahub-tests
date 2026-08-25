@@ -12,6 +12,9 @@ from ogx_client import OgxClient
 
 LOGGER = structlog.get_logger(name=__name__)
 
+# These tests require live Gemini API access and must not run on disconnected clusters.
+pytestmark = [pytest.mark.skip_on_disconnected]
+
 WEATHER_TOOL = {
     "type": "function",
     "function": {
