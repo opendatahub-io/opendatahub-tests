@@ -5,6 +5,10 @@ import requests
 import structlog
 
 from tests.ai_gateway.models_as_a_service.maas_api_key.utils import (
+    FreeUserKeysAcrossSubscriptions,
+    assert_api_keys_status,
+    assert_bulk_dry_run_preview,
+    assert_bulk_revoke_by_subscription_success,
     assert_bulk_revoke_success,
     bulk_revoke_api_keys,
     get_api_key,
@@ -19,8 +23,10 @@ LOGGER = structlog.get_logger(name=__name__)
     "maas_subscription_controller_enabled_latest",
     "maas_gateway_api",
     "maas_api_gateway_reachable",
-    "minimal_subscription_for_free_user",
+    "maas_model_tinyllama_free",
     "maas_auth_policy_tinyllama_free",
+    "maas_subscription_tinyllama_free",
+    "minimal_subscription_for_free_user",
 )
 class TestAPIKeyBulkOperations:
     """Tests for MaaS API key bulk revoke operations."""
@@ -107,3 +113,136 @@ class TestAPIKeyBulkOperations:
             min_revoked_count=1,
         )
         LOGGER.info(f"[bulk-revoke] Admin successfully revoked {revoked_count} key(s) for user {free_user_username}")
+
+    @pytest.mark.tier1
+    @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
+    def test_bulk_revoke_by_subscription_only(
+        self,
+        request_session_http: requests.Session,
+        base_url: str,
+        admin_ocp_token: str,
+        free_user_keys_across_subscriptions: FreeUserKeysAcrossSubscriptions,
+    ) -> None:
+        """Verify admin bulk revoke scoped to a subscription revokes only keys in that subscription."""
+        key_setup = free_user_keys_across_subscriptions
+        revoked_count = assert_bulk_revoke_by_subscription_success(
+            request_session_http=request_session_http,
+            base_url=base_url,
+            ocp_user_token=admin_ocp_token,
+            subscription=key_setup["primary_subscription_name"],
+            min_revoked_count=len(key_setup["primary_subscription_key_ids"]),
+        )
+        LOGGER.info(
+            f"[bulk-revoke] Admin revoked {revoked_count} key(s) for subscription "
+            f"{key_setup['primary_subscription_name']}"
+        )
+        assert_api_keys_status(
+            request_session_http=request_session_http,
+            base_url=base_url,
+            key_ids=key_setup["primary_subscription_key_ids"],
+            ocp_user_token=admin_ocp_token,
+            expected_status="revoked",
+        )
+        assert_api_keys_status(
+            request_session_http=request_session_http,
+            base_url=base_url,
+            key_ids=key_setup["secondary_subscription_key_ids"],
+            ocp_user_token=admin_ocp_token,
+            expected_status="active",
+        )
+
+    @pytest.mark.tier1
+    @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
+    def test_bulk_revoke_by_username_and_subscription(
+        self,
+        request_session_http: requests.Session,
+        base_url: str,
+        admin_ocp_token: str,
+        free_user_keys_across_subscriptions: FreeUserKeysAcrossSubscriptions,
+    ) -> None:
+        """Verify username+subscription bulk revoke only affects that user's keys in that subscription."""
+        key_setup = free_user_keys_across_subscriptions
+        revoked_count = assert_bulk_revoke_success(
+            request_session_http=request_session_http,
+            base_url=base_url,
+            ocp_user_token=admin_ocp_token,
+            username=key_setup["username"],
+            subscription=key_setup["primary_subscription_name"],
+            min_revoked_count=len(key_setup["primary_subscription_key_ids"]),
+        )
+        LOGGER.info(
+            f"[bulk-revoke] Admin revoked {revoked_count} key(s) for user {key_setup['username']} "
+            f"in subscription {key_setup['primary_subscription_name']}"
+        )
+        assert_api_keys_status(
+            request_session_http=request_session_http,
+            base_url=base_url,
+            key_ids=key_setup["primary_subscription_key_ids"],
+            ocp_user_token=admin_ocp_token,
+            expected_status="revoked",
+        )
+        assert_api_keys_status(
+            request_session_http=request_session_http,
+            base_url=base_url,
+            key_ids=key_setup["secondary_subscription_key_ids"],
+            ocp_user_token=admin_ocp_token,
+            expected_status="active",
+        )
+
+    @pytest.mark.tier2
+    @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
+    def test_bulk_revoke_dry_run_by_username(
+        self,
+        request_session_http: requests.Session,
+        base_url: str,
+        admin_ocp_token: str,
+        free_user_keys_across_subscriptions: FreeUserKeysAcrossSubscriptions,
+    ) -> None:
+        """Verify bulk-revoke dry-run by username previews matching keys without revoking them."""
+        key_setup = free_user_keys_across_subscriptions
+        all_key_ids = key_setup["primary_subscription_key_ids"] + key_setup["secondary_subscription_key_ids"]
+        revoked_count = assert_bulk_dry_run_preview(
+            request_session_http=request_session_http,
+            base_url=base_url,
+            ocp_user_token=admin_ocp_token,
+            username=key_setup["username"],
+            expected_revoked_count=len(all_key_ids),
+        )
+        LOGGER.info(f"[bulk-revoke] Dry-run by username returned revokedCount={revoked_count}")
+        assert_api_keys_status(
+            request_session_http=request_session_http,
+            base_url=base_url,
+            key_ids=all_key_ids,
+            ocp_user_token=admin_ocp_token,
+            expected_status="active",
+        )
+
+    @pytest.mark.tier2
+    @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
+    def test_bulk_revoke_dry_run_by_subscription(
+        self,
+        request_session_http: requests.Session,
+        base_url: str,
+        admin_ocp_token: str,
+        free_user_keys_across_subscriptions: FreeUserKeysAcrossSubscriptions,
+    ) -> None:
+        """Verify bulk-revoke dry-run by subscription previews matching keys without revoking them."""
+        key_setup = free_user_keys_across_subscriptions
+        revoked_count = assert_bulk_dry_run_preview(
+            request_session_http=request_session_http,
+            base_url=base_url,
+            ocp_user_token=admin_ocp_token,
+            subscription=key_setup["primary_subscription_name"],
+            expected_revoked_count=len(key_setup["primary_subscription_key_ids"]),
+        )
+        LOGGER.info(
+            f"[bulk-revoke] Dry-run by subscription {key_setup['primary_subscription_name']} "
+            f"returned revokedCount={revoked_count}"
+        )
+        assert_api_keys_status(
+            request_session_http=request_session_http,
+            base_url=base_url,
+            key_ids=key_setup["primary_subscription_key_ids"] + key_setup["secondary_subscription_key_ids"],
+            ocp_user_token=admin_ocp_token,
+            expected_status="active",
+        )

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, TypedDict
 from urllib.parse import quote
 
 import requests
@@ -27,6 +27,16 @@ MAAS_AUTH_POLICY_FIXTURE_NAMES = (
 
 
 DEFAULT_MAAS_TENANT: str = "models-as-a-service"
+
+
+class FreeUserKeysAcrossSubscriptions(TypedDict):
+    """API keys minted for the free user across two MaaS subscriptions."""
+
+    username: str
+    primary_subscription_name: str
+    secondary_subscription_name: str
+    primary_subscription_key_ids: list[str]
+    secondary_subscription_key_ids: list[str]
 
 
 def assert_tenant_field(body: dict[str, Any], context: str, expected: str = DEFAULT_MAAS_TENANT) -> None:
@@ -198,18 +208,40 @@ def bulk_revoke_api_keys(
     request_session_http: requests.Session,
     base_url: str,
     ocp_user_token: str,
-    username: str,
+    username: str | None = None,
+    subscription: str | None = None,
+    dry_run: bool | None = None,
     request_timeout_seconds: int = 60,
 ) -> tuple[Response, dict[str, Any]]:
-    """Bulk revoke all active API keys for a given user via MaaS API (POST /v1/api-keys/bulk-revoke)."""
+    """Bulk revoke API keys via MaaS API (POST /v1/api-keys/bulk-revoke).
+
+    Args:
+        request_session_http: HTTP session for the request.
+        base_url: MaaS API base URL.
+        ocp_user_token: OCP bearer token for the actor performing the revoke.
+        username: Optional owner username scope for the bulk revoke.
+        subscription: Optional MaaSSubscription name scope for the bulk revoke.
+        dry_run: When True, preview matching keys without revoking them.
+        request_timeout_seconds: Request timeout in seconds.
+    """
     url = f"{base_url}/v1/api-keys/bulk-revoke"
+    payload: dict[str, Any] = {}
+    if username is not None:
+        payload["username"] = username
+    if subscription is not None:
+        payload["subscription"] = subscription
+    if dry_run is not None:
+        payload["dryRun"] = dry_run
     response = request_session_http.post(
         url=url,
         headers={"Authorization": f"Bearer {ocp_user_token}", "Content-Type": "application/json"},
-        json={"username": username},
+        json=payload,
         timeout=request_timeout_seconds,
     )
-    LOGGER.info(f"bulk_revoke_api_keys: url={url} username={username} status={response.status_code}")
+    LOGGER.info(
+        f"bulk_revoke_api_keys: url={url} username={username} subscription={subscription} "
+        f"dry_run={dry_run} status={response.status_code}"
+    )
     try:
         parsed_body: dict[str, Any] = json.loads(response.text)
     except json.JSONDecodeError as error:
@@ -219,26 +251,133 @@ def bulk_revoke_api_keys(
     return response, parsed_body
 
 
+def revoked_count_from_bulk_body(bulk_body: dict[str, Any]) -> int:
+    """Return revokedCount from a bulk-revoke response body."""
+    if "revokedCount" not in bulk_body:
+        return 0
+    return int(bulk_body["revokedCount"])
+
+
+def assert_api_key_status(
+    request_session_http: requests.Session,
+    base_url: str,
+    key_id: str,
+    ocp_user_token: str,
+    expected_status: str,
+) -> None:
+    """Assert a single API key has the expected status via GET /v1/api-keys/{id}."""
+    get_resp, get_body = get_api_key(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        key_id=key_id,
+        ocp_user_token=ocp_user_token,
+    )
+    assert get_resp.status_code == 200, (
+        f"Expected 200 on GET /v1/api-keys/{key_id}, got {get_resp.status_code}: {get_resp.text[:200]}"
+    )
+    assert "status" in get_body, (
+        f"Expected 'status' in GET response for key id={key_id}, got keys: {list(get_body.keys())}"
+    )
+    assert get_body["status"] == expected_status, (
+        f"Expected key id={key_id} to have status={expected_status!r}, got: {get_body['status']!r}"
+    )
+
+
+def assert_api_keys_status(
+    request_session_http: requests.Session,
+    base_url: str,
+    key_ids: list[str],
+    ocp_user_token: str,
+    expected_status: str,
+) -> None:
+    """Assert each API key in key_ids has the expected status."""
+    for key_id in key_ids:
+        assert_api_key_status(
+            request_session_http=request_session_http,
+            base_url=base_url,
+            key_id=key_id,
+            ocp_user_token=ocp_user_token,
+            expected_status=expected_status,
+        )
+
+
 def assert_bulk_revoke_success(
     request_session_http: requests.Session,
     base_url: str,
     ocp_user_token: str,
     username: str,
     min_revoked_count: int = 1,
+    subscription: str | None = None,
 ) -> int:
-    """Bulk revoke API keys for a user and assert the operation succeeded."""
+    """Bulk revoke API keys and assert the operation succeeded."""
     bulk_resp, bulk_body = bulk_revoke_api_keys(
         request_session_http=request_session_http,
         base_url=base_url,
         ocp_user_token=ocp_user_token,
         username=username,
+        subscription=subscription,
     )
     assert bulk_resp.status_code == 200, (
         f"Expected 200 on bulk-revoke for user {username}, got {bulk_resp.status_code}: {bulk_resp.text[:200]}"
     )
-    revoked_count: int = bulk_body.get("revokedCount", 0)
+    revoked_count = revoked_count_from_bulk_body(bulk_body=bulk_body)
     assert revoked_count >= min_revoked_count, (
         f"Expected at least {min_revoked_count} revoked key(s), got revokedCount={revoked_count}"
+    )
+    return revoked_count
+
+
+def assert_bulk_revoke_by_subscription_success(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_user_token: str,
+    subscription: str,
+    min_revoked_count: int = 1,
+) -> int:
+    """Bulk revoke by subscription scope only and assert the operation succeeded."""
+    bulk_resp, bulk_body = bulk_revoke_api_keys(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        ocp_user_token=ocp_user_token,
+        subscription=subscription,
+    )
+    assert bulk_resp.status_code == 200, (
+        f"Expected 200 on subscription-scoped bulk-revoke for subscription={subscription!r}, "
+        f"got {bulk_resp.status_code}: {bulk_resp.text[:200]}"
+    )
+    revoked_count = revoked_count_from_bulk_body(bulk_body=bulk_body)
+    assert revoked_count >= min_revoked_count, (
+        f"Expected at least {min_revoked_count} revoked key(s) for subscription={subscription!r}, "
+        f"got revokedCount={revoked_count}"
+    )
+    return revoked_count
+
+
+def assert_bulk_dry_run_preview(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_user_token: str,
+    expected_revoked_count: int,
+    username: str | None = None,
+    subscription: str | None = None,
+) -> int:
+    """Assert bulk-revoke dry-run returns dryRun=true and expected revokedCount without mutating keys."""
+    bulk_resp, bulk_body = bulk_revoke_api_keys(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        ocp_user_token=ocp_user_token,
+        username=username,
+        subscription=subscription,
+        dry_run=True,
+    )
+    assert bulk_resp.status_code == 200, (
+        f"Expected 200 on bulk-revoke dry-run, got {bulk_resp.status_code}: {bulk_resp.text[:200]}"
+    )
+    assert "dryRun" in bulk_body, f"Expected 'dryRun' in bulk-revoke response, got keys: {list(bulk_body.keys())}"
+    assert bulk_body["dryRun"] is True, f"Expected dryRun=true in bulk-revoke response, got: {bulk_body['dryRun']!r}"
+    revoked_count = revoked_count_from_bulk_body(bulk_body=bulk_body)
+    assert revoked_count == expected_revoked_count, (
+        f"Expected dry-run revokedCount={expected_revoked_count}, got revokedCount={revoked_count}"
     )
     return revoked_count
 
