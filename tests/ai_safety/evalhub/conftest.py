@@ -1884,6 +1884,137 @@ def submit_git_job(
             LOGGER.warning(f"Failed to delete git evaluation job {job_id} during teardown")
 
 
+# Git Storage Source Fixtures (RHAISTRAT-2058)
+
+
+@pytest.fixture(scope="class")
+def git_private_repo_config() -> dict[str, str]:
+    """Read private git repo configuration from environment variables.
+
+    Required env vars:
+      EVALHUB_GIT_PRIVATE_REPO_URL      — HTTPS URL of the private test repo
+      EVALHUB_GIT_PRIVATE_REPO_USERNAME  — git username
+      EVALHUB_GIT_PRIVATE_REPO_TOKEN     — git PAT / password
+
+    Optional:
+      EVALHUB_GIT_PRIVATE_REPO_REF       — ref to clone (defaults to "main")
+    """
+    import os
+
+    url = os.environ.get("EVALHUB_GIT_PRIVATE_REPO_URL", "")
+    username = os.environ.get("EVALHUB_GIT_PRIVATE_REPO_USERNAME", "")
+    token = os.environ.get("EVALHUB_GIT_PRIVATE_REPO_TOKEN", "")
+    if not all([url, username, token]):
+        pytest.skip(
+            "Git private repo tests require env vars: "
+            "EVALHUB_GIT_PRIVATE_REPO_URL, EVALHUB_GIT_PRIVATE_REPO_USERNAME, "
+            "EVALHUB_GIT_PRIVATE_REPO_TOKEN"
+        )
+    return {
+        "url": url,
+        "username": username,
+        "token": token,
+        "ref": os.environ.get("EVALHUB_GIT_PRIVATE_REPO_REF", "main"),
+    }
+
+
+@pytest.fixture(scope="class")
+def git_test_creds_secret(
+    admin_client: DynamicClient,
+    tenant_a_namespace: Namespace,
+    git_private_repo_config: dict[str, str],
+) -> Generator[Secret, Any, Any]:
+    """Kubernetes Secret with valid HTTPS basic auth credentials for the private repo."""
+    from tests.ai_safety.evalhub.constants import GIT_CREDS_SECRET_NAME
+
+    with Secret(
+        client=admin_client,
+        namespace=tenant_a_namespace.name,
+        name=GIT_CREDS_SECRET_NAME,
+        string_data={
+            "username": git_private_repo_config["username"],
+            "password": git_private_repo_config["token"],
+        },
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="class")
+def git_bad_creds_secret(
+    admin_client: DynamicClient,
+    tenant_a_namespace: Namespace,
+) -> Generator[Secret, Any, Any]:
+    """Kubernetes Secret with invalid git credentials for negative testing."""
+    from tests.ai_safety.evalhub.constants import GIT_BAD_CREDS_SECRET_NAME
+
+    with Secret(
+        client=admin_client,
+        namespace=tenant_a_namespace.name,
+        name=GIT_BAD_CREDS_SECRET_NAME,
+        string_data={
+            "username": "testuser",
+            "password": "invalid-token-value",
+        },
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture()
+def submit_git_job(
+    tenant_a_token: str,
+    tenant_a_namespace: Namespace,
+    evalhub_mt_ca_bundle_file: str,
+    evalhub_mt_route: Route,
+    evalhub_vllm_emulator_service: Service,
+) -> Generator[Callable[..., str], Any, Any]:
+    """Factory fixture: submit git-backed evaluation jobs with guaranteed cleanup."""
+    from tests.ai_safety.evalhub.utils import build_git_job_payload
+
+    job_ids: list[str] = []
+
+    def _submit(
+        repository_url: str,
+        ref: str = "main",
+        sub_path: str | None = None,
+        secret_ref: str | None = None,
+        job_name: str = "git-test",
+    ) -> str:
+        payload = build_git_job_payload(
+            model_service_name=evalhub_vllm_emulator_service.name,
+            tenant_namespace=tenant_a_namespace.name,
+            job_name=job_name,
+            repository_url=repository_url,
+            ref=ref,
+            sub_path=sub_path,
+            secret_ref=secret_ref,
+        )
+        data = submit_evalhub_job(
+            host=evalhub_mt_route.host,
+            token=tenant_a_token,
+            ca_bundle_file=evalhub_mt_ca_bundle_file,
+            tenant=tenant_a_namespace.name,
+            payload=payload,
+        )
+        job_id = data["resource"]["id"]
+        job_ids.append(job_id)
+        return job_id
+
+    yield _submit
+
+    for job_id in job_ids:
+        try:
+            delete_evalhub_job(
+                host=evalhub_mt_route.host,
+                token=tenant_a_token,
+                ca_bundle_file=evalhub_mt_ca_bundle_file,
+                tenant=tenant_a_namespace.name,
+                job_id=job_id,
+                hard_delete=True,
+            )
+        except Exception:  # noqa: BLE001
+            LOGGER.warning(f"Failed to delete git evaluation job {job_id} during teardown")
+
+
 # Operator Reconciliation Observability Fixtures (RHAISTRAT-1606 / RHAI-241)
 
 
