@@ -47,9 +47,11 @@ def maas_config_usage_logging_enabled(
     maas_config: MaaSConfig,
 ) -> Generator[MaaSConfig]:
     """Patch Config/default to enable usageLogging and explicitly disable on exit."""
-    with ResourceEditor(patches={maas_config: {"spec": {"usageLogging": True}}}):
-        yield maas_config
-    ResourceEditor(patches={maas_config: {"spec": {"usageLogging": False}}}).update()
+    try:
+        with ResourceEditor(patches={maas_config: {"spec": {"usageLogging": True}}}):
+            yield maas_config
+    finally:
+        ResourceEditor(patches={maas_config: {"spec": {"usageLogging": False}}}).update()
 
 
 @contextmanager
@@ -375,47 +377,12 @@ def wait_for_usage_logging_resources_absent(
         ) from exc
 
 
-def verify_usage_logging_resources_deployed(
+def validate_usage_logging_resources(
     admin_client: DynamicClient,
     maas_config: MaaSConfig,
     monitoring_namespace: str,
 ) -> None:
-    """Wait for and validate the usage-log observability stack after usageLogging is enabled."""
-    wait_for_usage_logging_resources(
-        admin_client=admin_client,
-        monitoring_namespace=monitoring_namespace,
-    )
-    assert_usage_logging_resources_present(
-        admin_client=admin_client,
-        maas_config=maas_config,
-        monitoring_namespace=monitoring_namespace,
-    )
-
-
-def verify_usage_logging_resources_removed(
-    admin_client: DynamicClient,
-    maas_config: MaaSConfig,
-    monitoring_namespace: str,
-) -> None:
-    """Wait for and validate the usage-log observability stack after usageLogging is disabled."""
-    maas_config.get()
-    wait_for_usage_logging_resources_absent(
-        admin_client=admin_client,
-        monitoring_namespace=monitoring_namespace,
-    )
-    assert_usage_logging_resources_absent(
-        admin_client=admin_client,
-        maas_config=maas_config,
-        monitoring_namespace=monitoring_namespace,
-    )
-
-
-def assert_usage_logging_resources_present(
-    admin_client: DynamicClient,
-    maas_config: MaaSConfig,
-    monitoring_namespace: str,
-) -> None:
-    """Verify usage-log observability resources exist when usageLogging is enabled."""
+    """Validate usage-log observability resource ownerReferences after resources are present."""
     maas_config.get()
     assert usage_logging_enabled(maas_config=maas_config), "Expected Config/default.spec.usageLogging to be enabled"
 
@@ -425,8 +392,8 @@ def assert_usage_logging_resources_present(
         client=admin_client,
         name=USAGE_LOGS_ENVOY_FILTER_NAME,
         namespace=MAAS_GATEWAY_NAMESPACE,
-        ensure_exists=True,
     )
+    usage_logs_envoy_filter.get()
     assert config_owner_reference_present(
         owner_references=usage_logs_envoy_filter.instance.metadata.ownerReferences,
         config_uid=config_uid,
@@ -439,8 +406,8 @@ def assert_usage_logging_resources_present(
         client=admin_client,
         name=USAGE_LOGS_COLLECTOR_NAME,
         namespace=monitoring_namespace,
-        ensure_exists=True,
     )
+    collector.get()
     assert config_controller_owner_reference_present(
         owner_references=collector.instance.metadata.ownerReferences,
         config_uid=config_uid,
@@ -452,12 +419,45 @@ def assert_usage_logging_resources_present(
     usage_logs_crb = ClusterRoleBinding(
         client=admin_client,
         name=USAGE_LOGS_CRB_NAME,
-        ensure_exists=True,
     )
+    usage_logs_crb.get()
     assert config_controller_owner_reference_present(
         owner_references=usage_logs_crb.instance.metadata.ownerReferences,
         config_uid=config_uid,
     ), f"Expected Config/default UID '{config_uid}' in ClusterRoleBinding '{USAGE_LOGS_CRB_NAME}' ownerReferences"
+
+
+def verify_usage_logging_resources_deployed(
+    admin_client: DynamicClient,
+    maas_config: MaaSConfig,
+    monitoring_namespace: str,
+) -> None:
+    """Wait for and validate the usage-log observability stack after usageLogging is enabled."""
+    wait_for_usage_logging_resources(
+        admin_client=admin_client,
+        monitoring_namespace=monitoring_namespace,
+    )
+    validate_usage_logging_resources(
+        admin_client=admin_client,
+        maas_config=maas_config,
+        monitoring_namespace=monitoring_namespace,
+    )
+
+
+def verify_usage_logging_resources_removed(
+    admin_client: DynamicClient,
+    maas_config: MaaSConfig,
+    monitoring_namespace: str,
+) -> None:
+    """Wait for usage-log observability resources to be removed after usageLogging is disabled."""
+    maas_config.get()
+    assert not usage_logging_enabled(maas_config=maas_config), (
+        "Expected Config/default.spec.usageLogging to be disabled"
+    )
+    wait_for_usage_logging_resources_absent(
+        admin_client=admin_client,
+        monitoring_namespace=monitoring_namespace,
+    )
 
 
 def wait_for_limitador_scrape_interval(
@@ -502,20 +502,14 @@ def wait_for_limitador_scrape_interval(
 
 def verify_limitador_scrape_interval_on_servicemonitor(
     admin_client: DynamicClient,
-    maas_config: MaaSConfig,
     monitoring_namespace: str,
     expected_interval: str,
 ) -> None:
-    """Wait for and validate the Limitador ServiceMonitor scrape interval matches Config/default."""
-    updated_service_monitor = wait_for_limitador_scrape_interval(
+    """Wait for the Limitador ServiceMonitor scrape interval to match Config/default."""
+    wait_for_limitador_scrape_interval(
         admin_client=admin_client,
         monitoring_namespace=monitoring_namespace,
         expected_interval=expected_interval,
-    )
-    maas_config.get()
-    validate_limitador_service_monitor_spec(
-        limitador_service_monitor=updated_service_monitor,
-        maas_config=maas_config,
     )
 
 

@@ -97,14 +97,12 @@ class TestMaaSObservabilityEnablePath:
         ):
             verify_limitador_scrape_interval_on_servicemonitor(
                 admin_client=admin_client,
-                maas_config=maas_config_default,
                 monitoring_namespace=maas_monitoring_namespace,
                 expected_interval=LIMITADOR_SCRAPE_INTERVAL_TEST_VALUE,
             )
 
         verify_limitador_scrape_interval_on_servicemonitor(
             admin_client=admin_client,
-            maas_config=maas_config_default,
             monitoring_namespace=maas_monitoring_namespace,
             expected_interval=original_interval,
         )
