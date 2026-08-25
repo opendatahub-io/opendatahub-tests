@@ -12,6 +12,8 @@ distribution: str = "downstream"
 applications_namespace: str = "redhat-ods-applications"
 model_registry_namespace: str = "rhoai-model-registries"
 operator_namespace: str = RHOAI_OPERATOR_NAMESPACE
+workbench_image_tag: str = ""
+workbench_upgrade_track: str = ""
 
 for _dir in dir():
     val = locals()[_dir]

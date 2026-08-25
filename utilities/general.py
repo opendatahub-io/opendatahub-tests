@@ -23,6 +23,14 @@ SHA256_DIGEST_PATTERN = r"@sha256:[a-f0-9]{64}$"
 
 LOGGER = get_logger(name=__name__)
 
+# ANSI stripping functionality
+_ANSI_ESCAPE_RE = re.compile(r"\x1b(?:\[[?!>]?[0-9;:]*[A-Za-z]|\][^\x07]*(?:\x07|\x1b\\)|[()][A-B0-2]|[=>NODMHc78])")
+
+
+def strip_ansi(text: str) -> str:
+    """Remove ANSI escape sequences from a string."""
+    return _ANSI_ESCAPE_RE.sub(repl="", string=text)
+
 
 def get_s3_secret_dict(
     aws_access_key: str,
