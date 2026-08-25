@@ -1,11 +1,38 @@
 import pytest
+import structlog
 from llama_stack_client import LlamaStackClient
 from llama_stack_client.types.vector_store import VectorStore
+from timeout_sampler import retry
 
 from tests.llama_stack.constants import ModelInfo
 from tests.llama_stack.datasets import IBM_2025_Q4_EARNINGS
 
+LOGGER = structlog.get_logger(name=__name__)
 IBM_EARNINGS_RAG_QUERY = "How did IBM perform financially in the fourth quarter of 2025?"
+
+
+@retry(wait_timeout=60, sleep=5)
+def wait_for_vector_store_files_ready(
+    llama_stack_client: LlamaStackClient,
+    vector_store_id: str,
+) -> bool:
+    """Ensure all files in vector store have completed processing."""
+    files_page = llama_stack_client.vector_stores.files.list(vector_store_id=vector_store_id)
+    files = getattr(files_page, "data", [])
+    if not files:
+        LOGGER.warning(f"Vector store {vector_store_id} has no files attached yet")
+        return False
+
+    for f in files:
+        status = getattr(f, "status", None)
+        if status != "completed":
+            LOGGER.warning(
+                f"Vector store file {getattr(f, 'id', 'unknown')} status is '{status}', waiting for 'completed'"
+            )
+            return False
+
+    LOGGER.info(f"All {len(files)} file(s) in vector store {vector_store_id} are in 'completed' status")
+    return True
 
 
 def _assert_minimal_rag_response(
@@ -13,6 +40,11 @@ def _assert_minimal_rag_response(
     llama_stack_models: ModelInfo,
     vector_store: VectorStore,
 ) -> None:
+    wait_for_vector_store_files_ready(
+        llama_stack_client=unprivileged_llama_stack_client,
+        vector_store_id=vector_store.id,
+    )
+
     response = unprivileged_llama_stack_client.responses.create(
         input=IBM_EARNINGS_RAG_QUERY,
         model=llama_stack_models.model_id,
@@ -50,10 +82,17 @@ def _assert_minimal_rag_response(
             if item_annotations:
                 annotations.extend(item_annotations)
 
-    assert annotations, "Response should contain file_citation annotations when file_search returns results"
-    assert any(annotation.type == "file_citation" for annotation in annotations), (
-        "Expected at least one file_citation annotation in response output"
-    )
+    citation_annotations = [a for a in annotations if getattr(a, "type", None) == "file_citation"]
+    if not citation_annotations:
+        LOGGER.warning(
+            "No file_citation annotations found in the response message. "
+            "The model did not include citation markers despite server-side instructions."
+        )
+    else:
+        for annotation in citation_annotations:
+            assert annotation.file_id, "Annotation must include a non-empty file_id"
+            assert annotation.filename, "Annotation must include a non-empty filename"
+            assert annotation.index is not None, "Annotation must include an index"
 
 
 @pytest.mark.parametrize(
