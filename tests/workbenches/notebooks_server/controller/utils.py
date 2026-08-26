@@ -50,7 +50,9 @@ def resolve_notebook_image(admin_client: DynamicClient) -> str:
         admin_client: Cluster client for ImageStream and product version lookups.
 
     Returns:
-        Full image reference, preferring a digest-pinned ``dockerImageReference``.
+        A pullable image reference. Uses the ImageStream ``repository:tag`` form
+        when the OpenShift integrated registry is available; otherwise uses the
+        digest-pinned ``dockerImageReference`` from ImageStream status.
     """
     from tests.workbenches.notebook_images.utils import (
         WorkbenchImageSpec,
