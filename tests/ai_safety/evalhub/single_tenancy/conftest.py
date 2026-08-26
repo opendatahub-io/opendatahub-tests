@@ -24,8 +24,12 @@ from tests.ai_safety.evalhub.single_tenancy.constants import (
     EVALHUB_ST_CR_NAME,
     EVALHUB_USER_ROLE_NAME,
 )
-from tests.ai_safety.evalhub.single_tenancy.utils import SingleTenantEvalHub, _is_evalhub_crd_available
-from tests.ai_safety.evalhub.utils import TRANSIENT_HEALTH_EXCEPTIONS, probe_evalhub_health_endpoint
+from tests.ai_safety.evalhub.single_tenancy.utils import SingleTenantEvalHub
+from tests.ai_safety.evalhub.utils import (
+    TRANSIENT_HEALTH_EXCEPTIONS,
+    is_evalhub_crd_available,
+    probe_evalhub_health_endpoint,
+)
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import Timeout
 from utilities.infra import create_inference_token, create_ns
@@ -39,7 +43,7 @@ def evalhub_st_cr(
     model_namespace: Namespace,
 ) -> Generator[SingleTenantEvalHub, Any, Any]:
     """Create a single-tenant EvalHub CR (spec.tenancy: single, sqlite database)."""
-    if not _is_evalhub_crd_available(admin_client):
+    if not is_evalhub_crd_available(admin_client):
         pytest.fail(
             "EvalHub CRD 'evalhubs.trustyai.opendatahub.io' not available on this cluster. "
             "Install the TrustyAI/EvalHub operator first."

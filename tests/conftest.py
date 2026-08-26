@@ -1085,7 +1085,7 @@ def gpu_count_on_cluster(nodes: list[Any]) -> int:
             if key in allowed_exact or any(key.startswith(p) for p in allowed_prefixes):
                 try:
                     total_gpus += int(val)
-                except ValueError, TypeError:
+                except (ValueError, TypeError):  # fmt: skip
                     LOGGER.debug(f"Skipping non-integer allocatable for {key} on {node.name}: {val!r}")
                     continue
     return total_gpus
@@ -1234,6 +1234,7 @@ def skip_if_no_supported_accelerator_type(supported_accelerator_type: str | None
         AcceleratorType.NVIDIA,
         AcceleratorType.AMD,
         AcceleratorType.GAUDI,
+        AcceleratorType.SPYRE,
     }
 
     if not supported_accelerator_type or supported_accelerator_type.lower() not in supported_gpu_accelerators:
