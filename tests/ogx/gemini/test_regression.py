@@ -108,7 +108,7 @@ class TestGeminiRegression:
 
         resolved = _resolve_non_gemini_llm(ogx_client=ogx_client)
         if not resolved:
-            pytest.skip(reason="No non-Gemini LLM model is registered; cannot exercise TC-REG-002 inference")
+            pytest.fail(reason="No non-Gemini LLM model is registered; cannot exercise TC-REG-002 inference")
         model_id, provider_id = resolved
         LOGGER.info(f"Running TC-REG-002 inference through non-Gemini model {model_id!r} (provider {provider_id!r})")
 

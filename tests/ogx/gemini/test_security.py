@@ -61,7 +61,7 @@ class TestGeminiSecurity:
 
         # The remaining leak checks require knowing the real key value to search for.
         if not GEMINI_API_KEY:
-            pytest.skip(
+            pytest.fail(
                 reason="Gemini API key value is not available to the test; "
                 "cannot verify absence in logs/responses for TC-SEC-001"
             )
@@ -92,10 +92,11 @@ class TestGeminiSecurity:
         Note: this requires pod-level packet capture / proxy inspection tooling that
         is not part of the pytest harness (TC-SEC-002 preconditions call it out as
         environment-provided). The Gemini-side prerequisite is asserted; the capture
-        step is skipped until that tooling is wired in.
+        step is not yet wired in, so the test fails to flag the outstanding work
+        rather than silently skipping.
         """
         assert is_gemini_provider_active(ogx_client=ogx_client), "remote::gemini provider is not active"
-        pytest.skip(
+        pytest.fail(
             reason="TLS handshake capture for TC-SEC-002 requires network inspection tooling "
             "(tcpdump/proxy) not available in the pytest harness; wire in packet capture to complete"
         )
