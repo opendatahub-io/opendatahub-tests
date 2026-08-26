@@ -29,9 +29,7 @@ def maas_monitoring_namespace(
     """Return the monitoring namespace configured for maas-controller observability."""
     monitoring_namespace = resolve_maas_monitoring_namespace(admin_client=admin_client)
     if not monitoring_namespace:
-        pytest.fail(
-            "maas-controller MONITORING_NAMESPACE is not configured; observability reconcile cannot run"
-        )
+        pytest.fail("maas-controller MONITORING_NAMESPACE is not configured; observability reconcile cannot run")
     if not monitoring_namespace_exists(admin_client=admin_client, namespace_name=monitoring_namespace):
         pytest.fail(
             f"Monitoring namespace '{monitoring_namespace}' does not exist; "
@@ -49,8 +47,7 @@ def servicemonitor_crd_available(admin_client: DynamicClient) -> None:
     )
     if not service_monitor_crd.exists:
         pytest.fail(
-            f"ServiceMonitor CRD '{SERVICE_MONITOR_CRD_NAME}' not installed; "
-            "Limitador metrics scrape requires it"
+            f"ServiceMonitor CRD '{SERVICE_MONITOR_CRD_NAME}' not installed; Limitador metrics scrape requires it"
         )
 
 
