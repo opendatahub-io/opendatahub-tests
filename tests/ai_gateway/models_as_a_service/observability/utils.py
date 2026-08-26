@@ -9,9 +9,8 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.open_telemetry_collector import OpenTelemetryCollector
 from ocp_resources.pod import Pod
 from ocp_resources.service_monitor import ServiceMonitor
-from ocp_utilities.monitoring import Prometheus
 from pytest_testconfig import config as py_config
-from timeout_sampler import TimeoutExpiredError, TimeoutSampler
+from timeout_sampler import TimeoutSampler
 
 from tests.ai_gateway.models_as_a_service.observability.constants import (
     DEFAULT_LIMITADOR_SCRAPE_INTERVAL,
@@ -23,15 +22,12 @@ from tests.ai_gateway.models_as_a_service.observability.constants import (
     LIMITADOR_SCRAPE_LABEL_VALUE,
     LIMITADOR_SERVICE_MONITOR_NAME,
     LIMITADOR_SERVICE_MONITOR_WAIT_TIMEOUT,
-    METRICS_POLL_TIMEOUT,
     OTEL_COLLECTOR_CRD_NAME,
     USAGE_LOGS_COLLECTOR_NAME,
     USAGE_LOGS_CRB_NAME,
     USAGE_LOGS_ENVOY_FILTER_NAME,
-    limitador_scrape_target_up_query,
 )
 from utilities.constants import MAAS_GATEWAY_NAMESPACE
-from utilities.monitoring import validate_metrics_field
 from utilities.resources.envoy_filter import EnvoyFilter
 from utilities.resources.kuadrant import Kuadrant
 from utilities.resources.maas_config import Config as MaaSConfig
@@ -190,19 +186,13 @@ def wait_for_limitador_service_monitor(
         name=LIMITADOR_SERVICE_MONITOR_NAME,
         namespace=monitoring_namespace,
     )
-    try:
-        for _ in TimeoutSampler(
-            wait_timeout=timeout,
-            sleep=5,
-            func=lambda: service_monitor.exists,
-        ):
-            if service_monitor.exists:
-                return service_monitor
-    except TimeoutExpiredError as exc:
-        raise AssertionError(
-            f"ServiceMonitor '{LIMITADOR_SERVICE_MONITOR_NAME}' not found in "
-            f"'{monitoring_namespace}' after maas-controller reconcile"
-        ) from exc
+    for exists in TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=5,
+        func=lambda: service_monitor.exists,
+    ):
+        if exists:
+            return service_monitor
     return service_monitor
 
 
@@ -246,21 +236,6 @@ def validate_limitador_service_monitor_spec(
     ), (
         f"Expected ServiceMonitor namespaceSelector to match Kuadrant namespace "
         f"'{kuadrant_namespace}', got namespaceSelector={namespace_selector}"
-    )
-
-
-def validate_limitador_metrics_in_prometheus(
-    prometheus: Prometheus,
-    limitador_service_monitor: ServiceMonitor,
-    timeout: int = METRICS_POLL_TIMEOUT,
-) -> None:
-    """Verify Limitador metrics are visible in RHOAI observability Thanos via limitador_up."""
-    _ = limitador_service_monitor
-    validate_metrics_field(
-        prometheus=prometheus,
-        metrics_query=limitador_scrape_target_up_query(),
-        expected_value="1",
-        timeout=timeout,
     )
 
 

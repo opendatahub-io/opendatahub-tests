@@ -3,11 +3,15 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.service_monitor import ServiceMonitor
 from ocp_utilities.monitoring import Prometheus
 
+from tests.ai_gateway.models_as_a_service.observability.constants import (
+    METRICS_POLL_TIMEOUT,
+    limitador_scrape_target_up_query,
+)
 from tests.ai_gateway.models_as_a_service.observability.utils import (
     assert_usage_logging_resources_absent,
-    validate_limitador_metrics_in_prometheus,
     validate_limitador_service_monitor_spec,
 )
+from utilities.monitoring import validate_metrics_field
 from utilities.resources.maas_config import Config as MaaSConfig
 
 
@@ -46,9 +50,11 @@ class TestMaaSObservability:
         Verifies the end-to-end metrics path from Limitador through the MaaS-managed ServiceMonitor
         into the RHOAI observability stack.
         """
-        validate_limitador_metrics_in_prometheus(
+        validate_metrics_field(
             prometheus=maas_observability_prometheus,
-            limitador_service_monitor=limitador_service_monitor,
+            metrics_query=limitador_scrape_target_up_query(),
+            expected_value="1",
+            timeout=METRICS_POLL_TIMEOUT,
         )
 
     def test_usage_logging_disabled_by_default(
