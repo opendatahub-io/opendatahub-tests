@@ -8,7 +8,6 @@ import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
-from ocp_resources.pod import Pod
 from timeout_sampler import TimeoutExpiredError, retry
 
 from tests.ai_hub.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
@@ -26,14 +25,6 @@ from tests.ai_hub.model_catalog.utils import (
 from tests.ai_hub.utils import execute_get_command, get_model_catalog_pod
 
 LOGGER = structlog.get_logger(name=__name__)
-
-
-def validate_model_catalog_enabled(pod: Pod) -> bool:
-    for container in pod.instance.spec.containers:
-        for env in container.env:
-            if env.name == "ENABLE_MODEL_CATALOG":
-                return True
-    return False
 
 
 def validate_model_catalog_resource(
