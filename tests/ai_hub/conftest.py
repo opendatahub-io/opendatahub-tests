@@ -25,6 +25,7 @@ from pytest_testconfig import config as py_config
 
 import tests.ai_hub.constants as ai_hub_constants
 from tests.ai_hub.constants import (
+    AIHUB_CONTROLLER_MANAGER_NAME,
     DB_BASE_RESOURCES_NAME,
     DB_RESOURCE_NAME,
     KUBERBACPROXY_STR,
@@ -42,7 +43,7 @@ from tests.ai_hub.utils import (
     get_rest_headers,
     wait_for_default_resource_cleanedup,
 )
-from utilities.constants import MODEL_REGISTRY_CUSTOM_NAMESPACE, DscComponents, Labels
+from utilities.constants import MODEL_REGISTRY_CUSTOM_NAMESPACE, Annotations, DscComponents, Labels
 from utilities.general import (
     generate_random_name,
     wait_for_oauth_openshift_deployment,
@@ -106,20 +107,25 @@ def model_registry_namespace(updated_dsc_component_state_scope_session: DataScie
 
 @pytest.fixture(scope="session")
 def async_upload_image(admin_client: DynamicClient) -> str:
-    """Async upload job image from the model-registry-operator-parameters ConfigMap."""
-    config_map = ConfigMap(
-        client=admin_client,
-        name="model-registry-operator-parameters",
+    """Async upload job image from the aihub-controller-manager pod's manager container."""
+    pod = wait_for_pods_by_labels(
+        admin_client=admin_client,
         namespace=py_config["applications_namespace"],
+        label_selector=f"{Annotations.KubernetesIo.NAME}={AIHUB_CONTROLLER_MANAGER_NAME}",
+        expected_num_pods=1,
+    )[0]
+
+    env_var_name = "RELATED_IMAGE_ODH_MODEL_REGISTRY_JOB_ASYNC_UPLOAD_IMAGE"
+    for container in pod.instance.spec.containers:
+        if container.name == "manager":
+            for env_var in container.env or []:
+                if env_var.name == env_var_name:
+                    return env_var.value
+
+    raise ResourceNotFoundError(
+        f"Env var '{env_var_name}' not found on 'manager' container of"
+        f" aihub-controller-manager pod in namespace '{py_config['applications_namespace']}'"
     )
-
-    if not config_map.exists:
-        raise ResourceNotFoundError(
-            f"ConfigMap 'model-registry-operator-parameters' not found in"
-            f" namespace '{py_config['applications_namespace']}'"
-        )
-
-    return config_map.instance.data["IMAGES_JOBS_ASYNC_UPLOAD"]
 
 
 @pytest.fixture(scope="session")

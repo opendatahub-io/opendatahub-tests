@@ -13,14 +13,19 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 from ocp_resources.service import Service
+from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutSampler
 
-from tests.ai_hub.constants import CATALOG_CONTAINER, DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
+from tests.ai_hub.constants import (
+    CATALOG_CONTAINER,
+    CATALOG_CONTROLLER_MANAGER_NAME,
+    DEFAULT_CUSTOM_MODEL_CATALOG,
+    DEFAULT_MODEL_CATALOG_CM,
+)
 from tests.ai_hub.model_catalog.catalog_config.utils import (
     extract_schema_fields,
     get_validate_default_model_catalog_source,
     validate_default_catalog,
-    validate_model_catalog_enabled,
     validate_model_catalog_resource,
 )
 from tests.ai_hub.model_catalog.constants import DEFAULT_CATALOGS, REDHAT_AI_CATALOG_ID
@@ -30,6 +35,8 @@ from tests.ai_hub.utils import (
     get_model_catalog_pod,
     get_rest_headers,
 )
+from utilities.constants import Annotations
+from utilities.general import wait_for_pods_by_labels
 from utilities.user_utils import UserTestSession
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -128,8 +135,20 @@ class TestModelCatalogGeneral:
     @pytest.mark.post_upgrade
     @pytest.mark.pre_upgrade
     @pytest.mark.install
-    def test_operator_pod_enabled_model_catalog(self: Self, model_registry_operator_pod: Pod):
-        assert validate_model_catalog_enabled(pod=model_registry_operator_pod)
+    def test_catalog_controller_manager_pod_running(self: Self, admin_client: DynamicClient) -> None:
+        """Given model catalog is enabled
+        When fetching the catalog-controller-manager pod from the applications namespace
+        Then the pod should be in Running phase
+        """
+        pod = wait_for_pods_by_labels(
+            admin_client=admin_client,
+            namespace=py_config["applications_namespace"],
+            label_selector=f"{Annotations.KubernetesIo.NAME}={CATALOG_CONTROLLER_MANAGER_NAME}",
+            expected_num_pods=1,
+        )[0]
+        assert pod.status == Pod.Status.RUNNING, (
+            f"catalog-controller-manager pod {pod.name} is in phase '{pod.status}', expected 'Running'"
+        )
 
     @pytest.mark.post_upgrade
     @pytest.mark.pre_upgrade

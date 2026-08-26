@@ -148,8 +148,8 @@ def build_notebook_dict(
         resources
         if resources is not None
         else {
-            "limits": {"cpu": "2", "memory": "4Gi"},
-            "requests": {"cpu": "1", "memory": "1Gi"},
+            "limits": {"cpu": "1", "memory": "2Gi"},
+            "requests": {"cpu": "500m", "memory": "1Gi"},
         }
     )
 
