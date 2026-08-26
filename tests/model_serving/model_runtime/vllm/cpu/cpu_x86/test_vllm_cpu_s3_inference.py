@@ -36,7 +36,7 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_cpu_x86_accelerator_t
         pytest.param(
             {"name": "opt-125m-raw-cpu"},
             {"model-dir": OPT_125M_MODEL_PATH},
-            {"deployment_type": KServeDeploymentType.RAW_DEPLOYMENT},
+            {"deployment_mode": KServeDeploymentType.RAW_DEPLOYMENT},
             {
                 **BASE_RAW_DEPLOYMENT_CONFIG,
                 "name": "opt-125m-raw-cpu",
@@ -50,7 +50,7 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_cpu_x86_accelerator_t
         pytest.param(
             {"name": "tinyllama-raw-cpu"},
             {"model-dir": TINYLLAMA_MODEL_PATH},
-            {"deployment_type": KServeDeploymentType.RAW_DEPLOYMENT},
+            {"deployment_mode": KServeDeploymentType.RAW_DEPLOYMENT},
             {
                 **BASE_RAW_DEPLOYMENT_CONFIG,
                 "name": "tinyllama-raw-cpu",

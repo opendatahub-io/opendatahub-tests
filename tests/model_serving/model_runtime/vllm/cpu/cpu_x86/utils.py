@@ -6,12 +6,13 @@ from ocp_resources.inference_service import InferenceService
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from utilities.certificates_utils import get_ca_bundle
+from utilities.constants import KServeDeploymentType
 from utilities.inference_utils import get_exposed_isvc_url
 from utilities.plugins.constant import OpenAIEnpoints, RestHeader
 
 LOGGER = structlog.get_logger(name=__name__)
 
-DEFAULT_REQUEST_TIMEOUT: int = 30
+DEFAULT_REQUEST_TIMEOUT: int = 120
 
 
 @retry(stop=stop_after_attempt(5), wait=wait_exponential(min=1, max=6))
@@ -28,7 +29,7 @@ def send_completions_request(
         "max_tokens": max_tokens,
     }
     LOGGER.info("Sending completions request", url=url, payload=payload)
-    ca_bundle = get_ca_bundle(client=isvc.client)
+    ca_bundle = get_ca_bundle(client=isvc.client, deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT)
     response = requests.post(
         url=url,
         headers=RestHeader.HEADERS,
@@ -55,7 +56,7 @@ def send_chat_completions_request(
         "max_tokens": max_tokens,
     }
     LOGGER.info("Sending chat completions request", url=url, payload=payload)
-    ca_bundle = get_ca_bundle(client=isvc.client)
+    ca_bundle = get_ca_bundle(client=isvc.client, deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT)
     response = requests.post(
         url=url,
         headers=RestHeader.HEADERS,
