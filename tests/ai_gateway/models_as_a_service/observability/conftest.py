@@ -29,23 +29,29 @@ def maas_monitoring_namespace(
     """Return the monitoring namespace configured for maas-controller observability."""
     monitoring_namespace = resolve_maas_monitoring_namespace(admin_client=admin_client)
     if not monitoring_namespace:
-        pytest.skip("maas-controller MONITORING_NAMESPACE is not configured; observability reconcile is skipped")
+        pytest.fail(
+            "maas-controller MONITORING_NAMESPACE is not configured; observability reconcile cannot run"
+        )
     if not monitoring_namespace_exists(admin_client=admin_client, namespace_name=monitoring_namespace):
-        pytest.skip(
-            f"Monitoring namespace '{monitoring_namespace}' does not exist; maas-controller skips observability setup"
+        pytest.fail(
+            f"Monitoring namespace '{monitoring_namespace}' does not exist; "
+            "maas-controller observability setup requires it"
         )
     return monitoring_namespace
 
 
 @pytest.fixture(scope="session")
 def servicemonitor_crd_available(admin_client: DynamicClient) -> None:
-    """Skip when the Prometheus Operator ServiceMonitor CRD is not installed."""
+    """Fail when the Prometheus Operator ServiceMonitor CRD is not installed."""
     service_monitor_crd = CustomResourceDefinition(
         client=admin_client,
         name=SERVICE_MONITOR_CRD_NAME,
     )
     if not service_monitor_crd.exists:
-        pytest.skip("ServiceMonitor CRD not installed; Limitador metrics scrape is optional on this cluster")
+        pytest.fail(
+            f"ServiceMonitor CRD '{SERVICE_MONITOR_CRD_NAME}' not installed; "
+            "Limitador metrics scrape requires it"
+        )
 
 
 @pytest.fixture(scope="session")
@@ -82,7 +88,7 @@ def maas_observability_prometheus(
         namespace=maas_monitoring_namespace,
     )
     if not thanos_route.exists:
-        pytest.skip(
+        pytest.fail(
             f"Route '{RHOAI_THANOS_QUERIER_ROUTE_NAME}' not found in '{maas_monitoring_namespace}'; "
             "RHOAI observability stack is not deployed"
         )
@@ -99,9 +105,9 @@ def maas_observability_prometheus(
 def limitador_deployed(
     admin_client: DynamicClient,
 ) -> None:
-    """Skip Prometheus Limitador metrics tests when Limitador is not running."""
+    """Fail when Limitador is not running in a known policy-engine namespace."""
     if not limitador_is_deployed(admin_client=admin_client):
-        pytest.skip(
+        pytest.fail(
             "Limitador is not deployed in kuadrant-system or rh-connectivity-link; "
-            "skipping Limitador Prometheus metrics smoke test"
+            "Limitador Prometheus metrics smoke test requires it"
         )
