@@ -186,12 +186,12 @@ def wait_for_limitador_service_monitor(
         name=LIMITADOR_SERVICE_MONITOR_NAME,
         namespace=monitoring_namespace,
     )
-    for exists in TimeoutSampler(
+    for sampler in TimeoutSampler(
         wait_timeout=timeout,
         sleep=5,
         func=lambda: service_monitor.exists,
     ):
-        if exists:
+        if sampler:
             return service_monitor
     return service_monitor
 
