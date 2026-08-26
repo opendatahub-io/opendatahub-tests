@@ -61,7 +61,7 @@ def mlserver_serving_runtime(
         name=ModelInferenceRuntime.MLSERVER_RUNTIME,
         namespace=model_namespace.name,
         template_name=RuntimeTemplates.MLSERVER,
-        deployment_type=request.param["deployment_type"],
+        deployment_type=request.param.get("deployment_mode", KServeDeploymentType.STANDARD),
         runtime_image=mlserver_runtime_image,
     ) as model_runtime:
         yield model_runtime
@@ -99,7 +99,7 @@ def mlserver_inference_service(
         "storage_uri": s3_models_storage_uri,
         "model_format": mlserver_serving_runtime.instance.spec.supportedModelFormats[0].name,
         "model_service_account": mlserver_model_service_account.name,
-        "deployment_mode": params.get("deployment_type", KServeDeploymentType.RAW_DEPLOYMENT),
+        "deployment_mode": params.get("deployment_mode", KServeDeploymentType.STANDARD),
         "external_route": params.get("enable_external_route", False),
     }
 

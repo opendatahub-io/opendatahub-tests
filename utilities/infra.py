@@ -1065,9 +1065,23 @@ def wait_for_dsc_status_ready(dsc_resource: DataScienceCluster) -> bool:
     LOGGER.info(f"Wait for DSC {dsc_resource.name} are {dsc_resource.Status.READY}.")
     if dsc_resource.status == dsc_resource.Status.READY:
         return True
-    raise ResourceNotReadyError(
-        f"DSC {dsc_resource.name} is not ready.\nCurrent status: {dsc_resource.instance.status}"
+
+    conditions = dsc_resource.instance.status.conditions
+    not_ready_conditions = [
+        condition for condition in conditions if condition.status != "True" and condition.get("reason") != "Removed"
+    ]
+    removed_components = [
+        condition.type.removesuffix("Ready") for condition in conditions if condition.get("reason") == "Removed"
+    ]
+
+    summary = "\n".join(
+        f"  {condition.type}: {condition.get('message', condition.reason)}" for condition in not_ready_conditions
     )
+    message = f"DSC {dsc_resource.name} is not ready:\n{summary}"
+    if removed_components:
+        message += f"\nRemoved components: {', '.join(removed_components)}"
+
+    raise ResourceNotReadyError(message)
 
 
 def verify_cluster_sanity(
@@ -1199,18 +1213,16 @@ def download_oc_console_cli(admin_client: DynamicClient, tmpdir: LocalPath) -> s
 
 
 def check_internal_image_registry_available(admin_client: DynamicClient) -> bool:
-    """Check if internal image registry is available by checking the imageregistry config managementState"""
-    try:
-        # Access the imageregistry.operator.openshift.io/v1 Config resource named "cluster"
-        config_instance = Config(client=admin_client, name="cluster")
+    """Check if internal image registry is available by checking the imageregistry config managementState."""
 
+    try:
+        config_instance = Config(client=admin_client, name="cluster")
         management_state = config_instance.instance.spec.get("managementState", "").lower()
         is_available = management_state == "managed"
-
         LOGGER.info(f"Image registry management state: {management_state}, available: {is_available}")
         return is_available
-    except (ResourceNotFoundError, Exception) as e:
-        LOGGER.warning(f"Failed to check image registry config: {e}")
+    except (ResourceNotFoundError, Exception) as error:  # noqa: BLE001
+        LOGGER.warning(f"Failed to check image registry config: {error}")
         return False
 
 

@@ -25,6 +25,14 @@ SHA256_DIGEST_PATTERN = r"@sha256:[a-f0-9]{64}$"
 
 LOGGER = get_logger(name=__name__)
 
+# ANSI stripping functionality
+_ANSI_ESCAPE_RE = re.compile(r"\x1b(?:\[[?!>]?[0-9;:]*[A-Za-z]|\][^\x07]*(?:\x07|\x1b\\)|[()][A-B0-2]|[=>NODMHc78])")
+
+
+def strip_ansi(text: str) -> str:
+    """Remove ANSI escape sequences from a string."""
+    return _ANSI_ESCAPE_RE.sub(repl="", string=text)
+
 
 def get_s3_secret_dict(
     aws_access_key: str,
@@ -218,9 +226,9 @@ def create_isvc_label_selector_str(isvc: InferenceService, resource_type: str, r
 
     """
     deployment_mode = isvc.instance.metadata.annotations.get(Annotations.KserveIo.DEPLOYMENT_MODE)
-    if deployment_mode in (
-        KServeDeploymentType.SERVERLESS,
-        KServeDeploymentType.RAW_DEPLOYMENT,
+    if (
+        deployment_mode == KServeDeploymentType.SERVERLESS
+        or deployment_mode in KServeDeploymentType.RAW_DEPLOYMENT_MODES
     ):
         return f"{isvc.ApiGroup.SERVING_KSERVE_IO}/inferenceservice={isvc.name}"
 

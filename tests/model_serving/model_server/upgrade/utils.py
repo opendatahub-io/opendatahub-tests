@@ -37,7 +37,6 @@ from utilities.general import create_isvc_label_selector_str
 from utilities.infra import get_inference_serving_runtime, get_pods_by_isvc_label, get_product_version
 from utilities.kueue_utils import (
     ClusterQueue,
-    Kueue,
     LocalQueue,
     ResourceFlavor,
     check_gated_pods_and_running_pods,
@@ -47,6 +46,7 @@ from utilities.kueue_utils import (
     is_kueue_operator_installed,
     wait_for_kueue_crds_available,
 )
+from utilities.resources.kueue import Kueue
 
 LOGGER = structlog.get_logger(name=__name__)
 

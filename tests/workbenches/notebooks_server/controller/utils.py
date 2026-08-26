@@ -1,15 +1,17 @@
+from collections.abc import Generator
+from contextlib import contextmanager
 from typing import Any
 
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.pod import Pod
 from ocp_resources.resource import NamespacedResource, Resource
+from ocp_resources.service_account import ServiceAccount
 from pytest_testconfig import config as py_config
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError
 
-from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH, Labels
+from utilities.constants import Labels
 from utilities.general import collect_pod_information
-from utilities.infra import check_internal_image_registry_available
 
 LOGGER = get_logger(name=__name__)
 
@@ -39,27 +41,69 @@ class HardwareProfile(NamespacedResource):
 def resolve_notebook_image(admin_client: DynamicClient) -> str:
     """Resolves the full image path for a minimal workbench notebook.
 
-    Determines the image name based on distribution (upstream/downstream),
-    resolves the tag from config or product version, and prepends the
-    internal registry path when available.
+    Resolves the image from the cluster ImageStream because operator CSV versions
+    (for example ``2.25``) do not always match ImageStream tag names (for example
+    ``2025.2``). Using the CSV version directly causes ImagePullBackOff on
+    references such as ``s2i-minimal-notebook:2.25``.
 
     Args:
-        admin_client: Cluster client for querying product version and registry availability.
+        admin_client: Cluster client for ImageStream and product version lookups.
 
     Returns:
-        Full image reference (e.g. "image-registry.../namespace/jupyter-minimal-notebook:2.18").
+        A pullable image reference. Uses the ImageStream ``repository:tag`` form
+        when the OpenShift integrated registry is available; otherwise uses the
+        digest-pinned ``dockerImageReference`` from ImageStream status.
     """
-    image_name = "jupyter-minimal-notebook" if py_config.get("distribution") == "upstream" else "s2i-minimal-notebook"
-    image_tag = py_config.get("workbench_image_tag", "2025.2")
-
-    minimal_image = f"{image_name}:{image_tag}"
-    internal_image_registry = check_internal_image_registry_available(admin_client=admin_client)
-
-    return (
-        f"{INTERNAL_IMAGE_REGISTRY_PATH}/{py_config['applications_namespace']}/{minimal_image}"
-        if internal_image_registry
-        else minimal_image
+    from tests.workbenches.notebook_images.utils import (
+        WorkbenchImageSpec,
+        resolve_workbench_image,
     )
+
+    imagestream_name = (
+        "jupyter-minimal-notebook" if py_config.get("distribution") == "upstream" else "s2i-minimal-notebook"
+    )
+    return resolve_workbench_image(
+        admin_client=admin_client,
+        spec=WorkbenchImageSpec(
+            ide="jupyterlab",
+            imagestream_name=imagestream_name,
+            notebook_name="workbench",
+            baseline_prefix="jupyterlab",
+            pvc_name="workbench-storage",
+        ),
+    ).image_url
+
+
+@contextmanager
+def notebook_service_account(
+    client: DynamicClient,
+    name: str,
+    namespace: str,
+    *,
+    teardown: bool = True,
+) -> Generator[ServiceAccount, Any, Any]:
+    """Ensure the per-notebook ServiceAccount exists before deploying a Notebook CR.
+
+    The Kubeflow notebook controller creates the StatefulSet immediately, but on some
+    RHOAI versions the ODH controller creates auth resources asynchronously. Pre-creating
+    the ServiceAccount avoids pod scheduling failures when the SA is not found.
+
+    Args:
+        client: Kubernetes client for the target namespace.
+        name: ServiceAccount name (matches the notebook name).
+        namespace: Target namespace.
+        teardown: Whether to delete the ServiceAccount on context exit.
+
+    Yields:
+        The existing or newly created ServiceAccount.
+    """
+    existing_sa = ServiceAccount(client=client, name=name, namespace=namespace, ensure_exists=False)
+    if existing_sa.exists:
+        yield existing_sa
+        return
+
+    with ServiceAccount(client=client, name=name, namespace=namespace, teardown=teardown) as service_account:
+        yield service_account
 
 
 def build_notebook_dict(
@@ -102,8 +146,8 @@ def build_notebook_dict(
         resources
         if resources is not None
         else {
-            "limits": {"cpu": "2", "memory": "4Gi"},
-            "requests": {"cpu": "1", "memory": "1Gi"},
+            "limits": {"cpu": "1", "memory": "2Gi"},
+            "requests": {"cpu": "500m", "memory": "1Gi"},
         }
     )
 
@@ -175,17 +219,6 @@ def build_notebook_dict(
                     "volumes": [
                         {"name": name, "persistentVolumeClaim": {"claimName": name}},
                         {"emptyDir": {"medium": "Memory"}, "name": "shm"},
-                        {
-                            "name": "kube-rbac-proxy-config",
-                            "configMap": {"defaultMode": 420, "name": "test-kube-rbac-proxy-config"},
-                        },
-                        {
-                            "name": "kube-rbac-proxy-tls-certificates",
-                            "secret": {
-                                "defaultMode": 420,
-                                "secretName": "test-kube-rbac-proxy-tls",  # pragma: allowlist secret
-                            },
-                        },
                     ],
                 }
             }

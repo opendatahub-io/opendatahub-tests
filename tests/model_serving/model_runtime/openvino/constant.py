@@ -21,8 +21,6 @@ LOCAL_HOST_URL: str = "http://localhost"
 
 OPENVINO_REST_PORT: int = 8888
 
-RAW_DEPLOYMENT_TYPE: str = "raw"
-
 REST_PROTOCOL_TYPE_DICT: dict[str, str] = {"protocol_type": Protocols.REST}
 
 PREDICT_RESOURCES: dict[str, Union[list[dict[str, Union[str, dict[str, str]]]], dict[str, dict[str, str]]]] = {
@@ -40,7 +38,7 @@ PREDICT_RESOURCES: dict[str, Union[list[dict[str, Union[str, dict[str, str]]]], 
 }
 
 BASE_RAW_DEPLOYMENT_CONFIG: dict[str, Any] = {
-    "deployment_type": KServeDeploymentType.RAW_DEPLOYMENT,
+    "deployment_mode": KServeDeploymentType.STANDARD,
     "min-replicas": 1,
     "enable_external_route": False,
 }
