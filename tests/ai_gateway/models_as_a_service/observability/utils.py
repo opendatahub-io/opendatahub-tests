@@ -179,7 +179,7 @@ def wait_for_limitador_service_monitor(
     admin_client: DynamicClient,
     monitoring_namespace: str,
     timeout: int = LIMITADOR_SERVICE_MONITOR_WAIT_TIMEOUT,
-) -> ServiceMonitor:
+) -> ServiceMonitor | None:
     """Wait for maas-controller to create the Limitador ServiceMonitor."""
     service_monitor = ServiceMonitor(
         client=admin_client,
@@ -193,7 +193,7 @@ def wait_for_limitador_service_monitor(
     ):
         if sampler:
             return service_monitor
-    return service_monitor
+    return None
 
 
 def validate_limitador_service_monitor_spec(

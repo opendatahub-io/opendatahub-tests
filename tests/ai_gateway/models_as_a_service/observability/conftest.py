@@ -6,6 +6,7 @@ from ocp_resources.service_monitor import ServiceMonitor
 from ocp_utilities.monitoring import Prometheus
 
 from tests.ai_gateway.models_as_a_service.observability.constants import (
+    LIMITADOR_SERVICE_MONITOR_NAME,
     RHOAI_THANOS_QUERIER_ROUTE_NAME,
     SERVICE_MONITOR_CRD_NAME,
 )
@@ -67,10 +68,16 @@ def limitador_service_monitor(
     servicemonitor_crd_available: None,
 ) -> ServiceMonitor:
     """Wait for maas-controller to create the Limitador ServiceMonitor."""
-    return wait_for_limitador_service_monitor(
+    limitador_service_monitor = wait_for_limitador_service_monitor(
         admin_client=admin_client,
         monitoring_namespace=maas_monitoring_namespace,
     )
+    if limitador_service_monitor is None:
+        pytest.fail(
+            f"ServiceMonitor '{LIMITADOR_SERVICE_MONITOR_NAME}' not found in "
+            f"'{maas_monitoring_namespace}' after maas-controller reconcile"
+        )
+    return limitador_service_monitor
 
 
 @pytest.fixture(scope="session")
