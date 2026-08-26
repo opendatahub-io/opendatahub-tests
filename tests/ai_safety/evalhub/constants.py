@@ -1,3 +1,5 @@
+import re
+
 from tests.ai_safety.image_constants import AiSafetyImages
 
 MINIO_MC_IMAGE: str = AiSafetyImages.MINIO_MC
@@ -106,6 +108,26 @@ SIMPLE_MINIO_BUCKET: str = "evalhub-data"
 PVC_TEST_DATA_NAME: str = "evalhub-test-data"
 PVC_TEST_DATA_SIZE: str = "2Gi"
 PVC_TOKENIZER_PATH: str = "/test_data/tokenizer"
+
+# Git storage source test data (RHAISTRAT-2058)
+# Field names below (test_data_ref.git.*, resolved_sha) follow the test plan's documented
+# example payloads; the strategy marks the exact API schema as TBD pending implementation docs.
+# Defaults point at eval-hub's own vendored offline lm-eval cache (tests/git-testdata), which
+# exists specifically so FVT can exercise git clone/checkout without live Hugging Face downloads;
+# see https://github.com/eval-hub/eval-hub/tree/main/tests/git-testdata. Env vars still override.
+GIT_PUBLIC_REPO_URL_ENV: str = "GIT_TEST_PUBLIC_REPO_URL"
+GIT_PUBLIC_REPO_REF_ENV: str = "GIT_TEST_PUBLIC_REPO_REF"
+GIT_PUBLIC_REPO_SUB_PATH_ENV: str = "GIT_TEST_PUBLIC_REPO_SUB_PATH"
+GIT_PUBLIC_REPO_URL: str = "https://github.com/eval-hub/eval-hub"
+GIT_DEFAULT_REF: str = "main"
+GIT_PUBLIC_REPO_SUB_PATH: str = "tests/git-testdata"
+# Tokenizer mount path once sub_path narrows the clone to tests/git-testdata (arc_easy cache).
+GIT_TOKENIZER_PATH: str = "/test_data/tokenizer"
+# Tokenizer path when the full repository is cloned without sub_path narrowing.
+GIT_FULL_REPO_TOKENIZER_PATH: str = "/test_data/tests/git-testdata/tokenizer"
+# Guaranteed-nonexistent per RFC 2606; used for negative tests that must not resolve.
+GIT_NONEXISTENT_REPO_URL: str = "https://git.example.com/does-not-exist/repo.git"
+GIT_COMMIT_SHA_PATTERN: re.Pattern[str] = re.compile(r"^[0-9a-f]{7,40}$")
 
 # Hardware profile
 EVALHUB_DEFAULT_HARDWARE_PROFILE: str = "default-profile"

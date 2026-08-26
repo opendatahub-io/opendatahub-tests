@@ -26,8 +26,6 @@ LOGGER = structlog.get_logger(name=__name__)
 
 KUEUE_QUEUE_NAME_LABEL: str = "kueue.x-k8s.io/queue-name"
 KUEUE_MANAGED_LABEL: str = "kueue.x-k8s.io/managed"
-KUEUE_CLUSTER_QUEUE_LABEL: str = "kueue.x-k8s.io/cluster-queue-name"
-KUEUE_LOCAL_QUEUE_LABEL: str = "kueue.x-k8s.io/local-queue-name"
 KUEUE_OPERATOR_NAMESPACE: str = "openshift-kueue-operator"
 KUEUE_CONTROLLER_LABEL_SELECTOR: str = "app.openshift.io/name=kueue"
 KUEUE_VISIBILITY_API_GROUP: str = "visibility.kueue.x-k8s.io"  # gitleaks:allow
