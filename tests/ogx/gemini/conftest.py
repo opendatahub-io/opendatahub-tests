@@ -5,7 +5,7 @@ The Gemini tests reuse the standard OgxServer stack from ``tests/ogx/conftest.py
 parametrizing the ``ogx_server`` fixture indirectly with ``{"enable_gemini": True}``,
 which injects ``GEMINI_API_KEY`` into the pod (see ``build_ogx_server_config``).
 
-The fixtures here add Gemini-specific concerns on top of that stack: skipping the
+The fixtures here add Gemini-specific concerns on top of that stack: failing the
 suite when no API key is configured, resolving Gemini model ids from the running
 distribution, and exposing the OgxServer pod for environment/log inspection.
 """
@@ -28,15 +28,16 @@ LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="session", autouse=True)
-def skip_if_no_gemini_api_key() -> None:
-    """Skip the entire Gemini suite when no Gemini API key is configured.
+def fail_if_no_gemini_api_key() -> None:
+    """Fail the entire Gemini suite when no Gemini API key is configured.
 
     Every remote::gemini test requires a real key so the provider activates and
-    can authenticate to the Gemini API. Running without one would only produce
-    misleading failures, so the whole suite is skipped instead.
+    can authenticate to the Gemini API. A missing key on an environment expected
+    to run these tests is an infrastructure gap that should be flagged and
+    triaged, not silently skipped.
     """
     if not GEMINI_API_KEY:
-        pytest.skip(
+        pytest.fail(
             reason="No Gemini API key configured; set OGX_CORE_GEMINI_API_KEY (or GEMINI_API_KEY) to run these tests"
         )
 

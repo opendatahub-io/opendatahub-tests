@@ -65,7 +65,6 @@ UNSUPPORTED_SCHEMA_TOOL = {
     ],
     indirect=True,
 )
-@pytest.mark.ogx
 class TestGeminiToolCalling:
     """Tool calling behavior for the remote::gemini provider."""
 

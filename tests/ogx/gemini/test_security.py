@@ -29,7 +29,6 @@ pytestmark = [pytest.mark.skip_on_disconnected]
     ],
     indirect=True,
 )
-@pytest.mark.ogx
 class TestGeminiSecurity:
     """The Gemini API key must never leak through specs, logs, or responses."""
 

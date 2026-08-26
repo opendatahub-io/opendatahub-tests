@@ -28,7 +28,6 @@ pytestmark = [pytest.mark.skip_on_disconnected]
     ],
     indirect=True,
 )
-@pytest.mark.ogx
 class TestGeminiPerRequestAuth:
     """Per-request Gemini API key override via the x-ogx-provider-data header."""
 
@@ -48,7 +47,7 @@ class TestGeminiPerRequestAuth:
             without affecting the config-level key.
         """
         if not GEMINI_API_KEY_SECONDARY:
-            pytest.skip(reason="OGX_CORE_GEMINI_API_KEY_SECONDARY not set; cannot test per-request key override")
+            pytest.fail(reason="OGX_CORE_GEMINI_API_KEY_SECONDARY not set; cannot test per-request key override")
 
         # Baseline: config-level key.
         baseline = ogx_client.chat.completions.create(
@@ -67,7 +66,7 @@ class TestGeminiPerRequestAuth:
             "Request with per-request key override did not succeed"
         )
 
-    @pytest.mark.tier2
+    @pytest.mark.tier3
     def test_invalid_per_request_api_key_errors(
         self,
         ogx_client: OgxClient,

@@ -52,7 +52,6 @@ def _resolve_non_gemini_llm(ogx_client: OgxClient) -> tuple[str, str] | None:
     ],
     indirect=True,
 )
-@pytest.mark.ogx
 class TestGeminiRegression:
     """Existing providers remain functional after adding remote::gemini."""
 
@@ -74,7 +73,7 @@ class TestGeminiRegression:
 
         openai_llm = _resolve_model_id(ogx_client=ogx_client, provider_id="openai", model_type="llm")
         if not openai_llm:
-            pytest.skip(reason="No remote::openai LLM model configured; cannot assert TC-REG-001")
+            pytest.fail(reason="No remote::openai LLM model configured; cannot assert TC-REG-001")
 
         chat = ogx_client.chat.completions.create(
             model=openai_llm,

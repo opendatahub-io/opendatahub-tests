@@ -28,7 +28,6 @@ pytestmark = [pytest.mark.skip_on_disconnected]
     ],
     indirect=True,
 )
-@pytest.mark.ogx
 class TestGeminiProviders:
     """Provider availability and conditional activation for remote::gemini."""
 

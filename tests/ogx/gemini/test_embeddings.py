@@ -27,7 +27,6 @@ pytestmark = [pytest.mark.skip_on_disconnected]
     ],
     indirect=True,
 )
-@pytest.mark.ogx
 class TestGeminiEmbeddings:
     """Embedding generation and graceful missing-usage handling for Gemini."""
 

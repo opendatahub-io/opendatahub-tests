@@ -25,7 +25,6 @@ pytestmark = [pytest.mark.skip_on_disconnected]
     ],
     indirect=True,
 )
-@pytest.mark.ogx
 class TestGeminiChatCompletions:
     """Non-streaming, streaming, and temperature behavior for Gemini chat."""
 

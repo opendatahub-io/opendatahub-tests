@@ -47,7 +47,6 @@ WEATHER_TOOL = {
     ],
     indirect=True,
 )
-@pytest.mark.ogx
 class TestGeminiEndToEnd:
     """Complete user journeys through the remote::gemini provider."""
 

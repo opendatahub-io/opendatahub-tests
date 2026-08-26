@@ -36,7 +36,6 @@ CONFIG_SEARCH_PATHS = ("/app", "/opt/app-root", "/etc/ogx", "/root/.ogx")
     indirect=True,
 )
 @pytest.mark.downstream_only
-@pytest.mark.ogx
 class TestGeminiDeployment:
     """Build/config/operator-injection checks for the Gemini provider."""
 
@@ -78,7 +77,7 @@ class TestGeminiDeployment:
             ]
         ).strip()
         if not config_files:
-            pytest.skip(
+            pytest.fail(
                 reason="Could not locate the distribution config referencing 'gemini-inference' in the pod; "
                 f"searched {CONFIG_SEARCH_PATHS!r}. Confirm the config path to complete TC-DEP-002."
             )
