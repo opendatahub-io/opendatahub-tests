@@ -15,6 +15,7 @@ class ClusterQueue(Resource):
         self,
         namespace_selector: dict[str, Any] | None = None,
         resource_groups: list[dict[str, Any]] | None = None,
+        admission_checks: list[str] | None = None,
         **kwargs: Any,
     ) -> None:
         r"""
@@ -22,11 +23,14 @@ class ClusterQueue(Resource):
             namespace_selector (dict[str, Any]): Selector for namespaces this queue serves.
 
             resource_groups (list[dict[str, Any]]): Required. Resource groups managed by this queue.
+
+            admission_checks (list[str]): AdmissionCheck names to require on this queue.
         """
         super().__init__(**kwargs)
 
         self.namespace_selector = namespace_selector
         self.resource_groups = resource_groups
+        self.admission_checks = admission_checks
 
     def to_dict(self) -> None:
         super().to_dict()
@@ -44,3 +48,8 @@ class ClusterQueue(Resource):
 
             if self.resource_groups:
                 _spec["resourceGroups"] = self.resource_groups
+
+            if self.admission_checks:
+                _spec["admissionChecksStrategy"] = {
+                    "admissionChecks": [{"name": check} for check in self.admission_checks],
+                }
