@@ -91,7 +91,7 @@ class RuntimeTemplates:
     VLLM_GAUDI: str = "vllm-gaudi-runtime-template"
     VLLM_SPYRE: str = "vllm-spyre-x86-runtime-template"
     VLLM_CPU_x86: str = "vllm-cpu-x86-runtime-template"
-    VLLM_CPU_POWER: str = "vllm-cpu-power-runtime-template"
+    VLLM_CPU_POWER: str = "vllm-cpu-runtime-template"
     VLLM_CPU_Z: str = "vllm-cpu-z-runtime-template"
     MLSERVER: str = f"{ModelFormat.MLSERVER}-runtime-template"
     MLSERVER_CUDA: str = "mlserver-cuda-runtime-template"
@@ -208,6 +208,7 @@ class DscComponents:
         MODEL_MESH_SERVING_READY: str = "ModelMeshServingReady"
         OGX_READY: str = "OGXReady"
         AIGATEWAY_READY: str = "AIGatewayReady"
+        MODELS_AS_SERVICE_READY: str = "ModelsAsServiceReady"
 
     COMPONENT_MAPPING: dict[str, str] = {  # noqa: RUF012
         MODELMESHSERVING: ConditionType.MODEL_MESH_SERVING_READY,

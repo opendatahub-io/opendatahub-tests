@@ -6,7 +6,6 @@ import pytest
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.deployment import Deployment
 from ocp_resources.evalhub import EvalHub
 from ocp_resources.namespace import Namespace
@@ -26,7 +25,7 @@ from tests.ai_safety.evalhub.mcp.utils import (
     EvalHubMcpClient,
     build_mcp_proxy_role_rules,
 )
-from tests.ai_safety.evalhub.utils import wait_for_service_account
+from tests.ai_safety.evalhub.utils import is_evalhub_crd_available, wait_for_service_account
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.infra import create_inference_token
 
@@ -72,16 +71,6 @@ def _probe_evalhub_mcp_health(
         raise _TransientEvalhubMcpHealthError(str(err)) from err
 
 
-def _is_evalhub_crd_available(admin_client: DynamicClient) -> bool:
-    """Check if EvalHub CRD is installed on the cluster."""
-    crd_name = "evalhubs.trustyai.opendatahub.io"
-    try:
-        crd = CustomResourceDefinition(client=admin_client, name=crd_name)
-        return crd.exists
-    except AttributeError, KeyError:
-        return False
-
-
 def _mcp_deployment_name(cr_name: str) -> str:
     return f"{cr_name}-mcp"
 
@@ -113,35 +102,49 @@ def evalhub_mcp_mt_cr(
     tenant_a_namespace: Namespace,
 ) -> Generator[EvalHub, Any, Any]:
     """Create an EvalHub CR with MCP enabled for integration tests."""
-    if not _is_evalhub_crd_available(admin_client):
+    if not is_evalhub_crd_available(admin_client):
         pytest.fail(
             "EvalHub CRD 'evalhubs.trustyai.opendatahub.io' not available on this cluster. "
             "Install the TrustyAI/EvalHub operator first."
         )
 
-    evalhub = EvalHub(
+    # kind_dict is required: EvalHub's generated to_dict() has no "mcp" kwarg and
+    # resets res["spec"] from its known attributes on every create() call.
+    with EvalHub(
         client=admin_client,
-        name=EVALHUB_MCP_CR_NAME,
-        namespace=model_namespace.name,
-        database={"type": "sqlite"},
-        collections=["leaderboard-v2"],
+        kind_dict={
+            "apiVersion": f"{EvalHub.api_group}/v1",
+            "kind": "EvalHub",
+            "metadata": {
+                "name": EVALHUB_MCP_CR_NAME,
+                "namespace": model_namespace.name,
+            },
+            "spec": {
+                "database": {"type": "sqlite"},
+                "collections": ["leaderboard-v2"],
+                "mcp": {
+                    "enabled": True,
+                    "replicas": 1,
+                    "env": [
+                        {
+                            "name": "EVALHUB_TENANT",
+                            "value": tenant_a_namespace.name,
+                        }
+                    ],
+                },
+            },
+        },
         wait_for_resource=False,
-    )
-    # to_dict() populates evalhub.res (including spec) from constructor kwargs.
-    evalhub.to_dict()
-    evalhub.res["spec"]["mcp"] = {
-        "enabled": True,
-        "replicas": 1,
-        "env": [
-            {
-                "name": "EVALHUB_TENANT",
-                "value": tenant_a_namespace.name,
-            }
-        ],
-    }
-
-    with evalhub:
-        evalhub.wait(timeout=300)
+    ) as evalhub:
+        # evalhub.wait() only checks that the object exists, not that the operator
+        # has finished reconciling it, so poll status instead. Fail fast on phase
+        # "Error" rather than waiting out the full timeout; "Pending" is the normal
+        # in-progress state and must not be treated as a failure.
+        for sample in TimeoutSampler(wait_timeout=300, sleep=2, func=lambda: evalhub.instance.status):
+            if sample.get("ready") == "True":
+                break
+            if sample.get("phase") == "Error":
+                pytest.fail(f"EvalHub {EVALHUB_MCP_CR_NAME} entered Error phase: {sample.get('conditions')}")
         yield evalhub
 
 

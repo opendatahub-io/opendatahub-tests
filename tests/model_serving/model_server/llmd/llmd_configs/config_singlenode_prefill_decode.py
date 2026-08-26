@@ -40,13 +40,12 @@ class SingleNodePrefillDecodeConfig(TinyLlamaOciGpuConfig):
     expected_inference_pool_pod_count = 2
 
     @classmethod
-    def container_env(cls):
-        base = [e for e in super().container_env() if e["name"] != "VLLM_ADDITIONAL_ARGS"]
-        return base + [
+    def _nixl_env(cls, kv_role: str) -> list[dict]:
+        return [
             {
                 "name": "VLLM_ADDITIONAL_ARGS",
                 "value": (
-                    '--kv_transfer_config \'{"kv_connector":"NixlConnector","kv_role":"kv_both"}\''
+                    f'--kv_transfer_config \'{{"kv_connector":"NixlConnector","kv_role":"{kv_role}"}}\''
                     " --enable-auto-tool-choice --tool-call-parser hermes"
                 ),
             },
@@ -55,6 +54,16 @@ class SingleNodePrefillDecodeConfig(TinyLlamaOciGpuConfig):
                 "valueFrom": {"fieldRef": {"fieldPath": "status.podIP"}},
             },
         ]
+
+    @classmethod
+    def container_env(cls) -> list[dict]:
+        base = [e for e in super().container_env() if e["name"] != "VLLM_ADDITIONAL_ARGS"]
+        return base + cls._nixl_env(kv_role="kv_consumer")
+
+    @classmethod
+    def prefill_env(cls) -> list[dict]:
+        base = [e for e in super().container_env() if e["name"] != "VLLM_ADDITIONAL_ARGS"]
+        return base + cls._nixl_env(kv_role="kv_producer")
 
     @classmethod
     def router_config(cls):
@@ -87,9 +96,11 @@ class SingleNodePrefillDecodeConfig(TinyLlamaOciGpuConfig):
                 "containers": [
                     {
                         "name": "main",
-                        "env": cls.container_env(),
+                        "env": cls.prefill_env(),
                         "resources": cls.container_resources(),
+                        "startupProbe": cls.startup_probe(),
                         "livenessProbe": cls.liveness_probe(),
+                        "readinessProbe": cls.readiness_probe(),
                     }
                 ],
             },

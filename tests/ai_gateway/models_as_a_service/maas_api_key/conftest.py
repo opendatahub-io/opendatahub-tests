@@ -15,6 +15,7 @@ from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 
 from tests.ai_gateway.models_as_a_service.maas_api_key.utils import (
+    FreeUserKeysAcrossSubscriptions,
     build_chat_payload,
     build_inference_url,
     resolve_api_key_username,
@@ -125,6 +126,66 @@ def free_user_username(
     )
     LOGGER.info(f"free_user_username: resolved username from key id={active_api_key_id}")
     return username
+
+
+@pytest.fixture(scope="function")
+def free_user_keys_across_subscriptions(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_token_for_actor: str,
+    maas_subscription_tinyllama_free: MaaSSubscription,
+    minimal_subscription_for_free_user: MaaSSubscription,
+) -> Generator[FreeUserKeysAcrossSubscriptions, Any, Any]:
+    """Create free-user API keys in two subscriptions for bulk-revoke scope tests."""
+    primary_subscription_key_ids: list[str] = []
+    for index in range(1, 3):
+        _, key_body = create_api_key(
+            base_url=base_url,
+            ocp_user_token=ocp_token_for_actor,
+            request_session_http=request_session_http,
+            api_key_name=f"e2e-bulk-sub-primary-{index}-{generate_random_name()}",
+            subscription=maas_subscription_tinyllama_free.name,
+        )
+        primary_subscription_key_ids.append(key_body["id"])
+
+    _, secondary_key_body = create_api_key(
+        base_url=base_url,
+        ocp_user_token=ocp_token_for_actor,
+        request_session_http=request_session_http,
+        api_key_name=f"e2e-bulk-sub-secondary-{generate_random_name()}",
+        subscription=minimal_subscription_for_free_user.name,
+    )
+    secondary_subscription_key_ids = [secondary_key_body["id"]]
+
+    username = resolve_api_key_username(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        key_id=primary_subscription_key_ids[0],
+        ocp_user_token=ocp_token_for_actor,
+    )
+    key_setup: FreeUserKeysAcrossSubscriptions = {
+        "username": username,
+        "primary_subscription_name": maas_subscription_tinyllama_free.name,
+        "secondary_subscription_name": minimal_subscription_for_free_user.name,
+        "primary_subscription_key_ids": primary_subscription_key_ids,
+        "secondary_subscription_key_ids": secondary_subscription_key_ids,
+    }
+    LOGGER.info(
+        f"free_user_keys_across_subscriptions: user={username} "
+        f"primary_keys={primary_subscription_key_ids} secondary_keys={secondary_subscription_key_ids}"
+    )
+    yield key_setup
+
+    all_key_ids = primary_subscription_key_ids + secondary_subscription_key_ids
+    for key_id in all_key_ids:
+        revoke_resp, _ = revoke_api_key(
+            request_session_http=request_session_http,
+            base_url=base_url,
+            key_id=key_id,
+            ocp_user_token=ocp_token_for_actor,
+        )
+        if revoke_resp.status_code not in (200, 404):
+            raise AssertionError(f"Unexpected teardown status for key id={key_id}: {revoke_resp.status_code}")
 
 
 @pytest.fixture(scope="function")

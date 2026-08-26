@@ -18,6 +18,8 @@ from tests.rhoai_mcp.constants import (
     RHOAI_MCP_CLUSTERROLE_NAME,
     RHOAI_MCP_ENDPOINT_PATH,
     RHOAI_MCP_HEALTH_PATH,
+    RHOAI_MCP_MODEL_DEPLOY_NAMESPACE,
+    RHOAI_MCP_MODEL_DEPLOYER_ROLE_NAME,
     RHOAI_MCP_NAMESPACE,
     RHOAI_MCP_PORT,
     RHOAI_MCP_RBAC_DEPLOYER_ROLE_NAME,
@@ -292,7 +294,131 @@ def rhoai_mcp_ready(
     )
 
 
+@pytest.fixture(scope="class")
+def mcp_model_deploy_namespace(
+    admin_client: DynamicClient,
+    teardown_resources: bool,
+) -> Generator[Namespace, Any, Any]:
+    """Namespace for model deployment via MCP tools."""
+    with create_ns(
+        admin_client=admin_client,
+        name=RHOAI_MCP_MODEL_DEPLOY_NAMESPACE,
+        teardown=teardown_resources,
+    ) as ns:
+        yield ns
+
+
+# Model deployment test persona: wider than the RBAC test personas (rbac_reader/rbac_deployer)
+# which are intentionally narrow to verify tool-filtering. This persona needs the full set of
+# permissions to succeed at every step of the deployment lifecycle: namespace read for
+# check_deployment_prerequisites, template read + SR create for create_serving_runtime,
+# and ISVC create for deploy_model.
 _KSERVE_API_GROUP = "serving.kserve.io"
+_TEMPLATE_API_GROUP = "template.openshift.io"
+
+
+@pytest.fixture(scope="class")
+def mcp_model_deployer_sa(
+    admin_client: DynamicClient,
+    rhoai_mcp_namespace: Namespace,
+) -> Generator[ServiceAccount, Any, Any]:
+    """ServiceAccount for the model deployment lifecycle tests."""
+    with ServiceAccount(
+        client=admin_client,
+        name="rhoai-mcp-model-deployer",
+        namespace=rhoai_mcp_namespace.name,
+    ) as sa:
+        yield sa
+
+
+@pytest.fixture(scope="class")
+def mcp_model_deployer_cluster_role(
+    admin_client: DynamicClient,
+    teardown_resources: bool,
+) -> Generator[ClusterRole, Any, Any]:
+    """ClusterRole with full permissions for model deployment lifecycle."""
+    with ClusterRole(
+        client=admin_client,
+        name=RHOAI_MCP_MODEL_DEPLOYER_ROLE_NAME,
+        teardown=teardown_resources,
+        rules=[
+            {
+                "apiGroups": [""],
+                "resources": ["namespaces"],
+                "verbs": ["get", "list"],
+            },
+            {
+                "apiGroups": [_KSERVE_API_GROUP],
+                "resources": ["inferenceservices"],
+                "verbs": ["get", "list", "create", "delete"],
+            },
+            {
+                "apiGroups": [_KSERVE_API_GROUP],
+                "resources": ["servingruntimes"],
+                "verbs": ["get", "list", "create", "delete"],
+            },
+            {
+                "apiGroups": [_TEMPLATE_API_GROUP],
+                "resources": ["templates"],
+                "verbs": ["get", "list"],
+            },
+            {
+                "apiGroups": [""],
+                "resources": ["serviceaccounts"],
+                "verbs": ["get"],
+            },
+        ],
+    ) as cr:
+        yield cr
+
+
+@pytest.fixture(scope="class")
+def mcp_model_deployer_crb(
+    admin_client: DynamicClient,
+    rhoai_mcp_namespace: Namespace,
+    mcp_model_deployer_sa: ServiceAccount,
+    mcp_model_deployer_cluster_role: ClusterRole,
+    teardown_resources: bool,
+) -> Generator[ClusterRoleBinding, Any, Any]:
+    """Bind model-deployer SA to its ClusterRole."""
+    with ClusterRoleBinding(
+        client=admin_client,
+        name=RHOAI_MCP_MODEL_DEPLOYER_ROLE_NAME,
+        teardown=teardown_resources,
+        cluster_role=mcp_model_deployer_cluster_role.name,
+        subjects=[
+            {
+                "kind": "ServiceAccount",
+                "name": mcp_model_deployer_sa.name,
+                "namespace": rhoai_mcp_namespace.name,
+            }
+        ],
+    ) as crb:
+        yield crb
+
+
+@pytest.fixture(scope="class")
+def mcp_model_deployer_token(
+    mcp_model_deployer_sa: ServiceAccount,
+    mcp_model_deployer_crb: ClusterRoleBinding,
+) -> str:
+    """Short-lived token for the model-deployer ServiceAccount."""
+    return create_inference_token(model_service_account=mcp_model_deployer_sa)
+
+
+@pytest.fixture(scope="class")
+def mcp_model_deployer_transport(
+    rhoai_mcp_endpoint_url: str,
+    rhoai_mcp_ca_bundle: str,
+    rhoai_mcp_ready: None,
+    mcp_model_deployer_token: str,
+) -> StreamableHttpTransport:
+    """MCP transport authenticated as the model-deployer persona."""
+    return StreamableHttpTransport(
+        url=rhoai_mcp_endpoint_url,
+        auth=mcp_model_deployer_token,
+        verify=rhoai_mcp_ca_bundle,
+    )
 
 
 # RBAC test personas – reader (get/list on ISVC/SR) and deployer (+ create on ISVC/PVC/Secrets)
