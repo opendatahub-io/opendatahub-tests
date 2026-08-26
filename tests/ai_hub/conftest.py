@@ -25,6 +25,7 @@ from pytest_testconfig import config as py_config
 
 import tests.ai_hub.constants as ai_hub_constants
 from tests.ai_hub.constants import (
+    AIHUB_CONTROLLER_MANAGER_NAME,
     DB_BASE_RESOURCES_NAME,
     DB_RESOURCE_NAME,
     KUBERBACPROXY_STR,
@@ -110,7 +111,7 @@ def async_upload_image(admin_client: DynamicClient) -> str:
     pod = wait_for_pods_by_labels(
         admin_client=admin_client,
         namespace=py_config["applications_namespace"],
-        label_selector=f"{Annotations.KubernetesIo.NAME}=aihub-controller-manager",
+        label_selector=f"{Annotations.KubernetesIo.NAME}={AIHUB_CONTROLLER_MANAGER_NAME}",
         expected_num_pods=1,
     )[0]
 

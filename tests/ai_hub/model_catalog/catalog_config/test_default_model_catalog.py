@@ -16,7 +16,12 @@ from ocp_resources.service import Service
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutSampler
 
-from tests.ai_hub.constants import CATALOG_CONTAINER, DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
+from tests.ai_hub.constants import (
+    CATALOG_CONTAINER,
+    CATALOG_CONTROLLER_MANAGER_NAME,
+    DEFAULT_CUSTOM_MODEL_CATALOG,
+    DEFAULT_MODEL_CATALOG_CM,
+)
 from tests.ai_hub.model_catalog.catalog_config.utils import (
     extract_schema_fields,
     get_validate_default_model_catalog_source,
@@ -138,7 +143,7 @@ class TestModelCatalogGeneral:
         pod = wait_for_pods_by_labels(
             admin_client=admin_client,
             namespace=py_config["applications_namespace"],
-            label_selector=f"{Annotations.KubernetesIo.NAME}=catalog-controller-manager",
+            label_selector=f"{Annotations.KubernetesIo.NAME}={CATALOG_CONTROLLER_MANAGER_NAME}",
             expected_num_pods=1,
         )[0]
         assert pod.status == Pod.Status.RUNNING, (

@@ -9,6 +9,7 @@ from ocp_resources.secret import Secret
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutSampler
 
+from tests.ai_hub.constants import CATALOG_CONTROLLER_MANAGER_NAME
 from utilities.constants import Annotations
 from utilities.general import wait_for_pods_by_labels
 
@@ -150,7 +151,7 @@ def catalog_controller_manager_pod(admin_client: DynamicClient) -> Pod:
     return wait_for_pods_by_labels(
         admin_client=admin_client,
         namespace=py_config["applications_namespace"],
-        label_selector=f"{Annotations.KubernetesIo.NAME}=catalog-controller-manager",
+        label_selector=f"{Annotations.KubernetesIo.NAME}={CATALOG_CONTROLLER_MANAGER_NAME}",
         expected_num_pods=1,
     )[0]
 
@@ -161,14 +162,14 @@ def restarted_catalog_controller_manager_pod(admin_client: DynamicClient) -> Pod
     pods = wait_for_pods_by_labels(
         admin_client=admin_client,
         namespace=py_config["applications_namespace"],
-        label_selector=f"{Annotations.KubernetesIo.NAME}=catalog-controller-manager",
+        label_selector=f"{Annotations.KubernetesIo.NAME}={CATALOG_CONTROLLER_MANAGER_NAME}",
         expected_num_pods=1,
     )
     pods[0].delete()
     new_pod = wait_for_pods_by_labels(
         admin_client=admin_client,
         namespace=py_config["applications_namespace"],
-        label_selector=f"{Annotations.KubernetesIo.NAME}=catalog-controller-manager",
+        label_selector=f"{Annotations.KubernetesIo.NAME}={CATALOG_CONTROLLER_MANAGER_NAME}",
         expected_num_pods=1,
     )[0]
     new_pod.wait_for_status(status=Pod.Status.RUNNING)
