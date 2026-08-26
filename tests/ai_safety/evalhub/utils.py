@@ -986,6 +986,45 @@ def build_pvc_job_payload(
     return payload
 
 
+def build_git_test_data_ref(
+    url: str,
+    ref: str,
+    sub_path: str | None = None,
+    secret_ref: str | None = None,
+) -> dict:
+    """Build the test_data_ref.git portion of an EvalHub job payload."""
+    git_ref: dict[str, str] = {"url": url, "ref": ref}
+    if sub_path is not None:
+        git_ref["sub_path"] = sub_path
+    if secret_ref is not None:
+        git_ref["secret_ref"] = secret_ref
+    return {"git": git_ref}
+
+
+def build_git_job_payload(
+    model_service_name: str,
+    tenant_namespace: str,
+    job_name: str,
+    url: str,
+    ref: str,
+    sub_path: str | None = None,
+    secret_ref: str | None = None,
+    tokenizer_path: str | None = None,
+) -> dict:
+    """Build an EvalHub job payload with git-backed test data."""
+    payload = build_evalhub_job_payload(
+        model_service_name=model_service_name,
+        tenant_namespace=tenant_namespace,
+        job_name=job_name,
+    )
+    git_ref = build_git_test_data_ref(url=url, ref=ref, sub_path=sub_path, secret_ref=secret_ref)
+    for benchmark in payload["benchmarks"]:
+        benchmark["test_data_ref"] = git_ref
+        if tokenizer_path:
+            benchmark["parameters"]["tokenizer"] = tokenizer_path
+    return payload
+
+
 def build_evalhub_kueue_job_payload(
     queue_name: str,
     model_service_name: str,
