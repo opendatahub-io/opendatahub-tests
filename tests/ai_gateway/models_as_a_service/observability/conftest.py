@@ -1,4 +1,5 @@
 import pytest
+from collections.abc import Generator
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.route import Route
@@ -7,6 +8,7 @@ from ocp_utilities.monitoring import Prometheus
 
 from tests.ai_gateway.models_as_a_service.observability.constants import (
     LIMITADOR_SERVICE_MONITOR_NAME,
+    LIMITADOR_SCRAPE_INTERVAL_TEST_VALUE,
     OTEL_COLLECTOR_CRD_NAME,
     RHOAI_THANOS_QUERIER_ROUTE_NAME,
     SERVICE_MONITOR_CRD_NAME,
@@ -14,8 +16,10 @@ from tests.ai_gateway.models_as_a_service.observability.constants import (
 from tests.ai_gateway.models_as_a_service.observability.utils import (
     get_maas_config_default,
     limitador_is_deployed,
+    maas_config_usage_logging_enabled,
     monitoring_namespace_exists,
     opentelemetry_collector_crd_installed,
+    patch_maas_config_limitador_scrape_interval,
     resolve_maas_monitoring_namespace,
     wait_for_limitador_service_monitor,
 )
@@ -70,6 +74,27 @@ def maas_config_default(
 ) -> MaaSConfig:
     """Return the cluster-scoped MaaS Config/default anchor."""
     return get_maas_config_default(admin_client=admin_client)
+
+
+@pytest.fixture
+def maas_config_with_usage_logging_enabled(
+    maas_config_default: MaaSConfig,
+) -> Generator[MaaSConfig]:
+    """Enable usageLogging on Config/default for the test and restore on teardown."""
+    with maas_config_usage_logging_enabled(maas_config=maas_config_default):
+        yield maas_config_default
+
+
+@pytest.fixture
+def maas_config_with_limitador_scrape_interval_patched(
+    maas_config_default: MaaSConfig,
+) -> Generator[MaaSConfig]:
+    """Patch Config/default limitadorScrapeInterval for the test and restore on teardown."""
+    with patch_maas_config_limitador_scrape_interval(
+        maas_config=maas_config_default,
+        scrape_interval=LIMITADOR_SCRAPE_INTERVAL_TEST_VALUE,
+    ):
+        yield maas_config_default
 
 
 @pytest.fixture(scope="session")

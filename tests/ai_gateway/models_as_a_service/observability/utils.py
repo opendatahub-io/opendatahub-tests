@@ -14,7 +14,7 @@ from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.service_monitor import ServiceMonitor
 from pytest_testconfig import config as py_config
-from timeout_sampler import TimeoutSampler
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_gateway.models_as_a_service.observability.constants import (
     DEFAULT_LIMITADOR_SCRAPE_INTERVAL,
