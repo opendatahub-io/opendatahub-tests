@@ -1,4 +1,4 @@
-FROM fedora:43
+FROM fedora:46
 
 ARG USER=odh
 ARG HOME=/home/$USER
