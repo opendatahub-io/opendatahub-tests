@@ -1253,11 +1253,7 @@ def get_llmisvc_config_ref_pins(llmisvc: LLMInferenceService) -> dict[str, str]:
     """Get config ref annotation key-value pairs from LLMInferenceService status."""
     _CONFIG_REF_ANNOTATION_PREFIX = "serving.kserve.io/config-llm-"
     annotations = getattr(llmisvc.instance.status, "annotations", None) or {}
-    return {
-        key: value
-        for key, value in annotations.items()
-        if key.startswith(_CONFIG_REF_ANNOTATION_PREFIX) and value
-    }
+    return {key: value for key, value in annotations.items() if key.startswith(_CONFIG_REF_ANNOTATION_PREFIX) and value}
 
 
 def get_llmisvc_config_ref_names(llmisvc: LLMInferenceService) -> list[str]:
@@ -1502,11 +1498,7 @@ def verify_llmisvc_config_refs_unchanged(llmisvc: LLMInferenceService, baseline:
             if current_pins.get(key) != value
         }
 
-        added_pins = {
-            key: value
-            for key, value in current_pins.items()
-            if key not in expected_pins
-        }
+        added_pins = {key: value for key, value in current_pins.items() if key not in expected_pins}
 
         LOGGER.info(
             event="[POST-UPGRADE] config_ref_pins",
@@ -1595,9 +1587,7 @@ def verify_llmisvc_config_refs_exist(
         config_ref_names = baseline["config_ref_names"]
     if not config_ref_names:
         pre_upgrade_rhoai_version = baseline.get("pre_upgrade_rhoai_version", "unknown")
-        pytest.skip(
-            reason=f"No config refs in baseline — pre-upgrade version was {pre_upgrade_rhoai_version}"
-        )
+        pytest.skip(reason=f"No config refs in baseline — pre-upgrade version was {pre_upgrade_rhoai_version}")
     LOGGER.info(
         event=f"[POST-UPGRADE] Config refs check for '{llmisvc.name}': "
         f"{len(config_ref_names)} ref(s) to verify in ns '{LLMISVC_CONFIG_NAMESPACE}': {config_ref_names}"
