@@ -196,6 +196,7 @@ class DscComponents:
     OGX: str = "ogx"
     KUEUE: str = "kueue"
     AIGATEWAY: str = "aigateway"
+    MCPLIFECYCLEOPERATOR: str = "mcplifecycleoperator"
 
     class ManagementState:
         MANAGED: str = "Managed"
