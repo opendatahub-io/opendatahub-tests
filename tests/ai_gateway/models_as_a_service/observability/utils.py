@@ -14,7 +14,7 @@ from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.service_monitor import ServiceMonitor
 from pytest_testconfig import config as py_config
-from timeout_sampler import TimeoutExpiredError, TimeoutSampler
+from timeout_sampler import TimeoutSampler
 
 from tests.ai_gateway.models_as_a_service.observability.constants import (
     DEFAULT_LIMITADOR_SCRAPE_INTERVAL,
@@ -46,12 +46,9 @@ MAAS_CONTROLLER_DEPLOYMENT_NAME = "maas-controller"
 def maas_config_usage_logging_enabled(
     maas_config: MaaSConfig,
 ) -> Generator[MaaSConfig]:
-    """Patch Config/default to enable usageLogging and explicitly disable on exit."""
-    try:
-        with ResourceEditor(patches={maas_config: {"spec": {"usageLogging": True}}}):
-            yield maas_config
-    finally:
-        ResourceEditor(patches={maas_config: {"spec": {"usageLogging": False}}}).update()
+    """Patch Config/default to enable usageLogging and restore on exit."""
+    with ResourceEditor(patches={maas_config: {"spec": {"usageLogging": True}}}):
+        yield maas_config
 
 
 @contextmanager
@@ -279,56 +276,30 @@ def validate_limitador_service_monitor_spec(
     )
 
 
-def usage_logging_resources_present(
+def usage_logging_resources_in_expected_state(
     admin_client: DynamicClient,
     monitoring_namespace: str,
+    present: bool,
 ) -> bool:
-    """Return True when all usage-log observability resources exist."""
+    """Return True when usage-log resources all exist or are all absent as expected."""
     usage_logs_envoy_filter = EnvoyFilter(
         client=admin_client,
         name=USAGE_LOGS_ENVOY_FILTER_NAME,
         namespace=MAAS_GATEWAY_NAMESPACE,
     )
-    if not usage_logs_envoy_filter.exists:
-        return False
-
-    if not usage_logs_collector_exists(
-        admin_client=admin_client,
-        namespace=monitoring_namespace,
-    ):
-        return False
-
     usage_logs_crb = ClusterRoleBinding(
         client=admin_client,
         name=USAGE_LOGS_CRB_NAME,
     )
-    return bool(usage_logs_crb.exists)
-
-
-def usage_logging_resources_absent(
-    admin_client: DynamicClient,
-    monitoring_namespace: str,
-) -> bool:
-    """Return True when all usage-log observability resources are absent."""
-    usage_logs_envoy_filter = EnvoyFilter(
-        client=admin_client,
-        name=USAGE_LOGS_ENVOY_FILTER_NAME,
-        namespace=MAAS_GATEWAY_NAMESPACE,
+    all_present = (
+        usage_logs_envoy_filter.exists
+        and usage_logs_collector_exists(
+            admin_client=admin_client,
+            namespace=monitoring_namespace,
+        )
+        and usage_logs_crb.exists
     )
-    if usage_logs_envoy_filter.exists:
-        return False
-
-    if usage_logs_collector_exists(
-        admin_client=admin_client,
-        namespace=monitoring_namespace,
-    ):
-        return False
-
-    usage_logs_crb = ClusterRoleBinding(
-        client=admin_client,
-        name=USAGE_LOGS_CRB_NAME,
-    )
-    return not usage_logs_crb.exists
+    return all_present if present else not all_present
 
 
 def wait_for_usage_logging_resources(
@@ -337,21 +308,17 @@ def wait_for_usage_logging_resources(
     timeout: int = USAGE_LOGGING_RESOURCES_WAIT_TIMEOUT,
 ) -> None:
     """Wait for maas-controller to deploy usage-log observability resources."""
-    try:
-        for resources_ready in TimeoutSampler(
-            wait_timeout=timeout,
-            sleep=5,
-            func=lambda: usage_logging_resources_present(
-                admin_client=admin_client,
-                monitoring_namespace=monitoring_namespace,
-            ),
-        ):
-            if resources_ready:
-                return
-    except TimeoutExpiredError as exc:
-        raise AssertionError(
-            "Usage-log observability resources not found after enabling Config/default.spec.usageLogging"
-        ) from exc
+    for resources_ready in TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=5,
+        func=lambda: usage_logging_resources_in_expected_state(
+            admin_client=admin_client,
+            monitoring_namespace=monitoring_namespace,
+            present=True,
+        ),
+    ):
+        if resources_ready:
+            return
 
 
 def wait_for_usage_logging_resources_absent(
@@ -360,21 +327,17 @@ def wait_for_usage_logging_resources_absent(
     timeout: int = USAGE_LOGGING_RESOURCES_WAIT_TIMEOUT,
 ) -> None:
     """Wait for maas-controller to remove usage-log observability resources."""
-    try:
-        for resources_removed in TimeoutSampler(
-            wait_timeout=timeout,
-            sleep=5,
-            func=lambda: usage_logging_resources_absent(
-                admin_client=admin_client,
-                monitoring_namespace=monitoring_namespace,
-            ),
-        ):
-            if resources_removed:
-                return
-    except TimeoutExpiredError as exc:
-        raise AssertionError(
-            "Usage-log observability resources still present after disabling Config/default.spec.usageLogging"
-        ) from exc
+    for resources_removed in TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=5,
+        func=lambda: usage_logging_resources_in_expected_state(
+            admin_client=admin_client,
+            monitoring_namespace=monitoring_namespace,
+            present=False,
+        ),
+    ):
+        if resources_removed:
+            return
 
 
 def validate_usage_logging_resources(
@@ -383,7 +346,6 @@ def validate_usage_logging_resources(
     monitoring_namespace: str,
 ) -> None:
     """Validate usage-log observability resource ownerReferences after resources are present."""
-    maas_config.get()
     assert usage_logging_enabled(maas_config=maas_config), "Expected Config/default.spec.usageLogging to be enabled"
 
     config_uid = maas_config.instance.metadata.uid
@@ -393,7 +355,6 @@ def validate_usage_logging_resources(
         name=USAGE_LOGS_ENVOY_FILTER_NAME,
         namespace=MAAS_GATEWAY_NAMESPACE,
     )
-    usage_logs_envoy_filter.get()
     assert config_owner_reference_present(
         owner_references=usage_logs_envoy_filter.instance.metadata.ownerReferences,
         config_uid=config_uid,
@@ -407,7 +368,6 @@ def validate_usage_logging_resources(
         name=USAGE_LOGS_COLLECTOR_NAME,
         namespace=monitoring_namespace,
     )
-    collector.get()
     assert config_controller_owner_reference_present(
         owner_references=collector.instance.metadata.ownerReferences,
         config_uid=config_uid,
@@ -420,7 +380,6 @@ def validate_usage_logging_resources(
         client=admin_client,
         name=USAGE_LOGS_CRB_NAME,
     )
-    usage_logs_crb.get()
     assert config_controller_owner_reference_present(
         owner_references=usage_logs_crb.instance.metadata.ownerReferences,
         config_uid=config_uid,
@@ -450,7 +409,6 @@ def verify_usage_logging_resources_removed(
     monitoring_namespace: str,
 ) -> None:
     """Wait for usage-log observability resources to be removed after usageLogging is disabled."""
-    maas_config.get()
     assert not usage_logging_enabled(maas_config=maas_config), (
         "Expected Config/default.spec.usageLogging to be disabled"
     )
@@ -480,23 +438,13 @@ def wait_for_limitador_scrape_interval(
         endpoint = service_monitor.instance.spec.endpoints[0]
         return str(endpoint.interval) == expected_interval
 
-    try:
-        for interval_matches in TimeoutSampler(
-            wait_timeout=timeout,
-            sleep=5,
-            func=scrape_interval_matches,
-        ):
-            if interval_matches:
-                return service_monitor
-    except TimeoutExpiredError as exc:
-        observed_interval = ""
-        if service_monitor.exists:
-            service_monitor.get()
-            observed_interval = str(service_monitor.instance.spec.endpoints[0].interval)
-        raise AssertionError(
-            f"ServiceMonitor '{LIMITADOR_SERVICE_MONITOR_NAME}' scrape interval "
-            f"did not update to '{expected_interval}' (observed '{observed_interval}')"
-        ) from exc
+    for interval_matches in TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=5,
+        func=scrape_interval_matches,
+    ):
+        if interval_matches:
+            return service_monitor
     return service_monitor
 
 
@@ -523,24 +471,8 @@ def assert_usage_logging_resources_absent(
         "Expected Config/default.spec.usageLogging to be disabled"
     )
 
-    usage_logs_envoy_filter = EnvoyFilter(
-        client=admin_client,
-        name=USAGE_LOGS_ENVOY_FILTER_NAME,
-        namespace=MAAS_GATEWAY_NAMESPACE,
-    )
-    assert not usage_logs_envoy_filter.exists, (
-        f"EnvoyFilter '{USAGE_LOGS_ENVOY_FILTER_NAME}' must not exist when usageLogging is disabled"
-    )
-
-    assert not usage_logs_collector_exists(
+    assert usage_logging_resources_in_expected_state(
         admin_client=admin_client,
-        namespace=monitoring_namespace,
-    ), f"OpenTelemetryCollector '{USAGE_LOGS_COLLECTOR_NAME}' must not exist when usageLogging is disabled"
-
-    usage_logs_crb = ClusterRoleBinding(
-        client=admin_client,
-        name=USAGE_LOGS_CRB_NAME,
-    )
-    assert not usage_logs_crb.exists, (
-        f"ClusterRoleBinding '{USAGE_LOGS_CRB_NAME}' must not exist when usageLogging is disabled"
-    )
+        monitoring_namespace=monitoring_namespace,
+        present=False,
+    ), "Usage-log observability resources must be absent when usageLogging is disabled"

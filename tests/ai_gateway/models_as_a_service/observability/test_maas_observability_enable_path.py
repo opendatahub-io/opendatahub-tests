@@ -1,10 +1,6 @@
 import pytest
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.service_monitor import ServiceMonitor
 
-from tests.ai_gateway.models_as_a_service.observability.constants import (
-    LIMITADOR_SCRAPE_INTERVAL_TEST_VALUE,
-)
 from tests.ai_gateway.models_as_a_service.observability.utils import (
     expected_limitador_scrape_interval,
     verify_limitador_scrape_interval_on_servicemonitor,
@@ -57,14 +53,14 @@ class TestMaaSObservabilityEnablePath:
                 maas_config=maas_config,
                 monitoring_namespace=maas_monitoring_namespace,
             )
-            return
+        else:
+            verify_usage_logging_resources_removed(
+                admin_client=admin_client,
+                maas_config=maas_config_default,
+                monitoring_namespace=maas_monitoring_namespace,
+            )
 
-        verify_usage_logging_resources_removed(
-            admin_client=admin_client,
-            maas_config=maas_config_default,
-            monitoring_namespace=maas_monitoring_namespace,
-        )
-
+    @pytest.mark.usefixtures("limitador_service_monitor")
     @pytest.mark.parametrize(
         "limitador_scrape_interval_state",
         [
@@ -86,7 +82,6 @@ class TestMaaSObservabilityEnablePath:
         admin_client: DynamicClient,
         maas_config_default: MaaSConfig,
         maas_monitoring_namespace: str,
-        limitador_service_monitor: ServiceMonitor,
         request: pytest.FixtureRequest,
     ) -> None:
         """Given limitadorScrapeInterval is set on Config/default, when maas-controller reconciles,
@@ -94,20 +89,16 @@ class TestMaaSObservabilityEnablePath:
 
         Verifies ensureLimitadorServiceMonitor honors Config/default.spec.limitadorScrapeInterval.
         """
-        assert limitador_service_monitor.exists, (
-            f"ServiceMonitor '{limitador_service_monitor.name}' must exist before scrape interval patch"
-        )
         if limitador_scrape_interval_state == "patched":
-            request.getfixturevalue(argname="maas_config_with_limitador_scrape_interval_patched")
+            maas_config = request.getfixturevalue(argname="maas_config_with_limitador_scrape_interval_patched")
             verify_limitador_scrape_interval_on_servicemonitor(
                 admin_client=admin_client,
                 monitoring_namespace=maas_monitoring_namespace,
-                expected_interval=LIMITADOR_SCRAPE_INTERVAL_TEST_VALUE,
+                expected_interval=expected_limitador_scrape_interval(maas_config=maas_config),
             )
-            return
-
-        verify_limitador_scrape_interval_on_servicemonitor(
-            admin_client=admin_client,
-            monitoring_namespace=maas_monitoring_namespace,
-            expected_interval=expected_limitador_scrape_interval(maas_config=maas_config_default),
-        )
+        else:
+            verify_limitador_scrape_interval_on_servicemonitor(
+                admin_client=admin_client,
+                monitoring_namespace=maas_monitoring_namespace,
+                expected_interval=expected_limitador_scrape_interval(maas_config=maas_config_default),
+            )
