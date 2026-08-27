@@ -38,6 +38,7 @@ from utilities.must_gather_collector import (
     set_must_gather_collector_directory,
     set_must_gather_collector_values,
 )
+from utilities.resources.cluster_policy_kyverno_io import ClusterPolicy as KyvernoClusterPolicy
 
 LOGGER = logging.getLogger(name=__name__)
 BASIC_LOGGER = logging.getLogger(name="basic")
@@ -228,6 +229,14 @@ def pytest_cmdline_main(config: Any) -> None:
     config.option.basetemp = py_config["tmp_base_dir"] = f"{config.option.basetemp}-{shortuuid.uuid()}"
 
 
+def _kyverno_replace_image_registry_policy_exists() -> bool:
+    """Return True if the Kyverno replace-image-registry ClusterPolicy is active on the cluster."""
+    try:
+        return KyvernoClusterPolicy(client=get_client(), name="replace-image-registry").exists
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def pytest_collection_modifyitems(session: Session, config: Config, items: list[Item]) -> None:
     """
     Pytest fixture to filter or re-order the items in-place.
@@ -300,6 +309,13 @@ def pytest_collection_modifyitems(session: Session, config: Config, items: list[
     deselected = [item for item in original_items if item not in remaining_set]
     if deselected:
         config.hook.pytest_deselected(items=deselected)
+
+    if not config.getoption("--collect-only") and not config.getoption("--setup-plan"):  # noqa: SIM102
+        if _kyverno_replace_image_registry_policy_exists():
+            mirroring_deselected = [item for item in items if "no_image_registry_mirroring" in item.keywords]
+            if mirroring_deselected:
+                items[:] = [item for item in items if "no_image_registry_mirroring" not in item.keywords]
+                config.hook.pytest_deselected(items=mirroring_deselected)
 
     _add_default_tier2_marker(items=items)
 
