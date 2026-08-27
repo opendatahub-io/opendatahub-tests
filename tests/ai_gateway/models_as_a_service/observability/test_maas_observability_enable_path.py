@@ -51,7 +51,7 @@ class TestMaaSObservabilityEnablePath:
         and tear them down after usageLogging is restored to disabled.
         """
         if usage_logging_state == "enabled":
-            maas_config = request.getfixturevalue("maas_config_with_usage_logging_enabled")
+            maas_config = request.getfixturevalue(argname="maas_config_with_usage_logging_enabled")
             verify_usage_logging_resources_deployed(
                 admin_client=admin_client,
                 maas_config=maas_config,
@@ -98,7 +98,7 @@ class TestMaaSObservabilityEnablePath:
             f"ServiceMonitor '{limitador_service_monitor.name}' must exist before scrape interval patch"
         )
         if limitador_scrape_interval_state == "patched":
-            request.getfixturevalue("maas_config_with_limitador_scrape_interval_patched")
+            request.getfixturevalue(argname="maas_config_with_limitador_scrape_interval_patched")
             verify_limitador_scrape_interval_on_servicemonitor(
                 admin_client=admin_client,
                 monitoring_namespace=maas_monitoring_namespace,
