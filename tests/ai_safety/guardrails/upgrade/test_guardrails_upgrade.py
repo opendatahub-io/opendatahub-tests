@@ -211,7 +211,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectorsPreUpgrade:
     "model_namespace",
     [
         pytest.param(
-            {"name": "test-guardrails-builtin-upgrade"},
+            {"name": "test-guardrails-upgrade"},
         )
     ],
     indirect=True,
