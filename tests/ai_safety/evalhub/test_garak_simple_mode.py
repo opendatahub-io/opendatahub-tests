@@ -129,7 +129,7 @@ class TestGarakSimpleMode:
                 job_id=intents_garak_job_id,
                 timeout=900,
             )
-        except AssertionError, TimeoutExpiredError:
+        except (AssertionError, TimeoutExpiredError):  # fmt: skip
             for pod in Pod.get(client=admin_client, namespace=tenant_namespace.name):
                 if intents_garak_job_id[:8] in pod.name:
                     collect_pod_information(pod=pod)

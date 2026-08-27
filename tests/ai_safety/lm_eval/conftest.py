@@ -518,40 +518,45 @@ def lmevaljob_s3_offline(
         yield job
 
 
+def _lmevaljob_pod(admin_client: DynamicClient, lmevaljob: LMEvalJob) -> Generator[Pod, Any, Any]:
+    """Shared body for the lmevaljob_*_pod fixtures: fetch the pod for a given LMEvalJob."""
+    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob)
+
+
 @pytest.fixture(scope="function")
 def lmevaljob_hf_pod(admin_client: DynamicClient, lmevaljob_hf: LMEvalJob) -> Generator[Pod, Any, Any]:
-    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_hf)
+    yield from _lmevaljob_pod(admin_client=admin_client, lmevaljob=lmevaljob_hf)
 
 
 @pytest.fixture(scope="function")
 def lmevaljob_local_offline_pod(
     admin_client: DynamicClient, lmevaljob_local_offline: LMEvalJob
 ) -> Generator[Pod, Any, Any]:
-    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_local_offline)
+    yield from _lmevaljob_pod(admin_client=admin_client, lmevaljob=lmevaljob_local_offline)
 
 
 @pytest.fixture(scope="function")
 def lmevaljob_local_offline_pod_oci(
     admin_client: DynamicClient, lmevaljob_local_offline_oci: LMEvalJob
 ) -> Generator[Pod, Any, Any]:
-    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_local_offline_oci)
+    yield from _lmevaljob_pod(admin_client=admin_client, lmevaljob=lmevaljob_local_offline_oci)
 
 
 @pytest.fixture(scope="function")
 def lmevaljob_vllm_emulator_pod(
     admin_client: DynamicClient, lmevaljob_vllm_emulator: LMEvalJob
 ) -> Generator[Pod, Any, Any]:
-    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_vllm_emulator)
+    yield from _lmevaljob_pod(admin_client=admin_client, lmevaljob=lmevaljob_vllm_emulator)
 
 
 @pytest.fixture(scope="function")
 def lmevaljob_s3_offline_pod(admin_client: DynamicClient, lmevaljob_s3_offline: LMEvalJob) -> Generator[Pod, Any, Any]:
-    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_s3_offline)
+    yield from _lmevaljob_pod(admin_client=admin_client, lmevaljob=lmevaljob_s3_offline)
 
 
 @pytest.fixture(scope="function")
 def lmevaljob_gpu_pod(admin_client: DynamicClient, lmevaljob_gpu: LMEvalJob) -> Generator[Pod, Any, Any]:
-    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_gpu)
+    yield from _lmevaljob_pod(admin_client=admin_client, lmevaljob=lmevaljob_gpu)
 
 
 @pytest.fixture(scope="function")
@@ -766,7 +771,7 @@ def lmevaljob_vllm_emulator_https(
 def lmevaljob_vllm_emulator_https_pod(
     admin_client: DynamicClient, lmevaljob_vllm_emulator_https: LMEvalJob
 ) -> Generator[Pod, Any, Any]:
-    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_vllm_emulator_https)
+    yield from _lmevaljob_pod(admin_client=admin_client, lmevaljob=lmevaljob_vllm_emulator_https)
 
 
 @pytest.fixture(scope="function")
@@ -815,4 +820,4 @@ def lmevaljob_vllm_emulator_https_verify_cert(
 def lmevaljob_vllm_emulator_https_verify_cert_pod(
     admin_client: DynamicClient, lmevaljob_vllm_emulator_https_verify_cert: LMEvalJob
 ) -> Generator[Pod, Any, Any]:
-    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_vllm_emulator_https_verify_cert)
+    yield from _lmevaljob_pod(admin_client=admin_client, lmevaljob=lmevaljob_vllm_emulator_https_verify_cert)
