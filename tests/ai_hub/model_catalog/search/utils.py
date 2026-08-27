@@ -378,7 +378,7 @@ MODELS_PENDING_BENCHMARK_DATA: set[str] = {
     "Qwen3-8B-speculator.dflash",
     "gemma-4-26B-A4B-it-speculator.eagle3",
     "gemma-4-31B-it-speculator.dflash",
-    "gemma-4-31B-it-speculator.eagle3"
+    "gemma-4-31B-it-speculator.eagle3",
 }
 
 
