@@ -1,5 +1,6 @@
-import pytest
 from collections.abc import Generator
+
+import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.route import Route
@@ -7,8 +8,8 @@ from ocp_resources.service_monitor import ServiceMonitor
 from ocp_utilities.monitoring import Prometheus
 
 from tests.ai_gateway.models_as_a_service.observability.constants import (
-    LIMITADOR_SERVICE_MONITOR_NAME,
     LIMITADOR_SCRAPE_INTERVAL_TEST_VALUE,
+    LIMITADOR_SERVICE_MONITOR_NAME,
     OTEL_COLLECTOR_CRD_NAME,
     RHOAI_THANOS_QUERIER_ROUTE_NAME,
     SERVICE_MONITOR_CRD_NAME,
@@ -62,9 +63,7 @@ def servicemonitor_crd_available(admin_client: DynamicClient) -> None:
 def opentelemetry_collector_crd_available(admin_client: DynamicClient) -> None:
     """Fail when the OpenTelemetryCollector CRD is not installed."""
     if not opentelemetry_collector_crd_installed(admin_client=admin_client):
-        pytest.fail(
-            f"{OTEL_COLLECTOR_CRD_NAME} not installed; usage-logs collector bundle requires it"
-        )
+        pytest.fail(f"{OTEL_COLLECTOR_CRD_NAME} not installed; usage-logs collector bundle requires it")
 
 
 @pytest.fixture(scope="session")
