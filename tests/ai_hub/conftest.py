@@ -234,9 +234,9 @@ def ai_hub_mlflow_instance(admin_client: DynamicClient) -> Generator[MLflow, Any
         serve_artifacts=True,
         wait_for_resource=True,
     ) as mlflow_cr:
-        Deployment(
-            client=admin_client, name=MLFLOW_INSTANCE_NAME, namespace=applications_namespace
-        ).wait_for_replicas(timeout=300)
+        Deployment(client=admin_client, name=MLFLOW_INSTANCE_NAME, namespace=applications_namespace).wait_for_replicas(
+            timeout=300
+        )
         yield mlflow_cr
 
 
