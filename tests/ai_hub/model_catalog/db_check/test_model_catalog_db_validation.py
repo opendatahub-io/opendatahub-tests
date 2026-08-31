@@ -124,7 +124,7 @@ class TestModelCatalogPostgresEphemeralStorage:
             Deployment.get(
                 client=admin_client,
                 namespace=model_registry_namespace,
-                label_selector="app.kubernetes.io/name=model-catalog-postgres",
+                label_selector="app.kubernetes.io/component=model-catalog-postgres",
             )
         )
         assert deployments, "No model-catalog-postgres deployment found"
@@ -263,15 +263,15 @@ class TestModelCatalogDBNetworkPolicyRecreation:
 class TestModelCatalogDBNetworkPolicyNoReconciliationStorm:
     def test_no_reconciliation_storm_after_network_policy_recreation(
         self,
-        restarted_operator_pod,
+        restarted_catalog_controller_manager_pod,
         deleted_network_policy_original_spec,
         recreated_network_policy_scope_function,
-        model_registry_operator_pod,
+        catalog_controller_manager_pod,
     ):
         """Test that no reconciliation storm occurs after NetworkPolicy deletion and recreation"""
         timestamp_before = deleted_network_policy_original_spec["deleted_at"]
         since_seconds = math.ceil((datetime.now(tz=UTC) - timestamp_before).total_seconds()) + 5
-        logs = model_registry_operator_pod.log(container="manager", since_seconds=since_seconds)
+        logs = catalog_controller_manager_pod.log(container="manager", since_seconds=since_seconds)
         LOGGER.info(f"Operator logs (last {since_seconds}s):\n{logs}")
 
         np_name = recreated_network_policy_scope_function.name

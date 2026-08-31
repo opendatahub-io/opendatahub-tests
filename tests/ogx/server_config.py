@@ -4,6 +4,7 @@ from typing import Any
 import structlog
 
 from tests.ogx.constants import (
+    GEMINI_INFERENCE_MODEL,
     HTTPS_PROXY,
     OGX_CORE_EMBEDDING_MODEL,
     OGX_CORE_EMBEDDING_PROVIDER_MODEL_ID,
@@ -52,6 +53,10 @@ def build_ogx_server_config(
             - files_provider: Files storage provider (``"local"`` or ``"s3"``;
               default ``"local"``).
             - ogx_storage_size: PVC size for workload storage (e.g. ``"2Gi"``).
+            - enable_gemini: When truthy, inject ``GEMINI_API_KEY`` (from the
+              ``ogx-distribution-secret``) so the distribution's conditional
+              ``remote::gemini`` provider activates. Optionally also sets
+              ``GEMINI_INFERENCE_MODEL`` when configured in constants.
 
     Returns:
         OGXServerSpec configuration dict with ``distribution``, ``workload``,
@@ -90,6 +95,25 @@ def build_ogx_server_config(
         env_vars.append({"name": "VLLM_EMBEDDING_TLS_VERIFY", "value": OGX_CORE_VLLM_EMBEDDING_TLS_VERIFY})
     else:
         raise ValueError(f"Unsupported embeddings provider: {embedding_provider}")
+
+    # Remote Gemini inference provider (remote::gemini).
+    # The distribution's config.yaml gates the provider on ENABLE_GEMINI:
+    #   - provider_id: ${env.ENABLE_GEMINI:+gemini}
+    #     provider_type: remote::gemini
+    #     config:
+    #       api_key: ${env.GEMINI_API_KEY:=}
+    # so ENABLE_GEMINI is what makes the provider appear, and GEMINI_API_KEY
+    # (sourced from the ogx-distribution-secret) is what authenticates it.
+    if params.get("enable_gemini"):
+        env_vars.append({"name": "ENABLE_GEMINI", "value": "1"})
+        env_vars.append(
+            {
+                "name": "GEMINI_API_KEY",
+                "valueFrom": {"secretKeyRef": {"name": "ogx-distribution-secret", "key": "gemini-api-token"}},
+            },
+        )
+        if GEMINI_INFERENCE_MODEL:
+            env_vars.append({"name": "GEMINI_INFERENCE_MODEL", "value": GEMINI_INFERENCE_MODEL})
 
     # POSTGRESQL environment variables for sql_default and kvstore_default
     env_vars.append({"name": "POSTGRES_HOST", "value": "vector-io-postgres-service"})

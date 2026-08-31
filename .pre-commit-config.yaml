@@ -39,7 +39,7 @@ repos:
         exclude: .*/__snapshots__/.*|.*-input\.json$|^semgrep\.yaml$
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.1
+    rev: v0.16.4
     hooks:
       - id: ruff
       - id: ruff-format
@@ -58,6 +58,7 @@ repos:
         exclude: ^(docs/|.*test.*\.py$|utilities/manifests/.*|utilities/plugins/tgis_grpc)
 
 
+  # commit-msg: DCO (Signed-off-by); see docs/DEVELOPER_GUIDE.md#commit-messages
   - repo: local
     hooks:
       - id: check-signoff
@@ -70,6 +71,7 @@ repos:
           echo "  Use: git commit -s";
           echo "  Or add manually: Signed-off-by: Your Name <your@email.com>"; exit 1; }' --
 
+  # commit-msg: Conventional Commits; see docs/DEVELOPER_GUIDE.md#commit-messages
   - repo: https://github.com/espressif/conventional-precommit-linter
     rev: v1.11.0
     hooks:
