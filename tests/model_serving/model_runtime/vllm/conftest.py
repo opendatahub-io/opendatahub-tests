@@ -13,7 +13,12 @@ from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest import FixtureRequest
 
-from tests.model_serving.model_runtime.vllm.constant import ACCELERATOR_IDENTIFIER, PREDICT_RESOURCES, TEMPLATE_MAP
+from tests.model_serving.model_runtime.vllm.constant import (
+    ACCELERATOR_IDENTIFIER,
+    GAUDI_ENV_VARIABLES,
+    PREDICT_RESOURCES,
+    TEMPLATE_MAP,
+)
 from tests.model_serving.model_runtime.vllm.modelcar.constant import (
     PULL_SECRET_ACCESS_TYPE,
     PULL_SECRET_NAME,
@@ -175,6 +180,9 @@ def vllm_inference_service(
         resources["limits"] = {
             "ibm.com/spyre_pf": gpu_count,
         }
+
+    if accelerator_type == AcceleratorType.GAUDI:
+        isvc_kwargs["model_env_variables"] = GAUDI_ENV_VARIABLES
 
     if timeout:
         isvc_kwargs["timeout"] = timeout
