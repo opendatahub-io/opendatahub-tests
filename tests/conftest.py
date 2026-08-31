@@ -64,7 +64,6 @@ from utilities.infra import (
     download_helm_console_cli,
     download_oc_console_cli,
     get_cluster_authentication,
-    get_machine_platform,
     get_openshift_token,
     login_with_user_password,
     update_configmap_data,
