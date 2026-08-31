@@ -21,11 +21,11 @@ from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from timeout_sampler import TimeoutExpiredError
 
-from tests.model_serving.model_runtime.autogluon.constant import (  # noqa: NIT001
+from tests.model_serving.model_runtime.autogluon.constant import (
     PREDICT_RESOURCES,
     build_serving_runtime_kwargs,
 )
-from tests.model_serving.model_runtime.autogluon.utils import (  # noqa: NIT001
+from tests.model_serving.model_runtime.autogluon.utils import (
     get_autogluon_image_from_csv,
     get_runtime_image_override,
 )

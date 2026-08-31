@@ -239,7 +239,7 @@ def vector_store_create_file_from_url(url: str, ogx_client: OgxClient, vector_st
         response.raise_for_status()
 
         content_type = (response.headers.get("Content-Type") or "").split(";")[0].strip().lower()
-        path_part = url.split("/")[-1].split("?")[0]
+        path_part = url.rsplit("/", maxsplit=1)[-1].split("?", maxsplit=1)[0]
 
         if content_type == "application/pdf" or path_part.lower().endswith(".pdf"):
             file_suffix = ".pdf"

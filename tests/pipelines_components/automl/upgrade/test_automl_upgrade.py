@@ -13,8 +13,8 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 
-from tests.model_serving.model_runtime.autogluon.constant import ProtocolVersion  # noqa: NIT001
-from tests.model_serving.model_runtime.autogluon.utils import (  # noqa: NIT001
+from tests.model_serving.model_runtime.autogluon.constant import ProtocolVersion
+from tests.model_serving.model_runtime.autogluon.utils import (
     run_autogluon_inference,
     validate_deterministic_response,
 )
