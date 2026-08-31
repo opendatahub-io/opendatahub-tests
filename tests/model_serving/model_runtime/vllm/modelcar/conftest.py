@@ -14,13 +14,14 @@ from pytest import FixtureRequest
 from tests.model_serving.model_runtime.vllm.constant import (
     ACCELERATOR_IDENTIFIER,
     BASE_RAW_DEPLOYMENT_CONFIG,
+    GAUDI_ENV_VARIABLES,
     PREDICT_RESOURCES,
     TEMPLATE_MAP,
 )
 from tests.model_serving.model_runtime.vllm.modelcar.constant import MODELCAR_REGISTRIES, TIMEOUT_20MIN
 from tests.model_serving.model_runtime.vllm.modelcar.utils import safe_k8s_name
 from tests.model_serving.model_runtime.vllm.utils import add_image_pull_secrets_if_configured, dedupe_vllm_cli_args
-from utilities.constants import KServeDeploymentType, Labels, RuntimeTemplates
+from utilities.constants import AcceleratorType, KServeDeploymentType, Labels, RuntimeTemplates
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -98,6 +99,9 @@ def vllm_model_car_inference_service(
         resources["limits"] = {
             "ibm.com/spyre_pf": gpu_count,
         }
+
+    if accelerator_type == AcceleratorType.GAUDI:
+        isvc_kwargs["model_env_variables"] = GAUDI_ENV_VARIABLES
 
     if timeout:
         isvc_kwargs["timeout"] = timeout
