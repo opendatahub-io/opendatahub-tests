@@ -1,43 +1,50 @@
-from typing import Any, Generator
-import os
-from kubernetes.dynamic import DynamicClient
-import pytest
+import base64
 import copy
+import os
+import tempfile
+from typing import Any, Generator
 
-from tests.ai_hub.rest_api.constants import MODEL_REGISTRY_BASE_URI, MODEL_REGISTER_DATA
-from tests.ai_hub.rest_api.utils import (
-    register_model_rest_api,
-    execute_model_registry_patch_command,
-    get_mr_deployment,
-)
-from utilities.general import generate_random_name, wait_for_pods_running
+import pytest
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
-from tests.ai_hub.utils import (
-    get_model_registry_deployment_template_dict,
-    apply_mysql_args_and_volume_mounts,
-    add_mysql_certs_volumes_to_deployment,
-    get_mr_standard_labels,
-    get_mysql_config,
-)
+from ocp_resources.inference_service import InferenceService
+from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from ocp_resources.namespace import Namespace
+from ocp_resources.resource import ResourceEditor
+from ocp_resources.secret import Secret
+from pytest_testconfig import config as py_config
+from simple_logger.logger import get_logger
 
 from tests.ai_hub.constants import (
-    DB_RESOURCE_NAME,
-    CA_MOUNT_PATH,
-    CA_FILE_PATH,
     CA_CONFIGMAP_NAME,
+    CA_FILE_PATH,
+    CA_MOUNT_PATH,
+    DB_RESOURCE_NAME,
     OAUTH_PROXY_CONFIG_DICT,
     SECURE_MR_NAME,
 )
-from ocp_resources.resource import ResourceEditor
-from ocp_resources.secret import Secret
-from ocp_resources.config_map import ConfigMap
-from simple_logger.logger import get_logger
-from ocp_resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
-from pytest_testconfig import config as py_config
+from tests.ai_hub.rest_api.constants import MODEL_REGISTER_DATA, MODEL_REGISTRY_BASE_URI
+from tests.ai_hub.rest_api.utils import (
+    create_model_registry_inference_service,
+    execute_model_registry_patch_command,
+    generate_ca_and_server_cert,
+    get_mr_deployment,
+    register_model_rest_api,
+)
+from tests.ai_hub.utils import (
+    add_mysql_certs_volumes_to_deployment,
+    apply_mysql_args_and_volume_mounts,
+    get_model_registry_deployment_template_dict,
+    get_mr_standard_labels,
+    get_mysql_config,
+)
+from utilities.certificates_utils import create_ca_bundle_with_router_cert, create_k8s_secret
 from utilities.exceptions import MissingParameter
-import tempfile
-from tests.ai_hub.rest_api.utils import generate_ca_and_server_cert
-from utilities.certificates_utils import create_k8s_secret, create_ca_bundle_with_router_cert
+from utilities.constants import RuntimeTemplates
+from utilities.general import generate_random_name, wait_for_pods_running
+from utilities.infra import create_ns
+from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 LOGGER = get_logger(name=__name__)
 
@@ -345,3 +352,88 @@ def model_data_for_test() -> Generator[dict[str, Any], None, None]:
     model_data = copy.deepcopy(MODEL_REGISTER_DATA)
     model_data["register_model_data"]["name"] = model_name
     yield model_data
+
+
+@pytest.fixture(scope="class")
+def model_registry_deployment_ns(admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
+    """Create a dedicated namespace for Model Registry model deployments."""
+    with create_ns(
+        name="mr-deployment-ns",
+        admin_client=admin_client,
+    ) as ns:
+        yield ns
+
+
+@pytest.fixture(scope="class")
+def model_registry_connection_secret(
+    admin_client: DynamicClient,
+    model_registry_deployment_ns: Namespace,
+    registered_model_rest_api: dict[str, Any],
+) -> Generator[Secret, Any, Any]:
+    """Create a connection secret for the registered model URI."""
+    resource_name = "mr-test-inference-service-connection"
+    model_artifact = registered_model_rest_api.get("model_artifact", {})
+    model_uri = model_artifact.get("uri", "hf://jonburdo/test2")
+    encoded_uri = base64.b64encode(model_uri.encode()).decode()
+
+    with Secret(
+        client=admin_client,
+        name=resource_name,
+        namespace=model_registry_deployment_ns.name,
+        annotations={
+            "opendatahub.io/connection-type-protocol": "uri",
+            "opendatahub.io/connection-type-ref": "uri-v1",
+            "openshift.io/display-name": resource_name,
+        },
+        label={"opendatahub.io/dashboard": "false"},
+        data_dict={"URI": encoded_uri},
+        teardown=True,
+    ) as connection_secret:
+        yield connection_secret
+
+
+@pytest.fixture(scope="class")
+def model_registry_serving_runtime(
+    admin_client: DynamicClient,
+    model_registry_deployment_ns: Namespace,
+) -> Generator[ServingRuntimeFromTemplate, Any, Any]:
+    """Create a ServingRuntime from the cluster template for registered models."""
+    with ServingRuntimeFromTemplate(
+        client=admin_client,
+        name="mr-test-runtime",
+        namespace=model_registry_deployment_ns.name,
+        template_name=RuntimeTemplates.OVMS_KSERVE,
+        multi_model=False,
+        enable_http=True,
+        enable_grpc=False,
+    ) as serving_runtime:
+        yield serving_runtime
+
+
+@pytest.fixture(scope="class")
+def model_registry_linked_inference_service(
+    admin_client: DynamicClient,
+    model_registry_deployment_ns: Namespace,
+    model_registry_serving_runtime: ServingRuntimeFromTemplate,
+    model_registry_connection_secret: Secret,
+    registered_model_rest_api: dict[str, Any],
+    model_registry_instance: list[ModelRegistry],
+) -> Generator[InferenceService, Any, Any]:
+    """Create an InferenceService with ModelRegistry labels for finalizer testing."""
+    register_model_data = registered_model_rest_api.get("register_model", {})
+    registered_model_id = register_model_data.get("id", "")
+    model_version_id = registered_model_rest_api.get("model_version", {}).get("id", "")
+
+    with create_model_registry_inference_service(
+        admin_client=admin_client,
+        namespace=model_registry_deployment_ns.name,
+        runtime_name=model_registry_serving_runtime.name,
+        connection_secret_name=model_registry_connection_secret.name,
+        registered_model_rest_api=registered_model_rest_api,
+        extra_labels={
+            "modelregistry.opendatahub.io/registered-model-id": registered_model_id,
+            "modelregistry.opendatahub.io/model-version-id": model_version_id,
+            "modelregistry.opendatahub.io/name": model_registry_instance[0].name,
+        },
+    ) as inference_service:
+        yield inference_service
