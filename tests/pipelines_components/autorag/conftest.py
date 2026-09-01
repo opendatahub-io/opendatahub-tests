@@ -25,7 +25,7 @@ from ocp_resources.service_account import ServiceAccount
 from ogx_client import APIConnectionError, InternalServerError, OgxClient
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
 
-from tests.fixtures.vector_io import (  # noqa: NIT001
+from tests.fixtures.vector_io import (
     MILVUS_TOKEN,
     get_etcd_deployment_template,
     get_milvus_deployment_template,

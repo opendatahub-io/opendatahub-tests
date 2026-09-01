@@ -110,7 +110,7 @@ def verify_package_import(
                 collect_pod_information(pod)
 
         execution_time = time() - start_time
-        output = output if output else ""
+        output = output or ""
 
         if import_successful:
             LOGGER.info(f"Package {package_name}: ✓ (import successful in {execution_time:.2f}s)")
