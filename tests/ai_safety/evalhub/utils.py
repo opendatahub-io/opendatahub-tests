@@ -1063,6 +1063,9 @@ def build_git_job_payload(
         benchmark["test_data_ref"] = git_ref
         if tokenizer_path:
             benchmark["parameters"]["tokenizer"] = tokenizer_path
+        # Remove hardware_config for git tests to reduce resource requirements
+        if "hardware_config" in benchmark:
+            del benchmark["hardware_config"]
     return payload
 
 

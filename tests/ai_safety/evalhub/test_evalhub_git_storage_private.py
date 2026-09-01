@@ -56,7 +56,7 @@ class TestEvalHubGitStoragePrivate:
         when an evaluation job is submitted with test_data_ref.git and secret_ref,
         then the job completes and git_commit_sha metadata is recorded."""
         job_id = submit_git_job(
-            repository_url=git_private_repo_config["url"],
+            url=git_private_repo_config["url"],
             ref=git_private_repo_config["ref"],
             secret_ref=git_test_creds_secret.name,
             job_name="git-private-e2e",
@@ -73,26 +73,19 @@ class TestEvalHubGitStoragePrivate:
             f"Private repo job should complete, got: {job_data.get('status')}"
         )
 
-        response = get_evalhub_job_http(
-            host=evalhub_mt_route.host,
-            token=tenant_a_token,
-            ca_bundle_file=evalhub_mt_ca_bundle_file,
-            tenant=tenant_a_namespace.name,
-            job_id=job_id,
-        )
-        response.raise_for_status()
-        job_detail = response.json()
+        # Extract resolved_sha from test_data_ref in the job spec benchmarks
+        benchmarks = job_data.get("benchmarks", [])
+        assert benchmarks, "Expected benchmarks in job spec"
 
-        # Extract resolved_sha from the first benchmark's test_data_ref
-        benchmarks = job_detail.get("benchmarks", [])
-        assert benchmarks, "Expected benchmarks in job response"
         test_data_ref = benchmarks[0].get("test_data_ref", {})
-        commit_sha = test_data_ref.get("resolved_sha")
-        assert commit_sha, (
-            f"Expected resolved_sha in benchmarks[0].test_data_ref, got: {test_data_ref}"
+        resolved_sha = test_data_ref.get("resolved_sha")
+
+        assert resolved_sha, (
+            f"Expected resolved_sha in benchmarks[0].test_data_ref, "
+            f"got test_data_ref: {test_data_ref}"
         )
-        assert re.fullmatch(r"[0-9a-f]{40}", commit_sha), (
-            f"Expected 40-char hex SHA, got: {commit_sha}"
+        assert re.fullmatch(r"[0-9a-f]{40}", resolved_sha), (
+            f"Expected 40-char hex SHA, got: {resolved_sha}"
         )
 
     # -- TC-API-005: Submit evaluation job with secret_ref for private repo (P0) --
@@ -112,7 +105,7 @@ class TestEvalHubGitStoragePrivate:
         when a job is submitted with test_data_ref.git including secret_ref,
         then the API returns 202 and preserves secret_ref in the response."""
         job_id = submit_git_job(
-            repository_url=git_private_repo_config["url"],
+            url=git_private_repo_config["url"],
             ref=git_private_repo_config["ref"],
             secret_ref=git_test_creds_secret.name,
             job_name="git-api-secret-ref",
@@ -153,7 +146,7 @@ class TestEvalHubGitStoragePrivate:
         then the git-clone init container has correct security posture
         and the credential Secret is mounted only in the init container."""
         job_id = submit_git_job(
-            repository_url=git_private_repo_config["url"],
+            url=git_private_repo_config["url"],
             ref=git_private_repo_config["ref"],
             secret_ref=git_test_creds_secret.name,
             job_name="git-init-security",
@@ -248,7 +241,7 @@ class TestEvalHubGitStoragePrivate:
         when a job is submitted for a private repo,
         then the job fails due to authentication error."""
         job_id = submit_git_job(
-            repository_url=git_private_repo_config["url"],
+            url=git_private_repo_config["url"],
             ref=git_private_repo_config["ref"],
             secret_ref=git_bad_creds_secret.name,
             job_name="git-bad-creds",

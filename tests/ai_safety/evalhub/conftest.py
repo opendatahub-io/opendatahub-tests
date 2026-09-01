@@ -1973,21 +1973,26 @@ def submit_git_job(
     job_ids: list[str] = []
 
     def _submit(
-        repository_url: str,
+        url: str,
         ref: str = "main",
         sub_path: str | None = None,
         secret_ref: str | None = None,
+        tokenizer_path: str | None = None,
         job_name: str = "git-test",
     ) -> str:
         payload = build_git_job_payload(
             model_service_name=evalhub_vllm_emulator_service.name,
             tenant_namespace=tenant_a_namespace.name,
             job_name=job_name,
-            repository_url=repository_url,
+            url=url,
             ref=ref,
             sub_path=sub_path,
             secret_ref=secret_ref,
+            tokenizer_path=tokenizer_path,
         )
+        import json
+        LOGGER.info(f"Submitting git job payload:\n{json.dumps(payload, indent=2)}")
+
         data = submit_evalhub_job(
             host=evalhub_mt_route.host,
             token=tenant_a_token,
@@ -1996,6 +2001,8 @@ def submit_git_job(
             payload=payload,
         )
         job_id = data["resource"]["id"]
+        LOGGER.info(f"Job submitted with ID: {job_id}")
+        LOGGER.info(f"Response data:\n{json.dumps(data, indent=2)}")
         job_ids.append(job_id)
         return job_id
 
