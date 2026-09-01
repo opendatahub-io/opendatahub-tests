@@ -247,7 +247,7 @@ class TestAnnAnnotationStatus:
         assert completed_data.get("phase") in ("Completed", "Succeeded"), (
             f"Expected phase=Completed or Succeeded after job completion, got {completed_data.get('phase')!r}"
         )
-        assert running_phase in ("Running",), f"Expected phase=Running during execution, got {running_phase!r}"
+        assert running_phase == "Running", f"Expected phase=Running during execution, got {running_phase!r}"
         if running_raw != completed_raw:
             running_ts = parse_status_annotation(annotation_value=running_raw).get("timestamp", "")
             completed_ts = completed_data.get("timestamp", "")
