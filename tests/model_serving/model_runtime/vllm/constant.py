@@ -25,6 +25,14 @@ TEMPLATE_MAP: dict[str, str] = {
     AcceleratorType.CPU_Z: RuntimeTemplates.VLLM_CPU_Z,
 }
 
+# SynapseAI/Gaudi writes runtime logs under /var/log/habana_logs by default. Under the
+# OpenShift restricted SCC the predictor runs as an arbitrary non-root UID that cannot
+# create that directory, so the C++ logger throws an uncaught spdlog exception and the
+# server aborts (SIGABRT / exit 134). Redirect the logs to a writable path.
+GAUDI_ENV_VARIABLES: list[dict[str, str]] = [
+    {"name": "HABANA_LOGS", "value": "/tmp/habana_logs"},
+]
+
 PREDICT_RESOURCES: dict[str, list[dict[str, str | dict[str, str]]] | dict[str, dict[str, str]]] = {
     "volumes": [
         {"name": "shared-memory", "emptyDir": {"medium": "Memory", "sizeLimit": "16Gi"}},
