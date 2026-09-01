@@ -14,8 +14,8 @@ from tests.ai_gateway.models_as_a_service.upgrade.utils import (
     verify_maas_subscription_ready,
     verify_no_legacy_owned_httproutes,
     wait_for_inference_external_model_httproute,
-    wait_for_legacy_maas_prefixed_networking_deleted,
     wait_for_legacy_maas_networking_present,
+    wait_for_legacy_maas_prefixed_networking_deleted,
 )
 from utilities.resources.external_model import ExternalModel
 from utilities.resources.legacy_external_model import LegacyExternalModel
@@ -116,15 +116,14 @@ class TestPostUpgradeLegacyExternalModelMigration:
         legacy_migration_namespace: Namespace,
         legacy_migration_baseline_fixture: LegacyMigrationBaseline,
     ) -> None:
-        """Given inference route is ready, when maas-controller reconciles, then maas-prefixed legacy children are removed."""
+        """Given inference EM is programmed, then maas-prefixed legacy networking is removed."""
         wait_for_legacy_maas_prefixed_networking_deleted(
             client=admin_client,
             resource_name=legacy_migration_baseline_fixture["legacy_resource_name"],
             namespace=legacy_migration_namespace.name,
         )
         LOGGER.info(
-            f"Legacy maas-prefixed networking removed for "
-            f"'{legacy_migration_baseline_fixture['legacy_resource_name']}'"
+            f"Legacy maas-prefixed networking removed for '{legacy_migration_baseline_fixture['legacy_resource_name']}'"
         )
 
     def test_inference_httproute_present(

@@ -274,9 +274,10 @@ def legacy_migration_namespace(
     teardown_resources: bool,
 ) -> Generator[Namespace, Any, Any]:
     """Dedicated namespace for legacy ExternalModel migration upgrade tests."""
-    assert cluster_has_legacy_external_model_crd(admin_client=admin_client), (
-        "Legacy maas.opendatahub.io ExternalModel CRD is not installed on this cluster"
-    )
+    if not pytestconfig.option.post_upgrade:
+        assert cluster_has_legacy_external_model_crd(admin_client=admin_client), (
+            "Legacy maas.opendatahub.io ExternalModel CRD is not installed on this cluster"
+        )
 
     namespace = Namespace(client=admin_client, name=LEGACY_MIGRATION_NAMESPACE)
     if pytestconfig.option.post_upgrade:
