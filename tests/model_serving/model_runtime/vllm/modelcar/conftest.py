@@ -144,9 +144,14 @@ def build_raw_params(
     gpu_count: int,
     execution_mode: str,
     model_output_type: str = "text",
+    unsupported_accelerators: list[str] | None = None,
+    accelerator_type: str | None = None,
 ) -> tuple[Any, str]:
     test_id = f"{name}-standard"
     deployment_type = KServeDeploymentType.STANDARD
+    marks = build_pytest_markers(deployment_type=deployment_type, execution_mode=execution_mode)
+    if accelerator_type and accelerator_type in (unsupported_accelerators or []):
+        marks.append(pytest.mark.skip(reason=f"{name} is not supported on accelerator '{accelerator_type}'"))
     param = pytest.param(
         {"name": "standard-model-validation"},
         {"deployment_type": deployment_type},
@@ -161,7 +166,7 @@ def build_raw_params(
             "model_output_type": model_output_type,
         },
         id=test_id,
-        marks=build_pytest_markers(deployment_type=deployment_type, execution_mode=execution_mode),
+        marks=marks,
     )
     return param, test_id
 
@@ -201,6 +206,7 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
 
     model_car_data = yaml_config["model-car"]
     default_serving_config = yaml_config.get("default", {})
+    accelerator_type = (metafunc.config.getoption("supported_accelerator_type") or "").lower()
 
     if not isinstance(model_car_data, list):
         raise TypeError("Invalid format for `model-car` in YAML. Expected a list of objects.")
@@ -229,6 +235,7 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
         serving_config = model_car.get("serving_arguments") or default_serving_config.get("serving_arguments", {})
         args = serving_config.get("args", [])
         gpu_count = serving_config.get("gpu_count", 1)
+        unsupported_accelerators = [str(a).lower() for a in (model_car.get("unsupported_accelerators") or [])]
 
         if metafunc.cls.__name__ == "TestVLLMModelCarRaw":
             param, test_id = build_raw_params(
@@ -238,6 +245,8 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
                 gpu_count=gpu_count,
                 execution_mode=execution_mode,
                 model_output_type=model_output_type,
+                unsupported_accelerators=unsupported_accelerators,
+                accelerator_type=accelerator_type,
             )
         else:
             continue

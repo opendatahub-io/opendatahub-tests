@@ -28,7 +28,7 @@ LOGGER = structlog.get_logger(name=__name__)
 
 ALPHABETIC_WORD = re.compile(r"[a-zA-Z]{2,}")
 ERROR_INDICATORS = re.compile(
-    r"traceback|cuda\s*error|out\s*of\s*memory|oom|"
+    r"traceback|cuda\s*error|out\s*of\s*memory|\boom\b|"
     r"segmentation\s*fault|segfault|core\s*dumped|exception|"
     r"failed\s*to|error:|cuda_error|runtime\s*error|memory\s*error|"
     r"assertion\s*error|valueerror|typeerror|keyerror|attributeerror",
