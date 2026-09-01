@@ -1,5 +1,8 @@
 """Utilities for MaaS observability integration tests."""
 
+from collections.abc import Generator
+from contextlib import contextmanager
+
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.cluster_role_binding import ClusterRoleBinding
@@ -8,6 +11,7 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
 from ocp_resources.open_telemetry_collector import OpenTelemetryCollector
 from ocp_resources.pod import Pod
+from ocp_resources.resource import ResourceEditor
 from ocp_resources.service_monitor import ServiceMonitor
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutSampler
@@ -23,6 +27,7 @@ from tests.ai_gateway.models_as_a_service.observability.constants import (
     LIMITADOR_SERVICE_MONITOR_NAME,
     LIMITADOR_SERVICE_MONITOR_WAIT_TIMEOUT,
     OTEL_COLLECTOR_CRD_NAME,
+    USAGE_LOGGING_RESOURCES_WAIT_TIMEOUT,
     USAGE_LOGS_COLLECTOR_NAME,
     USAGE_LOGS_CRB_NAME,
     USAGE_LOGS_ENVOY_FILTER_NAME,
@@ -35,6 +40,25 @@ from utilities.resources.maas_config import Config as MaaSConfig
 LOGGER = structlog.get_logger(name=__name__)
 
 MAAS_CONTROLLER_DEPLOYMENT_NAME = "maas-controller"
+
+
+@contextmanager
+def maas_config_usage_logging_enabled(
+    maas_config: MaaSConfig,
+) -> Generator[MaaSConfig]:
+    """Patch Config/default to enable usageLogging and restore on exit."""
+    with ResourceEditor(patches={maas_config: {"spec": {"usageLogging": True}}}):
+        yield maas_config
+
+
+@contextmanager
+def patch_maas_config_limitador_scrape_interval(
+    maas_config: MaaSConfig,
+    scrape_interval: str,
+) -> Generator[MaaSConfig]:
+    """Patch Config/default limitadorScrapeInterval and restore the prior spec on exit."""
+    with ResourceEditor(patches={maas_config: {"spec": {"limitadorScrapeInterval": scrape_interval}}}):
+        yield maas_config
 
 
 def get_maas_controller_env_var(admin_client: DynamicClient, env_name: str) -> str:
@@ -157,6 +181,19 @@ def config_owner_reference_present(
     return False
 
 
+def config_controller_owner_reference_present(
+    owner_references: list[object] | None,
+    config_uid: str,
+) -> bool:
+    """Return True when ownerReferences include Config/default as controller owner."""
+    if not owner_references:
+        return False
+    for owner_ref in owner_references:
+        if owner_ref.uid == config_uid and owner_ref.controller is True:
+            return True
+    return False
+
+
 def opentelemetry_collector_crd_installed(admin_client: DynamicClient) -> bool:
     """Return True when the OpenTelemetryCollector CRD is registered on the cluster."""
     otel_crd = CustomResourceDefinition(client=admin_client, name=OTEL_COLLECTOR_CRD_NAME)
@@ -239,6 +276,191 @@ def validate_limitador_service_monitor_spec(
     )
 
 
+def usage_logging_resources_in_expected_state(
+    admin_client: DynamicClient,
+    monitoring_namespace: str,
+    present: bool,
+) -> bool:
+    """Return True when usage-log resources all exist or are all absent as expected."""
+    usage_logs_envoy_filter = EnvoyFilter(
+        client=admin_client,
+        name=USAGE_LOGS_ENVOY_FILTER_NAME,
+        namespace=MAAS_GATEWAY_NAMESPACE,
+    )
+    usage_logs_crb = ClusterRoleBinding(
+        client=admin_client,
+        name=USAGE_LOGS_CRB_NAME,
+    )
+    all_present = (
+        usage_logs_envoy_filter.exists
+        and usage_logs_collector_exists(
+            admin_client=admin_client,
+            namespace=monitoring_namespace,
+        )
+        and usage_logs_crb.exists
+    )
+    return all_present if present else not all_present
+
+
+def wait_for_usage_logging_resources(
+    admin_client: DynamicClient,
+    monitoring_namespace: str,
+    timeout: int = USAGE_LOGGING_RESOURCES_WAIT_TIMEOUT,
+) -> None:
+    """Wait for maas-controller to deploy usage-log observability resources."""
+    for resources_ready in TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=5,
+        func=lambda: usage_logging_resources_in_expected_state(
+            admin_client=admin_client,
+            monitoring_namespace=monitoring_namespace,
+            present=True,
+        ),
+    ):
+        if resources_ready:
+            return
+
+
+def wait_for_usage_logging_resources_absent(
+    admin_client: DynamicClient,
+    monitoring_namespace: str,
+    timeout: int = USAGE_LOGGING_RESOURCES_WAIT_TIMEOUT,
+) -> None:
+    """Wait for maas-controller to remove usage-log observability resources."""
+    for resources_removed in TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=5,
+        func=lambda: usage_logging_resources_in_expected_state(
+            admin_client=admin_client,
+            monitoring_namespace=monitoring_namespace,
+            present=False,
+        ),
+    ):
+        if resources_removed:
+            return
+
+
+def validate_usage_logging_resources(
+    admin_client: DynamicClient,
+    maas_config: MaaSConfig,
+    monitoring_namespace: str,
+) -> None:
+    """Validate usage-log observability resource ownerReferences after resources are present."""
+    assert usage_logging_enabled(maas_config=maas_config), "Expected Config/default.spec.usageLogging to be enabled"
+
+    config_uid = maas_config.instance.metadata.uid
+
+    usage_logs_envoy_filter = EnvoyFilter(
+        client=admin_client,
+        name=USAGE_LOGS_ENVOY_FILTER_NAME,
+        namespace=MAAS_GATEWAY_NAMESPACE,
+    )
+    assert config_owner_reference_present(
+        owner_references=usage_logs_envoy_filter.instance.metadata.ownerReferences,
+        config_uid=config_uid,
+    ), f"Expected Config/default UID '{config_uid}' in EnvoyFilter '{USAGE_LOGS_ENVOY_FILTER_NAME}' ownerReferences"
+
+    if not opentelemetry_collector_crd_installed(admin_client=admin_client):
+        raise AssertionError("OpenTelemetryCollector CRD not installed; usage-logs collector cannot be validated")
+
+    collector = OpenTelemetryCollector(
+        client=admin_client,
+        name=USAGE_LOGS_COLLECTOR_NAME,
+        namespace=monitoring_namespace,
+    )
+    assert config_controller_owner_reference_present(
+        owner_references=collector.instance.metadata.ownerReferences,
+        config_uid=config_uid,
+    ), (
+        f"Expected Config/default UID '{config_uid}' in OpenTelemetryCollector "
+        f"'{USAGE_LOGS_COLLECTOR_NAME}' ownerReferences"
+    )
+
+    usage_logs_crb = ClusterRoleBinding(
+        client=admin_client,
+        name=USAGE_LOGS_CRB_NAME,
+    )
+    assert config_controller_owner_reference_present(
+        owner_references=usage_logs_crb.instance.metadata.ownerReferences,
+        config_uid=config_uid,
+    ), f"Expected Config/default UID '{config_uid}' in ClusterRoleBinding '{USAGE_LOGS_CRB_NAME}' ownerReferences"
+
+
+def verify_usage_logging_resources_deployed(
+    admin_client: DynamicClient,
+    maas_config: MaaSConfig,
+    monitoring_namespace: str,
+) -> None:
+    """Wait for and validate the usage-log observability stack after usageLogging is enabled."""
+    wait_for_usage_logging_resources(
+        admin_client=admin_client,
+        monitoring_namespace=monitoring_namespace,
+    )
+    validate_usage_logging_resources(
+        admin_client=admin_client,
+        maas_config=maas_config,
+        monitoring_namespace=monitoring_namespace,
+    )
+
+
+def verify_usage_logging_resources_removed(
+    admin_client: DynamicClient,
+    maas_config: MaaSConfig,
+    monitoring_namespace: str,
+) -> None:
+    """Wait for usage-log observability resources to be removed after usageLogging is disabled."""
+    assert not usage_logging_enabled(maas_config=maas_config), (
+        "Expected Config/default.spec.usageLogging to be disabled"
+    )
+    wait_for_usage_logging_resources_absent(
+        admin_client=admin_client,
+        monitoring_namespace=monitoring_namespace,
+    )
+
+
+def wait_for_limitador_scrape_interval(
+    admin_client: DynamicClient,
+    monitoring_namespace: str,
+    expected_interval: str,
+    timeout: int = LIMITADOR_SERVICE_MONITOR_WAIT_TIMEOUT,
+) -> ServiceMonitor:
+    """Wait for the Limitador ServiceMonitor scrape interval to match Config/default."""
+    service_monitor = ServiceMonitor(
+        client=admin_client,
+        name=LIMITADOR_SERVICE_MONITOR_NAME,
+        namespace=monitoring_namespace,
+    )
+
+    def scrape_interval_matches() -> bool:
+        if not service_monitor.exists:
+            return False
+        service_monitor.get()
+        endpoint = service_monitor.instance.spec.endpoints[0]
+        return str(endpoint.interval) == expected_interval
+
+    for interval_matches in TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=5,
+        func=scrape_interval_matches,
+    ):
+        if interval_matches:
+            return service_monitor
+    return service_monitor
+
+
+def verify_limitador_scrape_interval_on_servicemonitor(
+    admin_client: DynamicClient,
+    monitoring_namespace: str,
+    expected_interval: str,
+) -> None:
+    """Wait for the Limitador ServiceMonitor scrape interval to match Config/default."""
+    wait_for_limitador_scrape_interval(
+        admin_client=admin_client,
+        monitoring_namespace=monitoring_namespace,
+        expected_interval=expected_interval,
+    )
+
+
 def assert_usage_logging_resources_absent(
     admin_client: DynamicClient,
     maas_config: MaaSConfig,
@@ -246,27 +468,11 @@ def assert_usage_logging_resources_absent(
 ) -> None:
     """Verify usage-log observability resources are absent when usageLogging is disabled."""
     assert not usage_logging_enabled(maas_config=maas_config), (
-        "Expected Config/default.spec.usageLogging to be disabled by default"
+        "Expected Config/default.spec.usageLogging to be disabled"
     )
 
-    usage_logs_envoy_filter = EnvoyFilter(
-        client=admin_client,
-        name=USAGE_LOGS_ENVOY_FILTER_NAME,
-        namespace=MAAS_GATEWAY_NAMESPACE,
-    )
-    assert not usage_logs_envoy_filter.exists, (
-        f"EnvoyFilter '{USAGE_LOGS_ENVOY_FILTER_NAME}' must not exist when usageLogging is disabled"
-    )
-
-    assert not usage_logs_collector_exists(
+    assert usage_logging_resources_in_expected_state(
         admin_client=admin_client,
-        namespace=monitoring_namespace,
-    ), "OpenTelemetryCollector 'usage-logs' must not exist when usageLogging is disabled"
-
-    usage_logs_crb = ClusterRoleBinding(
-        client=admin_client,
-        name=USAGE_LOGS_CRB_NAME,
-    )
-    assert not usage_logs_crb.exists, (
-        f"ClusterRoleBinding '{USAGE_LOGS_CRB_NAME}' must not exist when usageLogging is disabled"
-    )
+        monitoring_namespace=monitoring_namespace,
+        present=False,
+    ), "Usage-log observability resources must be absent when usageLogging is disabled"
