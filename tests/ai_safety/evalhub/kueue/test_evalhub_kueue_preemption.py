@@ -12,25 +12,25 @@ from tests.ai_safety.evalhub.kueue.constants import (
     KUEUE_MEMORY_QUOTA,
     PREEMPTOR_CPU_REQUEST,
     PREEMPTOR_MEMORY_REQUEST,
+    SINGLE_POD_QUOTA,
     VLLM_EMULATOR_IMAGE,
 )
 from tests.ai_safety.evalhub.utils import (
-    build_evalhub_kueue_job_payload,
     cleanup_evalhub_job,
+    cleanup_evalhub_jobs_and_workloads,
     evalhub_runtime_label_selector,
-    get_evalhub_job_workload,
     log_job_kueue_labels,
-    submit_evalhub_job,
+    submit_evalhub_kueue_job_and_get_id,
     validate_evalhub_job_completed,
     wait_for_evalhub_job,
-    wait_for_evalhub_job_workload_absent,
     wait_for_evalhub_job_workload_admitted,
+    wait_for_evalhub_pod_started,
 )
 from utilities.constants import Timeout
 from utilities.kueue_utils import (
     LocalQueue,
     Workload,
-    count_pods_started,
+    build_resource_groups,
     create_cluster_queue,
     create_kueue_managed_job,
     create_local_queue,
@@ -38,99 +38,16 @@ from utilities.kueue_utils import (
     create_workload_priority_class,
     wait_for_queue_active,
     wait_for_workload_condition,
+    workload_has_condition,
 )
 
 LOGGER = structlog.get_logger(name=__name__)
 
-
-def _single_job_resource_groups(flavor_name: str) -> list[dict]:
-    """ResourceGroups sized so exactly one EvalHub job fits the quota."""
-    return [
-        {
-            "coveredResources": ["cpu", "memory"],
-            "flavors": [
-                {
-                    "name": flavor_name,
-                    "resources": [
-                        {"name": "cpu", "nominalQuota": KUEUE_CPU_QUOTA},
-                        {"name": "memory", "nominalQuota": KUEUE_MEMORY_QUOTA},
-                    ],
-                }
-            ],
-        }
-    ]
-
-
-def _workload_condition(workload: Workload, condition_type: str) -> dict | None:
-    """Return the named condition dict from a Workload, or None."""
-    conditions = (workload.instance.status or {}).get("conditions", [])
-    return next((c for c in conditions if c.get("type") == condition_type), None)
-
-
-def _workload_has_condition(workload: Workload, condition_type: str, status: str = "True") -> bool:
-    """True if the Workload carries condition_type with the given status."""
-    condition = _workload_condition(workload=workload, condition_type=condition_type)
-    return bool(condition and condition.get("status") == status)
-
-
-def _wait_for_evalhub_pod_started(
-    admin_client: DynamicClient,
-    namespace: str,
-    evalhub_job_id: str,
-    timeout: int = Timeout.TIMEOUT_10MIN,
-) -> None:
-    """Wait until the EvalHub job's pod has actually started running.
-
-    Preemption is only meaningful once the victim is occupying quota, so the
-    preemptor must be created after the victim's pod has started.
-    """
-    selector = evalhub_runtime_label_selector(evalhub_job_id=evalhub_job_id)
-    try:
-        for started in TimeoutSampler(
-            wait_timeout=timeout,
-            sleep=5,
-            func=count_pods_started,
-            labels=[selector],
-            namespace=namespace,
-            admin_client=admin_client,
-        ):
-            if started >= 1:
-                return
-    except TimeoutExpiredError:
-        pytest.fail(f"EvalHub job {evalhub_job_id} pod never started; cannot exercise preemption")
-
-
-def _cleanup_evalhub_jobs(
-    common: dict[str, str],
-    admin_client: DynamicClient,
-    namespace: str,
-    job_ids: list[str],
-) -> None:
-    """Hard-delete EvalHub jobs and wait for their Kueue Workloads to disappear.
-
-    Must run *before* any isolated ClusterQueue is torn down: a ClusterQueue
-    holds a ``kueue.x-k8s.io/resource-in-use`` finalizer while Workloads still
-    reference it, so the queue's deletion blocks (for minutes) until the jobs'
-    Workloads are gone.
-    """
-    for jid in job_ids:
-        workload = get_evalhub_job_workload(admin_client=admin_client, namespace=namespace, evalhub_job_id=jid)
-        workload_name = workload.name if workload else None
-        try:
-            cleanup_evalhub_job(**common, job_id=jid)
-        except Exception:
-            LOGGER.warning(f"Failed to clean up job {jid}", exc_info=True)
-            continue
-        if workload_name:
-            try:
-                wait_for_evalhub_job_workload_absent(
-                    admin_client=admin_client,
-                    namespace=namespace,
-                    workload_name=workload_name,
-                    timeout=Timeout.TIMEOUT_2MIN,
-                )
-            except TimeoutExpiredError:
-                LOGGER.warning(f"Workload {workload_name} still present after cleaning up job {jid}", exc_info=True)
+# ClusterQueue quota for the preemption tests. cpu/memory are sized to admit the eval
+# job (adapter ~2 CPU / 4Gi) and the small preemptor at the same time, so contention is
+# forced on the built-in ``pods`` resource: capping pods at one makes the second,
+# higher-priority pod trigger a preemption decision.
+PREEMPTION_QUOTAS = {"cpu": KUEUE_CPU_QUOTA, "memory": KUEUE_MEMORY_QUOTA, "pods": SINGLE_POD_QUOTA}
 
 
 @pytest.mark.kueue
@@ -157,16 +74,13 @@ class TestEvalHubKueuePriority:
         job_id = None
 
         try:
-            data = submit_evalhub_job(
-                **common,
-                payload=build_evalhub_kueue_job_payload(
-                    queue_name=evalhub_kueue_multi_job_local_queue.name,
-                    model_service_name=evalhub_kueue_vllm_service.name,
-                    tenant_namespace=evalhub_kueue_namespace.name,
-                    job_name="tc-prio-001-priority",
-                ),
+            job_id = submit_evalhub_kueue_job_and_get_id(
+                request_common=common,
+                local_queue_name=evalhub_kueue_multi_job_local_queue.name,
+                model_service_name=evalhub_kueue_vllm_service.name,
+                tenant_namespace=evalhub_kueue_namespace.name,
+                job_name="tc-prio-001-priority",
             )
-            job_id = data["resource"]["id"]
 
             workload = wait_for_evalhub_job_workload_admitted(
                 admin_client=admin_client,
@@ -222,7 +136,7 @@ class TestEvalHubKueuePreemption:
             create_cluster_queue(
                 name="tc-preempt-cq",
                 client=admin_client,
-                resource_groups=_single_job_resource_groups(flavor_name=flavor.name),
+                resource_groups=build_resource_groups(flavor_name=flavor.name, quotas=PREEMPTION_QUOTAS),
                 namespace_selector={},
                 preemption={"withinClusterQueue": "LowerPriority"},
             ) as cluster_queue,
@@ -246,16 +160,13 @@ class TestEvalHubKueuePreemption:
             # while any Workload still references it.
             job_ids: list[str] = []
             try:
-                data = submit_evalhub_job(
-                    **common,
-                    payload=build_evalhub_kueue_job_payload(
-                        queue_name=local_queue.name,
-                        model_service_name=evalhub_kueue_vllm_service.name,
-                        tenant_namespace=namespace,
-                        job_name="tc-preempt-001-victim",
-                    ),
+                victim_id = submit_evalhub_kueue_job_and_get_id(
+                    request_common=common,
+                    local_queue_name=local_queue.name,
+                    model_service_name=evalhub_kueue_vllm_service.name,
+                    tenant_namespace=namespace,
+                    job_name="tc-preempt-001-victim",
                 )
-                victim_id = data["resource"]["id"]
                 job_ids.append(victim_id)
 
                 try:
@@ -269,7 +180,7 @@ class TestEvalHubKueuePreemption:
                     log_job_kueue_labels(admin_client, namespace, victim_id)
                     raise
 
-                _wait_for_evalhub_pod_started(admin_client=admin_client, namespace=namespace, evalhub_job_id=victim_id)
+                wait_for_evalhub_pod_started(admin_client=admin_client, namespace=namespace, evalhub_job_id=victim_id)
 
                 with create_kueue_managed_job(
                     client=admin_client,
@@ -287,8 +198,8 @@ class TestEvalHubKueuePreemption:
                         workload_name=victim_workload.name,
                         namespace=namespace,
                         condition_check=lambda wl: (
-                            _workload_has_condition(workload=wl, condition_type="Evicted")
-                            or _workload_has_condition(workload=wl, condition_type="Preempted")
+                            workload_has_condition(workload=wl, condition_type="Evicted")
+                            or workload_has_condition(workload=wl, condition_type="Preempted")
                         ),
                         condition_name="Evicted/Preempted",
                         timeout=Timeout.TIMEOUT_5MIN,
@@ -315,7 +226,9 @@ class TestEvalHubKueuePreemption:
                 victim_result = wait_for_evalhub_job(**common, job_id=victim_id, timeout=Timeout.TIMEOUT_10MIN)
                 validate_evalhub_job_completed(job_data=victim_result)
             finally:
-                _cleanup_evalhub_jobs(common=common, admin_client=admin_client, namespace=namespace, job_ids=job_ids)
+                cleanup_evalhub_jobs_and_workloads(
+                    request_common=common, admin_client=admin_client, namespace=namespace, job_ids=job_ids
+                )
 
     def test_evalhub_job_not_preempted_when_preemption_disabled(
         self,
@@ -340,7 +253,7 @@ class TestEvalHubKueuePreemption:
             create_cluster_queue(
                 name="tc-nopreempt-cq",
                 client=admin_client,
-                resource_groups=_single_job_resource_groups(flavor_name=flavor.name),
+                resource_groups=build_resource_groups(flavor_name=flavor.name, quotas=PREEMPTION_QUOTAS),
                 namespace_selector={},
                 preemption={"withinClusterQueue": "Never"},
             ) as cluster_queue,
@@ -370,16 +283,13 @@ class TestEvalHubKueuePreemption:
             # while any Workload still references it.
             job_ids: list[str] = []
             try:
-                data = submit_evalhub_job(
-                    **common,
-                    payload=build_evalhub_kueue_job_payload(
-                        queue_name=local_queue.name,
-                        model_service_name=evalhub_kueue_vllm_service.name,
-                        tenant_namespace=namespace,
-                        job_name="tc-nopreempt-001-protected",
-                    ),
+                protected_id = submit_evalhub_kueue_job_and_get_id(
+                    request_common=common,
+                    local_queue_name=local_queue.name,
+                    model_service_name=evalhub_kueue_vllm_service.name,
+                    tenant_namespace=namespace,
+                    job_name="tc-nopreempt-001-protected",
                 )
-                protected_id = data["resource"]["id"]
                 job_ids.append(protected_id)
 
                 try:
@@ -393,7 +303,7 @@ class TestEvalHubKueuePreemption:
                     log_job_kueue_labels(admin_client, namespace, protected_id)
                     raise
 
-                _wait_for_evalhub_pod_started(
+                wait_for_evalhub_pod_started(
                     admin_client=admin_client, namespace=namespace, evalhub_job_id=protected_id
                 )
 
@@ -407,10 +317,9 @@ class TestEvalHubKueuePreemption:
                     memory_request=PREEMPTOR_MEMORY_REQUEST,
                     priority_class=high_priority_class.name,
                 ) as preemptor_job:
-                    # The high-priority preemptor must queue (QuotaReserved=False), not evict.
                     preemptor_uid = preemptor_job.instance.metadata.uid
 
-                    def _preemptor_gated() -> bool:
+                    def _preemptor_workload() -> Workload | None:
                         workloads = list(
                             Workload.get(
                                 client=admin_client,
@@ -418,24 +327,37 @@ class TestEvalHubKueuePreemption:
                                 label_selector=f"kueue.x-k8s.io/job-uid={preemptor_uid}",
                             )
                         )
-                        return bool(workloads) and not _workload_has_condition(
-                            workload=workloads[0], condition_type="QuotaReserved"
-                        )
+                        return workloads[0] if workloads else None
 
+                    # With preemption disabled the higher-priority competitor must be
+                    # *actively refused* admission (QuotaReserved=False) rather than evict
+                    # the running eval job. Waiting for an explicit False -- not merely a
+                    # workload that lacks QuotaReserved=True yet -- avoids passing on an
+                    # unreconciled workload that could still be admitted a moment later.
                     try:
-                        for gated in TimeoutSampler(
+                        for workload in TimeoutSampler(
                             wait_timeout=Timeout.TIMEOUT_5MIN,
                             sleep=5,
-                            func=_preemptor_gated,
+                            func=_preemptor_workload,
                         ):
-                            if gated:
+                            if workload and workload_has_condition(
+                                workload=workload, condition_type="QuotaReserved", status="False"
+                            ):
                                 break
                     except TimeoutExpiredError:
-                        pytest.fail("High-priority preemptor was admitted despite withinClusterQueue=Never")
+                        pytest.fail(
+                            "High-priority preemptor never reported QuotaReserved=False; "
+                            "expected it to be gated by withinClusterQueue=Never"
+                        )
 
-                    # The protected EvalHub workload must not have been evicted.
+                    # The preemptor is gated precisely because the protected eval job is
+                    # still holding the quota, so at this moment it must not have been
+                    # evicted. (Once the protected job later finishes on its own, Kueue
+                    # admitting the waiting preemptor is expected under ``Never`` and is not
+                    # a violation -- hence we assert non-eviction here rather than requiring
+                    # the preemptor to stay gated for the protected job's whole runtime.)
                     fresh_protected = Workload(client=admin_client, name=protected_workload.name, namespace=namespace)
-                    assert not _workload_has_condition(workload=fresh_protected, condition_type="Evicted"), (
+                    assert not workload_has_condition(workload=fresh_protected, condition_type="Evicted"), (
                         "Protected EvalHub workload was evicted even though preemption is disabled"
                     )
 
@@ -443,4 +365,6 @@ class TestEvalHubKueuePreemption:
                 protected_result = wait_for_evalhub_job(**common, job_id=protected_id, timeout=Timeout.TIMEOUT_10MIN)
                 validate_evalhub_job_completed(job_data=protected_result)
             finally:
-                _cleanup_evalhub_jobs(common=common, admin_client=admin_client, namespace=namespace, job_ids=job_ids)
+                cleanup_evalhub_jobs_and_workloads(
+                    request_common=common, admin_client=admin_client, namespace=namespace, job_ids=job_ids
+                )

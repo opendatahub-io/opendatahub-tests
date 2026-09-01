@@ -9,44 +9,17 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_safety.evalhub.utils import (
     WORKLOAD_INADMISSIBLE_REASONS,
-    build_evalhub_kueue_job_payload,
     cleanup_evalhub_job,
     cluster_queue_name,
     evalhub_runtime_label_selector,
     log_job_kueue_labels,
-    submit_evalhub_job,
+    submit_evalhub_kueue_job_and_get_id,
     wait_for_evalhub_job_workload_inadmissible,
 )
 from utilities.constants import Timeout
-from utilities.kueue_utils import ClusterQueue, LocalQueue, Workload
+from utilities.kueue_utils import ClusterQueue, LocalQueue, get_workload_condition
 
 LOGGER = structlog.get_logger(name=__name__)
-
-
-def _submit_and_get_id(
-    common: dict[str, str],
-    local_queue_name: str,
-    model_service_name: str,
-    tenant_namespace: str,
-    job_name: str,
-) -> str:
-    """Submit an EvalHub job to a queue and return its id."""
-    data = submit_evalhub_job(
-        **common,
-        payload=build_evalhub_kueue_job_payload(
-            queue_name=local_queue_name,
-            model_service_name=model_service_name,
-            tenant_namespace=tenant_namespace,
-            job_name=job_name,
-        ),
-    )
-    return data["resource"]["id"]
-
-
-def _quota_reserved_condition(workload: Workload) -> dict | None:
-    """Return the QuotaReserved condition dict from a Workload, or None."""
-    conditions = (workload.instance.status or {}).get("conditions", [])
-    return next((c for c in conditions if c.get("type") == "QuotaReserved"), None)
 
 
 @pytest.mark.kueue
@@ -54,12 +27,10 @@ def _quota_reserved_condition(workload: Workload) -> dict | None:
 class TestEvalHubKueueMonitoring:
     """Monitoring/troubleshooting signals for gated EvalHub jobs.
 
-    EvalHub job pods carry no CPU/memory resource requests, so a job cannot be
-    gated by quota exhaustion (Kueue admits any number of zero-request
-    workloads). Both tests therefore create a deterministic gated state by
-    stopping the ClusterQueue (``stopPolicy: HoldAndDrain``) -- the same
-    mechanism the queue-management tests use -- and then assert on the
-    monitoring signals a stuck job exposes.
+    Rather than depend on quota sizing or cluster capacity to hold a job pending,
+    both tests create a deterministic gated state by stopping the ClusterQueue
+    (``stopPolicy: HoldAndDrain``) -- the same mechanism the queue-management
+    tests use -- and then assert on the monitoring signals a stuck job exposes.
     """
 
     def test_gated_job_batch_job_reports_suspended(
@@ -85,8 +56,8 @@ class TestEvalHubKueueMonitoring:
 
         try:
             with ResourceEditor(patches={cluster_queue: {"spec": {"stopPolicy": "HoldAndDrain"}}}):
-                job_id = _submit_and_get_id(
-                    common=common,
+                job_id = submit_evalhub_kueue_job_and_get_id(
+                    request_common=common,
                     local_queue_name=evalhub_kueue_single_job_local_queue.name,
                     model_service_name=evalhub_kueue_vllm_service.name,
                     tenant_namespace=namespace,
@@ -147,9 +118,9 @@ class TestEvalHubKueueMonitoring:
         reason and a non-empty message, so this troubleshooting step yields a
         useful answer rather than an empty/opaque status.
 
-        Note: EvalHub job pods request no resources, so a workload is never gated
-        on real *quota* exhaustion -- the deterministic gate here is a stopped
-        ClusterQueue, which reports an inadmissible/suspended reason.
+        Note: the deterministic gate here is a stopped ClusterQueue
+        (``stopPolicy: HoldAndDrain``), which reports an inadmissible/suspended
+        reason without depending on quota sizing or cluster capacity.
         """
         common = evalhub_kueue_request_common
         namespace = evalhub_kueue_namespace.name
@@ -158,8 +129,8 @@ class TestEvalHubKueueMonitoring:
 
         try:
             with ResourceEditor(patches={cluster_queue: {"spec": {"stopPolicy": "HoldAndDrain"}}}):
-                job_id = _submit_and_get_id(
-                    common=common,
+                job_id = submit_evalhub_kueue_job_and_get_id(
+                    request_common=common,
                     local_queue_name=evalhub_kueue_single_job_local_queue.name,
                     model_service_name=evalhub_kueue_vllm_service.name,
                     tenant_namespace=namespace,
@@ -177,7 +148,7 @@ class TestEvalHubKueueMonitoring:
                     log_job_kueue_labels(admin_client, namespace, job_id)
                     raise
 
-                condition = _quota_reserved_condition(workload=gated_workload)
+                condition = get_workload_condition(workload=gated_workload, condition_type="QuotaReserved")
                 assert condition is not None, (
                     f"Gated workload {gated_workload.name} has no QuotaReserved condition: "
                     f"{(gated_workload.instance.status or {}).get('conditions', [])}"

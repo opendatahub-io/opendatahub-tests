@@ -1,7 +1,11 @@
 from tests.ai_safety.image_constants import AiSafetyImages
 
-# Sized to fit exactly one eval job pod: adapter (2 CPU / 4Gi) + sidecar (200m / 512Mi)
-# = 2200m / 4.5Gi. A quota of 3 CPU / 5Gi admits one job and keeps a second pending.
+# ClusterQueue quota for the preemption tests. An EvalHub eval pod's adapter container
+# requests ~2 CPU / 4Gi (Kueue records this on the Workload), so this quota comfortably
+# admits one eval job plus the small competing preemptor Job below (2+1 CPU, 4+1Gi) at
+# the same time. Because both fit within cpu/memory, contention is forced on the
+# ``pods`` dimension instead (see SINGLE_POD_QUOTA). The shared single/multi-job queues
+# don't rely on quota exhaustion at all; they gate via ``stopPolicy: HoldAndDrain``.
 KUEUE_CPU_QUOTA = "3"
 KUEUE_MEMORY_QUOTA = "5Gi"
 
@@ -9,10 +13,14 @@ KUEUE_MEMORY_QUOTA = "5Gi"
 # EvalHub-submitted jobs always carry priority 0; a WorkloadPriorityClass with a
 # higher value is used to create a competing job that can preempt them.
 HIGH_PRIORITY_VALUE = 1000
-# The preemptor requests the whole single-job quota, so it cannot be admitted
-# alongside an already-running EvalHub job — forcing a preemption decision.
-PREEMPTOR_CPU_REQUEST = KUEUE_CPU_QUOTA
-PREEMPTOR_MEMORY_REQUEST = KUEUE_MEMORY_QUOTA
+# Contention is forced on the Kueue built-in ``pods`` resource: with cpu/memory quota
+# sized to hold both the eval job and the preemptor at once, capping ``pods`` at one is
+# what makes a second (higher-priority) pod trigger a preemption decision.
+SINGLE_POD_QUOTA = "1"
+# The competing preemptor Job requests modest CPU/memory that comfortably fit the
+# quota above; the single-pod limit — not CPU/memory — is what forces preemption.
+PREEMPTOR_CPU_REQUEST = "1"
+PREEMPTOR_MEMORY_REQUEST = "1Gi"
 
 VLLM_EMULATOR = "vllm-emulator"
 VLLM_EMULATOR_IMAGE: str = AiSafetyImages.VLLM_EMULATOR

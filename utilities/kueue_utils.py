@@ -21,6 +21,7 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
 
 from utilities.constants import Timeout
 from utilities.resources.admission_check import AdmissionCheck
+from utilities.resources.workload_priority_class import WorkloadPriorityClass
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -199,41 +200,6 @@ class Kueue(Resource):
                 _spec["managementState"] = self.management_state
 
 
-class WorkloadPriorityClass(Resource):
-    """Kueue WorkloadPriorityClass resource.
-
-    A cluster-scoped priority value that can be attached to a Kueue-managed Job
-    via the ``kueue.x-k8s.io/priority-class`` label. Higher ``value`` wins during
-    preemption. EvalHub-submitted jobs carry no priority class (priority 0), so a
-    WorkloadPriorityClass is the way to create a higher-priority competitor.
-    """
-
-    api_group: str = "kueue.x-k8s.io"
-    api_version: str = "kueue.x-k8s.io/v1beta2"
-
-    def __init__(
-        self,
-        value: int | None = None,
-        **kwargs: Any,
-    ):
-        """
-        Args:
-            value: Integer priority value; higher values preempt lower ones.
-            kwargs: Keyword arguments to pass to the WorkloadPriorityClass constructor
-        """
-        super().__init__(
-            **kwargs,
-        )
-        self.value = value
-
-    def to_dict(self) -> None:
-        super().to_dict()
-        if not self.kind_dict and not self.yaml_file:
-            if self.value is None:
-                raise MissingRequiredArgumentError(argument="value")
-            self.res["value"] = self.value
-
-
 @contextmanager
 def create_workload_priority_class(
     client: DynamicClient,
@@ -393,6 +359,32 @@ def create_admission_check(
         yield admission_check
 
 
+def build_resource_groups(flavor_name: str, quotas: dict[str, str]) -> list[dict[str, Any]]:
+    """Build a single-flavor ClusterQueue ``resourceGroups`` list from a quota map.
+
+    Args:
+        flavor_name: ResourceFlavor the quota applies to.
+        quotas: Mapping of covered resource name to its nominal quota, e.g.
+            ``{"cpu": "3", "memory": "5Gi", "pods": "1"}``. ``pods`` is the Kueue
+            built-in pod-count resource, useful for capping concurrency
+            independently of the admitted pods' CPU/memory requests.
+
+    Returns:
+        A ``resourceGroups`` list suitable for ``ClusterQueue``/``create_cluster_queue``.
+    """
+    return [
+        {
+            "coveredResources": list(quotas),
+            "flavors": [
+                {
+                    "name": flavor_name,
+                    "resources": [{"name": name, "nominalQuota": quota} for name, quota in quotas.items()],
+                }
+            ],
+        }
+    ]
+
+
 @contextmanager
 def create_cluster_queue(
     client: DynamicClient,
@@ -502,6 +494,18 @@ def check_workload_quota_reserved(workload: Workload) -> bool:
         and (condition.get("status") if isinstance(condition, dict) else getattr(condition, "status", None)) == "True"
         for condition in conditions
     )
+
+
+def get_workload_condition(workload: Workload, condition_type: str) -> dict[str, Any] | None:
+    """Return the named status condition dict from a Workload, or None if absent."""
+    conditions = (workload.instance.status or {}).get("conditions", [])
+    return next((condition for condition in conditions if condition.get("type") == condition_type), None)
+
+
+def workload_has_condition(workload: Workload, condition_type: str, status: str = "True") -> bool:
+    """Return True if the Workload carries ``condition_type`` with the given status."""
+    condition = get_workload_condition(workload=workload, condition_type=condition_type)
+    return bool(condition and condition.get("status") == status)
 
 
 def check_admission_check_active(admission_check: AdmissionCheck) -> bool:
