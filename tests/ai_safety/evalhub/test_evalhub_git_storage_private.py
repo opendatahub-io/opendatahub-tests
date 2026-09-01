@@ -80,13 +80,8 @@ class TestEvalHubGitStoragePrivate:
         test_data_ref = benchmarks[0].get("test_data_ref", {})
         resolved_sha = test_data_ref.get("resolved_sha")
 
-        assert resolved_sha, (
-            f"Expected resolved_sha in benchmarks[0].test_data_ref, "
-            f"got test_data_ref: {test_data_ref}"
-        )
-        assert re.fullmatch(r"[0-9a-f]{40}", resolved_sha), (
-            f"Expected 40-char hex SHA, got: {resolved_sha}"
-        )
+        assert resolved_sha, f"Expected resolved_sha in benchmarks[0].test_data_ref, got test_data_ref: {test_data_ref}"
+        assert re.fullmatch(r"[0-9a-f]{40}", resolved_sha), f"Expected 40-char hex SHA, got: {resolved_sha}"
 
     # -- TC-API-005: Submit evaluation job with secret_ref for private repo (P0) --
 
@@ -126,8 +121,7 @@ class TestEvalHubGitStoragePrivate:
         assert benchmarks, "Job should have benchmarks in response"
         git_config = benchmarks[0].get("test_data_ref", {}).get("git", {})
         assert git_config.get("secret_ref") == git_test_creds_secret.name, (
-            f"Expected secret_ref '{git_test_creds_secret.name}' preserved in response, "
-            f"got: {git_config}"
+            f"Expected secret_ref '{git_test_creds_secret.name}' preserved in response, got: {git_config}"
         )
 
     def test_init_container_clone_and_security(
@@ -175,9 +169,7 @@ class TestEvalHubGitStoragePrivate:
             if getattr(vol, "secret", None) is not None
             and getattr(vol.secret, "secretName", None) == git_test_creds_secret.name
         }
-        assert secret_volumes, (
-            f"Expected Secret volume for '{git_test_creds_secret.name}' in pod spec"
-        )
+        assert secret_volumes, f"Expected Secret volume for '{git_test_creds_secret.name}' in pod spec"
         assert secret_volumes & init_volume_names, (
             "Credential Secret volume must be mounted in the git-clone init container"
         )
@@ -186,16 +178,13 @@ class TestEvalHubGitStoragePrivate:
             container_volume_names = {vm.name for vm in (container.volumeMounts or [])}
             leaked = secret_volumes & container_volume_names
             assert not leaked, (
-                f"Credential Secret must NOT be mounted in container '{container.name}', "
-                f"but found volume(s): {leaked}"
+                f"Credential Secret must NOT be mounted in container '{container.name}', but found volume(s): {leaked}"
             )
 
         # TC-SEC-002: Non-root
         sec_ctx = git_init.securityContext
         assert sec_ctx is not None, "Init container must have a securityContext"
-        assert getattr(sec_ctx, "runAsNonRoot", None) is True, (
-            "Init container must have runAsNonRoot: true"
-        )
+        assert getattr(sec_ctx, "runAsNonRoot", None) is True, "Init container must have runAsNonRoot: true"
 
         # TC-SEC-003: SeccompProfile RuntimeDefault
         seccomp = getattr(sec_ctx, "seccompProfile", None)
