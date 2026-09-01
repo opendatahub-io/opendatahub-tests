@@ -10,7 +10,6 @@ CA_BUNDLE_CONFIGMAP_NAME = "openshift-service-ca.crt"
 CA_BUNDLE_MOUNT_PATH = "/etc/odh/openshift-service-ca-bundle"
 CA_BUNDLE_CERT_FILE = "service-ca.crt"
 KSERVE_CONTAINER_NAME = "kserve-container"
-MODEL_NAME_ARG_PREFIX = "--model-name="
 
 
 def _get_component_deployment(
