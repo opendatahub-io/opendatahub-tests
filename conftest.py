@@ -329,7 +329,7 @@ def pytest_collection_modifyitems(session: Session, config: Config, items: list[
     if deselected:
         config.hook.pytest_deselected(items=deselected)
 
-    if not config.getoption("--collect-only") and not config.getoption("--setup-plan"):  # noqa: SIM102
+    if not config.getoption("--collect-only") and not config.getoption("--setup-plan"):
         if not _oci_image_volumes_supported():
             oci_deselected = [item for item in items if "requires_oci_image_volumes" in item.keywords]
             if oci_deselected:
