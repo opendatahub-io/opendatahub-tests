@@ -9,15 +9,25 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.namespace import Namespace
+from ocp_resources.network_policy import NetworkPolicy
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.service_account import ServiceAccount
+from pytest_testconfig import config as py_config
 
 from tests.spark.upgrade.utils import (
     capture_spark_application_baseline,
     create_spark_pi_application_spec,
+    get_spark_network_policies,
+    get_spark_role_bindings,
+    get_spark_roles,
+    get_spark_service_accounts,
     load_baseline_from_configmap,
+    recreate_network_policy_in_namespace,
+    recreate_role_binding_in_namespace,
+    recreate_role_in_namespace,
+    recreate_service_account_in_namespace,
     save_baseline_to_configmap,
 )
 from utilities.constants import DscComponents
@@ -27,7 +37,6 @@ from utilities.resources.spark_application import SparkApplication
 LOGGER = structlog.get_logger(name=__name__)
 
 UPGRADE_NAMESPACE = "upgrade-spark-operator"
-SPARK_SERVICE_ACCOUNT = "spark-operator-spark"
 
 
 @pytest.fixture(scope="session")
@@ -160,41 +169,36 @@ def spark_role_fixture(
     admin_client: DynamicClient,
     spark_namespace_fixture: Namespace,
     teardown_resources: bool,
-) -> Generator[Role, Any, Any]:
-    """Create or reference the Spark Role with necessary permissions.
+) -> Generator[list[Role], Any, Any]:
+    """Discover spark Roles from the applications namespace and recreate in upgrade namespace.
 
-    Pre-upgrade: Creates Role
-    Post-upgrade: References existing Role and cleans up
+    Pre-upgrade: Discovers Roles from operator's namespace, recreates in upgrade namespace
+    Post-upgrade: References existing Roles in upgrade namespace
     """
-    role_kwargs = {
-        "client": admin_client,
-        "name": "spark-operator-role",
-        "namespace": spark_namespace_fixture.name,
-    }
-
-    role = Role(**role_kwargs)
-
     if pytestconfig.option.post_upgrade:
-        yield role
-    else:
-        role_instance = Role(
-            **role_kwargs,
-            rules=[
-                {
-                    "apiGroups": [""],
-                    "resources": ["pods", "services", "configmaps"],
-                    "verbs": ["create", "get", "list", "watch", "delete", "patch", "update"],
-                },
-                {
-                    "apiGroups": [""],
-                    "resources": ["pods/log"],
-                    "verbs": ["get"],
-                },
-            ],
+        stale_roles = get_spark_roles(client=admin_client, namespace=spark_namespace_fixture.name)
+        for role in stale_roles:
+            role.clean_up()
+
+    apps_namespace = py_config["applications_namespace"]
+    source_roles = get_spark_roles(client=admin_client, namespace=apps_namespace)
+    assert source_roles, (
+        f"No spark-related Roles found in namespace {apps_namespace}. "
+        "Ensure the Spark Operator is enabled and has created RBAC resources."
+    )
+    LOGGER.info(f"Discovered {len(source_roles)} spark Role(s) in {apps_namespace}: {[r.name for r in source_roles]}")
+
+    created_roles = []
+    for source_role in source_roles:
+        role = recreate_role_in_namespace(
+            client=admin_client,
+            source_role=source_role,
+            target_namespace=spark_namespace_fixture.name,
             teardown=teardown_resources,
         )
-        role_instance.deploy()
-        yield role_instance
+        created_roles.append(role)
+
+    yield created_roles
 
 
 @pytest.fixture(scope="session")
@@ -202,42 +206,111 @@ def service_account_fixture(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     spark_namespace_fixture: Namespace,
-    spark_role_fixture: Role,
     teardown_resources: bool,
-) -> Generator[ServiceAccount, Any, Any]:
-    """Create or reference the Spark service account with RoleBinding.
+) -> Generator[list[ServiceAccount], Any, Any]:
+    """Discover spark ServiceAccounts from the applications namespace and recreate in upgrade namespace.
 
-    Pre-upgrade: Creates service account and RoleBinding
-    Post-upgrade: References existing service account and cleans up
+    Pre-upgrade: Discovers SAs from operator's namespace, recreates in upgrade namespace
+    Post-upgrade: References existing SAs in upgrade namespace
     """
-    sa_kwargs = {
-        "client": admin_client,
-        "name": SPARK_SERVICE_ACCOUNT,
-        "namespace": spark_namespace_fixture.name,
-    }
-
-    sa = ServiceAccount(**sa_kwargs)
-
     if pytestconfig.option.post_upgrade:
-        yield sa
-    else:
-        sa = ServiceAccount(**sa_kwargs, teardown=teardown_resources)
-        sa.deploy()
+        stale_sas = get_spark_service_accounts(client=admin_client, namespace=spark_namespace_fixture.name)
+        for sa in stale_sas:
+            sa.clean_up()
 
-        # Create RoleBinding
-        rb = RoleBinding(
+    apps_namespace = py_config["applications_namespace"]
+    src_sas = get_spark_service_accounts(client=admin_client, namespace=apps_namespace)
+    assert src_sas, (
+        f"No spark-related ServiceAccounts found in namespace {apps_namespace}. "
+        "Ensure the Spark Operator is enabled and has created RBAC resources."
+    )
+    LOGGER.info(f"Discovered {len(src_sas)} spark ServiceAccount(s) in {apps_namespace}: {[sa.name for sa in src_sas]}")
+
+    created_sas = []
+    for source_sa in src_sas:
+        sa = recreate_service_account_in_namespace(
             client=admin_client,
-            name="spark-operator-rolebinding",
-            namespace=spark_namespace_fixture.name,
-            subjects_kind="ServiceAccount",
-            subjects_name=SPARK_SERVICE_ACCOUNT,
-            role_ref_kind="Role",
-            role_ref_name=spark_role_fixture.name,
+            source_sa=source_sa,
+            target_namespace=spark_namespace_fixture.name,
             teardown=teardown_resources,
         )
-        rb.deploy()
+        created_sas.append(sa)
 
-        yield sa
+    yield created_sas
+
+
+@pytest.fixture(scope="session")
+def role_binding_fixture(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    spark_namespace_fixture: Namespace,
+    service_account_fixture: list[ServiceAccount],
+    spark_role_fixture: list[Role],
+    teardown_resources: bool,
+) -> Generator[list[RoleBinding], Any, Any]:
+    """Discover spark RoleBindings from the applications namespace and recreate in upgrade namespace.
+
+    Pre-upgrade: Discovers RoleBindings from operator's namespace, recreates in upgrade namespace
+    Post-upgrade: References existing RoleBindings in upgrade namespace
+    """
+    if pytestconfig.option.post_upgrade:
+        stale_rbs = get_spark_role_bindings(client=admin_client, namespace=spark_namespace_fixture.name)
+        for rb in stale_rbs:
+            rb.clean_up()
+
+    apps_namespace = py_config["applications_namespace"]
+    source_rbs = get_spark_role_bindings(client=admin_client, namespace=apps_namespace)
+    LOGGER.info(
+        f"Discovered {len(source_rbs)} spark RoleBinding(s) in {apps_namespace}: {[rb.name for rb in source_rbs]}"
+    )
+
+    created_rbs = []
+    for source_rb in source_rbs:
+        rb = recreate_role_binding_in_namespace(
+            client=admin_client,
+            source_rb=source_rb,
+            target_namespace=spark_namespace_fixture.name,
+            teardown=teardown_resources,
+        )
+        created_rbs.append(rb)
+
+    yield created_rbs
+
+
+@pytest.fixture(scope="session")
+def network_policy_fixture(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    spark_namespace_fixture: Namespace,
+    teardown_resources: bool,
+) -> Generator[list[NetworkPolicy], Any, Any]:
+    """Discover spark NetworkPolicies from the applications namespace and recreate in upgrade namespace.
+
+    Pre-upgrade: Discovers NetworkPolicies from operator's namespace, recreates in upgrade namespace
+    Post-upgrade: References existing NetworkPolicies in upgrade namespace
+    """
+    if pytestconfig.option.post_upgrade:
+        stale_nps = get_spark_network_policies(client=admin_client, namespace=spark_namespace_fixture.name)
+        for np in stale_nps:
+            np.clean_up()
+
+    apps_namespace = py_config["applications_namespace"]
+    source_nps = get_spark_network_policies(client=admin_client, namespace=apps_namespace)
+    LOGGER.info(
+        f"Discovered {len(source_nps)} spark NetworkPolicy(s) in {apps_namespace}: {[np.name for np in source_nps]}"
+    )
+
+    created_nps = []
+    for source_np in source_nps:
+        np = recreate_network_policy_in_namespace(
+            client=admin_client,
+            source_np=source_np,
+            target_namespace=spark_namespace_fixture.name,
+            teardown=teardown_resources,
+        )
+        created_nps.append(np)
+
+    yield created_nps
 
 
 @pytest.fixture(scope="session")
@@ -245,7 +318,9 @@ def spark_application_fixture(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     spark_namespace_fixture: Namespace,
-    service_account_fixture: ServiceAccount,
+    service_account_fixture: list[ServiceAccount],
+    role_binding_fixture: list[RoleBinding],
+    network_policy_fixture: list[NetworkPolicy],
     teardown_resources: bool,
 ) -> Generator[SparkApplication, Any, Any]:
     """Create or reference a SparkApplication for upgrade testing.
@@ -266,14 +341,12 @@ def spark_application_fixture(
     if pytestconfig.option.post_upgrade:
         yield spark_app
     else:
-        # Create SparkApplication spec
         spec = create_spark_pi_application_spec(
             name=spark_app_name,
             namespace=spark_namespace_fixture.name,
-            service_account=service_account_fixture.name,
+            service_account=service_account_fixture[0].name,
         )
 
-        # Deploy SparkApplication using kind_dict
         spark_app_instance = SparkApplication(
             client=admin_client,
             kind_dict=spec,
@@ -288,7 +361,9 @@ def new_spark_application_fixture(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     spark_namespace_fixture: Namespace,
-    service_account_fixture: ServiceAccount,
+    service_account_fixture: list[ServiceAccount],
+    role_binding_fixture: list[RoleBinding],
+    network_policy_fixture: list[NetworkPolicy],
     teardown_resources: bool,
 ) -> Generator[SparkApplication | None, Any, Any]:
     """Create a new SparkApplication post-upgrade to test control plane.
@@ -300,14 +375,12 @@ def new_spark_application_fixture(
         yield None
         return
 
-    # Generate unique name for post-upgrade test (lowercase for RFC 1123)
     spark_app_name = f"post-upgrade-spark-pi-{shortuuid.uuid()[:8].lower()}"
 
-    # Create SparkApplication spec
     spec = create_spark_pi_application_spec(
         name=spark_app_name,
         namespace=spark_namespace_fixture.name,
-        service_account=service_account_fixture.name,
+        service_account=service_account_fixture[0].name,
     )
 
     # Deploy SparkApplication using kind_dict
