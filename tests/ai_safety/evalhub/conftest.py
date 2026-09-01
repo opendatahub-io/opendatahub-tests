@@ -1990,8 +1990,6 @@ def submit_git_job(
             secret_ref=secret_ref,
             tokenizer_path=tokenizer_path,
         )
-        import json
-        LOGGER.info(f"Submitting git job payload:\n{json.dumps(payload, indent=2)}")
 
         data = submit_evalhub_job(
             host=evalhub_mt_route.host,
@@ -2001,8 +1999,6 @@ def submit_git_job(
             payload=payload,
         )
         job_id = data["resource"]["id"]
-        LOGGER.info(f"Job submitted with ID: {job_id}")
-        LOGGER.info(f"Response data:\n{json.dumps(data, indent=2)}")
         job_ids.append(job_id)
         return job_id
 
