@@ -7,8 +7,8 @@ import structlog
 from ocp_resources.inference_service import InferenceService
 
 from tests.model_serving.model_runtime.vllm.constant import (
-    CHAT_QUERY,
     COMPLETION_QUERY,
+    GRANITE_CHAT_QUERY,
     GRANITE_SPYRE_RAG_INFERENCE_SERVING_ARGUMENT,
     PREDICT_RESOURCES_RAG_INFERENCE,
 )
@@ -55,6 +55,6 @@ class TestGraniteSpyrePpc64leRagInference:
         validate_raw_openai_inference_request(
             isvc=vllm_inference_service,
             response_snapshot=response_snapshot,
-            chat_query=CHAT_QUERY,
+            chat_query=GRANITE_CHAT_QUERY,
             completion_query=COMPLETION_QUERY,
         )
