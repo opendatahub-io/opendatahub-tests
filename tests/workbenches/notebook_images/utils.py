@@ -12,7 +12,6 @@ from typing import Any
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
-from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.image_stream import ImageStream
 from ocp_resources.notebook import Notebook
@@ -28,8 +27,6 @@ from tests.workbenches.notebooks_server.controller.utils import StatefulSet
 from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH, Labels, Timeout
 from utilities.general import collect_pod_information
 from utilities.infra import check_internal_image_registry_available, get_product_version
-from utilities.resources.http_route import HTTPRoute
-from utilities.resources.reference_grant import ReferenceGrant
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -38,7 +35,6 @@ UPGRADE_BASELINE_CM_NAME = "upgrade-n-minus-one-baseline"
 UPGRADE_MARKER_FILENAME = ".upgrade-marker"
 UPGRADE_MARKER_CONTENT = "n-minus-one-survival"
 NOTEBOOK_PORT = 8888
-REFERENCE_GRANT_NAME = "notebook-httproute-access"
 TRUSTED_CA_BUNDLE_NAME = "workbench-trusted-ca-bundle"
 PIPELINE_RUNTIME_IMAGES_NAME = "pipeline-runtime-images"
 RSTUDIO_BUILDCONFIG_NAME = "rstudio-server-rhel9"
@@ -690,7 +686,7 @@ def build_n1_notebook_dict(
     }
 
     annotations: dict[str, str] = {
-        Labels.Notebook.INJECT_AUTH: "true",
+        Labels.Notebook.INJECT_OAUTH: "true",
         "notebooks.opendatahub.io/last-image-selection": image.image_selection,
         "openshift.io/display-name": notebook_name,
         "openshift.io/description": "",
@@ -704,11 +700,6 @@ def build_n1_notebook_dict(
         "kind": "Notebook",
         "metadata": {
             "annotations": annotations,
-            "finalizers": [
-                "notebook.opendatahub.io/httproute-cleanup",
-                "notebook.opendatahub.io/referencegrant-cleanup",
-                "notebook.opendatahub.io/kube-rbac-proxy-cleanup",
-            ],
             "labels": {
                 Labels.Openshift.APP: notebook_name,
                 Labels.OpenDataHub.DASHBOARD: "true",
@@ -792,20 +783,6 @@ def build_n1_notebook_dict(
                                 "optional": True,
                             },
                         },
-                        {
-                            "name": "kube-rbac-proxy-config",
-                            "configMap": {
-                                "defaultMode": 420,
-                                "name": f"{notebook_name}-kube-rbac-proxy-config",
-                            },
-                        },
-                        {
-                            "name": "kube-rbac-proxy-tls-certificates",
-                            "secret": {
-                                "defaultMode": 420,
-                                "secretName": f"{notebook_name}-kube-rbac-proxy-tls",
-                            },
-                        },
                     ],
                 }
             }
@@ -838,39 +815,9 @@ def wait_for_controller_reconciliation(
 
     def _controller_reconciled() -> bool:
         container_names = {container.name for container in notebook_pod.instance.spec.containers}
-        if "kube-rbac-proxy" not in container_names:
+        if "oauth-proxy" not in container_names:
             return False
-
-        reference_grant = ReferenceGrant(
-            client=admin_client,
-            name=REFERENCE_GRANT_NAME,
-            namespace=notebook_namespace,
-        )
-        try:
-            if not reference_grant.exists:
-                return False
-        except ResourceNotFoundError:
-            return False
-
-        http_route = HTTPRoute(
-            client=admin_client,
-            name=f"nb-{notebook_namespace}-{notebook_name}",
-            namespace=_applications_namespace(),
-        )
-        try:
-            if not http_route.exists:
-                return False
-            http_route_instance = http_route.instance
-        except ResourceNotFoundError:
-            return False
-
-        http_route_status = http_route_instance.to_dict().get("status", {})
-        conditions = {
-            condition.get("type"): condition.get("status")
-            for parent in http_route_status.get("parents", [])
-            for condition in parent.get("conditions", [])
-        }
-        return conditions.get("Accepted") == "True" and conditions.get("ResolvedRefs") == "True"
+        return True
 
     try:
         for sample in TimeoutSampler(wait_timeout=timeout, sleep=5, func=_controller_reconciled):
