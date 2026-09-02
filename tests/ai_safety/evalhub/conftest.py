@@ -1958,6 +1958,7 @@ def git_bad_creds_secret(
     ) as secret:
         yield secret
 
+
 # Operator Reconciliation Observability Fixtures (RHAISTRAT-1606 / RHAI-241)
 
 
