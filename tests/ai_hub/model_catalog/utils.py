@@ -268,6 +268,7 @@ def get_excluded_model_str(models: list[str]) -> str:
     return excluded_models
 
 
+@retry(wait_timeout=120, sleep=10, exceptions_dict={KeyError: []}, print_func_args=False)
 def assert_source_error_state_message(
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
@@ -285,6 +286,7 @@ def assert_source_error_state_message(
     assert expected_error_message in matched_source[0]["error"], (
         f"Expected error: {expected_error_message} not found in {matched_source[0]['error']}"
     )
+    return True
 
 
 @retry(
