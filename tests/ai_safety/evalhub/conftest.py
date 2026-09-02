@@ -46,6 +46,7 @@ from tests.ai_safety.evalhub.constants import (
     GARAK_PROVIDER_ID,
     GARAK_QUICK_BENCHMARK_ID,
     GARAK_SIMPLE_PROVIDER_ID,
+    GIT_CREDS_SECRET_NAME,
     GIT_DEFAULT_REF,
     GIT_PUBLIC_REPO_REF_ENV,
     GIT_PUBLIC_REPO_SUB_PATH,
@@ -67,7 +68,6 @@ from tests.ai_safety.evalhub.constants import (
     SIMPLE_MINIO_ACCESS_KEY,
     SIMPLE_MINIO_BUCKET,
     SIMPLE_MINIO_SECRET_KEY,
-    GIT_CREDS_SECRET_NAME
 )
 from tests.ai_safety.evalhub.kueue.constants import VLLM_EMULATOR, VLLM_EMULATOR_IMAGE
 from tests.ai_safety.evalhub.utils import (
@@ -1885,7 +1885,6 @@ def submit_git_job(
             LOGGER.warning(f"Failed to delete git evaluation job {job_id} during teardown")
 
 
-
 @pytest.fixture(scope="class")
 def git_private_repo_config() -> dict[str, str]:
     """Read private git repo configuration from environment variables.
@@ -1956,7 +1955,6 @@ def git_bad_creds_secret(
         },
     ) as secret:
         yield secret
-
 
 
 @pytest.fixture(scope="class")
