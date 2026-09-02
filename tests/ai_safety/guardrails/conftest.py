@@ -32,11 +32,12 @@ from tests.ai_safety.guardrails.constants import (
     TEST_TLS_PRIVATE_KEY,
 )
 from tests.ai_safety.image_constants import AiSafetyImages
+from tests.fixtures.inference import get_or_create_isvc  # noqa: NIT001
 from utilities.constants import (
     KServeDeploymentType,
     RuntimeTemplates,
 )
-from utilities.inference_utils import LOGGER, create_isvc
+from utilities.inference_utils import LOGGER
 from utilities.operator_utils import get_cluster_service_version
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -69,46 +70,33 @@ def prompt_injection_detector_isvc(
     pytestconfig: pytest.Config,
     teardown_resources: bool,
 ) -> Generator[InferenceService, Any, Any]:
-    if pytestconfig.option.post_upgrade:
-        isvc = InferenceService(
-            client=admin_client,
-            name="prompt-injection-detector",
-            namespace=model_namespace.name,
-        )
-        isvc.wait_for_condition(
-            condition=isvc.Condition.READY,
-            status=isvc.Condition.Status.TRUE,
-            timeout=600,
-        )
-        yield isvc
-        if teardown_resources:
-            isvc.clean_up()
-    else:
-        # During pre-upgrade or normal tests, create new InferenceService
-        with create_isvc(
-            client=admin_client,
-            name="prompt-injection-detector",
-            namespace=model_namespace.name,
-            deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-            model_format="guardrails-detector-huggingface",
-            runtime=huggingface_sr.name,
-            storage_key=minio_data_connection.name,
-            storage_path="deberta-v3-base-prompt-injection-v2",
-            wait_for_predictor_pods=False,
-            enable_auth=False,
-            resources={
-                "requests": {"cpu": "1", "memory": "2Gi", "nvidia.com/gpu": "0"},
-                "limits": {"cpu": "1", "memory": "2Gi", "nvidia.com/gpu": "0"},
-            },
-            max_replicas=1,
-            min_replicas=1,
-            labels={
-                "opendatahub.io/dashboard": "true",
-                AUTOCONFIG_DETECTOR_LABEL: "true",
-            },
-            teardown=teardown_resources,
-        ) as isvc:
-            yield isvc
+    yield from get_or_create_isvc(
+        admin_client=admin_client,
+        name="prompt-injection-detector",
+        namespace=model_namespace.name,
+        pytestconfig=pytestconfig,
+        teardown=teardown_resources,
+        wait_for_ready_post_upgrade=True,
+        ready_timeout=600,
+        gate_post_upgrade_cleanup_by_teardown=True,
+        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+        model_format="guardrails-detector-huggingface",
+        runtime=huggingface_sr.name,
+        storage_key=minio_data_connection.name,
+        storage_path="deberta-v3-base-prompt-injection-v2",
+        wait_for_predictor_pods=False,
+        enable_auth=False,
+        resources={
+            "requests": {"cpu": "1", "memory": "2Gi", "nvidia.com/gpu": "0"},
+            "limits": {"cpu": "1", "memory": "2Gi", "nvidia.com/gpu": "0"},
+        },
+        max_replicas=1,
+        min_replicas=1,
+        labels={
+            "opendatahub.io/dashboard": "true",
+            AUTOCONFIG_DETECTOR_LABEL: "true",
+        },
+    )
 
 
 @pytest.fixture(scope="class")
@@ -177,47 +165,33 @@ def hap_detector_isvc(
     pytestconfig: pytest.Config,
     teardown_resources: bool,
 ) -> Generator[InferenceService, Any, Any]:
-    if pytestconfig.option.post_upgrade:
-        # During post-upgrade, reuse existing InferenceService
-        isvc = InferenceService(
-            client=admin_client,
-            name="hap-detector",
-            namespace=model_namespace.name,
-        )
-        isvc.wait_for_condition(
-            condition=isvc.Condition.READY,
-            status=isvc.Condition.Status.TRUE,
-            timeout=600,
-        )
-        yield isvc
-        if teardown_resources:
-            isvc.clean_up()
-    else:
-        # During pre-upgrade or normal tests, create new InferenceService
-        with create_isvc(
-            client=admin_client,
-            name="hap-detector",
-            namespace=model_namespace.name,
-            deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-            model_format="guardrails-detector-huggingface",
-            runtime=huggingface_sr.name,
-            storage_key=minio_data_connection.name,
-            storage_path="granite-guardian-hap-38m",
-            wait_for_predictor_pods=False,
-            enable_auth=False,
-            resources={
-                "requests": {"cpu": "1", "memory": "4Gi", "nvidia.com/gpu": "0"},
-                "limits": {"cpu": "1", "memory": "4Gi", "nvidia.com/gpu": "0"},
-            },
-            max_replicas=1,
-            min_replicas=1,
-            labels={
-                "opendatahub.io/dashboard": "true",
-                AUTOCONFIG_DETECTOR_LABEL: "true",
-            },
-            teardown=teardown_resources,
-        ) as isvc:
-            yield isvc
+    yield from get_or_create_isvc(
+        admin_client=admin_client,
+        name="hap-detector",
+        namespace=model_namespace.name,
+        pytestconfig=pytestconfig,
+        teardown=teardown_resources,
+        wait_for_ready_post_upgrade=True,
+        ready_timeout=600,
+        gate_post_upgrade_cleanup_by_teardown=True,
+        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+        model_format="guardrails-detector-huggingface",
+        runtime=huggingface_sr.name,
+        storage_key=minio_data_connection.name,
+        storage_path="granite-guardian-hap-38m",
+        wait_for_predictor_pods=False,
+        enable_auth=False,
+        resources={
+            "requests": {"cpu": "1", "memory": "4Gi", "nvidia.com/gpu": "0"},
+            "limits": {"cpu": "1", "memory": "4Gi", "nvidia.com/gpu": "0"},
+        },
+        max_replicas=1,
+        min_replicas=1,
+        labels={
+            "opendatahub.io/dashboard": "true",
+            AUTOCONFIG_DETECTOR_LABEL: "true",
+        },
+    )
 
 
 @pytest.fixture(scope="class")
