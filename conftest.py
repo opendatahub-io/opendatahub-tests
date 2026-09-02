@@ -459,7 +459,7 @@ def pytest_runtest_setup(item: Item) -> None:
             db = item.config.option.must_gather_db
             db.insert_test_start_time(
                 test_name=f"{item.fspath}::{item.name}",
-                start_time=int(datetime.datetime.now().timestamp()),  # noqa: DTZ005
+                start_time=int(datetime.datetime.now().timestamp()),
             )
         except Exception as db_exception:  # noqa: BLE001
             LOGGER.error(f"Database error: {db_exception}. Must-gather collection may not be accurate")
@@ -530,7 +530,7 @@ def pytest_sessionfinish(session: Session, exitstatus: int) -> None:
 def calculate_must_gather_timer(test_start_time: int) -> int:
     default_duration = 300
     if test_start_time > 0:
-        duration = int(datetime.datetime.now().timestamp()) - test_start_time  # noqa: DTZ005
+        duration = int(datetime.datetime.now().timestamp()) - test_start_time
         return duration if duration > 60 else default_duration
     else:
         LOGGER.warning(f"Could not get start time of test. Collecting must-gather for last {default_duration}s")

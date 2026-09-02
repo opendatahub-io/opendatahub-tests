@@ -64,6 +64,8 @@ def maas_upgrade_namespace(
     namespace = Namespace(client=admin_client, name=MAAS_UPGRADE_NAMESPACE)
     if pytestconfig.option.post_upgrade:
         yield namespace
+        if teardown_resources and namespace.exists:
+            namespace.clean_up()
     else:
         with create_ns(
             admin_client=admin_client,
@@ -113,7 +115,10 @@ def maas_upgrade_model_ref(
         "namespace": maas_upgrade_namespace.name,
     }
     if pytestconfig.option.post_upgrade:
-        yield MaaSModelRef(**model_ref_kwargs)
+        model_ref = MaaSModelRef(**model_ref_kwargs, ensure_exists=True)
+        yield model_ref
+        if teardown_resources and model_ref.exists:
+            model_ref.delete(wait=True)
     else:
         with MaaSModelRef(
             **model_ref_kwargs,
@@ -143,7 +148,10 @@ def maas_upgrade_auth_policy(
         "namespace": maas_subscription_namespace.name,
     }
     if pytestconfig.option.post_upgrade:
-        yield MaaSAuthPolicy(**auth_policy_kwargs)
+        auth_policy = MaaSAuthPolicy(**auth_policy_kwargs, ensure_exists=True)
+        yield auth_policy
+        if teardown_resources and auth_policy.exists:
+            auth_policy.delete(wait=True)
     else:
         with MaaSAuthPolicy(
             **auth_policy_kwargs,
@@ -180,7 +188,10 @@ def maas_upgrade_subscription(
         "namespace": maas_subscription_namespace.name,
     }
     if pytestconfig.option.post_upgrade:
-        yield MaaSSubscription(**subscription_kwargs)
+        subscription = MaaSSubscription(**subscription_kwargs, ensure_exists=True)
+        yield subscription
+        if teardown_resources and subscription.exists:
+            subscription.delete(wait=True)
     else:
         with create_maas_subscription(
             admin_client=admin_client,

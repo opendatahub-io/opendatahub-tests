@@ -87,42 +87,44 @@ def vector_io_provider_deployment_config_factory(
             env_vars.append({"name": "ENABLE_INLINE_MILVUS", "value": "true"})
         elif provider_name == "milvus-remote":
             request.getfixturevalue(argname="milvus_service")
-            env_vars.append({"name": "MILVUS_ENDPOINT", "value": "http://vector-io-milvus-service:19530"})
-            env_vars.append(
+            env_vars.extend((
+                {"name": "MILVUS_ENDPOINT", "value": "http://vector-io-milvus-service:19530"},
                 {
                     "name": "MILVUS_TOKEN",
                     "valueFrom": {"secretKeyRef": {"name": "vector-io-secret", "key": "milvus-token"}},
                 },
-            )
-            env_vars.append({"name": "MILVUS_CONSISTENCY_LEVEL", "value": "Bounded"})
+                {"name": "MILVUS_CONSISTENCY_LEVEL", "value": "Bounded"},
+            ))
         elif provider_name == "faiss":
             env_vars.append({"name": "ENABLE_FAISS", "value": "faiss"})
         elif provider_name == "pgvector":
             request.getfixturevalue(argname="pgvector_service")
-            env_vars.append({"name": "ENABLE_PGVECTOR", "value": "true"})
-            env_vars.append({"name": "PGVECTOR_HOST", "value": "vector-io-pgvector-service"})
-            env_vars.append({"name": "PGVECTOR_PORT", "value": "5432"})
-            env_vars.append(
+            env_vars.extend((
+                {"name": "ENABLE_PGVECTOR", "value": "true"},
+                {"name": "PGVECTOR_HOST", "value": "vector-io-pgvector-service"},
+                {"name": "PGVECTOR_PORT", "value": "5432"},
+            ))
+            env_vars.extend((
                 {
                     "name": "PGVECTOR_USER",
                     "valueFrom": {"secretKeyRef": {"name": "vector-io-secret", "key": "pgvector-user"}},
                 },
-            )
-            env_vars.append(
                 {
                     "name": "PGVECTOR_PASSWORD",
                     "valueFrom": {"secretKeyRef": {"name": "vector-io-secret", "key": "pgvector-password"}},
                 },
-            )
-            env_vars.append({"name": "PGVECTOR_DB", "value": "pgvector"})
+                {"name": "PGVECTOR_DB", "value": "pgvector"},
+            ))
         elif provider_name == "qdrant-remote":
             request.getfixturevalue(argname="qdrant_service")
-            env_vars.append({"name": "ENABLE_QDRANT", "value": "true"})
-            env_vars.append({"name": "QDRANT_URL", "value": QDRANT_URL})
-            env_vars.append({
-                "name": "QDRANT_API_KEY",
-                "valueFrom": {"secretKeyRef": {"name": "vector-io-secret", "key": "qdrant-api-key"}},
-            })
+            env_vars.extend((
+                {"name": "ENABLE_QDRANT", "value": "true"},
+                {"name": "QDRANT_URL", "value": QDRANT_URL},
+                {
+                    "name": "QDRANT_API_KEY",
+                    "valueFrom": {"secretKeyRef": {"name": "vector-io-secret", "key": "qdrant-api-key"}},
+                },
+            ))
 
         return env_vars
 

@@ -93,12 +93,12 @@ class TestCatalogRBAC:
         # get_client() uses the current kubeconfig context (set by login_as_test_user fixture)
         user_client = get_client()
 
+        catalog_cm = ConfigMap(
+            name=configmap_name,
+            namespace=model_registry_namespace,
+            client=user_client,
+        )
         with pytest.raises(ApiException) as exc_info:
-            catalog_cm = ConfigMap(
-                name=configmap_name,
-                namespace=model_registry_namespace,
-                client=user_client,
-            )
             _ = catalog_cm.instance  # Access the ConfigMap instance to trigger the API call
 
         assert exc_info.value.status == 403, (
