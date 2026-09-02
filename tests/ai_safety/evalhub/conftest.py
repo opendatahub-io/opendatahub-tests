@@ -1953,70 +1953,10 @@ def git_bad_creds_secret(
         name=GIT_BAD_CREDS_SECRET_NAME,
         string_data={
             "username": "testuser",
-            "password": "invalid-token-value",
+            "password": "invalid-token-value",  # pragma: allowlist secret
         },
     ) as secret:
         yield secret
-
-
-@pytest.fixture()
-def submit_git_job(
-    tenant_a_token: str,
-    tenant_a_namespace: Namespace,
-    evalhub_mt_ca_bundle_file: str,
-    evalhub_mt_route: Route,
-    evalhub_vllm_emulator_service: Service,
-) -> Generator[Callable[..., str], Any, Any]:
-    """Factory fixture: submit git-backed evaluation jobs with guaranteed cleanup."""
-    from tests.ai_safety.evalhub.utils import build_git_job_payload
-
-    job_ids: list[str] = []
-
-    def _submit(
-        url: str,
-        ref: str = "main",
-        sub_path: str | None = None,
-        secret_ref: str | None = None,
-        tokenizer_path: str | None = None,
-        job_name: str = "git-test",
-    ) -> str:
-        payload = build_git_job_payload(
-            model_service_name=evalhub_vllm_emulator_service.name,
-            tenant_namespace=tenant_a_namespace.name,
-            job_name=job_name,
-            url=url,
-            ref=ref,
-            sub_path=sub_path,
-            secret_ref=secret_ref,
-            tokenizer_path=tokenizer_path,
-        )
-
-        data = submit_evalhub_job(
-            host=evalhub_mt_route.host,
-            token=tenant_a_token,
-            ca_bundle_file=evalhub_mt_ca_bundle_file,
-            tenant=tenant_a_namespace.name,
-            payload=payload,
-        )
-        job_id = data["resource"]["id"]
-        job_ids.append(job_id)
-        return job_id
-
-    yield _submit
-
-    for job_id in job_ids:
-        try:
-            delete_evalhub_job(
-                host=evalhub_mt_route.host,
-                token=tenant_a_token,
-                ca_bundle_file=evalhub_mt_ca_bundle_file,
-                tenant=tenant_a_namespace.name,
-                job_id=job_id,
-                hard_delete=True,
-            )
-        except Exception:  # noqa: BLE001
-            LOGGER.warning(f"Failed to delete git evaluation job {job_id} during teardown")
-
 
 # Operator Reconciliation Observability Fixtures (RHAISTRAT-1606 / RHAI-241)
 

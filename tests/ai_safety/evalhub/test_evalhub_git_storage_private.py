@@ -32,6 +32,7 @@ def _get_git_clone_init_container(pod_spec):
 @pytest.mark.parametrize("model_namespace", [GIT_MODEL_NAMESPACE], indirect=True)
 @pytest.mark.tier2
 @pytest.mark.ai_safety
+@pytest.mark.skip_on_disconnected
 class TestEvalHubGitStoragePrivate:
     """Private git repository test cases for EvalHub Git Storage Source.
 
@@ -155,7 +156,7 @@ class TestEvalHubGitStoragePrivate:
         spec = batch_jobs[0].instance.spec.template.spec
 
         # TC-GIT-004: Verify git-clone init container exists
-        git_init = _get_git_clone_init_container(spec)
+        git_init = _get_git_clone_init_container(pod_spec=spec)
         assert git_init is not None, (
             f"Expected '{GIT_CLONE_INIT_CONTAINER_NAME}' init container, "
             f"got: {[c.name for c in (spec.initContainers or [])]}"
