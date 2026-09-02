@@ -201,3 +201,11 @@ PREDICT_RESOURCES_RAG_INFERENCE: dict[str, list[dict[str, str | dict[str, str]]]
         {"name": "home", "mountPath": "/home/vllm"},
     ],
 }
+
+# Spyre ppc64le — Granite RAG Inference (RHAIIS 3.5, tensor-parallel=4, 200Gi, 32K context)
+GRANITE_SPYRE_RAG_INFERENCE_SERVING_ARGUMENT: list[str] = [
+    "--model=/mnt/models",
+    "--max-model-len=32768",
+    "--max-num-seqs=32",
+    "--uvicorn-log-level=debug",
+]
