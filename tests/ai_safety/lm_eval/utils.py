@@ -166,8 +166,9 @@ def validate_ca_bundle_injected(pod: Pod, job_name: str) -> None:
         ensure_exists=True,
     )
     assert merged_cm.exists, f"Merged CA ConfigMap '{merged_cm_name}' does not exist"
-    assert MERGED_CA_BUNDLE_KEY in merged_cm.instance.data, (
-        f"Key '{MERGED_CA_BUNDLE_KEY}' not found in merged CA ConfigMap"
+    merged_cm_data: dict[str, str] = merged_cm.instance.to_dict().get("data") or {}
+    assert MERGED_CA_BUNDLE_KEY in merged_cm_data, (
+        f"Key '{MERGED_CA_BUNDLE_KEY}' not found in merged CA ConfigMap, got keys: {sorted(merged_cm_data)}"
     )
 
 
