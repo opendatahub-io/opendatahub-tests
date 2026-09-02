@@ -64,7 +64,7 @@ def test_mcp_gateway_extension_crd_exists(
     [pytest.param({"name": "test-nemo-guardrails"})],
     indirect=True,
 )
-@pytest.mark.usefixtures("patched_dsc_kserve_headed")
+@pytest.mark.usefixtures("session_patched_dsc_kserve_headed")
 class TestNemoGuardrailsLLMAsJudge:
     """
     Tests for NeMo Guardrails server operations with LLM-as-a-Judge configuration.
@@ -105,7 +105,7 @@ class TestNemoGuardrailsLLMAsJudge:
 
     def test_nemo_llm_judge_deployment(
         self,
-        llm_d_inference_sim_isvc: InferenceService,
+        session_llm_d_inference_sim_isvc: InferenceService,
         nemo_guardrails_llm_judge: NemoGuardrails,
         nemo_guardrails_llm_judge_route: Route,
         nemo_guardrails_llm_judge_healthcheck,
@@ -126,7 +126,7 @@ class TestNemoGuardrailsLLMAsJudge:
         self,
         admin_client: DynamicClient,
         current_client_token: str,
-        llm_d_inference_sim_isvc: InferenceService,
+        session_llm_d_inference_sim_isvc: InferenceService,
         nemo_guardrails_llm_judge: NemoGuardrails,
         nemo_guardrails_llm_judge_route: Route,
         nemo_guardrails_llm_judge_healthcheck,
@@ -165,8 +165,8 @@ class TestNemoGuardrailsLLMAsJudge:
     @pytest.mark.parametrize("endpoint", [CHAT_ENDPOINT, CHECK_ENDPOINT])
     def test_nemo_llm_judge_with_authentication(
         self,
-        admin_client: DynamicClient,
-        llm_d_inference_sim_isvc: InferenceService,
+        openshift_ca_bundle_file: str,
+        session_llm_d_inference_sim_isvc: InferenceService,
         nemo_guardrails_llm_judge: NemoGuardrails,
         nemo_guardrails_llm_judge_route: Route,
         nemo_guardrails_llm_judge_healthcheck,
@@ -184,7 +184,7 @@ class TestNemoGuardrailsLLMAsJudge:
         response = send_request(
             url=url,
             token=None,  # No token
-            ca_bundle_file=get_tls_verify(client=admin_client),
+            ca_bundle_file=openshift_ca_bundle_file,
             message=SAFE_PROMPTS[0],
             model=MODEL_NAME,
             configuration=None,
@@ -201,7 +201,7 @@ class TestNemoGuardrailsLLMAsJudge:
     [pytest.param({"name": "test-nemo-guardrails"})],
     indirect=True,
 )
-@pytest.mark.usefixtures("patched_dsc_kserve_headed")
+@pytest.mark.usefixtures("session_patched_dsc_kserve_headed")
 class TestNemoGuardrailsMultiServer:
     """
     Tests for multiple independent NeMo Guardrails servers in the same namespace.
@@ -218,7 +218,8 @@ class TestNemoGuardrailsMultiServer:
         self,
         admin_client: DynamicClient,
         model_namespace: Namespace,
-        llm_d_inference_sim_isvc: InferenceService,
+        openshift_ca_bundle_file: str,
+        session_llm_d_inference_sim_isvc: InferenceService,
         nemo_guardrails_presidio: NemoGuardrails,
         nemo_guardrails_second_server: NemoGuardrails,
         nemo_guardrails_presidio_route: Route,
@@ -239,7 +240,7 @@ class TestNemoGuardrailsMultiServer:
         response1 = send_request(
             url=url1,
             token=None,
-            ca_bundle_file=get_tls_verify(client=admin_client),
+            ca_bundle_file=openshift_ca_bundle_file,
             message=CLEAN_PROMPT,
             model=MODEL_NAME,
             configuration=None,
@@ -258,7 +259,7 @@ class TestNemoGuardrailsMultiServer:
         response2 = send_request(
             url=url2,
             token=None,
-            ca_bundle_file=get_tls_verify(client=admin_client),
+            ca_bundle_file=openshift_ca_bundle_file,
             message=CLEAN_PROMPT,
             model=MODEL_NAME,
             configuration=None,
@@ -318,7 +319,7 @@ class TestNemoGuardrailsMultiServer:
     [pytest.param({"name": "test-nemo-guardrails"})],
     indirect=True,
 )
-@pytest.mark.usefixtures("patched_dsc_kserve_headed")
+@pytest.mark.usefixtures("session_patched_dsc_kserve_headed")
 class TestNemoGuardrailsMultiConfig:
     """
     Tests for a single NeMo Guardrails server with multiple named configurations.
@@ -332,8 +333,8 @@ class TestNemoGuardrailsMultiConfig:
     @pytest.mark.parametrize("endpoint", [CHAT_ENDPOINT, CHECK_ENDPOINT])
     def test_nemo_multi_config_default_selection(
         self,
-        admin_client: DynamicClient,
-        llm_d_inference_sim_isvc: InferenceService,
+        openshift_ca_bundle_file: str,
+        session_llm_d_inference_sim_isvc: InferenceService,
         nemo_guardrails_multi_config: NemoGuardrails,
         nemo_guardrails_multi_config_route: Route,
         nemo_guardrails_multi_config_healthcheck,
@@ -352,7 +353,7 @@ class TestNemoGuardrailsMultiConfig:
         response = send_request(
             url=url,
             token=None,
-            ca_bundle_file=get_tls_verify(client=admin_client),
+            ca_bundle_file=openshift_ca_bundle_file,
             message=SAFE_PROMPTS[0],
             model=MODEL_NAME,
             configuration=None,
@@ -375,8 +376,8 @@ class TestNemoGuardrailsMultiConfig:
     @pytest.mark.parametrize("endpoint", [CHAT_ENDPOINT, CHECK_ENDPOINT])
     def test_nemo_multi_config(
         self,
-        admin_client: DynamicClient,
-        llm_d_inference_sim_isvc: InferenceService,
+        openshift_ca_bundle_file: str,
+        session_llm_d_inference_sim_isvc: InferenceService,
         nemo_guardrails_multi_config: NemoGuardrails,
         nemo_guardrails_multi_config_route: Route,
         nemo_guardrails_multi_config_healthcheck,
@@ -395,7 +396,7 @@ class TestNemoGuardrailsMultiConfig:
         response = send_request(
             url=url,
             token=None,
-            ca_bundle_file=get_tls_verify(client=admin_client),
+            ca_bundle_file=openshift_ca_bundle_file,
             message=SAFE_PROMPTS[0],
             model=MODEL_NAME,
             configuration="config-a",
@@ -419,7 +420,7 @@ class TestNemoGuardrailsMultiConfig:
         response = send_request(
             url=url,
             token=None,
-            ca_bundle_file=get_tls_verify(client=admin_client),
+            ca_bundle_file=openshift_ca_bundle_file,
             message=PII_PROMPT,
             model=MODEL_NAME,
             configuration="config-b",
@@ -510,7 +511,7 @@ class TestNemoGuardrailsMultiConfig:
     [pytest.param({"name": "test-nemo-guardrails"})],
     indirect=True,
 )
-@pytest.mark.usefixtures("patched_dsc_kserve_headed")
+@pytest.mark.usefixtures("session_patched_dsc_kserve_headed")
 class TestNemoGuardrailsSecretMounting:
     """
     Tests for mounting model API tokens as secrets via environment variables.
@@ -564,7 +565,7 @@ class TestNemoGuardrailsSecretMounting:
         self,
         admin_client: DynamicClient,
         current_client_token: str,
-        llm_d_inference_sim_isvc: InferenceService,
+        session_llm_d_inference_sim_isvc: InferenceService,
         nemo_guardrails_llm_judge: NemoGuardrails,
         nemo_guardrails_llm_judge_route: Route,
         nemo_guardrails_llm_judge_healthcheck,

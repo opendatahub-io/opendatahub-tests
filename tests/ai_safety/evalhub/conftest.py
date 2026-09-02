@@ -951,13 +951,14 @@ def dsp_access_for_job_sa(
 
 
 @pytest.fixture(scope="class")
-def garak_sim_isvc_url(llm_d_inference_sim_isvc: InferenceService) -> str:
+def garak_sim_isvc_url(session_llm_d_inference_sim_isvc: InferenceService) -> str:
     """Get the internal service URL for the LLM-d inference simulator.
 
     Requires KServe Headed mode (rawDeploymentServiceConfig: Headed) so the
     predictor service has a ClusterIP and port 80 → targetPort translation works.
     """
-    return f"http://{llm_d_inference_sim_isvc.name}-predictor.{llm_d_inference_sim_isvc.namespace}.svc.cluster.local/v1"
+    isvc = session_llm_d_inference_sim_isvc
+    return f"http://{isvc.name}-predictor.{isvc.namespace}.svc.cluster.local/v1"
 
 
 @pytest.fixture(scope="class")

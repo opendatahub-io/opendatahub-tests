@@ -35,8 +35,8 @@ class TestEvalHubMcpJobs:
     def test_get_job_status_returns_progress_fields(
         self,
         evalhub_mcp_client: EvalHubMcpClient,
-        evalhub_vllm_emulator_service: Service,
-        tenant_a_namespace: Namespace,
+        session_vllm_emulator_service: Service,
+        shared_models_namespace: Namespace,
     ) -> None:
         """
         Given: An evaluation job submitted via MCP tools
@@ -44,8 +44,8 @@ class TestEvalHubMcpJobs:
         Then: Response includes job_id, state, and progress_percent
         """
         model_url = build_mcp_model_url(
-            service_name=evalhub_vllm_emulator_service.name,
-            tenant_namespace=tenant_a_namespace.name,
+            service_name=session_vllm_emulator_service.name,
+            tenant_namespace=shared_models_namespace.name,
         )
         submit_result = submit_evaluation_via_mcp(
             client=evalhub_mcp_client,
@@ -70,8 +70,8 @@ class TestEvalHubMcpJobs:
     def test_cancel_running_job(
         self,
         evalhub_mcp_client: EvalHubMcpClient,
-        evalhub_vllm_emulator_service: Service,
-        tenant_a_namespace: Namespace,
+        session_vllm_emulator_service: Service,
+        shared_models_namespace: Namespace,
     ) -> None:
         """
         Given: A running evaluation job submitted via MCP tools
@@ -79,8 +79,8 @@ class TestEvalHubMcpJobs:
         Then: Job reaches cancelled terminal state
         """
         model_url = build_mcp_model_url(
-            service_name=evalhub_vllm_emulator_service.name,
-            tenant_namespace=tenant_a_namespace.name,
+            service_name=session_vllm_emulator_service.name,
+            tenant_namespace=shared_models_namespace.name,
         )
         submit_result = submit_evaluation_via_mcp(
             client=evalhub_mcp_client,

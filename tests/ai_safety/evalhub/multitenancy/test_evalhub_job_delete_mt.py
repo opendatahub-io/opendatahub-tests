@@ -37,12 +37,13 @@ class TestEvalHubJobDeleteMT:
         tenant_a_namespace: Namespace,
         evalhub_mt_ca_bundle_file: str,
         evalhub_mt_route: Route,
-        evalhub_vllm_emulator_service: Service,
+        session_vllm_emulator_service: Service,
+        shared_models_namespace: Namespace,
     ) -> None:
         """User with evaluations-delete RBAC in tenant-a can delete a job."""
         payload = build_evalhub_job_payload(
-            model_service_name=evalhub_vllm_emulator_service.name,
-            tenant_namespace=tenant_a_namespace.name,
+            model_service_name=session_vllm_emulator_service.name,
+            tenant_namespace=shared_models_namespace.name,
             job_name="evalhub-delete-test-job",
         )
         data = submit_evalhub_job(
@@ -70,13 +71,14 @@ class TestEvalHubJobDeleteMT:
         tenant_b_namespace: Namespace,
         evalhub_mt_ca_bundle_file: str,
         evalhub_mt_route: Route,
-        evalhub_vllm_emulator_service: Service,
+        session_vllm_emulator_service: Service,
+        shared_models_namespace: Namespace,
     ) -> None:
         """User with RBAC in tenant-a is denied job deletion for tenant-b."""
         # Submit in tenant-a first to get a valid job ID
         payload = build_evalhub_job_payload(
-            model_service_name=evalhub_vllm_emulator_service.name,
-            tenant_namespace=tenant_a_namespace.name,
+            model_service_name=session_vllm_emulator_service.name,
+            tenant_namespace=shared_models_namespace.name,
             job_name="evalhub-delete-test-job",
         )
         data = submit_evalhub_job(
@@ -103,13 +105,14 @@ class TestEvalHubJobDeleteMT:
         tenant_a_namespace: Namespace,
         evalhub_mt_ca_bundle_file: str,
         evalhub_mt_route: Route,
-        evalhub_vllm_emulator_service: Service,
+        session_vllm_emulator_service: Service,
+        shared_models_namespace: Namespace,
     ) -> None:
         """Job deletion without X-Tenant header is rejected with 400."""
         # Submit in tenant-a first to get a valid job ID
         payload = build_evalhub_job_payload(
-            model_service_name=evalhub_vllm_emulator_service.name,
-            tenant_namespace=tenant_a_namespace.name,
+            model_service_name=session_vllm_emulator_service.name,
+            tenant_namespace=shared_models_namespace.name,
             job_name="evalhub-delete-test-job",
         )
         data = submit_evalhub_job(
