@@ -110,6 +110,7 @@ class TestPostUpgradeLegacyExternalModelMigration:
         )
         LOGGER.info(f"Inference ExternalModel programmed HTTPRoute '{http_route_name}'")
 
+    @pytest.mark.dependency(name="test_legacy_maas_networking_removed")
     def test_legacy_maas_networking_removed(
         self,
         admin_client: DynamicClient,
@@ -154,6 +155,7 @@ class TestPostUpgradeLegacyExternalModelMigration:
         """Given upgrade completed, when checking subscription, then the legacy migration subscription still exists."""
         verify_maas_subscription_ready(subscription=legacy_migration_subscription)
 
+    @pytest.mark.dependency(depends=["test_legacy_maas_networking_removed"])
     def test_no_duplicate_legacy_httproute(
         self,
         admin_client: DynamicClient,
@@ -161,6 +163,11 @@ class TestPostUpgradeLegacyExternalModelMigration:
         legacy_migration_baseline_fixture: LegacyMigrationBaseline,
     ) -> None:
         """Given supersede completed, when checking HTTPRoutes, then none are owned by the legacy ExternalModel."""
+        wait_for_legacy_maas_prefixed_networking_deleted(
+            client=admin_client,
+            resource_name=legacy_migration_baseline_fixture["legacy_resource_name"],
+            namespace=legacy_migration_namespace.name,
+        )
         verify_no_legacy_owned_httproutes(
             client=admin_client,
             namespace=legacy_migration_namespace.name,

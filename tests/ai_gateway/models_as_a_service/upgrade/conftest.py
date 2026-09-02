@@ -3,6 +3,7 @@ from typing import Any
 
 import pytest
 import structlog
+from pytest import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
@@ -293,6 +294,8 @@ def legacy_migration_namespace(
     namespace = Namespace(client=admin_client, name=LEGACY_MIGRATION_NAMESPACE)
     if pytestconfig.option.post_upgrade:
         yield namespace
+        if teardown_resources and namespace.exists:
+            namespace.clean_up()
     else:
         with create_ns(
             admin_client=admin_client,
@@ -306,7 +309,6 @@ def legacy_migration_namespace(
 
 @pytest.fixture(scope="session")
 def legacy_migration_credential_secret(
-    pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     legacy_migration_namespace: Namespace,
     teardown_resources: bool,
@@ -317,22 +319,18 @@ def legacy_migration_credential_secret(
         "name": LEGACY_MIGRATION_SECRET_NAME,
         "namespace": legacy_migration_namespace.name,
     }
-    if pytestconfig.option.post_upgrade:
-        yield Secret(**secret_kwargs)
-    else:
-        with Secret(
-            **secret_kwargs,
-            type="Opaque",
-            string_data={"api-key": "e2e-test-key"},
-            teardown=teardown_resources,
-            wait_for_resource=True,
-        ) as secret:
-            yield secret
+    with Secret(
+        **secret_kwargs,
+        type="Opaque",
+        string_data={"api-key": "e2e-test-key"},
+        teardown=teardown_resources,
+        wait_for_resource=True,
+    ) as secret:
+        yield secret
 
 
 @pytest.fixture(scope="session")
 def legacy_migration_external_model(
-    pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     legacy_migration_namespace: Namespace,
     legacy_migration_credential_secret: Secret,
@@ -344,32 +342,29 @@ def legacy_migration_external_model(
         "name": LEGACY_MIGRATION_MODEL_NAME,
         "namespace": legacy_migration_namespace.name,
     }
-    if pytestconfig.option.post_upgrade:
-        yield LegacyExternalModel(**external_model_kwargs)
-    else:
-        with LegacyExternalModel(
-            **external_model_kwargs,
-            provider="openai",
-            target_model=LEGACY_MIGRATION_TARGET_MODEL,
-            endpoint=LEGACY_MIGRATION_ENDPOINT,
-            credential_ref={"name": legacy_migration_credential_secret.name},
-            teardown=teardown_resources,
-            wait_for_resource=True,
-        ) as external_model:
-            wait_for_legacy_maas_networking_present(
-                client=admin_client,
-                model_name=external_model.name,
-                namespace=legacy_migration_namespace.name,
-            )
-            yield external_model
+    with LegacyExternalModel(
+        **external_model_kwargs,
+        provider="openai",
+        target_model=LEGACY_MIGRATION_TARGET_MODEL,
+        endpoint=LEGACY_MIGRATION_ENDPOINT,
+        credential_ref={"name": legacy_migration_credential_secret.name},
+        teardown=teardown_resources,
+        wait_for_resource=True,
+    ) as external_model:
+        wait_for_legacy_maas_networking_present(
+            client=admin_client,
+            model_name=external_model.name,
+            namespace=legacy_migration_namespace.name,
+        )
+        yield external_model
 
 
 @pytest.fixture(scope="session")
 def legacy_migration_model_ref(
     pytestconfig: pytest.Config,
+    request: FixtureRequest,
     admin_client: DynamicClient,
     legacy_migration_namespace: Namespace,
-    legacy_migration_external_model: LegacyExternalModel,
     teardown_resources: bool,
 ) -> Generator[MaaSModelRef, Any, Any]:
     """MaaSModelRef linking to the legacy ExternalModel for migration validation."""
@@ -379,8 +374,12 @@ def legacy_migration_model_ref(
         "namespace": legacy_migration_namespace.name,
     }
     if pytestconfig.option.post_upgrade:
-        yield MaaSModelRef(**model_ref_kwargs)
+        model_ref = MaaSModelRef(**model_ref_kwargs, ensure_exists=True)
+        yield model_ref
+        if teardown_resources and model_ref.exists:
+            model_ref.delete(wait=True)
     else:
+        legacy_migration_external_model = request.getfixturevalue("legacy_migration_external_model")
         with MaaSModelRef(
             **model_ref_kwargs,
             model_ref={
@@ -409,7 +408,10 @@ def legacy_migration_auth_policy(
         "namespace": maas_subscription_namespace.name,
     }
     if pytestconfig.option.post_upgrade:
-        yield MaaSAuthPolicy(**auth_policy_kwargs)
+        auth_policy = MaaSAuthPolicy(**auth_policy_kwargs, ensure_exists=True)
+        yield auth_policy
+        if teardown_resources and auth_policy.exists:
+            auth_policy.delete(wait=True)
     else:
         with MaaSAuthPolicy(
             **auth_policy_kwargs,
@@ -442,7 +444,10 @@ def legacy_migration_subscription(
         "namespace": maas_subscription_namespace.name,
     }
     if pytestconfig.option.post_upgrade:
-        yield MaaSSubscription(**subscription_kwargs)
+        subscription = MaaSSubscription(**subscription_kwargs, ensure_exists=True)
+        yield subscription
+        if teardown_resources and subscription.exists:
+            subscription.delete(wait=True)
     else:
         with create_maas_subscription(
             admin_client=admin_client,
