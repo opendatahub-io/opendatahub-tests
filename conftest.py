@@ -2,6 +2,7 @@ import datetime
 import logging
 import os
 import pathlib
+import re
 import shutil
 import traceback
 from typing import Any
@@ -14,6 +15,7 @@ from _pytest.runner import CallInfo
 from _pytest.terminal import TerminalReporter
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.cluster_service_version import ClusterServiceVersion
+from ocp_resources.node import Node as OcpNode
 from ocp_resources.resource import get_client
 from pytest import (
     Collector,
@@ -225,6 +227,23 @@ def pytest_addoption(parser: Parser) -> None:
     )
 
 
+def _oci_image_volumes_supported() -> bool:
+    """Return True if CRI-O >= 1.33 is present on the cluster (OCP 4.20+).
+
+    OCI image volume subPath support (required by KServe modelcar) was added in CRI-O 1.33
+    via https://github.com/cri-o/cri-o/pull/9050. On CRI-O 1.32 (OCP 4.19) image volumes
+    are accepted by the API server but silently not mounted.
+    """
+    node = next(OcpNode.get(client=get_client()), None)
+    if not node:
+        return False
+    runtime: str = node.instance.status.nodeInfo.containerRuntimeVersion  # e.g. "cri-o://1.32.13-..."
+    match = re.search(r"cri-o://(\d+)\.(\d+)", runtime)
+    if match:
+        return (int(match.group(1)), int(match.group(2))) >= (1, 33)
+    return False
+
+
 def pytest_cmdline_main(config: Any) -> None:
     config.option.basetemp = py_config["tmp_base_dir"] = f"{config.option.basetemp}-{shortuuid.uuid()}"
 
@@ -310,7 +329,12 @@ def pytest_collection_modifyitems(session: Session, config: Config, items: list[
     if deselected:
         config.hook.pytest_deselected(items=deselected)
 
-    if not config.getoption("--collect-only") and not config.getoption("--setup-plan"):  # noqa: SIM102
+    if not config.getoption("--collect-only") and not config.getoption("--setup-plan"):
+        if not _oci_image_volumes_supported():
+            oci_deselected = [item for item in items if "requires_oci_image_volumes" in item.keywords]
+            if oci_deselected:
+                items[:] = [item for item in items if "requires_oci_image_volumes" not in item.keywords]
+                config.hook.pytest_deselected(items=oci_deselected)
         if _kyverno_replace_image_registry_policy_exists():
             mirroring_deselected = [item for item in items if "no_image_registry_mirroring" in item.keywords]
             if mirroring_deselected:
@@ -435,7 +459,7 @@ def pytest_runtest_setup(item: Item) -> None:
             db = item.config.option.must_gather_db
             db.insert_test_start_time(
                 test_name=f"{item.fspath}::{item.name}",
-                start_time=int(datetime.datetime.now().timestamp()),  # noqa: DTZ005
+                start_time=int(datetime.datetime.now().timestamp()),
             )
         except Exception as db_exception:  # noqa: BLE001
             LOGGER.error(f"Database error: {db_exception}. Must-gather collection may not be accurate")
@@ -506,7 +530,7 @@ def pytest_sessionfinish(session: Session, exitstatus: int) -> None:
 def calculate_must_gather_timer(test_start_time: int) -> int:
     default_duration = 300
     if test_start_time > 0:
-        duration = int(datetime.datetime.now().timestamp()) - test_start_time  # noqa: DTZ005
+        duration = int(datetime.datetime.now().timestamp()) - test_start_time
         return duration if duration > 60 else default_duration
     else:
         LOGGER.warning(f"Could not get start time of test. Collecting must-gather for last {default_duration}s")
