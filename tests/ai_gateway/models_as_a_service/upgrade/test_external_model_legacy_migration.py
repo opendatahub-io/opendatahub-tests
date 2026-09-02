@@ -96,7 +96,7 @@ class TestPostUpgradeLegacyExternalModelMigration:
         1. Verify inference ExternalModel is programmed.
         2. Verify legacy maas-* networking children are removed.
         3. Verify inference HTTPRoute remains available.
-        4. Verify MaaSModelRef and subscription survived upgrade.
+        4. Verify MaaSModelRef, auth policy, and subscription survived upgrade.
     """
 
     def test_inference_external_model_programmed(
@@ -147,6 +147,13 @@ class TestPostUpgradeLegacyExternalModelMigration:
     ) -> None:
         """Given upgrade completed, when checking MaaSModelRef, then the legacy migration ref still exists."""
         verify_maas_model_ref_exists(model_ref=legacy_migration_model_ref)
+
+    def test_legacy_maas_auth_policy_survives_upgrade(
+        self,
+        legacy_migration_auth_policy: MaaSAuthPolicy,
+    ) -> None:
+        """Given upgrade completed, when checking auth policy, then the legacy migration policy still exists."""
+        verify_maas_auth_policy_exists(auth_policy=legacy_migration_auth_policy)
 
     def test_legacy_maas_subscription_survives_upgrade(
         self,
