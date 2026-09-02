@@ -28,6 +28,7 @@ FINALIZER_CLEANUP_TIMEOUT: int = 120
     ],
     indirect=True,
 )
+@pytest.mark.requires_oci_image_volumes
 @pytest.mark.usefixtures(
     "updated_dsc_component_state_scope_session",
     "model_registry_namespace",
