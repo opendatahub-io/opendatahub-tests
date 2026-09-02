@@ -561,10 +561,16 @@ def junitxml_plugin(
 def cluster_sanity_scope_session(
     request: FixtureRequest,
     nodes: list[Node],
-    dsci_resource: DSCInitialization,
-    dsc_resource: DataScienceCluster,
     junitxml_plugin: Callable[[str, object], None],
 ) -> None:
+    # Skip cluster sanity check when running tests that have cluster_health or operator_health markers
+    selected_markers = {mark.name for item in request.session.items for mark in item.iter_markers()}
+    if {"cluster_health", "operator_health", "component_health"} & selected_markers:
+        LOGGER.info("Skipping cluster sanity check because selected tests include cluster/operator/component health")
+        return
+
+    dsci_resource: DSCInitialization = request.getfixturevalue(argname="dsci_resource")
+    dsc_resource: DataScienceCluster = request.getfixturevalue(argname="dsc_resource")
     verify_cluster_sanity(
         request=request,
         nodes=nodes,
