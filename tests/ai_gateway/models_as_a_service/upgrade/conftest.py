@@ -3,7 +3,6 @@ from typing import Any
 
 import pytest
 import structlog
-from pytest import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
@@ -12,6 +11,7 @@ from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.maas_subscription import MaaSSubscription
 from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
+from pytest import FixtureRequest
 
 from tests.ai_gateway.models_as_a_service.maas_subscription.utils import (
     create_maas_subscription,
