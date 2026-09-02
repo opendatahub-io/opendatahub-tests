@@ -67,6 +67,7 @@ from tests.ai_safety.evalhub.constants import (
     SIMPLE_MINIO_ACCESS_KEY,
     SIMPLE_MINIO_BUCKET,
     SIMPLE_MINIO_SECRET_KEY,
+    GIT_CREDS_SECRET_NAME
 )
 from tests.ai_safety.evalhub.kueue.constants import VLLM_EMULATOR, VLLM_EMULATOR_IMAGE
 from tests.ai_safety.evalhub.utils import (
@@ -1884,8 +1885,6 @@ def submit_git_job(
             LOGGER.warning(f"Failed to delete git evaluation job {job_id} during teardown")
 
 
-# Git Storage Source Fixtures (RHAISTRAT-2058)
-
 
 @pytest.fixture(scope="class")
 def git_private_repo_config() -> dict[str, str]:
@@ -1898,14 +1897,14 @@ def git_private_repo_config() -> dict[str, str]:
 
     Optional:
       EVALHUB_GIT_PRIVATE_REPO_REF       — ref to clone (defaults to "main")
+      EVALHUB_GIT_PRIVATE_REPO_SUB_PATH  — sub-path within repo (defaults to "tests/git-testdata")
     """
-    import os
 
     url = os.environ.get("EVALHUB_GIT_PRIVATE_REPO_URL", "")
     username = os.environ.get("EVALHUB_GIT_PRIVATE_REPO_USERNAME", "")
     token = os.environ.get("EVALHUB_GIT_PRIVATE_REPO_TOKEN", "")
     if not all([url, username, token]):
-        pytest.skip(
+        pytest.fail(
             "Git private repo tests require env vars: "
             "EVALHUB_GIT_PRIVATE_REPO_URL, EVALHUB_GIT_PRIVATE_REPO_USERNAME, "
             "EVALHUB_GIT_PRIVATE_REPO_TOKEN"
@@ -1915,6 +1914,7 @@ def git_private_repo_config() -> dict[str, str]:
         "username": username,
         "token": token,
         "ref": os.environ.get("EVALHUB_GIT_PRIVATE_REPO_REF", "main"),
+        "sub_path": os.environ.get("EVALHUB_GIT_PRIVATE_REPO_SUB_PATH", GIT_PUBLIC_REPO_SUB_PATH),
     }
 
 
@@ -1925,7 +1925,6 @@ def git_test_creds_secret(
     git_private_repo_config: dict[str, str],
 ) -> Generator[Secret, Any, Any]:
     """Kubernetes Secret with valid HTTPS basic auth credentials for the private repo."""
-    from tests.ai_safety.evalhub.constants import GIT_CREDS_SECRET_NAME
 
     with Secret(
         client=admin_client,
@@ -1958,8 +1957,6 @@ def git_bad_creds_secret(
     ) as secret:
         yield secret
 
-
-# Operator Reconciliation Observability Fixtures (RHAISTRAT-1606 / RHAI-241)
 
 
 @pytest.fixture(scope="class")

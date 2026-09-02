@@ -11,6 +11,7 @@ from ocp_resources.secret import Secret
 
 from tests.ai_safety.evalhub.constants import (
     GIT_CLONE_INIT_CONTAINER_NAME,
+    GIT_TOKENIZER_PATH,
 )
 from tests.ai_safety.evalhub.utils import (
     get_evalhub_job_http,
@@ -18,15 +19,7 @@ from tests.ai_safety.evalhub.utils import (
     wait_for_evalhub_runtime_job_count,
 )
 
-GIT_MODEL_NAMESPACE = pytest.param({"name": "d"})
-
-
-def _get_git_clone_init_container(pod_spec):
-    """Find the git-clone init container from a pod spec."""
-    for container in pod_spec.initContainers or []:
-        if GIT_CLONE_INIT_CONTAINER_NAME in container.name:
-            return container
-    return None
+GIT_MODEL_NAMESPACE = pytest.param({"name": "evalhub-git-private"})
 
 
 @pytest.mark.parametrize("model_namespace", [GIT_MODEL_NAMESPACE], indirect=True)
@@ -39,8 +32,6 @@ class TestEvalHubGitStoragePrivate:
     Covers: TC-API-005, TC-GIT-004, TC-SEC-001 through TC-SEC-004,
     TC-NEG-003, TC-NEG-005, TC-E2E-001.
     """
-
-    # -- TC-E2E-001: Private git repo evaluation job end-to-end (P0) --
 
     def test_private_repo_job_e2e(
         self,
@@ -59,7 +50,9 @@ class TestEvalHubGitStoragePrivate:
         job_id = submit_git_job(
             url=git_private_repo_config["url"],
             ref=git_private_repo_config["ref"],
+            sub_path=git_private_repo_config["sub_path"],
             secret_ref=git_test_creds_secret.name,
+            tokenizer_path=GIT_TOKENIZER_PATH,
             job_name="git-private-e2e",
         )
 
@@ -84,8 +77,6 @@ class TestEvalHubGitStoragePrivate:
         assert resolved_sha, f"Expected resolved_sha in benchmarks[0].test_data_ref, got test_data_ref: {test_data_ref}"
         assert re.fullmatch(r"[0-9a-f]{40}", resolved_sha), f"Expected 40-char hex SHA, got: {resolved_sha}"
 
-    # -- TC-API-005: Submit evaluation job with secret_ref for private repo (P0) --
-
     def test_api_accepts_secret_ref(
         self,
         admin_client: DynamicClient,
@@ -99,14 +90,17 @@ class TestEvalHubGitStoragePrivate:
     ) -> None:
         """Given a valid git credential Secret,
         when a job is submitted with test_data_ref.git including secret_ref,
-        then the API returns 202 and preserves secret_ref in the response."""
+        then the API accepts the job and preserves secret_ref in the job detail response.
+
+        Note: submit_git_job internally validates 202 Accepted via submit_evalhub_job."""
         job_id = submit_git_job(
             url=git_private_repo_config["url"],
             ref=git_private_repo_config["ref"],
+            sub_path=git_private_repo_config["sub_path"],
             secret_ref=git_test_creds_secret.name,
+            tokenizer_path=GIT_TOKENIZER_PATH,
             job_name="git-api-secret-ref",
         )
-        assert job_id, "API should return a job ID for private repo submission"
 
         response = get_evalhub_job_http(
             host=evalhub_mt_route.host,
@@ -143,7 +137,9 @@ class TestEvalHubGitStoragePrivate:
         job_id = submit_git_job(
             url=git_private_repo_config["url"],
             ref=git_private_repo_config["ref"],
+            sub_path=git_private_repo_config["sub_path"],
             secret_ref=git_test_creds_secret.name,
+            tokenizer_path=GIT_TOKENIZER_PATH,
             job_name="git-init-security",
         )
 
@@ -156,7 +152,11 @@ class TestEvalHubGitStoragePrivate:
         spec = batch_jobs[0].instance.spec.template.spec
 
         # TC-GIT-004: Verify git-clone init container exists
-        git_init = _get_git_clone_init_container(pod_spec=spec)
+        git_init = None
+        for container in spec.initContainers or []:
+            if container.name == GIT_CLONE_INIT_CONTAINER_NAME:
+                git_init = container
+                break
         assert git_init is not None, (
             f"Expected '{GIT_CLONE_INIT_CONTAINER_NAME}' init container, "
             f"got: {[c.name for c in (spec.initContainers or [])]}"
@@ -214,8 +214,6 @@ class TestEvalHubGitStoragePrivate:
             f"Private repo job should complete (init container exit 0), got: {job_data.get('status')}"
         )
 
-    # -- TC-NEG-003: Job fails with invalid credentials for private repo (P1) --
-
     def test_invalid_credentials_fails(
         self,
         admin_client: DynamicClient,
@@ -233,7 +231,9 @@ class TestEvalHubGitStoragePrivate:
         job_id = submit_git_job(
             url=git_private_repo_config["url"],
             ref=git_private_repo_config["ref"],
+            sub_path=git_private_repo_config["sub_path"],
             secret_ref=git_bad_creds_secret.name,
+            tokenizer_path=GIT_TOKENIZER_PATH,
             job_name="git-bad-creds",
         )
 
@@ -245,6 +245,19 @@ class TestEvalHubGitStoragePrivate:
             job_id=job_id,
             timeout=300,
         )
-        assert job_data.get("status", {}).get("state") == "failed", (
-            f"Job with invalid credentials should fail, got: {job_data.get('status')}"
+        status = job_data.get("status", {})
+        assert status.get("state") == "failed", f"Job with invalid credentials should fail, got: {status}"
+
+        # Verify the failure was due to git-clone init container termination (authentication failure)
+        error_message = status.get("message", {}).get("message", "")
+        benchmarks = status.get("benchmarks", [])
+        if benchmarks:
+            benchmark_error = benchmarks[0].get("error_message", {}).get("message", "")
+            error_message = error_message or benchmark_error
+
+        assert "init: terminated" in error_message.lower(), (
+            f"Expected git-clone init container termination due to auth failure, got: {error_message}"
+        )
+        assert "exitcode=1" in error_message.lower() or "reason=error" in error_message.lower(), (
+            f"Expected init container to exit with error code, got: {error_message}"
         )
