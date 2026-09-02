@@ -9,7 +9,7 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_safety.evalhub.utils import (
     WORKLOAD_INADMISSIBLE_REASONS,
-    cleanup_evalhub_job,
+    cleanup_evalhub_jobs_and_workloads,
     cluster_queue_name,
     evalhub_runtime_label_selector,
     log_job_kueue_labels,
@@ -97,10 +97,9 @@ class TestEvalHubKueueMonitoring:
                     pytest.fail(f"Gated Job {gated_job.name} never reported Suspended=True condition")
         finally:
             if job_id:
-                try:
-                    cleanup_evalhub_job(**common, job_id=job_id)
-                except Exception:
-                    LOGGER.warning(f"Failed to clean up job {job_id}", exc_info=True)
+                cleanup_evalhub_jobs_and_workloads(
+                    request_common=common, admin_client=admin_client, namespace=namespace, job_ids=[job_id]
+                )
 
     def test_gated_workload_reports_inadmissible_message(
         self,
@@ -165,7 +164,6 @@ class TestEvalHubKueueMonitoring:
                 )
         finally:
             if job_id:
-                try:
-                    cleanup_evalhub_job(**common, job_id=job_id)
-                except Exception:
-                    LOGGER.warning(f"Failed to clean up job {job_id}", exc_info=True)
+                cleanup_evalhub_jobs_and_workloads(
+                    request_common=common, admin_client=admin_client, namespace=namespace, job_ids=[job_id]
+                )
