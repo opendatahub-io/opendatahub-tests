@@ -250,7 +250,7 @@ class TestEvalHubGitStoragePrivate:
 
         # Verify the failure was due to git-clone init container termination (authentication failure)
         error_message = status.get("message", {}).get("message", "")
-        benchmarks = status.get("benchmarks", [])
+        benchmarks = job_data.get("benchmarks") or status.get("benchmarks", [])
         if benchmarks:
             benchmark_error = benchmarks[0].get("error_message", {}).get("message", "")
             error_message = error_message or benchmark_error
