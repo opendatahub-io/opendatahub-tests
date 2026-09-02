@@ -14,13 +14,14 @@ from pytest import FixtureRequest
 from tests.model_serving.model_runtime.vllm.constant import (
     ACCELERATOR_IDENTIFIER,
     BASE_RAW_DEPLOYMENT_CONFIG,
+    GAUDI_ENV_VARIABLES,
     PREDICT_RESOURCES,
     TEMPLATE_MAP,
 )
 from tests.model_serving.model_runtime.vllm.modelcar.constant import MODELCAR_REGISTRIES, TIMEOUT_20MIN
 from tests.model_serving.model_runtime.vllm.modelcar.utils import safe_k8s_name
 from tests.model_serving.model_runtime.vllm.utils import add_image_pull_secrets_if_configured, dedupe_vllm_cli_args
-from utilities.constants import KServeDeploymentType, Labels, RuntimeTemplates
+from utilities.constants import AcceleratorType, KServeDeploymentType, Labels, RuntimeTemplates
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -99,6 +100,9 @@ def vllm_model_car_inference_service(
             "ibm.com/spyre_pf": gpu_count,
         }
 
+    if accelerator_type == AcceleratorType.GAUDI:
+        isvc_kwargs["model_env_variables"] = GAUDI_ENV_VARIABLES
+
     if timeout:
         isvc_kwargs["timeout"] = timeout
 
@@ -140,9 +144,14 @@ def build_raw_params(
     gpu_count: int,
     execution_mode: str,
     model_output_type: str = "text",
+    unsupported_accelerators: list[str] | None = None,
+    accelerator_type: str | None = None,
 ) -> tuple[Any, str]:
     test_id = f"{name}-standard"
     deployment_type = KServeDeploymentType.STANDARD
+    marks = build_pytest_markers(deployment_type=deployment_type, execution_mode=execution_mode)
+    if accelerator_type and accelerator_type in (unsupported_accelerators or []):
+        marks.append(pytest.mark.skip(reason=f"{name} is not supported on accelerator '{accelerator_type}'"))
     param = pytest.param(
         {"name": "standard-model-validation"},
         {"deployment_type": deployment_type},
@@ -157,7 +166,7 @@ def build_raw_params(
             "model_output_type": model_output_type,
         },
         id=test_id,
-        marks=build_pytest_markers(deployment_type=deployment_type, execution_mode=execution_mode),
+        marks=marks,
     )
     return param, test_id
 
@@ -197,6 +206,7 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
 
     model_car_data = yaml_config["model-car"]
     default_serving_config = yaml_config.get("default", {})
+    accelerator_type = (metafunc.config.getoption("supported_accelerator_type") or "").lower()
 
     if not isinstance(model_car_data, list):
         raise TypeError("Invalid format for `model-car` in YAML. Expected a list of objects.")
@@ -225,6 +235,7 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
         serving_config = model_car.get("serving_arguments") or default_serving_config.get("serving_arguments", {})
         args = serving_config.get("args", [])
         gpu_count = serving_config.get("gpu_count", 1)
+        unsupported_accelerators = [str(a).lower() for a in (model_car.get("unsupported_accelerators") or [])]
 
         if metafunc.cls.__name__ == "TestVLLMModelCarRaw":
             param, test_id = build_raw_params(
@@ -234,6 +245,8 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
                 gpu_count=gpu_count,
                 execution_mode=execution_mode,
                 model_output_type=model_output_type,
+                unsupported_accelerators=unsupported_accelerators,
+                accelerator_type=accelerator_type,
             )
         else:
             continue

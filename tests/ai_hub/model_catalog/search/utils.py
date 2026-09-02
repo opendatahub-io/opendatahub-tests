@@ -370,6 +370,15 @@ MODELS_PENDING_BENCHMARK_DATA: set[str] = {
     "Llama-2-7b-chat-hf",
     "Whisper-Large-V3",
     "Qwen3-Next-80B-A3B-Instruct-FP8",
+    "Laguna-XS.2",
+    "Laguna-XS.2-speculator.dflash",
+    "Llama-3.2-3B-Instruct-quantized.w8a8",
+    "Qwen2.5-1.5B-quantized.w8a8",
+    "Qwen3-8B",
+    "Qwen3-8B-speculator.dflash",
+    "gemma-4-26B-A4B-it-speculator.eagle3",
+    "gemma-4-31B-it-speculator.dflash",
+    "gemma-4-31B-it-speculator.eagle3",
 }
 
 

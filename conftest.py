@@ -2,6 +2,7 @@ import datetime
 import logging
 import os
 import pathlib
+import re
 import shutil
 import traceback
 from typing import Any
@@ -14,6 +15,7 @@ from _pytest.runner import CallInfo
 from _pytest.terminal import TerminalReporter
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.cluster_service_version import ClusterServiceVersion
+from ocp_resources.node import Node as OcpNode
 from ocp_resources.resource import get_client
 from pytest import (
     Collector,
@@ -38,6 +40,7 @@ from utilities.must_gather_collector import (
     set_must_gather_collector_directory,
     set_must_gather_collector_values,
 )
+from utilities.resources.cluster_policy_kyverno_io import ClusterPolicy as KyvernoClusterPolicy
 
 LOGGER = logging.getLogger(name=__name__)
 BASIC_LOGGER = logging.getLogger(name="basic")
@@ -224,8 +227,33 @@ def pytest_addoption(parser: Parser) -> None:
     )
 
 
+def _oci_image_volumes_supported() -> bool:
+    """Return True if CRI-O >= 1.33 is present on the cluster (OCP 4.20+).
+
+    OCI image volume subPath support (required by KServe modelcar) was added in CRI-O 1.33
+    via https://github.com/cri-o/cri-o/pull/9050. On CRI-O 1.32 (OCP 4.19) image volumes
+    are accepted by the API server but silently not mounted.
+    """
+    node = next(OcpNode.get(client=get_client()), None)
+    if not node:
+        return False
+    runtime: str = node.instance.status.nodeInfo.containerRuntimeVersion  # e.g. "cri-o://1.32.13-..."
+    match = re.search(r"cri-o://(\d+)\.(\d+)", runtime)
+    if match:
+        return (int(match.group(1)), int(match.group(2))) >= (1, 33)
+    return False
+
+
 def pytest_cmdline_main(config: Any) -> None:
     config.option.basetemp = py_config["tmp_base_dir"] = f"{config.option.basetemp}-{shortuuid.uuid()}"
+
+
+def _kyverno_replace_image_registry_policy_exists() -> bool:
+    """Return True if the Kyverno replace-image-registry ClusterPolicy is active on the cluster."""
+    try:
+        return KyvernoClusterPolicy(client=get_client(), name="replace-image-registry").exists
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def pytest_collection_modifyitems(session: Session, config: Config, items: list[Item]) -> None:
@@ -300,6 +328,18 @@ def pytest_collection_modifyitems(session: Session, config: Config, items: list[
     deselected = [item for item in original_items if item not in remaining_set]
     if deselected:
         config.hook.pytest_deselected(items=deselected)
+
+    if not config.getoption("--collect-only") and not config.getoption("--setup-plan"):
+        if not _oci_image_volumes_supported():
+            oci_deselected = [item for item in items if "requires_oci_image_volumes" in item.keywords]
+            if oci_deselected:
+                items[:] = [item for item in items if "requires_oci_image_volumes" not in item.keywords]
+                config.hook.pytest_deselected(items=oci_deselected)
+        if _kyverno_replace_image_registry_policy_exists():
+            mirroring_deselected = [item for item in items if "no_image_registry_mirroring" in item.keywords]
+            if mirroring_deselected:
+                items[:] = [item for item in items if "no_image_registry_mirroring" not in item.keywords]
+                config.hook.pytest_deselected(items=mirroring_deselected)
 
     _add_default_tier2_marker(items=items)
 
