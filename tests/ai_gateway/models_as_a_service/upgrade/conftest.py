@@ -379,7 +379,9 @@ def legacy_migration_model_ref(
         if teardown_resources and model_ref.exists:
             model_ref.delete(wait=True)
     else:
-        legacy_migration_external_model = request.getfixturevalue("legacy_migration_external_model")
+        legacy_migration_external_model = request.getfixturevalue(
+            argname="legacy_migration_external_model",
+        )
         with MaaSModelRef(
             **model_ref_kwargs,
             model_ref={
