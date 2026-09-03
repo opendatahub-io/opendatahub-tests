@@ -29,6 +29,7 @@ from ocp_resources.service_account import ServiceAccount
 from ocp_resources.service_monitor import ServiceMonitor
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
+from tests.ai_safety.evalhub.constants import GIT_BAD_CREDS_SECRET_NAME
 
 from tests.ai_safety.evalhub.constants import (
     EVALHUB_JOB_CONFIG_CLUSTERROLE,
