@@ -188,8 +188,7 @@ def build_pytest_markers(deployment_type: str, execution_mode: str) -> list[Any]
         markers.append(pytest.mark.rawdeployment)
 
     if execution_mode == "parallel":
-        markers.append(pytest.mark.parallel)
-        markers.append(pytest.mark.skip_must_gather)
+        markers.extend((pytest.mark.parallel, pytest.mark.skip_must_gather))
 
     return markers
 
