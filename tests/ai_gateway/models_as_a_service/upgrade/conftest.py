@@ -346,7 +346,7 @@ def legacy_migration_external_model(
     legacy_migration_namespace: Namespace,
     legacy_migration_credential_secret: Secret,
     teardown_resources: bool,
-) -> Generator[LegacyExternalModel | None, Any, Any]:
+) -> Generator[LegacyExternalModel, Any, Any]:
     """Legacy maas.opendatahub.io ExternalModel deployed pre-upgrade for migration validation."""
     external_model_kwargs: dict[str, Any] = {
         "client": admin_client,
@@ -354,13 +354,13 @@ def legacy_migration_external_model(
         "namespace": legacy_migration_namespace.name,
     }
     if pytestconfig.option.post_upgrade:
-        if cluster_has_legacy_external_model_crd(admin_client=admin_client):
-            external_model = LegacyExternalModel(**external_model_kwargs, ensure_exists=True)
-            yield external_model
-            if teardown_resources and external_model.exists:
-                external_model.delete(wait=True)
-        else:
-            yield None
+        assert cluster_has_legacy_external_model_crd(admin_client=admin_client), (
+            "Legacy maas.opendatahub.io ExternalModel CRD is not installed on this cluster"
+        )
+        external_model = LegacyExternalModel(**external_model_kwargs)
+        yield external_model
+        if teardown_resources and external_model.exists:
+            external_model.delete(wait=True)
     else:
         with LegacyExternalModel(
             **external_model_kwargs,

@@ -877,7 +877,7 @@ def wait_for_httproute(
     timeout: int = 60,
 ) -> HTTPRoute:
     """Poll until the HTTPRoute exists, or raise on timeout."""
-    for _ in TimeoutSampler(
+    for route in TimeoutSampler(
         wait_timeout=timeout,
         sleep=3,
         func=get_httproute,
@@ -885,7 +885,6 @@ def wait_for_httproute(
         name=name,
         namespace=namespace,
     ):
-        route = get_httproute(client=client, name=name, namespace=namespace)
         if route is not None:
             return route
 
@@ -899,7 +898,7 @@ def wait_for_httproute_deleted(
     timeout: int = 60,
 ) -> None:
     """Poll until the HTTPRoute no longer exists, or raise on timeout."""
-    for _ in TimeoutSampler(
+    for route in TimeoutSampler(
         wait_timeout=timeout,
         sleep=3,
         func=get_httproute,
@@ -907,7 +906,7 @@ def wait_for_httproute_deleted(
         name=name,
         namespace=namespace,
     ):
-        if get_httproute(client=client, name=name, namespace=namespace) is None:
+        if route is None:
             return
 
     raise TimeoutError(f"HTTPRoute {namespace}/{name} still exists after {timeout}s")
