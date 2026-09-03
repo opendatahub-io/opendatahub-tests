@@ -109,28 +109,6 @@ def download_model_data(
     restricted_scc_init: bool = False,
     node_selector: dict[str, str] | None = None,
 ) -> str:
-    """
-    Downloads the model data from the bucket to the PVC
-
-    Args:
-        client (DynamicClient): Admin client
-        aws_access_key_id (str): AWS access key
-        aws_secret_access_key (str): AWS secret key
-        model_namespace (str): Namespace of the model
-        model_pvc_name (str): Name of the PVC
-        bucket_name (str): Name of the bucket
-        aws_endpoint_url (str): AWS endpoint URL
-        aws_default_region (str): AWS default region
-        model_path (str): Path to the model
-        use_sub_path (bool): Whether to use a sub path
-        restricted_scc_init (bool): Use OpenShift restricted-SCC-safe init (no chmod,
-            fsGroup from namespace, init container mounts full PVC when use_sub_path).
-        node_selector (dict[str, str] | None): Optional nodeSelector for the download pod.
-
-    Returns:
-        str: Path to the model path
-
-    """
     volume_mount = {"mountPath": "/mnt/models/", "name": model_pvc_name}
     if use_sub_path:
         volume_mount["subPath"] = model_path
@@ -145,7 +123,7 @@ def download_model_data(
         init_volume_mount = volume_mount
         init_command = ["mkdir", "-p", pvc_model_path]
         init_container_args = []
-        download_destination = pvc_model_path
+        download_destination = "/mnt/models/"
     else:
         init_volume_mount = volume_mount
         init_command = ["sh"]
@@ -166,13 +144,14 @@ def download_model_data(
 
     init_container: dict[str, Any] = {
         "name": "init-container",
-        "image": SharedImages.BUSYBOX,
+        "image": "registry.access.redhat.com/ubi9/ubi-minimal:latest",
         "command": init_command,
         "args": init_container_args,
         "volumeMounts": [init_volume_mount],
     }
     downloader_container: dict[str, Any] = {
         "name": "model-downloader",
+        "resources": {"requests": {"cpu": "2", "memory": "8Gi"}, "limits": {"cpu": "4", "memory": "16Gi"}},
         "image": utilities.infra.get_kserve_storage_initialize_image(client=client),
         "args": [
             f"s3://{bucket_name}/{model_path}/",
@@ -186,6 +165,8 @@ def download_model_data(
             {"name": "AWS_DEFAULT_REGION", "value": aws_default_region},
             {"name": "S3_VERIFY_SSL", "value": "false"},
             {"name": "awsAnonymousCredential", "value": "false"},
+            {"name": "AWS_MAX_ATTEMPTS", "value": "10"},
+            {"name": "AWS_RETRY_MODE", "value": "adaptive"},
         ],
         "volumeMounts": [volume_mount],
     }
@@ -217,7 +198,7 @@ def download_model_data(
 
     with Pod(**pod_kwargs) as pod:
         LOGGER.info("Waiting for model download to complete")
-        pod.wait_for_status(status=Pod.Status.SUCCEEDED, timeout=25 * 60)
+        pod.wait_for_status(status=Pod.Status.SUCCEEDED, timeout=20 * 60)
 
     return model_path
 

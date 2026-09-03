@@ -113,7 +113,7 @@ def vllm_pvc_inference_service(
     if gpu_count < 0:
         raise ValueError(f"gpu_count must be >= 0, got {gpu_count}")
 
-    timeout = request.param.get("timeout")
+    timeout = int(request.param["timeout"]) if request.param.get("timeout") is not None else None
     identifier = ACCELERATOR_IDENTIFIER.get(accelerator_type, Labels.Nvidia.NVIDIA_COM_GPU)
     resources = deepcopy(x=PREDICT_RESOURCES["resources"])
     resources["requests"][identifier] = gpu_count

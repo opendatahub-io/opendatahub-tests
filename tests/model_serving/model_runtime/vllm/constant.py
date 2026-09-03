@@ -211,9 +211,47 @@ GRANITE_SPYRE_RAG_INFERENCE_SERVING_ARGUMENT: list[str] = [
 ]
 
 # Spyre ppc64le — Ministral RAG Inference (RHAIIS 3.6, tensor-parallel=4, 200Gi, 32K context)
-MINISTRAL_SPYRE_RAG_INFERENCE_SERVING_ARGUMENT: list[str] = [
+MINISTRAL_SPYRE_RAG_INFERENCE_SERVING_ARGUMENT: list[str]
+
+# Spyre ppc64le — RAG Inference / Serving Arguments & Resources
+PREDICT_RESOURCES_RAG_INFERENCE: dict[str, list[dict[str, str | dict[str, str]]] | dict[str, dict[str, str]]] = {
+    "volumes": [
+        {"name": "shared-memory", "emptyDir": {"medium": "Memory", "sizeLimit": "2Gi"}},
+        {"name": "tmp", "emptyDir": {}},
+        {"name": "home", "emptyDir": {}},
+    ],
+    "volume_mounts": [
+        {"name": "shared-memory", "mountPath": "/dev/shm"},
+        {"name": "tmp", "mountPath": "/tmp"},
+        {"name": "home", "mountPath": "/home/vllm"},
+    ],
+    "resources": {"requests": {"cpu": "2", "memory": "150Gi"}, "limits": {"cpu": "4", "memory": "200Gi"}},
+}
+
+MISTRAL_SPYRE_RAG_INFERENCE_SERVING_ARGUMENT: list[str] = [
     "--model=/mnt/models",
     "--max-model-len=32768",
     "--max-num-seqs=32",
+    "--uvicorn-log-level=debug",
+]
+
+PREDICT_RESOURCES_VISION: dict[str, list[dict[str, str | dict[str, str]]] | dict[str, dict[str, str]]] = {
+    "volumes": [
+        {"name": "shared-memory", "emptyDir": {"medium": "Memory", "sizeLimit": "2Gi"}},
+        {"name": "tmp", "emptyDir": {}},
+        {"name": "home", "emptyDir": {}},
+    ],
+    "volume_mounts": [
+        {"name": "shared-memory", "mountPath": "/dev/shm"},
+        {"name": "tmp", "mountPath": "/tmp"},
+        {"name": "home", "mountPath": "/home/vllm"},
+    ],
+    "resources": {"requests": {"cpu": "2", "memory": "100Gi"}, "limits": {"cpu": "4", "memory": "100Gi"}},
+}
+
+GRANITE_VISION_SPYRE_SERVING_ARGUMENT: list[str] = [
+    "--model=/mnt/models",
+    "--max-model-len=16384",
+    "--max-num-seqs=16",
     "--uvicorn-log-level=debug",
 ]
