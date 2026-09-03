@@ -70,9 +70,9 @@ q4_hybrid = IBM_2025_Q4_EARNINGS.load_qa(retrieval_mode="hybrid")
 from tests.ogx.datasets import FINANCE_DATASET
 
 for doc in FINANCE_DATASET.documents:
-    print(doc.path)          # "tests/ogx/dataset/corpus/finance/ibm-1q25-..."
-    print(doc.document_id)   # "ibm_1q25_earnings_pr"
-    print(doc.attributes)    # {"entity_symbol": "IBM", "period_year": 2025, ...}
+    print(doc.path)  # "tests/ogx/dataset/corpus/finance/ibm-1q25-..."
+    print(doc.document_id)  # "ibm_1q25_earnings_pr"
+    print(doc.attributes)  # {"entity_symbol": "IBM", "period_year": 2025, ...}
 ```
 
 ### Using datasets in test parametrization
@@ -81,6 +81,7 @@ Tests receive a `Dataset` via indirect parametrize and a `dataset` fixture:
 
 ```python
 from tests.ogx.datasets import FINANCE_DATASET, IBM_2025_Q4_EARNINGS, Dataset
+
 
 @pytest.mark.parametrize(
     "vector_store, dataset",

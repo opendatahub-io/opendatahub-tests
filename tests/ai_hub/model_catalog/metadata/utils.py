@@ -35,7 +35,7 @@ def get_artifact_counts_from_endpoint(
     for artifact in artifacts_response.get("items", []):
         metrics_type = artifact.get("metricsType", "")
         artifact_type = artifact.get("artifactType", "")
-        key = metrics_type if metrics_type else artifact_type
+        key = metrics_type or artifact_type
         counts[key] = counts.get(key, 0) + 1
     return counts
 
