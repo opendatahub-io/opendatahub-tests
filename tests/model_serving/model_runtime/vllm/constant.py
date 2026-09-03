@@ -209,3 +209,11 @@ GRANITE_SPYRE_RAG_INFERENCE_SERVING_ARGUMENT: list[str] = [
     "--max-num-seqs=32",
     "--uvicorn-log-level=debug",
 ]
+
+# Spyre ppc64le — Ministral RAG Inference (RHAIIS 3.6, tensor-parallel=4, 200Gi, 32K context)
+MINISTRAL_SPYRE_RAG_INFERENCE_SERVING_ARGUMENT: list[str] = [
+    "--model=/mnt/models",
+    "--max-model-len=32768",
+    "--max-num-seqs=32",
+    "--uvicorn-log-level=debug",
+]
