@@ -29,7 +29,6 @@ from ocp_resources.service_account import ServiceAccount
 from ocp_resources.service_monitor import ServiceMonitor
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
-from tests.ai_safety.evalhub.constants import GIT_BAD_CREDS_SECRET_NAME
 
 from tests.ai_safety.evalhub.constants import (
     EVALHUB_JOB_CONFIG_CLUSTERROLE,
@@ -47,6 +46,7 @@ from tests.ai_safety.evalhub.constants import (
     GARAK_PROVIDER_ID,
     GARAK_QUICK_BENCHMARK_ID,
     GARAK_SIMPLE_PROVIDER_ID,
+    GIT_BAD_CREDS_SECRET_NAME,
     GIT_CREDS_SECRET_NAME,
     GIT_DEFAULT_REF,
     GIT_PUBLIC_REPO_REF_ENV,
