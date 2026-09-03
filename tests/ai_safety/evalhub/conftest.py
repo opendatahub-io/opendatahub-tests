@@ -1943,7 +1943,6 @@ def git_bad_creds_secret(
     tenant_a_namespace: Namespace,
 ) -> Generator[Secret, Any, Any]:
     """Kubernetes Secret with invalid git credentials for negative testing."""
-    from tests.ai_safety.evalhub.constants import GIT_BAD_CREDS_SECRET_NAME
 
     with Secret(
         client=admin_client,
