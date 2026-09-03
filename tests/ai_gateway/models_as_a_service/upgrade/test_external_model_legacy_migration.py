@@ -87,6 +87,9 @@ class TestPreUpgradeLegacyExternalModelMigration:
 @pytest.mark.usefixtures(
     "maas_subscription_controller_enabled_latest",
     "maas_gateway_api",
+    "legacy_migration_credential_secret",
+    "legacy_migration_external_model",
+    "capture_legacy_migration_baseline_fixture",
 )
 @pytest.mark.post_upgrade
 class TestPostUpgradeLegacyExternalModelMigration:
