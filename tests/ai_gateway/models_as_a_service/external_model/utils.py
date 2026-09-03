@@ -6,11 +6,11 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import NotFoundError, ResourceNotFoundError
 from ocp_resources.service import Service
+from timeout_sampler import TimeoutSampler
 
 from tests.ai_gateway.models_as_a_service.utils import (
     get_httproute,
     wait_for_httproute,
-    wait_for_httproute_deleted,
 )
 from utilities.constants import ApiGroups
 
@@ -69,3 +69,22 @@ def get_service(
     except NotFoundError, ResourceNotFoundError:
         LOGGER.debug(f"Service {namespace}/{name} not found")
     return None
+
+
+def wait_for_httproute_deleted(
+    client: DynamicClient,
+    name: str,
+    namespace: str,
+    timeout: int = 60,
+) -> None:
+    """Poll until the HTTPRoute no longer exists, or raise on timeout."""
+    for route in TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=3,
+        func=get_httproute,
+        client=client,
+        name=name,
+        namespace=namespace,
+    ):
+        if route is None:
+            return

@@ -887,26 +887,3 @@ def wait_for_httproute(
     ):
         if route is not None:
             return route
-
-    raise TimeoutError(f"HTTPRoute {namespace}/{name} not found within {timeout}s")
-
-
-def wait_for_httproute_deleted(
-    client: DynamicClient,
-    name: str,
-    namespace: str,
-    timeout: int = 60,
-) -> None:
-    """Poll until the HTTPRoute no longer exists, or raise on timeout."""
-    for route in TimeoutSampler(
-        wait_timeout=timeout,
-        sleep=3,
-        func=get_httproute,
-        client=client,
-        name=name,
-        namespace=namespace,
-    ):
-        if route is None:
-            return
-
-    raise TimeoutError(f"HTTPRoute {namespace}/{name} still exists after {timeout}s")
