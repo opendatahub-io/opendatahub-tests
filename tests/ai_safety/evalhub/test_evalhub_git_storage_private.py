@@ -19,7 +19,7 @@ from tests.ai_safety.evalhub.utils import (
     wait_for_evalhub_runtime_job_count,
 )
 
-GIT_MODEL_NAMESPACE = pytest.param({"name": "evalhub-git-private"})
+GIT_MODEL_NAMESPACE = pytest.param({"name": "test-evalhub-git-private-storage"})
 
 
 @pytest.mark.parametrize("model_namespace", [GIT_MODEL_NAMESPACE], indirect=True)
@@ -151,7 +151,6 @@ class TestEvalHubGitStoragePrivate:
         )
         spec = batch_jobs[0].instance.spec.template.spec
 
-        # TC-GIT-004: Verify git-clone init container exists
         git_init = None
         for container in spec.initContainers or []:
             if container.name == GIT_CLONE_INIT_CONTAINER_NAME:
