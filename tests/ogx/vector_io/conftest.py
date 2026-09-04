@@ -7,7 +7,6 @@ import pytest
 import structlog
 from ogx_client import OgxClient
 from ogx_client.types.vector_store import VectorStore
-from ragas import SingleTurnSample
 
 from tests.ogx.constants import (
     RAGAS_EVAL_MAX_TOKENS,
@@ -109,13 +108,15 @@ def ragas_samples(
     ogx_models: ModelInfo,
     vector_store: VectorStore,
     dataset: Dataset,
-) -> list[SingleTurnSample]:
+) -> list[Any]:
     """Build RAGAS evaluation samples by querying the RAG pipeline for each ground-truth QA pair.
 
     Uses the Responses API with the file_search tool against the vector store,
     mirroring a real-world RAG scenario.  The number of questions sent to the
     LLM is capped by ``RAGAS_MAX_SAMPLES`` (env var, default 5).
     """
+    from ragas import SingleTurnSample
+
     if RAGAS_MAX_SAMPLES < 1:
         raise pytest.UsageError("RAGAS_MAX_SAMPLES must be >= 1")
 

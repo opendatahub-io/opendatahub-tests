@@ -92,7 +92,7 @@ class RuntimeTemplates:
     VLLM_SPYRE: str = "vllm-spyre-x86-runtime-template"
     VLLM_CPU_x86: str = "vllm-cpu-x86-runtime-template"
     VLLM_CPU_POWER: str = "vllm-cpu-runtime-template"
-    VLLM_CPU_Z: str = "vllm-cpu-z-runtime-template"
+    VLLM_CPU_Z: str = "vllm-cpu-runtime-template"
     MLSERVER: str = f"{ModelFormat.MLSERVER}-runtime-template"
     MLSERVER_CUDA: str = "mlserver-cuda-runtime-template"
     TRITON_REST: str = "triton-rest-runtime-template"

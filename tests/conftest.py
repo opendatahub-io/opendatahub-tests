@@ -93,6 +93,33 @@ def admin_client() -> DynamicClient:
     return get_client()
 
 
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Deselect tests that are not supported on the current architecture."""
+    client = get_client()
+    nodes = list(Node.get(dyn_client=client))
+
+    if not nodes:
+        return
+
+    cluster_architecture = nodes[0].instance.status.nodeInfo.architecture
+
+    if cluster_architecture != "s390x":
+        return
+
+    deselected = []
+    remaining = []
+
+    for item in items:
+        if "skip_on_arch_s390x" in item.keywords:
+            deselected.append(item)
+        else:
+            remaining.append(item)
+
+    if deselected:
+        config.hook.pytest_deselected(items=deselected)
+        items[:] = remaining
+
+
 @pytest.fixture(scope="session")
 def tests_tmp_dir(request: FixtureRequest, tmp_path_factory: TempPathFactory) -> Generator[None]:
     base_path = os.path.join(request.config.option.basetemp, "tests")
