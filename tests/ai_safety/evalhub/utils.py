@@ -1552,17 +1552,10 @@ def cleanup_evalhub_jobs_and_workloads(
     namespace: str,
     job_ids: list[str],
 ) -> None:
-    """Delete EvalHub jobs' Kubernetes Jobs and wait for their Kueue Workloads to disappear.
+    """Delete the jobs and wait until their Workloads are gone, so the test queue can be cleaned up.
 
-    Must run *before* any isolated ClusterQueue is torn down: a ClusterQueue holds
-    a ``kueue.x-k8s.io/resource-in-use`` finalizer while Workloads still reference
-    it, so the queue's deletion blocks (for minutes) until the jobs' Workloads are gone.
-
-    For each job the Kubernetes Job is deleted directly (Background propagation) so its
-    Kueue Workload is cascade-deleted and stops holding reserved quota; the EvalHub API
-    hard-delete then only removes the leftover EvalHub record. The API's per-job DELETE
-    path is not covered by the operator-generated auth.yaml, so it cannot remove the
-    Job/Workload on its own -- see ``delete_evalhub_runtime_k8s_job``.
+    Must run before any isolated ClusterQueue is torn down: the queue can't be
+    deleted while a Workload still references it.
     """
     for job_id in job_ids:
         # Resolve the Workload name *before* deleting the Job: get_evalhub_job_workload

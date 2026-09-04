@@ -43,10 +43,7 @@ from utilities.kueue_utils import (
 
 LOGGER = structlog.get_logger(name=__name__)
 
-# ClusterQueue quota for the preemption tests. cpu/memory are sized to admit the eval
-# job (adapter ~2 CPU / 4Gi) and the small preemptor at the same time, so contention is
-# forced on the built-in ``pods`` resource: capping pods at one makes the second,
-# higher-priority pod trigger a preemption decision.
+# CPU/memory hold both jobs; the pods=1 cap is what forces preemption.
 PREEMPTION_QUOTAS = {"cpu": KUEUE_CPU_QUOTA, "memory": KUEUE_MEMORY_QUOTA, "pods": SINGLE_POD_QUOTA}
 
 
@@ -65,10 +62,8 @@ class TestEvalHubKueuePriority:
     ) -> None:
         """TC-PRIO-001: EvalHub-submitted jobs carry priority 0 and no priority class.
 
-        The blog documents that "Jobs submitted via the EvalHub API are assigned
-        priority 0 by default." All preemption behavior rests on this: EvalHub
-        users cannot raise their own priority through the API, so eval jobs are
-        always the lowest-priority (most preemptable) workloads in a queue.
+        EvalHub users can't raise their own priority through the API, so eval jobs
+        are always the lowest-priority (most preemptable) workloads in a queue.
         """
         common = evalhub_kueue_request_common
         job_id = None
@@ -116,17 +111,9 @@ class TestEvalHubKueuePreemption:
     ) -> None:
         """TC-PREEMPT-001: A running EvalHub job is preempted, then resumes and completes.
 
-        With ``preemption.withinClusterQueue: LowerPriority`` a higher-priority
-        workload that needs the whole quota evicts the running (priority 0)
-        EvalHub job. The blog documents the observable evidence: the Workload
-        gains ``Evicted``/``Preempted`` conditions and the batch Job flips to
-        ``Suspended=True``. Once the preemptor is removed, Kueue re-admits the
-        gated EvalHub job and it runs to completion (from the start — eval jobs
-        do not checkpoint).
-
-        Uses an isolated ClusterQueue so the session-scoped shared queues are
-        never mutated. Timing note: the victim must still be running when the
-        preemptor is admitted; the pod-started gate below makes that reliable.
+        Checks that an EvalHub job is suspended when a higher-priority workload
+        shows up, then resumes and runs to completion (from the start, since eval
+        jobs don't checkpoint) once that workload is gone.
         """
         common = evalhub_kueue_request_common
         namespace = evalhub_kueue_namespace.name
@@ -239,11 +226,8 @@ class TestEvalHubKueuePreemption:
     ) -> None:
         """TC-NOPREEMPT-001: With ``withinClusterQueue: Never``, eval jobs are not preempted.
 
-        This validates the blog's operational recommendation: give evaluation
-        jobs a dedicated ClusterQueue with ``withinClusterQueue: Never`` so that,
-        because eval workloads cannot checkpoint, they complete without
-        interruption. A higher-priority competitor is forced to wait rather than
-        evict the running EvalHub job.
+        A dedicated queue with preemption disabled lets an eval job finish
+        uninterrupted; a higher-priority competitor waits instead of evicting it.
         """
         common = evalhub_kueue_request_common
         namespace = evalhub_kueue_namespace.name
