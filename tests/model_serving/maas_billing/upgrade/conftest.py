@@ -4,19 +4,32 @@ from typing import Any
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.config_map import ConfigMap
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.maas_auth_policy import MaaSAuthPolicy
 from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.maas_subscription import MaaSSubscription
 from ocp_resources.namespace import Namespace
+from ocp_resources.secret import Secret
 
 from tests.model_serving.maas_billing.maas_subscription.utils import (
     create_maas_subscription,
 )
 from tests.model_serving.maas_billing.upgrade.utils import (
+    LEGACY_MIGRATION_AUTH_POLICY_NAME,
+    LEGACY_MIGRATION_MODEL_NAME,
+    LEGACY_MIGRATION_NAMESPACE,
+    LEGACY_MIGRATION_SECRET_NAME,
+    LEGACY_MIGRATION_SUBSCRIPTION_NAME,
+    MAAS_LEGACY_MIGRATION_BASELINE_CM_NAME,
+    LegacyMigrationBaseline,
     MaaSBaseline,
     capture_maas_baseline,
+    cluster_has_inference_external_model_crd,
+    cluster_has_legacy_external_model_crd,
+    inference_external_model_for_baseline,
+    load_legacy_migration_baseline_from_configmap,
     load_maas_baseline_from_configmap,
     save_maas_baseline_to_configmap,
 )
@@ -27,6 +40,8 @@ from tests.model_serving.maas_billing.utils import (
 )
 from utilities.constants import MAAS_GATEWAY_NAME, MAAS_GATEWAY_NAMESPACE
 from utilities.infra import create_ns
+from utilities.resources.external_model import ExternalModel
+from utilities.resources.legacy_external_model import LegacyExternalModel
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -258,3 +273,159 @@ def capture_maas_upgrade_baseline(
             namespace=MAAS_UPGRADE_NAMESPACE,
             baseline=baseline,
         )
+
+
+@pytest.fixture(scope="session")
+def legacy_migration_namespace(
+    admin_client: DynamicClient,
+    teardown_resources: bool,
+) -> Generator[Namespace, Any, Any]:
+    """Dedicated namespace for legacy ExternalModel migration post-upgrade tests."""
+    namespace = Namespace(client=admin_client, name=LEGACY_MIGRATION_NAMESPACE)
+    yield namespace
+    if teardown_resources and namespace.exists:
+        namespace.clean_up()
+
+
+@pytest.fixture(scope="session")
+def legacy_migration_credential_secret(
+    admin_client: DynamicClient,
+    legacy_migration_namespace: Namespace,
+    teardown_resources: bool,
+) -> Generator[Secret, Any, Any]:
+    """Opaque secret holding the API key required by the legacy ExternalModel."""
+    secret_kwargs: dict[str, Any] = {
+        "client": admin_client,
+        "name": LEGACY_MIGRATION_SECRET_NAME,
+        "namespace": legacy_migration_namespace.name,
+    }
+    secret = Secret(**secret_kwargs, ensure_exists=True)
+    yield secret
+    if teardown_resources and secret.exists:
+        secret.delete(wait=True)
+
+
+@pytest.fixture(scope="session")
+def legacy_migration_external_model(
+    admin_client: DynamicClient,
+    legacy_migration_namespace: Namespace,
+    teardown_resources: bool,
+) -> Generator[LegacyExternalModel, Any, Any]:
+    """Legacy maas.opendatahub.io ExternalModel seeded pre-upgrade for migration validation."""
+    assert cluster_has_legacy_external_model_crd(admin_client=admin_client), (
+        "Legacy maas.opendatahub.io ExternalModel CRD is not installed on this cluster"
+    )
+    external_model = LegacyExternalModel(
+        client=admin_client,
+        name=LEGACY_MIGRATION_MODEL_NAME,
+        namespace=legacy_migration_namespace.name,
+    )
+    yield external_model
+    if teardown_resources and external_model.exists:
+        external_model.delete(wait=True)
+
+
+@pytest.fixture(scope="session")
+def legacy_migration_model_ref(
+    admin_client: DynamicClient,
+    legacy_migration_namespace: Namespace,
+    teardown_resources: bool,
+) -> Generator[MaaSModelRef, Any, Any]:
+    """MaaSModelRef linking to the legacy ExternalModel for migration validation."""
+    model_ref_kwargs: dict[str, Any] = {
+        "client": admin_client,
+        "name": LEGACY_MIGRATION_MODEL_NAME,
+        "namespace": legacy_migration_namespace.name,
+    }
+    model_ref = MaaSModelRef(**model_ref_kwargs, ensure_exists=True)
+    yield model_ref
+    if teardown_resources and model_ref.exists:
+        model_ref.delete(wait=True)
+
+
+@pytest.fixture(scope="session")
+def legacy_migration_auth_policy(
+    admin_client: DynamicClient,
+    legacy_migration_model_ref: MaaSModelRef,
+    maas_subscription_namespace: Namespace,
+    teardown_resources: bool,
+) -> Generator[MaaSAuthPolicy, Any, Any]:
+    """MaaSAuthPolicy granting access to the legacy external model migration stack."""
+    auth_policy_kwargs: dict[str, Any] = {
+        "client": admin_client,
+        "name": LEGACY_MIGRATION_AUTH_POLICY_NAME,
+        "namespace": maas_subscription_namespace.name,
+    }
+    auth_policy = MaaSAuthPolicy(**auth_policy_kwargs, ensure_exists=True)
+    yield auth_policy
+    if teardown_resources and auth_policy.exists:
+        auth_policy.delete(wait=True)
+
+
+@pytest.fixture(scope="session")
+def legacy_migration_subscription(
+    admin_client: DynamicClient,
+    legacy_migration_model_ref: MaaSModelRef,
+    maas_subscription_namespace: Namespace,
+    maas_subscription_controller_enabled_latest: DataScienceCluster,
+    teardown_resources: bool,
+) -> Generator[MaaSSubscription, Any, Any]:
+    """MaaSSubscription for the legacy external model migration stack."""
+    subscription_kwargs: dict[str, Any] = {
+        "client": admin_client,
+        "name": LEGACY_MIGRATION_SUBSCRIPTION_NAME,
+        "namespace": maas_subscription_namespace.name,
+    }
+    subscription = MaaSSubscription(**subscription_kwargs, ensure_exists=True)
+    yield subscription
+    if teardown_resources and subscription.exists:
+        subscription.delete(wait=True)
+
+
+@pytest.fixture(scope="session")
+def legacy_migration_baseline_fixture(
+    admin_client: DynamicClient,
+    legacy_migration_namespace: Namespace,
+) -> LegacyMigrationBaseline:
+    """Load the legacy migration baseline snapshot for post-upgrade assertions."""
+    return load_legacy_migration_baseline_from_configmap(
+        client=admin_client,
+        namespace=legacy_migration_namespace.name,
+    )
+
+
+@pytest.fixture
+def require_inference_external_model_crd(admin_client: DynamicClient) -> None:
+    """Assert the inference.opendatahub.io ExternalModel CRD is installed."""
+    assert cluster_has_inference_external_model_crd(admin_client=admin_client), (
+        "Inference ExternalModel CRD is not installed on this cluster"
+    )
+
+
+@pytest.fixture(scope="session")
+def legacy_migration_inference_external_model(
+    admin_client: DynamicClient,
+    legacy_migration_baseline_fixture: LegacyMigrationBaseline,
+) -> ExternalModel:
+    """Return the inference ExternalModel referenced by the legacy migration baseline."""
+    return inference_external_model_for_baseline(
+        client=admin_client,
+        baseline=legacy_migration_baseline_fixture,
+    )
+
+
+@pytest.fixture(scope="session")
+def capture_legacy_migration_baseline_fixture(
+    admin_client: DynamicClient,
+    legacy_migration_namespace: Namespace,
+    teardown_resources: bool,
+) -> Generator[None, Any, Any]:
+    """No-op on post-upgrade; delete baseline ConfigMap during teardown."""
+    yield
+    baseline_config_map = ConfigMap(
+        client=admin_client,
+        name=MAAS_LEGACY_MIGRATION_BASELINE_CM_NAME,
+        namespace=legacy_migration_namespace.name,
+    )
+    if teardown_resources and baseline_config_map.exists:
+        baseline_config_map.delete(wait=True)
