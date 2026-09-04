@@ -64,9 +64,7 @@ def verify_ai_gateway_controller_deployment_available(admin_client: DynamicClien
         status="True",
         timeout=AI_GATEWAY_CONTROLLER_DEPLOYMENT_AVAILABLE_TIMEOUT,
     )
-    LOGGER.info(
-        f"Deployment '{controller_deployment.namespace}/{controller_deployment.name}' is Available"
-    )
+    LOGGER.info(f"Deployment '{controller_deployment.namespace}/{controller_deployment.name}' is Available")
 
 
 def _ai_gateway_controller_pods_are_running(admin_client: DynamicClient, applications_namespace: str) -> bool:
@@ -106,9 +104,7 @@ def verify_ai_gateway_controller_pods_running(admin_client: DynamicClient) -> No
             applications_namespace=applications_namespace,
         ):
             if pods_running:
-                LOGGER.info(
-                    f"ai-gateway-controller pods are Running in namespace '{applications_namespace}'"
-                )
+                LOGGER.info(f"ai-gateway-controller pods are Running in namespace '{applications_namespace}'")
                 return
     except TimeoutExpiredError:
         pods = list(
@@ -230,9 +226,7 @@ def verify_aigateway_models_as_a_service_ready(admin_client: DynamicClient) -> N
             f"is not True after {AIGATEWAY_CR_CONDITION_TIMEOUT}s (last status: {condition_status})"
         )
 
-    LOGGER.info(
-        f"AIGateway '{AIGATEWAY_CR_NAME}' condition '{MODELS_AS_A_SERVICE_READY_CONDITION}' is True"
-    )
+    LOGGER.info(f"AIGateway '{AIGATEWAY_CR_NAME}' condition '{MODELS_AS_A_SERVICE_READY_CONDITION}' is True")
 
 
 def _find_manager_container(deployment: Deployment) -> Any:
