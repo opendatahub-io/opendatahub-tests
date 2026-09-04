@@ -1,22 +1,47 @@
 import json
-from typing import TypedDict
+from typing import Any, TypedDict
 
 import structlog
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import NotFoundError, ResourceNotFoundError
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.maas_auth_policy import MaaSAuthPolicy
 from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.maas_subscription import MaaSSubscription
 from ocp_resources.resource import NamespacedResource
+from ocp_resources.service import Service
+from timeout_sampler import TimeoutSampler
 
+from tests.model_serving.maas_billing.external_model.utils import (
+    get_httproute,
+    wait_for_httproute,
+)
 from tests.model_serving.maas_billing.utils import MaaSTenantResource
+from utilities.constants import ApiGroups
+from utilities.resources.destination_rule import DestinationRule
+from utilities.resources.external_model import ExternalModel
+from utilities.resources.http_route import HTTPRoute
+from utilities.resources.service_entry import ServiceEntry
 
 LOGGER = structlog.get_logger(name=__name__)
 
 MAAS_UPGRADE_BASELINE_CM_NAME = "maas-upgrade-test-baseline"
 MAAS_UPGRADE_BASELINE_CM_KEY = "maas_baseline"
 DEFAULT_AITENANT_NAME = "models-as-a-service"
+
+LEGACY_MIGRATION_NAMESPACE = "upgrade-maas-legacy-em"
+LEGACY_MIGRATION_MODEL_NAME = "upgrade-maas-legacy-em"
+LEGACY_MIGRATION_SECRET_NAME = f"{LEGACY_MIGRATION_MODEL_NAME}-api-key"
+LEGACY_MIGRATION_AUTH_POLICY_NAME = "upgrade-maas-legacy-em-auth"
+LEGACY_MIGRATION_SUBSCRIPTION_NAME = "upgrade-maas-legacy-em-sub"
+MAAS_LEGACY_MIGRATION_BASELINE_CM_NAME = "maas-legacy-migration-baseline"
+MAAS_LEGACY_MIGRATION_BASELINE_CM_KEY = "legacy_migration_baseline"
+LEGACY_EXTERNAL_MODEL_CRD_NAME = f"externalmodels.{ApiGroups.MAAS_IO}"
+INFERENCE_EXTERNAL_MODEL_CRD_NAME = f"externalmodels.{ApiGroups.INFERENCE_OPENDATAHUB_IO}"
+LEGACY_EXTERNAL_MODEL_API_VERSION = f"{ApiGroups.MAAS_IO}/v1alpha1"
+LEGACY_EXTERNAL_MODEL_KIND = "ExternalModel"
 
 
 class MaaSBaseline(TypedDict):
@@ -32,6 +57,21 @@ class MaaSBaseline(TypedDict):
     tenant_name: str
     tenant_namespace: str
     tenant_phase: str
+
+
+class LegacyMigrationBaseline(TypedDict):
+    model_name: str
+    model_namespace: str
+    legacy_resource_name: str
+    auth_policy_name: str
+    auth_policy_namespace: str
+    subscription_name: str
+    subscription_namespace: str
+
+
+def _config_map_string_data(config_map: ConfigMap) -> dict[str, str]:
+    """Return ConfigMap string data as a plain dict."""
+    return dict(config_map.instance.data or {})
 
 
 def _tenant_status_phase(tenant: NamespacedResource) -> str:
@@ -148,3 +188,230 @@ def verify_maas_subscription_not_mutated(
         f"MaaSSubscription '{subscription.name}' was mutated during upgrade: "
         f"expected generation {expected_generation}, got {current_generation}."
     )
+
+
+def cluster_has_legacy_external_model_crd(admin_client: DynamicClient) -> bool:
+    """Return True when the legacy maas.opendatahub.io ExternalModel CRD is installed."""
+    legacy_external_model_crd = CustomResourceDefinition(client=admin_client, name=LEGACY_EXTERNAL_MODEL_CRD_NAME)
+    return bool(legacy_external_model_crd.exists)
+
+
+def cluster_has_inference_external_model_crd(admin_client: DynamicClient) -> bool:
+    """Return True when the inference.opendatahub.io ExternalModel CRD is installed."""
+    inference_external_model_crd = CustomResourceDefinition(client=admin_client, name=INFERENCE_EXTERNAL_MODEL_CRD_NAME)
+    return bool(inference_external_model_crd.exists)
+
+
+def get_legacy_maas_service(
+    client: DynamicClient,
+    resource_name: str,
+    namespace: str,
+) -> Service | None:
+    """Look up the legacy maas-* Service, returning None when it is absent."""
+    try:
+        service = Service(client=client, name=resource_name, namespace=namespace)
+        if service.exists:
+            return service
+    except NotFoundError, ResourceNotFoundError:
+        LOGGER.debug(f"Service {namespace}/{resource_name} not found")
+    return None
+
+
+def get_legacy_maas_service_entry(
+    client: DynamicClient,
+    resource_name: str,
+    namespace: str,
+) -> ServiceEntry | None:
+    """Look up the legacy maas-* ServiceEntry, returning None when it is absent."""
+    try:
+        service_entry = ServiceEntry(client=client, name=resource_name, namespace=namespace)
+        if service_entry.exists:
+            return service_entry
+    except NotFoundError, ResourceNotFoundError:
+        LOGGER.debug(f"ServiceEntry {namespace}/{resource_name} not found")
+    return None
+
+
+def get_legacy_maas_destination_rule(
+    client: DynamicClient,
+    resource_name: str,
+    namespace: str,
+) -> DestinationRule | None:
+    """Look up the legacy maas-* DestinationRule, returning None when it is absent."""
+    try:
+        destination_rule = DestinationRule(client=client, name=resource_name, namespace=namespace)
+        if destination_rule.exists:
+            return destination_rule
+    except NotFoundError, ResourceNotFoundError:
+        LOGGER.debug(f"DestinationRule {namespace}/{resource_name} not found")
+    return None
+
+
+def legacy_maas_networking_absent(
+    client: DynamicClient,
+    resource_name: str,
+    namespace: str,
+) -> bool:
+    """Return True when all legacy maas-* networking children are absent."""
+    return (
+        get_httproute(client=client, name=resource_name, namespace=namespace) is None
+        and get_legacy_maas_service(client=client, resource_name=resource_name, namespace=namespace) is None
+        and get_legacy_maas_service_entry(client=client, resource_name=resource_name, namespace=namespace) is None
+        and get_legacy_maas_destination_rule(client=client, resource_name=resource_name, namespace=namespace) is None
+    )
+
+
+def wait_for_legacy_maas_prefixed_networking_deleted(
+    client: DynamicClient,
+    resource_name: str,
+    namespace: str,
+    timeout: int = 300,
+) -> None:
+    """Poll until maas-prefixed legacy networking is removed."""
+    for _sample in TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=5,
+        func=legacy_maas_networking_absent,
+        client=client,
+        resource_name=resource_name,
+        namespace=namespace,
+    ):
+        if legacy_maas_networking_absent(client=client, resource_name=resource_name, namespace=namespace):
+            return
+
+    raise TimeoutError(f"Legacy networking '{namespace}/{resource_name}' still present after {timeout}s")
+
+
+def owner_ref_is_legacy_external_model(owner_ref: Any, model_name: str) -> bool:
+    """Return True when an ownerReference points at the legacy maas ExternalModel."""
+    if isinstance(owner_ref, dict):
+        api_version = owner_ref.get("apiVersion", "")
+        kind = owner_ref.get("kind", "")
+        name = owner_ref.get("name", "")
+    else:
+        api_version = owner_ref.apiVersion
+        kind = owner_ref.kind
+        name = owner_ref.name
+    return (
+        api_version == LEGACY_EXTERNAL_MODEL_API_VERSION and kind == LEGACY_EXTERNAL_MODEL_KIND and name == model_name
+    )
+
+
+def verify_no_legacy_owned_httproutes(
+    client: DynamicClient,
+    namespace: str,
+    model_name: str,
+) -> None:
+    """Assert no HTTPRoute is owned by the legacy maas.opendatahub.io ExternalModel."""
+    legacy_owned_routes: list[str] = []
+    for http_route in HTTPRoute.get(client=client, namespace=namespace):
+        owner_references = http_route.instance.metadata.ownerReferences or []
+        if any(
+            owner_ref_is_legacy_external_model(owner_ref=owner_ref, model_name=model_name)
+            for owner_ref in owner_references
+        ):
+            legacy_owned_routes.append(http_route.name)
+
+    assert not legacy_owned_routes, (
+        f"Legacy-owned HTTPRoutes still present in '{namespace}' after supersede: {legacy_owned_routes}"
+    )
+
+
+def inference_external_model_for_baseline(
+    client: DynamicClient,
+    baseline: LegacyMigrationBaseline,
+) -> ExternalModel:
+    """Return the inference ExternalModel CR referenced by a legacy migration baseline."""
+    return ExternalModel(
+        client=client,
+        name=baseline["model_name"],
+        namespace=baseline["model_namespace"],
+    )
+
+
+def verify_inference_external_model_exists(external_model: ExternalModel) -> None:
+    """Assert that the inference ExternalModel exists after upgrade migration."""
+    assert external_model.exists, (
+        f"Inference ExternalModel '{external_model.name}' not found in namespace "
+        f"'{external_model.namespace}' after upgrade migration."
+    )
+
+
+def get_inference_http_route_name(external_model: ExternalModel) -> str:
+    """Read status.httpRouteName from an inference ExternalModel when programmed."""
+    external_model_status = external_model.instance.status
+    if external_model_status is None:
+        return ""
+    if hasattr(external_model_status, "httpRouteName"):
+        return external_model_status.httpRouteName or ""
+    return ""
+
+
+def wait_for_inference_external_model_programmed(
+    external_model: ExternalModel,
+    timeout: int = 300,
+) -> str:
+    """Poll until the inference ExternalModel reports a programmed HTTPRoute name."""
+    for _sample in TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=5,
+        func=get_inference_http_route_name,
+        external_model=external_model,
+    ):
+        http_route_name = get_inference_http_route_name(external_model=external_model)
+        if http_route_name:
+            return http_route_name
+
+    raise TimeoutError(
+        f"Inference ExternalModel '{external_model.namespace}/{external_model.name}' "
+        f"did not report status.httpRouteName within {timeout}s"
+    )
+
+
+def verify_inference_external_model_programmed(external_model: ExternalModel) -> str:
+    """Assert the inference ExternalModel exists and reports a programmed HTTPRoute name."""
+    verify_inference_external_model_exists(external_model=external_model)
+    return wait_for_inference_external_model_programmed(external_model=external_model)
+
+
+def wait_for_inference_external_model_httproute(
+    client: DynamicClient,
+    external_model: ExternalModel,
+    namespace: str,
+    timeout: int = 300,
+) -> str:
+    """Poll until the inference ExternalModel is programmed and its HTTPRoute exists."""
+    http_route_name = wait_for_inference_external_model_programmed(
+        external_model=external_model,
+        timeout=timeout,
+    )
+    wait_for_httproute(
+        client=client,
+        name=http_route_name,
+        namespace=namespace,
+        timeout=timeout,
+    )
+    return http_route_name
+
+
+def load_legacy_migration_baseline_from_configmap(
+    client: DynamicClient,
+    namespace: str,
+) -> LegacyMigrationBaseline:
+    """Load the legacy migration baseline snapshot created during pre-upgrade."""
+    config_map = ConfigMap(
+        client=client,
+        name=MAAS_LEGACY_MIGRATION_BASELINE_CM_NAME,
+        namespace=namespace,
+    )
+    assert config_map.exists, (
+        f"Legacy migration baseline ConfigMap '{MAAS_LEGACY_MIGRATION_BASELINE_CM_NAME}' not found in '{namespace}'. "
+        "Ensure pre-upgrade tests ran successfully."
+    )
+    config_map_data = _config_map_string_data(config_map=config_map)
+    assert MAAS_LEGACY_MIGRATION_BASELINE_CM_KEY in config_map_data, (
+        f"Legacy migration baseline ConfigMap '{MAAS_LEGACY_MIGRATION_BASELINE_CM_NAME}' is missing "
+        f"the '{MAAS_LEGACY_MIGRATION_BASELINE_CM_KEY}' key."
+    )
+    raw_baseline = config_map_data[MAAS_LEGACY_MIGRATION_BASELINE_CM_KEY]
+    return json.loads(raw_baseline)
