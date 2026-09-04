@@ -8,6 +8,8 @@ import portforward
 import structlog
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
+from ocp_resources.resource import get_client
+from ocp_resources.template import Template
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from tests.model_serving.model_runtime.vllm.modelcar.constant import (
@@ -548,3 +550,70 @@ def fetch_openai_response(
             completion_responses.append(completion_response)
 
     return model_info, completion_responses
+
+
+def template_exists_on_cluster(template_name: str, namespace: str) -> bool:
+    """Check if an OpenShift Template exists on the cluster.
+
+    Returns True when no cluster connection is available (no kubeconfig),
+    so tests are kept rather than incorrectly deselected.
+    """
+    kubeconfig = os.environ.get("KUBECONFIG", os.path.expanduser("~/.kube/config"))
+    if not os.path.exists(kubeconfig):
+        return True
+
+    client = get_client()
+    return bool(Template(client=client, name=template_name, namespace=namespace).exists)
+
+
+def deselect_tests_for_missing_templates(
+    items: list[Any],
+    config: Any,
+    applications_namespace: str,
+) -> None:
+    """Deselect fast/ tests whose parametrized template does not exist on the cluster.
+
+    Scans test items under a ``fast/`` directory, extracts ``template_name``
+    from their parametrize markers, and deselects any whose template is
+    absent from the cluster.  Results are cached per template name.
+
+    When no cluster connection is available (e.g. CI without kubeconfig),
+    no deselection is performed and all tests are kept.
+
+    Args:
+        items: Mutable list of collected pytest items (modified in-place).
+        config: pytest.Config object for calling ``pytest_deselected``.
+        applications_namespace: Namespace to check for templates.
+    """
+    template_cache: dict[str, bool] = {}
+
+    deselected = []
+    remaining = []
+    for item in items:
+        if "/fast/" not in str(item.fspath):
+            remaining.append(item)
+            continue
+
+        template_name = None
+        callspec = getattr(item, "callspec", None)
+        if callspec:
+            for val in callspec.params.values():
+                if isinstance(val, dict) and "template_name" in val:
+                    template_name = val["template_name"]
+                    break
+
+        if template_name:
+            if template_name not in template_cache:
+                template_cache[template_name] = template_exists_on_cluster(
+                    template_name=template_name,
+                    namespace=applications_namespace,
+                )
+            if not template_cache[template_name]:
+                deselected.append(item)
+                continue
+
+        remaining.append(item)
+
+    if deselected:
+        config.hook.pytest_deselected(items=deselected)
+        items[:] = remaining
