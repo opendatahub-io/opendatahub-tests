@@ -22,6 +22,7 @@ from utilities.kueue_utils import ClusterQueue, LocalQueue, get_workload_conditi
 LOGGER = structlog.get_logger(name=__name__)
 
 
+@pytest.mark.ai_safety
 @pytest.mark.kueue
 @pytest.mark.tier2
 class TestEvalHubKueueMonitoring:
@@ -43,11 +44,11 @@ class TestEvalHubKueueMonitoring:
     ) -> None:
         """TC-SUSPEND-001: A gated EvalHub job's Kubernetes Job reports Suspended=True.
 
-        Kueue admits a workload by clearing ``spec.suspend`` on its batch Job; a
-        workload that cannot be admitted keeps its Job suspended. The blog points
-        operators at exactly this signal when a job is not making progress, so we
-        assert the gated job's Job carries ``spec.suspend: true`` and a
-        ``Suspended=True`` status condition.
+        Given a gated EvalHub job (its ClusterQueue stopped so the workload stays
+        inadmissible),
+        When inspecting the backing Kubernetes Job,
+        Then the Job carries ``spec.suspend: true`` and a ``Suspended=True`` status
+        condition.
         """
         common = evalhub_kueue_request_common
         namespace = evalhub_kueue_namespace.name
@@ -111,15 +112,11 @@ class TestEvalHubKueueMonitoring:
     ) -> None:
         """TC-QUOTA-MSG-001: A gated Workload carries a human-readable diagnostic message.
 
-        The blog tells operators to run ``kubectl describe workload`` and read the
-        condition message to learn *why* a job is stuck. We assert the gated
-        Workload's ``QuotaReserved`` condition is ``False`` with an inadmissible
-        reason and a non-empty message, so this troubleshooting step yields a
-        useful answer rather than an empty/opaque status.
-
-        Note: the deterministic gate here is a stopped ClusterQueue
-        (``stopPolicy: HoldAndDrain``), which reports an inadmissible/suspended
-        reason without depending on quota sizing or cluster capacity.
+        Given a gated EvalHub job whose Workload cannot be admitted (its ClusterQueue
+        stopped via ``stopPolicy: HoldAndDrain``),
+        When describing that Workload to diagnose why the job is stuck,
+        Then its ``QuotaReserved`` condition is ``False`` with an inadmissible reason
+        and a non-empty message.
         """
         common = evalhub_kueue_request_common
         namespace = evalhub_kueue_namespace.name
