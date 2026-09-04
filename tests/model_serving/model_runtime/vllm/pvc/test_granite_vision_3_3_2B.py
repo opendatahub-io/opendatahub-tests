@@ -12,7 +12,6 @@ from tests.model_serving.model_runtime.vllm.constant import (
 from tests.model_serving.model_runtime.vllm.utils import validate_raw_openai_inference_request
 from utilities.constants import KServeDeploymentType
 
-
 MODEL_PATH: str = "models/granite-vision-3.3-2b"
 
 

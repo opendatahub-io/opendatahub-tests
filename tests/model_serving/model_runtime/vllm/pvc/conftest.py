@@ -11,7 +11,11 @@ from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest import FixtureRequest
 
-from tests.model_serving.model_runtime.vllm.constant import ACCELERATOR_IDENTIFIER, PREDICT_RESOURCES, SPYRE_VLLM_ENV_VARIABLES
+from tests.model_serving.model_runtime.vllm.constant import (
+    ACCELERATOR_IDENTIFIER,
+    PREDICT_RESOURCES,
+    SPYRE_VLLM_ENV_VARIABLES,
+)
 from tests.model_serving.model_runtime.vllm.utils import (
     add_image_pull_secrets_if_configured,
     dedupe_vllm_cli_args,

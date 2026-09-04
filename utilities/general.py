@@ -19,7 +19,6 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
 import utilities.infra
 from utilities.constants import MODELMESH_SERVING, Annotations, KServeDeploymentType
 from utilities.exceptions import ResourceValueMismatch, UnexpectedResourceCountError
-from utilities.image_constants import SharedImages
 
 # Constants for image validation
 SHA256_DIGEST_PATTERN = r"@sha256:[a-f0-9]{64}$"

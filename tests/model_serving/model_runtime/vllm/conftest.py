@@ -1,6 +1,6 @@
-from copy import deepcopy
 import json
 from collections.abc import Generator
+from copy import deepcopy
 from typing import Any
 
 import pytest
@@ -16,8 +16,8 @@ from pytest import FixtureRequest
 from tests.model_serving.model_runtime.vllm.constant import (
     ACCELERATOR_IDENTIFIER,
     GAUDI_ENV_VARIABLES,
-    SPYRE_VLLM_ENV_VARIABLES,
     PREDICT_RESOURCES,
+    SPYRE_VLLM_ENV_VARIABLES,
     TEMPLATE_MAP,
 )
 from tests.model_serving.model_runtime.vllm.modelcar.constant import (
