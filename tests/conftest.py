@@ -753,8 +753,6 @@ def junitxml_plugin(
 def cluster_sanity_scope_session(
     request: FixtureRequest,
     nodes: list[Node],
-    dsci_resource: DSCInitialization,
-    dsc_resource: DataScienceCluster,
     junitxml_plugin: Callable[[str, object], None],
 ) -> None:
     # Skip cluster sanity check when running tests that have cluster_health or operator_health markers
@@ -763,6 +761,8 @@ def cluster_sanity_scope_session(
         LOGGER.info("Skipping cluster sanity check because selected tests include cluster/operator/component health")
         return
 
+    dsci_resource: DSCInitialization = request.getfixturevalue(argname="dsci_resource")
+    dsc_resource: DataScienceCluster = request.getfixturevalue(argname="dsc_resource")
     verify_cluster_sanity(
         request=request,
         nodes=nodes,
@@ -842,14 +842,21 @@ def helm_binary_path(admin_client: DynamicClient, bin_directory: LocalPath) -> s
 
 @pytest.fixture(scope="session", autouse=True)
 def autouse_fixtures(
+    request: FixtureRequest,
     admin_client: DynamicClient,
-    dsc_resource: DataScienceCluster,
     tests_tmp_dir: None,
     bin_directory_to_os_path: None,
     cluster_sanity_scope_session: None,
 ) -> None:
     """Fixture to control the order of execution of some of the fixtures"""
-    return
+    if request.session.items:
+        for item in request.session.items:
+            item_markers = {mark.name for mark in item.iter_markers()}
+            if "cluster_health" not in item_markers or item_markers & {"operator_health", "component_health"}:
+                break
+        else:
+            return
+    request.getfixturevalue(argname="dsc_resource")
 
 
 @pytest.fixture(scope="session")
