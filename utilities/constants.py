@@ -90,6 +90,7 @@ class RuntimeTemplates:
     VLLM_ROCM: str = "vllm-rocm-runtime-template"
     VLLM_GAUDI: str = "vllm-gaudi-runtime-template"
     VLLM_SPYRE: str = "vllm-spyre-x86-runtime-template"
+    VLLM_SPYRE_PPC64LE: str = "vllm-spyre-ppc64le-runtime-template"
     VLLM_CPU_x86: str = "vllm-cpu-x86-runtime-template"
     VLLM_CPU_POWER: str = "vllm-cpu-runtime-template"
     VLLM_CPU_Z: str = "vllm-cpu-z-runtime-template"
@@ -145,10 +146,11 @@ class AcceleratorType:
     AMD: str = "amd"
     GAUDI: str = "gaudi"
     SPYRE: str = "spyre"
+    SPYRE_PPC64LE: str = "spyre_ppc64le"
     CPU_x86: str = "cpu_x86"
     CPU_POWER: str = "cpu_power"
     CPU_Z: str = "cpu_z"
-    SUPPORTED_LISTS: list[str] = [NVIDIA, AMD, GAUDI, SPYRE, CPU_x86, CPU_POWER, CPU_Z]  # noqa: RUF012
+    SUPPORTED_LISTS: list[str] = [NVIDIA, AMD, GAUDI, SPYRE, SPYRE_PPC64LE, CPU_x86, CPU_POWER, CPU_Z]  # noqa: RUF012
 
 
 class ApiGroups:

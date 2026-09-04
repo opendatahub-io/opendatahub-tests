@@ -948,7 +948,7 @@ def wait_for_route_timeout(name: str, namespace: str, route_timeout: str) -> Non
     """
     annotation_found_count = 0
     for route in TimeoutSampler(
-        wait_timeout=Timeout.TIMEOUT_30SEC,
+        wait_timeout=Timeout.TIMEOUT_5MIN,
         sleep=10,
         exceptions_dict={ResourceNotFoundError: []},
         func=Route,
@@ -994,8 +994,8 @@ def wait_for_serverless_pods_deletion(resource: Project | Namespace, admin_clien
 
 
 @retry(
-    wait_timeout=Timeout.TIMEOUT_30SEC,
-    sleep=1,
+    wait_timeout=Timeout.TIMEOUT_5MIN,
+    sleep=5,
     exceptions_dict={ResourceNotFoundError: []},
 )
 def wait_for_isvc_pods(client: DynamicClient, isvc: InferenceService, runtime_name: str | None = None) -> list[Pod]:

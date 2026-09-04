@@ -10,6 +10,7 @@ ACCELERATOR_IDENTIFIER: dict[str, str] = {
     AcceleratorType.AMD: "amd.com/gpu",
     AcceleratorType.GAUDI: "habana.ai/gaudi",
     AcceleratorType.SPYRE: Labels.Spyre.SPYRE_COM_GPU,
+    AcceleratorType.SPYRE_PPC64LE: Labels.Spyre.SPYRE_COM_GPU,
     AcceleratorType.CPU_x86: Labels.CPU.CPU_x86,
     AcceleratorType.CPU_POWER: Labels.CPU.CPU_x86,
     AcceleratorType.CPU_Z: Labels.CPU.CPU_x86,
@@ -20,6 +21,7 @@ TEMPLATE_MAP: dict[str, str] = {
     AcceleratorType.AMD: RuntimeTemplates.VLLM_ROCM,
     AcceleratorType.GAUDI: RuntimeTemplates.VLLM_GAUDI,
     AcceleratorType.SPYRE: RuntimeTemplates.VLLM_SPYRE,
+    AcceleratorType.SPYRE_PPC64LE: RuntimeTemplates.VLLM_SPYRE_PPC64LE,
     AcceleratorType.CPU_x86: RuntimeTemplates.VLLM_CPU_x86,
     AcceleratorType.CPU_POWER: RuntimeTemplates.VLLM_CPU_POWER,
     AcceleratorType.CPU_Z: RuntimeTemplates.VLLM_CPU_Z,
@@ -31,6 +33,10 @@ TEMPLATE_MAP: dict[str, str] = {
 # server aborts (SIGABRT / exit 134). Redirect the logs to a writable path.
 GAUDI_ENV_VARIABLES: list[dict[str, str]] = [
     {"name": "HABANA_LOGS", "value": "/tmp/habana_logs"},
+]
+
+SPYRE_VLLM_ENV_VARIABLES: list[dict[str, str]] = [
+    {"name": "VLLM_SPYRE_USE_CB", "value": "1"},
 ]
 
 PREDICT_RESOURCES: dict[str, list[dict[str, str | dict[str, str]]] | dict[str, dict[str, str]]] = {
@@ -174,3 +180,107 @@ BASE_RAW_DEPLOYMENT_CONFIG: dict[str, Any] = {
     "runtime_argument": None,
     "min-replicas": 1,
 }
+
+# Spyre ppc64le — RAG Inference (RHAIIS 3.5, tensor-parallel=4, 200Gi, 32K context)
+LLAMA_SPYRE_RAG_INFERENCE_SERVING_ARGUMENT: list[str] = [
+    "--model=/mnt/models",
+    "--max-model-len=32768",
+    "--max-num-seqs=32",
+    "--uvicorn-log-level=debug",
+]
+
+
+# Spyre ppc64le — Granite RAG Inference (RHAIIS 3.5, tensor-parallel=4, 200Gi, 32K context)
+GRANITE_SPYRE_RAG_INFERENCE_SERVING_ARGUMENT: list[str] = [
+    "--model=/mnt/models",
+    "--max-model-len=32768",
+    "--max-num-seqs=32",
+    "--uvicorn-log-level=debug",
+]
+
+# Spyre ppc64le — Ministral RAG Inference (RHAIIS 3.6, tensor-parallel=4, 200Gi, 32K context)
+MINISTRAL_SPYRE_RAG_INFERENCE_SERVING_ARGUMENT: list[str] = [
+    "--model=/mnt/models",
+    "--max-model-len=32768",
+    "--max-num-seqs=32",
+    "--uvicorn-log-level=debug",
+]
+
+# Spyre ppc64le — RAG Inference / Serving Arguments & Resources
+PREDICT_RESOURCES_RAG_INFERENCE: dict[str, list[dict[str, str | dict[str, str]]] | dict[str, dict[str, str]]] = {
+    "volumes": [
+        {"name": "shared-memory", "emptyDir": {"medium": "Memory", "sizeLimit": "2Gi"}},
+        {"name": "tmp", "emptyDir": {}},
+        {"name": "home", "emptyDir": {}},
+    ],
+    "volume_mounts": [
+        {"name": "shared-memory", "mountPath": "/dev/shm"},
+        {"name": "tmp", "mountPath": "/tmp"},
+        {"name": "home", "mountPath": "/home/vllm"},
+    ],
+    "resources": {"requests": {"cpu": "2", "memory": "150Gi"}, "limits": {"cpu": "4", "memory": "200Gi"}},
+}
+
+MISTRAL_SPYRE_RAG_INFERENCE_SERVING_ARGUMENT: list[str] = [
+    "--model=/mnt/models",
+    "--max-model-len=32768",
+    "--max-num-seqs=32",
+    "--uvicorn-log-level=debug",
+]
+
+PREDICT_RESOURCES_VISION: dict[str, list[dict[str, str | dict[str, str]]] | dict[str, dict[str, str]]] = {
+    "volumes": [
+        {"name": "shared-memory", "emptyDir": {"medium": "Memory", "sizeLimit": "2Gi"}},
+        {"name": "tmp", "emptyDir": {}},
+        {"name": "home", "emptyDir": {}},
+    ],
+    "volume_mounts": [
+        {"name": "shared-memory", "mountPath": "/dev/shm"},
+        {"name": "tmp", "mountPath": "/tmp"},
+        {"name": "home", "mountPath": "/home/vllm"},
+    ],
+    "resources": {"requests": {"cpu": "2", "memory": "100Gi"}, "limits": {"cpu": "4", "memory": "100Gi"}},
+}
+
+GRANITE_VISION_SPYRE_SERVING_ARGUMENT: list[str] = [
+    "--model=/mnt/models",
+    "--max-model-len=16384",
+    "--max-num-seqs=16",
+    "--uvicorn-log-level=debug",
+]
+
+# Spyre ppc64le — PVC variants (full subpath needed since PVC root is mounted)
+LLAMA_SPYRE_RAG_INFERENCE_SERVING_ARGUMENT_PVC: list[str] = [
+    "--model=/mnt/models/models/llama-3.1-8b-instruct",
+    "--max-model-len=32768",
+    "--max-num-seqs=32",
+    "--uvicorn-log-level=debug",
+]
+
+GRANITE_SPYRE_RAG_INFERENCE_SERVING_ARGUMENT_PVC: list[str] = [
+    "--model=/mnt/models/models/granite-3.3-8b-instruct",
+    "--max-model-len=32768",
+    "--max-num-seqs=32",
+    "--uvicorn-log-level=debug",
+]
+
+MINISTRAL_SPYRE_RAG_INFERENCE_SERVING_ARGUMENT_PVC: list[str] = [
+    "--model=/mnt/models/models/Ministral-3-14B-Instruct-2512-BF16",
+    "--max-model-len=32768",
+    "--max-num-seqs=32",
+    "--uvicorn-log-level=debug",
+]
+
+MISTRAL_SPYRE_RAG_INFERENCE_SERVING_ARGUMENT_PVC: list[str] = [
+    "--model=/mnt/models/models/Mistral-Small-3.2-24B-Instruct-2506",
+    "--max-model-len=32768",
+    "--max-num-seqs=32",
+    "--uvicorn-log-level=debug",
+]
+
+GRANITE_VISION_SPYRE_SERVING_ARGUMENT_PVC: list[str] = [
+    "--model=/mnt/models/models/granite-vision-3.3-2b",
+    "--max-model-len=16384",
+    "--max-num-seqs=16",
+    "--uvicorn-log-level=debug",
+]
