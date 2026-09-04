@@ -140,12 +140,13 @@ def download_model_data(
         init_volume_mount: dict[str, str] = {"mountPath": "/mnt/models/", "name": model_pvc_name}
         init_command: list[str] = ["mkdir", "-p", pvc_model_path]
         init_container_args: list[str] = []
-        download_destination = "/mnt/models/"
+        import platform
+        download_destination = "/mnt/models/" if platform.machine() == "ppc64le" else pvc_model_path
     elif restricted_scc_init:
         init_volume_mount = volume_mount
         init_command = ["mkdir", "-p", pvc_model_path]
         init_container_args = []
-        download_destination = "/mnt/models/"
+        download_destination = pvc_model_path
     else:
         init_volume_mount = volume_mount
         init_command = ["sh"]
@@ -220,7 +221,7 @@ def download_model_data(
 
     with Pod(**pod_kwargs) as pod:
         LOGGER.info("Waiting for model download to complete")
-        pod.wait_for_status(status=Pod.Status.SUCCEEDED, timeout=20 * 60)
+        pod.wait_for_status(status=Pod.Status.SUCCEEDED, timeout=25 * 60)
 
     return model_path
 

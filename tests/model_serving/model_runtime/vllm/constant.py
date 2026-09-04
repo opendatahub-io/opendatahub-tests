@@ -189,18 +189,6 @@ LLAMA_SPYRE_RAG_INFERENCE_SERVING_ARGUMENT: list[str] = [
     "--uvicorn-log-level=debug",
 ]
 
-PREDICT_RESOURCES_RAG_INFERENCE: dict[str, list[dict[str, str | dict[str, str]]] | dict[str, dict[str, str]]] = {
-    "volumes": [
-        {"name": "shared-memory", "emptyDir": {"medium": "Memory", "sizeLimit": "2Gi"}},
-        {"name": "tmp", "emptyDir": {}},
-        {"name": "home", "emptyDir": {}},
-    ],
-    "volume_mounts": [
-        {"name": "shared-memory", "mountPath": "/dev/shm"},
-        {"name": "tmp", "mountPath": "/tmp"},
-        {"name": "home", "mountPath": "/home/vllm"},
-    ],
-}
 
 # Spyre ppc64le — Granite RAG Inference (RHAIIS 3.5, tensor-parallel=4, 200Gi, 32K context)
 GRANITE_SPYRE_RAG_INFERENCE_SERVING_ARGUMENT: list[str] = [
@@ -211,7 +199,12 @@ GRANITE_SPYRE_RAG_INFERENCE_SERVING_ARGUMENT: list[str] = [
 ]
 
 # Spyre ppc64le — Ministral RAG Inference (RHAIIS 3.6, tensor-parallel=4, 200Gi, 32K context)
-MINISTRAL_SPYRE_RAG_INFERENCE_SERVING_ARGUMENT: list[str]
+MINISTRAL_SPYRE_RAG_INFERENCE_SERVING_ARGUMENT: list[str] = [
+    "--model=/mnt/models",
+    "--max-model-len=32768",
+    "--max-num-seqs=32",
+    "--uvicorn-log-level=debug",
+]
 
 # Spyre ppc64le — RAG Inference / Serving Arguments & Resources
 PREDICT_RESOURCES_RAG_INFERENCE: dict[str, list[dict[str, str | dict[str, str]]] | dict[str, dict[str, str]]] = {
@@ -251,6 +244,42 @@ PREDICT_RESOURCES_VISION: dict[str, list[dict[str, str | dict[str, str]]] | dict
 
 GRANITE_VISION_SPYRE_SERVING_ARGUMENT: list[str] = [
     "--model=/mnt/models",
+    "--max-model-len=16384",
+    "--max-num-seqs=16",
+    "--uvicorn-log-level=debug",
+]
+
+# Spyre ppc64le — PVC variants (full subpath needed since PVC root is mounted)
+LLAMA_SPYRE_RAG_INFERENCE_SERVING_ARGUMENT_PVC: list[str] = [
+    "--model=/mnt/models/models/llama-3.1-8b-instruct",
+    "--max-model-len=32768",
+    "--max-num-seqs=32",
+    "--uvicorn-log-level=debug",
+]
+
+GRANITE_SPYRE_RAG_INFERENCE_SERVING_ARGUMENT_PVC: list[str] = [
+    "--model=/mnt/models/models/granite-3.3-8b-instruct",
+    "--max-model-len=32768",
+    "--max-num-seqs=32",
+    "--uvicorn-log-level=debug",
+]
+
+MINISTRAL_SPYRE_RAG_INFERENCE_SERVING_ARGUMENT_PVC: list[str] = [
+    "--model=/mnt/models/models/Ministral-3-14B-Instruct-2512-BF16",
+    "--max-model-len=32768",
+    "--max-num-seqs=32",
+    "--uvicorn-log-level=debug",
+]
+
+MISTRAL_SPYRE_RAG_INFERENCE_SERVING_ARGUMENT_PVC: list[str] = [
+    "--model=/mnt/models/models/Mistral-Small-3.2-24B-Instruct-2506",
+    "--max-model-len=32768",
+    "--max-num-seqs=32",
+    "--uvicorn-log-level=debug",
+]
+
+GRANITE_VISION_SPYRE_SERVING_ARGUMENT_PVC: list[str] = [
+    "--model=/mnt/models/models/granite-vision-3.3-2b",
     "--max-model-len=16384",
     "--max-num-seqs=16",
     "--uvicorn-log-level=debug",

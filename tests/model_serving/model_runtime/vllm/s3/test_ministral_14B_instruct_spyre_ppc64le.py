@@ -1,5 +1,4 @@
 # noqa: N999
-from collections.abc import Generator
 from typing import Any
 
 import pytest
@@ -48,7 +47,7 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "v
 class TestMinistralSpyrePpc64leRagInference:
     def test_ministral_14b_spyre_ppc64le_rag_inference(
         self,
-        vllm_inference_service: Generator[InferenceService, Any, Any],
+        vllm_inference_service: InferenceService,
         skip_if_not_raw_deployment: Any,
         response_snapshot: Any,
     ):

@@ -11,14 +11,14 @@ from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest import FixtureRequest
 
-from tests.model_serving.model_runtime.vllm.constant import ACCELERATOR_IDENTIFIER, PREDICT_RESOURCES
+from tests.model_serving.model_runtime.vllm.constant import ACCELERATOR_IDENTIFIER, PREDICT_RESOURCES, SPYRE_VLLM_ENV_VARIABLES
 from tests.model_serving.model_runtime.vllm.utils import (
     add_image_pull_secrets_if_configured,
     dedupe_vllm_cli_args,
     get_gpu_node_zone_selector,
     validate_supported_quantization_schema,
 )
-from utilities.constants import KServeDeploymentType, Labels
+from utilities.constants import AcceleratorType, KServeDeploymentType, Labels
 from utilities.general import download_model_data
 from utilities.inference_utils import create_isvc
 
@@ -96,7 +96,11 @@ def vllm_pvc_inference_service(
         "name": request.param["name"],
         "namespace": model_namespace.name,
         "runtime": serving_runtime.name,
-        "storage_uri": f"pvc://{vllm_model_pvc.name}/{pvc_downloaded_model_data}",
+        "storage_uri": (
+            f"pvc://{vllm_model_pvc.name}"
+            if __import__("platform").machine() == "ppc64le"
+            else f"pvc://{vllm_model_pvc.name}/{pvc_downloaded_model_data}"
+        ),
         "model_format": serving_runtime.instance.spec.supportedModelFormats[0].name,
         "deployment_mode": request.param.get("deployment_mode", KServeDeploymentType.STANDARD),
         "external_route": True,
@@ -115,7 +119,8 @@ def vllm_pvc_inference_service(
 
     timeout = int(request.param["timeout"]) if request.param.get("timeout") is not None else None
     identifier = ACCELERATOR_IDENTIFIER.get(accelerator_type, Labels.Nvidia.NVIDIA_COM_GPU)
-    resources = deepcopy(x=PREDICT_RESOURCES["resources"])
+    predict_resources = request.param.get("predict_resources", PREDICT_RESOURCES)
+    resources = deepcopy(x=predict_resources.get("resources", PREDICT_RESOURCES["resources"]))
     resources["requests"][identifier] = gpu_count
     resources["limits"][identifier] = gpu_count
     isvc_kwargs["resources"] = resources
@@ -124,8 +129,8 @@ def vllm_pvc_inference_service(
         isvc_kwargs["timeout"] = timeout
 
     if gpu_count > 1:
-        isvc_kwargs["volumes"] = PREDICT_RESOURCES["volumes"]
-        isvc_kwargs["volumes_mounts"] = PREDICT_RESOURCES["volume_mounts"]
+        isvc_kwargs["volumes"] = predict_resources.get("volumes", PREDICT_RESOURCES["volumes"])
+        isvc_kwargs["volumes_mounts"] = predict_resources.get("volume_mounts", PREDICT_RESOURCES["volume_mounts"])
 
     if arguments := request.param.get("runtime_argument"):
         arguments = [arg for arg in arguments if not arg.startswith(("--tensor-parallel-size", "--quantization"))]
@@ -137,6 +142,9 @@ def vllm_pvc_inference_service(
 
     if min_replicas := request.param.get("min-replicas"):
         isvc_kwargs["min_replicas"] = min_replicas
+
+    if accelerator_type == AcceleratorType.SPYRE_PPC64LE:
+        isvc_kwargs["model_env_variables"] = SPYRE_VLLM_ENV_VARIABLES
 
     add_image_pull_secrets_if_configured(
         isvc_kwargs=isvc_kwargs,

@@ -5,7 +5,7 @@ from ocp_resources.inference_service import InferenceService
 
 from tests.model_serving.model_runtime.vllm.constant import (
     COMPLETION_QUERY,
-    MISTRAL_SPYRE_RAG_INFERENCE_SERVING_ARGUMENT,
+    MISTRAL_SPYRE_RAG_INFERENCE_SERVING_ARGUMENT_PVC,
     PREDICT_RESOURCES_RAG_INFERENCE,
 )
 from tests.model_serving.model_runtime.vllm.utils import validate_raw_openai_inference_request
@@ -30,11 +30,6 @@ MISTRAL_CHAT_QUERY: list[list[dict[str, Any]]] = [
 
 MODEL_PATH: str = "models/Mistral-Small-3.2-24B-Instruct-2506"
 
-PVC_RAW_DEPLOYMENT_CONFIG: dict[str, Any] = {
-    "deployment_mode": KServeDeploymentType.STANDARD,
-    "runtime_argument": SERVING_ARGUMENT,
-    "min-replicas": 1,
-}
 
 pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "valid_aws_config")
 
@@ -52,7 +47,7 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "v
             {"deployment_mode": KServeDeploymentType.STANDARD},
             {
                 "deployment_mode": KServeDeploymentType.STANDARD,
-                "runtime_argument": MISTRAL_SPYRE_RAG_INFERENCE_SERVING_ARGUMENT,
+                "runtime_argument": MISTRAL_SPYRE_RAG_INFERENCE_SERVING_ARGUMENT_PVC,
                 "min-replicas": 1,
                 "gpu_count": 4,
                 "predict_resources": PREDICT_RESOURCES_RAG_INFERENCE,
@@ -69,7 +64,7 @@ class TestVllmPvcMistralSmall24BInference:
 
     Steps:
         1. Create a PVC and download the Mistral-Small-3.2-24B model from S3 into it.
-        2. Deploy a vLLM InferenceService using PVC storage with 2 GPUs (TP=2).
+        2. Deploy a vLLM InferenceService using PVC storage with 4 GPUs (TP=4).
         3. Run OpenAI-compatible chat and completion requests.
         4. Validate that inference responses contain expected content.
     """

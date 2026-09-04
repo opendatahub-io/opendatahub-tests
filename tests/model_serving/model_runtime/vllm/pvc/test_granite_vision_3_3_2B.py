@@ -6,25 +6,15 @@ from ocp_resources.inference_service import InferenceService
 from tests.model_serving.model_runtime.vllm.constant import (
     COMPLETION_QUERY,
     GRANITE_CHAT_QUERY,
-    GRANITE_VISION_SPYRE_SERVING_ARGUMENT,
+    GRANITE_VISION_SPYRE_SERVING_ARGUMENT_PVC,
     PREDICT_RESOURCES_VISION,
 )
 from tests.model_serving.model_runtime.vllm.utils import validate_raw_openai_inference_request
 from utilities.constants import KServeDeploymentType
 
-SERVING_ARGUMENT: list[str] = [
-    "--model=/mnt/models",
-    "--uvicorn-log-level=debug",
-    "--dtype=float16",
-]
 
 MODEL_PATH: str = "models/granite-vision-3.3-2b"
 
-PVC_RAW_DEPLOYMENT_CONFIG: dict[str, Any] = {
-    "deployment_mode": KServeDeploymentType.STANDARD,
-    "runtime_argument": SERVING_ARGUMENT,
-    "min-replicas": 1,
-}
 
 pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "valid_aws_config")
 
@@ -42,7 +32,7 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "v
             {"deployment_mode": KServeDeploymentType.STANDARD},
             {
                 "deployment_mode": KServeDeploymentType.STANDARD,
-                "runtime_argument": GRANITE_VISION_SPYRE_SERVING_ARGUMENT,
+                "runtime_argument": GRANITE_VISION_SPYRE_SERVING_ARGUMENT_PVC,
                 "min-replicas": 1,
                 "gpu_count": 2,
                 "predict_resources": PREDICT_RESOURCES_VISION,

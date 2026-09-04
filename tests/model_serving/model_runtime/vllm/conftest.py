@@ -1,3 +1,4 @@
+from copy import deepcopy
 import json
 from collections.abc import Generator
 from typing import Any
@@ -164,7 +165,7 @@ def vllm_inference_service(
     timeout = request.param.get("timeout")
     identifier = ACCELERATOR_IDENTIFIER.get(accelerator_type, Labels.Nvidia.NVIDIA_COM_GPU)
     predict_resources = request.param.get("predict_resources", PREDICT_RESOURCES)
-    resources: Any = predict_resources.get("resources", PREDICT_RESOURCES["resources"])
+    resources: Any = deepcopy(predict_resources.get("resources", PREDICT_RESOURCES["resources"]))
     resources["requests"][identifier] = gpu_count
     resources["limits"][identifier] = gpu_count
     isvc_kwargs["resources"] = resources
