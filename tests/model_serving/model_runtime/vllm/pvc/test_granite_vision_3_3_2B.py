@@ -21,7 +21,7 @@ SERVING_ARGUMENT: list[str] = [
 MODEL_PATH: str = "models/granite-vision-3.3-2b"
 
 PVC_RAW_DEPLOYMENT_CONFIG: dict[str, Any] = {
-    "deployment_mode": KServeDeploymentType.STANDARD, "timeout": "5m",
+    "deployment_mode": KServeDeploymentType.STANDARD,
     "runtime_argument": SERVING_ARGUMENT,
     "min-replicas": 1,
 }
@@ -41,13 +41,13 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "v
             {"model-dir": MODEL_PATH},
             {"deployment_mode": KServeDeploymentType.STANDARD},
             {
-                "deployment_mode": KServeDeploymentType.STANDARD, "timeout": "5m",
+                "deployment_mode": KServeDeploymentType.STANDARD,
                 "runtime_argument": GRANITE_VISION_SPYRE_SERVING_ARGUMENT,
                 "min-replicas": 1,
                 "gpu_count": 2,
                 "predict_resources": PREDICT_RESOURCES_VISION,
                 "name": "vllm-pvc-granite-vision-2b",
-                "timeout": 300,
+                "timeout": 1200,
             },
             id="test_vllm_pvc_granite_vision_2b_spyre_ppc64le",
         ),

@@ -109,6 +109,28 @@ def download_model_data(
     restricted_scc_init: bool = False,
     node_selector: dict[str, str] | None = None,
 ) -> str:
+    """
+    Downloads the model data from the bucket to the PVC
+
+    Args:
+        client (DynamicClient): Admin client
+        aws_access_key_id (str): AWS access key
+        aws_secret_access_key (str): AWS secret key
+        model_namespace (str): Namespace of the model
+        model_pvc_name (str): Name of the PVC
+        bucket_name (str): Name of the bucket
+        aws_endpoint_url (str): AWS endpoint URL
+        aws_default_region (str): AWS default region
+        model_path (str): Path to the model
+        use_sub_path (bool): Whether to use a sub path
+        restricted_scc_init (bool): Use OpenShift restricted-SCC-safe init (no chmod,
+            fsGroup from namespace, init container mounts full PVC when use_sub_path).
+        node_selector (dict[str, str] | None): Optional nodeSelector for the download pod.
+
+    Returns:
+        str: Path to the model path
+
+    """
     volume_mount = {"mountPath": "/mnt/models/", "name": model_pvc_name}
     if use_sub_path:
         volume_mount["subPath"] = model_path
