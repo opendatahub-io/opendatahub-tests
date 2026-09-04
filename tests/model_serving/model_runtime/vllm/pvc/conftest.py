@@ -91,6 +91,7 @@ def vllm_pvc_inference_service(
     kserve_registry_pull_secret: Secret | None,
 ) -> Generator[InferenceService, Any, Any]:
     """vLLM InferenceService backed by PVC storage."""
+    accelerator_type = supported_accelerator_type.lower()
     isvc_kwargs: dict[str, Any] = {
         "client": admin_client,
         "name": request.param["name"],
@@ -98,7 +99,7 @@ def vllm_pvc_inference_service(
         "runtime": serving_runtime.name,
         "storage_uri": (
             f"pvc://{vllm_model_pvc.name}"
-            if __import__("platform").machine() == "ppc64le"
+            if accelerator_type == AcceleratorType.SPYRE_PPC64LE
             else f"pvc://{vllm_model_pvc.name}/{pvc_downloaded_model_data}"
         ),
         "model_format": serving_runtime.instance.spec.supportedModelFormats[0].name,

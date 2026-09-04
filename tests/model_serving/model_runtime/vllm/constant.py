@@ -41,7 +41,7 @@ SPYRE_VLLM_ENV_VARIABLES: list[dict[str, str]] = [
 
 PREDICT_RESOURCES: dict[str, list[dict[str, str | dict[str, str]]] | dict[str, dict[str, str]]] = {
     "volumes": [
-        {"name": "shared-memory", "emptyDir": {"medium": "Memory", "sizeLimit": "2Gi"}},
+        {"name": "shared-memory", "emptyDir": {"medium": "Memory", "sizeLimit": "16Gi"}},
         {"name": "tmp", "emptyDir": {}},
         {"name": "home", "emptyDir": {}},
     ],
@@ -50,7 +50,7 @@ PREDICT_RESOURCES: dict[str, list[dict[str, str | dict[str, str]]] | dict[str, d
         {"name": "tmp", "mountPath": "/tmp"},
         {"name": "home", "mountPath": "/home/vllm"},
     ],
-    "resources": {"requests": {"cpu": "2", "memory": "200Gi"}, "limits": {"cpu": "4", "memory": "200Gi"}},
+    "resources": {"requests": {"cpu": "2", "memory": "15Gi"}, "limits": {"cpu": "3", "memory": "16Gi"}},
 }
 
 COMPLETION_QUERY: list[dict[str, Any]] = [
