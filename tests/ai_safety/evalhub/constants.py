@@ -128,6 +128,18 @@ GIT_FULL_REPO_TOKENIZER_PATH: str = "/test_data/tests/git-testdata/tokenizer"
 # Guaranteed-nonexistent per RFC 2606; used for negative tests that must not resolve.
 GIT_NONEXISTENT_REPO_URL: str = "https://git.example.com/does-not-exist/repo.git"
 GIT_COMMIT_SHA_PATTERN: re.Pattern[str] = re.compile(r"^[0-9a-f]{7,40}$")
+# Immutable tag pin on the public fixture repo for ref-variety and exact resolved-SHA assertions;
+# a moving branch like main cannot anchor a known commit. v1.0.1 carries tests/git-testdata.
+GIT_PUBLIC_REPO_TAG: str = "v1.0.1"
+GIT_PUBLIC_REPO_TAG_COMMIT: str = "fe0bd091165b2ba82af12baa0a0ec82abde01917"  # pragma: allowlist secret
+# Nonexistent ref on an otherwise-reachable repo: the clone succeeds but the checkout fails.
+GIT_INVALID_REF: str = "no-such-branch-does-not-exist"
+# Git-clone init container internals: its name, the env vars it receives, and the shared mount.
+GIT_INIT_CONTAINER_NAME: str = "init"
+ENV_GIT_URL: str = "TEST_DATA_GIT_URL"
+ENV_GIT_REF: str = "TEST_DATA_GIT_REF"
+ENV_GIT_SUBPATH: str = "TEST_DATA_GIT_SUBPATH"
+TEST_DATA_MOUNT_PATH: str = "/test_data"
 
 # Hardware profile
 EVALHUB_DEFAULT_HARDWARE_PROFILE: str = "default-profile"
