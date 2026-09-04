@@ -21,13 +21,15 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
 
 from utilities.constants import Timeout
 from utilities.resources.admission_check import AdmissionCheck
+from utilities.resources.workload_priority_class import WorkloadPriorityClass
 
 LOGGER = structlog.get_logger(name=__name__)
 
 KUEUE_QUEUE_NAME_LABEL: str = "kueue.x-k8s.io/queue-name"
 KUEUE_MANAGED_LABEL: str = "kueue.x-k8s.io/managed"
+KUEUE_PRIORITY_CLASS_LABEL: str = "kueue.x-k8s.io/priority-class"
 KUEUE_OPERATOR_NAMESPACE: str = "openshift-kueue-operator"
-KUEUE_CONTROLLER_LABEL_SELECTOR: str = "app.openshift.io/name=kueue"
+KUEUE_CONTROLLER_LABEL_SELECTOR: str = "app.openshift.io/name=kueue,control-plane=controller-manager"
 KUEUE_VISIBILITY_API_GROUP: str = "visibility.kueue.x-k8s.io"  # gitleaks:allow
 _KUEUE_WEBHOOK_NAMES: frozenset[str] = frozenset({
     "kueue-mutating-webhook-configuration",
@@ -116,6 +118,7 @@ class ClusterQueue(Resource):
         namespace_selector: dict[str, Any] | None = None,
         resource_groups: list[dict[str, Any]] | None = None,
         admission_checks: list[str] | None = None,
+        preemption: dict[str, Any] | None = None,
         **kwargs: Any,
     ):
         """
@@ -123,6 +126,7 @@ class ClusterQueue(Resource):
             namespace_selector: Namespace selector to use
             resource_groups: Resource groups to use
             admission_checks: List of AdmissionCheck names to require on this queue
+            preemption: Preemption policy, e.g. {"withinClusterQueue": "LowerPriority"}
             kwargs: Keyword arguments to pass to the ClusterQueue constructor
         """
         super().__init__(
@@ -131,6 +135,7 @@ class ClusterQueue(Resource):
         self.namespace_selector = namespace_selector
         self.resource_groups = resource_groups
         self.admission_checks = admission_checks
+        self.preemption = preemption
 
     def to_dict(self) -> None:
         super().to_dict()
@@ -149,6 +154,8 @@ class ClusterQueue(Resource):
                 _spec["admissionChecksStrategy"] = {
                     "admissionChecks": [{"name": ac} for ac in self.admission_checks],
                 }
+            if self.preemption is not None:
+                _spec["preemption"] = self.preemption
 
 
 class Workload(NamespacedResource):
@@ -191,6 +198,108 @@ class Kueue(Resource):
                 _spec["config"] = self.config
             if self.management_state is not None:
                 _spec["managementState"] = self.management_state
+
+
+@contextmanager
+def create_workload_priority_class(
+    client: DynamicClient,
+    name: str,
+    value: int,
+    teardown: bool = True,
+) -> Generator[WorkloadPriorityClass, Any, Any]:
+    """Context manager to create and optionally delete a WorkloadPriorityClass."""
+    with WorkloadPriorityClass(
+        client=client,
+        name=name,
+        value=value,
+        teardown=teardown,
+    ) as priority_class:
+        yield priority_class
+
+
+@contextmanager
+def create_kueue_managed_job(
+    client: DynamicClient,
+    name: str,
+    namespace: str,
+    local_queue: str,
+    image: str,
+    cpu_request: str,
+    memory_request: str,
+    priority_class: str | None = None,
+    command: list[str] | None = None,
+    teardown: bool = True,
+) -> Generator[Job, Any, Any]:
+    """Create a raw, Kueue-managed batch Job (not via EvalHub).
+
+    Used as a preemptor in preemption tests: EvalHub submits every job with
+    priority 0, so forcing preemption of an EvalHub workload requires an
+    external, higher-priority Kueue workload competing for the same quota.
+
+    The Job carries the ``kueue.x-k8s.io/queue-name`` label so Kueue manages it
+    (auto-suspends and admits it), and optionally the
+    ``kueue.x-k8s.io/priority-class`` label to give it a WorkloadPriorityClass.
+
+    Args:
+        client: Kubernetes client with admin privileges.
+        name: Job name.
+        namespace: Namespace to create the Job in.
+        local_queue: LocalQueue name to submit the Job to.
+        image: Container image (any image that can hold the pod; the command
+            defaults to a long sleep).
+        cpu_request: CPU request per pod (sized to compete for the queue quota).
+        memory_request: Memory request per pod.
+        priority_class: Optional WorkloadPriorityClass name.
+        command: Optional container command; defaults to a long sleep.
+        teardown: Whether to delete the Job (and its Workload) on context exit.
+    """
+    labels = {KUEUE_QUEUE_NAME_LABEL: local_queue}
+    if priority_class:
+        labels[KUEUE_PRIORITY_CLASS_LABEL] = priority_class
+
+    job = Job(
+        client=client,
+        name=name,
+        namespace=namespace,
+        label=labels,
+        backoff_limit=0,
+        restart_policy="Never",
+        containers=[
+            {
+                "name": "preemptor",
+                "image": image,
+                "command": command or ["/bin/sh", "-c", "sleep 3600"],
+                "resources": {
+                    "requests": {"cpu": cpu_request, "memory": memory_request},
+                },
+                "securityContext": {
+                    "allowPrivilegeEscalation": False,
+                    "runAsNonRoot": True,
+                    "capabilities": {"drop": ["ALL"]},
+                    "seccompProfile": {"type": "RuntimeDefault"},
+                },
+            }
+        ],
+    )
+    job.deploy(wait=True)
+    try:
+        yield job
+    finally:
+        if teardown:
+            job_uid = job.instance.metadata.uid
+            job.clean_up(wait=True)
+            # The Kueue Workload created for this Job can outlive the Job: it may
+            # carry no ownerReference (so garbage collection never removes it)
+            # and no finalizer, yet keep reserving quota and holding the
+            # ClusterQueue's resource-in-use finalizer. Delete it explicitly so
+            # an isolated queue's teardown is not blocked for minutes.
+            if job_uid:
+                for workload in Workload.get(
+                    client=client,
+                    namespace=namespace,
+                    label_selector=f"kueue.x-k8s.io/job-uid={job_uid}",
+                ):
+                    workload.clean_up(wait=True)
 
 
 @contextmanager
@@ -250,6 +359,32 @@ def create_admission_check(
         yield admission_check
 
 
+def build_resource_groups(flavor_name: str, quotas: dict[str, str]) -> list[dict[str, Any]]:
+    """Build a single-flavor ClusterQueue ``resourceGroups`` list from a quota map.
+
+    Args:
+        flavor_name: ResourceFlavor the quota applies to.
+        quotas: Mapping of covered resource name to its nominal quota, e.g.
+            ``{"cpu": "3", "memory": "5Gi", "pods": "1"}``. ``pods`` is the Kueue
+            built-in pod-count resource, useful for capping concurrency
+            independently of the admitted pods' CPU/memory requests.
+
+    Returns:
+        A ``resourceGroups`` list suitable for ``ClusterQueue``/``create_cluster_queue``.
+    """
+    return [
+        {
+            "coveredResources": list(quotas),
+            "flavors": [
+                {
+                    "name": flavor_name,
+                    "resources": [{"name": name, "nominalQuota": quota} for name, quota in quotas.items()],
+                }
+            ],
+        }
+    ]
+
+
 @contextmanager
 def create_cluster_queue(
     client: DynamicClient,
@@ -257,6 +392,7 @@ def create_cluster_queue(
     resource_groups: list[dict[str, Any]],
     namespace_selector: dict[str, Any] | None = None,
     admission_checks: list[str] | None = None,
+    preemption: dict[str, Any] | None = None,
     teardown: bool = True,
 ) -> Generator[ClusterQueue, Any, Any]:
     """
@@ -268,6 +404,7 @@ def create_cluster_queue(
         resource_groups=resource_groups,
         namespace_selector=namespace_selector,
         admission_checks=admission_checks,
+        preemption=preemption,
         teardown=teardown,
     ) as cluster_queue:
         yield cluster_queue
@@ -357,6 +494,18 @@ def check_workload_quota_reserved(workload: Workload) -> bool:
         and (condition.get("status") if isinstance(condition, dict) else getattr(condition, "status", None)) == "True"
         for condition in conditions
     )
+
+
+def get_workload_condition(workload: Workload, condition_type: str) -> dict[str, Any] | None:
+    """Return the named status condition dict from a Workload, or None if absent."""
+    conditions = (workload.instance.status or {}).get("conditions", [])
+    return next((condition for condition in conditions if condition.get("type") == condition_type), None)
+
+
+def workload_has_condition(workload: Workload, condition_type: str, status: str = "True") -> bool:
+    """Return True if the Workload carries ``condition_type`` with the given status."""
+    condition = get_workload_condition(workload=workload, condition_type=condition_type)
+    return bool(condition and condition.get("status") == status)
 
 
 def check_admission_check_active(admission_check: AdmissionCheck) -> bool:
