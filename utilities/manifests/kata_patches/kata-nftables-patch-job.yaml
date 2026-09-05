@@ -1,0 +1,161 @@
+# One-shot DaemonSet that patches the Kata initramfs to include
+# nf_tables kernel modules required by OpenShell's sidecar topology
+# network init container. Only needed with the `kata` runtime;
+# `kata-remote` (peer pods) uses RHEL VM that includes this module.
+#
+# Uses hostPath mount of / to access the host filesystem directly,
+# and the host's own binaries via chroot to /host.
+#
+# Usage:
+#   oc apply -f kata-nftables-patch-job.yaml
+#   # Follow the logs until each pod reports "Patch complete. Sleeping.":
+#   oc logs -n openshift-sandboxed-containers-operator -l app=kata-nftables-patch -f
+#   # Clean up after patching:
+#   oc delete -f kata-nftables-patch-job.yaml
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: kata-nftables-patch
+  namespace: openshift-sandboxed-containers-operator
+  labels:
+    app: kata-nftables-patch
+spec:
+  selector:
+    matchLabels:
+      app: kata-nftables-patch
+  template:
+    metadata:
+      labels:
+        app: kata-nftables-patch
+    spec:
+      serviceAccountName: kata-install
+      nodeSelector:
+        node-role.kubernetes.io/kata-oc: ""
+      restartPolicy: Always
+      volumes:
+        - name: host
+          hostPath:
+            path: /
+      containers:
+        - name: patch
+          image: REPLACED_AT_RUNTIME
+
+          volumeMounts:
+            - name: host
+              mountPath: /host
+          command:
+            - /host/bin/bash
+            - -c
+            - |
+              set -euo pipefail
+
+              # Use the host's tools via chroot
+              chroot /host /bin/bash -c 'exec 9>/var/tmp/kata-initrd-patch.lock && flock 9 || exit 1
+                set -euo pipefail
+                KERNEL_VER=$(uname -r)
+                INITRD_DIR="/var/cache/kata-containers/osbuilder-images/${KERNEL_VER}"
+                INITRD="${INITRD_DIR}/kata.initrd"
+                MODBASE="/lib/modules/${KERNEL_VER}/kernel"
+                WORKDIR="/var/tmp/kata-nftables-patch"
+
+                if [ ! -f "${INITRD}" ]; then
+                  echo "[!] Kata initrd not found at ${INITRD}, skipping."
+                  exit 0
+                fi
+
+                # Check if already patched
+                if lsinitrd "${INITRD}" 2>/dev/null | grep -q nf_tables; then
+                  echo "[*] nf_tables already present in initramfs, skipping."
+                  exit 0
+                fi
+
+                # Modules to add (libcrc32c already in initrd)
+                MODULES=(
+                  # nf_conntrack dependencies
+                  "net/ipv4/netfilter/nf_defrag_ipv4.ko.xz"
+                  "net/ipv6/netfilter/nf_defrag_ipv6.ko.xz"
+                  # nf_tables dependencies
+                  "net/netfilter/nfnetlink.ko.xz"
+                  "net/netfilter/nf_conntrack.ko.xz"
+                  "net/netfilter/nf_nat.ko.xz"
+                  # nf_tables core
+                  "net/netfilter/nf_tables.ko.xz"
+                  # nft modules used by OpenShell sidecar
+                  "net/netfilter/nft_chain_nat.ko.xz"
+                  "net/netfilter/nft_compat.ko.xz"
+                  "net/netfilter/nft_nat.ko.xz"
+                  "net/netfilter/nft_masq.ko.xz"
+                  "net/netfilter/nft_counter.ko.xz"
+                  "net/netfilter/nft_ct.ko.xz"
+                  # nft reject support (used by sidecar bypass rules)
+                  "net/ipv4/netfilter/nf_reject_ipv4.ko.xz"
+                  "net/ipv6/netfilter/nf_reject_ipv6.ko.xz"
+                  "net/netfilter/nft_reject.ko.xz"
+                  "net/netfilter/nft_reject_inet.ko.xz"
+                )
+
+                # Verify all modules exist on host
+                for mod in "${MODULES[@]}"; do
+                  if [ ! -f "${MODBASE}/${mod}" ]; then
+                    echo "[!] Module not found: ${MODBASE}/${mod}"
+                    exit 1
+                  fi
+                done
+
+                echo "[*] Patching initramfs to add nf_tables modules..."
+                rm -rf "${WORKDIR}"
+                mkdir -p "${WORKDIR}"
+                cd "${WORKDIR}"
+
+                # Unpack
+                zcat "${INITRD}" | cpio -idm 2>/dev/null
+
+                # Copy modules
+                for mod in "${MODULES[@]}"; do
+                  DEST="lib/modules/${KERNEL_VER}/kernel/$(dirname ${mod})"
+                  mkdir -p "${DEST}"
+                  cp "${MODBASE}/${mod}" "${DEST}/"
+                  echo "[+] Added $(basename ${mod})"
+                done
+
+                # Regenerate module dependency files
+                depmod -b . "${KERNEL_VER}" 2>/dev/null || {
+                  # Fallback: manually update modules.dep
+                  DEPFILE="lib/modules/${KERNEL_VER}/modules.dep"
+                  if [ -f "${DEPFILE}" ]; then
+                    echo "kernel/net/ipv4/netfilter/nf_defrag_ipv4.ko.xz:" >> "${DEPFILE}"
+                    echo "kernel/net/ipv6/netfilter/nf_defrag_ipv6.ko.xz:" >> "${DEPFILE}"
+                    echo "kernel/net/netfilter/nfnetlink.ko.xz:" >> "${DEPFILE}"
+                    echo "kernel/net/netfilter/nf_conntrack.ko.xz: kernel/net/ipv4/netfilter/nf_defrag_ipv4.ko.xz kernel/net/ipv6/netfilter/nf_defrag_ipv6.ko.xz kernel/lib/libcrc32c.ko.xz" >> "${DEPFILE}"
+                    echo "kernel/net/netfilter/nf_nat.ko.xz: kernel/net/netfilter/nf_conntrack.ko.xz kernel/lib/libcrc32c.ko.xz" >> "${DEPFILE}"
+                    echo "kernel/net/netfilter/nf_tables.ko.xz: kernel/net/netfilter/nfnetlink.ko.xz kernel/lib/libcrc32c.ko.xz" >> "${DEPFILE}"
+                    echo "kernel/net/netfilter/nft_chain_nat.ko.xz: kernel/net/netfilter/nf_nat.ko.xz kernel/net/netfilter/nf_tables.ko.xz" >> "${DEPFILE}"
+                    echo "kernel/net/netfilter/nft_compat.ko.xz: kernel/net/netfilter/nf_tables.ko.xz kernel/net/netfilter/nfnetlink.ko.xz" >> "${DEPFILE}"
+                    echo "kernel/net/netfilter/nft_nat.ko.xz: kernel/net/netfilter/nf_tables.ko.xz kernel/net/netfilter/nf_nat.ko.xz" >> "${DEPFILE}"
+                    echo "kernel/net/netfilter/nft_masq.ko.xz: kernel/net/netfilter/nf_tables.ko.xz kernel/net/netfilter/nf_nat.ko.xz" >> "${DEPFILE}"
+                    echo "kernel/net/netfilter/nft_counter.ko.xz: kernel/net/netfilter/nf_tables.ko.xz" >> "${DEPFILE}"
+                    echo "kernel/net/netfilter/nft_ct.ko.xz: kernel/net/netfilter/nf_tables.ko.xz kernel/net/netfilter/nf_conntrack.ko.xz" >> "${DEPFILE}"
+                    echo "kernel/net/ipv4/netfilter/nf_reject_ipv4.ko.xz:" >> "${DEPFILE}"
+                    echo "kernel/net/ipv6/netfilter/nf_reject_ipv6.ko.xz:" >> "${DEPFILE}"
+                    echo "kernel/net/netfilter/nft_reject.ko.xz: kernel/net/netfilter/nf_tables.ko.xz" >> "${DEPFILE}"
+                    echo "kernel/net/netfilter/nft_reject_inet.ko.xz: kernel/net/netfilter/nf_tables.ko.xz kernel/net/ipv4/netfilter/nf_reject_ipv4.ko.xz kernel/net/ipv6/netfilter/nf_reject_ipv6.ko.xz kernel/net/netfilter/nft_reject.ko.xz" >> "${DEPFILE}"
+                  fi
+                }
+
+                # Repack
+                if [ ! -e "${INITRD}.bak" ]; then
+                  cp "${INITRD}" "${INITRD}.bak"
+                fi
+                find . | cpio -o -H newc 2>/dev/null | gzip > "${INITRD}.new"
+                mv "${INITRD}.new" "${INITRD}"
+
+                rm -rf "${WORKDIR}"
+                echo "[+] Initramfs patched with nf_tables modules. Backup at ${INITRD}.bak"
+              '
+
+              echo "[+] Patch complete. Sleeping."
+              exec /host/bin/sleep infinity
+          securityContext:
+            privileged: true
+            runAsUser: 0

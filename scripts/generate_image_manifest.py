@@ -28,6 +28,7 @@ IMAGE_CLASS_MAP: dict[str, str] = {
     "workbenches": "tests.workbenches.image_constants.WorkbenchesImages",
     "spark": "tests.spark.image_constants.SparkImages",
     "model_serving": "tests.model_serving.image_constants.ModelServingImages",
+    "openshell": "tests.openshell.image_constants.OpenShellImages",
 }
 
 KNOWN_REGISTRIES: tuple[str, ...] = (
@@ -35,6 +36,7 @@ KNOWN_REGISTRIES: tuple[str, ...] = (
     "ghcr.io",
     "docker.io",
     "registry.redhat.io",
+    "registry.access.redhat.com",
     "public.ecr.aws",
     "nvcr.io",
 )

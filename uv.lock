@@ -528,6 +528,15 @@ wheels = [
 ]
 
 [[package]]
+name = "cloudpickle"
+version = "3.1.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/27/fb/576f067976d320f5f0114a8d9fa1215425441bb35627b1993e5afd8111e5/cloudpickle-3.1.2.tar.gz", hash = "sha256:7fda9eb655c9c230dab534f1983763de5835249750e85fbcef43aaa30a9a2414", size = 22330, upload-time = "2025-11-03T09:25:26.604Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/88/39/799be3f2f0f38cc727ee3b4f1445fe6d5e4133064ec2e4115069418a5bb6/cloudpickle-3.1.2-py3-none-any.whl", hash = "sha256:9acb47f6afd73f60dc1df93bb801b472f05ff42fa6c84167d25cb206be1fbf4a", size = 22228, upload-time = "2025-11-03T09:25:25.534Z" },
+]
+
+[[package]]
 name = "cloup"
 version = "3.1.0"
 source = { registry = "https://pypi.org/simple/" }
@@ -2170,6 +2179,7 @@ dependencies = [
     { name = "numpy", version = "2.4.6+ppc64le1", source = { registry = "https://wheels.developerfirst.ibm.com/ppc64le/linux/+simple/" }, marker = "platform_machine == 'ppc64le'" },
     { name = "ogx-client" },
     { name = "openai" },
+    { name = "openshell" },
     { name = "openshift-python-utilities" },
     { name = "openshift-python-wrapper" },
     { name = "portforward" },
@@ -2233,6 +2243,7 @@ requires-dist = [
     { name = "numpy", marker = "platform_machine == 'ppc64le'", specifier = ">=2.1.0,<2.5.0", index = "https://wheels.developerfirst.ibm.com/ppc64le/linux/+simple/" },
     { name = "ogx-client", specifier = "==1.1.3" },
     { name = "openai", specifier = ">=2.36" },
+    { name = "openshell", specifier = "==0.0.85" },
     { name = "openshift-python-utilities", specifier = ">=5.0.71" },
     { name = "openshift-python-wrapper", specifier = ">=11.0.132" },
     { name = "portforward", specifier = ">=0.7.1" },
@@ -2271,6 +2282,22 @@ dev = [
     { name = "ipython", specifier = ">=8.12.3" },
     { name = "pre-commit", specifier = ">=4.3.0" },
     { name = "pyrefly", specifier = ">=1.0" },
+]
+
+[[package]]
+name = "openshell"
+version = "0.0.85"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cloudpickle" },
+    { name = "grpcio" },
+    { name = "httpx" },
+    { name = "protobuf" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/18/78/d8410dd896b2fbfad87c69a231fd18c083de4b1601e2109fff18b9161c67/openshell-0.0.85-py3-none-macosx_13_0_arm64.whl", hash = "sha256:bbc5095b7f4fed0d2403f3610c65a5366a1b53753c37636c2b1893f7f5eb45e1", size = 15949024, upload-time = "2026-07-16T15:13:07.067Z" },
+    { url = "https://files.pythonhosted.org/packages/c1/33/018000e76832d86b2a420321c7197797580538fa18bf6574a677bd1beb76/openshell-0.0.85-py3-none-manylinux_2_39_aarch64.whl", hash = "sha256:e8151e388a1268b989eac7ba9c7ce3b1416c8f689361ae7fd3dd1229b624c636", size = 19441100, upload-time = "2026-07-16T15:13:28.543Z" },
+    { url = "https://files.pythonhosted.org/packages/0a/90/e2b7ee07f394276eaaf645c68172e26008860cfc8569577105e01a3d8fd4/openshell-0.0.85-py3-none-manylinux_2_39_x86_64.whl", hash = "sha256:b00c0a965c188ad907b645a1040977cfe741eaef2871293bf21f2139da83f5e2", size = 20287954, upload-time = "2026-07-16T15:13:53.554Z" },
 ]
 
 [[package]]
