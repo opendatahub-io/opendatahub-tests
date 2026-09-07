@@ -84,7 +84,7 @@ def is_kueue_installed(admin_client: DynamicClient) -> bool:
     try:
         crd = CustomResourceDefinition(client=admin_client, name="workloads.kueue.x-k8s.io")
         return crd.exists
-    except (AttributeError, KeyError):
+    except AttributeError, KeyError:
         return False
 
 

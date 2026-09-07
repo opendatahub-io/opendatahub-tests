@@ -54,7 +54,7 @@ def is_evalhub_crd_available(admin_client: DynamicClient) -> bool:
     try:
         crd = CustomResourceDefinition(client=admin_client, name=EVALHUB_CRD_NAME)
         return crd.exists
-    except (AttributeError, KeyError):
+    except AttributeError, KeyError:
         return False
 
 
@@ -1677,7 +1677,7 @@ def metric_value_sum(
     for s in samples:
         try:
             total += float(s["value"])
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             pass
     return total
 
@@ -1763,7 +1763,7 @@ def parse_trace_spans_from_logs(logs: str) -> list[dict[str, Any]]:
             spans.append(current_span)
 
         return spans
-    except (re.error, KeyError, IndexError, TypeError):
+    except re.error, KeyError, IndexError, TypeError:
         return []
 
 
