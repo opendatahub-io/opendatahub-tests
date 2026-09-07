@@ -21,6 +21,7 @@ from semver import Version
 from tests.ogx.constants import (
     HTTPS_PROXY,
     OGX_CLIENT_VERIFY_SSL,
+    OGX_CORE_INFERENCE_MODEL,
     OGX_OPENSHIFT_MINIMAL_VERSION,
     OGX_SERVER_SECRET_DATA,
     POSTGRES_IMAGE,
@@ -315,6 +316,11 @@ def ogx_models(ogx_client: OgxClient) -> ModelInfo:
     """
     Returns model information from the OGX client.
 
+    Selects the LLM model using the following priority:
+    1. Match OGX_CORE_INFERENCE_MODEL if configured
+    2. Fallback to a non-vision LLM model
+    3. Fallback to the first available LLM model
+
     Selects the embedding model based on available providers with the following priority:
     1. sentence-transformers provider (if present)
     2. vllm-embedding provider (if present)
@@ -331,12 +337,34 @@ def ogx_models(ogx_client: OgxClient) -> ModelInfo:
         ModelInfo: NamedTuple containing model information
 
     Raises:
-        ValueError: If no embedding provider (sentence-transformers or vllm-embedding) is found
+        ValueError: If no LLM model or embedding provider is found
 
     """
     models = ogx_client.models.list()
 
-    model_id = next(model for model in models.data if model.custom_metadata["model_type"] == "llm").id
+    llm_models = [model for model in models.data if model.custom_metadata.get("model_type") == "llm"]
+    if not llm_models:
+        raise ValueError("No LLM models found in OGX client")
+
+    selected_llm = None
+    if OGX_CORE_INFERENCE_MODEL:
+        selected_llm = next(
+            (model for model in llm_models if OGX_CORE_INFERENCE_MODEL in model.id),
+            None,
+        )
+        if not selected_llm:
+            LOGGER.warning(
+                f"Configured OGX_CORE_INFERENCE_MODEL='{OGX_CORE_INFERENCE_MODEL}' "
+                f"not found in registered models: {[m.id for m in llm_models]}"
+            )
+
+    if not selected_llm:
+        selected_llm = next(
+            (model for model in llm_models if "vision" not in model.id.lower()),
+            llm_models[0],
+        )
+
+    model_id = selected_llm.id
 
     # Ensure getting the right embedding model depending on the available providers
     providers = ogx_client.providers.list()
