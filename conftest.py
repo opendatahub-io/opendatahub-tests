@@ -138,6 +138,11 @@ def pytest_addoption(parser: Parser) -> None:
         default=os.environ.get("OVMS_RUNTIME_IMAGE"),
         help="Specify the OVMS runtime image to use for the tests",
     )
+    runtime_group.addoption(
+        "--vllm-omni-runtime-image",
+        default=os.environ.get("VLLM_OMNI_RUNTIME_IMAGE"),
+        help="Specify the vLLM-Omni runtime image to use for tests (overrides template default)",
+    )
 
     # OCI Registry options (vLLM modelcar)
     from tests.model_serving.model_runtime.vllm.modelcar.pytest_options import (
