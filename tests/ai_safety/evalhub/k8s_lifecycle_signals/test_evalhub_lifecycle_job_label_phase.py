@@ -357,7 +357,12 @@ class TestLblJobLabelPhase:
         assert fail_job_name not in succeeded_names, (
             f"Failed job {fail_job_name!r} incorrectly appeared in Succeeded selector results"
         )
-        assert fail_job_name in failed_names, f"Failed job {fail_job_name!r} not found in Failed selector results"
         assert success_job_name not in failed_names, (
             f"Succeeded job {success_job_name!r} incorrectly appeared in Failed selector results"
         )
+        # The operator deletes the failed Job shortly after the EvaluationFailed sync (its Failed
+        # label is patched just before deletion), so it may already be gone by query time. Only
+        # require it in the Failed-selector results while the Job still exists; the failure itself
+        # is verified above via assert_failure_phase_label.
+        if Job(client=admin_client, name=fail_job_name, namespace=ns).exists:
+            assert fail_job_name in failed_names, f"Failed job {fail_job_name!r} not found in Failed selector results"
