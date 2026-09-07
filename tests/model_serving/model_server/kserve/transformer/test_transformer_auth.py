@@ -38,8 +38,9 @@ SENTIMENT_INFERENCE_CONFIG = {
 ISVC_NAME = "sentiment-analysis"
 
 
+# @pytest.mark.smoke
+# removed from smoke, this feature is intented to be available from 3.6ea2+
 @pytest.mark.rawdeployment
-@pytest.mark.smoke
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, transformer_auth_inference_service",
     [
