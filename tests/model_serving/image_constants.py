@@ -15,7 +15,7 @@ class ModelServingImages:
 
     TRANSFORMER_IMAGE: str = (
         "quay.io/spolti/kserve-sentiment-custom-transformer"
-        "@sha256:6af753f5d13e07fd2d0d3da9e55ddbcd4d5cabcd9d5f4c1fbbdce06fb1e08c67"  # pragma: allowlist secret
+        "@sha256:cd8c290d0860e0b67dbd4138bc985e5f895da2c8e4eac3644fdb4a16520a8495"  # pragma: allowlist secret
     )
 
     VLLM_OMNI_MODELCAR: str = (
