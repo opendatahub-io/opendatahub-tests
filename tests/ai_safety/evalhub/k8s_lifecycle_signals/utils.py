@@ -93,7 +93,7 @@ def kueue_local_queue_exists(admin_client: DynamicClient, namespace: str, queue_
     from utilities.kueue_utils import LocalQueue
 
     local_queue = LocalQueue(client=admin_client, name=queue_name, namespace=namespace)
-    return local_queue.exists
+    return bool(local_queue.exists)
 
 
 def wait_for_job_label(
