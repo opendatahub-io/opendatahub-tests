@@ -4,23 +4,33 @@
     "index": 0,
     "logprobs": null,
     "message": {
-      "content": "\neven = [x for x in numbers if x % 2 == 0]",
+      "annotations": null,
+      "audio": null,
+      "content": "\neven = [x for x in num if x % 2 == 0]",
+      "function_call": null,
       "reasoning_content": null,
+      "refusal": null,
       "role": "assistant",
       "tool_calls": []
     },
-    "stop_reason": null
+    "stop_reason": null,
+    "token_ids": null
   },
   {
     "finish_reason": "stop",
     "index": 0,
     "logprobs": null,
     "message": {
+      "annotations": null,
+      "audio": null,
       "content": "[Round 0]",
+      "function_call": null,
       "reasoning_content": null,
+      "refusal": null,
       "role": "assistant",
       "tool_calls": []
     },
-    "stop_reason": null
+    "stop_reason": null,
+    "token_ids": null
   }
 ]
