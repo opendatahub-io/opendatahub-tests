@@ -14,6 +14,7 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_LOG_ADAPTER_CONTAINER,
     GIT_DEFAULT_REF,
     GIT_INVALID_REF,
+    GIT_PUBLIC_REPO_SUB_PATH,
     GIT_PUBLIC_REPO_TAG,
     GIT_PUBLIC_REPO_TAG_COMMIT,
     GIT_PUBLIC_REPO_URL,
@@ -37,10 +38,10 @@ GIT_MODEL_NAMESPACE = pytest.param({"name": "test-evalhub-git-storage-public"})
 # Table-driven rejections for test_data_ref.git. ``exact_400`` distinguishes conflicts / read-only
 # violations (a specific 400) from schema-shape errors that may surface as any 4xx.
 GIT_REJECTION_CASES = [
-    pytest.param({"git": {"ref": GIT_DEFAULT_REF}}, False, id="missing-repository-url"),
-    pytest.param({"git": {"url": GIT_PUBLIC_REPO_URL}}, False, id="missing-ref"),
+    pytest.param({"git": {"ref": GIT_DEFAULT_REF}}, False, id="test_missing_repository_url"),
+    pytest.param({"git": {"url": GIT_PUBLIC_REPO_URL}}, False, id="test_missing_ref"),
     pytest.param(
-        build_git_test_data_ref(url="not a valid url", ref=GIT_DEFAULT_REF), False, id="invalid-repository-url"
+        build_git_test_data_ref(url="not a valid url", ref=GIT_DEFAULT_REF), False, id="test_invalid_repository_url"
     ),
     pytest.param(
         {
@@ -48,7 +49,7 @@ GIT_REJECTION_CASES = [
             **build_pvc_test_data_ref(claim_name="some-pvc"),
         },
         True,
-        id="git-and-pvc-conflict",
+        id="test_git_and_pvc_conflict",
     ),
     pytest.param(
         {
@@ -57,7 +58,7 @@ GIT_REJECTION_CASES = [
             **build_pvc_test_data_ref(claim_name="some-pvc"),
         },
         True,
-        id="git-s3-and-pvc-conflict",
+        id="test_git_s3_and_pvc_conflict",
     ),
     pytest.param(
         {
@@ -65,7 +66,7 @@ GIT_REJECTION_CASES = [
             "resolved_sha": "0" * 40,
         },
         True,
-        id="client-supplied-resolved-sha",
+        id="test_client_supplied_resolved_sha",
     ),
 ]
 
@@ -85,8 +86,8 @@ class TestEvalHubGitStoragePublic:
     @pytest.mark.parametrize(
         "git_ref, ref_slug",
         [
-            pytest.param(GIT_PUBLIC_REPO_TAG, "tag", id="tag"),
-            pytest.param(GIT_PUBLIC_REPO_TAG_COMMIT, "commit", id="commit-sha"),
+            pytest.param(GIT_PUBLIC_REPO_TAG, "tag", id="test_tag"),
+            pytest.param(GIT_PUBLIC_REPO_TAG_COMMIT, "commit", id="test_commit_sha"),
         ],
     )
     def test_public_repo_clone_ref_variety(
@@ -97,7 +98,6 @@ class TestEvalHubGitStoragePublic:
         evalhub_mt_ca_bundle_file: str,
         evalhub_mt_route: Route,
         submit_git_job: Callable[..., str],
-        git_public_repo_config: dict[str, str],
         git_ref: str,
         ref_slug: str,
     ) -> None:
@@ -106,13 +106,15 @@ class TestEvalHubGitStoragePublic:
         then the init container checks out that exact ref, the job completes, and it records the
         exact resolved commit SHA the ref points at.
 
-        The main git-storage suite covers only a branch ref with a pattern-level SHA check. The refs
-        here are pinned to the public fixture repo's immutable tag and its commit, so the resolved
-        commit SHA is deterministic (a moving branch cannot anchor an exact commit)."""
+        The main git-storage suite covers only a branch ref with a pattern-level SHA check. This test
+        deliberately uses the pinned constants rather than the overridable fixture, because the tag
+        and expected SHA only exist on the default repository. The refs here are pinned to the public
+        fixture repo's immutable tag and its commit, so the resolved commit SHA is deterministic
+        (a moving branch cannot anchor an exact commit)."""
         job_id = submit_git_job(
-            url=git_public_repo_config["url"],
+            url=GIT_PUBLIC_REPO_URL,
             ref=git_ref,
-            sub_path=git_public_repo_config["sub_path"],
+            sub_path=GIT_PUBLIC_REPO_SUB_PATH,
             tokenizer_path=GIT_TOKENIZER_PATH,
             job_name=f"git-ref-{ref_slug}",
         )
@@ -123,7 +125,7 @@ class TestEvalHubGitStoragePublic:
         assert init_env.get(ENV_GIT_REF) == git_ref, (
             f"Init container {ENV_GIT_REF} mismatch: {init_env.get(ENV_GIT_REF)!r}"
         )
-        assert init_env.get(ENV_GIT_URL) == git_public_repo_config["url"], (
+        assert init_env.get(ENV_GIT_URL) == GIT_PUBLIC_REPO_URL, (
             f"Init container {ENV_GIT_URL} mismatch: {init_env.get(ENV_GIT_URL)!r}"
         )
 
@@ -270,7 +272,10 @@ class TestEvalHubGitStoragePublic:
         assert not benchmarks_with_metrics, (
             f"Evaluation must not produce metrics when the git ref is invalid, got: {benchmarks_with_metrics}"
         )
-        assert find_resolved_sha(obj=job_data) is None, "resolved_sha must not be recorded for a failed checkout"
+        resolved_sha = find_resolved_sha(obj=job_data) or job_data.get("git_commit_sha")
+        assert resolved_sha is None, (
+            f"A resolved commit SHA must not be recorded for a failed checkout, got {resolved_sha!r}"
+        )
 
     @pytest.mark.parametrize("test_data_ref, exact_400", GIT_REJECTION_CASES)
     def test_reject_invalid_git_test_data_ref(
@@ -287,7 +292,7 @@ class TestEvalHubGitStoragePublic:
         a storage-source conflict, or the read-only resolved_sha),
         when the job is submitted,
         then the API rejects it (a specific 400 for conflicts / read-only violations, any 4xx for
-        schema-shape errors) and no job is created.
+        schema-shape errors) with an error message, and no job is created.
 
         The main git-storage suite covers only the plain s3+git conflict."""
         response = post_evalhub_job_with_test_data_ref(
@@ -307,3 +312,10 @@ class TestEvalHubGitStoragePublic:
             assert 400 <= response.status_code < 500, (
                 f"Invalid git test_data_ref must be rejected with a 4xx, got {response.status_code}: {response.text}"
             )
+        try:
+            error_body = response.json()
+        except ValueError:
+            return  # A non-JSON error response is acceptable.
+        assert "error" in error_body or "message" in error_body, (
+            f"Error response missing an error/message field: {error_body}"
+        )
