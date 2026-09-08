@@ -411,10 +411,21 @@ def pytest_sessionstart(session: Session) -> None:
         path=must_gather_dict["must_gather_base_directory"],
         ignore_errors=True,
     )
+
+
+def pytest_collection_finish(session: Session) -> None:
     config = session.config
     if config.getoption("--collect-only") or config.getoption("--setup-plan"):
         LOGGER.info("Skipping global config update for collect-only or setup-plan")
         return
+    if session.items:
+        for item in session.items:
+            item_markers = {mark.name for mark in item.iter_markers()}
+            if "cluster_health" not in item_markers or item_markers & {"operator_health", "component_health"}:
+                break
+        else:
+            LOGGER.info("Skipping global config update for cluster_health-only run (DSC not required)")
+            return
     updated_global_config(admin_client=get_client(), config=config)
 
 
