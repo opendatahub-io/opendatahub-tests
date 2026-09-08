@@ -175,10 +175,7 @@ def config_owner_reference_present(
     """Return True when ownerReferences include the MaaS Config/default UID."""
     if not owner_references:
         return False
-    for owner_ref in owner_references:
-        if owner_ref.uid == config_uid:
-            return True
-    return False
+    return any(owner_ref.uid == config_uid for owner_ref in owner_references)
 
 
 def config_controller_owner_reference_present(
@@ -188,10 +185,7 @@ def config_controller_owner_reference_present(
     """Return True when ownerReferences include Config/default as controller owner."""
     if not owner_references:
         return False
-    for owner_ref in owner_references:
-        if owner_ref.uid == config_uid and owner_ref.controller is True:
-            return True
-    return False
+    return any(owner_ref.uid == config_uid and owner_ref.controller is True for owner_ref in owner_references)
 
 
 def opentelemetry_collector_crd_installed(admin_client: DynamicClient) -> bool:

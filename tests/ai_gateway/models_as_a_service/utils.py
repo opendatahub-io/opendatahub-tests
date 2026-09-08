@@ -9,6 +9,7 @@ from urllib.parse import quote, urlparse
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import NotFoundError, ResourceNotFoundError
 from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.endpoints import Endpoints
@@ -27,6 +28,7 @@ from utilities.constants import (
 )
 from utilities.llmd_utils import get_llm_inference_url
 from utilities.plugins.constant import OpenAIEnpoints, RestHeader
+from utilities.resources.http_route import HTTPRoute
 from utilities.resources.llm_inference_service import LLMInferenceService
 from utilities.resources.maastenantconfig import MaasTenantConfig
 from utilities.resources.rate_limit_policy import RateLimitPolicy
@@ -851,3 +853,37 @@ def verify_maas_tenant_ready(tenant_resource: NamespacedResource) -> None:
 def verify_maas_tenant_config_ready(maas_tenant_config: MaasTenantConfig) -> None:
     """Assert that the MaasTenantConfig CR exists and has Ready=True."""
     verify_maas_tenant_ready(tenant_resource=maas_tenant_config)
+
+
+def get_httproute(
+    client: DynamicClient,
+    name: str,
+    namespace: str,
+) -> HTTPRoute | None:
+    """Look up an HTTPRoute by name/namespace. Returns the resource wrapper or None."""
+    try:
+        route = HTTPRoute(client=client, name=name, namespace=namespace)
+        if route.exists:
+            return route
+    except NotFoundError, ResourceNotFoundError:
+        LOGGER.debug(f"HTTPRoute {namespace}/{name} not found")
+    return None
+
+
+def wait_for_httproute(
+    client: DynamicClient,
+    name: str,
+    namespace: str,
+    timeout: int = 60,
+) -> HTTPRoute:
+    """Poll until the HTTPRoute exists, or raise on timeout."""
+    for route in TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=3,
+        func=get_httproute,
+        client=client,
+        name=name,
+        namespace=namespace,
+    ):
+        if route is not None:
+            return route
