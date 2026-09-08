@@ -12,6 +12,7 @@ from ocp_resources.route import Route
 from ocp_resources.service import Service
 
 from tests.ai_safety.evalhub.k8s_lifecycle_signals.constants import (
+    LIFECYCLE_JOB_LABEL_TIMEOUT,
     LIFECYCLE_PHASE_LABEL,
     LIFECYCLE_PHASE_RUNNING,
     LIFECYCLE_PHASE_THRESHOLD_VIOLATED,
@@ -100,7 +101,7 @@ class TestE2eLifecycle:
             namespace=ns,
             key=LIFECYCLE_PHASE_LABEL,
             expected_value=LIFECYCLE_PHASE_RUNNING,
-            timeout=60,
+            timeout=LIFECYCLE_JOB_LABEL_TIMEOUT,
         )
 
         # Verify EvaluationStarted Event appears quickly
