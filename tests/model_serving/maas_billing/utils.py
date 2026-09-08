@@ -19,7 +19,7 @@ from ocp_resources.group import Group
 from ocp_resources.ingress_config_openshift_io import Ingress as IngressConfig
 from ocp_resources.resource import NamespacedResource, ResourceEditor
 from requests import Response
-from timeout_sampler import TimeoutExpiredError, TimeoutSampler
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
 
 from utilities.constants import (
     MAAS_GATEWAY_NAME,
@@ -838,8 +838,14 @@ def assert_api_key_created_ok(
         assert field in body, f"Response must contain '{field}'"
 
 
-def get_shared_maas_api_deployment(admin_client: DynamicClient, api_namespace: str) -> Deployment | None:
-    """Look up the shared maas-api Deployment. Returns the resource wrapper or None."""
+@retry(
+    wait_timeout=MAAS_COMPONENT_HEALTH_TIMEOUT,
+    sleep=5,
+    exceptions_dict={AssertionError: []},
+    print_log=False,
+)
+def get_shared_maas_api_deployment(admin_client: DynamicClient, api_namespace: str) -> Deployment:
+    """Look up the shared maas-api Deployment, retrying until it exists."""
     try:
         deployment = Deployment(
             client=admin_client,
@@ -851,7 +857,9 @@ def get_shared_maas_api_deployment(admin_client: DynamicClient, api_namespace: s
             return deployment
     except NotFoundError, ResourceNotFoundError:
         LOGGER.debug(f"Deployment {api_namespace}/{MAAS_API_DEPLOYMENT_NAME} not found")
-    return None
+    raise AssertionError(
+        f"Deployment '{MAAS_API_DEPLOYMENT_NAME}' not found in namespace '{api_namespace}'"
+    )
 
 
 def wait_for_shared_maas_api_deployment_available(
@@ -873,26 +881,9 @@ def wait_for_shared_maas_api_deployment_available(
         timeout=timeout,
     )
 
-    maas_api_deployment = None
-    try:
-        for deployment in TimeoutSampler(
-            wait_timeout=timeout,
-            sleep=5,
-            func=get_shared_maas_api_deployment,
-            admin_client=admin_client,
-            api_namespace=api_namespace,
-        ):
-            if deployment is not None:
-                maas_api_deployment = deployment
-                break
-    except TimeoutExpiredError:
-        raise AssertionError(
-            f"Deployment '{MAAS_API_DEPLOYMENT_NAME}' not found in namespace '{api_namespace}' "
-            f"within {timeout}s after MaasTenantConfig DeploymentsAvailable=True"
-        ) from None
-
-    assert maas_api_deployment is not None, (
-        f"Deployment '{MAAS_API_DEPLOYMENT_NAME}' not found in namespace '{api_namespace}'"
+    maas_api_deployment = get_shared_maas_api_deployment(
+        admin_client=admin_client,
+        api_namespace=api_namespace,
     )
     maas_api_deployment.wait_for_condition(condition="Available", status="True", timeout=timeout)
     LOGGER.info(
