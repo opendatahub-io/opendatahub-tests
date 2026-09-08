@@ -207,6 +207,13 @@ class TestE2eLifecycle:
 
         # EvaluationRunning is NOT expected here: the adapter fails at DNS resolution before
         # ever reporting StateRunning, so the server never calls NotifyJobPhaseTransition(StateRunning).
+        started_events = list_events_for_job(
+            admin_client=admin_client,
+            job_name=job_name,
+            namespace=ns,
+            reason=LIFECYCLE_REASON_STARTED,
+        )
+        assert started_events == [], f"EvaluationRunning event must not be emitted for a server-reported failure, got: {started_events}"
 
         # Verify EvaluationFailed from server
         failed_event = wait_for_event(
