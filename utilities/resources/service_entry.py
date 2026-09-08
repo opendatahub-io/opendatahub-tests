@@ -71,13 +71,10 @@ class ServiceEntry(NamespacedResource):
             if self.hosts is None:
                 raise MissingRequiredArgumentError(argument="self.hosts")
 
-
             self.res["spec"] = {}
             _spec = self.res["spec"]
 
-
             _spec["hosts"] = self.hosts
-
 
             if self.addresses is not None:
                 _spec["addresses"] = self.addresses
@@ -102,6 +99,5 @@ class ServiceEntry(NamespacedResource):
 
             if self.workload_selector is not None:
                 _spec["workloadSelector"] = self.workload_selector
-
 
     # End of generated code

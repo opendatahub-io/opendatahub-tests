@@ -9,9 +9,9 @@ from ocp_resources.resource import NamespacedResource
 
 class ExternalModel(NamespacedResource):
     """
-    ExternalModel is the Schema for the externalmodels API.
-It defines an external LLM provider (e.g., OpenAI, Anthropic) that can be
-referenced by MaaSModelRef resources.
+        ExternalModel is the Schema for the externalmodels API.
+    It defines an external LLM provider (e.g., OpenAI, Anthropic) that can be
+    referenced by MaaSModelRef resources.
     """
 
     api_group: str = NamespacedResource.ApiGroup.MAAS_OPENDATAHUB_IO
@@ -66,15 +66,12 @@ referenced by MaaSModelRef resources.
             if self.target_model is None:
                 raise MissingRequiredArgumentError(argument="self.target_model")
 
-
             self.res["spec"] = {}
             _spec = self.res["spec"]
-
 
             _spec["credentialRef"] = self.credential_ref
             _spec["endpoint"] = self.endpoint
             _spec["provider"] = self.provider
             _spec["targetModel"] = self.target_model
-
 
     # End of generated code
