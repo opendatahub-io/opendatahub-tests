@@ -857,9 +857,7 @@ def get_shared_maas_api_deployment(admin_client: DynamicClient, api_namespace: s
             return deployment
     except NotFoundError, ResourceNotFoundError:
         LOGGER.debug(f"Deployment {api_namespace}/{MAAS_API_DEPLOYMENT_NAME} not found")
-    raise AssertionError(
-        f"Deployment '{MAAS_API_DEPLOYMENT_NAME}' not found in namespace '{api_namespace}'"
-    )
+    raise AssertionError(f"Deployment '{MAAS_API_DEPLOYMENT_NAME}' not found in namespace '{api_namespace}'")
 
 
 def wait_for_shared_maas_api_deployment_available(
