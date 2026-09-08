@@ -1060,25 +1060,45 @@ def build_evalhub_kueue_job_payload(
     return payload
 
 
-def find_resolved_sha(obj: Any) -> str | None:
-    """Recursively find the first non-empty resolved_sha in a job response."""
+def find_resolved_sha(obj: Any, max_depth: int = 10, _depth: int = 0) -> str | None:
+    """Recursively find the first non-empty resolved_sha in a job response.
+
+    Args:
+        obj: Any part of a decoded job response (dict, list, or scalar).
+        max_depth: Maximum nesting levels to descend. Bounds the recursion so a
+            deeply nested or cyclic response cannot exhaust the stack.
+        _depth: Internal recursion counter; callers should not set this.
+
+    Returns:
+        The first non-empty resolved_sha string found within max_depth levels,
+        or None if there is none.
+    """
+    if _depth >= max_depth:
+        return None
     if isinstance(obj, dict):
         for key, value in obj.items():
             if key == "resolved_sha" and isinstance(value, str) and value:
                 return value
-            found = find_resolved_sha(obj=value)
+            found = find_resolved_sha(obj=value, max_depth=max_depth, _depth=_depth + 1)
             if found:
                 return found
     elif isinstance(obj, list):
         for item in obj:
-            found = find_resolved_sha(obj=item)
+            found = find_resolved_sha(obj=item, max_depth=max_depth, _depth=_depth + 1)
             if found:
                 return found
     return None
 
 
 def get_git_init_container(spec: Any) -> Any:
-    """Return the git clone init container from a batch Job pod spec."""
+    """Return the git clone init container from a batch Job pod spec.
+
+    Args:
+        spec: The pod spec (spec.template.spec) of the runtime batch Job.
+
+    Returns:
+        The init container named GIT_INIT_CONTAINER_NAME, or None if absent.
+    """
     init_containers = spec.initContainers or []
     return next((container for container in init_containers if container.name == GIT_INIT_CONTAINER_NAME), None)
 
@@ -1088,7 +1108,19 @@ def get_git_job_spec_and_init_container(
     namespace: str,
     evalhub_job_id: str,
 ) -> tuple[Any, Any]:
-    """Return the (pod spec, git-clone init container) for a submitted git job's batch Job."""
+    """Return the pod spec and git-clone init container for a submitted git job.
+
+    Args:
+        admin_client: Cluster-admin dynamic client used to look up the batch Job.
+        namespace: Tenant namespace the evaluation job runs in.
+        evalhub_job_id: EvalHub job id whose runtime batch Job is inspected.
+
+    Returns:
+        A tuple of (pod spec, git-clone init container).
+
+    Raises:
+        AssertionError: If the batch Job has no git-clone init container.
+    """
     batch_jobs = wait_for_evalhub_runtime_job_count(
         admin_client=admin_client,
         namespace=namespace,
@@ -1105,7 +1137,16 @@ def get_git_job_spec_and_init_container(
 
 
 def effective_security_context_field(container_sc: Any, pod_sc: Any, field: str) -> Any:
-    """Effective security-context value for a field: the container setting overrides the pod's."""
+    """Effective security-context value for a field: the container setting overrides the pod's.
+
+    Args:
+        container_sc: The container-level securityContext, or None.
+        pod_sc: The pod-level securityContext, or None.
+        field: Name of the securityContext field to resolve.
+
+    Returns:
+        The container value if set, otherwise the pod value, otherwise None.
+    """
     value = getattr(container_sc, field, None)
     if value is None:
         value = getattr(pod_sc, field, None)
@@ -1122,7 +1163,20 @@ def post_evalhub_job_with_test_data_ref(
     job_name: str,
     test_data_ref: dict,
 ) -> requests.Response:
-    """Build a job payload, stamp a raw test_data_ref onto every benchmark, and POST it unchecked."""
+    """Build a job payload, stamp a raw test_data_ref onto every benchmark, and POST it unchecked.
+
+    Args:
+        host: EvalHub route host.
+        token: Bearer token for the tenant.
+        ca_bundle_file: Path to the CA bundle used to verify TLS.
+        namespace: Tenant namespace, used as both payload namespace and request tenant.
+        service_name: Name of the model service the benchmarks target.
+        job_name: Name given to the submitted job.
+        test_data_ref: Raw test_data_ref dict, written verbatim so invalid shapes reach the API.
+
+    Returns:
+        The raw requests.Response, with no status-code checking.
+    """
     payload = build_evalhub_job_payload(
         model_service_name=service_name,
         tenant_namespace=namespace,
