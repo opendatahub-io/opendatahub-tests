@@ -28,6 +28,7 @@ from tests.spark.upgrade.utils import (
     recreate_role_binding_in_namespace,
     recreate_role_in_namespace,
     recreate_service_account_in_namespace,
+    resubmit_spark_application,
     save_baseline_to_configmap,
 )
 from utilities.constants import DscComponents
@@ -354,6 +355,34 @@ def spark_application_fixture(
         spark_app_instance.deploy()
 
         yield spark_app_instance
+
+
+@pytest.fixture(scope="class")
+def resubmitted_spark_application_fixture(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    spark_application_fixture: SparkApplication,
+    teardown_resources: bool,
+) -> Generator[SparkApplication | None, Any, Any]:
+    """Re-run the pre-upgrade SparkApplication on the upgraded operator.
+
+    Verifies the customer can actively *use* their existing pre-upgrade workload
+    after the upgrade, not just that it survived. Deletes the existing (COMPLETED)
+    resource and recreates it with the same name and spec so the upgraded operator
+    reconciles and runs it again.
+
+    Pre-upgrade: Returns None (only runs post-upgrade)
+    Post-upgrade: Re-submits the existing SparkApplication
+    """
+    if not pytestconfig.option.post_upgrade:
+        yield None
+        return
+
+    yield resubmit_spark_application(
+        client=admin_client,
+        spark_app=spark_application_fixture,
+        teardown=teardown_resources,
+    )
 
 
 @pytest.fixture(scope="session")

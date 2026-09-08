@@ -137,6 +137,54 @@ def create_spark_pi_application_spec(
     }
 
 
+def resubmit_spark_application(
+    client: DynamicClient,
+    spark_app: SparkApplication,
+    teardown: bool,
+) -> SparkApplication:
+    """Re-run an existing SparkApplication by re-submitting its captured spec.
+
+    Represents the customer scenario of re-running a pre-upgrade workload on the
+    upgraded operator. A spark-pi SparkApplication uses restartPolicy: Never, so
+    once it reaches COMPLETED it does not run again on its own. To actively *use*
+    the existing resource, its spec is captured, the terminal resource is deleted,
+    and an identically named/spec'd resource is recreated so the upgraded operator
+    reconciles and runs it again.
+
+    Args:
+        client: Kubernetes client
+        spark_app: The existing (pre-upgrade) SparkApplication to re-run
+        teardown: Whether to clean up the recreated resource on teardown
+
+    Returns:
+        SparkApplication: The re-submitted SparkApplication resource
+    """
+    name = spark_app.name
+    namespace = spark_app.namespace
+    spec = spark_app.instance.to_dict()["spec"]
+
+    LOGGER.info(f"Re-running existing SparkApplication {name} in namespace {namespace}")
+
+    # Delete the completed resource and wait for it to be fully removed before recreating,
+    # so the recreate does not collide with the terminal instance.
+    spark_app.clean_up(wait=True)
+
+    kind_dict = {
+        "apiVersion": "sparkoperator.k8s.io/v1beta2",
+        "kind": "SparkApplication",
+        "metadata": {
+            "name": name,
+            "namespace": namespace,
+        },
+        "spec": spec,
+    }
+
+    resubmitted = SparkApplication(client=client, kind_dict=kind_dict, teardown=teardown)
+    resubmitted.deploy()
+    LOGGER.info(f"Re-submitted SparkApplication {name} in namespace {namespace}")
+    return resubmitted
+
+
 def capture_spark_application_baseline(
     client: DynamicClient,
     spark_app: SparkApplication,

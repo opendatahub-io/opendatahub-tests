@@ -1,7 +1,9 @@
 """Spark Operator upgrade tests.
 
 Pre-upgrade tests deploy SparkApplication resources and capture baseline state.
-Post-upgrade tests validate that resources survived the upgrade and new resources can be created.
+Post-upgrade tests validate that resources survived the upgrade, that the pre-upgrade
+SparkApplication can still be re-run (actively used) on the upgraded operator, and that
+new resources can be created.
 """
 
 import pytest
@@ -84,10 +86,30 @@ class TestPostUpgradeSpark:
         )
 
     @pytest.mark.post_upgrade
-    @pytest.mark.dependency(depends=["spark_app_exists"])
+    @pytest.mark.dependency(name="spark_app_survived", depends=["spark_app_exists"])
     def test_spark_application_post_upgrade_still_completed(self, spark_application_fixture):
         """Test that SparkApplication is still in COMPLETED state after upgrade"""
         verify_spark_app_completed(spark_app=spark_application_fixture)
+
+
+class TestPostUpgradeReuseExistingSparkApplication:
+    """Verify the customer can actively re-use their pre-upgrade SparkApplication.
+
+    The survival checks in TestPostUpgradeSpark only prove the pre-upgrade resource
+    persisted in its terminal COMPLETED state. This class goes further and re-runs
+    the SAME pre-upgrade SparkApplication on the upgraded operator, proving the
+    customer can still use their existing workload after upgrading RHOAI.
+
+    Runs after the survival checks (it re-submits, and therefore mutates, the
+    pre-upgrade resource) and only if that resource survived the upgrade.
+    """
+
+    @pytest.mark.post_upgrade
+    @pytest.mark.dependency(depends=["spark_app_survived"])
+    def test_reuse_existing_spark_application_post_upgrade(self, resubmitted_spark_application_fixture):
+        """Verify the re-submitted pre-upgrade SparkApplication completes on the upgraded operator"""
+        assert resubmitted_spark_application_fixture is not None, "Fixture returned None; only runs post-upgrade"
+        verify_spark_app_completed(spark_app=resubmitted_spark_application_fixture)
 
 
 @pytest.mark.usefixtures("post_upgrade_spark_dsc_patch")
