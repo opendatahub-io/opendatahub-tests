@@ -14,6 +14,7 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.service import Service
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
+from tests.ai_gateway.models_as_a_service.maas_subscription.utils import poll_expected_status
 from tests.ai_gateway.models_as_a_service.utils import create_api_key, revoke_api_key
 from utilities.constants import MAAS_GATEWAY_NAMESPACE
 from utilities.general import generate_random_name
@@ -488,9 +489,16 @@ def assert_bbr_inference_status(
     payload: dict[str, Any],
     expected_status: int,
 ) -> None:
-    """Verify a POST to the BBR inference endpoint returns the expected HTTP status."""
-    response = session.post(url=inference_url, headers=headers, json=payload, timeout=60)
-    assert response.status_code == expected_status, (
-        f"Expected {expected_status} on BBR inference, got {response.status_code}"
+    """Verify a POST to the BBR inference endpoint returns the expected HTTP status.
+
+    Polls until the expected status is seen to tolerate Envoy upstream propagation
+    delay after the model reports Ready (RHOAIENG-55154).
+    """
+    response = poll_expected_status(
+        request_session_http=session,
+        model_url=inference_url,
+        headers=headers,
+        payload=payload,
+        expected_statuses={expected_status},
     )
     LOGGER.info(f"BBR inference POST {inference_url} returned {response.status_code}")
