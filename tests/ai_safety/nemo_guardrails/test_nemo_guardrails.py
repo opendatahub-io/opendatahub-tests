@@ -46,6 +46,7 @@ def test_nemo_guardrails_crd_exists(
 @pytest.mark.ai_safety
 def test_mcp_gateway_extension_crd_exists(
     admin_client: DynamicClient,
+    installed_mcp_gateway,
 ) -> None:
     """Verify mcpgatewayextensions CRD exists on the cluster."""
     crd = CustomResourceDefinition(
