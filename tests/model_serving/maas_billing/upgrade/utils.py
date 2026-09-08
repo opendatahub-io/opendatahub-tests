@@ -12,7 +12,7 @@ from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.maas_subscription import MaaSSubscription
 from ocp_resources.resource import NamespacedResource
 from ocp_resources.service import Service
-from timeout_sampler import TimeoutSampler
+from timeout_sampler import retry
 
 from tests.model_serving.maas_billing.external_model.utils import (
     get_httproute,
@@ -261,6 +261,7 @@ def legacy_maas_networking_absent(
     )
 
 
+@retry(wait_timeout=300, sleep=5, exceptions_dict={AssertionError: []}, print_log=False)
 def wait_for_legacy_maas_prefixed_networking_deleted(
     client: DynamicClient,
     resource_name: str,
@@ -268,18 +269,11 @@ def wait_for_legacy_maas_prefixed_networking_deleted(
     timeout: int = 300,
 ) -> None:
     """Poll until maas-prefixed legacy networking is removed."""
-    for _sample in TimeoutSampler(
-        wait_timeout=timeout,
-        sleep=5,
-        func=legacy_maas_networking_absent,
+    assert legacy_maas_networking_absent(
         client=client,
         resource_name=resource_name,
         namespace=namespace,
-    ):
-        if legacy_maas_networking_absent(client=client, resource_name=resource_name, namespace=namespace):
-            return
-
-    raise TimeoutError(f"Legacy networking '{namespace}/{resource_name}' still present after {timeout}s")
+    ), f"Legacy networking '{namespace}/{resource_name}' still present after {timeout}s"
 
 
 def owner_ref_is_legacy_external_model(owner_ref: Any, model_name: str) -> bool:
@@ -347,25 +341,18 @@ def get_inference_http_route_name(external_model: ExternalModel) -> str:
     return ""
 
 
+@retry(wait_timeout=300, sleep=5, exceptions_dict={AssertionError: []}, print_log=False)
 def wait_for_inference_external_model_programmed(
     external_model: ExternalModel,
     timeout: int = 300,
 ) -> str:
     """Poll until the inference ExternalModel reports a programmed HTTPRoute name."""
-    for _sample in TimeoutSampler(
-        wait_timeout=timeout,
-        sleep=5,
-        func=get_inference_http_route_name,
-        external_model=external_model,
-    ):
-        http_route_name = get_inference_http_route_name(external_model=external_model)
-        if http_route_name:
-            return http_route_name
-
-    raise TimeoutError(
+    http_route_name = get_inference_http_route_name(external_model=external_model)
+    assert http_route_name, (
         f"Inference ExternalModel '{external_model.namespace}/{external_model.name}' "
         f"did not report status.httpRouteName within {timeout}s"
     )
+    return http_route_name
 
 
 def verify_inference_external_model_programmed(external_model: ExternalModel) -> str:

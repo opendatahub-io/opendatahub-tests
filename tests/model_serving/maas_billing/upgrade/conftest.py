@@ -41,7 +41,7 @@ from tests.model_serving.maas_billing.utils import (
 from utilities.constants import MAAS_GATEWAY_NAME, MAAS_GATEWAY_NAMESPACE
 from utilities.infra import create_ns
 from utilities.resources.external_model import ExternalModel
-from utilities.resources.legacy_external_model import LegacyExternalModel
+from utilities.resources.external_model_maas_opendatahub_io import ExternalModel as LegacyExternalModel
 
 LOGGER = structlog.get_logger(name=__name__)
 
