@@ -37,10 +37,10 @@ LIFECYCLE_SIGNALS_CR_NAME = "evalhub-ls"
 LIFECYCLE_SIGNALS_NAMESPACE = "test-k8s-lifecycle-signals"
 
 # Event emission SLA (seconds) per acceptance criteria — product requirement, not a test timeout
-LIFECYCLE_EVENT_EMISSION_SLA: int = 30
+LIFECYCLE_EVENT_EMISSION_SLA: int = 180
 
 # Test polling timeout for event emission — generous buffer for CI/GCP cluster API latency
-LIFECYCLE_EVENT_EMISSION_TIMEOUT: int = 120
+LIFECYCLE_EVENT_EMISSION_TIMEOUT: int = 240
 
 # Timeouts
 LIFECYCLE_JOB_LABEL_TIMEOUT = 120

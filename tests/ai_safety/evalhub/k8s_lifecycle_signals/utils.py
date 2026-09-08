@@ -1,5 +1,6 @@
 import json
 import re
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
@@ -14,6 +15,7 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_safety.evalhub.constants import EVALHUB_EVENTS_CLUSTERROLE, EVALHUB_VLLM_EMULATOR_PORT
 from tests.ai_safety.evalhub.k8s_lifecycle_signals.constants import (
+    LIFECYCLE_EVENT_EMISSION_SLA,
     LIFECYCLE_EVENT_EMISSION_TIMEOUT,
     LIFECYCLE_JOB_LABEL_TIMEOUT,
     LIFECYCLE_JOB_SUBMIT_TIMEOUT,
@@ -394,7 +396,9 @@ def wait_for_event(
     """Wait until at least one Kubernetes Event with the given reason exists for the Job.
 
     Returns the first matching Event dict. Raises TimeoutExpiredError on timeout.
+    Asserts the event arrived within LIFECYCLE_EVENT_EMISSION_SLA seconds.
     """
+    start = time.monotonic()
 
     def _find_event() -> dict[str, Any] | None:
         events = list_events_for_job(
@@ -407,7 +411,12 @@ def wait_for_event(
 
     for event in TimeoutSampler(wait_timeout=timeout, sleep=2, func=_find_event):
         if event is not None:
-            LOGGER.info(f"Event {reason} emitted for job {job_name}")
+            elapsed = time.monotonic() - start
+            LOGGER.info(f"Event {reason} emitted for job {job_name} (elapsed={elapsed:.1f}s)")
+            assert elapsed <= LIFECYCLE_EVENT_EMISSION_SLA, (
+                f"Event {reason!r} for job {job_name} arrived after SLA: "
+                f"{elapsed:.1f}s > {LIFECYCLE_EVENT_EMISSION_SLA}s"
+            )
             return event
     raise TimeoutExpiredError(f"Event {reason!r} for job {job_name} not emitted within {timeout}s")
 
