@@ -2,7 +2,6 @@
 
 from collections.abc import Generator
 from typing import Any
-from ocp_utilities.operators import install_operator, uninstall_operator
 
 import pytest
 from kubernetes.dynamic import DynamicClient
@@ -16,6 +15,7 @@ from ocp_resources.nemo_guardrails import NemoGuardrails
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.subscription import Subscription
+from ocp_utilities.operators import install_operator, uninstall_operator
 
 from tests.ai_safety.nemo_guardrails.constants import (
     BBR_SUB_FILTER_NAME,
