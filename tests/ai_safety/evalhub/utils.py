@@ -1073,7 +1073,7 @@ def find_resolved_sha(obj: Any, max_depth: int = 10, _depth: int = 0) -> str | N
         The first non-empty resolved_sha string found within max_depth levels,
         or None if there is none.
     """
-    if _depth >= max_depth:
+    if _depth > max_depth:
         return None
     if isinstance(obj, dict):
         for key, value in obj.items():
