@@ -143,8 +143,14 @@ def evalhub_mcp_mt_cr(
         for sample in TimeoutSampler(wait_timeout=300, sleep=2, func=lambda: evalhub.instance.status):
             if sample.get("ready") == "True":
                 break
-            if sample.get("phase") == "Error":
-                pytest.fail(f"EvalHub {EVALHUB_MCP_CR_NAME} entered Error phase: {sample.get('conditions')}")
+            phase = sample.get("phase", "")
+            if phase == "Error":
+                mcp_status = sample.get("mcp", {})
+                pytest.fail(
+                    f"EvalHub entered Error phase during setup.\n"
+                    f"  Top-level status: {sample}\n"
+                    f"  MCP sub-status:   {mcp_status}"
+                )
         yield evalhub
 
 
