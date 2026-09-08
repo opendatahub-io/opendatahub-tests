@@ -9,8 +9,10 @@ from urllib.parse import quote, urlparse
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import NotFoundError, ResourceNotFoundError
 from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.data_science_cluster import DataScienceCluster
+from ocp_resources.deployment import Deployment
 from ocp_resources.endpoints import Endpoints
 from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.group import Group
@@ -39,6 +41,8 @@ DSC_CRD_NAME = "datascienceclusters.datasciencecluster.opendatahub.io"
 MAAS_TENANT_CONFIG_CRD_NAME = f"maastenantconfigs.{ApiGroups.MAAS_IO}"
 LEGACY_TENANT_CRD_NAME = f"tenants.{ApiGroups.MAAS_IO}"
 DEFAULT_MAAS_TENANT_NAME = "default-tenant"
+MAAS_API_DEPLOYMENT_NAME = "maas-api"
+MAAS_COMPONENT_HEALTH_TIMEOUT = 300
 MaaSTenantResource = MaasTenantConfig | Tenant
 
 
@@ -832,6 +836,69 @@ def assert_api_key_created_ok(
     )
     for field in required_fields:
         assert field in body, f"Response must contain '{field}'"
+
+
+def get_shared_maas_api_deployment(admin_client: DynamicClient, api_namespace: str) -> Deployment | None:
+    """Look up the shared maas-api Deployment. Returns the resource wrapper or None."""
+    try:
+        deployment = Deployment(
+            client=admin_client,
+            name=MAAS_API_DEPLOYMENT_NAME,
+            namespace=api_namespace,
+            wait_for_resource=False,
+        )
+        if deployment.exists:
+            return deployment
+    except NotFoundError, ResourceNotFoundError:
+        LOGGER.debug(f"Deployment {api_namespace}/{MAAS_API_DEPLOYMENT_NAME} not found")
+    return None
+
+
+def wait_for_shared_maas_api_deployment_available(
+    admin_client: DynamicClient,
+    api_namespace: str,
+    tenant_namespace: str,
+    timeout: int = MAAS_COMPONENT_HEALTH_TIMEOUT,
+) -> None:
+    """Wait until default-tenant deployments are ready and the shared maas-api Deployment is Available."""
+    maas_tenant_config = MaasTenantConfig(
+        client=admin_client,
+        name=DEFAULT_MAAS_TENANT_NAME,
+        namespace=tenant_namespace,
+        ensure_exists=True,
+    )
+    maas_tenant_config.wait_for_condition(
+        condition="DeploymentsAvailable",
+        status="True",
+        timeout=timeout,
+    )
+
+    maas_api_deployment = None
+    try:
+        for deployment in TimeoutSampler(
+            wait_timeout=timeout,
+            sleep=5,
+            func=get_shared_maas_api_deployment,
+            admin_client=admin_client,
+            api_namespace=api_namespace,
+        ):
+            if deployment is not None:
+                maas_api_deployment = deployment
+                break
+    except TimeoutExpiredError:
+        raise AssertionError(
+            f"Deployment '{MAAS_API_DEPLOYMENT_NAME}' not found in namespace '{api_namespace}' "
+            f"within {timeout}s after MaasTenantConfig DeploymentsAvailable=True"
+        ) from None
+
+    assert maas_api_deployment is not None, (
+        f"Deployment '{MAAS_API_DEPLOYMENT_NAME}' not found in namespace '{api_namespace}'"
+    )
+    maas_api_deployment.wait_for_condition(condition="Available", status="True", timeout=timeout)
+    LOGGER.info(
+        f"Deployment '{MAAS_API_DEPLOYMENT_NAME}' is Available in namespace '{api_namespace}' "
+        f"(tenant namespace '{tenant_namespace}')"
+    )
 
 
 def verify_maas_gateway_programmed(gateway: Gateway) -> None:

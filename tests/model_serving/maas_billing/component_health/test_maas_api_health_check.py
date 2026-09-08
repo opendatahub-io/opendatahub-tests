@@ -2,8 +2,9 @@ import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.data_science_cluster import DataScienceCluster
-from ocp_resources.deployment import Deployment
+from ocp_resources.namespace import Namespace
 
+from tests.model_serving.maas_billing.utils import wait_for_shared_maas_api_deployment_available
 from utilities.constants import DscComponents
 from utilities.general import wait_for_pods_running
 
@@ -38,18 +39,13 @@ class TestMaaSApiComponentHealth:
         self,
         admin_client: DynamicClient,
         maas_api_infra_namespace: str,
+        maas_subscription_namespace: Namespace,
     ) -> None:
-        """Verify maas-api deployment Available=True in the infrastructure namespace."""
-        maas_api_deployment = Deployment(
-            client=admin_client,
-            name="maas-api",
-            namespace=maas_api_infra_namespace,
-            ensure_exists=True,
-        )
-        maas_api_deployment.wait_for_condition(
-            condition="Available",
-            status="True",
-            timeout=120,
+        """Verify maas-api deployment Available=True after default-tenant deployments reconcile."""
+        wait_for_shared_maas_api_deployment_available(
+            admin_client=admin_client,
+            api_namespace=maas_api_infra_namespace,
+            tenant_namespace=maas_subscription_namespace.name,
         )
 
     def test_maas_api_pods_health(
