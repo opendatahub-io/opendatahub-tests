@@ -213,7 +213,9 @@ class TestE2eLifecycle:
             namespace=ns,
             reason=LIFECYCLE_REASON_STARTED,
         )
-        assert started_events == [], f"EvaluationRunning event must not be emitted for a server-reported failure, got: {started_events}"
+        assert started_events == [], (
+            f"EvaluationRunning event must not be emitted for a server-reported failure, got: {started_events}"
+        )
 
         # Verify EvaluationFailed from server
         failed_event = wait_for_event(
