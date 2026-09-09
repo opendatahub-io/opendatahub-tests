@@ -11,10 +11,8 @@ from timeout_sampler import retry
 from tests.ai_hub.constants import CATALOG_CONTAINER
 from tests.ai_hub.model_catalog.constants import (
     PERFORMANCE_DATA_DIR,
-    REDHAT_AI_CATALOG_ID,
-    REDHAT_AI_CATALOG_NAME,
-    REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
     VALIDATED_CATALOG_ID,
+    VALIDATED_CATALOG_LABEL,
 )
 from tests.ai_hub.model_catalog.db_constants import (
     FILTER_MODELS_BY_LICENSE_AND_LANGUAGE_DB_QUERY,
@@ -83,15 +81,10 @@ def get_models_matching_search_from_database(
     # Choose query based on whether source filtering is needed
     if source_label:
         # Simple direct mapping check
-        if source_label == REDHAT_AI_CATALOG_NAME:
-            catalog_id = REDHAT_AI_CATALOG_ID
-        elif source_label == REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME:
+        if source_label == VALIDATED_CATALOG_LABEL:
             catalog_id = VALIDATED_CATALOG_ID
         else:
-            raise ValueError(
-                f"Unknown source_label: '{source_label}'. "
-                f"Supported labels: {REDHAT_AI_CATALOG_NAME}, {REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME}"
-            )
+            raise ValueError(f"Unknown source_label: '{source_label}'. Supported label: {VALIDATED_CATALOG_LABEL}")
 
         # Use the extended query with source_id filtering from db_constants
         search_query = SEARCH_MODELS_WITH_SOURCE_ID_DB_QUERY.format(

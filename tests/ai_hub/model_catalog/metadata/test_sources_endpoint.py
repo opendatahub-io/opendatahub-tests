@@ -5,7 +5,6 @@ import structlog
 
 from tests.ai_hub.model_catalog.constants import (
     OTHER_MODELS_CATALOG_ID,
-    REDHAT_AI_CATALOG_ID,
     VALIDATED_CATALOG_ID,
 )
 from tests.ai_hub.utils import execute_get_command_with_retry
@@ -21,7 +20,7 @@ class TestSourcesEndpoint:
 
     @pytest.mark.parametrize(
         "sparse_override_catalog_source",
-        [{"id": REDHAT_AI_CATALOG_ID, "field_name": "enabled", "field_value": False}],
+        [{"id": VALIDATED_CATALOG_ID, "field_name": "enabled", "field_value": False}],
         indirect=True,
     )
     @pytest.mark.tier1
@@ -57,18 +56,19 @@ class TestSourcesEndpoint:
         )
 
 
+@pytest.mark.tier1
 class TestAssetTypeFilter:
     """Tests for /sources endpoint assetType query parameter filtering."""
 
     @pytest.mark.parametrize(
         "asset_type,expected_ids",
         [
-            (None, {REDHAT_AI_CATALOG_ID, VALIDATED_CATALOG_ID, OTHER_MODELS_CATALOG_ID}),
-            ("models", {REDHAT_AI_CATALOG_ID, VALIDATED_CATALOG_ID, OTHER_MODELS_CATALOG_ID}),
+            (None, {VALIDATED_CATALOG_ID, OTHER_MODELS_CATALOG_ID}),
+            ("models", {VALIDATED_CATALOG_ID, OTHER_MODELS_CATALOG_ID}),
             ("mcp_servers", DEFAULT_MCP_CATALOG_IDS),
             ("invalid_value", set()),
         ],
-        ids=["default-models", "explicit-models", "mcp-servers", "invalid-empty"],
+        ids=["test_default_models", "test_explicit_models", "test_mcp_servers", "test_invalid_empty"],
     )
     def test_asset_type_filters_sources(
         self: Self,

@@ -11,41 +11,29 @@ MULTIPLE_CUSTOM_CATALOG_VALUES: list[dict[str, str]] = [
     {"id": CUSTOM_CATALOG_ID2, "model_name": SAMPLE_MODEL_NAME2},
 ]
 
-REDHAT_AI_CATALOG_NAME: str = "Red Hat AI"
-REDHAT_AI_VALIDATED_CATALOG_NAME: str = "Red Hat AI validated"
-REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME: str = "Red Hat AI Validated"
-REDHAT_AI_FILTER: str = "Red+Hat+AI"
-REDHAT_AI_VALIDATED_FILTER = "Red+Hat+AI+Validated"
+VALIDATED_CATALOG_NAME: str = "Red Hat Validated Models"
+VALIDATED_CATALOG_LABEL: str = "Red Hat AI validated"
 OTHER_MODELS_CATALOG_ID: str = "other_models"
+OTHER_MODELS_CATALOG_NAME: str = "Other Models"
 SAMPLE_MODEL_NAME3 = "mistralai/Ministral-8B-Instruct-2410"
-REDHAT_AI_CATALOG_ID: str = "redhat_ai_models"
-OTHER_MODELS: str = "Other"
 VALIDATED_CATALOG_ID: str = "redhat_ai_validated_models"
+RETIRED_CATALOG_ID: str = "redhat_ai_models"
 DEFAULT_CATALOGS: dict[str, Any] = {
-    REDHAT_AI_CATALOG_ID: {
-        "name": REDHAT_AI_CATALOG_NAME,
-        "type": "yaml",
-        "properties": {"yamlCatalogPath": "/shared-data/models-catalog.yaml"},
-        "labels": [REDHAT_AI_CATALOG_NAME],
-        "enabled": True,
-    },
     VALIDATED_CATALOG_ID: {
-        "name": REDHAT_AI_VALIDATED_CATALOG_NAME,
+        "name": VALIDATED_CATALOG_NAME,
         "type": "yaml",
         "properties": {"yamlCatalogPath": "/shared-data/validated-models-catalog.yaml"},
-        "labels": [REDHAT_AI_VALIDATED_CATALOG_NAME],
+        "labels": [VALIDATED_CATALOG_LABEL],
         "enabled": True,
     },
     OTHER_MODELS_CATALOG_ID: {
-        "name": OTHER_MODELS,
+        "name": OTHER_MODELS_CATALOG_NAME,
         "type": "yaml",
         "properties": {"yamlCatalogPath": "/shared-data/other-models-catalog.yaml"},
         "labels": None,
         "enabled": True,
     },
 }
-
-DEFAULT_CATALOG_FILE: str = DEFAULT_CATALOGS[REDHAT_AI_CATALOG_ID]["properties"]["yamlCatalogPath"]
 
 VALIDATED_CATALOG_FILE: str = DEFAULT_CATALOGS[VALIDATED_CATALOG_ID]["properties"]["yamlCatalogPath"]
 
