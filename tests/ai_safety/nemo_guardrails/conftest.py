@@ -698,37 +698,39 @@ def installed_mcp_gateway(
 
     operator_installed = False
 
-    if not subscription.exists:
-        # Install operator in AllNamespaces mode (required by dependencies)
-        # Empty target_namespaces list means AllNamespaces mode
-        install_operator(
-            admin_client=admin_client,
-            target_namespaces=[],
-            name=operator_name,
-            channel="preview",
-            source="redhat-operators",
-            operator_namespace="openshift-operators",
-            timeout=900,
-            install_plan_approval="Automatic",
+    try:
+        if not subscription.exists:
+            # Install operator in AllNamespaces mode (required by dependencies)
+            # Empty target_namespaces list means AllNamespaces mode
+            install_operator(
+                admin_client=admin_client,
+                target_namespaces=[],
+                name=operator_name,
+                channel="preview",
+                source="redhat-operators",
+                operator_namespace="openshift-operators",
+                timeout=900,
+                install_plan_approval="Automatic",
+            )
+            operator_installed = True
+
+        # Wait for CRD to be available
+        crd = CustomResourceDefinition(
+            client=admin_client,
+            name="mcpgatewayextensions.mcp.kuadrant.io",
         )
-        operator_installed = True
+        crd.wait(timeout=300)
 
-    # Wait for CRD to be available
-    crd = CustomResourceDefinition(
-        client=admin_client,
-        name="mcpgatewayextensions.mcp.kuadrant.io",
-    )
-    crd.wait(timeout=300)
-
-    yield
-
-    # Cleanup: uninstall operator if we installed it
-    if operator_installed:
-        uninstall_operator(
-            admin_client=admin_client,
-            name=operator_name,
-            namespace="openshift-operators",
-        )
+        yield
+    finally:
+        # Cleanup: uninstall operator if we installed it
+        if operator_installed:
+            uninstall_operator(
+                admin_client=admin_client,
+                name=operator_name,
+                operator_namespace="openshift-operators",
+                clean_up_namespace=False,
+            )
 
 
 @pytest.fixture(scope="session")
