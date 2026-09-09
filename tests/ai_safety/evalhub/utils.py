@@ -1334,10 +1334,7 @@ def check_workload_admitted(workload: Workload) -> bool:
         True if the workload has Admitted=True condition.
     """
     conditions = (workload.instance.status or {}).get("conditions", [])
-    for condition in conditions:
-        if condition.get("type") == "Admitted" and condition.get("status") == "True":
-            return True
-    return False
+    return any(condition.get("type") == "Admitted" and condition.get("status") == "True" for condition in conditions)
 
 
 def check_workload_quota_reserved(workload: Workload) -> bool:
