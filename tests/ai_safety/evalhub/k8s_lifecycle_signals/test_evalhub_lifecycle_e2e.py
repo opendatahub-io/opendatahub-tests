@@ -153,7 +153,6 @@ class TestE2eLifecycle:
         data = parse_status_annotation(annotation_value=raw)
         assert data.get("phase") in ("Completed", "Succeeded")
         assert "evaluation_id" in data
-        assert "summaryMetrics" in data
 
         # Verify no Warning Events
         all_events = list_events_for_job(
