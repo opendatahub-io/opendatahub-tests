@@ -136,10 +136,8 @@ def evalhub_mcp_mt_cr(
         },
         wait_for_resource=False,
     ) as evalhub:
-        # evalhub.wait() only checks that the object exists, not that the operator
-        # has finished reconciling it, so poll status instead. Fail fast on phase
-        # "Error" rather than waiting out the full timeout; "Pending" is the normal
-        # in-progress state and must not be treated as a failure.
+        # Poll until the EvalHub operator reports the CR as ready.
+        # Pending and None are expected and should not stop polling.
         for sample in TimeoutSampler(wait_timeout=300, sleep=2, func=lambda: evalhub.instance.status):
             if sample is None:
                 continue
