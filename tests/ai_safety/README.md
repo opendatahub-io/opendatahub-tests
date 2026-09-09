@@ -1,6 +1,6 @@
 # Model Explainability Tests
 
-This directory contains tests for AI/ML model explainability, trustworthiness, evaluation, and safety components in OpenDataHub/RHOAI. It covers TrustyAI Service, Guardrails Orchestrator, LM Eval, EvalHub, and the TrustyAI Operator.
+This directory contains tests for AI/ML model explainability, trustworthiness, evaluation, and safety components in OpenDataHub/RHOAI. It covers TrustyAI Service, NeMo Guardrails, LM Eval, EvalHub, and the TrustyAI Operator.
 
 ## Directory Structure
 
@@ -13,14 +13,6 @@ ai_safety/
 │   ├── conftest.py
 │   ├── constants.py
 │   ├── test_evalhub_health.py           # Health endpoint validation
-│   └── utils.py
-│
-├── guardrails/                          # AI Safety Guardrails tests
-│   ├── conftest.py                      # Detectors, Tempo, OpenTelemetry fixtures
-│   ├── constants.py
-│   ├── test_guardrails.py               # Built-in, HuggingFace, autoconfig tests
-│   ├── upgrade/
-│   │   └── test_guardrails_upgrade.py   # Pre/post-upgrade tests
 │   └── utils.py
 │
 ├── lm_eval/                             # Language Model Evaluation tests
@@ -69,7 +61,6 @@ ai_safety/
 ### Current Test Suites
 
 - **`evalhub/`** - EvalHub service health endpoint validation via kube-rbac-proxy
-- **`guardrails/`** - Guardrails Orchestrator tests with built-in regex detectors (PII), HuggingFace detectors (prompt injection, HAP), auto-configuration, and gateway routing. Includes OpenTelemetry/Tempo trace integration
 - **`lm_eval/`** - Language Model Evaluation tests covering HuggingFace models, local/offline tasks, vLLM integration, S3 storage, and OCI registry artifacts
 - **`nemo_guardrails/`** - NeMo Guardrails tests for LLM-as-a-judge (self-check policies), Presidio PII detection (email, SSN, credit card, person names), multi-server deployments, multi-configuration servers, authentication (kube-rbac-proxy), and secret mounting for API tokens
 - **`trustyai_operator/`** - TrustyAI operator container image validation (SHA256 digests, CSV relatedImages)
@@ -102,9 +93,6 @@ uv run pytest tests/ai_safety/
 ```bash
 # Run TrustyAI Service tests
 uv run pytest tests/ai_safety/trustyai_service/
-
-# Run Guardrails Orchestrator tests
-uv run pytest tests/ai_safety/guardrails/
 
 # Run NeMo Guardrails tests
 uv run pytest tests/ai_safety/nemo_guardrails/
@@ -150,41 +138,6 @@ Upgrade tests run in two phases:
    ```
 
 ### Upgrade Test Coverage
-
-#### Guardrails Orchestrator
-
-**Location:** `tests/ai_safety/guardrails/upgrade/test_guardrails_upgrade.py`
-
-**Test Classes:**
-
-- `TestGuardrailsOrchestratorWithBuiltInDetectorsPreUpgrade`
-- `TestGuardrailsOrchestratorWithBuiltInDetectorsPostUpgrade`
-
-**Covered Upgrade Paths:**
-
-- Built-in detector persistence (regex, PII detection)
-  - Pre-upgrade: Deploy orchestrator with built-in regex detectors for email and SSN detection
-  - Post-upgrade: Verify detectors continue to function, health endpoints remain responsive
-  - Validated: Input detection, output detection, passthrough routing, health/info endpoints
-
-**What's Validated:**
-
-- Orchestrator health and info endpoints remain responsive after upgrade
-- Built-in regex detectors continue detecting unsuitable input/output
-- Gateway routing and passthrough functionality persists
-- Configuration and detector settings survive the upgrade
-
-**Example:**
-
-```bash
-# Pre-upgrade
-uv run pytest -m pre_upgrade tests/ai_safety/guardrails/upgrade/
-
-# Perform platform upgrade
-
-# Post-upgrade
-uv run pytest -m post_upgrade tests/ai_safety/guardrails/upgrade/
-```
 
 #### TrustyAI Service
 
