@@ -160,7 +160,9 @@ class TestAnnAnnotationStatus:
             raise AssertionError(f"timestamp is not a valid RFC 3339 UTC value: {ts!r}") from exc
 
         assert "evaluation_id" in data, f"Missing 'evaluation_id' field in annotation: {data}"
-        assert isinstance(data["evaluation_id"], str) and data["evaluation_id"], "evaluation_id must be a non-empty string"
+        assert isinstance(data["evaluation_id"], str) and data["evaluation_id"], (
+            "evaluation_id must be a non-empty string"
+        )
 
         assert "summaryMetrics" in data, f"Missing 'summaryMetrics' field in annotation: {data}"
         assert isinstance(data["summaryMetrics"], dict), (
