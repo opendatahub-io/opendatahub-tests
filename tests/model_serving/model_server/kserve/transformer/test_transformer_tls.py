@@ -36,8 +36,7 @@ def _get_kserve_container(deployment: Deployment):
     )
 
 
-# @pytest.mark.tier1
-# removed from tier1, this feature is intented to be available from 3.6ea2+
+@pytest.mark.tier1
 @pytest.mark.tls
 @pytest.mark.rawdeployment
 @pytest.mark.parametrize(
