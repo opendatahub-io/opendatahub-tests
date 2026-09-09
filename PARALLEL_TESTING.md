@@ -9,8 +9,7 @@ pytest tests/ai_safety/ \
   -n 2 \
   --dist loadfile \
   -m tier1 \
-  -k "not gpu" \
-  --ignore=tests/ai_safety/guardrails/test_guardrails_gpu.py
+  -k "not gpu"
 ```
 
 **Results:** 77/99 tests pass in ~35min (vs ~70min sequential estimate).
@@ -30,7 +29,6 @@ pytest tests/ai_safety/ \
 - `-n 2`: Use 2 parallel workers
 - `--dist loadfile`: Keep test classes together (REQUIRED)
 - `-k "not gpu"`: Exclude GPU tests on CPU clusters
-- `--ignore=tests/ai_safety/guardrails/test_guardrails_gpu.py`: Skip GPU test file
 
 ### Optional Flags
 
@@ -124,7 +122,6 @@ Add to `.github/workflows/`:
       --dist loadfile \
       -m tier1 \
       -k "not gpu" \
-      --ignore=tests/ai_safety/guardrails/test_guardrails_gpu.py \
       -v
 ```
 
