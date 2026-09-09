@@ -47,7 +47,7 @@ class TestGeminiPerRequestAuth:
             without affecting the config-level key.
         """
         if not GEMINI_API_KEY_SECONDARY:
-            pytest.fail(reason="OGX_CORE_GEMINI_API_KEY_SECONDARY not set; cannot test per-request key override")
+            pytest.skip(reason="OGX_CORE_GEMINI_API_KEY_SECONDARY not set; cannot test per-request key override")
 
         # Baseline: config-level key.
         baseline = ogx_client.chat.completions.create(

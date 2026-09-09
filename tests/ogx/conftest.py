@@ -349,9 +349,14 @@ def ogx_models(ogx_client: OgxClient) -> ModelInfo:
     selected_llm = None
     if OGX_CORE_INFERENCE_MODEL:
         selected_llm = next(
-            (model for model in llm_models if OGX_CORE_INFERENCE_MODEL in model.id),
+            (model for model in llm_models if model.id == OGX_CORE_INFERENCE_MODEL),
             None,
         )
+        if not selected_llm:
+            selected_llm = next(
+                (model for model in llm_models if OGX_CORE_INFERENCE_MODEL in model.id),
+                None,
+            )
         if not selected_llm:
             LOGGER.warning(
                 f"Configured OGX_CORE_INFERENCE_MODEL='{OGX_CORE_INFERENCE_MODEL}' "
