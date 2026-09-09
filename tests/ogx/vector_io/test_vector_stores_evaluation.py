@@ -1,7 +1,15 @@
+import platform
 from typing import Any
 
 import pytest
 import structlog
+
+if platform.machine() == "ppc64le":
+    pytest.skip(
+        "ragas is not supported on PPC64LE",
+        allow_module_level=True,
+    )
+
 from ragas import EvaluationDataset, SingleTurnSample, evaluate
 from ragas.metrics import AnswerRelevancy, ContextPrecision, ContextRecall, Faithfulness
 
