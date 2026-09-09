@@ -6,14 +6,12 @@ import tests.ogx.conftest as ogx_conftest
 
 
 class DummyModel:
-
     def __init__(self, model_id: str, model_type: str = "llm"):
         self.id = model_id
         self.custom_metadata = {"model_type": model_type}
 
 
 class DummyProvider:
-
     def __init__(self, provider_id: str):
         self.provider_id = provider_id
 
@@ -67,7 +65,9 @@ class DummyProvider:
         ),
     ],
 )
-def test_ogx_models_selection(monkeypatch: pytest.MonkeyPatch, configured_model: str, available_models: list[DummyModel], expected_model_id: str) -> None:
+def test_ogx_models_selection(
+    monkeypatch: pytest.MonkeyPatch, configured_model: str, available_models: list[DummyModel], expected_model_id: str
+) -> None:
     monkeypatch.setattr(ogx_conftest, "OGX_CORE_INFERENCE_MODEL", configured_model)
 
     mock_client = MagicMock()
