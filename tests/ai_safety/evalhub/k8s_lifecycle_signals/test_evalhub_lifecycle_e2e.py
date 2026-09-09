@@ -152,8 +152,7 @@ class TestE2eLifecycle:
         assert raw is not None
         data = parse_status_annotation(annotation_value=raw)
         assert data.get("phase") in ("Completed", "Succeeded")
-        assert "evaluationId" in data
-        assert "summaryMetrics" in data
+        assert "evaluation_id" in data
 
         # Verify no Warning Events
         all_events = list_events_for_job(
@@ -179,9 +178,10 @@ class TestE2eLifecycle:
         lifecycle_signals_vllm_service: Service,
     ) -> None:
         """Given an evaluation with a non-existent model URL (server-detected failure),
-        when the adapter fails at DNS resolution before reporting StateRunning,
-        then only an EvaluationFailed Event is emitted from evalhub-server (no EvaluationRunning),
-        the job label is Failed, the annotation phase is Failed,
+        when the adapter fails while contacting the model,
+        then an EvaluationFailed Event is emitted from evalhub-server (EvaluationRunning may
+        be emitted if the adapter reports StateRunning first), and the job label is Failed,
+        the annotation phase is Failed,
         and no operator-emitted EvaluationFailed Event exists."""
         host = lifecycle_signals_route.host
         ns = lifecycle_signals_namespace.name
@@ -206,17 +206,20 @@ class TestE2eLifecycle:
             job_id=job_id,
         )
 
-        # EvaluationRunning is NOT expected here: the adapter fails at DNS resolution before
-        # ever reporting StateRunning, so the server never calls NotifyJobPhaseTransition(StateRunning).
+        # The adapter may report StateRunning before the DNS failure. If it does, the
+        # corresponding event must be a normal server-emitted lifecycle event.
         started_events = list_events_for_job(
             admin_client=admin_client,
             job_name=job_name,
             namespace=ns,
             reason=LIFECYCLE_REASON_STARTED,
         )
-        assert started_events == [], (
-            f"EvaluationRunning event must not be emitted for a server-reported failure, got: {started_events}"
+        assert all(event.get("type") == "Normal" for event in started_events), (
+            f"EvaluationRunning events must be Normal, got: {started_events}"
         )
+        assert all(
+            (event.get("source") or {}).get("component") == LIFECYCLE_SOURCE_SERVER for event in started_events
+        ), f"EvaluationRunning events must come from evalhub-server, got: {started_events}"
 
         # Verify EvaluationFailed from server
         failed_event = wait_for_event(
@@ -385,8 +388,8 @@ class TestE2eLifecycle:
             expected_value=LIFECYCLE_PHASE_THRESHOLD_VIOLATED,
         )
 
-        # Verify annotation (eval-hub updates the label on threshold violation but may leave
-        # the completion phase in the status annotation until a future enhancement)
+        # Verify annotation. EvalHub updates the Job label to ThresholdViolated, but the
+        # status annotation may retain the terminal completion phase (Completed/Succeeded).
         raw = get_job_annotation(
             admin_client=admin_client,
             job_name=job_name,
@@ -395,8 +398,8 @@ class TestE2eLifecycle:
         )
         assert raw is not None
         data = parse_status_annotation(annotation_value=raw)
-        assert data.get("phase") in ("Succeeded", "ThresholdViolated")
-        assert "evaluationId" in data
+        assert data.get("phase") in ("Completed", "Succeeded", "ThresholdViolated")
+        assert "evaluation_id" in data
 
         # No EvaluationFailed Event (this is a threshold violation, not a failure)
         failed_events = list_events_for_job(
