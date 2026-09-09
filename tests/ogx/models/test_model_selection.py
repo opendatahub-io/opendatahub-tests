@@ -34,36 +34,36 @@ class DummyProvider:
         (
             "Qwen3.8-27B",
             [
-                DummyModel("vllm-inference/Granite-Vision-3.2"),
+                DummyModel("vllm-inference/Other-Vision-3.2"),
                 DummyModel("vllm-inference/Qwen3.8-27B"),
             ],
             "vllm-inference/Qwen3.8-27B",
         ),
-        # Unmatched configured model falls back to first non-vision LLM
+        # Unmatched configured model falls back to qwen model or first non-vision LLM
         (
             "NonExistentModel",
             [
-                DummyModel("vllm-inference/Granite-Vision-3.2"),
-                DummyModel("vllm-inference/Instruct-Model"),
+                DummyModel("vllm-inference/Other-Vision-3.2"),
+                DummyModel("vllm-inference/Qwen3.8-27B"),
             ],
-            "vllm-inference/Instruct-Model",
+            "vllm-inference/Qwen3.8-27B",
         ),
-        # No configured model selects first non-vision model
+        # No configured model selects qwen model if present
         (
             "",
             [
-                DummyModel("vllm-inference/Granite-Vision-3.2"),
-                DummyModel("vllm-inference/Instruct-Model"),
+                DummyModel("vllm-inference/Other-Vision-3.2"),
+                DummyModel("vllm-inference/Qwen3.8-27B"),
             ],
-            "vllm-inference/Instruct-Model",
+            "vllm-inference/Qwen3.8-27B",
         ),
         # Vision-only models fall back to first LLM model
         (
             "",
             [
-                DummyModel("vllm-inference/Granite-Vision-3.2"),
+                DummyModel("vllm-inference/Other-Vision-3.2"),
             ],
-            "vllm-inference/Granite-Vision-3.2",
+            "vllm-inference/Other-Vision-3.2",
         ),
     ],
 )

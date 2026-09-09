@@ -365,6 +365,11 @@ def ogx_models(ogx_client: OgxClient) -> ModelInfo:
 
     if not selected_llm:
         selected_llm = next(
+            (model for model in llm_models if "qwen" in model.id.lower()),
+            None,
+        )
+    if not selected_llm:
+        selected_llm = next(
             (model for model in llm_models if "vision" not in model.id.lower()),
             llm_models[0],
         )
