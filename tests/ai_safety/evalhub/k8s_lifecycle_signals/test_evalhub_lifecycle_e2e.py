@@ -152,7 +152,7 @@ class TestE2eLifecycle:
         assert raw is not None
         data = parse_status_annotation(annotation_value=raw)
         assert data.get("phase") in ("Completed", "Succeeded")
-        assert "evaluationId" in data
+        assert "evaluation_id" in data
         assert "summaryMetrics" in data
 
         # Verify no Warning Events
@@ -396,7 +396,7 @@ class TestE2eLifecycle:
         assert raw is not None
         data = parse_status_annotation(annotation_value=raw)
         assert data.get("phase") in ("Succeeded", "ThresholdViolated")
-        assert "evaluationId" in data
+        assert "evaluation_id" in data
 
         # No EvaluationFailed Event (this is a threshold violation, not a failure)
         failed_events = list_events_for_job(
