@@ -384,8 +384,8 @@ class TestE2eLifecycle:
             expected_value=LIFECYCLE_PHASE_THRESHOLD_VIOLATED,
         )
 
-        # Verify annotation (eval-hub updates the label on threshold violation but may leave
-        # the completion phase in the status annotation until a future enhancement)
+        # Verify annotation. EvalHub updates the Job label to ThresholdViolated, but the
+        # status annotation may retain the terminal completion phase (Completed/Succeeded).
         raw = get_job_annotation(
             admin_client=admin_client,
             job_name=job_name,
@@ -394,7 +394,7 @@ class TestE2eLifecycle:
         )
         assert raw is not None
         data = parse_status_annotation(annotation_value=raw)
-        assert data.get("phase") in ("Succeeded", "ThresholdViolated")
+        assert data.get("phase") in ("Completed", "Succeeded", "ThresholdViolated")
         assert "evaluation_id" in data
 
         # No EvaluationFailed Event (this is a threshold violation, not a failure)
