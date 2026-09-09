@@ -3,6 +3,7 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.custom_resource_definition import CustomResourceDefinition
 
+from tests.model_serving.maas_billing.utils import MAAS_COMPONENT_HEALTH_TIMEOUT
 from utilities.constants import ApiGroups
 from utilities.resources.maastenantconfig import MaasTenantConfig
 
@@ -46,6 +47,6 @@ class TestTenantHealthCheck:
         default_maas_tenant_config.wait_for_condition(
             condition=condition_type,
             status=expected_status,
-            timeout=120,
+            timeout=MAAS_COMPONENT_HEALTH_TIMEOUT,
         )
         LOGGER.info(f"MaasTenantConfig condition '{condition_type}' is '{expected_status}'")
