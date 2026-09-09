@@ -15,7 +15,7 @@ tests/ai_safety/                               @sheltoncyril @kpunwatk
 tests/ai_safety/evalhub/                       @kpunwatk @ruivieira
 tests/ai_hub/                                  @dbasunag @lugi0 @fege
 tests/model_serving/                           @opendatahub-io/model-serving-developers
-tests/ai_gateway/                              @SB159
+tests/ai_gateway/                              @SB159 @jland-redhat @somya-bhatnagar
 tests/llama_stack/                             @Artemon-line @Bobbins228 @ChristianZaccaria @jgarciao @jiripetrlik @Ygnas
 tests/rhoai_mcp/                               @tarilabs
 tests/workbenches                              @jstourac @andyatmiami @jiridanek @harshad16

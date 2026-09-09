@@ -36,8 +36,8 @@ def _get_kserve_container(deployment: Deployment):
     )
 
 
-@pytest.mark.tls
 @pytest.mark.tier1
+@pytest.mark.tls
 @pytest.mark.rawdeployment
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, transformer_auth_inference_service",
