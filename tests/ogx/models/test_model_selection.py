@@ -1,8 +1,6 @@
-from unittest.mock import MagicMock
-
 import pytest
 
-import tests.ogx.conftest as ogx_conftest
+from tests.ogx.utils import select_ogx_model
 
 
 class DummyModel:
@@ -23,8 +21,8 @@ class DummyProvider:
         (
             "Qwen3.8-27B",
             [
-                DummyModel("vllm-inference/Qwen3.8-27B-Vision"),
-                DummyModel("Qwen3.8-27B"),
+                DummyModel(model_id="vllm-inference/Qwen3.8-27B-Vision"),
+                DummyModel(model_id="Qwen3.8-27B"),
             ],
             "Qwen3.8-27B",
         ),
@@ -32,8 +30,8 @@ class DummyProvider:
         (
             "Qwen3.8-27B",
             [
-                DummyModel("vllm-inference/Other-Vision-3.2"),
-                DummyModel("vllm-inference/Qwen3.8-27B"),
+                DummyModel(model_id="vllm-inference/Other-Vision-3.2"),
+                DummyModel(model_id="vllm-inference/Qwen3.8-27B"),
             ],
             "vllm-inference/Qwen3.8-27B",
         ),
@@ -41,8 +39,8 @@ class DummyProvider:
         (
             "NonExistentModel",
             [
-                DummyModel("vllm-inference/Other-Vision-3.2"),
-                DummyModel("vllm-inference/Qwen3.8-27B"),
+                DummyModel(model_id="vllm-inference/Other-Vision-3.2"),
+                DummyModel(model_id="vllm-inference/Qwen3.8-27B"),
             ],
             "vllm-inference/Qwen3.8-27B",
         ),
@@ -50,8 +48,8 @@ class DummyProvider:
         (
             "",
             [
-                DummyModel("vllm-inference/Other-Vision-3.2"),
-                DummyModel("vllm-inference/Qwen3.8-27B"),
+                DummyModel(model_id="vllm-inference/Other-Vision-3.2"),
+                DummyModel(model_id="vllm-inference/Qwen3.8-27B"),
             ],
             "vllm-inference/Qwen3.8-27B",
         ),
@@ -59,37 +57,41 @@ class DummyProvider:
         (
             "",
             [
-                DummyModel("vllm-inference/Other-Vision-3.2"),
+                DummyModel(model_id="vllm-inference/Other-Vision-3.2"),
             ],
             "vllm-inference/Other-Vision-3.2",
         ),
     ],
 )
 def test_ogx_models_selection(
-    monkeypatch: pytest.MonkeyPatch, configured_model: str, available_models: list[DummyModel], expected_model_id: str
+    configured_model: str,
+    available_models: list[DummyModel],
+    expected_model_id: str,
 ) -> None:
-    monkeypatch.setattr(ogx_conftest, "OGX_CORE_INFERENCE_MODEL", configured_model)
+    mock_providers = [DummyProvider(provider_id="sentence-transformers")]
 
-    mock_client = MagicMock()
-    mock_client.models.list.return_value.data = available_models
-    mock_client.providers.list.return_value = [DummyProvider("sentence-transformers")]
-
-    embedding_model = DummyModel("sentence-transformers/all-MiniLM-L6-v2", model_type="embedding")
+    embedding_model = DummyModel(model_id="sentence-transformers/all-MiniLM-L6-v2", model_type="embedding")
     embedding_model.custom_metadata["embedding_dimension"] = 384
     embedding_model.custom_metadata["provider_id"] = "sentence-transformers"
     available_models.append(embedding_model)
 
-    result = ogx_conftest.ogx_models.__wrapped__(ogx_client=mock_client)
+    result = select_ogx_model(
+        models=available_models,
+        providers=mock_providers,
+        configured_model=configured_model,
+    )
     assert result.model_id == expected_model_id
 
 
-def test_ogx_models_selection_no_llm_raises_value_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(ogx_conftest, "OGX_CORE_INFERENCE_MODEL", "")
-
-    mock_client = MagicMock()
-    embedding_model = DummyModel("sentence-transformers/all-MiniLM-L6-v2", model_type="embedding")
+def test_ogx_models_selection_no_llm_raises_value_error() -> None:
+    mock_providers = [DummyProvider(provider_id="sentence-transformers")]
+    embedding_model = DummyModel(model_id="sentence-transformers/all-MiniLM-L6-v2", model_type="embedding")
     embedding_model.custom_metadata["embedding_dimension"] = 384
-    mock_client.models.list.return_value.data = [embedding_model]
+    embedding_model.custom_metadata["provider_id"] = "sentence-transformers"
 
     with pytest.raises(ValueError, match="No LLM models found in OGX client"):
-        ogx_conftest.ogx_models.__wrapped__(ogx_client=mock_client)
+        select_ogx_model(
+            models=[embedding_model],
+            providers=mock_providers,
+            configured_model="",
+        )
