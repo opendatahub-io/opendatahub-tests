@@ -20,9 +20,8 @@ LOGGER = structlog.get_logger(name=__name__)
 
 # ---------------------------------------------------------------------------
 # Note: evalhub_mt_cr, evalhub_mt_deployment, evalhub_mt_route,
-# evalhub_mt_ca_bundle_file, tenant_a_rbac_ready, evalhub_vllm_emulator_deployment,
-# and evalhub_vllm_emulator_service fixtures are defined in ../conftest.py (parent)
-# and shared across all evalhub test subdirectories.
+# evalhub_mt_ca_bundle_file, and tenant_a_rbac_ready fixtures are defined in
+# ../conftest.py (parent) and shared across all evalhub test subdirectories.
 #
 # Multi-tenancy test user fixtures (tenant_a_namespace, tenant_a_service_account,
 # tenant_a_evalhub_role, tenant_a_evalhub_role_binding, tenant_a_token) live in

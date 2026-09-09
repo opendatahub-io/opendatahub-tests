@@ -126,8 +126,8 @@ class TestEvalHubMcpToolsSubmit:
     def test_submit_evaluation_with_benchmarks(
         self,
         evalhub_mcp_client: EvalHubMcpClient,
-        evalhub_vllm_emulator_service: Service,
-        tenant_a_namespace: Namespace,
+        session_vllm_emulator_service: Service,
+        shared_models_namespace: Namespace,
     ) -> None:
         """
         Given: Authenticated MCP client with a vLLM emulator model URL
@@ -135,8 +135,8 @@ class TestEvalHubMcpToolsSubmit:
         Then: Response returns a pending or running job ID
         """
         model_url = build_mcp_model_url(
-            service_name=evalhub_vllm_emulator_service.name,
-            tenant_namespace=tenant_a_namespace.name,
+            service_name=session_vllm_emulator_service.name,
+            tenant_namespace=shared_models_namespace.name,
         )
         result = call_mcp_tool(
             client=evalhub_mcp_client,
@@ -154,8 +154,8 @@ class TestEvalHubMcpToolsSubmit:
     def test_submit_evaluation_with_collection(
         self,
         evalhub_mcp_client: EvalHubMcpClient,
-        evalhub_vllm_emulator_service: Service,
-        tenant_a_namespace: Namespace,
+        session_vllm_emulator_service: Service,
+        shared_models_namespace: Namespace,
     ) -> None:
         """
         Given: Authenticated MCP client with a vLLM emulator model URL
@@ -163,8 +163,8 @@ class TestEvalHubMcpToolsSubmit:
         Then: Response returns a pending or running job ID
         """
         model_url = build_mcp_model_url(
-            service_name=evalhub_vllm_emulator_service.name,
-            tenant_namespace=tenant_a_namespace.name,
+            service_name=session_vllm_emulator_service.name,
+            tenant_namespace=shared_models_namespace.name,
         )
         result = call_mcp_tool(
             client=evalhub_mcp_client,

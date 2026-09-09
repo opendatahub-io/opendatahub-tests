@@ -30,8 +30,8 @@ class TestEvalHubMcpE2E:
     def test_submit_and_monitor_evaluation_via_mcp_tools(
         self,
         evalhub_mcp_client: EvalHubMcpClient,
-        tenant_a_namespace: Namespace,
-        evalhub_vllm_emulator_service: Service,
+        session_vllm_emulator_service: Service,
+        shared_models_namespace: Namespace,
     ) -> None:
         """
         Given: Authenticated MCP client and a vLLM emulator model endpoint
@@ -39,8 +39,8 @@ class TestEvalHubMcpE2E:
         Then: Job is created and reaches completed state
         """
         model_url = build_mcp_model_url(
-            service_name=evalhub_vllm_emulator_service.name,
-            tenant_namespace=tenant_a_namespace.name,
+            service_name=session_vllm_emulator_service.name,
+            tenant_namespace=shared_models_namespace.name,
         )
 
         discover_result = call_mcp_tool(

@@ -126,8 +126,8 @@ class TestEvalHubMcpJobResources:
     def test_read_job_by_id_after_submit(
         self,
         evalhub_mcp_client: EvalHubMcpClient,
-        evalhub_vllm_emulator_service: Service,
-        tenant_a_namespace: Namespace,
+        session_vllm_emulator_service: Service,
+        shared_models_namespace: Namespace,
     ) -> None:
         """
         Given: An evaluation job submitted via MCP tools
@@ -135,8 +135,8 @@ class TestEvalHubMcpJobResources:
         Then: Response returns metadata for the submitted job
         """
         model_url = build_mcp_model_url(
-            service_name=evalhub_vllm_emulator_service.name,
-            tenant_namespace=tenant_a_namespace.name,
+            service_name=session_vllm_emulator_service.name,
+            tenant_namespace=shared_models_namespace.name,
         )
         submit_result = submit_evaluation_via_mcp(
             client=evalhub_mcp_client,
@@ -155,8 +155,8 @@ class TestEvalHubMcpJobResources:
     def test_jobs_list_includes_submitted_job(
         self,
         evalhub_mcp_client: EvalHubMcpClient,
-        evalhub_vllm_emulator_service: Service,
-        tenant_a_namespace: Namespace,
+        session_vllm_emulator_service: Service,
+        shared_models_namespace: Namespace,
     ) -> None:
         """
         Given: An evaluation job submitted via MCP tools
@@ -164,8 +164,8 @@ class TestEvalHubMcpJobResources:
         Then: Response lists the submitted job ID
         """
         model_url = build_mcp_model_url(
-            service_name=evalhub_vllm_emulator_service.name,
-            tenant_namespace=tenant_a_namespace.name,
+            service_name=session_vllm_emulator_service.name,
+            tenant_namespace=shared_models_namespace.name,
         )
         submit_result = submit_evaluation_via_mcp(
             client=evalhub_mcp_client,
@@ -184,8 +184,8 @@ class TestEvalHubMcpJobResources:
     def test_jobs_filtered_by_pending_status(
         self,
         evalhub_mcp_client: EvalHubMcpClient,
-        evalhub_vllm_emulator_service: Service,
-        tenant_a_namespace: Namespace,
+        session_vllm_emulator_service: Service,
+        shared_models_namespace: Namespace,
     ) -> None:
         """
         Given: A pending evaluation job submitted via MCP tools
@@ -193,8 +193,8 @@ class TestEvalHubMcpJobResources:
         Then: Response includes the pending job ID
         """
         model_url = build_mcp_model_url(
-            service_name=evalhub_vllm_emulator_service.name,
-            tenant_namespace=tenant_a_namespace.name,
+            service_name=session_vllm_emulator_service.name,
+            tenant_namespace=shared_models_namespace.name,
         )
         submit_result = submit_evaluation_via_mcp(
             client=evalhub_mcp_client,

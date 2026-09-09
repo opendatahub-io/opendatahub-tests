@@ -62,12 +62,13 @@ def nemo_api_token_secret(
 def nemo_llm_judge_configmap(
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    llm_d_inference_sim_isvc: InferenceService,
+    shared_models_namespace: Namespace,
+    session_llm_d_inference_sim_isvc: InferenceService,
 ) -> Generator[ConfigMap, Any, Any]:
     """ConfigMap with LLM-as-a-judge configuration."""
     config_data = create_llm_judge_config(
-        namespace=model_namespace.name,
-        model_isvc_name=llm_d_inference_sim_isvc.name,
+        namespace=shared_models_namespace.name,
+        model_isvc_name=session_llm_d_inference_sim_isvc.name,
         model_name=LLMdInferenceSimConfig.model_name,
     )
 
@@ -84,12 +85,13 @@ def nemo_llm_judge_configmap(
 def nemo_presidio_configmap(
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    llm_d_inference_sim_isvc: InferenceService,
+    shared_models_namespace: Namespace,
+    session_llm_d_inference_sim_isvc: InferenceService,
 ) -> Generator[ConfigMap, Any, Any]:
     """ConfigMap with Presidio PII detection configuration."""
     config_data = create_presidio_config(
-        namespace=model_namespace.name,
-        model_isvc_name=llm_d_inference_sim_isvc.name,
+        namespace=shared_models_namespace.name,
+        model_isvc_name=session_llm_d_inference_sim_isvc.name,
         model_name=LLMdInferenceSimConfig.model_name,
         input_entities=[
             PresidioEntity.EMAIL_ADDRESS,
@@ -115,12 +117,13 @@ def nemo_presidio_configmap(
 def nemo_multi_config_a(
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    llm_d_inference_sim_isvc: InferenceService,
+    shared_models_namespace: Namespace,
+    session_llm_d_inference_sim_isvc: InferenceService,
 ) -> Generator[ConfigMap, Any, Any]:
     """First ConfigMap for multi-configuration test."""
     config_data = create_llm_judge_config(
-        namespace=model_namespace.name,
-        model_isvc_name=llm_d_inference_sim_isvc.name,
+        namespace=shared_models_namespace.name,
+        model_isvc_name=session_llm_d_inference_sim_isvc.name,
         model_name=LLMdInferenceSimConfig.model_name,
     )
 
@@ -137,12 +140,13 @@ def nemo_multi_config_a(
 def nemo_multi_config_b(
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    llm_d_inference_sim_isvc: InferenceService,
+    shared_models_namespace: Namespace,
+    session_llm_d_inference_sim_isvc: InferenceService,
 ) -> Generator[ConfigMap, Any, Any]:
     """Second ConfigMap for multi-configuration test."""
     config_data = create_presidio_config(
-        namespace=model_namespace.name,
-        model_isvc_name=llm_d_inference_sim_isvc.name,
+        namespace=shared_models_namespace.name,
+        model_isvc_name=session_llm_d_inference_sim_isvc.name,
         model_name=LLMdInferenceSimConfig.model_name,
         input_entities=[PresidioEntity.EMAIL_ADDRESS],
         output_entities=[PresidioEntity.PERSON],
@@ -390,12 +394,13 @@ def nemo_guardrails_mcp(
 def nemo_config_update_configmap(
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    llm_d_inference_sim_isvc: InferenceService,
+    shared_models_namespace: Namespace,
+    session_llm_d_inference_sim_isvc: InferenceService,
 ) -> Generator[ConfigMap, Any, Any]:
     """ConfigMap for config update test (will be modified during test)."""
     config_data = create_llm_judge_config(
-        namespace=model_namespace.name,
-        model_isvc_name=llm_d_inference_sim_isvc.name,
+        namespace=shared_models_namespace.name,
+        model_isvc_name=session_llm_d_inference_sim_isvc.name,
         model_name=LLMdInferenceSimConfig.model_name,
     )
 

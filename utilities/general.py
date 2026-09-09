@@ -6,7 +6,7 @@ from typing import Any
 
 import structlog
 from kubernetes.dynamic import DynamicClient
-from kubernetes.dynamic.exceptions import NotFoundError, ResourceNotFoundError
+from kubernetes.dynamic.exceptions import ConflictError, NotFoundError, ResourceNotFoundError
 from ocp_resources.deployment import Deployment
 from ocp_resources.inference_graph import InferenceGraph
 from ocp_resources.inference_service import InferenceService
@@ -32,6 +32,21 @@ _ANSI_ESCAPE_RE = re.compile(r"\x1b(?:\[[?!>]?[0-9;:]*[A-Za-z]|\][^\x07]*(?:\x07
 def strip_ansi(text: str) -> str:
     """Remove ANSI escape sequences from a string."""
     return _ANSI_ESCAPE_RE.sub(repl="", string=text)
+
+
+def deploy_if_not_exists(resource: Resource) -> None:
+    """Idempotently deploy a resource: reuse it if already present (e.g. left over from a prior run).
+
+    Session-scoped shared resources with teardown=False can already exist on a persistent
+    (non-ephemeral) cluster from an earlier run, or may have already been created by another
+    fixture requesting the same session-scoped singleton. A blind create() 409s in that case.
+    """
+    if resource.exists:
+        return
+    try:
+        resource.deploy()
+    except ConflictError:
+        pass
 
 
 def get_s3_secret_dict(
