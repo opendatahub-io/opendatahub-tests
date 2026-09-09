@@ -614,3 +614,85 @@ def kueue_local_queue_from_template(
         client=admin_client,
     ) as local_queue:
         yield local_queue
+
+
+# --- Arch-aware runtime selection fixtures ---
+
+
+@pytest.fixture(scope="session")
+def cluster_arch(request, admin_client: DynamicClient) -> str:
+    """Detect or override cluster CPU architecture.
+
+    Auto-detects from worker node labels (kubernetes.io/arch) unless
+    --cluster-arch CLI flag is set to a specific value.
+    """
+    opt = request.config.getoption("--cluster-arch", default="auto")
+    if opt != "auto":
+        return opt
+
+    workers = list(Node.get(client=admin_client, label_selector="node-role.kubernetes.io/worker"))
+    if not workers:
+        workers = list(Node.get(client=admin_client))
+
+    if not workers:
+        LOGGER.warning("No nodes found, defaulting to amd64")
+        return "amd64"
+
+    arch = workers[0].instance.status.nodeInfo.architecture
+    LOGGER.info(f"Auto-detected cluster architecture: {arch}")
+    return arch
+
+
+@pytest.fixture(scope="session")
+def skip_if_not_x86(cluster_arch: str) -> None:
+    """Skip test if the cluster is not x86_64/amd64."""
+    if cluster_arch != "amd64":
+        pytest.skip(f"Test requires x86_64/amd64 cluster (detected: {cluster_arch})")
+
+
+@pytest.fixture(scope="session")
+def skip_if_not_arm(cluster_arch: str) -> None:
+    """Skip test if the cluster is not ARM64."""
+    if cluster_arch != "arm64":
+        pytest.skip(f"Test requires ARM64 cluster (detected: {cluster_arch})")
+
+
+@pytest.fixture(scope="class")
+def arch_runtime_profile(cluster_arch: str, request: FixtureRequest):
+    """Resolve the RuntimeProfile for the current cluster arch.
+
+    Tests parametrize this fixture with the desired model format (default: onnx).
+    Returns the appropriate RuntimeProfile or skips if the format is unsupported
+    on the detected architecture.
+    """
+    from tests.model_serving.model_server.runtime_registry import (
+        get_runtime_profile,
+        get_supported_formats,
+    )
+
+    model_format = getattr(request, "param", "onnx")
+    if isinstance(model_format, dict):
+        model_format = model_format.get("model-format", "onnx")
+
+    profile = get_runtime_profile(arch=cluster_arch, model_format=model_format)
+    if profile is None:
+        supported = get_supported_formats(arch=cluster_arch)
+        pytest.skip(f"Model format '{model_format}' not supported on {cluster_arch}. Supported formats: {supported}")
+    return profile
+
+
+@pytest.fixture(scope="class")
+def arch_serving_runtime(
+    arch_runtime_profile,
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+) -> Generator[ServingRuntime, Any, Any]:
+    """Create a ServingRuntime based on the arch-resolved RuntimeProfile."""
+    with ServingRuntimeFromTemplate(
+        client=unprivileged_client,
+        name=arch_runtime_profile.runtime_name,
+        namespace=unprivileged_model_namespace.name,
+        template_name=arch_runtime_profile.template,
+        multi_model=False,
+    ) as model_runtime:
+        yield model_runtime
