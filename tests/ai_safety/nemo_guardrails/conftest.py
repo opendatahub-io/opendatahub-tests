@@ -700,8 +700,6 @@ def installed_mcp_gateway(
 
     try:
         if not subscription.exists:
-            # Install operator in AllNamespaces mode (required by dependencies)
-            # Empty target_namespaces list means AllNamespaces mode
             install_operator(
                 admin_client=admin_client,
                 target_namespaces=[],
@@ -714,7 +712,6 @@ def installed_mcp_gateway(
             )
             operator_installed = True
 
-        # Wait for CRD to be available
         crd = CustomResourceDefinition(
             client=admin_client,
             name="mcpgatewayextensions.mcp.kuadrant.io",
@@ -723,7 +720,6 @@ def installed_mcp_gateway(
 
         yield
     finally:
-        # Cleanup: uninstall operator if we installed it
         if operator_installed:
             uninstall_operator(
                 admin_client=admin_client,
