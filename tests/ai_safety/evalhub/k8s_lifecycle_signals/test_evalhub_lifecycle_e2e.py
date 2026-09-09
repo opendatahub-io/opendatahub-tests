@@ -218,8 +218,7 @@ class TestE2eLifecycle:
             f"EvaluationRunning events must be Normal, got: {started_events}"
         )
         assert all(
-            (event.get("source") or {}).get("component") == LIFECYCLE_SOURCE_SERVER
-            for event in started_events
+            (event.get("source") or {}).get("component") == LIFECYCLE_SOURCE_SERVER for event in started_events
         ), f"EvaluationRunning events must come from evalhub-server, got: {started_events}"
 
         # Verify EvaluationFailed from server
