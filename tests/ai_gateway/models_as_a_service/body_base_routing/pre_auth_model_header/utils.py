@@ -500,7 +500,10 @@ def warm_up_bbr_inference_upstream(
             payload=payload,
         )
     except TimeoutExpiredError:
-        LOGGER.warning(f"BBR inference warm-up retries exhausted for {inference_url}")
+        pytest.fail(
+            f"BBR inference warm-up retries exhausted for {inference_url} "
+            f"(transient 503 no healthy upstream did not clear within 30s)"
+        )
 
 
 @retry(wait_timeout=30, sleep=3)
