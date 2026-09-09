@@ -1,3 +1,4 @@
+import math
 from typing import Any
 
 from ocp_resources.deployment import Deployment
@@ -32,7 +33,7 @@ MODEL_DICT: dict[str, Any] = {
     "model_metadata": {
         "int_key": 1,
         "bool_key": False,
-        "float_key": 3.14,
+        "float_key": math.pi,
         "str_key": "str_value",
     },
 }

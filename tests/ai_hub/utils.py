@@ -895,7 +895,7 @@ def get_byoidc_user_credentials(client: DynamicClient, username: str | None = No
     assert passwords and passwords != [""], "No passwords found in byoidc-credentials secret"
 
     # Use specified username or default to first user
-    requested_username = username if username else user_names[0]
+    requested_username = username or user_names[0]
 
     # entra ID usernames are in the form of `user@<tenant>.onmicrosoft.com`, find by prefix
     for stored_user, stored_password in zip(user_names, passwords):
@@ -957,8 +957,7 @@ def get_endpoint_ips(client: DynamicClient, namespace: str, service_name: str = 
     assert endpoints.exists, f"Endpoints for service {service_name} not found in {namespace}"
     ips: set[str] = set()
     for subset in endpoints.instance.subsets or []:
-        for address in subset.get("addresses", []):
-            ips.add(address["ip"])
+        ips.update(address["ip"] for address in subset.get("addresses", []))
     return ips
 
 

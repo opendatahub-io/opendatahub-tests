@@ -21,14 +21,6 @@ from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from timeout_sampler import TimeoutExpiredError
 
-from tests.model_serving.model_runtime.autogluon.constant import (  # noqa: NIT001
-    PREDICT_RESOURCES,
-    build_serving_runtime_kwargs,
-)
-from tests.model_serving.model_runtime.autogluon.utils import (  # noqa: NIT001
-    get_autogluon_image_from_csv,
-    get_runtime_image_override,
-)
 from tests.pipelines_components.automl.upgrade.utils import (
     TIMESERIES_UPGRADE_BASELINE_CONFIGMAP,
     discover_model_path,
@@ -64,6 +56,12 @@ from tests.pipelines_components.utils import (
     upload_pipeline,
     use_managed_pipelines,
     wait_for_managed_pipeline,
+)
+from utilities.autogluon import (
+    PREDICT_RESOURCES,
+    build_serving_runtime_kwargs,
+    get_autogluon_image_from_csv,
+    get_runtime_image_override,
 )
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import (

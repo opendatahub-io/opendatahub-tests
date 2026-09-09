@@ -25,11 +25,6 @@ from ocp_resources.service_account import ServiceAccount
 from ogx_client import APIConnectionError, InternalServerError, OgxClient
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
 
-from tests.fixtures.vector_io import (  # noqa: NIT001
-    MILVUS_TOKEN,
-    get_etcd_deployment_template,
-    get_milvus_deployment_template,
-)
 from tests.pipelines_components.constants import (
     AUTORAG_EMBEDDING_MAX_MODEL_LEN,
     AUTORAG_INPUT_DATA_KEY,
@@ -68,6 +63,11 @@ from utilities.inference_utils import create_isvc
 from utilities.infra import create_ns
 from utilities.resources.ogx_server import OgxServer
 from utilities.serving_runtime import ServingRuntimeFromTemplate
+from utilities.vector_io import (
+    MILVUS_TOKEN,
+    get_etcd_deployment_template,
+    get_milvus_deployment_template,
+)
 
 LOGGER = structlog.get_logger(name=__name__)
 

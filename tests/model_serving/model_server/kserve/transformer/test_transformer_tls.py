@@ -44,8 +44,8 @@ def _get_container_arg_value(container, key: str) -> str | None:
     return None
 
 
-@pytest.mark.tls
 @pytest.mark.tier1
+@pytest.mark.tls
 @pytest.mark.rawdeployment
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, transformer_auth_inference_service",
