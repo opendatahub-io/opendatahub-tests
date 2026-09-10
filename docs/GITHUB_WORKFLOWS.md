@@ -23,7 +23,9 @@
 ### Manual (`workflow_dispatch`)
 
 - `Cut Release Branch` creates a release branch from `main` (or any other ref) and pushes a
-  matching container image tag. Run it from the Actions tab during code freeze.
+  matching container image tag. Run it from the Actions tab during code freeze. See the
+  [Release Process Guide](RELEASE_PROCESS.md) for the full code freeze checklist, including
+  the steps this workflow does not cover.
   Inputs:
 
   | Input | Default | Description |
