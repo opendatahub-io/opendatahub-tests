@@ -5,7 +5,7 @@ LIFECYCLE_PHASE_LABEL = "trustyai.opendatahub.io/evaluation-phase"
 LIFECYCLE_STATUS_ANNOTATION = "trustyai.opendatahub.io/evaluation-status"
 
 # Kubernetes Event reason codes (CamelCase per K8s convention)
-LIFECYCLE_REASON_STARTED = "EvaluationStarted"
+LIFECYCLE_REASON_STARTED = "EvaluationRunning"
 LIFECYCLE_REASON_COMPLETED = "EvaluationCompleted"
 LIFECYCLE_REASON_FAILED = "EvaluationFailed"
 LIFECYCLE_REASON_THRESHOLD_VIOLATED = "EvaluationThresholdViolated"
