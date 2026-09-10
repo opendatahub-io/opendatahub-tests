@@ -81,7 +81,6 @@ LOGGER = structlog.get_logger(name=__name__)
 
 pytest_plugins = [
     "tests.fixtures.inference",
-    "tests.fixtures.guardrails",
     "tests.fixtures.trustyai",
     "tests.fixtures.vector_io",
     "tests.fixtures.files",
