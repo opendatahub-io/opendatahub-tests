@@ -4,7 +4,11 @@ import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.network_policy import NetworkPolicy
 from ocp_resources.pod import Pod
+from ocp_resources.role import Role
+from ocp_resources.role_binding import RoleBinding
+from ocp_resources.service_account import ServiceAccount
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.spark.image_constants import SparkImages
@@ -67,9 +71,9 @@ def wait_for_spark_application_state(
 def create_spark_pi_application_spec(
     name: str,
     namespace: str,
+    service_account: str,
     spark_version: str = SPARK_VERSION,
     image: str = SPARK_IMAGE,
-    service_account: str = "spark-operator-spark",
 ) -> dict:
     """Create a SparkApplication spec for spark-pi workload.
 
@@ -131,6 +135,54 @@ def create_spark_pi_application_spec(
             ],
         },
     }
+
+
+def resubmit_spark_application(
+    client: DynamicClient,
+    spark_app: SparkApplication,
+    teardown: bool,
+) -> SparkApplication:
+    """Re-run an existing SparkApplication by re-submitting its captured spec.
+
+    Represents the customer scenario of re-running a pre-upgrade workload on the
+    upgraded operator. A spark-pi SparkApplication uses restartPolicy: Never, so
+    once it reaches COMPLETED it does not run again on its own. To actively *use*
+    the existing resource, its spec is captured, the terminal resource is deleted,
+    and an identically named/spec'd resource is recreated so the upgraded operator
+    reconciles and runs it again.
+
+    Args:
+        client: Kubernetes client
+        spark_app: The existing (pre-upgrade) SparkApplication to re-run
+        teardown: Whether to clean up the recreated resource on teardown
+
+    Returns:
+        SparkApplication: The re-submitted SparkApplication resource
+    """
+    name = spark_app.name
+    namespace = spark_app.namespace
+    spec = spark_app.instance.to_dict()["spec"]
+
+    LOGGER.info(f"Re-running existing SparkApplication {name} in namespace {namespace}")
+
+    # Delete the completed resource and wait for it to be fully removed before recreating,
+    # so the recreate does not collide with the terminal instance.
+    spark_app.clean_up(wait=True)
+
+    kind_dict = {
+        "apiVersion": "sparkoperator.k8s.io/v1beta2",
+        "kind": "SparkApplication",
+        "metadata": {
+            "name": name,
+            "namespace": namespace,
+        },
+        "spec": spec,
+    }
+
+    resubmitted = SparkApplication(client=client, kind_dict=kind_dict, teardown=teardown)
+    resubmitted.deploy()
+    LOGGER.info(f"Re-submitted SparkApplication {name} in namespace {namespace}")
+    return resubmitted
 
 
 def capture_spark_application_baseline(
@@ -349,3 +401,75 @@ def verify_pods_not_restarted(
         )
 
     LOGGER.info(f"All pods for SparkApplication {spark_app.name} have not restarted beyond baseline")
+
+
+def get_spark_network_policies(client: DynamicClient, namespace: str) -> list[NetworkPolicy]:
+    return [np for np in NetworkPolicy.get(client=client, namespace=namespace) if "spark-operator" in np.name]
+
+
+def get_spark_roles(client: DynamicClient, namespace: str) -> list[Role]:
+    return [role for role in Role.get(client=client, namespace=namespace) if "spark-operator" in role.name]
+
+
+def get_spark_service_accounts(client: DynamicClient, namespace: str) -> list[ServiceAccount]:
+    return [sa for sa in ServiceAccount.get(client=client, namespace=namespace) if "spark-operator" in sa.name]
+
+
+def get_spark_role_bindings(client: DynamicClient, namespace: str) -> list[RoleBinding]:
+    return [rb for rb in RoleBinding.get(client=client, namespace=namespace) if "spark-operator" in rb.name]
+
+
+def recreate_role_in_namespace(
+    client: DynamicClient,
+    source_role: Role,
+    target_namespace: str,
+    teardown: bool,
+) -> Role:
+    source_dict = source_role.instance.to_dict()
+    source_dict["metadata"] = {"name": source_role.name, "namespace": target_namespace}
+    role = Role(client=client, kind_dict=source_dict, teardown=teardown)
+    role.deploy()
+    return role
+
+
+def recreate_service_account_in_namespace(
+    client: DynamicClient,
+    source_sa: ServiceAccount,
+    target_namespace: str,
+    teardown: bool,
+) -> ServiceAccount:
+    source_dict = source_sa.instance.to_dict()
+    source_dict["metadata"] = {"name": source_sa.name, "namespace": target_namespace}
+    # secrets are auto-managed by the API server and must not be copied from the source
+    source_dict.pop("secrets", None)
+    sa = ServiceAccount(client=client, kind_dict=source_dict, teardown=teardown)
+    sa.deploy()
+    return sa
+
+
+def recreate_role_binding_in_namespace(
+    client: DynamicClient,
+    source_rb: RoleBinding,
+    target_namespace: str,
+    teardown: bool,
+) -> RoleBinding:
+    source_dict = source_rb.instance.to_dict()
+    source_dict["metadata"] = {"name": source_rb.name, "namespace": target_namespace}
+    for subject in source_dict.get("subjects", []):
+        subject["namespace"] = target_namespace
+    rb = RoleBinding(client=client, kind_dict=source_dict, teardown=teardown)
+    rb.deploy()
+    return rb
+
+
+def recreate_network_policy_in_namespace(
+    client: DynamicClient,
+    source_np: NetworkPolicy,
+    target_namespace: str,
+    teardown: bool,
+) -> NetworkPolicy:
+    source_dict = source_np.instance.to_dict()
+    source_dict["metadata"] = {"name": source_np.name, "namespace": target_namespace}
+    np = NetworkPolicy(client=client, kind_dict=source_dict, teardown=teardown)
+    np.deploy()
+    return np
