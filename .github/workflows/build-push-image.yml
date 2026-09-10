@@ -106,12 +106,17 @@ jobs:
       - name: Export image reference
         id: image-reference
         if: always()
-        run: echo "reference=${{ inputs.registry }}/${{ inputs.image }}:${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+        env:
+          REGISTRY: ${{ inputs.registry }}
+          IMAGE: ${{ inputs.image }}
+          TAG: ${{ inputs.tag }}
+        run: printf 'reference=%s/%s:%s\n' "$REGISTRY" "$IMAGE" "$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Write job summary
         if: always()
         env:
           IMAGE_REFERENCE: ${{ steps.image-reference.outputs.reference }}
+          SOURCE_REF: ${{ inputs.ref }}
           BUILD_OUTCOME: ${{ steps.build-image.outcome }}
           PUSH_OUTCOME: ${{ steps.push-to-registry.outcome }}
           MANIFEST_OUTCOME: ${{ steps.manifest.outcome }}
@@ -121,11 +126,11 @@ jobs:
             echo ""
             echo "| Item | Value |"
             echo "| --- | --- |"
-            echo "| Image | \`$IMAGE_REFERENCE\` |"
-            echo "| Source ref | \`${{ inputs.ref }}\` |"
-            echo "| Build | $BUILD_OUTCOME |"
-            echo "| Push | $PUSH_OUTCOME |"
-            echo "| Image manifest label | $MANIFEST_OUTCOME |"
+            printf '| Image | `%s` |\n' "$IMAGE_REFERENCE"
+            printf '| Source ref | `%s` |\n' "$SOURCE_REF"
+            printf '| Build | %s |\n' "$BUILD_OUTCOME"
+            printf '| Push | %s |\n' "$PUSH_OUTCOME"
+            printf '| Image manifest label | %s |\n' "$MANIFEST_OUTCOME"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Add comment
@@ -133,10 +138,17 @@ jobs:
         env:
           URL: ${{ inputs.comments_url }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+          BUILD_OUTCOME: ${{ steps.build-image.outcome }}
+          PUSH_OUTCOME: ${{ steps.push-to-registry.outcome }}
+          MANIFEST_OUTCOME: ${{ steps.manifest.outcome }}
         run: |
+          body="$(printf 'Status of building tag %s: %s.\nStatus of pushing tag %s to image registry: %s.\nImage manifest label: %s.' \
+            "$TAG" "$BUILD_OUTCOME" "$TAG" "$PUSH_OUTCOME" "$MANIFEST_OUTCOME")"
+          jq -n --arg body "$body" '{body: $body}' > /tmp/comment.json
           curl \
             -X POST \
-            $URL \
+            "$URL" \
             -H "Content-Type: application/json" \
             -H "Authorization: token $GITHUB_TOKEN" \
-            --data '{ "body": "Status of building tag ${{ inputs.tag }}: ${{ steps.build-image.outcome }}. \nStatus of pushing tag ${{ inputs.tag }} to image registry: ${{ steps.push-to-registry.outcome }}. \nImage manifest label: ${{ steps.manifest.outcome }}." }'
+            --data @/tmp/comment.json

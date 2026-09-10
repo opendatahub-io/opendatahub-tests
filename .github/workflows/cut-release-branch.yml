@@ -42,6 +42,9 @@ jobs:
     outputs:
       branch: ${{ steps.validate.outputs.branch }}
       tag: ${{ steps.validate.outputs.tag }}
+      source_ref: ${{ steps.validate.outputs.source_ref }}
+      image: ${{ steps.validate.outputs.image }}
+      registry: ${{ steps.validate.outputs.registry }}
       sha: ${{ steps.create.outputs.sha }}
     steps:
       - name: Validate inputs
@@ -49,10 +52,22 @@ jobs:
         env:
           BRANCH_NAME: ${{ inputs.branch_name }}
           IMAGE_TAG: ${{ inputs.image_tag }}
+          SOURCE_REF: ${{ inputs.source_ref }}
+          IMAGE_NAME: ${{ inputs.image_name }}
+          REGISTRY: ${{ inputs.registry }}
         run: |
-          branch="$(echo -n "$BRANCH_NAME" | tr -d '[:space:]')"
-          tag="$(echo -n "$IMAGE_TAG" | tr -d '[:space:]')"
+          set -euo pipefail
+
+          branch="$(printf '%s' "$BRANCH_NAME" | tr -d '[:space:]')"
+          tag="$(printf '%s' "$IMAGE_TAG" | tr -d '[:space:]')"
+          source_ref="$(printf '%s' "$SOURCE_REF" | tr -d '[:space:]')"
+          image="$(printf '%s' "$IMAGE_NAME" | tr -d '[:space:]')"
+          registry="$(printf '%s' "$REGISTRY" | tr -d '[:space:]')"
+
           [ -n "$tag" ] || tag="$branch"
+          [ -n "$source_ref" ] || source_ref="main"
+          [ -n "$image" ] || image="opendatahub-tests"
+          [ -n "$registry" ] || registry="quay.io/opendatahub"
 
           if [ -z "$branch" ]; then
             echo "::error::branch_name must not be empty."
@@ -62,17 +77,37 @@ jobs:
             echo "::error::Refusing to target the main branch."
             exit 1
           fi
-          if ! echo "$branch" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._/-]*$'; then
+
+          # Every value below is interpolated into a shell command, an API path or an image
+          # reference, so restrict each one to the characters its format actually allows.
+          if ! printf '%s' "$branch" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._/-]*$'; then
             echo "::error::branch_name '$branch' contains unsupported characters."
             exit 1
           fi
-          if ! echo "$tag" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]*$'; then
+          if ! printf '%s' "$tag" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]*$'; then
             echo "::error::image_tag '$tag' is not a valid container image tag."
             exit 1
           fi
+          if ! printf '%s' "$source_ref" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._/-]*$'; then
+            echo "::error::source_ref '$source_ref' contains unsupported characters."
+            exit 1
+          fi
+          if ! printf '%s' "$image" | grep -Eq '^[a-z0-9]+([._-][a-z0-9]+)*$'; then
+            echo "::error::image_name '$image' is not a valid image name."
+            exit 1
+          fi
+          if ! printf '%s' "$registry" | grep -Eq '^[a-z0-9.-]+(:[0-9]+)?(/[a-z0-9]+([._-][a-z0-9]+)*)*$'; then
+            echo "::error::registry '$registry' is not a valid registry reference."
+            exit 1
+          fi
 
-          echo "branch=$branch" >> "$GITHUB_OUTPUT"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          {
+            echo "branch=$branch"
+            echo "tag=$tag"
+            echo "source_ref=$source_ref"
+            echo "image=$image"
+            echo "registry=$registry"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Create branch
         id: create
@@ -80,13 +115,17 @@ jobs:
           GH_TOKEN: ${{ secrets.RHODS_CI_BOT_PAT || secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
           BRANCH: ${{ steps.validate.outputs.branch }}
-          SOURCE_REF: ${{ inputs.source_ref }}
+          SOURCE_REF: ${{ steps.validate.outputs.source_ref }}
         run: |
+          set -euo pipefail
+
           if gh api "repos/$REPOSITORY/git/ref/heads/$BRANCH" >/dev/null 2>&1; then
             existing_sha="$(gh api "repos/$REPOSITORY/git/ref/heads/$BRANCH" --jq .object.sha)"
             echo "::warning::Branch '$BRANCH' already exists at $existing_sha. Skipping branch creation."
-            echo "sha=$existing_sha" >> "$GITHUB_OUTPUT"
-            echo "created=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "sha=$existing_sha"
+              echo "created=false"
+            } >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -95,26 +134,31 @@ jobs:
             -f ref="refs/heads/$BRANCH" \
             -f sha="$sha" > /dev/null
           echo "Created branch '$BRANCH' at $sha."
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          echo "created=true" >> "$GITHUB_OUTPUT"
+          {
+            echo "sha=$sha"
+            echo "created=true"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Write job summary
         env:
           BRANCH: ${{ steps.validate.outputs.branch }}
           TAG: ${{ steps.validate.outputs.tag }}
+          SOURCE_REF: ${{ steps.validate.outputs.source_ref }}
           SHA: ${{ steps.create.outputs.sha }}
           CREATED: ${{ steps.create.outputs.created }}
+          BUILD_IMAGE: ${{ inputs.build_image }}
         run: |
           {
             echo "### Release branch"
             echo ""
             echo "| Item | Value |"
             echo "| --- | --- |"
-            echo "| Branch | \`$BRANCH\` |"
-            echo "| Cut from | \`${{ inputs.source_ref }}\` |"
-            echo "| Commit | \`$SHA\` |"
-            echo "| Newly created | $CREATED |"
-            echo "| Image tag | \`$TAG\` |"
+            printf '| Branch | `%s` |\n' "$BRANCH"
+            printf '| Cut from | `%s` |\n' "$SOURCE_REF"
+            printf '| Commit | `%s` |\n' "$SHA"
+            printf '| Newly created | %s |\n' "$CREATED"
+            printf '| Image tag | `%s` |\n' "$TAG"
+            printf '| Image build requested | %s |\n' "$BUILD_IMAGE"
           } >> "$GITHUB_STEP_SUMMARY"
 
   build-push:
@@ -126,6 +170,8 @@ jobs:
     with:
       ref: ${{ needs.create-branch.outputs.branch }}
       tag: ${{ needs.create-branch.outputs.tag }}
-      image: ${{ inputs.image_name }}
-      registry: ${{ inputs.registry }}
-    secrets: inherit
+      image: ${{ needs.create-branch.outputs.image }}
+      registry: ${{ needs.create-branch.outputs.registry }}
+    secrets:
+      QUAY_USERNAME: ${{ secrets.QUAY_USERNAME }}
+      QUAY_PASSWORD: ${{ secrets.QUAY_PASSWORD }} # pragma: allowlist secret
