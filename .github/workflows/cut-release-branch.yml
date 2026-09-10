@@ -1,0 +1,131 @@
+name: Cut Release Branch
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch_name:
+        description: "Release branch to create, for example 3.6 or 3.6ea1."
+        required: true
+        type: string
+      source_ref:
+        description: "Branch, tag or commit SHA to cut the release branch from."
+        required: false
+        type: string
+        default: main
+      image_tag:
+        description: "Image tag to push. Defaults to the release branch name."
+        required: false
+        type: string
+        default: ""
+      image_name:
+        description: "Image name, without the registry prefix."
+        required: false
+        type: string
+        default: opendatahub-tests
+      registry:
+        description: "Registry and namespace to push the image to."
+        required: false
+        type: string
+        default: quay.io/opendatahub
+      build_image:
+        description: "Build and push the container image after the branch is created."
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  create-branch:
+    runs-on: ubuntu-latest
+    outputs:
+      branch: ${{ steps.validate.outputs.branch }}
+      tag: ${{ steps.validate.outputs.tag }}
+      sha: ${{ steps.create.outputs.sha }}
+    steps:
+      - name: Validate inputs
+        id: validate
+        env:
+          BRANCH_NAME: ${{ inputs.branch_name }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          branch="$(echo -n "$BRANCH_NAME" | tr -d '[:space:]')"
+          tag="$(echo -n "$IMAGE_TAG" | tr -d '[:space:]')"
+          [ -n "$tag" ] || tag="$branch"
+
+          if [ -z "$branch" ]; then
+            echo "::error::branch_name must not be empty."
+            exit 1
+          fi
+          if [ "$branch" == "main" ]; then
+            echo "::error::Refusing to target the main branch."
+            exit 1
+          fi
+          if ! echo "$branch" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._/-]*$'; then
+            echo "::error::branch_name '$branch' contains unsupported characters."
+            exit 1
+          fi
+          if ! echo "$tag" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]*$'; then
+            echo "::error::image_tag '$tag' is not a valid container image tag."
+            exit 1
+          fi
+
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Create branch
+        id: create
+        env:
+          GH_TOKEN: ${{ secrets.RHODS_CI_BOT_PAT || secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          BRANCH: ${{ steps.validate.outputs.branch }}
+          SOURCE_REF: ${{ inputs.source_ref }}
+        run: |
+          if gh api "repos/$REPOSITORY/git/ref/heads/$BRANCH" >/dev/null 2>&1; then
+            existing_sha="$(gh api "repos/$REPOSITORY/git/ref/heads/$BRANCH" --jq .object.sha)"
+            echo "::warning::Branch '$BRANCH' already exists at $existing_sha. Skipping branch creation."
+            echo "sha=$existing_sha" >> "$GITHUB_OUTPUT"
+            echo "created=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          sha="$(gh api "repos/$REPOSITORY/commits/$SOURCE_REF" --jq .sha)"
+          gh api "repos/$REPOSITORY/git/refs" \
+            -f ref="refs/heads/$BRANCH" \
+            -f sha="$sha" > /dev/null
+          echo "Created branch '$BRANCH' at $sha."
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "created=true" >> "$GITHUB_OUTPUT"
+
+      - name: Write job summary
+        env:
+          BRANCH: ${{ steps.validate.outputs.branch }}
+          TAG: ${{ steps.validate.outputs.tag }}
+          SHA: ${{ steps.create.outputs.sha }}
+          CREATED: ${{ steps.create.outputs.created }}
+        run: |
+          {
+            echo "### Release branch"
+            echo ""
+            echo "| Item | Value |"
+            echo "| --- | --- |"
+            echo "| Branch | \`$BRANCH\` |"
+            echo "| Cut from | \`${{ inputs.source_ref }}\` |"
+            echo "| Commit | \`$SHA\` |"
+            echo "| Newly created | $CREATED |"
+            echo "| Image tag | \`$TAG\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build-push:
+    needs: create-branch
+    if: inputs.build_image
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-push-image.yml
+    with:
+      ref: ${{ needs.create-branch.outputs.branch }}
+      tag: ${{ needs.create-branch.outputs.tag }}
+      image: ${{ inputs.image_name }}
+      registry: ${{ inputs.registry }}
+    secrets: inherit
