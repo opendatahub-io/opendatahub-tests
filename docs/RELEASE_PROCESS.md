@@ -34,8 +34,6 @@ git ls-remote --heads https://github.com/opendatahub-io/opendatahub-tests.git \
 
 - Push access to `opendatahub-io/opendatahub-tests`, or a maintainer who can run the action
   for you.
-- Write access to the `quay.io/opendatahub/opendatahub-tests` repository, but only if you
-  need the fully manual image fallback. The GitHub workflows already hold credentials.
 - Access to the internal QE CI configuration for step 3.
 - Agreement on the release identifier with whoever owns the release schedule. Cutting under
   the wrong name means redoing all three steps.
@@ -98,13 +96,18 @@ and the on-merge workflow already derives its tag from the base branch name.
 Component pipelines pull `quay.io/opendatahub/opendatahub-tests:<branch>`. Until that tag
 exists, nothing can run against the new release.
 
+Images are only ever published by a GitHub workflow. Nobody pushes to
+`quay.io/opendatahub/opendatahub-tests` by hand, and the registry credentials live in
+repository secrets rather than with individuals. The manual path below is manual in the
+sense that you trigger the build yourself; the push still happens in CI.
+
 ### Automated
 
 Covered by step 1 when `build_image` is `true`. To build an image for a branch that already
 exists, re-run **Cut Release Branch** with the same `branch_name`; creation is skipped and
 only the image is rebuilt.
 
-### Manual fallback: empty PR
+### Manual: trigger the on-merge build with an empty PR
 
 The on-merge workflow builds and pushes a tag named after the PR's base branch, so merging
 any PR into the release branch produces the image. An empty commit is enough:
@@ -131,23 +134,23 @@ gh run list --repo opendatahub-io/opendatahub-tests \
   --workflow build-push-container-on-merge.yml --limit 5
 ```
 
-### Manual fallback: build locally
+### If both workflows fail
 
-Only if both workflows are unavailable. Requires write access to the quay repository.
+Do not build and push the image from a workstation. Raise it with the repository
+maintainers instead: the credentials are held as repository secrets, and a hand-pushed
+image would be missing the `io.opendatahub.tests.required-images` labels that the workflow
+adds, which consumers rely on. See
+[Consuming the image manifest](CONSUMING_IMAGE_MANIFEST.md) for what those labels are used
+for.
+
+To sanity check a build without publishing anything, build the image locally and do not
+push it:
 
 ```bash
 git fetch upstream
 git checkout upstream/3.6
-podman build -t quay.io/opendatahub/opendatahub-tests:3.6 -f Dockerfile .
-podman login quay.io
-podman push quay.io/opendatahub/opendatahub-tests:3.6
+podman build -t opendatahub-tests:3.6-local -f Dockerfile .
 ```
-
-A locally built image will **not** carry the `io.opendatahub.tests.required-images` labels
-unless you add them yourself, because those come from a workflow step. Treat this as a
-stopgap and rebuild through a workflow once one is available. See
-[Consuming the image manifest](CONSUMING_IMAGE_MANIFEST.md) for what those labels are used
-for.
 
 ### Verify the image
 
