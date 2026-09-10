@@ -34,7 +34,16 @@ def _fetch_manifest_list_digest(image_ref: str) -> str:
     manifest list rather than a platform-specific manifest.
     """
     result = subprocess.run(
-        ["skopeo", "inspect", "--no-tags", "--override-arch", "amd64", "--override-os", "linux", f"docker://{image_ref}"],
+        [
+            "skopeo",
+            "inspect",
+            "--no-tags",
+            "--override-arch",
+            "amd64",
+            "--override-os",
+            "linux",
+            f"docker://{image_ref}",
+        ],
         capture_output=True,
         text=True,
     )
