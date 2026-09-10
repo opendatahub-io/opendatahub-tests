@@ -43,8 +43,9 @@ from tests.ai_safety.evalhub.constants import (
     OPERATOR_METRICS_PORT,
     OPERATOR_POD_LABEL_SELECTOR,
 )
+from utilities.constants import Timeout
 from utilities.guardrails import get_auth_headers
-from utilities.kueue_utils import KUEUE_QUEUE_NAME_LABEL, LocalQueue, Workload
+from utilities.kueue_utils import KUEUE_QUEUE_NAME_LABEL, LocalQueue, Workload, count_pods_started
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -1489,6 +1490,97 @@ def wait_for_evalhub_job_workload_absent(
                 return
     except TimeoutExpiredError:
         raise TimeoutExpiredError(f"Kueue Workload {workload_name} still present after {timeout}s") from None
+
+
+def submit_evalhub_kueue_job_and_get_id(
+    request_common: dict[str, str],
+    local_queue_name: str,
+    model_service_name: str,
+    tenant_namespace: str,
+    job_name: str,
+) -> str:
+    """Submit an EvalHub job to a Kueue LocalQueue and return its EvalHub job id.
+
+    ``request_common`` is the shared request configuration (host, token,
+    ca_bundle_file, tenant), i.e. the ``evalhub_kueue_request_common`` fixture.
+    """
+    data = submit_evalhub_job(
+        **request_common,
+        payload=build_evalhub_kueue_job_payload(
+            queue_name=local_queue_name,
+            model_service_name=model_service_name,
+            tenant_namespace=tenant_namespace,
+            job_name=job_name,
+        ),
+    )
+    return data["resource"]["id"]
+
+
+def wait_for_evalhub_pod_started(
+    admin_client: DynamicClient,
+    namespace: str,
+    evalhub_job_id: str,
+    timeout: int = Timeout.TIMEOUT_10MIN,
+) -> None:
+    """Wait until the EvalHub job's pod has started (Running or a terminal phase).
+
+    Preemption is only meaningful once the victim is occupying quota, so a
+    preemptor must be created only after the victim's pod has started.
+    """
+    selector = evalhub_runtime_label_selector(evalhub_job_id=evalhub_job_id)
+    try:
+        for started in TimeoutSampler(
+            wait_timeout=timeout,
+            sleep=5,
+            func=count_pods_started,
+            labels=[selector],
+            namespace=namespace,
+            admin_client=admin_client,
+        ):
+            if started >= 1:
+                return
+    except TimeoutExpiredError:
+        pytest.fail(f"EvalHub job {evalhub_job_id} pod never started; cannot exercise preemption")
+
+
+def cleanup_evalhub_jobs_and_workloads(
+    request_common: dict[str, str],
+    admin_client: DynamicClient,
+    namespace: str,
+    job_ids: list[str],
+) -> None:
+    """Delete the jobs and wait until their Workloads are gone, so the test queue can be cleaned up.
+
+    Must run before any isolated ClusterQueue is torn down: the queue can't be
+    deleted while a Workload still references it.
+    """
+    for job_id in job_ids:
+        # Resolve the Workload name *before* deleting the Job: get_evalhub_job_workload
+        # finds the Workload via the Job's UID, so it can no longer resolve the name once
+        # the Job is gone.
+        workload = get_evalhub_job_workload(admin_client=admin_client, namespace=namespace, evalhub_job_id=job_id)
+        workload_name = workload.name if workload else None
+
+        try:
+            delete_evalhub_runtime_k8s_job(admin_client=admin_client, namespace=namespace, evalhub_job_id=job_id)
+        except Exception:
+            LOGGER.warning(f"Failed to delete Kubernetes Job for EvalHub job {job_id}", exc_info=True)
+
+        try:
+            cleanup_evalhub_job(**request_common, job_id=job_id)
+        except Exception:
+            LOGGER.warning(f"Failed to clean up job {job_id}", exc_info=True)
+
+        if workload_name:
+            try:
+                wait_for_evalhub_job_workload_absent(
+                    admin_client=admin_client,
+                    namespace=namespace,
+                    workload_name=workload_name,
+                    timeout=Timeout.TIMEOUT_2MIN,
+                )
+            except TimeoutExpiredError:
+                LOGGER.warning(f"Workload {workload_name} still present after cleaning up job {job_id}", exc_info=True)
 
 
 def assert_plain_text_logs_response(response: requests.Response) -> str:
