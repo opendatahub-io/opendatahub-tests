@@ -4,9 +4,10 @@ from typing import Any
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
+from timeout_sampler import retry
 
 from tests.ai_hub.model_catalog.constants import REDHAT_AI_CATALOG_ID
-from tests.ai_hub.utils import execute_delete_call, execute_get_command, execute_get_command_with_retry
+from tests.ai_hub.utils import execute_delete_call_with_retry, execute_get_command, execute_get_command_with_retry
 
 STATUS_PATH_TEMPLATE: str = "{base}sources/{source_id}/status"
 UNKNOWN_SOURCE_ID: str = "does_not_exist_xyz"
@@ -43,11 +44,24 @@ def get_source_status(base_url: str, headers: dict[str, str], source_id: str) ->
 
 def clear_source_status(base_url: str, headers: dict[str, str], source_id: str) -> int:
     """Clear the persisted status of a catalog source."""
-    response = execute_delete_call(
+    response = execute_delete_call_with_retry(
         url=STATUS_PATH_TEMPLATE.format(base=base_url, source_id=source_id),
         headers=headers,
     )
     return response.status_code
+
+
+class SourceStatusNotRestored(Exception):
+    pass
+
+
+@retry(wait_timeout=120, sleep=5, exceptions_dict={SourceStatusNotRestored: []})
+def wait_for_source_status_restored(base_url: str, headers: dict[str, str], source_id: str) -> dict[str, Any]:
+    """Wait for a catalog source's persisted status to be repopulated after a restart."""
+    status = get_source_status(base_url=base_url, headers=headers, source_id=source_id)
+    if status.get("status"):
+        return status
+    raise SourceStatusNotRestored(f"Status for {source_id} not yet restored: {status}")
 
 
 class TestGetSourceStatusEndpoint:
@@ -175,6 +189,7 @@ class TestClearSourceStatusEndpoint:
         admin_client: DynamicClient,
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
+        source_status_base_url: str,
         model_registry_rest_headers: dict[str, str],
     ) -> Generator[None]:
         """Restore persisted catalog statuses after status-clearing tests."""
@@ -187,6 +202,11 @@ class TestClearSourceStatusEndpoint:
             model_registry_namespace=model_registry_namespace,
         )
         wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
+        wait_for_source_status_restored(
+            base_url=source_status_base_url,
+            headers=model_registry_rest_headers,
+            source_id=REDHAT_AI_CATALOG_ID,
+        )
 
     @pytest.mark.tier2
     def test_clear_unknown_source_is_noop(
