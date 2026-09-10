@@ -946,6 +946,16 @@ def execute_delete_call(url: str, headers: dict[str, str], verify: bool | str = 
     return resp
 
 
+@retry(
+    wait_timeout=60,
+    sleep=5,
+    exceptions_dict={TransientUnauthorizedError: [], requests.exceptions.ConnectionError: []},
+)
+def execute_delete_call_with_retry(url: str, headers: dict[str, str], verify: bool | str = False) -> requests.Response:
+    """Execute a DELETE request, retrying on transient 401s (OAuth/kube-rbac-proxy initialization)."""
+    return execute_delete_call(url=url, headers=headers, verify=verify)
+
+
 def execute_get_command(
     url: str, headers: dict[str, str], verify: bool | str = False, params: dict[str, Any] | None = None
 ) -> dict[Any, Any]:
