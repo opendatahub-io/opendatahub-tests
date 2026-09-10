@@ -2,12 +2,18 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
+import requests
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from timeout_sampler import retry
 
 from tests.ai_hub.model_catalog.constants import REDHAT_AI_CATALOG_ID
-from tests.ai_hub.utils import execute_delete_call_with_retry, execute_get_command, execute_get_command_with_retry
+from tests.ai_hub.utils import (
+    TransientUnauthorizedError,
+    execute_delete_call_with_retry,
+    execute_get_command,
+    execute_get_command_with_retry,
+)
 
 STATUS_PATH_TEMPLATE: str = "{base}sources/{source_id}/status"
 UNKNOWN_SOURCE_ID: str = "does_not_exist_xyz"
@@ -55,7 +61,15 @@ class SourceStatusNotRestored(Exception):
     pass
 
 
-@retry(wait_timeout=120, sleep=5, exceptions_dict={SourceStatusNotRestored: []})
+@retry(
+    wait_timeout=120,
+    sleep=5,
+    exceptions_dict={
+        SourceStatusNotRestored: [],
+        TransientUnauthorizedError: [],
+        requests.exceptions.ConnectionError: [],
+    },
+)
 def wait_for_source_status_restored(base_url: str, headers: dict[str, str], source_id: str) -> dict[str, Any]:
     """Wait for a catalog source's persisted status to be repopulated after a restart."""
     status = get_source_status(base_url=base_url, headers=headers, source_id=source_id)
