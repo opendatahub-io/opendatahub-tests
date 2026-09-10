@@ -165,7 +165,7 @@ def _patch_add_handler(queue_handler: _StructlogQueueHandler) -> None:
     logging.Logger.addHandler = _patched  # type: ignore[method-assign]
 
 
-class RedactedString(str):
+class RedactedString(str):  # noqa: FURB189
     """
     Used to redact the representation of a sensitive string.
     """

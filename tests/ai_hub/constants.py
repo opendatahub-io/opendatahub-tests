@@ -1,3 +1,4 @@
+import math
 from typing import Any
 
 from ocp_resources.deployment import Deployment
@@ -18,6 +19,7 @@ class ModelRegistryEndpoints:
 MR_OPERATOR_NAME: str = "model-registry-operator"
 CATALOG_CONTROLLER_MANAGER_NAME: str = "catalog-controller-manager"
 AIHUB_CONTROLLER_MANAGER_NAME: str = "aihub-controller-manager"
+MLFLOW_INSTANCE_NAME: str = "mlflow"
 MODEL_NAME: str = "my-model"
 MODEL_DICT: dict[str, Any] = {
     "model_name": MODEL_NAME,
@@ -31,7 +33,7 @@ MODEL_DICT: dict[str, Any] = {
     "model_metadata": {
         "int_key": 1,
         "bool_key": False,
-        "float_key": 3.14,
+        "float_key": math.pi,
         "str_key": "str_value",
     },
 }

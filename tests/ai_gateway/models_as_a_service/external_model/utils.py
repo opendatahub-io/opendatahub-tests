@@ -8,8 +8,11 @@ from kubernetes.dynamic.exceptions import NotFoundError, ResourceNotFoundError
 from ocp_resources.service import Service
 from timeout_sampler import TimeoutSampler
 
+from tests.ai_gateway.models_as_a_service.utils import (
+    get_httproute,
+    wait_for_httproute,
+)
 from utilities.constants import ApiGroups
-from utilities.resources.http_route import HTTPRoute
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -24,6 +27,24 @@ EXTERNAL_SUBSCRIPTION_NAME = "e2e-external-subscription"
 EXTERNAL_SECRET_NAME = f"{EXTERNAL_MODEL_NAME}-api-key"
 INFERENCE_EXTERNAL_MODEL_API_GROUP = ApiGroups.INFERENCE_OPENDATAHUB_IO
 
+__all__ = [
+    "EXTERNAL_API_FORMAT",
+    "EXTERNAL_AUTH_POLICY_NAME",
+    "EXTERNAL_ENDPOINT",
+    "EXTERNAL_MODEL_NAME",
+    "EXTERNAL_PROVIDER_NAME",
+    "EXTERNAL_PROVIDER_PATH",
+    "EXTERNAL_SECRET_NAME",
+    "EXTERNAL_SUBSCRIPTION_NAME",
+    "EXTERNAL_TARGET_MODEL",
+    "INFERENCE_EXTERNAL_MODEL_API_GROUP",
+    "external_provider_ref",
+    "get_httproute",
+    "get_service",
+    "wait_for_httproute",
+    "wait_for_httproute_deleted",
+]
+
 
 def external_provider_ref(provider_name: str, *, target_model: str = EXTERNAL_TARGET_MODEL) -> dict[str, Any]:
     """Build an externalProviderRefs entry for an ExternalModel spec."""
@@ -33,21 +54,6 @@ def external_provider_ref(provider_name: str, *, target_model: str = EXTERNAL_TA
         "apiFormat": EXTERNAL_API_FORMAT,
         "path": EXTERNAL_PROVIDER_PATH,
     }
-
-
-def get_httproute(
-    client: DynamicClient,
-    name: str,
-    namespace: str,
-) -> HTTPRoute | None:
-    """Look up an HTTPRoute by name/namespace. Returns the resource wrapper or None."""
-    try:
-        route = HTTPRoute(client=client, name=name, namespace=namespace)
-        if route.exists:
-            return route
-    except NotFoundError, ResourceNotFoundError:
-        LOGGER.debug(f"HTTPRoute {namespace}/{name} not found")
-    return None
 
 
 def get_service(
@@ -65,28 +71,6 @@ def get_service(
     return None
 
 
-def wait_for_httproute(
-    client: DynamicClient,
-    name: str,
-    namespace: str,
-    timeout: int = 60,
-) -> HTTPRoute:
-    """Poll until the HTTPRoute exists, or raise on timeout."""
-    for _ in TimeoutSampler(
-        wait_timeout=timeout,
-        sleep=3,
-        func=get_httproute,
-        client=client,
-        name=name,
-        namespace=namespace,
-    ):
-        route = get_httproute(client=client, name=name, namespace=namespace)
-        if route is not None:
-            return route
-
-    raise TimeoutError(f"HTTPRoute {namespace}/{name} not found within {timeout}s")
-
-
 def wait_for_httproute_deleted(
     client: DynamicClient,
     name: str,
@@ -94,7 +78,7 @@ def wait_for_httproute_deleted(
     timeout: int = 60,
 ) -> None:
     """Poll until the HTTPRoute no longer exists, or raise on timeout."""
-    for _ in TimeoutSampler(
+    for route in TimeoutSampler(
         wait_timeout=timeout,
         sleep=3,
         func=get_httproute,
@@ -102,7 +86,5 @@ def wait_for_httproute_deleted(
         name=name,
         namespace=namespace,
     ):
-        if get_httproute(client=client, name=name, namespace=namespace) is None:
+        if route is None:
             return
-
-    raise TimeoutError(f"HTTPRoute {namespace}/{name} still exists after {timeout}s")

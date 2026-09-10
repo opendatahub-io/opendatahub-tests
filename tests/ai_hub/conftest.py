@@ -10,6 +10,7 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.infrastructure import Infrastructure
+from ocp_resources.mlflow import MLflow
 from ocp_resources.namespace import Namespace
 from ocp_resources.node import Node
 from ocp_resources.oauth import OAuth
@@ -30,6 +31,7 @@ from tests.ai_hub.constants import (
     DB_RESOURCE_NAME,
     KUBERBACPROXY_STR,
     MCP_CATALOG_API_PATH,
+    MLFLOW_INSTANCE_NAME,
     MR_INSTANCE_BASE_NAME,
     MR_INSTANCE_NAME,
     MR_OPERATOR_NAME,
@@ -201,6 +203,41 @@ def updated_dsc_component_state_scope_session(
     else:
         LOGGER.info("Model Registry is enabled by default and does not require any setup.")
         yield dsc_resource
+
+
+@pytest.fixture(scope="class")
+def ai_hub_mlflow_instance(admin_client: DynamicClient) -> Generator[MLflow, Any, Any]:
+    """Create an MLflow instance for ai_hub tests, failing if one already exists.
+
+    Assumes a fresh RHOAI install: mlflowoperator is already Managed, but no MLflow CR exists
+    yet. MLflow is cluster-scoped, so only one instance may exist at a time; this fixture owns
+    that single instance rather than reusing one.
+    """
+    existing_instances = list(MLflow.get(client=admin_client))
+    assert not existing_instances, (
+        "Expected no MLflow instance on the cluster before this test (fresh-cluster assumption), "
+        f"but found: {[mlflow.name for mlflow in existing_instances]}. Only one MLflow instance "
+        "may exist at a time."
+    )
+
+    applications_namespace = py_config["applications_namespace"]
+    LOGGER.info("Creating MLflow instance for ai_hub tests", name=MLFLOW_INSTANCE_NAME)
+    with MLflow(
+        client=admin_client,
+        name=MLFLOW_INSTANCE_NAME,
+        storage={
+            "accessModes": ["ReadWriteOnce"],
+            "resources": {"requests": {"storage": "10Gi"}},
+        },
+        backend_store_uri="sqlite:////mlflow/mlflow.db",
+        artifacts_destination="file:///mlflow/artifacts",
+        serve_artifacts=True,
+        wait_for_resource=True,
+    ) as mlflow_cr:
+        Deployment(client=admin_client, name=MLFLOW_INSTANCE_NAME, namespace=applications_namespace).wait_for_replicas(
+            timeout=300
+        )
+        yield mlflow_cr
 
 
 @pytest.fixture()

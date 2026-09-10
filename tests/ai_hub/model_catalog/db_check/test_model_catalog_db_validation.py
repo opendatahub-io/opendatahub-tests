@@ -124,7 +124,7 @@ class TestModelCatalogPostgresEphemeralStorage:
             Deployment.get(
                 client=admin_client,
                 namespace=model_registry_namespace,
-                label_selector="app.kubernetes.io/name=model-catalog-postgres",
+                label_selector="app.kubernetes.io/component=model-catalog-postgres",
             )
         )
         assert deployments, "No model-catalog-postgres deployment found"

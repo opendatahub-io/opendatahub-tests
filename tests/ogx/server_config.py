@@ -68,31 +68,31 @@ def build_ogx_server_config(
     cpu_requests = "1"
     cpu_limits = "2"
 
-    env_vars.append({"name": "INFERENCE_MODEL", "value": OGX_CORE_INFERENCE_MODEL})
-    env_vars.append(
+    env_vars.extend((
+        {"name": "INFERENCE_MODEL", "value": OGX_CORE_INFERENCE_MODEL},
         {
             "name": "VLLM_API_TOKEN",
             "valueFrom": {"secretKeyRef": {"name": "ogx-distribution-secret", "key": "vllm-api-token"}},
         },
-    )
-    env_vars.append({"name": "VLLM_URL", "value": OGX_CORE_VLLM_URL})
-    env_vars.append({"name": "VLLM_TLS_VERIFY", "value": OGX_CORE_VLLM_TLS_VERIFY})
-    env_vars.append({"name": "VLLM_MAX_TOKENS", "value": OGX_CORE_VLLM_MAX_TOKENS})
+        {"name": "VLLM_URL", "value": OGX_CORE_VLLM_URL},
+        {"name": "VLLM_TLS_VERIFY", "value": OGX_CORE_VLLM_TLS_VERIFY},
+        {"name": "VLLM_MAX_TOKENS", "value": OGX_CORE_VLLM_MAX_TOKENS},
+    ))
 
     # EMBEDDING_MODEL
     embedding_provider = params.get("embedding_provider") or "vllm-embedding"
     if embedding_provider == "vllm-embedding":
-        env_vars.append({"name": "EMBEDDING_MODEL", "value": OGX_CORE_EMBEDDING_MODEL})
-        env_vars.append({"name": "EMBEDDING_PROVIDER_MODEL_ID", "value": OGX_CORE_EMBEDDING_PROVIDER_MODEL_ID})
-        env_vars.append({"name": "VLLM_EMBEDDING_URL", "value": OGX_CORE_VLLM_EMBEDDING_URL})
-        env_vars.append(
+        env_vars.extend((
+            {"name": "EMBEDDING_MODEL", "value": OGX_CORE_EMBEDDING_MODEL},
+            {"name": "EMBEDDING_PROVIDER_MODEL_ID", "value": OGX_CORE_EMBEDDING_PROVIDER_MODEL_ID},
+            {"name": "VLLM_EMBEDDING_URL", "value": OGX_CORE_VLLM_EMBEDDING_URL},
             {
                 "name": "VLLM_EMBEDDING_API_TOKEN",
                 "valueFrom": {"secretKeyRef": {"name": "ogx-distribution-secret", "key": "vllm-embedding-api-token"}},
             },
-        )
-        env_vars.append({"name": "VLLM_EMBEDDING_MAX_TOKENS", "value": OGX_CORE_VLLM_EMBEDDING_MAX_TOKENS})
-        env_vars.append({"name": "VLLM_EMBEDDING_TLS_VERIFY", "value": OGX_CORE_VLLM_EMBEDDING_TLS_VERIFY})
+            {"name": "VLLM_EMBEDDING_MAX_TOKENS", "value": OGX_CORE_VLLM_EMBEDDING_MAX_TOKENS},
+            {"name": "VLLM_EMBEDDING_TLS_VERIFY", "value": OGX_CORE_VLLM_EMBEDDING_TLS_VERIFY},
+        ))
     else:
         raise ValueError(f"Unsupported embeddings provider: {embedding_provider}")
 
@@ -105,33 +105,31 @@ def build_ogx_server_config(
     # so ENABLE_GEMINI is what makes the provider appear, and GEMINI_API_KEY
     # (sourced from the ogx-distribution-secret) is what authenticates it.
     if params.get("enable_gemini"):
-        env_vars.append({"name": "ENABLE_GEMINI", "value": "1"})
-        env_vars.append(
+        env_vars.extend((
+            {"name": "ENABLE_GEMINI", "value": "1"},
             {
                 "name": "GEMINI_API_KEY",
                 "valueFrom": {"secretKeyRef": {"name": "ogx-distribution-secret", "key": "gemini-api-token"}},
             },
-        )
+        ))
         if GEMINI_INFERENCE_MODEL:
             env_vars.append({"name": "GEMINI_INFERENCE_MODEL", "value": GEMINI_INFERENCE_MODEL})
 
     # POSTGRESQL environment variables for sql_default and kvstore_default
-    env_vars.append({"name": "POSTGRES_HOST", "value": "vector-io-postgres-service"})
-    env_vars.append({"name": "POSTGRES_PORT", "value": "5432"})
-    env_vars.append(
+    env_vars.extend((
+        {"name": "POSTGRES_HOST", "value": "vector-io-postgres-service"},
+        {"name": "POSTGRES_PORT", "value": "5432"},
         {
             "name": "POSTGRES_USER",
             "valueFrom": {"secretKeyRef": {"name": "ogx-distribution-secret", "key": "postgres-user"}},
         },
-    )
-    env_vars.append(
         {
             "name": "POSTGRES_PASSWORD",
             "valueFrom": {"secretKeyRef": {"name": "ogx-distribution-secret", "key": "postgres-password"}},
         },
-    )
-    env_vars.append({"name": "POSTGRES_DB", "value": "ps_db"})
-    env_vars.append({"name": "POSTGRES_TABLE_NAME", "value": "ogx_kvstore"})
+        {"name": "POSTGRES_DB", "value": "ps_db"},
+        {"name": "POSTGRES_TABLE_NAME", "value": "ogx_kvstore"},
+    ))
 
     # Depending on parameter files_provider, configure files provider and obtain required env_vars
     files_provider = params.get("files_provider") or "local"
@@ -145,7 +143,7 @@ def build_ogx_server_config(
 
     if is_disconnected_cluster and HTTPS_PROXY:
         LOGGER.info("Setting proxy and tlsconfig configuration")
-        env_vars.append({"name": "HTTPS_PROXY", "value": HTTPS_PROXY})
+        env_vars.extend(({"name": "HTTPS_PROXY", "value": HTTPS_PROXY},))
 
         # The operator sets SSL_CERT_FILE automatically when tls.trust is
         # configured, but the `requests` library (used by tiktoken to download

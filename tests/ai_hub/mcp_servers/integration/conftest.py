@@ -10,6 +10,8 @@ import pytest
 import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.data_science_cluster import DataScienceCluster
+from ocp_resources.mlflow import MLflow
 from ocp_resources.namespace import Namespace
 from ocp_resources.resource import ResourceEditor
 from requests import RequestException
@@ -46,6 +48,8 @@ from tests.ai_hub.mcp_servers.integration.utils import (
     wait_for_ready_deployment,
 )
 from tests.ai_hub.utils import execute_get_command_with_retry, wait_for_catalog_api
+from utilities.constants import DscComponents
+from utilities.infra import get_data_science_cluster, wait_for_dsc_status_ready
 from utilities.resources.pod import Pod as UtilPod
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -368,6 +372,7 @@ def catalog_server_details(
 def registered_mcp_server_version(
     catalog_server_details: dict[str, Any],
     dashboard_api_base_url: str,
+    ai_hub_mlflow_instance: MLflow,
     mcp_registry_auth_headers: dict[str, str],
     mcp_registry_test_metadata: dict[str, Any],
     model_namespace: Namespace,
@@ -444,9 +449,33 @@ def registered_mcp_server_version(
 
 
 @pytest.fixture(scope="class")
+def enabled_mcp_lifecycle_operator(admin_client: DynamicClient) -> Generator[DataScienceCluster, Any]:
+    """Ensure the mcplifecycleoperator DSC component is Managed, restoring its prior state afterward.
+
+    Unlike mlflowoperator, this component is not part of the default DSC template and defaults to
+    Removed, so it must be explicitly enabled before the dashboard BFF can create MCPServer CRs.
+    """
+    dsc = get_data_science_cluster(client=admin_client)
+    with ResourceEditor(
+        patches={
+            dsc: {
+                "spec": {
+                    "components": {
+                        DscComponents.MCPLIFECYCLEOPERATOR: {"managementState": DscComponents.ManagementState.MANAGED},
+                    }
+                }
+            }
+        }
+    ):
+        wait_for_dsc_status_ready(dsc_resource=dsc)
+        yield dsc
+
+
+@pytest.fixture(scope="class")
 def mcp_deployment(
     catalog_server_details: dict[str, Any],
     dashboard_api_base_url: str,
+    enabled_mcp_lifecycle_operator: DataScienceCluster,
     mcp_registry_auth_headers: dict[str, str],
     mcp_registry_test_metadata: dict[str, Any],
     model_namespace: Namespace,
