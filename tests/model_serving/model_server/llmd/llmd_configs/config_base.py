@@ -13,7 +13,6 @@ from tests.model_serving.model_server.llmd.utils import (
 )
 from tests.model_serving.model_server.utils import skip_test
 from utilities.constants import Labels
-from utilities.image_constants import SharedImages
 from utilities.infra import is_disconnected_cluster
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -32,7 +31,7 @@ class LLMISvcConfig:
     replicas = 1
     container_image = None
     enable_auth = False
-    wait_timeout = 300
+    wait_timeout = 420
     base_refs = None
 
     # default values for expectation pods count
@@ -124,17 +123,6 @@ class LLMISvcConfig:
         return "\n".join(lines)
 
     @classmethod
-    def build(cls, client: DynamicClient) -> type:
-        """Skip on disconnected clusters when the model storage is HuggingFace.
-
-        GpuConfig overrides with GPU detection.
-        """
-        if cls.storage_uri.startswith("hf://") and is_disconnected_cluster(client=client):
-            skip_test(reason="HuggingFace storage not available on disconnected clusters")
-        LOGGER.info(f"No accelerator needed for {cls.__name__}")
-        return cls
-
-    @classmethod
     def with_overrides(cls, **overrides):
         """Create a derived config class with overridden attributes."""
         return type(f"{cls.__name__}_custom", (cls,), overrides)
@@ -176,11 +164,39 @@ class LLMISvcConfig:
 
 
 class CpuConfig(LLMISvcConfig):
-    """CPU inference base. Sets vLLM CPU image, CPU env vars, and CPU resource limits."""
+    """CPU inference configuration using a versioned CPU LLMInferenceServiceConfig."""
 
-    enable_auth = False
-    wait_timeout = 420
-    container_image = SharedImages.VLLM_CPU
+    @classmethod
+    def build(cls, client: DynamicClient) -> type:
+        """Resolve the CPU base configuration and skip unsupported Hugging Face storage."""
+        supported_topology = "workload-single-node"
+        name_regex = r"^(?:.*-)?kserve-config-llm-template-cpu$"
+
+        if cls.storage_uri.startswith("hf://") and is_disconnected_cluster(client=client):
+            skip_test(reason="HuggingFace storage not available on disconnected clusters")
+
+        result = find_matching_llminferenceserviceconfig(
+            client=client,
+            accelerator=None,
+            topology=supported_topology,
+            name_regex=name_regex,
+        )
+        log_base_refs_selection(
+            accelerator=None,
+            topology=supported_topology,
+            name_regex=name_regex,
+            result=result,
+        )
+
+        if not result.matched:
+            pytest.fail(
+                f"No CPU LLMInferenceServiceConfig matched "
+                f"'{name_regex}' "
+                f"and topology='{supported_topology}'. See logs above for details.",
+                pytrace=False,
+            )
+
+        return cls.with_overrides(base_refs=[{"name": result.matched}])
 
     @classmethod
     def container_env(cls):
@@ -193,7 +209,6 @@ class CpuConfig(LLMISvcConfig):
                 "name": "VLLM_ADDITIONAL_ARGS",
                 "value": "--max-num-seqs 20 --max-model-len 128 --enforce-eager --ssl-ciphers ECDHE+AESGCM:DHE+AESGCM",
             },
-            {"name": "VLLM_CPU_KVCACHE_SPACE", "value": "4"},
         ]
 
     @classmethod
