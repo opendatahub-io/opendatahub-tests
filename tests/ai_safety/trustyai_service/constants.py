@@ -13,6 +13,11 @@ TAI_DB_STORAGE_CONFIG: dict[str, str] = {
     "databaseConfigurations": "db-credentials",
 }
 
+DB_CREDENTIALS_SECRET_NAME: str = "db-credentials"
+DB_NAME: str = "trustyai_db"
+DB_USERNAME: str = "trustyai_user"
+DB_PASSWORD: str = "trustyai_password"
+
 MLSERVER: str = "mlserver"
 MLSERVER_RUNTIME_NAME: str = f"{MLSERVER}-1.x"
 XGBOOST: str = "xgboost"

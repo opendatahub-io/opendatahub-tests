@@ -21,6 +21,9 @@ from ocp_resources.trustyai_service import TrustyAIService
 from pytest_testconfig import py_config
 
 from tests.ai_safety.trustyai_service.constants import (
+    DB_CREDENTIALS_SECRET_NAME,
+    DB_NAME,
+    DB_USERNAME,
     GAUSSIAN_CREDIT_MODEL,
     GAUSSIAN_CREDIT_MODEL_RESOURCES,
     GAUSSIAN_CREDIT_MODEL_STORAGE_URI,
@@ -55,10 +58,6 @@ from utilities.infra import create_inference_token, get_kserve_storage_initializ
 from utilities.logger import RedactedString
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
-DB_CREDENTIALS_SECRET_NAME: str = "db-credentials"
-DB_NAME: str = "trustyai_db"
-DB_USERNAME: str = "trustyai_user"
-DB_PASSWORD: str = "trustyai_password"
 DB_UPGRADE_NAMESPACE_SUFFIX: str = "-db-upgrade"
 
 

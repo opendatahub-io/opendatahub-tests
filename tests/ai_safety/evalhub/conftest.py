@@ -67,8 +67,9 @@ from tests.ai_safety.evalhub.constants import (
     SIMPLE_MINIO_ACCESS_KEY,
     SIMPLE_MINIO_BUCKET,
     SIMPLE_MINIO_SECRET_KEY,
+    VLLM_EMULATOR_IMAGE,
 )
-from tests.ai_safety.evalhub.kueue.constants import VLLM_EMULATOR, VLLM_EMULATOR_IMAGE
+from tests.ai_safety.evalhub.kueue.constants import VLLM_EMULATOR
 from tests.ai_safety.evalhub.utils import (
     MLflowWithWorkspaces,
     build_git_job_payload,
