@@ -498,11 +498,16 @@ def select_ogx_model(
         raise ValueError("No embedding provider found")
 
     embedding_model = next(
-        model
-        for model in models
-        if model.custom_metadata.get("model_type") == "embedding"
-        and model.custom_metadata.get("provider_id") == target_provider_id
+        (
+            model
+            for model in models
+            if model.custom_metadata.get("model_type") == "embedding"
+            and model.custom_metadata.get("provider_id") == target_provider_id
+        ),
+        None,
     )
+    if embedding_model is None:
+        raise ValueError(f"No embedding model found for provider: {target_provider_id}")
     embedding_dimension = int(embedding_model.custom_metadata["embedding_dimension"])
 
     LOGGER.info(f"Detected model: {model_id}")
