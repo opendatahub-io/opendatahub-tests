@@ -6,6 +6,7 @@ from typing import Any
 import requests
 from fastmcp import Client
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.service import Service
 from pytest_testconfig import config as py_config
 from tenacity import retry as tenacity_retry
 from tenacity import retry_if_not_result, stop_after_delay, wait_exponential
@@ -41,18 +42,17 @@ def discover_model_catalog_url(client: DynamicClient) -> str | None:
     """
     from kubernetes.dynamic.exceptions import NotFoundError
 
-    svc_api = client.resources.get(api_version="v1", kind="Service")
     for namespace in _MODEL_CATALOG_NAMESPACES:
         try:
-            services = svc_api.get(namespace=namespace)
+            services = Service.get(client=client, namespace=namespace)
+            for service in services:
+                if _MODEL_CATALOG_SERVICE_PATTERN in service.name:
+                    url = f"https://{service.name}.{namespace}.svc:{_MODEL_CATALOG_PORT}"
+                    _logger.info(msg=f"Discovered Model Catalog service: {url}")
+                    return url
         except NotFoundError:
-            _logger.debug("Namespace %s not found, skipping", namespace)
+            _logger.debug(msg=f"Namespace {namespace} not found, skipping")
             continue
-        for svc in services.items:
-            if _MODEL_CATALOG_SERVICE_PATTERN in svc.metadata.name:
-                url = f"https://{svc.metadata.name}.{namespace}.svc:{_MODEL_CATALOG_PORT}"
-                _logger.info("Discovered Model Catalog service: %s", url)
-                return url
     return None
 
 

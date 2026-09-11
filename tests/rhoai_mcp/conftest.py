@@ -149,10 +149,12 @@ def _model_catalog_url(admin_client: DynamicClient) -> str | None:
     url = discover_model_catalog_url(client=admin_client)
     if url is None:
         _logger.warning(
-            "Model Catalog service not found on cluster. "
-            "Model recommendation tests will use bundled BLIS benchmarks instead of "
-            "Model Catalog data. For production-like coverage, deploy the Model Catalog "
-            "before running these tests."
+            msg=(
+                "Model Catalog service not found on cluster. "
+                "Model recommendation tests will use bundled BLIS benchmarks instead of "
+                "Model Catalog data. For production-like coverage, deploy the Model Catalog "
+                "before running these tests."
+            )
         )
     return url
 
@@ -315,7 +317,7 @@ def rhoai_mcp_deployment(
         "app.kubernetes.io/name": RHOAI_MCP_APP_NAME,
     }
     image = request.config.getoption("--rhoai-mcp-image") or get_rhoai_mcp_image(client=admin_client)
-    template = deployment_template_with_image(image)
+    template = deployment_template_with_image(image=image)
     if _model_catalog_ca_configmap is not None:
         template["spec"]["containers"][0]["volumeMounts"].append({
             "name": "service-ca",
