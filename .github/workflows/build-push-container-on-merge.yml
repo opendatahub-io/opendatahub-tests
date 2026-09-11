@@ -10,86 +10,34 @@ permissions:
   issues: write
 
 jobs:
-  if_merged:
+  resolve-tag:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.pull_request.base.ref }}
-      - name: Set env TAG
-        run: |
-          if [ ${{ github.event.pull_request.base.ref }} == "main" ]; then
-              echo "TAG=latest" >> $GITHUB_ENV
-          else
-              echo "TAG=${{ github.event.pull_request.base.ref }}" >> "$GITHUB_ENV"
-          fi
-      - name: Install uv
-        uses: astral-sh/setup-uv@v10.0.1
-
-      - name: Generate image manifest
-        id: manifest
-        continue-on-error: true
-        run: echo "json=$(uv run python scripts/generate_image_manifest.py --compact)" >> "$GITHUB_OUTPUT"
-
-      - name: Compute manifest checksum
-        id: checksum
-        if: steps.manifest.outcome == 'success'
+      - name: Set image tag
+        id: tag
         env:
-          MANIFEST: ${{ steps.manifest.outputs.json }}
-        run: echo "sha256=$(echo -n "$MANIFEST" | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-
-      - name: Prepare image labels
-        id: labels
-        env:
-          MANIFEST_JSON: ${{ steps.manifest.outputs.json }}
-          MANIFEST_SHA: ${{ steps.checksum.outputs.sha256 }}
-          MANIFEST_OUTCOME: ${{ steps.manifest.outcome }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
-          if [ "$MANIFEST_OUTCOME" == "success" ]; then
-            {
-              echo "--label=io.opendatahub.tests.required-images=$MANIFEST_JSON"
-              echo "--label=io.opendatahub.tests.required-images.sha256=$MANIFEST_SHA"
-            } > /tmp/extra-labels.txt
-            echo "args<<EOF" >> "$GITHUB_OUTPUT"
-            cat /tmp/extra-labels.txt >> "$GITHUB_OUTPUT"
-            echo "EOF" >> "$GITHUB_OUTPUT"
+          if [ "$BASE_REF" == "main" ]; then
+              echo "tag=latest" >> "$GITHUB_OUTPUT"
           else
-            echo "::warning::Image manifest generation failed — building without manifest labels"
-            echo "args=" >> "$GITHUB_OUTPUT"
+              echo "tag=$BASE_REF" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build Image
-        id: build-image
-        uses: redhat-actions/buildah-build@v3
-        with:
-          image: opendatahub-tests
-          tags: ${{ env.TAG }}
-          containerfiles: |
-            ./Dockerfile
-          extra-args: |
-            ${{ steps.labels.outputs.args }}
-
-      - name: Push To Image Registry
-        id: push-to-registry
-        uses: redhat-actions/push-to-registry@v3
-        with:
-          image: ${{ steps.build-image.outputs.image }}
-          tags: ${{ steps.build-image.outputs.tags }}
-          registry: quay.io/opendatahub
-          username: ${{ secrets.QUAY_USERNAME }}
-          password: ${{ secrets.QUAY_PASSWORD }}
-
-      - name: Add comment to PR
-        if: always()
-        env:
-          URL: ${{ github.event.pull_request.comments_url }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          curl \
-            -X POST \
-            $URL \
-            -H "Content-Type: application/json" \
-            -H "Authorization: token $GITHUB_TOKEN" \
-            --data '{ "body": "Status of building tag ${{ env.TAG }}: ${{ steps.build-image.outcome }}. \nStatus of pushing tag ${{ env.TAG }} to image registry: ${{ steps.push-to-registry.outcome }}. \nImage manifest label: ${{ steps.manifest.outcome }}." }'
+  build-push:
+    needs: resolve-tag
+    permissions:
+      pull-requests: write
+      contents: read
+      issues: write
+    uses: ./.github/workflows/build-push-image.yml
+    with:
+      ref: ${{ github.event.pull_request.base.ref }}
+      tag: ${{ needs.resolve-tag.outputs.tag }}
+      comments_url: ${{ github.event.pull_request.comments_url }}
+    secrets:
+      QUAY_USERNAME: ${{ secrets.QUAY_USERNAME }}
+      QUAY_PASSWORD: ${{ secrets.QUAY_PASSWORD }} # pragma: allowlist secret

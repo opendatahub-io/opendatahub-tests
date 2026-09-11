@@ -21,3 +21,7 @@ Every commit must include a `Signed-off-by` trailer (`git commit -s`) and follow
 ## GitHub workflows
 
 Please follow the [GitHub workflows Guide](docs/GITHUB_WORKFLOWS.md) for more information.
+
+## Cutting a release branch
+
+Please follow the [Release Process Guide](docs/RELEASE_PROCESS.md) for what to do on code freeze day.
