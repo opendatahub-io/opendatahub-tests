@@ -168,23 +168,23 @@ def _model_catalog_ca_configmap(
     """Service-serving CA bundle for Model Catalog TLS verification."""
     if not _model_catalog_url:
         yield None
-        return
-    with ConfigMap(
-        client=admin_client,
-        kind_dict={
-            "apiVersion": "v1",
-            "kind": "ConfigMap",
-            "metadata": {
-                "name": f"{RHOAI_MCP_APP_NAME}-service-ca",
-                "namespace": rhoai_mcp_namespace.name,
-                "annotations": {
-                    "service.beta.openshift.io/inject-cabundle": "true",
+    else:
+        with ConfigMap(
+            client=admin_client,
+            kind_dict={
+                "apiVersion": "v1",
+                "kind": "ConfigMap",
+                "metadata": {
+                    "name": f"{RHOAI_MCP_APP_NAME}-service-ca",
+                    "namespace": rhoai_mcp_namespace.name,
+                    "annotations": {
+                        "service.beta.openshift.io/inject-cabundle": "true",
+                    },
                 },
+                "data": {},
             },
-            "data": {},
-        },
-    ) as cm:
-        yield cm
+        ) as cm:
+            yield cm
 
 
 @pytest.fixture(scope="class")
@@ -202,44 +202,43 @@ def _model_catalog_network_access(
     """
     if not _model_catalog_url:
         yield
-        return
+    else:
+        catalog_ns = urlparse(_model_catalog_url).hostname.split(".")[1]
+        test_ns = rhoai_mcp_namespace.name
 
-    catalog_ns = urlparse(_model_catalog_url).hostname.split(".")[1]
-    test_ns = rhoai_mcp_namespace.name
-
-    with NetworkPolicy(
-        client=admin_client,
-        kind_dict={
-            "apiVersion": "networking.k8s.io/v1",
-            "kind": "NetworkPolicy",
-            "metadata": {
-                "name": f"allow-{test_ns}-to-model-catalog",
-                "namespace": catalog_ns,
-            },
-            "spec": {
-                "podSelector": {
-                    "matchLabels": {"app.kubernetes.io/name": "model-catalog"},
+        with NetworkPolicy(
+            client=admin_client,
+            kind_dict={
+                "apiVersion": "networking.k8s.io/v1",
+                "kind": "NetworkPolicy",
+                "metadata": {
+                    "name": f"allow-{test_ns}-to-model-catalog",
+                    "namespace": catalog_ns,
                 },
-                "policyTypes": ["Ingress"],
-                "ingress": [
-                    {
-                        "from": [
-                            {
-                                "namespaceSelector": {
-                                    "matchLabels": {"kubernetes.io/metadata.name": test_ns},
-                                },
-                                "podSelector": {
-                                    "matchLabels": {"app.kubernetes.io/name": RHOAI_MCP_APP_NAME},
-                                },
-                            }
-                        ],
-                        "ports": [{"port": 8443, "protocol": "TCP"}],
-                    }
-                ],
+                "spec": {
+                    "podSelector": {
+                        "matchLabels": {"app.kubernetes.io/name": "model-catalog"},
+                    },
+                    "policyTypes": ["Ingress"],
+                    "ingress": [
+                        {
+                            "from": [
+                                {
+                                    "namespaceSelector": {
+                                        "matchLabels": {"kubernetes.io/metadata.name": test_ns},
+                                    },
+                                    "podSelector": {
+                                        "matchLabels": {"app.kubernetes.io/name": RHOAI_MCP_APP_NAME},
+                                    },
+                                }
+                            ],
+                            "ports": [{"port": 8443, "protocol": "TCP"}],
+                        }
+                    ],
+                },
             },
-        },
-    ):
-        yield
+        ):
+            yield
 
 
 @pytest.fixture(scope="class")
