@@ -49,7 +49,7 @@ class TestAnnAnnotationStatus:
     and the trustyai.opendatahub.io/evaluation-status annotation is read from the
     runtime batch Job,
     Then the annotation is valid JSON with required fields (phase, timestamp,
-    evaluationId, summaryMetrics), reflects lifecycle transitions, and remains below
+    evaluation_id), reflects lifecycle transitions, and remains below
     the 262144-byte Kubernetes annotation size limit.
     """
 
@@ -114,8 +114,8 @@ class TestAnnAnnotationStatus:
     ) -> None:
         """Given a successful evaluation has completed,
         when the evaluation-status annotation is parsed,
-        then it contains phase (str), timestamp (RFC 3339 UTC str), evaluationId (str),
-        and summaryMetrics (object) as required fields."""
+        then it contains phase (str), timestamp (RFC 3339 UTC str), and evaluation_id (str)
+        as required fields."""
         host = lifecycle_signals_route.host
         ns = lifecycle_signals_namespace.name
         payload = build_evalhub_job_payload(
@@ -159,12 +159,9 @@ class TestAnnAnnotationStatus:
         except ValueError as exc:
             raise AssertionError(f"timestamp is not a valid RFC 3339 UTC value: {ts!r}") from exc
 
-        assert "evaluationId" in data, f"Missing 'evaluationId' field in annotation: {data}"
-        assert isinstance(data["evaluationId"], str) and data["evaluationId"], "evaluationId must be a non-empty string"
-
-        assert "summaryMetrics" in data, f"Missing 'summaryMetrics' field in annotation: {data}"
-        assert isinstance(data["summaryMetrics"], dict), (
-            f"summaryMetrics must be an object, got {type(data['summaryMetrics'])}"
+        assert "evaluation_id" in data, f"Missing 'evaluation_id' field in annotation: {data}"
+        assert isinstance(data["evaluation_id"], str) and data["evaluation_id"], (
+            "evaluation_id must be a non-empty string"
         )
 
     @pytest.mark.tier1

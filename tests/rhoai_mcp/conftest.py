@@ -1,7 +1,9 @@
 from collections.abc import Generator
 from typing import Any
+from urllib.parse import urlparse
 
 import pytest
+import structlog
 from fastmcp.client.transports import StreamableHttpTransport
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.cluster_role import ClusterRole
@@ -9,6 +11,7 @@ from ocp_resources.cluster_role_binding import ClusterRoleBinding
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
+from ocp_resources.network_policy import NetworkPolicy
 from ocp_resources.route import Route
 from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
@@ -27,11 +30,23 @@ from tests.rhoai_mcp.constants import (
 )
 from tests.rhoai_mcp.utils import (
     deployment_template_with_image,
+    discover_model_catalog_url,
     get_rhoai_mcp_image,
     probe_health,
 )
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.infra import create_inference_token, create_ns
+
+_logger = structlog.get_logger(name=__name__)
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    group = parser.getgroup("rhoai-mcp", "rhoai-mcp test options")
+    group.addoption(
+        "--rhoai-mcp-image",
+        default=None,
+        help="Override the rhoai-mcp container image (skip auto-detection).",
+    )
 
 
 @pytest.fixture(scope="class")
@@ -129,26 +144,129 @@ def rhoai_mcp_cluster_role_binding(
 
 
 @pytest.fixture(scope="class")
+def _model_catalog_url(admin_client: DynamicClient) -> str | None:
+    """Discover the Model Catalog service URL, or None if unavailable."""
+    url = discover_model_catalog_url(client=admin_client)
+    if url is None:
+        _logger.warning(
+            msg=(
+                "Model Catalog service not found on cluster. "
+                "Model recommendation tests will use bundled BLIS benchmarks instead of "
+                "Model Catalog data. For production-like coverage, deploy the Model Catalog "
+                "before running these tests."
+            )
+        )
+    return url
+
+
+@pytest.fixture(scope="class")
+def _model_catalog_ca_configmap(
+    admin_client: DynamicClient,
+    rhoai_mcp_namespace: Namespace,
+    _model_catalog_url: str | None,
+) -> Generator[ConfigMap | None, Any, Any]:
+    """Service-serving CA bundle for Model Catalog TLS verification."""
+    if not _model_catalog_url:
+        yield None
+    else:
+        with ConfigMap(
+            client=admin_client,
+            kind_dict={
+                "apiVersion": "v1",
+                "kind": "ConfigMap",
+                "metadata": {
+                    "name": f"{RHOAI_MCP_APP_NAME}-service-ca",
+                    "namespace": rhoai_mcp_namespace.name,
+                    "annotations": {
+                        "service.beta.openshift.io/inject-cabundle": "true",
+                    },
+                },
+                "data": {},
+            },
+        ) as cm:
+            yield cm
+
+
+@pytest.fixture(scope="class")
+def _model_catalog_network_access(
+    admin_client: DynamicClient,
+    rhoai_mcp_namespace: Namespace,
+    _model_catalog_url: str | None,
+) -> Generator[None, Any, Any]:
+    """NetworkPolicy so rhoai-mcp pods in the test namespace can reach the Model Catalog.
+
+    The operator's NetworkPolicy only allows ingress from the ``rhoai-mcp``
+    namespace.  This fixture adds a policy for the test namespace.  RBAC is
+    already handled: the operator binds the ``model-catalog`` Role to
+    ``system:authenticated``, so every authenticated SA can pass kube-rbac-proxy.
+    """
+    if not _model_catalog_url:
+        yield
+    else:
+        catalog_ns = urlparse(_model_catalog_url).hostname.split(".")[1]
+        test_ns = rhoai_mcp_namespace.name
+
+        with NetworkPolicy(
+            client=admin_client,
+            kind_dict={
+                "apiVersion": "networking.k8s.io/v1",
+                "kind": "NetworkPolicy",
+                "metadata": {
+                    "name": f"allow-{test_ns}-to-model-catalog",
+                    "namespace": catalog_ns,
+                },
+                "spec": {
+                    "podSelector": {
+                        "matchLabels": {"app.kubernetes.io/name": "model-catalog"},
+                    },
+                    "policyTypes": ["Ingress"],
+                    "ingress": [
+                        {
+                            "from": [
+                                {
+                                    "namespaceSelector": {
+                                        "matchLabels": {"kubernetes.io/metadata.name": test_ns},
+                                    },
+                                    "podSelector": {
+                                        "matchLabels": {"app.kubernetes.io/name": RHOAI_MCP_APP_NAME},
+                                    },
+                                }
+                            ],
+                            "ports": [{"port": 8443, "protocol": "TCP"}],
+                        }
+                    ],
+                },
+            },
+        ):
+            yield
+
+
+@pytest.fixture(scope="class")
 def rhoai_mcp_config(
     admin_client: DynamicClient,
     rhoai_mcp_namespace: Namespace,
+    _model_catalog_url: str | None,
 ) -> Generator[ConfigMap, Any, Any]:
     """ConfigMap with rhoai-mcp server configuration."""
+    data = {
+        "RHOAI_MCP_HOST": "0.0.0.0",
+        "RHOAI_MCP_PORT": str(RHOAI_MCP_PORT),
+        "RHOAI_MCP_LOG_LEVEL": "INFO",
+        "RHOAI_MCP_TRANSPORT": "streamable-http",
+        "RHOAI_MCP_AUTH_MODE": "auto",
+        "RHOAI_MCP_OIDC_ENABLED": "true",
+        "RHOAI_MCP_OIDC_TOKEN_MODE": "token-review",
+        "RHOAI_MCP_READ_ONLY_MODE": "false",
+        "RHOAI_MCP_ENABLE_DANGEROUS_OPERATIONS": "false",
+    }
+    if _model_catalog_url:
+        data["RHOAI_MCP_PLANNER_MODEL_CATALOG_URL"] = _model_catalog_url
+        data["MODEL_CATALOG_CA_BUNDLE"] = "/etc/pki/service-ca/service-ca.crt"
     with ConfigMap(
         client=admin_client,
         name=f"{RHOAI_MCP_APP_NAME}-config",
         namespace=rhoai_mcp_namespace.name,
-        data={
-            "RHOAI_MCP_HOST": "0.0.0.0",
-            "RHOAI_MCP_PORT": str(RHOAI_MCP_PORT),
-            "RHOAI_MCP_LOG_LEVEL": "INFO",
-            "RHOAI_MCP_TRANSPORT": "streamable-http",
-            "RHOAI_MCP_AUTH_MODE": "auto",
-            "RHOAI_MCP_OIDC_ENABLED": "true",
-            "RHOAI_MCP_OIDC_TOKEN_MODE": "token-review",
-            "RHOAI_MCP_READ_ONLY_MODE": "false",
-            "RHOAI_MCP_ENABLE_DANGEROUS_OPERATIONS": "false",
-        },
+        data=data,
     ) as cm:
         yield cm
 
@@ -182,19 +300,33 @@ def rhoai_mcp_service(
 
 @pytest.fixture(scope="class")
 def rhoai_mcp_deployment(
+    request: pytest.FixtureRequest,
     admin_client: DynamicClient,
     rhoai_mcp_namespace: Namespace,
     rhoai_mcp_service_account: ServiceAccount,
     rhoai_mcp_cluster_role_binding: ClusterRoleBinding,
     rhoai_mcp_config: ConfigMap,
     rhoai_mcp_service: Service,
+    _model_catalog_ca_configmap: ConfigMap | None,
+    _model_catalog_network_access: None,
 ) -> Generator[Deployment, Any, Any]:
     """Deployment for the rhoai-mcp server."""
     labels = {
         "app.kubernetes.io/component": "server",
         "app.kubernetes.io/name": RHOAI_MCP_APP_NAME,
     }
-    image = get_rhoai_mcp_image(client=admin_client)
+    image = request.config.getoption("--rhoai-mcp-image") or get_rhoai_mcp_image(client=admin_client)
+    template = deployment_template_with_image(image=image)
+    if _model_catalog_ca_configmap is not None:
+        template["spec"]["containers"][0]["volumeMounts"].append({
+            "name": "service-ca",
+            "mountPath": "/etc/pki/service-ca",
+            "readOnly": True,
+        })
+        template["spec"]["volumes"].append({
+            "name": "service-ca",
+            "configMap": {"name": _model_catalog_ca_configmap.name},
+        })
     with Deployment(
         client=admin_client,
         name=RHOAI_MCP_APP_NAME,
@@ -202,7 +334,7 @@ def rhoai_mcp_deployment(
         replicas=1,
         label=labels,
         selector={"matchLabels": labels},
-        template=deployment_template_with_image(image),
+        template=template,
     ) as deployment:
         deployment.wait_for_replicas(timeout=300)
         yield deployment

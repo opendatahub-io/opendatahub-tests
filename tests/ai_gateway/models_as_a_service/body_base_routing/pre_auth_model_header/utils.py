@@ -12,7 +12,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
 from ocp_resources.service import Service
-from timeout_sampler import TimeoutExpiredError, TimeoutSampler
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
 
 from tests.ai_gateway.models_as_a_service.utils import create_api_key, revoke_api_key
 from utilities.constants import MAAS_GATEWAY_NAMESPACE
@@ -481,6 +481,46 @@ def verify_bbr_plugins_configmap_has_expected_plugins(
     )
 
 
+def warm_up_bbr_inference_upstream(
+    session: requests.Session,
+    inference_url: str,
+    headers: dict[str, str],
+    payload: dict[str, Any],
+) -> None:
+    """Warm up the BBR inference endpoint until Envoy upstream is routable.
+
+    Retries POSTs every 3s for up to 30s while the gateway returns a transient
+    503 with 'no healthy upstream' in the response body.
+    """
+    try:
+        _send_bbr_warm_up_request(
+            session=session,
+            inference_url=inference_url,
+            headers=headers,
+            payload=payload,
+        )
+    except TimeoutExpiredError:
+        pytest.fail(
+            f"BBR inference warm-up retries exhausted for {inference_url} "
+            f"(transient 503 no healthy upstream did not clear within 30s)"
+        )
+
+
+@retry(wait_timeout=30, sleep=3)
+def _send_bbr_warm_up_request(
+    session: requests.Session,
+    inference_url: str,
+    headers: dict[str, str],
+    payload: dict[str, Any],
+) -> bool:
+    """Send one warm-up request; return True to stop retrying, False to retry."""
+    LOGGER.info(f"BBR inference warm-up POST {inference_url}")
+    response = session.post(url=inference_url, headers=headers, json=payload, timeout=60)
+    body = response.text or ""
+    LOGGER.info(f"BBR inference warm-up returned {response.status_code}")
+    return not (response.status_code == 503 and "no healthy upstream" in body)
+
+
 def assert_bbr_inference_status(
     session: requests.Session,
     inference_url: str,
@@ -489,6 +529,12 @@ def assert_bbr_inference_status(
     expected_status: int,
 ) -> None:
     """Verify a POST to the BBR inference endpoint returns the expected HTTP status."""
+    warm_up_bbr_inference_upstream(
+        session=session,
+        inference_url=inference_url,
+        headers=headers,
+        payload=payload,
+    )
     response = session.post(url=inference_url, headers=headers, json=payload, timeout=60)
     assert response.status_code == expected_status, (
         f"Expected {expected_status} on BBR inference, got {response.status_code}"
