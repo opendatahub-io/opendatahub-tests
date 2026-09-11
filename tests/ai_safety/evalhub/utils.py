@@ -890,9 +890,6 @@ def build_vllm_arc_easy_benchmark(num_examples: int = 10) -> dict:
             "num_examples": num_examples,
             "tokenizer": "google/flan-t5-small",
         },
-        "hardware_config": {
-            "hardware_profile_name": EVALHUB_DEFAULT_HARDWARE_PROFILE,
-        },
     }
 
 
