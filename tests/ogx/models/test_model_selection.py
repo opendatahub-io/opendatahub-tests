@@ -44,6 +44,15 @@ class DummyProvider:
             ],
             "vllm-inference/Qwen3.8-27B",
         ),
+        # No configured model selects non-vision qwen model over qwen vision model
+        (
+            "",
+            [
+                DummyModel(model_id="vllm-inference/Qwen2.5-VL-7B-Instruct"),
+                DummyModel(model_id="vllm-inference/Qwen3.8-27B"),
+            ],
+            "vllm-inference/Qwen3.8-27B",
+        ),
         # No configured model selects qwen model if present
         (
             "",

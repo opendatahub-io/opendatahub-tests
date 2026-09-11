@@ -444,6 +444,11 @@ def mean_ragas_score(scores: list[float | None]) -> float:
     return sum(valid) / len(valid)
 
 
+def _is_vision_model(model_id: str) -> bool:
+    model_id_lower = model_id.lower()
+    return "vision" in model_id_lower or "-vl-" in model_id_lower or model_id_lower.endswith("-vl")
+
+
 def select_ogx_model(
     models: list[Any],
     providers: list[Any],
@@ -473,12 +478,12 @@ def select_ogx_model(
 
     if not selected_llm:
         selected_llm = next(
-            (model for model in llm_models if "qwen" in model.id.lower()),
+            (model for model in llm_models if "qwen" in model.id.lower() and not _is_vision_model(model.id)),
             None,
         )
     if not selected_llm:
         selected_llm = next(
-            (model for model in llm_models if "vision" not in model.id.lower()),
+            (model for model in llm_models if not _is_vision_model(model.id)),
             llm_models[0],
         )
 
