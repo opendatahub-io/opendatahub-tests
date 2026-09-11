@@ -771,6 +771,10 @@ def create_isvc(
     if autoscaler_mode:
         _annotations["serving.kserve.io/autoscalerClass"] = autoscaler_mode
 
+    # Propagate route timeout for Raw/Standard deployments (prevents 504 on slow backends like Spyre ppc64le)
+    if deployment_mode in KServeDeploymentType.RAW_DEPLOYMENT_MODES and external_route:
+        _annotations[Annotations.HaproxyRouterOpenshiftIo.TIMEOUT] = "300s"
+
     if stop_resume:
         _annotations[Annotations.KserveIo.FORCE_STOP_RUNTIME] = str(stop_resume)
 
