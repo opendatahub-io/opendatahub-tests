@@ -8,8 +8,8 @@ from timeout_sampler import retry
 
 from tests.ai_hub.model_catalog.constants import (
     RECOMMENDED_ARTIFACT_PROPERTY,
-    REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
     VALIDATED_CATALOG_ID,
+    VALIDATED_CATALOG_LABEL,
 )
 from tests.ai_hub.model_catalog.db_constants import (
     GET_MODELS_BY_ACCURACY_DB_QUERY,
@@ -618,7 +618,7 @@ def get_recommended_model_names(
     response = get_models_from_catalog_api(
         model_catalog_rest_url=model_catalog_rest_url,
         model_registry_rest_headers=model_registry_rest_headers,
-        source_label=REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
+        source_label=VALIDATED_CATALOG_LABEL,
         order_by="RECOMMENDED",
         sort_order=sort_order,
         page_size=page_size,
@@ -642,7 +642,7 @@ def get_recommended_and_legacy_model_names(
     recommended_response = get_models_from_catalog_api(
         model_catalog_rest_url=model_catalog_rest_url,
         model_registry_rest_headers=model_registry_rest_headers,
-        source_label=REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
+        source_label=VALIDATED_CATALOG_LABEL,
         order_by="RECOMMENDED",
         sort_order=sort_order,
         page_size=page_size,
@@ -652,7 +652,7 @@ def get_recommended_and_legacy_model_names(
     legacy_response = get_models_from_catalog_api(
         model_catalog_rest_url=model_catalog_rest_url,
         model_registry_rest_headers=model_registry_rest_headers,
-        source_label=REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
+        source_label=VALIDATED_CATALOG_LABEL,
         sort_order=sort_order,
         page_size=page_size,
         additional_params=f"{filter_params}&recommendations=true{extra_params}",
@@ -685,7 +685,7 @@ def get_all_recommended_model_names_paginated(
         response = get_models_from_catalog_api(
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
-            source_label=REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
+            source_label=VALIDATED_CATALOG_LABEL,
             order_by="RECOMMENDED",
             sort_order=sort_order,
             page_size=page_size,

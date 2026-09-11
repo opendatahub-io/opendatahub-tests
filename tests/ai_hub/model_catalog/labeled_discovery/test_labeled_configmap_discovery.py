@@ -15,8 +15,8 @@ from ocp_resources.config_map import ConfigMap
 
 from tests.ai_hub.model_catalog.constants import (
     CATALOG_SOURCE_LABEL_KEY,
+    DEFAULT_CATALOGS,
     LABELED_SOURCES_PATH_PREFIX,
-    REDHAT_AI_CATALOG_ID,
 )
 from tests.ai_hub.model_catalog.labeled_discovery.utils import (
     TEST_MODEL_ALPHA_NAME,
@@ -202,8 +202,12 @@ class TestExistingSourcesUnaffected:
     """AC3: Existing default and user-managed sources continue to work when labeled ConfigMaps exist."""
 
     @pytest.mark.tier1
+    @pytest.mark.parametrize(
+        "catalog_id", [pytest.param(source_id, id=f"test_{source_id}") for source_id in DEFAULT_CATALOGS]
+    )
     def test_default_sources_still_serve_models(
         self: Self,
+        catalog_id: str,
         labeled_configmap_alpha: ConfigMap,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
@@ -212,7 +216,7 @@ class TestExistingSourcesUnaffected:
 
         Given a labeled ConfigMap has been created,
         When the catalog API is queried for default sources,
-        Then the default Red Hat AI source is present in the sources list
+        Then the selected default source is present in the sources list
         And the default source still returns models.
         """
         sources = execute_get_command(
@@ -220,16 +224,16 @@ class TestExistingSourcesUnaffected:
             headers=model_registry_rest_headers,
         )
         source_ids = [source["id"] for source in sources["items"]]
-        assert REDHAT_AI_CATALOG_ID in source_ids, (
-            f"Default source '{REDHAT_AI_CATALOG_ID}' missing after adding labeled ConfigMap: {source_ids}"
+        assert catalog_id in source_ids, (
+            f"Default source '{catalog_id}' missing after adding labeled ConfigMap: {source_ids}"
         )
 
         models_response = execute_get_command(
-            url=f"{model_catalog_rest_url[0]}models?source={REDHAT_AI_CATALOG_ID}&pageSize=1",
+            url=f"{model_catalog_rest_url[0]}models?source={catalog_id}&pageSize=1",
             headers=model_registry_rest_headers,
         )
         assert models_response["items"], (
-            f"No models returned from default source '{REDHAT_AI_CATALOG_ID}' after adding labeled ConfigMap"
+            f"No models returned from default source '{catalog_id}' after adding labeled ConfigMap"
         )
 
 

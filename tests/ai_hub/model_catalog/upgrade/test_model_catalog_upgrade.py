@@ -9,12 +9,15 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.resource import ResourceEditor
 
 from tests.ai_hub.constants import CUSTOM_CATALOG_ID1, SAMPLE_MODEL_NAME1
+from tests.ai_hub.model_catalog.catalog_config.utils import get_models_from_database_by_source
+from tests.ai_hub.model_catalog.constants import RETIRED_CATALOG_ID
 from tests.ai_hub.model_catalog.utils import (
+    get_all_catalog_items,
     get_catalog_str,
     get_sample_yaml_str,
     wait_for_model_catalog_api,
 )
-from tests.ai_hub.utils import wait_for_model_catalog_pod_ready_after_deletion
+from tests.ai_hub.utils import execute_get_command_with_retry, wait_for_model_catalog_pod_ready_after_deletion
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -92,13 +95,52 @@ class TestPreUpgradeModelCatalog:
 
 
 @pytest.mark.usefixtures("post_upgrade_config_map_update")
+@pytest.mark.tier1
 class TestPostUpgradeModelCatalog:
     @pytest.mark.order("last")
     @pytest.mark.post_upgrade
     def test_validate_sources(
         self: Self,
         post_upgrade_config_map_update: ConfigMap,
-    ):
+        model_catalog_rest_url: list[str],
+        model_registry_rest_headers: dict[str, str],
+    ) -> None:
+        """Given a custom source created before upgrade,
+        When reading its configuration and model after upgrade,
+        Then both the source and its model remain accessible.
+        """
+        model = execute_get_command_with_retry(
+            url=f"{model_catalog_rest_url[0]}sources/{CUSTOM_CATALOG_ID1}/models/{SAMPLE_MODEL_NAME1}",
+            headers=model_registry_rest_headers,
+        )
+        assert model["name"] == SAMPLE_MODEL_NAME1
+        assert model["source_id"] == CUSTOM_CATALOG_ID1
         # check that the configmap was still updated:
         assert len(yaml.safe_load(post_upgrade_config_map_update.instance.data["sources.yaml"])["catalogs"]) == 1
         LOGGER.info("Testing model catalog validation")
+
+
+@pytest.mark.post_upgrade
+@pytest.mark.tier1
+def test_retired_default_source_removed_after_upgrade(
+    admin_client: DynamicClient,
+    model_registry_namespace: str,
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+) -> None:
+    """Given an upgrade to the consolidated default catalogs,
+    When querying the retired source in the API and database,
+    Then neither its source entry nor its stored models remain.
+    """
+    sources = get_all_catalog_items(url=f"{model_catalog_rest_url[0]}sources", headers=model_registry_rest_headers)
+    assert RETIRED_CATALOG_ID not in {source["id"] for source in sources}
+    models = get_all_catalog_items(
+        url=f"{model_catalog_rest_url[0]}models",
+        headers=model_registry_rest_headers,
+        params={"source": RETIRED_CATALOG_ID},
+    )
+    assert not models, "Retired source still serves models after upgrade"
+    stored_models = get_models_from_database_by_source(
+        admin_client=admin_client, source_id=RETIRED_CATALOG_ID, namespace=model_registry_namespace
+    )
+    assert not stored_models, f"Retired source models remain in the database: {stored_models}"

@@ -15,8 +15,8 @@ from tests.ai_hub.model_catalog.catalog_config.utils import (
     wait_for_model_set_match,
 )
 from tests.ai_hub.model_catalog.constants import (
-    REDHAT_AI_CATALOG_ID,
-    REDHAT_AI_CATALOG_NAME,
+    VALIDATED_CATALOG_ID,
+    VALIDATED_CATALOG_LABEL,
 )
 from tests.ai_hub.model_catalog.utils import wait_for_model_catalog_api
 
@@ -31,7 +31,7 @@ class TestModelInclusionFiltering:
     """Test inclusion filtering functionality"""
 
     @pytest.mark.parametrize(
-        "redhat_ai_models_with_filter",
+        "validated_models_with_filter",
         [
             pytest.param(
                 {"filter_type": "inclusion", "pattern": "granite", "filter_value": "*granite*"},
@@ -62,12 +62,12 @@ class TestModelInclusionFiltering:
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
-        redhat_ai_models_with_filter: set[str],
+        validated_models_with_filter: set[str],
     ):
         """Test that includedModels=[filter_value] shows only models matching pattern."""
         validate_filter_test_result(
             admin_client=admin_client,
-            expected_models=redhat_ai_models_with_filter,
+            expected_models=validated_models_with_filter,
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
             model_registry_namespace=model_registry_namespace,
@@ -79,7 +79,7 @@ class TestModelExclusionFiltering:
     """Test exclusion filtering functionality"""
 
     @pytest.mark.parametrize(
-        "redhat_ai_models_with_filter",
+        "validated_models_with_filter",
         [
             pytest.param(
                 {"filter_type": "exclusion", "pattern": "granite", "filter_value": "*granite*"},
@@ -102,7 +102,7 @@ class TestModelExclusionFiltering:
     def test_exclude_models_by_pattern(
         self,
         admin_client: DynamicClient,
-        redhat_ai_models_with_filter: set[str],
+        validated_models_with_filter: set[str],
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
@@ -110,7 +110,7 @@ class TestModelExclusionFiltering:
         """Test that excludedModels=[filter_value] removes models matching pattern."""
         validate_filter_test_result(
             admin_client=admin_client,
-            expected_models=redhat_ai_models_with_filter,
+            expected_models=validated_models_with_filter,
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
             model_registry_namespace=model_registry_namespace,
@@ -122,7 +122,7 @@ class TestCombinedIncludeExcludeFiltering:
     """Test combined include+exclude filtering"""
 
     @pytest.mark.parametrize(
-        "redhat_ai_models_with_filter",
+        "validated_models_with_filter",
         [
             pytest.param(
                 {
@@ -133,7 +133,7 @@ class TestCombinedIncludeExcludeFiltering:
                     "exclude_filter_value": "*lab*",
                 },
                 marks=pytest.mark.tier2,
-                id="include_granite_exclude_lab",
+                id="test_include_granite_exclude_lab",
             ),
             pytest.param(
                 {
@@ -144,7 +144,7 @@ class TestCombinedIncludeExcludeFiltering:
                     "exclude_filter_value": "*code*",
                 },
                 marks=pytest.mark.tier2,
-                id="include_eight_b_exclude_code",
+                id="test_include_eight_b_exclude_code",
             ),
         ],
         indirect=True,
@@ -152,7 +152,7 @@ class TestCombinedIncludeExcludeFiltering:
     def test_combined_include_exclude_filtering(
         self,
         admin_client: DynamicClient,
-        redhat_ai_models_with_filter: set[str],
+        validated_models_with_filter: set[str],
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
@@ -160,7 +160,7 @@ class TestCombinedIncludeExcludeFiltering:
         """Test includedModels + excludedModels precedence."""
         validate_filter_test_result(
             admin_client=admin_client,
-            expected_models=redhat_ai_models_with_filter,
+            expected_models=validated_models_with_filter,
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
             model_registry_namespace=model_registry_namespace,
@@ -178,19 +178,19 @@ class TestModelCleanupLifecycle:
         model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
-        baseline_redhat_ai_models: dict[str, set[str] | int],
+        baseline_validated_models: dict[str, set[str] | int],
         catalog_pod_model_counts: dict[str, int],
     ):
         """Test that models are cleaned up when filters change to exclude them."""
         LOGGER.info("Testing model cleanup on exclusion filter change")
 
-        granite_models = filter_models_by_pattern(all_models=baseline_redhat_ai_models["api_models"], pattern="granite")
+        granite_models = filter_models_by_pattern(all_models=baseline_validated_models["api_models"], pattern="granite")
 
         # Phase 1: Include only granite models
         phase1_patch = modify_catalog_source(
             admin_client=admin_client,
             namespace=model_registry_namespace,
-            source_id=REDHAT_AI_CATALOG_ID,
+            source_id=VALIDATED_CATALOG_ID,
             included_models=["*granite*"],
         )
 
@@ -203,15 +203,15 @@ class TestModelCleanupLifecycle:
                     phase1_api_models = wait_for_model_set_match(
                         model_catalog_rest_url=model_catalog_rest_url,
                         model_registry_rest_headers=model_registry_rest_headers,
-                        source_label=REDHAT_AI_CATALOG_NAME,
+                        source_label=VALIDATED_CATALOG_LABEL,
                         expected_models=granite_models,
-                        source_id=REDHAT_AI_CATALOG_ID,
+                        source_id=VALIDATED_CATALOG_ID,
                     )
                 except TimeoutExpiredError as e:
                     pytest.fail(f"Phase 1: Timeout waiting for granite models {granite_models}: {e}")
 
                 phase1_db_models = get_models_from_database_by_source(
-                    admin_client=admin_client, source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace
+                    admin_client=admin_client, source_id=VALIDATED_CATALOG_ID, namespace=model_registry_namespace
                 )
 
                 assert phase1_api_models == granite_models, (
@@ -225,7 +225,7 @@ class TestModelCleanupLifecycle:
                 phase2_patch = modify_catalog_source(
                     admin_client=admin_client,
                     namespace=model_registry_namespace,
-                    source_id=REDHAT_AI_CATALOG_ID,
+                    source_id=VALIDATED_CATALOG_ID,
                     included_models=["*"],  # Include all
                     excluded_models=["*granite*"],  # But exclude granite
                 )
@@ -237,20 +237,20 @@ class TestModelCleanupLifecycle:
                 wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
 
                 # Verify granite models are removed (cleanup behavior)
-                expected_non_granite = baseline_redhat_ai_models["api_models"] - granite_models
+                expected_non_granite = baseline_validated_models["api_models"] - granite_models
                 try:
                     phase2_api_models = wait_for_model_set_match(
                         model_catalog_rest_url=model_catalog_rest_url,
                         model_registry_rest_headers=model_registry_rest_headers,
-                        source_label=REDHAT_AI_CATALOG_NAME,
+                        source_label=VALIDATED_CATALOG_LABEL,
                         expected_models=expected_non_granite,
-                        source_id=REDHAT_AI_CATALOG_ID,
+                        source_id=VALIDATED_CATALOG_ID,
                     )
                 except TimeoutExpiredError as e:
                     pytest.fail(f"Phase 2: Timeout waiting for non-granite models {expected_non_granite}: {e}")
 
                 phase2_db_models = get_models_from_database_by_source(
-                    admin_client=admin_client, source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace
+                    admin_client=admin_client, source_id=VALIDATED_CATALOG_ID, namespace=model_registry_namespace
                 )
 
                 assert phase2_api_models == expected_non_granite, (
@@ -266,12 +266,12 @@ class TestModelCleanupLifecycle:
             wait_for_catalog_source_restore(
                 model_catalog_rest_url=model_catalog_rest_url,
                 model_registry_rest_headers=model_registry_rest_headers,
-                source_label=REDHAT_AI_CATALOG_NAME,
-                expected_count=catalog_pod_model_counts[REDHAT_AI_CATALOG_ID],
+                source_label=VALIDATED_CATALOG_LABEL,
+                expected_count=catalog_pod_model_counts[VALIDATED_CATALOG_ID],
             )
 
 
-@pytest.mark.usefixtures("disabled_redhat_ai_source")
+@pytest.mark.usefixtures("disabled_validated_source")
 class TestSourceLifecycleCleanup:
     """Test source disabling cleanup scenarios"""
 
@@ -303,7 +303,7 @@ class TestSourceLifecycleCleanup:
     ):
         """Test that source disabling operations are properly logged."""
         # Validate logging occurred
-        expected_log_patterns = [rf"Removing models from source {REDHAT_AI_CATALOG_ID}"]
+        expected_log_patterns = [rf"Removing models from source {VALIDATED_CATALOG_ID}"]
 
         try:
             found_patterns = validate_cleanup_logging(
@@ -318,7 +318,7 @@ class TestLoggingValidation:
     """Test cleanup operation logging"""
 
     @pytest.mark.parametrize(
-        "redhat_ai_models_with_filter",
+        "validated_models_with_filter",
         [
             pytest.param(
                 {"filter_type": "exclusion", "pattern": "granite", "filter_value": "*granite*", "log_cleanup": True},
@@ -330,7 +330,7 @@ class TestLoggingValidation:
     )
     def test_model_removal_logging(
         self,
-        redhat_ai_models_with_filter: set[str],
+        validated_models_with_filter: set[str],
         admin_client: DynamicClient,
         model_registry_namespace: str,
     ):
@@ -339,7 +339,7 @@ class TestLoggingValidation:
 
         # Validate logging occurred for granite model removals
         expected_log_patterns = [
-            rf"Removing {REDHAT_AI_CATALOG_ID} model .*granite.*",
+            rf"Removing {VALIDATED_CATALOG_ID} model .*granite.*",
         ]
 
         try:

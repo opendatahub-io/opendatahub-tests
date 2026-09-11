@@ -349,7 +349,7 @@ def updated_oauth_config(
     else:
         # Get current providers and add the new one
         oauth = OAuth(client=admin_client, name="cluster")
-        identity_providers = oauth.instance.spec.identityProviders
+        identity_providers = oauth.instance.spec.identityProviders or []
 
         new_idp = {
             "name": user_credentials_rbac["idp_name"],
