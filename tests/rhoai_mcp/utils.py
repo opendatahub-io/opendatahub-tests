@@ -42,7 +42,7 @@ def discover_model_catalog_url(client: DynamicClient) -> str | None:
 
     Returns the in-cluster HTTPS URL if found, None otherwise.
     """
-    from kubernetes.dynamic.exceptions import NotFoundError
+    from kubernetes.dynamic.exceptions import ForbiddenError, NotFoundError
 
     for namespace in _MODEL_CATALOG_NAMESPACES:
         try:
@@ -54,6 +54,9 @@ def discover_model_catalog_url(client: DynamicClient) -> str | None:
                     return url
         except NotFoundError:
             _logger.debug(msg=f"Namespace {namespace} not found, skipping")
+            continue
+        except ForbiddenError:
+            _logger.debug(msg=f"No permission to list services in {namespace}, skipping")
             continue
     return None
 
