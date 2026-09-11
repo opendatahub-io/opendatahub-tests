@@ -219,17 +219,21 @@ def _model_catalog_network_access(
                     "matchLabels": {"app.kubernetes.io/name": "model-catalog"},
                 },
                 "policyTypes": ["Ingress"],
-                "ingress": [{
-                    "from": [{
-                        "namespaceSelector": {
-                            "matchLabels": {"kubernetes.io/metadata.name": test_ns},
-                        },
-                        "podSelector": {
-                            "matchLabels": {"app.kubernetes.io/name": RHOAI_MCP_APP_NAME},
-                        },
-                    }],
-                    "ports": [{"port": 8443, "protocol": "TCP"}],
-                }],
+                "ingress": [
+                    {
+                        "from": [
+                            {
+                                "namespaceSelector": {
+                                    "matchLabels": {"kubernetes.io/metadata.name": test_ns},
+                                },
+                                "podSelector": {
+                                    "matchLabels": {"app.kubernetes.io/name": RHOAI_MCP_APP_NAME},
+                                },
+                            }
+                        ],
+                        "ports": [{"port": 8443, "protocol": "TCP"}],
+                    }
+                ],
             },
         },
     ):

@@ -121,23 +121,13 @@ class TestRhoaiMcpModelRecommendation:
         recs = self._recommend_data["recommendations"]
 
         for key, entry in recs.items():
-            assert isinstance(entry.get("model"), str) and entry["model"], (
-                f"'{key}' missing or empty 'model'"
-            )
-            assert isinstance(entry.get("meets_slo"), bool), (
-                f"'{key}' missing or non-boolean 'meets_slo'"
-            )
-            assert isinstance(entry.get("gpu"), str) and entry["gpu"], (
-                f"'{key}' missing or empty 'gpu'"
-            )
+            assert isinstance(entry.get("model"), str) and entry["model"], f"'{key}' missing or empty 'model'"
+            assert isinstance(entry.get("meets_slo"), bool), f"'{key}' missing or non-boolean 'meets_slo'"
+            assert isinstance(entry.get("gpu"), str) and entry["gpu"], f"'{key}' missing or empty 'gpu'"
             if "cost_usd_month" in entry:
-                assert entry["cost_usd_month"] > 0, (
-                    f"'{key}' cost_usd_month not positive"
-                )
+                assert entry["cost_usd_month"] > 0, f"'{key}' cost_usd_month not positive"
             if "score" in entry:
-                assert 0 <= entry["score"] <= 100, (
-                    f"'{key}' score out of [0, 100] range"
-                )
+                assert 0 <= entry["score"] <= 100, f"'{key}' score out of [0, 100] range"
 
     async def test_recommend_slo_overrides(
         self,
@@ -282,9 +272,7 @@ class TestRhoaiMcpModelRecommendation:
                 resource.create(body=manifest, namespace=namespace, dry_run="All")
                 validated += 1
 
-        assert validated > 0, (
-            f"No configs could be validated via dry-run; keys: {list(configs.keys())}"
-        )
+        assert validated > 0, f"No configs could be validated via dry-run; keys: {list(configs.keys())}"
 
     async def test_deploy_config_validation_errors(
         self,
