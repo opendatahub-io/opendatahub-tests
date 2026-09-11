@@ -19,7 +19,6 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 from tests.ai_safety.evalhub.constants import (
     EVALHUB_COLLECTIONS_PATH,
     EVALHUB_CRD_NAME,
-    EVALHUB_DEFAULT_HARDWARE_PROFILE,
     EVALHUB_FULL_API_VERSION_V1,
     EVALHUB_FULL_API_VERSION_V1ALPHA1,
     EVALHUB_HEALTH_PATH,
