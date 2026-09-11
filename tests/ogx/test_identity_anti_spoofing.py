@@ -10,6 +10,7 @@ Scenarios tested:
 """
 
 import os
+from urllib.parse import urlsplit
 
 import httpx
 import pytest
@@ -32,8 +33,10 @@ def http_client():
         yield client
 
 
+@pytest.mark.tier2
+@pytest.mark.ogx
 class TestIdentityHeaderAntiSpoofing:
-    """Test suite for validating identity header anti-spoofing guarantees."""
+    """Verify that the Gateway and OGX reject or rewrite spoofed identity headers."""
 
     @pytest.mark.parametrize(
         "scenario_name, base_url, token, expected_status, check_identity_headers",
@@ -81,10 +84,16 @@ class TestIdentityHeaderAntiSpoofing:
             "x-tenant-id": SPOOFED_TENANT,
             "Content-Type": "application/json",
         }
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
 
         target_url = f"{base_url.rstrip('/')}/v1/health"
+        if token:
+            parsed_url = urlsplit(url=target_url)
+            is_loopback = parsed_url.hostname in ("localhost", "127.0.0.1", "0.0.0.0", "::1")
+            allow_insecure = os.getenv("ALLOW_INSECURE_HTTP", "false").lower() in ("true", "1")
+            if parsed_url.scheme != "https" and not is_loopback and not allow_insecure:
+                pytest.fail(f"Refusing to send K8S_SA_TOKEN over non-HTTPS URL '{target_url}'")
+            headers["Authorization"] = f"Bearer {token}"
+
         response = http_client.get(target_url, headers=headers)
 
         assert response.status_code == expected_status, (
@@ -95,20 +104,20 @@ class TestIdentityHeaderAntiSpoofing:
             response_headers = {
                 header_key.lower(): header_value for header_key, header_value in response.headers.items()
             }
-            if "x-user-id" in response_headers:
-                assert response_headers["x-user-id"] != SPOOFED_USER, (
-                    f"SECURITY VIOLATION: Spoofed x-user-id '{SPOOFED_USER}' was passed through! "
-                    "Authorino AuthPolicy failed to overwrite identity header."
-                )
-                assert response_headers["x-user-id"] == EXPECTED_USER, (
-                    f"Expected x-user-id '{EXPECTED_USER}', got '{response_headers['x-user-id']}'"
-                )
+            assert "x-user-id" in response_headers, "Expected authenticated 'x-user-id' header in response"
+            assert response_headers["x-user-id"] != SPOOFED_USER, (
+                f"SECURITY VIOLATION: Spoofed x-user-id '{SPOOFED_USER}' was passed through! "
+                "Authorino AuthPolicy failed to overwrite identity header."
+            )
+            assert response_headers["x-user-id"] == EXPECTED_USER, (
+                f"Expected x-user-id '{EXPECTED_USER}', got '{response_headers['x-user-id']}'"
+            )
 
-            if "x-tenant-id" in response_headers:
-                assert response_headers["x-tenant-id"] != SPOOFED_TENANT, (
-                    f"SECURITY VIOLATION: Spoofed x-tenant-id '{SPOOFED_TENANT}' was passed through! "
-                    "Authorino AuthPolicy failed to overwrite tenant header."
-                )
-                assert response_headers["x-tenant-id"] == EXPECTED_TENANT, (
-                    f"Expected x-tenant-id '{EXPECTED_TENANT}', got '{response_headers['x-tenant-id']}'"
-                )
+            assert "x-tenant-id" in response_headers, "Expected authenticated 'x-tenant-id' header in response"
+            assert response_headers["x-tenant-id"] != SPOOFED_TENANT, (
+                f"SECURITY VIOLATION: Spoofed x-tenant-id '{SPOOFED_TENANT}' was passed through! "
+                "Authorino AuthPolicy failed to overwrite tenant header."
+            )
+            assert response_headers["x-tenant-id"] == EXPECTED_TENANT, (
+                f"Expected x-tenant-id '{EXPECTED_TENANT}', got '{response_headers['x-tenant-id']}'"
+            )
