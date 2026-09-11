@@ -1,0 +1,117 @@
+# One-shot DaemonSet that patches the Kata initramfs to include the
+# veth kernel module, required by OpenShell's combined topology
+# network init container. Only needed with the `kata` runtime;
+# `kata-remote` (peer pods) uses RHEL VM that includes this module.
+#
+# Uses hostPath mount of / to access the host filesystem directly,
+# and the host's own binaries via chroot to /host.
+#
+# Usage:
+#   oc apply -f kata-veth-patch-job.yaml
+#   # Follow the logs until each pod reports "Patch complete. Sleeping.":
+#   oc logs -n openshift-sandboxed-containers-operator -l app=kata-veth-patch -f
+#   # Clean up after patching:
+#   oc delete -f kata-veth-patch-job.yaml
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: kata-veth-patch
+  namespace: openshift-sandboxed-containers-operator
+  labels:
+    app: kata-veth-patch
+spec:
+  selector:
+    matchLabels:
+      app: kata-veth-patch
+  template:
+    metadata:
+      labels:
+        app: kata-veth-patch
+    spec:
+      serviceAccountName: kata-install
+      nodeSelector:
+        node-role.kubernetes.io/kata-oc: ""
+      restartPolicy: Always
+      volumes:
+        - name: host
+          hostPath:
+            path: /
+      containers:
+        - name: patch
+          image: REPLACED_AT_RUNTIME
+          volumeMounts:
+            - name: host
+              mountPath: /host
+          command:
+            - /host/bin/bash
+            - -c
+            - |
+              set -euo pipefail
+
+              # Use the host's tools via chroot
+              chroot /host /bin/bash -c 'exec 9>/var/tmp/kata-initrd-patch.lock && flock 9 || exit 1
+                set -euo pipefail
+                KERNEL_VER=$(uname -r)
+                INITRD_DIR="/var/cache/kata-containers/osbuilder-images/${KERNEL_VER}"
+                INITRD="${INITRD_DIR}/kata.initrd"
+                VETH_MOD="/lib/modules/${KERNEL_VER}/kernel/drivers/net/veth.ko.xz"
+                WORKDIR="/var/tmp/kata-veth-patch"
+
+                if [ ! -f "${INITRD}" ]; then
+                  echo "[!] Kata initrd not found at ${INITRD}, skipping."
+                  exit 0
+                fi
+
+                if [ ! -f "${VETH_MOD}" ]; then
+                  VETH_MOD="/lib/modules/${KERNEL_VER}/kernel/drivers/net/veth.ko"
+                  if [ ! -f "${VETH_MOD}" ]; then
+                    echo "[!] veth module not found for kernel ${KERNEL_VER}"
+                    exit 1
+                  fi
+                fi
+
+                # Check if already patched
+                if lsinitrd "${INITRD}" 2>/dev/null | grep -q veth; then
+                  echo "[*] veth already present in initramfs, skipping."
+                  exit 0
+                fi
+
+                echo "[*] Patching initramfs to add veth module..."
+                rm -rf "${WORKDIR}"
+                mkdir -p "${WORKDIR}"
+                cd "${WORKDIR}"
+
+                # Unpack
+                zcat "${INITRD}" | cpio -idm 2>/dev/null
+
+                # Add veth module
+                DEST="lib/modules/${KERNEL_VER}/kernel/drivers/net"
+                mkdir -p "${DEST}"
+                cp "${VETH_MOD}" "${DEST}/"
+                echo "[+] Copied $(basename ${VETH_MOD}) into initramfs"
+
+                # Regenerate module dependency files
+                depmod -b . "${KERNEL_VER}" 2>/dev/null || {
+                  # Fallback: manually update modules.dep
+                  if [ -f "lib/modules/${KERNEL_VER}/modules.dep" ]; then
+                    echo "kernel/drivers/net/$(basename ${VETH_MOD}):" >> "lib/modules/${KERNEL_VER}/modules.dep"
+                  fi
+                }
+
+                # Repack
+                if [ ! -e "${INITRD}.bak" ]; then
+                  cp "${INITRD}" "${INITRD}.bak"
+                fi
+                find . | cpio -o -H newc 2>/dev/null | gzip > "${INITRD}.new"
+                mv "${INITRD}.new" "${INITRD}"
+
+                rm -rf "${WORKDIR}"
+                echo "[+] Initramfs patched. Backup at ${INITRD}.bak"
+              '
+
+              echo "[+] Patch complete. Sleeping."
+              exec /host/bin/sleep infinity
+          securityContext:
+            privileged: true
+            runAsUser: 0
