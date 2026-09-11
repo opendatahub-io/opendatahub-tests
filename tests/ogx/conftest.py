@@ -21,6 +21,7 @@ from semver import Version
 from tests.ogx.constants import (
     HTTPS_PROXY,
     OGX_CLIENT_VERIFY_SSL,
+    OGX_CORE_INFERENCE_MODEL,
     OGX_OPENSHIFT_MINIMAL_VERSION,
     OGX_SERVER_SECRET_DATA,
     POSTGRES_IMAGE,
@@ -31,6 +32,7 @@ from tests.ogx.datasets import Dataset
 from tests.ogx.server_config import build_ogx_server_config
 from tests.ogx.utils import (
     create_ogx_server,
+    select_ogx_model,
     vector_store_upload_dataset,
     vector_store_upload_doc_sources,
     wait_for_ogx_client_ready,
@@ -315,6 +317,11 @@ def ogx_models(ogx_client: OgxClient) -> ModelInfo:
     """
     Returns model information from the OGX client.
 
+    Selects the LLM model using the following priority:
+    1. Match OGX_CORE_INFERENCE_MODEL if configured
+    2. Fallback to a non-vision LLM model
+    3. Fallback to the first available LLM model
+
     Selects the embedding model based on available providers with the following priority:
     1. sentence-transformers provider (if present)
     2. vllm-embedding provider (if present)
@@ -331,36 +338,16 @@ def ogx_models(ogx_client: OgxClient) -> ModelInfo:
         ModelInfo: NamedTuple containing model information
 
     Raises:
-        ValueError: If no embedding provider (sentence-transformers or vllm-embedding) is found
+        ValueError: If no LLM model or embedding provider is found
 
     """
     models = ogx_client.models.list()
-
-    model_id = next(model for model in models.data if model.custom_metadata["model_type"] == "llm").id
-
-    # Ensure getting the right embedding model depending on the available providers
     providers = ogx_client.providers.list()
-    provider_ids = [p.provider_id for p in providers]
-    if "sentence-transformers" in provider_ids:
-        target_provider_id = "sentence-transformers"
-    elif "vllm-embedding" in provider_ids:
-        target_provider_id = "vllm-embedding"
-    else:
-        raise ValueError("No embedding provider found")
-
-    embedding_model = next(
-        model
-        for model in models.data
-        if model.custom_metadata["model_type"] == "embedding"
-        and model.custom_metadata["provider_id"] == target_provider_id
+    return select_ogx_model(
+        models=models.data,
+        providers=providers,
+        configured_model=OGX_CORE_INFERENCE_MODEL,
     )
-    embedding_dimension = int(embedding_model.custom_metadata["embedding_dimension"])
-
-    LOGGER.info(f"Detected model: {model_id}")
-    LOGGER.info(f"Detected embedding_model: {embedding_model.id}")
-    LOGGER.info(f"Detected embedding_dimension: {embedding_dimension}")
-
-    return ModelInfo(model_id=model_id, embedding_model=embedding_model, embedding_dimension=embedding_dimension)
 
 
 @pytest.fixture(scope="class")
