@@ -9,11 +9,9 @@ fixture setup time).
 """
 
 import pytest
-import yaml
 from fastmcp import Client
 from fastmcp.client.transports import StreamableHttpTransport
 from kubernetes.dynamic import DynamicClient
-from kubernetes.dynamic.exceptions import ResourceNotFoundError
 
 from tests.rhoai_mcp.constants import (
     RHOAI_MCP_NAMESPACE,
@@ -21,7 +19,7 @@ from tests.rhoai_mcp.constants import (
     RHOAI_MCP_RECOMMEND_USE_CASE,
     RHOAI_MCP_RECOMMEND_USER_COUNT,
 )
-from tests.rhoai_mcp.utils import parse_tool_result
+from tests.rhoai_mcp.utils import dry_run_validate_manifests, parse_tool_result
 
 _RECOMMENDATION_CATEGORIES = ("top_performance", "top_cost", "top_balanced", "top_quality")
 
@@ -252,26 +250,11 @@ class TestRhoaiMcpModelRecommendation:
         Then the K8s API server accepts them without validation errors
         """
         configs = self._deploy_config_data["configs"]
-        validated = 0
-
-        for content in configs.values():
-            for manifest in yaml.safe_load_all(content):
-                if not isinstance(manifest, dict):
-                    continue
-                api_version = manifest.get("apiVersion")
-                kind = manifest.get("kind")
-                if not api_version or not kind:
-                    continue
-
-                try:
-                    resource = admin_client.resources.get(api_version=api_version, kind=kind)
-                except ResourceNotFoundError:
-                    continue
-
-                namespace = manifest.get("metadata", {}).get("namespace", RHOAI_MCP_NAMESPACE)
-                resource.create(body=manifest, namespace=namespace, dry_run="All")
-                validated += 1
-
+        validated = dry_run_validate_manifests(
+            dyn_api=admin_client,
+            configs=configs,
+            default_namespace=RHOAI_MCP_NAMESPACE,
+        )
         assert validated > 0, f"No configs could be validated via dry-run; keys: {list(configs.keys())}"
 
     async def test_deploy_config_validation_errors(
