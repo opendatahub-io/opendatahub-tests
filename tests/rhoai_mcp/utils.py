@@ -1,9 +1,9 @@
 import copy
 import json
-import structlog
 from typing import Any
 
 import requests
+import structlog
 import yaml
 from fastmcp import Client
 from kubernetes.dynamic import DynamicClient

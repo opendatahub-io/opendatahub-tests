@@ -1,9 +1,9 @@
-import structlog
 from collections.abc import Generator
 from typing import Any
 from urllib.parse import urlparse
 
 import pytest
+import structlog
 from fastmcp.client.transports import StreamableHttpTransport
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.cluster_role import ClusterRole
