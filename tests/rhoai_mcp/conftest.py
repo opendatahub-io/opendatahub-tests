@@ -1,4 +1,4 @@
-import logging
+import structlog
 from collections.abc import Generator
 from typing import Any
 from urllib.parse import urlparse
@@ -37,7 +37,7 @@ from tests.rhoai_mcp.utils import (
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.infra import create_inference_token, create_ns
 
-_logger = logging.getLogger(__name__)
+_logger = structlog.get_logger(name=__name__)
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:

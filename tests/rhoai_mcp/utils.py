@@ -1,6 +1,6 @@
 import copy
 import json
-import logging
+import structlog
 from typing import Any
 
 import requests
@@ -24,7 +24,7 @@ from tests.rhoai_mcp.constants import (
 from tests.rhoai_mcp.image_constants import RhoaiMcpImages
 from utilities.infra import is_disconnected_cluster
 
-_logger = logging.getLogger(__name__)
+_logger = structlog.get_logger(name=__name__)
 
 _RETRY_EXCEPTIONS: dict[type, list] = {
     requests.exceptions.ConnectTimeout: [],
