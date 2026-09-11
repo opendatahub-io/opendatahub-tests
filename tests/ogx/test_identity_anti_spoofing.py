@@ -35,85 +35,80 @@ def http_client():
 class TestIdentityHeaderAntiSpoofing:
     """Test suite for validating identity header anti-spoofing guarantees."""
 
-    def test_scenario_1_spoofed_headers_with_valid_token(self, http_client):
-        """Scenario 1: Valid auth token + spoofed headers through Gateway.
-
-        Security Property: Authorino's AuthPolicy MUST overwrite client-supplied
-        `x-user-id` and `x-tenant-id` headers with authenticated token review identity.
-        """
-        headers = {
-            "Authorization": f"Bearer {VALID_SA_TOKEN}",
-            "x-user-id": SPOOFED_USER,
-            "x-tenant-id": SPOOFED_TENANT,
-            "Content-Type": "application/json",
-        }
-
-        # Send request to Gateway endpoint
-        target_url = f"{GATEWAY_URL.rstrip('/')}/v1/health"
-        response = http_client.get(target_url, headers=headers)
-
-        assert response.status_code == 200, (
-            f"Expected 200 OK for valid SA token through Gateway, got {response.status_code}. "
-            f"Response body: {response.text}"
-        )
-
-        # If endpoint returns echo or debug headers/context, verify overwritten identity
-        resp_headers = {k.lower(): v for k, v in response.headers.items()}
-        if "x-user-id" in resp_headers:
-            assert resp_headers["x-user-id"] != SPOOFED_USER, (
-                f"SECURITY VIOLATION: Spoofed x-user-id '{SPOOFED_USER}' was passed through! "
-                f"Authorino AuthPolicy failed to overwrite identity header."
-            )
-            assert resp_headers["x-user-id"] == EXPECTED_USER, (
-                f"Expected x-user-id '{EXPECTED_USER}', got '{resp_headers['x-user-id']}'"
-            )
-
-        if "x-tenant-id" in resp_headers:
-            assert resp_headers["x-tenant-id"] != SPOOFED_TENANT, (
-                f"SECURITY VIOLATION: Spoofed x-tenant-id '{SPOOFED_TENANT}' was passed through! "
-                f"Authorino AuthPolicy failed to overwrite tenant header."
-            )
-            assert resp_headers["x-tenant-id"] == EXPECTED_TENANT, (
-                f"Expected x-tenant-id '{EXPECTED_TENANT}', got '{resp_headers['x-tenant-id']}'"
-            )
-
-    def test_scenario_2_spoofed_headers_without_token(self, http_client):
-        """Scenario 2: Spoofed headers with NO auth token through Gateway.
-
-        Security Property: Gateway Authorino AuthPolicy MUST reject unauthenticated
-        requests requiring authentication, even if client supplies spoofed identity headers.
-        """
+    @pytest.mark.parametrize(
+        "scenario_name, base_url, token, expected_status, check_identity_headers",
+        [
+            (
+                "Scenario 1: Valid auth token + spoofed headers through Gateway",
+                GATEWAY_URL,
+                VALID_SA_TOKEN,
+                200,
+                True,
+            ),
+            (
+                "Scenario 2: Spoofed headers with NO auth token through Gateway",
+                GATEWAY_URL,
+                None,
+                401,
+                False,
+            ),
+            (
+                "Scenario 3: Direct request to OGX bypassing Gateway",
+                DIRECT_OGX_URL,
+                None,
+                403,
+                False,
+            ),
+        ],
+        ids=[
+            "valid_token_gateway_overwrites_headers",
+            "missing_token_gateway_returns_401",
+            "direct_access_ogx_returns_403",
+        ],
+    )
+    def test_identity_header_anti_spoofing(
+        self,
+        http_client,
+        scenario_name,
+        base_url,
+        token,
+        expected_status,
+        check_identity_headers,
+    ):
+        """Verify identity header anti-spoofing behavior across Gateway and OGX backend."""
         headers = {
             "x-user-id": SPOOFED_USER,
             "x-tenant-id": SPOOFED_TENANT,
             "Content-Type": "application/json",
         }
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
 
-        target_url = f"{GATEWAY_URL.rstrip('/')}/v1/health"
+        target_url = f"{base_url.rstrip('/')}/v1/health"
         response = http_client.get(target_url, headers=headers)
 
-        assert response.status_code == 401, (
-            f"SECURITY VIOLATION: Expected 401 Unauthorized for request with no token, "
-            f"got {response.status_code}. Gateway allowed unauthenticated request with spoofed headers!"
+        assert response.status_code == expected_status, (
+            f"[{scenario_name}] Expected {expected_status}, got {response.status_code}. Response body: {response.text}"
         )
 
-    def test_scenario_3_direct_access_bypassing_gateway(self, http_client):
-        """Scenario 3: Direct request to OGX bypassing the Gateway.
+        if check_identity_headers:
+            response_headers = {
+                header_key.lower(): header_value for header_key, header_value in response.headers.items()
+            }
+            if "x-user-id" in response_headers:
+                assert response_headers["x-user-id"] != SPOOFED_USER, (
+                    f"SECURITY VIOLATION: Spoofed x-user-id '{SPOOFED_USER}' was passed through! "
+                    "Authorino AuthPolicy failed to overwrite identity header."
+                )
+                assert response_headers["x-user-id"] == EXPECTED_USER, (
+                    f"Expected x-user-id '{EXPECTED_USER}', got '{response_headers['x-user-id']}'"
+                )
 
-        Security Property: OGX upstream_header auth provider MUST reject requests
-        originating from non-trusted CIDRs (trusted_proxy_cidrs enforcement),
-        preventing attackers from bypassing gateway auth filters.
-        """
-        headers = {
-            "x-user-id": SPOOFED_USER,
-            "x-tenant-id": SPOOFED_TENANT,
-            "Content-Type": "application/json",
-        }
-
-        target_url = f"{DIRECT_OGX_URL.rstrip('/')}/v1/health"
-        response = http_client.get(target_url, headers=headers)
-
-        assert response.status_code == 403, (
-            f"SECURITY VIOLATION: Expected 403 Forbidden for direct request bypassing Gateway, "
-            f"got {response.status_code}. OGX trusted_proxy_cidrs failed to reject untrusted source IP!"
-        )
+            if "x-tenant-id" in response_headers:
+                assert response_headers["x-tenant-id"] != SPOOFED_TENANT, (
+                    f"SECURITY VIOLATION: Spoofed x-tenant-id '{SPOOFED_TENANT}' was passed through! "
+                    "Authorino AuthPolicy failed to overwrite tenant header."
+                )
+                assert response_headers["x-tenant-id"] == EXPECTED_TENANT, (
+                    f"Expected x-tenant-id '{EXPECTED_TENANT}', got '{response_headers['x-tenant-id']}'"
+                )
