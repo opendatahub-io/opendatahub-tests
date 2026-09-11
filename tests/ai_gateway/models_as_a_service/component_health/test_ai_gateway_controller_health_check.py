@@ -33,7 +33,7 @@ class TestAIGatewayControllerHealth:
         self,
         admin_client: DynamicClient,
     ) -> None:
-        """Given MaaS is managed, when checking cluster RBAC, then ai-gateway-controller RBAC is present."""
+        """Given MaaS is managed, when checking cluster RBAC, then controller RBAC grants AITenant watch."""
         verify_ai_gateway_controller_rbac_exists(admin_client=admin_client)
 
     def test_ai_gateway_controller_parameters_configmap(

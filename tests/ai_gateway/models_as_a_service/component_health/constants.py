@@ -7,6 +7,8 @@ AI_GATEWAY_CONTROLLER_POD_LABEL_SELECTOR: str = "control-plane=ai-gateway-contro
 AI_GATEWAY_CONTROLLER_SERVICE_ACCOUNT_NAME: str = "ai-gateway-controller"
 AI_GATEWAY_CONTROLLER_CLUSTER_ROLE_NAME: str = "ai-gateway-controller-role"
 AI_GATEWAY_CONTROLLER_CLUSTER_ROLE_BINDING_NAME: str = "ai-gateway-controller-rolebinding"
+AI_GATEWAY_CONTROLLER_AITENANT_RESOURCE: str = "aitenants"
+AI_GATEWAY_CONTROLLER_AITENANT_WATCH_VERBS: frozenset[str] = frozenset({"get", "list", "watch"})
 
 AI_GATEWAY_CONTROLLER_PARAMETERS_CONFIGMAP_NAME: str = "ai-gateway-controller-parameters"
 AI_GATEWAY_CONTROLLER_IMAGE_CONFIGMAP_KEY: str = "ai-gateway-controller-image"

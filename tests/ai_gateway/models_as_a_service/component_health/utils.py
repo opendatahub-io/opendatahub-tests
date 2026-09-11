@@ -15,6 +15,8 @@ from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_gateway.models_as_a_service.component_health.constants import (
+    AI_GATEWAY_CONTROLLER_AITENANT_RESOURCE,
+    AI_GATEWAY_CONTROLLER_AITENANT_WATCH_VERBS,
     AI_GATEWAY_CONTROLLER_CLUSTER_ROLE_BINDING_NAME,
     AI_GATEWAY_CONTROLLER_CLUSTER_ROLE_NAME,
     AI_GATEWAY_CONTROLLER_DEPLOYMENT_AVAILABLE_TIMEOUT,
@@ -35,6 +37,7 @@ from tests.ai_gateway.models_as_a_service.component_health.constants import (
     RELATED_IMAGE_ODH_PRAXIS_EXTPROC_ENV_NAME,
 )
 from tests.ai_gateway.models_as_a_service.utils import dsc_uses_aigateway_maas_schema
+from utilities.constants import ApiGroups
 from utilities.resources.aigateway import AIGateway
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -128,7 +131,7 @@ def verify_ai_gateway_controller_pods_running(admin_client: DynamicClient) -> No
 
 
 def verify_ai_gateway_controller_rbac_exists(admin_client: DynamicClient) -> None:
-    """Assert ai-gateway-controller ServiceAccount and cluster RBAC exist."""
+    """Assert ai-gateway-controller ServiceAccount, cluster RBAC, binding wiring, and AITenant watch rules exist."""
     applications_namespace = py_config["applications_namespace"]
     missing_resources: list[str] = []
 
@@ -148,6 +151,20 @@ def verify_ai_gateway_controller_rbac_exists(admin_client: DynamicClient) -> Non
     )
     if not cluster_role.exists:
         missing_resources.append(f"ClusterRole/{AI_GATEWAY_CONTROLLER_CLUSTER_ROLE_NAME}")
+    else:
+        cluster_role_rules = cluster_role.instance.rules or []
+        has_aitenants_watch_rule = any(
+            ApiGroups.MAAS_IO in (rule.apiGroups or [])
+            and AI_GATEWAY_CONTROLLER_AITENANT_RESOURCE in (rule.resources or [])
+            and AI_GATEWAY_CONTROLLER_AITENANT_WATCH_VERBS.issubset(set(rule.verbs or []))
+            for rule in cluster_role_rules
+        )
+        if not has_aitenants_watch_rule:
+            missing_resources.append(
+                f"ClusterRole/{AI_GATEWAY_CONTROLLER_CLUSTER_ROLE_NAME} rule "
+                f"{ApiGroups.MAAS_IO}/{AI_GATEWAY_CONTROLLER_AITENANT_RESOURCE} with verbs "
+                f"{', '.join(sorted(AI_GATEWAY_CONTROLLER_AITENANT_WATCH_VERBS))}"
+            )
 
     cluster_role_binding = ClusterRoleBinding(
         client=admin_client,
@@ -155,9 +172,29 @@ def verify_ai_gateway_controller_rbac_exists(admin_client: DynamicClient) -> Non
     )
     if not cluster_role_binding.exists:
         missing_resources.append(f"ClusterRoleBinding/{AI_GATEWAY_CONTROLLER_CLUSTER_ROLE_BINDING_NAME}")
+    else:
+        role_ref_name = cluster_role_binding.instance.roleRef.name
+        if role_ref_name != AI_GATEWAY_CONTROLLER_CLUSTER_ROLE_NAME:
+            missing_resources.append(
+                f"ClusterRoleBinding/{AI_GATEWAY_CONTROLLER_CLUSTER_ROLE_BINDING_NAME} roleRef "
+                f"'{role_ref_name}', expected '{AI_GATEWAY_CONTROLLER_CLUSTER_ROLE_NAME}'"
+            )
 
-    assert not missing_resources, f"Missing ai-gateway-controller RBAC resources: {', '.join(missing_resources)}"
-    LOGGER.info("ai-gateway-controller ServiceAccount and cluster RBAC are present")
+        subjects = cluster_role_binding.instance.subjects or []
+        has_expected_subject = any(
+            subject.kind == "ServiceAccount"
+            and subject.name == AI_GATEWAY_CONTROLLER_SERVICE_ACCOUNT_NAME
+            and subject.namespace == applications_namespace
+            for subject in subjects
+        )
+        if not has_expected_subject:
+            missing_resources.append(
+                f"ClusterRoleBinding/{AI_GATEWAY_CONTROLLER_CLUSTER_ROLE_BINDING_NAME} missing subject "
+                f"ServiceAccount/{AI_GATEWAY_CONTROLLER_SERVICE_ACCOUNT_NAME} in '{applications_namespace}'"
+            )
+
+    assert not missing_resources, f"Missing ai-gateway-controller RBAC: {', '.join(missing_resources)}"
+    LOGGER.info("ai-gateway-controller ServiceAccount, cluster RBAC, and AITenant watch rules are present")
 
 
 def verify_ai_gateway_controller_parameters_configmap(admin_client: DynamicClient) -> None:
