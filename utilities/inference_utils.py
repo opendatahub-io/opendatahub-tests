@@ -656,6 +656,8 @@ def create_isvc(
     labels: dict[str, str] | None = None,
     auto_scaling: dict[str, Any] | None = None,
     scheduler_name: str | None = None,
+    connections: str | None = None,
+    connection_path: str | None = None,
 ) -> Generator[InferenceService, Any, Any]:
     """
     Create InferenceService object.
@@ -692,6 +694,11 @@ def create_isvc(
         protocol_version (str): Protocol version of the model server
         auto_scaling (dict[str, Any]): Auto scaling configuration for the model
         scheduler_name (str): Scheduler name
+        connections (str): Name of a ConnectionsAPI Secret to reference via the
+            `opendatahub.io/connections` annotation, so the odh-model-controller
+            admission webhook injects the corresponding storage/SA/imagePullSecrets fields
+        connection_path (str): Value for the `opendatahub.io/connection-path` annotation,
+            used by the ConnectionsAPI webhook to compute an S3 connection's storage sub-path
 
     Yields:
         InferenceService: InferenceService object
@@ -788,6 +795,12 @@ def create_isvc(
 
     if scheduler_name is not None:
         predictor_dict["schedulerName"] = scheduler_name
+
+    if connections:
+        _annotations["opendatahub.io/connections"] = connections
+
+    if connection_path:
+        _annotations["opendatahub.io/connection-path"] = connection_path
 
     with InferenceService(
         client=client,
