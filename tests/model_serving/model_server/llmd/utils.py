@@ -867,19 +867,22 @@ def log_base_refs_selection(
     ]
 
     if result is None:
-        sections.append(f"{'-' * 60}")
-        sections.append("  Selected: (default CUDA — no CR override needed)")
+        sections.extend((f"{'-' * 60}", "  Selected: (default CUDA — no CR override needed)"))
     else:
-        sections.append(f"  Namespace:    {result.namespace}")
-        sections.append(f"{'-' * 60}")
-        sections.append("  LLMInferenceServiceConfig CRs:")
+        sections.extend((
+            f"  Namespace:    {result.namespace}",
+            f"{'-' * 60}",
+            "  LLMInferenceServiceConfig CRs:",
+        ))
         if result.configs:
             for c in result.configs:
                 sections.append(f"  {c.name}  accelerators={c.accelerators or '[]'}  topologies={c.topologies or '[]'}")
         else:
             sections.append("  (none)")
-        sections.append(f"{'-' * 60}")
-        sections.append(f"  Selected: {result.matched}" if result.matched else "  No match found")
+        sections.extend((
+            f"{'-' * 60}",
+            f"  Selected: {result.matched}" if result.matched else "  No match found",
+        ))
 
     sections.append(f"{'=' * 60}")
     LOGGER.info("\n".join(sections) + "\n")

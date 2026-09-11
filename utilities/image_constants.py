@@ -5,6 +5,9 @@ class SharedImages:
     image_constants.py instead (e.g. tests/ai_safety/image_constants.py).
     """
 
+    MILVUS: str = "docker.io/milvusdb/milvus@sha256:3d772c3eae3a6107b778636cea5715b9353360b92e5dcfdcaf4ca7022f4f497c"
+    ETCD: str = "quay.io/coreos/etcd@sha256:3397341272b9e0a6f44d7e3fc7c321c6efe6cbe82ce866b9b01d0c704bfc5bf3"
+
     POSTGRESQL_15: str = (
         "registry.redhat.io/rhel9/postgresql-15"
         "@sha256:90ec347a35ab8a5d530c8d09f5347b13cc71df04f3b994bfa8b1a409b1171d59"  # pragma: allowlist secret

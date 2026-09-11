@@ -45,7 +45,7 @@ from utilities.serving_runtime import ServingRuntimeFromTemplate
 @pytest.fixture(scope="session")
 def skip_if_no_gpu_for_mlserver(supported_accelerator_type: str | None) -> None:
     """Fail if no GPU accelerator configured for MLServer GPU tests."""
-    if not supported_accelerator_type or supported_accelerator_type.lower() not in {"nvidia"}:
+    if not supported_accelerator_type or supported_accelerator_type.lower() != "nvidia":
         pytest.fail(f"MLServer GPU tests require nvidia accelerator, got: {supported_accelerator_type}")
 
 

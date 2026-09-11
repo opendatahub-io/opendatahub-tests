@@ -148,9 +148,11 @@ def create_ns(
         namespace_kwargs["client"] = admin_client
         with Namespace(**namespace_kwargs) as ns:
             ns.wait_for_status(status=Namespace.Status.ACTIVE, timeout=Timeout.TIMEOUT_2MIN)
-            yield ns
-            if teardown:
-                wait_for_serverless_pods_deletion(resource=ns, admin_client=admin_client)
+            try:
+                yield ns
+            finally:
+                if teardown:
+                    wait_for_serverless_pods_deletion(resource=ns, admin_client=admin_client)
     else:
         namespace_kwargs["client"] = unprivileged_client
         project = ProjectRequest(**namespace_kwargs).deploy()
@@ -164,12 +166,14 @@ def create_ns(
                     }
                 }
             }).update()
-        yield project
-        if teardown:
-            wait_for_serverless_pods_deletion(resource=project, admin_client=admin_client)
-            # cleanup must be done with admin admin_client
-            project.client = admin_client
-            project.clean_up()
+        try:
+            yield project
+        finally:
+            if teardown:
+                wait_for_serverless_pods_deletion(resource=project, admin_client=admin_client)
+                # cleanup must be done with admin admin_client
+                project.client = admin_client
+                project.clean_up()
 
 
 def wait_for_replicas_in_deployment(deployment: Deployment, replicas: int, timeout: int = Timeout.TIMEOUT_2MIN) -> None:
@@ -897,7 +901,7 @@ def get_dsci_applications_namespace(client: DynamicClient) -> str:
             return app_namespace
 
         else:
-            raise ValueError("DSCI applications namespace not found in {dsci_name}")
+            raise ValueError(f"DSCI applications namespace not found in {dsci_name}")
 
     raise MissingResourceError(f"DSCI {dsci_name} not found")
 
@@ -923,7 +927,7 @@ def get_operator_distribution(client: DynamicClient, dsc_name: str = "default-ds
         return dsc_release_name
 
     else:
-        raise ValueError("DSC release name not found in {dsc_name}")
+        raise ValueError(f"DSC release name not found in {dsc_name}")
 
 
 def wait_for_route_timeout(name: str, namespace: str, route_timeout: str) -> None:
