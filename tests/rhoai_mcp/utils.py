@@ -1,5 +1,6 @@
 import copy
 import json
+import logging
 from typing import Any
 
 import requests
@@ -20,11 +21,39 @@ from tests.rhoai_mcp.constants import (
 from tests.rhoai_mcp.image_constants import RhoaiMcpImages
 from utilities.infra import is_disconnected_cluster
 
+_logger = logging.getLogger(__name__)
+
 _RETRY_EXCEPTIONS: dict[type, list] = {
     requests.exceptions.ConnectTimeout: [],
     requests.exceptions.ReadTimeout: [],
     requests.exceptions.ConnectionError: [lambda exc: not isinstance(exc, requests.exceptions.SSLError)],
 }
+
+_MODEL_CATALOG_NAMESPACES = ("rhoai-model-registries", "odh-model-registries", "model-registries")
+_MODEL_CATALOG_SERVICE_PATTERN = "model-catalog"
+_MODEL_CATALOG_PORT = 8443
+
+
+def discover_model_catalog_url(client: DynamicClient) -> str | None:
+    """Probe well-known namespaces for a Model Catalog service.
+
+    Returns the in-cluster HTTPS URL if found, None otherwise.
+    """
+    from kubernetes.dynamic.exceptions import NotFoundError
+
+    svc_api = client.resources.get(api_version="v1", kind="Service")
+    for namespace in _MODEL_CATALOG_NAMESPACES:
+        try:
+            services = svc_api.get(namespace=namespace)
+        except NotFoundError:
+            _logger.debug("Namespace %s not found, skipping", namespace)
+            continue
+        for svc in services.items:
+            if _MODEL_CATALOG_SERVICE_PATTERN in svc.metadata.name:
+                url = f"https://{svc.metadata.name}.{namespace}.svc:{_MODEL_CATALOG_PORT}"
+                _logger.info("Discovered Model Catalog service: %s", url)
+                return url
+    return None
 
 
 def get_rhoai_mcp_image(client: DynamicClient) -> str:
@@ -80,11 +109,14 @@ _DEPLOYMENT_TEMPLATE: dict[str, Any] = {
                     "initialDelaySeconds": 5,
                     "periodSeconds": 10,
                     "timeoutSeconds": 5,
-                    "failureThreshold": 3,
+                    "failureThreshold": 12,
                 },
+                # Model Catalog sync loads benchmark data into in-memory SQLite;
+                # config generation can block the event loop for tens of seconds.
+                # 1Gi accommodates the larger dataset vs the base kustomize 512Mi.
                 "resources": {
-                    "requests": {"cpu": "100m", "memory": "128Mi"},
-                    "limits": {"cpu": "500m", "memory": "512Mi"},
+                    "requests": {"cpu": "100m", "memory": "256Mi"},
+                    "limits": {"cpu": "500m", "memory": "1Gi"},
                 },
                 "securityContext": {
                     "allowPrivilegeEscalation": False,
