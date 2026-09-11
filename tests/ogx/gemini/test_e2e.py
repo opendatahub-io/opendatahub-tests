@@ -205,7 +205,7 @@ class TestGeminiEndToEnd:
             cross-contamination between keys.
         """
         if not (GEMINI_API_KEY_SECONDARY and GEMINI_API_KEY_SECONDARY_2):
-            pytest.skip(
+            pytest.fail(
                 reason="OGX_CORE_GEMINI_API_KEY_SECONDARY and _SECONDARY_2 must both be set "
                 "to exercise the multi-tenant per-request override scenario"
             )
