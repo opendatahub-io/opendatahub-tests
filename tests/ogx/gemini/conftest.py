@@ -29,14 +29,14 @@ LOGGER = structlog.get_logger(name=__name__)
 
 @pytest.fixture(scope="session", autouse=True)
 def fail_if_no_gemini_api_key() -> None:
-    """Skip the entire Gemini suite when no Gemini API key is configured.
+    """Fail the entire Gemini suite when no Gemini API key is configured.
 
     Every remote::gemini test requires a real key so the provider activates and
     can authenticate to the Gemini API. If no key is configured in the environment,
-    the tests are skipped.
+    the tests fail.
     """
     if not GEMINI_API_KEY:
-        pytest.skip(
+        pytest.fail(
             reason="No Gemini API key configured; set OGX_CORE_GEMINI_API_KEY (or GEMINI_API_KEY) to run these tests"
         )
 
