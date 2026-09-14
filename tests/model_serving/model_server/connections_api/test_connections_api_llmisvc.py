@@ -6,16 +6,12 @@ completion request, proving the injected connection actually wired the model's d
 removal test (1.9) does not assert inference — the service is expected to become not-Ready.
 """
 
-from typing import Any
-
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
 
 from tests.model_serving.model_server.connections_api.constants import (
-    CONNECTION_PATH_ANNOTATION,
-    CONNECTIONS_ANNOTATION,
     LLMISVC_NAMESPACE,
     LLMISVC_OCI_MODEL_URI,
     LLMISVC_S3_CONNECTION_PATH,
@@ -24,10 +20,10 @@ from tests.model_serving.model_server.connections_api.constants import (
 from tests.model_serving.model_server.connections_api.utils import (
     assert_llmisvc_connection_cleared,
     assert_llmisvc_oci_injected,
-    assert_llmisvc_s3_injected,
+    assert_llmisvc_s3_fully_injected,
     assert_llmisvc_uri_injected,
-    assert_service_account_exists,
     create_connection_llmisvc,
+    remove_connection_annotations,
     run_llmisvc_inference,
     wait_for_llmisvc_connection_cleared,
 )
@@ -73,35 +69,40 @@ class TestConnectionsApiLlmisvc:
             connections=s3_connection_secret.name,
             connection_path=LLMISVC_S3_CONNECTION_PATH,
         ) as llmisvc:
-            expected_uri = f"s3://{models_s3_bucket_name}/{LLMISVC_S3_CONNECTION_PATH}"
-            assert_llmisvc_s3_injected(
-                llmisvc=llmisvc, secret_name=s3_connection_secret.name, expected_uri=expected_uri
-            )
-            assert_service_account_exists(
+            assert_llmisvc_s3_fully_injected(
                 client=admin_client,
+                llmisvc=llmisvc,
                 namespace=unprivileged_model_namespace.name,
-                name=f"{s3_connection_secret.name}-sa",
+                secret_name=s3_connection_secret.name,
+                bucket=models_s3_bucket_name,
+                path=LLMISVC_S3_CONNECTION_PATH,
             )
             run_llmisvc_inference(llmisvc=llmisvc)
 
     @pytest.mark.skip_on_disconnected
     @pytest.mark.parametrize(
-        "uri_connection_secret_llmisvc",
-        [pytest.param({"namespace_fixture": "unprivileged_model_namespace", "name": "llmisvc-uri-connection-secret"})],
+        "uri_connection_secret",
+        [
+            pytest.param({
+                "namespace_fixture": "unprivileged_model_namespace",
+                "name": "llmisvc-uri-connection-secret",
+                "uri": LLMISVC_URI_MODEL_URI,
+            })
+        ],
         indirect=True,
     )
     def test_llmisvc_uri_create_injects_uri(
         self,
         admin_client: DynamicClient,
         unprivileged_model_namespace: Namespace,
-        uri_connection_secret_llmisvc: Secret,
+        uri_connection_secret: Secret,
     ) -> None:
         """Manual 1.7: URI CREATE injects model.uri from the connection Secret, infers."""
         with create_connection_llmisvc(
             client=admin_client,
             name="llmisvc-uri-connection",
             namespace=unprivileged_model_namespace.name,
-            connections=uri_connection_secret_llmisvc.name,
+            connections=uri_connection_secret.name,
         ) as llmisvc:
             assert_llmisvc_uri_injected(llmisvc=llmisvc, expected_uri=LLMISVC_URI_MODEL_URI)
             run_llmisvc_inference(llmisvc=llmisvc)
@@ -154,16 +155,7 @@ class TestConnectionsApiLlmisvc:
         ) as llmisvc:
             assert llmisvc.instance.spec.template.get("serviceAccountName") == f"{s3_connection_secret.name}-sa"
 
-            resource_dict: dict[str, Any] = {
-                "metadata": {
-                    "name": llmisvc.name,
-                    "annotations": {
-                        CONNECTIONS_ANNOTATION: None,
-                        CONNECTION_PATH_ANNOTATION: None,
-                    },
-                }
-            }
-            llmisvc.update(resource_dict=resource_dict)
+            remove_connection_annotations(resource=llmisvc)
 
             wait_for_llmisvc_connection_cleared(llmisvc=llmisvc, timeout=Timeout.TIMEOUT_2MIN)
             assert_llmisvc_connection_cleared(llmisvc=llmisvc)

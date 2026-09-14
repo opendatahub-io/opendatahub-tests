@@ -6,8 +6,6 @@ model's data source (not merely that the pod passed its probes). The removal tes
 assert inference — an sklearn server with no storage may still pass probes.
 """
 
-from typing import Any
-
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
@@ -15,8 +13,6 @@ from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 
 from tests.model_serving.model_server.connections_api.constants import (
-    CONNECTION_PATH_ANNOTATION,
-    CONNECTIONS_ANNOTATION,
     ISVC_NAMESPACE,
     ISVC_OCI_MODEL_FORMAT,
     ISVC_OCI_STORAGE_URI,
@@ -27,11 +23,13 @@ from tests.model_serving.model_server.connections_api.constants import (
     ISVC_URI_ONNX_REST_INPUT_QUERY,
 )
 from tests.model_serving.model_server.connections_api.utils import (
+    add_connection_annotations,
     assert_isvc_connection_cleared,
     assert_isvc_oci_injected,
+    assert_isvc_s3_fully_injected,
     assert_isvc_s3_injected,
     assert_isvc_uri_injected,
-    assert_service_account_exists,
+    remove_connection_annotations,
     run_isvc_inference,
     wait_for_isvc_connection_cleared,
 )
@@ -89,18 +87,25 @@ class TestConnectionsApiIsvc:
             connection_path=ISVC_S3_CONNECTION_PATH,
             timeout=Timeout.TIMEOUT_10MIN,
         ) as isvc:
-            assert_isvc_s3_injected(
-                isvc=isvc, secret_name=s3_connection_secret.name, expected_path=ISVC_S3_CONNECTION_PATH
-            )
-            assert_service_account_exists(
-                client=admin_client, namespace=model_namespace.name, name=f"{s3_connection_secret.name}-sa"
+            assert_isvc_s3_fully_injected(
+                client=admin_client,
+                isvc=isvc,
+                namespace=model_namespace.name,
+                secret_name=s3_connection_secret.name,
+                expected_path=ISVC_S3_CONNECTION_PATH,
             )
             run_isvc_inference(isvc=isvc, model_format=ISVC_S3_MODEL_FORMAT)
 
     @pytest.mark.skip_on_disconnected
     @pytest.mark.parametrize(
-        "uri_connection_secret_isvc",
-        [pytest.param({"namespace_fixture": "model_namespace", "name": "isvc-uri-connection-secret"})],
+        "uri_connection_secret",
+        [
+            pytest.param({
+                "namespace_fixture": "model_namespace",
+                "name": "isvc-uri-connection-secret",
+                "uri": ISVC_URI_MODEL_URI,
+            })
+        ],
         indirect=True,
     )
     def test_isvc_uri_create_injects_storage_uri(
@@ -108,7 +113,7 @@ class TestConnectionsApiIsvc:
         admin_client: DynamicClient,
         model_namespace: Namespace,
         mlserver_serving_runtime: ServingRuntime,
-        uri_connection_secret_isvc: Secret,
+        uri_connection_secret: Secret,
     ) -> None:
         """Manual 1.2: URI CREATE injects storageUri from the connection Secret, Ready, infers."""
         with create_isvc(
@@ -117,7 +122,7 @@ class TestConnectionsApiIsvc:
             namespace=model_namespace.name,
             model_format=ISVC_URI_MODEL_FORMAT,
             runtime=mlserver_serving_runtime.name,
-            connections=uri_connection_secret_isvc.name,
+            connections=uri_connection_secret.name,
             timeout=Timeout.TIMEOUT_10MIN,
         ) as isvc:
             assert_isvc_uri_injected(isvc=isvc, expected_uri=ISVC_URI_MODEL_URI)
@@ -177,27 +182,21 @@ class TestConnectionsApiIsvc:
                 "InferenceService should not have a serviceAccountName before any connection is injected"
             )
 
-            resource_dict: dict[str, Any] = {
-                "metadata": {
-                    "name": isvc.name,
-                    "annotations": {
-                        CONNECTIONS_ANNOTATION: s3_connection_secret.name,
-                        CONNECTION_PATH_ANNOTATION: ISVC_S3_CONNECTION_PATH,
-                    },
-                }
-            }
-            isvc.update(resource_dict=resource_dict)
+            add_connection_annotations(
+                resource=isvc, connections=s3_connection_secret.name, connection_path=ISVC_S3_CONNECTION_PATH
+            )
 
             isvc.wait_for_condition(
                 condition=isvc.Condition.READY,
                 status=isvc.Condition.Status.TRUE,
                 timeout=Timeout.TIMEOUT_10MIN,
             )
-            assert_isvc_s3_injected(
-                isvc=isvc, secret_name=s3_connection_secret.name, expected_path=ISVC_S3_CONNECTION_PATH
-            )
-            assert_service_account_exists(
-                client=admin_client, namespace=model_namespace.name, name=f"{s3_connection_secret.name}-sa"
+            assert_isvc_s3_fully_injected(
+                client=admin_client,
+                isvc=isvc,
+                namespace=model_namespace.name,
+                secret_name=s3_connection_secret.name,
+                expected_path=ISVC_S3_CONNECTION_PATH,
             )
             run_isvc_inference(isvc=isvc, model_format=ISVC_S3_MODEL_FORMAT)
 
@@ -228,16 +227,7 @@ class TestConnectionsApiIsvc:
                 isvc=isvc, secret_name=s3_connection_secret.name, expected_path=ISVC_S3_CONNECTION_PATH
             )
 
-            resource_dict: dict[str, Any] = {
-                "metadata": {
-                    "name": isvc.name,
-                    "annotations": {
-                        CONNECTIONS_ANNOTATION: None,
-                        CONNECTION_PATH_ANNOTATION: None,
-                    },
-                }
-            }
-            isvc.update(resource_dict=resource_dict)
+            remove_connection_annotations(resource=isvc)
 
             wait_for_isvc_connection_cleared(isvc=isvc, timeout=Timeout.TIMEOUT_2MIN)
             assert_isvc_connection_cleared(isvc=isvc)

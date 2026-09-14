@@ -22,8 +22,6 @@ from tests.model_serving.model_runtime.mlserver.conftest import (
     mlserver_serving_runtime,  # noqa: F401
 )
 from tests.model_serving.model_server.connections_api.constants import (
-    ISVC_URI_MODEL_URI,
-    LLMISVC_URI_MODEL_URI,
     OCI_CONNECTION_SECRET_NAME,
     S3_CONNECTION_SECRET_NAME,
     URI_CONNECTION_SECRET_NAME,
@@ -80,27 +78,18 @@ def s3_connection_secret(
 
 
 @pytest.fixture(scope="class")
-def uri_connection_secret_isvc(request: FixtureRequest, admin_client: DynamicClient) -> Generator[Secret]:
-    """`uri`-typed connection Secret pointing at the tiny ONNX model-catalog test model."""
+def uri_connection_secret(request: FixtureRequest, admin_client: DynamicClient) -> Generator[Secret]:
+    """`uri`-typed connection Secret pointing at the `request.param["uri"]` model reference.
+
+    Shared by the ISVC suite (tiny ONNX model-catalog test model) and the LLMISVC suite
+    (TinyLlama-1.1B on HuggingFace); only the referenced model URI differs between them.
+    """
     namespace = request.getfixturevalue(argname=request.param["namespace_fixture"])
     with create_uri_connection_secret(
         client=admin_client,
         name=request.param.get("name", URI_CONNECTION_SECRET_NAME),
         namespace=namespace.name,
-        uri=ISVC_URI_MODEL_URI,
-    ) as secret:
-        yield secret
-
-
-@pytest.fixture(scope="class")
-def uri_connection_secret_llmisvc(request: FixtureRequest, admin_client: DynamicClient) -> Generator[Secret]:
-    """`uri`-typed connection Secret pointing at TinyLlama-1.1B on HuggingFace."""
-    namespace = request.getfixturevalue(argname=request.param["namespace_fixture"])
-    with create_uri_connection_secret(
-        client=admin_client,
-        name=request.param.get("name", URI_CONNECTION_SECRET_NAME),
-        namespace=namespace.name,
-        uri=LLMISVC_URI_MODEL_URI,
+        uri=request.param["uri"],
     ) as secret:
         yield secret
 

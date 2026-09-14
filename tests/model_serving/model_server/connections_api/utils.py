@@ -6,8 +6,13 @@ Provides:
     - ``create_connection_llmisvc``: an LLMInferenceService factory that reuses the CPU vLLM
       template (image/env/resources/probes) from ``CpuConfig`` so LLMISVC connection tests never
       need a GPU.
-    - Injection assertion helpers for both InferenceService and LLMInferenceService, and small
-      polling helpers for the UPDATE-remove cleanup path.
+    - Annotation-patch helpers (``add_connection_annotations`` / ``remove_connection_annotations``)
+      used by the UPDATE-inject/remove tests, shared across InferenceService and
+      LLMInferenceService.
+    - Injection assertion helpers for both InferenceService and LLMInferenceService
+      (``assert_isvc_s3_fully_injected`` / ``assert_llmisvc_s3_fully_injected`` also assert the
+      `{secret}-sa` ServiceAccount side effect, since S3 injection always produces both), and
+      small polling helpers for the UPDATE-remove cleanup path.
     - A webhook-configuration guard used to fail the suite fast if the odh-model-controller
       ConnectionsAPI webhooks are not the ones actually wired up on the cluster.
     - Thin wrappers around existing inference helpers (MLServer v2 REST, LLMISVC chat
@@ -218,6 +223,42 @@ def create_connection_llmisvc(
 
 
 # ---------------------------------------------------------------------------
+# Annotation patch helpers (UPDATE inject/remove)
+# ---------------------------------------------------------------------------
+def add_connection_annotations(
+    resource: InferenceService | LLMInferenceService, connections: str, connection_path: str | None = None
+) -> None:
+    """Patch a resource's metadata to add ConnectionsAPI annotations, exercising the UPDATE path.
+
+    Args:
+        resource: InferenceService or LLMInferenceService to patch.
+        connections: Value for the `opendatahub.io/connections` annotation.
+        connection_path: Optional value for the `opendatahub.io/connection-path` annotation
+            (S3 sub-path).
+    """
+    annotations: dict[str, str] = {CONNECTIONS_ANNOTATION: connections}
+    if connection_path:
+        annotations[CONNECTION_PATH_ANNOTATION] = connection_path
+    resource.update(resource_dict={"metadata": {"name": resource.name, "annotations": annotations}})
+
+
+def remove_connection_annotations(resource: InferenceService | LLMInferenceService) -> None:
+    """Patch a resource's metadata to null out ConnectionsAPI annotations, exercising UPDATE-remove.
+
+    Args:
+        resource: InferenceService or LLMInferenceService to patch.
+    """
+    resource.update(
+        resource_dict={
+            "metadata": {
+                "name": resource.name,
+                "annotations": {CONNECTIONS_ANNOTATION: None, CONNECTION_PATH_ANNOTATION: None},
+            }
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
 # ServiceAccount assertion
 # ---------------------------------------------------------------------------
 def assert_service_account_exists(client: DynamicClient, namespace: str, name: str) -> None:
@@ -261,6 +302,30 @@ def assert_isvc_s3_injected(isvc: InferenceService, secret_name: str, expected_p
     assert storage.get("path") == expected_path, (
         f"Expected predictor.model.storage.path={expected_path!r}, got {storage!r}"
     )
+
+
+def assert_isvc_s3_fully_injected(
+    client: DynamicClient, isvc: InferenceService, namespace: str, secret_name: str, expected_path: str
+) -> None:
+    """Assert both effects of S3 injection on an InferenceService: spec fields and SA creation.
+
+    S3 injection is always expected to produce both effects together (the webhook sets the
+    predictor spec fields *and* creates the `{secret}-sa` ServiceAccount as a side effect), so
+    every S3 CREATE/UPDATE-inject test needs both checks. Combines `assert_isvc_s3_injected` and
+    `assert_service_account_exists` so callers only need one call.
+
+    Args:
+        client: Kubernetes dynamic client.
+        isvc: InferenceService to inspect (re-read via `.instance`).
+        namespace: Namespace the `{secret}-sa` ServiceAccount is expected in.
+        secret_name: Name of the S3 connection Secret that should have been injected.
+        expected_path: Expected `storage.path` value (from `opendatahub.io/connection-path`).
+
+    Raises:
+        AssertionError: If the spec fields don't match, or the ServiceAccount doesn't exist.
+    """
+    assert_isvc_s3_injected(isvc=isvc, secret_name=secret_name, expected_path=expected_path)
+    assert_service_account_exists(client=client, namespace=namespace, name=f"{secret_name}-sa")
 
 
 def assert_isvc_uri_injected(isvc: InferenceService, expected_uri: str) -> None:
@@ -327,12 +392,7 @@ def wait_for_isvc_connection_cleared(isvc: InferenceService, timeout: int = Time
         predictor = isvc.instance.spec.predictor
         return not predictor.get("serviceAccountName") and not predictor.model.get("storage")
 
-    try:
-        _wait_until(predicate=_cleared, timeout=timeout)
-    except TimeoutError as exc:
-        raise TimeoutError(
-            f"Connection fields on InferenceService {isvc.name} were not cleared within {timeout}s"
-        ) from exc
+    _wait_for_cleared(predicate=_cleared, timeout=timeout, resource_label=f"InferenceService {isvc.name}")
 
 
 # ---------------------------------------------------------------------------
@@ -354,6 +414,36 @@ def assert_llmisvc_s3_injected(llmisvc: LLMInferenceService, secret_name: str, e
 
     model_uri = llmisvc.instance.spec.model.get("uri")
     assert model_uri == expected_uri, f"Expected spec.model.uri={expected_uri!r}, got {model_uri!r}"
+
+
+def assert_llmisvc_s3_fully_injected(
+    client: DynamicClient,
+    llmisvc: LLMInferenceService,
+    namespace: str,
+    secret_name: str,
+    bucket: str,
+    path: str,
+) -> None:
+    """Assert both effects of S3 injection on an LLMInferenceService: spec fields and SA creation.
+
+    Computes the expected `s3://{bucket}/{path}` URI once, then combines `assert_llmisvc_s3_injected`
+    and `assert_service_account_exists` so callers only need one call and never duplicate the URI
+    computation.
+
+    Args:
+        client: Kubernetes dynamic client.
+        llmisvc: LLMInferenceService to inspect (re-read via `.instance`).
+        namespace: Namespace the `{secret}-sa` ServiceAccount is expected in.
+        secret_name: Name of the S3 connection Secret that should have been injected.
+        bucket: S3 bucket name backing the connection Secret.
+        path: S3 sub-path (`opendatahub.io/connection-path`) the model is stored under.
+
+    Raises:
+        AssertionError: If the spec fields don't match, or the ServiceAccount doesn't exist.
+    """
+    expected_uri = f"s3://{bucket}/{path}"
+    assert_llmisvc_s3_injected(llmisvc=llmisvc, secret_name=secret_name, expected_uri=expected_uri)
+    assert_service_account_exists(client=client, namespace=namespace, name=f"{secret_name}-sa")
 
 
 def assert_llmisvc_uri_injected(llmisvc: LLMInferenceService, expected_uri: str) -> None:
@@ -421,12 +511,7 @@ def wait_for_llmisvc_connection_cleared(llmisvc: LLMInferenceService, timeout: i
         spec = llmisvc.instance.spec
         return not spec.template.get("serviceAccountName") and not spec.model.get("uri")
 
-    try:
-        _wait_until(predicate=_cleared, timeout=timeout)
-    except TimeoutError as exc:
-        raise TimeoutError(
-            f"Connection fields on LLMInferenceService {llmisvc.name} were not cleared within {timeout}s"
-        ) from exc
+    _wait_for_cleared(predicate=_cleared, timeout=timeout, resource_label=f"LLMInferenceService {llmisvc.name}")
 
 
 # ---------------------------------------------------------------------------
@@ -530,3 +615,24 @@ def _wait_until(predicate: Callable[[], bool], timeout: int, sleep: int = 5) -> 
         if sample:
             return
     raise TimeoutError(f"Condition not met within {timeout}s")
+
+
+def _wait_for_cleared(predicate: Callable[[], bool], timeout: int, resource_label: str) -> None:
+    """Poll `predicate` until connection fields are cleared, raising a resource-specific error.
+
+    Shared by `wait_for_isvc_connection_cleared` and `wait_for_llmisvc_connection_cleared`, which
+    differ only in `predicate` and how they identify the resource in the error message.
+
+    Args:
+        predicate: Zero-arg callable returning `True` once the connection fields are cleared.
+        timeout: Seconds to wait before giving up.
+        resource_label: Human-readable resource identifier (e.g. `f"InferenceService {isvc.name}"`)
+            used in the raised error message.
+
+    Raises:
+        TimeoutError: If `predicate` never returns `True` within `timeout` seconds.
+    """
+    try:
+        _wait_until(predicate=predicate, timeout=timeout)
+    except TimeoutError as exc:
+        raise TimeoutError(f"Connection fields on {resource_label} were not cleared within {timeout}s") from exc

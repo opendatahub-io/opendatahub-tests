@@ -22,9 +22,8 @@ from tests.model_serving.model_server.connections_api.constants import (
     SMOKE_LLMISVC_NAMESPACE,
 )
 from tests.model_serving.model_server.connections_api.utils import (
-    assert_isvc_s3_injected,
-    assert_llmisvc_s3_injected,
-    assert_service_account_exists,
+    assert_isvc_s3_fully_injected,
+    assert_llmisvc_s3_fully_injected,
     create_connection_llmisvc,
 )
 from utilities.constants import KServeDeploymentType
@@ -70,11 +69,12 @@ class TestConnectionsApiSmokeIsvc:
             wait=False,
             wait_for_predictor_pods=False,
         ) as isvc:
-            assert_isvc_s3_injected(
-                isvc=isvc, secret_name=s3_connection_secret.name, expected_path=ISVC_S3_CONNECTION_PATH
-            )
-            assert_service_account_exists(
-                client=admin_client, namespace=model_namespace.name, name=f"{s3_connection_secret.name}-sa"
+            assert_isvc_s3_fully_injected(
+                client=admin_client,
+                isvc=isvc,
+                namespace=model_namespace.name,
+                secret_name=s3_connection_secret.name,
+                expected_path=ISVC_S3_CONNECTION_PATH,
             )
 
 
@@ -112,12 +112,11 @@ class TestConnectionsApiSmokeLlmisvc:
             connection_path=LLMISVC_S3_CONNECTION_PATH,
             wait=False,
         ) as llmisvc:
-            expected_uri = f"s3://{models_s3_bucket_name}/{LLMISVC_S3_CONNECTION_PATH}"
-            assert_llmisvc_s3_injected(
-                llmisvc=llmisvc, secret_name=s3_connection_secret.name, expected_uri=expected_uri
-            )
-            assert_service_account_exists(
+            assert_llmisvc_s3_fully_injected(
                 client=admin_client,
+                llmisvc=llmisvc,
                 namespace=unprivileged_model_namespace.name,
-                name=f"{s3_connection_secret.name}-sa",
+                secret_name=s3_connection_secret.name,
+                bucket=models_s3_bucket_name,
+                path=LLMISVC_S3_CONNECTION_PATH,
             )
