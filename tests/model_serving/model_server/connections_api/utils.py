@@ -29,7 +29,7 @@ from ocp_resources.inference_service import InferenceService
 from ocp_resources.mutating_webhook_config import MutatingWebhookConfiguration
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
-from timeout_sampler import TimeoutSampler
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_serving.model_runtime.mlserver.constant import ONNX_REST_INPUT_QUERY, SKLEARN_REST_INPUT_QUERY
 from tests.model_serving.model_runtime.mlserver.utils import run_mlserver_inference
@@ -609,12 +609,12 @@ def _wait_until(predicate: Callable[[], bool], timeout: int, sleep: int = 5) -> 
         sleep: Seconds between polls.
 
     Raises:
-        TimeoutError: If `predicate` never returns `True` within `timeout` seconds.
+        TimeoutExpiredError: If `predicate` never returns `True` within `timeout` seconds
+            (raised by `TimeoutSampler` itself once its iterator is exhausted).
     """
     for sample in TimeoutSampler(wait_timeout=timeout, sleep=sleep, func=predicate):
         if sample:
             return
-    raise TimeoutError(f"Condition not met within {timeout}s")
 
 
 def _wait_for_cleared(predicate: Callable[[], bool], timeout: int, resource_label: str) -> None:
@@ -634,5 +634,5 @@ def _wait_for_cleared(predicate: Callable[[], bool], timeout: int, resource_labe
     """
     try:
         _wait_until(predicate=predicate, timeout=timeout)
-    except TimeoutError as exc:
+    except TimeoutExpiredError as exc:
         raise TimeoutError(f"Connection fields on {resource_label} were not cleared within {timeout}s") from exc
