@@ -38,7 +38,7 @@ pytestmark = [pytest.mark.smoke]
     indirect=True,
 )
 @pytest.mark.parametrize(
-    "mlserver_serving_runtime",
+    "connections_api_mlserver_runtime",
     [pytest.param({"deployment_mode": KServeDeploymentType.STANDARD})],
     indirect=True,
 )
@@ -54,7 +54,7 @@ class TestConnectionsApiSmokeIsvc:
         self,
         admin_client: DynamicClient,
         model_namespace: Namespace,
-        mlserver_serving_runtime: ServingRuntime,
+        connections_api_mlserver_runtime: ServingRuntime,
         s3_connection_secret: Secret,
     ) -> None:
         """Given an S3 connection Secret, when an ISVC is created, then storage/SA fields are injected immediately."""
@@ -63,7 +63,7 @@ class TestConnectionsApiSmokeIsvc:
             name="smoke-isvc-s3-connection",
             namespace=model_namespace.name,
             model_format=ISVC_S3_MODEL_FORMAT,
-            runtime=mlserver_serving_runtime.name,
+            runtime=connections_api_mlserver_runtime.name,
             connections=s3_connection_secret.name,
             connection_path=ISVC_S3_CONNECTION_PATH,
             wait=False,

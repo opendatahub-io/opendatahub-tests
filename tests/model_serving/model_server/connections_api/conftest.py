@@ -2,9 +2,9 @@
 
 Connection-Secret fixtures are parametrized indirectly with `request.param["namespace_fixture"]`
 — the name of the namespace fixture to resolve at runtime (`model_namespace` for the ISVC layer,
-which the `mlserver_serving_runtime` fixture requires; `unprivileged_model_namespace` for the
-LLMISVC and smoke layers, matching the llmd suite convention) — so the same Secret fixtures are
-reusable across all three test modules despite their differing namespace fixtures.
+which the `connections_api_mlserver_runtime` fixture requires; `unprivileged_model_namespace` for
+the LLMISVC and smoke layers, matching the llmd suite convention) — so the same Secret fixtures
+are reusable across all three test modules despite their differing namespace fixtures.
 """
 
 from collections.abc import Generator
@@ -43,7 +43,7 @@ def connections_api_webhooks_guard(admin_client: DynamicClient) -> None:
 
 
 @pytest.fixture(scope="class")
-def mlserver_serving_runtime(
+def connections_api_mlserver_runtime(
     request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
@@ -52,9 +52,9 @@ def mlserver_serving_runtime(
     """CPU MLServer ServingRuntime for the ISVC connection-injection tests.
 
     A local, CPU-only equivalent of `tests.model_serving.model_runtime.mlserver.conftest`'s
-    `mlserver_serving_runtime` fixture, defined here (rather than reused from that sibling
-    subtree, which pytest does not auto-discover for tests under `model_server/`) because this
-    suite never needs the GPU/CUDA branch of the original.
+    `mlserver_serving_runtime` fixture, defined here under a distinct name (rather than reused
+    from that sibling subtree, which pytest does not auto-discover for tests under
+    `model_server/`) because this suite never needs the GPU/CUDA branch of the original.
     """
     with ServingRuntimeFromTemplate(
         client=admin_client,

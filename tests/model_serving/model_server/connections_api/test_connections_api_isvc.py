@@ -45,7 +45,7 @@ pytestmark = [pytest.mark.tier1]
     indirect=True,
 )
 @pytest.mark.parametrize(
-    "mlserver_serving_runtime",
+    "connections_api_mlserver_runtime",
     [pytest.param({"deployment_mode": KServeDeploymentType.STANDARD})],
     indirect=True,
 )
@@ -70,7 +70,7 @@ class TestConnectionsApiIsvc:
         self,
         admin_client: DynamicClient,
         model_namespace: Namespace,
-        mlserver_serving_runtime: ServingRuntime,
+        connections_api_mlserver_runtime: ServingRuntime,
         s3_connection_secret: Secret,
     ) -> None:
         """Manual 1.1: S3 CREATE injects SA + storage.key + storage.path, SA exists, Ready, infers."""
@@ -82,7 +82,7 @@ class TestConnectionsApiIsvc:
             name=ISVC_S3_MODEL_FORMAT,
             namespace=model_namespace.name,
             model_format=ISVC_S3_MODEL_FORMAT,
-            runtime=mlserver_serving_runtime.name,
+            runtime=connections_api_mlserver_runtime.name,
             connections=s3_connection_secret.name,
             connection_path=ISVC_S3_CONNECTION_PATH,
             timeout=Timeout.TIMEOUT_10MIN,
@@ -112,7 +112,7 @@ class TestConnectionsApiIsvc:
         self,
         admin_client: DynamicClient,
         model_namespace: Namespace,
-        mlserver_serving_runtime: ServingRuntime,
+        connections_api_mlserver_runtime: ServingRuntime,
         uri_connection_secret: Secret,
     ) -> None:
         """Manual 1.2: URI CREATE injects storageUri from the connection Secret, Ready, infers."""
@@ -121,7 +121,7 @@ class TestConnectionsApiIsvc:
             name="isvc-uri-connection",
             namespace=model_namespace.name,
             model_format=ISVC_URI_MODEL_FORMAT,
-            runtime=mlserver_serving_runtime.name,
+            runtime=connections_api_mlserver_runtime.name,
             connections=uri_connection_secret.name,
             timeout=Timeout.TIMEOUT_10MIN,
         ) as isvc:
@@ -139,7 +139,7 @@ class TestConnectionsApiIsvc:
         self,
         admin_client: DynamicClient,
         model_namespace: Namespace,
-        mlserver_serving_runtime: ServingRuntime,
+        connections_api_mlserver_runtime: ServingRuntime,
         oci_connection_secret: Secret,
     ) -> None:
         """Manual 1.3: OCI CREATE injects imagePullSecrets from the connection Secret, Ready, infers."""
@@ -148,7 +148,7 @@ class TestConnectionsApiIsvc:
             name=ISVC_OCI_MODEL_FORMAT,
             namespace=model_namespace.name,
             model_format=ISVC_OCI_MODEL_FORMAT,
-            runtime=mlserver_serving_runtime.name,
+            runtime=connections_api_mlserver_runtime.name,
             storage_uri=ISVC_OCI_STORAGE_URI,
             connections=oci_connection_secret.name,
             timeout=Timeout.TIMEOUT_10MIN,
@@ -165,7 +165,7 @@ class TestConnectionsApiIsvc:
         self,
         admin_client: DynamicClient,
         model_namespace: Namespace,
-        mlserver_serving_runtime: ServingRuntime,
+        connections_api_mlserver_runtime: ServingRuntime,
         s3_connection_secret: Secret,
     ) -> None:
         """Manual 1.4: adding a connection annotation on UPDATE injects on the admission call."""
@@ -174,7 +174,7 @@ class TestConnectionsApiIsvc:
             name=ISVC_S3_MODEL_FORMAT,
             namespace=model_namespace.name,
             model_format=ISVC_S3_MODEL_FORMAT,
-            runtime=mlserver_serving_runtime.name,
+            runtime=connections_api_mlserver_runtime.name,
             wait=False,
             wait_for_predictor_pods=False,
         ) as isvc:
@@ -209,7 +209,7 @@ class TestConnectionsApiIsvc:
         self,
         admin_client: DynamicClient,
         model_namespace: Namespace,
-        mlserver_serving_runtime: ServingRuntime,
+        connections_api_mlserver_runtime: ServingRuntime,
         s3_connection_secret: Secret,
     ) -> None:
         """Manual 1.5: removing the connection annotation clears SA name + storage (no inference check)."""
@@ -218,7 +218,7 @@ class TestConnectionsApiIsvc:
             name=ISVC_S3_MODEL_FORMAT,
             namespace=model_namespace.name,
             model_format=ISVC_S3_MODEL_FORMAT,
-            runtime=mlserver_serving_runtime.name,
+            runtime=connections_api_mlserver_runtime.name,
             connections=s3_connection_secret.name,
             connection_path=ISVC_S3_CONNECTION_PATH,
             timeout=Timeout.TIMEOUT_10MIN,
