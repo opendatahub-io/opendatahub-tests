@@ -30,7 +30,7 @@ from tests.model_serving.model_server.connections_api.utils import (
 from utilities.constants import KServeDeploymentType
 from utilities.inference_utils import create_isvc
 
-pytestmark = [pytest.mark.smoke, pytest.mark.parallel]
+pytestmark = [pytest.mark.smoke]
 
 
 @pytest.mark.parametrize(

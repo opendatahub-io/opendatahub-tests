@@ -144,7 +144,7 @@ class TestConnectionsApiLlmisvc:
         unprivileged_model_namespace: Namespace,
         s3_connection_secret: Secret,
     ) -> None:
-        """Manual 1.9: removing the connection annotation clears the SA name and `spec.model` entirely."""
+        """Manual 1.9: removing the connection annotation clears the SA name and `spec.model.uri`."""
         with create_connection_llmisvc(
             client=admin_client,
             name="llmisvc-remove-connection",

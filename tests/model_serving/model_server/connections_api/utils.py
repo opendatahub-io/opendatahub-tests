@@ -170,7 +170,10 @@ def create_connection_llmisvc(
 
     Seeds `spec.model.uri` with a placeholder (or an OCI reference for the OCI case) that the
     ConnectionsAPI webhook is expected to overwrite/complete from the referenced connection
-    Secret. Reuses the CPU vLLM-TinyLlama template so no GPU node is required.
+    Secret. Reuses the CPU vLLM-TinyLlama template so no GPU node is required. Disables the
+    platform's inference-gateway auth policy (`security.opendatahub.io/enable-auth: "false"`) —
+    this suite tests connection injection, not authentication, so unauthenticated inference keeps
+    the functional-inference check simple.
 
     Args:
         client: Kubernetes dynamic client.
@@ -189,7 +192,10 @@ def create_connection_llmisvc(
     Yields:
         LLMInferenceService: The created LLMInferenceService.
     """
-    annotations = {CONNECTIONS_ANNOTATION: connections}
+    annotations = {
+        CONNECTIONS_ANNOTATION: connections,
+        "security.opendatahub.io/enable-auth": "false",
+    }
     if connection_path:
         annotations[CONNECTION_PATH_ANNOTATION] = connection_path
 
@@ -382,21 +388,22 @@ def assert_llmisvc_oci_injected(llmisvc: LLMInferenceService, secret_name: str) 
 def assert_llmisvc_connection_cleared(llmisvc: LLMInferenceService) -> None:
     """Assert an LLMISVC's S3 injection fields were cleared by an UPDATE-remove action.
 
-    The webhook's hybrid unstructured cleanup removes the entire `spec.model` key (not just its
-    contents), so this checks for its absence rather than emptiness.
+    `spec.model.uri` is a typed field (`*apis.URL`), not an arbitrary map key, so the webhook's
+    cleanup (`performLLMISVCCleanup` in odh-model-controller) can only reset it to an empty URL —
+    it cannot remove `spec.model` itself. This checks for that emptiness rather than absence.
 
     Args:
         llmisvc: LLMInferenceService to inspect (re-read via `.instance`).
 
     Raises:
-        AssertionError: If `template.serviceAccountName` is still set, or `spec.model` is still
-            present.
+        AssertionError: If `template.serviceAccountName` is still set, or `spec.model.uri` is
+            still populated.
     """
     sa_name = llmisvc.instance.spec.template.get("serviceAccountName")
     assert not sa_name, f"Expected template.serviceAccountName to be cleared, got {sa_name!r}"
 
-    model = llmisvc.instance.spec.model
-    assert model is None, f"Expected spec.model to be entirely removed, got {model!r}"
+    model_uri = llmisvc.instance.spec.model.get("uri")
+    assert not model_uri, f"Expected spec.model.uri to be cleared, got {model_uri!r}"
 
 
 def wait_for_llmisvc_connection_cleared(llmisvc: LLMInferenceService, timeout: int = Timeout.TIMEOUT_2MIN) -> None:
@@ -412,7 +419,7 @@ def wait_for_llmisvc_connection_cleared(llmisvc: LLMInferenceService, timeout: i
 
     def _cleared() -> bool:
         spec = llmisvc.instance.spec
-        return not spec.template.get("serviceAccountName") and spec.model is None
+        return not spec.template.get("serviceAccountName") and not spec.model.get("uri")
 
     try:
         _wait_until(predicate=_cleared, timeout=timeout)
@@ -460,7 +467,7 @@ def assert_connections_api_webhooks_configured(client: DynamicClient) -> None:
 # ---------------------------------------------------------------------------
 # Functional inference helpers
 # ---------------------------------------------------------------------------
-def run_isvc_inference(isvc: InferenceService, model_format: str) -> None:
+def run_isvc_inference(isvc: InferenceService, model_format: str, input_query: dict[str, Any] | None = None) -> None:
     """Send a v2 REST inference request and assert a successful, non-empty response.
 
     Proves the connection-injected storage source actually let the model load — `Ready` alone
@@ -469,12 +476,16 @@ def run_isvc_inference(isvc: InferenceService, model_format: str) -> None:
     Args:
         isvc: Ready InferenceService to query.
         model_format: Model format served (`ModelFormat.SKLEARN` or `ModelFormat.ONNX`);
-            selects the matching sample v2 REST input query.
+            selects the matching sample v2 REST input query when `input_query` is not given.
+        input_query: Explicit v2 REST input payload, for models whose input schema doesn't match
+            the default sample query for their format (e.g. a reused onnx model with a different
+            input tensor name/shape than the sibling mlserver suite's own onnx test model).
 
     Raises:
         AssertionError: If the response has no `outputs`.
     """
-    input_query = SKLEARN_REST_INPUT_QUERY if model_format == ModelFormat.SKLEARN else ONNX_REST_INPUT_QUERY
+    if input_query is None:
+        input_query = SKLEARN_REST_INPUT_QUERY if model_format == ModelFormat.SKLEARN else ONNX_REST_INPUT_QUERY
     response = run_mlserver_inference(isvc=isvc, input_data=input_query, model_version="", protocol=Protocols.REST)
     outputs = response.get("outputs") if isinstance(response, dict) else None
     assert outputs, f"Expected non-empty 'outputs' in inference response for {isvc.name}, got: {response}"
@@ -484,8 +495,11 @@ def run_llmisvc_inference(llmisvc: LLMInferenceService, prompt: str = LLMISVC_CH
     """Send a chat completion request and assert a successful, non-empty response.
 
     Proves the connection-injected model source actually loaded into vLLM — `Ready` alone only
-    proves the pod passed its probes. Applies the RHOAIENG-55154 warm-up workaround first, matching
-    the existing llmd CPU test convention.
+    proves the pod passed its probes. Applies the RHOAIENG-55154 warm-up workaround first, with a
+    longer-than-default 2-minute budget: on resource-constrained clusters, CPU vLLM cold starts can
+    outlast the workaround's normal 30s window, which would otherwise surface as a false-negative
+    test failure rather than a real injection/webhook defect. `create_connection_llmisvc` disables
+    the gateway's auth policy on the LLMISVC, so no bearer token is needed here.
 
     Args:
         llmisvc: Ready LLMInferenceService to query.
@@ -494,7 +508,7 @@ def run_llmisvc_inference(llmisvc: LLMInferenceService, prompt: str = LLMISVC_CH
     Raises:
         AssertionError: If the response status is not 200 or the completion text is empty.
     """
-    workaround_503_no_healthy_upstream(llmisvc=llmisvc, prompt=prompt)
+    workaround_503_no_healthy_upstream(llmisvc=llmisvc, prompt=prompt, timeout=Timeout.TIMEOUT_2MIN)
     status, body = send_chat_completions(llmisvc=llmisvc, prompt=prompt)
     assert status == 200, f"Expected chat completion to succeed for {llmisvc.name}, got status={status} body={body}"
     text = parse_completion_text(response_body=body)

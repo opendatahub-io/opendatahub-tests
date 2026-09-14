@@ -24,6 +24,7 @@ from tests.model_serving.model_server.connections_api.constants import (
     ISVC_S3_MODEL_FORMAT,
     ISVC_URI_MODEL_FORMAT,
     ISVC_URI_MODEL_URI,
+    ISVC_URI_ONNX_REST_INPUT_QUERY,
 )
 from tests.model_serving.model_server.connections_api.utils import (
     assert_isvc_connection_cleared,
@@ -75,9 +76,12 @@ class TestConnectionsApiIsvc:
         s3_connection_secret: Secret,
     ) -> None:
         """Manual 1.1: S3 CREATE injects SA + storage.key + storage.path, SA exists, Ready, infers."""
+        # The ISVC name must equal the model name MLServer registers from the bundled
+        # model-settings.json under the S3 path ("sklearn") — KServe's readiness/liveness probes
+        # query /v2/models/{isvc-name}/ready, so a mismatched name 404s forever.
         with create_isvc(
             client=admin_client,
-            name="isvc-s3-connection",
+            name=ISVC_S3_MODEL_FORMAT,
             namespace=model_namespace.name,
             model_format=ISVC_S3_MODEL_FORMAT,
             runtime=mlserver_serving_runtime.name,
@@ -117,7 +121,9 @@ class TestConnectionsApiIsvc:
             timeout=Timeout.TIMEOUT_10MIN,
         ) as isvc:
             assert_isvc_uri_injected(isvc=isvc, expected_uri=ISVC_URI_MODEL_URI)
-            run_isvc_inference(isvc=isvc, model_format=ISVC_URI_MODEL_FORMAT)
+            run_isvc_inference(
+                isvc=isvc, model_format=ISVC_URI_MODEL_FORMAT, input_query=ISVC_URI_ONNX_REST_INPUT_QUERY
+            )
 
     @pytest.mark.parametrize(
         "oci_connection_secret",
@@ -134,7 +140,7 @@ class TestConnectionsApiIsvc:
         """Manual 1.3: OCI CREATE injects imagePullSecrets from the connection Secret, Ready, infers."""
         with create_isvc(
             client=admin_client,
-            name="isvc-oci-connection",
+            name=ISVC_OCI_MODEL_FORMAT,
             namespace=model_namespace.name,
             model_format=ISVC_OCI_MODEL_FORMAT,
             runtime=mlserver_serving_runtime.name,
@@ -160,7 +166,7 @@ class TestConnectionsApiIsvc:
         """Manual 1.4: adding a connection annotation on UPDATE injects on the admission call."""
         with create_isvc(
             client=admin_client,
-            name="isvc-update-inject",
+            name=ISVC_S3_MODEL_FORMAT,
             namespace=model_namespace.name,
             model_format=ISVC_S3_MODEL_FORMAT,
             runtime=mlserver_serving_runtime.name,
@@ -210,7 +216,7 @@ class TestConnectionsApiIsvc:
         """Manual 1.5: removing the connection annotation clears SA name + storage (no inference check)."""
         with create_isvc(
             client=admin_client,
-            name="isvc-remove-connection",
+            name=ISVC_S3_MODEL_FORMAT,
             namespace=model_namespace.name,
             model_format=ISVC_S3_MODEL_FORMAT,
             runtime=mlserver_serving_runtime.name,
