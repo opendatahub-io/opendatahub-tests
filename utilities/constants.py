@@ -100,7 +100,6 @@ class RuntimeTemplates:
     MLSERVER_CUDA: str = "mlserver-cuda-runtime-template"
     TRITON_REST: str = "triton-rest-runtime-template"
     TRITON_GRPC: str = "triton-grpc-runtime-template"
-    GUARDRAILS_DETECTOR_HUGGINGFACE: str = "guardrails-detector-huggingface-serving-template"
 
 
 class ModelInferenceRuntime:
@@ -159,7 +158,6 @@ class ApiGroups:
     OPENDATAHUB_IO: str = "opendatahub.io"
     KSERVE: str = "serving.kserve.io"
     KUADRANT_IO: str = "kuadrant.io"
-    MCP_KUADRANT_IO: str = "mcp.kuadrant.io"
     MAAS_IO: str = "maas.opendatahub.io"
     INFERENCE_OPENDATAHUB_IO: str = "inference.opendatahub.io"
     AUTH_IO: str = "SERVICES_PLATFORM_OPENDATAHUB_IO"
@@ -483,27 +481,5 @@ LLM_D_CHAT_GENERATION_CONFIG: dict[str, Any] = {
 }
 
 
-@dataclass
-class VLLMGPUConfig:
-    name: str = "vllm-gpu"
-    port: int = 80
-    model_name: str = "qwen3b"
-    serving_runtime_name: str = "vllm-runtime-gpu"
-    isvc_name: str = "qwen3b"
-
-    @classmethod
-    def get_hostname(cls, namespace: str) -> str:
-        return f"{cls.isvc_name}-predictor.{namespace}.svc.cluster.local"
-
-
-VLLM_CHAT_GENERATION_CONFIG: dict[str, Any] = {
-    "service": {"hostname": VLLMGPUConfig.get_hostname("test-guardrails-huggingface"), "port": VLLMGPUConfig.port}
-}
-
-
 class PodNotFound(Exception):
     """Pod not found"""
-
-
-PROMPT_INJECTION_DETECTOR: str = "prompt-injection-detector"
-HAP_DETECTOR: str = "hap-detector"

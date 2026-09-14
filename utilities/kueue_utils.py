@@ -82,12 +82,13 @@ class LocalQueue(NamespacedResource):
 
     def __init__(
         self,
-        cluster_queue: str,
+        cluster_queue: str | None = None,
         **kwargs: Any,
-    ):
+    ) -> None:
         """
         Args:
-            cluster_queue: Name of the cluster queue to use
+            cluster_queue: ClusterQueue name. Required only when creating a LocalQueue;
+                optional for read-only operations such as existence checks.
             kwargs: Keyword arguments to pass to the LocalQueue constructor
         """
         super().__init__(
