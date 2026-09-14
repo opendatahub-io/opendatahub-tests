@@ -600,23 +600,6 @@ def run_llmisvc_inference(llmisvc: LLMInferenceService, prompt: str = LLMISVC_CH
     assert text.strip(), f"Expected non-empty completion text for {llmisvc.name}, got: {body}"
 
 
-def _wait_until(predicate: Callable[[], bool], timeout: int, sleep: int = 5) -> None:
-    """Poll `predicate` with `TimeoutSampler` until it returns `True`.
-
-    Args:
-        predicate: Zero-arg callable returning `True` once the awaited condition holds.
-        timeout: Seconds to wait before giving up.
-        sleep: Seconds between polls.
-
-    Raises:
-        TimeoutExpiredError: If `predicate` never returns `True` within `timeout` seconds
-            (raised by `TimeoutSampler` itself once its iterator is exhausted).
-    """
-    for sample in TimeoutSampler(wait_timeout=timeout, sleep=sleep, func=predicate):
-        if sample:
-            return
-
-
 def _wait_for_cleared(predicate: Callable[[], bool], timeout: int, resource_label: str) -> None:
     """Poll `predicate` until connection fields are cleared, raising a resource-specific error.
 
@@ -633,6 +616,8 @@ def _wait_for_cleared(predicate: Callable[[], bool], timeout: int, resource_labe
         TimeoutError: If `predicate` never returns `True` within `timeout` seconds.
     """
     try:
-        _wait_until(predicate=predicate, timeout=timeout)
+        for sample in TimeoutSampler(wait_timeout=timeout, sleep=5, func=predicate):
+            if sample:
+                return
     except TimeoutExpiredError as exc:
         raise TimeoutError(f"Connection fields on {resource_label} were not cleared within {timeout}s") from exc
