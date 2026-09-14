@@ -5,7 +5,6 @@ from tests.ai_safety.trustyai_service.trustyai_service_utils import (
     TrustyAIServiceMetrics,
     send_inferences_and_verify_trustyai_service_registered,
     verify_trustyai_service_metric_delete_request,
-    verify_trustyai_service_metric_scheduling_request,
     verify_upload_data_to_trustyai_service,
 )
 from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
@@ -55,9 +54,6 @@ class TestTrustyAIServiceMultipleNS:
         admin_client,
         current_client_token,
         trustyai_service_with_pvc_storage_multi_ns,
-        gaussian_credit_model_multi_ns,
-        isvc_getter_token_multi_ns,
-        model_namespaces,
     ) -> None:
         for tai in trustyai_service_with_pvc_storage_multi_ns:
             verify_upload_data_to_trustyai_service(
@@ -67,30 +63,15 @@ class TestTrustyAIServiceMultipleNS:
                 data_path=f"{DRIFT_BASE_DATA_PATH}/training_data.json",
             )
 
-    def test_drift_metric_schedule_meanshift_multiple_ns(
-        self,
-        admin_client,
-        current_client_token,
-        trustyai_service_with_pvc_storage_multi_ns,
-        gaussian_credit_model_multi_ns,
-    ):
-        for tai, inference_model in zip(trustyai_service_with_pvc_storage_multi_ns, gaussian_credit_model_multi_ns):
-            verify_trustyai_service_metric_scheduling_request(
-                client=admin_client,
-                trustyai_service=tai,
-                token=current_client_token,
-                metric_name=TrustyAIServiceMetrics.Drift.MEANSHIFT,
-                json_data={
-                    "modelId": inference_model.name,
-                    "referenceTag": "TRAINING",
-                },
-            )
+    def test_drift_metric_schedule_meanshift_multiple_ns(self, scheduled_meanshift_metric_multi_ns: None) -> None:
+        """Scheduling is performed and verified by the scheduled_meanshift_metric_multi_ns fixture."""
 
     def test_drift_metric_delete_multiple_ns(
         self,
         admin_client,
         current_client_token,
         trustyai_service_with_pvc_storage_multi_ns,
+        scheduled_meanshift_metric_multi_ns,
     ):
         for tai in trustyai_service_with_pvc_storage_multi_ns:
             verify_trustyai_service_metric_delete_request(
@@ -156,30 +137,15 @@ class TestDriftMetricsWithDBStorageMultiNs:
                 data_path=f"{DRIFT_BASE_DATA_PATH}/training_data.json",
             )
 
-    def test_drift_metric_schedule_with_db_storage(
-        self,
-        admin_client,
-        current_client_token,
-        trustyai_service_with_db_storage_multi_ns,
-        gaussian_credit_model_multi_ns,
-    ):
-        for tai, model in zip(trustyai_service_with_db_storage_multi_ns, gaussian_credit_model_multi_ns):
-            verify_trustyai_service_metric_scheduling_request(
-                client=admin_client,
-                trustyai_service=tai,
-                token=current_client_token,
-                metric_name=TrustyAIServiceMetrics.Drift.MEANSHIFT,
-                json_data={
-                    "modelId": model.name,
-                    "referenceTag": "TRAINING",
-                },
-            )
+    def test_drift_metric_schedule_with_db_storage(self, scheduled_meanshift_metric_db_multi_ns: None) -> None:
+        """Scheduling is performed and verified by the scheduled_meanshift_metric_db_multi_ns fixture."""
 
     def test_drift_metric_delete_with_db_storage(
         self,
         admin_client,
         current_client_token,
         trustyai_service_with_db_storage_multi_ns,
+        scheduled_meanshift_metric_db_multi_ns,
     ):
         for tai in trustyai_service_with_db_storage_multi_ns:
             verify_trustyai_service_metric_delete_request(

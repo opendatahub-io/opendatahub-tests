@@ -49,6 +49,11 @@ class MetricValidationError(Exception):
     pass
 
 
+class ModelLoadFailedError(Exception):
+    """Raised when an InferenceService's modelStatus reaches a terminal failure state
+    (e.g. FailedToLoad/BlockedByFailedLoad) instead of waiting out the full readiness timeout."""
+
+
 class FailedPodsError(Exception):
     def __init__(self, pods: dict[str, str]):
         self.pods = pods

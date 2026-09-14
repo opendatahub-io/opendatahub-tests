@@ -17,6 +17,7 @@ from ocp_resources.trustyai_service import TrustyAIService
 
 from tests.ai_safety.trustyai_service.constants import (
     GAUSSIAN_CREDIT_MODEL,
+    GAUSSIAN_CREDIT_MODEL_ISVC_TIMEOUT,
     GAUSSIAN_CREDIT_MODEL_RESOURCES,
     GAUSSIAN_CREDIT_MODEL_STORAGE_URI,
     ISVC_GETTER,
@@ -31,6 +32,8 @@ from tests.ai_safety.trustyai_service.constants import (
     XGBOOST,
 )
 from tests.ai_safety.trustyai_service.trustyai_service_utils import (
+    TrustyAIServiceMetrics,
+    verify_trustyai_service_metric_scheduling_request,
     wait_for_isvc_deployment_registered_by_trustyai_service,
 )
 from tests.ai_safety.trustyai_service.utils import (
@@ -150,6 +153,7 @@ def gaussian_credit_model_multi_ns(
                 external_route=True,
                 wait_for_predictor_pods=False,
                 resources=GAUSSIAN_CREDIT_MODEL_RESOURCES,
+                timeout=GAUSSIAN_CREDIT_MODEL_ISVC_TIMEOUT,
             )
             isvc = stack.enter_context(cm=isvc_context)
 
@@ -162,6 +166,33 @@ def gaussian_credit_model_multi_ns(
             models.append(isvc)
 
         yield models
+
+
+@pytest.fixture(scope="class")
+def scheduled_meanshift_metric_multi_ns(
+    admin_client: DynamicClient,
+    current_client_token: str,
+    trustyai_service_with_pvc_storage_multi_ns: list[TrustyAIService],
+    gaussian_credit_model_multi_ns: list[InferenceService],
+) -> None:
+    """Schedules a meanshift drift metric on every TrustyAIService (PVC storage).
+
+    Consumed by both the schedule and delete tests so that if scheduling itself
+    (or its `gaussian_credit_model_multi_ns` dependency) fails, the delete test errors
+    at setup with the real cause attached, instead of failing later with an
+    unrelated-looking `NoMetricsFoundError`.
+    """
+    for tai, inference_model in zip(trustyai_service_with_pvc_storage_multi_ns, gaussian_credit_model_multi_ns):
+        verify_trustyai_service_metric_scheduling_request(
+            client=admin_client,
+            trustyai_service=tai,
+            token=current_client_token,
+            metric_name=TrustyAIServiceMetrics.Drift.MEANSHIFT,
+            json_data={
+                "modelId": inference_model.name,
+                "referenceTag": "TRAINING",
+            },
+        )
 
 
 @pytest.fixture(scope="class")
@@ -262,6 +293,33 @@ def trustyai_service_with_db_storage_multi_ns(
             for ns in model_namespaces
         ]
         yield services
+
+
+@pytest.fixture(scope="class")
+def scheduled_meanshift_metric_db_multi_ns(
+    admin_client: DynamicClient,
+    current_client_token: str,
+    trustyai_service_with_db_storage_multi_ns: list[TrustyAIService],
+    gaussian_credit_model_multi_ns: list[InferenceService],
+) -> None:
+    """Schedules a meanshift drift metric on every TrustyAIService (DB storage).
+
+    Consumed by both the schedule and delete tests so that if scheduling itself
+    (or its `gaussian_credit_model_multi_ns` dependency) fails, the delete test errors
+    at setup with the real cause attached, instead of failing later with an
+    unrelated-looking `NoMetricsFoundError`.
+    """
+    for tai, inference_model in zip(trustyai_service_with_db_storage_multi_ns, gaussian_credit_model_multi_ns):
+        verify_trustyai_service_metric_scheduling_request(
+            client=admin_client,
+            trustyai_service=tai,
+            token=current_client_token,
+            metric_name=TrustyAIServiceMetrics.Drift.MEANSHIFT,
+            json_data={
+                "modelId": inference_model.name,
+                "referenceTag": "TRAINING",
+            },
+        )
 
 
 @pytest.fixture(scope="class")

@@ -17,7 +17,7 @@ from ocp_resources.inference_service import InferenceService
 from ocp_resources.resource import get_client
 from ocp_resources.service import Service
 from pyhelper_utils.shell import run_command
-from timeout_sampler import TimeoutSampler, TimeoutWatch, retry
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler, TimeoutWatch, retry
 
 from utilities.certificates_utils import get_ca_bundle
 from utilities.constants import (
@@ -29,8 +29,9 @@ from utilities.constants import (
     Protocols,
     Timeout,
 )
-from utilities.exceptions import InferenceResponseError, InvalidStorageArgumentError
+from utilities.exceptions import InferenceResponseError, InvalidStorageArgumentError, ModelLoadFailedError
 from utilities.infra import (
+    build_isvc_failure_diagnostics,
     get_inference_serving_runtime,
     get_model_route,
     get_pods_by_ig_label,
@@ -620,6 +621,70 @@ class UserInference(Inference):
         raise ValueError(f"No port found for protocol {self.protocol} service {svc.instance}")
 
 
+# modelStatus.transitionStatus / states.targetModelState values that mean the model will
+# never load on its own - waiting out the full readiness timeout teaches nothing further.
+FAILED_MODEL_TRANSITIONS: frozenset[str] = frozenset({"BlockedByFailedLoad", "InvalidSpec"})
+FAILED_MODEL_STATES: frozenset[str] = frozenset({"FailedToLoad"})
+
+
+def is_model_load_failed(model_status: Any) -> bool:
+    """True if an InferenceService's status.modelStatus has reached a terminal failure state."""
+    if not model_status:
+        return False
+    states = getattr(model_status, "states", None)
+    target_state = getattr(states, "targetModelState", None) if states else None
+    transition_status = getattr(model_status, "transitionStatus", None)
+    return transition_status in FAILED_MODEL_TRANSITIONS or target_state in FAILED_MODEL_STATES
+
+
+def wait_for_isvc_ready(
+    client: DynamicClient,
+    inference_service: InferenceService,
+    timeout: int,
+    sleep: int = 5,
+) -> None:
+    """
+    Poll an InferenceService until its Ready condition is True, raising immediately (with
+    predictor pod/log diagnostics attached) if modelStatus reaches a terminal failure state
+    instead of waiting out the full timeout.
+
+    Raises:
+        ModelLoadFailedError: If modelStatus reaches a terminal failure state (e.g. FailedToLoad).
+        TimeoutExpiredError: If Ready=True is not observed within `timeout`, with diagnostics attached.
+    """
+    last_status: Any = None
+
+    def _isvc_status() -> Any:
+        nonlocal last_status
+        last_status = getattr(inference_service.instance, "status", None)
+        return last_status
+
+    try:
+        for status in TimeoutSampler(wait_timeout=timeout, sleep=sleep, func=_isvc_status):
+            if not status:
+                continue
+
+            model_status = getattr(status, "modelStatus", None)
+            if is_model_load_failed(model_status=model_status):
+                raise ModelLoadFailedError(
+                    f"InferenceService '{inference_service.name}' in namespace "
+                    f"'{inference_service.namespace}' failed to load model. modelStatus={model_status}\n"
+                    f"{build_isvc_failure_diagnostics(client=client, isvc=inference_service)}"
+                )
+
+            if any(
+                condition.type == "Ready" and condition.status == "True"
+                for condition in (getattr(status, "conditions", None) or [])
+            ):
+                return
+    except TimeoutExpiredError as exc:
+        raise TimeoutExpiredError(
+            f"InferenceService '{inference_service.name}' in namespace '{inference_service.namespace}' "
+            f"did not become Ready within {timeout}s. Last status: {last_status}\n"
+            f"{build_isvc_failure_diagnostics(client=client, isvc=inference_service)}"
+        ) from exc
+
+
 @contextmanager
 def create_isvc(
     client: DynamicClient,
@@ -832,9 +897,9 @@ def create_isvc(
                         inference_service.deploy()
                         break
 
-            inference_service.wait_for_condition(
-                condition=inference_service.Condition.READY,
-                status=inference_service.Condition.Status.TRUE,
+            wait_for_isvc_ready(
+                client=client,
+                inference_service=inference_service,
                 timeout=timeout_watch.remaining_time(),
             )
 

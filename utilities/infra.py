@@ -60,7 +60,15 @@ from semver import Version
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler, TimeoutWatch, retry
 
 import utilities.general
-from utilities.constants import RHOAI_OPERATOR_NAMESPACE, Annotations, ApiGroups, KServeDeploymentType, Labels, Timeout
+from utilities.constants import (
+    RHOAI_OPERATOR_NAMESPACE,
+    Annotations,
+    ApiGroups,
+    Containers,
+    KServeDeploymentType,
+    Labels,
+    Timeout,
+)
 from utilities.exceptions import ClusterLoginError, FailedPodsError, ResourceNotReadyError, UnexpectedResourceCountError
 from utilities.general import generate_random_name
 
@@ -591,6 +599,72 @@ def get_pods_by_isvc_label(client: DynamicClient, isvc: InferenceService, runtim
         return pods
 
     raise ResourceNotFoundError(f"{isvc.name} has no pods")
+
+
+def _format_container_state(state: Any) -> str | None:
+    if state is None:
+        return None
+    return f"reason={getattr(state, 'reason', None)} message={getattr(state, 'message', None)}"
+
+
+def build_isvc_failure_diagnostics(
+    client: DynamicClient,
+    isvc: InferenceService,
+    runtime_name: str | None = None,
+    log_tail_lines: int = 60,
+) -> str:
+    """
+    Best-effort collection of an InferenceService's modelStatus, predictor pod/container
+    states, and kserve-container logs, so a Ready-wait failure/timeout is self-explanatory
+    from the exception text alone, without needing a separate must-gather.
+
+    Never raises: any failure while collecting a piece of diagnostics is recorded in the
+    output in place of that piece, instead of masking the original error.
+    """
+    lines: list[str] = [f"--- Diagnostics for InferenceService '{isvc.name}' in namespace '{isvc.namespace}' ---"]
+
+    try:
+        status = getattr(isvc.instance, "status", None)
+        lines.extend([
+            f"modelStatus: {getattr(status, 'modelStatus', None)}",
+            f"conditions: {getattr(status, 'conditions', None)}",
+        ])
+    except Exception as exc:  # noqa: BLE001
+        lines.append(f"Could not read InferenceService status: {exc}")
+
+    try:
+        pods = get_pods_by_isvc_label(client=client, isvc=isvc, runtime_name=runtime_name)
+    except Exception as exc:  # noqa: BLE001
+        lines.append(f"Could not find predictor pods: {exc}")
+        return "\n".join(lines)
+
+    for pod in pods:
+        try:
+            lines.append(f"Pod {pod.name}: phase={pod.instance.status.phase}")
+            all_statuses = list(pod.instance.status.get("initContainerStatuses", []) or []) + list(
+                pod.instance.status.get("containerStatuses", []) or []
+            )
+            for container_status in all_statuses:
+                lines.append(
+                    f"  container={container_status.name} ready={container_status.ready} "
+                    f"restarts={container_status.restartCount} "
+                    f"waiting=({_format_container_state(container_status.state.waiting)}) "
+                    f"terminated=({_format_container_state(container_status.state.terminated)})"
+                )
+        except Exception as exc:  # noqa: BLE001
+            lines.append(f"  Could not read container statuses for pod {pod.name}: {exc}")
+
+        for previous in (False, True):
+            log_kind = "previous logs" if previous else "logs"
+            try:
+                log_text = pod.log(
+                    container=Containers.KSERVE_CONTAINER_NAME, previous=previous, tail_lines=log_tail_lines
+                )
+                lines.append(f"  {Containers.KSERVE_CONTAINER_NAME} {log_kind} (tail):\n{log_text}")
+            except Exception as exc:  # noqa: BLE001
+                lines.append(f"  Could not fetch {Containers.KSERVE_CONTAINER_NAME} {log_kind}: {exc}")
+
+    return "\n".join(lines)
 
 
 def get_openshift_token(client: DynamicClient | None = None) -> str:

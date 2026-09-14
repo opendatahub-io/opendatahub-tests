@@ -1,7 +1,7 @@
 from typing import Any
 
 from tests.ai_safety.image_constants import AiSafetyImages
-from utilities.constants import ApiGroups, Ports
+from utilities.constants import ApiGroups, Ports, Timeout
 
 DRIFT_BASE_DATA_PATH: str = "./tests/ai_safety/trustyai_service/drift/model_data"
 TAI_DATA_CONFIG: dict[str, str] = {"filename": "data.csv", "format": "CSV"}
@@ -25,6 +25,9 @@ GAUSSIAN_CREDIT_MODEL_RESOURCES: dict[str, dict[str, str]] = {
     "requests": {"cpu": "1", "memory": "500Mi"},
     "limits": {"cpu": "1", "memory": "500Mi"},
 }
+# Small (~500KB) predictive model - should reach Ready well within 5 minutes.
+# Do not reuse the 15-minute default meant for large LLM downloads/loads.
+GAUSSIAN_CREDIT_MODEL_ISVC_TIMEOUT: int = Timeout.TIMEOUT_5MIN
 
 KSERVE_MLSERVER: str = f"kserve-{MLSERVER}"
 KSERVE_MLSERVER_SUPPORTED_MODEL_FORMATS: list[dict[str, Any]] = [

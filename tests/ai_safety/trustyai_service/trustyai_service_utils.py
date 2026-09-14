@@ -13,13 +13,14 @@ from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 from ocp_resources.trustyai_service import TrustyAIService
-from timeout_sampler import TimeoutSampler
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import TRUSTYAI_SERVICE_NAME, Protocols
-from utilities.exceptions import MetricValidationError
+from utilities.exceptions import MetricValidationError, ModelLoadFailedError
 from utilities.general import create_isvc_label_selector_str
-from utilities.inference_utils import Inference, UserInference
+from utilities.inference_utils import Inference, UserInference, is_model_load_failed
+from utilities.infra import build_isvc_failure_diagnostics
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -413,6 +414,41 @@ def wait_for_isvc_deployment_registered_by_trustyai_service(
             )
         )
 
+    def _wait_for_deployment_available(deployment: Deployment, timeout: int = 300, sleep: int = 5) -> None:
+        """
+        Wait for a Deployment to reach Available, failing fast (with predictor pod/log
+        diagnostics attached) if the isvc's modelStatus reaches a terminal failure state,
+        instead of waiting out the full timeout only to learn "Available never became True".
+        """
+
+        def _sample() -> tuple[Any, Any]:
+            return deployment.instance, getattr(isvc.instance, "status", None)
+
+        last_model_status: Any = None
+        try:
+            for dep_instance, isvc_status in TimeoutSampler(wait_timeout=timeout, sleep=sleep, func=_sample):
+                model_status = getattr(isvc_status, "modelStatus", None) if isvc_status else None
+                last_model_status = model_status
+                if is_model_load_failed(model_status=model_status):
+                    raise ModelLoadFailedError(
+                        f"Deployment '{deployment.name}' for InferenceService '{isvc.name}' in namespace "
+                        f"'{isvc.namespace}' will never become Available: modelStatus={model_status}\n"
+                        f"{build_isvc_failure_diagnostics(client=client, isvc=isvc)}"
+                    )
+
+                if any(
+                    condition.type == "Available" and condition.status == "True"
+                    for condition in (getattr(dep_instance.status, "conditions", None) or [])
+                ):
+                    return
+        except TimeoutExpiredError as exc:
+            raise TimeoutExpiredError(
+                f"Deployment '{deployment.name}' for InferenceService '{isvc.name}' in namespace "
+                f"'{isvc.namespace}' did not reach Available within {timeout}s. "
+                f"Last modelStatus={last_model_status}\n"
+                f"{build_isvc_failure_diagnostics(client=client, isvc=isvc)}"
+            ) from exc
+
     samples = TimeoutSampler(
         wait_timeout=1200,
         sleep=1,
@@ -427,8 +463,7 @@ def wait_for_isvc_deployment_registered_by_trustyai_service(
         for deployment in deployments:
             sink_url = deployment.instance.metadata.annotations.get("internal.serving.kserve.io/logger-sink-url", "")
             if sink_url.endswith(expected_sink_host):
-                deployment.wait_for_replicas()
-                deployment.wait_for_condition(condition="Available", status="True")
+                _wait_for_deployment_available(deployment=deployment)
 
                 pods = _get_pods()
                 if len(pods) != 1:
