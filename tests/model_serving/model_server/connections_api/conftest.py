@@ -2,9 +2,9 @@
 
 Connection-Secret fixtures are parametrized indirectly with `request.param["namespace_fixture"]`
 — the name of the namespace fixture to resolve at runtime (`model_namespace` for the ISVC layer,
-which the reused `mlserver_serving_runtime` fixture requires; `unprivileged_model_namespace` for
-the LLMISVC and smoke layers, matching the llmd suite convention) — so the same Secret fixtures
-are reusable across all three test modules despite their differing namespace fixtures.
+which the `mlserver_serving_runtime` fixture requires; `unprivileged_model_namespace` for the
+LLMISVC and smoke layers, matching the llmd suite convention) — so the same Secret fixtures are
+reusable across all three test modules despite their differing namespace fixtures.
 """
 
 from collections.abc import Generator
@@ -12,15 +12,10 @@ from collections.abc import Generator
 import pytest
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
+from ocp_resources.serving_runtime import ServingRuntime
 
-# `mlserver_serving_runtime` is defined under `tests/model_serving/model_runtime/mlserver/`, a
-# sibling subtree that pytest does not auto-discover for tests under `model_server/`. Re-exporting
-# the imported fixture here (rather than redefining a new ServingRuntime fixture) is how pytest
-# shares a fixture across non-overlapping conftest.py trees.
-from tests.model_serving.model_runtime.mlserver.conftest import (
-    mlserver_serving_runtime,  # noqa: F401
-)
 from tests.model_serving.model_server.connections_api.constants import (
     OCI_CONNECTION_SECRET_NAME,
     S3_CONNECTION_SECRET_NAME,
@@ -31,7 +26,9 @@ from tests.model_serving.model_server.connections_api.utils import (
     create_oci_connection_secret,
     create_uri_connection_secret,
 )
+from utilities.constants import ModelInferenceRuntime, RuntimeTemplates
 from utilities.infra import s3_endpoint_secret
+from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -43,6 +40,31 @@ def connections_api_webhooks_guard(admin_client: DynamicClient) -> None:
     rather than a silent skip.
     """
     assert_connections_api_webhooks_configured(client=admin_client)
+
+
+@pytest.fixture(scope="class")
+def mlserver_serving_runtime(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    mlserver_runtime_image: str | None,
+) -> Generator[ServingRuntime]:
+    """CPU MLServer ServingRuntime for the ISVC connection-injection tests.
+
+    A local, CPU-only equivalent of `tests.model_serving.model_runtime.mlserver.conftest`'s
+    `mlserver_serving_runtime` fixture, defined here (rather than reused from that sibling
+    subtree, which pytest does not auto-discover for tests under `model_server/`) because this
+    suite never needs the GPU/CUDA branch of the original.
+    """
+    with ServingRuntimeFromTemplate(
+        client=admin_client,
+        name=ModelInferenceRuntime.MLSERVER_RUNTIME,
+        namespace=model_namespace.name,
+        template_name=RuntimeTemplates.MLSERVER,
+        deployment_type=request.param["deployment_mode"],
+        runtime_image=mlserver_runtime_image,
+    ) as model_runtime:
+        yield model_runtime
 
 
 @pytest.fixture(scope="class")

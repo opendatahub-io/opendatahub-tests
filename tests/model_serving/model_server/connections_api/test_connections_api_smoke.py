@@ -103,7 +103,8 @@ class TestConnectionsApiSmokeLlmisvc:
         models_s3_bucket_name: str,
         s3_connection_secret: Secret,
     ) -> None:
-        """Given an S3 connection Secret, when an LLMISVC is created, then template/model fields are injected immediately."""
+        """Given an S3 connection Secret, when an LLMISVC is created, then template/model fields
+        are injected immediately."""
         with create_connection_llmisvc(
             client=admin_client,
             name="smoke-llmisvc-s3-connection",
