@@ -83,6 +83,26 @@ def _evalhub_service_account_name(cr_name: str) -> str:
     return f"{cr_name}-service"
 
 
+def _wait_for_deployment_rollout(deployment: Deployment, timeout: int = 300) -> None:
+    """Wait until all replicas are running the latest pod template.
+
+    ``wait_for_replicas`` passes as soon as *any* replicas are ready, which
+    can be satisfied by old pods during a rolling update. This helper polls
+    until ``updatedReplicas == spec.replicas`` and no unavailable replicas
+    remain, guaranteeing all pods reflect the latest Deployment spec.
+    """
+    for sample in TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=5,
+        func=lambda: deployment.instance.status,
+    ):
+        desired = deployment.instance.spec.replicas or 1
+        updated = getattr(sample, "updatedReplicas", None) or 0
+        unavailable = getattr(sample, "unavailableReplicas", None) or 0
+        if updated >= desired and unavailable == 0:
+            return
+
+
 @pytest.fixture(scope="class")
 def evalhub_tenant_rbac_instance_name() -> str:  # noqa: UFN001
     """EvalHub CR name used when waiting for operator job RBAC in tenant namespaces."""
@@ -187,9 +207,6 @@ def evalhub_mcp_mt_cr_with_auth(
         string_data={"token": token},
         wait_for_resource=False,
     ):
-        # TODO: Update to use auth.secret_ref instead of authSecret when upstream
-        # PRs eval-hub/eval-hub#669 and #670 are integrated (fixes RHOAIENG-70489)
-        # New format: "auth": {"secret_ref": secret_name}
         evalhub_mcp_mt_cr.update(
             resource_dict={
                 "metadata": {
@@ -200,7 +217,7 @@ def evalhub_mcp_mt_cr_with_auth(
                     "mcp": {
                         "enabled": True,
                         "replicas": 1,
-                        "authSecret": secret_name,  # Will become auth.secret_ref
+                        "authSecret": secret_name,
                         "env": [
                             {
                                 "name": "EVALHUB_TENANT",
@@ -211,7 +228,21 @@ def evalhub_mcp_mt_cr_with_auth(
                 },
             }
         )
-        evalhub_mcp_mt_cr.wait(timeout=300)
+        # Poll until the operator finishes reconciling the authSecret patch.
+        # .wait() only checks object existence — not operator readiness.
+        for sample in TimeoutSampler(wait_timeout=300, sleep=2, func=lambda: evalhub_mcp_mt_cr.instance.status):
+            if sample is None:
+                continue
+            if sample.get("ready") == "True":
+                break
+            phase = sample.get("phase", "")
+            if phase == "Error":
+                mcp_status = sample.get("mcp", {})
+                pytest.fail(
+                    f"EvalHub entered Error phase after authSecret patch.\n"
+                    f"  Top-level status: {sample}\n"
+                    f"  MCP sub-status:   {mcp_status}"
+                )
         yield evalhub_mcp_mt_cr
 
 
@@ -221,13 +252,14 @@ def evalhub_mcp_mt_deployment(
     model_namespace: Namespace,
     evalhub_mcp_mt_cr_with_auth: EvalHub,
 ) -> Deployment:
-    """Wait for the EvalHub MCP deployment to become available."""
+    """Wait for the EvalHub MCP deployment rollout to complete."""
     deployment = Deployment(
         client=admin_client,
         name=_mcp_deployment_name(EVALHUB_MCP_CR_NAME),
         namespace=model_namespace.name,
     )
     deployment.wait_for_replicas(timeout=300)
+    _wait_for_deployment_rollout(deployment=deployment, timeout=300)
     return deployment
 
 
