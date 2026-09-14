@@ -187,9 +187,6 @@ def evalhub_mcp_mt_cr_with_auth(
         string_data={"token": token},
         wait_for_resource=False,
     ):
-        # TODO: Update to use auth.secret_ref instead of authSecret when upstream
-        # PRs eval-hub/eval-hub#669 and #670 are integrated (fixes RHOAIENG-70489)
-        # New format: "auth": {"secret_ref": secret_name}
         evalhub_mcp_mt_cr.update(
             resource_dict={
                 "metadata": {
@@ -200,7 +197,7 @@ def evalhub_mcp_mt_cr_with_auth(
                     "mcp": {
                         "enabled": True,
                         "replicas": 1,
-                        "authSecret": secret_name,  # Will become auth.secret_ref
+                        "auth": {"secret_ref": secret_name},
                         "env": [
                             {
                                 "name": "EVALHUB_TENANT",
