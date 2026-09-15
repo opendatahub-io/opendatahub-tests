@@ -68,11 +68,11 @@ class BaseRefsResult(NamedTuple):
 
 def find_matching_llminferenceserviceconfig(
     client: DynamicClient,
-    accelerator: str,
+    accelerator: str | None,
     topology: str,
     name_regex: str = "",
 ) -> BaseRefsResult:
-    """Find an LLMInferenceServiceConfig CR matching accelerator, topology, and optional name regex.
+    """Find an LLMInferenceServiceConfig matching topology and optional accelerator/name filters.
 
     Lists CRs in the DSCI applications namespace, filters by
     ``opendatahub.io/recommended-accelerators`` and
@@ -81,6 +81,7 @@ def find_matching_llminferenceserviceconfig(
     Args:
         client: Kubernetes dynamic client.
         accelerator: The k8s accelerator resource name (e.g. ``nvidia.com/gpu``).
+            If None, do not filter on the recommended accelerator annotation.
         topology: The deployment topology to match (e.g. ``workload-single-node``).
         name_regex: Optional regex to filter CR names (e.g. ``.*fast-1$``).
 
@@ -101,21 +102,12 @@ def find_matching_llminferenceserviceconfig(
         )
 
     matched = None
-    # TODO: Remove fallback when all supported RHOAI versions ship topology annotations.
-    # Topology annotation introduced in RHOAI 3.6 (PR: opendatahub-io/kserve#1685).
-    # Empty list means annotation not set — use as fallback if no exact topology match.
-    fallback = None
-    # END TODO
 
     for llmisvcconfig in llminferenceserviceconfigs:
         if name_regex and not re.search(name_regex, llmisvcconfig.name):
             continue
 
-        if accelerator not in llmisvcconfig.accelerators:
-            continue
-
-        if not llmisvcconfig.topologies:
-            fallback = fallback or llmisvcconfig.name
+        if accelerator is not None and accelerator not in llmisvcconfig.accelerators:
             continue
 
         if topology not in llmisvcconfig.topologies:
@@ -124,7 +116,7 @@ def find_matching_llminferenceserviceconfig(
         matched = llmisvcconfig.name
         break
 
-    return BaseRefsResult(matched=matched or fallback, configs=llminferenceserviceconfigs, namespace=namespace)
+    return BaseRefsResult(matched=matched, configs=llminferenceserviceconfigs, namespace=namespace)
 
 
 def ns_from_file(file: str) -> str:
@@ -851,7 +843,7 @@ def log_accelerator_selection(
 
 
 def log_base_refs_selection(
-    accelerator: str,
+    accelerator: str | None,
     topology: str,
     name_regex: str,
     result: BaseRefsResult | None = None,
@@ -861,7 +853,7 @@ def log_base_refs_selection(
         f"\n{'=' * 60}",
         "  Base refs selection",
         f"{'=' * 60}",
-        f"  Accelerator:  {accelerator}",
+        f"  Accelerator:  {accelerator or '(not filtered)'}",
         f"  Topology:     {topology}",
         f"  Name regex:   {name_regex}",
     ]
