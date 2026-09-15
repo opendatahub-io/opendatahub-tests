@@ -32,6 +32,7 @@ from utilities.constants import (
 from utilities.exceptions import InferenceResponseError, InvalidStorageArgumentError, ModelLoadFailedError
 from utilities.infra import (
     build_isvc_failure_diagnostics,
+    get_fatal_pod_container_state,
     get_inference_serving_runtime,
     get_model_route,
     get_pods_by_ig_label,
@@ -642,14 +643,28 @@ def wait_for_isvc_ready(
     inference_service: InferenceService,
     timeout: int,
     sleep: int = 5,
+    max_restarts: int = 2,
 ) -> None:
     """
     Poll an InferenceService until its Ready condition is True, raising immediately (with
-    predictor pod/log diagnostics attached) if modelStatus reaches a terminal failure state
-    instead of waiting out the full timeout.
+    predictor pod/log diagnostics attached) if modelStatus reaches a terminal failure state,
+    or if a predictor pod container is already stuck in a fatal state (CrashLoopBackOff,
+    ImagePullBackOff, etc., or restarting repeatedly) - instead of waiting out the full timeout.
+
+    In RawDeployment mode, `status.modelStatus` is derived from Deployment rollout progress
+    and can stay non-terminal for the whole `progressDeadlineSeconds` window even while the
+    pod underneath is already crash-looping, so the pod check is necessary in addition to the
+    modelStatus check, not redundant with it.
+
+    Args:
+        max_restarts: raise as soon as any predictor container's restart count reaches this
+            value, even without a recognized fatal `waiting.reason`. Raise this for
+            deployments with aggressive/flaky liveness probes that legitimately restart a
+            couple of times before settling.
 
     Raises:
-        ModelLoadFailedError: If modelStatus reaches a terminal failure state (e.g. FailedToLoad).
+        ModelLoadFailedError: If modelStatus reaches a terminal failure state (e.g. FailedToLoad),
+            or a predictor pod container is fatally stuck.
         TimeoutExpiredError: If Ready=True is not observed within `timeout`, with diagnostics attached.
     """
     last_status: Any = None
@@ -669,6 +684,16 @@ def wait_for_isvc_ready(
                 raise ModelLoadFailedError(
                     f"InferenceService '{inference_service.name}' in namespace "
                     f"'{inference_service.namespace}' failed to load model. modelStatus={model_status}\n"
+                    f"{build_isvc_failure_diagnostics(client=client, isvc=inference_service)}"
+                )
+
+            if fatal_pod_state := get_fatal_pod_container_state(
+                client=client, isvc=inference_service, max_restarts=max_restarts
+            ):
+                raise ModelLoadFailedError(
+                    f"InferenceService '{inference_service.name}' in namespace "
+                    f"'{inference_service.namespace}' predictor pod is stuck: {fatal_pod_state}\n"
+                    f"modelStatus={model_status}\n"
                     f"{build_isvc_failure_diagnostics(client=client, isvc=inference_service)}"
                 )
 

@@ -667,6 +667,78 @@ def build_isvc_failure_diagnostics(
     return "\n".join(lines)
 
 
+# Container `waiting.reason` values that will never resolve on their own.
+FATAL_CONTAINER_WAITING_REASONS: frozenset[str] = frozenset({
+    "CrashLoopBackOff",
+    "ImagePullBackOff",
+    "ErrImagePull",
+    "CreateContainerConfigError",
+    "CreateContainerError",
+    "InvalidImageName",
+})
+
+
+def get_fatal_container_state(pod: Pod, max_restarts: int = 2) -> str | None:
+    """
+    Best-effort check for a pod already stuck in a fatal container state.
+
+    A pod's `phase` stays `Running` for as long as it has at least one container running,
+    even while another container is crash-looping - so `phase` alone can't detect this.
+    This inspects container statuses directly instead.
+
+    Returns a description of the first fatal container found, or None if none looks
+    fatally broken.
+    """
+    try:
+        all_statuses = list(pod.instance.status.get("initContainerStatuses", []) or []) + list(
+            pod.instance.status.get("containerStatuses", []) or []
+        )
+    except Exception:  # noqa: BLE001
+        all_statuses = []
+
+    for container_status in all_statuses:
+        waiting = getattr(container_status.state, "waiting", None)
+        reason = getattr(waiting, "reason", None) if waiting else None
+        if reason in FATAL_CONTAINER_WAITING_REASONS:
+            return f"{pod.name}/{container_status.name}: {reason}: {getattr(waiting, 'message', None)}"
+
+        if (container_status.restartCount or 0) >= max_restarts:
+            return f"{pod.name}/{container_status.name}: restartCount={container_status.restartCount}"
+
+    return None
+
+
+def get_fatal_pod_container_state(
+    client: DynamicClient,
+    isvc: InferenceService,
+    runtime_name: str | None = None,
+    max_restarts: int = 2,
+) -> str | None:
+    """
+    Best-effort check for a predictor pod container already stuck in a fatal state.
+
+    In RawDeployment mode, KServe derives `status.modelStatus` from the underlying
+    Deployment's rollout progress, which stays non-terminal (e.g. targetModelState=Pending,
+    transitionStatus=InProgress) for as long as `progressDeadlineSeconds` hasn't elapsed -
+    even while a container underneath is already crash-looping. Waiting on `modelStatus`
+    alone can therefore burn the full readiness timeout on a pod that was never going to
+    recover. This inspects container statuses directly instead.
+
+    Returns a description of the first fatal container found, or None if no pods exist yet
+    (isvc still being scheduled) or no container looks fatally broken.
+    """
+    try:
+        pods = get_pods_by_isvc_label(client=client, isvc=isvc, runtime_name=runtime_name)
+    except Exception:  # noqa: BLE001
+        return None
+
+    for pod in pods:
+        if fatal_state := get_fatal_container_state(pod=pod, max_restarts=max_restarts):
+            return fatal_state
+
+    return None
+
+
 def get_openshift_token(client: DynamicClient | None = None) -> str:
     """
     Get the OpenShift token.

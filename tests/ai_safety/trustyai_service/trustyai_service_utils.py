@@ -20,7 +20,7 @@ from utilities.constants import TRUSTYAI_SERVICE_NAME, Protocols
 from utilities.exceptions import MetricValidationError, ModelLoadFailedError
 from utilities.general import create_isvc_label_selector_str
 from utilities.inference_utils import Inference, UserInference, is_model_load_failed
-from utilities.infra import build_isvc_failure_diagnostics
+from utilities.infra import build_isvc_failure_diagnostics, get_fatal_container_state
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -451,7 +451,7 @@ def wait_for_isvc_deployment_registered_by_trustyai_service(
 
     samples = TimeoutSampler(
         wait_timeout=1200,
-        sleep=1,
+        sleep=5,
         func=_get_deployments,
     )
 
@@ -471,6 +471,12 @@ def wait_for_isvc_deployment_registered_by_trustyai_service(
                     break
 
                 pod = pods[0]
+                if fatal_state := get_fatal_container_state(pod=pod):
+                    raise ModelLoadFailedError(
+                        f"InferenceService '{isvc.name}' in namespace '{isvc.namespace}' predictor pod is "
+                        f"stuck: {fatal_state}\n{build_isvc_failure_diagnostics(client=client, isvc=isvc)}"
+                    )
+
                 if pod.instance.status.phase != "Running":
                     all_ready = False
                     break

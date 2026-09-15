@@ -1,7 +1,7 @@
 from typing import Any
 
 from tests.ai_safety.image_constants import AiSafetyImages
-from utilities.constants import ApiGroups, Ports, Timeout
+from utilities.constants import Timeout
 
 DRIFT_BASE_DATA_PATH: str = "./tests/ai_safety/trustyai_service/drift/model_data"
 TAI_DATA_CONFIG: dict[str, str] = {"filename": "data.csv", "format": "CSV"}
@@ -30,36 +30,6 @@ GAUSSIAN_CREDIT_MODEL_RESOURCES: dict[str, dict[str, str]] = {
 GAUSSIAN_CREDIT_MODEL_ISVC_TIMEOUT: int = Timeout.TIMEOUT_5MIN
 
 KSERVE_MLSERVER: str = f"kserve-{MLSERVER}"
-KSERVE_MLSERVER_SUPPORTED_MODEL_FORMATS: list[dict[str, Any]] = [
-    {"name": "sklearn", "version": "0", "autoSelect": True, "priority": 2},
-    {"name": "sklearn", "version": "1", "autoSelect": True, "priority": 2},
-    {"name": "xgboost", "version": "1", "autoSelect": True, "priority": 2},
-    {"name": "xgboost", "version": "2", "autoSelect": True, "priority": 2},
-    {"name": "lightgbm", "version": "3", "autoSelect": True, "priority": 2},
-    {"name": "lightgbm", "version": "4", "autoSelect": True, "priority": 2},
-    {"name": "mlflow", "version": "1", "autoSelect": True, "priority": 1},
-    {"name": "mlflow", "version": "2", "autoSelect": True, "priority": 1},
-]
-KSERVE_MLSERVER_CONTAINERS: list[dict[str, Any]] = [
-    {
-        "name": "kserve-container",
-        "image": AiSafetyImages.MLSERVER,
-        "env": [
-            {"name": "MLSERVER_MODEL_IMPLEMENTATION", "value": "{{.Labels.modelClass}}"},
-            {"name": "MLSERVER_HTTP_PORT", "value": str(Ports.REST_PORT)},
-            {"name": "MLSERVER_GRPC_PORT", "value": "9000"},
-            {"name": "MODELS_DIR", "value": "/mnt/models/"},
-        ],
-        "resources": {"requests": {"cpu": "1", "memory": "2Gi"}, "limits": {"cpu": "1", "memory": "2Gi"}},
-    }
-]
-KSERVE_MLSERVER_ANNOTATIONS: dict[str, str] = {
-    f"{ApiGroups.OPENDATAHUB_IO}/accelerator-name": "",
-    f"{ApiGroups.OPENDATAHUB_IO}/template-display-name": "KServe MLServer",
-    "prometheus.kserve.io/path": "/metrics",
-    "prometheus.io/port": str(Ports.REST_PORT),
-    "openshift.io/display-name": "mlserver-1.x",
-}
 
 ISVC_GETTER: str = "isvc-getter"
 
