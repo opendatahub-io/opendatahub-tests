@@ -1,12 +1,14 @@
 """Pytest fixtures for Spark upgrade tests."""
 
 from collections.abc import Generator
+from pathlib import Path
 from typing import Any
 
 import pytest
 import shortuuid
 import structlog
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.config_map import ConfigMap
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.namespace import Namespace
 from ocp_resources.network_policy import NetworkPolicy
@@ -20,19 +22,16 @@ from tests.spark.upgrade.utils import (
     SPARK_WORKLOAD_ROLE_BINDING_NAME,
     SPARK_WORKLOAD_ROLE_NAME,
     SPARK_WORKLOAD_SERVICE_ACCOUNT_NAME,
-    capture_spark_application_baseline,
     create_spark_pi_application_spec,
     get_spark_network_policies,
     get_spark_role_bindings,
     get_spark_roles,
     get_spark_service_accounts,
-    load_baseline_from_configmap,
     recreate_network_policy_in_namespace,
     recreate_role_binding_in_namespace,
     recreate_role_in_namespace,
     recreate_service_account_in_namespace,
     resubmit_spark_application,
-    save_baseline_to_configmap,
 )
 from utilities.constants import DscComponents
 from utilities.infra import create_ns
@@ -149,25 +148,6 @@ def post_upgrade_spark_dsc_patch(
 
 
 @pytest.fixture(scope="session")
-def spark_upgrade_baseline_fixture(
-    pytestconfig: pytest.Config,
-    admin_client: DynamicClient,
-) -> dict[str, dict]:
-    """Load pre-upgrade baseline values from the cluster ConfigMap.
-
-    Only available during post-upgrade runs. Returns an empty dict during
-    pre-upgrade so fixtures that depend on it can be unconditionally wired.
-    """
-    if not pytestconfig.option.post_upgrade:
-        return {}
-
-    return load_baseline_from_configmap(
-        client=admin_client,
-        namespace=UPGRADE_NAMESPACE,
-    )
-
-
-@pytest.fixture(scope="session")
 def spark_namespace_fixture(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
@@ -214,9 +194,10 @@ def spark_role_fixture(
 ) -> Generator[list[Role], Any, Any]:
     """Copy only spark-role from the applications namespace into the test namespace."""
     if pytestconfig.option.post_upgrade:
-        stale_roles = get_spark_roles(client=admin_client, namespace=spark_namespace_fixture.name)
-        for role in stale_roles:
-            role.clean_up()
+        resources = get_spark_roles(client=admin_client, namespace=spark_namespace_fixture.name)
+        assert resources, "Required pre-upgrade resources are missing from the test namespace"
+        yield resources
+        return
 
     apps_namespace = py_config["applications_namespace"]
     source_roles = get_spark_roles(client=admin_client, namespace=apps_namespace)
@@ -247,9 +228,10 @@ def service_account_fixture(
 ) -> Generator[list[ServiceAccount], Any, Any]:
     """Copy only spark-operator-spark from the applications namespace into the test namespace."""
     if pytestconfig.option.post_upgrade:
-        stale_sas = get_spark_service_accounts(client=admin_client, namespace=spark_namespace_fixture.name)
-        for sa in stale_sas:
-            sa.clean_up()
+        resources = get_spark_service_accounts(client=admin_client, namespace=spark_namespace_fixture.name)
+        assert resources, "Required pre-upgrade resources are missing from the test namespace"
+        yield resources
+        return
 
     apps_namespace = py_config["applications_namespace"]
     src_sas = get_spark_service_accounts(client=admin_client, namespace=apps_namespace)
@@ -292,9 +274,10 @@ def role_binding_fixture(
 ) -> Generator[list[RoleBinding], Any, Any]:
     """Copy only spark-role-binding from the applications namespace into the test namespace."""
     if pytestconfig.option.post_upgrade:
-        stale_rbs = get_spark_role_bindings(client=admin_client, namespace=spark_namespace_fixture.name)
-        for rb in stale_rbs:
-            rb.clean_up()
+        resources = get_spark_role_bindings(client=admin_client, namespace=spark_namespace_fixture.name)
+        assert resources, "Required pre-upgrade resources are missing from the test namespace"
+        yield resources
+        return
 
     apps_namespace = py_config["applications_namespace"]
     source_rbs = get_spark_role_bindings(client=admin_client, namespace=apps_namespace)
@@ -328,9 +311,10 @@ def network_policy_fixture(
 ) -> Generator[list[NetworkPolicy], Any, Any]:
     """Copy only spark-operator-allow-internal from the applications namespace into the test namespace."""
     if pytestconfig.option.post_upgrade:
-        stale_nps = get_spark_network_policies(client=admin_client, namespace=spark_namespace_fixture.name)
-        for np in stale_nps:
-            np.clean_up()
+        resources = get_spark_network_policies(client=admin_client, namespace=spark_namespace_fixture.name)
+        assert resources, "Required pre-upgrade resources are missing from the test namespace"
+        yield resources
+        return
 
     apps_namespace = py_config["applications_namespace"]
     source_nps = get_spark_network_policies(client=admin_client, namespace=apps_namespace)
@@ -463,40 +447,71 @@ def new_spark_application_fixture(
             spark_app.clean_up()
 
 
-def _capture_and_save_baseline(
+@pytest.fixture()
+def spark_continuity_control(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    spark_app: SparkApplication,
-) -> None:
-    """Capture SparkApplication baseline values and persist to ConfigMap.
-
-    No-op during post-upgrade runs.
-    """
+    spark_namespace_fixture: Namespace,
+    teardown_resources: bool,
+) -> Generator[ConfigMap, Any, Any]:
+    """Provide the persisted workload script, release gate, and execution baseline."""
+    control = ConfigMap(client=admin_client, name="spark-upgrade-continuity", namespace=spark_namespace_fixture.name)
     if pytestconfig.option.post_upgrade:
+        assert control.exists, "Run the in-progress pre-upgrade test and preserve its resources first"
+        yield control
         return
-
-    baselines = {
-        spark_app.name: capture_spark_application_baseline(
-            client=admin_client,
-            spark_app=spark_app,
-        ),
-    }
-    save_baseline_to_configmap(
+    with ConfigMap(
         client=admin_client,
-        namespace=UPGRADE_NAMESPACE,
-        baselines=baselines,
-    )
+        name=control.name,
+        namespace=control.namespace,
+        data={"workload.py": Path(__file__).with_name("continuity_workload.py").read_text(), "release": "false"},
+        teardown=teardown_resources,
+    ) as control:
+        yield control
 
 
-@pytest.fixture(scope="session")
-def spark_capture_upgrade_baseline(
+@pytest.fixture()
+def spark_continuity_application(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-    spark_application_fixture: SparkApplication,
-) -> None:
-    """Capture baseline values for the SparkApplication."""
-    _capture_and_save_baseline(
-        pytestconfig=pytestconfig,
-        admin_client=admin_client,
-        spark_app=spark_application_fixture,
+    spark_continuity_control: ConfigMap,
+    spark_workload_service_account: ServiceAccount,
+    role_binding_fixture: list[RoleBinding],
+    network_policy_fixture: list[NetworkPolicy],
+    teardown_resources: bool,
+) -> Generator[SparkApplication, Any, Any]:
+    """Create before upgrade, or reference after upgrade, the gated Spark execution."""
+    application = SparkApplication(
+        client=admin_client, name="upgrade-spark-in-progress", namespace=spark_continuity_control.namespace
     )
+    if pytestconfig.option.post_upgrade:
+        assert application.exists, "The in-progress SparkApplication did not survive"
+        yield application
+        return
+    manifest = create_spark_pi_application_spec(
+        name=application.name,
+        namespace=application.namespace,
+        service_account=spark_workload_service_account.name,
+    )
+    spec = manifest["spec"]
+    spec.pop("mainClass")
+    spec.update({
+        "type": "Python",
+        "pythonVersion": "3",
+        "mainApplicationFile": "local:///opt/spark/upgrade/workload.py",
+        "sparkConf": {"spark.task.maxFailures": "1", "spark.speculation": "false"},
+    })
+    spec["volumes"].append({"name": "upgrade-control", "configMap": {"name": spark_continuity_control.name}})
+    volumes = spec.pop("volumes")
+    for role in ("driver", "executor"):
+        mounts = spec[role].pop("volumeMounts")
+        mounts.append({"name": "upgrade-control", "mountPath": "/opt/spark/upgrade", "readOnly": True})
+        # Native pod templates carry mounts even when the mutating webhook does not inject them.
+        spec[role]["template"] = {
+            "spec": {
+                "volumes": volumes,
+                "containers": [{"name": f"spark-kubernetes-{role}", "volumeMounts": mounts}],
+            }
+        }
+    with SparkApplication(client=admin_client, kind_dict=manifest, teardown=teardown_resources) as application:
+        yield application
