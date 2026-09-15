@@ -18,7 +18,7 @@ from ocp_resources.node import Node
 from ocp_resources.pod import Pod
 from ocp_resources.prometheus import Prometheus
 from pyhelper_utils.shell import run_command
-from timeout_sampler import TimeoutExpiredError, retry
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
 
 from tests.model_serving.model_server.llmd.constants import LLMD_TESTS_SUPPORTED_ACCELERATORS
 from utilities.certificates_utils import get_ca_bundle
@@ -791,11 +791,13 @@ def get_scheduler_decision_logs(
     return json_logs
 
 
-def workaround_503_no_healthy_upstream(llmisvc: LLMInferenceService, prompt: str) -> None:
+def workaround_503_no_healthy_upstream(llmisvc: LLMInferenceService, prompt: str, timeout: int = 30) -> None:
     """Warm up inference endpoint to work around RHOAIENG-55154.
 
-    Requests soon after Ready condition may 503 with 'no healthy upstream'.
-    Retries every 3s for up to 30s until the endpoint stops returning 503.
+    Requests soon after Ready condition may 503 with 'no healthy upstream', or 502 Bad Gateway —
+    both symptoms of the same gateway-routing race where the backend isn't actually accepting
+    connections yet despite reporting Ready. Retries every 3s for up to `timeout` seconds until
+    the endpoint stops returning either.
     Swallows TimeoutExpiredError if retries are exhausted, letting the real test assertion decide.
     Skips entirely if the Jira issue is closed (result is cached).
 
@@ -804,24 +806,32 @@ def workaround_503_no_healthy_upstream(llmisvc: LLMInferenceService, prompt: str
     Args:
         llmisvc: The LLMInferenceService to warm up
         prompt: The prompt to send in the warm up request
+        timeout: Seconds to keep retrying before giving up (default 30). Callers on
+            resource-constrained clusters, where CPU vLLM cold starts can outlast the default
+            budget, may pass a longer value to avoid a false-negative test failure.
     """
     if not is_jira_issue_open(jira_id="RHOAIENG-55154"):
         LOGGER.info("RHOAIENG-55154 is closed - remove this block")
         return
 
     try:
-        _send_warm_up_request(llmisvc=llmisvc, prompt=prompt)
+        for done in TimeoutSampler(
+            wait_timeout=timeout, sleep=3, func=_send_warm_up_request, llmisvc=llmisvc, prompt=prompt
+        ):
+            if done:
+                break
     except TimeoutExpiredError:
         LOGGER.warning(f"RHOAIENG-55154: warm up retries exhausted for {llmisvc.name}")
 
 
-@retry(wait_timeout=30, sleep=3)
 def _send_warm_up_request(llmisvc: LLMInferenceService, prompt: str) -> bool:
     """Send one warm-up request; return True to stop retrying, False to retry."""
     LOGGER.info(f"RHOAIENG-55154: sending warm up request to {llmisvc.name}")
     status, body = send_chat_completions(llmisvc=llmisvc, prompt=prompt)
     LOGGER.info(f"RHOAIENG-55154: warm up returned {status}")
-    return not (status == 503 and "no healthy upstream" in body)
+    no_healthy_upstream = status == 503 and "no healthy upstream" in body
+    bad_gateway = status == 502
+    return not (no_healthy_upstream or bad_gateway)
 
 
 # ---------------------------------------------------------------------------
