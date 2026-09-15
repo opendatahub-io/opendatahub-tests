@@ -20,7 +20,8 @@ UPGRADE_BASELINE_CONFIGMAP = "spark-upgrade-baseline"
 SPARK_VERSION = "4.0.1"
 SPARK_IMAGE = SparkImages.DATA_PROCESSING
 SPARK_WORKLOAD_SERVICE_ACCOUNT_NAME = "spark-operator-spark"
-SPARK_WORKLOAD_ROLE_NAME = "spark-operator-pi-workload"
+SPARK_WORKLOAD_ROLE_NAME: str = "spark-role"
+SPARK_WORKLOAD_ROLE_BINDING_NAME: str = "spark-role-binding"
 
 
 def wait_for_spark_application_state(
@@ -406,19 +407,67 @@ def verify_pods_not_restarted(
 
 
 def get_spark_network_policies(client: DynamicClient, namespace: str) -> list[NetworkPolicy]:
-    return [np for np in NetworkPolicy.get(client=client, namespace=namespace) if "spark-operator" in np.name]
+    """Find only the Spark internal-traffic NetworkPolicy.
+
+    Args:
+        client: Kubernetes client.
+        namespace: Namespace to search.
+
+    Returns:
+        The matching NetworkPolicy, or an empty list if it is absent.
+    """
+    return [
+        network_policy
+        for network_policy in NetworkPolicy.get(client=client, namespace=namespace)
+        if network_policy.name == "spark-operator-allow-internal"
+    ]
 
 
 def get_spark_roles(client: DynamicClient, namespace: str) -> list[Role]:
-    return [role for role in Role.get(client=client, namespace=namespace) if "spark-operator" in role.name]
+    """Find only the named Spark workload Role.
+
+    Args:
+        client: Kubernetes client.
+        namespace: Namespace to search.
+
+    Returns:
+        The matching workload Role, or an empty list if it is absent.
+    """
+    return [role for role in Role.get(client=client, namespace=namespace) if role.name == SPARK_WORKLOAD_ROLE_NAME]
 
 
 def get_spark_service_accounts(client: DynamicClient, namespace: str) -> list[ServiceAccount]:
-    return [sa for sa in ServiceAccount.get(client=client, namespace=namespace) if "spark-operator" in sa.name]
+    """Find only the named Spark workload ServiceAccount.
+
+    Args:
+        client: Kubernetes client.
+        namespace: Namespace to search.
+
+    Returns:
+        The matching workload ServiceAccount, or an empty list if it is absent.
+    """
+    return [
+        service_account
+        for service_account in ServiceAccount.get(client=client, namespace=namespace)
+        if service_account.name == SPARK_WORKLOAD_SERVICE_ACCOUNT_NAME
+    ]
 
 
 def get_spark_role_bindings(client: DynamicClient, namespace: str) -> list[RoleBinding]:
-    return [rb for rb in RoleBinding.get(client=client, namespace=namespace) if "spark-operator" in rb.name]
+    """Find only the named Spark workload RoleBinding.
+
+    Args:
+        client: Kubernetes client.
+        namespace: Namespace to search.
+
+    Returns:
+        The matching workload RoleBinding, or an empty list if it is absent.
+    """
+    return [
+        role_binding
+        for role_binding in RoleBinding.get(client=client, namespace=namespace)
+        if role_binding.name == SPARK_WORKLOAD_ROLE_BINDING_NAME
+    ]
 
 
 def recreate_role_in_namespace(

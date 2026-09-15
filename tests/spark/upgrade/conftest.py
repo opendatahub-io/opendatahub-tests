@@ -17,6 +17,7 @@ from ocp_resources.service_account import ServiceAccount
 from pytest_testconfig import config as py_config
 
 from tests.spark.upgrade.utils import (
+    SPARK_WORKLOAD_ROLE_BINDING_NAME,
     SPARK_WORKLOAD_ROLE_NAME,
     SPARK_WORKLOAD_SERVICE_ACCOUNT_NAME,
     capture_spark_application_baseline,
@@ -211,7 +212,7 @@ def spark_role_fixture(
     spark_namespace_fixture: Namespace,
     teardown_resources: bool,
 ) -> Generator[list[Role], Any, Any]:
-    """Recreate Spark operator Roles and provide a namespace-scoped Spark Pi workload Role."""
+    """Copy only spark-role from the applications namespace into the test namespace."""
     if pytestconfig.option.post_upgrade:
         stale_roles = get_spark_roles(client=admin_client, namespace=spark_namespace_fixture.name)
         for role in stale_roles:
@@ -219,9 +220,8 @@ def spark_role_fixture(
 
     apps_namespace = py_config["applications_namespace"]
     source_roles = get_spark_roles(client=admin_client, namespace=apps_namespace)
-    assert source_roles, (
-        f"No spark-related Roles found in namespace {apps_namespace}. "
-        "Ensure the Spark Operator is enabled and has created RBAC resources."
+    assert any(role.name == SPARK_WORKLOAD_ROLE_NAME for role in source_roles), (
+        f"Required Spark workload Role {SPARK_WORKLOAD_ROLE_NAME} was not found in namespace {apps_namespace}"
     )
     LOGGER.info(f"Discovered {len(source_roles)} spark Role(s) in {apps_namespace}: {[r.name for r in source_roles]}")
 
@@ -235,20 +235,7 @@ def spark_role_fixture(
         )
         created_roles.append(role)
 
-    with Role(
-        client=admin_client,
-        name=SPARK_WORKLOAD_ROLE_NAME,
-        namespace=spark_namespace_fixture.name,
-        rules=[
-            {
-                "apiGroups": [""],
-                "resources": ["pods", "services", "configmaps"],
-                "verbs": ["get", "list", "watch", "create", "update", "patch", "delete", "deletecollection"],
-            }
-        ],
-        teardown=teardown_resources,
-    ) as workload_role:
-        yield [*created_roles, workload_role]
+    yield created_roles
 
 
 @pytest.fixture(scope="session")
@@ -258,11 +245,7 @@ def service_account_fixture(
     spark_namespace_fixture: Namespace,
     teardown_resources: bool,
 ) -> Generator[list[ServiceAccount], Any, Any]:
-    """Discover spark ServiceAccounts from the applications namespace and recreate in upgrade namespace.
-
-    Pre-upgrade: Discovers SAs from operator's namespace, recreates in upgrade namespace
-    Post-upgrade: References existing SAs in upgrade namespace
-    """
+    """Copy only spark-operator-spark from the applications namespace into the test namespace."""
     if pytestconfig.option.post_upgrade:
         stale_sas = get_spark_service_accounts(client=admin_client, namespace=spark_namespace_fixture.name)
         for sa in stale_sas:
@@ -271,8 +254,8 @@ def service_account_fixture(
     apps_namespace = py_config["applications_namespace"]
     src_sas = get_spark_service_accounts(client=admin_client, namespace=apps_namespace)
     assert src_sas, (
-        f"No spark-related ServiceAccounts found in namespace {apps_namespace}. "
-        "Ensure the Spark Operator is enabled and has created RBAC resources."
+        f"Required Spark workload ServiceAccount {SPARK_WORKLOAD_SERVICE_ACCOUNT_NAME} "
+        f"was not found in namespace {apps_namespace}"
     )
     LOGGER.info(f"Discovered {len(src_sas)} spark ServiceAccount(s) in {apps_namespace}: {[sa.name for sa in src_sas]}")
 
@@ -307,7 +290,7 @@ def role_binding_fixture(
     spark_role_fixture: list[Role],
     teardown_resources: bool,
 ) -> Generator[list[RoleBinding], Any, Any]:
-    """Recreate operator RoleBindings and bind Spark Pi permissions to its workload service account."""
+    """Copy only spark-role-binding from the applications namespace into the test namespace."""
     if pytestconfig.option.post_upgrade:
         stale_rbs = get_spark_role_bindings(client=admin_client, namespace=spark_namespace_fixture.name)
         for rb in stale_rbs:
@@ -315,6 +298,10 @@ def role_binding_fixture(
 
     apps_namespace = py_config["applications_namespace"]
     source_rbs = get_spark_role_bindings(client=admin_client, namespace=apps_namespace)
+    assert any(role_binding.name == SPARK_WORKLOAD_ROLE_BINDING_NAME for role_binding in source_rbs), (
+        f"Required Spark workload RoleBinding {SPARK_WORKLOAD_ROLE_BINDING_NAME} "
+        f"was not found in namespace {apps_namespace}"
+    )
     LOGGER.info(
         f"Discovered {len(source_rbs)} spark RoleBinding(s) in {apps_namespace}: {[rb.name for rb in source_rbs]}"
     )
@@ -329,18 +316,7 @@ def role_binding_fixture(
         )
         created_rbs.append(rb)
 
-    with RoleBinding(
-        client=admin_client,
-        name=SPARK_WORKLOAD_ROLE_NAME,
-        namespace=spark_namespace_fixture.name,
-        subjects_kind=ServiceAccount.kind,
-        subjects_name=spark_workload_service_account.name,
-        subjects_namespace=spark_namespace_fixture.name,
-        role_ref_kind=Role.kind,
-        role_ref_name=SPARK_WORKLOAD_ROLE_NAME,
-        teardown=teardown_resources,
-    ) as workload_role_binding:
-        yield [*created_rbs, workload_role_binding]
+    yield created_rbs
 
 
 @pytest.fixture(scope="session")
@@ -350,11 +326,7 @@ def network_policy_fixture(
     spark_namespace_fixture: Namespace,
     teardown_resources: bool,
 ) -> Generator[list[NetworkPolicy], Any, Any]:
-    """Discover spark NetworkPolicies from the applications namespace and recreate in upgrade namespace.
-
-    Pre-upgrade: Discovers NetworkPolicies from operator's namespace, recreates in upgrade namespace
-    Post-upgrade: References existing NetworkPolicies in upgrade namespace
-    """
+    """Copy only spark-operator-allow-internal from the applications namespace into the test namespace."""
     if pytestconfig.option.post_upgrade:
         stale_nps = get_spark_network_policies(client=admin_client, namespace=spark_namespace_fixture.name)
         for np in stale_nps:
