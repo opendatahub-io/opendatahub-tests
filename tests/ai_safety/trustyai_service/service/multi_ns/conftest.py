@@ -16,6 +16,10 @@ from ocp_resources.serving_runtime import ServingRuntime
 from ocp_resources.trustyai_service import TrustyAIService
 
 from tests.ai_safety.trustyai_service.constants import (
+    DB_CREDENTIALS_SECRET_NAME,
+    DB_NAME,
+    DB_PASSWORD,
+    DB_USERNAME,
     GAUSSIAN_CREDIT_MODEL,
     GAUSSIAN_CREDIT_MODEL_RESOURCES,
     GAUSSIAN_CREDIT_MODEL_STORAGE_URI,
@@ -44,11 +48,6 @@ from tests.ai_safety.trustyai_service.utils import (
 from utilities.constants import TRUSTYAI_SERVICE_NAME, KServeDeploymentType
 from utilities.inference_utils import create_isvc
 from utilities.infra import create_inference_token, create_ns
-
-DB_CREDENTIALS_SECRET_NAME: str = "db-credentials"
-DB_NAME: str = "trustyai_db"
-DB_USERNAME: str = "trustyai_user"
-DB_PASSWORD: str = "trustyai_password"
 
 
 @pytest.fixture(scope="class")
