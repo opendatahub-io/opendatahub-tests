@@ -47,15 +47,15 @@ def dsc_resource(  # noqa: UFN001
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     dsc_resource: DataScienceCluster,
-) -> DataScienceCluster:
-    """Override the shared DSC fixture to reset Spark before cluster health checks when requested."""
-    if not pytestconfig.getoption("reset_spark_pre_upgrade"):
-        return dsc_resource
-
-    if not pytestconfig.option.pre_upgrade or pytestconfig.option.post_upgrade:
-        raise pytest.UsageError(
-            "--reset-spark-pre-upgrade requires --pre-upgrade and cannot be used with --post-upgrade"
-        )
+) -> Generator[DataScienceCluster, Any, Any]:
+    """Reset Spark before and after pre-upgrade runs when resource deletion is requested."""
+    if (
+        not pytestconfig.option.delete_pre_upgrade_resources
+        or not pytestconfig.option.pre_upgrade
+        or pytestconfig.option.post_upgrade
+    ):
+        yield dsc_resource
+        return
 
     namespace = Namespace(client=admin_client, name=UPGRADE_NAMESPACE)
     if namespace.exists:
@@ -63,15 +63,21 @@ def dsc_resource(  # noqa: UFN001
         namespace.clean_up(wait=True, timeout=300)
 
     LOGGER.info("Resetting Spark Operator to Removed before pre-upgrade setup")
-    ResourceEditor(
+    editor = ResourceEditor(
         patches={
             dsc_resource: {
                 "spec": {"components": {"sparkoperator": {"managementState": DscComponents.ManagementState.REMOVED}}}
             }
         }
-    ).update()
+    )
+    editor.update()
     dsc_resource.wait_for_condition(condition="SparkOperatorReady", status="False", reason="Removed", timeout=300)
-    return dsc_resource
+    try:
+        yield dsc_resource
+    finally:
+        LOGGER.info("Restoring Spark Operator to Removed after pre-upgrade cleanup")
+        editor.update()
+        dsc_resource.wait_for_condition(condition="SparkOperatorReady", status="False", reason="Removed", timeout=300)
 
 
 @pytest.fixture(scope="session")
