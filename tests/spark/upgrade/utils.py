@@ -19,6 +19,8 @@ LOGGER = structlog.get_logger(name=__name__)
 UPGRADE_BASELINE_CONFIGMAP = "spark-upgrade-baseline"
 SPARK_VERSION = "4.0.1"
 SPARK_IMAGE = SparkImages.DATA_PROCESSING
+SPARK_WORKLOAD_SERVICE_ACCOUNT_NAME = "spark-operator-spark"
+SPARK_WORKLOAD_ROLE_NAME = "spark-operator-pi-workload"
 
 
 def wait_for_spark_application_state(
@@ -427,7 +429,7 @@ def recreate_role_in_namespace(
 ) -> Role:
     source_dict = source_role.instance.to_dict()
     source_dict["metadata"] = {"name": source_role.name, "namespace": target_namespace}
-    role = Role(client=client, kind_dict=source_dict, teardown=teardown)
+    role = Role(client=client, kind_dict=source_dict, rules=source_dict["rules"], teardown=teardown)
     role.deploy()
     return role
 

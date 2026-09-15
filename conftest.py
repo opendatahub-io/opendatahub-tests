@@ -174,6 +174,11 @@ def pytest_addoption(parser: Parser) -> None:
         help="Delete pre-upgrade resources; useful when debugging pre-upgrade tests",
     )
     upgrade_group.addoption(
+        "--reset-spark-pre-upgrade",
+        action="store_true",
+        help="Delete the previous Spark upgrade test namespace and disable Spark Operator before a pre-upgrade retry",
+    )
+    upgrade_group.addoption(
         "--upgrade-deployment-modes",
         help="Coma-separated str; specify inference service deployment modes tests to run in upgrade tests. "
         "If not set, all will be tested.",

@@ -17,6 +17,23 @@ To run pre-upgrade tests and delete the resources at the end of the run (useful 
 uv run pytest --pre-upgrade --delete-pre-upgrade-resources
 ```
 
+### Retry Spark pre-upgrade tests
+
+To reset resources left by a previous Spark attempt and start a fresh run:
+
+```bash
+uv run pytest tests/spark/upgrade/test_upgrade.py --pre-upgrade --reset-spark-pre-upgrade
+```
+
+This deletes `upgrade-spark-operator`, including its saved upgrade baseline, and
+sets Spark Operator to `Removed` before cluster health checks. Normal test setup
+then enables Spark Operator and creates fresh resources. Use this on a test cluster
+where disabling Spark Operator will not disrupt other workloads.
+
+The flag applies only to Spark upgrade fixtures and requires `--pre-upgrade`
+without `--post-upgrade`. Without the flag, existing resource checks remain in place.
+Collection and setup-plan runs do not reset cluster resources.
+
 ## Run post-upgrade tests
 
 `REUSE_IF_RESOURCE_EXISTS` environment variable is set to reuse resources if they already exist.
