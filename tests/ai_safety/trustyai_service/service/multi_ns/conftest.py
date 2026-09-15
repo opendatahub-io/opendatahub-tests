@@ -21,9 +21,6 @@ from tests.ai_safety.trustyai_service.constants import (
     GAUSSIAN_CREDIT_MODEL_STORAGE_URI,
     ISVC_GETTER,
     KSERVE_MLSERVER,
-    KSERVE_MLSERVER_ANNOTATIONS,
-    KSERVE_MLSERVER_CONTAINERS,
-    KSERVE_MLSERVER_SUPPORTED_MODEL_FORMATS,
     TAI_DATA_CONFIG,
     TAI_DB_STORAGE_CONFIG,
     TAI_METRICS_CONFIG,
@@ -41,9 +38,10 @@ from tests.ai_safety.trustyai_service.utils import (
     create_standalone_mariadb,
     create_trustyai_service,
 )
-from utilities.constants import TRUSTYAI_SERVICE_NAME, KServeDeploymentType
+from utilities.constants import TRUSTYAI_SERVICE_NAME, KServeDeploymentType, RuntimeTemplates
 from utilities.inference_utils import create_isvc
 from utilities.infra import create_inference_token, create_ns
+from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 DB_CREDENTIALS_SECRET_NAME: str = "db-credentials"
 DB_NAME: str = "trustyai_db"
@@ -110,15 +108,12 @@ def mlserver_runtime_multi_ns(admin_client, model_namespaces) -> Generator[list[
     with ExitStack() as stack:
         runtimes = [
             stack.enter_context(
-                ServingRuntime(
+                ServingRuntimeFromTemplate(
                     client=admin_client,
                     namespace=ns.name,
                     name=KSERVE_MLSERVER,
-                    containers=KSERVE_MLSERVER_CONTAINERS,
-                    supported_model_formats=KSERVE_MLSERVER_SUPPORTED_MODEL_FORMATS,
-                    protocol_versions=["v2"],
-                    annotations=KSERVE_MLSERVER_ANNOTATIONS,
-                    label={"opendatahub.io/dashboard": "true"},
+                    template_name=RuntimeTemplates.MLSERVER,
+                    deployment_type=KServeDeploymentType.RAW_DEPLOYMENT,
                     teardown=False,
                 )
             )
