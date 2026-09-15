@@ -55,9 +55,6 @@ class TestTrustyAIServiceMultipleNS:
         admin_client,
         current_client_token,
         trustyai_service_with_pvc_storage_multi_ns,
-        gaussian_credit_model_multi_ns,
-        isvc_getter_token_multi_ns,
-        model_namespaces,
     ) -> None:
         for tai in trustyai_service_with_pvc_storage_multi_ns:
             verify_upload_data_to_trustyai_service(

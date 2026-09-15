@@ -46,6 +46,8 @@ from tests.ai_safety.evalhub.constants import (
     GARAK_PROVIDER_ID,
     GARAK_QUICK_BENCHMARK_ID,
     GARAK_SIMPLE_PROVIDER_ID,
+    GIT_BAD_CREDS_SECRET_NAME,
+    GIT_CREDS_SECRET_NAME,
     GIT_DEFAULT_REF,
     GIT_PUBLIC_REPO_REF_ENV,
     GIT_PUBLIC_REPO_SUB_PATH,
@@ -1884,7 +1886,75 @@ def submit_git_job(
             LOGGER.warning(f"Failed to delete git evaluation job {job_id} during teardown")
 
 
-# Operator Reconciliation Observability Fixtures (RHAISTRAT-1606 / RHAI-241)
+@pytest.fixture(scope="class")
+def git_private_repo_config() -> dict[str, str]:
+    """Read private git repo configuration from environment variables.
+
+    Required env vars:
+      EVALHUB_GIT_PRIVATE_REPO_URL      — HTTPS URL of the private test repo
+      EVALHUB_GIT_PRIVATE_REPO_USERNAME  — git username
+      EVALHUB_GIT_PRIVATE_REPO_TOKEN     — git PAT / password
+
+    Optional:
+      EVALHUB_GIT_PRIVATE_REPO_REF       — ref to clone (defaults to "main")
+      EVALHUB_GIT_PRIVATE_REPO_SUB_PATH  — sub-path within repo (defaults to "tests/git-testdata")
+    """
+
+    url = os.environ.get("EVALHUB_GIT_PRIVATE_REPO_URL", "")
+    username = os.environ.get("EVALHUB_GIT_PRIVATE_REPO_USERNAME", "")
+    token = os.environ.get("EVALHUB_GIT_PRIVATE_REPO_TOKEN", "")
+    if not all([url, username, token]):
+        pytest.fail(
+            "Git private repo tests require env vars: "
+            "EVALHUB_GIT_PRIVATE_REPO_URL, EVALHUB_GIT_PRIVATE_REPO_USERNAME, "
+            "EVALHUB_GIT_PRIVATE_REPO_TOKEN"
+        )
+    return {
+        "url": url,
+        "username": username,
+        "token": token,
+        "ref": os.environ.get("EVALHUB_GIT_PRIVATE_REPO_REF", "main"),
+        "sub_path": os.environ.get("EVALHUB_GIT_PRIVATE_REPO_SUB_PATH", GIT_PUBLIC_REPO_SUB_PATH),
+    }
+
+
+@pytest.fixture(scope="class")
+def git_test_creds_secret(
+    admin_client: DynamicClient,
+    tenant_a_namespace: Namespace,
+    git_private_repo_config: dict[str, str],
+) -> Generator[Secret, Any, Any]:
+    """Kubernetes Secret with valid HTTPS basic auth credentials for the private repo."""
+
+    with Secret(
+        client=admin_client,
+        namespace=tenant_a_namespace.name,
+        name=GIT_CREDS_SECRET_NAME,
+        string_data={
+            "username": git_private_repo_config["username"],
+            "password": git_private_repo_config["token"],
+        },
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="class")
+def git_bad_creds_secret(
+    admin_client: DynamicClient,
+    tenant_a_namespace: Namespace,
+) -> Generator[Secret, Any, Any]:
+    """Kubernetes Secret with invalid git credentials for negative testing."""
+
+    with Secret(
+        client=admin_client,
+        namespace=tenant_a_namespace.name,
+        name=GIT_BAD_CREDS_SECRET_NAME,
+        string_data={
+            "username": "testuser",
+            "password": "invalid-token-value",  # pragma: allowlist secret
+        },
+    ) as secret:
+        yield secret
 
 
 @pytest.fixture(scope="class")
