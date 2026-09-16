@@ -12,7 +12,6 @@ from ocp_resources.resource import ResourceEditor
 from timeout_sampler import TimeoutSampler
 
 from tests.ai_gateway.models_as_a_service.maas_api_key.utils import wait_for_auth_policy_accepted
-from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import AITENANT_INFRA_NAMESPACE
 from tests.ai_gateway.models_as_a_service.oidc_tests.utils import (
     DEFAULT_AITENANT_NAME,
     MAAS_GATEWAY_AUTH_POLICY_NAME,
@@ -24,6 +23,7 @@ from tests.ai_gateway.models_as_a_service.oidc_tests.utils import (
     request_oidc_access_token,
 )
 from tests.ai_gateway.models_as_a_service.utils import (
+    AITENANT_INFRA_NAMESPACE,
     create_api_key,
     revoke_api_key,
 )
