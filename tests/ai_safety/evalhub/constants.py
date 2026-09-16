@@ -236,7 +236,7 @@ OTEL_TRACE_COLLECTOR_NAME: str = "otel-trace-collector"
 OTEL_TRACE_COLLECTOR_LABELS: dict[str, str] = {"app": "otel-trace-collector"}
 
 # Operator pod label selector
-OPERATOR_POD_LABEL_SELECTOR: str = "control-plane=controller-manager,app.kubernetes.io/name=trustyai-service-operator"
+OPERATOR_POD_LABEL_SELECTOR: str = "control-plane=trustyai-service-operator"
 
 # Operator service name in OTEL traces
 OPERATOR_OTEL_SERVICE_NAME: str = "trustyai-service-operator"
