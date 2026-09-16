@@ -217,7 +217,13 @@ class TestNemoGuardrailsConfigUpdate:
         )
         assert final_response.status_code == 200, f"Request failed after config update: {final_response.status_code}"
         response_json = final_response.json()
-        assert "choices" in response_json, "Response should contain choices after config update"
+        # A valid guardrails response is either a model completion ("choices") or a guardrails
+        # refusal ("messages"). The self-check judge here is the llm-d-inference-sim in random
+        # mode, so a safe prompt can legitimately be refused; both shapes prove the service
+        # is serving with the updated config.
+        assert "choices" in response_json or "messages" in response_json, (
+            f"Response should be a valid guardrails completion or refusal after config update: {response_json}"
+        )
 
         # Verify the updated config is mounted in the new pod
         # Get one of the NEWLY CREATED pods (not an old one)
