@@ -130,7 +130,7 @@ def praxis_aitenant_with_bootstrap_gateway(
     payload_processing_type: str | None,
     teardown: bool,
     aitenant_name: str | None = None,
-) -> Generator[AITenant, None, None]:
+) -> Generator[AITenant]:
     """Yield an AITenant after its bootstrap Gateway exists."""
     resolved_aitenant_name = aitenant_name or f"e2e-praxis-{generate_random_name()}"
     aitenant_spec = build_aitenant_spec(aitenant_name=resolved_aitenant_name)
@@ -138,21 +138,23 @@ def praxis_aitenant_with_bootstrap_gateway(
         aitenant_name=resolved_aitenant_name,
         aitenant_spec=aitenant_spec,
     )
-    with bootstrap_gateway_context(
-        admin_client=admin_client,
-        gateway_name=gateway_name,
-        gateway_namespace=gateway_namespace,
-        teardown=teardown,
-    ):
-        with praxis_aitenant_from_spec(
+    with (
+        bootstrap_gateway_context(
+            admin_client=admin_client,
+            gateway_name=gateway_name,
+            gateway_namespace=gateway_namespace,
+            teardown=teardown,
+        ),
+        praxis_aitenant_from_spec(
             admin_client=admin_client,
             aitenant_name=resolved_aitenant_name,
             cr_namespace=cr_namespace,
             aitenant_spec=aitenant_spec,
             payload_processing_type=payload_processing_type,
             teardown=teardown,
-        ) as aitenant:
-            yield aitenant
+        ) as aitenant,
+    ):
+        yield aitenant
 
 
 def deploy_praxis_aitenant_and_verify_annotation(
