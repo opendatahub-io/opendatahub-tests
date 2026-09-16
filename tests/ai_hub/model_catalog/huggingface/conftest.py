@@ -349,12 +349,12 @@ def huggingface_model_portforward(
         raise
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def hf_ai_hub_token() -> str:
-    """Return the private-model HF token, or skip when it is unavailable."""
+    """Return the required private-model HF token, failing setup when it is unavailable."""
     token = os.getenv("HF_AI_HUB_TOKEN")
     if not token:
-        pytest.skip("HF_AI_HUB_TOKEN environment variable not set or empty")
+        pytest.fail("HF_AI_HUB_TOKEN environment variable must be set and non-empty for private-model tests")
     return token
 
 
@@ -380,7 +380,7 @@ def private_hf_catalog_deployment(
     admin_client: DynamicClient,
     model_registry_namespace: str,
 ) -> Generator[Deployment]:
-    """Temporarily expose the HF credential to the catalog through a Secret reference."""
+    """Provide a catalog Deployment with temporary credentials and operator reconciliation disabled."""
     deployment = Deployment(
         client=admin_client,
         name="model-catalog",
@@ -401,7 +401,10 @@ def private_hf_catalog_deployment(
             "valueFrom": {"secretKeyRef": {"name": private_hf_secret.name, "key": "token"}},
         }
     ]
-    patch = {"spec": {"template": {"spec": {"containers": containers}}}}
+    patch = {
+        "metadata": {"annotations": {"opendatahub.io/managed": "false"}},
+        "spec": {"template": {"spec": {"containers": containers}}},
+    }
     try:
         with ResourceEditor(patches={deployment: patch}):
             for current_deployment in TimeoutSampler(

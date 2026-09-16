@@ -184,7 +184,7 @@ catalogs:
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("epoch_time_before_config_map_update", "private_hf_catalog_config")
+@pytest.mark.usefixtures("private_hf_catalog_config")
 class TestHuggingFacePrivateGatedModelValidation:
     """Test HuggingFace private gated model synchronization and validation"""
 
