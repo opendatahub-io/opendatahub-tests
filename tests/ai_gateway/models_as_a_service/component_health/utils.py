@@ -9,10 +9,9 @@ from ocp_resources.cluster_role import ClusterRole
 from ocp_resources.cluster_role_binding import ClusterRoleBinding
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
-from ocp_resources.pod import Pod
 from ocp_resources.service_account import ServiceAccount
 from pytest_testconfig import config as py_config
-from timeout_sampler import TimeoutExpiredError, TimeoutSampler
+from timeout_sampler import TimeoutExpiredError
 
 from tests.ai_gateway.models_as_a_service.component_health.constants import (
     AI_GATEWAY_CONTROLLER_AITENANT_RESOURCE,
@@ -26,8 +25,6 @@ from tests.ai_gateway.models_as_a_service.component_health.constants import (
     AI_GATEWAY_CONTROLLER_LIVENESS_PROBE_PATH,
     AI_GATEWAY_CONTROLLER_MANAGER_CONTAINER_NAME,
     AI_GATEWAY_CONTROLLER_PARAMETERS_CONFIGMAP_NAME,
-    AI_GATEWAY_CONTROLLER_POD_LABEL_SELECTOR,
-    AI_GATEWAY_CONTROLLER_PODS_READY_TIMEOUT,
     AI_GATEWAY_CONTROLLER_READINESS_PROBE_PATH,
     AI_GATEWAY_CONTROLLER_SERVICE_ACCOUNT_NAME,
     AIGATEWAY_CR_CONDITION_TIMEOUT,
@@ -38,6 +35,7 @@ from tests.ai_gateway.models_as_a_service.component_health.constants import (
 )
 from tests.ai_gateway.models_as_a_service.utils import dsc_uses_aigateway_maas_schema
 from utilities.constants import ApiGroups
+from utilities.general import wait_for_pods_running
 from utilities.resources.aigateway import AIGateway
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -45,15 +43,14 @@ LOGGER = structlog.get_logger(name=__name__)
 
 def get_ai_gateway_controller_deployment(admin_client: DynamicClient) -> Deployment:
     """Return the ai-gateway-controller Deployment, asserting it exists."""
-    applications_namespace = py_config["applications_namespace"]
     controller_deployment = Deployment(
         client=admin_client,
         name=AI_GATEWAY_CONTROLLER_DEPLOYMENT_NAME,
-        namespace=applications_namespace,
+        namespace=py_config["applications_namespace"],
         ensure_exists=True,
     )
     assert controller_deployment.exists, (
-        f"Deployment '{applications_namespace}/{AI_GATEWAY_CONTROLLER_DEPLOYMENT_NAME}' not found - "
+        f"Deployment '{controller_deployment.namespace}/{AI_GATEWAY_CONTROLLER_DEPLOYMENT_NAME}' not found - "
         "expected ai-gateway-operator to deploy ai-gateway-controller when modelsAsAService is Managed"
     )
     return controller_deployment
@@ -70,144 +67,82 @@ def verify_ai_gateway_controller_deployment_available(admin_client: DynamicClien
     LOGGER.info(f"Deployment '{controller_deployment.namespace}/{controller_deployment.name}' is Available")
 
 
-def _ai_gateway_controller_pods_are_running(admin_client: DynamicClient, applications_namespace: str) -> bool:
-    """Return True when every ai-gateway-controller pod is Running with ready containers."""
-    pods = list(
-        Pod.get(
-            client=admin_client,
-            namespace=applications_namespace,
-            label_selector=AI_GATEWAY_CONTROLLER_POD_LABEL_SELECTOR,
-        )
-    )
-    if not pods:
-        return False
-
-    for pod in pods:
-        pod_phase = pod.instance.status.phase
-        if pod_phase != "Running":
-            return False
-        container_statuses = pod.instance.status.containerStatuses or []
-        if not container_statuses:
-            return False
-        for container_status in container_statuses:
-            if not container_status.ready:
-                return False
-    return True
-
-
 def verify_ai_gateway_controller_pods_running(admin_client: DynamicClient) -> None:
     """Assert ai-gateway-controller pods are Running and ready."""
-    applications_namespace = py_config["applications_namespace"]
-    try:
-        for pods_running in TimeoutSampler(
-            wait_timeout=AI_GATEWAY_CONTROLLER_PODS_READY_TIMEOUT,
-            sleep=5,
-            func=_ai_gateway_controller_pods_are_running,
-            admin_client=admin_client,
-            applications_namespace=applications_namespace,
-        ):
-            if pods_running:
-                LOGGER.info(f"ai-gateway-controller pods are Running in namespace '{applications_namespace}'")
-                return
-    except TimeoutExpiredError:
-        pods = list(
-            Pod.get(
-                client=admin_client,
-                namespace=applications_namespace,
-                label_selector=AI_GATEWAY_CONTROLLER_POD_LABEL_SELECTOR,
-            )
-        )
-        if not pods:
-            pytest.fail(
-                f"No pods found with label selector '{AI_GATEWAY_CONTROLLER_POD_LABEL_SELECTOR}' "
-                f"in namespace '{applications_namespace}' after {AI_GATEWAY_CONTROLLER_PODS_READY_TIMEOUT}s"
-            )
-        pod_phases = [pod.instance.status.phase for pod in pods]
-        pytest.fail(
-            f"Timed out after {AI_GATEWAY_CONTROLLER_PODS_READY_TIMEOUT}s waiting for "
-            f"ai-gateway-controller pods to be Running/Ready in '{applications_namespace}'; "
-            f"pod phases: {pod_phases!r}"
-        )
+    LOGGER.info(f"Checking pods in namespace '{py_config['applications_namespace']}' for ai-gateway-controller health")
+    wait_for_pods_running(admin_client=admin_client, namespace_name=py_config["applications_namespace"])
 
 
 def verify_ai_gateway_controller_rbac_exists(admin_client: DynamicClient) -> None:
     """Assert ai-gateway-controller ServiceAccount, cluster RBAC, binding wiring, and AITenant watch rules exist."""
-    applications_namespace = py_config["applications_namespace"]
-    missing_resources: list[str] = []
-
     service_account = ServiceAccount(
         client=admin_client,
         name=AI_GATEWAY_CONTROLLER_SERVICE_ACCOUNT_NAME,
-        namespace=applications_namespace,
+        namespace=py_config["applications_namespace"],
+        ensure_exists=True,
     )
-    if not service_account.exists:
-        missing_resources.append(
-            f"ServiceAccount/{AI_GATEWAY_CONTROLLER_SERVICE_ACCOUNT_NAME} in '{applications_namespace}'"
-        )
+    assert service_account.exists, (
+        f"ServiceAccount '{service_account.namespace}/{AI_GATEWAY_CONTROLLER_SERVICE_ACCOUNT_NAME}' not found"
+    )
 
     cluster_role = ClusterRole(
         client=admin_client,
         name=AI_GATEWAY_CONTROLLER_CLUSTER_ROLE_NAME,
+        ensure_exists=True,
     )
-    if not cluster_role.exists:
-        missing_resources.append(f"ClusterRole/{AI_GATEWAY_CONTROLLER_CLUSTER_ROLE_NAME}")
-    else:
-        cluster_role_rules = cluster_role.instance.rules or []
-        has_aitenants_watch_rule = any(
-            ApiGroups.MAAS_IO in (rule.apiGroups or [])
-            and AI_GATEWAY_CONTROLLER_AITENANT_RESOURCE in (rule.resources or [])
-            and AI_GATEWAY_CONTROLLER_AITENANT_WATCH_VERBS.issubset(set(rule.verbs or []))
-            for rule in cluster_role_rules
-        )
-        if not has_aitenants_watch_rule:
-            missing_resources.append(
-                f"ClusterRole/{AI_GATEWAY_CONTROLLER_CLUSTER_ROLE_NAME} rule "
-                f"{ApiGroups.MAAS_IO}/{AI_GATEWAY_CONTROLLER_AITENANT_RESOURCE} with verbs "
-                f"{', '.join(sorted(AI_GATEWAY_CONTROLLER_AITENANT_WATCH_VERBS))}"
-            )
+    assert cluster_role.exists, f"ClusterRole '{AI_GATEWAY_CONTROLLER_CLUSTER_ROLE_NAME}' not found"
+
+    cluster_role_rules = cluster_role.instance.rules or []
+    assert any(
+        ApiGroups.MAAS_IO in (rule.apiGroups or [])
+        and AI_GATEWAY_CONTROLLER_AITENANT_RESOURCE in (rule.resources or [])
+        and AI_GATEWAY_CONTROLLER_AITENANT_WATCH_VERBS.issubset(set(rule.verbs or []))
+        for rule in cluster_role_rules
+    ), (
+        f"ClusterRole '{AI_GATEWAY_CONTROLLER_CLUSTER_ROLE_NAME}' missing rule "
+        f"{ApiGroups.MAAS_IO}/{AI_GATEWAY_CONTROLLER_AITENANT_RESOURCE} with verbs "
+        f"{', '.join(sorted(AI_GATEWAY_CONTROLLER_AITENANT_WATCH_VERBS))}"
+    )
 
     cluster_role_binding = ClusterRoleBinding(
         client=admin_client,
         name=AI_GATEWAY_CONTROLLER_CLUSTER_ROLE_BINDING_NAME,
+        ensure_exists=True,
     )
-    if not cluster_role_binding.exists:
-        missing_resources.append(f"ClusterRoleBinding/{AI_GATEWAY_CONTROLLER_CLUSTER_ROLE_BINDING_NAME}")
-    else:
-        role_ref_name = cluster_role_binding.instance.roleRef.name
-        if role_ref_name != AI_GATEWAY_CONTROLLER_CLUSTER_ROLE_NAME:
-            missing_resources.append(
-                f"ClusterRoleBinding/{AI_GATEWAY_CONTROLLER_CLUSTER_ROLE_BINDING_NAME} roleRef "
-                f"'{role_ref_name}', expected '{AI_GATEWAY_CONTROLLER_CLUSTER_ROLE_NAME}'"
-            )
+    assert cluster_role_binding.exists, (
+        f"ClusterRoleBinding '{AI_GATEWAY_CONTROLLER_CLUSTER_ROLE_BINDING_NAME}' not found"
+    )
 
-        subjects = cluster_role_binding.instance.subjects or []
-        has_expected_subject = any(
-            subject.kind == "ServiceAccount"
-            and subject.name == AI_GATEWAY_CONTROLLER_SERVICE_ACCOUNT_NAME
-            and subject.namespace == applications_namespace
-            for subject in subjects
-        )
-        if not has_expected_subject:
-            missing_resources.append(
-                f"ClusterRoleBinding/{AI_GATEWAY_CONTROLLER_CLUSTER_ROLE_BINDING_NAME} missing subject "
-                f"ServiceAccount/{AI_GATEWAY_CONTROLLER_SERVICE_ACCOUNT_NAME} in '{applications_namespace}'"
-            )
+    role_ref = cluster_role_binding.instance.roleRef
+    assert role_ref.name == AI_GATEWAY_CONTROLLER_CLUSTER_ROLE_NAME, (
+        f"ClusterRoleBinding '{AI_GATEWAY_CONTROLLER_CLUSTER_ROLE_BINDING_NAME}' has roleRef.name "
+        f"'{role_ref.name}', expected '{AI_GATEWAY_CONTROLLER_CLUSTER_ROLE_NAME}'"
+    )
 
-    assert not missing_resources, f"Missing ai-gateway-controller RBAC: {', '.join(missing_resources)}"
+    subjects = cluster_role_binding.instance.subjects or []
+    assert any(
+        subject.kind == "ServiceAccount"
+        and subject.name == AI_GATEWAY_CONTROLLER_SERVICE_ACCOUNT_NAME
+        and subject.namespace == service_account.namespace
+        for subject in subjects
+    ), (
+        f"ClusterRoleBinding '{AI_GATEWAY_CONTROLLER_CLUSTER_ROLE_BINDING_NAME}' missing subject "
+        f"ServiceAccount/{AI_GATEWAY_CONTROLLER_SERVICE_ACCOUNT_NAME} in '{service_account.namespace}'"
+    )
+
     LOGGER.info("ai-gateway-controller ServiceAccount, cluster RBAC, and AITenant watch rules are present")
 
 
 def verify_ai_gateway_controller_parameters_configmap(admin_client: DynamicClient) -> None:
     """Assert ai-gateway-controller-parameters ConfigMap exists with expected image keys."""
-    applications_namespace = py_config["applications_namespace"]
     parameters_configmap = ConfigMap(
         client=admin_client,
         name=AI_GATEWAY_CONTROLLER_PARAMETERS_CONFIGMAP_NAME,
-        namespace=applications_namespace,
+        namespace=py_config["applications_namespace"],
         ensure_exists=True,
     )
     assert parameters_configmap.exists, (
-        f"ConfigMap '{applications_namespace}/{AI_GATEWAY_CONTROLLER_PARAMETERS_CONFIGMAP_NAME}' not found"
+        f"ConfigMap '{parameters_configmap.namespace}/{AI_GATEWAY_CONTROLLER_PARAMETERS_CONFIGMAP_NAME}' not found"
     )
 
     configmap_data: dict[str, str] = dict(parameters_configmap.instance.data or {})
@@ -221,11 +156,11 @@ def verify_ai_gateway_controller_parameters_configmap(admin_client: DynamicClien
             missing_keys.append(f"{configmap_key} (empty)")
 
     assert not missing_keys, (
-        f"ConfigMap '{applications_namespace}/{AI_GATEWAY_CONTROLLER_PARAMETERS_CONFIGMAP_NAME}' "
+        f"ConfigMap '{parameters_configmap.namespace}/{AI_GATEWAY_CONTROLLER_PARAMETERS_CONFIGMAP_NAME}' "
         f"is missing or has empty keys: {', '.join(missing_keys)}"
     )
     LOGGER.info(
-        f"ConfigMap '{applications_namespace}/{AI_GATEWAY_CONTROLLER_PARAMETERS_CONFIGMAP_NAME}' "
+        f"ConfigMap '{parameters_configmap.namespace}/{AI_GATEWAY_CONTROLLER_PARAMETERS_CONFIGMAP_NAME}' "
         "has controller and praxis-extproc image parameters"
     )
 
@@ -317,23 +252,22 @@ def verify_ai_gateway_controller_health_probes_configured(admin_client: DynamicC
 
 def verify_ai_gateway_controller_praxis_image_env_from_configmap(admin_client: DynamicClient) -> None:
     """Assert RELATED_IMAGE_ODH_PRAXIS_EXTPROC_IMAGE is wired from ai-gateway-controller-parameters."""
-    applications_namespace = py_config["applications_namespace"]
     controller_deployment = get_ai_gateway_controller_deployment(admin_client=admin_client)
     parameters_configmap = ConfigMap(
         client=admin_client,
         name=AI_GATEWAY_CONTROLLER_PARAMETERS_CONFIGMAP_NAME,
-        namespace=applications_namespace,
+        namespace=py_config["applications_namespace"],
         ensure_exists=True,
     )
 
     configmap_data: dict[str, str] = dict(parameters_configmap.instance.data or {})
     assert PRAXIS_EXTPROC_IMAGE_CONFIGMAP_KEY in configmap_data, (
-        f"ConfigMap '{applications_namespace}/{AI_GATEWAY_CONTROLLER_PARAMETERS_CONFIGMAP_NAME}' "
+        f"ConfigMap '{parameters_configmap.namespace}/{AI_GATEWAY_CONTROLLER_PARAMETERS_CONFIGMAP_NAME}' "
         f"is missing key '{PRAXIS_EXTPROC_IMAGE_CONFIGMAP_KEY}'"
     )
     assert configmap_data[PRAXIS_EXTPROC_IMAGE_CONFIGMAP_KEY].strip(), (
         f"ConfigMap key '{PRAXIS_EXTPROC_IMAGE_CONFIGMAP_KEY}' is empty in "
-        f"'{applications_namespace}/{AI_GATEWAY_CONTROLLER_PARAMETERS_CONFIGMAP_NAME}'"
+        f"'{parameters_configmap.namespace}/{AI_GATEWAY_CONTROLLER_PARAMETERS_CONFIGMAP_NAME}'"
     )
 
     manager_container = _find_manager_container(deployment=controller_deployment)
