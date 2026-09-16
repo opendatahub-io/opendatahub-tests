@@ -38,8 +38,8 @@ SENTIMENT_INFERENCE_CONFIG = {
 ISVC_NAME = "sentiment-analysis"
 
 
-@pytest.mark.rawdeployment
 @pytest.mark.smoke
+@pytest.mark.rawdeployment
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, transformer_auth_inference_service",
     [
