@@ -123,11 +123,11 @@ class TestDriftMetricsWithDBStorageMultiNs:
         current_client_token,
         model_namespaces,
         trustyai_service_with_db_storage_multi_ns,
-        gaussian_credit_model_multi_ns,
+        gaussian_credit_model_db_multi_ns,
         isvc_getter_token_multi_ns,
     ):
         for tai, inference_model, inference_token in zip(
-            trustyai_service_with_db_storage_multi_ns, gaussian_credit_model_multi_ns, isvc_getter_token_multi_ns
+            trustyai_service_with_db_storage_multi_ns, gaussian_credit_model_db_multi_ns, isvc_getter_token_multi_ns
         ):
             send_inferences_and_verify_trustyai_service_registered(
                 client=admin_client,
@@ -158,9 +158,9 @@ class TestDriftMetricsWithDBStorageMultiNs:
         admin_client,
         current_client_token,
         trustyai_service_with_db_storage_multi_ns,
-        gaussian_credit_model_multi_ns,
+        gaussian_credit_model_db_multi_ns,
     ):
-        for tai, model in zip(trustyai_service_with_db_storage_multi_ns, gaussian_credit_model_multi_ns):
+        for tai, model in zip(trustyai_service_with_db_storage_multi_ns, gaussian_credit_model_db_multi_ns):
             verify_trustyai_service_metric_scheduling_request(
                 client=admin_client,
                 trustyai_service=tai,

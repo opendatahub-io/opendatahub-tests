@@ -75,7 +75,7 @@ def trustyai_service_with_pvc_storage_multi_ns(
                     metrics=TAI_METRICS_CONFIG,
                     data=TAI_DATA_CONFIG,
                     wait_for_replicas=True,
-                    teardown=False,
+                    teardown=True,
                 )
             )
             for ns in model_namespaces
@@ -97,7 +97,7 @@ def kserve_logger_ca_bundle_multi_ns(
                     namespace=ns.name,
                     annotations={"service.beta.openshift.io/inject-cabundle": "true"},
                     data={},
-                    teardown=False,
+                    teardown=True,
                 )
             )
             for ns in model_namespaces
@@ -107,19 +107,19 @@ def kserve_logger_ca_bundle_multi_ns(
 
 @pytest.fixture(scope="class")
 def mlserver_runtime_multi_ns(admin_client, model_namespaces) -> Generator[list[ServingRuntime], Any]:
+    from utilities.constants import RuntimeTemplates
+    from utilities.serving_runtime import ServingRuntimeFromTemplate
+
     with ExitStack() as stack:
         runtimes = [
             stack.enter_context(
-                ServingRuntime(
+                ServingRuntimeFromTemplate(
                     client=admin_client,
                     namespace=ns.name,
                     name=KSERVE_MLSERVER,
-                    containers=KSERVE_MLSERVER_CONTAINERS,
-                    supported_model_formats=KSERVE_MLSERVER_SUPPORTED_MODEL_FORMATS,
-                    protocol_versions=["v2"],
-                    annotations=KSERVE_MLSERVER_ANNOTATIONS,
-                    label={"opendatahub.io/dashboard": "true"},
-                    teardown=False,
+                    template_name=RuntimeTemplates.MLSERVER,
+                    deployment_type=KServeDeploymentType.RAW_DEPLOYMENT,
+                    teardown=True,
                 )
             )
             for ns in model_namespaces
@@ -134,6 +134,45 @@ def gaussian_credit_model_multi_ns(
     mlserver_runtime_multi_ns: list[ServingRuntime],
     kserve_raw_config: ConfigMap,
     kserve_logger_ca_bundle_multi_ns: list[ConfigMap],
+    trustyai_service_with_pvc_storage_multi_ns: list[TrustyAIService],
+) -> Generator[list[InferenceService], Any]:
+    with ExitStack() as stack:
+        models = []
+        for ns, runtime in zip(model_namespaces, mlserver_runtime_multi_ns):
+            isvc_context = create_isvc(
+                client=admin_client,
+                namespace=ns.name,
+                name=GAUSSIAN_CREDIT_MODEL,
+                deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+                model_format=XGBOOST,
+                runtime=runtime.name,
+                storage_uri=GAUSSIAN_CREDIT_MODEL_STORAGE_URI,
+                enable_auth=True,
+                external_route=True,
+                wait_for_predictor_pods=False,
+                resources=GAUSSIAN_CREDIT_MODEL_RESOURCES,
+            )
+            isvc = stack.enter_context(cm=isvc_context)
+
+            wait_for_isvc_deployment_registered_by_trustyai_service(
+                client=admin_client,
+                isvc=isvc,
+                runtime_name=runtime.name,
+            )
+
+            models.append(isvc)
+
+        yield models
+
+
+@pytest.fixture(scope="class")
+def gaussian_credit_model_db_multi_ns(
+    admin_client: DynamicClient,
+    model_namespaces: list[Namespace],
+    mlserver_runtime_multi_ns: list[ServingRuntime],
+    kserve_raw_config: ConfigMap,
+    kserve_logger_ca_bundle_multi_ns: list[ConfigMap],
+    trustyai_service_with_db_storage_multi_ns: list[TrustyAIService],
 ) -> Generator[list[InferenceService], Any]:
     with ExitStack() as stack:
         models = []
