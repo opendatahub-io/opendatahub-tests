@@ -1,5 +1,4 @@
 import base64
-import os
 import time
 from collections.abc import Generator
 from typing import Any
@@ -10,14 +9,12 @@ import structlog
 from huggingface_hub import HfApi
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
-from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
-from timeout_sampler import TimeoutSampler
 
 import tests.ai_hub.constants as ai_hub_constants
 from tests.ai_hub.constants import (
@@ -349,98 +346,16 @@ def huggingface_model_portforward(
         raise
 
 
-@pytest.fixture(scope="module")
-def hf_ai_hub_token() -> str:
-    """Return the required private-model HF token, failing setup when it is unavailable."""
-    token = os.getenv("HF_AI_HUB_TOKEN")
-    if not token:
-        pytest.fail("HF_AI_HUB_TOKEN environment variable must be set and non-empty for private-model tests")
-    return token
-
-
-@pytest.fixture()
-def private_hf_secret(
-    hf_ai_hub_token: str,
-    admin_client: DynamicClient,
-    model_registry_namespace: str,
-) -> Generator[Secret]:
-    """Provide a temporary Secret containing the private-model HF token."""
-    with Secret(
-        client=admin_client,
-        name="hf-private-gated-test",
-        namespace=model_registry_namespace,
-        string_data={"token": hf_ai_hub_token},
-    ) as secret:
-        yield secret
-
-
-@pytest.fixture()
-def private_hf_catalog_deployment(
-    private_hf_secret: Secret,
-    admin_client: DynamicClient,
-    model_registry_namespace: str,
-) -> Generator[Deployment]:
-    """Provide a catalog Deployment with temporary credentials and operator reconciliation disabled."""
-    deployment = Deployment(
-        client=admin_client,
-        name="model-catalog",
-        namespace=model_registry_namespace,
-        ensure_exists=True,
-    )
-    containers = deployment.instance.to_dict()["spec"]["template"]["spec"]["containers"]
-    catalog_container = next(
-        container for container in containers if container["name"] == ai_hub_constants.CATALOG_CONTAINER
-    )
-    catalog_container["env"] = [
-        variable
-        for variable in catalog_container.get("env", [])
-        if variable["name"] != "HF_API_KEY_HUGGINGFACE_HUB_PRIVATE"
-    ] + [
-        {
-            "name": "HF_API_KEY_HUGGINGFACE_HUB_PRIVATE",
-            "valueFrom": {"secretKeyRef": {"name": private_hf_secret.name, "key": "token"}},
-        }
-    ]
-    patch = {
-        "metadata": {"annotations": {"opendatahub.io/managed": "false"}},
-        "spec": {"template": {"spec": {"containers": containers}}},
-    }
-    try:
-        with ResourceEditor(patches={deployment: patch}):
-            for current_deployment in TimeoutSampler(
-                wait_timeout=240,
-                sleep=5,
-                func=lambda: deployment.instance,
-            ):
-                status = current_deployment.status
-                desired_replicas = current_deployment.spec.replicas
-                if (
-                    status.get("observedGeneration", 0) >= current_deployment.metadata.generation
-                    and desired_replicas > 0
-                    and all(
-                        status.get(field, 0) == desired_replicas
-                        for field in ("replicas", "updatedReplicas", "readyReplicas", "availableReplicas")
-                    )
-                ):
-                    break
-            yield deployment
-    finally:
-        wait_for_model_catalog_pod_ready_after_deletion(
-            client=admin_client, model_registry_namespace=model_registry_namespace
-        )
-
-
 @pytest.fixture()
 def private_hf_catalog_config(
     request: pytest.FixtureRequest,
-    private_hf_catalog_deployment: Deployment,
     catalog_config_map: ConfigMap,
     admin_client: DynamicClient,
     model_registry_namespace: str,
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
 ) -> Generator[ConfigMap]:
-    """Temporarily configure the private HF source after its credential is available."""
+    """Temporarily configure the private HF source using existing catalog credentials."""
     try:
         with ResourceEditor(patches={catalog_config_map: {"data": {"sources.yaml": request.param["sources_yaml"]}}}):
             wait_for_model_catalog_pod_ready_after_deletion(
