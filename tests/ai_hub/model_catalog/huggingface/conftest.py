@@ -1,4 +1,5 @@
 import base64
+import os
 import time
 from collections.abc import Generator
 from typing import Any
@@ -9,11 +10,14 @@ import structlog
 from huggingface_hub import HfApi
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
+from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
+from timeout_sampler import TimeoutSampler
 
 import tests.ai_hub.constants as ai_hub_constants
 from tests.ai_hub.constants import (
@@ -24,7 +28,8 @@ from tests.ai_hub.constants import (
 )
 from tests.ai_hub.model_catalog.constants import HF_CUSTOM_MODE, HF_LAST_SYNCED_SOURCE_ID
 from tests.ai_hub.model_catalog.huggingface.utils import get_huggingface_model_from_api
-from tests.ai_hub.model_catalog.utils import get_models_from_catalog_api
+from tests.ai_hub.model_catalog.utils import get_models_from_catalog_api, wait_for_model_catalog_api
+from tests.ai_hub.utils import wait_for_model_catalog_pod_ready_after_deletion
 from utilities.infra import create_ns
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -342,3 +347,106 @@ def huggingface_model_portforward(
     except Exception as expt:
         LOGGER.error(f"Failed to set up port forwarding for pod {huggingface_predictor_pod.name}: {expt}")
         raise
+
+
+@pytest.fixture()
+def hf_ai_hub_token() -> str:
+    """Return the private-model HF token, or skip when it is unavailable."""
+    token = os.getenv("HF_AI_HUB_TOKEN")
+    if not token:
+        pytest.skip("HF_AI_HUB_TOKEN environment variable not set or empty")
+    return token
+
+
+@pytest.fixture()
+def private_hf_secret(
+    hf_ai_hub_token: str,
+    admin_client: DynamicClient,
+    model_registry_namespace: str,
+) -> Generator[Secret]:
+    """Provide a temporary Secret containing the private-model HF token."""
+    with Secret(
+        client=admin_client,
+        name="hf-private-gated-test",
+        namespace=model_registry_namespace,
+        string_data={"token": hf_ai_hub_token},
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture()
+def private_hf_catalog_deployment(
+    private_hf_secret: Secret,
+    admin_client: DynamicClient,
+    model_registry_namespace: str,
+) -> Generator[Deployment]:
+    """Temporarily expose the HF credential to the catalog through a Secret reference."""
+    deployment = Deployment(
+        client=admin_client,
+        name="model-catalog",
+        namespace=model_registry_namespace,
+        ensure_exists=True,
+    )
+    containers = deployment.instance.to_dict()["spec"]["template"]["spec"]["containers"]
+    catalog_container = next(
+        container for container in containers if container["name"] == ai_hub_constants.CATALOG_CONTAINER
+    )
+    catalog_container["env"] = [
+        variable
+        for variable in catalog_container.get("env", [])
+        if variable["name"] != "HF_API_KEY_HUGGINGFACE_HUB_PRIVATE"
+    ] + [
+        {
+            "name": "HF_API_KEY_HUGGINGFACE_HUB_PRIVATE",
+            "valueFrom": {"secretKeyRef": {"name": private_hf_secret.name, "key": "token"}},
+        }
+    ]
+    patch = {"spec": {"template": {"spec": {"containers": containers}}}}
+    try:
+        with ResourceEditor(patches={deployment: patch}):
+            for current_deployment in TimeoutSampler(
+                wait_timeout=240,
+                sleep=5,
+                func=lambda: deployment.instance,
+            ):
+                status = current_deployment.status
+                desired_replicas = current_deployment.spec.replicas
+                if (
+                    status.get("observedGeneration", 0) >= current_deployment.metadata.generation
+                    and desired_replicas > 0
+                    and all(
+                        status.get(field, 0) == desired_replicas
+                        for field in ("replicas", "updatedReplicas", "readyReplicas", "availableReplicas")
+                    )
+                ):
+                    break
+            yield deployment
+    finally:
+        wait_for_model_catalog_pod_ready_after_deletion(
+            client=admin_client, model_registry_namespace=model_registry_namespace
+        )
+
+
+@pytest.fixture()
+def private_hf_catalog_config(
+    request: pytest.FixtureRequest,
+    private_hf_catalog_deployment: Deployment,
+    catalog_config_map: ConfigMap,
+    admin_client: DynamicClient,
+    model_registry_namespace: str,
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+) -> Generator[ConfigMap]:
+    """Temporarily configure the private HF source after its credential is available."""
+    try:
+        with ResourceEditor(patches={catalog_config_map: {"data": {"sources.yaml": request.param["sources_yaml"]}}}):
+            wait_for_model_catalog_pod_ready_after_deletion(
+                client=admin_client, model_registry_namespace=model_registry_namespace
+            )
+            wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
+            yield catalog_config_map
+    finally:
+        wait_for_model_catalog_pod_ready_after_deletion(
+            client=admin_client, model_registry_namespace=model_registry_namespace
+        )
+        wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
