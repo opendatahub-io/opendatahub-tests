@@ -10,11 +10,15 @@ from .config_kv_cache_offload import KvCacheCpuOffloadConfig, KvCacheDiskOffload
 from .config_models import (
     Qwen3MoeDummyGpuConfig,
     TinyLlamaHfConfig,
+    TinyLlamaHfConnectionConfig,
     TinyLlamaHfGpuConfig,
     TinyLlamaOciConfig,
+    TinyLlamaOciConnectionConfig,
     TinyLlamaOciGpuAuthConfig,
     TinyLlamaOciGpuConfig,
     TinyLlamaS3Config,
+    TinyLlamaS3ConnectionConfig,
+    TinyLlamaS3ConnectionSmokeConfig,
     TinyLlamaS3GpuConfig,
 )
 from .config_multinode_moe import MultinodeMoeDpEpConfig
@@ -38,10 +42,14 @@ __all__ = [
     "TinyLlamaFast1Config",
     "TinyLlamaFast2Config",
     "TinyLlamaHfConfig",
+    "TinyLlamaHfConnectionConfig",
     "TinyLlamaHfGpuConfig",
     "TinyLlamaOciConfig",
+    "TinyLlamaOciConnectionConfig",
     "TinyLlamaOciGpuAuthConfig",
     "TinyLlamaOciGpuConfig",
     "TinyLlamaS3Config",
+    "TinyLlamaS3ConnectionConfig",
+    "TinyLlamaS3ConnectionSmokeConfig",
     "TinyLlamaS3GpuConfig",
 ]
