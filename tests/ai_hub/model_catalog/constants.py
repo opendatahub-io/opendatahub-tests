@@ -79,7 +79,6 @@ HF_MODELS: dict[str, Any] = {
         "microsoft/phi-2",
         "microsoft/Phi-4-mini-reasoning",
         "microsoft/Phi-3.5-mini-instruct",
-        "meta-llama/Llama-3.1-8B-Instruct",
         # Predictive models (text-classification)
         "distilbert/distilbert-base-uncased-finetuned-sst-2-english",
         "cardiffnlp/twitter-roberta-base-sentiment-latest",
