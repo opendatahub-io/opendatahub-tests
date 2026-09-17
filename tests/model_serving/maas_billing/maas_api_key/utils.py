@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 from urllib.parse import quote
 
@@ -8,15 +9,30 @@ import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import NotFoundError, ResourceNotFoundError
+from ocp_resources.resource import ResourceEditor
 from requests import Response
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_serving.maas_billing.utils import build_maas_headers
+from utilities.constants import MAAS_GATEWAY_NAMESPACE
+from utilities.plugins.constant import RestHeader
 from utilities.resources.auth_policy import AuthPolicy
+from utilities.resources.external_model import ExternalModel
 
 LOGGER = structlog.get_logger(name=__name__)
 
 MAAS_GATEWAY_AUTH_POLICY_NAME = "maas-gateway-auth"
+
+X_API_KEY_IDENTITY_SOURCE_NAME = "api-keys-x-api-key"  # pragma: allowlist secret
+X_API_KEY_TRIGGER_MODEL_NAME = "e2e-x-api-key-trigger"  # pragma: allowlist secret
+X_API_KEY_TRIGGER_PROVIDER_NAME = "e2e-x-api-key-provider"  # pragma: allowlist secret
+X_API_KEY_TRIGGER_SECRET_NAME = f"{X_API_KEY_TRIGGER_MODEL_NAME}-api-key"  # pragma: allowlist secret
+X_API_KEY_TRIGGER_ENDPOINT = "httpbin.org"  # pragma: allowlist secret
+X_API_KEY_RECONCILE_ANNOTATION = "e2e.maas/reconcile-trigger"  # pragma: allowlist secret
+MESSAGES_EXTERNAL_TARGET_MODEL = "claude-sonnet-4-20250514"
+MESSAGES_EXTERNAL_PROVIDER_PATH = "/v1/messages"
+INVALID_X_API_KEY = "sk-oai-invalid-not-a-real-key-12345"  # pragma: allowlist secret
+UNPREFIXED_X_API_KEY = "random-value-no-prefix"  # pragma: allowlist secret
 
 MAAS_AUTH_POLICY_FIXTURE_NAMES = (
     "external_model_auth_policy",
@@ -80,6 +96,37 @@ def assert_key_rejected_on_endpoint(
 ) -> None:
     """Poll a GET endpoint until the API key is rejected with expected status."""
     headers = build_maas_headers(token=plaintext_key)
+    for response in TimeoutSampler(
+        wait_timeout=wait_timeout,
+        sleep=sleep,
+        func=request_session_http.get,
+        url=url,
+        headers=headers,
+        timeout=10,
+    ):
+        LOGGER.info(f"Polling endpoint: status={response.status_code} expected={expected_status}")
+        if response.status_code == expected_status:
+            break
+
+    assert response.status_code == expected_status, (
+        f"Expected {expected_status}, got {response.status_code}: {(response.text or '')[:200]}"
+    )
+
+
+def assert_key_accepted_on_endpoint(
+    request_session_http: requests.Session,
+    url: str,
+    plaintext_key: str | None = None,
+    headers: dict[str, str] | None = None,
+    expected_status: int = 200,
+    wait_timeout: int = 60,
+    sleep: int = 2,
+) -> None:
+    """Poll a GET endpoint until the API key is accepted with expected status."""
+    if headers is None:
+        if plaintext_key is None:
+            raise ValueError("Either plaintext_key or headers must be provided")
+        headers = build_maas_headers(token=plaintext_key)
     for response in TimeoutSampler(
         wait_timeout=wait_timeout,
         sleep=sleep,
@@ -409,3 +456,112 @@ def get_auth_policy_callback_url(
         f"metadata.apiKeyValidation.http.url. "
         f"Found rules blocks: {configured_blocks or ['none']}"
     )
+
+
+def messages_format_external_provider_ref(provider_name: str) -> dict[str, Any]:
+    """Build an externalProviderRefs entry with Anthropic ``apiFormat: messages``."""
+    return {
+        "ref": {"name": provider_name},
+        "targetModel": MESSAGES_EXTERNAL_TARGET_MODEL,
+        "apiFormat": "messages",
+        "path": MESSAGES_EXTERNAL_PROVIDER_PATH,
+    }
+
+
+def build_x_api_key_headers(plaintext_api_key: str) -> dict[str, str]:
+    """Return HTTP headers that authenticate with ``x-api-key`` only."""
+    return {
+        "x-api-key": plaintext_api_key,
+        **RestHeader.HEADERS,
+    }
+
+
+def build_bearer_and_x_api_key_headers(plaintext_api_key: str) -> dict[str, str]:
+    """Return HTTP headers with both Bearer and ``x-api-key`` set to the same key."""
+    return {
+        **build_maas_headers(token=plaintext_api_key),
+        "x-api-key": plaintext_api_key,
+    }
+
+
+def list_gateway_auth_policy_identity_source_names(
+    admin_client: DynamicClient,
+    policy_name: str = MAAS_GATEWAY_AUTH_POLICY_NAME,
+    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+) -> list[str]:
+    """Return authentication rule names from the gateway Kuadrant AuthPolicy."""
+    auth_policy = AuthPolicy(
+        client=admin_client,
+        name=policy_name,
+        namespace=gateway_namespace,
+    )
+    if not auth_policy.exists:
+        return []
+
+    spec = auth_policy.instance.spec or {}
+    defaults = spec.get("defaults") or {}
+    rules = defaults.get("rules") or {}
+    authentication = rules.get("authentication") or {}
+    return list(authentication.keys())
+
+
+def wait_for_gateway_identity_source(
+    admin_client: DynamicClient,
+    identity_source_name: str,
+    present: bool,
+    timeout: int = 120,
+    policy_name: str = MAAS_GATEWAY_AUTH_POLICY_NAME,
+    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+    reconcile_external_model: ExternalModel | None = None,
+) -> None:
+    """Poll until an AuthPolicy identity source appears or disappears."""
+
+    def list_identity_source_names() -> list[str]:
+        return list_gateway_auth_policy_identity_source_names(
+            admin_client=admin_client,
+            policy_name=policy_name,
+            gateway_namespace=gateway_namespace,
+        )
+
+    try:
+        for identity_names in TimeoutSampler(
+            wait_timeout=timeout,
+            sleep=5,
+            func=list_identity_source_names,
+        ):
+            identity_found = identity_source_name in identity_names
+            if identity_found == present:
+                LOGGER.info(
+                    f"Gateway identity source {identity_source_name!r} "
+                    f"{'present' if present else 'absent'} (rules={identity_names})"
+                )
+                return
+            if reconcile_external_model is not None and present and not identity_found:
+                trigger_external_model_reconcile(external_model=reconcile_external_model)
+    except TimeoutExpiredError as error:
+        current_names = list_identity_source_names()
+        raise AssertionError(
+            f"Timed out waiting for identity source {identity_source_name!r} "
+            f"present={present} on AuthPolicy {gateway_namespace}/{policy_name}. "
+            f"Current authentication rules: {current_names}"
+        ) from error
+
+
+def trigger_external_model_reconcile(external_model: ExternalModel) -> None:
+    """Nudge maas-controller to reconcile MaaSAuthPolicies and gateway AuthPolicy.
+
+    Annotating the inference ExternalModel triggers the controller watch, which enqueues
+    MaaSAuthPolicy reconciliation (including discoverXAPIKeyNeeded). Metadata-only
+    updates on MaaSAuthPolicy do not reliably requeue reconciles.
+    """
+    annotation_value = str(int(time.time()))
+    existing_annotations = dict(external_model.instance.metadata.annotations or {})
+    updated_annotations = {
+        **existing_annotations,
+        X_API_KEY_RECONCILE_ANNOTATION: annotation_value,
+    }
+    with ResourceEditor(patches={external_model: {"metadata": {"annotations": updated_annotations}}}):
+        LOGGER.info(
+            f"Annotated ExternalModel {external_model.namespace}/{external_model.name} "
+            f"to trigger gateway auth reconciliation"
+        )
