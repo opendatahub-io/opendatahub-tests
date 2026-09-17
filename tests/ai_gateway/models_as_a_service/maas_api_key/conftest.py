@@ -470,9 +470,10 @@ def tinyllama_free_payload(
 
 @pytest.fixture(scope="session")
 def inference_external_model_crd_present(admin_client: DynamicClient) -> None:
-    """Skip x-api-key tests when the inference.opendatahub.io ExternalModel CRD is missing."""
-    if not cluster_has_inference_external_model_crd(admin_client=admin_client):
-        pytest.skip(f"Inference ExternalModel CRD ({INFERENCE_EXTERNAL_MODEL_CRD_NAME}) is not installed")
+    """Assert the inference.opendatahub.io ExternalModel CRD is installed."""
+    assert cluster_has_inference_external_model_crd(admin_client=admin_client), (
+        f"Inference ExternalModel CRD ({INFERENCE_EXTERNAL_MODEL_CRD_NAME}) is not installed"
+    )
 
 
 @pytest.fixture(scope="class")
