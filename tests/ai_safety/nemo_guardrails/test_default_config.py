@@ -28,6 +28,11 @@ _TIMEOUT = 120
 _SLEEP = 5
 
 
+def _copied_cm_name(cr_name: str, source_cm_name: str) -> str:
+    """Return the name the operator gives to a default CM copied into the CR namespace."""
+    return f"{cr_name}-{source_cm_name}"
+
+
 @pytest.mark.tier2
 @pytest.mark.ai_safety
 @pytest.mark.rawdeployment
@@ -48,18 +53,23 @@ class TestNemoGuardrailsDefaultConfig:
     ) -> None:
         """The operator copies the default CM from the operator namespace into the CR namespace.
 
+        The copy is named {cr-name}-{source-cm-name} to avoid collisions when multiple CRs
+        in the same namespace reference the same default CM.
+
         Given: NemoGuardrails CR referencing a default-prefixed configmap
         When: Reconciliation runs
-        Then: A ConfigMap with the same name appears in the CR namespace
+        Then: A ConfigMap named {cr-name}-{cm-name} appears in the CR namespace
         """
+        expected_name = _copied_cm_name(
+            cr_name=nemo_guardrails_default_config.name, source_cm_name=NEMO_DEFAULT_CONFIG_CM_PII
+        )
         cm = ConfigMap(
             client=admin_client,
-            name=NEMO_DEFAULT_CONFIG_CM_PII,
+            name=expected_name,
             namespace=model_namespace.name,
         )
         assert cm.exists, (
-            f"Expected default CM '{NEMO_DEFAULT_CONFIG_CM_PII}' to be copied into "
-            f"CR namespace '{model_namespace.name}'"
+            f"Expected default CM '{expected_name}' to be copied into CR namespace '{model_namespace.name}'"
         )
 
     def test_default_config_cm_labeled(
@@ -74,15 +84,18 @@ class TestNemoGuardrailsDefaultConfig:
         When: The CM is copied to the CR namespace
         Then: It has the label nemo-guardrails-config=true
         """
+        expected_name = _copied_cm_name(
+            cr_name=nemo_guardrails_default_config.name, source_cm_name=NEMO_DEFAULT_CONFIG_CM_PII
+        )
         cm = ConfigMap(
             client=admin_client,
-            name=NEMO_DEFAULT_CONFIG_CM_PII,
+            name=expected_name,
             namespace=model_namespace.name,
             ensure_exists=True,
         )
         labels = cm.instance.metadata.labels or {}
         assert labels.get("nemo-guardrails-config") == "true", (
-            f"Expected label 'nemo-guardrails-config=true' on CM in CR namespace, got: {labels}"
+            f"Expected label 'nemo-guardrails-config=true' on copied CM '{expected_name}', got: {labels}"
         )
 
     def test_default_config_volume_name_shortened(
@@ -224,14 +237,16 @@ class TestNemoGuardrailsDefaultConfigCleanup:
             )
             deployment.wait_for_replicas()
 
+            copied_cm_name = _copied_cm_name(cr_name=nemo_cr.name, source_cm_name=NEMO_DEFAULT_CONFIG_CM_PII)
+
             # Confirm the CM was copied into the CR namespace before deletion
             copied_cm = ConfigMap(
                 client=admin_client,
-                name=NEMO_DEFAULT_CONFIG_CM_PII,
+                name=copied_cm_name,
                 namespace=model_namespace.name,
             )
             assert copied_cm.exists, (
-                f"Expected '{NEMO_DEFAULT_CONFIG_CM_PII}' to be present in '{model_namespace.name}' before CR deletion"
+                f"Expected '{copied_cm_name}' to be present in '{model_namespace.name}' before CR deletion"
             )
 
         # CR is deleted when the `with` block exits; wait for the copied CM to be GC'd
@@ -241,7 +256,7 @@ class TestNemoGuardrailsDefaultConfigCleanup:
             func=lambda: (
                 ConfigMap(
                     client=admin_client,
-                    name=NEMO_DEFAULT_CONFIG_CM_PII,
+                    name=copied_cm_name,
                     namespace=model_namespace.name,
                 ).exists
             ),
@@ -251,9 +266,87 @@ class TestNemoGuardrailsDefaultConfigCleanup:
 
         assert not ConfigMap(
             client=admin_client,
-            name=NEMO_DEFAULT_CONFIG_CM_PII,
+            name=copied_cm_name,
             namespace=model_namespace.name,
         ).exists, (
-            f"CM '{NEMO_DEFAULT_CONFIG_CM_PII}' should have been garbage-collected from "
+            f"CM '{copied_cm_name}' should have been garbage-collected from "
             f"'{model_namespace.name}' after the NemoGuardrails CR was deleted"
         )
+
+    def test_shared_default_cm_isolation(
+        self,
+        admin_client: DynamicClient,
+        model_namespace: Namespace,
+        nemo_api_token_secret: Secret,
+    ) -> None:
+        """Deleting one CR does not garbage-collect another CR's copy of the same default CM.
+
+        Because each copy is named {cr-name}-{source-cm-name}, two CRs that reference the
+        same default CM get independent copies. Deleting CR A must only remove A's copy.
+
+        Given: Two NemoGuardrails CRs in the same namespace referencing the same default CM
+        When: The first CR is deleted
+        Then: Its copied CM is GC'd but the second CR's copied CM is unaffected
+        """
+        _env = [
+            {
+                "name": "OPENAI_API_KEY",
+                "valueFrom": {"secretKeyRef": {"name": nemo_api_token_secret.name, "key": "token"}},
+            }
+        ]
+        _nemo_configs = [{"name": "shared-pii", "configMaps": [NEMO_DEFAULT_CONFIG_CM_PII], "default": True}]
+
+        with NemoGuardrails(
+            client=admin_client,
+            name="nemo-shared-cr-a",
+            namespace=model_namespace.name,
+            nemo_configs=_nemo_configs,
+            replicas=1,
+            env=_env,
+        ) as cr_a:
+            Deployment(
+                client=admin_client,
+                name=cr_a.name,
+                namespace=cr_a.namespace,
+                wait_for_resource=True,
+            ).wait_for_replicas()
+
+            with NemoGuardrails(
+                client=admin_client,
+                name="nemo-shared-cr-b",
+                namespace=model_namespace.name,
+                nemo_configs=_nemo_configs,
+                replicas=1,
+                env=_env,
+            ) as cr_b:
+                Deployment(
+                    client=admin_client,
+                    name=cr_b.name,
+                    namespace=cr_b.namespace,
+                    wait_for_resource=True,
+                ).wait_for_replicas()
+
+                cm_name_a = _copied_cm_name(cr_name=cr_a.name, source_cm_name=NEMO_DEFAULT_CONFIG_CM_PII)
+                cm_name_b = _copied_cm_name(cr_name=cr_b.name, source_cm_name=NEMO_DEFAULT_CONFIG_CM_PII)
+
+                assert cm_name_a != cm_name_b, "Each CR must get a distinct copy of the default CM"
+                assert ConfigMap(client=admin_client, name=cm_name_a, namespace=model_namespace.name).exists
+                assert ConfigMap(client=admin_client, name=cm_name_b, namespace=model_namespace.name).exists
+
+            # cr_b deleted — wait for its copy to disappear
+            for sample in TimeoutSampler(
+                wait_timeout=_TIMEOUT,
+                sleep=_SLEEP,
+                func=lambda: ConfigMap(client=admin_client, name=cm_name_b, namespace=model_namespace.name).exists,
+            ):
+                if not sample:
+                    break
+
+            assert not ConfigMap(client=admin_client, name=cm_name_b, namespace=model_namespace.name).exists, (
+                f"CR B's CM '{cm_name_b}' should be GC'd after CR B was deleted"
+            )
+
+            # cr_a is still alive — its copy must still exist
+            assert ConfigMap(client=admin_client, name=cm_name_a, namespace=model_namespace.name).exists, (
+                f"CR A's CM '{cm_name_a}' should still exist while CR A is alive"
+            )
