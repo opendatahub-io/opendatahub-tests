@@ -3,18 +3,13 @@ from kubernetes.dynamic import DynamicClient
 
 from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import tenant_namespace_name_from_aitenant
 from tests.ai_gateway.models_as_a_service.multitenancy.utils import verify_maas_api_deployment_for_aitenant
-from tests.ai_gateway.models_as_a_service.praxis.constants import (
-    LEGACY_IPP_SWITCH_BACK_WAIT_TIMEOUT_SECONDS,
-    PRAXIS_PAYLOAD_PROCESSING_TYPE_VALUE,
-)
 from tests.ai_gateway.models_as_a_service.praxis.utils import (
     gateway_namespace_and_name_for_aitenant,
-    set_aitenant_payload_processing_type_annotation,
-    verify_aitenant_has_praxis_cleanup_finalizer,
+    migrate_legacy_aitenant_to_praxis_payload_processing,
+    restore_legacy_aitenant_payload_processing,
     verify_legacy_ipp_installed_for_aitenant,
-    verify_legacy_ipp_not_installed_for_aitenant,
     verify_praxis_maas_tenant_config_ready,
-    wait_until_aitenant_lacks_praxis_cleanup_finalizer,
+    verify_praxis_payload_processing_active_for_aitenant,
 )
 from utilities.resources.aitenant import AITenant
 
@@ -29,16 +24,12 @@ class TestAITenantPraxisLegacyIpp:
         admin_client: DynamicClient,
         ready_praxis_annotated_aitenant: AITenant,
     ) -> None:
-        """Given a Ready praxis-annotated AITenant, when maas-controller reconciles,
-        then maas legacy IPP markers (custom-ipp-config.yaml) are not present in the gateway namespace.
+        """Given a Ready praxis-annotated AITenant, when controllers reconcile,
+        then MaaS skips legacy IPP and ai-gateway installs the Praxis extproc bundle in the gateway namespace.
         """
-        gateway_namespace, _gateway_name = gateway_namespace_and_name_for_aitenant(
-            aitenant=ready_praxis_annotated_aitenant,
-        )
-        verify_legacy_ipp_not_installed_for_aitenant(
+        verify_praxis_payload_processing_active_for_aitenant(
             admin_client=admin_client,
-            gateway_namespace=gateway_namespace,
-            aitenant_name=ready_praxis_annotated_aitenant.name,
+            aitenant=ready_praxis_annotated_aitenant,
         )
 
     @pytest.mark.tier1
@@ -48,26 +39,11 @@ class TestAITenantPraxisLegacyIpp:
         ready_aitenant_without_praxis_annotation: AITenant,
     ) -> None:
         """Given a legacy AITenant with maas legacy IPP installed, when the praxis annotation is applied,
-        then maas legacy IPP markers are removed from the gateway namespace.
+        then MaaS releases legacy IPP and ai-gateway installs the Praxis bundle in the gateway namespace.
         """
-        gateway_namespace, _gateway_name = gateway_namespace_and_name_for_aitenant(
-            aitenant=ready_aitenant_without_praxis_annotation,
-        )
-        aitenant_name = ready_aitenant_without_praxis_annotation.name
-        verify_legacy_ipp_installed_for_aitenant(
+        migrate_legacy_aitenant_to_praxis_payload_processing(
             admin_client=admin_client,
-            gateway_namespace=gateway_namespace,
-            aitenant_name=aitenant_name,
-        )
-        set_aitenant_payload_processing_type_annotation(
             aitenant=ready_aitenant_without_praxis_annotation,
-            annotation_value=PRAXIS_PAYLOAD_PROCESSING_TYPE_VALUE,
-        )
-        verify_aitenant_has_praxis_cleanup_finalizer(aitenant=ready_aitenant_without_praxis_annotation)
-        verify_legacy_ipp_not_installed_for_aitenant(
-            admin_client=admin_client,
-            gateway_namespace=gateway_namespace,
-            aitenant_name=aitenant_name,
         )
 
     @pytest.mark.smoke
@@ -129,36 +105,11 @@ class TestAITenantPraxisLegacyIpp:
         """Given a tenant switched to praxis and back to legacy, when the annotation is removed,
         then maas-controller manages legacy IPP again in the gateway namespace.
         """
-        gateway_namespace, _gateway_name = gateway_namespace_and_name_for_aitenant(
-            aitenant=ready_aitenant_without_praxis_annotation,
-        )
-        aitenant_name = ready_aitenant_without_praxis_annotation.name
-        verify_legacy_ipp_installed_for_aitenant(
+        migrate_legacy_aitenant_to_praxis_payload_processing(
             admin_client=admin_client,
-            gateway_namespace=gateway_namespace,
-            aitenant_name=aitenant_name,
-        )
-        set_aitenant_payload_processing_type_annotation(
             aitenant=ready_aitenant_without_praxis_annotation,
-            annotation_value=PRAXIS_PAYLOAD_PROCESSING_TYPE_VALUE,
         )
-        verify_aitenant_has_praxis_cleanup_finalizer(aitenant=ready_aitenant_without_praxis_annotation)
-        verify_legacy_ipp_not_installed_for_aitenant(
+        restore_legacy_aitenant_payload_processing(
             admin_client=admin_client,
-            gateway_namespace=gateway_namespace,
-            aitenant_name=aitenant_name,
-        )
-        set_aitenant_payload_processing_type_annotation(
             aitenant=ready_aitenant_without_praxis_annotation,
-            annotation_value=None,
-        )
-        wait_until_aitenant_lacks_praxis_cleanup_finalizer(
-            aitenant=ready_aitenant_without_praxis_annotation,
-            timeout=LEGACY_IPP_SWITCH_BACK_WAIT_TIMEOUT_SECONDS,
-        )
-        verify_legacy_ipp_installed_for_aitenant(
-            admin_client=admin_client,
-            gateway_namespace=gateway_namespace,
-            aitenant_name=aitenant_name,
-            timeout=LEGACY_IPP_SWITCH_BACK_WAIT_TIMEOUT_SECONDS,
         )
