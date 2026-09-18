@@ -72,7 +72,7 @@ def find_matching_llminferenceserviceconfig(
     topology: str,
     name_regex: str = "",
 ) -> BaseRefsResult:
-    """Find an LLMInferenceServiceConfig matching topology and optional accelerator/name filters.
+    """Find an LLMInferenceServiceConfig matching topology and accelerator/name filters.
 
     Lists CRs in the DSCI applications namespace, filters by
     ``opendatahub.io/recommended-accelerators`` and
@@ -81,7 +81,8 @@ def find_matching_llminferenceserviceconfig(
     Args:
         client: Kubernetes dynamic client.
         accelerator: The k8s accelerator resource name (e.g. ``nvidia.com/gpu``).
-            If None, do not filter on the recommended accelerator annotation.
+            If None, match configs with no recommended accelerators (an empty
+            ``opendatahub.io/recommended-accelerators`` list).
         topology: The deployment topology to match (e.g. ``workload-single-node``).
         name_regex: Optional regex to filter CR names (e.g. ``.*fast-1$``).
 
@@ -107,7 +108,10 @@ def find_matching_llminferenceserviceconfig(
         if name_regex and not re.search(name_regex, llmisvcconfig.name):
             continue
 
-        if accelerator is not None and accelerator not in llmisvcconfig.accelerators:
+        if accelerator is None:
+            if llmisvcconfig.accelerators:
+                continue
+        elif accelerator not in llmisvcconfig.accelerators:
             continue
 
         if topology not in llmisvcconfig.topologies:
@@ -848,12 +852,16 @@ def log_base_refs_selection(
     name_regex: str,
     result: BaseRefsResult | None = None,
 ) -> None:
-    """Log base refs selection block. Pass result=None for NVIDIA default (no discovery)."""
+    """Log base refs selection block.
+
+    ``accelerator=None`` represents an empty recommended-accelerators filter.
+    Pass ``result=None`` for NVIDIA's default configuration (no discovery).
+    """
     sections = [
         f"\n{'=' * 60}",
         "  Base refs selection",
         f"{'=' * 60}",
-        f"  Accelerator:  {accelerator or '(not filtered)'}",
+        f"  Accelerator:  {accelerator}",
         f"  Topology:     {topology}",
         f"  Name regex:   {name_regex}",
     ]

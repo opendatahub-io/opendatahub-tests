@@ -166,20 +166,18 @@ class LLMISvcConfig:
 class CpuConfig(LLMISvcConfig):
     """CPU inference configuration using a versioned CPU LLMInferenceServiceConfig."""
 
+    accelerator_config_name_regex = r"^(?!.*fast-)"
+
     @classmethod
     def build(cls, client: DynamicClient) -> type:
-        """Prepare CPU inference configuration:
+        """Resolve all cluster-dependent CPU configuration.
 
-        1. Skip CPU tests on ARM64 clusters.
-        2. Skip HuggingFace-backed tests on disconnected clusters.
-        3. Find the versioned CPU ``LLMInferenceServiceConfig`` for the
-           single-node workload topology.
-        4. Fail if no matching configuration is available.
-        5. Return a derived configuration class referencing the selected
-           ``LLMInferenceServiceConfig`` through ``base_refs``.
+        1. Skip on ARM64 clusters, where llm-d CPU inference is unsupported.
+        2. Skip on disconnected clusters when the model storage is HuggingFace.
+        3. Resolve the matching CPU ``LLMInferenceServiceConfig`` CR (base_refs).
+        4. Return a derived config class with ``base_refs`` bound.
         """
         supported_topology = "workload-single-node"
-        name_regex = r"^(?:.*-)?kserve-config-llm-template-cpu$"
 
         if is_arm64_cluster(client=client):
             skip_test(reason="llm-d CPU inference is not supported on arm64 clusters")
@@ -187,24 +185,24 @@ class CpuConfig(LLMISvcConfig):
         if cls.storage_uri.startswith("hf://") and is_disconnected_cluster(client=client):
             skip_test(reason="HuggingFace storage not available on disconnected clusters")
 
+        # The LLMInferenceServiceConfig for CPU inference is found by
+        # accelerators=[] and topologies=['workload-single-node']
         result = find_matching_llminferenceserviceconfig(
             client=client,
             accelerator=None,
             topology=supported_topology,
-            name_regex=name_regex,
+            name_regex=cls.accelerator_config_name_regex,
         )
         log_base_refs_selection(
             accelerator=None,
             topology=supported_topology,
-            name_regex=name_regex,
+            name_regex=cls.accelerator_config_name_regex,
             result=result,
         )
 
         if not result.matched:
             pytest.fail(
-                f"No CPU LLMInferenceServiceConfig matched "
-                f"'{name_regex}' "
-                f"and topology='{supported_topology}'. See logs above for details.",
+                "No LLMInferenceServiceConfig matched the CPU base-ref selection. See logs above for details.",
                 pytrace=False,
             )
 
