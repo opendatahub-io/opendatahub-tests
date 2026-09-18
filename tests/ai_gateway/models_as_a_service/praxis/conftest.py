@@ -5,7 +5,11 @@ import pytest
 from kubernetes.dynamic import DynamicClient
 
 from tests.ai_gateway.models_as_a_service.praxis.constants import PRAXIS_PAYLOAD_PROCESSING_TYPE_VALUE
-from tests.ai_gateway.models_as_a_service.praxis.utils import praxis_aitenant_with_bootstrap_gateway
+from tests.ai_gateway.models_as_a_service.praxis.utils import (
+    praxis_aitenant_with_bootstrap_gateway,
+    verify_aitenant_has_praxis_cleanup_finalizer,
+    verify_aitenant_lacks_praxis_cleanup_finalizer,
+)
 from tests.ai_gateway.models_as_a_service.utils import deploy_and_verify_aitenant_ready
 from utilities.resources.aitenant import AITenant
 
@@ -24,6 +28,7 @@ def ready_praxis_annotated_aitenant(
         teardown=teardown_resources,
     ) as aitenant:
         deploy_and_verify_aitenant_ready(aitenant=aitenant)
+        verify_aitenant_has_praxis_cleanup_finalizer(aitenant=aitenant)
         yield aitenant
 
 
@@ -41,4 +46,5 @@ def ready_aitenant_without_praxis_annotation(
         teardown=teardown_resources,
     ) as aitenant:
         deploy_and_verify_aitenant_ready(aitenant=aitenant)
+        verify_aitenant_lacks_praxis_cleanup_finalizer(aitenant=aitenant)
         yield aitenant
