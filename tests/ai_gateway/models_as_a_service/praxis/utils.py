@@ -25,6 +25,8 @@ from tests.ai_gateway.models_as_a_service.praxis.constants import (
     LEGACY_IPP_POST_PROCESSING_NAME_BASE,
     LEGACY_IPP_PRE_PROCESSING_NAME_BASE,
     LEGACY_IPP_SWITCH_BACK_WAIT_TIMEOUT_SECONDS,
+    LEGACY_POST_PROCESSING_CONTAINER_CONFIG_ARG,
+    LEGACY_PRE_PROCESSING_CONTAINER_CONFIG_ARG,
     MAAS_IPP_MIGRATION_CLEANUP_COMPLETE_ANNOTATION,
     MAAS_IPP_RESOURCES_RELEASED_CONDITION,
     PRAXIS_AITENANT_CLEANUP_FINALIZER,
@@ -267,18 +269,22 @@ def _legacy_ipp_plugins_configmap_data_keys(
     return set(configmap_data.keys())
 
 
-def _legacy_ipp_plugins_configmap_has_custom_config(
+def _legacy_ipp_plugins_configmap_has_full_maas_config(
     admin_client: DynamicClient,
     gateway_namespace: str,
     aitenant_name: str,
 ) -> bool:
-    """Return True when the per-tenant legacy IPP plugins ConfigMap exists with custom-ipp-config.yaml."""
+    """Return True when the tenant plugins ConfigMap includes both maas legacy IPP config keys."""
     configmap_data_keys = _legacy_ipp_plugins_configmap_data_keys(
         admin_client=admin_client,
         gateway_namespace=gateway_namespace,
         aitenant_name=aitenant_name,
     )
-    return LEGACY_IPP_CUSTOM_CONFIG_DATA_KEY in configmap_data_keys
+    required_legacy_keys = {
+        LEGACY_IPP_CUSTOM_CONFIG_DATA_KEY,
+        LEGACY_IPP_CUSTOM_PRE_CONFIG_DATA_KEY,
+    }
+    return required_legacy_keys.issubset(configmap_data_keys)
 
 
 def _legacy_ipp_envoy_filter_exists(
@@ -313,12 +319,21 @@ def _legacy_ipp_deployment_exists(
 
 
 def _maas_legacy_ipp_configmap_keys_present(configmap_data_keys: set[str]) -> bool:
-    """Return True when plugins ConfigMap data includes maas legacy IPP config keys."""
+    """Return True when plugins ConfigMap data includes any maas legacy IPP config key."""
     legacy_marker_keys = {
         LEGACY_IPP_CUSTOM_CONFIG_DATA_KEY,
         LEGACY_IPP_CUSTOM_PRE_CONFIG_DATA_KEY,
     }
     return bool(configmap_data_keys & legacy_marker_keys)
+
+
+def _praxis_ipp_configmap_keys_present(configmap_data_keys: set[str]) -> bool:
+    """Return True when plugins ConfigMap data includes any Praxis extproc config key."""
+    praxis_marker_keys = {
+        PRAXIS_EXTPROC_CONFIG_DATA_KEY,
+        PRAXIS_PRE_EXTPROC_CONFIG_DATA_KEY,
+    }
+    return bool(configmap_data_keys & praxis_marker_keys)
 
 
 def maas_legacy_ipp_markers_present_in_gateway_namespace(
@@ -386,12 +401,29 @@ def _describe_legacy_ipp_stack_in_gateway_namespace(
         gateway_namespace=gateway_namespace,
     ):
         present_resources.append(f"Deployment/{pre_processing_name}")
-    if _legacy_ipp_plugins_configmap_has_custom_config(
+    configmap_data_keys = _legacy_ipp_plugins_configmap_data_keys(
         admin_client=admin_client,
         gateway_namespace=gateway_namespace,
         aitenant_name=aitenant_name,
-    ):
-        present_resources.append(f"ConfigMap/{plugins_configmap_name}")
+    )
+    if _maas_legacy_ipp_configmap_keys_present(configmap_data_keys=configmap_data_keys):
+        legacy_keys = sorted(
+            configmap_data_keys
+            & {
+                LEGACY_IPP_CUSTOM_CONFIG_DATA_KEY,
+                LEGACY_IPP_CUSTOM_PRE_CONFIG_DATA_KEY,
+            }
+        )
+        present_resources.append(f"ConfigMap/{plugins_configmap_name} keys={legacy_keys}")
+    if _praxis_ipp_configmap_keys_present(configmap_data_keys=configmap_data_keys):
+        praxis_keys = sorted(
+            configmap_data_keys
+            & {
+                PRAXIS_EXTPROC_CONFIG_DATA_KEY,
+                PRAXIS_PRE_EXTPROC_CONFIG_DATA_KEY,
+            }
+        )
+        present_resources.append(f"ConfigMap/{plugins_configmap_name} praxis keys={praxis_keys}")
     if _legacy_ipp_envoy_filter_exists(
         admin_client=admin_client,
         gateway_namespace=gateway_namespace,
@@ -436,51 +468,108 @@ def wait_until_legacy_ipp_absent_in_gateway_namespace(
         )
 
 
+def _legacy_ipp_stack_ready_in_gateway_namespace(
+    admin_client: DynamicClient,
+    gateway_namespace: str,
+    aitenant_name: str,
+) -> bool:
+    """Return True when maas-controller legacy IPP stack is present (CM keys, Deployments, legacy container args)."""
+    if not _legacy_ipp_plugins_configmap_has_full_maas_config(
+        admin_client=admin_client,
+        gateway_namespace=gateway_namespace,
+        aitenant_name=aitenant_name,
+    ):
+        return False
+    configmap_data_keys = _legacy_ipp_plugins_configmap_data_keys(
+        admin_client=admin_client,
+        gateway_namespace=gateway_namespace,
+        aitenant_name=aitenant_name,
+    )
+    if _praxis_ipp_configmap_keys_present(configmap_data_keys=configmap_data_keys):
+        return False
+    post_processing_name = legacy_ipp_post_processing_deployment_name(aitenant_name=aitenant_name)
+    pre_processing_name = legacy_ipp_pre_processing_deployment_name(aitenant_name=aitenant_name)
+    if not _legacy_ipp_deployment_exists(
+        admin_client=admin_client,
+        deployment_name=post_processing_name,
+        gateway_namespace=gateway_namespace,
+    ):
+        return False
+    if not _legacy_ipp_deployment_exists(
+        admin_client=admin_client,
+        deployment_name=pre_processing_name,
+        gateway_namespace=gateway_namespace,
+    ):
+        return False
+    return (
+        _legacy_ipp_envoy_filter_exists(
+            admin_client=admin_client,
+            gateway_namespace=gateway_namespace,
+            aitenant_name=aitenant_name,
+        )
+        and _deployment_container_args_include(
+            admin_client=admin_client,
+            deployment_name=post_processing_name,
+            gateway_namespace=gateway_namespace,
+            expected_argument=LEGACY_POST_PROCESSING_CONTAINER_CONFIG_ARG,
+        )
+        and _deployment_container_args_include(
+            admin_client=admin_client,
+            deployment_name=pre_processing_name,
+            gateway_namespace=gateway_namespace,
+            expected_argument=LEGACY_PRE_PROCESSING_CONTAINER_CONFIG_ARG,
+        )
+        and not _deployment_container_args_include(
+            admin_client=admin_client,
+            deployment_name=post_processing_name,
+            gateway_namespace=gateway_namespace,
+            expected_argument=PRAXIS_POST_PROCESSING_CONTAINER_CONFIG_ARG,
+        )
+        and not _deployment_container_args_include(
+            admin_client=admin_client,
+            deployment_name=pre_processing_name,
+            gateway_namespace=gateway_namespace,
+            expected_argument=PRAXIS_PRE_PROCESSING_CONTAINER_CONFIG_ARG,
+        )
+    )
+
+
 def wait_until_legacy_ipp_present_in_gateway_namespace(
     admin_client: DynamicClient,
     gateway_namespace: str,
     aitenant_name: str,
     timeout: int = DEFAULT_LEGACY_IPP_WAIT_TIMEOUT_SECONDS,
 ) -> None:
-    """Poll until per-tenant legacy IPP post-processing and plugins ConfigMap are present."""
+    """Poll until the full maas-controller legacy IPP stack is present in the gateway namespace."""
     post_processing_name = legacy_ipp_post_processing_deployment_name(aitenant_name=aitenant_name)
+    pre_processing_name = legacy_ipp_pre_processing_deployment_name(aitenant_name=aitenant_name)
     plugins_configmap_name = legacy_ipp_plugins_configmap_name(aitenant_name=aitenant_name)
 
-    def legacy_ipp_ready() -> bool:
-        post_processing_deployment = Deployment(
-            client=admin_client,
-            name=post_processing_name,
-            namespace=gateway_namespace,
-            wait_for_resource=False,
-        )
-        if not post_processing_deployment.exists:
-            return False
-        if not _legacy_ipp_plugins_configmap_has_custom_config(
-            admin_client=admin_client,
-            gateway_namespace=gateway_namespace,
-            aitenant_name=aitenant_name,
-        ):
-            return False
-        return _legacy_ipp_envoy_filter_exists(
-            admin_client=admin_client,
-            gateway_namespace=gateway_namespace,
-            aitenant_name=aitenant_name,
-        )
-
     try:
-        for ready in TimeoutSampler(
+        for stack_ready in TimeoutSampler(
             wait_timeout=timeout,
             sleep=LEGACY_IPP_POLL_INTERVAL_SECONDS,
-            func=legacy_ipp_ready,
+            func=lambda: _legacy_ipp_stack_ready_in_gateway_namespace(
+                admin_client=admin_client,
+                gateway_namespace=gateway_namespace,
+                aitenant_name=aitenant_name,
+            ),
         ):
-            if ready:
+            if stack_ready:
                 post_processing_deployment = Deployment(
                     client=admin_client,
                     name=post_processing_name,
                     namespace=gateway_namespace,
                     ensure_exists=True,
                 )
+                pre_processing_deployment = Deployment(
+                    client=admin_client,
+                    name=pre_processing_name,
+                    namespace=gateway_namespace,
+                    ensure_exists=True,
+                )
                 post_processing_deployment.wait_for_condition(condition="Available", status="True", timeout=timeout)
+                pre_processing_deployment.wait_for_condition(condition="Available", status="True", timeout=timeout)
                 return
     except TimeoutExpiredError:
         stack_summary = _describe_legacy_ipp_stack_in_gateway_namespace(
@@ -489,9 +578,10 @@ def wait_until_legacy_ipp_present_in_gateway_namespace(
             aitenant_name=aitenant_name,
         )
         pytest.fail(
-            f"Timed out after {timeout}s waiting for legacy IPP Deployment '{post_processing_name}', "
-            f"EnvoyFilter '{post_processing_name}', and ConfigMap '{plugins_configmap_name}' in gateway "
-            f"namespace '{gateway_namespace}'; observed: {stack_summary}"
+            f"Timed out after {timeout}s waiting for full legacy IPP stack (Deployments "
+            f"'{post_processing_name}' and '{pre_processing_name}', EnvoyFilter '{post_processing_name}', "
+            f"ConfigMap '{plugins_configmap_name}' with both maas legacy keys) in gateway namespace "
+            f"'{gateway_namespace}'; observed: {stack_summary}"
         )
 
 
@@ -768,36 +858,108 @@ def verify_praxis_ipp_bundle_installed_for_aitenant(
     )
 
 
+def _praxis_ipp_bundle_absent_in_gateway_namespace(
+    admin_client: DynamicClient,
+    gateway_namespace: str,
+    aitenant_name: str,
+) -> bool:
+    """Return True when no Praxis extproc CM keys or Praxis container args remain on tenant IPP workloads."""
+    configmap_data_keys = _legacy_ipp_plugins_configmap_data_keys(
+        admin_client=admin_client,
+        gateway_namespace=gateway_namespace,
+        aitenant_name=aitenant_name,
+    )
+    post_processing_name = legacy_ipp_post_processing_deployment_name(aitenant_name=aitenant_name)
+    pre_processing_name = legacy_ipp_pre_processing_deployment_name(aitenant_name=aitenant_name)
+    praxis_signals_remain = (
+        _praxis_ipp_configmap_keys_present(configmap_data_keys=configmap_data_keys)
+        or _deployment_container_args_include(
+            admin_client=admin_client,
+            deployment_name=post_processing_name,
+            gateway_namespace=gateway_namespace,
+            expected_argument=PRAXIS_POST_PROCESSING_CONTAINER_CONFIG_ARG,
+        )
+        or _deployment_container_args_include(
+            admin_client=admin_client,
+            deployment_name=pre_processing_name,
+            gateway_namespace=gateway_namespace,
+            expected_argument=PRAXIS_PRE_PROCESSING_CONTAINER_CONFIG_ARG,
+        )
+    )
+    return not praxis_signals_remain
+
+
+def _describe_praxis_ipp_bundle_absence_blockers_in_gateway_namespace(
+    admin_client: DynamicClient,
+    gateway_namespace: str,
+    aitenant_name: str,
+) -> str:
+    """Return a short summary of Praxis IPP signals still present while waiting for teardown."""
+    blockers: list[str] = []
+    plugins_configmap_name = legacy_ipp_plugins_configmap_name(aitenant_name=aitenant_name)
+    configmap_data_keys = _legacy_ipp_plugins_configmap_data_keys(
+        admin_client=admin_client,
+        gateway_namespace=gateway_namespace,
+        aitenant_name=aitenant_name,
+    )
+    praxis_keys = sorted(
+        configmap_data_keys
+        & {
+            PRAXIS_EXTPROC_CONFIG_DATA_KEY,
+            PRAXIS_PRE_EXTPROC_CONFIG_DATA_KEY,
+        }
+    )
+    if praxis_keys:
+        blockers.append(f"ConfigMap/{plugins_configmap_name} still has Praxis keys {praxis_keys}")
+    post_processing_name = legacy_ipp_post_processing_deployment_name(aitenant_name=aitenant_name)
+    pre_processing_name = legacy_ipp_pre_processing_deployment_name(aitenant_name=aitenant_name)
+    if _deployment_container_args_include(
+        admin_client=admin_client,
+        deployment_name=post_processing_name,
+        gateway_namespace=gateway_namespace,
+        expected_argument=PRAXIS_POST_PROCESSING_CONTAINER_CONFIG_ARG,
+    ):
+        blockers.append(f"Deployment/{post_processing_name} still uses Praxis extproc container args")
+    if _deployment_container_args_include(
+        admin_client=admin_client,
+        deployment_name=pre_processing_name,
+        gateway_namespace=gateway_namespace,
+        expected_argument=PRAXIS_PRE_PROCESSING_CONTAINER_CONFIG_ARG,
+    ):
+        blockers.append(f"Deployment/{pre_processing_name} still uses Praxis pre-extproc container args")
+    if not blockers:
+        return "no Praxis IPP teardown blockers detected"
+    return "; ".join(blockers)
+
+
 def wait_until_praxis_ipp_bundle_absent_in_gateway_namespace(
     admin_client: DynamicClient,
     gateway_namespace: str,
     aitenant_name: str,
     timeout: int = DEFAULT_LEGACY_IPP_WAIT_TIMEOUT_SECONDS,
 ) -> None:
-    """Poll until the Praxis IPP bundle is no longer present in the gateway namespace."""
+    """Poll until Praxis extproc ConfigMap keys and container args are gone from the gateway namespace."""
     try:
         for bundle_absent in TimeoutSampler(
             wait_timeout=timeout,
             sleep=LEGACY_IPP_POLL_INTERVAL_SECONDS,
-            func=lambda: (
-                not _praxis_ipp_bundle_ready_in_gateway_namespace(
-                    admin_client=admin_client,
-                    gateway_namespace=gateway_namespace,
-                    aitenant_name=aitenant_name,
-                )
+            func=lambda: _praxis_ipp_bundle_absent_in_gateway_namespace(
+                admin_client=admin_client,
+                gateway_namespace=gateway_namespace,
+                aitenant_name=aitenant_name,
             ),
         ):
             if bundle_absent:
                 return
     except TimeoutExpiredError:
-        bundle_summary = _describe_praxis_ipp_bundle_in_gateway_namespace(
+        absence_blockers = _describe_praxis_ipp_bundle_absence_blockers_in_gateway_namespace(
             admin_client=admin_client,
             gateway_namespace=gateway_namespace,
             aitenant_name=aitenant_name,
         )
         pytest.fail(
             f"Praxis IPP bundle for AITenant '{aitenant_name}' in gateway namespace "
-            f"'{gateway_namespace}' is still present after {timeout}s; observed: {bundle_summary}"
+            f"'{gateway_namespace}' is still present after {timeout}s; observed: {absence_blockers}"
         )
 
 

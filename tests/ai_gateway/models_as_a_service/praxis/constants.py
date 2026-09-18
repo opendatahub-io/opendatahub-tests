@@ -10,6 +10,8 @@ LEGACY_IPP_PRE_PROCESSING_NAME_BASE: str = "payload-pre-processing"
 LEGACY_IPP_PLUGINS_CONFIGMAP_NAME_BASE: str = "payload-processing-plugins"
 LEGACY_IPP_CUSTOM_CONFIG_DATA_KEY: str = "custom-ipp-config.yaml"
 LEGACY_IPP_CUSTOM_PRE_CONFIG_DATA_KEY: str = "custom-pre-processing-ipp-config.yaml"
+LEGACY_POST_PROCESSING_CONTAINER_CONFIG_ARG: str = "/config/custom-ipp-config.yaml"
+LEGACY_PRE_PROCESSING_CONTAINER_CONFIG_ARG: str = "/config/custom-pre-processing-ipp-config.yaml"
 
 # Praxis extproc plugins (ai-gateway-controller praxis-extproc overlay; see pkg/tenant/constants.go).
 PRAXIS_EXTPROC_CONFIG_DATA_KEY: str = "extproc.yaml"
