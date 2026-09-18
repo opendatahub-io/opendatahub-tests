@@ -12,6 +12,7 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
+from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 
@@ -24,7 +25,8 @@ from tests.ai_hub.constants import (
 )
 from tests.ai_hub.model_catalog.constants import HF_CUSTOM_MODE, HF_LAST_SYNCED_SOURCE_ID
 from tests.ai_hub.model_catalog.huggingface.utils import get_huggingface_model_from_api
-from tests.ai_hub.model_catalog.utils import get_models_from_catalog_api
+from tests.ai_hub.model_catalog.utils import get_models_from_catalog_api, wait_for_model_catalog_api
+from tests.ai_hub.utils import wait_for_model_catalog_pod_ready_after_deletion
 from utilities.infra import create_ns
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -342,3 +344,27 @@ def huggingface_model_portforward(
     except Exception as expt:
         LOGGER.error(f"Failed to set up port forwarding for pod {huggingface_predictor_pod.name}: {expt}")
         raise
+
+
+@pytest.fixture()
+def private_hf_catalog_config(
+    request: pytest.FixtureRequest,
+    catalog_config_map: ConfigMap,
+    admin_client: DynamicClient,
+    model_registry_namespace: str,
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+) -> Generator[ConfigMap]:
+    """Temporarily configure the private HF source using existing catalog credentials."""
+    try:
+        with ResourceEditor(patches={catalog_config_map: {"data": {"sources.yaml": request.param["sources_yaml"]}}}):
+            wait_for_model_catalog_pod_ready_after_deletion(
+                client=admin_client, model_registry_namespace=model_registry_namespace
+            )
+            wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
+            yield catalog_config_map
+    finally:
+        wait_for_model_catalog_pod_ready_after_deletion(
+            client=admin_client, model_registry_namespace=model_registry_namespace
+        )
+        wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)

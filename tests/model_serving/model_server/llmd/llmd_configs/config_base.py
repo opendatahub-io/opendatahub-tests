@@ -14,6 +14,7 @@ from tests.model_serving.model_server.llmd.utils import (
 from tests.model_serving.model_server.utils import (
     CONNECTION_PATH_ANNOTATION,
     CONNECTIONS_ANNOTATION,
+    is_arm64_cluster,
     skip_test,
 )
 from utilities.constants import Labels
@@ -168,17 +169,6 @@ class LLMISvcConfig:
         return "\n".join(lines)
 
     @classmethod
-    def build(cls, client: DynamicClient) -> type:
-        """Skip on disconnected clusters when the model storage is HuggingFace.
-
-        GpuConfig overrides with GPU detection.
-        """
-        if cls.storage_uri.startswith("hf://") and is_disconnected_cluster(client=client):
-            skip_test(reason="HuggingFace storage not available on disconnected clusters")
-        LOGGER.info(f"No accelerator needed for {cls.__name__}")
-        return cls
-
-    @classmethod
     def with_overrides(cls, **overrides):
         """Create a derived config class with overridden attributes."""
         return type(f"{cls.__name__}_custom", (cls,), overrides)
@@ -225,6 +215,22 @@ class CpuConfig(LLMISvcConfig):
     enable_auth = False
     wait_timeout = 420
     container_image = SharedImages.VLLM_CPU
+
+    @classmethod
+    def build(cls, client: DynamicClient) -> type:
+        """
+        Skip CPU inference on arm64 clusters.
+
+        Also skip on disconnected clusters when the model storage is HuggingFace.
+        """
+        if is_arm64_cluster(client=client):
+            skip_test(reason="llm-d CPU inference is not supported on arm64 clusters")
+
+        if cls.storage_uri.startswith("hf://") and is_disconnected_cluster(client=client):
+            skip_test(reason="HuggingFace storage not available on disconnected clusters")
+
+        LOGGER.info(f"No accelerator needed for {cls.__name__}")
+        return cls
 
     @classmethod
     def container_env(cls):

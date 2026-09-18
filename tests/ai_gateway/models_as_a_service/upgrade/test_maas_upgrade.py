@@ -12,10 +12,6 @@ from ocp_resources.namespace import Namespace
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
-from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import (
-    AITENANT_INFRA_NAMESPACE,
-    verify_aitenant_ready,
-)
 from tests.ai_gateway.models_as_a_service.upgrade.utils import (
     DEFAULT_AITENANT_NAME,
     MaaSBaseline,
@@ -25,9 +21,11 @@ from tests.ai_gateway.models_as_a_service.upgrade.utils import (
     verify_maas_subscription_ready,
 )
 from tests.ai_gateway.models_as_a_service.utils import (
+    AITENANT_INFRA_NAMESPACE,
     MaaSTenantResource,
     dsc_uses_aigateway_maas_schema,
     gateway_probe_reaches_maas_api,
+    verify_aitenant_ready,
     verify_maas_gateway_programmed,
     verify_maas_tenant_ready,
 )

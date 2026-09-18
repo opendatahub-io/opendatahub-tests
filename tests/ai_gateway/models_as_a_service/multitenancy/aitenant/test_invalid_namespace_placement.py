@@ -5,11 +5,13 @@ from kubernetes.dynamic.exceptions import DynamicApiError
 
 from tests.ai_gateway.models_as_a_service.maas_subscription.utils import MAAS_SUBSCRIPTION_NAMESPACE
 from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import (
-    AITENANT_INFRA_NAMESPACE,
     AITenantTestContext,
+    verify_derived_tenant_namespace_name,
+)
+from tests.ai_gateway.models_as_a_service.utils import (
+    AITENANT_INFRA_NAMESPACE,
     aitenant_from_spec,
     build_aitenant_spec,
-    verify_derived_tenant_namespace_name,
 )
 
 LOGGER = structlog.get_logger(name=__name__)
