@@ -60,6 +60,15 @@ RHOAI_MCP_INFERENCE_RESTRICTED_TOOLS: tuple[str, ...] = (
     "create_serving_runtime",
 )
 
+RHOAI_MCP_EXPECTED_PLANNER_TOOLS: tuple[str, ...] = (
+    "recommend_model",
+    "get_deployment_config",
+)
+
+RHOAI_MCP_RECOMMEND_USE_CASE: str = "chatbot_conversational"
+RHOAI_MCP_RECOMMEND_USER_COUNT: int = 1000
+RHOAI_MCP_RECOMMEND_GPU_TYPES: list[str] = ["H100", "A100-80"]
+
 RHOAI_MCP_MODEL_DEPLOY_NAMESPACE: str = "test-mcp-model-deploy"
 RHOAI_MCP_MODEL_DEPLOY_NAME: str = "mcp-mnist-test"
 RHOAI_MCP_MODEL_DEPLOY_FORMAT: str = "openvino_ir"
