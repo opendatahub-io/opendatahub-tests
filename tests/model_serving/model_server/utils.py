@@ -14,9 +14,9 @@ from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.inference_graph import InferenceGraph
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.mutating_webhook_config import MutatingWebhookConfiguration
+from ocp_resources.node import Node
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
-from ocp_resources.node import Node
 from ocp_resources.utils.constants import DEFAULT_CLUSTER_RETRY_EXCEPTIONS
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler, TimeoutWatch
 from urllib3.exceptions import HTTPError
