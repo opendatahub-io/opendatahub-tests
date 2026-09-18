@@ -93,22 +93,25 @@ class TestPreUpgradeMaaS:
         self,
         admin_client: DynamicClient,
     ) -> None:
-        """Given cluster is on pre-upgrade version, when checking for AIGateway CR, then it should not exist."""
+        """Given first bootstrap onto 3.5+, when checking pre-upgrade, then AIGateway CR should not exist yet."""
         if not dsc_uses_aigateway_maas_schema(admin_client):
             pytest.skip("AIGateway CR checks apply only when DSC uses aigateway MaaS schema (3.5+)")
         aigateway = AIGateway(
             client=admin_client,
             name="default-aigateway",
         )
-        assert not aigateway.exists, (
-            "AIGateway/default-aigateway exists — pre-upgrade tests must not be run on an already-upgraded cluster"
-        )
+        if aigateway.exists:
+            pytest.skip(
+                "AIGateway/default-aigateway already exists — absent check applies only before initial "
+                "operator bootstrap, not when upgrading within an already-bootstrapped release"
+            )
+        assert not aigateway.exists
 
     def test_maas_config_cr_absent_pre_upgrade(
         self,
         admin_client: DynamicClient,
     ) -> None:
-        """Given cluster is on pre-upgrade version, MaaS Config CRD and CR should not exist."""
+        """Given first bootstrap onto 3.5+, when checking pre-upgrade, then MaaS Config CR should not exist yet."""
         if not dsc_uses_aigateway_maas_schema(admin_client):
             pytest.skip("MaaS Config CR checks apply only when DSC uses aigateway MaaS schema (3.5+)")
         config_crd = CustomResourceDefinition(
@@ -121,9 +124,12 @@ class TestPreUpgradeMaaS:
             client=admin_client,
             name="default",
         )
-        assert not maas_config.exists, (
-            "MaaS Config/default exists — pre-upgrade tests must not be run on an already-upgraded cluster"
-        )
+        if maas_config.exists:
+            pytest.skip(
+                "MaaS Config/default already exists — absent check applies only before initial "
+                "operator bootstrap, not when upgrading within an already-bootstrapped release"
+            )
+        assert not maas_config.exists
 
 
 @pytest.mark.post_upgrade
