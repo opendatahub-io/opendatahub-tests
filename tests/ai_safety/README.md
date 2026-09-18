@@ -28,6 +28,12 @@ ai_safety/
 │   ├── test_nemo_guardrails.py          # API, chat/completions, guardrail/checks, multi-server tests
 │   ├── utils.py                         # Config generation, request helpers
 │
+├── trustyai_module/                     # TrustyAI modular operator health
+│   ├── conftest.py                      # Module-operator fixtures and architecture guard
+│   ├── constants.py
+│   ├── test_trustyai_module_health.py    # Tier1 module CR / operator health
+│   └── utils.py
+│
 ├── trustyai_operator/                   # TrustyAI Operator validation
 │   ├── test_trustyai_operator.py        # Operator image validation
 │   └── utils.py
@@ -63,6 +69,7 @@ ai_safety/
 - **`evalhub/`** - EvalHub service health endpoint validation via kube-rbac-proxy
 - **`lm_eval/`** - Language Model Evaluation tests covering HuggingFace models, local/offline tasks, vLLM integration, S3 storage, and OCI registry artifacts
 - **`nemo_guardrails/`** - NeMo Guardrails tests for LLM-as-a-judge (self-check policies), Presidio PII detection (email, SSN, credit card, person names), multi-server deployments, multi-configuration servers, authentication (kube-rbac-proxy), and secret mounting for API tokens
+- **`trustyai_module/`** - TrustyAI modular operator tier1 health: module CRD, module operator Deployment, singleton `default-trustyai` Ready condition, workload operator Deployment, and DSC/platform ConfigMaps
 - **`trustyai_operator/`** - TrustyAI operator container image validation (SHA256 digests, CSV relatedImages)
 - **`trustyai_service/`** - TrustyAI Service tests for drift detection (4 metrics), fairness metrics (SPD, DIR), database migration, multi-namespace support, and upgrade scenarios. Tests run against both PVC and database storage backends
 
@@ -102,6 +109,9 @@ uv run pytest tests/ai_safety/lm_eval/
 
 # Run EvalHub tests
 uv run pytest tests/ai_safety/evalhub/
+
+# Run TrustyAI modular operator health tests
+uv run pytest tests/ai_safety/trustyai_module/
 ```
 
 ### Run Tests with Markers
