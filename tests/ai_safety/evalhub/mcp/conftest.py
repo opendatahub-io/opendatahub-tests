@@ -6,9 +6,11 @@ import pytest
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import NotFoundError
 from ocp_resources.deployment import Deployment
 from ocp_resources.evalhub import EvalHub
 from ocp_resources.namespace import Namespace
+from ocp_resources.pod import Pod
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.route import Route
@@ -24,6 +26,7 @@ from tests.ai_safety.evalhub.mcp.constants import (
 from tests.ai_safety.evalhub.mcp.utils import (
     EvalHubMcpClient,
     build_mcp_proxy_role_rules,
+    evalhub_mcp_pod_label_selector,
 )
 from tests.ai_safety.evalhub.utils import is_evalhub_crd_available, wait_for_service_account
 from utilities.certificates_utils import create_ca_bundle_file
@@ -84,23 +87,111 @@ def _evalhub_service_account_name(cr_name: str) -> str:
 
 
 def _wait_for_deployment_rollout(deployment: Deployment, timeout: int = 300) -> None:
-    """Wait until all replicas are running the latest pod template.
+    """Wait until the Deployment controller has fully rolled out the latest pod template.
 
-    ``wait_for_replicas`` passes as soon as *any* replicas are ready, which
-    can be satisfied by old pods during a rolling update. This helper polls
-    until ``updatedReplicas == spec.replicas`` and no unavailable replicas
-    remain, guaranteeing all pods reflect the latest Deployment spec.
+    ``wait_for_replicas`` passes as soon as *any* replicas are ready, which can be
+    satisfied by old pods. This helper mirrors ``kubectl rollout status``:
+
+    - ``status.observedGeneration >= metadata.generation``: the controller has seen
+      the latest spec. Without this, a status written for the previous spec looks
+      "complete" in the moments after the spec changes.
+    - ``updatedReplicas >= spec.replicas`` and ``unavailableReplicas == 0``.
+    - ``status.replicas <= updatedReplicas``: the old ReplicaSet has been scaled
+      down. With ``maxSurge`` the new pod can be ready while the old one is still
+      counted. (``status.replicas`` excludes pods that are already terminating;
+      ``_wait_for_mcp_pods_settled`` covers those.)
     """
-    for sample in TimeoutSampler(
+    for instance in TimeoutSampler(
         wait_timeout=timeout,
         sleep=5,
-        func=lambda: deployment.instance.status,
+        func=lambda: deployment.instance,
     ):
-        desired = deployment.instance.spec.replicas or 1
-        updated = getattr(sample, "updatedReplicas", None) or 0
-        unavailable = getattr(sample, "unavailableReplicas", None) or 0
-        if updated >= desired and unavailable == 0:
+        status = instance.status
+        if status is None:
+            continue
+        desired = instance.spec.replicas or 1
+        generation = instance.metadata.generation or 0
+        observed = getattr(status, "observedGeneration", None) or 0
+        updated = getattr(status, "updatedReplicas", None) or 0
+        total = getattr(status, "replicas", None) or 0
+        unavailable = getattr(status, "unavailableReplicas", None) or 0
+        if observed >= generation and updated >= desired and total <= updated and unavailable == 0:
             return
+
+
+def _mcp_pod_states(admin_client: DynamicClient, namespace: str, label_selector: str) -> list[tuple[str, str, bool]]:
+    """Return ``(name, phase, is_terminating)`` for each pod matching ``label_selector``."""
+    states = []
+    for pod in Pod.get(client=admin_client, namespace=namespace, label_selector=label_selector):
+        pod_instance = pod.instance
+        states.append((pod.name, pod_instance.status.phase, pod_instance.metadata.deletionTimestamp is not None))
+    return states
+
+
+def _wait_for_mcp_pods_settled(
+    admin_client: DynamicClient,
+    namespace: str,
+    instance_name: str,
+    desired: int,
+    timeout: int = 120,
+) -> None:
+    """Wait until exactly ``desired`` MCP pods exist, all Running and none terminating.
+
+    Deployment ``status.replicas`` excludes terminating pods, but ``Pod.get`` still
+    returns them, with phase ``Running``, for their termination grace period. Tests
+    that count MCP pods or inspect ``pods[0]`` can otherwise see the old pod after
+    the rollout itself has completed.
+    """
+    label_selector = evalhub_mcp_pod_label_selector(instance_name=instance_name)
+    last_seen: list[tuple[str, str, bool]] = []
+    try:
+        for states in TimeoutSampler(
+            wait_timeout=timeout,
+            sleep=5,
+            func=lambda: _mcp_pod_states(admin_client=admin_client, namespace=namespace, label_selector=label_selector),
+            exceptions_dict={NotFoundError: []},
+        ):
+            last_seen = states
+            if len(states) == desired and all(
+                phase == Pod.Status.RUNNING and not terminating for _, phase, terminating in states
+            ):
+                return
+            LOGGER.info(
+                f"Waiting for {desired} settled MCP pod(s) in {namespace}; current (name, phase, terminating): {states}"
+            )
+    except TimeoutExpiredError as err:
+        raise RuntimeError(
+            f"MCP pods in {namespace} did not settle to {desired} Running, non-terminating pod(s) "
+            f"within {timeout}s. Last seen (name, phase, terminating): {last_seen}"
+        ) from err
+
+
+def _wait_for_mcp_reconciled(evalhub: EvalHub, generation: int, timeout: int = 300) -> None:
+    """Wait until the operator reports MCP reconciled for ``generation`` of the EvalHub CR.
+
+    Top-level ``status.ready``/``status.phase`` describe only the main EvalHub
+    deployment and are unaffected by MCP-only spec changes, so they cannot tell us
+    when an MCP patch has been applied. The operator stamps each ``status.mcp``
+    condition with the CR generation it reconciled, and updates the MCP Deployment
+    before writing the ``Reconciled`` condition.
+    """
+    last_mcp_status: Any = None
+    try:
+        for status in TimeoutSampler(wait_timeout=timeout, sleep=2, func=lambda: evalhub.instance.status):
+            mcp_status = status.get("mcp") if status is not None else None
+            last_mcp_status = mcp_status
+            for condition in (mcp_status.get("conditions") if mcp_status else None) or []:
+                if (
+                    condition.get("type") == "Reconciled"
+                    and condition.get("status") == "True"
+                    and (condition.get("observedGeneration") or 0) >= generation
+                ):
+                    return
+    except TimeoutExpiredError as err:
+        raise RuntimeError(
+            f"EvalHub MCP was not reconciled for generation {generation} within {timeout}s. "
+            f"Last MCP status: {last_mcp_status}"
+        ) from err
 
 
 @pytest.fixture(scope="class")
@@ -228,21 +319,13 @@ def evalhub_mcp_mt_cr_with_auth(
                 },
             }
         )
-        # Poll until the operator finishes reconciling the authSecret patch.
-        # .wait() only checks object existence — not operator readiness.
-        for sample in TimeoutSampler(wait_timeout=300, sleep=2, func=lambda: evalhub_mcp_mt_cr.instance.status):
-            if sample is None:
-                continue
-            if sample.get("ready") == "True":
-                break
-            phase = sample.get("phase", "")
-            if phase == "Error":
-                mcp_status = sample.get("mcp", {})
-                pytest.fail(
-                    f"EvalHub entered Error phase after authSecret patch.\n"
-                    f"  Top-level status: {sample}\n"
-                    f"  MCP sub-status:   {mcp_status}"
-                )
+        # Wait for the operator to reconcile *this* spec generation. Top-level
+        # status.ready only reflects the main EvalHub deployment, so it is already
+        # "True" before the operator has applied the MCP authSecret change.
+        _wait_for_mcp_reconciled(
+            evalhub=evalhub_mcp_mt_cr,
+            generation=evalhub_mcp_mt_cr.instance.metadata.generation,
+        )
         yield evalhub_mcp_mt_cr
 
 
@@ -260,6 +343,13 @@ def evalhub_mcp_mt_deployment(
     )
     deployment.wait_for_replicas(timeout=300)
     _wait_for_deployment_rollout(deployment=deployment, timeout=300)
+    _wait_for_mcp_pods_settled(
+        admin_client=admin_client,
+        namespace=model_namespace.name,
+        instance_name=EVALHUB_MCP_CR_NAME,
+        desired=deployment.instance.spec.replicas or 1,
+        timeout=120,
+    )
     return deployment
 
 

@@ -13,6 +13,7 @@ from tests.ai_safety.evalhub.mcp.constants import (
     EVALHUB_MCP_CR_NAME,
     EVALHUB_MCP_KUBE_RBAC_PROXY_CONTAINER,
 )
+from tests.ai_safety.evalhub.mcp.utils import evalhub_mcp_pod_label_selector
 
 
 @pytest.mark.parametrize(
@@ -44,11 +45,7 @@ class TestEvalHubMcpDeployment:
             Pod.get(
                 client=admin_client,
                 namespace=model_namespace.name,
-                label_selector=(
-                    f"app={EVALHUB_MCP_APP_LABEL},"
-                    f"instance={EVALHUB_MCP_CR_NAME},"
-                    f"component={EVALHUB_MCP_COMPONENT_LABEL}"
-                ),
+                label_selector=evalhub_mcp_pod_label_selector(instance_name=EVALHUB_MCP_CR_NAME),
             )
         )
         expected_replicas = evalhub_mcp_mt_deployment.instance.spec.replicas
