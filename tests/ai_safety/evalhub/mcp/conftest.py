@@ -9,6 +9,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from ocp_resources.evalhub import EvalHub
 from ocp_resources.namespace import Namespace
+from ocp_resources.pod import Pod
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.route import Route
@@ -18,6 +19,8 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_safety.evalhub.constants import EVALHUB_USER_ROLE_RULES
 from tests.ai_safety.evalhub.mcp.constants import (
+    EVALHUB_MCP_APP_LABEL,
+    EVALHUB_MCP_COMPONENT_LABEL,
     EVALHUB_MCP_CR_NAME,
     EVALHUB_MCP_HEALTH_PATH,
 )
@@ -90,6 +93,12 @@ def _wait_for_deployment_rollout(deployment: Deployment, timeout: int = 300) -> 
     can be satisfied by old pods during a rolling update. This helper polls
     until ``updatedReplicas == spec.replicas`` and no unavailable replicas
     remain, guaranteeing all pods reflect the latest Deployment spec.
+
+    During a rolling update, ``maxSurge`` can create a temporary extra pod
+    (e.g. 1 replica -> surge to 2) before the old pod terminates. Checking
+    ``updatedReplicas``/``unavailableReplicas`` alone can pass while that old
+    surge pod is still being torn down, so ``replicas`` (the total pod count)
+    must also have settled back down to ``updatedReplicas``.
     """
     for sample in TimeoutSampler(
         wait_timeout=timeout,
@@ -98,9 +107,39 @@ def _wait_for_deployment_rollout(deployment: Deployment, timeout: int = 300) -> 
     ):
         desired = deployment.instance.spec.replicas or 1
         updated = getattr(sample, "updatedReplicas", None) or 0
+        total = getattr(sample, "replicas", None) or 0
         unavailable = getattr(sample, "unavailableReplicas", None) or 0
-        if updated >= desired and unavailable == 0:
+        if updated >= desired and total <= updated and unavailable == 0:
             return
+
+
+def _wait_for_stable_pod_count(
+    admin_client: DynamicClient,
+    namespace: str,
+    instance_name: str,
+    desired: int,
+    timeout: int = 120,
+    stable_checks: int = 3,
+    interval: int = 5,
+) -> None:
+    """Wait until the MCP pod count matches ``desired`` for several consecutive polls.
+
+    The EvalHub operator can re-reconcile the deployment shortly after a rollout
+    finishes (e.g. following an authSecret patch), starting a second rolling
+    update whose surge pod appears after ``_wait_for_deployment_rollout`` already
+    observed a settled status. Polling the actual pod list over a short window
+    catches that trailing rollout instead of trusting a single status snapshot.
+    """
+    label_selector = f"app={EVALHUB_MCP_APP_LABEL},instance={instance_name},component={EVALHUB_MCP_COMPONENT_LABEL}"
+    consecutive_matches = 0
+    for _ in TimeoutSampler(wait_timeout=timeout, sleep=interval, func=lambda: True):
+        pods = list(Pod.get(client=admin_client, namespace=namespace, label_selector=label_selector))
+        if len(pods) == desired and all(pod.instance.status.phase == Pod.Status.RUNNING for pod in pods):
+            consecutive_matches += 1
+            if consecutive_matches >= stable_checks:
+                return
+        else:
+            consecutive_matches = 0
 
 
 @pytest.fixture(scope="class")
@@ -260,6 +299,13 @@ def evalhub_mcp_mt_deployment(
     )
     deployment.wait_for_replicas(timeout=300)
     _wait_for_deployment_rollout(deployment=deployment, timeout=300)
+    _wait_for_stable_pod_count(
+        admin_client=admin_client,
+        namespace=model_namespace.name,
+        instance_name=EVALHUB_MCP_CR_NAME,
+        desired=deployment.instance.spec.replicas or 1,
+        timeout=120,
+    )
     return deployment
 
 
