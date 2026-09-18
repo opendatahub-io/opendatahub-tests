@@ -7,9 +7,9 @@ from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import (
     AITenantTestContext,
     verify_aitenant_bootstrap_children,
     verify_aitenant_oidc_stays_in_spec,
-    verify_aitenant_ready,
     verify_tenant_namespace_gateway_access_label_present,
 )
+from tests.ai_gateway.models_as_a_service.utils import verify_aitenant_ready
 from utilities.resources.aitenant import AITenant
 
 LOGGER = structlog.get_logger(name=__name__)
