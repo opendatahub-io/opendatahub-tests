@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 import structlog
+from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.event import Event
 from ocp_resources.node import Node
@@ -1139,3 +1140,20 @@ def wait_for_llmisvc_connection_cleared(llmisvc: LLMInferenceService, timeout: i
     wait_for_cleared_predicate(
         predicate=_cleared, timeout=timeout, resource_label=f"LLMInferenceService {llmisvc.name}"
     )
+
+
+def bind_connection_overrides(request: FixtureRequest, config_cls: type) -> type:
+    """Resolve a `use_connection` config's connection Secret and bind it via `with_overrides`.
+
+    No-op (returns `config_cls` unchanged) for configs that don't use ConnectionsAPI storage. Used
+    by the `llmisvc` fixture so the connection Secret name (and, for S3, bucket) is bound onto a
+    *derived* class before `_create_llmisvc_from_config` builds the resource — the original,
+    unbound class passed via `request.param` never carries these fixture-resolved values.
+    """
+    if not config_cls.use_connection:
+        return config_cls
+    secret = request.getfixturevalue(argname=config_cls.connection_secret_fixture)
+    overrides: dict[str, Any] = {"connection_secret_name": secret.name}
+    if config_cls.connection_secret_fixture == "s3_connection_secret":  # pragma: allowlist secret
+        overrides["connection_bucket"] = request.getfixturevalue(argname="models_s3_bucket_name")
+    return config_cls.with_overrides(**overrides)

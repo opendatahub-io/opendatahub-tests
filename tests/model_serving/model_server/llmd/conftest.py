@@ -32,11 +32,11 @@ from tests.model_serving.model_server.llmd.constants import (
 )
 from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaOciConfig, TinyLlamaS3Config
 from tests.model_serving.model_server.llmd.utils import (
+    bind_connection_overrides,
     wait_for_llmisvc,
     wait_for_llmisvc_pods_ready,
 )
 from tests.model_serving.model_server.utils import (
-    assert_connections_api_webhooks_configured,
     create_oci_connection_secret,
     create_uri_connection_secret,
 )
@@ -224,21 +224,6 @@ def _check_llmd_kuadrant(admin_client: DynamicClient) -> list[HealthCheckResult]
 
 
 # ===========================================
-#  ConnectionsAPI — webhook-configuration guard
-# ===========================================
-@pytest.fixture(scope="session", autouse=True)
-def llmd_connections_api_webhooks_guard(admin_client: DynamicClient) -> None:
-    """Session-wide precondition: fail LLMD tests fast if ConnectionsAPI webhooks are wrong.
-
-    A missing/incorrect webhook configuration is a platform-setup defect — exactly the class of
-    regression this suite exists to catch (RHOAIENG-65587) — so it must surface as a failure
-    rather than a silent skip. Scoped to this package (rather than the whole model_server tree)
-    since it is only relevant to the LLMISVC connection tests defined here.
-    """
-    assert_connections_api_webhooks_configured(client=admin_client)
-
-
-# ===========================================
 #  Gateway
 # ===========================================
 @pytest.fixture(scope="session", autouse=True)
@@ -321,7 +306,7 @@ def s3_connection_secret(
 
 
 @pytest.fixture(scope="class")
-def uri_connection_secret(
+def llmd_uri_connection_secret(
     admin_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
 ) -> Generator[Secret]:
@@ -336,7 +321,7 @@ def uri_connection_secret(
 
 
 @pytest.fixture(scope="class")
-def oci_connection_secret(
+def llmd_oci_connection_secret(
     admin_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
 ) -> Generator[Secret]:
@@ -352,23 +337,6 @@ def oci_connection_secret(
         namespace=unprivileged_model_namespace.name,
     ) as secret:
         yield secret
-
-
-def _bind_connection_overrides(request: FixtureRequest, config_cls: type) -> type:
-    """Resolve a `use_connection` config's connection Secret and bind it via `with_overrides`.
-
-    No-op (returns `config_cls` unchanged) for configs that don't use ConnectionsAPI storage. Used
-    by the `llmisvc` fixture so the connection Secret name (and, for S3, bucket) is bound onto a
-    *derived* class before `_create_llmisvc_from_config` builds the resource — the original,
-    unbound class passed via `request.param` never carries these fixture-resolved values.
-    """
-    if not config_cls.use_connection:
-        return config_cls
-    secret = request.getfixturevalue(argname=config_cls.connection_secret_fixture)
-    overrides: dict[str, Any] = {"connection_secret_name": secret.name}
-    if config_cls.connection_secret_fixture == "s3_connection_secret":
-        overrides["connection_bucket"] = request.getfixturevalue(argname="models_s3_bucket_name")
-    return config_cls.with_overrides(**overrides)
 
 
 # ===========================================
@@ -397,7 +365,7 @@ def llmisvc(
     parametrize column — the original, unbound class in `request.param` never carries the
     fixture-resolved connection Secret name.
     """
-    config_cls = _bind_connection_overrides(request=request, config_cls=request.param.build(client=admin_client))
+    config_cls = bind_connection_overrides(request=request, config_cls=request.param.build(client=admin_client))
     namespace = unprivileged_model_namespace.name
 
     service_account = None

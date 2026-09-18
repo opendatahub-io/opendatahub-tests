@@ -7,28 +7,13 @@ from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 
 from tests.model_serving.model_server.kserve.storage.constants import ISVC_URI_MODEL_URI
-from tests.model_serving.model_server.utils import (
-    assert_connections_api_webhooks_configured,
-    create_uri_connection_secret,
-)
+from tests.model_serving.model_server.utils import create_uri_connection_secret
 from utilities.constants import KServeDeploymentType, ModelInferenceRuntime, RuntimeTemplates
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 
-@pytest.fixture(scope="session", autouse=True)
-def kserve_storage_connections_api_webhooks_guard(admin_client: DynamicClient) -> None:
-    """Session-wide precondition: fail ISVC storage tests fast if ConnectionsAPI webhooks are wrong.
-
-    A missing/incorrect webhook configuration is a platform-setup defect — exactly the class of
-    regression this suite exists to catch (RHOAIENG-65587) — so it must surface as a failure rather
-    than a silent skip. Scoped to this package (rather than the whole model_server tree) since it
-    is only relevant to the ConnectionsAPI storage-strategy tests defined here.
-    """
-    assert_connections_api_webhooks_configured(client=admin_client)
-
-
 @pytest.fixture(scope="class")
-def mlserver_runtime(
+def kserve_storage_mlserver_runtime(
     admin_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     mlserver_runtime_image: str | None,

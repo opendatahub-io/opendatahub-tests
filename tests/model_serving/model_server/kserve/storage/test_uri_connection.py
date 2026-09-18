@@ -28,7 +28,7 @@ class TestUriConnection:
         self,
         admin_client: DynamicClient,
         unprivileged_model_namespace: Namespace,
-        mlserver_runtime: ServingRuntime,
+        kserve_storage_mlserver_runtime: ServingRuntime,
         uri_connection_secret: Secret,
     ) -> None:
         """Test steps:
@@ -43,7 +43,7 @@ class TestUriConnection:
             name="isvc-uri-connection",
             namespace=unprivileged_model_namespace.name,
             model_format=ModelFormat.ONNX,
-            runtime=mlserver_runtime.name,
+            runtime=kserve_storage_mlserver_runtime.name,
             connections=uri_connection_secret.name,
             timeout=Timeout.TIMEOUT_10MIN,
         ) as isvc:

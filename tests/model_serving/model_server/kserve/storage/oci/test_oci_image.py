@@ -41,6 +41,7 @@ from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
                 "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT,
                 "connection-secret-fixture": "oci_connection_secret",
             },
+            marks=[pytest.mark.rawdeployment],
             id="connection",
         ),
     ],

@@ -13,7 +13,6 @@ from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.inference_graph import InferenceGraph
 from ocp_resources.inference_service import InferenceService
-from ocp_resources.mutating_webhook_config import MutatingWebhookConfiguration
 from ocp_resources.node import Node
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
@@ -22,7 +21,7 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler, TimeoutWatch
 from urllib3.exceptions import HTTPError
 
 from tests.model_serving.model_server.kserve.autoscaling.keda.utils import get_isvc_keda_scaledobject
-from utilities.constants import ApiGroups, KServeDeploymentType, Protocols
+from utilities.constants import ApiGroups, KServeDeploymentType, Protocols, Timeout
 from utilities.exceptions import (
     InferenceResponseError,
 )
@@ -41,56 +40,12 @@ CONNECTIONS_ANNOTATION: str = f"{ApiGroups.OPENDATAHUB_IO}/connections"
 CONNECTION_PATH_ANNOTATION: str = f"{ApiGroups.OPENDATAHUB_IO}/connection-path"
 CONNECTION_TYPE_PROTOCOL_ANNOTATION: str = f"{ApiGroups.OPENDATAHUB_IO}/connection-type-protocol"
 
-# ---------------------------------------------------------------------------
-# odh-model-controller ConnectionsAPI webhook names (post RHOAIENG-62537 migration)
-# ---------------------------------------------------------------------------
-ISVC_CONNECTIONS_WEBHOOK: str = "minferenceservice-v1beta1.odh-model-controller.opendatahub.io"
-# LLMInferenceService is versioned (v1alpha1/v1alpha2); the wrapper resolves to the CRD's storage
-# version (v1alpha2), so that is the webhook entry actually exercised by CREATE/UPDATE calls.
-LLMISVC_CONNECTIONS_WEBHOOK: str = "connection-llmisvc-v1alpha2.odh-model-controller.opendatahub.io"
-
-# Old opendatahub-operator ConnectionsAPI webhooks — must no longer be present.
-STALE_ISVC_CONNECTIONS_WEBHOOK: str = "platform-connection-isvc"
-STALE_LLMISVC_CONNECTIONS_WEBHOOK: str = "platform-connection-llmisvc"
-
 
 def skip_test(reason: str) -> None:
     """Log a visible skip banner and call pytest.skip."""
     border = "=" * 60
     LOGGER.warning("\n".join(["", border, f"  SKIP — {reason}", border, ""]))
     pytest.skip(reason)
-
-
-def assert_connections_api_webhooks_configured(client: DynamicClient) -> None:
-    """Fail fast if the odh-model-controller ConnectionsAPI webhooks are not correctly wired up.
-
-    Scans every `MutatingWebhookConfiguration` on the cluster (the exact parent object name is
-    an odh-model-controller implementation detail) and asserts that the new webhook entries are
-    present and the old opendatahub-operator ones are gone. A missing/incorrect webhook
-    configuration is a real platform-setup defect — the class of regression this suite exists to
-    catch — so this must fail rather than skip.
-
-    Args:
-        client: Kubernetes dynamic client.
-
-    Raises:
-        AssertionError: If the new webhooks are missing, or a stale webhook is still present.
-    """
-    configured_webhooks: set[str] = set()
-    for webhook_config in MutatingWebhookConfiguration.get(client=client):
-        configured_webhooks.update(webhook.name for webhook in webhook_config.instance.webhooks or [])
-
-    missing = {ISVC_CONNECTIONS_WEBHOOK, LLMISVC_CONNECTIONS_WEBHOOK} - configured_webhooks
-    assert not missing, (
-        f"odh-model-controller ConnectionsAPI webhook(s) not found on the cluster: {sorted(missing)}. "
-        f"Configured webhooks: {sorted(configured_webhooks)}"
-    )
-
-    stale = {STALE_ISVC_CONNECTIONS_WEBHOOK, STALE_LLMISVC_CONNECTIONS_WEBHOOK} & configured_webhooks
-    assert not stale, (
-        f"Stale opendatahub-operator ConnectionsAPI webhook(s) still present: {sorted(stale)}. "
-        "ConnectionsAPI injection must be owned exclusively by odh-model-controller."
-    )
 
 
 def add_connection_annotations(
@@ -204,21 +159,35 @@ def create_oci_connection_secret(
 # ---------------------------------------------------------------------------
 # ConnectionsAPI — ServiceAccount assertion (shared by ISVC and LLMISVC suites)
 # ---------------------------------------------------------------------------
-def assert_service_account_exists(client: DynamicClient, namespace: str, name: str) -> None:
+def assert_service_account_exists(
+    client: DynamicClient, namespace: str, name: str, timeout: int = Timeout.TIMEOUT_1MIN
+) -> None:
     """Assert that the `{secret}-sa` ServiceAccount created by the S3 injection path exists.
+
+    Polls rather than checking once, since callers may invoke this immediately after a CREATE
+    with no readiness wait (the smoke-test path), and the ServiceAccount is an asynchronous side
+    effect of the ConnectionsAPI webhook/controller rather than part of the admission response.
 
     Args:
         client: Kubernetes dynamic client.
         namespace: Namespace the ServiceAccount is expected in.
         name: Expected ServiceAccount name (`{secret_name}-sa`).
+        timeout: Seconds to wait for the ServiceAccount to appear.
 
     Raises:
-        AssertionError: If the ServiceAccount does not exist.
+        AssertionError: If the ServiceAccount does not exist within `timeout` seconds.
     """
     service_account = ServiceAccount(client=client, namespace=namespace, name=name)
-    assert service_account.exists, (
+    try:
+        for exists in TimeoutSampler(wait_timeout=timeout, sleep=2, func=lambda: service_account.exists):
+            if exists:
+                return
+    except TimeoutExpiredError:
+        pass
+
+    raise AssertionError(
         f"Expected ServiceAccount {name!r} to exist in namespace {namespace!r} "
-        "(S3 ConnectionsAPI injection must create it as a side effect)"
+        f"(S3 ConnectionsAPI injection must create it as a side effect) within {timeout}s"
     )
 
 

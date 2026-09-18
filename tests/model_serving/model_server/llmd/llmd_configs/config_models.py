@@ -48,7 +48,7 @@ class TinyLlamaS3ConnectionConfig(CpuConfig):
     name = "llmisvc-tinyllama-s3-connection-cpu"
     storage_uri = "placeholder"
     use_connection = True
-    connection_secret_fixture = "s3_connection_secret"
+    connection_secret_fixture = "s3_connection_secret"  # pragma: allowlist secret
     connection_path = LLMISVC_S3_CONNECTION_PATH
 
     @classmethod
@@ -82,7 +82,7 @@ class TinyLlamaHfConnectionConfig(CpuConfig):
     storage_uri = "placeholder"
     wait_timeout = 420
     use_connection = True
-    connection_secret_fixture = "uri_connection_secret"
+    connection_secret_fixture = "llmd_uri_connection_secret"  # pragma: allowlist secret
 
     @classmethod
     def verify_injection(cls, llmisvc: LLMInferenceService) -> None:
@@ -100,7 +100,7 @@ class TinyLlamaOciConnectionConfig(CpuConfig):
     name = "llmisvc-tinyllama-oci-connection-cpu"
     storage_uri = ModelStorage.OCI.TINYLLAMA
     use_connection = True
-    connection_secret_fixture = "oci_connection_secret"
+    connection_secret_fixture = "llmd_oci_connection_secret"  # pragma: allowlist secret
 
     @classmethod
     def verify_injection(cls, llmisvc: LLMInferenceService) -> None:
