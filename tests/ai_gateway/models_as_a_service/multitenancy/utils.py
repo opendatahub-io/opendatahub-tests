@@ -24,10 +24,10 @@ from tests.ai_gateway.models_as_a_service.maas_api_key.utils import (
 from tests.ai_gateway.models_as_a_service.maas_subscription.utils import create_maas_subscription
 from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import (
     AIGATEWAY_BOOTSTRAPPED_TENANT_NAME,
-    AIGATEWAY_GATEWAY_CLASS_NAME,
     AITenantTestContext,
 )
 from tests.ai_gateway.models_as_a_service.utils import (
+    AIGATEWAY_GATEWAY_CLASS_NAME,
     assert_api_key_created_ok,
     create_api_key,
     gateway_probe_reaches_maas_api,

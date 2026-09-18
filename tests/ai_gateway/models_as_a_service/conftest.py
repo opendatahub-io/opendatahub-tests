@@ -35,6 +35,7 @@ from tests.ai_gateway.models_as_a_service.maas_subscription.utils import (
     patch_llmisvc_with_maas_router_and_tiers,
 )
 from tests.ai_gateway.models_as_a_service.utils import (
+    AITENANT_INFRA_NAMESPACE,
     build_maas_headers,
     capture_maas_dsc_components_patch,
     create_maas_group,
@@ -80,6 +81,16 @@ CHAT_COMPLETIONS = OpenAIEnpoints.CHAT_COMPLETIONS
 
 MAAS_FREE_GROUP = "tier-free-users"
 MAAS_PREMIUM_GROUP = "tier-premium-users"
+
+
+@pytest.fixture(scope="session")
+def aitenant_infra_namespace(admin_client: DynamicClient) -> str:
+    """Return the infra namespace where AITenant objects are created."""
+    infra_namespace = Namespace(client=admin_client, name=AITENANT_INFRA_NAMESPACE, ensure_exists=True)
+    assert infra_namespace.exists, (
+        f"Infra namespace '{AITENANT_INFRA_NAMESPACE}' not found — required for AITenant tests"
+    )
+    return AITENANT_INFRA_NAMESPACE
 
 
 @pytest.fixture(scope="session")
