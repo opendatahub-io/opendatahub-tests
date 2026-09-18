@@ -2,9 +2,10 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError, ResourceNotUniqueError
 from ocp_resources.cluster_service_version import ClusterServiceVersion
+from ocp_resources.resource import Resource
 from pytest_testconfig import config as py_config
 
-from utilities.infra import get_product_version
+from utilities.constants import QUAY_REGISTRY
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -32,8 +33,8 @@ def get_csv_related_images(admin_client: DynamicClient, csv_name: str | None = N
 
     Args:
         admin_client: The kubernetes client
-        csv_name: Optional CSV name. If not provided, will use {operator_name}.{version}
-                 where operator_name is determined by the distribution (rhods-operator for OpenShift AI,
+        csv_name: Optional CSV name. If not provided, the product CSV is looked up by its operator name
+                 prefix, which is determined by the distribution (rhods-operator for OpenShift AI,
                  opendatahub-operator for Open Data Hub)
 
     Returns:
@@ -42,11 +43,29 @@ def get_csv_related_images(admin_client: DynamicClient, csv_name: str | None = N
 
     if csv_name is None:
         distribution = py_config["distribution"]
-        operator_name = "opendatahub-operator" if distribution == "upstream" else "rhods-operator"
-        csv_name = f"{operator_name}.{get_product_version(admin_client=admin_client)}"
+        # Match on the operator name only: the version suffix is not written consistently across builds
+        # (OLM names ODH CSVs `<operator>.v<version>` while RHOAI CSVs omit the `v`), and there is exactly
+        # one product CSV in the applications namespace.
+        csv_name = "opendatahub-operator." if distribution == "upstream" else "rhods-operator."
 
     return get_cluster_service_version(
         client=admin_client,
         prefix=csv_name,
         namespace=py_config["applications_namespace"],
     ).instance.spec.relatedImages
+
+
+def get_expected_image_registry() -> str:
+    """Get the registry the product images are expected to be served from.
+
+    Open Data Hub builds, including midstream pre-release builds, publish their component images to
+    quay.io; released OpenShift AI builds are mirrored to registry.redhat.io.
+
+    Returns:
+        The expected registry host
+    """
+    if py_config["distribution"] == "upstream":
+        LOGGER.info(f"Open Data Hub distribution; images are expected from {QUAY_REGISTRY}")
+        return QUAY_REGISTRY
+
+    return Resource.ApiGroup.IMAGE_REGISTRY
