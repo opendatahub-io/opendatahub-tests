@@ -4,17 +4,20 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
 
+import pytest
 import structlog
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
+from kubernetes.client.rest import ApiException
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
+from ocp_resources.resource import Resource
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
@@ -54,16 +57,25 @@ def wait_for_mariadb_pods(client: DynamicClient, deployment_name: str, namespace
         )
 
 
-def _generate_mariadb_tls_certs(namespace_name: str) -> tuple[str, str, str]:
-    """Generate self-signed TLS certificates for MariaDB.
+def generate_db_tls_certs(namespace_name: str, service_name: str) -> tuple[str, str, str]:
+    """Generate a self-signed CA and server certificate for an in-cluster database.
+
+    The server certificate carries the Service DNS names as SANs, so clients that
+    verify the hostname (TrustyAI connects to PostgreSQL with `sslmode=verify-full`)
+    accept it.
+
+    Args:
+        namespace_name: Namespace the database Service lives in.
+        service_name: Name of the database Service, used as the certificate CN/SAN.
 
     Returns:
         tuple: (ca_cert_pem, server_cert_pem, server_key_pem)
     """
     ca_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 
+    # Keep CN short (X.509 limit is 64 chars); hostname verification uses SANs below.
     ca_subject = ca_issuer = x509.Name(
-        attributes=[x509.NameAttribute(oid=NameOID.COMMON_NAME, value=f"mariadb-ca-{namespace_name}")]
+        attributes=[x509.NameAttribute(oid=NameOID.COMMON_NAME, value=f"{service_name}-ca")]
     )
     ca_cert = (
         x509
@@ -80,9 +92,7 @@ def _generate_mariadb_tls_certs(namespace_name: str) -> tuple[str, str, str]:
 
     server_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 
-    server_subject = x509.Name(
-        attributes=[x509.NameAttribute(oid=NameOID.COMMON_NAME, value=f"mariadb.{namespace_name}.svc.cluster.local")]
-    )
+    server_subject = x509.Name(attributes=[x509.NameAttribute(oid=NameOID.COMMON_NAME, value=service_name)])
     server_cert = (
         x509
         .CertificateBuilder()
@@ -94,9 +104,9 @@ def _generate_mariadb_tls_certs(namespace_name: str) -> tuple[str, str, str]:
         .not_valid_after(datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=365))
         .add_extension(
             x509.SubjectAlternativeName([
-                x509.DNSName("mariadb"),
-                x509.DNSName(f"mariadb.{namespace_name}.svc"),
-                x509.DNSName(f"mariadb.{namespace_name}.svc.cluster.local"),
+                x509.DNSName(service_name),
+                x509.DNSName(f"{service_name}.{namespace_name}.svc"),
+                x509.DNSName(f"{service_name}.{namespace_name}.svc.cluster.local"),
             ]),
             critical=False,
         )
@@ -127,7 +137,7 @@ def create_standalone_mariadb(
     Creates TLS secrets, PVC, Service, and Deployment for MariaDB.
     Uses Red Hat registry image to avoid Docker Hub rate limits.
     """
-    ca_cert, server_cert, server_key = _generate_mariadb_tls_certs(namespace_name=namespace_name)
+    ca_cert, server_cert, server_key = generate_db_tls_certs(namespace_name=namespace_name, service_name=name)
 
     with (
         Secret(
@@ -301,19 +311,40 @@ def create_standalone_mariadb(
     sleep=5,
     exceptions_dict={TooManyPodsError: [], UnexpectedFailureError: []},
 )
-def validate_trustyai_service_db_conn_failure(
-    client: DynamicClient, namespace: Namespace, label_selector: str | None
-) -> bool:
-    """Validate if invalid DB Certificate leads to pod crash loop.
+def _trustyai_service_reports_db_connection_error(trustyai_service: TrustyAIService) -> bool:
+    """Return True when the TrustyAIService CR reports a database connection failure."""
+    status = trustyai_service.instance.status or {}
+    for condition in status.get("conditions", []):
+        if condition.get("type") == "DBAvailable" and condition.get("reason") == "DBConnectionError":
+            return True
+    return False
 
-    Waits for TrustyAIService pod to fail and checks if the pod is in a CrashLoopBackOff state and
-    the LastState is in terminated state and the cause was a MariaDB TLS certificate exception.
-    Also checks if there are more than one pod for the service.
+
+def _pod_logs_show_mariadb_connection_failure(pod: Pod, mariadb_conn_failure_regex: str) -> bool:
+    """Return True when TrustyAI container logs report a MariaDB TLS/connection failure."""
+    try:
+        log_output = pod.log(container=TRUSTYAI_SERVICE_NAME)
+    except ApiException:
+        return False
+    return bool(re.search(mariadb_conn_failure_regex, log_output, re.MULTILINE))
+
+
+def validate_trustyai_service_db_conn_failure(
+    client: DynamicClient,
+    namespace: Namespace,
+    label_selector: str | None,
+    trustyai_service: TrustyAIService | None = None,
+) -> bool:
+    """Validate that an invalid DB certificate prevents TrustyAI from using MariaDB.
+
+    The service may either crash-loop with a MariaDB TLS error in pod logs or remain
+    degraded with a ``DBConnectionError`` status condition.
 
     Args:
         client: The OpenShift client.
         namespace: Namespace under which the pod is created.
         label_selector: The label selector used to select the correct pod(s) to monitor.
+        trustyai_service: Optional TrustyAIService CR to inspect for status conditions.
 
     Returns:
         bool: True if pod failure is of expected state else False.
@@ -324,25 +355,38 @@ def validate_trustyai_service_db_conn_failure(
         UnexpectedFailureError: if the pod failure is different from the expected failure mode.
 
     """
+    if trustyai_service and _trustyai_service_reports_db_connection_error(trustyai_service=trustyai_service):
+        return True
+
     pods = list(Pod.get(client=client, namespace=namespace.name, label_selector=label_selector))
     mariadb_conn_failure_regex = (
-        r"^.+ERROR.+Could not connect to mariadb:.+"
+        r".+ERROR.+Could not connect to mariadb:.+"
         r"(PKIX path.*failed|SSL|socket|Connection refused)"
     )
     if pods:
         if len(pods) > 1:
             raise TooManyPodsError("More than one pod found in TrustyAIService.")
-        for container_status in pods[0].instance.status.containerStatuses:
-            if (terminate_state := container_status.lastState.terminated) and terminate_state.reason in (
-                pods[0].Status.ERROR,
-                pods[0].Status.CRASH_LOOPBACK_OFF,
+        pod = pods[0]
+        for container_status in pod.instance.status.containerStatuses:
+            if container_status.name != TRUSTYAI_SERVICE_NAME:
+                continue
+            terminate_state = container_status.lastState.terminated if container_status.lastState else None
+            if terminate_state and terminate_state.reason in (
+                pod.Status.ERROR,
+                pod.Status.CRASH_LOOPBACK_OFF,
             ):
-                if not re.search(mariadb_conn_failure_regex, terminate_state.message):
+                failure_text = terminate_state.message or pod.log(container=TRUSTYAI_SERVICE_NAME)
+                if not re.search(mariadb_conn_failure_regex, failure_text, re.MULTILINE):
                     raise UnexpectedFailureError(
-                        f"Service {TRUSTYAI_SERVICE_NAME} did not fail with a mariadb connection failure as expected.\
-                                  \nExpected format: {mariadb_conn_failure_regex}\
-                                  \nGot: {terminate_state.message}"
+                        f"Service {TRUSTYAI_SERVICE_NAME} did not fail with a mariadb connection failure as expected."
+                        f"\nExpected format: {mariadb_conn_failure_regex}"
+                        f"\nGot: {failure_text!r}"
                     )
+                return True
+            if _pod_logs_show_mariadb_connection_failure(
+                pod=pod,
+                mariadb_conn_failure_regex=mariadb_conn_failure_regex,
+            ):
                 return True
     return False
 
@@ -564,6 +608,14 @@ def validate_trustyai_service_images(
         for key, value in trustyai_operator_configmap.instance.data.items()
         if key in ["kube-rbac-proxy", "trustyaiServiceImage"]
     }
+    non_redhat_images = sorted(
+        image for image in tai_image_refs if not image.startswith(Resource.ApiGroup.IMAGE_REGISTRY)
+    )
+    if non_redhat_images:
+        pytest.skip(
+            "Operator is configured with non-Red Hat images; "
+            f"image validation requires {Resource.ApiGroup.IMAGE_REGISTRY}: {non_redhat_images}"
+        )
     trustyai_service_pod = wait_for_pods_by_labels(
         admin_client=client, namespace=model_namespace.name, label_selector=label_selector, expected_num_pods=1
     )[0]

@@ -12,6 +12,11 @@ from utilities.constants import TRUSTYAI_SERVICE_NAME
 
 @retry(wait_timeout=300, sleep=5)
 def wait_for_trustyai_db_migration_complete_log(client: DynamicClient, trustyai_service: TrustyAIService) -> bool:
+    """Wait for the migration completion log or the DB-ready status condition.
+
+    Recent TrustyAI images no longer emit the legacy migration log line, but the
+    operator reports the completed DB transition through the TrustyAIService CR.
+    """
     pods = Pod.get(
         client=client,
         namespace=trustyai_service.namespace,
@@ -22,11 +27,21 @@ def wait_for_trustyai_db_migration_complete_log(client: DynamicClient, trustyai_
         raise RuntimeError(
             f"No TrustyAI pod found for service {trustyai_service.name} in namespace {trustyai_service.namespace}"
         )  # noqa: E501
-    return bool(
+    migration_log_found = bool(
         re.search(
             r".+INFO.+Migration complete, the PVC is now safe to remove\.",
             trustyai_pod.log(container=TRUSTYAI_SERVICE_NAME),
         )
+    )
+    if migration_log_found:
+        return True
+
+    status = trustyai_service.instance.status or {}
+    return any(
+        condition.get("type") == "DBAvailable"
+        and condition.get("status") == "True"
+        and condition.get("reason") == "DBAvailable"
+        for condition in status.get("conditions", [])
     )
 
 

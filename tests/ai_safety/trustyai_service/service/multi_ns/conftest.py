@@ -38,9 +38,10 @@ from tests.ai_safety.trustyai_service.utils import (
     create_standalone_mariadb,
     create_trustyai_service,
 )
-from utilities.constants import TRUSTYAI_SERVICE_NAME, KServeDeploymentType
+from utilities.constants import TRUSTYAI_SERVICE_NAME, KServeDeploymentType, RuntimeTemplates
 from utilities.inference_utils import create_isvc
 from utilities.infra import create_inference_token, create_ns
+from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 DB_CREDENTIALS_SECRET_NAME: str = "db-credentials"
 DB_NAME: str = "trustyai_db"
