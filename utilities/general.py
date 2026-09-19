@@ -1,5 +1,6 @@
 import base64
 import os
+import platform
 import re
 import uuid
 from typing import Any
@@ -18,7 +19,6 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
 import utilities.infra
 from utilities.constants import MODELMESH_SERVING, Annotations, KServeDeploymentType
 from utilities.exceptions import ResourceValueMismatch, UnexpectedResourceCountError
-from utilities.image_constants import SharedImages
 
 # Constants for image validation
 SHA256_DIGEST_PATTERN = r"@sha256:[a-f0-9]{64}$"
@@ -140,7 +140,7 @@ def download_model_data(
         init_volume_mount: dict[str, str] = {"mountPath": "/mnt/models/", "name": model_pvc_name}
         init_command: list[str] = ["mkdir", "-p", pvc_model_path]
         init_container_args: list[str] = []
-        download_destination = "/mnt/models/"
+        download_destination = "/mnt/models/" if platform.machine() == "ppc64le" else pvc_model_path
     elif restricted_scc_init:
         init_volume_mount = volume_mount
         init_command = ["mkdir", "-p", pvc_model_path]
@@ -166,13 +166,14 @@ def download_model_data(
 
     init_container: dict[str, Any] = {
         "name": "init-container",
-        "image": SharedImages.BUSYBOX,
+        "image": "registry.access.redhat.com/ubi9/ubi-minimal:latest",
         "command": init_command,
         "args": init_container_args,
         "volumeMounts": [init_volume_mount],
     }
     downloader_container: dict[str, Any] = {
         "name": "model-downloader",
+        "resources": {"requests": {"cpu": "2", "memory": "8Gi"}, "limits": {"cpu": "4", "memory": "16Gi"}},
         "image": utilities.infra.get_kserve_storage_initialize_image(client=client),
         "args": [
             f"s3://{bucket_name}/{model_path}/",
@@ -186,6 +187,8 @@ def download_model_data(
             {"name": "AWS_DEFAULT_REGION", "value": aws_default_region},
             {"name": "S3_VERIFY_SSL", "value": "false"},
             {"name": "awsAnonymousCredential", "value": "false"},
+            {"name": "AWS_MAX_ATTEMPTS", "value": "10"},
+            {"name": "AWS_RETRY_MODE", "value": "adaptive"},
         ],
         "volumeMounts": [volume_mount],
     }
