@@ -182,7 +182,7 @@ class ServingRuntimeFromTemplate(ServingRuntime):
 
             # Support single entrypoint for TGIS and OpenAI
             if self.support_tgis_open_ai_endpoints:
-                if "vllm" in self.template_name and self.runtime_image is not None and self.deployment_type is not None:
+                if "vllm" in self.template_name and self.deployment_type is not None:
                     is_grpc = "grpc" in self.deployment_type.lower()
                     is_raw = "raw" in self.deployment_type.lower()
                     # Remove '--model' from the container args, we will pass this using isvc
