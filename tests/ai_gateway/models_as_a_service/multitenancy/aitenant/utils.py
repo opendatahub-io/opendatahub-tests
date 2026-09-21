@@ -6,7 +6,6 @@ from typing import Any, TypedDict
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.config_map import ConfigMap
 from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.namespace import Namespace
 from ocp_resources.role import Role
@@ -15,17 +14,20 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_gateway.models_as_a_service.maas_subscription.utils import MAAS_SUBSCRIPTION_NAMESPACE
 from tests.ai_gateway.models_as_a_service.utils import (
+    AIGATEWAY_GATEWAY_CLASS_NAME,
+    AITENANT_INFRA_NAMESPACE,
+    bootstrap_gateway_ref_from_aitenant,
+    fresh_aitenant,
     verify_maas_gateway_programmed,
     verify_maas_tenant_config_ready,
 )
-from utilities.constants import MAAS_GATEWAY_NAMESPACE, ApiGroups
+from utilities.constants import ApiGroups
 from utilities.resources.aitenant import AITenant
 from utilities.resources.maastenantconfig import MaasTenantConfig
 
 LOGGER = structlog.get_logger(name=__name__)
 
 AITENANT_CRD_NAME = f"aitenants.{ApiGroups.MAAS_IO}"
-AITENANT_INFRA_NAMESPACE = "ai-tenants"
 AITENANT_TENANT_NAMESPACE_PREFIX = "ai-tenant-"
 AIGATEWAY_BOOTSTRAPPED_TENANT_NAME = "default-tenant"
 AIGATEWAY_NAME_ANNOTATION = "maas.opendatahub.io/aitenant-name"
@@ -42,27 +44,6 @@ AITENANT_TEST_OIDC_SPEC = {
     "ttl": 600,
 }
 AITENANT_TEST_RBAC_ADMINS = [{"kind": "Group", "name": TEST_RBAC_GROUP_NAME}]
-AIGATEWAY_GATEWAY_CLASS_NAME = "openshift-default"
-AIGATEWAY_BOOTSTRAP_GATEWAY_LISTENERS = [
-    {
-        "name": "http",
-        "port": 80,
-        "protocol": "HTTP",
-        "allowedRoutes": {"namespaces": {"from": "All"}},
-    },
-    {
-        "name": "https",
-        "port": 443,
-        "protocol": "HTTPS",
-        "allowedRoutes": {"namespaces": {"from": "All"}},
-        "tls": {
-            "mode": "Terminate",
-            "certificateRefs": [
-                {"group": "", "kind": "Secret", "name": "data-science-gateway-service-tls"},
-            ],
-        },
-    },
-]
 AIGATEWAY_MANAGED_BY_LABEL = "maas.opendatahub.io/managed-by-aitenant"
 AIGATEWAY_TENANT_LABEL = "ai-gateway.opendatahub.io/tenant"
 GATEWAY_ACCESS_LABEL = "maas.opendatahub.io/gateway-access"
@@ -90,8 +71,8 @@ def expected_tenant_namespace_name(aitenant_name: str) -> str:
 
 def tenant_namespace_name_from_aitenant(aitenant: AITenant) -> str:
     """Return the reconciled tenant namespace name from AITenant status."""
-    fresh_aitenant = _fresh_aitenant(aitenant=aitenant)
-    status_tenant_namespace = getattr(fresh_aitenant.instance.status, "tenantNamespace", None)
+    refreshed_aitenant = fresh_aitenant(aitenant=aitenant)
+    status_tenant_namespace = getattr(refreshed_aitenant.instance.status, "tenantNamespace", None)
     if status_tenant_namespace:
         return status_tenant_namespace
     return expected_tenant_namespace_name(aitenant_name=aitenant.name)
@@ -124,144 +105,6 @@ def aitenant_object_admin_role_name(aitenant_name: str) -> str:
     )
 
 
-def build_aitenant_spec(
-    aitenant_name: str,
-    gateway_name: str | None = None,
-    oidc: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Build an AITenant spec with gateway and optional oidc fields."""
-    spec: dict[str, Any] = {}
-    resolved_gateway_name = gateway_name or aitenant_name
-    spec["gateway"] = {"name": resolved_gateway_name}
-    if oidc is not None:
-        spec["oidc"] = oidc
-    return spec
-
-
-def bootstrap_gateway_ref(
-    aitenant_name: str,
-    aitenant_spec: dict[str, Any],
-) -> tuple[str, str]:
-    """Resolve the bootstrap Gateway name and namespace for an AITenant spec."""
-    gateway_spec = aitenant_spec.get("gateway", {})
-    return (
-        gateway_spec.get("name", aitenant_name),
-        MAAS_GATEWAY_NAMESPACE,
-    )
-
-
-def bootstrap_gateway_ref_from_aitenant(aitenant: AITenant) -> tuple[str, str]:
-    """Resolve the bootstrap Gateway name and namespace from AITenant status or spec."""
-    if aitenant.exists:
-        fresh_aitenant = _fresh_aitenant(aitenant=aitenant)
-        status_gateway_ref = getattr(fresh_aitenant.instance.status, "gatewayRef", None)
-        if status_gateway_ref is not None:
-            return status_gateway_ref.name, status_gateway_ref.namespace
-    aitenant_spec: dict[str, Any] = {}
-    if aitenant.gateway is not None:
-        aitenant_spec["gateway"] = aitenant.gateway
-    return bootstrap_gateway_ref(
-        aitenant_name=aitenant.name,
-        aitenant_spec=aitenant_spec,
-    )
-
-
-def aitenant_from_spec(
-    admin_client: DynamicClient,
-    aitenant_name: str,
-    cr_namespace: str,
-    aitenant_spec: dict[str, Any],
-    teardown: bool = False,
-) -> AITenant:
-    """Return an AITenant configured from spec; use with ``with aitenant_from_spec(...) as aitenant:``."""
-    aitenant_kwargs: dict[str, Any] = {
-        "client": admin_client,
-        "name": aitenant_name,
-        "namespace": cr_namespace,
-        "teardown": teardown,
-        "wait_for_resource": True,
-    }
-    if "gateway" in aitenant_spec:
-        aitenant_kwargs["gateway"] = aitenant_spec["gateway"]
-    if "oidc" in aitenant_spec:
-        aitenant_kwargs["oidc"] = aitenant_spec["oidc"]
-    return AITenant(**aitenant_kwargs)
-
-
-def bootstrap_gateway_infrastructure_configmap_data(gateway_name: str) -> dict[str, str]:
-    """Return Gateway infrastructure ConfigMap data (ClusterIP Service + serving cert)."""
-    return {
-        "service": (
-            "metadata:\n"
-            "  annotations:\n"
-            f'    service.beta.openshift.io/serving-cert-secret-name: "{gateway_name}-service-tls"\n'
-            "spec:\n"
-            "  type: ClusterIP\n"
-        ),
-    }
-
-
-def aitenant_bootstrap_gateway(
-    admin_client: DynamicClient,
-    gateway_name: str,
-    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
-    teardown: bool = True,
-    infrastructure: dict[str, Any] | None = None,
-) -> Gateway:
-    """Return a bootstrap Gateway that must exist before AITenant reconciliation."""
-    gateway_kwargs: dict[str, Any] = {
-        "client": admin_client,
-        "name": gateway_name,
-        "namespace": gateway_namespace,
-        "gateway_class_name": AIGATEWAY_GATEWAY_CLASS_NAME,
-        "listeners": AIGATEWAY_BOOTSTRAP_GATEWAY_LISTENERS,
-        "teardown": teardown,
-    }
-    if infrastructure is not None:
-        gateway_kwargs["infrastructure"] = infrastructure
-    return Gateway(**gateway_kwargs)
-
-
-@contextmanager
-def bootstrap_gateway_context(
-    admin_client: DynamicClient,
-    gateway_name: str,
-    gateway_namespace: str,
-    teardown: bool,
-) -> Generator[Gateway]:
-    """Yield a bootstrap Gateway with a ClusterIP infrastructure ConfigMap."""
-    with (
-        ConfigMap(
-            client=admin_client,
-            name=f"{gateway_name}-config",
-            namespace=gateway_namespace,
-            data=bootstrap_gateway_infrastructure_configmap_data(gateway_name=gateway_name),
-            teardown=teardown,
-        ) as infra_config_map,
-        aitenant_bootstrap_gateway(
-            admin_client=admin_client,
-            gateway_name=gateway_name,
-            gateway_namespace=gateway_namespace,
-            teardown=teardown,
-            infrastructure={
-                "parametersRef": {
-                    "group": "",
-                    "kind": "ConfigMap",
-                    "name": infra_config_map.name,
-                },
-            },
-        ) as gateway,
-    ):
-        yield gateway
-
-
-def deploy_and_verify_aitenant_ready(aitenant: AITenant) -> None:
-    """Create the AITenant CR if missing and wait until it reports Ready with phase Active."""
-    if not aitenant.exists:
-        aitenant.deploy()
-    verify_aitenant_ready(aitenant=aitenant)
-
-
 def build_aitenant_test_context(aitenant: AITenant) -> AITenantTestContext:
     """Build the standard test context dict from a deployed AITenant."""
     return AITenantTestContext(
@@ -269,14 +112,6 @@ def build_aitenant_test_context(aitenant: AITenant) -> AITenantTestContext:
         aitenant_name=aitenant.name,
         tenant_namespace_name=tenant_namespace_name_from_aitenant(aitenant=aitenant),
     )
-
-
-def verify_aitenant_ready(aitenant: AITenant) -> None:
-    """Assert the AITenant exists and reports Ready=True with phase Active."""
-    assert aitenant.exists, f"AITenant '{aitenant.name}' not found in namespace '{aitenant.namespace}'"
-    aitenant.wait_for_condition(condition="Ready", status="True", timeout=300)
-    phase = getattr(aitenant.instance.status, "phase", "") or ""
-    assert phase == "Active", f"Expected AITenant phase Active, got '{phase}'"
 
 
 def verify_aitenant_bootstrap_children(
@@ -293,8 +128,8 @@ def verify_aitenant_bootstrap_children(
     aitenant_name = test_context["aitenant_name"]
     tenant_namespace_name = test_context["tenant_namespace_name"]
 
-    fresh_aitenant = _fresh_aitenant(aitenant=aitenant)
-    aitenant_status = fresh_aitenant.instance.status
+    refreshed_aitenant = fresh_aitenant(aitenant=aitenant)
+    aitenant_status = refreshed_aitenant.instance.status
     status_gateway_ref = getattr(aitenant_status, "gatewayRef", None)
     assert status_gateway_ref is not None, f"AITenant '{aitenant_name}' status.gatewayRef should be set after bootstrap"
     gateway_name = status_gateway_ref.name
@@ -386,8 +221,8 @@ def verify_aitenant_oidc_stays_in_spec(
     expected_oidc: dict[str, Any],
 ) -> None:
     """Assert AITenant.spec.oidc remains on the AITenant (not copied to Tenant/MaasTenantConfig)."""
-    fresh_aitenant = _fresh_aitenant(aitenant=aitenant)
-    aitenant_oidc = getattr(fresh_aitenant.instance.spec, "oidc", None)
+    refreshed_aitenant = fresh_aitenant(aitenant=aitenant)
+    aitenant_oidc = getattr(refreshed_aitenant.instance.spec, "oidc", None)
     assert aitenant_oidc is not None, f"AITenant '{aitenant.namespace}/{aitenant.name}' should retain spec.oidc"
     for field_name, expected_value in expected_oidc.items():
         actual_value = getattr(aitenant_oidc, field_name, None)
@@ -754,20 +589,10 @@ def verify_tenant_namespace_preserved(
     )
 
 
-def _fresh_aitenant(aitenant: AITenant) -> AITenant:
-    """Return a new handle to re-read the current AITenant status from the API."""
-    return AITenant(
-        client=aitenant.client,
-        name=aitenant.name,
-        namespace=aitenant.namespace,
-        wait_for_resource=False,
-    )
-
-
 def get_aitenant_ready_reason(aitenant: AITenant) -> str:
     """Return the Ready condition reason, or an empty string when absent."""
-    fresh_aitenant = _fresh_aitenant(aitenant=aitenant)
-    status = getattr(fresh_aitenant.instance, "status", {}) or {}
+    refreshed_aitenant = fresh_aitenant(aitenant=aitenant)
+    status = getattr(refreshed_aitenant.instance, "status", {}) or {}
     for condition in status.get("conditions", []):
         if condition.get("type") == "Ready":
             return condition.get("reason") or ""
@@ -780,8 +605,8 @@ def aitenant_has_status(
     ready_reason: str | None = None,
 ) -> bool:
     """Return True when AITenant status matches the expected phase and optional Ready reason."""
-    fresh_aitenant = _fresh_aitenant(aitenant=aitenant)
-    current_phase = getattr(fresh_aitenant.instance.status, "phase", "") or ""
+    refreshed_aitenant = fresh_aitenant(aitenant=aitenant)
+    current_phase = getattr(refreshed_aitenant.instance.status, "phase", "") or ""
     if current_phase != phase:
         return False
     if ready_reason is None:
@@ -809,7 +634,7 @@ def wait_until_aitenant_status(
             if matched:
                 return
     except TimeoutExpiredError:
-        current_phase = getattr(_fresh_aitenant(aitenant=aitenant).instance.status, "phase", "") or ""
+        current_phase = getattr(fresh_aitenant(aitenant=aitenant).instance.status, "phase", "") or ""
         current_reason = get_aitenant_ready_reason(aitenant=aitenant)
         pytest.fail(
             f"AITenant '{aitenant.name}' did not reach phase={phase} "

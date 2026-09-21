@@ -6,12 +6,15 @@ from typing import Any
 
 import pytest
 import structlog
+from kubernetes.client.exceptions import ApiException
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.inference_graph import InferenceGraph
 from ocp_resources.inference_service import InferenceService
+from ocp_resources.node import Node
 from ocp_resources.utils.constants import DEFAULT_CLUSTER_RETRY_EXCEPTIONS
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler, TimeoutWatch
+from urllib3.exceptions import HTTPError
 
 from tests.model_serving.model_server.kserve.autoscaling.keda.utils import get_isvc_keda_scaledobject
 from utilities.constants import KServeDeploymentType, Protocols
@@ -30,6 +33,40 @@ def skip_test(reason: str) -> None:
     border = "=" * 60
     LOGGER.warning("\n".join(["", border, f"  SKIP — {reason}", border, ""]))
     pytest.skip(reason)
+
+
+def get_worker_architecture(client: DynamicClient) -> str | None:
+    """Return the architecture shared by all workers, or ``None`` if unavailable or mixed."""
+    architectures: set[str] = set()
+    try:
+        for node in Node.get(client=client, label_selector="node-role.kubernetes.io/worker"):
+            architecture = node.instance.status.nodeInfo.architecture
+            LOGGER.info(f"Detected worker node architecture: {architecture!r}")
+            if not isinstance(architecture, str) or not architecture.strip():
+                LOGGER.warning(f"Unable to read worker architecture: {architecture!r}")
+                return None
+            architectures.add(architecture)
+    except (ApiException, HTTPError, ResourceNotFoundError, AttributeError) as error:
+        LOGGER.warning(f"Unable to read worker architecture: {error}")
+        return None
+
+    if not architectures:
+        LOGGER.warning("Unable to read worker architecture: no worker nodes found")
+    elif len(architectures) > 1:
+        LOGGER.warning(f"Unable to read worker architecture: mixed architectures {architectures!r}")
+    else:
+        return architectures.pop()
+
+    return None
+
+
+def is_arm64_cluster(client: DynamicClient) -> bool:
+    """Return whether every worker node reports the ``arm64`` architecture."""
+    architecture = get_worker_architecture(client=client)
+    if architecture not in {None, "arm64", "amd64", "ppc64le", "s390x"}:
+        LOGGER.warning(f"Unknown worker architecture: {architecture!r}")
+
+    return architecture == "arm64"
 
 
 def verify_inference_response(
