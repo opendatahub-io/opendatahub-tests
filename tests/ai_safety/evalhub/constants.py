@@ -129,6 +129,12 @@ GIT_FULL_REPO_TOKENIZER_PATH: str = "/test_data/tests/git-testdata/tokenizer"
 GIT_NONEXISTENT_REPO_URL: str = "https://git.example.com/does-not-exist/repo.git"
 GIT_COMMIT_SHA_PATTERN: re.Pattern[str] = re.compile(r"^[0-9a-f]{7,40}$")
 
+# Git storage source (RHAISTRAT-2058)
+GIT_CLONE_INIT_CONTAINER_NAME: str = "init"
+GIT_TEST_DATA_MOUNT_PATH: str = "/test_data"
+GIT_CREDS_SECRET_NAME: str = "git-test-creds"
+GIT_BAD_CREDS_SECRET_NAME: str = "git-bad-creds"
+
 # Hardware profile
 EVALHUB_DEFAULT_HARDWARE_PROFILE: str = "default-profile"
 
@@ -236,7 +242,7 @@ OTEL_TRACE_COLLECTOR_NAME: str = "otel-trace-collector"
 OTEL_TRACE_COLLECTOR_LABELS: dict[str, str] = {"app": "otel-trace-collector"}
 
 # Operator pod label selector
-OPERATOR_POD_LABEL_SELECTOR: str = "control-plane=controller-manager,app.kubernetes.io/name=trustyai-service-operator"
+OPERATOR_POD_LABEL_SELECTOR: str = "control-plane=trustyai-service-operator"
 
 # Operator service name in OTEL traces
 OPERATOR_OTEL_SERVICE_NAME: str = "trustyai-service-operator"
