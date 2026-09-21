@@ -10,6 +10,7 @@ import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import NotFoundError, ResourceNotFoundError
+from ocp_resources.config_map import ConfigMap
 from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.endpoints import Endpoints
@@ -28,6 +29,7 @@ from utilities.constants import (
 )
 from utilities.llmd_utils import get_llm_inference_url
 from utilities.plugins.constant import OpenAIEnpoints, RestHeader
+from utilities.resources.aitenant import AITenant
 from utilities.resources.http_route import HTTPRoute
 from utilities.resources.llm_inference_service import LLMInferenceService
 from utilities.resources.maastenantconfig import MaasTenantConfig
@@ -42,6 +44,29 @@ MAAS_TENANT_CONFIG_CRD_NAME = f"maastenantconfigs.{ApiGroups.MAAS_IO}"
 LEGACY_TENANT_CRD_NAME = f"tenants.{ApiGroups.MAAS_IO}"
 DEFAULT_MAAS_TENANT_NAME = "default-tenant"
 MaaSTenantResource = MaasTenantConfig | Tenant
+
+AITENANT_INFRA_NAMESPACE: str = "ai-tenants"
+AIGATEWAY_GATEWAY_CLASS_NAME: str = "openshift-default"
+AIGATEWAY_BOOTSTRAP_GATEWAY_LISTENERS: list[dict[str, Any]] = [
+    {
+        "name": "http",
+        "port": 80,
+        "protocol": "HTTP",
+        "allowedRoutes": {"namespaces": {"from": "All"}},
+    },
+    {
+        "name": "https",
+        "port": 443,
+        "protocol": "HTTPS",
+        "allowedRoutes": {"namespaces": {"from": "All"}},
+        "tls": {
+            "mode": "Terminate",
+            "certificateRefs": [
+                {"group": "", "kind": "Secret", "name": "data-science-gateway-service-tls"},
+            ],
+        },
+    },
+]
 
 
 def dsc_uses_aigateway_maas_schema(admin_client: DynamicClient) -> bool:
@@ -887,3 +912,162 @@ def wait_for_httproute(
     ):
         if route is not None:
             return route
+
+
+def fresh_aitenant(aitenant: AITenant) -> AITenant:
+    """Return a new handle to re-read the AITenant from the API."""
+    return AITenant(
+        client=aitenant.client,
+        name=aitenant.name,
+        namespace=aitenant.namespace,
+        wait_for_resource=False,
+    )
+
+
+def build_aitenant_spec(
+    aitenant_name: str,
+    gateway_name: str | None = None,
+    oidc: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build an AITenant spec with gateway and optional oidc fields."""
+    spec: dict[str, Any] = {}
+    resolved_gateway_name = gateway_name or aitenant_name
+    spec["gateway"] = {"name": resolved_gateway_name}
+    if oidc is not None:
+        spec["oidc"] = oidc
+    return spec
+
+
+def bootstrap_gateway_ref(
+    aitenant_name: str,
+    aitenant_spec: dict[str, Any],
+) -> tuple[str, str]:
+    """Resolve the bootstrap Gateway name and namespace for an AITenant spec."""
+    gateway_spec = aitenant_spec.get("gateway", {})
+    return (
+        gateway_spec.get("name", aitenant_name),
+        MAAS_GATEWAY_NAMESPACE,
+    )
+
+
+def bootstrap_gateway_ref_from_aitenant(aitenant: AITenant) -> tuple[str, str]:
+    """Resolve the bootstrap Gateway name and namespace from AITenant status or spec."""
+    if aitenant.exists:
+        refreshed_aitenant = fresh_aitenant(aitenant=aitenant)
+        status_gateway_ref = getattr(refreshed_aitenant.instance.status, "gatewayRef", None)
+        if status_gateway_ref is not None:
+            return status_gateway_ref.name, status_gateway_ref.namespace
+    aitenant_spec: dict[str, Any] = {}
+    if aitenant.gateway is not None:
+        aitenant_spec["gateway"] = aitenant.gateway
+    return bootstrap_gateway_ref(
+        aitenant_name=aitenant.name,
+        aitenant_spec=aitenant_spec,
+    )
+
+
+def aitenant_from_spec(
+    admin_client: DynamicClient,
+    aitenant_name: str,
+    cr_namespace: str,
+    aitenant_spec: dict[str, Any],
+    teardown: bool = False,
+    annotations: dict[str, str] | None = None,
+) -> AITenant:
+    """Return an AITenant configured from spec; use with ``with aitenant_from_spec(...) as aitenant:``."""
+    aitenant_kwargs: dict[str, Any] = {
+        "client": admin_client,
+        "name": aitenant_name,
+        "namespace": cr_namespace,
+        "teardown": teardown,
+        "wait_for_resource": True,
+    }
+    if annotations is not None:
+        aitenant_kwargs["annotations"] = annotations
+    if "gateway" in aitenant_spec:
+        aitenant_kwargs["gateway"] = aitenant_spec["gateway"]
+    if "oidc" in aitenant_spec:
+        aitenant_kwargs["oidc"] = aitenant_spec["oidc"]
+    return AITenant(**aitenant_kwargs)
+
+
+def bootstrap_gateway_infrastructure_configmap_data(gateway_name: str) -> dict[str, str]:
+    """Return Gateway infrastructure ConfigMap data (ClusterIP Service + serving cert)."""
+    return {
+        "service": (
+            "metadata:\n"
+            "  annotations:\n"
+            f'    service.beta.openshift.io/serving-cert-secret-name: "{gateway_name}-service-tls"\n'
+            "spec:\n"
+            "  type: ClusterIP\n"
+        ),
+    }
+
+
+def aitenant_bootstrap_gateway(
+    admin_client: DynamicClient,
+    gateway_name: str,
+    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+    teardown: bool = True,
+    infrastructure: dict[str, Any] | None = None,
+) -> Gateway:
+    """Return a bootstrap Gateway that must exist before AITenant reconciliation."""
+    gateway_kwargs: dict[str, Any] = {
+        "client": admin_client,
+        "name": gateway_name,
+        "namespace": gateway_namespace,
+        "gateway_class_name": AIGATEWAY_GATEWAY_CLASS_NAME,
+        "listeners": AIGATEWAY_BOOTSTRAP_GATEWAY_LISTENERS,
+        "teardown": teardown,
+    }
+    if infrastructure is not None:
+        gateway_kwargs["infrastructure"] = infrastructure
+    return Gateway(**gateway_kwargs)
+
+
+@contextmanager
+def bootstrap_gateway_context(
+    admin_client: DynamicClient,
+    gateway_name: str,
+    gateway_namespace: str,
+    teardown: bool,
+) -> Generator[Gateway]:
+    """Yield a bootstrap Gateway with a ClusterIP infrastructure ConfigMap."""
+    with (
+        ConfigMap(
+            client=admin_client,
+            name=f"{gateway_name}-config",
+            namespace=gateway_namespace,
+            data=bootstrap_gateway_infrastructure_configmap_data(gateway_name=gateway_name),
+            teardown=teardown,
+        ) as infra_config_map,
+        aitenant_bootstrap_gateway(
+            admin_client=admin_client,
+            gateway_name=gateway_name,
+            gateway_namespace=gateway_namespace,
+            teardown=teardown,
+            infrastructure={
+                "parametersRef": {
+                    "group": "",
+                    "kind": "ConfigMap",
+                    "name": infra_config_map.name,
+                },
+            },
+        ) as gateway,
+    ):
+        yield gateway
+
+
+def verify_aitenant_ready(aitenant: AITenant) -> None:
+    """Assert the AITenant exists and reports Ready=True with phase Active."""
+    assert aitenant.exists, f"AITenant '{aitenant.name}' not found in namespace '{aitenant.namespace}'"
+    aitenant.wait_for_condition(condition="Ready", status="True", timeout=300)
+    phase = getattr(aitenant.instance.status, "phase", "") or ""
+    assert phase == "Active", f"Expected AITenant phase Active, got '{phase}'"
+
+
+def deploy_and_verify_aitenant_ready(aitenant: AITenant) -> None:
+    """Create the AITenant CR if missing and wait until it reports Ready with phase Active."""
+    if not aitenant.exists:
+        aitenant.deploy()
+    verify_aitenant_ready(aitenant=aitenant)
