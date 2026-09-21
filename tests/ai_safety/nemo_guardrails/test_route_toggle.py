@@ -14,12 +14,12 @@ import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
-from ocp_resources.nemo_guardrails import NemoGuardrails
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from timeout_sampler import TimeoutSampler
 
 from tests.ai_safety.nemo_guardrails.constants import NEMO_DEFAULT_CONFIG_CM_PII
+from utilities.resources.nemo_guardrails import NemoGuardrails
 
 _TIMEOUT = 120
 _SLEEP = 5
