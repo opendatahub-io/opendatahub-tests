@@ -87,19 +87,15 @@ def _evalhub_service_account_name(cr_name: str) -> str:
 
 
 def _wait_for_deployment_rollout(deployment: Deployment, timeout: int = 300) -> None:
-    """Wait until the Deployment controller has fully rolled out the latest pod template.
+    """Wait until Kubernetes has fully applied the latest Deployment change.
 
-    ``wait_for_replicas`` passes as soon as *any* replicas are ready, which can be
-    satisfied by old pods. This helper mirrors ``kubectl rollout status``:
+    We wait until:
+    - Kubernetes has noticed the latest change.
+    - All new pods are ready.
+    - No pods are unavailable.
+    - The old pods have been removed.
 
-    - ``status.observedGeneration >= metadata.generation``: the controller has seen
-      the latest spec. Without this, a status written for the previous spec looks
-      "complete" in the moments after the spec changes.
-    - ``updatedReplicas >= spec.replicas`` and ``unavailableReplicas == 0``.
-    - ``status.replicas <= updatedReplicas``: the old ReplicaSet has been scaled
-      down. With ``maxSurge`` the new pod can be ready while the old one is still
-      counted. (``status.replicas`` excludes pods that are already terminating;
-      ``_wait_for_mcp_pods_settled`` covers those.)
+    This makes sure the rollout is actually finished before the tests continue.
     """
     for instance in TimeoutSampler(
         wait_timeout=timeout,
@@ -120,7 +116,7 @@ def _wait_for_deployment_rollout(deployment: Deployment, timeout: int = 300) -> 
 
 
 def _mcp_pod_states(admin_client: DynamicClient, namespace: str, label_selector: str) -> list[tuple[str, str, bool]]:
-    """Return ``(name, phase, is_terminating)`` for each pod matching ``label_selector``."""
+    """Return the name, status, and whether each matching pod is shutting down."""
     states = []
     for pod in Pod.get(client=admin_client, namespace=namespace, label_selector=label_selector):
         pod_instance = pod.instance
@@ -135,12 +131,10 @@ def _wait_for_mcp_pods_settled(
     desired: int,
     timeout: int = 120,
 ) -> None:
-    """Wait until exactly ``desired`` MCP pods exist, all Running and none terminating.
+    """Wait until the expected number of MCP pods are running and no old pods are shutting down.
 
-    Deployment ``status.replicas`` excludes terminating pods, but ``Pod.get`` still
-    returns them, with phase ``Running``, for their termination grace period. Tests
-    that count MCP pods or inspect ``pods[0]`` can otherwise see the old pod after
-    the rollout itself has completed.
+    Kubernetes can still show an old pod for a short time after a rollout finishes.
+    This makes sure only the new MCP pods remain before the tests continue.
     """
     label_selector = evalhub_mcp_pod_label_selector(instance_name=instance_name)
     last_seen: list[tuple[str, str, bool]] = []
