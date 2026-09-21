@@ -861,6 +861,31 @@ def build_n1_notebook_dict(
     }
 
 
+def wait_for_pod_uid_change(pod: Pod, old_uid: str, timeout: int = 300) -> None:
+    """Wait until the named pod exists with a UID different from ``old_uid``.
+
+    StatefulSet pods keep a stable name (``<notebook>-0``), so a rollout is
+    detected by UID change rather than name or existence.
+    """
+
+    def _uid_changed() -> bool:
+        if not pod.exists:
+            return False
+        return str(pod.instance.metadata.uid) != old_uid
+
+    try:
+        for sample in TimeoutSampler(wait_timeout=timeout, sleep=5, func=_uid_changed):
+            if sample:
+                return
+    except TimeoutExpiredError as exc:
+        collect_pod_information(pod=pod)
+        current_uid = str(pod.instance.metadata.uid) if pod.exists else "<missing>"
+        raise AssertionError(
+            f"Pod '{pod.namespace}/{pod.name}' was not recreated within {timeout} seconds "
+            f"after the image patch. old_uid={old_uid}, current_uid={current_uid}."
+        ) from exc
+
+
 def wait_for_controller_reconciliation(
     admin_client: DynamicClient,
     notebook_name: str,
@@ -1558,6 +1583,12 @@ def apply_dashboard_image_patch(
     interprets the body as RFC 6902 operations, matching how the Dashboard
     frontend patches notebook images.
     """
+    LOGGER.info(
+        "Applying Dashboard JSON patch to Notebook",
+        notebook=notebook.name,
+        namespace=notebook.namespace,
+        patch_ops=patch_ops,
+    )
     notebook.api.patch(
         body=patch_ops,
         name=notebook.name,
