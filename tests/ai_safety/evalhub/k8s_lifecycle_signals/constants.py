@@ -22,7 +22,7 @@ LIFECYCLE_SOURCE_OPERATOR = "trustyai-service-operator"
 
 # Phase label values
 LIFECYCLE_PHASE_RUNNING = "Running"
-LIFECYCLE_PHASE_SUCCEEDED = "Succeeded"
+LIFECYCLE_PHASE_COMPLETED = "Completed"
 LIFECYCLE_PHASE_FAILED = "Failed"
 LIFECYCLE_PHASE_THRESHOLD_VIOLATED = "ThresholdViolated"
 

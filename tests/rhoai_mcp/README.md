@@ -37,6 +37,10 @@ uv run pytest tests/rhoai_mcp/ -v
 
 ## Development
 
-```bash
+```sh
 OC_BINARY_PATH=$(which oc) uv run pytest tests/rhoai_mcp/test_deployment.py -s -v --cluster-sanity-skip-check
+```
+
+```sh
+OC_BINARY_PATH=$(which oc) uv run pytest tests/rhoai_mcp/ --rhoai-mcp-image=quay.io/opendatahub/odh-rhoai-mcp:odh-stable -s -v --cluster-sanity-skip-check --log-file=/tmp/rhoai_mcp_full_run.log --log-file-level=DEBUG 2>&1 | tee /tmp/rhoai_mcp_full_run_console.log
 ```
