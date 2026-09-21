@@ -9,7 +9,6 @@ import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.notebook import Notebook
 from ocp_resources.pod import Pod
-from timeout_sampler import TimeoutSampler
 
 from tests.workbenches.notebook_images.utils import (
     ResolvedWorkbenchImage,
@@ -21,6 +20,7 @@ from tests.workbenches.notebook_images.utils import (
     read_pvc_upgrade_marker,
     wait_for_controller_reconciliation,
     wait_for_http_inside_pod,
+    wait_for_pod_uid_change,
 )
 from utilities.constants import Timeout
 
@@ -64,6 +64,10 @@ class TestPostUpgradeBumpWorkbench:
     After the platform upgrade, applies the Dashboard JSON patch to bump
     the workbench from N-1 to N, then verifies restart, image update,
     health, and PVC data integrity.
+
+    Skipped when N and N-1 resolve to the same container image URL
+    (typical of z-stream upgrades): ``patchNotebookImage()`` is then a
+    no-op and the StatefulSet pod is not recreated.
     """
 
     @pytest.mark.post_upgrade
@@ -95,6 +99,18 @@ class TestPostUpgradeBumpWorkbench:
         When the Dashboard-equivalent JSON patch is applied,
         Then the old pod terminates and a new pod reaches Ready.
         """
+        current_image = str(n1_bump_notebook.instance.spec.template.spec.containers[0].image)
+        if current_image == n1_bump_target_image.image_url:
+            pytest.skip(
+                "No Dashboard image bump to apply: the workbench container image is already "
+                f"{current_image!r} (baseline tag {n1_bump_baseline.image_tag!r}, "
+                f"target tag {n1_bump_target_image.tag_name!r}). "
+                "On z-stream upgrades the ImageStream tag name does not change, so "
+                "patchNotebookImage() is a no-op and the pod is not recreated. "
+                "To exercise this test, pin a previous tag during pre-upgrade with "
+                "--tc workbench_image_tag:<n-minus-one-tag>."
+            )
+
         old_pod_uid = n1_bump_pod.instance.metadata.uid
 
         patch_ops = build_dashboard_image_patch(
@@ -111,13 +127,11 @@ class TestPostUpgradeBumpWorkbench:
             name=f"{n1_bump_notebook.name}-0",
             namespace=n1_bump_notebook.namespace,
         )
-        for sample in TimeoutSampler(
-            wait_timeout=Timeout.TIMEOUT_5MIN,
-            sleep=5,
-            func=lambda: pod_ref.exists and pod_ref.instance.metadata.uid != old_pod_uid,
-        ):
-            if sample:
-                break
+        wait_for_pod_uid_change(
+            pod=pod_ref,
+            old_uid=str(old_pod_uid),
+            timeout=Timeout.TIMEOUT_5MIN,
+        )
 
         wait_for_controller_reconciliation(
             admin_client=admin_client,
