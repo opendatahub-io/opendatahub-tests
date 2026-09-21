@@ -165,9 +165,11 @@ class TestPostUpgradeBumpWorkbench:
             namespace=n1_bump_notebook.namespace,
         )
         actual_digest = get_container_image_digest(pod=new_pod, container_name=n1_bump_notebook.name)
-        assert actual_digest == n1_bump_target_image.image_digest, (
-            f"Running container digest does not match target N image. "
-            f"Expected '{n1_bump_target_image.image_digest}', got '{actual_digest}'"
+        expected_digests = n1_bump_target_image.expected_pod_digests()
+        assert actual_digest in expected_digests, (
+            f"Running container digest does not match ImageStream "
+            f"{n1_bump_target_image.image_selection}. "
+            f"Expected one of {sorted(expected_digests)}, got '{actual_digest}'"
         )
 
     @pytest.mark.post_upgrade
