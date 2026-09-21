@@ -1,6 +1,5 @@
 import base64
 import os
-import platform
 import re
 import uuid
 from typing import Any
@@ -140,7 +139,7 @@ def download_model_data(
         init_volume_mount: dict[str, str] = {"mountPath": "/mnt/models/", "name": model_pvc_name}
         init_command: list[str] = ["mkdir", "-p", pvc_model_path]
         init_container_args: list[str] = []
-        download_destination = "/mnt/models/" if platform.machine() == "ppc64le" else pvc_model_path
+        download_destination = "/mnt/models/"
     elif restricted_scc_init:
         init_volume_mount = volume_mount
         init_command = ["mkdir", "-p", pvc_model_path]

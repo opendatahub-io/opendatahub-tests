@@ -45,12 +45,24 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "v
     indirect=True,
 )
 class TestLlamaSpyrePpc64leRagInference:
+    """Validate Llama-3.1-8B RAG inference on Spyre ppc64le via S3-backed vLLM.
+
+    Deploys a vLLM InferenceService with 4 Spyre PFs in STANDARD mode,
+    loading the model from S3, and validates OpenAI-compatible responses.
+    """
+
     def test_llama3_8b_spyre_ppc64le_rag_inference(
         self,
         vllm_inference_service: InferenceService,
         skip_if_not_raw_deployment: Any,
         response_snapshot: Any,
-    ):
+    ) -> None:
+        """Verify Llama-3.1-8B serves valid responses on Spyre ppc64le.
+
+        Given a vLLM InferenceService backed by S3 storage with 4 Spyre PFs,
+        When OpenAI-compatible chat and completion requests are sent,
+        Then the model returns valid responses matching expected keywords.
+        """
         validate_raw_openai_inference_request(
             isvc=vllm_inference_service,
             response_snapshot=response_snapshot,

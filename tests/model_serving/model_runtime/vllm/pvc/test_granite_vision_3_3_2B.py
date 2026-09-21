@@ -1,3 +1,4 @@
+# noqa: N999
 from typing import Any
 
 import pytest
