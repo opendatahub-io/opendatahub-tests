@@ -14,48 +14,22 @@ import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
-from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from timeout_sampler import TimeoutSampler
 
 from tests.ai_safety.nemo_guardrails.constants import NEMO_DEFAULT_CONFIG_CM_PII
+from tests.ai_safety.nemo_guardrails.utils import (
+    build_api_key_env,
+    condition_reason,
+    route_exists,
+    wait_for_route,
+)
 from utilities.resources.nemo_guardrails import NemoGuardrails
 
 _TIMEOUT = 120
 _SLEEP = 5
 
 _NEMO_CONFIGS = [{"name": "route-toggle-pii", "configMaps": [NEMO_DEFAULT_CONFIG_CM_PII], "default": True}]
-
-
-def _api_key_env(secret_name: str) -> list[dict]:
-    return [
-        {
-            "name": "OPENAI_API_KEY",
-            "valueFrom": {"secretKeyRef": {"name": secret_name, "key": "token"}},
-        }
-    ]
-
-
-def _route_exists(client: DynamicClient, name: str, namespace: str) -> bool:
-    return bool(Route(client=client, name=name, namespace=namespace).exists)
-
-
-def _wait_for_route(client: DynamicClient, name: str, namespace: str, *, present: bool) -> None:
-    for sample in TimeoutSampler(
-        wait_timeout=_TIMEOUT,
-        sleep=_SLEEP,
-        func=lambda: _route_exists(client, name, namespace),
-    ):
-        if sample == present:
-            break
-
-
-def _condition_reason(nemo_cr: NemoGuardrails, condition_type: str) -> str | None:
-    conditions = (nemo_cr.instance.status or {}).get("conditions", [])
-    for cond in conditions:
-        if cond.get("type") == condition_type:
-            return cond.get("reason")
-    return None
 
 
 @pytest.mark.tier2
@@ -89,7 +63,7 @@ class TestNemoGuardrailsRouteToggle:
             expose_route=True,
             nemo_configs=_NEMO_CONFIGS,
             replicas=1,
-            env=_api_key_env(nemo_api_token_secret.name),
+            env=build_api_key_env(nemo_api_token_secret.name),
         ) as nemo_cr:
             Deployment(
                 client=admin_client,
@@ -98,7 +72,7 @@ class TestNemoGuardrailsRouteToggle:
                 wait_for_resource=True,
             ).wait_for_replicas()
 
-            assert _route_exists(admin_client, nemo_cr.name, model_namespace.name), (
+            assert route_exists(admin_client, nemo_cr.name, model_namespace.name), (
                 f"Expected Route '{nemo_cr.name}' to exist in '{model_namespace.name}' when exposeRoute=true"
             )
 
@@ -121,7 +95,7 @@ class TestNemoGuardrailsRouteToggle:
             expose_route=False,
             nemo_configs=_NEMO_CONFIGS,
             replicas=1,
-            env=_api_key_env(nemo_api_token_secret.name),
+            env=build_api_key_env(nemo_api_token_secret.name),
         ) as nemo_cr:
             Deployment(
                 client=admin_client,
@@ -130,7 +104,7 @@ class TestNemoGuardrailsRouteToggle:
                 wait_for_resource=True,
             ).wait_for_replicas()
 
-            assert not _route_exists(admin_client, nemo_cr.name, model_namespace.name), (
+            assert not route_exists(admin_client, nemo_cr.name, model_namespace.name), (
                 f"Expected no Route '{nemo_cr.name}' in '{model_namespace.name}' when exposeRoute=false"
             )
 
@@ -156,7 +130,7 @@ class TestNemoGuardrailsRouteToggle:
             namespace=model_namespace.name,
             nemo_configs=_NEMO_CONFIGS,
             replicas=1,
-            env=_api_key_env(nemo_api_token_secret.name),
+            env=build_api_key_env(nemo_api_token_secret.name),
         ) as nemo_cr:
             Deployment(
                 client=admin_client,
@@ -165,7 +139,7 @@ class TestNemoGuardrailsRouteToggle:
                 wait_for_resource=True,
             ).wait_for_replicas()
 
-            assert _route_exists(admin_client, nemo_cr.name, model_namespace.name), (
+            assert route_exists(admin_client, nemo_cr.name, model_namespace.name), (
                 f"Expected Route '{nemo_cr.name}' to exist in '{model_namespace.name}' "
                 "when exposeRoute is omitted (defaulted to true)"
             )
@@ -189,7 +163,7 @@ class TestNemoGuardrailsRouteToggle:
             expose_route=True,
             nemo_configs=_NEMO_CONFIGS,
             replicas=1,
-            env=_api_key_env(nemo_api_token_secret.name),
+            env=build_api_key_env(nemo_api_token_secret.name),
         ) as nemo_cr:
             Deployment(
                 client=admin_client,
@@ -198,7 +172,7 @@ class TestNemoGuardrailsRouteToggle:
                 wait_for_resource=True,
             ).wait_for_replicas()
 
-            assert _route_exists(admin_client, nemo_cr.name, model_namespace.name), (
+            assert route_exists(admin_client, nemo_cr.name, model_namespace.name), (
                 f"Pre-condition failed: Route '{nemo_cr.name}' not found before patch"
             )
 
@@ -209,9 +183,9 @@ class TestNemoGuardrailsRouteToggle:
                 }
             )
 
-            _wait_for_route(client=admin_client, name=nemo_cr.name, namespace=model_namespace.name, present=False)
+            wait_for_route(client=admin_client, name=nemo_cr.name, namespace=model_namespace.name, present=False)
 
-            assert not _route_exists(admin_client, nemo_cr.name, model_namespace.name), (
+            assert not route_exists(admin_client, nemo_cr.name, model_namespace.name), (
                 f"Expected Route '{nemo_cr.name}' to be deleted after patching exposeRoute to false"
             )
 
@@ -234,7 +208,7 @@ class TestNemoGuardrailsRouteToggle:
             expose_route=False,
             nemo_configs=_NEMO_CONFIGS,
             replicas=1,
-            env=_api_key_env(nemo_api_token_secret.name),
+            env=build_api_key_env(nemo_api_token_secret.name),
         ) as nemo_cr:
             Deployment(
                 client=admin_client,
@@ -243,7 +217,7 @@ class TestNemoGuardrailsRouteToggle:
                 wait_for_resource=True,
             ).wait_for_replicas()
 
-            assert not _route_exists(admin_client, nemo_cr.name, model_namespace.name), (
+            assert not route_exists(admin_client, nemo_cr.name, model_namespace.name), (
                 f"Pre-condition failed: Route '{nemo_cr.name}' unexpectedly exists before patch"
             )
 
@@ -254,9 +228,9 @@ class TestNemoGuardrailsRouteToggle:
                 }
             )
 
-            _wait_for_route(client=admin_client, name=nemo_cr.name, namespace=model_namespace.name, present=True)
+            wait_for_route(client=admin_client, name=nemo_cr.name, namespace=model_namespace.name, present=True)
 
-            assert _route_exists(admin_client, nemo_cr.name, model_namespace.name), (
+            assert route_exists(admin_client, nemo_cr.name, model_namespace.name), (
                 f"Expected Route '{nemo_cr.name}' to be created after patching exposeRoute to true"
             )
 
@@ -279,7 +253,7 @@ class TestNemoGuardrailsRouteToggle:
             expose_route=False,
             nemo_configs=_NEMO_CONFIGS,
             replicas=1,
-            env=_api_key_env(nemo_api_token_secret.name),
+            env=build_api_key_env(nemo_api_token_secret.name),
         ) as nemo_cr:
             Deployment(
                 client=admin_client,
@@ -291,10 +265,10 @@ class TestNemoGuardrailsRouteToggle:
             for sample in TimeoutSampler(
                 wait_timeout=_TIMEOUT,
                 sleep=_SLEEP,
-                func=lambda: _condition_reason(nemo_cr=nemo_cr, condition_type="RouteReady"),
+                func=lambda: condition_reason(nemo_cr=nemo_cr, condition_type="RouteReady"),
             ):
-                if sample is not None:
+                if sample == "RouteDisabled":
                     break
 
-            reason = _condition_reason(nemo_cr=nemo_cr, condition_type="RouteReady")
+            reason = condition_reason(nemo_cr=nemo_cr, condition_type="RouteReady")
             assert reason == "RouteDisabled", f"Expected Route condition reason 'RouteDisabled', got: {reason!r}"
