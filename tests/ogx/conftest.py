@@ -253,7 +253,8 @@ def ogx_test_route(
                             "tls": {
                                 "termination": "edge",
                                 "insecureEdgeTerminationPolicy": "Redirect",
-                            }
+                            },
+                            "port": {"targetPort": "http"},
                         },
                         "metadata": {
                             "annotations": {Annotations.HaproxyRouterOpenshiftIo.TIMEOUT: "10m"},
