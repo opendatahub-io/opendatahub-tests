@@ -10,6 +10,7 @@ from ocp_resources.service import Service
 
 from tests.ai_safety.evalhub.constants import (
     ENV_GIT_REF,
+    ENV_GIT_SUBPATH,
     ENV_GIT_URL,
     EVALHUB_LOG_ADAPTER_CONTAINER,
     GIT_DEFAULT_REF,
@@ -127,6 +128,9 @@ class TestEvalHubGitStoragePublic:
         )
         assert init_env.get(ENV_GIT_URL) == GIT_PUBLIC_REPO_URL, (
             f"Init container {ENV_GIT_URL} mismatch: {init_env.get(ENV_GIT_URL)!r}"
+        )
+        assert init_env.get(ENV_GIT_SUBPATH) == GIT_PUBLIC_REPO_SUB_PATH, (
+            f"Init container {ENV_GIT_SUBPATH} mismatch: {init_env.get(ENV_GIT_SUBPATH)!r}"
         )
 
         job_data = wait_for_evalhub_job(
@@ -264,6 +268,13 @@ class TestEvalHubGitStoragePublic:
         state = job_data.get("status", {}).get("state")
         assert state == "failed", f"Job with a nonexistent git ref should fail, got state {state!r}"
 
+        failure_messages = [
+            (benchmark.get("error_message") or {}).get("message")
+            for benchmark in (job_data.get("status", {}).get("benchmarks") or [])
+            if benchmark.get("status") == "failed"
+        ]
+        assert any(failure_messages), f"A failed job must say why it failed, got status: {job_data.get('status')}"
+
         benchmarks_with_metrics = [
             benchmark
             for benchmark in ((job_data.get("results", {}) or {}).get("benchmarks") or [])
@@ -312,10 +323,6 @@ class TestEvalHubGitStoragePublic:
             assert 400 <= response.status_code < 500, (
                 f"Invalid git test_data_ref must be rejected with a 4xx, got {response.status_code}: {response.text}"
             )
-        try:
-            error_body = response.json()
-        except ValueError:
-            return  # A non-JSON error response is acceptable.
-        assert "error" in error_body or "message" in error_body, (
-            f"Error response missing an error/message field: {error_body}"
-        )
+        error_body = response.json()
+        assert error_body.get("message_code"), f"Error response is missing a message_code: {error_body}"
+        assert error_body.get("message"), f"Error response is missing a non-empty message: {error_body}"
