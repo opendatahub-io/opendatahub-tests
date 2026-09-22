@@ -48,9 +48,10 @@
 
 ## Reusable workflows
 
-`build-push-image.yml` builds the `Dockerfile` and pushes it to a registry. It is called by
-the on-merge workflow and by `Cut Release Branch`, so both produce identical images,
-including the `io.opendatahub.tests.required-images` manifest labels. Call it with:
+`build-push-image.yml` builds the `Dockerfile` and pushes it to a registry, including the
+`io.opendatahub.tests.required-images` manifest labels. It is called by `Cut Release Branch`.
+The on-merge workflow keeps its own inline build-and-push steps rather than calling this
+reusable workflow, so it is unaffected by changes here. Call it with:
 
 ```yaml
 jobs:
