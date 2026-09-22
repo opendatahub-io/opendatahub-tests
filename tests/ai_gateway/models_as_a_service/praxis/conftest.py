@@ -6,8 +6,8 @@ from kubernetes.dynamic import DynamicClient
 
 from tests.ai_gateway.models_as_a_service.praxis.constants import PRAXIS_PAYLOAD_PROCESSING_TYPE_VALUE
 from tests.ai_gateway.models_as_a_service.praxis.utils import (
+    deploy_aitenant_with_maastenantconfig_praxis_opt_in_before_legacy_ipp,
     praxis_aitenant_with_bootstrap_gateway,
-    set_maastenantconfig_payload_processing_type_annotation,
     verify_maastenantconfig_has_praxis_cleanup_finalizer,
     verify_maastenantconfig_lacks_praxis_cleanup_finalizer,
     verify_maastenantconfig_payload_processing_type,
@@ -28,16 +28,10 @@ def ready_praxis_annotated_aitenant(
         cr_namespace=aitenant_infra_namespace,
         teardown=teardown_resources,
     ) as aitenant:
-        deploy_and_verify_aitenant_ready(aitenant=aitenant)
-        set_maastenantconfig_payload_processing_type_annotation(
+        deploy_aitenant_with_maastenantconfig_praxis_opt_in_before_legacy_ipp(
             admin_client=admin_client,
             aitenant=aitenant,
             annotation_value=PRAXIS_PAYLOAD_PROCESSING_TYPE_VALUE,
-        )
-        verify_maastenantconfig_payload_processing_type(
-            admin_client=admin_client,
-            aitenant=aitenant,
-            expected_value=PRAXIS_PAYLOAD_PROCESSING_TYPE_VALUE,
         )
         verify_maastenantconfig_has_praxis_cleanup_finalizer(admin_client=admin_client, aitenant=aitenant)
         yield aitenant
