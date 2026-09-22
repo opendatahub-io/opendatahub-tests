@@ -34,7 +34,7 @@ from utilities.constants import (
     HAP_DETECTOR,
     LLM_D_CHAT_GENERATION_CONFIG,
     PROMPT_INJECTION_DETECTOR,
-    LLMdInferenceSimConfig,
+    LLMdInferenceSimConfig, MinIo,
 )
 from utilities.plugins.constant import OpenAIEnpoints
 
@@ -234,10 +234,12 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
 
 @pytest.mark.tier1
 @pytest.mark.parametrize(
-    "model_namespace, orchestrator_config, guardrails_gateway_config,guardrails_orchestrator",
+    "model_namespace, minio_pod, minio_data_connection, orchestrator_config, guardrails_gateway_config,guardrails_orchestrator",
     [
         pytest.param(
             {"name": "test-guardrails-huggingface"},
+            MinIo.PodConfig.QWEN_HAP_BPIV2_MINIO_CONFIG,
+            {"bucket": "llms"},
             {
                 "orchestrator_config_data": {
                     "config.yaml": yaml.dump({
@@ -302,6 +304,8 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
 @pytest.mark.usefixtures(
     "patched_dsc_kserve_headed",
     "guardrails_gateway_config",
+    "minio_pod",
+    "minio_data_connection",
     "minio_pvc_otel",
     "minio_deployment_otel",
     "minio_service_otel",
@@ -426,10 +430,12 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
 
 
 @pytest.mark.parametrize(
-    "model_namespace, guardrails_orchestrator",
+    "model_namespace, minio_pod, minio_data_connection, guardrails_orchestrator",
     [
         pytest.param(
             {"name": "test-guardrails-autoconfig"},
+            MinIo.PodConfig.QWEN_HAP_BPIV2_MINIO_CONFIG,
+            {"bucket": "llms"},
             {
                 "auto_config": {
                     "inferenceServiceToGuardrail": LLMdInferenceSimConfig.isvc_name,
@@ -507,10 +513,12 @@ class TestGuardrailsOrchestratorAutoConfig:
 
 
 @pytest.mark.parametrize(
-    "model_namespace, guardrails_orchestrator",
+    "model_namespace, minio_pod, minio_data_connection, guardrails_orchestrator",
     [
         pytest.param(
             {"name": "test-autoconfig-gateway"},
+            MinIo.PodConfig.QWEN_HAP_BPIV2_MINIO_CONFIG,
+            {"bucket": "llms"},
             {
                 "auto_config": {
                     "inferenceServiceToGuardrail": LLMdInferenceSimConfig.isvc_name,
