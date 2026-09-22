@@ -1,8 +1,7 @@
 """Spark Operator upgrade tests.
 
-Pre-upgrade tests complete a Pi workload and leave a separate task in progress.
-Post-upgrade tests verify resubmission, continuity of the running task, and execution
-of newly created applications.
+Pre-upgrade tests leave a task in progress. Post-upgrade tests verify continuity
+and resubmission of the Pi workload prepared by the shared Spark smoke test.
 """
 
 import json
@@ -14,27 +13,9 @@ from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from timeout_sampler import TimeoutSampler
 
-from tests.spark.upgrade.utils import (
-    spark_running_execution,
-    verify_spark_app_completed,
-)
+from tests.spark.upgrade.utils import spark_running_execution
+from tests.spark.utils import verify_spark_app_completed
 from utilities.resources.spark_application import SparkApplication
-
-
-@pytest.mark.usefixtures("pre_upgrade_spark_dsc_patch")
-class TestPreUpgradeSpark:
-    """Validate Spark workload execution before an operator upgrade.
-
-    Steps:
-        0. Enable Spark Operator in DSC (Tech Preview component)
-        1. Deploy a SparkApplication (spark-pi) resource
-        2. Verify the application completes successfully
-    """
-
-    @pytest.mark.pre_upgrade
-    def test_spark_pi_pre_upgrade_execution(self, spark_application_fixture):
-        """Test SparkApplication (spark-pi) execution before upgrade"""
-        verify_spark_app_completed(spark_app=spark_application_fixture)
 
 
 class TestPostUpgradeReuseExistingSparkApplication:
@@ -92,21 +73,3 @@ def test_spark_job_in_progress_completes_post_upgrade(
     )
     assert driver.instance.metadata.uid == baseline["pods"][driver.name]["uid"], "Driver was replaced"
     assert "UPGRADE_TASK_COMPLETED: 49" in driver.log(), "The original task did not return the expected result"
-
-
-@pytest.mark.usefixtures("post_upgrade_spark_dsc_patch")
-class TestPostUpgradeNewSparkApplication:
-    """Verify that the upgraded control plane can create new SparkApplications.
-
-    Creates a fresh SparkApplication on the upgraded spark-operator to validate
-    that the creation path works, not just preservation of pre-existing resources.
-    """
-
-    @pytest.mark.post_upgrade
-    def test_new_spark_application_post_upgrade(self, new_spark_application_fixture: SparkApplication | None) -> None:
-        """Given an upgraded operator, when a new SparkApplication is created, then it completes successfully."""
-        assert new_spark_application_fixture is not None, "Fixture returned None; only runs post-upgrade"
-        assert new_spark_application_fixture.exists, (
-            f"Newly created SparkApplication {new_spark_application_fixture.name} does not exist"
-        )
-        verify_spark_app_completed(spark_app=new_spark_application_fixture)
