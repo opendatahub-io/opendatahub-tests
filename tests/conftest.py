@@ -657,9 +657,11 @@ def minio_pod(
     admin_client: DynamicClient,
     minio_namespace: Namespace,
 ) -> Generator[Pod, Any, Any]:
+    params = getattr(request, "param", MinIo.PodConfig.QWEN_HAP_BPIV2_MINIO_CONFIG)
+
     pod_labels = {Labels.Openshift.APP: MinIo.Metadata.NAME}
 
-    if labels := request.param.get("labels"):
+    if labels := params.get("labels"):
         pod_labels.update(labels)
 
     with Pod(
@@ -668,7 +670,7 @@ def minio_pod(
         namespace=minio_namespace.name,
         containers=[
             {
-                "args": request.param.get("args"),
+                "args": params.get("args"),
                 "env": [
                     {
                         "name": MinIo.Credentials.ACCESS_KEY_NAME,
@@ -679,7 +681,7 @@ def minio_pod(
                         "value": MinIo.Credentials.SECRET_KEY_VALUE,
                     },
                 ],
-                "image": request.param.get("image"),
+                "image": params.get("image"),
                 "name": MinIo.Metadata.NAME,
                 "securityContext": {
                     "allowPrivilegeEscalation": False,
@@ -690,7 +692,7 @@ def minio_pod(
             }
         ],
         label=pod_labels,
-        annotations=request.param.get("annotations"),
+        annotations=params.get("annotations"),
     ) as minio_pod:
         minio_pod.wait_for_status(status=Pod.Status.RUNNING)
         yield minio_pod
@@ -724,11 +726,14 @@ def minio_data_connection(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     minio_service: Service,
+    minio_pod: Pod,
 ) -> Generator[Secret, Any, Any]:
+    # Get bucket from params if provided, otherwise default to "llms"
+    bucket = getattr(request, "param", {}).get("bucket", "llms")
     with create_minio_data_connection_secret(
         minio_service=minio_service,
         model_namespace=model_namespace.name,
-        aws_s3_bucket=request.param["bucket"],
+        aws_s3_bucket=bucket,
         client=admin_client,
     ) as secret:
         yield secret
