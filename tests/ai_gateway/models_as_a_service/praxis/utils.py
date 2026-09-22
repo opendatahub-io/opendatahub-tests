@@ -136,8 +136,10 @@ def verify_maastenantconfig_has_praxis_cleanup_finalizer(
         for has_finalizer in TimeoutSampler(
             wait_timeout=timeout,
             sleep=2,
-            func=lambda: PRAXIS_CLEANUP_FINALIZER
-            in read_maastenantconfig_finalizers(admin_client=admin_client, aitenant=aitenant),
+            func=lambda: (
+                PRAXIS_CLEANUP_FINALIZER
+                in read_maastenantconfig_finalizers(admin_client=admin_client, aitenant=aitenant)
+            ),
         ):
             if has_finalizer:
                 return
@@ -161,8 +163,10 @@ def wait_until_maastenantconfig_lacks_praxis_cleanup_finalizer(
         for lacks_finalizer in TimeoutSampler(
             wait_timeout=timeout,
             sleep=2,
-            func=lambda: PRAXIS_CLEANUP_FINALIZER
-            not in read_maastenantconfig_finalizers(admin_client=admin_client, aitenant=aitenant),
+            func=lambda: (
+                PRAXIS_CLEANUP_FINALIZER
+                not in read_maastenantconfig_finalizers(admin_client=admin_client, aitenant=aitenant)
+            ),
         ):
             if lacks_finalizer:
                 return
