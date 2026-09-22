@@ -40,7 +40,7 @@ git ls-remote --heads https://github.com/opendatahub-io/opendatahub-tests.git \
 
 ## 1. Cut the release branch
 
-### Automated
+### Automated: cut the branch
 
 Actions tab -> **Cut Release Branch** -> **Run workflow**.
 
@@ -101,7 +101,7 @@ Images are only ever published by a GitHub workflow. Nobody pushes to
 repository secrets rather than with individuals. The manual path below is manual in the
 sense that you trigger the build yourself; the push still happens in CI.
 
-### Automated
+### Automated: build the image
 
 Covered by step 1 when `build_image` is `true`. To build an image for a branch that already
 exists, re-run **Cut Release Branch** with the same `branch_name`; creation is skipped and
