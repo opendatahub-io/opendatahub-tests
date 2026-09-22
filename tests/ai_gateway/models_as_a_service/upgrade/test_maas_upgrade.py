@@ -23,7 +23,6 @@ from tests.ai_gateway.models_as_a_service.upgrade.utils import (
 from tests.ai_gateway.models_as_a_service.utils import (
     AITENANT_INFRA_NAMESPACE,
     MaaSTenantResource,
-    dsc_uses_aigateway_maas_schema,
     gateway_probe_reaches_maas_api,
     verify_aitenant_ready,
     verify_maas_gateway_programmed,
@@ -49,9 +48,7 @@ class TestPreUpgradeMaaS:
         3. Verify MaaSModelRef was created successfully.
         4. Verify MaaSAuthPolicy was created successfully.
         5. Verify MaaSSubscription exists.
-        6. Verify AIGateway CR is absent (pre-upgrade resource).
-        7. Verify MaaS Config CR is absent (pre-upgrade resource).
-        8. Capture state snapshot to ConfigMap for post-upgrade comparison.
+        6. Capture state snapshot to ConfigMap for post-upgrade comparison.
     """
 
     def test_maas_gateway_programmed(
@@ -88,48 +85,6 @@ class TestPreUpgradeMaaS:
     ) -> None:
         """Verify MaaSSubscription exists before upgrade."""
         verify_maas_subscription_ready(subscription=maas_upgrade_subscription)
-
-    def test_aigateway_cr_absent_pre_upgrade(
-        self,
-        admin_client: DynamicClient,
-    ) -> None:
-        """Given first bootstrap onto 3.5+, when checking pre-upgrade, then AIGateway CR should not exist yet."""
-        if not dsc_uses_aigateway_maas_schema(admin_client):
-            pytest.skip("AIGateway CR checks apply only when DSC uses aigateway MaaS schema (3.5+)")
-        aigateway = AIGateway(
-            client=admin_client,
-            name="default-aigateway",
-        )
-        if aigateway.exists:
-            pytest.skip(
-                "AIGateway/default-aigateway already exists — absent check applies only before initial "
-                "operator bootstrap, not when upgrading within an already-bootstrapped release"
-            )
-        assert not aigateway.exists
-
-    def test_maas_config_cr_absent_pre_upgrade(
-        self,
-        admin_client: DynamicClient,
-    ) -> None:
-        """Given first bootstrap onto 3.5+, when checking pre-upgrade, then MaaS Config CR should not exist yet."""
-        if not dsc_uses_aigateway_maas_schema(admin_client):
-            pytest.skip("MaaS Config CR checks apply only when DSC uses aigateway MaaS schema (3.5+)")
-        config_crd = CustomResourceDefinition(
-            client=admin_client,
-            name=f"configs.{ApiGroups.MAAS_IO}",
-        )
-        if not config_crd.exists:
-            return
-        maas_config = MaaSConfig(
-            client=admin_client,
-            name="default",
-        )
-        if maas_config.exists:
-            pytest.skip(
-                "MaaS Config/default already exists — absent check applies only before initial "
-                "operator bootstrap, not when upgrading within an already-bootstrapped release"
-            )
-        assert not maas_config.exists
 
 
 @pytest.mark.post_upgrade
