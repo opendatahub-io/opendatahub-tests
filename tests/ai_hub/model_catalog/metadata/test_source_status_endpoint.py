@@ -1,81 +1,12 @@
-from collections.abc import Generator
-from typing import Any
-
 import pytest
-import requests
-from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
-from timeout_sampler import retry
 
 from tests.ai_hub.model_catalog.constants import REDHAT_AI_CATALOG_ID
-from tests.ai_hub.utils import (
-    TransientUnauthorizedError,
-    execute_delete_call_with_retry,
-    execute_get_command,
-    execute_get_command_with_retry,
-)
-
-STATUS_PATH_TEMPLATE: str = "{base}sources/{source_id}/status"
-UNKNOWN_SOURCE_ID: str = "does_not_exist_xyz"
-ERROR_SOURCE_ID: str = "mixed_models_catalog"
-ERROR_SOURCE_YAML: str = f"""
-catalogs:
-  - name: Source Status Error Catalog
-    id: {ERROR_SOURCE_ID}
-    type: hf
-    enabled: true
-    includedModels:
-      - "jonburdo/public-test-model-1"
-      - "jonburdo/private-test-model-1"
-    labels:
-      - {ERROR_SOURCE_ID}
-"""
+from tests.ai_hub.model_catalog.metadata.constants import ERROR_SOURCE_ID, ERROR_SOURCE_YAML, UNKNOWN_SOURCE_ID
+from tests.ai_hub.model_catalog.metadata.utils import clear_source_status, get_source_status
+from tests.ai_hub.utils import execute_get_command_with_retry
 
 pytestmark = [pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace")]
-
-
-@pytest.fixture(scope="class")
-def source_status_base_url(model_catalog_rest_url: list[str]) -> str:
-    """Return the v1 base URL used by the source-status endpoint."""
-    return model_catalog_rest_url[0].replace("/v1alpha1/", "/v1/")
-
-
-def get_source_status(base_url: str, headers: dict[str, str], source_id: str) -> dict[str, Any]:
-    """Get the persisted status of a catalog source, allowing an empty response."""
-    return execute_get_command(
-        url=STATUS_PATH_TEMPLATE.format(base=base_url, source_id=source_id),
-        headers=headers,
-    )
-
-
-def clear_source_status(base_url: str, headers: dict[str, str], source_id: str) -> int:
-    """Clear the persisted status of a catalog source."""
-    response = execute_delete_call_with_retry(
-        url=STATUS_PATH_TEMPLATE.format(base=base_url, source_id=source_id),
-        headers=headers,
-    )
-    return response.status_code
-
-
-class SourceStatusNotRestored(Exception):
-    pass
-
-
-@retry(
-    wait_timeout=120,
-    sleep=5,
-    exceptions_dict={
-        SourceStatusNotRestored: [],
-        TransientUnauthorizedError: [],
-        requests.exceptions.ConnectionError: [],
-    },
-)
-def wait_for_source_status_restored(base_url: str, headers: dict[str, str], source_id: str) -> dict[str, Any]:
-    """Wait for a catalog source's persisted status to be repopulated after a restart."""
-    status = get_source_status(base_url=base_url, headers=headers, source_id=source_id)
-    if status.get("status"):
-        return status
-    raise SourceStatusNotRestored(f"Status for {source_id} not yet restored: {status}")
 
 
 class TestGetSourceStatusEndpoint:
@@ -196,31 +127,6 @@ class TestGetErrorSourceStatus:
 
 class TestClearSourceStatusEndpoint:
     """Verify source-status DELETE behavior for RHOAIENG-88203."""
-
-    @pytest.fixture(scope="class")
-    def restore_catalog_status(
-        self,
-        admin_client: DynamicClient,
-        model_registry_namespace: str,
-        model_catalog_rest_url: list[str],
-        source_status_base_url: str,
-        model_registry_rest_headers: dict[str, str],
-    ) -> Generator[None]:
-        """Restore persisted catalog statuses after status-clearing tests."""
-        from tests.ai_hub.model_catalog.utils import wait_for_model_catalog_api
-        from tests.ai_hub.utils import wait_for_model_catalog_pod_ready_after_deletion
-
-        yield
-        wait_for_model_catalog_pod_ready_after_deletion(
-            client=admin_client,
-            model_registry_namespace=model_registry_namespace,
-        )
-        wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
-        wait_for_source_status_restored(
-            base_url=source_status_base_url,
-            headers=model_registry_rest_headers,
-            source_id=REDHAT_AI_CATALOG_ID,
-        )
 
     @pytest.mark.tier2
     def test_clear_unknown_source_is_noop(
