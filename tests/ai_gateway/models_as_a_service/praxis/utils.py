@@ -203,27 +203,25 @@ def set_maastenantconfig_payload_processing_type_annotation(
     annotation_value: str | None,
 ) -> None:
     """Set or remove payload-processing-type on MaasTenantConfig for a Ready AITenant."""
-    bootstrapped_tenant_config = maas_tenant_config_for_aitenant(admin_client=admin_client, aitenant=aitenant)
     if annotation_value is None:
+        bootstrapped_tenant_config = maas_tenant_config_for_aitenant(admin_client=admin_client, aitenant=aitenant)
         annotations = maastenantconfig_metadata_annotations(bootstrapped_tenant_config=bootstrapped_tenant_config)
         if PRAXIS_PAYLOAD_PROCESSING_TYPE_ANNOTATION not in annotations:
             return
-        patch_target = fresh_maastenantconfig_for_aitenant(admin_client=admin_client, aitenant=aitenant)
-        ResourceEditor(
-            patches={
-                patch_target: {
-                    "metadata": {"annotations": {PRAXIS_PAYLOAD_PROCESSING_TYPE_ANNOTATION: None}},
+        annotation_patch: str | None = None
+    else:
+        annotation_patch = annotation_value
+
+    patch_target = fresh_maastenantconfig_for_aitenant(admin_client=admin_client, aitenant=aitenant)
+    ResourceEditor(
+        patches={
+            patch_target: {
+                "metadata": {
+                    "annotations": {PRAXIS_PAYLOAD_PROCESSING_TYPE_ANNOTATION: annotation_patch},
                 },
             },
-        ).update()
-        return
-
-    resource_dict = bootstrapped_tenant_config.instance.to_dict()
-    metadata = resource_dict.setdefault("metadata", {})
-    annotations = maastenantconfig_metadata_annotations(bootstrapped_tenant_config=bootstrapped_tenant_config)
-    annotations[PRAXIS_PAYLOAD_PROCESSING_TYPE_ANNOTATION] = annotation_value
-    metadata["annotations"] = annotations
-    bootstrapped_tenant_config.update(resource_dict=resource_dict)
+        },
+    ).update()
 
 
 def verify_maastenantconfig_non_praxis_payload_processing_uses_legacy_ipp(
@@ -320,6 +318,11 @@ def wait_until_bootstrapped_maastenantconfig_exists(
 ) -> MaasTenantConfig:
     """Poll until MaasTenantConfig/default-tenant exists for an AITenant (before or after Ready)."""
     tenant_namespace_name = tenant_namespace_name_from_aitenant(aitenant=aitenant)
+    missing_bootstrapped_tenant_config_message = (
+        f"Timed out after {timeout}s waiting for MaasTenantConfig/"
+        f"{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} in namespace '{tenant_namespace_name}' "
+        f"for AITenant '{aitenant.namespace}/{aitenant.name}'"
+    )
     try:
         for bootstrapped_tenant_config_exists in TimeoutSampler(
             wait_timeout=timeout,
@@ -336,11 +339,8 @@ def wait_until_bootstrapped_maastenantconfig_exists(
             if bootstrapped_tenant_config_exists:
                 return maas_tenant_config_for_aitenant(admin_client=admin_client, aitenant=aitenant)
     except TimeoutExpiredError:
-        pytest.fail(
-            f"Timed out after {timeout}s waiting for MaasTenantConfig/"
-            f"{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} in namespace '{tenant_namespace_name}' "
-            f"for AITenant '{aitenant.namespace}/{aitenant.name}'"
-        )
+        pytest.fail(missing_bootstrapped_tenant_config_message)
+    pytest.fail(missing_bootstrapped_tenant_config_message)
 
 
 def deploy_aitenant_with_maastenantconfig_praxis_opt_in_before_legacy_ipp(
@@ -702,6 +702,7 @@ def wait_until_legacy_ipp_present_in_gateway_namespace(
     pre_processing_name = legacy_ipp_pre_processing_deployment_name(aitenant_name=aitenant_name)
     plugins_configmap_name = legacy_ipp_plugins_configmap_name(aitenant_name=aitenant_name)
 
+    legacy_stack_signals_ready = False
     try:
         for stack_ready in TimeoutSampler(
             wait_timeout=timeout,
@@ -713,22 +714,12 @@ def wait_until_legacy_ipp_present_in_gateway_namespace(
             ),
         ):
             if stack_ready:
-                post_processing_deployment = Deployment(
-                    client=admin_client,
-                    name=post_processing_name,
-                    namespace=gateway_namespace,
-                    ensure_exists=True,
-                )
-                pre_processing_deployment = Deployment(
-                    client=admin_client,
-                    name=pre_processing_name,
-                    namespace=gateway_namespace,
-                    ensure_exists=True,
-                )
-                post_processing_deployment.wait_for_condition(condition="Available", status="True", timeout=timeout)
-                pre_processing_deployment.wait_for_condition(condition="Available", status="True", timeout=timeout)
-                return
+                legacy_stack_signals_ready = True
+                break
     except TimeoutExpiredError:
+        pass
+
+    if not legacy_stack_signals_ready:
         stack_summary = _describe_legacy_ipp_stack_in_gateway_namespace(
             admin_client=admin_client,
             gateway_namespace=gateway_namespace,
@@ -739,6 +730,28 @@ def wait_until_legacy_ipp_present_in_gateway_namespace(
             f"'{post_processing_name}' and '{pre_processing_name}', EnvoyFilter '{post_processing_name}', "
             f"ConfigMap '{plugins_configmap_name}' with both maas legacy keys) in gateway namespace "
             f"'{gateway_namespace}'; observed: {stack_summary}"
+        )
+
+    post_processing_deployment = Deployment(
+        client=admin_client,
+        name=post_processing_name,
+        namespace=gateway_namespace,
+        ensure_exists=True,
+    )
+    pre_processing_deployment = Deployment(
+        client=admin_client,
+        name=pre_processing_name,
+        namespace=gateway_namespace,
+        ensure_exists=True,
+    )
+    try:
+        post_processing_deployment.wait_for_condition(condition="Available", status="True", timeout=timeout)
+        pre_processing_deployment.wait_for_condition(condition="Available", status="True", timeout=timeout)
+    except TimeoutExpiredError:
+        pytest.fail(
+            f"Timed out after {timeout}s waiting for legacy IPP Deployments "
+            f"'{post_processing_name}' and '{pre_processing_name}' to reach Available=True "
+            f"in gateway namespace '{gateway_namespace}'"
         )
 
 
@@ -962,6 +975,7 @@ def wait_until_praxis_ipp_bundle_ready_in_gateway_namespace(
     """Poll until ai-gateway-controller installed the Praxis IPP bundle in the gateway namespace."""
     post_processing_name = legacy_ipp_post_processing_deployment_name(aitenant_name=aitenant_name)
     pre_processing_name = legacy_ipp_pre_processing_deployment_name(aitenant_name=aitenant_name)
+    praxis_bundle_signals_ready = False
     try:
         for bundle_ready in TimeoutSampler(
             wait_timeout=timeout,
@@ -973,30 +987,12 @@ def wait_until_praxis_ipp_bundle_ready_in_gateway_namespace(
             ),
         ):
             if bundle_ready:
-                post_processing_deployment = Deployment(
-                    client=admin_client,
-                    name=post_processing_name,
-                    namespace=gateway_namespace,
-                    ensure_exists=True,
-                )
-                pre_processing_deployment = Deployment(
-                    client=admin_client,
-                    name=pre_processing_name,
-                    namespace=gateway_namespace,
-                    ensure_exists=True,
-                )
-                post_processing_deployment.wait_for_condition(
-                    condition="Available",
-                    status="True",
-                    timeout=timeout,
-                )
-                pre_processing_deployment.wait_for_condition(
-                    condition="Available",
-                    status="True",
-                    timeout=timeout,
-                )
-                return
+                praxis_bundle_signals_ready = True
+                break
     except TimeoutExpiredError:
+        pass
+
+    if not praxis_bundle_signals_ready:
         bundle_summary = _describe_praxis_ipp_bundle_in_gateway_namespace(
             admin_client=admin_client,
             gateway_namespace=gateway_namespace,
@@ -1005,6 +1001,36 @@ def wait_until_praxis_ipp_bundle_ready_in_gateway_namespace(
         pytest.fail(
             f"Timed out after {timeout}s waiting for Praxis IPP bundle for AITenant '{aitenant_name}' "
             f"in gateway namespace '{gateway_namespace}'; observed: {bundle_summary}"
+        )
+
+    post_processing_deployment = Deployment(
+        client=admin_client,
+        name=post_processing_name,
+        namespace=gateway_namespace,
+        ensure_exists=True,
+    )
+    pre_processing_deployment = Deployment(
+        client=admin_client,
+        name=pre_processing_name,
+        namespace=gateway_namespace,
+        ensure_exists=True,
+    )
+    try:
+        post_processing_deployment.wait_for_condition(
+            condition="Available",
+            status="True",
+            timeout=timeout,
+        )
+        pre_processing_deployment.wait_for_condition(
+            condition="Available",
+            status="True",
+            timeout=timeout,
+        )
+    except TimeoutExpiredError:
+        pytest.fail(
+            f"Timed out after {timeout}s waiting for Praxis IPP Deployments "
+            f"'{post_processing_name}' and '{pre_processing_name}' to reach Available=True "
+            f"in gateway namespace '{gateway_namespace}'"
         )
 
 
@@ -1167,13 +1193,18 @@ def migrate_legacy_aitenant_to_praxis_payload_processing(
         admin_client=admin_client,
         gateway_namespace=gateway_namespace,
         aitenant_name=aitenant_name,
+        timeout=timeout,
     )
     set_maastenantconfig_payload_processing_type_annotation(
         admin_client=admin_client,
         aitenant=aitenant,
         annotation_value=PRAXIS_PAYLOAD_PROCESSING_TYPE_VALUE,
     )
-    verify_maastenantconfig_has_praxis_cleanup_finalizer(admin_client=admin_client, aitenant=aitenant)
+    verify_maastenantconfig_has_praxis_cleanup_finalizer(
+        admin_client=admin_client,
+        aitenant=aitenant,
+        timeout=timeout,
+    )
     verify_praxis_payload_processing_active_for_aitenant(
         admin_client=admin_client,
         aitenant=aitenant,
