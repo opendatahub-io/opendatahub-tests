@@ -324,12 +324,14 @@ def wait_until_bootstrapped_maastenantconfig_exists(
         for bootstrapped_tenant_config_exists in TimeoutSampler(
             wait_timeout=timeout,
             sleep=LEGACY_IPP_POLL_INTERVAL_SECONDS,
-            func=lambda: MaasTenantConfig(
-                client=admin_client,
-                name=AIGATEWAY_BOOTSTRAPPED_TENANT_NAME,
-                namespace=tenant_namespace_name,
-                wait_for_resource=False,
-            ).exists,
+            func=lambda: (
+                MaasTenantConfig(
+                    client=admin_client,
+                    name=AIGATEWAY_BOOTSTRAPPED_TENANT_NAME,
+                    namespace=tenant_namespace_name,
+                    wait_for_resource=False,
+                ).exists
+            ),
         ):
             if bootstrapped_tenant_config_exists:
                 return maas_tenant_config_for_aitenant(admin_client=admin_client, aitenant=aitenant)
