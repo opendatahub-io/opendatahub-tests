@@ -167,11 +167,15 @@ def _wait_for_mcp_pods_settled(
 ) -> None:
     """Wait until the expected number of MCP pods are running and no old pods are shutting down.
 
-    Kubernetes can still show an old pod for a short time after a rollout finishes.
-    This makes sure only the new MCP pods remain before the tests continue.
+    Kubernetes can still show an old pod for a short time after a rollout finishes, and a
+    single matching read can catch a transient state. This requires the desired state to hold
+    for several consecutive reads before returning, so only the new MCP pods remain before the
+    tests continue.
     """
     label_selector = evalhub_mcp_pod_label_selector(instance_name=instance_name)
     last_seen: list[tuple[str, str, bool]] = []
+    required_stable_reads = 3
+    stable_reads = 0
     try:
         for states in TimeoutSampler(
             wait_timeout=timeout,
@@ -183,9 +187,15 @@ def _wait_for_mcp_pods_settled(
             if len(states) == desired and all(
                 phase == Pod.Status.RUNNING and not terminating for _, phase, terminating in states
             ):
-                return
+                stable_reads += 1
+                if stable_reads >= required_stable_reads:
+                    return
+            else:
+                stable_reads = 0
             LOGGER.info(
-                f"Waiting for {desired} settled MCP pod(s) in {namespace}; current (name, phase, terminating): {states}"
+                f"Waiting for {desired} settled MCP pod(s) in {namespace} "
+                f"({stable_reads}/{required_stable_reads} stable reads); "
+                f"current (name, phase, terminating): {states}"
             )
     except TimeoutExpiredError as err:
         raise RuntimeError(
