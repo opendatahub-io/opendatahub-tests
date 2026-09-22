@@ -86,41 +86,75 @@ def _evalhub_service_account_name(cr_name: str) -> str:
     return f"{cr_name}-service"
 
 
-def _wait_for_deployment_rollout(deployment: Deployment, timeout: int = 300) -> None:
+def _template_references_secret(deployment_instance: Any, secret_name: str) -> bool:
+    """Return True if the Deployment's pod template uses ``secret_name`` in an env var or a volume."""
+    pod_spec = deployment_instance.spec.template.spec
+    env_refs = [
+        env.valueFrom.secretKeyRef.name
+        for container in pod_spec.containers or []
+        for env in container.env or []
+        if env.valueFrom and env.valueFrom.secretKeyRef
+    ]
+    volume_refs = [volume.secret.secretName for volume in pod_spec.volumes or [] if volume.secret]
+    return secret_name in env_refs + volume_refs
+
+
+def _wait_for_deployment_rollout(
+    deployment: Deployment,
+    timeout: int = 300,
+    required_secret: str | None = None,
+) -> None:
     """Wait until Kubernetes has fully applied the latest Deployment change.
 
     We wait until:
+    - The pod template uses ``required_secret`` (if given), so we know the operator
+      has already written the auth change into the Deployment.
     - Kubernetes has noticed the latest change.
     - All new pods are ready.
     - No pods are unavailable.
     - The old pods have been removed.
 
-    This makes sure the rollout is actually finished before the tests continue.
+    Only NotFoundError is retried; any other error is raised straight away.
     """
-    for instance in TimeoutSampler(
-        wait_timeout=timeout,
-        sleep=5,
-        func=lambda: deployment.instance,
-    ):
-        status = instance.status
-        if status is None:
-            continue
-        desired = instance.spec.replicas or 1
-        generation = instance.metadata.generation or 0
-        observed = getattr(status, "observedGeneration", None) or 0
-        updated = getattr(status, "updatedReplicas", None) or 0
-        total = getattr(status, "replicas", None) or 0
-        unavailable = getattr(status, "unavailableReplicas", None) or 0
-        if observed >= generation and updated >= desired and total <= updated and unavailable == 0:
-            return
+    last_status: Any = None
+    try:
+        for instance in TimeoutSampler(
+            wait_timeout=timeout,
+            sleep=5,
+            func=lambda: deployment.instance,
+            exceptions_dict={NotFoundError: []},
+        ):
+            status = instance.status
+            last_status = status
+            if status is None:
+                continue
+            if required_secret and not _template_references_secret(
+                deployment_instance=instance, secret_name=required_secret
+            ):
+                LOGGER.info(f"Waiting for Deployment {deployment.name} pod template to use secret {required_secret}")
+                continue
+            desired = instance.spec.replicas or 1
+            generation = instance.metadata.generation or 0
+            observed = getattr(status, "observedGeneration", None) or 0
+            updated = getattr(status, "updatedReplicas", None) or 0
+            total = getattr(status, "replicas", None) or 0
+            unavailable = getattr(status, "unavailableReplicas", None) or 0
+            if observed >= generation and updated >= desired and total <= updated and unavailable == 0:
+                return
+    except TimeoutExpiredError as err:
+        raise RuntimeError(
+            f"Deployment {deployment.name} rollout did not finish within {timeout}s. Last status: {last_status}"
+        ) from err
 
 
 def _mcp_pod_states(admin_client: DynamicClient, namespace: str, label_selector: str) -> list[tuple[str, str, bool]]:
     """Return the name, status, and whether each matching pod is shutting down."""
+    # raw=True gives the pod data straight from one list call, so a pod deleted
+    # mid-poll can't raise NotFoundError on a second per-pod fetch.
     states = []
-    for pod in Pod.get(client=admin_client, namespace=namespace, label_selector=label_selector):
-        pod_instance = pod.instance
-        states.append((pod.name, pod_instance.status.phase, pod_instance.metadata.deletionTimestamp is not None))
+    for pod in Pod.get(client=admin_client, namespace=namespace, label_selector=label_selector, raw=True):
+        phase = pod.status.phase if pod.status else None
+        states.append((pod.metadata.name, phase, pod.metadata.deletionTimestamp is not None))
     return states
 
 
@@ -171,7 +205,12 @@ def _wait_for_mcp_reconciled(evalhub: EvalHub, generation: int, timeout: int = 3
     """
     last_mcp_status: Any = None
     try:
-        for status in TimeoutSampler(wait_timeout=timeout, sleep=2, func=lambda: evalhub.instance.status):
+        for status in TimeoutSampler(
+            wait_timeout=timeout,
+            sleep=2,
+            func=lambda: evalhub.instance.status,
+            exceptions_dict={NotFoundError: []},
+        ):
             mcp_status = status.get("mcp") if status is not None else None
             last_mcp_status = mcp_status
             for condition in (mcp_status.get("conditions") if mcp_status else None) or []:
@@ -336,7 +375,11 @@ def evalhub_mcp_mt_deployment(
         namespace=model_namespace.name,
     )
     deployment.wait_for_replicas(timeout=300)
-    _wait_for_deployment_rollout(deployment=deployment, timeout=300)
+    _wait_for_deployment_rollout(
+        deployment=deployment,
+        timeout=300,
+        required_secret=_mcp_auth_secret_name(cr_name=EVALHUB_MCP_CR_NAME),
+    )
     _wait_for_mcp_pods_settled(
         admin_client=admin_client,
         namespace=model_namespace.name,
