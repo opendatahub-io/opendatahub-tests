@@ -43,7 +43,6 @@ from tests.ai_gateway.models_as_a_service.utils import (
     bootstrap_gateway_context,
     bootstrap_gateway_ref,
     build_aitenant_spec,
-    deploy_and_verify_aitenant_ready,
     fresh_aitenant,
     verify_aitenant_ready,
     verify_maas_tenant_config_ready,
@@ -309,74 +308,6 @@ def praxis_aitenant_with_bootstrap_gateway(
         ) as aitenant,
     ):
         yield aitenant
-
-
-def wait_until_bootstrapped_maastenantconfig_exists(
-    admin_client: DynamicClient,
-    aitenant: AITenant,
-    timeout: int = DEFAULT_LEGACY_IPP_WAIT_TIMEOUT_SECONDS,
-) -> MaasTenantConfig:
-    """Poll until MaasTenantConfig/default-tenant exists for an AITenant (before or after Ready)."""
-    tenant_namespace_name = tenant_namespace_name_from_aitenant(aitenant=aitenant)
-    missing_bootstrapped_tenant_config_message = (
-        f"Timed out after {timeout}s waiting for MaasTenantConfig/"
-        f"{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} in namespace '{tenant_namespace_name}' "
-        f"for AITenant '{aitenant.namespace}/{aitenant.name}'"
-    )
-    try:
-        for bootstrapped_tenant_config_exists in TimeoutSampler(
-            wait_timeout=timeout,
-            sleep=LEGACY_IPP_POLL_INTERVAL_SECONDS,
-            func=lambda: (
-                MaasTenantConfig(
-                    client=admin_client,
-                    name=AIGATEWAY_BOOTSTRAPPED_TENANT_NAME,
-                    namespace=tenant_namespace_name,
-                    wait_for_resource=False,
-                ).exists
-            ),
-        ):
-            if bootstrapped_tenant_config_exists:
-                return maas_tenant_config_for_aitenant(admin_client=admin_client, aitenant=aitenant)
-    except TimeoutExpiredError:
-        pytest.fail(missing_bootstrapped_tenant_config_message)
-    pytest.fail(missing_bootstrapped_tenant_config_message)
-
-
-def deploy_aitenant_with_maastenantconfig_praxis_opt_in_before_legacy_ipp(
-    admin_client: DynamicClient,
-    aitenant: AITenant,
-    annotation_value: str = PRAXIS_PAYLOAD_PROCESSING_TYPE_VALUE,
-) -> None:
-    """Create the AITenant, opt into praxis on MaasTenantConfig as soon as it exists, then wait for Ready."""
-    if not aitenant.exists:
-        aitenant.deploy()
-    assert aitenant.exists, f"AITenant '{aitenant.namespace}/{aitenant.name}' was not created"
-    wait_until_bootstrapped_maastenantconfig_exists(admin_client=admin_client, aitenant=aitenant)
-    set_maastenantconfig_payload_processing_type_annotation(
-        admin_client=admin_client,
-        aitenant=aitenant,
-        annotation_value=annotation_value,
-    )
-    verify_maastenantconfig_payload_processing_type(
-        admin_client=admin_client,
-        aitenant=aitenant,
-        expected_value=annotation_value,
-    )
-    deploy_and_verify_aitenant_ready(aitenant=aitenant)
-
-
-def deploy_praxis_aitenant_and_verify_maastenantconfig_annotation(
-    admin_client: DynamicClient,
-    aitenant: AITenant,
-    expected_annotation_value: str,
-) -> None:
-    """Create the AITenant if missing, opt in on MaasTenantConfig early, and wait until Ready."""
-    deploy_aitenant_with_maastenantconfig_praxis_opt_in_before_legacy_ipp(
-        admin_client=admin_client,
-        aitenant=aitenant,
-        annotation_value=expected_annotation_value,
-    )
 
 
 def per_tenant_legacy_ipp_resource_name(base_name: str, aitenant_name: str) -> str:

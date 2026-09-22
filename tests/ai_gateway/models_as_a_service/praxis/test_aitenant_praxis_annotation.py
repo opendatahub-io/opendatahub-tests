@@ -3,7 +3,7 @@ from kubernetes.dynamic import DynamicClient
 
 from tests.ai_gateway.models_as_a_service.praxis.constants import PRAXIS_PAYLOAD_PROCESSING_TYPE_VALUE
 from tests.ai_gateway.models_as_a_service.praxis.utils import (
-    deploy_praxis_aitenant_and_verify_maastenantconfig_annotation,
+    migrate_legacy_aitenant_to_praxis_payload_processing,
     praxis_aitenant_with_bootstrap_gateway,
     verify_aitenant_bootstrap_reaches_ready_with_refs,
     verify_aitenant_lacks_payload_processing_type_annotation,
@@ -27,7 +27,7 @@ class TestMaasTenantConfigPraxisAnnotation:
         aitenant_infra_namespace: str,
         teardown_resources: bool,
     ) -> None:
-        """Given a Ready AITenant, when praxis is set on MaasTenantConfig,
+        """Given a legacy Ready AITenant, when praxis is set on MaasTenantConfig via migration,
         then the annotation is persisted and the AITenant does not mirror it.
         """
         with praxis_aitenant_with_bootstrap_gateway(
@@ -35,12 +35,21 @@ class TestMaasTenantConfigPraxisAnnotation:
             cr_namespace=aitenant_infra_namespace,
             teardown=teardown_resources,
         ) as aitenant:
-            deploy_praxis_aitenant_and_verify_maastenantconfig_annotation(
+            deploy_and_verify_aitenant_ready(aitenant=aitenant)
+            verify_maastenantconfig_payload_processing_type(
                 admin_client=admin_client,
                 aitenant=aitenant,
-                expected_annotation_value=PRAXIS_PAYLOAD_PROCESSING_TYPE_VALUE,
+                expected_value=None,
             )
-            verify_maastenantconfig_has_praxis_cleanup_finalizer(admin_client=admin_client, aitenant=aitenant)
+            migrate_legacy_aitenant_to_praxis_payload_processing(
+                admin_client=admin_client,
+                aitenant=aitenant,
+            )
+            verify_maastenantconfig_payload_processing_type(
+                admin_client=admin_client,
+                aitenant=aitenant,
+                expected_value=PRAXIS_PAYLOAD_PROCESSING_TYPE_VALUE,
+            )
             verify_aitenant_lacks_payload_processing_type_annotation(aitenant=aitenant)
 
     @pytest.mark.smoke
@@ -49,7 +58,7 @@ class TestMaasTenantConfigPraxisAnnotation:
         admin_client: DynamicClient,
         ready_praxis_annotated_aitenant: AITenant,
     ) -> None:
-        """Given MaasTenantConfig opted into praxis, when bootstrap completes,
+        """Given a legacy tenant migrated to praxis on MaasTenantConfig,
         then the AITenant is Ready with status refs populated.
         """
         verify_aitenant_bootstrap_reaches_ready_with_refs(aitenant=ready_praxis_annotated_aitenant)

@@ -24,7 +24,7 @@ class TestAITenantPraxisLegacyIpp:
         admin_client: DynamicClient,
         ready_praxis_annotated_aitenant: AITenant,
     ) -> None:
-        """Given a Ready AITenant with praxis on MaasTenantConfig, when controllers reconcile,
+        """Given a legacy tenant migrated to praxis on MaasTenantConfig, when controllers reconcile,
         then MaaS skips legacy IPP and ai-gateway installs the Praxis extproc bundle in the gateway namespace.
         """
         verify_praxis_payload_processing_active_for_aitenant(
@@ -53,7 +53,7 @@ class TestAITenantPraxisLegacyIpp:
         ready_praxis_annotated_aitenant: AITenant,
         maas_api_infra_namespace: str,
     ) -> None:
-        """Given a Ready praxis-annotated AITenant, when platform reconciliation completes,
+        """Given a legacy tenant migrated to praxis, when platform reconciliation completes,
         then per-tenant maas-api is still Available.
         """
         tenant_namespace_name = tenant_namespace_name_from_aitenant(aitenant=ready_praxis_annotated_aitenant)
@@ -70,7 +70,7 @@ class TestAITenantPraxisLegacyIpp:
         admin_client: DynamicClient,
         ready_praxis_annotated_aitenant: AITenant,
     ) -> None:
-        """Given a Ready praxis-annotated AITenant, when MaasTenantConfig reconciles,
+        """Given a legacy tenant migrated to praxis, when MaasTenantConfig reconciles,
         then default-tenant is Ready without legacy IPP EnvoyFilter dependency errors.
         """
         verify_praxis_maas_tenant_config_ready(
