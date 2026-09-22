@@ -32,9 +32,8 @@ def fail_if_no_gemini_api_key() -> None:
     """Fail the entire Gemini suite when no Gemini API key is configured.
 
     Every remote::gemini test requires a real key so the provider activates and
-    can authenticate to the Gemini API. A missing key on an environment expected
-    to run these tests is an infrastructure gap that should be flagged and
-    triaged, not silently skipped.
+    can authenticate to the Gemini API. If no key is configured in the environment,
+    the tests fail.
     """
     if not GEMINI_API_KEY:
         pytest.fail(
