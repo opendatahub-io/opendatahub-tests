@@ -24,7 +24,7 @@ class TestAITenantPraxisLegacyIpp:
         admin_client: DynamicClient,
         ready_praxis_annotated_aitenant: AITenant,
     ) -> None:
-        """Given a Ready praxis-annotated AITenant, when controllers reconcile,
+        """Given a Ready AITenant with praxis on MaasTenantConfig, when controllers reconcile,
         then MaaS skips legacy IPP and ai-gateway installs the Praxis extproc bundle in the gateway namespace.
         """
         verify_praxis_payload_processing_active_for_aitenant(
@@ -38,7 +38,7 @@ class TestAITenantPraxisLegacyIpp:
         admin_client: DynamicClient,
         ready_aitenant_without_praxis_annotation: AITenant,
     ) -> None:
-        """Given a legacy AITenant with maas legacy IPP installed, when the praxis annotation is applied,
+        """Given a legacy AITenant with maas legacy IPP installed, when praxis is set on MaasTenantConfig,
         then MaaS releases legacy IPP and ai-gateway installs the Praxis bundle in the gateway namespace.
         """
         migrate_legacy_aitenant_to_praxis_payload_processing(
@@ -84,7 +84,7 @@ class TestAITenantPraxisLegacyIpp:
         admin_client: DynamicClient,
         ready_aitenant_without_praxis_annotation: AITenant,
     ) -> None:
-        """Given an unannotated legacy AITenant, when bootstrap completes,
+        """Given a legacy AITenant without praxis on MaasTenantConfig, when bootstrap completes,
         then maas-controller installs legacy IPP in the gateway namespace.
         """
         gateway_namespace, _gateway_name = gateway_namespace_and_name_for_aitenant(
@@ -102,7 +102,7 @@ class TestAITenantPraxisLegacyIpp:
         admin_client: DynamicClient,
         ready_aitenant_without_praxis_annotation: AITenant,
     ) -> None:
-        """Given a tenant switched to praxis and back to legacy, when the annotation is removed,
+        """Given a tenant switched to praxis and back to legacy, when praxis opt-in is removed from MaasTenantConfig,
         then maas-controller manages legacy IPP again in the gateway namespace.
         """
         migrate_legacy_aitenant_to_praxis_payload_processing(

@@ -7,8 +7,10 @@ from kubernetes.dynamic import DynamicClient
 from tests.ai_gateway.models_as_a_service.praxis.constants import PRAXIS_PAYLOAD_PROCESSING_TYPE_VALUE
 from tests.ai_gateway.models_as_a_service.praxis.utils import (
     praxis_aitenant_with_bootstrap_gateway,
-    verify_aitenant_has_praxis_cleanup_finalizer,
-    verify_aitenant_lacks_praxis_cleanup_finalizer,
+    set_maastenantconfig_payload_processing_type_annotation,
+    verify_maastenantconfig_has_praxis_cleanup_finalizer,
+    verify_maastenantconfig_lacks_praxis_cleanup_finalizer,
+    verify_maastenantconfig_payload_processing_type,
 )
 from tests.ai_gateway.models_as_a_service.utils import deploy_and_verify_aitenant_ready
 from utilities.resources.aitenant import AITenant
@@ -20,15 +22,24 @@ def ready_praxis_annotated_aitenant(
     aitenant_infra_namespace: str,
     teardown_resources: bool,
 ) -> Generator[AITenant, Any, Any]:
-    """Deploy a Ready AITenant with the praxis payload-processing-type annotation."""
+    """Deploy a Ready AITenant with praxis opt-in on MaasTenantConfig."""
     with praxis_aitenant_with_bootstrap_gateway(
         admin_client=admin_client,
         cr_namespace=aitenant_infra_namespace,
-        payload_processing_type=PRAXIS_PAYLOAD_PROCESSING_TYPE_VALUE,
         teardown=teardown_resources,
     ) as aitenant:
         deploy_and_verify_aitenant_ready(aitenant=aitenant)
-        verify_aitenant_has_praxis_cleanup_finalizer(aitenant=aitenant)
+        set_maastenantconfig_payload_processing_type_annotation(
+            admin_client=admin_client,
+            aitenant=aitenant,
+            annotation_value=PRAXIS_PAYLOAD_PROCESSING_TYPE_VALUE,
+        )
+        verify_maastenantconfig_payload_processing_type(
+            admin_client=admin_client,
+            aitenant=aitenant,
+            expected_value=PRAXIS_PAYLOAD_PROCESSING_TYPE_VALUE,
+        )
+        verify_maastenantconfig_has_praxis_cleanup_finalizer(admin_client=admin_client, aitenant=aitenant)
         yield aitenant
 
 
@@ -38,13 +49,17 @@ def ready_aitenant_without_praxis_annotation(
     aitenant_infra_namespace: str,
     teardown_resources: bool,
 ) -> Generator[AITenant, Any, Any]:
-    """Deploy a Ready AITenant without a payload-processing-type annotation."""
+    """Deploy a Ready AITenant without praxis opt-in on MaasTenantConfig."""
     with praxis_aitenant_with_bootstrap_gateway(
         admin_client=admin_client,
         cr_namespace=aitenant_infra_namespace,
-        payload_processing_type=None,
         teardown=teardown_resources,
     ) as aitenant:
         deploy_and_verify_aitenant_ready(aitenant=aitenant)
-        verify_aitenant_lacks_praxis_cleanup_finalizer(aitenant=aitenant)
+        verify_maastenantconfig_payload_processing_type(
+            admin_client=admin_client,
+            aitenant=aitenant,
+            expected_value=None,
+        )
+        verify_maastenantconfig_lacks_praxis_cleanup_finalizer(admin_client=admin_client, aitenant=aitenant)
         yield aitenant

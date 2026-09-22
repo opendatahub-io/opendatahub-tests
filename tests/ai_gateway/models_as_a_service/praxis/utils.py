@@ -1,4 +1,4 @@
-"""Helpers for Praxis AITenant annotation and maas-controller platform tests."""
+"""Helpers for Praxis MaasTenantConfig opt-in and maas-controller platform tests."""
 
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -27,9 +27,9 @@ from tests.ai_gateway.models_as_a_service.praxis.constants import (
     LEGACY_IPP_SWITCH_BACK_WAIT_TIMEOUT_SECONDS,
     LEGACY_POST_PROCESSING_CONTAINER_CONFIG_ARG,
     LEGACY_PRE_PROCESSING_CONTAINER_CONFIG_ARG,
-    MAAS_IPP_MIGRATION_CLEANUP_COMPLETE_ANNOTATION,
-    MAAS_IPP_RESOURCES_RELEASED_CONDITION,
-    PRAXIS_AITENANT_CLEANUP_FINALIZER,
+    MAAS_PAYLOAD_PROCESSING_STATUS_ANNOTATION,
+    MAAS_PAYLOAD_PROCESSING_STATUS_CLEANUP_COMPLETE_VALUE,
+    PRAXIS_CLEANUP_FINALIZER,
     PRAXIS_EXTPROC_CONFIG_DATA_KEY,
     PRAXIS_PAYLOAD_PROCESSING_TYPE_ANNOTATION,
     PRAXIS_PAYLOAD_PROCESSING_TYPE_VALUE,
@@ -42,6 +42,7 @@ from tests.ai_gateway.models_as_a_service.utils import (
     bootstrap_gateway_context,
     bootstrap_gateway_ref,
     build_aitenant_spec,
+    deploy_and_verify_aitenant_ready,
     fresh_aitenant,
     verify_aitenant_ready,
     verify_maas_tenant_config_ready,
@@ -52,11 +53,176 @@ from utilities.resources.envoy_filter import EnvoyFilter
 from utilities.resources.maastenantconfig import MaasTenantConfig
 
 
-def payload_processing_type_annotations(annotation_value: str | None) -> dict[str, str] | None:
-    """Return AITenant metadata annotations for payload-processing-type, or None to omit the key."""
-    if annotation_value is None:
+def maas_tenant_config_for_aitenant(admin_client: DynamicClient, aitenant: AITenant) -> MaasTenantConfig:
+    """Return the bootstrapped MaasTenantConfig for a Ready AITenant."""
+    tenant_namespace_name = tenant_namespace_name_from_aitenant(aitenant=aitenant)
+    bootstrapped_tenant_config = MaasTenantConfig(
+        client=admin_client,
+        name=AIGATEWAY_BOOTSTRAPPED_TENANT_NAME,
+        namespace=tenant_namespace_name,
+        ensure_exists=True,
+    )
+    assert bootstrapped_tenant_config.exists, (
+        f"MaasTenantConfig/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} not found in '{tenant_namespace_name}'"
+    )
+    return bootstrapped_tenant_config
+
+
+def maastenantconfig_metadata_annotations(bootstrapped_tenant_config: MaasTenantConfig) -> dict[str, str]:
+    """Return MaasTenantConfig metadata annotations as a string dict."""
+    return dict(bootstrapped_tenant_config.instance.metadata.annotations or {})
+
+
+def read_maastenantconfig_payload_processing_type(
+    admin_client: DynamicClient,
+    aitenant: AITenant,
+) -> str | None:
+    """Return payload-processing-type on MaasTenantConfig, or None when absent."""
+    bootstrapped_tenant_config = maas_tenant_config_for_aitenant(admin_client=admin_client, aitenant=aitenant)
+    metadata_annotations = maastenantconfig_metadata_annotations(bootstrapped_tenant_config=bootstrapped_tenant_config)
+    if PRAXIS_PAYLOAD_PROCESSING_TYPE_ANNOTATION not in metadata_annotations:
         return None
-    return {PRAXIS_PAYLOAD_PROCESSING_TYPE_ANNOTATION: annotation_value}
+    return str(metadata_annotations[PRAXIS_PAYLOAD_PROCESSING_TYPE_ANNOTATION])
+
+
+def verify_maastenantconfig_payload_processing_type(
+    admin_client: DynamicClient,
+    aitenant: AITenant,
+    expected_value: str | None,
+) -> None:
+    """Assert MaasTenantConfig carries the expected payload-processing-type annotation."""
+    actual_value = read_maastenantconfig_payload_processing_type(admin_client=admin_client, aitenant=aitenant)
+    bootstrapped_tenant_config = maas_tenant_config_for_aitenant(admin_client=admin_client, aitenant=aitenant)
+    assert actual_value == expected_value, (
+        f"MaasTenantConfig '{bootstrapped_tenant_config.namespace}/{bootstrapped_tenant_config.name}' annotation "
+        f"'{PRAXIS_PAYLOAD_PROCESSING_TYPE_ANNOTATION}' expected {expected_value!r}, got {actual_value!r}"
+    )
+
+
+def read_aitenant_payload_processing_type(aitenant: AITenant) -> str | None:
+    """Return payload-processing-type on AITenant when present (should not mirror MaasTenantConfig opt-in)."""
+    metadata_annotations = dict(fresh_aitenant(aitenant=aitenant).instance.metadata.annotations or {})
+    if PRAXIS_PAYLOAD_PROCESSING_TYPE_ANNOTATION not in metadata_annotations:
+        return None
+    return str(metadata_annotations[PRAXIS_PAYLOAD_PROCESSING_TYPE_ANNOTATION])
+
+
+def verify_aitenant_lacks_payload_processing_type_annotation(aitenant: AITenant) -> None:
+    """Assert the AITenant does not carry payload-processing-type (IPP config lives on MaasTenantConfig)."""
+    actual_value = read_aitenant_payload_processing_type(aitenant=aitenant)
+    assert actual_value is None, (
+        f"AITenant '{aitenant.namespace}/{aitenant.name}' should not have annotation "
+        f"'{PRAXIS_PAYLOAD_PROCESSING_TYPE_ANNOTATION}'; got {actual_value!r}"
+    )
+
+
+def read_maastenantconfig_finalizers(admin_client: DynamicClient, aitenant: AITenant) -> list[str]:
+    """Return finalizer names on MaasTenantConfig, or an empty list when none are set."""
+    bootstrapped_tenant_config = maas_tenant_config_for_aitenant(admin_client=admin_client, aitenant=aitenant)
+    metadata_finalizers = bootstrapped_tenant_config.instance.metadata.finalizers
+    if not metadata_finalizers:
+        return []
+    return [str(finalizer) for finalizer in metadata_finalizers]
+
+
+def verify_maastenantconfig_has_praxis_cleanup_finalizer(
+    admin_client: DynamicClient,
+    aitenant: AITenant,
+    timeout: int = DEFAULT_PRAXIS_FINALIZER_WAIT_TIMEOUT_SECONDS,
+) -> None:
+    """Assert ai-gateway-controller attached the praxis cleanup finalizer on MaasTenantConfig."""
+    bootstrapped_tenant_config = maas_tenant_config_for_aitenant(admin_client=admin_client, aitenant=aitenant)
+    try:
+        for has_finalizer in TimeoutSampler(
+            wait_timeout=timeout,
+            sleep=2,
+            func=lambda: PRAXIS_CLEANUP_FINALIZER
+            in read_maastenantconfig_finalizers(admin_client=admin_client, aitenant=aitenant),
+        ):
+            if has_finalizer:
+                return
+    except TimeoutExpiredError:
+        finalizers = read_maastenantconfig_finalizers(admin_client=admin_client, aitenant=aitenant)
+        pytest.fail(
+            f"MaasTenantConfig '{bootstrapped_tenant_config.namespace}/{bootstrapped_tenant_config.name}' "
+            f"should have finalizer '{PRAXIS_CLEANUP_FINALIZER}' when payload-processing-type is praxis "
+            f"(timeout {timeout}s); got {finalizers!r}"
+        )
+
+
+def wait_until_maastenantconfig_lacks_praxis_cleanup_finalizer(
+    admin_client: DynamicClient,
+    aitenant: AITenant,
+    timeout: int = DEFAULT_PRAXIS_FINALIZER_WAIT_TIMEOUT_SECONDS,
+) -> None:
+    """Poll until the praxis cleanup finalizer is removed from MaasTenantConfig."""
+    bootstrapped_tenant_config = maas_tenant_config_for_aitenant(admin_client=admin_client, aitenant=aitenant)
+    try:
+        for lacks_finalizer in TimeoutSampler(
+            wait_timeout=timeout,
+            sleep=2,
+            func=lambda: PRAXIS_CLEANUP_FINALIZER
+            not in read_maastenantconfig_finalizers(admin_client=admin_client, aitenant=aitenant),
+        ):
+            if lacks_finalizer:
+                return
+    except TimeoutExpiredError:
+        finalizers = read_maastenantconfig_finalizers(admin_client=admin_client, aitenant=aitenant)
+        pytest.fail(
+            f"MaasTenantConfig '{bootstrapped_tenant_config.namespace}/{bootstrapped_tenant_config.name}' "
+            f"should not have finalizer '{PRAXIS_CLEANUP_FINALIZER}' after leaving praxis opt-in "
+            f"(timeout {timeout}s); got {finalizers!r}"
+        )
+
+
+def verify_maastenantconfig_lacks_praxis_cleanup_finalizer(admin_client: DynamicClient, aitenant: AITenant) -> None:
+    """Assert MaasTenantConfig is not on the Praxis controller cleanup path."""
+    bootstrapped_tenant_config = maas_tenant_config_for_aitenant(admin_client=admin_client, aitenant=aitenant)
+    finalizers = read_maastenantconfig_finalizers(admin_client=admin_client, aitenant=aitenant)
+    assert PRAXIS_CLEANUP_FINALIZER not in finalizers, (
+        f"MaasTenantConfig '{bootstrapped_tenant_config.namespace}/{bootstrapped_tenant_config.name}' "
+        f"should not have finalizer '{PRAXIS_CLEANUP_FINALIZER}' without effective praxis opt-in; "
+        f"got {finalizers!r}"
+    )
+
+
+def set_maastenantconfig_payload_processing_type_annotation(
+    admin_client: DynamicClient,
+    aitenant: AITenant,
+    annotation_value: str | None,
+) -> None:
+    """Set or remove payload-processing-type on MaasTenantConfig for a Ready AITenant."""
+    bootstrapped_tenant_config = maas_tenant_config_for_aitenant(admin_client=admin_client, aitenant=aitenant)
+    resource_dict = bootstrapped_tenant_config.instance.to_dict()
+    metadata = resource_dict.setdefault("metadata", {})
+    annotations = maastenantconfig_metadata_annotations(bootstrapped_tenant_config=bootstrapped_tenant_config)
+    if annotation_value is None:
+        if PRAXIS_PAYLOAD_PROCESSING_TYPE_ANNOTATION in annotations:
+            del annotations[PRAXIS_PAYLOAD_PROCESSING_TYPE_ANNOTATION]
+    else:
+        annotations[PRAXIS_PAYLOAD_PROCESSING_TYPE_ANNOTATION] = annotation_value
+    metadata["annotations"] = annotations
+    bootstrapped_tenant_config.update(resource_dict=resource_dict)
+
+
+def verify_maastenantconfig_non_praxis_payload_processing_uses_legacy_ipp(
+    admin_client: DynamicClient,
+    aitenant: AITenant,
+    annotation_value: str,
+) -> None:
+    """Set a non-praxis payload-processing-type on MaasTenantConfig and assert Praxis cleanup stays off."""
+    set_maastenantconfig_payload_processing_type_annotation(
+        admin_client=admin_client,
+        aitenant=aitenant,
+        annotation_value=annotation_value,
+    )
+    verify_maastenantconfig_payload_processing_type(
+        admin_client=admin_client,
+        aitenant=aitenant,
+        expected_value=annotation_value,
+    )
+    verify_maastenantconfig_lacks_praxis_cleanup_finalizer(admin_client=admin_client, aitenant=aitenant)
+    verify_aitenant_lacks_payload_processing_type_annotation(aitenant=aitenant)
 
 
 def praxis_aitenant_from_spec(
@@ -64,98 +230,15 @@ def praxis_aitenant_from_spec(
     aitenant_name: str,
     cr_namespace: str,
     aitenant_spec: dict[str, Any],
-    payload_processing_type: str | None = None,
     teardown: bool = False,
 ) -> AITenant:
-    """Return an AITenant configured from spec with optional payload-processing-type annotation."""
+    """Return an AITenant configured from spec without payload-processing annotations (set on MaasTenantConfig)."""
     return aitenant_from_spec(
         admin_client=admin_client,
         aitenant_name=aitenant_name,
         cr_namespace=cr_namespace,
         aitenant_spec=aitenant_spec,
         teardown=teardown,
-        annotations=payload_processing_type_annotations(annotation_value=payload_processing_type),
-    )
-
-
-def read_payload_processing_type_annotation(aitenant: AITenant) -> str | None:
-    """Return the payload-processing-type annotation value, or None when absent."""
-    metadata_annotations = dict(fresh_aitenant(aitenant=aitenant).instance.metadata.annotations or {})
-    if PRAXIS_PAYLOAD_PROCESSING_TYPE_ANNOTATION not in metadata_annotations:
-        return None
-    return str(metadata_annotations[PRAXIS_PAYLOAD_PROCESSING_TYPE_ANNOTATION])
-
-
-def verify_aitenant_payload_processing_annotation(
-    aitenant: AITenant,
-    expected_value: str | None,
-) -> None:
-    """Assert the AITenant carries the expected payload-processing-type annotation value."""
-    actual_value = read_payload_processing_type_annotation(aitenant=aitenant)
-    assert actual_value == expected_value, (
-        f"AITenant '{aitenant.namespace}/{aitenant.name}' annotation "
-        f"'{PRAXIS_PAYLOAD_PROCESSING_TYPE_ANNOTATION}' expected {expected_value!r}, got {actual_value!r}"
-    )
-
-
-def read_aitenant_finalizers(aitenant: AITenant) -> list[str]:
-    """Return finalizer names on the AITenant, or an empty list when none are set."""
-    metadata_finalizers = getattr(fresh_aitenant(aitenant=aitenant).instance.metadata, "finalizers", None)
-    if not metadata_finalizers:
-        return []
-    return [str(finalizer) for finalizer in metadata_finalizers]
-
-
-def verify_aitenant_has_praxis_cleanup_finalizer(
-    aitenant: AITenant,
-    timeout: int = DEFAULT_PRAXIS_FINALIZER_WAIT_TIMEOUT_SECONDS,
-) -> None:
-    """Assert ai-gateway-controller attached the praxis cleanup finalizer (effective praxis opt-in)."""
-    try:
-        for has_finalizer in TimeoutSampler(
-            wait_timeout=timeout,
-            sleep=2,
-            func=lambda: PRAXIS_AITENANT_CLEANUP_FINALIZER in read_aitenant_finalizers(aitenant=aitenant),
-        ):
-            if has_finalizer:
-                return
-    except TimeoutExpiredError:
-        finalizers = read_aitenant_finalizers(aitenant=aitenant)
-        pytest.fail(
-            f"AITenant '{aitenant.namespace}/{aitenant.name}' should have finalizer "
-            f"'{PRAXIS_AITENANT_CLEANUP_FINALIZER}' when payload-processing-type is praxis "
-            f"(timeout {timeout}s); got {finalizers!r}"
-        )
-
-
-def wait_until_aitenant_lacks_praxis_cleanup_finalizer(
-    aitenant: AITenant,
-    timeout: int = DEFAULT_PRAXIS_FINALIZER_WAIT_TIMEOUT_SECONDS,
-) -> None:
-    """Poll until the praxis cleanup finalizer is removed (legacy / de-annotated tenant)."""
-    try:
-        for lacks_finalizer in TimeoutSampler(
-            wait_timeout=timeout,
-            sleep=2,
-            func=lambda: PRAXIS_AITENANT_CLEANUP_FINALIZER not in read_aitenant_finalizers(aitenant=aitenant),
-        ):
-            if lacks_finalizer:
-                return
-    except TimeoutExpiredError:
-        finalizers = read_aitenant_finalizers(aitenant=aitenant)
-        pytest.fail(
-            f"AITenant '{aitenant.namespace}/{aitenant.name}' should not have finalizer "
-            f"'{PRAXIS_AITENANT_CLEANUP_FINALIZER}' after leaving praxis opt-in "
-            f"(timeout {timeout}s); got {finalizers!r}"
-        )
-
-
-def verify_aitenant_lacks_praxis_cleanup_finalizer(aitenant: AITenant) -> None:
-    """Assert the AITenant is not on the Praxis controller cleanup path (legacy / non-praxis annotation)."""
-    finalizers = read_aitenant_finalizers(aitenant=aitenant)
-    assert PRAXIS_AITENANT_CLEANUP_FINALIZER not in finalizers, (
-        f"AITenant '{aitenant.namespace}/{aitenant.name}' should not have finalizer "
-        f"'{PRAXIS_AITENANT_CLEANUP_FINALIZER}' without effective praxis opt-in; got {finalizers!r}"
     )
 
 
@@ -181,7 +264,6 @@ def verify_aitenant_bootstrap_reaches_ready_with_refs(aitenant: AITenant) -> Non
 def praxis_aitenant_with_bootstrap_gateway(
     admin_client: DynamicClient,
     cr_namespace: str,
-    payload_processing_type: str | None,
     teardown: bool,
     aitenant_name: str | None = None,
 ) -> Generator[AITenant]:
@@ -204,22 +286,32 @@ def praxis_aitenant_with_bootstrap_gateway(
             aitenant_name=resolved_aitenant_name,
             cr_namespace=cr_namespace,
             aitenant_spec=aitenant_spec,
-            payload_processing_type=payload_processing_type,
             teardown=teardown,
         ) as aitenant,
     ):
         yield aitenant
 
 
-def deploy_praxis_aitenant_and_verify_annotation(
+def deploy_praxis_aitenant_and_verify_maastenantconfig_annotation(
+    admin_client: DynamicClient,
     aitenant: AITenant,
     expected_annotation_value: str,
 ) -> None:
-    """Create the AITenant if missing and assert the praxis annotation is persisted."""
+    """Create the AITenant if missing, wait for Ready, and assert praxis opt-in on MaasTenantConfig."""
     if not aitenant.exists:
         aitenant.deploy()
     assert aitenant.exists, f"AITenant '{aitenant.namespace}/{aitenant.name}' was not created"
-    verify_aitenant_payload_processing_annotation(aitenant=aitenant, expected_value=expected_annotation_value)
+    deploy_and_verify_aitenant_ready(aitenant=aitenant)
+    set_maastenantconfig_payload_processing_type_annotation(
+        admin_client=admin_client,
+        aitenant=aitenant,
+        annotation_value=expected_annotation_value,
+    )
+    verify_maastenantconfig_payload_processing_type(
+        admin_client=admin_client,
+        aitenant=aitenant,
+        expected_value=expected_annotation_value,
+    )
 
 
 def per_tenant_legacy_ipp_resource_name(base_name: str, aitenant_name: str) -> str:
@@ -643,30 +735,22 @@ def _deployment_container_args_include(
 
 
 def _maas_ipp_handoff_complete(admin_client: DynamicClient, aitenant: AITenant) -> bool:
-    """Return True when maas-controller released legacy IPP (ai-gateway #9 handoff gate)."""
-    aitenant_annotations = dict(fresh_aitenant(aitenant=aitenant).instance.metadata.annotations or {})
-    if aitenant_annotations.get(MAAS_IPP_MIGRATION_CLEANUP_COMPLETE_ANNOTATION) == "true":
-        return True
-    tenant_namespace_name = tenant_namespace_name_from_aitenant(aitenant=aitenant)
-    maas_tenant_config = MaasTenantConfig(
+    """Return True when maas-controller signaled IPP cleanup complete on MaasTenantConfig."""
+    bootstrapped_tenant_config = MaasTenantConfig(
         client=admin_client,
         name=AIGATEWAY_BOOTSTRAPPED_TENANT_NAME,
-        namespace=tenant_namespace_name,
+        namespace=tenant_namespace_name_from_aitenant(aitenant=aitenant),
         wait_for_resource=False,
     )
-    if not maas_tenant_config.exists:
+    if not bootstrapped_tenant_config.exists:
         return False
-    maas_tenant_config_dict = maas_tenant_config.instance.to_dict()
-    config_annotations = dict((maas_tenant_config_dict.get("metadata") or {}).get("annotations") or {})
-    if config_annotations.get(MAAS_IPP_MIGRATION_CLEANUP_COMPLETE_ANNOTATION) == "true":
-        return True
-    status_conditions = (maas_tenant_config_dict.get("status") or {}).get("conditions") or []
-    for condition in status_conditions:
-        if not isinstance(condition, dict):
-            continue
-        if condition.get("type") == MAAS_IPP_RESOURCES_RELEASED_CONDITION and condition.get("status") == "True":
-            return True
-    return False
+    config_annotations = maastenantconfig_metadata_annotations(bootstrapped_tenant_config=bootstrapped_tenant_config)
+    if MAAS_PAYLOAD_PROCESSING_STATUS_ANNOTATION not in config_annotations:
+        return False
+    return (
+        config_annotations[MAAS_PAYLOAD_PROCESSING_STATUS_ANNOTATION]
+        == MAAS_PAYLOAD_PROCESSING_STATUS_CLEANUP_COMPLETE_VALUE
+    )
 
 
 def wait_for_maas_ipp_handoff_for_aitenant(
@@ -687,10 +771,10 @@ def wait_for_maas_ipp_handoff_for_aitenant(
         tenant_namespace_name = tenant_namespace_name_from_aitenant(aitenant=aitenant)
         pytest.fail(
             f"Timed out after {timeout}s waiting for MaaS IPP handoff for AITenant "
-            f"'{aitenant.namespace}/{aitenant.name}' (expected "
-            f"MaasTenantConfig/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} condition "
-            f"'{MAAS_IPP_RESOURCES_RELEASED_CONDITION}=True' or annotation "
-            f"'{MAAS_IPP_MIGRATION_CLEANUP_COMPLETE_ANNOTATION}=true' in tenant namespace "
+            f"'{aitenant.namespace}/{aitenant.name}' (expected MaasTenantConfig/"
+            f"{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} annotation "
+            f"'{MAAS_PAYLOAD_PROCESSING_STATUS_ANNOTATION}="
+            f"{MAAS_PAYLOAD_PROCESSING_STATUS_CLEANUP_COMPLETE_VALUE}' in tenant namespace "
             f"'{tenant_namespace_name}')"
         )
 
@@ -986,33 +1070,15 @@ def verify_praxis_payload_processing_active_for_aitenant(
     )
 
 
-def set_aitenant_payload_processing_type_annotation(
-    aitenant: AITenant,
-    annotation_value: str | None,
-) -> None:
-    """Set or remove the payload-processing-type annotation on an existing AITenant."""
-    refreshed_aitenant = fresh_aitenant(aitenant=aitenant)
-    resource_dict = refreshed_aitenant.instance.to_dict()
-    metadata = resource_dict.setdefault("metadata", {})
-    annotations = dict(metadata["annotations"]) if metadata.get("annotations") else {}
-    if annotation_value is None:
-        if PRAXIS_PAYLOAD_PROCESSING_TYPE_ANNOTATION in annotations:
-            del annotations[PRAXIS_PAYLOAD_PROCESSING_TYPE_ANNOTATION]
-    else:
-        annotations[PRAXIS_PAYLOAD_PROCESSING_TYPE_ANNOTATION] = annotation_value
-    metadata["annotations"] = annotations
-    refreshed_aitenant.update(resource_dict=resource_dict)
-
-
 def migrate_legacy_aitenant_to_praxis_payload_processing(
     admin_client: DynamicClient,
     aitenant: AITenant,
     timeout: int = DEFAULT_LEGACY_IPP_WAIT_TIMEOUT_SECONDS,
 ) -> None:
-    """Migrate a legacy tenant to Praxis by annotating the AITenant and waiting for Praxis payload processing.
+    """Migrate a legacy tenant to Praxis via MaasTenantConfig and wait for Praxis payload processing.
 
     Verifies legacy IPP is installed before migration, then applies the praxis payload-processing-type
-    annotation and waits for the praxis-cleanup finalizer and active Praxis bundle in the gateway namespace.
+    annotation on MaasTenantConfig and waits for the praxis-cleanup finalizer and active Praxis bundle.
     """
     gateway_namespace, _gateway_name = gateway_namespace_and_name_for_aitenant(aitenant=aitenant)
     aitenant_name = aitenant.name
@@ -1021,11 +1087,12 @@ def migrate_legacy_aitenant_to_praxis_payload_processing(
         gateway_namespace=gateway_namespace,
         aitenant_name=aitenant_name,
     )
-    set_aitenant_payload_processing_type_annotation(
+    set_maastenantconfig_payload_processing_type_annotation(
+        admin_client=admin_client,
         aitenant=aitenant,
         annotation_value=PRAXIS_PAYLOAD_PROCESSING_TYPE_VALUE,
     )
-    verify_aitenant_has_praxis_cleanup_finalizer(aitenant=aitenant)
+    verify_maastenantconfig_has_praxis_cleanup_finalizer(admin_client=admin_client, aitenant=aitenant)
     verify_praxis_payload_processing_active_for_aitenant(
         admin_client=admin_client,
         aitenant=aitenant,
@@ -1038,11 +1105,19 @@ def restore_legacy_aitenant_payload_processing(
     aitenant: AITenant,
     timeout: int = LEGACY_IPP_SWITCH_BACK_WAIT_TIMEOUT_SECONDS,
 ) -> None:
-    """Remove praxis opt-in from an AITenant and wait until maas-controller legacy IPP is active again."""
+    """Remove praxis opt-in from MaasTenantConfig and wait until maas-controller legacy IPP is active again."""
     gateway_namespace, _gateway_name = gateway_namespace_and_name_for_aitenant(aitenant=aitenant)
     aitenant_name = aitenant.name
-    set_aitenant_payload_processing_type_annotation(aitenant=aitenant, annotation_value=None)
-    wait_until_aitenant_lacks_praxis_cleanup_finalizer(aitenant=aitenant, timeout=timeout)
+    set_maastenantconfig_payload_processing_type_annotation(
+        admin_client=admin_client,
+        aitenant=aitenant,
+        annotation_value=None,
+    )
+    wait_until_maastenantconfig_lacks_praxis_cleanup_finalizer(
+        admin_client=admin_client,
+        aitenant=aitenant,
+        timeout=timeout,
+    )
     wait_until_praxis_ipp_bundle_absent_in_gateway_namespace(
         admin_client=admin_client,
         gateway_namespace=gateway_namespace,
@@ -1055,21 +1130,6 @@ def restore_legacy_aitenant_payload_processing(
         aitenant_name=aitenant_name,
         timeout=timeout,
     )
-
-
-def maas_tenant_config_for_aitenant(admin_client: DynamicClient, aitenant: AITenant) -> MaasTenantConfig:
-    """Return the bootstrapped MaasTenantConfig for a Ready AITenant."""
-    tenant_namespace_name = tenant_namespace_name_from_aitenant(aitenant=aitenant)
-    bootstrapped_tenant_config = MaasTenantConfig(
-        client=admin_client,
-        name=AIGATEWAY_BOOTSTRAPPED_TENANT_NAME,
-        namespace=tenant_namespace_name,
-        ensure_exists=True,
-    )
-    assert bootstrapped_tenant_config.exists, (
-        f"MaasTenantConfig/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} not found in '{tenant_namespace_name}'"
-    )
-    return bootstrapped_tenant_config
 
 
 def verify_praxis_maas_tenant_config_ready(aitenant: AITenant, admin_client: DynamicClient) -> None:

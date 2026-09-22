@@ -2,7 +2,10 @@
 
 PRAXIS_PAYLOAD_PROCESSING_TYPE_ANNOTATION: str = "maas.opendatahub.io/payload-processing-type"
 PRAXIS_PAYLOAD_PROCESSING_TYPE_VALUE: str = "praxis"
-PRAXIS_AITENANT_CLEANUP_FINALIZER: str = "ai-gateway-controller.opendatahub.io/praxis-cleanup"
+PRAXIS_CLEANUP_FINALIZER: str = "ai-gateway-controller.opendatahub.io/praxis-cleanup"
+
+MAAS_PAYLOAD_PROCESSING_STATUS_ANNOTATION: str = "maas.opendatahub.io/payload-processing-status"
+MAAS_PAYLOAD_PROCESSING_STATUS_CLEANUP_COMPLETE_VALUE: str = "cleanup-complete"
 
 # Legacy IPP resource base names (aligned with maas-controller tenantreconcile constants).
 LEGACY_IPP_POST_PROCESSING_NAME_BASE: str = "payload-processing"
@@ -18,10 +21,6 @@ PRAXIS_EXTPROC_CONFIG_DATA_KEY: str = "extproc.yaml"
 PRAXIS_PRE_EXTPROC_CONFIG_DATA_KEY: str = "pre-extproc.yaml"
 PRAXIS_POST_PROCESSING_CONTAINER_CONFIG_ARG: str = "/etc/praxis/extproc.yaml"
 PRAXIS_PRE_PROCESSING_CONTAINER_CONFIG_ARG: str = "/etc/praxis/pre-extproc.yaml"
-
-# MaaS → ai-gateway handoff before Praxis SSA apply (MaasTenantConfig / AITenant annotations).
-MAAS_IPP_RESOURCES_RELEASED_CONDITION: str = "IPPResourcesReleased"
-MAAS_IPP_MIGRATION_CLEANUP_COMPLETE_ANNOTATION: str = "maas.opendatahub.io/ipp-migration-cleanup-complete"
 
 DEFAULT_LEGACY_IPP_WAIT_TIMEOUT_SECONDS: int = 300
 LEGACY_IPP_SWITCH_BACK_WAIT_TIMEOUT_SECONDS: int = 600
