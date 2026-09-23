@@ -16,6 +16,7 @@ from .config_models import (
     TinyLlamaOciGpuConfig,
     TinyLlamaS3Config,
     TinyLlamaS3GpuConfig,
+    TinyLlamaS3GpuNoSchedulerConfig,
 )
 from .config_multinode_moe import MultinodeMoeDpEpConfig
 from .config_multinode_moe_dp_ep_prefill_decode import MultinodeMoeDpEpPrefillDecodeConfig
@@ -44,4 +45,5 @@ __all__ = [
     "TinyLlamaOciGpuConfig",
     "TinyLlamaS3Config",
     "TinyLlamaS3GpuConfig",
+    "TinyLlamaS3GpuNoSchedulerConfig",
 ]

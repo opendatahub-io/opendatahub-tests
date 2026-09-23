@@ -743,9 +743,12 @@ def create_api_key(
         request_headers.update(extra_headers)
 
     response: requests.Response | None = None
+    last_response: requests.Response | None = None
+    empty_403_retries = 0
+    auth_failure_retries = 0
     try:
         for response in TimeoutSampler(
-            wait_timeout=90,
+            wait_timeout=30,
             sleep=5,
             func=request_session_http.post,
             url=api_keys_url,
@@ -753,26 +756,31 @@ def create_api_key(
             json=payload,
             timeout=request_timeout_seconds,
         ):
+            last_response = response
             LOGGER.info(f"create_api_key: url={api_keys_url} status={response.status_code}")
             if response.status_code in (200, 201):
                 break
             if response.status_code == 403 and not (response.text or "").strip():
+                empty_403_retries += 1
                 LOGGER.info("create_api_key: empty 403 (Authorino propagation delay) — retrying")
                 continue
             if response.status_code == 500 and "AUTH_FAILURE" in (response.text or ""):
+                auth_failure_retries += 1
                 LOGGER.info("create_api_key: 500 AUTH_FAILURE (Authorino identity not ready) — retrying")
                 continue
             break
     except TimeoutExpiredError:
         LOGGER.info(
-            "create_api_key: timed out after 90s waiting for successful create (retryable empty 403 / AUTH_FAILURE)"
+            "create_api_key: timed out after 30s waiting for successful create (retryable empty 403 / AUTH_FAILURE)"
         )
 
+    response = last_response if last_response is not None else response
     if response is None or response.status_code not in (200, 201):
         status = response.status_code if response is not None else "no response"
-        body = response.text[:500] if response is not None else "timed out with persistent empty 403 / AUTH_FAILURE"
+        body = response.text[:500] if response is not None else "no HTTP response received"
+        retry_summary = f"empty_403_retries={empty_403_retries} auth_failure_retries={auth_failure_retries}"
         if raise_on_error:
-            raise AssertionError(f"api-key create failed: status={status} body={body}")
+            raise AssertionError(f"api-key create failed: status={status} body={body} {retry_summary}")
         return response, {}  # type: ignore[return-value]
 
     try:
