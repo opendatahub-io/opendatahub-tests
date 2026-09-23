@@ -10,6 +10,7 @@ from ogx_client.types.vector_store import VectorStore
 from ragas import SingleTurnSample
 
 from tests.ogx.constants import (
+    OGX_CORE_VLLM_API_TOKEN,
     RAGAS_EVAL_MAX_TOKENS,
     RAGAS_MAX_SAMPLES,
     ModelInfo,
@@ -36,7 +37,7 @@ def ragas_evaluator_llm(
     http_client = httpx.Client(verify=verify_ssl, timeout=httpx.Timeout(240.0))
     try:
         openai_client = OpenAI(
-            api_key=os.getenv("OGX_CORE_VLLM_API_TOKEN", ""),
+            api_key=OGX_CORE_VLLM_API_TOKEN,
             base_url=f"{base_url}/v1",
             http_client=http_client,
         )
@@ -88,7 +89,7 @@ def ragas_evaluator_embeddings(
     http_client = httpx.Client(verify=verify_ssl, timeout=httpx.Timeout(120.0))
     try:
         openai_client = OpenAI(
-            api_key=os.getenv("OGX_CORE_VLLM_API_TOKEN", "not-required"),
+            api_key=OGX_CORE_VLLM_API_TOKEN or "not-required",
             base_url=f"{base_url}/v1",
             http_client=http_client,
         )
