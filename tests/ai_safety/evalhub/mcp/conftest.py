@@ -176,6 +176,7 @@ def _wait_for_mcp_pods_settled(
     last_seen: list[tuple[str, str, bool]] = []
     required_stable_reads = 3
     stable_reads = 0
+    previous_qualifying_state: tuple[tuple[str, str, bool], ...] | None = None
     try:
         for states in TimeoutSampler(
             wait_timeout=timeout,
@@ -187,11 +188,17 @@ def _wait_for_mcp_pods_settled(
             if len(states) == desired and all(
                 phase == Pod.Status.RUNNING and not terminating for _, phase, terminating in states
             ):
-                stable_reads += 1
+                normalized_state = tuple(sorted(states, key=lambda state: state[0]))
+                if normalized_state == previous_qualifying_state:
+                    stable_reads += 1
+                else:
+                    stable_reads = 1
+                previous_qualifying_state = normalized_state
                 if stable_reads >= required_stable_reads:
                     return
             else:
                 stable_reads = 0
+                previous_qualifying_state = None
             LOGGER.info(
                 f"Waiting for {desired} settled MCP pod(s) in {namespace} "
                 f"({stable_reads}/{required_stable_reads} stable reads); "
