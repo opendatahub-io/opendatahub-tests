@@ -495,7 +495,7 @@ class TestEvalHubK8sMlflowJobSpec:
             payload=base,
         )
         if resp.status_code != 202:
-            pytest.skip(
+            pytest.fail(
                 "EvalHub instance does not accept experiment payload (MLflow likely disabled): "
                 f"{resp.status_code} {resp.text}"
             )
