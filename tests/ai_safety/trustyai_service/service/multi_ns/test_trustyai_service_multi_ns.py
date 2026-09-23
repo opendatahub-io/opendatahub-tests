@@ -62,6 +62,7 @@ class TestTrustyAIServiceMultipleNS:
         admin_client,
         current_client_token,
         trustyai_service_with_pvc_storage_multi_ns,
+        minio_data_connection_multi_ns,
     ) -> None:
         for tai in trustyai_service_with_pvc_storage_multi_ns:
             verify_upload_data_to_trustyai_service(
