@@ -724,6 +724,7 @@ def minio_data_connection(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     minio_service: Service,
+    minio_pod: Pod,
 ) -> Generator[Secret, Any, Any]:
     with create_minio_data_connection_secret(
         minio_service=minio_service,
