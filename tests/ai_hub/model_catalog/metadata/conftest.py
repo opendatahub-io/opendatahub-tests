@@ -12,7 +12,6 @@ from tests.ai_hub.model_catalog.constants import (
     DEFAULT_CATALOGS,
     MODEL_ARTIFACT_TYPE,
     PERFORMANCE_DATA_DIR,
-    REDHAT_AI_CATALOG_ID,
     VALIDATED_CATALOG_ID,
 )
 from tests.ai_hub.model_catalog.metadata.constants import ALL_ARTIFACT_CATEGORIES
@@ -255,5 +254,5 @@ def restore_catalog_status(
     wait_for_source_status_restored(
         base_url=source_status_base_url,
         headers=model_registry_rest_headers,
-        source_id=REDHAT_AI_CATALOG_ID,
+        source_id=VALIDATED_CATALOG_ID,
     )

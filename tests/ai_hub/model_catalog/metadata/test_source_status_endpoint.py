@@ -1,7 +1,7 @@
 import pytest
 from ocp_resources.config_map import ConfigMap
 
-from tests.ai_hub.model_catalog.constants import REDHAT_AI_CATALOG_ID
+from tests.ai_hub.model_catalog.constants import VALIDATED_CATALOG_ID
 from tests.ai_hub.model_catalog.metadata.constants import ERROR_SOURCE_ID, ERROR_SOURCE_YAML, UNKNOWN_SOURCE_ID
 from tests.ai_hub.model_catalog.metadata.utils import clear_source_status, get_source_status
 from tests.ai_hub.utils import execute_get_command_with_retry
@@ -22,10 +22,10 @@ class TestGetSourceStatusEndpoint:
         status = get_source_status(
             base_url=source_status_base_url,
             headers=model_registry_rest_headers,
-            source_id=REDHAT_AI_CATALOG_ID,
+            source_id=VALIDATED_CATALOG_ID,
         )
 
-        assert status.get("status") == "available", f"Unexpected status for {REDHAT_AI_CATALOG_ID}: {status}"
+        assert status.get("status") == "available", f"Unexpected status for {VALIDATED_CATALOG_ID}: {status}"
         assert not status.get("error"), f"Available source should have no error: {status}"
 
     @pytest.mark.parametrize(
@@ -160,21 +160,21 @@ class TestClearSourceStatusEndpoint:
         before = get_source_status(
             base_url=source_status_base_url,
             headers=model_registry_rest_headers,
-            source_id=REDHAT_AI_CATALOG_ID,
+            source_id=VALIDATED_CATALOG_ID,
         )
-        assert before.get("status"), f"Expected {REDHAT_AI_CATALOG_ID} to have a persisted status: {before}"
+        assert before.get("status"), f"Expected {VALIDATED_CATALOG_ID} to have a persisted status: {before}"
 
         status_code = clear_source_status(
             base_url=source_status_base_url,
             headers=model_registry_rest_headers,
-            source_id=REDHAT_AI_CATALOG_ID,
+            source_id=VALIDATED_CATALOG_ID,
         )
         assert status_code == 204, f"Expected 204 clearing status, got {status_code}"
 
         status = get_source_status(
             base_url=source_status_base_url,
             headers=model_registry_rest_headers,
-            source_id=REDHAT_AI_CATALOG_ID,
+            source_id=VALIDATED_CATALOG_ID,
         )
         assert not status.get("status"), f"Status should be empty right after clearing: {status}"
         assert not status.get("error"), f"Error should be empty right after clearing: {status}"
