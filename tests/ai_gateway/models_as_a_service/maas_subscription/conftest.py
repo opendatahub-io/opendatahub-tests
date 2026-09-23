@@ -1,4 +1,6 @@
+import os
 from collections.abc import Generator
+from contextlib import ExitStack
 from typing import Any
 
 import pytest
@@ -12,24 +14,42 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.service_account import ServiceAccount
 from pytest_testconfig import config as py_config
 
+from tests.ai_gateway.models_as_a_service.maas_api_key.utils import (
+    MAAS_GATEWAY_AUTH_POLICY_NAME,
+    wait_for_auth_policy_accepted,
+)
 from tests.ai_gateway.models_as_a_service.maas_subscription.utils import (
+    MaaSLlmdScenario,
     ModelIdentityCollisionNames,
     build_model_identity_collision_names,
     create_maas_subscription,
     patch_llmisvc_with_maas_router_and_tiers,
 )
-from tests.ai_gateway.models_as_a_service.utils import build_maas_headers, create_api_key, revoke_api_key
-from utilities.constants import ModelStorage
+from tests.ai_gateway.models_as_a_service.utils import (
+    build_maas_headers,
+    create_api_key,
+    revoke_api_key,
+)
+from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaS3GpuConfig  # noqa: NIT001
+from utilities.constants import MAAS_GATEWAY_NAMESPACE, ModelStorage
 from utilities.general import generate_random_name
 from utilities.image_constants import SharedImages
-from utilities.infra import create_inference_token, login_with_user_password
-from utilities.llmd_utils import create_llmisvc
+from utilities.infra import (
+    create_inference_token,
+    create_ns,
+    login_with_user_password,
+    s3_endpoint_secret,
+)
+from utilities.llmd_utils import create_llmisvc, create_llmisvc_from_config
+from utilities.logger import RedactedString
 from utilities.plugins.constant import OpenAIEnpoints
 from utilities.resources.llm_inference_service import LLMInferenceService
 
 LOGGER = structlog.get_logger(name=__name__)
 
 CHAT_COMPLETIONS = OpenAIEnpoints.CHAT_COMPLETIONS
+MAAS_LLM_D_DEBUG_LABEL = "e2e.opendatahub.io/maas-llmd-debug-run"
+MAAS_LLM_D_SCENARIO_TOKENS_PER_MINUTE = 5_000
 
 
 @pytest.fixture(scope="function")
@@ -64,6 +84,326 @@ def maas_inference_service_tinyllama_premium(
     ):
         llm_service.wait_for_condition(condition="Ready", status="True", timeout=900)
         yield llm_service
+
+
+@pytest.fixture(scope="class")
+def maas_inference_service_tinyllama_load_balanced(
+    request: pytest.FixtureRequest,
+    admin_client: DynamicClient,
+    maas_gateway_api: None,
+) -> Generator[LLMInferenceService, Any, Any]:
+    """Create a production-shaped, two-GPU-replica LLM-d service for MaaS."""
+    with ExitStack() as stack:
+        namespace = stack.enter_context(
+            cm=create_ns(
+                admin_client=admin_client,
+                name=generate_random_name(prefix="maas-llmd-lb"),
+            )
+        )
+        s3_secret = stack.enter_context(
+            cm=s3_endpoint_secret(
+                client=admin_client,
+                name="tinyllama-s3",
+                namespace=namespace.name,
+                aws_access_key=request.getfixturevalue("aws_access_key_id"),
+                aws_secret_access_key=request.getfixturevalue("aws_secret_access_key"),
+                aws_s3_region=request.getfixturevalue("models_s3_bucket_region"),
+                aws_s3_bucket=request.getfixturevalue("models_s3_bucket_name"),
+                aws_s3_endpoint=request.getfixturevalue("models_s3_bucket_endpoint"),
+            )
+        )
+        service_account = stack.enter_context(
+            cm=ServiceAccount(
+                client=admin_client,
+                name="tinyllama-s3",
+                namespace=namespace.name,
+                secrets=[{"name": s3_secret.name}],
+            )
+        )
+        config_cls = TinyLlamaS3GpuConfig.with_overrides(
+            name="llm-s3-tinyllama-load-balanced",
+            replicas=2,
+            min_total_gpus=2,
+            enable_auth=True,
+        ).build(client=admin_client)
+        llm_service = stack.enter_context(
+            cm=create_llmisvc_from_config(
+                config_cls=config_cls,
+                client=admin_client,
+                namespace=namespace.name,
+                service_account=service_account.name,
+            )
+        )
+        stack.enter_context(cm=patch_llmisvc_with_maas_router_and_tiers(llm_service=llm_service, tiers=[]))
+        llm_service.wait_for_condition(condition="Ready", status="True", timeout=900)
+        yield llm_service
+
+
+@pytest.fixture(scope="class")
+def maas_llmd_scenario(
+    request: pytest.FixtureRequest,
+    admin_client: DynamicClient,
+    maas_gateway_api: None,
+    maas_subscription_namespace: Namespace,
+) -> Generator[MaaSLlmdScenario, Any, Any]:
+    """Deploy a configured LLM-d scenario and expose it through MaaS."""
+    keep_resources = os.getenv("MAAS_LLM_D_KEEP_RESOURCES", "").lower() in {"1", "true", "yes"}
+    # Class-scoped parametrization creates one scenario per class, but the same
+    # configuration can be exercised by more than one MaaS test module. Keep
+    # the Kubernetes resource names unique when xdist schedules those classes
+    # concurrently, while leaving enough room for dependent resource suffixes.
+    scenario_name = generate_random_name(prefix=f"maas-{request.param.name[:45]}")
+    debug_labels = {MAAS_LLM_D_DEBUG_LABEL: scenario_name} if keep_resources else {}
+    config_cls = request.param.with_overrides(name=scenario_name, enable_auth=True).build(client=admin_client)
+    with ExitStack() as stack:
+        scenario_namespace = stack.enter_context(
+            cm=create_ns(
+                admin_client=admin_client,
+                name=generate_random_name(prefix="maas-llmd"),
+                teardown=not keep_resources,
+                labels=debug_labels,
+            )
+        )
+        if keep_resources:
+            LOGGER.warning(
+                "MaaS LLM-d debug retention is enabled; scenario resources will remain after pytest exits: "
+                f"namespace={scenario_namespace.name}"
+            )
+        # The MaaS Gateway authenticates through Kubernetes TokenReview with
+        # the Kubernetes service audience. Reuse the namespace's built-in
+        # default ServiceAccount and mint a token for that exact audience;
+        # this does not create a user, group, OAuth provider, or ServiceAccount.
+        gateway_service_account = ServiceAccount(
+            client=admin_client,
+            name="default",
+            namespace=scenario_namespace.name,
+        )
+        gateway_service_account.wait(timeout=60)
+        gateway_user = f"system:serviceaccount:{scenario_namespace.name}:{gateway_service_account.name}"
+        gateway_token = RedactedString(
+            value=gateway_service_account.create_service_account_token(
+                audiences=["https://kubernetes.default.svc"],
+                expiration_seconds=86400,
+            ).status.token
+        )
+        service_account = None
+        if config_cls.storage_uri.startswith("s3://"):
+            s3_secret = stack.enter_context(
+                cm=s3_endpoint_secret(
+                    client=admin_client,
+                    name=f"{scenario_name}-s3",
+                    namespace=scenario_namespace.name,
+                    aws_access_key=request.getfixturevalue("aws_access_key_id"),
+                    aws_secret_access_key=request.getfixturevalue("aws_secret_access_key"),
+                    aws_s3_region=request.getfixturevalue("models_s3_bucket_region"),
+                    aws_s3_bucket=request.getfixturevalue("models_s3_bucket_name"),
+                    aws_s3_endpoint=request.getfixturevalue("models_s3_bucket_endpoint"),
+                    teardown=not keep_resources,
+                )
+            )
+            service_account = stack.enter_context(
+                cm=ServiceAccount(
+                    client=admin_client,
+                    name=f"{scenario_name}-sa",
+                    namespace=scenario_namespace.name,
+                    secrets=[{"name": s3_secret.name}],
+                    teardown=not keep_resources,
+                )
+            ).name
+        llm_service = stack.enter_context(
+            cm=create_llmisvc_from_config(
+                config_cls=config_cls,
+                client=admin_client,
+                namespace=scenario_namespace.name,
+                service_account=service_account,
+                teardown=not keep_resources,
+            )
+        )
+        stack.enter_context(
+            cm=patch_llmisvc_with_maas_router_and_tiers(
+                llm_service=llm_service,
+                tiers=[],
+                restore_on_exit=not keep_resources,
+                labels=debug_labels,
+            )
+        )
+        llm_service.wait_for_condition(condition="Ready", status="True", timeout=900)
+
+        maas_model = stack.enter_context(
+            cm=MaaSModelRef(
+                client=admin_client,
+                name=llm_service.name,
+                namespace=llm_service.namespace,
+                model_ref={
+                    "name": llm_service.name,
+                    "namespace": llm_service.namespace,
+                    "kind": "LLMInferenceService",
+                },
+                label=debug_labels,
+                teardown=not keep_resources,
+                wait_for_resource=True,
+            )
+        )
+        auth_policy = stack.enter_context(
+            cm=MaaSAuthPolicy(
+                client=admin_client,
+                name=f"{llm_service.name}-access",
+                namespace=maas_subscription_namespace.name,
+                model_refs=[{"name": maas_model.name, "namespace": maas_model.namespace}],
+                subjects={"users": [gateway_user]},
+                label=debug_labels,
+                teardown=not keep_resources,
+                wait_for_resource=True,
+            )
+        )
+        auth_policy.wait_for_condition(condition="Ready", status="True", timeout=300)
+        subscription = stack.enter_context(
+            cm=MaaSSubscription(
+                client=admin_client,
+                name=f"{llm_service.name}-subscription",
+                namespace=maas_subscription_namespace.name,
+                owner={"users": [gateway_user]},
+                model_refs=[
+                    {
+                        "name": maas_model.name,
+                        "namespace": maas_model.namespace,
+                        # Prefix-cache scenarios send twelve long prompts and allow retries.
+                        # Keep this above their worst-case request budget so MaaS rate
+                        # limiting does not mask an EPP-routing regression.
+                        "tokenRateLimits": [{"limit": MAAS_LLM_D_SCENARIO_TOKENS_PER_MINUTE, "window": "1m"}],
+                    }
+                ],
+                priority=0,
+                label=debug_labels,
+                teardown=not keep_resources,
+                wait_for_resource=True,
+            )
+        )
+        subscription.wait_for_condition(condition="Ready", status="True", timeout=300)
+        if keep_resources:
+            LOGGER.warning(
+                "Retained MaaS LLM-d resources: "
+                f"namespace={scenario_namespace.name}, llmisvc={llm_service.name}, "
+                f"model_ref={maas_model.name}, auth_policy={auth_policy.name}, "
+                f"subscription={subscription.name}, debug_label={MAAS_LLM_D_DEBUG_LABEL}={scenario_name}"
+            )
+        wait_for_auth_policy_accepted(
+            admin_client=admin_client,
+            policy_name=MAAS_GATEWAY_AUTH_POLICY_NAME,
+            namespace=MAAS_GATEWAY_NAMESPACE,
+        )
+        yield MaaSLlmdScenario(
+            llmisvc=llm_service,
+            subscription=subscription,
+            gateway_token=gateway_token,
+        )
+
+
+@pytest.fixture(scope="class")
+def model_url_llmd_scenario(
+    maas_host: str,
+) -> str:
+    """Return MaaS's body-routed chat-completions URL for an LLM-d scenario."""
+    return f"https://{maas_host}{CHAT_COMPLETIONS}"
+
+
+@pytest.fixture(scope="function")
+def api_key_bound_to_llmd_scenario(
+    base_url: str,
+    maas_llmd_scenario: MaaSLlmdScenario,
+    request_session_http: requests.Session,
+) -> Generator[str, Any, Any]:
+    """Create and revoke an API key for the current LLM-d MaaS scenario."""
+    _, body = create_api_key(
+        base_url=base_url,
+        ocp_user_token=maas_llmd_scenario.gateway_token,
+        request_session_http=request_session_http,
+        api_key_name=f"e2e-maas-{maas_llmd_scenario.llmisvc.name}",
+        subscription=maas_llmd_scenario.subscription.name,
+    )
+    try:
+        yield body["key"]
+    finally:
+        revoke_api_key(
+            request_session_http=request_session_http,
+            base_url=base_url,
+            key_id=body["id"],
+            ocp_user_token=maas_llmd_scenario.gateway_token,
+        )
+
+
+@pytest.fixture(scope="class")
+def maas_model_tinyllama_load_balanced(
+    admin_client: DynamicClient,
+    maas_inference_service_tinyllama_load_balanced: LLMInferenceService,
+) -> Generator[MaaSModelRef, Any, Any]:
+    """Register the load-balanced LLM-d service with MaaS."""
+    with MaaSModelRef(
+        client=admin_client,
+        name=maas_inference_service_tinyllama_load_balanced.name,
+        namespace=maas_inference_service_tinyllama_load_balanced.namespace,
+        model_ref={
+            "name": maas_inference_service_tinyllama_load_balanced.name,
+            "namespace": maas_inference_service_tinyllama_load_balanced.namespace,
+            "kind": "LLMInferenceService",
+        },
+        teardown=True,
+        wait_for_resource=True,
+    ) as maas_model:
+        yield maas_model
+
+
+@pytest.fixture(scope="class")
+def maas_auth_policy_tinyllama_load_balanced(
+    admin_client: DynamicClient,
+    maas_free_group: str,
+    maas_model_tinyllama_load_balanced: MaaSModelRef,
+    maas_subscription_namespace: Namespace,
+) -> Generator[MaaSAuthPolicy, Any, Any]:
+    """Grant the free-tier user access to the load-balanced LLM-d model."""
+    with MaaSAuthPolicy(
+        client=admin_client,
+        name="tinyllama-load-balanced-access",
+        namespace=maas_subscription_namespace.name,
+        model_refs=[
+            {
+                "name": maas_model_tinyllama_load_balanced.name,
+                "namespace": maas_model_tinyllama_load_balanced.namespace,
+            }
+        ],
+        subjects={"groups": [{"name": maas_free_group}]},
+        teardown=True,
+        wait_for_resource=True,
+    ) as maas_auth_policy:
+        yield maas_auth_policy
+
+
+@pytest.fixture(scope="class")
+def maas_subscription_tinyllama_load_balanced(
+    admin_client: DynamicClient,
+    maas_free_group: str,
+    maas_model_tinyllama_load_balanced: MaaSModelRef,
+    maas_subscription_namespace: Namespace,
+) -> Generator[MaaSSubscription, Any, Any]:
+    """Create a free-tier subscription for the load-balanced LLM-d model."""
+    with MaaSSubscription(
+        client=admin_client,
+        name="tinyllama-load-balanced-subscription",
+        namespace=maas_subscription_namespace.name,
+        owner={"groups": [{"name": maas_free_group}]},
+        model_refs=[
+            {
+                "name": maas_model_tinyllama_load_balanced.name,
+                "namespace": maas_model_tinyllama_load_balanced.namespace,
+                "tokenRateLimits": [{"limit": 1000, "window": "1m"}],
+            }
+        ],
+        priority=0,
+        teardown=True,
+        wait_for_resource=True,
+    ) as maas_subscription:
+        maas_subscription.wait_for_condition(condition="Ready", status="True", timeout=300)
+        yield maas_subscription
 
 
 @pytest.fixture(scope="class")
@@ -172,6 +512,42 @@ def model_url_tinyllama_premium(
     url = f"{maas_scheme}://{maas_host}/llm/{deployment_name}{CHAT_COMPLETIONS}"
     LOGGER.info(f"MaaS: constructed model_url={url} (deployment={deployment_name})")
     return url
+
+
+@pytest.fixture(scope="class")
+def model_url_tinyllama_load_balanced(
+    maas_host: str,
+) -> str:
+    """Return MaaS's body-routed chat-completions URL for the load-balanced LLM-d model."""
+    url = f"https://{maas_host}{CHAT_COMPLETIONS}"
+    LOGGER.info(f"MaaS: constructed body-routed load-balanced model URL={url}")
+    return url
+
+
+@pytest.fixture(scope="class")
+def api_key_bound_to_load_balanced_subscription(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_token_for_actor: str,
+    maas_subscription_tinyllama_load_balanced: MaaSSubscription,
+) -> Generator[str, Any, Any]:
+    """Create and revoke a free-user API key bound to the load-balanced model subscription."""
+    _, body = create_api_key(
+        base_url=base_url,
+        ocp_user_token=ocp_token_for_actor,
+        request_session_http=request_session_http,
+        api_key_name=f"e2e-llmd-load-balanced-{generate_random_name()}",
+        subscription=maas_subscription_tinyllama_load_balanced.name,
+    )
+    try:
+        yield body["key"]
+    finally:
+        revoke_api_key(
+            request_session_http=request_session_http,
+            base_url=base_url,
+            key_id=body["id"],
+            ocp_user_token=ocp_token_for_actor,
+        )
 
 
 @pytest.fixture(scope="class")
