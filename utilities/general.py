@@ -166,13 +166,14 @@ def download_model_data(
 
     init_container: dict[str, Any] = {
         "name": "init-container",
-        "image": SharedImages.BUSYBOX,
+        "image": SharedImages.UBI_MINIMAL,
         "command": init_command,
         "args": init_container_args,
         "volumeMounts": [init_volume_mount],
     }
     downloader_container: dict[str, Any] = {
         "name": "model-downloader",
+        "resources": {"requests": {"cpu": "2", "memory": "8Gi"}, "limits": {"cpu": "4", "memory": "16Gi"}},
         "image": utilities.infra.get_kserve_storage_initialize_image(client=client),
         "args": [
             f"s3://{bucket_name}/{model_path}/",
@@ -186,6 +187,8 @@ def download_model_data(
             {"name": "AWS_DEFAULT_REGION", "value": aws_default_region},
             {"name": "S3_VERIFY_SSL", "value": "false"},
             {"name": "awsAnonymousCredential", "value": "false"},
+            {"name": "AWS_MAX_ATTEMPTS", "value": "10"},
+            {"name": "AWS_RETRY_MODE", "value": "adaptive"},
         ],
         "volumeMounts": [volume_mount],
     }
