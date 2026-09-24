@@ -2,18 +2,18 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
-from pytest import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.serving_runtime import ServingRuntime
+from pytest import FixtureRequest
 
 from tests.ai_safety.image_constants import AiSafetyImages
-from tests.model_serving.image_constants import ModelServingImages
 from tests.ai_safety.trustyai_service.trustyai_service_utils import (
     wait_for_isvc_deployment_registered_by_trustyai_service,
 )
+from tests.model_serving.image_constants import ModelServingImages
 from utilities.constants import KServeDeploymentType, ModelFormat, RuntimeTemplates
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
