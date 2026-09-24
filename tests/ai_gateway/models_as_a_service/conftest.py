@@ -817,11 +817,28 @@ def maas_api_infra_namespace(admin_client: DynamicClient) -> str:
 
     if not infra_namespace or infra_namespace.upper() == "AUTO":
         if applications_namespace == "redhat-ods-applications":
-            return "redhat-ai-gateway-infra"
-        if applications_namespace == "opendatahub":
-            return "odh-ai-gateway-infra"
-        return applications_namespace
-    return infra_namespace
+            infra_namespace = "redhat-ai-gateway-infra"
+        elif applications_namespace == "opendatahub":
+            infra_namespace = "odh-ai-gateway-infra"
+        else:
+            return applications_namespace
+
+    ns = Namespace(client=admin_client, name=infra_namespace)
+    if ns.exists:
+        maas_api_in_infra = Deployment(client=admin_client, name="maas-api", namespace=infra_namespace)
+        if maas_api_in_infra.exists:
+            LOGGER.info(f"Using MaaS API infra namespace: {infra_namespace}")
+            return infra_namespace
+        LOGGER.warning(
+            f"Infra namespace '{infra_namespace}' exists but maas-api Deployment not found there, "
+            f"falling back to applications namespace '{applications_namespace}'"
+        )
+    else:
+        LOGGER.warning(
+            f"Infra namespace '{infra_namespace}' does not exist, "
+            f"falling back to applications namespace '{applications_namespace}'"
+        )
+    return applications_namespace
 
 
 @pytest.fixture(scope="class")
