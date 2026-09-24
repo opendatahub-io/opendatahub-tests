@@ -1,0 +1,37 @@
+from typing import Any
+
+from tests.ogx.server_config import build_ogx_server_config
+
+
+def dummy_vector_io_factory(provider_name: str) -> list[dict[str, str]]:
+    return [{"name": "VECTOR_IO_ENV", "value": provider_name}]
+
+
+def dummy_files_factory(provider_name: str) -> list[dict[str, str]]:
+    return [{"name": "FILES_ENV", "value": provider_name}]
+
+
+def test_build_ogx_server_config_default() -> None:
+    config = build_ogx_server_config(
+        vector_io_provider_deployment_config_factory=dummy_vector_io_factory,
+        files_provider_config_factory=dummy_files_factory,
+        is_disconnected_cluster=False,
+        params={},
+    )
+
+    assert config["distribution"] == {"name": "rh"}
+    assert "network" not in config
+    assert config["workload"]["resources"]["requests"] == {"cpu": "1", "memory": "1Gi"}
+    assert config["workload"]["resources"]["limits"] == {"cpu": "2", "memory": "2Gi"}
+
+
+def test_build_ogx_server_config_custom_network() -> None:
+    network_spec: dict[str, Any] = {"policy": {"enabled": True}}
+    config = build_ogx_server_config(
+        vector_io_provider_deployment_config_factory=dummy_vector_io_factory,
+        files_provider_config_factory=dummy_files_factory,
+        is_disconnected_cluster=False,
+        params={"network": network_spec},
+    )
+
+    assert config["network"] == network_spec
