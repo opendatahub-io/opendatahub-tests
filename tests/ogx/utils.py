@@ -1,4 +1,3 @@
-import math
 import os
 import tempfile
 import time
@@ -17,7 +16,7 @@ from ogx_client.types.file import File
 from ogx_client.types.vector_stores.vector_store_file import VectorStoreFile
 from timeout_sampler import retry
 
-from tests.ogx.constants import OGX_CORE_POD_FILTER
+from tests.ogx.constants import OGX_CORE_POD_FILTER, ModelInfo
 from tests.ogx.datasets import Dataset
 from utilities.exceptions import UnexpectedResourceCountError
 from utilities.path_utils import resolve_repo_path
@@ -395,50 +394,73 @@ def vector_store_upload_dataset(
         )
 
 
-def extract_retrieved_contexts(response: Any) -> list[str]:
-    """
-    Extract unique retrieved contexts from a OGX Responses API output.
-
-    De-duplicates results so that repeated file_search_call hits (e.g. from
-    chained tool calls) don't inflate ContextPrecision/ContextRecall scores.
-
-    Args:
-        response: Response object from client.responses.create()
-
-    Returns:
-        List of unique retrieved context strings, in first-seen order
-    """
-    retrieved_contexts: list[str] = []
-    seen: set[str] = set()
-
-    for output_item in response.output:
-        if (
-            hasattr(output_item, "type")
-            and output_item.type == "file_search_call"
-            and hasattr(output_item, "results")
-            and output_item.results
-        ):
-            for result in output_item.results:
-                text = getattr(result, "text", None)
-                if text and text not in seen:
-                    seen.add(text)
-                    retrieved_contexts.append(text)
-
-    return retrieved_contexts
+def _is_vision_model(model_id: str) -> bool:
+    model_id_lower = model_id.lower()
+    return "vision" in model_id_lower or "-vl-" in model_id_lower or model_id_lower.endswith("-vl")
 
 
-def mean_ragas_score(scores: list[float | None]) -> float:
-    """Compute mean of RAGAS per-sample scores, filtering out NaN values.
+def select_ogx_model(
+    models: list[Any],
+    providers: list[Any],
+    configured_model: str = "",
+) -> ModelInfo:
+    """Select the appropriate LLM and embedding model from OGX client response objects."""
+    llm_models = [model for model in models if model.custom_metadata.get("model_type") == "llm"]
+    if not llm_models:
+        raise ValueError("No LLM models found in OGX client")
 
-    Returns 0.0 with a warning if every score is None or NaN.
-    """
-    logger = structlog.get_logger(name=__name__)
-    valid = [s for s in scores if s is not None and not math.isnan(s)]
-    if not valid:
-        logger.warning(
-            event="All RAGAS scores are None or NaN — no usable results produced",
-            total_scores=len(scores),
-            raw_scores=scores,
+    selected_llm = None
+    if configured_model:
+        selected_llm = next(
+            (model for model in llm_models if model.id == configured_model),
+            None,
         )
-        return 0.0
-    return sum(valid) / len(valid)
+        if not selected_llm:
+            selected_llm = next(
+                (model for model in llm_models if configured_model in model.id),
+                None,
+            )
+        if not selected_llm:
+            LOGGER.warning(
+                f"Configured OGX_CORE_INFERENCE_MODEL='{configured_model}' "
+                f"not found in registered models: {[m.id for m in llm_models]}"
+            )
+
+    if not selected_llm:
+        selected_llm = next(
+            (model for model in llm_models if "qwen" in model.id.lower() and not _is_vision_model(model.id)),
+            None,
+        )
+    if not selected_llm:
+        selected_llm = next(
+            (model for model in llm_models if not _is_vision_model(model.id)),
+            llm_models[0],
+        )
+
+    model_id = selected_llm.id
+
+    provider_ids = [p.provider_id for p in providers]
+    if "sentence-transformers" in provider_ids:
+        target_provider_id = "sentence-transformers"
+    elif "vllm-embedding" in provider_ids:
+        target_provider_id = "vllm-embedding"
+    else:
+        raise ValueError("No embedding provider found")
+
+    embedding_model = next(
+        model
+        for model in models
+        if model.custom_metadata.get("model_type") == "embedding"
+        and model.custom_metadata.get("provider_id") == target_provider_id
+    )
+    embedding_dimension = int(embedding_model.custom_metadata["embedding_dimension"])
+
+    LOGGER.info(f"Detected model: {model_id}")
+    LOGGER.info(f"Detected embedding_model: {embedding_model.id}")
+    LOGGER.info(f"Detected embedding_dimension: {embedding_dimension}")
+
+    return ModelInfo(
+        model_id=model_id,
+        embedding_model=embedding_model,
+        embedding_dimension=embedding_dimension,
+    )
