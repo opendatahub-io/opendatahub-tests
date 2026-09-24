@@ -26,6 +26,11 @@ from semver import Version
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.workbenches.notebooks_server.controller.utils import StatefulSet
+from tests.workbenches.utils import (
+    SKIP_EXPECTED_DOWNSTREAM_ONLY,
+    SKIP_EXPECTED_EUS_ONLY,
+    expected_skip,
+)
 from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH, Labels
 from utilities.general import collect_pod_information
 from utilities.infra import check_internal_image_registry_available, get_product_version
@@ -308,11 +313,17 @@ def should_skip_workbench_spec(
 ) -> str | None:
     """Return a skip reason when the IDE cannot be tested on the current cluster."""
     if spec.skip_on_upstream and py_config.get("distribution") == "upstream":
-        return f"{spec.ide} ImageStream tests are downstream-only"
+        return expected_skip(
+            prefix=SKIP_EXPECTED_DOWNSTREAM_ONLY,
+            detail=f"{spec.ide} ImageStream tests are downstream-only",
+        )
 
     track = workbench_upgrade_track or resolve_workbench_upgrade_track(admin_client=admin_client)
     if spec.require_eus_track and track != "eus":
-        return f"{spec.ide} workbench survival coverage is only supported on the EUS upgrade track"
+        return expected_skip(
+            prefix=SKIP_EXPECTED_EUS_ONLY,
+            detail=f"{spec.ide} workbench survival coverage is only supported on the EUS upgrade track",
+        )
 
     try:
         imagestream_name = effective_imagestream_name(admin_client=admin_client, spec=spec)
@@ -338,7 +349,10 @@ def should_skip_workbench_spec(
         return str(error)
 
     if spec.require_eus_track and not is_legacy_track_tag(tag_name=resolved_image.tag_name):
-        return f"{spec.ide} workbench survival tests require a legacy EUS workbench image tag"
+        return expected_skip(
+            prefix=SKIP_EXPECTED_EUS_ONLY,
+            detail=f"{spec.ide} workbench survival tests require a legacy EUS workbench image tag",
+        )
 
     return None
 
