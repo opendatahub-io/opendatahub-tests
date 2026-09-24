@@ -52,6 +52,7 @@ def build_ogx_server_config(
             - files_provider: Files storage provider (``"local"`` or ``"s3"``;
               default ``"local"``).
             - ogx_storage_size: PVC size for workload storage (e.g. ``"2Gi"``).
+            - network: Optional NetworkSpec dict for the OGXServer CR.
 
     Returns:
         OGXServerSpec configuration dict with ``distribution``, ``workload``,
@@ -144,7 +145,6 @@ def build_ogx_server_config(
 
     config: dict[str, Any] = {
         "distribution": {"name": "rh"},
-        "network": {"externalAccess": {"enabled": True}},
         "workload": {
             "resources": {
                 "requests": {"cpu": cpu_requests, "memory": "1Gi"},
@@ -155,6 +155,9 @@ def build_ogx_server_config(
             },
         },
     }
+
+    if params.get("network"):
+        config["network"] = params["network"]
 
     if tls_config:
         config["tls"] = tls_config
