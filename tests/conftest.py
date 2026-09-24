@@ -743,6 +743,11 @@ def nodes(admin_client: DynamicClient) -> Generator[list[Node], Any, Any]:
 
 
 @pytest.fixture(scope="session")
+def cluster_architecture(nodes: list[Node]) -> str:
+    return nodes[0].instance.status.nodeInfo.architecture
+
+
+@pytest.fixture(scope="session")
 def junitxml_plugin(
     request: FixtureRequest, record_testsuite_property: Callable[[str, object], None]
 ) -> Callable[[str, object], None] | None:
