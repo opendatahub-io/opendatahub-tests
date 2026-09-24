@@ -9,6 +9,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
+from ocp_resources.namespace import Namespace
 from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.infrastructure import Infrastructure
 from ocp_resources.maas_auth_policy import MaaSAuthPolicy
@@ -817,11 +818,22 @@ def maas_api_infra_namespace(admin_client: DynamicClient) -> str:
 
     if not infra_namespace or infra_namespace.upper() == "AUTO":
         if applications_namespace == "redhat-ods-applications":
-            return "redhat-ai-gateway-infra"
-        if applications_namespace == "opendatahub":
-            return "odh-ai-gateway-infra"
-        return applications_namespace
-    return infra_namespace
+            infra_namespace = "redhat-ai-gateway-infra"
+        elif applications_namespace == "opendatahub":
+            infra_namespace = "odh-ai-gateway-infra"
+        else:
+            return applications_namespace
+
+    ns = Namespace(client=admin_client, name=infra_namespace)
+    if ns.exists:
+        LOGGER.info(f"Using MaaS API infra namespace: {infra_namespace}")
+        return infra_namespace
+
+    LOGGER.warning(
+        f"Infra namespace '{infra_namespace}' does not exist, "
+        f"falling back to applications namespace '{applications_namespace}'"
+    )
+    return applications_namespace
 
 
 @pytest.fixture(scope="class")
