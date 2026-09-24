@@ -3,12 +3,13 @@ from typing import Any
 import pytest
 import structlog
 
-from tests.ai_hub.model_catalog.constants import REDHAT_AI_CATALOG_ID, VALIDATED_CATALOG_ID
+from tests.ai_hub.model_catalog.constants import OTHER_MODELS_CATALOG_ID, VALIDATED_CATALOG_ID
 from tests.ai_hub.model_catalog.metadata.utils import (
     extract_custom_property_values,
     get_metadata_from_catalog_pod,
     validate_custom_properties_match_metadata,
 )
+from tests.ai_hub.model_catalog.utils import get_all_catalog_items
 from tests.ai_hub.utils import execute_get_command_with_retry
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -42,7 +43,14 @@ class TestCustomProperties:
 
         assert validate_custom_properties_match_metadata(api_props, metadata)
 
-    @pytest.mark.parametrize("catalog_id", [REDHAT_AI_CATALOG_ID, VALIDATED_CATALOG_ID])
+    @pytest.mark.tier1
+    @pytest.mark.parametrize(
+        "catalog_id",
+        [
+            pytest.param(VALIDATED_CATALOG_ID, id="test_validated_models"),
+            pytest.param(OTHER_MODELS_CATALOG_ID, id="test_other_models"),
+        ],
+    )
     def test_model_type_field_in_custom_properties(
         self,
         catalog_id: str,
@@ -50,15 +58,18 @@ class TestCustomProperties:
         model_registry_rest_headers: dict[str, str],
     ):
         """
-        Test that all models have model_type with valid values: "generative", "predictive", "unknown".
+        Given a populated default source,
+        When reading every model page,
+        Then each model has a supported model_type custom property.
         """
         valid_model_types = {"generative", "predictive", "unknown"}
 
-        response = execute_get_command_with_retry(
-            url=f"{model_catalog_rest_url[0]}models?source={catalog_id}&pageSize=100",
+        models = get_all_catalog_items(
+            url=f"{model_catalog_rest_url[0]}models",
             headers=model_registry_rest_headers,
+            params={"source": catalog_id},
         )
-        models = response["items"]
+        assert models, f"No models returned for {catalog_id}"
 
         LOGGER.info(f"Validating model_type field for {len(models)} models from catalog '{catalog_id}'")
 

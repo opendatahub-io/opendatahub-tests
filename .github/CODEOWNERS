@@ -13,7 +13,7 @@
 # Test directory specific rules
 tests/ai_safety/                               @sheltoncyril @kpunwatk
 tests/ai_safety/evalhub/                       @kpunwatk @ruivieira
-tests/ai_hub/                                  @dbasunag @lugi0 @fege
+tests/ai_hub/                                  @dbasunag @lugi0 @fege @dkuc @pboyd @adysenrothman @kaikaila
 tests/model_serving/                           @opendatahub-io/model-serving-developers
 tests/ai_gateway/                              @SB159 @jland-redhat @somya-bhatnagar
 tests/llama_stack/                             @Artemon-line @Bobbins228 @ChristianZaccaria @jgarciao @jiripetrlik @Ygnas

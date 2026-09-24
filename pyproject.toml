@@ -149,7 +149,6 @@ dependencies = [
     "pytest>=9.0.0",
     "huggingface-hub>=1.2.3",
     "openai>=2.36",
-    "ragas>=0.4",
     "numpy>=2.1.0,<2.5.0",
     "scipy>=1.13.0,<1.18.0",
     "langchain-community<0.4.2",
