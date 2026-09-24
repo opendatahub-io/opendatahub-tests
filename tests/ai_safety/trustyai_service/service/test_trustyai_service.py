@@ -99,6 +99,7 @@ def test_validate_trustyai_service_image(
     related_images_refs: set[str],
     trustyai_service: TrustyAIService,
     trustyai_operator_configmap,
+    expected_image_registry: str,
 ):
     return validate_trustyai_service_images(
         client=admin_client,
@@ -106,6 +107,7 @@ def test_validate_trustyai_service_image(
         model_namespace=model_namespace,
         label_selector=f"app.kubernetes.io/instance={trustyai_service.name}",
         trustyai_operator_configmap=trustyai_operator_configmap,
+        expected_image_registry=expected_image_registry,
     )
 
 
