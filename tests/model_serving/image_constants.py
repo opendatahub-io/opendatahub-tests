@@ -12,6 +12,11 @@ class ModelServingImages:
         "nvcr.io/nvidia/tritonserver"
         "@sha256:cac5c60eb969f6881e3d2c473e331a5232e1fd510d3fca56cc96e1835af5519d"  # pragma: allowlist secret
     )
+    # Pinned the digest to a specific version until latest tag is available
+    TRITON_S390X: str = (
+        "icr.io/ibmz/ibmz-accelerated-for-nvidia-triton-inference-server"
+        "@sha256:23f389783acaac0d5b318181c5e1f59d0e9676f9ad7481b90c32b8edce2f893c"  # pragma: allowlist secret
+    )
 
     TRANSFORMER_IMAGE: str = (
         "quay.io/spolti/kserve-sentiment-custom-transformer"
