@@ -552,7 +552,14 @@ def verify_trustyai_service_metric_scheduling_request(
         schedule=True,
     )
 
-    response_data = json.loads(response.text)
+    try:
+        response_data = response.json()
+    except (TypeError, ValueError) as error:
+        raise MetricValidationError(
+            "Metric scheduling endpoint returned a non-JSON response: "
+            f"status={response.status_code}, content_type={response.headers.get('Content-Type', '')!r}, "
+            f"body={response.text[:500]!r}"
+        ) from error
     LOGGER.info(msg=f"TrustyAI metric scheduling request response: {response_data}")
 
     required_fields = ["requestId", "timestamp"]
@@ -562,7 +569,15 @@ def verify_trustyai_service_metric_scheduling_request(
 
     # Get and validate metrics
     get_metrics_response = tas_client.get_metrics(metric_name=metric_name)
-    get_metrics_data = json.loads(get_metrics_response.text)
+    try:
+        get_metrics_data = get_metrics_response.json()
+    except (TypeError, ValueError) as error:
+        raise MetricValidationError(
+            "Metric listing endpoint returned a non-JSON response: "
+            f"status={get_metrics_response.status_code}, "
+            f"content_type={get_metrics_response.headers.get('Content-Type', '')!r}, "
+            f"body={get_metrics_response.text[:500]!r}"
+        ) from error
     LOGGER.info(msg=f"TrustyAI scheduled metrics: {get_metrics_data}")
 
     verify_trustyai_service_response(response=get_metrics_response, response_data=get_metrics_data)

@@ -46,3 +46,4 @@ class AiSafetyImages:
         "quay.io/trustyai_testing/nonexistent-image"
         "@sha256:0000000000000000000000000000000000000000000000000000000000000000"
     )
+    TRUSTYAI_SERVICE_SQL_BACKENDS: str = "quay.io/scyril/trustyai-service:dev"  # noqa: IMG002
