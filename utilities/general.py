@@ -17,6 +17,7 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
 
 import utilities.infra
 from utilities.constants import MODELMESH_SERVING, Annotations, KServeDeploymentType
+from utilities.image_constants import SharedImages
 from utilities.exceptions import ResourceValueMismatch, UnexpectedResourceCountError
 
 # Constants for image validation
@@ -165,7 +166,7 @@ def download_model_data(
 
     init_container: dict[str, Any] = {
         "name": "init-container",
-        "image": "registry.access.redhat.com/ubi9/ubi-minimal:latest",
+        "image": SharedImages.UBI_MINIMAL,
         "command": init_command,
         "args": init_container_args,
         "volumeMounts": [init_volume_mount],
