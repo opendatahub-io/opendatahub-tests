@@ -33,6 +33,14 @@ from utilities.resources.reference_grant import ReferenceGrant
 
 LOGGER = structlog.get_logger(name=__name__)
 
+# TestOps skip-allowlist prefixes. Must be the first token of pytest.skip() reasons
+# so JUnit ``<skipped message>`` can be classified. See rhods-qe-tools
+# jira/skip_allowlist.yaml (prefix has no trailing colon; a colon may follow).
+SKIP_EXPECTED_CONNECTED_ONLY = "SKIP_EXPECTED_CONNECTED_ONLY"
+SKIP_EXPECTED_DOWNSTREAM_ONLY = "SKIP_EXPECTED_DOWNSTREAM_ONLY"
+SKIP_EXPECTED_EUS_ONLY = "SKIP_EXPECTED_EUS_ONLY"
+SKIP_EXPECTED_TEST_DEPENDENCY_FAILURE = "SKIP_EXPECTED_TEST_DEPENDENCY_FAILURE"
+
 UPGRADE_NAMESPACE = "upgrade-notebook-images"
 UPGRADE_BASELINE_CM_NAME = "upgrade-n-minus-one-baseline"
 UPGRADE_MARKER_FILENAME = ".upgrade-marker"
@@ -286,6 +294,19 @@ def effective_imagestream_name(admin_client: DynamicClient, spec: WorkbenchImage
     return spec.imagestream_name
 
 
+def expected_skip(prefix: str, detail: str) -> str:
+    """Build a skip reason that starts with a TestOps allow-list prefix.
+
+    Args:
+        prefix: Allow-list token such as ``SKIP_EXPECTED_DOWNSTREAM_ONLY``.
+        detail: Human-readable explanation that follows the prefix.
+
+    Returns:
+        A skip message of the form ``{prefix}: {detail}``.
+    """
+    return f"{prefix}: {detail}"
+
+
 def should_skip_workbench_spec(
     admin_client: DynamicClient,
     spec: WorkbenchImageSpec,
@@ -295,11 +316,17 @@ def should_skip_workbench_spec(
 ) -> str | None:
     """Return a skip reason when the IDE cannot be tested on the current cluster."""
     if spec.skip_on_upstream and py_config.get("distribution") == "upstream":
-        return f"{spec.ide} ImageStream tests are downstream-only"
+        return expected_skip(
+            prefix=SKIP_EXPECTED_DOWNSTREAM_ONLY,
+            detail=f"{spec.ide} ImageStream tests are downstream-only",
+        )
 
     track = workbench_upgrade_track or resolve_workbench_upgrade_track(admin_client=admin_client)
     if spec.require_eus_track and track != "eus":
-        return f"{spec.ide} workbench survival coverage is only supported on the EUS upgrade track"
+        return expected_skip(
+            prefix=SKIP_EXPECTED_EUS_ONLY,
+            detail=f"{spec.ide} workbench survival coverage is only supported on the EUS upgrade track",
+        )
 
     try:
         imagestream_name = effective_imagestream_name(admin_client=admin_client, spec=spec)
@@ -325,7 +352,10 @@ def should_skip_workbench_spec(
         return str(error)
 
     if spec.require_eus_track and not is_legacy_track_tag(tag_name=resolved_image.tag_name):
-        return f"{spec.ide} workbench survival tests require a legacy EUS workbench image tag"
+        return expected_skip(
+            prefix=SKIP_EXPECTED_EUS_ONLY,
+            detail=f"{spec.ide} workbench survival tests require a legacy EUS workbench image tag",
+        )
 
     return None
 

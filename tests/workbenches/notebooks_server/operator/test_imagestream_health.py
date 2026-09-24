@@ -9,6 +9,7 @@ from ocp_resources.image_stream import ImageStream
 from packaging.version import InvalidVersion, Version
 from pytest_testconfig import config as py_config
 
+from tests.workbenches.notebook_images.utils import SKIP_EXPECTED_CONNECTED_ONLY, expected_skip
 from utilities.infra import is_disconnected_cluster
 
 pytestmark = [pytest.mark.smoke]
@@ -319,7 +320,12 @@ def test_workbench_imagestreams_older_tags_health(
     are expected to be mirrored.
     """
     if is_disconnected_cluster(client=admin_client):
-        pytest.skip("Older ImageStream tags are not mirrored on disconnected clusters")
+        pytest.skip(
+            expected_skip(
+                prefix=SKIP_EXPECTED_CONNECTED_ONLY,
+                detail="Older ImageStream tags are not mirrored on disconnected clusters",
+            )
+        )
 
     imagestreams = list(
         ImageStream.get(

@@ -14,6 +14,8 @@ from ocp_resources.resource import ResourceEditor
 from pytest_testconfig import config as py_config
 
 from tests.workbenches.notebook_images.utils import (
+    SKIP_EXPECTED_EUS_ONLY,
+    SKIP_EXPECTED_TEST_DEPENDENCY_FAILURE,
     UPGRADE_BASELINE_CM_NAME,
     UPGRADE_MARKER_CONTENT,
     UPGRADE_NAMESPACE,
@@ -22,6 +24,7 @@ from tests.workbenches.notebook_images.utils import (
     WorkbenchImageBaseline,
     WorkbenchImageSpec,
     capture_or_load_workbench_baseline,
+    expected_skip,
     get_ready_upgrade_notebook_pod,
     get_workbench_image_spec_by_ide,
     is_legacy_track_tag,
@@ -35,6 +38,30 @@ from tests.workbenches.notebook_images.utils import (
     write_pvc_upgrade_marker,
 )
 from utilities.infra import create_ns
+
+
+@pytest.hookimpl(tryfirst=True, hookwrapper=True)
+def pytest_runtest_makereport(
+    item: pytest.Item,
+    call: pytest.CallInfo[None],
+) -> Generator[None, Any, Any]:
+    """Prefix pytest-dependency skip messages with the TestOps allow-list token."""
+    del item, call
+    outcome = yield
+    report = outcome.get_result()
+    if not report.skipped or not isinstance(report.longrepr, tuple) or len(report.longrepr) != 3:
+        return
+
+    filename, lineno, skipreason = report.longrepr
+    reason = skipreason.removeprefix("Skipped: ")
+    if reason.startswith("SKIP_EXPECTED_") or " depends on " not in reason:
+        return
+
+    report.longrepr = (
+        filename,
+        lineno,
+        f"Skipped: {expected_skip(prefix=SKIP_EXPECTED_TEST_DEPENDENCY_FAILURE, detail=reason)}",
+    )
 
 
 @pytest.fixture(scope="session")
@@ -128,7 +155,12 @@ def n1_image(
         return None
     resolved_image = resolve_workbench_image(admin_client=admin_client, spec=n1_workbench_spec)
     if n1_workbench_spec.require_eus_track and not is_legacy_track_tag(tag_name=resolved_image.tag_name):
-        pytest.skip(f"{n1_workbench_spec.ide} workbench survival tests require a legacy EUS workbench image tag")
+        pytest.skip(
+            expected_skip(
+                prefix=SKIP_EXPECTED_EUS_ONLY,
+                detail=f"{n1_workbench_spec.ide} workbench survival tests require a legacy EUS workbench image tag",
+            )
+        )
     return resolved_image
 
 
@@ -232,7 +264,12 @@ def n1_kernel_id(
 ) -> str:
     """Start a Jupyter kernel pre-upgrade; return its ID for post-upgrade verification."""
     if n1_workbench_spec.ide != "jupyterlab":
-        pytest.skip("Kernel state test is only applicable to JupyterLab workbenches")
+        pytest.skip(
+            expected_skip(
+                prefix=SKIP_EXPECTED_TEST_DEPENDENCY_FAILURE,
+                detail="Kernel state test is only applicable to JupyterLab workbenches",
+            )
+        )
 
     cm_key = f"{n1_workbench_spec.baseline_prefix}_kernel_id"
 
@@ -240,7 +277,12 @@ def n1_kernel_id(
         data = dict(n1_image_baseline_configmap.instance.data or {})
         kernel_id = data.get(cm_key)
         if not kernel_id:
-            pytest.skip("No kernel_id stored in baseline ConfigMap — pre-upgrade kernel test was not run")
+            pytest.skip(
+                expected_skip(
+                    prefix=SKIP_EXPECTED_TEST_DEPENDENCY_FAILURE,
+                    detail="No kernel_id stored in baseline ConfigMap — pre-upgrade kernel test was not run",
+                )
+            )
         return kernel_id
 
     kernel_id = start_kernel_and_set_variable(
@@ -285,7 +327,12 @@ def _workbench_image_fixture(
         and spec.require_eus_track
         and not is_legacy_track_tag(tag_name=resolved_image.tag_name)
     ):
-        pytest.skip(f"{spec.ide} workbench survival tests require a legacy EUS workbench image tag")
+        pytest.skip(
+            expected_skip(
+                prefix=SKIP_EXPECTED_EUS_ONLY,
+                detail=f"{spec.ide} workbench survival tests require a legacy EUS workbench image tag",
+            )
+        )
     return resolved_image
 
 
