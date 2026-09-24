@@ -9,7 +9,6 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
-from ocp_resources.namespace import Namespace
 from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.infrastructure import Infrastructure
 from ocp_resources.maas_auth_policy import MaaSAuthPolicy
