@@ -1,5 +1,7 @@
 import re
+import time
 from pathlib import Path
+from typing import NoReturn
 
 import pandas as pd
 import structlog
@@ -101,23 +103,93 @@ def get_lmeval_tasks(min_downloads: float, max_downloads: float | None = None) -
     return unique_tasks
 
 
-def validate_lmeval_job_pod_and_logs(lmevaljob_pod: Pod) -> None:
+def raise_pod_failure(pod: Pod, reason: str, cause: BaseException | None = None) -> NoReturn:
+    """Collect pod diagnostics and raise UnexpectedFailureError with the last 50 log lines.
+
+    Args:
+        pod: The failed pod.
+        reason: Why it failed.
+        cause: Exception to chain, if any.
+    """
+    collect_pod_information(pod=pod)
+    try:
+        log_tail = pod.log(tail_lines=50)
+    except ApiException as exc:
+        log_tail = f"<could not fetch logs: {exc.reason}>"
+    message = f"Pod {pod.name} failed: {reason}\nLast log lines:\n{log_tail}"
+    if cause is not None:
+        raise UnexpectedFailureError(message) from cause
+    raise UnexpectedFailureError(message)
+
+
+def validate_lmeval_job_pod_and_logs(
+    lmevaljob_pod: Pod,
+    overall_timeout: int = tts("1h"),
+    stall_timeout: int = tts("15m"),
+) -> None:
     """Validate LMEval job pod success and presence of corresponding logs.
+
+    Waits for the pod to reach SUCCEEDED, aborting early if it stops producing log output
+    for longer than `stall_timeout` instead of running out the full `overall_timeout` on a
+    job that has silently hung.
 
     Args:
         lmevaljob_pod: The LMEvalJob pod.
+        overall_timeout: Hard ceiling, in seconds, for the pod to reach SUCCEEDED.
+        stall_timeout: Max time, in seconds, with no new log output before failing early.
 
     Returns: None
+
+    Raises:
+        UnexpectedFailureError: The pod failed, stalled, or did not succeed in time.
+        PodLogMissMatchError: The pod succeeded but the expected success log is missing.
     """
     pod_success_log_regex = (
         r"INFO\sdriver\supdate status: job completed\s\{\"state\":\s\{\"state\""
         r":\"Complete\",\"reason\":\"Succeeded\",\"message\":\"job completed\""
     )
+
     lmevaljob_pod.wait_for_status(status=lmevaljob_pod.Status.RUNNING, timeout=tts("10m"))
+
+    last_phase: str | None = None
+    last_log_len = -1
+    last_progress = time.monotonic()
     try:
-        lmevaljob_pod.wait_for_status(status=Pod.Status.SUCCEEDED, timeout=tts("1h"))
+        for phase in TimeoutSampler(
+            wait_timeout=overall_timeout,
+            sleep=30,
+            func=lambda: lmevaljob_pod.instance.status.phase,
+        ):
+            if phase != last_phase:
+                LOGGER.info(f"LMEval job pod {lmevaljob_pod.name} phase: {last_phase} -> {phase}")
+                last_phase = phase
+
+            # Terminal states win over the stall check: a pod that has finished is not stalled.
+            if phase == Pod.Status.SUCCEEDED:
+                break
+
+            if phase == Pod.Status.FAILED:
+                raise_pod_failure(pod=lmevaljob_pod, reason=f"pod reached phase {phase}.")
+
+            log_len = len(lmevaljob_pod.log())
+            if log_len != last_log_len:
+                last_log_len = log_len
+                last_progress = time.monotonic()
+            elif time.monotonic() - last_progress > stall_timeout:
+                raise_pod_failure(
+                    pod=lmevaljob_pod,
+                    reason=(
+                        f"no new log output for over {stall_timeout}s (phase={phase}); "
+                        f"aborting instead of waiting out the full {overall_timeout}s timeout."
+                    ),
+                )
     except TimeoutExpiredError as e:
-        raise UnexpectedFailureError("LMEval job pod failed from a running state.") from e
+        raise_pod_failure(
+            pod=lmevaljob_pod,
+            reason=f"pod did not reach {Pod.Status.SUCCEEDED} within {overall_timeout}s (last phase={last_phase}).",
+            cause=e,
+        )
+
     if not bool(re.search(pod_success_log_regex, lmevaljob_pod.log())):
         raise PodLogMissMatchError("LMEval job pod failed.")
 
