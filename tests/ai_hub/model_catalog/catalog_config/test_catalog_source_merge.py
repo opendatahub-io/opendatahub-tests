@@ -1,7 +1,7 @@
 import pytest
 import structlog
 
-from tests.ai_hub.model_catalog.constants import REDHAT_AI_CATALOG_ID
+from tests.ai_hub.model_catalog.constants import VALIDATED_CATALOG_ID
 from tests.ai_hub.utils import execute_get_command_with_retry
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -9,6 +9,7 @@ LOGGER = structlog.get_logger(name=__name__)
 pytestmark = [pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace")]
 
 
+@pytest.mark.tier1
 class TestCatalogSourceMerge:
     """
     Test catalog source merging behavior when the same source ID appears in both
@@ -18,9 +19,17 @@ class TestCatalogSourceMerge:
     @pytest.mark.parametrize(
         "sparse_override_catalog_source",
         [
-            {"id": REDHAT_AI_CATALOG_ID, "field_name": "name", "field_value": "Custom Override Name"},
-            {"id": REDHAT_AI_CATALOG_ID, "field_name": "labels", "field_value": ["custom-label", "override-label"]},
-            {"id": REDHAT_AI_CATALOG_ID, "field_name": "enabled", "field_value": False},
+            pytest.param(
+                {"id": VALIDATED_CATALOG_ID, "field_name": "name", "field_value": "Custom Override Name"},
+                id="test_override_name",
+            ),
+            pytest.param(
+                {"id": VALIDATED_CATALOG_ID, "field_name": "labels", "field_value": ["custom-label", "override-label"]},
+                id="test_override_labels",
+            ),
+            pytest.param(
+                {"id": VALIDATED_CATALOG_ID, "field_name": "enabled", "field_value": False}, id="test_override_enabled"
+            ),
         ],
         indirect=True,
     )
@@ -31,8 +40,9 @@ class TestCatalogSourceMerge:
         model_registry_rest_headers: dict[str, str],
     ):
         """
-        Test that a sparse override in custom ConfigMap successfully overrides
-        specific fields while preserving unspecified fields.
+        Given a default source and a sparse custom override,
+        When reading the merged source,
+        Then the overridden field changes and unspecified fields retain their values.
         """
         catalog_id = sparse_override_catalog_source["catalog_id"]
         field_name = sparse_override_catalog_source["field_name"]
