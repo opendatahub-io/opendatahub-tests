@@ -825,13 +825,19 @@ def maas_api_infra_namespace(admin_client: DynamicClient) -> str:
 
     ns = Namespace(client=admin_client, name=infra_namespace)
     if ns.exists:
-        LOGGER.info(f"Using MaaS API infra namespace: {infra_namespace}")
-        return infra_namespace
-
-    LOGGER.warning(
-        f"Infra namespace '{infra_namespace}' does not exist, "
-        f"falling back to applications namespace '{applications_namespace}'"
-    )
+        maas_api_in_infra = Deployment(client=admin_client, name="maas-api", namespace=infra_namespace)
+        if maas_api_in_infra.exists:
+            LOGGER.info(f"Using MaaS API infra namespace: {infra_namespace}")
+            return infra_namespace
+        LOGGER.warning(
+            f"Infra namespace '{infra_namespace}' exists but maas-api Deployment not found there, "
+            f"falling back to applications namespace '{applications_namespace}'"
+        )
+    else:
+        LOGGER.warning(
+            f"Infra namespace '{infra_namespace}' does not exist, "
+            f"falling back to applications namespace '{applications_namespace}'"
+        )
     return applications_namespace
 
 
