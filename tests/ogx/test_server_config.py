@@ -1,16 +1,7 @@
 from typing import Any
 
 from tests.ogx.server_config import build_ogx_server_config
-
-
-def dummy_vector_io_factory(provider_name: str) -> list[dict[str, str]]:
-    """Dummy factory returning sample vector I/O environment variables."""
-    return [{"name": "VECTOR_IO_ENV", "value": provider_name}]
-
-
-def dummy_files_factory(provider_name: str) -> list[dict[str, str]]:
-    """Dummy factory returning sample files provider environment variables."""
-    return [{"name": "FILES_ENV", "value": provider_name}]
+from tests.ogx.utils import dummy_files_factory, dummy_vector_io_factory
 
 
 def test_build_ogx_server_config_default() -> None:
