@@ -123,7 +123,7 @@ def _create_ogx_server(
 @retry(
     wait_timeout=240,
     sleep=5,
-    exceptions_dict={ResourceNotFoundError: []},
+    exceptions_dict={ResourceNotFoundError: [], UnexpectedResourceCountError: []},
 )
 def _wait_for_unique_ogx_pod(client: DynamicClient, namespace: str) -> Pod:
     pods = list(Pod.get(client=client, namespace=namespace, label_selector=OGX_CORE_POD_FILTER))

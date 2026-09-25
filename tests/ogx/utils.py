@@ -165,7 +165,7 @@ def create_ogx_server(
 @retry(
     wait_timeout=240,
     sleep=5,
-    exceptions_dict={ResourceNotFoundError: []},
+    exceptions_dict={ResourceNotFoundError: [], UnexpectedResourceCountError: []},
 )
 def wait_for_unique_ogx_pod(client: DynamicClient, namespace: str) -> Pod:
     """Wait until exactly one active OgxServer pod is found in the
