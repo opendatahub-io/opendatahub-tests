@@ -31,6 +31,7 @@ from utilities.resources.llm_inference_service import LLMInferenceService
 from utilities.resources.llm_inference_service_config import LLMInferenceServiceConfig
 
 LOGGER = structlog.get_logger(name=__name__)
+AUTH_DIAGNOSTIC_HEADERS = {"content-type", "server", "x-ext-auth-reason", "x-request-id"}
 
 
 def detect_accelerators(client: DynamicClient) -> list[dict[str, Any]]:
@@ -186,15 +187,15 @@ def _resolve_ca_cert(client: DynamicClient) -> str:
         return ""
 
 
-def _curl_request(
+def _curl_request_with_headers(
     method: str,
     url: str,
     body: str | None = None,
     token: str | None = None,
     ca_cert: str | None = None,
     timeout: int = LLMEndpoint.DEFAULT_TIMEOUT,
-) -> tuple[int, str]:
-    """Execute an HTTP request via curl. Returns (status_code, response_body)."""
+) -> tuple[int, str, dict[str, str]]:
+    """Execute an HTTP request via curl and return selected safe response headers."""
     cmd = [
         "curl",
         "-s",
@@ -220,6 +221,7 @@ def _curl_request(
     else:
         LOGGER.info(f"{method} {url}")
 
+    cmd.extend(["--dump-header", "/dev/stderr"])
     _, stdout, stderr = run_command(command=cmd, verify_stderr=False, check=False, hide_log_command=True)
     if not stdout.strip():
         raise ConnectionError(f"curl {method} failed with no output: {stderr}")
@@ -230,6 +232,32 @@ def _curl_request(
         status_code = int(parts[-1].strip())
     except ValueError:
         status_code = 0
+    response_headers = {
+        header_name.lower(): header_value.strip()
+        for line in stderr.splitlines()
+        for header_name, separator, header_value in [line.partition(":")]
+        if separator and header_name.lower() in AUTH_DIAGNOSTIC_HEADERS
+    }
+    return status_code, response_body, response_headers
+
+
+def _curl_request(
+    method: str,
+    url: str,
+    body: str | None = None,
+    token: str | None = None,
+    ca_cert: str | None = None,
+    timeout: int = LLMEndpoint.DEFAULT_TIMEOUT,
+) -> tuple[int, str]:
+    """Execute an HTTP request via curl. Returns (status_code, response_body)."""
+    status_code, response_body, _ = _curl_request_with_headers(
+        method=method,
+        url=url,
+        body=body,
+        token=token,
+        ca_cert=ca_cert,
+        timeout=timeout,
+    )
     return status_code, response_body
 
 
@@ -242,6 +270,24 @@ def _curl_post(
 ) -> tuple[int, str]:
     """POST to URL via curl. Returns (status_code, response_body)."""
     return _curl_request(method="POST", url=url, body=body, token=token, ca_cert=ca_cert, timeout=timeout)
+
+
+def _curl_post_with_headers(
+    url: str,
+    body: str,
+    token: str | None = None,
+    ca_cert: str | None = None,
+    timeout: int = LLMEndpoint.DEFAULT_TIMEOUT,
+) -> tuple[int, str, dict[str, str]]:
+    """POST to URL via curl and return selected safe response headers."""
+    return _curl_request_with_headers(
+        method="POST",
+        url=url,
+        body=body,
+        token=token,
+        ca_cert=ca_cert,
+        timeout=timeout,
+    )
 
 
 def _curl_get(
@@ -293,9 +339,45 @@ def get_vllm_version(
     return version
 
 
-def _get_model_name(llmisvc: LLMInferenceService) -> str:
+def get_llmd_model_name(llmisvc: LLMInferenceService) -> str:
     """Read model name from spec.model.name, falling back to the resource name."""
     return llmisvc.instance.spec.model.get("name", llmisvc.name)
+
+
+def _send_chat_completions(
+    llmisvc: LLMInferenceService,
+    prompt: str,
+    token: str | None = None,
+    insecure: bool = True,
+    inference_base_url: str | None = None,
+    request_model_name: str | None = None,
+    capture_response_headers: bool = False,
+) -> tuple[int, str, dict[str, str]]:
+    """Send a chat completion request and optionally capture safe response headers.
+
+    This internal helper keeps direct LLM-d request behavior unchanged while allowing
+    MaaS tests to report Authorino's diagnostic response headers.
+    """
+    base_url = inference_base_url or get_llm_inference_url(llm_service=llmisvc)
+    url = base_url + LLMEndpoint.CHAT_COMPLETIONS
+    model_name = request_model_name or get_llmd_model_name(llmisvc=llmisvc)
+    body = _build_chat_body(model_name=model_name, prompt=prompt)
+    ca_cert = None if insecure else _resolve_ca_cert(llmisvc.client)
+
+    LOGGER.info(f"Sending inference request to {llmisvc.name} — URL: {url}, Model: {model_name}")
+    if capture_response_headers:
+        status_code, response_body, response_headers = _curl_post_with_headers(
+            url=url,
+            body=body,
+            token=token,
+            ca_cert=ca_cert,
+        )
+    else:
+        status_code, response_body = _curl_post(url=url, body=body, token=token, ca_cert=ca_cert)
+        response_headers = {}
+    safe_response_body = response_body.replace(token, "***REDACTED***") if token else response_body
+    LOGGER.info(f"Inference response — status={status_code}\n{safe_response_body}")
+    return status_code, response_body, response_headers
 
 
 def send_chat_completions(
@@ -303,18 +385,53 @@ def send_chat_completions(
     prompt: str,
     token: str | None = None,
     insecure: bool = True,
+    inference_base_url: str | None = None,
+    request_model_name: str | None = None,
 ) -> tuple[int, str]:
-    """Send a chat completion request. Returns (status_code, response_body)."""
-    base_url = get_llm_inference_url(llm_service=llmisvc)
-    url = base_url + LLMEndpoint.CHAT_COMPLETIONS
-    model_name = _get_model_name(llmisvc=llmisvc)
-    body = _build_chat_body(model_name=model_name, prompt=prompt)
-    ca_cert = None if insecure else _resolve_ca_cert(llmisvc.client)
+    """Send a chat completion request.
 
-    LOGGER.info(f"Sending inference request to {llmisvc.name} — URL: {url}, Model: {model_name}")
-    status_code, response_body = _curl_post(url=url, body=body, token=token, ca_cert=ca_cert)
-    LOGGER.info(f"Inference response — status={status_code}\n{response_body}")
+    Args:
+        llmisvc: The LLMInferenceService that supplies the model identity.
+        prompt: The user prompt sent in the request.
+        token: Optional bearer token for authentication.
+        insecure: Skip TLS verification when using the service endpoint.
+        inference_base_url: Optional OpenAI-compatible base URL. When supplied,
+            requests use it instead of the LLMInferenceService's direct endpoint.
+        request_model_name: Optional model value for the OpenAI request body. Defaults
+            to the model configured on the LLMInferenceService.
+
+    Returns:
+        Tuple of HTTP status code and response body.
+    """
+    status_code, response_body, _ = _send_chat_completions(
+        llmisvc=llmisvc,
+        prompt=prompt,
+        token=token,
+        insecure=insecure,
+        inference_base_url=inference_base_url,
+        request_model_name=request_model_name,
+    )
     return status_code, response_body
+
+
+def send_chat_completions_with_response_headers(
+    llmisvc: LLMInferenceService,
+    prompt: str,
+    token: str | None = None,
+    insecure: bool = True,
+    inference_base_url: str | None = None,
+    request_model_name: str | None = None,
+) -> tuple[int, str, dict[str, str]]:
+    """Send a chat completion request and return safe response headers for diagnostics."""
+    return _send_chat_completions(
+        llmisvc=llmisvc,
+        prompt=prompt,
+        token=token,
+        insecure=insecure,
+        inference_base_url=inference_base_url,
+        request_model_name=request_model_name,
+        capture_response_headers=True,
+    )
 
 
 def _build_completions_body(model_name: str, prompt: str, max_tokens: int = LLMEndpoint.DEFAULT_MAX_TOKENS) -> str:
@@ -347,7 +464,7 @@ def send_completions(
     """
     base_url = get_llm_inference_url(llm_service=llmisvc)
     url = base_url + LLMEndpoint.COMPLETIONS
-    model_name = _get_model_name(llmisvc=llmisvc)
+    model_name = get_llmd_model_name(llmisvc=llmisvc)
     body = _build_completions_body(model_name=model_name, prompt=prompt)
     ca_cert = None if insecure else _resolve_ca_cert(llmisvc.client)
 
@@ -703,6 +820,9 @@ def send_prefix_cache_requests(
     count: int,
     max_failures: int = 5,
     delay_after_first_request: int | None = None,
+    inference_base_url: str | None = None,
+    insecure: bool = False,
+    request_model_name: str | None = None,
 ) -> int:
     """Send identical chat completion requests until ``count`` succeed.
 
@@ -717,38 +837,72 @@ def send_prefix_cache_requests(
         max_failures: Maximum tolerated failures (non-200 or exceptions) before aborting.
         delay_after_first_request: Seconds to wait after the first successful request,
             used to allow KV cache index propagation before subsequent requests.
+        inference_base_url: Optional OpenAI-compatible base URL. When supplied, requests
+            use it instead of the LLMInferenceService's direct endpoint.
+        insecure: Skip TLS verification. Direct LLM-d tests use the cluster CA by
+            default; MaaS Gateway tests may opt into the Gateway's existing
+            verification behavior.
+        request_model_name: Optional model value for the OpenAI request body. MaaS
+            body-routed requests use the canonical publisher model identity.
 
     Returns:
         The number of successful requests (always equal to ``count``).
 
     Raises:
-        AssertionError: If failures exceed ``max_failures``.
+        AssertionError: If requests reach ``max_failures`` before the target succeeds.
     """
     LOGGER.info(f"Sending requests until {count} succeed (max {max_failures} failures allowed)")
     successful = 0
     failures = 0
+    failure_details: list[str] = []
+    base_url = inference_base_url or get_llm_inference_url(llm_service=llmisvc)
+    endpoint = base_url + LLMEndpoint.CHAT_COMPLETIONS
+    model_name = request_model_name or get_llmd_model_name(llmisvc=llmisvc)
 
     while successful < count:
-        # mark test failed when inference requests exceed the max_failures threshold
-        assert failures < max_failures, f"Too many failures: {failures}/{max_failures}, {successful}/{count} succeeded"
-
         try:
-            status, body = send_chat_completions(llmisvc=llmisvc, prompt=prompt, token=token, insecure=False)
-        except Exception:
+            status, body, response_headers = send_chat_completions_with_response_headers(
+                llmisvc=llmisvc,
+                prompt=prompt,
+                token=token,
+                insecure=insecure,
+                inference_base_url=inference_base_url,
+                request_model_name=request_model_name,
+            )
+        except Exception as error:  # noqa: BLE001 - preserve all request diagnostics
             failures += 1
-            LOGGER.exception(f"Request raised an exception ({failures}/{max_failures} failures)")
-            continue
-
-        if status == 200:
-            successful += 1
-            # add delay after first successful request for KV cache index propagation
-            if successful == 1 and delay_after_first_request:
-                LOGGER.info(f"Waiting {delay_after_first_request}s for KV cache index propagation")
-                time.sleep(delay_after_first_request)
+            error_message = str(error).replace(token, "***REDACTED***")[:500]
+            failure_details.append(f"attempt {successful + failures}: {type(error).__name__}: {error_message}")
+            LOGGER.error(f"Request raised {type(error).__name__}: {error_message} ({failures}/{max_failures} failures)")
         else:
-            failures += 1
-            LOGGER.warning(f"Request failed with status {status}: {body} ({failures}/{max_failures} failures)")
-            time.sleep(5)
+            if status == 200:
+                successful += 1
+                # add delay after first successful request for KV cache index propagation
+                if successful == 1 and delay_after_first_request:
+                    LOGGER.info(f"Waiting {delay_after_first_request}s for KV cache index propagation")
+                    time.sleep(delay_after_first_request)
+            else:
+                failures += 1
+                response_body = body.replace(token, "***REDACTED***")[:500]
+                header_details = ", ".join(
+                    f"{header_name}={header_value!r}" for header_name, header_value in response_headers.items()
+                )
+                failure_details.append(
+                    f"attempt {successful + failures}: HTTP {status}: {response_body!r}; headers=[{header_details}]"
+                )
+                LOGGER.warning(
+                    f"Request failed with status {status}: {response_body} ({failures}/{max_failures} failures)"
+                )
+                if failures < max_failures:
+                    time.sleep(5)
+
+        if failures >= max_failures:
+            failure_summary = "; ".join(failure_details)
+            raise AssertionError(
+                "Prefix-cache requests exceeded the allowed failures: "
+                f"successful={successful}/{count}, failures={failures}/{max_failures}, "
+                f"endpoint={endpoint}, model={model_name}, details=[{failure_summary}]"
+            )
 
     LOGGER.info(f"{successful} requests succeeded ({failures} failures)")
     return successful

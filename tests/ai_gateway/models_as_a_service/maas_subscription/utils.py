@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import Generator, Sequence
 from contextlib import contextmanager
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal, NamedTuple, TypedDict
 from urllib.parse import urlparse
 
 import pytest
@@ -45,6 +45,20 @@ class ModelIdentityCollisionNames(TypedDict):
     secondary_llmis_name: str
 
 
+class MaaSLlmdScenario(NamedTuple):
+    """MaaS resources serving one LLM-d deployment scenario."""
+
+    llmisvc: LLMInferenceService
+    subscription: MaaSSubscription
+    gateway_token: str
+
+
+def maas_body_routed_model_name(llmisvc: LLMInferenceService) -> str:
+    """Return the canonical identity required by MaaS body-routed requests."""
+    configured_model_name = llmisvc.instance.spec.model.get("name", llmisvc.name)
+    return f"publishers/{llmisvc.namespace}/models/{configured_model_name}"
+
+
 def build_model_identity_collision_names(suffix: str) -> ModelIdentityCollisionNames:
     """Build unique LLMIS and shared model names for identity-collision tests."""
     return {
@@ -59,6 +73,8 @@ def patch_llmisvc_with_maas_router_and_tiers(
     llm_service: LLMInferenceService,
     tiers: Sequence[str],
     enable_auth: bool = True,
+    restore_on_exit: bool = True,
+    labels: dict[str, str] | None = None,
 ) -> Generator[None]:
     """
     Patch an LLMInferenceService to use MaaS router (gateway refs + route {})
@@ -70,6 +86,14 @@ def patch_llmisvc_with_maas_router_and_tiers(
     Examples:
       - tiers=[]              -> open model
       - tiers=["premium"]     -> premium-only
+
+    Args:
+        llm_service: LLMInferenceService to configure for MaaS routing.
+        tiers: MaaS access tiers to attach to the service.
+        enable_auth: Whether MaaS authentication is enabled for the service.
+        restore_on_exit: Whether to restore the original service configuration
+            when the context exits.
+        labels: Optional labels to add to the service.
     """
     router_spec = {
         "gateway": {"refs": [{"name": MAAS_GATEWAY_NAME, "namespace": MAAS_GATEWAY_NAMESPACE}]},
@@ -86,8 +110,15 @@ def patch_llmisvc_with_maas_router_and_tiers(
         },
         "spec": {"router": router_spec},
     }
+    if labels:
+        patch_body["metadata"]["labels"] = labels
 
-    with ResourceEditor(patches={llm_service: patch_body}):
+    resource_editor = ResourceEditor(patches={llm_service: patch_body})
+    if restore_on_exit:
+        with resource_editor:
+            yield
+    else:
+        resource_editor.update()
         yield
 
 
