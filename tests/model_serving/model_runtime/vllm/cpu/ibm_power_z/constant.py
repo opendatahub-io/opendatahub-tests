@@ -1,15 +1,15 @@
 from typing import Any
 
-GRANITE_4_1_8B_MODEL_PATH: str = "models/granite-4.1-8b"
-FALCON3_7B_INSTRUCT_MODEL_PATH: str = "models/Falcon3-7B-Instruct"
-LLAMA_3_2_1B_INSTRUCT_MODEL_PATH: str = "models/llama-32-1b-instruct"
-PHI_4_MODEL_PATH: str = "models/phi-4"
-MISTRAL_7B_INSTRUCT_MODEL_PATH: str = "models/mistral_7b"
-GRANITE_3_1_8B_INSTRUCT_MODEL_PATH: str = "models/granite-3.1-8b-instruct-r241212a"
-DEEPSEEK_R1_DISTILL_LLAMA_8B_MODEL_PATH: str = "models/deepseek-ai"
-ELYZA_JAPANESE_LLAMA_2_7B_INSTRUCT_MODEL_PATH: str = "models/ELYZA-japanese-Llama-2-7b-instruct"
-MINISTRAL_3B_INSTRUCT_MODEL_PATH: str = "models/ministral"
-GRANITE_3B_CODE_INSTRUCT_2K_MODEL_PATH: str = "models/granite-3b-code-instruct"
+GRANITE_4_1_8B_MODEL_PATH: str = "granite-4.1-8b"
+FALCON3_7B_INSTRUCT_MODEL_PATH: str = "Falcon3-7B-Instruct"
+LLAMA_3_2_1B_INSTRUCT_MODEL_PATH: str = "llama-32-1b-instruct"
+PHI_4_MODEL_PATH: str = "phi-4"
+MISTRAL_7B_INSTRUCT_MODEL_PATH: str = "mistral_7b"
+GRANITE_3_1_8B_INSTRUCT_MODEL_PATH: str = "granite-3.1-8b-instruct-r241212a"
+DEEPSEEK_R1_DISTILL_LLAMA_8B_MODEL_PATH: str = "deepseek-ai"
+ELYZA_JAPANESE_LLAMA_2_7B_INSTRUCT_MODEL_PATH: str = "ELYZA-japanese-Llama-2-7b-instruct"
+MINISTRAL_3B_INSTRUCT_MODEL_PATH: str = "ministral"
+GRANITE_3B_CODE_INSTRUCT_2K_MODEL_PATH: str = "granite-3b-code-instruct"
 
 IBM_POWER_Z_PREDICT_RESOURCES: dict[str, dict[str, str]] = {
     "requests": {"cpu": "12", "memory": "64Gi"},
