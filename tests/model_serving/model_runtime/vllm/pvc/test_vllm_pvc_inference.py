@@ -31,7 +31,7 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "v
             {"name": "vllm-pvc-granite"},
             {"pvc-size": "20Gi"},
             {"model-dir": MODEL_PATH},
-            {"deployment_type": KServeDeploymentType.RAW_DEPLOYMENT},
+            {"deployment_mode": KServeDeploymentType.RAW_DEPLOYMENT},
             {
                 **PVC_RAW_DEPLOYMENT_CONFIG,
                 "gpu_count": 1,
