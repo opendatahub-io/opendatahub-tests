@@ -168,7 +168,7 @@ def create_ogx_server(
     exceptions_dict={ResourceNotFoundError: [], UnexpectedResourceCountError: []},
 )
 def wait_for_unique_ogx_pod(client: DynamicClient, namespace: str) -> Pod:
-    """Wait until exactly one OgxServer pod is found in the
+    """Wait until exactly one active OgxServer pod is found in the
     namespace (multiple pods may indicate known bug RHAIENG-1819)."""
     pods = list(
         Pod.get(
@@ -177,15 +177,18 @@ def wait_for_unique_ogx_pod(client: DynamicClient, namespace: str) -> Pod:
             label_selector=OGX_CORE_POD_FILTER,
         )
     )
-    if not pods:
-        raise ResourceNotFoundError(f"No pods found with label selector {OGX_CORE_POD_FILTER} in namespace {namespace}")
-    if len(pods) != 1:
+    active_pods = [pod for pod in pods if not getattr(pod.bound_pod.metadata, "deletionTimestamp", None)]
+    if not active_pods:
+        raise ResourceNotFoundError(
+            f"No active pods found with label selector {OGX_CORE_POD_FILTER} in namespace {namespace}"
+        )
+    if len(active_pods) != 1:
         raise UnexpectedResourceCountError(
-            f"Expected exactly 1 pod with label selector {OGX_CORE_POD_FILTER} "
-            f"in namespace {namespace}, found {len(pods)}. "
+            f"Expected exactly 1 active pod with label selector {OGX_CORE_POD_FILTER} "
+            f"in namespace {namespace}, found {len(active_pods)}. "
             f"(possibly due to known bug RHAIENG-1819)"
         )
-    return pods[0]
+    return active_pods[0]
 
 
 @retry(wait_timeout=90, sleep=5)
