@@ -123,18 +123,21 @@ def _create_ogx_server(
 @retry(
     wait_timeout=240,
     sleep=5,
-    exceptions_dict={ResourceNotFoundError: [], UnexpectedResourceCountError: []},
+    exceptions_dict={ResourceNotFoundError: []},
 )
 def _wait_for_unique_ogx_pod(client: DynamicClient, namespace: str) -> Pod:
     pods = list(Pod.get(client=client, namespace=namespace, label_selector=OGX_CORE_POD_FILTER))
-    if not pods:
-        raise ResourceNotFoundError(f"No pods found with label selector {OGX_CORE_POD_FILTER} in namespace {namespace}")
-    if len(pods) != 1:
-        raise UnexpectedResourceCountError(
-            f"Expected exactly 1 pod with label selector {OGX_CORE_POD_FILTER} "
-            f"in namespace {namespace}, found {len(pods)}"
+    active_pods = [pod for pod in pods if not getattr(pod.bound_pod.metadata, "deletionTimestamp", None)]
+    if not active_pods:
+        raise ResourceNotFoundError(
+            f"No active pods found with label selector {OGX_CORE_POD_FILTER} in namespace {namespace}"
         )
-    return pods[0]
+    if len(active_pods) != 1:
+        raise UnexpectedResourceCountError(
+            f"Expected exactly 1 active pod with label selector {OGX_CORE_POD_FILTER} "
+            f"in namespace {namespace}, found {len(active_pods)}"
+        )
+    return active_pods[0]
 
 
 @retry(wait_timeout=90, sleep=5)
