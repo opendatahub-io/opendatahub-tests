@@ -464,3 +464,27 @@ def select_ogx_model(
         embedding_model=embedding_model,
         embedding_dimension=embedding_dimension,
     )
+
+
+def dummy_vector_io_factory(provider_name: str) -> list[dict[str, str]]:
+    """Dummy factory returning sample vector I/O environment variables.
+
+    Args:
+        provider_name: Name of the vector I/O provider.
+
+    Returns:
+        List of environment variable dicts for vector I/O provider.
+    """
+    return [{"name": "VECTOR_IO_ENV", "value": provider_name}]
+
+
+def dummy_files_factory(provider_name: str) -> list[dict[str, str]]:
+    """Dummy factory returning sample files provider environment variables.
+
+    Args:
+        provider_name: Name of the files provider.
+
+    Returns:
+        List of environment variable dicts for files provider.
+    """
+    return [{"name": "FILES_ENV", "value": provider_name}]
