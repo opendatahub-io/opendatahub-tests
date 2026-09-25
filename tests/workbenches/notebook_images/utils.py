@@ -14,6 +14,7 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.image_image_openshift_io import Image
 from ocp_resources.image_stream import ImageStream
 from ocp_resources.notebook import Notebook
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
@@ -138,6 +139,20 @@ class ResolvedWorkbenchImage:
     image_selection: str
     image_digest: str
     build_commit: str | None = None
+    imagestream_image_digest: str | None = None
+    manifest_digests: tuple[str, ...] = ()
+
+    def expected_pod_digests(self) -> set[str]:
+        """Return digests a running pod may report for this ImageStream tag.
+
+        Workbench tags are often a multi-arch manifest list. The ImageStream
+        ``dockerImageReference`` / ``items[].image`` digest is the list; kubelet
+        reports the platform-specific child from ``dockerImageManifests``.
+        """
+        digests = {self.image_digest, *self.manifest_digests}
+        if self.imagestream_image_digest:
+            digests.add(self.imagestream_image_digest)
+        return digests
 
 
 @dataclass(frozen=True)
@@ -367,6 +382,44 @@ def _get_imagestream_spec_tag_data(imagestream_data: dict[str, Any]) -> dict[str
     }
 
 
+def _digest_from_imagestream_image_id(image_id: str) -> str | None:
+    """Normalize an ImageStream ``items[].image`` value to a ``sha256:`` digest."""
+    image_id = image_id.strip()
+    if not image_id:
+        return None
+    if image_id.startswith("sha256:"):
+        return image_id
+    if "@sha256:" in image_id:
+        return image_id.split("@", maxsplit=1)[1]
+    return None
+
+
+def _manifest_digests_for_image(admin_client: DynamicClient, image_name: str) -> tuple[str, ...]:
+    """Return list, platform-manifest, and config digests for an OpenShift Image.
+
+    Multi-arch workbench tags import as a manifest list. The pod ``imageID`` is
+    typically the architecture-specific child digest, not the list digest.
+    """
+    cluster_image = Image(client=admin_client, name=image_name)
+    if not cluster_image.exists:
+        LOGGER.warning(f"OpenShift Image '{image_name}' not found; skipping platform digest expansion")
+        return ()
+
+    image_data = cluster_image.instance.to_dict()
+    digests: list[str] = []
+
+    def _add(raw: str) -> None:
+        if (digest := _digest_from_imagestream_image_id(image_id=raw)) and digest not in digests:
+            digests.append(digest)
+
+    metadata = image_data.get("dockerImageMetadata") or {}
+    _add(raw=str(metadata.get("Id") or metadata.get("id") or ""))
+    for manifest in image_data.get("dockerImageManifests") or []:
+        _add(raw=str(manifest.get("digest") or ""))
+
+    return tuple(digests)
+
+
 def _resolve_docker_image_reference(status_tag_data: dict[str, Any], imagestream_name: str, tag_name: str) -> str:
     """Return the digest-pinned dockerImageReference from ImageStream status."""
     for item in status_tag_data.get("items") or []:
@@ -454,6 +507,13 @@ def _build_resolved_workbench_image(
         tag_name=tag_name,
     )
     build_commit = spec_tag_data.get(tag_name, {}).get("annotations", {}).get("opendatahub.io/notebook-build-commit")
+    imagestream_image_digest: str | None = None
+    for item in status_tag_data.get("items") or []:
+        if str(item.get("dockerImageReference", "")) == docker_image_reference:
+            imagestream_image_digest = _digest_from_imagestream_image_id(image_id=str(item.get("image", "") or ""))
+            break
+    source_digest = docker_image_reference.split("@", maxsplit=1)[1]
+    manifest_image_name = imagestream_image_digest or source_digest
     return ResolvedWorkbenchImage(
         imagestream_name=imagestream_name,
         tag_name=tag_name,
@@ -465,8 +525,10 @@ def _build_resolved_workbench_image(
             docker_image_reference=docker_image_reference,
         ),
         image_selection=f"{imagestream_name}:{tag_name}",
-        image_digest=docker_image_reference.split("@", maxsplit=1)[1],
+        image_digest=source_digest,
         build_commit=str(build_commit) if build_commit else None,
+        imagestream_image_digest=imagestream_image_digest,
+        manifest_digests=_manifest_digests_for_image(admin_client=admin_client, image_name=manifest_image_name),
     )
 
 
@@ -859,6 +921,31 @@ def build_n1_notebook_dict(
             }
         },
     }
+
+
+def wait_for_pod_uid_change(pod: Pod, old_uid: str, timeout: int = 300) -> None:
+    """Wait until the named pod exists with a UID different from ``old_uid``.
+
+    StatefulSet pods keep a stable name (``<notebook>-0``), so a rollout is
+    detected by UID change rather than name or existence.
+    """
+
+    def _uid_changed() -> bool:
+        if not pod.exists:
+            return False
+        return str(pod.instance.metadata.uid) != old_uid
+
+    try:
+        for sample in TimeoutSampler(wait_timeout=timeout, sleep=5, func=_uid_changed):
+            if sample:
+                return
+    except TimeoutExpiredError as exc:
+        collect_pod_information(pod=pod)
+        current_uid = str(pod.instance.metadata.uid) if pod.exists else "<missing>"
+        raise AssertionError(
+            f"Pod '{pod.namespace}/{pod.name}' was not recreated within {timeout} seconds "
+            f"after the image patch. old_uid={old_uid}, current_uid={current_uid}."
+        ) from exc
 
 
 def wait_for_controller_reconciliation(
@@ -1558,6 +1645,12 @@ def apply_dashboard_image_patch(
     interprets the body as RFC 6902 operations, matching how the Dashboard
     frontend patches notebook images.
     """
+    LOGGER.info(
+        "Applying Dashboard JSON patch to Notebook",
+        notebook=notebook.name,
+        namespace=notebook.namespace,
+        patch_ops=patch_ops,
+    )
     notebook.api.patch(
         body=patch_ops,
         name=notebook.name,
