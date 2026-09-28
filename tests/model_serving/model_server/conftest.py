@@ -29,7 +29,8 @@ from tests.model_serving.model_server.kserve.model_cache.utils import (
     MODEL_CACHE_SIZE,
     LocalModelNodeGroup,
 )
-from tests.model_serving.model_server.utils import skip_test
+from tests.model_serving.model_server.runtime_registry import RuntimeProfile, resolve_cluster_arch
+from tests.model_serving.model_server.utils import get_worker_architecture, skip_test
 from utilities.constants import (
     DscComponents,
     KServeDeploymentType,
@@ -109,11 +110,24 @@ def serving_runtime_from_template(
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
+    arch_aware = request.param.get("arch-aware", False)
+    profile = request.getfixturevalue("arch_runtime_profile") if arch_aware else None
+    if (
+        not arch_aware
+        and request.param["template-name"]
+        in {
+            RuntimeTemplates.OVMS_KSERVE,
+            RuntimeTemplates.OVMS_MODEL_MESH,
+        }
+        and request.getfixturevalue("cluster_arch") != "amd64"
+    ):
+        pytest.skip("OVMS runtime is unsupported on ARM64")
+
     runtime_kwargs = {
         "client": unprivileged_client,
         "name": request.param["name"],
         "namespace": unprivileged_model_namespace.name,
-        "template_name": request.param["template-name"],
+        "template_name": profile.template if profile else request.param["template-name"],
         "multi_model": request.param["multi-model"],
         "models_priorities": request.param.get("models-priorities"),
         "supported_model_formats": request.param.get("supported-model-formats"),
@@ -167,6 +181,9 @@ def ovms_kserve_serving_runtime(
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
+    if request.getfixturevalue("cluster_arch") != "amd64":
+        pytest.skip("OVMS runtime is unsupported on ARM64")
+
     runtime_kwargs = {
         "client": unprivileged_client,
         "namespace": unprivileged_model_namespace.name,
@@ -322,13 +339,16 @@ def model_car_inference_service(
     serving_runtime_from_template: ServingRuntime,
 ) -> Generator[InferenceService, Any, Any]:
     deployment_mode = request.param.get("deployment-mode", KServeDeploymentType.RAW_DEPLOYMENT)
+    profile = request.getfixturevalue("arch_runtime_profile") if request.param.get("arch-aware") else None
     with create_isvc(
         client=unprivileged_client,
         name=f"model-car-{deployment_mode.lower()}",
         namespace=unprivileged_model_namespace.name,
         runtime=serving_runtime_from_template.name,
-        storage_uri=request.param["storage-uri"],
-        model_format=serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,
+        storage_uri=profile.model_car_image if profile else request.param["storage-uri"],
+        model_format=profile.model_car_format
+        if profile
+        else serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,
         deployment_mode=deployment_mode,
         external_route=request.param.get("external-route", True),
         wait_for_predictor_pods=False,
@@ -620,27 +640,15 @@ def kueue_local_queue_from_template(
 
 
 @pytest.fixture(scope="session")
-def cluster_arch(request, admin_client: DynamicClient) -> str:
+def cluster_arch(request: FixtureRequest, admin_client: DynamicClient) -> str:
     """Detect or override cluster CPU architecture.
 
     Auto-detects from worker node labels (kubernetes.io/arch) unless
     --cluster-arch CLI flag is set to a specific value.
     """
     opt = request.config.getoption("--cluster-arch", default="auto")
-    if opt != "auto":
-        return opt
-
-    workers = list(Node.get(client=admin_client, label_selector="node-role.kubernetes.io/worker"))
-    if not workers:
-        workers = list(Node.get(client=admin_client))
-
-    if not workers:
-        LOGGER.warning("No nodes found, defaulting to amd64")
-        return "amd64"
-
-    arch = workers[0].instance.status.nodeInfo.architecture
-    LOGGER.info(f"Auto-detected cluster architecture: {arch}")
-    return arch
+    detected = get_worker_architecture(client=admin_client) if opt == "auto" else None
+    return resolve_cluster_arch(configured=opt, detected=detected)
 
 
 @pytest.fixture(scope="session")
@@ -658,7 +666,7 @@ def skip_if_not_arm(cluster_arch: str) -> None:
 
 
 @pytest.fixture(scope="class")
-def arch_runtime_profile(cluster_arch: str, request: FixtureRequest):
+def arch_runtime_profile(cluster_arch: str, request: FixtureRequest) -> RuntimeProfile:
     """Resolve the RuntimeProfile for the current cluster arch.
 
     Tests parametrize this fixture with the desired model format (default: onnx).
@@ -683,7 +691,7 @@ def arch_runtime_profile(cluster_arch: str, request: FixtureRequest):
 
 @pytest.fixture(scope="class")
 def arch_serving_runtime(
-    arch_runtime_profile,
+    arch_runtime_profile: RuntimeProfile,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:

@@ -14,6 +14,7 @@ from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 
+from tests.model_serving.model_runtime.mlserver.constant import MODEL_CONFIGS, MODEL_PATH_PREFIX
 from tests.model_serving.model_server.utils import wait_for_raw_isvc_https_infer_ready
 from utilities.constants import (
     Annotations,
@@ -30,10 +31,25 @@ from utilities.infra import (
     wait_for_inference_deployment_replicas,
 )
 from utilities.logger import RedactedString
+from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 
 # HTTP/REST model serving
+@pytest.fixture(scope="class")
+def auth_model_config(cluster_arch: str) -> dict[str, Any]:
+    """Select a model and matching inference request for the cluster architecture."""
+    if cluster_arch == "amd64":
+        return {"path": "test-dir", "template": RuntimeTemplates.OVMS_KSERVE, "inference": ONNX_INFERENCE_CONFIG}
+
+    model = MODEL_CONFIGS[ModelFormat.ONNX]
+    return {
+        "path": f"{MODEL_PATH_PREFIX}/{model['s3_model_dir']}",
+        "template": RuntimeTemplates.MLSERVER,
+        "request": model["rest_query"],
+    }
+
+
 @pytest.fixture(scope="class")
 def http_raw_view_role(
     unprivileged_client: DynamicClient,
@@ -77,6 +93,7 @@ def patched_remove_raw_authentication_isvc(
     unprivileged_client: DynamicClient,
     http_s3_ovms_raw_inference_service: InferenceService,
     http_raw_inference_token: str,
+    auth_model_config: dict[str, Any],
 ) -> Generator[InferenceService, Any, Any]:
     with ResourceEditor(
         patches={
@@ -96,7 +113,9 @@ def patched_remove_raw_authentication_isvc(
             client=unprivileged_client,
             isvc=http_s3_ovms_raw_inference_service,
         )
-        wait_for_raw_isvc_https_infer_ready(isvc=http_s3_ovms_raw_inference_service, token=None)
+        wait_for_raw_isvc_https_infer_ready(
+            isvc=http_s3_ovms_raw_inference_service, token=None, request_body=auth_model_config.get("request")
+        )
         yield http_s3_ovms_raw_inference_service
 
     # ResourceEditor restores auth on exit; wait for ISVC to reconcile before next test
@@ -112,6 +131,7 @@ def patched_remove_raw_authentication_isvc(
     wait_for_raw_isvc_https_infer_ready(
         isvc=http_s3_ovms_raw_inference_service,
         token=http_raw_inference_token,
+        request_body=auth_model_config.get("request"),
     )
 
 
@@ -137,9 +157,10 @@ def http_s3_ovms_raw_inference_service(
     ci_s3_bucket_name: str,
     ci_endpoint_s3_secret: Secret,
     model_service_account: ServiceAccount,
+    auth_model_config: dict[str, Any],
 ) -> Generator[InferenceService, Any, Any]:
     # Construct storage URI from CI bucket
-    storage_uri = f"s3://{ci_s3_bucket_name}/{request.param['model-dir']}/"
+    storage_uri = f"s3://{ci_s3_bucket_name}/{auth_model_config['path']}/"
     with create_isvc(
         client=unprivileged_client,
         name=f"{Protocols.HTTP}-{ModelFormat.ONNX}",
@@ -147,7 +168,7 @@ def http_s3_ovms_raw_inference_service(
         runtime=http_s3_ovms_serving_runtime.name,
         storage_key=ci_endpoint_s3_secret.name,
         storage_path=urlparse(storage_uri).path,
-        model_format=http_s3_ovms_serving_runtime.instance.spec.supportedModelFormats[0].name,
+        model_format=ModelFormat.ONNX,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         model_service_account=model_service_account.name,
         enable_auth=True,
@@ -165,9 +186,10 @@ def http_s3_ovms_raw_inference_service_2(
     ci_s3_bucket_name: str,
     ci_endpoint_s3_secret: Secret,
     model_service_account_2: ServiceAccount,
+    auth_model_config: dict[str, Any],
 ) -> Generator[InferenceService, Any, Any]:
     # Construct storage URI from CI bucket
-    storage_uri = f"s3://{ci_s3_bucket_name}/{request.param['model-dir']}/"
+    storage_uri = f"s3://{ci_s3_bucket_name}/{auth_model_config['path']}/"
     with create_isvc(
         client=unprivileged_client,
         name=f"{Protocols.HTTP}-{ModelFormat.ONNX}-2",
@@ -175,7 +197,7 @@ def http_s3_ovms_raw_inference_service_2(
         runtime=http_s3_ovms_serving_runtime.name,
         storage_key=ci_endpoint_s3_secret.name,
         storage_path=urlparse(storage_uri).path,
-        model_format=http_s3_ovms_serving_runtime.instance.spec.supportedModelFormats[0].name,
+        model_format=ModelFormat.ONNX,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         model_service_account=model_service_account_2.name,
         enable_auth=True,
@@ -189,12 +211,13 @@ def http_s3_ovms_serving_runtime(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
+    auth_model_config: dict[str, Any],
 ) -> Generator[ServingRuntime, Any, Any]:
     with ServingRuntimeFromTemplate(
         client=unprivileged_client,
         name=f"{Protocols.HTTP}-{ModelName.MNIST}-runtime",
         namespace=unprivileged_model_namespace.name,
-        template_name=RuntimeTemplates.OVMS_KSERVE,
+        template_name=auth_model_config["template"],
         multi_model=False,
         enable_http=True,
         enable_grpc=False,
@@ -209,16 +232,17 @@ def unprivileged_s3_ovms_raw_inference_service(
     unprivileged_model_namespace: Namespace,
     http_s3_ovms_serving_runtime: ServingRuntime,
     unprivileged_ci_endpoint_s3_secret: Secret,
+    auth_model_config: dict[str, Any],
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=unprivileged_client,
         name=f"{Protocols.HTTP}-{ModelFormat.ONNX}-raw",
         namespace=unprivileged_model_namespace.name,
         runtime=http_s3_ovms_serving_runtime.name,
-        model_format=http_s3_ovms_serving_runtime.instance.spec.supportedModelFormats[0].name,
+        model_format=ModelFormat.ONNX,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         storage_key=unprivileged_ci_endpoint_s3_secret.name,
-        storage_path=request.param["model-dir"],
+        storage_path=f"/{auth_model_config['path']}/",
     ) as isvc:
         yield isvc
 

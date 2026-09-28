@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from utilities.constants import ModelFormat, RuntimeTemplates
+from utilities.image_constants import SharedImages
 
 
 class ClusterArch:
@@ -34,6 +35,8 @@ class RuntimeProfile:
     model_format: str
     runtime_name: str
     inference_config_key: str
+    model_car_image: str
+    model_car_format: str
     node_selector: dict[str, str] = field(default_factory=dict)
     supported_model_formats: list[dict[str, Any]] | None = None
 
@@ -45,6 +48,8 @@ ARCH_RUNTIME_REGISTRY: dict[str, dict[str, RuntimeProfile]] = {
             model_format=ModelFormat.ONNX,
             runtime_name="onnx-runtime",
             inference_config_key="ovms_onnx",
+            model_car_image=SharedImages.MODELCAR_MNIST_8_1,
+            model_car_format=ModelFormat.OPENVINO,
             node_selector={"kubernetes.io/arch": ClusterArch.AMD64},
         ),
         "openvino_ir": RuntimeProfile(
@@ -52,6 +57,8 @@ ARCH_RUNTIME_REGISTRY: dict[str, dict[str, RuntimeProfile]] = {
             model_format=ModelFormat.OPENVINO,
             runtime_name="openvino-runtime",
             inference_config_key="ovms_openvino",
+            model_car_image=SharedImages.MODELCAR_MNIST_8_1,
+            model_car_format=ModelFormat.OPENVINO,
             node_selector={"kubernetes.io/arch": ClusterArch.AMD64},
         ),
     },
@@ -61,6 +68,8 @@ ARCH_RUNTIME_REGISTRY: dict[str, dict[str, RuntimeProfile]] = {
             model_format=ModelFormat.ONNX,
             runtime_name="mlserver-onnx-runtime",
             inference_config_key="mlserver_onnx",
+            model_car_image=SharedImages.MLSERVER_ONNX,
+            model_car_format=ModelFormat.ONNX,
             node_selector={"kubernetes.io/arch": ClusterArch.ARM64},
         ),
     },
@@ -89,3 +98,11 @@ def get_supported_formats(arch: str) -> list[str]:
 def is_format_supported(arch: str, model_format: str) -> bool:
     """Check if a model format is supported on the given architecture."""
     return model_format in ARCH_RUNTIME_REGISTRY.get(arch, {})
+
+
+def resolve_cluster_arch(configured: str, detected: str | None) -> str:
+    """Resolve an explicit override or detected worker architecture without guessing."""
+    arch = detected if configured == "auto" else configured
+    if arch not in ClusterArch.SUPPORTED:
+        raise ValueError(f"Unsupported or undetected cluster architecture: {arch!r}; use --cluster-arch=amd64|arm64")
+    return arch

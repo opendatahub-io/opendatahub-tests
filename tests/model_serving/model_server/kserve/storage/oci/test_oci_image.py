@@ -1,5 +1,7 @@
 import pytest
 
+from tests.model_serving.model_runtime.mlserver.constant import MODEL_CONFIGS
+from tests.model_serving.model_runtime.mlserver.utils import run_mlserver_inference, validate_deterministic_snapshot
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import KServeDeploymentType, ModelCarImage, ModelFormat, ModelName, Protocols, RuntimeTemplates
 from utilities.inference_utils import Inference
@@ -16,11 +18,13 @@ from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
                 "name": f"{ModelName.MNIST}-runtime",
                 "template-name": RuntimeTemplates.OVMS_KSERVE,
                 "multi-model": False,
+                "arch-aware": True,
             },
             {
                 # Using mnist-8-1 model from OCI image
                 "storage-uri": ModelCarImage.MNIST_8_1,
                 "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT,
+                "arch-aware": True,
             },
         ),
         pytest.param(
@@ -29,11 +33,13 @@ from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
                 "name": f"{ModelName.MNIST}-runtime",
                 "template-name": RuntimeTemplates.OVMS_KSERVE,
                 "multi-model": False,
+                "arch-aware": True,
             },
             {
                 # Using mnist-8-1 model from OCI image
                 "storage-uri": ModelCarImage.MNIST_8_1,
                 "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT,
+                "arch-aware": True,
             },
             marks=[pytest.mark.rawdeployment],
         ),
@@ -44,7 +50,7 @@ class TestKserveModelCar:
     """Validate KServe model serving using OCI Model Car images for model storage.
 
     Steps:
-        1. Deploy an OVMS inference service using an OCI Model Car image (MNIST).
+        1. Deploy OVMS on AMD64 or MLServer on ARM64 with a compatible OCI model car.
         2. Verify the predictor pod does not experience excessive container restarts.
         3. Send a REST inference request and verify a successful response.
         4. Verify the model status on the InferenceService resource is Loaded and UpToDate.
@@ -64,8 +70,18 @@ class TestKserveModelCar:
 
     @pytest.mark.tier1
     @pytest.mark.ocp_interop
-    def test_model_car_using_rest(self, model_car_inference_service):
+    def test_model_car_using_rest(self, model_car_inference_service, cluster_arch):
         """Verify model query with token using REST"""
+        if cluster_arch == "arm64":
+            response = run_mlserver_inference(
+                isvc=model_car_inference_service,
+                input_data=MODEL_CONFIGS[ModelFormat.ONNX]["rest_query"],
+                model_version="",
+                protocol=Protocols.REST,
+            )
+            validate_deterministic_snapshot(response=response)
+            return
+
         verify_inference_response(
             inference_service=model_car_inference_service,
             inference_config=ONNX_INFERENCE_CONFIG,
