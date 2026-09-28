@@ -51,7 +51,8 @@ class TestEvalHubMcpDeployment:
                 ),
             )
         )
-        assert len(pods) == 1, f"Expected 1 MCP pod, found {len(pods)}"
+        expected_replicas = evalhub_mcp_mt_deployment.instance.spec.replicas
+        assert len(pods) == expected_replicas, f"Expected {expected_replicas} MCP pod(s), found {len(pods)}"
 
         container_names = [container.name for container in pods[0].instance.spec.containers]
         assert EVALHUB_MCP_CONTAINER_NAME in container_names, (

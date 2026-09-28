@@ -12,8 +12,8 @@ from ocp_resources.route import Route
 from ocp_resources.service import Service
 
 from tests.ai_safety.evalhub.k8s_lifecycle_signals.constants import (
+    LIFECYCLE_PHASE_COMPLETED,
     LIFECYCLE_PHASE_LABEL,
-    LIFECYCLE_PHASE_SUCCEEDED,
     LIFECYCLE_REASON_STARTED,
     LIFECYCLE_SIGNALS_CP_NAMESPACE,
     LIFECYCLE_SIGNALS_CR_NAME,
@@ -226,7 +226,7 @@ class TestNegNegativeError:
         assert annotation_value is not None, (
             f"Job annotation {LIFECYCLE_STATUS_ANNOTATION} must persist after completion"
         )
-        if label_value == LIFECYCLE_PHASE_SUCCEEDED:
+        if label_value == LIFECYCLE_PHASE_COMPLETED:
             pass
         else:
             phase = parse_status_annotation(annotation_value).get("phase", "")

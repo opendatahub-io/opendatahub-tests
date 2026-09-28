@@ -6,17 +6,10 @@ import pytest
 import requests
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
-from ocp_resources.namespace import Namespace
 
 from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import (
-    AITENANT_INFRA_NAMESPACE,
     AITenantTestContext,
-    aitenant_from_spec,
-    bootstrap_gateway_context,
-    bootstrap_gateway_ref,
-    build_aitenant_spec,
     build_aitenant_test_context,
-    deploy_and_verify_aitenant_ready,
 )
 from tests.ai_gateway.models_as_a_service.multitenancy.utils import (
     TENANT_ISOLATION_MODEL_NAME,
@@ -38,19 +31,16 @@ from tests.ai_gateway.models_as_a_service.multitenancy.utils import (
     verify_tenant_gateway_auth_policy_callback_url,
     wait_for_tenant_gateway_maas_api_reachable,
 )
+from tests.ai_gateway.models_as_a_service.utils import (
+    aitenant_from_spec,
+    bootstrap_gateway_context,
+    bootstrap_gateway_ref,
+    build_aitenant_spec,
+    deploy_and_verify_aitenant_ready,
+)
 from utilities.general import generate_random_name
 from utilities.resources.aitenant import AITenant
 from utilities.resources.route import Route
-
-
-@pytest.fixture(scope="session")
-def aitenant_infra_namespace(admin_client: DynamicClient) -> str:
-    """Return the infra namespace where AITenant objects are created."""
-    infra_namespace = Namespace(client=admin_client, name=AITENANT_INFRA_NAMESPACE)
-    assert infra_namespace.exists, (
-        f"Infra namespace '{AITENANT_INFRA_NAMESPACE}' not found — required for AITenant multitenancy tests"
-    )
-    return AITENANT_INFRA_NAMESPACE
 
 
 @pytest.fixture

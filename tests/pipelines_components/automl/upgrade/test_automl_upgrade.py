@@ -13,11 +13,6 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 
-from tests.model_serving.model_runtime.autogluon.constant import ProtocolVersion  # noqa: NIT001
-from tests.model_serving.model_runtime.autogluon.utils import (  # noqa: NIT001
-    run_autogluon_inference,
-    validate_deterministic_response,
-)
 from tests.pipelines_components.automl.upgrade.utils import REGRESSION_V2_INPUT, TIMESERIES_SUNSPOTS_V1_INPUT
 from tests.pipelines_components.constants import AUTOML_PIPELINE_TIMEOUT
 from tests.pipelines_components.utils import (
@@ -27,6 +22,11 @@ from tests.pipelines_components.utils import (
     get_workflow_completed_nodes,
     get_workflow_phase,
     wait_for_pipeline_run,
+)
+from utilities.autogluon import (
+    ProtocolVersion,
+    run_autogluon_inference,
+    validate_deterministic_response,
 )
 from utilities.constants import ModelVersion
 

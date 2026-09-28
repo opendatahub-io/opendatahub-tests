@@ -17,5 +17,6 @@
 
 ## Additional Requirements
 
+- [ ] All commits include a `Signed-off-by` trailer (`git commit -s`)
 - [ ] If this PR introduces a new test image, did you create a PR to mirror it in disconnected environment?
 - [ ] If this PR introduces new marker(s)/adds a new component, was relevant ticket created to update relevant Jenkins job?

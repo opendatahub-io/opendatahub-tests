@@ -110,7 +110,7 @@ def verify_package_import(
                 collect_pod_information(pod)
 
         execution_time = time() - start_time
-        output = output if output else ""
+        output = output or ""
 
         if import_successful:
             LOGGER.info(f"Package {package_name}: ✓ (import successful in {execution_time:.2f}s)")
@@ -359,18 +359,22 @@ class TestCustomImageValidation:
 
         for name in failed_packages:
             result = results[name]
-            report.append(f"  ❌ {name}:")
-            report.append(f"     Error: {result.error_message}")
-            report.append(f"     Command: {result.command_executed}")
-            report.append(f"     Execution Time: {result.execution_time_seconds:.2f}s")
-            report.append("")
+            report.extend((
+                f"  ❌ {name}:",
+                f"     Error: {result.error_message}",
+                f"     Command: {result.command_executed}",
+                f"     Execution Time: {result.execution_time_seconds:.2f}s",
+                "",
+            ))
 
         # Add troubleshooting guidance
-        report.append("Troubleshooting:")
-        report.append("  1. Check the must-gather directory for pod logs and YAML")
-        report.append("  2. Verify the custom image contains the required packages")
-        report.append("  3. Check if packages are installed in the correct Python environment")
-        report.append("  4. Verify package names match import names (pip name vs import name)")
-        report.append("  5. Contact the workbench image team for package installation issues")
+        report.extend((
+            "Troubleshooting:",
+            "  1. Check the must-gather directory for pod logs and YAML",
+            "  2. Verify the custom image contains the required packages",
+            "  3. Check if packages are installed in the correct Python environment",
+            "  4. Verify package names match import names (pip name vs import name)",
+            "  5. Contact the workbench image team for package installation issues",
+        ))
 
         return "\n".join(report)

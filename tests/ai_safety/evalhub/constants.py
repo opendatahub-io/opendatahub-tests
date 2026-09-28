@@ -1,3 +1,5 @@
+import re
+
 from tests.ai_safety.image_constants import AiSafetyImages
 
 MINIO_MC_IMAGE: str = AiSafetyImages.MINIO_MC
@@ -107,6 +109,57 @@ PVC_TEST_DATA_NAME: str = "evalhub-test-data"
 PVC_TEST_DATA_SIZE: str = "2Gi"
 PVC_TOKENIZER_PATH: str = "/test_data/tokenizer"
 
+# Git storage source test data (RHAISTRAT-2058)
+# Field names below (test_data_ref.git.*, resolved_sha) follow the test plan's documented
+# example payloads; the strategy marks the exact API schema as TBD pending implementation docs.
+# Defaults point at eval-hub's own vendored offline lm-eval cache (tests/git-testdata), which
+# exists specifically so FVT can exercise git clone/checkout without live Hugging Face downloads;
+# see https://github.com/eval-hub/eval-hub/tree/main/tests/git-testdata. Env vars still override.
+GIT_PUBLIC_REPO_URL_ENV: str = "GIT_TEST_PUBLIC_REPO_URL"
+GIT_PUBLIC_REPO_REF_ENV: str = "GIT_TEST_PUBLIC_REPO_REF"
+GIT_PUBLIC_REPO_SUB_PATH_ENV: str = "GIT_TEST_PUBLIC_REPO_SUB_PATH"
+GIT_PUBLIC_REPO_URL: str = "https://github.com/eval-hub/eval-hub"
+GIT_DEFAULT_REF: str = "main"
+GIT_PUBLIC_REPO_SUB_PATH: str = "tests/git-testdata"
+# Tokenizer mount path once sub_path narrows the clone to tests/git-testdata (arc_easy cache).
+GIT_TOKENIZER_PATH: str = "/test_data/tokenizer"
+# Tokenizer path when the full repository is cloned without sub_path narrowing.
+GIT_FULL_REPO_TOKENIZER_PATH: str = "/test_data/tests/git-testdata/tokenizer"
+# Guaranteed-nonexistent per RFC 2606; used for negative tests that must not resolve.
+GIT_NONEXISTENT_REPO_URL: str = "https://git.example.com/does-not-exist/repo.git"
+GIT_COMMIT_SHA_PATTERN: re.Pattern[str] = re.compile(r"^[0-9a-f]{7,40}$")
+
+# Git storage source (RHAISTRAT-2058)
+GIT_CLONE_INIT_CONTAINER_NAME: str = "init"
+GIT_TEST_DATA_MOUNT_PATH: str = "/test_data"
+GIT_CREDS_SECRET_NAME: str = "git-test-creds"
+GIT_BAD_CREDS_SECRET_NAME: str = "git-bad-creds"
+
+# HuggingFace storage source test data (RHAISTRAT-2059)
+# Defaults mirror eval-hub FVT: eval-hub-test/evalhub-offline-testdata @ main.
+# See https://huggingface.co/datasets/eval-hub-test/evalhub-offline-testdata
+HF_PUBLIC_REPO_ID_ENV: str = "TEST_DATA_HF_REPO_ID"
+HF_PUBLIC_REVISION_ENV: str = "TEST_DATA_HF_REVISION"
+HF_SHA_REVISION_ENV: str = "TEST_DATA_HF_SHA_REVISION"
+HF_NESTED_SUB_PATH_ENV: str = "TEST_DATA_HF_NESTED_SUB_PATH"
+HF_BAD_REPO_ID_ENV: str = "TEST_DATA_HF_BAD_REPO_ID"
+HF_BAD_REVISION_ENV: str = "TEST_DATA_HF_BAD_REVISION"
+HF_BAD_SUB_PATH_ENV: str = "TEST_DATA_HF_BAD_SUB_PATH"
+HF_PUBLIC_REPO_ID: str = "eval-hub-test/evalhub-offline-testdata"
+HF_DEFAULT_REVISION: str = "main"
+HF_NESTED_SUB_PATH: str = "staging_sub_path"
+HF_TOKENIZER_PATH: str = "/test_data/tokenizer"
+HF_BAD_REPO_ID: str = "eval-hub-test/invalid-db"
+HF_BAD_REVISION: str = "this-revision-does-not-exist-evalhub-fvt"
+HF_BAD_SUB_PATH: str = "this-path-does-not-exist-evalhub-fvt"
+# Init container env vars set by the EvalHub operator for HF downloads (eval-hub PR #996).
+ENV_HF_REPO_ID: str = "TEST_DATA_HF_REPO_ID"
+ENV_HF_REVISION: str = "TEST_DATA_HF_REVISION"
+ENV_HF_SUBPATH: str = "TEST_DATA_HF_SUBPATH"
+HF_MUTUAL_EXCLUSION_MESSAGE: str = "exactly one of s3, pvc, git, or hf must be set"
+HF_RESOLVED_SHA_READONLY_CODE: str = "resolved_sha_read_only"
+HF_RESOLVED_SHA_READONLY_MESSAGE: str = "The field 'resolved_sha' is read-only and must not be set on create."
+
 # Hardware profile
 EVALHUB_DEFAULT_HARDWARE_PROFILE: str = "default-profile"
 
@@ -214,7 +267,7 @@ OTEL_TRACE_COLLECTOR_NAME: str = "otel-trace-collector"
 OTEL_TRACE_COLLECTOR_LABELS: dict[str, str] = {"app": "otel-trace-collector"}
 
 # Operator pod label selector
-OPERATOR_POD_LABEL_SELECTOR: str = "control-plane=controller-manager,app.kubernetes.io/name=trustyai-service-operator"
+OPERATOR_POD_LABEL_SELECTOR: str = "control-plane=trustyai-service-operator"
 
 # Operator service name in OTEL traces
 OPERATOR_OTEL_SERVICE_NAME: str = "trustyai-service-operator"

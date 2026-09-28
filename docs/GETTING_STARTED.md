@@ -163,9 +163,9 @@ To skip a test that is affected by a known Jira bug, use `pytest.mark.xfail` wit
 ```python
 from utilities.jira import is_jira_issue_open
 
+
 @pytest.mark.xfail(condition=is_jira_issue_open(jira_id="RHOAIENG-12345"), reason="RHOAIENG-12345", run=False)
-def test_example(self):
-    ...
+def test_example(self): ...
 ```
 
 - `condition=is_jira_issue_open(...)` checks the Jira issue status at collection time. If the issue is open, the test is marked as xfail.

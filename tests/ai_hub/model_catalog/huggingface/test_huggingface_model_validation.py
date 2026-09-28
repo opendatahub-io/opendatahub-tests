@@ -160,6 +160,77 @@ class TestHuggingFaceModelValidation:
         )
 
 
+@pytest.mark.parametrize(
+    "private_hf_catalog_config, expected_catalog_values",
+    [
+        pytest.param(
+            {
+                "sources_yaml": """
+catalogs:
+  - name: HuggingFace Hub Gated
+    id: hf_private_gated
+    type: hf
+    enabled: true
+    properties:
+      apiKeyEnvVar: HF_API_KEY_HUGGINGFACE_HUB_PRIVATE
+    includedModels:
+    - RH-AI-Hub/Manual-Gated-Model-1
+""",
+            },
+            {"RH-AI-Hub/Manual-Gated-Model-1": {}},
+            id="test_hf_private_gated_model",
+            marks=pytest.mark.install,
+        ),
+    ],
+    indirect=True,
+)
+@pytest.mark.usefixtures("private_hf_catalog_config")
+class TestHuggingFacePrivateGatedModelValidation:
+    """Test HuggingFace private gated model synchronization and validation"""
+
+    @pytest.mark.tier2
+    def test_huggingface_private_gated_model_sync(
+        self: Self,
+        epoch_time_before_config_map_update: float,
+        admin_client: DynamicClient,
+        model_registry_namespace: str,
+        model_catalog_rest_url: list[str],
+        model_registry_rest_headers: dict[str, str],
+        expected_catalog_values: dict[str, str],
+    ) -> None:
+        """
+        Validate private gated HuggingFace model synchronization with token authentication.
+
+        Given: A HuggingFace private gated model (RH-AI-Hub/Private-Model-1)
+        When: The model catalog is configured with the model and an authenticated token
+        Then: The model is successfully imported and retrievable via the catalog API
+        """
+        wait_for_hugging_face_model_import(
+            admin_client=admin_client,
+            model_registry_namespace=model_registry_namespace,
+            hf_id="hf_private_gated",
+            expected_num_models_from_hf_api=len(expected_catalog_values),
+        )
+
+        for model_name in expected_catalog_values:
+            result = get_huggingface_model_from_api(
+                model_catalog_rest_url=model_catalog_rest_url,
+                model_registry_rest_headers=model_registry_rest_headers,
+                model_name=model_name,
+                source_id="hf_private_gated",
+            )
+            assert result["name"] == model_name, f"Expected model {model_name}, got {result['name']}"
+
+            # Validate last_synced timestamp
+            last_synced = result["customProperties"]["last_synced"]["string_value"]
+            assert last_synced, f"last_synced field is empty for model {model_name}"
+            assert epoch_time_before_config_map_update <= float(last_synced), (
+                f"Model {model_name} last_synced ({last_synced}) should be after "
+                f"test start time ({epoch_time_before_config_map_update})"
+            )
+            LOGGER.info(f"Private gated model {model_name} successfully synced at {last_synced}")
+
+
 class TestHFPatternMatching:
     @pytest.mark.parametrize(
         "updated_catalog_config_map_scope_function, num_models_from_hf_api_with_matching_criteria",

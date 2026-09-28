@@ -20,7 +20,7 @@ All changes MUST favor the simplest solution that works. Complexity MUST be just
 All changes MUST follow existing code patterns and architecture.
 
 - Follow the [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html)
-- Use pre-commit hooks to enforce style (ruff, mypy, flake8)
+- Use pre-commit hooks to enforce style (ruff, mypy, flake8) and commit-msg hooks (Signed-off-by, Conventional Commits)
 - Use absolute import paths; import specific functions rather than modules
 - Use descriptive names; meaningful names are better than short names
 - Add type annotations to all new code; follow the rules defined in [pyproject.toml](./pyproject.toml)
@@ -154,6 +154,7 @@ No versioning policy is enforced.
 
 - All PRs MUST be verified against constitution principles
 - Pre-commit hooks enforce code quality standards
+- Every commit MUST include a `Signed-off-by` trailer (Developer Certificate of Origin) and follow Conventional Commits; both are enforced by `commit-msg` pre-commit hooks
 - CI (tox) validates test structure and typing
 - Two reviewers required; verified label required before merge
 
@@ -165,4 +166,4 @@ For development runtime guidance, consult:
 - [DEVELOPER_GUIDE.md](./docs/DEVELOPER_GUIDE.md) for contribution details
 - [STYLE_GUIDE.md](./docs/STYLE_GUIDE.md) for code style
 
-**Version**: 1.0.0 | **Ratified**: 2026-01-08 | **Last Amended**: 2026-01-08
+**Version**: 1.0.0 | **Ratified**: 2026-01-08 | **Last Amended**: 2026-08-17

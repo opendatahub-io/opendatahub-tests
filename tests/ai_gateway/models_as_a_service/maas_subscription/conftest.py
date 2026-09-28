@@ -13,6 +13,8 @@ from ocp_resources.service_account import ServiceAccount
 from pytest_testconfig import config as py_config
 
 from tests.ai_gateway.models_as_a_service.maas_subscription.utils import (
+    ModelIdentityCollisionNames,
+    build_model_identity_collision_names,
     create_maas_subscription,
     patch_llmisvc_with_maas_router_and_tiers,
 )
@@ -28,6 +30,12 @@ from utilities.resources.llm_inference_service import LLMInferenceService
 LOGGER = structlog.get_logger(name=__name__)
 
 CHAT_COMPLETIONS = OpenAIEnpoints.CHAT_COMPLETIONS
+
+
+@pytest.fixture(scope="function")
+def model_identity_collision_names() -> ModelIdentityCollisionNames:
+    """Yield unique resource names for a model-identity collision test run."""
+    return build_model_identity_collision_names(suffix=generate_random_name())
 
 
 @pytest.fixture(scope="class")

@@ -8,6 +8,7 @@ import structlog
 
 from tests.ai_gateway.models_as_a_service.body_base_routing.pre_auth_model_header.utils import (
     assert_bbr_inference_status,
+    warm_up_bbr_inference_upstream,
 )
 from tests.ai_gateway.models_as_a_service.maas_api_key.utils import search_active_api_keys
 from tests.ai_gateway.models_as_a_service.utils import build_maas_headers, get_maas_models_response
@@ -133,6 +134,12 @@ class TestBBRPreAuthInference:
     ) -> None:
         """Verify that inference with stream=True returns 200 with SSE text/event-stream chunks."""
         streaming_payload = {**bbr_chat_payload, "stream": True}
+        warm_up_bbr_inference_upstream(
+            session=request_session_http,
+            inference_url=bbr_inference_url,
+            headers=bbr_api_key_headers,
+            payload=streaming_payload,
+        )
         with request_session_http.post(
             url=bbr_inference_url,
             headers=bbr_api_key_headers,

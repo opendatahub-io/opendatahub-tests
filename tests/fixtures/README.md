@@ -7,7 +7,6 @@ This directory contains shared pytest fixtures that are used across multiple tes
 ```text
 fixtures/
 ├── files.py           # File storage provider fixtures
-├── guardrails.py      # Guardrails orchestrator infrastructure fixtures
 ├── inference.py       # Inference service and serving runtime fixtures
 ├── trustyai.py        # TrustyAI operator and DSC configuration fixtures
 └── vector_io.py       # Vector database provider deployment fixtures
@@ -16,7 +15,6 @@ fixtures/
 ### Fixture Modules
 
 - **`files.py`** - Factory fixture for configuring file storage providers (local, S3/MinIO)
-- **`guardrails.py`** - Fixtures for deploying and configuring the Guardrails Orchestrator, including pods, routes, health checks, and gateway configuration
 - **`inference.py`** - Fixtures for vLLM CPU serving runtimes, InferenceServices (Qwen), LLM-d inference simulator, and KServe controller configuration
 - **`trustyai.py`** - Fixtures for TrustyAI operator deployment, DataScienceCluster LMEval configuration, and EvalHub multi-tenancy (tenant namespaces, RBAC, tokens)
 - **`vector_io.py`** - Factory fixture for deploying vector database providers (Milvus, Faiss, PGVector, Qdrant) with their backing services and configuration
@@ -28,7 +26,6 @@ All fixture modules are registered as pytest plugins in `/tests/conftest.py`:
 ```python
 pytest_plugins = [
     "tests.fixtures.inference",
-    "tests.fixtures.guardrails",
     "tests.fixtures.trustyai",
     "tests.fixtures.vector_io",
     "tests.fixtures.files",

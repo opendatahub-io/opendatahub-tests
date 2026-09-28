@@ -1143,6 +1143,7 @@ class LLMISVCBaseline(TypedDict):
     model_uri: str
     kueue_integration_stats: dict[str, int]
     config_ref_names: list[str]
+    config_ref_pins: dict[str, str]
     container_images: dict[str, dict[str, str]]
     restart_counts: dict[str, dict[str, int]]
 
@@ -1165,6 +1166,7 @@ def capture_llmisvc_baseline(
         "model_uri": get_llmisvc_model_uri(llmisvc=llmisvc),
         "kueue_integration_stats": get_llmisvc_kueue_integration_stats(client=client, llmisvc=llmisvc),
         "config_ref_names": get_llmisvc_config_ref_names(llmisvc=llmisvc),
+        "config_ref_pins": get_llmisvc_config_ref_pins(llmisvc=llmisvc),
         "container_images": get_llmisvc_container_images(client=client, llmisvc=llmisvc),
         "restart_counts": get_llmisvc_restart_counts(client=client, llmisvc=llmisvc),
     }
@@ -1247,25 +1249,20 @@ def get_llmisvc_model_uri(llmisvc: LLMInferenceService) -> str:
     return llmisvc.instance.spec.model.uri
 
 
+def get_llmisvc_config_ref_pins(llmisvc: LLMInferenceService) -> dict[str, str]:
+    """Get config ref annotation key-value pairs from LLMInferenceService status."""
+    _CONFIG_REF_ANNOTATION_PREFIX = "serving.kserve.io/config-llm-"
+    annotations = getattr(llmisvc.instance.status, "annotations", None) or {}
+    return {key: value for key, value in annotations.items() if key.startswith(_CONFIG_REF_ANNOTATION_PREFIX) and value}
+
+
 def get_llmisvc_config_ref_names(llmisvc: LLMInferenceService) -> list[str]:
     """Get LLMInferenceServiceConfig CR names from status annotations.
 
-    The controller stores config ref names as status annotations with prefix
-    ``serving.kserve.io/config-llm-``. Each annotation value is the name of a
-    LLMInferenceServiceConfig CR in the redhat-ods-applications namespace.
-
-    Used by capture_llmisvc_baseline (pre-upgrade) and post-upgrade tests.
-
     Returns:
-        Sorted list of config ref names.
+        Sorted list of config ref names (annotation values).
     """
-    _CONFIG_REF_ANNOTATION_PREFIX = "serving.kserve.io/config-llm-"
-    refs: list[str] = []
-    annotations = getattr(llmisvc.instance.status, "annotations", None) or {}
-    for key, value in annotations.items():
-        if key.startswith(_CONFIG_REF_ANNOTATION_PREFIX) and value:
-            refs.append(value)
-    return sorted(refs)
+    return sorted(get_llmisvc_config_ref_pins(llmisvc=llmisvc).values())
 
 
 def get_llmisvc_container_images(client: DynamicClient, llmisvc: LLMInferenceService) -> dict[str, dict[str, str]]:
@@ -1483,24 +1480,49 @@ def verify_llmisvc_restart_counts_unchanged(
 
 
 def verify_llmisvc_config_refs_unchanged(llmisvc: LLMInferenceService, baseline: dict) -> None:
-    """Verify config ref names have not been silently swapped during the upgrade.
+    """Verify pre-upgrade configuration pins are preserved after upgrade.
 
-    Steps:
-        1. Get the current config ref names from the LLMInferenceService status annotations.
-        2. Compare against the pre-upgrade baseline config refs.
-        3. Assert config refs have not changed.
+    Additional post-upgrade pins are allowed (new product version may add pins).
+    A missing or changed pre-upgrade pin fails the test.
 
-    Args:
-        llmisvc: The LLMInferenceService to verify.
-        baseline: Pre-upgrade baseline dict.
-
-    Raises:
-        AssertionError: If config refs have changed.
+    Falls back to name-set comparison when the baseline lacks config_ref_pins
+    (pre-upgrade ran before this patch).
     """
-    expected = baseline["config_ref_names"]
-    current = get_llmisvc_config_ref_names(llmisvc=llmisvc)
-    LOGGER.info(event=f"[POST-UPGRADE] config_refs: expected={expected}, current={current}")
-    assert current == expected, f"config refs changed: {expected} -> {current}"
+    expected_pins = baseline.get("config_ref_pins")
+    if expected_pins is not None:
+        current_pins = get_llmisvc_config_ref_pins(llmisvc=llmisvc)
+
+        pin_errors = {
+            key: {"expected": value, "current": current_pins.get(key)}
+            for key, value in expected_pins.items()
+            if current_pins.get(key) != value
+        }
+
+        added_pins = {key: value for key, value in current_pins.items() if key not in expected_pins}
+
+        LOGGER.info(
+            event="[POST-UPGRADE] config_ref_pins",
+            expected=expected_pins,
+            current=current_pins,
+            added=added_pins,
+            errors=pin_errors,
+        )
+
+        assert not pin_errors, f"Configuration pins changed or missing after upgrade: {pin_errors}"
+        return
+
+    expected_names = set(baseline["config_ref_names"])
+    current_names = set(get_llmisvc_config_ref_names(llmisvc=llmisvc))
+    missing_names = expected_names - current_names
+
+    LOGGER.info(
+        event="[POST-UPGRADE] config_refs (legacy name comparison)",
+        expected=sorted(expected_names),
+        current=sorted(current_names),
+        missing=sorted(missing_names),
+    )
+
+    assert not missing_names, f"Configuration ref names missing after upgrade: {sorted(missing_names)}"
 
 
 def verify_llmisvc_gateway(gateway: Gateway) -> None:
@@ -1541,12 +1563,8 @@ def verify_llmisvc_config_refs_exist(
 ) -> None:
     """Verify that LLMInferenceServiceConfig CRs referenced pre-upgrade still exist.
 
-    Steps:
-        1. Get config ref names from the pre-upgrade baseline.
-        2. Look up each LLMInferenceServiceConfig CR in the applications namespace.
-        3. Assert all config CRs still exist.
-
-    Skips if config_ref_names is empty and pre-upgrade was 3.3 (refs not captured).
+    Derives CR names from ``config_ref_pins`` values when available, falls back
+    to ``config_ref_names`` for baselines captured before this patch.
 
     Args:
         client: Kubernetes dynamic client.
@@ -1562,12 +1580,14 @@ def verify_llmisvc_config_refs_exist(
     from utilities.resources.llm_inference_service_config import LLMInferenceServiceConfig
 
     LLMISVC_CONFIG_NAMESPACE = py_config["applications_namespace"]
-    config_ref_names = baseline["config_ref_names"]
-    pre_upgrade_rhoai_version = baseline.get("pre_upgrade_rhoai_version")
-    if not config_ref_names and (pre_upgrade_rhoai_version is None or pre_upgrade_rhoai_version.startswith("3.3")):
-        pytest.skip(
-            reason=f"config_ref_names empty in baseline — pre-upgrade version recorded '{pre_upgrade_rhoai_version}'."
-        )
+    config_ref_pins = baseline.get("config_ref_pins")
+    if config_ref_pins is not None:
+        config_ref_names = sorted(config_ref_pins.values())
+    else:
+        config_ref_names = baseline["config_ref_names"]
+    if not config_ref_names:
+        pre_upgrade_rhoai_version = baseline.get("pre_upgrade_rhoai_version", "unknown")
+        pytest.skip(reason=f"No config refs in baseline — pre-upgrade version was {pre_upgrade_rhoai_version}")
     LOGGER.info(
         event=f"[POST-UPGRADE] Config refs check for '{llmisvc.name}': "
         f"{len(config_ref_names)} ref(s) to verify in ns '{LLMISVC_CONFIG_NAMESPACE}': {config_ref_names}"

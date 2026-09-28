@@ -22,8 +22,9 @@ To contribute code to the project:
 - Fork the project and work on your forked repository
 - Before submitting a new pull request:
   - Make sure you follow the [Style guide](STYLE_GUIDE.md)
-  - Make sure you have [pre-commit](https://pre-commit.com/) package installed
+  - Make sure you have [pre-commit](https://pre-commit.com/) package installed (including the `commit-msg` hook)
   - Make sure you have [tox](https://tox.readthedocs.io/en/latest/) package installed
+  - Make sure every commit is signed off and uses a Conventional Commit message (see [Commit messages](#commit-messages))
 - PRs that are not ready for review (but needed to be pushed for any reason) should have [WIP] in the title and labelled as "wip".
   - When a PR is ready for review, remove the [WIP] from the title and remove the "wip" label.
 - PRs should be relatively small; if needed the PRs should be split and depended on each other.
@@ -40,6 +41,43 @@ To contribute code to the project:
   - PRs must be verified and marked with "verified" label.
   - PRs must be reviewed by at least two reviewers other than the committer.
   - All CI checks must pass.
+
+## Commit messages
+
+Every commit MUST include a `Signed-off-by` trailer. This certifies the [Developer Certificate of Origin (DCO)](https://developercertificate.org/) and is enforced by a `commit-msg` pre-commit hook.
+
+Add the trailer with `-s` (uses your git `user.name` and `user.email`):
+
+```bash
+git commit -s
+```
+
+Or add it as the last line of the commit message:
+
+```text
+Signed-off-by: Your Name <your@email.com>
+```
+
+The trailer MUST match `Signed-off-by: Name <email>`. Commits without a valid trailer are rejected locally when the `commit-msg` hook is installed.
+
+Commit messages MUST follow [Conventional Commits](https://www.conventionalcommits.org/), also enforced by the `commit-msg` hook:
+
+```text
+<type>(optional-scope): <subject>
+```
+
+- Allowed types: `build`, `ci`, `chore`, `docs`, `feat`, `fix`, `perf`, `refactor`, `revert`, `style`, `test`
+- Subject length: 10–80 characters
+
+Examples:
+
+```text
+feat(model-serving): add vLLM raw deployment smoke test
+fix: wait for InferenceService Ready before querying
+docs: document Signed-off-by and Conventional Commits
+```
+
+`pre-commit run --all-files` does not check commit messages. The Signed-off-by and Conventional Commits hooks run only on `git commit` after you install the `commit-msg` hook.
 
 ## Branching strategy
 
@@ -158,18 +196,22 @@ You should NOT group unrelated tests in one class (because it is misleading the 
 
 When submitting a pull request, make sure to fill all the required, relevant fields for your PR.  
 Make sure the title is descriptive and short.  
-Checks tools are used to check the code are defined in .pre-commit-config.yaml file
-To install pre-commit:
+Check tools are defined in `.pre-commit-config.yaml`.
+Install both the file hooks and the `commit-msg` hooks (Signed-off-by and Conventional Commits):
 
 ```bash
 pre-commit install -t pre-commit -t commit-msg
 ```
 
-Run pre-commit:
+`default_install_hook_types` already includes both, so `pre-commit install` is enough if you have not overridden hook types.
+
+Run file checks:
 
 ```bash
 pre-commit run --all-files
 ```
+
+That command does not validate commit messages. Signed-off-by and Conventional Commits are checked when you run `git commit`. See [Commit messages](#commit-messages).
 
 ### tox
 

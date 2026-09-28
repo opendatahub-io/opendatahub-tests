@@ -10,8 +10,9 @@ import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.pod import Pod
+from ocp_resources.route import Route
 from requests import Response
-from timeout_sampler import retry
+from timeout_sampler import TimeoutSampler, retry
 
 from tests.ai_safety.nemo_guardrails.constants import (
     INPUT_PROMPT_TEMPLATE,
@@ -19,7 +20,7 @@ from tests.ai_safety.nemo_guardrails.constants import (
 )
 from utilities.general import SHA256_DIGEST_PATTERN
 from utilities.guardrails import get_auth_headers
-from utilities.resources.envoy_filter import EnvoyFilter
+from utilities.resources.nemo_guardrails import NemoGuardrails
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -277,31 +278,6 @@ def verify_health_response(response: Response) -> None:
     LOGGER.info(f"Health check passed: {response.status_code} (service is responding)")
 
 
-@retry(exceptions_dict={AssertionError: []}, wait_timeout=120, sleep=5)
-def wait_for_envoy_filter(
-    admin_client: DynamicClient,
-    namespace: str,
-    name: str,
-) -> EnvoyFilter:
-    """
-    Wait for an EnvoyFilter to be created by the TrustyAI operator.
-
-    Args:
-        admin_client: Kubernetes dynamic client
-        namespace: Namespace to search in
-        name: Name of the EnvoyFilter resource
-
-    Returns:
-        The matching EnvoyFilter
-
-    Raises:
-        AssertionError: If the EnvoyFilter is not found within the timeout
-    """
-    envoy_filter = EnvoyFilter(client=admin_client, namespace=namespace, name=name)
-    assert envoy_filter.exists, f"EnvoyFilter {name!r} not found in {namespace!r}"
-    return envoy_filter
-
-
 @retry(exceptions_dict={AssertionError: []}, wait_timeout=300, sleep=5)
 def wait_for_nemo_guardrails_health(
     host: str,
@@ -331,3 +307,73 @@ def wait_for_nemo_guardrails_health(
     verify_health_response(response=response)
     LOGGER.info(f"NeMo Guardrails is healthy at {host}")
     return True
+
+
+def build_api_key_env(secret_name: str) -> list[dict]:
+    """
+    Build a container env entry that sources the OpenAI API key from a Secret.
+
+    Args:
+        secret_name: Name of the Secret containing the "token" key
+
+    Returns:
+        List with a single env var dict referencing the Secret
+    """
+    return [
+        {
+            "name": "OPENAI_API_KEY",
+            "valueFrom": {"secretKeyRef": {"name": secret_name, "key": "token"}},
+        }
+    ]
+
+
+def route_exists(client: DynamicClient, name: str, namespace: str) -> bool:
+    """
+    Check whether a Route exists.
+
+    Args:
+        client: DynamicClient to query the cluster
+        name: Route name
+        namespace: Namespace to look in
+
+    Returns:
+        True if the Route exists, False otherwise
+    """
+    return bool(Route(client=client, name=name, namespace=namespace).exists)
+
+
+def wait_for_route(client: DynamicClient, name: str, namespace: str, *, present: bool) -> None:
+    """
+    Wait until a Route's existence matches the expected state.
+
+    Args:
+        client: DynamicClient to query the cluster
+        name: Route name
+        namespace: Namespace to look in
+        present: True to wait for the Route to exist, False to wait for it to be gone
+    """
+    for sample in TimeoutSampler(
+        wait_timeout=120,
+        sleep=5,
+        func=lambda: route_exists(client, name, namespace),
+    ):
+        if sample == present:
+            break
+
+
+def condition_reason(nemo_cr: NemoGuardrails, condition_type: str) -> str | None:
+    """
+    Get the reason of a specific status condition on a NemoGuardrails CR.
+
+    Args:
+        nemo_cr: NemoGuardrails resource to inspect
+        condition_type: Condition "type" to look up (e.g. "RouteReady")
+
+    Returns:
+        The condition's "reason" value, or None if the condition is not present
+    """
+    conditions = (nemo_cr.instance.status or {}).get("conditions", [])
+    for cond in conditions:
+        if cond.get("type") == condition_type:
+            return cond.get("reason")
+    return None

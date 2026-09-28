@@ -1319,6 +1319,15 @@ class TestEvalHubReconcileUpgrade:
             "Standard controller-runtime work metrics missing after upgrade"
         )
 
+    @pytest.mark.skip(
+        reason=(
+            "TC-UPG-003 requires observing state after an operator rollback, but this suite's "
+            "upgrade model only supports pre_upgrade/post_upgrade phases (no rollback phase or "
+            "fixture exists). As written (marked pre_upgrade), this test runs before the initial "
+            "upgrade and never exercises a real rollback, so it cannot validate the described "
+            "behavior. Skipping until rollback CI orchestration exists."
+        )
+    )
     @pytest.mark.pre_upgrade
     def test_rollback_removes_new_metrics(
         self,

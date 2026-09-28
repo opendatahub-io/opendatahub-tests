@@ -7,9 +7,9 @@ from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import (
     AITENANT_CRD_NAME,
     AITenantTestContext,
     verify_aitenant_bootstrap_children,
-    verify_aitenant_ready,
     verify_default_maas_tenant_unaffected,
 )
+from tests.ai_gateway.models_as_a_service.utils import verify_aitenant_ready
 
 LOGGER = structlog.get_logger(name=__name__)
 

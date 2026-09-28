@@ -314,7 +314,7 @@ def create_llmisvc(
                 {
                     "name": "main",
                     "resources": container_resources,
-                    "env": container_env if container_env else [],
+                    "env": container_env or [],
                 }
             ]
         }

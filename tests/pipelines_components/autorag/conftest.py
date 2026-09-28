@@ -25,11 +25,6 @@ from ocp_resources.service_account import ServiceAccount
 from ogx_client import APIConnectionError, InternalServerError, OgxClient
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
 
-from tests.fixtures.vector_io import (  # noqa: NIT001
-    MILVUS_TOKEN,
-    get_etcd_deployment_template,
-    get_milvus_deployment_template,
-)
 from tests.pipelines_components.constants import (
     AUTORAG_EMBEDDING_MAX_MODEL_LEN,
     AUTORAG_INPUT_DATA_KEY,
@@ -68,6 +63,11 @@ from utilities.inference_utils import create_isvc
 from utilities.infra import create_ns
 from utilities.resources.ogx_server import OgxServer
 from utilities.serving_runtime import ServingRuntimeFromTemplate
+from utilities.vector_io import (
+    MILVUS_TOKEN,
+    get_etcd_deployment_template,
+    get_milvus_deployment_template,
+)
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -127,14 +127,17 @@ def _create_ogx_server(
 )
 def _wait_for_unique_ogx_pod(client: DynamicClient, namespace: str) -> Pod:
     pods = list(Pod.get(client=client, namespace=namespace, label_selector=OGX_CORE_POD_FILTER))
-    if not pods:
-        raise ResourceNotFoundError(f"No pods found with label selector {OGX_CORE_POD_FILTER} in namespace {namespace}")
-    if len(pods) != 1:
-        raise UnexpectedResourceCountError(
-            f"Expected exactly 1 pod with label selector {OGX_CORE_POD_FILTER} "
-            f"in namespace {namespace}, found {len(pods)}"
+    active_pods = [pod for pod in pods if not getattr(pod.bound_pod.metadata, "deletionTimestamp", None)]
+    if not active_pods:
+        raise ResourceNotFoundError(
+            f"No active pods found with label selector {OGX_CORE_POD_FILTER} in namespace {namespace}"
         )
-    return pods[0]
+    if len(active_pods) != 1:
+        raise UnexpectedResourceCountError(
+            f"Expected exactly 1 active pod with label selector {OGX_CORE_POD_FILTER} "
+            f"in namespace {namespace}, found {len(active_pods)}"
+        )
+    return active_pods[0]
 
 
 @retry(wait_timeout=90, sleep=5)

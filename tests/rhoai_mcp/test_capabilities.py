@@ -11,6 +11,7 @@ from fastmcp.client.transports import StreamableHttpTransport
 
 from tests.rhoai_mcp.constants import (
     RHOAI_MCP_EXPECTED_CATALOG_TOOLS,
+    RHOAI_MCP_EXPECTED_PLANNER_TOOLS,
     RHOAI_MCP_EXPECTED_PROMPTS,
     RHOAI_MCP_EXPECTED_SERVING_TOOLS,
 )
@@ -46,7 +47,11 @@ class TestRhoaiMcpCapabilities:
         async with Client(rhoai_mcp_transport) as client:
             tools = await client.list_tools()
             tool_names = {tool.name for tool in tools}
-            expected = set(RHOAI_MCP_EXPECTED_SERVING_TOOLS) | set(RHOAI_MCP_EXPECTED_CATALOG_TOOLS)
+            expected = (
+                set(RHOAI_MCP_EXPECTED_SERVING_TOOLS)
+                | set(RHOAI_MCP_EXPECTED_CATALOG_TOOLS)
+                | set(RHOAI_MCP_EXPECTED_PLANNER_TOOLS)
+            )
             missing = expected - tool_names
             assert not missing, f"Expected tools not found: {missing}. Got: {sorted(tool_names)}"
 

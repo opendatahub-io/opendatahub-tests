@@ -17,3 +17,7 @@ class AiHubImages:
         "public.ecr.aws/docker/library/postgres"
         "@sha256:6e9bbed548cc1ca776dd4685cfea9efe60d58df91186ec6bad7328fd03b388a5"  # pragma: allowlist secret
     )
+    KUBERNETES_MCP_SERVER_V0_0_65: str = (
+        "quay.io/containers/kubernetes_mcp_server"
+        "@sha256:5df586e2c7ced2a3125f6e78923388d80b69de0a2ad1470325b05318f12725bd"
+    )

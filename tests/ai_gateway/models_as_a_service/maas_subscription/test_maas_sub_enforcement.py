@@ -6,6 +6,7 @@ import structlog
 
 from tests.ai_gateway.models_as_a_service.maas_subscription.utils import (
     chat_payload_for_url,
+    poll_expected_status,
 )
 from tests.ai_gateway.models_as_a_service.utils import build_maas_headers
 
@@ -37,12 +38,17 @@ class TestSubscriptionEnforcementTinyLlama:
     ) -> None:
         """
         Verify a premium user with a subscription-bound API key can access the premium model.
+
+        Uses poll_expected_status to tolerate data-plane propagation delay
+        between the control-plane fixtures reporting Ready and the Envoy
+        upstream becoming routable.
         """
-        resp = request_session_http.post(
-            url=model_url_tinyllama_premium,
+        resp = poll_expected_status(
+            request_session_http=request_session_http,
+            model_url=model_url_tinyllama_premium,
             headers=build_maas_headers(token=api_key_bound_to_premium_subscription),
-            json=chat_payload_for_url(model_url=model_url_tinyllama_premium),
-            timeout=60,
+            payload=chat_payload_for_url(model_url=model_url_tinyllama_premium),
+            expected_statuses={200},
         )
         LOGGER.info(f"test_subscribed_user_gets_200 -> {resp.status_code}")
         assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text[:200]}"

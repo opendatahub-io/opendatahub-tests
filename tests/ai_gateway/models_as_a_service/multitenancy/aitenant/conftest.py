@@ -16,13 +16,15 @@ from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import (
     AITenantPreexistingNamespaceContext,
     AITenantTestContext,
     aitenant_admin_role_bindings,
+    build_aitenant_test_context,
+    expected_tenant_namespace_name,
+)
+from tests.ai_gateway.models_as_a_service.utils import (
     aitenant_from_spec,
     bootstrap_gateway_context,
     bootstrap_gateway_ref,
     build_aitenant_spec,
-    build_aitenant_test_context,
     deploy_and_verify_aitenant_ready,
-    expected_tenant_namespace_name,
 )
 from utilities.general import generate_random_name
 from utilities.resources.aitenant import AITenant

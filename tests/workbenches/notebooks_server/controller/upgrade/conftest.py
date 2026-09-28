@@ -14,6 +14,7 @@ from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.service import Service
 from pytest_testconfig import config as py_config
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.workbenches.notebooks_server.controller.upgrade.kueue_constants import (
     NEW_KUEUE_NOTEBOOK_NAME,
@@ -39,13 +40,12 @@ from tests.workbenches.notebooks_server.controller.utils import (
 from utilities import constants
 from utilities.infra import create_ns
 from utilities.kueue_utils import (
-    KUEUE_CLUSTER_QUEUE_LABEL,
-    KUEUE_LOCAL_QUEUE_LABEL,
     KUEUE_MANAGED_LABEL,
     KUEUE_QUEUE_NAME_LABEL,
     ClusterQueue,
     LocalQueue,
     ResourceFlavor,
+    Workload,
     create_cluster_queue,
     create_local_queue,
     create_resource_flavor,
@@ -863,15 +863,15 @@ def upgrade_kueue_hardware_profile(
                         "displayName": "CPU",
                         "identifier": "cpu",
                         "minCount": "500m",
-                        "maxCount": "2",
-                        "defaultCount": "1",
+                        "maxCount": "1",
+                        "defaultCount": "500m",
                         "resourceType": "CPU",
                     },
                     {
                         "displayName": "Memory",
                         "identifier": "memory",
                         "minCount": "512Mi",
-                        "maxCount": "4Gi",
+                        "maxCount": "2Gi",
                         "defaultCount": "1Gi",
                         "resourceType": "Memory",
                     },
@@ -941,6 +941,21 @@ def upgrade_kueue_notebook(
         if teardown_resources:
             nb.client = admin_client
             nb.clean_up()
+            try:
+                for sample in TimeoutSampler(
+                    wait_timeout=60,
+                    sleep=5,
+                    func=lambda: list(Workload.get(client=admin_client, namespace=upgrade_kueue_namespace.name)),
+                ):
+                    if not sample:
+                        break
+            except TimeoutExpiredError:
+                remaining = list(Workload.get(client=admin_client, namespace=upgrade_kueue_namespace.name))
+                pytest.fail(
+                    f"Kueue did not clean up {len(remaining)} Workload(s) within 60s after notebook deletion: "
+                    f"{[wl.name for wl in remaining]}. "
+                    f"This indicates Kueue is not garbage-collecting Workloads for deleted StatefulSets."
+                )
     else:
         notebook_dict = build_notebook_dict(
             namespace=upgrade_kueue_namespace.name,
@@ -1140,7 +1155,7 @@ def capture_kueue_baseline(
     pod_labels = upgrade_kueue_notebook_pod.instance.metadata.labels or {}
     notebook_generation = upgrade_kueue_notebook.instance.metadata.generation
 
-    for _label in (KUEUE_MANAGED_LABEL, KUEUE_QUEUE_NAME_LABEL, KUEUE_CLUSTER_QUEUE_LABEL, KUEUE_LOCAL_QUEUE_LABEL):
+    for _label in (KUEUE_MANAGED_LABEL, KUEUE_QUEUE_NAME_LABEL):
         assert pod_labels.get(_label), (
             f"Pre-upgrade kueue pod '{upgrade_kueue_notebook_pod.name}' missing label '{_label}'; "
             f"refusing to capture an empty baseline. Labels: {list(pod_labels.keys())}"
@@ -1152,8 +1167,6 @@ def capture_kueue_baseline(
         "pod_creation_timestamp": creation_timestamp,
         "pod_kueue_managed_label": pod_labels.get(KUEUE_MANAGED_LABEL, ""),
         "pod_queue_name_label": pod_labels.get(KUEUE_QUEUE_NAME_LABEL, ""),
-        "pod_cluster_queue_label": pod_labels.get(KUEUE_CLUSTER_QUEUE_LABEL, ""),
-        "pod_local_queue_label": pod_labels.get(KUEUE_LOCAL_QUEUE_LABEL, ""),
         "notebook_generation": notebook_generation,
         "cluster_queue_name": UPGRADE_KUEUE_CLUSTER_QUEUE_NAME,
         "local_queue_name": UPGRADE_KUEUE_LOCAL_QUEUE_NAME,

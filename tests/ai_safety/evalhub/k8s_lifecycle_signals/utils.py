@@ -1,5 +1,6 @@
 import json
 import re
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
@@ -14,13 +15,14 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_safety.evalhub.constants import EVALHUB_EVENTS_CLUSTERROLE, EVALHUB_VLLM_EMULATOR_PORT
 from tests.ai_safety.evalhub.k8s_lifecycle_signals.constants import (
+    LIFECYCLE_EVENT_EMISSION_SLA,
     LIFECYCLE_EVENT_EMISSION_TIMEOUT,
     LIFECYCLE_JOB_LABEL_TIMEOUT,
     LIFECYCLE_JOB_SUBMIT_TIMEOUT,
     LIFECYCLE_OOM_MEMORY_LIMIT,
+    LIFECYCLE_PHASE_COMPLETED,
     LIFECYCLE_PHASE_FAILED,
     LIFECYCLE_PHASE_LABEL,
-    LIFECYCLE_PHASE_SUCCEEDED,
     LIFECYCLE_REASON_COMPLETED,
     LIFECYCLE_REASON_FAILED,
     LIFECYCLE_SOURCE_OPERATOR,
@@ -93,7 +95,7 @@ def kueue_local_queue_exists(admin_client: DynamicClient, namespace: str, queue_
     from utilities.kueue_utils import LocalQueue
 
     local_queue = LocalQueue(client=admin_client, name=queue_name, namespace=namespace)
-    return local_queue.exists
+    return bool(local_queue.exists)
 
 
 def wait_for_job_label(
@@ -154,7 +156,7 @@ def wait_for_success_phase_signals(
             job_name=job_name,
             namespace=namespace,
             key=LIFECYCLE_PHASE_LABEL,
-            expected_value=LIFECYCLE_PHASE_SUCCEEDED,
+            expected_value=LIFECYCLE_PHASE_COMPLETED,
             timeout=label_timeout,
             sleep=2,
         )
@@ -394,7 +396,9 @@ def wait_for_event(
     """Wait until at least one Kubernetes Event with the given reason exists for the Job.
 
     Returns the first matching Event dict. Raises TimeoutExpiredError on timeout.
+    Asserts the event arrived within LIFECYCLE_EVENT_EMISSION_SLA seconds.
     """
+    start = time.monotonic()
 
     def _find_event() -> dict[str, Any] | None:
         events = list_events_for_job(
@@ -407,7 +411,12 @@ def wait_for_event(
 
     for event in TimeoutSampler(wait_timeout=timeout, sleep=2, func=_find_event):
         if event is not None:
-            LOGGER.info(f"Event {reason} emitted for job {job_name}")
+            elapsed = time.monotonic() - start
+            LOGGER.info(f"Event {reason} emitted for job {job_name} (elapsed={elapsed:.1f}s)")
+            assert elapsed <= LIFECYCLE_EVENT_EMISSION_SLA, (
+                f"Event {reason!r} for job {job_name} arrived after SLA: "
+                f"{elapsed:.1f}s > {LIFECYCLE_EVENT_EMISSION_SLA}s"
+            )
             return event
     raise TimeoutExpiredError(f"Event {reason!r} for job {job_name} not emitted within {timeout}s")
 

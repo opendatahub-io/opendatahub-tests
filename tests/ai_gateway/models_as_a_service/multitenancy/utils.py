@@ -24,10 +24,10 @@ from tests.ai_gateway.models_as_a_service.maas_api_key.utils import (
 from tests.ai_gateway.models_as_a_service.maas_subscription.utils import create_maas_subscription
 from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import (
     AIGATEWAY_BOOTSTRAPPED_TENANT_NAME,
-    AIGATEWAY_GATEWAY_CLASS_NAME,
     AITenantTestContext,
 )
 from tests.ai_gateway.models_as_a_service.utils import (
+    AIGATEWAY_GATEWAY_CLASS_NAME,
     assert_api_key_created_ok,
     create_api_key,
     gateway_probe_reaches_maas_api,
@@ -480,17 +480,19 @@ def isolation_tenant_api_key_id(
     assert_api_key_created_ok(resp=create_response, body=api_key_body, required_fields=("id",))
     key_id: str = api_key_body["id"]
     LOGGER.info(f"{fixture_label}: created key id={key_id} name={key_name}")
-    yield key_id
-    revoke_response = revoke_api_key(
-        request_session_http=request_session_http,
-        base_url=base_url,
-        key_id=key_id,
-        ocp_user_token=ocp_user_token,
-    )[0]
-    if revoke_response.status_code not in (200, 404):
-        raise AssertionError(
-            f"Unexpected teardown status for {fixture_label} key id={key_id}: {revoke_response.status_code}"
-        )
+    try:
+        yield key_id
+    finally:
+        revoke_response = revoke_api_key(
+            request_session_http=request_session_http,
+            base_url=base_url,
+            key_id=key_id,
+            ocp_user_token=ocp_user_token,
+        )[0]
+        if revoke_response.status_code not in (200, 404):
+            raise AssertionError(
+                f"Unexpected teardown status for {fixture_label} key id={key_id}: {revoke_response.status_code}"
+            )
 
 
 @contextmanager
@@ -515,17 +517,19 @@ def isolation_tenant_api_key_plaintext(
     key_id: str = api_key_body["id"]
     plaintext_key: str = api_key_body["key"]
     LOGGER.info(f"{fixture_label}: created key id={key_id} name={key_name}")
-    yield plaintext_key
-    revoke_response = revoke_api_key(
-        request_session_http=request_session_http,
-        base_url=base_url,
-        key_id=key_id,
-        ocp_user_token=ocp_user_token,
-    )[0]
-    if revoke_response.status_code not in (200, 404):
-        raise AssertionError(
-            f"Unexpected teardown status for {fixture_label} key id={key_id}: {revoke_response.status_code}"
-        )
+    try:
+        yield plaintext_key
+    finally:
+        revoke_response = revoke_api_key(
+            request_session_http=request_session_http,
+            base_url=base_url,
+            key_id=key_id,
+            ocp_user_token=ocp_user_token,
+        )[0]
+        if revoke_response.status_code not in (200, 404):
+            raise AssertionError(
+                f"Unexpected teardown status for {fixture_label} key id={key_id}: {revoke_response.status_code}"
+            )
 
 
 def maas_api_deployment_name_for_aitenant(aitenant_name: str) -> str:

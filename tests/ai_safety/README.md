@@ -1,6 +1,6 @@
 # Model Explainability Tests
 
-This directory contains tests for AI/ML model explainability, trustworthiness, evaluation, and safety components in OpenDataHub/RHOAI. It covers TrustyAI Service, Guardrails Orchestrator, LM Eval, EvalHub, and the TrustyAI Operator.
+This directory contains tests for AI/ML model explainability, trustworthiness, evaluation, and safety components in OpenDataHub/RHOAI. It covers TrustyAI Service, NeMo Guardrails, LM Eval, EvalHub, and the TrustyAI Operator.
 
 ## Directory Structure
 
@@ -15,14 +15,6 @@ ai_safety/
 │   ├── test_evalhub_health.py           # Health endpoint validation
 │   └── utils.py
 │
-├── guardrails/                          # AI Safety Guardrails tests
-│   ├── conftest.py                      # Detectors, Tempo, OpenTelemetry fixtures
-│   ├── constants.py
-│   ├── test_guardrails.py               # Built-in, HuggingFace, autoconfig tests
-│   ├── upgrade/
-│   │   └── test_guardrails_upgrade.py   # Pre/post-upgrade tests
-│   └── utils.py
-│
 ├── lm_eval/                             # Language Model Evaluation tests
 │   ├── conftest.py                      # LMEvalJob fixtures (HF, local, vLLM, S3, OCI)
 │   ├── constants.py                     # Task definitions (UNITXT, LLMAAJ)
@@ -35,6 +27,12 @@ ai_safety/
 │   ├── constants.py                     # Test data, entity types, policies
 │   ├── test_nemo_guardrails.py          # API, chat/completions, guardrail/checks, multi-server tests
 │   ├── utils.py                         # Config generation, request helpers
+│
+├── trustyai_module/                     # TrustyAI modular operator health
+│   ├── conftest.py                      # Module-operator fixtures and architecture guard
+│   ├── constants.py
+│   ├── test_trustyai_module_health.py    # Tier1 module CR / operator health
+│   └── utils.py
 │
 ├── trustyai_operator/                   # TrustyAI Operator validation
 │   ├── test_trustyai_operator.py        # Operator image validation
@@ -69,9 +67,9 @@ ai_safety/
 ### Current Test Suites
 
 - **`evalhub/`** - EvalHub service health endpoint validation via kube-rbac-proxy
-- **`guardrails/`** - Guardrails Orchestrator tests with built-in regex detectors (PII), HuggingFace detectors (prompt injection, HAP), auto-configuration, and gateway routing. Includes OpenTelemetry/Tempo trace integration
 - **`lm_eval/`** - Language Model Evaluation tests covering HuggingFace models, local/offline tasks, vLLM integration, S3 storage, and OCI registry artifacts
 - **`nemo_guardrails/`** - NeMo Guardrails tests for LLM-as-a-judge (self-check policies), Presidio PII detection (email, SSN, credit card, person names), multi-server deployments, multi-configuration servers, authentication (kube-rbac-proxy), and secret mounting for API tokens
+- **`trustyai_module/`** - TrustyAI modular operator tier1 health: module CRD, module operator Deployment, singleton `default-trustyai` Ready condition, workload operator Deployment, and DSC/platform ConfigMaps
 - **`trustyai_operator/`** - TrustyAI operator container image validation (SHA256 digests, CSV relatedImages)
 - **`trustyai_service/`** - TrustyAI Service tests for drift detection (4 metrics), fairness metrics (SPD, DIR), database migration, multi-namespace support, and upgrade scenarios. Tests run against both PVC and database storage backends
 
@@ -103,9 +101,6 @@ uv run pytest tests/ai_safety/
 # Run TrustyAI Service tests
 uv run pytest tests/ai_safety/trustyai_service/
 
-# Run Guardrails Orchestrator tests
-uv run pytest tests/ai_safety/guardrails/
-
 # Run NeMo Guardrails tests
 uv run pytest tests/ai_safety/nemo_guardrails/
 
@@ -114,6 +109,9 @@ uv run pytest tests/ai_safety/lm_eval/
 
 # Run EvalHub tests
 uv run pytest tests/ai_safety/evalhub/
+
+# Run TrustyAI modular operator health tests
+uv run pytest tests/ai_safety/trustyai_module/
 ```
 
 ### Run Tests with Markers
@@ -150,41 +148,6 @@ Upgrade tests run in two phases:
    ```
 
 ### Upgrade Test Coverage
-
-#### Guardrails Orchestrator
-
-**Location:** `tests/ai_safety/guardrails/upgrade/test_guardrails_upgrade.py`
-
-**Test Classes:**
-
-- `TestGuardrailsOrchestratorWithBuiltInDetectorsPreUpgrade`
-- `TestGuardrailsOrchestratorWithBuiltInDetectorsPostUpgrade`
-
-**Covered Upgrade Paths:**
-
-- Built-in detector persistence (regex, PII detection)
-  - Pre-upgrade: Deploy orchestrator with built-in regex detectors for email and SSN detection
-  - Post-upgrade: Verify detectors continue to function, health endpoints remain responsive
-  - Validated: Input detection, output detection, passthrough routing, health/info endpoints
-
-**What's Validated:**
-
-- Orchestrator health and info endpoints remain responsive after upgrade
-- Built-in regex detectors continue detecting unsuitable input/output
-- Gateway routing and passthrough functionality persists
-- Configuration and detector settings survive the upgrade
-
-**Example:**
-
-```bash
-# Pre-upgrade
-uv run pytest -m pre_upgrade tests/ai_safety/guardrails/upgrade/
-
-# Perform platform upgrade
-
-# Post-upgrade
-uv run pytest -m post_upgrade tests/ai_safety/guardrails/upgrade/
-```
 
 #### TrustyAI Service
 
