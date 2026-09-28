@@ -5,6 +5,8 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
+from ocp_resources.resource import ResourceEditor
+from ocp_resources.route import Route
 from ocp_resources.trustyai_service import TrustyAIService
 from timeout_sampler import retry
 
@@ -31,9 +33,9 @@ logger = structlog.get_logger(name=__name__)
 
 
 @retry(wait_timeout=60, sleep=5)
-def _wait_for_route_ready(trustyai_service: TrustyAIService, token: str) -> bool:
-    route = trustyai_service.external_route
-    url = f"https://{route}/q/health"
+def _wait_for_route_ready(client: DynamicClient, trustyai_service: TrustyAIService, token: str) -> bool:
+    route = Route(client=client, namespace=trustyai_service.namespace, name=TRUSTYAI_SERVICE_NAME, ensure_exists=True)
+    url = f"https://{route.instance.spec.host}/q/health"
     response = requests.get(url, headers={"Authorization": f"Bearer {token}"}, verify=False, timeout=10)
     content_type = response.headers.get("Content-Type", "")
     logger.info(f"Route readiness check: status={response.status_code}, content-type={content_type}")
@@ -79,6 +81,7 @@ def test_trustyai_service_with_invalid_db_cert(
         client=admin_client,
         namespace=model_namespace,
         label_selector=f"app.kubernetes.io/instance={trustyai_service_with_invalid_db_cert.name}",
+        trustyai_service=trustyai_service_with_invalid_db_cert,
     )
 
 
@@ -155,23 +158,79 @@ def test_trustyai_service_db_migration(
         data_path=f"{DRIFT_BASE_DATA_PATH}/training_data.json",
     )
 
+    trustyai_deployment = Deployment(
+        client=admin_client,
+        name=TRUSTYAI_SERVICE_NAME,
+        namespace=trustyai_service.namespace,
+        ensure_exists=True,
+    )
+    original_deployment_spec = trustyai_deployment.instance.spec.template.spec.to_dict()
+    source_volume = next(volume for volume in original_deployment_spec["volumes"] if "persistentVolumeClaim" in volume)
+    source_mount = next(
+        mount
+        for container in original_deployment_spec["containers"]
+        if container["name"] == TRUSTYAI_SERVICE_NAME
+        for mount in container.get("volumeMounts", [])
+        if mount["mountPath"] == "/inputs"
+    )
+
     trustyai_db_migration_patched_service = patch_trustyai_service_cr(
         trustyai_service=trustyai_service, patches=TRUSTYAI_DB_MIGRATION_PATCH
     )
+
+    deployment_spec = trustyai_deployment.instance.spec.template.spec.to_dict()
+    deployment_spec["volumes"] = [
+        source_volume if volume["name"] == source_volume["name"] else volume for volume in deployment_spec["volumes"]
+    ]
+    if not any(volume["name"] == "trustyai-service-db-ca" for volume in deployment_spec["volumes"]):
+        deployment_spec["volumes"].append({
+            "name": "trustyai-service-db-ca",
+            "secret": {"secretName": "trustyai-service-db-ca"},  # pragma: allowlist secret
+        })
+    for container in deployment_spec["containers"]:
+        if container["name"] == TRUSTYAI_SERVICE_NAME:
+            container["volumeMounts"] = [
+                source_mount if mount["name"] == source_mount["name"] else mount
+                for mount in container.get("volumeMounts", [])
+            ]
+            if not any(mount["name"] == "trustyai-service-db-ca" for mount in container["volumeMounts"]):
+                container["volumeMounts"].append({
+                    "name": "trustyai-service-db-ca",
+                    "mountPath": "/etc/tls/db",
+                    "readOnly": True,
+                })
+            container_env = container.setdefault("env", [])
+            for environment_variable in container_env:
+                if environment_variable.get("name") == "SERVICE_STORAGE_FORMAT":
+                    environment_variable["value"] = "DATABASE"
+                    environment_variable.pop("valueFrom", None)
+                    break
+            else:
+                container_env.append({"name": "SERVICE_STORAGE_FORMAT", "value": "DATABASE"})
+            container_env.append({"name": "DATABASE_ATTEMPT_MIGRATION", "value": "true"})
+            break
+    else:
+        raise AssertionError(f"Container {TRUSTYAI_SERVICE_NAME} not found in TrustyAI deployment")
+    ResourceEditor(
+        patches={
+            trustyai_deployment: {
+                "spec": {"template": {"spec": deployment_spec}},
+            }
+        }
+    ).update()
 
     wait_for_trustyai_db_migration_complete_log(
         client=admin_client,
         trustyai_service=trustyai_db_migration_patched_service,
     )
 
-    Deployment(
-        client=admin_client,
-        name=TRUSTYAI_SERVICE_NAME,
-        namespace=trustyai_db_migration_patched_service.namespace,
-        ensure_exists=True,
-    ).wait_for_replicas()
+    trustyai_deployment.wait_for_replicas()
 
-    _wait_for_route_ready(trustyai_service=trustyai_db_migration_patched_service, token=current_client_token)
+    _wait_for_route_ready(
+        client=admin_client,
+        trustyai_service=trustyai_db_migration_patched_service,
+        token=current_client_token,
+    )
 
     verify_trustyai_service_metric_scheduling_request(
         client=admin_client,
