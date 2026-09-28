@@ -31,6 +31,7 @@ pytestmark = [pytest.mark.tier1, pytest.mark.usefixtures("skip_if_no_nfs_storage
     ],
     indirect=True,
 )
+@pytest.mark.arch_runtime
 class TestKservePVCWriteAccess:
     """Validate PVC write access control via the storage.kserve.io/readonly annotation.
 

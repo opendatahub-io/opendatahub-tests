@@ -23,6 +23,7 @@ RAW_DEPLOYMENT_ISVC_CONFIG = {
 
 
 @pytest.mark.rawdeployment
+@pytest.mark.arch_runtime
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service",
     [

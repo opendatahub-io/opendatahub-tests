@@ -10,6 +10,8 @@ from ocp_resources.resource import ResourceEditor
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 
+from tests.model_serving.model_server.conftest import arch_onnx_s3_path
+from utilities.constants import ModelFormat
 from utilities.inference_utils import create_isvc
 
 
@@ -21,6 +23,7 @@ def invalid_s3_models_inference_service(
     serving_runtime_from_template: ServingRuntime,
     ci_s3_bucket_name: str,
     model_service_account: ServiceAccount,
+    cluster_arch: str,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=unprivileged_client,
@@ -28,7 +31,11 @@ def invalid_s3_models_inference_service(
         namespace=unprivileged_model_namespace.name,
         runtime=serving_runtime_from_template.name,
         storage_uri=f"s3://{ci_s3_bucket_name}/non-existing-path/",
-        model_format=serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,
+        model_format=(
+            ModelFormat.ONNX
+            if cluster_arch == "arm64"
+            else serving_runtime_from_template.instance.spec.supportedModelFormats[0].name
+        ),
         model_service_account=model_service_account.name,
         deployment_mode=request.param["deployment-mode"],
         wait=False,
@@ -39,8 +46,14 @@ def invalid_s3_models_inference_service(
 
 @pytest.fixture
 def updated_s3_models_inference_service(
-    invalid_s3_models_inference_service: InferenceService, s3_models_storage_uri: str
+    invalid_s3_models_inference_service: InferenceService,
+    s3_models_storage_uri: str,
+    ci_s3_bucket_name: str,
+    models_s3_bucket_name: str,
+    cluster_arch: str,
 ) -> Generator[InferenceService, Any, Any]:
+    if cluster_arch == "arm64":
+        s3_models_storage_uri = f"s3://{models_s3_bucket_name}/{arch_onnx_s3_path(cluster_arch)}/"
     with ResourceEditor(
         patches={
             invalid_s3_models_inference_service: {

@@ -17,7 +17,6 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_serving.model_server.kserve.model_cache.utils import (
     LOCAL_MODEL_NODE_GROUP_NAME,
-    MINT_ONNX_STORAGE_PATH,
     MODEL_CACHE_HOST_PATH,
     MODEL_CACHE_NODE_PVC_NAME,
     MODEL_CACHE_SIZE,
@@ -27,15 +26,14 @@ from tests.model_serving.model_server.kserve.model_cache.utils import (
     cache_status_dict,
     wait_for_local_model_cache_nodes_downloaded,
 )
-from tests.model_serving.model_server.utils import verify_inference_response
+from tests.model_serving.model_server.utils import verify_arch_inference_response
 from utilities.constants import (
     KServeDeploymentType,
     ModelFormat,
     Protocols,
     RunTimeConfigs,
 )
-from utilities.inference_utils import Inference, create_isvc
-from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
+from utilities.inference_utils import create_isvc
 
 pytestmark = [
     pytest.mark.tier1,
@@ -44,6 +42,7 @@ pytestmark = [
 ]
 
 
+@pytest.mark.arch_runtime
 class TestModelCacheDeletion:
     """Tier 1: deleting a LocalModelNamespaceCache removes the CR and its PVCs."""
 
@@ -66,7 +65,7 @@ class TestModelCacheDeletion:
         ovms_kserve_serving_runtime: ServingRuntime,
         model_cache_infra_ready: DataScienceCluster,
         model_cache_download_s3_secret: Secret,
-        ci_s3_bucket_name: str,
+        model_cache_source_uri: str,
     ) -> None:
         """Given a NodeDownloaded cache with no bound ISVCs,
         when the cache CR is deleted,
@@ -75,7 +74,6 @@ class TestModelCacheDeletion:
         ns_name = unprivileged_model_namespace.name
         apps_ns: str = py_config["applications_namespace"]
         cache_name = f"del-test-{shortuuid.uuid()[:10].lower()}"
-        source_uri = f"s3://{ci_s3_bucket_name}/{MINT_ONNX_STORAGE_PATH}/"
 
         pvcs_before_cr_ns = {pvc.name for pvc in PersistentVolumeClaim.get(dyn_client=admin_client, namespace=ns_name)}
         pvcs_before_apps_ns = {
@@ -86,7 +84,7 @@ class TestModelCacheDeletion:
             client=admin_client,
             name=cache_name,
             namespace=ns_name,
-            source_model_uri=source_uri,
+            source_model_uri=model_cache_source_uri,
             model_size="100Mi",
             node_groups=[LOCAL_MODEL_NODE_GROUP_NAME],
             storage={"key": model_cache_download_s3_secret.name},
@@ -137,6 +135,7 @@ class TestModelCacheDeletion:
                 cache.clean_up()
 
 
+@pytest.mark.arch_runtime
 class TestModelCacheReuse:
     """Tier 1: a second ISVC reuses an existing cache; namespace isolation holds."""
 
@@ -159,21 +158,26 @@ class TestModelCacheReuse:
         ovms_kserve_serving_runtime: ServingRuntime,
         mnist_local_model_cache: LocalModelNamespaceCache,
         mnist_onnx_local_model_cache_inference_service: InferenceService,
-        ci_s3_bucket_name: str,
+        model_cache_source_uri: str,
+        cluster_arch: str,
     ) -> None:
         """Given a cached model with one bound ISVC,
         when a second ISVC with the same storageUri is deployed,
         then both ISVCs use PVC-backed storage and cache status lists both.
         """
         first_isvc = mnist_onnx_local_model_cache_inference_service
-        model_format_name: str = ovms_kserve_serving_runtime.instance.spec.supportedModelFormats[0].name
+        model_format_name: str = (
+            ModelFormat.ONNX
+            if cluster_arch == "arm64"
+            else ovms_kserve_serving_runtime.instance.spec.supportedModelFormats[0].name
+        )
 
         with create_isvc(
             client=unprivileged_client,
             name=f"{Protocols.HTTP}-{ModelFormat.ONNX}-lmcache-2",
             namespace=unprivileged_model_namespace.name,
             runtime=ovms_kserve_serving_runtime.name,
-            storage_uri=f"s3://{ci_s3_bucket_name}/{MINT_ONNX_STORAGE_PATH}/",
+            storage_uri=model_cache_source_uri,
             model_format=model_format_name,
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
             external_route=True,
@@ -185,13 +189,7 @@ class TestModelCacheReuse:
                 runtime_name=ovms_kserve_serving_runtime.name,
             )
 
-            verify_inference_response(
-                inference_service=second_isvc,
-                inference_config=ONNX_INFERENCE_CONFIG,
-                inference_type=Inference.INFER,
-                protocol=Protocols.HTTPS,
-                use_default_query=True,
-            )
+            verify_arch_inference_response(isvc=second_isvc, cluster_arch=cluster_arch)
 
             mnist_local_model_cache.get()
             status = cache_status_dict(cache=mnist_local_model_cache)
@@ -243,6 +241,7 @@ class TestModelCacheReuse:
         )
 
 
+@pytest.mark.arch_runtime
 class TestModelCacheStorageClass:
     """Tier 1: model cache PVCs use the expected StorageClass and capacity."""
 
@@ -333,6 +332,7 @@ class TestModelCacheStorageClass:
         assert capacity == MODEL_CACHE_SIZE, f"Download PV capacity is '{capacity}', expected '{MODEL_CACHE_SIZE}'"
 
 
+@pytest.mark.arch_runtime
 class TestModelCacheInvalidCredentials:
     """Tier 1: cache with invalid S3 credentials never reaches NodeDownloaded."""
 

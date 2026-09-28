@@ -22,6 +22,7 @@ from ocp_resources.storage_class import StorageClass
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
+from tests.model_serving.model_runtime.mlserver.constant import MODEL_CONFIGS, MODEL_PATH_PREFIX
 from tests.model_serving.model_server.kserve.model_cache.utils import (
     LOCAL_MODEL_NODE_GROUP_NAME,
     MODEL_CACHE_AGENT_DAEMONSET,
@@ -181,14 +182,16 @@ def ovms_kserve_serving_runtime(
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
-    if request.getfixturevalue("cluster_arch") != "amd64":
+    arch = request.getfixturevalue("cluster_arch")
+    arch_aware = request.node.get_closest_marker("arch_runtime") is not None
+    if arch != "amd64" and not arch_aware:
         pytest.skip("OVMS runtime is unsupported on ARM64")
 
     runtime_kwargs = {
         "client": unprivileged_client,
         "namespace": unprivileged_model_namespace.name,
         "name": request.param["runtime-name"],
-        "template_name": RuntimeTemplates.OVMS_KSERVE,
+        "template_name": RuntimeTemplates.MLSERVER if arch == "arm64" else RuntimeTemplates.OVMS_KSERVE,
         "multi_model": False,
         "resources": {
             ModelFormat.OVMS: {
@@ -198,13 +201,16 @@ def ovms_kserve_serving_runtime(
         },
     }
 
-    if model_format_name := request.param.get("model-format"):
+    if arch == "arm64":
+        runtime_kwargs.pop("resources")
+
+    if arch == "amd64" and (model_format_name := request.param.get("model-format")):
         runtime_kwargs["model_format_name"] = model_format_name
 
-    if supported_model_formats := request.param.get("supported-model-formats"):
+    if arch == "amd64" and (supported_model_formats := request.param.get("supported-model-formats")):
         runtime_kwargs["supported_model_formats"] = supported_model_formats
 
-    if runtime_image := request.param.get("runtime-image"):
+    if arch == "amd64" and (runtime_image := request.param.get("runtime-image")):
         runtime_kwargs["runtime_image"] = runtime_image
 
     with ServingRuntimeFromTemplate(**runtime_kwargs) as model_runtime:
@@ -241,18 +247,21 @@ def ovms_kserve_inference_service(
     unprivileged_model_namespace: Namespace,
     ovms_kserve_serving_runtime: ServingRuntime,
     ci_endpoint_s3_secret: Secret,
+    cluster_arch: str,
 ) -> Generator[InferenceService, Any, Any]:
     deployment_mode = request.param["deployment-mode"]
+    arch_aware = request.node.get_closest_marker("arch_runtime") is not None
+    arm = arch_aware and cluster_arch == "arm64"
     isvc_kwargs = {
         "client": unprivileged_client,
         "name": f"{request.param['name']}-{deployment_mode.lower()}",
         "namespace": unprivileged_model_namespace.name,
         "runtime": ovms_kserve_serving_runtime.name,
-        "storage_path": request.param["model-dir"],
-        "storage_key": ci_endpoint_s3_secret.name,
-        "model_format": ModelAndFormat.OPENVINO_IR,
+        "storage_path": arch_onnx_s3_path(cluster_arch) if arm else request.param["model-dir"],
+        "storage_key": request.getfixturevalue("models_endpoint_s3_secret").name if arm else ci_endpoint_s3_secret.name,
+        "model_format": ModelFormat.ONNX if arm else ModelAndFormat.OPENVINO_IR,
         "deployment_mode": deployment_mode,
-        "model_version": request.param["model-version"],
+        "model_version": None if arm else request.param["model-version"],
     }
 
     if env_vars := request.param.get("env-vars"):
@@ -285,18 +294,20 @@ def ovms_raw_inference_service(
     unprivileged_model_namespace: Namespace,
     ovms_kserve_serving_runtime: ServingRuntime,
     ci_endpoint_s3_secret: Secret,
+    cluster_arch: str,
 ) -> Generator[InferenceService, Any, Any]:
+    arm = request.node.get_closest_marker("arch_runtime") is not None and cluster_arch == "arm64"
     with create_isvc(
         client=unprivileged_client,
         name=f"{request.param['name']}-raw",
         namespace=unprivileged_model_namespace.name,
         external_route=True,
         runtime=ovms_kserve_serving_runtime.name,
-        storage_path=request.param["model-dir"],
-        storage_key=ci_endpoint_s3_secret.name,
-        model_format=ModelAndFormat.OPENVINO_IR,
+        storage_path=arch_onnx_s3_path(cluster_arch) if arm else request.param["model-dir"],
+        storage_key=request.getfixturevalue("models_endpoint_s3_secret").name if arm else ci_endpoint_s3_secret.name,
+        model_format=ModelFormat.ONNX if arm else ModelAndFormat.OPENVINO_IR,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-        model_version=request.param["model-version"],
+        model_version=None if arm else request.param["model-version"],
         stop_resume=request.param.get("stop", False),
     ) as isvc:
         yield isvc
@@ -637,6 +648,13 @@ def kueue_local_queue_from_template(
 
 
 # --- Arch-aware runtime selection fixtures ---
+
+
+def arch_onnx_s3_path(arch: str) -> str:
+    """Return the S3 model directory compatible with the selected runtime."""
+    if arch == "arm64":
+        return f"{MODEL_PATH_PREFIX}/{MODEL_CONFIGS[ModelFormat.ONNX]['s3_model_dir']}"
+    return "test-dir"
 
 
 @pytest.fixture(scope="session")

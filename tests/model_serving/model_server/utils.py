@@ -70,6 +70,34 @@ def is_arm64_cluster(client: DynamicClient) -> bool:
     return architecture == "arm64"
 
 
+def verify_arch_inference_response(isvc: InferenceService, cluster_arch: str) -> None:
+    """Verify the matching ONNX model response on x86 OVMS or ARM MLServer."""
+    if cluster_arch == "arm64":
+        from tests.model_serving.model_runtime.mlserver.constant import MODEL_CONFIGS
+        from tests.model_serving.model_runtime.mlserver.utils import (
+            run_mlserver_inference,
+            validate_deterministic_snapshot,
+        )
+        from utilities.constants import ModelFormat
+
+        response = run_mlserver_inference(
+            isvc=isvc,
+            input_data=MODEL_CONFIGS[ModelFormat.ONNX]["rest_query"],
+            model_version="",
+            protocol=Protocols.REST,
+        )
+        validate_deterministic_snapshot(response=response)
+        return
+
+    verify_inference_response(
+        inference_service=isvc,
+        inference_config=ONNX_INFERENCE_CONFIG,
+        inference_type=Inference.INFER,
+        protocol=Protocols.HTTPS if Inference(inference_service=isvc).visibility_exposed else Protocols.HTTP,
+        use_default_query=True,
+    )
+
+
 def verify_inference_response(
     inference_service: InferenceService | InferenceGraph,
     inference_config: dict[str, Any],

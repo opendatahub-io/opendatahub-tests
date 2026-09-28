@@ -82,13 +82,18 @@ def model_car_raw_inference_service_with_pull_secret(
     unprivileged_model_namespace: Namespace,
     serving_runtime_from_template: ServingRuntime,
 ) -> Generator[InferenceService, Any, Any]:
+    profile = request.getfixturevalue("arch_runtime_profile") if request.param.get("arch-aware") else None
     with create_isvc(
         client=unprivileged_client,
         name="model-car-raw",
         namespace=unprivileged_model_namespace.name,
         runtime=serving_runtime_from_template.name,
-        storage_uri=request.param["storage-uri"],
-        model_format=serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,
+        storage_uri=profile.model_car_image if profile else request.param["storage-uri"],
+        model_format=(
+            profile.model_car_format
+            if profile
+            else serving_runtime_from_template.instance.spec.supportedModelFormats[0].name
+        ),
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         image_pull_secrets=[ORIGINAL_PULL_SECRET],
         wait_for_predictor_pods=False,  # Until modelcar initContainer completed, other containers may have Error status

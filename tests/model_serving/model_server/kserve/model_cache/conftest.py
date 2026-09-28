@@ -17,11 +17,12 @@ from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
+from pytest import FixtureRequest
 from pytest_testconfig import config as py_config
 
+from tests.model_serving.model_server.conftest import arch_onnx_s3_path
 from tests.model_serving.model_server.kserve.model_cache.utils import (
     LOCAL_MODEL_NODE_GROUP_NAME,
-    MINT_ONNX_STORAGE_PATH,
     LocalModelNamespaceCache,
     wait_for_local_model_cache_nodes_downloaded,
 )
@@ -31,13 +32,22 @@ from utilities.infra import s3_endpoint_secret
 
 
 @pytest.fixture(scope="class")
+def model_cache_source_uri(request: FixtureRequest, ci_s3_bucket_name: str, cluster_arch: str) -> str:
+    """Use the same architecture-compatible source for cache and InferenceService."""
+    bucket_name = request.getfixturevalue("models_s3_bucket_name") if cluster_arch == "arm64" else ci_s3_bucket_name
+    return f"s3://{bucket_name}/{arch_onnx_s3_path(cluster_arch)}/"
+
+
+@pytest.fixture(scope="class")
 def model_cache_download_s3_secret(
+    request: FixtureRequest,
     admin_client: DynamicClient,
     aws_access_key_id: str,
     aws_secret_access_key: str,
     ci_s3_bucket_name: str,
     ci_s3_bucket_region: str,
     ci_s3_bucket_endpoint: str,
+    cluster_arch: str,
 ) -> Generator[Secret, Any, Any]:
     """S3 credential secret in the job namespace for ``LocalModelNamespaceCache`` download Jobs.
 
@@ -52,19 +62,27 @@ def model_cache_download_s3_secret(
         namespace=applications_namespace,
         aws_access_key=aws_access_key_id,
         aws_secret_access_key=aws_secret_access_key,
-        aws_s3_region=ci_s3_bucket_region,
-        aws_s3_bucket=ci_s3_bucket_name,
-        aws_s3_endpoint=ci_s3_bucket_endpoint,
+        aws_s3_region=(
+            request.getfixturevalue("models_s3_bucket_region") if cluster_arch == "arm64" else ci_s3_bucket_region
+        ),
+        aws_s3_bucket=(
+            request.getfixturevalue("models_s3_bucket_name") if cluster_arch == "arm64" else ci_s3_bucket_name
+        ),
+        aws_s3_endpoint=(
+            request.getfixturevalue("models_s3_bucket_endpoint") if cluster_arch == "arm64" else ci_s3_bucket_endpoint
+        ),
     ) as secret:
         yield secret
 
 
 @pytest.fixture(scope="class")
 def invalid_s3_download_secret(
+    request: FixtureRequest,
     admin_client: DynamicClient,
     ci_s3_bucket_name: str,
     ci_s3_bucket_region: str,
     ci_s3_bucket_endpoint: str,
+    cluster_arch: str,
 ) -> Generator[Secret, Any, Any]:
     """S3 secret with invalid credentials for negative download testing."""
     applications_namespace: str = py_config["applications_namespace"]
@@ -74,9 +92,15 @@ def invalid_s3_download_secret(
         namespace=applications_namespace,
         aws_access_key="INVALIDACCESSKEY12345",
         aws_secret_access_key="INVALIDSECRETACCESSKEY6789",  # pragma: allowlist secret
-        aws_s3_region=ci_s3_bucket_region,
-        aws_s3_bucket=ci_s3_bucket_name,
-        aws_s3_endpoint=ci_s3_bucket_endpoint,
+        aws_s3_region=(
+            request.getfixturevalue("models_s3_bucket_region") if cluster_arch == "arm64" else ci_s3_bucket_region
+        ),
+        aws_s3_bucket=(
+            request.getfixturevalue("models_s3_bucket_name") if cluster_arch == "arm64" else ci_s3_bucket_name
+        ),
+        aws_s3_endpoint=(
+            request.getfixturevalue("models_s3_bucket_endpoint") if cluster_arch == "arm64" else ci_s3_bucket_endpoint
+        ),
     ) as secret:
         yield secret
 
@@ -87,16 +111,15 @@ def mnist_local_model_cache(
     model_cache_infra_ready: DataScienceCluster,
     model_cache_download_s3_secret: Secret,
     unprivileged_model_namespace: Namespace,
-    ci_s3_bucket_name: str,
+    model_cache_source_uri: str,
 ) -> Generator[LocalModelNamespaceCache, Any, Any]:
     """Create a ``LocalModelNamespaceCache`` for the MNIST ONNX model and wait for ``NodeDownloaded``."""
     cache_name = f"mnist-onnx-{shortuuid.uuid()[:10].lower()}"
-    source_uri = f"s3://{ci_s3_bucket_name}/{MINT_ONNX_STORAGE_PATH}/"
     with LocalModelNamespaceCache(
         client=admin_client,
         name=cache_name,
         namespace=unprivileged_model_namespace.name,
-        source_model_uri=source_uri,
+        source_model_uri=model_cache_source_uri,
         model_size="100Mi",
         node_groups=[LOCAL_MODEL_NODE_GROUP_NAME],
         storage={"key": model_cache_download_s3_secret.name},
@@ -110,7 +133,8 @@ def mnist_onnx_local_model_cache_inference_service(
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     ovms_kserve_serving_runtime: ServingRuntime,
-    ci_s3_bucket_name: str,
+    cluster_arch: str,
+    model_cache_source_uri: str,
     mnist_local_model_cache: LocalModelNamespaceCache,
 ) -> Generator[InferenceService, Any, Any]:
     """Deploy a raw ``InferenceService`` whose storageUri matches the cached model.
@@ -124,8 +148,12 @@ def mnist_onnx_local_model_cache_inference_service(
         name=f"{Protocols.HTTP}-{ModelFormat.ONNX}-lmcache-{shortuuid.uuid()[:8].lower()}",
         namespace=unprivileged_model_namespace.name,
         runtime=ovms_kserve_serving_runtime.name,
-        storage_uri=f"s3://{ci_s3_bucket_name}/{MINT_ONNX_STORAGE_PATH}/",
-        model_format=ovms_kserve_serving_runtime.instance.spec.supportedModelFormats[0].name,
+        storage_uri=model_cache_source_uri,
+        model_format=(
+            ModelFormat.ONNX
+            if cluster_arch == "arm64"
+            else ovms_kserve_serving_runtime.instance.spec.supportedModelFormats[0].name
+        ),
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         external_route=True,
         timeout=900,

@@ -12,8 +12,9 @@ from ocp_resources.resource import ResourceEditor
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest import FixtureRequest
 
+from tests.model_serving.model_server.conftest import arch_onnx_s3_path
 from tests.model_serving.model_server.kserve.storage.pvc.utils import wait_for_rollout_complete
-from utilities.constants import KServeDeploymentType
+from utilities.constants import KServeDeploymentType, ModelFormat
 from utilities.general import download_model_data
 from utilities.inference_utils import create_isvc
 from utilities.infra import get_pods_by_isvc_label
@@ -32,6 +33,7 @@ def ci_bucket_downloaded_model_data(
     ci_s3_bucket_name: str,
     ci_s3_bucket_endpoint: str,
     ci_s3_bucket_region: str,
+    cluster_arch: str,
 ) -> str:
     return download_model_data(
         client=admin_client,
@@ -39,10 +41,14 @@ def ci_bucket_downloaded_model_data(
         aws_secret_access_key=aws_secret_access_key,
         model_namespace=unprivileged_model_namespace.name,
         model_pvc_name=model_pvc.name,
-        bucket_name=ci_s3_bucket_name,
-        aws_endpoint_url=ci_s3_bucket_endpoint,
-        aws_default_region=ci_s3_bucket_region,
-        model_path=request.param["model-dir"],
+        bucket_name=request.getfixturevalue("models_s3_bucket_name") if cluster_arch == "arm64" else ci_s3_bucket_name,
+        aws_endpoint_url=(
+            request.getfixturevalue("models_s3_bucket_endpoint") if cluster_arch == "arm64" else ci_s3_bucket_endpoint
+        ),
+        aws_default_region=(
+            request.getfixturevalue("models_s3_bucket_region") if cluster_arch == "arm64" else ci_s3_bucket_region
+        ),
+        model_path=arch_onnx_s3_path(cluster_arch),
         use_sub_path=True,
         restricted_scc_init=True,
     )
@@ -109,6 +115,7 @@ def pvc_inference_service(
     serving_runtime_from_template: ServingRuntime,
     model_pvc: PersistentVolumeClaim,
     ci_bucket_downloaded_model_data: str,
+    cluster_arch: str,
 ) -> Generator[InferenceService, Any, Any]:
     isvc_kwargs = {
         "client": unprivileged_client,
@@ -116,7 +123,11 @@ def pvc_inference_service(
         "namespace": unprivileged_model_namespace.name,
         "runtime": serving_runtime_from_template.name,
         "storage_uri": f"pvc://{model_pvc.name}/{ci_bucket_downloaded_model_data}",
-        "model_format": serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,
+        "model_format": (
+            ModelFormat.ONNX
+            if cluster_arch == "arm64"
+            else serving_runtime_from_template.instance.spec.supportedModelFormats[0].name
+        ),
         "deployment_mode": request.param.get("deployment-mode", KServeDeploymentType.RAW_DEPLOYMENT),
         "wait_for_predictor_pods": True,
     }

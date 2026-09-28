@@ -14,7 +14,8 @@ from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 
-from tests.model_serving.model_runtime.mlserver.constant import MODEL_CONFIGS, MODEL_PATH_PREFIX
+from tests.model_serving.model_runtime.mlserver.constant import MODEL_CONFIGS
+from tests.model_serving.model_server.conftest import arch_onnx_s3_path
 from tests.model_serving.model_server.utils import wait_for_raw_isvc_https_infer_ready
 from utilities.constants import (
     Annotations,
@@ -40,11 +41,15 @@ from utilities.serving_runtime import ServingRuntimeFromTemplate
 def auth_model_config(cluster_arch: str) -> dict[str, Any]:
     """Select a model and matching inference request for the cluster architecture."""
     if cluster_arch == "amd64":
-        return {"path": "test-dir", "template": RuntimeTemplates.OVMS_KSERVE, "inference": ONNX_INFERENCE_CONFIG}
+        return {
+            "path": arch_onnx_s3_path(cluster_arch),
+            "template": RuntimeTemplates.OVMS_KSERVE,
+            "inference": ONNX_INFERENCE_CONFIG,
+        }
 
     model = MODEL_CONFIGS[ModelFormat.ONNX]
     return {
-        "path": f"{MODEL_PATH_PREFIX}/{model['s3_model_dir']}",
+        "path": arch_onnx_s3_path(cluster_arch),
         "template": RuntimeTemplates.MLSERVER,
         "request": model["rest_query"],
     }
@@ -156,6 +161,8 @@ def http_s3_ovms_raw_inference_service(
     http_s3_ovms_serving_runtime: ServingRuntime,
     ci_s3_bucket_name: str,
     ci_endpoint_s3_secret: Secret,
+    models_endpoint_s3_secret: Secret,
+    cluster_arch: str,
     model_service_account: ServiceAccount,
     auth_model_config: dict[str, Any],
 ) -> Generator[InferenceService, Any, Any]:
@@ -166,7 +173,7 @@ def http_s3_ovms_raw_inference_service(
         name=f"{Protocols.HTTP}-{ModelFormat.ONNX}",
         namespace=unprivileged_model_namespace.name,
         runtime=http_s3_ovms_serving_runtime.name,
-        storage_key=ci_endpoint_s3_secret.name,
+        storage_key=models_endpoint_s3_secret.name if cluster_arch == "arm64" else ci_endpoint_s3_secret.name,
         storage_path=urlparse(storage_uri).path,
         model_format=ModelFormat.ONNX,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
@@ -185,6 +192,8 @@ def http_s3_ovms_raw_inference_service_2(
     http_s3_ovms_serving_runtime: ServingRuntime,
     ci_s3_bucket_name: str,
     ci_endpoint_s3_secret: Secret,
+    models_endpoint_s3_secret: Secret,
+    cluster_arch: str,
     model_service_account_2: ServiceAccount,
     auth_model_config: dict[str, Any],
 ) -> Generator[InferenceService, Any, Any]:
@@ -195,7 +204,7 @@ def http_s3_ovms_raw_inference_service_2(
         name=f"{Protocols.HTTP}-{ModelFormat.ONNX}-2",
         namespace=unprivileged_model_namespace.name,
         runtime=http_s3_ovms_serving_runtime.name,
-        storage_key=ci_endpoint_s3_secret.name,
+        storage_key=models_endpoint_s3_secret.name if cluster_arch == "arm64" else ci_endpoint_s3_secret.name,
         storage_path=urlparse(storage_uri).path,
         model_format=ModelFormat.ONNX,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
@@ -256,6 +265,10 @@ def unprivileged_ci_endpoint_s3_secret(
     ci_s3_bucket_name: str,
     ci_s3_bucket_region: str,
     ci_s3_bucket_endpoint: str,
+    models_s3_bucket_name: str,
+    models_s3_bucket_region: str,
+    models_s3_bucket_endpoint: str,
+    cluster_arch: str,
 ) -> Generator[Secret, Any, Any]:
     from utilities.infra import s3_endpoint_secret
 
@@ -265,8 +278,8 @@ def unprivileged_ci_endpoint_s3_secret(
         namespace=unprivileged_model_namespace.name,
         aws_access_key=aws_access_key_id,
         aws_secret_access_key=aws_secret_access_key,
-        aws_s3_region=ci_s3_bucket_region,
-        aws_s3_bucket=ci_s3_bucket_name,
-        aws_s3_endpoint=ci_s3_bucket_endpoint,
+        aws_s3_region=models_s3_bucket_region if cluster_arch == "arm64" else ci_s3_bucket_region,
+        aws_s3_bucket=models_s3_bucket_name if cluster_arch == "arm64" else ci_s3_bucket_name,
+        aws_s3_endpoint=models_s3_bucket_endpoint if cluster_arch == "arm64" else ci_s3_bucket_endpoint,
     ) as secret:
         yield secret

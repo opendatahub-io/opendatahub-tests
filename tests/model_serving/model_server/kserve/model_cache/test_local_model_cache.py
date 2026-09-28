@@ -10,10 +10,8 @@ from tests.model_serving.model_server.kserve.model_cache.utils import (
     assert_predictor_uses_cached_pvc,
     cache_status_dict,
 )
-from tests.model_serving.model_server.utils import verify_inference_response
-from utilities.constants import Protocols, RunTimeConfigs
-from utilities.inference_utils import Inference
-from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
+from tests.model_serving.model_server.utils import verify_arch_inference_response
+from utilities.constants import RunTimeConfigs
 
 pytestmark = [
     pytest.mark.smoke,
@@ -22,6 +20,7 @@ pytestmark = [
 ]
 
 
+@pytest.mark.arch_runtime
 class TestModelCacheSmoke:
     """Smoke coverage for KServe local model namespace cache (TC-04, TC-05)."""
 
@@ -75,6 +74,7 @@ class TestModelCacheSmoke:
         mnist_local_model_cache: LocalModelNamespaceCache,
         mnist_onnx_local_model_cache_inference_service: InferenceService,
         ovms_kserve_serving_runtime: ServingRuntime,
+        cluster_arch: str,
     ) -> None:
         """Given an ISVC whose storageUri matches a cached model, when inference runs
         over HTTPS, then PVC rewrite is present and response succeeds.
@@ -86,13 +86,7 @@ class TestModelCacheSmoke:
             runtime_name=ovms_kserve_serving_runtime.name,
         )
 
-        verify_inference_response(
-            inference_service=isvc,
-            inference_config=ONNX_INFERENCE_CONFIG,
-            inference_type=Inference.INFER,
-            protocol=Protocols.HTTPS,
-            use_default_query=True,
-        )
+        verify_arch_inference_response(isvc=isvc, cluster_arch=cluster_arch)
 
         mnist_local_model_cache.get()
         status = cache_status_dict(cache=mnist_local_model_cache)

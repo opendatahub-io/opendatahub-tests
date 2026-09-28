@@ -1,7 +1,12 @@
 """Unit checks for architecture-aware model-serving configuration."""
 
+from contextlib import contextmanager
+from types import SimpleNamespace
+
 import pytest
 
+from tests.model_serving.model_server import conftest as model_server_fixtures
+from tests.model_serving.model_server.conftest import arch_onnx_s3_path
 from tests.model_serving.model_server.kserve.authentication.conftest import auth_model_config
 from tests.model_serving.model_server.runtime_registry import get_runtime_profile, resolve_cluster_arch
 from utilities.constants import ModelFormat
@@ -41,6 +46,7 @@ def test_auth_model_matches_architecture(arch: str, path: str, input_name: str) 
     """Select a runtime-compatible S3 model and request for auth feature tests."""
     model = auth_model_config.__wrapped__(arch)
     assert model["path"] == path
+    assert arch_onnx_s3_path(arch) == path
     assert model["template"] == get_runtime_profile(arch).template
     query = (
         model["request"]["inputs"]
@@ -50,3 +56,28 @@ def test_auth_model_matches_architecture(arch: str, path: str, input_name: str) 
     assert query[0]["name"] == input_name
     if arch == "arm64":
         assert len(query[0]["data"]) == 3 * 224 * 224
+
+
+@pytest.mark.parametrize("arch", ["amd64", "arm64"])
+def test_arch_marked_runtime_uses_matching_template(arch: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """An opted-in MNIST feature test selects the runtime supported on its architecture."""
+    runtime_kwargs = {}
+
+    @contextmanager
+    def fake_runtime(**kwargs):
+        runtime_kwargs.update(kwargs)
+        yield SimpleNamespace(name="test-runtime")
+
+    monkeypatch.setattr(model_server_fixtures, "ServingRuntimeFromTemplate", fake_runtime)
+    request = SimpleNamespace(
+        param={"runtime-name": "test-runtime"},
+        node=SimpleNamespace(get_closest_marker=lambda name: True if name == "arch_runtime" else None),
+        getfixturevalue=lambda name: arch,
+    )
+    runtime = model_server_fixtures.ovms_kserve_serving_runtime.__wrapped__(
+        request, object(), SimpleNamespace(name="test-namespace")
+    )
+    next(runtime)
+    with pytest.raises(StopIteration):
+        next(runtime)
+    assert runtime_kwargs["template_name"] == get_runtime_profile(arch).template

@@ -101,10 +101,13 @@ def invalid_s3_credentials_secret(
 
 @pytest.fixture(scope="package")
 def ovms_serving_runtime(
+    cluster_arch: str,
     admin_client: DynamicClient,
     negative_test_namespace: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
     """Create OVMS serving runtime shared across all negative tests."""
+    if cluster_arch != "amd64":
+        pytest.skip("OVMS negative tests require x86_64; their payload and error contracts are OVMS-specific")
     with ServingRuntimeFromTemplate(
         client=admin_client,
         name="neg-ovms-runtime",
