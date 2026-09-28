@@ -175,9 +175,10 @@ def wait_for_unique_ogx_pod(client: DynamicClient, namespace: str) -> Pod:
             client=client,
             namespace=namespace,
             label_selector=OGX_CORE_POD_FILTER,
+            raw=True,
         )
     )
-    active_pods = [pod for pod in pods if not getattr(pod.instance.metadata, "deletionTimestamp", None)]
+    active_pods = [pod for pod in pods if not getattr(pod.metadata, "deletionTimestamp", None)]
     if not active_pods:
         raise ResourceNotFoundError(
             f"No active pods found with label selector {OGX_CORE_POD_FILTER} in namespace {namespace}"
@@ -188,7 +189,7 @@ def wait_for_unique_ogx_pod(client: DynamicClient, namespace: str) -> Pod:
             f"in namespace {namespace}, found {len(active_pods)}. "
             f"(possibly due to known bug RHAIENG-1819)"
         )
-    return active_pods[0]
+    return Pod(client=client, namespace=namespace, name=active_pods[0].metadata.name)
 
 
 @retry(wait_timeout=90, sleep=5)
