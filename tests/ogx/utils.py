@@ -177,7 +177,7 @@ def wait_for_unique_ogx_pod(client: DynamicClient, namespace: str) -> Pod:
             label_selector=OGX_CORE_POD_FILTER,
         )
     )
-    active_pods = [pod for pod in pods if not getattr(pod.bound_pod.metadata, "deletionTimestamp", None)]
+    active_pods = [pod for pod in pods if not getattr(pod.instance.metadata, "deletionTimestamp", None)]
     if not active_pods:
         raise ResourceNotFoundError(
             f"No active pods found with label selector {OGX_CORE_POD_FILTER} in namespace {namespace}"
