@@ -1,4 +1,3 @@
-import math
 import os
 import tempfile
 import time
@@ -169,7 +168,7 @@ def create_ogx_server(
     exceptions_dict={ResourceNotFoundError: [], UnexpectedResourceCountError: []},
 )
 def wait_for_unique_ogx_pod(client: DynamicClient, namespace: str) -> Pod:
-    """Wait until exactly one OgxServer pod is found in the
+    """Wait until exactly one active OgxServer pod is found in the
     namespace (multiple pods may indicate known bug RHAIENG-1819)."""
     pods = list(
         Pod.get(
@@ -178,15 +177,18 @@ def wait_for_unique_ogx_pod(client: DynamicClient, namespace: str) -> Pod:
             label_selector=OGX_CORE_POD_FILTER,
         )
     )
-    if not pods:
-        raise ResourceNotFoundError(f"No pods found with label selector {OGX_CORE_POD_FILTER} in namespace {namespace}")
-    if len(pods) != 1:
+    active_pods = [pod for pod in pods if not getattr(pod.bound_pod.metadata, "deletionTimestamp", None)]
+    if not active_pods:
+        raise ResourceNotFoundError(
+            f"No active pods found with label selector {OGX_CORE_POD_FILTER} in namespace {namespace}"
+        )
+    if len(active_pods) != 1:
         raise UnexpectedResourceCountError(
-            f"Expected exactly 1 pod with label selector {OGX_CORE_POD_FILTER} "
-            f"in namespace {namespace}, found {len(pods)}. "
+            f"Expected exactly 1 active pod with label selector {OGX_CORE_POD_FILTER} "
+            f"in namespace {namespace}, found {len(active_pods)}. "
             f"(possibly due to known bug RHAIENG-1819)"
         )
-    return pods[0]
+    return active_pods[0]
 
 
 @retry(wait_timeout=90, sleep=5)
@@ -393,55 +395,6 @@ def vector_store_upload_dataset(
             vector_store=vector_store,
             attributes=doc.attributes,
         )
-
-
-def extract_retrieved_contexts(response: Any) -> list[str]:
-    """
-    Extract unique retrieved contexts from a OGX Responses API output.
-
-    De-duplicates results so that repeated file_search_call hits (e.g. from
-    chained tool calls) don't inflate ContextPrecision/ContextRecall scores.
-
-    Args:
-        response: Response object from client.responses.create()
-
-    Returns:
-        List of unique retrieved context strings, in first-seen order
-    """
-    retrieved_contexts: list[str] = []
-    seen: set[str] = set()
-
-    for output_item in response.output:
-        if (
-            hasattr(output_item, "type")
-            and output_item.type == "file_search_call"
-            and hasattr(output_item, "results")
-            and output_item.results
-        ):
-            for result in output_item.results:
-                text = getattr(result, "text", None)
-                if text and text not in seen:
-                    seen.add(text)
-                    retrieved_contexts.append(text)
-
-    return retrieved_contexts
-
-
-def mean_ragas_score(scores: list[float | None]) -> float:
-    """Compute mean of RAGAS per-sample scores, filtering out NaN values.
-
-    Returns 0.0 with a warning if every score is None or NaN.
-    """
-    logger = structlog.get_logger(name=__name__)
-    valid = [s for s in scores if s is not None and not math.isnan(s)]
-    if not valid:
-        logger.warning(
-            event="All RAGAS scores are None or NaN — no usable results produced",
-            total_scores=len(scores),
-            raw_scores=scores,
-        )
-        return 0.0
-    return sum(valid) / len(valid)
 
 
 def _is_vision_model(model_id: str) -> bool:
