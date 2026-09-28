@@ -29,6 +29,16 @@ from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 LOGGER = structlog.get_logger(name=__name__)
 
 
+def arch_onnx_s3_path(arch: str) -> str:
+    """Return the existing S3 model directory for OVMS or MLServer."""
+    if arch == "arm64":
+        from tests.model_serving.model_runtime.mlserver.constant import MODEL_CONFIGS, MODEL_PATH_PREFIX
+        from utilities.constants import ModelFormat
+
+        return f"{MODEL_PATH_PREFIX}/{MODEL_CONFIGS[ModelFormat.ONNX]['s3_model_dir']}"
+    return "test-dir"
+
+
 def skip_test(reason: str) -> None:
     """Log a visible skip banner and call pytest.skip."""
     border = "=" * 60
@@ -276,9 +286,9 @@ def wait_for_raw_isvc_https_infer_ready(
     isvc: InferenceService,
     *,
     token: str | None = None,
-    request_body: dict[str, Any] | None = None,
     timeout: int = 300,
     sleep: int = 5,
+    request_body: dict[str, Any] | None = None,
 ) -> None:
     """Block until the same external HTTPS REST infer the suite uses succeeds.
 

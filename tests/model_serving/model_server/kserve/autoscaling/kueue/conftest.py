@@ -9,7 +9,7 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 
-from tests.model_serving.model_server.conftest import arch_onnx_s3_path
+from tests.model_serving.model_server.utils import arch_onnx_s3_path
 from utilities.constants import KServeDeploymentType, ModelAndFormat, ModelFormat, RuntimeTemplates
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate

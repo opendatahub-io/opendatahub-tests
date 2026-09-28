@@ -20,12 +20,12 @@ from ocp_resources.serving_runtime import ServingRuntime
 from pytest import FixtureRequest
 from pytest_testconfig import config as py_config
 
-from tests.model_serving.model_server.conftest import arch_onnx_s3_path
 from tests.model_serving.model_server.kserve.model_cache.utils import (
     LOCAL_MODEL_NODE_GROUP_NAME,
     LocalModelNamespaceCache,
     wait_for_local_model_cache_nodes_downloaded,
 )
+from tests.model_serving.model_server.utils import arch_onnx_s3_path
 from utilities.constants import KServeDeploymentType, ModelFormat, Protocols
 from utilities.inference_utils import create_isvc
 from utilities.infra import s3_endpoint_secret

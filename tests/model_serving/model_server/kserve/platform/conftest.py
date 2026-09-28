@@ -10,7 +10,7 @@ from ocp_resources.resource import ResourceEditor
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 
-from tests.model_serving.model_server.conftest import arch_onnx_s3_path
+from tests.model_serving.model_server.utils import arch_onnx_s3_path
 from utilities.constants import ModelFormat
 from utilities.inference_utils import create_isvc
 
@@ -46,13 +46,13 @@ def invalid_s3_models_inference_service(
 
 @pytest.fixture
 def updated_s3_models_inference_service(
+    request: pytest.FixtureRequest,
     invalid_s3_models_inference_service: InferenceService,
     s3_models_storage_uri: str,
-    ci_s3_bucket_name: str,
-    models_s3_bucket_name: str,
     cluster_arch: str,
 ) -> Generator[InferenceService, Any, Any]:
     if cluster_arch == "arm64":
+        models_s3_bucket_name = request.getfixturevalue(argname="models_s3_bucket_name")
         s3_models_storage_uri = f"s3://{models_s3_bucket_name}/{arch_onnx_s3_path(cluster_arch)}/"
     with ResourceEditor(
         patches={

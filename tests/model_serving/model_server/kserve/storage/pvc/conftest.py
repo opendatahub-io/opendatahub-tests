@@ -12,8 +12,8 @@ from ocp_resources.resource import ResourceEditor
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest import FixtureRequest
 
-from tests.model_serving.model_server.conftest import arch_onnx_s3_path
 from tests.model_serving.model_server.kserve.storage.pvc.utils import wait_for_rollout_complete
+from tests.model_serving.model_server.utils import arch_onnx_s3_path
 from utilities.constants import KServeDeploymentType, ModelFormat
 from utilities.general import download_model_data
 from utilities.inference_utils import create_isvc
@@ -48,7 +48,7 @@ def ci_bucket_downloaded_model_data(
         aws_default_region=(
             request.getfixturevalue("models_s3_bucket_region") if cluster_arch == "arm64" else ci_s3_bucket_region
         ),
-        model_path=arch_onnx_s3_path(cluster_arch),
+        model_path=arch_onnx_s3_path(cluster_arch) if cluster_arch == "arm64" else request.param["model-dir"],
         use_sub_path=True,
         restricted_scc_init=True,
     )

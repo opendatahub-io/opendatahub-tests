@@ -69,18 +69,22 @@ class TestKserveTokenAuthenticationRawForRest:
         self, http_s3_ovms_raw_inference_service, http_raw_inference_token, auth_model_config
     ):
         """Verify RAW Kserve model query with token using REST"""
-        assert_auth_inference(http_s3_ovms_raw_inference_service, auth_model_config, token=http_raw_inference_token)
+        assert_auth_inference(
+            isvc=http_s3_ovms_raw_inference_service, model_config=auth_model_config, token=http_raw_inference_token
+        )
 
     @pytest.mark.dependency(name="test_disabled_raw_model_authentication")
     def test_disabled_raw_model_authentication(self, patched_remove_raw_authentication_isvc, auth_model_config):
         """Verify model query after authentication is disabled"""
-        assert_auth_inference(patched_remove_raw_authentication_isvc, auth_model_config)
+        assert_auth_inference(isvc=patched_remove_raw_authentication_isvc, model_config=auth_model_config)
 
     def test_re_enabled_raw_model_authentication(
         self, http_s3_ovms_raw_inference_service, http_raw_inference_token, auth_model_config
     ):
         """Verify model query after authentication is re-enabled"""
-        assert_auth_inference(http_s3_ovms_raw_inference_service, auth_model_config, token=http_raw_inference_token)
+        assert_auth_inference(
+            isvc=http_s3_ovms_raw_inference_service, model_config=auth_model_config, token=http_raw_inference_token
+        )
 
     @pytest.mark.parametrize(
         "http_s3_ovms_raw_inference_service_2",
@@ -93,8 +97,8 @@ class TestKserveTokenAuthenticationRawForRest:
     ):
         """Verify model with another model token"""
         assert_auth_inference(
-            http_s3_ovms_raw_inference_service_2,
-            auth_model_config,
+            isvc=http_s3_ovms_raw_inference_service_2,
+            model_config=auth_model_config,
             token=http_raw_inference_token,
             authorized=False,
         )

@@ -22,7 +22,6 @@ from ocp_resources.storage_class import StorageClass
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
-from tests.model_serving.model_runtime.mlserver.constant import MODEL_CONFIGS, MODEL_PATH_PREFIX
 from tests.model_serving.model_server.kserve.model_cache.utils import (
     LOCAL_MODEL_NODE_GROUP_NAME,
     MODEL_CACHE_AGENT_DAEMONSET,
@@ -30,8 +29,8 @@ from tests.model_serving.model_server.kserve.model_cache.utils import (
     MODEL_CACHE_SIZE,
     LocalModelNodeGroup,
 )
-from tests.model_serving.model_server.runtime_registry import RuntimeProfile, resolve_cluster_arch
-from tests.model_serving.model_server.utils import get_worker_architecture, skip_test
+from tests.model_serving.model_server.runtime_registry import RuntimeProfile, get_runtime_profile, resolve_cluster_arch
+from tests.model_serving.model_server.utils import arch_onnx_s3_path, get_worker_architecture, skip_test
 from utilities.constants import (
     DscComponents,
     KServeDeploymentType,
@@ -182,7 +181,7 @@ def ovms_kserve_serving_runtime(
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
-    arch = request.getfixturevalue("cluster_arch")
+    arch = request.getfixturevalue(argname="cluster_arch")
     arch_aware = request.node.get_closest_marker("arch_runtime") is not None
     if arch != "amd64" and not arch_aware:
         pytest.skip("OVMS runtime is unsupported on ARM64")
@@ -650,13 +649,6 @@ def kueue_local_queue_from_template(
 # --- Arch-aware runtime selection fixtures ---
 
 
-def arch_onnx_s3_path(arch: str) -> str:
-    """Return the S3 model directory compatible with the selected runtime."""
-    if arch == "arm64":
-        return f"{MODEL_PATH_PREFIX}/{MODEL_CONFIGS[ModelFormat.ONNX]['s3_model_dir']}"
-    return "test-dir"
-
-
 @pytest.fixture(scope="session")
 def cluster_arch(request: FixtureRequest, admin_client: DynamicClient) -> str:
     """Detect or override cluster CPU architecture.
@@ -664,7 +656,7 @@ def cluster_arch(request: FixtureRequest, admin_client: DynamicClient) -> str:
     Auto-detects from worker node labels (kubernetes.io/arch) unless
     --cluster-arch CLI flag is set to a specific value.
     """
-    opt = request.config.getoption("--cluster-arch", default="auto")
+    opt = request.config.getoption(name="--cluster-arch", default="auto")
     detected = get_worker_architecture(client=admin_client) if opt == "auto" else None
     return resolve_cluster_arch(configured=opt, detected=detected)
 
@@ -676,49 +668,7 @@ def skip_if_not_x86(cluster_arch: str) -> None:
         pytest.skip(f"Test requires x86_64/amd64 cluster (detected: {cluster_arch})")
 
 
-@pytest.fixture(scope="session")
-def skip_if_not_arm(cluster_arch: str) -> None:
-    """Skip test if the cluster is not ARM64."""
-    if cluster_arch != "arm64":
-        pytest.skip(f"Test requires ARM64 cluster (detected: {cluster_arch})")
-
-
 @pytest.fixture(scope="class")
-def arch_runtime_profile(cluster_arch: str, request: FixtureRequest) -> RuntimeProfile:
-    """Resolve the RuntimeProfile for the current cluster arch.
-
-    Tests parametrize this fixture with the desired model format (default: onnx).
-    Returns the appropriate RuntimeProfile or skips if the format is unsupported
-    on the detected architecture.
-    """
-    from tests.model_serving.model_server.runtime_registry import (
-        get_runtime_profile,
-        get_supported_formats,
-    )
-
-    model_format = getattr(request, "param", "onnx")
-    if isinstance(model_format, dict):
-        model_format = model_format.get("model-format", "onnx")
-
-    profile = get_runtime_profile(arch=cluster_arch, model_format=model_format)
-    if profile is None:
-        supported = get_supported_formats(arch=cluster_arch)
-        pytest.skip(f"Model format '{model_format}' not supported on {cluster_arch}. Supported formats: {supported}")
-    return profile
-
-
-@pytest.fixture(scope="class")
-def arch_serving_runtime(
-    arch_runtime_profile: RuntimeProfile,
-    unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
-) -> Generator[ServingRuntime, Any, Any]:
-    """Create a ServingRuntime based on the arch-resolved RuntimeProfile."""
-    with ServingRuntimeFromTemplate(
-        client=unprivileged_client,
-        name=arch_runtime_profile.runtime_name,
-        namespace=unprivileged_model_namespace.name,
-        template_name=arch_runtime_profile.template,
-        multi_model=False,
-    ) as model_runtime:
-        yield model_runtime
+def arch_runtime_profile(cluster_arch: str) -> RuntimeProfile:
+    """Select the runtime and OCI model for the current architecture."""
+    return get_runtime_profile(arch=cluster_arch)
