@@ -100,9 +100,7 @@ def get_inference_tls_verify(client: DynamicClient | None = None) -> bool | str:
             return True
         if normalized in {"0", "false", "no", "off"}:
             return False
-        raise ValueError(
-            "Unsupported AUTOGLUON_INFERENCE_TLS_VERIFY value. Use one of: true,false,1,0,yes,no,on,off."
-        )
+        raise ValueError("Unsupported AUTOGLUON_INFERENCE_TLS_VERIFY value. Use one of: true,false,1,0,yes,no,on,off.")
 
     if client is not None:
         try:
