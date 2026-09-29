@@ -23,6 +23,7 @@ from tests.model_serving.model_runtime.autogluon.constant import (
     V2_INFER_PATH_TEMPLATE,
     OutputType,
 )
+from utilities.certificates_utils import get_ca_bundle
 from utilities.constants import KServeDeploymentType
 from utilities.inference_utils import get_exposed_isvc_url
 from utilities.operator_utils import get_cluster_service_version
@@ -67,9 +68,19 @@ def cleanup_autogluon_inference_service(isvc: InferenceService) -> None:
     )
 
 
-def get_inference_tls_verify() -> bool | str:
+def get_inference_tls_verify(client: DynamicClient | None = None) -> bool | str:
     """
     Resolve TLS verification mode for AutoGluon inference HTTP requests.
+
+    Resolution order:
+    1. ``AUTOGLUON_INFERENCE_CA_BUNDLE`` path, if set
+    2. Explicit ``AUTOGLUON_INFERENCE_TLS_VERIFY`` (true/false), if set
+    3. OpenShift router CA via ``get_ca_bundle(client)`` when a client is provided
+    4. Insecure (``False``) when no CA bundle can be resolved
+
+    Args:
+        client: Kubernetes dynamic client used to fetch the router CA on
+            self-managed clusters. Optional when an env override is set.
 
     Returns:
         True to verify with system trust store, False to disable verification,
@@ -82,12 +93,27 @@ def get_inference_tls_verify() -> bool | str:
     if ca_bundle_path:
         return ca_bundle_path
 
-    verify_env = os.environ.get("AUTOGLUON_INFERENCE_TLS_VERIFY", "true").strip().lower()
-    if verify_env in {"1", "true", "yes", "on"}:
-        return True
-    if verify_env in {"0", "false", "no", "off"}:
-        return False
-    raise ValueError("Unsupported AUTOGLUON_INFERENCE_TLS_VERIFY value. Use one of: true,false,1,0,yes,no,on,off.")
+    verify_env = os.environ.get("AUTOGLUON_INFERENCE_TLS_VERIFY")
+    if verify_env is not None:
+        normalized = verify_env.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+        raise ValueError(
+            "Unsupported AUTOGLUON_INFERENCE_TLS_VERIFY value. Use one of: true,false,1,0,yes,no,on,off."
+        )
+
+    if client is not None:
+        try:
+            ca_bundle = get_ca_bundle(client=client)
+            if ca_bundle:
+                return ca_bundle
+        except Exception as ex:  # noqa: BLE001
+            LOGGER.warning("Failed to resolve OpenShift CA bundle for AutoGluon inference", error=str(ex))
+
+    LOGGER.warning("No CA bundle found for AutoGluon inference, using insecure TLS verification")
+    return False
 
 
 def send_rest_request(url: str, input_data: dict[str, Any], verify: bool | str = True) -> Any:
@@ -181,7 +207,7 @@ def run_autogluon_inference(
     return send_rest_request(
         url=f"{host}{endpoint}",
         input_data=input_data,
-        verify=get_inference_tls_verify(),
+        verify=get_inference_tls_verify(client=isvc.client),
     )
 
 

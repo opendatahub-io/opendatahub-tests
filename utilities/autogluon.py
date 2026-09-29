@@ -9,6 +9,7 @@ from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError, ResourceNotUniqueError
 from ocp_resources.inference_service import InferenceService
 
+from utilities.certificates_utils import get_ca_bundle
 from utilities.constants import KServeDeploymentType, ModelFormat, ModelVersion
 from utilities.inference_utils import get_exposed_isvc_url
 from utilities.operator_utils import get_cluster_service_version
@@ -105,24 +106,46 @@ def run_autogluon_inference(
     response = requests.post(
         url=f"{get_exposed_isvc_url(isvc=isvc)}{endpoint}",
         json=input_data,
-        verify=_get_inference_tls_verify(),
+        verify=_get_inference_tls_verify(client=isvc.client),
         timeout=60,
     )
     response.raise_for_status()
     return response.json()
 
 
-def _get_inference_tls_verify() -> bool | str:
-    """Resolve AutoGluon inference TLS verification from the environment."""
+def _get_inference_tls_verify(client: DynamicClient | None = None) -> bool | str:
+    """
+    Resolve AutoGluon inference TLS verification.
+
+    Resolution order:
+    1. ``AUTOGLUON_INFERENCE_CA_BUNDLE`` path, if set
+    2. Explicit ``AUTOGLUON_INFERENCE_TLS_VERIFY`` (true/false), if set
+    3. OpenShift router CA via ``get_ca_bundle(client)`` when a client is provided
+    4. Insecure (``False``) when no CA bundle can be resolved
+    """
     ca_bundle_path = os.environ.get("AUTOGLUON_INFERENCE_CA_BUNDLE")
     if ca_bundle_path:
         return ca_bundle_path
-    verify_env = os.environ.get("AUTOGLUON_INFERENCE_TLS_VERIFY", "true").strip().lower()
-    if verify_env in {"1", "true", "yes", "on"}:
-        return True
-    if verify_env in {"0", "false", "no", "off"}:
-        return False
-    raise ValueError("Unsupported AUTOGLUON_INFERENCE_TLS_VERIFY value")
+
+    verify_env = os.environ.get("AUTOGLUON_INFERENCE_TLS_VERIFY")
+    if verify_env is not None:
+        normalized = verify_env.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+        raise ValueError("Unsupported AUTOGLUON_INFERENCE_TLS_VERIFY value")
+
+    if client is not None:
+        try:
+            ca_bundle = get_ca_bundle(client=client)
+            if ca_bundle:
+                return ca_bundle
+        except Exception as ex:  # noqa: BLE001
+            LOGGER.warning("Failed to resolve OpenShift CA bundle for AutoGluon inference", error=str(ex))
+
+    LOGGER.warning("No CA bundle found for AutoGluon inference, using insecure TLS verification")
+    return False
 
 
 def validate_deterministic_response(response: Any) -> None:
