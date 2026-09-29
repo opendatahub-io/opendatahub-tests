@@ -54,6 +54,13 @@ from tests.ai_safety.evalhub.constants import (
     GIT_PUBLIC_REPO_SUB_PATH_ENV,
     GIT_PUBLIC_REPO_URL,
     GIT_PUBLIC_REPO_URL_ENV,
+    HF_DEFAULT_REVISION,
+    HF_NESTED_SUB_PATH,
+    HF_NESTED_SUB_PATH_ENV,
+    HF_PUBLIC_REPO_ID,
+    HF_PUBLIC_REPO_ID_ENV,
+    HF_PUBLIC_REVISION_ENV,
+    HF_SHA_REVISION_ENV,
     MINIO_MC_IMAGE,
     MINIO_UPLOADER_SECURITY_CONTEXT,
     OPERATOR_OTEL_SERVICE_NAME,
@@ -74,6 +81,8 @@ from tests.ai_safety.evalhub.kueue.constants import VLLM_EMULATOR, VLLM_EMULATOR
 from tests.ai_safety.evalhub.utils import (
     MLflowWithWorkspaces,
     build_git_job_payload,
+    build_hf_job_payload,
+    build_hf_multi_benchmark_job_payload,
     build_pvc_job_payload,
     delete_evalhub_job,
     is_evalhub_crd_available,
@@ -1884,6 +1893,92 @@ def submit_git_job(
             )
         except Exception:  # noqa: BLE001
             LOGGER.warning(f"Failed to delete git evaluation job {job_id} during teardown")
+
+
+@pytest.fixture(scope="class")
+def hf_public_repo_config() -> dict[str, str]:
+    """Public HuggingFace Hub dataset repo/revision/sub-path for test_data_ref.hf.
+
+    Defaults to eval-hub-test/evalhub-offline-testdata @ main — the public FVT mirror of
+    tests/git-testdata used by eval-hub godog @hf scenarios. Env vars override.
+    """
+    sha_revision = os.environ.get(HF_SHA_REVISION_ENV, "") or None
+    return {
+        "repo_id": os.environ.get(HF_PUBLIC_REPO_ID_ENV, HF_PUBLIC_REPO_ID),
+        "revision": os.environ.get(HF_PUBLIC_REVISION_ENV, HF_DEFAULT_REVISION),
+        "nested_sub_path": os.environ.get(HF_NESTED_SUB_PATH_ENV, HF_NESTED_SUB_PATH),
+        "sha_revision": sha_revision,
+    }
+
+
+@pytest.fixture()
+def submit_hf_job(
+    tenant_a_token: str,
+    tenant_a_namespace: Namespace,
+    evalhub_mt_ca_bundle_file: str,
+    evalhub_mt_route: Route,
+    evalhub_vllm_emulator_service: Service,
+) -> Generator[Callable[..., str], Any, Any]:
+    """Factory fixture: submit HF-storage evaluation jobs with guaranteed cleanup."""
+    job_ids: list[str] = []
+
+    def _submit(
+        repo_id: str,
+        revision: str | None = None,
+        sub_path: str | None = None,
+        secret_ref: str | None = None,
+        tokenizer_path: str | None = None,
+        job_name: str = "hf-test",
+        multi_benchmark: bool = False,
+        nested_sub_path: str | None = None,
+        sha_revision: str | None = None,
+    ) -> str:
+        if multi_benchmark:
+            payload = build_hf_multi_benchmark_job_payload(
+                model_service_name=evalhub_vllm_emulator_service.name,
+                tenant_namespace=tenant_a_namespace.name,
+                job_name=job_name,
+                repo_id=repo_id,
+                revision=revision,
+                nested_sub_path=nested_sub_path,
+                sha_revision=sha_revision,
+            )
+        else:
+            payload = build_hf_job_payload(
+                model_service_name=evalhub_vllm_emulator_service.name,
+                tenant_namespace=tenant_a_namespace.name,
+                job_name=job_name,
+                repo_id=repo_id,
+                revision=revision,
+                sub_path=sub_path,
+                secret_ref=secret_ref,
+                tokenizer_path=tokenizer_path,
+            )
+        data = submit_evalhub_job(
+            host=evalhub_mt_route.host,
+            token=tenant_a_token,
+            ca_bundle_file=evalhub_mt_ca_bundle_file,
+            tenant=tenant_a_namespace.name,
+            payload=payload,
+        )
+        job_id = data["resource"]["id"]
+        job_ids.append(job_id)
+        return job_id
+
+    yield _submit
+
+    for job_id in job_ids:
+        try:
+            delete_evalhub_job(
+                host=evalhub_mt_route.host,
+                token=tenant_a_token,
+                ca_bundle_file=evalhub_mt_ca_bundle_file,
+                tenant=tenant_a_namespace.name,
+                job_id=job_id,
+                hard_delete=True,
+            )
+        except Exception:  # noqa: BLE001
+            LOGGER.warning(f"Failed to delete HF evaluation job {job_id} during teardown")
 
 
 @pytest.fixture(scope="class")

@@ -135,6 +135,31 @@ GIT_TEST_DATA_MOUNT_PATH: str = "/test_data"
 GIT_CREDS_SECRET_NAME: str = "git-test-creds"
 GIT_BAD_CREDS_SECRET_NAME: str = "git-bad-creds"
 
+# HuggingFace storage source test data (RHAISTRAT-2059)
+# Defaults mirror eval-hub FVT: eval-hub-test/evalhub-offline-testdata @ main.
+# See https://huggingface.co/datasets/eval-hub-test/evalhub-offline-testdata
+HF_PUBLIC_REPO_ID_ENV: str = "TEST_DATA_HF_REPO_ID"
+HF_PUBLIC_REVISION_ENV: str = "TEST_DATA_HF_REVISION"
+HF_SHA_REVISION_ENV: str = "TEST_DATA_HF_SHA_REVISION"
+HF_NESTED_SUB_PATH_ENV: str = "TEST_DATA_HF_NESTED_SUB_PATH"
+HF_BAD_REPO_ID_ENV: str = "TEST_DATA_HF_BAD_REPO_ID"
+HF_BAD_REVISION_ENV: str = "TEST_DATA_HF_BAD_REVISION"
+HF_BAD_SUB_PATH_ENV: str = "TEST_DATA_HF_BAD_SUB_PATH"
+HF_PUBLIC_REPO_ID: str = "eval-hub-test/evalhub-offline-testdata"
+HF_DEFAULT_REVISION: str = "main"
+HF_NESTED_SUB_PATH: str = "staging_sub_path"
+HF_TOKENIZER_PATH: str = "/test_data/tokenizer"
+HF_BAD_REPO_ID: str = "eval-hub-test/invalid-db"
+HF_BAD_REVISION: str = "this-revision-does-not-exist-evalhub-fvt"
+HF_BAD_SUB_PATH: str = "this-path-does-not-exist-evalhub-fvt"
+# Init container env vars set by the EvalHub operator for HF downloads (eval-hub PR #996).
+ENV_HF_REPO_ID: str = "TEST_DATA_HF_REPO_ID"
+ENV_HF_REVISION: str = "TEST_DATA_HF_REVISION"
+ENV_HF_SUBPATH: str = "TEST_DATA_HF_SUBPATH"
+HF_MUTUAL_EXCLUSION_MESSAGE: str = "exactly one of s3, pvc, git, or hf must be set"
+HF_RESOLVED_SHA_READONLY_CODE: str = "resolved_sha_read_only"
+HF_RESOLVED_SHA_READONLY_MESSAGE: str = "The field 'resolved_sha' is read-only and must not be set on create."
+
 # Hardware profile
 EVALHUB_DEFAULT_HARDWARE_PROFILE: str = "default-profile"
 

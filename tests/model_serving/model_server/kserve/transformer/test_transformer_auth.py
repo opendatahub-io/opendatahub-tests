@@ -6,6 +6,7 @@ from ocp_resources.inference_service import InferenceService
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import Protocols, RuntimeTemplates
 from utilities.inference_utils import Inference
+from utilities.infra import get_model_route
 
 # Sentiment transformer v1 predict inference config.
 # The transformer accepts text via v1 predict endpoint and returns
@@ -56,13 +57,35 @@ ISVC_NAME = "sentiment-analysis"
     indirect=True,
 )
 class TestTransformerAuthEnforcement:
-    """Verify kube-rbac-proxy auth enforcement on ISVC with transformer.
+    """Verify auth enforcement and end-to-end TLS on an ISVC with a transformer.
+
+    With auth enabled, the transformer terminates TLS natively (native HTTPS on
+    port 8443) and the exposed Route uses ``reencrypt`` termination, so traffic
+    is encrypted all the way from the client through to the transformer.
 
     Steps:
         1. Deploy a sentiment model with a custom transformer and authentication enabled.
-        2. Query the model without a token and verify the request is rejected (403).
-        3. Query the model with a valid token and verify successful inference (200).
+        2. Verify the Route is configured for end-to-end TLS (``reencrypt``).
+        3. Query the model without a token and verify the request is rejected (403).
+        4. Query the model with a valid token over verified TLS and verify
+           successful inference (200).
     """
+
+    def test_route_uses_reencrypt_tls(
+        self, unprivileged_client, transformer_auth_inference_service: InferenceService
+    ) -> None:
+        """Given an auth-enabled transformer ISVC.
+
+        When the exposed Route is reconciled,
+        Then it terminates TLS with ``reencrypt`` and targets the ``https`` port,
+        proving the transformer serves native HTTPS end-to-end (not edge).
+        """
+        route = get_model_route(client=unprivileged_client, isvc=transformer_auth_inference_service)
+        termination = route.instance.spec.tls.termination
+        assert termination == "reencrypt", f"Expected reencrypt TLS termination, got: {termination}"
+
+        target_port = route.instance.spec.port.targetPort
+        assert target_port == "https", f"Expected Route target port 'https', got: {target_port}"
 
     def test_unauthenticated_request_rejected(self, transformer_auth_inference_service: InferenceService) -> None:
         """Given an auth-enabled transformer ISVC.

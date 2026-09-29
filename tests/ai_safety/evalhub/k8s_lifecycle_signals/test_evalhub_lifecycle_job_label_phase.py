@@ -12,10 +12,10 @@ from ocp_resources.route import Route
 from ocp_resources.service import Service
 
 from tests.ai_safety.evalhub.k8s_lifecycle_signals.constants import (
+    LIFECYCLE_PHASE_COMPLETED,
     LIFECYCLE_PHASE_FAILED,
     LIFECYCLE_PHASE_LABEL,
     LIFECYCLE_PHASE_RUNNING,
-    LIFECYCLE_PHASE_SUCCEEDED,
     LIFECYCLE_PHASE_THRESHOLD_VIOLATED,
 )
 from tests.ai_safety.evalhub.k8s_lifecycle_signals.utils import (
@@ -105,7 +105,7 @@ class TestLblJobLabelPhase:
     ) -> None:
         """Given a deployed EvalHub and a known-good model and dataset,
         when the evaluation completes all benchmarks successfully,
-        then the batch Job label evaluation-phase=Succeeded."""
+        then the batch Job label evaluation-phase=Completed."""
         host = lifecycle_signals_route.host
         ns = lifecycle_signals_namespace.name
         payload = build_lifecycle_success_payload(
@@ -145,8 +145,8 @@ class TestLblJobLabelPhase:
             key=LIFECYCLE_PHASE_LABEL,
         )
 
-        assert label_value == LIFECYCLE_PHASE_SUCCEEDED, (
-            f"Expected {LIFECYCLE_PHASE_LABEL}={LIFECYCLE_PHASE_SUCCEEDED}, got {label_value!r}"
+        assert label_value == LIFECYCLE_PHASE_COMPLETED, (
+            f"Expected {LIFECYCLE_PHASE_LABEL}={LIFECYCLE_PHASE_COMPLETED}, got {label_value!r}"
         )
 
     @pytest.mark.smoke
@@ -324,8 +324,8 @@ class TestLblJobLabelPhase:
             namespace=ns,
             key=LIFECYCLE_PHASE_LABEL,
         )
-        assert success_label == LIFECYCLE_PHASE_SUCCEEDED, (
-            f"Expected success job label {LIFECYCLE_PHASE_SUCCEEDED!r}, got {success_label!r}"
+        assert success_label == LIFECYCLE_PHASE_COMPLETED, (
+            f"Expected success job label {LIFECYCLE_PHASE_COMPLETED!r}, got {success_label!r}"
         )
         assert_failure_phase_label(
             admin_client=admin_client,
@@ -337,7 +337,7 @@ class TestLblJobLabelPhase:
             Job.get(
                 client=admin_client,
                 namespace=ns,
-                label_selector=f"{LIFECYCLE_PHASE_LABEL}={LIFECYCLE_PHASE_SUCCEEDED}",
+                label_selector=f"{LIFECYCLE_PHASE_LABEL}={LIFECYCLE_PHASE_COMPLETED}",
             )
         )
         failed_jobs = list(
