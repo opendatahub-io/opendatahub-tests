@@ -655,6 +655,7 @@ def create_isvc(
     protocol_version: str | None = None,
     labels: dict[str, str] | None = None,
     auto_scaling: dict[str, Any] | None = None,
+    pod_affinity: dict[str, Any] | None = None,
     scheduler_name: str | None = None,
 ) -> Generator[InferenceService, Any, Any]:
     """
@@ -691,6 +692,7 @@ def create_isvc(
         teardown (bool): Teardown
         protocol_version (str): Protocol version of the model server
         auto_scaling (dict[str, Any]): Auto scaling configuration for the model
+        pod_affinity (dict[str, Any]): Predictor Pod affinity configuration
         scheduler_name (str): Scheduler name
 
     Yields:
@@ -744,6 +746,8 @@ def create_isvc(
         predictor_dict["model"]["env"] = model_env_variables
     if auto_scaling:
         predictor_dict["autoScaling"] = auto_scaling
+    if pod_affinity:
+        predictor_dict["affinity"] = pod_affinity
 
     _annotations: dict[str, str] = {}
 
