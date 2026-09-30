@@ -76,7 +76,8 @@ def get_inference_tls_verify(client: DynamicClient | None = None) -> bool | str:
     1. ``AUTOGLUON_INFERENCE_CA_BUNDLE`` path, if set
     2. Explicit ``AUTOGLUON_INFERENCE_TLS_VERIFY`` (true/false), if set
     3. OpenShift router CA via ``get_ca_bundle(client)`` when a client is provided
-    4. Insecure (``False``) when no CA bundle can be resolved
+    4. System trust store (``True``) when no custom CA is needed or available;
+       set ``AUTOGLUON_INFERENCE_TLS_VERIFY=false`` to opt out of verification
 
     Args:
         client: Kubernetes dynamic client used to fetch the router CA on
@@ -110,8 +111,11 @@ def get_inference_tls_verify(client: DynamicClient | None = None) -> bool | str:
         except Exception as ex:  # noqa: BLE001
             LOGGER.warning("Failed to resolve OpenShift CA bundle for AutoGluon inference", error=str(ex))
 
-    LOGGER.warning("No CA bundle found for AutoGluon inference, using insecure TLS verification")
-    return False
+    LOGGER.info(
+        "No custom CA bundle for AutoGluon inference; using default TLS verification "
+        "(set AUTOGLUON_INFERENCE_TLS_VERIFY=false to disable)"
+    )
+    return True
 
 
 def send_rest_request(url: str, input_data: dict[str, Any], verify: bool | str = True) -> Any:
