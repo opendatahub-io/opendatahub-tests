@@ -72,7 +72,6 @@ class RuntimeTemplates:
     TGIS_GRPC_SERVING: str = "tgis-grpc-serving-template"
     VLLM_CUDA: str = "vllm-cuda-runtime-template"
     VLLM_ROCM: str = "vllm-rocm-runtime-template"
-    VLLM_GAUDI: str = "vllm-gaudi-runtime-template"
     VLLM_SPYRE: str = "vllm-spyre-x86-runtime-template"
     VLLM_CPU_x86: str = "vllm-cpu-x86-runtime-template"
     MLSERVER_GRPC: str = "mlserver-grpc-runtime-template"
@@ -122,10 +121,9 @@ class HTTPRequest:
 class AcceleratorType:
     NVIDIA: str = "nvidia"
     AMD: str = "amd"
-    GAUDI: str = "gaudi"
     SPYRE: str = "spyre"
     CPU_x86: str = "cpu_x86"
-    SUPPORTED_LISTS: list[str] = [NVIDIA, AMD, GAUDI, SPYRE, CPU_x86]  # noqa: RUF012
+    SUPPORTED_LISTS: list[str] = [NVIDIA, AMD, SPYRE, CPU_x86]  # noqa: RUF012
 
 
 class ApiGroups:

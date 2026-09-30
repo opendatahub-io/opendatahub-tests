@@ -220,8 +220,8 @@ def validate_deterministic_snapshot(response: Any, response_snapshot: Any) -> No
     Validates a deterministic model inference response using fuzzy validation.
 
     This function validates the response structure and data presence without comparing
-    exact float values, which allows tests to pass on different GPU types (NVIDIA, AMD,
-    Gaudi, CPU) that may produce slightly different numerical precision.
+    exact float values, which allows tests to pass on different GPU types (NVIDIA, AMD)
+    and CPU that may produce slightly different numerical precision.
 
     Args:
         response (Any): The actual inference response from the model.
