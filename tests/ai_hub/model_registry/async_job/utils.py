@@ -4,6 +4,8 @@ from ocp_resources.pod import Pod
 from ocp_resources.service import Service
 from timeout_sampler import TimeoutExpiredError
 
+from tests.ai_hub.constants import SeaweedFs
+from tests.ai_hub.image_constants import AiHubImages
 from tests.ai_hub.utils import get_latest_job_pod
 from utilities.constants import MinIo
 from utilities.general import collect_pod_information
@@ -13,24 +15,27 @@ LOGGER = structlog.get_logger(name=__name__)
 __all__ = ["get_latest_job_pod"]
 
 
-def upload_test_model_to_minio_from_image(
+def upload_test_model_to_s3_from_image(
     admin_client: DynamicClient,
     namespace: str,
-    minio_service: Service,
+    s3_service: Service,
     object_key: str = "my-model/model.onnx",
     model_image: str = MinIo.PodConfig.KSERVE_MINIO_IMAGE,
 ) -> None:
-    """
-    Extract and upload test model to MinIO from a container image
+    """Extract and upload test model to an S3-compatible store from a container image.
 
     Args:
         admin_client: Kubernetes client
         namespace: Namespace to create upload pod in
-        minio_service: MinIO service resource
+        s3_service: S3-compatible service resource
         object_key: S3 object key path
         model_image: Container image containing the model
     """
-    mc_url = f"http://{minio_service.name}.{minio_service.namespace}.svc.cluster.local:{MinIo.Metadata.DEFAULT_PORT} "
+    object_directory = object_key.rpartition("/")[0]
+    filer_url = (
+        f"http://{s3_service.name}.{s3_service.namespace}.svc.cluster.local:{SeaweedFs.Metadata.FILER_PORT}"
+        f"/buckets/{SeaweedFs.Buckets.MODELMESH_EXAMPLE_MODELS}/{object_directory}/"
+    )
     with Pod(
         client=admin_client,
         name="test-model-uploader-from-image",
@@ -59,20 +64,13 @@ def upload_test_model_to_minio_from_image(
         ],
         containers=[
             {
-                "name": "minio-uploader",
-                "image": "quay.io/minio/mc@sha256:470f5546b596e16c7816b9c3fa7a78ce4076bb73c2c73f7faeec0c8043923123",
-                "command": ["/bin/sh", "-c"],
-                "args": [
-                    # Upload the test model file to MinIO
-                    f"echo 'Model file details:' && ls -la /upload-data/model.onnx && "
-                    f"echo 'Model file content preview:' && head -c 100 /upload-data/model.onnx && echo && "
-                    f"export MC_CONFIG_DIR=/upload-data/.mc && "
-                    f"mc alias set testminio {mc_url}"
-                    f"{MinIo.Credentials.ACCESS_KEY_VALUE} {MinIo.Credentials.SECRET_KEY_VALUE} && "
-                    f"mc mb --ignore-existing testminio/{MinIo.Buckets.MODELMESH_EXAMPLE_MODELS} && "
-                    f"mc cp /upload-data/model.onnx testminio/{MinIo.Buckets.MODELMESH_EXAMPLE_MODELS}/{object_key} && "
-                    f"mc ls testminio/{MinIo.Buckets.MODELMESH_EXAMPLE_MODELS}/my-model/ && "
-                    f"echo 'Upload completed successfully'"
+                "name": "seaweedfs-uploader",
+                "image": AiHubImages.SEAWEEDFS,
+                "command": [
+                    "/usr/bin/weed",
+                    "filer.copy",
+                    "/upload-data/model.onnx",
+                    filer_url,
                 ],
                 "volumeMounts": [{"name": "upload-data", "mountPath": "/upload-data"}],
                 "securityContext": {
@@ -85,10 +83,14 @@ def upload_test_model_to_minio_from_image(
         ],
         wait_for_resource=True,
     ) as upload_pod:
-        LOGGER.info(f"Extracting model from image {model_image} and uploading to MinIO: {object_key}")
+        LOGGER.info(f"Extracting model from image {model_image} and uploading to S3: {object_key}")
         try:
             upload_pod.wait_for_status(status="Succeeded", timeout=300)
         except TimeoutExpiredError:
+            try:
+                LOGGER.error("SeaweedFS uploader pod failed", logs=upload_pod.log(container="seaweedfs-uploader"))
+            except Exception as error:  # noqa: BLE001
+                LOGGER.warning(f"Could not retrieve SeaweedFS uploader logs: {error}")
             collect_pod_information(pod=upload_pod)
             raise
 
@@ -100,5 +102,5 @@ def upload_test_model_to_minio_from_image(
             LOGGER.warning(f"Could not retrieve upload logs: {e}")
 
         LOGGER.info(
-            f"Test model file uploaded successfully to s3://{MinIo.Buckets.MODELMESH_EXAMPLE_MODELS}/{object_key}"
+            f"Test model file uploaded successfully to s3://{SeaweedFs.Buckets.MODELMESH_EXAMPLE_MODELS}/{object_key}"
         )

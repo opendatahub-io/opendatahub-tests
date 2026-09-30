@@ -14,6 +14,7 @@ from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from pytest import FixtureRequest
 
+from tests.ai_hub.constants import SeaweedFs
 from tests.ai_hub.model_registry.async_job.constants import (
     ASYNC_JOB_ANNOTATIONS,
     ASYNC_JOB_LABELS,
@@ -22,35 +23,45 @@ from tests.ai_hub.model_registry.async_job.constants import (
     REPO_NAME,
     VOLUME_MOUNTS,
 )
-from tests.ai_hub.model_registry.async_job.utils import upload_test_model_to_minio_from_image
+from tests.ai_hub.model_registry.async_job.utils import upload_test_model_to_s3_from_image
 from tests.ai_hub.utils import get_endpoint_from_mr_service, get_mr_service_by_label
-from utilities.constants import ApiGroups, Labels, MinIo, OCIRegistry, Protocols
+from utilities.constants import ApiGroups, Labels, OCIRegistry, Protocols
 from utilities.general import b64_encoded_string, get_s3_secret_dict
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+
+
+@pytest.fixture(scope="class")
+def s3_config(seaweedfs_service: Service) -> dict[str, str | Service]:
+    """Provide SeaweedFS connection details to S3-backed test resources."""
+    return {
+        "service": seaweedfs_service,
+        "port": str(SeaweedFs.Metadata.DEFAULT_PORT),
+        "access_key": SeaweedFs.Credentials.ACCESS_KEY_VALUE,
+        "secret_key": SeaweedFs.Credentials.SECRET_KEY_VALUE,
+        "bucket": SeaweedFs.Buckets.MODELMESH_EXAMPLE_MODELS,
+    }
 
 
 @pytest.fixture(scope="class")
 def s3_secret_for_async_job(
     admin_client: DynamicClient,
     service_account: ServiceAccount,
-    minio_service: Service,
+    seaweedfs_service: Service,
 ) -> Generator[Secret, Any, Any]:
     """Create S3 data connection for async upload job"""
-    # Construct MinIO endpoint from service
-    minio_endpoint = (
-        f"http://{minio_service.name}.{minio_service.namespace}.svc.cluster.local:{MinIo.Metadata.DEFAULT_PORT}"
-    )
+    s3_host = f"{seaweedfs_service.name}.{seaweedfs_service.namespace}.svc.cluster.local"
+    s3_endpoint = f"http://{s3_host}:{SeaweedFs.Metadata.DEFAULT_PORT}"
 
     with Secret(
         client=admin_client,
         name=f"async-job-s3-connection-{shortuuid.uuid().lower()}",
         namespace=service_account.namespace,
         data_dict=get_s3_secret_dict(
-            aws_access_key=MinIo.Credentials.ACCESS_KEY_VALUE,
-            aws_secret_access_key=MinIo.Credentials.SECRET_KEY_VALUE,
-            aws_s3_bucket=MinIo.Buckets.MODELMESH_EXAMPLE_MODELS,
-            aws_s3_endpoint=minio_endpoint,
-            aws_default_region="us-east-1",  # Default region for MinIO
+            aws_access_key=SeaweedFs.Credentials.ACCESS_KEY_VALUE,
+            aws_secret_access_key=SeaweedFs.Credentials.SECRET_KEY_VALUE,
+            aws_s3_bucket=SeaweedFs.Buckets.MODELMESH_EXAMPLE_MODELS,
+            aws_s3_endpoint=s3_endpoint,
+            aws_default_region="us-east-1",
         ),
         label={
             Labels.OpenDataHub.DASHBOARD: "true",
@@ -221,16 +232,16 @@ def model_sync_async_job(
 
 
 @pytest.fixture(scope="class")
-def create_test_data_in_minio_from_image(
-    minio_service: Service,
+def create_test_data_in_s3_from_image(
+    seaweedfs_service: Service,
     admin_client: DynamicClient,
     model_registry_namespace: str,
 ) -> None:
-    """Extract and upload test model from KSERVE_MINIO_IMAGE to MinIO"""
-    upload_test_model_to_minio_from_image(
+    """Extract and upload test model from the model image to SeaweedFS."""
+    upload_test_model_to_s3_from_image(
         admin_client=admin_client,
         namespace=model_registry_namespace,
-        minio_service=minio_service,
+        s3_service=seaweedfs_service,
         object_key="my-model/model.onnx",
     )
 
