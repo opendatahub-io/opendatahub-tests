@@ -11,9 +11,15 @@ from tests.model_serving.model_server.llmd.utils import (
     log_accelerator_selection,
     log_base_refs_selection,
 )
-from tests.model_serving.model_server.utils import is_arm64_cluster, skip_test
+from tests.model_serving.model_server.utils import (
+    CONNECTION_PATH_ANNOTATION,
+    CONNECTIONS_ANNOTATION,
+    is_arm64_cluster,
+    skip_test,
+)
 from utilities.constants import Labels
 from utilities.infra import is_disconnected_cluster
+from utilities.resources.llm_inference_service import LLMInferenceService
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -33,10 +39,24 @@ class LLMISvcConfig:
     enable_auth = False
     wait_timeout = 420
     base_refs = None
+    # Whether to wait for Ready (and workload pods) after creation. Smoke/injection-only
+    # variants set this to False since they never schedule a pod.
+    wait = True
 
     # default values for expectation pods count
     expected_vllm_pod_count = 1
     expected_inference_pool_pod_count = 1
+
+    # ── ConnectionsAPI storage-strategy axis ──────────────────────────────
+    # When True, storage is driven by a ConnectionsAPI connection Secret (resolved by the
+    # `connection_secret_fixture` fixture) instead of a static `storage_uri`. `connection_secret_name`
+    # and `connection_bucket` are bound at fixture-time via `with_overrides` — never set directly on
+    # a class body.
+    use_connection: bool = False
+    connection_secret_fixture: str | None = None
+    connection_path: str | None = None
+    connection_secret_name: str | None = None
+    connection_bucket: str | None = None
 
     @classmethod
     def container_resources(cls):
@@ -70,6 +90,31 @@ class LLMISvcConfig:
             "prometheus.io/path": "/metrics",
             "security.opendatahub.io/enable-auth": str(cls.enable_auth).lower(),
         }
+
+    @classmethod
+    def connection_annotations(cls) -> dict[str, str]:
+        """ConnectionsAPI annotations for this config. Empty unless `use_connection` is set.
+
+        `connection_secret_name` must already be bound (via `with_overrides`) by the time this
+        is called — it is resolved at fixture-time from the fixture named in
+        `connection_secret_fixture`, never hardcoded on the class.
+        """
+        if not cls.use_connection:
+            return {}
+        assert cls.connection_secret_name is not None, "connection_secret_name must be bound via with_overrides"
+        annotations: dict[str, str] = {CONNECTIONS_ANNOTATION: cls.connection_secret_name}
+        if cls.connection_path:
+            annotations[CONNECTION_PATH_ANNOTATION] = cls.connection_path
+        return annotations
+
+    @classmethod
+    def verify_injection(cls, llmisvc: LLMInferenceService) -> None:
+        """Assert the ConnectionsAPI webhook injected the expected fields. No-op for static configs.
+
+        `use_connection` subclasses must override this — the base implementation only guards
+        against a connection config that forgets to, rather than asserting anything itself.
+        """
+        assert not cls.use_connection, f"{cls.__name__} sets use_connection=True but never overrides verify_injection"
 
     @classmethod
     def prefill_config(cls):

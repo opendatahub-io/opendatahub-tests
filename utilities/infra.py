@@ -336,6 +336,9 @@ def s3_endpoint_secret(
         with Secret(
             annotations={
                 f"{ApiGroups.OPENDATAHUB_IO}/connection-type": "s3",
+                # Preferred key consumed by the ConnectionsAPI webhook (odh-model-controller);
+                # kept alongside the older "connection-type" key above for the secret_controller.
+                f"{ApiGroups.OPENDATAHUB_IO}/connection-type-protocol": "s3",
                 "serving.kserve.io/s3-endpoint": (aws_s3_endpoint.replace("https://", "").replace("http://", "")),
                 "serving.kserve.io/s3-region": aws_s3_region,
                 "serving.kserve.io/s3-useanoncredential": "false",

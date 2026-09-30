@@ -12,16 +12,19 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 import structlog
+from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.event import Event
 from ocp_resources.node import Node
 from ocp_resources.pod import Pod
 from ocp_resources.prometheus import Prometheus
 from pyhelper_utils.shell import run_command
-from timeout_sampler import TimeoutExpiredError, retry
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
 
 from tests.model_serving.model_server.llmd.constants import LLMD_TESTS_SUPPORTED_ACCELERATORS
+from tests.model_serving.model_server.utils import assert_service_account_exists, wait_for_cleared_predicate
 from utilities.certificates_utils import get_ca_bundle
+from utilities.constants import Timeout
 from utilities.infra import get_dsci_applications_namespace
 from utilities.jira import is_jira_issue_open
 from utilities.llmd_constants import LLMEndpoint
@@ -787,11 +790,13 @@ def get_scheduler_decision_logs(
     return json_logs
 
 
-def workaround_503_no_healthy_upstream(llmisvc: LLMInferenceService, prompt: str) -> None:
+def workaround_503_no_healthy_upstream(llmisvc: LLMInferenceService, prompt: str, timeout: int = 30) -> None:
     """Warm up inference endpoint to work around RHOAIENG-55154.
 
-    Requests soon after Ready condition may 503 with 'no healthy upstream'.
-    Retries every 3s for up to 30s until the endpoint stops returning 503.
+    Requests soon after Ready condition may 503 with 'no healthy upstream', or 502 Bad Gateway —
+    both symptoms of the same gateway-routing race where the backend isn't actually accepting
+    connections yet despite reporting Ready. Retries every 3s for up to `timeout` seconds until
+    the endpoint stops returning either.
     Swallows TimeoutExpiredError if retries are exhausted, letting the real test assertion decide.
     Skips entirely if the Jira issue is closed (result is cached).
 
@@ -800,24 +805,32 @@ def workaround_503_no_healthy_upstream(llmisvc: LLMInferenceService, prompt: str
     Args:
         llmisvc: The LLMInferenceService to warm up
         prompt: The prompt to send in the warm up request
+        timeout: Seconds to keep retrying before giving up (default 30). Callers on
+            resource-constrained clusters, where CPU vLLM cold starts can outlast the default
+            budget, may pass a longer value to avoid a false-negative test failure.
     """
     if not is_jira_issue_open(jira_id="RHOAIENG-55154"):
         LOGGER.info("RHOAIENG-55154 is closed - remove this block")
         return
 
     try:
-        _send_warm_up_request(llmisvc=llmisvc, prompt=prompt)
+        for done in TimeoutSampler(
+            wait_timeout=timeout, sleep=3, func=_send_warm_up_request, llmisvc=llmisvc, prompt=prompt
+        ):
+            if done:
+                break
     except TimeoutExpiredError:
         LOGGER.warning(f"RHOAIENG-55154: warm up retries exhausted for {llmisvc.name}")
 
 
-@retry(wait_timeout=30, sleep=3)
 def _send_warm_up_request(llmisvc: LLMInferenceService, prompt: str) -> bool:
     """Send one warm-up request; return True to stop retrying, False to retry."""
     LOGGER.info(f"RHOAIENG-55154: sending warm up request to {llmisvc.name}")
     status, body = send_chat_completions(llmisvc=llmisvc, prompt=prompt)
     LOGGER.info(f"RHOAIENG-55154: warm up returned {status}")
-    return not (status == 503 and "no healthy upstream" in body)
+    no_healthy_upstream = status == 503 and "no healthy upstream" in body
+    bad_gateway = status == 502
+    return not (no_healthy_upstream or bad_gateway)
 
 
 # ---------------------------------------------------------------------------
@@ -1006,3 +1019,141 @@ def _log_llmisvc_debug_info(llmisvc: LLMInferenceService) -> None:
             sections.append(f"\n {label}:\n  (failed to collect)")
     sections.append(separator + "\n")
     LOGGER.error("\n".join(sections))
+
+
+# ---------------------------------------------------------------------------
+# ConnectionsAPI — LLMInferenceService injection assertions
+# ---------------------------------------------------------------------------
+def assert_llmisvc_s3_injected(llmisvc: LLMInferenceService, secret_name: str, expected_uri: str) -> None:
+    """Assert an S3 connection was injected into an LLMInferenceService.
+
+    Args:
+        llmisvc: LLMInferenceService to inspect (re-read via `.instance`).
+        secret_name: Name of the S3 connection Secret that should have been injected.
+        expected_uri: Expected `spec.model.uri` value (`s3://{bucket}/{path}`).
+
+    Raises:
+        AssertionError: If the SA name or model URI do not match.
+    """
+    sa_name = llmisvc.instance.spec.template.get("serviceAccountName")
+    assert sa_name == f"{secret_name}-sa", f"Expected template.serviceAccountName={secret_name}-sa, got {sa_name!r}"
+
+    model_uri = llmisvc.instance.spec.model.get("uri")
+    assert model_uri == expected_uri, f"Expected spec.model.uri={expected_uri!r}, got {model_uri!r}"
+
+
+def assert_llmisvc_s3_fully_injected(
+    client: DynamicClient,
+    llmisvc: LLMInferenceService,
+    namespace: str,
+    secret_name: str,
+    bucket: str,
+    path: str,
+) -> None:
+    """Assert both effects of S3 injection on an LLMInferenceService: spec fields and SA creation.
+
+    Computes the expected `s3://{bucket}/{path}` URI once, then combines `assert_llmisvc_s3_injected`
+    and `assert_service_account_exists` so callers only need one call and never duplicate the URI
+    computation.
+
+    Args:
+        client: Kubernetes dynamic client.
+        llmisvc: LLMInferenceService to inspect (re-read via `.instance`).
+        namespace: Namespace the `{secret}-sa` ServiceAccount is expected in.
+        secret_name: Name of the S3 connection Secret that should have been injected.
+        bucket: S3 bucket name backing the connection Secret.
+        path: S3 sub-path (`opendatahub.io/connection-path`) the model is stored under.
+
+    Raises:
+        AssertionError: If the spec fields don't match, or the ServiceAccount doesn't exist.
+    """
+    expected_uri = f"s3://{bucket}/{path}"
+    assert_llmisvc_s3_injected(llmisvc=llmisvc, secret_name=secret_name, expected_uri=expected_uri)
+    assert_service_account_exists(client=client, namespace=namespace, name=f"{secret_name}-sa")
+
+
+def assert_llmisvc_uri_injected(llmisvc: LLMInferenceService, expected_uri: str) -> None:
+    """Assert a `uri` connection was injected as `spec.model.uri`.
+
+    Args:
+        llmisvc: LLMInferenceService to inspect (re-read via `.instance`).
+        expected_uri: Expected `spec.model.uri` value (the connection Secret's `URI` key).
+
+    Raises:
+        AssertionError: If `spec.model.uri` does not match.
+    """
+    model_uri = llmisvc.instance.spec.model.get("uri")
+    assert model_uri == expected_uri, f"Expected spec.model.uri={expected_uri!r}, got {model_uri!r}"
+
+
+def assert_llmisvc_oci_injected(llmisvc: LLMInferenceService, secret_name: str) -> None:
+    """Assert an `oci` connection was injected as a `template.imagePullSecrets` entry.
+
+    Args:
+        llmisvc: LLMInferenceService to inspect (re-read via `.instance`).
+        secret_name: Name of the OCI connection Secret expected in `imagePullSecrets`.
+
+    Raises:
+        AssertionError: If the secret name is not present in `imagePullSecrets`.
+    """
+    pull_secrets = llmisvc.instance.spec.template.get("imagePullSecrets") or []
+    names = [dict(entry).get("name") for entry in pull_secrets]
+    assert secret_name in names, f"Expected {secret_name!r} in template.imagePullSecrets, got {names}"
+
+
+def assert_llmisvc_connection_cleared(llmisvc: LLMInferenceService) -> None:
+    """Assert an LLMISVC's S3 injection fields were cleared by an UPDATE-remove action.
+
+    `spec.model.uri` is a typed field (`*apis.URL`), not an arbitrary map key, so the webhook's
+    cleanup (`performLLMISVCCleanup` in odh-model-controller) can only reset it to an empty URL —
+    it cannot remove `spec.model` itself. This checks for that emptiness rather than absence.
+
+    Args:
+        llmisvc: LLMInferenceService to inspect (re-read via `.instance`).
+
+    Raises:
+        AssertionError: If `template.serviceAccountName` is still set, or `spec.model.uri` is
+            still populated.
+    """
+    sa_name = llmisvc.instance.spec.template.get("serviceAccountName")
+    assert not sa_name, f"Expected template.serviceAccountName to be cleared, got {sa_name!r}"
+
+    model_uri = llmisvc.instance.spec.model.get("uri")
+    assert not model_uri, f"Expected spec.model.uri to be cleared, got {model_uri!r}"
+
+
+def wait_for_llmisvc_connection_cleared(llmisvc: LLMInferenceService, timeout: int = Timeout.TIMEOUT_2MIN) -> None:
+    """Poll until an LLMISVC's connection fields are cleared after an UPDATE-remove action.
+
+    Args:
+        llmisvc: LLMInferenceService to poll (re-read via `.instance` on every sample).
+        timeout: Seconds to wait before giving up.
+
+    Raises:
+        TimeoutError: If the fields are not cleared within `timeout` seconds.
+    """
+
+    def _cleared() -> bool:
+        spec = llmisvc.instance.spec
+        return not spec.template.get("serviceAccountName") and not spec.model.get("uri")
+
+    wait_for_cleared_predicate(
+        predicate=_cleared, timeout=timeout, resource_label=f"LLMInferenceService {llmisvc.name}"
+    )
+
+
+def bind_connection_overrides(request: FixtureRequest, config_cls: type) -> type:
+    """Resolve a `use_connection` config's connection Secret and bind it via `with_overrides`.
+
+    No-op (returns `config_cls` unchanged) for configs that don't use ConnectionsAPI storage. Used
+    by the `llmisvc` fixture so the connection Secret name (and, for S3, bucket) is bound onto a
+    *derived* class before `_create_llmisvc_from_config` builds the resource — the original,
+    unbound class passed via `request.param` never carries these fixture-resolved values.
+    """
+    if not config_cls.use_connection:
+        return config_cls
+    secret = request.getfixturevalue(argname=config_cls.connection_secret_fixture)
+    overrides: dict[str, Any] = {"connection_secret_name": secret.name}
+    if config_cls.connection_secret_fixture == "s3_connection_secret":  # pragma: allowlist secret
+        overrides["connection_bucket"] = request.getfixturevalue(argname="models_s3_bucket_name")
+    return config_cls.with_overrides(**overrides)

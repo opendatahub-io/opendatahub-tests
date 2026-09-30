@@ -18,3 +18,6 @@ LLMD_KSERVE_CONTROLLER_DEPLOYMENTS: list[str] = [
 ]
 
 SOAK_TEST_DURATION: int = int(os.environ.get("SOAK_TEST_DURATION", "10"))
+
+# ConnectionsAPI — S3 sub-path for the reused TinyLlama-1.1B model
+LLMISVC_S3_CONNECTION_PATH: str = "TinyLlama-1.1B-Chat-v1.0"
