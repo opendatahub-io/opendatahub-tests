@@ -67,6 +67,8 @@ def assert_authorization_response(result: RawQueryResult, expected: str) -> None
     if expected in {"403", "404"}:
         if result.http_status != int(expected):
             raise QueryContractError(f"expected HTTP {expected}, got {result.http_status}")
+        if result.series:
+            raise QueryContractError(f"HTTP {expected} authorization response must not return series")
         return
     if expected == "success-empty":
         if result.http_status is None or not 200 <= result.http_status < 300:

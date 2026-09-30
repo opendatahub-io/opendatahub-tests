@@ -10,6 +10,12 @@ from tests.observability.query import RawQueryResult
 
 SENSITIVE_KEY_PATTERN = re.compile(r"(?:api[_-]?key|authorization|bearer|cookie|password|secret|token)", re.IGNORECASE)
 BEARER_PATTERN = re.compile(r"(?i)\bBearer\s+[^\s,;]+")
+BASIC_PATTERN = re.compile(r"(?i)\bBasic\s+[^\s,;]+")
+JWT_PATTERN = re.compile(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*")
+KEY_VALUE_PATTERN = re.compile(
+    r"(?i)\b((?:[a-z0-9]+[_-])*(?:api[_-]?key|authorization|bearer|cookie|password|secret|token))"
+    r"\s*[=:]\s*[^\s,;&]+"
+)
 
 
 @dataclass(frozen=True)
@@ -61,13 +67,12 @@ def write_failure_log(destination: str | Path, records: list[EvidenceRecord]) ->
     for record in records:
         query = record.query
         lines.append(
-            _sanitize(
-                value=(
-                    f"{record.test_identifier}: disposition={query.expected_disposition} "
-                    f"http_status={query.http_status} prometheus_status={query.prometheus_status} "
-                    f"error_type={query.error_type} error={'[REDACTED]' if query.error else None}"
-                )
-            )
+            f"{_sanitize_log_field(record.test_identifier)}: "
+            f"disposition={_sanitize_log_field(query.expected_disposition)} "
+            f"http_status={_sanitize_log_field(query.http_status)} "
+            f"prometheus_status={_sanitize_log_field(query.prometheus_status)} "
+            f"error_type={_sanitize_log_field(query.error_type)} "
+            f"error={_sanitize_log_field('[REDACTED]' if query.error else None)}"
         )
     path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
     return path
@@ -91,5 +96,14 @@ def _sanitize(value: Any, key: str = "") -> Any:
     if isinstance(value, tuple):
         return [_sanitize(item, key) for item in value]
     if isinstance(value, str):
-        return BEARER_PATTERN.sub(repl="Bearer [REDACTED]", string=value)
+        redacted = BEARER_PATTERN.sub(repl="Bearer [REDACTED]", string=value)
+        redacted = BASIC_PATTERN.sub(repl="Basic [REDACTED]", string=redacted)
+        redacted = JWT_PATTERN.sub(repl="[REDACTED]", string=redacted)
+        return KEY_VALUE_PATTERN.sub(repl=r"\1=[REDACTED]", string=redacted)
     return value
+
+
+def _sanitize_log_field(value: object) -> str:
+    """Redact a failure-log field and escape line-breaking control characters."""
+    sanitized = str(_sanitize(value=value))
+    return sanitized.replace("\r", r"\r").replace("\n", r"\n")

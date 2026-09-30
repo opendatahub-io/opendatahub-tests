@@ -1,6 +1,6 @@
 """Persona definitions and independence validation."""
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 REQUIRED_PERSONAS = (
@@ -54,7 +54,13 @@ def validate_personas(personas: list[Persona]) -> tuple[Persona, ...]:
     return tuple(by_name[name] for name in REQUIRED_PERSONAS)
 
 
-def validate_token_identities(personas: tuple[Persona, ...], identities: Mapping[str, TokenIdentity]) -> None:
+def select_persona_tokens(raw_tokens: Mapping[object, object], personas: Sequence[Persona]) -> dict[str, str]:
+    """Select only bearer tokens belonging to configured personas."""
+    persona_names = {persona.name for persona in personas}
+    return {str(name): str(token) for name, token in raw_tokens.items() if str(name) in persona_names}
+
+
+def validate_token_identities(personas: Sequence[Persona], identities: Mapping[str, TokenIdentity]) -> None:
     """Require each injected token to authenticate as its configured principal and groups."""
     for persona in personas:
         identity = identities.get(persona.name)

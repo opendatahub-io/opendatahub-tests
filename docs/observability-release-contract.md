@@ -59,7 +59,7 @@ The source telemetry gate must call `wait_for_source_metric` and confirm HTTP su
 
 `RawQueryClient` is configured with the route base used by the dashboard datasource, not a direct service shortcut. Every query record includes persona/principal, fixture and requested namespaces, sanitized route path, parameters, PromQL, HTTP status, elapsed time, Prometheus error fields, result type, normalized labels, and rounded timestamps. An HTTP 200 with Prometheus `status=error` remains a failure, not an empty result.
 
-The release fixture writes `preflight.json` before resource creation, `observability-evidence.json` after query tests, and `observability-failures.log` for failed query records. `write_evidence` emits `schema_version: 1.0.0` JSON and `write_failure_log` emits concise human-readable lines. Sensitive parameter keys, bearer-like values, and raw query error text are replaced with `[REDACTED]`.
+The release fixture writes `preflight.json` before resource creation, `observability-evidence.json` after query tests, and `observability-failures.log` for failed query records. `write_evidence` emits `schema_version: 1.0.0` JSON and `write_failure_log` emits concise human-readable lines. Sensitive parameter keys, Bearer/Basic credentials, JWT-shaped values, sensitive key-value values, and raw query error text are replaced with `[REDACTED]`; failure-log fields escape carriage returns and newlines.
 
 ## Required Owner Decision
 

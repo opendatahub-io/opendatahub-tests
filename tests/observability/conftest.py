@@ -23,7 +23,13 @@ from tests.observability.fixtures import (
     resource_evidence,
     wait_for_source_metric,
 )
-from tests.observability.personas import Persona, PersonaValidationError, validate_personas, validate_token_identities
+from tests.observability.personas import (
+    Persona,
+    PersonaValidationError,
+    select_persona_tokens,
+    validate_personas,
+    validate_token_identities,
+)
 from tests.observability.preflight import (
     PreflightCheck,
     PreflightReport,
@@ -435,7 +441,7 @@ def observability_persona_tokens(
         pytest.fail(f"[failed] persona token mapping is invalid: {type(error).__name__}")
     if not isinstance(raw_tokens, dict):
         pytest.fail("[failed] persona token mapping must be a string mapping")
-    tokens = {str(name): str(token) for name, token in raw_tokens.items()}
+    tokens = select_persona_tokens(raw_tokens=raw_tokens, personas=observability_personas)
     missing = [persona.name for persona in observability_personas if not tokens.get(persona.name)]
     if missing:
         pytest.fail(f"[failed] missing independent authentication tokens for: {', '.join(missing)}")

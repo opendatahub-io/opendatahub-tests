@@ -63,6 +63,23 @@ def test_success_empty_authorization_contract_checks_empty_series() -> None:
     assert_authorization_response(result=result, expected="success-empty")
 
 
+@pytest.mark.parametrize("status", [403, 404])
+def test_denial_authorization_contract_rejects_returned_series(status: int) -> None:
+    """Given a denial response containing series, reject it even when the HTTP status is forbidden or not found."""
+    result = replace(_result(labels=()), http_status=status)
+
+    with pytest.raises(QueryContractError, match="must not return series"):
+        assert_authorization_response(result=result, expected=str(status))
+
+
+@pytest.mark.parametrize("status", [403, 404])
+def test_denial_authorization_contract_accepts_series_free_response(status: int) -> None:
+    """Given a series-free denial response, accept the reviewed forbidden or not-found contract."""
+    result = replace(_result(labels=()), http_status=status, series=())
+
+    assert_authorization_response(result=result, expected=str(status))
+
+
 def test_unshipped_capability_cannot_pass_as_positive_data() -> None:
     """Given an explicitly unshipped capability, reject positive assertions and retain its unavailable status."""
     contract = ContractRecord(

@@ -107,7 +107,18 @@ class TestObservabilityReleaseContract:
                 query=result,
                 evidence=observability_evidence,
             )
-            assert any(float(value) > 0 for series in result.series for _timestamp, value in series.values)
+            has_positive_value = False
+            for series in result.series:
+                for _timestamp, value in series.values:
+                    try:
+                        if float(value) > 0:
+                            has_positive_value = True
+                            break
+                    except TypeError, ValueError:
+                        continue
+                if has_positive_value:
+                    break
+            assert has_positive_value, f"{record.identifier}: expected a numeric telemetry value greater than zero"
 
     def test_maas_usage_metrics_are_separate_from_unshipped_capabilities(
         self,

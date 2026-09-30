@@ -5,6 +5,7 @@ from tests.observability.personas import (
     Persona,
     PersonaValidationError,
     TokenIdentity,
+    select_persona_tokens,
     validate_personas,
     validate_token_identities,
 )
@@ -58,3 +59,22 @@ def test_persona_validation_rejects_token_group_mismatch() -> None:
 
     with pytest.raises(PersonaValidationError, match="groups"):
         validate_token_identities(personas=personas, identities=identities)
+
+
+def test_persona_token_selection_ignores_unconfigured_entries() -> None:
+    """Given token input with an unnamed extra entry, select only configured persona tokens."""
+    personas = (
+        Persona(name="cluster-admin", principal="admin", groups=(), namespaces=("*",)),
+        Persona(name="regular-user", principal="user", groups=(), namespaces=("ns-a",)),
+    )
+
+    tokens = select_persona_tokens(
+        raw_tokens={
+            "cluster-admin": "admin-token",
+            "regular-user": "user-token",
+            "unexpected": "admin-token",
+        },
+        personas=personas,
+    )
+
+    assert tokens == {"cluster-admin": "admin-token", "regular-user": "user-token"}
