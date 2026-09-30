@@ -12,6 +12,33 @@ from utilities.constants import ModelFormat, RuntimeTemplates
 from utilities.image_constants import SharedImages
 
 
+class SeaweedFs:
+    """SeaweedFS S3-compatible storage settings for Model Registry tests."""
+
+    class Metadata:
+        NAME: str = "seaweedfs"
+        DEFAULT_PORT: int = 8333
+        FILER_PORT: int = 8888
+        FILER_GRPC_PORT: int = 18888
+
+    class Credentials:
+        ACCESS_KEY_VALUE: str = "THEACCESSKEY"
+        SECRET_KEY_VALUE: str = "THESECRETKEY"
+
+    class Buckets:
+        MODELMESH_EXAMPLE_MODELS: str = "modelmesh-example-models"
+
+    class PodConfig:
+        ARGS: tuple[str, ...] = (
+            "server",
+            "-dir=/tmp",
+            "-s3",
+            "-iam",
+            "-filer",
+            "-master.volumePreallocate=false",
+        )
+
+
 class ModelRegistryEndpoints:
     REGISTERED_MODELS: str = "/api/model_registry/v1alpha3/registered_models"
 

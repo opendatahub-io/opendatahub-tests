@@ -26,3 +26,19 @@ models:
     createTimeSinceEpoch: "1700000000000"
     lastUpdateTimeSinceEpoch: "1700000000000"
 """
+
+STATUS_PATH_TEMPLATE: str = "{base}sources/{source_id}/status"
+UNKNOWN_SOURCE_ID: str = "does_not_exist_xyz"
+ERROR_SOURCE_ID: str = "mixed_models_catalog"
+ERROR_SOURCE_YAML: str = f"""
+catalogs:
+  - name: Source Status Error Catalog
+    id: {ERROR_SOURCE_ID}
+    type: hf
+    enabled: true
+    includedModels:
+      - "jonburdo/public-test-model-1"
+      - "jonburdo/private-test-model-1"
+    labels:
+      - {ERROR_SOURCE_ID}
+"""

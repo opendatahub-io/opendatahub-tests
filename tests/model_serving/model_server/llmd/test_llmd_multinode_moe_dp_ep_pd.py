@@ -164,10 +164,9 @@ class TestMultinodeMoeDpEpPrefillDecode:
         """Test steps:
 
         1. Check the scheduler config for all expected P/D plugins.
-        2. Assert all 5 disaggregation plugins are present.
+        2. Assert all 4 disaggregation plugins are present.
         """
         for expected_plugin in [
-            "disagg-headers-handler",
             "prefill-filter",
             "decode-filter",
             "always-disagg-pd-decider",

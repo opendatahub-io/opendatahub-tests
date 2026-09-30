@@ -934,6 +934,28 @@ def execute_get_call(
     return resp
 
 
+def execute_delete_call(url: str, headers: dict[str, str], verify: bool | str = False) -> requests.Response:
+    """Execute a DELETE request and return a successful response."""
+    LOGGER.info(f"Executing delete call: {url}")
+    resp = requests.delete(url=url, headers=headers, verify=verify, timeout=60)
+    LOGGER.info(f"url: {url}, status code: {resp.status_code}")
+    if resp.status_code not in [200, 202, 204]:
+        if resp.status_code == 401:
+            raise TransientUnauthorizedError(f"Delete call failed for resource: {url}, 401: {resp.text}")
+        raise ResourceNotFoundError(f"Delete call failed for resource: {url}, {resp.status_code}: {resp.text}")
+    return resp
+
+
+@retry(
+    wait_timeout=60,
+    sleep=5,
+    exceptions_dict={TransientUnauthorizedError: [], requests.exceptions.ConnectionError: []},
+)
+def execute_delete_call_with_retry(url: str, headers: dict[str, str], verify: bool | str = False) -> requests.Response:
+    """Execute a DELETE request, retrying on transient 401s (OAuth/kube-rbac-proxy initialization)."""
+    return execute_delete_call(url=url, headers=headers, verify=verify)
+
+
 def execute_get_command(
     url: str, headers: dict[str, str], verify: bool | str = False, params: dict[str, Any] | None = None
 ) -> dict[Any, Any]:
