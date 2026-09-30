@@ -38,9 +38,6 @@ class AiSafetyImages:
         "oci://quay.io/trustyai_testing/loan-model-alpha-modelcar"
         "@sha256:837ca7b3064a08c5fa1a33c3cc557e96c7c2a70d0a8353076a2f8e95abcb6e60"
     )
-    MLSERVER: str = (
-        "quay.io/trustyai_testing/mlserver@sha256:68a4cd74fff40a3c4f29caddbdbdc9e54888aba54bf3c5f78c8ffd577c3a1c89"
-    )
     OTEL_COLLECTOR: str = (
         "ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector"
         "@sha256:62c84db5d6fa6e7c3dfc8e63d60b8d4e9e4f8dfded5b6c4056e44c6d3e78ac63"
