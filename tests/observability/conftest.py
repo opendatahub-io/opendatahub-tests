@@ -38,7 +38,7 @@ from tests.observability.preflight import (
     parse_preflight_present,
 )
 from tests.observability.query import RawQueryClient, RawQueryResult, build_contract_request
-from utilities.path_utils import resolve_repo_path
+from utilities.path_utils import resolve_repo_path, resolve_trusted_path
 
 if TYPE_CHECKING:
     from kubernetes.dynamic import DynamicClient
@@ -79,7 +79,10 @@ def release_evidence_directory() -> Path:
     """Return the CI evidence directory without placing credentials in its name or contents."""
     configured_path = os.environ.get("RHOAI_OBSERVABILITY_EVIDENCE_DIR")
     if configured_path:
-        return Path(configured_path)
+        try:
+            return resolve_trusted_path(source=configured_path)
+        except ValueError as error:
+            pytest.fail(f"[failed] invalid RHOAI_OBSERVABILITY_EVIDENCE_DIR: {error}")
     return Path(str(py_config.get("tmp_base_dir", "/tmp"))) / "observability-evidence"
 
 
