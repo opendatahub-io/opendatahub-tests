@@ -57,6 +57,7 @@ def check_persona_access(
     api_version: str = "v1",
 ) -> SubjectAccessReviewResult:
     """Run one SAR for a persona and preserve allowed, denied, and error fields."""
+    review_name = "observability-subject-access-review"
     resource_attributes = {
         "namespace": namespace,
         "verb": verb,
@@ -68,10 +69,15 @@ def check_persona_access(
         resource_attributes["subresource"] = subresource
     review = SubjectAccessReview(
         client=admin_client,
-        spec={
-            "user": persona.principal,
-            "groups": list(persona.groups),
-            "resourceAttributes": resource_attributes,
+        kind_dict={
+            "apiVersion": SubjectAccessReview.api_version,
+            "kind": "SubjectAccessReview",
+            "metadata": {"name": review_name},
+            "spec": {
+                "user": persona.principal,
+                "groups": list(persona.groups),
+                "resourceAttributes": resource_attributes,
+            },
         },
     )
     review.create()

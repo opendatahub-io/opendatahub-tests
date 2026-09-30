@@ -38,9 +38,10 @@ def test_subject_access_review_preserves_groups_and_decision_fields() -> None:
     assert result.resource == "pods"
     assert result.subresource == "status"
     assert result.to_dict()["subresource"] == "status"
-    assert resource_factory.call_args.kwargs["spec"]["groups"] == ["system:authenticated"]
-    assert resource_factory.call_args.kwargs["spec"]["resourceAttributes"]["resource"] == "pods"
-    assert resource_factory.call_args.kwargs["spec"]["resourceAttributes"]["subresource"] == "status"
+    kind_dict = resource_factory.call_args.kwargs["kind_dict"]
+    assert kind_dict["spec"]["groups"] == ["system:authenticated"]
+    assert kind_dict["spec"]["resourceAttributes"]["resource"] == "pods"
+    assert kind_dict["spec"]["resourceAttributes"]["subresource"] == "status"
     sar_resource.create.assert_called_once_with()
 
 
@@ -48,8 +49,12 @@ def test_subject_access_review_has_createable_resource_metadata() -> None:
     """Given a SAR specification, build the metadata and API version required by the wrapper create path."""
     review = SubjectAccessReview(
         client=Mock(),
-        name="observability-review",
-        spec={"resourceAttributes": {"resource": "pods"}},
+        kind_dict={
+            "apiVersion": SubjectAccessReview.api_version,
+            "kind": "SubjectAccessReview",
+            "metadata": {"name": "observability-review"},
+            "spec": {"resourceAttributes": {"resource": "pods"}},
+        },
     )
 
     review.to_dict()
