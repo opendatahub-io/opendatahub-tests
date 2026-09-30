@@ -41,6 +41,7 @@ def wait_for_isvc_model_status(isvc: InferenceService, target_model_state: str, 
                 "name": ModelFormat.ONNX,
                 "template-name": RuntimeTemplates.OVMS_KSERVE,
                 "multi-model": False,
+                "arch-aware": True,
             },
             {
                 "name": "missing-path",

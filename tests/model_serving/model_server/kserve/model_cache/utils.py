@@ -24,7 +24,6 @@ MODEL_CACHE_HOST_PATH: str = "/var/lib/kserve/models"
 MODEL_CACHE_STORAGE_CLASS: str = "local-storage"
 MODEL_CACHE_SIZE: str = "1Gi"
 MODEL_CACHE_NODE_COUNT: int = 2
-MINT_ONNX_STORAGE_PATH: str = "test-dir"
 
 
 class LocalModelNodeGroup(Resource):

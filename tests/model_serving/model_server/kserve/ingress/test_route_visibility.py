@@ -1,6 +1,6 @@
 import pytest
 
-from tests.model_serving.model_server.utils import verify_inference_response
+from tests.model_serving.model_server.utils import verify_arch_inference_response, verify_inference_response
 from utilities.constants import (
     Annotations,
     KServeDeploymentType,
@@ -35,6 +35,7 @@ pytestmark = [pytest.mark.tier1, pytest.mark.usefixtures("valid_aws_config"), py
     ],
     indirect=True,
 )
+@pytest.mark.arch_runtime
 class TestRestRawDeploymentRoutes:
     """Validate REST route visibility transitions for KServe raw deployment with MNIST ONNX.
 
@@ -56,20 +57,14 @@ class TestRestRawDeploymentRoutes:
         labels = ovms_kserve_inference_service.labels or {}
         assert labels.get(Labels.Kserve.NETWORKING_KSERVE_IO) is None
 
-    def test_rest_raw_deployment_internal_route(self, ovms_kserve_inference_service):
+    def test_rest_raw_deployment_internal_route(self, ovms_kserve_inference_service, cluster_arch):
         """Verify inference succeeds over the internal HTTP route.
 
         Given a raw deployment ISVC with no external route,
         When an inference request is sent over HTTP to the cluster-internal URL,
         Then the response must be successful.
         """
-        verify_inference_response(
-            inference_service=ovms_kserve_inference_service,
-            inference_config=ONNX_INFERENCE_CONFIG,
-            inference_type=Inference.INFER,
-            protocol=Protocols.HTTP,
-            use_default_query=True,
-        )
+        verify_arch_inference_response(isvc=ovms_kserve_inference_service, cluster_arch=cluster_arch)
 
     @pytest.mark.parametrize(
         "patched_kserve_isvc_visibility_label",
@@ -77,20 +72,14 @@ class TestRestRawDeploymentRoutes:
         indirect=True,
     )
     @pytest.mark.dependency(name="test_rest_raw_deployment_routes__exposed_route")
-    def test_rest_raw_deployment_exposed_route(self, patched_kserve_isvc_visibility_label):
+    def test_rest_raw_deployment_exposed_route(self, patched_kserve_isvc_visibility_label, cluster_arch):
         """Verify inference succeeds over the exposed external HTTPS route.
 
         Given a raw deployment ISVC with the networking.kserve.io label set to exposed,
         When an inference request is sent over HTTPS to the external route,
         Then the response must be successful.
         """
-        verify_inference_response(
-            inference_service=patched_kserve_isvc_visibility_label,
-            inference_config=ONNX_INFERENCE_CONFIG,
-            inference_type=Inference.INFER,
-            protocol=Protocols.HTTPS,
-            use_default_query=True,
-        )
+        verify_arch_inference_response(isvc=patched_kserve_isvc_visibility_label, cluster_arch=cluster_arch)
 
     @pytest.mark.dependency(depends=["test_rest_raw_deployment_routes__exposed_route"])
     @pytest.mark.parametrize(
@@ -98,7 +87,7 @@ class TestRestRawDeploymentRoutes:
         [pytest.param({"visibility": "local-cluster"})],
         indirect=True,
     )
-    def test_disabled_rest_raw_deployment_exposed_route(self, patched_kserve_isvc_visibility_label):
+    def test_disabled_rest_raw_deployment_exposed_route(self, patched_kserve_isvc_visibility_label, cluster_arch):
         """Verify inference still succeeds over the internal route after the external route is disabled.
 
         Given a raw deployment ISVC that was previously exposed externally and has since had
@@ -106,13 +95,7 @@ class TestRestRawDeploymentRoutes:
         When an inference request is sent over HTTP to the cluster-internal URL,
         Then the response must be successful, confirming internal access is unaffected.
         """
-        verify_inference_response(
-            inference_service=patched_kserve_isvc_visibility_label,
-            inference_config=ONNX_INFERENCE_CONFIG,
-            inference_type=Inference.INFER,
-            protocol=Protocols.HTTP,
-            use_default_query=True,
-        )
+        verify_arch_inference_response(isvc=patched_kserve_isvc_visibility_label, cluster_arch=cluster_arch)
 
 
 @pytest.mark.parametrize(
@@ -126,6 +109,7 @@ class TestRestRawDeploymentRoutes:
     ],
     indirect=True,
 )
+@pytest.mark.usefixtures("skip_if_not_x86")
 class TestRestRawDeploymentRoutesTimeout:
     """Validate REST route timeout behavior for KServe raw deployment with MNIST ONNX.
 
@@ -137,20 +121,14 @@ class TestRestRawDeploymentRoutesTimeout:
     """
 
     @pytest.mark.dependency(name="test_rest_raw_deployment_routes_timeout__exposed_route")
-    def test_rest_raw_deployment_exposed_route(self, ovms_raw_inference_service):
+    def test_rest_raw_deployment_exposed_route(self, ovms_raw_inference_service, cluster_arch):
         """Verify inference succeeds over the exposed external HTTPS route before timeout is set.
 
         Given a raw deployment ISVC with an external route and no timeout annotation,
         When an inference request is sent over HTTPS,
         Then the response must be successful.
         """
-        verify_inference_response(
-            inference_service=ovms_raw_inference_service,
-            inference_config=ONNX_INFERENCE_CONFIG,
-            inference_type=Inference.INFER,
-            protocol=Protocols.HTTPS,
-            use_default_query=True,
-        )
+        verify_arch_inference_response(isvc=ovms_raw_inference_service, cluster_arch=cluster_arch)
 
     @pytest.mark.parametrize(
         "ovms_raw_isvc_patched_annotations",

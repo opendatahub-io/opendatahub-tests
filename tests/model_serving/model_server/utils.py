@@ -5,6 +5,7 @@ from string import Template
 from typing import Any
 
 import pytest
+import requests
 import structlog
 from kubernetes.client.exceptions import ApiException
 from kubernetes.dynamic import DynamicClient
@@ -21,11 +22,21 @@ from utilities.constants import KServeDeploymentType, Protocols
 from utilities.exceptions import (
     InferenceResponseError,
 )
-from utilities.inference_utils import Inference, UserInference
+from utilities.inference_utils import Inference, UserInference, get_exposed_isvc_url
 from utilities.infra import get_pods_by_isvc_label
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+def arch_onnx_s3_path(arch: str) -> str:
+    """Return the existing S3 model directory for OVMS or MLServer."""
+    if arch == "arm64":
+        from tests.model_serving.model_runtime.mlserver.constant import MODEL_CONFIGS, MODEL_PATH_PREFIX
+        from utilities.constants import ModelFormat
+
+        return f"{MODEL_PATH_PREFIX}/{MODEL_CONFIGS[ModelFormat.ONNX]['s3_model_dir']}"
+    return "test-dir"
 
 
 def skip_test(reason: str) -> None:
@@ -67,6 +78,34 @@ def is_arm64_cluster(client: DynamicClient) -> bool:
         LOGGER.warning(f"Unknown worker architecture: {architecture!r}")
 
     return architecture == "arm64"
+
+
+def verify_arch_inference_response(isvc: InferenceService, cluster_arch: str) -> None:
+    """Verify the matching ONNX model response on x86 OVMS or ARM MLServer."""
+    if cluster_arch == "arm64":
+        from tests.model_serving.model_runtime.mlserver.constant import MODEL_CONFIGS
+        from tests.model_serving.model_runtime.mlserver.utils import (
+            run_mlserver_inference,
+            validate_deterministic_snapshot,
+        )
+        from utilities.constants import ModelFormat
+
+        response = run_mlserver_inference(
+            isvc=isvc,
+            input_data=MODEL_CONFIGS[ModelFormat.ONNX]["rest_query"],
+            model_version="",
+            protocol=Protocols.REST,
+        )
+        validate_deterministic_snapshot(response=response)
+        return
+
+    verify_inference_response(
+        inference_service=isvc,
+        inference_config=ONNX_INFERENCE_CONFIG,
+        inference_type=Inference.INFER,
+        protocol=Protocols.HTTPS if Inference(inference_service=isvc).visibility_exposed else Protocols.HTTP,
+        use_default_query=True,
+    )
 
 
 def verify_inference_response(
@@ -249,6 +288,7 @@ def wait_for_raw_isvc_https_infer_ready(
     token: str | None = None,
     timeout: int = 300,
     sleep: int = 5,
+    request_body: dict[str, Any] | None = None,
 ) -> None:
     """Block until the same external HTTPS REST infer the suite uses succeeds.
 
@@ -260,6 +300,7 @@ def wait_for_raw_isvc_https_infer_ready(
     Args:
         isvc: Exposed raw KServe InferenceService.
         token: Bearer token when auth is required; omit when auth is disabled.
+        request_body: Optional MLServer payload; sent by HTTP client to avoid OS argument limits.
         timeout: Maximum seconds to poll.
         sleep: Seconds between attempts.
 
@@ -268,6 +309,20 @@ def wait_for_raw_isvc_https_infer_ready(
     """
 
     def _https_infer_ok() -> bool:
+        if request_body is not None:
+            headers = {"Authorization": f"Bearer {token}"} if token else {}
+            try:
+                response = requests.post(
+                    f"{get_exposed_isvc_url(isvc=isvc)}/v2/models/{isvc.name}/infer",
+                    json=request_body,
+                    headers=headers,
+                    verify=False,
+                    timeout=60,
+                )
+                return response.status_code == 200 and bool(response.json().get("outputs"))
+            except requests.RequestException, ValueError:
+                return False
+
         inference = UserInference(
             inference_service=isvc,
             inference_config=ONNX_INFERENCE_CONFIG,

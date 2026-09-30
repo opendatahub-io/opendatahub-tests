@@ -1,21 +1,19 @@
 import pytest
 
 from tests.model_serving.model_server.kserve.inference_service_lifecycle.utils import consistently_verify_no_pods_exist
-from tests.model_serving.model_server.utils import verify_inference_response
+from tests.model_serving.model_server.utils import verify_arch_inference_response
 from utilities.constants import (
     ModelFormat,
     ModelVersion,
-    Protocols,
     RunTimeConfigs,
 )
-from utilities.inference_utils import Inference
-from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
 pytestmark = [pytest.mark.usefixtures("valid_aws_config")]
 
 
 @pytest.mark.rawdeployment
 @pytest.mark.tier1
+@pytest.mark.arch_runtime
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_raw_inference_service",
     [
@@ -43,16 +41,10 @@ class TestStopRaw:
     """
 
     def test_raw_onnx_rest_inference(
-        self, unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_raw_inference_service
+        self, unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_raw_inference_service, cluster_arch
     ):
         """Verify that kserve Raw ONNX model can be queried using REST"""
-        verify_inference_response(
-            inference_service=ovms_raw_inference_service,
-            inference_config=ONNX_INFERENCE_CONFIG,
-            inference_type=Inference.INFER,
-            protocol=Protocols.HTTPS,
-            use_default_query=True,
-        )
+        verify_arch_inference_response(isvc=ovms_raw_inference_service, cluster_arch=cluster_arch)
 
     @pytest.mark.parametrize(
         "patched_raw_inference_service_stop_annotation",
@@ -77,6 +69,7 @@ class TestStopRaw:
 
 @pytest.mark.rawdeployment
 @pytest.mark.tier1
+@pytest.mark.arch_runtime
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_raw_inference_service",
     [
@@ -129,12 +122,7 @@ class TestStoppedResumeRaw:
         ovms_kserve_serving_runtime,
         ovms_raw_inference_service,
         patched_raw_inference_service_stop_annotation,
+        cluster_arch,
     ):
         """Verify pod rollout and REST inference after the stop annotation is set to false."""
-        verify_inference_response(
-            inference_service=patched_raw_inference_service_stop_annotation,
-            inference_config=ONNX_INFERENCE_CONFIG,
-            inference_type=Inference.INFER,
-            protocol=Protocols.HTTPS,
-            use_default_query=True,
-        )
+        verify_arch_inference_response(isvc=patched_raw_inference_service_stop_annotation, cluster_arch=cluster_arch)

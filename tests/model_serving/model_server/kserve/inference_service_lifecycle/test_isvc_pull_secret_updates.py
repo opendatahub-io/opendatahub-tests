@@ -8,6 +8,7 @@ from tests.model_serving.model_server.kserve.inference_service_lifecycle.utils i
 from utilities.constants import ModelName, ModelStorage, RuntimeTemplates
 
 
+@pytest.mark.arch_runtime
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, serving_runtime_from_template, model_car_raw_inference_service_with_pull_secret",
     [
@@ -17,8 +18,9 @@ from utilities.constants import ModelName, ModelStorage, RuntimeTemplates
                 "name": f"{ModelName.MNIST}-runtime",
                 "template-name": RuntimeTemplates.OVMS_KSERVE,
                 "multi-model": False,
+                "arch-aware": True,
             },
-            {"storage-uri": ModelStorage.OCI.MNIST_8_1},
+            {"storage-uri": ModelStorage.OCI.MNIST_8_1, "arch-aware": True},
         )
     ],
     indirect=True,

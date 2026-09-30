@@ -29,7 +29,8 @@ from tests.model_serving.model_server.kserve.model_cache.utils import (
     MODEL_CACHE_SIZE,
     LocalModelNodeGroup,
 )
-from tests.model_serving.model_server.utils import skip_test
+from tests.model_serving.model_server.runtime_registry import RuntimeProfile, get_runtime_profile, resolve_cluster_arch
+from tests.model_serving.model_server.utils import arch_onnx_s3_path, get_worker_architecture, skip_test
 from utilities.constants import (
     DscComponents,
     KServeDeploymentType,
@@ -109,11 +110,24 @@ def serving_runtime_from_template(
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
+    arch_aware = request.param.get("arch-aware", False)
+    profile = request.getfixturevalue("arch_runtime_profile") if arch_aware else None
+    if (
+        not arch_aware
+        and request.param["template-name"]
+        in {
+            RuntimeTemplates.OVMS_KSERVE,
+            RuntimeTemplates.OVMS_MODEL_MESH,
+        }
+        and request.getfixturevalue("cluster_arch") != "amd64"
+    ):
+        pytest.skip("OVMS runtime is unsupported on ARM64")
+
     runtime_kwargs = {
         "client": unprivileged_client,
         "name": request.param["name"],
         "namespace": unprivileged_model_namespace.name,
-        "template_name": request.param["template-name"],
+        "template_name": profile.template if profile else request.param["template-name"],
         "multi_model": request.param["multi-model"],
         "models_priorities": request.param.get("models-priorities"),
         "supported_model_formats": request.param.get("supported-model-formats"),
@@ -167,11 +181,16 @@ def ovms_kserve_serving_runtime(
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
+    arch = request.getfixturevalue(argname="cluster_arch")
+    arch_aware = request.node.get_closest_marker("arch_runtime") is not None
+    if arch != "amd64" and not arch_aware:
+        pytest.skip("OVMS runtime is unsupported on ARM64")
+
     runtime_kwargs = {
         "client": unprivileged_client,
         "namespace": unprivileged_model_namespace.name,
         "name": request.param["runtime-name"],
-        "template_name": RuntimeTemplates.OVMS_KSERVE,
+        "template_name": RuntimeTemplates.MLSERVER if arch == "arm64" else RuntimeTemplates.OVMS_KSERVE,
         "multi_model": False,
         "resources": {
             ModelFormat.OVMS: {
@@ -181,13 +200,16 @@ def ovms_kserve_serving_runtime(
         },
     }
 
-    if model_format_name := request.param.get("model-format"):
+    if arch == "arm64":
+        runtime_kwargs.pop("resources")
+
+    if arch == "amd64" and (model_format_name := request.param.get("model-format")):
         runtime_kwargs["model_format_name"] = model_format_name
 
-    if supported_model_formats := request.param.get("supported-model-formats"):
+    if arch == "amd64" and (supported_model_formats := request.param.get("supported-model-formats")):
         runtime_kwargs["supported_model_formats"] = supported_model_formats
 
-    if runtime_image := request.param.get("runtime-image"):
+    if arch == "amd64" and (runtime_image := request.param.get("runtime-image")):
         runtime_kwargs["runtime_image"] = runtime_image
 
     with ServingRuntimeFromTemplate(**runtime_kwargs) as model_runtime:
@@ -224,18 +246,21 @@ def ovms_kserve_inference_service(
     unprivileged_model_namespace: Namespace,
     ovms_kserve_serving_runtime: ServingRuntime,
     ci_endpoint_s3_secret: Secret,
+    cluster_arch: str,
 ) -> Generator[InferenceService, Any, Any]:
     deployment_mode = request.param["deployment-mode"]
+    arch_aware = request.node.get_closest_marker("arch_runtime") is not None
+    arm = arch_aware and cluster_arch == "arm64"
     isvc_kwargs = {
         "client": unprivileged_client,
         "name": f"{request.param['name']}-{deployment_mode.lower()}",
         "namespace": unprivileged_model_namespace.name,
         "runtime": ovms_kserve_serving_runtime.name,
-        "storage_path": request.param["model-dir"],
-        "storage_key": ci_endpoint_s3_secret.name,
-        "model_format": ModelAndFormat.OPENVINO_IR,
+        "storage_path": arch_onnx_s3_path(cluster_arch) if arm else request.param["model-dir"],
+        "storage_key": request.getfixturevalue("models_endpoint_s3_secret").name if arm else ci_endpoint_s3_secret.name,
+        "model_format": ModelFormat.ONNX if arm else ModelAndFormat.OPENVINO_IR,
         "deployment_mode": deployment_mode,
-        "model_version": request.param["model-version"],
+        "model_version": None if arm else request.param["model-version"],
     }
 
     if env_vars := request.param.get("env-vars"):
@@ -268,18 +293,20 @@ def ovms_raw_inference_service(
     unprivileged_model_namespace: Namespace,
     ovms_kserve_serving_runtime: ServingRuntime,
     ci_endpoint_s3_secret: Secret,
+    cluster_arch: str,
 ) -> Generator[InferenceService, Any, Any]:
+    arm = request.node.get_closest_marker("arch_runtime") is not None and cluster_arch == "arm64"
     with create_isvc(
         client=unprivileged_client,
         name=f"{request.param['name']}-raw",
         namespace=unprivileged_model_namespace.name,
         external_route=True,
         runtime=ovms_kserve_serving_runtime.name,
-        storage_path=request.param["model-dir"],
-        storage_key=ci_endpoint_s3_secret.name,
-        model_format=ModelAndFormat.OPENVINO_IR,
+        storage_path=arch_onnx_s3_path(cluster_arch) if arm else request.param["model-dir"],
+        storage_key=request.getfixturevalue("models_endpoint_s3_secret").name if arm else ci_endpoint_s3_secret.name,
+        model_format=ModelFormat.ONNX if arm else ModelAndFormat.OPENVINO_IR,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-        model_version=request.param["model-version"],
+        model_version=None if arm else request.param["model-version"],
         stop_resume=request.param.get("stop", False),
     ) as isvc:
         yield isvc
@@ -322,13 +349,16 @@ def model_car_inference_service(
     serving_runtime_from_template: ServingRuntime,
 ) -> Generator[InferenceService, Any, Any]:
     deployment_mode = request.param.get("deployment-mode", KServeDeploymentType.RAW_DEPLOYMENT)
+    profile = request.getfixturevalue("arch_runtime_profile") if request.param.get("arch-aware") else None
     with create_isvc(
         client=unprivileged_client,
         name=f"model-car-{deployment_mode.lower()}",
         namespace=unprivileged_model_namespace.name,
         runtime=serving_runtime_from_template.name,
-        storage_uri=request.param["storage-uri"],
-        model_format=serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,
+        storage_uri=profile.model_car_image if profile else request.param["storage-uri"],
+        model_format=profile.model_car_format
+        if profile
+        else serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,
         deployment_mode=deployment_mode,
         external_route=request.param.get("external-route", True),
         wait_for_predictor_pods=False,
@@ -614,3 +644,31 @@ def kueue_local_queue_from_template(
         client=admin_client,
     ) as local_queue:
         yield local_queue
+
+
+# --- Arch-aware runtime selection fixtures ---
+
+
+@pytest.fixture(scope="session")
+def cluster_arch(request: FixtureRequest, admin_client: DynamicClient) -> str:
+    """Detect or override cluster CPU architecture.
+
+    Auto-detects from worker node labels (kubernetes.io/arch) unless
+    --cluster-arch CLI flag is set to a specific value.
+    """
+    opt = request.config.getoption(name="--cluster-arch", default="auto")
+    detected = get_worker_architecture(client=admin_client) if opt == "auto" else None
+    return resolve_cluster_arch(configured=opt, detected=detected)
+
+
+@pytest.fixture(scope="session")
+def skip_if_not_x86(cluster_arch: str) -> None:
+    """Skip test if the cluster is not x86_64/amd64."""
+    if cluster_arch != "amd64":
+        pytest.skip(f"Test requires x86_64/amd64 cluster (detected: {cluster_arch})")
+
+
+@pytest.fixture(scope="class")
+def arch_runtime_profile(cluster_arch: str) -> RuntimeProfile:
+    """Select the runtime and OCI model for the current architecture."""
+    return get_runtime_profile(arch=cluster_arch)

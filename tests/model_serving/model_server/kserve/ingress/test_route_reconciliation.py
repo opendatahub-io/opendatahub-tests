@@ -1,10 +1,8 @@
 import pytest
 
 from tests.model_serving.model_server.kserve.ingress.utils import assert_ingress_status_changed
-from tests.model_serving.model_server.utils import verify_inference_response
-from utilities.constants import ModelFormat, ModelVersion, Protocols, RunTimeConfigs
-from utilities.inference_utils import Inference
-from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
+from tests.model_serving.model_server.utils import verify_arch_inference_response
+from utilities.constants import ModelFormat, ModelVersion, RunTimeConfigs
 
 pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_config")]
 
@@ -20,34 +18,23 @@ pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_conf
     ],
     indirect=True,
 )
+@pytest.mark.arch_runtime
 class TestONNXRawRouteReconciliation:
     """Test suite for  Validating reconciliation"""
 
     @pytest.mark.tier1
-    def test_raw_onnx_rout_reconciliation(self, ovms_raw_inference_service):
+    def test_raw_onnx_rout_reconciliation(self, ovms_raw_inference_service, cluster_arch):
         """
         Verify that the KServe Raw ONNX model can be queried using REST
         and ensure that the model rout reconciliation works correctly .
         """
         # Initial inference validation
-        verify_inference_response(
-            inference_service=ovms_raw_inference_service,
-            inference_config=ONNX_INFERENCE_CONFIG,
-            inference_type=Inference.INFER,
-            protocol=Protocols.HTTPS,
-            use_default_query=True,
-        )
+        verify_arch_inference_response(isvc=ovms_raw_inference_service, cluster_arch=cluster_arch)
 
     def test_route_value_before_and_after_deletion(self, unprivileged_client, ovms_raw_inference_service):
         """Verify that the ingress status changes after the route is deleted and recreated."""
         assert_ingress_status_changed(client=unprivileged_client, inference_service=ovms_raw_inference_service)
 
-    def test_model_works_after_route_is_recreated(self, ovms_raw_inference_service):
+    def test_model_works_after_route_is_recreated(self, ovms_raw_inference_service, cluster_arch):
         """Verify that the model is still queryable via REST after the route is recreated."""
-        verify_inference_response(
-            inference_service=ovms_raw_inference_service,
-            inference_config=ONNX_INFERENCE_CONFIG,
-            inference_type=Inference.INFER,
-            protocol=Protocols.HTTPS,
-            use_default_query=True,
-        )
+        verify_arch_inference_response(isvc=ovms_raw_inference_service, cluster_arch=cluster_arch)
