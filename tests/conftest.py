@@ -743,8 +743,13 @@ def nodes(admin_client: DynamicClient) -> Generator[list[Node], Any, Any]:
 
 
 @pytest.fixture(scope="session")
-def cluster_architecture(nodes: list[Node]) -> str:
-    return nodes[0].instance.status.nodeInfo.architecture
+def cluster_architecture(admin_client: DynamicClient) -> str:
+    from tests.model_serving.model_server.utils import get_worker_architecture
+
+    architecture = get_worker_architecture(client=admin_client)
+    if architecture is None:
+        raise RuntimeError("Unable to determine a single worker node architecture")
+    return architecture
 
 
 @pytest.fixture(scope="session")

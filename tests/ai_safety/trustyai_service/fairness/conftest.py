@@ -102,7 +102,6 @@ def triton_runtime(
                             "/opt/tritonserver/bin/tritonserver "
                             "--model-repository=/mnt/models "
                             "--http-port=8000 "
-                            "--grpc-port=8001 "
                             "--metrics-port=8002"
                         )
                     ],
@@ -137,7 +136,6 @@ def triton_runtime(
             ],
             "protocolVersions": [
                 "v2",
-                "grpc-v2",
             ],
             "supportedModelFormats": [
                 {
