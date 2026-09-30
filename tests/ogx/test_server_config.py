@@ -1,9 +1,12 @@
 from typing import Any
 
+import pytest
+
 from tests.ogx.server_config import build_ogx_server_config
 from tests.ogx.utils import dummy_files_factory, dummy_vector_io_factory
 
 
+@pytest.mark.ogx
 def test_build_ogx_server_config_default() -> None:
     """Verify that default OGX server configuration omits network spec and sets default workload resources."""
     config = build_ogx_server_config(
@@ -19,6 +22,7 @@ def test_build_ogx_server_config_default() -> None:
     assert config["workload"]["resources"]["limits"] == {"cpu": "2", "memory": "2Gi"}
 
 
+@pytest.mark.ogx
 def test_build_ogx_server_config_custom_network() -> None:
     """Verify that custom network specification in params is included in the returned configuration."""
     network_spec: dict[str, Any] = {"policy": {"enabled": True}}
