@@ -174,8 +174,9 @@ def minted_token(
 
 
 @pytest.fixture(scope="class")
-def base_url(maas_scheme: str, maas_host: str) -> str:
-    return f"{maas_scheme}://{maas_host}/maas-api"
+def base_url(maas_host: str) -> str:
+    """Return the externally reachable MaaS API URL."""
+    return f"https://{maas_host}/maas-api"
 
 
 @pytest.fixture(scope="class")
@@ -1016,10 +1017,15 @@ def maas_gateway_api(
 
     if gw.exists:
         LOGGER.info(f"Reusing existing gateway {MAAS_GATEWAY_NAMESPACE}/{MAAS_GATEWAY_NAME}")
-        gw.wait_for_condition(condition="Programmed", status="True", timeout=300)
         with ResourceEditor(
-            patches={gw: {"metadata": {"annotations": {"security.opendatahub.io/authorino-tls-bootstrap": "true"}}}}
+            patches={
+                gw: {
+                    "metadata": {"annotations": {"security.opendatahub.io/authorino-tls-bootstrap": "true"}},
+                    "spec": {"listeners": maas_gateway_listeners(hostname=maas_gateway_api_hostname)},
+                }
+            }
         ):
+            gw.wait_for_condition(condition="Programmed", status="True", timeout=300)
             yield
     else:
         LOGGER.info(f"Creating gateway {MAAS_GATEWAY_NAMESPACE}/{MAAS_GATEWAY_NAME}")
@@ -1149,8 +1155,9 @@ def revoke_maas_tokens_for_actor(
 
 @pytest.fixture(scope="session")
 def maas_subscription_namespace(
-    unprivileged_client: DynamicClient, admin_client: DynamicClient
+    admin_client: DynamicClient,
 ) -> Generator[Namespace, Any, Any]:
+    """Provide the MaaS controller-owned subscription namespace without deleting it."""
     existing_ns = Namespace(client=admin_client, name=MAAS_SUBSCRIPTION_NAMESPACE)
     if existing_ns.exists:
         LOGGER.info(f"Namespace {MAAS_SUBSCRIPTION_NAMESPACE} already exists, reusing it")
@@ -1158,8 +1165,8 @@ def maas_subscription_namespace(
     else:
         with create_ns(
             name=MAAS_SUBSCRIPTION_NAMESPACE,
-            unprivileged_client=unprivileged_client,
             admin_client=admin_client,
+            teardown=False,
         ) as ns:
             yield ns
 
