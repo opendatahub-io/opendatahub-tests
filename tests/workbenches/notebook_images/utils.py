@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from typing import Any
 
 import pytest
-import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.image_image_openshift_io import Image
@@ -23,6 +22,7 @@ from ocp_resources.resource import ResourceEditor
 from ocp_resources.service_account import ServiceAccount
 from pytest_testconfig import config as py_config
 from semver import Version
+from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.workbenches.notebooks_server.controller.utils import StatefulSet
@@ -30,7 +30,7 @@ from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH, Labels, Timeout
 from utilities.general import collect_pod_information
 from utilities.infra import check_internal_image_registry_available, get_product_version
 
-LOGGER = structlog.get_logger(name=__name__)
+LOGGER = get_logger(name=__name__)
 
 UPGRADE_NAMESPACE = "upgrade-notebook-images"
 UPGRADE_BASELINE_CM_NAME = "upgrade-n-minus-one-baseline"
@@ -78,6 +78,8 @@ ALLOWED_LOG_MESSAGES = (
     "Unable to retrieve mac address (unexpected format)",
     # RHOAIENG-68292: JupyterLab may log this warning during startup if it finds an expired cookie
     "Clearing invalid/expired login cookie",
+    # Elyra logs this when no pipeline component catalog is configured. These tests do not require one.
+    "ElyraApp] No components could be found in any catalog for platform type",
 )
 
 _SENSITIVE_LOG_VALUE_RE = re.compile(
@@ -223,6 +225,7 @@ def get_workbench_image_specs() -> list[WorkbenchImageSpec]:
     """Return the IDE matrix for N-1 survival tests."""
     is_upstream = py_config.get("distribution") == "upstream"
     jupyter_imagestream = "jupyter-minimal-notebook" if is_upstream else "s2i-minimal-notebook"
+    datascience_imagestream = "jupyter-datascience-notebook" if is_upstream else "s2i-generic-data-science-notebook"
 
     return [
         WorkbenchImageSpec(
@@ -233,6 +236,13 @@ def get_workbench_image_specs() -> list[WorkbenchImageSpec]:
             pvc_name="upgrade-n1-jupyterlab-storage",
         ),
         WorkbenchImageSpec(
+            ide="jupyter-elyra",
+            imagestream_name=datascience_imagestream,
+            notebook_name="upgrade-n1-jupyter-elyra",
+            baseline_prefix="jupyter-elyra",
+            pvc_name="upgrade-n1-jupyter-elyra-storage",
+        ),
+        WorkbenchImageSpec(
             ide="code-server",
             imagestream_name="code-server-notebook",
             notebook_name="upgrade-n1-codeserver",
@@ -241,6 +251,14 @@ def get_workbench_image_specs() -> list[WorkbenchImageSpec]:
             skip_on_upstream=True,
         ),
     ]
+
+
+def get_workbench_image_spec_by_ide(ide: str) -> WorkbenchImageSpec:
+    """Return the workbench IDE configuration for the requested IDE name."""
+    for spec in get_workbench_image_specs():
+        if spec.ide == ide:
+            return spec
+    raise KeyError(f"Unknown workbench IDE '{ide}'")
 
 
 def resolve_workbench_upgrade_track(admin_client: DynamicClient) -> str:
@@ -408,16 +426,6 @@ def _resolve_docker_image_reference(status_tag_data: dict[str, Any], imagestream
     raise AssertionError(
         f"ImageStream {imagestream_name}:{tag_name} does not have a resolved dockerImageReference in status.tags.items"
     )
-
-
-def _resolve_tag_digest(status_tag_data: dict[str, Any], imagestream_name: str, tag_name: str) -> str:
-    """Extract a digest reference from ImageStream status data."""
-    docker_image_reference = _resolve_docker_image_reference(
-        status_tag_data=status_tag_data,
-        imagestream_name=imagestream_name,
-        tag_name=tag_name,
-    )
-    return docker_image_reference.split("@", maxsplit=1)[1]
 
 
 def _resolve_integrated_registry_repository(
@@ -955,6 +963,40 @@ def capture_workbench_baseline(
     if not isinstance(container_name, str) or not isinstance(pod_name, str):
         raise TypeError("Notebook and pod names are required to capture a workbench baseline")
 
+    elyra_extensions = None
+    runtime_configs = None
+    try:
+        from tests.workbenches.notebook_images.upgrade.elyra_utils import (
+            list_runtime_configs,
+            parse_elyra_extensions,
+            read_runtime_config,
+        )
+
+        labextension_output = pod.execute(
+            container=container_name,
+            command=["sh", "-c", "jupyter labextension list 2>&1"],
+            timeout=60,
+        )
+        elyra_extensions = parse_elyra_extensions(labextension_output=labextension_output)
+        if elyra_extensions:
+            runtime_configs = {}
+            for filename in list_runtime_configs(pod=pod, container=container_name):
+                config = read_runtime_config(pod=pod, container=container_name, filename=filename)
+                runtime_configs[filename] = {
+                    "display_name": config.get("display_name"),
+                    "schema_name": config.get("schema_name"),
+                    "metadata": {
+                        "runtime_type": config.get("metadata", {}).get("runtime_type"),
+                        "api_endpoint": config.get("metadata", {}).get("api_endpoint"),
+                    },
+                }
+        else:
+            elyra_extensions = None
+    except (ExecOnPodError, json.JSONDecodeError, AssertionError) as error:
+        LOGGER.warning(f"Failed to capture Elyra baseline: {error}")
+        elyra_extensions = None
+        runtime_configs = None
+
     return WorkbenchImageBaseline(
         creation_timestamp=pod.instance.metadata.creationTimestamp,
         image_tag=resolved_image.tag_name,
@@ -966,6 +1008,8 @@ def capture_workbench_baseline(
         restart_counts=get_container_restart_counts(pod=pod),
         notebook_generation=int(notebook.instance.metadata.generation),
         upgrade_marker=upgrade_marker,
+        elyra_extensions=elyra_extensions,
+        runtime_configs=runtime_configs,
     )
 
 
