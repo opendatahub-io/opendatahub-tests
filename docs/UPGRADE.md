@@ -43,7 +43,7 @@ uv run pytest --pre-upgrade --post-upgrade --upgrade-deployment-modes=servelerss
 
 ## Workbench image survival
 
-`tests/workbenches/notebook_images/upgrade/test_upgrade_workbench.py` creates JupyterLab and Code Server workbenches before the upgrade and asserts they are still the same pods afterwards. A running workbench is not rolled by a z-stream upgrade or by a 2.x to 3.x upgrade until auth migration restarts it.
+`tests/workbenches/notebook_images/upgrade/test_upgrade_workbench.py` creates JupyterLab, Elyra, and Code Server workbenches before the upgrade and asserts they are still the same pods afterwards. `test_upgrade_jupyter_elyra.py` also checks that Elyra extensions and runtime configs survive. A running workbench is not rolled by a z-stream upgrade or by a 2.x to 3.x upgrade until auth migration restarts it.
 
 ```bash
 uv run pytest --pre-upgrade tests/workbenches/notebook_images/upgrade/

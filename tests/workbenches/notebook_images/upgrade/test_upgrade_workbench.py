@@ -1,7 +1,9 @@
 """Parametrized N-1 workbench image upgrade survival tests.
 
-Covers JupyterLab and Code Server. A running workbench keeps its pod across a
-z-stream upgrade and across a 2.x to 3.x upgrade until auth migration restarts it.
+Covers JupyterLab, JupyterLab with Elyra, and Code Server. A running workbench
+keeps its pod across a z-stream upgrade and across a 2.x to 3.x upgrade until
+auth migration restarts it. Elyra extension checks live in
+``test_upgrade_jupyter_elyra.py``.
 """
 
 import pytest
