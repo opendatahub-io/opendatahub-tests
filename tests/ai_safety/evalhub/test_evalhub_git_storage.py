@@ -141,7 +141,7 @@ class TestEvalHubGitStorage:
         )
         validate_evalhub_job_completed(job_data=job_data)
 
-        benchmarks = job_data.get("results", {}).get("benchmarks", [])
+        benchmarks = job_data.get("benchmarks", [])
         arc_easy_bench = next((b for b in benchmarks if b.get("id") == "arc_easy"), {})
         commit_sha = arc_easy_bench.get("test_data_ref", {}).get("resolved_sha")
         assert commit_sha, f"Expected 'resolved_sha' in benchmark's test_data_ref, got: {arc_easy_bench}"
