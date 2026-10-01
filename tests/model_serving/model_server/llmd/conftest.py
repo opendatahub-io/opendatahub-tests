@@ -37,7 +37,7 @@ from tests.model_serving.model_server.llmd.utils import (
 )
 from utilities.constants import ModelStorage
 from utilities.infra import create_inference_token, s3_endpoint_secret, update_configmap_data
-from utilities.llmd_utils import create_llmd_gateway
+from utilities.llmd_utils import create_llmd_gateway, create_llmisvc_from_config
 from utilities.logger import RedactedString
 from utilities.resources.kuadrant import Kuadrant
 from utilities.resources.leader_worker_set_operator import LeaderWorkerSetOperator
@@ -506,59 +506,13 @@ def _create_llmisvc_from_config(
     teardown: bool = True,
 ) -> Generator[LLMInferenceService, Any]:
     """Create an LLMInferenceService from a config class."""
-    model: dict[str, Any] = {"uri": config_cls.storage_uri}
-    if config_cls.model_name:
-        model["name"] = config_cls.model_name
-
-    main_container: dict[str, Any] = {"name": "main"}
-    main_container.update({
-        k: v
-        for k, v in {
-            "image": config_cls.container_image,
-            "resources": config_cls.container_resources(),
-            "env": config_cls.container_env(),
-            "startupProbe": config_cls.startup_probe(),
-            "livenessProbe": config_cls.liveness_probe(),
-            "readinessProbe": config_cls.readiness_probe(),
-        }.items()
-        if v
-    })
-
-    template: dict[str, Any] = {
-        "containers": [main_container],
-    }
-    if service_account:
-        template["serviceAccountName"] = service_account
-
-    volumes = config_cls.template_volumes()
-    if volumes:
-        template["volumes"] = volumes
-
-    prefill = config_cls.prefill_config()
-    if prefill and service_account and "template" in prefill:
-        prefill["template"]["serviceAccountName"] = service_account
-
-    svc_kwargs: dict[str, Any] = {
-        "client": client,
-        "name": config_cls.name,
-        "namespace": namespace,
-        "annotations": config_cls.annotations(),
-        "label": config_cls.labels(),
-        "teardown": teardown,
-        "model": model,
-        "replicas": config_cls.replicas,
-        "router": config_cls.router_config(),
-        "template": template,
-        "base_refs": config_cls.base_refs,
-        "prefill": prefill,
-        "worker": config_cls.worker_config(),
-        "parallelism": config_cls.parallelism_config(),
-        "kv_cache_offloading": config_cls.kv_cache_offloading(),
-    }
-
-    LOGGER.info(f"\n{config_cls.format_describe(namespace=namespace)}")
-
-    with LLMInferenceService(**svc_kwargs) as llm_service:
+    with create_llmisvc_from_config(
+        config_cls=config_cls,
+        namespace=namespace,
+        client=client,
+        service_account=service_account,
+        teardown=teardown,
+    ) as llm_service:
         wait_for_llmisvc(llmisvc=llm_service, timeout=config_cls.wait_timeout)
         wait_for_llmisvc_pods_ready(client=client, llmisvc=llm_service)
         yield llm_service
