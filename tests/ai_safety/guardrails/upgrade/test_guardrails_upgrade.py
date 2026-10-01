@@ -413,10 +413,10 @@ class TestGuardrailsOrchestratorWithBuiltInDetectorsPostUpgrade:
 @pytest.mark.rawdeployment
 @pytest.mark.usefixtures(
     "guardrails_gateway_config",
-    "minio_pvc_otel",
-    "minio_deployment_otel",
-    "minio_service_otel",
-    "minio_secret_otel",
+    "seaweedfs_pvc_otel",
+    "seaweedfs_deployment_otel",
+    "seaweedfs_service_otel",
+    "seaweedfs_secret_otel",
     "installed_tempo_operator",
     "installed_opentelemetry_operator",
     "tempo_stack",
@@ -535,10 +535,10 @@ class TestPreUpgradeGuardrailsOrchestratorWithHuggingFaceDetectors:
 )
 @pytest.mark.rawdeployment
 @pytest.mark.usefixtures(
-    "minio_pvc_otel",
-    "minio_deployment_otel",
-    "minio_service_otel",
-    "minio_secret_otel",
+    "seaweedfs_pvc_otel",
+    "seaweedfs_deployment_otel",
+    "seaweedfs_service_otel",
+    "seaweedfs_secret_otel",
     "installed_tempo_operator",
     "installed_opentelemetry_operator",
     "tempo_stack",

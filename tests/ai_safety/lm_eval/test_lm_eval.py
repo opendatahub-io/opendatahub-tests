@@ -139,12 +139,9 @@ def test_lmeval_vllm_emulator(admin_client, model_namespace, lmevaljob_vllm_emul
 
 
 @pytest.mark.parametrize(
-    "model_namespace, minio_data_connection",
+    "model_namespace",
     [
-        pytest.param(
-            {"name": "test-s3-lmeval"},
-            {"bucket": "models"},
-        )
+        pytest.param({"name": "test-s3-lmeval"}),
     ],
     indirect=True,
 )
@@ -158,12 +155,9 @@ def test_lmeval_s3_storage(
 
 
 @pytest.mark.parametrize(
-    "model_namespace, minio_data_connection",
+    "model_namespace",
     [
-        pytest.param(
-            {"name": "test-lmeval-images"},
-            {"bucket": "models"},
-        )
+        pytest.param({"name": "test-lmeval-images"}),
     ],
     indirect=True,
 )

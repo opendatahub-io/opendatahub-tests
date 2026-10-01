@@ -54,6 +54,7 @@ from utilities.constants import (
     Labels,
     MinIo,
     Protocols,
+    SeaweedFs,
     Timeout,
     OPENSHIFT_OPERATORS,
 )
@@ -543,6 +544,132 @@ def minio_data_connection(
         client=admin_client,
     ) as secret:
         yield secret
+
+
+# SeaweedFS
+# Used as a drop-in S3-compatible replacement for vanilla MinIO (quay.io/minio images) in tests
+# that don't require real MinIO. The shared minio_* fixtures above remain for components that do.
+@pytest.fixture(scope="class")
+def seaweedfs_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
+    with create_ns(
+        name=f"{SeaweedFs.Metadata.NAME}-{shortuuid.uuid().lower()}",
+        admin_client=admin_client,
+    ) as ns:
+        yield ns
+
+
+@pytest.fixture(scope="class")
+def seaweedfs_filer_config(
+    admin_client: DynamicClient, seaweedfs_namespace: Namespace
+) -> Generator[ConfigMap, Any, Any]:
+    """Configure SeaweedFS filer metadata storage on the writable temporary filesystem."""
+    with ConfigMap(
+        client=admin_client,
+        name="seaweedfs-filer-config",
+        namespace=seaweedfs_namespace.name,
+        data={"filer.toml": '[leveldb2]\nenabled = true\ndir = "/tmp/filerldb2"\n'},
+    ) as config_map:
+        yield config_map
+
+
+@pytest.fixture(scope="class")
+def seaweedfs_pod(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    seaweedfs_namespace: Namespace,
+    seaweedfs_filer_config: ConfigMap,
+) -> Generator[Pod, Any, Any]:
+    """Run an authenticated SeaweedFS instance exposing its S3 API."""
+    pod_labels = {Labels.Openshift.APP: SeaweedFs.Metadata.NAME}
+    fixture_config = getattr(request, "param", {})
+
+    if labels := fixture_config.get("labels"):
+        pod_labels.update(labels)
+
+    initialization_command = (
+        "for attempt in $(seq 1 60); do "
+        "wget -q --spider http://127.0.0.1:8333/status && break; "
+        '[ "$attempt" -eq 60 ] && exit 1; sleep 2; '
+        "done; "
+        'echo "s3.configure -user admin -access_key $accesskey -secret_key $secretkey -actions Admin -apply" '
+        "| /usr/bin/weed shell"
+    )
+    with Pod(
+        client=admin_client,
+        name=SeaweedFs.Metadata.NAME,
+        namespace=seaweedfs_namespace.name,
+        containers=[
+            {
+                "name": SeaweedFs.Metadata.NAME,
+                "image": SeaweedFs.PodConfig.IMAGE,
+                "args": list(SeaweedFs.PodConfig.ARGS),
+                "env": [
+                    {"name": "accesskey", "value": SeaweedFs.Credentials.ACCESS_KEY_VALUE},
+                    {"name": "secretkey", "value": SeaweedFs.Credentials.SECRET_KEY_VALUE},
+                ],
+                "ports": [
+                    {"containerPort": SeaweedFs.Metadata.DEFAULT_PORT, "name": "s3"},
+                    {"containerPort": SeaweedFs.Metadata.FILER_PORT, "name": "filer"},
+                    {"containerPort": SeaweedFs.Metadata.FILER_GRPC_PORT, "name": "filer-grpc"},
+                ],
+                "volumeMounts": [
+                    {
+                        "name": "filer-config",
+                        "mountPath": "/etc/seaweedfs/filer.toml",
+                        "subPath": "filer.toml",
+                        "readOnly": True,
+                    }
+                ],
+                "lifecycle": {"postStart": {"exec": {"command": ["/bin/sh", "-c", initialization_command]}}},
+                "securityContext": {
+                    "allowPrivilegeEscalation": False,
+                    "capabilities": {"drop": ["ALL"]},
+                    "runAsNonRoot": True,
+                    "seccompProfile": {"type": "RuntimeDefault"},
+                },
+            }
+        ],
+        volumes=[{"name": "filer-config", "configMap": {"name": seaweedfs_filer_config.name}}],
+        label=pod_labels,
+        annotations=fixture_config.get("annotations"),
+    ) as pod:
+        pod.wait_for_condition(condition="Ready", status="True", timeout=180)
+        yield pod
+
+
+@pytest.fixture(scope="class")
+def seaweedfs_service(
+    admin_client: DynamicClient, seaweedfs_namespace: Namespace, seaweedfs_pod: Pod
+) -> Generator[Service, Any, Any]:
+    """Expose SeaweedFS S3 and filer APIs inside the cluster."""
+    with Service(
+        client=admin_client,
+        name=SeaweedFs.Metadata.NAME,
+        namespace=seaweedfs_namespace.name,
+        ports=[
+            {
+                "name": "s3",
+                "port": SeaweedFs.Metadata.DEFAULT_PORT,
+                "protocol": Protocols.TCP,
+                "targetPort": SeaweedFs.Metadata.DEFAULT_PORT,
+            },
+            {
+                "name": "filer",
+                "port": SeaweedFs.Metadata.FILER_PORT,
+                "protocol": Protocols.TCP,
+                "targetPort": SeaweedFs.Metadata.FILER_PORT,
+            },
+            {
+                "name": "filer-grpc",
+                "port": SeaweedFs.Metadata.FILER_GRPC_PORT,
+                "protocol": Protocols.TCP,
+                "targetPort": SeaweedFs.Metadata.FILER_GRPC_PORT,
+            },
+        ],
+        selector={Labels.Openshift.APP: SeaweedFs.Metadata.NAME},
+        session_affinity="ClientIP",
+    ) as service:
+        yield service
 
 
 @pytest.fixture(scope="session")
