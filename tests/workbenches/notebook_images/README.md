@@ -8,7 +8,8 @@ Verifies that workbenches launched on the source-version image remain healthy af
 
 A single parameterized test module covers the IDEs available on this branch:
 
-- `upgrade/test_upgrade_workbench.py` -- JupyterLab and Code Server (parameterized via `get_workbench_image_specs()`)
+- `upgrade/test_upgrade_workbench.py` -- JupyterLab, JupyterLab with Elyra, and Code Server (parameterized via `get_workbench_image_specs()`)
+- `upgrade/test_upgrade_jupyter_elyra.py` -- Elyra extension and runtime-config checks on the datascience image
 - `upgrade/test_bump_jupyterlab.py` -- Dashboard-equivalent image bump from the source tag to the current tag
 
 Pre-upgrade validation creates a Notebook CR with `notebooks.opendatahub.io/inject-oauth`, waits until the controller injects the `oauth-proxy` sidecar, captures a baseline (image selection, digest, restart counts, Notebook generation, pod identity), and writes a PVC marker file.
@@ -23,7 +24,8 @@ Post-upgrade validation checks that the running workbench was not rolled:
 - StatefulSet health (`readyReplicas`, no pending rollout)
 - PVC marker file still readable
 - Log cleanliness and in-pod HTTP health
-- Jupyter kernel in-memory state survived (JupyterLab only)
+- Jupyter kernel in-memory state survived (JupyterLab and Elyra)
+- Elyra extensions and runtime configs preserved (`test_upgrade_jupyter_elyra.py`)
 
 This contract applies to a z-stream upgrade (for example 2.25.8 to 2.25.9) and to a 2.x to 3.x upgrade before auth migration restarts the workbench.
 
