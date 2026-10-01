@@ -19,7 +19,6 @@ from tests.ai_hub.model_registry.async_job.constants import (
 from tests.ai_hub.model_registry.async_job.utils import (
     get_latest_job_pod,
 )
-from utilities.constants import MinIo, OCIRegistry
 from utilities.registry_utils import pull_manifest_from_oci_registry
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -33,25 +32,15 @@ MODEL_DATA = {
 }
 
 
-@pytest.mark.parametrize(
-    "minio_pod, oci_registry_pod_with_minio",
-    [
-        pytest.param(
-            MinIo.PodConfig.MODEL_REGISTRY_MINIO_CONFIG,
-            OCIRegistry.PodConfig.REGISTRY_BASE_CONFIG,
-        )
-    ],
-    indirect=True,
-)
 @pytest.mark.usefixtures(
     "updated_dsc_component_state_scope_session",
     "model_registry_namespace",
     "model_registry_metadata_db_resources",
-    "minio_pod",
-    "create_test_data_in_minio_from_image",
+    "seaweedfs_pod",
+    "create_test_data_in_s3_from_image",
     "s3_secret_for_async_job",
     "oci_secret_for_async_job",
-    "oci_registry_pod_with_minio",
+    "oci_registry_pod_with_s3",
     "registered_model_from_image",
 )
 @pytest.mark.custom_namespace
