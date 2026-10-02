@@ -14,8 +14,10 @@ class LocalModelNamespaceCache(NamespacedResource):
 
     def __init__(
         self,
+        image_pull_secrets: list[str] | None = None,
         model_size: Any | None = None,
         node_groups: list[Any] | None = None,
+        pvc_ref: str | None = None,
         service_account_name: str | None = None,
         source_model_uri: str | None = None,
         storage: dict[str, Any] | None = None,
@@ -23,9 +25,13 @@ class LocalModelNamespaceCache(NamespacedResource):
     ) -> None:
         r"""
         Args:
+            image_pull_secrets (list[str]): Registry pull secret names for OCI imports
+
             model_size (Any): No field description from API
 
             node_groups (list[Any]): No field description from API
+
+            pvc_ref (str): Existing shared PVC used for namespace cache storage
 
             service_account_name (str): No field description from API
 
@@ -36,8 +42,10 @@ class LocalModelNamespaceCache(NamespacedResource):
         """
         super().__init__(**kwargs)
 
+        self.image_pull_secrets = image_pull_secrets
         self.model_size = model_size
         self.node_groups = node_groups
+        self.pvc_ref = pvc_ref
         self.service_account_name = service_account_name
         self.source_model_uri = source_model_uri
         self.storage = storage
@@ -50,8 +58,10 @@ class LocalModelNamespaceCache(NamespacedResource):
             if self.model_size is None:
                 raise MissingRequiredArgumentError(argument="self.model_size")
 
-            if self.node_groups is None:
-                raise MissingRequiredArgumentError(argument="self.node_groups")
+            if self.node_groups is None and self.pvc_ref is None:
+                raise MissingRequiredArgumentError(argument="self.node_groups or self.pvc_ref")
+            if self.node_groups is not None and self.pvc_ref is not None:
+                raise ValueError("node_groups and pvc_ref are mutually exclusive")
 
             if self.source_model_uri is None:
                 raise MissingRequiredArgumentError(argument="self.source_model_uri")
@@ -60,8 +70,16 @@ class LocalModelNamespaceCache(NamespacedResource):
             _spec = self.res["spec"]
 
             _spec["modelSize"] = self.model_size
-            _spec["nodeGroups"] = self.node_groups
             _spec["sourceModelUri"] = self.source_model_uri
+
+            if self.image_pull_secrets is not None:
+                _spec["imagePullSecrets"] = [{"name": name} for name in self.image_pull_secrets]
+
+            if self.node_groups is not None:
+                _spec["nodeGroups"] = self.node_groups
+
+            if self.pvc_ref is not None:
+                _spec["pvcRef"] = self.pvc_ref
 
             if self.service_account_name is not None:
                 _spec["serviceAccountName"] = self.service_account_name
