@@ -1119,15 +1119,92 @@ def oci_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, Any]
 
 
 @pytest.fixture(scope="class")
+def oci_registry_pod_with_s3(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    oci_namespace: Namespace,
+) -> Generator[Pod, Any, Any]:
+    fixture_config = getattr(request, "param", {})
+    s3_config = request.getfixturevalue(argname="s3_config")
+    s3_service = s3_config["service"]
+    pod_labels = {Labels.Openshift.APP: OCIRegistry.Metadata.NAME}
+
+    if labels := fixture_config.get("labels"):
+        pod_labels.update(labels)
+
+    s3_fqdn = f"{s3_service.name}.{s3_service.namespace}.svc.cluster.local"
+    s3_endpoint = f"{s3_fqdn}:{s3_config['port']}"
+
+    with Pod(
+        client=admin_client,
+        name=OCIRegistry.Metadata.NAME,
+        namespace=oci_namespace.name,
+        containers=[
+            {
+                "args": fixture_config.get("args"),
+                "env": [
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_NAME", "value": OCIRegistry.Storage.STORAGE_DRIVER},
+                    {
+                        "name": "ZOT_STORAGE_STORAGEDRIVER_ROOTDIRECTORY",
+                        "value": OCIRegistry.Storage.STORAGE_DRIVER_ROOT_DIRECTORY,
+                    },
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_BUCKET", "value": s3_config["bucket"]},
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_REGION", "value": OCIRegistry.Storage.STORAGE_DRIVER_REGION},
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_REGIONENDPOINT", "value": f"http://{s3_endpoint}"},
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_ACCESSKEY", "value": s3_config["access_key"]},
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_SECRETKEY", "value": s3_config["secret_key"]},
+                    {
+                        "name": "ZOT_STORAGE_STORAGEDRIVER_SECURE",
+                        "value": OCIRegistry.Storage.STORAGE_STORAGEDRIVER_SECURE,
+                    },
+                    {
+                        "name": "ZOT_STORAGE_STORAGEDRIVER_FORCEPATHSTYLE",
+                        "value": OCIRegistry.Storage.STORAGE_STORAGEDRIVER_FORCEPATHSTYLE,
+                    },
+                    {"name": "ZOT_HTTP_ADDRESS", "value": OCIRegistry.Metadata.DEFAULT_HTTP_ADDRESS},
+                    {"name": "ZOT_HTTP_PORT", "value": str(OCIRegistry.Metadata.DEFAULT_PORT)},
+                    {"name": "ZOT_LOG_LEVEL", "value": "info"},
+                ],
+                "image": fixture_config.get("image", OCIRegistry.PodConfig.REGISTRY_IMAGE),
+                "name": OCIRegistry.Metadata.NAME,
+                "securityContext": {
+                    "allowPrivilegeEscalation": False,
+                    "capabilities": {"drop": ["ALL"]},
+                    "runAsNonRoot": True,
+                    "seccompProfile": {"type": "RuntimeDefault"},
+                },
+                "volumeMounts": [
+                    {
+                        "name": "zot-data",
+                        "mountPath": "/var/lib/registry",
+                    }
+                ],
+            }
+        ],
+        volumes=[
+            {
+                "name": "zot-data",
+                "emptyDir": {},
+            }
+        ],
+        label=pod_labels,
+        annotations=fixture_config.get("annotations"),
+    ) as oci_pod:
+        oci_pod.wait_for_condition(condition="Ready", status="True")
+        yield oci_pod
+
+
+@pytest.fixture(scope="class")
 def oci_registry_pod_with_minio(
     request: FixtureRequest,
     admin_client: DynamicClient,
     oci_namespace: Namespace,
     minio_service: Service,
 ) -> Generator[Pod, Any, Any]:
+    fixture_config = getattr(request, "param", {})
     pod_labels = {Labels.Openshift.APP: OCIRegistry.Metadata.NAME}
 
-    if labels := request.param.get("labels"):
+    if labels := fixture_config.get("labels"):
         pod_labels.update(labels)
 
     minio_fqdn = f"{minio_service.name}.{minio_service.namespace}.svc.cluster.local"
@@ -1139,7 +1216,7 @@ def oci_registry_pod_with_minio(
         namespace=oci_namespace.name,
         containers=[
             {
-                "args": request.param.get("args"),
+                "args": fixture_config.get("args"),
                 "env": [
                     {"name": "ZOT_STORAGE_STORAGEDRIVER_NAME", "value": OCIRegistry.Storage.STORAGE_DRIVER},
                     {
@@ -1163,7 +1240,7 @@ def oci_registry_pod_with_minio(
                     {"name": "ZOT_HTTP_PORT", "value": str(OCIRegistry.Metadata.DEFAULT_PORT)},
                     {"name": "ZOT_LOG_LEVEL", "value": "info"},
                 ],
-                "image": request.param.get("image", OCIRegistry.PodConfig.REGISTRY_IMAGE),
+                "image": fixture_config.get("image", OCIRegistry.PodConfig.REGISTRY_IMAGE),
                 "name": OCIRegistry.Metadata.NAME,
                 "securityContext": {
                     "allowPrivilegeEscalation": False,
@@ -1186,7 +1263,7 @@ def oci_registry_pod_with_minio(
             }
         ],
         label=pod_labels,
-        annotations=request.param.get("annotations"),
+        annotations=fixture_config.get("annotations"),
     ) as oci_pod:
         oci_pod.wait_for_condition(condition="Ready", status="True")
         yield oci_pod
