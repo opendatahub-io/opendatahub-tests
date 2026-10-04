@@ -49,3 +49,12 @@ class AiSafetyImages:
         "quay.io/trustyai_testing/nonexistent-image"
         "@sha256:0000000000000000000000000000000000000000000000000000000000000000"
     )
+    LOAN_MODEL_ALPHA_ONNXMLIR = (
+        "oci://quay.io/trustyai_testing/loan-model-alpha-onnxmlir-modelcar"
+        "@sha256:3cd751910c409c046f8b9cd96d07d6f6afc7d4c623c128ebda1fdee64d3006e3"
+    )
+    # Pinned the digest to a specific version until latest tag is available
+    TRITON_S390X: str = (
+        "icr.io/ibmz/ibmz-accelerated-for-nvidia-triton-inference-server"
+        "@sha256:23f389783acaac0d5b318181c5e1f59d0e9676f9ad7481b90c32b8edce2f893c"
+    )
