@@ -39,9 +39,9 @@ class TestModelInclusionFiltering:
                 id="test_include_granite_models_only",
             ),
             pytest.param(
-                {"filter_type": "inclusion", "pattern": "prometheus", "filter_value": "*prometheus*"},
+                {"filter_type": "inclusion", "pattern": "gemma", "filter_value": "*gemma*"},
                 marks=pytest.mark.tier2,
-                id="test_include_prometheus_models_only",
+                id="test_include_gemma_models_only",
             ),
             pytest.param(
                 {"filter_type": "inclusion", "pattern": "-8b-", "filter_value": "*-8b-*"},
