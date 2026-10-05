@@ -233,6 +233,15 @@ def test_contract_rejects_duplicate_yaml_keys(tmp_path: Path) -> None:
         load_release_contract(source=contract_path)
 
 
+def test_contract_rejects_non_string_yaml_keys(tmp_path: Path) -> None:
+    """Given a YAML mapping with a non-string key, raise a contract validation error instead of a type error."""
+    contract_path = tmp_path / "non-string-key.yaml"
+    contract_path.write_text(data="? [invalid, key]\n: value\n", encoding="utf-8")
+
+    with pytest.raises(ContractValidationError, match="mapping keys must be strings"):
+        load_release_contract(source=contract_path)
+
+
 def test_contract_rejects_shipped_capability_with_unavailable_empty_state() -> None:
     """Given a shipped panel, reject a contract that treats an unavailable empty result as valid."""
     with pytest.raises(ContractValidationError, match="empty_ui_state"):

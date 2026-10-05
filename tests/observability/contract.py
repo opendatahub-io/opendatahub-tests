@@ -312,6 +312,8 @@ def _construct_unique_mapping(loader: _UniqueKeyLoader, node: MappingNode, deep:
     mapping: dict[Any, Any] = {}
     for key_node, value_node in node.value:
         key = loader.construct_object(key_node, deep=deep)
+        if not isinstance(key, str):
+            raise ContractValidationError("release contract mapping keys must be strings")
         if key in mapping:
             raise ContractValidationError(f"duplicate release contract key: {key}")
         mapping[key] = loader.construct_object(value_node, deep=deep)
