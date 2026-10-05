@@ -6,7 +6,6 @@ import pytest
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.deployment import Deployment
 from ocp_resources.evalhub import EvalHub
 from ocp_resources.namespace import Namespace
@@ -26,9 +25,8 @@ from tests.ai_safety.evalhub.mcp.utils import (
     EvalHubMcpClient,
     build_mcp_proxy_role_rules,
 )
-from tests.ai_safety.evalhub.utils import wait_for_service_account
+from tests.ai_safety.evalhub.utils import is_evalhub_crd_available, wait_for_service_account
 from utilities.certificates_utils import create_ca_bundle_file
-from utilities.constants import Timeout
 from utilities.infra import create_inference_token
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -73,16 +71,6 @@ def _probe_evalhub_mcp_health(
         raise _TransientEvalhubMcpHealthError(str(err)) from err
 
 
-def _is_evalhub_crd_available(admin_client: DynamicClient) -> bool:
-    """Check if EvalHub CRD is installed on the cluster."""
-    crd_name = "evalhubs.trustyai.opendatahub.io"
-    try:
-        crd = CustomResourceDefinition(client=admin_client, name=crd_name)
-        return crd.exists
-    except AttributeError, KeyError:
-        return False
-
-
 def _mcp_deployment_name(cr_name: str) -> str:
     return f"{cr_name}-mcp"
 
@@ -93,6 +81,26 @@ def _mcp_auth_secret_name(cr_name: str) -> str:
 
 def _evalhub_service_account_name(cr_name: str) -> str:
     return f"{cr_name}-service"
+
+
+def _wait_for_deployment_rollout(deployment: Deployment, timeout: int = 300) -> None:
+    """Wait until all replicas are running the latest pod template.
+
+    ``wait_for_replicas`` passes as soon as *any* replicas are ready, which
+    can be satisfied by old pods during a rolling update. This helper polls
+    until ``updatedReplicas == spec.replicas`` and no unavailable replicas
+    remain, guaranteeing all pods reflect the latest Deployment spec.
+    """
+    for sample in TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=5,
+        func=lambda: deployment.instance.status,
+    ):
+        desired = deployment.instance.spec.replicas or 1
+        updated = getattr(sample, "updatedReplicas", None) or 0
+        unavailable = getattr(sample, "unavailableReplicas", None) or 0
+        if updated >= desired and unavailable == 0:
+            return
 
 
 @pytest.fixture(scope="class")
@@ -114,35 +122,55 @@ def evalhub_mcp_mt_cr(
     tenant_a_namespace: Namespace,
 ) -> Generator[EvalHub, Any, Any]:
     """Create an EvalHub CR with MCP enabled for integration tests."""
-    if not _is_evalhub_crd_available(admin_client):
+    if not is_evalhub_crd_available(admin_client):
         pytest.fail(
             "EvalHub CRD 'evalhubs.trustyai.opendatahub.io' not available on this cluster. "
             "Install the TrustyAI/EvalHub operator first."
         )
 
-    evalhub = EvalHub(
+    # kind_dict is required: EvalHub's generated to_dict() has no "mcp" kwarg and
+    # resets res["spec"] from its known attributes on every create() call.
+    with EvalHub(
         client=admin_client,
-        name=EVALHUB_MCP_CR_NAME,
-        namespace=model_namespace.name,
-        database={"type": "sqlite"},
-        collections=["leaderboard-v2"],
+        kind_dict={
+            "apiVersion": f"{EvalHub.api_group}/v1",
+            "kind": "EvalHub",
+            "metadata": {
+                "name": EVALHUB_MCP_CR_NAME,
+                "namespace": model_namespace.name,
+            },
+            "spec": {
+                "database": {"type": "sqlite"},
+                "collections": ["leaderboard-v2"],
+                "mcp": {
+                    "enabled": True,
+                    "replicas": 1,
+                    "env": [
+                        {
+                            "name": "EVALHUB_TENANT",
+                            "value": tenant_a_namespace.name,
+                        }
+                    ],
+                },
+            },
+        },
         wait_for_resource=False,
-    )
-    # to_dict() populates evalhub.res (including spec) from constructor kwargs.
-    evalhub.to_dict()
-    evalhub.res["spec"]["mcp"] = {
-        "enabled": True,
-        "replicas": 1,
-        "env": [
-            {
-                "name": "EVALHUB_TENANT",
-                "value": tenant_a_namespace.name,
-            }
-        ],
-    }
-
-    with evalhub:
-        evalhub.wait(timeout=300)
+    ) as evalhub:
+        # Poll until the EvalHub operator reports the CR as ready.
+        # Pending and None are expected and should not stop polling.
+        for sample in TimeoutSampler(wait_timeout=300, sleep=2, func=lambda: evalhub.instance.status):
+            if sample is None:
+                continue
+            if sample.get("ready") == "True":
+                break
+            phase = sample.get("phase", "")
+            if phase == "Error":
+                mcp_status = sample.get("mcp", {})
+                pytest.fail(
+                    f"EvalHub entered Error phase during setup.\n"
+                    f"  Top-level status: {sample}\n"
+                    f"  MCP sub-status:   {mcp_status}"
+                )
         yield evalhub
 
 
@@ -179,9 +207,6 @@ def evalhub_mcp_mt_cr_with_auth(
         string_data={"token": token},
         wait_for_resource=False,
     ):
-        # TODO: Update to use auth.secret_ref instead of authSecret when upstream
-        # PRs eval-hub/eval-hub#669 and #670 are integrated (fixes RHOAIENG-70489)
-        # New format: "auth": {"secret_ref": secret_name}
         evalhub_mcp_mt_cr.update(
             resource_dict={
                 "metadata": {
@@ -192,7 +217,7 @@ def evalhub_mcp_mt_cr_with_auth(
                     "mcp": {
                         "enabled": True,
                         "replicas": 1,
-                        "authSecret": secret_name,  # Will become auth.secret_ref
+                        "authSecret": secret_name,
                         "env": [
                             {
                                 "name": "EVALHUB_TENANT",
@@ -203,7 +228,21 @@ def evalhub_mcp_mt_cr_with_auth(
                 },
             }
         )
-        evalhub_mcp_mt_cr.wait(timeout=300)
+        # Poll until the operator finishes reconciling the authSecret patch.
+        # .wait() only checks object existence — not operator readiness.
+        for sample in TimeoutSampler(wait_timeout=300, sleep=2, func=lambda: evalhub_mcp_mt_cr.instance.status):
+            if sample is None:
+                continue
+            if sample.get("ready") == "True":
+                break
+            phase = sample.get("phase", "")
+            if phase == "Error":
+                mcp_status = sample.get("mcp", {})
+                pytest.fail(
+                    f"EvalHub entered Error phase after authSecret patch.\n"
+                    f"  Top-level status: {sample}\n"
+                    f"  MCP sub-status:   {mcp_status}"
+                )
         yield evalhub_mcp_mt_cr
 
 
@@ -213,13 +252,14 @@ def evalhub_mcp_mt_deployment(
     model_namespace: Namespace,
     evalhub_mcp_mt_cr_with_auth: EvalHub,
 ) -> Deployment:
-    """Wait for the EvalHub MCP deployment to become available."""
+    """Wait for the EvalHub MCP deployment rollout to complete."""
     deployment = Deployment(
         client=admin_client,
         name=_mcp_deployment_name(EVALHUB_MCP_CR_NAME),
         namespace=model_namespace.name,
     )
-    deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_5MIN)
+    deployment.wait_for_replicas(timeout=300)
+    _wait_for_deployment_rollout(deployment=deployment, timeout=300)
     return deployment
 
 

@@ -1,5 +1,4 @@
 import pytest
-from ocp_resources.llm_inference_service import LLMInferenceService
 
 from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaHfConfig, TinyLlamaS3Config
 from tests.model_serving.model_server.llmd.utils import (
@@ -8,6 +7,7 @@ from tests.model_serving.model_server.llmd.utils import (
     send_chat_completions,
     workaround_503_no_healthy_upstream,
 )
+from utilities.resources.llm_inference_service import LLMInferenceService
 
 pytestmark = [pytest.mark.tier1]
 
@@ -22,7 +22,7 @@ NAMESPACE = ns_from_file(file=__file__)
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("valid_aws_config", "skip_if_disconnected")
+@pytest.mark.usefixtures("valid_aws_config")
 class TestLlmdConnectionCpu:
     """Deploy TinyLlama on CPU via S3 and HuggingFace and verify chat completions."""
 

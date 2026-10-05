@@ -21,7 +21,7 @@ from tests.model_serving.model_server.kserve.multi_node.utils import (
     delete_multi_node_pod_by_role,
     get_pods_by_isvc_generation,
 )
-from utilities.constants import KServeDeploymentType, Labels, ModelCarImage, Protocols, Timeout
+from utilities.constants import KServeDeploymentType, Labels, ModelCarImage, Protocols
 from utilities.inference_utils import create_isvc
 from utilities.infra import (
     get_pods_by_isvc_label,
@@ -98,14 +98,14 @@ def multi_node_inference_service(
         resources=resources,
         multi_node_worker_spec=worker_resources,
         wait_for_predictor_pods=False,
-        timeout=Timeout.TIMEOUT_30MIN,
+        timeout=1800,
     ) as isvc:
         wait_for_inference_deployment_replicas(
             client=unprivileged_client,
             isvc=isvc,
             expected_num_deployments=2,
             runtime_name=multi_node_serving_runtime.name,
-            timeout=Timeout.TIMEOUT_15MIN,
+            timeout=900,
         )
         yield isvc
 
@@ -149,14 +149,14 @@ def multi_node_oci_inference_service(
         multi_node_worker_spec=worker_resources,
         wait_for_predictor_pods=False,
         external_route=True,
-        timeout=Timeout.TIMEOUT_30MIN,
+        timeout=1800,
     ) as isvc:
         wait_for_inference_deployment_replicas(
             client=unprivileged_client,
             isvc=isvc,
             expected_num_deployments=2,
             runtime_name=multi_node_serving_runtime.name,
-            timeout=Timeout.TIMEOUT_15MIN,
+            timeout=900,
         )
         yield isvc
 
@@ -184,7 +184,7 @@ def patched_multi_node_isvc_external_route(
         }
     ):
         for sample in TimeoutSampler(
-            wait_timeout=Timeout.TIMEOUT_1MIN,
+            wait_timeout=60,
             sleep=1,
             func=lambda: multi_node_inference_service.instance.status,
         ):
@@ -210,7 +210,7 @@ def patched_multi_node_spec(
         }
     ):
         for sample in TimeoutSampler(
-            wait_timeout=Timeout.TIMEOUT_10MIN,
+            wait_timeout=600,
             sleep=10,
             func=get_pods_by_isvc_generation,
             client=unprivileged_client,
@@ -266,7 +266,7 @@ def deleted_multi_node_pod(
         client=unprivileged_client,
         isvc=multi_node_inference_service,
         expected_num_deployments=2,
-        timeout=Timeout.TIMEOUT_15MIN,
+        timeout=900,
     )
 
     _warmup_inference_and_wait_for_recovery(
@@ -305,7 +305,7 @@ def _warmup_inference_and_wait_for_recovery(
     ]
 
     for sample in TimeoutSampler(
-        wait_timeout=Timeout.TIMEOUT_30MIN,
+        wait_timeout=1800,
         sleep=30,
         func=_probe_inference_health,
         client=client,

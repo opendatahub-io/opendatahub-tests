@@ -7,7 +7,10 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
+from ocp_resources.role import Role
+from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
+from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest_testconfig import config as py_config
 
@@ -26,7 +29,13 @@ from utilities.constants import (
     RuntimeTemplates,
 )
 from utilities.inference_utils import create_isvc
-from utilities.infra import create_ns, get_pods_by_isvc_label, s3_endpoint_secret
+from utilities.infra import (
+    create_inference_token,
+    create_isvc_view_role,
+    create_ns,
+    get_pods_by_isvc_label,
+    s3_endpoint_secret,
+)
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 
@@ -355,6 +364,158 @@ def initial_pod_state(
     pods = get_pods_by_isvc_label(
         client=admin_client,
         isvc=negative_test_ovms_isvc,
+    )
+
+    pod_state: dict[str, dict[str, Any]] = {}
+    for pod in pods:
+        uid = pod.instance.metadata.uid
+        container_restart_counts = {
+            container.name: container.restartCount for container in (pod.instance.status.containerStatuses or [])
+        }
+        pod_state[uid] = {
+            "name": pod.name,
+            "restart_counts": container_restart_counts,
+        }
+
+    return pod_state
+
+
+# --- Auth / RBAC fixtures ---
+
+
+@pytest.fixture(scope="class")
+def auth_service_account(
+    unprivileged_client: DynamicClient,
+    negative_test_namespace: Namespace,
+) -> Generator[ServiceAccount, Any, Any]:
+    """ServiceAccount that will be granted inference access via RBAC."""
+    with ServiceAccount(
+        client=unprivileged_client,
+        namespace=negative_test_namespace.name,
+        name="neg-auth-sa",
+    ) as sa:
+        yield sa
+
+
+@pytest.fixture(scope="class")
+def negative_test_ovms_isvc_with_auth(
+    admin_client: DynamicClient,
+    negative_test_namespace: Namespace,
+    ovms_serving_runtime: ServingRuntime,
+    ci_s3_bucket_name: str,
+    negative_test_s3_secret: Secret,
+    auth_service_account: ServiceAccount,
+) -> Generator[InferenceService, Any, Any]:
+    """OVMS InferenceService with auth enabled (kube-rbac-proxy sidecar)."""
+    storage_uri = f"s3://{ci_s3_bucket_name}/test-dir/"
+    supported_formats = ovms_serving_runtime.instance.spec.supportedModelFormats
+    if not supported_formats:
+        raise ValueError(f"ServingRuntime '{ovms_serving_runtime.name}' has no supportedModelFormats")
+
+    with create_isvc(
+        client=admin_client,
+        name="neg-auth-ovms-isvc",
+        namespace=negative_test_namespace.name,
+        runtime=ovms_serving_runtime.name,
+        storage_key=negative_test_s3_secret.name,
+        storage_path=urlparse(storage_uri).path,
+        model_format=supported_formats[0].name,
+        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+        model_service_account=auth_service_account.name,
+        enable_auth=True,
+        external_route=True,
+    ) as isvc:
+        yield isvc
+
+
+@pytest.fixture(scope="class")
+def auth_view_role(
+    unprivileged_client: DynamicClient,
+    negative_test_ovms_isvc_with_auth: InferenceService,
+) -> Generator[Role, Any, Any]:
+    """Role granting view access to the auth-protected ISVC."""
+    with create_isvc_view_role(
+        client=unprivileged_client,
+        isvc=negative_test_ovms_isvc_with_auth,
+        name=f"{negative_test_ovms_isvc_with_auth.name}-view",
+        resource_names=[negative_test_ovms_isvc_with_auth.name],
+    ) as role:
+        yield role
+
+
+@pytest.fixture(scope="class")
+def auth_role_binding(
+    unprivileged_client: DynamicClient,
+    auth_view_role: Role,
+    auth_service_account: ServiceAccount,
+) -> Generator[RoleBinding, Any, Any]:
+    """RoleBinding granting the auth SA permission to access the ISVC."""
+    with RoleBinding(
+        client=unprivileged_client,
+        namespace=auth_service_account.namespace,
+        name=f"{auth_service_account.name}-view",
+        role_ref_name=auth_view_role.name,
+        role_ref_kind=auth_view_role.kind,
+        subjects_kind=auth_service_account.kind,
+        subjects_name=auth_service_account.name,
+    ) as rb:
+        yield rb
+
+
+@pytest.fixture(scope="class")
+def valid_inference_token(
+    auth_service_account: ServiceAccount,
+    auth_role_binding: RoleBinding,
+) -> str:
+    """Valid bearer token that has RBAC access to the auth-protected ISVC."""
+    return create_inference_token(model_service_account=auth_service_account)
+
+
+@pytest.fixture(scope="class")
+def cross_namespace_sa_token(
+    admin_client: DynamicClient,
+) -> Generator[str, Any, Any]:
+    """Token from a SA in a different namespace with no access to neg-kserve."""
+    with (
+        create_ns(
+            admin_client=admin_client,
+            unprivileged_client=admin_client,
+            name="neg-other-ns",
+        ) as other_ns,
+        ServiceAccount(
+            client=admin_client,
+            namespace=other_ns.name,
+            name="neg-cross-ns-sa",
+        ) as sa,
+    ):
+        token = create_inference_token(model_service_account=sa)
+        yield token
+
+
+@pytest.fixture(scope="class")
+def unauthorized_sa_token(
+    unprivileged_client: DynamicClient,
+    negative_test_namespace: Namespace,
+) -> Generator[str, Any, Any]:
+    """Token from a SA in the same namespace but with no RBAC for the ISVC."""
+    with ServiceAccount(
+        client=unprivileged_client,
+        namespace=negative_test_namespace.name,
+        name="neg-no-rbac-sa",
+    ) as sa:
+        token = create_inference_token(model_service_account=sa)
+        yield token
+
+
+@pytest.fixture(scope="class")
+def initial_pod_state_auth(
+    admin_client: DynamicClient,
+    negative_test_ovms_isvc_with_auth: InferenceService,
+) -> dict[str, dict[str, Any]]:
+    """Capture pod state for the auth-protected ISVC."""
+    pods = get_pods_by_isvc_label(
+        client=admin_client,
+        isvc=negative_test_ovms_isvc_with_auth,
     )
 
     pod_state: dict[str, dict[str, Any]] = {}

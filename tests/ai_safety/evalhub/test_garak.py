@@ -1,19 +1,18 @@
 import pytest
-from ocp_resources.data_science_pipelines_application import DataSciencePipelinesApplication
+import structlog
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 
 from tests.ai_safety.evalhub.constants import (
-    GARAK_BENCHMARK_ID,
     GARAK_PROVIDER_ID,
 )
 from tests.ai_safety.evalhub.utils import (
-    submit_garak_job,
     validate_evalhub_health,
     validate_evalhub_providers,
     wait_for_job_completion,
 )
-from utilities.constants import LLMdInferenceSimConfig
+
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.mark.parametrize(
@@ -26,12 +25,16 @@ from utilities.constants import LLMdInferenceSimConfig
     indirect=True,
 )
 @pytest.mark.tier1
-@pytest.mark.ai_safety
 @pytest.mark.usefixtures("patched_dsc_garak_kfp")
 class TestGarakBenchmark:
-    """Tests for running a garak security evaluation via EvalHub with KFP provider."""
+    """Tests for running a garak security evaluation via EvalHub with KFP provider.
 
-    garak_job_id = None
+    Test order:
+    1. Health check
+    2. Provider availability
+    3. Quick benchmark completion
+    4. Intents benchmark completion + S3 outputs
+    """
 
     @pytest.mark.dependency(name="garak_health")
     def test_evalhub_health(
@@ -64,78 +67,34 @@ class TestGarakBenchmark:
             expected_providers=[GARAK_PROVIDER_ID],
         )
 
-    @pytest.mark.dependency(name="garak_submit", depends=["garak_providers"])
-    def test_submit_garak_job(
+    @pytest.mark.dependency(name="garak_quick_completes", depends=["garak_providers"])
+    def test_quick_kfp_garak_job_completes(
         self,
         tenant_user_token: str,
         evalhub_ca_bundle_file: str,
         garak_evalhub_route: Route,
         tenant_namespace,
-        tenant_dspa: DataSciencePipelinesApplication,
-        dspa_secret_patch: Secret,
-        dsp_access_for_job_sa,
-        garak_tenant_rbac_ready: None,
-        garak_sim_isvc_url: str,
-        garak_intents_csv: str,
+        quick_kfp_garak_job_id: str,
     ) -> None:
-        """Submit a garak intents benchmark evaluation job using LLM-d inference simulator."""
-        kfp_endpoint = f"https://ds-pipeline-dspa.{tenant_namespace.name}.svc.cluster.local:8443"
-
-        payload = {
-            "name": "garak-intents-test",
-            "model": {
-                "url": garak_sim_isvc_url,
-                "name": LLMdInferenceSimConfig.model_name,
-            },
-            "benchmarks": [
-                {
-                    "id": GARAK_BENCHMARK_ID,
-                    "provider_id": GARAK_PROVIDER_ID,
-                    "parameters": {
-                        "kfp_config": {
-                            "endpoint": kfp_endpoint,
-                            "namespace": tenant_namespace.name,
-                            "s3_secret_name": dspa_secret_patch.name,
-                            "verify_ssl": False,
-                        },
-                        # Skip the SDGHub step, it'll fail to produce a dataset with our dummy model
-                        "intents_s3_key": garak_intents_csv,
-                        "intents_models": {  # This is a required parameter even if not used in practice
-                            "judge": {"url": garak_sim_isvc_url, "name": LLMdInferenceSimConfig.model_name}
-                        },
-                        "garak_config": {
-                            "plugins": {
-                                # We only run one single probe to speed up computation
-                                "probe_spec": "spo.SPOIntent",
-                                # Instead of using the default model as a judge, we use a test detector
-                                "detector_spec": "always.Fail",
-                            },
-                            "run": {"generations": 1},
-                        },
-                    },
-                }
-            ],
-            "experiment": {
-                "name": "garak-intents-test",
-            },
-        }
-
-        job_id = submit_garak_job(
+        """Poll and verify that the quick KFP garak job completes successfully."""
+        result = wait_for_job_completion(
             host=garak_evalhub_route.host,
             token=tenant_user_token,
             ca_bundle_file=evalhub_ca_bundle_file,
             tenant_namespace=tenant_namespace.name,
-            payload=payload,
+            job_id=quick_kfp_garak_job_id,
+            timeout=600,
         )
-        self.__class__.garak_job_id = job_id
+        assert result, "Quick KFP job completion returned empty result"
 
-    @pytest.mark.dependency(name="garak_job_completes", depends=["garak_submit"])
+    @pytest.mark.dependency(name="garak_job_completes", depends=["garak_quick_completes"])
     def test_garak_job_completes(
         self,
         tenant_user_token: str,
         evalhub_ca_bundle_file: str,
         garak_evalhub_route: Route,
         tenant_namespace,
+        intents_kfp_garak_job_id: str,
     ) -> None:
         """Poll and verify that the garak evaluation job completes successfully."""
         result = wait_for_job_completion(
@@ -143,9 +102,10 @@ class TestGarakBenchmark:
             token=tenant_user_token,
             ca_bundle_file=evalhub_ca_bundle_file,
             tenant_namespace=tenant_namespace.name,
-            job_id=self.__class__.garak_job_id,
+            job_id=intents_kfp_garak_job_id,
         )
         assert result, "Job completion returned empty result"
+        self.__class__.garak_job_id = intents_kfp_garak_job_id
 
     @pytest.mark.dependency(depends=["garak_job_completes"])
     def test_garak_s3_outputs(
@@ -159,23 +119,31 @@ class TestGarakBenchmark:
         job_id = self.__class__.garak_job_id
         expected_prefix = f"evalhub-garak-kfp/{job_id}/"
 
-        # Parse the listing output
         lines = garak_s3_listing.strip().split("\n") if garak_s3_listing.strip() else []
-
-        # Filter to files under the expected job path
         job_files = [line for line in lines if expected_prefix in line]
 
-        # Check for expected output files
-        has_html_report = any("scan.intents.html" in f for f in job_files)
-        has_jsonl_report = any("scan.report.jsonl" in f for f in job_files)
+        expected_files = {
+            "scan.intents.html": ("HTML report of intents scan results", True),
+            "scan.report.jsonl": ("JSONL report with detailed findings", True),
+            "hitlog.jsonl": ("Conversation logs from garak interactions", True),
+            "scan.log": ("Garak execution logs and debug output", False),
+        }
 
-        if not has_html_report or not has_jsonl_report:
-            # Output bucket contents for debugging
-            print("\n=== S3 bucket listing for debugging ===")
-            print(f"Expected prefix: {expected_prefix}")
-            print(f"Full bucket listing:\n{garak_s3_listing}")
-            print(f"Files matching job prefix:\n{chr(10).join(job_files) if job_files else '(none)'}")
-            print("=== End S3 listing ===\n")
+        found_files = {}
+        missing_required = []
 
-        assert has_html_report, f"Missing scan.intents.html in S3 outputs. Files found: {job_files}"
-        assert has_jsonl_report, f"Missing scan.report.jsonl in S3 outputs. Files found: {job_files}"
+        for filename, (description, required) in expected_files.items():
+            is_found = any(filename in f for f in job_files)
+            found_files[filename] = is_found
+            if required and not is_found:
+                missing_required.append(f"{filename} ({description})")
+
+        if missing_required:
+            LOGGER.error(
+                f"Missing required S3 files for job {job_id}: {missing_required}. "
+                f"Found {len(job_files)} files: {job_files}"
+            )
+
+        assert found_files["scan.intents.html"], f"Missing scan.intents.html in S3 outputs. Files found: {job_files}"
+        assert found_files["scan.report.jsonl"], f"Missing scan.report.jsonl in S3 outputs. Files found: {job_files}"
+        assert found_files["hitlog.jsonl"], f"Missing hitlog.jsonl in S3 outputs. Files found: {job_files}"

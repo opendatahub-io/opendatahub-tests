@@ -1,11 +1,19 @@
 """Constants for NeMo Guardrails tests."""
 
+from tests.ai_safety.image_constants import AiSafetyImages
 from utilities.constants import LLMdInferenceSimConfig
 
 # NeMo Guardrails server configuration
-NEMO_GUARDRAILS_IMAGE = "quay.io/trustyai_testing/nemo-guardrails:latest"
+NEMO_GUARDRAILS_IMAGE: str = AiSafetyImages.NEMO_GUARDRAILS
 NEMO_GUARDRAILS_PORT_AUTH = 8443
 NEMO_GUARDRAILS_PORT_NO_AUTH = 8000
+
+# Default config ConfigMap names (as deployed by the operator after kustomize namePrefix)
+NEMO_DEFAULT_CONFIG_CM_PREFIX = "trustyai-service-operator-nemo-guardrails-default"
+NEMO_DEFAULT_CONFIG_CM_ALL = "trustyai-service-operator-nemo-guardrails-default-all"
+NEMO_DEFAULT_CONFIG_CM_PII = "trustyai-service-operator-nemo-guardrails-default-pii"
+NEMO_DEFAULT_CONFIG_CM_INJECTION = "trustyai-service-operator-nemo-guardrails-default-injection"
+NEMO_DEFAULT_CONFIG_CM_SAFETY = "trustyai-service-operator-nemo-guardrails-default-safety"
 
 # Test model configuration (uses LLMdInferenceSim)
 

@@ -1,7 +1,7 @@
 """Tests for native signing in async upload job (PR #2337).
 
 Flow:
-1. Upload unsigned model to MinIO
+1. Upload unsigned model to SeaweedFS
 2. Async job downloads model, signs it, uploads to OCI, and signs the OCI image
 3. Verify the OCI image signature externally
 
@@ -14,24 +14,18 @@ import structlog
 from model_registry.signing import Signer
 
 from tests.ai_hub.model_registry.async_job.constants import ASYNC_UPLOAD_JOB_NAME
-from utilities.constants import MinIo
 
 LOGGER = structlog.get_logger(name=__name__)
 
-pytestmark = pytest.mark.usefixtures("skip_if_not_managed_cluster", "tas_connection_type")
+pytestmark = pytest.mark.usefixtures("tas_connection_type")
 
 
-@pytest.mark.parametrize(
-    "minio_pod",
-    [pytest.param(MinIo.PodConfig.MODEL_REGISTRY_MINIO_CONFIG)],
-    indirect=True,
-)
 @pytest.mark.usefixtures(
     "updated_dsc_component_state_scope_session",
     "model_registry_namespace",
     "model_registry_metadata_db_resources",
     "model_registry_instance",
-    "minio_pod",
+    "seaweedfs_pod",
     "oci_registry_pod",
     "oci_registry_service",
     "ai_hub_oci_registry_route",
@@ -39,7 +33,6 @@ pytestmark = pytest.mark.usefixtures("skip_if_not_managed_cluster", "tas_connect
 )
 @pytest.mark.custom_namespace
 @pytest.mark.downstream_only
-@pytest.mark.tier3
 class TestNativeJobSigningE2E:
     """
     End-to-end test: async job signs model and OCI image internally via MODEL_SYNC_SIGN=true.

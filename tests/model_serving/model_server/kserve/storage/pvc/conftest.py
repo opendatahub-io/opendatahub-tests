@@ -2,6 +2,7 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
@@ -11,10 +12,13 @@ from ocp_resources.resource import ResourceEditor
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest import FixtureRequest
 
+from tests.model_serving.model_server.kserve.storage.pvc.utils import wait_for_rollout_complete
 from utilities.constants import KServeDeploymentType
 from utilities.general import download_model_data
 from utilities.inference_utils import create_isvc
 from utilities.infra import get_pods_by_isvc_label
+
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")
@@ -40,6 +44,7 @@ def ci_bucket_downloaded_model_data(
         aws_default_region=ci_s3_bucket_region,
         model_path=request.param["model-dir"],
         use_sub_path=True,
+        restricted_scc_init=True,
     )
 
 
@@ -66,19 +71,34 @@ def predictor_pods_scope_class(
 
 @pytest.fixture()
 def patched_read_only_isvc(
-    request: FixtureRequest, pvc_inference_service: InferenceService, first_predictor_pod: Pod
+    request: FixtureRequest,
+    unprivileged_client: DynamicClient,
+    pvc_inference_service: InferenceService,
 ) -> Generator[InferenceService, Any, Any]:
+    """Patch the storage.kserve.io/readonly annotation and wait for rollout.
+
+    On teardown, ResourceEditor restores the original annotation and the
+    fixture waits for that rollout too, so the next test sees a clean state.
+
+    Expects request.param with:
+        readonly (str): The annotation value to set ("true" or "false").
+    """
+    readonly_value = request.param["readonly"]
+    LOGGER.info(f"patched_read_only_isvc: patching readonly={readonly_value}")
     with ResourceEditor(
         patches={
             pvc_inference_service: {
                 "metadata": {
-                    "annotations": {"storage.kserve.io/readonly": request.param["readonly"]},
+                    "annotations": {"storage.kserve.io/readonly": readonly_value},
                 }
             }
         }
     ):
-        first_predictor_pod.wait_deleted()
+        wait_for_rollout_complete(client=unprivileged_client, isvc=pvc_inference_service)
         yield pvc_inference_service
+    # ResourceEditor restores the annotation to None, triggering a rollout.
+    # Wait for it to settle so the next test sees a clean state.
+    wait_for_rollout_complete(client=unprivileged_client, isvc=pvc_inference_service)
 
 
 @pytest.fixture(scope="class")

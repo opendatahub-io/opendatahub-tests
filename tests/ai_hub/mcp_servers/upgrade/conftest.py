@@ -12,7 +12,7 @@ from tests.ai_hub.mcp_servers.config.constants import (
     MCP_SERVERS_YAML,
 )
 from tests.ai_hub.mcp_servers.config.utils import get_mcp_catalog_sources
-from tests.ai_hub.utils import wait_for_mcp_catalog_api, wait_for_model_catalog_pod_ready_after_deletion
+from tests.ai_hub.utils import wait_for_catalog_api, wait_for_model_catalog_pod_ready_after_deletion
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -43,7 +43,12 @@ def pre_upgrade_mcp_config_map_update(
     wait_for_model_catalog_pod_ready_after_deletion(
         client=admin_client, model_registry_namespace=model_registry_namespace
     )
-    wait_for_mcp_catalog_api(url=mcp_catalog_rest_urls[0], headers=model_registry_rest_headers)
+    wait_for_catalog_api(
+        url=mcp_catalog_rest_urls[0],
+        headers=model_registry_rest_headers,
+        endpoint="mcp_servers",
+        item_name="MCP servers",
+    )
     return catalog_config_map
 
 

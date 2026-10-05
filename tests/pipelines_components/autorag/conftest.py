@@ -25,11 +25,6 @@ from ocp_resources.service_account import ServiceAccount
 from ogx_client import APIConnectionError, InternalServerError, OgxClient
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
 
-from tests.fixtures.vector_io import (  # noqa: NIT001
-    MILVUS_TOKEN,
-    get_etcd_deployment_template,
-    get_milvus_deployment_template,
-)
 from tests.pipelines_components.constants import (
     AUTORAG_EMBEDDING_MAX_MODEL_LEN,
     AUTORAG_INPUT_DATA_KEY,
@@ -59,14 +54,20 @@ from tests.pipelines_components.utils import (
     use_managed_pipelines,
     wait_for_managed_pipeline,
 )
-from utilities.constants import Annotations, DscComponents, KServeDeploymentType, RuntimeTemplates, Timeout
+from utilities.constants import Annotations, DscComponents, KServeDeploymentType, RuntimeTemplates
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.exceptions import UnexpectedResourceCountError
 from utilities.general import generate_random_name
+from utilities.image_constants import SharedImages
 from utilities.inference_utils import create_isvc
 from utilities.infra import create_ns
 from utilities.resources.ogx_server import OgxServer
 from utilities.serving_runtime import ServingRuntimeFromTemplate
+from utilities.vector_io import (
+    MILVUS_TOKEN,
+    get_etcd_deployment_template,
+    get_milvus_deployment_template,
+)
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -74,13 +75,7 @@ AUTORAG_RESOURCE_PREFIX: str = "autorag-smoke"
 
 OGX_CLIENT_VERIFY_SSL: bool = os.getenv("OGX_CLIENT_VERIFY_SSL", "false").lower() == "true"
 OGX_CORE_POD_FILTER: str = "app=ogx"
-POSTGRES_IMAGE: str = os.getenv(
-    "OGX_VECTOR_IO_POSTGRES_IMAGE",
-    (
-        "registry.redhat.io/rhel9/postgresql-15@sha256:"
-        "90ec347a35ab8a5d530c8d09f5347b13cc71df04f3b994bfa8b1a409b1171d59"  # pragma: allowlist secret
-    ),
-)
+POSTGRES_IMAGE: str = os.getenv("OGX_VECTOR_IO_POSTGRES_IMAGE", SharedImages.POSTGRESQL_15)
 
 # User-provided env vars for the models to deploy
 AUTORAG_INFERENCE_MODEL_URI: str = os.environ.get("AUTORAG_INFERENCE_MODEL_URI", "")
@@ -113,31 +108,12 @@ def _create_ogx_server(
     namespace: str,
     config: dict[str, Any],
 ) -> Generator[OgxServer, Any, Any]:
-    network: dict[str, Any] = {
-        "policy": {
-            "ingress": [
-                {
-                    "from": [
-                        {
-                            "namespaceSelector": {
-                                "matchLabels": {
-                                    "kubernetes.io/metadata.name": "openshift-ingress",
-                                },
-                            },
-                        },
-                    ],
-                    "ports": [{"protocol": "TCP", "port": 8321}],
-                },
-            ],
-        },
-    }
     with OgxServer(
         client=client,
         name=name,
         namespace=namespace,
         distribution=config["distribution"],
         workload=config.get("workload"),
-        network=network,
         tls=config.get("tls"),
         wait_for_resource=True,
     ) as ogx_srv:
@@ -151,14 +127,17 @@ def _create_ogx_server(
 )
 def _wait_for_unique_ogx_pod(client: DynamicClient, namespace: str) -> Pod:
     pods = list(Pod.get(client=client, namespace=namespace, label_selector=OGX_CORE_POD_FILTER))
-    if not pods:
-        raise ResourceNotFoundError(f"No pods found with label selector {OGX_CORE_POD_FILTER} in namespace {namespace}")
-    if len(pods) != 1:
-        raise UnexpectedResourceCountError(
-            f"Expected exactly 1 pod with label selector {OGX_CORE_POD_FILTER} "
-            f"in namespace {namespace}, found {len(pods)}"
+    active_pods = [pod for pod in pods if not getattr(pod.bound_pod.metadata, "deletionTimestamp", None)]
+    if not active_pods:
+        raise ResourceNotFoundError(
+            f"No active pods found with label selector {OGX_CORE_POD_FILTER} in namespace {namespace}"
         )
-    return pods[0]
+    if len(active_pods) != 1:
+        raise UnexpectedResourceCountError(
+            f"Expected exactly 1 active pod with label selector {OGX_CORE_POD_FILTER} "
+            f"in namespace {namespace}, found {len(active_pods)}"
+        )
+    return active_pods[0]
 
 
 @retry(wait_timeout=90, sleep=5)
@@ -296,7 +275,7 @@ def autorag_inference_service(
         storage_uri=AUTORAG_INFERENCE_MODEL_URI,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         wait=True,
-        timeout=Timeout.TIMEOUT_30MIN,
+        timeout=1800,
         model_service_account=autorag_model_service_account.name,
         resources={
             "requests": {"cpu": "2", "memory": "4Gi"},
@@ -348,7 +327,7 @@ def autorag_embedding_service(
         storage_uri=AUTORAG_EMBEDDING_MODEL_URI,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         wait=True,
-        timeout=Timeout.TIMEOUT_30MIN,
+        timeout=1800,
         model_service_account=autorag_model_service_account.name,
         resources={
             "requests": {"cpu": "2", "memory": "4Gi"},

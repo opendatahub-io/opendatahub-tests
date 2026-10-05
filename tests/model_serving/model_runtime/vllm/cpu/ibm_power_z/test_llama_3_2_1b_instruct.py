@@ -31,12 +31,12 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_ibm_power_z_accelerat
     ),
     [
         pytest.param(
-            {"name": "llama-32-1b-instruct-standard-cpu"},
+            {"name": "llama-32-1b-instruct"},
             {"model-dir": LLAMA_3_2_1B_INSTRUCT_MODEL_PATH},
             {"deployment_mode": KServeDeploymentType.STANDARD},
             {
                 **BASE_RAW_DEPLOYMENT_CONFIG,
-                "name": "llama-32-1b-instruct-standard-cpu",
+                "name": "llama-32-1b-instruct",
                 "runtime_argument": IBM_POWER_Z_SERVING_ARGUMENT,
             },
             IBM_POWER_Z_CHAT_INFERENCE_REQUEST,

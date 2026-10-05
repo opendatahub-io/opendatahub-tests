@@ -10,7 +10,6 @@ from utilities.constants import (
     KServeDeploymentType,
     Protocols,
     RunTimeConfigs,
-    Timeout,
 )
 from utilities.inference_utils import Inference
 from utilities.infra import get_pods_by_isvc_label
@@ -80,7 +79,7 @@ class TestRawISVCReplicasUpdates:
 
         try:
             for pods in TimeoutSampler(
-                wait_timeout=Timeout.TIMEOUT_2MIN,
+                wait_timeout=120,
                 sleep=1,
                 func=get_pods_by_isvc_label,
                 client=unprivileged_client,

@@ -19,6 +19,7 @@ import pytest
 from ocp_resources.pod import Pod
 
 
+@pytest.mark.skip_on_disconnected
 @pytest.mark.parametrize(
     "model_namespace",
     [pytest.param({"name": "ovms-smoke"}, id="ovms-smoke", marks=pytest.mark.smoke)],

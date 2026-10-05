@@ -11,41 +11,29 @@ MULTIPLE_CUSTOM_CATALOG_VALUES: list[dict[str, str]] = [
     {"id": CUSTOM_CATALOG_ID2, "model_name": SAMPLE_MODEL_NAME2},
 ]
 
-REDHAT_AI_CATALOG_NAME: str = "Red Hat AI"
-REDHAT_AI_VALIDATED_CATALOG_NAME: str = "Red Hat AI validated"
-REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME: str = "Red Hat AI Validated"
-REDHAT_AI_FILTER: str = "Red+Hat+AI"
-REDHAT_AI_VALIDATED_FILTER = "Red+Hat+AI+Validated"
+VALIDATED_CATALOG_NAME: str = "Red Hat Validated Models"
+VALIDATED_CATALOG_LABEL: str = "Red Hat AI validated"
 OTHER_MODELS_CATALOG_ID: str = "other_models"
+OTHER_MODELS_CATALOG_NAME: str = "Other Models"
 SAMPLE_MODEL_NAME3 = "mistralai/Ministral-8B-Instruct-2410"
-REDHAT_AI_CATALOG_ID: str = "redhat_ai_models"
-OTHER_MODELS: str = "Other"
 VALIDATED_CATALOG_ID: str = "redhat_ai_validated_models"
+RETIRED_CATALOG_ID: str = "redhat_ai_models"
 DEFAULT_CATALOGS: dict[str, Any] = {
-    REDHAT_AI_CATALOG_ID: {
-        "name": REDHAT_AI_CATALOG_NAME,
-        "type": "yaml",
-        "properties": {"yamlCatalogPath": "/shared-data/models-catalog.yaml"},
-        "labels": [REDHAT_AI_CATALOG_NAME],
-        "enabled": True,
-    },
     VALIDATED_CATALOG_ID: {
-        "name": REDHAT_AI_VALIDATED_CATALOG_NAME,
+        "name": VALIDATED_CATALOG_NAME,
         "type": "yaml",
         "properties": {"yamlCatalogPath": "/shared-data/validated-models-catalog.yaml"},
-        "labels": [REDHAT_AI_VALIDATED_CATALOG_NAME],
+        "labels": [VALIDATED_CATALOG_LABEL],
         "enabled": True,
     },
     OTHER_MODELS_CATALOG_ID: {
-        "name": OTHER_MODELS,
+        "name": OTHER_MODELS_CATALOG_NAME,
         "type": "yaml",
         "properties": {"yamlCatalogPath": "/shared-data/other-models-catalog.yaml"},
         "labels": None,
         "enabled": True,
     },
 }
-
-DEFAULT_CATALOG_FILE: str = DEFAULT_CATALOGS[REDHAT_AI_CATALOG_ID]["properties"]["yamlCatalogPath"]
 
 VALIDATED_CATALOG_FILE: str = DEFAULT_CATALOGS[VALIDATED_CATALOG_ID]["properties"]["yamlCatalogPath"]
 
@@ -55,10 +43,23 @@ PERFORMANCE_DATA_DIR: str = "/shared-benchmark-data"
 CATALOG_SOURCE_LABEL_KEY: str = "opendatahub.io/catalog-source"
 LABELED_SOURCES_PATH_PREFIX: str = "/data/labeled-sources/"
 MODEL_CATALOG_DEPLOYMENT_NAME: str = "model-catalog"
+RECOMMENDED_ARTIFACT_PROPERTY: str = "ttft_p90.double_value"
+RECOMMENDED_TARGET_RPS: int = 10
+RECOMMENDED_PARETO_QUERY_PARAMS: dict[str, str] = {
+    "targetRPS": str(RECOMMENDED_TARGET_RPS),
+    "latencyProperty": "ttft_p90",
+    "rpsProperty": "requests_per_second",
+    "hardwareCountProperty": "hardware_count",
+    "hardwareTypeProperty": "hardware_type",
+}
+RECOMMENDED_PARETO_ADDITIONAL_PARAMS: str = "".join(
+    f"&{param_key}={param_value}" for param_key, param_value in RECOMMENDED_PARETO_QUERY_PARAMS.items()
+)
+HF_LAST_SYNCED_SOURCE_ID: str = "hf_last_synced_id"
 HF_SOURCE_ID: str = "huggingface_mixed"
 HF_MODEL_NAME: str = "ibm-granite/granite-speech-3.2-8b"
 # TODO: get a service account to host these models
-HF_CUSTOM_MODE: str = "jonburdo/test2"
+HF_CUSTOM_MODE: str = "dbasunag/onnx-test-model"
 HF_MODELS: dict[str, Any] = {
     "mixed": [
         # Generative models (text-generation)
@@ -66,7 +67,6 @@ HF_MODELS: dict[str, Any] = {
         "microsoft/phi-2",
         "microsoft/Phi-4-mini-reasoning",
         "microsoft/Phi-3.5-mini-instruct",
-        "meta-llama/Llama-3.1-8B-Instruct",
         # Predictive models (text-classification)
         "distilbert/distilbert-base-uncased-finetuned-sst-2-english",
         "cardiffnlp/twitter-roberta-base-sentiment-latest",

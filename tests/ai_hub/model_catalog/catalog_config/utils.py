@@ -8,33 +8,23 @@ import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
-from ocp_resources.pod import Pod
 from timeout_sampler import TimeoutExpiredError, retry
 
 from tests.ai_hub.constants import DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
 from tests.ai_hub.model_catalog.constants import (
     DEFAULT_CATALOGS,
-    REDHAT_AI_CATALOG_ID,
-    REDHAT_AI_CATALOG_NAME,
+    VALIDATED_CATALOG_ID,
+    VALIDATED_CATALOG_LABEL,
 )
 from tests.ai_hub.model_catalog.db_constants import GET_MODELS_BY_SOURCE_ID_DB_QUERY
 from tests.ai_hub.model_catalog.utils import (
     execute_database_query,
-    get_models_from_catalog_api,
+    get_all_catalog_items,
     parse_psql_output,
 )
 from tests.ai_hub.utils import execute_get_command, get_model_catalog_pod
-from utilities.constants import Timeout
 
 LOGGER = structlog.get_logger(name=__name__)
-
-
-def validate_model_catalog_enabled(pod: Pod) -> bool:
-    for container in pod.instance.spec.containers:
-        for env in container.env:
-            if env.name == "ENABLE_MODEL_CATALOG":
-                return True
-    return False
 
 
 def validate_model_catalog_resource(
@@ -62,7 +52,7 @@ def validate_default_catalog(catalogs: list[dict[Any, Any]]) -> None:
 
 
 def get_validate_default_model_catalog_source(catalogs: list[dict[Any, Any]]) -> None:
-    assert len(catalogs) == 3, f"Expected no custom models to be present. Actual: {catalogs}"
+    assert len(catalogs) == len(DEFAULT_CATALOGS), f"Expected no custom models to be present. Actual: {catalogs}"
     ids_actual = [entry["id"] for entry in catalogs]
     assert sorted(ids_actual) == sorted(DEFAULT_CATALOGS.keys()), (
         f"Actual default catalog entries: {ids_actual},Expected: {DEFAULT_CATALOGS.keys()}"
@@ -151,7 +141,7 @@ def get_models_from_database_by_source(admin_client: DynamicClient, source_id: s
 
 
 def validate_model_filtering_consistency(
-    api_models: set[str], db_models: set[str], source_id: str = "redhat_ai_models"
+    api_models: set[str], db_models: set[str], source_id: str = VALIDATED_CATALOG_ID
 ) -> tuple[bool, str]:
     """
     Validate consistency between API response and database state for model filtering.
@@ -205,14 +195,14 @@ def validate_filter_test_result(
     api_models = wait_for_model_set_match(
         model_catalog_rest_url=model_catalog_rest_url,
         model_registry_rest_headers=model_registry_rest_headers,
-        source_label=REDHAT_AI_CATALOG_NAME,
+        source_label=VALIDATED_CATALOG_LABEL,
         expected_models=expected_models,
-        source_id=REDHAT_AI_CATALOG_ID,
+        source_id=VALIDATED_CATALOG_ID,
     )
 
     # Get database models
     db_models = get_models_from_database_by_source(
-        admin_client=admin_client, source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace
+        admin_client=admin_client, source_id=VALIDATED_CATALOG_ID, namespace=model_registry_namespace
     )
 
     # Validate consistency between API and database
@@ -249,7 +239,7 @@ def validate_source_disabling_result(
         wait_for_model_count_change(
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
-            source_label=REDHAT_AI_CATALOG_NAME,
+            source_label=VALIDATED_CATALOG_LABEL,
             expected_count=0,
         )
     except TimeoutExpiredError as e:
@@ -257,7 +247,7 @@ def validate_source_disabling_result(
 
     # Verify database is also cleaned
     db_models = get_models_from_database_by_source(
-        admin_client=admin_client, source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace
+        admin_client=admin_client, source_id=VALIDATED_CATALOG_ID, namespace=model_registry_namespace
     )
     assert len(db_models) == 0, f"Database should be clean when source disabled, found: {db_models}"
 
@@ -375,17 +365,17 @@ def get_api_models_by_source_label(
     model_catalog_rest_url: list[str], model_registry_rest_headers: dict[str, str], source_label: str
 ) -> set[str]:
     """Helper to get current model set from API by source label."""
-    response = get_models_from_catalog_api(
-        model_catalog_rest_url=model_catalog_rest_url,
-        model_registry_rest_headers=model_registry_rest_headers,
-        source_label=source_label,
+    models = get_all_catalog_items(
+        url=f"{model_catalog_rest_url[0]}models",
+        headers=model_registry_rest_headers,
+        params={"sourceLabel": source_label},
     )
-    return {model["name"] for model in response.get("items", [])}
+    return {model["name"] for model in models}
 
 
 @retry(
     exceptions_dict={ValueError: [], Exception: []},
-    wait_timeout=Timeout.TIMEOUT_5MIN,
+    wait_timeout=300,
     sleep=10,
 )
 def wait_for_model_count_change(
@@ -421,7 +411,7 @@ def wait_for_model_count_change(
 
 @retry(
     exceptions_dict={AssertionError: [], Exception: []},
-    wait_timeout=Timeout.TIMEOUT_5MIN,
+    wait_timeout=300,
     sleep=10,
 )
 def wait_for_model_set_match(
@@ -464,7 +454,7 @@ def wait_for_model_set_match(
 
 @retry(
     exceptions_dict={subprocess.CalledProcessError: [], AssertionError: []},
-    wait_timeout=Timeout.TIMEOUT_2MIN,
+    wait_timeout=120,
     sleep=5,
 )
 def validate_cleanup_logging(
@@ -504,8 +494,9 @@ def validate_cleanup_logging(
 
 
 def filter_models_by_pattern(all_models: set[str], pattern: str) -> set[str]:
-    """Helper function to filter models by a given pattern."""
-    return {model for model in all_models if pattern in model}
+    """Helper function to filter models by a given pattern (case-insensitive)."""
+    pattern_lower = pattern.lower()
+    return {model for model in all_models if pattern_lower in model.lower()}
 
 
 @retry(wait_timeout=300, sleep=10, exceptions_dict={Exception: []}, print_log=False)
@@ -519,13 +510,13 @@ def wait_for_catalog_source_restore(
     Waits for the source api to return a specified number of models as expected
     """
     # Fetch current models from API
-    api_response = get_models_from_catalog_api(
-        model_catalog_rest_url=model_catalog_rest_url,
-        model_registry_rest_headers=model_registry_rest_headers,
-        source_label="Red Hat AI",
-        page_size=1000,
+    model_count = len(
+        get_api_models_by_source_label(
+            model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
+            source_label=source_label,
+        )
     )
-    model_count = api_response.get("size")
     LOGGER.warning(f"Model count: {model_count}, expected {expected_count}")
     # Validate all expectations - raise on any failure
     if model_count != expected_count:

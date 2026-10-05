@@ -9,7 +9,9 @@ This config covers single-node P/D: Prefill is set, Worker is nil → standard D
 Physical co-location on the same host is via pod affinity (user responsibility), not controller.
 
 No custom scheduler config is specified. The controller auto-generates the full P/D
-EndpointPickerConfig with all disaggregation plugins when spec.prefill != nil
+EndpointPickerConfig with all disaggregation plugins when spec.prefill != nil.
+
+Fast image variants live in ``config_fast_image.py`` alongside other fast configs.
 """
 
 from utilities.constants import Labels
@@ -31,19 +33,37 @@ class SingleNodePrefillDecodeConfig(TinyLlamaOciGpuConfig):
     min_nodes = 1
     min_gpus_per_node = 2
     supported_accelerators = (Labels.Nvidia.NVIDIA_COM_GPU,)
+    supported_topology = "workload-single-node-pd"
+
+    # 1 decode + 1 prefill Deployment pod, both are InferencePool members
+    expected_vllm_pod_count = 2
+    expected_inference_pool_pod_count = 2
 
     @classmethod
-    def container_env(cls):
-        return super().container_env() + [
+    def _nixl_env(cls, kv_role: str) -> list[dict]:
+        return [
             {
                 "name": "VLLM_ADDITIONAL_ARGS",
-                "value": '--kv_transfer_config \'{"kv_connector":"NixlConnector","kv_role":"kv_both"}\'',
+                "value": (
+                    f'--kv_transfer_config \'{{"kv_connector":"NixlConnector","kv_role":"{kv_role}"}}\''
+                    " --enable-auto-tool-choice --tool-call-parser hermes"
+                ),
             },
             {
                 "name": "VLLM_NIXL_SIDE_CHANNEL_HOST",
                 "valueFrom": {"fieldRef": {"fieldPath": "status.podIP"}},
             },
         ]
+
+    @classmethod
+    def container_env(cls) -> list[dict]:
+        base = [e for e in super().container_env() if e["name"] != "VLLM_ADDITIONAL_ARGS"]
+        return base + cls._nixl_env(kv_role="kv_consumer")
+
+    @classmethod
+    def prefill_env(cls) -> list[dict]:
+        base = [e for e in super().container_env() if e["name"] != "VLLM_ADDITIONAL_ARGS"]
+        return base + cls._nixl_env(kv_role="kv_producer")
 
     @classmethod
     def router_config(cls):
@@ -76,9 +96,11 @@ class SingleNodePrefillDecodeConfig(TinyLlamaOciGpuConfig):
                 "containers": [
                     {
                         "name": "main",
-                        "env": cls.container_env(),
+                        "env": cls.prefill_env(),
                         "resources": cls.container_resources(),
+                        "startupProbe": cls.startup_probe(),
                         "livenessProbe": cls.liveness_probe(),
+                        "readinessProbe": cls.readiness_probe(),
                     }
                 ],
             },

@@ -8,8 +8,6 @@ from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.resource import ResourceEditor
 from timeout_sampler import TimeoutSampler
 
-from utilities.constants import Timeout
-
 LOGGER = structlog.get_logger(name=__name__)
 
 
@@ -27,7 +25,7 @@ def wait_for_default_deployment_mode_in_cm(config_map: ConfigMap, deployment_mod
     """
     LOGGER.info(f"Wait for {deployment_mode} deployment mode to be set in {config_map.name} configmap")
     for sample in TimeoutSampler(
-        wait_timeout=Timeout.TIMEOUT_5MIN,
+        wait_timeout=300,
         sleep=5,
         func=lambda: config_map.instance.data,
     ):

@@ -7,13 +7,14 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.pod import Pod
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
+from tests.spark.image_constants import SparkImages
 from utilities.resources.spark_application import SparkApplication
 
 LOGGER = structlog.get_logger(name=__name__)
 
 UPGRADE_BASELINE_CONFIGMAP = "spark-upgrade-baseline"
 SPARK_VERSION = "4.0.1"
-SPARK_IMAGE = f"quay.io/opendatahub/data-processing:Spark-v{SPARK_VERSION}"
+SPARK_IMAGE = SparkImages.DATA_PROCESSING
 
 
 def wait_for_spark_application_state(

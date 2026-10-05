@@ -10,6 +10,7 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.infrastructure import Infrastructure
+from ocp_resources.mlflow import MLflow
 from ocp_resources.namespace import Namespace
 from ocp_resources.node import Node
 from ocp_resources.oauth import OAuth
@@ -25,10 +26,12 @@ from pytest_testconfig import config as py_config
 
 import tests.ai_hub.constants as ai_hub_constants
 from tests.ai_hub.constants import (
+    AIHUB_CONTROLLER_MANAGER_NAME,
     DB_BASE_RESOURCES_NAME,
     DB_RESOURCE_NAME,
     KUBERBACPROXY_STR,
     MCP_CATALOG_API_PATH,
+    MLFLOW_INSTANCE_NAME,
     MR_INSTANCE_BASE_NAME,
     MR_INSTANCE_NAME,
     MR_OPERATOR_NAME,
@@ -36,12 +39,13 @@ from tests.ai_hub.constants import (
 from tests.ai_hub.utils import (
     generate_namespace_name,
     get_byoidc_user_credentials,
+    get_model_catalog_pod,
     get_model_registry_metadata_resources,
     get_model_registry_objects,
     get_rest_headers,
     wait_for_default_resource_cleanedup,
 )
-from utilities.constants import MODEL_REGISTRY_CUSTOM_NAMESPACE, DscComponents, Labels
+from utilities.constants import MODEL_REGISTRY_CUSTOM_NAMESPACE, Annotations, DscComponents, Labels
 from utilities.general import (
     generate_random_name,
     wait_for_oauth_openshift_deployment,
@@ -82,10 +86,20 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     # Since clusters are not heterogeneous, all nodes share the same architecture
     nodes = list(Node.get(dyn_client=client))
     cluster_architecture = nodes[0].instance.status.nodeInfo.architecture
+    py_config["cluster_architecture"] = cluster_architecture
     if cluster_architecture == "s390x":
-        LOGGER.info("s390x cluster detected, using Red Hat MySQL 8.4 image")
+        LOGGER.info("s390x cluster detected, using Red Hat MySQL 8.4 image and vLLM runtime")
         ai_hub_constants.MR_DB_IMAGE_DIGEST = ai_hub_constants.MR_DB_IMAGE_DIGEST_S390X
         ai_hub_constants.MR_DB_MYSQL_ARGS = []
+        ai_hub_constants.MR_RUNTIME_TEMPLATE = ai_hub_constants.MR_RUNTIME_TEMPLATE_Z
+        ai_hub_constants.MODEL_ARTIFACT.update(ai_hub_constants.MODEL_ARTIFACT_VLLM)
+        ai_hub_constants.MR_ISVC_RESOURCES.update(ai_hub_constants.MR_ISVC_RESOURCES_Z)
+        ai_hub_constants.MR_ISVC_ARGS[:] = ai_hub_constants.MR_ISVC_ARGS_Z
+        ai_hub_constants.MR_ISVC_VOLUMES[:] = ai_hub_constants.MR_ISVC_VOLUMES_Z
+        ai_hub_constants.MR_ISVC_VOLUME_MOUNTS[:] = ai_hub_constants.MR_ISVC_VOLUME_MOUNTS_Z
+        ai_hub_constants.MR_RUNTIME_CONTAINERS.update(ai_hub_constants.MR_RUNTIME_CONTAINERS_Z)
+        ai_hub_constants.MR_MODEL_SERVER_URL_PATH = ai_hub_constants.MR_MODEL_SERVER_URL_PATH_Z
+        ai_hub_constants.MR_ISVC_VLLM_INFERENCE = True
 
 
 @pytest.fixture(scope="session")
@@ -95,20 +109,25 @@ def model_registry_namespace(updated_dsc_component_state_scope_session: DataScie
 
 @pytest.fixture(scope="session")
 def async_upload_image(admin_client: DynamicClient) -> str:
-    """Async upload job image from the model-registry-operator-parameters ConfigMap."""
-    config_map = ConfigMap(
-        client=admin_client,
-        name="model-registry-operator-parameters",
+    """Async upload job image from the aihub-controller-manager pod's manager container."""
+    pod = wait_for_pods_by_labels(
+        admin_client=admin_client,
         namespace=py_config["applications_namespace"],
+        label_selector=f"{Annotations.KubernetesIo.NAME}={AIHUB_CONTROLLER_MANAGER_NAME}",
+        expected_num_pods=1,
+    )[0]
+
+    env_var_name = "RELATED_IMAGE_ODH_MODEL_REGISTRY_JOB_ASYNC_UPLOAD_IMAGE"
+    for container in pod.instance.spec.containers:
+        if container.name == "manager":
+            for env_var in container.env or []:
+                if env_var.name == env_var_name:
+                    return env_var.value
+
+    raise ResourceNotFoundError(
+        f"Env var '{env_var_name}' not found on 'manager' container of"
+        f" aihub-controller-manager pod in namespace '{py_config['applications_namespace']}'"
     )
-
-    if not config_map.exists:
-        raise ResourceNotFoundError(
-            f"ConfigMap 'model-registry-operator-parameters' not found in"
-            f" namespace '{py_config['applications_namespace']}'"
-        )
-
-    return config_map.instance.data["IMAGES_JOBS_ASYNC_UPLOAD"]
 
 
 @pytest.fixture(scope="session")
@@ -184,6 +203,41 @@ def updated_dsc_component_state_scope_session(
     else:
         LOGGER.info("Model Registry is enabled by default and does not require any setup.")
         yield dsc_resource
+
+
+@pytest.fixture(scope="class")
+def ai_hub_mlflow_instance(admin_client: DynamicClient) -> Generator[MLflow, Any, Any]:
+    """Create an MLflow instance for ai_hub tests, failing if one already exists.
+
+    Assumes a fresh RHOAI install: mlflowoperator is already Managed, but no MLflow CR exists
+    yet. MLflow is cluster-scoped, so only one instance may exist at a time; this fixture owns
+    that single instance rather than reusing one.
+    """
+    existing_instances = list(MLflow.get(client=admin_client))
+    assert not existing_instances, (
+        "Expected no MLflow instance on the cluster before this test (fresh-cluster assumption), "
+        f"but found: {[mlflow.name for mlflow in existing_instances]}. Only one MLflow instance "
+        "may exist at a time."
+    )
+
+    applications_namespace = py_config["applications_namespace"]
+    LOGGER.info("Creating MLflow instance for ai_hub tests", name=MLFLOW_INSTANCE_NAME)
+    with MLflow(
+        client=admin_client,
+        name=MLFLOW_INSTANCE_NAME,
+        storage={
+            "accessModes": ["ReadWriteOnce"],
+            "resources": {"requests": {"storage": "10Gi"}},
+        },
+        backend_store_uri="sqlite:////mlflow/mlflow.db",
+        artifacts_destination="file:///mlflow/artifacts",
+        serve_artifacts=True,
+        wait_for_resource=True,
+    ) as mlflow_cr:
+        Deployment(client=admin_client, name=MLFLOW_INSTANCE_NAME, namespace=applications_namespace).wait_for_replicas(
+            timeout=300
+        )
+        yield mlflow_cr
 
 
 @pytest.fixture()
@@ -295,7 +349,7 @@ def updated_oauth_config(
     else:
         # Get current providers and add the new one
         oauth = OAuth(client=admin_client, name="cluster")
-        identity_providers = oauth.instance.spec.identityProviders
+        identity_providers = oauth.instance.spec.identityProviders or []
 
         new_idp = {
             "name": user_credentials_rbac["idp_name"],
@@ -519,6 +573,14 @@ def model_catalog_routes(admin_client: DynamicClient, model_registry_namespace: 
     return list(
         Route.get(namespace=model_registry_namespace, label_selector="component=model-catalog", client=admin_client)
     )
+
+
+@pytest.fixture(scope="class")
+def model_catalog_pod(admin_client: DynamicClient, model_registry_namespace: str) -> Pod:
+    """Get the first catalog pod in the model registry namespace."""
+    pods = get_model_catalog_pod(client=admin_client, model_registry_namespace=model_registry_namespace)
+    assert pods, "No catalog pods found"
+    return pods[0]
 
 
 @pytest.fixture(scope="class")

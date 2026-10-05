@@ -22,8 +22,9 @@ To contribute code to the project:
 - Fork the project and work on your forked repository
 - Before submitting a new pull request:
   - Make sure you follow the [Style guide](STYLE_GUIDE.md)
-  - Make sure you have [pre-commit](https://pre-commit.com/) package installed
+  - Make sure you have [pre-commit](https://pre-commit.com/) package installed (including the `commit-msg` hook)
   - Make sure you have [tox](https://tox.readthedocs.io/en/latest/) package installed
+  - Make sure every commit is signed off and uses a Conventional Commit message (see [Commit messages](#commit-messages))
 - PRs that are not ready for review (but needed to be pushed for any reason) should have [WIP] in the title and labelled as "wip".
   - When a PR is ready for review, remove the [WIP] from the title and remove the "wip" label.
 - PRs should be relatively small; if needed the PRs should be split and depended on each other.
@@ -40,6 +41,43 @@ To contribute code to the project:
   - PRs must be verified and marked with "verified" label.
   - PRs must be reviewed by at least two reviewers other than the committer.
   - All CI checks must pass.
+
+## Commit messages
+
+Every commit MUST include a `Signed-off-by` trailer. This certifies the [Developer Certificate of Origin (DCO)](https://developercertificate.org/) and is enforced by a `commit-msg` pre-commit hook.
+
+Add the trailer with `-s` (uses your git `user.name` and `user.email`):
+
+```bash
+git commit -s
+```
+
+Or add it as the last line of the commit message:
+
+```text
+Signed-off-by: Your Name <your@email.com>
+```
+
+The trailer MUST match `Signed-off-by: Name <email>`. Commits without a valid trailer are rejected locally when the `commit-msg` hook is installed.
+
+Commit messages MUST follow [Conventional Commits](https://www.conventionalcommits.org/), also enforced by the `commit-msg` hook:
+
+```text
+<type>(optional-scope): <subject>
+```
+
+- Allowed types: `build`, `ci`, `chore`, `docs`, `feat`, `fix`, `perf`, `refactor`, `revert`, `style`, `test`
+- Subject length: 10–80 characters
+
+Examples:
+
+```text
+feat(model-serving): add vLLM raw deployment smoke test
+fix: wait for InferenceService Ready before querying
+docs: document Signed-off-by and Conventional Commits
+```
+
+`pre-commit run --all-files` does not check commit messages. The Signed-off-by and Conventional Commits hooks run only on `git commit` after you install the `commit-msg` hook.
 
 ## Branching strategy
 
@@ -158,18 +196,22 @@ You should NOT group unrelated tests in one class (because it is misleading the 
 
 When submitting a pull request, make sure to fill all the required, relevant fields for your PR.  
 Make sure the title is descriptive and short.  
-Checks tools are used to check the code are defined in .pre-commit-config.yaml file
-To install pre-commit:
+Check tools are defined in `.pre-commit-config.yaml`.
+Install both the file hooks and the `commit-msg` hooks (Signed-off-by and Conventional Commits):
 
 ```bash
 pre-commit install -t pre-commit -t commit-msg
 ```
 
-Run pre-commit:
+`default_install_hook_types` already includes both, so `pre-commit install` is enough if you have not overridden hook types.
+
+Run file checks:
 
 ```bash
 pre-commit run --all-files
 ```
+
+That command does not validate commit messages. Signed-off-by and Conventional Commits are checked when you run `git commit`. See [Commit messages](#commit-messages).
 
 ### tox
 
@@ -180,6 +222,64 @@ Run tox:
 ```bash
 tox
 ```
+
+## Container Images
+
+Tests that deploy containers (MinIO, model servers, emulators, etc.) must use centralized
+image constants so that all required images are discoverable for **disconnected/air-gapped testing**.
+
+### How it works
+
+Each component has an `image_constants.py` file with a class containing all container images:
+
+```python
+# tests/ai_safety/image_constants.py
+class AiSafetyImages:
+    VLLM_EMULATOR: str = "quay.io/trustyai_testing/vllm_emulator@sha256:c4bdd5..."
+    MINIO_MC: str = "quay.io/minio/mc@sha256:470f55..."
+```
+
+These are registered in `scripts/generate_image_manifest.py`:
+
+```python
+IMAGE_CLASS_MAP = {
+    "ai_safety": "tests.ai_safety.image_constants.AiSafetyImages",
+    "shared": "utilities.constants.ContainerImages",
+}
+```
+
+The manifest is embedded as an OCI label on the `odh-tests` container image during build,
+allowing disconnected environments to discover and mirror all required images via
+`skopeo inspect`. A SHA-256 checksum of the manifest JSON is stored in a companion label
+so consumers can verify integrity.
+
+See [CONSUMING_IMAGE_MANIFEST.md](CONSUMING_IMAGE_MANIFEST.md) for label details,
+extraction, verification, and output format options.
+
+### Adding a new image
+
+1. Add the image to the appropriate `image_constants.py` file:
+   - **Component-specific**: `tests/<component>/image_constants.py`
+   - **Shared across components**: `utilities/image_constants.py`
+2. Import and reference in your test code:
+   - **Component-specific**: `from tests.<component>.image_constants import <ComponentImages>` -> `<ComponentImages>.YOUR_IMAGE`
+   - **Shared**: `from utilities.image_constants import SharedImages` -> `SharedImages.YOUR_IMAGE`
+
+   Example: `from tests.ai_safety.image_constants import AiSafetyImages` -> `AiSafetyImages.VLLM_EMULATOR`
+
+### Adding a new component
+
+1. Create `tests/<component>/image_constants.py` with a class containing all images
+2. Register it in `scripts/generate_image_manifest.py` under `IMAGE_CLASS_MAP`
+
+### CI image checks
+
+The **PR Container Image Checks** workflow runs on every PR that touches Python files
+and enforces three rules: IMG001 (stray images), IMG002 (missing digests), and
+IMG003 (DockerHub images).
+
+See [IMAGE_CHECK_RULES.md](IMAGE_CHECK_RULES.md) for details on each rule, fixes,
+and suppression codes.
 
 ## Adding new runtime
 

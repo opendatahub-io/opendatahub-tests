@@ -22,6 +22,7 @@ LOGGER = structlog.get_logger(name=__name__)
 pytestmark = [
     pytest.mark.downstream_only,
     pytest.mark.skip_must_gather,
+    pytest.mark.no_image_registry_mirroring,
     pytest.mark.usefixtures("updated_dsc_component_state_scope_session", "model_registry_namespace"),
 ]
 

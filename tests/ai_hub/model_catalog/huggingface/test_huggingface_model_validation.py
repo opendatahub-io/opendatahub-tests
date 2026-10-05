@@ -7,13 +7,14 @@ from huggingface_hub import HfApi
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 
-from tests.ai_hub.model_catalog.constants import HF_MODELS, HF_SOURCE_ID
+from tests.ai_hub.model_catalog.constants import HF_LAST_SYNCED_SOURCE_ID, HF_MODELS, HF_SOURCE_ID
 from tests.ai_hub.model_catalog.huggingface.utils import (
     assert_huggingface_values_matches_model_catalog_api_values,
     get_huggingface_model_from_api,
     wait_for_hugging_face_model_import,
     wait_for_huggingface_retrival_match,
-    wait_for_last_sync_update,
+    wait_for_last_sync_update_via_logs,
+    wait_for_last_synced_interval_match,
 )
 from tests.ai_hub.model_catalog.utils import (
     get_hf_catalog_str,
@@ -31,10 +32,10 @@ class TestLastSyncedMetadataValidation:
         "updated_catalog_config_map_scope_function, initial_last_synced_values, model_name",
         [
             pytest.param(
-                """
+                f"""
 catalogs:
   - name: HuggingFace Hub
-    id: hf_id
+    id: {HF_LAST_SYNCED_SOURCE_ID}
     type: hf
     enabled: true
     includedModels:
@@ -53,6 +54,8 @@ catalogs:
         self: Self,
         updated_catalog_config_map_scope_function: Generator[ConfigMap],
         initial_last_synced_values: str,
+        admin_client: DynamicClient,
+        model_registry_namespace: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         model_name: str,
@@ -60,13 +63,17 @@ catalogs:
         """
         Custom test for HuggingFace model last synced validation
         """
-        # Get the model name from the parametrized test
-        wait_for_last_sync_update(
-            model_registry_rest_headers=model_registry_rest_headers,
+        wait_for_last_sync_update_via_logs(
+            admin_client=admin_client,
+            model_registry_namespace=model_registry_namespace,
+            source_id=HF_LAST_SYNCED_SOURCE_ID,
+        )
+        wait_for_last_synced_interval_match(
             model_catalog_rest_url=model_catalog_rest_url,
+            model_registry_rest_headers=model_registry_rest_headers,
             model_name=model_name,
-            source_id="hf_id",
-            initial_last_synced_values=float(initial_last_synced_values),
+            source_id=HF_LAST_SYNCED_SOURCE_ID,
+            initial_last_synced=initial_last_synced_values,
         )
 
 
@@ -151,6 +158,77 @@ class TestHuggingFaceModelValidation:
             expected_catalog_values=expected_catalog_values,
             huggingface_api=huggingface_api,
         )
+
+
+@pytest.mark.parametrize(
+    "private_hf_catalog_config, expected_catalog_values",
+    [
+        pytest.param(
+            {
+                "sources_yaml": """
+catalogs:
+  - name: HuggingFace Hub Gated
+    id: hf_private_gated
+    type: hf
+    enabled: true
+    properties:
+      apiKeyEnvVar: HF_API_KEY_HUGGINGFACE_HUB_PRIVATE
+    includedModels:
+    - RH-AI-Hub/Manual-Gated-Model-1
+""",
+            },
+            {"RH-AI-Hub/Manual-Gated-Model-1": {}},
+            id="test_hf_private_gated_model",
+            marks=pytest.mark.install,
+        ),
+    ],
+    indirect=True,
+)
+@pytest.mark.usefixtures("private_hf_catalog_config")
+class TestHuggingFacePrivateGatedModelValidation:
+    """Test HuggingFace private gated model synchronization and validation"""
+
+    @pytest.mark.tier2
+    def test_huggingface_private_gated_model_sync(
+        self: Self,
+        epoch_time_before_config_map_update: float,
+        admin_client: DynamicClient,
+        model_registry_namespace: str,
+        model_catalog_rest_url: list[str],
+        model_registry_rest_headers: dict[str, str],
+        expected_catalog_values: dict[str, str],
+    ) -> None:
+        """
+        Validate private gated HuggingFace model synchronization with token authentication.
+
+        Given: A HuggingFace private gated model (RH-AI-Hub/Private-Model-1)
+        When: The model catalog is configured with the model and an authenticated token
+        Then: The model is successfully imported and retrievable via the catalog API
+        """
+        wait_for_hugging_face_model_import(
+            admin_client=admin_client,
+            model_registry_namespace=model_registry_namespace,
+            hf_id="hf_private_gated",
+            expected_num_models_from_hf_api=len(expected_catalog_values),
+        )
+
+        for model_name in expected_catalog_values:
+            result = get_huggingface_model_from_api(
+                model_catalog_rest_url=model_catalog_rest_url,
+                model_registry_rest_headers=model_registry_rest_headers,
+                model_name=model_name,
+                source_id="hf_private_gated",
+            )
+            assert result["name"] == model_name, f"Expected model {model_name}, got {result['name']}"
+
+            # Validate last_synced timestamp
+            last_synced = result["customProperties"]["last_synced"]["string_value"]
+            assert last_synced, f"last_synced field is empty for model {model_name}"
+            assert epoch_time_before_config_map_update <= float(last_synced), (
+                f"Model {model_name} last_synced ({last_synced}) should be after "
+                f"test start time ({epoch_time_before_config_map_update})"
+            )
+            LOGGER.info(f"Private gated model {model_name} successfully synced at {last_synced}")
 
 
 class TestHFPatternMatching:

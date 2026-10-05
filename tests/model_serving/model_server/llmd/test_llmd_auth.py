@@ -13,7 +13,7 @@ NAMESPACE = ns_from_file(file=__file__)
 
 @pytest.mark.parametrize(
     "unprivileged_model_namespace",
-    [{"name": NAMESPACE}],
+    [pytest.param({"name": NAMESPACE}, id="auth")],
     indirect=True,
 )
 class TestLLMISVCAuth:

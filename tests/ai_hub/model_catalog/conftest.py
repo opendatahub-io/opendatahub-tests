@@ -8,27 +8,26 @@ import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
-from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.route import Route
 from ocp_resources.service_account import ServiceAccount
 
 from tests.ai_hub.constants import (
-    CATALOG_CONTAINER,
     CUSTOM_CATALOG_ID1,
     DEFAULT_CUSTOM_MODEL_CATALOG,
     DEFAULT_MODEL_CATALOG_CM,
 )
 from tests.ai_hub.model_catalog.catalog_config.utils import get_models_from_database_by_source
 from tests.ai_hub.model_catalog.constants import (
-    DEFAULT_CATALOG_FILE,
     DEFAULT_CATALOGS,
-    REDHAT_AI_CATALOG_ID,
     SAMPLE_MODEL_NAME3,
+    VALIDATED_CATALOG_ID,
 )
 from tests.ai_hub.model_catalog.utils import (
+    get_all_catalog_items,
     get_model_str,
     get_models_from_catalog_api,
+    get_shipped_catalog,
     wait_for_model_catalog_api,
 )
 from tests.ai_hub.utils import (
@@ -41,14 +40,6 @@ from tests.ai_hub.utils import (
 from utilities.infra import create_inference_token, get_openshift_token, login_with_user_password
 
 LOGGER = structlog.get_logger(name=__name__)
-
-
-@pytest.fixture(scope="class")
-def model_catalog_pod(admin_client: DynamicClient, model_registry_namespace: str) -> Pod:
-    """Get the first model catalog pod in the model registry namespace."""
-    pods = get_model_catalog_pod(client=admin_client, model_registry_namespace=model_registry_namespace)
-    assert pods, "No model catalog pods found"
-    return pods[0]
 
 
 @pytest.fixture()
@@ -253,7 +244,7 @@ def randomly_picked_model_from_catalog_api_by_source(
     """
     param = getattr(request, "param", {})
     # Support both 'catalog_id' and 'source' for backward compatibility
-    catalog_id = param.get("catalog_id") or param.get("source", REDHAT_AI_CATALOG_ID)
+    catalog_id = param.get("catalog_id") or param.get("source", VALIDATED_CATALOG_ID)
     header_type = param.get("header_type", "user_token")
     model_name = param.get("model_name")
     random_model = None
@@ -290,49 +281,46 @@ def randomly_picked_model_from_catalog_api_by_source(
 
 
 @pytest.fixture(scope="class")
+def default_catalog_source(request: pytest.FixtureRequest) -> str:
+    """Default source selected for catalog data checks."""
+    return getattr(request, "param", {}).get("catalog_id", VALIDATED_CATALOG_ID)
+
+
+@pytest.fixture(scope="class")
 def default_model_catalog_yaml_content(
-    request: pytest.FixtureRequest, admin_client: DynamicClient, model_registry_namespace: str
-) -> dict[Any, Any]:
-    """
-    Fetch and parse catalog YAML from the catalog pod.
-
-    Defaults to DEFAULT_CATALOG_FILE if not parameterized.
-    Use with @pytest.mark.parametrize indirect parameter to specify a different catalog:
-
-    Args:
-        request.param: Optional catalog ID, if not provided, uses DEFAULT_CATALOG_FILE.
-
-    Returns:
-        Parsed YAML content as dictionary
-    """
-    # If parameterized, get the catalog file path from the catalog ID
-    # Otherwise, use DEFAULT_CATALOG_FILE
-    catalog_id = getattr(request, "param", None)
-    if catalog_id:
-        catalog_file_path = DEFAULT_CATALOGS[catalog_id]["properties"]["yamlCatalogPath"]
-    else:
-        catalog_file_path = DEFAULT_CATALOG_FILE
-
+    request: pytest.FixtureRequest,
+    admin_client: DynamicClient,
+    model_registry_namespace: str,
+    default_catalog_source: str,
+) -> dict[str, Any]:
+    """Catalog data shipped in the pod for the selected default source."""
+    catalog_id = getattr(request, "param", default_catalog_source)
+    catalog_file_path = DEFAULT_CATALOGS[catalog_id]["properties"]["yamlCatalogPath"]
     model_catalog_pod = get_model_catalog_pod(client=admin_client, model_registry_namespace=model_registry_namespace)[0]
-    return yaml.safe_load(model_catalog_pod.execute(command=["cat", catalog_file_path], container=CATALOG_CONTAINER))
+    return get_shipped_catalog(pod=model_catalog_pod, catalog_file=catalog_file_path)
 
 
 @pytest.fixture(scope="class")
 def default_catalog_api_response(
-    model_catalog_rest_url: list[str], model_registry_rest_headers: dict[str, str]
-) -> dict[Any, Any]:
-    """Fetch all models from default catalog API (used for data validation tests)"""
-    return execute_get_command_with_retry(
-        url=f"{model_catalog_rest_url[0]}models?source={REDHAT_AI_CATALOG_ID}&pageSize=100",
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+    default_catalog_source: str,
+) -> dict[str, Any]:
+    """All models from the selected default source, including every API page."""
+    models = get_all_catalog_items(
+        url=f"{model_catalog_rest_url[0]}models",
         headers=model_registry_rest_headers,
+        params={"source": default_catalog_source},
     )
+    assert models, f"No models returned for {default_catalog_source}"
+    return {"items": models, "size": len(models)}
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="session")
 def catalog_openapi_schema() -> dict[Any, Any]:
-    """Fetch and cache the catalog OpenAPI schema (fetched once per class)"""
-    OPENAPI_SCHEMA_URL = "https://raw.githubusercontent.com/kubeflow/model-registry/main/api/openapi/catalog.yaml"
-    response = requests.get(OPENAPI_SCHEMA_URL, timeout=10)
+    """Fetch and cache the catalog OpenAPI schema (fetched once per session)."""
+    openapi_schema_url = "https://raw.githubusercontent.com/kubeflow/model-registry/main/api/openapi/catalog.yaml"
+    response = requests.get(openapi_schema_url, timeout=10)
     response.raise_for_status()
     return yaml.safe_load(response.text)
 
@@ -342,10 +330,14 @@ def models_from_filter_query(
     request,
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
-) -> list[str]:
+) -> list[tuple[str, str]]:
     """
     Fixture that runs get_models_from_catalog_api with the given filter_query,
-    asserts that models are returned, and returns list of model names.
+    asserts that models are returned, and returns list of (name, source_id) tuples.
+
+    The general /models endpoint spans every catalog source on the cluster, so
+    each model's actual source_id must travel with its name for any follow-up
+    per-model lookups to target the right source.
     """
     filter_query = request.param
 
@@ -357,10 +349,13 @@ def models_from_filter_query(
 
     assert models, f"No models returned from filter query: {filter_query}"
 
-    model_names = [model["name"] for model in models]
-    LOGGER.info(f"Filter query '{filter_query}' returned {len(model_names)} models: {', '.join(model_names)}")
+    models_with_source = [(model["name"], model["source_id"]) for model in models]
+    LOGGER.info(
+        f"Filter query '{filter_query}' returned {len(models_with_source)} models: "
+        f"{', '.join(name for name, _ in models_with_source)}"
+    )
 
-    return model_names
+    return models_with_source
 
 
 @pytest.fixture()
@@ -449,28 +444,29 @@ def model_catalog_rest_url(model_registry_namespace: str, model_catalog_routes: 
 
 
 @pytest.fixture(scope="function")
-def baseline_redhat_ai_models(
+def baseline_validated_models(
     admin_client: DynamicClient,
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
     model_registry_namespace: str,
 ) -> dict[str, set[str] | int]:
     """
-    fixture providing baseline model data for redhat_ai_models source.
+    Baseline model data for the validated source.
 
     Returns:
         Dictionary with 'api_models', 'db_models', and 'count' keys
     """
 
-    api_response = get_models_from_catalog_api(
-        model_catalog_rest_url=model_catalog_rest_url,
-        model_registry_rest_headers=model_registry_rest_headers,
-        source_label="Red Hat AI",
+    models = get_all_catalog_items(
+        url=f"{model_catalog_rest_url[0]}models",
+        headers=model_registry_rest_headers,
+        params={"source": VALIDATED_CATALOG_ID},
     )
-    api_models = {f"{REDHAT_AI_CATALOG_ID}:{model['name']}" for model in api_response.get("items", [])}
+    assert models, "Validated catalog is empty before filtering"
+    api_models = {f"{VALIDATED_CATALOG_ID}:{model['name']}" for model in models}
 
     db_models = get_models_from_database_by_source(
-        admin_client=admin_client, source_id=REDHAT_AI_CATALOG_ID, namespace=model_registry_namespace
+        admin_client=admin_client, source_id=VALIDATED_CATALOG_ID, namespace=model_registry_namespace
     )
 
     return {"api_models": api_models, "db_models": db_models, "count": len(api_models)}

@@ -64,7 +64,6 @@ class TestPreUpgradeOgxInferenceCompletions:
 @pytest.mark.ogx
 class TestPostUpgradeOgxInferenceCompletions:
     @pytest.mark.post_upgrade
-    @pytest.mark.xfail(reason="RHAIENG-3650")
     def test_inference_chat_completion_post_upgrade(
         self,
         ogx_client: OgxClient,

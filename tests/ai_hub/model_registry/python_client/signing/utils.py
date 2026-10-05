@@ -10,11 +10,14 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.job import Job
 from ocp_resources.pod import Pod
+from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from pyhelper_utils.shell import run_command
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
+from tests.ai_hub.constants import SeaweedFs
+from tests.ai_hub.image_constants import AiHubImages
 from tests.ai_hub.model_registry.async_job.constants import (
     ASYNC_JOB_ANNOTATIONS,
     ASYNC_JOB_LABELS,
@@ -26,8 +29,7 @@ from tests.ai_hub.model_registry.python_client.signing.constants import (
     SECURESIGN_ORGANIZATION_EMAIL,
     SECURESIGN_ORGANIZATION_NAME,
 )
-from tests.ai_hub.utils import get_endpoint_from_mr_service, get_mr_service_by_label
-from utilities.constants import MinIo, OCIRegistry, Protocols
+from utilities.constants import OCIRegistry
 from utilities.general import collect_pod_information
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 
@@ -37,6 +39,7 @@ LOGGER = structlog.get_logger(name=__name__)
 def get_organization_config() -> dict[str, str]:
     """Get organization configuration for certificates."""
     return {
+        "commonName": SECURESIGN_ORGANIZATION_NAME,
         "organizationName": SECURESIGN_ORGANIZATION_NAME,
         "organizationEmail": SECURESIGN_ORGANIZATION_EMAIL,
     }
@@ -153,34 +156,32 @@ def check_model_signature_file(model_dir: str) -> bool:
         return False
 
 
-def run_minio_uploader_pod(
+def run_seaweedfs_uploader_pod(
     admin_client: DynamicClient,
     namespace: str,
-    minio_service: Service,
+    s3_service: Service,
     pod_name: str,
-    mc_commands: str,
+    upload_commands: str,
     volumes: list[dict[str, Any]] | None = None,
     volume_mounts: list[dict[str, Any]] | None = None,
 ) -> None:
-    """Run a MinIO mc uploader pod with the given shell commands.
-
-    Creates a pod that sets up an mc alias to MinIO and runs the provided commands.
+    """Run a SeaweedFS uploader pod with the given shell commands.
 
     Args:
         admin_client: Kubernetes dynamic client
         namespace: Namespace to create the pod in
-        minio_service: MinIO service for endpoint resolution
+        s3_service: SeaweedFS service for filer endpoint resolution
         pod_name: Name for the uploader pod
-        mc_commands: Shell commands to run after mc alias setup (e.g. mc cp ...)
+        upload_commands: Shell commands that upload through the FILER_URL environment variable
         volumes: Additional volumes to mount
         volume_mounts: Additional volume mounts for the container
     """
-    from tests.ai_hub.model_registry.python_client.signing.constants import (
-        MINIO_MC_IMAGE,
-        MINIO_UPLOADER_SECURITY_CONTEXT,
-    )
+    from tests.ai_hub.model_registry.python_client.signing.constants import UPLOADER_SECURITY_CONTEXT
 
-    mc_url = f"http://{minio_service.name}.{minio_service.namespace}.svc.cluster.local:{MinIo.Metadata.DEFAULT_PORT}"
+    filer_url = (
+        f"http://{s3_service.name}.{s3_service.namespace}.svc.cluster.local:{SeaweedFs.Metadata.FILER_PORT}"
+        f"/buckets/{SeaweedFs.Buckets.MODELMESH_EXAMPLE_MODELS}"
+    )
 
     all_volumes = [{"name": "work", "emptyDir": {}}]
     if volumes:
@@ -190,13 +191,6 @@ def run_minio_uploader_pod(
     if volume_mounts:
         all_volume_mounts.extend(volume_mounts)
 
-    mc_setup = (
-        f"export MC_CONFIG_DIR=/work/.mc && "
-        f"mc alias set testminio {mc_url} "
-        f"{MinIo.Credentials.ACCESS_KEY_VALUE} {MinIo.Credentials.SECRET_KEY_VALUE} && "
-        f"mc mb --ignore-existing testminio/{MinIo.Buckets.MODELMESH_EXAMPLE_MODELS}"
-    )
-
     with Pod(
         client=admin_client,
         name=pod_name,
@@ -205,23 +199,30 @@ def run_minio_uploader_pod(
         volumes=all_volumes,
         containers=[
             {
-                "name": "minio-uploader",
-                "image": MINIO_MC_IMAGE,
+                "name": "seaweedfs-uploader",
+                "image": AiHubImages.SEAWEEDFS,
                 "command": ["/bin/sh", "-c"],
-                "args": [f"{mc_setup} && {mc_commands}"],
+                "args": [upload_commands],
+                "env": [
+                    {"name": "FILER_URL", "value": filer_url},
+                ],
                 "volumeMounts": all_volume_mounts,
-                "securityContext": MINIO_UPLOADER_SECURITY_CONTEXT,
+                "securityContext": UPLOADER_SECURITY_CONTEXT,
             }
         ],
         wait_for_resource=True,
     ) as upload_pod:
-        LOGGER.info(f"Running minio uploader pod: {pod_name}")
+        LOGGER.info(f"Running SeaweedFS uploader pod: {pod_name}")
         try:
             upload_pod.wait_for_status(status="Succeeded", timeout=300)
         except TimeoutExpiredError:
+            try:
+                LOGGER.error("SeaweedFS uploader pod failed", logs=upload_pod.log(container="seaweedfs-uploader"))
+            except Exception as error:  # noqa: BLE001
+                LOGGER.warning(f"Could not retrieve SeaweedFS uploader logs: {error}")
             collect_pod_information(pod=upload_pod)
             raise
-        LOGGER.info(f"Minio uploader pod '{pod_name}' completed successfully")
+        LOGGER.info(f"SeaweedFS uploader pod '{pod_name}' completed successfully")
 
 
 def get_base_async_job_env_vars(
@@ -262,13 +263,19 @@ def get_model_registry_host(
     model_registry_namespace: str,
     model_registry_instance: list[ModelRegistry],
 ) -> str:
-    """Resolve the Model Registry REST host from the first instance."""
+    """Resolve the Model Registry REST host from the first instance.
+
+    Uses the direct REST route rather than the gateway annotation, because the
+    ModelRegistry Python client constructs API paths from the base URL and does
+    not support the gateway path prefix.
+    """
     mr_instance = model_registry_instance[0]
-    mr_service = get_mr_service_by_label(
-        client=admin_client, namespace_name=model_registry_namespace, mr_instance=mr_instance
+    rest_route = Route(
+        client=admin_client,
+        name=f"{mr_instance.name}-https",
+        namespace=model_registry_namespace,
     )
-    address, _ = get_endpoint_from_mr_service(svc=mr_service, protocol=Protocols.REST)
-    return address.split("/")[0]
+    return rest_route.instance.spec.host
 
 
 def create_async_upload_job(

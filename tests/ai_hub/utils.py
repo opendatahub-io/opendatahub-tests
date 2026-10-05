@@ -5,6 +5,7 @@ from typing import Any
 
 import requests
 import structlog
+import yaml
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import NotFoundError, ResourceNotFoundError
 from model_registry import ModelRegistry as ModelRegistryClient
@@ -30,16 +31,15 @@ from tests.ai_hub.constants import (
     PORT_MAP,
 )
 from tests.ai_hub.exceptions import ModelRegistryResourceNotFoundError
-from utilities.constants import MARIA_DB_IMAGE, Annotations, PodNotFound, Protocols, Timeout
+from tests.ai_hub.image_constants import AiHubImages
+from utilities.constants import MARIA_DB_IMAGE, Annotations, PodNotFound, Protocols
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
 from utilities.general import wait_for_pods_running
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from utilities.user_utils import get_byoidc_cli_client_id, get_byoidc_issuer_url, get_oidc_token_endpoint
 
 ADDRESS_ANNOTATION_PREFIX: str = "routing.opendatahub.io/external-address-"
-POSTGRES_DB_IMAGE = (
-    "public.ecr.aws/docker/library/postgres@sha256:6e9bbed548cc1ca776dd4685cfea9efe60d58df91186ec6bad7328fd03b388a5"
-)
+POSTGRES_DB_IMAGE = AiHubImages.POSTGRES
 LOGGER = structlog.get_logger(name=__name__)
 
 
@@ -314,7 +314,7 @@ def get_model_registry_db_label_dict(db_resource_name: str) -> dict[str, str]:
     }
 
 
-@retry(exceptions_dict={TimeoutError: []}, wait_timeout=Timeout.TIMEOUT_2MIN, sleep=5)
+@retry(exceptions_dict={TimeoutError: []}, wait_timeout=120, sleep=5)
 def wait_for_new_running_mr_pod(
     admin_client: DynamicClient,
     orig_pod_name: str,
@@ -895,7 +895,7 @@ def get_byoidc_user_credentials(client: DynamicClient, username: str | None = No
     assert passwords and passwords != [""], "No passwords found in byoidc-credentials secret"
 
     # Use specified username or default to first user
-    requested_username = username if username else user_names[0]
+    requested_username = username or user_names[0]
 
     # entra ID usernames are in the form of `user@<tenant>.onmicrosoft.com`, find by prefix
     for stored_user, stored_password in zip(user_names, passwords):
@@ -934,6 +934,28 @@ def execute_get_call(
     return resp
 
 
+def execute_delete_call(url: str, headers: dict[str, str], verify: bool | str = False) -> requests.Response:
+    """Execute a DELETE request and return a successful response."""
+    LOGGER.info(f"Executing delete call: {url}")
+    resp = requests.delete(url=url, headers=headers, verify=verify, timeout=60)
+    LOGGER.info(f"url: {url}, status code: {resp.status_code}")
+    if resp.status_code not in [200, 202, 204]:
+        if resp.status_code == 401:
+            raise TransientUnauthorizedError(f"Delete call failed for resource: {url}, 401: {resp.text}")
+        raise ResourceNotFoundError(f"Delete call failed for resource: {url}, {resp.status_code}: {resp.text}")
+    return resp
+
+
+@retry(
+    wait_timeout=60,
+    sleep=5,
+    exceptions_dict={TransientUnauthorizedError: [], requests.exceptions.ConnectionError: []},
+)
+def execute_delete_call_with_retry(url: str, headers: dict[str, str], verify: bool | str = False) -> requests.Response:
+    """Execute a DELETE request, retrying on transient 401s (OAuth/kube-rbac-proxy initialization)."""
+    return execute_delete_call(url=url, headers=headers, verify=verify)
+
+
 def execute_get_command(
     url: str, headers: dict[str, str], verify: bool | str = False, params: dict[str, Any] | None = None
 ) -> dict[Any, Any]:
@@ -957,8 +979,7 @@ def get_endpoint_ips(client: DynamicClient, namespace: str, service_name: str = 
     assert endpoints.exists, f"Endpoints for service {service_name} not found in {namespace}"
     ips: set[str] = set()
     for subset in endpoints.instance.subsets or []:
-        for address in subset.get("addresses", []):
-            ips.add(address["ip"])
+        ips.update(address["ip"] for address in subset.get("addresses", []))
     return ips
 
 
@@ -1014,19 +1035,102 @@ def wait_for_model_catalog_pod_created(client: DynamicClient, model_registry_nam
     raise PodNotFound("Model catalog pod not found")
 
 
-def wait_for_mcp_catalog_api(
-    url: str, headers: dict[str, str], consecutive_stable_checks: int = 3, sleep: int = 5, wait_timeout: int = 120
-) -> dict[str, Any]:
-    """Wait for MCP catalog API to be ready and data fully loaded.
+def count_items_in_catalog_yaml(catalog_yaml: str, key: str) -> int:
+    """Count items in a catalog YAML string under the given top-level key.
 
-    Polls the API until the server count stabilizes across consecutive checks,
-    ensuring catalog data has been fully loaded after a pod restart.
+    Args:
+        catalog_yaml: YAML content string.
+        key: Top-level key to count items under (e.g. 'mcp_servers' or 'agents').
     """
-    servers_url = f"{url}mcp_servers"
-    LOGGER.info(f"Waiting for MCP catalog API at {servers_url}")
+    parsed = yaml.safe_load(catalog_yaml)
+    if not parsed:
+        return 0
+    return len(parsed.get(key, []))
+
+
+def get_catalog_api_size(url: str, headers: dict[str, Any], params: dict[str, Any] | None = None) -> int:
+    """Return the current item count from a catalog API endpoint.
+
+    Args:
+        url: Full URL of the catalog API list endpoint.
+        headers: Request headers.
+        params: Optional query parameters (e.g. sourceLabel filter).
+    """
+    response = execute_get_command_with_retry(url=url, headers=headers, params={**(params or {}), "pageSize": 1000})
+    return response.get("size", 0)
+
+
+class McpSourceStillPresent(Exception):
+    pass
+
+
+class McpSourceNotYetPresent(Exception):
+    pass
+
+
+@retry(wait_timeout=300, sleep=5, exceptions_dict={McpSourceNotYetPresent: []})
+def wait_for_mcp_source_present(url: str, headers: dict[str, Any], source_id: str) -> bool:
+    """Wait until at least one MCP server from source_id appears in the catalog API.
+
+    Args:
+        url: Base URL of the MCP catalog API.
+        headers: Request headers.
+        source_id: The source_id to wait for.
+    """
+    response = execute_get_command_with_retry(url=f"{url}mcp_servers", headers=headers, params={"pageSize": 1000})
+    source_ids = {server["source_id"] for server in response.get("items", [])}
+    if source_id not in source_ids:
+        raise McpSourceNotYetPresent(f"Source '{source_id}' not yet present in MCP catalog")
+    LOGGER.info(f"Source '{source_id}' is now present in MCP catalog")
+    return True
+
+
+@retry(wait_timeout=300, sleep=5, exceptions_dict={McpSourceStillPresent: []})
+def wait_for_mcp_source_absent(url: str, headers: dict[str, Any], source_id: str) -> bool:
+    """Wait until no MCP servers from source_id appear in the catalog API.
+
+    Args:
+        url: Base URL of the MCP catalog API.
+        headers: Request headers.
+        source_id: The source_id to wait for absence of.
+    """
+    response = execute_get_command_with_retry(url=f"{url}mcp_servers", headers=headers, params={"pageSize": 1000})
+    source_ids = {server["source_id"] for server in response.get("items", [])}
+    if source_id in source_ids:
+        raise McpSourceStillPresent(f"Source '{source_id}' still present in MCP catalog")
+    LOGGER.info(f"Source '{source_id}' no longer present in MCP catalog")
+    return True
+
+
+def wait_for_catalog_api(
+    url: str,
+    headers: dict[str, str],
+    endpoint: str,
+    item_name: str,
+    consecutive_stable_checks: int = 3,
+    sleep: int = 5,
+    wait_timeout: int = 300,
+    previous_size: int | None = None,
+    expected_size: int | None = None,
+) -> dict[str, Any]:
+    """Wait for a catalog API endpoint to reflect a change and stabilize.
+
+    Args:
+        url: Base URL of the catalog API.
+        headers: Request headers.
+        endpoint: API endpoint suffix (e.g. 'mcp_servers' or 'agents').
+        item_name: Display name for log messages (e.g. 'servers' or 'agents').
+        consecutive_stable_checks: Number of identical responses required to consider stable.
+        sleep: Seconds between poll attempts.
+        wait_timeout: Total seconds to wait.
+        previous_size: Count before the patch. Waits until current_size != previous_size.
+        expected_size: Exact count expected. Takes precedence over previous_size.
+    """
+    full_url = f"{url}{endpoint}"
+    LOGGER.info(f"Waiting for catalog API at {full_url} (previous={previous_size}, expected={expected_size})")
     last_payload = None
     stable_count = 0
-    data = {}
+    data: dict[str, Any] = {}
     sampler = TimeoutSampler(
         wait_timeout=wait_timeout,
         sleep=sleep,
@@ -1036,7 +1140,7 @@ def wait_for_mcp_catalog_api(
             TransientUnauthorizedError: [],
             requests.exceptions.ConnectionError: [],
         },
-        url=servers_url,
+        url=full_url,
         headers=headers,
         params={"pageSize": 1000},
     )
@@ -1044,16 +1148,26 @@ def wait_for_mcp_catalog_api(
         data = json.loads(sample.text)
         current_size = data.get("size", 0)
         payload_identity = json.dumps(data, sort_keys=True)
-        if current_size > 0 and payload_identity == last_payload:
+        if expected_size is not None:
+            size_ok = current_size == expected_size
+        elif previous_size is not None:
+            size_ok = current_size != previous_size
+        else:
+            size_ok = current_size > 0
+        if size_ok and payload_identity == last_payload:
             stable_count += 1
             if stable_count >= consecutive_stable_checks:
-                LOGGER.info(f"MCP catalog API stabilized with {current_size} servers after {stable_count} checks")
+                LOGGER.info(f"Catalog API stabilized with {current_size} {item_name} after {stable_count} checks")
                 return data
         else:
             stable_count = 0
         last_payload = payload_identity
+        target = (
+            expected_size if expected_size is not None else f"!={previous_size}" if previous_size is not None else ">0"
+        )
         LOGGER.info(
-            f"MCP catalog API returned {current_size} servers (stable: {stable_count}/{consecutive_stable_checks})"
+            f"Catalog API returned {current_size} {item_name}"
+            f" (waiting for {target}, stable: {stable_count}/{consecutive_stable_checks}, size_ok={size_ok})"
         )
     return data
 

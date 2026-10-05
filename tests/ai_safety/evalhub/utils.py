@@ -1,20 +1,32 @@
+import socket
+from typing import Any, Final
+
+import pytest
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.evalhub import EvalHub
 from ocp_resources.job import Job
+from ocp_resources.mlflow import MLflow
+from ocp_resources.pod import Pod
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.service_account import ServiceAccount
+from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_safety.evalhub.constants import (
     EVALHUB_COLLECTIONS_PATH,
+    EVALHUB_CRD_NAME,
+    EVALHUB_DEFAULT_HARDWARE_PROFILE,
     EVALHUB_FULL_API_VERSION_V1,
     EVALHUB_FULL_API_VERSION_V1ALPHA1,
     EVALHUB_HEALTH_PATH,
     EVALHUB_HEALTH_STATUS_HEALTHY,
+    EVALHUB_JOB_BENCHMARK_LOGS_PATH_TEMPLATE,
     EVALHUB_JOB_CONFIG_CLUSTERROLE,
+    EVALHUB_JOB_LOGS_PATH_TEMPLATE,
     EVALHUB_JOBS_PATH,
     EVALHUB_JOBS_WRITER_CLUSTERROLE,
     EVALHUB_K8S_LABEL_APP,
@@ -22,16 +34,90 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_K8S_LABEL_COMPONENT,
     EVALHUB_K8S_LABEL_COMPONENT_VALUE,
     EVALHUB_K8S_LABEL_JOB_ID,
+    EVALHUB_LOG_CONTENT_TYPE,
     EVALHUB_MT_CR_NAME,
     EVALHUB_PROVIDERS_PATH,
     EVALHUB_VLLM_EMULATOR_PORT,
     GARAK_JOB_POLL_INTERVAL,
     GARAK_JOB_TIMEOUT,
+    HF_DEFAULT_REVISION,
+    HF_NESTED_SUB_PATH,
+    HF_TOKENIZER_PATH,
+    OPERATOR_METRICS_PORT,
+    OPERATOR_POD_LABEL_SELECTOR,
 )
 from utilities.guardrails import get_auth_headers
-from utilities.kueue_utils import Workload
+from utilities.kueue_utils import KUEUE_QUEUE_NAME_LABEL, LocalQueue, Workload
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+def is_evalhub_crd_available(admin_client: DynamicClient) -> bool:
+    """Return True when the EvalHub CRD is installed on the cluster."""
+    try:
+        crd = CustomResourceDefinition(client=admin_client, name=EVALHUB_CRD_NAME)
+        return crd.exists
+    except AttributeError, KeyError:
+        return False
+
+
+class MLflowWithWorkspaces(MLflow):
+    """MLflow CR with workspaceLabelSelector support."""
+
+    def __init__(self, workspace_label_selector: dict[str, Any] | None = None, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._workspace_label_selector = workspace_label_selector
+
+    def to_dict(self) -> None:
+        super().to_dict()
+        if self._workspace_label_selector is not None and "spec" in self.res:
+            self.res["spec"]["workspaceLabelSelector"] = self._workspace_label_selector
+
+
+class TransientEvalhubHealthError(Exception):
+    """Recoverable failure while polling an EvalHub health endpoint."""
+
+
+_TRANSIENT_HEALTH_REQUEST_EXCEPTIONS: Final = (
+    requests.exceptions.ConnectTimeout,
+    requests.exceptions.ReadTimeout,
+)
+TRANSIENT_HEALTH_EXCEPTIONS: Final = {TransientEvalhubHealthError: []}
+
+
+def is_dns_resolution_error(err: BaseException) -> bool:
+    """Return True when the exception chain includes a DNS resolution failure."""
+    seen: set[int] = set()
+    exc: BaseException | None = err
+    while exc is not None and id(exc) not in seen:
+        seen.add(id(exc))
+        if isinstance(exc, socket.gaierror):
+            return True
+        if exc.__cause__ is not None:
+            exc = exc.__cause__
+        elif exc.__context__ is not None and not exc.__suppress_context__:
+            exc = exc.__context__
+        else:
+            exc = None
+    return False
+
+
+def probe_evalhub_health_endpoint(
+    url: str,
+    host: str,
+    ca_bundle_file: str,
+) -> requests.Response:
+    """GET the EvalHub health endpoint, retrying only on transient network failures."""
+    try:
+        return requests.get(url, verify=ca_bundle_file, timeout=10)
+    except requests.exceptions.ConnectionError as err:
+        if isinstance(err, requests.exceptions.SSLError) or is_dns_resolution_error(err):
+            raise
+        LOGGER.warning(f"Transient error checking EvalHub health at {host}: {err}")
+        raise TransientEvalhubHealthError(str(err)) from err
+    except _TRANSIENT_HEALTH_REQUEST_EXCEPTIONS as err:
+        LOGGER.warning(f"Transient error checking EvalHub health at {host}: {err}")
+        raise TransientEvalhubHealthError(str(err)) from err
 
 
 class EvalHubV1(EvalHub):
@@ -162,13 +248,19 @@ def validate_evalhub_request_denied(
         verify=ca_bundle_file,
         timeout=10,
     )
-    assert response.status_code in (400, 403), (
-        f"Expected 400 or 403 for cross-tenant access, got {response.status_code}: {response.text}"
+    assert response.status_code in (400, 403, 404), (
+        f"Expected 400, 403, or 404 for cross-tenant access, got {response.status_code}: {response.text}"
     )
-    data = response.json()
-    assert data.get("message_code") in ("unable_to_authorize_request", "forbidden"), (
-        f"Expected authorization denial, got message_code: {data.get('message_code')}"
-    )
+    try:
+        data = response.json()
+        assert data.get("message_code") in ("unable_to_authorize_request", "forbidden", "resource_not_found"), (
+            f"Expected authorization denial, got message_code: {data.get('message_code')}"
+        )
+    except ValueError:
+        # kube-rbac-proxy returns plain-text 403 with no JSON body
+        assert any(kw in response.text.lower() for kw in ("forbidden", "unauthorized", "auth")), (
+            f"Expected auth-related error in response body for cross-tenant GET, got: {response.text}"
+        )
 
 
 def validate_evalhub_request_no_tenant(
@@ -202,13 +294,14 @@ def validate_evalhub_request_no_tenant(
     )
     assert response.status_code == 400, f"Expected 400 Bad Request, got {response.status_code}: {response.text}"
     try:
-        body = response.json()
-    except ValueError:
-        body = {}
-    body_str = str(body).lower()
-    assert any(kw in body_str for kw in ("tenant", "missing tenant header", "x-tenant")), (
-        f"Expected tenant-header-related error in response body for no-tenant GET, got: {response.text}"
-    )
+        assert response.json().get("message_code") == "missing_tenant_header", (
+            f"Expected message_code 'missing_tenant_header' for no-tenant GET, got: {response.text}"
+        )
+    except requests.exceptions.JSONDecodeError:
+        body_str = response.text.lower()
+        assert any(kw in body_str for kw in ("tenant", "missing tenant header", "x-tenant", "malformed")), (
+            f"Expected tenant-header-related error in response body for no-tenant GET, got: {response.text}"
+        )
 
 
 def submit_evalhub_job(
@@ -285,10 +378,9 @@ def validate_evalhub_post_denied(
         f"Expected 400 or 403 for cross-tenant POST, got {response.status_code}: {response.text}"
     )
     try:
-        body = response.json()
+        body_str = str(response.json()).lower()
     except ValueError:
-        body = {}
-    body_str = str(body).lower()
+        body_str = response.text.lower()
     assert any(kw in body_str for kw in ("unauthorized", "forbidden", "auth")), (
         f"Expected auth-related error in response body for cross-tenant POST, got: {response.text}"
     )
@@ -325,13 +417,14 @@ def validate_evalhub_post_no_tenant(
     )
     assert response.status_code == 400, f"Expected 400 Bad Request, got {response.status_code}: {response.text}"
     try:
-        body = response.json()
-    except ValueError:
-        body = {}
-    body_str = str(body).lower()
-    assert any(kw in body_str for kw in ("tenant", "missing tenant header", "x-tenant")), (
-        f"Expected tenant-header-related error in response body for no-tenant POST, got: {response.text}"
-    )
+        assert response.json().get("message_code") == "missing_tenant_header", (
+            f"Expected message_code 'missing_tenant_header' for no-tenant POST, got: {response.text}"
+        )
+    except requests.exceptions.JSONDecodeError:
+        body_str = response.text.lower()
+        assert any(kw in body_str for kw in ("tenant", "missing tenant header", "x-tenant", "malformed")), (
+            f"Expected tenant-header-related error in response body for no-tenant POST, got: {response.text}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -351,7 +444,7 @@ EVALHUB_JOB_TERMINAL_STATES: set[str] = {
 # ---------------------------------------------------------------------------
 
 
-def _get_job_status(
+def get_job_status(
     host: str,
     token: str,
     ca_bundle_file: str,
@@ -401,7 +494,7 @@ def wait_for_evalhub_job(
     for sample in TimeoutSampler(
         wait_timeout=timeout,
         sleep=sleep,
-        func=_get_job_status,
+        func=get_job_status,
         host=host,
         token=token,
         ca_bundle_file=ca_bundle_file,
@@ -411,6 +504,7 @@ def wait_for_evalhub_job(
         state = sample.get("status", {}).get("state", "")
         LOGGER.info(f"Job {job_id} state: {state}")
         if state in EVALHUB_JOB_TERMINAL_STATES:
+            LOGGER.debug(f"Job {job_id} final result: {sample}")
             return sample
 
     raise TimeoutExpiredError(f"Job '{job_id}' did not reach a terminal state within {timeout}s")
@@ -517,6 +611,34 @@ def delete_evalhub_job(
     )
 
 
+def cleanup_evalhub_job(
+    host: str,
+    token: str,
+    ca_bundle_file: str,
+    tenant: str,
+    job_id: str,
+) -> None:
+    """Hard delete an EvalHub job record during test cleanup.
+
+    Intended for test cleanup paths (``finally`` blocks). A job that is already
+    gone (HTTP 404) is treated as success; any other failure is logged as a
+    warning so that it does not mask the original test error.
+    """
+    response = delete_evalhub_job(
+        host=host,
+        token=token,
+        ca_bundle_file=ca_bundle_file,
+        tenant=tenant,
+        job_id=job_id,
+        hard_delete=True,
+    )
+    if response.status_code == requests.codes.not_found:
+        LOGGER.warning(f"Job {job_id} already absent during cleanup, nothing to delete")
+        return
+    if not response.ok:
+        LOGGER.warning(f"Cleanup of EvalHub job {job_id} failed with HTTP {response.status_code}: {response.text}")
+
+
 def validate_evalhub_delete_denied(
     host: str,
     token: str,
@@ -536,10 +658,9 @@ def validate_evalhub_delete_denied(
         f"Expected 400 or 403 for cross-tenant DELETE, got {response.status_code}: {response.text}"
     )
     try:
-        body = response.json()
+        body_str = str(response.json()).lower()
     except ValueError:
-        body = {}
-    body_str = str(body).lower()
+        body_str = response.text.lower()
     assert any(kw in body_str for kw in ("unauthorized", "forbidden", "auth")), (
         f"Expected auth-related error in response body for cross-tenant DELETE, got: {response.text}"
     )
@@ -561,13 +682,14 @@ def validate_evalhub_delete_no_tenant(
     )
     assert response.status_code == 400, f"Expected 400 Bad Request, got {response.status_code}: {response.text}"
     try:
-        body = response.json()
-    except ValueError:
-        body = {}
-    body_str = str(body).lower()
-    assert any(kw in body_str for kw in ("tenant", "missing tenant header", "x-tenant")), (
-        f"Expected tenant-header-related error in response body for no-tenant DELETE, got: {response.text}"
-    )
+        assert response.json().get("message_code") == "missing_tenant_header", (
+            f"Expected message_code 'missing_tenant_header' for no-tenant DELETE, got: {response.text}"
+        )
+    except requests.exceptions.JSONDecodeError:
+        body_str = response.text.lower()
+        assert any(kw in body_str for kw in ("tenant", "missing tenant header", "x-tenant", "malformed")), (
+            f"Expected tenant-header-related error in response body for no-tenant DELETE, got: {response.text}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -610,6 +732,55 @@ def get_evalhub_job_http(
     )
 
 
+def evalhub_job_logs_path(job_id: str, *, benchmark_index: int | None = None) -> str:
+    """Build the logs API path for a job or a single benchmark."""
+    if benchmark_index is None:
+        return EVALHUB_JOB_LOGS_PATH_TEMPLATE.format(job_id=job_id)
+    return EVALHUB_JOB_BENCHMARK_LOGS_PATH_TEMPLATE.format(
+        job_id=job_id,
+        benchmark_index=benchmark_index,
+    )
+
+
+def get_evalhub_job_logs_http(
+    host: str,
+    token: str,
+    ca_bundle_file: str,
+    tenant: str,
+    job_id: str,
+    benchmark_index: int | None = None,
+    params: dict[str, str] | None = None,
+    headers: dict[str, str] | None = None,
+) -> requests.Response:
+    """GET evaluation job or benchmark logs without asserting status."""
+    path = evalhub_job_logs_path(job_id=job_id, benchmark_index=benchmark_index)
+    url = f"https://{host}{path}"
+    request_headers = headers if headers is not None else build_headers(token=token, tenant=tenant)
+    return requests.get(
+        url=url,
+        headers=request_headers,
+        params=params,
+        verify=ca_bundle_file,
+        timeout=30,
+    )
+
+
+def build_failing_evalhub_job_payload(
+    tenant_namespace: str,
+    job_name: str = "evalhub-failing-job",
+) -> dict:
+    """Build a job payload that targets an unreachable in-cluster model endpoint."""
+    model_url = f"http://nonexistent-model.{tenant_namespace}.svc.cluster.local:{EVALHUB_VLLM_EMULATOR_PORT}/v1"
+    return {
+        "name": job_name,
+        "model": {
+            "url": model_url,
+            "name": "emulatedModel",
+        },
+        "benchmarks": [build_vllm_arc_easy_benchmark(num_examples=3)],
+    }
+
+
 def evalhub_runtime_label_selector(evalhub_job_id: str) -> str:
     """Label selector for batch Jobs and spec ConfigMaps created for one EvalHub job id."""
     return (
@@ -617,6 +788,40 @@ def evalhub_runtime_label_selector(evalhub_job_id: str) -> str:
         f"{EVALHUB_K8S_LABEL_COMPONENT}={EVALHUB_K8S_LABEL_COMPONENT_VALUE},"
         f"{EVALHUB_K8S_LABEL_JOB_ID}={evalhub_job_id}"
     )
+
+
+def log_job_kueue_labels(admin_client: DynamicClient, namespace: str, evalhub_job_id: str) -> None:
+    """Log the Kueue queue-name label on the Kubernetes Job created by EvalHub.
+
+    Debugging helper called on test failure paths (typically from a
+    ``TimeoutExpiredError`` handler) to diagnose whether EvalHub propagated the
+    Kueue queue-name label to the Job. Failures here are diagnostic-only and
+    must not replace the original timeout, so all lookup/logging errors are
+    swallowed and logged instead of raised. Can be removed once Kueue label
+    propagation is stable.
+    """
+    try:
+        selector = evalhub_runtime_label_selector(evalhub_job_id=evalhub_job_id)
+        jobs = list(Job.get(client=admin_client, namespace=namespace, label_selector=selector))
+        if not jobs:
+            LOGGER.warning("No Kubernetes Job found for EvalHub job", evalhub_job_id=evalhub_job_id)
+            return
+        for job in jobs:
+            labels = job.instance.metadata.labels or {}
+            queue_label = labels.get(KUEUE_QUEUE_NAME_LABEL)
+            LOGGER.info(
+                "Kubernetes Job kueue label check",
+                job_name=job.name,
+                kueue_queue_name_label=queue_label,
+                has_kueue_label=queue_label is not None,
+                all_labels=dict(labels),
+            )
+    except Exception:
+        LOGGER.warning(
+            "Failed to look up/log Kueue labels for EvalHub job's Kubernetes Job",
+            evalhub_job_id=evalhub_job_id,
+            exc_info=True,
+        )
 
 
 def wait_for_evalhub_runtime_job_count(
@@ -688,6 +893,9 @@ def build_vllm_arc_easy_benchmark(num_examples: int = 10) -> dict:
             "num_examples": num_examples,
             "tokenizer": "google/flan-t5-small",
         },
+        "hardware_config": {
+            "hardware_profile_name": EVALHUB_DEFAULT_HARDWARE_PROFILE,
+        },
     }
 
 
@@ -749,6 +957,238 @@ def build_evalhub_job_payload(
         },
         "benchmarks": [build_vllm_arc_easy_benchmark()],
     }
+
+
+def build_pvc_test_data_ref(claim_name: str, sub_path: str | None = None) -> dict:
+    """Build the test_data_ref.pvc portion of an EvalHub job payload."""
+    pvc_ref: dict[str, str] = {"claim_name": claim_name}
+    if sub_path is not None:
+        pvc_ref["sub_path"] = sub_path
+    return {"pvc": pvc_ref}
+
+
+def build_pvc_job_payload(
+    model_service_name: str,
+    tenant_namespace: str,
+    job_name: str,
+    claim_name: str,
+    sub_path: str | None = None,
+    tokenizer_path: str | None = None,
+) -> dict:
+    """Build an EvalHub job payload with PVC-backed test data."""
+    payload = build_evalhub_job_payload(
+        model_service_name=model_service_name,
+        tenant_namespace=tenant_namespace,
+        job_name=job_name,
+    )
+    pvc_ref = build_pvc_test_data_ref(claim_name=claim_name, sub_path=sub_path)
+    for benchmark in payload["benchmarks"]:
+        benchmark["test_data_ref"] = pvc_ref
+        if tokenizer_path:
+            benchmark["parameters"]["tokenizer"] = tokenizer_path
+    return payload
+
+
+def build_git_test_data_ref(
+    url: str,
+    ref: str,
+    sub_path: str | None = None,
+    secret_ref: str | None = None,
+) -> dict:
+    """Build the test_data_ref.git portion of an EvalHub job payload."""
+    git_ref: dict[str, str] = {"url": url, "ref": ref}
+    if sub_path is not None:
+        git_ref["sub_path"] = sub_path
+    if secret_ref is not None:
+        git_ref["secret_ref"] = secret_ref
+    return {"git": git_ref}
+
+
+def build_git_job_payload(
+    model_service_name: str,
+    tenant_namespace: str,
+    job_name: str,
+    url: str,
+    ref: str,
+    sub_path: str | None = None,
+    secret_ref: str | None = None,
+    tokenizer_path: str | None = None,
+) -> dict:
+    """Build an EvalHub job payload with git-backed test data."""
+    payload = build_evalhub_job_payload(
+        model_service_name=model_service_name,
+        tenant_namespace=tenant_namespace,
+        job_name=job_name,
+    )
+    git_ref = build_git_test_data_ref(url=url, ref=ref, sub_path=sub_path, secret_ref=secret_ref)
+    for benchmark in payload["benchmarks"]:
+        benchmark["test_data_ref"] = git_ref
+        if tokenizer_path:
+            benchmark["parameters"]["tokenizer"] = tokenizer_path
+        # Remove hardware_config for git tests to reduce resource requirements
+        if "hardware_config" in benchmark:
+            del benchmark["hardware_config"]
+    return payload
+
+
+def build_hf_test_data_ref(
+    repo_id: str,
+    revision: str | None = None,
+    sub_path: str | None = None,
+    secret_ref: str | None = None,
+) -> dict:
+    """Build the test_data_ref.hf portion of an EvalHub job payload."""
+    hf_ref: dict[str, str] = {"repo_id": repo_id}
+    if revision is not None:
+        hf_ref["revision"] = revision
+    if sub_path is not None:
+        hf_ref["sub_path"] = sub_path
+    if secret_ref is not None:
+        hf_ref["secret_ref"] = secret_ref
+    return {"hf": hf_ref}
+
+
+def build_hf_arc_easy_benchmark(
+    repo_id: str,
+    revision: str | None = None,
+    sub_path: str | None = None,
+    secret_ref: str | None = None,
+    num_examples: int = 10,
+    tokenizer_path: str | None = None,
+) -> dict:
+    """Build an arc_easy benchmark backed by a HuggingFace Hub dataset."""
+    benchmark: dict = {
+        "id": "arc_easy",
+        "provider_id": "lm_evaluation_harness",
+        "parameters": {
+            "num_examples": num_examples,
+            "tokenizer": tokenizer_path or HF_TOKENIZER_PATH,
+        },
+        "test_data_ref": build_hf_test_data_ref(
+            repo_id=repo_id,
+            revision=revision,
+            sub_path=sub_path,
+            secret_ref=secret_ref,
+        ),
+    }
+    return benchmark
+
+
+def build_hf_truthfulqa_mc1_benchmark(
+    repo_id: str,
+    revision: str | None = None,
+    sub_path: str | None = None,
+    secret_ref: str | None = None,
+    num_examples: int = 10,
+    tokenizer_path: str | None = None,
+) -> dict:
+    """Build a truthfulqa_mc1 benchmark backed by a HuggingFace Hub dataset sub-path."""
+    return {
+        "id": "truthfulqa_mc1",
+        "provider_id": "lm_evaluation_harness",
+        "parameters": {
+            "num_examples": num_examples,
+            "tokenizer": tokenizer_path or HF_TOKENIZER_PATH,
+        },
+        "test_data_ref": build_hf_test_data_ref(
+            repo_id=repo_id,
+            revision=revision,
+            sub_path=sub_path,
+            secret_ref=secret_ref,
+        ),
+    }
+
+
+def build_hf_job_payload(
+    model_service_name: str,
+    tenant_namespace: str,
+    job_name: str,
+    repo_id: str,
+    revision: str | None = None,
+    sub_path: str | None = None,
+    secret_ref: str | None = None,
+    tokenizer_path: str | None = None,
+) -> dict:
+    """Build an EvalHub job payload with a single HF-backed arc_easy benchmark."""
+    model_url = f"http://{model_service_name}.{tenant_namespace}.svc.cluster.local:{EVALHUB_VLLM_EMULATOR_PORT}/v1"
+    benchmark = build_hf_arc_easy_benchmark(
+        repo_id=repo_id,
+        revision=revision,
+        sub_path=sub_path,
+        secret_ref=secret_ref,
+        tokenizer_path=tokenizer_path,
+    )
+    return {
+        "name": job_name,
+        "model": {
+            "url": model_url,
+            "name": "emulatedModel",
+        },
+        "benchmarks": [benchmark],
+    }
+
+
+def build_hf_multi_benchmark_job_payload(
+    model_service_name: str,
+    tenant_namespace: str,
+    job_name: str,
+    repo_id: str,
+    revision: str | None = None,
+    nested_sub_path: str | None = None,
+    sha_revision: str | None = None,
+) -> dict:
+    """Build an EvalHub job with arc_easy (full repo) and truthfulqa_mc1 (nested sub_path)."""
+    model_url = f"http://{model_service_name}.{tenant_namespace}.svc.cluster.local:{EVALHUB_VLLM_EMULATOR_PORT}/v1"
+    arc_easy_revision = sha_revision if sha_revision is not None else revision or HF_DEFAULT_REVISION
+    return {
+        "name": job_name,
+        "model": {
+            "url": model_url,
+            "name": "emulatedModel",
+        },
+        "benchmarks": [
+            build_hf_arc_easy_benchmark(repo_id=repo_id, revision=arc_easy_revision),
+            build_hf_truthfulqa_mc1_benchmark(
+                repo_id=repo_id,
+                revision=revision or HF_DEFAULT_REVISION,
+                sub_path=nested_sub_path or HF_NESTED_SUB_PATH,
+            ),
+        ],
+    }
+
+
+def build_evalhub_kueue_job_payload(
+    queue_name: str,
+    model_service_name: str,
+    tenant_namespace: str,
+    job_name: str = "evalhub-mt-test-job",
+) -> dict:
+    """Build an EvalHub job payload with the Kueue queue field set.
+
+    Without ``payload["queue"]`` EvalHub creates a plain batch Job that Kueue
+    ignores — no Workload is ever created for it. Every Kueue test must submit
+    through this helper (or set the queue field explicitly).
+
+    Args:
+        queue_name: LocalQueue name the job should be submitted to.
+        model_service_name: Kubernetes Service name for the vLLM emulator.
+        tenant_namespace: Namespace where the service runs.
+        job_name: Name for the evaluation job.
+
+    Returns:
+        Job request body dict with the ``queue`` field populated.
+
+        queue:
+            kind: kueue
+            name: your-local-queue-name
+    """
+    payload = build_evalhub_job_payload(
+        model_service_name=model_service_name,
+        tenant_namespace=tenant_namespace,
+        job_name=job_name,
+    )
+    payload["queue"] = {"kind": "kueue", "name": queue_name}
+    return payload
 
 
 def submit_evalhub_collection(
@@ -939,7 +1379,37 @@ def wait_for_service_account(
 # ---------------------------------------------------------------------------
 
 
-def _get_evalhub_job_workload(
+def cluster_queue_name(local_queue: LocalQueue) -> str:
+    """Return the ClusterQueue name backing this LocalQueue."""
+    return local_queue.instance.spec.clusterQueue
+
+
+def delete_evalhub_runtime_k8s_job(admin_client: DynamicClient, namespace: str, evalhub_job_id: str) -> None:
+    """Delete the Kubernetes batch Job for a given EvalHub job ID.
+
+    Uses the admin client to delete the Job directly, bypassing the EvalHub
+    API. This is required because the operator-managed kube-rbac-proxy
+    auth.yaml lacks rules for individual job paths.
+
+    Deletes with ``propagationPolicy: Background`` so the Kubernetes garbage
+    collector cascade-deletes the Job's dependents — most importantly the Kueue
+    Workload, which Kueue creates with a controller ownerReference back to the
+    Job. Without an explicit policy the API server applies the ``batch/v1`` Job
+    default (Orphan), which *strips* that ownerReference and leaves the Workload
+    behind holding reserved quota instead of deleting it.
+    """
+    selector = evalhub_runtime_label_selector(evalhub_job_id=evalhub_job_id)
+    jobs = list(Job.get(client=admin_client, namespace=namespace, label_selector=selector))
+    if not jobs:
+        LOGGER.warning("No Kubernetes Job found to delete", evalhub_job_id=evalhub_job_id)
+        return
+    for job in jobs:
+        LOGGER.info(f"Deleting Kubernetes Job {job.name} for EvalHub job {evalhub_job_id}")
+        job.delete(wait=True, body={"propagationPolicy": "Background"})
+    LOGGER.info(f"Kubernetes Job(s) for EvalHub job {evalhub_job_id} deleted")
+
+
+def get_evalhub_job_workload(
     admin_client: DynamicClient,
     namespace: str,
     evalhub_job_id: str,
@@ -947,7 +1417,9 @@ def _get_evalhub_job_workload(
     """Get the Kueue Workload for an EvalHub job.
 
     EvalHub creates batch Jobs with labels app=evalhub, component=evaluation-job, job_id={id}.
-    Kueue creates a Workload for each Job with matching owner reference.
+    Kueue creates a Workload for each Job labelled with kueue.x-k8s.io/job-uid={job.uid}.
+    Kueue Workloads do NOT inherit the Job's labels, so we must look up the Job first
+    to get its UID, then find the Workload by that UID.
 
     Args:
         admin_client: Kubernetes client with admin privileges.
@@ -958,17 +1430,33 @@ def _get_evalhub_job_workload(
         Workload instance or None if not found.
     """
     selector = evalhub_runtime_label_selector(evalhub_job_id=evalhub_job_id)
+    jobs = list(Job.get(client=admin_client, namespace=namespace, label_selector=selector))
+    if not jobs:
+        return None
+
+    if len(jobs) > 1:
+        LOGGER.warning(
+            "Multiple Kubernetes Jobs matched one EvalHub job — using the first. "
+            "This can happen with multi-benchmark payloads.",
+            evalhub_job_id=evalhub_job_id,
+            job_names=[job.name for job in jobs],
+        )
+
+    job_uid = jobs[0].instance.metadata.uid
+    if not job_uid:
+        return None
+
     workloads = list(
         Workload.get(
             client=admin_client,
             namespace=namespace,
-            label_selector=selector,
+            label_selector=f"kueue.x-k8s.io/job-uid={job_uid}",
         )
     )
     return workloads[0] if workloads else None
 
 
-def _check_workload_admitted(workload: Workload) -> bool:
+def check_workload_admitted(workload: Workload) -> bool:
     """Check if a Kueue Workload is admitted.
 
     Args:
@@ -978,10 +1466,7 @@ def _check_workload_admitted(workload: Workload) -> bool:
         True if the workload has Admitted=True condition.
     """
     conditions = (workload.instance.status or {}).get("conditions", [])
-    for condition in conditions:
-        if condition.get("type") == "Admitted" and condition.get("status") == "True":
-            return True
-    return False
+    return any(condition.get("type") == "Admitted" and condition.get("status") == "True" for condition in conditions)
 
 
 def check_workload_quota_reserved(workload: Workload) -> bool:
@@ -1000,8 +1485,16 @@ def check_workload_quota_reserved(workload: Workload) -> bool:
     return False
 
 
-def _check_workload_inadmissible(workload: Workload) -> bool:
-    """Check if a Kueue Workload is inadmissible (quota exhausted).
+WORKLOAD_INADMISSIBLE_REASONS: set[str] = {
+    "Inadmissible",
+    # Kueue >= 0.19 with the UnadmittedWorkloadsObservability feature gate
+    # reports workloads gated by a stopped queue as Suspended instead.
+    "Suspended",
+}
+
+
+def check_workload_inadmissible(workload: Workload) -> bool:
+    """Check if a Kueue Workload is inadmissible (quota exhausted or queue stopped).
 
     Per Kueue docs: QuotaReserved condition with reason=Inadmissible and status=False
     indicates the workload cannot be admitted due to quota constraints.
@@ -1010,14 +1503,14 @@ def _check_workload_inadmissible(workload: Workload) -> bool:
         workload: Workload instance.
 
     Returns:
-        True if the workload has QuotaReserved=False with reason=Inadmissible.
+        True if the workload has QuotaReserved=False with an inadmissible reason.
     """
     conditions = (workload.instance.status or {}).get("conditions", [])
     for condition in conditions:
         if (
             condition.get("type") == "QuotaReserved"
             and condition.get("status") == "False"
-            and condition.get("reason") == "Inadmissible"
+            and condition.get("reason") in WORKLOAD_INADMISSIBLE_REASONS
         ):
             return True
     return False
@@ -1050,12 +1543,12 @@ def wait_for_evalhub_job_workload_admitted(
     for sample in TimeoutSampler(
         wait_timeout=timeout,
         sleep=sleep,
-        func=_get_evalhub_job_workload,
+        func=get_evalhub_job_workload,
         admin_client=admin_client,
         namespace=namespace,
         evalhub_job_id=evalhub_job_id,
     ):
-        if sample and _check_workload_admitted(sample):
+        if sample and check_workload_admitted(sample):
             LOGGER.info(f"Workload for job {evalhub_job_id} admitted")
             return sample
 
@@ -1089,13 +1582,344 @@ def wait_for_evalhub_job_workload_inadmissible(
     for sample in TimeoutSampler(
         wait_timeout=timeout,
         sleep=sleep,
-        func=_get_evalhub_job_workload,
+        func=get_evalhub_job_workload,
         admin_client=admin_client,
         namespace=namespace,
         evalhub_job_id=evalhub_job_id,
     ):
-        if sample and _check_workload_inadmissible(sample):
+        if sample and check_workload_inadmissible(sample):
             LOGGER.info(f"Workload for job {evalhub_job_id} is inadmissible")
             return sample
 
     raise TimeoutExpiredError(f"Workload for job {evalhub_job_id} did not become inadmissible within {timeout}s")
+
+
+def wait_for_evalhub_job_workload_absent(
+    admin_client: DynamicClient,
+    namespace: str,
+    workload_name: str,
+    timeout: int = 60,
+    sleep: int = 5,
+) -> None:
+    """Poll until the named Kueue Workload no longer exists.
+
+    Callers must resolve the Workload's name (e.g. via `get_evalhub_job_workload`)
+    *before* deleting the underlying Kubernetes Job. Once the Job is gone,
+    `get_evalhub_job_workload` can no longer resolve the Workload by job UID
+    (it looks up the Job first), so it would report "absent" immediately even
+    if the Workload itself is still leaking quota. Polling the specific
+    Workload by name avoids that false positive.
+    """
+    workload = Workload(client=admin_client, namespace=namespace, name=workload_name)
+    try:
+        for exists in TimeoutSampler(
+            wait_timeout=timeout,
+            sleep=sleep,
+            func=lambda: workload.exists is not None,
+        ):
+            if not exists:
+                return
+    except TimeoutExpiredError:
+        raise TimeoutExpiredError(f"Kueue Workload {workload_name} still present after {timeout}s") from None
+
+
+def assert_plain_text_logs_response(response: requests.Response) -> str:
+    """Assert OpenAPI-conformant 200 text/plain log response and return the body."""
+    assert response.status_code == 200, f"Expected 200 for job logs, got {response.status_code}: {response.text}"
+    content_type = response.headers.get("Content-Type", "")
+    assert content_type.startswith(EVALHUB_LOG_CONTENT_TYPE), (
+        f"Expected Content-Type starting with {EVALHUB_LOG_CONTENT_TYPE!r}, got {content_type!r}"
+    )
+    return response.text
+
+
+def count_non_empty_lines(text: str) -> int:
+    """Return the number of non-whitespace-only lines in ``text``."""
+    return len([line for line in text.splitlines() if line.strip()])
+
+
+def fetch_evalhub_job_logs_while_running(
+    host: str,
+    token: str,
+    ca_bundle_file: str,
+    tenant: str,
+    job_id: str,
+    timeout: int = 180,
+    sleep: int = 2,
+) -> str:
+    """Poll until the EvalHub API reports ``running``, then fetch logs in the same iteration."""
+    for status_response in TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=sleep,
+        func=get_evalhub_job_http,
+        host=host,
+        token=token,
+        ca_bundle_file=ca_bundle_file,
+        tenant=tenant,
+        job_id=job_id,
+    ):
+        status_response.raise_for_status()
+        state = status_response.json().get("status", {}).get("state", "")
+        if state in EVALHUB_JOB_TERMINAL_STATES:
+            pytest.fail(
+                f"Job '{job_id}' reached terminal state '{state}' before running; "
+                "cannot verify in-progress log retrieval"
+            )
+        if state != "running":
+            continue
+
+        response = get_evalhub_job_logs_http(
+            host=host,
+            token=token,
+            ca_bundle_file=ca_bundle_file,
+            tenant=tenant,
+            job_id=job_id,
+        )
+        return assert_plain_text_logs_response(response=response)
+
+    raise TimeoutExpiredError(f"Job '{job_id}' did not reach running state within {timeout}s")
+
+
+# Operator reconciliation observability helpers (RHAISTRAT-1606 / RHAI-241)
+
+
+def fetch_operator_metrics(
+    admin_client: DynamicClient,
+    operator_metrics_token: str,
+) -> str:
+    """Fetch raw Prometheus text from the operator metrics endpoint.
+
+    Args:
+        admin_client: Authenticated Kubernetes client.
+        operator_metrics_token: Bearer token for kube-rbac-proxy authentication.
+
+    Returns:
+        Raw Prometheus text-format string from the /metrics endpoint.
+    """
+    operator_ns = py_config["applications_namespace"]
+    pods = list(
+        Pod.get(
+            client=admin_client,
+            namespace=operator_ns,
+            label_selector=OPERATOR_POD_LABEL_SELECTOR,
+        )
+    )
+    assert pods, "No operator pod found"
+    pod = pods[0]
+    response = requests.get(
+        f"https://{pod.instance.status.podIP}:{OPERATOR_METRICS_PORT}/metrics",
+        headers={"Authorization": f"Bearer {operator_metrics_token}"},
+        verify=False,
+        timeout=10,
+    )
+    response.raise_for_status()
+    return response.text
+
+
+def fetch_trace_collector_logs(trace_collector_pod: Pod, tail_lines: int = 5000) -> str:
+    """Fetch recent logs from the OTEL trace collector pod.
+
+    Args:
+        trace_collector_pod: Pod resource for the OTEL collector.
+        tail_lines: Max number of log lines to retrieve (bounds memory use).
+
+    Returns:
+        Raw log output from the otel-collector container.
+    """
+    return trace_collector_pod.log(container="otel-collector", tail_lines=tail_lines)
+
+
+def parse_prometheus_text(text: str) -> dict[str, list[dict[str, Any]]]:
+    """Parse Prometheus text-format exposition into a dict keyed by metric name.
+
+    Each entry maps to a list of sample dicts with keys ``labels`` and ``value``.
+
+    Args:
+        text: Raw text from the operator /metrics endpoint.
+
+    Returns:
+        Mapping of metric family name to list of samples.
+    """
+    import re
+
+    metrics: dict[str, list[dict[str, Any]]] = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        match = re.match(r"^([a-zA-Z_:][a-zA-Z0-9_:]*)(\{(.+?)\})?\s+(.+?)(\s+\d+)?$", line)
+        if not match:
+            continue
+        name = match.group(1)
+        labels_raw = match.group(3) or ""
+        value_str = match.group(4)
+
+        labels: dict[str, str] = {}
+        if labels_raw:
+            for label_match in re.finditer(r'(\w+)="([^"]*)"', labels_raw):
+                labels[label_match.group(1)] = label_match.group(2)
+
+        try:
+            value: float | str = float(value_str)
+        except ValueError:
+            value = value_str
+
+        metrics.setdefault(name, []).append({"labels": labels, "value": value})
+    return metrics
+
+
+def get_metric_samples(
+    metrics: dict[str, list[dict[str, Any]]],
+    metric_name: str,
+    label_filter: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    """Filter parsed Prometheus samples by metric name and optional label match.
+
+    Args:
+        metrics: Output from ``parse_prometheus_text``.
+        metric_name: Metric family name (e.g. ``evalhub_controller_reconcile_total``).
+        label_filter: Optional dict of label key/value pairs that must all match.
+
+    Returns:
+        List of matching sample dicts.
+    """
+    samples = metrics.get(metric_name, [])
+    if not label_filter:
+        return samples
+    return [s for s in samples if all(s["labels"].get(key) == val for key, val in label_filter.items())]
+
+
+def metric_value_sum(
+    metrics: dict[str, list[dict[str, Any]]],
+    metric_name: str,
+    label_filter: dict[str, str] | None = None,
+) -> float:
+    """Sum all sample values for a metric, optionally filtered by labels.
+
+    Args:
+        metrics: Output from ``parse_prometheus_text``.
+        metric_name: Metric family name.
+        label_filter: Optional label filter.
+
+    Returns:
+        Sum of matching sample values.
+    """
+    samples = get_metric_samples(metrics=metrics, metric_name=metric_name, label_filter=label_filter)
+    total = 0.0
+    for s in samples:
+        try:
+            total += float(s["value"])
+        except TypeError, ValueError:
+            pass
+    return total
+
+
+def parse_trace_spans_from_logs(logs: str) -> list[dict[str, Any]]:
+    """Best-effort extraction of spans from OTEL collector debug exporter logs.
+
+    The debug exporter format is unstable and may change between collector
+    versions. Returns an empty list if parsing encounters unexpected structure.
+
+    Args:
+        logs: Raw stdout log output from the OTEL collector pod.
+
+    Returns:
+        List of span dicts with keys: name, trace_id, span_id, parent_span_id,
+        status, attributes.
+    """
+    import re
+
+    try:
+        spans: list[dict[str, Any]] = []
+        current_span: dict[str, Any] = {}
+
+        def _new_span() -> dict[str, Any]:
+            return {
+                "name": "",
+                "trace_id": "",
+                "span_id": "",
+                "parent_span_id": "",
+                "status": "",
+                "attributes": {},
+            }
+
+        for line in logs.splitlines():
+            line = line.strip()
+
+            if re.match(r"Span\s*#\d+", line):
+                if current_span.get("name"):
+                    spans.append(current_span)
+                current_span = _new_span()
+                continue
+
+            name_match = re.search(r"Name\s*:\s*(.+)", line)
+            if name_match:
+                if not current_span:
+                    current_span = _new_span()
+                elif current_span.get("name"):
+                    spans.append(current_span)
+                    current_span = _new_span()
+                current_span["name"] = name_match.group(1).strip()
+                continue
+
+            trace_id_match = re.search(r"(?:Trace\s*ID|TraceID)\s*:\s*([0-9a-fA-F]+)", line)
+            if trace_id_match and current_span:
+                current_span["trace_id"] = trace_id_match.group(1)
+                continue
+
+            parent_match = re.search(r"(?:Parent\s*ID|ParentSpanID)\s*:\s*([0-9a-fA-F]+)", line)
+            if parent_match and current_span:
+                current_span["parent_span_id"] = parent_match.group(1)
+                continue
+
+            span_id_match = re.search(r"(?:^|\s)ID\s*:\s*([0-9a-fA-F]+)", line)
+            if span_id_match and current_span:
+                current_span["span_id"] = span_id_match.group(1)
+                continue
+
+            span_id_match2 = re.search(r"SpanID\s*:\s*([0-9a-fA-F]+)", line)
+            if span_id_match2 and current_span:
+                current_span["span_id"] = span_id_match2.group(1)
+                continue
+
+            status_match = re.search(r"(?:Status\s*code|Status)\s*:\s*(\w+)", line)
+            if status_match and current_span:
+                current_span["status"] = status_match.group(1)
+                continue
+
+            attr_match = re.search(r"->\s*([a-zA-Z0-9_.]+)\s*:\s*(.+)", line)
+            if attr_match and current_span:
+                current_span["attributes"][attr_match.group(1).strip()] = attr_match.group(2).strip()
+
+        if current_span.get("name"):
+            spans.append(current_span)
+
+        return spans
+    except re.error, KeyError, IndexError, TypeError:
+        return []
+
+
+def filter_spans_by_name(spans: list[dict[str, Any]], name: str) -> list[dict[str, Any]]:
+    """Filter parsed spans to those matching a specific span name.
+
+    Args:
+        spans: List of span dicts from ``parse_trace_spans_from_logs``.
+        name: Exact span name to match.
+
+    Returns:
+        List of matching span dicts.
+    """
+    return [s for s in spans if s["name"] == name]
+
+
+def get_child_spans(spans: list[dict[str, Any]], parent_span_id: str) -> list[dict[str, Any]]:
+    """Get all spans that are children of a given parent span ID.
+
+    Args:
+        spans: List of span dicts from ``parse_trace_spans_from_logs``.
+        parent_span_id: The span ID of the parent.
+
+    Returns:
+        List of child span dicts.
+    """
+    return [s for s in spans if s["parent_span_id"] == parent_span_id]

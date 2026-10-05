@@ -12,13 +12,21 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
+from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 
-from tests.ai_hub.model_catalog.constants import HF_CUSTOM_MODE
+import tests.ai_hub.constants as ai_hub_constants
+from tests.ai_hub.constants import (
+    MR_ISVC_ARGS,
+    MR_ISVC_RESOURCES,
+    MR_ISVC_VOLUME_MOUNTS,
+    MR_ISVC_VOLUMES,
+)
+from tests.ai_hub.model_catalog.constants import HF_CUSTOM_MODE, HF_LAST_SYNCED_SOURCE_ID
 from tests.ai_hub.model_catalog.huggingface.utils import get_huggingface_model_from_api
-from tests.ai_hub.model_catalog.utils import get_models_from_catalog_api
-from utilities.constants import RuntimeTemplates
+from tests.ai_hub.model_catalog.utils import get_models_from_catalog_api, wait_for_model_catalog_api
+from tests.ai_hub.utils import wait_for_model_catalog_pod_ready_after_deletion
 from utilities.infra import create_ns
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -82,7 +90,7 @@ def initial_last_synced_values(
         model_registry_rest_headers=model_registry_rest_headers,
         model_catalog_rest_url=model_catalog_rest_url,
         model_name=request.param,
-        source_id="hf_id",
+        source_id=HF_LAST_SYNCED_SOURCE_ID,
     )
 
     return result["customProperties"]["last_synced"]["string_value"]
@@ -203,17 +211,12 @@ def huggingface_inference_service(
     hf_model_uri = f"hf://{HF_CUSTOM_MODE}"
     runtime_name = huggingface_serving_runtime.name
 
-    # Resources matching the manually created example
-    resources = {"limits": {"cpu": "2", "memory": "4Gi"}, "requests": {"cpu": "2", "memory": "4Gi"}}
-
-    # Labels for ODH dashboard integration
     labels = {
         "opendatahub.io/dashboard": "true",
     }
 
-    # Comprehensive annotations matching the manually created examples with full ODH integration
     annotations = {
-        "opendatahub.io/connections": huggingface_connection_secret.name,  # Reference to connection secret
+        "opendatahub.io/connections": huggingface_connection_secret.name,
         "opendatahub.io/hardware-profile-name": "default-profile",
         "opendatahub.io/hardware-profile-namespace": "redhat-ods-applications",
         "opendatahub.io/model-type": "predictive",
@@ -223,20 +226,27 @@ def huggingface_inference_service(
         "serving.kserve.io/deploymentMode": "RawDeployment",
     }
 
-    # Predictor configuration matching the manually created example
-    predictor_dict = {
+    model_spec: dict[str, Any] = {
+        "modelFormat": {"name": huggingface_serving_runtime.instance.spec.supportedModelFormats[0].name},
+        "name": "",
+        "resources": MR_ISVC_RESOURCES,
+        "runtime": runtime_name,
+        "storageUri": hf_model_uri,
+    }
+    if MR_ISVC_ARGS:
+        model_spec["args"] = MR_ISVC_ARGS
+    if MR_ISVC_VOLUME_MOUNTS:
+        model_spec["volumeMounts"] = MR_ISVC_VOLUME_MOUNTS
+
+    predictor_dict: dict[str, Any] = {
         "automountServiceAccountToken": False,
         "deploymentStrategy": {"type": "RollingUpdate"},
         "maxReplicas": 1,
         "minReplicas": 1,
-        "model": {
-            "modelFormat": {"name": "onnx", "version": "1"},
-            "name": "",
-            "resources": resources,
-            "runtime": runtime_name,
-            "storageUri": hf_model_uri,
-        },
+        "model": model_spec,
     }
+    if MR_ISVC_VOLUMES:
+        predictor_dict["volumes"] = MR_ISVC_VOLUMES
 
     with InferenceService(
         client=admin_client,
@@ -262,16 +272,20 @@ def huggingface_serving_runtime(
     admin_client: DynamicClient,
     hugging_face_deployment_ns: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
-    """Create an OVMS ServingRuntime from the cluster template for Hugging Face models."""
-    with ServingRuntimeFromTemplate(
-        client=admin_client,
-        name="hf-test-runtime",
-        namespace=hugging_face_deployment_ns.name,
-        template_name=RuntimeTemplates.OVMS_KSERVE,
-        multi_model=False,
-        enable_http=True,
-        enable_grpc=False,
-    ) as serving_runtime:
+    """Create a ServingRuntime from the cluster template for Hugging Face models."""
+    kwargs: dict[str, Any] = {
+        "client": admin_client,
+        "name": "hf-test-runtime",
+        "namespace": hugging_face_deployment_ns.name,
+        "template_name": ai_hub_constants.MR_RUNTIME_TEMPLATE,
+        "multi_model": False,
+        "enable_http": True,
+        "enable_grpc": False,
+    }
+    if ai_hub_constants.MR_RUNTIME_CONTAINERS:
+        kwargs["containers"] = ai_hub_constants.MR_RUNTIME_CONTAINERS
+
+    with ServingRuntimeFromTemplate(**kwargs) as serving_runtime:
         yield serving_runtime
 
 
@@ -310,15 +324,11 @@ def huggingface_model_portforward(
     huggingface_inference_service: InferenceService,
     huggingface_predictor_pod: Pod,
 ) -> Generator[str, Any]:
-    """
-    Port-forwards the HuggingFace OpenVINO model server pod to access the model API locally.
-    Equivalent CLI:
-      oc -n hf-deployment-ns port-forward pod/<pod-name> 8080:8888
-    """
+    """Port-forwards the HuggingFace model server pod to access the model API locally."""
     namespace = hugging_face_deployment_ns.name
     local_port = 9999
-    remote_port = 8888  # OpenVINO Model Server REST port
-    local_url = f"http://localhost:{local_port}/v1/models"
+    remote_port = ai_hub_constants.MR_MODEL_SERVER_PORT
+    local_url = f"http://localhost:{local_port}{ai_hub_constants.MR_MODEL_SERVER_URL_PATH}"
 
     try:
         with portforward.forward(
@@ -334,3 +344,27 @@ def huggingface_model_portforward(
     except Exception as expt:
         LOGGER.error(f"Failed to set up port forwarding for pod {huggingface_predictor_pod.name}: {expt}")
         raise
+
+
+@pytest.fixture()
+def private_hf_catalog_config(
+    request: pytest.FixtureRequest,
+    catalog_config_map: ConfigMap,
+    admin_client: DynamicClient,
+    model_registry_namespace: str,
+    model_catalog_rest_url: list[str],
+    model_registry_rest_headers: dict[str, str],
+) -> Generator[ConfigMap]:
+    """Temporarily configure the private HF source using existing catalog credentials."""
+    try:
+        with ResourceEditor(patches={catalog_config_map: {"data": {"sources.yaml": request.param["sources_yaml"]}}}):
+            wait_for_model_catalog_pod_ready_after_deletion(
+                client=admin_client, model_registry_namespace=model_registry_namespace
+            )
+            wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
+            yield catalog_config_map
+    finally:
+        wait_for_model_catalog_pod_ready_after_deletion(
+            client=admin_client, model_registry_namespace=model_registry_namespace
+        )
+        wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)

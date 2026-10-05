@@ -1,6 +1,5 @@
 import pytest
 from ocp_resources.deployment import Deployment
-from ocp_resources.llm_inference_service import LLMInferenceService
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaOciConfig
@@ -12,6 +11,7 @@ from tests.model_serving.model_server.llmd.utils import (
 from utilities.constants import Labels
 from utilities.exceptions import UnexpectedResourceCountError
 from utilities.kueue_utils import check_gated_pods_and_running_pods
+from utilities.resources.llm_inference_service import LLMInferenceService
 
 pytestmark = [pytest.mark.tier2]
 
@@ -58,7 +58,7 @@ class KueueTestConfig(TinyLlamaOciConfig):
     "unprivileged_model_namespace, llmisvc, "
     "kueue_cluster_queue_from_template, kueue_resource_flavor_from_template, kueue_local_queue_from_template",
     [
-        (
+        pytest.param(
             {"name": NAMESPACE, "add-kueue-label": True},
             KueueTestConfig,
             {
@@ -69,11 +69,12 @@ class KueueTestConfig(TinyLlamaOciConfig):
             },
             {"name": RESOURCE_FLAVOR_NAME},
             {"name": LOCAL_QUEUE_NAME, "cluster_queue": CLUSTER_QUEUE_NAME},
+            id="kueue",
         )
     ],
     indirect=True,
 )
-class TestKueueLLMDScaleUp:
+class TestLlmdKueueIntegration:
     """Deploy TinyLlama on CPU under a Kueue quota, scale to 2 replicas, and verify Kueue gates the excess replica."""
 
     def _get_deployment_status_replicas(self, deployment: Deployment) -> int:

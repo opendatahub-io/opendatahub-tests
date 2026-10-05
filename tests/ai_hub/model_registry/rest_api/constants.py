@@ -1,6 +1,6 @@
 from typing import Any
 
-from utilities.constants import ModelFormat
+from tests.ai_hub.constants import MODEL_ARTIFACT, MODEL_REGISTRY_BASE_URI  # noqa: F401
 
 MODEL_REGISTER: dict[str, Any] = {
     "name": "model-rest-api",
@@ -22,25 +22,11 @@ MODEL_VERSION: dict[str, Any] = {
     },
 }
 
-MODEL_ARTIFACT: dict[str, Any] = {
-    "name": "model-artifact-rest-api",
-    "description": "Model artifact created via rest call",
-    "uri": "hf://jonburdo/test2",
-    "state": "UNKNOWN",
-    "modelFormatName": ModelFormat.ONNX,
-    "modelFormatVersion": "v1",
-    "artifactType": "model-artifact",
-    "customProperties": {
-        "test_ma_bool_property": {"bool_value": True, "metadataType": "MetadataBoolValue"},
-        "test_ma_str_property": {"string_value": "my_value", "metadataType": "MetadataStringValue"},
-    },
-}
-MODEL_REGISTER_DATA = {
+MODEL_REGISTER_DATA: dict[str, Any] = {
     "register_model_data": MODEL_REGISTER,
     "model_version_data": MODEL_VERSION,
     "model_artifact_data": MODEL_ARTIFACT,
 }
-MODEL_REGISTRY_BASE_URI = "/api/model_registry/v1alpha3/"
 CUSTOM_PROPERTY = {
     "customProperties": {
         "my_bool_property": {"bool_value": True, "metadataType": "MetadataBoolValue"},

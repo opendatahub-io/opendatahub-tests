@@ -28,7 +28,6 @@ from tests.ai_safety.evalhub.utils import (
     build_headers,
     submit_evalhub_job,
 )
-from utilities.constants import Timeout
 
 # ---------------------------------------------------------------------------
 # Fixtures: EvalHub with MLflow enabled (expects existing MLflow deployment)
@@ -51,8 +50,8 @@ def mlflow_deployment_ready(
         namespace=MLFLOW_NAMESPACE,
     )
     if not deployment.exists:
-        pytest.skip("MLflow deployment not found in opendatahub namespace — deploy MLflow first")
-    deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_5MIN)
+        pytest.fail("MLflow deployment not found in opendatahub namespace — deploy MLflow first")
+    deployment.wait_for_replicas(timeout=300)
     return deployment
 
 

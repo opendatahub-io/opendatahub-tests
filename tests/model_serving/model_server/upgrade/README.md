@@ -22,8 +22,9 @@ The CI pipeline runs pre-upgrade tests on the source branch, performs the operat
 | `test_upgrade_model_car.py`        | ModelCar (OCI storage) | `upgrade-model-car`          |
 | `test_upgrade_metrics.py`          | Metrics (Prometheus)   | `upgrade-metrics`            |
 | `test_upgrade_private_endpoint.py` | Private endpoint       | `upgrade-pvt-ep`             |
+| `test_upgrade_kserve_kueue_raw.py` | RawDeployment + Kueue  | `upgrade-kserve-kueue-raw`   |
 
-**Post-upgrade ISVC checks**: exists, not modified, runtime not modified, pods not restarted, inference works. `test_upgrade.py` also creates a new ISVC post-upgrade to verify fresh deployments. `test_upgrade_auth.py` verifies auth annotation preserved, inference with pre-upgrade token, and unauthorized rejection. `test_upgrade_metrics.py` verifies historical metric data retained and new requests captured. `test_upgrade_private_endpoint.py` verifies internal URL preserved and no external route.
+**Post-upgrade ISVC checks**: exists, not modified, runtime not modified, pods not restarted, inference works. `test_upgrade.py` also creates a new ISVC post-upgrade to verify fresh deployments. `test_upgrade_auth.py` verifies auth annotation preserved, inference with pre-upgrade token, and unauthorized rejection. `test_upgrade_metrics.py` verifies historical metric data retained and new requests captured. `test_upgrade_private_endpoint.py` verifies internal URL preserved and no external route. `test_upgrade_kserve_kueue_raw.py` verifies Kueue LocalQueue survival, running/gated pod stats, totalCopies, generation, restart counts (allowing newly admitted pods), and post-upgrade inference via the external route.
 
 ### LLMInferenceService (LLMISVC)
 
@@ -65,11 +66,12 @@ uv run pytest --collect-only -q tests/model_serving/model_server/upgrade/
 
 # Run specific scenario
 uv run pytest --pre-upgrade tests/model_serving/model_server/upgrade/test_upgrade_llmd.py
+uv run pytest --pre-upgrade tests/model_serving/model_server/upgrade/test_upgrade_kserve_kueue_raw.py
 ```
 
 ## Key implementation details
 
-- **Baseline persistence**: Pre-upgrade state (pod names, restart counts, generation, images, URLs) is captured and stored in ConfigMaps. ISVC baselines are saved in the shared `upgrade-model-server` namespace; LLMISVC baselines are saved in each LLMISVC's own namespace. The namespaces persist across the upgrade, so post-upgrade tests load the same ConfigMaps and compare against current state.
+- **Baseline persistence**: Pre-upgrade state (pod names, restart counts, generation, images, URLs) is captured and stored in ConfigMaps. Most ISVC baselines are saved in the shared `upgrade-model-server` namespace; KServe+Kueue and LLMISVC baselines are saved in each workload's own namespace. The namespaces persist across the upgrade, so post-upgrade tests load the same ConfigMaps and compare against current state.
 - **Auth token persistence**: For auth scenarios, pre-upgrade tokens are saved to Secrets so they can be reused post-upgrade to verify token survival.
 - **Cross-branch compatibility**: Resource names, namespaces, and fixture names must be identical between branches for pre/post pairs to match. Any rename breaks the upgrade path.
 - **Dependencies**: Post-upgrade tests use `@pytest.mark.dependency` to skip downstream tests if the ISVC/LLMISVC no longer exists.

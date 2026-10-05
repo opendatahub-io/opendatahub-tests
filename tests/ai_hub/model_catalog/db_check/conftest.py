@@ -9,8 +9,8 @@ from ocp_resources.secret import Secret
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutSampler
 
-from tests.ai_hub.constants import MR_OPERATOR_NAME
-from utilities.constants import Labels
+from tests.ai_hub.constants import CATALOG_CONTROLLER_MANAGER_NAME
+from utilities.constants import Annotations
 from utilities.general import wait_for_pods_by_labels
 
 from .utils import extract_secret_values
@@ -146,19 +146,30 @@ def recreated_network_policy_scope_function(
 
 
 @pytest.fixture(scope="class")
-def restarted_operator_pod(admin_client: DynamicClient) -> Pod:
-    """Restart the model registry operator pod and wait for it to be running."""
-    operator_pods = wait_for_pods_by_labels(
+def catalog_controller_manager_pod(admin_client: DynamicClient) -> Pod:
+    """Get the catalog-controller-manager pod from the applications namespace."""
+    return wait_for_pods_by_labels(
         admin_client=admin_client,
         namespace=py_config["applications_namespace"],
-        label_selector=f"{Labels.OpenDataHubIo.NAME}={MR_OPERATOR_NAME}",
+        label_selector=f"{Annotations.KubernetesIo.NAME}={CATALOG_CONTROLLER_MANAGER_NAME}",
+        expected_num_pods=1,
+    )[0]
+
+
+@pytest.fixture(scope="class")
+def restarted_catalog_controller_manager_pod(admin_client: DynamicClient) -> Pod:
+    """Restart the catalog-controller-manager pod and wait for it to be running."""
+    pods = wait_for_pods_by_labels(
+        admin_client=admin_client,
+        namespace=py_config["applications_namespace"],
+        label_selector=f"{Annotations.KubernetesIo.NAME}={CATALOG_CONTROLLER_MANAGER_NAME}",
         expected_num_pods=1,
     )
-    operator_pods[0].delete()
+    pods[0].delete()
     new_pod = wait_for_pods_by_labels(
         admin_client=admin_client,
         namespace=py_config["applications_namespace"],
-        label_selector=f"{Labels.OpenDataHubIo.NAME}={MR_OPERATOR_NAME}",
+        label_selector=f"{Annotations.KubernetesIo.NAME}={CATALOG_CONTROLLER_MANAGER_NAME}",
         expected_num_pods=1,
     )[0]
     new_pod.wait_for_status(status=Pod.Status.RUNNING)

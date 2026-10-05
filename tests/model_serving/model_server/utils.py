@@ -4,16 +4,20 @@ from concurrent.futures import ThreadPoolExecutor, as_completed, wait
 from string import Template
 from typing import Any
 
+import pytest
 import structlog
+from kubernetes.client.exceptions import ApiException
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.inference_graph import InferenceGraph
 from ocp_resources.inference_service import InferenceService
+from ocp_resources.node import Node
 from ocp_resources.utils.constants import DEFAULT_CLUSTER_RETRY_EXCEPTIONS
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler, TimeoutWatch
+from urllib3.exceptions import HTTPError
 
 from tests.model_serving.model_server.kserve.autoscaling.keda.utils import get_isvc_keda_scaledobject
-from utilities.constants import KServeDeploymentType, Protocols, Timeout
+from utilities.constants import KServeDeploymentType, Protocols
 from utilities.exceptions import (
     InferenceResponseError,
 )
@@ -22,6 +26,47 @@ from utilities.infra import get_pods_by_isvc_label
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+def skip_test(reason: str) -> None:
+    """Log a visible skip banner and call pytest.skip."""
+    border = "=" * 60
+    LOGGER.warning("\n".join(["", border, f"  SKIP — {reason}", border, ""]))
+    pytest.skip(reason)
+
+
+def get_worker_architecture(client: DynamicClient) -> str | None:
+    """Return the architecture shared by all workers, or ``None`` if unavailable or mixed."""
+    architectures: set[str] = set()
+    try:
+        for node in Node.get(client=client, label_selector="node-role.kubernetes.io/worker"):
+            architecture = node.instance.status.nodeInfo.architecture
+            LOGGER.info(f"Detected worker node architecture: {architecture!r}")
+            if not isinstance(architecture, str) or not architecture.strip():
+                LOGGER.warning(f"Unable to read worker architecture: {architecture!r}")
+                return None
+            architectures.add(architecture)
+    except (ApiException, HTTPError, ResourceNotFoundError, AttributeError) as error:
+        LOGGER.warning(f"Unable to read worker architecture: {error}")
+        return None
+
+    if not architectures:
+        LOGGER.warning("Unable to read worker architecture: no worker nodes found")
+    elif len(architectures) > 1:
+        LOGGER.warning(f"Unable to read worker architecture: mixed architectures {architectures!r}")
+    else:
+        return architectures.pop()
+
+    return None
+
+
+def is_arm64_cluster(client: DynamicClient) -> bool:
+    """Return whether every worker node reports the ``arm64`` architecture."""
+    architecture = get_worker_architecture(client=client)
+    if architecture not in {None, "arm64", "amd64", "ppc64le", "s390x"}:
+        LOGGER.warning(f"Unknown worker architecture: {architecture!r}")
+
+    return architecture == "arm64"
 
 
 def verify_inference_response(
@@ -36,6 +81,7 @@ def verify_inference_response(
     insecure: bool = False,
     token: str | None = None,
     authorized_user: bool | None = None,
+    inference_timeout: int | None = None,
 ) -> None:
     """
     Verify the inference response.
@@ -52,6 +98,7 @@ def verify_inference_response(
         insecure (bool): Insecure mode.
         token (str): Token.
         authorized_user (bool): Authorized user.
+        inference_timeout (int | None): Retry timeout in seconds for the inference request.
 
     Raises:
         InvalidInferenceResponseError: If inference response is invalid.
@@ -73,12 +120,22 @@ def verify_inference_response(
         use_default_query=use_default_query,
         token=token,
         insecure=insecure,
+        inference_timeout=inference_timeout,
     )
 
     if authorized_user is False:
         auth_header = "x-ext-auth-reason"
 
-        if auth_reason := re.search(rf"{auth_header}: (.*)", res["output"], re.MULTILINE):
+        if isinstance(res["output"], dict):
+            # Response body was parsed to JSON (e.g. FastAPI HTTPException).
+            # Reconstruct full response text from parsed headers so existing
+            # status-line / header checks work unchanged.
+            output = "\n".join(f"{k}: {v}" for k, v in res.items() if k != "output" and isinstance(v, str))
+            output += "\n" + json.dumps(res["output"])
+        else:
+            output = res["output"]
+
+        if auth_reason := re.search(rf"{auth_header}: (.*)", output, re.MULTILINE):
             reason = auth_reason.group(1).lower()
 
             if token:
@@ -91,14 +148,18 @@ def verify_inference_response(
             isinstance(inference_service, InferenceGraph)
             and inference.deployment_mode in KServeDeploymentType.RAW_DEPLOYMENT_MODES
         ):
-            assert "x-forbidden-reason: Access to the InferenceGraph is not allowed" in res["output"]
+            assert "x-forbidden-reason: Access to the InferenceGraph is not allowed" in output
 
-        elif "403 Forbidden" in res["output"]:
+        elif "403 Forbidden" in output:
             resource = f"{inference_service.kind.lower()}s"
-            assert re.search(rf"Forbidden \(user=.*verb=get.*resource={resource}", res["output"])
+            assert re.search(rf"Forbidden \(user=.*verb=get.*resource={resource}", output)
+
+        elif "401 Unauthorized" in output:
+            # HTTP status line carries 401 — correctly rejected.
+            pass
 
         else:
-            raise ValueError(f"Auth header {auth_header} not found in response. Response: {res['output']}")
+            raise ValueError(f"Auth header {auth_header} not found in response. Response: {output}")
 
     else:
         use_regex = False
@@ -186,7 +247,7 @@ def wait_for_raw_isvc_https_infer_ready(
     isvc: InferenceService,
     *,
     token: str | None = None,
-    timeout: int = Timeout.TIMEOUT_5MIN,
+    timeout: int = 300,
     sleep: int = 5,
 ) -> None:
     """Block until the same external HTTPS REST infer the suite uses succeeds.
@@ -385,7 +446,7 @@ def verify_final_pod_count(unprivileged_client: DynamicClient, isvc: InferenceSe
     for pods in inference_service_pods_sampler(
         client=unprivileged_client,
         isvc=isvc,
-        timeout=Timeout.TIMEOUT_5MIN,
+        timeout=300,
         sleep=10,
     ):
         if pods and len(pods) == final_pod_count:
@@ -393,9 +454,7 @@ def verify_final_pod_count(unprivileged_client: DynamicClient, isvc: InferenceSe
     raise AssertionError(f"Timed out waiting for {final_pod_count} pods. Current pod count: {len(pods) if pods else 0}")
 
 
-def verify_no_inference_pods(
-    client: DynamicClient, isvc: InferenceService, wait_timeout: int = Timeout.TIMEOUT_4MIN
-) -> bool:
+def verify_no_inference_pods(client: DynamicClient, isvc: InferenceService, wait_timeout: int = 240) -> bool:
     """
     Verify that no inference pods are running for the given InferenceService.
 

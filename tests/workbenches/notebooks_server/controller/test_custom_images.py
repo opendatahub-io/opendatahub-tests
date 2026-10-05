@@ -11,7 +11,7 @@ from ocp_resources.notebook import Notebook
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import ExecOnPodError, Pod
 
-from utilities.constants import Timeout
+from tests.workbenches.image_constants import WorkbenchesImages
 from utilities.general import collect_pod_information
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -110,7 +110,7 @@ def verify_package_import(
                 collect_pod_information(pod)
 
         execution_time = time() - start_time
-        output = output if output else ""
+        output = output or ""
 
         if import_successful:
             LOGGER.info(f"Package {package_name}: ✓ (import successful in {execution_time:.2f}s)")
@@ -235,11 +235,7 @@ class TestCustomImageValidation:
                     "name": "test-sdg-hub",
                 },
                 {
-                    "custom_image": (
-                        "quay.io/opendatahub/"
-                        "odh-workbench-jupyter-minimal-cuda-py312-ubi9@sha256:"
-                        "9458a764d861cbe0a782a53e0f5a13a4bcba35d279145d87088ab3cdfabcad1d"  # pragma: allowlist secret
-                    ),  # Placeholder - update with sdg_hub image
+                    "custom_image": WorkbenchesImages.JUPYTER_MINIMAL_CUDA,  # Placeholder - update with sdg_hub image
                 },
                 ["sdg_hub"],
                 id="sdg_hub_image",
@@ -261,11 +257,7 @@ class TestCustomImageValidation:
                     "name": "test-datascience",
                 },
                 {
-                    "custom_image": (
-                        "quay.io/opendatahub/"
-                        "odh-workbench-jupyter-minimal-cuda-py312-ubi9@sha256:"
-                        "9458a764d861cbe0a782a53e0f5a13a4bcba35d279145d87088ab3cdfabcad1d"  # pragma: allowlist secret
-                    ),
+                    "custom_image": WorkbenchesImages.JUPYTER_MINIMAL_CUDA,
                 },
                 ["numpy", "pandas", "matplotlib"],
                 id="datascience_image",
@@ -319,7 +311,7 @@ class TestCustomImageValidation:
                 pod=notebook_pod,
                 container_name=default_notebook.name,
                 packages=packages_to_install,
-                timeout=Timeout.TIMEOUT_2MIN,
+                timeout=120,
             )
 
             failed_installs = [name for name, success in install_results.items() if not success]
@@ -334,7 +326,7 @@ class TestCustomImageValidation:
             pod=notebook_pod,
             container_name=default_notebook.name,
             packages=packages_to_verify,
-            timeout=Timeout.TIMEOUT_1MIN,
+            timeout=60,
         )
 
         # Assert all packages imported successfully
@@ -367,18 +359,22 @@ class TestCustomImageValidation:
 
         for name in failed_packages:
             result = results[name]
-            report.append(f"  ❌ {name}:")
-            report.append(f"     Error: {result.error_message}")
-            report.append(f"     Command: {result.command_executed}")
-            report.append(f"     Execution Time: {result.execution_time_seconds:.2f}s")
-            report.append("")
+            report.extend((
+                f"  ❌ {name}:",
+                f"     Error: {result.error_message}",
+                f"     Command: {result.command_executed}",
+                f"     Execution Time: {result.execution_time_seconds:.2f}s",
+                "",
+            ))
 
         # Add troubleshooting guidance
-        report.append("Troubleshooting:")
-        report.append("  1. Check the must-gather directory for pod logs and YAML")
-        report.append("  2. Verify the custom image contains the required packages")
-        report.append("  3. Check if packages are installed in the correct Python environment")
-        report.append("  4. Verify package names match import names (pip name vs import name)")
-        report.append("  5. Contact the workbench image team for package installation issues")
+        report.extend((
+            "Troubleshooting:",
+            "  1. Check the must-gather directory for pod logs and YAML",
+            "  2. Verify the custom image contains the required packages",
+            "  3. Check if packages are installed in the correct Python environment",
+            "  4. Verify package names match import names (pip name vs import name)",
+            "  5. Contact the workbench image team for package installation issues",
+        ))
 
         return "\n".join(report)

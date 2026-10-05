@@ -42,7 +42,7 @@ pytestmark = [
                 ),
             },
             [
-                "meta-llama/Llama-3.1-8B-Instruct",
+                "sentence-transformers/all-MiniLM-L6-v2",
                 "microsoft/Phi-4-mini-reasoning",
                 "microsoft/Phi-3.5-mini-instruct",
             ],
@@ -74,6 +74,7 @@ class TestHuggingFaceModelExclusion:
         response = get_models_from_catalog_api(
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
+            page_size=1000,
         )
         assert response["items"], "Expected models to be present in response"
 

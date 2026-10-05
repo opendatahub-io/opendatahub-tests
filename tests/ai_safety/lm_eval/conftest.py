@@ -17,6 +17,7 @@ from ocp_resources.service import Service
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest import Config, FixtureRequest
 
+from tests.ai_safety.image_constants import AiSafetyImages
 from tests.ai_safety.lm_eval.constants import (
     ACCELERATOR_IDENTIFIER,
     ARC_EASY_DATASET_IMAGE,
@@ -25,7 +26,7 @@ from tests.ai_safety.lm_eval.constants import (
     LMEVAL_OCI_TAG,
 )
 from tests.ai_safety.lm_eval.utils import get_lmevaljob_pod
-from utilities.constants import ApiGroups, KServeDeploymentType, Labels, MinIo, Protocols, RuntimeTemplates, Timeout
+from utilities.constants import ApiGroups, KServeDeploymentType, Labels, MinIo, Protocols, RuntimeTemplates
 from utilities.exceptions import MissingParameter
 from utilities.general import b64_encoded_string
 from utilities.inference_utils import create_isvc
@@ -298,7 +299,7 @@ def lmeval_data_downloader_pod(
         restart_policy="Never",
         volumes=[{"name": "pvc-volume", "persistentVolumeClaim": {"claimName": "lmeval-data"}}],
     ) as pod:
-        pod.wait_for_status(status=Pod.Status.SUCCEEDED, timeout=Timeout.TIMEOUT_20MIN)
+        pod.wait_for_status(status=Pod.Status.SUCCEEDED, timeout=1200)
         yield pod
 
 
@@ -324,8 +325,7 @@ def vllm_emulator_deployment(
             "spec": {
                 "containers": [
                     {
-                        "image": "quay.io/trustyai_testing/vllm_emulator"
-                        "@sha256:c4bdd5bb93171dee5b4c8454f36d7c42b58b2a4ceb74f29dba5760ac53b5c12d",
+                        "image": AiSafetyImages.VLLM_EMULATOR,
                         "name": "vllm-emulator",
                         "securityContext": {
                             "allowPrivilegeEscalation": False,
@@ -396,8 +396,7 @@ def lmeval_minio_deployment(
                 "containers": [
                     {
                         "name": MinIo.Metadata.NAME,
-                        "image": "quay.io/minio/minio"
-                        "@sha256:46b3009bf7041eefbd90bd0d2b38c6ddc24d20a35d609551a1802c558c1c958f",
+                        "image": AiSafetyImages.MINIO_SERVER,
                         "args": ["server", "/data", "--console-address", ":9001"],
                         "env": [
                             {"name": "MINIO_ROOT_USER", "value": MinIo.Credentials.ACCESS_KEY_VALUE},
@@ -412,7 +411,7 @@ def lmeval_minio_deployment(
         label=minio_app_label,
         wait_for_resource=True,
     ) as deployment:
-        deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_20MIN)
+        deployment.wait_for_replicas(timeout=1200)
         yield deployment
 
 
@@ -457,15 +456,17 @@ def lmeval_minio_copy_pod(
         containers=[
             {
                 "name": "minio-uploader",
-                "image": "quay.io/minio/mc@sha256:470f5546b596e16c7816b9c3fa7a78ce4076bb73c2c73f7faeec0c8043923123",
+                "image": AiSafetyImages.MINIO_MC,
                 "command": ["/bin/sh", "-c"],
                 "args": [
-                    f"export MC_CONFIG_DIR=/shared/.mc && "
-                    f"mc alias set myminio http://{minio_service.name}:{MinIo.Metadata.DEFAULT_PORT} "
-                    f"{MinIo.Credentials.ACCESS_KEY_VALUE} {MinIo.Credentials.SECRET_KEY_VALUE} && "
-                    "mc mb --ignore-existing myminio/models && "
-                    "mc cp --recursive /shared/datasets/ myminio/models/datasets/ && "
-                    "mc cp --recursive /shared/flan/ myminio/models/flan/"
+                    (
+                        f"export MC_CONFIG_DIR=/shared/.mc && "
+                        f"mc alias set myminio http://{minio_service.name}:{MinIo.Metadata.DEFAULT_PORT} "
+                        f"{MinIo.Credentials.ACCESS_KEY_VALUE} {MinIo.Credentials.SECRET_KEY_VALUE} && "
+                        "mc mb --ignore-existing myminio/models && "
+                        "mc cp --recursive /shared/datasets/ myminio/models/datasets/ && "
+                        "mc cp --recursive /shared/flan/ myminio/models/flan/"
+                    )
                 ],
                 "volumeMounts": [{"name": "shared-data", "mountPath": "/shared"}],
                 "securityContext": {
@@ -517,40 +518,45 @@ def lmevaljob_s3_offline(
         yield job
 
 
+def _lmevaljob_pod(admin_client: DynamicClient, lmevaljob: LMEvalJob) -> Generator[Pod, Any, Any]:
+    """Shared body for the lmevaljob_*_pod fixtures: fetch the pod for a given LMEvalJob."""
+    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob)
+
+
 @pytest.fixture(scope="function")
 def lmevaljob_hf_pod(admin_client: DynamicClient, lmevaljob_hf: LMEvalJob) -> Generator[Pod, Any, Any]:
-    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_hf)
+    yield from _lmevaljob_pod(admin_client=admin_client, lmevaljob=lmevaljob_hf)
 
 
 @pytest.fixture(scope="function")
 def lmevaljob_local_offline_pod(
     admin_client: DynamicClient, lmevaljob_local_offline: LMEvalJob
 ) -> Generator[Pod, Any, Any]:
-    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_local_offline)
+    yield from _lmevaljob_pod(admin_client=admin_client, lmevaljob=lmevaljob_local_offline)
 
 
 @pytest.fixture(scope="function")
 def lmevaljob_local_offline_pod_oci(
     admin_client: DynamicClient, lmevaljob_local_offline_oci: LMEvalJob
 ) -> Generator[Pod, Any, Any]:
-    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_local_offline_oci)
+    yield from _lmevaljob_pod(admin_client=admin_client, lmevaljob=lmevaljob_local_offline_oci)
 
 
 @pytest.fixture(scope="function")
 def lmevaljob_vllm_emulator_pod(
     admin_client: DynamicClient, lmevaljob_vllm_emulator: LMEvalJob
 ) -> Generator[Pod, Any, Any]:
-    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_vllm_emulator)
+    yield from _lmevaljob_pod(admin_client=admin_client, lmevaljob=lmevaljob_vllm_emulator)
 
 
 @pytest.fixture(scope="function")
 def lmevaljob_s3_offline_pod(admin_client: DynamicClient, lmevaljob_s3_offline: LMEvalJob) -> Generator[Pod, Any, Any]:
-    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_s3_offline)
+    yield from _lmevaljob_pod(admin_client=admin_client, lmevaljob=lmevaljob_s3_offline)
 
 
 @pytest.fixture(scope="function")
 def lmevaljob_gpu_pod(admin_client: DynamicClient, lmevaljob_gpu: LMEvalJob) -> Generator[Pod, Any, Any]:
-    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_gpu)
+    yield from _lmevaljob_pod(admin_client=admin_client, lmevaljob=lmevaljob_gpu)
 
 
 @pytest.fixture(scope="function")
@@ -765,7 +771,7 @@ def lmevaljob_vllm_emulator_https(
 def lmevaljob_vllm_emulator_https_pod(
     admin_client: DynamicClient, lmevaljob_vllm_emulator_https: LMEvalJob
 ) -> Generator[Pod, Any, Any]:
-    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_vllm_emulator_https)
+    yield from _lmevaljob_pod(admin_client=admin_client, lmevaljob=lmevaljob_vllm_emulator_https)
 
 
 @pytest.fixture(scope="function")
@@ -814,4 +820,4 @@ def lmevaljob_vllm_emulator_https_verify_cert(
 def lmevaljob_vllm_emulator_https_verify_cert_pod(
     admin_client: DynamicClient, lmevaljob_vllm_emulator_https_verify_cert: LMEvalJob
 ) -> Generator[Pod, Any, Any]:
-    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_vllm_emulator_https_verify_cert)
+    yield from _lmevaljob_pod(admin_client=admin_client, lmevaljob=lmevaljob_vllm_emulator_https_verify_cert)

@@ -52,25 +52,21 @@ def files_provider_config_factory(
             # Default case - no additional environment variables needed
             pass
         elif provider_name == "s3":
-            env_vars.append({"name": "ENABLE_S3", "value": "s3"})
-            env_vars.append({"name": "S3_BUCKET_NAME", "value": request.getfixturevalue(argname="ci_s3_bucket_name")})
-            env_vars.append({
-                "name": "AWS_DEFAULT_REGION",
-                "value": request.getfixturevalue(argname="ci_s3_bucket_region"),
-            })
-            env_vars.append({
-                "name": "S3_ENDPOINT_URL",
-                "value": request.getfixturevalue(argname="ci_s3_bucket_endpoint"),
-            })
-            env_vars.append({
-                "name": "AWS_ACCESS_KEY_ID",
-                "valueFrom": {"secretKeyRef": {"name": "ogx-distribution-secret", "key": "aws-access-key-id"}},
-            })
-            env_vars.append({
-                "name": "AWS_SECRET_ACCESS_KEY",
-                "valueFrom": {"secretKeyRef": {"name": "ogx-distribution-secret", "key": "aws-secret-access-key"}},
-            })
-            env_vars.append({"name": "S3_AUTO_CREATE_BUCKET", "value": S3_AUTO_CREATE_BUCKET})
+            env_vars.extend((
+                {"name": "ENABLE_S3", "value": "s3"},
+                {"name": "S3_BUCKET_NAME", "value": request.getfixturevalue(argname="ci_s3_bucket_name")},
+                {"name": "AWS_DEFAULT_REGION", "value": request.getfixturevalue(argname="ci_s3_bucket_region")},
+                {"name": "S3_ENDPOINT_URL", "value": request.getfixturevalue(argname="ci_s3_bucket_endpoint")},
+                {
+                    "name": "AWS_ACCESS_KEY_ID",
+                    "valueFrom": {"secretKeyRef": {"name": "ogx-distribution-secret", "key": "aws-access-key-id"}},
+                },
+                {
+                    "name": "AWS_SECRET_ACCESS_KEY",
+                    "valueFrom": {"secretKeyRef": {"name": "ogx-distribution-secret", "key": "aws-secret-access-key"}},
+                },
+                {"name": "S3_AUTO_CREATE_BUCKET", "value": S3_AUTO_CREATE_BUCKET},
+            ))
 
         else:
             raise ValueError(f"Unsupported files provider: {provider_name}")

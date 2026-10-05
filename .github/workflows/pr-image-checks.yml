@@ -1,0 +1,109 @@
+name: PR Container Image Checks
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - 'tests/**/*.py'
+      - 'utilities/**/*.py'
+      - 'scripts/check_stray_images.py'
+      - 'scripts/check_image_digests.py'
+      - 'scripts/generate_image_manifest.py'
+
+permissions:
+  contents: read
+
+jobs:
+  check-images:
+    runs-on: ubuntu-latest
+
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+
+    env:
+      DOCS_IMG001: "https://github.com/opendatahub-io/opendatahub-tests/blob/main/docs/IMAGE_CHECK_RULES.md#img001-stray-image"
+      DOCS_IMG002: "https://github.com/opendatahub-io/opendatahub-tests/blob/main/docs/IMAGE_CHECK_RULES.md#img002-missing-digest"
+      DOCS_IMG003: "https://github.com/opendatahub-io/opendatahub-tests/blob/main/docs/IMAGE_CHECK_RULES.md#img003-dockerhub-image"
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Check for stray images
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch origin "$BASE_REF"
+          python scripts/check_stray_images.py \
+            --diff-base "origin/$BASE_REF" --json > stray-findings.json 2>stderr.log || true
+          if [ -s stderr.log ]; then
+            cat stderr.log >&2
+          fi
+          jq empty stray-findings.json 2>/dev/null || echo '[]' > stray-findings.json
+
+          count=$(jq length stray-findings.json)
+          if [ "$count" -eq 0 ]; then
+            echo "No stray images found."
+            exit 0
+          fi
+
+          echo "Found $count stray container image(s):"
+          echo ""
+          jq -r --arg docs "$DOCS_IMG001" '
+            .[] |
+            (if .component == "utilities" then "utilities/image_constants.py"
+             else "tests/\(.component)/image_constants.py" end) as $target |
+            "::warning file=\(.file),line=\(.line)::" +
+            "[IMG001] Stray container image not in constants class.%0A%0A" +
+            "Image: \(.image)%0A%0A" +
+            "Fix: Move to \($target)%0A" +
+            "For shared images used across components, use utilities/image_constants.py instead.%0A" +
+            "To suppress, add # noqa: IMG001 to the line.%0A%0A" +
+            "Docs: \($docs)"
+          ' stray-findings.json
+
+      - name: Check image digests and registries
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          python scripts/check_image_digests.py \
+            --diff-base "origin/$BASE_REF" --json > digest-findings.json || true
+
+          error_count=$(jq '[.[] | select(.severity == "error")] | length' digest-findings.json)
+          warn_count=$(jq '[.[] | select(.severity == "warning")] | length' digest-findings.json)
+
+          if [ "$error_count" -eq 0 ] && [ "$warn_count" -eq 0 ]; then
+            echo "All registered images use digest references and approved registries."
+            exit 0
+          fi
+
+          jq -r --arg docs "$DOCS_IMG002" '
+            .[] | select(.severity == "error") |
+            "::error file=\(.file),line=\(.line)::" +
+            "[IMG002] Image uses tag reference instead of digest pin.%0A%0A" +
+            "Attribute: \(.attribute)%0A" +
+            "Image: \(.image)%0A%0A" +
+            "Fix: Replace :tag with @sha256:<digest>. Get the digest with:%0A" +
+            "  skopeo inspect docker://<image>:<tag> | jq -r .Digest%0A%0A" +
+            "To suppress, add # noqa: IMG002 to the line.%0A%0A" +
+            "Docs: \($docs)"
+          ' digest-findings.json
+
+          jq -r --arg docs "$DOCS_IMG003" '
+            .[] | select(.severity == "warning") |
+            "::warning file=\(.file),line=\(.line)::" +
+            "[IMG003] Image sourced from DockerHub (pull rate limits apply).%0A%0A" +
+            "Image: \(.image)%0A%0A" +
+            "Fix: Use an equivalent image from quay.io or registry.redhat.io.%0A" +
+            "To suppress, add # noqa: IMG003 to the line.%0A%0A" +
+            "Docs: \($docs)"
+          ' digest-findings.json
+
+          if [ "$error_count" -gt 0 ]; then
+            echo ""
+            echo "::error::$error_count image(s) missing digest pins. PR blocked until fixed or suppressed."
+            exit 1
+          fi

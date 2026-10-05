@@ -1,15 +1,16 @@
 approvers:
   - dbasunag
   - fege
-  - jgarciao
   - lugi0
   - mwaykole
+  - sheltoncyril
 reviewers:
   - dbasunag
   - fege
-  - jgarciao
   - lugi0
   - mwaykole
+  - sheltoncyril
 emeritus_approvers:
   - rnetser  # 2025-05-01
   - adolfo-ab  # 2025-11-28
+  - jgarciao # 2026-07-09

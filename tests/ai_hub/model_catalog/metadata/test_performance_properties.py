@@ -16,24 +16,76 @@ pytestmark = [
 ]
 
 MODELS_WITH_PERFORMANCE_DATA: list[str] = [
+    "Apertus-8B-Instruct-2509-FP8-dynamic",
+    "DeepSeek-R1-0528-quantized.w4a16",
+    "Devstral-Small-2-24B-Instruct-2512",
+    "Kimi-K2-Instruct-quantized.w4a16",
+    "Llama-3.1-8B-Instruct",
+    "Llama-3.1-Nemotron-70B-Instruct-HF-FP8-dynamic",
+    "Llama-3.1-Nemotron-70B-Instruct-HF",
+    "Llama-3.3-70B-Instruct-FP8-dynamic",
+    "Llama-3.3-70B-Instruct-quantized.w4a16",
+    "Llama-3.3-70B-Instruct-quantized.w8a8",
+    "Llama-3.3-70B-Instruct",
+    "Llama-4-Maverick-17B-128E-Instruct-FP8",
+    "Llama-4-Maverick-17B-128E-Instruct",
+    "Llama-4-Scout-17B-16E-Instruct-FP8-dynamic",
+    "Llama-4-Scout-17B-16E-Instruct-quantized.w4a16",
+    "Llama-4-Scout-17B-16E-Instruct",
+    "Meta-Llama-3.1-8B-Instruct-FP8-dynamic",
     "MiniMax-M2.5",
     "Ministral-3-14B-Instruct-2512",
+    "Ministral-3-3B-Instruct-2512",
+    "Mistral-Large-3-675B-Instruct-2512-NVFP4",
+    "Mistral-Large-3-675B-Instruct-2512",
+    "Mistral-Small-24B-Instruct-2501",
+    "Mistral-Small-3.1-24B-Instruct-2503-FP8-dynamic",
+    "Mistral-Small-3.1-24B-Instruct-2503-quantized.w4a16",
+    "Mistral-Small-3.1-24B-Instruct-2503-quantized.w8a8",
+    "Mistral-Small-3.1-24B-Instruct-2503",
+    "Mixtral-8x7B-Instruct-v0.1",
+    "NVIDIA-Nemotron-3-Nano-30B-A3B-FP8",
+    "NVIDIA-Nemotron-3-Super-120B-A12B-BF16",
+    "NVIDIA-Nemotron-3-Super-120B-A12B-FP8",
+    "NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4",
+    "NVIDIA-Nemotron-Nano-9B-v2-FP8-dynamic",
     "Phi-4-mini-instruct-FP8-dynamic",
     "Phi-4-reasoning-FP8-dynamic",
+    "Qwen2.5-7B-Instruct-FP8-dynamic",
+    "Qwen2.5-7B-Instruct-quantized.w4a16",
+    "Qwen2.5-7B-Instruct-quantized.w8a8",
+    "Qwen2.5-7B-Instruct",
+    "Qwen3-8B-FP8-dynamic",
+    "Qwen3-Coder-480B-A35B-Instruct-FP8",
     "Qwen3-Coder-Next-NVFP4",
     "Qwen3-Next-80B-A3B-Instruct-quantized.w4a16",
     "Qwen3-VL-235B-A22B-Instruct-NVFP4",
     "Qwen3.5-122B-A10B-FP8-dynamic",
     "Qwen3.5-35B-A3B-FP8-dynamic",
     "Qwen3.5-397B-A17B-FP8-dynamic",
+    "gemma-3n-E4B-it-FP8-dynamic",
+    "gpt-oss-120b-essential",
+    "gpt-oss-120b",
+    "gpt-oss-20b-essential",
+    "gpt-oss-20b",
+    "granite-3.1-8b-instruct-FP8-dynamic",
+    "granite-3.1-8b-instruct-quantized.w4a16",
+    "granite-3.1-8b-instruct",
     "granite-4.0-h-small-FP8-dynamic",
+    "granite-4.0-h-tiny-FP8-dynamic",
+    "phi-4-FP8-dynamic",
+    "phi-4-quantized.w4a16",
+    "phi-4-quantized.w8a8",
+    "phi-4",
+    "sarvam-105b-FP8-dynamic",
+    "sarvam-30b-FP8-dynamic",
 ]
 
 COLD_START_REQUIRED_FIELDS: list[str] = [
     "cold_start_time_to_load_seconds",
     "runtime_command",
-    "gpu_type",
-    "gpu_count",
+    "hardware_type",
+    "hardware_count",
 ]
 
 MODEL_LEVEL_PERFORMANCE_QUERY: str = """
@@ -102,14 +154,14 @@ class TestModelPerformanceProperties:
         """
         Given a model with cold-start performance data
         When performance artifacts are queried via the catalog API
-        Then artifacts with performance_sub_type=cold-start contain
-            cold_start_time_to_load_seconds, runtime_command, gpu_type, and gpu_count
+        Then artifacts containing cold_start_time_to_load_seconds also contain
+            runtime_command, hardware_type, and hardware_count
         """
         model_name = validated_model["name"]
         cold_start_artifacts = [
             artifact
             for artifact in performance_artifacts
-            if artifact.get("customProperties", {}).get("performance_sub_type", {}).get("string_value") == "cold-start"
+            if "cold_start_time_to_load_seconds" in artifact.get("customProperties", {})
         ]
         assert cold_start_artifacts, f"No cold-start artifacts found for '{model_name}'"
 

@@ -21,6 +21,7 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.job import Job
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
+from ocp_resources.resource import get_client
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
@@ -31,6 +32,7 @@ from pyhelper_utils.shell import run_command
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutSampler
 
+from tests.ai_hub.constants import SeaweedFs
 from tests.ai_hub.model_registry.async_job.constants import (
     ASYNC_UPLOAD_JOB_NAME,
     MODEL_SYNC_CONFIG,
@@ -58,17 +60,15 @@ from tests.ai_hub.model_registry.python_client.signing.utils import (
     get_organization_config,
     get_root_checksum,
     get_tas_service_urls,
-    run_minio_uploader_pod,
+    run_seaweedfs_uploader_pod,
 )
 from tests.ai_hub.utils import get_latest_job_pod
 from utilities.constants import (
     OPENSHIFT_OPERATORS,
     ApiGroups,
     Labels,
-    MinIo,
     ModelCarImage,
     OCIRegistry,
-    Timeout,
 )
 from utilities.general import b64_encoded_string, get_s3_secret_dict
 from utilities.infra import get_openshift_token, is_managed_cluster
@@ -79,15 +79,24 @@ from utilities.resources.securesign import Securesign
 LOGGER = structlog.get_logger(name=__name__)
 
 
-@pytest.fixture(scope="package")
-def skip_if_not_managed_cluster(admin_client: DynamicClient) -> None:
-    """
-    Skip tests if the cluster is not managed.
-    """
-    if not is_managed_cluster(admin_client):
-        pytest.skip("Skipping tests - cluster is not managed")
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Deselect all signing tests when the cluster is not managed."""
+    if config.getoption("--collect-only", default=False) or config.getoption("--setup-plan", default=False):
+        return
 
-    LOGGER.info("Cluster is managed - proceeding with tests")
+    signing_package_path = os.path.dirname(__file__)
+    signing_items = [item for item in items if item.fspath.strpath.startswith(signing_package_path)]
+    if not signing_items:
+        return
+
+    client = get_client()
+    if is_managed_cluster(client=client):
+        return
+
+    LOGGER.info("Cluster is not managed — deselecting all signing tests")
+    remaining = [item for item in items if item not in signing_items]
+    config.hook.pytest_deselected(items=signing_items)
+    items[:] = remaining
 
 
 @pytest.fixture(scope="package")
@@ -151,7 +160,7 @@ def installed_tas_operator(admin_client: DynamicClient) -> Generator[None, Any]:
             channel="stable",
             source=operator_source,
             operator_namespace=operator_ns.name,
-            timeout=Timeout.TIMEOUT_10MIN,
+            timeout=600,
             install_plan_approval="Manual",  # TAS operator requires manual approval
         )
 
@@ -360,7 +369,7 @@ def oci_registry_pod(
 ) -> Generator[Pod, Any]:
     """Create a simple OCI registry (Zot) pod with local emptyDir storage.
 
-    Unlike oci_registry_pod_with_minio, this does not require MinIO — data is
+    Unlike the S3-backed OCI registry fixture, this does not require object storage — data is
     stored in an emptyDir volume, which is sufficient for signing test scenarios.
 
     Args:
@@ -564,6 +573,10 @@ def copied_model_to_oci_registry(
         command=[
             "skopeo",
             "copy",
+            "--override-os",
+            "linux",
+            "--override-arch",
+            "amd64",
             "--dest-tls-verify=false",
             f"docker://{source_image}",
             f"docker://{dest_ref}",
@@ -615,22 +628,21 @@ def signed_model(signer, downloaded_model_dir) -> Path:
 def signing_s3_secret(
     admin_client: DynamicClient,
     service_account: ServiceAccount,
-    minio_service: Service,
+    seaweedfs_service: Service,
 ) -> Generator[Secret, Any, Any]:
     """Create S3 data connection for signing async upload jobs."""
-    minio_endpoint = (
-        f"http://{minio_service.name}.{minio_service.namespace}.svc.cluster.local:{MinIo.Metadata.DEFAULT_PORT}"
-    )
+    s3_host = f"{seaweedfs_service.name}.{seaweedfs_service.namespace}.svc.cluster.local"
+    s3_endpoint = f"http://{s3_host}:{SeaweedFs.Metadata.DEFAULT_PORT}"
 
     with Secret(
         client=admin_client,
         name=f"signing-s3-{shortuuid.uuid().lower()}",
         namespace=service_account.namespace,
         data_dict=get_s3_secret_dict(
-            aws_access_key=MinIo.Credentials.ACCESS_KEY_VALUE,
-            aws_secret_access_key=MinIo.Credentials.SECRET_KEY_VALUE,
-            aws_s3_bucket=MinIo.Buckets.MODELMESH_EXAMPLE_MODELS,
-            aws_s3_endpoint=minio_endpoint,
+            aws_access_key=SeaweedFs.Credentials.ACCESS_KEY_VALUE,
+            aws_secret_access_key=SeaweedFs.Credentials.SECRET_KEY_VALUE,
+            aws_s3_bucket=SeaweedFs.Buckets.MODELMESH_EXAMPLE_MODELS,
+            aws_s3_endpoint=s3_endpoint,
             aws_default_region="us-east-1",
         ),
         label={
@@ -705,24 +717,22 @@ def signing_registered_model(
 
 
 @pytest.fixture(scope="class")
-def upload_unsigned_model_to_minio(
+def upload_unsigned_model_to_s3(
     admin_client: DynamicClient,
     model_registry_namespace: str,
-    minio_service: Service,
+    seaweedfs_service: Service,
 ) -> None:
-    """Upload an unsigned model file to MinIO for native job signing test."""
+    """Upload an unsigned model file to SeaweedFS for native job signing test."""
     source_key = MODEL_SYNC_CONFIG["SOURCE_AWS_KEY"]
-    bucket = MinIo.Buckets.MODELMESH_EXAMPLE_MODELS
 
-    run_minio_uploader_pod(
+    run_seaweedfs_uploader_pod(
         admin_client=admin_client,
         namespace=model_registry_namespace,
-        minio_service=minio_service,
+        s3_service=seaweedfs_service,
         pod_name="unsigned-model-uploader",
-        mc_commands=(
+        upload_commands=(
             f"echo 'test model content for native signing' > /work/model.onnx && "
-            f"mc cp /work/model.onnx testminio/{bucket}/{source_key}/model.onnx && "
-            f"mc ls testminio/{bucket}/{source_key}/ && "
+            f"/usr/bin/weed filer.copy /work/model.onnx $FILER_URL/{source_key}/ && "
             f"echo 'Unsigned model upload completed'"
         ),
     )
@@ -768,7 +778,7 @@ def native_signing_async_job(
     mr_access_role_binding: RoleBinding,
     async_upload_image: str,
     signing_registered_model: RegisteredModel,
-    upload_unsigned_model_to_minio: None,
+    upload_unsigned_model_to_s3: None,
     identity_token_secret: Secret,
     securesign_instance: Securesign,
     teardown_resources: bool,

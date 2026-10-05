@@ -12,6 +12,11 @@ class EstimatedPrefixCacheConfig(TinyLlamaS3GpuConfig):
     name = "llmisvc-estimated-prefix"
     replicas = 2
     min_gpus_per_node = 2
+
+    # 2 single-node replicas, both are InferencePool members
+    expected_vllm_pod_count = 2
+    expected_inference_pool_pod_count = 2
+
     block_size = 64
     hash_algo = "sha256"
     hash_seed = "42"
@@ -24,7 +29,10 @@ class EstimatedPrefixCacheConfig(TinyLlamaS3GpuConfig):
             {"name": "PYTHONHASHSEED", "value": cls.hash_seed},
             {
                 "name": "VLLM_ADDITIONAL_ARGS",
-                "value": f"--prefix-caching-hash-algo {cls.hash_algo} --block-size {cls.block_size}",
+                "value": (
+                    f"--prefix-caching-hash-algo {cls.hash_algo} --block-size {cls.block_size}"
+                    " --enable-auto-tool-choice --tool-call-parser hermes"
+                ),
             },
         ]
 

@@ -55,12 +55,13 @@ from utilities.constants import (
     OCIRegistry,
     Protocols,
     RuntimeTemplates,
-    Timeout,
 )
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.exceptions import ClusterLoginError
+from utilities.image_constants import SharedImages
 from utilities.infra import (
     create_ns,
+    download_helm_console_cli,
     download_oc_console_cli,
     get_cluster_authentication,
     get_openshift_token,
@@ -71,6 +72,7 @@ from utilities.infra import (
 from utilities.logger import RedactedString
 from utilities.mariadb_utils import wait_for_mariadb_operator_deployments
 from utilities.minio import create_minio_data_connection_secret
+from utilities.openshell_utils import get_cluster_apps_domain, wait_for_openshell_gateway_pod
 from utilities.operator_utils import get_cluster_service_version, get_csv_related_images
 from utilities.serving_runtime import get_runtime_image_from_template
 from utilities.user_utils import get_byoidc_issuer_url, get_oidc_tokens
@@ -79,7 +81,6 @@ LOGGER = structlog.get_logger(name=__name__)
 
 pytest_plugins = [
     "tests.fixtures.inference",
-    "tests.fixtures.guardrails",
     "tests.fixtures.trustyai",
     "tests.fixtures.vector_io",
     "tests.fixtures.files",
@@ -751,8 +752,6 @@ def junitxml_plugin(
 def cluster_sanity_scope_session(
     request: FixtureRequest,
     nodes: list[Node],
-    dsci_resource: DSCInitialization,
-    dsc_resource: DataScienceCluster,
     junitxml_plugin: Callable[[str, object], None],
 ) -> None:
     # Skip cluster sanity check when running tests that have cluster_health or operator_health markers
@@ -761,6 +760,8 @@ def cluster_sanity_scope_session(
         LOGGER.info("Skipping cluster sanity check because selected tests include cluster/operator/component health")
         return
 
+    dsci_resource: DSCInitialization = request.getfixturevalue(argname="dsci_resource")
+    dsc_resource: DataScienceCluster = request.getfixturevalue(argname="dsc_resource")
     verify_cluster_sanity(
         request=request,
         nodes=nodes,
@@ -827,16 +828,34 @@ def oc_binary_path(admin_client: DynamicClient, bin_directory: LocalPath) -> str
     return download_oc_console_cli(admin_client=admin_client, tmpdir=bin_directory)
 
 
+@pytest.fixture(scope="session")
+def helm_binary_path(admin_client: DynamicClient, bin_directory: LocalPath) -> str:
+    """Not part of `autouse_fixtures`; only downloaded lazily by tests that actually need helm."""
+    installed_helm_binary_path = os.getenv("HELM_BINARY_PATH")
+    if installed_helm_binary_path:
+        LOGGER.warning(f"Using previously installed: {installed_helm_binary_path}")
+        return installed_helm_binary_path
+
+    return download_helm_console_cli(admin_client=admin_client, tmpdir=bin_directory)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def autouse_fixtures(
+    request: FixtureRequest,
     admin_client: DynamicClient,
-    dsc_resource: DataScienceCluster,
     tests_tmp_dir: None,
     bin_directory_to_os_path: None,
     cluster_sanity_scope_session: None,
 ) -> None:
     """Fixture to control the order of execution of some of the fixtures"""
-    return
+    if request.session.items:
+        for item in request.session.items:
+            item_markers = {mark.name for mark in item.iter_markers()}
+            if "cluster_health" not in item_markers or item_markers & {"operator_health", "component_health"}:
+                break
+        else:
+            return
+    request.getfixturevalue(argname="dsc_resource")
 
 
 @pytest.fixture(scope="session")
@@ -854,7 +873,7 @@ def installed_mariadb_operator(admin_client: DynamicClient) -> Generator[None, A
             channel="alpha",
             source="community-operators",
             operator_namespace=operator_ns.name,
-            timeout=Timeout.TIMEOUT_15MIN,
+            timeout=900,
             install_plan_approval="Manual",
             starting_csv=f"{operator_name}.v25.8.2",
         )
@@ -900,11 +919,157 @@ def mariadb_operator_cr(
             mariadb_operator_cr = stack.enter_context(cm=MariadbOperator(kind_dict=mariadb_operator_cr_dict))
 
         mariadb_operator_cr.wait_for_condition(
-            condition="Deployed", status=mariadb_operator_cr.Condition.Status.TRUE, timeout=Timeout.TIMEOUT_10MIN
+            condition="Deployed", status=mariadb_operator_cr.Condition.Status.TRUE, timeout=600
         )
         wait_for_mariadb_operator_deployments(mariadb_operator=mariadb_operator_cr, client=admin_client)
 
         yield mariadb_operator_cr
+
+
+@pytest.fixture(scope="session")
+def installed_agent_sandbox_operator(admin_client: DynamicClient) -> Generator[None, Any, Any]:
+    operator_name = "agent-sandbox-operator"
+    agent_sandbox_subscription = Subscription(client=admin_client, namespace=OPENSHIFT_OPERATORS, name=operator_name)
+
+    installed_by_fixture = not agent_sandbox_subscription.exists
+    if installed_by_fixture:
+        install_operator(
+            admin_client=admin_client,
+            target_namespaces=[OPENSHIFT_OPERATORS],
+            name=operator_name,
+            channel="preview-0.9",
+            source="redhat-operators",
+            operator_namespace=OPENSHIFT_OPERATORS,
+            timeout=900,
+            install_plan_approval="Manual",
+        )
+
+    yield
+
+    if installed_by_fixture:
+        uninstall_operator(
+            admin_client=admin_client,
+            name=operator_name,
+            operator_namespace=OPENSHIFT_OPERATORS,
+            clean_up_namespace=False,
+        )
+
+
+OPENSHELL_GATEWAY_IMAGE_REPOSITORY_ENV_VAR = "OPENSHELL_GATEWAY_IMAGE_REPOSITORY"
+OPENSHELL_GATEWAY_IMAGE_DIGEST_ENV_VAR = "OPENSHELL_GATEWAY_IMAGE_DIGEST"
+OPENSHELL_SUPERVISOR_IMAGE_REPOSITORY_ENV_VAR = "OPENSHELL_SUPERVISOR_IMAGE_REPOSITORY"
+OPENSHELL_SUPERVISOR_IMAGE_DIGEST_ENV_VAR = "OPENSHELL_SUPERVISOR_IMAGE_DIGEST"
+
+
+@pytest.fixture(scope="session")
+def installed_openshell_release(
+    admin_client: DynamicClient,
+    helm_binary_path: str,
+    oc_binary_path: str,
+    installed_agent_sandbox_operator: None,
+) -> Generator[str, Any, Any]:
+    namespace = "openshell"
+    release_name = "openshell"
+
+    with Namespace(client=admin_client, name=namespace) as openshell_namespace:
+        run_command(
+            command=[
+                oc_binary_path,
+                "adm",
+                "policy",
+                "add-scc-to-user",
+                "privileged",
+                "-z",
+                "openshell-sandbox",
+                "-n",
+                openshell_namespace.name,
+            ]
+        )
+
+        try:
+            route_host = f"{release_name}-{namespace}.{get_cluster_apps_domain(admin_client=admin_client)}"
+
+            helm_set_args = [
+                "--set",
+                "podSecurityContext.fsGroup=null",
+                "--set",
+                "securityContext.runAsUser=null",
+                "--set",
+                "server.auth.allowUnauthenticatedUsers=true",
+                "--set",
+                f"pkiInitJob.serverDnsNames[0]={route_host}",
+            ]
+
+            if gateway_image_repository := os.getenv(OPENSHELL_GATEWAY_IMAGE_REPOSITORY_ENV_VAR):
+                helm_set_args += ["--set", f"image.repository={gateway_image_repository}"]
+            if gateway_image_digest := os.getenv(OPENSHELL_GATEWAY_IMAGE_DIGEST_ENV_VAR):
+                helm_set_args += ["--set", f"image.digest={gateway_image_digest}"]
+            if supervisor_image_repository := os.getenv(OPENSHELL_SUPERVISOR_IMAGE_REPOSITORY_ENV_VAR):
+                helm_set_args += ["--set", f"supervisor.image.repository={supervisor_image_repository}"]
+            if supervisor_image_digest := os.getenv(OPENSHELL_SUPERVISOR_IMAGE_DIGEST_ENV_VAR):
+                helm_set_args += ["--set", f"supervisor.image.digest={supervisor_image_digest}"]
+
+            run_command(
+                command=[
+                    helm_binary_path,
+                    "upgrade",
+                    "--install",
+                    release_name,
+                    SharedImages.OPENSHELL_HELM_CHART,
+                    "--version",
+                    "0.0.85",
+                    "--namespace",
+                    openshell_namespace.name,
+                    *helm_set_args,
+                ],
+                verify_stderr=False,
+            )
+
+            wait_for_openshell_gateway_pod(client=admin_client, namespace=openshell_namespace.name)
+
+            yield route_host
+        finally:
+            try:
+                run_command(
+                    command=[helm_binary_path, "uninstall", release_name, "--namespace", openshell_namespace.name],
+                    verify_stderr=False,
+                )
+            finally:
+                run_command(
+                    command=[
+                        oc_binary_path,
+                        "adm",
+                        "policy",
+                        "remove-scc-from-user",
+                        "privileged",
+                        "-z",
+                        "openshell-sandbox",
+                        "-n",
+                        openshell_namespace.name,
+                    ]
+                )
+
+
+@pytest.fixture(scope="class")
+def openshell_gateway_route(
+    admin_client: DynamicClient, installed_openshell_release: str
+) -> Generator[Route, Any, Any]:
+    route_host = installed_openshell_release
+    with Route(
+        client=admin_client,
+        kind_dict={
+            "apiVersion": "route.openshift.io/v1",
+            "kind": "Route",
+            "metadata": {"name": "openshell", "namespace": "openshell"},
+            "spec": {
+                "host": route_host,
+                "to": {"kind": "Service", "name": "openshell"},
+                "port": {"targetPort": 8080},
+                "tls": {"termination": "passthrough"},
+            },
+        },
+    ) as route:
+        yield route
 
 
 @pytest.fixture(scope="session")
@@ -926,7 +1091,7 @@ def gpu_count_on_cluster(nodes: list[Any]) -> int:
             if key in allowed_exact or any(key.startswith(p) for p in allowed_prefixes):
                 try:
                     total_gpus += int(val)
-                except ValueError, TypeError:
+                except (ValueError, TypeError):  # fmt: skip
                     LOGGER.debug(f"Skipping non-integer allocatable for {key} on {node.name}: {val!r}")
                     continue
     return total_gpus
@@ -950,15 +1115,92 @@ def oci_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, Any]
 
 
 @pytest.fixture(scope="class")
+def oci_registry_pod_with_s3(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    oci_namespace: Namespace,
+) -> Generator[Pod, Any, Any]:
+    fixture_config = getattr(request, "param", {})
+    s3_config = request.getfixturevalue(argname="s3_config")
+    s3_service = s3_config["service"]
+    pod_labels = {Labels.Openshift.APP: OCIRegistry.Metadata.NAME}
+
+    if labels := fixture_config.get("labels"):
+        pod_labels.update(labels)
+
+    s3_fqdn = f"{s3_service.name}.{s3_service.namespace}.svc.cluster.local"
+    s3_endpoint = f"{s3_fqdn}:{s3_config['port']}"
+
+    with Pod(
+        client=admin_client,
+        name=OCIRegistry.Metadata.NAME,
+        namespace=oci_namespace.name,
+        containers=[
+            {
+                "args": fixture_config.get("args"),
+                "env": [
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_NAME", "value": OCIRegistry.Storage.STORAGE_DRIVER},
+                    {
+                        "name": "ZOT_STORAGE_STORAGEDRIVER_ROOTDIRECTORY",
+                        "value": OCIRegistry.Storage.STORAGE_DRIVER_ROOT_DIRECTORY,
+                    },
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_BUCKET", "value": s3_config["bucket"]},
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_REGION", "value": OCIRegistry.Storage.STORAGE_DRIVER_REGION},
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_REGIONENDPOINT", "value": f"http://{s3_endpoint}"},
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_ACCESSKEY", "value": s3_config["access_key"]},
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_SECRETKEY", "value": s3_config["secret_key"]},
+                    {
+                        "name": "ZOT_STORAGE_STORAGEDRIVER_SECURE",
+                        "value": OCIRegistry.Storage.STORAGE_STORAGEDRIVER_SECURE,
+                    },
+                    {
+                        "name": "ZOT_STORAGE_STORAGEDRIVER_FORCEPATHSTYLE",
+                        "value": OCIRegistry.Storage.STORAGE_STORAGEDRIVER_FORCEPATHSTYLE,
+                    },
+                    {"name": "ZOT_HTTP_ADDRESS", "value": OCIRegistry.Metadata.DEFAULT_HTTP_ADDRESS},
+                    {"name": "ZOT_HTTP_PORT", "value": str(OCIRegistry.Metadata.DEFAULT_PORT)},
+                    {"name": "ZOT_LOG_LEVEL", "value": "info"},
+                ],
+                "image": fixture_config.get("image", OCIRegistry.PodConfig.REGISTRY_IMAGE),
+                "name": OCIRegistry.Metadata.NAME,
+                "securityContext": {
+                    "allowPrivilegeEscalation": False,
+                    "capabilities": {"drop": ["ALL"]},
+                    "runAsNonRoot": True,
+                    "seccompProfile": {"type": "RuntimeDefault"},
+                },
+                "volumeMounts": [
+                    {
+                        "name": "zot-data",
+                        "mountPath": "/var/lib/registry",
+                    }
+                ],
+            }
+        ],
+        volumes=[
+            {
+                "name": "zot-data",
+                "emptyDir": {},
+            }
+        ],
+        label=pod_labels,
+        annotations=fixture_config.get("annotations"),
+    ) as oci_pod:
+        oci_pod.wait_for_condition(condition="Ready", status="True")
+        yield oci_pod
+
+
+@pytest.fixture(scope="class")
 def oci_registry_pod_with_minio(
     request: FixtureRequest,
     admin_client: DynamicClient,
     oci_namespace: Namespace,
     minio_service: Service,
 ) -> Generator[Pod, Any, Any]:
+    fixture_config = getattr(request, "param", {})
     pod_labels = {Labels.Openshift.APP: OCIRegistry.Metadata.NAME}
 
-    if labels := request.param.get("labels"):
+    if labels := fixture_config.get("labels"):
         pod_labels.update(labels)
 
     minio_fqdn = f"{minio_service.name}.{minio_service.namespace}.svc.cluster.local"
@@ -970,7 +1212,7 @@ def oci_registry_pod_with_minio(
         namespace=oci_namespace.name,
         containers=[
             {
-                "args": request.param.get("args"),
+                "args": fixture_config.get("args"),
                 "env": [
                     {"name": "ZOT_STORAGE_STORAGEDRIVER_NAME", "value": OCIRegistry.Storage.STORAGE_DRIVER},
                     {
@@ -994,7 +1236,7 @@ def oci_registry_pod_with_minio(
                     {"name": "ZOT_HTTP_PORT", "value": str(OCIRegistry.Metadata.DEFAULT_PORT)},
                     {"name": "ZOT_LOG_LEVEL", "value": "info"},
                 ],
-                "image": request.param.get("image", OCIRegistry.PodConfig.REGISTRY_IMAGE),
+                "image": fixture_config.get("image", OCIRegistry.PodConfig.REGISTRY_IMAGE),
                 "name": OCIRegistry.Metadata.NAME,
                 "securityContext": {
                     "allowPrivilegeEscalation": False,
@@ -1017,7 +1259,7 @@ def oci_registry_pod_with_minio(
             }
         ],
         label=pod_labels,
-        annotations=request.param.get("annotations"),
+        annotations=fixture_config.get("annotations"),
     ) as oci_pod:
         oci_pod.wait_for_condition(condition="Ready", status="True")
         yield oci_pod
@@ -1075,6 +1317,8 @@ def skip_if_no_supported_accelerator_type(supported_accelerator_type: str | None
         AcceleratorType.NVIDIA,
         AcceleratorType.AMD,
         AcceleratorType.GAUDI,
+        AcceleratorType.SPYRE,
+        AcceleratorType.SPYRE_PPC64LE,
     }
 
     if not supported_accelerator_type or supported_accelerator_type.lower() not in supported_gpu_accelerators:

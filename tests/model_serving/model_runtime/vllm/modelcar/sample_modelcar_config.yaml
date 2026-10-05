@@ -12,6 +12,10 @@ model-car:
   - name: whisper-large-v3
     image: oci://registry.redhat.io/rhelai1/modelcar-whisper-large-v2-w4a16-g128:1.5
     model_output_type: audio
+    # Encoder-decoder (speech) architecture is unsupported by the vllm_gaudi plugin:
+    # get_kv_cache_spec() raises NotImplementedError on HPU (engine core dies at init).
+    unsupported_accelerators:
+      - gaudi
     serving_arguments:
       args:
         - "--uvicorn-log-level=info"
@@ -22,6 +26,18 @@ model-car:
 
   - name: embedding-gemma
     image: oci://registry.redhat.io/rhelai1/modelcar-embeddinggemma-300m:1.5
+    model_output_type: embedding
+    # Gemma3 pooling path is unsupported by the vllm_gaudi plugin:
+    # Gemma3Model.forward() signature mismatch on HPU (missing intermediate_tensors) -> engine dead.
+    unsupported_accelerators:
+      - gaudi
+    serving_arguments:
+      args:
+        - "--uvicorn-log-level=info"
+        - "--trust-remote-code"
+
+  - name: nomic-embed-text-v1-5
+    image: oci://registry.redhat.io/rhelai1/modelcar-nomic-embed-text-v1-5:1.5
     model_output_type: embedding
     serving_arguments:
       args:

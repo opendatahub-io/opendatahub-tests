@@ -9,7 +9,6 @@ from ocp_resources.pod import Pod
 from timeout_sampler import retry
 
 from tests.model_serving.model_server.kserve.multi_node.constants import HEAD_POD_ROLE, SUPPORTED_ROLES, WORKER_POD_ROLE
-from utilities.constants import Timeout
 from utilities.infra import get_pods_by_isvc_label
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -97,7 +96,7 @@ def delete_multi_node_pod_by_role(client: DynamicClient, isvc: InferenceService,
             pod.delete(wait=True)
 
 
-@retry(wait_timeout=Timeout.TIMEOUT_2MIN, sleep=5)
+@retry(wait_timeout=120, sleep=5)
 def get_pods_by_isvc_generation(client: DynamicClient, isvc: InferenceService) -> list[Pod]:
     """
     Args:

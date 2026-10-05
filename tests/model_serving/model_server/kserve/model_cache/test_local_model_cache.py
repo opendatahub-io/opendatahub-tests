@@ -18,7 +18,7 @@ from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 pytestmark = [
     pytest.mark.smoke,
     pytest.mark.rawdeployment,
-    pytest.mark.usefixtures("valid_aws_config", "skip_if_disconnected"),
+    pytest.mark.usefixtures("valid_aws_config"),
 ]
 
 

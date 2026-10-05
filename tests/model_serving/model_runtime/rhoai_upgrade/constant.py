@@ -1,11 +1,11 @@
 from typing import Any
 
+from tests.model_serving.image_constants import ModelServingImages
+
 SERVING_RUNTIME_TEMPLATE_NAME: str = "kserve-ovms-serving-runtime-template"
 SERVING_RUNTIME_INSTANCE_NAME: str = "kserve-ovms-serving-runtime-instance"
 
-OVMS_SERVING_RUNTIME_IMAGE: str = (
-    "quay.io/modh/openvino_model_server@sha256:53b7fcf95de9b81e4c8652d0bf4e84e22d5b696827a5d951d863420c68b9cfe8"
-)
+OVMS_SERVING_RUNTIME_IMAGE: str = ModelServingImages.OVMS_SERVING_RUNTIME
 
 OVMS_TEMPLATE_LABELS: dict[str, str] = {
     "opendatahub.io/dashboard": "true",

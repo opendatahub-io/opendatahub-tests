@@ -54,13 +54,16 @@ uv run pytest --post-upgrade tests/workbenches/notebook_images/upgrade/
 
 # Target a single IDE
 uv run pytest --post-upgrade tests/workbenches/notebook_images/upgrade/test_upgrade_jupyterlab.py
+
+# Target Jupyter workbenches with Elyra
+uv run pytest tests/workbenches/notebook_images/upgrade/test_upgrade_jupyter_elyra.py
 ```
 
 Override ImageStream tag selection when needed:
 
 ```bash
-uv run pytest --pre-upgrade tests/workbenches/notebook_images/upgrade/ --tc workbench_image_tag=3.4
-uv run pytest --pre-upgrade tests/workbenches/notebook_images/upgrade/ --tc workbench_upgrade_track=eus
+uv run pytest --pre-upgrade tests/workbenches/notebook_images/upgrade/ --tc workbench_image_tag:3.4
+uv run pytest --pre-upgrade tests/workbenches/notebook_images/upgrade/ --tc workbench_upgrade_track:eus
 ```
 
 See [tests/workbenches/notebook_images/README.md](../tests/workbenches/notebook_images/README.md) for coverage details.
