@@ -1189,7 +1189,7 @@ def llmisvc_upgrade_no_auth(
         llmisvc.clean_up()
     else:
         with _create_llmisvc_from_config(
-            config_cls=config_cls,
+            config_cls=config_cls.build(client=admin_client),
             namespace=llmisvc_no_auth_namespace.name,
             client=admin_client,
             teardown=teardown_resources,
@@ -1223,7 +1223,7 @@ def llmisvc_upgrade_auth_and_kueue(
             llmisvc.clean_up()
     else:
         with _create_llmisvc_from_config(
-            config_cls=config_cls,
+            config_cls=config_cls.build(client=admin_client),
             namespace=llmisvc_auth_and_kueue_namespace.name,
             client=admin_client,
             teardown=teardown_resources,
