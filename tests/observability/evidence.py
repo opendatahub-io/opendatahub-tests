@@ -88,11 +88,6 @@ def write_preflight_evidence(destination: str | Path, report: dict[str, object])
     return path
 
 
-def sanitize_evidence_value(value: Any) -> Any:
-    """Return a value with secret-bearing keys and token-like strings redacted."""
-    return _sanitize(value=value)
-
-
 def write_text_atomically(*, path: Path, content: str) -> None:
     """Write text through a sibling temporary file so readers never see a partial artifact."""
     path.parent.mkdir(parents=True, exist_ok=True)
