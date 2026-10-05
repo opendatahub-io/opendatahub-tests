@@ -1,5 +1,9 @@
+from typing import Any
+
 import pytest
 
+from tests.observability.contract import load_release_contract
+from tests.observability.handoff import dashboard_handoff_preflight_check, load_dashboard_metadata
 from tests.observability.preflight import (
     PreflightCheck,
     PreflightDisposition,
@@ -65,3 +69,59 @@ def test_preflight_marks_unreviewed_authorization_as_product_failure() -> None:
 
     assert report.disposition is PreflightDisposition.FAILED
     assert report.failed == ("authorization-contract:namespace-proxy",)
+
+
+def test_preflight_marks_conflicting_authorization_handoff_as_product_failure() -> None:
+    """Given conflicting reviewed authorization responses, fail handoff preflight before resource creation."""
+    contract = load_release_contract(source=_conflicting_contract())
+    metadata = load_dashboard_metadata(source=_conflicting_metadata())
+
+    handoff_check = dashboard_handoff_preflight_check(contract=contract, metadata=metadata)
+    report = evaluate_preflight(checks=[handoff_check])
+
+    assert handoff_check.present is False
+    assert "disagree" in handoff_check.detail
+    assert "dashboard-handoff-configuration" in report.failed
+
+
+def _conflicting_contract() -> dict[str, Any]:
+    defaults: dict[str, Any] = {
+        "dashboard": "cluster",
+        "datasource": "cluster-thanos",
+        "route": "/api/v1/query",
+        "promql": "up",
+        "expected_http_status": [200],
+        "expected_prometheus_status": "success",
+        "expected_result_type": "vector",
+        "minimum_series": 0,
+        "required_labels": [],
+        "empty_result_valid": True,
+        "empty_ui_state": "Zero",
+        "capability": "shipped",
+    }
+    records = [
+        {**defaults, "id": "first", "panel": "first", "authorization_response": "403"},
+        {**defaults, "id": "second", "panel": "second", "authorization_response": "404"},
+    ]
+    return {
+        "contract_version": "1.0.0",
+        "release_stage": "GA",
+        "product_versions": {"dashboard": "2.0.0"},
+        "records": records,
+    }
+
+
+def _conflicting_metadata() -> dict[str, Any]:
+    return {
+        "schema_version": "1.0.0",
+        "dashboards": [
+            {
+                "name": "cluster",
+                "display_name": "Cluster",
+                "panels": [
+                    {"id": "first", "display_name": "First"},
+                    {"id": "second", "display_name": "Second"},
+                ],
+            }
+        ],
+    }

@@ -16,6 +16,7 @@ from tests.observability.contract import ContractRecord, ReleaseContract
 from tests.observability.evidence import sanitize_evidence_value, write_text_atomically
 from tests.observability.fixtures import NamespacePair, source_metric_available
 from tests.observability.personas import Persona
+from tests.observability.preflight import PreflightCheck
 from tests.observability.query import RawQueryResult
 
 HANDOFF_SCHEMA_VERSION = "1.0.0"
@@ -482,7 +483,26 @@ def validate_dashboard_handoff_configuration(
     """Validate static handoff inputs before any cluster resources are created."""
     records_by_panel = validate_dashboard_metadata_mappings(contract=contract, metadata=metadata)
     _required_product_version(contract=contract, name="dashboard")
+    _authorization_outcome(contract=contract)
     return records_by_panel
+
+
+def dashboard_handoff_preflight_check(
+    *,
+    contract: ReleaseContract,
+    metadata: DashboardMetadataDocument,
+) -> PreflightCheck:
+    """Return the product preflight check for static dashboard handoff configuration."""
+    try:
+        validate_dashboard_handoff_configuration(contract=contract, metadata=metadata)
+    except DashboardHandoffValidationError as error:
+        return PreflightCheck(
+            name="dashboard-handoff-configuration",
+            present=False,
+            category="product",
+            detail=str(error),
+        )
+    return PreflightCheck(name="dashboard-handoff-configuration", present=True, category="product")
 
 
 def validate_dashboard_metadata_mappings(

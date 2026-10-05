@@ -28,9 +28,9 @@ from tests.observability.handoff import (
     DashboardHandoffValidationError,
     DashboardMetadataDocument,
     build_dashboard_handoff,
+    dashboard_handoff_preflight_check,
     load_dashboard_metadata,
     runtime_from_fixtures,
-    validate_dashboard_handoff_configuration,
     validate_persona_handoff_configuration,
     write_dashboard_handoff,
 )
@@ -608,16 +608,10 @@ def _preflight_checks(
         )
         for name, version in release_contract.product_versions.items()
     ]
-    try:
-        validate_dashboard_handoff_configuration(contract=release_contract, metadata=dashboard_metadata)
-        handoff_check = PreflightCheck(name="dashboard-handoff-configuration", present=True, category="product")
-    except DashboardHandoffValidationError as error:
-        handoff_check = PreflightCheck(
-            name="dashboard-handoff-configuration",
-            present=False,
-            category="product",
-            detail=str(error),
-        )
+    handoff_check = dashboard_handoff_preflight_check(
+        contract=release_contract,
+        metadata=dashboard_metadata,
+    )
     configured = os.environ.get("RHOAI_OBSERVABILITY_PREFLIGHT")
     if not configured:
         return [
