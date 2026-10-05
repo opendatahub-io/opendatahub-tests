@@ -24,8 +24,7 @@ NATIVE_SIGNING_REPO = "native-signing-test/signed-model"
 NATIVE_SIGNING_TAG = "latest"
 MODEL_CONTENT = b"test model content for async signing pipeline validation"
 IDENTITY_TOKEN_MOUNT_PATH = "/var/run/secrets/signing"
-MINIO_MC_IMAGE = "quay.io/minio/mc@sha256:470f5546b596e16c7816b9c3fa7a78ce4076bb73c2c73f7faeec0c8043923123"
-MINIO_UPLOADER_SECURITY_CONTEXT = {
+UPLOADER_SECURITY_CONTEXT = {
     "allowPrivilegeEscalation": False,
     "capabilities": {"drop": ["ALL"]},
     "runAsNonRoot": True,

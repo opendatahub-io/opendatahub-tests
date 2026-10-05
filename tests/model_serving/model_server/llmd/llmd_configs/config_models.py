@@ -66,6 +66,16 @@ class TinyLlamaS3GpuConfig(GpuConfig):
         ]
 
 
+class TinyLlamaS3GpuNoSchedulerConfig(TinyLlamaS3GpuConfig):
+    """TinyLlama via S3 on GPU without an LLM-d scheduler."""
+
+    name = "llm-gpu-no-scheduler"
+
+    @classmethod
+    def router_config(cls):
+        return {"route": {}}
+
+
 class TinyLlamaOciGpuAuthConfig(TinyLlamaOciGpuConfig):
     """TinyLlama via OCI, GPU inference with auth enabled."""
 
