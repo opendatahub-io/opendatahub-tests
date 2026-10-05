@@ -23,17 +23,6 @@ from tests.observability.fixtures import (
     resource_evidence,
     wait_for_source_metric,
 )
-from tests.observability.handoff import (
-    HANDOFF_SCHEMA_VERSION,
-    DashboardHandoffValidationError,
-    DashboardMetadataDocument,
-    build_dashboard_handoff,
-    dashboard_handoff_preflight_check,
-    load_dashboard_metadata,
-    runtime_from_fixtures,
-    validate_persona_handoff_configuration,
-    write_dashboard_handoff,
-)
 from tests.observability.personas import (
     Persona,
     PersonaValidationError,
@@ -55,7 +44,6 @@ if TYPE_CHECKING:
     from kubernetes.dynamic import DynamicClient
 
 CONTRACT_PATH = Path(__file__).parent / "contracts" / "release_contract.yaml"
-DASHBOARD_METADATA_PATH = Path(__file__).parent / "contracts" / "dashboard_metadata.yaml"
 REQUIRED_PREFLIGHT_CHECKS = {
     "release-stage",
     "component-versions",
@@ -70,12 +58,12 @@ REQUIRED_PREFLIGHT_CHECKS = {
     "persona-authentication",
     "subject-access-review",
 }
-SOURCE_RECORD_IDENTIFIERS = (
+SOURCE_RECORD_IDENTIFIERS = {
     "accelerator-dcgm-source",
     "inference-vllm-series",
     "maas-authorized-hits",
     "maas-authorized-calls",
-)
+}
 
 
 @pytest.fixture(scope="session")
@@ -90,11 +78,6 @@ def release_contract() -> ReleaseContract:
 def release_evidence_directory() -> Path:
     """Return the CI evidence directory without placing credentials in its name or contents."""
     configured_path = os.environ.get("RHOAI_OBSERVABILITY_EVIDENCE_DIR")
-    if _observability_keep_resources() and not configured_path:
-        pytest.fail(
-            "[failed] RHOAI_OBSERVABILITY_EVIDENCE_DIR must be set to a persisted artifact directory "
-            "when RHOAI_OBSERVABILITY_KEEP_RESOURCES is enabled"
-        )
     if configured_path:
         try:
             return resolve_trusted_path(source=configured_path)
@@ -104,19 +87,12 @@ def release_evidence_directory() -> Path:
 
 
 @pytest.fixture(scope="session")
-def dashboard_metadata() -> DashboardMetadataDocument:
-    """Load the versioned UI-only dashboard metadata used by the handoff builder."""
-    return load_dashboard_metadata(source=DASHBOARD_METADATA_PATH)
-
-
-@pytest.fixture(scope="session")
 def release_preflight(
     release_contract: ReleaseContract,
     release_evidence_directory: Path,
-    dashboard_metadata: DashboardMetadataDocument,
 ) -> PreflightReport:
     """Evaluate release-run preflight input before resource fixtures can mutate the cluster."""
-    checks = _preflight_checks(release_contract=release_contract, dashboard_metadata=dashboard_metadata)
+    checks = _preflight_checks(release_contract=release_contract)
     report = evaluate_preflight(checks=checks)
     write_preflight_evidence(
         destination=release_evidence_directory / "preflight.json",
@@ -131,11 +107,10 @@ def release_preflight(
     return report
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="session")
 def observability_evidence(
     release_contract: ReleaseContract,
     release_evidence_directory: Path,
-    observability_dashboard_handoff: Path,
 ) -> Generator[Callable[..., None]]:
     """Collect sanitized query evidence and write its summary after integrated tests finish."""
     records: list[EvidenceRecord] = []
@@ -178,10 +153,6 @@ def observability_evidence(
             "cluster_run_id": cluster_run_id,
             "contract_version": release_contract.version,
             "record_count": len(records),
-            "dashboard_handoff": {
-                "path": str(observability_dashboard_handoff),
-                "schema_version": HANDOFF_SCHEMA_VERSION,
-            },
         },
     )
     write_failure_log(
@@ -195,19 +166,11 @@ def observability_namespaces(
     admin_client: DynamicClient,
     teardown_resources: bool,
     release_preflight: PreflightReport,
-    dashboard_metadata: DashboardMetadataDocument,
-    observability_personas: tuple[Persona, ...],
 ) -> Generator[NamespacePair]:
     """Create the two namespace-isolation fixtures only after a ready preflight."""
     if release_preflight.disposition.value != "ready":
         pytest.fail(f"RHOAIENG-96476 preflight is {release_preflight.disposition.value}: {release_preflight.to_dict()}")
-    validate_persona_handoff_configuration(
-        personas=observability_personas,
-        dashboard_names={dashboard.name for dashboard in dashboard_metadata.dashboards},
-    )
-    with create_namespace_pair(
-        admin_client=admin_client, teardown=_observability_teardown(teardown_resources)
-    ) as namespaces:
+    with create_namespace_pair(admin_client=admin_client, teardown=teardown_resources) as namespaces:
         yield namespaces
 
 
@@ -253,7 +216,7 @@ def observability_models(
         enable_auth=os.environ.get("RHOAI_OBSERVABILITY_ENABLE_AUTH", "false").lower() == "true",
         external_route=os.environ.get("RHOAI_OBSERVABILITY_EXTERNAL_ROUTE", "false").lower() == "true",
         resources=resources,
-        teardown=_observability_teardown(teardown_resources),
+        teardown=teardown_resources,
     ) as models:
         yield models
 
@@ -273,40 +236,6 @@ def observability_model_names(observability_models: list[Any]) -> dict[str, str]
             pytest.fail(f"[failed] multiple model fixtures use namespace {model_namespace}")
         model_names[model_namespace] = model_name
     return model_names
-
-
-@pytest.fixture(scope="class")
-def observability_dashboard_handoff(
-    release_contract: ReleaseContract,
-    dashboard_metadata: DashboardMetadataDocument,
-    release_preflight: PreflightReport,
-    release_evidence_directory: Path,
-    observability_namespaces: NamespacePair,
-    observability_models: list[Any],
-    observability_source_metrics: dict[str, RawQueryResult],
-    observability_personas: tuple[Persona, ...],
-) -> Path:
-    """Write the dashboard handoff after readiness and before fixture teardown."""
-    if release_preflight.disposition.value != "ready":
-        pytest.fail(f"[blocked] dashboard handoff requires ready preflight: {release_preflight.to_dict()}")
-    runtime = runtime_from_fixtures(
-        namespaces=observability_namespaces,
-        models=observability_models,
-        source_metrics=observability_source_metrics,
-        readiness_signal=_source_readiness_signal(source_metrics=observability_source_metrics),
-        personas=observability_personas,
-        evidence_directory=release_evidence_directory,
-        run_id=os.environ.get("RHOAI_OBSERVABILITY_RUN_ID", "local"),
-    )
-    handoff = build_dashboard_handoff(
-        contract=release_contract,
-        metadata=dashboard_metadata,
-        runtime=runtime,
-    )
-    return write_dashboard_handoff(
-        destination=release_evidence_directory / "observability-dashboard-contract.json",
-        handoff=handoff,
-    )
 
 
 @pytest.fixture(scope="class")
@@ -504,24 +433,12 @@ def observability_personas() -> tuple[Persona, ...]:
             pytest.fail("[failed] persona entries must be mappings")
         groups = _string_list(item=item, key="groups")
         namespaces = _string_list(item=item, key="namespaces")
-        visible_dashboard_names = _optional_string_list(item=item, key="visible_dashboard_names")
-        hidden_dashboard_names = _optional_string_list(item=item, key="hidden_dashboard_names")
-        load_shipped_dashboards = item.get("load_shipped_dashboards")
-        if load_shipped_dashboards is not None and not isinstance(load_shipped_dashboards, bool):
-            pytest.fail("[failed] persona load_shipped_dashboards must be a boolean")
         personas.append(
             Persona(
                 name=_required_string(item=item, key="name"),
                 principal=_required_string(item=item, key="principal"),
                 groups=groups,
                 namespaces=namespaces,
-                credential_variable=_optional_string(item=item, key="credential_variable"),
-                namespace_scope=_optional_string(item=item, key="namespace_scope"),
-                unauthorized_namespace_scope=_optional_string(item=item, key="unauthorized_namespace_scope"),
-                visible_dashboard_names=visible_dashboard_names,
-                hidden_dashboard_names=hidden_dashboard_names,
-                load_shipped_dashboards=load_shipped_dashboards,
-                model_dashboard_name=_optional_string(item=item, key="model_dashboard_name"),
             )
         )
     try:
@@ -594,7 +511,6 @@ def observability_sar_baseline(
 def _preflight_checks(
     *,
     release_contract: ReleaseContract,
-    dashboard_metadata: DashboardMetadataDocument,
 ) -> list[PreflightCheck]:
     authorization_checks = authorization_preflight_checks(
         records=[(record.identifier, record.authorization_response) for record in release_contract.records]
@@ -608,10 +524,6 @@ def _preflight_checks(
         )
         for name, version in release_contract.product_versions.items()
     ]
-    handoff_check = dashboard_handoff_preflight_check(
-        contract=release_contract,
-        metadata=dashboard_metadata,
-    )
     configured = os.environ.get("RHOAI_OBSERVABILITY_PREFLIGHT")
     if not configured:
         return [
@@ -623,7 +535,6 @@ def _preflight_checks(
             ),
             PreflightCheck(name="contract", present=bool(release_contract.records), category="product"),
             *version_checks,
-            handoff_check,
             *authorization_checks,
         ]
 
@@ -634,7 +545,6 @@ def _preflight_checks(
             PreflightCheck(
                 name="release-run-preflight-inputs", present=False, category="product", detail=type(error).__name__
             ),
-            handoff_check,
             *authorization_checks,
         ]
     if not isinstance(raw_checks, list):
@@ -645,7 +555,6 @@ def _preflight_checks(
                 category="product",
                 detail="preflight JSON must be a list",
             ),
-            handoff_check,
             *authorization_checks,
         ]
     checks = []
@@ -685,18 +594,8 @@ def _preflight_checks(
         for name in REQUIRED_PREFLIGHT_CHECKS - configured_names
     )
     checks.extend(version_checks)
-    checks.append(handoff_check)
     checks.extend(authorization_checks)
     return checks
-
-
-def _optional_string(item: dict[str, Any], key: str) -> str | None:
-    value = item.get(key)
-    if value is None:
-        return None
-    if not isinstance(value, str) or not value.strip():
-        pytest.fail(f"[failed] persona {key} must be a non-empty string")
-    return value
 
 
 def _required_string(item: dict[str, Any], key: str) -> str:
@@ -713,34 +612,3 @@ def _string_list(item: dict[str, Any], key: str) -> tuple[str, ...]:
     if not isinstance(value, list) or not all(isinstance(entry, str) and entry.strip() for entry in value):
         pytest.fail(f"[failed] persona {key} must be a list of non-empty strings")
     return tuple(value)
-
-
-def _optional_string_list(item: dict[str, Any], key: str) -> tuple[str, ...] | None:
-    value = item.get(key)
-    if value is None:
-        return None
-    if not isinstance(value, list) or not all(isinstance(entry, str) and entry.strip() for entry in value):
-        pytest.fail(f"[failed] persona {key} must be a list of non-empty strings")
-    return tuple(value)
-
-
-def _observability_teardown(default: bool) -> bool:
-    """Keep observability fixtures alive for a subsequent dashboard Cypress job when requested."""
-    return default and not _observability_keep_resources()
-
-
-def _observability_keep_resources() -> bool:
-    """Return whether the release runner owns cleanup after the dashboard job."""
-    return os.environ.get("RHOAI_OBSERVABILITY_KEEP_RESOURCES", "false").lower() in {"1", "true", "yes"}
-
-
-def _source_readiness_signal(*, source_metrics: dict[str, RawQueryResult]) -> str | None:
-    """Select the first explicitly ordered source record that proved telemetry readiness."""
-    for identifier in SOURCE_RECORD_IDENTIFIERS:
-        if identifier in source_metrics:
-            return identifier
-    if source_metrics:
-        raise DashboardHandoffValidationError(
-            "source telemetry results contain no recognized readiness record: " + ", ".join(sorted(source_metrics))
-        )
-    return None

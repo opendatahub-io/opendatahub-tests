@@ -23,13 +23,6 @@ class Persona:
     principal: str
     groups: tuple[str, ...]
     namespaces: tuple[str, ...]
-    credential_variable: str | None = None
-    namespace_scope: str | None = None
-    unauthorized_namespace_scope: str | None = None
-    visible_dashboard_names: tuple[str, ...] | None = None
-    hidden_dashboard_names: tuple[str, ...] | None = None
-    load_shipped_dashboards: bool | None = None
-    model_dashboard_name: str | None = None
 
 
 @dataclass(frozen=True)

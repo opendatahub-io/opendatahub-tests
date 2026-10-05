@@ -81,6 +81,8 @@ def assert_authorization_response(result: RawQueryResult, expected: str) -> None
             raise QueryContractError(f"expected successful filtered response, got HTTP {result.http_status}")
         if result.prometheus_status != "success":
             raise QueryContractError(f"expected Prometheus success, got {result.prometheus_status!r}")
+        if not result.series:
+            raise QueryContractError("expected Prometheus success with at least one filtered series")
         return
     if expected != "not-applicable":
         raise QueryContractError(f"unsupported authorization response contract: {expected}")
