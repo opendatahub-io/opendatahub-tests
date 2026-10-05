@@ -33,7 +33,7 @@ class TestObservabilityReleaseContract:
         release_contract: ReleaseContract,
         release_preflight: PreflightReport,
         observability_namespaces: NamespacePair,
-        observability_models: list[object],
+        observability_model_names: dict[str, str],
         observability_fixture_resources: dict[str, object],
         observability_query_clients: dict[str, RawQueryClient],
         observability_personas: tuple[Persona, ...],
@@ -41,7 +41,7 @@ class TestObservabilityReleaseContract:
         observability_evidence: Callable[..., None],
     ) -> None:
         """Given ready source fixtures and an administrator token, validate every shipped data panel response."""
-        del release_preflight, observability_models
+        del release_preflight
         assert observability_fixture_resources["namespaces"]
         admin = next(persona for persona in observability_personas if persona.name == "cluster-admin")
         for record in release_contract.records:
@@ -55,7 +55,10 @@ class TestObservabilityReleaseContract:
                     principal=admin.principal,
                     requested_namespace=observability_namespaces.namespace_a.name,
                     fixture_namespace=observability_namespaces.namespace_a.name,
-                    variables={"namespace": observability_namespaces.namespace_a.name or "", "model": "model-a"},
+                    variables={
+                        "namespace": observability_namespaces.namespace_a.name or "",
+                        "model": observability_model_names[observability_namespaces.namespace_a.name or ""],
+                    },
                 ),
                 bearer_token=observability_persona_tokens[admin.name],
             )
@@ -72,7 +75,7 @@ class TestObservabilityReleaseContract:
         self,
         release_contract: ReleaseContract,
         observability_namespaces: NamespacePair,
-        observability_models: list[object],
+        observability_model_names: dict[str, str],
         observability_query_clients: dict[str, RawQueryClient],
         observability_personas: tuple[Persona, ...],
         observability_persona_tokens: dict[str, str],
@@ -80,7 +83,7 @@ class TestObservabilityReleaseContract:
         observability_evidence: Callable[..., None],
     ) -> None:
         """Given a scheduled GPU model, prove source and recording telemetry before dashboard assertions."""
-        del observability_models
+        seeded_namespace = observability_namespaces.namespace_a.name or ""
         admin = next(persona for persona in observability_personas if persona.name == "cluster-admin")
         identifiers = {"accelerator-dcgm-source", "accelerator-gpu-utilization", "accelerator-memory-used"}
         for record in (item for item in release_contract.records if item.identifier in identifiers):
@@ -91,7 +94,7 @@ class TestObservabilityReleaseContract:
                 principal=admin.principal,
                 requested_namespace=observability_namespaces.namespace_a.name,
                 fixture_namespace=observability_namespaces.namespace_a.name,
-                variables={"namespace": observability_namespaces.namespace_a.name or "", "model": "model-a"},
+                variables={"namespace": seeded_namespace, "model": observability_model_names[seeded_namespace]},
             )
             result = wait_for_source_metric(
                 query=lambda request=request, client=client: client.query(
@@ -124,7 +127,7 @@ class TestObservabilityReleaseContract:
         self,
         release_contract: ReleaseContract,
         observability_namespaces: NamespacePair,
-        observability_models: list[object],
+        observability_model_names: dict[str, str],
         observability_query_clients: dict[str, RawQueryClient],
         observability_personas: tuple[Persona, ...],
         observability_persona_tokens: dict[str, str],
@@ -132,7 +135,7 @@ class TestObservabilityReleaseContract:
         observability_evidence: Callable[..., None],
     ) -> None:
         """Given MaaS telemetry, validate request/token series and independently declare breakdown/showback status."""
-        del observability_models
+        seeded_namespace = observability_namespaces.namespace_a.name or ""
         admin = next(persona for persona in observability_personas if persona.name == "cluster-admin")
         for record in (
             item for item in release_contract.records if item.dashboard == "maas" and item.capability == "shipped"
@@ -145,7 +148,7 @@ class TestObservabilityReleaseContract:
                     principal=admin.principal,
                     requested_namespace=observability_namespaces.namespace_a.name,
                     fixture_namespace=observability_namespaces.namespace_a.name,
-                    variables={"namespace": observability_namespaces.namespace_a.name or "", "model": "model-a"},
+                    variables={"namespace": seeded_namespace, "model": observability_model_names[seeded_namespace]},
                 ),
                 bearer_token=observability_persona_tokens[admin.name],
             )
@@ -183,6 +186,7 @@ class TestObservabilityReleaseContract:
         identifier: str,
         release_contract: ReleaseContract,
         observability_namespaces: NamespacePair,
+        observability_model_names: dict[str, str],
         observability_personas: tuple[Persona, ...],
         observability_persona_tokens: dict[str, str],
         observability_query_clients: dict[str, RawQueryClient],
@@ -195,6 +199,7 @@ class TestObservabilityReleaseContract:
         client = _client_for_record(datasource=record.datasource, clients=observability_query_clients)
         namespace_a = observability_namespaces.namespace_a.name or ""
         namespace_b = observability_namespaces.namespace_b.name or ""
+        seeded_model_name = observability_model_names[namespace_a]
         for persona in observability_personas:
             for requested_namespace in (namespace_a, namespace_b, "tampered-observability-namespace"):
                 result = client.query(
@@ -204,7 +209,10 @@ class TestObservabilityReleaseContract:
                         principal=persona.principal,
                         requested_namespace=requested_namespace,
                         fixture_namespace=namespace_a,
-                        variables={"namespace": requested_namespace, "model": "model-a"},
+                        variables={
+                            "namespace": requested_namespace,
+                            "model": observability_model_names.get(requested_namespace, seeded_model_name),
+                        },
                     ),
                     bearer_token=observability_persona_tokens[persona.name],
                 )

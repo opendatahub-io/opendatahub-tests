@@ -54,6 +54,13 @@ def test_evidence_writer_redacts_secrets_and_writes_machine_readable_json(tmp_pa
                 query=result,
             )
         ],
+        handoff={
+            "dashboard_handoff": {
+                "path": str(tmp_path / "observability-dashboard-contract.json"),
+                "schema_version": "1.0.0",
+                "record_count": 1,
+            }
+        },
     )
 
     written = destination.read_text()
@@ -61,6 +68,8 @@ def test_evidence_writer_redacts_secrets_and_writes_machine_readable_json(tmp_pa
     payload = json.loads(written)
     assert payload["records"][0]["query"]["http_status"] == 200
     assert payload["records"][0]["query"]["query_params"]["bearer_token"] == "[REDACTED]"
+    assert payload["handoff"]["dashboard_handoff"]["schema_version"] == "1.0.0"
+    assert payload["handoff"]["dashboard_handoff"]["record_count"] == 1
     failure_record = EvidenceRecord(
         tracking_id="RHOAIENG-96476",
         test_identifier="test_query",

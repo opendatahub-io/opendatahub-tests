@@ -23,6 +23,13 @@ class Persona:
     principal: str
     groups: tuple[str, ...]
     namespaces: tuple[str, ...]
+    credential_variable: str | None = None
+    namespace_scope: str | None = None
+    unauthorized_namespace_scope: str | None = None
+    visible_dashboard_names: tuple[str, ...] | None = None
+    hidden_dashboard_names: tuple[str, ...] | None = None
+    load_shipped_dashboards: bool | None = None
+    model_dashboard_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -36,6 +43,8 @@ class TokenIdentity:
 def validate_personas(personas: list[Persona]) -> tuple[Persona, ...]:
     """Validate that all required personas have distinct authenticated principals."""
     by_name = {persona.name: persona for persona in personas}
+    if len(by_name) != len(personas):
+        raise PersonaValidationError("persona names must be unique")
     missing = tuple(name for name in REQUIRED_PERSONAS if name not in by_name)
     if missing:
         raise PersonaValidationError(f"missing required personas: {', '.join(sorted(missing))}")
