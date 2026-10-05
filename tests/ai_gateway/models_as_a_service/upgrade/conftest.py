@@ -2,6 +2,7 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
+import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
@@ -11,9 +12,14 @@ from ocp_resources.maas_auth_policy import MaaSAuthPolicy
 from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.maas_subscription import MaaSSubscription
 from ocp_resources.namespace import Namespace
+from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
 from pytest import FixtureRequest
 
+from tests.ai_gateway.models_as_a_service.maas_api_key.utils import (
+    MAAS_GATEWAY_AUTH_POLICY_NAME,
+    wait_for_auth_policy_accepted,
+)
 from tests.ai_gateway.models_as_a_service.maas_subscription.utils import (
     create_maas_subscription,
 )
@@ -34,20 +40,26 @@ from tests.ai_gateway.models_as_a_service.upgrade.utils import (
     cluster_has_legacy_external_model_crd,
     inference_external_model_for_baseline,
     load_legacy_migration_baseline_from_configmap,
+    load_maas_api_key_from_secret,
     load_maas_baseline_from_configmap,
+    persist_maas_api_key,
     save_legacy_migration_baseline_to_configmap,
     save_maas_baseline_to_configmap,
     wait_for_legacy_maas_networking_present,
 )
 from tests.ai_gateway.models_as_a_service.utils import (
     MaaSTenantResource,
+    assert_api_key_created_ok,
+    create_api_key,
     get_default_maas_tenant,
     host_from_ingress_domain,
 )
-from utilities.constants import MAAS_GATEWAY_NAME, MAAS_GATEWAY_NAMESPACE
+from utilities.constants import MAAS_GATEWAY_NAME, MAAS_GATEWAY_NAMESPACE, ApiGroups
 from utilities.infra import create_ns
+from utilities.logger import RedactedString
 from utilities.resources.external_model import ExternalModel
 from utilities.resources.legacy_external_model import LegacyExternalModel
+from utilities.resources.llm_inference_service import LLMInferenceService
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -563,3 +575,303 @@ def capture_legacy_migration_baseline_fixture(
             baseline=baseline,
         )
         yield
+
+
+# ------- FIXTURES FOR UPGRADE TESTING OF MAAS WITH llm-d INFERENCE --------------
+
+
+# NAMESPACE
+@pytest.fixture(scope="session")
+def maas_inference_with_llmd_namespace(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    teardown_resources: bool,
+) -> Generator[Namespace, Any, Any]:
+    """Create or reference the namespace that owns the LLMInferenceService."""
+    namespace_name = "upgrade-test-maas-llmisvc-inference"
+    ns = Namespace(client=admin_client, name=namespace_name)
+
+    if pytestconfig.option.post_upgrade:
+        yield ns
+        ns.clean_up()
+    else:
+        with create_ns(
+            admin_client=admin_client,
+            name=namespace_name,
+            add_dashboard_label=True,
+            teardown=teardown_resources,
+        ) as ns:
+            yield ns
+
+
+# LLMISVC
+@pytest.fixture(scope="session")
+def maas_inference_with_llmd_llmisvc(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    maas_inference_with_llmd_namespace: Namespace,
+    maas_upgrade_gateway: Gateway,
+    teardown_resources: bool,
+) -> Generator[LLMInferenceService, Any, Any]:
+    """LLMInferenceService using TinyLlama OCI and the MaaS Gateway."""
+    from tests.model_serving.model_server.llmd.conftest import _create_llmisvc_from_config
+    from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaOciConfig
+
+    config_cls = TinyLlamaOciConfig
+
+    if pytestconfig.option.post_upgrade:
+        llmisvc = LLMInferenceService(
+            client=admin_client,
+            name=config_cls.name,
+            namespace=maas_inference_with_llmd_namespace.name,
+        )
+        yield llmisvc
+        llmisvc.clean_up()
+    else:
+        with _create_llmisvc_from_config(
+            config_cls=config_cls.build(client=admin_client),
+            namespace=maas_inference_with_llmd_namespace.name,
+            client=admin_client,
+            teardown=teardown_resources,
+        ) as llmisvc:
+            # Persist the MaaS router configuration across the upgrade boundary.
+            # A context-manager patch would restore the original router at fixture teardown.
+            ResourceEditor(
+                patches={
+                    llmisvc: {
+                        "metadata": {
+                            "annotations": {
+                                f"alpha.{ApiGroups.MAAS_IO}/tiers": "[]",
+                                "security.opendatahub.io/enable-auth": "true",
+                            },
+                        },
+                        "spec": {
+                            "router": {
+                                "gateway": {
+                                    "refs": [
+                                        {
+                                            "name": MAAS_GATEWAY_NAME,
+                                            "namespace": MAAS_GATEWAY_NAMESPACE,
+                                        }
+                                    ],
+                                },
+                                "route": {},
+                            },
+                        },
+                    }
+                }
+            ).update()
+            llmisvc.wait_for_condition(condition="Ready", status="True", timeout=420)
+            yield llmisvc
+
+
+# MODEL REF
+@pytest.fixture(scope="session")
+def maas_inference_with_llmd_model_ref(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    maas_inference_with_llmd_namespace: Namespace,
+    maas_inference_with_llmd_llmisvc: LLMInferenceService,
+    teardown_resources: bool,
+) -> Generator[MaaSModelRef, Any, Any]:
+    """Create the LLMInferenceService's MaaSModelRef before upgrade and reuse it after upgrade."""
+
+    model_ref_kwargs: dict[str, Any] = {
+        "client": admin_client,
+        "name": "maas-llmisvc-model-ref",
+        "namespace": maas_inference_with_llmd_namespace.name,
+    }
+    if pytestconfig.option.post_upgrade:
+        model_ref = MaaSModelRef(**model_ref_kwargs, ensure_exists=True)
+        yield model_ref
+        model_ref.delete(wait=True)
+    else:
+        with MaaSModelRef(
+            **model_ref_kwargs,
+            model_ref={
+                "name": maas_inference_with_llmd_llmisvc.name,
+                "namespace": maas_inference_with_llmd_namespace.name,
+                "kind": "LLMInferenceService",
+            },
+            teardown=teardown_resources,
+            wait_for_resource=True,
+        ) as model_ref:
+            yield model_ref
+
+
+# AUTH POLICY
+@pytest.fixture(scope="session")
+def maas_inference_with_llmd_auth_policy(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    maas_inference_with_llmd_model_ref: MaaSModelRef,
+    maas_subscription_namespace: Namespace,
+    teardown_resources: bool,
+) -> Generator[MaaSAuthPolicy, Any, Any]:
+    """Create the shared-namespace MaaSAuthPolicy and reuse it after upgrade."""
+
+    auth_policy_kwargs: dict[str, Any] = {
+        "client": admin_client,
+        "name": "maas-inference-with-llmd-auth-policy",
+        "namespace": maas_subscription_namespace.name,
+    }
+    if pytestconfig.option.post_upgrade:
+        auth_policy = MaaSAuthPolicy(**auth_policy_kwargs, ensure_exists=True)
+        yield auth_policy
+        auth_policy.delete(wait=True)
+    else:
+        with MaaSAuthPolicy(
+            **auth_policy_kwargs,
+            model_refs=[
+                {
+                    "name": maas_inference_with_llmd_model_ref.name,
+                    "namespace": maas_inference_with_llmd_model_ref.namespace,
+                }
+            ],
+            subjects={"groups": [{"name": "system:authenticated"}]},
+            teardown=teardown_resources,
+            wait_for_resource=True,
+        ) as auth_policy:
+            yield auth_policy
+
+
+# MAAS SUBSCRIPTION
+@pytest.fixture(scope="session")
+def maas_inference_with_llmd_subscription(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    maas_inference_with_llmd_model_ref: MaaSModelRef,
+    maas_subscription_namespace: Namespace,
+    maas_subscription_controller_enabled_latest: DataScienceCluster,
+    teardown_resources: bool,
+) -> Generator[MaaSSubscription, Any, Any]:
+    """Create the shared-namespace MaaSSubscription and reuse it after upgrade."""
+    _ = maas_subscription_controller_enabled_latest
+    subscription_name = "maas-inference-with-llmd-subscription"
+
+    subscription_kwargs: dict[str, Any] = {
+        "client": admin_client,
+        "name": subscription_name,
+        "namespace": maas_subscription_namespace.name,
+    }
+    if pytestconfig.option.post_upgrade:
+        subscription = MaaSSubscription(**subscription_kwargs, ensure_exists=True)
+        yield subscription
+        subscription.delete(wait=True)
+    else:
+        with create_maas_subscription(
+            admin_client=admin_client,
+            subscription_namespace=maas_subscription_namespace.name,
+            subscription_name=subscription_name,
+            owner_group_name="system:authenticated",
+            model_name=maas_inference_with_llmd_model_ref.name,
+            model_namespace=maas_inference_with_llmd_model_ref.namespace,
+            tokens_per_minute=1000,
+            window="1m",
+            priority=0,
+            teardown=teardown_resources,
+            wait_for_resource=True,
+        ) as subscription:
+            yield subscription
+
+
+@pytest.fixture(scope="session")
+def maas_inference_with_llmd_api_key(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    request_session_http: requests.Session,
+    current_client_token: str,
+    maas_upgrade_base_url: str,
+    maas_inference_with_llmd_subscription: MaaSSubscription,
+    maas_inference_with_llmd_auth_policy: MaaSAuthPolicy,
+    maas_inference_with_llmd_namespace: Namespace,
+    teardown_resources: bool,
+) -> Generator[RedactedString, Any, Any]:
+    """Create the API key pre-upgrade and reuse it post-upgrade."""
+    _ = maas_inference_with_llmd_auth_policy
+    secret_name = "upgrade-maas-api-key"  # pragma: allowlist secret
+    secret_key = "api-key"  # pragma: allowlist secret
+
+    secret = Secret(
+        client=admin_client,
+        name=secret_name,
+        namespace=maas_inference_with_llmd_namespace.name,
+    )
+
+    if pytestconfig.option.post_upgrade:
+        assert secret.exists, (
+            f"API-key Secret '{secret.namespace}/{secret.name}' was not found"
+        )  # pragma: allowlist secret
+
+        api_key = load_maas_api_key_from_secret(
+            client=admin_client,
+            namespace=secret.namespace,
+            secret_name=secret.name,
+            secret_key=secret_key,
+        )
+
+        yield api_key
+        # Delete only the persisted plaintext copy.
+        # no need to revoke the MaaS API key.
+        secret.delete(wait=True)
+
+    else:
+        # Pre-upgrade branch:
+        # create a persistent Secret, create the MaaS API key,
+        # save the key in the Secret, and expose it to the test.
+        with Secret(
+            client=admin_client,
+            name=secret_name,
+            namespace=maas_inference_with_llmd_namespace.name,
+            type="Opaque",
+            string_data={secret_key: ""},
+            # The normal pre-upgrade run has teardown_resources=False, so the Secret
+            # remains for post-upgrade. The explicit delete-pre-upgrade option still
+            # removes it, as requested by that option.
+            teardown=teardown_resources,
+            wait_for_resource=True,
+        ) as persisted_secret:
+            # The generated policy is the actual gateway authorization layer used
+            # by both API-key creation and inference requests.
+            wait_for_auth_policy_accepted(
+                admin_client=admin_client,
+                policy_name=MAAS_GATEWAY_AUTH_POLICY_NAME,
+                namespace=MAAS_GATEWAY_NAMESPACE,
+                timeout=300,
+                reconciliation_hint=(
+                    "Ensure the LLM-d MaaSAuthPolicy is Ready and the generated gateway policy is reconciled."
+                ),
+            )
+
+            # Create an API key through the MaaS API.
+            # It is bound to the existing subscription and expires after 24 hours.
+            response, body = create_api_key(
+                base_url=maas_upgrade_base_url,
+                ocp_user_token=current_client_token,
+                request_session_http=request_session_http,
+                api_key_name="maas-upgrade-api-key",  # pragma: allowlist secret
+                subscription=maas_inference_with_llmd_subscription.name,
+                expires_in="24h",
+            )
+
+            # Verify that MaaS returned a successful response containing
+            # both the key ID and the one-time plaintext key.
+            assert_api_key_created_ok(
+                resp=response,
+                body=body,
+                required_fields=("id", "key"),  # pragma: allowlist secret
+            )
+
+            # Wrap the plaintext key so it can be handled without exposing it in logs.
+            api_key = RedactedString(value=body["key"])
+
+            # Persist the plaintext key in Kubernetes so the separate
+            # post-upgrade process can load it later.
+            persist_maas_api_key(
+                secret=persisted_secret,
+                api_key=api_key,
+                secret_key=secret_key,
+            )
+
+            # Leave the key active for the post-upgrade run.
+            yield api_key
