@@ -87,16 +87,28 @@ def _evalhub_service_account_name(cr_name: str) -> str:
 
 
 def _template_references_secret(deployment_instance: Any, secret_name: str) -> bool:
-    """Return True if the Deployment's pod template uses ``secret_name`` in an env var or a volume."""
+    """Return True if the Deployment's pod template uses ``secret_name``.
+
+    Checks every way a pod spec can name a Secret: ``env[].valueFrom.secretKeyRef``,
+    ``envFrom[].secretRef``, plain ``secret`` volumes, and ``projected`` volume sources.
+    """
     pod_spec = deployment_instance.spec.template.spec
-    env_refs = [
-        env.valueFrom.secretKeyRef.name
-        for container in pod_spec.containers or []
-        for env in container.env or []
-        if env.valueFrom and env.valueFrom.secretKeyRef
-    ]
-    volume_refs = [volume.secret.secretName for volume in pod_spec.volumes or [] if volume.secret]
-    return secret_name in env_refs + volume_refs
+    referenced: set[str] = set()
+    for container in pod_spec.containers or []:
+        for env in container.env or []:
+            if env.valueFrom and env.valueFrom.secretKeyRef:
+                referenced.add(env.valueFrom.secretKeyRef.name)
+        for env_from in container.envFrom or []:
+            if env_from.secretRef:
+                referenced.add(env_from.secretRef.name)
+    for volume in pod_spec.volumes or []:
+        if volume.secret:
+            referenced.add(volume.secret.secretName)
+        if volume.projected:
+            for source in volume.projected.sources or []:
+                if source.secret:
+                    referenced.add(source.secret.name)
+    return secret_name in referenced
 
 
 def _wait_for_deployment_rollout(
@@ -219,6 +231,9 @@ def _wait_for_mcp_reconciled(evalhub: EvalHub, generation: int, timeout: int = 3
     when an MCP patch has been applied. The operator stamps each ``status.mcp``
     condition with the CR generation it reconciled, and updates the MCP Deployment
     before writing the ``Reconciled`` condition.
+
+    Fails fast (instead of waiting for the timeout) if the top-level phase is
+    ``Error`` or the operator reports ``Reconciled=False`` for this generation.
     """
     last_mcp_status: Any = None
     try:
@@ -228,15 +243,27 @@ def _wait_for_mcp_reconciled(evalhub: EvalHub, generation: int, timeout: int = 3
             func=lambda: evalhub.instance.status,
             exceptions_dict={NotFoundError: []},
         ):
-            mcp_status = status.get("mcp") if status is not None else None
+            if status is None:
+                continue
+            mcp_status = status.get("mcp")
             last_mcp_status = mcp_status
+            if status.get("phase") == "Error":
+                pytest.fail(
+                    f"EvalHub entered Error phase after the MCP authSecret patch.\n"
+                    f"  Top-level status: {status}\n"
+                    f"  MCP sub-status:   {mcp_status}"
+                )
             for condition in (mcp_status.get("conditions") if mcp_status else None) or []:
-                if (
-                    condition.get("type") == "Reconciled"
-                    and condition.get("status") == "True"
-                    and (condition.get("observedGeneration") or 0) >= generation
-                ):
+                if condition.get("type") != "Reconciled" or (condition.get("observedGeneration") or 0) < generation:
+                    continue
+                if condition.get("status") == "True":
                     return
+                if condition.get("status") == "False":
+                    pytest.fail(
+                        f"EvalHub MCP reconcile failed for generation {generation}: "
+                        f"{condition.get('reason')}: {condition.get('message')}\n"
+                        f"  MCP sub-status: {mcp_status}"
+                    )
     except TimeoutExpiredError as err:
         raise RuntimeError(
             f"EvalHub MCP was not reconciled for generation {generation} within {timeout}s. "
