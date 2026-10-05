@@ -31,6 +31,7 @@ from pyhelper_utils.shell import run_command
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutSampler
 
+from tests.ai_hub.constants import SeaweedFs
 from tests.ai_hub.model_registry.async_job.constants import (
     ASYNC_UPLOAD_JOB_NAME,
     MODEL_SYNC_CONFIG,
@@ -59,13 +60,12 @@ from tests.ai_hub.model_registry.python_client.signing.utils import (
     get_organization_config,
     get_root_checksum,
     get_tas_service_urls,
-    run_minio_uploader_pod,
+    run_seaweedfs_uploader_pod,
 )
 from utilities.constants import (
     OPENSHIFT_OPERATORS,
     ApiGroups,
     Labels,
-    MinIo,
     ModelCarImage,
     OCIRegistry,
     Timeout,
@@ -360,7 +360,7 @@ def oci_registry_pod(
 ) -> Generator[Pod, Any]:
     """Create a simple OCI registry (Zot) pod with local emptyDir storage.
 
-    Unlike oci_registry_pod_with_minio, this does not require MinIO — data is
+    Unlike the S3-backed OCI registry fixture, this does not require object storage — data is
     stored in an emptyDir volume, which is sufficient for signing test scenarios.
 
     Args:
@@ -564,6 +564,10 @@ def copied_model_to_oci_registry(
         command=[
             "skopeo",
             "copy",
+            "--override-os",
+            "linux",
+            "--override-arch",
+            "amd64",
             "--dest-tls-verify=false",
             f"docker://{source_image}",
             f"docker://{dest_ref}",
@@ -615,22 +619,21 @@ def signed_model(signer, downloaded_model_dir) -> Path:
 def signing_s3_secret(
     admin_client: DynamicClient,
     service_account: ServiceAccount,
-    minio_service: Service,
+    seaweedfs_service: Service,
 ) -> Generator[Secret, Any, Any]:
     """Create S3 data connection for signing async upload jobs."""
-    minio_endpoint = (
-        f"http://{minio_service.name}.{minio_service.namespace}.svc.cluster.local:{MinIo.Metadata.DEFAULT_PORT}"
-    )
+    s3_host = f"{seaweedfs_service.name}.{seaweedfs_service.namespace}.svc.cluster.local"
+    s3_endpoint = f"http://{s3_host}:{SeaweedFs.Metadata.DEFAULT_PORT}"
 
     with Secret(
         client=admin_client,
         name=f"signing-s3-{shortuuid.uuid().lower()}",
         namespace=service_account.namespace,
         data_dict=get_s3_secret_dict(
-            aws_access_key=MinIo.Credentials.ACCESS_KEY_VALUE,
-            aws_secret_access_key=MinIo.Credentials.SECRET_KEY_VALUE,
-            aws_s3_bucket=MinIo.Buckets.MODELMESH_EXAMPLE_MODELS,
-            aws_s3_endpoint=minio_endpoint,
+            aws_access_key=SeaweedFs.Credentials.ACCESS_KEY_VALUE,
+            aws_secret_access_key=SeaweedFs.Credentials.SECRET_KEY_VALUE,
+            aws_s3_bucket=SeaweedFs.Buckets.MODELMESH_EXAMPLE_MODELS,
+            aws_s3_endpoint=s3_endpoint,
             aws_default_region="us-east-1",
         ),
         label={
@@ -705,24 +708,22 @@ def signing_registered_model(
 
 
 @pytest.fixture(scope="class")
-def upload_unsigned_model_to_minio(
+def upload_unsigned_model_to_s3(
     admin_client: DynamicClient,
     model_registry_namespace: str,
-    minio_service: Service,
+    seaweedfs_service: Service,
 ) -> None:
-    """Upload an unsigned model file to MinIO for native job signing test."""
+    """Upload an unsigned model file to SeaweedFS for native job signing test."""
     source_key = MODEL_SYNC_CONFIG["SOURCE_AWS_KEY"]
-    bucket = MinIo.Buckets.MODELMESH_EXAMPLE_MODELS
 
-    run_minio_uploader_pod(
+    run_seaweedfs_uploader_pod(
         admin_client=admin_client,
         namespace=model_registry_namespace,
-        minio_service=minio_service,
+        s3_service=seaweedfs_service,
         pod_name="unsigned-model-uploader",
-        mc_commands=(
+        upload_commands=(
             f"echo 'test model content for native signing' > /work/model.onnx && "
-            f"mc cp /work/model.onnx testminio/{bucket}/{source_key}/model.onnx && "
-            f"mc ls testminio/{bucket}/{source_key}/ && "
+            f"/usr/bin/weed filer.copy /work/model.onnx $FILER_URL/{source_key}/ && "
             f"echo 'Unsigned model upload completed'"
         ),
     )
@@ -768,7 +769,7 @@ def native_signing_async_job(
     mr_access_role_binding: RoleBinding,
     async_upload_image: str,
     signing_registered_model: RegisteredModel,
-    upload_unsigned_model_to_minio: None,
+    upload_unsigned_model_to_s3: None,
     identity_token_secret: Secret,
     securesign_instance: Securesign,
     teardown_resources: bool,

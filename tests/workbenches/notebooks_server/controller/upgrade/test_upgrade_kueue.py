@@ -256,12 +256,12 @@ class TestPostUpgradeKueueNotebook:
 
 
 @pytest.mark.usefixtures("upgrade_kueue_stopped_pre_upgrade_shutdown")
-class TestPostUpgradeKueueStopped:
-    """Verify a stopped kueue-managed notebook remains stopped after upgrade.
+class TestPreUpgradeKueueStopped:
+    """Verify a stopped kueue-managed notebook remains scaled down before the platform upgrade.
 
     Steps:
-        1. Verify the stop annotation is still present and unchanged.
-        2. Verify the StatefulSet still has replicas=0.
+        1. Create a kueue-managed Notebook CR, wait for Ready, then stop it via annotation.
+        2. Verify the StatefulSet has replicas=0.
         3. Verify no pod exists for the stopped notebook.
     """
 
@@ -295,6 +295,16 @@ class TestPostUpgradeKueueStopped:
             name=f"{upgrade_kueue_stopped_notebook.name}-0",
         )
         assert not notebook_pod.exists, f"Pod '{notebook_pod.name}' still exists for stopped kueue notebook"
+
+
+class TestPostUpgradeKueueStopped:
+    """Verify a stopped kueue-managed notebook remains stopped after the platform upgrade.
+
+    Steps:
+        1. Verify the stop annotation is still present and unchanged.
+        2. Verify the StatefulSet still has replicas=0.
+        3. Verify no pod exists for the stopped notebook.
+    """
 
     @pytest.mark.post_upgrade
     def test_kueue_stopped_annotation_preserved_after_upgrade(

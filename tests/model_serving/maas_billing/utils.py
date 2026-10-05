@@ -9,26 +9,46 @@ from urllib.parse import quote, urlparse
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
-
-# from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
+from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.endpoints import Endpoints
+from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.group import Group
 from ocp_resources.ingress_config_openshift_io import Ingress as IngressConfig
 from ocp_resources.llm_inference_service import LLMInferenceService
-from ocp_resources.resource import ResourceEditor
+from ocp_resources.resource import NamespacedResource, ResourceEditor
 from requests import Response
 
 from utilities.constants import (
     MAAS_GATEWAY_NAME,
     MAAS_GATEWAY_NAMESPACE,
+    ApiGroups,
 )
 from utilities.llmd_utils import get_llm_inference_url
 from utilities.plugins.constant import OpenAIEnpoints, RestHeader
 from utilities.resources.rate_limit_policy import RateLimitPolicy
+from utilities.resources.tenant import Tenant
 from utilities.resources.token_rate_limit_policy import TokenRateLimitPolicy
 
 LOGGER = structlog.get_logger(name=__name__)
 MODELS_INFO = OpenAIEnpoints.MODELS_INFO
+LEGACY_TENANT_CRD_NAME = f"tenants.{ApiGroups.MAAS_IO}"
+DEFAULT_MAAS_TENANT_NAME = "default-tenant"
+MaaSTenantResource = Tenant
+
+
+def get_default_maas_tenant(
+    admin_client: DynamicClient,
+    namespace: str,
+) -> MaaSTenantResource:
+    """Return the default legacy Tenant CR bootstrapped by maas-controller on 3.4."""
+    legacy_tenant_crd = CustomResourceDefinition(client=admin_client, name=LEGACY_TENANT_CRD_NAME)
+    assert legacy_tenant_crd.exists, f"Legacy Tenant CRD '{LEGACY_TENANT_CRD_NAME}' not found on cluster"
+    return Tenant(
+        client=admin_client,
+        name=DEFAULT_MAAS_TENANT_NAME,
+        namespace=namespace,
+        ensure_exists=True,
+    )
 
 
 def host_from_ingress_domain(client) -> str:
@@ -632,3 +652,17 @@ def assert_api_key_created_ok(
     )
     for field in required_fields:
         assert field in body, f"Response must contain '{field}'"
+
+
+def verify_maas_gateway_programmed(gateway: Gateway) -> None:
+    """Assert that the MaaS Gateway exists and has reached Programmed=True."""
+    assert gateway.exists, f"MaaS Gateway '{gateway.name}' not found in namespace '{gateway.namespace}'"
+    gateway.wait_for_condition(condition="Programmed", status="True", timeout=300)
+
+
+def verify_maas_tenant_ready(tenant_resource: NamespacedResource) -> None:
+    """Assert that the MaaS tenant CR exists and has Ready=True."""
+    assert tenant_resource.exists, (
+        f"{tenant_resource.kind} '{tenant_resource.name}' not found in namespace '{tenant_resource.namespace}'"
+    )
+    tenant_resource.wait_for_condition(condition="Ready", status="True", timeout=300)
