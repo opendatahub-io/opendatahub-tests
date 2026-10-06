@@ -41,7 +41,6 @@ class NemoGuardrails(NamespacedResource):
             replicas (int): Number of replicas for the NeMo Guardrails deployment
 
             template (dict[str, Any]): Template describes the pod template used by the deployment
-
         """
         super().__init__(**kwargs)
 
