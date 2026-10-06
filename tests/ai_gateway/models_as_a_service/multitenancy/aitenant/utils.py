@@ -1,4 +1,5 @@
 import hashlib
+import os
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from typing import Any, TypedDict
@@ -6,13 +7,21 @@ from typing import Any, TypedDict
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.custom_resource_definition import CustomResourceDefinition
+from ocp_resources.deployment import Deployment
 from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.namespace import Namespace
+from ocp_resources.resource import NamespacedResource, ResourceEditor
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
+from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_gateway.models_as_a_service.maas_subscription.utils import MAAS_SUBSCRIPTION_NAMESPACE
+from tests.ai_gateway.models_as_a_service.observability.utils import (
+    MAAS_CONTROLLER_DEPLOYMENT_NAME,
+    get_maas_controller_env_var,
+)
 from tests.ai_gateway.models_as_a_service.utils import (
     AIGATEWAY_GATEWAY_CLASS_NAME,
     AITENANT_INFRA_NAMESPACE,
@@ -21,7 +30,8 @@ from tests.ai_gateway.models_as_a_service.utils import (
     verify_maas_gateway_programmed,
     verify_maas_tenant_config_ready,
 )
-from utilities.constants import ApiGroups
+from utilities.constants import MAAS_GATEWAY_NAME, ApiGroups
+from utilities.general import generate_random_name
 from utilities.resources.aitenant import AITenant
 from utilities.resources.maastenantconfig import MaasTenantConfig
 
@@ -49,6 +59,21 @@ AIGATEWAY_TENANT_LABEL = "ai-gateway.opendatahub.io/tenant"
 GATEWAY_ACCESS_LABEL = "maas.opendatahub.io/gateway-access"
 GATEWAY_ACCESS_LABEL_VALUE = "true"
 
+ENABLE_TENANT_NAMESPACE_DISCOVERY_ENV = "ENABLE_TENANT_NAMESPACE_DISCOVERY"
+DISCOVERY_CONTROLLER_ARG = "--enable-tenant-namespace-discovery=true"
+DISCOVERY_CONTROLLER_ARG_PREFIX = "--enable-tenant-namespace-discovery"
+
+LABEL_TENANT_NAME = "maas.opendatahub.io/tenant-name"
+LABEL_TENANT_NAMESPACE = "maas.opendatahub.io/tenant-namespace"
+
+FINALIZER_AUTH_POLICY = "maas.opendatahub.io/authpolicy-cleanup"
+FINALIZER_SUBSCRIPTION = "maas.opendatahub.io/subscription-cleanup"
+FINALIZER_MODEL_REF = "maas.opendatahub.io/model-cleanup"
+
+MODEL_REF_RECONCILED_PHASES = ("Pending", "Active", "Degraded")
+
+SUBSCRIPTION_RECONCILED_PHASES = ("Active", "Degraded")
+
 
 class AITenantTestContext(TypedDict):
     aitenant: AITenant
@@ -60,6 +85,15 @@ class AITenantPreexistingNamespaceContext(TypedDict):
     aitenant: AITenant
     tenant_namespace: Namespace
     tenant_namespace_name: str
+
+
+class TenantNamespaceDiscoveryCase(TypedDict):
+    suffix: str
+    tenant_namespace_name: str
+    tenant_label_name: str
+    policy_name: str
+    subscription_name: str
+    model_ref_name: str
 
 
 def expected_tenant_namespace_name(aitenant_name: str) -> str:
@@ -471,6 +505,32 @@ def verify_gateway_access_label_removed_after_aitenant_delete(
     )
 
 
+def verify_tenant_namespace_discovery_labels_present(
+    admin_client: DynamicClient,
+    tenant_namespace_name: str,
+) -> None:
+    """Assert the tenant namespace carries maas-controller tenant namespace discovery labels."""
+    tenant_namespace = Namespace(
+        client=admin_client,
+        name=tenant_namespace_name,
+        ensure_exists=True,
+    )
+    namespace_labels = dict(tenant_namespace.instance.metadata.labels or {})
+    assert namespace_labels.get(AIGATEWAY_MANAGED_BY_LABEL) == "true", (
+        f"Tenant namespace '{tenant_namespace_name}' missing label {AIGATEWAY_MANAGED_BY_LABEL}='true'"
+    )
+    assert namespace_labels.get(LABEL_TENANT_NAMESPACE) == tenant_namespace_name, (
+        f"Tenant namespace '{tenant_namespace_name}' label {LABEL_TENANT_NAMESPACE} expected "
+        f"{tenant_namespace_name!r}, got {namespace_labels.get(LABEL_TENANT_NAMESPACE)!r}"
+    )
+    tenant_label = namespace_labels.get(AIGATEWAY_TENANT_LABEL)
+    assert tenant_label, f"Tenant namespace '{tenant_namespace_name}' missing label {AIGATEWAY_TENANT_LABEL}"
+    assert namespace_labels.get(LABEL_TENANT_NAME) == tenant_label, (
+        f"Tenant namespace '{tenant_namespace_name}' label {LABEL_TENANT_NAME} expected "
+        f"{tenant_label!r}, got {namespace_labels.get(LABEL_TENANT_NAME)!r}"
+    )
+
+
 def verify_tenant_namespace_gateway_access_label_present(
     admin_client: DynamicClient,
     tenant_namespace_name: str,
@@ -666,3 +726,402 @@ def verify_default_maas_tenant_unaffected(admin_client: DynamicClient) -> None:
         f"Regression check passed: MaasTenantConfig/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} in "
         f"'{MAAS_SUBSCRIPTION_NAMESPACE}' is still Ready"
     )
+
+
+def build_tenant_namespace_discovery_case() -> TenantNamespaceDiscoveryCase:
+    """Return unique resource names for a tenant namespace discovery test case."""
+    suffix = generate_random_name()[:8]
+    tenant_label_name = f"e2e-mt-{suffix}"
+    tenant_namespace_name = f"ai-tenant-{tenant_label_name}"
+    return TenantNamespaceDiscoveryCase(
+        suffix=suffix,
+        tenant_namespace_name=tenant_namespace_name,
+        tenant_label_name=tenant_label_name,
+        policy_name=f"e2e-policy-{suffix}",
+        subscription_name=f"e2e-sub-{suffix}",
+        model_ref_name=f"e2e-model-ref-{suffix}",
+    )
+
+
+def refresh_maas_namespaced_resource(resource: NamespacedResource) -> NamespacedResource:
+    """Return a new handle with an up-to-date instance from the API."""
+    return type(resource)(
+        client=resource.client,
+        name=resource.name,
+        namespace=resource.namespace,
+        wait_for_resource=False,
+    )
+
+
+def maas_model_ref_runtime_ready(model_ref: NamespacedResource) -> bool:
+    """Return True when MaaSModelRef status reports RuntimeReady=True."""
+    refreshed_model_ref = refresh_maas_namespaced_resource(resource=model_ref)
+    status = refreshed_model_ref.instance.status
+    if status is None:
+        return False
+    conditions = getattr(status, "conditions", None)
+    if not conditions:
+        return False
+    for condition in conditions:
+        condition_type = getattr(condition, "type", None)
+        condition_status = getattr(condition, "status", None)
+        if condition_type == "RuntimeReady" and condition_status == "True":
+            return True
+    return False
+
+
+def _tenant_namespace_discovery_from_controller_arg(arg: str) -> bool | None:
+    """Return discovery on/off when arg sets the flag, else None if the arg is unrelated."""
+    if arg == DISCOVERY_CONTROLLER_ARG_PREFIX:
+        return True
+    if arg.startswith(f"{DISCOVERY_CONTROLLER_ARG_PREFIX}="):
+        value = arg.split("=", maxsplit=1)[1].lower()
+        return value in {"1", "true", "yes", "on"}
+    return None
+
+
+def maas_controller_tenant_namespace_discovery_enabled(admin_client: DynamicClient) -> bool:
+    """Return True when maas-controller is started with tenant namespace discovery enabled."""
+    env_value = get_maas_controller_env_var(
+        admin_client=admin_client,
+        env_name=ENABLE_TENANT_NAMESPACE_DISCOVERY_ENV,
+    )
+    if env_value.lower() in {"1", "true", "yes", "on"}:
+        return True
+
+    applications_namespace = py_config["applications_namespace"]
+    controller_deployment = Deployment(
+        client=admin_client,
+        name=MAAS_CONTROLLER_DEPLOYMENT_NAME,
+        namespace=applications_namespace,
+        ensure_exists=True,
+    )
+    discovery_from_args: bool | None = None
+    for container in controller_deployment.instance.spec.template.spec.containers:
+        for arg in container.args or []:
+            parsed = _tenant_namespace_discovery_from_controller_arg(arg=arg)
+            if parsed is not None:
+                discovery_from_args = parsed
+    return discovery_from_args is True
+
+
+def require_tenant_namespace_discovery_enabled(admin_client: DynamicClient) -> None:
+    """Skip or fail when tenant namespace discovery is not enabled on maas-controller."""
+    discovery_enabled = maas_controller_tenant_namespace_discovery_enabled(admin_client=admin_client)
+    env_requires_discovery = os.environ.get(ENABLE_TENANT_NAMESPACE_DISCOVERY_ENV, "").lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if env_requires_discovery and not discovery_enabled:
+        pytest.fail(
+            f"{ENABLE_TENANT_NAMESPACE_DISCOVERY_ENV}=true but maas-controller is missing "
+            f"{DISCOVERY_CONTROLLER_ARG}; patch the deployment to run tenant namespace discovery tests"
+        )
+    if not discovery_enabled:
+        pytest.skip(
+            f"maas-controller does not have {DISCOVERY_CONTROLLER_ARG}; "
+            f"set {ENABLE_TENANT_NAMESPACE_DISCOVERY_ENV}=true and patch the deployment to run these tests"
+        )
+
+
+def require_aitenant_crd_for_discovery(admin_client: DynamicClient) -> None:
+    """Skip or fail when the AITenant CRD is not installed (tenant namespace discovery tests)."""
+    aitenant_crd = CustomResourceDefinition(client=admin_client, name=AITENANT_CRD_NAME)
+    if aitenant_crd.exists:
+        return
+    env_requires_discovery = os.environ.get(ENABLE_TENANT_NAMESPACE_DISCOVERY_ENV, "").lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if env_requires_discovery:
+        pytest.fail(f"Missing CRD {AITENANT_CRD_NAME}; tenant namespace discovery tests cannot run")
+    pytest.skip(f"Missing CRD {AITENANT_CRD_NAME}; AITenant is not applicable on this cluster")
+
+
+def discovery_namespace_label_patch(
+    tenant_label_name: str,
+    tenant_namespace_name: str,
+) -> dict[str, str]:
+    """Return namespace labels that mark a namespace for tenant discovery reconciliation."""
+    return {
+        AIGATEWAY_TENANT_LABEL: tenant_label_name,
+        AIGATEWAY_MANAGED_BY_LABEL: "true",
+        LABEL_TENANT_NAME: tenant_label_name,
+        LABEL_TENANT_NAMESPACE: tenant_namespace_name,
+    }
+
+
+def discovery_namespace_label_removal_patch() -> dict[str, str | None]:
+    """Return a merge patch that removes tenant discovery labels from a namespace."""
+    return {
+        AIGATEWAY_TENANT_LABEL: None,
+        AIGATEWAY_MANAGED_BY_LABEL: None,
+        LABEL_TENANT_NAME: None,
+        LABEL_TENANT_NAMESPACE: None,
+    }
+
+
+def apply_discovery_namespace_labels(
+    admin_client: DynamicClient,
+    tenant_namespace_name: str,
+    tenant_label_name: str,
+) -> None:
+    """Apply discovery labels to an existing tenant namespace."""
+    namespace = Namespace(client=admin_client, name=tenant_namespace_name, ensure_exists=True)
+    ResourceEditor(
+        patches={
+            namespace: {
+                "metadata": {
+                    "labels": discovery_namespace_label_patch(
+                        tenant_label_name=tenant_label_name,
+                        tenant_namespace_name=tenant_namespace_name,
+                    ),
+                },
+            },
+        },
+    ).update()
+    LOGGER.info(f"Applied tenant discovery labels to namespace '{tenant_namespace_name}'")
+
+
+def remove_discovery_namespace_labels(admin_client: DynamicClient, tenant_namespace_name: str) -> None:
+    """Remove discovery labels from a tenant namespace."""
+    namespace = Namespace(client=admin_client, name=tenant_namespace_name, ensure_exists=True)
+    ResourceEditor(
+        patches={namespace: {"metadata": {"labels": discovery_namespace_label_removal_patch()}}},
+    ).update()
+    LOGGER.info(f"Removed tenant discovery labels from namespace '{tenant_namespace_name}'")
+
+
+def prepare_discovered_tenant_namespace(
+    admin_client: DynamicClient,
+    tenant_namespace_name: str,
+    tenant_label_name: str,
+    gateway_name: str = MAAS_GATEWAY_NAME,
+) -> None:
+    """Label a namespace for discovery and default-gateway HTTPRoute attachment."""
+    from tests.ai_gateway.models_as_a_service.multitenancy.utils import label_namespace_gateway_access
+
+    apply_discovery_namespace_labels(
+        admin_client=admin_client,
+        tenant_namespace_name=tenant_namespace_name,
+        tenant_label_name=tenant_label_name,
+    )
+    label_namespace_gateway_access(
+        admin_client=admin_client,
+        namespace_name=tenant_namespace_name,
+        gateway_name=gateway_name,
+    )
+
+
+@contextmanager
+def tenant_namespace_for_discovery(
+    admin_client: DynamicClient,
+    tenant_namespace_name: str,
+    teardown: bool,
+) -> Generator[str, Any, Any]:
+    """Create an empty tenant namespace for discovery tests."""
+    with Namespace(
+        client=admin_client,
+        name=tenant_namespace_name,
+        teardown=teardown,
+    ) as tenant_namespace:
+        yield tenant_namespace.name
+
+
+@contextmanager
+def default_tenant_maastenantconfig(
+    admin_client: DynamicClient,
+    tenant_namespace_name: str,
+    teardown: bool,
+) -> Generator[MaasTenantConfig, Any, Any]:
+    """Create MaasTenantConfig/default-tenant so MaaS CRs are admitted in the namespace."""
+    with MaasTenantConfig(
+        client=admin_client,
+        name=AIGATEWAY_BOOTSTRAPPED_TENANT_NAME,
+        namespace=tenant_namespace_name,
+        teardown=teardown,
+        wait_for_resource=True,
+    ) as tenant_config:
+        yield tenant_config
+
+
+@contextmanager
+def synthetic_discovery_tenant_namespace(
+    admin_client: DynamicClient,
+    teardown: bool,
+    discovery_case: TenantNamespaceDiscoveryCase | None = None,
+    discovery_labels_applied: bool = True,
+) -> Generator[TenantNamespaceDiscoveryCase, Any, Any]:
+    """Create namespace + MaasTenantConfig for discovery tests; optionally apply discovery labels."""
+    case = discovery_case if discovery_case is not None else build_tenant_namespace_discovery_case()
+    tenant_namespace_name = case["tenant_namespace_name"]
+    with (
+        tenant_namespace_for_discovery(
+            admin_client=admin_client,
+            tenant_namespace_name=tenant_namespace_name,
+            teardown=teardown,
+        ),
+        default_tenant_maastenantconfig(
+            admin_client=admin_client,
+            tenant_namespace_name=tenant_namespace_name,
+            teardown=teardown,
+        ),
+    ):
+        if discovery_labels_applied:
+            prepare_discovered_tenant_namespace(
+                admin_client=admin_client,
+                tenant_namespace_name=tenant_namespace_name,
+                tenant_label_name=case["tenant_label_name"],
+            )
+        yield case
+
+
+def wait_for_maas_model_ref_discovered(
+    model_ref: NamespacedResource,
+    timeout: int = 180,
+) -> None:
+    """Wait until MaaSModelRef is adopted by maas-controller in a discovery-labeled namespace.
+
+    Tenant-local refs may stay Pending without an auth policy + subscription pairing;
+    discovery reconciliation is indicated by the controller finalizer and status.phase.
+    """
+    wait_for_maas_resource_finalizer(
+        resource=model_ref,
+        expected_finalizer=FINALIZER_MODEL_REF,
+        timeout=timeout,
+    )
+    wait_for_maas_resource_phase(
+        resource=model_ref,
+        expected_phases=MODEL_REF_RECONCILED_PHASES,
+        timeout=timeout,
+    )
+
+
+def wait_for_maas_auth_policy_active(
+    auth_policy: NamespacedResource,
+    timeout: int = 180,
+) -> None:
+    """Wait until MaaSAuthPolicy has the controller finalizer and status.phase Active."""
+    wait_for_maas_resource_finalizer(
+        resource=auth_policy,
+        expected_finalizer=FINALIZER_AUTH_POLICY,
+        timeout=timeout,
+    )
+    phase = wait_for_maas_resource_phase(
+        resource=auth_policy,
+        expected_phases=("Active",),
+        timeout=timeout,
+    )
+    assert phase == "Active"
+
+
+def read_maas_resource_finalizers(resource: NamespacedResource) -> list[str]:
+    """Return the current metadata.finalizers list for a MaaS namespaced resource."""
+    refreshed_resource = refresh_maas_namespaced_resource(resource=resource)
+    metadata_finalizers = refreshed_resource.instance.metadata.finalizers
+    if metadata_finalizers is None:
+        return []
+    return list(metadata_finalizers)
+
+
+def read_maas_resource_status_phase(resource: NamespacedResource) -> str | None:
+    """Return status.phase when set on a MaaS namespaced resource."""
+    refreshed_resource = refresh_maas_namespaced_resource(resource=resource)
+    status = refreshed_resource.instance.status
+    if status is None:
+        return None
+    phase = getattr(status, "phase", None)
+    if phase is None:
+        return None
+    return str(phase)
+
+
+def wait_for_maas_resource_finalizer(
+    resource: NamespacedResource,
+    expected_finalizer: str,
+    timeout: int = 180,
+) -> None:
+    """Wait until expected_finalizer is present on the resource."""
+    resource_label = f"{resource.kind}/{resource.namespace}/{resource.name}"
+
+    def finalizer_present() -> bool:
+        return expected_finalizer in read_maas_resource_finalizers(resource=resource)
+
+    try:
+        for ready in TimeoutSampler(wait_timeout=timeout, sleep=5, func=finalizer_present):
+            if ready:
+                LOGGER.info(f"{resource_label} has finalizer {expected_finalizer!r}")
+                return
+    except TimeoutExpiredError:
+        finalizers = read_maas_resource_finalizers(resource=resource)
+        pytest.fail(
+            f"{resource_label} missing finalizer {expected_finalizer!r} after {timeout}s; finalizers={finalizers}"
+        )
+
+
+def wait_for_maas_resource_phase(
+    resource: NamespacedResource,
+    expected_phases: tuple[str, ...],
+    timeout: int = 180,
+) -> str:
+    """Wait until status.phase is one of expected_phases."""
+    resource_label = f"{resource.kind}/{resource.namespace}/{resource.name}"
+
+    def phase_matches() -> bool:
+        phase = read_maas_resource_status_phase(resource=resource)
+        return phase is not None and phase in expected_phases
+
+    try:
+        for ready in TimeoutSampler(wait_timeout=timeout, sleep=5, func=phase_matches):
+            if ready:
+                phase = read_maas_resource_status_phase(resource=resource)
+                assert phase is not None
+                LOGGER.info(f"{resource_label} reached phase {phase!r}")
+                return phase
+    except TimeoutExpiredError:
+        phase = read_maas_resource_status_phase(resource=resource)
+        pytest.fail(f"{resource_label} phase not in {expected_phases!r} after {timeout}s; last phase={phase!r}")
+
+
+def assert_maas_resource_stays_unreconciled(
+    resource: NamespacedResource,
+    forbidden_finalizer: str,
+    timeout: int = 60,
+    *,
+    treat_runtime_ready_as_reconciled: bool = False,
+) -> None:
+    """Poll until timeout; fail if maas-controller reconciles (finalizer, phase, or RuntimeReady)."""
+    resource_label = f"{resource.kind}/{resource.namespace}/{resource.name}"
+
+    def reconciliation_detected() -> bool:
+        finalizers = read_maas_resource_finalizers(resource=resource)
+        phase = read_maas_resource_status_phase(resource=resource)
+        return (
+            forbidden_finalizer in finalizers
+            or phase is not None
+            or (treat_runtime_ready_as_reconciled and maas_model_ref_runtime_ready(model_ref=resource))
+        )
+
+    try:
+        for reconciled in TimeoutSampler(
+            wait_timeout=timeout,
+            sleep=3,
+            func=reconciliation_detected,
+        ):
+            if reconciled:
+                finalizers = read_maas_resource_finalizers(resource=resource)
+                phase = read_maas_resource_status_phase(resource=resource)
+                runtime_ready = treat_runtime_ready_as_reconciled and maas_model_ref_runtime_ready(
+                    model_ref=resource,
+                )
+                pytest.fail(
+                    f"{resource_label} was reconciled by maas-controller while discovery labels were absent; "
+                    f"finalizers={finalizers}, phase={phase!r}, runtime_ready={runtime_ready}, "
+                    f"expected no {forbidden_finalizer!r}, status.phase, or RuntimeReady"
+                )
+    except TimeoutExpiredError:
+        LOGGER.info(f"{resource_label} stayed unreconciled for {timeout}s")
