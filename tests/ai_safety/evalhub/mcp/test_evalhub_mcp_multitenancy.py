@@ -26,7 +26,7 @@ from tests.ai_safety.evalhub.mcp.utils import (
 )
 @pytest.mark.tier2
 @pytest.mark.ai_safety
-@pytest.mark.usefixtures("evalhub_mcp_proxy_role_binding")
+@pytest.mark.usefixtures("evalhub_mcp_proxy_role_binding", "tenant_a_evaluation_job_cleanup")
 class TestEvalHubMcpMultitenancy:
     """MCP multi-tenancy behavior with tenant-scoped EvalHub configuration.
 
