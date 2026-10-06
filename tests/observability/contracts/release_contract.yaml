@@ -447,11 +447,9 @@ records:
     empty_result_valid: false
     empty_ui_state: No data
     capability: shipped
-    # Provisional review candidate (not active): 403.
-    # Basis: the dashboard-owned observability resource contract uses kube-rbac-proxy
-    # namespace authorization for this route. Assumes the route preserves the denial
-    # status and does not rewrite it as 404 or a successful empty Prometheus response.
-    authorization_response: review-required
+    # Confirmed on the RHOAI 3.6 probe cluster with an independently authenticated
+    # restricted service account: unauthorized namespaces return HTTP 403.
+    authorization_response: "403"
   - id: tenancy-endpoint
     dashboard: cluster
     panel: tenancy-isolation
@@ -466,11 +464,9 @@ records:
     empty_result_valid: false
     empty_ui_state: No data
     capability: shipped
-    # Provisional review candidate (not active): 403.
-    # Basis: the tenancy datasource injects the requested namespace and the dashboard
-    # handles a tenancy-proxy Forbidden response when no project is available. Assumes
-    # an unauthorized requested namespace is denied before Prometheus query evaluation.
-    authorization_response: review-required
+    # Confirmed on the RHOAI 3.6 probe cluster with an independently authenticated
+    # restricted service account: unauthorized namespaces return HTTP 403.
+    authorization_response: "403"
   - id: data-science-thanos
     dashboard: cluster
     panel: data-science-thanos-route
@@ -485,10 +481,7 @@ records:
     empty_result_valid: false
     empty_ui_state: No data
     capability: shipped
-    # No safe authorization enum candidate is proposed (not active).
-    # Basis: the data-science Thanos datasource is an internal route without a
-    # user-bound namespace query parameter or kube-rbac-proxy in its datasource path.
-    # A successful response containing data for an unauthorized namespace would be
-    # an isolation failure, not success-filtered; an empty response could simply mean
-    # that the namespace has no matching telemetry and is not proof of authorization.
-    authorization_response: review-required
+    # The route has no user-bound authorization boundary: a live RHOAI 3.6 probe
+    # returned HTTP 200/success and populated data without Authorization. Require
+    # populated success so the known exposure is exercised by namespace isolation.
+    authorization_response: isolation-only

@@ -17,6 +17,7 @@ AUTHORIZATION_RESPONSES = {
     "404",
     "success-empty",
     "success-filtered",
+    "isolation-only",
     "review-required",
 }
 CONTRACT_KEYS = {"contract_version", "release_stage", "product_versions", "default_time_range", "records"}

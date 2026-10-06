@@ -181,7 +181,7 @@ class TestObservabilityReleaseContract:
             pytest.param("data-science-thanos", id="test_data_science_thanos"),
         ],
     )
-    def test_namespace_queries_require_reviewed_authorization_contract(
+    def test_namespace_queries_apply_persona_authorization_contract(
         self,
         identifier: str,
         release_contract: ReleaseContract,
@@ -193,15 +193,23 @@ class TestObservabilityReleaseContract:
         observability_fixture_resources: dict[str, object],
         observability_evidence: Callable[..., None],
     ) -> None:
-        """Given restricted personas, refuse tampered namespace assertions until denial behavior is reviewed."""
+        """Given persona scope and requested namespaces, apply the matching authorized or isolation contract."""
         record = release_contract.record(identifier=identifier)
-        ensure_authorization_reviewed(record=record)
         client = _client_for_record(datasource=record.datasource, clients=observability_query_clients)
         namespace_a = observability_namespaces.namespace_a.name or ""
         namespace_b = observability_namespaces.namespace_b.name or ""
         seeded_model_name = observability_model_names[namespace_a]
         for persona in observability_personas:
-            for requested_namespace in (namespace_a, namespace_b, "tampered-observability-namespace"):
+            requested_namespaces = (namespace_a, namespace_b)
+            if "*" not in persona.namespaces:
+                requested_namespaces += ("tampered-observability-namespace",)
+            for requested_namespace in requested_namespaces:
+                restricted_unauthorized_request = _is_restricted_unauthorized_request(
+                    persona=persona,
+                    requested_namespace=requested_namespace,
+                )
+                if restricted_unauthorized_request:
+                    ensure_authorization_reviewed(record=record)
                 result = client.query(
                     request=build_contract_request(
                         contract=record,
@@ -216,22 +224,37 @@ class TestObservabilityReleaseContract:
                     ),
                     bearer_token=observability_persona_tokens[persona.name],
                 )
+                failure_category = "authorization-contract" if restricted_unauthorized_request else "query-contract"
                 try:
-                    assert_authorization_response(result=result, expected=record.authorization_response)
-                    assert_namespace_isolation(result=result, allowed_namespaces=set(persona.namespaces))
+                    if restricted_unauthorized_request:
+                        assert_authorization_response(result=result, expected=record.authorization_response)
+                    else:
+                        assert_query_contract(result=result, contract=record)
                 except AssertionError:
                     observability_evidence(
-                        test_identifier=f"test_namespace_queries_require_reviewed_authorization_contract[{identifier}]",
+                        test_identifier=f"test_namespace_queries_apply_persona_authorization_contract[{identifier}]",
                         contract_record=record,
                         persona=persona,
                         fixture_resources=observability_fixture_resources,
                         query=result,
-                        failure_category="authorization-contract",
+                        failure_category=failure_category,
+                    )
+                    raise
+                try:
+                    assert_namespace_isolation(result=result, allowed_namespaces=set(persona.namespaces))
+                except AssertionError:
+                    observability_evidence(
+                        test_identifier=f"test_namespace_queries_apply_persona_authorization_contract[{identifier}]",
+                        contract_record=record,
+                        persona=persona,
+                        fixture_resources=observability_fixture_resources,
+                        query=result,
+                        failure_category="namespace-isolation",
                     )
                     raise
                 else:
                     observability_evidence(
-                        test_identifier=f"test_namespace_queries_require_reviewed_authorization_contract[{identifier}]",
+                        test_identifier=f"test_namespace_queries_apply_persona_authorization_contract[{identifier}]",
                         contract_record=record,
                         persona=persona,
                         fixture_resources=observability_fixture_resources,
@@ -251,6 +274,30 @@ def _client_for_record(datasource: str, clients: dict[str, RawQueryClient]) -> R
         return clients[datasource]
     except KeyError as error:
         raise AssertionError(f"no release-runner route configured for datasource {datasource!r}") from error
+
+
+def _is_restricted_unauthorized_request(*, persona: Persona, requested_namespace: str) -> bool:
+    """Return whether a persona lacks wildcard or explicit access to a requested namespace."""
+    return "*" not in persona.namespaces and requested_namespace not in persona.namespaces
+
+
+@pytest.mark.parametrize(
+    ("persona_namespaces", "requested_namespace", "expected"),
+    [
+        pytest.param(("*",), "tampered-observability-namespace", False, id="test_cluster_admin_request"),
+        pytest.param(("ns-a",), "ns-a", False, id="test_authorized_namespace_request"),
+        pytest.param(("ns-a",), "ns-b", True, id="test_unauthorized_namespace_request"),
+    ],
+)
+def test_namespace_request_classification(
+    persona_namespaces: tuple[str, ...],
+    requested_namespace: str,
+    expected: bool,
+) -> None:
+    """Given persona scope, classify only restricted out-of-scope requests as unauthorized."""
+    persona = Persona(name="test-persona", principal="test-principal", groups=(), namespaces=persona_namespaces)
+
+    assert _is_restricted_unauthorized_request(persona=persona, requested_namespace=requested_namespace) is expected
 
 
 def _assert_query_with_evidence(

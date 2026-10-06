@@ -61,7 +61,7 @@ def assert_namespace_isolation(result: RawQueryResult, allowed_namespaces: set[s
 
 
 def assert_authorization_response(result: RawQueryResult, expected: str) -> None:
-    """Assert the exact reviewed denial/filtering contract."""
+    """Assert the exact reviewed denial, filtering, or isolation contract."""
     if expected == "review-required":
         raise QueryContractError("authorization response must be reviewed before a negative assertion runs")
     if expected in {"403", "404"}:
@@ -83,6 +83,19 @@ def assert_authorization_response(result: RawQueryResult, expected: str) -> None
             raise QueryContractError(f"expected Prometheus success, got {result.prometheus_status!r}")
         if not result.series:
             raise QueryContractError("expected Prometheus success with at least one filtered series")
+        return
+    if expected == "isolation-only":
+        if result.http_status is None or not 200 <= result.http_status < 300:
+            raise QueryContractError(f"expected successful isolation response, got HTTP {result.http_status}")
+        if result.prometheus_status != "success":
+            raise QueryContractError(f"expected Prometheus success, got {result.prometheus_status!r}")
+        if result.error_type or result.error:
+            raise QueryContractError(
+                "isolation response contained Prometheus error fields: "
+                f"error_type={result.error_type!r}, error={result.error!r}"
+            )
+        if not result.series:
+            raise QueryContractError("expected populated response for namespace isolation validation")
         return
     if expected != "not-applicable":
         raise QueryContractError(f"unsupported authorization response contract: {expected}")

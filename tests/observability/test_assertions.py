@@ -79,6 +79,14 @@ def test_success_filtered_authorization_contract_requires_in_scope_series() -> N
     assert_namespace_isolation(result=result, allowed_namespaces={"ns-a"})
 
 
+def test_isolation_only_authorization_contract_requires_populated_success() -> None:
+    """Given a route without user authorization, require populated success before namespace isolation runs."""
+    assert_authorization_response(result=_result(labels=(("namespace", "ns-b"),)), expected="isolation-only")
+
+    with pytest.raises(QueryContractError, match="populated response"):
+        assert_authorization_response(result=replace(_result(labels=()), series=()), expected="isolation-only")
+
+
 @pytest.mark.parametrize("status", [403, 404])
 def test_denial_authorization_contract_rejects_returned_series(status: int) -> None:
     """Given a denial response containing series, reject it even when the HTTP status is forbidden or not found."""

@@ -79,38 +79,4 @@ Contract records marked `environment-blocked` remain distinct from `not-shipped`
 
 The release fixture writes `preflight.json` before resource creation, `observability-evidence.json` after query tests, and `observability-failures.log` for failed query records. `write_evidence` emits `schema_version: 1.0.0` JSON and `write_failure_log` emits concise human-readable lines. Sensitive parameter keys, Bearer/Basic credentials, JWT-shaped values, sensitive key-value values, and raw query error text are replaced with `[REDACTED]`; failure-log fields escape carriage returns and newlines. Evidence contains only this job's sanitized identities, resource metadata, query outcomes, and release context.
 
-## Required Owner Decision
-
-The initial matrix marks namespace-proxy, tenancy, and data-science Thanos authorization responses as `review-required`. Release preflight reports these records as product failures before namespace or model fixtures can mutate the cluster. `ensure_authorization_reviewed` and `assert_authorization_response` also refuse to run a negative assertion until observability owners record the exact contract: HTTP 403, HTTP 404, successful empty result, or successful filtered result. This prevents a generic non-success response from being accepted as namespace isolation.
-
-### Provisional authorization candidates for follow-up
-
-The YAML comments next to the three unresolved records capture the following hypotheses. These
-are review notes only; `authorization_response` must remain `review-required` until a
-cluster-backed run confirms the exact response.
-
-- `namespace-proxy`: **`403` (higher-confidence candidate)**. The dashboard-owned resource
-  contract configures a `kube-rbac-proxy` namespace authorization check. This assumes the
-  route preserves the authorization denial and does not translate it to `404` or a successful
-  empty Prometheus response.
-- `tenancy-endpoint`: **`403` (higher-confidence candidate)**. The tenancy datasource injects
-  the requested namespace, and the dashboard code documents a Forbidden response when the
-  user has no project. This assumes an unauthorized namespace is rejected before query
-  evaluation.
-- `data-science-thanos`: **no safe authorization-enum candidate**. The datasource template
-  points to an internal Thanos route and does not add a user-bound namespace parameter or a
-  kube-rbac-proxy authorization layer. A successful response containing data for an
-  unauthorized namespace would be an isolation failure, not `success-filtered`; an empty
-  response could simply mean that the namespace has no matching telemetry and is not proof of
-  authorization. Keep this record `review-required` until a live run establishes the actual
-  response and the intended ownership of this route's authorization.
-
-Before promoting any candidate, the release test must query each route with an independently
-authenticated restricted persona and a genuinely unauthorized fixture namespace, while
-testing authorized namespaces separately with the normal positive query contract. The current
-record-level field must not be applied to an administrator's authorized request or to every
-namespace/persona combination indiscriminately. Capture HTTP status, Prometheus status and
-error fields, and sanitized returned labels in evidence. If behavior differs by route or
-persona, revise the contract shape rather than collapsing distinct outcomes into one value.
-
 The token-breakdown and showback records are independently declared `not-shipped`; a total-token metric cannot satisfy either capability. Update only the reviewed contract status and exact query/labels when the corresponding release capability is shipped.
