@@ -123,7 +123,7 @@ uv run pytest tests/ai_gateway/models_as_a_service/ --post-upgrade
 Coverage reflects the tests on this branch; individual checks are documented in the test modules.
 
 - [test_maas_upgrade.py](upgrade/test_maas_upgrade.py) — Checks MaaS resource survival, subscription spec preservation, component health, gateway reachability, and creation of new model references after upgrade.
-- [test_inference_with_llmd.py](upgrade/test_inference_with_llmd.py) — Checks that an llm-d workload, its routing and MaaS configuration survive the upgrade, and that inference still succeeds with the existing API key. Also compares the upgraded cluster against a pre-upgrade baseline (see below).
+- [test_inference_with_llmd.py](upgrade/test_inference_with_llmd.py) — Checks that an llm-d workload, its routing and MaaS configuration survive the upgrade, and that inference still succeeds with the existing API key.
 - [test_external_model_legacy_migration.py](upgrade/test_external_model_legacy_migration.py) — Checks ExternalModel migration, removal of legacy networking, and preservation of model references, auth policies, and subscriptions.
 
 ## Additional Resources

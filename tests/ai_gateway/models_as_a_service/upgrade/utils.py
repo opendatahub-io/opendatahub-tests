@@ -189,15 +189,6 @@ def load_maas_api_key_from_secret(
     return RedactedString(value=decoded_value)
 
 
-def persist_maas_api_key(
-    secret: Secret,
-    api_key: RedactedString,
-    secret_key: str,
-) -> None:
-    """Persist the plaintext API key in the existing Secret."""
-    secret.update(resource_dict={"metadata": {"name": secret.name}, "stringData": {secret_key: str(api_key)}})
-
-
 def verify_maas_model_ref_exists(model_ref: MaaSModelRef) -> None:
     """Assert that the MaaSModelRef exists after upgrade."""
     assert model_ref.exists, (
