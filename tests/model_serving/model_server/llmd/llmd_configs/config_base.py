@@ -85,27 +85,21 @@ class LLMISvcConfig:
 
     @classmethod
     def annotations(cls):
-        return {
+        result = {
             "prometheus.io/port": "8000",
             "prometheus.io/path": "/metrics",
             "security.opendatahub.io/enable-auth": str(cls.enable_auth).lower(),
         }
 
-    @classmethod
-    def connection_annotations(cls) -> dict[str, str]:
-        """ConnectionsAPI annotations for this config. Empty unless `use_connection` is set.
-
-        `connection_secret_name` must already be bound (via `with_overrides`) by the time this
-        is called — it is resolved at fixture-time from the fixture named in
-        `connection_secret_fixture`, never hardcoded on the class.
-        """
+        # ConnectionsAPI annotations. Not set unless `use_connection` is set.
         if not cls.use_connection:
-            return {}
+            return result
         assert cls.connection_secret_name is not None, "connection_secret_name must be bound via with_overrides"
-        annotations: dict[str, str] = {CONNECTIONS_ANNOTATION: cls.connection_secret_name}
+        result[CONNECTIONS_ANNOTATION] = cls.connection_secret_name
         if cls.connection_path:
-            annotations[CONNECTION_PATH_ANNOTATION] = cls.connection_path
-        return annotations
+            result[CONNECTION_PATH_ANNOTATION] = cls.connection_path
+
+        return result
 
     @classmethod
     def verify_injection(cls, llmisvc: LLMInferenceService) -> None:
@@ -283,6 +277,7 @@ class GpuConfig(LLMISvcConfig):
     # default GPU requirements
     min_gpus_per_node = 1
     min_nodes = 1
+    min_total_gpus = 1
     supported_accelerators = LLMD_TESTS_SUPPORTED_ACCELERATORS
 
     # supported-topologies values must be consistent with the samples
@@ -331,10 +326,11 @@ class GpuConfig(LLMISvcConfig):
 
         Scans worker nodes, filters to ``cls.supported_accelerators``, and
         picks the type with the most total GPUs (node count as tiebreaker).
-        Skips the test if no accelerator meets ``min_gpus_per_node`` / ``min_nodes``.
+        Skips the test if no accelerator meets ``min_gpus_per_node``, ``min_nodes``,
+        and ``min_total_gpus``.
 
         Uses ``cls.supported_accelerators``, ``cls.min_gpus_per_node``,
-        and ``cls.min_nodes`` to filter and qualify.
+        ``cls.min_nodes``, and ``cls.min_total_gpus`` to filter and qualify.
 
         Args:
             client: Kubernetes dynamic client.
@@ -377,7 +373,7 @@ class GpuConfig(LLMISvcConfig):
         qualified = {
             resource_name: node_stats
             for resource_name, node_stats in candidates.items()
-            if node_stats["qualifying_nodes"] >= cls.min_nodes
+            if node_stats["qualifying_nodes"] >= cls.min_nodes and node_stats["qualifying_gpus"] >= cls.min_total_gpus
         }
 
         # Skip the test if no accelerator type meets the requirements
@@ -401,6 +397,7 @@ class GpuConfig(LLMISvcConfig):
                 f"  This test can run on [{supported}] and requires:\n"
                 f"  - at least {cls.min_gpus_per_node} GPU(s) per node\n"
                 f"  - at least {cls.min_nodes} node(s) with GPU\n"
+                f"  - at least {cls.min_total_gpus} GPU(s) in total\n"
                 f"  {cluster_state}"
             )
             skip_test(reason=reason)

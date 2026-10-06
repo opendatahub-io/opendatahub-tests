@@ -114,8 +114,8 @@ class TestModelcarRegistryPytestOptions:
     ) -> None:
         """Given an env var for a registry pull secret, pytest option defaults to that value."""
         for registry in MODELCAR_REGISTRIES:
-            monkeypatch.delenv(key=registry.env_var, raising=False)
-        monkeypatch.setenv(key=env_var, value=VALID_AUTH)
+            monkeypatch.delenv(name=registry.env_var, raising=False)
+        monkeypatch.setenv(name=env_var, value=VALID_AUTH)
 
         options = _parse_registry_options(args=[])
 
@@ -130,7 +130,7 @@ class TestModelcarRegistryPytestOptions:
         """Given both env var and CLI option, CLI option takes precedence."""
         cli_auth = base64.b64encode(b"cli-user:cli-pass").decode()
         env_auth = base64.b64encode(b"env-user:env-pass").decode()
-        monkeypatch.setenv(key="QUAY_IO_REGISTRY_PULL_SECRET", value=env_auth)
+        monkeypatch.setenv(name="QUAY_IO_REGISTRY_PULL_SECRET", value=env_auth)
 
         options = _parse_registry_options(args=["--quay-io-registry-pull-secret", cli_auth])
         pytestconfig = SimpleNamespace(option=options)
