@@ -120,15 +120,12 @@ def _assert_maas_inference_succeeds(
     assert isinstance(choices[0], dict), f"[{phase}] MaaS response choice must be an object"
 
     first_choice = choices[0]
-    message = first_choice.get("message")
-    response_content = message.get("content", "") if isinstance(message, dict) else first_choice.get("text", "")
     LOGGER.info(
         event=f"[{phase}] MaaS inference succeeded",
         model=response_body.get("model"),
         status_code=response.status_code,
         elapsed_seconds=elapsed_seconds,
         finish_reason=first_choice.get("finish_reason"),
-        response_preview=str(response_content).replace("\n", " ")[:120],
     )
 
 
