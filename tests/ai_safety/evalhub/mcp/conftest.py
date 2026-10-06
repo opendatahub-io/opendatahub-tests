@@ -9,6 +9,7 @@ from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import NotFoundError
 from ocp_resources.deployment import Deployment
 from ocp_resources.evalhub import EvalHub
+from ocp_resources.job import Job
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.role import Role
@@ -18,7 +19,13 @@ from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
-from tests.ai_safety.evalhub.constants import EVALHUB_USER_ROLE_RULES
+from tests.ai_safety.evalhub.constants import (
+    EVALHUB_K8S_LABEL_APP,
+    EVALHUB_K8S_LABEL_APP_VALUE,
+    EVALHUB_K8S_LABEL_COMPONENT,
+    EVALHUB_K8S_LABEL_COMPONENT_VALUE,
+    EVALHUB_USER_ROLE_RULES,
+)
 from tests.ai_safety.evalhub.mcp.constants import (
     EVALHUB_MCP_CR_NAME,
     EVALHUB_MCP_HEALTH_PATH,
@@ -30,6 +37,7 @@ from tests.ai_safety.evalhub.mcp.utils import (
 )
 from tests.ai_safety.evalhub.utils import is_evalhub_crd_available, wait_for_service_account
 from utilities.certificates_utils import create_ca_bundle_file
+from utilities.constants import Timeout
 from utilities.infra import create_inference_token
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -281,6 +289,43 @@ def evalhub_tenant_rbac_instance_name() -> str:  # noqa: UFN001
 def evalhub_tenant_deployment(evalhub_mcp_mt_deployment: Deployment) -> Deployment:  # noqa: UFN001
     """EvalHub deployment whose operator RBAC must be ready in tenant namespaces."""
     return evalhub_mcp_mt_deployment
+
+
+@pytest.fixture(scope="class")
+def tenant_a_evaluation_job_cleanup(
+    admin_client: DynamicClient,
+    tenant_a_namespace: Namespace,
+) -> Generator[None, Any, Any]:
+    """Remove EvalHub evaluation Jobs and their pods from tenant-a before the namespace is torn down.
+
+    Tests that submit evaluations leave Jobs behind. Their pods carry the
+    ``batch.kubernetes.io/job-tracking`` finalizer, which only the Job controller
+    removes; when that controller lags (seen on busy clusters), the pods, and so the
+    namespace, stay around well past the namespace delete timeout. The namespace is
+    disposable, so we delete the Jobs, strip the finalizer from their pods and
+    force-delete the pods instead of waiting for the controller.
+    """
+    yield
+    label_selector = (
+        f"{EVALHUB_K8S_LABEL_APP}={EVALHUB_K8S_LABEL_APP_VALUE},"
+        f"{EVALHUB_K8S_LABEL_COMPONENT}={EVALHUB_K8S_LABEL_COMPONENT_VALUE}"
+    )
+    namespace = tenant_a_namespace.name
+    jobs = list(Job.get(client=admin_client, namespace=namespace, label_selector=label_selector))
+    pods: list[Pod] = []
+    for job in jobs:
+        pods.extend(Pod.get(client=admin_client, namespace=namespace, label_selector=f"job-name={job.name}"))
+        LOGGER.info(f"Deleting leftover EvalHub Job {job.name} in {namespace}")
+        job.delete(body={"propagationPolicy": "Background"})
+    for pod in pods:
+        try:
+            pod.update(resource_dict={"metadata": {"name": pod.name, "finalizers": []}})
+            pod.delete(body={"gracePeriodSeconds": 0})
+        except NotFoundError:
+            continue
+    for resource in [*jobs, *pods]:
+        if not resource.wait_deleted(timeout=Timeout.TIMEOUT_2MIN):
+            LOGGER.warning(f"{resource.kind} {resource.name} in {namespace} was not deleted within 2 minutes")
 
 
 @pytest.fixture(scope="class")
