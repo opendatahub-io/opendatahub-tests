@@ -822,7 +822,7 @@ def maas_api_infra_namespace(admin_client: DynamicClient) -> str:
         elif applications_namespace == "opendatahub":
             infra_namespace = "odh-ai-gateway-infra"
         else:
-            return applications_namespace
+            infra_namespace = applications_namespace
 
     ns = Namespace(client=admin_client, name=infra_namespace)
     if ns.exists:
