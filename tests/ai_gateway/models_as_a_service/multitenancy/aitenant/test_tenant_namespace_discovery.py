@@ -7,10 +7,10 @@ from ocp_resources.maas_model_ref import MaaSModelRef
 
 from tests.ai_gateway.models_as_a_service.maas_subscription.utils import create_maas_subscription
 from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import (
-    AITenantTestContext,
     FINALIZER_AUTH_POLICY,
     FINALIZER_SUBSCRIPTION,
     SUBSCRIPTION_RECONCILED_PHASES,
+    AITenantTestContext,
     assert_maas_resource_stays_unreconciled,
     prepare_discovered_tenant_namespace,
     read_maas_resource_finalizers,
@@ -41,7 +41,6 @@ def _tinyllama_model_ref(maas_model_tinyllama_free: MaaSModelRef) -> tuple[str, 
     "maas_model_tinyllama_free",
 )
 class TestTenantNamespaceDiscovery:
-
     @pytest.mark.tier1
     def test_labeled_namespace_reconciles_maas_auth_policy(
         self,
@@ -54,11 +53,12 @@ class TestTenantNamespaceDiscovery:
         then the controller adds its finalizer and sets status.phase Active.
         """
         model_name, model_namespace = _tinyllama_model_ref(maas_model_tinyllama_free=maas_model_tinyllama_free)
-        with synthetic_discovery_tenant_namespace(
-            admin_client=admin_client,
-            teardown=teardown_resources,
-        ) as case:
-            with MaaSAuthPolicy(
+        with (
+            synthetic_discovery_tenant_namespace(
+                admin_client=admin_client,
+                teardown=teardown_resources,
+            ) as case,
+            MaaSAuthPolicy(
                 client=admin_client,
                 name=case["policy_name"],
                 namespace=case["tenant_namespace_name"],
@@ -66,8 +66,9 @@ class TestTenantNamespaceDiscovery:
                 subjects={"groups": [{"name": AUTHENTICATED_GROUP}]},
                 teardown=teardown_resources,
                 wait_for_resource=True,
-            ) as auth_policy:
-                wait_for_maas_auth_policy_active(auth_policy=auth_policy)
+            ) as auth_policy,
+        ):
+            wait_for_maas_auth_policy_active(auth_policy=auth_policy)
 
     @pytest.mark.tier1
     def test_labeled_namespace_reconciles_maas_subscription(
@@ -81,11 +82,12 @@ class TestTenantNamespaceDiscovery:
         then the controller reconciles it to an Active or Degraded phase.
         """
         model_name, model_namespace = _tinyllama_model_ref(maas_model_tinyllama_free=maas_model_tinyllama_free)
-        with synthetic_discovery_tenant_namespace(
-            admin_client=admin_client,
-            teardown=teardown_resources,
-        ) as case:
-            with create_maas_subscription(
+        with (
+            synthetic_discovery_tenant_namespace(
+                admin_client=admin_client,
+                teardown=teardown_resources,
+            ) as case,
+            create_maas_subscription(
                 admin_client=admin_client,
                 subscription_namespace=case["tenant_namespace_name"],
                 subscription_name=case["subscription_name"],
@@ -95,16 +97,17 @@ class TestTenantNamespaceDiscovery:
                 tokens_per_minute=100,
                 teardown=teardown_resources,
                 wait_for_resource=True,
-            ) as subscription:
-                wait_for_maas_resource_finalizer(
-                    resource=subscription,
-                    expected_finalizer=FINALIZER_SUBSCRIPTION,
-                )
-                phase = wait_for_maas_resource_phase(
-                    resource=subscription,
-                    expected_phases=SUBSCRIPTION_RECONCILED_PHASES,
-                )
-                assert phase in SUBSCRIPTION_RECONCILED_PHASES
+            ) as subscription,
+        ):
+            wait_for_maas_resource_finalizer(
+                resource=subscription,
+                expected_finalizer=FINALIZER_SUBSCRIPTION,
+            )
+            phase = wait_for_maas_resource_phase(
+                resource=subscription,
+                expected_phases=SUBSCRIPTION_RECONCILED_PHASES,
+            )
+            assert phase in SUBSCRIPTION_RECONCILED_PHASES
 
     @pytest.mark.tier1
     def test_labeled_namespace_reconciles_maas_model_ref(
@@ -118,11 +121,12 @@ class TestTenantNamespaceDiscovery:
         then maas-controller adds its finalizer and sets status.phase.
         """
         model_name, model_namespace = _tinyllama_model_ref(maas_model_tinyllama_free=maas_model_tinyllama_free)
-        with synthetic_discovery_tenant_namespace(
-            admin_client=admin_client,
-            teardown=teardown_resources,
-        ) as case:
-            with MaaSModelRef(
+        with (
+            synthetic_discovery_tenant_namespace(
+                admin_client=admin_client,
+                teardown=teardown_resources,
+            ) as case,
+            MaaSModelRef(
                 client=admin_client,
                 name=case["model_ref_name"],
                 namespace=case["tenant_namespace_name"],
@@ -133,12 +137,13 @@ class TestTenantNamespaceDiscovery:
                 },
                 teardown=teardown_resources,
                 wait_for_resource=True,
-            ) as tenant_model_ref:
-                wait_for_maas_model_ref_discovered(model_ref=tenant_model_ref)
-                LOGGER.info(
-                    f"MaaSModelRef '{case['tenant_namespace_name']}/{case['model_ref_name']}' "
-                    f"reconciled in discovery namespace"
-                )
+            ) as tenant_model_ref,
+        ):
+            wait_for_maas_model_ref_discovered(model_ref=tenant_model_ref)
+            LOGGER.info(
+                f"MaaSModelRef '{case['tenant_namespace_name']}/{case['model_ref_name']}' "
+                f"reconciled in discovery namespace"
+            )
 
     @pytest.mark.tier1
     def test_unlabeled_namespace_maas_crs_ignored(
@@ -152,12 +157,13 @@ class TestTenantNamespaceDiscovery:
         then maas-controller does not reconcile them.
         """
         model_name, model_namespace = _tinyllama_model_ref(maas_model_tinyllama_free=maas_model_tinyllama_free)
-        with synthetic_discovery_tenant_namespace(
-            admin_client=admin_client,
-            teardown=teardown_resources,
-            discovery_labels_applied=False,
-        ) as case:
-            with MaaSAuthPolicy(
+        with (
+            synthetic_discovery_tenant_namespace(
+                admin_client=admin_client,
+                teardown=teardown_resources,
+                discovery_labels_applied=False,
+            ) as case,
+            MaaSAuthPolicy(
                 client=admin_client,
                 name=case["policy_name"],
                 namespace=case["tenant_namespace_name"],
@@ -165,29 +171,30 @@ class TestTenantNamespaceDiscovery:
                 subjects={"groups": [{"name": AUTHENTICATED_GROUP}]},
                 teardown=teardown_resources,
                 wait_for_resource=True,
-            ) as auth_policy:
-                with create_maas_subscription(
-                    admin_client=admin_client,
-                    subscription_namespace=case["tenant_namespace_name"],
-                    subscription_name=case["subscription_name"],
-                    owner_group_name=AUTHENTICATED_GROUP,
-                    model_name=model_name,
-                    model_namespace=model_namespace,
-                    tokens_per_minute=100,
-                    teardown=teardown_resources,
-                    wait_for_resource=True,
-                ) as subscription:
-                    unreconciled_timeout = 60
-                    assert_maas_resource_stays_unreconciled(
-                        resource=auth_policy,
-                        forbidden_finalizer=FINALIZER_AUTH_POLICY,
-                        timeout=unreconciled_timeout,
-                    )
-                    assert_maas_resource_stays_unreconciled(
-                        resource=subscription,
-                        forbidden_finalizer=FINALIZER_SUBSCRIPTION,
-                        timeout=unreconciled_timeout,
-                    )
+            ) as auth_policy,
+            create_maas_subscription(
+                admin_client=admin_client,
+                subscription_namespace=case["tenant_namespace_name"],
+                subscription_name=case["subscription_name"],
+                owner_group_name=AUTHENTICATED_GROUP,
+                model_name=model_name,
+                model_namespace=model_namespace,
+                tokens_per_minute=100,
+                teardown=teardown_resources,
+                wait_for_resource=True,
+            ) as subscription,
+        ):
+            unreconciled_timeout = 60
+            assert_maas_resource_stays_unreconciled(
+                resource=auth_policy,
+                forbidden_finalizer=FINALIZER_AUTH_POLICY,
+                timeout=unreconciled_timeout,
+            )
+            assert_maas_resource_stays_unreconciled(
+                resource=subscription,
+                forbidden_finalizer=FINALIZER_SUBSCRIPTION,
+                timeout=unreconciled_timeout,
+            )
 
     @pytest.mark.tier2
     def test_aitenant_bootstrap_tenant_namespace_reconciles_maas_auth_policy(
@@ -231,12 +238,13 @@ class TestTenantNamespaceDiscovery:
         then the controller starts reconciliation.
         """
         model_name, model_namespace = _tinyllama_model_ref(maas_model_tinyllama_free=maas_model_tinyllama_free)
-        with synthetic_discovery_tenant_namespace(
-            admin_client=admin_client,
-            teardown=teardown_resources,
-            discovery_labels_applied=False,
-        ) as case:
-            with MaaSAuthPolicy(
+        with (
+            synthetic_discovery_tenant_namespace(
+                admin_client=admin_client,
+                teardown=teardown_resources,
+                discovery_labels_applied=False,
+            ) as case,
+            MaaSAuthPolicy(
                 client=admin_client,
                 name=case["policy_name"],
                 namespace=case["tenant_namespace_name"],
@@ -244,18 +252,19 @@ class TestTenantNamespaceDiscovery:
                 subjects={"groups": [{"name": AUTHENTICATED_GROUP}]},
                 teardown=teardown_resources,
                 wait_for_resource=True,
-            ) as auth_policy:
-                assert_maas_resource_stays_unreconciled(
-                    resource=auth_policy,
-                    forbidden_finalizer=FINALIZER_AUTH_POLICY,
-                    timeout=30,
-                )
-                prepare_discovered_tenant_namespace(
-                    admin_client=admin_client,
-                    tenant_namespace_name=case["tenant_namespace_name"],
-                    tenant_label_name=case["tenant_label_name"],
-                )
-                wait_for_maas_auth_policy_active(auth_policy=auth_policy)
+            ) as auth_policy,
+        ):
+            assert_maas_resource_stays_unreconciled(
+                resource=auth_policy,
+                forbidden_finalizer=FINALIZER_AUTH_POLICY,
+                timeout=30,
+            )
+            prepare_discovered_tenant_namespace(
+                admin_client=admin_client,
+                tenant_namespace_name=case["tenant_namespace_name"],
+                tenant_label_name=case["tenant_label_name"],
+            )
+            wait_for_maas_auth_policy_active(auth_policy=auth_policy)
 
     @pytest.mark.tier2
     def test_label_removal_stops_new_reconciliation(
