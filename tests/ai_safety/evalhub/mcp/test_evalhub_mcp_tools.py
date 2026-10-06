@@ -120,6 +120,7 @@ class TestEvalHubMcpTools:
 )
 @pytest.mark.tier2
 @pytest.mark.ai_safety
+@pytest.mark.usefixtures("tenant_a_evaluation_job_cleanup")
 class TestEvalHubMcpToolsSubmit:
     """MCP submit_evaluation success paths."""
 
