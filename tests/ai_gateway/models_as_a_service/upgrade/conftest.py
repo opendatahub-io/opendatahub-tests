@@ -52,6 +52,10 @@ from tests.ai_gateway.models_as_a_service.utils import (
     get_default_maas_tenant,
     host_from_ingress_domain,
 )
+from tests.model_serving.model_server.upgrade.utils import (  # noqa: NIT001
+    capture_llmisvc_baseline,
+    save_baseline_to_configmap,
+)
 from utilities.constants import MAAS_GATEWAY_NAME, MAAS_GATEWAY_NAMESPACE, ApiGroups
 from utilities.infra import create_ns
 from utilities.logger import RedactedString
@@ -575,10 +579,6 @@ def capture_legacy_migration_baseline_fixture(
         yield
 
 
-# ------- FIXTURES FOR UPGRADE TESTING OF MAAS WITH llm-d INFERENCE --------------
-
-
-# NAMESPACE
 @pytest.fixture(scope="session")
 def maas_inference_with_llmd_namespace(
     pytestconfig: pytest.Config,
@@ -602,7 +602,6 @@ def maas_inference_with_llmd_namespace(
             yield ns
 
 
-# LLMISVC
 @pytest.fixture(scope="session")
 def maas_inference_with_llmd_llmisvc(
     pytestconfig: pytest.Config,
@@ -659,9 +658,18 @@ def maas_inference_with_llmd_llmisvc(
             teardown=teardown_resources,
         ) as llmisvc:
             yield llmisvc
+            save_baseline_to_configmap(
+                client=admin_client,
+                namespace=llmisvc.namespace,
+                baselines={
+                    llmisvc.name: capture_llmisvc_baseline(
+                        client=admin_client,
+                        llmisvc=llmisvc,
+                    )
+                },
+            )
 
 
-# MODEL REF
 @pytest.fixture(scope="session")
 def maas_inference_with_llmd_model_ref(
     pytestconfig: pytest.Config,
@@ -695,7 +703,6 @@ def maas_inference_with_llmd_model_ref(
             yield model_ref
 
 
-# AUTH POLICY
 @pytest.fixture(scope="session")
 def maas_inference_with_llmd_auth_policy(
     pytestconfig: pytest.Config,
@@ -731,7 +738,6 @@ def maas_inference_with_llmd_auth_policy(
             yield auth_policy
 
 
-# MAAS SUBSCRIPTION
 @pytest.fixture(scope="session")
 def maas_inference_with_llmd_subscription(
     pytestconfig: pytest.Config,

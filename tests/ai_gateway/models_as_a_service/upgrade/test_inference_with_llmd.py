@@ -27,6 +27,10 @@ from tests.ai_gateway.models_as_a_service.utils import (
     verify_maas_gateway_programmed,
     verify_maas_tenant_ready,
 )
+from tests.model_serving.model_server.upgrade.utils import (  # noqa: NIT001
+    get_llmisvc_restart_counts,
+    load_baseline_from_configmap,
+)
 from utilities.logger import RedactedString
 from utilities.resources.llm_inference_service import LLMInferenceService
 
@@ -223,7 +227,47 @@ class TestMaaSInferenceWithLlmDPostUpgrade:
             phase="POST-UPGRADE",
         )
 
-    @pytest.mark.dependency(depends=["maas_llmd_stack_ready_post_upgrade"])
+    @pytest.mark.dependency(
+        name="maas_llmisvc_pods_stable_post_upgrade",
+        depends=["maas_llmd_stack_ready_post_upgrade"],
+    )
+    def test_maas_llmisvc_pods_unchanged_post_upgrade(
+        self,
+        admin_client: DynamicClient,
+        maas_inference_with_llmd_llmisvc: LLMInferenceService,
+    ) -> None:
+        """Given a ready upgraded MaaS stack, when pod state is compared, then its LLMISVC pods are unchanged."""
+        baselines = load_baseline_from_configmap(
+            client=admin_client,
+            namespace=maas_inference_with_llmd_llmisvc.namespace,
+        )
+        assert maas_inference_with_llmd_llmisvc.name in baselines, (
+            f"LLMInferenceService '{maas_inference_with_llmd_llmisvc.name}' is missing from the upgrade baseline"
+        )
+        baseline = baselines[maas_inference_with_llmd_llmisvc.name]
+        assert "restart_counts" in baseline, (
+            f"LLMInferenceService '{maas_inference_with_llmd_llmisvc.name}' baseline has no restart counts"
+        )
+
+        current_restart_counts = get_llmisvc_restart_counts(
+            client=admin_client,
+            llmisvc=maas_inference_with_llmd_llmisvc,
+        )
+        assert current_restart_counts, (
+            f"No pods found for LLMInferenceService '{maas_inference_with_llmd_llmisvc.name}' "
+            f"in namespace '{maas_inference_with_llmd_llmisvc.namespace}'"
+        )
+        assert current_restart_counts == baseline["restart_counts"], (
+            "MaaS LLMInferenceService pods changed during the upgrade: "
+            f"expected={baseline['restart_counts']}, current={current_restart_counts}"
+        )
+
+    @pytest.mark.dependency(
+        depends=[
+            "maas_llmd_stack_ready_post_upgrade",
+            "maas_llmisvc_pods_stable_post_upgrade",
+        ]
+    )
     def test_maas_inference_with_llmd_post_upgrade(
         self,
         request_session_http: requests.Session,
@@ -240,7 +284,12 @@ class TestMaaSInferenceWithLlmDPostUpgrade:
             phase="POST-UPGRADE",
         )
 
-    @pytest.mark.dependency(depends=["maas_llmd_stack_ready_post_upgrade"])
+    @pytest.mark.dependency(
+        depends=[
+            "maas_llmd_stack_ready_post_upgrade",
+            "maas_llmisvc_pods_stable_post_upgrade",
+        ]
+    )
     def test_maas_inference_with_new_api_key_post_upgrade(
         self,
         request_session_http: requests.Session,
