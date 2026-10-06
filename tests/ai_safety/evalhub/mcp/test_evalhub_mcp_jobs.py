@@ -29,6 +29,7 @@ from tests.ai_safety.evalhub.mcp.utils import (
 )
 @pytest.mark.tier2
 @pytest.mark.ai_safety
+@pytest.mark.usefixtures("tenant_a_evaluation_job_cleanup")
 class TestEvalHubMcpJobs:
     """MCP job lifecycle tests: status polling, cancellation, and completion."""
 
