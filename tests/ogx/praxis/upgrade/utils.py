@@ -23,7 +23,7 @@ from ocp_resources.pod import Pod
 from ogx_client import OgxClient
 
 from tests.ogx.constants import POSTGRESQL_PASSWORD, POSTGRESQL_USER
-from tests.ogx.praxis.constants import (
+from tests.ogx.praxis.upgrade.constants import (
     MIGRATION_JOB_NAME_SUFFIX,
     MIGRATION_JOB_TIMEOUT,
     POSTGRES_CONTAINER_NAME,

@@ -8,7 +8,7 @@ from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 
-from tests.ogx.praxis.constants import (
+from tests.ogx.praxis.upgrade.constants import (
     OGX_POSTGRES_POD_LABEL_SELECTOR,
     POSTGRES_PORT,
     PRAXIS_CONNECTION_SECRET_KEY,
@@ -19,7 +19,7 @@ from tests.ogx.praxis.constants import (
     PRAXIS_POSTGRES_POD_LABEL_SELECTOR,
     PRAXIS_POSTGRES_SERVICE_NAME,
 )
-from tests.ogx.praxis.utils import (
+from tests.ogx.praxis.upgrade.utils import (
     migration_target_secret_ref,
     postgres_pod,
     praxis_connection_string,
