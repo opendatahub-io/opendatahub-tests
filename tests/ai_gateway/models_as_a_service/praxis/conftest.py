@@ -31,12 +31,6 @@ def ready_aitenant_default_dataplane(
 
 
 @pytest.fixture
-def ready_praxis_annotated_aitenant(ready_aitenant_default_dataplane: AITenant) -> AITenant:
-    """Alias for a Ready tenant on default Praxis (post MaaS #1579)."""
-    return ready_aitenant_default_dataplane
-
-
-@pytest.fixture
 def ready_aitenant_legacy_ipp(
     admin_client: DynamicClient,
     aitenant_infra_namespace: str,
