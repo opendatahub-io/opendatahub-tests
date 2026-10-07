@@ -19,3 +19,4 @@ tests/ai_gateway/                              @SB159 @jland-redhat @somya-bhatn
 tests/llama_stack/                             @Artemon-line @Bobbins228 @ChristianZaccaria @jgarciao @jiripetrlik @Ygnas
 tests/rhoai_mcp/                               @tarilabs @fpjrh
 tests/workbenches                              @jstourac @andyatmiami @jiridanek @harshad16 @atheo89
+tests/observability/                           @cgoodfred @chambridge @bro-adm @heorhiig @dayakar349 @tgitelman @grdryn @den-rgb @kahowell
