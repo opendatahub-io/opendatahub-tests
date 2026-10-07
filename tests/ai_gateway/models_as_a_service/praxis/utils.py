@@ -1,4 +1,4 @@
-"""Helpers for Praxis MaasTenantConfig opt-in and maas-controller platform tests."""
+"""Helpers for Praxis default dataplane and legacy IPP opt-in on MaasTenantConfig."""
 
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -21,6 +21,7 @@ from tests.ai_gateway.models_as_a_service.praxis.constants import (
     DEFAULT_PRAXIS_FINALIZER_WAIT_TIMEOUT_SECONDS,
     LEGACY_IPP_CUSTOM_CONFIG_DATA_KEY,
     LEGACY_IPP_CUSTOM_PRE_CONFIG_DATA_KEY,
+    LEGACY_IPP_PAYLOAD_PROCESSING_TYPE_VALUE,
     LEGACY_IPP_PLUGINS_CONFIGMAP_NAME_BASE,
     LEGACY_IPP_POLL_INTERVAL_SECONDS,
     LEGACY_IPP_POST_PROCESSING_NAME_BASE,
@@ -33,7 +34,6 @@ from tests.ai_gateway.models_as_a_service.praxis.constants import (
     PRAXIS_CLEANUP_FINALIZER,
     PRAXIS_EXTPROC_CONFIG_DATA_KEY,
     PRAXIS_PAYLOAD_PROCESSING_TYPE_ANNOTATION,
-    PRAXIS_PAYLOAD_PROCESSING_TYPE_VALUE,
     PRAXIS_POST_PROCESSING_CONTAINER_CONFIG_ARG,
     PRAXIS_PRE_EXTPROC_CONFIG_DATA_KEY,
     PRAXIS_PRE_PROCESSING_CONTAINER_CONFIG_ARG,
@@ -77,6 +77,14 @@ def maas_tenant_config_for_aitenant(admin_client: DynamicClient, aitenant: AITen
 def maastenantconfig_metadata_annotations(bootstrapped_tenant_config: MaasTenantConfig) -> dict[str, str]:
     """Return MaasTenantConfig metadata annotations as a string dict."""
     return dict(bootstrapped_tenant_config.instance.metadata.annotations or {})
+
+
+def effective_praxis_payload_processing(payload_processing_type: str | None) -> bool:
+    """Return True when MaasTenantConfig resolves to the Praxis dataplane (MaaS #1579 default)."""
+    if payload_processing_type is None:
+        return True
+    normalized = payload_processing_type.strip().lower()
+    return normalized != LEGACY_IPP_PAYLOAD_PROCESSING_TYPE_VALUE
 
 
 def read_maastenantconfig_payload_processing_type(
@@ -153,7 +161,7 @@ def verify_maastenantconfig_has_praxis_cleanup_finalizer(
         finalizers = read_maastenantconfig_finalizers(admin_client=admin_client, aitenant=aitenant)
         pytest.fail(
             f"MaasTenantConfig '{bootstrapped_tenant_config.namespace}/{bootstrapped_tenant_config.name}' "
-            f"should have finalizer '{PRAXIS_CLEANUP_FINALIZER}' when payload-processing-type is praxis "
+            f"should have finalizer '{PRAXIS_CLEANUP_FINALIZER}' on effective Praxis dataplane "
             f"(timeout {timeout}s); got {finalizers!r}"
         )
 
@@ -180,18 +188,18 @@ def wait_until_maastenantconfig_lacks_praxis_cleanup_finalizer(
         finalizers = read_maastenantconfig_finalizers(admin_client=admin_client, aitenant=aitenant)
         pytest.fail(
             f"MaasTenantConfig '{bootstrapped_tenant_config.namespace}/{bootstrapped_tenant_config.name}' "
-            f"should not have finalizer '{PRAXIS_CLEANUP_FINALIZER}' after leaving praxis opt-in "
+            f"should not have finalizer '{PRAXIS_CLEANUP_FINALIZER}' after legacy IPP opt-in "
             f"(timeout {timeout}s); got {finalizers!r}"
         )
 
 
 def verify_maastenantconfig_lacks_praxis_cleanup_finalizer(admin_client: DynamicClient, aitenant: AITenant) -> None:
-    """Assert MaasTenantConfig is not on the Praxis controller cleanup path."""
+    """Assert MaasTenantConfig is on legacy IPP (not the Praxis controller cleanup path)."""
     bootstrapped_tenant_config = maas_tenant_config_for_aitenant(admin_client=admin_client, aitenant=aitenant)
     finalizers = read_maastenantconfig_finalizers(admin_client=admin_client, aitenant=aitenant)
     assert PRAXIS_CLEANUP_FINALIZER not in finalizers, (
         f"MaasTenantConfig '{bootstrapped_tenant_config.namespace}/{bootstrapped_tenant_config.name}' "
-        f"should not have finalizer '{PRAXIS_CLEANUP_FINALIZER}' without effective praxis opt-in; "
+        f"should not have finalizer '{PRAXIS_CLEANUP_FINALIZER}' when legacy IPP is selected; "
         f"got {finalizers!r}"
     )
 
@@ -201,7 +209,10 @@ def set_maastenantconfig_payload_processing_type_annotation(
     aitenant: AITenant,
     annotation_value: str | None,
 ) -> None:
-    """Set or remove payload-processing-type on MaasTenantConfig for a Ready AITenant."""
+    """Set, clear, or remove payload-processing-type on MaasTenantConfig for a Ready AITenant.
+
+    Clearing the annotation (``annotation_value=None``) selects the default Praxis dataplane.
+    """
     if annotation_value is None:
         bootstrapped_tenant_config = maas_tenant_config_for_aitenant(admin_client=admin_client, aitenant=aitenant)
         annotations = maastenantconfig_metadata_annotations(bootstrapped_tenant_config=bootstrapped_tenant_config)
@@ -223,12 +234,81 @@ def set_maastenantconfig_payload_processing_type_annotation(
     ).update()
 
 
-def verify_maastenantconfig_non_praxis_payload_processing_uses_legacy_ipp(
+def opt_in_legacy_ipp_payload_processing_for_aitenant(
+    admin_client: DynamicClient,
+    aitenant: AITenant,
+    timeout: int = DEFAULT_LEGACY_IPP_WAIT_TIMEOUT_SECONDS,
+) -> None:
+    """Opt into legacy IPP via MaasTenantConfig and wait until maas-controller installs the stack."""
+    gateway_namespace, _gateway_name = gateway_namespace_and_name_for_aitenant(aitenant=aitenant)
+    set_maastenantconfig_payload_processing_type_annotation(
+        admin_client=admin_client,
+        aitenant=aitenant,
+        annotation_value=LEGACY_IPP_PAYLOAD_PROCESSING_TYPE_VALUE,
+    )
+    verify_maastenantconfig_payload_processing_type(
+        admin_client=admin_client,
+        aitenant=aitenant,
+        expected_value=LEGACY_IPP_PAYLOAD_PROCESSING_TYPE_VALUE,
+    )
+    wait_until_maastenantconfig_lacks_praxis_cleanup_finalizer(
+        admin_client=admin_client,
+        aitenant=aitenant,
+        timeout=timeout,
+    )
+    verify_legacy_ipp_installed_for_aitenant(
+        admin_client=admin_client,
+        gateway_namespace=gateway_namespace,
+        aitenant_name=aitenant.name,
+        timeout=timeout,
+    )
+    verify_aitenant_lacks_payload_processing_type_annotation(aitenant=aitenant)
+
+
+def verify_default_dataplane_praxis_for_aitenant(
+    admin_client: DynamicClient,
+    aitenant: AITenant,
+    timeout: int = DEFAULT_LEGACY_IPP_WAIT_TIMEOUT_SECONDS,
+) -> None:
+    """Assert MaasTenantConfig uses default Praxis (no annotation) with active Praxis payload processing."""
+    verify_maastenantconfig_payload_processing_type(
+        admin_client=admin_client,
+        aitenant=aitenant,
+        expected_value=None,
+    )
+    verify_maastenantconfig_has_praxis_cleanup_finalizer(
+        admin_client=admin_client,
+        aitenant=aitenant,
+        timeout=timeout,
+    )
+    verify_praxis_payload_processing_active_for_aitenant(
+        admin_client=admin_client,
+        aitenant=aitenant,
+        timeout=timeout,
+    )
+    verify_aitenant_lacks_payload_processing_type_annotation(aitenant=aitenant)
+
+
+def verify_maastenantconfig_legacy_ipp_opt_in(
+    admin_client: DynamicClient,
+    aitenant: AITenant,
+    timeout: int = DEFAULT_LEGACY_IPP_WAIT_TIMEOUT_SECONDS,
+) -> None:
+    """Set payload-processing-type=ipp and assert legacy IPP is active without Praxis cleanup."""
+    opt_in_legacy_ipp_payload_processing_for_aitenant(
+        admin_client=admin_client,
+        aitenant=aitenant,
+        timeout=timeout,
+    )
+
+
+def verify_unrecognized_payload_processing_type_uses_praxis_dataplane(
     admin_client: DynamicClient,
     aitenant: AITenant,
     annotation_value: str,
+    timeout: int = DEFAULT_LEGACY_IPP_WAIT_TIMEOUT_SECONDS,
 ) -> None:
-    """Set a non-praxis payload-processing-type on MaasTenantConfig and assert Praxis cleanup stays off."""
+    """Set an unrecognized payload-processing-type and assert controllers keep the Praxis dataplane."""
     set_maastenantconfig_payload_processing_type_annotation(
         admin_client=admin_client,
         aitenant=aitenant,
@@ -239,7 +319,19 @@ def verify_maastenantconfig_non_praxis_payload_processing_uses_legacy_ipp(
         aitenant=aitenant,
         expected_value=annotation_value,
     )
-    verify_maastenantconfig_lacks_praxis_cleanup_finalizer(admin_client=admin_client, aitenant=aitenant)
+    assert effective_praxis_payload_processing(payload_processing_type=annotation_value), (
+        f"annotation value {annotation_value!r} should resolve to Praxis dataplane"
+    )
+    verify_maastenantconfig_has_praxis_cleanup_finalizer(
+        admin_client=admin_client,
+        aitenant=aitenant,
+        timeout=timeout,
+    )
+    verify_praxis_payload_processing_active_for_aitenant(
+        admin_client=admin_client,
+        aitenant=aitenant,
+        timeout=timeout,
+    )
     verify_aitenant_lacks_payload_processing_type_annotation(aitenant=aitenant)
 
 
@@ -766,7 +858,7 @@ def _maas_ipp_handoff_complete(admin_client: DynamicClient, aitenant: AITenant) 
         admin_client=admin_client,
         aitenant=aitenant,
     )
-    if payload_processing_type != PRAXIS_PAYLOAD_PROCESSING_TYPE_VALUE:
+    if not effective_praxis_payload_processing(payload_processing_type=payload_processing_type):
         return False
     gateway_namespace, _gateway_name = gateway_namespace_and_name_for_aitenant(aitenant=aitenant)
     legacy_ipp_markers_remain = maas_legacy_ipp_markers_present_in_gateway_namespace(
@@ -1113,10 +1205,10 @@ def migrate_legacy_aitenant_to_praxis_payload_processing(
     aitenant: AITenant,
     timeout: int = DEFAULT_LEGACY_IPP_WAIT_TIMEOUT_SECONDS,
 ) -> None:
-    """Migrate a legacy tenant to Praxis via MaasTenantConfig and wait for Praxis payload processing.
+    """Migrate a legacy-IPP tenant to default Praxis and wait for Praxis payload processing.
 
-    Verifies legacy IPP is installed before migration, then applies the praxis payload-processing-type
-    annotation on MaasTenantConfig and waits for the praxis-cleanup finalizer and active Praxis bundle.
+    Expects ``payload-processing-type=ipp`` with legacy IPP installed, then clears the annotation
+    so MaasTenantConfig uses the default Praxis dataplane.
     """
     gateway_namespace, _gateway_name = gateway_namespace_and_name_for_aitenant(aitenant=aitenant)
     aitenant_name = aitenant.name
@@ -1129,7 +1221,12 @@ def migrate_legacy_aitenant_to_praxis_payload_processing(
     set_maastenantconfig_payload_processing_type_annotation(
         admin_client=admin_client,
         aitenant=aitenant,
-        annotation_value=PRAXIS_PAYLOAD_PROCESSING_TYPE_VALUE,
+        annotation_value=None,
+    )
+    verify_maastenantconfig_payload_processing_type(
+        admin_client=admin_client,
+        aitenant=aitenant,
+        expected_value=None,
     )
     verify_maastenantconfig_has_praxis_cleanup_finalizer(
         admin_client=admin_client,
@@ -1148,18 +1245,18 @@ def restore_legacy_aitenant_payload_processing(
     aitenant: AITenant,
     timeout: int = LEGACY_IPP_SWITCH_BACK_WAIT_TIMEOUT_SECONDS,
 ) -> None:
-    """Remove praxis opt-in from MaasTenantConfig and wait until maas-controller legacy IPP is active again."""
+    """Opt back into legacy IPP via MaasTenantConfig and wait until maas-controller owns the stack."""
     gateway_namespace, _gateway_name = gateway_namespace_and_name_for_aitenant(aitenant=aitenant)
     aitenant_name = aitenant.name
     set_maastenantconfig_payload_processing_type_annotation(
         admin_client=admin_client,
         aitenant=aitenant,
-        annotation_value=None,
+        annotation_value=LEGACY_IPP_PAYLOAD_PROCESSING_TYPE_VALUE,
     )
     verify_maastenantconfig_payload_processing_type(
         admin_client=admin_client,
         aitenant=aitenant,
-        expected_value=None,
+        expected_value=LEGACY_IPP_PAYLOAD_PROCESSING_TYPE_VALUE,
     )
     wait_until_maastenantconfig_lacks_praxis_cleanup_finalizer(
         admin_client=admin_client,
