@@ -157,6 +157,35 @@ def query_database(postgres_pod: Pod, database: str, select_statement: str) -> l
     return _parse_json_rows(psql_output=output)
 
 
+def ids_present_in_table(
+    postgres_pod: Pod,
+    database: str,
+    table: str,
+    ids: list[str],
+    id_column: str = "id",
+) -> set[str]:
+    """Return the subset of `ids` stored in `table`.
+
+    Args:
+        postgres_pod: The PostgreSQL pod to query.
+        database: Database name to connect to.
+        table: Unquoted table name in the `public` schema.
+        ids: Resource ids to look for.
+        id_column: Column holding the resource id. Every table uses `id` except
+            the Praxis conversations table, which uses `conversation_id`.
+
+    Returns:
+        The ids found in the table.
+    """
+    id_literals = ", ".join(f"'{resource_id}'" for resource_id in ids)
+    rows = query_database(
+        postgres_pod=postgres_pod,
+        database=database,
+        select_statement=f"SELECT {id_column} AS resource_id FROM {table} WHERE {id_column} IN ({id_literals})",
+    )
+    return {str(row["resource_id"]) for row in rows}
+
+
 def migration_target_secret_ref(ogx_server: OgxServer) -> dict[str, str] | None:
     """Return the Secret reference holding the Praxis target connection string.
 
