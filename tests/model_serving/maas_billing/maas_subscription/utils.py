@@ -26,6 +26,12 @@ LOGGER = structlog.get_logger(name=__name__)
 MAAS_SUBSCRIPTION_NAMESPACE = "models-as-a-service"
 
 
+def maas_body_routed_model_name(llmisvc: LLMInferenceService) -> str:
+    """Return the canonical model identity required by MaaS body-routed requests."""
+    configured_model_name = llmisvc.instance.spec.model.get("name", llmisvc.name)
+    return f"publishers/{llmisvc.namespace}/models/{configured_model_name}"
+
+
 @contextmanager
 def patch_llmisvc_with_maas_router_and_tiers(
     llm_service: LLMInferenceService,
