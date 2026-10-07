@@ -17,6 +17,17 @@ SOURCE_CONVERSATIONS_TABLE: str = "openai_conversations"
 TARGET_RESPONSES_TABLE: str = "openai_responses"
 TARGET_CONVERSATIONS_TABLE: str = "openai_conversations"
 
+# Tables holding the Files and Vector Stores metadata, read by the write-path
+# ownership test. Unlike the tables above these are not part of the migration's
+# contract -- `ogx migrate praxis` does not read them -- so nothing in this repo
+# or in the distribution config pins their names.
+#
+# TODO: confirm all four names against a live cluster.
+SOURCE_FILES_TABLE: str = "openai_files"
+SOURCE_VECTOR_STORES_TABLE: str = "openai_vector_stores"
+TARGET_FILES_TABLE: str = "openai_files"
+TARGET_VECTOR_STORES_TABLE: str = "openai_vector_stores"
+
 # OGX PostgreSQL instance deployed in the test namespace (see
 # `build_ogx_server_config` and the `postgres_deployment` fixture).
 OGX_POSTGRES_DATABASE: str = "ps_db"
