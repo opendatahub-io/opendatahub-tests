@@ -27,11 +27,34 @@ from tests.ai_gateway.models_as_a_service.utils import (
     verify_maas_gateway_programmed,
     verify_maas_tenant_ready,
 )
+from tests.model_serving.model_server.llmd.api_compat import (  # noqa: NIT001
+    BearerTokenProvider,
+    OpenAICompatibilityValidator,
+)
 from utilities.llmisvc_upgrade_utils import get_llmisvc_restart_counts, load_baseline_from_configmap
 from utilities.logger import RedactedString
+from utilities.plugins.constant import OpenAIEnpoints
 from utilities.resources.llm_inference_service import LLMInferenceService
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+def _run_openai_compatibility(
+    chat_completions_url: str,
+    llmisvc: LLMInferenceService,
+    api_key: str,
+) -> None:
+    """Run the OpenAI compatibility contract through the authenticated MaaS route."""
+    gateway_base_url = chat_completions_url.removesuffix(OpenAIEnpoints.CHAT_COMPLETIONS)
+    model_name = maas_body_routed_model_name(llmisvc=llmisvc)
+
+    with OpenAICompatibilityValidator(
+        base_url=gateway_base_url,
+        model_name=model_name,
+        api_key_provider=BearerTokenProvider(token=api_key),
+        verify_ssl=False,
+    ) as validator:
+        validator.run_all()
 
 
 def _assert_maas_stack_ready(
@@ -137,6 +160,20 @@ class TestMaaSInferenceWithLlmDPreUpgrade:
             log_prefix="PRE-UPGRADE",
         )
 
+    @pytest.mark.dependency(depends=["maas_llmd_stack_ready_pre_upgrade"])
+    def test_maas_openai_compatibility_pre_upgrade(
+        self,
+        maas_upgrade_chat_completions_url: str,
+        maas_inference_with_llmd_llmisvc: LLMInferenceService,
+        maas_inference_with_llmd_api_key: str,
+    ) -> None:
+        """Given a ready pre-upgrade MaaS stack, when the OpenAI contract runs, then it succeeds."""
+        _run_openai_compatibility(
+            chat_completions_url=maas_upgrade_chat_completions_url,
+            llmisvc=maas_inference_with_llmd_llmisvc,
+            api_key=maas_inference_with_llmd_api_key,
+        )
+
 
 @pytest.mark.post_upgrade
 class TestMaaSInferenceWithLlmDPostUpgrade:
@@ -229,6 +266,25 @@ class TestMaaSInferenceWithLlmDPostUpgrade:
             max_tokens=6,
             request_timeout_seconds=120,
             log_prefix="POST-UPGRADE",
+        )
+
+    @pytest.mark.dependency(
+        depends=[
+            "maas_llmd_stack_ready_post_upgrade",
+            "maas_llmisvc_pods_stable_post_upgrade",
+        ]
+    )
+    def test_maas_openai_compatibility_post_upgrade(
+        self,
+        maas_upgrade_chat_completions_url: str,
+        maas_inference_with_llmd_llmisvc: LLMInferenceService,
+        maas_inference_with_llmd_api_key: str,
+    ) -> None:
+        """Given a ready post-upgrade MaaS stack, when the OpenAI contract runs, then it succeeds."""
+        _run_openai_compatibility(
+            chat_completions_url=maas_upgrade_chat_completions_url,
+            llmisvc=maas_inference_with_llmd_llmisvc,
+            api_key=maas_inference_with_llmd_api_key,
         )
 
     @pytest.mark.dependency(

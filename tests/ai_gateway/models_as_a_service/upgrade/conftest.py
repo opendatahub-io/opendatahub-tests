@@ -625,6 +625,21 @@ def maas_inference_with_llmd_llmisvc(
         enable_auth = True
 
         @classmethod
+        def container_env(cls) -> list[dict[str, str]]:
+            """Enable vLLM automatic tool choice for the OpenAI compatibility checks."""
+            return [
+                {"name": "VLLM_LOGGING_LEVEL", "value": "DEBUG"},
+                {
+                    "name": "VLLM_ADDITIONAL_ARGS",
+                    "value": (
+                        "--max-num-seqs 20 --max-model-len 128 --enforce-eager "
+                        "--ssl-ciphers ECDHE+AESGCM:DHE+AESGCM "
+                        "--enable-auto-tool-choice --tool-call-parser hermes"
+                    ),
+                },
+            ]
+
+        @classmethod
         def annotations(cls) -> dict[str, str]:
             return {
                 **super().annotations(),
