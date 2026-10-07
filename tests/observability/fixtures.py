@@ -117,7 +117,7 @@ def create_model_pair(
     wait_for_predictor_pods: bool = False,
     teardown: bool = True,
 ) -> Generator[list[InferenceService]]:
-    """Create model-a and model-b using the repository's serving runtime and ISVC helpers."""
+    """Create two model fixtures using the repository's serving runtime and ISVC helpers."""
     from ocp_resources.serving_runtime import ServingRuntime
 
     from utilities.constants import KServeDeploymentType
