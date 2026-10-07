@@ -53,6 +53,7 @@ def _run_openai_compatibility(
         model_name=model_name,
         api_key_provider=BearerTokenProvider(token=api_key),
         verify_ssl=False,
+        max_tokens_limit=32,
     ) as validator:
         validator.run_all()
 
