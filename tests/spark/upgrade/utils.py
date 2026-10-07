@@ -1,351 +1,114 @@
-"""Utility functions for Spark upgrade tests."""
+"""Utilities for Spark execution continuity and resubmission across upgrades."""
 
 import structlog
-import yaml
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.config_map import ConfigMap
 from ocp_resources.pod import Pod
-from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
-from tests.spark.image_constants import SparkImages
 from utilities.resources.spark_application import SparkApplication
 
 LOGGER = structlog.get_logger(name=__name__)
 
-UPGRADE_BASELINE_CONFIGMAP = "spark-upgrade-baseline"
-SPARK_VERSION = "4.0.1"
-SPARK_IMAGE = SparkImages.DATA_PROCESSING
 
-
-def wait_for_spark_application_state(
-    spark_app: SparkApplication,
-    expected_state: str,
-    timeout: int = 300,
-) -> None:
-    """Wait for SparkApplication to reach expected state.
+def spark_running_execution(client: DynamicClient, spark_app: SparkApplication) -> dict:
+    """Capture identity and restart counts only after an executor starts the gated task.
 
     Args:
-        spark_app: SparkApplication resource
-        expected_state: Expected application state (e.g., "COMPLETED", "RUNNING")
-        timeout: Timeout in seconds
-
-    Raises:
-        TimeoutExpiredError: If the state is not reached within timeout
-    """
-    LOGGER.info(f"Waiting for SparkApplication {spark_app.name} to reach state {expected_state}")
-
-    def _get_state():
-        """Get application state, handling None status."""
-        status = spark_app.instance.status
-        if status is None:
-            return None
-        return status.get("applicationState", {}).get("state")
-
-    sampler = TimeoutSampler(
-        wait_timeout=timeout,
-        sleep=5,
-        func=_get_state,
-    )
-
-    try:
-        for state in sampler:
-            if state == expected_state:
-                LOGGER.info(f"SparkApplication {spark_app.name} reached state {expected_state}")
-                return
-    except TimeoutExpiredError:
-        status = spark_app.instance.status
-        if status is None:
-            current_state = "No status yet"
-        else:
-            current_state = status.get("applicationState", {}).get("state", "UNKNOWN")
-        raise TimeoutExpiredError(
-            f"SparkApplication {spark_app.name} did not reach {expected_state} state within {timeout}s. "
-            f"Current state: {current_state}"
-        )
-
-
-def create_spark_pi_application_spec(
-    name: str,
-    namespace: str,
-    spark_version: str = SPARK_VERSION,
-    image: str = SPARK_IMAGE,
-    service_account: str = "spark-operator-spark",
-) -> dict:
-    """Create a SparkApplication spec for spark-pi workload.
-
-    Args:
-        name: Name of the SparkApplication
-        namespace: Namespace to deploy to
-        spark_version: Spark version (default: 4.0.1)
-        image: Spark image to use
-        service_account: Service account for Spark pods
+        client: Kubernetes client.
+        spark_app: Application expected to be running across the upgrade.
 
     Returns:
-        dict: SparkApplication spec matching the Go implementation
+        Application and pod identity suitable for comparison after upgrade.
     """
+    instance = spark_app.instance
+    status = instance.status or {}
+    application_state = status.get("applicationState", {})
+    if application_state.get("state") in {"FAILED", "SUBMISSION_FAILED"}:
+        driver_name = status.get("driverInfo", {}).get("podName")
+        driver_logs = "Driver pod has not been reported"
+        if driver_name:
+            try:
+                driver_logs = Pod(client=client, name=driver_name, namespace=spark_app.namespace).log(tail_lines=200)
+            except Exception as error:  # noqa: BLE001
+                driver_logs = f"Unable to retrieve driver logs: {error}"
+        raise RuntimeError(
+            f"SparkApplication {spark_app.name} failed: {application_state}. Driver logs:\n{driver_logs}"
+        )
+    assert application_state.get("state") == "RUNNING", f"Expected an in-progress execution: {instance.status}"
+    pods = list(
+        Pod.get(
+            dyn_client=client,
+            namespace=spark_app.namespace,
+            label_selector=f"sparkoperator.k8s.io/app-name={spark_app.name}",
+        )
+    )
+    identities = {}
+    roles = []
+    for pod in pods:
+        pod_instance = pod.instance
+        role = pod_instance.metadata.labels.get("spark-role")
+        roles.append(role)
+        assert pod_instance.status.phase == "Running", f"Pod {pod.name} is not running"
+        if role == "executor":
+            assert "UPGRADE_TASK_STARTED" in pod.log(), "The executor has not started the task"
+        identities[pod.name] = {
+            "uid": pod_instance.metadata.uid,
+            "restarts": sum(item.get("restartCount", 0) for item in pod_instance.status.get("containerStatuses", [])),
+        }
+    assert sorted(roles) == ["driver", "executor"], f"Expected one driver and one executor, got {roles}"
     return {
+        "uid": instance.metadata.uid,
+        "generation": instance.metadata.generation,
+        "pods": identities,
+    }
+
+
+def resubmit_spark_application(
+    client: DynamicClient,
+    spark_app: SparkApplication,
+    teardown: bool,
+) -> SparkApplication:
+    """Re-run an existing SparkApplication by re-submitting its captured spec.
+
+    Represents the customer scenario of re-running a pre-upgrade workload on the
+    upgraded operator. A spark-pi SparkApplication uses restartPolicy: Never, so
+    once it reaches COMPLETED it does not run again on its own. To actively *use*
+    the existing resource, its spec is captured, the terminal resource is deleted,
+    and an identically named/spec'd resource is recreated so the upgraded operator
+    reconciles and runs it again.
+
+    Args:
+        client: Kubernetes client
+        spark_app: The existing (pre-upgrade) SparkApplication to re-run
+        teardown: Whether to clean up the recreated resource on teardown
+
+    Returns:
+        SparkApplication: The re-submitted SparkApplication resource
+    """
+    assert spark_app.exists, f"Pre-upgrade SparkApplication {spark_app.name} is missing"
+    instance = spark_app.instance
+    state = (instance.status or {}).get("applicationState", {}).get("state")
+    assert state == "COMPLETED", f"Expected a completed pre-upgrade application before resubmission, got {state}"
+    name = spark_app.name
+    namespace = spark_app.namespace
+    spec = instance.to_dict()["spec"]
+
+    LOGGER.info(f"Re-running existing SparkApplication {name} in namespace {namespace}")
+
+    # Delete the completed resource and wait for it to be fully removed before recreating,
+    # so the recreate does not collide with the terminal instance.
+    spark_app.clean_up(wait=True)
+
+    kind_dict = {
         "apiVersion": "sparkoperator.k8s.io/v1beta2",
         "kind": "SparkApplication",
         "metadata": {
             "name": name,
             "namespace": namespace,
         },
-        "spec": {
-            "type": "Scala",
-            "mode": "cluster",
-            "image": image,
-            "imagePullPolicy": "IfNotPresent",
-            "mainClass": "org.apache.spark.examples.SparkPi",
-            "mainApplicationFile": f"local:///opt/spark/examples/jars/spark-examples_2.13-{spark_version}.jar",
-            "sparkVersion": spark_version,
-            "restartPolicy": {
-                "type": "Never",
-            },
-            "driver": {
-                "cores": 1,
-                "memory": "512m",
-                "serviceAccount": service_account,
-                "volumeMounts": [
-                    {
-                        "name": "work-dir",
-                        "mountPath": "/opt/spark/work-dir",
-                    }
-                ],
-            },
-            "executor": {
-                "cores": 1,
-                "instances": 1,
-                "memory": "512m",
-                "volumeMounts": [
-                    {
-                        "name": "work-dir",
-                        "mountPath": "/opt/spark/work-dir",
-                    }
-                ],
-            },
-            "volumes": [
-                {
-                    "name": "work-dir",
-                    "emptyDir": {},
-                }
-            ],
-        },
+        "spec": spec,
     }
 
-
-def capture_spark_application_baseline(
-    client: DynamicClient,
-    spark_app: SparkApplication,
-) -> dict:
-    """Capture baseline state for a SparkApplication.
-
-    Args:
-        client: Kubernetes client
-        spark_app: SparkApplication resource
-
-    Returns:
-        dict: Baseline data including generation and pod restart counts
-    """
-    LOGGER.info(f"Capturing baseline for SparkApplication {spark_app.name}")
-
-    # Wait for application to complete and get metadata generation
-    wait_for_spark_application_state(spark_app=spark_app, expected_state="COMPLETED", timeout=300)
-    generation = spark_app.instance.metadata.generation
-
-    # Get pod restart counts
-    pod_restart_counts = {}
-    pods = list(
-        Pod.get(
-            dyn_client=client,
-            namespace=spark_app.namespace,
-            label_selector=f"sparkoperator.k8s.io/app-name={spark_app.name}",
-        )
-    )
-
-    for pod in pods:
-        restart_count = sum(
-            container_status.get("restartCount", 0)
-            for container_status in pod.instance.status.get("containerStatuses", [])
-        )
-        pod_restart_counts[pod.name] = restart_count
-
-    baseline = {
-        "spark_app_name": spark_app.name,
-        "generation": generation,
-        "pod_restart_counts": pod_restart_counts,
-        "application_state": spark_app.instance.status.get("applicationState", {}).get("state"),
-    }
-
-    LOGGER.info(f"Baseline captured: {baseline}")
-    return baseline
-
-
-def save_baseline_to_configmap(
-    client: DynamicClient,
-    namespace: str,
-    baselines: dict,
-) -> None:
-    """Save baseline data to a ConfigMap.
-
-    Args:
-        client: Kubernetes client
-        namespace: Namespace containing the ConfigMap
-        baselines: Dictionary of baseline data keyed by resource name
-    """
-    LOGGER.info(f"Saving baseline to ConfigMap {UPGRADE_BASELINE_CONFIGMAP} in namespace {namespace}")
-
-    cm_data = {
-        "baselines.yaml": yaml.dump(baselines),
-    }
-
-    cm = ConfigMap(
-        client=client,
-        name=UPGRADE_BASELINE_CONFIGMAP,
-        namespace=namespace,
-        data=cm_data,
-    )
-
-    if cm.exists:
-        raise AssertionError(
-            f"ConfigMap {UPGRADE_BASELINE_CONFIGMAP} already exists in namespace {namespace}. "
-            "This indicates a previous test run did not clean up properly."
-        )
-
-    cm.deploy()
-    LOGGER.info("Baseline saved to ConfigMap")
-
-
-def load_baseline_from_configmap(
-    client: DynamicClient,
-    namespace: str,
-) -> dict:
-    """Load baseline data from ConfigMap.
-
-    Args:
-        client: Kubernetes client
-        namespace: Namespace containing the ConfigMap
-
-    Returns:
-        dict: Baseline data keyed by resource name
-    """
-    LOGGER.info(f"Loading baseline from ConfigMap {UPGRADE_BASELINE_CONFIGMAP} in namespace {namespace}")
-
-    cm = ConfigMap(
-        client=client,
-        name=UPGRADE_BASELINE_CONFIGMAP,
-        namespace=namespace,
-    )
-
-    if not cm.exists:
-        raise AssertionError(
-            f"Baseline ConfigMap {UPGRADE_BASELINE_CONFIGMAP} does not exist in namespace {namespace}. "
-            "Cannot load baseline for post-upgrade verification."
-        )
-
-    baseline_yaml = cm.instance.data.get("baselines.yaml", "")
-    baselines = yaml.safe_load(baseline_yaml) or {}
-
-    LOGGER.info(f"Loaded {len(baselines)} baseline entries")
-    return baselines
-
-
-def get_spark_app_baseline(baselines: dict, spark_app_name: str) -> dict:
-    """Get baseline for a specific SparkApplication.
-
-    Args:
-        baselines: Dictionary of all baselines
-        spark_app_name: Name of the SparkApplication
-
-    Returns:
-        dict: Baseline data for the SparkApplication
-    """
-    baseline = baselines.get(spark_app_name)
-    if not baseline:
-        raise ValueError(f"No baseline found for SparkApplication {spark_app_name}")
-    return baseline
-
-
-def verify_spark_app_generation(
-    spark_app: SparkApplication,
-    expected_generation: int,
-) -> None:
-    """Verify SparkApplication metadata generation has not changed.
-
-    Args:
-        spark_app: SparkApplication resource
-        expected_generation: Expected metadata generation
-
-    Raises:
-        AssertionError: If generation doesn't match
-
-    Note:
-        Uses metadata.generation (set by Kubernetes) instead of status.observedGeneration
-        because Spark Operator doesn't populate observedGeneration in the status.
-    """
-    actual_generation = spark_app.instance.metadata.generation
-
-    assert actual_generation == expected_generation, (
-        f"SparkApplication {spark_app.name} generation changed during upgrade. "
-        f"Expected: {expected_generation}, Actual: {actual_generation}"
-    )
-    LOGGER.info(f"SparkApplication {spark_app.name} generation verified: {actual_generation}")
-
-
-def verify_spark_app_completed(spark_app: SparkApplication) -> None:
-    """Verify SparkApplication reached COMPLETED state.
-
-    Args:
-        spark_app: SparkApplication resource
-
-    Raises:
-        AssertionError: If application is not in COMPLETED state
-    """
-    wait_for_spark_application_state(spark_app=spark_app, expected_state="COMPLETED", timeout=300)
-    state = spark_app.instance.status.get("applicationState", {}).get("state")
-    assert state == "COMPLETED", f"SparkApplication {spark_app.name} not in COMPLETED state. Actual: {state}"
-    LOGGER.info(f"SparkApplication {spark_app.name} is in COMPLETED state")
-
-
-def verify_pods_not_restarted(
-    client: DynamicClient,
-    spark_app: SparkApplication,
-    baseline_restart_counts: dict,
-) -> None:
-    """Verify pods have not restarted beyond baseline.
-
-    Args:
-        client: Kubernetes client
-        spark_app: SparkApplication resource
-        baseline_restart_counts: Baseline restart counts per pod
-
-    Raises:
-        AssertionError: If any pod has restarted beyond baseline
-    """
-    pods = list(
-        Pod.get(
-            dyn_client=client,
-            namespace=spark_app.namespace,
-            label_selector=f"sparkoperator.k8s.io/app-name={spark_app.name}",
-        )
-    )
-
-    # Verify pod identity continuity
-    baseline_pods = set(baseline_restart_counts.keys())
-    current_pods = {pod.name for pod in pods}
-    assert current_pods == baseline_pods, (
-        f"Pod set changed during upgrade. Baseline: {sorted(baseline_pods)}, Current: {sorted(current_pods)}"
-    )
-
-    for pod in pods:
-        current_restart_count = sum(
-            container_status.get("restartCount", 0)
-            for container_status in pod.instance.status.get("containerStatuses", [])
-        )
-
-        baseline_count = baseline_restart_counts[pod.name]
-
-        assert current_restart_count <= baseline_count, (
-            f"Pod {pod.name} restarted during upgrade. Baseline: {baseline_count}, Current: {current_restart_count}"
-        )
-
-    LOGGER.info(f"All pods for SparkApplication {spark_app.name} have not restarted beyond baseline")
+    resubmitted = SparkApplication(client=client, kind_dict=kind_dict, teardown=teardown)
+    resubmitted.deploy()
+    LOGGER.info(f"Re-submitted SparkApplication {name} in namespace {namespace}")
+    return resubmitted
