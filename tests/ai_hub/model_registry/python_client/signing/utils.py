@@ -15,7 +15,6 @@ from ocp_resources.service import Service
 from pyhelper_utils.shell import run_command
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
-from tests.ai_hub.constants import SeaweedFs
 from tests.ai_hub.image_constants import AiHubImages
 from tests.ai_hub.model_registry.async_job.constants import (
     ASYNC_JOB_ANNOTATIONS,
@@ -29,7 +28,7 @@ from tests.ai_hub.model_registry.python_client.signing.constants import (
     SECURESIGN_ORGANIZATION_NAME,
 )
 from tests.ai_hub.utils import get_endpoint_from_mr_service, get_mr_service_by_label
-from utilities.constants import OCIRegistry, Protocols
+from utilities.constants import OCIRegistry, Protocols, SeaweedFs
 from utilities.general import collect_pod_information
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 

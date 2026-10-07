@@ -14,7 +14,6 @@ from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from pytest import FixtureRequest
 
-from tests.ai_hub.constants import SeaweedFs
 from tests.ai_hub.model_registry.async_job.constants import (
     ASYNC_JOB_ANNOTATIONS,
     ASYNC_JOB_LABELS,
@@ -25,7 +24,7 @@ from tests.ai_hub.model_registry.async_job.constants import (
 )
 from tests.ai_hub.model_registry.async_job.utils import upload_test_model_to_s3_from_image
 from tests.ai_hub.utils import get_endpoint_from_mr_service, get_mr_service_by_label
-from utilities.constants import ApiGroups, Labels, OCIRegistry, Protocols
+from utilities.constants import ApiGroups, Labels, OCIRegistry, Protocols, SeaweedFs
 from utilities.general import b64_encoded_string, get_s3_secret_dict
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 
