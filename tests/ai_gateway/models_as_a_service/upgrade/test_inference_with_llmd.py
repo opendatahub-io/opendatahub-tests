@@ -1,5 +1,3 @@
-import time
-
 import pytest
 import requests
 import structlog
@@ -14,6 +12,7 @@ from tests.ai_gateway.models_as_a_service.maas_api_key.utils import (
     MAAS_GATEWAY_AUTH_POLICY_NAME,
     wait_for_auth_policy_accepted,
 )
+from tests.ai_gateway.models_as_a_service.maas_subscription.utils import maas_body_routed_model_name
 from tests.ai_gateway.models_as_a_service.upgrade.utils import (
     verify_maas_auth_policy_exists,
     verify_maas_model_ref_exists,
@@ -24,6 +23,7 @@ from tests.ai_gateway.models_as_a_service.utils import (
     assert_api_key_created_ok,
     build_maas_headers,
     create_api_key,
+    verify_chat_completions,
     verify_maas_gateway_programmed,
     verify_maas_tenant_ready,
 )
@@ -35,7 +35,6 @@ from utilities.logger import RedactedString
 from utilities.resources.llm_inference_service import LLMInferenceService
 
 LOGGER = structlog.get_logger(name=__name__)
-MAAS_LLMD_UPGRADE_PROMPT = "Reply with exactly this text: <MaaS upgrade smoke test>"
 
 
 def _assert_maas_stack_ready(
@@ -88,65 +87,6 @@ def _assert_maas_stack_ready(
     subscription.wait_for_condition(condition="Ready", status="True", timeout=300)
 
 
-def _assert_maas_inference_succeeds(
-    request_session_http: requests.Session,
-    maas_upgrade_base_url: str,
-    api_key: str,
-    llmisvc: LLMInferenceService,
-    phase: str,
-    prompt: str = MAAS_LLMD_UPGRADE_PROMPT,
-    max_tokens: int = 6,
-    temperature: float = 0,
-) -> None:
-    """Send an authenticated MaaS chat-completion request and validate its response."""
-    # Build the endpoint and canonical model identity from the configured LLMInferenceService.
-    inference_base_url = maas_upgrade_base_url.removesuffix("/maas-api")
-    endpoint = f"{inference_base_url.rstrip('/')}/v1/chat/completions"
-    resource = llmisvc.instance.to_dict()
-    model = resource.get("spec", {}).get("model", {})
-    model_name = model.get("name") or llmisvc.name
-    model_identity = f"publishers/{llmisvc.namespace.strip('/')}/models/{model_name.strip('/')}"
-
-    # Send an authenticated request using the parameters for this coverage case.
-    request_started = time.monotonic()
-    response = request_session_http.post(
-        url=endpoint,
-        headers=build_maas_headers(token=api_key),
-        json={
-            "model": model_identity,
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-        },
-        timeout=120,
-    )
-    elapsed_seconds = round(time.monotonic() - request_started, 2)
-
-    # Validate the stable response contract without logging or asserting generated text.
-    assert response.status_code == 200, (
-        f"[{phase}] MaaS chat completion returned HTTP {response.status_code}: {response.text[:200]}"
-    )
-    response_body = response.json()
-    assert isinstance(response_body, dict), f"[{phase}] MaaS response must be a JSON object"
-
-    model_alias = model_identity.rsplit("/", maxsplit=1)[-1]
-    assert response_body.get("model") in (model_identity, model_alias), (
-        f"[{phase}] MaaS response returned an unexpected model: {response_body.get('model')!r}"
-    )
-    choices = response_body.get("choices")
-    assert isinstance(choices, list) and choices, f"[{phase}] MaaS response must contain a choice"
-    assert isinstance(choices[0], dict), f"[{phase}] MaaS response choice must be an object"
-
-    first_choice = choices[0]
-    LOGGER.info(
-        event=f"[{phase}] MaaS inference succeeded",
-        model=response_body.get("model"),
-        status_code=response.status_code,
-        elapsed_seconds=elapsed_seconds,
-        finish_reason=first_choice.get("finish_reason"),
-    )
-
-
 @pytest.mark.pre_upgrade
 class TestMaaSInferenceWithLlmDPreUpgrade:
     """Verify the MaaS LLM-d data plane before the platform upgrade."""
@@ -182,17 +122,22 @@ class TestMaaSInferenceWithLlmDPreUpgrade:
     def test_maas_inference_with_llmd_pre_upgrade(
         self,
         request_session_http: requests.Session,
-        maas_upgrade_base_url: str,
+        maas_upgrade_chat_completions_url: str,
         maas_inference_with_llmd_llmisvc: LLMInferenceService,
         maas_inference_with_llmd_api_key: str,
     ) -> None:
         """Given a ready pre-upgrade MaaS stack, when chat completion runs, then inference succeeds."""
-        _assert_maas_inference_succeeds(
+        model_identity = maas_body_routed_model_name(llmisvc=maas_inference_with_llmd_llmisvc)
+
+        verify_chat_completions(
             request_session_http=request_session_http,
-            maas_upgrade_base_url=maas_upgrade_base_url,
-            api_key=maas_inference_with_llmd_api_key,
-            llmisvc=maas_inference_with_llmd_llmisvc,
-            phase="PRE-UPGRADE",
+            model_url=maas_upgrade_chat_completions_url,
+            headers=build_maas_headers(token=maas_inference_with_llmd_api_key),
+            models_list=[{"id": model_identity}],
+            prompt_text="Reply with exactly this text: <MaaS upgrade smoke test>",
+            max_tokens=6,
+            request_timeout_seconds=120,
+            log_prefix="PRE-UPGRADE",
         )
 
 
@@ -271,17 +216,22 @@ class TestMaaSInferenceWithLlmDPostUpgrade:
     def test_maas_inference_with_llmd_post_upgrade(
         self,
         request_session_http: requests.Session,
-        maas_upgrade_base_url: str,
+        maas_upgrade_chat_completions_url: str,
         maas_inference_with_llmd_llmisvc: LLMInferenceService,
         maas_inference_with_llmd_api_key: str,
     ) -> None:
         """Given a ready post-upgrade MaaS stack, when the same key calls chat completion, then inference succeeds."""
-        _assert_maas_inference_succeeds(
+        model_identity = maas_body_routed_model_name(llmisvc=maas_inference_with_llmd_llmisvc)
+
+        verify_chat_completions(
             request_session_http=request_session_http,
-            maas_upgrade_base_url=maas_upgrade_base_url,
-            api_key=maas_inference_with_llmd_api_key,
-            llmisvc=maas_inference_with_llmd_llmisvc,
-            phase="POST-UPGRADE",
+            model_url=maas_upgrade_chat_completions_url,
+            headers=build_maas_headers(token=maas_inference_with_llmd_api_key),
+            models_list=[{"id": model_identity}],
+            prompt_text="Reply with exactly this text: <MaaS upgrade smoke test>",
+            max_tokens=6,
+            request_timeout_seconds=120,
+            log_prefix="POST-UPGRADE",
         )
 
     @pytest.mark.dependency(
@@ -295,6 +245,7 @@ class TestMaaSInferenceWithLlmDPostUpgrade:
         request_session_http: requests.Session,
         current_client_token: str,
         maas_upgrade_base_url: str,
+        maas_upgrade_chat_completions_url: str,
         maas_inference_with_llmd_subscription: MaaSSubscription,
         maas_inference_with_llmd_llmisvc: LLMInferenceService,
     ) -> None:
@@ -315,21 +266,28 @@ class TestMaaSInferenceWithLlmDPostUpgrade:
         )
         api_key = RedactedString(value=body["key"])
 
+        model_identity = maas_body_routed_model_name(llmisvc=maas_inference_with_llmd_llmisvc)
+
         # Confirm the new key works for the standard request.
-        _assert_maas_inference_succeeds(
+        verify_chat_completions(
             request_session_http=request_session_http,
-            maas_upgrade_base_url=maas_upgrade_base_url,
-            api_key=api_key,
-            llmisvc=maas_inference_with_llmd_llmisvc,
-            phase="POST-UPGRADE-NEW-KEY-REQUEST-1",
+            model_url=maas_upgrade_chat_completions_url,
+            headers=build_maas_headers(token=api_key),
+            models_list=[{"id": model_identity}],
+            prompt_text="Reply with exactly this text: <MaaS upgrade smoke test>",
+            max_tokens=6,
+            request_timeout_seconds=120,
+            log_prefix="POST-UPGRADE-NEW-KEY-REQUEST-1",
         )
+
         # Reuse the same key with a different prompt and token limit.
-        _assert_maas_inference_succeeds(
+        verify_chat_completions(
             request_session_http=request_session_http,
-            maas_upgrade_base_url=maas_upgrade_base_url,
-            api_key=api_key,
-            llmisvc=maas_inference_with_llmd_llmisvc,
-            phase="POST-UPGRADE-NEW-KEY-REQUEST-2",
-            prompt="Reply with exactly: MaaS upgrade follow-up.",
+            model_url=maas_upgrade_chat_completions_url,
+            headers=build_maas_headers(token=api_key),
+            models_list=[{"id": model_identity}],
+            prompt_text="Reply with exactly: MaaS upgrade follow-up.",
             max_tokens=8,
+            request_timeout_seconds=120,
+            log_prefix="POST-UPGRADE-NEW-KEY-REQUEST-2",
         )

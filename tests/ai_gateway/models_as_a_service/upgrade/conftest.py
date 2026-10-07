@@ -59,6 +59,7 @@ from tests.model_serving.model_server.upgrade.utils import (  # noqa: NIT001
 from utilities.constants import MAAS_GATEWAY_NAME, MAAS_GATEWAY_NAMESPACE, ApiGroups
 from utilities.infra import create_ns
 from utilities.logger import RedactedString
+from utilities.plugins.constant import OpenAIEnpoints
 from utilities.resources.external_model import ExternalModel
 from utilities.resources.legacy_external_model import LegacyExternalModel
 from utilities.resources.llm_inference_service import LLMInferenceService
@@ -116,6 +117,13 @@ def maas_upgrade_base_url(admin_client: DynamicClient) -> str:
     """Session-scoped MaaS API base URL derived from the cluster ingress domain."""
     gateway_hostname = host_from_ingress_domain(client=admin_client)
     return f"https://{gateway_hostname}/maas-api"
+
+
+@pytest.fixture(scope="session")
+def maas_upgrade_chat_completions_url(admin_client: DynamicClient) -> str:
+    """Session-scoped MaaS body-routed chat-completions URL."""
+    gateway_hostname = host_from_ingress_domain(client=admin_client)
+    return f"https://{gateway_hostname}{OpenAIEnpoints.CHAT_COMPLETIONS}"
 
 
 @pytest.fixture(scope="session")
