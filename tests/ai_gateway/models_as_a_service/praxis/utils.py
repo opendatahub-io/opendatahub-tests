@@ -193,17 +193,6 @@ def wait_until_maastenantconfig_lacks_praxis_cleanup_finalizer(
         )
 
 
-def verify_maastenantconfig_lacks_praxis_cleanup_finalizer(admin_client: DynamicClient, aitenant: AITenant) -> None:
-    """Assert MaasTenantConfig is on legacy IPP (not the Praxis controller cleanup path)."""
-    bootstrapped_tenant_config = maas_tenant_config_for_aitenant(admin_client=admin_client, aitenant=aitenant)
-    finalizers = read_maastenantconfig_finalizers(admin_client=admin_client, aitenant=aitenant)
-    assert PRAXIS_CLEANUP_FINALIZER not in finalizers, (
-        f"MaasTenantConfig '{bootstrapped_tenant_config.namespace}/{bootstrapped_tenant_config.name}' "
-        f"should not have finalizer '{PRAXIS_CLEANUP_FINALIZER}' when legacy IPP is selected; "
-        f"got {finalizers!r}"
-    )
-
-
 def set_maastenantconfig_payload_processing_type_annotation(
     admin_client: DynamicClient,
     aitenant: AITenant,
