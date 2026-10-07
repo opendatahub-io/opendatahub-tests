@@ -12,24 +12,30 @@ asserted without either OGX or Praxis serving traffic.
 
 import json
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypedDict
 from urllib.parse import quote
 
 import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
+from ocp_resources.config_map import ConfigMap
 from ocp_resources.job import Job
 from ocp_resources.pod import Pod
 from ogx_client import OgxClient
 
 from tests.ogx.constants import POSTGRESQL_PASSWORD, POSTGRESQL_USER
 from tests.ogx.praxis.upgrade.constants import (
+    API_BASELINE_CONFIG_MAP_KEY,
+    API_BASELINE_CONFIG_MAP_NAME,
+    COMPARED_FILE_FIELDS,
+    COMPARED_VECTOR_STORE_FIELDS,
     MIGRATION_JOB_NAME_SUFFIX,
     MIGRATION_JOB_TIMEOUT,
     POSTGRES_CONTAINER_NAME,
     POSTGRES_PORT,
     PRAXIS_POSTGRES_DATABASE,
     PRAXIS_POSTGRES_SERVICE_NAME,
+    SEED_FILE_PURPOSE,
     SEED_MARKER,
     SEED_RESPONSE_MAX_OUTPUT_TOKENS,
 )
@@ -51,6 +57,13 @@ _PSQL_SCRIPT: str = (
 
 # Number of mismatching rows quoted in an assertion message before truncating.
 _MAX_REPORTED_ROWS: int = 10
+
+
+class ApiBaseline(TypedDict):
+    """Pre-upgrade Files and Vector Stores API responses, keyed by resource id."""
+
+    files: dict[str, dict[str, str]]
+    vector_stores: dict[str, dict[str, str]]
 
 
 def _as_json_rows(select_statement: str) -> str:
@@ -238,6 +251,183 @@ def seed_conversations(ogx_client: OgxClient, count: int) -> list[str]:
     ]
     LOGGER.info(f"Seeded {len(conversation_ids)} conversations")
     return conversation_ids
+
+
+def seed_files(ogx_client: OgxClient, count: int) -> list[str]:
+    """Upload files through the Files API so their ids can be re-read after the upgrade.
+
+    The payload is generated in-process rather than read from the test corpus so
+    that each file has a distinct, non-zero byte size; `bytes` is one of the
+    fields compared across the upgrade.
+
+    Args:
+        ogx_client: Client for the OGX server under test.
+        count: Number of files to upload.
+
+    Returns:
+        The ids of the uploaded files.
+    """
+    file_ids: list[str] = []
+    for index in range(count):
+        payload = f"{SEED_MARKER} file {index}\n{'x' * (index + 1) * 64}\n".encode()
+        uploaded = ogx_client.files.create(
+            file=(f"{SEED_MARKER}-{index}.txt", payload),
+            purpose=SEED_FILE_PURPOSE,
+        )
+        file_ids.append(uploaded.id)
+    LOGGER.info(f"Seeded {len(file_ids)} files")
+    return file_ids
+
+
+def capture_api_baseline(ogx_client: OgxClient, file_ids: list[str], vector_store_ids: list[str]) -> ApiBaseline:
+    """Snapshot the Files and Vector Stores API responses for the given ids.
+
+    Args:
+        ogx_client: Client for the OGX server under test.
+        file_ids: File ids to read through `GET /v1/files/{id}`.
+        vector_store_ids: Vector store ids to read through
+            `GET /v1/vector_stores/{id}`.
+
+    Returns:
+        The baseline, keyed by id, for comparison after the upgrade.
+    """
+    baseline: ApiBaseline = {
+        "files": {
+            file_id: _comparable_fields(
+                payload=ogx_client.files.retrieve(file_id=file_id).to_dict(),
+                fields=COMPARED_FILE_FIELDS,
+            )
+            for file_id in file_ids
+        },
+        "vector_stores": {
+            vector_store_id: _comparable_fields(
+                payload=ogx_client.vector_stores.retrieve(vector_store_id=vector_store_id).to_dict(),
+                fields=COMPARED_VECTOR_STORE_FIELDS,
+            )
+            for vector_store_id in vector_store_ids
+        },
+    }
+    LOGGER.info(f"Captured API baseline for {len(file_ids)} file(s) and {len(vector_store_ids)} vector store(s)")
+    return baseline
+
+
+def save_api_baseline_to_configmap(client: DynamicClient, namespace: str, baseline: ApiBaseline) -> ConfigMap:
+    """Persist the pre-upgrade API baseline to a ConfigMap for the post-upgrade run.
+
+    Args:
+        client: Client with access to the test namespace.
+        namespace: Namespace the baseline ConfigMap lives in.
+        baseline: Snapshot to persist.
+
+    Returns:
+        The ConfigMap holding the baseline.
+    """
+    serialized = {API_BASELINE_CONFIG_MAP_KEY: json.dumps(baseline)}
+    config_map = ConfigMap(client=client, name=API_BASELINE_CONFIG_MAP_NAME, namespace=namespace)
+    if config_map.exists:
+        resource_dict = config_map.instance.to_dict()
+        resource_dict.setdefault("data", {}).update(serialized)
+        config_map.update(resource_dict=resource_dict)
+    else:
+        config_map = ConfigMap(
+            client=client,
+            name=API_BASELINE_CONFIG_MAP_NAME,
+            namespace=namespace,
+            data=serialized,
+        )
+        config_map.deploy()
+    LOGGER.info(f"Saved API baseline to ConfigMap {namespace}/{API_BASELINE_CONFIG_MAP_NAME}")
+    return config_map
+
+
+def load_api_baseline_from_configmap(client: DynamicClient, namespace: str) -> ApiBaseline:
+    """Load the API baseline written by the pre-upgrade run.
+
+    Args:
+        client: Client with access to the test namespace.
+        namespace: Namespace the baseline ConfigMap lives in.
+
+    Returns:
+        The persisted baseline.
+    """
+    config_map = ConfigMap(client=client, name=API_BASELINE_CONFIG_MAP_NAME, namespace=namespace)
+    assert config_map.exists, (
+        f"API baseline ConfigMap '{API_BASELINE_CONFIG_MAP_NAME}' not found in '{namespace}'. "
+        "Ensure the pre-upgrade test ran successfully."
+    )
+    config_map_data = dict(config_map.instance.data or {})
+    assert API_BASELINE_CONFIG_MAP_KEY in config_map_data, (
+        f"API baseline ConfigMap '{API_BASELINE_CONFIG_MAP_NAME}' is missing the '{API_BASELINE_CONFIG_MAP_KEY}' key."
+    )
+    return json.loads(config_map_data[API_BASELINE_CONFIG_MAP_KEY])
+
+
+def _comparable_fields(payload: dict[str, Any], fields: tuple[str, ...]) -> dict[str, str]:
+    """Reduce an API response to the compared fields, stringified.
+
+    Values are stringified so that a field surviving the upgrade with the same
+    value but a different JSON numeric type does not register as a difference.
+
+    Args:
+        payload: Decoded API response body.
+        fields: Field names to retain.
+
+    Returns:
+        The retained fields, as strings.
+    """
+    return {field: str(payload.get(field)) for field in fields}
+
+
+def retrieve_file_fields(ogx_client: OgxClient, file_id: str) -> dict[str, str]:
+    """Return the compared fields of `GET /v1/files/{id}`.
+
+    Args:
+        ogx_client: Client for the OGX server under test.
+        file_id: File id to read.
+
+    Returns:
+        The compared fields, as strings.
+    """
+    return _comparable_fields(
+        payload=ogx_client.files.retrieve(file_id=file_id).to_dict(),
+        fields=COMPARED_FILE_FIELDS,
+    )
+
+
+def retrieve_vector_store_fields(ogx_client: OgxClient, vector_store_id: str) -> dict[str, str]:
+    """Return the compared fields of `GET /v1/vector_stores/{id}`.
+
+    Args:
+        ogx_client: Client for the OGX server under test.
+        vector_store_id: Vector store id to read.
+
+    Returns:
+        The compared fields, as strings.
+    """
+    return _comparable_fields(
+        payload=ogx_client.vector_stores.retrieve(vector_store_id=vector_store_id).to_dict(),
+        fields=COMPARED_VECTOR_STORE_FIELDS,
+    )
+
+
+def format_field_diff(resource: str, resource_id: str, before: dict[str, str], after: dict[str, str]) -> str:
+    """Return an empty string when the fields match, otherwise a failure message.
+
+    Args:
+        resource: Human-readable resource kind, used in the message.
+        resource_id: Id of the resource being compared.
+        before: Pre-upgrade field values.
+        after: Post-upgrade field values.
+
+    Returns:
+        A description of the differing fields, or "" when they are identical.
+    """
+    differences = [
+        f"{field}: {before[field]!r} -> {after[field]!r}" for field in sorted(before) if before[field] != after[field]
+    ]
+    if not differences:
+        return ""
+    return f"{resource} '{resource_id}' changed across the upgrade on: " + "; ".join(differences)
 
 
 @dataclass(frozen=True)

@@ -293,6 +293,7 @@ def _cleanup_files(client: OgxClient, existing_file_ids: set[str]) -> None:
 @pytest.fixture(scope="class")
 def ogx_client(
     ogx_test_route: Route,
+    teardown_resources: bool,
 ) -> Generator[OgxClient, Any, Any]:
     """Returns a ready-to-use OgxClient."""
     http_client = httpx.Client(verify=OGX_CLIENT_VERIFY_SSL, timeout=300)
@@ -308,7 +309,11 @@ def ogx_client(
 
         yield client
 
-        _cleanup_files(client=client, existing_file_ids=existing_file_ids)
+        # Gated on `teardown_resources` so that a `--pre-upgrade` run leaves its
+        # files in place for the matching `--post-upgrade` run to read back,
+        # matching how `ogx_server`, `ogx_test_route` and `vector_store` behave.
+        if teardown_resources:
+            _cleanup_files(client=client, existing_file_ids=existing_file_ids)
     finally:
         http_client.close()
 
