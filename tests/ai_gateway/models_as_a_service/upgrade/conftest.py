@@ -52,12 +52,9 @@ from tests.ai_gateway.models_as_a_service.utils import (
     get_default_maas_tenant,
     host_from_ingress_domain,
 )
-from tests.model_serving.model_server.upgrade.utils import (  # noqa: NIT001
-    capture_llmisvc_baseline,
-    save_baseline_to_configmap,
-)
 from utilities.constants import MAAS_GATEWAY_NAME, MAAS_GATEWAY_NAMESPACE, ApiGroups
 from utilities.infra import create_ns
+from utilities.llmisvc_upgrade_utils import capture_llmisvc_baseline, save_baseline_to_configmap
 from utilities.logger import RedactedString
 from utilities.plugins.constant import OpenAIEnpoints
 from utilities.resources.external_model import ExternalModel

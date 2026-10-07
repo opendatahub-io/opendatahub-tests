@@ -27,10 +27,7 @@ from tests.ai_gateway.models_as_a_service.utils import (
     verify_maas_gateway_programmed,
     verify_maas_tenant_ready,
 )
-from tests.model_serving.model_server.upgrade.utils import (  # noqa: NIT001
-    get_llmisvc_restart_counts,
-    load_baseline_from_configmap,
-)
+from utilities.llmisvc_upgrade_utils import get_llmisvc_restart_counts, load_baseline_from_configmap
 from utilities.logger import RedactedString
 from utilities.resources.llm_inference_service import LLMInferenceService
 
