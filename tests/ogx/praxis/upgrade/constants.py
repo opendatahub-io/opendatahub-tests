@@ -1,5 +1,7 @@
 """Constants for the OGX -> Praxis database migration tests."""
 
+from typing import Literal
+
 # Source (OGX) tables. Both live in the OGX PostgreSQL database deployed by the
 # `postgres_deployment` fixture. The names come from the built-in config of the
 # distribution the tests deploy: no `providers`/`storage`/`overrideConfig` is set
@@ -49,3 +51,21 @@ SEED_RESPONSES_COUNT: int = 3
 SEED_CONVERSATIONS_COUNT: int = 2
 SEED_RESPONSE_MAX_OUTPUT_TOKENS: int = 64
 SEED_MARKER: str = "praxis-migration-upgrade"
+
+# Files seeded through the Files API before the upgrade, whose ids must still
+# resolve unchanged afterwards.
+SEED_FILES_COUNT: int = 3
+# Narrowed to the literal the Files API accepts, so the value stays assignable
+# to `FilesResource.create(purpose=...)`.
+SEED_FILE_PURPOSE: Literal["assistants"] = "assistants"
+
+# ConfigMap carrying the pre-upgrade Files/Vector Stores API responses into the
+# post-upgrade run, following the pattern used by the MaaS upgrade tests.
+API_BASELINE_CONFIG_MAP_NAME: str = "praxis-upgrade-api-baseline"
+API_BASELINE_CONFIG_MAP_KEY: str = "api_baseline"
+
+# Response fields compared byte-for-byte across the upgrade. The Files set is the
+# one named by the test case; vector stores have no `bytes`/`filename`, so their
+# equivalents are compared instead.
+COMPARED_FILE_FIELDS: tuple[str, ...] = ("id", "bytes", "filename", "created_at", "status")
+COMPARED_VECTOR_STORE_FIELDS: tuple[str, ...] = ("id", "name", "created_at", "status")
