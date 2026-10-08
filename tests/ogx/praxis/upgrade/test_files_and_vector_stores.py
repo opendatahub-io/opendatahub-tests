@@ -4,14 +4,11 @@ The pre-upgrade test seeds files through the Files API and a vector store throug
 the Vector Stores API, then records `GET /v1/files/{id}` and
 `GET /v1/vector_stores/{id}` for each id into a ConfigMap. The upgrade itself --
 which lets rhods-operator reconcile the Gateway and HTTPRoute resources so Praxis
-takes over the public API -- is performed by the Jenkins job that runs these
-tests.
+takes over the public API -- is performed by the environment that runs the tests.
 
-The post-upgrade test re-issues the identical requests against the same external
-hostname and diffs each response against its baseline, so a dropped or rewritten
-id is caught as a field difference rather than as a generic request failure.
-Nothing in the client changes between the two runs: `ogx_test_route` pins the
-route name across upgrade phases, so both runs resolve the same URL.
+The post-upgrade test re-issues the identical requests and diffs each response
+against its baseline, so a dropped or rewritten id is caught as a field
+difference rather than as a generic request failure.
 """
 
 import pytest
@@ -133,7 +130,7 @@ class TestPostUpgradeFilesAndVectorStores:
     @pytest.mark.post_upgrade
     def test_file_responses_unchanged(
         self,
-        ogx_client: OgxClient,
+        praxis_client: OgxClient,
         files_and_vector_stores_baseline: ApiBaseline,
     ) -> None:
         """Verify every pre-upgrade file id returns an identical body after the upgrade.
@@ -147,7 +144,7 @@ class TestPostUpgradeFilesAndVectorStores:
 
         differences = []
         for file_id, before in baseline_files.items():
-            after = retrieve_file_fields(ogx_client=ogx_client, file_id=file_id)
+            after = retrieve_file_fields(ogx_client=praxis_client, file_id=file_id)
             if diff := format_field_diff(resource="File", resource_id=file_id, before=before, after=after):
                 differences.append(diff)
 
@@ -157,7 +154,7 @@ class TestPostUpgradeFilesAndVectorStores:
     @pytest.mark.post_upgrade
     def test_vector_store_responses_unchanged(
         self,
-        ogx_client: OgxClient,
+        praxis_client: OgxClient,
         files_and_vector_stores_baseline: ApiBaseline,
     ) -> None:
         """Verify every pre-upgrade vector store id returns an identical body after the upgrade.
@@ -171,7 +168,7 @@ class TestPostUpgradeFilesAndVectorStores:
 
         differences = []
         for vector_store_id, before in baseline_vector_stores.items():
-            after = retrieve_vector_store_fields(ogx_client=ogx_client, vector_store_id=vector_store_id)
+            after = retrieve_vector_store_fields(ogx_client=praxis_client, vector_store_id=vector_store_id)
             if diff := format_field_diff(
                 resource="Vector store", resource_id=vector_store_id, before=before, after=after
             ):
@@ -185,7 +182,7 @@ class TestPostUpgradeFilesAndVectorStores:
     @pytest.mark.post_upgrade
     def test_ids_listed_by_the_api(
         self,
-        ogx_client: OgxClient,
+        praxis_client: OgxClient,
         files_and_vector_stores_baseline: ApiBaseline,
     ) -> None:
         """Verify no pre-upgrade id was dropped from the collection endpoints.
@@ -194,11 +191,11 @@ class TestPostUpgradeFilesAndVectorStores:
         When: The Files and Vector Stores collections are listed.
         Then: Every pre-upgrade id is still present, so none was silently discarded.
         """
-        listed_file_ids = {file.id for file in ogx_client.files.list().data}
+        listed_file_ids = {file.id for file in praxis_client.files.list().data}
         missing_files = sorted(set(files_and_vector_stores_baseline["files"]) - listed_file_ids)
         assert not missing_files, f"File ids missing from GET {FILES_API_PATH} after the upgrade: {missing_files}"
 
-        listed_vector_store_ids = {store.id for store in ogx_client.vector_stores.list().data}
+        listed_vector_store_ids = {store.id for store in praxis_client.vector_stores.list().data}
         missing_vector_stores = sorted(set(files_and_vector_stores_baseline["vector_stores"]) - listed_vector_store_ids)
         assert not missing_vector_stores, (
             f"Vector store ids missing from GET {VECTOR_STORES_API_PATH} after the upgrade: {missing_vector_stores}"
@@ -208,7 +205,7 @@ class TestPostUpgradeFilesAndVectorStores:
     def test_requests_served_by_praxis(
         self,
         admin_client: DynamicClient,
-        ogx_client: OgxClient,
+        praxis_client: OgxClient,
         files_and_vector_stores_baseline: ApiBaseline,
     ) -> None:
         """Verify the post-upgrade Files requests are handled by the Praxis workload.
@@ -228,7 +225,7 @@ class TestPostUpgradeFilesAndVectorStores:
         serving_pods = serving_pods_for_path(client=admin_client, http_route=routes[0])
         assert serving_pods, f"HTTPRoute {routes[0].namespace}/{routes[0].name} resolves to no running pods"
 
-        ogx_client.files.retrieve(file_id=file_id)
+        praxis_client.files.retrieve(file_id=file_id)
 
         logs = "\n".join(pod_logs(pod=pod) for pod in serving_pods)
         assert file_id in logs, (
