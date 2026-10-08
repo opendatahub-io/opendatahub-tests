@@ -75,6 +75,18 @@ SEED_FILE_PURPOSE: Literal["assistants"] = "assistants"
 API_BASELINE_CONFIG_MAP_NAME: str = "praxis-upgrade-api-baseline"
 API_BASELINE_CONFIG_MAP_KEY: str = "api_baseline"
 
+# Section of the same ConfigMap holding the file_search citation inputs. Each
+# pre-upgrade test writes its own key, so tests sharing a namespace do not
+# overwrite each other's baseline.
+FILE_SEARCH_CITATIONS_CONFIG_MAP_KEY: str = "file_search_citations"
+
+# Inputs for the file_search citation test. The question is answered by the
+# IBM 2025 Q4 earnings release, the single document the pre-upgrade run ingests
+# into its vector store.
+CITATION_QUESTION: str = "How did IBM perform financially in the fourth quarter of 2025?"
+CITATION_INSTRUCTIONS: str = "Always use the file_search tool to look up information before answering."
+CITATION_MAX_OUTPUT_TOKENS: int = 512
+
 # Response fields compared byte-for-byte across the upgrade. The Files set is the
 # one named by the test case; vector stores have no `bytes`/`filename`, so their
 # equivalents are compared instead.
