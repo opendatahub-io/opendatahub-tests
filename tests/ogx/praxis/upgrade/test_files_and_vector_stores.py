@@ -21,15 +21,24 @@ from ocp_resources.namespace import Namespace
 from ogx_client import OgxClient
 from ogx_client.types.vector_store import VectorStore
 
-from tests.ogx.praxis.constants import FILES_API_PATH, VECTOR_STORES_API_PATH
-from tests.ogx.praxis.upgrade.constants import SEED_FILES_COUNT
+from tests.ogx.praxis.constants import (
+    FILES_API_PATH,
+    NAMESPACE_PARAMS,
+    OGX_SERVER_PARAMS,
+    VECTOR_STORES_API_PATH,
+)
+from tests.ogx.praxis.upgrade.constants import (
+    FILES_AND_VECTOR_STORES_CONFIG_MAP_KEY,
+    SEED_FILES_COUNT,
+)
 from tests.ogx.praxis.upgrade.utils import (
     ApiBaseline,
     capture_api_baseline,
     format_field_diff,
+    load_baseline_section,
     retrieve_file_fields,
     retrieve_vector_store_fields,
-    save_api_baseline_to_configmap,
+    save_baseline_section,
     seed_files,
 )
 from tests.ogx.praxis.utils import (
@@ -40,20 +49,27 @@ from tests.ogx.praxis.utils import (
 
 LOGGER = structlog.get_logger(name=__name__)
 
-_UPGRADE_NAMESPACE = {"name": "test-ogx-praxis-files-and-vector-stores-upgrade"}
-_UPGRADE_OGX_SERVER = {
-    "ogx_storage_size": "2Gi",
-    "vector_io_provider": "pgvector",
-    "files_provider": "local",
-}
+
+@pytest.fixture(scope="class")
+def files_and_vector_stores_baseline(
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+) -> ApiBaseline:
+    """The Files and Vector Stores baseline section written by the pre-upgrade run."""
+    baseline: ApiBaseline = load_baseline_section(
+        client=unprivileged_client,
+        namespace=unprivileged_model_namespace.name,
+        section=FILES_AND_VECTOR_STORES_CONFIG_MAP_KEY,
+    )
+    return baseline
 
 
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, ogx_server, vector_store",
     [
         pytest.param(
-            _UPGRADE_NAMESPACE,
-            _UPGRADE_OGX_SERVER,
+            NAMESPACE_PARAMS,
+            OGX_SERVER_PARAMS,
             {"vector_io_provider": "pgvector"},
         ),
     ],
@@ -90,10 +106,11 @@ class TestPreUpgradeFilesAndVectorStores:
             vector_store_ids=[vector_store.id],
         )
 
-        save_api_baseline_to_configmap(
+        save_baseline_section(
             client=unprivileged_client,
             namespace=unprivileged_model_namespace.name,
-            baseline=baseline,
+            section=FILES_AND_VECTOR_STORES_CONFIG_MAP_KEY,
+            payload=baseline,
         )
         LOGGER.info(
             f"Captured pre-upgrade baseline for {len(baseline['files'])} file(s) "
@@ -104,7 +121,7 @@ class TestPreUpgradeFilesAndVectorStores:
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, ogx_server",
     [
-        pytest.param(_UPGRADE_NAMESPACE, _UPGRADE_OGX_SERVER),
+        pytest.param(NAMESPACE_PARAMS, OGX_SERVER_PARAMS),
     ],
     indirect=True,
 )
@@ -117,7 +134,7 @@ class TestPostUpgradeFilesAndVectorStores:
     def test_file_responses_unchanged(
         self,
         ogx_client: OgxClient,
-        api_baseline: ApiBaseline,
+        files_and_vector_stores_baseline: ApiBaseline,
     ) -> None:
         """Verify every pre-upgrade file id returns an identical body after the upgrade.
 
@@ -125,7 +142,7 @@ class TestPostUpgradeFilesAndVectorStores:
         When: GET /v1/files/{id} is re-issued for each recorded id, unchanged.
         Then: Each returns HTTP 200 with id, bytes, filename, created_at and status unchanged.
         """
-        baseline_files = api_baseline["files"]
+        baseline_files = files_and_vector_stores_baseline["files"]
         assert baseline_files, "Pre-upgrade baseline recorded no files"
 
         differences = []
@@ -141,7 +158,7 @@ class TestPostUpgradeFilesAndVectorStores:
     def test_vector_store_responses_unchanged(
         self,
         ogx_client: OgxClient,
-        api_baseline: ApiBaseline,
+        files_and_vector_stores_baseline: ApiBaseline,
     ) -> None:
         """Verify every pre-upgrade vector store id returns an identical body after the upgrade.
 
@@ -149,7 +166,7 @@ class TestPostUpgradeFilesAndVectorStores:
         When: GET /v1/vector_stores/{id} is re-issued for each recorded id, unchanged.
         Then: Each returns HTTP 200 with id, name, created_at and status unchanged.
         """
-        baseline_vector_stores = api_baseline["vector_stores"]
+        baseline_vector_stores = files_and_vector_stores_baseline["vector_stores"]
         assert baseline_vector_stores, "Pre-upgrade baseline recorded no vector stores"
 
         differences = []
@@ -169,7 +186,7 @@ class TestPostUpgradeFilesAndVectorStores:
     def test_ids_listed_by_the_api(
         self,
         ogx_client: OgxClient,
-        api_baseline: ApiBaseline,
+        files_and_vector_stores_baseline: ApiBaseline,
     ) -> None:
         """Verify no pre-upgrade id was dropped from the collection endpoints.
 
@@ -178,11 +195,11 @@ class TestPostUpgradeFilesAndVectorStores:
         Then: Every pre-upgrade id is still present, so none was silently discarded.
         """
         listed_file_ids = {file.id for file in ogx_client.files.list().data}
-        missing_files = sorted(set(api_baseline["files"]) - listed_file_ids)
+        missing_files = sorted(set(files_and_vector_stores_baseline["files"]) - listed_file_ids)
         assert not missing_files, f"File ids missing from GET {FILES_API_PATH} after the upgrade: {missing_files}"
 
         listed_vector_store_ids = {store.id for store in ogx_client.vector_stores.list().data}
-        missing_vector_stores = sorted(set(api_baseline["vector_stores"]) - listed_vector_store_ids)
+        missing_vector_stores = sorted(set(files_and_vector_stores_baseline["vector_stores"]) - listed_vector_store_ids)
         assert not missing_vector_stores, (
             f"Vector store ids missing from GET {VECTOR_STORES_API_PATH} after the upgrade: {missing_vector_stores}"
         )
@@ -192,7 +209,7 @@ class TestPostUpgradeFilesAndVectorStores:
         self,
         admin_client: DynamicClient,
         ogx_client: OgxClient,
-        api_baseline: ApiBaseline,
+        files_and_vector_stores_baseline: ApiBaseline,
     ) -> None:
         """Verify the post-upgrade Files requests are handled by the Praxis workload.
 
@@ -200,7 +217,7 @@ class TestPostUpgradeFilesAndVectorStores:
         When: A recorded file id is read back and the serving pods for /v1/files are inspected.
         Then: The path is owned by a single route whose backing pods log the request.
         """
-        file_id = next(iter(api_baseline["files"]))
+        file_id = next(iter(files_and_vector_stores_baseline["files"]))
 
         routes = http_routes_matching_path(client=admin_client, path=FILES_API_PATH)
         assert len(routes) == 1, (
