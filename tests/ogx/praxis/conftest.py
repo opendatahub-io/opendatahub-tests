@@ -44,12 +44,19 @@ def request_session() -> Generator[requests.Session, Any, Any]:
 
 
 @pytest.fixture(scope="class")
-def praxis_client(admin_client: DynamicClient) -> Generator[OgxClient, Any, Any]:
+def praxis_client(admin_client: DynamicClient, unprivileged_client: DynamicClient) -> Generator[OgxClient, Any, Any]:
     """OgxClient bound to the external Gateway hostname that Praxis serves.
 
     The shared `ogx_client` addresses the OGX Service directly through an OpenShift
     Route, so it reaches OGX whatever the external routing does. Assertions about
     Praxis-era behaviour must traverse the Gateway -> Praxis -> OGX path instead.
+
+    The two clients play different roles. The api_key comes from `unprivileged_client`
+    because the namespace, the OGXServer and every resource seeded before the upgrade
+    belong to the non-admin tenant, and Praxis scopes resources per tenant: reading
+    them back with an admin token would be a cross-identity read. The route lookups
+    use `admin_client` because resolving the Gateway hostname needs cluster-wide
+    HTTPRoute read access, which the tenant does not have.
     """
     http_client = httpx.Client(verify=OGX_CLIENT_VERIFY_SSL, timeout=REQUEST_TIMEOUT_SECONDS)
     try:
@@ -58,7 +65,7 @@ def praxis_client(admin_client: DynamicClient) -> Generator[OgxClient, Any, Any]
                 client=admin_client,
                 paths=(RESPONSES_API_PATH, FILES_API_PATH, VECTOR_STORES_API_PATH, CONVERSATIONS_API_PATH),
             ),
-            api_key=get_openshift_token(client=admin_client),
+            api_key=get_openshift_token(client=unprivileged_client),
             http_client=http_client,
             timeout=REQUEST_TIMEOUT_SECONDS,
             max_retries=0,
