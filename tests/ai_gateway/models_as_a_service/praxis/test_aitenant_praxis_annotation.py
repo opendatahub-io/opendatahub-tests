@@ -8,9 +8,7 @@ from tests.ai_gateway.models_as_a_service.praxis.utils import (
     set_maastenantconfig_payload_processing_type_annotation,
     verify_aitenant_bootstrap_reaches_ready_with_refs,
     verify_aitenant_lacks_payload_processing_type_annotation,
-    verify_default_dataplane_praxis_for_aitenant,
     verify_maastenantconfig_has_praxis_cleanup_finalizer,
-    verify_maastenantconfig_legacy_ipp_opt_in,
     verify_maastenantconfig_payload_processing_type,
     verify_praxis_payload_processing_active_for_aitenant,
     verify_unrecognized_payload_processing_type_uses_praxis_dataplane,
@@ -70,34 +68,26 @@ class TestMaasTenantConfigPraxisAnnotation:
     @pytest.mark.tier1
     def test_maastenantconfig_without_annotation_defaults_to_praxis(
         self,
-        admin_client: DynamicClient,
         ready_aitenant_default_dataplane: AITenant,
     ) -> None:
         """Given MaasTenantConfig without payload-processing-type, when bootstrap completes,
         then controllers use default Praxis and the AITenant is not annotated.
+
+        Assertions run in ``ready_aitenant_default_dataplane`` via
+        ``verify_default_dataplane_praxis_for_aitenant``.
         """
-        verify_default_dataplane_praxis_for_aitenant(
-            admin_client=admin_client,
-            aitenant=ready_aitenant_default_dataplane,
-        )
 
     @pytest.mark.tier1
     def test_maastenantconfig_ipp_opt_in_uses_legacy_ipp(
         self,
-        admin_client: DynamicClient,
-        aitenant_infra_namespace: str,
-        teardown_resources: bool,
+        ready_aitenant_legacy_ipp: AITenant,
     ) -> None:
         """Given payload-processing-type=ipp on MaasTenantConfig, when bootstrap completes,
         then legacy IPP is active and Praxis cleanup is not enabled.
+
+        Assertions run in ``ready_aitenant_legacy_ipp`` via
+        ``opt_in_legacy_ipp_payload_processing_for_aitenant``.
         """
-        with praxis_aitenant_with_bootstrap_gateway(
-            admin_client=admin_client,
-            cr_namespace=aitenant_infra_namespace,
-            teardown=teardown_resources,
-        ) as aitenant:
-            deploy_and_verify_aitenant_ready(aitenant=aitenant)
-            verify_maastenantconfig_legacy_ipp_opt_in(admin_client=admin_client, aitenant=aitenant)
 
     @pytest.mark.tier2
     @pytest.mark.parametrize(

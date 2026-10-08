@@ -83,8 +83,7 @@ def effective_praxis_payload_processing(payload_processing_type: str | None) -> 
     """Return True when MaasTenantConfig resolves to the Praxis dataplane (MaaS #1579 default)."""
     if payload_processing_type is None:
         return True
-    normalized = payload_processing_type.strip().lower()
-    return normalized != LEGACY_IPP_PAYLOAD_PROCESSING_TYPE_VALUE
+    return payload_processing_type != LEGACY_IPP_PAYLOAD_PROCESSING_TYPE_VALUE
 
 
 def read_maastenantconfig_payload_processing_type(
@@ -276,19 +275,6 @@ def verify_default_dataplane_praxis_for_aitenant(
         timeout=timeout,
     )
     verify_aitenant_lacks_payload_processing_type_annotation(aitenant=aitenant)
-
-
-def verify_maastenantconfig_legacy_ipp_opt_in(
-    admin_client: DynamicClient,
-    aitenant: AITenant,
-    timeout: int = DEFAULT_LEGACY_IPP_WAIT_TIMEOUT_SECONDS,
-) -> None:
-    """Set payload-processing-type=ipp and assert legacy IPP is active without Praxis cleanup."""
-    opt_in_legacy_ipp_payload_processing_for_aitenant(
-        admin_client=admin_client,
-        aitenant=aitenant,
-        timeout=timeout,
-    )
 
 
 def verify_unrecognized_payload_processing_type_uses_praxis_dataplane(
