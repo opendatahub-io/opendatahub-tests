@@ -36,6 +36,8 @@ class TokenIdentity:
 def validate_personas(personas: list[Persona]) -> tuple[Persona, ...]:
     """Validate that all required personas have distinct authenticated principals."""
     by_name = {persona.name: persona for persona in personas}
+    if len(by_name) != len(personas):
+        raise PersonaValidationError("persona names must be unique")
     missing = tuple(name for name in REQUIRED_PERSONAS if name not in by_name)
     if missing:
         raise PersonaValidationError(f"missing required personas: {', '.join(sorted(missing))}")

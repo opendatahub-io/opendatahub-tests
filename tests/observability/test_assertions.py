@@ -63,6 +63,30 @@ def test_success_empty_authorization_contract_checks_empty_series() -> None:
     assert_authorization_response(result=result, expected="success-empty")
 
 
+def test_success_filtered_authorization_contract_rejects_empty_series() -> None:
+    """Given a successful response with no series, reject it as evidence of filtered authorization."""
+    result = replace(_result(labels=()), series=())
+
+    with pytest.raises(QueryContractError, match="at least one filtered series"):
+        assert_authorization_response(result=result, expected="success-filtered")
+
+
+def test_success_filtered_authorization_contract_requires_in_scope_series() -> None:
+    """Given filtered data, accept only a non-empty result whose namespace remains in the persona scope."""
+    result = _result(labels=(("namespace", "ns-a"),))
+
+    assert_authorization_response(result=result, expected="success-filtered")
+    assert_namespace_isolation(result=result, allowed_namespaces={"ns-a"})
+
+
+def test_isolation_only_authorization_contract_requires_populated_success() -> None:
+    """Given a route without user authorization, require populated success before namespace isolation runs."""
+    assert_authorization_response(result=_result(labels=(("namespace", "ns-b"),)), expected="isolation-only")
+
+    with pytest.raises(QueryContractError, match="populated response"):
+        assert_authorization_response(result=replace(_result(labels=()), series=()), expected="isolation-only")
+
+
 @pytest.mark.parametrize("status", [403, 404])
 def test_denial_authorization_contract_rejects_returned_series(status: int) -> None:
     """Given a denial response containing series, reject it even when the HTTP status is forbidden or not found."""

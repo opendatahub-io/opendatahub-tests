@@ -33,6 +33,17 @@ def test_persona_validation_requires_all_release_personas() -> None:
         )
 
 
+def test_persona_validation_rejects_duplicate_names() -> None:
+    """Given duplicate persona names, reject the ambiguous identity configuration."""
+    personas = [
+        Persona(name="cluster-admin", principal="admin-a", groups=(), namespaces=()),
+        Persona(name="cluster-admin", principal="admin-b", groups=(), namespaces=()),
+    ]
+
+    with pytest.raises(PersonaValidationError, match="names must be unique"):
+        validate_personas(personas=personas)
+
+
 def test_persona_validation_rejects_token_principal_mismatch() -> None:
     """Given a token review identity, reject a token that authenticates as another configured persona."""
     personas = [
