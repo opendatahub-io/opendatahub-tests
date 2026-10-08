@@ -42,4 +42,3 @@ PRAXIS_MODE_OGX_SERVER_PARAMS: dict[str, Any] = {
         "praxisSelector": {"podSelector": {"matchLabels": PRAXIS_POD_LABELS}},
     },
 }
-
