@@ -205,7 +205,7 @@ def praxis_gateway_base_url(client: DynamicClient, paths: Iterable[str]) -> str:
     Each path is resolved through the HTTPRoute that owns it, so the base URL is the
     boundary a client outside the cluster actually addresses. The paths are required to
     agree: a split external boundary is a finding in itself, not something to pick a
-    winner from.
+    winner from. A path no route declares skips the test, as `praxis_http_route` does.
 
     Args:
         client: Client with cluster-wide read access.
@@ -217,9 +217,7 @@ def praxis_gateway_base_url(client: DynamicClient, paths: Iterable[str]) -> str:
     Raises:
         UnexpectedResourceCountError: If the paths resolve to more than one base URL.
     """
-    base_urls = {
-        path: gateway_base_url(http_route=praxis_http_route(client=client, path=path, required=True)) for path in paths
-    }
+    base_urls = {path: gateway_base_url(http_route=praxis_http_route(client=client, path=path)) for path in paths}
     if len(set(base_urls.values())) > 1:
         raise UnexpectedResourceCountError(
             f"Expected one external base URL for all API paths, found {base_urls}; "
