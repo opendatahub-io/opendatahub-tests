@@ -112,7 +112,7 @@ def observability_evidence(
     release_contract: ReleaseContract,
     release_evidence_directory: Path,
 ) -> Generator[Callable[..., None]]:
-    """Collect sanitized query evidence and write the release handoff after all tests finish."""
+    """Collect sanitized query evidence and write its summary after integrated tests finish."""
     records: list[EvidenceRecord] = []
     cluster_run_id = os.environ.get("RHOAI_OBSERVABILITY_RUN_ID", "local")
 
@@ -181,7 +181,7 @@ def observability_models(
     release_contract: ReleaseContract,
     teardown_resources: bool,
 ) -> Generator[list[Any]]:
-    """Create model-a and model-b from release-runner-selected serving configuration."""
+    """Create two models from release-runner-selected serving configuration."""
     required_values = {
         "runtime_template": os.environ.get("RHOAI_OBSERVABILITY_RUNTIME_TEMPLATE"),
         "model_format": os.environ.get("RHOAI_OBSERVABILITY_MODEL_FORMAT"),
@@ -219,6 +219,23 @@ def observability_models(
         teardown=teardown_resources,
     ) as models:
         yield models
+
+
+@pytest.fixture(scope="class")
+def observability_model_names(observability_models: list[Any]) -> dict[str, str]:
+    """Return live model names keyed by their live fixture namespaces."""
+    model_names: dict[str, str] = {}
+    for model in observability_models:
+        model_name = getattr(model, "name", None)
+        model_namespace = getattr(model, "namespace", None)
+        if not isinstance(model_name, str) or not model_name.strip():
+            pytest.fail("[failed] created model fixture has no usable name")
+        if not isinstance(model_namespace, str) or not model_namespace.strip():
+            pytest.fail("[failed] created model fixture has no usable namespace")
+        if model_namespace in model_names:
+            pytest.fail(f"[failed] multiple model fixtures use namespace {model_namespace}")
+        model_names[model_namespace] = model_name
+    return model_names
 
 
 @pytest.fixture(scope="class")
@@ -333,7 +350,7 @@ def observability_maas_traffic(release_contract: ReleaseContract) -> dict[str, i
 def observability_source_metrics(
     release_contract: ReleaseContract,
     observability_namespaces: NamespacePair,
-    observability_models: list[Any],
+    observability_model_names: dict[str, str],
     observability_inference_traffic: int,
     observability_maas_traffic: dict[str, int],
     observability_query_clients: dict[str, RawQueryClient],
@@ -341,7 +358,7 @@ def observability_source_metrics(
     observability_persona_tokens: dict[str, str],
 ) -> dict[str, RawQueryResult]:
     """Verify source telemetry for shipped workload records before dashboard assertions run."""
-    del observability_models, observability_inference_traffic, observability_maas_traffic
+    del observability_inference_traffic, observability_maas_traffic
     admin = next(persona for persona in observability_personas if persona.name == "cluster-admin")
     namespace = observability_namespaces.namespace_a.name or ""
     results: dict[str, RawQueryResult] = {}
@@ -357,7 +374,10 @@ def observability_source_metrics(
             principal=admin.principal,
             requested_namespace=namespace,
             fixture_namespace=namespace,
-            variables={"namespace": namespace, "model": "model-a"},
+            variables={
+                "namespace": namespace,
+                "model": observability_model_names[namespace],
+            },
         )
         try:
             results[record.identifier] = wait_for_source_metric(
@@ -411,16 +431,14 @@ def observability_personas() -> tuple[Persona, ...]:
     for item in raw_personas:
         if not isinstance(item, dict):
             pytest.fail("[failed] persona entries must be mappings")
-        groups = item.get("groups", [])
-        namespaces = item.get("namespaces", [])
-        if not isinstance(groups, list) or not isinstance(namespaces, list):
-            pytest.fail("[failed] persona groups and namespaces must be lists")
+        groups = _string_list(item=item, key="groups")
+        namespaces = _string_list(item=item, key="namespaces")
         personas.append(
             Persona(
-                name=str(item.get("name", "")),
-                principal=str(item.get("principal", "")),
-                groups=tuple(str(group) for group in groups),
-                namespaces=tuple(str(namespace) for namespace in namespaces),
+                name=_required_string(item=item, key="name"),
+                principal=_required_string(item=item, key="principal"),
+                groups=groups,
+                namespaces=namespaces,
             )
         )
     try:
@@ -490,7 +508,10 @@ def observability_sar_baseline(
     return tuple(results)
 
 
-def _preflight_checks(release_contract: ReleaseContract) -> list[PreflightCheck]:
+def _preflight_checks(
+    *,
+    release_contract: ReleaseContract,
+) -> list[PreflightCheck]:
     authorization_checks = authorization_preflight_checks(
         records=[(record.identifier, record.authorization_response) for record in release_contract.records]
     )
@@ -575,3 +596,19 @@ def _preflight_checks(release_contract: ReleaseContract) -> list[PreflightCheck]
     checks.extend(version_checks)
     checks.extend(authorization_checks)
     return checks
+
+
+def _required_string(item: dict[str, Any], key: str) -> str:
+    """Read a required persona string without coercing null or non-string values."""
+    value = item.get(key)
+    if not isinstance(value, str) or not value.strip():
+        pytest.fail(f"[failed] persona {key} must be a non-empty string")
+    return value
+
+
+def _string_list(item: dict[str, Any], key: str) -> tuple[str, ...]:
+    """Read a persona string list without coercing arbitrary values into metadata."""
+    value = item.get(key, [])
+    if not isinstance(value, list) or not all(isinstance(entry, str) and entry.strip() for entry in value):
+        pytest.fail(f"[failed] persona {key} must be a list of non-empty strings")
+    return tuple(value)
