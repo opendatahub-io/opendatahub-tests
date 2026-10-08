@@ -10,7 +10,6 @@ from collections.abc import Iterable
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
-from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 from ocp_resources.service import Service
