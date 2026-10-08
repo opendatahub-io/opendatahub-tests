@@ -26,7 +26,82 @@ override-dependencies = [
     "marshmallow>=4.0",
 ]
 
+# Add IBM Power wheels repository for ppc64le architecture
+[[tool.uv.index]]
+name = "ibm-power-wheels"
+url = "https://wheels.developerfirst.ibm.com/ppc64le/linux/+simple/"
+explicit = true
+
 [tool.uv.sources]
+bcrypt = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+grpcio = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+markupsafe = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+numpy = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+ormsgpack = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+pandas = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+pillow = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+psutil = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+pyarrow = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+pynacl = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+pyyaml = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+pyzmq = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+rfc3161-client = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+scipy = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+tiktoken = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+tornado = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+
+[[tool.uv.index]]
+name = "pypi"
+url = "https://pypi.org/simple/"
+default = true
 
 [tool.pyrefly]
 preset = "legacy"  # Start mypy-compatible, tighten later
@@ -89,7 +164,21 @@ dependencies = [
     "pytest-asyncio",
     "syrupy",
     "protobuf",
+    "numpy",
+    "pandas",
+    "grpcio",
     "grpcio-reflection",
+    "markupsafe",
+    "ormsgpack",
+    "pillow",
+    "psutil",
+    "pyarrow",
+    "pynacl",
+    "pyzmq",
+    "rfc3161-client",
+    "scipy",
+    "tiktoken",
+    "tornado",
     "portforward>=0.7.1",
     "pytest-testconfig>=0.2.0",
     "pygithub>=2.5.0",
