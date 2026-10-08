@@ -24,7 +24,47 @@ dev-dependencies = [
     "ipython>=8.12.3",
 ]
 
+# Add IBM Power wheels repository for ppc64le architecture
+[[tool.uv.index]]
+name = "ibm-power-wheels"
+url = "https://wheels.developerfirst.ibm.com/ppc64le/linux/+simple/"
+explicit = true
+
 [tool.uv.sources]
+bcrypt = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+grpcio = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+markupsafe = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+numpy = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+pandas = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+pynacl = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+pyyaml = [
+    { index = "ibm-power-wheels", marker = "platform_machine == 'ppc64le'" },
+    { index = "pypi", marker = "platform_machine != 'ppc64le'" },
+]
+
+
+[[tool.uv.index]]
+name = "pypi"
+url = "https://pypi.org/simple/"
+default = true
 
 [project]
 requires-python = "==3.13.*"
@@ -55,6 +95,9 @@ dependencies = [
     "pytest-asyncio",
     "syrupy",
     "protobuf",
+    "numpy",
+    "pandas",
+    "grpcio",
     "grpcio-reflection",
     "portforward>=0.7.1",
     "pytest-testconfig>=0.2.0",
@@ -71,6 +114,9 @@ dependencies = [
     "llama_stack_client==0.2.23",
     "pytest-xdist==3.8.0",
     "dictdiffer>=0.9.0",
+    "bcrypt",
+    "markupsafe",
+    "pynacl",
 ]
 
 [project.urls]
