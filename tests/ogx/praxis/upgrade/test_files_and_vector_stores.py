@@ -222,7 +222,7 @@ class TestPostUpgradeFilesAndVectorStores:
             f"found {[(route.namespace, route.name) for route in routes]}"
         )
 
-        serving_pods = serving_pods_for_path(client=admin_client, http_route=routes[0])
+        serving_pods = serving_pods_for_path(client=admin_client, http_route=routes[0], path=FILES_API_PATH)
         assert serving_pods, f"HTTPRoute {routes[0].namespace}/{routes[0].name} resolves to no running pods"
 
         praxis_client.files.retrieve(file_id=file_id)
