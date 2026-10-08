@@ -6,6 +6,7 @@ Praxis naming is hardcoded, so a missing or ambiguous route cannot pass unnotice
 """
 
 from collections.abc import Iterable
+from typing import Any
 
 import pytest
 import structlog
@@ -18,6 +19,19 @@ from utilities.exceptions import UnexpectedResourceCountError
 from utilities.resources.http_route import HTTPRoute
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+def rule_matches_path(rule: dict[str, Any], path: str) -> bool:
+    """Return whether an HTTPRoute rule declares an exact match on `path`.
+
+    Args:
+        rule: A single entry of `spec.rules`.
+        path: Absolute request path, as declared by a route rule match.
+
+    Returns:
+        True if any of the rule matches declares exactly `path`.
+    """
+    return any((match.get("path") or {}).get("value") == path for match in rule.get("matches") or [])
 
 
 def http_routes_matching_path(client: DynamicClient, path: str) -> list[HTTPRoute]:
@@ -38,25 +52,30 @@ def http_routes_matching_path(client: DynamicClient, path: str) -> list[HTTPRout
         http_route
         for http_route in HTTPRoute.get(client=client)
         if any(
-            (match.get("path") or {}).get("value") == path
-            for rule in http_route.instance.to_dict()["spec"].get("rules") or []
-            for match in rule.get("matches") or []
+            rule_matches_path(rule=rule, path=path) for rule in http_route.instance.to_dict()["spec"].get("rules") or []
         )
     ]
 
 
-def backend_services(client: DynamicClient, http_route: HTTPRoute) -> list[Service]:
-    """Resolve the Service backends an HTTPRoute forwards to.
+def backend_services(client: DynamicClient, http_route: HTTPRoute, path: str) -> list[Service]:
+    """Resolve the Service backends an HTTPRoute forwards `path` to.
+
+    Only the rules declaring an exact match on `path` are resolved, so a route
+    carrying rules for several paths cannot attribute another path's backends
+    to `path`.
 
     Args:
         client: Client with cluster-wide read access.
         http_route: Route whose `backendRefs` are resolved.
+        path: Absolute request path the backends must serve.
 
     Returns:
         One Service per distinct namespace/name backend reference.
     """
     resolved: dict[tuple[str, str], Service] = {}
     for rule in http_route.instance.to_dict()["spec"].get("rules") or []:
+        if not rule_matches_path(rule=rule, path=path):
+            continue
         for backend_ref in rule.get("backendRefs") or []:
             if (backend_ref.get("kind") or "Service") != "Service":
                 continue
@@ -86,19 +105,20 @@ def pods_for_service(client: DynamicClient, service: Service) -> list[Pod]:
     return list(Pod.get(client=client, namespace=service.namespace, label_selector=label_selector))
 
 
-def serving_pods_for_path(client: DynamicClient, http_route: HTTPRoute) -> list[Pod]:
-    """Return the pods backing an HTTPRoute, through its existing backend Services.
+def serving_pods_for_path(client: DynamicClient, http_route: HTTPRoute, path: str) -> list[Pod]:
+    """Return the pods serving `path`, through the route's existing backend Services.
 
     Args:
         client: Client with cluster-wide read access.
         http_route: Route whose serving workload is resolved.
+        path: Absolute request path whose serving workload is resolved.
 
     Returns:
-        The pods selected by the route's backend Services.
+        The pods selected by the backend Services of the rules matching `path`.
     """
     return [
         pod
-        for service in backend_services(client=client, http_route=http_route)
+        for service in backend_services(client=client, http_route=http_route, path=path)
         if service.exists
         for pod in pods_for_service(client=client, service=service)
     ]
