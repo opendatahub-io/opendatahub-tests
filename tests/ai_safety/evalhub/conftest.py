@@ -63,6 +63,8 @@ from tests.ai_safety.evalhub.constants import (
     HF_SHA_REVISION_ENV,
     MINIO_MC_IMAGE,
     MINIO_UPLOADER_SECURITY_CONTEXT,
+    OPERATOR_METRICS_PORT,
+    OPERATOR_METRICS_SERVICE_NAME,
     OPERATOR_OTEL_SERVICE_NAME,
     OTEL_COLLECTOR_GRPC_PORT,
     OTEL_COLLECTOR_HTTP_PORT,
@@ -76,8 +78,6 @@ from tests.ai_safety.evalhub.constants import (
     SIMPLE_MINIO_ACCESS_KEY,
     SIMPLE_MINIO_BUCKET,
     SIMPLE_MINIO_SECRET_KEY,
-    OPERATOR_METRICS_PORT,
-    OPERATOR_METRICS_SERVICE_NAME,
 )
 from tests.ai_safety.evalhub.kueue.constants import VLLM_EMULATOR, VLLM_EMULATOR_IMAGE
 from tests.ai_safety.evalhub.utils import (
@@ -2340,4 +2340,3 @@ def operator_metrics_route(
         },
     ) as route:
         yield route
-

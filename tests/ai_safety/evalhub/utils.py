@@ -13,7 +13,6 @@ from ocp_resources.mlflow import MLflow
 from ocp_resources.pod import Pod
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.service_account import ServiceAccount
-from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_safety.evalhub.constants import (
@@ -43,8 +42,6 @@ from tests.ai_safety.evalhub.constants import (
     HF_DEFAULT_REVISION,
     HF_NESTED_SUB_PATH,
     HF_TOKENIZER_PATH,
-    OPERATOR_METRICS_PORT,
-    OPERATOR_POD_LABEL_SELECTOR,
 )
 from utilities.guardrails import get_auth_headers
 from utilities.kueue_utils import KUEUE_QUEUE_NAME_LABEL, LocalQueue, Workload

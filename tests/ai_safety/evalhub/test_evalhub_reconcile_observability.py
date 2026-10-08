@@ -15,10 +15,10 @@ from ocp_resources.evalhub import EvalHub
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
+from ocp_resources.route import Route
 from ocp_resources.service_monitor import ServiceMonitor
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
-from ocp_resources.route import Route
 
 from tests.ai_safety.evalhub.constants import (
     ERROR_TYPE_OTHER,
