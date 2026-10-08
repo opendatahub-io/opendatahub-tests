@@ -58,7 +58,7 @@ def build_ogx_server_config(
               ``remote::gemini`` provider activates. Optionally also sets
               ``GEMINI_INFERENCE_MODEL`` when configured in constants.
             - network: Optional NetworkSpec dict for the OGXServer CR.
-
+            - praxis_mode: Optional PraxisModeSpec dict for the OGXServer CR.
     Returns:
         OGXServerSpec configuration dict with ``distribution``, ``workload``,
         and optional ``tls`` sections.
@@ -180,6 +180,9 @@ def build_ogx_server_config(
 
     if params.get("network"):
         config["network"] = params["network"]
+
+    if praxis_mode := params.get("praxis_mode"):
+        config["praxis_mode"] = praxis_mode
 
     if tls_config:
         config["tls"] = tls_config
