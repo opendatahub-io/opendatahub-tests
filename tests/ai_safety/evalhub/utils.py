@@ -1684,30 +1684,20 @@ def fetch_evalhub_job_logs_while_running(
 
 
 def fetch_operator_metrics(
-    admin_client: DynamicClient,
+    operator_metrics_route_host: str,
     operator_metrics_token: str,
 ) -> str:
     """Fetch raw Prometheus text from the operator metrics endpoint.
 
     Args:
-        admin_client: Authenticated Kubernetes client.
+        operator_metrics_route_host: Route host for the operator metrics service.
         operator_metrics_token: Bearer token for kube-rbac-proxy authentication.
 
     Returns:
         Raw Prometheus text-format string from the /metrics endpoint.
     """
-    operator_ns = py_config["applications_namespace"]
-    pods = list(
-        Pod.get(
-            client=admin_client,
-            namespace=operator_ns,
-            label_selector=OPERATOR_POD_LABEL_SELECTOR,
-        )
-    )
-    assert pods, "No operator pod found"
-    pod = pods[0]
     response = requests.get(
-        f"https://{pod.instance.status.podIP}:{OPERATOR_METRICS_PORT}/metrics",
+        f"https://{operator_metrics_route_host}/metrics",
         headers={"Authorization": f"Bearer {operator_metrics_token}"},
         verify=False,
         timeout=10,
