@@ -1117,9 +1117,7 @@ def wait_until_maas_controller_stops_reconciling_discovery_namespace(
     try:
         for ready in TimeoutSampler(wait_timeout=timeout, sleep=5, func=namespace_ready_for_negative_assertion):
             if ready:
-                LOGGER.info(
-                    f"maas-controller stopped reconciling new policies in namespace '{tenant_namespace_name}'"
-                )
+                LOGGER.info(f"maas-controller stopped reconciling new policies in namespace '{tenant_namespace_name}'")
                 return
     except TimeoutExpiredError:
         pytest.fail(
