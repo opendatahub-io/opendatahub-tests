@@ -118,7 +118,7 @@ class TestPraxisResponsesOwnership:
 
         serving_pods: list[Pod] = [
             pod
-            for service in backend_services(client=admin_client, http_route=responses_route)
+            for service in backend_services(client=admin_client, http_route=responses_route, path=RESPONSES_API_PATH)
             if service.exists
             for pod in pods_for_service(client=admin_client, service=service)
         ]
