@@ -24,7 +24,6 @@ from tests.ogx.constants import (
     OGX_CORE_INFERENCE_MODEL,
     OGX_OPENSHIFT_MINIMAL_VERSION,
     OGX_SERVER_SECRET_DATA,
-    POSTGRES_IMAGE,
     UPGRADE_DISTRIBUTION_NAME,
     ModelInfo,
 )
@@ -32,6 +31,7 @@ from tests.ogx.datasets import Dataset
 from tests.ogx.server_config import build_ogx_server_config
 from tests.ogx.utils import (
     create_ogx_server,
+    get_postgres_deployment_template,
     select_ogx_model,
     vector_store_upload_dataset,
     vector_store_upload_doc_sources,
@@ -293,6 +293,7 @@ def _cleanup_files(client: OgxClient, existing_file_ids: set[str]) -> None:
 @pytest.fixture(scope="class")
 def ogx_client(
     ogx_test_route: Route,
+    teardown_resources: bool,
 ) -> Generator[OgxClient, Any, Any]:
     """Returns a ready-to-use OgxClient."""
     http_client = httpx.Client(verify=OGX_CLIENT_VERIFY_SSL, timeout=300)
@@ -308,7 +309,11 @@ def ogx_client(
 
         yield client
 
-        _cleanup_files(client=client, existing_file_ids=existing_file_ids)
+        # Gated on `teardown_resources` so that a `--pre-upgrade` run leaves its
+        # files in place for the matching `--post-upgrade` run to read back,
+        # matching how `ogx_server`, `ogx_test_route` and `vector_store` behave.
+        if teardown_resources:
+            _cleanup_files(client=client, existing_file_ids=existing_file_ids)
     finally:
         http_client.close()
 
@@ -564,7 +569,7 @@ def postgres_deployment(
         replicas=1,
         selector={"matchLabels": {"app": "postgres"}},
         strategy={"type": "Recreate"},
-        template=get_postgres_deployment_template(),
+        template=get_postgres_deployment_template(app_label="postgres", database="ps_db"),
         teardown=teardown_resources,
         ensure_exists=pytestconfig.option.post_upgrade,
     )
@@ -576,34 +581,3 @@ def postgres_deployment(
         with deployment:
             deployment.wait_for_replicas(deployed=True, timeout=240)
             yield deployment
-
-
-def get_postgres_deployment_template() -> dict[str, Any]:
-    """Return a Kubernetes deployment for PostgreSQL"""
-    return {
-        "metadata": {"labels": {"app": "postgres"}},
-        "spec": {
-            "containers": [
-                {
-                    "name": "postgres",
-                    "image": POSTGRES_IMAGE,
-                    "ports": [{"containerPort": 5432}],
-                    "env": [
-                        {"name": "POSTGRESQL_DATABASE", "value": "ps_db"},
-                        {
-                            "name": "POSTGRESQL_USER",
-                            "valueFrom": {"secretKeyRef": {"name": "ogx-distribution-secret", "key": "postgres-user"}},
-                        },
-                        {
-                            "name": "POSTGRESQL_PASSWORD",
-                            "valueFrom": {
-                                "secretKeyRef": {"name": "ogx-distribution-secret", "key": "postgres-password"}
-                            },
-                        },
-                    ],
-                    "volumeMounts": [{"name": "postgresdata", "mountPath": "/var/lib/pgsql/data"}],
-                },
-            ],
-            "volumes": [{"name": "postgresdata", "emptyDir": {}}],
-        },
-    }
