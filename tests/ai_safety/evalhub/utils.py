@@ -1688,6 +1688,30 @@ def fetch_evalhub_job_logs_while_running(
 # Operator reconciliation observability helpers (RHAISTRAT-1606 / RHAI-241)
 
 
+def fetch_operator_metrics(
+    admin_client: DynamicClient,
+    operator_metrics_token: str,
+) -> str:
+    """Fetch raw Prometheus text from the operator metrics endpoint.
+
+    Args:
+        admin_client: Authenticated Kubernetes client.
+        operator_metrics_token: Bearer token for kube-rbac-proxy authentication.
+
+    Returns:
+        Raw Prometheus text-format string from the /metrics endpoint.
+    """
+    with operator_metrics_url(admin_client=admin_client) as metrics_url:
+        response = requests.get(
+            metrics_url,
+            headers={"Authorization": f"Bearer {operator_metrics_token}"},
+            verify=False,
+            timeout=10,
+        )
+    response.raise_for_status()
+    return response.text
+
+
 @contextmanager
 def operator_metrics_url(admin_client: DynamicClient) -> Generator[str]:
     """Port-forward to the TrustyAI operator pod and yield its local /metrics URL.
@@ -1719,30 +1743,6 @@ def operator_metrics_url(admin_client: DynamicClient) -> Generator[str]:
         waiting=2,
     ):
         yield f"{OPERATOR_METRICS_SCHEME}://localhost:{OPERATOR_METRICS_LOCAL_PORT}/metrics"
-
-
-def fetch_operator_metrics(
-    admin_client: DynamicClient,
-    operator_metrics_token: str,
-) -> str:
-    """Fetch raw Prometheus text from the operator metrics endpoint.
-
-    Args:
-        admin_client: Authenticated Kubernetes client.
-        operator_metrics_token: Bearer token for kube-rbac-proxy authentication.
-
-    Returns:
-        Raw Prometheus text-format string from the /metrics endpoint.
-    """
-    with operator_metrics_url(admin_client=admin_client) as metrics_url:
-        response = requests.get(
-            metrics_url,
-            headers={"Authorization": f"Bearer {operator_metrics_token}"},
-            verify=False,
-            timeout=10,
-        )
-    response.raise_for_status()
-    return response.text
 
 
 def fetch_trace_collector_logs(trace_collector_pod: Pod, tail_lines: int = 5000) -> str:
