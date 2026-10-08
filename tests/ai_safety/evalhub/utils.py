@@ -1,6 +1,9 @@
 import socket
+from collections.abc import Generator
+from contextlib import contextmanager
 from typing import Any, Final
 
+import portforward
 import pytest
 import requests
 import structlog
@@ -43,7 +46,9 @@ from tests.ai_safety.evalhub.constants import (
     HF_DEFAULT_REVISION,
     HF_NESTED_SUB_PATH,
     HF_TOKENIZER_PATH,
+    OPERATOR_METRICS_LOCAL_PORT,
     OPERATOR_METRICS_PORT,
+    OPERATOR_METRICS_SCHEME,
     OPERATOR_POD_LABEL_SELECTOR,
 )
 from utilities.guardrails import get_auth_headers
@@ -1683,6 +1688,39 @@ def fetch_evalhub_job_logs_while_running(
 # Operator reconciliation observability helpers (RHAISTRAT-1606 / RHAI-241)
 
 
+@contextmanager
+def operator_metrics_url(admin_client: DynamicClient) -> Generator[str]:
+    """Port-forward to the TrustyAI operator pod and yield its local /metrics URL.
+
+    The operator pod IP is not reachable from outside the cluster, so the
+    metrics endpoint is reached through a port-forward. The pod is looked up
+    on every call because some fixtures restart the operator (new pod name).
+
+    Args:
+        admin_client: Authenticated Kubernetes client.
+
+    Yields:
+        Local URL of the operator /metrics endpoint.
+    """
+    operator_ns = py_config["applications_namespace"]
+    pods = list(
+        Pod.get(
+            client=admin_client,
+            namespace=operator_ns,
+            label_selector=OPERATOR_POD_LABEL_SELECTOR,
+        )
+    )
+    assert pods, "No operator pod found"
+    with portforward.forward(
+        namespace=operator_ns,
+        pod_or_service=pods[0].name,
+        from_port=OPERATOR_METRICS_LOCAL_PORT,
+        to_port=OPERATOR_METRICS_PORT,
+        waiting=2,
+    ):
+        yield f"{OPERATOR_METRICS_SCHEME}://localhost:{OPERATOR_METRICS_LOCAL_PORT}/metrics"
+
+
 def fetch_operator_metrics(
     admin_client: DynamicClient,
     operator_metrics_token: str,
@@ -1696,22 +1734,13 @@ def fetch_operator_metrics(
     Returns:
         Raw Prometheus text-format string from the /metrics endpoint.
     """
-    operator_ns = py_config["applications_namespace"]
-    pods = list(
-        Pod.get(
-            client=admin_client,
-            namespace=operator_ns,
-            label_selector=OPERATOR_POD_LABEL_SELECTOR,
+    with operator_metrics_url(admin_client=admin_client) as metrics_url:
+        response = requests.get(
+            metrics_url,
+            headers={"Authorization": f"Bearer {operator_metrics_token}"},
+            verify=False,
+            timeout=10,
         )
-    )
-    assert pods, "No operator pod found"
-    pod = pods[0]
-    response = requests.get(
-        f"https://{pod.instance.status.podIP}:{OPERATOR_METRICS_PORT}/metrics",
-        headers={"Authorization": f"Bearer {operator_metrics_token}"},
-        verify=False,
-        timeout=10,
-    )
     response.raise_for_status()
     return response.text
 

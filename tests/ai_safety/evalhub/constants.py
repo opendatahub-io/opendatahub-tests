@@ -235,6 +235,11 @@ EVALHUB_CONTROLLER_LABEL_VALUE: str = "evalhub"
 
 # Operator metrics port (kube-rbac-proxy)
 OPERATOR_METRICS_PORT: int = 8080
+# The RHOAI nightly serves operator metrics as plain HTTP on 8080.
+# Upstream trustyai-service-operator PR #896 moves this to HTTPS on 8443
+# with token auth; when that reaches RHOAI, change PORT to 8443 and SCHEME to "https".
+OPERATOR_METRICS_SCHEME: str = "http"
+OPERATOR_METRICS_LOCAL_PORT: int = 18080
 
 # OTEL trace span names emitted by the EvalHub controller
 SPAN_RECONCILE: str = "evalhub.reconcile"
