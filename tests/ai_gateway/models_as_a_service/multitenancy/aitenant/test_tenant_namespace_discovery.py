@@ -21,6 +21,7 @@ from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import (
     wait_for_maas_model_ref_discovered,
     wait_for_maas_resource_finalizer,
     wait_for_maas_resource_phase,
+    wait_until_maas_controller_stops_reconciling_discovery_namespace,
 )
 from utilities.general import generate_random_name
 from utilities.resources.maa_s_auth_policy import MaaSAuthPolicy
@@ -299,6 +300,14 @@ class TestTenantNamespaceDiscovery:
                 remove_discovery_namespace_labels(
                     admin_client=admin_client,
                     tenant_namespace_name=case["tenant_namespace_name"],
+                )
+                wait_until_maas_controller_stops_reconciling_discovery_namespace(
+                    admin_client=admin_client,
+                    tenant_namespace_name=case["tenant_namespace_name"],
+                    model_name=model_name,
+                    model_namespace=model_namespace,
+                    forbidden_finalizer=FINALIZER_AUTH_POLICY,
+                    teardown=teardown_resources,
                 )
                 with MaaSAuthPolicy(
                     client=admin_client,
