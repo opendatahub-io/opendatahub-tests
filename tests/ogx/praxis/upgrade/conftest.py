@@ -20,8 +20,6 @@ from tests.ogx.praxis.upgrade.constants import (
     PRAXIS_POSTGRES_SERVICE_NAME,
 )
 from tests.ogx.praxis.upgrade.utils import (
-    ApiBaseline,
-    load_api_baseline_from_configmap,
     migration_target_secret_ref,
     postgres_pod,
     praxis_connection_string,
@@ -152,18 +150,6 @@ def praxis_postgres_pod(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace.name,
         label_selector=PRAXIS_POSTGRES_POD_LABEL_SELECTOR,
-    )
-
-
-@pytest.fixture(scope="class")
-def api_baseline(
-    unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
-) -> ApiBaseline:
-    """The pre-upgrade baseline, loaded in the post-upgrade run."""
-    return load_api_baseline_from_configmap(
-        client=unprivileged_client,
-        namespace=unprivileged_model_namespace.name,
     )
 
 

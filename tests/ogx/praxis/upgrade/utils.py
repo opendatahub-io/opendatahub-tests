@@ -25,7 +25,6 @@ from ogx_client import OgxClient
 
 from tests.ogx.constants import POSTGRESQL_PASSWORD, POSTGRESQL_USER
 from tests.ogx.praxis.upgrade.constants import (
-    API_BASELINE_CONFIG_MAP_KEY,
     API_BASELINE_CONFIG_MAP_NAME,
     COMPARED_FILE_FIELDS,
     COMPARED_VECTOR_STORE_FIELDS,
@@ -57,6 +56,17 @@ _PSQL_SCRIPT: str = (
 
 # Number of mismatching rows quoted in an assertion message before truncating.
 _MAX_REPORTED_ROWS: int = 10
+
+
+class FileSearchCitationBaseline(TypedDict):
+    """Pre-upgrade inputs for the file_search citation check.
+
+    `file_ids` are the files attached to `vector_store_id` before the upgrade;
+    every citation returned afterwards must reference one of them.
+    """
+
+    vector_store_id: str
+    file_ids: list[str]
 
 
 class ApiBaseline(TypedDict):
@@ -340,23 +350,27 @@ def capture_api_baseline(ogx_client: OgxClient, file_ids: list[str], vector_stor
     return baseline
 
 
-def save_api_baseline_to_configmap(client: DynamicClient, namespace: str, baseline: ApiBaseline) -> ConfigMap:
-    """Persist the pre-upgrade API baseline to a ConfigMap for the post-upgrade run.
+def save_baseline_section(client: DynamicClient, namespace: str, section: str, payload: Any) -> ConfigMap:
+    """Persist one pre-upgrade baseline section to the shared baseline ConfigMap.
+
+    Every pre-upgrade test in a namespace writes its own `section`, stored as a
+    JSON document under its own ConfigMap data key. Writing is a merge patch of
+    that single key, so tests sharing the namespace never overwrite each other's
+    section and no read-modify-write of the whole ConfigMap is needed.
 
     Args:
         client: Client with access to the test namespace.
         namespace: Namespace the baseline ConfigMap lives in.
-        baseline: Snapshot to persist.
+        section: ConfigMap data key identifying the writing test's section.
+        payload: JSON-serializable snapshot to persist under `section`.
 
     Returns:
         The ConfigMap holding the baseline.
     """
-    serialized = {API_BASELINE_CONFIG_MAP_KEY: json.dumps(baseline)}
+    serialized = {section: json.dumps(payload)}
     config_map = ConfigMap(client=client, name=API_BASELINE_CONFIG_MAP_NAME, namespace=namespace)
     if config_map.exists:
-        resource_dict = config_map.instance.to_dict()
-        resource_dict.setdefault("data", {}).update(serialized)
-        config_map.update(resource_dict=resource_dict)
+        config_map.update(resource_dict={"data": serialized})
     else:
         config_map = ConfigMap(
             client=client,
@@ -365,30 +379,32 @@ def save_api_baseline_to_configmap(client: DynamicClient, namespace: str, baseli
             data=serialized,
         )
         config_map.deploy()
-    LOGGER.info(f"Saved API baseline to ConfigMap {namespace}/{API_BASELINE_CONFIG_MAP_NAME}")
+    LOGGER.info(f"Saved baseline section '{section}' to ConfigMap {namespace}/{API_BASELINE_CONFIG_MAP_NAME}")
     return config_map
 
 
-def load_api_baseline_from_configmap(client: DynamicClient, namespace: str) -> ApiBaseline:
-    """Load the API baseline written by the pre-upgrade run.
+def load_baseline_section(client: DynamicClient, namespace: str, section: str) -> Any:
+    """Load one baseline section written by the pre-upgrade run.
 
     Args:
         client: Client with access to the test namespace.
         namespace: Namespace the baseline ConfigMap lives in.
+        section: ConfigMap data key the section was written under.
 
     Returns:
-        The persisted baseline.
+        The deserialized section payload.
     """
     config_map = ConfigMap(client=client, name=API_BASELINE_CONFIG_MAP_NAME, namespace=namespace)
     assert config_map.exists, (
-        f"API baseline ConfigMap '{API_BASELINE_CONFIG_MAP_NAME}' not found in '{namespace}'. "
+        f"Baseline ConfigMap '{API_BASELINE_CONFIG_MAP_NAME}' not found in '{namespace}'. "
         "Ensure the pre-upgrade test ran successfully."
     )
     config_map_data = dict(config_map.instance.data or {})
-    assert API_BASELINE_CONFIG_MAP_KEY in config_map_data, (
-        f"API baseline ConfigMap '{API_BASELINE_CONFIG_MAP_NAME}' is missing the '{API_BASELINE_CONFIG_MAP_KEY}' key."
+    assert section in config_map_data, (
+        f"Baseline ConfigMap '{API_BASELINE_CONFIG_MAP_NAME}' in '{namespace}' is missing the '{section}' key; "
+        f"it carries {sorted(config_map_data)}. Ensure the pre-upgrade test writing that section ran successfully."
     )
-    return json.loads(config_map_data[API_BASELINE_CONFIG_MAP_KEY])
+    return json.loads(config_map_data[section])
 
 
 def _comparable_fields(payload: dict[str, Any], fields: tuple[str, ...]) -> dict[str, str]:
