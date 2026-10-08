@@ -26,10 +26,10 @@ from utilities.resources.http_route import HTTPRoute
 
 
 @pytest.fixture
-def tenant_authorization_header(admin_client: DynamicClient) -> dict[str, str]:
-    """Authorization header carrying the OpenShift token of the authenticated tenant."""
+def tenant_authorization_header(unprivileged_client: DynamicClient) -> dict[str, str]:
+    """Authorization header carrying the OpenShift token of the non-admin tenant."""
     return {
-        "Authorization": f"Bearer {get_openshift_token(client=admin_client)}",
+        "Authorization": f"Bearer {get_openshift_token(client=unprivileged_client)}",
         "Content-Type": "application/json",
     }
 
