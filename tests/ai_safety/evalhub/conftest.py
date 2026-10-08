@@ -63,6 +63,8 @@ from tests.ai_safety.evalhub.constants import (
     HF_SHA_REVISION_ENV,
     MINIO_MC_IMAGE,
     MINIO_UPLOADER_SECURITY_CONTEXT,
+    OPERATOR_METRICS_PORT,
+    OPERATOR_METRICS_SERVICE_NAME,
     OPERATOR_OTEL_SERVICE_NAME,
     OTEL_COLLECTOR_GRPC_PORT,
     OTEL_COLLECTOR_HTTP_PORT,
@@ -2315,3 +2317,26 @@ def evalhub_failure_cr(
         wait_for_resource=True,
     ) as evalhub:
         yield evalhub
+
+
+@pytest.fixture(scope="class")
+def operator_metrics_route(
+    admin_client: DynamicClient,
+) -> Generator[Route, Any, Any]:
+    """Create a Route to the operator metrics service."""
+    operator_ns = py_config["applications_namespace"]
+    route_name = "tas-operator-metrics"
+    with Route(
+        client=admin_client,
+        kind_dict={
+            "apiVersion": "route.openshift.io/v1",
+            "kind": "Route",
+            "metadata": {"name": route_name, "namespace": operator_ns},
+            "spec": {
+                "to": {"kind": "Service", "name": OPERATOR_METRICS_SERVICE_NAME},
+                "port": {"targetPort": OPERATOR_METRICS_PORT},
+                "tls": {"termination": "passthrough"},
+            },
+        },
+    ) as route:
+        yield route

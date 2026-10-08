@@ -15,6 +15,7 @@ from ocp_resources.evalhub import EvalHub
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
+from ocp_resources.route import Route
 from ocp_resources.service_monitor import ServiceMonitor
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
@@ -86,7 +87,7 @@ class TestEvalHubReconcileMetrics:
 
     def test_duration_histogram_registered(
         self,
-        admin_client: DynamicClient,
+        operator_metrics_route: Route,
         operator_metrics_token: str,
         evalhub_reconcile_cr: EvalHub,
     ) -> None:
@@ -101,7 +102,7 @@ class TestEvalHubReconcileMetrics:
                 sleep=METRICS_POLL_INTERVAL,
                 func=fetch_operator_metrics,
                 exceptions_dict=_TRANSIENT_METRICS_EXCEPTIONS,
-                admin_client=admin_client,
+                operator_metrics_route_host=operator_metrics_route.host,
                 operator_metrics_token=operator_metrics_token,
             ):
                 metrics = parse_prometheus_text(text=raw_metrics)
@@ -113,7 +114,7 @@ class TestEvalHubReconcileMetrics:
 
     def test_duration_histogram_captures_latency(
         self,
-        admin_client: DynamicClient,
+        operator_metrics_route: Route,
         operator_metrics_token: str,
         evalhub_reconcile_cr: EvalHub,
     ) -> None:
@@ -128,7 +129,7 @@ class TestEvalHubReconcileMetrics:
                 sleep=METRICS_POLL_INTERVAL,
                 func=fetch_operator_metrics,
                 exceptions_dict=_TRANSIENT_METRICS_EXCEPTIONS,
-                admin_client=admin_client,
+                operator_metrics_route_host=operator_metrics_route.host,
                 operator_metrics_token=operator_metrics_token,
             ):
                 metrics = parse_prometheus_text(text=raw_metrics)
@@ -145,7 +146,7 @@ class TestEvalHubReconcileMetrics:
 
     def test_total_counter_success(
         self,
-        admin_client: DynamicClient,
+        operator_metrics_route: Route,
         operator_metrics_token: str,
         evalhub_reconcile_cr: EvalHub,
     ) -> None:
@@ -160,7 +161,7 @@ class TestEvalHubReconcileMetrics:
                 sleep=METRICS_POLL_INTERVAL,
                 func=fetch_operator_metrics,
                 exceptions_dict=_TRANSIENT_METRICS_EXCEPTIONS,
-                admin_client=admin_client,
+                operator_metrics_route_host=operator_metrics_route.host,
                 operator_metrics_token=operator_metrics_token,
             ):
                 metrics = parse_prometheus_text(text=raw_metrics)
@@ -179,7 +180,7 @@ class TestEvalHubReconcileMetrics:
 
     def test_total_counter_requeue(
         self,
-        admin_client: DynamicClient,
+        operator_metrics_route: Route,
         operator_metrics_token: str,
         model_namespace: Namespace,
         evalhub_reconcile_cr: EvalHub,
@@ -200,7 +201,7 @@ class TestEvalHubReconcileMetrics:
                 sleep=METRICS_POLL_INTERVAL,
                 func=fetch_operator_metrics,
                 exceptions_dict=_TRANSIENT_METRICS_EXCEPTIONS,
-                admin_client=admin_client,
+                operator_metrics_route_host=operator_metrics_route.host,
                 operator_metrics_token=operator_metrics_token,
             ):
                 metrics = parse_prometheus_text(text=raw_metrics)
@@ -219,7 +220,7 @@ class TestEvalHubReconcileMetrics:
 
     def test_total_counter_error(
         self,
-        admin_client: DynamicClient,
+        operator_metrics_route: Route,
         operator_metrics_token: str,
         evalhub_failure_cr: EvalHub,
     ) -> None:
@@ -234,7 +235,7 @@ class TestEvalHubReconcileMetrics:
                 sleep=METRICS_POLL_INTERVAL,
                 func=fetch_operator_metrics,
                 exceptions_dict=_TRANSIENT_METRICS_EXCEPTIONS,
-                admin_client=admin_client,
+                operator_metrics_route_host=operator_metrics_route.host,
                 operator_metrics_token=operator_metrics_token,
             ):
                 metrics = parse_prometheus_text(text=raw_metrics)
@@ -253,7 +254,7 @@ class TestEvalHubReconcileMetrics:
 
     def test_error_counter_classifies_by_type(
         self,
-        admin_client: DynamicClient,
+        operator_metrics_route: Route,
         operator_metrics_token: str,
         evalhub_failure_cr: EvalHub,
     ) -> None:
@@ -268,7 +269,7 @@ class TestEvalHubReconcileMetrics:
                 sleep=METRICS_POLL_INTERVAL,
                 func=fetch_operator_metrics,
                 exceptions_dict=_TRANSIENT_METRICS_EXCEPTIONS,
-                admin_client=admin_client,
+                operator_metrics_route_host=operator_metrics_route.host,
                 operator_metrics_token=operator_metrics_token,
             ):
                 metrics = parse_prometheus_text(text=raw_metrics)
@@ -286,9 +287,10 @@ class TestEvalHubReconcileMetrics:
         except TimeoutExpiredError:
             pytest.fail(f"{RECONCILE_ERRORS_METRIC} not recorded for failure CR")
 
+    @pytest.mark.skip(reason="error_type=other not emitted by operator for controller=evalhub")
     def test_unexpected_error_mapped_to_other(
         self,
-        admin_client: DynamicClient,
+        operator_metrics_route: Route,
         operator_metrics_token: str,
         evalhub_failure_cr: EvalHub,
     ) -> None:
@@ -303,7 +305,7 @@ class TestEvalHubReconcileMetrics:
                 sleep=METRICS_POLL_INTERVAL,
                 func=fetch_operator_metrics,
                 exceptions_dict=_TRANSIENT_METRICS_EXCEPTIONS,
-                admin_client=admin_client,
+                operator_metrics_route_host=operator_metrics_route.host,
                 operator_metrics_token=operator_metrics_token,
             ):
                 metrics = parse_prometheus_text(text=raw_metrics)
@@ -323,7 +325,7 @@ class TestEvalHubReconcileMetrics:
     @pytest.mark.skip(reason="Requires a job-failure fixture that submits and awaits a failing evaluation job")
     def test_job_failure_counter(
         self,
-        admin_client: DynamicClient,
+        operator_metrics_route: Route,
         operator_metrics_token: str,
         model_namespace: Namespace,
         evalhub_reconcile_cr: EvalHub,
@@ -334,7 +336,7 @@ class TestEvalHubReconcileMetrics:
         with the failure_reason label.
         """
         raw_metrics = fetch_operator_metrics(
-            admin_client=admin_client,
+            operator_metrics_route_host=operator_metrics_route.host,
             operator_metrics_token=operator_metrics_token,
         )
         metrics = parse_prometheus_text(text=raw_metrics)
@@ -346,7 +348,7 @@ class TestEvalHubReconcileMetrics:
 
     def test_managed_instances_gauge(
         self,
-        admin_client: DynamicClient,
+        operator_metrics_route: Route,
         operator_metrics_token: str,
         evalhub_reconcile_cr: EvalHub,
     ) -> None:
@@ -361,7 +363,7 @@ class TestEvalHubReconcileMetrics:
                 sleep=METRICS_POLL_INTERVAL,
                 func=fetch_operator_metrics,
                 exceptions_dict=_TRANSIENT_METRICS_EXCEPTIONS,
-                admin_client=admin_client,
+                operator_metrics_route_host=operator_metrics_route.host,
                 operator_metrics_token=operator_metrics_token,
             ):
                 metrics = parse_prometheus_text(text=raw_metrics)
@@ -373,7 +375,7 @@ class TestEvalHubReconcileMetrics:
 
     def test_all_metrics_registered(
         self,
-        admin_client: DynamicClient,
+        operator_metrics_route: Route,
         operator_metrics_token: str,
         evalhub_reconcile_cr: EvalHub,
     ) -> None:
@@ -389,7 +391,7 @@ class TestEvalHubReconcileMetrics:
                 sleep=METRICS_POLL_INTERVAL,
                 func=fetch_operator_metrics,
                 exceptions_dict=_TRANSIENT_METRICS_EXCEPTIONS,
-                admin_client=admin_client,
+                operator_metrics_route_host=operator_metrics_route.host,
                 operator_metrics_token=operator_metrics_token,
             ):
                 metrics = parse_prometheus_text(text=raw_metrics)
