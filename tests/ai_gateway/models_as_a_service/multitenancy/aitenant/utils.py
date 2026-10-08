@@ -531,6 +531,31 @@ def verify_tenant_namespace_discovery_labels_present(
     )
 
 
+def verify_tenant_namespace_discovery_labels_absent(
+    admin_client: DynamicClient,
+    tenant_namespace_name: str,
+) -> None:
+    """Assert tenant namespace discovery labels were removed from the namespace."""
+    tenant_namespace = Namespace(
+        client=admin_client,
+        name=tenant_namespace_name,
+        ensure_exists=True,
+    )
+    namespace_labels = dict(tenant_namespace.instance.metadata.labels or {})
+    assert namespace_labels.get(AIGATEWAY_MANAGED_BY_LABEL) is None, (
+        f"Tenant namespace '{tenant_namespace_name}' should not retain {AIGATEWAY_MANAGED_BY_LABEL}"
+    )
+    assert namespace_labels.get(AIGATEWAY_TENANT_LABEL) is None, (
+        f"Tenant namespace '{tenant_namespace_name}' should not retain {AIGATEWAY_TENANT_LABEL}"
+    )
+    assert namespace_labels.get(LABEL_TENANT_NAME) is None, (
+        f"Tenant namespace '{tenant_namespace_name}' should not retain {LABEL_TENANT_NAME}"
+    )
+    assert namespace_labels.get(LABEL_TENANT_NAMESPACE) is None, (
+        f"Tenant namespace '{tenant_namespace_name}' should not retain {LABEL_TENANT_NAMESPACE}"
+    )
+
+
 def verify_tenant_namespace_gateway_access_label_present(
     admin_client: DynamicClient,
     tenant_namespace_name: str,
@@ -1017,6 +1042,90 @@ def wait_for_maas_auth_policy_active(
         timeout=timeout,
     )
     assert phase == "Active"
+
+
+def _maas_resource_reconciled_by_controller(
+    resource: NamespacedResource,
+    controller_finalizer: str,
+) -> bool:
+    """Return True when maas-controller has started reconciling the resource."""
+    finalizers = read_maas_resource_finalizers(resource=resource)
+    phase = read_maas_resource_status_phase(resource=resource)
+    return controller_finalizer in finalizers or phase is not None
+
+
+def wait_until_maas_controller_stops_reconciling_discovery_namespace(
+    admin_client: DynamicClient,
+    tenant_namespace_name: str,
+    model_name: str,
+    model_namespace: str,
+    forbidden_finalizer: str,
+    teardown: bool,
+    timeout: int = 120,
+    probe_unreconciled_seconds: int = 20,
+) -> None:
+    """Wait until discovery labels are gone and new MaaSAuthPolicies stay unreconciled.
+
+    After discovery labels are removed, the controller informer may briefly still treat the
+    namespace as discovered. A short-lived probe policy must stay unreconciled before the
+    test creates the subject under assertion.
+    """
+    from utilities.resources.maa_s_auth_policy import MaaSAuthPolicy
+
+    def namespace_ready_for_negative_assertion() -> bool:
+        try:
+            verify_tenant_namespace_discovery_labels_absent(
+                admin_client=admin_client,
+                tenant_namespace_name=tenant_namespace_name,
+            )
+        except AssertionError:
+            return False
+
+        probe_name = f"e2e-discovery-sync-{generate_random_name()[:8]}"
+        with MaaSAuthPolicy(
+            client=admin_client,
+            name=probe_name,
+            namespace=tenant_namespace_name,
+            model_refs=[{"name": model_name, "namespace": model_namespace}],
+            subjects={"groups": [{"name": "system:authenticated"}]},
+            teardown=teardown,
+            wait_for_resource=True,
+        ) as probe_policy:
+            try:
+                for reconciled in TimeoutSampler(
+                    wait_timeout=probe_unreconciled_seconds,
+                    sleep=3,
+                    func=lambda: _maas_resource_reconciled_by_controller(
+                        resource=probe_policy,
+                        controller_finalizer=forbidden_finalizer,
+                    ),
+                ):
+                    if reconciled:
+                        LOGGER.info(
+                            f"Probe MaaSAuthPolicy '{tenant_namespace_name}/{probe_name}' was reconciled; "
+                            "waiting for maas-controller informer to catch up"
+                        )
+                        return False
+            except TimeoutExpiredError:
+                LOGGER.info(
+                    f"Probe MaaSAuthPolicy '{tenant_namespace_name}/{probe_name}' stayed unreconciled for "
+                    f"{probe_unreconciled_seconds}s"
+                )
+                return True
+        return False
+
+    try:
+        for ready in TimeoutSampler(wait_timeout=timeout, sleep=5, func=namespace_ready_for_negative_assertion):
+            if ready:
+                LOGGER.info(
+                    f"maas-controller stopped reconciling new policies in namespace '{tenant_namespace_name}'"
+                )
+                return
+    except TimeoutExpiredError:
+        pytest.fail(
+            f"maas-controller still reconciled probe MaaSAuthPolicy in '{tenant_namespace_name}' after "
+            f"discovery label removal (timeout {timeout}s); informer may not have caught up"
+        )
 
 
 def read_maas_resource_finalizers(resource: NamespacedResource) -> list[str]:
