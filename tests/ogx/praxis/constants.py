@@ -1,4 +1,5 @@
 """Constants shared by the OGX -> Praxis migration tests."""
+
 from typing import Any
 
 # Paths of the OpenAI-compatible APIs, as declared by the Gateway API routes
