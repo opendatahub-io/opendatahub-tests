@@ -17,7 +17,7 @@ from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 from ocp_resources.service import Service
 
-from tests.ogx.constants import OGX_CLIENT_VERIFY_SSL, OGX_CORE_INFERENCE_MODEL, OGX_CORE_POD_FILTER
+from tests.ogx.constants import OGX_CORE_INFERENCE_MODEL, OGX_CORE_POD_FILTER
 from tests.ogx.praxis.constants import PROBE_TIMEOUT_SECONDS, REQUEST_TIMEOUT_SECONDS, RESPONSES_API_PATH
 from tests.ogx.praxis.utils import (
     backend_services,
@@ -39,20 +39,21 @@ RESPONSES_PROMPT: Final[str] = "Summarize the Q3 migration report."
 RESPONSES_MAX_OUTPUT_TOKENS: Final[int] = 128
 
 
-def _responses_path_status(url: str) -> int | None:
+def _responses_path_status(session: requests.Session, url: str) -> int | None:
     """Probe whether an endpoint implements the Responses API path.
 
     The probe is unauthenticated on purpose: an authentication rejection still
     proves the path is implemented and reachable.
 
     Args:
+        session: HTTP session carrying no OGX SDK authentication.
         url: Full URL of the Responses API path to probe.
 
     Returns:
         The HTTP status code, or None when the endpoint is unreachable.
     """
     try:
-        response = requests.post(url=url, json={}, timeout=PROBE_TIMEOUT_SECONDS, verify=OGX_CLIENT_VERIFY_SSL)
+        response = session.post(url=url, json={}, timeout=PROBE_TIMEOUT_SECONDS)
     except requests.RequestException as exception:
         LOGGER.info(f"Probe of {url} did not connect: {type(exception).__name__}")
         return None
@@ -100,6 +101,7 @@ class TestPraxisResponsesOwnership:
         admin_client: DynamicClient,
         responses_http_routes: list[HTTPRoute],
         ogx_backed_routes: list[Route],
+        request_session: requests.Session,
         tenant_authorization_header: dict[str, str],
     ) -> None:
         """Verify the Responses API is owned by Praxis alone on a greenfield cluster.
@@ -139,7 +141,7 @@ class TestPraxisResponsesOwnership:
         )
         responses_url = f"https://{hostnames[0]}{RESPONSES_API_PATH}"
         LOGGER.info(f"POST {responses_url} with model {OGX_CORE_INFERENCE_MODEL}")
-        response = requests.post(
+        response = request_session.post(
             url=responses_url,
             headers=tenant_authorization_header,
             json={
@@ -148,7 +150,6 @@ class TestPraxisResponsesOwnership:
                 "max_output_tokens": RESPONSES_MAX_OUTPUT_TOKENS,
             },
             timeout=REQUEST_TIMEOUT_SECONDS,
-            verify=OGX_CLIENT_VERIFY_SSL,
         )
         assert response.status_code == 200, (
             f"POST {RESPONSES_API_PATH} returned HTTP {response.status_code}: {response.text[:200]}"
@@ -180,7 +181,8 @@ class TestPraxisResponsesOwnership:
         externally_served_by_ogx = sorted(
             url
             for url in (route_url(route=route, path=RESPONSES_API_PATH) for route in ogx_backed_routes)
-            if (status_code := _responses_path_status(url=url)) is not None and status_code not in UNSERVED_STATUS_CODES
+            if (status_code := _responses_path_status(session=request_session, url=url)) is not None
+            and status_code not in UNSERVED_STATUS_CODES
         )
         assert not externally_served_by_ogx, (
             f"OGX-backed Routes still expose {RESPONSES_API_PATH}: {externally_served_by_ogx}"
