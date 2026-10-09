@@ -1,6 +1,9 @@
 import socket
+from collections.abc import Generator
+from contextlib import contextmanager
 from typing import Any, Final
 
+import portforward
 import pytest
 import requests
 import structlog
@@ -44,6 +47,7 @@ from tests.ai_safety.evalhub.constants import (
     HF_NESTED_SUB_PATH,
     HF_TOKENIZER_PATH,
     OPERATOR_METRICS_PORT,
+    OPERATOR_METRICS_SCHEME,
     OPERATOR_POD_LABEL_SELECTOR,
 )
 from utilities.guardrails import get_auth_headers
@@ -1696,6 +1700,31 @@ def fetch_operator_metrics(
     Returns:
         Raw Prometheus text-format string from the /metrics endpoint.
     """
+    with operator_metrics_url(admin_client=admin_client) as metrics_url:
+        response = requests.get(
+            metrics_url,
+            headers={"Authorization": f"Bearer {operator_metrics_token}"},
+            verify=False,
+            timeout=10,
+        )
+    response.raise_for_status()
+    return response.text
+
+
+@contextmanager
+def operator_metrics_url(admin_client: DynamicClient) -> Generator[str]:
+    """Port-forward to the TrustyAI operator pod and yield its local /metrics URL.
+
+    The operator pod IP is not reachable from outside the cluster, so the
+    metrics endpoint is reached through a port-forward. The pod is looked up
+    on every call because some fixtures restart the operator (new pod name).
+
+    Args:
+        admin_client: Authenticated Kubernetes client.
+
+    Yields:
+        Local URL of the operator /metrics endpoint.
+    """
     operator_ns = py_config["applications_namespace"]
     pods = list(
         Pod.get(
@@ -1705,15 +1734,14 @@ def fetch_operator_metrics(
         )
     )
     assert pods, "No operator pod found"
-    pod = pods[0]
-    response = requests.get(
-        f"https://{pod.instance.status.podIP}:{OPERATOR_METRICS_PORT}/metrics",
-        headers={"Authorization": f"Bearer {operator_metrics_token}"},
-        verify=False,
-        timeout=10,
-    )
-    response.raise_for_status()
-    return response.text
+    with portforward.forward(
+        namespace=operator_ns,
+        pod_or_service=pods[0].name,
+        from_port=0,
+        to_port=OPERATOR_METRICS_PORT,
+        waiting=2,
+    ) as forwarder:
+        yield f"{OPERATOR_METRICS_SCHEME}://localhost:{forwarder.from_port}/metrics"
 
 
 def fetch_trace_collector_logs(trace_collector_pod: Pod, tail_lines: int = 5000) -> str:

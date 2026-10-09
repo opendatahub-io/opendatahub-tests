@@ -31,7 +31,6 @@ from tests.ai_safety.evalhub.constants import (
     METRIC_LABEL_ERROR_TYPE,
     METRIC_LABEL_FAILURE_REASON,
     METRIC_LABEL_RESULT,
-    OPERATOR_METRICS_PORT,
     OPERATOR_POD_LABEL_SELECTOR,
     RECONCILE_DURATION_METRIC,
     RECONCILE_ERRORS_METRIC,
@@ -56,6 +55,7 @@ from tests.ai_safety.evalhub.utils import (
     get_child_spans,
     get_metric_samples,
     metric_value_sum,
+    operator_metrics_url,
     parse_prometheus_text,
     parse_trace_spans_from_logs,
 )
@@ -932,23 +932,9 @@ class TestEvalHubReconcileIntegration:
         TC-INT-002: Verify unauthenticated requests to the operator metrics
         endpoint are rejected by kube-rbac-proxy.
         """
-        operator_ns = py_config["applications_namespace"]
-        pods = list(
-            Pod.get(
-                client=admin_client,
-                namespace=operator_ns,
-                label_selector=OPERATOR_POD_LABEL_SELECTOR,
-            )
-        )
-        assert pods, "No operator pod found"
-        pod = pods[0]
-
         try:
-            response = requests.get(
-                f"https://{pod.instance.status.podIP}:{OPERATOR_METRICS_PORT}/metrics",
-                verify=False,
-                timeout=5,
-            )
+            with operator_metrics_url(admin_client=admin_client) as metrics_url:
+                response = requests.get(metrics_url, verify=False, timeout=5)
         except (requests.exceptions.ConnectionError, requests.exceptions.SSLError) as exc:
             pytest.fail(f"Metrics endpoint unreachable — cannot verify auth rejection: {exc}")
 
