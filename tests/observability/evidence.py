@@ -1,7 +1,9 @@
 """Sanitized machine-readable and human-readable release evidence."""
 
 import json
+import os
 import re
+import tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -55,7 +57,7 @@ def write_evidence(
         "records": [record.to_dict() for record in records],
         "handoff": _sanitize(handoff or {}),
     }
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    write_text_atomically(path=path, content=json.dumps(payload, indent=2, sort_keys=True) + "\n")
     return path
 
 
@@ -74,7 +76,7 @@ def write_failure_log(destination: str | Path, records: list[EvidenceRecord]) ->
             f"error_type={_sanitize_log_field(query.error_type)} "
             f"error={_sanitize_log_field('[REDACTED]' if query.error else None)}"
         )
-    path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+    write_text_atomically(path=path, content="\n".join(lines) + ("\n" if lines else ""))
     return path
 
 
@@ -82,8 +84,34 @@ def write_preflight_evidence(destination: str | Path, report: dict[str, object])
     """Write a sanitized preflight report before any resource mutation."""
     path = Path(destination)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(_sanitize(report), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    write_text_atomically(path=path, content=json.dumps(_sanitize(report), indent=2, sort_keys=True) + "\n")
     return path
+
+
+def write_text_atomically(*, path: Path, content: str) -> None:
+    """Write text through a sibling temporary file so readers never see a partial artifact."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as temporary_file:
+            temporary_path = temporary_file.name
+            temporary_file.write(content)
+            temporary_file.flush()
+            os.fsync(temporary_file.fileno())
+        os.replace(src=temporary_path, dst=path)
+    finally:
+        if temporary_path is not None:
+            try:
+                os.unlink(temporary_path)
+            except FileNotFoundError:
+                pass
 
 
 def _sanitize(value: Any, key: str = "") -> Any:

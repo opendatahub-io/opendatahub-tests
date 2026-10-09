@@ -1,7 +1,7 @@
 import json
 import re
 import time
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
 
@@ -842,7 +842,7 @@ def revoked_evalhub_events_create_permission(
     evalhub_cr_name: str,
     evalhub_sa_namespace: str,
     tenant_namespace: str,
-) -> Iterator[None]:
+) -> Generator[None]:
     """Temporarily revoke EvalHub events create permission by deleting its events RoleBinding."""
     evalhub_sa_name = f"{evalhub_cr_name}-service"
     binding = find_evalhub_events_role_binding(

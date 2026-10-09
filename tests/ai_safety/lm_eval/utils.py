@@ -1,3 +1,4 @@
+import contextlib
 import re
 from pathlib import Path
 
@@ -101,11 +102,12 @@ def get_lmeval_tasks(min_downloads: float, max_downloads: float | None = None) -
     return unique_tasks
 
 
-def validate_lmeval_job_pod_and_logs(lmevaljob_pod: Pod) -> None:
+def validate_lmeval_job_pod_and_logs(lmevaljob_pod: Pod, timeout: int = tts("1h")) -> None:
     """Validate LMEval job pod success and presence of corresponding logs.
 
     Args:
         lmevaljob_pod: The LMEvalJob pod.
+        timeout: Maximum seconds to wait for the pod to reach Succeeded.
 
     Returns: None
     """
@@ -115,9 +117,20 @@ def validate_lmeval_job_pod_and_logs(lmevaljob_pod: Pod) -> None:
     )
     lmevaljob_pod.wait_for_status(status=lmevaljob_pod.Status.RUNNING, timeout=tts("10m"))
     try:
-        lmevaljob_pod.wait_for_status(status=Pod.Status.SUCCEEDED, timeout=tts("1h"))
+        lmevaljob_pod.wait_for_status(status=Pod.Status.SUCCEEDED, timeout=timeout)
     except TimeoutExpiredError as e:
-        raise UnexpectedFailureError("LMEval job pod failed from a running state.") from e
+        last_phase = "unknown"
+        with contextlib.suppress(Exception):
+            last_phase = lmevaljob_pod.instance.status.phase
+        collect_pod_information(pod=lmevaljob_pod)
+        if last_phase == Pod.Status.FAILED:
+            message = f"LMEval job pod {lmevaljob_pod.name} failed (last phase: {last_phase})"
+        else:
+            message = (
+                f"LMEval job pod {lmevaljob_pod.name} did not reach Succeeded "
+                f"within {timeout}s (last phase: {last_phase})"
+            )
+        raise UnexpectedFailureError(message) from e
     if not bool(re.search(pod_success_log_regex, lmevaljob_pod.log())):
         raise PodLogMissMatchError("LMEval job pod failed.")
 

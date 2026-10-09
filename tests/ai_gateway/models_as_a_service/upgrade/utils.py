@@ -1,4 +1,6 @@
+import base64
 import json
+from collections.abc import Mapping
 from typing import Any, TypedDict
 
 import structlog
@@ -11,6 +13,7 @@ from ocp_resources.maas_auth_policy import MaaSAuthPolicy
 from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.maas_subscription import MaaSSubscription
 from ocp_resources.resource import NamespacedResource
+from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from timeout_sampler import TimeoutSampler
 
@@ -20,6 +23,7 @@ from tests.ai_gateway.models_as_a_service.utils import (
     wait_for_httproute,
 )
 from utilities.constants import ApiGroups
+from utilities.logger import RedactedString
 from utilities.resources.destination_rule import DestinationRule
 from utilities.resources.external_model import ExternalModel
 from utilities.resources.http_route import HTTPRoute
@@ -83,6 +87,13 @@ def _tenant_status_phase(tenant: NamespacedResource) -> str:
         return ""
     tenant_phase = tenant_status.phase
     return tenant_phase or ""
+
+
+def _field_value(value: object, field_name: str, default: object = None) -> object:
+    """Read a field from a Kubernetes wrapper object or a plain mapping."""
+    if isinstance(value, Mapping):
+        return value.get(field_name, default)
+    return getattr(value, field_name, default)
 
 
 def capture_maas_baseline(
@@ -152,6 +163,30 @@ def load_maas_baseline_from_configmap(
     )
     raw_baseline = config_map_data[MAAS_UPGRADE_BASELINE_CM_KEY]
     return json.loads(raw_baseline)
+
+
+def load_maas_api_key_from_secret(
+    client: DynamicClient,
+    namespace: str,
+    secret_name: str,
+    secret_key: str,
+) -> RedactedString:
+    """Load a base64-encoded MaaS API key as a redacted fixture-safe string."""
+    secret = Secret(client=client, name=secret_name, namespace=namespace)
+    assert secret.exists, (
+        f"MaaS API-key Secret '{secret_name}' not found in namespace '{namespace}'. "
+        "Ensure pre-upgrade tests created the Secret."
+    )
+    secret_data = _field_value(value=secret.instance, field_name="data", default={})
+    encoded_value = _field_value(value=secret_data, field_name=secret_key)
+    assert encoded_value, f"MaaS API-key Secret '{secret_name}' in namespace '{namespace}' has no '{secret_key}' key."
+    try:
+        decoded_value = base64.b64decode(str(encoded_value), validate=True).decode("utf-8")
+    except (UnicodeDecodeError, ValueError) as error:
+        raise AssertionError(
+            f"MaaS API-key Secret '{secret_name}' key '{secret_key}' is not valid base64 UTF-8 data"
+        ) from error
+    return RedactedString(value=decoded_value)
 
 
 def verify_maas_model_ref_exists(model_ref: MaaSModelRef) -> None:
