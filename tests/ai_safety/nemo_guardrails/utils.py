@@ -11,6 +11,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.pod import Pod
 from ocp_resources.route import Route
+from ocp_resources.service import Service
 from requests import Response
 from timeout_sampler import TimeoutSampler, retry
 
@@ -377,3 +378,51 @@ def condition_reason(nemo_cr: NemoGuardrails, condition_type: str) -> str | None
         if cond.get("type") == condition_type:
             return cond.get("reason")
     return None
+
+
+def service_exists(client: DynamicClient, name: str, namespace: str) -> bool:
+    """
+    Check whether a Service exists.
+
+    Args:
+        client: DynamicClient to query the cluster
+        name: Service name
+        namespace: Namespace to look in
+
+    Returns:
+        True if the Service exists, False otherwise
+    """
+    return bool(Service(client=client, name=name, namespace=namespace).exists)
+
+
+def configmap_exists(client: DynamicClient, name: str, namespace: str) -> bool:
+    """
+    Check whether a ConfigMap exists.
+
+    Args:
+        client: DynamicClient to query the cluster
+        name: ConfigMap name
+        namespace: Namespace to look in
+
+    Returns:
+        True if the ConfigMap exists, False otherwise
+    """
+    return bool(ConfigMap(client=client, name=name, namespace=namespace).exists)
+
+
+def nemo_cr_workload_namespace(nemo_cr: NemoGuardrails) -> str:
+    """
+    Read the namespace where the workload was last deployed, from the server's status.
+
+    The operator writes this field after every successful reconciliation. It is set
+    to whichever AI Gateway infra namespace ('redhat-ai-gateway-infra' or
+    'odh-ai-gateway-infra') the operator found to be labeled, or to the CR's own
+    namespace when neither infra namespace carries the required label.
+
+    Args:
+        nemo_cr: NemoGuardrails resource to inspect
+
+    Returns:
+        The workload namespace string, or an empty string if not yet written
+    """
+    return (nemo_cr.instance.status or {}).get("workloadNamespace", "")
