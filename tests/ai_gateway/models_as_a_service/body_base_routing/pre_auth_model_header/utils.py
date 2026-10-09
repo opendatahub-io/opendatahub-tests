@@ -35,6 +35,7 @@ BBR_PRE_FILTER_NAME: str = "envoy.filters.http.ext_proc.ipp-pre"
 BBR_POST_FILTER_NAME: str = "envoy.filters.http.ext_proc.ipp"
 ENVOY_FILTER_INSERT_BEFORE: str = "INSERT_BEFORE"
 ENVOY_FILTER_INSERT_AFTER: str = "INSERT_AFTER"
+ENVOY_FILTER_APPLY_TO_CLUSTER: str = "CLUSTER"
 BBR_PLUGINS_CONFIGMAP_NAME: str = "payload-processing-plugins"
 BBR_POST_AUTH_CONFIGMAP_KEY: str = "custom-ipp-config.yaml"
 BBR_PRE_AUTH_CONFIGMAP_KEY: str = "custom-pre-processing-ipp-config.yaml"
@@ -48,6 +49,7 @@ BBR_PRE_AUTH_PLUGIN_FIELD_NAME: str = "model"
 BBR_PRE_AUTH_PLUGIN_HEADER_NAME: str = "X-Gateway-Model-Name"
 BBR_RATE_LIMIT_TOKENS_PER_MINUTE: int = 100
 BBR_RATE_LIMIT_CHAT_MAX_TOKENS: int = 80
+BBR_STREAMING_SSE_MAX_LINES: int = 30
 
 
 @contextmanager
@@ -171,18 +173,91 @@ def get_bbr_envoy_filter_config_patches(
     return envoy_filter.instance.spec.configPatches or []
 
 
+def _attr_or_key(obj: Any, name: str, alternate: str | None = None) -> Any:
+    """Return the first present attribute or dict key from obj for name or alternate."""
+    candidate_names = (name, alternate) if alternate is not None else (name,)
+    for candidate_name in candidate_names:
+        if obj is None:
+            return None
+        if isinstance(obj, dict):
+            if candidate_name in obj:
+                return obj[candidate_name]
+            continue
+        value = getattr(obj, candidate_name, None)
+        if value is not None:
+            return value
+    return None
+
+
+def _config_patch_apply_to(config_patch: Any) -> str | None:
+    """Return the configPatch applyTo value."""
+    return _attr_or_key(obj=config_patch, name="applyTo", alternate="apply_to")
+
+
 def _extract_cluster_name_from_patch_value(patch_value: Any) -> str | None:
     """Extract gRPC cluster name from a configPatch value object; handles both camelCase and snake_case."""
-    typed_config = getattr(patch_value, "typedConfig", None) or getattr(patch_value, "typed_config", None)
+    typed_config = _attr_or_key(obj=patch_value, name="typedConfig", alternate="typed_config")
     if not typed_config:
         return None
-    grpc_service = getattr(typed_config, "grpcService", None) or getattr(typed_config, "grpc_service", None)
+    grpc_service = _attr_or_key(obj=typed_config, name="grpcService", alternate="grpc_service")
     if not grpc_service:
         return None
-    envoy_grpc = getattr(grpc_service, "envoyGrpc", None) or getattr(grpc_service, "envoy_grpc", None)
+    envoy_grpc = _attr_or_key(obj=grpc_service, name="envoyGrpc", alternate="envoy_grpc")
     if not envoy_grpc:
         return None
-    return getattr(envoy_grpc, "clusterName", None) or getattr(envoy_grpc, "cluster_name", None)
+    return _attr_or_key(obj=envoy_grpc, name="clusterName", alternate="cluster_name")
+
+
+def _bbr_stage_extproc_cluster_names_by_filter(config_patches: list[Any]) -> dict[str, str]:
+    """Map BBR pre/post HTTP filter names to their ext_proc gRPC cluster names."""
+    bbr_stage_filter_names = {BBR_PRE_FILTER_NAME, BBR_POST_FILTER_NAME}
+    cluster_names_by_filter: dict[str, str] = {}
+    for config_patch in config_patches:
+        patch = _attr_or_key(obj=config_patch, name="patch")
+        patch_value = _attr_or_key(obj=patch, name="value")
+        if patch_value is None:
+            continue
+        filter_name = _attr_or_key(obj=patch_value, name="name")
+        if filter_name not in bbr_stage_filter_names:
+            continue
+        cluster_name = _extract_cluster_name_from_patch_value(patch_value=patch_value)
+        if cluster_name:
+            cluster_names_by_filter[filter_name] = cluster_name
+    return cluster_names_by_filter
+
+
+def _cluster_endpoint_address_from_cluster_patch_value(patch_value: Any) -> tuple[str | None, str | None]:
+    """Return (cluster name, upstream socket address) from a CLUSTER configPatch value."""
+    cluster_name = _attr_or_key(obj=patch_value, name="name")
+    load_assignment = _attr_or_key(obj=patch_value, name="loadAssignment", alternate="load_assignment")
+    endpoints = _attr_or_key(obj=load_assignment, name="endpoints") if load_assignment is not None else None
+    if not endpoints:
+        return cluster_name, None
+    first_endpoint = endpoints[0]
+    lb_endpoints = _attr_or_key(obj=first_endpoint, name="lbEndpoints", alternate="lb_endpoints")
+    if not lb_endpoints:
+        return cluster_name, None
+    endpoint = _attr_or_key(obj=lb_endpoints[0], name="endpoint")
+    address = _attr_or_key(obj=endpoint, name="address")
+    socket_address = _attr_or_key(obj=address, name="socketAddress", alternate="socket_address")
+    endpoint_address = _attr_or_key(obj=socket_address, name="address")
+    return cluster_name, endpoint_address
+
+
+def _cluster_endpoint_addresses_by_name(config_patches: list[Any]) -> dict[str, str]:
+    """Collect upstream socket addresses from CLUSTER configPatches keyed by cluster name."""
+    addresses_by_name: dict[str, str] = {}
+    for config_patch in config_patches:
+        if _config_patch_apply_to(config_patch) != ENVOY_FILTER_APPLY_TO_CLUSTER:
+            continue
+        patch = _attr_or_key(obj=config_patch, name="patch")
+        patch_value = _attr_or_key(obj=patch, name="value")
+        if patch_value is None:
+            continue
+        cluster_name, endpoint_address = _cluster_endpoint_address_from_cluster_patch_value(patch_value=patch_value)
+        if cluster_name and endpoint_address:
+            addresses_by_name[cluster_name] = endpoint_address
+    return addresses_by_name
 
 
 def verify_bbr_envoy_filter_has_pre_and_post_auth_stages(
@@ -276,24 +351,31 @@ def verify_bbr_envoy_filter_cluster_names_contain_gateway_namespace(
     config_patches: list[Any],
     gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
 ) -> None:
-    """Assert all gRPC cluster names in the BBR EnvoyFilter point to services in the gateway namespace."""
-    cluster_names: list[str] = []
-    for config_patch in config_patches:
-        patch = getattr(config_patch, "patch", None)
-        patch_value = getattr(patch, "value", None) if patch is not None else None
-        if patch_value is None:
-            continue
-        cluster_name = _extract_cluster_name_from_patch_value(patch_value=patch_value)
-        if cluster_name:
-            cluster_names.append(cluster_name)
-    assert cluster_names, f"No gRPC cluster names found in EnvoyFilter '{BBR_ENVOY_FILTER_NAME}' configPatches"
+    """Assert BBR pre/post ext_proc CLUSTER upstream addresses use Services in the gateway namespace."""
+    bbr_stage_filter_names = {BBR_PRE_FILTER_NAME, BBR_POST_FILTER_NAME}
+    cluster_names_by_filter = _bbr_stage_extproc_cluster_names_by_filter(config_patches=config_patches)
+    missing_filters = bbr_stage_filter_names - cluster_names_by_filter.keys()
+    assert not missing_filters, (
+        f"No gRPC cluster names found for BBR stage filters {sorted(missing_filters)!r} in EnvoyFilter "
+        f"'{BBR_ENVOY_FILTER_NAME}' configPatches (found: {sorted(cluster_names_by_filter)!r})"
+    )
+    cluster_endpoint_addresses = _cluster_endpoint_addresses_by_name(config_patches=config_patches)
     fqdn_segment = f".{gateway_namespace}.svc"
-    for cluster_name in cluster_names:
-        assert fqdn_segment in cluster_name, (
-            f"Cluster name '{cluster_name}' does not reference gateway namespace '{gateway_namespace}' "
-            f"in the service FQDN (expected '{fqdn_segment}' in cluster name)"
+    for filter_name, cluster_name in cluster_names_by_filter.items():
+        endpoint_address = cluster_endpoint_addresses.get(cluster_name)
+        assert endpoint_address, (
+            f"No CLUSTER configPatch with upstream address found for BBR cluster '{cluster_name}' "
+            f"(filter '{filter_name}') in EnvoyFilter '{BBR_ENVOY_FILTER_NAME}'"
         )
-    LOGGER.info(f"All gRPC cluster names reference gateway namespace '{gateway_namespace}': {cluster_names!r}")
+        assert fqdn_segment in endpoint_address, (
+            f"BBR cluster '{cluster_name}' for filter '{filter_name}' resolves to '{endpoint_address}', "
+            f"expected gateway namespace '{gateway_namespace}' in the service FQDN "
+            f"(expected '{fqdn_segment}' in the address)"
+        )
+    LOGGER.info(
+        f"BBR stage ext_proc clusters reference gateway namespace '{gateway_namespace}': "
+        f"{cluster_names_by_filter!r} -> {cluster_endpoint_addresses!r}"
+    )
 
 
 def verify_bbr_post_auth_processing_deployment_ready(
@@ -540,3 +622,69 @@ def assert_bbr_inference_status(
         f"Expected {expected_status} on BBR inference, got {response.status_code}"
     )
     LOGGER.info(f"BBR inference POST {inference_url} returned {response.status_code}")
+
+
+def assert_bbr_inference_streaming_returns_sse(
+    session: requests.Session,
+    inference_url: str,
+    headers: dict[str, str],
+    payload: dict[str, Any],
+) -> None:
+    """Verify streaming BBR inference returns 200, text/event-stream, and SSE data: lines.
+
+    Retries the streaming POST every 3s for up to 30s when the gateway returns a transient
+    503 or a 200 event-stream body with no data: lines yet.
+    """
+    warm_up_bbr_inference_upstream(
+        session=session,
+        inference_url=inference_url,
+        headers=headers,
+        payload=payload,
+    )
+    try:
+        _send_bbr_streaming_sse_request(
+            session=session,
+            inference_url=inference_url,
+            headers=headers,
+            payload=payload,
+        )
+    except TimeoutExpiredError:
+        pytest.fail(
+            f"BBR streaming SSE retries exhausted for {inference_url} (no data: lines in text/event-stream within 30s)"
+        )
+
+
+@retry(wait_timeout=30, sleep=3)
+def _send_bbr_streaming_sse_request(
+    session: requests.Session,
+    inference_url: str,
+    headers: dict[str, str],
+    payload: dict[str, Any],
+) -> bool:
+    """POST with stream=True; return True when SSE data: lines are present, False to retry."""
+    LOGGER.info(f"BBR streaming inference POST {inference_url}")
+    with session.post(
+        url=inference_url,
+        headers=headers,
+        json=payload,
+        timeout=60,
+        stream=True,
+    ) as response:
+        if response.status_code == 503 and "no healthy upstream" in (response.text or ""):
+            LOGGER.info("BBR streaming inference returned 503 no healthy upstream")
+            return False
+        if response.status_code != 200:
+            pytest.fail(f"Expected 200 for streaming BBR inference, got {response.status_code}")
+        content_type = response.headers.get("content-type", "")
+        if "text/event-stream" not in content_type:
+            pytest.fail(f"Expected text/event-stream content type for streaming response, got '{content_type}'")
+        data_lines = [
+            line
+            for line, _ in zip(response.iter_lines(), range(BBR_STREAMING_SSE_MAX_LINES), strict=False)
+            if line and line.startswith(b"data:")
+        ]
+        if data_lines:
+            LOGGER.info(f"BBR streaming inference returned {len(data_lines)} SSE data: lines")
+            return True
+        LOGGER.info("BBR streaming inference returned 200 event-stream but no data: lines yet")
+        return False
