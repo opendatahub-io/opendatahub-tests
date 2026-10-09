@@ -46,7 +46,6 @@ from tests.ai_safety.evalhub.constants import (
     HF_DEFAULT_REVISION,
     HF_NESTED_SUB_PATH,
     HF_TOKENIZER_PATH,
-    OPERATOR_METRICS_LOCAL_PORT,
     OPERATOR_METRICS_PORT,
     OPERATOR_METRICS_SCHEME,
     OPERATOR_POD_LABEL_SELECTOR,
@@ -1738,11 +1737,11 @@ def operator_metrics_url(admin_client: DynamicClient) -> Generator[str]:
     with portforward.forward(
         namespace=operator_ns,
         pod_or_service=pods[0].name,
-        from_port=OPERATOR_METRICS_LOCAL_PORT,
+        from_port=0,
         to_port=OPERATOR_METRICS_PORT,
         waiting=2,
-    ):
-        yield f"{OPERATOR_METRICS_SCHEME}://localhost:{OPERATOR_METRICS_LOCAL_PORT}/metrics"
+    ) as forwarder:
+        yield f"{OPERATOR_METRICS_SCHEME}://localhost:{forwarder.from_port}/metrics"
 
 
 def fetch_trace_collector_logs(trace_collector_pod: Pod, tail_lines: int = 5000) -> str:

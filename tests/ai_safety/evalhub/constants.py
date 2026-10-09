@@ -238,7 +238,6 @@ OPERATOR_METRICS_PORT: int = 8080
 # RHOAI nightly serves metrics as plain HTTP on 8080 (no auth).
 # TODO: switch to https/8443 once upstream PR #896 reaches RHOAI.
 OPERATOR_METRICS_SCHEME: str = "http"
-OPERATOR_METRICS_LOCAL_PORT: int = 18080
 
 # OTEL trace span names emitted by the EvalHub controller
 SPAN_RECONCILE: str = "evalhub.reconcile"
