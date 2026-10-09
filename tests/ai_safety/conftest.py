@@ -11,13 +11,13 @@ from utilities.constants import TRUSTYAI_SERVICE_NAME
 
 
 @pytest.fixture(scope="class")
-def pvc_minio_namespace(
-    admin_client: DynamicClient, minio_namespace: Namespace
+def pvc_seaweedfs_namespace(
+    admin_client: DynamicClient, seaweedfs_namespace: Namespace
 ) -> Generator[PersistentVolumeClaim, Any, Any]:
     with PersistentVolumeClaim(
         client=admin_client,
-        name="minio-pvc",
-        namespace=minio_namespace.name,
+        name="seaweedfs-pvc",
+        namespace=seaweedfs_namespace.name,
         accessmodes=PersistentVolumeClaim.AccessMode.RWO,
         volume_mode=PersistentVolumeClaim.VolumeMode.FILE,
         size="10Gi",

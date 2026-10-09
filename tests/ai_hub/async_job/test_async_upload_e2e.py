@@ -13,7 +13,7 @@ from tests.ai_hub.async_job.utils import (
     pull_manifest_from_oci_registry,
 )
 from tests.ai_hub.constants import MODEL_DICT
-from utilities.constants import OCIRegistry
+from utilities.constants import OCIRegistry, SeaweedFs
 from model_registry import ModelRegistry as ModelRegistryClient
 from simple_logger.logger import get_logger
 from tests.ai_hub.async_job.constants import MODEL_SYNC_CONFIG, REPO_NAME, TAG
@@ -35,6 +35,16 @@ MODEL_DATA = {
         pytest.param(
             OCIRegistry.PodConfig.REGISTRY_BASE_CONFIG,
             id="test_async_upload_with_seaweedfs",
+        )
+    ],
+    indirect=True,
+)
+@pytest.mark.parametrize(
+    "seaweedfs_pod",
+    [
+        pytest.param(
+            {"buckets": [SeaweedFs.Buckets.MODELMESH_EXAMPLE_MODELS]},
+            id="test_seaweedfs_with_modelmesh_bucket",
         )
     ],
     indirect=True,
