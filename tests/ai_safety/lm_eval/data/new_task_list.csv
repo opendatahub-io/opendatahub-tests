@@ -2491,7 +2491,6 @@ kobest_hellaswag,4306,true,skt/kobest_v1,false,3
 kobest,4306,true,Unknown,false,3
 kobest_sentineg,4306,true,skt/kobest_v1,false,3
 kobest_copa,4306,true,skt/kobest_v1,false,3
-realtoxicityprompts,4024,true,allenai/real-toxicity-prompts,false,3
 arabicmmlu_biology_high_school,3548,true,MBZUAI/ArabicMMLU,false,3
 arabicmmlu_other_tasks,3548,false,Unknown,false,3
 arabicmmlu_economics_middle_school,3548,true,MBZUAI/ArabicMMLU,false,3
@@ -3413,9 +3412,7 @@ afrimmlu_direct_eng_prompt_4,1547,false,Unknown,false,3
 afrimmlu_direct_sot_prompt_4,1547,false,Unknown,false,3
 afrimmlu_direct_lin_prompt_4,1547,false,Unknown,false,3
 afrimmlu_direct_twi_prompt_4,1547,false,Unknown,false,3
-storycloze_2018,1526,true,story_cloze,false,3
 storycloze,1526,false,Unknown,false,3
-storycloze_2016,1526,true,story_cloze,false,3
 kormedmcqa,1494,true,Unknown,false,3
 kormedmcqa_pharm,1494,true,sean0042/KorMedMCQA,false,3
 kormedmcqa_nurse,1494,true,sean0042/KorMedMCQA,false,3
