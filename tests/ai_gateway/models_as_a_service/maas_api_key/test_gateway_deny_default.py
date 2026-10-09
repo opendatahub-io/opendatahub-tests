@@ -45,10 +45,7 @@ class TestGatewayDenyByDefault:
             ),
         )
 
-        LOGGER.info(
-            f"{MAAS_GATEWAY_AUTH_POLICY_NAME} deployed to '{gateway_namespace}' "
-            "and Accepted/Enforced"
-        )
+        LOGGER.info(f"{MAAS_GATEWAY_AUTH_POLICY_NAME} deployed to '{gateway_namespace}' and Accepted/Enforced")
 
     def test_unconfigured_model_denies_unauthenticated_request(
         self,
