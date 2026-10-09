@@ -1,3 +1,5 @@
+from pyhelper_utils.general import tts
+
 from tests.ai_safety.image_constants import AiSafetyImages
 
 CUSTOM_UNITXT_TASK_DATA = {
@@ -130,3 +132,7 @@ ACCELERATOR_IDENTIFIER: dict[str, str] = {
     "amd": "amd.com/gpu",
     "gaudi": "habana.ai/gaudi",
 }
+
+# Timeout (seconds) for small single-task LMEval jobs (emulator / GPU arc_easy runs).
+# Observed runtimes: HTTP emulator ~70s, GPU ~30s.
+LMEVAL_SHORT_JOB_TIMEOUT: int = tts("10m")

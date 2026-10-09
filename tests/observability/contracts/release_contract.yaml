@@ -447,7 +447,9 @@ records:
     empty_result_valid: false
     empty_ui_state: No data
     capability: shipped
-    authorization_response: review-required
+    # Confirmed on the RHOAI 3.6 probe cluster with an independently authenticated
+    # restricted service account: unauthorized namespaces return HTTP 403.
+    authorization_response: "403"
   - id: tenancy-endpoint
     dashboard: cluster
     panel: tenancy-isolation
@@ -462,7 +464,9 @@ records:
     empty_result_valid: false
     empty_ui_state: No data
     capability: shipped
-    authorization_response: review-required
+    # Confirmed on the RHOAI 3.6 probe cluster with an independently authenticated
+    # restricted service account: unauthorized namespaces return HTTP 403.
+    authorization_response: "403"
   - id: data-science-thanos
     dashboard: cluster
     panel: data-science-thanos-route
@@ -477,4 +481,7 @@ records:
     empty_result_valid: false
     empty_ui_state: No data
     capability: shipped
-    authorization_response: review-required
+    # The route has no user-bound authorization boundary: a live RHOAI 3.6 probe
+    # returned HTTP 200/success and populated data without Authorization. Require
+    # populated success so the known exposure is exercised by namespace isolation.
+    authorization_response: isolation-only
