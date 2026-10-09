@@ -1,7 +1,12 @@
-"""Constants for Praxis per-tenant payload-processing tests."""
+"""Constants for Praxis per-tenant payload-processing tests.
+
+After MaaS default-dataplane change (PR #1579): absent or unrecognized
+``payload-processing-type`` resolves to Praxis; explicit ``ipp`` selects legacy IPP.
+"""
 
 PRAXIS_PAYLOAD_PROCESSING_TYPE_ANNOTATION: str = "maas.opendatahub.io/payload-processing-type"
 PRAXIS_PAYLOAD_PROCESSING_TYPE_VALUE: str = "praxis"
+LEGACY_IPP_PAYLOAD_PROCESSING_TYPE_VALUE: str = "ipp"
 PRAXIS_CLEANUP_FINALIZER: str = "ai-gateway-controller.opendatahub.io/praxis-cleanup"
 
 MAAS_PAYLOAD_PROCESSING_STATUS_ANNOTATION: str = "maas.opendatahub.io/payload-processing-status"
