@@ -129,7 +129,25 @@ def ogx_server(
     Accepts indirect parametrization with a dict containing server config options
     (see ``build_ogx_server_config`` for accepted keys).
     """
-    params = getattr(request, "param", {})
+    params = getattr(request, "param", {}).copy()
+    if "network" not in params:
+        params["network"] = {
+            "policy": {
+                "ingress": [
+                    {
+                        "ports": [{"port": 8321, "protocol": "TCP"}],
+                        "from": [
+                            {"namespaceSelector": {"matchLabels": {"network.openshift.io/policy-group": "ingress"}}},
+                            {
+                                "namespaceSelector": {
+                                    "matchLabels": {"network.openshift.io/policy-group": "host-network"}
+                                }
+                            },
+                        ],
+                    }
+                ]
+            }
+        }
     ogx_server_config = build_ogx_server_config(
         vector_io_provider_deployment_config_factory=vector_io_provider_deployment_config_factory,
         files_provider_config_factory=files_provider_config_factory,
