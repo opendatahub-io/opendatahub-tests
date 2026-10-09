@@ -869,23 +869,23 @@ def assert_api_key_created_ok(
         assert field in body, f"Response must contain '{field}'"
 
 
-def verify_maas_gateway_programmed(gateway: Gateway) -> None:
+def verify_maas_gateway_programmed(gateway: Gateway, timeout: int = 300) -> None:
     """Assert that the MaaS Gateway exists and has reached Programmed=True."""
     assert gateway.exists, f"MaaS Gateway '{gateway.name}' not found in namespace '{gateway.namespace}'"
-    gateway.wait_for_condition(condition="Programmed", status="True", timeout=300)
+    gateway.wait_for_condition(condition="Programmed", status="True", timeout=timeout)
 
 
-def verify_maas_tenant_ready(tenant_resource: NamespacedResource) -> None:
+def verify_maas_tenant_ready(tenant_resource: NamespacedResource, timeout: int = 300) -> None:
     """Assert that the MaaS tenant CR exists and has Ready=True."""
     assert tenant_resource.exists, (
         f"{tenant_resource.kind} '{tenant_resource.name}' not found in namespace '{tenant_resource.namespace}'"
     )
-    tenant_resource.wait_for_condition(condition="Ready", status="True", timeout=300)
+    tenant_resource.wait_for_condition(condition="Ready", status="True", timeout=timeout)
 
 
-def verify_maas_tenant_config_ready(maas_tenant_config: MaasTenantConfig) -> None:
+def verify_maas_tenant_config_ready(maas_tenant_config: MaasTenantConfig, timeout: int = 300) -> None:
     """Assert that the MaasTenantConfig CR exists and has Ready=True."""
-    verify_maas_tenant_ready(tenant_resource=maas_tenant_config)
+    verify_maas_tenant_ready(tenant_resource=maas_tenant_config, timeout=timeout)
 
 
 def get_httproute(
