@@ -16,51 +16,49 @@ from utilities.resources.aitenant import AITenant
 
 @pytest.mark.usefixtures("maas_subscription_controller_enabled_latest", "aitenant_infra_namespace")
 class TestAITenantPraxisLegacyIpp:
-    """Verify maas-controller legacy IPP behavior for praxis vs legacy AITenants."""
+    """Verify maas-controller legacy IPP opt-in vs default Praxis for AITenants."""
 
     @pytest.mark.tier1
     def test_praxis_aitenant_does_not_install_ipp_in_gateway_ns(
         self,
         admin_client: DynamicClient,
-        ready_praxis_annotated_aitenant: AITenant,
+        ready_aitenant_default_dataplane: AITenant,
     ) -> None:
-        """Given a legacy tenant migrated to praxis on MaasTenantConfig, when controllers reconcile,
-        then MaaS skips legacy IPP and ai-gateway installs the Praxis extproc bundle in the gateway namespace.
+        """Given default Praxis on MaasTenantConfig, when controllers reconcile,
+        then MaaS skips legacy IPP and ai-gateway installs the Praxis extproc bundle.
         """
         verify_praxis_payload_processing_active_for_aitenant(
             admin_client=admin_client,
-            aitenant=ready_praxis_annotated_aitenant,
+            aitenant=ready_aitenant_default_dataplane,
         )
 
     @pytest.mark.tier1
-    def test_praxis_annotation_removes_legacy_ipp_from_gateway_ns(
+    def test_legacy_ipp_to_praxis_removes_legacy_ipp_from_gateway_ns(
         self,
         admin_client: DynamicClient,
-        ready_aitenant_without_praxis_annotation: AITenant,
+        ready_aitenant_legacy_ipp: AITenant,
     ) -> None:
-        """Given a legacy AITenant with maas legacy IPP installed, when praxis is set on MaasTenantConfig,
-        then MaaS releases legacy IPP and ai-gateway installs the Praxis bundle in the gateway namespace.
+        """Given legacy IPP on MaasTenantConfig, when switching to default Praxis,
+        then MaaS releases legacy IPP and ai-gateway installs the Praxis bundle.
         """
         migrate_legacy_aitenant_to_praxis_payload_processing(
             admin_client=admin_client,
-            aitenant=ready_aitenant_without_praxis_annotation,
+            aitenant=ready_aitenant_legacy_ipp,
         )
 
     @pytest.mark.smoke
     def test_praxis_aitenant_still_deploys_maas_api(
         self,
         admin_client: DynamicClient,
-        ready_praxis_annotated_aitenant: AITenant,
+        ready_aitenant_default_dataplane: AITenant,
         maas_api_infra_namespace: str,
     ) -> None:
-        """Given a legacy tenant migrated to praxis, when platform reconciliation completes,
-        then per-tenant maas-api is still Available.
-        """
-        tenant_namespace_name = tenant_namespace_name_from_aitenant(aitenant=ready_praxis_annotated_aitenant)
+        """Given default Praxis, when platform reconciliation completes, then per-tenant maas-api is Available."""
+        tenant_namespace_name = tenant_namespace_name_from_aitenant(aitenant=ready_aitenant_default_dataplane)
         verify_maas_api_deployment_for_aitenant(
             admin_client=admin_client,
             api_namespace=maas_api_infra_namespace,
-            aitenant_name=ready_praxis_annotated_aitenant.name,
+            aitenant_name=ready_aitenant_default_dataplane.name,
             tenant_namespace_name=tenant_namespace_name,
         )
 
@@ -68,48 +66,44 @@ class TestAITenantPraxisLegacyIpp:
     def test_praxis_aitenant_maas_tenant_config_ready(
         self,
         admin_client: DynamicClient,
-        ready_praxis_annotated_aitenant: AITenant,
+        ready_aitenant_default_dataplane: AITenant,
     ) -> None:
-        """Given a legacy tenant migrated to praxis, when MaasTenantConfig reconciles,
+        """Given default Praxis, when MaasTenantConfig reconciles,
         then default-tenant is Ready without legacy IPP EnvoyFilter dependency errors.
         """
         verify_praxis_maas_tenant_config_ready(
             admin_client=admin_client,
-            aitenant=ready_praxis_annotated_aitenant,
+            aitenant=ready_aitenant_default_dataplane,
         )
 
     @pytest.mark.tier1
-    def test_legacy_aitenant_still_installs_ipp(
+    def test_legacy_ipp_opt_in_installs_ipp(
         self,
         admin_client: DynamicClient,
-        ready_aitenant_without_praxis_annotation: AITenant,
+        ready_aitenant_legacy_ipp: AITenant,
     ) -> None:
-        """Given a legacy AITenant without praxis on MaasTenantConfig, when bootstrap completes,
+        """Given payload-processing-type=ipp on MaasTenantConfig, when bootstrap completes,
         then maas-controller installs legacy IPP in the gateway namespace.
         """
         gateway_namespace, _gateway_name = gateway_namespace_and_name_for_aitenant(
-            aitenant=ready_aitenant_without_praxis_annotation,
+            aitenant=ready_aitenant_legacy_ipp,
         )
         verify_legacy_ipp_installed_for_aitenant(
             admin_client=admin_client,
             gateway_namespace=gateway_namespace,
-            aitenant_name=ready_aitenant_without_praxis_annotation.name,
+            aitenant_name=ready_aitenant_legacy_ipp.name,
         )
 
     @pytest.mark.tier2
-    def test_deannotate_restores_legacy_ipp_path(
+    def test_ipp_annotation_restores_legacy_ipp_path(
         self,
         admin_client: DynamicClient,
-        ready_aitenant_without_praxis_annotation: AITenant,
+        ready_aitenant_default_dataplane: AITenant,
     ) -> None:
-        """Given a tenant switched to praxis and back to legacy, when praxis opt-in is removed from MaasTenantConfig,
+        """Given a tenant on default Praxis, when ipp is set on MaasTenantConfig,
         then maas-controller manages legacy IPP again in the gateway namespace.
         """
-        migrate_legacy_aitenant_to_praxis_payload_processing(
-            admin_client=admin_client,
-            aitenant=ready_aitenant_without_praxis_annotation,
-        )
         restore_legacy_aitenant_payload_processing(
             admin_client=admin_client,
-            aitenant=ready_aitenant_without_praxis_annotation,
+            aitenant=ready_aitenant_default_dataplane,
         )
