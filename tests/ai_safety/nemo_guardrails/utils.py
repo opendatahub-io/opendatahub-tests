@@ -377,3 +377,34 @@ def condition_reason(nemo_cr: NemoGuardrails, condition_type: str) -> str | None
         if cond.get("type") == condition_type:
             return cond.get("reason")
     return None
+
+
+def condition_status(nemo_cr: NemoGuardrails, condition_type: str) -> str | None:
+    """
+    Read the status value of a named condition on a NemoGuardrails server.
+
+    Args:
+        nemo_cr: NemoGuardrails resource to inspect
+        condition_type: Name of the condition to look up (e.g. "AllowedConsumersReady")
+
+    Returns:
+        "True", "False", or "Unknown" if the condition exists. None if it has not been set yet
+    """
+    conditions = (nemo_cr.instance.status or {}).get("conditions", [])
+    for cond in conditions:
+        if cond.get("type") == condition_type:
+            return cond.get("status")
+    return None
+
+
+def nemo_cr_phase(nemo_cr: NemoGuardrails) -> str | None:
+    """
+    Read the current phase of a NemoGuardrails server (e.g. "Ready", "Error", "Progressing").
+
+    Args:
+        nemo_cr: NemoGuardrails resource to inspect
+
+    Returns:
+        The phase string, or None if the operator has not written it yet
+    """
+    return (nemo_cr.instance.status or {}).get("phase")
