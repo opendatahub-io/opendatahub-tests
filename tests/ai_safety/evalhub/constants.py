@@ -197,8 +197,8 @@ OTLP_INDICATORS: tuple[str, ...] = (
 RECONCILE_DURATION_METRIC: str = "evalhub_controller_reconcile_duration_seconds"
 RECONCILE_TOTAL_METRIC: str = "evalhub_controller_reconcile_total"
 RECONCILE_ERRORS_METRIC: str = "evalhub_controller_reconcile_errors_total"
-MANAGED_INSTANCES_METRIC: str = "evalhub_managed_instances_total"
-JOB_FAILURE_EVENTS_METRIC: str = "evalhub_job_failure_events_total"
+MANAGED_INSTANCES_METRIC: str = "evalhub_controller_managed_instances"
+JOB_FAILURE_EVENTS_METRIC: str = "evalhub_controller_job_failure_events_total"
 
 EVALHUB_RECONCILE_METRICS: tuple[str, ...] = (
     RECONCILE_DURATION_METRIC,
@@ -206,6 +206,15 @@ EVALHUB_RECONCILE_METRICS: tuple[str, ...] = (
     RECONCILE_ERRORS_METRIC,
     MANAGED_INSTANCES_METRIC,
     JOB_FAILURE_EVENTS_METRIC,
+)
+
+# Metrics a single successful EvalHub reconcile always produces. OTel
+# counters only appear on /metrics after their first increment, so the
+# error and job-failure counters are checked by their own tests instead.
+EVALHUB_ALWAYS_PRESENT_METRICS: tuple[str, ...] = (
+    RECONCILE_DURATION_METRIC,
+    RECONCILE_TOTAL_METRIC,
+    MANAGED_INSTANCES_METRIC,
 )
 
 # Metric label keys
@@ -220,14 +229,25 @@ RESULT_REQUEUE: str = "requeue"
 RESULT_ERROR: str = "error"
 
 # Metric label values — bounded error_type enumeration
-ERROR_TYPE_DEPLOYMENT_CREATE_FAILED: str = "deployment_create_failed"
-ERROR_TYPE_SERVICE_UPDATE_FAILED: str = "service_update_failed"
+# Must match classifyReconcileError() in trustyai-service-operator
+# controllers/evalhub/metrics.go.
 ERROR_TYPE_OTHER: str = "other"
 
 EVALHUB_ERROR_TYPES: tuple[str, ...] = (
-    ERROR_TYPE_DEPLOYMENT_CREATE_FAILED,
-    ERROR_TYPE_SERVICE_UPDATE_FAILED,
-    ERROR_TYPE_OTHER,
+    "other",
+    "not_found",
+    "conflict",
+    "timeout",
+    "rbac",
+    "configmap",
+    "deployment",
+    "service",
+    "route",
+    "status",
+    "validation",
+    "placement",
+    "job_failure",
+    "get",
 )
 
 # Controller label value used in all metrics
@@ -235,6 +255,11 @@ EVALHUB_CONTROLLER_LABEL_VALUE: str = "evalhub"
 
 # Operator metrics port (kube-rbac-proxy)
 OPERATOR_METRICS_PORT: int = 8080
+# The RHOAI nightly serves operator metrics as plain HTTP on 8080.
+# Upstream trustyai-service-operator PR #896 moves this to HTTPS on 8443
+# with token auth; when that reaches RHOAI, change PORT to 8443 and SCHEME to "https".
+OPERATOR_METRICS_SCHEME: str = "http"
+OPERATOR_METRICS_LOCAL_PORT: int = 18080
 
 # OTEL trace span names emitted by the EvalHub controller
 SPAN_RECONCILE: str = "evalhub.reconcile"

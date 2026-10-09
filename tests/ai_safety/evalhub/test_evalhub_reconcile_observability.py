@@ -21,6 +21,7 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_safety.evalhub.constants import (
     ERROR_TYPE_OTHER,
+    EVALHUB_ALWAYS_PRESENT_METRICS,
     EVALHUB_CONTROLLER_LABEL_VALUE,
     EVALHUB_ERROR_TYPES,
     EVALHUB_RECONCILE_CHILD_SPANS,
@@ -31,7 +32,6 @@ from tests.ai_safety.evalhub.constants import (
     METRIC_LABEL_ERROR_TYPE,
     METRIC_LABEL_FAILURE_REASON,
     METRIC_LABEL_RESULT,
-    OPERATOR_METRICS_PORT,
     OPERATOR_POD_LABEL_SELECTOR,
     RECONCILE_DURATION_METRIC,
     RECONCILE_ERRORS_METRIC,
@@ -56,6 +56,7 @@ from tests.ai_safety.evalhub.utils import (
     get_child_spans,
     get_metric_samples,
     metric_value_sum,
+    operator_metrics_url,
     parse_prometheus_text,
     parse_trace_spans_from_logs,
 )
@@ -260,7 +261,7 @@ class TestEvalHubReconcileMetrics:
         """Given a deployment failure, the error counter records the correct error_type label.
 
         TC-MET-006: Verify evalhub_controller_reconcile_errors_total classifies
-        errors by type (e.g. deployment_create_failed).
+        errors by type (e.g. rbac, deployment).
         """
         try:
             for raw_metrics in TimeoutSampler(
@@ -286,6 +287,14 @@ class TestEvalHubReconcileMetrics:
         except TimeoutExpiredError:
             pytest.fail(f"{RECONCILE_ERRORS_METRIC} not recorded for failure CR")
 
+    @pytest.mark.skip(
+        reason=(
+            "Cannot be triggered black-box: the operator only reports error_type=other for "
+            "errors whose message matches none of its classifier keywords, and every error a "
+            "test CR can cause names a resource (the overlong-name CR yields 'rbac'). Covered "
+            "by the operator unit test controllers/evalhub/metrics_test.go."
+        )
+    )
     def test_unexpected_error_mapped_to_other(
         self,
         admin_client: DynamicClient,
@@ -377,10 +386,12 @@ class TestEvalHubReconcileMetrics:
         operator_metrics_token: str,
         evalhub_reconcile_cr: EvalHub,
     ) -> None:
-        """Given a running operator, all five reconciliation metrics are registered.
+        """Given a successfully reconciled EvalHub, its always-present metrics are exposed.
 
-        TC-MET-010: Verify all five evalhub controller metrics are registered
-        with the controller-runtime metrics registry.
+        TC-MET-010: Verify the reconcile duration histogram, reconcile total
+        counter and managed-instances gauge appear on the operator /metrics
+        endpoint. The error and job-failure counters only appear after their
+        first increment and are covered by their own tests.
         """
         found: set[str] = set()
         try:
@@ -394,17 +405,17 @@ class TestEvalHubReconcileMetrics:
             ):
                 metrics = parse_prometheus_text(text=raw_metrics)
                 found = set()
-                for metric_name in EVALHUB_RECONCILE_METRICS:
+                for metric_name in EVALHUB_ALWAYS_PRESENT_METRICS:
                     if (
                         metric_name in metrics
                         or f"{metric_name}_bucket" in metrics
                         or f"{metric_name}_total" in metrics
                     ):
                         found.add(metric_name)
-                if found == set(EVALHUB_RECONCILE_METRICS):
+                if found == set(EVALHUB_ALWAYS_PRESENT_METRICS):
                     return
         except TimeoutExpiredError:
-            pytest.fail(f"Not all metrics registered. Found: {found}, expected: {set(EVALHUB_RECONCILE_METRICS)}")
+            pytest.fail(f"Not all metrics registered. Found: {found}, expected: {set(EVALHUB_ALWAYS_PRESENT_METRICS)}")
 
 
 # TC-TRC: OTEL Distributed Tracing (5 tests)
@@ -932,23 +943,9 @@ class TestEvalHubReconcileIntegration:
         TC-INT-002: Verify unauthenticated requests to the operator metrics
         endpoint are rejected by kube-rbac-proxy.
         """
-        operator_ns = py_config["applications_namespace"]
-        pods = list(
-            Pod.get(
-                client=admin_client,
-                namespace=operator_ns,
-                label_selector=OPERATOR_POD_LABEL_SELECTOR,
-            )
-        )
-        assert pods, "No operator pod found"
-        pod = pods[0]
-
         try:
-            response = requests.get(
-                f"https://{pod.instance.status.podIP}:{OPERATOR_METRICS_PORT}/metrics",
-                verify=False,
-                timeout=5,
-            )
+            with operator_metrics_url(admin_client=admin_client) as metrics_url:
+                response = requests.get(metrics_url, verify=False, timeout=5)
         except (requests.exceptions.ConnectionError, requests.exceptions.SSLError) as exc:
             pytest.fail(f"Metrics endpoint unreachable — cannot verify auth rejection: {exc}")
 
