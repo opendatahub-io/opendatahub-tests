@@ -25,9 +25,7 @@ MAAS_GATEWAY_AUTH_POLICY_NAME = "maas-gateway-auth"
 
 X_API_KEY_IDENTITY_SOURCE_NAME = "api-keys-x-api-key"  # pragma: allowlist secret
 X_API_KEY_TRIGGER_MODEL_NAME = "e2e-x-api-key-trigger"  # pragma: allowlist secret
-X_API_KEY_TRIGGER_PROVIDER_NAME = "e2e-x-api-key-provider"  # pragma: allowlist secret
-X_API_KEY_TRIGGER_SECRET_NAME = f"{X_API_KEY_TRIGGER_MODEL_NAME}-api-key"  # pragma: allowlist secret
-X_API_KEY_TRIGGER_ENDPOINT = "httpbin.org"  # pragma: allowlist secret
+X_API_KEY_DUMMY_PROVIDER_NAME = "dummy-anthropic"  # pragma: allowlist secret
 X_API_KEY_RECONCILE_ANNOTATION = "e2e.maas/reconcile-trigger"  # pragma: allowlist secret
 MESSAGES_EXTERNAL_TARGET_MODEL = "claude-sonnet-4-20250514"
 MESSAGES_EXTERNAL_PROVIDER_PATH = "/v1/messages"
@@ -79,14 +77,19 @@ def assert_key_rejected_at_inference(
 ) -> None:
     """Poll inference endpoint until the API key is rejected with expected status."""
     headers = build_maas_headers(token=plaintext_key)
+
+    def post_inference() -> Response:
+        return request_session_http.post(
+            url=inference_url,
+            headers=headers,
+            json=payload,
+            timeout=10,
+        )
+
     for response in TimeoutSampler(
         wait_timeout=wait_timeout,
         sleep=sleep,
-        func=request_session_http.post,
-        url=inference_url,
-        headers=headers,
-        json=payload,
-        timeout=10,
+        func=post_inference,
     ):
         LOGGER.info(f"Polling inference: status={response.status_code} expected={expected_status}")
         if response.status_code == expected_status:
@@ -107,13 +110,14 @@ def assert_key_rejected_on_endpoint(
 ) -> None:
     """Poll a GET endpoint until the API key is rejected with expected status."""
     headers = build_maas_headers(token=plaintext_key)
+
+    def get_endpoint() -> Response:
+        return request_session_http.get(url=url, headers=headers, timeout=10)
+
     for response in TimeoutSampler(
         wait_timeout=wait_timeout,
         sleep=sleep,
-        func=request_session_http.get,
-        url=url,
-        headers=headers,
-        timeout=10,
+        func=get_endpoint,
     ):
         LOGGER.info(f"Polling endpoint: status={response.status_code} expected={expected_status}")
         if response.status_code == expected_status:
@@ -124,34 +128,47 @@ def assert_key_rejected_on_endpoint(
     )
 
 
-def assert_key_accepted_on_endpoint(
+def assert_key_accepted_on_inference(
     request_session_http: requests.Session,
-    url: str,
-    plaintext_key: str | None = None,
-    headers: dict[str, str] | None = None,
+    inference_url: str,
+    payload: dict[str, Any],
+    headers: dict[str, str],
     expected_status: int = 200,
-    wait_timeout: int = 60,
-    sleep: int = 2,
+    wait_timeout: int = 120,
+    sleep: int = 5,
 ) -> None:
-    """Poll a GET endpoint until the API key is accepted with expected status."""
-    if headers is None:
-        if plaintext_key is None:
-            raise ValueError("Either plaintext_key or headers must be provided")
-        headers = build_maas_headers(token=plaintext_key)
-    for response in TimeoutSampler(
-        wait_timeout=wait_timeout,
-        sleep=sleep,
-        func=request_session_http.get,
-        url=url,
-        headers=headers,
-        timeout=10,
-    ):
-        LOGGER.info(f"Polling endpoint: status={response.status_code} expected={expected_status}")
-        if response.status_code == expected_status:
-            break
+    """Poll POST inference until the gateway accepts the request with expected status."""
+    last_response: Response | None = None
 
-    assert response.status_code == expected_status, (
-        f"Expected {expected_status}, got {response.status_code}: {(response.text or '')[:200]}"
+    def post_inference() -> Response:
+        return request_session_http.post(
+            url=inference_url,
+            headers=headers,
+            json=payload,
+            timeout=60,
+        )
+
+    try:
+        for response in TimeoutSampler(
+            wait_timeout=wait_timeout,
+            sleep=sleep,
+            func=post_inference,
+        ):
+            last_response = response
+            LOGGER.info(f"Polling inference: status={response.status_code} expected={expected_status}")
+            if response.status_code == expected_status:
+                break
+    except TimeoutExpiredError as error:
+        last_status = last_response.status_code if last_response is not None else "N/A"
+        last_body = (last_response.text or "")[:500] if last_response is not None else "N/A"
+        raise AssertionError(
+            f"Timed out after {wait_timeout}s waiting for HTTP {expected_status} on inference {inference_url}. "
+            f"Last status={last_status}, body={last_body!r}"
+        ) from error
+
+    assert last_response is not None, f"No HTTP response received while polling inference {inference_url}"
+    assert last_response.status_code == expected_status, (
+        f"Expected {expected_status}, got {last_response.status_code}: {(last_response.text or '')[:500]}"
     )
 
 
