@@ -5,7 +5,9 @@ from typing import Any
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
+from ocp_resources.pod import Pod
 from ocp_resources.resource import Resource
+from pyhelper_utils.shell import run_command
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_serving.model_server.llmd.utils import get_llmd_vllm_pods
@@ -101,6 +103,33 @@ def _cache_download_state_sample(*, cache: LocalModelNamespaceCache) -> dict[str
     return {"ready": bool(all_downloaded and copies_ok), "status": status}
 
 
+def wait_for_shared_pvc_cache_condition(
+    *,
+    cache: LocalModelNamespaceCache,
+    expected_status: str,
+    expected_reasons: set[str],
+    timeout: int,
+) -> dict[str, Any]:
+    """Wait for a shared-PVC cache Ready condition to reach an expected state."""
+    try:
+        for status in TimeoutSampler(
+            wait_timeout=timeout,
+            sleep=15,
+            func=lambda: cache_status_dict(cache=cache),
+        ):
+            ready = next((condition for condition in status.get("conditions", []) if condition["type"] == "Ready"), {})
+            if ready.get("status") == expected_status and ready.get("reason") in expected_reasons:
+                return status
+    except TimeoutExpiredError:
+        pytest.fail(
+            f"LocalModelNamespaceCache {cache.namespace}/{cache.name} did not reach "
+            f"Ready={expected_status} with reason in {sorted(expected_reasons)}; "
+            f"last status={cache_status_dict(cache=cache)!r}"
+        )
+
+    pytest.fail(f"LocalModelNamespaceCache {cache.namespace}/{cache.name}: condition polling stopped unexpectedly")
+
+
 def _assert_pod_has_pvc_source_volume(*, pod: Any) -> None:
     """Assert a Pod mounts the ``kserve-pvc-source`` volume and it is PVC-backed."""
     spec = pod.instance.spec
@@ -138,6 +167,64 @@ def assert_predictor_uses_cached_pvc(
     assert annotations.get(KSERVE_LOCALMODEL_PVC_ANNOTATION), (
         f"Missing {KSERVE_LOCALMODEL_PVC_ANNOTATION} annotation on predictor pod {pod.name}"
     )
+
+
+def assert_predictors_share_read_only_pvc(
+    *,
+    client: DynamicClient,
+    isvc: InferenceService,
+    runtime_name: str,
+    pvc_name: str,
+) -> list[Pod]:
+    """Assert two cross-node predictors mount one PVC read-only without local model transfer."""
+    pods = get_pods_by_isvc_label(client=client, isvc=isvc, runtime_name=runtime_name)
+    assert len(pods) == 2, f"Expected exactly two predictor pods, got {[pod.name for pod in pods]}"
+    assert len({pod.instance.spec.nodeName for pod in pods}) == 2, "Predictor replicas did not span two nodes"
+
+    for pod in pods:
+        spec = pod.instance.spec
+        init_names = {container.name for container in (spec.initContainers or [])}
+        assert "storage-initializer" not in init_names, f"storage-initializer unexpectedly present on {pod.name}"
+
+        volumes = {volume.name: volume for volume in (spec.volumes or [])}
+        pvc_volume = volumes.get(KSERVE_PVC_SOURCE_VOLUME_NAME)
+        claim = getattr(pvc_volume, "persistentVolumeClaim", None) if pvc_volume else None
+        assert claim and claim.claimName == pvc_name, (
+            f"Pod {pod.name} expected PVC {pvc_name!r}, got {getattr(claim, 'claimName', None)!r}"
+        )
+
+        model_mounts = [
+            mount
+            for container in spec.containers
+            for mount in (container.volumeMounts or [])
+            if mount.mountPath.startswith("/mnt/models")
+        ]
+        assert model_mounts and all(mount.readOnly for mount in model_mounts), (
+            f"Pod {pod.name} must mount model data read-only"
+        )
+        empty_dirs = {name for name, volume in volumes.items() if getattr(volume, "emptyDir", None) is not None}
+        assert not empty_dirs.intersection(mount.name for mount in model_mounts), (
+            f"Pod {pod.name} stores model data in emptyDir volumes {empty_dirs}"
+        )
+
+    return pods
+
+
+def assert_modelcar_absent_from_node_image_cache(*, pods: list[Pod], source_uri: str) -> None:
+    """Assert CRI-O did not pull the source ModelCar as a container image."""
+    image_reference = source_uri.removeprefix("oci://").split("@", maxsplit=1)[0]
+    last_slash = image_reference.rfind("/")
+    last_colon = image_reference.rfind(":")
+    repository = image_reference[:last_colon] if last_colon > last_slash else image_reference
+
+    for node_name in {pod.instance.spec.nodeName for pod in pods}:
+        _, output, _ = run_command(
+            command=["oc", "debug", f"node/{node_name}", "--", "chroot", "/host", "crictl", "images"],
+            verify_stderr=False,
+            check=True,
+            timeout=180,
+        )
+        assert repository not in output, f"ModelCar {repository} unexpectedly exists in CRI-O on {node_name}"
 
 
 def assert_llmisvc_uses_cached_pvc(
