@@ -141,6 +141,7 @@ class OpenAICompatibilityValidator:
         model_name: str,
         api_key_provider: APIKeyProvider | None = None,
         verify_ssl: bool | str = False,
+        max_tokens_limit: int | None = None,
     ) -> None:
         if api_key_provider is None:
             api_key_provider = NoAuthProvider()
@@ -150,6 +151,7 @@ class OpenAICompatibilityValidator:
         self._sa_provider: ServiceAccountTokenProvider | None = None
         self._verify_ssl = verify_ssl
         self._base_url = base_url
+        self._max_tokens_limit = max_tokens_limit
         self._client: OpenAI | None = None
         self._llmisvc: LLMInferenceService | None = None
 
@@ -165,12 +167,19 @@ class OpenAICompatibilityValidator:
             LOGGER.info(f"OpenAICompatibilityValidator initialized — base_url={self._base_url}, model={self._model}")
         return client
 
+    def _effective_max_tokens(self, requested: int) -> int:
+        """Apply an optional upper bound to a request's generation budget."""
+        if self._max_tokens_limit is None:
+            return requested
+        return min(requested, self._max_tokens_limit)
+
     @classmethod
     def from_llmisvc(
         cls,
         client: DynamicClient,
         llmisvc: LLMInferenceService,
         insecure: bool = True,
+        max_tokens_limit: int | None = None,
     ) -> OpenAICompatibilityValidator:
         workaround_503_no_healthy_upstream(llmisvc=llmisvc, prompt="What is the capital of Italy?")
 
@@ -183,6 +192,7 @@ class OpenAICompatibilityValidator:
             model_name=model_name,
             api_key_provider=sa_provider,
             verify_ssl=not insecure,
+            max_tokens_limit=max_tokens_limit,
         )
         validator._sa_provider = sa_provider
         validator._llmisvc = llmisvc
@@ -391,7 +401,7 @@ class OpenAICompatibilityValidator:
             response = self._ensure_client().chat.completions.create(
                 model=self._model,
                 messages=messages,
-                max_tokens=10,
+                max_tokens=self._effective_max_tokens(10),
                 temperature=0,
             )
         self._assert_chat_completion_shape(response=response)
@@ -408,7 +418,7 @@ class OpenAICompatibilityValidator:
             response = self._ensure_client().chat.completions.create(
                 model=self._model,
                 messages=messages,
-                max_tokens=10,
+                max_tokens=self._effective_max_tokens(10),
                 temperature=0,
             )
         self._assert_usage_stats(response=response)
@@ -433,7 +443,7 @@ class OpenAICompatibilityValidator:
             stream = self._ensure_client().chat.completions.create(
                 model=self._model,
                 messages=messages,
-                max_tokens=30,
+                max_tokens=self._effective_max_tokens(30),
                 temperature=0,
                 stream=True,
             )
@@ -476,7 +486,7 @@ class OpenAICompatibilityValidator:
             stream = self._ensure_client().chat.completions.create(
                 model=self._model,
                 messages=messages,
-                max_tokens=80,
+                max_tokens=self._effective_max_tokens(80),
                 temperature=0,
                 stream=True,
             )
@@ -541,7 +551,7 @@ class OpenAICompatibilityValidator:
             response = self._ensure_client().chat.completions.create(
                 model=self._model,
                 messages=[system_msg, user_msg],
-                max_tokens=20,
+                max_tokens=self._effective_max_tokens(20),
                 temperature=0,
             )
         self._assert_chat_completion_shape(response=response)
@@ -571,7 +581,7 @@ class OpenAICompatibilityValidator:
             response = self._ensure_client().chat.completions.create(
                 model=self._model,
                 messages=[turn1_user, turn1_assistant, turn2_user],
-                max_tokens=30,
+                max_tokens=self._effective_max_tokens(30),
                 temperature=0,
             )
         self._assert_chat_completion_shape(response=response)
@@ -601,7 +611,7 @@ class OpenAICompatibilityValidator:
                 model=self._model,
                 messages=messages,
                 response_format=ResponseFormatJSONObject(type="json_object"),
-                max_tokens=50,
+                max_tokens=self._effective_max_tokens(50),
                 temperature=0,
             )
         response: ChatCompletion = result  # type: ignore[assignment]
@@ -637,7 +647,7 @@ class OpenAICompatibilityValidator:
                 model=self._model,
                 messages=messages,
                 stop=[","],
-                max_tokens=100,
+                max_tokens=self._effective_max_tokens(100),
                 temperature=0,
             )
         self._assert_chat_completion_shape(response=response)
@@ -668,7 +678,7 @@ class OpenAICompatibilityValidator:
                 messages=messages,
                 temperature=0.8,
                 top_p=0.9,
-                max_tokens=10,
+                max_tokens=self._effective_max_tokens(10),
             )
         self._assert_chat_completion_shape(response=response)
         LOGGER.info(f"Sampling params OK — content={response.choices[0].message.content!r}")
@@ -689,7 +699,7 @@ class OpenAICompatibilityValidator:
             response = self._ensure_client().chat.completions.create(
                 model=self._model,
                 messages=messages,
-                max_tokens=max_tokens,
+                max_tokens=max_tokens,  # The check must use exactly five requested tokens.
                 temperature=0,
             )
         self._assert_chat_completion_shape(response=response)
@@ -725,7 +735,7 @@ class OpenAICompatibilityValidator:
             response = self._ensure_client().chat.completions.create(
                 model=self._model,
                 messages=messages,
-                max_tokens=10,
+                max_tokens=self._effective_max_tokens(10),
                 temperature=0,
                 logprobs=True,
                 top_logprobs=3,
@@ -767,7 +777,7 @@ class OpenAICompatibilityValidator:
                 model=self._model,
                 messages=messages,
                 n=n,
-                max_tokens=10,
+                max_tokens=self._effective_max_tokens(10),
                 temperature=0.8,
             )
         dump = response.model_dump()
@@ -795,7 +805,7 @@ class OpenAICompatibilityValidator:
                 model=self._model,
                 messages=messages,
                 seed=42,
-                max_tokens=10,
+                max_tokens=self._effective_max_tokens(10),
                 temperature=0,
             )
         self._assert_chat_completion_shape(response=response)
@@ -821,7 +831,7 @@ class OpenAICompatibilityValidator:
             client.chat.completions.create(
                 model="nonexistent-model-that-does-not-exist",
                 messages=messages,
-                max_tokens=1,
+                max_tokens=self._effective_max_tokens(1),
             )
             raise AssertionError("Request with invalid model name should have raised an error, but succeeded")
         except openai.NotFoundError as e:
@@ -857,7 +867,7 @@ class OpenAICompatibilityValidator:
                 messages=messages,
                 tools=COMPAT_TEST_TOOLS,
                 tool_choice="auto",
-                max_tokens=100,
+                max_tokens=self._effective_max_tokens(100),
                 temperature=0,
             )
         self._assert_chat_completion_shape(response=response)
@@ -889,7 +899,7 @@ class OpenAICompatibilityValidator:
                 messages=messages,
                 tools=COMPAT_TEST_TOOLS,
                 tool_choice="auto",
-                max_tokens=100,
+                max_tokens=self._effective_max_tokens(100),
                 temperature=0,
                 stream=True,
             )
@@ -959,7 +969,7 @@ class OpenAICompatibilityValidator:
                 messages=messages,
                 tools=COMPAT_TEST_TOOLS,
                 tool_choice="auto",
-                max_tokens=200,
+                max_tokens=self._effective_max_tokens(200),
                 temperature=0,
             )
         self._assert_chat_completion_shape(response=response)
@@ -1001,7 +1011,7 @@ class OpenAICompatibilityValidator:
                 messages=[user_msg],
                 tools=COMPAT_TEST_TOOLS,
                 tool_choice="auto",
-                max_tokens=100,
+                max_tokens=self._effective_max_tokens(100),
                 temperature=0,
             )
         self._assert_chat_completion_shape(response=turn1)
@@ -1038,7 +1048,7 @@ class OpenAICompatibilityValidator:
                 model=self._model,
                 messages=[user_msg, assistant_param, tool_result],
                 tools=COMPAT_TEST_TOOLS,
-                max_tokens=100,
+                max_tokens=self._effective_max_tokens(100),
                 temperature=0,
             )
         self._assert_chat_completion_shape(response=turn2)
