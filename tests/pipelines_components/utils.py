@@ -1,8 +1,4 @@
-import atexit
 import json
-import os
-import tempfile
-from pathlib import Path
 from typing import Any
 
 import requests
@@ -20,37 +16,6 @@ WORKFLOW_SUCCEEDED: str = "Succeeded"
 WORKFLOW_TERMINAL_PHASES: set[str] = {"Succeeded", "Failed", "Error"}
 
 
-def resolve_pipeline_yaml(value: str) -> str:
-    """Resolve a pipeline YAML value to a local file path.
-
-    If the value is a URL (https://), downloads the file to a temp location.
-    If it's a local path, validates the file exists.
-
-    Returns:
-        Absolute path to the pipeline YAML file.
-
-    Raises:
-        FileNotFoundError: If the local path does not exist or the download fails.
-    """
-    if value.startswith(("https://", "http://")):
-        LOGGER.info(f"Downloading pipeline YAML from {value}")
-        resp = requests.get(url=value, timeout=60)
-        resp.raise_for_status()
-        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as tmp:
-            tmp.write(resp.content)
-        atexit.register(os.unlink, path=tmp.name)  # noqa: FCN001
-        LOGGER.info(f"Pipeline YAML downloaded to {tmp.name}")
-        return tmp.name
-
-    path = Path(value)  # noqa: FCN001
-    if not path.is_file():
-        raise FileNotFoundError(
-            f"Pipeline YAML not found: {value!r}\n"
-            f"Provide a local file path or a URL (https://...) to a compiled pipeline YAML."
-        )
-    return str(path.resolve())
-
-
 def _raise_for_status(resp: requests.Response) -> None:
     """Raise on HTTP errors, including the server response body in the message."""
     try:
@@ -60,51 +25,6 @@ def _raise_for_status(resp: requests.Response) -> None:
             f"{exc} — Response body: {resp.text}",
             response=resp,
         ) from exc
-
-
-def upload_pipeline(
-    api_url: str,
-    headers: dict[str, str],
-    pipeline_yaml_path: str,
-    pipeline_name: str,
-    ca_bundle: str,
-) -> str:
-    """Upload a compiled pipeline YAML to the DSPA and return the pipeline ID."""
-    with open(pipeline_yaml_path, "rb") as yaml_file:
-        resp = requests.post(
-            url=f"{api_url}/apis/v2beta1/pipelines/upload",
-            headers=headers,
-            files={"uploadfile": (f"{pipeline_name}.yaml", yaml_file, "application/x-yaml")},
-            params={"name": pipeline_name},
-            verify=ca_bundle,
-            timeout=60,
-        )
-    _raise_for_status(resp=resp)
-    return resp.json()["pipeline_id"]
-
-
-def create_pipeline_run(
-    api_url: str,
-    headers: dict[str, str],
-    pipeline_id: str,
-    run_name: str,
-    parameters: dict[str, Any],
-    ca_bundle: str,
-) -> str:
-    """Create a pipeline run and return the run ID."""
-    resp = requests.post(
-        url=f"{api_url}/apis/v2beta1/runs",
-        headers=headers,
-        json={
-            "display_name": run_name,
-            "pipeline_version_reference": {"pipeline_id": pipeline_id},
-            "runtime_config": {"parameters": parameters},
-        },
-        verify=ca_bundle,
-        timeout=60,
-    )
-    _raise_for_status(resp=resp)
-    return resp.json()["run_id"]
 
 
 def get_workflow_phase(
@@ -246,11 +166,6 @@ def collect_pipeline_pod_logs(
 # ---------------------------------------------------------------------------
 # Managed pipeline helpers
 # ---------------------------------------------------------------------------
-
-
-def use_managed_pipelines(yaml_env_value: str) -> bool:
-    """Return True (managed mode) when the YAML env var is empty, False (legacy) when set."""
-    return not bool(yaml_env_value)
 
 
 def find_pipeline_by_display_name(

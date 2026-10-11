@@ -32,12 +32,6 @@ DSPA_SCHEDULED_WORKFLOW_DEPLOYMENT: str = f"ds-pipeline-scheduledworkflow-{DSPA_
 DSPA_S3_SECRET: str = f"ds-pipeline-s3-{DSPA_NAME}"
 DSPA_S3_BUCKET: str = "mlpipeline"
 
-# Pipeline YAML paths — provided via .env or environment variables
-AUTOML_PIPELINE_YAML: str = os.environ.get("AUTOML_PIPELINE_YAML", "")
-
-# AutoML upgrade test S3 source — smoke datasets are generated locally
-AUTOML_S3_BUCKET: str = os.environ.get("AUTOML_S3_BUCKET", "")
-
 # AutoML task configurations for parametrized testing
 AUTOML_TASK_CONFIGS: dict[str, dict[str, Any]] = {
     "regression": {
@@ -69,14 +63,7 @@ AUTOML_TIMESERIES_CONFIG: dict[str, Any] = {
     "top_n": 3,
     "known_covariates_names": [],
 }
-AUTOML_TIMESERIES_TRAIN_DATA_FILE_KEY: str = os.getenv(
-    "AUTOML_TIMESERIES_TRAIN_DATA_FILE_KEY", "automl-smoke/timeseries-train.csv"
-)
-
-EXTERNAL_S3_SECRET: str = "external-s3-credentials"
-
 # Timeouts (seconds)
-AUTOML_PIPELINE_TIMEOUT: int = int(os.getenv("AUTOML_PIPELINE_TIMEOUT", "1800"))
 AUTOML_PIPELINE_START_TIMEOUT: int = int(os.getenv("AUTOML_PIPELINE_START_TIMEOUT", "300"))
 PIPELINE_POLL_INTERVAL: int = int(os.getenv("PIPELINE_POLL_INTERVAL", "30"))
 
