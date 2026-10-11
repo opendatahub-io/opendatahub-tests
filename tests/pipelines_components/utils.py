@@ -3,17 +3,14 @@ from typing import Any
 
 import requests
 import structlog
-from kubernetes.client.rest import ApiException
 from kubernetes.dynamic import DynamicClient
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
-from tests.pipelines_components.constants import PIPELINE_POLL_INTERVAL
 from utilities.resources.workflow import Workflow
 
 LOGGER = structlog.get_logger(name=__name__)
 
 WORKFLOW_SUCCEEDED: str = "Succeeded"
-WORKFLOW_TERMINAL_PHASES: set[str] = {"Succeeded", "Failed", "Error"}
 
 
 def _raise_for_status(resp: requests.Response) -> None:
@@ -39,57 +36,6 @@ def get_workflow_phase(
     return None
 
 
-def get_workflow_completed_nodes(
-    admin_client: DynamicClient,
-    namespace: str,
-    run_id: str,
-) -> list[dict]:
-    """Get completed workflow nodes for a pipeline run.
-
-    Returns a list of node dicts that reached a terminal phase (Succeeded, Failed, etc.).
-    Useful for verifying that pipeline steps actually executed and their records persist.
-    """
-    workflows = list(Workflow.get(client=admin_client, namespace=namespace, label_selector=f"pipeline/runid={run_id}"))
-    if not workflows:
-        return []
-
-    nodes = workflows[0].instance.get("status", {}).get("nodes", {})
-    return [
-        node for node in nodes.values() if node.get("phase") in WORKFLOW_TERMINAL_PHASES and node.get("type") == "Pod"
-    ]
-
-
-def wait_for_pipeline_run(
-    admin_client: DynamicClient,
-    namespace: str,
-    run_id: str,
-    timeout: int,
-) -> str:
-    """Poll the Argo Workflow until it reaches a terminal phase. Returns the phase string."""
-    LOGGER.info(f"Waiting for pipeline run {run_id} (timeout={timeout}s)")
-
-    try:
-        for phase in TimeoutSampler(
-            wait_timeout=timeout,
-            sleep=PIPELINE_POLL_INTERVAL,
-            func=get_workflow_phase,
-            exceptions_dict={ApiException: [], ConnectionError: [], TimeoutError: []},
-            admin_client=admin_client,
-            namespace=namespace,
-            run_id=run_id,
-        ):
-            LOGGER.info(f"Pipeline run {run_id}: {phase}")
-            if phase and phase in WORKFLOW_TERMINAL_PHASES:
-                return phase
-    except TimeoutExpiredError as err:
-        msg = f"Pipeline run {run_id} did not complete within {timeout}s"
-        LOGGER.error(msg)
-        raise TimeoutExpiredError(msg) from err
-
-    msg = f"Pipeline run {run_id} exited polling without reaching terminal state"
-    raise RuntimeError(msg)
-
-
 def get_pipeline_run(
     api_url: str,
     headers: dict[str, str],
@@ -105,24 +51,6 @@ def get_pipeline_run(
     )
     _raise_for_status(resp=resp)
     return resp.json()
-
-
-def delete_pipeline(
-    api_url: str,
-    headers: dict[str, str],
-    pipeline_id: str,
-    ca_bundle: str,
-) -> None:
-    """Delete a pipeline and all its versions from the DSPA."""
-    resp = requests.delete(
-        url=f"{api_url}/apis/v2beta1/pipelines/{pipeline_id}",
-        headers=headers,
-        params={"cascade": "true"},
-        verify=ca_bundle,
-        timeout=60,
-    )
-    _raise_for_status(resp=resp)
-    LOGGER.info(f"Deleted pipeline {pipeline_id}")
 
 
 def delete_pipeline_run(
