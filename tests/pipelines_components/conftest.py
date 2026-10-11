@@ -143,20 +143,35 @@ def dspa(
     pipelines_namespace: Namespace,
     enabled_pipelines_in_dsc: DataScienceCluster,
 ) -> Generator[DataSciencePipelinesApplication, Any, Any]:
-    """DataSciencePipelinesApplication with built-in MinIO and managed pipelines."""
+    """DataSciencePipelinesApplication with built-in MinIO and managed pipelines.
+
+    Configures TLS certificate verification with cluster CA bundle to support
+    self-signed certificates in self-managed clusters (RHAOI 3.5+).
+    See RHOAIENG-88674 for details.
+    """
     managed_pipelines_spec: dict[str, Any] = {}
     if MANAGED_PIPELINES_IMAGE:
         managed_pipelines_spec["image"] = MANAGED_PIPELINES_IMAGE
+
+    api_server_config: dict[str, Any] = {
+        "enableSamplePipeline": False,
+        "managedPipelines": managed_pipelines_spec,
+    }
+
+    ca_bundle_file = create_ca_bundle_file(client=admin_client)
+    if ca_bundle_file:
+        api_server_config.update({
+            "caBundleFileName": "ca.crt",
+            "caBundleFileMountPath": "/etc/ssl/certs",
+        })
+        LOGGER.info("CA bundle configured for DSPA TLS verification", ca_bundle_file=ca_bundle_file)
 
     with DataSciencePipelinesApplication(
         client=admin_client,
         name=DSPA_NAME,
         namespace=pipelines_namespace.name,
         dsp_version="v2",
-        api_server={
-            "enableSamplePipeline": False,
-            "managedPipelines": managed_pipelines_spec,
-        },
+        api_server=api_server_config,
         object_storage={
             "disableHealthCheck": False,
             "enableExternalRoute": True,
