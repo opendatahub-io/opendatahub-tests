@@ -22,6 +22,7 @@ from timeout_sampler import TimeoutExpiredError
 
 from tests.pipelines_components.constants import (
     AUTOML_S3_BUCKET,
+    AUTOML_TASK_CONFIGS,
     AUTOML_TRAIN_DATA_FILE_KEY,
     DSPA_MINIO_IMAGE,
     DSPA_NAME,
@@ -279,21 +280,20 @@ def automl_train_data(
     external_s3_secret: Secret,
     task_type: str,
 ) -> str:
-    """Download AutoML training CSV from external S3 and upload to DSPA MinIO.
-
-    Picks S3 key based on task_type parameter (regression or classification).
-    """
+    """Upload the selected AutoML dataset to its own key in DSPA MinIO."""
     env_var = f"AUTOML_{task_type.upper()}_S3_TRAIN_DATA_KEY"
-    src_key_value = os.environ.get(env_var)
+    default_key = AUTOML_TASK_CONFIGS.get(task_type, {}).get("s3_train_data_key", "")
+    src_key_value = os.environ.get(env_var, default_key)
     assert src_key_value, (
         f"Environment variable '{env_var}' is not set. "
         f"Set it in .env or shell to provide the S3 key for {task_type} training data."
     )
 
+    destination_key = f"{task_type}/{AUTOML_TRAIN_DATA_FILE_KEY}"
     src_bucket = shlex.quote(s=AUTOML_S3_BUCKET)
     src_key = shlex.quote(s=src_key_value)
     dst_bucket = shlex.quote(s=DSPA_S3_BUCKET)
-    dst_key = shlex.quote(s=AUTOML_TRAIN_DATA_FILE_KEY)
+    dst_key = shlex.quote(s=destination_key)
 
     minio_endpoint = f"http://minio-{DSPA_NAME}.{pipelines_namespace.name}.svc.cluster.local:9000"
     src_endpoint = os.environ.get("AWS_S3_ENDPOINT", "https://s3.amazonaws.com")
@@ -351,4 +351,4 @@ def automl_train_data(
             collect_pod_information(pod=upload_pod)
             raise
 
-    return AUTOML_TRAIN_DATA_FILE_KEY
+    return destination_key

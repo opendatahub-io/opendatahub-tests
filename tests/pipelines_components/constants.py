@@ -78,6 +78,7 @@ EXTERNAL_S3_SECRET: str = "external-s3-credentials"
 
 # Timeouts (seconds)
 AUTOML_PIPELINE_TIMEOUT: int = int(os.getenv("AUTOML_PIPELINE_TIMEOUT", "1800"))
+AUTOML_PIPELINE_START_TIMEOUT: int = int(os.getenv("AUTOML_PIPELINE_START_TIMEOUT", "300"))
 PIPELINE_POLL_INTERVAL: int = int(os.getenv("PIPELINE_POLL_INTERVAL", "30"))
 
 MINIO_MC_IMAGE: str = os.getenv(
