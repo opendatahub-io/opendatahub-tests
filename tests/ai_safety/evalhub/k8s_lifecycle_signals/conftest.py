@@ -21,6 +21,7 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_TENANT_LABEL_KEY,
     EVALHUB_USER_ROLE_RULES,
     EVALHUB_VLLM_EMULATOR_PORT,
+    VLLM_EMULATOR_IMAGE,
 )
 from tests.ai_safety.evalhub.k8s_lifecycle_signals.constants import (
     LIFECYCLE_BAD_IMAGE,
@@ -29,7 +30,7 @@ from tests.ai_safety.evalhub.k8s_lifecycle_signals.constants import (
     LIFECYCLE_SIGNALS_CR_NAME,
     LIFECYCLE_SIGNALS_NAMESPACE,
 )
-from tests.ai_safety.evalhub.kueue.constants import VLLM_EMULATOR, VLLM_EMULATOR_IMAGE
+from tests.ai_safety.evalhub.kueue.constants import VLLM_EMULATOR
 from tests.ai_safety.evalhub.utils import (
     TRANSIENT_HEALTH_EXCEPTIONS,
     build_headers,
