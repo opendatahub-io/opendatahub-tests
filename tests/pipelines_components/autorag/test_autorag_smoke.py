@@ -19,7 +19,7 @@ from tests.pipelines_components.utils import (
 
 @pytest.mark.smoke
 class TestAutoRAGSmoke:
-    """Verify the managed AutoRAG pipeline starts without deploying local model or database services."""
+    """Verify managed AutoRAG startup with synthetic data and placeholder service connections."""
 
     def test_autorag_pipeline_starts(
         self,
@@ -31,7 +31,7 @@ class TestAutoRAGSmoke:
         dspa_auth_headers: dict[str, str],
         dspa_ca_bundle_file: str,
     ) -> None:
-        """Given uploaded documents and external connections, when AutoRAG is submitted, then it starts progressing."""
+        """Given synthetic documents and placeholder connections, when AutoRAG is submitted, then it starts."""
         run = get_pipeline_run(
             api_url=dspa_api_url,
             headers=dspa_auth_headers,

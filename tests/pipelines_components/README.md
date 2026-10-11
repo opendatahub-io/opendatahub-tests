@@ -10,8 +10,8 @@ that the run is registered and its workflow starts.
 - **`automl/`** -- AutoGluon tabular (regression, binary and multiclass classification) and timeseries smoke tests
 - **`autorag/`** -- Managed Documents RAG Optimization pipeline smoke test
 
-Both suites create a dedicated namespace and DSPA with MinIO. AutoRAG uses existing MaaS
-and Milvus services; test-owned resources are cleaned up on teardown.
+Both suites create a dedicated namespace and DSPA with MinIO. Test-owned resources
+are cleaned up on teardown.
 
 The DSPA MinIO server and the CSV uploader use the same digest-pinned image,
 `PipelinesComponentsImages.MINIO`, which includes the `mc` client. It is listed in
@@ -21,8 +21,7 @@ and/or `MINIO_MC_IMAGE` to override it when a cluster requires a different image
 ## Prerequisites
 
 - OpenShift cluster with RHOAI/ODH installed
-- External S3 bucket with test data and AWS credentials (AutoRAG and AutoML upgrade tests only)
-- Existing MaaS endpoint with generation and embedding models, and a reachable Milvus database (for AutoRAG)
+- External S3 bucket with training data and AWS credentials (AutoML upgrade tests only)
 
 ## Configuration via `.env` file
 
@@ -46,7 +45,7 @@ this setting does not affect smoke tests. URLs are downloaded automatically at t
 
 ## Environment Variables
 
-### External S3 credentials (AutoRAG and AutoML upgrade tests)
+### External S3 credentials (AutoML upgrade tests only)
 
 | Variable | Description | Default |
 | --- | --- | --- |
@@ -87,17 +86,16 @@ AutoML **upgrade** tests retain their external-S3 upload fixtures. They require
 
 ### AutoRAG configuration
 
+The AutoRAG smoke test uploads a local document and a matching benchmark record
+from [`autorag/data/`](autorag/data/README.md). It creates the required connection
+Secrets and supplies model identifiers for pipeline submission. No MaaS models,
+database, or external S3 credentials are required. This verifies pipeline
+registration and startup only, not completed RAG optimization.
+
 | Variable | Description | Default |
 | --- | --- | --- |
-| `AUTORAG_S3_BUCKET` | External S3 bucket with test data | `mlpipeline` |
-| `AUTORAG_INPUT_DATA_KEY` | S3 key prefix for input documents | `autorag-smoke/input_data` |
-| `AUTORAG_TEST_DATA_KEY` | S3 key for benchmark JSON | `autorag-smoke/benchmark_data.json` |
-| `AUTORAG_INFERENCE_MODEL_NAME` | Generation model ID available through MaaS | _(required)_ |
-| `AUTORAG_EMBEDDING_MODEL_NAME` | Embedding model ID available through MaaS | _(required)_ |
-| `AUTORAG_MAAS_BASE_URL` | URL of the existing MaaS endpoint | _(required)_ |
-| `AUTORAG_MAAS_API_KEY` | MaaS API key, stored in a namespace Secret | _(required)_ |
-| `AUTORAG_MILVUS_URI` | URI of an existing Milvus database | _(required)_ |
-| `AUTORAG_MILVUS_TOKEN` | Milvus access token, stored in a namespace Secret | _(optional)_ |
+| `AUTORAG_INPUT_DATA_KEY` | Destination prefix for the sample document | `autorag-smoke/input_data` |
+| `AUTORAG_TEST_DATA_KEY` | Destination key for generated benchmark JSON | `autorag-smoke/benchmark_data.json` |
 | `AUTORAG_MAX_RAG_PATTERNS` | Maximum RAG patterns to evaluate | `4` |
 | `AUTORAG_OPTIMIZATION_METRIC` | Optimization metric | `unitxt:faithfulness` |
 | `AUTORAG_PIPELINE_START_TIMEOUT` | Max wait for workflow progression (sec) | `300` |
@@ -155,12 +153,13 @@ uv run pytest tests/pipelines_components/ -m smoke -v -s
   (or Succeeded if it finishes before polling); does not wait for training to complete
 - Cleans up namespace on teardown
 
-### AutoRAG (external MaaS and Milvus)
+### AutoRAG (startup only)
 
 - Creates a dedicated namespace (`autorag-aqa-<hash>`)
 - Deploys DSPA with built-in MinIO
-- Creates connection Secrets for the existing MaaS and Milvus services
-- Downloads test data from external S3 into DSPA MinIO
+- Creates the required connection Secrets
+- Uploads a sample document and benchmark JSON from the repo to DSPA MinIO
 - Discovers the managed pipeline and submits a run via the DSPA REST API
+- Retries with `vector_db_secret_name` if the managed pipeline rejects `db_secret_name`
 - Verifies the run is registered and its workflow starts, without waiting for optimization to finish
 - Cleans up namespace on teardown

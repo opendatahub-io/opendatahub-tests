@@ -1,12 +1,15 @@
-import os
+import json
 import shlex
 import uuid
 from collections.abc import Generator
+from pathlib import Path
 from typing import Any
 
 import pytest
+import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.config_map import ConfigMap
 from ocp_resources.data_science_pipelines_application import DataSciencePipelinesApplication
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
@@ -17,13 +20,11 @@ from tests.pipelines_components.constants import (
     AUTORAG_INPUT_DATA_KEY,
     AUTORAG_MAX_RAG_PATTERNS,
     AUTORAG_OPTIMIZATION_METRIC,
-    AUTORAG_S3_BUCKET,
     AUTORAG_TEST_DATA_KEY,
     DSPA_NAME,
     DSPA_READY_BUFFER_SECONDS,
     DSPA_S3_BUCKET,
     DSPA_S3_SECRET,
-    EXTERNAL_S3_SECRET,
     MANAGED_PIPELINE_AUTORAG,
     MANAGED_PIPELINE_POLL_INTERVAL,
     MANAGED_PIPELINE_WAIT_TIMEOUT,
@@ -35,21 +36,6 @@ from utilities.general import collect_pod_information
 from utilities.infra import create_ns
 
 LOGGER = structlog.get_logger(name=__name__)
-
-
-@pytest.fixture(scope="session", autouse=True)
-def _validate_autorag_env() -> None:
-    """Check the external connections needed by the managed AutoRAG pipeline."""
-    required_env = {
-        "AUTORAG_INFERENCE_MODEL_NAME": "Generation model ID available through MaaS",
-        "AUTORAG_EMBEDDING_MODEL_NAME": "Embedding model ID available through MaaS",
-        "AUTORAG_MAAS_BASE_URL": "Base URL of an existing MaaS endpoint",
-        "AUTORAG_MAAS_API_KEY": "API key for the MaaS endpoint",  # pragma: allowlist secret
-        "AUTORAG_MILVUS_URI": "URI of an existing Milvus instance",
-    }
-    missing = [f"  {name}: {description}" for name, description in required_env.items() if not os.getenv(name)]
-    if missing:
-        pytest.fail("AutoRAG smoke test requires environment variables:\n" + "\n".join(missing))
 
 
 @pytest.fixture(scope="class")
@@ -64,14 +50,14 @@ def autorag_maas_secret(
     admin_client: DynamicClient,
     pipelines_namespace: Namespace,
 ) -> Generator[Secret, Any, Any]:
-    """MaaS connection for the externally served inference and embedding models."""
+    """Provide the required MaaS Secret shape with a non-routable endpoint."""
     with Secret(
         client=admin_client,
         namespace=pipelines_namespace.name,
         name="autorag-maas-connection",
         string_data={
-            "MAAS_BASE_URL": os.environ["AUTORAG_MAAS_BASE_URL"],
-            "MAAS_API_KEY": os.environ["AUTORAG_MAAS_API_KEY"],
+            "MAAS_BASE_URL": "http://maas.invalid/v1",
+            "MAAS_API_KEY": "placeholder",  # pragma: allowlist secret
         },
     ) as secret:
         yield secret
@@ -82,15 +68,15 @@ def autorag_db_secret(
     admin_client: DynamicClient,
     pipelines_namespace: Namespace,
 ) -> Generator[Secret, Any, Any]:
-    """Connection to an existing Milvus database; no database is deployed."""
-    string_data = {"MILVUS_URI": os.environ["AUTORAG_MILVUS_URI"]}
-    if token := os.getenv("AUTORAG_MILVUS_TOKEN"):
-        string_data["MILVUS_TOKEN"] = token
+    """Provide the required Milvus Secret shape without a database service."""
     with Secret(
         client=admin_client,
         namespace=pipelines_namespace.name,
         name="autorag-vector-db-connection",
-        string_data=string_data,
+        string_data={
+            "MILVUS_URI": "http://milvus.invalid:19530",
+            "MILVUS_TOKEN": "placeholder",  # pragma: allowlist secret
+        },
     ) as secret:
         yield secret
 
@@ -118,71 +104,79 @@ def autorag_test_data(
     admin_client: DynamicClient,
     pipelines_namespace: Namespace,
     dspa_s3_credentials: Secret,
-    external_s3_secret: Secret,
 ) -> None:
-    """Copy documents and benchmark data from external S3 into DSPA MinIO."""
-    src_bucket = shlex.quote(s=AUTORAG_S3_BUCKET)
-    src_input_key = shlex.quote(s=AUTORAG_INPUT_DATA_KEY)
-    src_test_key = shlex.quote(s=AUTORAG_TEST_DATA_KEY)
-    dst_bucket = shlex.quote(s=DSPA_S3_BUCKET)
+    """Upload a local document and matching benchmark record to DSPA MinIO."""
+    source_document = (Path(__file__).parent / "data" / "sample.md").read_text(encoding="utf-8")
+    benchmark = json.dumps([
+        {
+            "question": "How many raised beds are in the garden?",
+            "correct_answers": ["Three raised beds."],
+            "correct_answer_document_keys": [f"{AUTORAG_INPUT_DATA_KEY}/sample.md"],
+        }
+    ])
+    input_key = shlex.quote(s=f"{AUTORAG_INPUT_DATA_KEY}/sample.md")
+    benchmark_key = shlex.quote(s=AUTORAG_TEST_DATA_KEY)
+    bucket = shlex.quote(s=DSPA_S3_BUCKET)
     minio_endpoint = f"http://minio-{DSPA_NAME}.{pipelines_namespace.name}.svc.cluster.local:9000"
 
     script = (
         "export MC_CONFIG_DIR=/work/.mc && "
-        "mc alias set src $SRC_ENDPOINT $SRC_ACCESS_KEY $SRC_SECRET_KEY && "
         "mc alias set dst $DST_ENDPOINT $DST_ACCESS_KEY $DST_SECRET_KEY && "
-        f"mc cp --recursive src/{src_bucket}/{src_input_key} /work/input_data/ && "
-        f"mc cp src/{src_bucket}/{src_test_key} /work/benchmark_data.json && "
-        f"mc mb --ignore-existing dst/{dst_bucket} && "
-        f"mc cp --recursive /work/input_data/ dst/{dst_bucket}/{src_input_key}/ && "
-        f"mc cp /work/benchmark_data.json dst/{dst_bucket}/{src_test_key}"
+        f"mc mb --ignore-existing dst/{bucket} && "
+        f"mc cp /data/sample.md dst/{bucket}/{input_key} && "
+        f"mc cp /data/benchmark_data.json dst/{bucket}/{benchmark_key}"
     )
 
-    with Pod(
-        client=admin_client,
-        name=f"autorag-data-uploader-{uuid.uuid4().hex[:8]}",
-        namespace=pipelines_namespace.name,
-        restart_policy="Never",
-        volumes=[{"name": "work", "emptyDir": {}}],
-        containers=[
-            {
-                "name": "minio-uploader",
-                "image": MINIO_MC_IMAGE,
-                "command": ["/bin/sh", "-c"],
-                "args": [script],
-                "volumeMounts": [{"name": "work", "mountPath": "/work"}],
-                "securityContext": MINIO_UPLOADER_SECURITY_CONTEXT,
-                "env": [
-                    {"name": "SRC_ENDPOINT", "value": os.getenv("AWS_S3_ENDPOINT", "https://s3.amazonaws.com")},
-                    {
-                        "name": "SRC_ACCESS_KEY",
-                        "valueFrom": {"secretKeyRef": {"name": EXTERNAL_S3_SECRET, "key": "AWS_ACCESS_KEY_ID"}},
-                    },
-                    {
-                        "name": "SRC_SECRET_KEY",
-                        "valueFrom": {"secretKeyRef": {"name": EXTERNAL_S3_SECRET, "key": "AWS_SECRET_ACCESS_KEY"}},
-                    },
-                    {"name": "DST_ENDPOINT", "value": minio_endpoint},
-                    {
-                        "name": "DST_ACCESS_KEY",
-                        "valueFrom": {"secretKeyRef": {"name": DSPA_S3_SECRET, "key": "accesskey"}},
-                    },
-                    {
-                        "name": "DST_SECRET_KEY",
-                        "valueFrom": {"secretKeyRef": {"name": DSPA_S3_SECRET, "key": "secretkey"}},
-                    },
-                ],
-            }
-        ],
-        wait_for_resource=True,
-    ) as upload_pod:
+    with (
+        ConfigMap(
+            client=admin_client,
+            name=f"autorag-data-{uuid.uuid4().hex[:8]}",
+            namespace=pipelines_namespace.name,
+            data={"sample.md": source_document, "benchmark_data.json": benchmark},
+        ) as test_data,
+        Pod(
+            client=admin_client,
+            name=f"autorag-data-uploader-{uuid.uuid4().hex[:8]}",
+            namespace=pipelines_namespace.name,
+            restart_policy="Never",
+            volumes=[
+                {"name": "work", "emptyDir": {}},
+                {"name": "test-data", "configMap": {"name": test_data.name}},
+            ],
+            containers=[
+                {
+                    "name": "minio-uploader",
+                    "image": MINIO_MC_IMAGE,
+                    "command": ["/bin/sh", "-c"],
+                    "args": [script],
+                    "volumeMounts": [
+                        {"name": "work", "mountPath": "/work"},
+                        {"name": "test-data", "mountPath": "/data", "readOnly": True},
+                    ],
+                    "securityContext": MINIO_UPLOADER_SECURITY_CONTEXT,
+                    "env": [
+                        {"name": "DST_ENDPOINT", "value": minio_endpoint},
+                        {
+                            "name": "DST_ACCESS_KEY",
+                            "valueFrom": {"secretKeyRef": {"name": DSPA_S3_SECRET, "key": "accesskey"}},
+                        },
+                        {
+                            "name": "DST_SECRET_KEY",
+                            "valueFrom": {"secretKeyRef": {"name": DSPA_S3_SECRET, "key": "secretkey"}},
+                        },
+                    ],
+                }
+            ],
+            wait_for_resource=True,
+        ) as upload_pod,
+    ):
         try:
             upload_pod.wait_for_status(status="Succeeded", timeout=300)
         except TimeoutExpiredError:
             collect_pod_information(pod=upload_pod)
             raise
 
-    LOGGER.info("AutoRAG test data uploaded to MinIO")
+    LOGGER.info("Synthetic AutoRAG data uploaded to MinIO")
 
 
 @pytest.fixture(scope="class")
@@ -206,18 +200,40 @@ def autorag_run_id(
         "test_data_key": AUTORAG_TEST_DATA_KEY,
         "maas_secret_name": autorag_maas_secret.name,
         "db_secret_name": autorag_db_secret.name,
-        "embedding_models": [os.environ["AUTORAG_EMBEDDING_MODEL_NAME"]],
-        "generation_models": [os.environ["AUTORAG_INFERENCE_MODEL_NAME"]],
+        "embedding_models": ["smoke-embedding-model"],
+        "generation_models": ["smoke-generation-model"],
         "optimization_max_rag_patterns": AUTORAG_MAX_RAG_PATTERNS,
         "optimization_metric": AUTORAG_OPTIMIZATION_METRIC,
     }
 
+    run_name = f"autorag-smoke-{uuid.uuid4().hex[:8]}"
+    try:
+        return create_pipeline_run_managed(
+            api_url=dspa_api_url,
+            headers=dspa_auth_headers,
+            pipeline_id=autorag_managed_pipeline["pipeline_id"],
+            pipeline_version_id=autorag_managed_pipeline["pipeline_version_id"],
+            run_name=run_name,
+            parameters=parameters,
+            ca_bundle=dspa_ca_bundle_file,
+        )
+    except requests.HTTPError as error:
+        response = error.response
+        if (
+            response is None
+            or response.status_code != 400
+            or "parameter vector_db_secret_name is not optional" not in response.text
+        ):
+            raise
+
+    LOGGER.info("Managed pipeline requires vector_db_secret_name; retrying run submission")
+    parameters["vector_db_secret_name"] = parameters.pop("db_secret_name")
     return create_pipeline_run_managed(
         api_url=dspa_api_url,
         headers=dspa_auth_headers,
         pipeline_id=autorag_managed_pipeline["pipeline_id"],
         pipeline_version_id=autorag_managed_pipeline["pipeline_version_id"],
-        run_name=f"autorag-smoke-{uuid.uuid4().hex[:8]}",
+        run_name=run_name,
         parameters=parameters,
         ca_bundle=dspa_ca_bundle_file,
     )

@@ -91,8 +91,6 @@ MINIO_UPLOADER_SECURITY_CONTEXT: dict[str, object] = {
     "seccompProfile": {"type": "RuntimeDefault"},
 }
 
-AUTORAG_S3_BUCKET: str = os.environ.get("AUTORAG_S3_BUCKET", "mlpipeline")
-
 # AutoRAG pipeline parameters
 AUTORAG_INPUT_DATA_KEY: str = os.getenv("AUTORAG_INPUT_DATA_KEY", "autorag-smoke/input_data")
 AUTORAG_TEST_DATA_KEY: str = os.getenv("AUTORAG_TEST_DATA_KEY", "autorag-smoke/benchmark_data.json")
