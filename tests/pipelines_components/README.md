@@ -2,21 +2,22 @@
 
 Smoke tests for reusable Kubeflow Pipelines assets from
 [pipelines-components](https://github.com/opendatahub-io/pipelines-components).
-Each test submits a pipeline run to a DataSciencePipelinesApplication (DSPA). AutoML smoke tests
-verify that the run is registered and its workflow starts; AutoRAG verifies completion.
+Each test submits a pipeline run to a DataSciencePipelinesApplication (DSPA) and verifies
+that the run is registered and its workflow starts.
 
 ## Test Suites
 
 - **`automl/`** -- AutoGluon tabular (regression, binary and multiclass classification) and timeseries smoke tests
-- **`autorag/`** -- Documents RAG Optimization pipeline smoke test
+- **`autorag/`** -- Managed Documents RAG Optimization pipeline smoke test
 
-Both suites are **fully self-contained**: they create a dedicated namespace, deploy all required infrastructure, run the pipeline, and clean up on teardown.
+Both suites create a dedicated namespace and DSPA with MinIO. AutoRAG uses existing MaaS
+and Milvus services; test-owned resources are cleaned up on teardown.
 
 ## Prerequisites
 
 - OpenShift cluster with RHOAI/ODH installed
 - External S3 bucket with training/test data (AWS credentials required)
-- HuggingFace token (for AutoRAG model downloads)
+- Existing MaaS endpoint with generation and embedding models, and a reachable Milvus database (for AutoRAG)
 
 ## Configuration via `.env` file
 
@@ -31,14 +32,12 @@ Sensitive values (API keys, tokens) are masked in test logs.
 ### Managed pipelines (default)
 
 The DSPA operator auto-registers pipelines in KFP by display name.
-AutoML smoke tests always discover the managed tabular and timeseries pipelines; AutoRAG also
-discovers its managed pipeline by default. Leave `AUTORAG_PIPELINE_YAML` empty or unset.
+AutoML and AutoRAG smoke tests discover their managed pipelines by display name.
 
 ### Legacy YAML upload (fallback)
 
-Set `AUTORAG_PIPELINE_YAML` to a local path or URL to use manual YAML upload
-for AutoRAG. AutoML regression upgrade tests also support `AUTOML_PIPELINE_YAML`;
-this setting does not affect AutoML smoke tests. URLs are downloaded automatically at test startup.
+AutoML regression upgrade tests support `AUTOML_PIPELINE_YAML` for manual upload;
+this setting does not affect smoke tests. URLs are downloaded automatically at test startup.
 
 ## Environment Variables
 
@@ -78,23 +77,22 @@ pytest tests/pipelines_components/automl/ -k timeseries
 | `AUTOML_PIPELINE_YAML` | Legacy YAML for regression upgrade tests only | _(empty = managed mode)_ |
 | `AUTOML_PIPELINE_TIMEOUT` | Max wait for upgrade pipeline completion (sec) | `1800` |
 
-### AutoRAG
+### AutoRAG configuration
 
 | Variable | Description | Default |
 | --- | --- | --- |
-| `AUTORAG_S3_BUCKET` | External S3 bucket with test data | _(required)_ |
+| `AUTORAG_S3_BUCKET` | External S3 bucket with test data | `mlpipeline` |
 | `AUTORAG_INPUT_DATA_KEY` | S3 key prefix for input documents | `autorag-smoke/input_data` |
 | `AUTORAG_TEST_DATA_KEY` | S3 key for benchmark JSON | `autorag-smoke/benchmark_data.json` |
-| `HF_TOKEN` | HuggingFace token for model downloads | _(required)_ |
-| `AUTORAG_INFERENCE_MODEL_URI` | Storage URI for inference model | _(required)_ |
-| `AUTORAG_INFERENCE_MODEL_NAME` | Inference model name | _(required)_ |
-| `AUTORAG_EMBEDDING_MODEL_URI` | Storage URI for embedding model | _(required)_ |
-| `AUTORAG_EMBEDDING_MODEL_NAME` | Embedding model name | _(required)_ |
-| `AUTORAG_EMBEDDING_MAX_MODEL_LEN` | Embedding model max sequence length | `512` |
-| `AUTORAG_PIPELINE_YAML` | Legacy: path or URL to pipeline YAML | _(empty = managed mode)_ |
+| `AUTORAG_INFERENCE_MODEL_NAME` | Generation model ID available through MaaS | _(required)_ |
+| `AUTORAG_EMBEDDING_MODEL_NAME` | Embedding model ID available through MaaS | _(required)_ |
+| `AUTORAG_MAAS_BASE_URL` | URL of the existing MaaS endpoint | _(required)_ |
+| `AUTORAG_MAAS_API_KEY` | MaaS API key, stored in a namespace Secret | _(required)_ |
+| `AUTORAG_MILVUS_URI` | URI of an existing Milvus database | _(required)_ |
+| `AUTORAG_MILVUS_TOKEN` | Milvus access token, stored in a namespace Secret | _(optional)_ |
 | `AUTORAG_MAX_RAG_PATTERNS` | Maximum RAG patterns to evaluate | `4` |
-| `AUTORAG_OPTIMIZATION_METRIC` | Optimization metric | `faithfulness` |
-| `AUTORAG_PIPELINE_TIMEOUT` | Max wait for pipeline completion (sec) | `3600` |
+| `AUTORAG_OPTIMIZATION_METRIC` | Optimization metric | `unitxt:faithfulness` |
+| `AUTORAG_PIPELINE_START_TIMEOUT` | Max wait for workflow progression (sec) | `300` |
 
 ### Managed pipeline overrides (optional)
 
@@ -149,14 +147,12 @@ uv run pytest tests/pipelines_components/ -m smoke -v -s
   (or Succeeded if it finishes before polling); does not wait for training to complete
 - Cleans up namespace on teardown
 
-### AutoRAG (fully self-contained)
+### AutoRAG (external MaaS and Milvus)
 
 - Creates a dedicated namespace (`autorag-aqa-<hash>`)
 - Deploys DSPA with built-in MinIO
-- Deploys PostgreSQL, etcd, and Milvus for vector storage
-- Deploys vLLM CPU inference and embedding models via KServe InferenceService
-- Deploys OGX server (formerly LlamaStack) with rh-dev distribution
+- Creates connection Secrets for the existing MaaS and Milvus services
 - Downloads test data from external S3 into DSPA MinIO
-- Discovers managed pipeline or uploads YAML (legacy mode)
-- Submits pipeline run via DSPA REST API
+- Discovers the managed pipeline and submits a run via the DSPA REST API
+- Verifies the run is registered and its workflow starts, without waiting for optimization to finish
 - Cleans up namespace on teardown

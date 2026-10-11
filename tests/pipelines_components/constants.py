@@ -92,29 +92,15 @@ MINIO_UPLOADER_SECURITY_CONTEXT: dict[str, object] = {
     "seccompProfile": {"type": "RuntimeDefault"},
 }
 
-AUTORAG_PIPELINE_YAML: str = os.environ.get("AUTORAG_PIPELINE_YAML", "")
-
 AUTORAG_S3_BUCKET: str = os.environ.get("AUTORAG_S3_BUCKET", "mlpipeline")
-
-# LlamaStack catalog-compatible model ID for the inference model (optional).
-# The rh-dev LlamaStack distribution validates INFERENCE_MODEL against its model catalog (Meta Llama,
-# IBM Granite, etc.).  If AUTORAG_INFERENCE_MODEL_NAME is not a catalog model (e.g. Qwen2.5-0.5B-Instruct),
-# set this to a supported catalog ID (e.g. meta-llama/Llama-3.2-1B-Instruct).  LlamaStack will register
-# that catalog model but route inference calls to vLLM using AUTORAG_INFERENCE_MODEL_NAME as the
-# provider_model_id, so the actual weights served by vLLM are used regardless of the catalog name.
-# Defaults to AUTORAG_INFERENCE_MODEL_NAME when unset (works as-is if the name is catalog-compatible).
-AUTORAG_LLAMA_STACK_INFERENCE_MODEL_ID: str = os.environ.get("AUTORAG_LLAMA_STACK_INFERENCE_MODEL_ID", "")
-
-AUTORAG_EMBEDDING_MAX_MODEL_LEN: str = os.getenv("AUTORAG_EMBEDDING_MAX_MODEL_LEN", "512")
 
 # AutoRAG pipeline parameters
 AUTORAG_INPUT_DATA_KEY: str = os.getenv("AUTORAG_INPUT_DATA_KEY", "autorag-smoke/input_data")
 AUTORAG_TEST_DATA_KEY: str = os.getenv("AUTORAG_TEST_DATA_KEY", "autorag-smoke/benchmark_data.json")
 AUTORAG_MAX_RAG_PATTERNS: int = int(os.getenv("AUTORAG_MAX_RAG_PATTERNS", "4"))
-AUTORAG_OPTIMIZATION_METRIC: str = os.getenv("AUTORAG_OPTIMIZATION_METRIC", "faithfulness")
+AUTORAG_OPTIMIZATION_METRIC: str = os.getenv("AUTORAG_OPTIMIZATION_METRIC", "unitxt:faithfulness")
 
-# AutoRAG timeouts (seconds)
-AUTORAG_PIPELINE_TIMEOUT: int = int(os.getenv("AUTORAG_PIPELINE_TIMEOUT", "3600"))
+AUTORAG_PIPELINE_START_TIMEOUT: int = int(os.getenv("AUTORAG_PIPELINE_START_TIMEOUT", "300"))
 
 # ---------------------------------------------------------------------------
 # Managed pipelines (DSPA operator auto-registers pipelines in KFP)
