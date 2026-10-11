@@ -1,9 +1,9 @@
-# Pipelines Components Smoke Tests
+# Pipelines Components Tests
 
-Smoke tests for reusable Kubeflow Pipelines assets from
+Startup and upgrade tests for reusable Kubeflow Pipelines assets from
 [pipelines-components](https://github.com/opendatahub-io/pipelines-components).
-Each test submits a pipeline run to a DataSciencePipelinesApplication (DSPA) and verifies
-that the run is registered and its workflow starts.
+Smoke and pre-upgrade tests submit pipeline runs to a DataSciencePipelinesApplication
+(DSPA) and verify startup; post-upgrade tests check that the recorded runs survive.
 
 ## Test Suites
 
@@ -21,7 +21,6 @@ and/or `MINIO_MC_IMAGE` to override it when a cluster requires a different image
 ## Prerequisites
 
 - OpenShift cluster with RHOAI/ODH installed
-- External S3 bucket with training data and AWS credentials (AutoML upgrade tests only)
 
 ## Configuration via `.env` file
 
@@ -33,24 +32,12 @@ Sensitive values (API keys, tokens) are masked in test logs.
 
 ## Pipeline Modes
 
-### Managed pipelines (default)
+### Managed pipelines
 
 The DSPA operator auto-registers pipelines in KFP by display name.
-AutoML and AutoRAG smoke tests discover their managed pipelines by display name.
-
-### Legacy YAML upload (fallback)
-
-AutoML regression upgrade tests support `AUTOML_PIPELINE_YAML` for manual upload;
-this setting does not affect smoke tests. URLs are downloaded automatically at test startup.
+AutoML and AutoRAG smoke and upgrade tests discover their managed pipelines by display name.
 
 ## Environment Variables
-
-### External S3 credentials (AutoML upgrade tests only)
-
-| Variable | Description | Default |
-| --- | --- | --- |
-| `AWS_ACCESS_KEY_ID` | AWS access key for external S3 | _(required)_ |
-| `AWS_SECRET_ACCESS_KEY` | AWS secret key for external S3 | _(required)_ |
 
 ### AutoML
 
@@ -78,11 +65,9 @@ pytest tests/pipelines_components/automl/ -k timeseries
 | `AUTOML_TRAIN_DATA_FILE_KEY` | Base destination key in DSPA MinIO; prefixed with the task type | `automl-smoke/train.csv` |
 | `AUTOML_PIPELINE_START_TIMEOUT` | Max wait for the smoke workflow to start (sec) | `300` |
 
-AutoML **upgrade** tests retain their external-S3 upload fixtures. They require
-`AUTOML_S3_BUCKET`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
-`AUTOML_REGRESSION_S3_TRAIN_DATA_KEY`, and `AUTOML_TIMESERIES_S3_TRAIN_DATA_KEY`.
-`AUTOML_PIPELINE_YAML` controls legacy upload for regression upgrade tests;
-`AUTOML_PIPELINE_TIMEOUT` defaults to 1800 seconds for upgrade runs.
+AutoML **upgrade** tests use the same generated datasets and managed pipelines,
+retain the DSPA and runs across the upgrade, and compare saved run and workflow
+identities afterward. They do not need external S3 credentials.
 
 ### AutoRAG configuration
 
@@ -140,6 +125,21 @@ uv run pytest tests/pipelines_components/autorag/ -m smoke -v -s
 ```bash
 uv run pytest tests/pipelines_components/ -m smoke -v -s
 ```
+
+### Run upgrade tests
+
+Run the phases separately, with the product upgrade between them. The pre-upgrade
+phase keeps the DSPAs and baseline ConfigMaps; post-upgrade verifies the same runs
+and cleans up their namespaces.
+
+```bash
+uv run pytest --pre-upgrade tests/pipelines_components/automl/upgrade/ tests/pipelines_components/autorag/upgrade/
+# Upgrade the product.
+uv run pytest --post-upgrade tests/pipelines_components/automl/upgrade/ tests/pipelines_components/autorag/upgrade/
+```
+
+Both phases verify run registration, startup, and persistence, not completed
+training or RAG optimization.
 
 ## Infrastructure
 
