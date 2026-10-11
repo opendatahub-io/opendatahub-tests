@@ -2,6 +2,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from tests.pipelines_components.image_constants import PipelinesComponentsImages
+
 
 def _load_env_file(env_path: Path) -> None:
     """Parse a .env file and set variables into os.environ (does not overwrite existing)."""
@@ -23,7 +25,7 @@ _load_env_file(env_path=Path(__file__).parent / ".env")
 DSPA_NAME: str = "dspa"
 DSPA_MINIO_IMAGE: str = os.getenv(
     "DSPA_MINIO_IMAGE",
-    "quay.io/opendatahub/minio:RELEASE.2019-08-14T20-37-41Z-license-compliance",
+    PipelinesComponentsImages.MINIO,
 )
 DSPA_PIPELINE_DEPLOYMENT: str = f"ds-pipeline-{DSPA_NAME}"
 DSPA_SCHEDULED_WORKFLOW_DEPLOYMENT: str = f"ds-pipeline-scheduledworkflow-{DSPA_NAME}"
@@ -33,32 +35,29 @@ DSPA_S3_BUCKET: str = "mlpipeline"
 # Pipeline YAML paths — provided via .env or environment variables
 AUTOML_PIPELINE_YAML: str = os.environ.get("AUTOML_PIPELINE_YAML", "")
 
-# AutoML S3 source — CSV is downloaded from this external S3 path into DSPA MinIO
+# AutoML upgrade test S3 source — smoke datasets are generated locally
 AUTOML_S3_BUCKET: str = os.environ.get("AUTOML_S3_BUCKET", "")
 
 # AutoML task configurations for parametrized testing
 AUTOML_TASK_CONFIGS: dict[str, dict[str, Any]] = {
     "regression": {
-        "s3_train_data_key": "datasets/regression/regression.csv",
         "label_column": "price",
         "task_type": "regression",
         "top_n": 1,
     },
     "classification": {
-        "s3_train_data_key": "datasets/classification/classification.csv",
         "label_column": "target",
         "task_type": "binary",
         "top_n": 1,
     },
     "multiclass": {
-        "s3_train_data_key": "datasets/classification/multiclass.csv",
         "label_column": "target",
         "task_type": "multiclass",
         "top_n": 1,
     },
 }
 
-# AutoML pipeline parameters — AUTOML_TRAIN_DATA_FILE_KEY is the destination key in DSPA MinIO
+# AutoML pipeline parameters — the smoke uploader prefixes this MinIO key with the task type
 AUTOML_TRAIN_DATA_FILE_KEY: str = os.getenv("AUTOML_TRAIN_DATA_FILE_KEY", "automl-smoke/train.csv")
 
 # AutoML timeseries configuration
@@ -83,7 +82,7 @@ PIPELINE_POLL_INTERVAL: int = int(os.getenv("PIPELINE_POLL_INTERVAL", "30"))
 
 MINIO_MC_IMAGE: str = os.getenv(
     "MINIO_MC_IMAGE",
-    "quay.io/minio/mc@sha256:470f5546b596e16c7816b9c3fa7a78ce4076bb73c2c73f7faeec0c8043923123",
+    PipelinesComponentsImages.MINIO,
 )
 MINIO_UPLOADER_SECURITY_CONTEXT: dict[str, object] = {
     "allowPrivilegeEscalation": False,

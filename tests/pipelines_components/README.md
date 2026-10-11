@@ -13,10 +13,15 @@ that the run is registered and its workflow starts.
 Both suites create a dedicated namespace and DSPA with MinIO. AutoRAG uses existing MaaS
 and Milvus services; test-owned resources are cleaned up on teardown.
 
+The DSPA MinIO server and the CSV uploader use the same digest-pinned image,
+`PipelinesComponentsImages.MINIO`, which includes the `mc` client. It is listed in
+the image manifest for mirroring into disconnected clusters. Set `DSPA_MINIO_IMAGE`
+and/or `MINIO_MC_IMAGE` to override it when a cluster requires a different image.
+
 ## Prerequisites
 
 - OpenShift cluster with RHOAI/ODH installed
-- External S3 bucket with training/test data (AWS credentials required)
+- External S3 bucket with test data and AWS credentials (AutoRAG and AutoML upgrade tests only)
 - Existing MaaS endpoint with generation and embedding models, and a reachable Milvus database (for AutoRAG)
 
 ## Configuration via `.env` file
@@ -41,7 +46,7 @@ this setting does not affect smoke tests. URLs are downloaded automatically at t
 
 ## Environment Variables
 
-### Shared S3 credentials
+### External S3 credentials (AutoRAG and AutoML upgrade tests)
 
 | Variable | Description | Default |
 | --- | --- | --- |
@@ -50,7 +55,11 @@ this setting does not affect smoke tests. URLs are downloaded automatically at t
 
 ### AutoML
 
-The AutoML tabular test is parametrized by `task_type` (regression, classification, multiclass).
+The AutoML smoke tests generate 150 unique CSV rows per task in
+[`automl/data/`](automl/data/README.md). A temporary ConfigMap mounts each CSV into
+an uploader Pod, which copies it to the test DSPA's MinIO. They do not need an external
+S3 bucket or credentials. The tabular test is parametrized by `task_type`
+(regression, classification, multiclass); timeseries uses the same upload fixture.
 
 The tabular pipeline accepts `task_type` values: `"binary"`, `"multiclass"`, `"regression"`.
 
@@ -67,15 +76,14 @@ pytest tests/pipelines_components/automl/ -k timeseries
 
 | Variable | Description | Default |
 | --- | --- | --- |
-| `AUTOML_S3_BUCKET` | External S3 bucket with training data | _(required)_ |
-| `AUTOML_REGRESSION_S3_TRAIN_DATA_KEY` | S3 key for regression training CSV | `datasets/regression/regression.csv` |
-| `AUTOML_CLASSIFICATION_S3_TRAIN_DATA_KEY` | S3 key for binary classification training CSV | `datasets/classification/classification.csv` |
-| `AUTOML_MULTICLASS_S3_TRAIN_DATA_KEY` | S3 key for multiclass classification training CSV | `datasets/classification/multiclass.csv` |
-| `AUTOML_TIMESERIES_S3_TRAIN_DATA_KEY` | S3 key for timeseries training CSV | _(required)_ |
 | `AUTOML_TRAIN_DATA_FILE_KEY` | Base destination key in DSPA MinIO; prefixed with the task type | `automl-smoke/train.csv` |
 | `AUTOML_PIPELINE_START_TIMEOUT` | Max wait for the smoke workflow to start (sec) | `300` |
-| `AUTOML_PIPELINE_YAML` | Legacy YAML for regression upgrade tests only | _(empty = managed mode)_ |
-| `AUTOML_PIPELINE_TIMEOUT` | Max wait for upgrade pipeline completion (sec) | `1800` |
+
+AutoML **upgrade** tests retain their external-S3 upload fixtures. They require
+`AUTOML_S3_BUCKET`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
+`AUTOML_REGRESSION_S3_TRAIN_DATA_KEY`, and `AUTOML_TIMESERIES_S3_TRAIN_DATA_KEY`.
+`AUTOML_PIPELINE_YAML` controls legacy upload for regression upgrade tests;
+`AUTOML_PIPELINE_TIMEOUT` defaults to 1800 seconds for upgrade runs.
 
 ### AutoRAG configuration
 
@@ -141,7 +149,7 @@ uv run pytest tests/pipelines_components/ -m smoke -v -s
 
 - Creates a dedicated namespace (`automl-aqa-<hash>`)
 - Deploys DSPA with built-in MinIO for object storage
-- Downloads each training dataset from external S3 into a separate DSPA MinIO key
+- Generates each 150-row training dataset and uploads it to a separate DSPA MinIO key
 - Discovers the managed tabular and timeseries pipelines
 - Submits a run per task type via DSPA REST API and verifies its workflow reaches Running
   (or Succeeded if it finishes before polling); does not wait for training to complete

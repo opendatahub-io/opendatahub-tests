@@ -1,7 +1,6 @@
 import base64
 import os
 import re
-import shlex
 import uuid
 from collections.abc import Generator
 from pathlib import Path
@@ -14,16 +13,11 @@ from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.data_science_pipelines_application import DataSciencePipelinesApplication
 from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
-from ocp_resources.pod import Pod
 from ocp_resources.resource import Resource, ResourceEditor
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
-from timeout_sampler import TimeoutExpiredError
 
 from tests.pipelines_components.constants import (
-    AUTOML_S3_BUCKET,
-    AUTOML_TASK_CONFIGS,
-    AUTOML_TRAIN_DATA_FILE_KEY,
     DSPA_MINIO_IMAGE,
     DSPA_NAME,
     DSPA_PIPELINE_DEPLOYMENT,
@@ -31,11 +25,8 @@ from tests.pipelines_components.constants import (
     DSPA_S3_SECRET,
     EXTERNAL_S3_SECRET,
     MANAGED_PIPELINES_IMAGE,
-    MINIO_MC_IMAGE,
-    MINIO_UPLOADER_SECURITY_CONTEXT,
 )
 from utilities.certificates_utils import create_ca_bundle_file
-from utilities.general import collect_pod_information
 from utilities.infra import create_ns, get_rhods_subscription, wait_for_dsc_status_ready
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -160,7 +151,7 @@ def dspa(
         },
         object_storage={
             "disableHealthCheck": False,
-            "enableExternalRoute": True,
+            "enableExternalRoute": False,
             "minio": {
                 "deploy": True,
                 "image": DSPA_MINIO_IMAGE,
@@ -270,85 +261,3 @@ def external_s3_secret(
         },
     ) as secret:
         yield secret
-
-
-@pytest.fixture(scope="function")
-def automl_train_data(
-    admin_client: DynamicClient,
-    pipelines_namespace: Namespace,
-    dspa_s3_credentials: Secret,
-    external_s3_secret: Secret,
-    task_type: str,
-) -> str:
-    """Upload the selected AutoML dataset to its own key in DSPA MinIO."""
-    env_var = f"AUTOML_{task_type.upper()}_S3_TRAIN_DATA_KEY"
-    default_key = AUTOML_TASK_CONFIGS.get(task_type, {}).get("s3_train_data_key", "")
-    src_key_value = os.environ.get(env_var, default_key)
-    assert src_key_value, (
-        f"Environment variable '{env_var}' is not set. "
-        f"Set it in .env or shell to provide the S3 key for {task_type} training data."
-    )
-
-    destination_key = f"{task_type}/{AUTOML_TRAIN_DATA_FILE_KEY}"
-    src_bucket = shlex.quote(s=AUTOML_S3_BUCKET)
-    src_key = shlex.quote(s=src_key_value)
-    dst_bucket = shlex.quote(s=DSPA_S3_BUCKET)
-    dst_key = shlex.quote(s=destination_key)
-
-    minio_endpoint = f"http://minio-{DSPA_NAME}.{pipelines_namespace.name}.svc.cluster.local:9000"
-    src_endpoint = os.environ.get("AWS_S3_ENDPOINT", "https://s3.amazonaws.com")
-
-    script = (
-        "export MC_CONFIG_DIR=/work/.mc && "
-        "mc alias set src $SRC_ENDPOINT $AWS_ACCESS_KEY_ID $AWS_SECRET_ACCESS_KEY && "
-        "mc alias set dspa $DST_ENDPOINT $DST_ACCESS_KEY $DST_SECRET_KEY && "
-        f"mc cp src/{src_bucket}/{src_key} /work/train.csv && "
-        f"mc cp /work/train.csv dspa/{dst_bucket}/{dst_key}"
-    )
-
-    pod_name = f"automl-data-uploader-{uuid.uuid4().hex[:8]}"
-    with Pod(
-        client=admin_client,
-        name=pod_name,
-        namespace=pipelines_namespace.name,
-        restart_policy="Never",
-        volumes=[{"name": "work", "emptyDir": {}}],
-        containers=[
-            {
-                "name": "minio-uploader",
-                "image": MINIO_MC_IMAGE,
-                "command": ["/bin/sh", "-c"],
-                "args": [script],
-                "volumeMounts": [{"name": "work", "mountPath": "/work"}],
-                "securityContext": MINIO_UPLOADER_SECURITY_CONTEXT,
-                "env": [
-                    {"name": "SRC_ENDPOINT", "value": src_endpoint},
-                    {
-                        "name": "AWS_ACCESS_KEY_ID",
-                        "valueFrom": {"secretKeyRef": {"name": EXTERNAL_S3_SECRET, "key": "AWS_ACCESS_KEY_ID"}},
-                    },
-                    {
-                        "name": "AWS_SECRET_ACCESS_KEY",
-                        "valueFrom": {"secretKeyRef": {"name": EXTERNAL_S3_SECRET, "key": "AWS_SECRET_ACCESS_KEY"}},
-                    },
-                    {"name": "DST_ENDPOINT", "value": minio_endpoint},
-                    {
-                        "name": "DST_ACCESS_KEY",
-                        "valueFrom": {"secretKeyRef": {"name": DSPA_S3_SECRET, "key": "accesskey"}},
-                    },
-                    {
-                        "name": "DST_SECRET_KEY",
-                        "valueFrom": {"secretKeyRef": {"name": DSPA_S3_SECRET, "key": "secretkey"}},
-                    },
-                ],
-            }
-        ],
-        wait_for_resource=True,
-    ) as upload_pod:
-        try:
-            upload_pod.wait_for_status(status="Succeeded", timeout=120)
-        except TimeoutExpiredError:
-            collect_pod_information(pod=upload_pod)
-            raise
-
-    return destination_key
