@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+import yaml
 
 from tests.observability.contract import (
     ContractValidationError,
@@ -86,6 +87,19 @@ def test_release_contract_contains_report_only_pipeline_health_records() -> None
     assert all(record.rollout_state is RolloutState.SKIPPED for record in contract.pipeline_health.records)
     assert contract.pipeline_health.defaults["propagation_timeout_seconds"] == 240
     assert contract.pipeline_record("model-traces-pipeline").backend_query["search_path"] == "/api/search"
+
+
+@pytest.mark.parametrize(
+    "minimum_results",
+    [pytest.param(True, id="test_true"), pytest.param(False, id="test_false")],
+)
+def test_pipeline_health_rejects_boolean_minimum_results(minimum_results: bool) -> None:
+    """Given a boolean pipeline result count, reject it instead of treating it as an integer."""
+    source = yaml.safe_load(stream=CONTRACT_PATH.read_text(encoding="utf-8"))
+    source["pipeline_health"]["records"][0]["minimum_results"] = minimum_results
+
+    with pytest.raises(ContractValidationError, match="minimum_results must be a non-negative integer"):
+        load_release_contract(source=source)
 
 
 def test_legacy_release_contract_without_pipeline_health_remains_valid() -> None:

@@ -400,7 +400,7 @@ def _parse_pipeline_record(
         raise ContractValidationError(f"{context}.expected_http_status must not contain duplicates")
 
     minimum_results = raw.get("minimum_results")
-    if not isinstance(minimum_results, int) or minimum_results < 0:
+    if isinstance(minimum_results, bool) or not isinstance(minimum_results, int) or minimum_results < 0:
         raise ContractValidationError(f"{context}.minimum_results must be a non-negative integer")
     empty_result_valid = raw.get("empty_result_valid")
     if not isinstance(empty_result_valid, bool):
