@@ -501,6 +501,7 @@ def maas_inference_with_llmd_llmisvc(
         @classmethod
         def router_config(cls) -> dict[str, Any]:
             return {
+                **super().router_config(),
                 "gateway": {
                     "refs": [
                         {
