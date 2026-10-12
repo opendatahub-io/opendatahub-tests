@@ -922,6 +922,11 @@ class TestEvalHubReconcileIntegration:
             "EvalHub reconciliation metrics not found on operator endpoint"
         )
 
+    @pytest.mark.xfail(
+        reason="Operator metrics endpoint serves unauthenticated HTTP on 8080 (RHOAIENG-XXXXX); "
+        "expected to pass once kube-rbac-proxy/https 8443 reaches RHOAI (upstream PR #896)",
+        strict=True,
+    )
     def test_unauthenticated_request_rejected(
         self,
         admin_client: DynamicClient,
