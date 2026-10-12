@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.config_map import ConfigMap
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.data_science_pipelines_application import DataSciencePipelinesApplication
 from ocp_resources.deployment import Deployment
@@ -30,6 +31,9 @@ from tests.pipelines_components.utils import wait_for_managed_pipeline
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import DscComponents, Timeout
 from utilities.infra import create_ns, wait_for_dsc_status_ready
+
+UPGRADE_NAMESPACE = "autorag-aqa-upgrade"
+MANAGEMENT_STATE_CONFIG_MAP = "autorag-original-pipelines-state"
 
 
 @pytest.fixture(scope="class")
@@ -129,21 +133,34 @@ def autorag_run_id(
 
 
 @pytest.fixture(scope="session")
+def autorag_original_pipelines_state(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    dsc_resource: DataScienceCluster,
+) -> str:
+    """Return the AI Pipelines state recorded before the upgrade."""
+    if pytestconfig.option.pre_upgrade:
+        return dsc_resource.instance.spec.components.get("aipipelines", {}).get("managementState")
+    return ConfigMap(
+        client=admin_client, name=MANAGEMENT_STATE_CONFIG_MAP, namespace=UPGRADE_NAMESPACE, ensure_exists=True
+    ).instance.data["managementState"]
+
+
+@pytest.fixture(scope="session")
 def autorag_upgrade_dsc(
     pytestconfig: pytest.Config,
     dsc_resource: DataScienceCluster,
+    autorag_original_pipelines_state: str,
 ) -> Generator[DataScienceCluster, Any, Any]:
     """Keep AI Pipelines managed until the post-upgrade namespace is removed."""
-    if pytestconfig.option.pre_upgrade:
-        current_state = dsc_resource.instance.spec.components.get("aipipelines", {}).get("managementState")
-        if current_state != DscComponents.ManagementState.MANAGED:
-            assert current_state == DscComponents.ManagementState.REMOVED, (
-                f"Unexpected AI Pipelines managementState: {current_state}"
-            )
-            ResourceEditor(
-                patches={dsc_resource: {"spec": {"components": {"aipipelines": {"managementState": "Managed"}}}}}
-            ).update()
-            wait_for_dsc_status_ready(dsc_resource=dsc_resource)
+    if pytestconfig.option.pre_upgrade and autorag_original_pipelines_state != DscComponents.ManagementState.MANAGED:
+        assert autorag_original_pipelines_state == DscComponents.ManagementState.REMOVED, (
+            f"Unexpected AI Pipelines managementState: {autorag_original_pipelines_state}"
+        )
+        ResourceEditor(
+            patches={dsc_resource: {"spec": {"components": {"aipipelines": {"managementState": "Managed"}}}}}
+        ).update()
+        wait_for_dsc_status_ready(dsc_resource=dsc_resource)
     if pytestconfig.option.post_upgrade:
         current_state = dsc_resource.instance.spec.components.get("aipipelines", {}).get("managementState")
         assert current_state == DscComponents.ManagementState.MANAGED, (
@@ -152,7 +169,10 @@ def autorag_upgrade_dsc(
     yield dsc_resource
     if pytestconfig.option.post_upgrade:
         current_state = dsc_resource.instance.spec.components.get("aipipelines", {}).get("managementState")
-        if current_state == DscComponents.ManagementState.MANAGED:
+        if (
+            current_state == DscComponents.ManagementState.MANAGED
+            and autorag_original_pipelines_state == DscComponents.ManagementState.REMOVED
+        ):
             ResourceEditor(
                 patches={dsc_resource: {"spec": {"components": {"aipipelines": {"managementState": "Removed"}}}}}
             ).update()
@@ -163,16 +183,26 @@ def autorag_upgrade_namespace(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     autorag_upgrade_dsc: DataScienceCluster,
+    autorag_original_pipelines_state: str,
 ) -> Generator[Namespace, Any, Any]:
     """Preserve the AutoRAG namespace until post-upgrade verification finishes."""
-    name = "autorag-aqa-upgrade"
     if pytestconfig.option.pre_upgrade:
-        assert not Namespace(client=admin_client, name=name).exists, f"Namespace {name} already exists"
-        with create_ns(admin_client=admin_client, name=name, teardown=False) as namespace:
+        assert not Namespace(client=admin_client, name=UPGRADE_NAMESPACE).exists, (
+            f"Namespace {UPGRADE_NAMESPACE} already exists"
+        )
+        with create_ns(admin_client=admin_client, name=UPGRADE_NAMESPACE, teardown=False) as namespace:
             assert isinstance(namespace, Namespace)
+            with ConfigMap(
+                client=admin_client,
+                name=MANAGEMENT_STATE_CONFIG_MAP,
+                namespace=namespace.name,
+                data={"managementState": autorag_original_pipelines_state},
+                teardown=False,
+            ):
+                pass
             yield namespace
     else:
-        namespace = Namespace(client=admin_client, name=name, ensure_exists=True)
+        namespace = Namespace(client=admin_client, name=UPGRADE_NAMESPACE, ensure_exists=True)
         yield namespace
         if pytestconfig.option.post_upgrade:
             namespace.clean_up()

@@ -87,7 +87,9 @@ class TestAutoRAGUpgrade:
         assert run["display_name"] == baseline["display_name"]
         assert run["pipeline_version_reference"] == baseline["pipeline_version_reference"]
         assert run["runtime_config"]["parameters"]["input_data_keys"] == baseline["input_data_keys"]
-        assert autorag_upgrade_pipeline["pipeline_id"], "Managed AutoRAG pipeline is no longer discoverable"
+        assert autorag_upgrade_pipeline["pipeline_id"] == baseline["pipeline_version_reference"]["pipeline_id"], (
+            "Original managed AutoRAG pipeline is no longer discoverable"
+        )
         workflows = list(
             Workflow.get(
                 client=admin_client,
