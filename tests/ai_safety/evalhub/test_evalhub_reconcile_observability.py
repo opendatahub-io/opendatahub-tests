@@ -32,7 +32,6 @@ from tests.ai_safety.evalhub.constants import (
     METRIC_LABEL_ERROR_TYPE,
     METRIC_LABEL_FAILURE_REASON,
     METRIC_LABEL_RESULT,
-    OPERATOR_METRICS_PORT,
     OPERATOR_POD_LABEL_SELECTOR,
     RECONCILE_DURATION_METRIC,
     RECONCILE_ERRORS_METRIC,
@@ -48,7 +47,6 @@ from tests.ai_safety.evalhub.constants import (
     SPAN_ATTR_RECONCILE_GENERATION,
     SPAN_JOB_FAILURE_RECONCILE,
     SPAN_RECONCILE,
-    SPAN_RECONCILE_DEPLOYMENT,
 )
 from tests.ai_safety.evalhub.utils import (
     fetch_operator_metrics,
@@ -287,7 +285,7 @@ class TestEvalHubReconcileMetrics:
         except TimeoutExpiredError:
             pytest.fail(f"{RECONCILE_ERRORS_METRIC} not recorded for failure CR")
 
-    @pytest.mark.xfail(run = False, reason="error_type=other not emitted by operator for controller=evalhub")
+    @pytest.mark.xfail(run=False, reason="error_type=other not emitted by operator for controller=evalhub")
     def test_unexpected_error_mapped_to_other(
         self,
         operator_metrics_route: Route,
@@ -587,7 +585,9 @@ class TestEvalHubReconcileTracing:
                     if error_spans:
                         return
         except TimeoutExpiredError:
-            pytest.fail("No error-status span found in any sub-reconciler (rbac, deployment, service, route, configmap)")
+            pytest.fail(
+                "No error-status span found in any sub-reconciler (rbac, deployment, service, route, configmap)"
+            )
 
 
 # TC-ERR: Error Classification (4 tests)
