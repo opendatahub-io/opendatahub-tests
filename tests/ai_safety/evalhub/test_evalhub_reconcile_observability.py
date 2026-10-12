@@ -922,11 +922,6 @@ class TestEvalHubReconcileIntegration:
             "EvalHub reconciliation metrics not found on operator endpoint"
         )
 
-    @pytest.mark.xfail(
-        reason="Operator metrics endpoint serves unauthenticated HTTP on 8080; "
-        "expected to pass once kube-rbac-proxy/https 8443 reaches RHOAI",
-        strict=True,
-    )
     def test_unauthenticated_request_rejected(
         self,
         admin_client: DynamicClient,
@@ -942,6 +937,12 @@ class TestEvalHubReconcileIntegration:
                 response = requests.get(metrics_url, verify=False, timeout=5)
         except (requests.exceptions.ConnectionError, requests.exceptions.SSLError) as exc:
             pytest.fail(f"Metrics endpoint unreachable — cannot verify auth rejection: {exc}")
+
+        if response.status_code == 200:
+            pytest.xfail(
+                "Operator metrics endpoint returns 200 without auth (plain HTTP on 8080); "
+                "expected to pass once secure metrics (https/8443) reach RHOAI"
+            )
 
         assert response.status_code in (401, 403), f"Expected 401/403 without auth, got {response.status_code}"
 
