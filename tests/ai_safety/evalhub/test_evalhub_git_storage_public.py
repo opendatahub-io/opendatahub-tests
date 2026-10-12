@@ -19,14 +19,13 @@ from tests.ai_safety.evalhub.constants import (
     GIT_PUBLIC_REPO_TAG,
     GIT_PUBLIC_REPO_TAG_COMMIT,
     GIT_PUBLIC_REPO_URL,
+    GIT_TEST_DATA_MOUNT_PATH,
     GIT_TOKENIZER_PATH,
-    TEST_DATA_MOUNT_PATH,
 )
 from tests.ai_safety.evalhub.utils import (
     build_git_test_data_ref,
     build_pvc_test_data_ref,
     effective_security_context_field,
-    find_resolved_sha,
     get_git_job_spec_and_init_container,
     post_evalhub_job_with_test_data_ref,
     validate_evalhub_job_completed,
@@ -77,12 +76,7 @@ GIT_REJECTION_CASES = [
 @pytest.mark.ai_safety
 @pytest.mark.skip_on_disconnected
 class TestEvalHubGitStoragePublic:
-    """Public git-backed test data for EvalHub: ref variety, clone wiring, security context, clean
-    failure, and API-schema validation of test_data_ref.git.
-
-    A single class (rather than one per concern) keeps the derived tenant namespace name within the
-    63-character Kubernetes limit and reconciles the evalhub-mt deployment once for the whole file.
-    """
+    """Public git repository as EvalHub test data: ref variety, clone wiring, security, failures and API validation."""
 
     @pytest.mark.parametrize(
         "git_ref, ref_slug",
@@ -104,14 +98,8 @@ class TestEvalHubGitStoragePublic:
     ) -> None:
         """Given a public repository pinned to an immutable ref (a tag or an explicit commit SHA),
         when an evaluation job is submitted with test_data_ref.git,
-        then the init container checks out that exact ref, the job completes, and it records the
-        exact resolved commit SHA the ref points at.
-
-        The main git-storage suite covers only a branch ref with a pattern-level SHA check. This test
-        deliberately uses the pinned constants rather than the overridable fixture, because the tag
-        and expected SHA only exist on the default repository. The refs here are pinned to the public
-        fixture repo's immutable tag and its commit, so the resolved commit SHA is deterministic
-        (a moving branch cannot anchor an exact commit)."""
+        then the init container checks out that ref, the job completes, and every benchmark
+        records the exact resolved commit SHA."""
         job_id = submit_git_job(
             url=GIT_PUBLIC_REPO_URL,
             ref=git_ref,
@@ -143,13 +131,13 @@ class TestEvalHubGitStoragePublic:
         )
         validate_evalhub_job_completed(job_data=job_data)
 
-        # Schema hedge: the resolved commit may surface as a nested resolved_sha or a top-level
-        # git_commit_sha depending on the merged API contract. Both the tag and the commit ref
-        # resolve to the same pinned commit.
-        resolved_sha = find_resolved_sha(obj=job_data) or job_data.get("git_commit_sha")
-        assert resolved_sha == GIT_PUBLIC_REPO_TAG_COMMIT, (
-            f"Expected resolved commit {GIT_PUBLIC_REPO_TAG_COMMIT!r} for ref {git_ref!r}, got {resolved_sha!r}"
-        )
+        benchmarks = job_data.get("benchmarks") or []
+        assert benchmarks, f"Expected benchmarks in job data, got: {job_data}"
+        for benchmark in benchmarks:
+            resolved_sha = (benchmark.get("test_data_ref") or {}).get("resolved_sha")
+            assert resolved_sha == GIT_PUBLIC_REPO_TAG_COMMIT, (
+                f"Expected resolved_sha {GIT_PUBLIC_REPO_TAG_COMMIT!r} for ref {git_ref!r}, got {resolved_sha!r}"
+            )
 
     def test_git_init_container_clones_into_shared_volume(
         self,
@@ -176,10 +164,10 @@ class TestEvalHubGitStoragePublic:
         )
 
         init_mounts = {mount.mountPath: mount.name for mount in (init_container.volumeMounts or [])}
-        assert TEST_DATA_MOUNT_PATH in init_mounts, (
-            f"init container must mount the shared test-data volume at {TEST_DATA_MOUNT_PATH}, got {init_mounts}"
+        assert GIT_TEST_DATA_MOUNT_PATH in init_mounts, (
+            f"init container must mount the shared test-data volume at {GIT_TEST_DATA_MOUNT_PATH}, got {init_mounts}"
         )
-        shared_volume = init_mounts[TEST_DATA_MOUNT_PATH]
+        shared_volume = init_mounts[GIT_TEST_DATA_MOUNT_PATH]
 
         adapter_container = next(
             (container for container in spec.containers if container.name == EVALHUB_LOG_ADAPTER_CONTAINER), None
@@ -249,9 +237,7 @@ class TestEvalHubGitStoragePublic:
     ) -> None:
         """Given a reachable public repository but a nonexistent ref,
         when the job is submitted,
-        then it fails cleanly with no evaluation metrics and no recorded resolved commit SHA.
-
-        The main git-storage suite covers only a nonexistent repository."""
+        then it fails cleanly with no evaluation metrics and no recorded resolved commit SHA."""
         job_id = submit_git_job(
             url=git_public_repo_config["url"],
             ref=GIT_INVALID_REF,
@@ -283,10 +269,11 @@ class TestEvalHubGitStoragePublic:
         assert not benchmarks_with_metrics, (
             f"Evaluation must not produce metrics when the git ref is invalid, got: {benchmarks_with_metrics}"
         )
-        resolved_sha = find_resolved_sha(obj=job_data) or job_data.get("git_commit_sha")
-        assert resolved_sha is None, (
-            f"A resolved commit SHA must not be recorded for a failed checkout, got {resolved_sha!r}"
-        )
+        recorded_shas = [
+            (benchmark.get("test_data_ref") or {}).get("resolved_sha")
+            for benchmark in (job_data.get("benchmarks") or [])
+        ]
+        assert not any(recorded_shas), f"No resolved_sha should be recorded for a failed checkout, got {recorded_shas}"
 
     @pytest.mark.parametrize("test_data_ref, exact_400", GIT_REJECTION_CASES)
     def test_reject_invalid_git_test_data_ref(
@@ -303,9 +290,7 @@ class TestEvalHubGitStoragePublic:
         a storage-source conflict, or the read-only resolved_sha),
         when the job is submitted,
         then the API rejects it (a specific 400 for conflicts / read-only violations, any 4xx for
-        schema-shape errors) with an error message, and no job is created.
-
-        The main git-storage suite covers only the plain s3+git conflict."""
+        schema-shape errors) with an error message, and no job is created."""
         response = post_evalhub_job_with_test_data_ref(
             host=evalhub_mt_route.host,
             token=tenant_a_token,

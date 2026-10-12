@@ -40,7 +40,7 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_VLLM_EMULATOR_PORT,
     GARAK_JOB_POLL_INTERVAL,
     GARAK_JOB_TIMEOUT,
-    GIT_INIT_CONTAINER_NAME,
+    GIT_CLONE_INIT_CONTAINER_NAME,
     HF_DEFAULT_REVISION,
     HF_NESTED_SUB_PATH,
     HF_TOKENIZER_PATH,
@@ -1192,36 +1192,6 @@ def build_evalhub_kueue_job_payload(
     return payload
 
 
-def find_resolved_sha(obj: Any, max_depth: int = 10, _depth: int = 0) -> str | None:
-    """Recursively find the first non-empty resolved_sha in a job response.
-
-    Args:
-        obj: Any part of a decoded job response (dict, list, or scalar).
-        max_depth: Maximum nesting levels to descend. Bounds the recursion so a
-            deeply nested or cyclic response cannot exhaust the stack.
-        _depth: Internal recursion counter; callers should not set this.
-
-    Returns:
-        The first non-empty resolved_sha string found within max_depth levels,
-        or None if there is none.
-    """
-    if _depth > max_depth:
-        return None
-    if isinstance(obj, dict):
-        for key, value in obj.items():
-            if key == "resolved_sha" and isinstance(value, str) and value:
-                return value
-            found = find_resolved_sha(obj=value, max_depth=max_depth, _depth=_depth + 1)
-            if found:
-                return found
-    elif isinstance(obj, list):
-        for item in obj:
-            found = find_resolved_sha(obj=item, max_depth=max_depth, _depth=_depth + 1)
-            if found:
-                return found
-    return None
-
-
 def get_git_init_container(spec: Any) -> Any:
     """Return the git clone init container from a batch Job pod spec.
 
@@ -1229,10 +1199,10 @@ def get_git_init_container(spec: Any) -> Any:
         spec: The pod spec (spec.template.spec) of the runtime batch Job.
 
     Returns:
-        The init container named GIT_INIT_CONTAINER_NAME, or None if absent.
+        The init container named GIT_CLONE_INIT_CONTAINER_NAME, or None if absent.
     """
     init_containers = spec.initContainers or []
-    return next((container for container in init_containers if container.name == GIT_INIT_CONTAINER_NAME), None)
+    return next((container for container in init_containers if container.name == GIT_CLONE_INIT_CONTAINER_NAME), None)
 
 
 def get_git_job_spec_and_init_container(
@@ -1262,7 +1232,7 @@ def get_git_job_spec_and_init_container(
     spec = batch_jobs[0].instance.spec.template.spec
     init_container = get_git_init_container(spec=spec)
     assert init_container is not None, (
-        f"Expected a git clone init container named {GIT_INIT_CONTAINER_NAME!r}, "
+        f"Expected a git clone init container named {GIT_CLONE_INIT_CONTAINER_NAME!r}, "
         f"got: {[container.name for container in (spec.initContainers or [])]}"
     )
     return spec, init_container
