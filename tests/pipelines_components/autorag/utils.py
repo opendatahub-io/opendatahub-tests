@@ -118,7 +118,7 @@ def submit_autorag_run(
     db_secret_name: str | None,
     run_name: str,
 ) -> str:
-    """Submit the managed run, retrying the alternate vector Secret parameter if required.
+    """Submit the managed run, retrying older pipeline parameter names if required.
 
     Args:
         api_url: KFP API base URL.
@@ -126,7 +126,7 @@ def submit_autorag_run(
         ca_bundle: TLS CA bundle file.
         pipeline: Managed pipeline and version identifiers.
         s3_secret_name: DSPA object-storage Secret.
-        maas_secret_name: MaaS connection Secret.
+        maas_secret_name: Secret with MaaS and legacy OGX connection fields.
         db_secret_name: Vector database connection Secret.
         run_name: Display name for the run.
 
@@ -148,33 +148,32 @@ def submit_autorag_run(
         "optimization_max_rag_patterns": AUTORAG_MAX_RAG_PATTERNS,
         "optimization_metric": AUTORAG_OPTIMIZATION_METRIC,
     }
-    try:
-        return create_pipeline_run_managed(
-            api_url=api_url,
-            headers=headers,
-            pipeline_id=pipeline["pipeline_id"],
-            pipeline_version_id=pipeline["pipeline_version_id"],
-            run_name=run_name,
-            parameters=parameters,
-            ca_bundle=ca_bundle,
-        )
-    except requests.HTTPError as error:
-        response = error.response
-        if (
-            response is None
-            or response.status_code != 400
-            or "parameter vector_db_secret_name is not optional" not in response.text
-        ):
-            raise
-
-    LOGGER.info("Managed pipeline requires vector_db_secret_name; retrying run submission")
-    parameters["vector_db_secret_name"] = parameters.pop("db_secret_name")
-    return create_pipeline_run_managed(
-        api_url=api_url,
-        headers=headers,
-        pipeline_id=pipeline["pipeline_id"],
-        pipeline_version_id=pipeline["pipeline_version_id"],
-        run_name=run_name,
-        parameters=parameters,
-        ca_bundle=ca_bundle,
-    )
+    fallback_parameters = {
+        "vector_db_secret_name": ("db_secret_name", db_secret_name),
+        "ogx_secret_name": ("maas_secret_name", maas_secret_name),
+        "input_data_key": ("input_data_keys", AUTORAG_INPUT_DATA_KEY),
+    }
+    for attempts_remaining in range(len(fallback_parameters), -1, -1):
+        try:
+            return create_pipeline_run_managed(
+                api_url=api_url,
+                headers=headers,
+                pipeline_id=pipeline["pipeline_id"],
+                pipeline_version_id=pipeline["pipeline_version_id"],
+                run_name=run_name,
+                parameters=parameters,
+                ca_bundle=ca_bundle,
+            )
+        except requests.HTTPError as error:
+            response = error.response
+            if response is None or response.status_code != 400 or not attempts_remaining:
+                raise
+            for required_name, (current_name, value) in fallback_parameters.items():
+                if f"parameter {required_name} is not optional" in response.text and current_name in parameters:
+                    parameters[required_name] = value
+                    del parameters[current_name]
+                    LOGGER.info(f"Managed pipeline requires {required_name}; retrying run submission")
+                    break
+            else:
+                raise
+    raise AssertionError("AutoRAG submission retries exhausted")

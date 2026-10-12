@@ -43,7 +43,14 @@ class TestAutoRAGUpgrade:
         assert run["run_id"] == autorag_upgrade_run_id
         assert reference.get("pipeline_id") == autorag_upgrade_pipeline["pipeline_id"]
         assert reference.get("pipeline_version_id") == autorag_upgrade_pipeline["pipeline_version_id"]
-        assert run.get("runtime_config", {}).get("parameters", {}).get("input_data_keys") == [AUTORAG_INPUT_DATA_KEY]
+        parameters = run.get("runtime_config", {}).get("parameters", {})
+        input_data_parameters = {
+            key: parameters[key] for key in ("input_data_keys", "input_data_key") if key in parameters
+        }
+        assert input_data_parameters in (
+            {"input_data_keys": [AUTORAG_INPUT_DATA_KEY]},
+            {"input_data_key": AUTORAG_INPUT_DATA_KEY},
+        )
         workflow_name = wait_for_upgrade_run_start(
             client=admin_client,
             namespace=autorag_upgrade_namespace.name,
@@ -58,7 +65,7 @@ class TestAutoRAGUpgrade:
                 "run_id": autorag_upgrade_run_id,
                 "display_name": run["display_name"],
                 "pipeline_version_reference": reference,
-                "input_data_keys": [AUTORAG_INPUT_DATA_KEY],
+                "input_data_parameters": input_data_parameters,
                 "workflow_name": workflow_name,
             },
         )
@@ -86,7 +93,10 @@ class TestAutoRAGUpgrade:
         assert run["run_id"] == baseline["run_id"]
         assert run["display_name"] == baseline["display_name"]
         assert run["pipeline_version_reference"] == baseline["pipeline_version_reference"]
-        assert run["runtime_config"]["parameters"]["input_data_keys"] == baseline["input_data_keys"]
+        parameters = run["runtime_config"]["parameters"]
+        assert {key: parameters[key] for key in ("input_data_keys", "input_data_key") if key in parameters} == baseline[
+            "input_data_parameters"
+        ]
         assert autorag_upgrade_pipeline["pipeline_id"] == baseline["pipeline_version_reference"]["pipeline_id"], (
             "Original managed AutoRAG pipeline is no longer discoverable"
         )

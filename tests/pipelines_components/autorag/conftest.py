@@ -49,7 +49,7 @@ def autorag_maas_secret(
     admin_client: DynamicClient,
     pipelines_namespace: Namespace,
 ) -> Generator[Secret, Any, Any]:
-    """Provide the required MaaS Secret shape with a non-routable endpoint."""
+    """Provide placeholder MaaS and legacy OGX connection fields."""
     with Secret(
         client=admin_client,
         namespace=pipelines_namespace.name,
@@ -57,6 +57,8 @@ def autorag_maas_secret(
         string_data={
             "MAAS_BASE_URL": "http://maas.invalid/v1",
             "MAAS_API_KEY": "placeholder",  # pragma: allowlist secret
+            "OGX_CLIENT_BASE_URL": "http://ogx.invalid",
+            "OGX_CLIENT_API_KEY": "placeholder",  # pragma: allowlist secret
         },
     ) as secret:
         yield secret
@@ -318,7 +320,7 @@ def autorag_upgrade_maas_secret(
     admin_client: DynamicClient,
     autorag_upgrade_namespace: Namespace,
 ) -> Generator[Secret, Any, Any]:
-    """Keep the placeholder MaaS connection Secret across the upgrade."""
+    """Keep placeholder MaaS and legacy OGX connection fields across the upgrade."""
     with Secret(
         client=admin_client,
         namespace=autorag_upgrade_namespace.name,
@@ -326,6 +328,8 @@ def autorag_upgrade_maas_secret(
         string_data={
             "MAAS_BASE_URL": "http://maas.invalid/v1",
             "MAAS_API_KEY": "placeholder",  # pragma: allowlist secret
+            "OGX_CLIENT_BASE_URL": "http://ogx.invalid",
+            "OGX_CLIENT_API_KEY": "placeholder",  # pragma: allowlist secret
         },
         teardown=False,
     ) as secret:

@@ -46,9 +46,10 @@ class TestAutoRAGSmoke:
         assert pipeline_reference.get("pipeline_version_id") == autorag_managed_pipeline["pipeline_version_id"], (
             "AutoRAG run does not reference the managed pipeline version"
         )
-        assert run.get("runtime_config", {}).get("parameters", {}).get("input_data_keys") == [AUTORAG_INPUT_DATA_KEY], (
-            "AutoRAG run does not reference the uploaded documents"
-        )
+        parameters = run.get("runtime_config", {}).get("parameters", {})
+        assert parameters.get("input_data_keys") == [AUTORAG_INPUT_DATA_KEY] or parameters.get("input_data_key") == (
+            AUTORAG_INPUT_DATA_KEY
+        ), "AutoRAG run does not reference the uploaded documents"
 
         last_phase: str | None = None
         try:
