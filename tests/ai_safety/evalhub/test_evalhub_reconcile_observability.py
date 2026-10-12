@@ -923,8 +923,8 @@ class TestEvalHubReconcileIntegration:
         )
 
     @pytest.mark.xfail(
-        reason="Operator metrics endpoint serves unauthenticated HTTP on 8080 (RHOAIENG-XXXXX); "
-        "expected to pass once kube-rbac-proxy/https 8443 reaches RHOAI (upstream PR #896)",
+        reason="Operator metrics endpoint serves unauthenticated HTTP on 8080; "
+        "expected to pass once kube-rbac-proxy/https 8443 reaches RHOAI",
         strict=True,
     )
     def test_unauthenticated_request_rejected(
