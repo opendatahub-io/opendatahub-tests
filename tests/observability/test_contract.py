@@ -8,6 +8,7 @@ from tests.observability.contract import (
     load_release_contract,
     render_promql,
 )
+from tests.observability.rollout import RolloutState
 
 pytestmark = pytest.mark.tier1
 
@@ -69,6 +70,54 @@ def test_release_contract_contains_required_matrix_entries() -> None:
         "token-breakdown",
         "showback",
     } <= identifiers
+
+
+def test_release_contract_contains_report_only_pipeline_health_records() -> None:
+    """Given the extended contract, expose signal-specific records without changing dashboard records."""
+    contract = load_release_contract(source=CONTRACT_PATH)
+
+    assert contract.record("cluster-system-health").dashboard == "cluster"
+    assert {record.signal for record in contract.pipeline_health.records} == {
+        "metrics",
+        "traces",
+        "logs",
+        "correlation",
+    }
+    assert all(record.rollout_state is RolloutState.SKIPPED for record in contract.pipeline_health.records)
+    assert contract.pipeline_health.defaults["propagation_timeout_seconds"] == 240
+    assert contract.pipeline_record("model-traces-pipeline").backend_query["search_path"] == "/api/search"
+
+
+def test_legacy_release_contract_without_pipeline_health_remains_valid() -> None:
+    """Given a pre-pipeline contract mapping, default to an empty optional pipeline section."""
+    contract = load_release_contract(
+        source={
+            "contract_version": "1.0.0",
+            "release_stage": "GA",
+            "product_versions": {"rhoai": "test"},
+            "records": [
+                {
+                    "id": "query",
+                    "dashboard": "cluster",
+                    "panel": "panel",
+                    "datasource": "thanos",
+                    "route": "/api/v1/query",
+                    "promql": "up",
+                    "expected_http_status": [200],
+                    "expected_prometheus_status": "success",
+                    "expected_result_type": "vector",
+                    "minimum_series": 0,
+                    "required_labels": [],
+                    "empty_result_valid": True,
+                    "empty_ui_state": "No data",
+                    "capability": "shipped",
+                    "authorization_response": "not-applicable",
+                }
+            ],
+        }
+    )
+
+    assert contract.pipeline_health.records == ()
 
 
 def test_public_contract_exposes_stable_dashboard_panels_and_capabilities() -> None:
