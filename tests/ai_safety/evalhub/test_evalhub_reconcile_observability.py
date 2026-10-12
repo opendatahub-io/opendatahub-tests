@@ -61,7 +61,7 @@ from tests.ai_safety.evalhub.utils import (
     parse_trace_spans_from_logs,
 )
 
-METRICS_POLL_TIMEOUT: int = 120
+METRICS_POLL_TIMEOUT: int = 300  # OTEL Prometheus bridge has 2-5 min export delay
 METRICS_POLL_INTERVAL: int = 10
 TRACE_POLL_TIMEOUT: int = 60
 TRACE_POLL_INTERVAL: int = 5
@@ -287,7 +287,7 @@ class TestEvalHubReconcileMetrics:
         except TimeoutExpiredError:
             pytest.fail(f"{RECONCILE_ERRORS_METRIC} not recorded for failure CR")
 
-    @pytest.mark.skip(reason="error_type=other not emitted by operator for controller=evalhub")
+    @pytest.mark.xfail(run = False, reason="error_type=other not emitted by operator for controller=evalhub")
     def test_unexpected_error_mapped_to_other(
         self,
         operator_metrics_route: Route,
@@ -480,12 +480,14 @@ class TestEvalHubReconcileTracing:
                 if not parent_spans:
                     continue
 
-                parent_span_id = parent_spans[0]["span_id"]
-                children = get_child_spans(spans=spans, parent_span_id=parent_span_id)
-                child_names = {c["name"] for c in children}
+                # Find a parent span that has children (not all reconcile spans have child spans yet)
+                for parent_span in parent_spans:
+                    parent_span_id = parent_span["span_id"]
+                    children = get_child_spans(spans=spans, parent_span_id=parent_span_id)
+                    child_names = {c["name"] for c in children}
 
-                if set(EVALHUB_RECONCILE_CHILD_SPANS).issubset(child_names):
-                    return
+                    if set(EVALHUB_RECONCILE_CHILD_SPANS).issubset(child_names):
+                        return
         except TimeoutExpiredError:
             pytest.fail(f"Not all child spans found. Expected: {set(EVALHUB_RECONCILE_CHILD_SPANS)}")
 
@@ -561,6 +563,10 @@ class TestEvalHubReconcileTracing:
 
         TC-TRC-005: Verify that a failed sub-reconciler phase span records
         an error status code.
+
+        Note: The evalhub_failure_cr has an overlong name that causes
+        ServiceAccount creation to fail (RBAC step), so we check all child
+        spans for error status, not just deployment.
         """
         try:
             for logs in TimeoutSampler(
@@ -570,12 +576,18 @@ class TestEvalHubReconcileTracing:
                 trace_collector_pod=otel_trace_collector_pod,
             ):
                 spans = parse_trace_spans_from_logs(logs=logs)
-                deployment_spans = filter_spans_by_name(spans=spans, name=SPAN_RECONCILE_DEPLOYMENT)
-                error_spans = [s for s in deployment_spans if "error" in s.get("status", "").lower()]
-                if error_spans:
-                    return
+                parent_spans = filter_spans_by_name(spans=spans, name=SPAN_RECONCILE)
+
+                # Check each reconciliation cycle for error spans in any child
+                for parent_span in parent_spans:
+                    parent_span_id = parent_span["span_id"]
+                    children = get_child_spans(spans=spans, parent_span_id=parent_span_id)
+                    # Check if any child span (rbac, deployment, service, etc.) has error status
+                    error_spans = [s for s in children if "error" in s.get("status", "").lower()]
+                    if error_spans:
+                        return
         except TimeoutExpiredError:
-            pytest.fail(f"No error-status span found for {SPAN_RECONCILE_DEPLOYMENT}")
+            pytest.fail("No error-status span found in any sub-reconciler (rbac, deployment, service, route, configmap)")
 
 
 # TC-ERR: Error Classification (4 tests)
@@ -620,7 +632,7 @@ class TestEvalHubReconcileErrors:
 
     def test_multiple_failure_types_same_cycle(
         self,
-        admin_client: DynamicClient,
+        operator_metrics_route: Route,
         operator_metrics_token: str,
         evalhub_failure_cr: EvalHub,
     ) -> None:
@@ -635,7 +647,7 @@ class TestEvalHubReconcileErrors:
                 sleep=METRICS_POLL_INTERVAL,
                 func=fetch_operator_metrics,
                 exceptions_dict=_TRANSIENT_METRICS_EXCEPTIONS,
-                admin_client=admin_client,
+                operator_metrics_route_host=operator_metrics_route.host,
                 operator_metrics_token=operator_metrics_token,
             ):
                 metrics = parse_prometheus_text(text=raw_metrics)
@@ -656,6 +668,7 @@ class TestEvalHubReconcileErrors:
     @pytest.mark.skip(reason="Requires a job-failure fixture that submits and awaits a failing evaluation job")
     def test_job_failure_produces_metric_and_trace(
         self,
+        operator_metrics_route: Route,
         admin_client: DynamicClient,
         operator_metrics_token: str,
         operator_with_otel_tracing: Deployment,
@@ -668,7 +681,7 @@ class TestEvalHubReconcileErrors:
         evalhub_job_failure_events_total metric and a trace span.
         """
         raw_metrics = fetch_operator_metrics(
-            admin_client=admin_client,
+            operator_metrics_route_host=operator_metrics_route.host,
             operator_metrics_token=operator_metrics_token,
         )
         metrics = parse_prometheus_text(text=raw_metrics)
@@ -682,6 +695,7 @@ class TestEvalHubReconcileErrors:
 
     def test_rapid_errors_no_metric_loss(
         self,
+        operator_metrics_route: Route,
         admin_client: DynamicClient,
         operator_metrics_token: str,
         evalhub_failure_cr: EvalHub,
@@ -692,7 +706,7 @@ class TestEvalHubReconcileErrors:
         the error counter monotonically increases — no samples are dropped.
         """
         raw_before = fetch_operator_metrics(
-            admin_client=admin_client,
+            operator_metrics_route_host=operator_metrics_route.host,
             operator_metrics_token=operator_metrics_token,
         )
         metrics_before = parse_prometheus_text(text=raw_before)
@@ -710,7 +724,7 @@ class TestEvalHubReconcileErrors:
                 sleep=METRICS_POLL_INTERVAL,
                 func=fetch_operator_metrics,
                 exceptions_dict=_TRANSIENT_METRICS_EXCEPTIONS,
-                admin_client=admin_client,
+                operator_metrics_route_host=operator_metrics_route.host,
                 operator_metrics_token=operator_metrics_token,
             ):
                 metrics_after = parse_prometheus_text(text=raw_after)
@@ -747,6 +761,7 @@ class TestEvalHubReconcilePerformance:
 
     def test_instrumentation_overhead_within_bounds(
         self,
+        operator_metrics_route: Route,
         admin_client: DynamicClient,
         operator_metrics_token: str,
         evalhub_reconcile_cr: EvalHub,
@@ -762,7 +777,7 @@ class TestEvalHubReconcilePerformance:
                 sleep=METRICS_POLL_INTERVAL,
                 func=fetch_operator_metrics,
                 exceptions_dict=_TRANSIENT_METRICS_EXCEPTIONS,
-                admin_client=admin_client,
+                operator_metrics_route_host=operator_metrics_route.host,
                 operator_metrics_token=operator_metrics_token,
             ):
                 metrics = parse_prometheus_text(text=raw_metrics)
@@ -792,6 +807,7 @@ class TestEvalHubReconcilePerformance:
 
     def test_overhead_does_not_scale_with_cr_count(
         self,
+        operator_metrics_route: Route,
         admin_client: DynamicClient,
         operator_metrics_token: str,
         model_namespace: Namespace,
@@ -803,7 +819,7 @@ class TestEvalHubReconcilePerformance:
         linearly with the number of managed CR instances (stays under 10s).
         """
         raw_metrics = fetch_operator_metrics(
-            admin_client=admin_client,
+            operator_metrics_route_host=operator_metrics_route.host,
             operator_metrics_token=operator_metrics_token,
         )
         metrics = parse_prometheus_text(text=raw_metrics)
@@ -827,6 +843,7 @@ class TestEvalHubReconcilePerformance:
 
     def test_otel_exporter_does_not_block_reconciliation(
         self,
+        operator_metrics_route: Route,
         admin_client: DynamicClient,
         operator_metrics_token: str,
         operator_with_otel_tracing: Deployment,
@@ -839,7 +856,7 @@ class TestEvalHubReconcilePerformance:
         counter still advances — proving the exporter is non-blocking.
         """
         raw_before = fetch_operator_metrics(
-            admin_client=admin_client,
+            operator_metrics_route_host=operator_metrics_route.host,
             operator_metrics_token=operator_metrics_token,
         )
         metrics_before = parse_prometheus_text(text=raw_before)
@@ -864,7 +881,7 @@ class TestEvalHubReconcilePerformance:
                     sleep=METRICS_POLL_INTERVAL,
                     func=fetch_operator_metrics,
                     exceptions_dict=_TRANSIENT_METRICS_EXCEPTIONS,
-                    admin_client=admin_client,
+                    operator_metrics_route_host=operator_metrics_route.host,
                     operator_metrics_token=operator_metrics_token,
                 ):
                     metrics_after = parse_prometheus_text(text=raw_after)
@@ -897,6 +914,7 @@ class TestEvalHubReconcileIntegration:
 
     def test_service_monitor_scrapes_metrics(
         self,
+        operator_metrics_route: Route,
         admin_client: DynamicClient,
         operator_metrics_token: str,
         evalhub_reconcile_cr: EvalHub,
@@ -917,7 +935,7 @@ class TestEvalHubReconcileIntegration:
         assert operator_sm, "No operator ServiceMonitor found in applications namespace"
 
         raw_metrics = fetch_operator_metrics(
-            admin_client=admin_client,
+            operator_metrics_route_host=operator_metrics_route.host,
             operator_metrics_token=operator_metrics_token,
         )
         assert RECONCILE_TOTAL_METRIC in raw_metrics or RECONCILE_DURATION_METRIC in raw_metrics, (
@@ -926,6 +944,7 @@ class TestEvalHubReconcileIntegration:
 
     def test_unauthenticated_request_rejected(
         self,
+        operator_metrics_route: Route,
         admin_client: DynamicClient,
         model_namespace: Namespace,
     ) -> None:
@@ -934,20 +953,9 @@ class TestEvalHubReconcileIntegration:
         TC-INT-002: Verify unauthenticated requests to the operator metrics
         endpoint are rejected by kube-rbac-proxy.
         """
-        operator_ns = py_config["applications_namespace"]
-        pods = list(
-            Pod.get(
-                client=admin_client,
-                namespace=operator_ns,
-                label_selector=OPERATOR_POD_LABEL_SELECTOR,
-            )
-        )
-        assert pods, "No operator pod found"
-        pod = pods[0]
-
         try:
             response = requests.get(
-                f"https://{pod.instance.status.podIP}:{OPERATOR_METRICS_PORT}/metrics",
+                f"https://{operator_metrics_route.host}/metrics",
                 verify=False,
                 timeout=5,
             )
@@ -983,6 +991,7 @@ class TestEvalHubReconcileIntegration:
 
     def test_metrics_no_sensitive_labels(
         self,
+        operator_metrics_route: Route,
         admin_client: DynamicClient,
         operator_metrics_token: str,
         evalhub_reconcile_cr: EvalHub,
@@ -993,7 +1002,7 @@ class TestEvalHubReconcileIntegration:
         (secrets, tokens, passwords) in label values.
         """
         raw_metrics = fetch_operator_metrics(
-            admin_client=admin_client,
+            operator_metrics_route_host=operator_metrics_route.host,
             operator_metrics_token=operator_metrics_token,
         )
         sensitive_patterns = ["password", "secret", "token", "credential", "apikey"]
@@ -1026,6 +1035,7 @@ class TestEvalHubReconcileRegression:
 
     def test_tas_controller_metrics_unaffected(
         self,
+        operator_metrics_route: Route,
         admin_client: DynamicClient,
         model_namespace: Namespace,
         operator_metrics_token: str,
@@ -1036,7 +1046,7 @@ class TestEvalHubReconcileRegression:
         are unaffected by the new EvalHub instrumentation.
         """
         raw_metrics = fetch_operator_metrics(
-            admin_client=admin_client,
+            operator_metrics_route_host=operator_metrics_route.host,
             operator_metrics_token=operator_metrics_token,
         )
         assert "controller_runtime_reconcile_total" in raw_metrics, (
@@ -1045,6 +1055,7 @@ class TestEvalHubReconcileRegression:
 
     def test_lmes_gorch_controller_metrics_unaffected(
         self,
+        operator_metrics_route: Route,
         admin_client: DynamicClient,
         model_namespace: Namespace,
         operator_metrics_token: str,
@@ -1055,7 +1066,7 @@ class TestEvalHubReconcileRegression:
         unaffected by the new EvalHub reconciliation observability code.
         """
         raw_metrics = fetch_operator_metrics(
-            admin_client=admin_client,
+            operator_metrics_route_host=operator_metrics_route.host,
             operator_metrics_token=operator_metrics_token,
         )
         metrics = parse_prometheus_text(text=raw_metrics)
@@ -1111,7 +1122,7 @@ class TestEvalHubReconcileE2E:
 
     def test_successful_reconcile_metrics_in_prometheus(
         self,
-        admin_client: DynamicClient,
+        operator_metrics_route: Route,
         operator_metrics_token: str,
         evalhub_reconcile_cr: EvalHub,
     ) -> None:
@@ -1126,7 +1137,7 @@ class TestEvalHubReconcileE2E:
                 sleep=METRICS_POLL_INTERVAL,
                 func=fetch_operator_metrics,
                 exceptions_dict=_TRANSIENT_METRICS_EXCEPTIONS,
-                admin_client=admin_client,
+                operator_metrics_route_host=operator_metrics_route.host,
                 operator_metrics_token=operator_metrics_token,
             ):
                 metrics = parse_prometheus_text(text=raw_metrics)
@@ -1150,7 +1161,7 @@ class TestEvalHubReconcileE2E:
 
     def test_failed_reconcile_error_metrics_and_traces(
         self,
-        admin_client: DynamicClient,
+        operator_metrics_route: Route,
         operator_metrics_token: str,
         operator_with_otel_tracing: Deployment,
         otel_trace_collector_pod: Pod,
@@ -1167,7 +1178,7 @@ class TestEvalHubReconcileE2E:
                 sleep=METRICS_POLL_INTERVAL,
                 func=fetch_operator_metrics,
                 exceptions_dict=_TRANSIENT_METRICS_EXCEPTIONS,
-                admin_client=admin_client,
+                operator_metrics_route_host=operator_metrics_route.host,
                 operator_metrics_token=operator_metrics_token,
             ):
                 metrics = parse_prometheus_text(text=raw_metrics)
@@ -1183,11 +1194,25 @@ class TestEvalHubReconcileE2E:
 
         logs = fetch_trace_collector_logs(trace_collector_pod=otel_trace_collector_pod)
         spans = parse_trace_spans_from_logs(logs=logs)
+
+        # Check all spans for error status (any span type)
         error_spans = [s for s in spans if "error" in s.get("status", "").lower()]
+
+        # If no global error spans, check child spans of reconcile parents
+        if not error_spans:
+            parent_spans = filter_spans_by_name(spans=spans, name=SPAN_RECONCILE)
+            for parent_span in parent_spans:
+                parent_span_id = parent_span["span_id"]
+                children = get_child_spans(spans=spans, parent_span_id=parent_span_id)
+                error_spans = [s for s in children if "error" in s.get("status", "").lower()]
+                if error_spans:
+                    break
+
         assert error_spans, "No error-status trace spans found for failed reconciliation"
 
     def test_sre_diagnosis_workflow(
         self,
+        operator_metrics_route: Route,
         admin_client: DynamicClient,
         operator_metrics_token: str,
         operator_with_otel_tracing: Deployment,
@@ -1200,7 +1225,7 @@ class TestEvalHubReconcileE2E:
         problem exists, traces pinpoint which sub-reconciler phase failed.
         """
         raw_metrics = fetch_operator_metrics(
-            admin_client=admin_client,
+            operator_metrics_route_host=operator_metrics_route.host,
             operator_metrics_token=operator_metrics_token,
         )
         metrics = parse_prometheus_text(text=raw_metrics)
@@ -1223,6 +1248,7 @@ class TestEvalHubReconcileE2E:
     @pytest.mark.skip(reason="Requires a job-failure fixture that submits and awaits a failing evaluation job")
     def test_job_failure_observable_metrics_and_traces(
         self,
+        operator_metrics_route: Route,
         admin_client: DynamicClient,
         operator_metrics_token: str,
         operator_with_otel_tracing: Deployment,
@@ -1235,7 +1261,7 @@ class TestEvalHubReconcileE2E:
         the evalhub_job_failure_events_total metric and trace spans.
         """
         raw_metrics = fetch_operator_metrics(
-            admin_client=admin_client,
+            operator_metrics_route_host=operator_metrics_route.host,
             operator_metrics_token=operator_metrics_token,
         )
         metrics = parse_prometheus_text(text=raw_metrics)
@@ -1265,7 +1291,7 @@ class TestEvalHubReconcileUpgrade:
     @pytest.mark.post_upgrade
     def test_new_metrics_appear_after_upgrade(
         self,
-        admin_client: DynamicClient,
+        operator_metrics_route: Route,
         operator_metrics_token: str,
         evalhub_reconcile_cr: EvalHub,
     ) -> None:
@@ -1281,7 +1307,7 @@ class TestEvalHubReconcileUpgrade:
                 sleep=METRICS_POLL_INTERVAL,
                 func=fetch_operator_metrics,
                 exceptions_dict=_TRANSIENT_METRICS_EXCEPTIONS,
-                admin_client=admin_client,
+                operator_metrics_route_host=operator_metrics_route.host,
                 operator_metrics_token=operator_metrics_token,
             ):
                 metrics = parse_prometheus_text(text=raw_metrics)
@@ -1301,6 +1327,7 @@ class TestEvalHubReconcileUpgrade:
     @pytest.mark.post_upgrade
     def test_existing_metrics_unaffected_by_upgrade(
         self,
+        operator_metrics_route: Route,
         admin_client: DynamicClient,
         model_namespace: Namespace,
         operator_metrics_token: str,
@@ -1311,7 +1338,7 @@ class TestEvalHubReconcileUpgrade:
         and dashboards are unaffected by the upgrade.
         """
         raw_metrics = fetch_operator_metrics(
-            admin_client=admin_client,
+            operator_metrics_route_host=operator_metrics_route.host,
             operator_metrics_token=operator_metrics_token,
         )
         assert "controller_runtime_reconcile_total" in raw_metrics, (
@@ -1333,6 +1360,7 @@ class TestEvalHubReconcileUpgrade:
     @pytest.mark.pre_upgrade
     def test_rollback_removes_new_metrics(
         self,
+        operator_metrics_route: Route,
         admin_client: DynamicClient,
         model_namespace: Namespace,
         operator_metrics_token: str,
@@ -1343,7 +1371,7 @@ class TestEvalHubReconcileUpgrade:
         evalhub_controller_* metrics without affecting existing ones.
         """
         raw_metrics = fetch_operator_metrics(
-            admin_client=admin_client,
+            operator_metrics_route_host=operator_metrics_route.host,
             operator_metrics_token=operator_metrics_token,
         )
         assert "controller_runtime_reconcile_total" in raw_metrics, (

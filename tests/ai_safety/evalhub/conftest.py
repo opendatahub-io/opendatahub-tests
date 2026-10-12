@@ -2227,6 +2227,7 @@ def operator_with_otel_tracing(
                             "containers": [
                                 {
                                     "name": containers[manager_idx].name,
+                                    "image": containers[manager_idx].image,
                                     "env": env_patch,
                                 }
                             ]
