@@ -581,7 +581,9 @@ class TestEvalHubReconcileTracing:
                     parent_span_id = parent_span["span_id"]
                     children = get_child_spans(spans=spans, parent_span_id=parent_span_id)
                     # Check if any child span (rbac, deployment, service, etc.) has error status
-                    error_spans = [child_span for child_span in children if "error" in child_span.get("status", "").lower()]
+                    error_spans = [
+                        child_span for child_span in children if "error" in child_span.get("status", "").lower()
+                    ]
                     if error_spans:
                         return
         except TimeoutExpiredError:
@@ -658,7 +660,9 @@ class TestEvalHubReconcileErrors:
                 )
                 if samples:
                     error_types_seen = {
-                        sample["labels"].get(METRIC_LABEL_ERROR_TYPE) for sample in samples if float(sample["value"]) > 0
+                        sample["labels"].get(METRIC_LABEL_ERROR_TYPE)
+                        for sample in samples
+                        if float(sample["value"]) > 0
                     }
                     if len(error_types_seen) >= 2:
                         return
