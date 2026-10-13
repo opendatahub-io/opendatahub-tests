@@ -1,54 +1,16 @@
-import atexit
 import json
-import os
-import tempfile
-from pathlib import Path
 from typing import Any
 
 import requests
 import structlog
-from kubernetes.client.rest import ApiException
 from kubernetes.dynamic import DynamicClient
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
-from tests.pipelines_components.constants import PIPELINE_POLL_INTERVAL
 from utilities.resources.workflow import Workflow
 
 LOGGER = structlog.get_logger(name=__name__)
 
 WORKFLOW_SUCCEEDED: str = "Succeeded"
-WORKFLOW_TERMINAL_PHASES: set[str] = {"Succeeded", "Failed", "Error"}
-
-
-def resolve_pipeline_yaml(value: str) -> str:
-    """Resolve a pipeline YAML value to a local file path.
-
-    If the value is a URL (https://), downloads the file to a temp location.
-    If it's a local path, validates the file exists.
-
-    Returns:
-        Absolute path to the pipeline YAML file.
-
-    Raises:
-        FileNotFoundError: If the local path does not exist or the download fails.
-    """
-    if value.startswith(("https://", "http://")):
-        LOGGER.info(f"Downloading pipeline YAML from {value}")
-        resp = requests.get(url=value, timeout=60)
-        resp.raise_for_status()
-        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as tmp:
-            tmp.write(resp.content)
-        atexit.register(os.unlink, path=tmp.name)  # noqa: FCN001
-        LOGGER.info(f"Pipeline YAML downloaded to {tmp.name}")
-        return tmp.name
-
-    path = Path(value)  # noqa: FCN001
-    if not path.is_file():
-        raise FileNotFoundError(
-            f"Pipeline YAML not found: {value!r}\n"
-            f"Provide a local file path or a URL (https://...) to a compiled pipeline YAML."
-        )
-    return str(path.resolve())
 
 
 def _raise_for_status(resp: requests.Response) -> None:
@@ -62,51 +24,6 @@ def _raise_for_status(resp: requests.Response) -> None:
         ) from exc
 
 
-def upload_pipeline(
-    api_url: str,
-    headers: dict[str, str],
-    pipeline_yaml_path: str,
-    pipeline_name: str,
-    ca_bundle: str,
-) -> str:
-    """Upload a compiled pipeline YAML to the DSPA and return the pipeline ID."""
-    with open(pipeline_yaml_path, "rb") as yaml_file:
-        resp = requests.post(
-            url=f"{api_url}/apis/v2beta1/pipelines/upload",
-            headers=headers,
-            files={"uploadfile": (f"{pipeline_name}.yaml", yaml_file, "application/x-yaml")},
-            params={"name": pipeline_name},
-            verify=ca_bundle,
-            timeout=60,
-        )
-    _raise_for_status(resp=resp)
-    return resp.json()["pipeline_id"]
-
-
-def create_pipeline_run(
-    api_url: str,
-    headers: dict[str, str],
-    pipeline_id: str,
-    run_name: str,
-    parameters: dict[str, Any],
-    ca_bundle: str,
-) -> str:
-    """Create a pipeline run and return the run ID."""
-    resp = requests.post(
-        url=f"{api_url}/apis/v2beta1/runs",
-        headers=headers,
-        json={
-            "display_name": run_name,
-            "pipeline_version_reference": {"pipeline_id": pipeline_id},
-            "runtime_config": {"parameters": parameters},
-        },
-        verify=ca_bundle,
-        timeout=60,
-    )
-    _raise_for_status(resp=resp)
-    return resp.json()["run_id"]
-
-
 def get_workflow_phase(
     admin_client: DynamicClient,
     namespace: str,
@@ -117,57 +34,6 @@ def get_workflow_phase(
     if workflows:
         return workflows[0].instance.get("status", {}).get("phase")
     return None
-
-
-def get_workflow_completed_nodes(
-    admin_client: DynamicClient,
-    namespace: str,
-    run_id: str,
-) -> list[dict]:
-    """Get completed workflow nodes for a pipeline run.
-
-    Returns a list of node dicts that reached a terminal phase (Succeeded, Failed, etc.).
-    Useful for verifying that pipeline steps actually executed and their records persist.
-    """
-    workflows = list(Workflow.get(client=admin_client, namespace=namespace, label_selector=f"pipeline/runid={run_id}"))
-    if not workflows:
-        return []
-
-    nodes = workflows[0].instance.get("status", {}).get("nodes", {})
-    return [
-        node for node in nodes.values() if node.get("phase") in WORKFLOW_TERMINAL_PHASES and node.get("type") == "Pod"
-    ]
-
-
-def wait_for_pipeline_run(
-    admin_client: DynamicClient,
-    namespace: str,
-    run_id: str,
-    timeout: int,
-) -> str:
-    """Poll the Argo Workflow until it reaches a terminal phase. Returns the phase string."""
-    LOGGER.info(f"Waiting for pipeline run {run_id} (timeout={timeout}s)")
-
-    try:
-        for phase in TimeoutSampler(
-            wait_timeout=timeout,
-            sleep=PIPELINE_POLL_INTERVAL,
-            func=get_workflow_phase,
-            exceptions_dict={ApiException: [], ConnectionError: [], TimeoutError: []},
-            admin_client=admin_client,
-            namespace=namespace,
-            run_id=run_id,
-        ):
-            LOGGER.info(f"Pipeline run {run_id}: {phase}")
-            if phase and phase in WORKFLOW_TERMINAL_PHASES:
-                return phase
-    except TimeoutExpiredError as err:
-        msg = f"Pipeline run {run_id} did not complete within {timeout}s"
-        LOGGER.error(msg)
-        raise TimeoutExpiredError(msg) from err
-
-    msg = f"Pipeline run {run_id} exited polling without reaching terminal state"
-    raise RuntimeError(msg)
 
 
 def get_pipeline_run(
@@ -185,24 +51,6 @@ def get_pipeline_run(
     )
     _raise_for_status(resp=resp)
     return resp.json()
-
-
-def delete_pipeline(
-    api_url: str,
-    headers: dict[str, str],
-    pipeline_id: str,
-    ca_bundle: str,
-) -> None:
-    """Delete a pipeline and all its versions from the DSPA."""
-    resp = requests.delete(
-        url=f"{api_url}/apis/v2beta1/pipelines/{pipeline_id}",
-        headers=headers,
-        params={"cascade": "true"},
-        verify=ca_bundle,
-        timeout=60,
-    )
-    _raise_for_status(resp=resp)
-    LOGGER.info(f"Deleted pipeline {pipeline_id}")
 
 
 def delete_pipeline_run(
@@ -246,11 +94,6 @@ def collect_pipeline_pod_logs(
 # ---------------------------------------------------------------------------
 # Managed pipeline helpers
 # ---------------------------------------------------------------------------
-
-
-def use_managed_pipelines(yaml_env_value: str) -> bool:
-    """Return True (managed mode) when the YAML env var is empty, False (legacy) when set."""
-    return not bool(yaml_env_value)
 
 
 def find_pipeline_by_display_name(

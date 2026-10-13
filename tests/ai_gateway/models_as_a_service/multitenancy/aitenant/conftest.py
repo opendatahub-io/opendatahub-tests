@@ -18,6 +18,9 @@ from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import (
     aitenant_admin_role_bindings,
     build_aitenant_test_context,
     expected_tenant_namespace_name,
+    maas_controller_tenant_namespace_discovery_enabled,
+    require_aitenant_crd_for_discovery,
+    require_tenant_namespace_discovery_enabled,
 )
 from tests.ai_gateway.models_as_a_service.utils import (
     aitenant_from_spec,
@@ -369,3 +372,13 @@ def aitenant_derived_namespace_case(
         aitenant_name=aitenant_derived_test_params["aitenant_name"],
     )
     return build_aitenant_test_context(aitenant=ready_aitenant_derived), expected_tenant_namespace
+
+
+@pytest.fixture
+def tenant_namespace_discovery_prerequisites(admin_client: DynamicClient) -> None:
+    """Require AITenant CRD and maas-controller tenant namespace discovery enabled."""
+    require_aitenant_crd_for_discovery(admin_client=admin_client)
+    require_tenant_namespace_discovery_enabled(admin_client=admin_client)
+    assert maas_controller_tenant_namespace_discovery_enabled(admin_client=admin_client), (
+        "maas-controller must run with --enable-tenant-namespace-discovery=true for these tests"
+    )
