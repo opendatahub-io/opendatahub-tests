@@ -67,7 +67,7 @@ class TestOprOperatorReconciler:
         job_id, job_name = submit_evalhub_job_and_capture_runtime_job(
             admin_client=admin_client,
             host=host,
-           token=lifecycle_signals_token,
+            token=lifecycle_signals_token,
             ca_bundle_file=lifecycle_signals_ca_bundle_file,
             tenant=ns,
             payload=payload,
