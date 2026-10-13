@@ -911,6 +911,55 @@ def intents_kfp_garak_job_id(
 
 
 @pytest.fixture(scope="class")
+def network_policy_access_for_evalhub_api_sa(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    tenant_a_namespace: Namespace,
+    tenant_a_rbac_ready: None,
+) -> Generator[tuple[Role, RoleBinding], Any, Any]:
+    """Grant the EvalHub API ServiceAccount NetworkPolicy access in the PVC tenant.
+
+    EvalHub runtime (eval-hub PR #1070) creates a per-execution NetworkPolicy before
+    each Job, using the API ServiceAccount (`{cr}-service`) via the jobs-writer
+    RoleBinding. Operator PR #985 adds create/get/update to jobs-writer; this
+    fixture also grants delete because Kubernetes requires it to set ownerRef on
+    the NetworkPolicy. Until that ClusterRole is deployed (and includes delete for
+    ownerRef), this bridges the gap for PVC storage tests.
+
+    Do not bind the job Pod ServiceAccount — NetworkPolicy creation is done by the
+    EvalHub API, not by evaluation Job pods.
+    """
+    api_sa_name = f"{EVALHUB_MT_CR_NAME}-service"
+    with (
+        Role(
+            client=admin_client,
+            name="evalhub-api-network-policy",
+            namespace=tenant_a_namespace.name,
+            rules=[
+                {
+                    "apiGroups": ["networking.k8s.io"],
+                    "resources": ["networkpolicies"],
+                    "verbs": ["create", "get", "update", "delete"],
+                },
+            ],
+            wait_for_resource=True,
+        ) as role,
+        RoleBinding(
+            client=admin_client,
+            name="evalhub-api-network-policy",
+            namespace=tenant_a_namespace.name,
+            role_ref_kind=role.kind,
+            role_ref_name=role.name,
+            subjects_kind="ServiceAccount",
+            subjects_name=api_sa_name,
+            subjects_namespace=model_namespace.name,
+            wait_for_resource=True,
+        ) as binding,
+    ):
+        yield role, binding
+
+
+@pytest.fixture(scope="class")
 def dsp_access_for_job_sa(
     admin_client: DynamicClient,
     tenant_namespace: Namespace,
@@ -1779,8 +1828,13 @@ def submit_pvc_job(
     evalhub_mt_ca_bundle_file: str,
     evalhub_mt_route: Route,
     evalhub_vllm_emulator_service: Service,
+    network_policy_access_for_evalhub_api_sa: tuple[Role, RoleBinding],
 ) -> Generator[Callable[..., str], Any, Any]:
-    """Factory fixture: submit PVC evaluation jobs with guaranteed cleanup."""
+    """Factory fixture: submit PVC evaluation jobs with guaranteed cleanup.
+
+    Requires network_policy_access_for_evalhub_api_sa so the EvalHub API SA can
+    create per-execution NetworkPolicies (eval-hub PR #1070 / operator PR #985).
+    """
     job_ids: list[str] = []
 
     def _submit(
