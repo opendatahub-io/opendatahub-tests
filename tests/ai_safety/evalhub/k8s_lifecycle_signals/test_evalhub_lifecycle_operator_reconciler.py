@@ -13,7 +13,6 @@ from ocp_resources.route import Route
 from ocp_resources.service import Service
 
 from tests.ai_safety.evalhub.k8s_lifecycle_signals.constants import (
-    LIFECYCLE_EVENT_EMISSION_TIMEOUT,
     LIFECYCLE_REASON_FAILED,
     LIFECYCLE_SOURCE_OPERATOR,
     LIFECYCLE_SOURCE_SERVER,
@@ -29,7 +28,6 @@ from tests.ai_safety.evalhub.k8s_lifecycle_signals.utils import (
     list_events_for_job,
     submit_evalhub_job_and_capture_runtime_job,
     wait_for_event,
-    wait_for_failure_phase_signals,
 )
 from tests.ai_safety.evalhub.utils import (
     wait_for_evalhub_job,
@@ -100,8 +98,7 @@ class TestOprOperatorReconciler:
         oom_detected = any(exit_code == 137 or reason == "OOMKilled" for exit_code, reason in adapter_states)
 
         assert oom_detected, (
-            f"OOM not detected. Adapter container states: {adapter_states}. "
-            f"Expected exitCode=137 or reason='OOMKilled'"
+            f"OOM not detected. Adapter container states: {adapter_states}. Expected exitCode=137 or reason='OOMKilled'"
         )
 
     @pytest.mark.smoke
