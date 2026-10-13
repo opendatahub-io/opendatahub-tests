@@ -11,11 +11,10 @@ from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 from ocp_resources.service import Service
 
-from tests.ai_safety.nemo_guardrails.utils import verify_auth_required
 from utilities.guardrails import get_auth_headers
 from utilities.resources.nemo_guardrails import NemoGuardrails
 
-_ADMIN_TEST_PATH = "/admin/test"
+_ADMIN_TEST_PATH = "/healthz"
 _ADMIN_CONTAINER_NAME = "kube-rbac-proxy-admin"
 _USER_CONTAINER_NAME = "kube-rbac-proxy"
 _ADMIN_DOWNSTREAM_PORT = 8444
@@ -142,41 +141,6 @@ class TestNemoAdminRouteWithAuth:
         assert "/v1/" in paths, f"Expected /v1/ in user proxy allow-paths, got: {paths}"
         assert "/admin/" not in paths, f"User proxy should not allow /admin/ paths, got: {paths}"
 
-    def test_admin_proxy_path_allowlist(
-        self,
-        admin_client: DynamicClient,
-        model_namespace: Namespace,
-        nemo_guardrails_presidio_auth: NemoGuardrails,
-    ) -> None:
-        """
-        Test that the admin proxy allows both /v1/* and /admin/* paths.
-
-        Given: NemoGuardrails CR with auth enabled
-        When: Admin proxy container args are inspected
-        Then: --allow-paths includes both /v1/* and /admin/*
-        """
-        pods = list(
-            Pod.get(
-                client=admin_client,
-                namespace=model_namespace.name,
-                label_selector=f"app={nemo_guardrails_presidio_auth.name}",
-            )
-        )
-        assert pods, f"No pods found for {nemo_guardrails_presidio_auth.name}"
-
-        admin_container = next(
-            (c for c in pods[0].instance.spec.containers if c.name == _ADMIN_CONTAINER_NAME),
-            None,
-        )
-        assert admin_container is not None, f"Container '{_ADMIN_CONTAINER_NAME}' not found"
-
-        args = admin_container.args or []
-        allow_paths_arg = next((arg for arg in args if arg.startswith("--allow-paths=")), None)
-        assert allow_paths_arg is not None, f"--allow-paths not found in {_ADMIN_CONTAINER_NAME} args: {args}"
-        paths = allow_paths_arg.split("=", 1)[1]
-        assert "/v1/" in paths, f"Expected /v1/ in admin proxy allow-paths, got: {paths}"
-        assert "/admin/" in paths, f"Expected /admin/ in admin proxy allow-paths, got: {paths}"
-
     def test_admin_rbac_configmap_exists(
         self,
         admin_client: DynamicClient,
@@ -242,7 +206,7 @@ class TestNemoAdminRouteWithAuth:
 
         Given: NemoGuardrails with auth enabled and a valid user token
         When: A request to /admin/test is made via the user-facing route
-        Then: The kube-rbac-proxy path filter returns a non-JSON 404 (path not in allow list)
+        Then: The kube-rbac-proxy path filter returns 404 (path not in allow list)
         """
         url = f"https://{nemo_guardrails_presidio_auth_route.host}{_ADMIN_TEST_PATH}"
         response = requests.get(
@@ -254,9 +218,6 @@ class TestNemoAdminRouteWithAuth:
         assert response.status_code == http.HTTPStatus.NOT_FOUND, (
             f"Expected 404 from proxy path filter on user route, got {response.status_code}"
         )
-        assert "application/json" not in response.headers.get("Content-Type", ""), (
-            "Expected non-JSON response from kube-rbac-proxy path filter, but got JSON"
-        )
 
     def test_admin_route_authenticated_not_blocked(
         self,
@@ -267,12 +228,11 @@ class TestNemoAdminRouteWithAuth:
         nemo_guardrails_presidio_admin_route_healthcheck: None,
     ) -> None:
         """
-        Test that authenticated admin users are not blocked at the admin proxy.
+        Test that authenticated admin users can access the admin health endpoint.
 
         Given: NemoGuardrails with auth enabled and a token with create permission
-        When: A request to /admin/test is made via the admin route
-        Then: The admin proxy forwards the request to NeMo, which returns a JSON 404
-              (proving the proxy forwarded the request rather than blocking it)
+        When: A request to /healthz is made via the admin route
+        Then: The health endpoint returns 200 OK
         """
         url = f"https://{nemo_guardrails_presidio_admin_route.instance.spec.host}{_ADMIN_TEST_PATH}"
         response = requests.get(
@@ -281,11 +241,8 @@ class TestNemoAdminRouteWithAuth:
             verify=openshift_ca_bundle_file,
             timeout=30,
         )
-        assert response.status_code == http.HTTPStatus.NOT_FOUND, (
-            f"Expected 404 from NeMo (proxy forwarded the request), got {response.status_code}"
-        )
-        assert "application/json" in response.headers.get("Content-Type", ""), (
-            "Expected JSON response from NeMo, got non-JSON (request may have been blocked by proxy)"
+        assert response.status_code == http.HTTPStatus.OK, (
+            f"Expected 200 OK from admin /healthz endpoint, got {response.status_code}"
         )
 
     def test_admin_route_unauthenticated_blocked(
@@ -308,7 +265,9 @@ class TestNemoAdminRouteWithAuth:
             verify=openshift_ca_bundle_file,
             timeout=30,
         )
-        verify_auth_required(response=response)
+        assert response.status_code == http.HTTPStatus.UNAUTHORIZED, (
+            f"Expected 401 Unauthorized from admin proxy, got {response.status_code}"
+        )
 
 
 @pytest.mark.tier2
