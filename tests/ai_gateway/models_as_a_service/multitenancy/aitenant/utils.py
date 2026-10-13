@@ -71,6 +71,8 @@ FINALIZER_SUBSCRIPTION = "maas.opendatahub.io/subscription-cleanup"
 FINALIZER_MODEL_REF = "maas.opendatahub.io/model-cleanup"
 
 MODEL_REF_RECONCILED_PHASES = ("Pending", "Active", "Degraded")
+MAAS_MODEL_REF_TENANT_RESOLUTION_FAILED_PHASES = ("Failed",)
+MAAS_MODEL_REF_READY_CONDITION_TYPE = "Ready"
 
 SUBSCRIPTION_RECONCILED_PHASES = ("Active", "Degraded")
 
@@ -1003,6 +1005,193 @@ def synthetic_discovery_tenant_namespace(
                 tenant_label_name=case["tenant_label_name"],
             )
         yield case
+
+
+def read_maas_model_ref_spec_tenant_ref(model_ref: NamespacedResource) -> str | None:
+    """Return spec.tenantRef on MaaSModelRef when set."""
+    refreshed_model_ref = refresh_maas_namespaced_resource(resource=model_ref)
+    spec = refreshed_model_ref.instance.spec
+    if spec is None:
+        return None
+    tenant_ref = getattr(spec, "tenantRef", None)
+    if tenant_ref is None:
+        return None
+    tenant_ref_text = str(tenant_ref).strip()
+    if not tenant_ref_text:
+        return None
+    return tenant_ref_text
+
+
+def read_maas_model_ref_resolved_tenant_ref(model_ref: NamespacedResource) -> str | None:
+    """Return status.resolvedTenantRef on MaaSModelRef when set."""
+    refreshed_model_ref = refresh_maas_namespaced_resource(resource=model_ref)
+    status = refreshed_model_ref.instance.status
+    if status is None:
+        return None
+    resolved_tenant_ref = getattr(status, "resolvedTenantRef", None)
+    if resolved_tenant_ref is None:
+        return None
+    resolved_text = str(resolved_tenant_ref).strip()
+    if not resolved_text:
+        return None
+    return resolved_text
+
+
+def build_tenant_local_maas_model_ref_kind_dict(
+    model_name: str,
+    tenant_namespace_name: str,
+    spec_tenant_ref: str | None = None,
+) -> dict[str, Any]:
+    """Build kind_dict for a tenant-local LLMIS MaaSModelRef, optionally with spec.tenantRef at create."""
+    spec: dict[str, Any] = {
+        "modelRef": {
+            "name": model_name,
+            "namespace": tenant_namespace_name,
+            "kind": "LLMInferenceService",
+        },
+    }
+    if spec_tenant_ref is not None:
+        spec["tenantRef"] = spec_tenant_ref
+    return {
+        "apiVersion": f"{ApiGroups.MAAS_IO}/v1alpha1",
+        "kind": "MaaSModelRef",
+        "metadata": {"name": model_name, "namespace": tenant_namespace_name},
+        "spec": spec,
+    }
+
+
+def verify_maas_model_ref_spec_omits_tenant_ref(model_ref: NamespacedResource) -> None:
+    """Assert MaaSModelRef does not carry an explicit spec.tenantRef."""
+    actual_tenant_ref = read_maas_model_ref_spec_tenant_ref(model_ref=model_ref)
+    assert actual_tenant_ref is None, (
+        f"MaaSModelRef '{model_ref.namespace}/{model_ref.name}' should omit spec.tenantRef; got {actual_tenant_ref!r}"
+    )
+
+
+def verify_maas_model_ref_resolved_tenant_ref(
+    model_ref: NamespacedResource,
+    expected_aitenant_name: str,
+) -> None:
+    """Assert status.resolvedTenantRef matches the expected AITenant name."""
+    actual_resolved = read_maas_model_ref_resolved_tenant_ref(model_ref=model_ref)
+    assert actual_resolved == expected_aitenant_name, (
+        f"MaaSModelRef '{model_ref.namespace}/{model_ref.name}' status.resolvedTenantRef "
+        f"expected {expected_aitenant_name!r}, got {actual_resolved!r}"
+    )
+
+
+def verify_maas_model_ref_spec_tenant_ref(
+    model_ref: NamespacedResource,
+    expected_aitenant_name: str,
+) -> None:
+    """Assert spec.tenantRef matches the expected AITenant name."""
+    actual_tenant_ref = read_maas_model_ref_spec_tenant_ref(model_ref=model_ref)
+    assert actual_tenant_ref == expected_aitenant_name, (
+        f"MaaSModelRef '{model_ref.namespace}/{model_ref.name}' spec.tenantRef "
+        f"expected {expected_aitenant_name!r}, got {actual_tenant_ref!r}"
+    )
+
+
+def verify_maas_model_ref_tenant_ref_resolution(
+    model_ref: NamespacedResource,
+    expected_aitenant_name: str,
+    expected_spec_tenant_ref: str | None = None,
+    resolution_timeout: int = 900,
+) -> None:
+    """Verify spec.tenantRef, wait for maas-controller resolution, and assert status.resolvedTenantRef.
+
+    When expected_spec_tenant_ref is None, assert spec omits tenantRef (auto-resolve from gateway).
+    When set, assert spec.tenantRef matches that value before waiting on status.
+    """
+    if expected_spec_tenant_ref is None:
+        verify_maas_model_ref_spec_omits_tenant_ref(model_ref=model_ref)
+    else:
+        verify_maas_model_ref_spec_tenant_ref(
+            model_ref=model_ref,
+            expected_aitenant_name=expected_spec_tenant_ref,
+        )
+    wait_for_maas_model_ref_auto_resolved_tenant_ref(
+        model_ref=model_ref,
+        expected_aitenant_name=expected_aitenant_name,
+        timeout=resolution_timeout,
+    )
+    verify_maas_model_ref_resolved_tenant_ref(
+        model_ref=model_ref,
+        expected_aitenant_name=expected_aitenant_name,
+    )
+
+
+def read_maas_model_ref_ready_condition_message(model_ref: NamespacedResource) -> str | None:
+    """Return the message on the Ready condition when present."""
+    refreshed_model_ref = refresh_maas_namespaced_resource(resource=model_ref)
+    status = refreshed_model_ref.instance.status
+    if status is None:
+        return None
+    conditions = getattr(status, "conditions", None)
+    if conditions is None:
+        return None
+    for condition in conditions:
+        condition_type = getattr(condition, "type", None)
+        if condition_type != MAAS_MODEL_REF_READY_CONDITION_TYPE:
+            continue
+        message = getattr(condition, "message", None)
+        if message is None:
+            return None
+        return str(message)
+    return None
+
+
+def wait_for_maas_model_ref_auto_resolved_tenant_ref(
+    model_ref: NamespacedResource,
+    expected_aitenant_name: str,
+    timeout: int = 900,
+) -> None:
+    """Wait until MaaSModelRef auto-resolves status.resolvedTenantRef and is adopted by maas-controller."""
+    resource_label = f"{model_ref.kind}/{model_ref.namespace}/{model_ref.name}"
+
+    def resolution_complete() -> bool:
+        resolved_name = read_maas_model_ref_resolved_tenant_ref(model_ref=model_ref)
+        if resolved_name != expected_aitenant_name:
+            return False
+        finalizers = read_maas_resource_finalizers(resource=model_ref)
+        return FINALIZER_MODEL_REF in finalizers
+
+    try:
+        for ready in TimeoutSampler(wait_timeout=timeout, sleep=5, func=resolution_complete):
+            if ready:
+                LOGGER.info(
+                    f"{resource_label} auto-resolved tenantRef={expected_aitenant_name!r} "
+                    f"and has finalizer {FINALIZER_MODEL_REF!r}"
+                )
+                return
+    except TimeoutExpiredError:
+        resolved_name = read_maas_model_ref_resolved_tenant_ref(model_ref=model_ref)
+        finalizers = read_maas_resource_finalizers(resource=model_ref)
+        pytest.fail(
+            f"{resource_label} did not auto-resolve to AITenant {expected_aitenant_name!r} within {timeout}s; "
+            f"resolvedTenantRef={resolved_name!r}, finalizers={finalizers!r}"
+        )
+
+
+def wait_for_maas_model_ref_tenant_resolution_failed(
+    model_ref: NamespacedResource,
+    timeout: int = 300,
+) -> str:
+    """Wait until MaaSModelRef enters Failed phase for tenant resolution and return Ready condition message."""
+    phase = wait_for_maas_resource_phase(
+        resource=model_ref,
+        expected_phases=MAAS_MODEL_REF_TENANT_RESOLUTION_FAILED_PHASES,
+        timeout=timeout,
+    )
+    assert phase in MAAS_MODEL_REF_TENANT_RESOLUTION_FAILED_PHASES
+    message = read_maas_model_ref_ready_condition_message(model_ref=model_ref)
+    resource_label = f"{model_ref.kind}/{model_ref.namespace}/{model_ref.name}"
+    assert message is not None, f"{resource_label} Failed without a Ready condition message"
+    normalized_message = message.lower()
+    assert "tenant" in normalized_message, (
+        f"{resource_label} Ready condition message should mention tenant resolution failure; got {message!r}"
+    )
+    return message
 
 
 def wait_for_maas_model_ref_discovered(
