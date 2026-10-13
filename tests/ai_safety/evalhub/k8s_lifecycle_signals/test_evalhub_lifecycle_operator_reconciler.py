@@ -114,10 +114,14 @@ class TestOprOperatorReconciler:
             namespace=ns,
             reason=LIFECYCLE_REASON_FAILED,
         )
-        operator_events = [ev for ev in events if (ev.get("source") or {}).get("component") == LIFECYCLE_SOURCE_OPERATOR]
+        operator_events = [
+            ev for ev in events if (ev.get("source") or {}).get("component") == LIFECYCLE_SOURCE_OPERATOR
+        ]
 
         assert operator_events, "Expected at least one EvaluationFailed Event from the operator for OOM"
-        assert operator_events[0].get("type") == "Warning", f"Expected type=Warning, got {operator_events[0].get('type')}"
+        assert operator_events[0].get("type") == "Warning", (
+            f"Expected type=Warning, got {operator_events[0].get('type')}"
+        )
 
     @pytest.mark.smoke
     def test_opr_002_operator_emits_failed_event_for_image_pull_failure(
@@ -172,10 +176,14 @@ class TestOprOperatorReconciler:
             namespace=ns,
             reason=LIFECYCLE_REASON_FAILED,
         )
-        operator_events = [ev for ev in events if (ev.get("source") or {}).get("component") == LIFECYCLE_SOURCE_OPERATOR]
+        operator_events = [
+            ev for ev in events if (ev.get("source") or {}).get("component") == LIFECYCLE_SOURCE_OPERATOR
+        ]
 
         assert operator_events, "Expected at least one EvaluationFailed Event from the operator for ImagePullBackOff"
-        assert operator_events[0].get("type") == "Warning", f"Expected type=Warning, got {operator_events[0].get('type')}"
+        assert operator_events[0].get("type") == "Warning", (
+            f"Expected type=Warning, got {operator_events[0].get('type')}"
+        )
         assert operator_events[0].get("message"), "Expected message describing image pull failure"
 
     @pytest.mark.smoke
