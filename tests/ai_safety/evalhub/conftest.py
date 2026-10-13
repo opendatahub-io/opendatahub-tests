@@ -922,9 +922,8 @@ def network_policy_access_for_evalhub_api_sa(
     EvalHub runtime (eval-hub PR #1070) creates a per-execution NetworkPolicy before
     each Job, using the API ServiceAccount (`{cr}-service`) via the jobs-writer
     RoleBinding. Operator PR #985 adds create/get/update to jobs-writer; this
-    fixture also grants delete because Kubernetes requires it to set ownerRef on
-    the NetworkPolicy. Until that ClusterRole is deployed (and includes delete for
-    ownerRef), this bridges the gap for PVC storage tests.
+    The owner-reference transfer updates the NetworkPolicy. Until that ClusterRole
+    is deployed, this bridges the gap for PVC storage tests.
 
     Do not bind the job Pod ServiceAccount — NetworkPolicy creation is done by the
     EvalHub API, not by evaluation Job pods.
@@ -939,7 +938,7 @@ def network_policy_access_for_evalhub_api_sa(
                 {
                     "apiGroups": ["networking.k8s.io"],
                     "resources": ["networkpolicies"],
-                    "verbs": ["create", "get", "update", "delete"],
+                    "verbs": ["create", "get", "update"],
                 },
             ],
             wait_for_resource=True,
@@ -1972,6 +1971,7 @@ def submit_hf_job(
     evalhub_mt_ca_bundle_file: str,
     evalhub_mt_route: Route,
     evalhub_vllm_emulator_service: Service,
+    network_policy_access_for_evalhub_api_sa: tuple[Role, RoleBinding],
 ) -> Generator[Callable[..., str], Any, Any]:
     """Factory fixture: submit HF-storage evaluation jobs with guaranteed cleanup."""
     job_ids: list[str] = []
