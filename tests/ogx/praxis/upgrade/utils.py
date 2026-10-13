@@ -23,7 +23,7 @@ from ocp_resources.job import Job
 from ocp_resources.pod import Pod
 from ogx_client import OgxClient
 
-from tests.ogx.constants import POSTGRESQL_PASSWORD, POSTGRESQL_USER, OGX_POSTGRES_SERVICE_NAME
+from tests.ogx.constants import OGX_POSTGRES_SERVICE_NAME, POSTGRESQL_PASSWORD, POSTGRESQL_USER
 from tests.ogx.praxis.upgrade.constants import (
     API_BASELINE_CONFIG_MAP_NAME,
     COMPARED_FILE_FIELDS,
