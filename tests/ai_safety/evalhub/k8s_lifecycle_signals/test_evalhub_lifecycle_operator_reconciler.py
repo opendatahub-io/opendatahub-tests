@@ -28,7 +28,7 @@ from tests.ai_safety.evalhub.k8s_lifecycle_signals.utils import (
     kueue_local_queue_exists,
     list_events_for_job,
     submit_evalhub_job_and_capture_runtime_job,
-    wait_for_event,
+    wait_for_event_from_component,
 )
 from tests.ai_safety.evalhub.utils import (
     wait_for_evalhub_job,
@@ -83,7 +83,7 @@ class TestOprOperatorReconciler:
             states = [
                 (cs.state.terminated.exitCode, cs.state.terminated.reason)
                 for pod in pods
-                for cs in (pod.instance.status.containerStatuses or [])
+                for cs in ((pod.instance.status.containerStatuses or []) if pod.instance.status else [])
                 if cs.name == "adapter" and cs.state.terminated
             ]
             return states or None
@@ -101,11 +101,12 @@ class TestOprOperatorReconciler:
             f"OOM not detected. Adapter container states: {adapter_states}. Expected exitCode=137 or reason='OOMKilled'"
         )
 
-        wait_for_event(
+        wait_for_event_from_component(
             admin_client=admin_client,
             job_name=job_name,
             namespace=ns,
             reason=LIFECYCLE_REASON_FAILED,
+            source_component=LIFECYCLE_SOURCE_OPERATOR,
             timeout=120,
         )
         events = list_events_for_job(
@@ -163,11 +164,12 @@ class TestOprOperatorReconciler:
             job_id=job_id,
         )
 
-        wait_for_event(
+        wait_for_event_from_component(
             admin_client=admin_client,
             job_name=job_name,
             namespace=ns,
             reason=LIFECYCLE_REASON_FAILED,
+            source_component=LIFECYCLE_SOURCE_OPERATOR,
             timeout=120,
         )
         events = list_events_for_job(
@@ -237,11 +239,12 @@ class TestOprOperatorReconciler:
         # Evict the Kueue Workload for this job
         Workload(client=admin_client, name=workload.name, namespace=ns).delete(wait=False)
 
-        wait_for_event(
+        wait_for_event_from_component(
             admin_client=admin_client,
             job_name=job_name,
             namespace=ns,
             reason=LIFECYCLE_REASON_FAILED,
+            source_component=LIFECYCLE_SOURCE_OPERATOR,
             timeout=120,
         )
         operator_events = list_events_for_job(
@@ -302,11 +305,12 @@ class TestOprOperatorReconciler:
             job_id=job_id,
         )
 
-        wait_for_event(
+        wait_for_event_from_component(
             admin_client=admin_client,
             job_name=job_name,
             namespace=ns,
             reason=LIFECYCLE_REASON_FAILED,
+            source_component=LIFECYCLE_SOURCE_OPERATOR,
             timeout=120,
         )
         all_events = list_events_for_job(
