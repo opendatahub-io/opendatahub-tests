@@ -23,13 +23,14 @@ from ocp_resources.job import Job
 from ocp_resources.pod import Pod
 from ogx_client import OgxClient
 
-from tests.ogx.constants import POSTGRESQL_PASSWORD, POSTGRESQL_USER
+from tests.ogx.constants import POSTGRESQL_PASSWORD, POSTGRESQL_USER, OGX_POSTGRES_SERVICE_NAME
 from tests.ogx.praxis.upgrade.constants import (
     API_BASELINE_CONFIG_MAP_NAME,
     COMPARED_FILE_FIELDS,
     COMPARED_VECTOR_STORE_FIELDS,
     MIGRATION_JOB_NAME_SUFFIX,
     MIGRATION_JOB_TIMEOUT,
+    OGX_POSTGRES_DATABASE,
     POSTGRES_CONTAINER_NAME,
     POSTGRES_PORT,
     PRAXIS_POSTGRES_DATABASE,
@@ -130,8 +131,8 @@ def postgres_pod(client: DynamicClient, namespace: str, label_selector: str) -> 
     return pods[0]
 
 
-def praxis_connection_string(namespace: str) -> str:
-    """Build the DSN of the Praxis database deployed in `namespace`.
+def postgres_connection_string(namespace: str, service_name: str, database: str) -> str:
+    """Build a PostgreSQL DSN for a database deployed in `namespace`.
 
     The credentials are the ones `get_postgres_deployment_template` gives every
     instance it builds, so the DSN is derived rather than read back from the
@@ -139,14 +140,34 @@ def praxis_connection_string(namespace: str) -> str:
     command line.
 
     Args:
-        namespace: Namespace holding the Praxis PostgreSQL service.
+        namespace: Namespace holding the PostgreSQL service.
+        service_name: Name of the Service fronting PostgreSQL.
+        database: Name of the PostgreSQL database.
 
     Returns:
-        A `postgresql://` connection string for the Praxis database.
+        A `postgresql://` connection string for the requested database.
     """
     credentials = f"{quote(string=POSTGRESQL_USER, safe='')}:{quote(string=POSTGRESQL_PASSWORD, safe='')}"
-    host = f"{PRAXIS_POSTGRES_SERVICE_NAME}.{namespace}.svc.cluster.local"
-    return f"postgresql://{credentials}@{host}:{POSTGRES_PORT}/{PRAXIS_POSTGRES_DATABASE}"
+    host = f"{service_name}.{namespace}.svc.cluster.local"
+    return f"postgresql://{credentials}@{host}:{POSTGRES_PORT}/{database}"
+
+
+def ogx_connection_string(namespace: str) -> str:
+    """Build the DSN of the source OGX database deployed in `namespace`."""
+    return postgres_connection_string(
+        namespace=namespace,
+        service_name=OGX_POSTGRES_SERVICE_NAME,
+        database=OGX_POSTGRES_DATABASE,
+    )
+
+
+def praxis_connection_string(namespace: str) -> str:
+    """Build the DSN of the target Praxis database deployed in `namespace`."""
+    return postgres_connection_string(
+        namespace=namespace,
+        service_name=PRAXIS_POSTGRES_SERVICE_NAME,
+        database=PRAXIS_POSTGRES_DATABASE,
+    )
 
 
 def query_database(postgres_pod: Pod, database: str, select_statement: str) -> list[dict[str, Any]]:
@@ -194,24 +215,6 @@ def ids_present_in_table(
         select_statement=f"SELECT {id_column} AS resource_id FROM {table} WHERE {id_column} IN ({id_literals})",
     )
     return {str(row["resource_id"]) for row in rows}
-
-
-def migration_target_secret_ref(ogx_server: OgxServer) -> dict[str, str] | None:
-    """Return the Secret reference holding the Praxis target connection string.
-
-    Args:
-        ogx_server: The OGXServer whose spec is inspected.
-
-    Returns:
-        A dict with `name` and `key`, or None when the OGXServer does not opt
-        into the migration Job (`spec.praxisMode.migrationJob` absent).
-    """
-    praxis_mode = ogx_server.instance.to_dict()["spec"].get("praxisMode") or {}
-    migration_job = praxis_mode.get("migrationJob") or {}
-    target_ref = migration_job.get("targetConnectionString")
-    if not target_ref:
-        return None
-    return {"name": target_ref["name"], "key": target_ref["key"]}
 
 
 def wait_for_migration_job_completion(client: DynamicClient, ogx_server: OgxServer) -> Job:

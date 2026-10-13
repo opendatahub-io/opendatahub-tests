@@ -23,6 +23,7 @@ from tests.ogx.constants import (
     OGX_CLIENT_VERIFY_SSL,
     OGX_CORE_INFERENCE_MODEL,
     OGX_OPENSHIFT_MINIMAL_VERSION,
+    OGX_POSTGRES_SERVICE_NAME,
     OGX_SERVER_SECRET_DATA,
     UPGRADE_DISTRIBUTION_NAME,
     ModelInfo,
@@ -533,7 +534,7 @@ def postgres_service(
     service = Service(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace.name,
-        name="vector-io-postgres-service",
+        name=OGX_POSTGRES_SERVICE_NAME,
         ports=[
             {
                 "port": 5432,

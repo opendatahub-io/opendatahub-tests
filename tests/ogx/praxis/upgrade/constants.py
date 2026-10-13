@@ -43,9 +43,10 @@ PRAXIS_POSTGRES_DEPLOYMENT_NAME: str = "praxis-postgres-deployment"
 PRAXIS_POSTGRES_SERVICE_NAME: str = "praxis-postgres-service"
 PRAXIS_POSTGRES_DATABASE: str = "praxis_db"
 
-# Secret holding the Praxis connection string. The upgrade step must point
-# `spec.praxisMode.migrationJob.targetConnectionString` at this name and key;
-# the tests create the Secret before the upgrade so it is there to be referenced.
+# Secrets holding the source and target connection strings. The operator's
+# migration preflight requires both Secrets to carry the `ogx.io/watch` label.
+OGX_CONNECTION_SECRET_NAME: str = "ogx-db-connection"
+OGX_CONNECTION_SECRET_KEY: str = "connection-string"
 PRAXIS_CONNECTION_SECRET_NAME: str = "praxis-db-connection"
 PRAXIS_CONNECTION_SECRET_KEY: str = "connection-string"
 
