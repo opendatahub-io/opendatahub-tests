@@ -277,7 +277,7 @@ class TestEvalHubReconcileMetrics:
                     label_filter={METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE},
                 )
                 if samples:
-                    error_types_seen = {s["labels"].get(METRIC_LABEL_ERROR_TYPE) for s in samples}
+                    error_types_seen = {sample["labels"].get(METRIC_LABEL_ERROR_TYPE) for sample in samples}
                     assert error_types_seen.intersection(set(EVALHUB_ERROR_TYPES)), (
                         f"Expected known error_type, got: {error_types_seen}"
                     )
@@ -340,7 +340,7 @@ class TestEvalHubReconcileMetrics:
         metrics = parse_prometheus_text(text=raw_metrics)
         samples = get_metric_samples(metrics=metrics, metric_name=JOB_FAILURE_EVENTS_METRIC)
         assert samples, "No job failure events recorded"
-        assert all(METRIC_LABEL_FAILURE_REASON in s["labels"] for s in samples), (
+        assert all(METRIC_LABEL_FAILURE_REASON in sample["labels"] for sample in samples), (
             "Job failure metric missing failure_reason label"
         )
 
@@ -543,7 +543,7 @@ class TestEvalHubReconcileTracing:
                 spans = parse_trace_spans_from_logs(logs=logs)
                 parent_spans = filter_spans_by_name(spans=spans, name=SPAN_RECONCILE)
                 if len(parent_spans) >= 2:
-                    trace_ids = {s["trace_id"] for s in parent_spans}
+                    trace_ids = {parent_span["trace_id"] for parent_span in parent_spans}
                     assert len(trace_ids) >= 2, "Multiple reconciliations should produce distinct trace IDs"
                     return
         except TimeoutExpiredError:
@@ -581,7 +581,7 @@ class TestEvalHubReconcileTracing:
                     parent_span_id = parent_span["span_id"]
                     children = get_child_spans(spans=spans, parent_span_id=parent_span_id)
                     # Check if any child span (rbac, deployment, service, etc.) has error status
-                    error_spans = [s for s in children if "error" in s.get("status", "").lower()]
+                    error_spans = [child_span for child_span in children if "error" in child_span.get("status", "").lower()]
                     if error_spans:
                         return
         except TimeoutExpiredError:
@@ -658,7 +658,7 @@ class TestEvalHubReconcileErrors:
                 )
                 if samples:
                     error_types_seen = {
-                        s["labels"].get(METRIC_LABEL_ERROR_TYPE) for s in samples if float(s["value"]) > 0
+                        sample["labels"].get(METRIC_LABEL_ERROR_TYPE) for sample in samples if float(sample["value"]) > 0
                     }
                     if len(error_types_seen) >= 2:
                         return
@@ -1074,7 +1074,7 @@ class TestEvalHubReconcileRegression:
             metrics=metrics,
             metric_name="controller_runtime_reconcile_total",
         )
-        controllers_seen = {s["labels"].get("controller", "") for s in reconcile_samples}
+        controllers_seen = {sample["labels"].get("controller", "") for sample in reconcile_samples}
         assert controllers_seen, "No controller_runtime_reconcile_total samples found"
         expected_controllers = {"lmevaljob", "guardrailsorchestrator"}
         missing = expected_controllers - controllers_seen
@@ -1099,7 +1099,7 @@ class TestEvalHubReconcileRegression:
         if not spans:
             pytest.skip("No spans detected — collector may not have received traces yet")
 
-        non_evalhub_spans = [s for s in spans if not s["name"].startswith("evalhub.")]
+        non_evalhub_spans = [span for span in spans if not span["name"].startswith("evalhub.")]
         if not non_evalhub_spans:
             pytest.skip("Only EvalHub spans found — no other controller traces to verify")
 
@@ -1196,7 +1196,7 @@ class TestEvalHubReconcileE2E:
         spans = parse_trace_spans_from_logs(logs=logs)
 
         # Check all spans for error status (any span type)
-        error_spans = [s for s in spans if "error" in s.get("status", "").lower()]
+        error_spans = [span for span in spans if "error" in span.get("status", "").lower()]
 
         # If no global error spans, check child spans of reconcile parents
         if not error_spans:
@@ -1204,7 +1204,7 @@ class TestEvalHubReconcileE2E:
             for parent_span in parent_spans:
                 parent_span_id = parent_span["span_id"]
                 children = get_child_spans(spans=spans, parent_span_id=parent_span_id)
-                error_spans = [s for s in children if "error" in s.get("status", "").lower()]
+                error_spans = [child_span for child_span in children if "error" in child_span.get("status", "").lower()]
                 if error_spans:
                     break
 
