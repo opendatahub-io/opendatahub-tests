@@ -65,7 +65,7 @@ class TestOprOperatorReconciler:
             namespace=ns,
             job_name="tc-opr-001",
         )
-        job_id, job_name = submit_evalhub_job_and_capture_runtime_job(
+        _job_id, job_name = submit_evalhub_job_and_capture_runtime_job(
             admin_client=admin_client,
             host=host,
             token=lifecycle_signals_token,
@@ -101,7 +101,7 @@ class TestOprOperatorReconciler:
             f"OOM not detected. Adapter container states: {adapter_states}. Expected exitCode=137 or reason='OOMKilled'"
         )
 
-        event = wait_for_event(
+        wait_for_event(
             admin_client=admin_client,
             job_name=job_name,
             namespace=ns,
@@ -163,7 +163,7 @@ class TestOprOperatorReconciler:
             job_id=job_id,
         )
 
-        event = wait_for_event(
+        wait_for_event(
             admin_client=admin_client,
             job_name=job_name,
             namespace=ns,
@@ -237,7 +237,7 @@ class TestOprOperatorReconciler:
         # Evict the Kueue Workload for this job
         Workload(client=admin_client, name=workload.name, namespace=ns).delete(wait=False)
 
-        event = wait_for_event(
+        wait_for_event(
             admin_client=admin_client,
             job_name=job_name,
             namespace=ns,
