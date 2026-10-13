@@ -67,7 +67,7 @@ class TestOprOperatorReconciler:
         job_id, job_name = submit_evalhub_job_and_capture_runtime_job(
             admin_client=admin_client,
             host=host,
-            token=lifecycle_signals_token,
+           token=lifecycle_signals_token,
             ca_bundle_file=lifecycle_signals_ca_bundle_file,
             tenant=ns,
             payload=payload,
@@ -100,6 +100,24 @@ class TestOprOperatorReconciler:
         assert oom_detected, (
             f"OOM not detected. Adapter container states: {adapter_states}. Expected exitCode=137 or reason='OOMKilled'"
         )
+
+        event = wait_for_event(
+            admin_client=admin_client,
+            job_name=job_name,
+            namespace=ns,
+            reason=LIFECYCLE_REASON_FAILED,
+            timeout=120,
+        )
+        events = list_events_for_job(
+            admin_client=admin_client,
+            job_name=job_name,
+            namespace=ns,
+            reason=LIFECYCLE_REASON_FAILED,
+        )
+        operator_events = [e for e in events if (e.get("source") or {}).get("component") != LIFECYCLE_SOURCE_SERVER]
+
+        assert operator_events, "Expected at least one EvaluationFailed Event from the operator for OOM"
+        assert event.get("type") == "Warning", f"Expected type=Warning, got {event.get('type')}"
 
     @pytest.mark.smoke
     def test_opr_002_operator_emits_failed_event_for_image_pull_failure(
