@@ -635,6 +635,7 @@ def maas_identity_collision_model_ref(
     service_account: str,
     collision_names: ModelIdentityCollisionNames,
     primary: bool,
+    restore_llmis_patch_on_exit: bool = True,
 ) -> Generator[MaaSModelRef]:
     """Create one LLMIS + MaaSModelRef pair for a model-identity collision scenario."""
     llmis_name = collision_names["primary_llmis_name"] if primary else collision_names["secondary_llmis_name"]
@@ -644,6 +645,7 @@ def maas_identity_collision_model_ref(
         namespace=namespace,
         service_account=service_account,
         model_name=collision_names["shared_model_name"],
+        restore_llmis_patch_on_exit=restore_llmis_patch_on_exit,
     ) as (_llm_service, model_ref):
         yield model_ref
 
@@ -692,12 +694,14 @@ def assert_model_identity_collision_detected_and_resolved(
     survivor: Literal["primary", "secondary"] = "primary",
 ) -> None:
     """Assert colliding MaaSModelRefs are flagged, emit events, and recover after sibling removal."""
+    restore_primary_llmis_patch = survivor != "secondary"
     with maas_identity_collision_model_ref(
         admin_client=admin_client,
         namespace=namespace,
         service_account=service_account,
         collision_names=collision_names,
         primary=True,
+        restore_llmis_patch_on_exit=restore_primary_llmis_patch,
     ) as primary_model_ref:
         assert_model_ref_identity_unique(
             maas_model_ref=primary_model_ref,
@@ -761,6 +765,7 @@ def create_maas_routed_llmisvc(
     model_name: str,
     storage_uri: str = IDENTITY_COLLISION_LLMIS_STORAGE_URI,
     container_image: str = IDENTITY_COLLISION_LLMIS_IMAGE,
+    restore_llmis_patch_on_exit: bool = True,
 ) -> Generator[LLMInferenceService]:
     """Create a Ready LLMInferenceService patched for MaaS gateway routing."""
     with (
@@ -779,7 +784,11 @@ def create_maas_routed_llmisvc(
             wait=False,
             timeout=900,
         ) as llm_service,
-        patch_llmisvc_with_maas_router_and_tiers(llm_service=llm_service, tiers=[]),
+        patch_llmisvc_with_maas_router_and_tiers(
+            llm_service=llm_service,
+            tiers=[],
+            restore_on_exit=restore_llmis_patch_on_exit,
+        ),
     ):
         llm_service.wait_for_condition(condition="Ready", status="True", timeout=900)
         yield llm_service
@@ -792,6 +801,7 @@ def maas_llmisvc_and_model_ref(
     namespace: str,
     service_account: str,
     model_name: str,
+    restore_llmis_patch_on_exit: bool = True,
 ) -> Generator[tuple[LLMInferenceService, MaaSModelRef]]:
     """Create a Ready LLMInferenceService and matching MaaSModelRef for identity-collision tests."""
     with (
@@ -801,6 +811,7 @@ def maas_llmisvc_and_model_ref(
             namespace=namespace,
             service_account=service_account,
             model_name=model_name,
+            restore_llmis_patch_on_exit=restore_llmis_patch_on_exit,
         ) as llm_service,
         MaaSModelRef(
             client=admin_client,
