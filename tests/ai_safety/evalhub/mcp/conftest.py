@@ -54,7 +54,7 @@ _TRANSIENT_MCP_HEALTH_REQUEST_EXCEPTIONS = (
 _TRANSIENT_MCP_HEALTH_EXCEPTIONS = {_TransientEvalhubMcpHealthError: []}
 
 
-def _is_dns_resolution_error(err: BaseException) -> bool:
+def is_dns_resolution_error(err: BaseException) -> bool:
     """Return True when the exception chain includes a DNS resolution failure."""
     exc: BaseException | None = err
     while exc is not None:
@@ -64,7 +64,7 @@ def _is_dns_resolution_error(err: BaseException) -> bool:
     return False
 
 
-def _probe_evalhub_mcp_health(
+def probe_evalhub_mcp_health(
     url: str,
     host: str,
     ca_bundle_file: str,
@@ -73,7 +73,7 @@ def _probe_evalhub_mcp_health(
     try:
         return requests.get(url, verify=ca_bundle_file, timeout=10)
     except requests.exceptions.ConnectionError as err:
-        if isinstance(err, requests.exceptions.SSLError) or _is_dns_resolution_error(err):
+        if isinstance(err, requests.exceptions.SSLError) or is_dns_resolution_error(err):
             raise
         LOGGER.warning(f"Transient error checking EvalHub MCP health at {host}: {err}")
         raise _TransientEvalhubMcpHealthError(str(err)) from err
@@ -82,19 +82,19 @@ def _probe_evalhub_mcp_health(
         raise _TransientEvalhubMcpHealthError(str(err)) from err
 
 
-def _mcp_deployment_name(cr_name: str) -> str:
+def mcp_deployment_name(cr_name: str) -> str:
     return f"{cr_name}-mcp"
 
 
-def _mcp_auth_secret_name(cr_name: str) -> str:
+def mcp_auth_secret_name(cr_name: str) -> str:
     return f"{cr_name}-mcp-token"
 
 
-def _evalhub_service_account_name(cr_name: str) -> str:
+def evalhub_service_account_name(cr_name: str) -> str:
     return f"{cr_name}-service"
 
 
-def _template_references_secret(deployment_instance: Any, secret_name: str) -> bool:
+def template_references_secret(deployment_instance: Any, secret_name: str) -> bool:
     """Return True if the Deployment's pod template uses ``secret_name``.
 
     Checks every way a pod spec can name a Secret: ``env[].valueFrom.secretKeyRef``,
@@ -119,7 +119,7 @@ def _template_references_secret(deployment_instance: Any, secret_name: str) -> b
     return secret_name in referenced
 
 
-def _wait_for_deployment_rollout(
+def wait_for_deployment_rollout(
     deployment: Deployment,
     timeout: int = 300,
     required_secret: str | None = None,
@@ -148,7 +148,7 @@ def _wait_for_deployment_rollout(
             last_status = status
             if status is None:
                 continue
-            if required_secret and not _template_references_secret(
+            if required_secret and not template_references_secret(
                 deployment_instance=instance, secret_name=required_secret
             ):
                 LOGGER.info(f"Waiting for Deployment {deployment.name} pod template to use secret {required_secret}")
@@ -167,7 +167,7 @@ def _wait_for_deployment_rollout(
         ) from err
 
 
-def _mcp_pod_states(admin_client: DynamicClient, namespace: str, label_selector: str) -> list[tuple[str, str, bool]]:
+def mcp_pod_states(admin_client: DynamicClient, namespace: str, label_selector: str) -> list[tuple[str, str, bool]]:
     """Return the name, status, and whether each matching pod is shutting down."""
     # raw=True gives the pod data straight from one list call, so a pod deleted
     # mid-poll can't raise NotFoundError on a second per-pod fetch.
@@ -178,7 +178,7 @@ def _mcp_pod_states(admin_client: DynamicClient, namespace: str, label_selector:
     return states
 
 
-def _wait_for_mcp_pods_settled(
+def wait_for_mcp_pods_settled(
     admin_client: DynamicClient,
     namespace: str,
     instance_name: str,
@@ -201,7 +201,7 @@ def _wait_for_mcp_pods_settled(
         for states in TimeoutSampler(
             wait_timeout=timeout,
             sleep=5,
-            func=lambda: _mcp_pod_states(admin_client=admin_client, namespace=namespace, label_selector=label_selector),
+            func=lambda: mcp_pod_states(admin_client=admin_client, namespace=namespace, label_selector=label_selector),
             exceptions_dict={NotFoundError: []},
         ):
             last_seen = states
@@ -231,7 +231,7 @@ def _wait_for_mcp_pods_settled(
         ) from err
 
 
-def _wait_for_mcp_reconciled(evalhub: EvalHub, generation: int, timeout: int = 300) -> None:
+def wait_for_mcp_reconciled(evalhub: EvalHub, generation: int, timeout: int = 300) -> None:
     """Wait until the operator reports MCP reconciled for ``generation`` of the EvalHub CR.
 
     Top-level ``status.ready``/``status.phase`` describe only the main EvalHub
@@ -305,27 +305,29 @@ def tenant_a_evaluation_job_cleanup(
     disposable, so we delete the Jobs, strip the finalizer from their pods and
     force-delete the pods instead of waiting for the controller.
     """
-    yield
-    label_selector = (
-        f"{EVALHUB_K8S_LABEL_APP}={EVALHUB_K8S_LABEL_APP_VALUE},"
-        f"{EVALHUB_K8S_LABEL_COMPONENT}={EVALHUB_K8S_LABEL_COMPONENT_VALUE}"
-    )
-    namespace = tenant_a_namespace.name
-    jobs = list(Job.get(client=admin_client, namespace=namespace, label_selector=label_selector))
-    pods: list[Pod] = []
-    for job in jobs:
-        pods.extend(Pod.get(client=admin_client, namespace=namespace, label_selector=f"job-name={job.name}"))
-        LOGGER.info(f"Deleting leftover EvalHub Job {job.name} in {namespace}")
-        job.delete(body={"propagationPolicy": "Background"})
-    for pod in pods:
-        try:
-            pod.update(resource_dict={"metadata": {"name": pod.name, "finalizers": []}})
-            pod.delete(body={"gracePeriodSeconds": 0})
-        except NotFoundError:
-            continue
-    for resource in [*jobs, *pods]:
-        if not resource.wait_deleted(timeout=Timeout.TIMEOUT_2MIN):
-            LOGGER.warning(f"{resource.kind} {resource.name} in {namespace} was not deleted within 2 minutes")
+    try:
+        yield
+    finally:
+        label_selector = (
+            f"{EVALHUB_K8S_LABEL_APP}={EVALHUB_K8S_LABEL_APP_VALUE},"
+            f"{EVALHUB_K8S_LABEL_COMPONENT}={EVALHUB_K8S_LABEL_COMPONENT_VALUE}"
+        )
+        namespace = tenant_a_namespace.name
+        jobs = list(Job.get(client=admin_client, namespace=namespace, label_selector=label_selector))
+        pods: list[Pod] = []
+        for job in jobs:
+            pods.extend(Pod.get(client=admin_client, namespace=namespace, label_selector=f"job-name={job.name}"))
+            LOGGER.info(f"Deleting leftover EvalHub Job {job.name} in {namespace}")
+            job.delete(body={"propagationPolicy": "Background"})
+        for pod in pods:
+            try:
+                pod.update(resource_dict={"metadata": {"name": pod.name, "finalizers": []}})
+                pod.delete(body={"gracePeriodSeconds": 0})
+            except NotFoundError:
+                continue
+        for resource in [*jobs, *pods]:
+            if not resource.wait_deleted(timeout=Timeout.TIMEOUT_2MIN):
+                LOGGER.warning(f"{resource.kind} {resource.name} in {namespace} was not deleted within 2 minutes")
 
 
 @pytest.fixture(scope="class")
@@ -397,7 +399,7 @@ def evalhub_mcp_service_account(
     return wait_for_service_account(
         admin_client=admin_client,
         namespace=model_namespace.name,
-        sa_name=_evalhub_service_account_name(EVALHUB_MCP_CR_NAME),
+        sa_name=evalhub_service_account_name(EVALHUB_MCP_CR_NAME),
         timeout=120,
     )
 
@@ -412,7 +414,7 @@ def evalhub_mcp_mt_cr_with_auth(
 ) -> Generator[EvalHub, Any, Any]:
     """Patch the EvalHub CR with MCP auth secret configuration."""
     token = create_inference_token(model_service_account=evalhub_mcp_service_account)
-    secret_name = _mcp_auth_secret_name(cr_name=EVALHUB_MCP_CR_NAME)
+    secret_name = mcp_auth_secret_name(cr_name=EVALHUB_MCP_CR_NAME)
     with Secret(
         client=admin_client,
         name=secret_name,
@@ -444,7 +446,7 @@ def evalhub_mcp_mt_cr_with_auth(
         # Wait for the operator to reconcile *this* spec generation. Top-level
         # status.ready only reflects the main EvalHub deployment, so it is already
         # "True" before the operator has applied the MCP authSecret change.
-        _wait_for_mcp_reconciled(
+        wait_for_mcp_reconciled(
             evalhub=evalhub_mcp_mt_cr,
             generation=evalhub_mcp_mt_cr.instance.metadata.generation,
         )
@@ -460,16 +462,16 @@ def evalhub_mcp_mt_deployment(
     """Wait for the EvalHub MCP deployment rollout to complete."""
     deployment = Deployment(
         client=admin_client,
-        name=_mcp_deployment_name(EVALHUB_MCP_CR_NAME),
+        name=mcp_deployment_name(EVALHUB_MCP_CR_NAME),
         namespace=model_namespace.name,
     )
     deployment.wait_for_replicas(timeout=300)
-    _wait_for_deployment_rollout(
+    wait_for_deployment_rollout(
         deployment=deployment,
         timeout=300,
-        required_secret=_mcp_auth_secret_name(cr_name=EVALHUB_MCP_CR_NAME),
+        required_secret=mcp_auth_secret_name(cr_name=EVALHUB_MCP_CR_NAME),
     )
-    _wait_for_mcp_pods_settled(
+    wait_for_mcp_pods_settled(
         admin_client=admin_client,
         namespace=model_namespace.name,
         instance_name=EVALHUB_MCP_CR_NAME,
@@ -488,7 +490,7 @@ def evalhub_mcp_mt_route(
     """Get the Route for the EvalHub MCP service."""
     return Route(
         client=admin_client,
-        name=_mcp_deployment_name(EVALHUB_MCP_CR_NAME),
+        name=mcp_deployment_name(EVALHUB_MCP_CR_NAME),
         namespace=model_namespace.name,
         ensure_exists=True,
     )
@@ -514,7 +516,7 @@ def evalhub_mcp_mt_ready(
         for sample in TimeoutSampler(
             wait_timeout=120,
             sleep=5,
-            func=lambda: _probe_evalhub_mcp_health(
+            func=lambda: probe_evalhub_mcp_health(
                 url=url,
                 host=host,
                 ca_bundle_file=evalhub_mcp_mt_ca_bundle_file,
@@ -581,7 +583,7 @@ def mcp_server_tenant_rbac(
     The MCP server needs to access evaluations, providers, benchmarks, and collections in the
     tenant namespace on behalf of authenticated users.
     """
-    mcp_server_sa_name = _evalhub_service_account_name(cr_name=EVALHUB_MCP_CR_NAME)
+    mcp_server_sa_name = evalhub_service_account_name(cr_name=EVALHUB_MCP_CR_NAME)
 
     # Create role in tenant namespace granting EvalHub API access
     with (
