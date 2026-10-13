@@ -86,7 +86,7 @@ class TestOprOperatorReconciler:
                 for cs in (pod.instance.status.containerStatuses or [])
                 if cs.name == "adapter" and cs.state.terminated
             ]
-            return states if states else None
+            return states or None
 
         adapter_states = None
         for states in TimeoutSampler(wait_timeout=120, sleep=5, func=_get_adapter_terminated_states):
