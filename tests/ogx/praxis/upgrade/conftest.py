@@ -112,9 +112,7 @@ def ogx_connection_string_secret(
         name=OGX_CONNECTION_SECRET_NAME,
         labels={"ogx.io/watch": "true"},
         type="Opaque",
-        string_data={
-            OGX_CONNECTION_SECRET_KEY: ogx_connection_string(namespace=unprivileged_model_namespace.name)
-        },
+        string_data={OGX_CONNECTION_SECRET_KEY: ogx_connection_string(namespace=unprivileged_model_namespace.name)},
         teardown=teardown_resources,
     ) as secret:
         yield secret
