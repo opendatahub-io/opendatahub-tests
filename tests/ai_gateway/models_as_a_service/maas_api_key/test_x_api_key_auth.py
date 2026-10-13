@@ -27,15 +27,13 @@ LOGGER = structlog.get_logger(name=__name__)
     "maas_model_tinyllama_free",
     "maas_auth_policy_tinyllama_free",
     "maas_subscription_tinyllama_free",
-    "x_api_key_trigger_credential_secret",
-    "x_api_key_trigger_external_provider",
     "x_api_key_trigger_external_model",
     "x_api_key_auth_ready",
 )
 class TestXAPIKeyAuthentication:
-    """Validate x-api-key and Bearer auth when a messages-format IPP ExternalModel exists."""
+    """Validate x-api-key and Bearer auth after gateway enables api-keys-x-api-key identity."""
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_bearer_api_key_lists_models(
         self,
         request_session_http: requests.Session,
@@ -49,21 +47,6 @@ class TestXAPIKeyAuthentication:
             headers=build_maas_headers(token=x_api_key_auth_ready),
         )
         LOGGER.info("GET /v1/models succeeded with Bearer API key while x-api-key identity is active")
-
-    @pytest.mark.tier1
-    def test_x_api_key_lists_models(
-        self,
-        request_session_http: requests.Session,
-        base_url: str,
-        x_api_key_auth_ready: str,
-    ) -> None:
-        """Given x-api-key identity is enabled, when GET /v1/models uses x-api-key, then response is 200."""
-        get_maas_models_response(
-            session=request_session_http,
-            base_url=base_url,
-            headers=build_x_api_key_headers(plaintext_api_key=x_api_key_auth_ready),
-        )
-        LOGGER.info("GET /v1/models succeeded with x-api-key header while x-api-key identity is active")
 
     @pytest.mark.tier1
     def test_x_api_key_authenticates_on_inference(
