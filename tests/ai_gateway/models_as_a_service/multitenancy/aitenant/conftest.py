@@ -4,6 +4,7 @@ from typing import Any, TypedDict
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
+from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.namespace import Namespace
 from pytest_testconfig import config as py_config
 
@@ -21,6 +22,10 @@ from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import (
     maas_controller_tenant_namespace_discovery_enabled,
     require_aitenant_crd_for_discovery,
     require_tenant_namespace_discovery_enabled,
+)
+from tests.ai_gateway.models_as_a_service.multitenancy.utils import (
+    gateway_ref_from_aitenant,
+    provision_tenant_model,
 )
 from tests.ai_gateway.models_as_a_service.utils import (
     aitenant_from_spec,
@@ -382,3 +387,33 @@ def tenant_namespace_discovery_prerequisites(admin_client: DynamicClient) -> Non
     assert maas_controller_tenant_namespace_discovery_enabled(admin_client=admin_client), (
         "maas-controller must run with --enable-tenant-namespace-discovery=true for these tests"
     )
+
+
+@pytest.fixture
+def aitenant_tenant_local_maas_model_ref(
+    admin_client: DynamicClient,
+    aitenant_for_test: AITenantTestContext,
+    teardown_resources: bool,
+    aws_access_key_id: str,
+    aws_secret_access_key: str,
+    models_s3_bucket_name: str,
+    models_s3_bucket_region: str,
+    models_s3_bucket_endpoint: str,
+) -> Generator[tuple[AITenantTestContext, MaaSModelRef], Any, Any]:
+    """Ready AITenant with a tenant-local MaaSModelRef on the tenant Gateway (no spec.tenantRef)."""
+    model_name = f"e2e-auto-tenant-ref-{generate_random_name()[:8]}"
+    gateway_name, gateway_namespace = gateway_ref_from_aitenant(aitenant=aitenant_for_test["aitenant"])
+    with provision_tenant_model(
+        admin_client=admin_client,
+        model_name=model_name,
+        tenant_namespace_name=aitenant_for_test["tenant_namespace_name"],
+        gateway_name=gateway_name,
+        gateway_namespace=gateway_namespace,
+        aws_access_key=aws_access_key_id,
+        aws_secret_access_key=aws_secret_access_key,
+        aws_s3_region=models_s3_bucket_region,
+        aws_s3_bucket=models_s3_bucket_name,
+        aws_s3_endpoint=models_s3_bucket_endpoint,
+        teardown=teardown_resources,
+    ) as tenant_model_ref:
+        yield aitenant_for_test, tenant_model_ref
