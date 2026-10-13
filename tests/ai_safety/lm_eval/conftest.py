@@ -209,6 +209,7 @@ def lmevaljob_vllm_emulator(
     vllm_emulator_deployment: Deployment,
     vllm_emulator_service: Service,
     vllm_emulator_route: Route,
+    lmeval_hf_access_token: Secret,
 ) -> Generator[LMEvalJob, Any, Any]:
     with LMEvalJob(
         client=admin_client,
@@ -220,7 +221,23 @@ def lmevaljob_vllm_emulator(
         batch_size="1",
         allow_online=True,
         allow_code_execution=False,
+        limit="0.01",
         outputs={"pvcManaged": {"size": "5Gi"}},
+        pod={
+            "container": {
+                "env": [
+                    {
+                        "name": "HF_TOKEN",
+                        "valueFrom": {
+                            "secretKeyRef": {
+                                "name": lmeval_hf_access_token.name,
+                                "key": "HF_ACCESS_TOKEN",
+                            },
+                        },
+                    },
+                ],
+            },
+        },
         model_args=[
             {"name": "model", "value": "emulatedModel"},
             {
@@ -738,6 +755,7 @@ def lmevaljob_vllm_emulator_https(
     vllm_emulator_deployment: Deployment,
     vllm_emulator_service: Service,
     vllm_emulator_tls_route: TLSRoute,
+    lmeval_hf_access_token: Secret,
 ) -> Generator[LMEvalJob, Any, Any]:
     """LMEvalJob targeting the vLLM emulator via HTTPS TLS-terminated route."""
     route_host = vllm_emulator_tls_route.instance.spec.host
@@ -751,7 +769,23 @@ def lmevaljob_vllm_emulator_https(
         batch_size="1",
         allow_online=True,
         allow_code_execution=False,
+        limit="0.01",
         outputs={"pvcManaged": {"size": "5Gi"}},
+        pod={
+            "container": {
+                "env": [
+                    {
+                        "name": "HF_TOKEN",
+                        "valueFrom": {
+                            "secretKeyRef": {
+                                "name": lmeval_hf_access_token.name,
+                                "key": "HF_ACCESS_TOKEN",
+                            },
+                        },
+                    },
+                ],
+            },
+        },
         model_args=[
             {"name": "model", "value": "emulatedModel"},
             {

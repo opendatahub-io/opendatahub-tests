@@ -1,21 +1,26 @@
-# Pipelines Components Smoke Tests
+# Pipelines Components Tests
 
-Smoke tests for reusable Kubeflow Pipelines assets from
+Startup and upgrade tests for reusable Kubeflow Pipelines assets from
 [pipelines-components](https://github.com/opendatahub-io/pipelines-components).
-Each test submits a pipeline run to a DataSciencePipelinesApplication (DSPA) and asserts successful completion.
+Smoke and pre-upgrade tests submit pipeline runs to a DataSciencePipelinesApplication
+(DSPA) and verify startup; post-upgrade tests check that the recorded runs survive.
 
 ## Test Suites
 
-- **`automl/`** -- AutoGluon Tabular Training pipeline smoke tests (regression + classification)
-- **`autorag/`** -- Documents RAG Optimization pipeline smoke test
+- **`automl/`** -- AutoGluon tabular (regression, binary and multiclass classification) and timeseries smoke tests
+- **`autorag/`** -- Managed Documents RAG Optimization pipeline smoke test
 
-Both suites are **fully self-contained**: they create a dedicated namespace, deploy all required infrastructure, run the pipeline, and clean up on teardown.
+Both suites create a dedicated namespace and DSPA with MinIO. Test-owned resources
+are cleaned up on teardown.
+
+The DSPA MinIO server and the CSV uploader use the same digest-pinned image,
+`PipelinesComponentsImages.MINIO`, which includes the `mc` client. It is listed in
+the image manifest for mirroring into disconnected clusters. Set `DSPA_MINIO_IMAGE`
+and/or `MINIO_MC_IMAGE` to override it when a cluster requires a different image.
 
 ## Prerequisites
 
 - OpenShift cluster with RHOAI/ODH installed
-- External S3 bucket with training/test data (AWS credentials required)
-- HuggingFace token (for AutoRAG model downloads)
 
 ## Configuration via `.env` file
 
@@ -27,75 +32,65 @@ Sensitive values (API keys, tokens) are masked in test logs.
 
 ## Pipeline Modes
 
-### Managed pipelines (default)
+### Managed pipelines
 
 The DSPA operator auto-registers pipelines in KFP by display name.
-Tests discover them automatically -- no YAML files needed.
-Leave `AUTOML_PIPELINE_YAML` and `AUTORAG_PIPELINE_YAML` empty or unset.
-
-### Legacy YAML upload (fallback)
-
-Set `AUTOML_PIPELINE_YAML` or `AUTORAG_PIPELINE_YAML` to a local path or URL
-to fall back to manual YAML upload. URLs are downloaded automatically at test startup.
+AutoML and AutoRAG smoke and upgrade tests discover their managed pipelines by display name.
 
 ## Environment Variables
 
-### Shared S3 credentials
-
-| Variable | Description | Default |
-| --- | --- | --- |
-| `AWS_ACCESS_KEY_ID` | AWS access key for external S3 | _(required)_ |
-| `AWS_SECRET_ACCESS_KEY` | AWS secret key for external S3 | _(required)_ |
-
 ### AutoML
 
-The AutoML tabular test is parametrized by `task_type` (regression, classification, multiclass).
+The AutoML smoke tests generate 150 unique CSV rows per task in
+[`automl/data/`](automl/data/README.md). A temporary ConfigMap mounts each CSV into
+an uploader Pod, which copies it to the test DSPA's MinIO. They do not need an external
+S3 bucket or credentials. The tabular test is parametrized by `task_type`
+(regression, classification, multiclass); timeseries uses the same upload fixture.
 
 The tabular pipeline accepts `task_type` values: `"binary"`, `"multiclass"`, `"regression"`.
 
 ```bash
-# Run all AutoML tests (regression + classification + multiclass)
-pytest tests/pipelines_components/automl/ -v
+# Run all AutoML smoke tests
+pytest tests/pipelines_components/automl/ -m smoke -v
 
 # Run only one task type
 pytest tests/pipelines_components/automl/ -k regression
 pytest tests/pipelines_components/automl/ -k classification
 pytest tests/pipelines_components/automl/ -k multiclass
+pytest tests/pipelines_components/automl/ -k timeseries
 ```
 
 | Variable | Description | Default |
 | --- | --- | --- |
-| `AUTOML_S3_BUCKET` | External S3 bucket with training data | _(required)_ |
-| `AUTOML_REGRESSION_S3_TRAIN_DATA_KEY` | S3 key for regression training CSV | `datasets/regression/regression.csv` |
-| `AUTOML_CLASSIFICATION_S3_TRAIN_DATA_KEY` | S3 key for binary classification training CSV | _(required)_ |
-| `AUTOML_MULTICLASS_S3_TRAIN_DATA_KEY` | S3 key for multiclass classification training CSV | _(required)_ |
-| `AUTOML_TRAIN_DATA_FILE_KEY` | Destination key in DSPA MinIO | `automl-smoke/train.csv` |
-| `AUTOML_PIPELINE_YAML` | Legacy: path or URL to pipeline YAML | _(empty = managed mode)_ |
-| `AUTOML_PIPELINE_TIMEOUT` | Max wait for pipeline completion (sec) | `1800` |
+| `AUTOML_TRAIN_DATA_FILE_KEY` | Base destination key in DSPA MinIO; prefixed with the task type | `automl-smoke/train.csv` |
+| `AUTOML_PIPELINE_START_TIMEOUT` | Max wait for the smoke workflow to start (sec) | `300` |
 
-### AutoRAG
+AutoML **upgrade** tests use the same generated datasets and managed pipelines,
+retain the DSPA and runs across the upgrade, and compare saved run and workflow
+identities afterward. They do not need external S3 credentials.
+
+### AutoRAG configuration
+
+The AutoRAG smoke test uploads a local document and a matching benchmark record
+from [`autorag/data/`](autorag/data/README.md). It creates the required connection
+Secrets and supplies model identifiers for pipeline submission. No MaaS models,
+database, or external S3 credentials are required. This verifies pipeline
+registration and startup only, not completed RAG optimization.
 
 | Variable | Description | Default |
 | --- | --- | --- |
-| `AUTORAG_S3_BUCKET` | External S3 bucket with test data | _(required)_ |
-| `AUTORAG_INPUT_DATA_KEY` | S3 key prefix for input documents | `autorag-smoke/input_data` |
-| `AUTORAG_TEST_DATA_KEY` | S3 key for benchmark JSON | `autorag-smoke/benchmark_data.json` |
-| `HF_TOKEN` | HuggingFace token for model downloads | _(required)_ |
-| `AUTORAG_INFERENCE_MODEL_URI` | Storage URI for inference model | _(required)_ |
-| `AUTORAG_INFERENCE_MODEL_NAME` | Inference model name | _(required)_ |
-| `AUTORAG_EMBEDDING_MODEL_URI` | Storage URI for embedding model | _(required)_ |
-| `AUTORAG_EMBEDDING_MODEL_NAME` | Embedding model name | _(required)_ |
-| `AUTORAG_EMBEDDING_MAX_MODEL_LEN` | Embedding model max sequence length | `512` |
-| `AUTORAG_PIPELINE_YAML` | Legacy: path or URL to pipeline YAML | _(empty = managed mode)_ |
+| `AUTORAG_INPUT_DATA_KEY` | Destination prefix for the sample document | `autorag-smoke/input_data` |
+| `AUTORAG_TEST_DATA_KEY` | Destination key for generated benchmark JSON | `autorag-smoke/benchmark_data.json` |
 | `AUTORAG_MAX_RAG_PATTERNS` | Maximum RAG patterns to evaluate | `4` |
-| `AUTORAG_OPTIMIZATION_METRIC` | Optimization metric | `faithfulness` |
-| `AUTORAG_PIPELINE_TIMEOUT` | Max wait for pipeline completion (sec) | `3600` |
+| `AUTORAG_OPTIMIZATION_METRIC` | Optimization metric | `unitxt:faithfulness` |
+| `AUTORAG_PIPELINE_START_TIMEOUT` | Max wait for workflow progression (sec) | `300` |
 
 ### Managed pipeline overrides (optional)
 
 | Variable | Description | Default |
 | --- | --- | --- |
 | `MANAGED_PIPELINE_AUTOML_TABULAR` | Display name of AutoML pipeline | `autogluon-tabular-training-pipeline` |
+| `MANAGED_PIPELINE_AUTOML_TIMESERIES` | Display name of timeseries pipeline | `autogluon-timeseries-training-pipeline` |
 | `MANAGED_PIPELINE_AUTORAG` | Display name of AutoRAG pipeline | `documents-rag-optimization-pipeline` |
 | `MANAGED_PIPELINES_IMAGE` | Pin a specific pipelines-components image | _(empty)_ |
 | `DSPA_READY_BUFFER_SECONDS` | Buffer after DSPA ready before polling | `30` |
@@ -109,7 +104,7 @@ pytest tests/pipelines_components/automl/ -k multiclass
 
 ## Running Tests
 
-### Run AutoML smoke tests (regression + classification)
+### Run AutoML smoke tests (tabular and timeseries)
 
 ```bash
 uv run pytest tests/pipelines_components/automl/ -m smoke -v -s
@@ -131,25 +126,40 @@ uv run pytest tests/pipelines_components/autorag/ -m smoke -v -s
 uv run pytest tests/pipelines_components/ -m smoke -v -s
 ```
 
+### Run upgrade tests
+
+Run the phases separately, with the product upgrade between them. The pre-upgrade
+phase keeps the DSPAs and baseline ConfigMaps; post-upgrade verifies the same runs
+and cleans up their namespaces.
+
+```bash
+uv run pytest --pre-upgrade tests/pipelines_components/automl/upgrade/ tests/pipelines_components/autorag/upgrade/
+# Upgrade the product.
+uv run pytest --post-upgrade tests/pipelines_components/automl/upgrade/ tests/pipelines_components/autorag/upgrade/
+```
+
+Both phases verify run registration, startup, and persistence, not completed
+training or RAG optimization.
+
 ## Infrastructure
 
 ### AutoML (fully self-contained)
 
 - Creates a dedicated namespace (`automl-aqa-<hash>`)
 - Deploys DSPA with built-in MinIO for object storage
-- Downloads training data from external S3 into DSPA MinIO (dataset per task type)
-- Discovers managed pipeline or uploads YAML (legacy mode)
-- Submits pipeline run via DSPA REST API (parametrized: regression + classification)
+- Generates each 150-row training dataset and uploads it to a separate DSPA MinIO key
+- Discovers the managed tabular and timeseries pipelines
+- Submits a run per task type via DSPA REST API and verifies its workflow reaches Running
+  (or Succeeded if it finishes before polling); does not wait for training to complete
 - Cleans up namespace on teardown
 
-### AutoRAG (fully self-contained)
+### AutoRAG (startup only)
 
 - Creates a dedicated namespace (`autorag-aqa-<hash>`)
 - Deploys DSPA with built-in MinIO
-- Deploys PostgreSQL, etcd, and Milvus for vector storage
-- Deploys vLLM CPU inference and embedding models via KServe InferenceService
-- Deploys OGX server (formerly LlamaStack) with rh-dev distribution
-- Downloads test data from external S3 into DSPA MinIO
-- Discovers managed pipeline or uploads YAML (legacy mode)
-- Submits pipeline run via DSPA REST API
+- Creates the required connection Secrets
+- Uploads a sample document and benchmark JSON from the repo to DSPA MinIO
+- Discovers the managed pipeline and submits a run via the DSPA REST API
+- Retries with `vector_db_secret_name` if the managed pipeline rejects `db_secret_name`
+- Verifies the run is registered and its workflow starts, without waiting for optimization to finish
 - Cleans up namespace on teardown
