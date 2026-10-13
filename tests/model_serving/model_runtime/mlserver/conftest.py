@@ -20,10 +20,12 @@ from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
+from semver import Version
 from syrupy.extensions.json import JSONSnapshotExtension
 
 from tests.model_serving.model_runtime.mlserver.constant import (
     MLSERVER_ACCELERATOR_IDENTIFIER,
+    MLSERVER_MODELCAR_MIN_OCP_VERSION,
     MLSERVER_RUNTIME_NAME_MAP,
     MLSERVER_TEMPLATE_MAP,
     PREDICT_RESOURCES,
@@ -183,6 +185,7 @@ def mlserver_model_car_inference_service(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     mlserver_serving_runtime: ServingRuntime,
+    openshift_version: Version,
 ) -> Generator[InferenceService]:
     """
     Create InferenceService for MLServer model car (OCI image) testing.
@@ -192,10 +195,17 @@ def mlserver_model_car_inference_service(
         admin_client: Kubernetes dynamic client.
         model_namespace: Namespace for deployment.
         mlserver_serving_runtime: MLServer ServingRuntime instance.
+        openshift_version: OpenShift cluster version.
 
     Yields:
         InferenceService: Configured ISVC using OCI storage.
     """
+    if openshift_version < MLSERVER_MODELCAR_MIN_OCP_VERSION:
+        pytest.skip(
+            f"MLServer model car requires OCP {MLSERVER_MODELCAR_MIN_OCP_VERSION}+ for ImageVolume support, "
+            f"current version: {openshift_version}"
+        )
+
     params = request.param
     storage_uri = params.get("storage-uri")
     if not storage_uri:
