@@ -114,10 +114,10 @@ class TestOprOperatorReconciler:
             namespace=ns,
             reason=LIFECYCLE_REASON_FAILED,
         )
-        operator_events = [e for e in events if (e.get("source") or {}).get("component") != LIFECYCLE_SOURCE_SERVER]
+        operator_events = [ev for ev in events if (ev.get("source") or {}).get("component") == LIFECYCLE_SOURCE_OPERATOR]
 
         assert operator_events, "Expected at least one EvaluationFailed Event from the operator for OOM"
-        assert event.get("type") == "Warning", f"Expected type=Warning, got {event.get('type')}"
+        assert operator_events[0].get("type") == "Warning", f"Expected type=Warning, got {operator_events[0].get('type')}"
 
     @pytest.mark.smoke
     def test_opr_002_operator_emits_failed_event_for_image_pull_failure(
@@ -172,10 +172,10 @@ class TestOprOperatorReconciler:
             namespace=ns,
             reason=LIFECYCLE_REASON_FAILED,
         )
-        operator_events = [e for e in events if (e.get("source") or {}).get("component") != LIFECYCLE_SOURCE_SERVER]
+        operator_events = [ev for ev in events if (ev.get("source") or {}).get("component") == LIFECYCLE_SOURCE_OPERATOR]
 
         assert operator_events, "Expected at least one EvaluationFailed Event from the operator for ImagePullBackOff"
-        assert event.get("type") == "Warning", f"Expected type=Warning, got {event.get('type')}"
+        assert operator_events[0].get("type") == "Warning", f"Expected type=Warning, got {operator_events[0].get('type')}"
         assert operator_events[0].get("message"), "Expected message describing image pull failure"
 
     @pytest.mark.smoke
@@ -244,11 +244,11 @@ class TestOprOperatorReconciler:
             source_component=None,
         )
         operator_events = [
-            e for e in operator_events if (e.get("source") or {}).get("component") != LIFECYCLE_SOURCE_SERVER
+            ev for ev in operator_events if (ev.get("source") or {}).get("component") == LIFECYCLE_SOURCE_OPERATOR
         ]
 
         assert operator_events, "Expected EvaluationFailed from operator after Kueue eviction"
-        assert event.get("type") == "Warning"
+        assert operator_events[0].get("type") == "Warning"
         message = operator_events[0].get("message") or ""
         assert "evict" in message.lower() or "kueue" in message.lower(), (
             f"Expected message referencing eviction, got: {message!r}"
