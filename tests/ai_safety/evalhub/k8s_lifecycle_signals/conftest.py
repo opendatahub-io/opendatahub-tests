@@ -302,13 +302,53 @@ def lifecycle_signals_token(
 
 
 @pytest.fixture(scope="session")
+def network_policy_access_for_lifecycle_api_sa(
+    admin_client: DynamicClient,
+    lifecycle_signals_cp_namespace: Namespace,
+    lifecycle_signals_namespace: Namespace,
+    lifecycle_signals_tenant_rbac: None,
+) -> Generator[tuple[Role, RoleBinding], Any, Any]:
+    """Grant the EvalHub API ServiceAccount NetworkPolicy access in the lifecycle tenant."""
+    api_sa_name = f"{LIFECYCLE_SIGNALS_CR_NAME}-service"
+    with (
+        Role(
+            client=admin_client,
+            name="evalhub-ls-api-network-policy",
+            namespace=lifecycle_signals_namespace.name,
+            rules=[
+                {
+                    "apiGroups": ["networking.k8s.io"],
+                    "resources": ["networkpolicies"],
+                    "verbs": ["create", "get", "update", "delete"],
+                },
+            ],
+            wait_for_resource=True,
+        ) as role,
+        RoleBinding(
+            client=admin_client,
+            name="evalhub-ls-api-network-policy",
+            namespace=lifecycle_signals_namespace.name,
+            role_ref_kind=role.kind,
+            role_ref_name=role.name,
+            subjects_kind="ServiceAccount",
+            subjects_name=api_sa_name,
+            subjects_namespace=lifecycle_signals_cp_namespace.name,
+            wait_for_resource=True,
+        ) as binding,
+    ):
+        yield role, binding
+
+
+@pytest.fixture(scope="session")
 def lifecycle_signals_ready(
     lifecycle_signals_route: Route,
     lifecycle_signals_ca_bundle_file: str,
+    network_policy_access_for_lifecycle_api_sa: tuple[Role, RoleBinding],
 ) -> None:
     """Gate fixture: confirms EvalHub is healthy before any lifecycle signal test runs."""
     from tests.ai_safety.evalhub.constants import EVALHUB_HEALTH_PATH
 
+    _ = network_policy_access_for_lifecycle_api_sa
     host = lifecycle_signals_route.host
     url = f"https://{host}{EVALHUB_HEALTH_PATH}"
     for sample in TimeoutSampler(

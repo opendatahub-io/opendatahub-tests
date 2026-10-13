@@ -1899,6 +1899,7 @@ def submit_git_job(
     evalhub_mt_ca_bundle_file: str,
     evalhub_mt_route: Route,
     evalhub_vllm_emulator_service: Service,
+    network_policy_access_for_evalhub_api_sa: tuple[Role, RoleBinding],
 ) -> Generator[Callable[..., str], Any, Any]:
     """Factory fixture: submit git-storage evaluation jobs with guaranteed cleanup."""
     job_ids: list[str] = []
