@@ -11,6 +11,7 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 from ocp_resources.service import Service
+from timeout_sampler import TimeoutSampler
 
 from tests.ai_safety.evalhub.k8s_lifecycle_signals.constants import (
     LIFECYCLE_REASON_FAILED,
@@ -73,30 +74,29 @@ class TestOprOperatorReconciler:
             payload=payload,
         )
 
-        try:
-            wait_for_evalhub_job(
-                host=host,
-                token=lifecycle_signals_token,
-                ca_bundle_file=lifecycle_signals_ca_bundle_file,
-                tenant=ns,
-                job_id=job_id,
-                timeout=30,
-            )
-        except Exception:
-            pass
+        # Wait for adapter container to terminate (expected to OOM)
+        def _get_adapter_terminated_states() -> list[tuple[int, str]] | None:
+            pods = list(Pod.get(dyn_client=admin_client, namespace=ns, label_selector=f"job-name={job_name}"))
+            if not pods:
+                return None
 
-        pods = list(Pod.get(dyn_client=admin_client, namespace=ns, label_selector=f"job-name={job_name}"))
-        assert pods, f"No pods found for job {job_name}"
+            states = [
+                (cs.state.terminated.exitCode, cs.state.terminated.reason)
+                for pod in pods
+                for cs in (pod.instance.status.containerStatuses or [])
+                if cs.name == "adapter" and cs.state.terminated
+            ]
+            return states if states else None
 
-        adapter_states = [
-            (cs.state.terminated.exitCode, cs.state.terminated.reason)
-            for pod in pods
-            for cs in (pod.instance.status.containerStatuses or [])
-            if cs.name == "adapter" and cs.state.terminated
-        ]
-        print(f"{pods} found")
+        adapter_states = None
+        for states in TimeoutSampler(wait_timeout=120, sleep=5, func=_get_adapter_terminated_states):
+            if states is not None:
+                adapter_states = states
+                break
+
+        assert adapter_states, f"Adapter container did not terminate within 120s for job {job_name}"
+
         oom_detected = any(exit_code == 137 or reason == "OOMKilled" for exit_code, reason in adapter_states)
-
         assert oom_detected, (
             f"OOM not detected. Adapter container states: {adapter_states}. Expected exitCode=137 or reason='OOMKilled'"
         )
