@@ -8,7 +8,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from tests.observability.query import RawQueryResult
+from tests.observability.query import RawQueryResult, SignalQueryResult
+from tests.observability.rollout import StageResult
 
 SENSITIVE_KEY_PATTERN = re.compile(r"(?:api[_-]?key|authorization|bearer|cookie|password|secret|token)", re.IGNORECASE)
 BEARER_PATTERN = re.compile(r"(?i)\bBearer\s+[^\s,;]+")
@@ -31,17 +32,24 @@ class EvidenceRecord:
     cluster_run_id: str
     persona: dict[str, object]
     fixture_resources: dict[str, object]
-    query: RawQueryResult
+    query: RawQueryResult | SignalQueryResult
     failure_category: str | None = None
+    run_id_source: str = "unknown"
+    signal: str | None = None
+    marker: dict[str, object] | None = None
+    rollout_state: str | None = None
+    activation_release: str | None = None
+    stage_results: tuple[StageResult, ...] = ()
+    first_failure_stage: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         """Return a sanitized record."""
-        return _sanitize(
-            value={
-                **asdict(self),
-                "query": self.query.to_dict(),
-            }
-        )
+        payload = {
+            **asdict(self),
+            "query": self.query.to_dict(),
+            "stage_results": [result.to_dict() for result in self.stage_results],
+        }
+        return _sanitize(value=payload)
 
 
 def write_evidence(
@@ -53,7 +61,7 @@ def write_evidence(
     path = Path(destination)
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
-        "schema_version": "1.0.0",
+        "schema_version": "1.1.0",
         "records": [record.to_dict() for record in records],
         "handoff": _sanitize(handoff or {}),
     }
@@ -68,13 +76,18 @@ def write_failure_log(destination: str | Path, records: list[EvidenceRecord]) ->
     lines = []
     for record in records:
         query = record.query
+        backend_status = getattr(query, "prometheus_status", None) or getattr(query, "backend_status", None)
+        error_type = getattr(query, "error_type", None) or getattr(query, "backend_error_type", None)
+        has_error = getattr(query, "error", None) or getattr(query, "backend_error", None)
         lines.append(
             f"{_sanitize_log_field(record.test_identifier)}: "
             f"disposition={_sanitize_log_field(query.expected_disposition)} "
             f"http_status={_sanitize_log_field(query.http_status)} "
-            f"prometheus_status={_sanitize_log_field(query.prometheus_status)} "
-            f"error_type={_sanitize_log_field(query.error_type)} "
-            f"error={_sanitize_log_field('[REDACTED]' if query.error else None)}"
+            f"backend_status={_sanitize_log_field(backend_status)} "
+            f"error_type={_sanitize_log_field(error_type)} "
+            f"error={_sanitize_log_field('[REDACTED]' if has_error else None)} "
+            f"rollout_state={_sanitize_log_field(record.rollout_state)} "
+            f"first_failure_stage={_sanitize_log_field(record.first_failure_stage)}"
         )
     write_text_atomically(path=path, content="\n".join(lines) + ("\n" if lines else ""))
     return path
