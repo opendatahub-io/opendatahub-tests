@@ -1,7 +1,7 @@
 import base64
 import json
 from fnmatch import fnmatch
-from typing import Any
+from typing import Any, NamedTuple
 
 import requests
 import structlog
@@ -39,7 +39,6 @@ from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
 from utilities.general import wait_for_pods_running
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
 from utilities.resources.pod import Pod as UtilPod
-from utilities.resources.pod import PodExecResult
 from utilities.user_utils import get_byoidc_cli_client_id, get_byoidc_issuer_url, get_oidc_token_endpoint
 
 ADDRESS_ANNOTATION_PREFIX: str = "routing.opendatahub.io/external-address-"
@@ -1240,19 +1239,40 @@ def get_service_external_address_rest(service: Service) -> str | None:
     return (service.instance.metadata.annotations or {}).get(EXTERNAL_ADDRESS_REST_ANNOTATION)
 
 
-def curl_from_pod(pod: UtilPod, url: str) -> PodExecResult:
+class CurlResult(NamedTuple):
+    rc: int
+    http_code: int
+    name_lookup_seconds: float
+    tcp_connect_seconds: float
+    stderr: str
+
+
+def curl_from_pod(pod: UtilPod, url: str, use_service_account_token: bool = False) -> CurlResult:
     """Curl a URL from inside a pod to check network reachability.
 
-    TLS verification is skipped and the HTTP status is ignored, so a non-zero return code
-    means the connection itself failed (e.g. 28 when it timed out).
+    TLS verification is skipped. Timing fields are 0 when that phase never completed, so a resolved
+    name with no TCP connection means the connection was blocked rather than failing in DNS or TLS.
 
     Args:
         pod: Pod to run curl in.
         url: URL to request.
+        use_service_account_token: Send the pod's own service account token as a bearer token. The
+            token is read inside the pod, so it never appears in the logged command.
 
     Returns:
-        PodExecResult with curl's stdout, stderr, and return code.
+        CurlResult with curl's return code, HTTP status (0 when no response), and phase timings.
     """
-    result = pod.execute(command=["curl", "-k", "-sS", "-o", "/dev/null", "--connect-timeout", "10", url])
-    LOGGER.info(f"curl to {url} from {pod.name}: rc={result.rc}, stderr={result.stderr}")
+    curl_command = "curl -k -sS -o /dev/null --connect-timeout 10 -w '%{http_code} %{time_namelookup} %{time_connect}'"
+    if use_service_account_token:
+        curl_command += ' -H "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"'
+    exec_result = pod.execute(command=["sh", "-c", f"{curl_command} '{url}'"])
+    http_code, name_lookup_seconds, tcp_connect_seconds = exec_result.stdout.split()
+    result = CurlResult(
+        rc=exec_result.rc,
+        http_code=int(http_code),
+        name_lookup_seconds=float(name_lookup_seconds),
+        tcp_connect_seconds=float(tcp_connect_seconds),
+        stderr=exec_result.stderr,
+    )
+    LOGGER.info(f"curl to {url} from {pod.name}: {result}")
     return result

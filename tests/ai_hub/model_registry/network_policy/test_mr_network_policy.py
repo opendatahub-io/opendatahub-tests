@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.network_policy import NetworkPolicy
@@ -6,6 +8,7 @@ from tests.ai_hub.constants import (
     AUTOML_BFF_PEER,
     CURL_CONNECT_TIMEOUT_EXIT_CODE,
     KUBE_RBAC_PROXY_PORT,
+    MODEL_REGISTRY_BASE_URI,
     ROUTER_INGRESS_PEER,
 )
 from tests.ai_hub.utils import (
@@ -47,7 +50,9 @@ class TestModelRegistryNetworkPolicy:
         )
         ingress_rules = get_network_policy_ingress_rules(network_policy=network_policy)
         assert len(ingress_rules) == 1, f"{np_name} should have exactly one ingress rule: {ingress_rules}"
-        assert ingress_rules[0]["from"] == [ROUTER_INGRESS_PEER, AUTOML_BFF_PEER], (
+        # NetworkPolicy peer order has no meaning, so compare independent of order
+        expected_peers = sorted([ROUTER_INGRESS_PEER, AUTOML_BFF_PEER], key=json.dumps)
+        assert sorted(ingress_rules[0]["from"], key=json.dumps) == expected_peers, (
             f"{np_name} should allow traffic only from the OpenShift router/gateway namespaces and AutoML BFF pods, "
             f"not the whole applications namespace: {ingress_rules[0]['from']}"
         )
@@ -68,9 +73,9 @@ class TestModelRegistryNetworkPolicy:
         mr_name = model_registry_instance[0].name
         service_url = f"https://{mr_name}.{model_registry_namespace}.svc.cluster.local:{KUBE_RBAC_PROXY_PORT}"
         result = curl_from_pod(pod=dashboard_pod, url=service_url)
-        assert result.rc == CURL_CONNECT_TIMEOUT_EXIT_CODE, (
-            f"Dashboard pod should be blocked from reaching {service_url} directly "
-            f"(expected rc={CURL_CONNECT_TIMEOUT_EXIT_CODE}, got rc={result.rc}, stderr={result.stderr})"
+        assert result.name_lookup_seconds > 0, f"{service_url} should resolve from the dashboard pod: {result}"
+        assert result.rc == CURL_CONNECT_TIMEOUT_EXIT_CODE and result.tcp_connect_seconds == 0, (
+            f"Dashboard pod should be blocked from opening a TCP connection to {service_url}: {result}"
         )
 
     def test_dashboard_can_reach_model_registry_through_gateway(
@@ -82,7 +87,7 @@ class TestModelRegistryNetworkPolicy:
     ) -> None:
         """Given a dashboard pod in the shared applications namespace
         When curling the model registry external REST address that the Dashboard BFF uses
-        Then the connection succeeds through the router/gateway
+        Then the request succeeds end to end through the router/gateway
         """
         mr_service = get_mr_service_by_label(
             client=admin_client,
@@ -91,8 +96,8 @@ class TestModelRegistryNetworkPolicy:
         )
         external_address = get_service_external_address_rest(service=mr_service)
         assert external_address, f"{mr_service.name} Service should have an external-address-rest annotation"
-        result = curl_from_pod(pod=dashboard_pod, url=f"https://{external_address}")
-        assert result.rc == 0, (
-            f"Dashboard pod cannot reach model registry at https://{external_address} "
-            f"(rc={result.rc}, stderr={result.stderr})"
+        url = f"https://{external_address}{MODEL_REGISTRY_BASE_URI}registered_models"
+        result = curl_from_pod(pod=dashboard_pod, url=url, use_service_account_token=True)
+        assert result.rc == 0 and result.http_code == 200, (
+            f"Dashboard pod cannot reach model registry at {url}: {result}"
         )

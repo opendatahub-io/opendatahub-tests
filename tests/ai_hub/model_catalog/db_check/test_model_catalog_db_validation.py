@@ -15,6 +15,7 @@ from tests.ai_hub.constants import (
     CATALOG_CONTAINER,
     CURL_CONNECT_TIMEOUT_EXIT_CODE,
     KUBE_RBAC_PROXY_PORT,
+    MODEL_CATALOG_API_PATH,
     ROUTER_INGRESS_PEER,
 )
 from tests.ai_hub.model_catalog.db_check.utils import (
@@ -208,9 +209,9 @@ class TestModelCatalogNetworkPolicyConnectivity:
         """
         service_url = f"https://model-catalog.{model_registry_namespace}.svc.cluster.local:{KUBE_RBAC_PROXY_PORT}"
         result = curl_from_pod(pod=dashboard_pod, url=service_url)
-        assert result.rc == CURL_CONNECT_TIMEOUT_EXIT_CODE, (
-            f"Dashboard pod should be blocked from reaching {service_url} directly "
-            f"(expected rc={CURL_CONNECT_TIMEOUT_EXIT_CODE}, got rc={result.rc}, stderr={result.stderr})"
+        assert result.name_lookup_seconds > 0, f"{service_url} should resolve from the dashboard pod: {result}"
+        assert result.rc == CURL_CONNECT_TIMEOUT_EXIT_CODE and result.tcp_connect_seconds == 0, (
+            f"Dashboard pod should be blocked from opening a TCP connection to {service_url}: {result}"
         )
 
     def test_dashboard_can_reach_model_catalog_through_gateway(
@@ -218,7 +219,7 @@ class TestModelCatalogNetworkPolicyConnectivity:
     ) -> None:
         """Given a dashboard pod in the shared applications namespace
         When curling the model-catalog external REST address that the Dashboard BFF uses
-        Then the connection succeeds through the router/gateway
+        Then the request succeeds end to end through the router/gateway
         """
         catalog_service = Service(
             client=admin_client,
@@ -228,10 +229,10 @@ class TestModelCatalogNetworkPolicyConnectivity:
         )
         external_address = get_service_external_address_rest(service=catalog_service)
         assert external_address, "model-catalog Service should have an external-address-rest annotation"
-        result = curl_from_pod(pod=dashboard_pod, url=f"https://{external_address}")
-        assert result.rc == 0, (
-            f"Dashboard pod cannot reach model-catalog at https://{external_address} "
-            f"(rc={result.rc}, stderr={result.stderr})"
+        url = f"https://{external_address}{MODEL_CATALOG_API_PATH}sources"
+        result = curl_from_pod(pod=dashboard_pod, url=url, use_service_account_token=True)
+        assert result.rc == 0 and result.http_code == 200, (
+            f"Dashboard pod cannot reach model-catalog at {url}: {result}"
         )
 
 
