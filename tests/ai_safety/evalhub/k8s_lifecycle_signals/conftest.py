@@ -319,7 +319,7 @@ def network_policy_access_for_lifecycle_api_sa(
                 {
                     "apiGroups": ["networking.k8s.io"],
                     "resources": ["networkpolicies"],
-                    "verbs": ["create", "get", "update", "delete"],
+                    "verbs": ["create", "get", "update"],
                 },
             ],
             wait_for_resource=True,
