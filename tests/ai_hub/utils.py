@@ -14,6 +14,7 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
 from ocp_resources.endpoints import Endpoints
 from ocp_resources.job import Job
+from ocp_resources.network_policy import NetworkPolicy
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
@@ -23,6 +24,7 @@ from timeout_sampler import TimeoutSampler, retry
 import tests.ai_hub.constants as ai_hub_constants
 from tests.ai_hub.constants import (
     DB_BASE_RESOURCES_NAME,
+    EXTERNAL_ADDRESS_REST_ANNOTATION,
     MARIADB_MY_CNF,
     MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
     MODEL_REGISTRY_DB_SECRET_STR_DATA,
@@ -36,6 +38,8 @@ from utilities.constants import MARIA_DB_IMAGE, Annotations, PodNotFound, Protoc
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
 from utilities.general import wait_for_pods_running
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.resources.pod import Pod as UtilPod
+from utilities.resources.pod import PodExecResult
 from utilities.user_utils import get_byoidc_cli_client_id, get_byoidc_issuer_url, get_oidc_token_endpoint
 
 ADDRESS_ANNOTATION_PREFIX: str = "routing.opendatahub.io/external-address-"
@@ -1210,3 +1214,45 @@ def execute_authenticated_post(url: str, token: str, files: dict[str, tuple[str,
         LOGGER.error(f"POST failed: {response.status_code} — {response.text}")
     response.raise_for_status()
     return response.json()
+
+
+def get_network_policy_ingress_rules(network_policy: NetworkPolicy) -> list[dict[str, Any]]:
+    """Get the ingress rules of a NetworkPolicy as plain dictionaries.
+
+    Args:
+        network_policy: NetworkPolicy to read.
+
+    Returns:
+        List of ingress rules, each with its "from" peers and "ports".
+    """
+    return network_policy.instance.to_dict()["spec"].get("ingress", [])
+
+
+def get_service_external_address_rest(service: Service) -> str | None:
+    """Get the external REST address the Dashboard BFF uses to reach a service.
+
+    Args:
+        service: Model registry or model catalog Service.
+
+    Returns:
+        Value of the external-address-rest annotation (host[:port][/path]), or None if it is not set.
+    """
+    return (service.instance.metadata.annotations or {}).get(EXTERNAL_ADDRESS_REST_ANNOTATION)
+
+
+def curl_from_pod(pod: UtilPod, url: str) -> PodExecResult:
+    """Curl a URL from inside a pod to check network reachability.
+
+    TLS verification is skipped and the HTTP status is ignored, so a non-zero return code
+    means the connection itself failed (e.g. 28 when it timed out).
+
+    Args:
+        pod: Pod to run curl in.
+        url: URL to request.
+
+    Returns:
+        PodExecResult with curl's stdout, stderr, and return code.
+    """
+    result = pod.execute(command=["curl", "-k", "-sS", "-o", "/dev/null", "--connect-timeout", "10", url])
+    LOGGER.info(f"curl to {url} from {pod.name}: rc={result.rc}, stderr={result.stderr}")
+    return result

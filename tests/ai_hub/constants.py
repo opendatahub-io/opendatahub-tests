@@ -180,3 +180,13 @@ MR_RUNTIME_CONTAINERS_Z: dict[str, Any] = {
     },
 }
 MR_MODEL_SERVER_URL_PATH_Z: str = ""
+EXTERNAL_ADDRESS_REST_ANNOTATION: str = "routing.opendatahub.io/external-address-rest"
+KUBE_RBAC_PROXY_PORT: int = 8443
+CURL_CONNECT_TIMEOUT_EXIT_CODE: int = 28
+ROUTER_INGRESS_PEER: dict[str, Any] = {
+    "namespaceSelector": {"matchLabels": {"network.openshift.io/policy-group": "ingress"}},
+}
+AUTOML_BFF_PEER: dict[str, Any] = {
+    "namespaceSelector": {"matchLabels": {"opendatahub.io/generated-namespace": "true"}},
+    "podSelector": {"matchLabels": {"deployment": "automl-ui"}},
+}
