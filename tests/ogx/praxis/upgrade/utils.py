@@ -55,9 +55,6 @@ _PSQL_SCRIPT: str = (
     '--tuples-only --no-align --quiet --command "$2"'
 )
 
-# Number of mismatching rows quoted in an assertion message before truncating.
-_MAX_REPORTED_ROWS: int = 10
-
 
 class FileSearchCitationBaseline(TypedDict):
     """Pre-upgrade inputs for the file_search citation check.
@@ -555,16 +552,16 @@ def format_parity_failure(parity: TableParity, allow_extra_in_target: bool) -> s
     problems: list[str] = []
     if parity.missing_ids:
         problems.append(
-            f"{len(parity.missing_ids)} row(s) missing from the Praxis table: {parity.missing_ids[:_MAX_REPORTED_ROWS]}"
+            f"{len(parity.missing_ids)} row(s) missing from the Praxis table: {parity.missing_ids}"
         )
     if parity.mismatched_ids:
         problems.append(
             f"{len(parity.mismatched_ids)} row(s) migrated with differing field values: "
-            f"{parity.mismatched_ids[:_MAX_REPORTED_ROWS]}"
+            f"{parity.mismatched_ids}"
         )
     if parity.extra_ids and not allow_extra_in_target:
         problems.append(
-            f"{len(parity.extra_ids)} row(s) present only in the Praxis table: {parity.extra_ids[:_MAX_REPORTED_ROWS]}"
+            f"{len(parity.extra_ids)} row(s) present only in the Praxis table: {parity.extra_ids}"
         )
     if not problems:
         return ""
