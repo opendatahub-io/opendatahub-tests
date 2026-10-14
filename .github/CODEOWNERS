@@ -20,3 +20,4 @@ tests/llama_stack/                             @eoinfennessy @nathan-weinberg @A
 tests/ogx/                                     @eoinfennessy @nathan-weinberg @Artemon-line @skamenan7 @mfleader @EleanorWho @cdoern @rhdedgar @derekhiggins @VaishnaviHire @r-papso
 tests/rhoai_mcp/                               @tarilabs @fpjrh
 tests/workbenches                              @jstourac @andyatmiami @jiridanek @harshad16 @atheo89
+tests/observability/                           @cgoodfred @chambridge @bro-adm @heorhiig @dayakar349 @tgitelman @grdryn @den-rgb @kahowell
