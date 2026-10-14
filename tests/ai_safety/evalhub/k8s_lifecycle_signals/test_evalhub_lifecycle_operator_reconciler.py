@@ -254,7 +254,9 @@ class TestOprOperatorReconciler:
             source_component=None,
         )
         operator_events = [
-            event for event in operator_events if (event.get("source") or {}).get("component") == LIFECYCLE_SOURCE_OPERATOR
+            event
+            for event in operator_events
+            if (event.get("source") or {}).get("component") == LIFECYCLE_SOURCE_OPERATOR
         ]
 
         assert operator_events, "Expected EvaluationFailed from operator after Kueue eviction"
