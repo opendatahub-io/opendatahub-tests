@@ -2,6 +2,7 @@ import json
 
 import pytest
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.deployment import Deployment
 from ocp_resources.network_policy import NetworkPolicy
 
 from tests.ai_hub.constants import (
@@ -15,6 +16,7 @@ from tests.ai_hub.utils import (
     curl_from_pod,
     get_mr_service_by_label,
     get_network_policy_ingress_rules,
+    get_network_policy_pod_selector_labels,
     get_service_external_address_rest,
 )
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
@@ -37,16 +39,27 @@ class TestModelRegistryNetworkPolicy:
         model_registry_namespace: str,
     ) -> None:
         """Given a deployed model registry instance
-        When inspecting its https-route NetworkPolicy ingress rules
-        Then it allows only the OpenShift router/gateway namespaces and AutoML BFF pods in the applications
-        namespace, on the kube-rbac-proxy port only
+        When inspecting its https-route NetworkPolicy pod selector and ingress rules
+        Then it applies only to the model registry pods and allows only the OpenShift router/gateway namespaces
+        and AutoML BFF pods in the applications namespace, on the kube-rbac-proxy port only
         """
-        np_name = f"{model_registry_instance[0].name}-https-route"
+        mr_name = model_registry_instance[0].name
+        np_name = f"{mr_name}-https-route"
         network_policy = NetworkPolicy(
             client=admin_client,
             name=np_name,
             namespace=model_registry_namespace,
             ensure_exists=True,
+        )
+        pod_selector = get_network_policy_pod_selector_labels(network_policy=network_policy)
+        pod_labels = Deployment(
+            client=admin_client,
+            name=mr_name,
+            namespace=model_registry_namespace,
+            ensure_exists=True,
+        ).instance.to_dict()["spec"]["template"]["metadata"]["labels"]
+        assert pod_selector and pod_selector.items() <= pod_labels.items(), (
+            f"{np_name} should apply only to {mr_name} pods: selector={pod_selector}, pod labels={pod_labels}"
         )
         ingress_rules = get_network_policy_ingress_rules(network_policy=network_policy)
         assert len(ingress_rules) == 1, f"{np_name} should have exactly one ingress rule: {ingress_rules}"

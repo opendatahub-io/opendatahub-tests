@@ -1227,6 +1227,18 @@ def get_network_policy_ingress_rules(network_policy: NetworkPolicy) -> list[dict
     return network_policy.instance.to_dict()["spec"].get("ingress", [])
 
 
+def get_network_policy_pod_selector_labels(network_policy: NetworkPolicy) -> dict[str, str]:
+    """Get the matchLabels of the pod selector that picks which pods a NetworkPolicy applies to.
+
+    Args:
+        network_policy: NetworkPolicy to read.
+
+    Returns:
+        The pod selector's matchLabels, or an empty dict if it selects every pod in the namespace.
+    """
+    return network_policy.instance.to_dict()["spec"].get("podSelector", {}).get("matchLabels", {})
+
+
 def get_service_external_address_rest(service: Service) -> str | None:
     """Get the external REST address the Dashboard BFF uses to reach a service.
 
@@ -1265,7 +1277,8 @@ def curl_from_pod(pod: UtilPod, url: str, use_service_account_token: bool = Fals
     curl_command = "curl -k -sS -o /dev/null --connect-timeout 10 -w '%{http_code} %{time_namelookup} %{time_connect}'"
     if use_service_account_token:
         curl_command += ' -H "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"'
-    exec_result = pod.execute(command=["sh", "-c", f"{curl_command} '{url}'"])
+    # The URL is passed as a positional argument so it is never parsed as shell syntax
+    exec_result = pod.execute(command=["sh", "-c", f'{curl_command} "$1"', "sh", url])
     http_code, name_lookup_seconds, tcp_connect_seconds = exec_result.stdout.split()
     result = CurlResult(
         rc=exec_result.rc,

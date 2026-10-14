@@ -18,6 +18,7 @@ from tests.ai_hub.constants import (
     MODEL_CATALOG_API_PATH,
     ROUTER_INGRESS_PEER,
 )
+from tests.ai_hub.model_catalog.constants import MODEL_CATALOG_DEPLOYMENT_NAME
 from tests.ai_hub.model_catalog.db_check.utils import (
     find_language_mismatches_between_api_and_db,
     parse_language_properties_from_db,
@@ -31,6 +32,7 @@ from tests.ai_hub.model_catalog.utils import (
 from tests.ai_hub.utils import (
     curl_from_pod,
     get_network_policy_ingress_rules,
+    get_network_policy_pod_selector_labels,
     get_service_external_address_rest,
     wait_for_model_catalog_pod_ready_after_deletion,
 )
@@ -183,11 +185,28 @@ class TestModelCatalogDBNetworkPolicy:
         )
 
     @pytest.mark.test_https_route_network_policy_only
-    def test_https_route_ingress_namespace_labels(self, model_catalog_network_policy):
+    def test_https_route_ingress_namespace_labels(
+        self,
+        admin_client: DynamicClient,
+        model_catalog_network_policy: NetworkPolicy,
+        model_registry_namespace: str,
+    ) -> None:
         """Given the model-catalog-https-route NetworkPolicy
-        When inspecting its ingress rules
-        Then it allows only the OpenShift router/gateway namespaces, on the kube-rbac-proxy port only
+        When inspecting its pod selector and ingress rules
+        Then it applies only to the model-catalog pods and allows only the OpenShift router/gateway namespaces,
+        on the kube-rbac-proxy port only
         """
+        pod_selector = get_network_policy_pod_selector_labels(network_policy=model_catalog_network_policy)
+        pod_labels = Deployment(
+            client=admin_client,
+            name=MODEL_CATALOG_DEPLOYMENT_NAME,
+            namespace=model_registry_namespace,
+            ensure_exists=True,
+        ).instance.to_dict()["spec"]["template"]["metadata"]["labels"]
+        assert pod_selector and pod_selector.items() <= pod_labels.items(), (
+            f"{model_catalog_network_policy.name} should apply only to {MODEL_CATALOG_DEPLOYMENT_NAME} pods: "
+            f"selector={pod_selector}, pod labels={pod_labels}"
+        )
         ingress_rules = get_network_policy_ingress_rules(network_policy=model_catalog_network_policy)
         assert len(ingress_rules) == 1, f"NetworkPolicy should have exactly one ingress rule: {ingress_rules}"
         assert ingress_rules[0]["from"] == [ROUTER_INGRESS_PEER], (
