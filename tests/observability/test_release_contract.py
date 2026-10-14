@@ -28,6 +28,24 @@ class TestObservabilityReleaseContract:
     Missing inputs are reported as explicit blocked/failed fixture outcomes rather than skipped product assertions.
     """
 
+    def test_pipeline_health_rollout_is_report_only(
+        self,
+        release_contract: ReleaseContract,
+        pipeline_health_report: tuple[dict[str, str], ...],
+    ) -> None:
+        """Given unactivated pipeline-health records, report their prerequisites without querying signal backends."""
+        reports_by_identifier = {report["identifier"]: report for report in pipeline_health_report}
+
+        assert len(reports_by_identifier) == len(release_contract.pipeline_health.records)
+        for record in release_contract.pipeline_health.records:
+            report = reports_by_identifier[record.identifier]
+            assert record.rollout_state.value == "skipped"
+            assert report["rollout_state"] == "skipped"
+            assert report["signal"] == record.signal
+            assert report["stage"] == record.stage.value
+            assert report["reason"] == record.reason
+            assert report["next_activation_step"] == record.next_activation_step
+
     def test_admin_data_contract(
         self,
         release_contract: ReleaseContract,
@@ -117,7 +135,9 @@ class TestObservabilityReleaseContract:
                         if float(value) > 0:
                             has_positive_value = True
                             break
-                    except TypeError, ValueError:
+                    except TypeError:
+                        continue
+                    except ValueError:
                         continue
                 if has_positive_value:
                     break
