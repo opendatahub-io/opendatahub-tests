@@ -12,12 +12,14 @@ from tests.ai_gateway.models_as_a_service.maas_subscription.utils import MAAS_SU
 from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import (
     AIGATEWAY_NAME_ANNOTATION,
     AIGATEWAY_NAMESPACE_ANNOTATION,
+    AITENANT_NS_CLASH_E2E_NAME_PREFIX,
     AITENANT_TEST_OIDC_SPEC,
     AITENANT_TEST_RBAC_ADMINS,
     AITenantPreexistingNamespaceContext,
     AITenantTestContext,
     aitenant_admin_role_bindings,
     build_aitenant_test_context,
+    delete_aitenant_clearing_finalizers,
     expected_tenant_namespace_name,
     maas_controller_tenant_namespace_discovery_enabled,
     require_aitenant_crd_for_discovery,
@@ -226,7 +228,7 @@ def aitenant_on_preexisting_derived_tenant_namespace(
 @pytest.fixture
 def aitenant_ns_clash_test_params() -> AITenantTestParams:
     """Return an AITenant name and spec for derived tenant namespace clash tests."""
-    aitenant_name = f"e2e-aigw-ns-clash-{generate_random_name()}"
+    aitenant_name = f"{AITENANT_NS_CLASH_E2E_NAME_PREFIX}{generate_random_name()}"
     return AITenantTestParams(
         aitenant_name=aitenant_name,
         aitenant_spec=build_aitenant_spec(aitenant_name=aitenant_name),
@@ -291,9 +293,13 @@ def aitenant_on_namespace_owned_by_other(
         aitenant_name=aitenant_ns_clash_test_params["aitenant_name"],
         cr_namespace=aitenant_infra_namespace,
         aitenant_spec=aitenant_ns_clash_test_params["aitenant_spec"],
-        teardown=teardown_resources,
+        teardown=False,
     ) as aitenant:
-        yield aitenant
+        try:
+            yield aitenant
+        finally:
+            if teardown_resources:
+                delete_aitenant_clearing_finalizers(aitenant=aitenant)
 
 
 @pytest.fixture

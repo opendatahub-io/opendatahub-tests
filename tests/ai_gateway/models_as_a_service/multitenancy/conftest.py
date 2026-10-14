@@ -10,6 +10,7 @@ from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import (
     AITenantTestContext,
     build_aitenant_test_context,
+    delete_orphaned_ns_clash_aitenants,
 )
 from tests.ai_gateway.models_as_a_service.multitenancy.utils import (
     TENANT_ISOLATION_MODEL_NAME,
@@ -29,6 +30,7 @@ from tests.ai_gateway.models_as_a_service.multitenancy.utils import (
     verify_maas_api_deployment_for_aitenant,
     verify_maas_api_httproute_attached_to_gateway,
     verify_tenant_gateway_auth_policy_callback_url,
+    wait_for_maas_config_tenants_healthy_condition_present,
     wait_for_tenant_gateway_maas_api_reachable,
 )
 from tests.ai_gateway.models_as_a_service.utils import (
@@ -40,6 +42,7 @@ from tests.ai_gateway.models_as_a_service.utils import (
 )
 from utilities.general import generate_random_name
 from utilities.resources.aitenant import AITenant
+from utilities.resources.maas_config import Config as MaaSConfig
 from utilities.resources.route import Route
 
 
@@ -541,3 +544,28 @@ def tenant_a_inference_headers(
         fixture_label="tenant_a_inference_headers",
     ) as plaintext_key:
         yield {"Authorization": f"Bearer {plaintext_key}"}
+
+
+@pytest.fixture(scope="session")
+def maas_config_tenants_healthy_reconcile_enabled(
+    maas_config_default: MaaSConfig,
+) -> None:
+    """Require maas-controller to publish TenantsHealthy on Config/default."""
+    wait_for_maas_config_tenants_healthy_condition_present(maas_config=maas_config_default)
+
+
+@pytest.fixture(scope="class")
+def tenants_healthy_aggregation_orphan_cleanup(
+    admin_client: DynamicClient,
+    aitenant_infra_namespace: str,
+) -> Generator[None, None, None]:
+    """Delete stuck namespace-clash e2e AITenants before and after this test class."""
+    delete_orphaned_ns_clash_aitenants(
+        admin_client=admin_client,
+        infra_namespace=aitenant_infra_namespace,
+    )
+    yield
+    delete_orphaned_ns_clash_aitenants(
+        admin_client=admin_client,
+        infra_namespace=aitenant_infra_namespace,
+    )
