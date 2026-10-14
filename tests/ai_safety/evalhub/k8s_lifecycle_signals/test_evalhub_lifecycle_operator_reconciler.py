@@ -74,8 +74,7 @@ class TestOprOperatorReconciler:
             payload=payload,
         )
 
-        # Wait for adapter container to terminate (expected to OOM)
-        def _get_adapter_terminated_states() -> list[tuple[int, str]] | None:
+        def get_adapter_terminated_states() -> list[tuple[int, str]] | None:
             pods = list(Pod.get(dyn_client=admin_client, namespace=ns, label_selector=f"job-name={job_name}"))
             if not pods:
                 return None
@@ -89,7 +88,7 @@ class TestOprOperatorReconciler:
             return states or None
 
         adapter_states = None
-        for states in TimeoutSampler(wait_timeout=120, sleep=5, func=_get_adapter_terminated_states):
+        for states in TimeoutSampler(wait_timeout=120, sleep=5, func=get_adapter_terminated_states):
             if states is not None:
                 adapter_states = states
                 break
@@ -116,7 +115,7 @@ class TestOprOperatorReconciler:
             reason=LIFECYCLE_REASON_FAILED,
         )
         operator_events = [
-            ev for ev in events if (ev.get("source") or {}).get("component") == LIFECYCLE_SOURCE_OPERATOR
+            event for event in events if (event.get("source") or {}).get("component") == LIFECYCLE_SOURCE_OPERATOR
         ]
 
         assert operator_events, "Expected at least one EvaluationFailed Event from the operator for OOM"
@@ -179,7 +178,7 @@ class TestOprOperatorReconciler:
             reason=LIFECYCLE_REASON_FAILED,
         )
         operator_events = [
-            ev for ev in events if (ev.get("source") or {}).get("component") == LIFECYCLE_SOURCE_OPERATOR
+            event for event in events if (event.get("source") or {}).get("component") == LIFECYCLE_SOURCE_OPERATOR
         ]
 
         assert operator_events, "Expected at least one EvaluationFailed Event from the operator for ImagePullBackOff"
@@ -255,7 +254,7 @@ class TestOprOperatorReconciler:
             source_component=None,
         )
         operator_events = [
-            ev for ev in operator_events if (ev.get("source") or {}).get("component") == LIFECYCLE_SOURCE_OPERATOR
+            event for event in operator_events if (event.get("source") or {}).get("component") == LIFECYCLE_SOURCE_OPERATOR
         ]
 
         assert operator_events, "Expected EvaluationFailed from operator after Kueue eviction"
