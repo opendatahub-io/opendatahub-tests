@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable, Generator, Iterable
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from tests.observability.query import RawQueryResult
@@ -66,6 +68,87 @@ class TrafficSummary:
             "successful_requests": self.successful_requests,
             "rate_limited_requests": self.rate_limited_requests,
         }
+
+
+@dataclass(frozen=True)
+class MarkerIdentity:
+    """Deterministic, sanitized identity shared by source and backend evidence."""
+
+    run_id: str
+    correlation_id: str
+    marker_id: str
+    signal: str
+    namespace: str
+    workload: str
+    pod: str | None
+    pod_uid: str | None
+    emitted_at: str
+    query_window_start: str
+    query_window_end: str
+
+    def to_dict(self) -> dict[str, str | None]:
+        """Return marker metadata without resource bodies or credentials."""
+        return {
+            "run_id": self.run_id,
+            "correlation_id": self.correlation_id,
+            "marker_id": self.marker_id,
+            "signal": self.signal,
+            "namespace": self.namespace,
+            "workload": self.workload,
+            "pod": self.pod,
+            "pod_uid": self.pod_uid,
+            "emitted_at": self.emitted_at,
+            "query_window_start": self.query_window_start,
+            "query_window_end": self.query_window_end,
+        }
+
+
+def build_marker_identity(
+    *,
+    run_id: str,
+    signal: str,
+    namespace: str,
+    workload: str,
+    pod: str | None = None,
+    pod_uid: str | None = None,
+    emitted_at: datetime | None = None,
+    query_window_seconds: int = 240,
+) -> MarkerIdentity:
+    """Build a bounded marker from live resource identity and an emission window."""
+    if query_window_seconds <= 0:
+        raise ValueError("query_window_seconds must be positive")
+    emission = emitted_at or datetime.now(tz=UTC)
+    if emission.tzinfo is None:
+        emission = emission.replace(tzinfo=UTC)
+    else:
+        emission = emission.astimezone(tz=UTC)
+    query_window_start = emission - timedelta(seconds=query_window_seconds)
+    query_window_end = emission + timedelta(seconds=query_window_seconds)
+    marker_source = ":".join((
+        run_id,
+        signal,
+        namespace,
+        workload,
+        pod or "",
+        pod_uid or "",
+        emission.isoformat(),
+        query_window_start.isoformat(),
+        query_window_end.isoformat(),
+    ))
+    marker_id = hashlib.sha256(marker_source.encode("utf-8")).hexdigest()[:16]
+    return MarkerIdentity(
+        run_id=run_id,
+        correlation_id=f"rhoai-observability/{run_id}",
+        marker_id=marker_id,
+        signal=signal,
+        namespace=namespace,
+        workload=workload,
+        pod=pod,
+        pod_uid=pod_uid,
+        emitted_at=emission.isoformat(),
+        query_window_start=query_window_start.isoformat(),
+        query_window_end=query_window_end.isoformat(),
+    )
 
 
 @contextmanager
