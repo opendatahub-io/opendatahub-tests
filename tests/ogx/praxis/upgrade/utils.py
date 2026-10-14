@@ -551,18 +551,13 @@ def format_parity_failure(parity: TableParity, allow_extra_in_target: bool) -> s
     """
     problems: list[str] = []
     if parity.missing_ids:
-        problems.append(
-            f"{len(parity.missing_ids)} row(s) missing from the Praxis table: {parity.missing_ids}"
-        )
+        problems.append(f"{len(parity.missing_ids)} row(s) missing from the Praxis table: {parity.missing_ids}")
     if parity.mismatched_ids:
         problems.append(
-            f"{len(parity.mismatched_ids)} row(s) migrated with differing field values: "
-            f"{parity.mismatched_ids}"
+            f"{len(parity.mismatched_ids)} row(s) migrated with differing field values: {parity.mismatched_ids}"
         )
     if parity.extra_ids and not allow_extra_in_target:
-        problems.append(
-            f"{len(parity.extra_ids)} row(s) present only in the Praxis table: {parity.extra_ids}"
-        )
+        problems.append(f"{len(parity.extra_ids)} row(s) present only in the Praxis table: {parity.extra_ids}")
     if not problems:
         return ""
     return (
