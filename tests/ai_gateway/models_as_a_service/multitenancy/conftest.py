@@ -558,7 +558,7 @@ def maas_config_tenants_healthy_reconcile_enabled(
 def tenants_healthy_aggregation_orphan_cleanup(
     admin_client: DynamicClient,
     aitenant_infra_namespace: str,
-) -> Generator[None, None, None]:
+) -> Generator[None]:
     """Delete stuck namespace-clash e2e AITenants before and after this test class."""
     delete_orphaned_ns_clash_aitenants(
         admin_client=admin_client,
