@@ -7,10 +7,10 @@ import requests
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.namespace import Namespace
-from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 from ocp_resources.service import Service
 
+from tests.ai_safety.nemo_guardrails.utils import get_nemo_guardrails_pod
 from utilities.guardrails import get_auth_headers
 from utilities.resources.nemo_guardrails import NemoGuardrails
 
@@ -56,16 +56,13 @@ class TestNemoAdminRouteWithAuth:
         When: Deployment pod containers are inspected
         Then: A container named kube-rbac-proxy-admin is present
         """
-        pods = list(
-            Pod.get(
-                client=admin_client,
-                namespace=model_namespace.name,
-                label_selector=f"app={nemo_guardrails_presidio_auth.name}",
-            )
+        pod = get_nemo_guardrails_pod(
+            client=admin_client,
+            label_selector=f"app={nemo_guardrails_presidio_auth.name}",
+            namespace=model_namespace.name,
         )
-        assert pods, f"No pods found for {nemo_guardrails_presidio_auth.name}"
 
-        container_names = [c.name for c in pods[0].instance.spec.containers]
+        container_names = [c.name for c in pod.instance.spec.containers]
         assert _ADMIN_CONTAINER_NAME in container_names, (
             f"Expected container '{_ADMIN_CONTAINER_NAME}', found: {container_names}"
         )
@@ -83,17 +80,14 @@ class TestNemoAdminRouteWithAuth:
         When: Admin sidecar container ports are inspected
         Then: Port 8444 (downstream) and 9445 (health) are exposed
         """
-        pods = list(
-            Pod.get(
-                client=admin_client,
-                namespace=model_namespace.name,
-                label_selector=f"app={nemo_guardrails_presidio_auth.name}",
-            )
+        pod = get_nemo_guardrails_pod(
+            client=admin_client,
+            label_selector=f"app={nemo_guardrails_presidio_auth.name}",
+            namespace=model_namespace.name,
         )
-        assert pods, f"No pods found for {nemo_guardrails_presidio_auth.name}"
 
         admin_container = next(
-            (c for c in pods[0].instance.spec.containers if c.name == _ADMIN_CONTAINER_NAME),
+            (c for c in pod.instance.spec.containers if c.name == _ADMIN_CONTAINER_NAME),
             None,
         )
         assert admin_container is not None, f"Container '{_ADMIN_CONTAINER_NAME}' not found"
@@ -119,17 +113,14 @@ class TestNemoAdminRouteWithAuth:
         When: User proxy container args are inspected
         Then: --allow-paths includes /v1/* but not /admin/*
         """
-        pods = list(
-            Pod.get(
-                client=admin_client,
-                namespace=model_namespace.name,
-                label_selector=f"app={nemo_guardrails_presidio_auth.name}",
-            )
+        pod = get_nemo_guardrails_pod(
+            client=admin_client,
+            label_selector=f"app={nemo_guardrails_presidio_auth.name}",
+            namespace=model_namespace.name,
         )
-        assert pods, f"No pods found for {nemo_guardrails_presidio_auth.name}"
 
         user_container = next(
-            (c for c in pods[0].instance.spec.containers if c.name == _USER_CONTAINER_NAME),
+            (c for c in pod.instance.spec.containers if c.name == _USER_CONTAINER_NAME),
             None,
         )
         assert user_container is not None, f"Container '{_USER_CONTAINER_NAME}' not found"
@@ -202,10 +193,10 @@ class TestNemoAdminRouteWithAuth:
         nemo_guardrails_presidio_auth_healthcheck: None,
     ) -> None:
         """
-        Test that the user route blocks /admin/* paths at the proxy.
+        Test that the user route blocks admin-only paths at the proxy.
 
         Given: NemoGuardrails with auth enabled and a valid user token
-        When: A request to /admin/test is made via the user-facing route
+        When: A request to an admin-only endpoint is made via the user-facing route
         Then: The kube-rbac-proxy path filter returns 404 (path not in allow list)
         """
         url = f"https://{nemo_guardrails_presidio_auth_route.host}{_ADMIN_TEST_PATH}"
@@ -231,7 +222,7 @@ class TestNemoAdminRouteWithAuth:
         Test that authenticated admin users can access the admin health endpoint.
 
         Given: NemoGuardrails with auth enabled and a token with create permission
-        When: A request to /healthz is made via the admin route
+        When: A request to an admin-only ednpoint is made via the admin route
         Then: The health endpoint returns 200 OK
         """
         url = f"https://{nemo_guardrails_presidio_admin_route.instance.spec.host}{_ADMIN_TEST_PATH}"
@@ -256,7 +247,7 @@ class TestNemoAdminRouteWithAuth:
         Test that unauthenticated requests are blocked at the admin proxy.
 
         Given: NemoGuardrails with auth enabled and no auth token
-        When: A request to /admin/test is made via the admin route without a token
+        When: A request to an admin-only ednpoint is made via the admin route without a token
         Then: The admin proxy returns 401 Unauthorized
         """
         url = f"https://{nemo_guardrails_presidio_admin_route.instance.spec.host}{_ADMIN_TEST_PATH}"
@@ -303,16 +294,13 @@ class TestNemoAdminRouteWithoutAuth:
         When: Pod containers are inspected
         Then: No container named kube-rbac-proxy-admin exists
         """
-        pods = list(
-            Pod.get(
-                client=admin_client,
-                namespace=model_namespace.name,
-                label_selector=f"app={nemo_guardrails_presidio.name}",
-            )
+        pod = get_nemo_guardrails_pod(
+            client=admin_client,
+            label_selector=f"app={nemo_guardrails_presidio.name}",
+            namespace=model_namespace.name,
         )
-        assert pods, f"No pods found for {nemo_guardrails_presidio.name}"
 
-        container_names = [c.name for c in pods[0].instance.spec.containers]
+        container_names = [c.name for c in pod.instance.spec.containers]
         assert _ADMIN_CONTAINER_NAME not in container_names, (
             f"Admin sidecar '{_ADMIN_CONTAINER_NAME}' should not exist without auth, found: {container_names}"
         )

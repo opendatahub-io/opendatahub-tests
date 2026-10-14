@@ -246,7 +246,7 @@ def nemo_guardrails_presidio_auth(
     nemo_presidio_configmap: ConfigMap,
     nemo_api_token_secret: Secret,
 ) -> Generator[NemoGuardrails, Any, Any]:
-    """NeMo Guardrails CR with Presidio confi g and auth enabled."""
+    """NeMo Guardrails CR with Presidio config and auth enabled."""
     with NemoGuardrails(
         client=admin_client,
         name="nemo-presidio-auth",
@@ -445,29 +445,6 @@ def nemo_guardrails_llm_judge_route(
         model_namespace=model_namespace,
         nemo_cr=nemo_guardrails_llm_judge,
     )
-
-
-@pytest.fixture(scope="class")
-def nemo_guardrails_llm_judge_admin_route(
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
-    nemo_guardrails_llm_judge: NemoGuardrails,
-) -> Generator[Route, Any, Any]:
-    """Manually created Route targeting the admin proxy port (444) for testing."""
-    with UtilitiesRoute(
-        client=admin_client,
-        name=f"{nemo_guardrails_llm_judge.name}-admin",
-        namespace=model_namespace.name,
-        to={
-            "kind": "Service",
-            "name": nemo_guardrails_llm_judge.name,
-            "weight": 100,
-        },
-        port={"targetPort": "444"},
-        tls={"termination": "reencrypt"},
-        wait_for_resource=True,
-    ) as route:
-        yield route
 
 
 @pytest.fixture(scope="class")
@@ -722,6 +699,7 @@ def nemo_guardrails_presidio_admin_route_healthcheck(
         host=nemo_guardrails_presidio_admin_route.instance.spec.host,
         token=current_client_token,
         ca_bundle_file=openshift_ca_bundle_file,
+        health_endpoint="/healthz",
     )
 
 
