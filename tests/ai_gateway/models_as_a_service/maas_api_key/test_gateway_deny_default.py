@@ -3,16 +3,18 @@ from __future__ import annotations
 import pytest
 import requests
 import structlog
+from kubernetes.dynamic import DynamicClient
 from ocp_resources.maas_model_ref import MaaSModelRef
-from pytest_testconfig import config as py_config
 
-from tests.ai_gateway.models_as_a_service.maas_api_key.utils import get_auth_policy_condition
+from tests.ai_gateway.models_as_a_service.maas_api_key.utils import (
+    MAAS_GATEWAY_AUTH_POLICY_NAME,
+    wait_for_auth_policy_accepted,
+)
 from utilities.constants import MAAS_GATEWAY_NAMESPACE
 from utilities.plugins.constant import OpenAIEnpoints
 
 LOGGER = structlog.get_logger(name=__name__)
 
-GATEWAY_DEFAULT_AUTH_NAME = "gateway-default-auth"
 CHAT_COMPLETIONS = OpenAIEnpoints.CHAT_COMPLETIONS
 
 
@@ -22,35 +24,28 @@ CHAT_COMPLETIONS = OpenAIEnpoints.CHAT_COMPLETIONS
     "maas_gateway_api",
 )
 class TestGatewayDenyByDefault:
-    """Verify gateway-default-auth denies access to unconfigured models."""
+    """Verify maas-gateway-auth denies access to unconfigured models."""
 
     def test_gateway_default_auth_in_gateway_namespace_and_accepted(
         self,
-        admin_client,
+        admin_client: DynamicClient,
     ) -> None:
-        """Verify gateway-default-auth exists in the gateway namespace and is Accepted."""
+        """Given MaaS gateway auth is reconciled, when reading maas-gateway-auth in the gateway namespace,
+        then the AuthPolicy is Accepted (post-#912 singleton; legacy gateway-default-auth is not used).
+        """
         gateway_namespace = MAAS_GATEWAY_NAMESPACE
-        applications_namespace: str = py_config["applications_namespace"]
 
-        accepted_condition = get_auth_policy_condition(
+        wait_for_auth_policy_accepted(
             admin_client=admin_client,
-            policy_name=GATEWAY_DEFAULT_AUTH_NAME,
+            policy_name=MAAS_GATEWAY_AUTH_POLICY_NAME,
             namespace=gateway_namespace,
-            condition_type="Accepted",
+            reconciliation_hint=(
+                "Ensure MaaS is enabled and a MaaSAuthPolicy exists to bootstrap "
+                f"{MAAS_GATEWAY_AUTH_POLICY_NAME} in {gateway_namespace}."
+            ),
         )
 
-        assert accepted_condition is not None, (
-            f"{GATEWAY_DEFAULT_AUTH_NAME} AuthPolicy not found in "
-            f"namespace '{gateway_namespace}' or has no 'Accepted' condition. "
-            f"It may be deployed to '{applications_namespace}' instead."
-        )
-        assert accepted_condition.get("status") == "True", (
-            f"{GATEWAY_DEFAULT_AUTH_NAME} is not Accepted: "
-            f"reason={accepted_condition.get('reason')}, "
-            f"message={accepted_condition.get('message')}"
-        )
-
-        LOGGER.info(f"{GATEWAY_DEFAULT_AUTH_NAME} correctly deployed to '{gateway_namespace}' and Accepted")
+        LOGGER.info(f"{MAAS_GATEWAY_AUTH_POLICY_NAME} deployed to '{gateway_namespace}' and Accepted/Enforced")
 
     def test_unconfigured_model_denies_unauthenticated_request(
         self,
