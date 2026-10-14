@@ -919,14 +919,16 @@ def network_policy_access_for_evalhub_api_sa(
 ) -> Generator[tuple[Role, RoleBinding], Any, Any]:
     """Grant the EvalHub API ServiceAccount NetworkPolicy access in the PVC tenant.
 
-    EvalHub runtime (eval-hub PR #1070) creates a per-execution NetworkPolicy before
-    each Job, using the API ServiceAccount (`{cr}-service`) via the jobs-writer
-    RoleBinding. Operator PR #985 adds create/get/update to jobs-writer; this
-    The owner-reference transfer updates the NetworkPolicy. Until that ClusterRole
-    is deployed, this bridges the gap for PVC storage tests.
+    EvalHub runtime (eval-hub PR #1070) creates a per-execution NetworkPolicy
+    before each Job. The API ServiceAccount (`{cr}-service`) creates the policy
+    and updates it to transfer the owner reference.
 
-    Do not bind the job Pod ServiceAccount — NetworkPolicy creation is done by the
-    EvalHub API, not by evaluation Job pods.
+    Operator PR #985 adds create/get/update permissions to jobs-writer.
+    Until that ClusterRole is deployed, this fixture supplies those permissions
+    for PVC, Git, and Hugging Face storage tests.
+
+    Do not bind the job Pod ServiceAccount. The EvalHub API manages these
+    NetworkPolicies, not the evaluation Job pods.
     """
     api_sa_name = f"{EVALHUB_MT_CR_NAME}-service"
     with (
