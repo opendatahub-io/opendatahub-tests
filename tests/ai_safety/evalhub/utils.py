@@ -12,6 +12,7 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.evalhub import EvalHub
 from ocp_resources.job import Job
+from ocp_resources.lease import Lease
 from ocp_resources.mlflow import MLflow
 from ocp_resources.pod import Pod
 from ocp_resources.role_binding import RoleBinding
@@ -46,6 +47,7 @@ from tests.ai_safety.evalhub.constants import (
     HF_DEFAULT_REVISION,
     HF_NESTED_SUB_PATH,
     HF_TOKENIZER_PATH,
+    OPERATOR_LEADER_ELECTION_LEASE,
     OPERATOR_METRICS_PORT,
     OPERATOR_METRICS_SCHEME,
     OPERATOR_POD_LABEL_SELECTOR,
@@ -1713,11 +1715,17 @@ def fetch_operator_metrics(
 
 @contextmanager
 def operator_metrics_url(admin_client: DynamicClient) -> Generator[str]:
-    """Port-forward to the TrustyAI operator pod and yield its local /metrics URL.
+    """Port-forward to the active TrustyAI operator pod and yield its local /metrics URL.
 
     The operator pod IP is not reachable from outside the cluster, so the
     metrics endpoint is reached through a port-forward. The pod is looked up
     on every call because some fixtures restart the operator (new pod name).
+
+    During a rolling update, the old and new pods can transiently coexist,
+    but only one of them (the controller-runtime leader) is actually
+    reconciling and incrementing metrics. The leader is resolved via the
+    leader election Lease; if that lookup fails for any reason, this falls
+    back to an arbitrary matching pod.
 
     Args:
         admin_client: Authenticated Kubernetes client.
@@ -1726,17 +1734,27 @@ def operator_metrics_url(admin_client: DynamicClient) -> Generator[str]:
         Local URL of the operator /metrics endpoint.
     """
     operator_ns = py_config["applications_namespace"]
-    pods = list(
-        Pod.get(
+    pods = {
+        pod.name: pod
+        for pod in Pod.get(
             client=admin_client,
             namespace=operator_ns,
             label_selector=OPERATOR_POD_LABEL_SELECTOR,
         )
-    )
+    }
     assert pods, "No operator pod found"
+
+    target_pod_name = next(iter(pods))
+    lease = Lease(client=admin_client, name=OPERATOR_LEADER_ELECTION_LEASE, namespace=operator_ns)
+    if lease.exists:
+        holder_identity = lease.instance.spec.holderIdentity or ""
+        leader_pod_name = holder_identity.rsplit("_", 1)[0]
+        if leader_pod_name in pods:
+            target_pod_name = leader_pod_name
+
     with portforward.forward(
         namespace=operator_ns,
-        pod_or_service=pods[0].name,
+        pod_or_service=target_pod_name,
         from_port=0,
         to_port=OPERATOR_METRICS_PORT,
         waiting=2,
