@@ -9,7 +9,9 @@ The runner must provide the following sanitized environment inputs before select
 ```bash
 export RHOAI_OBSERVABILITY_PREFLIGHT='[{"name":"perses","present":true,"category":"product"},{"name":"gpu-capacity","present":true,"category":"environment"}]'
 export RHOAI_OBSERVABILITY_EVIDENCE_DIR="${ARTIFACT_DIR}/rhoai-observability"
-export RHOAI_OBSERVABILITY_RUN_ID="${CI_JOB_ID:-local}"
+# Optional. The suite resolves this from RHOAI_OBSERVABILITY_RUN_ID, a CI job ID,
+# or a generated positive random integer when omitted.
+export RHOAI_OBSERVABILITY_RUN_ID="<optional-run-id>"
 export RHOAI_VERSION="<RHOAI-version-under-test>"
 export OPENDATAHUB_VERSION="<OpenDataHub-version-under-test>"
 export DASHBOARD_VERSION="<dashboard-version-under-test>"
@@ -43,6 +45,8 @@ export RHOAI_OBSERVABILITY_CA_BUNDLE="<optional-CA-bundle-path>"
 
 `RHOAI_OBSERVABILITY_PREFLIGHT` is a JSON list. Each item contains `name`, boolean `present`, `category` (`product` or `environment`), and an optional sanitized `detail`. Missing external prerequisites produce `blocked`; a missing prerequisite that the product claims to provide produces `failed`. The fixture writes `preflight.json` before creating namespaces or model resources.
 
+`RHOAI_OBSERVABILITY_RUN_ID` is optional. The session resolver chooses the explicit value first, then `CI_JOB_ID`, `BUILD_ID`, `BUILD_NUMBER`, or `GITHUB_RUN_ID`, and finally a cryptographically generated positive integer. The chosen value is normalized to a bounded lowercase marker-safe string and generated once per session. Evidence records only the normalized value and the source (`explicit`, `ci`, or `generated`); it never records the unnormalized environment or credential material.
+
 `RHOAI_OBSERVABILITY_EVIDENCE_DIR` may point outside the repository, but it must be a valid directory path without symlink components. The default `tmp_base_dir` fallback remains unchanged for repository-only runs.
 
 The optional `RHOAI_OBSERVABILITY_CONTRACT` value must point to a repository-contained YAML contract. The default is the versioned matrix in this package. No credentials, tokens, cookies, API keys, or secret-bearing URLs belong in the contract or environment evidence.
@@ -73,10 +77,14 @@ This Python job validates its own cluster only. Its namespaces, models, query re
 
 Contract records marked `environment-blocked` remain distinct from `not-shipped` and `shipped` for both jobs.
 
+The optional `pipeline_health` section in the YAML is the reviewed contract for signal-specific pipeline checks. Its records describe marker identity, source/backend query behavior, propagation and query windows, required labels/attributes/edges, authorization expectations, and rollout state. Metrics/dashboard records retain their existing PromQL behavior. First-pass trace, log, correlation, MaaS Observe, and upgrade records remain `skipped` until their fixtures and backend contracts are established; they are reported in preflight and evidence handoff metadata without invoking inactive signal backends, and are not new release gates.
+
 ## Query Evidence
 
 `RawQueryClient` is configured with the route base used by the dashboard datasource, not a direct service shortcut. Every query record includes persona/principal, fixture and requested namespaces, sanitized route path, parameters, PromQL, HTTP status, elapsed time, Prometheus error fields, result type, normalized labels, and rounded timestamps. An HTTP 200 with Prometheus `status=error` remains a failure, not an empty result.
 
-The release fixture writes `preflight.json` before resource creation, `observability-evidence.json` after query tests, and `observability-failures.log` for failed query records. `write_evidence` emits `schema_version: 1.0.0` JSON and `write_failure_log` emits concise human-readable lines. Sensitive parameter keys, Bearer/Basic credentials, JWT-shaped values, sensitive key-value values, and raw query error text are replaced with `[REDACTED]`; failure-log fields escape carriage returns and newlines. Evidence contains only this job's sanitized identities, resource metadata, query outcomes, and release context.
+The release fixture writes `preflight.json` before resource creation, `observability-evidence.json` after query tests, and `observability-failures.log` for failed query records. `write_evidence` emits `schema_version: 1.1.0` JSON and `write_failure_log` emits concise human-readable lines. Sensitive parameter keys, Bearer/Basic credentials, JWT-shaped values, sensitive key-value values, and raw query error text are replaced with `[REDACTED]`; failure-log fields escape carriage returns and newlines. Evidence contains only this job's sanitized identities, resource metadata, query outcomes, and release context.
+
+Signal adapters retain the same sanitized evidence lifecycle for Tempo (`/api/search` and `/api/traces/{traceID}`), Loki (`/loki/api/v1/query_range` with the `application` tenant), and bounded Korrel8r domains/objects/graphs-goals requests. They discover in-cluster services supplied by the active monitoring configuration rather than adding release-runner routes. A HTTP 200 containing backend error fields is not a successful signal query.
 
 The token-breakdown and showback records are independently declared `not-shipped`; a total-token metric cannot satisfy either capability. Update only the reviewed contract status and exact query/labels when the corresponding release capability is shipped.
