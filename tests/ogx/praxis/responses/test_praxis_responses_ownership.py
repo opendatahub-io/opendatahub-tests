@@ -13,6 +13,7 @@ import pytest
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 from ocp_resources.service import Service
@@ -29,6 +30,8 @@ from tests.ogx.praxis.utils import (
 from utilities.resources.http_route import HTTPRoute
 
 LOGGER = structlog.get_logger(name=__name__)
+
+NAMESPACE_PARAMS = {"name": "test-praxis-responses-ownership"}
 
 # HTTP statuses an external endpoint returns when it does not implement a path.
 # Anything else means the path is served there, including auth rejections, which
@@ -61,9 +64,16 @@ def _responses_path_status(session: requests.Session, url: str) -> int | None:
 
 
 @pytest.fixture
-def responses_http_routes(admin_client: DynamicClient) -> list[HTTPRoute]:
-    """Every HTTPRoute in the cluster that declares the `/v1/responses` path."""
-    return http_routes_matching_path(client=admin_client, path=RESPONSES_API_PATH)
+def responses_http_routes(
+    admin_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+) -> list[HTTPRoute]:
+    """Every HTTPRoute in the test namespace that declares the `/v1/responses` path."""
+    return http_routes_matching_path(
+        client=admin_client,
+        path=RESPONSES_API_PATH,
+        namespace=unprivileged_model_namespace.name,
+    )
 
 
 @pytest.fixture
@@ -90,6 +100,11 @@ def ogx_backed_routes(admin_client: DynamicClient) -> list[Route]:
     return matching_routes
 
 
+@pytest.mark.parametrize(
+    "unprivileged_model_namespace",
+    [pytest.param(NAMESPACE_PARAMS)],
+    indirect=True,
+)
 @pytest.mark.ogx
 @pytest.mark.skip_must_gather
 class TestPraxisResponsesOwnership:
