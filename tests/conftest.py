@@ -118,6 +118,11 @@ def model_namespace(
     ns = Namespace(client=admin_client, name=request.param["name"])
 
     if pytestconfig.option.post_upgrade:
+        if not ns.exists:
+            pytest.skip(
+                f"[POST-UPGRADE] Prerequisite namespace '{ns.name}' is absent. "
+                "Ensure the corresponding pre-upgrade setup completed successfully."
+            )
         yield ns
         ns.clean_up()
     else:

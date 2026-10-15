@@ -336,6 +336,27 @@ def load_baseline_from_configmap(
     return json.loads(raw)
 
 
+def load_isvc_upgrade_baseline(
+    client: DynamicClient,
+    namespace: str,
+    isvc_name: str,
+    cm_name: str = UPGRADE_BASELINE_CM_NAME,
+) -> ISVCBaseline:
+    """Load one standard Model-server upgrade baseline or skip its checks."""
+    try:
+        baselines = load_baseline_from_configmap(client=client, namespace=namespace, cm_name=cm_name)
+    except AssertionError as exc:
+        pytest.skip(f"[POST-UPGRADE] {exc}")
+
+    try:
+        return baselines[isvc_name]
+    except KeyError:
+        pytest.skip(
+            f"[POST-UPGRADE] Upgrade baseline for InferenceService '{isvc_name}' is unavailable. "
+            "Ensure its pre-upgrade tests completed successfully."
+        )
+
+
 def verify_isvc_pods_not_restarted_against_baseline(
     client: DynamicClient,
     isvc: InferenceService,

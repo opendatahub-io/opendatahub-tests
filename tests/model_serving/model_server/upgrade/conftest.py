@@ -44,9 +44,13 @@ from tests.model_serving.model_server.upgrade.kserve_kueue_upgrade_config import
     KSERVE_KUEUE_UPGRADE_S3_SECRET,
 )
 from tests.model_serving.model_server.upgrade.utils import (
+    ISVCBaseline,
     _capture_and_save_isvc_kueue_baseline,
     _create_kueue_upgrade_resources,
     _kserve_kueue_upgrade_runtime_template_kwargs,
+    capture_isvc_baseline,
+    load_isvc_upgrade_baseline,
+    save_baseline_to_configmap,
 )
 from utilities.kueue_utils import LocalQueue
 
@@ -89,6 +93,78 @@ def model_namespace_scope_session(
             teardown=teardown_resources,
         ) as ns:
             yield ns
+
+
+def _capture_or_load_model_server_baseline(
+    *,
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    isvc: InferenceService,
+    namespace: str,
+) -> Generator[ISVCBaseline, Any, Any]:
+    if pytestconfig.option.post_upgrade:
+        yield load_isvc_upgrade_baseline(
+            client=admin_client,
+            namespace=namespace,
+            isvc_name=isvc.name,
+        )
+        return
+
+    baseline = capture_isvc_baseline(client=admin_client, isvc=isvc)
+    yield baseline
+    if not getattr(pytestconfig, "_pre_upgrade_test_failed", False):
+        save_baseline_to_configmap(
+            client=admin_client,
+            namespace=namespace,
+            baselines={isvc.name: baseline},
+        )
+    else:
+        LOGGER.warning("Skipping Model-server baseline capture for %s: pre-upgrade test(s) failed.", isvc.name)
+
+
+@pytest.fixture(scope="session")
+def ovms_serverless_upgrade_baseline(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    model_namespace_scope_session: Namespace,
+    ovms_serverless_inference_service_scope_session: InferenceService,
+) -> Generator[ISVCBaseline, Any, Any]:
+    yield from _capture_or_load_model_server_baseline(
+        pytestconfig=pytestconfig,
+        admin_client=admin_client,
+        isvc=ovms_serverless_inference_service_scope_session,
+        namespace=model_namespace_scope_session.name,
+    )
+
+
+@pytest.fixture(scope="session")
+def caikit_raw_upgrade_baseline(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    model_namespace_scope_session: Namespace,
+    caikit_raw_inference_service_scope_session: InferenceService,
+) -> Generator[ISVCBaseline, Any, Any]:
+    yield from _capture_or_load_model_server_baseline(
+        pytestconfig=pytestconfig,
+        admin_client=admin_client,
+        isvc=caikit_raw_inference_service_scope_session,
+        namespace=model_namespace_scope_session.name,
+    )
+
+
+@pytest.fixture(scope="session")
+def openvino_model_mesh_upgrade_baseline(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    model_namespace_scope_session: Namespace,
+    openvino_model_mesh_inference_service_scope_session: InferenceService,
+) -> Generator[ISVCBaseline, Any, Any]:
+    yield from _capture_or_load_model_server_baseline(
+        pytestconfig=pytestconfig,
+        admin_client=admin_client,
+        isvc=openvino_model_mesh_inference_service_scope_session,
+        namespace=model_namespace_scope_session.name,
+    )
 
 
 @pytest.fixture(scope="session")
