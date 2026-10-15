@@ -16,6 +16,7 @@ from ocp_resources.data_science_pipelines_application import DataSciencePipeline
 from ocp_resources.deployment import Deployment
 from ocp_resources.evalhub import EvalHub
 from ocp_resources.inference_service import InferenceService
+from ocp_resources.lease import Lease
 from ocp_resources.mlflow import MLflow
 from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
@@ -64,9 +65,11 @@ from tests.ai_safety.evalhub.constants import (
     HF_SHA_REVISION_ENV,
     MINIO_MC_IMAGE,
     MINIO_UPLOADER_SECURITY_CONTEXT,
+    OPERATOR_LEADER_ELECTION_LEASE,
     OPERATOR_METRICS_PORT,
     OPERATOR_METRICS_SERVICE_NAME,
     OPERATOR_OTEL_SERVICE_NAME,
+    OPERATOR_POD_LABEL_SELECTOR,
     OTEL_COLLECTOR_GRPC_PORT,
     OTEL_COLLECTOR_HTTP_PORT,
     OTEL_COLLECTOR_NAMESPACE,
@@ -96,7 +99,7 @@ from tests.ai_safety.evalhub.utils import (
 )
 from tests.ai_safety.image_constants import AiSafetyImages
 from utilities.certificates_utils import create_ca_bundle_file
-from utilities.constants import Labels, LLMdInferenceSimConfig, Protocols
+from utilities.constants import Labels, LLMdInferenceSimConfig, Protocols, Timeout
 from utilities.general import collect_pod_information
 from utilities.infra import create_inference_token, create_ns
 
@@ -2334,6 +2337,33 @@ def otel_trace_collector_pod(
     return pods[0]
 
 
+def _wait_for_operator_leadership(admin_client: DynamicClient, namespace: str, timeout: int = 60) -> None:
+    """Wait for the controller-runtime leader election lease to be held by the current pod.
+
+    `wait_for_replicas` only confirms Kubernetes-level pod readiness; the manager
+    process can take longer (leader election + informer cache sync) to actually
+    start reconciling after a restart. Tests running immediately after a restart
+    can otherwise race a pod that is Ready but not yet leading/reconciling.
+    """
+    lease = Lease(client=admin_client, name=OPERATOR_LEADER_ELECTION_LEASE, namespace=namespace)
+
+    def _leader_matches_sole_pod() -> bool:
+        pods = list(Pod.get(client=admin_client, namespace=namespace, label_selector=OPERATOR_POD_LABEL_SELECTOR))
+        if len(pods) != 1:
+            return False
+        holder_identity = lease.instance.spec.holderIdentity or ""
+        return holder_identity.rsplit("_", 1)[0] == pods[0].name
+
+    try:
+        for settled in TimeoutSampler(wait_timeout=timeout, sleep=2, func=_leader_matches_sole_pod):
+            if settled:
+                return
+    except TimeoutExpiredError as err:
+        msg = f"Operator did not settle on a single leading pod in '{namespace}' within {timeout}s"
+        LOGGER.error(msg)
+        raise RuntimeError(msg) from err
+
+
 @pytest.fixture(scope="class")
 def operator_with_otel_tracing(
     admin_client: DynamicClient,
@@ -2342,16 +2372,16 @@ def operator_with_otel_tracing(
 ) -> Generator[Deployment, Any, Any]:
     """Patch operator deployment with OTEL env vars and restart.
 
-    Injects OTEL_EXPORTER_OTLP_ENDPOINT pointing to the trace collector, then
-    scales the operator down/up so the new env vars take effect. On teardown,
-    ResourceEditor restores original state and the operator is restarted again.
+    Injects OTEL_EXPORTER_OTLP_ENDPOINT pointing to the trace collector. Patching
+    the pod template triggers Kubernetes' native rolling update to pick up the
+    new env vars. On teardown, ResourceEditor restores original state, which
+    triggers a rolling update back to the original container.
     """
     endpoint = (
         f"http://{otel_trace_collector_service.name}"
         f".{otel_trace_collector_service.namespace}"
         f".svc.cluster.local:{OTEL_COLLECTOR_GRPC_PORT}"
     )
-    num_replicas: int = trustyai_operator_deployment.instance.spec.replicas
 
     env_patch = [
         {"name": "OTEL_EXPORTER_OTLP_ENDPOINT", "value": endpoint},
@@ -2362,33 +2392,21 @@ def operator_with_otel_tracing(
     containers = trustyai_operator_deployment.instance.spec.template.spec.containers
     manager_idx = next((idx for idx, c in enumerate(containers) if c.name == "manager"), 0)
 
+    manager_container = containers[manager_idx].to_dict()
+    merged_env = {env["name"]: env for env in manager_container.get("env", [])}
+    for env in env_patch:
+        merged_env[env["name"]] = env
+    manager_container["env"] = list(merged_env.values())
+
     with ResourceEditor(
-        patches={
-            trustyai_operator_deployment: {
-                "spec": {
-                    "template": {
-                        "spec": {
-                            "containers": [
-                                {
-                                    "name": containers[manager_idx].name,
-                                    "image": containers[manager_idx].image,
-                                    "env": env_patch,
-                                }
-                            ]
-                        }
-                    }
-                }
-            }
-        }
+        patches={trustyai_operator_deployment: {"spec": {"template": {"spec": {"containers": [manager_container]}}}}}
     ):
-        trustyai_operator_deployment.scale_replicas(replica_count=0)
-        trustyai_operator_deployment.scale_replicas(replica_count=num_replicas)
         trustyai_operator_deployment.wait_for_replicas(timeout=300)
+        _wait_for_operator_leadership(admin_client=admin_client, namespace=trustyai_operator_deployment.namespace)
         yield trustyai_operator_deployment
 
-    trustyai_operator_deployment.scale_replicas(replica_count=0)
-    trustyai_operator_deployment.scale_replicas(replica_count=num_replicas)
     trustyai_operator_deployment.wait_for_replicas(timeout=300)
+    _wait_for_operator_leadership(admin_client=admin_client, namespace=trustyai_operator_deployment.namespace)
 
 
 @pytest.fixture(scope="class")
@@ -2451,17 +2469,29 @@ def evalhub_failure_cr(
 
     The 65-character name exceeds the 63-character Kubernetes label value
     limit, so the operator's reconcile loop errors when it attempts to set
-    labels on child resources using the CR name.
+    labels on child resources using the CR name. The same bug hits the
+    finalizer-removal reconcile on delete, so the operator retries deletion
+    indefinitely; since the evalhub controller runs a single worker, that can
+    starve reconciliation of other EvalHub CRs used by later tests. If normal
+    deletion doesn't complete quickly, force the finalizer off instead of
+    waiting on a reconcile loop that can never succeed.
     """
     overlong_name = "evalhub-failure-" + "x" * (65 - len("evalhub-failure-"))
-    with EvalHub(
+    evalhub = EvalHub(
         client=admin_client,
         name=overlong_name,
         namespace=model_namespace.name,
         database={"type": "sqlite"},
         wait_for_resource=True,
-    ) as evalhub:
-        yield evalhub
+    )
+    evalhub.deploy(wait=True)
+    yield evalhub
+
+    evalhub.delete()
+    if not evalhub.wait_deleted(timeout=Timeout.TIMEOUT_30SEC):
+        LOGGER.warning(f"EvalHub {evalhub.name} stuck deleting (overlong-name reconcile loop); stripping finalizer")
+        evalhub.update(resource_dict={"metadata": {"name": evalhub.name, "finalizers": []}})
+        evalhub.wait_deleted(timeout=Timeout.TIMEOUT_30SEC)
 
 
 @pytest.fixture(scope="class")
