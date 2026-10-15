@@ -97,7 +97,7 @@ def lmeval_hf_access_token_upgrade(
             namespace=model_namespace.name,
         )
         if not secret.exists:
-            pytest.skip(
+            pytest.fail(
                 f"[POST-UPGRADE] Prerequisite Secret '{secret.name}' is absent in namespace '{secret.namespace}'. "
                 "Ensure the LMEval pre-upgrade setup completed successfully."
             )
