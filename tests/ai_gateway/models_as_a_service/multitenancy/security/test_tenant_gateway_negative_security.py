@@ -5,6 +5,7 @@ import requests
 
 from tests.ai_gateway.models_as_a_service.multitenancy.utils import (
     assert_tenant_gateway_inference_auth_denied,
+    assert_tenant_inference_status,
 )
 
 _FORGED_IDENTITY_HEADERS: dict[str, str] = {
@@ -96,9 +97,16 @@ class TestMultitenancyTenantGatewayNegativeSecurity:
             (tenant_b_inference_url, tenant_b_inference_headers),
         )
         for inference_url, base_headers in cases:
+            control_headers = {**base_headers, "Content-Type": "application/json"}
+            assert_tenant_inference_status(
+                session=request_session_http,
+                inference_url=inference_url,
+                headers=control_headers,
+                payload=tenant_inference_chat_payload,
+                expected_status=200,
+            )
             headers = {
-                **base_headers,
-                "Content-Type": "application/json",
+                **control_headers,
                 **_FORGED_IDENTITY_HEADERS,
             }
             assert_tenant_gateway_inference_auth_denied(
