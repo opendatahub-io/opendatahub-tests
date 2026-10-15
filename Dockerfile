@@ -10,7 +10,6 @@ ENV UV_NO_CACHE=1
 ENV HOME="$HOME"
 ENV PYTHONPYCACHEPREFIX=/tmp/pycache
 ENV PYTEST_ADDOPTS="-p no:cacheprovider"
-ENV GOCACHE=/tmp/go-build-cache
 
 ENV BIN_DIR="$HOME/.local/bin"
 ENV PATH="$PATH:$BIN_DIR"
@@ -40,7 +39,6 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx ${BIN_DIR}/
 
 WORKDIR $TESTS_DIR
 COPY --chown=$USER:$USER . $TESTS_DIR
-RUN chmod -R a+rwX $TESTS_DIR
 
 RUN uv sync
 
