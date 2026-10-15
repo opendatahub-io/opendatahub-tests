@@ -15,7 +15,7 @@ _FORGED_IDENTITY_HEADERS: dict[str, str] = {
     "X-MaaS-Key-Id": "fake-key-id-00000",
 }
 
-_INVALID_API_KEY = "sk-oai-e2e-invalid-not-a-real-key"
+_INVALID_API_KEY = "sk-oai-e2e-invalid-not-a-real-key"  # pragma: allowlist secret
 
 
 @pytest.mark.usefixtures(
