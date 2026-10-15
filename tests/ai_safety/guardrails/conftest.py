@@ -34,7 +34,7 @@ from utilities.serving_runtime import ServingRuntimeFromTemplate
 from utilities.minio import wait_for_minio_deployment
 
 GUARDRAILS_ORCHESTRATOR_NAME = "guardrails-orchestrator"
-MINIO_IMAGE = "quay.io/minio/minio@sha256:46b3009bf7041eefbd90bd0d2b38c6ddc24d20a35d609551a1802c558c1c958f"
+MINIO_IMAGE = "quay.io/modh/ods-ci-minio-models@sha256:801f49a705e827283a9970d2e5a807fec8357f18457abd0f46d9797beabe8160"
 
 
 # ServingRuntimes, InferenceServices, and related resources
@@ -610,7 +610,9 @@ def minio_deployment_otel(
         pod_template = {
             "metadata": {"labels": {"app.kubernetes.io/name": "minio"}},
             "spec": {
-                "securityContext": {"fsGroup": 1000, "seccompProfile": {"type": "RuntimeDefault"}},
+                # Let OpenShift assign the namespace-approved supplemental group.
+                # A fixed fsGroup is rejected by restricted SCCs on some clusters.
+                "securityContext": {"hostUsers": False, "seccompProfile": {"type": "RuntimeDefault"}},
                 "containers": [
                     {
                         "name": "minio",
