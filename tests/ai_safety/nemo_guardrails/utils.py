@@ -11,6 +11,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.pod import Pod
 from ocp_resources.route import Route
+from ocp_resources.service import Service
 from requests import Response
 from timeout_sampler import TimeoutSampler, retry
 
@@ -58,9 +59,9 @@ def validate_nemo_guardrails_images(pod: Pod, trustyai_operator_configmap: Confi
 
     for container in pod.instance.spec.containers:
         # Check SHA256 digest exists
-        assert re.search(SHA256_DIGEST_PATTERN, container.image), (
-            f"{container.name}: {container.image} does not have a valid SHA256 digest"
-        )
+        assert re.search(
+            SHA256_DIGEST_PATTERN, container.image
+        ), f"{container.name}: {container.image} does not have a valid SHA256 digest"
 
         # Parse pod image
         pod_name_sha, pod_sha = parse_image(image_str=container.image)
@@ -263,9 +264,9 @@ def verify_health_response(response: Response) -> None:
         AssertionError: If health check fails
     """
     # Accept any response that matches the default k8s health check
-    assert 200 <= response.status_code < 400, (
-        f"Expected service to be responsive, got {response.status_code}: {response.text[:200]}"
-    )
+    assert (
+        200 <= response.status_code < 400
+    ), f"Expected service to be responsive, got {response.status_code}: {response.text[:200]}"
 
     LOGGER.info(f"Health check passed: {response.status_code} (service is responding)")
 
@@ -413,14 +414,62 @@ def condition_status(nemo_cr: NemoGuardrails, condition_type: str) -> str | None
     return None
 
 
-def nemo_cr_phase(nemo_cr: NemoGuardrails) -> str | None:
+def nemo_cr_phase(nemo_cr: NemoGuardrails) -> str:
     """
-    Read the current phase of a NemoGuardrails server (e.g. "Ready", "Error", "Progressing").
+    Read the current phase from the NemoGuardrails CR status.
 
     Args:
         nemo_cr: NemoGuardrails resource to inspect
 
     Returns:
-        The phase string, or None if the operator has not written it yet
+        The phase string (e.g. "Ready", "Error", "Progressing"), or empty string if unset
     """
-    return (nemo_cr.instance.status or {}).get("phase")
+    return (nemo_cr.instance.status or {}).get("phase", "")
+
+
+def service_exists(client: DynamicClient, name: str, namespace: str) -> bool:
+    """
+    Check whether a Service exists.
+
+    Args:
+        client: DynamicClient to query the cluster
+        name: Service name
+        namespace: Namespace to look in
+
+    Returns:
+        True if the Service exists, False otherwise
+    """
+    return bool(Service(client=client, name=name, namespace=namespace).exists)
+
+
+def configmap_exists(client: DynamicClient, name: str, namespace: str) -> bool:
+    """
+    Check whether a ConfigMap exists.
+
+    Args:
+        client: DynamicClient to query the cluster
+        name: ConfigMap name
+        namespace: Namespace to look in
+
+    Returns:
+        True if the ConfigMap exists, False otherwise
+    """
+    return bool(ConfigMap(client=client, name=name, namespace=namespace).exists)
+
+
+def nemo_cr_workload_namespace(nemo_cr: NemoGuardrails) -> str:
+    """
+    Read the namespace where the workload was last deployed, from the server's status.
+
+    The operator writes this field after a successful reconciliation into the
+    platform AI Gateway infra namespace ('redhat-ai-gateway-infra' or
+    'odh-ai-gateway-infra'). A missing or unlabeled infra namespace is recorded
+    as phase Error and does not fall back to the CR namespace.
+
+    Args:
+        nemo_cr: NemoGuardrails resource to inspect
+
+    Returns:
+        The workload namespace string, or an empty string if not yet written
+    """
+    return (nemo_cr.instance.status or {}).get("workloadNamespace", "")

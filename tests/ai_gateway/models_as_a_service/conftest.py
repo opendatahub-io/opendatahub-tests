@@ -841,7 +841,6 @@ def maas_api_infra_namespace(admin_client: DynamicClient) -> str:
         )
     return applications_namespace
 
-
 @pytest.fixture(scope="class")
 def maas_api_deployment_available(
     admin_client: DynamicClient,

@@ -37,3 +37,4 @@ class TestMaasEndpoints:
             models_list=maas_models,
             log_prefix="MaaS Endpoint Test",
         )
+    
