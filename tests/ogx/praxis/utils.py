@@ -34,23 +34,24 @@ def rule_matches_path(rule: dict[str, Any], path: str) -> bool:
     return any((match.get("path") or {}).get("value") == path for match in rule.get("matches") or [])
 
 
-def http_routes_matching_path(client: DynamicClient, path: str) -> list[HTTPRoute]:
-    """Return every HTTPRoute in the cluster that explicitly declares `path`.
+def http_routes_matching_path(client: DynamicClient, path: str, namespace: str | None = None) -> list[HTTPRoute]:
+    """Return every HTTPRoute in a namespace that explicitly declares `path`.
 
     Catch-all routes (for example a `PathPrefix: /` rule) are deliberately not
     treated as matches; the contract under test is about the route that owns the
-    exact path.
+    exact path. When no namespace is provided, routes are searched cluster-wide.
 
     Args:
         client: Client with cluster-wide read access.
         path: Absolute request path, as declared by a route rule match.
+        namespace: Namespace to search, or None to search every namespace.
 
     Returns:
         The routes declaring an exact match on `path`.
     """
     return [
         http_route
-        for http_route in HTTPRoute.get(client=client)
+        for http_route in HTTPRoute.get(client=client, namespace=namespace)
         if any(
             rule_matches_path(rule=rule, path=path) for rule in http_route.instance.to_dict()["spec"].get("rules") or []
         )
