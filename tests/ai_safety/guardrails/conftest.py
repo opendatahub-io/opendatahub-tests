@@ -31,8 +31,10 @@ from utilities.constants import KServeDeploymentType, RuntimeTemplates, Timeout
 from utilities.inference_utils import create_isvc, LOGGER
 from utilities.operator_utils import get_cluster_service_version
 from utilities.serving_runtime import ServingRuntimeFromTemplate
+from utilities.minio import wait_for_minio_deployment
 
 GUARDRAILS_ORCHESTRATOR_NAME = "guardrails-orchestrator"
+MINIO_IMAGE = "quay.io/minio/minio@sha256:46b3009bf7041eefbd90bd0d2b38c6ddc24d20a35d609551a1802c558c1c958f"
 
 
 # ServingRuntimes, InferenceServices, and related resources
@@ -598,7 +600,7 @@ def minio_deployment_otel(
             name="minio",
             namespace=model_namespace.name,
         )
-        deployment.wait_for_replicas()
+        wait_for_minio_deployment(deployment=deployment)
         yield deployment
         if teardown_resources:
             deployment.clean_up()
@@ -608,16 +610,23 @@ def minio_deployment_otel(
         pod_template = {
             "metadata": {"labels": {"app.kubernetes.io/name": "minio"}},
             "spec": {
+                "securityContext": {"fsGroup": 1000, "seccompProfile": {"type": "RuntimeDefault"}},
                 "containers": [
                     {
                         "name": "minio",
-                        "image": "quay.io/minio/minio",
+                        "image": MINIO_IMAGE,
                         "command": ["/bin/sh", "-c", "mkdir -p /storage/tempo && minio server /storage"],
                         "env": [
-                            {"name": "MINIO_ACCESS_KEY", "value": TEMPO},
-                            {"name": "MINIO_SECRET_KEY", "value": MINIO_SECRET_KEY_VALUE},
+                            {"name": "MINIO_ROOT_USER", "value": TEMPO},
+                            {"name": "MINIO_ROOT_PASSWORD", "value": MINIO_SECRET_KEY_VALUE},
                         ],
                         "ports": [{"containerPort": 9000}],
+                        "readinessProbe": {
+                            "httpGet": {"path": "/minio/health/ready", "port": 9000},
+                            "initialDelaySeconds": 5,
+                            "periodSeconds": 5,
+                            "failureThreshold": 12,
+                        },
                         "volumeMounts": [{"mountPath": "/storage", "name": "storage"}],
                     }
                 ],
@@ -641,7 +650,7 @@ def minio_deployment_otel(
         )
 
         with deployment:
-            deployment.wait_for_replicas()
+            wait_for_minio_deployment(deployment=deployment)
             yield deployment
 
 
