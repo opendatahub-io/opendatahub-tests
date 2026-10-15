@@ -35,7 +35,7 @@ RUN wget https://github.com/openshift/must-gather-clean/releases/download/v0.0.4
 
 RUN useradd -ms /bin/bash $USER
 USER $USER
-WORKDIR $HOME_DIR
+WORKDIR $HOME
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx ${BIN_DIR}/
 
 WORKDIR $TESTS_DIR
