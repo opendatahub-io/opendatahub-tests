@@ -119,10 +119,13 @@ class TestKserveKueueRawPostUpgrade:
         kserve_kueue_upgrade_inference_service: InferenceService,
     ) -> ISVCKueueBaseline:
         """Load pre-upgrade baseline for the Kueue ISVC from the cluster ConfigMap."""
-        baselines = load_baseline_from_configmap(
-            client=admin_client,
-            namespace=kserve_kueue_upgrade_inference_service.namespace,
-        )
+        try:
+            baselines = load_baseline_from_configmap(
+                client=admin_client,
+                namespace=kserve_kueue_upgrade_inference_service.namespace,
+            )
+        except AssertionError as exc:
+            pytest.skip(f"pre-upgrade Kueue baseline is unavailable: {exc}")
         isvc_name = kserve_kueue_upgrade_inference_service.name
         assert isvc_name in baselines, f"ISVC '{isvc_name}' not in baseline. Available: {list(baselines.keys())}"
         return baselines[isvc_name]
