@@ -26,6 +26,7 @@ from tests.ai_safety.guardrails.constants import (
     MINIO_SECRET_KEY_VALUE,
     OTEL_EXPORTER_PORT,
 )
+from tests.ai_safety.image_constants import MINIO_IMAGE
 from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import KServeDeploymentType, RuntimeTemplates, Timeout
 from utilities.inference_utils import create_isvc, LOGGER
@@ -34,7 +35,6 @@ from utilities.serving_runtime import ServingRuntimeFromTemplate
 from utilities.minio import wait_for_minio_deployment
 
 GUARDRAILS_ORCHESTRATOR_NAME = "guardrails-orchestrator"
-MINIO_IMAGE = "quay.io/modh/ods-ci-minio-models@sha256:801f49a705e827283a9970d2e5a807fec8357f18457abd0f46d9797beabe8160"
 
 
 # ServingRuntimes, InferenceServices, and related resources

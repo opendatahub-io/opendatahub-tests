@@ -10,6 +10,7 @@ from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError
 
 from utilities.constants import ApiGroups, Labels, MinIo, Protocols, Timeout
+from utilities.s3 import get_s3_secret_dict
 
 LOGGER = get_logger(name=__name__)
 
@@ -56,10 +57,6 @@ def create_minio_data_connection_secret(
     Yields:
         Secret: The secret for minio data connection.
     """
-    # Import lazily because utilities.general imports utilities.infra, which
-    # imports utilities.general for other helpers.
-    from utilities.general import get_s3_secret_dict
-
     data_dict = get_s3_secret_dict(
         aws_access_key=MinIo.Credentials.ACCESS_KEY_VALUE,
         aws_secret_access_key=MinIo.Credentials.SECRET_KEY_VALUE,  # pragma: allowlist secret
