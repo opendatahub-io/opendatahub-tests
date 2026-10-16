@@ -8,9 +8,10 @@ Praxis naming is hardcoded, so a missing or ambiguous route cannot pass unnotice
 import json
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, TypedDict
+from typing import Any, Callable, TypedDict
 from urllib.parse import quote
 
+from kubernetes.dynamic.client import ApiException
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
@@ -20,13 +21,16 @@ from ocp_resources.job import Job
 from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 from ocp_resources.service import Service
-from ogx_client import OgxClient
+from ogx_client import APIStatusError, OgxClient
 
 from tests.ogx.constants import OGX_POSTGRES_SERVICE_NAME, POSTGRESQL_PASSWORD, POSTGRESQL_USER
 from tests.ogx.praxis.constants import (
     API_BASELINE_CONFIG_MAP_NAME,
+    COMPARED_CONVERSATION_FIELDS,
     COMPARED_FILE_FIELDS,
+    COMPARED_RESPONSE_FIELDS,
     COMPARED_VECTOR_STORE_FIELDS,
+    MAX_LISTED_RESOURCES,
     MIGRATION_JOB_NAME_SUFFIX,
     MIGRATION_JOB_TIMEOUT,
     OGX_POSTGRES_DATABASE,
@@ -790,3 +794,163 @@ def format_parity_failure(parity: TableParity, allow_extra_in_target: bool) -> s
         f"Table '{parity.table}' did not migrate with full parity "
         f"(source rows: {parity.source_count}, target rows: {parity.target_count}). " + "; ".join(problems)
     )
+
+
+def retrieve_response_fields(ogx_client: OgxClient, response_id: str) -> dict[str, str]:
+    """Return the compared fields of `GET /v1/responses/{id}`.
+
+    Args:
+        ogx_client: Client for the server under test.
+        response_id: Response id to read.
+
+    Returns:
+        The compared fields, as strings.
+    """
+    return _comparable_fields(
+        payload=ogx_client.responses.retrieve(response_id=response_id).to_dict(),
+        fields=COMPARED_RESPONSE_FIELDS,
+    )
+
+
+def retrieve_conversation_fields(ogx_client: OgxClient, conversation_id: str) -> dict[str, str]:
+    """Return the compared fields of `GET /v1/conversations/{id}`.
+
+    Args:
+        ogx_client: Client for the server under test.
+        conversation_id: Conversation id to read.
+
+    Returns:
+        The compared fields, as strings.
+    """
+    return _comparable_fields(
+        payload=ogx_client.conversations.retrieve(conversation_id=conversation_id).to_dict(),
+        fields=COMPARED_CONVERSATION_FIELDS,
+    )
+
+
+def bounded_count(items: Iterable[Any], max_items: int = MAX_LISTED_RESOURCES) -> int:
+    """Count an auto-paginating listing, refusing to walk an unbounded one.
+
+    Args:
+        items: Listing returned by one of the client's `list()` methods.
+        max_items: Largest number of items the caller is willing to walk.
+
+    Returns:
+        The number of listed items.
+
+    Raises:
+        UnexpectedResourceCountError: If the listing holds more than `max_items`.
+    """
+    count = 0
+    for _ in items:
+        count += 1
+        if count > max_items:
+            raise UnexpectedResourceCountError(f"Listing holds more than the {max_items} items the inventory walks")
+    return count
+
+
+class StateInventory(TypedDict):
+    """Snapshot of the state a disruptive operation must preserve.
+
+    `counts` holds one total per resource kind. `sampled` holds the compared
+    fields of the individual resources named by the caller, keyed by kind and
+    then by id. `missing` names the sampled resources that did not resolve.
+    """
+
+    counts: dict[str, int]
+    sampled: dict[str, dict[str, dict[str, str]]]
+    missing: list[str]
+
+
+class RollbackBaseline(TypedDict):
+    """Pre-rollback state inventory, together with the URL it was captured through.
+
+    `external_url` is recorded so the post-rollback run can show it addressed the
+    same hostname, rather than one the rollback moved the endpoint to.
+    """
+
+    inventory: StateInventory
+    external_url: str
+
+
+def capture_state_inventory(ogx_client: OgxClient, sampled_ids: dict[str, list[str]]) -> StateInventory:
+    """Count the stored resources and read back the sampled ones.
+
+    The Conversations API exposes no listing endpoint, so its count is the number
+    of sampled conversations that resolved rather than a server-wide total.
+
+    Args:
+        ogx_client: Client for the server under test.
+        sampled_ids: Resource ids to read back, keyed by `files`,
+            `vector_stores`, `responses` and `conversations`.
+
+    Returns:
+        The inventory, ready to be compared against another capture.
+    """
+    retrievers: dict[str, Callable[..., dict[str, str]]] = {
+        "files": lambda resource_id: retrieve_file_fields(ogx_client=ogx_client, file_id=resource_id),
+        "vector_stores": lambda resource_id: retrieve_vector_store_fields(
+            ogx_client=ogx_client, vector_store_id=resource_id
+        ),
+        "responses": lambda resource_id: retrieve_response_fields(ogx_client=ogx_client, response_id=resource_id),
+        "conversations": lambda resource_id: retrieve_conversation_fields(
+            ogx_client=ogx_client, conversation_id=resource_id
+        ),
+    }
+
+    sampled: dict[str, dict[str, dict[str, str]]] = {kind: {} for kind in retrievers}
+    missing: list[str] = []
+    for kind, resource_ids in sampled_ids.items():
+        for resource_id in resource_ids:
+            try:
+                sampled[kind][resource_id] = retrievers[kind](resource_id=resource_id)
+            except APIStatusError as error:
+                missing.append(f"{kind}/{resource_id} returned HTTP {error.status_code}")
+
+    counts = {
+        "files": bounded_count(items=ogx_client.files.list()),
+        "vector_stores": bounded_count(items=ogx_client.vector_stores.list()),
+        "responses": bounded_count(items=ogx_client.responses.list()),
+        "conversations": len(sampled["conversations"]),
+    }
+    LOGGER.info(f"Captured state inventory {counts}")
+    return StateInventory(counts=counts, sampled=sampled, missing=missing)
+
+
+def sampled_resource_ids(inventory: StateInventory) -> dict[str, list[str]]:
+    """Return the ids an inventory sampled, keyed by resource kind.
+
+    Lets a later capture re-read exactly the resources an earlier one recorded,
+    without the ids having to be carried separately.
+
+    Args:
+        inventory: A previously captured inventory.
+
+    Returns:
+        The sampled ids, in the shape `capture_state_inventory` expects.
+    """
+    return {kind: list(sampled) for kind, sampled in inventory["sampled"].items()}
+
+
+def pods_logging_marker(pods: list[Pod], marker: str) -> list[str]:
+    """Return the names of the pods whose logs contain `marker`.
+
+    Used to correlate a single request against the workload that served it. A
+    pod whose logs cannot be read (for example because it has already been
+    replaced) is reported as not containing the marker.
+
+    Args:
+        pods: Pods whose logs are searched.
+        marker: Literal string to look for, typically a request or response id.
+
+    Returns:
+        The names of the matching pods.
+    """
+    matching: list[str] = []
+    for pod in pods:
+        try:
+            if marker in pod_logs(pod=pod):
+                matching.append(str(pod.name))
+        except ApiException as error:
+            LOGGER.warning(f"Could not read logs of pod {pod.namespace}/{pod.name}: {error}")
+    return matching
