@@ -1,6 +1,7 @@
 import os
 import shlex
 import shutil
+import tempfile
 
 from pytest_testconfig import config as py_config
 from pytest import Item
@@ -148,13 +149,17 @@ def run_must_gather_clean(must_gather_path: str, target_dir: str) -> str:
     Returns:
         Path to the cleaned must-gather output directory.
     """
-    cleaned_dir = os.path.join(target_dir, "must-gather-cleaned")
+    must_gather_path = os.path.abspath(must_gather_path)
+    cleaned_dir = os.path.abspath(os.path.join(target_dir, "must-gather-cleaned"))
     clean_command = f"must-gather-clean -c {MUST_GATHER_CLEAN_CONFIG} -i {must_gather_path} -o {cleaned_dir}"
     LOGGER.info(f"Running must-gather-clean: {clean_command}")
-    result = run_command(command=shlex.split(clean_command), check=False, timeout=300)
+    # must-gather-clean writes its report file to the current working directory, which is not writable when
+    # running from the tests container, run it from a temporary directory instead.
+    with tempfile.TemporaryDirectory(prefix="must-gather-clean-") as clean_report_dir:
+        result = run_command(command=shlex.split(clean_command), check=False, timeout=300, cwd=clean_report_dir)
     LOGGER.info(f"must-gather-clean output: {result[1]}")
 
-    if result[0] != 0:
+    if not result[0]:
         LOGGER.warning(f"must-gather-clean failed: {result[2]}")
         return must_gather_path
 
