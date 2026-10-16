@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import NotFoundError
 from ocp_resources.cluster_role import ClusterRole
 from ocp_resources.cluster_role_binding import ClusterRoleBinding
 from ocp_resources.config_map import ConfigMap
@@ -2337,6 +2338,29 @@ def otel_trace_collector_pod(
     return pods[0]
 
 
+def _wait_for_rollout_observed(deployment: Deployment, timeout: int = 60) -> None:
+    """Wait until the Deployment controller has observed the latest spec change.
+
+    `wait_for_replicas` does not check observedGeneration, so right after a
+    pod-template patch it can pass on the old pod's stale status before the
+    rollout has started.
+    """
+    try:
+        for observed in TimeoutSampler(
+            wait_timeout=timeout,
+            sleep=1,
+            func=lambda: (
+                (deployment.instance.status.observedGeneration or 0) >= deployment.instance.metadata.generation
+            ),
+        ):
+            if observed:
+                return
+    except TimeoutExpiredError as err:
+        raise RuntimeError(
+            f"Deployment {deployment.name} did not observe its latest generation within {timeout}s"
+        ) from err
+
+
 def _wait_for_operator_leadership(admin_client: DynamicClient, namespace: str, timeout: int = 60) -> None:
     """Wait for the controller-runtime leader election lease to be held by the current pod.
 
@@ -2355,7 +2379,12 @@ def _wait_for_operator_leadership(admin_client: DynamicClient, namespace: str, t
         return holder_identity.rsplit("_", 1)[0] == pods[0].name
 
     try:
-        for settled in TimeoutSampler(wait_timeout=timeout, sleep=2, func=_leader_matches_sole_pod):
+        for settled in TimeoutSampler(
+            wait_timeout=timeout,
+            sleep=2,
+            func=_leader_matches_sole_pod,
+            exceptions_dict={NotFoundError: []},
+        ):
             if settled:
                 return
     except TimeoutExpiredError as err:
@@ -2401,10 +2430,12 @@ def operator_with_otel_tracing(
     with ResourceEditor(
         patches={trustyai_operator_deployment: {"spec": {"template": {"spec": {"containers": [manager_container]}}}}}
     ):
+        _wait_for_rollout_observed(deployment=trustyai_operator_deployment)
         trustyai_operator_deployment.wait_for_replicas(timeout=300)
         _wait_for_operator_leadership(admin_client=admin_client, namespace=trustyai_operator_deployment.namespace)
         yield trustyai_operator_deployment
 
+    _wait_for_rollout_observed(deployment=trustyai_operator_deployment)
     trustyai_operator_deployment.wait_for_replicas(timeout=300)
     _wait_for_operator_leadership(admin_client=admin_client, namespace=trustyai_operator_deployment.namespace)
 
