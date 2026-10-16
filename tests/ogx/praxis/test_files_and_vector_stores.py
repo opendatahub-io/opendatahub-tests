@@ -15,19 +15,22 @@ from kubernetes.dynamic import DynamicClient
 from ogx_client import OgxClient
 from ogx_client.types.vector_store import VectorStore
 
-from tests.ogx.praxis.constants import FILES_API_PATH, NAMESPACE_PARAMS, OGX_SERVER_PARAMS, VECTOR_STORES_API_PATH
-from tests.ogx.praxis.upgrade.constants import SEED_FILES_COUNT
-from tests.ogx.praxis.upgrade.utils import (
+from tests.ogx.praxis.constants import (
+    FILES_API_PATH,
+    NAMESPACE_PARAMS,
+    OGX_SERVER_PARAMS,
+    SEED_FILES_COUNT,
+    VECTOR_STORES_API_PATH,
+)
+from tests.ogx.praxis.utils import (
     ApiBaseline,
     capture_api_baseline,
     format_field_diff,
+    http_routes_matching_path,
+    pod_logs,
     retrieve_file_fields,
     retrieve_vector_store_fields,
     seed_files,
-)
-from tests.ogx.praxis.utils import (
-    http_routes_matching_path,
-    pod_logs,
     serving_pods_for_path,
 )
 from utilities.resources.ogx_server import OgxServer
