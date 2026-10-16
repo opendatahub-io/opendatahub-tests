@@ -1397,8 +1397,8 @@ processors:
     limit_mib: 512
 
 exporters:
-  logging:
-    loglevel: debug
+  debug:
+    verbosity: detailed
   prometheus:
     endpoint: "0.0.0.0:{OTEL_COLLECTOR_PROMETHEUS_PORT}"
     namespace: evalhub
@@ -1410,7 +1410,7 @@ service:
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [logging, prometheus]
+      exporters: [debug, prometheus]
 """
     with ConfigMap(
         client=admin_client,
