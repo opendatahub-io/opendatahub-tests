@@ -2,6 +2,8 @@ import pytest
 import requests
 import structlog
 from ocp_resources.namespace import Namespace
+from ocp_resources.role import Role
+from ocp_resources.role_binding import RoleBinding
 from ocp_resources.route import Route
 from ocp_resources.service import Service
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
@@ -34,6 +36,7 @@ LOGGER = structlog.get_logger(name=__name__)
 def evalhub_mt_ready(
     evalhub_mt_route: Route,
     evalhub_mt_ca_bundle_file: str,
+    network_policy_access_for_evalhub_api_sa: tuple[Role, RoleBinding],
 ) -> None:
     """Wait for the EvalHub service to respond via its route.
 
@@ -41,6 +44,7 @@ def evalhub_mt_ready(
     has fully configured the backend, causing 503 errors. This fixture
     polls the health endpoint until it responds successfully.
     """
+    _ = network_policy_access_for_evalhub_api_sa
     url = f"https://{evalhub_mt_route.host}{EVALHUB_HEALTH_PATH}"
     try:
         for sample in TimeoutSampler(
