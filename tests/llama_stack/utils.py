@@ -18,6 +18,7 @@ from timeout_sampler import retry
 
 from tests.llama_stack.constants import (
     LLS_CORE_POD_FILTER,
+    ModelInfo,
 )
 from tests.llama_stack.datasets import Dataset
 from utilities.exceptions import UnexpectedResourceCountError
@@ -398,3 +399,80 @@ def vector_store_upload_dataset(
             vector_store=vector_store,
             attributes=doc.attributes,
         )
+
+
+def _is_vision_model(model_id: str) -> bool:
+    """Return whether a model identifier represents a vision model."""
+    model_id_lower = model_id.lower()
+    return "vision" in model_id_lower or "-vl-" in model_id_lower or model_id_lower.endswith("-vl")
+
+
+def select_llama_stack_model(
+    models: list[Any],
+    providers: list[Any],
+    configured_model: str = "",
+) -> ModelInfo:
+    """Select the LLM and embedding models from LlamaStack client responses.
+
+    Args:
+        models: Models returned by the LlamaStack client.
+        providers: Providers returned by the LlamaStack client.
+        configured_model: Expected inference model identifier.
+
+    Returns:
+        The selected LLM identifier, embedding model, and embedding dimension.
+
+    Raises:
+        ValueError: If no LLM model or compatible embedding model is available.
+    """
+    llm_models = [model for model in models if model.custom_metadata.get("model_type") == "llm"]
+    if not llm_models:
+        raise ValueError("No LLM models found in LlamaStack client")
+
+    selected_llm = None
+    if configured_model:
+        selected_llm = next((model for model in llm_models if model.id == configured_model), None)
+        if not selected_llm:
+            selected_llm = next((model for model in llm_models if configured_model in model.id), None)
+        if not selected_llm:
+            LOGGER.warning(
+                f"Configured LLS_CORE_INFERENCE_MODEL='{configured_model}' "
+                f"not found in registered models: {[model.id for model in llm_models]}"
+            )
+
+    if not selected_llm:
+        selected_llm = next(
+            (model for model in llm_models if "qwen" in model.id.lower() and not _is_vision_model(model_id=model.id)),
+            None,
+        )
+    if not selected_llm:
+        selected_llm = next(
+            (model for model in llm_models if not _is_vision_model(model_id=model.id)),
+            llm_models[0],
+        )
+
+    provider_ids = [provider.provider_id for provider in providers]
+    if "sentence-transformers" in provider_ids:
+        target_provider_id = "sentence-transformers"
+    elif "vllm-embedding" in provider_ids:
+        target_provider_id = "vllm-embedding"
+    else:
+        raise ValueError("No embedding provider found")
+
+    embedding_model = next(
+        model
+        for model in models
+        if model.custom_metadata.get("model_type") == "embedding"
+        and model.custom_metadata.get("provider_id") == target_provider_id
+    )
+    embedding_dimension = int(embedding_model.custom_metadata["embedding_dimension"])
+
+    LOGGER.info(f"Detected model: {selected_llm.id}")
+    LOGGER.info(f"Detected embedding_model: {embedding_model.id}")
+    LOGGER.info(f"Detected embedding_dimension: {embedding_dimension}")
+
+    return ModelInfo(
+        model_id=selected_llm.id,
+        embedding_model=embedding_model,
+        embedding_dimension=embedding_dimension,
+    )

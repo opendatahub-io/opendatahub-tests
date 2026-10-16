@@ -38,6 +38,7 @@ from tests.llama_stack.constants import (
 from tests.llama_stack.datasets import Dataset
 from tests.llama_stack.utils import (
     create_llama_stack_distribution,
+    select_llama_stack_model,
     vector_store_upload_dataset,
     vector_store_upload_doc_sources,
     wait_for_llama_stack_client_ready,
@@ -732,6 +733,12 @@ def llama_stack_models(unprivileged_llama_stack_client: LlamaStackClient) -> Mod
     """
     Returns model information from the LlamaStack client.
 
+    Selects the LLM model using the following priority:
+    1. Match LLS_CORE_INFERENCE_MODEL if configured
+    2. Fallback to a non-vision Qwen model
+    3. Fallback to the first available non-vision LLM model
+    4. Fallback to the first available LLM model
+
     Selects the embedding model based on available providers with the following priority:
     1. sentence-transformers provider (if present)
     2. vllm-embedding provider (if present)
@@ -748,35 +755,16 @@ def llama_stack_models(unprivileged_llama_stack_client: LlamaStackClient) -> Mod
         ModelInfo: NamedTuple containing model information
 
     Raises:
-        ValueError: If no embedding provider (sentence-transformers or vllm-embedding) is found
+        ValueError: If no LLM model or embedding provider is found
 
     """
     models = unprivileged_llama_stack_client.models.list()
-
-    model_id = next(m for m in models if m.custom_metadata["model_type"] == "llm").id
-
-    # Ensure getting the right embedding model depending on the available providers
     providers = unprivileged_llama_stack_client.providers.list()
-    provider_ids = [p.provider_id for p in providers]
-    if "sentence-transformers" in provider_ids:
-        target_provider_id = "sentence-transformers"
-    elif "vllm-embedding" in provider_ids:
-        target_provider_id = "vllm-embedding"
-    else:
-        raise ValueError("No embedding provider found")
-
-    embedding_model = next(
-        m
-        for m in models
-        if m.custom_metadata["model_type"] == "embedding" and m.custom_metadata["provider_id"] == target_provider_id
+    return select_llama_stack_model(
+        models=models,
+        providers=providers,
+        configured_model=LLS_CORE_INFERENCE_MODEL,
     )
-    embedding_dimension = int(embedding_model.custom_metadata["embedding_dimension"])
-
-    LOGGER.info(f"Detected model: {model_id}")
-    LOGGER.info(f"Detected embedding_model: {embedding_model.id}")
-    LOGGER.info(f"Detected embedding_dimension: {embedding_dimension}")
-
-    return ModelInfo(model_id=model_id, embedding_model=embedding_model, embedding_dimension=embedding_dimension)
 
 
 @pytest.fixture(scope="class")
