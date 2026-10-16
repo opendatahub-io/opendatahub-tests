@@ -11,6 +11,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.pod import Pod
 from ocp_resources.route import Route
+from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from requests import Response
 from timeout_sampler import TimeoutSampler, retry
@@ -440,6 +441,21 @@ def service_exists(client: DynamicClient, name: str, namespace: str) -> bool:
         True if the Service exists, False otherwise
     """
     return bool(Service(client=client, name=name, namespace=namespace).exists)
+
+
+def secret_exists(client: DynamicClient, name: str, namespace: str) -> bool:
+    """
+    Check whether a Secret exists.
+
+    Args:
+        client: DynamicClient to query the cluster
+        name: Secret name
+        namespace: Namespace to look in
+
+    Returns:
+        True if the Secret exists, False otherwise
+    """
+    return bool(Secret(client=client, name=name, namespace=namespace).exists)
 
 
 def configmap_exists(client: DynamicClient, name: str, namespace: str) -> bool:
