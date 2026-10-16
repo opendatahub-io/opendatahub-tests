@@ -8,7 +8,7 @@ import structlog
 
 from tests.ai_gateway.models_as_a_service.body_base_routing.pre_auth_model_header.utils import (
     assert_bbr_inference_status,
-    warm_up_bbr_inference_upstream,
+    assert_bbr_inference_streaming_returns_sse,
 )
 from tests.ai_gateway.models_as_a_service.maas_api_key.utils import search_active_api_keys
 from tests.ai_gateway.models_as_a_service.utils import build_maas_headers, get_maas_models_response
@@ -134,29 +134,13 @@ class TestBBRPreAuthInference:
     ) -> None:
         """Verify that inference with stream=True returns 200 with SSE text/event-stream chunks."""
         streaming_payload = {**bbr_chat_payload, "stream": True}
-        warm_up_bbr_inference_upstream(
+        assert_bbr_inference_streaming_returns_sse(
             session=request_session_http,
             inference_url=bbr_inference_url,
             headers=bbr_api_key_headers,
             payload=streaming_payload,
         )
-        with request_session_http.post(
-            url=bbr_inference_url,
-            headers=bbr_api_key_headers,
-            json=streaming_payload,
-            timeout=60,
-            stream=True,
-        ) as response:
-            assert response.status_code == 200, f"Expected 200 for streaming BBR inference, got {response.status_code}"
-            content_type = response.headers.get("content-type", "")
-            assert "text/event-stream" in content_type, (
-                f"Expected text/event-stream content type for streaming response, got '{content_type}'"
-            )
-            chunks = [line for line, _ in zip(response.iter_lines(), range(10), strict=False) if line]
-            assert any(chunk.startswith(b"data:") for chunk in chunks), (
-                f"Expected SSE data: chunks in streaming response — first chunks: {chunks!r}"
-            )
-        LOGGER.info(f"Streaming BBR inference returned 200 with {len(chunks)} SSE chunks")
+        LOGGER.info("Streaming BBR inference returned 200 with SSE data: lines")
 
     @pytest.mark.smoke
     def test_list_models_returns_200_with_api_key(

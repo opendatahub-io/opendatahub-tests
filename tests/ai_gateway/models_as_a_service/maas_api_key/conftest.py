@@ -7,29 +7,27 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.cron_job import CronJob
 from ocp_resources.deployment import Deployment
-from ocp_resources.maas_auth_policy import MaaSAuthPolicy
 from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.maas_subscription import MaaSSubscription
 from ocp_resources.namespace import Namespace
 from ocp_resources.network_policy import NetworkPolicy
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
-from ocp_resources.secret import Secret
 
 from tests.ai_gateway.models_as_a_service.maas_api_key.utils import (
+    MAAS_GATEWAY_AUTH_POLICY_NAME,
+    X_API_KEY_DUMMY_PROVIDER_NAME,
     X_API_KEY_IDENTITY_SOURCE_NAME,
-    X_API_KEY_TRIGGER_ENDPOINT,
     X_API_KEY_TRIGGER_MODEL_NAME,
-    X_API_KEY_TRIGGER_PROVIDER_NAME,
-    X_API_KEY_TRIGGER_SECRET_NAME,
     FreeUserKeysAcrossSubscriptions,
-    assert_key_accepted_on_endpoint,
+    assert_key_accepted_on_inference,
     build_chat_payload,
     build_inference_url,
     build_x_api_key_headers,
     messages_format_external_provider_ref,
     resolve_api_key_username,
     trigger_external_model_reconcile,
+    wait_for_auth_policy_accepted,
     wait_for_gateway_identity_source,
 )
 from tests.ai_gateway.models_as_a_service.maas_subscription.utils import (
@@ -45,11 +43,11 @@ from tests.ai_gateway.models_as_a_service.utils import (
     create_api_key,
     revoke_api_key,
 )
+from utilities.constants import MAAS_GATEWAY_NAMESPACE
 from utilities.general import generate_random_name
 from utilities.infra import get_openshift_token
 from utilities.resources.auth import Auth
 from utilities.resources.external_model import ExternalModel
-from utilities.resources.external_provider import ExternalProvider
 from utilities.resources.llm_inference_service import LLMInferenceService
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -477,61 +475,21 @@ def inference_external_model_crd_present(admin_client: DynamicClient) -> None:
 
 
 @pytest.fixture(scope="class")
-def x_api_key_trigger_credential_secret(
-    admin_client: DynamicClient,
-    maas_unprivileged_model_namespace: Namespace,
-) -> Generator[Secret, Any, Any]:
-    """Opaque secret for the x-api-key trigger ExternalProvider."""
-    with Secret(
-        client=admin_client,
-        name=X_API_KEY_TRIGGER_SECRET_NAME,
-        namespace=maas_unprivileged_model_namespace.name,
-        type="Opaque",
-        string_data={"api-key": "e2e-x-api-key-test"},
-        teardown=True,
-        wait_for_resource=True,
-    ) as credential_secret:
-        yield credential_secret
-
-
-@pytest.fixture(scope="class")
-def x_api_key_trigger_external_provider(
-    admin_client: DynamicClient,
-    maas_unprivileged_model_namespace: Namespace,
-    x_api_key_trigger_credential_secret: Secret,
-) -> Generator[ExternalProvider, Any, Any]:
-    """ExternalProvider backing the messages-format ExternalModel used to enable x-api-key auth."""
-    with ExternalProvider(
-        client=admin_client,
-        name=X_API_KEY_TRIGGER_PROVIDER_NAME,
-        namespace=maas_unprivileged_model_namespace.name,
-        provider="anthropic",
-        endpoint=X_API_KEY_TRIGGER_ENDPOINT,
-        auth={
-            "type": "simple",
-            "secretRef": {"name": x_api_key_trigger_credential_secret.name},
-        },
-        teardown=True,
-        wait_for_resource=True,
-    ) as external_provider:
-        external_provider.wait_for_condition(condition="Ready", status="True", timeout=300)
-        yield external_provider
-
-
-@pytest.fixture(scope="class")
 def x_api_key_trigger_external_model(
     admin_client: DynamicClient,
     maas_unprivileged_model_namespace: Namespace,
-    x_api_key_trigger_external_provider: ExternalProvider,
-    maas_auth_policy_tinyllama_free: MaaSAuthPolicy,
 ) -> Generator[ExternalModel, Any, Any]:
-    """Deploy a messages-format ExternalModel so the gateway enables the x-api-key identity source."""
+    """Apply a messages-format ExternalModel so maas-controller enables api-keys-x-api-key.
+
+    Matches maas-billing e2e: only the inference ExternalModel is created; the provider ref
+    name is a placeholder and no ExternalProvider CR is required for gateway discovery.
+    """
     with ExternalModel(
         client=admin_client,
         name=X_API_KEY_TRIGGER_MODEL_NAME,
         namespace=maas_unprivileged_model_namespace.name,
         external_provider_refs=[
-            messages_format_external_provider_ref(provider_name=x_api_key_trigger_external_provider.name),
+            messages_format_external_provider_ref(provider_name=X_API_KEY_DUMMY_PROVIDER_NAME),
         ],
         teardown=True,
         wait_for_resource=True,
@@ -542,6 +500,15 @@ def x_api_key_trigger_external_model(
             identity_source_name=X_API_KEY_IDENTITY_SOURCE_NAME,
             present=True,
             reconcile_external_model=trigger_external_model,
+        )
+        wait_for_auth_policy_accepted(
+            admin_client=admin_client,
+            policy_name=MAAS_GATEWAY_AUTH_POLICY_NAME,
+            namespace=MAAS_GATEWAY_NAMESPACE,
+            reconciliation_hint=(
+                "Ensure a messages-format ExternalModel exists so maas-controller adds "
+                f"{X_API_KEY_IDENTITY_SOURCE_NAME!r} to the gateway AuthPolicy."
+            ),
         )
         yield trigger_external_model
 
@@ -590,13 +557,14 @@ def x_api_key_plaintext_api_key(
 def x_api_key_auth_ready(
     x_api_key_plaintext_api_key: str,
     request_session_http: requests.Session,
-    base_url: str,
+    tinyllama_free_inference_url: str,
+    tinyllama_free_payload: dict[str, Any],
 ) -> str:
-    """Poll GET /v1/models with x-api-key until the gateway accepts the minted key."""
-    models_url = f"{base_url}/v1/models"
-    assert_key_accepted_on_endpoint(
+    """Poll model inference with x-api-key until the gateway accepts the minted key."""
+    assert_key_accepted_on_inference(
         request_session_http=request_session_http,
-        url=models_url,
+        inference_url=tinyllama_free_inference_url,
+        payload=tinyllama_free_payload,
         headers=build_x_api_key_headers(plaintext_api_key=x_api_key_plaintext_api_key),
         wait_timeout=120,
         sleep=5,

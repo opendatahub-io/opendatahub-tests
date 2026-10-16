@@ -1,11 +1,47 @@
 """Assertions shared by release-contract query tests."""
 
-from tests.observability.contract import ContractRecord
-from tests.observability.query import RawQueryResult
+from tests.observability.contract import ContractRecord, PipelineHealthRecord
+from tests.observability.query import RawQueryResult, SignalQueryResult
+from tests.observability.rollout import RolloutState
 
 
 class QueryContractError(AssertionError):
     """Raised when a raw response does not satisfy its reviewed contract."""
+
+
+def assert_pipeline_health_contract(result: SignalQueryResult, contract: PipelineHealthRecord) -> None:
+    """Assert a signal response without forcing traces or logs through a PromQL schema."""
+    if contract.rollout_state is RolloutState.SKIPPED:
+        raise QueryContractError(
+            f"{contract.identifier}: pipeline-health check is skipped until its activation prerequisite is established"
+        )
+    if result.transport_error:
+        raise QueryContractError(f"{contract.identifier}: signal transport failed: {result.transport_error}")
+    if result.parse_error:
+        raise QueryContractError(f"{contract.identifier}: signal response could not be parsed: {result.parse_error}")
+    if result.backend_status == "error" or result.backend_error_type or result.backend_error:
+        raise QueryContractError(f"{contract.identifier}: backend response contained an error")
+    if result.http_status not in contract.expected_http_status:
+        raise QueryContractError(
+            f"{contract.identifier}: expected HTTP {contract.expected_http_status}, got {result.http_status}"
+        )
+    if result.result_count < contract.minimum_results and not (
+        contract.empty_result_valid and result.result_count == 0
+    ):
+        raise QueryContractError(
+            f"{contract.identifier}: expected at least {contract.minimum_results} results, got {result.result_count}"
+        )
+    label_names = {name for name, _value in result.labels}
+    missing_labels = set(contract.required_labels) - label_names
+    if missing_labels:
+        raise QueryContractError(f"{contract.identifier}: missing labels: {sorted(missing_labels)}")
+    attribute_names = {name for name, _value in result.attributes}
+    missing_attributes = set(contract.required_attributes) - attribute_names
+    if missing_attributes:
+        raise QueryContractError(f"{contract.identifier}: missing attributes: {sorted(missing_attributes)}")
+    missing_edges = set(contract.required_edges) - set(result.edges)
+    if missing_edges:
+        raise QueryContractError(f"{contract.identifier}: missing edges: {sorted(missing_edges)}")
 
 
 def assert_query_contract(result: RawQueryResult, contract: ContractRecord) -> None:

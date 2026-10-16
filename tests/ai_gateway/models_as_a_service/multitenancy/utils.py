@@ -25,6 +25,7 @@ from tests.ai_gateway.models_as_a_service.maas_subscription.utils import create_
 from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import (
     AIGATEWAY_BOOTSTRAPPED_TENANT_NAME,
     AITenantTestContext,
+    build_tenant_local_maas_model_ref_kind_dict,
 )
 from tests.ai_gateway.models_as_a_service.utils import (
     AIGATEWAY_GATEWAY_CLASS_NAME,
@@ -817,6 +818,7 @@ def provision_tenant_model(
     teardown: bool = True,
     llm_ready_timeout: int = 900,
     httproute_timeout: int = 300,
+    spec_tenant_ref: str | None = None,
 ) -> Generator[MaaSModelRef, Any, Any]:
     """Provision a tenant-local TinyLlama model whose HTTPRoute attaches to the tenant Gateway."""
     label_namespace_gateway_access(
@@ -884,20 +886,26 @@ def provision_tenant_model(
             gateway_namespace=gateway_namespace,
             timeout=httproute_timeout,
         )
-        maas_model = stack.enter_context(
-            cm=MaaSModelRef(
-                client=admin_client,
-                name=model_name,
-                namespace=tenant_namespace_name,
-                model_ref={
-                    "name": model_name,
-                    "namespace": tenant_namespace_name,
-                    "kind": "LLMInferenceService",
-                },
-                teardown=teardown,
-                wait_for_resource=True,
+        maas_model_ref_kwargs: dict[str, Any] = {
+            "client": admin_client,
+            "name": model_name,
+            "namespace": tenant_namespace_name,
+            "teardown": teardown,
+            "wait_for_resource": True,
+        }
+        if spec_tenant_ref is not None:
+            maas_model_ref_kwargs["kind_dict"] = build_tenant_local_maas_model_ref_kind_dict(
+                model_name=model_name,
+                tenant_namespace_name=tenant_namespace_name,
+                spec_tenant_ref=spec_tenant_ref,
             )
-        )
+        else:
+            maas_model_ref_kwargs["model_ref"] = {
+                "name": model_name,
+                "namespace": tenant_namespace_name,
+                "kind": "LLMInferenceService",
+            }
+        maas_model = stack.enter_context(cm=MaaSModelRef(**maas_model_ref_kwargs))
         LOGGER.info(
             f"Tenant model '{tenant_namespace_name}/{model_name}' is Ready on "
             f"Gateway '{gateway_namespace}/{gateway_name}'"
