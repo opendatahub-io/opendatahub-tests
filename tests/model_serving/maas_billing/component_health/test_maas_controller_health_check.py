@@ -75,7 +75,11 @@ class TestMaaSController:
         """Verify maas-controller pods are Running."""
         applications_namespace = py_config["applications_namespace"]
         LOGGER.info(f"Testing Pods in namespace {applications_namespace} for MaaS Controller health")
-        wait_for_pods_running(admin_client=admin_client, namespace_name=applications_namespace)
+        wait_for_pods_running(
+            admin_client=admin_client,
+            namespace_name=applications_namespace,
+            label_selector="app=maas-controller",
+        )
 
     @pytest.mark.parametrize(
         "resource_fixture, kind_label",

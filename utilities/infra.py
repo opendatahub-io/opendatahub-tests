@@ -1074,6 +1074,28 @@ def wait_for_dsc_status_ready(dsc_resource: DataScienceCluster) -> bool:
     if removed_components:
         message += f"\nRemoved components: {', '.join(removed_components)}"
 
+    # Capacity / leftover-workload hint when Dashboard (or other apps) cannot schedule
+    not_ready_types = {condition.type for condition in not_ready_conditions}
+    if "DashboardReady" in not_ready_types or "Ready" in not_ready_types:
+        try:
+            from pytest_testconfig import config as py_config
+
+            apps_ns = py_config.get("applications_namespace", "redhat-ods-applications")
+            client = dsc_resource.client
+            pending = [
+                f"{pod.name}:{pod.instance.status.phase}"
+                for pod in Pod.get(client=client, namespace=apps_ns)
+                if pod.instance.status.phase == "Pending"
+            ]
+            if pending:
+                message += f"\nPending pods in {apps_ns}: {', '.join(pending)}"
+                message += (
+                    "\nHint: DashboardReady often fails when workers lack CPU for rhods-dashboard "
+                    "(FailedScheduling / Insufficient cpu) or leftover test workloads fill the cluster."
+                )
+        except (AttributeError, KeyError, NotFoundError, ResourceNotFoundError, TypeError) as exc:
+            LOGGER.debug(f"Could not enrich DSC not-ready error with pending pods: {exc}")
+
     raise ResourceNotReadyError(message)
 
 
