@@ -60,9 +60,9 @@ def validate_nemo_guardrails_images(pod: Pod, trustyai_operator_configmap: Confi
 
     for container in pod.instance.spec.containers:
         # Check SHA256 digest exists
-        assert re.search(
-            SHA256_DIGEST_PATTERN, container.image
-        ), f"{container.name}: {container.image} does not have a valid SHA256 digest"
+        assert re.search(SHA256_DIGEST_PATTERN, container.image), (
+            f"{container.name}: {container.image} does not have a valid SHA256 digest"
+        )
 
         # Parse pod image
         pod_name_sha, pod_sha = parse_image(image_str=container.image)
@@ -265,9 +265,9 @@ def verify_health_response(response: Response) -> None:
         AssertionError: If health check fails
     """
     # Accept any response that matches the default k8s health check
-    assert (
-        200 <= response.status_code < 400
-    ), f"Expected service to be responsive, got {response.status_code}: {response.text[:200]}"
+    assert 200 <= response.status_code < 400, (
+        f"Expected service to be responsive, got {response.status_code}: {response.text[:200]}"
+    )
 
     LOGGER.info(f"Health check passed: {response.status_code} (service is responding)")
 

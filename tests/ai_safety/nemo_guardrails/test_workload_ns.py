@@ -224,8 +224,7 @@ def _assert_owned_by(resource: ConfigMap | Deployment | Secret | Service, owner:
     annotations = resource.instance.metadata.annotations or {}
     owner_uid = _label_value(labels=labels, key=_OWNER_UID_LABEL)
     assert owner_uid == str(owner.instance.metadata.uid), (
-        f"{type(resource).__name__} '{resource.namespace}/{resource.name}' "
-        f"label {_OWNER_UID_LABEL} is {owner_uid!r}"
+        f"{type(resource).__name__} '{resource.namespace}/{resource.name}' label {_OWNER_UID_LABEL} is {owner_uid!r}"
     )
     assert _label_value(labels=annotations, key=_OWNER_NAME_ANNOTATION) == owner.name, (
         f"{type(resource).__name__} '{resource.namespace}/{resource.name}' "
@@ -497,7 +496,7 @@ class TestNemoGuardrailsWorkloadNamespace:
               under the CR name and not in the CR namespace. Pods and the Service
               select app=<cr-namespace>-<cr-name>. The Service port is the CR name.
               The default ConfigMap and API key Secret match their sources and carry
-              this CR's owner label and annotations. 
+              this CR's owner label and annotations.
         """
         infra_ns = labeled_infra_namespace
         with NemoGuardrails(
@@ -727,7 +726,9 @@ class TestNemoGuardrailsWorkloadNamespace:
                             raise AssertionError(f"Second project took the workload: {reason}")
                 except TimeoutExpiredError:
                     pass
-                assert _label_value(labels=deployment.instance.spec.selector.matchLabels, key="app") == expected_selector
+                assert (
+                    _label_value(labels=deployment.instance.spec.selector.matchLabels, key="app") == expected_selector
+                )
                 _assert_owned_by(resource=deployment, owner=first)
                 assert nemo_cr_phase(nemo_cr=second) != "Ready"
                 assert nemo_cr_workload_namespace(nemo_cr=second) == ""
