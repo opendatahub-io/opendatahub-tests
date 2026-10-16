@@ -14,9 +14,10 @@ from ocp_resources.role_binding import RoleBinding
 from ocp_resources.service_account import ServiceAccount
 
 from tests.spark.upgrade.utils import resubmit_spark_application
-from tests.spark.utils import create_gated_continuity_spark_spec
+from tests.spark.utils import create_gated_continuity_spark_spec, create_spark_connect_spec
 from utilities.resources.scheduled_spark_application import ScheduledSparkApplication
 from utilities.resources.spark_application import SparkApplication
+from utilities.resources.spark_connect import SparkConnect
 
 
 @pytest.fixture(scope="class")
@@ -199,3 +200,55 @@ def scheduled_continuity_application(
             client=admin_client, kind_dict=manifest, teardown=teardown_resources
         ) as scheduled_application:
             yield scheduled_application
+
+
+@pytest.fixture()
+def spark_connect_continuity_control(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    spark_namespace_fixture: Namespace,
+    teardown_resources: bool,
+) -> Generator[ConfigMap, Any, Any]:
+    """Persist the pre-upgrade Spark Connect server identity across the two pytest processes."""
+    control = ConfigMap(
+        client=admin_client, name="spark-connect-upgrade-continuity", namespace=spark_namespace_fixture.name
+    )
+    if pytestconfig.option.post_upgrade:
+        assert control.exists, "Run the in-progress pre-upgrade test and preserve its resources first"
+        yield control
+    else:
+        with ConfigMap(
+            client=admin_client, name=control.name, namespace=control.namespace, data={}, teardown=teardown_resources
+        ) as control:
+            yield control
+
+
+@pytest.fixture()
+def spark_connect_continuity_application(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    spark_namespace_fixture: Namespace,
+    spark_workload_service_account: ServiceAccount,
+    role_binding_fixture: list[RoleBinding],
+    network_policy_fixture: list[NetworkPolicy],
+    teardown_resources: bool,
+) -> Generator[SparkConnect, Any, Any]:
+    """Create before upgrade, or reference after upgrade, a long-lived Spark Connect server.
+
+    The server is held running across the operator upgrade so the post-upgrade test can prove the
+    upgraded operator adopts the same server pod (strong continuity) and it still serves queries.
+    """
+    spark_connect = SparkConnect(
+        client=admin_client, name="upgrade-spark-connect", namespace=spark_namespace_fixture.name
+    )
+    if pytestconfig.option.post_upgrade:
+        assert spark_connect.exists, "The Spark Connect server did not survive the upgrade"
+        yield spark_connect
+    else:
+        manifest = create_spark_connect_spec(
+            name=spark_connect.name,
+            namespace=spark_connect.namespace,
+            service_account=spark_workload_service_account.name,
+        )
+        with SparkConnect(client=admin_client, kind_dict=manifest, teardown=teardown_resources) as spark_connect:
+            yield spark_connect
