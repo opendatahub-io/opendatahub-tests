@@ -62,6 +62,10 @@ from tests.ai_safety.evalhub.utils import (
 
 METRICS_POLL_TIMEOUT: int = 120
 METRICS_POLL_INTERVAL: int = 10
+# A brand-new EvalHub CR's reconcile loop can requeue many times (configmaps,
+# deployment, service, route, rbac, status) before reaching a clean pass that
+# records result=success; on a cold operator pod this can exceed 120s.
+SUCCESS_RECONCILE_POLL_TIMEOUT: int = 240
 TRACE_POLL_TIMEOUT: int = 60
 TRACE_POLL_INTERVAL: int = 5
 
@@ -1112,7 +1116,7 @@ class TestEvalHubReconcileE2E:
         """
         try:
             for raw_metrics in TimeoutSampler(
-                wait_timeout=METRICS_POLL_TIMEOUT,
+                wait_timeout=SUCCESS_RECONCILE_POLL_TIMEOUT,
                 sleep=METRICS_POLL_INTERVAL,
                 func=fetch_operator_metrics,
                 exceptions_dict=_TRANSIENT_METRICS_EXCEPTIONS,
@@ -1171,10 +1175,19 @@ class TestEvalHubReconcileE2E:
         except TimeoutExpiredError:
             pytest.fail("Error metric not recorded for failed reconciliation")
 
-        logs = fetch_trace_collector_logs(trace_collector_pod=otel_trace_collector_pod)
-        spans = parse_trace_spans_from_logs(logs=logs)
-        error_spans = [s for s in spans if "error" in s.get("status", "").lower()]
-        assert error_spans, "No error-status trace spans found for failed reconciliation"
+        try:
+            for logs in TimeoutSampler(
+                wait_timeout=TRACE_POLL_TIMEOUT,
+                sleep=TRACE_POLL_INTERVAL,
+                func=fetch_trace_collector_logs,
+                trace_collector_pod=otel_trace_collector_pod,
+            ):
+                spans = parse_trace_spans_from_logs(logs=logs)
+                error_spans = [s for s in spans if "error" in s.get("status", "").lower()]
+                if error_spans:
+                    return
+        except TimeoutExpiredError:
+            pytest.fail("No error-status trace spans found for failed reconciliation")
 
     def test_sre_diagnosis_workflow(
         self,
@@ -1201,14 +1214,22 @@ class TestEvalHubReconcileE2E:
         )
         assert total > 0, "No reconciliation metrics available for diagnosis"
 
-        logs = fetch_trace_collector_logs(trace_collector_pod=otel_trace_collector_pod)
-        spans = parse_trace_spans_from_logs(logs=logs)
-        reconcile_spans = filter_spans_by_name(spans=spans, name=SPAN_RECONCILE)
-        if not reconcile_spans:
-            pytest.skip("No reconcile spans found — trace collector may not have received spans yet")
-        span = reconcile_spans[0]
-        assert span.get("trace_id"), "Span missing trace_id for correlation"
-        assert span.get("span_id"), "Span missing span_id for drill-down"
+        try:
+            for logs in TimeoutSampler(
+                wait_timeout=TRACE_POLL_TIMEOUT,
+                sleep=TRACE_POLL_INTERVAL,
+                func=fetch_trace_collector_logs,
+                trace_collector_pod=otel_trace_collector_pod,
+            ):
+                spans = parse_trace_spans_from_logs(logs=logs)
+                reconcile_spans = filter_spans_by_name(spans=spans, name=SPAN_RECONCILE)
+                if reconcile_spans:
+                    span = reconcile_spans[0]
+                    assert span.get("trace_id"), "Span missing trace_id for correlation"
+                    assert span.get("span_id"), "Span missing span_id for drill-down"
+                    return
+        except TimeoutExpiredError:
+            pytest.fail("No reconcile spans found in collector logs")
 
     @pytest.mark.skip(reason="Requires a job-failure fixture that submits and awaits a failing evaluation job")
     def test_job_failure_observable_metrics_and_traces(
