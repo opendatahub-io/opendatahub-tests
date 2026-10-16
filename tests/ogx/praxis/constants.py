@@ -134,3 +134,30 @@ CITATION_MAX_OUTPUT_TOKENS: int = 512
 # equivalents are compared instead.
 COMPARED_FILE_FIELDS: tuple[str, ...] = ("id", "bytes", "filename", "created_at", "status")
 COMPARED_VECTOR_STORE_FIELDS: tuple[str, ...] = ("id", "name", "created_at", "status")
+
+# Equivalent sets for the two remaining resource kinds the state inventory samples.
+COMPARED_RESPONSE_FIELDS: tuple[str, ...] = ("id", "created_at", "model", "status")
+COMPARED_CONVERSATION_FIELDS: tuple[str, ...] = ("id", "created_at")
+
+# --- Rollback of external routing from Praxis back to OGX ---
+#
+# The rollback procedure itself is applied to the test environment between the
+# pre- and post-rollback runs, the same way the upgrade is, so nothing here
+# describes how it is triggered.
+
+# Service the OGX operator creates for an OGXServer: `<ogxserver-name>-service`.
+# Its pods are the ones whose logs must show the post-rollback request.
+OGX_SERVICE_NAME_SUFFIX: str = "-service"
+
+# Response created through the external hostname after the rollback, to be
+# correlated against the OGX pod logs. It is deliberately unstored, so that
+# probing does not change the response count the state inventory compares.
+ROLLBACK_PROBE_MARKER: str = "praxis-rollback-probe"
+
+# Section of the shared baseline ConfigMap holding the pre-rollback state inventory.
+ROLLBACK_INVENTORY_CONFIG_MAP_KEY: str = "rollback_inventory"
+
+# Upper bound on the rows an inventory listing walks. Reached only when the
+# distribution holds far more state than these tests create, which would make the
+# counts meaningless rather than merely slow, so it fails instead of truncating.
+MAX_LISTED_RESOURCES: int = 1000
