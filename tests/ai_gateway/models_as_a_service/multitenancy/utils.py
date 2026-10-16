@@ -213,13 +213,31 @@ def assert_tenant_cross_tenant_inference_rejected(
     payload: dict[str, Any],
 ) -> None:
     """Verify cross-tenant inference is rejected with 401 or 403."""
+    assert_tenant_gateway_inference_auth_denied(
+        session=session,
+        inference_url=inference_url,
+        headers=headers,
+        payload=payload,
+        scenario_label="cross-tenant inference",
+    )
+
+
+def assert_tenant_gateway_inference_auth_denied(
+    session: requests.Session,
+    inference_url: str,
+    headers: dict[str, str],
+    payload: dict[str, Any],
+    *,
+    scenario_label: str = "tenant gateway inference",
+) -> None:
+    """Verify a governed inference POST is rejected with 401 or 403."""
     response = session.post(url=inference_url, headers=headers, json=payload, timeout=60)
     assert response.status_code in CROSS_TENANT_INFERENCE_REJECTED_STATUSES, (
         f"Expected one of {sorted(CROSS_TENANT_INFERENCE_REJECTED_STATUSES)} "
-        f"for cross-tenant inference POST {inference_url}, "
+        f"for {scenario_label} POST {inference_url}, "
         f"got {response.status_code}: {response.text[:200]}"
     )
-    LOGGER.info(f"Cross-tenant inference POST {inference_url} returned {response.status_code}")
+    LOGGER.info(f"{scenario_label} POST {inference_url} returned {response.status_code}")
 
 
 def verify_tenant_model_httproutes_for_contexts(
