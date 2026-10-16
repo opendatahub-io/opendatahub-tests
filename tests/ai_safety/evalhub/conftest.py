@@ -1,10 +1,11 @@
 import base64
 import os
 import shlex
+import time
 import uuid
 from collections.abc import Callable, Generator
 from typing import Any
-import time
+
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
