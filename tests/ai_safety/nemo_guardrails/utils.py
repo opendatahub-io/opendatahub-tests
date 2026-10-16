@@ -262,19 +262,11 @@ def verify_health_response(response: Response) -> None:
     Raises:
         AssertionError: If health check fails
     """
-    # Accept any response that indicates the service is running
-    # 200 OK = healthy, 404 Not Found = service running but endpoint doesn't exist (still healthy)
-    # 401/403 = service running but needs auth (still healthy)
-    acceptable_statuses = {
-        http.HTTPStatus.OK,
-        http.HTTPStatus.NOT_FOUND,
-        http.HTTPStatus.UNAUTHORIZED,
-        http.HTTPStatus.FORBIDDEN,
-        http.HTTPStatus.METHOD_NOT_ALLOWED,
-    }
-    assert response.status_code in acceptable_statuses, (
+    # Accept any response that matches the default k8s health check
+    assert 200 <= response.status_code < 400, (
         f"Expected service to be responsive, got {response.status_code}: {response.text[:200]}"
     )
+
     LOGGER.info(f"Health check passed: {response.status_code} (service is responding)")
 
 
@@ -283,7 +275,7 @@ def wait_for_nemo_guardrails_health(
     host: str,
     token: str | None,
     ca_bundle_file: str,
-    health_endpoint: str = "/",
+    health_endpoint: str = "/v1/health",
 ) -> bool:
     """
     Wait for NeMo Guardrails to become healthy.
@@ -361,6 +353,30 @@ def wait_for_route(client: DynamicClient, name: str, namespace: str, *, present:
             break
 
 
+def get_nemo_guardrails_pod(
+    client: DynamicClient,
+    label_selector: str,
+    namespace: str,
+) -> Pod:
+    """
+    Get the first NeMo Guardrails pod matching a label selector.
+
+    Args:
+        client: DynamicClient to query the cluster
+        label_selector: Kubernetes label selector (e.g. "app=<name>")
+        namespace: Namespace to look in
+
+    Returns:
+        The first matching Pod
+
+    Raises:
+        AssertionError: If no pod matches the label selector
+    """
+    pods = list(Pod.get(client=client, namespace=namespace, label_selector=label_selector))
+    assert pods, f"No pods found with label selector '{label_selector}'"
+    return pods[0]
+
+
 def condition_reason(nemo_cr: NemoGuardrails, condition_type: str) -> str | None:
     """
     Get the reason of a specific status condition on a NemoGuardrails CR.
@@ -377,3 +393,34 @@ def condition_reason(nemo_cr: NemoGuardrails, condition_type: str) -> str | None
         if cond.get("type") == condition_type:
             return cond.get("reason")
     return None
+
+
+def condition_status(nemo_cr: NemoGuardrails, condition_type: str) -> str | None:
+    """
+    Read the status value of a named condition on a NemoGuardrails server.
+
+    Args:
+        nemo_cr: NemoGuardrails resource to inspect
+        condition_type: Name of the condition to look up (e.g. "AllowedConsumersReady")
+
+    Returns:
+        "True", "False", or "Unknown" if the condition exists. None if it has not been set yet
+    """
+    conditions = (nemo_cr.instance.status or {}).get("conditions", [])
+    for cond in conditions:
+        if cond.get("type") == condition_type:
+            return cond.get("status")
+    return None
+
+
+def nemo_cr_phase(nemo_cr: NemoGuardrails) -> str | None:
+    """
+    Read the current phase of a NemoGuardrails server (e.g. "Ready", "Error", "Progressing").
+
+    Args:
+        nemo_cr: NemoGuardrails resource to inspect
+
+    Returns:
+        The phase string, or None if the operator has not written it yet
+    """
+    return (nemo_cr.instance.status or {}).get("phase")

@@ -8,9 +8,17 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from ocp_resources.network_policy import NetworkPolicy
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
+from ocp_resources.service import Service
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
-from tests.ai_hub.constants import CATALOG_CONTAINER
+from tests.ai_hub.constants import (
+    CATALOG_CONTAINER,
+    CURL_CONNECT_TIMEOUT_EXIT_CODE,
+    KUBE_RBAC_PROXY_PORT,
+    MODEL_CATALOG_API_PATH,
+    ROUTER_INGRESS_PEER,
+)
+from tests.ai_hub.model_catalog.constants import MODEL_CATALOG_DEPLOYMENT_NAME
 from tests.ai_hub.model_catalog.db_check.utils import (
     find_language_mismatches_between_api_and_db,
     parse_language_properties_from_db,
@@ -22,8 +30,13 @@ from tests.ai_hub.model_catalog.utils import (
     wait_for_model_catalog_api,
 )
 from tests.ai_hub.utils import (
+    curl_from_pod,
+    get_network_policy_ingress_rules,
+    get_network_policy_pod_selector_labels,
+    get_service_external_address_rest,
     wait_for_model_catalog_pod_ready_after_deletion,
 )
+from utilities.resources.pod import Pod as UtilPod
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -172,41 +185,73 @@ class TestModelCatalogDBNetworkPolicy:
         )
 
     @pytest.mark.test_https_route_network_policy_only
-    def test_https_route_ingress_namespace_labels(self, model_catalog_network_policy):
+    def test_https_route_ingress_namespace_labels(
+        self,
+        admin_client: DynamicClient,
+        model_catalog_network_policy: NetworkPolicy,
+        model_registry_namespace: str,
+    ) -> None:
         """Given the model-catalog-https-route NetworkPolicy
-        When inspecting its ingress namespace selectors
-        Then it allows traffic from dashboard namespace and OpenShift ingress namespace
+        When inspecting its pod selector and ingress rules
+        Then it applies only to the model-catalog pods and allows only the OpenShift router/gateway namespaces,
+        on the kube-rbac-proxy port only
         """
-        from_rules = model_catalog_network_policy.instance.spec.ingress[0]["from"]
-        namespace_labels = [
-            rule.namespaceSelector.matchLabels
-            for rule in from_rules
-            if hasattr(rule, "namespaceSelector") and rule.namespaceSelector
-        ]
-        assert any(labels.get("opendatahub.io/generated-namespace") == "true" for labels in namespace_labels), (
-            "NetworkPolicy should allow traffic from dashboard namespace (opendatahub.io/generated-namespace: true)"
+        pod_selector = get_network_policy_pod_selector_labels(network_policy=model_catalog_network_policy)
+        pod_labels = Deployment(
+            client=admin_client,
+            name=MODEL_CATALOG_DEPLOYMENT_NAME,
+            namespace=model_registry_namespace,
+            ensure_exists=True,
+        ).instance.to_dict()["spec"]["template"]["metadata"]["labels"]
+        assert pod_selector and pod_selector.items() <= pod_labels.items(), (
+            f"{model_catalog_network_policy.name} should apply only to {MODEL_CATALOG_DEPLOYMENT_NAME} pods: "
+            f"selector={pod_selector}, pod labels={pod_labels}"
         )
-        assert any(labels.get("network.openshift.io/policy-group") == "ingress" for labels in namespace_labels), (
-            "NetworkPolicy should allow traffic from OpenShift ingress namespace"
+        ingress_rules = get_network_policy_ingress_rules(network_policy=model_catalog_network_policy)
+        assert len(ingress_rules) == 1, f"NetworkPolicy should have exactly one ingress rule: {ingress_rules}"
+        assert ingress_rules[0]["from"] == [ROUTER_INGRESS_PEER], (
+            "NetworkPolicy should allow traffic only from the OpenShift router/gateway namespaces, "
+            f"not the shared applications namespace: {ingress_rules[0]['from']}"
+        )
+        assert ingress_rules[0]["ports"] == [{"port": KUBE_RBAC_PROXY_PORT, "protocol": "TCP"}], (
+            f"NetworkPolicy should allow only TCP {KUBE_RBAC_PROXY_PORT}: {ingress_rules[0]['ports']}"
         )
 
 
 class TestModelCatalogNetworkPolicyConnectivity:
-    def test_dashboard_can_reach_model_catalog(self, dashboard_pod, model_registry_namespace: str):
-        """Given a dashboard pod in the applications namespace
+    def test_dashboard_cannot_reach_model_catalog_service_directly(
+        self, dashboard_pod: UtilPod, model_registry_namespace: str
+    ) -> None:
+        """Given a dashboard pod in the shared applications namespace
         When curling the model-catalog internal service on the kube-rbac-proxy port
-        Then the connection is not blocked by the NetworkPolicy
+        Then the connection times out because the NetworkPolicy blocks it
         """
-        service_url = f"https://model-catalog.{model_registry_namespace}.svc.cluster.local:8443"
-        result = dashboard_pod.execute(command=["curl", "-k", "--connect-timeout", "10", service_url])
-        LOGGER.info(f"curl to {service_url}: rc={result.rc}, stdout={result.stdout}, stderr={result.stderr}")
-        assert result.rc == 0, (
-            f"Dashboard pod cannot reach model-catalog at {service_url} — "
-            f"NetworkPolicy may be blocking traffic (rc={result.rc}, stderr={result.stderr})"
+        service_url = f"https://model-catalog.{model_registry_namespace}.svc.cluster.local:{KUBE_RBAC_PROXY_PORT}"
+        result = curl_from_pod(pod=dashboard_pod, url=service_url)
+        assert result.name_lookup_seconds > 0, f"{service_url} should resolve from the dashboard pod: {result}"
+        assert result.rc == CURL_CONNECT_TIMEOUT_EXIT_CODE and result.tcp_connect_seconds == 0, (
+            f"Dashboard pod should be blocked from opening a TCP connection to {service_url}: {result}"
         )
-        assert "Connection timed out" not in result.stdout, (
-            f"Dashboard pod connection timed out to model-catalog at {service_url} — "
-            f"NetworkPolicy may be blocking traffic"
+
+    def test_dashboard_can_reach_model_catalog_through_gateway(
+        self, admin_client: DynamicClient, dashboard_pod: UtilPod, model_registry_namespace: str
+    ) -> None:
+        """Given a dashboard pod in the shared applications namespace
+        When curling the model-catalog external REST address that the Dashboard BFF uses
+        Then the request succeeds end to end through the router/gateway
+        """
+        catalog_service = Service(
+            client=admin_client,
+            name="model-catalog",
+            namespace=model_registry_namespace,
+            ensure_exists=True,
+        )
+        external_address = get_service_external_address_rest(service=catalog_service)
+        assert external_address, "model-catalog Service should have an external-address-rest annotation"
+        url = f"https://{external_address}{MODEL_CATALOG_API_PATH}sources"
+        result = curl_from_pod(pod=dashboard_pod, url=url, use_service_account_token=True)
+        assert result.rc == 0 and result.http_code == 200, (
+            f"Dashboard pod cannot reach model-catalog at {url}: {result}"
         )
 
 
