@@ -286,8 +286,10 @@ def evalhub_vllm_emulator_service(
     admin_client: DynamicClient,
     tenant_a_namespace: Namespace,
     evalhub_vllm_emulator_deployment: Deployment,
+    network_policy_access_for_evalhub_api_sa: tuple[Role, RoleBinding],
 ) -> Generator[Service, Any, Any]:
     """Service fronting the vLLM emulator in tenant-a."""
+    _ = network_policy_access_for_evalhub_api_sa
     with Service(
         client=admin_client,
         namespace=tenant_a_namespace.name,
@@ -522,6 +524,45 @@ def garak_tenant_rbac_ready(
         )
         LOGGER.error(msg)
         raise RuntimeError(msg) from err
+
+
+@pytest.fixture(scope="class")
+def network_policy_access_for_garak_api_sa(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    tenant_namespace: Namespace,
+    garak_evalhub_cr: EvalHub,
+    garak_tenant_rbac_ready: None,
+) -> Generator[tuple[Role, RoleBinding], Any, Any]:
+    """Grant the Garak EvalHub API ServiceAccount NetworkPolicy access in the garak tenant."""
+    api_sa_name = f"{garak_evalhub_cr.name}-service"
+    with (
+        Role(
+            client=admin_client,
+            name="evalhub-garak-api-network-policy",
+            namespace=tenant_namespace.name,
+            rules=[
+                {
+                    "apiGroups": ["networking.k8s.io"],
+                    "resources": ["networkpolicies"],
+                    "verbs": ["create", "get", "update"],
+                },
+            ],
+            wait_for_resource=True,
+        ) as role,
+        RoleBinding(
+            client=admin_client,
+            name="evalhub-garak-api-network-policy",
+            namespace=tenant_namespace.name,
+            role_ref_kind=role.kind,
+            role_ref_name=role.name,
+            subjects_kind="ServiceAccount",
+            subjects_name=api_sa_name,
+            subjects_namespace=model_namespace.name,
+            wait_for_resource=True,
+        ) as binding,
+    ):
+        yield role, binding
 
 
 @pytest.fixture(scope="class")
@@ -812,10 +853,12 @@ def quick_kfp_garak_job_id(
     model_auth_secret_sidecar: Secret,
     dsp_access_for_job_sa,
     garak_tenant_rbac_ready: None,
+    network_policy_access_for_garak_api_sa: tuple[Role, RoleBinding],
     evalhub_service_secret_reader,
     garak_sim_isvc_url: str,
 ) -> str:
     """Submit a quick garak benchmark via KFP and return the job ID."""
+    _ = network_policy_access_for_garak_api_sa
     payload = {
         "name": "garak-kfp-quick-test",
         "model": {
@@ -862,10 +905,12 @@ def intents_kfp_garak_job_id(
     model_auth_secret_sidecar: Secret,
     dsp_access_for_job_sa,
     garak_tenant_rbac_ready: None,
+    network_policy_access_for_garak_api_sa: tuple[Role, RoleBinding],
     garak_sim_isvc_url: str,
     garak_intents_csv: str,
 ) -> str:
     """Submit a garak intents benchmark via KFP and return the job ID."""
+    _ = network_policy_access_for_garak_api_sa
     payload = {
         "name": "garak-intents-test",
         "model": {
@@ -917,19 +962,7 @@ def network_policy_access_for_evalhub_api_sa(
     tenant_a_namespace: Namespace,
     tenant_a_rbac_ready: None,
 ) -> Generator[tuple[Role, RoleBinding], Any, Any]:
-    """Grant the EvalHub API ServiceAccount NetworkPolicy access in the PVC tenant.
-
-    EvalHub runtime (eval-hub PR #1070) creates a per-execution NetworkPolicy
-    before each Job. The API ServiceAccount (`{cr}-service`) creates the policy
-    and updates it to transfer the owner reference.
-
-    Operator PR #985 adds create/get/update permissions to jobs-writer.
-    Until that ClusterRole is deployed, this fixture supplies those permissions
-    for PVC, Git, and Hugging Face storage tests.
-
-    Do not bind the job Pod ServiceAccount. The EvalHub API manages these
-    NetworkPolicies, not the evaluation Job pods.
-    """
+    """Grant the EvalHub API ServiceAccount NetworkPolicy access in tenant-a."""
     api_sa_name = f"{EVALHUB_MT_CR_NAME}-service"
     with (
         Role(
@@ -1028,9 +1061,11 @@ def quick_garak_job_id(
     garak_evalhub_route: Route,
     tenant_namespace,
     garak_tenant_rbac_ready: None,
+    network_policy_access_for_garak_api_sa: tuple[Role, RoleBinding],
     garak_sim_isvc_url: str,
 ) -> str:
     """Submit a quick garak benchmark and return the job ID."""
+    _ = network_policy_access_for_garak_api_sa
     payload = {
         "name": "garak-quick-smoke-test",
         "model": {
@@ -1063,6 +1098,7 @@ def intents_garak_job_id(
     evalhub_ca_bundle_file: str,
     garak_evalhub_route: Route,
     tenant_namespace,
+    network_policy_access_for_garak_api_sa: tuple[Role, RoleBinding],
     garak_sim_isvc_url: str,
     simple_minio_secret: Secret,
     simple_intents_csv: str,
@@ -1071,6 +1107,7 @@ def intents_garak_job_id(
 
     Uses a minimal MinIO with test_data_ref to provide intents CSV without DSPA.
     """
+    _ = network_policy_access_for_garak_api_sa
     payload = {
         "name": "garak-simple-intents-test",
         "model": {
