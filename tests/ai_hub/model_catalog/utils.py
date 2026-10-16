@@ -1,13 +1,16 @@
 import time
+from base64 import b64decode
 from typing import Any
 
 import requests
 import structlog
+import yaml
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.pod import Pod
 from timeout_sampler import retry
 
+from tests.ai_hub.constants import CATALOG_CONTAINER
 from tests.ai_hub.model_catalog.constants import HF_MODELS
 from tests.ai_hub.utils import (
     TransientUnauthorizedError,
@@ -356,3 +359,48 @@ def get_catalog_str(ids: list[str]) -> str:
     return f"""catalogs:
 {catalog_str}
 """
+
+
+def get_all_catalog_items(
+    url: str, headers: dict[str, str], params: dict[str, Any] | None = None
+) -> list[dict[str, Any]]:
+    """Read every page from a catalog list endpoint.
+
+    Args:
+        url: Catalog list endpoint URL.
+        headers: Authentication headers.
+        params: Filters applied to every page.
+
+    Returns:
+        Items from all pages in API order.
+
+    Raises:
+        AssertionError: Pagination repeats a token or exceeds 1000 pages.
+    """
+    query_params = {"pageSize": 50, **(params or {})}
+    items: list[dict[str, Any]] = []
+    seen_tokens: set[str] = set()
+    for _ in range(1000):
+        response = execute_get_command_with_retry(url=url, headers=headers, params=query_params)
+        items.extend(response["items"])
+        next_token = response.get("nextPageToken")
+        if not next_token:
+            return items
+        assert next_token not in seen_tokens, "Catalog pagination repeated a page token"
+        seen_tokens.add(next_token)
+        query_params["nextPageToken"] = next_token
+    raise AssertionError("Catalog pagination exceeded 1000 pages")
+
+
+def get_shipped_catalog(pod: Pod, catalog_file: str) -> dict[str, Any]:
+    """Read catalog YAML without splitting UTF-8 characters across exec frames.
+
+    Args:
+        pod: Running model catalog pod.
+        catalog_file: Path to the shipped catalog inside the container.
+
+    Returns:
+        Parsed catalog data.
+    """
+    encoded = pod.execute(command=["base64", catalog_file], container=CATALOG_CONTAINER)
+    return yaml.safe_load(b64decode(encoded))

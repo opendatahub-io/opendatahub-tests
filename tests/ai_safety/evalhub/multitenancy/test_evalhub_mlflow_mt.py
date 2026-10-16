@@ -50,7 +50,7 @@ def mlflow_deployment_ready(
         namespace=MLFLOW_NAMESPACE,
     )
     if not deployment.exists:
-        pytest.skip("MLflow deployment not found in opendatahub namespace — deploy MLflow first")
+        pytest.fail("MLflow deployment not found in opendatahub namespace — deploy MLflow first")
     deployment.wait_for_replicas(timeout=300)
     return deployment
 

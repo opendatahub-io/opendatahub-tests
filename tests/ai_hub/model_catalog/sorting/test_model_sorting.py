@@ -6,8 +6,8 @@ from kubernetes.dynamic import DynamicClient
 
 from tests.ai_hub.model_catalog.constants import (
     RECOMMENDED_PARETO_ADDITIONAL_PARAMS,
-    REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
     VALIDATED_CATALOG_ID,
+    VALIDATED_CATALOG_LABEL,
 )
 from tests.ai_hub.model_catalog.sorting.utils import (
     RecommendedBaseline,
@@ -112,7 +112,7 @@ class TestAccuracySorting:
         response_all = get_models_from_catalog_api(
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
-            source_label=REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
+            source_label=VALIDATED_CATALOG_LABEL,
             order_by=f"artifacts.{artifact_property}",
             sort_order="ASC",
             additional_params=f"&filterQuery=artifacts.{artifact_filter}",
@@ -122,7 +122,7 @@ class TestAccuracySorting:
         response_recommended = get_models_from_catalog_api(
             model_catalog_rest_url=model_catalog_rest_url,
             model_registry_rest_headers=model_registry_rest_headers,
-            source_label=REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
+            source_label=VALIDATED_CATALOG_LABEL,
             order_by=f"artifacts.{artifact_property}",
             sort_order="ASC",
             additional_params=f"&filterQuery=artifacts.{artifact_filter}&recommendations=true",

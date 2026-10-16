@@ -7,12 +7,9 @@ from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 
 from tests.ai_hub.model_catalog.constants import (
-    OTHER_MODELS,
     OTHER_MODELS_CATALOG_ID,
-    REDHAT_AI_CATALOG_ID,
-    REDHAT_AI_CATALOG_NAME,
-    REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
     VALIDATED_CATALOG_ID,
+    VALIDATED_CATALOG_LABEL,
 )
 from tests.ai_hub.model_catalog.search.utils import (
     fetch_all_artifacts_with_dynamic_paging,
@@ -23,7 +20,7 @@ from tests.ai_hub.model_catalog.search.utils import (
     validate_performance_data_files_on_pod,
     validate_search_results_against_database,
 )
-from tests.ai_hub.model_catalog.utils import get_models_from_catalog_api
+from tests.ai_hub.model_catalog.utils import get_all_catalog_items, get_models_from_catalog_api
 from tests.ai_hub.utils import execute_get_command
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -37,54 +34,31 @@ class TestSearchModelCatalog:
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
     ):
+        """Given the default model categories,
+        When filtering all model pages by validated and null labels,
+        Then the results contain exactly the models assigned to each category.
         """
-        Validate search model catalog by source label
-        """
-
-        page_size = 1000
-        redhat_ai_filter_models_size = get_models_from_catalog_api(
-            model_catalog_rest_url=model_catalog_rest_url,
-            model_registry_rest_headers=model_registry_rest_headers,
-            source_label=REDHAT_AI_CATALOG_NAME,
-            page_size=page_size,
-        )["size"]
-        redhat_ai_validated_filter_models_size = get_models_from_catalog_api(
-            model_catalog_rest_url=model_catalog_rest_url,
-            model_registry_rest_headers=model_registry_rest_headers,
-            source_label=REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
-            page_size=page_size,
-        )["size"]
-        null_label_models_size = get_models_from_catalog_api(
-            model_catalog_rest_url=model_catalog_rest_url,
-            model_registry_rest_headers=model_registry_rest_headers,
-            source_label="null",
-            page_size=page_size,
-        )["size"]
-        no_filtered_models_size = get_models_from_catalog_api(
-            model_catalog_rest_url=model_catalog_rest_url,
-            model_registry_rest_headers=model_registry_rest_headers,
-            page_size=page_size,
-        )["size"]
-        other_models_size = get_models_from_catalog_api(
-            model_catalog_rest_url=model_catalog_rest_url,
-            model_registry_rest_headers=model_registry_rest_headers,
-            source_label=OTHER_MODELS,
-            page_size=page_size,
-        )["size"]
-        all_labeled_models_size = get_models_from_catalog_api(
-            model_catalog_rest_url=model_catalog_rest_url,
-            model_registry_rest_headers=model_registry_rest_headers,
-            source_label=f"{REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME},{REDHAT_AI_CATALOG_NAME},{OTHER_MODELS}",
-            page_size=page_size,
-        )["size"]
-        LOGGER.info(f"no_filtered_models_size: {no_filtered_models_size}")
-        assert no_filtered_models_size > 0
-        assert null_label_models_size >= 0
-        assert (
-            redhat_ai_filter_models_size + redhat_ai_validated_filter_models_size + other_models_size
-            == all_labeled_models_size
+        all_models = get_all_catalog_items(
+            url=f"{model_catalog_rest_url[0]}models", headers=model_registry_rest_headers
         )
-        assert no_filtered_models_size == all_labeled_models_size + null_label_models_size
+        assert all_models, "The model catalog is empty"
+        sources = get_all_catalog_items(url=f"{model_catalog_rest_url[0]}sources", headers=model_registry_rest_headers)
+        for label in (VALIDATED_CATALOG_LABEL, "null"):
+            source_ids = {
+                source["id"]
+                for source in sources
+                if (not source.get("labels") if label == "null" else label in (source.get("labels") or []))
+            }
+            expected = {(model["source_id"], model["name"]) for model in all_models if model["source_id"] in source_ids}
+            assert expected, f"No models available to exercise label {label}"
+            filtered = get_all_catalog_items(
+                url=f"{model_catalog_rest_url[0]}models",
+                headers=model_registry_rest_headers,
+                params={"sourceLabel": label},
+            )
+            actual = {(model["source_id"], model["name"]) for model in filtered}
+            assert actual == expected, f"Incorrect model membership for label {label}: {actual ^ expected}"
+            assert len(filtered) == len(actual), f"Duplicate models returned for label {label}"
 
     @pytest.mark.tier3
     def test_search_model_catalog_invalid_source_label(
@@ -108,13 +82,13 @@ class TestSearchModelCatalog:
         [
             pytest.param(
                 {"source": VALIDATED_CATALOG_ID, "header_type": "registry"},
-                REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
+                VALIDATED_CATALOG_LABEL,
                 id="test_search_model_catalog_redhat_ai_validated",
             ),
             pytest.param(
-                {"source": REDHAT_AI_CATALOG_ID, "header_type": "registry"},
-                REDHAT_AI_CATALOG_NAME,
-                id="test_search_model_catalog_redhat_ai_default",
+                {"source": OTHER_MODELS_CATALOG_ID, "header_type": "registry"},
+                "null",
+                id="test_search_model_catalog_other_models",
             ),
         ],
         indirect=["randomly_picked_model_from_catalog_api_by_source"],
@@ -207,7 +181,7 @@ class TestSearchModelCatalogQParameter:
     ):
         """Test q parameter combined with source_label filtering using database validation"""
         search_term = "granite"
-        source_label = REDHAT_AI_CATALOG_NAME
+        source_label = VALIDATED_CATALOG_LABEL
 
         LOGGER.info(f"Testing combined search: q='{search_term}' with sourceLabel='{source_label}'")
 

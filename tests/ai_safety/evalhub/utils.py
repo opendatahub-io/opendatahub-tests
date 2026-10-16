@@ -1,6 +1,9 @@
 import socket
+from collections.abc import Generator
+from contextlib import contextmanager
 from typing import Any, Final
 
+import portforward
 import pytest
 import requests
 import structlog
@@ -40,7 +43,11 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_VLLM_EMULATOR_PORT,
     GARAK_JOB_POLL_INTERVAL,
     GARAK_JOB_TIMEOUT,
+    HF_DEFAULT_REVISION,
+    HF_NESTED_SUB_PATH,
+    HF_TOKENIZER_PATH,
     OPERATOR_METRICS_PORT,
+    OPERATOR_METRICS_SCHEME,
     OPERATOR_POD_LABEL_SELECTOR,
 )
 from utilities.guardrails import get_auth_headers
@@ -1028,6 +1035,132 @@ def build_git_job_payload(
     return payload
 
 
+def build_hf_test_data_ref(
+    repo_id: str,
+    revision: str | None = None,
+    sub_path: str | None = None,
+    secret_ref: str | None = None,
+) -> dict:
+    """Build the test_data_ref.hf portion of an EvalHub job payload."""
+    hf_ref: dict[str, str] = {"repo_id": repo_id}
+    if revision is not None:
+        hf_ref["revision"] = revision
+    if sub_path is not None:
+        hf_ref["sub_path"] = sub_path
+    if secret_ref is not None:
+        hf_ref["secret_ref"] = secret_ref
+    return {"hf": hf_ref}
+
+
+def build_hf_arc_easy_benchmark(
+    repo_id: str,
+    revision: str | None = None,
+    sub_path: str | None = None,
+    secret_ref: str | None = None,
+    num_examples: int = 10,
+    tokenizer_path: str | None = None,
+) -> dict:
+    """Build an arc_easy benchmark backed by a HuggingFace Hub dataset."""
+    benchmark: dict = {
+        "id": "arc_easy",
+        "provider_id": "lm_evaluation_harness",
+        "parameters": {
+            "num_examples": num_examples,
+            "tokenizer": tokenizer_path or HF_TOKENIZER_PATH,
+        },
+        "test_data_ref": build_hf_test_data_ref(
+            repo_id=repo_id,
+            revision=revision,
+            sub_path=sub_path,
+            secret_ref=secret_ref,
+        ),
+    }
+    return benchmark
+
+
+def build_hf_truthfulqa_mc1_benchmark(
+    repo_id: str,
+    revision: str | None = None,
+    sub_path: str | None = None,
+    secret_ref: str | None = None,
+    num_examples: int = 10,
+    tokenizer_path: str | None = None,
+) -> dict:
+    """Build a truthfulqa_mc1 benchmark backed by a HuggingFace Hub dataset sub-path."""
+    return {
+        "id": "truthfulqa_mc1",
+        "provider_id": "lm_evaluation_harness",
+        "parameters": {
+            "num_examples": num_examples,
+            "tokenizer": tokenizer_path or HF_TOKENIZER_PATH,
+        },
+        "test_data_ref": build_hf_test_data_ref(
+            repo_id=repo_id,
+            revision=revision,
+            sub_path=sub_path,
+            secret_ref=secret_ref,
+        ),
+    }
+
+
+def build_hf_job_payload(
+    model_service_name: str,
+    tenant_namespace: str,
+    job_name: str,
+    repo_id: str,
+    revision: str | None = None,
+    sub_path: str | None = None,
+    secret_ref: str | None = None,
+    tokenizer_path: str | None = None,
+) -> dict:
+    """Build an EvalHub job payload with a single HF-backed arc_easy benchmark."""
+    model_url = f"http://{model_service_name}.{tenant_namespace}.svc.cluster.local:{EVALHUB_VLLM_EMULATOR_PORT}/v1"
+    benchmark = build_hf_arc_easy_benchmark(
+        repo_id=repo_id,
+        revision=revision,
+        sub_path=sub_path,
+        secret_ref=secret_ref,
+        tokenizer_path=tokenizer_path,
+    )
+    return {
+        "name": job_name,
+        "model": {
+            "url": model_url,
+            "name": "emulatedModel",
+        },
+        "benchmarks": [benchmark],
+    }
+
+
+def build_hf_multi_benchmark_job_payload(
+    model_service_name: str,
+    tenant_namespace: str,
+    job_name: str,
+    repo_id: str,
+    revision: str | None = None,
+    nested_sub_path: str | None = None,
+    sha_revision: str | None = None,
+) -> dict:
+    """Build an EvalHub job with arc_easy (full repo) and truthfulqa_mc1 (nested sub_path)."""
+    model_url = f"http://{model_service_name}.{tenant_namespace}.svc.cluster.local:{EVALHUB_VLLM_EMULATOR_PORT}/v1"
+    arc_easy_revision = sha_revision if sha_revision is not None else revision or HF_DEFAULT_REVISION
+    return {
+        "name": job_name,
+        "model": {
+            "url": model_url,
+            "name": "emulatedModel",
+        },
+        "benchmarks": [
+            build_hf_arc_easy_benchmark(repo_id=repo_id, revision=arc_easy_revision),
+            build_hf_truthfulqa_mc1_benchmark(
+                repo_id=repo_id,
+                revision=revision or HF_DEFAULT_REVISION,
+                sub_path=nested_sub_path or HF_NESTED_SUB_PATH,
+            ),
+        ],
+    }
+
+
 def build_evalhub_kueue_job_payload(
     queue_name: str,
     model_service_name: str,
@@ -1567,6 +1700,31 @@ def fetch_operator_metrics(
     Returns:
         Raw Prometheus text-format string from the /metrics endpoint.
     """
+    with operator_metrics_url(admin_client=admin_client) as metrics_url:
+        response = requests.get(
+            metrics_url,
+            headers={"Authorization": f"Bearer {operator_metrics_token}"},
+            verify=False,
+            timeout=10,
+        )
+    response.raise_for_status()
+    return response.text
+
+
+@contextmanager
+def operator_metrics_url(admin_client: DynamicClient) -> Generator[str]:
+    """Port-forward to the TrustyAI operator pod and yield its local /metrics URL.
+
+    The operator pod IP is not reachable from outside the cluster, so the
+    metrics endpoint is reached through a port-forward. The pod is looked up
+    on every call because some fixtures restart the operator (new pod name).
+
+    Args:
+        admin_client: Authenticated Kubernetes client.
+
+    Yields:
+        Local URL of the operator /metrics endpoint.
+    """
     operator_ns = py_config["applications_namespace"]
     pods = list(
         Pod.get(
@@ -1576,15 +1734,14 @@ def fetch_operator_metrics(
         )
     )
     assert pods, "No operator pod found"
-    pod = pods[0]
-    response = requests.get(
-        f"https://{pod.instance.status.podIP}:{OPERATOR_METRICS_PORT}/metrics",
-        headers={"Authorization": f"Bearer {operator_metrics_token}"},
-        verify=False,
-        timeout=10,
-    )
-    response.raise_for_status()
-    return response.text
+    with portforward.forward(
+        namespace=operator_ns,
+        pod_or_service=pods[0].name,
+        from_port=0,
+        to_port=OPERATOR_METRICS_PORT,
+        waiting=2,
+    ) as forwarder:
+        yield f"{OPERATOR_METRICS_SCHEME}://localhost:{forwarder.from_port}/metrics"
 
 
 def fetch_trace_collector_logs(trace_collector_pod: Pod, tail_lines: int = 5000) -> str:

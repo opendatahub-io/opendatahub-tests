@@ -1,7 +1,7 @@
 import pytest
 import structlog
 
-from tests.ai_hub.model_catalog.constants import REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME
+from tests.ai_hub.model_catalog.constants import VALIDATED_CATALOG_LABEL
 from tests.ai_hub.model_catalog.sorting.utils import RecommendedBaseline
 from tests.ai_hub.model_catalog.utils import get_models_from_catalog_api
 
@@ -28,7 +28,7 @@ def recommended_baseline(
     response = get_models_from_catalog_api(
         model_catalog_rest_url=model_catalog_rest_url,
         model_registry_rest_headers=model_registry_rest_headers,
-        source_label=REDHAT_AI_VALIDATED_UNESCAPED_CATALOG_NAME,
+        source_label=VALIDATED_CATALOG_LABEL,
         page_size=1000,
         additional_params=f"&filterQuery=artifacts.{artifact_filter}&recommendations=true",
     )

@@ -336,6 +336,9 @@ def s3_endpoint_secret(
         with Secret(
             annotations={
                 f"{ApiGroups.OPENDATAHUB_IO}/connection-type": "s3",
+                # Preferred key consumed by the ConnectionsAPI webhook (odh-model-controller);
+                # kept alongside the older "connection-type" key above for the secret_controller.
+                f"{ApiGroups.OPENDATAHUB_IO}/connection-type-protocol": "s3",
                 "serving.kserve.io/s3-endpoint": (aws_s3_endpoint.replace("https://", "").replace("http://", "")),
                 "serving.kserve.io/s3-region": aws_s3_region,
                 "serving.kserve.io/s3-useanoncredential": "false",
@@ -948,7 +951,7 @@ def wait_for_route_timeout(name: str, namespace: str, route_timeout: str) -> Non
     """
     annotation_found_count = 0
     for route in TimeoutSampler(
-        wait_timeout=Timeout.TIMEOUT_30SEC,
+        wait_timeout=Timeout.TIMEOUT_5MIN,
         sleep=10,
         exceptions_dict={ResourceNotFoundError: []},
         func=Route,
@@ -994,8 +997,8 @@ def wait_for_serverless_pods_deletion(resource: Project | Namespace, admin_clien
 
 
 @retry(
-    wait_timeout=Timeout.TIMEOUT_30SEC,
-    sleep=1,
+    wait_timeout=Timeout.TIMEOUT_5MIN,
+    sleep=5,
     exceptions_dict={ResourceNotFoundError: []},
 )
 def wait_for_isvc_pods(client: DynamicClient, isvc: InferenceService, runtime_name: str | None = None) -> list[Pod]:

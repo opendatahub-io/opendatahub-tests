@@ -1,6 +1,8 @@
 import json
 import re
+from collections.abc import Callable, Generator
 from concurrent.futures import ThreadPoolExecutor, as_completed, wait
+from contextlib import contextmanager
 from string import Template
 from typing import Any
 
@@ -12,20 +14,31 @@ from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.inference_graph import InferenceGraph
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.node import Node
+from ocp_resources.secret import Secret
+from ocp_resources.service_account import ServiceAccount
 from ocp_resources.utils.constants import DEFAULT_CLUSTER_RETRY_EXCEPTIONS
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler, TimeoutWatch
 from urllib3.exceptions import HTTPError
 
 from tests.model_serving.model_server.kserve.autoscaling.keda.utils import get_isvc_keda_scaledobject
-from utilities.constants import KServeDeploymentType, Protocols
+from utilities.constants import ApiGroups, KServeDeploymentType, Protocols, Timeout
 from utilities.exceptions import (
     InferenceResponseError,
 )
 from utilities.inference_utils import Inference, UserInference
 from utilities.infra import get_pods_by_isvc_label
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
+from utilities.resources.llm_inference_service import LLMInferenceService
 
 LOGGER = structlog.get_logger(name=__name__)
+
+# ---------------------------------------------------------------------------
+# ConnectionsAPI annotation keys (shared by the ISVC and LLMISVC ConnectionsAPI
+# coverage under kserve/storage/ and llmd/, respectively)
+# ---------------------------------------------------------------------------
+CONNECTIONS_ANNOTATION: str = f"{ApiGroups.OPENDATAHUB_IO}/connections"
+CONNECTION_PATH_ANNOTATION: str = f"{ApiGroups.OPENDATAHUB_IO}/connection-path"
+CONNECTION_TYPE_PROTOCOL_ANNOTATION: str = f"{ApiGroups.OPENDATAHUB_IO}/connection-type-protocol"
 
 
 def skip_test(reason: str) -> None:
@@ -33,6 +46,176 @@ def skip_test(reason: str) -> None:
     border = "=" * 60
     LOGGER.warning("\n".join(["", border, f"  SKIP — {reason}", border, ""]))
     pytest.skip(reason)
+
+
+def add_connection_annotations(
+    resource: InferenceService | LLMInferenceService, connections: str, connection_path: str | None = None
+) -> None:
+    """Patch a resource's metadata to add ConnectionsAPI annotations, exercising the UPDATE path.
+
+    Args:
+        resource: InferenceService or LLMInferenceService to patch.
+        connections: Value for the `opendatahub.io/connections` annotation.
+        connection_path: Optional value for the `opendatahub.io/connection-path` annotation
+            (S3 sub-path).
+    """
+    annotations: dict[str, str] = {CONNECTIONS_ANNOTATION: connections}
+    if connection_path:
+        annotations[CONNECTION_PATH_ANNOTATION] = connection_path
+    resource.update(resource_dict={"metadata": {"name": resource.name, "annotations": annotations}})
+
+
+def remove_connection_annotations(resource: InferenceService | LLMInferenceService) -> None:
+    """Patch a resource's metadata to null out ConnectionsAPI annotations, exercising UPDATE-remove.
+
+    Args:
+        resource: InferenceService or LLMInferenceService to patch.
+    """
+    resource.update(
+        resource_dict={
+            "metadata": {
+                "name": resource.name,
+                "annotations": {CONNECTIONS_ANNOTATION: None, CONNECTION_PATH_ANNOTATION: None},
+            }
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
+# ConnectionsAPI — connection Secret factories (shared by ISVC and LLMISVC suites)
+# ---------------------------------------------------------------------------
+@contextmanager
+def create_uri_connection_secret(
+    client: DynamicClient,
+    name: str,
+    namespace: str,
+    uri: str,
+    teardown: bool = True,
+) -> Generator[Secret, Any, Any]:
+    """Create a `uri`-typed ConnectionsAPI Secret pointing at a `hf://` model reference.
+
+    The odh-model-controller ConnectionsAPI webhook reads the secret's `URI` key (via the
+    `opendatahub.io/connection-type-protocol: uri` annotation) and injects it into the consuming
+    InferenceService's `predictor.model.storageUri` or LLMInferenceService's `spec.model.uri` on
+    CREATE/UPDATE.
+
+    Args:
+        client: Kubernetes dynamic client.
+        name: Name of the Secret to create.
+        namespace: Namespace to create the Secret in.
+        uri: Model reference to store under the `URI` key (e.g. `hf://org/model`).
+        teardown: Whether to delete the Secret on context exit.
+
+    Yields:
+        Secret: The created connection Secret.
+    """
+    with Secret(
+        client=client,
+        name=name,
+        namespace=namespace,
+        annotations={CONNECTION_TYPE_PROTOCOL_ANNOTATION: "uri"},
+        string_data={"URI": uri},
+        teardown=teardown,
+    ) as secret:
+        yield secret
+
+
+@contextmanager
+def create_oci_connection_secret(
+    client: DynamicClient,
+    name: str,
+    namespace: str,
+    docker_config_json: str = "{}",
+    teardown: bool = True,
+) -> Generator[Secret, Any, Any]:
+    """Create an `oci`-typed ConnectionsAPI Secret (dockerconfigjson) for OCI modelcar pulls.
+
+    Defaults to an empty docker config, which is sufficient for the public quay.io modelcar images
+    reused by the ISVC/LLMISVC ConnectionsAPI suites — the webhook still injects `imagePullSecrets`
+    referencing this Secret regardless of its credential content.
+
+    Args:
+        client: Kubernetes dynamic client.
+        name: Name of the Secret to create.
+        namespace: Namespace to create the Secret in.
+        docker_config_json: Raw `.dockerconfigjson` payload. Defaults to an empty JSON object.
+        teardown: Whether to delete the Secret on context exit.
+
+    Yields:
+        Secret: The created connection Secret.
+    """
+    with Secret(
+        client=client,
+        name=name,
+        namespace=namespace,
+        type="kubernetes.io/dockerconfigjson",
+        annotations={CONNECTION_TYPE_PROTOCOL_ANNOTATION: "oci"},
+        string_data={".dockerconfigjson": docker_config_json},
+        teardown=teardown,
+    ) as secret:
+        yield secret
+
+
+# ---------------------------------------------------------------------------
+# ConnectionsAPI — ServiceAccount assertion (shared by ISVC and LLMISVC suites)
+# ---------------------------------------------------------------------------
+def assert_service_account_exists(
+    client: DynamicClient, namespace: str, name: str, timeout: int = Timeout.TIMEOUT_1MIN
+) -> None:
+    """Assert that the `{secret}-sa` ServiceAccount created by the S3 injection path exists.
+
+    Polls rather than checking once, since callers may invoke this immediately after a CREATE
+    with no readiness wait (the smoke-test path), and the ServiceAccount is an asynchronous side
+    effect of the ConnectionsAPI webhook/controller rather than part of the admission response.
+
+    Args:
+        client: Kubernetes dynamic client.
+        namespace: Namespace the ServiceAccount is expected in.
+        name: Expected ServiceAccount name (`{secret_name}-sa`).
+        timeout: Seconds to wait for the ServiceAccount to appear.
+
+    Raises:
+        AssertionError: If the ServiceAccount does not exist within `timeout` seconds.
+    """
+    service_account = ServiceAccount(client=client, namespace=namespace, name=name)
+    try:
+        for exists in TimeoutSampler(wait_timeout=timeout, sleep=2, func=lambda: service_account.exists):
+            if exists:
+                return
+    except TimeoutExpiredError:
+        pass
+
+    raise AssertionError(
+        f"Expected ServiceAccount {name!r} to exist in namespace {namespace!r} "
+        f"(S3 ConnectionsAPI injection must create it as a side effect) within {timeout}s"
+    )
+
+
+# ---------------------------------------------------------------------------
+# ConnectionsAPI — generic cleared-predicate poller (shared by ISVC and LLMISVC suites)
+# ---------------------------------------------------------------------------
+def wait_for_cleared_predicate(predicate: Callable[[], bool], timeout: int, resource_label: str) -> None:
+    """Poll `predicate` until connection fields are cleared, raising a resource-specific error.
+
+    Shared by `wait_for_isvc_connection_cleared` and `wait_for_llmisvc_connection_cleared`, which
+    differ only in `predicate` (which spec fields they check) and how they identify the resource
+    in the error message.
+
+    Args:
+        predicate: Zero-arg callable returning `True` once the connection fields are cleared.
+        timeout: Seconds to wait before giving up.
+        resource_label: Human-readable resource identifier (e.g. `f"InferenceService {isvc.name}"`)
+            used in the raised error message.
+
+    Raises:
+        TimeoutError: If `predicate` never returns `True` within `timeout` seconds.
+    """
+    try:
+        for sample in TimeoutSampler(wait_timeout=timeout, sleep=5, func=predicate):
+            if sample:
+                return
+    except TimeoutExpiredError as exc:
+        raise TimeoutError(f"Connection fields on {resource_label} were not cleared within {timeout}s") from exc
 
 
 def get_worker_architecture(client: DynamicClient) -> str | None:

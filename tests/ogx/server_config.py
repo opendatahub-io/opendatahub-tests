@@ -57,6 +57,7 @@ def build_ogx_server_config(
               ``ogx-distribution-secret``) so the distribution's conditional
               ``remote::gemini`` provider activates. Optionally also sets
               ``GEMINI_INFERENCE_MODEL`` when configured in constants.
+            - network: Optional NetworkSpec dict for the OGXServer CR.
 
     Returns:
         OGXServerSpec configuration dict with ``distribution``, ``workload``,
@@ -166,7 +167,6 @@ def build_ogx_server_config(
 
     config: dict[str, Any] = {
         "distribution": {"name": "rh"},
-        "network": {"externalAccess": {"enabled": True}},
         "workload": {
             "resources": {
                 "requests": {"cpu": cpu_requests, "memory": "1Gi"},
@@ -177,6 +177,9 @@ def build_ogx_server_config(
             },
         },
     }
+
+    if params.get("network"):
+        config["network"] = params["network"]
 
     if tls_config:
         config["tls"] = tls_config
