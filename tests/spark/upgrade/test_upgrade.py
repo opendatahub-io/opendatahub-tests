@@ -29,7 +29,6 @@ class TestPostUpgradeReuseExistingSparkApplication:
 
 
 @pytest.mark.pre_upgrade
-@pytest.mark.tier1
 def test_spark_job_in_progress_pre_upgrade(
     admin_client: DynamicClient,
     spark_continuity_application: SparkApplication,
@@ -49,7 +48,6 @@ def test_spark_job_in_progress_pre_upgrade(
 
 
 @pytest.mark.post_upgrade
-@pytest.mark.tier1
 def test_spark_job_in_progress_completes_post_upgrade(
     admin_client: DynamicClient,
     spark_continuity_application: SparkApplication,

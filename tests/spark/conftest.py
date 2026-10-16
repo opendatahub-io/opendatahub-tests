@@ -39,75 +39,90 @@ LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="session")
-def dsc_resource(  # noqa: UFN001
+def spark_pre_upgrade_dsc_reset(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     dsc_resource: DataScienceCluster,
 ) -> Generator[DataScienceCluster, Any, Any]:
-    """Reset Spark before and after pre-upgrade runs when resource deletion is requested."""
+    """Reset Spark to a clean slate before and after pre-upgrade runs when resource deletion is requested."""
     if (
         not pytestconfig.option.delete_pre_upgrade_resources
         or not pytestconfig.option.pre_upgrade
         or pytestconfig.option.post_upgrade
     ):
         yield dsc_resource
-        return
+    else:
+        namespace = Namespace(client=admin_client, name=UPGRADE_NAMESPACE)
+        if namespace.exists:
+            LOGGER.info(f"Deleting previous Spark test namespace {UPGRADE_NAMESPACE}")
+            namespace.clean_up(wait=True, timeout=300)
 
-    namespace = Namespace(client=admin_client, name=UPGRADE_NAMESPACE)
-    if namespace.exists:
-        LOGGER.info(f"Deleting previous Spark test namespace {UPGRADE_NAMESPACE}")
-        namespace.clean_up(wait=True, timeout=300)
-
-    LOGGER.info("Resetting Spark Operator to Removed before pre-upgrade setup")
-    editor = ResourceEditor(
-        patches={
-            dsc_resource: {
-                "spec": {"components": {"sparkoperator": {"managementState": DscComponents.ManagementState.REMOVED}}}
+        LOGGER.info("Resetting Spark Operator to Removed before pre-upgrade setup")
+        editor = ResourceEditor(
+            patches={
+                dsc_resource: {
+                    "spec": {
+                        "components": {"sparkoperator": {"managementState": DscComponents.ManagementState.REMOVED}}
+                    }
+                }
             }
-        }
-    )
-    editor.update()
-    dsc_resource.wait_for_condition(condition="SparkOperatorReady", status="False", reason="Removed", timeout=300)
-    try:
-        yield dsc_resource
-    finally:
-        LOGGER.info("Restoring Spark Operator to Removed after pre-upgrade cleanup")
+        )
         editor.update()
+        dsc_resource.wait_for_condition(condition="SparkOperatorReady", status="False", reason="Removed", timeout=300)
+        try:
+            yield dsc_resource
+        finally:
+            LOGGER.info("Restoring Spark Operator to Removed after pre-upgrade cleanup")
+            editor.update()
+            dsc_resource.wait_for_condition(
+                condition="SparkOperatorReady", status="False", reason="Removed", timeout=300
+            )
+
+
+@pytest.fixture(scope="session")
+def spark_install_dsc_patch(
+    dsc_resource: DataScienceCluster,
+) -> Generator[DataScienceCluster, Any, Any]:
+    """Temporarily enable Spark for an install smoke run, restoring the operator's original state afterward."""
+    current_state = dsc_resource.instance.spec.components.get("sparkoperator", {}).get("managementState")
+    component_patch = {"sparkoperator": {"managementState": DscComponents.ManagementState.MANAGED}}
+    with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
+        dsc_resource.wait_for_condition(condition="SparkOperatorReady", status="True", timeout=300)
+        yield dsc_resource
+    if current_state == DscComponents.ManagementState.REMOVED:
         dsc_resource.wait_for_condition(condition="SparkOperatorReady", status="False", reason="Removed", timeout=300)
 
 
 @pytest.fixture(scope="session")
-def pre_upgrade_spark_dsc_patch(
+def spark_upgrade_dsc_patch(
     pytestconfig: pytest.Config,
-    dsc_resource: DataScienceCluster,
+    spark_pre_upgrade_dsc_reset: DataScienceCluster,
 ) -> Generator[DataScienceCluster, Any, Any]:
-    """Enable Spark for pre-upgrade or install tests, restoring its original state after install tests."""
+    """Enable Spark for a pre-upgrade run so it persists across the upgrade, or reference it post-upgrade."""
+    dsc_resource = spark_pre_upgrade_dsc_reset
     if pytestconfig.option.post_upgrade:
         yield dsc_resource
-        return
+    else:
+        current_state = dsc_resource.instance.spec.components.get("sparkoperator", {}).get("managementState")
+        assert current_state != DscComponents.ManagementState.MANAGED, (
+            "Spark Operator is already in Managed state. This indicates a previous test did not clean up properly."
+        )
+        LOGGER.info("Setting Spark Operator to Managed state")
+        component_patch = {"sparkoperator": {"managementState": DscComponents.ManagementState.MANAGED}}
+        ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}).update()
+        dsc_resource.wait_for_condition(condition="SparkOperatorReady", status="True", timeout=300)
+        yield dsc_resource
 
-    current_state = dsc_resource.instance.spec.components.get("sparkoperator", {}).get("managementState")
-    component_patch = {"sparkoperator": {"managementState": DscComponents.ManagementState.MANAGED}}
-    editor = ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}})
 
-    if not pytestconfig.option.pre_upgrade:
-        # An install smoke run must leave the operator's original configuration intact.
-        with editor:
-            dsc_resource.wait_for_condition(condition="SparkOperatorReady", status="True", timeout=300)
-            yield dsc_resource
-        if current_state == DscComponents.ManagementState.REMOVED:
-            dsc_resource.wait_for_condition(
-                condition="SparkOperatorReady", status="False", reason="Removed", timeout=300
-            )
-        return
-
-    assert current_state != DscComponents.ManagementState.MANAGED, (
-        "Spark Operator is already in Managed state. This indicates a previous test did not clean up properly."
-    )
-    LOGGER.info("Setting Spark Operator to Managed state")
-    editor.update()
-    dsc_resource.wait_for_condition(condition="SparkOperatorReady", status="True", timeout=300)
-    yield dsc_resource
+@pytest.fixture(scope="session")
+def spark_dsc_patch(
+    pytestconfig: pytest.Config,
+    request: pytest.FixtureRequest,
+) -> DataScienceCluster:
+    """Dispatch to the install or upgrade Spark enablement flow based on the selected lane."""
+    if pytestconfig.option.pre_upgrade or pytestconfig.option.post_upgrade:
+        return request.getfixturevalue(argname="spark_upgrade_dsc_patch")
+    return request.getfixturevalue(argname="spark_install_dsc_patch")
 
 
 @pytest.fixture(scope="session")
@@ -115,7 +130,7 @@ def spark_namespace_fixture(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     teardown_resources: bool,
-    pre_upgrade_spark_dsc_patch: DataScienceCluster,
+    spark_dsc_patch: DataScienceCluster,
 ) -> Generator[Namespace, Any, Any]:
     """Create or reference the upgrade namespace.
 
@@ -134,7 +149,7 @@ def spark_namespace_fixture(
                 LOGGER.info("Restoring Spark Operator to Removed after post-upgrade cleanup")
                 ResourceEditor(
                     patches={
-                        pre_upgrade_spark_dsc_patch: {
+                        spark_dsc_patch: {
                             "spec": {
                                 "components": {
                                     "sparkoperator": {"managementState": DscComponents.ManagementState.REMOVED}
@@ -143,7 +158,7 @@ def spark_namespace_fixture(
                         }
                     }
                 ).update()
-                pre_upgrade_spark_dsc_patch.wait_for_condition(
+                spark_dsc_patch.wait_for_condition(
                     condition="SparkOperatorReady", status="False", reason="Removed", timeout=300
                 )
 
@@ -177,26 +192,27 @@ def spark_role_fixture(
         resources = get_spark_roles(client=admin_client, namespace=spark_namespace_fixture.name)
         assert resources, "Required pre-upgrade resources are missing from the test namespace"
         yield resources
-        return
-
-    apps_namespace = py_config["applications_namespace"]
-    source_roles = get_spark_roles(client=admin_client, namespace=apps_namespace)
-    assert any(role.name == SPARK_WORKLOAD_ROLE_NAME for role in source_roles), (
-        f"Required Spark workload Role {SPARK_WORKLOAD_ROLE_NAME} was not found in namespace {apps_namespace}"
-    )
-    LOGGER.info(f"Discovered {len(source_roles)} spark Role(s) in {apps_namespace}: {[r.name for r in source_roles]}")
-
-    created_roles = []
-    for source_role in source_roles:
-        role = recreate_role_in_namespace(
-            client=admin_client,
-            source_role=source_role,
-            target_namespace=spark_namespace_fixture.name,
-            teardown=teardown_resources,
+    else:
+        apps_namespace = py_config["applications_namespace"]
+        source_roles = get_spark_roles(client=admin_client, namespace=apps_namespace)
+        assert any(role.name == SPARK_WORKLOAD_ROLE_NAME for role in source_roles), (
+            f"Required Spark workload Role {SPARK_WORKLOAD_ROLE_NAME} was not found in namespace {apps_namespace}"
         )
-        created_roles.append(role)
+        LOGGER.info(
+            f"Discovered {len(source_roles)} spark Role(s) in {apps_namespace}: {[r.name for r in source_roles]}"
+        )
 
-    yield created_roles
+        created_roles = []
+        for source_role in source_roles:
+            role = recreate_role_in_namespace(
+                client=admin_client,
+                source_role=source_role,
+                target_namespace=spark_namespace_fixture.name,
+                teardown=teardown_resources,
+            )
+            created_roles.append(role)
+
+        yield created_roles
 
 
 @pytest.fixture(scope="session")
@@ -211,27 +227,28 @@ def service_account_fixture(
         resources = get_spark_service_accounts(client=admin_client, namespace=spark_namespace_fixture.name)
         assert resources, "Required pre-upgrade resources are missing from the test namespace"
         yield resources
-        return
-
-    apps_namespace = py_config["applications_namespace"]
-    src_sas = get_spark_service_accounts(client=admin_client, namespace=apps_namespace)
-    assert src_sas, (
-        f"Required Spark workload ServiceAccount {SPARK_WORKLOAD_SERVICE_ACCOUNT_NAME} "
-        f"was not found in namespace {apps_namespace}"
-    )
-    LOGGER.info(f"Discovered {len(src_sas)} spark ServiceAccount(s) in {apps_namespace}: {[sa.name for sa in src_sas]}")
-
-    created_sas = []
-    for source_sa in src_sas:
-        sa = recreate_service_account_in_namespace(
-            client=admin_client,
-            source_sa=source_sa,
-            target_namespace=spark_namespace_fixture.name,
-            teardown=teardown_resources,
+    else:
+        apps_namespace = py_config["applications_namespace"]
+        src_sas = get_spark_service_accounts(client=admin_client, namespace=apps_namespace)
+        assert src_sas, (
+            f"Required Spark workload ServiceAccount {SPARK_WORKLOAD_SERVICE_ACCOUNT_NAME} "
+            f"was not found in namespace {apps_namespace}"
         )
-        created_sas.append(sa)
+        LOGGER.info(
+            f"Discovered {len(src_sas)} spark ServiceAccount(s) in {apps_namespace}: {[sa.name for sa in src_sas]}"
+        )
 
-    yield created_sas
+        created_sas = []
+        for source_sa in src_sas:
+            sa = recreate_service_account_in_namespace(
+                client=admin_client,
+                source_sa=source_sa,
+                target_namespace=spark_namespace_fixture.name,
+                teardown=teardown_resources,
+            )
+            created_sas.append(sa)
+
+        yield created_sas
 
 
 @pytest.fixture(scope="session")
@@ -257,29 +274,28 @@ def role_binding_fixture(
         resources = get_spark_role_bindings(client=admin_client, namespace=spark_namespace_fixture.name)
         assert resources, "Required pre-upgrade resources are missing from the test namespace"
         yield resources
-        return
-
-    apps_namespace = py_config["applications_namespace"]
-    source_rbs = get_spark_role_bindings(client=admin_client, namespace=apps_namespace)
-    assert any(role_binding.name == SPARK_WORKLOAD_ROLE_BINDING_NAME for role_binding in source_rbs), (
-        f"Required Spark workload RoleBinding {SPARK_WORKLOAD_ROLE_BINDING_NAME} "
-        f"was not found in namespace {apps_namespace}"
-    )
-    LOGGER.info(
-        f"Discovered {len(source_rbs)} spark RoleBinding(s) in {apps_namespace}: {[rb.name for rb in source_rbs]}"
-    )
-
-    created_rbs = []
-    for source_rb in source_rbs:
-        rb = recreate_role_binding_in_namespace(
-            client=admin_client,
-            source_rb=source_rb,
-            target_namespace=spark_namespace_fixture.name,
-            teardown=teardown_resources,
+    else:
+        apps_namespace = py_config["applications_namespace"]
+        source_rbs = get_spark_role_bindings(client=admin_client, namespace=apps_namespace)
+        assert any(role_binding.name == SPARK_WORKLOAD_ROLE_BINDING_NAME for role_binding in source_rbs), (
+            f"Required Spark workload RoleBinding {SPARK_WORKLOAD_ROLE_BINDING_NAME} "
+            f"was not found in namespace {apps_namespace}"
         )
-        created_rbs.append(rb)
+        LOGGER.info(
+            f"Discovered {len(source_rbs)} spark RoleBinding(s) in {apps_namespace}: {[rb.name for rb in source_rbs]}"
+        )
 
-    yield created_rbs
+        created_rbs = []
+        for source_rb in source_rbs:
+            rb = recreate_role_binding_in_namespace(
+                client=admin_client,
+                source_rb=source_rb,
+                target_namespace=spark_namespace_fixture.name,
+                teardown=teardown_resources,
+            )
+            created_rbs.append(rb)
+
+        yield created_rbs
 
 
 @pytest.fixture(scope="session")
@@ -294,25 +310,24 @@ def network_policy_fixture(
         resources = get_spark_network_policies(client=admin_client, namespace=spark_namespace_fixture.name)
         assert resources, "Required pre-upgrade resources are missing from the test namespace"
         yield resources
-        return
-
-    apps_namespace = py_config["applications_namespace"]
-    source_nps = get_spark_network_policies(client=admin_client, namespace=apps_namespace)
-    LOGGER.info(
-        f"Discovered {len(source_nps)} spark NetworkPolicy(s) in {apps_namespace}: {[np.name for np in source_nps]}"
-    )
-
-    created_nps = []
-    for source_np in source_nps:
-        np = recreate_network_policy_in_namespace(
-            client=admin_client,
-            source_np=source_np,
-            target_namespace=spark_namespace_fixture.name,
-            teardown=teardown_resources,
+    else:
+        apps_namespace = py_config["applications_namespace"]
+        source_nps = get_spark_network_policies(client=admin_client, namespace=apps_namespace)
+        LOGGER.info(
+            f"Discovered {len(source_nps)} spark NetworkPolicy(s) in {apps_namespace}: {[np.name for np in source_nps]}"
         )
-        created_nps.append(np)
 
-    yield created_nps
+        created_nps = []
+        for source_np in source_nps:
+            np = recreate_network_policy_in_namespace(
+                client=admin_client,
+                source_np=source_np,
+                target_namespace=spark_namespace_fixture.name,
+                teardown=teardown_resources,
+            )
+            created_nps.append(np)
+
+        yield created_nps
 
 
 @pytest.fixture(scope="session")
@@ -372,15 +387,14 @@ def spark_pi_application(
     """Reuse the pre-upgrade Pi setup or create a fresh Pi application after upgrade."""
     if not pytestconfig.option.post_upgrade:
         yield spark_application_fixture
-        return
+    else:
+        spark_app_name = f"post-upgrade-spark-pi-{shortuuid.uuid()[:8].lower()}"
 
-    spark_app_name = f"post-upgrade-spark-pi-{shortuuid.uuid()[:8].lower()}"
+        spec = create_spark_pi_application_spec(
+            name=spark_app_name,
+            namespace=spark_namespace_fixture.name,
+            service_account=spark_workload_service_account.name,
+        )
 
-    spec = create_spark_pi_application_spec(
-        name=spark_app_name,
-        namespace=spark_namespace_fixture.name,
-        service_account=spark_workload_service_account.name,
-    )
-
-    with SparkApplication(client=admin_client, kind_dict=spec, teardown=teardown_resources) as spark_app:
-        yield spark_app
+        with SparkApplication(client=admin_client, kind_dict=spec, teardown=teardown_resources) as spark_app:
+            yield spark_app

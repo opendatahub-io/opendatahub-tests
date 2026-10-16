@@ -34,15 +34,14 @@ def resubmitted_spark_application_fixture(
     Pre-upgrade: Returns None (only runs post-upgrade)
     Post-upgrade: Re-submits the existing SparkApplication
     """
-    if not pytestconfig.option.post_upgrade:
+    if pytestconfig.option.post_upgrade:
+        yield resubmit_spark_application(
+            client=admin_client,
+            spark_app=spark_application_fixture,
+            teardown=teardown_resources,
+        )
+    else:
         yield None
-        return
-
-    yield resubmit_spark_application(
-        client=admin_client,
-        spark_app=spark_application_fixture,
-        teardown=teardown_resources,
-    )
 
 
 @pytest.fixture()
@@ -57,15 +56,15 @@ def spark_continuity_control(
     if pytestconfig.option.post_upgrade:
         assert control.exists, "Run the in-progress pre-upgrade test and preserve its resources first"
         yield control
-        return
-    with ConfigMap(
-        client=admin_client,
-        name=control.name,
-        namespace=control.namespace,
-        data={"workload.py": Path(__file__).with_name("continuity_workload.py").read_text(), "release": "false"},
-        teardown=teardown_resources,
-    ) as control:
-        yield control
+    else:
+        with ConfigMap(
+            client=admin_client,
+            name=control.name,
+            namespace=control.namespace,
+            data={"workload.py": Path(__file__).with_name("continuity_workload.py").read_text(), "release": "false"},
+            teardown=teardown_resources,
+        ) as control:
+            yield control
 
 
 @pytest.fixture()
@@ -85,31 +84,31 @@ def spark_continuity_application(
     if pytestconfig.option.post_upgrade:
         assert application.exists, "The in-progress SparkApplication did not survive"
         yield application
-        return
-    manifest = create_spark_pi_application_spec(
-        name=application.name,
-        namespace=application.namespace,
-        service_account=spark_workload_service_account.name,
-    )
-    spec = manifest["spec"]
-    spec.pop("mainClass")
-    spec.update({
-        "type": "Python",
-        "pythonVersion": "3",
-        "mainApplicationFile": "local:///opt/spark/upgrade/workload.py",
-        "sparkConf": {"spark.task.maxFailures": "1", "spark.speculation": "false"},
-    })
-    spec["volumes"].append({"name": "upgrade-control", "configMap": {"name": spark_continuity_control.name}})
-    volumes = spec.pop("volumes")
-    for role in ("driver", "executor"):
-        mounts = spec[role].pop("volumeMounts")
-        mounts.append({"name": "upgrade-control", "mountPath": "/opt/spark/upgrade", "readOnly": True})
-        # Native pod templates carry mounts even when the mutating webhook does not inject them.
-        spec[role]["template"] = {
-            "spec": {
-                "volumes": volumes,
-                "containers": [{"name": f"spark-kubernetes-{role}", "volumeMounts": mounts}],
+    else:
+        manifest = create_spark_pi_application_spec(
+            name=application.name,
+            namespace=application.namespace,
+            service_account=spark_workload_service_account.name,
+        )
+        spec = manifest["spec"]
+        spec.pop("mainClass")
+        spec.update({
+            "type": "Python",
+            "pythonVersion": "3",
+            "mainApplicationFile": "local:///opt/spark/upgrade/workload.py",
+            "sparkConf": {"spark.task.maxFailures": "1", "spark.speculation": "false"},
+        })
+        spec["volumes"].append({"name": "upgrade-control", "configMap": {"name": spark_continuity_control.name}})
+        volumes = spec.pop("volumes")
+        for role in ("driver", "executor"):
+            mounts = spec[role].pop("volumeMounts")
+            mounts.append({"name": "upgrade-control", "mountPath": "/opt/spark/upgrade", "readOnly": True})
+            # Native pod templates carry mounts even when the mutating webhook does not inject them.
+            spec[role]["template"] = {
+                "spec": {
+                    "volumes": volumes,
+                    "containers": [{"name": f"spark-kubernetes-{role}", "volumeMounts": mounts}],
+                }
             }
-        }
-    with SparkApplication(client=admin_client, kind_dict=manifest, teardown=teardown_resources) as application:
-        yield application
+        with SparkApplication(client=admin_client, kind_dict=manifest, teardown=teardown_resources) as application:
+            yield application
