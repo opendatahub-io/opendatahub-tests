@@ -16,7 +16,7 @@ from ogx_client.types.file import File
 from ogx_client.types.vector_stores.vector_store_file import VectorStoreFile
 from timeout_sampler import retry
 
-from tests.ogx.constants import OGX_CORE_POD_FILTER, ModelInfo
+from tests.ogx.constants import OGX_CORE_POD_FILTER, POSTGRES_IMAGE, ModelInfo
 from tests.ogx.datasets import Dataset
 from utilities.exceptions import UnexpectedResourceCountError
 from utilities.path_utils import resolve_repo_path
@@ -155,6 +155,7 @@ def create_ogx_server(
         distribution=config["distribution"],
         workload=config.get("workload"),
         network=config.get("network"),
+        praxis_mode=config.get("praxis_mode"),
         tls=config.get("tls"),
         wait_for_resource=True,
         teardown=teardown,
@@ -492,3 +493,46 @@ def dummy_files_factory(provider_name: str) -> list[dict[str, str]]:
         List of environment variable dicts for files provider.
     """
     return [{"name": "FILES_ENV", "value": provider_name}]
+
+
+def get_postgres_deployment_template(app_label: str, database: str) -> dict[str, Any]:
+    """Return a Kubernetes pod template for a PostgreSQL deployment.
+
+    Credentials are sourced from the ``ogx-distribution-secret``, so every
+    Postgres instance built from this template shares the same user and password.
+
+    Args:
+        app_label: Value of the pod's ``app`` label. Must match both the owning
+            Deployment's selector and the Service's selector.
+        database: Name of the database created when the instance first starts.
+
+    Returns:
+        Pod template dict suitable for a Deployment's ``template`` field.
+    """
+    return {
+        "metadata": {"labels": {"app": app_label}},
+        "spec": {
+            "containers": [
+                {
+                    "name": "postgres",
+                    "image": POSTGRES_IMAGE,
+                    "ports": [{"containerPort": 5432}],
+                    "env": [
+                        {"name": "POSTGRESQL_DATABASE", "value": database},
+                        {
+                            "name": "POSTGRESQL_USER",
+                            "valueFrom": {"secretKeyRef": {"name": "ogx-distribution-secret", "key": "postgres-user"}},
+                        },
+                        {
+                            "name": "POSTGRESQL_PASSWORD",
+                            "valueFrom": {
+                                "secretKeyRef": {"name": "ogx-distribution-secret", "key": "postgres-password"}
+                            },
+                        },
+                    ],
+                    "volumeMounts": [{"name": "postgresdata", "mountPath": "/var/lib/pgsql/data"}],
+                },
+            ],
+            "volumes": [{"name": "postgresdata", "emptyDir": {}}],
+        },
+    }
