@@ -16,6 +16,7 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
+from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from pyhelper_utils.shell import run_command
@@ -65,12 +66,31 @@ def seaweedfs_filer_config(
 
 
 @pytest.fixture(scope="class")
+def seaweedfs_credentials_secret(
+    admin_client: DynamicClient,
+    seaweedfs_namespace: Namespace,
+) -> Generator[Secret, Any, Any]:
+    """SeaweedFS server credentials in the SeaweedFS namespace."""
+    with Secret(
+        client=admin_client,
+        name="seaweedfs-credentials",
+        namespace=seaweedfs_namespace.name,
+        string_data={
+            "accesskey": SeaweedFs.Credentials.ACCESS_KEY_VALUE,
+            "secretkey": SeaweedFs.Credentials.SECRET_KEY_VALUE,
+        },
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="class")
 def seaweedfs_pod(
     admin_client: DynamicClient,
     seaweedfs_namespace: Namespace,
     seaweedfs_filer_config: ConfigMap,
+    seaweedfs_credentials_secret: Secret,
 ) -> Generator[Pod, Any, Any]:
-    """Run an authenticated SeaweedFS instance exposing its S3 API."""
+    """Run an authenticated SeaweedFS instance exposing its S3 API, with credentials supplied by a Secret."""
     initialization_command = (
         "for attempt in $(seq 1 60); do "
         "wget -q --spider http://127.0.0.1:8333/status && break; "
@@ -90,8 +110,18 @@ def seaweedfs_pod(
                 "image": AiHubImages.SEAWEEDFS,
                 "args": list(SeaweedFs.PodConfig.ARGS),
                 "env": [
-                    {"name": "accesskey", "value": SeaweedFs.Credentials.ACCESS_KEY_VALUE},
-                    {"name": "secretkey", "value": SeaweedFs.Credentials.SECRET_KEY_VALUE},
+                    {
+                        "name": "accesskey",
+                        "valueFrom": {
+                            "secretKeyRef": {"name": seaweedfs_credentials_secret.name, "key": "accesskey"},
+                        },
+                    },
+                    {
+                        "name": "secretkey",
+                        "valueFrom": {
+                            "secretKeyRef": {"name": seaweedfs_credentials_secret.name, "key": "secretkey"},
+                        },
+                    },
                 ],
                 "ports": [
                     {"containerPort": SeaweedFs.Metadata.DEFAULT_PORT, "name": "s3"},
