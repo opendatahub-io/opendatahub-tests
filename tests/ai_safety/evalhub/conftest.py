@@ -4,7 +4,7 @@ import shlex
 import uuid
 from collections.abc import Callable, Generator
 from typing import Any
-
+import time
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
@@ -2324,7 +2324,8 @@ def evalhub_failure_cr(
 def operator_metrics_route(
     admin_client: DynamicClient,
 ) -> Generator[Route, Any, Any]:
-    """Create a Route to the operator metrics service."""
+    """Create a Route to the operator metrics service and wait for it to be ready."""
+
     operator_ns = py_config["applications_namespace"]
     route_name = "tas-operator-metrics"
     with Route(
@@ -2340,4 +2341,5 @@ def operator_metrics_route(
             },
         },
     ) as route:
+        time.sleep(10)  # Wait for route to be admitted and endpoint to be reachable
         yield route
