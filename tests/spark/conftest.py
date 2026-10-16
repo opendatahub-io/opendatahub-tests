@@ -10,6 +10,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.namespace import Namespace
 from ocp_resources.network_policy import NetworkPolicy
+from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
@@ -17,10 +18,13 @@ from ocp_resources.service_account import ServiceAccount
 from pytest_testconfig import config as py_config
 
 from tests.spark.utils import (
+    RESTRICTED_SECURITY_CONTEXT,
+    SPARK_IMAGE,
     SPARK_WORKLOAD_ROLE_BINDING_NAME,
     SPARK_WORKLOAD_ROLE_NAME,
     SPARK_WORKLOAD_SERVICE_ACCOUNT_NAME,
     UPGRADE_NAMESPACE,
+    create_spark_connect_spec,
     create_spark_pi_application_spec,
     get_spark_network_policies,
     get_spark_role_bindings,
@@ -31,11 +35,13 @@ from tests.spark.utils import (
     recreate_role_in_namespace,
     recreate_service_account_in_namespace,
     wait_for_scheduled_spark_application_run,
+    wait_for_spark_connect_ready,
 )
 from utilities.constants import DscComponents
 from utilities.infra import create_ns
 from utilities.resources.scheduled_spark_application import ScheduledSparkApplication
 from utilities.resources.spark_application import SparkApplication
+from utilities.resources.spark_connect import SparkConnect
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -433,3 +439,56 @@ def scheduled_spark_pi_application(
         client=admin_client, kind_dict=manifest, teardown=teardown_resources
     ) as scheduled_app:
         yield wait_for_scheduled_spark_application_run(client=admin_client, scheduled_app=scheduled_app)
+
+
+@pytest.fixture()
+def spark_connect_client_pod(
+    admin_client: DynamicClient,
+    spark_namespace_fixture: Namespace,
+    network_policy_fixture: list[NetworkPolicy],
+    teardown_resources: bool,
+) -> Generator[Pod, Any, Any]:
+    """A running pod with the Spark distribution, used to query the Spark Connect endpoint."""
+    manifest = {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "metadata": {
+            "name": f"spark-connect-client-{shortuuid.uuid()[:8].lower()}",
+            "namespace": spark_namespace_fixture.name,
+        },
+        "spec": {
+            "restartPolicy": "Never",
+            "containers": [
+                {
+                    "name": "spark-connect-client",
+                    "image": SPARK_IMAGE,
+                    "command": ["sleep", "infinity"],
+                    "securityContext": RESTRICTED_SECURITY_CONTEXT,
+                }
+            ],
+        },
+    }
+    with Pod(client=admin_client, kind_dict=manifest, teardown=teardown_resources) as pod:
+        pod.wait_for_status(status=Pod.Status.RUNNING, timeout=300)
+        yield pod
+
+
+@pytest.fixture(scope="session")
+def spark_connect_application(
+    admin_client: DynamicClient,
+    spark_namespace_fixture: Namespace,
+    spark_workload_service_account: ServiceAccount,
+    role_binding_fixture: list[RoleBinding],
+    network_policy_fixture: list[NetworkPolicy],
+    teardown_resources: bool,
+) -> Generator[SparkConnect, Any, Any]:
+    """Create a Spark Connect server and yield it once the server, executors, and service are ready."""
+    name = f"smoke-spark-connect-{shortuuid.uuid()[:8].lower()}"
+    manifest = create_spark_connect_spec(
+        name=name,
+        namespace=spark_namespace_fixture.name,
+        service_account=spark_workload_service_account.name,
+    )
+    with SparkConnect(client=admin_client, kind_dict=manifest, teardown=teardown_resources) as spark_connect:
+        wait_for_spark_connect_ready(client=admin_client, spark_connect=spark_connect)
+        yield spark_connect
