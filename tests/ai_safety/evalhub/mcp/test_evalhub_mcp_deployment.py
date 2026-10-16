@@ -74,7 +74,6 @@ class TestEvalHubMcpDeployment:
             Pod.get(
                 client=admin_client,
                 namespace=model_namespace.name,
-                # Deliberately leaves out app= so the app-label assertion below can actually fail.
                 label_selector=f"component={EVALHUB_MCP_COMPONENT_LABEL},instance={EVALHUB_MCP_CR_NAME}",
             )
         )

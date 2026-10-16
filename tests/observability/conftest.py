@@ -38,6 +38,7 @@ from tests.observability.preflight import (
     parse_preflight_present,
 )
 from tests.observability.query import RawQueryClient, RawQueryResult, build_contract_request
+from tests.observability.run_id import ResolvedRunID, resolve_run_id
 from utilities.path_utils import resolve_repo_path, resolve_trusted_path
 
 if TYPE_CHECKING:
@@ -75,6 +76,23 @@ def release_contract() -> ReleaseContract:
 
 
 @pytest.fixture(scope="session")
+def pipeline_health_report(release_contract: ReleaseContract) -> tuple[dict[str, str], ...]:
+    """Return report-only pipeline-health rollout metadata without querying unactivated backends."""
+    report: list[dict[str, str]] = []
+    for record in release_contract.pipeline_health.records:
+        report.append({
+            "identifier": record.identifier,
+            "signal": record.signal,
+            "stage": record.stage.value,
+            "rollout_state": record.rollout_state.value,
+            "activation_release": record.activation_release,
+            "reason": record.reason,
+            "next_activation_step": record.next_activation_step,
+        })
+    return tuple(report)
+
+
+@pytest.fixture(scope="session")
 def release_evidence_directory() -> Path:
     """Return the CI evidence directory without placing credentials in its name or contents."""
     configured_path = os.environ.get("RHOAI_OBSERVABILITY_EVIDENCE_DIR")
@@ -87,9 +105,17 @@ def release_evidence_directory() -> Path:
 
 
 @pytest.fixture(scope="session")
+def observability_run_id() -> ResolvedRunID:
+    """Resolve one normalized correlation ID for the complete test session."""
+    return resolve_run_id(environment=os.environ)
+
+
+@pytest.fixture(scope="session")
 def release_preflight(
     release_contract: ReleaseContract,
     release_evidence_directory: Path,
+    observability_run_id: ResolvedRunID,
+    pipeline_health_report: tuple[dict[str, str], ...],
 ) -> PreflightReport:
     """Evaluate release-run preflight input before resource fixtures can mutate the cluster."""
     checks = _preflight_checks(release_contract=release_contract)
@@ -101,6 +127,8 @@ def release_preflight(
             "contract_version": release_contract.version,
             "release_stage": release_contract.release_stage,
             "product_versions": release_contract.product_versions,
+            "run_id": observability_run_id.to_dict(),
+            "pipeline_health": list(pipeline_health_report),
             **report.to_dict(),
         },
     )
@@ -111,10 +139,12 @@ def release_preflight(
 def observability_evidence(
     release_contract: ReleaseContract,
     release_evidence_directory: Path,
+    observability_run_id: ResolvedRunID,
+    pipeline_health_report: tuple[dict[str, str], ...],
 ) -> Generator[Callable[..., None]]:
     """Collect sanitized query evidence and write its summary after integrated tests finish."""
     records: list[EvidenceRecord] = []
-    cluster_run_id = os.environ.get("RHOAI_OBSERVABILITY_RUN_ID", "local")
+    cluster_run_id = observability_run_id.value
 
     def add_record(
         *,
@@ -132,6 +162,7 @@ def observability_evidence(
                 release_stage=contract_record.release_stage,
                 component_versions=contract_record.product_versions,
                 cluster_run_id=cluster_run_id,
+                run_id_source=observability_run_id.source,
                 persona={
                     "name": persona.name,
                     "principal": persona.principal,
@@ -151,8 +182,10 @@ def observability_evidence(
         handoff={
             "tracking_id": "RHOAIENG-96476",
             "cluster_run_id": cluster_run_id,
+            "run_id_source": observability_run_id.source,
             "contract_version": release_contract.version,
             "record_count": len(records),
+            "pipeline_health": list(pipeline_health_report),
         },
     )
     write_failure_log(

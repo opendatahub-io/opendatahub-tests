@@ -26,6 +26,7 @@ pytestmark = [
 
 
 @pytest.mark.tier2
+@pytest.mark.downstream_only
 @pytest.mark.parametrize(
     "model_detail_with_artifacts, expected_missing_categories",
     [
