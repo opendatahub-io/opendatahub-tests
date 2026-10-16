@@ -22,6 +22,7 @@ from tests.workbenches.notebook_images.utils import (
     wait_for_http_inside_pod,
     wait_for_pod_uid_change,
 )
+from tests.workbenches.utils import SKIP_EXPECTED_IMAGE_BUMP_ONLY, expected_skip
 from utilities.constants import Timeout
 
 pytestmark = [pytest.mark.tier2, pytest.mark.slow]
@@ -102,13 +103,18 @@ class TestPostUpgradeBumpWorkbench:
         current_image = str(n1_bump_notebook.instance.spec.template.spec.containers[0].image)
         if current_image == n1_bump_target_image.image_url:
             pytest.skip(
-                "No Dashboard image bump to apply: the workbench container image is already "
-                f"{current_image!r} (baseline tag {n1_bump_baseline.image_tag!r}, "
-                f"target tag {n1_bump_target_image.tag_name!r}). "
-                "On z-stream upgrades the ImageStream tag name does not change, so "
-                "patchNotebookImage() is a no-op and the pod is not recreated. "
-                "To exercise this test, pin a previous tag during pre-upgrade with "
-                "--tc workbench_image_tag:<n-minus-one-tag>."
+                expected_skip(
+                    prefix=SKIP_EXPECTED_IMAGE_BUMP_ONLY,
+                    detail=(
+                        "No Dashboard image bump to apply: the workbench container image is already "
+                        f"{current_image!r} (baseline tag {n1_bump_baseline.image_tag!r}, "
+                        f"target tag {n1_bump_target_image.tag_name!r}). "
+                        "On z-stream upgrades the ImageStream tag name does not change, so "
+                        "patchNotebookImage() is a no-op and the pod is not recreated. "
+                        "To exercise this test, pin a previous tag during pre-upgrade with "
+                        "--tc workbench_image_tag:<n-minus-one-tag>."
+                    ),
+                )
             )
 
         old_pod_uid = n1_bump_pod.instance.metadata.uid

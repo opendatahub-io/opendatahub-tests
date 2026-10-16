@@ -46,7 +46,7 @@ models_as_a_service/
 - **`maas_subscription/`** - Subscription enforcement, access control, filtering, rate limit exemptions, cascade deletion, multi-subscription and multi-auth-policy scenarios
 - **`multitenancy/`** - AITenant bootstrap, per-tenant maas-api deployment/routing, auth isolation, and cross-gateway inference
 - **`oidc_tests/`** - OIDC token flow, model access, multi-user, and header injection tests
-- **`upgrade/`** - Pre/post-upgrade tests validating MaaS control plane survival across operator upgrades
+- **`upgrade/`** - Pre/post-upgrade tests verifying that existing MaaS functionality, configuration, and customer workflows remain valid across platform/operator upgrades.
 - **`test_maas_endpoints.py`** - Core MaaS API endpoint validation
 - **`test_maas_rbac_e2e.py`** - End-to-end RBAC validation across user tiers
 - **`test_maas_*_rate_limits.py`** - Request and token-based rate limiting
@@ -97,60 +97,34 @@ uv run pytest tests/ai_gateway/models_as_a_service/upgrade/
 # Run smoke tests
 uv run pytest -m smoke tests/ai_gateway/models_as_a_service/
 
-# Run pre-upgrade tests
-uv run pytest -m pre_upgrade tests/ai_gateway/models_as_a_service/
-
-# Run post-upgrade tests
-uv run pytest -m post_upgrade tests/ai_gateway/models_as_a_service/
+# Run tier_1 tests
+uv run pytest -m tier1 tests/ai_gateway/models_as_a_service/
 ```
 
 ## Upgrade Testing
 
+Run pre-upgrade tests from the `opendatahub-tests` branch matching the source RHOAI version (for example, 3.5) to prepare resources and save a baseline. After upgrading the cluster, run post-upgrade tests from the branch matching the target version to validate the existing resources against that baseline.
+
 ### Running Upgrade Tests
 
 ```bash
-# Pre-upgrade: deploy control plane resources and capture state snapshot
-uv run pytest tests/ai_gateway/models_as_a_service/upgrade/test_maas_upgrade.py \
-  --pre-upgrade -v
+# Run pre-upgrade tests, keeping resources for post-upgrade checks
+uv run pytest tests/ai_gateway/models_as_a_service/ --pre-upgrade
 
-# ... perform the actual cluster upgrade ...
+# Run pre-upgrade tests with teardown for a standalone setup check
+uv run pytest tests/ai_gateway/models_as_a_service/ --pre-upgrade --delete-pre-upgrade-resources
 
-# Post-upgrade: validate CR survival, deployments, and API compatibility
-uv run pytest tests/ai_gateway/models_as_a_service/upgrade/test_maas_upgrade.py \
-  --post-upgrade -v
+# Run post-upgrade tests
+uv run pytest tests/ai_gateway/models_as_a_service/ --post-upgrade
 ```
 
-### Test Execution Flow
+### Upgrade Test Modules
 
-- **Pre-upgrade** deploys MaaS control plane resources (MaaSModelRef, MaaSAuthPolicy, MaaSSubscription) and captures a state snapshot into a ConfigMap. Resources are left in place for post-upgrade validation.
-- **Post-upgrade** loads the snapshot and validates that all CRs, deployments, and CRDs survived the upgrade, then cleans up.
+Coverage reflects the tests on this branch; individual checks are documented in the test modules.
 
-### Coverage Matrix
-
-| Component | Pre-upgrade | Post-upgrade | Upgrade Paths |
-| --- | --- | --- | --- |
-| MaaS Gateway | Verify Programmed | Verify still Programmed | 3.4 → 3.5 |
-| MaasTenantConfig CR | Verify Ready | Verify survives | 3.4 → 3.5 |
-| MaaSModelRef | Create and verify | Verify survives | 3.4 → 3.5 |
-| MaaSAuthPolicy | Create and verify | Verify survives | 3.4 → 3.5 |
-| MaaSSubscription | Create and verify | Verify survives, spec not mutated | 3.4 → 3.5 |
-| MaaS Deployments | — | Verify Available | 3.4 → 3.5 |
-| MaaS CRDs | — | Verify all present | 3.4 → 3.5 |
-| AIGateway CR | — | Verify present (bootstrapped or unchanged) | 3.4 → 3.5; in-release upgrades (e.g. 3.5.0→3.5.1) |
-| MaaS Config CR | — | Verify present (bootstrapped or unchanged) | 3.4 → 3.5; in-release upgrades (e.g. 3.5.0→3.5.1) |
-| Gateway probe | — | Verify reachable | 3.4 → 3.5 |
-| API compatibility | — | Create new MaaSModelRef | 3.4 → 3.5 |
-
-### Known Limitations
-
-No known limitations.
-
-### Maintenance Ownership
-
-- **Who updates tests when APIs change:** MaaS QE
-- **When to update fixtures:** When new MaaS CRs are introduced or existing CR specs change between versions
-- **When to update upgrade assertions:** When new operator-bootstrapped resources are added in a new release
-- **When to update baseline snapshot:** When new fields need to be tracked for mutation detection across upgrade
+- [test_maas_upgrade.py](upgrade/test_maas_upgrade.py) — Checks MaaS resource survival, subscription spec preservation, component health, gateway reachability, and creation of new model references after upgrade.
+- [test_inference_with_llmd.py](upgrade/test_inference_with_llmd.py) — Checks that an llm-d workload, its routing and MaaS configuration survive the upgrade, and that inference still succeeds with the existing API key.
+- [test_external_model_legacy_migration.py](upgrade/test_external_model_legacy_migration.py) — Checks ExternalModel migration, removal of legacy networking, and preservation of model references, auth policies, and subscriptions.
 
 ## Additional Resources
 

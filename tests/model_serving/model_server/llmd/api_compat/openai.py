@@ -141,6 +141,7 @@ class OpenAICompatibilityValidator:
         model_name: str,
         api_key_provider: APIKeyProvider | None = None,
         verify_ssl: bool | str = False,
+        max_tokens_limit: int | None = None,
     ) -> None:
         if api_key_provider is None:
             api_key_provider = NoAuthProvider()
@@ -150,6 +151,7 @@ class OpenAICompatibilityValidator:
         self._sa_provider: ServiceAccountTokenProvider | None = None
         self._verify_ssl = verify_ssl
         self._base_url = base_url
+        self._max_tokens_limit = max_tokens_limit
         self._client: OpenAI | None = None
         self._llmisvc: LLMInferenceService | None = None
 
@@ -165,12 +167,19 @@ class OpenAICompatibilityValidator:
             LOGGER.info(f"OpenAICompatibilityValidator initialized — base_url={self._base_url}, model={self._model}")
         return client
 
+    def _effective_max_tokens(self, requested: int) -> int:
+        """Apply an optional upper bound to a request's generation budget."""
+        if self._max_tokens_limit is None:
+            return requested
+        return min(requested, self._max_tokens_limit)
+
     @classmethod
     def from_llmisvc(
         cls,
         client: DynamicClient,
         llmisvc: LLMInferenceService,
         insecure: bool = True,
+        max_tokens_limit: int | None = None,
     ) -> OpenAICompatibilityValidator:
         workaround_503_no_healthy_upstream(llmisvc=llmisvc, prompt="What is the capital of Italy?")
 
@@ -183,6 +192,7 @@ class OpenAICompatibilityValidator:
             model_name=model_name,
             api_key_provider=sa_provider,
             verify_ssl=not insecure,
+            max_tokens_limit=max_tokens_limit,
         )
         validator._sa_provider = sa_provider
         validator._llmisvc = llmisvc
@@ -391,7 +401,7 @@ class OpenAICompatibilityValidator:
             response = self._ensure_client().chat.completions.create(
                 model=self._model,
                 messages=messages,
-                max_tokens=10,
+                max_tokens=self._effective_max_tokens(10),
                 temperature=0,
             )
         self._assert_chat_completion_shape(response=response)
@@ -408,7 +418,7 @@ class OpenAICompatibilityValidator:
             response = self._ensure_client().chat.completions.create(
                 model=self._model,
                 messages=messages,
-                max_tokens=10,
+                max_tokens=self._effective_max_tokens(10),
                 temperature=0,
             )
         self._assert_usage_stats(response=response)
@@ -433,7 +443,7 @@ class OpenAICompatibilityValidator:
             stream = self._ensure_client().chat.completions.create(
                 model=self._model,
                 messages=messages,
-                max_tokens=30,
+                max_tokens=self._effective_max_tokens(30),
                 temperature=0,
                 stream=True,
             )
@@ -443,15 +453,9 @@ class OpenAICompatibilityValidator:
 
         content_parts: list[str] = []
         found_finish_reason = False
+        response_chunks = self._response_stream_chunks(chunks=chunks)
 
-        for i, chunk in enumerate(chunks):
-            assert chunk.object == "chat.completion.chunk", (
-                f"Chunk #{i}: expected object='chat.completion.chunk', "
-                f"got '{chunk.object}'. Full chunk: {chunk.model_dump()}"
-            )
-            assert chunk.model, f"Chunk #{i}: empty model field. Full chunk: {chunk.model_dump()}"
-            assert len(chunk.choices) > 0, f"Chunk #{i}: empty choices. Full chunk: {chunk.model_dump()}"
-
+        for chunk in response_chunks:
             choice = chunk.choices[0]
             if choice.delta.content:
                 content_parts.append(choice.delta.content)
@@ -482,7 +486,7 @@ class OpenAICompatibilityValidator:
             stream = self._ensure_client().chat.completions.create(
                 model=self._model,
                 messages=messages,
-                max_tokens=80,
+                max_tokens=self._effective_max_tokens(80),
                 temperature=0,
                 stream=True,
             )
@@ -501,31 +505,28 @@ class OpenAICompatibilityValidator:
         model_names = {chunk.model for chunk in chunks}
         assert len(model_names) == 1, f"All chunks must report the same model, got: {model_names}"
 
+        response_chunks = self._response_stream_chunks(chunks=chunks)
         finish_reason_chunks = [
-            i for i, chunk in enumerate(chunks) if chunk.choices and chunk.choices[0].finish_reason is not None
+            i for i, chunk in enumerate(response_chunks) if chunk.choices[0].finish_reason is not None
         ]
         assert len(finish_reason_chunks) == 1, (
             f"Expected exactly 1 chunk with finish_reason, got {len(finish_reason_chunks)} "
             f"at indices {finish_reason_chunks}"
         )
-        assert finish_reason_chunks[0] >= len(chunks) - 2, (
+        assert finish_reason_chunks[0] >= len(response_chunks) - 2, (
             f"finish_reason chunk should be at or near the end (index {finish_reason_chunks[0]} "
-            f"of {len(chunks)} chunks)"
+            f"of {len(response_chunks)} response chunks)"
         )
 
-        finish_reason = chunks[finish_reason_chunks[0]].choices[0].finish_reason
+        finish_reason = response_chunks[finish_reason_chunks[0]].choices[0].finish_reason
         assert finish_reason in ("stop", "length"), (
             f"Unexpected finish_reason '{finish_reason}', expected 'stop' or 'length'"
         )
 
-        for i, chunk in enumerate(chunks):
-            assert chunk.object == "chat.completion.chunk", (
-                f"Chunk #{i}: expected object='chat.completion.chunk', got '{chunk.object}'"
-            )
-            assert len(chunk.choices) > 0, f"Chunk #{i}: empty choices array"
+        for i, chunk in enumerate(response_chunks):
             assert chunk.choices[0].index == 0, f"Chunk #{i}: expected choice index=0, got {chunk.choices[0].index}"
 
-        assembled = "".join(content for chunk in chunks if (content := chunk.choices[0].delta.content))
+        assembled = "".join(content for chunk in response_chunks if (content := chunk.choices[0].delta.content))
         assert len(assembled) > 0, f"No text content assembled from {len(chunks)} chunks"
 
         LOGGER.info(
@@ -550,7 +551,7 @@ class OpenAICompatibilityValidator:
             response = self._ensure_client().chat.completions.create(
                 model=self._model,
                 messages=[system_msg, user_msg],
-                max_tokens=20,
+                max_tokens=self._effective_max_tokens(20),
                 temperature=0,
             )
         self._assert_chat_completion_shape(response=response)
@@ -580,7 +581,7 @@ class OpenAICompatibilityValidator:
             response = self._ensure_client().chat.completions.create(
                 model=self._model,
                 messages=[turn1_user, turn1_assistant, turn2_user],
-                max_tokens=30,
+                max_tokens=self._effective_max_tokens(30),
                 temperature=0,
             )
         self._assert_chat_completion_shape(response=response)
@@ -610,7 +611,7 @@ class OpenAICompatibilityValidator:
                 model=self._model,
                 messages=messages,
                 response_format=ResponseFormatJSONObject(type="json_object"),
-                max_tokens=50,
+                max_tokens=self._effective_max_tokens(50),
                 temperature=0,
             )
         response: ChatCompletion = result  # type: ignore[assignment]
@@ -646,7 +647,7 @@ class OpenAICompatibilityValidator:
                 model=self._model,
                 messages=messages,
                 stop=[","],
-                max_tokens=100,
+                max_tokens=self._effective_max_tokens(100),
                 temperature=0,
             )
         self._assert_chat_completion_shape(response=response)
@@ -677,7 +678,7 @@ class OpenAICompatibilityValidator:
                 messages=messages,
                 temperature=0.8,
                 top_p=0.9,
-                max_tokens=10,
+                max_tokens=self._effective_max_tokens(10),
             )
         self._assert_chat_completion_shape(response=response)
         LOGGER.info(f"Sampling params OK — content={response.choices[0].message.content!r}")
@@ -698,7 +699,7 @@ class OpenAICompatibilityValidator:
             response = self._ensure_client().chat.completions.create(
                 model=self._model,
                 messages=messages,
-                max_tokens=max_tokens,
+                max_tokens=max_tokens,  # The check must use exactly five requested tokens.
                 temperature=0,
             )
         self._assert_chat_completion_shape(response=response)
@@ -734,7 +735,7 @@ class OpenAICompatibilityValidator:
             response = self._ensure_client().chat.completions.create(
                 model=self._model,
                 messages=messages,
-                max_tokens=10,
+                max_tokens=self._effective_max_tokens(10),
                 temperature=0,
                 logprobs=True,
                 top_logprobs=3,
@@ -776,7 +777,7 @@ class OpenAICompatibilityValidator:
                 model=self._model,
                 messages=messages,
                 n=n,
-                max_tokens=10,
+                max_tokens=self._effective_max_tokens(10),
                 temperature=0.8,
             )
         dump = response.model_dump()
@@ -804,7 +805,7 @@ class OpenAICompatibilityValidator:
                 model=self._model,
                 messages=messages,
                 seed=42,
-                max_tokens=10,
+                max_tokens=self._effective_max_tokens(10),
                 temperature=0,
             )
         self._assert_chat_completion_shape(response=response)
@@ -830,7 +831,7 @@ class OpenAICompatibilityValidator:
             client.chat.completions.create(
                 model="nonexistent-model-that-does-not-exist",
                 messages=messages,
-                max_tokens=1,
+                max_tokens=self._effective_max_tokens(1),
             )
             raise AssertionError("Request with invalid model name should have raised an error, but succeeded")
         except openai.NotFoundError as e:
@@ -866,7 +867,7 @@ class OpenAICompatibilityValidator:
                 messages=messages,
                 tools=COMPAT_TEST_TOOLS,
                 tool_choice="auto",
-                max_tokens=100,
+                max_tokens=self._effective_max_tokens(100),
                 temperature=0,
             )
         self._assert_chat_completion_shape(response=response)
@@ -898,7 +899,7 @@ class OpenAICompatibilityValidator:
                 messages=messages,
                 tools=COMPAT_TEST_TOOLS,
                 tool_choice="auto",
-                max_tokens=100,
+                max_tokens=self._effective_max_tokens(100),
                 temperature=0,
                 stream=True,
             )
@@ -911,8 +912,11 @@ class OpenAICompatibilityValidator:
         function_arguments = ""
         content_parts: list[str] = []
 
-        for chunk in chunks:
-            assert chunk.object == "chat.completion.chunk"
+        for index, chunk in enumerate(chunks):
+            LOGGER.info(f"Tool-calling stream chunk #{index}: {chunk.model_dump()}")
+        response_chunks = self._response_stream_chunks(chunks=chunks)
+
+        for chunk in response_chunks:
             choice = chunk.choices[0]
 
             if choice.delta.content:
@@ -965,7 +969,7 @@ class OpenAICompatibilityValidator:
                 messages=messages,
                 tools=COMPAT_TEST_TOOLS,
                 tool_choice="auto",
-                max_tokens=200,
+                max_tokens=self._effective_max_tokens(200),
                 temperature=0,
             )
         self._assert_chat_completion_shape(response=response)
@@ -1007,7 +1011,7 @@ class OpenAICompatibilityValidator:
                 messages=[user_msg],
                 tools=COMPAT_TEST_TOOLS,
                 tool_choice="auto",
-                max_tokens=100,
+                max_tokens=self._effective_max_tokens(100),
                 temperature=0,
             )
         self._assert_chat_completion_shape(response=turn1)
@@ -1044,7 +1048,7 @@ class OpenAICompatibilityValidator:
                 model=self._model,
                 messages=[user_msg, assistant_param, tool_result],
                 tools=COMPAT_TEST_TOOLS,
-                max_tokens=100,
+                max_tokens=self._effective_max_tokens(100),
                 temperature=0,
             )
         self._assert_chat_completion_shape(response=turn2)
@@ -1164,6 +1168,56 @@ class OpenAICompatibilityValidator:
     # ------------------------------------------------------------------
     #  Internal assertion helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _response_stream_chunks(chunks: list[Any]) -> list[Any]:
+        """Validate streaming chunks and exclude an optional terminal usage event.
+
+        Gateways may enforce ``stream_options.include_usage=true`` for metering.
+        OpenAI-compatible servers then append one final chunk with an empty
+        ``choices`` array and populated usage. It is not a model-response chunk,
+        so keep choice assertions strict for every other chunk while validating
+        that this optional event is unique, complete, and terminal.
+        """
+        usage_only_indices: list[int] = []
+
+        for index, chunk in enumerate(chunks):
+            dump = chunk.model_dump()
+            assert chunk.object == "chat.completion.chunk", (
+                f"Chunk #{index}: expected object='chat.completion.chunk', got '{chunk.object}'. Full chunk: {dump}"
+            )
+            assert chunk.model, f"Chunk #{index}: empty model field. Full chunk: {dump}"
+            if chunk.choices:
+                continue
+
+            assert chunk.usage is not None, (
+                f"Chunk #{index}: empty choices are only valid for a terminal usage event. Full chunk: {dump}"
+            )
+            usage_only_indices.append(index)
+            usage = chunk.usage
+            assert usage.prompt_tokens >= 0, (
+                f"Chunk #{index}: usage prompt_tokens must be non-negative. Full chunk: {dump}"
+            )
+            assert usage.completion_tokens >= 0, (
+                f"Chunk #{index}: usage completion_tokens must be non-negative. Full chunk: {dump}"
+            )
+            assert usage.total_tokens == usage.prompt_tokens + usage.completion_tokens, (
+                f"Chunk #{index}: usage total_tokens does not match prompt plus completion tokens. Full chunk: {dump}"
+            )
+
+        assert len(usage_only_indices) <= 1, (
+            f"Expected at most one usage-only stream chunk, found {len(usage_only_indices)} at "
+            f"indices {usage_only_indices}"
+        )
+        if usage_only_indices:
+            usage_index = usage_only_indices[0]
+            assert usage_index == len(chunks) - 1, (
+                f"Usage-only stream chunk must be terminal, found it at index {usage_index} of {len(chunks)} chunks"
+            )
+            LOGGER.info(f"Accepted terminal usage-only stream chunk #{usage_index} for Gateway metering")
+            return chunks[:-1]
+
+        return chunks
 
     @staticmethod
     def _assert_chat_completion_shape(response: ChatCompletion) -> None:

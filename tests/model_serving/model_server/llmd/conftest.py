@@ -32,12 +32,17 @@ from tests.model_serving.model_server.llmd.constants import (
 )
 from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaOciConfig, TinyLlamaS3Config
 from tests.model_serving.model_server.llmd.utils import (
+    bind_connection_overrides,
     wait_for_llmisvc,
     wait_for_llmisvc_pods_ready,
 )
+from tests.model_serving.model_server.utils import (
+    create_oci_connection_secret,
+    create_uri_connection_secret,
+)
 from utilities.constants import ModelStorage
 from utilities.infra import create_inference_token, s3_endpoint_secret, update_configmap_data
-from utilities.llmd_utils import create_llmd_gateway
+from utilities.llmd_utils import create_llmd_gateway, create_llmisvc_from_config
 from utilities.logger import RedactedString
 from utilities.resources.kuadrant import Kuadrant
 from utilities.resources.leader_worker_set_operator import LeaderWorkerSetOperator
@@ -266,6 +271,75 @@ def s3_service_account(
 
 
 # ===========================================
+#  ConnectionsAPI — connection Secret fixtures
+# ===========================================
+@pytest.fixture(scope="class")
+def s3_connection_secret(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+    aws_access_key_id: str,
+    aws_secret_access_key: str,
+    models_s3_bucket_name: str,
+    models_s3_bucket_region: str,
+    models_s3_bucket_endpoint: str,
+) -> Generator[Secret]:
+    """S3 connection Secret, annotated for both the ConnectionsAPI webhook and secret_controller.
+
+    Reuses `utilities.infra.s3_endpoint_secret`, which already sets the
+    `opendatahub.io/managed`/`opendatahub.io/dashboard` labels and the
+    `opendatahub.io/connection-type(-protocol)` annotations needed for the odh-model-controller
+    `secret_controller` to auto-create `storage-config`. Named distinctly from `s3_service_account`'s
+    own secret (`llmd-s3-secret`) so both can coexist in the same namespace when both are used.
+    """
+    with s3_endpoint_secret(
+        client=admin_client,
+        name="llmd-s3-connection-secret",
+        namespace=unprivileged_model_namespace.name,
+        aws_access_key=aws_access_key_id,
+        aws_secret_access_key=aws_secret_access_key,
+        aws_s3_bucket=models_s3_bucket_name,
+        aws_s3_endpoint=models_s3_bucket_endpoint,
+        aws_s3_region=models_s3_bucket_region,
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="class")
+def llmd_uri_connection_secret(
+    admin_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+) -> Generator[Secret]:
+    """`uri`-typed connection Secret pointing at the reused TinyLlama-1.1B HuggingFace reference."""
+    with create_uri_connection_secret(
+        client=admin_client,
+        name="llmd-uri-connection-secret",
+        namespace=unprivileged_model_namespace.name,
+        uri=ModelStorage.HuggingFace.TINYLLAMA,
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="class")
+def llmd_oci_connection_secret(
+    admin_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+) -> Generator[Secret]:
+    """`oci`-typed connection Secret (dockerconfigjson) for the reused TinyLlama-1.1B modelcar pull.
+
+    `SharedImages.OCI_TINYLLAMA` is a public quay.io modelcar, so an empty docker config is
+    sufficient — the webhook still injects `imagePullSecrets` referencing this Secret regardless
+    of its credential content.
+    """
+    with create_oci_connection_secret(
+        client=admin_client,
+        name="llmd-oci-connection-secret",
+        namespace=unprivileged_model_namespace.name,
+    ) as secret:
+        yield secret
+
+
+# ===========================================
 #  LLMInferenceService creation
 # ===========================================
 @pytest.fixture(scope="class")
@@ -284,17 +358,24 @@ def llmisvc(
             [({"name": NAMESPACE}, SomeConfig)],
             indirect=True,
         )
+
+    The yielded resource carries the effective (fixture-bound) config class as
+    `.connections_config`, so ConnectionsAPI-aware tests can call
+    `llmisvc.connections_config.verify_injection(llmisvc=llmisvc)` without a second fixture/
+    parametrize column — the original, unbound class in `request.param` never carries the
+    fixture-resolved connection Secret name.
     """
-    config_cls = request.param.build(client=admin_client)
+    config_cls = bind_connection_overrides(request=request, config_cls=request.param.build(client=admin_client))
     namespace = unprivileged_model_namespace.name
 
     service_account = None
-    if config_cls.storage_uri.startswith("s3://"):
+    if not config_cls.use_connection and config_cls.storage_uri.startswith("s3://"):
         service_account = request.getfixturevalue(argname="s3_service_account")
 
     with _create_llmisvc_from_config(
         config_cls=config_cls, namespace=namespace, client=admin_client, service_account=service_account
     ) as svc:
+        svc.connections_config = config_cls
         yield svc
 
 
@@ -506,59 +587,14 @@ def _create_llmisvc_from_config(
     teardown: bool = True,
 ) -> Generator[LLMInferenceService, Any]:
     """Create an LLMInferenceService from a config class."""
-    model: dict[str, Any] = {"uri": config_cls.storage_uri}
-    if config_cls.model_name:
-        model["name"] = config_cls.model_name
-
-    main_container: dict[str, Any] = {"name": "main"}
-    main_container.update({
-        k: v
-        for k, v in {
-            "image": config_cls.container_image,
-            "resources": config_cls.container_resources(),
-            "env": config_cls.container_env(),
-            "startupProbe": config_cls.startup_probe(),
-            "livenessProbe": config_cls.liveness_probe(),
-            "readinessProbe": config_cls.readiness_probe(),
-        }.items()
-        if v
-    })
-
-    template: dict[str, Any] = {
-        "containers": [main_container],
-    }
-    if service_account:
-        template["serviceAccountName"] = service_account
-
-    volumes = config_cls.template_volumes()
-    if volumes:
-        template["volumes"] = volumes
-
-    prefill = config_cls.prefill_config()
-    if prefill and service_account and "template" in prefill:
-        prefill["template"]["serviceAccountName"] = service_account
-
-    svc_kwargs: dict[str, Any] = {
-        "client": client,
-        "name": config_cls.name,
-        "namespace": namespace,
-        "annotations": config_cls.annotations(),
-        "label": config_cls.labels(),
-        "teardown": teardown,
-        "model": model,
-        "replicas": config_cls.replicas,
-        "router": config_cls.router_config(),
-        "template": template,
-        "base_refs": config_cls.base_refs,
-        "prefill": prefill,
-        "worker": config_cls.worker_config(),
-        "parallelism": config_cls.parallelism_config(),
-        "kv_cache_offloading": config_cls.kv_cache_offloading(),
-    }
-
-    LOGGER.info(f"\n{config_cls.format_describe(namespace=namespace)}")
-
-    with LLMInferenceService(**svc_kwargs) as llm_service:
-        wait_for_llmisvc(llmisvc=llm_service, timeout=config_cls.wait_timeout)
-        wait_for_llmisvc_pods_ready(client=client, llmisvc=llm_service)
+    with create_llmisvc_from_config(
+        config_cls=config_cls,
+        namespace=namespace,
+        client=client,
+        service_account=service_account,
+        teardown=teardown,
+    ) as llm_service:
+        if config_cls.wait:
+            wait_for_llmisvc(llmisvc=llm_service, timeout=config_cls.wait_timeout)
+            wait_for_llmisvc_pods_ready(client=client, llmisvc=llm_service)
         yield llm_service

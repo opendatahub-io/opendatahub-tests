@@ -3,7 +3,7 @@
 import json
 from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any
+from typing import Any, ClassVar, Protocol
 
 import structlog
 from kubernetes.dynamic import DynamicClient
@@ -21,6 +21,45 @@ from utilities.llmd_constants import (
 from utilities.resources.llm_inference_service import LLMInferenceService
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+class LLMISvcConfigProtocol(Protocol):
+    """Structural contract for class-based LLMInferenceService configurations."""
+
+    name: ClassVar[str]
+    model_name: ClassVar[str | None]
+    storage_uri: ClassVar[str]
+    replicas: ClassVar[int]
+    container_image: ClassVar[str | None]
+    base_refs: ClassVar[list[dict[str, str]] | None]
+
+    def container_resources(self) -> dict[str, Any]: ...
+
+    def container_env(self) -> list[dict[str, str]]: ...
+
+    def startup_probe(self) -> dict[str, Any]: ...
+
+    def liveness_probe(self) -> dict[str, Any]: ...
+
+    def readiness_probe(self) -> dict[str, Any]: ...
+
+    def template_volumes(self) -> list[dict[str, Any]] | None: ...
+
+    def prefill_config(self) -> dict[str, Any] | None: ...
+
+    def annotations(self) -> dict[str, str]: ...
+
+    def labels(self) -> dict[str, str]: ...
+
+    def router_config(self) -> dict[str, Any]: ...
+
+    def worker_config(self) -> dict[str, Any] | None: ...
+
+    def parallelism_config(self) -> dict[str, Any] | None: ...
+
+    def kv_cache_offloading(self) -> dict[str, Any] | None: ...
+
+    def format_describe(self, namespace: str = "") -> str: ...
 
 
 @contextmanager
@@ -148,6 +187,77 @@ def _get_llm_config_references(enable_prefill_decode: bool = False, disable_sche
         base_configs["scheduler_ref"] = "kserve-config-llm-scheduler"
 
     return base_configs
+
+
+@contextmanager
+def create_llmisvc_from_config(
+    config_cls: LLMISvcConfigProtocol,
+    namespace: str,
+    client: DynamicClient,
+    service_account: str | None = None,
+    teardown: bool = True,
+) -> Generator[LLMInferenceService]:
+    """Create an LLMInferenceService from an LLM-d configuration class.
+
+    Args:
+        config_cls: Resolved LLM-d configuration class.
+        namespace: Namespace in which to create the service.
+        client: Kubernetes dynamic client.
+        service_account: Optional service account for model storage access.
+        teardown: Whether to delete the service when the context exits.
+
+    Yields:
+        The created LLMInferenceService.
+    """
+    model: dict[str, Any] = {"uri": config_cls.storage_uri}
+    if config_cls.model_name:
+        model["name"] = config_cls.model_name
+
+    main_container: dict[str, Any] = {"name": "main"}
+    main_container.update({
+        key: value
+        for key, value in {
+            "image": config_cls.container_image,
+            "resources": config_cls.container_resources(),
+            "env": config_cls.container_env(),
+            "startupProbe": config_cls.startup_probe(),
+            "livenessProbe": config_cls.liveness_probe(),
+            "readinessProbe": config_cls.readiness_probe(),
+        }.items()
+        if value
+    })
+
+    template: dict[str, Any] = {"containers": [main_container]}
+    if service_account:
+        template["serviceAccountName"] = service_account
+
+    volumes = config_cls.template_volumes()
+    if volumes:
+        template["volumes"] = volumes
+
+    prefill = config_cls.prefill_config()
+    if prefill and service_account and "template" in prefill:
+        prefill["template"]["serviceAccountName"] = service_account
+
+    LOGGER.info(f"\n{config_cls.format_describe(namespace=namespace)}")
+    with LLMInferenceService(
+        client=client,
+        name=config_cls.name,
+        namespace=namespace,
+        annotations=config_cls.annotations(),
+        label=config_cls.labels(),
+        teardown=teardown,
+        model=model,
+        replicas=config_cls.replicas,
+        router=config_cls.router_config(),
+        template=template,
+        base_refs=config_cls.base_refs,
+        prefill=prefill,
+        worker=config_cls.worker_config(),
+        parallelism=config_cls.parallelism_config(),
+        kv_cache_offloading=config_cls.kv_cache_offloading(),
+    ) as llm_service:
+        yield llm_service
 
 
 @contextmanager
@@ -309,12 +419,13 @@ def create_llmisvc(
     }
 
     if enable_prefill_decode and prefill_config:
+        prefill_env: list[dict[str, str]] = container_env if container_env is not None else []
         prefill_template = {
             "containers": [
                 {
                     "name": "main",
                     "resources": container_resources,
-                    "env": container_env or [],
+                    "env": prefill_env,
                 }
             ]
         }

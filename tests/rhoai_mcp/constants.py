@@ -29,13 +29,6 @@ RHOAI_MCP_EXPECTED_CATALOG_TOOLS: tuple[str, ...] = (
     "get_catalog_model_artifacts",
 )
 
-RHOAI_MCP_EXPECTED_PROMPTS: tuple[str, ...] = (
-    "explore-cluster",
-    "deploy-model",
-    "deploy-llm",
-    "find-gpus",
-)
-
 RHOAI_MCP_RBAC_READER_ROLE_NAME: str = "test-rhoai-mcp-reader"
 RHOAI_MCP_RBAC_DEPLOYER_ROLE_NAME: str = "test-rhoai-mcp-deployer"
 

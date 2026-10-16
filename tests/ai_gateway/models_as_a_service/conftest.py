@@ -174,8 +174,9 @@ def minted_token(
 
 
 @pytest.fixture(scope="class")
-def base_url(maas_scheme: str, maas_host: str) -> str:
-    return f"{maas_scheme}://{maas_host}/maas-api"
+def base_url(maas_host: str) -> str:
+    """Return the externally reachable MaaS API URL."""
+    return f"https://{maas_host}/maas-api"
 
 
 @pytest.fixture(scope="class")
@@ -817,11 +818,28 @@ def maas_api_infra_namespace(admin_client: DynamicClient) -> str:
 
     if not infra_namespace or infra_namespace.upper() == "AUTO":
         if applications_namespace == "redhat-ods-applications":
-            return "redhat-ai-gateway-infra"
-        if applications_namespace == "opendatahub":
-            return "odh-ai-gateway-infra"
-        return applications_namespace
-    return infra_namespace
+            infra_namespace = "redhat-ai-gateway-infra"
+        elif applications_namespace == "opendatahub":
+            infra_namespace = "odh-ai-gateway-infra"
+        else:
+            infra_namespace = applications_namespace
+
+    ns = Namespace(client=admin_client, name=infra_namespace)
+    if ns.exists:
+        maas_api_in_infra = Deployment(client=admin_client, name="maas-api", namespace=infra_namespace)
+        if maas_api_in_infra.exists:
+            LOGGER.info(f"Using MaaS API infra namespace: {infra_namespace}")
+            return infra_namespace
+        LOGGER.warning(
+            f"Infra namespace '{infra_namespace}' exists but maas-api Deployment not found there, "
+            f"falling back to applications namespace '{applications_namespace}'"
+        )
+    else:
+        LOGGER.warning(
+            f"Infra namespace '{infra_namespace}' does not exist, "
+            f"falling back to applications namespace '{applications_namespace}'"
+        )
+    return applications_namespace
 
 
 @pytest.fixture(scope="class")
@@ -1016,10 +1034,15 @@ def maas_gateway_api(
 
     if gw.exists:
         LOGGER.info(f"Reusing existing gateway {MAAS_GATEWAY_NAMESPACE}/{MAAS_GATEWAY_NAME}")
-        gw.wait_for_condition(condition="Programmed", status="True", timeout=300)
         with ResourceEditor(
-            patches={gw: {"metadata": {"annotations": {"security.opendatahub.io/authorino-tls-bootstrap": "true"}}}}
+            patches={
+                gw: {
+                    "metadata": {"annotations": {"security.opendatahub.io/authorino-tls-bootstrap": "true"}},
+                    "spec": {"listeners": maas_gateway_listeners(hostname=maas_gateway_api_hostname)},
+                }
+            }
         ):
+            gw.wait_for_condition(condition="Programmed", status="True", timeout=300)
             yield
     else:
         LOGGER.info(f"Creating gateway {MAAS_GATEWAY_NAMESPACE}/{MAAS_GATEWAY_NAME}")
@@ -1149,8 +1172,9 @@ def revoke_maas_tokens_for_actor(
 
 @pytest.fixture(scope="session")
 def maas_subscription_namespace(
-    unprivileged_client: DynamicClient, admin_client: DynamicClient
+    admin_client: DynamicClient,
 ) -> Generator[Namespace, Any, Any]:
+    """Provide the MaaS controller-owned subscription namespace without deleting it."""
     existing_ns = Namespace(client=admin_client, name=MAAS_SUBSCRIPTION_NAMESPACE)
     if existing_ns.exists:
         LOGGER.info(f"Namespace {MAAS_SUBSCRIPTION_NAMESPACE} already exists, reusing it")
@@ -1158,8 +1182,8 @@ def maas_subscription_namespace(
     else:
         with create_ns(
             name=MAAS_SUBSCRIPTION_NAMESPACE,
-            unprivileged_client=unprivileged_client,
             admin_client=admin_client,
+            teardown=False,
         ) as ns:
             yield ns
 

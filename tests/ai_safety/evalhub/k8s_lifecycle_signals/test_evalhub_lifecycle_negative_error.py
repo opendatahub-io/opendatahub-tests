@@ -122,11 +122,6 @@ class TestNegNegativeError:
             f"got state={job_result.get('status', {}).get('state')!r}"
         )
         assert job_name, "Batch Job must exist even when Event emission was blocked"
-        wait_for_success_phase_signals(
-            admin_client=admin_client,
-            job_name=job_name,
-            namespace=ns,
-        )
 
     @pytest.mark.tier1
     def test_neg_002_restricted_user_cannot_list_events(

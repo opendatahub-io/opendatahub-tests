@@ -1,6 +1,6 @@
 import pytest
 
-from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaS3GpuConfig
+from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaS3GpuNoSchedulerConfig
 from tests.model_serving.model_server.llmd.utils import (
     ns_from_file,
     parse_completion_text,
@@ -14,17 +14,9 @@ pytestmark = [pytest.mark.llmd_gpu]
 NAMESPACE = ns_from_file(file=__file__)
 
 
-class S3GpuNoSchedulerConfig(TinyLlamaS3GpuConfig):
-    name = "llm-gpu-no-scheduler"
-
-    @classmethod
-    def router_config(cls):
-        return {"route": {}}
-
-
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, llmisvc",
-    [pytest.param({"name": NAMESPACE}, S3GpuNoSchedulerConfig, id="no-scheduler")],
+    [pytest.param({"name": NAMESPACE}, TinyLlamaS3GpuNoSchedulerConfig, id="no-scheduler")],
     indirect=True,
 )
 @pytest.mark.usefixtures("valid_aws_config")
