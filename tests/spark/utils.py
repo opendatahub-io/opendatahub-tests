@@ -9,6 +9,7 @@ from ocp_resources.service_account import ServiceAccount
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.spark.image_constants import SparkImages
+from utilities.resources.scheduled_spark_application import ScheduledSparkApplication
 from utilities.resources.spark_application import SparkApplication
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -138,6 +139,51 @@ def create_spark_pi_application_spec(
     }
 
 
+def create_gated_continuity_spark_spec(
+    name: str,
+    namespace: str,
+    service_account: str,
+    control_config_map_name: str,
+) -> dict:
+    """Build a Python SparkApplication spec whose task is gated on a mounted release file.
+
+    The workload polls ``/opt/spark/upgrade/release`` and only completes once a release flag is
+    set to ``"true"``, so the execution can be held in-flight across an operator upgrade. The same
+    spec is used for a directly-created SparkApplication and as the ``template`` of a
+    ScheduledSparkApplication, which keeps both continuity tests on one shared workload definition.
+
+    Args:
+        name: Name used to seed the underlying spark-pi base spec.
+        namespace: Namespace the application runs in.
+        service_account: Driver service account.
+        control_config_map_name: ConfigMap carrying ``workload.py`` and the ``release`` gate.
+
+    Returns:
+        dict: The SparkApplication ``spec`` with the control ConfigMap mounted into driver and executor.
+    """
+    spec = create_spark_pi_application_spec(name=name, namespace=namespace, service_account=service_account)["spec"]
+    spec.pop("mainClass")
+    spec.update({
+        "type": "Python",
+        "pythonVersion": "3",
+        "mainApplicationFile": "local:///opt/spark/upgrade/workload.py",
+        "sparkConf": {"spark.task.maxFailures": "1", "spark.speculation": "false"},
+    })
+    spec["volumes"].append({"name": "upgrade-control", "configMap": {"name": control_config_map_name}})
+    volumes = spec.pop("volumes")
+    for role in ("driver", "executor"):
+        mounts = spec[role].pop("volumeMounts")
+        mounts.append({"name": "upgrade-control", "mountPath": "/opt/spark/upgrade", "readOnly": True})
+        # Native pod templates carry mounts even when the mutating webhook does not inject them.
+        spec[role]["template"] = {
+            "spec": {
+                "volumes": volumes,
+                "containers": [{"name": f"spark-kubernetes-{role}", "volumeMounts": mounts}],
+            }
+        }
+    return spec
+
+
 def verify_spark_app_completed(spark_app: SparkApplication) -> None:
     """Verify SparkApplication reached COMPLETED state.
 
@@ -151,6 +197,54 @@ def verify_spark_app_completed(spark_app: SparkApplication) -> None:
     state = spark_app.instance.status.get("applicationState", {}).get("state")
     assert state == "COMPLETED", f"SparkApplication {spark_app.name} not in COMPLETED state. Actual: {state}"
     LOGGER.info(f"SparkApplication {spark_app.name} is in COMPLETED state")
+
+
+def scheduled_last_run_application(client: DynamicClient, scheduled_app: ScheduledSparkApplication) -> SparkApplication:
+    """Resolve the SparkApplication created for a ScheduledSparkApplication's most recent run.
+
+    Args:
+        client: Kubernetes client.
+        scheduled_app: ScheduledSparkApplication whose latest child run is wanted.
+
+    Returns:
+        SparkApplication: The child named by ``status.lastRunName``.
+
+    Raises:
+        AssertionError: If the scheduler has not recorded a run yet.
+    """
+    last_run_name = (scheduled_app.instance.status or {}).get("lastRunName")
+    assert last_run_name, f"ScheduledSparkApplication {scheduled_app.name} has not started a run yet"
+    return SparkApplication(client=client, name=last_run_name, namespace=scheduled_app.namespace)
+
+
+def wait_for_scheduled_spark_application_run(
+    client: DynamicClient,
+    scheduled_app: ScheduledSparkApplication,
+    timeout: int = 300,
+) -> SparkApplication:
+    """Wait until the scheduler records a run, then return that child SparkApplication.
+
+    Args:
+        client: Kubernetes client.
+        scheduled_app: ScheduledSparkApplication expected to fire on its schedule.
+        timeout: Maximum seconds to wait for the first run to be recorded.
+
+    Returns:
+        SparkApplication: The child named by ``status.lastRunName``.
+
+    Raises:
+        TimeoutExpiredError: If no run is recorded within the timeout.
+    """
+    LOGGER.info(f"Waiting for ScheduledSparkApplication {scheduled_app.name} to start a run")
+    for status in TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=10,
+        func=lambda: scheduled_app.instance.status or {},
+    ):
+        if last_run_name := status.get("lastRunName"):
+            LOGGER.info(f"ScheduledSparkApplication {scheduled_app.name} started run {last_run_name}")
+            return SparkApplication(client=client, name=last_run_name, namespace=scheduled_app.namespace)
+    raise TimeoutExpiredError(f"ScheduledSparkApplication {scheduled_app.name} did not start a run within {timeout}s")
 
 
 def get_spark_network_policies(client: DynamicClient, namespace: str) -> list[NetworkPolicy]:

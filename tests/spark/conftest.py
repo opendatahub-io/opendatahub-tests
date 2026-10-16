@@ -30,9 +30,11 @@ from tests.spark.utils import (
     recreate_role_binding_in_namespace,
     recreate_role_in_namespace,
     recreate_service_account_in_namespace,
+    wait_for_scheduled_spark_application_run,
 )
 from utilities.constants import DscComponents
 from utilities.infra import create_ns
+from utilities.resources.scheduled_spark_application import ScheduledSparkApplication
 from utilities.resources.spark_application import SparkApplication
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -398,3 +400,36 @@ def spark_pi_application(
 
         with SparkApplication(client=admin_client, kind_dict=spec, teardown=teardown_resources) as spark_app:
             yield spark_app
+
+
+@pytest.fixture(scope="session")
+def scheduled_spark_pi_application(
+    admin_client: DynamicClient,
+    spark_namespace_fixture: Namespace,
+    spark_workload_service_account: ServiceAccount,
+    role_binding_fixture: list[RoleBinding],
+    network_policy_fixture: list[NetworkPolicy],
+    teardown_resources: bool,
+) -> Generator[SparkApplication, Any, Any]:
+    """Schedule a spark-pi application and yield its first child run for smoke verification."""
+    name = f"smoke-scheduled-spark-pi-{shortuuid.uuid()[:8].lower()}"
+    manifest = {
+        "apiVersion": "sparkoperator.k8s.io/v1beta2",
+        "kind": "ScheduledSparkApplication",
+        "metadata": {"name": name, "namespace": spark_namespace_fixture.name},
+        "spec": {
+            "schedule": "@every 1m",
+            "concurrencyPolicy": "Forbid",
+            "successfulRunHistoryLimit": 5,
+            "failedRunHistoryLimit": 5,
+            "template": create_spark_pi_application_spec(
+                name=name,
+                namespace=spark_namespace_fixture.name,
+                service_account=spark_workload_service_account.name,
+            )["spec"],
+        },
+    }
+    with ScheduledSparkApplication(
+        client=admin_client, kind_dict=manifest, teardown=teardown_resources
+    ) as scheduled_app:
+        yield wait_for_scheduled_spark_application_run(client=admin_client, scheduled_app=scheduled_app)
