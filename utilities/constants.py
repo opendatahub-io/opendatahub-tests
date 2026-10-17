@@ -22,6 +22,7 @@ class ModelFormat:
     LIGHTGBM: str = "lightgbm"
     MLSERVER: str = "mlserver"
     ONNX: str = "onnx"
+    ONNX_MLIR: str = "onnx-mlir"
     OPENVINO: str = "openvino"
     OVMS: str = "ovms"
     PYTORCH: str = "pytorch"
