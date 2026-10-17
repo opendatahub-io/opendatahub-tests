@@ -26,9 +26,18 @@ from tests.ai_safety.lm_eval.constants import (
     LMEVAL_OCI_TAG,
 )
 from tests.ai_safety.lm_eval.utils import get_lmevaljob_pod
-from utilities.constants import ApiGroups, KServeDeploymentType, Labels, MinIo, Protocols, RuntimeTemplates
+from utilities.constants import (
+    ApiGroups,
+    KServeDeploymentType,
+    Labels,
+    OCIRegistry,
+    Protocols,
+    RuntimeTemplates,
+    SeaweedFs,
+)
 from utilities.exceptions import MissingParameter
-from utilities.general import b64_encoded_string
+from utilities.general import b64_encoded_string, get_s3_secret_dict
+from utilities.image_constants import SharedImages
 from utilities.inference_utils import create_isvc
 from utilities.resources.route import Route as TLSRoute
 from utilities.serving_runtime import ServingRuntimeFromTemplate
@@ -158,6 +167,85 @@ def oci_credentials_secret(
         yield secret
 
 
+@pytest.fixture(scope="class")
+def oci_registry_pod_with_seaweedfs(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    oci_namespace: Namespace,
+    seaweedfs_service: Service,
+) -> Generator[Pod, Any, Any]:
+    """OCI registry (zot) backed by the shared SeaweedFS S3 API, used in place of oci_registry_pod_with_minio."""
+    fixture_config = getattr(request, "param", {})
+    pod_labels = {Labels.Openshift.APP: OCIRegistry.Metadata.NAME}
+
+    if labels := fixture_config.get("labels"):
+        pod_labels.update(labels)
+
+    seaweedfs_fqdn = f"{seaweedfs_service.name}.{seaweedfs_service.namespace}.svc.cluster.local"
+    seaweedfs_endpoint = f"{seaweedfs_fqdn}:{SeaweedFs.Metadata.DEFAULT_PORT}"
+
+    with Pod(
+        client=admin_client,
+        name=OCIRegistry.Metadata.NAME,
+        namespace=oci_namespace.name,
+        containers=[
+            {
+                "args": fixture_config.get("args"),
+                "env": [
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_NAME", "value": OCIRegistry.Storage.STORAGE_DRIVER},
+                    {
+                        "name": "ZOT_STORAGE_STORAGEDRIVER_ROOTDIRECTORY",
+                        "value": OCIRegistry.Storage.STORAGE_DRIVER_ROOT_DIRECTORY,
+                    },
+                    {
+                        "name": "ZOT_STORAGE_STORAGEDRIVER_BUCKET",
+                        "value": SeaweedFs.Buckets.MODELMESH_EXAMPLE_MODELS,
+                    },
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_REGION", "value": OCIRegistry.Storage.STORAGE_DRIVER_REGION},
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_REGIONENDPOINT", "value": f"http://{seaweedfs_endpoint}"},
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_ACCESSKEY", "value": SeaweedFs.Credentials.ACCESS_KEY_VALUE},
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_SECRETKEY", "value": SeaweedFs.Credentials.SECRET_KEY_VALUE},
+                    {
+                        "name": "ZOT_STORAGE_STORAGEDRIVER_SECURE",
+                        "value": OCIRegistry.Storage.STORAGE_STORAGEDRIVER_SECURE,
+                    },
+                    {
+                        "name": "ZOT_STORAGE_STORAGEDRIVER_FORCEPATHSTYLE",
+                        "value": OCIRegistry.Storage.STORAGE_STORAGEDRIVER_FORCEPATHSTYLE,
+                    },
+                    {"name": "ZOT_HTTP_ADDRESS", "value": OCIRegistry.Metadata.DEFAULT_HTTP_ADDRESS},
+                    {"name": "ZOT_HTTP_PORT", "value": str(OCIRegistry.Metadata.DEFAULT_PORT)},
+                    {"name": "ZOT_LOG_LEVEL", "value": "info"},
+                ],
+                "image": fixture_config.get("image", OCIRegistry.PodConfig.REGISTRY_IMAGE),
+                "name": OCIRegistry.Metadata.NAME,
+                "securityContext": {
+                    "allowPrivilegeEscalation": False,
+                    "capabilities": {"drop": ["ALL"]},
+                    "runAsNonRoot": True,
+                    "seccompProfile": {"type": "RuntimeDefault"},
+                },
+                "volumeMounts": [
+                    {
+                        "name": "zot-data",
+                        "mountPath": "/var/lib/registry",
+                    }
+                ],
+            }
+        ],
+        volumes=[
+            {
+                "name": "zot-data",
+                "emptyDir": {},
+            }
+        ],
+        label=pod_labels,
+        annotations=fixture_config.get("annotations"),
+    ) as oci_pod:
+        oci_pod.wait_for_condition(condition="Ready", status="True")
+        yield oci_pod
+
+
 @pytest.fixture(scope="function")
 def lmevaljob_local_offline_oci(
     request: FixtureRequest,
@@ -165,7 +253,7 @@ def lmevaljob_local_offline_oci(
     model_namespace: Namespace,
     patched_dsc_lmeval_allow_all: DataScienceCluster,
     oci_credentials_secret: Secret,
-    oci_registry_pod_with_minio: Pod,
+    oci_registry_pod_with_seaweedfs: Pod,
     lmeval_data_downloader_pod: Pod,
 ) -> Generator[LMEvalJob, Any, Any]:
     with LMEvalJob(
@@ -393,53 +481,21 @@ def vllm_emulator_route(
 
 
 @pytest.fixture(scope="function")
-def lmeval_minio_deployment(
-    admin_client: DynamicClient, minio_namespace: Namespace, pvc_minio_namespace: PersistentVolumeClaim
-) -> Generator[Deployment, Any, Any]:
-    minio_app_label = {"app": MinIo.Metadata.NAME}
-    # TODO: Unify with minio_llm_deployment fixture once datasets and models are in new model image
-    with Deployment(
-        client=admin_client,
-        name=MinIo.Metadata.NAME,
-        namespace=minio_namespace.name,
-        replicas=1,
-        selector={"matchLabels": minio_app_label},
-        template={
-            "metadata": {"labels": minio_app_label},
-            "spec": {
-                "volumes": [
-                    {"name": "minio-storage", "persistentVolumeClaim": {"claimName": pvc_minio_namespace.name}}
-                ],
-                "containers": [
-                    {
-                        "name": MinIo.Metadata.NAME,
-                        "image": AiSafetyImages.MINIO_SERVER,
-                        "args": ["server", "/data", "--console-address", ":9001"],
-                        "env": [
-                            {"name": "MINIO_ROOT_USER", "value": MinIo.Credentials.ACCESS_KEY_VALUE},
-                            {"name": "MINIO_ROOT_PASSWORD", "value": MinIo.Credentials.SECRET_KEY_VALUE},
-                        ],
-                        "ports": [{"containerPort": MinIo.Metadata.DEFAULT_PORT}, {"containerPort": 9001}],
-                        "volumeMounts": [{"name": "minio-storage", "mountPath": "/data"}],
-                    }
-                ],
-            },
-        },
-        label=minio_app_label,
-        wait_for_resource=True,
-    ) as deployment:
-        deployment.wait_for_replicas(timeout=1200)
-        yield deployment
-
-
-@pytest.fixture(scope="function")
-def lmeval_minio_copy_pod(
-    admin_client: DynamicClient, minio_namespace: Namespace, lmeval_minio_deployment: Deployment, minio_service: Service
+def lmeval_seaweedfs_copy_pod(
+    admin_client: DynamicClient,
+    seaweedfs_namespace: Namespace,
+    seaweedfs_pod: Pod,
+    seaweedfs_service: Service,
 ) -> Generator[Pod, Any, Any]:
+    """Copy the lmeval dataset and flan model fixtures into the shared SeaweedFS bucket."""
+    seaweedfs_filer_endpoint = (
+        f"http://{seaweedfs_service.name}.{seaweedfs_service.namespace}.svc.cluster.local:"
+        f"{SeaweedFs.Metadata.FILER_PORT}/buckets/{SeaweedFs.Buckets.MODELMESH_EXAMPLE_MODELS}"
+    )
     with Pod(
         client=admin_client,
-        name="copy-to-minio",
-        namespace=minio_namespace.name,
+        name="copy-to-seaweedfs",
+        namespace=seaweedfs_namespace.name,
         restart_policy="Never",
         volumes=[{"name": "shared-data", "emptyDir": {}}],
         init_containers=[
@@ -472,18 +528,14 @@ def lmeval_minio_copy_pod(
         ],
         containers=[
             {
-                "name": "minio-uploader",
-                "image": AiSafetyImages.MINIO_MC,
+                "name": "seaweedfs-uploader",
+                "image": SharedImages.SEAWEEDFS,
                 "command": ["/bin/sh", "-c"],
                 "args": [
                     (
-                        f"export MC_CONFIG_DIR=/shared/.mc && "
-                        f"mc alias set myminio http://{minio_service.name}:{MinIo.Metadata.DEFAULT_PORT} "
-                        f"{MinIo.Credentials.ACCESS_KEY_VALUE} {MinIo.Credentials.SECRET_KEY_VALUE} && "
-                        "mc mb --ignore-existing myminio/models && "
-                        "mc cp --recursive /shared/datasets/ myminio/models/datasets/ && "
-                        "mc cp --recursive /shared/flan/ myminio/models/flan/"
-                    )
+                        f"/usr/bin/weed filer.copy /shared/datasets/ {seaweedfs_filer_endpoint}/datasets/ && "
+                        f"/usr/bin/weed filer.copy /shared/flan/ {seaweedfs_filer_endpoint}/flan/"
+                    ),
                 ],
                 "volumeMounts": [{"name": "shared-data", "mountPath": "/shared"}],
                 "securityContext": {
@@ -501,13 +553,46 @@ def lmeval_minio_copy_pod(
 
 
 @pytest.fixture(scope="function")
+def lmeval_seaweedfs_data_connection(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    seaweedfs_service: Service,
+) -> Generator[Secret, Any, Any]:
+    """Create a data connection Secret pointing at the shared SeaweedFS-backed bucket."""
+    data_dict = get_s3_secret_dict(
+        aws_access_key=SeaweedFs.Credentials.ACCESS_KEY_VALUE,
+        aws_secret_access_key=SeaweedFs.Credentials.SECRET_KEY_VALUE,
+        aws_s3_bucket=request.param["bucket"],
+        aws_s3_endpoint=(
+            f"{Protocols.HTTP}://{seaweedfs_service.instance.spec.clusterIP}:{SeaweedFs.Metadata.DEFAULT_PORT}"
+        ),
+        aws_s3_region="us-south",
+    )
+    with Secret(
+        client=admin_client,
+        name="aws-connection-seaweedfs-data-connection",
+        namespace=model_namespace.name,
+        data_dict=data_dict,
+        label={
+            Labels.OpenDataHub.DASHBOARD: "true",
+            Labels.OpenDataHubIo.MANAGED: "true",
+        },
+        annotations={
+            f"{ApiGroups.OPENDATAHUB_IO}/connection-type": "s3",
+            "openshift.io/display-name": "SeaweedFS Data Connection",
+        },
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="function")
 def lmevaljob_s3_offline(
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    lmeval_minio_deployment: Deployment,
-    minio_service: Service,
-    lmeval_minio_copy_pod: Pod,
-    minio_data_connection: Secret,
+    seaweedfs_pod: Pod,
+    lmeval_seaweedfs_copy_pod: Pod,
+    lmeval_seaweedfs_data_connection: Secret,
 ) -> Generator[LMEvalJob, Any, Any]:
     with LMEvalJob(
         client=admin_client,
@@ -521,11 +606,14 @@ def lmevaljob_s3_offline(
         offline={
             "storage": {
                 "s3": {
-                    "accessKeyId": {"name": minio_data_connection.name, "key": "AWS_ACCESS_KEY_ID"},
-                    "secretAccessKey": {"name": minio_data_connection.name, "key": "AWS_SECRET_ACCESS_KEY"},
-                    "bucket": {"name": minio_data_connection.name, "key": "AWS_S3_BUCKET"},
-                    "endpoint": {"name": minio_data_connection.name, "key": "AWS_S3_ENDPOINT"},
-                    "region": {"name": minio_data_connection.name, "key": "AWS_DEFAULT_REGION"},
+                    "accessKeyId": {"name": lmeval_seaweedfs_data_connection.name, "key": "AWS_ACCESS_KEY_ID"},
+                    "secretAccessKey": {
+                        "name": lmeval_seaweedfs_data_connection.name,
+                        "key": "AWS_SECRET_ACCESS_KEY",
+                    },
+                    "bucket": {"name": lmeval_seaweedfs_data_connection.name, "key": "AWS_S3_BUCKET"},
+                    "endpoint": {"name": lmeval_seaweedfs_data_connection.name, "key": "AWS_S3_ENDPOINT"},
+                    "region": {"name": lmeval_seaweedfs_data_connection.name, "key": "AWS_DEFAULT_REGION"},
                     "path": "",
                     "verifySSL": False,
                 }
