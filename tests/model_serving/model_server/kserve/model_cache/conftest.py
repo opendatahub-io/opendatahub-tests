@@ -15,6 +15,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
+from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest_testconfig import config as py_config
@@ -24,10 +25,91 @@ from tests.model_serving.model_server.kserve.model_cache.utils import (
     MINT_ONNX_STORAGE_PATH,
     LocalModelNamespaceCache,
     wait_for_local_model_cache_nodes_downloaded,
+    wait_for_shared_pvc_cache_condition,
 )
-from utilities.constants import KServeDeploymentType, ModelFormat, Protocols
+from utilities.constants import KServeDeploymentType, ModelCarImage, ModelFormat, Protocols, StorageClassName
 from utilities.inference_utils import create_isvc
 from utilities.infra import s3_endpoint_secret
+
+
+@pytest.fixture
+def shared_model_cache_pvc(
+    admin_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+) -> Generator[PersistentVolumeClaim, Any, Any]:
+    """Create the NFS Operator-provisioned RWX claim used for shared model storage."""
+    with PersistentVolumeClaim(
+        client=admin_client,
+        name=f"shared-model-cache-{shortuuid.uuid()[:8].lower()}",
+        namespace=unprivileged_model_namespace.name,
+        size="1Gi",
+        accessmodes="ReadWriteMany",
+        storage_class=StorageClassName.NFS,
+    ) as pvc:
+        pvc.wait_for_status(status=pvc.Status.BOUND, timeout=180)
+        yield pvc
+
+
+@pytest.fixture
+def modelcar_shared_pvc_cache(
+    admin_client: DynamicClient,
+    model_cache_infra_ready: DataScienceCluster,
+    unprivileged_model_namespace: Namespace,
+    shared_model_cache_pvc: PersistentVolumeClaim,
+) -> Generator[LocalModelNamespaceCache, Any, Any]:
+    """Import the standard MNIST OCI ModelCar into the pre-provisioned RWX claim."""
+    with LocalModelNamespaceCache(
+        client=admin_client,
+        name=f"mnist-oci-{shortuuid.uuid()[:8].lower()}",
+        namespace=unprivileged_model_namespace.name,
+        source_model_uri=ModelCarImage.MNIST_8_1,
+        model_size="100Mi",
+        pvc_ref=shared_model_cache_pvc.name,
+    ) as cache:
+        wait_for_shared_pvc_cache_condition(
+            cache=cache,
+            expected_status="True",
+            expected_reasons={"ImportSucceeded"},
+            timeout=900,
+        )
+        yield cache
+
+
+@pytest.fixture
+def modelcar_shared_pvc_isvc(
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+    serving_runtime_from_template: ServingRuntime,
+    modelcar_shared_pvc_cache: LocalModelNamespaceCache,
+) -> Generator[InferenceService, Any, Any]:
+    """Serve two replicas from the imported public ModelCar copy on the shared claim."""
+    isvc_name = f"mnist-oci-pvc-{shortuuid.uuid()[:8].lower()}"
+    affinity = {
+        "podAntiAffinity": {
+            "requiredDuringSchedulingIgnoredDuringExecution": [
+                {
+                    "labelSelector": {
+                        "matchLabels": {"serving.kserve.io/inferenceservice": isvc_name},
+                    },
+                    "topologyKey": "kubernetes.io/hostname",
+                }
+            ]
+        }
+    }
+    with create_isvc(
+        client=unprivileged_client,
+        name=isvc_name,
+        namespace=unprivileged_model_namespace.name,
+        runtime=serving_runtime_from_template.name,
+        storage_uri=ModelCarImage.MNIST_8_1,
+        model_format=ModelFormat.OPENVINO,
+        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+        external_route=True,
+        min_replicas=2,
+        pod_affinity=affinity,
+        timeout=900,
+    ) as isvc:
+        yield isvc
 
 
 @pytest.fixture(scope="class")
