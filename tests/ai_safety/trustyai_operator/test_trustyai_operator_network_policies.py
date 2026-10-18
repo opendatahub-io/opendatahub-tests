@@ -13,7 +13,7 @@ from tests.ai_safety.trustyai_operator.constants import (
     TRUSTYAI_OPERATOR_PROBE_PORT,
     TRUSTYAI_OPERATOR_WEBHOOK_PORT,
 )
-from tests.ai_safety.trustyai_operator.utils import (
+from utilities.network_policy import (
     get_network_policy_egress_rules,
     get_network_policy_ingress_rules,
     get_network_policy_pod_selector_labels,
