@@ -61,6 +61,14 @@ EVALHUB_K8S_ANNOTATION_JOB_ID: str = "eval-hub.github.io/job_id"
 EVALHUB_K8S_ANNOTATION_PROVIDER_ID: str = "eval-hub.github.io/provider_id"
 EVALHUB_K8S_ANNOTATION_BENCHMARK_ID: str = "eval-hub.github.io/benchmark_id"
 
+# Per-execution NetworkPolicy created by the EvalHub runtime before each
+# evaluation Job — mirrors eval-hub internal/eval_hub/runtimes/k8s/network_policy.go
+EVALHUB_K8S_LABEL_EXECUTION_ID: str = "eval-hub.github.io/execution-id"
+EVALHUB_JOB_NP_NAME_PREFIX: str = "evalhub-"
+EVALHUB_JOB_NP_NAME_SUFFIX: str = "-netpol"
+EVALHUB_JOB_NP_EGRESS_ANNOTATION: str = "eval-hub.github.io/network-policy-egress"
+EVALHUB_JOB_NP_EGRESS_ANNOTATION_VALUE: str = "unmanaged-by-this-policy"
+
 # Shared RBAC rules for EvalHub user access
 EVALHUB_USER_ROLE_RULES: list[dict[str, list[str]]] = [
     {
