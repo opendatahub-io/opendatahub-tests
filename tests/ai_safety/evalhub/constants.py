@@ -272,6 +272,27 @@ OTEL_TRACE_COLLECTOR_LABELS: dict[str, str] = {"app": "otel-trace-collector"}
 # Operator pod label selector
 OPERATOR_POD_LABEL_SELECTOR: str = "control-plane=trustyai-service-operator"
 
+# EvalHub API NetworkPolicy (trustyai-service-operator)
+# The operator derives each policy name from a hash of the owning EvalHub
+# identity, so tests discover the policy through the reserved identity labels
+# (component/role/owner-uid) instead of a stable name.
+EVALHUB_NP_COMPONENT: str = "evalhub"
+EVALHUB_NP_ROLE: str = "api"
+EVALHUB_NP_POLICY_GROUP_LABEL: str = "network.openshift.io/policy-group"
+EVALHUB_NP_ROUTER_POLICY_GROUP: str = "ingress"
+EVALHUB_NP_MONITORING_POLICY_GROUP: str = "monitoring"
+EVALHUB_NP_PROMETHEUS_POD_LABELS: dict[str, str] = {
+    "app.kubernetes.io/name": "prometheus",
+    "app.kubernetes.io/component": "prometheus",
+}
+EVALHUB_NP_DASHBOARD_NAMESPACE_LABEL: str = "kubernetes.io/metadata.name"
+EVALHUB_NP_DASHBOARD_POD_LABELS: dict[str, str] = {
+    "deployment": "eval-hub-ui",
+    "app.kubernetes.io/part-of": "odh-dashboard",
+}
+EVALHUB_NP_INSTANCE_NAME_LABEL: str = "evalhub_instance_name"
+EVALHUB_NP_INSTANCE_NAMESPACE_LABEL: str = "evalhub_instance_namespace"
+
 # Operator service name in OTEL traces
 OPERATOR_OTEL_SERVICE_NAME: str = "trustyai-service-operator"
 

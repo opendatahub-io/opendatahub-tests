@@ -4,6 +4,26 @@ from typing import Any
 
 from ocp_resources.network_policy import NetworkPolicy
 
+# Reserved identity labels the trustyai-service-operator stamps on every
+# NetworkPolicy it owns (controllers/utils/network_policy_identity.go).
+NETWORK_POLICY_COMPONENT_LABEL: str = "trustyai.opendatahub.io/component"
+NETWORK_POLICY_ROLE_LABEL: str = "trustyai.opendatahub.io/role"
+NETWORK_POLICY_OWNER_UID_LABEL: str = "trustyai.opendatahub.io/owner-uid"
+NETWORK_POLICY_MANAGED_BY_LABEL: str = "trustyai.opendatahub.io/network-policy-managed-by"
+NETWORK_POLICY_MANAGER: str = "trustyai-service-operator"
+
+
+def get_network_policy_labels(network_policy: NetworkPolicy) -> dict[str, str]:
+    """Get the metadata labels of a NetworkPolicy.
+
+    Args:
+        network_policy: NetworkPolicy to read.
+
+    Returns:
+        The policy's labels, or an empty dict when it carries none.
+    """
+    return network_policy.instance.to_dict()["metadata"].get("labels") or {}
+
 
 def get_network_policy_pod_selector_labels(network_policy: NetworkPolicy) -> dict[str, str]:
     """Get the matchLabels of the pod selector that picks which pods a NetworkPolicy applies to.
