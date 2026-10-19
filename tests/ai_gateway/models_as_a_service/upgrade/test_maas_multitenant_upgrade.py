@@ -19,8 +19,8 @@ from tests.ai_gateway.models_as_a_service.upgrade.utils import (
     assert_multitenant_upgrade_rate_limit_isolation,
     multitenant_upgrade_inference_chat_payload,
     verify_multitenant_upgrade_cross_tenant_api_key_get_isolation,
-    verify_multitenant_upgrade_maastenantconfig_active,
     verify_multitenant_upgrade_maas_api_db_migration_logs_clean,
+    verify_multitenant_upgrade_maastenantconfig_active,
     verify_multitenant_upgrade_models_list_probe,
     verify_multitenant_upgrade_tenant_governance_survived,
 )
