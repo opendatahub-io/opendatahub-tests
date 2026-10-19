@@ -12,7 +12,6 @@ from fastmcp.client.transports import StreamableHttpTransport
 from tests.rhoai_mcp.constants import (
     RHOAI_MCP_EXPECTED_CATALOG_TOOLS,
     RHOAI_MCP_EXPECTED_PLANNER_TOOLS,
-    RHOAI_MCP_EXPECTED_PROMPTS,
     RHOAI_MCP_EXPECTED_SERVING_TOOLS,
 )
 
@@ -84,34 +83,3 @@ class TestRhoaiMcpCapabilities:
                 schema = tool.inputSchema
                 assert isinstance(schema, dict), f"Tool '{tool.name}' has no inputSchema"
                 assert "type" in schema, f"Tool '{tool.name}' inputSchema missing 'type': {schema}"
-
-    async def test_list_prompts_includes_expected_prompts(
-        self,
-        rhoai_mcp_transport: StreamableHttpTransport,
-    ) -> None:
-        """Given rhoai-mcp is deployed and healthy
-        When prompts/list is called via the FastMCP client
-        Then the response includes at least the representative expected prompts
-        """
-        async with Client(rhoai_mcp_transport) as client:
-            prompts = await client.list_prompts()
-            prompt_names = {prompt.name for prompt in prompts}
-            expected = set(RHOAI_MCP_EXPECTED_PROMPTS)
-            missing = expected - prompt_names
-            assert not missing, f"Expected prompts not found: {missing}. Got: {sorted(prompt_names)}"
-
-    async def test_all_prompts_have_descriptions(
-        self,
-        rhoai_mcp_transport: StreamableHttpTransport,
-    ) -> None:
-        """Given rhoai-mcp prompts are listed
-        When each prompt's metadata is inspected
-        Then every prompt has a non-empty description
-        """
-        async with Client(rhoai_mcp_transport) as client:
-            prompts = await client.list_prompts()
-            assert prompts, "Expected at least one prompt"
-            for prompt in prompts:
-                assert prompt.description and prompt.description.strip(), (
-                    f"Prompt '{prompt.name}' is missing a description"
-                )

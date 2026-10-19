@@ -1,9 +1,6 @@
 import socket
-from collections.abc import Generator
-from contextlib import contextmanager
 from typing import Any, Final
 
-import portforward
 import pytest
 import requests
 import structlog
@@ -16,7 +13,6 @@ from ocp_resources.mlflow import MLflow
 from ocp_resources.pod import Pod
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.service_account import ServiceAccount
-from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_safety.evalhub.constants import (
@@ -47,9 +43,6 @@ from tests.ai_safety.evalhub.constants import (
     HF_DEFAULT_REVISION,
     HF_NESTED_SUB_PATH,
     HF_TOKENIZER_PATH,
-    OPERATOR_METRICS_PORT,
-    OPERATOR_METRICS_SCHEME,
-    OPERATOR_POD_LABEL_SELECTOR,
 )
 from utilities.guardrails import get_auth_headers
 from utilities.kueue_utils import KUEUE_QUEUE_NAME_LABEL, LocalQueue, Workload
@@ -1792,60 +1785,26 @@ def fetch_evalhub_job_logs_while_running(
 
 
 def fetch_operator_metrics(
-    admin_client: DynamicClient,
+    operator_metrics_route_host: str,
     operator_metrics_token: str,
 ) -> str:
     """Fetch raw Prometheus text from the operator metrics endpoint.
 
     Args:
-        admin_client: Authenticated Kubernetes client.
+        operator_metrics_route_host: Route host for the operator metrics service.
         operator_metrics_token: Bearer token for kube-rbac-proxy authentication.
 
     Returns:
         Raw Prometheus text-format string from the /metrics endpoint.
     """
-    with operator_metrics_url(admin_client=admin_client) as metrics_url:
-        response = requests.get(
-            metrics_url,
-            headers={"Authorization": f"Bearer {operator_metrics_token}"},
-            verify=False,
-            timeout=10,
-        )
+    response = requests.get(
+        f"https://{operator_metrics_route_host}/metrics",
+        headers={"Authorization": f"Bearer {operator_metrics_token}"},
+        verify=False,
+        timeout=10,
+    )
     response.raise_for_status()
     return response.text
-
-
-@contextmanager
-def operator_metrics_url(admin_client: DynamicClient) -> Generator[str]:
-    """Port-forward to the TrustyAI operator pod and yield its local /metrics URL.
-
-    The operator pod IP is not reachable from outside the cluster, so the
-    metrics endpoint is reached through a port-forward. The pod is looked up
-    on every call because some fixtures restart the operator (new pod name).
-
-    Args:
-        admin_client: Authenticated Kubernetes client.
-
-    Yields:
-        Local URL of the operator /metrics endpoint.
-    """
-    operator_ns = py_config["applications_namespace"]
-    pods = list(
-        Pod.get(
-            client=admin_client,
-            namespace=operator_ns,
-            label_selector=OPERATOR_POD_LABEL_SELECTOR,
-        )
-    )
-    assert pods, "No operator pod found"
-    with portforward.forward(
-        namespace=operator_ns,
-        pod_or_service=pods[0].name,
-        from_port=0,
-        to_port=OPERATOR_METRICS_PORT,
-        waiting=2,
-    ) as forwarder:
-        yield f"{OPERATOR_METRICS_SCHEME}://localhost:{forwarder.from_port}/metrics"
 
 
 def fetch_trace_collector_logs(trace_collector_pod: Pod, tail_lines: int = 5000) -> str:

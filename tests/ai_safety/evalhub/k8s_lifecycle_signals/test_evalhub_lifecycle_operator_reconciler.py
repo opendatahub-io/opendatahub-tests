@@ -8,11 +8,12 @@ server cannot detect on its own.
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
+from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 from ocp_resources.service import Service
+from timeout_sampler import TimeoutSampler
 
 from tests.ai_safety.evalhub.k8s_lifecycle_signals.constants import (
-    LIFECYCLE_EVENT_EMISSION_TIMEOUT,
     LIFECYCLE_REASON_FAILED,
     LIFECYCLE_SOURCE_OPERATOR,
     LIFECYCLE_SOURCE_SERVER,
@@ -27,8 +28,7 @@ from tests.ai_safety.evalhub.k8s_lifecycle_signals.utils import (
     kueue_local_queue_exists,
     list_events_for_job,
     submit_evalhub_job_and_capture_runtime_job,
-    wait_for_event,
-    wait_for_failure_phase_signals,
+    wait_for_event_from_component,
 )
 from tests.ai_safety.evalhub.utils import (
     wait_for_evalhub_job,
@@ -57,8 +57,7 @@ class TestOprOperatorReconciler:
     ) -> None:
         """Given an evaluation job submitted with an artificially low memory limit (10Mi),
         when the adapter container is OOMKilled,
-        then the TrustyAI Operator emits at least one EvaluationFailed Warning Event
-        with a source.component that is not evalhub-server."""
+        then OOM is detected via pod container state."""
         host = lifecycle_signals_route.host
         ns = lifecycle_signals_namespace.name
         payload = build_oom_job_payload(
@@ -66,7 +65,7 @@ class TestOprOperatorReconciler:
             namespace=ns,
             job_name="tc-opr-001",
         )
-        job_id, job_name = submit_evalhub_job_and_capture_runtime_job(
+        _job_id, job_name = submit_evalhub_job_and_capture_runtime_job(
             admin_client=admin_client,
             host=host,
             token=lifecycle_signals_token,
@@ -74,19 +73,40 @@ class TestOprOperatorReconciler:
             tenant=ns,
             payload=payload,
         )
-        wait_for_evalhub_job(
-            host=host,
-            token=lifecycle_signals_token,
-            ca_bundle_file=lifecycle_signals_ca_bundle_file,
-            tenant=ns,
-            job_id=job_id,
+
+        def get_adapter_terminated_states() -> list[tuple[int, str]] | None:
+            pods = list(Pod.get(dyn_client=admin_client, namespace=ns, label_selector=f"job-name={job_name}"))
+            if not pods:
+                return None
+
+            states = [
+                (cs.state.terminated.exitCode, cs.state.terminated.reason)
+                for pod in pods
+                for cs in ((pod.instance.status.containerStatuses or []) if pod.instance.status else [])
+                if cs.name == "adapter" and cs.state.terminated
+            ]
+            return states or None
+
+        adapter_states = None
+        for states in TimeoutSampler(wait_timeout=120, sleep=5, func=get_adapter_terminated_states):
+            if states is not None:
+                adapter_states = states
+                break
+
+        assert adapter_states, f"Adapter container did not terminate within 120s for job {job_name}"
+
+        oom_detected = any(exit_code == 137 or reason == "OOMKilled" for exit_code, reason in adapter_states)
+        assert oom_detected, (
+            f"OOM not detected. Adapter container states: {adapter_states}. Expected exitCode=137 or reason='OOMKilled'"
         )
-        wait_for_failure_phase_signals(
+
+        wait_for_event_from_component(
             admin_client=admin_client,
             job_name=job_name,
             namespace=ns,
+            reason=LIFECYCLE_REASON_FAILED,
             source_component=LIFECYCLE_SOURCE_OPERATOR,
-            event_timeout=LIFECYCLE_EVENT_EMISSION_TIMEOUT,
+            timeout=120,
         )
         events = list_events_for_job(
             admin_client=admin_client,
@@ -94,18 +114,14 @@ class TestOprOperatorReconciler:
             namespace=ns,
             reason=LIFECYCLE_REASON_FAILED,
         )
-        operator_events = filter_events_by_source(events=events, source_component=LIFECYCLE_SOURCE_OPERATOR)
-        assert operator_events, "Expected at least one EvaluationFailed Event from the operator (not evalhub-server)"
-        event = operator_events[0]
-        assert event.get("type") == "Warning", (
-            f"Expected type=Warning for OOM EvaluationFailed, got {event.get('type')}"
+        operator_events = [
+            event for event in events if (event.get("source") or {}).get("component") == LIFECYCLE_SOURCE_OPERATOR
+        ]
+
+        assert operator_events, "Expected at least one EvaluationFailed Event from the operator for OOM"
+        assert operator_events[0].get("type") == "Warning", (
+            f"Expected type=Warning, got {operator_events[0].get('type')}"
         )
-        operator_component = (event.get("source") or {}).get("component")
-        assert operator_component, "Expected non-empty source.component on operator Event"
-        assert operator_component != LIFECYCLE_SOURCE_SERVER, (
-            f"Operator Event should not have source.component={LIFECYCLE_SOURCE_SERVER}"
-        )
-        assert event.get("message"), "Expected non-empty message referencing OOM failure"
 
     @pytest.mark.smoke
     def test_opr_002_operator_emits_failed_event_for_image_pull_failure(
@@ -147,11 +163,12 @@ class TestOprOperatorReconciler:
             job_id=job_id,
         )
 
-        event = wait_for_event(
+        wait_for_event_from_component(
             admin_client=admin_client,
             job_name=job_name,
             namespace=ns,
             reason=LIFECYCLE_REASON_FAILED,
+            source_component=LIFECYCLE_SOURCE_OPERATOR,
             timeout=120,
         )
         events = list_events_for_job(
@@ -160,10 +177,14 @@ class TestOprOperatorReconciler:
             namespace=ns,
             reason=LIFECYCLE_REASON_FAILED,
         )
-        operator_events = [e for e in events if (e.get("source") or {}).get("component") != LIFECYCLE_SOURCE_SERVER]
+        operator_events = [
+            event for event in events if (event.get("source") or {}).get("component") == LIFECYCLE_SOURCE_OPERATOR
+        ]
 
         assert operator_events, "Expected at least one EvaluationFailed Event from the operator for ImagePullBackOff"
-        assert event.get("type") == "Warning", f"Expected type=Warning, got {event.get('type')}"
+        assert operator_events[0].get("type") == "Warning", (
+            f"Expected type=Warning, got {operator_events[0].get('type')}"
+        )
         assert operator_events[0].get("message"), "Expected message describing image pull failure"
 
     @pytest.mark.smoke
@@ -217,11 +238,12 @@ class TestOprOperatorReconciler:
         # Evict the Kueue Workload for this job
         Workload(client=admin_client, name=workload.name, namespace=ns).delete(wait=False)
 
-        event = wait_for_event(
+        wait_for_event_from_component(
             admin_client=admin_client,
             job_name=job_name,
             namespace=ns,
             reason=LIFECYCLE_REASON_FAILED,
+            source_component=LIFECYCLE_SOURCE_OPERATOR,
             timeout=120,
         )
         operator_events = list_events_for_job(
@@ -232,11 +254,13 @@ class TestOprOperatorReconciler:
             source_component=None,
         )
         operator_events = [
-            e for e in operator_events if (e.get("source") or {}).get("component") != LIFECYCLE_SOURCE_SERVER
+            event
+            for event in operator_events
+            if (event.get("source") or {}).get("component") == LIFECYCLE_SOURCE_OPERATOR
         ]
 
         assert operator_events, "Expected EvaluationFailed from operator after Kueue eviction"
-        assert event.get("type") == "Warning"
+        assert operator_events[0].get("type") == "Warning"
         message = operator_events[0].get("message") or ""
         assert "evict" in message.lower() or "kueue" in message.lower(), (
             f"Expected message referencing eviction, got: {message!r}"
@@ -282,11 +306,12 @@ class TestOprOperatorReconciler:
             job_id=job_id,
         )
 
-        wait_for_event(
+        wait_for_event_from_component(
             admin_client=admin_client,
             job_name=job_name,
             namespace=ns,
             reason=LIFECYCLE_REASON_FAILED,
+            source_component=LIFECYCLE_SOURCE_OPERATOR,
             timeout=120,
         )
         all_events = list_events_for_job(

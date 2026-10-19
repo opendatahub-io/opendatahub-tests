@@ -1,9 +1,11 @@
-from collections.abc import Generator
+from collections.abc import Callable, Generator
+from contextlib import ExitStack, contextmanager
 from typing import Any, TypedDict
 
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
+from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.namespace import Namespace
 from pytest_testconfig import config as py_config
 
@@ -13,14 +15,24 @@ from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import (
     AIGATEWAY_NAMESPACE_ANNOTATION,
     AITENANT_TEST_OIDC_SPEC,
     AITENANT_TEST_RBAC_ADMINS,
+    LEGACY_MIGRATION_API_KEY_OWNER_GROUP,
     AITenantPreexistingNamespaceContext,
     AITenantTestContext,
+    LegacyTenantMigrationTestContext,
     aitenant_admin_role_bindings,
     build_aitenant_test_context,
     expected_tenant_namespace_name,
     maas_controller_tenant_namespace_discovery_enabled,
     require_aitenant_crd_for_discovery,
+    require_legacy_tenant_migration_prerequisites,
     require_tenant_namespace_discovery_enabled,
+)
+from tests.ai_gateway.models_as_a_service.multitenancy.utils import (
+    gateway_ref_from_aitenant,
+    make_tenant_model_accessible,
+    provision_tenant_model,
+    tenant_isolation_auth_policy_name,
+    tenant_isolation_subscription_name,
 )
 from tests.ai_gateway.models_as_a_service.utils import (
     aitenant_from_spec,
@@ -375,6 +387,71 @@ def aitenant_derived_namespace_case(
 
 
 @pytest.fixture
+def legacy_tenant_migration_prerequisites(admin_client: DynamicClient) -> None:
+    """Require legacy Tenant, MaasTenantConfig, and AITenant CRDs for migration cleanup E2E."""
+    require_legacy_tenant_migration_prerequisites(admin_client=admin_client)
+
+
+@pytest.fixture
+def legacy_tenant_migration_api_key_governance(
+    request: pytest.FixtureRequest,
+    admin_client: DynamicClient,
+    maas_free_group: str,
+    teardown_resources: bool,
+) -> Callable[..., Generator[str, Any, Any]]:
+    """Provision tenant-local model + MaaSAuthPolicy + MaaSSubscription on the tenant Gateway.
+
+    Per-tenant subscriptions require the model HTTPRoute to attach to the tenant Gateway (not shared
+    ``llm/llm-s3-tinyllama-free`` on the default gateway). Same approach as ``isolation_tenant_governance``.
+    S3 credentials are resolved via session fixtures through ``request.getfixturevalue``.
+    """
+
+    @contextmanager
+    def govern(
+        test_context: LegacyTenantMigrationTestContext,
+        gateway_name: str,
+        gateway_namespace: str,
+    ) -> Generator[str, Any, Any]:
+        aitenant_name = test_context["aitenant_name"]
+        tenant_namespace_name = test_context["tenant_namespace_name"]
+        model_name = f"e2e-legacy-migrate-{generate_random_name()[:12]}"
+        auth_policy_name = tenant_isolation_auth_policy_name(aitenant_name=aitenant_name)
+        subscription_name = tenant_isolation_subscription_name(aitenant_name=aitenant_name)
+        with ExitStack() as stack:
+            stack.enter_context(
+                cm=provision_tenant_model(
+                    admin_client=admin_client,
+                    model_name=model_name,
+                    tenant_namespace_name=tenant_namespace_name,
+                    gateway_name=gateway_name,
+                    gateway_namespace=gateway_namespace,
+                    aws_access_key=request.getfixturevalue("aws_access_key_id"),
+                    aws_secret_access_key=request.getfixturevalue("aws_secret_access_key"),
+                    aws_s3_region=request.getfixturevalue("models_s3_bucket_region"),
+                    aws_s3_bucket=request.getfixturevalue("models_s3_bucket_name"),
+                    aws_s3_endpoint=request.getfixturevalue("models_s3_bucket_endpoint"),
+                    teardown=teardown_resources,
+                )
+            )
+            stack.enter_context(
+                cm=make_tenant_model_accessible(
+                    admin_client=admin_client,
+                    model_name=model_name,
+                    model_namespace=tenant_namespace_name,
+                    tenant_namespace_name=tenant_namespace_name,
+                    auth_policy_name=auth_policy_name,
+                    subscription_name=subscription_name,
+                    owner_group_name=LEGACY_MIGRATION_API_KEY_OWNER_GROUP,
+                    free_group_name=maas_free_group,
+                    teardown=teardown_resources,
+                )
+            )
+            yield subscription_name
+
+    return govern
+
+
+@pytest.fixture
 def tenant_namespace_discovery_prerequisites(admin_client: DynamicClient) -> None:
     """Require AITenant CRD and maas-controller tenant namespace discovery enabled."""
     require_aitenant_crd_for_discovery(admin_client=admin_client)
@@ -382,3 +459,33 @@ def tenant_namespace_discovery_prerequisites(admin_client: DynamicClient) -> Non
     assert maas_controller_tenant_namespace_discovery_enabled(admin_client=admin_client), (
         "maas-controller must run with --enable-tenant-namespace-discovery=true for these tests"
     )
+
+
+@pytest.fixture
+def aitenant_tenant_local_maas_model_ref(
+    admin_client: DynamicClient,
+    aitenant_for_test: AITenantTestContext,
+    teardown_resources: bool,
+    aws_access_key_id: str,
+    aws_secret_access_key: str,
+    models_s3_bucket_name: str,
+    models_s3_bucket_region: str,
+    models_s3_bucket_endpoint: str,
+) -> Generator[tuple[AITenantTestContext, MaaSModelRef], Any, Any]:
+    """Ready AITenant with a tenant-local MaaSModelRef on the tenant Gateway (no spec.tenantRef)."""
+    model_name = f"e2e-auto-tenant-ref-{generate_random_name()[:8]}"
+    gateway_name, gateway_namespace = gateway_ref_from_aitenant(aitenant=aitenant_for_test["aitenant"])
+    with provision_tenant_model(
+        admin_client=admin_client,
+        model_name=model_name,
+        tenant_namespace_name=aitenant_for_test["tenant_namespace_name"],
+        gateway_name=gateway_name,
+        gateway_namespace=gateway_namespace,
+        aws_access_key=aws_access_key_id,
+        aws_secret_access_key=aws_secret_access_key,
+        aws_s3_region=models_s3_bucket_region,
+        aws_s3_bucket=models_s3_bucket_name,
+        aws_s3_endpoint=models_s3_bucket_endpoint,
+        teardown=teardown_resources,
+    ) as tenant_model_ref:
+        yield aitenant_for_test, tenant_model_ref
