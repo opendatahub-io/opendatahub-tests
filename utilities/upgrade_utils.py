@@ -89,9 +89,7 @@ def purge_upgrade_leftover(
         return
 
     if not delete_upgrade_resource(resource=resource, timeout=delete_timeout):
-        pytest.skip(
-            upgrade_resource_skip_reason(resource=resource, timeout=delete_timeout, skip_context=skip_context)
-        )
+        pytest.skip(upgrade_resource_skip_reason(resource=resource, timeout=delete_timeout, skip_context=skip_context))
 
     LOGGER.info(f"[upgrade-idem] leftover purged, fixture will re-create {resource.kind} {resource.name} fresh")
 

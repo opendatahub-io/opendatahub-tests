@@ -101,7 +101,7 @@ def test_skip_on_finalizer_blocked_delete(admin_client: DynamicClient, pre_upgra
     secret = Secret(**secret_kwargs, string_data={"k": "v"})
     secret.deploy(wait=True)
     # Attach a finalizer nothing will ever remove. update() merge-patches, so
-    # the body must carry name (and namespace) in metadata to address the object.
+    # the body must carry name in metadata to address the object.
     secret.update(resource_dict={"metadata": {"name": secret.name, "finalizers": ["kind.ci/blocked"]}})
 
     with pytest.raises(pytest.skip.Exception) as excinfo:  # type: ignore[attr-defined]
