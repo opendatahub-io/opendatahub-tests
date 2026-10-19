@@ -69,7 +69,7 @@ def test_clean_cluster_is_noop(admin_client: DynamicClient, pre_upgrade_config: 
 
 def test_purge_and_recreate_leftover(admin_client: DynamicClient, pre_upgrade_config: FakePytestConfig) -> None:
     """Path A: leftover is deleted, so the caller can create it fresh."""
-    ns = make_namespace(admin_client, name="idem-leftover-ns")
+    ns = make_namespace(admin_client=admin_client, name="idem-leftover-ns")
     secret_kwargs: dict[str, Any] = {
         "client": admin_client,
         "name": "idem-leftover-secret",
@@ -92,7 +92,7 @@ def test_purge_and_recreate_leftover(admin_client: DynamicClient, pre_upgrade_co
 
 def test_skip_on_finalizer_blocked_delete(admin_client: DynamicClient, pre_upgrade_config: FakePytestConfig) -> None:
     """Path B: deletion blocked by an unserviced finalizer -> skip with a clear reason."""
-    ns = make_namespace(admin_client, name="idem-blocked-ns")
+    ns = make_namespace(admin_client=admin_client, name="idem-blocked-ns")
     secret_kwargs: dict[str, Any] = {
         "client": admin_client,
         "name": "idem-blocked-secret",
@@ -119,7 +119,7 @@ def test_skip_on_finalizer_blocked_delete(admin_client: DynamicClient, pre_upgra
 
 def test_post_upgrade_mode_never_deletes(admin_client: DynamicClient, post_upgrade_config: FakePytestConfig) -> None:
     """Path D: post-upgrade mode must not touch an existing resource."""
-    ns = make_namespace(admin_client, name="idem-adopt-ns")
+    ns = make_namespace(admin_client=admin_client, name="idem-adopt-ns")
     secret_kwargs: dict[str, Any] = {
         "client": admin_client,
         "name": "idem-adopt-secret",
