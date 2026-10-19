@@ -33,7 +33,7 @@ class FakePytestConfig:
 
 
 @pytest.fixture(scope="session")
-def admin_client() -> DynamicClient:
+def kind_admin_client() -> DynamicClient:
     client = get_client(try_refresh_token=False)
     return client  # type: ignore[return-value]
 
@@ -50,28 +50,28 @@ def post_upgrade_config() -> FakePytestConfig:
     return config
 
 
-def make_namespace(admin_client: DynamicClient, name: str) -> Namespace:
-    ns = Namespace(client=admin_client, name=name)
+def make_namespace(kind_admin_client: DynamicClient, name: str) -> Namespace:
+    ns = Namespace(client=kind_admin_client, name=name)
     ns.deploy(wait=True)
     return ns
 
 
-def test_clean_cluster_is_noop(admin_client: DynamicClient, pre_upgrade_config: FakePytestConfig) -> None:
+def test_clean_cluster_is_noop(kind_admin_client: DynamicClient, pre_upgrade_config: FakePytestConfig) -> None:
     """Path C: resource absent in pre-upgrade mode -> no error, no skip."""
     purge_upgrade_leftover(
         pytestconfig=pre_upgrade_config,
-        resource_factory=upgrade_resource_factory(Namespace, client=admin_client, name="idem-clean-ns"),
+        resource_factory=upgrade_resource_factory(Namespace, client=kind_admin_client, name="idem-clean-ns"),
         delete_timeout=FAST_DELETE_TIMEOUT,
         skip_context=SKIP_CONTEXT,
     )
-    assert not Namespace(client=admin_client, name="idem-clean-ns").exists
+    assert not Namespace(client=kind_admin_client, name="idem-clean-ns").exists
 
 
-def test_purge_and_recreate_leftover(admin_client: DynamicClient, pre_upgrade_config: FakePytestConfig) -> None:
+def test_purge_and_recreate_leftover(kind_admin_client: DynamicClient, pre_upgrade_config: FakePytestConfig) -> None:
     """Path A: leftover is deleted, so the caller can create it fresh."""
-    ns = make_namespace(admin_client=admin_client, name="idem-leftover-ns")
+    ns = make_namespace(kind_admin_client=kind_admin_client, name="idem-leftover-ns")
     secret_kwargs: dict[str, Any] = {
-        "client": admin_client,
+        "client": kind_admin_client,
         "name": "idem-leftover-secret",
         "namespace": ns.name,
     }
@@ -90,11 +90,13 @@ def test_purge_and_recreate_leftover(admin_client: DynamicClient, pre_upgrade_co
     assert Secret(**secret_kwargs).exists
 
 
-def test_skip_on_finalizer_blocked_delete(admin_client: DynamicClient, pre_upgrade_config: FakePytestConfig) -> None:
+def test_skip_on_finalizer_blocked_delete(
+    kind_admin_client: DynamicClient, pre_upgrade_config: FakePytestConfig
+) -> None:
     """Path B: deletion blocked by an unserviced finalizer -> skip with a clear reason."""
-    ns = make_namespace(admin_client=admin_client, name="idem-blocked-ns")
+    ns = make_namespace(kind_admin_client=kind_admin_client, name="idem-blocked-ns")
     secret_kwargs: dict[str, Any] = {
-        "client": admin_client,
+        "client": kind_admin_client,
         "name": "idem-blocked-secret",
         "namespace": ns.name,
     }
@@ -117,11 +119,13 @@ def test_skip_on_finalizer_blocked_delete(admin_client: DynamicClient, pre_upgra
     assert "oc delete" in reason
 
 
-def test_post_upgrade_mode_never_deletes(admin_client: DynamicClient, post_upgrade_config: FakePytestConfig) -> None:
+def test_post_upgrade_mode_never_deletes(
+    kind_admin_client: DynamicClient, post_upgrade_config: FakePytestConfig
+) -> None:
     """Path D: post-upgrade mode must not touch an existing resource."""
-    ns = make_namespace(admin_client=admin_client, name="idem-adopt-ns")
+    ns = make_namespace(kind_admin_client=kind_admin_client, name="idem-adopt-ns")
     secret_kwargs: dict[str, Any] = {
-        "client": admin_client,
+        "client": kind_admin_client,
         "name": "idem-adopt-secret",
         "namespace": ns.name,
     }
@@ -139,9 +143,9 @@ def test_post_upgrade_mode_never_deletes(admin_client: DynamicClient, post_upgra
     assert secret.instance.metadata.uid == uid_before
 
 
-def test_skip_reason_names_resource_and_remedy(admin_client: DynamicClient) -> None:
+def test_skip_reason_names_resource_and_remedy(kind_admin_client: DynamicClient) -> None:
     """The skip reason is the debugging signal: resource identity + manual remedy."""
-    ns = Namespace(client=admin_client, name="reason-ns")
+    ns = Namespace(client=kind_admin_client, name="reason-ns")
     reason = upgrade_resource_skip_reason(resource=ns, timeout=DEFAULT_DELETE_TIMEOUT, skip_context="MaaS upgrade")
     assert "MaaS upgrade" in reason
     assert "Namespace" in reason
