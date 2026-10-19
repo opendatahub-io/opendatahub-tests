@@ -378,15 +378,28 @@ def isolation_bootstrap_gateway_context(
     """
     api_ns = Namespace(client=admin_client, name=api_namespace, ensure_exists=True)
     assert api_ns.exists, f"MaaS API namespace '{api_namespace}' not found"
-    with (
-        ResourceEditor(
-            patches={
-                api_ns: {
-                    "metadata": {"labels": gateway_access_namespace_labels(gateway_name=gateway_name)},
-                },
-            },
-        ),
-        Gateway(
+    api_ns_label_patch = {
+        "metadata": {"labels": gateway_access_namespace_labels(gateway_name=gateway_name)},
+    }
+    if teardown:
+        with (
+            ResourceEditor(patches={api_ns: api_ns_label_patch}),
+            Gateway(
+                client=admin_client,
+                kind_dict=isolation_bootstrap_gateway_body(
+                    gateway_name=gateway_name,
+                    gateway_namespace=gateway_namespace,
+                ),
+                teardown=teardown,
+                wait_for_resource=True,
+            ) as gateway,
+        ):
+            verify_maas_gateway_programmed(gateway=gateway)
+            LOGGER.info(f"Isolation bootstrap Gateway '{gateway_namespace}/{gateway_name}' is Programmed")
+            yield gateway
+    else:
+        ResourceEditor(patches={api_ns: api_ns_label_patch}).update()
+        with Gateway(
             client=admin_client,
             kind_dict=isolation_bootstrap_gateway_body(
                 gateway_name=gateway_name,
@@ -394,11 +407,10 @@ def isolation_bootstrap_gateway_context(
             ),
             teardown=teardown,
             wait_for_resource=True,
-        ) as gateway,
-    ):
-        verify_maas_gateway_programmed(gateway=gateway)
-        LOGGER.info(f"Isolation bootstrap Gateway '{gateway_namespace}/{gateway_name}' is Programmed")
-        yield gateway
+        ) as gateway:
+            verify_maas_gateway_programmed(gateway=gateway)
+            LOGGER.info(f"Isolation bootstrap Gateway '{gateway_namespace}/{gateway_name}' is Programmed")
+            yield gateway
 
 
 @contextmanager
@@ -784,6 +796,7 @@ def patch_llmisvc_with_tenant_gateway_router(
     llm_service: LLMInferenceService,
     gateway_name: str,
     gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+    teardown: bool = True,
 ) -> Generator[None, Any, Any]:
     """Patch an LLMInferenceService to route through a tenant Gateway instead of maas-default-gateway."""
     router_spec = {
@@ -799,7 +812,11 @@ def patch_llmisvc_with_tenant_gateway_router(
         },
         "spec": {"router": router_spec},
     }
-    with ResourceEditor(patches={llm_service: patch_body}):
+    if teardown:
+        with ResourceEditor(patches={llm_service: patch_body}):
+            yield
+    else:
+        ResourceEditor(patches={llm_service: patch_body}).update()
         yield
 
 
@@ -871,6 +888,7 @@ def provision_tenant_model(
                 llm_service=llm_service,
                 gateway_name=gateway_name,
                 gateway_namespace=gateway_namespace,
+                teardown=teardown,
             )
         )
         llm_service.wait_for_condition(
