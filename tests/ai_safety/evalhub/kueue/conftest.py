@@ -650,6 +650,45 @@ def evalhub_kueue_tenant_rbac(
         raise RuntimeError(f"Operator RBAC not provisioned in {evalhub_kueue_namespace.name} within 120s") from exc
 
 
+@pytest.fixture(scope="session")
+def network_policy_access_for_kueue_api_sa(
+    admin_client: DynamicClient,
+    evalhub_kueue_model_namespace: Namespace,
+    evalhub_kueue_namespace: Namespace,
+    evalhub_kueue_cr: EvalHub,
+    evalhub_kueue_tenant_rbac: None,
+) -> Generator[tuple[Role, RoleBinding], Any, Any]:
+    """Grant the Kueue EvalHub API ServiceAccount NetworkPolicy access in the kueue tenant."""
+    api_sa_name = f"{evalhub_kueue_cr.name}-service"
+    with (
+        Role(
+            client=admin_client,
+            name="evalhub-kueue-api-network-policy",
+            namespace=evalhub_kueue_namespace.name,
+            rules=[
+                {
+                    "apiGroups": ["networking.k8s.io"],
+                    "resources": ["networkpolicies"],
+                    "verbs": ["create", "get", "update"],
+                },
+            ],
+            wait_for_resource=True,
+        ) as role,
+        RoleBinding(
+            client=admin_client,
+            name="evalhub-kueue-api-network-policy",
+            namespace=evalhub_kueue_namespace.name,
+            role_ref_kind=role.kind,
+            role_ref_name=role.name,
+            subjects_kind="ServiceAccount",
+            subjects_name=api_sa_name,
+            subjects_namespace=evalhub_kueue_model_namespace.name,
+            wait_for_resource=True,
+        ) as binding,
+    ):
+        yield role, binding
+
+
 # vLLM emulator in Kueue namespace
 @pytest.fixture(scope="session")
 def evalhub_kueue_vllm_emulator_deployment(
@@ -699,8 +738,10 @@ def evalhub_kueue_vllm_service(
     admin_client: DynamicClient,
     evalhub_kueue_namespace: Namespace,
     evalhub_kueue_vllm_emulator_deployment: Deployment,
+    network_policy_access_for_kueue_api_sa: tuple[Role, RoleBinding],
 ) -> Generator[Service, Any, Any]:
     """Service for vLLM emulator."""
+    _ = network_policy_access_for_kueue_api_sa
     with Service(
         client=admin_client,
         namespace=evalhub_kueue_namespace.name,

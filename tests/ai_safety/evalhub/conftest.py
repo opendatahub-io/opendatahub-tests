@@ -1,6 +1,7 @@
 import base64
 import os
 import shlex
+import time
 import uuid
 from collections.abc import Callable, Generator
 from typing import Any
@@ -63,6 +64,8 @@ from tests.ai_safety.evalhub.constants import (
     HF_SHA_REVISION_ENV,
     MINIO_MC_IMAGE,
     MINIO_UPLOADER_SECURITY_CONTEXT,
+    OPERATOR_METRICS_PORT,
+    OPERATOR_METRICS_SERVICE_NAME,
     OPERATOR_OTEL_SERVICE_NAME,
     OTEL_COLLECTOR_GRPC_PORT,
     OTEL_COLLECTOR_HTTP_PORT,
@@ -286,8 +289,10 @@ def evalhub_vllm_emulator_service(
     admin_client: DynamicClient,
     tenant_a_namespace: Namespace,
     evalhub_vllm_emulator_deployment: Deployment,
+    network_policy_access_for_evalhub_api_sa: tuple[Role, RoleBinding],
 ) -> Generator[Service, Any, Any]:
     """Service fronting the vLLM emulator in tenant-a."""
+    _ = network_policy_access_for_evalhub_api_sa
     with Service(
         client=admin_client,
         namespace=tenant_a_namespace.name,
@@ -522,6 +527,45 @@ def garak_tenant_rbac_ready(
         )
         LOGGER.error(msg)
         raise RuntimeError(msg) from err
+
+
+@pytest.fixture(scope="class")
+def network_policy_access_for_garak_api_sa(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    tenant_namespace: Namespace,
+    garak_evalhub_cr: EvalHub,
+    garak_tenant_rbac_ready: None,
+) -> Generator[tuple[Role, RoleBinding], Any, Any]:
+    """Grant the Garak EvalHub API ServiceAccount NetworkPolicy access in the garak tenant."""
+    api_sa_name = f"{garak_evalhub_cr.name}-service"
+    with (
+        Role(
+            client=admin_client,
+            name="evalhub-garak-api-network-policy",
+            namespace=tenant_namespace.name,
+            rules=[
+                {
+                    "apiGroups": ["networking.k8s.io"],
+                    "resources": ["networkpolicies"],
+                    "verbs": ["create", "get", "update"],
+                },
+            ],
+            wait_for_resource=True,
+        ) as role,
+        RoleBinding(
+            client=admin_client,
+            name="evalhub-garak-api-network-policy",
+            namespace=tenant_namespace.name,
+            role_ref_kind=role.kind,
+            role_ref_name=role.name,
+            subjects_kind="ServiceAccount",
+            subjects_name=api_sa_name,
+            subjects_namespace=model_namespace.name,
+            wait_for_resource=True,
+        ) as binding,
+    ):
+        yield role, binding
 
 
 @pytest.fixture(scope="class")
@@ -812,10 +856,12 @@ def quick_kfp_garak_job_id(
     model_auth_secret_sidecar: Secret,
     dsp_access_for_job_sa,
     garak_tenant_rbac_ready: None,
+    network_policy_access_for_garak_api_sa: tuple[Role, RoleBinding],
     evalhub_service_secret_reader,
     garak_sim_isvc_url: str,
 ) -> str:
     """Submit a quick garak benchmark via KFP and return the job ID."""
+    _ = network_policy_access_for_garak_api_sa
     payload = {
         "name": "garak-kfp-quick-test",
         "model": {
@@ -862,10 +908,12 @@ def intents_kfp_garak_job_id(
     model_auth_secret_sidecar: Secret,
     dsp_access_for_job_sa,
     garak_tenant_rbac_ready: None,
+    network_policy_access_for_garak_api_sa: tuple[Role, RoleBinding],
     garak_sim_isvc_url: str,
     garak_intents_csv: str,
 ) -> str:
     """Submit a garak intents benchmark via KFP and return the job ID."""
+    _ = network_policy_access_for_garak_api_sa
     payload = {
         "name": "garak-intents-test",
         "model": {
@@ -908,6 +956,44 @@ def intents_kfp_garak_job_id(
         tenant_namespace=tenant_namespace.name,
         payload=payload,
     )
+
+
+@pytest.fixture(scope="class")
+def network_policy_access_for_evalhub_api_sa(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    tenant_a_namespace: Namespace,
+    tenant_a_rbac_ready: None,
+) -> Generator[tuple[Role, RoleBinding], Any, Any]:
+    """Grant the EvalHub API ServiceAccount NetworkPolicy access in tenant-a."""
+    api_sa_name = f"{EVALHUB_MT_CR_NAME}-service"
+    with (
+        Role(
+            client=admin_client,
+            name="evalhub-api-network-policy",
+            namespace=tenant_a_namespace.name,
+            rules=[
+                {
+                    "apiGroups": ["networking.k8s.io"],
+                    "resources": ["networkpolicies"],
+                    "verbs": ["create", "get", "update"],
+                },
+            ],
+            wait_for_resource=True,
+        ) as role,
+        RoleBinding(
+            client=admin_client,
+            name="evalhub-api-network-policy",
+            namespace=tenant_a_namespace.name,
+            role_ref_kind=role.kind,
+            role_ref_name=role.name,
+            subjects_kind="ServiceAccount",
+            subjects_name=api_sa_name,
+            subjects_namespace=model_namespace.name,
+            wait_for_resource=True,
+        ) as binding,
+    ):
+        yield role, binding
 
 
 @pytest.fixture(scope="class")
@@ -978,9 +1064,11 @@ def quick_garak_job_id(
     garak_evalhub_route: Route,
     tenant_namespace,
     garak_tenant_rbac_ready: None,
+    network_policy_access_for_garak_api_sa: tuple[Role, RoleBinding],
     garak_sim_isvc_url: str,
 ) -> str:
     """Submit a quick garak benchmark and return the job ID."""
+    _ = network_policy_access_for_garak_api_sa
     payload = {
         "name": "garak-quick-smoke-test",
         "model": {
@@ -1013,6 +1101,7 @@ def intents_garak_job_id(
     evalhub_ca_bundle_file: str,
     garak_evalhub_route: Route,
     tenant_namespace,
+    network_policy_access_for_garak_api_sa: tuple[Role, RoleBinding],
     garak_sim_isvc_url: str,
     simple_minio_secret: Secret,
     simple_intents_csv: str,
@@ -1021,6 +1110,7 @@ def intents_garak_job_id(
 
     Uses a minimal MinIO with test_data_ref to provide intents CSV without DSPA.
     """
+    _ = network_policy_access_for_garak_api_sa
     payload = {
         "name": "garak-simple-intents-test",
         "model": {
@@ -1344,8 +1434,8 @@ processors:
     limit_mib: 512
 
 exporters:
-  logging:
-    loglevel: debug
+  debug:
+    verbosity: detailed
   prometheus:
     endpoint: "0.0.0.0:{OTEL_COLLECTOR_PROMETHEUS_PORT}"
     namespace: evalhub
@@ -1357,7 +1447,7 @@ service:
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [logging, prometheus]
+      exporters: [debug, prometheus]
 """
     with ConfigMap(
         client=admin_client,
@@ -1779,8 +1869,13 @@ def submit_pvc_job(
     evalhub_mt_ca_bundle_file: str,
     evalhub_mt_route: Route,
     evalhub_vllm_emulator_service: Service,
+    network_policy_access_for_evalhub_api_sa: tuple[Role, RoleBinding],
 ) -> Generator[Callable[..., str], Any, Any]:
-    """Factory fixture: submit PVC evaluation jobs with guaranteed cleanup."""
+    """Factory fixture: submit PVC evaluation jobs with guaranteed cleanup.
+
+    Requires network_policy_access_for_evalhub_api_sa so the EvalHub API SA can
+    create per-execution NetworkPolicies (eval-hub PR #1070 / operator PR #985).
+    """
     job_ids: list[str] = []
 
     def _submit(
@@ -1846,6 +1941,7 @@ def submit_git_job(
     evalhub_mt_ca_bundle_file: str,
     evalhub_mt_route: Route,
     evalhub_vllm_emulator_service: Service,
+    network_policy_access_for_evalhub_api_sa: tuple[Role, RoleBinding],
 ) -> Generator[Callable[..., str], Any, Any]:
     """Factory fixture: submit git-storage evaluation jobs with guaranteed cleanup."""
     job_ids: list[str] = []
@@ -1918,6 +2014,7 @@ def submit_hf_job(
     evalhub_mt_ca_bundle_file: str,
     evalhub_mt_route: Route,
     evalhub_vllm_emulator_service: Service,
+    network_policy_access_for_evalhub_api_sa: tuple[Role, RoleBinding],
 ) -> Generator[Callable[..., str], Any, Any]:
     """Factory fixture: submit HF-storage evaluation jobs with guaranteed cleanup."""
     job_ids: list[str] = []
@@ -2225,6 +2322,7 @@ def operator_with_otel_tracing(
                             "containers": [
                                 {
                                     "name": containers[manager_idx].name,
+                                    "image": containers[manager_idx].image,
                                     "env": env_patch,
                                 }
                             ]
@@ -2315,3 +2413,28 @@ def evalhub_failure_cr(
         wait_for_resource=True,
     ) as evalhub:
         yield evalhub
+
+
+@pytest.fixture(scope="class")
+def operator_metrics_route(
+    admin_client: DynamicClient,
+) -> Generator[Route, Any, Any]:
+    """Create a Route to the operator metrics service and wait for it to be ready."""
+
+    operator_ns = py_config["applications_namespace"]
+    route_name = "tas-operator-metrics"
+    with Route(
+        client=admin_client,
+        kind_dict={
+            "apiVersion": "route.openshift.io/v1",
+            "kind": "Route",
+            "metadata": {"name": route_name, "namespace": operator_ns},
+            "spec": {
+                "to": {"kind": "Service", "name": OPERATOR_METRICS_SERVICE_NAME},
+                "port": {"targetPort": OPERATOR_METRICS_PORT},
+                "tls": {"termination": "passthrough"},
+            },
+        },
+    ) as route:
+        time.sleep(10)  # Wait for route to be admitted and endpoint to be reachable
+        yield route
