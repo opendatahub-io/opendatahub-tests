@@ -368,9 +368,10 @@ def wait_for_spark_connect_ready(
                 label_selector=",".join(f"{key}={value}" for key, value in executor_selector.items()),
             )
         )
-        if len(executors) != executor_instances or not all(
-            executor.instance.status.phase == "Running" for executor in executors
-        ):
+        # Count only running executors; the selector also matches Failed/Succeeded pods the operator
+        # has replaced, which would otherwise inflate the count and never match executor_instances.
+        running_executors = [executor for executor in executors if executor.instance.status.phase == "Running"]
+        if len(running_executors) != executor_instances:
             continue
 
         service = Service(client=client, name=service_name, namespace=spark_connect.namespace)

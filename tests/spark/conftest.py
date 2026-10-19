@@ -415,9 +415,11 @@ def scheduled_spark_pi_application(
     spark_workload_service_account: ServiceAccount,
     role_binding_fixture: list[RoleBinding],
     network_policy_fixture: list[NetworkPolicy],
-    teardown_resources: bool,
 ) -> Generator[SparkApplication, Any, Any]:
-    """Schedule a spark-pi application and yield its first child run for smoke verification."""
+    """Schedule a spark-pi application and yield its first child run for smoke verification.
+
+    This is a smoke-only resource, so it is always torn down and never persisted across an upgrade.
+    """
     name = f"smoke-scheduled-spark-pi-{shortuuid.uuid()[:8].lower()}"
     manifest = {
         "apiVersion": "sparkoperator.k8s.io/v1beta2",
@@ -435,9 +437,7 @@ def scheduled_spark_pi_application(
             )["spec"],
         },
     }
-    with ScheduledSparkApplication(
-        client=admin_client, kind_dict=manifest, teardown=teardown_resources
-    ) as scheduled_app:
+    with ScheduledSparkApplication(client=admin_client, kind_dict=manifest, teardown=True) as scheduled_app:
         yield wait_for_scheduled_spark_application_run(client=admin_client, scheduled_app=scheduled_app)
 
 
@@ -446,9 +446,11 @@ def spark_connect_client_pod(
     admin_client: DynamicClient,
     spark_namespace_fixture: Namespace,
     network_policy_fixture: list[NetworkPolicy],
-    teardown_resources: bool,
 ) -> Generator[Pod, Any, Any]:
-    """A running pod with the Spark distribution, used to query the Spark Connect endpoint."""
+    """A running pod with the Spark distribution, used to query the Spark Connect endpoint.
+
+    This is an ephemeral query client, so it is always torn down and never persisted across an upgrade.
+    """
     manifest = {
         "apiVersion": "v1",
         "kind": "Pod",
@@ -468,7 +470,7 @@ def spark_connect_client_pod(
             ],
         },
     }
-    with Pod(client=admin_client, kind_dict=manifest, teardown=teardown_resources) as pod:
+    with Pod(client=admin_client, kind_dict=manifest, teardown=True) as pod:
         pod.wait_for_status(status=Pod.Status.RUNNING, timeout=300)
         yield pod
 
@@ -480,15 +482,17 @@ def spark_connect_application(
     spark_workload_service_account: ServiceAccount,
     role_binding_fixture: list[RoleBinding],
     network_policy_fixture: list[NetworkPolicy],
-    teardown_resources: bool,
 ) -> Generator[SparkConnect, Any, Any]:
-    """Create a Spark Connect server and yield it once the server, executors, and service are ready."""
+    """Create a Spark Connect server and yield it once the server, executors, and service are ready.
+
+    This is a smoke-only server, so it is always torn down and never persisted across an upgrade.
+    """
     name = f"smoke-spark-connect-{shortuuid.uuid()[:8].lower()}"
     manifest = create_spark_connect_spec(
         name=name,
         namespace=spark_namespace_fixture.name,
         service_account=spark_workload_service_account.name,
     )
-    with SparkConnect(client=admin_client, kind_dict=manifest, teardown=teardown_resources) as spark_connect:
+    with SparkConnect(client=admin_client, kind_dict=manifest, teardown=True) as spark_connect:
         wait_for_spark_connect_ready(client=admin_client, spark_connect=spark_connect)
         yield spark_connect
