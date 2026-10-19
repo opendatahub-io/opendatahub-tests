@@ -38,8 +38,10 @@ def delete_upgrade_resource(resource: Resource, timeout: int) -> bool:
     (resource still exists / stuck Terminating). Never waits unbounded.
     """
     LOGGER.info(f"[upgrade-idem] purging leftover {resource.kind} {resource.namespace}/{resource.name}")
-    deleted = resource.delete(wait=True, timeout=timeout)
-    return deleted and not resource.exists
+    resource.delete(wait=True, timeout=timeout)
+    # Decide on the end state, not delete()'s return: wait_deleted returns
+    # False on its last poll even if the object vanishes right after.
+    return not resource.exists
 
 
 def upgrade_resource_skip_reason(
