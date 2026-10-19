@@ -32,12 +32,14 @@ from tests.ai_gateway.models_as_a_service.upgrade.utils import (
     LEGACY_MIGRATION_SUBSCRIPTION_NAME,
     LEGACY_MIGRATION_TARGET_MODEL,
     MAAS_LEGACY_MIGRATION_BASELINE_CM_NAME,
+    MAAS_MULTITENANT_UPGRADE_BASELINE_CM_NAME,
     MAAS_MULTITENANT_UPGRADE_NAMESPACE,
     MULTITENANT_UPGRADE_TENANT_A_TOKENS_PER_MINUTE,
     MULTITENANT_UPGRADE_TENANT_B_TOKENS_PER_MINUTE,
     LegacyMigrationBaseline,
     MaaSBaseline,
     MultitenantUpgradeTenantRecord,
+    assert_multitenant_upgrade_api_key_secrets_absent,
     capture_legacy_migration_baseline,
     capture_maas_baseline,
     capture_multitenant_upgrade_baseline,
@@ -960,11 +962,33 @@ def maas_multitenant_upgrade_tenant_records(
         )
         yield list(baseline["tenants"])
     else:
-        tenant_a_name, tenant_b_name = multitenant_upgrade_tenant_aitenant_names()
+        baseline_config_map = ConfigMap(
+            client=admin_client,
+            name=MAAS_MULTITENANT_UPGRADE_BASELINE_CM_NAME,
+            namespace=persist_namespace,
+        )
+        if baseline_config_map.exists:
+            baseline = load_multitenant_upgrade_baseline_from_configmap(
+                client=admin_client,
+                namespace=persist_namespace,
+            )
+            LOGGER.info(
+                f"Reusing multitenant upgrade baseline from ConfigMap "
+                f"{persist_namespace}/{MAAS_MULTITENANT_UPGRADE_BASELINE_CM_NAME} for pre-upgrade tests"
+            )
+            yield list(baseline["tenants"])
+            return
+
         secret_names = (
             "upgrade-mt-upg-tenant-a-api-key",
             "upgrade-mt-upg-tenant-b-api-key",
         )  # pragma: allowlist secret
+        assert_multitenant_upgrade_api_key_secrets_absent(
+            client=admin_client,
+            namespace=persist_namespace,
+            secret_names=secret_names,
+        )
+        tenant_a_name, tenant_b_name = multitenant_upgrade_tenant_aitenant_names()
         with ExitStack() as stack:
             provisioned_records: list[MultitenantUpgradeTenantRecord] = []
             tokens_per_minute_by_index = (

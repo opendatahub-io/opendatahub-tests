@@ -96,6 +96,7 @@ MAAS_MULTITENANT_UPGRADE_NAMESPACE = "upgrade-maas-multitenant"
 MAAS_MULTITENANT_UPGRADE_BASELINE_CM_NAME = "maas-multitenant-upgrade-baseline"
 MAAS_MULTITENANT_UPGRADE_BASELINE_CM_KEY = "multitenant_upgrade_baseline"
 MAAS_MT_UPGRADE_API_KEY_SECRET_KEY = "api-key"  # pragma: allowlist secret
+MAAS_MT_UPGRADE_API_KEY_ID_SECRET_KEY = "api-key-id"
 MULTITENANT_UPGRADE_TENANT_A_TOKENS_PER_MINUTE = 30
 MULTITENANT_UPGRADE_TENANT_B_TOKENS_PER_MINUTE = 10000
 MULTITENANT_UPGRADE_RATE_LIMIT_BURST_ATTEMPTS = 12
@@ -766,6 +767,85 @@ def load_persisted_multitenant_upgrade_api_key_from_secret(
     )
 
 
+def load_multitenant_upgrade_api_key_id_from_secret(
+    client: DynamicClient,
+    namespace: str,
+    secret_name: str,
+) -> str:
+    """Load the MaaS API key id persisted alongside the plaintext in a multitenant upgrade Secret."""
+    secret = Secret(client=client, name=secret_name, namespace=namespace)
+    assert secret.exists, f"Multitenant upgrade API key Secret '{secret_name}' not found in namespace '{namespace}'."
+    secret_data = _field_value(value=secret.instance, field_name="data", default={})
+    encoded_key_id = _field_value(value=secret_data, field_name=MAAS_MT_UPGRADE_API_KEY_ID_SECRET_KEY)
+    assert encoded_key_id, (
+        f"Multitenant upgrade API key Secret '{namespace}/{secret_name}' is missing "
+        f"'{MAAS_MT_UPGRADE_API_KEY_ID_SECRET_KEY}'. Delete the Secret and re-run pre-upgrade provisioning."
+    )
+    try:
+        return base64.b64decode(str(encoded_key_id), validate=True).decode("utf-8")
+    except (UnicodeDecodeError, ValueError) as error:
+        raise AssertionError(
+            f"Multitenant upgrade API key Secret '{secret_name}' key '{MAAS_MT_UPGRADE_API_KEY_ID_SECRET_KEY}' "
+            "is not valid base64 UTF-8 data"
+        ) from error
+
+
+def assert_multitenant_upgrade_api_key_secrets_absent(
+    client: DynamicClient,
+    namespace: str,
+    secret_names: tuple[str, str],
+) -> None:
+    """Fail fast when fixed-name API key Secrets exist without a persisted baseline ConfigMap."""
+    existing_secret_names = [
+        secret_name
+        for secret_name in secret_names
+        if Secret(client=client, name=secret_name, namespace=namespace).exists
+    ]
+    assert not existing_secret_names, (
+        f"Multitenant upgrade API key Secret(s) {existing_secret_names} already exist in '{namespace}' "
+        f"without baseline ConfigMap '{MAAS_MULTITENANT_UPGRADE_BASELINE_CM_NAME}'. "
+        "Delete those Secrets before re-provisioning, or restore the baseline ConfigMap to re-run pre-upgrade."
+    )
+
+
+def _persist_multitenant_upgrade_api_key_secret(
+    admin_client: DynamicClient,
+    persist_namespace: str,
+    secret_name: str,
+    plaintext_key: str,
+    key_id: str,
+    teardown: bool,
+) -> None:
+    """Create or update the multitenant upgrade API key Secret (idempotent for fixed secret names)."""
+    string_data = {
+        MAAS_MT_UPGRADE_API_KEY_SECRET_KEY: plaintext_key,
+        MAAS_MT_UPGRADE_API_KEY_ID_SECRET_KEY: key_id,
+    }
+    secret = Secret(
+        client=admin_client,
+        name=secret_name,
+        namespace=persist_namespace,
+        type="Opaque",
+        teardown=teardown,
+        wait_for_resource=True,
+    )
+    if secret.exists:
+        resource_dict = secret.instance.to_dict()
+        resource_dict.setdefault("stringData", {}).update(string_data)
+        secret.update(resource_dict=resource_dict)
+    else:
+        secret_with_data = Secret(
+            client=admin_client,
+            name=secret_name,
+            namespace=persist_namespace,
+            type="Opaque",
+            string_data=string_data,
+            teardown=teardown,
+            wait_for_resource=True,
+        )
+        secret_with_data.deploy()
+
+
 @contextmanager
 def provision_multitenant_upgrade_aitenant(
     admin_client: DynamicClient,
@@ -901,6 +981,32 @@ def create_and_persist_tenant_api_key(
     teardown: bool,
 ) -> MultitenantUpgradeTenantRecord:
     """Create a tenant API key, persist plaintext to a Secret, and return key metadata."""
+    existing_secret = Secret(client=admin_client, name=secret_name, namespace=persist_namespace)
+    if existing_secret.exists:
+        key_id = load_multitenant_upgrade_api_key_id_from_secret(
+            client=admin_client,
+            namespace=persist_namespace,
+            secret_name=secret_name,
+        )
+        load_persisted_multitenant_upgrade_api_key_from_secret(
+            client=admin_client,
+            namespace=persist_namespace,
+            secret_name=secret_name,
+        )
+        LOGGER.info(f"Reusing multitenant upgrade API key id={key_id} from Secret {persist_namespace}/{secret_name}")
+        return MultitenantUpgradeTenantRecord(
+            aitenant_name="",
+            tenant_namespace_name="",
+            subscription_name=subscription_name,
+            auth_policy_name="",
+            subscription_generation=0,
+            tokens_per_minute=0,
+            gateway_name="",
+            gateway_namespace="",
+            api_key_id=key_id,
+            api_key_secret_name=secret_name,
+        )
+
     api_key_name = f"e2e-mt-upg-key-{generate_random_name()}"
     create_response, create_body = create_api_key(
         base_url=base_url,
@@ -916,16 +1022,14 @@ def create_and_persist_tenant_api_key(
     )
     key_id = str(create_body["id"])
     plaintext_key = str(create_body["key"])
-    secret = Secret(
-        client=admin_client,
-        name=secret_name,
-        namespace=persist_namespace,
-        type="Opaque",
-        string_data={MAAS_MT_UPGRADE_API_KEY_SECRET_KEY: plaintext_key},
+    _persist_multitenant_upgrade_api_key_secret(
+        admin_client=admin_client,
+        persist_namespace=persist_namespace,
+        secret_name=secret_name,
+        plaintext_key=plaintext_key,
+        key_id=key_id,
         teardown=teardown,
-        wait_for_resource=True,
     )
-    secret.deploy()
     LOGGER.info(f"Persisted multitenant upgrade API key id={key_id} to Secret {persist_namespace}/{secret_name}")
     return MultitenantUpgradeTenantRecord(
         aitenant_name="",
