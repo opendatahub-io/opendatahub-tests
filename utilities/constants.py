@@ -424,6 +424,7 @@ MODELMESH_SERVING: str = "modelmesh-serving"
 ISTIO_CA_BUNDLE_FILENAME: str = "istio_knative.crt"
 OPENSHIFT_CA_BUNDLE_FILENAME: str = "openshift_ca.crt"
 INTERNAL_IMAGE_REGISTRY_PATH: str = "image-registry.openshift-image-registry.svc:5000"
+QUAY_REGISTRY: str = "quay.io"
 
 vLLM_CONFIG: dict[str, dict[str, Any]] = {
     "port_configurations": {
