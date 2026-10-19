@@ -40,7 +40,7 @@ class AiSafetyImages:
     )
     OTEL_COLLECTOR: str = (
         "ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector"
-        "@sha256:62c84db5d6fa6e7c3dfc8e63d60b8d4e9e4f8dfded5b6c4056e44c6d3e78ac63"
+        "@sha256:310a800ad69ee430e7c541796852a242c9c7db97aaad4daa5ccf843c525fbdb2"
     )
     EVALHUB_INVALID_IMAGE: str = (  # noqa: IMG002
         "quay.io/trustyai_testing/nonexistent-image"
