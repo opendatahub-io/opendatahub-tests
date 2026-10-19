@@ -1,4 +1,5 @@
 from collections.abc import Generator
+from contextlib import ExitStack
 from typing import Any
 
 import pytest
@@ -31,18 +32,29 @@ from tests.ai_gateway.models_as_a_service.upgrade.utils import (
     LEGACY_MIGRATION_SUBSCRIPTION_NAME,
     LEGACY_MIGRATION_TARGET_MODEL,
     MAAS_LEGACY_MIGRATION_BASELINE_CM_NAME,
+    MAAS_MULTITENANT_UPGRADE_NAMESPACE,
+    MULTITENANT_UPGRADE_TENANT_A_TOKENS_PER_MINUTE,
+    MULTITENANT_UPGRADE_TENANT_B_TOKENS_PER_MINUTE,
     LegacyMigrationBaseline,
     MaaSBaseline,
+    MultitenantUpgradeTenantRecord,
     capture_legacy_migration_baseline,
     capture_maas_baseline,
+    capture_multitenant_upgrade_baseline,
     cluster_has_inference_external_model_crd,
     cluster_has_legacy_external_model_crd,
+    create_and_persist_tenant_api_key,
     inference_external_model_for_baseline,
     load_legacy_migration_baseline_from_configmap,
     load_maas_api_key_from_secret,
     load_maas_baseline_from_configmap,
+    load_multitenant_upgrade_baseline_from_configmap,
+    multitenant_upgrade_tenant_aitenant_names,
+    provision_multitenant_upgrade_aitenant,
     save_legacy_migration_baseline_to_configmap,
     save_maas_baseline_to_configmap,
+    save_multitenant_upgrade_baseline_to_configmap,
+    tenant_base_url_for_record,
     wait_for_legacy_maas_networking_present,
 )
 from tests.ai_gateway.models_as_a_service.utils import (
@@ -82,14 +94,18 @@ def maas_upgrade_namespace(
         if teardown_resources and namespace.exists:
             namespace.clean_up()
     else:
-        with create_ns(
-            admin_client=admin_client,
-            name=MAAS_UPGRADE_NAMESPACE,
-            model_mesh_enabled=False,
-            add_dashboard_label=True,
-            teardown=teardown_resources,
-        ) as namespace:
+        if namespace.exists:
+            LOGGER.info(f"Namespace {MAAS_UPGRADE_NAMESPACE} already exists, reusing it")
             yield namespace
+        else:
+            with create_ns(
+                admin_client=admin_client,
+                name=MAAS_UPGRADE_NAMESPACE,
+                model_mesh_enabled=False,
+                add_dashboard_label=True,
+                teardown=teardown_resources,
+            ) as created_namespace:
+                yield created_namespace
 
 
 @pytest.fixture(scope="session")
@@ -888,3 +904,136 @@ def maas_inference_with_llmd_api_key(
 
             # Leave the key active for the post-upgrade run.
             yield api_key
+
+
+@pytest.fixture(scope="session")
+def maas_multitenant_upgrade_namespace(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    teardown_resources: bool,
+) -> Generator[Namespace, Any, Any]:
+    """Namespace that holds multitenant upgrade baseline and API-key Secrets (RHOAIENG-100389)."""
+    namespace = Namespace(client=admin_client, name=MAAS_MULTITENANT_UPGRADE_NAMESPACE)
+    if pytestconfig.option.post_upgrade:
+        yield namespace
+        if teardown_resources and namespace.exists:
+            namespace.clean_up()
+    else:
+        if namespace.exists:
+            LOGGER.info(f"Namespace {MAAS_MULTITENANT_UPGRADE_NAMESPACE} already exists, reusing it")
+            yield namespace
+        else:
+            with create_ns(
+                admin_client=admin_client,
+                name=MAAS_MULTITENANT_UPGRADE_NAMESPACE,
+                model_mesh_enabled=False,
+                add_dashboard_label=True,
+                teardown=teardown_resources,
+            ) as created_namespace:
+                yield created_namespace
+
+
+@pytest.fixture(scope="session")
+def maas_multitenant_upgrade_tenant_records(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    aitenant_infra_namespace: str,
+    maas_api_infra_namespace: str,
+    maas_gateway_api_hostname: str,
+    maas_free_group: str,
+    maas_multitenant_upgrade_namespace: Namespace,
+    request_session_http: requests.Session,
+    current_client_token: str,
+    aws_access_key_id: str,
+    aws_secret_access_key: str,
+    models_s3_bucket_name: str,
+    models_s3_bucket_region: str,
+    models_s3_bucket_endpoint: str,
+    teardown_resources: bool,
+) -> Generator[list[MultitenantUpgradeTenantRecord], Any, Any]:
+    """Provision or reload two Ready AITenants with per-tenant maas-api and persisted API keys."""
+    persist_namespace = maas_multitenant_upgrade_namespace.name
+    if pytestconfig.option.post_upgrade:
+        baseline = load_multitenant_upgrade_baseline_from_configmap(
+            client=admin_client,
+            namespace=persist_namespace,
+        )
+        yield list(baseline["tenants"])
+    else:
+        tenant_a_name, tenant_b_name = multitenant_upgrade_tenant_aitenant_names()
+        secret_names = (
+            "upgrade-mt-upg-tenant-a-api-key",
+            "upgrade-mt-upg-tenant-b-api-key",
+        )  # pragma: allowlist secret
+        with ExitStack() as stack:
+            provisioned_records: list[MultitenantUpgradeTenantRecord] = []
+            tokens_per_minute_by_index = (
+                MULTITENANT_UPGRADE_TENANT_A_TOKENS_PER_MINUTE,
+                MULTITENANT_UPGRADE_TENANT_B_TOKENS_PER_MINUTE,
+            )
+            for tenant_index, aitenant_name in enumerate((tenant_a_name, tenant_b_name)):
+                base_record = stack.enter_context(
+                    provision_multitenant_upgrade_aitenant(
+                        admin_client=admin_client,
+                        aitenant_infra_namespace=aitenant_infra_namespace,
+                        aitenant_name=aitenant_name,
+                        maas_api_infra_namespace=maas_api_infra_namespace,
+                        maas_host=maas_gateway_api_hostname,
+                        maas_free_group=maas_free_group,
+                        aws_access_key_id=aws_access_key_id,
+                        aws_secret_access_key=aws_secret_access_key,
+                        models_s3_bucket_name=models_s3_bucket_name,
+                        models_s3_bucket_region=models_s3_bucket_region,
+                        models_s3_bucket_endpoint=models_s3_bucket_endpoint,
+                        request_session_http=request_session_http,
+                        teardown=teardown_resources,
+                        tokens_per_minute=tokens_per_minute_by_index[tenant_index],
+                    )
+                )
+                base_url = tenant_base_url_for_record(
+                    maas_host=maas_gateway_api_hostname,
+                    tenant_record=base_record,
+                )
+                key_record = create_and_persist_tenant_api_key(
+                    admin_client=admin_client,
+                    persist_namespace=persist_namespace,
+                    base_url=base_url,
+                    ocp_user_token=current_client_token,
+                    request_session_http=request_session_http,
+                    subscription_name=base_record["subscription_name"],
+                    secret_name=secret_names[tenant_index],
+                    teardown=teardown_resources,
+                )
+                provisioned_records.append(
+                    MultitenantUpgradeTenantRecord(
+                        aitenant_name=base_record["aitenant_name"],
+                        tenant_namespace_name=base_record["tenant_namespace_name"],
+                        subscription_name=base_record["subscription_name"],
+                        auth_policy_name=base_record["auth_policy_name"],
+                        subscription_generation=base_record["subscription_generation"],
+                        tokens_per_minute=base_record["tokens_per_minute"],
+                        gateway_name=base_record["gateway_name"],
+                        gateway_namespace=base_record["gateway_namespace"],
+                        api_key_id=key_record["api_key_id"],
+                        api_key_secret_name=key_record["api_key_secret_name"],
+                    )
+                )
+            yield provisioned_records
+
+
+@pytest.fixture(scope="session")
+def capture_maas_multitenant_upgrade_baseline(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    maas_multitenant_upgrade_namespace: Namespace,
+    maas_multitenant_upgrade_tenant_records: list[MultitenantUpgradeTenantRecord],
+) -> None:
+    """Persist multitenant upgrade tenant metadata before cluster upgrade."""
+    if pytestconfig.option.post_upgrade:
+        return
+    baseline = capture_multitenant_upgrade_baseline(tenant_records=maas_multitenant_upgrade_tenant_records)
+    save_multitenant_upgrade_baseline_to_configmap(
+        client=admin_client,
+        namespace=maas_multitenant_upgrade_namespace.name,
+        baseline=baseline,
+    )
