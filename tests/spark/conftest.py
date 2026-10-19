@@ -9,7 +9,6 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.namespace import Namespace
-from ocp_resources.network_policy import NetworkPolicy
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.role import Role
@@ -26,11 +25,9 @@ from tests.spark.utils import (
     UPGRADE_NAMESPACE,
     create_spark_connect_spec,
     create_spark_pi_application_spec,
-    get_spark_network_policies,
     get_spark_role_bindings,
     get_spark_roles,
     get_spark_service_accounts,
-    recreate_network_policy_in_namespace,
     recreate_role_binding_in_namespace,
     recreate_role_in_namespace,
     recreate_service_account_in_namespace,
@@ -307,45 +304,12 @@ def role_binding_fixture(
 
 
 @pytest.fixture(scope="session")
-def network_policy_fixture(
-    pytestconfig: pytest.Config,
-    admin_client: DynamicClient,
-    spark_namespace_fixture: Namespace,
-    teardown_resources: bool,
-) -> Generator[list[NetworkPolicy], Any, Any]:
-    """Copy only spark-operator-allow-internal from the applications namespace into the test namespace."""
-    if pytestconfig.option.post_upgrade:
-        resources = get_spark_network_policies(client=admin_client, namespace=spark_namespace_fixture.name)
-        assert resources, "Required pre-upgrade resources are missing from the test namespace"
-        yield resources
-    else:
-        apps_namespace = py_config["applications_namespace"]
-        source_nps = get_spark_network_policies(client=admin_client, namespace=apps_namespace)
-        LOGGER.info(
-            f"Discovered {len(source_nps)} spark NetworkPolicy(s) in {apps_namespace}: {[np.name for np in source_nps]}"
-        )
-
-        created_nps = []
-        for source_np in source_nps:
-            np = recreate_network_policy_in_namespace(
-                client=admin_client,
-                source_np=source_np,
-                target_namespace=spark_namespace_fixture.name,
-                teardown=teardown_resources,
-            )
-            created_nps.append(np)
-
-        yield created_nps
-
-
-@pytest.fixture(scope="session")
 def spark_application_fixture(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     spark_namespace_fixture: Namespace,
     spark_workload_service_account: ServiceAccount,
     role_binding_fixture: list[RoleBinding],
-    network_policy_fixture: list[NetworkPolicy],
     teardown_resources: bool,
 ) -> Generator[SparkApplication, Any, Any]:
     """Create or reference a SparkApplication for upgrade testing.
@@ -388,7 +352,6 @@ def spark_pi_application(
     spark_namespace_fixture: Namespace,
     spark_workload_service_account: ServiceAccount,
     role_binding_fixture: list[RoleBinding],
-    network_policy_fixture: list[NetworkPolicy],
     teardown_resources: bool,
     spark_application_fixture: SparkApplication,
 ) -> Generator[SparkApplication, Any, Any]:
@@ -414,7 +377,6 @@ def scheduled_spark_pi_application(
     spark_namespace_fixture: Namespace,
     spark_workload_service_account: ServiceAccount,
     role_binding_fixture: list[RoleBinding],
-    network_policy_fixture: list[NetworkPolicy],
 ) -> Generator[SparkApplication, Any, Any]:
     """Schedule a spark-pi application and yield its first child run for smoke verification.
 
@@ -445,7 +407,6 @@ def scheduled_spark_pi_application(
 def spark_connect_client_pod(
     admin_client: DynamicClient,
     spark_namespace_fixture: Namespace,
-    network_policy_fixture: list[NetworkPolicy],
 ) -> Generator[Pod, Any, Any]:
     """A running pod with the Spark distribution, used to query the Spark Connect endpoint.
 
@@ -481,7 +442,6 @@ def spark_connect_application(
     spark_namespace_fixture: Namespace,
     spark_workload_service_account: ServiceAccount,
     role_binding_fixture: list[RoleBinding],
-    network_policy_fixture: list[NetworkPolicy],
 ) -> Generator[SparkConnect, Any, Any]:
     """Create a Spark Connect server and yield it once the server, executors, and service are ready.
 

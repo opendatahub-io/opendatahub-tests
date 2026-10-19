@@ -4,7 +4,6 @@ import shlex
 
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.network_policy import NetworkPolicy
 from ocp_resources.pod import Pod
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
@@ -430,23 +429,6 @@ def verify_spark_connect_query(output: str) -> None:
     assert "VALIDATE=14" in output, f"Expected a doubled value of 14 for id=7, got: {output}"
 
 
-def get_spark_network_policies(client: DynamicClient, namespace: str) -> list[NetworkPolicy]:
-    """Find only the Spark internal-traffic NetworkPolicy.
-
-    Args:
-        client: Kubernetes client.
-        namespace: Namespace to search.
-
-    Returns:
-        The matching NetworkPolicy, or an empty list if it is absent.
-    """
-    return [
-        network_policy
-        for network_policy in NetworkPolicy.get(client=client, namespace=namespace)
-        if network_policy.name == "spark-operator-allow-internal"
-    ]
-
-
 def get_spark_roles(client: DynamicClient, namespace: str) -> list[Role]:
     """Find only the named Spark workload Role.
 
@@ -535,16 +517,3 @@ def recreate_role_binding_in_namespace(
     rb = RoleBinding(client=client, kind_dict=source_dict, teardown=teardown)
     rb.deploy()
     return rb
-
-
-def recreate_network_policy_in_namespace(
-    client: DynamicClient,
-    source_np: NetworkPolicy,
-    target_namespace: str,
-    teardown: bool,
-) -> NetworkPolicy:
-    source_dict = source_np.instance.to_dict()
-    source_dict["metadata"] = {"name": source_np.name, "namespace": target_namespace}
-    np = NetworkPolicy(client=client, kind_dict=source_dict, teardown=teardown)
-    np.deploy()
-    return np

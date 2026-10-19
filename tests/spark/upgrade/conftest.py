@@ -9,7 +9,6 @@ import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.namespace import Namespace
-from ocp_resources.network_policy import NetworkPolicy
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.service_account import ServiceAccount
 
@@ -128,7 +127,6 @@ def spark_continuity_application(
     spark_continuity_control: ConfigMap,
     spark_workload_service_account: ServiceAccount,
     role_binding_fixture: list[RoleBinding],
-    network_policy_fixture: list[NetworkPolicy],
     teardown_resources: bool,
 ) -> Generator[SparkApplication, Any, Any]:
     """Create before upgrade, or reference after upgrade, the gated Spark execution."""
@@ -161,7 +159,6 @@ def scheduled_continuity_application(
     scheduled_spark_continuity_control: ConfigMap,
     spark_workload_service_account: ServiceAccount,
     role_binding_fixture: list[RoleBinding],
-    network_policy_fixture: list[NetworkPolicy],
     teardown_resources: bool,
 ) -> Generator[ScheduledSparkApplication, Any, Any]:
     """Create before upgrade, or reference after upgrade, the gated scheduled Spark execution.
@@ -230,7 +227,6 @@ def spark_connect_continuity_application(
     spark_namespace_fixture: Namespace,
     spark_workload_service_account: ServiceAccount,
     role_binding_fixture: list[RoleBinding],
-    network_policy_fixture: list[NetworkPolicy],
     teardown_resources: bool,
 ) -> Generator[SparkConnect, Any, Any]:
     """Create before upgrade, or reference after upgrade, a long-lived Spark Connect server.
