@@ -1,6 +1,7 @@
 import os
 import shlex
 import shutil
+import tempfile
 
 from pytest_testconfig import config as py_config
 from pytest import Item
@@ -148,11 +149,19 @@ def run_must_gather_clean(must_gather_path: str, target_dir: str) -> str:
     Returns:
         Path to the cleaned must-gather output directory.
     """
-    cleaned_dir = os.path.join(target_dir, "must-gather-cleaned")
+    must_gather_path = os.path.abspath(must_gather_path)
+    cleaned_dir = os.path.abspath(os.path.join(target_dir, "must-gather-cleaned"))
     clean_command = f"must-gather-clean -c {MUST_GATHER_CLEAN_CONFIG} -i {must_gather_path} -o {cleaned_dir}"
     LOGGER.info(f"Running must-gather-clean: {clean_command}")
-    result = run_command(command=shlex.split(clean_command), check=False, timeout=300)
+    # must-gather-clean writes its report file to the current working directory, which is not writable when
+    # running from the tests container, run it from a temporary directory instead.
+    with tempfile.TemporaryDirectory(prefix="must-gather-clean-") as clean_report_dir:
+        result = run_command(command=shlex.split(clean_command), check=False, timeout=300, cwd=clean_report_dir)
     LOGGER.info(f"must-gather-clean output: {result[1]}")
+
+    if not result[0]:
+        LOGGER.warning(f"must-gather-clean failed: {result[2]}")
+        return must_gather_path
 
     if os.path.isdir(cleaned_dir):
         shutil.rmtree(path=must_gather_path, ignore_errors=True)
@@ -161,6 +170,16 @@ def run_must_gather_clean(must_gather_path: str, target_dir: str) -> str:
 
     LOGGER.warning("must-gather-clean did not produce output, using original must-gather data")
     return must_gather_path
+
+
+def archive_must_gather(must_gather_path: str, target_dir: str, base_file_name: str) -> str:
+    """Archive must-gather output in the writable test results directory."""
+    os.makedirs(target_dir, exist_ok=True)
+    archive_base = os.path.join(target_dir, os.path.basename(base_file_name))
+    archive_path = shutil.make_archive(base_name=archive_base, format="zip", base_dir=must_gather_path)
+    shutil.rmtree(path=must_gather_path, ignore_errors=True)
+    LOGGER.info(f"{archive_path} is collected successfully")
+    return archive_path
 
 
 def get_must_gather_image_info() -> str:
@@ -198,6 +217,7 @@ def collect_rhoai_must_gather(
     """
     must_gather_image = get_must_gather_image_info()
     if must_gather_image:
+        os.makedirs(target_dir, exist_ok=True)
         output = run_must_gather(image_url=must_gather_image, target_dir=target_dir, since=f"{since}s")
         if save_collection_output:
             with open(os.path.join(target_dir, "output.log"), "w") as _file:
@@ -206,14 +226,6 @@ def collect_rhoai_must_gather(
         path = get_must_gather_output_dir(must_gather_path=target_dir)
         path = run_must_gather_clean(must_gather_path=path, target_dir=target_dir)
         if os.getenv("ARCHIVE_MUST_GATHER", "true") == "true":
-            # archive the folder and get the zip file's name
-            file_name = shutil.make_archive(base_name=base_file_name, format="zip", base_dir=path)
-            # remove the folder that was archived
-            shutil.rmtree(path=path, ignore_errors=True)
-            # copy back the archived file to the same path
-            dest_file = os.path.join(target_dir, file_name)
-            shutil.copy(src=file_name, dst=dest_file)
-            LOGGER.info(f"{dest_file} is collected successfully")
-            os.unlink(file_name)
+            archive_must_gather(must_gather_path=path, target_dir=target_dir, base_file_name=base_file_name)
     else:
         LOGGER.error("No must-gather image is found from the csv. Must-gather collection would be skipped.")

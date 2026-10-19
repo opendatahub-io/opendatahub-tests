@@ -13,7 +13,7 @@ from tests.ai_hub.async_job.utils import (
     pull_manifest_from_oci_registry,
 )
 from tests.ai_hub.constants import MODEL_DICT
-from utilities.constants import MinIo, OCIRegistry
+from utilities.constants import OCIRegistry
 from model_registry import ModelRegistry as ModelRegistryClient
 from simple_logger.logger import get_logger
 from tests.ai_hub.async_job.constants import MODEL_SYNC_CONFIG, REPO_NAME, TAG
@@ -30,11 +30,11 @@ MODEL_DATA = {
 
 
 @pytest.mark.parametrize(
-    "minio_pod, oci_registry_pod_with_minio",
+    "oci_registry_pod_with_s3",
     [
         pytest.param(
-            MinIo.PodConfig.MODEL_REGISTRY_MINIO_CONFIG,
             OCIRegistry.PodConfig.REGISTRY_BASE_CONFIG,
+            id="test_async_upload_with_seaweedfs",
         )
     ],
     indirect=True,
@@ -43,11 +43,11 @@ MODEL_DATA = {
     "updated_dsc_component_state_scope_session",
     "model_registry_namespace",
     "model_registry_metadata_db_resources",
-    "minio_pod",
-    "create_test_data_in_minio_from_image",
+    "seaweedfs_pod",
+    "test_model_in_s3_from_image",
     "s3_secret_for_async_job",
     "oci_secret_for_async_job",
-    "oci_registry_pod_with_minio",
+    "oci_registry_pod_with_s3",
     "registered_model_from_image",
 )
 @pytest.mark.custom_namespace
@@ -60,7 +60,7 @@ MODEL_DATA = {
 )
 @pytest.mark.downstream_only
 class TestAsyncUploadE2E:
-    """RHOAIENG-32501: Test for async upload job with real MinIO, OCI registry, Connection Secrets and Model Registry"""
+    """Given a model in SeaweedFS, when the async job runs, then it uploads to OCI and updates Model Registry."""
 
     @pytest.mark.dependency(name="job_creation_and_pod_spawning")
     def test_job_creation_and_pod_spawning(
@@ -132,4 +132,4 @@ class TestAsyncUploadE2E:
         assert model_artifact.storage_key == MODEL_DATA["model_storage_key"]
         assert model_artifact.storage_path == MODEL_DATA["model_storage_path"]
 
-        LOGGER.info("Async upload job test with KSERVE_MINIO_IMAGE: PASSED")
+        LOGGER.info("Async upload job test with SeaweedFS: PASSED")

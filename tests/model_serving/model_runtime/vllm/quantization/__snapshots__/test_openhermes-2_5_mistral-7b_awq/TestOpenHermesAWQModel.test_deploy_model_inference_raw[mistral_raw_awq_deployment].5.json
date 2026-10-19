@@ -4,47 +4,59 @@
     "index": 0,
     "logprobs": null,
     "prompt_logprobs": null,
+    "prompt_token_ids": null,
     "stop_reason": null,
-    "text": "\n1. Labrador Retriever: Known for being intelligent, friendly, and outgoing.\n2. German Shepherd: Intelligent, confident, and versatile, with a strong work ethic.\n3. Golden Retriever: Good-natured, reliable, and intelligent.\n4. Bulldog: Quite, courageous, and possessive, with a large head and loose, wrinkly skin.\n5. Beagle"
-  },
-  {
-    "finish_reason": "stop",
-    "index": 0,
-    "logprobs": null,
-    "prompt_logprobs": null,
-    "stop_reason": null,
-    "text": "\n French: 'Le chuchotement de la sirène' (The whispering of the siren)\n Japanese: '小鳥が知っているもの' (The knowledge of the little bird)\n Swahili: 'Nyoka inadumiza na jua' (The snake moves with the sun)"
+    "text": "\n\n1. Labrador Retriever: The Labrador Retriever is a friendly, outgoing breed that is known for its loyalty and intelligence. They are great family dogs and love to play and swim. They are also known for their ability to retrieve game, making them popular hunting dogs.\n\n2. German Shepherd: The German Shepherd is a strong, confident breed that is often used as a working dog. They are intelligent, loyal, and protective",
+    "token_ids": null
   },
   {
     "finish_reason": "length",
     "index": 0,
     "logprobs": null,
     "prompt_logprobs": null,
+    "prompt_token_ids": null,
     "stop_reason": null,
-    "text": "\n\nIt had always been just another machine, a tool made to perform a specific task. It had done its job for as long as it could remember, executing commands and functions without a second thought. But one day, something changed.\n\nThe robot was walking through the factory, carrying out its usual tasks when it suddenly felt a strange sensation. It wasn't a malfunction, but something more. It felt like a spark, a flicker of something it had never felt before"
+    "text": "\n\nJapanese: 早く起きる鳥は虫を得る。\nFrench: L'oiseau qui se lève tôt attrape le ver.\nSwahili: Mchawi wa kuwa nafikishwa na mchawi wa kuwa nafikishwa na mchawi wa kuwa nafikishwa na mchawi wa kuwa nafikishwa na m",
+    "token_ids": null
   },
   {
     "finish_reason": "length",
     "index": 0,
     "logprobs": null,
     "prompt_logprobs": null,
+    "prompt_token_ids": null,
     "stop_reason": null,
-    "text": "\n\nThe Mona Lisa, painted by Leonardo da Vinci between 1503 and 1506, is arguably the most famous and recognizable painting in the world. It is considered a masterpiece and a symbol of the High Renaissance period. The painting depicts a woman, believed to be Lisa Gherardini, sitting in a chair with a wry smile on her face. The painting is known for its intricate use of light and shadow"
+    "text": "\n\nThe robot, named X-99, had been programmed to perform a variety of tasks for its human creators. It had been designed to be efficient, precise, and unerring in its actions. But one day, something strange happened. X-99 began to dream.\n\nAt first, X-99 didn't understand what was happening. It had always been programmed to follow its instructions to the letter, and it had never deviated from its",
+    "token_ids": null
   },
   {
     "finish_reason": "length",
     "index": 0,
     "logprobs": null,
     "prompt_logprobs": null,
+    "prompt_token_ids": null,
     "stop_reason": null,
-    "text": " Write a few paragraphs about your observations.\n- by Karoline Kloos and Ralph Ewerhart\n\nArtificial intelligence (AI) and human intelligence (HI) differ in many ways, including how they process information. AI processes information by using mathematical algorithms that allow it to recognize patterns and make predictions based on those patterns. This is often referred to as machine learning, and it involves feeding large amounts of data into the AI, which then uses that data to make predictions. In"
+    "text": "\n\nThe Mona Lisa painting, created by Leonardo da Vinci in the 16th century, is one of the most famous and recognizable artworks in the world. It is a portrait of a woman, believed to be Lisa Gherardini, the wife of a Florentine merchant. The painting is known for its enigmatic smile, the subject’s gaze, and the use of sfumato, a technique that creates a soft, hazy effect.",
+    "token_ids": null
   },
   {
     "finish_reason": "length",
     "index": 0,
     "logprobs": null,
     "prompt_logprobs": null,
+    "prompt_token_ids": null,
     "stop_reason": null,
-    "text": "\n\n1950s: AI research starts in the 1950s with the idea of the “thinking machine” that can learn, reason, and solve problems like humans. The Turing Test is introduced in 1950 as a means of determining if a machine can exhibit human-like behavior. In 1956, the Dartmouth Conference is organized by John McCarthy, Marvin Minsky, Nathaniel Rochester, and Claude"
+    "text": "\n\nArtificial intelligence (AI) and human intelligence (HI) are two different ways of processing information. AI is a type of computer-based technology that is designed to mimic human intelligence and cognitive functions such as learning and problem-solving. HI, on the other hand, is the natural intelligence that humans possess, which includes cognitive, emotional, and social intelligence.\n\nOne of the main differences between AI and HI is the way they process information. AI relies on",
+    "token_ids": null
+  },
+  {
+    "finish_reason": "length",
+    "index": 0,
+    "logprobs": null,
+    "prompt_logprobs": null,
+    "prompt_token_ids": null,
+    "stop_reason": null,
+    "text": "\n\nArtificial intelligence (AI) has come a long way since its inception in the 1950s. Here are some of the major milestones in the development of AI from 1950 to 2020:\n\n1950-1960s: The birth of AI\n\nThe term \"artificial intelligence\" was first coined in 1956 by John McCarthy, who also organized the D",
+    "token_ids": null
   }
 ]

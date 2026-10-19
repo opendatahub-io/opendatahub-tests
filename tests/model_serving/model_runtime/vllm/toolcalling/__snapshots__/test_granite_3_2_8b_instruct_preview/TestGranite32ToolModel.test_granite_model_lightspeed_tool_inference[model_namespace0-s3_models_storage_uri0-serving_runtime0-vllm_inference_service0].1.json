@@ -4,8 +4,12 @@
     "index": 0,
     "logprobs": null,
     "message": {
+      "annotations": null,
+      "audio": null,
       "content": null,
+      "function_call": null,
       "reasoning_content": null,
+      "refusal": null,
       "role": "assistant",
       "tool_calls": [
         {
@@ -13,11 +17,12 @@
             "arguments": "{\"kind\": \"pod\", \"namespace\": \"openshift-lightspeed\"}",
             "name": "get_object_namespace_list"
           },
-          "id": "chatcmpl-tool-68ddd4569f9542c1810654a8b1ef076a",
+          "id": "chatcmpl-tool-f06ea95969ee4f4bb20287604e11f2e1",
           "type": "function"
         }
       ]
     },
-    "stop_reason": null
+    "stop_reason": null,
+    "token_ids": null
   }
 ]

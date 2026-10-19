@@ -24,7 +24,9 @@ TEST_MODEL_MESH_OPENVINO_POST_UPGRADE_INFERENCE_EXISTS: str = "test_model_mesh_o
 class TestPreUpgradeModelServer:
     @pytest.mark.pre_upgrade
     @pytest.mark.serverless
-    def test_serverless_onnx_pre_upgrade_inference(self, ovms_serverless_inference_service_scope_session):
+    def test_serverless_onnx_pre_upgrade_inference(
+        self, ovms_serverless_inference_service_scope_session, ovms_serverless_upgrade_baseline
+    ):
         """Verify that kserve Serverless ONNX model can be queried using REST before upgrade"""
         verify_inference_response(
             inference_service=ovms_serverless_inference_service_scope_session,
@@ -36,7 +38,9 @@ class TestPreUpgradeModelServer:
 
     @pytest.mark.pre_upgrade
     @pytest.mark.rawdeployment
-    def test_raw_caikit_bge_pre_upgrade_inference(self, caikit_raw_inference_service_scope_session):
+    def test_raw_caikit_bge_pre_upgrade_inference(
+        self, caikit_raw_inference_service_scope_session, caikit_raw_upgrade_baseline
+    ):
         """Test Caikit bge-large-en embedding model inference using internal route before upgrade"""
         verify_inference_response(
             inference_service=caikit_raw_inference_service_scope_session,
@@ -49,7 +53,9 @@ class TestPreUpgradeModelServer:
 
     @pytest.mark.pre_upgrade
     @pytest.mark.modelmesh
-    def test_model_mesh_openvino_pre_upgrade_inference(self, openvino_model_mesh_inference_service_scope_session):
+    def test_model_mesh_openvino_pre_upgrade_inference(
+        self, openvino_model_mesh_inference_service_scope_session, openvino_model_mesh_upgrade_baseline
+    ):
         """Test OpenVINO ModelMesh inference with internal route before upgrade"""
         verify_inference_response(
             inference_service=openvino_model_mesh_inference_service_scope_session,
@@ -91,17 +97,25 @@ class TestPostUpgradeModelServer:
     @pytest.mark.serverless
     @pytest.mark.dependency(depends=[TEST_SERVERLESS_ONNX_POST_UPGRADE_INFERENCE_SERVICE_EXISTS])
     def test_serverless_onnx_post_upgrade_inference_service_not_modified(
-        self, ovms_serverless_inference_service_scope_session
+        self, ovms_serverless_inference_service_scope_session, ovms_serverless_upgrade_baseline
     ):
         """Test that the serverless inference service is not modified in upgrade"""
-        verify_inference_generation(isvc=ovms_serverless_inference_service_scope_session, expected_generation=1)
+        verify_inference_generation(
+            isvc=ovms_serverless_inference_service_scope_session,
+            expected_generation=ovms_serverless_upgrade_baseline["isvc_observed_generation"],
+        )
 
     @pytest.mark.post_upgrade
     @pytest.mark.serverless
     @pytest.mark.dependency(depends=[TEST_SERVERLESS_ONNX_POST_UPGRADE_INFERENCE_SERVICE_EXISTS])
-    def test_serverless_onnx_post_upgrade_runtime_not_modified(self, ovms_serverless_inference_service_scope_session):
+    def test_serverless_onnx_post_upgrade_runtime_not_modified(
+        self, ovms_serverless_inference_service_scope_session, ovms_serverless_upgrade_baseline
+    ):
         """Test that the serverless runtime is not modified in upgrade"""
-        verify_serving_runtime_generation(isvc=ovms_serverless_inference_service_scope_session, expected_generation=1)
+        verify_serving_runtime_generation(
+            isvc=ovms_serverless_inference_service_scope_session,
+            expected_generation=ovms_serverless_upgrade_baseline["runtime_generation"],
+        )
 
     @pytest.mark.post_upgrade
     @pytest.mark.serverless
@@ -126,16 +140,26 @@ class TestPostUpgradeModelServer:
     @pytest.mark.post_upgrade
     @pytest.mark.rawdeployment
     @pytest.mark.dependency(depends=[TEST_RAW_CAIKIT_BGE_POST_UPGRADE_INFERENCE_EXISTS])
-    def test_raw_caikit_bge_post_upgrade_inference_not_modified(self, caikit_raw_inference_service_scope_session):
+    def test_raw_caikit_bge_post_upgrade_inference_not_modified(
+        self, caikit_raw_inference_service_scope_session, caikit_raw_upgrade_baseline
+    ):
         """Test that the raw deployment inference service is not modified in upgrade"""
-        verify_inference_generation(isvc=caikit_raw_inference_service_scope_session, expected_generation=1)
+        verify_inference_generation(
+            isvc=caikit_raw_inference_service_scope_session,
+            expected_generation=caikit_raw_upgrade_baseline["isvc_observed_generation"],
+        )
 
     @pytest.mark.post_upgrade
     @pytest.mark.rawdeployment
     @pytest.mark.dependency(depends=[TEST_RAW_CAIKIT_BGE_POST_UPGRADE_INFERENCE_EXISTS])
-    def test_raw_caikit_bge_post_upgrade_runtime_not_modified(self, caikit_raw_inference_service_scope_session):
+    def test_raw_caikit_bge_post_upgrade_runtime_not_modified(
+        self, caikit_raw_inference_service_scope_session, caikit_raw_upgrade_baseline
+    ):
         """Test that the raw deployment runtime is not modified in upgrade"""
-        verify_serving_runtime_generation(isvc=caikit_raw_inference_service_scope_session, expected_generation=1)
+        verify_serving_runtime_generation(
+            isvc=caikit_raw_inference_service_scope_session,
+            expected_generation=caikit_raw_upgrade_baseline["runtime_generation"],
+        )
 
     @pytest.mark.post_upgrade
     @pytest.mark.rawdeployment
@@ -164,24 +188,24 @@ class TestPostUpgradeModelServer:
     @pytest.mark.modelmesh
     @pytest.mark.dependency(depends=[TEST_MODEL_MESH_OPENVINO_POST_UPGRADE_INFERENCE_EXISTS])
     def test_model_mesh_openvino_post_upgrade_inference_not_modified(
-        self, openvino_model_mesh_inference_service_scope_session
+        self, openvino_model_mesh_inference_service_scope_session, openvino_model_mesh_upgrade_baseline
     ):
         """Test that the model mesh deployment inference service is not modified in upgrade"""
         verify_inference_generation(
             isvc=openvino_model_mesh_inference_service_scope_session,
-            expected_generation=1,
+            expected_generation=openvino_model_mesh_upgrade_baseline["isvc_observed_generation"],
         )
 
     @pytest.mark.post_upgrade
     @pytest.mark.modelmesh
     @pytest.mark.dependency(depends=[TEST_MODEL_MESH_OPENVINO_POST_UPGRADE_INFERENCE_EXISTS])
     def test_model_mesh_openvino_post_upgrade_runtime_not_modified(
-        self, openvino_model_mesh_inference_service_scope_session
+        self, openvino_model_mesh_inference_service_scope_session, openvino_model_mesh_upgrade_baseline
     ):
         """Test that the model mesh deployment runtime is not modified in upgrade"""
         verify_serving_runtime_generation(
             isvc=openvino_model_mesh_inference_service_scope_session,
-            expected_generation=1,
+            expected_generation=openvino_model_mesh_upgrade_baseline["runtime_generation"],
         )
 
     @pytest.mark.post_upgrade

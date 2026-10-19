@@ -2,6 +2,7 @@ import base64
 import copy
 import os
 import tempfile
+from pathlib import Path
 from typing import Any, Generator
 
 import pytest
@@ -180,21 +181,26 @@ def deploy_secure_mysql_and_mr(
 
 
 @pytest.fixture()
-def local_ca_bundle(request: pytest.FixtureRequest, admin_client: DynamicClient) -> Generator[str, Any, Any]:
+def local_ca_bundle(
+    request: pytest.FixtureRequest, admin_client: DynamicClient, tmp_path: Path
+) -> Generator[str, Any, Any]:
     """
     Creates a local CA bundle file by fetching the CA bundle from a ConfigMap and appending the router CA from a Secret.
     Args:
         request: The pytest request object
-        admin_client: The admin client to get the CA bundle from a ConfigMap and append the router CA from a Secret.
+        admin_client: The admin client to get the CA bundle from a ConfigMap and a Secret.
+        tmp_path: pytest temporary directory used to write the CA bundle file, the current working directory is
+            not writable when running from the tests container.
     Returns:
         Generator[str, Any, Any]: A generator that yields the CA bundle path.
     """
-    ca_bundle_path = getattr(request, "param", {}).get("cert_name", "ca-bundle.crt")
+    cert_name = getattr(request, "param", {}).get("cert_name", "ca-bundle.crt")
+    ca_bundle_path = str(tmp_path / cert_name)
     create_ca_bundle_with_router_cert(
         client=admin_client,
         namespace=py_config["model_registry_namespace"],
         ca_bundle_path=ca_bundle_path,
-        cert_name=ca_bundle_path,
+        cert_name=cert_name,
     )
     yield ca_bundle_path
 

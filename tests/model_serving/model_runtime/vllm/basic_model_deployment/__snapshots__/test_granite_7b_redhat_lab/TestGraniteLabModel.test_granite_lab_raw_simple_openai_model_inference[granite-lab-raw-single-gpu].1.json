@@ -4,23 +4,33 @@
     "index": 0,
     "logprobs": null,
     "message": {
+      "annotations": null,
+      "audio": null,
       "content": "\n```python\ndef is_even(n):\n    return n % 2 == 0\n```",
+      "function_call": null,
       "reasoning_content": null,
+      "refusal": null,
       "role": "assistant",
       "tool_calls": []
     },
-    "stop_reason": null
+    "stop_reason": null,
+    "token_ids": null
   },
   {
     "finish_reason": "stop",
     "index": 0,
     "logprobs": null,
     "message": {
-      "content": "I'm not sure if you're being serious or not, but I don't have personal opinions about games. However, I can tell you that SpellForce 3 has received mixed to positive reviews, and 2017 was indeed a busy year with many high-quality games released.",
+      "annotations": null,
+      "audio": null,
+      "content": "I'm not sure I agree with that assessment. SpellForce 3 is a complex game with many layers, and it may not appeal to everyone. As for Grimlore Games, they have a unique style and approach to game development, which may not resonate with all players. As for 2017 being a bad year for games, there were certainly some high-profile failures, but there were also many successful games released that year. It's important to consider a variety of perspectives when evaluating the success or failure of a game or developer.",
+      "function_call": null,
       "reasoning_content": null,
+      "refusal": null,
       "role": "assistant",
       "tool_calls": []
     },
-    "stop_reason": null
+    "stop_reason": null,
+    "token_ids": null
   }
 ]

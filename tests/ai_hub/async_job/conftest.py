@@ -12,6 +12,7 @@ from tests.ai_hub.async_job.constants import (
     ASYNC_UPLOAD_JOB_NAME,
     MODEL_SYNC_CONFIG,
     VOLUME_MOUNTS,
+    SeaweedFs,
 )
 
 import shortuuid
@@ -31,36 +32,150 @@ from model_registry.types import RegisteredModel
 from model_registry import ModelRegistry as ModelRegistryClient
 
 from utilities.infra import create_ns
-from utilities.constants import OCIRegistry, MinIo, Protocols, Labels, ApiGroups
+from utilities.constants import OCIRegistry, Protocols, Labels, ApiGroups
 from utilities.general import b64_encoded_string
-from tests.ai_hub.async_job.utils import upload_test_model_to_minio_from_image
+from tests.ai_hub.async_job.utils import upload_test_model_to_s3_from_image
+from tests.ai_hub.image_constants import AiHubImages
 from tests.ai_hub.utils import get_mr_service_by_label, get_endpoint_from_mr_service
 from tests.ai_hub.async_job.constants import REPO_NAME
 from utilities.general import get_s3_secret_dict
 
 
 @pytest.fixture(scope="class")
+def seaweedfs_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
+    """Create an isolated namespace for SeaweedFS S3 storage."""
+    with create_ns(
+        name=f"{SeaweedFs.Metadata.NAME}-{shortuuid.uuid().lower()}", admin_client=admin_client
+    ) as namespace:
+        yield namespace
+
+
+@pytest.fixture(scope="class")
+def seaweedfs_filer_config(
+    admin_client: DynamicClient, seaweedfs_namespace: Namespace
+) -> Generator[ConfigMap, Any, Any]:
+    """Configure SeaweedFS filer metadata storage on the writable temporary filesystem."""
+    with ConfigMap(
+        client=admin_client,
+        name="seaweedfs-filer-config",
+        namespace=seaweedfs_namespace.name,
+        data={"filer.toml": '[leveldb2]\nenabled = true\ndir = "/tmp/filerldb2"\n'},
+    ) as config_map:
+        yield config_map
+
+
+@pytest.fixture(scope="class")
+def seaweedfs_pod(
+    admin_client: DynamicClient,
+    seaweedfs_namespace: Namespace,
+    seaweedfs_filer_config: ConfigMap,
+) -> Generator[Pod, Any, Any]:
+    """Run an authenticated SeaweedFS instance exposing its S3 API."""
+    initialization_command = (
+        "for attempt in $(seq 1 60); do "
+        "wget -q --spider http://127.0.0.1:8333/status && break; "
+        '[ "$attempt" -eq 60 ] && exit 1; sleep 2; '
+        "done; "
+        'echo "s3.configure -user admin -access_key $accesskey -secret_key $secretkey -actions Admin -apply" '
+        "| /usr/bin/weed shell && "
+        f"echo 's3.bucket.create -name {SeaweedFs.Buckets.MODELMESH_EXAMPLE_MODELS}' | /usr/bin/weed shell"
+    )
+    with Pod(
+        client=admin_client,
+        name=SeaweedFs.Metadata.NAME,
+        namespace=seaweedfs_namespace.name,
+        containers=[
+            {
+                "name": SeaweedFs.Metadata.NAME,
+                "image": AiHubImages.SEAWEEDFS,
+                "args": list(SeaweedFs.PodConfig.ARGS),
+                "env": [
+                    {"name": "accesskey", "value": SeaweedFs.Credentials.ACCESS_KEY_VALUE},
+                    {"name": "secretkey", "value": SeaweedFs.Credentials.SECRET_KEY_VALUE},
+                ],
+                "ports": [
+                    {"containerPort": SeaweedFs.Metadata.DEFAULT_PORT, "name": "s3"},
+                    {"containerPort": SeaweedFs.Metadata.FILER_PORT, "name": "filer"},
+                    {"containerPort": SeaweedFs.Metadata.FILER_GRPC_PORT, "name": "filer-grpc"},
+                ],
+                "volumeMounts": [
+                    {
+                        "name": "filer-config",
+                        "mountPath": "/etc/seaweedfs/filer.toml",
+                        "subPath": "filer.toml",
+                        "readOnly": True,
+                    }
+                ],
+                "lifecycle": {"postStart": {"exec": {"command": ["/bin/sh", "-c", initialization_command]}}},
+                "securityContext": {
+                    "allowPrivilegeEscalation": False,
+                    "capabilities": {"drop": ["ALL"]},
+                    "runAsNonRoot": True,
+                    "seccompProfile": {"type": "RuntimeDefault"},
+                },
+            }
+        ],
+        volumes=[{"name": "filer-config", "configMap": {"name": seaweedfs_filer_config.name}}],
+        label={"app": SeaweedFs.Metadata.NAME},
+    ) as pod:
+        pod.wait_for_condition(condition="Ready", status="True", timeout=180)
+        yield pod
+
+
+@pytest.fixture(scope="class")
+def seaweedfs_service(
+    admin_client: DynamicClient, seaweedfs_namespace: Namespace, seaweedfs_pod: Pod
+) -> Generator[Service, Any, Any]:
+    """Expose SeaweedFS S3 and filer APIs inside the cluster."""
+    with Service(
+        client=admin_client,
+        name=SeaweedFs.Metadata.NAME,
+        namespace=seaweedfs_namespace.name,
+        ports=[
+            {
+                "name": "s3",
+                "port": SeaweedFs.Metadata.DEFAULT_PORT,
+                "protocol": Protocols.TCP,
+                "targetPort": SeaweedFs.Metadata.DEFAULT_PORT,
+            },
+            {
+                "name": "filer",
+                "port": SeaweedFs.Metadata.FILER_PORT,
+                "protocol": Protocols.TCP,
+                "targetPort": SeaweedFs.Metadata.FILER_PORT,
+            },
+            {
+                "name": "filer-grpc",
+                "port": SeaweedFs.Metadata.FILER_GRPC_PORT,
+                "protocol": Protocols.TCP,
+                "targetPort": SeaweedFs.Metadata.FILER_GRPC_PORT,
+            },
+        ],
+        selector={"app": SeaweedFs.Metadata.NAME},
+    ) as service:
+        yield service
+
+
+@pytest.fixture(scope="class")
 def s3_secret_for_async_job(
     admin_client: DynamicClient,
     service_account: ServiceAccount,
-    minio_service: Service,
+    seaweedfs_service: Service,
 ) -> Generator[Secret, Any, Any]:
     """Create S3 data connection for async upload job"""
-    # Construct MinIO endpoint from service
-    minio_endpoint = (
-        f"http://{minio_service.name}.{minio_service.namespace}.svc.cluster.local:{MinIo.Metadata.DEFAULT_PORT}"
-    )
+    s3_host = f"{seaweedfs_service.name}.{seaweedfs_service.namespace}.svc.cluster.local"
+    s3_endpoint = f"http://{s3_host}:{SeaweedFs.Metadata.DEFAULT_PORT}"
 
     with Secret(
         client=admin_client,
         name=f"async-job-s3-connection-{shortuuid.uuid().lower()}",
         namespace=service_account.namespace,
         data_dict=get_s3_secret_dict(
-            aws_access_key=MinIo.Credentials.ACCESS_KEY_VALUE,
-            aws_secret_access_key=MinIo.Credentials.SECRET_KEY_VALUE,
-            aws_s3_bucket=MinIo.Buckets.MODELMESH_EXAMPLE_MODELS,
-            aws_s3_endpoint=minio_endpoint,
-            aws_default_region="us-east-1",  # Default region for MinIO
+            aws_access_key=SeaweedFs.Credentials.ACCESS_KEY_VALUE,
+            aws_secret_access_key=SeaweedFs.Credentials.SECRET_KEY_VALUE,
+            aws_s3_bucket=SeaweedFs.Buckets.MODELMESH_EXAMPLE_MODELS,
+            aws_s3_endpoint=s3_endpoint,
+            aws_default_region="us-east-1",
         ),
         label={
             Labels.OpenDataHub.DASHBOARD: "true",
@@ -273,19 +388,20 @@ def oci_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, Any]
 
 
 @pytest.fixture(scope="class")
-def oci_registry_pod_with_minio(
+def oci_registry_pod_with_s3(
     request: FixtureRequest,
     admin_client: DynamicClient,
     oci_namespace: Namespace,
-    minio_service: Service,
+    seaweedfs_service: Service,
 ) -> Generator[Pod, Any, Any]:
+    """Run an OCI registry backed by SeaweedFS S3 storage."""
     pod_labels = {Labels.Openshift.APP: OCIRegistry.Metadata.NAME}
 
     if labels := request.param.get("labels"):
         pod_labels.update(labels)
 
-    minio_fqdn = f"{minio_service.name}.{minio_service.namespace}.svc.cluster.local"
-    minio_endpoint = f"{minio_fqdn}:{MinIo.Metadata.DEFAULT_PORT}"
+    s3_fqdn = f"{seaweedfs_service.name}.{seaweedfs_service.namespace}.svc.cluster.local"
+    s3_endpoint = f"{s3_fqdn}:{SeaweedFs.Metadata.DEFAULT_PORT}"
 
     with Pod(
         client=admin_client,
@@ -300,11 +416,11 @@ def oci_registry_pod_with_minio(
                         "name": "ZOT_STORAGE_STORAGEDRIVER_ROOTDIRECTORY",
                         "value": OCIRegistry.Storage.STORAGE_DRIVER_ROOT_DIRECTORY,
                     },
-                    {"name": "ZOT_STORAGE_STORAGEDRIVER_BUCKET", "value": MinIo.Buckets.MODELMESH_EXAMPLE_MODELS},
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_BUCKET", "value": SeaweedFs.Buckets.MODELMESH_EXAMPLE_MODELS},
                     {"name": "ZOT_STORAGE_STORAGEDRIVER_REGION", "value": OCIRegistry.Storage.STORAGE_DRIVER_REGION},
-                    {"name": "ZOT_STORAGE_STORAGEDRIVER_REGIONENDPOINT", "value": f"http://{minio_endpoint}"},
-                    {"name": "ZOT_STORAGE_STORAGEDRIVER_ACCESSKEY", "value": MinIo.Credentials.ACCESS_KEY_VALUE},
-                    {"name": "ZOT_STORAGE_STORAGEDRIVER_SECRETKEY", "value": MinIo.Credentials.SECRET_KEY_VALUE},
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_REGIONENDPOINT", "value": f"http://{s3_endpoint}"},
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_ACCESSKEY", "value": SeaweedFs.Credentials.ACCESS_KEY_VALUE},
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_SECRETKEY", "value": SeaweedFs.Credentials.SECRET_KEY_VALUE},
                     {
                         "name": "ZOT_STORAGE_STORAGEDRIVER_SECURE",
                         "value": OCIRegistry.Storage.STORAGE_STORAGEDRIVER_SECURE,
@@ -386,16 +502,16 @@ def oci_registry_host(oci_registry_route: Route) -> str:
 
 
 @pytest.fixture(scope="class")
-def create_test_data_in_minio_from_image(
-    minio_service: Service,
+def test_model_in_s3_from_image(
+    seaweedfs_service: Service,
     admin_client: DynamicClient,
     model_registry_namespace: str,
 ) -> None:
-    """Extract and upload test model from KSERVE_MINIO_IMAGE to MinIO"""
-    upload_test_model_to_minio_from_image(
+    """Populate SeaweedFS with the test model used by the async upload job."""
+    upload_test_model_to_s3_from_image(
         admin_client=admin_client,
         namespace=model_registry_namespace,
-        minio_service=minio_service,
+        s3_service=seaweedfs_service,
         object_key="my-model/model.onnx",
     )
 

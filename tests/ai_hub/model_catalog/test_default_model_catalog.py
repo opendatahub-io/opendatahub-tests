@@ -38,7 +38,7 @@ class TestModelCatalogGeneral:
         # Check that the default configmaps is created when model registry is
         # enabled on data science cluster.
         expected_num_catalog = 1
-        if pytestconfig.option.pre_upgrade:
+        if pytestconfig.option.pre_upgrade or pytestconfig.option.post_upgrade:
             expected_num_catalog = 2
         assert catalog_config_map.exists, f"{catalog_config_map.name} does not exist"
         catalogs = yaml.safe_load(catalog_config_map.instance.data["sources.yaml"])["catalogs"]
