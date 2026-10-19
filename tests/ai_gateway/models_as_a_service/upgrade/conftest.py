@@ -72,6 +72,7 @@ from utilities.plugins.constant import OpenAIEnpoints
 from utilities.resources.external_model import ExternalModel
 from utilities.resources.legacy_external_model import LegacyExternalModel
 from utilities.resources.llm_inference_service import LLMInferenceService
+from utilities.upgrade_utils import purge_upgrade_leftover, upgrade_resource_factory
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -88,6 +89,11 @@ def maas_upgrade_namespace(
     teardown_resources: bool,
 ) -> Generator[Namespace, Any, Any]:
     """Dedicated namespace for MaaS upgrade test resources."""
+    purge_upgrade_leftover(
+        pytestconfig=pytestconfig,
+        resource_factory=upgrade_resource_factory(Namespace, client=admin_client, name=MAAS_UPGRADE_NAMESPACE),
+        skip_context="MaaS upgrade",
+    )
     namespace = Namespace(client=admin_client, name=MAAS_UPGRADE_NAMESPACE)
     if pytestconfig.option.post_upgrade:
         yield namespace
@@ -152,6 +158,11 @@ def maas_upgrade_model_ref(
         "name": MAAS_UPGRADE_MODEL_NAME,
         "namespace": maas_upgrade_namespace.name,
     }
+    purge_upgrade_leftover(
+        pytestconfig=pytestconfig,
+        resource_factory=upgrade_resource_factory(MaaSModelRef, **model_ref_kwargs),
+        skip_context="MaaS upgrade",
+    )
     if pytestconfig.option.post_upgrade:
         model_ref = MaaSModelRef(**model_ref_kwargs, ensure_exists=True)
         yield model_ref
@@ -185,6 +196,11 @@ def maas_upgrade_auth_policy(
         "name": MAAS_UPGRADE_AUTH_POLICY_NAME,
         "namespace": maas_subscription_namespace.name,
     }
+    purge_upgrade_leftover(
+        pytestconfig=pytestconfig,
+        resource_factory=upgrade_resource_factory(MaaSAuthPolicy, **auth_policy_kwargs),
+        skip_context="MaaS upgrade",
+    )
     if pytestconfig.option.post_upgrade:
         auth_policy = MaaSAuthPolicy(**auth_policy_kwargs, ensure_exists=True)
         yield auth_policy
@@ -225,6 +241,11 @@ def maas_upgrade_subscription(
         "name": MAAS_UPGRADE_SUBSCRIPTION_NAME,
         "namespace": maas_subscription_namespace.name,
     }
+    purge_upgrade_leftover(
+        pytestconfig=pytestconfig,
+        resource_factory=upgrade_resource_factory(MaaSSubscription, **subscription_kwargs),
+        skip_context="MaaS upgrade",
+    )
     if pytestconfig.option.post_upgrade:
         subscription = MaaSSubscription(**subscription_kwargs, ensure_exists=True)
         yield subscription
@@ -326,6 +347,11 @@ def legacy_migration_namespace(
 
     Post-upgrade teardown deletes the namespace only after child fixtures remove their resources.
     """
+    purge_upgrade_leftover(
+        pytestconfig=pytestconfig,
+        resource_factory=upgrade_resource_factory(Namespace, client=admin_client, name=LEGACY_MIGRATION_NAMESPACE),
+        skip_context="MaaS upgrade",
+    )
     namespace = Namespace(client=admin_client, name=LEGACY_MIGRATION_NAMESPACE)
     if pytestconfig.option.post_upgrade:
         yield namespace
@@ -358,6 +384,11 @@ def legacy_migration_credential_secret(
         "name": LEGACY_MIGRATION_SECRET_NAME,
         "namespace": legacy_migration_namespace.name,
     }
+    purge_upgrade_leftover(
+        pytestconfig=pytestconfig,
+        resource_factory=upgrade_resource_factory(Secret, **secret_kwargs),
+        skip_context="MaaS upgrade",
+    )
     if pytestconfig.option.post_upgrade:
         secret = Secret(**secret_kwargs, ensure_exists=True)
         yield secret
@@ -388,6 +419,11 @@ def legacy_migration_external_model(
         "name": LEGACY_MIGRATION_MODEL_NAME,
         "namespace": legacy_migration_namespace.name,
     }
+    purge_upgrade_leftover(
+        pytestconfig=pytestconfig,
+        resource_factory=upgrade_resource_factory(LegacyExternalModel, **external_model_kwargs),
+        skip_context="MaaS upgrade",
+    )
     if pytestconfig.option.post_upgrade:
         assert cluster_has_legacy_external_model_crd(admin_client=admin_client), (
             "Legacy maas.opendatahub.io ExternalModel CRD is not installed on this cluster"
@@ -428,6 +464,11 @@ def legacy_migration_model_ref(
         "name": LEGACY_MIGRATION_MODEL_NAME,
         "namespace": legacy_migration_namespace.name,
     }
+    purge_upgrade_leftover(
+        pytestconfig=pytestconfig,
+        resource_factory=upgrade_resource_factory(MaaSModelRef, **model_ref_kwargs),
+        skip_context="MaaS upgrade",
+    )
     if pytestconfig.option.post_upgrade:
         model_ref = MaaSModelRef(**model_ref_kwargs, ensure_exists=True)
         yield model_ref
@@ -464,6 +505,11 @@ def legacy_migration_auth_policy(
         "name": LEGACY_MIGRATION_AUTH_POLICY_NAME,
         "namespace": maas_subscription_namespace.name,
     }
+    purge_upgrade_leftover(
+        pytestconfig=pytestconfig,
+        resource_factory=upgrade_resource_factory(MaaSAuthPolicy, **auth_policy_kwargs),
+        skip_context="MaaS upgrade",
+    )
     if pytestconfig.option.post_upgrade:
         auth_policy = MaaSAuthPolicy(**auth_policy_kwargs, ensure_exists=True)
         yield auth_policy
@@ -500,6 +546,11 @@ def legacy_migration_subscription(
         "name": LEGACY_MIGRATION_SUBSCRIPTION_NAME,
         "namespace": maas_subscription_namespace.name,
     }
+    purge_upgrade_leftover(
+        pytestconfig=pytestconfig,
+        resource_factory=upgrade_resource_factory(MaaSSubscription, **subscription_kwargs),
+        skip_context="MaaS upgrade",
+    )
     if pytestconfig.option.post_upgrade:
         subscription = MaaSSubscription(**subscription_kwargs, ensure_exists=True)
         yield subscription
@@ -608,6 +659,11 @@ def maas_inference_with_llmd_namespace(
 ) -> Generator[Namespace, Any, Any]:
     """Create or reference the namespace that owns the LLMInferenceService."""
     namespace_name = "upgrade-test-maas-llmisvc-inference"
+    purge_upgrade_leftover(
+        pytestconfig=pytestconfig,
+        resource_factory=upgrade_resource_factory(Namespace, client=admin_client, name=namespace_name),
+        skip_context="MaaS upgrade",
+    )
     ns = Namespace(client=admin_client, name=namespace_name)
 
     if pytestconfig.option.post_upgrade:
@@ -721,6 +777,11 @@ def maas_inference_with_llmd_model_ref(
         "name": "maas-llmisvc-model-ref",
         "namespace": maas_inference_with_llmd_namespace.name,
     }
+    purge_upgrade_leftover(
+        pytestconfig=pytestconfig,
+        resource_factory=upgrade_resource_factory(MaaSModelRef, **model_ref_kwargs),
+        skip_context="MaaS upgrade",
+    )
     if pytestconfig.option.post_upgrade:
         model_ref = MaaSModelRef(**model_ref_kwargs, ensure_exists=True)
         yield model_ref
@@ -754,6 +815,11 @@ def maas_inference_with_llmd_auth_policy(
         "name": "maas-inference-with-llmd-auth-policy",
         "namespace": maas_subscription_namespace.name,
     }
+    purge_upgrade_leftover(
+        pytestconfig=pytestconfig,
+        resource_factory=upgrade_resource_factory(MaaSAuthPolicy, **auth_policy_kwargs),
+        skip_context="MaaS upgrade",
+    )
     if pytestconfig.option.post_upgrade:
         auth_policy = MaaSAuthPolicy(**auth_policy_kwargs, ensure_exists=True)
         yield auth_policy
@@ -792,6 +858,11 @@ def maas_inference_with_llmd_subscription(
         "name": subscription_name,
         "namespace": maas_subscription_namespace.name,
     }
+    purge_upgrade_leftover(
+        pytestconfig=pytestconfig,
+        resource_factory=upgrade_resource_factory(MaaSSubscription, **subscription_kwargs),
+        skip_context="MaaS upgrade",
+    )
     if pytestconfig.option.post_upgrade:
         subscription = MaaSSubscription(**subscription_kwargs, ensure_exists=True)
         yield subscription
@@ -829,6 +900,20 @@ def maas_inference_with_llmd_api_key(
     _ = maas_inference_with_llmd_auth_policy
     secret_name = "upgrade-maas-api-key"  # pragma: allowlist secret
     secret_key = "api-key"  # pragma: allowlist secret
+
+    # A stale Secret would hold a plaintext key bound to the previous run's
+    # subscription and near or past its 30h expiry: purge it so pre-upgrade
+    # always seeds a fresh key.
+    purge_upgrade_leftover(
+        pytestconfig=pytestconfig,
+        resource_factory=upgrade_resource_factory(
+            Secret,
+            client=admin_client,
+            name=secret_name,
+            namespace=maas_inference_with_llmd_namespace.name,
+        ),
+        skip_context="MaaS upgrade",
+    )
 
     secret = Secret(
         client=admin_client,
