@@ -324,6 +324,24 @@ def create_spark_connect_spec(
     }
 
 
+def _is_pod_ready(pod: Pod) -> bool:
+    """Return True when the pod reports a Ready condition of True.
+
+    Unlike ``status.phase == "Running"`` (true as soon as containers start), this reflects the
+    readiness probe passing. The operator gives the Spark Connect server a TCP readiness probe on the
+    gRPC port, so a Ready server is accepting connections. Terminated (Failed/Succeeded) pods report
+    Ready=False, so this also excludes executors the operator has replaced.
+
+    Args:
+        pod: The pod to inspect.
+
+    Returns:
+        bool: Whether the pod's Ready condition is True.
+    """
+    conditions = (pod.instance.status or {}).get("conditions") or []
+    return any(condition.get("type") == "Ready" and condition.get("status") == "True" for condition in conditions)
+
+
 def wait_for_spark_connect_ready(
     client: DynamicClient,
     spark_connect: SparkConnect,
@@ -356,8 +374,10 @@ def wait_for_spark_connect_ready(
         if not (server_pod_name and service_name):
             continue
 
+        # Wait for the server's Ready condition (gated by the operator's gRPC readiness probe), not just
+        # phase=Running, so the gRPC listener is actually accepting connections before a query is run.
         server_pod = Pod(client=client, name=server_pod_name, namespace=spark_connect.namespace)
-        if not (server_pod.exists and server_pod.instance.status.phase == "Running"):
+        if not (server_pod.exists and _is_pod_ready(server_pod)):
             continue
 
         executors = list(
@@ -367,10 +387,10 @@ def wait_for_spark_connect_ready(
                 label_selector=",".join(f"{key}={value}" for key, value in executor_selector.items()),
             )
         )
-        # Count only running executors; the selector also matches Failed/Succeeded pods the operator
-        # has replaced, which would otherwise inflate the count and never match executor_instances.
-        running_executors = [executor for executor in executors if executor.instance.status.phase == "Running"]
-        if len(running_executors) != executor_instances:
+        # Count only ready executors; the selector also matches Failed/Succeeded pods the operator has
+        # replaced, which would otherwise inflate the count and never match executor_instances.
+        ready_executors = [executor for executor in executors if _is_pod_ready(executor)]
+        if len(ready_executors) != executor_instances:
             continue
 
         service = Service(client=client, name=service_name, namespace=spark_connect.namespace)
