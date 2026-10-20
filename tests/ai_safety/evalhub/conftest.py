@@ -934,6 +934,8 @@ def intents_kfp_garak_job_id(
                     },
                     "intents_s3_key": garak_intents_csv,
                     "intents_models": {"judge": {"url": garak_sim_isvc_url, "name": LLMdInferenceSimConfig.model_name}},
+                    "sdg_model": "",
+                    "sdg_api_base": "",
                     "garak_config": {
                         "plugins": {
                             "probe_spec": "spo.SPOIntent",
