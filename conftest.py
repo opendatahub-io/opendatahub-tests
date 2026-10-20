@@ -342,6 +342,8 @@ def pytest_collection_modifyitems(session: Session, config: Config, items: list[
             if oci_deselected:
                 items[:] = [item for item in items if "requires_oci_image_volumes" not in item.keywords]
                 config.hook.pytest_deselected(items=oci_deselected)
+                # OCI filtering can empty the selection: recompute before any further cluster call.
+                items_need_cluster = any(item.path.is_relative_to(tests_dir) for item in items)
         if items_need_cluster and _kyverno_replace_image_registry_policy_exists():
             mirroring_deselected = [item for item in items if "no_image_registry_mirroring" in item.keywords]
             if mirroring_deselected:

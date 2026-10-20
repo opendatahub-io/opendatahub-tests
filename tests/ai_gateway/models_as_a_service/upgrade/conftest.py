@@ -347,11 +347,6 @@ def legacy_migration_namespace(
 
     Post-upgrade teardown deletes the namespace only after child fixtures remove their resources.
     """
-    purge_upgrade_leftover(
-        pytestconfig=pytestconfig,
-        resource_factory=upgrade_resource_factory(Namespace, client=admin_client, name=LEGACY_MIGRATION_NAMESPACE),
-        skip_context="MaaS upgrade",
-    )
     namespace = Namespace(client=admin_client, name=LEGACY_MIGRATION_NAMESPACE)
     if pytestconfig.option.post_upgrade:
         yield namespace
@@ -360,6 +355,11 @@ def legacy_migration_namespace(
     else:
         assert cluster_has_legacy_external_model_crd(admin_client=admin_client), (
             "Legacy maas.opendatahub.io ExternalModel CRD is not installed on this cluster"
+        )
+        purge_upgrade_leftover(
+            pytestconfig=pytestconfig,
+            resource_factory=upgrade_resource_factory(Namespace, client=admin_client, name=LEGACY_MIGRATION_NAMESPACE),
+            skip_context="MaaS upgrade",
         )
         with create_ns(
             admin_client=admin_client,
