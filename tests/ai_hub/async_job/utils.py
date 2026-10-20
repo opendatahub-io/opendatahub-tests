@@ -5,9 +5,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.job import Job
 from ocp_resources.pod import Pod
 from ocp_resources.service import Service
-from utilities.constants import MinIo
-from tests.ai_hub.async_job.constants import SeaweedFs
-from tests.ai_hub.image_constants import AiHubImages
+from utilities.constants import MinIo, SeaweedFs
 from simple_logger.logger import get_logger
 from timeout_sampler import TimeoutExpiredError
 
@@ -101,7 +99,7 @@ def upload_test_model_to_s3_from_image(
         containers=[
             {
                 "name": "seaweedfs-uploader",
-                "image": AiHubImages.SEAWEEDFS,
+                "image": SeaweedFs.PodConfig.IMAGE,
                 "command": [
                     "/usr/bin/weed",
                     "filer.copy",

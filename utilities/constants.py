@@ -353,6 +353,36 @@ class MinIo:
         )
 
 
+class SeaweedFs:
+    """SeaweedFS S3-compatible storage settings, used as a vanilla MinIO replacement in tests."""
+
+    class Metadata:
+        NAME: str = "seaweedfs"
+        DEFAULT_PORT: int = 8333
+        FILER_PORT: int = 8888
+        FILER_GRPC_PORT: int = 18888
+
+    class Credentials:
+        ACCESS_KEY_VALUE: str = "THEACCESSKEY"
+        SECRET_KEY_VALUE: str = "THESECRETKEY"
+
+    class Buckets:
+        MODELMESH_EXAMPLE_MODELS: str = "modelmesh-example-models"
+
+    class PodConfig:
+        IMAGE: str = (
+            "ghcr.io/chrislusf/seaweedfs@sha256:6620371e8af8282056685c652d4637265698c9e2c2d59f9594e6ac333ad6c634"
+        )
+        ARGS: tuple[str, ...] = (
+            "server",
+            "-dir=/tmp",
+            "-s3",
+            "-iam",
+            "-filer",
+            "-master.volumePreallocate=false",
+        )
+
+
 MODEL_REGISTRY: str = "model-registry"
 MODELMESH_SERVING: str = "modelmesh-serving"
 ISTIO_CA_BUNDLE_FILENAME: str = "istio_knative.crt"

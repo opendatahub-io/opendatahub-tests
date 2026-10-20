@@ -14,8 +14,9 @@ from ocp_resources.service import Service
 from pytest import Config, FixtureRequest
 
 from tests.ai_safety.lm_eval.utils import get_lmevaljob_pod
-from utilities.constants import Labels, MinIo, Protocols, Timeout
+from utilities.constants import ApiGroups, Labels, Protocols, SeaweedFs, Timeout
 from utilities.exceptions import MissingParameter
+from utilities.general import get_s3_secret_dict
 
 VLLM_EMULATOR: str = "vllm-emulator"
 VLLM_EMULATOR_PORT: int = 8000
@@ -258,40 +259,48 @@ def vllm_emulator_route(
 
 
 @pytest.fixture(scope="function")
-def lmeval_minio_deployment(
-    admin_client: DynamicClient, minio_namespace: Namespace, pvc_minio_namespace: PersistentVolumeClaim
+def lmeval_seaweedfs_deployment(
+    admin_client: DynamicClient, seaweedfs_namespace: Namespace, pvc_seaweedfs_namespace: PersistentVolumeClaim
 ) -> Generator[Deployment, Any, Any]:
-    minio_app_label = {"app": MinIo.Metadata.NAME}
-    # TODO: Unify with minio_llm_deployment fixture once datasets and models are in new model image
+    seaweedfs_app_label = {"app": SeaweedFs.Metadata.NAME}
+    initialization_command = (
+        "for attempt in $(seq 1 60); do "
+        f"wget -q --spider http://127.0.0.1:{SeaweedFs.Metadata.DEFAULT_PORT}/status && break; "
+        '[ "$attempt" -eq 60 ] && exit 1; sleep 2; '
+        "done; "
+        'echo "s3.configure -user admin -access_key $accesskey -secret_key $secretkey -actions Admin -apply" '
+        "| /usr/bin/weed shell && "
+        "echo 's3.bucket.create -name models' | /usr/bin/weed shell"
+    )
     with Deployment(
         client=admin_client,
-        name=MinIo.Metadata.NAME,
-        namespace=minio_namespace.name,
+        name=SeaweedFs.Metadata.NAME,
+        namespace=seaweedfs_namespace.name,
         replicas=1,
-        selector={"matchLabels": minio_app_label},
+        selector={"matchLabels": seaweedfs_app_label},
         template={
-            "metadata": {"labels": minio_app_label},
+            "metadata": {"labels": seaweedfs_app_label},
             "spec": {
                 "volumes": [
-                    {"name": "minio-storage", "persistentVolumeClaim": {"claimName": pvc_minio_namespace.name}}
+                    {"name": "seaweedfs-storage", "persistentVolumeClaim": {"claimName": pvc_seaweedfs_namespace.name}}
                 ],
                 "containers": [
                     {
-                        "name": MinIo.Metadata.NAME,
-                        "image": "quay.io/minio/minio"
-                        "@sha256:46b3009bf7041eefbd90bd0d2b38c6ddc24d20a35d609551a1802c558c1c958f",
-                        "args": ["server", "/data", "--console-address", ":9001"],
+                        "name": SeaweedFs.Metadata.NAME,
+                        "image": SeaweedFs.PodConfig.IMAGE,
+                        "args": ["server", "-dir=/data", "-s3", "-iam", "-master.volumePreallocate=false"],
                         "env": [
-                            {"name": "MINIO_ROOT_USER", "value": MinIo.Credentials.ACCESS_KEY_VALUE},
-                            {"name": "MINIO_ROOT_PASSWORD", "value": MinIo.Credentials.SECRET_KEY_VALUE},
+                            {"name": "accesskey", "value": SeaweedFs.Credentials.ACCESS_KEY_VALUE},
+                            {"name": "secretkey", "value": SeaweedFs.Credentials.SECRET_KEY_VALUE},
                         ],
-                        "ports": [{"containerPort": MinIo.Metadata.DEFAULT_PORT}, {"containerPort": 9001}],
-                        "volumeMounts": [{"name": "minio-storage", "mountPath": "/data"}],
+                        "ports": [{"containerPort": SeaweedFs.Metadata.DEFAULT_PORT}],
+                        "volumeMounts": [{"name": "seaweedfs-storage", "mountPath": "/data"}],
+                        "lifecycle": {"postStart": {"exec": {"command": ["/bin/sh", "-c", initialization_command]}}},
                     }
                 ],
             },
         },
-        label=minio_app_label,
+        label=seaweedfs_app_label,
         wait_for_resource=True,
     ) as deployment:
         deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_20MIN)
@@ -299,13 +308,16 @@ def lmeval_minio_deployment(
 
 
 @pytest.fixture(scope="function")
-def lmeval_minio_copy_pod(
-    admin_client: DynamicClient, minio_namespace: Namespace, lmeval_minio_deployment: Deployment, minio_service: Service
+def lmeval_seaweedfs_copy_pod(
+    admin_client: DynamicClient,
+    seaweedfs_namespace: Namespace,
+    lmeval_seaweedfs_deployment: Deployment,
+    seaweedfs_service: Service,
 ) -> Generator[Pod, Any, Any]:
     with Pod(
         client=admin_client,
-        name="copy-to-minio",
-        namespace=minio_namespace.name,
+        name="copy-to-seaweedfs",
+        namespace=seaweedfs_namespace.name,
         restart_policy="Never",
         volumes=[{"name": "shared-data", "emptyDir": {}}],
         init_containers=[
@@ -326,16 +338,16 @@ def lmeval_minio_copy_pod(
         ],
         containers=[
             {
-                "name": "minio-uploader",
-                "image": "quay.io/minio/mc@sha256:470f5546b596e16c7816b9c3fa7a78ce4076bb73c2c73f7faeec0c8043923123",
-                "command": ["/bin/sh", "-c"],
-                "args": [
-                    # Set a writable config dir to avoid permission errors when running as non-root
-                    f"export MC_CONFIG_DIR=/shared/.mc && "
-                    f"mc alias set myminio http://{minio_service.name}:{MinIo.Metadata.DEFAULT_PORT} "
-                    f"{MinIo.Credentials.ACCESS_KEY_VALUE} {MinIo.Credentials.SECRET_KEY_VALUE} && "
-                    "mc mb --ignore-existing myminio/models && "
-                    "mc cp --recursive /shared/data/ myminio/models"
+                "name": "seaweedfs-uploader",
+                "image": SeaweedFs.PodConfig.IMAGE,
+                "command": [
+                    "/usr/bin/weed",
+                    "filer.copy",
+                    "/shared/data/",
+                    (
+                        f"http://{seaweedfs_service.name}.{seaweedfs_service.namespace}.svc.cluster.local:"
+                        f"{SeaweedFs.Metadata.FILER_PORT}/buckets/models/"
+                    ),
                 ],
                 "volumeMounts": [{"name": "shared-data", "mountPath": "/shared"}],
                 "securityContext": {
@@ -353,13 +365,46 @@ def lmeval_minio_copy_pod(
 
 
 @pytest.fixture(scope="function")
+def lmeval_seaweedfs_data_connection(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    seaweedfs_service: Service,
+) -> Generator[Secret, Any, Any]:
+    """Create a data connection Secret pointing at the SeaweedFS-backed 'models' bucket."""
+    data_dict = get_s3_secret_dict(
+        aws_access_key=SeaweedFs.Credentials.ACCESS_KEY_VALUE,
+        aws_secret_access_key=SeaweedFs.Credentials.SECRET_KEY_VALUE,
+        aws_s3_bucket="models",
+        aws_s3_endpoint=(
+            f"{Protocols.HTTP}://{seaweedfs_service.instance.spec.clusterIP}:{SeaweedFs.Metadata.DEFAULT_PORT}"
+        ),
+        aws_s3_region="us-south",
+    )
+    with Secret(
+        client=admin_client,
+        name="aws-connection-seaweedfs-data-connection",
+        namespace=model_namespace.name,
+        data_dict=data_dict,
+        label={
+            Labels.OpenDataHub.DASHBOARD: "true",
+            Labels.OpenDataHubIo.MANAGED: "true",
+        },
+        annotations={
+            f"{ApiGroups.OPENDATAHUB_IO}/connection-type": "s3",
+            "openshift.io/display-name": "SeaweedFS Data Connection",
+        },
+    ) as seaweedfs_secret:
+        yield seaweedfs_secret
+
+
+@pytest.fixture(scope="function")
 def lmevaljob_s3_offline(
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    lmeval_minio_deployment: Deployment,
-    minio_service: Service,
-    lmeval_minio_copy_pod: Pod,
-    minio_data_connection: Secret,
+    lmeval_seaweedfs_deployment: Deployment,
+    seaweedfs_service: Service,
+    lmeval_seaweedfs_copy_pod: Pod,
+    lmeval_seaweedfs_data_connection: Secret,
 ) -> Generator[LMEvalJob, Any, Any]:
     with LMEvalJob(
         client=admin_client,
@@ -373,11 +418,14 @@ def lmevaljob_s3_offline(
         offline={
             "storage": {
                 "s3": {
-                    "accessKeyId": {"name": minio_data_connection.name, "key": "AWS_ACCESS_KEY_ID"},
-                    "secretAccessKey": {"name": minio_data_connection.name, "key": "AWS_SECRET_ACCESS_KEY"},
-                    "bucket": {"name": minio_data_connection.name, "key": "AWS_S3_BUCKET"},
-                    "endpoint": {"name": minio_data_connection.name, "key": "AWS_S3_ENDPOINT"},
-                    "region": {"name": minio_data_connection.name, "key": "AWS_DEFAULT_REGION"},
+                    "accessKeyId": {"name": lmeval_seaweedfs_data_connection.name, "key": "AWS_ACCESS_KEY_ID"},
+                    "secretAccessKey": {
+                        "name": lmeval_seaweedfs_data_connection.name,
+                        "key": "AWS_SECRET_ACCESS_KEY",
+                    },
+                    "bucket": {"name": lmeval_seaweedfs_data_connection.name, "key": "AWS_S3_BUCKET"},
+                    "endpoint": {"name": lmeval_seaweedfs_data_connection.name, "key": "AWS_S3_ENDPOINT"},
+                    "region": {"name": lmeval_seaweedfs_data_connection.name, "key": "AWS_DEFAULT_REGION"},
                     "path": "",
                     "verifySSL": False,
                 }
