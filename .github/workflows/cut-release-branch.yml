@@ -37,7 +37,29 @@ permissions:
   contents: write
 
 jobs:
+  authorize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify the actor belongs to the maintainers team
+        env:
+          # Reading team membership needs org read access, which GITHUB_TOKEN does not have.
+          GH_TOKEN: ${{ secrets.RHODS_CI_BOT_PAT }}
+          ORG: opendatahub-io
+          TEAM: opendatahub-tests-maintainers
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+
+          # Fail closed: any error, including a missing token, denies the run.
+          state="$(gh api "orgs/$ORG/teams/$TEAM/memberships/$ACTOR" --jq .state 2>/dev/null || true)"
+          if [ "$state" != "active" ]; then
+            echo "::error::'$ACTOR' is not an active member of the $ORG/$TEAM team. Only maintainers can cut a release branch."
+            exit 1
+          fi
+          echo "'$ACTOR' is a member of $ORG/$TEAM."
+
   create-branch:
+    needs: authorize
     runs-on: ubuntu-latest
     outputs:
       branch: ${{ steps.validate.outputs.branch }}
@@ -162,7 +184,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   build-push:
-    needs: create-branch
+    needs: [authorize, create-branch]
     if: inputs.build_image
     permissions:
       contents: read
@@ -175,3 +197,30 @@ jobs:
     secrets:
       QUAY_USERNAME: ${{ secrets.QUAY_USERNAME }}
       QUAY_PASSWORD: ${{ secrets.QUAY_PASSWORD }} # pragma: allowlist secret
+
+  report-failure:
+    needs: [authorize, create-branch, build-push]
+    # Skip when authorization failed: unauthorized attempts should not open issues.
+    if: failure() && needs.authorize.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Create issue for the failed run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          BRANCH_NAME: ${{ inputs.branch_name }}
+          ACTOR: ${{ github.actor }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          CREATE_BRANCH_RESULT: ${{ needs.create-branch.result }}
+          BUILD_PUSH_RESULT: ${{ needs.build-push.result }}
+        run: |
+          set -euo pipefail
+
+          body="$(printf 'The **Cut Release Branch** workflow failed.\n\n- Triggered by: @%s\n- Requested branch: `%s`\n- Create branch: %s\n- Build and push image: %s\n- Run: %s\n' \
+            "$ACTOR" "$BRANCH_NAME" "$CREATE_BRANCH_RESULT" "$BUILD_PUSH_RESULT" "$RUN_URL")"
+          gh issue create \
+            --repo "$REPOSITORY" \
+            --title "Cut Release Branch workflow failed for '$BRANCH_NAME'" \
+            --body "$body"

@@ -26,6 +26,9 @@
   matching container image tag. Run it from the Actions tab during code freeze. See the
   [Release Process Guide](RELEASE_PROCESS.md) for the full code freeze checklist, including
   the steps this workflow does not cover.
+  Only active members of the `opendatahub-io/opendatahub-tests-maintainers` team can run it;
+  the check uses the `RHODS_CI_BOT_PAT` secret and fails closed. If any job fails, the workflow
+  opens an issue linking to the failed run.
   Inputs:
 
   | Input | Default | Description |

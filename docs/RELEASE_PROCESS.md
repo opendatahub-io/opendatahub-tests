@@ -42,7 +42,8 @@ git ls-remote --heads https://github.com/opendatahub-io/opendatahub-tests.git \
 
 ### Automated: cut the branch
 
-Actions tab -> **Cut Release Branch** -> **Run workflow**.
+Actions tab -> **Cut Release Branch** -> **Run workflow**. Only members of the
+`opendatahub-io/opendatahub-tests-maintainers` team can run it.
 
 | Input | Value to use |
 | --- | --- |
@@ -200,6 +201,8 @@ for the location and for the most recent release's change to use as a template.
 | Symptom | Cause and fix |
 | --- | --- |
 | **Cut Release Branch** is missing from the Actions tab | `workflow_dispatch` workflows are only offered for the default branch. Confirm the workflow file exists on `main`. |
+| The `authorize` job fails | The actor is not an active member of `opendatahub-io/opendatahub-tests-maintainers`, or `RHODS_CI_BOT_PAT` is missing or lacks org read access. Ask a maintainer to run the workflow. |
+| A failed run opened an issue | The `report-failure` job files an issue linking to the run. Fix the cause, re-run the workflow, then close the issue. |
 | Branch creation fails with a permissions error | The workflow uses a bot token and falls back to `GITHUB_TOKEN`. If branch protection covers release-branch names, the token needs `contents: write`; escalate to a repository admin. |
 | Workflow reports the branch already exists | Expected on a re-run. Creation is skipped and the image is rebuilt. Verify the reported commit is the one you intended. |
 | Validation error on an input | Inputs are checked against their allowed format, and `main` is rejected as a `branch_name`. See [GitHub workflows](GITHUB_WORKFLOWS.md) for the rules. |
