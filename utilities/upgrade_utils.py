@@ -52,9 +52,10 @@ def upgrade_resource_skip_reason(
     namespace_hint = f" -n {resource.namespace}" if resource.namespace else ""
     return (
         f"{skip_context}: leftover {resource.kind} '{resource.namespace}/{resource.name}' could not be deleted "
-        f"within {timeout}s (likely a finalizer no controller is servicing). "
-        f"Manual cleanup required: `oc delete {resource.kind.lower()} {resource.name}{namespace_hint} --wait`, "
-        f"then re-run pre-upgrade."
+        f"within {timeout}s. Deletion is likely blocked by a finalizer whose controller is not servicing it "
+        f"(e.g. the operator that owns it is down or was replaced). Inspect the finalizer on the resource, "
+        f"restore or complete its controller's cleanup, and only then remove it manually if understood: "
+        f"`oc get {resource.kind.lower()} {resource.name}{namespace_hint} -o yaml`."
     )
 
 

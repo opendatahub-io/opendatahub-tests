@@ -5,6 +5,7 @@ clean-cluster no-op, and post-upgrade no-op. Uses only core resources
 (Namespace, Secret) so no OpenShift or MaaS stack is required.
 """
 
+from collections.abc import Generator
 from types import SimpleNamespace
 from typing import Any
 
@@ -56,6 +57,25 @@ def make_namespace(kind_admin_client: DynamicClient, name: str) -> Namespace:
     return ns
 
 
+@pytest.fixture
+def leftover_namespace(kind_admin_client: DynamicClient) -> Generator[str, Any, Any]:
+    """Create a fixed-name namespace and remove it (and its contents) after the test.
+
+    Ensures reruns against a reused kind cluster start clean even when the test
+    fails mid-way: the same fixed-name collision this PR cures for the suites.
+    """
+    name = "idem-test-ns"
+    purge_upgrade_leftover(
+        pytestconfig=FakePytestConfig(),
+        resource_factory=upgrade_resource_factory(Namespace, client=kind_admin_client, name=name),
+        delete_timeout=FAST_DELETE_TIMEOUT,
+        skip_context=SKIP_CONTEXT,
+    )
+    make_namespace(kind_admin_client=kind_admin_client, name=name)
+    yield name
+    Namespace(client=kind_admin_client, name=name).clean_up(wait=True, timeout=FAST_DELETE_TIMEOUT)
+
+
 def test_clean_cluster_is_noop(kind_admin_client: DynamicClient, pre_upgrade_config: FakePytestConfig) -> None:
     """Path C: resource absent in pre-upgrade mode -> no error, no skip."""
     purge_upgrade_leftover(
@@ -67,13 +87,16 @@ def test_clean_cluster_is_noop(kind_admin_client: DynamicClient, pre_upgrade_con
     assert not Namespace(client=kind_admin_client, name="idem-clean-ns").exists
 
 
-def test_purge_and_recreate_leftover(kind_admin_client: DynamicClient, pre_upgrade_config: FakePytestConfig) -> None:
+def test_purge_and_recreate_leftover(
+    kind_admin_client: DynamicClient,
+    leftover_namespace: str,
+    pre_upgrade_config: FakePytestConfig,
+) -> None:
     """Path A: leftover is deleted, so the caller can create it fresh."""
-    ns = make_namespace(kind_admin_client=kind_admin_client, name="idem-leftover-ns")
     secret_kwargs: dict[str, Any] = {
         "client": kind_admin_client,
         "name": "idem-leftover-secret",
-        "namespace": ns.name,
+        "namespace": leftover_namespace,
     }
     Secret(**secret_kwargs, string_data={"k": "v"}).deploy(wait=True)
 
@@ -91,14 +114,15 @@ def test_purge_and_recreate_leftover(kind_admin_client: DynamicClient, pre_upgra
 
 
 def test_skip_on_finalizer_blocked_delete(
-    kind_admin_client: DynamicClient, pre_upgrade_config: FakePytestConfig
+    kind_admin_client: DynamicClient,
+    leftover_namespace: str,
+    pre_upgrade_config: FakePytestConfig,
 ) -> None:
     """Path B: deletion blocked by an unserviced finalizer -> skip with a clear reason."""
-    ns = make_namespace(kind_admin_client=kind_admin_client, name="idem-blocked-ns")
     secret_kwargs: dict[str, Any] = {
         "client": kind_admin_client,
         "name": "idem-blocked-secret",
-        "namespace": ns.name,
+        "namespace": leftover_namespace,
     }
     secret = Secret(**secret_kwargs, string_data={"k": "v"})
     secret.deploy(wait=True)
@@ -116,18 +140,23 @@ def test_skip_on_finalizer_blocked_delete(
     reason = str(excinfo.value)
     assert "idem-blocked-secret" in reason
     assert "finalizer" in reason
-    assert "oc delete" in reason
+    assert "controller" in reason
+
+    # Unblock the secret so fixture teardown (namespace clean_up) does not hang
+    # on the finalizer this test attached.
+    secret.update(resource_dict={"metadata": {"name": secret.name, "finalizers": None}})
 
 
 def test_post_upgrade_mode_never_deletes(
-    kind_admin_client: DynamicClient, post_upgrade_config: FakePytestConfig
+    kind_admin_client: DynamicClient,
+    leftover_namespace: str,
+    post_upgrade_config: FakePytestConfig,
 ) -> None:
     """Path D: post-upgrade mode must not touch an existing resource."""
-    ns = make_namespace(kind_admin_client=kind_admin_client, name="idem-adopt-ns")
     secret_kwargs: dict[str, Any] = {
         "client": kind_admin_client,
         "name": "idem-adopt-secret",
-        "namespace": ns.name,
+        "namespace": leftover_namespace,
     }
     secret = Secret(**secret_kwargs, string_data={"k": "keep-me"})
     secret.deploy(wait=True)
@@ -150,4 +179,5 @@ def test_skip_reason_names_resource_and_remedy(kind_admin_client: DynamicClient)
     assert "MaaS upgrade" in reason
     assert "Namespace" in reason
     assert "reason-ns" in reason
-    assert "oc delete namespace reason-ns --wait" in reason
+    assert "oc get namespace reason-ns -o yaml" in reason
+    assert "finalizer" in reason
