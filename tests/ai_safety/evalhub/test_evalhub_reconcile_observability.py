@@ -63,8 +63,9 @@ METRICS_POLL_TIMEOUT: int = 300  # OTEL Prometheus bridge has 2-5 min export del
 METRICS_POLL_INTERVAL: int = 10
 # A brand-new EvalHub CR's reconcile loop can requeue many times (configmaps,
 # deployment, service, route, rbac, status) before reaching a clean pass that
-# records result=success; on a cold operator pod this can exceed 120s.
-SUCCESS_RECONCILE_POLL_TIMEOUT: int = 240
+# records result=success; on a cold operator pod this can exceed 120s, on top
+# of the OTEL Prometheus bridge export delay covered by METRICS_POLL_TIMEOUT.
+SUCCESS_RECONCILE_POLL_TIMEOUT: int = METRICS_POLL_TIMEOUT + 120
 TRACE_POLL_TIMEOUT: int = 60
 TRACE_POLL_INTERVAL: int = 5
 

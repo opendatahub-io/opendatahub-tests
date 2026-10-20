@@ -16,6 +16,7 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.data_science_pipelines_application import DataSciencePipelinesApplication
 from ocp_resources.deployment import Deployment
 from ocp_resources.evalhub import EvalHub
+from ocp_resources.exceptions import ResourceTeardownError
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.lease import Lease
 from ocp_resources.mlflow import MLflow
@@ -2421,14 +2422,17 @@ def operator_with_otel_tracing(
     containers = trustyai_operator_deployment.instance.spec.template.spec.containers
     manager_idx = next((idx for idx, c in enumerate(containers) if c.name == "manager"), 0)
 
-    manager_container = containers[manager_idx].to_dict()
+    # Merge patches replace the whole containers list, so send every container
+    # and change only the manager's env; otherwise any sidecar would be dropped.
+    patched_containers = [container.to_dict() for container in containers]
+    manager_container = patched_containers[manager_idx]
     merged_env = {env["name"]: env for env in manager_container.get("env", [])}
     for env in env_patch:
         merged_env[env["name"]] = env
     manager_container["env"] = list(merged_env.values())
 
     with ResourceEditor(
-        patches={trustyai_operator_deployment: {"spec": {"template": {"spec": {"containers": [manager_container]}}}}}
+        patches={trustyai_operator_deployment: {"spec": {"template": {"spec": {"containers": patched_containers}}}}}
     ):
         _wait_for_rollout_observed(deployment=trustyai_operator_deployment)
         trustyai_operator_deployment.wait_for_replicas(timeout=300)
@@ -2508,21 +2512,24 @@ def evalhub_failure_cr(
     waiting on a reconcile loop that can never succeed.
     """
     overlong_name = "evalhub-failure-" + "x" * (65 - len("evalhub-failure-"))
-    evalhub = EvalHub(
+    with EvalHub(
         client=admin_client,
         name=overlong_name,
         namespace=model_namespace.name,
         database={"type": "sqlite"},
         wait_for_resource=True,
-    )
-    evalhub.deploy(wait=True)
-    yield evalhub
+        delete_timeout=Timeout.TIMEOUT_30SEC,
+    ) as evalhub:
+        yield evalhub
 
-    evalhub.delete()
-    if not evalhub.wait_deleted(timeout=Timeout.TIMEOUT_30SEC):
-        LOGGER.warning(f"EvalHub {evalhub.name} stuck deleting (overlong-name reconcile loop); stripping finalizer")
-        evalhub.update(resource_dict={"metadata": {"name": evalhub.name, "finalizers": []}})
-        evalhub.wait_deleted(timeout=Timeout.TIMEOUT_30SEC)
+        # clean_up() honours SKIP_RESOURCE_TEARDOWN (returns True without deleting),
+        # and the teardown check honours teardown=False, so preserved or reused
+        # resources are never deleted or have their finalizer stripped.
+        if evalhub.teardown and not evalhub.clean_up():
+            LOGGER.warning(f"EvalHub {evalhub.name} stuck deleting (overlong-name reconcile loop); stripping finalizer")
+            evalhub.update(resource_dict={"metadata": {"name": evalhub.name, "finalizers": []}})
+            if not evalhub.wait_deleted(timeout=Timeout.TIMEOUT_30SEC):
+                raise ResourceTeardownError(resource=evalhub)
 
 
 @pytest.fixture(scope="class")
