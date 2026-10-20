@@ -286,13 +286,14 @@ class TestEvalHubReconcileMetrics:
         except TimeoutExpiredError:
             pytest.fail(f"{RECONCILE_ERRORS_METRIC} not recorded for failure CR")
 
-    @pytest.mark.skip(
+    @pytest.mark.xfail(
+        run=False,
         reason=(
             "Cannot be triggered black-box: the operator only reports error_type=other for "
             "errors whose message matches none of its classifier keywords, and every error a "
             "test CR can cause names a resource (the overlong-name CR yields 'rbac'). Covered "
             "by the operator unit test controllers/evalhub/metrics_test.go."
-        )
+        ),
     )
     def test_unexpected_error_mapped_to_other(
         self,
