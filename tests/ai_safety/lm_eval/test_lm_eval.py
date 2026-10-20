@@ -30,7 +30,7 @@ from tests.ai_safety.lm_eval.utils import (
     wait_for_vllm_model_ready,
 )
 from tests.ai_safety.utils import validate_tai_component_images
-from utilities.constants import OCIRegistry
+from utilities.constants import OCIRegistry, SeaweedFs
 from utilities.registry_utils import pull_manifest_from_oci_registry
 
 TIER1_LMEVAL_TASKS: list[str] = get_lmeval_tasks(min_downloads=10000)
@@ -152,11 +152,11 @@ def test_lmeval_vllm_emulator(admin_client, model_namespace, lmevaljob_vllm_emul
 
 @pytest.mark.tier1
 @pytest.mark.parametrize(
-    "model_namespace, minio_data_connection",
+    "model_namespace, lmeval_seaweedfs_data_connection",
     [
         pytest.param(
             {"name": "test-s3-lmeval"},
-            {"bucket": "models"},
+            {"bucket": SeaweedFs.Buckets.MODELMESH_EXAMPLE_MODELS},
         )
     ],
     indirect=True,
@@ -171,11 +171,11 @@ def test_lmeval_s3_storage(
 
 
 @pytest.mark.parametrize(
-    "model_namespace, minio_data_connection",
+    "model_namespace, lmeval_seaweedfs_data_connection",
     [
         pytest.param(
             {"name": "test-lmeval-images"},
-            {"bucket": "models"},
+            {"bucket": SeaweedFs.Buckets.MODELMESH_EXAMPLE_MODELS},
         )
     ],
     indirect=True,
@@ -196,7 +196,7 @@ def test_verify_lmeval_pod_images(lmevaljob_s3_offline_pod, trustyai_operator_co
 
 @pytest.mark.tier1
 @pytest.mark.parametrize(
-    "model_namespace, oci_registry_pod_with_minio, lmeval_data_downloader_pod, lmevaljob_local_offline_oci",
+    "model_namespace, oci_registry_pod_with_seaweedfs, lmeval_data_downloader_pod, lmevaljob_local_offline_oci",
     [
         pytest.param(
             {"name": "test-lmeval-local-offline-unitxt"},
