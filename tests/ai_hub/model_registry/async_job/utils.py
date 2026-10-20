@@ -5,9 +5,8 @@ from ocp_resources.pod import Pod
 from ocp_resources.service import Service
 from timeout_sampler import TimeoutExpiredError
 
-from tests.ai_hub.constants import SeaweedFs
 from tests.ai_hub.image_constants import AiHubImages
-from utilities.constants import MinIo
+from utilities.constants import MinIo, SeaweedFs
 from utilities.general import collect_pod_information
 
 LOGGER = structlog.get_logger(name=__name__)
