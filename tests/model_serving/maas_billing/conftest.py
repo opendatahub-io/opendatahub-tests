@@ -736,15 +736,13 @@ def maas_controller_enabled_latest(
     }
 
     with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
+        # Wait only for ModelsAsServiceReady. Full DSC Ready also requires unrelated
+        # components (e.g. Dashboard); under upgrade CPU pressure those can stay
+        # NotReady and incorrectly fail every MaaS suite that uses this fixture.
         dsc_resource.wait_for_condition(
             condition="ModelsAsServiceReady",
             status="True",
             timeout=900,
-        )
-        dsc_resource.wait_for_condition(
-            condition="Ready",
-            status="True",
-            timeout=600,
         )
         yield dsc_resource
 
@@ -1097,15 +1095,13 @@ def maas_subscription_controller_enabled_latest(
     }
 
     with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
+        # Wait only for ModelsAsServiceReady. Full DSC Ready also requires unrelated
+        # components (e.g. Dashboard); under upgrade CPU pressure those can stay
+        # NotReady and incorrectly fail every MaaS suite that uses this fixture.
         dsc_resource.wait_for_condition(
             condition="ModelsAsServiceReady",
             status="True",
             timeout=900,
-        )
-        dsc_resource.wait_for_condition(
-            condition="Ready",
-            status="True",
-            timeout=600,
         )
         yield dsc_resource
 
