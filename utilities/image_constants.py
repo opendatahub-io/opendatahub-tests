@@ -15,3 +15,7 @@ class SharedImages:
     MLSERVER_XGBOOST: str = "oci://quay.io/opendatahub/modelcar-mlserver-xgboost@sha256:b4de2418d3c843d486b977777346f1cf2518b56df0780f78e2b55c01e6274b02"  # noqa: E501
     MLSERVER_LIGHTGBM: str = "oci://quay.io/opendatahub/modelcar-mlserver-lightgbm@sha256:2e4c2aff76656b3547e8af21728818eb586080202ae23a8b5155ac59f57d8328"  # noqa: E501
     MLSERVER_ONNX: str = "oci://quay.io/opendatahub/modelcar-mlserver-onnx@sha256:d7747270ba666c0585dc20f38425811e3d901f150618237d4ab94781b3ab31b7"  # noqa: E501
+
+    SEAWEEDFS: str = (
+        "ghcr.io/chrislusf/seaweedfs@sha256:6620371e8af8282056685c652d4637265698c9e2c2d59f9594e6ac333ad6c634"
+    )

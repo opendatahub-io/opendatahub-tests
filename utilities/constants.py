@@ -425,6 +425,33 @@ class MinIo:
         IMAGE = "quay.io/opendatahub/openvino_model_server@sha256:564664371d3a21b9e732a5c1b4b40bacad714a5144c0a9aaf675baec4a04b148"  # noqa: E501
 
 
+class SeaweedFs:
+    """SeaweedFS S3-compatible storage settings shared across test components."""
+
+    class Metadata:
+        NAME: str = "seaweedfs"
+        DEFAULT_PORT: int = 8333
+        FILER_PORT: int = 8888
+        FILER_GRPC_PORT: int = 18888
+
+    class Credentials:
+        ACCESS_KEY_VALUE: str = "THEACCESSKEY"
+        SECRET_KEY_VALUE: str = "THESECRETKEY"
+
+    class Buckets:
+        MODELMESH_EXAMPLE_MODELS: str = "modelmesh-example-models"
+
+    class PodConfig:
+        ARGS: tuple[str, ...] = (
+            "server",
+            "-dir=/tmp",
+            "-s3",
+            "-iam",
+            "-filer",
+            "-master.volumePreallocate=false",
+        )
+
+
 MODEL_REGISTRY: str = "model-registry"
 MODELMESH_SERVING: str = "modelmesh-serving"
 ISTIO_CA_BUNDLE_FILENAME: str = "istio_knative.crt"
