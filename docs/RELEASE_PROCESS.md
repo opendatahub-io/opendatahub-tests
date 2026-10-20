@@ -51,7 +51,6 @@ Actions tab -> **Cut Release Branch** -> **Run workflow**. Only members of the
 | `source_ref` | `main`, unless you were told to cut from a specific commit. |
 | `image_tag` | Leave empty. It defaults to `branch_name`, which is what you want. |
 | `image_name` | Leave at `opendatahub-tests`. |
-| `registry` | Leave at `quay.io/opendatahub`. |
 | `build_image` | `true`. This also completes step 2. |
 
 The run summary reports the branch, the commit it was cut from, and the image tag. If the

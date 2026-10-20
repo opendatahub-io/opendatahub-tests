@@ -37,11 +37,10 @@
   | `source_ref` | `main` | Branch, tag or commit SHA to cut from. |
   | `image_tag` | `branch_name` | Image tag override. |
   | `image_name` | `opendatahub-tests` | Image name, without the registry prefix. |
-  | `registry` | `quay.io/opendatahub` | Registry and namespace to push to. |
   | `build_image` | `true` | Build and push the image after the branch is created. |
 
   Surrounding whitespace is stripped from every input. `branch_name`, `source_ref`,
-  `image_tag`, `image_name` and `registry` are then checked against the format each one is
+  `image_tag` and `image_name` are then checked against the format each one is
   allowed to take, and `main` is rejected as a `branch_name`. An empty `image_tag` falls
   back to `branch_name`.
 
@@ -79,9 +78,9 @@ merged. Test it on a fork instead:
 2. In the fork, add `QUAY_USERNAME` and `QUAY_PASSWORD` repository secrets for a quay
    namespace you own.
 3. Actions tab of the fork -> `Cut Release Branch` -> `Run workflow`. Set `branch_name` to a
-   throwaway value such as `test-cut-1`, and `registry` to your own namespace, for example
-   `quay.io/<your-quay-user>`. Start with `build_image: false` to check branch creation
-   alone, then re-run with `build_image: true` to check the image.
+   throwaway value such as `test-cut-1`. The registry is fixed to `quay.io/opendatahub`, so
+   run with `build_image: false` to check branch creation. To check the image push as well,
+   point `REGISTRY` in the fork's copy of `build-push-image.yml` at your own namespace first.
 4. Verify the branch exists in the fork and that the tag exists in your quay repository.
 5. Clean up: delete the test branch and the quay tag, and reset the fork default branch to
    the upstream `main`.
