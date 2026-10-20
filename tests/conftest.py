@@ -58,6 +58,7 @@ from utilities.constants import (
 )
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.exceptions import ClusterLoginError
+from utilities.general import get_s3_secret_dict
 from utilities.image_constants import SharedImages
 from utilities.infra import (
     create_ns,
@@ -654,11 +655,31 @@ def minio_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, An
 
 
 @pytest.fixture(scope="class")
+def minio_credentials_secret(
+    admin_client: DynamicClient,
+    minio_namespace: Namespace,
+) -> Generator[Secret, Any, Any]:
+    """MinIO server credentials in the MinIO namespace."""
+    with Secret(
+        client=admin_client,
+        name="minio-credentials",
+        namespace=minio_namespace.name,
+        string_data={
+            MinIo.Credentials.ACCESS_KEY_NAME: MinIo.Credentials.ACCESS_KEY_VALUE,
+            MinIo.Credentials.SECRET_KEY_NAME: MinIo.Credentials.SECRET_KEY_VALUE,
+        },
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="class")
 def minio_pod(
     request: FixtureRequest,
     admin_client: DynamicClient,
     minio_namespace: Namespace,
+    minio_credentials_secret: Secret,
 ) -> Generator[Pod, Any, Any]:
+    """MinIO Pod with credentials supplied by a Secret."""
     pod_labels = {Labels.Openshift.APP: MinIo.Metadata.NAME}
 
     if labels := request.param.get("labels"):
@@ -674,11 +695,21 @@ def minio_pod(
                 "env": [
                     {
                         "name": MinIo.Credentials.ACCESS_KEY_NAME,
-                        "value": MinIo.Credentials.ACCESS_KEY_VALUE,
+                        "valueFrom": {
+                            "secretKeyRef": {
+                                "name": minio_credentials_secret.name,
+                                "key": MinIo.Credentials.ACCESS_KEY_NAME,
+                            },
+                        },
                     },
                     {
                         "name": MinIo.Credentials.SECRET_KEY_NAME,
-                        "value": MinIo.Credentials.SECRET_KEY_VALUE,
+                        "valueFrom": {
+                            "secretKeyRef": {
+                                "name": minio_credentials_secret.name,
+                                "key": MinIo.Credentials.SECRET_KEY_NAME,
+                            },
+                        },
                     },
                 ],
                 "image": request.param.get("image"),
@@ -1115,11 +1146,40 @@ def oci_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, Any]
 
 
 @pytest.fixture(scope="class")
+def oci_registry_s3_secret(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    oci_namespace: Namespace,
+) -> Generator[Secret, Any, Any]:
+    """S3 storage credentials in the OCI registry namespace."""
+    s3_config = request.getfixturevalue(argname="s3_config")
+    s3_service = s3_config["service"]
+    s3_fqdn = f"{s3_service.name}.{s3_service.namespace}.svc.cluster.local"
+    s3_endpoint = f"http://{s3_fqdn}:{s3_config['port']}"
+
+    with Secret(
+        client=admin_client,
+        name="oci-registry-s3-credentials",
+        namespace=oci_namespace.name,
+        data_dict=get_s3_secret_dict(
+            aws_access_key=s3_config["access_key"],
+            aws_secret_access_key=s3_config["secret_key"],
+            aws_s3_bucket=s3_config["bucket"],
+            aws_s3_endpoint=s3_endpoint,
+            aws_default_region=OCIRegistry.Storage.STORAGE_DRIVER_REGION,
+        ),
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="class")
 def oci_registry_pod_with_s3(
     request: FixtureRequest,
     admin_client: DynamicClient,
     oci_namespace: Namespace,
+    oci_registry_s3_secret: Secret,
 ) -> Generator[Pod, Any, Any]:
+    """OCI registry Pod with S3 storage credentials supplied by a Secret."""
     fixture_config = getattr(request, "param", {})
     s3_config = request.getfixturevalue(argname="s3_config")
     s3_service = s3_config["service"]
@@ -1147,8 +1207,18 @@ def oci_registry_pod_with_s3(
                     {"name": "ZOT_STORAGE_STORAGEDRIVER_BUCKET", "value": s3_config["bucket"]},
                     {"name": "ZOT_STORAGE_STORAGEDRIVER_REGION", "value": OCIRegistry.Storage.STORAGE_DRIVER_REGION},
                     {"name": "ZOT_STORAGE_STORAGEDRIVER_REGIONENDPOINT", "value": f"http://{s3_endpoint}"},
-                    {"name": "ZOT_STORAGE_STORAGEDRIVER_ACCESSKEY", "value": s3_config["access_key"]},
-                    {"name": "ZOT_STORAGE_STORAGEDRIVER_SECRETKEY", "value": s3_config["secret_key"]},
+                    {
+                        "name": "ZOT_STORAGE_STORAGEDRIVER_ACCESSKEY",
+                        "valueFrom": {
+                            "secretKeyRef": {"name": oci_registry_s3_secret.name, "key": "AWS_ACCESS_KEY_ID"},
+                        },
+                    },
+                    {
+                        "name": "ZOT_STORAGE_STORAGEDRIVER_SECRETKEY",
+                        "valueFrom": {
+                            "secretKeyRef": {"name": oci_registry_s3_secret.name, "key": "AWS_SECRET_ACCESS_KEY"},
+                        },
+                    },
                     {
                         "name": "ZOT_STORAGE_STORAGEDRIVER_SECURE",
                         "value": OCIRegistry.Storage.STORAGE_STORAGEDRIVER_SECURE,
@@ -1191,12 +1261,30 @@ def oci_registry_pod_with_s3(
 
 
 @pytest.fixture(scope="class")
+def oci_registry_minio_secret(
+    admin_client: DynamicClient,
+    oci_namespace: Namespace,
+    minio_service: Service,
+) -> Generator[Secret, Any, Any]:
+    """MinIO storage credentials in the OCI registry namespace."""
+    with create_minio_data_connection_secret(
+        minio_service=minio_service,
+        model_namespace=oci_namespace.name,
+        aws_s3_bucket=MinIo.Buckets.MODELMESH_EXAMPLE_MODELS,
+        client=admin_client,
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="class")
 def oci_registry_pod_with_minio(
     request: FixtureRequest,
     admin_client: DynamicClient,
     oci_namespace: Namespace,
     minio_service: Service,
+    oci_registry_minio_secret: Secret,
 ) -> Generator[Pod, Any, Any]:
+    """OCI registry Pod with MinIO storage credentials supplied by a Secret."""
     fixture_config = getattr(request, "param", {})
     pod_labels = {Labels.Openshift.APP: OCIRegistry.Metadata.NAME}
 
@@ -1222,8 +1310,18 @@ def oci_registry_pod_with_minio(
                     {"name": "ZOT_STORAGE_STORAGEDRIVER_BUCKET", "value": MinIo.Buckets.MODELMESH_EXAMPLE_MODELS},
                     {"name": "ZOT_STORAGE_STORAGEDRIVER_REGION", "value": OCIRegistry.Storage.STORAGE_DRIVER_REGION},
                     {"name": "ZOT_STORAGE_STORAGEDRIVER_REGIONENDPOINT", "value": f"http://{minio_endpoint}"},
-                    {"name": "ZOT_STORAGE_STORAGEDRIVER_ACCESSKEY", "value": MinIo.Credentials.ACCESS_KEY_VALUE},
-                    {"name": "ZOT_STORAGE_STORAGEDRIVER_SECRETKEY", "value": MinIo.Credentials.SECRET_KEY_VALUE},
+                    {
+                        "name": "ZOT_STORAGE_STORAGEDRIVER_ACCESSKEY",
+                        "valueFrom": {
+                            "secretKeyRef": {"name": oci_registry_minio_secret.name, "key": "AWS_ACCESS_KEY_ID"},
+                        },
+                    },
+                    {
+                        "name": "ZOT_STORAGE_STORAGEDRIVER_SECRETKEY",
+                        "valueFrom": {
+                            "secretKeyRef": {"name": oci_registry_minio_secret.name, "key": "AWS_SECRET_ACCESS_KEY"},
+                        },
+                    },
                     {
                         "name": "ZOT_STORAGE_STORAGEDRIVER_SECURE",
                         "value": OCIRegistry.Storage.STORAGE_STORAGEDRIVER_SECURE,

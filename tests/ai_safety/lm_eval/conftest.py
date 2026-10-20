@@ -393,9 +393,31 @@ def vllm_emulator_route(
 
 
 @pytest.fixture(scope="function")
+def lmeval_minio_credentials_secret(
+    admin_client: DynamicClient,
+    minio_namespace: Namespace,
+) -> Generator[Secret, Any, Any]:
+    """Create MinIO credentials for the lmeval storage fixtures."""
+    with Secret(
+        client=admin_client,
+        name="lmeval-minio-credentials",
+        namespace=minio_namespace.name,
+        string_data={
+            "MINIO_ROOT_USER": MinIo.Credentials.ACCESS_KEY_VALUE,
+            "MINIO_ROOT_PASSWORD": MinIo.Credentials.SECRET_KEY_VALUE,
+        },
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="function")
 def lmeval_minio_deployment(
-    admin_client: DynamicClient, minio_namespace: Namespace, pvc_minio_namespace: PersistentVolumeClaim
+    admin_client: DynamicClient,
+    minio_namespace: Namespace,
+    pvc_minio_namespace: PersistentVolumeClaim,
+    lmeval_minio_credentials_secret: Secret,
 ) -> Generator[Deployment, Any, Any]:
+    """MinIO Deployment with credentials supplied by a Secret."""
     minio_app_label = {"app": MinIo.Metadata.NAME}
     # TODO: Unify with minio_llm_deployment fixture once datasets and models are in new model image
     with Deployment(
@@ -416,8 +438,24 @@ def lmeval_minio_deployment(
                         "image": AiSafetyImages.MINIO_SERVER,
                         "args": ["server", "/data", "--console-address", ":9001"],
                         "env": [
-                            {"name": "MINIO_ROOT_USER", "value": MinIo.Credentials.ACCESS_KEY_VALUE},
-                            {"name": "MINIO_ROOT_PASSWORD", "value": MinIo.Credentials.SECRET_KEY_VALUE},
+                            {
+                                "name": "MINIO_ROOT_USER",
+                                "valueFrom": {
+                                    "secretKeyRef": {
+                                        "name": lmeval_minio_credentials_secret.name,
+                                        "key": "MINIO_ROOT_USER",
+                                    },
+                                },
+                            },
+                            {
+                                "name": "MINIO_ROOT_PASSWORD",
+                                "valueFrom": {
+                                    "secretKeyRef": {
+                                        "name": lmeval_minio_credentials_secret.name,
+                                        "key": "MINIO_ROOT_PASSWORD",
+                                    },
+                                },
+                            },
                         ],
                         "ports": [{"containerPort": MinIo.Metadata.DEFAULT_PORT}, {"containerPort": 9001}],
                         "volumeMounts": [{"name": "minio-storage", "mountPath": "/data"}],
@@ -434,8 +472,13 @@ def lmeval_minio_deployment(
 
 @pytest.fixture(scope="function")
 def lmeval_minio_copy_pod(
-    admin_client: DynamicClient, minio_namespace: Namespace, lmeval_minio_deployment: Deployment, minio_service: Service
+    admin_client: DynamicClient,
+    minio_namespace: Namespace,
+    lmeval_minio_deployment: Deployment,
+    minio_service: Service,
+    lmeval_minio_credentials_secret: Secret,
 ) -> Generator[Pod, Any, Any]:
+    """Copy evaluation data to MinIO using credentials supplied by a Secret."""
     with Pod(
         client=admin_client,
         name="copy-to-minio",
@@ -479,11 +522,31 @@ def lmeval_minio_copy_pod(
                     (
                         f"export MC_CONFIG_DIR=/shared/.mc && "
                         f"mc alias set myminio http://{minio_service.name}:{MinIo.Metadata.DEFAULT_PORT} "
-                        f"{MinIo.Credentials.ACCESS_KEY_VALUE} {MinIo.Credentials.SECRET_KEY_VALUE} && "
+                        '"$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" && '
                         "mc mb --ignore-existing myminio/models && "
                         "mc cp --recursive /shared/datasets/ myminio/models/datasets/ && "
                         "mc cp --recursive /shared/flan/ myminio/models/flan/"
                     )
+                ],
+                "env": [
+                    {
+                        "name": "MINIO_ROOT_USER",
+                        "valueFrom": {
+                            "secretKeyRef": {
+                                "name": lmeval_minio_credentials_secret.name,
+                                "key": "MINIO_ROOT_USER",
+                            },
+                        },
+                    },
+                    {
+                        "name": "MINIO_ROOT_PASSWORD",
+                        "valueFrom": {
+                            "secretKeyRef": {
+                                "name": lmeval_minio_credentials_secret.name,
+                                "key": "MINIO_ROOT_PASSWORD",
+                            },
+                        },
+                    },
                 ],
                 "volumeMounts": [{"name": "shared-data", "mountPath": "/shared"}],
                 "securityContext": {
