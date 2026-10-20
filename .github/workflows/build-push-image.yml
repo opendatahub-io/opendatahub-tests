@@ -21,11 +21,6 @@ on:
         required: false
         type: string
         default: quay.io/opendatahub
-      comments_url:
-        description: "Optional GitHub comments API URL. When set, the build result is posted there."
-        required: false
-        type: string
-        default: ""
     outputs:
       image_reference:
         description: "Fully qualified reference of the pushed image."
@@ -132,23 +127,3 @@ jobs:
             printf '| Push | %s |\n' "$PUSH_OUTCOME"
             printf '| Image manifest label | %s |\n' "$MANIFEST_OUTCOME"
           } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Add comment
-        if: always() && inputs.comments_url != ''
-        env:
-          URL: ${{ inputs.comments_url }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ inputs.tag }}
-          BUILD_OUTCOME: ${{ steps.build-image.outcome }}
-          PUSH_OUTCOME: ${{ steps.push-to-registry.outcome }}
-          MANIFEST_OUTCOME: ${{ steps.manifest.outcome }}
-        run: |
-          body="$(printf 'Status of building tag %s: %s.\nStatus of pushing tag %s to image registry: %s.\nImage manifest label: %s.' \
-            "$TAG" "$BUILD_OUTCOME" "$TAG" "$PUSH_OUTCOME" "$MANIFEST_OUTCOME")"
-          jq -n --arg body "$body" '{body: $body}' > /tmp/comment.json
-          curl \
-            -X POST \
-            "$URL" \
-            -H "Content-Type: application/json" \
-            -H "Authorization: token $GITHUB_TOKEN" \
-            --data @/tmp/comment.json
