@@ -4,16 +4,15 @@ from ocp_resources.pod import Pod
 from ocp_resources.service import Service
 from timeout_sampler import TimeoutExpiredError
 
-from tests.ai_hub.constants import SeaweedFs
-from tests.ai_hub.image_constants import AiHubImages
 from tests.ai_hub.model_registry.async_job.constants import (
     CA_BUNDLE_CONFIG,
     MODEL_SYNC_CONFIG,
     VOLUME_MOUNTS,
 )
 from tests.ai_hub.utils import get_latest_job_pod
-from utilities.constants import MinIo, OCIRegistry
+from utilities.constants import MinIo, OCIRegistry, SeaweedFs
 from utilities.general import collect_pod_information
+from utilities.image_constants import SharedImages
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -142,7 +141,7 @@ def upload_test_model_to_s3_from_image(
         containers=[
             {
                 "name": "seaweedfs-uploader",
-                "image": AiHubImages.SEAWEEDFS,
+                "image": SharedImages.SEAWEEDFS,
                 "command": [
                     "/usr/bin/weed",
                     "filer.copy",
