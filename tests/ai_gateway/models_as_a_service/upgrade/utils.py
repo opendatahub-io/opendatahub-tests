@@ -1,7 +1,7 @@
 import base64
 import json
 from collections.abc import Generator, Mapping
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from typing import Any, TypedDict
 
 import pytest
@@ -829,33 +829,72 @@ def assert_multitenant_upgrade_api_key_secrets_absent(
     )
 
 
-def _persist_multitenant_upgrade_api_key_secret(
+def assert_multitenant_upgrade_api_key_secrets_present(
+    client: DynamicClient,
+    namespace: str,
+    tenant_records: list[MultitenantUpgradeTenantRecord],
+) -> None:
+    """Fail fast when baseline tenant records reference API key Secrets that are missing."""
+    missing_secret_names: list[str] = []
+    for record in tenant_records:
+        secret_name = record["api_key_secret_name"]
+        assert secret_name, (
+            f"Multitenant upgrade baseline tenant '{record['aitenant_name']}' is missing "
+            "'api_key_secret_name'. Re-run pre-upgrade provisioning."
+        )
+        if not Secret(client=client, name=secret_name, namespace=namespace).exists:
+            missing_secret_names.append(secret_name)
+    assert not missing_secret_names, (
+        f"Multitenant upgrade API key Secret(s) {missing_secret_names} not found in '{namespace}'. "
+        "Ensure pre-upgrade tests created the Secrets and they survived cluster upgrade."
+    )
+
+
+def delete_multitenant_upgrade_api_key_secrets(
+    client: DynamicClient,
+    namespace: str,
+    tenant_records: list[MultitenantUpgradeTenantRecord],
+) -> None:
+    """Delete persisted multitenant upgrade API key Secrets when ``teardown_resources`` is enabled.
+
+    MaaS API keys in the cluster are not revoked. Matches ``legacy_migration_credential_secret`` /
+    ``maas_upgrade_*`` post-upgrade fixture teardown.
+    """
+    for record in tenant_records:
+        secret_name = record["api_key_secret_name"]
+        if not secret_name:
+            continue
+        secret = Secret(client=client, name=secret_name, namespace=namespace)
+        if secret.exists:
+            secret.delete(wait=True)
+
+
+def _register_multitenant_upgrade_api_key_secret(
     admin_client: DynamicClient,
+    resource_stack: ExitStack,
     persist_namespace: str,
     secret_name: str,
     plaintext_key: str,
     key_id: str,
     teardown: bool,
 ) -> None:
-    """Create or update the multitenant upgrade API key Secret (idempotent for fixed secret names)."""
+    """Register a multitenant upgrade API key Secret on the session ExitStack (pre-upgrade only).
+
+    Uses openshift-python-wrapper ``Secret`` teardown like ``maas_upgrade_model_ref`` and
+    ``legacy_migration_credential_secret``: ``teardown=False`` during the normal pre-upgrade run
+    keeps the Secret for post-upgrade; ``--delete-pre-upgrade-resources`` deletes it with the stack.
+    """
     string_data = {
         MAAS_MT_UPGRADE_API_KEY_SECRET_KEY: plaintext_key,
         MAAS_MT_UPGRADE_API_KEY_ID_SECRET_KEY: key_id,
     }
-    secret = Secret(
-        client=admin_client,
-        name=secret_name,
-        namespace=persist_namespace,
-        type="Opaque",
-        teardown=teardown,
-        wait_for_resource=True,
+    secret = Secret(client=admin_client, name=secret_name, namespace=persist_namespace)
+    assert not secret.exists, (
+        f"Expected to create multitenant upgrade API key Secret '{persist_namespace}/{secret_name}', "
+        "but it already exists. Delete the Secret or rely on baseline reuse via create_and_persist_tenant_api_key."
     )
-    if secret.exists:
-        resource_dict = secret.instance.to_dict()
-        resource_dict.setdefault("stringData", {}).update(string_data)
-        secret.update(resource_dict=resource_dict)
-    else:
-        secret_with_data = Secret(
+    resource_stack.enter_context(
+        Secret(
             client=admin_client,
             name=secret_name,
             namespace=persist_namespace,
@@ -864,7 +903,7 @@ def _persist_multitenant_upgrade_api_key_secret(
             teardown=teardown,
             wait_for_resource=True,
         )
-        secret_with_data.deploy()
+    )
 
 
 @contextmanager
@@ -994,6 +1033,7 @@ def provision_multitenant_upgrade_aitenant(
 
 def create_and_persist_tenant_api_key(
     admin_client: DynamicClient,
+    resource_stack: ExitStack,
     persist_namespace: str,
     base_url: str,
     ocp_user_token: str,
@@ -1003,32 +1043,6 @@ def create_and_persist_tenant_api_key(
     teardown: bool,
 ) -> MultitenantUpgradeTenantRecord:
     """Create a tenant API key, persist plaintext to a Secret, and return key metadata."""
-    existing_secret = Secret(client=admin_client, name=secret_name, namespace=persist_namespace)
-    if existing_secret.exists:
-        key_id = load_multitenant_upgrade_api_key_id_from_secret(
-            client=admin_client,
-            namespace=persist_namespace,
-            secret_name=secret_name,
-        )
-        load_persisted_multitenant_upgrade_api_key_from_secret(
-            client=admin_client,
-            namespace=persist_namespace,
-            secret_name=secret_name,
-        )
-        LOGGER.info(f"Reusing multitenant upgrade API key id={key_id} from Secret {persist_namespace}/{secret_name}")
-        return MultitenantUpgradeTenantRecord(
-            aitenant_name="",
-            tenant_namespace_name="",
-            subscription_name=subscription_name,
-            auth_policy_name="",
-            subscription_generation=0,
-            tokens_per_minute=0,
-            gateway_name="",
-            gateway_namespace="",
-            api_key_id=key_id,
-            api_key_secret_name=secret_name,
-        )
-
     api_key_name = f"e2e-mt-upg-key-{generate_random_name()}"
     create_response, create_body = create_api_key(
         base_url=base_url,
@@ -1044,8 +1058,9 @@ def create_and_persist_tenant_api_key(
     )
     key_id = str(create_body["id"])
     plaintext_key = str(create_body["key"])
-    _persist_multitenant_upgrade_api_key_secret(
+    _register_multitenant_upgrade_api_key_secret(
         admin_client=admin_client,
+        resource_stack=resource_stack,
         persist_namespace=persist_namespace,
         secret_name=secret_name,
         plaintext_key=plaintext_key,

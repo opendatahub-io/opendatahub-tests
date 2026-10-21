@@ -43,6 +43,8 @@ from tests.ai_gateway.models_as_a_service.upgrade.utils import (
     MaaSBaseline,
     MultitenantUpgradeTenantRecord,
     assert_multitenant_upgrade_api_key_secrets_absent,
+    assert_multitenant_upgrade_api_key_secrets_present,
+    delete_multitenant_upgrade_api_key_secrets,
     capture_legacy_migration_baseline,
     capture_maas_baseline,
     capture_multitenant_upgrade_baseline,
@@ -964,7 +966,19 @@ def maas_multitenant_upgrade_tenant_records(
             client=admin_client,
             namespace=persist_namespace,
         )
-        yield list(baseline["tenants"])
+        tenant_records = list(baseline["tenants"])
+        assert_multitenant_upgrade_api_key_secrets_present(
+            client=admin_client,
+            namespace=persist_namespace,
+            tenant_records=tenant_records,
+        )
+        yield tenant_records
+        if teardown_resources:
+            delete_multitenant_upgrade_api_key_secrets(
+                client=admin_client,
+                namespace=persist_namespace,
+                tenant_records=tenant_records,
+            )
     else:
         baseline_config_map = ConfigMap(
             client=admin_client,
@@ -980,7 +994,13 @@ def maas_multitenant_upgrade_tenant_records(
                 f"Reusing multitenant upgrade baseline from ConfigMap "
                 f"{persist_namespace}/{MAAS_MULTITENANT_UPGRADE_BASELINE_CM_NAME} for pre-upgrade tests"
             )
-            yield list(baseline["tenants"])
+            tenant_records = list(baseline["tenants"])
+            assert_multitenant_upgrade_api_key_secrets_present(
+                client=admin_client,
+                namespace=persist_namespace,
+                tenant_records=tenant_records,
+            )
+            yield tenant_records
             return
 
         secret_names = (
@@ -1024,6 +1044,7 @@ def maas_multitenant_upgrade_tenant_records(
                 )
                 key_record = create_and_persist_tenant_api_key(
                     admin_client=admin_client,
+                    resource_stack=stack,
                     persist_namespace=persist_namespace,
                     base_url=base_url,
                     ocp_user_token=current_client_token,
