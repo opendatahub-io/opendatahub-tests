@@ -130,6 +130,7 @@ def download_model_data(
             request for the download pod. Requesting it makes the scheduler place the pod on a
             GPU node, so a ReadWriteOnce volume binds in a topology where the predictor can
             also run. Mirrors how the S3 tests reach GPU nodes via the predictor's own request.
+            Ignored unless domain-qualified, so bare CPU identifiers are not treated as GPUs.
 
     Returns:
         str: Path to the model path
@@ -179,7 +180,9 @@ def download_model_data(
         "requests": {"cpu": "2", "memory": "8Gi"},
         "limits": {"cpu": "4", "memory": "16Gi"},
     }
-    if gpu_identifier:
+    # Extended resources are domain-qualified (nvidia.com/gpu). Accelerator maps resolve CPU
+    # types to a bare "cpu", which would overwrite the pod's own CPU request.
+    if gpu_identifier and "/" in gpu_identifier:
         downloader_resources["requests"][gpu_identifier] = "1"
         downloader_resources["limits"][gpu_identifier] = "1"
 
