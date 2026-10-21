@@ -788,29 +788,6 @@ def load_persisted_multitenant_upgrade_api_key_from_secret(
     )
 
 
-def load_multitenant_upgrade_api_key_id_from_secret(
-    client: DynamicClient,
-    namespace: str,
-    secret_name: str,
-) -> str:
-    """Load the MaaS API key id persisted alongside the plaintext in a multitenant upgrade Secret."""
-    secret = Secret(client=client, name=secret_name, namespace=namespace)
-    assert secret.exists, f"Multitenant upgrade API key Secret '{secret_name}' not found in namespace '{namespace}'."
-    secret_data = _field_value(value=secret.instance, field_name="data", default={})
-    encoded_key_id = _field_value(value=secret_data, field_name=MAAS_MT_UPGRADE_API_KEY_ID_SECRET_KEY)
-    assert encoded_key_id, (
-        f"Multitenant upgrade API key Secret '{namespace}/{secret_name}' is missing "
-        f"'{MAAS_MT_UPGRADE_API_KEY_ID_SECRET_KEY}'. Delete the Secret and re-run pre-upgrade provisioning."
-    )
-    try:
-        return base64.b64decode(str(encoded_key_id), validate=True).decode("utf-8")
-    except (UnicodeDecodeError, ValueError) as error:
-        raise AssertionError(
-            f"Multitenant upgrade API key Secret '{secret_name}' key '{MAAS_MT_UPGRADE_API_KEY_ID_SECRET_KEY}' "
-            "is not valid base64 UTF-8 data"
-        ) from error
-
-
 def assert_multitenant_upgrade_api_key_secrets_absent(
     client: DynamicClient,
     namespace: str,
@@ -894,7 +871,7 @@ def _register_multitenant_upgrade_api_key_secret(
         "but it already exists. Delete the Secret or rely on baseline reuse via create_and_persist_tenant_api_key."
     )
     resource_stack.enter_context(
-        Secret(
+        cm=Secret(
             client=admin_client,
             name=secret_name,
             namespace=persist_namespace,
