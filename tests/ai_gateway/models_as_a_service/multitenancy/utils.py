@@ -3,6 +3,7 @@ from contextlib import ExitStack, contextmanager
 from typing import Any, TypedDict
 from urllib.parse import urlparse
 
+import pytest
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
@@ -44,6 +45,7 @@ from utilities.resources.aitenant import AITenant
 from utilities.resources.auth_policy import AuthPolicy
 from utilities.resources.http_route import HTTPRoute
 from utilities.resources.llm_inference_service import LLMInferenceService
+from utilities.resources.maas_config import Config as MaaSConfig
 from utilities.resources.maastenantconfig import MaasTenantConfig
 from utilities.resources.route import Route
 
@@ -1113,4 +1115,190 @@ def verify_maas_api_httproute_attached_to_gateway(
     LOGGER.info(
         f"HTTPRoute/{route_name} in '{resolved_api_namespace}' is attached to "
         f"Gateway '{gateway_namespace}/{gateway_name}'"
+    )
+
+
+# MaaS Config TenantsHealthy aggregation (RHOAIENG-98881)
+
+MAAS_CONFIG_DEFAULT_NAME = "default"
+TENANTS_HEALTHY_CONDITION_TYPE = "TenantsHealthy"
+TENANTS_HEALTHY_REASON_ALL_TENANTS = "AllTenantsHealthy"
+TENANTS_HEALTHY_ALL_TENANTS_REASONS = frozenset({TENANTS_HEALTHY_REASON_ALL_TENANTS})
+TENANTS_UNHEALTHY_REASONS = frozenset({"TenantsDegraded", "TenantsBlocked"})
+
+TENANTS_HEALTHY_CONDITION_WAIT_TIMEOUT_SECONDS = 120
+TENANTS_HEALTHY_AGGREGATION_WAIT_TIMEOUT_SECONDS = 300
+TENANTS_HEALTHY_POLL_SECONDS = 5
+
+
+class MaasConfigConditionSnapshot:
+    """Observed MaaS Config status condition fields."""
+
+    def __init__(self, status: str, reason: str, message: str) -> None:
+        self.status = status
+        self.reason = reason
+        self.message = message
+
+
+def refresh_maas_config(maas_config: MaaSConfig) -> MaaSConfig:
+    """Return a MaaS Config handle with a freshly loaded instance."""
+    return MaaSConfig(
+        client=maas_config.client,
+        name=maas_config.name,
+        wait_for_resource=False,
+    )
+
+
+def read_maas_config_status_condition(
+    maas_config: MaaSConfig,
+    condition_type: str,
+) -> MaasConfigConditionSnapshot | None:
+    """Return the status, reason, and message for a Config status condition when present."""
+    refreshed_config = refresh_maas_config(maas_config=maas_config)
+    status = refreshed_config.instance.status
+    if status is None:
+        return None
+    conditions = getattr(status, "conditions", None) or []
+    for condition in conditions:
+        if getattr(condition, "type", None) == condition_type:
+            condition_status = getattr(condition, "status", None) or ""
+            condition_reason = getattr(condition, "reason", None) or ""
+            condition_message = getattr(condition, "message", None) or ""
+            return MaasConfigConditionSnapshot(
+                status=str(condition_status),
+                reason=str(condition_reason),
+                message=str(condition_message),
+            )
+    return None
+
+
+def maas_config_tenants_healthy_matches(
+    maas_config: MaaSConfig,
+    expected_status: str,
+    expected_reasons: frozenset[str],
+    message_must_contain: str | None = None,
+) -> bool:
+    """Return True when Config/default TenantsHealthy matches the expected status and reason."""
+    snapshot = read_maas_config_status_condition(
+        maas_config=maas_config,
+        condition_type=TENANTS_HEALTHY_CONDITION_TYPE,
+    )
+    if snapshot is None:
+        return False
+    if snapshot.status != expected_status:
+        return False
+    if snapshot.reason not in expected_reasons:
+        return False
+    return message_must_contain is None or message_must_contain in snapshot.message
+
+
+def wait_for_maas_config_tenants_healthy_condition_present(
+    maas_config: MaaSConfig,
+    wait_timeout: int = TENANTS_HEALTHY_CONDITION_WAIT_TIMEOUT_SECONDS,
+    sleep: int = TENANTS_HEALTHY_POLL_SECONDS,
+) -> MaasConfigConditionSnapshot:
+    """Wait until maas-controller writes TenantsHealthy on Config/default."""
+    try:
+        for snapshot in TimeoutSampler(
+            wait_timeout=wait_timeout,
+            sleep=sleep,
+            func=lambda: read_maas_config_status_condition(
+                maas_config=maas_config,
+                condition_type=TENANTS_HEALTHY_CONDITION_TYPE,
+            ),
+        ):
+            if snapshot is not None:
+                LOGGER.info(
+                    f"MaaS Config/{MAAS_CONFIG_DEFAULT_NAME} TenantsHealthy present: "
+                    f"status={snapshot.status} reason={snapshot.reason}"
+                )
+                return snapshot
+    except TimeoutExpiredError:
+        pytest.fail(
+            f"MaaS Config/{MAAS_CONFIG_DEFAULT_NAME} never reported TenantsHealthy within {wait_timeout}s — "
+            "upgrade maas-controller or verify tenant health aggregation is enabled"
+        )
+    pytest.fail(f"MaaS Config/{MAAS_CONFIG_DEFAULT_NAME} TenantsHealthy condition not found")
+
+
+def wait_for_maas_config_tenants_healthy(
+    maas_config: MaaSConfig,
+    expected_status: str,
+    expected_reasons: frozenset[str],
+    message_must_contain: str | None = None,
+    wait_timeout: int = TENANTS_HEALTHY_AGGREGATION_WAIT_TIMEOUT_SECONDS,
+    sleep: int = TENANTS_HEALTHY_POLL_SECONDS,
+) -> MaasConfigConditionSnapshot:
+    """Wait until Config/default TenantsHealthy matches the expected aggregation outcome."""
+    last_snapshot: MaasConfigConditionSnapshot | None = None
+    try:
+        for matched in TimeoutSampler(
+            wait_timeout=wait_timeout,
+            sleep=sleep,
+            func=lambda: maas_config_tenants_healthy_matches(
+                maas_config=maas_config,
+                expected_status=expected_status,
+                expected_reasons=expected_reasons,
+                message_must_contain=message_must_contain,
+            ),
+        ):
+            if matched:
+                snapshot = read_maas_config_status_condition(
+                    maas_config=maas_config,
+                    condition_type=TENANTS_HEALTHY_CONDITION_TYPE,
+                )
+                assert snapshot is not None
+                LOGGER.info(
+                    f"MaaS Config/{MAAS_CONFIG_DEFAULT_NAME} TenantsHealthy reached "
+                    f"status={snapshot.status} reason={snapshot.reason}"
+                )
+                return snapshot
+            last_snapshot = read_maas_config_status_condition(
+                maas_config=maas_config,
+                condition_type=TENANTS_HEALTHY_CONDITION_TYPE,
+            )
+    except TimeoutExpiredError:
+        last_status = last_snapshot.status if last_snapshot else "missing"
+        last_reason = last_snapshot.reason if last_snapshot else "missing"
+        last_message = last_snapshot.message if last_snapshot else ""
+        pytest.fail(
+            f"Timed out waiting for MaaS Config/{MAAS_CONFIG_DEFAULT_NAME} TenantsHealthy "
+            f"status={expected_status} reason in {sorted(expected_reasons)} within {wait_timeout}s; "
+            f"last status={last_status} reason={last_reason} message={last_message!r}"
+        )
+    pytest.fail(
+        f"MaaS Config/{MAAS_CONFIG_DEFAULT_NAME} TenantsHealthy did not reach "
+        f"status={expected_status} reason in {sorted(expected_reasons)}"
+    )
+
+
+def wait_for_maas_config_all_tenants_healthy(
+    maas_config: MaaSConfig,
+    wait_timeout: int = TENANTS_HEALTHY_AGGREGATION_WAIT_TIMEOUT_SECONDS,
+    sleep: int = TENANTS_HEALTHY_POLL_SECONDS,
+) -> MaasConfigConditionSnapshot:
+    """Wait until Config/default reports TenantsHealthy=True with reason AllTenantsHealthy."""
+    return wait_for_maas_config_tenants_healthy(
+        maas_config=maas_config,
+        expected_status="True",
+        expected_reasons=TENANTS_HEALTHY_ALL_TENANTS_REASONS,
+        wait_timeout=wait_timeout,
+        sleep=sleep,
+    )
+
+
+def wait_for_maas_config_tenants_unhealthy_listing_tenant(
+    maas_config: MaaSConfig,
+    unhealthy_tenant_name: str,
+    wait_timeout: int = TENANTS_HEALTHY_AGGREGATION_WAIT_TIMEOUT_SECONDS,
+    sleep: int = TENANTS_HEALTHY_POLL_SECONDS,
+) -> MaasConfigConditionSnapshot:
+    """Wait until Config/default TenantsHealthy=False and the message names the unhealthy tenant."""
+    return wait_for_maas_config_tenants_healthy(
+        maas_config=maas_config,
+        expected_status="False",
+        expected_reasons=TENANTS_UNHEALTHY_REASONS,
+        message_must_contain=unhealthy_tenant_name,
+        wait_timeout=wait_timeout,
+        sleep=sleep,
     )

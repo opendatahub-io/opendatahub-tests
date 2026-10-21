@@ -34,6 +34,7 @@ from tests.ai_gateway.models_as_a_service.maas_subscription.utils import (
     create_maas_subscription,
     patch_llmisvc_with_maas_router_and_tiers,
 )
+from tests.ai_gateway.models_as_a_service.observability.utils import get_maas_config_default
 from tests.ai_gateway.models_as_a_service.utils import (
     AITENANT_INFRA_NAMESPACE,
     build_maas_headers,
@@ -71,6 +72,7 @@ from utilities.llmd_utils import create_llmisvc
 from utilities.plugins.constant import OpenAIEnpoints
 from utilities.resources.authorino import Authorino
 from utilities.resources.llm_inference_service import LLMInferenceService
+from utilities.resources.maas_config import Config as MaaSConfig
 from utilities.resources.rate_limit_policy import RateLimitPolicy
 from utilities.resources.token_rate_limit_policy import TokenRateLimitPolicy
 from utilities.user_utils import UserTestSession, create_htpasswd_file, wait_for_user_creation
@@ -1219,6 +1221,15 @@ def maas_subscription_controller_enabled_latest(
         dsc_resource=dsc_resource,
         original_components_patch=original_components_patch,
     )
+
+
+@pytest.fixture(scope="session")
+def maas_config_default(
+    admin_client: DynamicClient,
+    maas_subscription_controller_enabled_latest: DataScienceCluster,
+) -> MaaSConfig:
+    """Return the cluster-scoped MaaS Config/default anchor."""
+    return get_maas_config_default(admin_client=admin_client)
 
 
 @pytest.fixture(scope="class")
