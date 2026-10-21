@@ -19,6 +19,7 @@ from tests.model_serving.model_runtime.vllm.constant import (
 from tests.model_serving.model_runtime.vllm.utils import (
     add_image_pull_secrets_if_configured,
     dedupe_vllm_cli_args,
+    get_gpu_node_zone_selector,
     validate_supported_quantization_schema,
 )
 from utilities.constants import AcceleratorType, KServeDeploymentType, Labels, StorageClassName
@@ -28,6 +29,9 @@ from utilities.inference_utils import create_isvc
 # Accelerators whose GPU nodes need a storage class other than the cluster default.
 # amd: IBM VPC block volumes cannot attach to the MI300X nodes, so use node-local LVM storage.
 ACCELERATOR_STORAGE_CLASS: dict[str, str] = {AcceleratorType.AMD: StorageClassName.LVMS_VG1}
+
+# Accelerators where the download pod requests the GPU resource to reach a GPU node.
+GPU_SCHEDULED_ACCELERATORS: frozenset[str] = frozenset({AcceleratorType.NVIDIA, AcceleratorType.AMD})
 
 
 @pytest.fixture(scope="class")
@@ -77,10 +81,18 @@ def pvc_downloaded_model_data(
     models_s3_bucket_region: str,
 ) -> str:
     """Download vLLM model data from the models S3 bucket into the PVC."""
-    gpu_resource = ACCELERATOR_IDENTIFIER.get(
-        supported_accelerator_type.lower(),
-        Labels.Nvidia.NVIDIA_COM_GPU,
-    )
+    accelerator_type = supported_accelerator_type.lower()
+    gpu_resource = ACCELERATOR_IDENTIFIER.get(accelerator_type, Labels.Nvidia.NVIDIA_COM_GPU)
+
+    # Request the GPU resource so the scheduler places the download pod on a GPU node. Limited
+    # to the accelerators it has been verified on; the rest keep the original zone pinning.
+    gpu_identifier: str | None = None
+    node_selector: dict[str, str] | None = None
+    if accelerator_type in GPU_SCHEDULED_ACCELERATORS:
+        gpu_identifier = gpu_resource
+    else:
+        node_selector = get_gpu_node_zone_selector(client=admin_client, gpu_resource=gpu_resource)
+
     return download_model_data(
         client=admin_client,
         model_namespace=model_namespace.name,
@@ -92,7 +104,8 @@ def pvc_downloaded_model_data(
         model_path=request.param["model-dir"],
         use_sub_path=True,
         restricted_scc_init=True,
-        gpu_identifier=gpu_resource,
+        node_selector=node_selector,
+        gpu_identifier=gpu_identifier,
     )
 
 
