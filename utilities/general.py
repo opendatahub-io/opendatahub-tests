@@ -107,6 +107,7 @@ def download_model_data(
     use_sub_path: bool = False,
     restricted_scc_init: bool = False,
     node_selector: dict[str, str] | None = None,
+    gpu_identifier: str | None = None,
 ) -> str:
     """
     Downloads the model data from the bucket to the PVC
@@ -125,6 +126,10 @@ def download_model_data(
         restricted_scc_init (bool): Use OpenShift restricted-SCC-safe init (no chmod,
             fsGroup from namespace, init container mounts full PVC when use_sub_path).
         node_selector (dict[str, str] | None): Optional nodeSelector for the download pod.
+        gpu_identifier (str | None): Optional GPU extended resource (e.g. nvidia.com/gpu) to
+            request for the download pod. Requesting it makes the scheduler place the pod on a
+            GPU node, so a ReadWriteOnce volume binds in a topology where the predictor can
+            also run. Mirrors how the S3 tests reach GPU nodes via the predictor's own request.
 
     Returns:
         str: Path to the model path
@@ -170,9 +175,17 @@ def download_model_data(
         "args": init_container_args,
         "volumeMounts": [init_volume_mount],
     }
+    downloader_resources: dict[str, dict[str, str]] = {
+        "requests": {"cpu": "2", "memory": "8Gi"},
+        "limits": {"cpu": "4", "memory": "16Gi"},
+    }
+    if gpu_identifier:
+        downloader_resources["requests"][gpu_identifier] = "1"
+        downloader_resources["limits"][gpu_identifier] = "1"
+
     downloader_container: dict[str, Any] = {
         "name": "model-downloader",
-        "resources": {"requests": {"cpu": "2", "memory": "8Gi"}, "limits": {"cpu": "4", "memory": "16Gi"}},
+        "resources": downloader_resources,
         "image": utilities.infra.get_kserve_storage_initialize_image(client=client),
         "args": [
             f"s3://{bucket_name}/{model_path}/",
