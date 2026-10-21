@@ -4,9 +4,25 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.pod import Pod
 
+from tests.spark.utils import scheduled_last_run_application
+from utilities.resources.scheduled_spark_application import ScheduledSparkApplication
 from utilities.resources.spark_application import SparkApplication
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+def scheduled_running_execution(client: DynamicClient, scheduled_app: ScheduledSparkApplication) -> dict:
+    """Capture the identity of a ScheduledSparkApplication's in-flight child run.
+
+    Args:
+        client: Kubernetes client.
+        scheduled_app: ScheduledSparkApplication whose latest run must be executing the gated task.
+
+    Returns:
+        The child run name alongside application and pod identity, for post-upgrade comparison.
+    """
+    child = scheduled_last_run_application(client=client, scheduled_app=scheduled_app)
+    return {"run_name": child.name, **spark_running_execution(client=client, spark_app=child)}
 
 
 def spark_running_execution(client: DynamicClient, spark_app: SparkApplication) -> dict:
