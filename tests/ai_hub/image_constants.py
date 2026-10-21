@@ -13,9 +13,6 @@ class AiHubImages:
         "public.ecr.aws/docker/library/busybox"
         "@sha256:1487d0af5f52b4ba31c7e465126ee2123fe3f2305d638e7827681e7cf6c83d5e"  # pragma: allowlist secret
     )
-    SEAWEEDFS: str = (
-        "ghcr.io/chrislusf/seaweedfs@sha256:6620371e8af8282056685c652d4637265698c9e2c2d59f9594e6ac333ad6c634"
-    )
     POSTGRES: str = (
         "public.ecr.aws/docker/library/postgres"
         "@sha256:6e9bbed548cc1ca776dd4685cfea9efe60d58df91186ec6bad7328fd03b388a5"  # pragma: allowlist secret

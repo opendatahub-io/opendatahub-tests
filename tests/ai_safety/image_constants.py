@@ -7,9 +7,6 @@ class AiSafetyImages:
     MINIO_MC: str = (
         "quay.io/trustyai_testing/minio-mc@sha256:f857d815d4dfb95ccfb6e374cf949f3daebbe05a952d44bbbde3f2552d28e6c0"
     )
-    MINIO_SERVER: str = (
-        "quay.io/trustyai_testing/minio@sha256:cf222021b0727b0b3efe1794dd3f1af898071b684c1c67b1ef345ccef636501a"
-    )
     MINIO_SERVER_OTEL: str = (
         "quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e"
     )
@@ -40,7 +37,7 @@ class AiSafetyImages:
     )
     OTEL_COLLECTOR: str = (
         "ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector"
-        "@sha256:62c84db5d6fa6e7c3dfc8e63d60b8d4e9e4f8dfded5b6c4056e44c6d3e78ac63"
+        "@sha256:310a800ad69ee430e7c541796852a242c9c7db97aaad4daa5ccf843c525fbdb2"
     )
     EVALHUB_INVALID_IMAGE: str = (  # noqa: IMG002
         "quay.io/trustyai_testing/nonexistent-image"
