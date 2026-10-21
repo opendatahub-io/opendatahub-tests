@@ -1272,3 +1272,102 @@ def gateway_namespace_and_name_for_aitenant(aitenant: AITenant) -> tuple[str, st
     """Return gateway namespace and name from AITenant status.gatewayRef."""
     gateway_name, gateway_namespace = gateway_ref_from_aitenant(aitenant=aitenant)
     return gateway_namespace, gateway_name
+
+
+def praxis_extproc_deployment_names_for_aitenant(aitenant: AITenant) -> tuple[str, str, str]:
+    """Return gateway namespace and post/pre Praxis extproc Deployment names for an AITenant."""
+    gateway_namespace, _gateway_name = gateway_namespace_and_name_for_aitenant(aitenant=aitenant)
+    aitenant_name = aitenant.name
+    post_processing_name = legacy_ipp_post_processing_deployment_name(aitenant_name=aitenant_name)
+    pre_processing_name = legacy_ipp_pre_processing_deployment_name(aitenant_name=aitenant_name)
+    return gateway_namespace, post_processing_name, pre_processing_name
+
+
+def verify_praxis_extproc_deployments_exist_in_gateway_namespace(
+    admin_client: DynamicClient,
+    aitenant: AITenant,
+) -> None:
+    """Assert both Praxis extproc Deployments exist in the tenant gateway namespace."""
+    gateway_namespace, post_processing_name, pre_processing_name = praxis_extproc_deployment_names_for_aitenant(
+        aitenant=aitenant,
+    )
+    for deployment_name in (post_processing_name, pre_processing_name):
+        extproc_deployment = Deployment(
+            client=admin_client,
+            name=deployment_name,
+            namespace=gateway_namespace,
+        )
+        assert extproc_deployment.exists, (
+            f"Deployment '{gateway_namespace}/{deployment_name}' not found for AITenant "
+            f"'{aitenant.namespace}/{aitenant.name}'"
+        )
+
+
+def verify_praxis_extproc_deployment_available(
+    admin_client: DynamicClient,
+    gateway_namespace: str,
+    deployment_name: str,
+    timeout: int = DEFAULT_LEGACY_IPP_WAIT_TIMEOUT_SECONDS,
+) -> None:
+    """Assert a Praxis extproc Deployment in the gateway namespace reports Available=True."""
+    extproc_deployment = Deployment(
+        client=admin_client,
+        name=deployment_name,
+        namespace=gateway_namespace,
+        ensure_exists=True,
+    )
+    try:
+        extproc_deployment.wait_for_condition(
+            condition="Available",
+            status="True",
+            timeout=timeout,
+        )
+    except TimeoutExpiredError:
+        pytest.fail(
+            f"Deployment '{gateway_namespace}/{deployment_name}' did not reach Available=True within {timeout}s"
+        )
+
+
+def verify_praxis_extproc_deployment_pods_ready(
+    admin_client: DynamicClient,
+    gateway_namespace: str,
+    deployment_name: str,
+) -> None:
+    """Assert all desired replicas of a Praxis extproc Deployment are ready."""
+    extproc_deployment = Deployment(
+        client=admin_client,
+        name=deployment_name,
+        namespace=gateway_namespace,
+        ensure_exists=True,
+    )
+    ready_replicas: int = extproc_deployment.instance.status.readyReplicas or 0
+    spec_replicas = extproc_deployment.instance.spec.replicas
+    desired_replicas: int = spec_replicas if spec_replicas is not None else 1
+    assert ready_replicas >= desired_replicas, (
+        f"Deployment '{gateway_namespace}/{deployment_name}' has {ready_replicas}/{desired_replicas} ready replicas"
+    )
+
+
+def verify_praxis_workloads_installed_in_aitenant_gateway_namespace(
+    admin_client: DynamicClient,
+    aitenant: AITenant,
+) -> None:
+    """Assert Praxis extproc Deployments exist under AITenant.status.gatewayRef.namespace."""
+    gateway_namespace, post_processing_name, pre_processing_name = praxis_extproc_deployment_names_for_aitenant(
+        aitenant=aitenant,
+    )
+    _gateway_name, gateway_ref_namespace = gateway_ref_from_aitenant(aitenant=aitenant)
+    assert gateway_namespace == gateway_ref_namespace, (
+        f"Expected Praxis workloads in gateway namespace '{gateway_ref_namespace}' from gatewayRef, "
+        f"resolved '{gateway_namespace}' for AITenant '{aitenant.namespace}/{aitenant.name}'"
+    )
+    verify_praxis_extproc_deployments_exist_in_gateway_namespace(
+        admin_client=admin_client,
+        aitenant=aitenant,
+    )
+    for deployment_name in (post_processing_name, pre_processing_name):
+        verify_praxis_extproc_deployment_available(
+            admin_client=admin_client,
+            gateway_namespace=gateway_namespace,
+            deployment_name=deployment_name,
+        )
