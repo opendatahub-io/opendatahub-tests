@@ -1,7 +1,7 @@
 import base64
 import json
 from fnmatch import fnmatch
-from typing import Any
+from typing import Any, NamedTuple
 
 import requests
 import structlog
@@ -14,6 +14,7 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
 from ocp_resources.endpoints import Endpoints
 from ocp_resources.job import Job
+from ocp_resources.network_policy import NetworkPolicy
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
@@ -23,6 +24,7 @@ from timeout_sampler import TimeoutSampler, retry
 import tests.ai_hub.constants as ai_hub_constants
 from tests.ai_hub.constants import (
     DB_BASE_RESOURCES_NAME,
+    EXTERNAL_ADDRESS_REST_ANNOTATION,
     MARIADB_MY_CNF,
     MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
     MODEL_REGISTRY_DB_SECRET_STR_DATA,
@@ -36,6 +38,7 @@ from utilities.constants import MARIA_DB_IMAGE, Annotations, PodNotFound, Protoc
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
 from utilities.general import wait_for_pods_running
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.resources.pod import Pod as UtilPod
 from utilities.user_utils import get_byoidc_cli_client_id, get_byoidc_issuer_url, get_oidc_token_endpoint
 
 ADDRESS_ANNOTATION_PREFIX: str = "routing.opendatahub.io/external-address-"
@@ -1210,3 +1213,79 @@ def execute_authenticated_post(url: str, token: str, files: dict[str, tuple[str,
         LOGGER.error(f"POST failed: {response.status_code} — {response.text}")
     response.raise_for_status()
     return response.json()
+
+
+def get_network_policy_ingress_rules(network_policy: NetworkPolicy) -> list[dict[str, Any]]:
+    """Get the ingress rules of a NetworkPolicy as plain dictionaries.
+
+    Args:
+        network_policy: NetworkPolicy to read.
+
+    Returns:
+        List of ingress rules, each with its "from" peers and "ports".
+    """
+    return network_policy.instance.to_dict()["spec"].get("ingress", [])
+
+
+def get_network_policy_pod_selector_labels(network_policy: NetworkPolicy) -> dict[str, str]:
+    """Get the matchLabels of the pod selector that picks which pods a NetworkPolicy applies to.
+
+    Args:
+        network_policy: NetworkPolicy to read.
+
+    Returns:
+        The pod selector's matchLabels, or an empty dict if it selects every pod in the namespace.
+    """
+    return network_policy.instance.to_dict()["spec"].get("podSelector", {}).get("matchLabels", {})
+
+
+def get_service_external_address_rest(service: Service) -> str | None:
+    """Get the external REST address the Dashboard BFF uses to reach a service.
+
+    Args:
+        service: Model registry or model catalog Service.
+
+    Returns:
+        Value of the external-address-rest annotation (host[:port][/path]), or None if it is not set.
+    """
+    return (service.instance.metadata.annotations or {}).get(EXTERNAL_ADDRESS_REST_ANNOTATION)
+
+
+class CurlResult(NamedTuple):
+    rc: int
+    http_code: int
+    name_lookup_seconds: float
+    tcp_connect_seconds: float
+    stderr: str
+
+
+def curl_from_pod(pod: UtilPod, url: str, use_service_account_token: bool = False) -> CurlResult:
+    """Curl a URL from inside a pod to check network reachability.
+
+    TLS verification is skipped. Timing fields are 0 when that phase never completed, so a resolved
+    name with no TCP connection means the connection was blocked rather than failing in DNS or TLS.
+
+    Args:
+        pod: Pod to run curl in.
+        url: URL to request.
+        use_service_account_token: Send the pod's own service account token as a bearer token. The
+            token is read inside the pod, so it never appears in the logged command.
+
+    Returns:
+        CurlResult with curl's return code, HTTP status (0 when no response), and phase timings.
+    """
+    curl_command = "curl -k -sS -o /dev/null --connect-timeout 10 -w '%{http_code} %{time_namelookup} %{time_connect}'"
+    if use_service_account_token:
+        curl_command += ' -H "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"'
+    # The URL is passed as a positional argument so it is never parsed as shell syntax
+    exec_result = pod.execute(command=["sh", "-c", f'{curl_command} "$1"', "sh", url])
+    http_code, name_lookup_seconds, tcp_connect_seconds = exec_result.stdout.split()
+    result = CurlResult(
+        rc=exec_result.rc,
+        http_code=int(http_code),
+        name_lookup_seconds=float(name_lookup_seconds),
+        tcp_connect_seconds=float(tcp_connect_seconds),
+        stderr=exec_result.stderr,
+    )
+    LOGGER.info(f"curl to {url} from {pod.name}: {result}")
+    return result

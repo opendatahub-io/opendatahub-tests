@@ -1,10 +1,11 @@
 import hashlib
 import os
 from collections.abc import Callable, Generator
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from typing import Any, TypedDict
 
 import pytest
+import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.custom_resource_definition import CustomResourceDefinition
@@ -25,7 +26,16 @@ from tests.ai_gateway.models_as_a_service.observability.utils import (
 from tests.ai_gateway.models_as_a_service.utils import (
     AIGATEWAY_GATEWAY_CLASS_NAME,
     AITENANT_INFRA_NAMESPACE,
+    LEGACY_TENANT_CRD_NAME,
+    MAAS_TENANT_CONFIG_CRD_NAME,
+    aitenant_from_spec,
+    bootstrap_gateway_context,
+    bootstrap_gateway_ref,
     bootstrap_gateway_ref_from_aitenant,
+    build_aitenant_spec,
+    cluster_has_legacy_tenant_crd,
+    cluster_has_maas_tenant_config_crd,
+    deploy_and_verify_aitenant_ready,
     fresh_aitenant,
     verify_maas_gateway_programmed,
     verify_maas_tenant_config_ready,
@@ -34,6 +44,7 @@ from utilities.constants import MAAS_GATEWAY_NAME, ApiGroups
 from utilities.general import generate_random_name
 from utilities.resources.aitenant import AITenant
 from utilities.resources.maastenantconfig import MaasTenantConfig
+from utilities.resources.tenant import Tenant
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -77,11 +88,31 @@ MAAS_MODEL_REF_READY_CONDITION_TYPE = "Ready"
 
 SUBSCRIPTION_RECONCILED_PHASES = ("Active", "Degraded")
 
+LEGACY_TENANT_MIGRATION_API_KEYS_DAYS_LEGACY = 37
+LEGACY_TENANT_MIGRATION_API_KEYS_DAYS_MISMATCH = 90
+LEGACY_TENANT_MIGRATION_EXTERNAL_OIDC = {
+    "issuerUrl": "https://sso.example.com/realms/maas-legacy-migrate-e2e",
+    "clientId": "maas-legacy-migrate-e2e",
+    "ttl": 600,
+}
+LEGACY_MIGRATION_API_KEY_OWNER_GROUP = "system:authenticated"  # pragma: allowlist secret
+
 
 class AITenantTestContext(TypedDict):
     aitenant: AITenant
     aitenant_name: str
     tenant_namespace_name: str
+
+
+class LegacyTenantMigrationTestContext(AITenantTestContext):
+    bootstrap_gateway_name: str
+    bootstrap_gateway_namespace: str
+
+
+class MintedTenantMaasApiKey(TypedDict):
+    key_id: str
+    plaintext_api_key: str
+    tenant_maas_api_base_url: str
 
 
 class AITenantPreexistingNamespaceContext(TypedDict):
@@ -1457,3 +1488,777 @@ def assert_maas_resource_stays_unreconciled(
                 )
     except TimeoutExpiredError:
         LOGGER.info(f"{resource_label} stayed unreconciled for {timeout}s")
+
+
+def require_legacy_tenant_migration_prerequisites(admin_client: DynamicClient) -> None:
+    """Fail when CRDs required for legacy Tenant migration E2E are not installed."""
+    assert cluster_has_legacy_tenant_crd(admin_client=admin_client), (
+        f"Legacy Tenant CRD {LEGACY_TENANT_CRD_NAME} is not installed on this cluster"
+    )
+    assert cluster_has_maas_tenant_config_crd(admin_client=admin_client), (
+        f"MaasTenantConfig CRD {MAAS_TENANT_CONFIG_CRD_NAME} is not installed on this cluster"
+    )
+    aitenant_crd = CustomResourceDefinition(client=admin_client, name=AITENANT_CRD_NAME)
+    assert aitenant_crd.exists, f"AITenant CRD {AITENANT_CRD_NAME} is not installed on this cluster"
+
+
+def build_legacy_tenant_migration_api_keys(max_expiration_days: int) -> dict[str, Any]:
+    """Return legacy Tenant / MaasTenantConfig apiKeys spec for migration tests."""
+    return {"maxExpirationDays": max_expiration_days}
+
+
+def build_legacy_tenant_migration_telemetry() -> dict[str, Any]:
+    """Return shared telemetry spec for legacy Tenant migration tests (TenantTelemetryConfig shape)."""
+    return {
+        "enabled": True,
+        "metrics": {
+            "captureOrganization": True,
+            "captureUser": False,
+            "captureGroup": False,
+            "captureModelUsage": True,
+        },
+    }
+
+
+def build_legacy_tenant_migration_telemetry_disabled() -> dict[str, Any]:
+    """Return MaasTenantConfig telemetry that mismatches legacy enabled=true (retain legacy Tenant)."""
+    enabled_telemetry = build_legacy_tenant_migration_telemetry()
+    return {
+        "enabled": False,
+        "metrics": enabled_telemetry["metrics"],
+    }
+
+
+def legacy_default_tenant_resource(
+    admin_client: DynamicClient,
+    tenant_namespace_name: str,
+) -> Tenant:
+    """Return a handle to legacy Tenant/default-tenant (may or may not exist)."""
+    return Tenant(
+        client=admin_client,
+        name=AIGATEWAY_BOOTSTRAPPED_TENANT_NAME,
+        namespace=tenant_namespace_name,
+        wait_for_resource=False,
+    )
+
+
+def wait_for_legacy_default_tenant_deleted(
+    admin_client: DynamicClient,
+    tenant_namespace_name: str,
+    timeout: int = 300,
+) -> None:
+    """Poll until legacy Tenant/default-tenant is removed from the tenant namespace."""
+
+    def legacy_tenant_absent() -> bool:
+        return not legacy_default_tenant_resource(
+            admin_client=admin_client,
+            tenant_namespace_name=tenant_namespace_name,
+        ).exists
+
+    try:
+        for absent in TimeoutSampler(
+            wait_timeout=timeout,
+            sleep=5,
+            func=legacy_tenant_absent,
+        ):
+            if absent:
+                LOGGER.info(
+                    f"Legacy Tenant/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} deleted from '{tenant_namespace_name}'"
+                )
+                return
+    except TimeoutExpiredError:
+        pytest.fail(
+            f"Legacy Tenant/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} still exists in "
+            f"'{tenant_namespace_name}' after {timeout}s"
+        )
+
+
+def _maas_tenant_config_ready(maas_tenant_config: MaasTenantConfig) -> bool:
+    """Return True when MaasTenantConfig status reports Ready=True."""
+    refreshed_maas_tenant_config = refresh_maas_namespaced_resource(resource=maas_tenant_config)
+    status = refreshed_maas_tenant_config.instance.status
+    if status is None:
+        return False
+    conditions = getattr(status, "conditions", None)
+    if not conditions:
+        return False
+    for condition in conditions:
+        condition_type = getattr(condition, "type", None)
+        condition_status = getattr(condition, "status", None)
+        if condition_type == "Ready" and condition_status == "True":
+            return True
+    return False
+
+
+def wait_for_legacy_default_tenant_retained(
+    admin_client: DynamicClient,
+    tenant_namespace_name: str,
+    timeout: int = 300,
+) -> None:
+    """Poll until MaasTenantConfig is Ready and legacy Tenant/default-tenant is still present."""
+
+    def legacy_retention_stable() -> bool:
+        if not legacy_default_tenant_resource(
+            admin_client=admin_client,
+            tenant_namespace_name=tenant_namespace_name,
+        ).exists:
+            return False
+        maas_tenant_config = MaasTenantConfig(
+            client=admin_client,
+            name=AIGATEWAY_BOOTSTRAPPED_TENANT_NAME,
+            namespace=tenant_namespace_name,
+            wait_for_resource=False,
+        )
+        if not maas_tenant_config.exists:
+            return False
+        return _maas_tenant_config_ready(maas_tenant_config=maas_tenant_config)
+
+    try:
+        for stable in TimeoutSampler(
+            wait_timeout=timeout,
+            sleep=5,
+            func=legacy_retention_stable,
+        ):
+            if stable:
+                LOGGER.info(
+                    f"Legacy Tenant/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} retained in "
+                    f"'{tenant_namespace_name}' with Ready MaasTenantConfig"
+                )
+                return
+    except TimeoutExpiredError:
+        pytest.fail(
+            f"Legacy Tenant/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} was not retained with Ready "
+            f"MaasTenantConfig/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} in '{tenant_namespace_name}' "
+            f"after {timeout}s"
+        )
+
+
+def verify_maas_tenant_config_telemetry_matches(
+    maas_tenant_config: MaasTenantConfig,
+    expected_telemetry: dict[str, Any],
+) -> None:
+    """Assert MaasTenantConfig spec.telemetry matches the expected TenantTelemetryConfig fields."""
+    maas_tenant_config_spec = maas_tenant_config.instance.spec
+    spec_telemetry = getattr(maas_tenant_config_spec, "telemetry", None)
+    assert spec_telemetry is not None, (
+        f"MaasTenantConfig/{maas_tenant_config.name} should have spec.telemetry after migration"
+    )
+    enabled = getattr(spec_telemetry, "enabled", None)
+    assert enabled == expected_telemetry["enabled"], (
+        f"MaasTenantConfig/{maas_tenant_config.name} spec.telemetry.enabled expected "
+        f"{expected_telemetry['enabled']!r}, got {enabled!r}"
+    )
+    expected_metrics = expected_telemetry["metrics"]
+    spec_metrics = getattr(spec_telemetry, "metrics", None)
+    assert spec_metrics is not None, (
+        f"MaasTenantConfig/{maas_tenant_config.name} should have spec.telemetry.metrics after migration"
+    )
+    for field_name, expected_value in expected_metrics.items():
+        actual_value = getattr(spec_metrics, field_name, None)
+        assert actual_value == expected_value, (
+            f"MaasTenantConfig/{maas_tenant_config.name} spec.telemetry.metrics.{field_name} expected "
+            f"{expected_value!r}, got {actual_value!r}"
+        )
+
+
+def verify_aitenant_gateway_and_oidc_migrated_from_legacy(
+    test_context: LegacyTenantMigrationTestContext,
+    expected_external_oidc: dict[str, Any],
+) -> None:
+    """Assert platform gateway/OIDC from legacy Tenant landed on AITenant (not MaasTenantConfig)."""
+    verify_aitenant_oidc_stays_in_spec(
+        aitenant=test_context["aitenant"],
+        expected_oidc=expected_external_oidc,
+    )
+    refreshed_aitenant = fresh_aitenant(aitenant=test_context["aitenant"])
+    gateway_spec = getattr(refreshed_aitenant.instance.spec, "gateway", None)
+    assert gateway_spec is not None, (
+        f"AITenant '{test_context['aitenant_name']}' should have spec.gateway after legacy migration"
+    )
+    spec_gateway_name = getattr(gateway_spec, "name", None)
+    assert spec_gateway_name == test_context["bootstrap_gateway_name"], (
+        f"AITenant spec.gateway.name expected {test_context['bootstrap_gateway_name']!r}, got {spec_gateway_name!r}"
+    )
+    aitenant_status = refreshed_aitenant.instance.status
+    status_gateway_ref = getattr(aitenant_status, "gatewayRef", None)
+    assert status_gateway_ref is not None, (
+        f"AITenant '{test_context['aitenant_name']}' status.gatewayRef should be set after legacy migration"
+    )
+    status_gateway_name = status_gateway_ref.name
+    status_gateway_namespace = status_gateway_ref.namespace
+    assert status_gateway_name == test_context["bootstrap_gateway_name"], (
+        f"AITenant status.gatewayRef.name expected {test_context['bootstrap_gateway_name']!r}, "
+        f"got {status_gateway_name!r}"
+    )
+    assert status_gateway_namespace == test_context["bootstrap_gateway_namespace"], (
+        f"AITenant status.gatewayRef.namespace expected {test_context['bootstrap_gateway_namespace']!r}, "
+        f"got {status_gateway_namespace!r}"
+    )
+
+
+def verify_maas_tenant_config_api_keys_max_expiration_days(
+    maas_tenant_config: MaasTenantConfig,
+    expected_max_expiration_days: int,
+) -> None:
+    """Assert MaasTenantConfig spec.apiKeys.maxExpirationDays matches the expected value."""
+    maas_tenant_config_spec = maas_tenant_config.instance.spec
+    api_keys = getattr(maas_tenant_config_spec, "apiKeys", None)
+    assert api_keys is not None, f"MaasTenantConfig/{maas_tenant_config.name} should have spec.apiKeys after migration"
+    max_expiration_days = getattr(api_keys, "maxExpirationDays", None)
+    assert max_expiration_days == expected_max_expiration_days, (
+        f"MaasTenantConfig/{maas_tenant_config.name} spec.apiKeys.maxExpirationDays expected "
+        f"{expected_max_expiration_days}, got {max_expiration_days!r}"
+    )
+
+
+def verify_bootstrapped_maas_tenant_config_after_migration(
+    admin_client: DynamicClient,
+    tenant_namespace_name: str,
+    expected_api_keys_max_expiration_days: int | None = None,
+    expected_telemetry: dict[str, Any] | None = None,
+) -> MaasTenantConfig:
+    """Assert MaasTenantConfig/default-tenant is Ready and AITenant-managed after migration."""
+    maas_tenant_config = MaasTenantConfig(
+        client=admin_client,
+        name=AIGATEWAY_BOOTSTRAPPED_TENANT_NAME,
+        namespace=tenant_namespace_name,
+        ensure_exists=True,
+    )
+    verify_maas_tenant_config_ready(maas_tenant_config=maas_tenant_config)
+    tenant_config_labels = dict(maas_tenant_config.instance.metadata.labels or {})
+    assert tenant_config_labels[AIGATEWAY_MANAGED_BY_LABEL] == "true", (
+        f"MaasTenantConfig/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} label {AIGATEWAY_MANAGED_BY_LABEL} "
+        f"expected 'true', got {tenant_config_labels[AIGATEWAY_MANAGED_BY_LABEL]!r}"
+    )
+    maas_tenant_config_spec = maas_tenant_config.instance.spec
+    gateway_ref = getattr(maas_tenant_config_spec, "gatewayRef", None)
+    external_oidc = getattr(maas_tenant_config_spec, "externalOIDC", None)
+    assert gateway_ref is None, (
+        f"MaasTenantConfig/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} should not carry gatewayRef after migration"
+    )
+    assert external_oidc is None, (
+        f"MaasTenantConfig/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} should not carry externalOIDC after migration"
+    )
+    if expected_api_keys_max_expiration_days is not None:
+        verify_maas_tenant_config_api_keys_max_expiration_days(
+            maas_tenant_config=maas_tenant_config,
+            expected_max_expiration_days=expected_api_keys_max_expiration_days,
+        )
+    if expected_telemetry is not None:
+        verify_maas_tenant_config_telemetry_matches(
+            maas_tenant_config=maas_tenant_config,
+            expected_telemetry=expected_telemetry,
+        )
+    return maas_tenant_config
+
+
+def verify_legacy_tenant_cleanup_migration_outcome(
+    admin_client: DynamicClient,
+    test_context: AITenantTestContext,
+    expect_legacy_deleted: bool,
+    expected_mtc_telemetry: dict[str, Any] | None = None,
+) -> None:
+    """Assert legacy Tenant delete/retain outcome and MaasTenantConfig Ready after migration."""
+    tenant_namespace_name = test_context["tenant_namespace_name"]
+    expected_api_keys_max_expiration_days: int | None = None
+    if expect_legacy_deleted:
+        expected_api_keys_max_expiration_days = LEGACY_TENANT_MIGRATION_API_KEYS_DAYS_LEGACY
+        wait_for_legacy_default_tenant_deleted(
+            admin_client=admin_client,
+            tenant_namespace_name=tenant_namespace_name,
+        )
+    else:
+        wait_for_legacy_default_tenant_retained(
+            admin_client=admin_client,
+            tenant_namespace_name=tenant_namespace_name,
+        )
+    verify_bootstrapped_maas_tenant_config_after_migration(
+        admin_client=admin_client,
+        tenant_namespace_name=tenant_namespace_name,
+        expected_api_keys_max_expiration_days=expected_api_keys_max_expiration_days,
+        expected_telemetry=expected_mtc_telemetry,
+    )
+
+
+def run_legacy_tenant_migration_e2e(
+    admin_client: DynamicClient,
+    aitenant_infra_namespace: str,
+    teardown: bool,
+    maas_tenant_config_api_keys_max_expiration_days: int | None,
+    expect_legacy_deleted: bool,
+    outcome_log_message: str,
+    maas_tenant_config_telemetry: dict[str, Any] | None = None,
+    legacy_gateway_and_external_oidc: bool = False,
+    expected_mtc_telemetry: dict[str, Any] | None = None,
+    verify_aitenant_gateway_and_oidc: bool = False,
+    verify_cluster_default_tenant: bool = False,
+) -> None:
+    """Bootstrap legacy migration fixtures, assert outcome, and log."""
+    legacy_external_oidc: dict[str, Any] | None = None
+    if legacy_gateway_and_external_oidc:
+        legacy_external_oidc = LEGACY_TENANT_MIGRATION_EXTERNAL_OIDC
+    with legacy_tenant_migration_ready_aitenant(
+        admin_client=admin_client,
+        aitenant_infra_namespace=aitenant_infra_namespace,
+        teardown=teardown,
+        legacy_api_keys_max_expiration_days=LEGACY_TENANT_MIGRATION_API_KEYS_DAYS_LEGACY,
+        maas_tenant_config_api_keys_max_expiration_days=maas_tenant_config_api_keys_max_expiration_days,
+        maas_tenant_config_telemetry=maas_tenant_config_telemetry,
+        legacy_external_oidc=legacy_external_oidc,
+        legacy_gateway_on_tenant=legacy_gateway_and_external_oidc,
+    ) as test_context:
+        verify_derived_tenant_namespace_name(
+            aitenant=test_context["aitenant"],
+            expected_tenant_namespace_name=test_context["tenant_namespace_name"],
+        )
+        verify_legacy_tenant_cleanup_migration_outcome(
+            admin_client=admin_client,
+            test_context=test_context,
+            expect_legacy_deleted=expect_legacy_deleted,
+            expected_mtc_telemetry=expected_mtc_telemetry,
+        )
+        if verify_aitenant_gateway_and_oidc:
+            verify_aitenant_gateway_and_oidc_migrated_from_legacy(
+                test_context=test_context,
+                expected_external_oidc=LEGACY_TENANT_MIGRATION_EXTERNAL_OIDC,
+            )
+        if verify_cluster_default_tenant:
+            verify_default_maas_tenant_unaffected(admin_client=admin_client)
+        LOGGER.info(
+            f"{outcome_log_message} for AITenant '{test_context['aitenant_name']}' "
+            f"in namespace '{test_context['tenant_namespace_name']}'"
+        )
+
+
+def _assert_legacy_migration_tenant_maas_api_scope(
+    tenant_namespace_name: str,
+) -> None:
+    """Assert maas-api checks target a derived AITenant namespace, not models-as-a-service."""
+    from tests.ai_gateway.models_as_a_service.maas_subscription.utils import MAAS_SUBSCRIPTION_NAMESPACE
+
+    assert tenant_namespace_name.startswith(AITENANT_TENANT_NAMESPACE_PREFIX), (
+        f"Expected derived tenant namespace under {AITENANT_TENANT_NAMESPACE_PREFIX!r}, got {tenant_namespace_name!r}"
+    )
+    assert tenant_namespace_name != MAAS_SUBSCRIPTION_NAMESPACE, (
+        "Legacy migration tenant must not use models-as-a-service subscription namespace for maas-api smoke"
+    )
+
+
+def _resolve_legacy_migration_gateway_ref(
+    test_context: LegacyTenantMigrationTestContext,
+    use_bootstrap_gateway_from_context: bool,
+) -> tuple[str, str]:
+    """Return gateway name and namespace for legacy migration maas-api tests."""
+    from tests.ai_gateway.models_as_a_service.multitenancy.utils import gateway_ref_from_aitenant
+
+    if use_bootstrap_gateway_from_context:
+        gateway_name = test_context["bootstrap_gateway_name"]
+        gateway_namespace = test_context["bootstrap_gateway_namespace"]
+    else:
+        gateway_name, gateway_namespace = gateway_ref_from_aitenant(aitenant=test_context["aitenant"])
+        assert gateway_name == test_context["bootstrap_gateway_name"], (
+            f"AITenant gatewayRef name expected {test_context['bootstrap_gateway_name']!r}, got {gateway_name!r}"
+        )
+    return gateway_name, gateway_namespace
+
+
+def label_tenant_maas_api_gateway_access(
+    admin_client: DynamicClient,
+    test_context: LegacyTenantMigrationTestContext,
+    use_bootstrap_gateway_from_context: bool = False,
+) -> tuple[str, str]:
+    """Label the tenant namespace for HTTPRoute attachment (fast path before heavy waits)."""
+    from tests.ai_gateway.models_as_a_service.multitenancy.utils import label_namespace_gateway_access
+
+    tenant_namespace_name = test_context["tenant_namespace_name"]
+    _assert_legacy_migration_tenant_maas_api_scope(tenant_namespace_name=tenant_namespace_name)
+    gateway_name, gateway_namespace = _resolve_legacy_migration_gateway_ref(
+        test_context=test_context,
+        use_bootstrap_gateway_from_context=use_bootstrap_gateway_from_context,
+    )
+    label_namespace_gateway_access(
+        admin_client=admin_client,
+        namespace_name=tenant_namespace_name,
+        gateway_name=gateway_name,
+    )
+    return gateway_name, gateway_namespace
+
+
+def _verify_tenant_maas_api_gateway_stack(
+    admin_client: DynamicClient,
+    test_context: LegacyTenantMigrationTestContext,
+    maas_api_infra_namespace: str,
+    gateway_name: str,
+    gateway_namespace: str,
+) -> None:
+    """Wait for per-tenant maas-api deployment, HTTPRoute, and AuthPolicy callback wiring."""
+    from tests.ai_gateway.models_as_a_service.multitenancy.utils import (
+        verify_maas_api_deployment_for_aitenant,
+        verify_maas_api_httproute_attached_to_gateway,
+        verify_tenant_gateway_auth_policy_callback_url,
+    )
+
+    aitenant_name = test_context["aitenant_name"]
+    tenant_namespace_name = test_context["tenant_namespace_name"]
+    verify_maas_api_deployment_for_aitenant(
+        admin_client=admin_client,
+        api_namespace=maas_api_infra_namespace,
+        aitenant_name=aitenant_name,
+        tenant_namespace_name=tenant_namespace_name,
+    )
+    verify_maas_api_httproute_attached_to_gateway(
+        admin_client=admin_client,
+        api_namespace=maas_api_infra_namespace,
+        aitenant_name=aitenant_name,
+        tenant_namespace_name=tenant_namespace_name,
+        gateway_name=gateway_name,
+        gateway_namespace=gateway_namespace,
+    )
+    verify_tenant_gateway_auth_policy_callback_url(
+        admin_client=admin_client,
+        gateway_name=gateway_name,
+        gateway_namespace=gateway_namespace,
+        aitenant_name=aitenant_name,
+        api_namespace=maas_api_infra_namespace,
+    )
+
+
+def prepare_tenant_maas_api_gateway_access(
+    admin_client: DynamicClient,
+    test_context: LegacyTenantMigrationTestContext,
+    maas_api_infra_namespace: str,
+    use_bootstrap_gateway_from_context: bool = False,
+) -> tuple[str, str]:
+    """Label tenant namespace, verify per-tenant maas-api, and assert gateway AuthPolicy callback host."""
+    gateway_name, gateway_namespace = label_tenant_maas_api_gateway_access(
+        admin_client=admin_client,
+        test_context=test_context,
+        use_bootstrap_gateway_from_context=use_bootstrap_gateway_from_context,
+    )
+    _verify_tenant_maas_api_gateway_stack(
+        admin_client=admin_client,
+        test_context=test_context,
+        maas_api_infra_namespace=maas_api_infra_namespace,
+        gateway_name=gateway_name,
+        gateway_namespace=gateway_namespace,
+    )
+    return gateway_name, gateway_namespace
+
+
+def _assert_maas_api_key_mint_not_missing_subscription(
+    status_code: int,
+    response_body: str,
+    tenant_maas_api_base_url: str,
+    subscription_name: str | None,
+) -> None:
+    """Fail fast when maas-api rejects mint because no subscription matches the actor."""
+    if status_code == 400 and "invalid_subscription" in (response_body or ""):
+        raise AssertionError(
+            f"Per-tenant maas-api rejected API key mint at {tenant_maas_api_base_url} with "
+            f"invalid_subscription (status=400). Ensure MaaSSubscription "
+            f"'{subscription_name}' exists in the tenant namespace and owner groups include the "
+            f"minting user (e.g. {LEGACY_MIGRATION_API_KEY_OWNER_GROUP!r} for cluster admin)."
+        )
+
+
+def _maas_api_key_mint_transient_failure(status_code: int) -> bool:
+    """Return True when key mint may succeed on retry (routing/backend not ready)."""
+    return status_code in (500, 502, 503, 504)
+
+
+def _wait_for_tenant_maas_api_key_mintable(
+    tenant_maas_api_base_url: str,
+    request_session_http: requests.Session,
+    ocp_user_token: str,
+    subscription_name: str,
+    wait_timeout: int = 300,
+    sleep: int = 5,
+) -> None:
+    """Poll API key creation until maas-api is reachable through the tenant Gateway (OCP token auth)."""
+    from tests.ai_gateway.models_as_a_service.utils import create_api_key, revoke_api_key
+
+    def mint_probe_succeeded() -> bool:
+        probe_key_name = f"e2e-legacy-migrate-probe-{generate_random_name()}"
+        create_response, api_key_body = create_api_key(
+            base_url=tenant_maas_api_base_url,
+            ocp_user_token=ocp_user_token,
+            request_session_http=request_session_http,
+            api_key_name=probe_key_name,
+            subscription=subscription_name,
+            raise_on_error=False,
+        )
+        response_body = create_response.text or ""
+        _assert_maas_api_key_mint_not_missing_subscription(
+            status_code=create_response.status_code,
+            response_body=response_body,
+            tenant_maas_api_base_url=tenant_maas_api_base_url,
+            subscription_name=subscription_name,
+        )
+        if create_response.status_code in (200, 201):
+            probe_key_id = api_key_body.get("id")
+            if probe_key_id:
+                revoke_response, _ = revoke_api_key(
+                    request_session_http=request_session_http,
+                    base_url=tenant_maas_api_base_url,
+                    key_id=probe_key_id,
+                    ocp_user_token=ocp_user_token,
+                )
+                if revoke_response.status_code not in (200, 404):
+                    LOGGER.warning(f"Probe key revoke returned {revoke_response.status_code} for id={probe_key_id}")
+            LOGGER.info(
+                f"Per-tenant maas-api key mint probe succeeded at {tenant_maas_api_base_url} "
+                f"(status={create_response.status_code})"
+            )
+            return True
+        if not _maas_api_key_mint_transient_failure(status_code=create_response.status_code):
+            raise AssertionError(
+                f"Per-tenant maas-api key mint probe failed at {tenant_maas_api_base_url}: "
+                f"status={create_response.status_code} body={response_body[:200]}"
+            )
+        LOGGER.warning(
+            f"Per-tenant maas-api not ready for key mint at {tenant_maas_api_base_url}: "
+            f"status={create_response.status_code} body={response_body[:200]}"
+        )
+        return False
+
+    try:
+        for mint_ready in TimeoutSampler(
+            wait_timeout=wait_timeout,
+            sleep=sleep,
+            func=mint_probe_succeeded,
+        ):
+            if mint_ready:
+                return
+    except TimeoutExpiredError:
+        pass
+    raise AssertionError(f"Timed out waiting to mint an API key via tenant maas-api at {tenant_maas_api_base_url}")
+
+
+def tenant_maas_api_base_url_for_gateway_name(
+    gateway_name: str,
+    maas_host: str,
+) -> str:
+    """Return and validate the external per-tenant maas-api base URL for a tenant Gateway."""
+    from tests.ai_gateway.models_as_a_service.multitenancy.utils import (
+        maas_api_base_url_for_gateway,
+        tenant_gateway_hostname,
+    )
+
+    tenant_maas_api_base_url = maas_api_base_url_for_gateway(
+        gateway_name=gateway_name,
+        maas_host=maas_host,
+        scheme="https",
+    )
+    tenant_gateway_host = tenant_gateway_hostname(gateway_name=gateway_name, maas_host=maas_host)
+    assert tenant_maas_api_base_url == f"https://{tenant_gateway_host}/maas-api", (
+        f"maas-api base URL must route via tenant Gateway host {tenant_gateway_host!r}, "
+        f"got {tenant_maas_api_base_url!r}"
+    )
+    return tenant_maas_api_base_url
+
+
+def _revoke_tenant_maas_api_key(
+    request_session_http: requests.Session,
+    tenant_maas_api_base_url: str,
+    key_id: str,
+    ocp_user_token: str,
+) -> None:
+    """Revoke a tenant maas-api key created during legacy migration tests."""
+    from tests.ai_gateway.models_as_a_service.utils import revoke_api_key
+
+    revoke_response, _ = revoke_api_key(
+        request_session_http=request_session_http,
+        base_url=tenant_maas_api_base_url,
+        key_id=key_id,
+        ocp_user_token=ocp_user_token,
+    )
+    if revoke_response.status_code not in (200, 404):
+        raise AssertionError(
+            f"Unexpected revoke status for legacy-migration key id={key_id}: {revoke_response.status_code}"
+        )
+
+
+def verify_tenant_maas_api_key_lists_models(
+    request_session_http: requests.Session,
+    minted_key: MintedTenantMaasApiKey,
+) -> None:
+    """Assert GET /v1/models succeeds with the given tenant maas-api key."""
+    from tests.ai_gateway.models_as_a_service.utils import build_maas_headers, get_maas_models_response
+
+    models_headers = build_maas_headers(token=minted_key["plaintext_api_key"])
+    get_maas_models_response(
+        session=request_session_http,
+        base_url=minted_key["tenant_maas_api_base_url"],
+        headers=models_headers,
+    )
+
+
+def verify_maas_api_key_and_models_after_legacy_migration(
+    test_context: LegacyTenantMigrationTestContext,
+    tenant_maas_api_base_url: str,
+    request_session_http: requests.Session,
+    ocp_user_token: str,
+    subscription_name: str,
+) -> None:
+    """Mint a new API key on per-tenant maas-api and assert GET /v1/models returns 200.
+
+    Caller must already expose the tenant Gateway Route and tenant MaaSSubscription governance.
+    """
+    from tests.ai_gateway.models_as_a_service.utils import assert_api_key_created_ok, create_api_key
+
+    aitenant_name = test_context["aitenant_name"]
+    _wait_for_tenant_maas_api_key_mintable(
+        tenant_maas_api_base_url=tenant_maas_api_base_url,
+        request_session_http=request_session_http,
+        ocp_user_token=ocp_user_token,
+        subscription_name=subscription_name,
+    )
+    api_key_name = f"e2e-legacy-migrate-key-{generate_random_name()}"
+    create_response, api_key_body = create_api_key(
+        base_url=tenant_maas_api_base_url,
+        ocp_user_token=ocp_user_token,
+        request_session_http=request_session_http,
+        api_key_name=api_key_name,
+        subscription=subscription_name,
+    )
+    assert_api_key_created_ok(resp=create_response, body=api_key_body, required_fields=("id", "key"))
+    minted_key = MintedTenantMaasApiKey(
+        key_id=api_key_body["id"],
+        plaintext_api_key=api_key_body["key"],
+        tenant_maas_api_base_url=tenant_maas_api_base_url,
+    )
+    try:
+        verify_tenant_maas_api_key_lists_models(
+            request_session_http=request_session_http,
+            minted_key=minted_key,
+        )
+        LOGGER.info(
+            f"Tenant maas-api key mint and GET /v1/models succeeded for AITenant '{aitenant_name}' "
+            f"at {tenant_maas_api_base_url}"
+        )
+    finally:
+        _revoke_tenant_maas_api_key(
+            request_session_http=request_session_http,
+            tenant_maas_api_base_url=tenant_maas_api_base_url,
+            key_id=minted_key["key_id"],
+            ocp_user_token=ocp_user_token,
+        )
+
+
+@contextmanager
+def legacy_tenant_migration_ready_aitenant(
+    admin_client: DynamicClient,
+    aitenant_infra_namespace: str,
+    teardown: bool,
+    legacy_api_keys_max_expiration_days: int,
+    maas_tenant_config_api_keys_max_expiration_days: int | None,
+    maas_tenant_config_telemetry: dict[str, Any] | None = None,
+    legacy_gateway_on_tenant: bool = False,
+    legacy_external_oidc: dict[str, Any] | None = None,
+    maas_api_infra_namespace: str | None = None,
+) -> Generator[LegacyTenantMigrationTestContext, Any, Any]:
+    """Bootstrap namespace, Gateway, legacy Tenant, optional MaasTenantConfig, and AITenant."""
+    aitenant_name = f"e2e-legacy-migrate-{generate_random_name()}"
+    tenant_namespace_name = expected_tenant_namespace_name(aitenant_name=aitenant_name)
+    aitenant_spec = build_aitenant_spec(aitenant_name=aitenant_name)
+    gateway_name, gateway_namespace = bootstrap_gateway_ref(
+        aitenant_name=aitenant_name,
+        aitenant_spec=aitenant_spec,
+    )
+    legacy_telemetry = build_legacy_tenant_migration_telemetry()
+    legacy_api_keys = build_legacy_tenant_migration_api_keys(
+        max_expiration_days=legacy_api_keys_max_expiration_days,
+    )
+    legacy_gateway_ref: dict[str, Any] | None = None
+    if legacy_gateway_on_tenant:
+        legacy_gateway_ref = {"name": gateway_name, "namespace": gateway_namespace}
+    precreate_maas_tenant_config = (
+        maas_tenant_config_api_keys_max_expiration_days is not None or maas_tenant_config_telemetry is not None
+    )
+    with ExitStack() as stack:
+        stack.enter_context(
+            cm=Namespace(
+                client=admin_client,
+                name=tenant_namespace_name,
+                teardown=teardown,
+            )
+        )
+        if maas_api_infra_namespace is not None:
+            from tests.ai_gateway.models_as_a_service.multitenancy.utils import isolation_bootstrap_gateway_context
+
+            stack.enter_context(
+                cm=isolation_bootstrap_gateway_context(
+                    admin_client=admin_client,
+                    gateway_name=gateway_name,
+                    api_namespace=maas_api_infra_namespace,
+                    gateway_namespace=gateway_namespace,
+                    teardown=teardown,
+                )
+            )
+        else:
+            stack.enter_context(
+                cm=bootstrap_gateway_context(
+                    admin_client=admin_client,
+                    gateway_name=gateway_name,
+                    gateway_namespace=gateway_namespace,
+                    teardown=teardown,
+                )
+            )
+        legacy_tenant = stack.enter_context(
+            cm=Tenant(
+                client=admin_client,
+                name=AIGATEWAY_BOOTSTRAPPED_TENANT_NAME,
+                namespace=tenant_namespace_name,
+                api_keys=legacy_api_keys,
+                telemetry=legacy_telemetry,
+                gateway_ref=legacy_gateway_ref,
+                external_oidc=legacy_external_oidc,
+                teardown=teardown,
+                wait_for_resource=True,
+            )
+        )
+        assert legacy_tenant.exists, (
+            f"Legacy Tenant/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} was not created in '{tenant_namespace_name}'"
+        )
+        if precreate_maas_tenant_config:
+            precreate_api_keys_days = (
+                maas_tenant_config_api_keys_max_expiration_days
+                if maas_tenant_config_api_keys_max_expiration_days is not None
+                else legacy_api_keys_max_expiration_days
+            )
+            precreate_telemetry = (
+                maas_tenant_config_telemetry if maas_tenant_config_telemetry is not None else legacy_telemetry
+            )
+            precreate_api_keys = build_legacy_tenant_migration_api_keys(
+                max_expiration_days=precreate_api_keys_days,
+            )
+            stack.enter_context(
+                cm=MaasTenantConfig(
+                    client=admin_client,
+                    name=AIGATEWAY_BOOTSTRAPPED_TENANT_NAME,
+                    namespace=tenant_namespace_name,
+                    api_keys=precreate_api_keys,
+                    telemetry=precreate_telemetry,
+                    teardown=teardown,
+                    wait_for_resource=True,
+                )
+            )
+        aitenant = stack.enter_context(
+            cm=aitenant_from_spec(
+                admin_client=admin_client,
+                aitenant_name=aitenant_name,
+                cr_namespace=aitenant_infra_namespace,
+                aitenant_spec=aitenant_spec,
+                teardown=teardown,
+            )
+        )
+        if not aitenant.exists:
+            aitenant.deploy()
+        deploy_and_verify_aitenant_ready(aitenant=aitenant)
+        yield LegacyTenantMigrationTestContext(
+            aitenant=aitenant,
+            aitenant_name=aitenant_name,
+            tenant_namespace_name=tenant_namespace_name,
+            bootstrap_gateway_name=gateway_name,
+            bootstrap_gateway_namespace=gateway_namespace,
+        )
