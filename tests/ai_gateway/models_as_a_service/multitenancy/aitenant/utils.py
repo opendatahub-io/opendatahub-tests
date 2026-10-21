@@ -55,6 +55,7 @@ AIGATEWAY_NAME_ANNOTATION = "maas.opendatahub.io/aitenant-name"
 AIGATEWAY_NAMESPACE_ANNOTATION = "maas.opendatahub.io/aitenant-namespace"
 AIGATEWAY_CREATED_ANNOTATION = "maas.opendatahub.io/created-by-aitenant"
 AITENANT_TENANT_NAMESPACE_FAILED_REASON = "TenantNamespaceFailed"
+AITENANT_NS_CLASH_E2E_NAME_PREFIX = "e2e-aigw-ns-clash-"
 AIGATEWAY_CHILD_NAME_PREFIX = "aitenant-"
 AIGATEWAY_TENANT_ADMIN_ROLE_SUFFIX = "tenant-admin"
 AIGATEWAY_OBJECT_ADMIN_ROLE_SUFFIX = "object-admin"
@@ -514,6 +515,41 @@ def delete_aitenant_and_wait(aitenant: AITenant, timeout: int = 300) -> None:
     """Delete an AITenant CR and wait until it is removed from the API."""
     aitenant.delete()
     aitenant.wait_deleted(timeout=timeout)
+
+
+def delete_aitenant_clearing_finalizers(aitenant: AITenant, timeout: int = 120) -> None:
+    """Delete an AITenant, clearing cleanup finalizers when bootstrap did not finish."""
+    refreshed_aitenant = fresh_aitenant(aitenant=aitenant)
+    if not refreshed_aitenant.exists:
+        return
+    ResourceEditor(
+        patches={
+            refreshed_aitenant: {
+                "metadata": {"finalizers": []},
+            },
+        },
+    ).update()
+    refreshed_aitenant.delete()
+    refreshed_aitenant.wait_deleted(timeout=timeout)
+
+
+def delete_orphaned_ns_clash_aitenants(
+    admin_client: DynamicClient,
+    infra_namespace: str,
+) -> None:
+    """Remove leftover namespace-clash e2e AITenants from interrupted test runs."""
+    for listed_aitenant in AITenant.get(client=admin_client, namespace=infra_namespace):
+        if not listed_aitenant.name.startswith(AITENANT_NS_CLASH_E2E_NAME_PREFIX):
+            continue
+        LOGGER.info(f"Deleting orphaned namespace-clash AITenant '{infra_namespace}/{listed_aitenant.name}'")
+        delete_aitenant_clearing_finalizers(
+            aitenant=AITenant(
+                client=admin_client,
+                name=listed_aitenant.name,
+                namespace=infra_namespace,
+                wait_for_resource=False,
+            ),
+        )
 
 
 def verify_gateway_access_label_removed_after_aitenant_delete(
