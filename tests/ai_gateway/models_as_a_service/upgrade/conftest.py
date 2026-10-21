@@ -16,6 +16,9 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
 from pytest import FixtureRequest
 
+from tests.ai_gateway.models_as_a_service.body_base_routing.pre_auth_model_header.utils import (
+    get_bbr_envoy_filter_config_patches,
+)
 from tests.ai_gateway.models_as_a_service.maas_api_key.utils import (
     MAAS_GATEWAY_AUTH_POLICY_NAME,
     wait_for_auth_policy_accepted,
@@ -56,6 +59,7 @@ from tests.ai_gateway.models_as_a_service.upgrade.utils import (
     save_legacy_migration_baseline_to_configmap,
     save_maas_baseline_to_configmap,
     save_multitenant_upgrade_baseline_to_configmap,
+    skip_legacy_default_maas_ipp_envoyfilter_upgrade_unless_applicable,
     tenant_base_url_for_record,
     wait_for_legacy_maas_networking_present,
 )
@@ -1060,4 +1064,22 @@ def capture_maas_multitenant_upgrade_baseline(
         client=admin_client,
         namespace=maas_multitenant_upgrade_namespace.name,
         baseline=baseline,
+    )
+
+
+@pytest.fixture(scope="session")
+def require_legacy_default_maas_ipp(admin_client: DynamicClient) -> None:
+    """Skip legacy IPP EnvoyFilter upgrade tests when Track A does not apply on this cluster."""
+    skip_legacy_default_maas_ipp_envoyfilter_upgrade_unless_applicable(admin_client=admin_client)
+
+
+@pytest.fixture(scope="session")
+def maas_legacy_ipp_envoyfilter_config_patches(
+    admin_client: DynamicClient,
+    require_legacy_default_maas_ipp: None,
+) -> list[Any]:
+    """Return legacy IPP payload-processing EnvoyFilter configPatches from the Gateway namespace."""
+    return get_bbr_envoy_filter_config_patches(
+        admin_client=admin_client,
+        gateway_namespace=MAAS_GATEWAY_NAMESPACE,
     )
