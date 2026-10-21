@@ -1,9 +1,10 @@
 import base64
 import json
 from collections.abc import Generator, Mapping
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from typing import Any, TypedDict
 
+import pytest
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
@@ -22,6 +23,13 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
+from tests.ai_gateway.models_as_a_service.body_base_routing.pre_auth_model_header.utils import (
+    BBR_ENVOY_FILTER_NAME,
+    get_bbr_envoy_filter_config_patches,
+    verify_bbr_envoy_filter_has_pre_and_post_auth_stages,
+    verify_bbr_post_auth_processing_deployment_ready,
+    verify_bbr_post_processing_service_port,
+)
 from tests.ai_gateway.models_as_a_service.maas_api_key.utils import get_api_key
 from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import (
     AIGATEWAY_BOOTSTRAPPED_TENANT_NAME,
@@ -48,7 +56,18 @@ from tests.ai_gateway.models_as_a_service.multitenancy.utils import (
     wait_for_tenant_gateway_maas_api_reachable,
     wait_for_tenant_inference_response,
 )
+from tests.ai_gateway.models_as_a_service.praxis.constants import (
+    LEGACY_IPP_PAYLOAD_PROCESSING_TYPE_VALUE,
+    PRAXIS_PAYLOAD_PROCESSING_TYPE_VALUE,
+)
+from tests.ai_gateway.models_as_a_service.praxis.utils import (
+    gateway_namespace_and_name_for_aitenant,
+    maas_legacy_ipp_markers_present_in_gateway_namespace,
+    read_maastenantconfig_payload_processing_type,
+    verify_praxis_payload_processing_active_for_aitenant,
+)
 from tests.ai_gateway.models_as_a_service.utils import (
+    AITENANT_INFRA_NAMESPACE,
     MaaSTenantResource,
     aitenant_from_spec,
     assert_api_key_created_ok,
@@ -62,11 +81,12 @@ from tests.ai_gateway.models_as_a_service.utils import (
     verify_maas_tenant_config_ready,
     wait_for_httproute,
 )
-from utilities.constants import ApiGroups
+from utilities.constants import MAAS_GATEWAY_NAME, MAAS_GATEWAY_NAMESPACE, ApiGroups
 from utilities.general import generate_random_name
 from utilities.logger import RedactedString
 from utilities.resources.aitenant import AITenant
 from utilities.resources.destination_rule import DestinationRule
+from utilities.resources.envoy_filter import EnvoyFilter
 from utilities.resources.external_model import ExternalModel
 from utilities.resources.http_route import HTTPRoute
 from utilities.resources.maastenantconfig import MaasTenantConfig
@@ -96,9 +116,11 @@ MAAS_MULTITENANT_UPGRADE_NAMESPACE = "upgrade-maas-multitenant"
 MAAS_MULTITENANT_UPGRADE_BASELINE_CM_NAME = "maas-multitenant-upgrade-baseline"
 MAAS_MULTITENANT_UPGRADE_BASELINE_CM_KEY = "multitenant_upgrade_baseline"
 MAAS_MT_UPGRADE_API_KEY_SECRET_KEY = "api-key"  # pragma: allowlist secret
+MAAS_MT_UPGRADE_API_KEY_ID_SECRET_KEY = "api-key-id"
 MULTITENANT_UPGRADE_TENANT_A_TOKENS_PER_MINUTE = 30
 MULTITENANT_UPGRADE_TENANT_B_TOKENS_PER_MINUTE = 10000
 MULTITENANT_UPGRADE_RATE_LIMIT_BURST_ATTEMPTS = 12
+LEGACY_IPP_GATEWAY_ENVOY_FILTER_GATEWAY_NAME_LABEL: str = "gateway.networking.k8s.io/gateway-name"
 MULTITENANT_UPGRADE_RATE_LIMIT_BURST_MAX_TOKENS = 80
 MAAS_API_DB_MIGRATION_FAILURE_LOG_SNIPPETS = (
     "database schema is in dirty state",
@@ -766,6 +788,101 @@ def load_persisted_multitenant_upgrade_api_key_from_secret(
     )
 
 
+def assert_multitenant_upgrade_api_key_secrets_absent(
+    client: DynamicClient,
+    namespace: str,
+    secret_names: tuple[str, str],
+) -> None:
+    """Fail fast when fixed-name API key Secrets exist without a persisted baseline ConfigMap."""
+    existing_secret_names = [
+        secret_name
+        for secret_name in secret_names
+        if Secret(client=client, name=secret_name, namespace=namespace).exists
+    ]
+    assert not existing_secret_names, (
+        f"Multitenant upgrade API key Secret(s) {existing_secret_names} already exist in '{namespace}' "
+        f"without baseline ConfigMap '{MAAS_MULTITENANT_UPGRADE_BASELINE_CM_NAME}'. "
+        "Delete those Secrets before re-provisioning, or restore the baseline ConfigMap to re-run pre-upgrade."
+    )
+
+
+def assert_multitenant_upgrade_api_key_secrets_present(
+    client: DynamicClient,
+    namespace: str,
+    tenant_records: list[MultitenantUpgradeTenantRecord],
+) -> None:
+    """Fail fast when baseline tenant records reference API key Secrets that are missing."""
+    missing_secret_names: list[str] = []
+    for record in tenant_records:
+        secret_name = record["api_key_secret_name"]
+        assert secret_name, (
+            f"Multitenant upgrade baseline tenant '{record['aitenant_name']}' is missing "
+            "'api_key_secret_name'. Re-run pre-upgrade provisioning."
+        )
+        if not Secret(client=client, name=secret_name, namespace=namespace).exists:
+            missing_secret_names.append(secret_name)
+    assert not missing_secret_names, (
+        f"Multitenant upgrade API key Secret(s) {missing_secret_names} not found in '{namespace}'. "
+        "Ensure pre-upgrade tests created the Secrets and they survived cluster upgrade."
+    )
+
+
+def delete_multitenant_upgrade_api_key_secrets(
+    client: DynamicClient,
+    namespace: str,
+    tenant_records: list[MultitenantUpgradeTenantRecord],
+) -> None:
+    """Delete persisted multitenant upgrade API key Secrets when ``teardown_resources`` is enabled.
+
+    MaaS API keys in the cluster are not revoked. Matches ``legacy_migration_credential_secret`` /
+    ``maas_upgrade_*`` post-upgrade fixture teardown.
+    """
+    for record in tenant_records:
+        secret_name = record["api_key_secret_name"]
+        if not secret_name:
+            continue
+        secret = Secret(client=client, name=secret_name, namespace=namespace)
+        if secret.exists:
+            secret.delete(wait=True)
+
+
+def _register_multitenant_upgrade_api_key_secret(
+    admin_client: DynamicClient,
+    resource_stack: ExitStack,
+    persist_namespace: str,
+    secret_name: str,
+    plaintext_key: str,
+    key_id: str,
+    teardown: bool,
+) -> None:
+    """Register a multitenant upgrade API key Secret on the session ExitStack (pre-upgrade only).
+
+    Uses openshift-python-wrapper ``Secret`` teardown like ``maas_upgrade_model_ref`` and
+    ``legacy_migration_credential_secret``: ``teardown=False`` during the normal pre-upgrade run
+    keeps the Secret for post-upgrade; ``--delete-pre-upgrade-resources`` deletes it with the stack.
+    """
+    string_data = {
+        MAAS_MT_UPGRADE_API_KEY_SECRET_KEY: plaintext_key,
+        MAAS_MT_UPGRADE_API_KEY_ID_SECRET_KEY: key_id,
+    }
+    secret = Secret(client=admin_client, name=secret_name, namespace=persist_namespace)
+    assert not secret.exists, (
+        f"Expected to create multitenant upgrade API key Secret '{persist_namespace}/{secret_name}', "
+        "but it already exists. Delete the Secret or rely on baseline reuse via create_and_persist_tenant_api_key."
+    )
+    resource_stack.enter_context(
+        cm=Secret(
+            client=admin_client,
+            name=secret_name,
+            namespace=persist_namespace,
+            type="Opaque",
+            string_data=string_data,
+            teardown=teardown,
+            wait_for_resource=True,
+        )
+    )
+
+
 @contextmanager
 def provision_multitenant_upgrade_aitenant(
     admin_client: DynamicClient,
@@ -870,6 +987,7 @@ def provision_multitenant_upgrade_aitenant(
                 gateway_namespace=gateway_namespace,
                 aitenant_name=aitenant_name,
                 api_namespace=maas_api_infra_namespace,
+                tenant_namespace_name=tenant_namespace_name,
             )
             wait_for_tenant_gateway_maas_api_reachable(
                 request_session_http=request_session_http,
@@ -892,6 +1010,7 @@ def provision_multitenant_upgrade_aitenant(
 
 def create_and_persist_tenant_api_key(
     admin_client: DynamicClient,
+    resource_stack: ExitStack,
     persist_namespace: str,
     base_url: str,
     ocp_user_token: str,
@@ -916,16 +1035,15 @@ def create_and_persist_tenant_api_key(
     )
     key_id = str(create_body["id"])
     plaintext_key = str(create_body["key"])
-    secret = Secret(
-        client=admin_client,
-        name=secret_name,
-        namespace=persist_namespace,
-        type="Opaque",
-        string_data={MAAS_MT_UPGRADE_API_KEY_SECRET_KEY: plaintext_key},
+    _register_multitenant_upgrade_api_key_secret(
+        admin_client=admin_client,
+        resource_stack=resource_stack,
+        persist_namespace=persist_namespace,
+        secret_name=secret_name,
+        plaintext_key=plaintext_key,
+        key_id=key_id,
         teardown=teardown,
-        wait_for_resource=True,
     )
-    secret.deploy()
     LOGGER.info(f"Persisted multitenant upgrade API key id={key_id} to Secret {persist_namespace}/{secret_name}")
     return MultitenantUpgradeTenantRecord(
         aitenant_name="",
@@ -1400,4 +1518,213 @@ def assert_multitenant_upgrade_rate_limit_isolation(
         request_session_http=request_session_http,
         tenant_record=peer_tenant_record,
         chat_payload=multitenant_upgrade_inference_chat_payload(),
+    )
+
+
+def _envoy_filter_spec(envoy_filter: EnvoyFilter) -> object:
+    """Return the EnvoyFilter spec object from a wrapper resource."""
+    return envoy_filter.instance.spec
+
+
+def _envoy_filter_spec_field_is_absent(field_value: object) -> bool:
+    """Return True when an EnvoyFilter spec field is unset or serialized as empty."""
+    if field_value is None:
+        return True
+    return isinstance(field_value, (list, tuple, dict, str)) and len(field_value) == 0
+
+
+def _assert_envoy_filter_spec_field_absent(spec: object, field_name: str, alternate_field_name: str) -> None:
+    """Assert a field is unset on an EnvoyFilter spec (camelCase or snake_case)."""
+    field_value = _field_value(value=spec, field_name=field_name)
+    if _envoy_filter_spec_field_is_absent(field_value=field_value):
+        field_value = _field_value(value=spec, field_name=alternate_field_name)
+    assert _envoy_filter_spec_field_is_absent(field_value=field_value), (
+        f"Expected EnvoyFilter spec field '{field_name}' (or '{alternate_field_name}') to be absent, "
+        f"found: {field_value!r}"
+    )
+
+
+def skip_legacy_default_maas_ipp_envoyfilter_upgrade_unless_applicable(
+    admin_client: DynamicClient,
+    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+    envoy_filter_name: str = BBR_ENVOY_FILTER_NAME,
+    default_aitenant_name: str = DEFAULT_AITENANT_NAME,
+) -> None:
+    """Skip Track A tests when the default tenant is Praxis or legacy IPP EnvoyFilter is not installed."""
+    default_aitenant = AITenant(
+        client=admin_client,
+        name=default_aitenant_name,
+        namespace=AITENANT_INFRA_NAMESPACE,
+        wait_for_resource=False,
+    )
+    if default_aitenant.exists:
+        payload_processing_type = read_maastenantconfig_payload_processing_type(
+            admin_client=admin_client,
+            aitenant=default_aitenant,
+        )
+        if payload_processing_type != LEGACY_IPP_PAYLOAD_PROCESSING_TYPE_VALUE:
+            pytest.skip(
+                f"Default tenant dataplane is not maas legacy IPP "
+                f"(MaasTenantConfig payload-processing-type={payload_processing_type!r}); "
+                "skipping legacy IPP EnvoyFilter upgrade Track A tests."
+            )
+    else:
+        LOGGER.info(
+            f"Default AITenant '{AITENANT_INFRA_NAMESPACE}/{default_aitenant_name}' not found; "
+            "legacy Tenant default — inferring Track A applicability from gateway EnvoyFilter only"
+        )
+    legacy_ipp_envoy_filter = EnvoyFilter(
+        client=admin_client,
+        name=envoy_filter_name,
+        namespace=gateway_namespace,
+        wait_for_resource=False,
+    )
+    if not legacy_ipp_envoy_filter.exists:
+        pytest.skip(
+            f"EnvoyFilter '{gateway_namespace}/{envoy_filter_name}' not found; "
+            "skipping legacy IPP EnvoyFilter upgrade Track A tests."
+        )
+
+
+def verify_legacy_default_maas_ipp_envoyfilter_workload_selector_attachment(
+    admin_client: DynamicClient,
+    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+    gateway_name: str = MAAS_GATEWAY_NAME,
+    envoy_filter_name: str = BBR_ENVOY_FILTER_NAME,
+) -> None:
+    """Assert maas legacy IPP EnvoyFilter in the Gateway namespace uses workloadSelector (3.6 attachment)."""
+    skip_legacy_default_maas_ipp_envoyfilter_upgrade_unless_applicable(
+        admin_client=admin_client,
+        gateway_namespace=gateway_namespace,
+        envoy_filter_name=envoy_filter_name,
+    )
+    legacy_ipp_envoy_filter = EnvoyFilter(
+        client=admin_client,
+        name=envoy_filter_name,
+        namespace=gateway_namespace,
+    )
+    assert legacy_ipp_envoy_filter.exists, (
+        f"EnvoyFilter '{gateway_namespace}/{envoy_filter_name}' not found — "
+        f"expected maas legacy IPP payload-processing filter on the default MaaS gateway"
+    )
+    spec = _envoy_filter_spec(envoy_filter=legacy_ipp_envoy_filter)
+    workload_selector = _field_value(value=spec, field_name="workloadSelector")
+    if workload_selector is None:
+        workload_selector = _field_value(value=spec, field_name="workload_selector")
+    assert workload_selector is not None, (
+        f"EnvoyFilter '{gateway_namespace}/{envoy_filter_name}' is missing spec.workloadSelector"
+    )
+    selector_labels = _field_value(value=workload_selector, field_name="labels")
+    assert selector_labels is not None, (
+        f"EnvoyFilter '{gateway_namespace}/{envoy_filter_name}' workloadSelector is missing labels"
+    )
+    attached_gateway_name = _field_value(
+        value=selector_labels,
+        field_name=LEGACY_IPP_GATEWAY_ENVOY_FILTER_GATEWAY_NAME_LABEL,
+    )
+    assert attached_gateway_name == gateway_name, (
+        f"EnvoyFilter '{gateway_namespace}/{envoy_filter_name}' workloadSelector label "
+        f"'{LEGACY_IPP_GATEWAY_ENVOY_FILTER_GATEWAY_NAME_LABEL}' expected '{gateway_name}', "
+        f"found '{attached_gateway_name}'"
+    )
+    _assert_envoy_filter_spec_field_absent(spec=spec, field_name="targetRefs", alternate_field_name="target_refs")
+    _assert_envoy_filter_spec_field_absent(spec=spec, field_name="targetRef", alternate_field_name="target_ref")
+    LOGGER.info(
+        f"EnvoyFilter '{gateway_namespace}/{envoy_filter_name}' is attached via workloadSelector "
+        f"to gateway '{gateway_name}' without targetRefs/targetRef"
+    )
+
+
+def verify_legacy_default_maas_ipp_envoyfilter_pre_post_auth_stages(
+    admin_client: DynamicClient,
+    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+) -> None:
+    """Assert the default-gateway legacy IPP EnvoyFilter still exposes pre-auth and post-auth stages."""
+    skip_legacy_default_maas_ipp_envoyfilter_upgrade_unless_applicable(
+        admin_client=admin_client,
+        gateway_namespace=gateway_namespace,
+    )
+    config_patches = get_bbr_envoy_filter_config_patches(
+        admin_client=admin_client,
+        gateway_namespace=gateway_namespace,
+    )
+    verify_bbr_envoy_filter_has_pre_and_post_auth_stages(
+        config_patches=config_patches,
+        gateway_namespace=gateway_namespace,
+    )
+
+
+def verify_legacy_default_maas_ipp_payload_processing_ready(
+    admin_client: DynamicClient,
+    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+) -> None:
+    """Assert legacy IPP payload-processing workload remains Ready in the Gateway namespace."""
+    skip_legacy_default_maas_ipp_envoyfilter_upgrade_unless_applicable(
+        admin_client=admin_client,
+        gateway_namespace=gateway_namespace,
+    )
+    verify_bbr_post_auth_processing_deployment_ready(
+        admin_client=admin_client,
+        gateway_namespace=gateway_namespace,
+    )
+    verify_bbr_post_processing_service_port(
+        admin_client=admin_client,
+        gateway_namespace=gateway_namespace,
+    )
+
+
+def verify_legacy_default_maas_ipp_envoyfilter_post_upgrade(
+    admin_client: DynamicClient,
+    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+    gateway_name: str = MAAS_GATEWAY_NAME,
+) -> None:
+    """Validate maas legacy IPP EnvoyFilter migration and dataplane health post-upgrade."""
+    verify_legacy_default_maas_ipp_envoyfilter_workload_selector_attachment(
+        admin_client=admin_client,
+        gateway_namespace=gateway_namespace,
+        gateway_name=gateway_name,
+    )
+    verify_legacy_default_maas_ipp_envoyfilter_pre_post_auth_stages(
+        admin_client=admin_client,
+        gateway_namespace=gateway_namespace,
+    )
+    verify_legacy_default_maas_ipp_payload_processing_ready(
+        admin_client=admin_client,
+        gateway_namespace=gateway_namespace,
+    )
+
+
+def verify_praxis_aitenant_without_maas_legacy_ipp_envoyfilter_post_upgrade(
+    admin_client: DynamicClient,
+    aitenant: AITenant,
+) -> None:
+    """Assert Praxis AITenant has no maas-controller legacy IPP markers and Praxis dataplane is active."""
+    gateway_namespace, _gateway_name = gateway_namespace_and_name_for_aitenant(aitenant=aitenant)
+    aitenant_name = aitenant.name
+    payload_processing_type = read_maastenantconfig_payload_processing_type(
+        admin_client=admin_client,
+        aitenant=aitenant,
+    )
+    assert payload_processing_type != LEGACY_IPP_PAYLOAD_PROCESSING_TYPE_VALUE, (
+        f"AITenant '{aitenant_name}' MaasTenantConfig has "
+        f"payload-processing-type='{LEGACY_IPP_PAYLOAD_PROCESSING_TYPE_VALUE}'; "
+        f"Track B expects Praxis default (annotation absent or '{PRAXIS_PAYLOAD_PROCESSING_TYPE_VALUE}'), "
+        "not legacy IPP opt-in."
+    )
+    assert not maas_legacy_ipp_markers_present_in_gateway_namespace(
+        admin_client=admin_client,
+        gateway_namespace=gateway_namespace,
+        aitenant_name=aitenant_name,
+    ), (
+        f"Expected no maas-controller legacy IPP markers in gateway namespace '{gateway_namespace}' "
+        f"for Praxis AITenant '{aitenant_name}' post-upgrade "
+        "(ai-gateway-controller may still reconcile payload-processing-* EnvoyFilters for Praxis)"
+    )
+    verify_praxis_payload_processing_active_for_aitenant(
+        admin_client=admin_client,
+        aitenant=aitenant,
+    )
+    LOGGER.info(
+        f"Praxis AITenant '{aitenant_name}' has no maas legacy IPP markers in '{gateway_namespace}' "
+        "and Praxis payload processing is active"
     )
