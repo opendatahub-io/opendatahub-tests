@@ -37,12 +37,7 @@ from tests.ai_safety.evalhub.utils import (
 # MLflow is a cluster-scoped CR deployed into the DSCI applications namespace.
 # These tests reuse the existing MLflow instance rather than creating one.
 #
-# py_config["applications_namespace"] must be read at use time, not captured into a
-# module-level constant: the real DSCI-derived value is only written by
-# updated_global_config() in the root conftest's pytest_collection_finish hook, which
-# runs after this module is imported during collection. A module-level snapshot would
-# freeze the static default from tests/global_config.py ("redhat-ods-applications")
-# instead of the live value (e.g. "opendatahub" on an upstream ODH cluster).
+# Read py_config["applications_namespace"] at use time, not module-level — it's only set after collection.
 MLFLOW_SERVICE_PORT = 8443
 
 
