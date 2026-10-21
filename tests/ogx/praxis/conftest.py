@@ -211,7 +211,7 @@ def ogx_connection_string_secret(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace.name,
         name=OGX_CONNECTION_SECRET_NAME,
-        labels={"ogx.io/watch": "true"},
+        label={"ogx.io/watch": "true"},
         type="Opaque",
         string_data={OGX_CONNECTION_SECRET_KEY: ogx_connection_string(namespace=unprivileged_model_namespace.name)},
         teardown=teardown_resources,
@@ -234,7 +234,7 @@ def praxis_connection_string_secret(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace.name,
         name=PRAXIS_CONNECTION_SECRET_NAME,
-        labels={"ogx.io/watch": "true"},
+        label={"ogx.io/watch": "true"},
         type="Opaque",
         string_data={
             PRAXIS_CONNECTION_SECRET_KEY: praxis_connection_string(namespace=unprivileged_model_namespace.name)
@@ -276,6 +276,8 @@ def praxis_migration_runner(
                                     "name": praxis_connection_string_secret.name,
                                     "key": PRAXIS_CONNECTION_SECRET_KEY,
                                 },
+                                "fallbackTenant": "test-tenant",
+                                "fallbackOwnerSubject": "test-owner",
                             },
                         },
                     }
