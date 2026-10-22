@@ -33,6 +33,7 @@ from tests.model_serving.model_server.llmd.constants import (
 from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaOciConfig, TinyLlamaS3Config
 from tests.model_serving.model_server.llmd.utils import (
     bind_connection_overrides,
+    collect_llmisvc_pod_information,
     wait_for_llmisvc,
     wait_for_llmisvc_pods_ready,
 )
@@ -594,7 +595,10 @@ def _create_llmisvc_from_config(
         service_account=service_account,
         teardown=teardown,
     ) as llm_service:
-        if config_cls.wait:
-            wait_for_llmisvc(llmisvc=llm_service, timeout=config_cls.wait_timeout)
-            wait_for_llmisvc_pods_ready(client=client, llmisvc=llm_service)
-        yield llm_service
+        try:
+            if config_cls.wait:
+                wait_for_llmisvc(llmisvc=llm_service, timeout=config_cls.wait_timeout)
+                wait_for_llmisvc_pods_ready(client=client, llmisvc=llm_service)
+            yield llm_service
+        finally:
+            collect_llmisvc_pod_information(llmisvc=llm_service)

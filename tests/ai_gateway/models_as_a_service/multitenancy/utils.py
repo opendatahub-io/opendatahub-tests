@@ -3,6 +3,7 @@ from contextlib import ExitStack, contextmanager
 from typing import Any, TypedDict
 from urllib.parse import urlparse
 
+import pytest
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
@@ -44,6 +45,7 @@ from utilities.resources.aitenant import AITenant
 from utilities.resources.auth_policy import AuthPolicy
 from utilities.resources.http_route import HTTPRoute
 from utilities.resources.llm_inference_service import LLMInferenceService
+from utilities.resources.maas_config import Config as MaaSConfig
 from utilities.resources.maastenantconfig import MaasTenantConfig
 from utilities.resources.route import Route
 
@@ -378,15 +380,28 @@ def isolation_bootstrap_gateway_context(
     """
     api_ns = Namespace(client=admin_client, name=api_namespace, ensure_exists=True)
     assert api_ns.exists, f"MaaS API namespace '{api_namespace}' not found"
-    with (
-        ResourceEditor(
-            patches={
-                api_ns: {
-                    "metadata": {"labels": gateway_access_namespace_labels(gateway_name=gateway_name)},
-                },
-            },
-        ),
-        Gateway(
+    api_ns_label_patch = {
+        "metadata": {"labels": gateway_access_namespace_labels(gateway_name=gateway_name)},
+    }
+    if teardown:
+        with (
+            ResourceEditor(patches={api_ns: api_ns_label_patch}),
+            Gateway(
+                client=admin_client,
+                kind_dict=isolation_bootstrap_gateway_body(
+                    gateway_name=gateway_name,
+                    gateway_namespace=gateway_namespace,
+                ),
+                teardown=teardown,
+                wait_for_resource=True,
+            ) as gateway,
+        ):
+            verify_maas_gateway_programmed(gateway=gateway)
+            LOGGER.info(f"Isolation bootstrap Gateway '{gateway_namespace}/{gateway_name}' is Programmed")
+            yield gateway
+    else:
+        ResourceEditor(patches={api_ns: api_ns_label_patch}).update()
+        with Gateway(
             client=admin_client,
             kind_dict=isolation_bootstrap_gateway_body(
                 gateway_name=gateway_name,
@@ -394,11 +409,10 @@ def isolation_bootstrap_gateway_context(
             ),
             teardown=teardown,
             wait_for_resource=True,
-        ) as gateway,
-    ):
-        verify_maas_gateway_programmed(gateway=gateway)
-        LOGGER.info(f"Isolation bootstrap Gateway '{gateway_namespace}/{gateway_name}' is Programmed")
-        yield gateway
+        ) as gateway:
+            verify_maas_gateway_programmed(gateway=gateway)
+            LOGGER.info(f"Isolation bootstrap Gateway '{gateway_namespace}/{gateway_name}' is Programmed")
+            yield gateway
 
 
 @contextmanager
@@ -601,14 +615,25 @@ def verify_tenant_gateway_auth_policy_callback_url(
     gateway_namespace: str,
     aitenant_name: str,
     api_namespace: str,
+    tenant_namespace_name: str | None = None,
 ) -> str:
     """Assert the tenant Gateway MaaS AuthPolicy callback targets the per-tenant maas-api Service."""
     policy_name = tenant_gateway_maas_auth_policy_name(gateway_name=gateway_name)
+    resolved_api_namespace = api_namespace
+    if tenant_namespace_name is not None:
+        bootstrapped_tenant_config = wait_for_bootstrapped_tenant_deployments_available(
+            admin_client=admin_client,
+            tenant_namespace_name=tenant_namespace_name,
+        )
+        resolved_api_namespace = maas_api_infra_namespace_from_bootstrapped_tenant(
+            bootstrapped_tenant_config=bootstrapped_tenant_config,
+            fallback_api_namespace=api_namespace,
+        )
     expected_host = maas_api_service_host_for_aitenant(
         aitenant_name=aitenant_name,
-        api_namespace=api_namespace,
+        api_namespace=resolved_api_namespace,
     )
-    shared_host = shared_maas_api_service_host(api_namespace=api_namespace)
+    shared_host = shared_maas_api_service_host(api_namespace=resolved_api_namespace)
 
     wait_for_tenant_gateway_maas_auth_policy(
         admin_client=admin_client,
@@ -675,6 +700,18 @@ def wait_for_bootstrapped_tenant_deployments_available(
     return bootstrapped_tenant_config
 
 
+def maas_api_infra_namespace_from_bootstrapped_tenant(
+    bootstrapped_tenant_config: MaasTenantConfig,
+    fallback_api_namespace: str,
+) -> str:
+    """Return per-tenant maas-api namespace from MaasTenantConfig status when the controller sets it."""
+    status = bootstrapped_tenant_config.instance.status
+    infra_namespace = getattr(status, "infraNamespace", None)
+    if infra_namespace:
+        return str(infra_namespace)
+    return fallback_api_namespace
+
+
 def verify_maas_api_deployment_for_aitenant(
     admin_client: DynamicClient,
     api_namespace: str,
@@ -682,20 +719,24 @@ def verify_maas_api_deployment_for_aitenant(
     tenant_namespace_name: str,
 ) -> None:
     """Assert the per-tenant maas-api Deployment is Available in the maas-api namespace."""
-    wait_for_bootstrapped_tenant_deployments_available(
+    bootstrapped_tenant_config = wait_for_bootstrapped_tenant_deployments_available(
         admin_client=admin_client,
         tenant_namespace_name=tenant_namespace_name,
+    )
+    resolved_api_namespace = maas_api_infra_namespace_from_bootstrapped_tenant(
+        bootstrapped_tenant_config=bootstrapped_tenant_config,
+        fallback_api_namespace=api_namespace,
     )
     deployment_name = maas_api_deployment_name_for_aitenant(aitenant_name=aitenant_name)
     maas_api_deployment = Deployment(
         client=admin_client,
         name=deployment_name,
-        namespace=api_namespace,
+        namespace=resolved_api_namespace,
         ensure_exists=True,
     )
-    assert maas_api_deployment.exists, f"Deployment/{deployment_name} not found in namespace '{api_namespace}'"
+    assert maas_api_deployment.exists, f"Deployment/{deployment_name} not found in namespace '{resolved_api_namespace}'"
     maas_api_deployment.wait_for_condition(condition="Available", status="True", timeout=300)
-    LOGGER.info(f"Deployment/{deployment_name} is Available in maas-api namespace '{api_namespace}'")
+    LOGGER.info(f"Deployment/{deployment_name} is Available in maas-api namespace '{resolved_api_namespace}'")
 
 
 def get_maas_api_httproute(
@@ -784,6 +825,7 @@ def patch_llmisvc_with_tenant_gateway_router(
     llm_service: LLMInferenceService,
     gateway_name: str,
     gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+    teardown: bool = True,
 ) -> Generator[None, Any, Any]:
     """Patch an LLMInferenceService to route through a tenant Gateway instead of maas-default-gateway."""
     router_spec = {
@@ -799,7 +841,11 @@ def patch_llmisvc_with_tenant_gateway_router(
         },
         "spec": {"router": router_spec},
     }
-    with ResourceEditor(patches={llm_service: patch_body}):
+    if teardown:
+        with ResourceEditor(patches={llm_service: patch_body}):
+            yield
+    else:
+        ResourceEditor(patches={llm_service: patch_body}).update()
         yield
 
 
@@ -871,6 +917,7 @@ def provision_tenant_model(
                 llm_service=llm_service,
                 gateway_name=gateway_name,
                 gateway_namespace=gateway_namespace,
+                teardown=teardown,
             )
         )
         llm_service.wait_for_condition(
@@ -1031,10 +1078,14 @@ def verify_maas_api_httproute_attached_to_gateway(
 
     Also assert the route attaches to the tenant Gateway via parentRefs.
     """
-    wait_for_bootstrapped_tenant_deployments_available(
+    bootstrapped_tenant_config = wait_for_bootstrapped_tenant_deployments_available(
         admin_client=admin_client,
         tenant_namespace_name=tenant_namespace_name,
         timeout=timeout,
+    )
+    resolved_api_namespace = maas_api_infra_namespace_from_bootstrapped_tenant(
+        bootstrapped_tenant_config=bootstrapped_tenant_config,
+        fallback_api_namespace=api_namespace,
     )
     route_name = maas_api_route_name_for_aitenant(
         aitenant_name=aitenant_name,
@@ -1042,7 +1093,7 @@ def verify_maas_api_httproute_attached_to_gateway(
     maas_api_route = wait_for_maas_api_httproute(
         admin_client=admin_client,
         route_name=route_name,
-        route_namespace=api_namespace,
+        route_namespace=resolved_api_namespace,
         timeout=timeout,
     )
     assert httproute_references_gateway(
@@ -1050,17 +1101,204 @@ def verify_maas_api_httproute_attached_to_gateway(
         gateway_name=gateway_name,
         gateway_namespace=gateway_namespace,
     ), (
-        f"HTTPRoute/{route_name} in '{api_namespace}' should reference "
+        f"HTTPRoute/{route_name} in '{resolved_api_namespace}' should reference "
         f"Gateway '{gateway_namespace}/{gateway_name}' in parentRefs"
     )
     wait_for_httproute_accepted_on_gateway(
         admin_client=admin_client,
         route_name=route_name,
-        route_namespace=api_namespace,
+        route_namespace=resolved_api_namespace,
         gateway_name=gateway_name,
         gateway_namespace=gateway_namespace,
         timeout=timeout,
     )
     LOGGER.info(
-        f"HTTPRoute/{route_name} in '{api_namespace}' is attached to Gateway '{gateway_namespace}/{gateway_name}'"
+        f"HTTPRoute/{route_name} in '{resolved_api_namespace}' is attached to "
+        f"Gateway '{gateway_namespace}/{gateway_name}'"
+    )
+
+
+# MaaS Config TenantsHealthy aggregation (RHOAIENG-98881)
+
+MAAS_CONFIG_DEFAULT_NAME = "default"
+TENANTS_HEALTHY_CONDITION_TYPE = "TenantsHealthy"
+TENANTS_HEALTHY_REASON_ALL_TENANTS = "AllTenantsHealthy"
+TENANTS_HEALTHY_ALL_TENANTS_REASONS = frozenset({TENANTS_HEALTHY_REASON_ALL_TENANTS})
+TENANTS_UNHEALTHY_REASONS = frozenset({"TenantsDegraded", "TenantsBlocked"})
+
+TENANTS_HEALTHY_CONDITION_WAIT_TIMEOUT_SECONDS = 120
+TENANTS_HEALTHY_AGGREGATION_WAIT_TIMEOUT_SECONDS = 300
+TENANTS_HEALTHY_POLL_SECONDS = 5
+
+
+class MaasConfigConditionSnapshot:
+    """Observed MaaS Config status condition fields."""
+
+    def __init__(self, status: str, reason: str, message: str) -> None:
+        self.status = status
+        self.reason = reason
+        self.message = message
+
+
+def refresh_maas_config(maas_config: MaaSConfig) -> MaaSConfig:
+    """Return a MaaS Config handle with a freshly loaded instance."""
+    return MaaSConfig(
+        client=maas_config.client,
+        name=maas_config.name,
+        wait_for_resource=False,
+    )
+
+
+def read_maas_config_status_condition(
+    maas_config: MaaSConfig,
+    condition_type: str,
+) -> MaasConfigConditionSnapshot | None:
+    """Return the status, reason, and message for a Config status condition when present."""
+    refreshed_config = refresh_maas_config(maas_config=maas_config)
+    status = refreshed_config.instance.status
+    if status is None:
+        return None
+    conditions = getattr(status, "conditions", None) or []
+    for condition in conditions:
+        if getattr(condition, "type", None) == condition_type:
+            condition_status = getattr(condition, "status", None) or ""
+            condition_reason = getattr(condition, "reason", None) or ""
+            condition_message = getattr(condition, "message", None) or ""
+            return MaasConfigConditionSnapshot(
+                status=str(condition_status),
+                reason=str(condition_reason),
+                message=str(condition_message),
+            )
+    return None
+
+
+def maas_config_tenants_healthy_matches(
+    maas_config: MaaSConfig,
+    expected_status: str,
+    expected_reasons: frozenset[str],
+    message_must_contain: str | None = None,
+) -> bool:
+    """Return True when Config/default TenantsHealthy matches the expected status and reason."""
+    snapshot = read_maas_config_status_condition(
+        maas_config=maas_config,
+        condition_type=TENANTS_HEALTHY_CONDITION_TYPE,
+    )
+    if snapshot is None:
+        return False
+    if snapshot.status != expected_status:
+        return False
+    if snapshot.reason not in expected_reasons:
+        return False
+    return message_must_contain is None or message_must_contain in snapshot.message
+
+
+def wait_for_maas_config_tenants_healthy_condition_present(
+    maas_config: MaaSConfig,
+    wait_timeout: int = TENANTS_HEALTHY_CONDITION_WAIT_TIMEOUT_SECONDS,
+    sleep: int = TENANTS_HEALTHY_POLL_SECONDS,
+) -> MaasConfigConditionSnapshot:
+    """Wait until maas-controller writes TenantsHealthy on Config/default."""
+    try:
+        for snapshot in TimeoutSampler(
+            wait_timeout=wait_timeout,
+            sleep=sleep,
+            func=lambda: read_maas_config_status_condition(
+                maas_config=maas_config,
+                condition_type=TENANTS_HEALTHY_CONDITION_TYPE,
+            ),
+        ):
+            if snapshot is not None:
+                LOGGER.info(
+                    f"MaaS Config/{MAAS_CONFIG_DEFAULT_NAME} TenantsHealthy present: "
+                    f"status={snapshot.status} reason={snapshot.reason}"
+                )
+                return snapshot
+    except TimeoutExpiredError:
+        pytest.fail(
+            f"MaaS Config/{MAAS_CONFIG_DEFAULT_NAME} never reported TenantsHealthy within {wait_timeout}s — "
+            "upgrade maas-controller or verify tenant health aggregation is enabled"
+        )
+    pytest.fail(f"MaaS Config/{MAAS_CONFIG_DEFAULT_NAME} TenantsHealthy condition not found")
+
+
+def wait_for_maas_config_tenants_healthy(
+    maas_config: MaaSConfig,
+    expected_status: str,
+    expected_reasons: frozenset[str],
+    message_must_contain: str | None = None,
+    wait_timeout: int = TENANTS_HEALTHY_AGGREGATION_WAIT_TIMEOUT_SECONDS,
+    sleep: int = TENANTS_HEALTHY_POLL_SECONDS,
+) -> MaasConfigConditionSnapshot:
+    """Wait until Config/default TenantsHealthy matches the expected aggregation outcome."""
+    last_snapshot: MaasConfigConditionSnapshot | None = None
+    try:
+        for matched in TimeoutSampler(
+            wait_timeout=wait_timeout,
+            sleep=sleep,
+            func=lambda: maas_config_tenants_healthy_matches(
+                maas_config=maas_config,
+                expected_status=expected_status,
+                expected_reasons=expected_reasons,
+                message_must_contain=message_must_contain,
+            ),
+        ):
+            if matched:
+                snapshot = read_maas_config_status_condition(
+                    maas_config=maas_config,
+                    condition_type=TENANTS_HEALTHY_CONDITION_TYPE,
+                )
+                assert snapshot is not None
+                LOGGER.info(
+                    f"MaaS Config/{MAAS_CONFIG_DEFAULT_NAME} TenantsHealthy reached "
+                    f"status={snapshot.status} reason={snapshot.reason}"
+                )
+                return snapshot
+            last_snapshot = read_maas_config_status_condition(
+                maas_config=maas_config,
+                condition_type=TENANTS_HEALTHY_CONDITION_TYPE,
+            )
+    except TimeoutExpiredError:
+        last_status = last_snapshot.status if last_snapshot else "missing"
+        last_reason = last_snapshot.reason if last_snapshot else "missing"
+        last_message = last_snapshot.message if last_snapshot else ""
+        pytest.fail(
+            f"Timed out waiting for MaaS Config/{MAAS_CONFIG_DEFAULT_NAME} TenantsHealthy "
+            f"status={expected_status} reason in {sorted(expected_reasons)} within {wait_timeout}s; "
+            f"last status={last_status} reason={last_reason} message={last_message!r}"
+        )
+    pytest.fail(
+        f"MaaS Config/{MAAS_CONFIG_DEFAULT_NAME} TenantsHealthy did not reach "
+        f"status={expected_status} reason in {sorted(expected_reasons)}"
+    )
+
+
+def wait_for_maas_config_all_tenants_healthy(
+    maas_config: MaaSConfig,
+    wait_timeout: int = TENANTS_HEALTHY_AGGREGATION_WAIT_TIMEOUT_SECONDS,
+    sleep: int = TENANTS_HEALTHY_POLL_SECONDS,
+) -> MaasConfigConditionSnapshot:
+    """Wait until Config/default reports TenantsHealthy=True with reason AllTenantsHealthy."""
+    return wait_for_maas_config_tenants_healthy(
+        maas_config=maas_config,
+        expected_status="True",
+        expected_reasons=TENANTS_HEALTHY_ALL_TENANTS_REASONS,
+        wait_timeout=wait_timeout,
+        sleep=sleep,
+    )
+
+
+def wait_for_maas_config_tenants_unhealthy_listing_tenant(
+    maas_config: MaaSConfig,
+    unhealthy_tenant_name: str,
+    wait_timeout: int = TENANTS_HEALTHY_AGGREGATION_WAIT_TIMEOUT_SECONDS,
+    sleep: int = TENANTS_HEALTHY_POLL_SECONDS,
+) -> MaasConfigConditionSnapshot:
+    """Wait until Config/default TenantsHealthy=False and the message names the unhealthy tenant."""
+    return wait_for_maas_config_tenants_healthy(
+        maas_config=maas_config,
+        expected_status="False",
+        expected_reasons=TENANTS_UNHEALTHY_REASONS,
+        message_must_contain=unhealthy_tenant_name,
+        wait_timeout=wait_timeout,
+        sleep=sleep,
     )
