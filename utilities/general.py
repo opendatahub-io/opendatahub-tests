@@ -5,6 +5,7 @@ import uuid
 from typing import Any
 
 import structlog
+from kubernetes.client.exceptions import ApiException
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import NotFoundError, ResourceNotFoundError
 from ocp_resources.deployment import Deployment
@@ -14,6 +15,7 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.resource import Resource
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
+from urllib3.exceptions import HTTPError
 
 import utilities.infra
 from utilities.constants import MODELMESH_SERVING, Annotations, KServeDeploymentType
@@ -97,9 +99,8 @@ def namespace_fs_group(client: DynamicClient, namespace: str) -> int | None:
 
 def download_model_data(
     client: DynamicClient,
-    aws_access_key_id: str,
-    aws_secret_access_key: str,
     model_namespace: str,
+    credentials_secret_name: str,
     model_pvc_name: str,
     bucket_name: str,
     aws_endpoint_url: str,
@@ -114,9 +115,9 @@ def download_model_data(
 
     Args:
         client (DynamicClient): Admin client
-        aws_access_key_id (str): AWS access key
-        aws_secret_access_key (str): AWS secret key
         model_namespace (str): Namespace of the model
+        credentials_secret_name (str): Name of the Secret in model_namespace containing
+            AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
         model_pvc_name (str): Name of the PVC
         bucket_name (str): Name of the bucket
         aws_endpoint_url (str): AWS endpoint URL
@@ -180,8 +181,18 @@ def download_model_data(
             download_destination,
         ],
         "env": [
-            {"name": "AWS_ACCESS_KEY_ID", "value": aws_access_key_id},
-            {"name": "AWS_SECRET_ACCESS_KEY", "value": aws_secret_access_key},
+            {
+                "name": "AWS_ACCESS_KEY_ID",
+                "valueFrom": {
+                    "secretKeyRef": {"name": credentials_secret_name, "key": "AWS_ACCESS_KEY_ID"},
+                },
+            },
+            {
+                "name": "AWS_SECRET_ACCESS_KEY",
+                "valueFrom": {
+                    "secretKeyRef": {"name": credentials_secret_name, "key": "AWS_SECRET_ACCESS_KEY"},
+                },
+            },
             {"name": "S3_USE_HTTPS", "value": "1"},
             {"name": "AWS_ENDPOINT_URL", "value": aws_endpoint_url},
             {"name": "AWS_DEFAULT_REGION", "value": aws_default_region},
@@ -564,6 +575,11 @@ def wait_for_oauth_openshift_deployment(client: DynamicClient) -> None:
 
 
 def collect_pod_information(pod: Pod) -> None:
+    """Save pod YAML and regular/init container logs without interrupting cleanup.
+
+    Args:
+        pod: Pod whose diagnostics should be saved to the artifact directory.
+    """
     # Import here to avoid circular import (must_gather_collector -> infra -> general)
     from utilities.must_gather_collector import get_base_dir, get_must_gather_collector_dir
 
@@ -571,15 +587,20 @@ def collect_pod_information(pod: Pod) -> None:
         base_dir_name = get_must_gather_collector_dir() or get_base_dir()
         LOGGER.info(f"Collecting pod information for {pod.name}: {base_dir_name}")
         os.makedirs(base_dir_name, exist_ok=True)
+        instance = pod.instance
         yaml_file_path = os.path.join(base_dir_name, f"{pod.name}.yaml")
         with open(yaml_file_path, "w") as fd:
-            fd.write(pod.instance.to_str())
-        # get all the containers of the pod:
-
-        containers = [container["name"] for container in pod.instance.status.containerStatuses]
+            fd.write(instance.to_str())
+        containers = [
+            container["name"] for container in instance.spec.containers + (instance.spec.get("initContainers") or [])
+        ]
         for container in containers:
-            file_path = os.path.join(base_dir_name, f"{pod.name}_{container}.log")
-            with open(file_path, "w") as fd:
-                fd.write(pod.log(container=container))
+            try:
+                logs = pod.log(container=container, timestamps=True, _request_timeout=30)
+                file_path = os.path.join(base_dir_name, f"{pod.name}_{container}.log")
+                with open(file_path, "w") as fd:
+                    fd.write(logs)
+            except ApiException, HTTPError, OSError:
+                LOGGER.warning(f"For pod: {pod.name} container: {container} log collection failed.")
     except Exception:  # noqa: BLE001
         LOGGER.warning(f"For pod: {pod.name} information gathering failed.")

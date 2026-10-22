@@ -33,6 +33,7 @@ class TestGetSourceStatusEndpoint:
         [
             pytest.param(None, id="test_models"),
             pytest.param("mcp_servers", id="test_mcp", marks=pytest.mark.skip_on_disconnected),
+            pytest.param("serving_runtimes", id="test_serving_runtimes"),
         ],
     )
     @pytest.mark.tier1
@@ -42,7 +43,7 @@ class TestGetSourceStatusEndpoint:
         source_status_base_url: str,
         model_registry_rest_headers: dict[str, str],
     ) -> None:
-        """Given model or MCP sources, when their statuses are read, then they match the source listing."""
+        """Given catalog sources of an asset type, when statuses are read, then they match the source listing."""
         params = {"assetType": asset_type} if asset_type else None
         listing = execute_get_command_with_retry(
             url=f"{source_status_base_url}sources",

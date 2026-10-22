@@ -39,6 +39,25 @@ class SingleNodePrefillDecodeConfig(TinyLlamaOciGpuConfig):
     expected_vllm_pod_count = 2
     expected_inference_pool_pod_count = 2
 
+    # Decode vLLM listens on 8001; port 8000 is the routing sidecar.
+    @classmethod
+    def startup_probe(cls) -> dict:
+        probe = super().startup_probe()
+        probe["httpGet"]["port"] = 8001
+        return probe
+
+    @classmethod
+    def liveness_probe(cls) -> dict:
+        probe = super().liveness_probe()
+        probe["httpGet"]["port"] = 8001
+        return probe
+
+    @classmethod
+    def readiness_probe(cls) -> dict:
+        probe = super().readiness_probe()
+        probe["httpGet"]["port"] = 8001
+        return probe
+
     @classmethod
     def _nixl_env(cls, kv_role: str) -> list[dict]:
         return [
@@ -98,9 +117,10 @@ class SingleNodePrefillDecodeConfig(TinyLlamaOciGpuConfig):
                         "name": "main",
                         "env": cls.prefill_env(),
                         "resources": cls.container_resources(),
-                        "startupProbe": cls.startup_probe(),
-                        "livenessProbe": cls.liveness_probe(),
-                        "readinessProbe": cls.readiness_probe(),
+                        # Prefill vLLM listens directly on port 8000.
+                        "startupProbe": super().startup_probe(),
+                        "livenessProbe": super().liveness_probe(),
+                        "readinessProbe": super().readiness_probe(),
                     }
                 ],
             },
