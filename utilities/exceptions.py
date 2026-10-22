@@ -121,6 +121,10 @@ class ResourceValueMismatch(Exception):
     """Resource value mismatch"""
 
 
+class MigrationJobFailedError(Exception):
+    """A migration Job reported Failed"""
+
+
 class MissingParameter(Exception):
     """Raised required argument is not passed."""
 

@@ -59,6 +59,11 @@ def build_ogx_server_config(
               ``GEMINI_INFERENCE_MODEL`` when configured in constants.
             - network: Optional NetworkSpec dict for the OGXServer CR.
             - praxis_mode: Optional PraxisModeSpec dict for the OGXServer CR.
+            - cpu_requests / cpu_limits: Workload CPU request and limit
+              (defaults ``"1"`` and ``"2"``). The OGX operator copies
+              ``workload.resources`` onto the Praxis migration Job as well, so a
+              suite that runs the migration alongside the server needs room on
+              one node for both at once.
     Returns:
         OGXServerSpec configuration dict with ``distribution``, ``workload``,
         and optional ``tls`` sections.
@@ -66,8 +71,8 @@ def build_ogx_server_config(
 
     env_vars = []
     tls_config: dict[str, Any] | None = None
-    cpu_requests = "1"
-    cpu_limits = "2"
+    cpu_requests = params.get("cpu_requests", "1")
+    cpu_limits = params.get("cpu_limits", "2")
 
     env_vars.extend((
         {"name": "INFERENCE_MODEL", "value": OGX_CORE_INFERENCE_MODEL},
@@ -166,7 +171,8 @@ def build_ogx_server_config(
         }
 
     config: dict[str, Any] = {
-        "distribution": {"name": "rh"},
+        # "distribution": {"name": "rh"},
+        "distribution": {"image": "quay.io/opendatahub/odh-ogx-core:rhoai-v3.6-latest"},
         "workload": {
             "resources": {
                 "requests": {"cpu": cpu_requests, "memory": "1Gi"},
