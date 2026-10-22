@@ -24,16 +24,18 @@ from tests.model_serving.model_runtime.mlserver.constant import (
     MODEL_PATH_PREFIX,
     OutputType,
 )
-from utilities.constants import KServeDeploymentType, Ports, Protocols
+from timeout_sampler import retry
+from utilities.constants import KServeDeploymentType, Ports, Protocols, Timeout
 from utilities.inference_utils import Inference, get_exposed_isvc_url
 from utilities.infra import get_pods_by_isvc_label
 
 LOGGER = structlog.get_logger(name=__name__)
 
 
+@retry(wait_timeout=Timeout.TIMEOUT_1MIN, sleep=3)
 def send_rest_request(url: str, input_data: dict[str, Any], verify: bool = False) -> Any:
     """
-    Sends a REST POST request to the specified URL with the given JSON payload.
+    Sends a REST POST request to the specified URL with retry on transient failures.
 
     Args:
         url (str): The endpoint URL to send the request to.
@@ -44,7 +46,7 @@ def send_rest_request(url: str, input_data: dict[str, Any], verify: bool = False
         Any: The parsed JSON response from the server.
 
     Raises:
-        requests.HTTPError: If the response contains an HTTP error status.
+        requests.HTTPError: If the response contains an HTTP error status after retries.
     """
     response = requests.post(url=url, json=input_data, verify=verify, timeout=60)
     response.raise_for_status()
