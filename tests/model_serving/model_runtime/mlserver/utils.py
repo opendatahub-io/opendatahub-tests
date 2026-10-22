@@ -32,7 +32,19 @@ from utilities.infra import get_pods_by_isvc_label
 LOGGER = structlog.get_logger(name=__name__)
 
 
-@retry(wait_timeout=Timeout.TIMEOUT_1MIN, sleep=3)
+class TransientResponseError(Exception):
+    """Raised when receiving a transient HTTP response code (e.g., 502, 503, 504)."""
+
+
+@retry(
+    wait_timeout=Timeout.TIMEOUT_1MIN,
+    sleep=3,
+    exceptions_dict={
+        requests.exceptions.ConnectionError: [],
+        requests.exceptions.Timeout: [],
+        TransientResponseError: [],
+    },
+)
 def send_rest_request(url: str, input_data: dict[str, Any], verify: bool = False) -> Any:
     """
     Sends a REST POST request to the specified URL with retry on transient failures.
@@ -46,9 +58,13 @@ def send_rest_request(url: str, input_data: dict[str, Any], verify: bool = False
         Any: The parsed JSON response from the server.
 
     Raises:
-        requests.HTTPError: If the response contains an HTTP error status after retries.
+        requests.HTTPError: If the response contains a non-transient HTTP error status.
     """
     response = requests.post(url=url, json=input_data, verify=verify, timeout=60)
+    if response.status_code in (502, 503, 504):
+        raise TransientResponseError(
+            f"Transient HTTP {response.status_code} received from {url}: {response.text}"
+        )
     response.raise_for_status()
     return response.json()
 
