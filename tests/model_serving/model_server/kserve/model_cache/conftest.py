@@ -83,7 +83,7 @@ def modelcar_shared_pvc_isvc(
     modelcar_shared_pvc_cache: LocalModelNamespaceCache,
 ) -> Generator[InferenceService, Any, Any]:
     """Serve two replicas from the imported public ModelCar copy on the shared claim."""
-    isvc_name = f"mnist-oci-pvc-{shortuuid.uuid()[:8].lower()}"
+    isvc_name = f"oci-pvc-{shortuuid.uuid()[:8].lower()}"
     affinity = {
         "podAntiAffinity": {
             "requiredDuringSchedulingIgnoredDuringExecution": [
@@ -102,7 +102,7 @@ def modelcar_shared_pvc_isvc(
         namespace=unprivileged_model_namespace.name,
         runtime=serving_runtime_from_template.name,
         storage_uri=ModelCarImage.MNIST_8_1,
-        model_format=ModelFormat.OPENVINO,
+        model_format=serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         external_route=True,
         min_replicas=2,

@@ -7,7 +7,6 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
 from ocp_resources.resource import Resource
-from pyhelper_utils.shell import run_command
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_serving.model_server.llmd.utils import get_llmd_vllm_pods
@@ -210,21 +209,25 @@ def assert_predictors_share_read_only_pvc(
     return pods
 
 
-def assert_modelcar_absent_from_node_image_cache(*, pods: list[Pod], source_uri: str) -> None:
-    """Assert CRI-O did not pull the source ModelCar as a container image."""
+def assert_modelcar_absent_from_pods(*, pods: list[Pod], source_uri: str) -> None:
+    """Assert no predictor container or init container runs the source ModelCar image.
+
+    The node CRI-O image cache is not checked: the shared-PVC import Job runs the
+    ModelCar image itself on an arbitrary node, so the image legitimately exists in
+    CRI-O on nodes that host predictor replicas.
+    """
     image_reference = source_uri.removeprefix("oci://").split("@", maxsplit=1)[0]
     last_slash = image_reference.rfind("/")
     last_colon = image_reference.rfind(":")
     repository = image_reference[:last_colon] if last_colon > last_slash else image_reference
 
-    for node_name in {pod.instance.spec.nodeName for pod in pods}:
-        _, output, _ = run_command(
-            command=["oc", "debug", f"node/{node_name}", "--", "chroot", "/host", "crictl", "images"],
-            verify_stderr=False,
-            check=True,
-            timeout=180,
+    for pod in pods:
+        pod_images = [
+            container.image for container in [*pod.instance.spec.containers, *(pod.instance.spec.initContainers or [])]
+        ]
+        assert not any(repository in image for image in pod_images), (
+            f"Pod {pod.name} unexpectedly runs the source ModelCar image {repository}"
         )
-        assert repository not in output, f"ModelCar {repository} unexpectedly exists in CRI-O on {node_name}"
 
 
 def assert_llmisvc_uses_cached_pvc(

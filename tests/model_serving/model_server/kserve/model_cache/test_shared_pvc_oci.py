@@ -8,7 +8,7 @@ from ocp_resources.serving_runtime import ServingRuntime
 
 from tests.model_serving.model_server.kserve.model_cache.utils import (
     LocalModelNamespaceCache,
-    assert_modelcar_absent_from_node_image_cache,
+    assert_modelcar_absent_from_pods,
     assert_predictors_share_read_only_pvc,
     cache_status_dict,
 )
@@ -20,6 +20,7 @@ from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 pytestmark = [
     pytest.mark.tier2,
     pytest.mark.rawdeployment,
+    pytest.mark.multinode,
     pytest.mark.slow,
     pytest.mark.usefixtures("skip_if_no_nfs_storage_class"),
 ]
@@ -46,7 +47,7 @@ class TestPublicOCISharedPVC:
     Steps:
         1. Import the standard MNIST ModelCar into a pre-provisioned NFS RWX PVC.
         2. Serve two replicas on different nodes from the same read-only claim.
-        3. Verify inference and the absence of transfer containers, local model copies, and CRI-O image pulls.
+        3. Verify inference and that no predictor pod runs the source ModelCar image.
     """
 
     def test_import_and_multi_replica_serving(
@@ -61,7 +62,10 @@ class TestPublicOCISharedPVC:
         status = cache_status_dict(cache=modelcar_shared_pvc_cache)
         ready = next(condition for condition in status["conditions"] if condition["type"] == "Ready")
         assert ready["status"] == "True" and ready["reason"] == "ImportSucceeded"
-        assert status.get("copies") == {"available": 1, "failed": 0, "total": 1}
+        copies = status["copies"]
+        assert copies["available"] == 1
+        assert copies["total"] == 1
+        assert copies.get("failed", 0) == 0
         assert not status.get("nodeStatus")
 
         pods = assert_predictors_share_read_only_pvc(
@@ -77,4 +81,4 @@ class TestPublicOCISharedPVC:
             protocol=Protocols.HTTPS,
             use_default_query=True,
         )
-        assert_modelcar_absent_from_node_image_cache(pods=pods, source_uri=ModelCarImage.MNIST_8_1)
+        assert_modelcar_absent_from_pods(pods=pods, source_uri=ModelCarImage.MNIST_8_1)
