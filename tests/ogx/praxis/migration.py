@@ -48,6 +48,23 @@ def run_migration(
     ogx_connection_string_name: str,
     praxis_connection_string_name: str,
 ) -> None:
+    """Enable Praxis mode and run the OGX-to-Praxis migration.
+
+    Configures the OGXServer with the source and target connection strings,
+    enables its migration Job, and waits for the operator-created Job to
+    complete.
+
+    Args:
+        ogx_server: The OGXServer to configure and migrate.
+        unprivileged_client: Client with access to the OGXServer namespace.
+        ogx_connection_string_name: Name of the Secret containing the OGX
+            database connection string.
+        praxis_connection_string_name: Name of the Secret containing the
+            Praxis database connection string.
+
+    Raises:
+        MigrationJobFailedError: If the migration Job reports Failed.
+    """
     ResourceEditor(
         patches={
             ogx_server: {
@@ -89,6 +106,28 @@ def run_two_step_migration(
     praxis_connection_string_name: str,
     namespace: str,
 ) -> None:
+    """Enable Praxis mode, wait for tenancy support, and run the migration.
+
+    Enables Praxis mode first and waits for OGX to add the tenancy column to
+    the source table. It then enables the migration Job and waits for the
+    operator-created Job to complete, avoiding the race between OGX startup
+    and migration Job creation.
+
+    Args:
+        ogx_server: The OGXServer to configure and migrate.
+        unprivileged_client: Client with access to the OGXServer namespace.
+        ogx_postgres_pod: PostgreSQL pod containing the OGX source database.
+        ogx_connection_string_name: Name of the Secret containing the OGX
+            database connection string.
+        praxis_connection_string_name: Name of the Secret containing the
+            Praxis database connection string.
+        namespace: Namespace containing the Praxis gateway.
+
+    Raises:
+        MigrationJobFailedError: If the migration Job reports Failed.
+        TimeoutExpiredError: If the source table does not gain the tenancy
+            column in time.
+    """
     ResourceEditor(
         patches={
             ogx_server: {
