@@ -62,9 +62,7 @@ def send_rest_request(url: str, input_data: dict[str, Any], verify: bool = False
     """
     response = requests.post(url=url, json=input_data, verify=verify, timeout=60)
     if response.status_code in (502, 503, 504):
-        raise TransientResponseError(
-            f"Transient HTTP {response.status_code} received from {url}: {response.text}"
-        )
+        raise TransientResponseError(f"Transient HTTP {response.status_code} received from {url}: {response.text}")
     response.raise_for_status()
     return response.json()
 
