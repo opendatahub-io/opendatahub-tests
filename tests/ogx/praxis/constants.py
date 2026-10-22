@@ -84,6 +84,28 @@ PRAXIS_POSTGRES_DEPLOYMENT_NAME: str = "praxis-postgres-deployment"
 PRAXIS_POSTGRES_SERVICE_NAME: str = "praxis-postgres-service"
 PRAXIS_POSTGRES_DATABASE: str = "praxis_db"
 
+# Third target table. Written by the migration but not compared by the parity
+# test, which asserts on responses and conversations only.
+TARGET_CONVERSATION_ITEMS_TABLE: str = "openai_conversation_items"
+
+# --- Praxis gateway deployed to own the target schema ---
+PRAXIS_GATEWAY_APP_LABEL: str = "praxis-gateway"
+PRAXIS_GATEWAY_POD_LABELS: dict[str, str] = {"app": PRAXIS_GATEWAY_APP_LABEL}
+PRAXIS_GATEWAY_DEPLOYMENT_NAME: str = "praxis-gateway-deployment"
+PRAXIS_GATEWAY_SERVICE_NAME: str = "praxis-gateway-service"
+PRAXIS_GATEWAY_CONFIG_SECRET_NAME: str = "praxis-gateway-config"
+PRAXIS_GATEWAY_CONFIG_KEY: str = "config.yaml"
+PRAXIS_GATEWAY_CONFIG_MOUNT_PATH: str = "/etc/praxis"
+PRAXIS_GATEWAY_CONTAINER_NAME: str = "praxis"
+PRAXIS_GATEWAY_PORT: int = 8080
+PRAXIS_GATEWAY_READY_TIMEOUT: int = 300
+
+# Tenancy the migration Job is given for source rows that carry none. The Praxis
+# gateway is configured with the same tenant so the rows the migration writes and
+# the ones Praxis would serve belong to one identity.
+MIGRATION_FALLBACK_TENANT: str = "test-tenant"
+MIGRATION_FALLBACK_OWNER_SUBJECT: str = "test-owner"
+
 # Secrets holding the source and target connection strings. The operator's
 # migration preflight requires both Secrets to carry the `ogx.io/watch` label.
 OGX_CONNECTION_SECRET_NAME: str = "ogx-db-connection"
@@ -94,10 +116,6 @@ PRAXIS_CONNECTION_SECRET_KEY: str = "connection-string"
 # Shared by both PostgreSQL instances, which come from the same pod template.
 POSTGRES_CONTAINER_NAME: str = "postgres"
 POSTGRES_PORT: int = 5432
-
-# Migration Job created by the OGX operator: `<ogxserver-name>-praxis-migration`.
-MIGRATION_JOB_NAME_SUFFIX: str = "-praxis-migration"
-MIGRATION_JOB_TIMEOUT: int = 600
 
 # Dummy data seeded before the upgrade.
 SEED_RESPONSES_COUNT: int = 3

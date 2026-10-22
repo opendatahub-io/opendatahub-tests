@@ -5,10 +5,12 @@ import httpx
 import pytest
 import requests
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
+from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ogx_client import OgxClient
@@ -23,6 +25,13 @@ from tests.ogx.praxis.constants import (
     POSTGRES_PORT,
     PRAXIS_CONNECTION_SECRET_KEY,
     PRAXIS_CONNECTION_SECRET_NAME,
+    PRAXIS_GATEWAY_CONFIG_KEY,
+    PRAXIS_GATEWAY_CONFIG_SECRET_NAME,
+    PRAXIS_GATEWAY_DEPLOYMENT_NAME,
+    PRAXIS_GATEWAY_POD_LABELS,
+    PRAXIS_GATEWAY_PORT,
+    PRAXIS_GATEWAY_READY_TIMEOUT,
+    PRAXIS_GATEWAY_SERVICE_NAME,
     PRAXIS_POSTGRES_APP_LABEL,
     PRAXIS_POSTGRES_DATABASE,
     PRAXIS_POSTGRES_DEPLOYMENT_NAME,
@@ -32,15 +41,17 @@ from tests.ogx.praxis.constants import (
     RESPONSES_API_PATH,
     VECTOR_STORES_API_PATH,
 )
+from tests.ogx.praxis.migration import run_two_step_migration
+from tests.ogx.praxis.server_config import build_praxis_gateway_config
 from tests.ogx.praxis.utils import (
     gateway_base_url,
+    get_praxis_gateway_deployment_template,
     ogx_connection_string,
     postgres_pod,
     praxis_api_url,
     praxis_connection_string,
     praxis_gateway_base_url,
     praxis_http_route,
-    wait_for_migration_job_completion,
 )
 from tests.ogx.utils import get_postgres_deployment_template
 from utilities.infra import get_openshift_token
@@ -246,46 +257,132 @@ def praxis_connection_string_secret(
 
 
 @pytest.fixture(scope="class")
-def praxis_migration_runner(
+def praxis_gateway_config_secret(
     unprivileged_client: DynamicClient,
-    ogx_server: OgxServer,
-    ogx_connection_string_secret: Secret,
-    praxis_connection_string_secret: Secret,
-) -> Callable[[], OgxServer]:
-    """Return a runner that enables Praxis mode and waits for database migration."""
+    unprivileged_model_namespace: Namespace,
+    praxis_postgres_service: Service,
+    teardown_resources: bool,
+) -> Generator[Secret]:
+    """Secret holding the configuration of the Praxis gateway."""
+    with Secret(
+        client=unprivileged_client,
+        namespace=unprivileged_model_namespace.name,
+        name=PRAXIS_GATEWAY_CONFIG_SECRET_NAME,
+        type="Opaque",
+        string_data={
+            PRAXIS_GATEWAY_CONFIG_KEY: build_praxis_gateway_config(namespace=unprivileged_model_namespace.name),
+        },
+        teardown=teardown_resources,
+    ) as secret:
+        yield secret
 
-    def _run_migration() -> OgxServer:
+
+@pytest.fixture(scope="class")
+def praxis_gateway_deployment(
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+    praxis_gateway_config_secret: Secret,
+    teardown_resources: bool,
+) -> Generator[Deployment]:
+    """Deploy a Praxis gateway in front of the target database."""
+    deployment = Deployment(
+        client=unprivileged_client,
+        namespace=unprivileged_model_namespace.name,
+        name=PRAXIS_GATEWAY_DEPLOYMENT_NAME,
+        replicas=1,
+        selector={"matchLabels": PRAXIS_GATEWAY_POD_LABELS},
+        template=get_praxis_gateway_deployment_template(),
+        teardown=teardown_resources,
+    )
+    with deployment:
+        deployment.wait_for_replicas(deployed=True, timeout=PRAXIS_GATEWAY_READY_TIMEOUT)
+        yield deployment
+
+
+@pytest.fixture(scope="class")
+def praxis_gateway_service(
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+    praxis_gateway_deployment: Deployment,
+    teardown_resources: bool,
+) -> Generator[Service]:
+    """Service fronting the Praxis gateway."""
+    with Service(
+        client=unprivileged_client,
+        namespace=unprivileged_model_namespace.name,
+        name=PRAXIS_GATEWAY_SERVICE_NAME,
+        ports=[{"port": PRAXIS_GATEWAY_PORT, "targetPort": PRAXIS_GATEWAY_PORT}],
+        selector=PRAXIS_GATEWAY_POD_LABELS,
+        wait_for_resource=True,
+        teardown=teardown_resources,
+    ) as service:
+        yield service
+
+
+@pytest.fixture(scope="class")
+def praxis_gateway_route(
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+    praxis_gateway_service: Service,
+    teardown_resources: bool,
+) -> Generator[Route]:
+    """Route publishing the Praxis gateway, so the schema probes can reach it."""
+    with Route(
+        client=unprivileged_client,
+        namespace=unprivileged_model_namespace.name,
+        name=PRAXIS_GATEWAY_SERVICE_NAME,
+        service=praxis_gateway_service.name,
+        wait_for_resource=True,
+        teardown=teardown_resources,
+    ) as route:
         ResourceEditor(
             patches={
-                ogx_server: {
+                route: {
                     "spec": {
-                        "storage": {
-                            "sql": {
-                                "type": "postgres",
-                                "connectionString": {
-                                    "name": ogx_connection_string_secret.name,
-                                    "key": OGX_CONNECTION_SECRET_KEY,
-                                },
-                            }
-                        },
-                        "praxisMode": {
-                            "enabled": True,
-                            "migrationJob": {
-                                "enabled": True,
-                                "targetConnectionString": {
-                                    "name": praxis_connection_string_secret.name,
-                                    "key": PRAXIS_CONNECTION_SECRET_KEY,
-                                },
-                                "fallbackTenant": "test-tenant",
-                                "fallbackOwnerSubject": "test-owner",
-                            },
-                        },
+                        "tls": {"termination": "edge", "insecureEdgeTerminationPolicy": "Redirect"},
                     }
                 }
             }
         ).update()
-        wait_for_migration_job_completion(client=unprivileged_client, ogx_server=ogx_server)
-        return ogx_server
+        yield route
+
+
+@pytest.fixture(scope="class")
+def praxis_migration_runner(
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+    ogx_server: OgxServer,
+    ogx_connection_string_secret: Secret,
+    praxis_connection_string_secret: Secret,
+    praxis_gateway_route: Route,
+    ogx_postgres_pod: Pod,
+) -> Callable[[], OgxServer]:
+    """Return a runner that enables Praxis mode and waits for database migration.
+
+    Praxis mode and the migration are enabled in two steps. Enabling Praxis mode
+    makes the operator rewrite the OGX config as multi-tenant, which OGX applies by
+    adding `tenant_id` to its tables on its next start; the migration reads that
+    column. `migrationJob` is left out of the first patch, which the API supports
+    (the Job is created only once the field is set), so the migration starts
+    against a source that already carries the column.
+    """
+
+    def _run_migration() -> OgxServer:
+        # return run_migration(
+        #     ogx_server=ogx_server,
+        #     unprivileged_client=unprivileged_client,
+        #     ogx_connection_string_name=ogx_connection_string_secret.name,
+        #     praxis_connection_string_name=praxis_connection_string_secret.name,
+        # )
+
+        return run_two_step_migration(
+            ogx_server=ogx_server,
+            unprivileged_client=unprivileged_client,
+            ogx_postgres_pod=ogx_postgres_pod,
+            ogx_connection_string_name=ogx_connection_string_secret.name,
+            praxis_connection_string_name=praxis_connection_string_secret.name,
+            namespace=unprivileged_model_namespace.name,
+        )
 
     return _run_migration
 
@@ -302,3 +399,9 @@ def praxis_postgres_pod(
         namespace=unprivileged_model_namespace.name,
         label_selector=PRAXIS_POSTGRES_POD_LABEL_SELECTOR,
     )
+
+
+@pytest.fixture(scope="class")
+def enabled_ogx_operator(dsc_resource: DataScienceCluster) -> DataScienceCluster:
+    """Local debug override: the operator is deployed by hand, leave the DSC alone."""
+    return dsc_resource

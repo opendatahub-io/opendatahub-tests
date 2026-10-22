@@ -17,13 +17,17 @@ from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.client import ApiException
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.config_map import ConfigMap
-from ocp_resources.job import Job
 from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 from ocp_resources.service import Service
 from ogx_client import APIStatusError, OgxClient
 
-from tests.ogx.constants import OGX_POSTGRES_SERVICE_NAME, POSTGRESQL_PASSWORD, POSTGRESQL_USER
+from tests.ogx.constants import (
+    OGX_POSTGRES_SERVICE_NAME,
+    POSTGRESQL_PASSWORD,
+    POSTGRESQL_USER,
+)
+from tests.ogx.image_constants import OgxImages
 from tests.ogx.praxis.constants import (
     API_BASELINE_CONFIG_MAP_NAME,
     COMPARED_CONVERSATION_FIELDS,
@@ -31,11 +35,15 @@ from tests.ogx.praxis.constants import (
     COMPARED_RESPONSE_FIELDS,
     COMPARED_VECTOR_STORE_FIELDS,
     MAX_LISTED_RESOURCES,
-    MIGRATION_JOB_NAME_SUFFIX,
-    MIGRATION_JOB_TIMEOUT,
     OGX_POSTGRES_DATABASE,
     POSTGRES_CONTAINER_NAME,
     POSTGRES_PORT,
+    PRAXIS_GATEWAY_CONFIG_KEY,
+    PRAXIS_GATEWAY_CONFIG_MOUNT_PATH,
+    PRAXIS_GATEWAY_CONFIG_SECRET_NAME,
+    PRAXIS_GATEWAY_CONTAINER_NAME,
+    PRAXIS_GATEWAY_POD_LABELS,
+    PRAXIS_GATEWAY_PORT,
     PRAXIS_POSTGRES_DATABASE,
     PRAXIS_POSTGRES_SERVICE_NAME,
     SEED_FILE_PURPOSE,
@@ -44,7 +52,6 @@ from tests.ogx.praxis.constants import (
 )
 from utilities.exceptions import UnexpectedResourceCountError
 from utilities.resources.http_route import HTTPRoute
-from utilities.resources.ogx_server import OgxServer
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -397,6 +404,44 @@ def praxis_connection_string(namespace: str) -> str:
     )
 
 
+def get_praxis_gateway_deployment_template() -> dict[str, Any]:
+    """Return a Kubernetes pod template for the Praxis gateway.
+
+    The configuration is mounted from the Secret `praxis_gateway_config` renders,
+    at the path the container is told to read. Readiness is a TCP check because
+    this pipeline publishes no health endpoint: every path it serves belongs to
+    one of the OpenAI APIs.
+
+    Returns:
+        Pod template dict suitable for a Deployment's ``template`` field.
+    """
+    config_path = f"{PRAXIS_GATEWAY_CONFIG_MOUNT_PATH}/{PRAXIS_GATEWAY_CONFIG_KEY}"
+    return {
+        "metadata": {"labels": PRAXIS_GATEWAY_POD_LABELS},
+        "spec": {
+            "containers": [
+                {
+                    "name": PRAXIS_GATEWAY_CONTAINER_NAME,
+                    "image": OgxImages.PRAXIS_GATEWAY,
+                    "args": ["--config", config_path],
+                    "ports": [{"containerPort": PRAXIS_GATEWAY_PORT}],
+                    "readinessProbe": {"tcpSocket": {"port": PRAXIS_GATEWAY_PORT}, "periodSeconds": 5},
+                    "volumeMounts": [
+                        {"name": "praxis-config", "mountPath": PRAXIS_GATEWAY_CONFIG_MOUNT_PATH, "readOnly": True}
+                    ],
+                    "securityContext": {
+                        "allowPrivilegeEscalation": False,
+                        "capabilities": {"drop": ["ALL"]},
+                        "runAsNonRoot": True,
+                        "seccompProfile": {"type": "RuntimeDefault"},
+                    },
+                },
+            ],
+            "volumes": [{"name": "praxis-config", "secret": {"secretName": PRAXIS_GATEWAY_CONFIG_SECRET_NAME}}],
+        },
+    }
+
+
 def query_database(postgres_pod: Pod, database: str, select_statement: str) -> list[dict[str, Any]]:
     """Run a SELECT against a PostgreSQL instance by exec'ing psql in its pod.
 
@@ -442,31 +487,6 @@ def ids_present_in_table(
         select_statement=f"SELECT {id_column} AS resource_id FROM {table} WHERE {id_column} IN ({id_literals})",
     )
     return {str(row["resource_id"]) for row in rows}
-
-
-def wait_for_migration_job_completion(client: DynamicClient, ogx_server: OgxServer) -> Job:
-    """Wait until the operator-created Praxis migration Job reports Complete.
-
-    Args:
-        client: Client with access to the OGXServer namespace.
-        ogx_server: The OGXServer that owns the migration Job.
-
-    Returns:
-        The completed migration Job.
-    """
-    job = Job(
-        client=client,
-        name=f"{ogx_server.name}{MIGRATION_JOB_NAME_SUFFIX}",
-        namespace=ogx_server.namespace,
-    )
-    job.wait(timeout=MIGRATION_JOB_TIMEOUT)
-    job.wait_for_condition(
-        condition=Job.Condition.COMPLETE,
-        status=Job.Condition.Status.TRUE,
-        timeout=MIGRATION_JOB_TIMEOUT,
-    )
-    LOGGER.info(f"Praxis migration job {job.name} completed")
-    return job
 
 
 def seed_responses(ogx_client: OgxClient, model_id: str, count: int, conversation_id: str | None = None) -> list[str]:
