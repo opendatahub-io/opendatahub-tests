@@ -13,7 +13,11 @@ from ocp_resources.serving_runtime import ServingRuntime
 from pytest import FixtureRequest
 
 from tests.model_serving.model_runtime.vllm.constant import TEMPLATE_MAP
-from tests.model_serving.model_runtime.vllm.cpu.ibm_power_z.constant import IBM_POWER_Z_PREDICT_RESOURCES
+from tests.model_serving.model_runtime.vllm.cpu.ibm_power_z.constant import (
+    IBM_POWER_Z_INFERENCE_TIMEOUT_SECONDS,
+    IBM_POWER_Z_PREDICT_RESOURCES,
+    IBM_Z_PREDICT_RESOURCES,
+)
 from tests.model_serving.model_runtime.vllm.utils import (
     add_image_pull_secrets_if_configured,
     dedupe_vllm_cli_args,
@@ -29,11 +33,36 @@ from utilities.serving_runtime import ServingRuntimeFromTemplate
 # this to the Route it creates.
 IBM_POWER_ROUTE_TIMEOUT: str = "300s"
 
+# Z runs the same models on smaller compact clusters, where decode throughput is a
+# fraction of Power's — a 50-token completion can exceed the 300s above, failing the
+# test on the route rather than on the model.
+IBM_Z_ROUTE_TIMEOUT: str = f"{IBM_POWER_Z_INFERENCE_TIMEOUT_SECONDS}s"
+
 LOGGER = structlog.get_logger(name=__name__)
 
 SUPPORTED_IBM_POWER_Z_ACCELERATORS: set[str] = {
     AcceleratorType.CPU_POWER,
     AcceleratorType.CPU_Z,
+}
+
+# Power and Z share this suite but not its sizing; Z runs on smaller compact clusters.
+PREDICT_RESOURCES_MAP: dict[str, dict[str, dict[str, str]]] = {
+    AcceleratorType.CPU_Z: IBM_Z_PREDICT_RESOURCES,
+}
+
+ROUTE_TIMEOUT_MAP: dict[str, str] = {
+    AcceleratorType.CPU_Z: IBM_Z_ROUTE_TIMEOUT,
+}
+
+# Readiness budget for create_isvc, which covers pod creation, weight loading and
+# vLLM's torch.compile warmup. Warmup scales with model size on Z - roughly 13min
+# for a 7B, 22min for an 8B - so phi-4 (14B) was still compiling when the 1800s
+# default expired.
+IBM_POWER_Z_ISVC_TIMEOUT: int = 1800
+IBM_Z_ISVC_TIMEOUT: int = 3600
+
+ISVC_TIMEOUT_MAP: dict[str, int] = {
+    AcceleratorType.CPU_Z: IBM_Z_ISVC_TIMEOUT,
 }
 
 
@@ -81,8 +110,13 @@ def ibm_power_z_inference_service(
     s3_models_storage_uri: str,
     vllm_model_service_account: Any,
     kserve_registry_pull_secret: Secret | None,
+    supported_accelerator_type: str,
 ) -> Generator[InferenceService, Any, Any]:
     """vLLM InferenceService for CPU Power or Z deployments backed by S3 model storage."""
+    accelerator_type = supported_accelerator_type.lower()
+    predict_resources = PREDICT_RESOURCES_MAP.get(accelerator_type, IBM_POWER_Z_PREDICT_RESOURCES)
+    route_timeout = ROUTE_TIMEOUT_MAP.get(accelerator_type, IBM_POWER_ROUTE_TIMEOUT)
+    isvc_timeout = ISVC_TIMEOUT_MAP.get(accelerator_type, IBM_POWER_Z_ISVC_TIMEOUT)
     isvc_kwargs: dict[str, Any] = {
         "client": admin_client,
         "name": request.param["name"],
@@ -93,8 +127,8 @@ def ibm_power_z_inference_service(
         "model_service_account": vllm_model_service_account.name,
         "deployment_mode": request.param.get("deployment_mode", KServeDeploymentType.STANDARD),
         "external_route": True,
-        "resources": deepcopy(x=IBM_POWER_Z_PREDICT_RESOURCES),
-        "timeout": request.param.get("timeout", 1800),
+        "resources": deepcopy(x=predict_resources),
+        "timeout": request.param.get("timeout", isvc_timeout),
     }
 
     if arguments := request.param.get("runtime_argument"):
@@ -117,7 +151,7 @@ def ibm_power_z_inference_service(
             patches={
                 isvc: {
                     "metadata": {
-                        "annotations": {Annotations.HaproxyRouterOpenshiftIo.TIMEOUT: IBM_POWER_ROUTE_TIMEOUT},
+                        "annotations": {Annotations.HaproxyRouterOpenshiftIo.TIMEOUT: route_timeout},
                     }
                 }
             }
