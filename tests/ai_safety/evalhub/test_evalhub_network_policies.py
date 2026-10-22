@@ -291,7 +291,7 @@ OPERATOR_FAILURE_EVENT_TIMEOUT: int = 600
 )
 @pytest.mark.ai_safety
 @pytest.mark.usefixtures("evalhub_operator_installed")
-class TestEvalHubApiPolicyOperatorFailureEventPath:
+class TestEvalHubNpFailureEvent:
     """End-to-end regression coverage for the operator's own EvalHub API client path.
 
     The API NetworkPolicy has to admit the operator manager Pod because that Pod
