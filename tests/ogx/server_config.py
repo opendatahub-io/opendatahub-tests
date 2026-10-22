@@ -15,6 +15,7 @@ from tests.ogx.constants import (
     OGX_CORE_VLLM_MAX_TOKENS,
     OGX_CORE_VLLM_TLS_VERIFY,
     OGX_CORE_VLLM_URL,
+    OGX_POSTGRES_SERVICE_NAME,
 )
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -123,7 +124,7 @@ def build_ogx_server_config(
 
     # POSTGRESQL environment variables for sql_default and kvstore_default
     env_vars.extend((
-        {"name": "POSTGRES_HOST", "value": "vector-io-postgres-service"},
+        {"name": "POSTGRES_HOST", "value": OGX_POSTGRES_SERVICE_NAME},
         {"name": "POSTGRES_PORT", "value": "5432"},
         {
             "name": "POSTGRES_USER",
