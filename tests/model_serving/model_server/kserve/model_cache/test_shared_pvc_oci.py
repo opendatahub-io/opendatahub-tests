@@ -11,6 +11,7 @@ from tests.model_serving.model_server.kserve.model_cache.utils import (
     assert_modelcar_absent_from_pods,
     assert_predictors_share_read_only_pvc,
     cache_status_dict,
+    verify_inference_on_each_predictor_pod,
 )
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import ModelCarImage, ModelFormat, ModelName, Protocols, RuntimeTemplates
@@ -47,7 +48,7 @@ class TestPublicOCISharedPVC:
     Steps:
         1. Import the standard MNIST ModelCar into a pre-provisioned NFS RWX PVC.
         2. Serve two replicas on different nodes from the same read-only claim.
-        3. Verify inference and that no predictor pod runs the source ModelCar image.
+        3. Verify inference through the route and directly on each predictor replica.
     """
 
     def test_import_and_multi_replica_serving(
@@ -80,5 +81,11 @@ class TestPublicOCISharedPVC:
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
             use_default_query=True,
+        )
+        verify_inference_on_each_predictor_pod(
+            pods=pods,
+            isvc=modelcar_shared_pvc_isvc,
+            inference_config=ONNX_INFERENCE_CONFIG,
+            inference_type=Inference.INFER,
         )
         assert_modelcar_absent_from_pods(pods=pods, source_uri=ModelCarImage.MNIST_8_1)

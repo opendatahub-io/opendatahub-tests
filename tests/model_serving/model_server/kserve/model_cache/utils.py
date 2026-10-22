@@ -1,16 +1,21 @@
 """Helpers and Kubernetes resource wrappers for KServe local model cache tests."""
 
+import json
+import re
+from string import Template
 from typing import Any
 
+import portforward
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
 from ocp_resources.resource import Resource
+from pyhelper_utils.shell import run_command
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_serving.model_server.llmd.utils import get_llmd_vllm_pods
-from utilities.constants import ApiGroups
+from utilities.constants import ApiGroups, Timeout
 from utilities.infra import get_pods_by_isvc_label
 from utilities.resources.llm_inference_service import LLMInferenceService
 from utilities.resources.local_model_namespace_cache import LocalModelNamespaceCache
@@ -198,9 +203,9 @@ def assert_predictors_share_read_only_pvc(
             for mount in (container.volumeMounts or [])
             if mount.mountPath.startswith("/mnt/models")
         ]
-        assert model_mounts and all(mount.readOnly for mount in model_mounts), (
-            f"Pod {pod.name} must mount model data read-only"
-        )
+        assert model_mounts and all(
+            mount.readOnly and mount.name == KSERVE_PVC_SOURCE_VOLUME_NAME for mount in model_mounts
+        ), f"Pod {pod.name} must mount model data read-only from the shared PVC source volume"
         empty_dirs = {name for name, volume in volumes.items() if getattr(volume, "emptyDir", None) is not None}
         assert not empty_dirs.intersection(mount.name for mount in model_mounts), (
             f"Pod {pod.name} stores model data in emptyDir volumes {empty_dirs}"
@@ -209,24 +214,62 @@ def assert_predictors_share_read_only_pvc(
     return pods
 
 
+def verify_inference_on_each_predictor_pod(
+    *,
+    pods: list[Pod],
+    isvc: InferenceService,
+    inference_config: dict[str, Any],
+    inference_type: str,
+) -> None:
+    """Send one inference request directly to each predictor pod and validate the response.
+
+    The service-level request is load-balanced across replicas; port-forwarding to
+    each pod verifies every replica serves the expected result.
+    """
+    runtime_config = inference_config[inference_type]["http"]
+    query_config = inference_config["default_query_model"][inference_type]
+    body = Template(runtime_config["body"]).safe_substitute(query_input=json.dumps(query_config["query_input"]))
+    header = Template(runtime_config["header"]).safe_substitute(model_name=isvc.name)
+    endpoint = Template(runtime_config["endpoint"]).safe_substitute(model_name=isvc.name)
+    expected_response = Template(query_config["query_output"]).safe_substitute(model_name=isvc.name)
+
+    for pod in pods:
+        port = pod.instance.spec.containers[0].ports[0].containerPort
+        with portforward.forward(
+            namespace=pod.namespace,
+            pod_or_service=pod.name,
+            from_port=port,
+            to_port=port,
+        ):
+            _, output, _ = run_command(
+                command=["curl", "-s", "-H", header, "-d", body, f"http://localhost:{port}/{endpoint}"],
+                verify_stderr=False,
+                check=True,
+                timeout=Timeout.TIMEOUT_1MIN,
+            )
+        formatted_response = json.dumps(json.loads(output)).replace(" ", "")
+        assert re.search(expected_response, formatted_response), (
+            f"Pod {pod.name} returned unexpected inference output: {output}"
+        )
+
+
 def assert_modelcar_absent_from_pods(*, pods: list[Pod], source_uri: str) -> None:
     """Assert no predictor container or init container runs the source ModelCar image.
 
-    The node CRI-O image cache is not checked: the shared-PVC import Job runs the
-    ModelCar image itself on an arbitrary node, so the image legitimately exists in
-    CRI-O on nodes that host predictor replicas.
+    The full digest-pinned reference is compared so sibling repositories or other
+    tags of the same repository do not match. The node CRI-O image cache is not
+    checked: the shared-PVC import Job runs the ModelCar image itself on an
+    arbitrary node, so the image legitimately exists in CRI-O on nodes that host
+    predictor replicas.
     """
-    image_reference = source_uri.removeprefix("oci://").split("@", maxsplit=1)[0]
-    last_slash = image_reference.rfind("/")
-    last_colon = image_reference.rfind(":")
-    repository = image_reference[:last_colon] if last_colon > last_slash else image_reference
+    image_reference = source_uri.removeprefix("oci://")
 
     for pod in pods:
         pod_images = [
             container.image for container in [*pod.instance.spec.containers, *(pod.instance.spec.initContainers or [])]
         ]
-        assert not any(repository in image for image in pod_images), (
-            f"Pod {pod.name} unexpectedly runs the source ModelCar image {repository}"
+        assert image_reference not in pod_images, (
+            f"Pod {pod.name} unexpectedly runs the source ModelCar image {image_reference}"
         )
 
 
