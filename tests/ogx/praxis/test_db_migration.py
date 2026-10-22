@@ -50,7 +50,7 @@ TARGET_CONVERSATIONS_QUERY = _conversations_query(table_name=TARGET_CONVERSATION
 
 # This migration owns a namespace and OGXServer so it cannot share state with
 # other OGX -> Praxis migration modules.
-NAMESPACE_PARAMS: dict[str, Any] = {"name": "test-ogx-praxis-db-migration"}
+NAMESPACE_PARAMS: dict[str, Any] = {"name": "test-ogx-praxis-db-migration", "randomize_name": True}
 OGX_SERVER_PARAMS: dict[str, Any] = {
     "ogx_storage_size": "2Gi",
     "vector_io_provider": "pgvector",

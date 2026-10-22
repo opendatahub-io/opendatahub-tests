@@ -171,8 +171,7 @@ def build_ogx_server_config(
         }
 
     config: dict[str, Any] = {
-        # "distribution": {"name": "rh"},
-        "distribution": {"image": "quay.io/opendatahub/odh-ogx-core:rhoai-v3.6-latest"},
+        "distribution": {"name": "rh"},
         "workload": {
             "resources": {
                 "requests": {"cpu": cpu_requests, "memory": "1Gi"},
