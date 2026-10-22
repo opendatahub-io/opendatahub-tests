@@ -12,12 +12,8 @@ from tests.ogx.praxis.constants import (
     MIGRATION_FALLBACK_OWNER_SUBJECT,
     MIGRATION_FALLBACK_TENANT,
     OGX_CONNECTION_SECRET_KEY,
-    OGX_POSTGRES_DATABASE,
     PRAXIS_CONNECTION_SECRET_KEY,
-    PRAXIS_GATEWAY_POD_LABELS,
-    SOURCE_RESPONSES_TABLE,
 )
-from tests.ogx.praxis.utils import query_database
 from utilities.exceptions import MigrationJobFailedError
 from utilities.resources.ogx_server import OgxServer
 
@@ -27,19 +23,6 @@ LOGGER = structlog.get_logger(name=__name__)
 _MIGRATION_JOB_NAME_SUFFIX: str = "-praxis-migration"
 _MIGRATION_JOB_TIMEOUT: int = 600
 _MIGRATION_JOB_POLL_INTERVAL: int = 2
-
-# Tenancy column OGX adds to its tables once it runs multi-tenant. Enabling Praxis
-# mode makes the operator rewrite the OGX config with `tenancy.mode: multi`, and OGX
-# stamps the column on the next start, from `AuthorizedSqlStore.create_table`. The
-# migration selects it unconditionally, so it cannot run before that restart has
-# landed. The operator does not order the two: it creates the migration Job in the
-# same reconcile that rewrites the config, and the Job's backoff limit expires in
-# well under the time a pod needs to reschedule on a loaded cluster. The tests
-# therefore enable Praxis mode and the migration in two steps, waiting for this
-# column in between.
-_SOURCE_TENANCY_COLUMN: str = "tenant_id"
-_SOURCE_TENANCY_COLUMN_TIMEOUT: int = 600
-_SOURCE_TENANCY_COLUMN_POLL_INTERVAL: int = 10
 
 
 def run_migration(
@@ -86,91 +69,6 @@ def run_migration(
                                 "name": praxis_connection_string_name,
                                 "key": PRAXIS_CONNECTION_SECRET_KEY,
                             },
-                            "fallbackTenant": MIGRATION_FALLBACK_TENANT,
-                            "fallbackOwnerSubject": MIGRATION_FALLBACK_OWNER_SUBJECT,
-                        },
-                    },
-                }
-            }
-        }
-    ).update()
-    _wait_for_migration_job_completion(client=unprivileged_client, ogx_server=ogx_server)
-    return ogx_server
-
-
-def run_two_step_migration(
-    ogx_server: OgxServer,
-    unprivileged_client: DynamicClient,
-    ogx_postgres_pod: Pod,
-    ogx_connection_string_name: str,
-    praxis_connection_string_name: str,
-    namespace: str,
-) -> None:
-    """Enable Praxis mode, wait for tenancy support, and run the migration.
-
-    Enables Praxis mode first and waits for OGX to add the tenancy column to
-    the source table. It then enables the migration Job and waits for the
-    operator-created Job to complete, avoiding the race between OGX startup
-    and migration Job creation.
-
-    Args:
-        ogx_server: The OGXServer to configure and migrate.
-        unprivileged_client: Client with access to the OGXServer namespace.
-        ogx_postgres_pod: PostgreSQL pod containing the OGX source database.
-        ogx_connection_string_name: Name of the Secret containing the OGX
-            database connection string.
-        praxis_connection_string_name: Name of the Secret containing the
-            Praxis database connection string.
-        namespace: Namespace containing the Praxis gateway.
-
-    Raises:
-        MigrationJobFailedError: If the migration Job reports Failed.
-        TimeoutExpiredError: If the source table does not gain the tenancy
-            column in time.
-    """
-    ResourceEditor(
-        patches={
-            ogx_server: {
-                "spec": {
-                    "storage": {
-                        "sql": {
-                            "type": "postgres",
-                            "connectionString": {
-                                "name": ogx_connection_string_name,
-                                "key": OGX_CONNECTION_SECRET_KEY,
-                            },
-                        }
-                    },
-                    "praxisMode": {
-                        "enabled": True,
-                        "praxisSelector": {
-                            "namespace": namespace,
-                            "podSelector": {"matchLabels": PRAXIS_GATEWAY_POD_LABELS},
-                        },
-                    },
-                }
-            }
-        }
-    ).update()
-    _wait_for_source_tenancy_column(
-        postgres_pod=ogx_postgres_pod,
-        database=OGX_POSTGRES_DATABASE,
-        table=SOURCE_RESPONSES_TABLE,
-    )
-
-    ResourceEditor(
-        patches={
-            ogx_server: {
-                "spec": {
-                    "praxisMode": {
-                        "migrationJob": {
-                            "enabled": True,
-                            "targetConnectionString": {
-                                "name": praxis_connection_string_name,
-                                "key": PRAXIS_CONNECTION_SECRET_KEY,
-                            },
-                            # Source rows seeded through the OGX API carry no
-                            # tenancy, which the migration refuses to invent.
                             "fallbackTenant": MIGRATION_FALLBACK_TENANT,
                             "fallbackOwnerSubject": MIGRATION_FALLBACK_OWNER_SUBJECT,
                         },
@@ -249,35 +147,3 @@ def _capture_migration_job_logs(job: Job, captured: dict[str, str]) -> None:
             continue
         if log:
             captured[pod.name] = log
-
-
-def _wait_for_source_tenancy_column(postgres_pod: Pod, database: str, table: str) -> None:
-    """Wait until an OGX source table carries the tenancy column.
-
-    OGX adds `tenant_id` only when it starts with a multi-tenant config, which is
-    what enabling Praxis mode makes the operator write. The migration selects the
-    column unconditionally, so this is the precondition that makes it runnable.
-
-    Args:
-        postgres_pod: The PostgreSQL pod holding the source database.
-        database: Source database name.
-        table: Unquoted source table name in the `public` schema.
-
-    Raises:
-        TimeoutExpiredError: If the column does not appear in time.
-    """
-    for rows in TimeoutSampler(
-        wait_timeout=_SOURCE_TENANCY_COLUMN_TIMEOUT,
-        sleep=_SOURCE_TENANCY_COLUMN_POLL_INTERVAL,
-        func=query_database,
-        postgres_pod=postgres_pod,
-        database=database,
-        select_statement=(
-            "SELECT column_name FROM information_schema.columns "
-            f"WHERE table_schema = 'public' AND table_name = '{table}' "
-            f"AND column_name = '{_SOURCE_TENANCY_COLUMN}'"
-        ),
-    ):
-        if rows:
-            LOGGER.info(f"Source table {table} carries {_SOURCE_TENANCY_COLUMN}; migration can read it")
-            break

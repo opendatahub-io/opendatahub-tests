@@ -83,7 +83,7 @@ class TestPraxisDbMigration:
         """
         # Seed and read the source before running the migration job.
         conversation_ids = seed_conversations(ogx_client=ogx_client, count=SEED_CONVERSATIONS_COUNT)
-        response_ids = seed_responses(
+        _ = seed_responses(
             ogx_client=ogx_client,
             model_id=ogx_models.model_id,
             count=SEED_RESPONSES_COUNT,
