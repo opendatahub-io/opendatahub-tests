@@ -1,11 +1,16 @@
 import json
+from collections.abc import Callable
 from typing import Any
 
 import pytest
+from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from ocp_resources.evalhub import EvalHub
+from ocp_resources.namespace import Namespace
 from ocp_resources.network_policy import NetworkPolicy
+from ocp_resources.route import Route
 from pytest_testconfig import config as py_config
+from timeout_sampler import TimeoutExpiredError
 
 from tests.ai_safety.evalhub.constants import (
     EVALHUB_K8S_LABEL_APP,
@@ -26,6 +31,17 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_NP_ROUTER_POLICY_GROUP,
     EVALHUB_SERVICE_PORT,
     EVALHUB_TENANT_LABEL_KEY,
+)
+from tests.ai_safety.evalhub.k8s_lifecycle_signals.constants import (
+    LIFECYCLE_REASON_FAILED,
+    LIFECYCLE_SOURCE_OPERATOR,
+)
+from tests.ai_safety.evalhub.k8s_lifecycle_signals.utils import (
+    wait_for_event_from_component,
+)
+from tests.ai_safety.evalhub.utils import (
+    wait_for_evalhub_job,
+    wait_for_evalhub_runtime_job_count,
 )
 from utilities.network_policy import (
     NETWORK_POLICY_COMPONENT_LABEL,
@@ -254,4 +270,104 @@ class TestEvalHubNetworkPolicies:
         assert EVALHUB_NP_OPERATOR_POD_LABELS.items() <= operator_pod_labels.items(), (
             f"{evalhub_api_network_policy.name} selects {EVALHUB_NP_OPERATOR_POD_LABELS}, which does not match the "
             f"deployed {trustyai_operator_deployment.name} pod labels {operator_pod_labels}"
+        )
+
+
+# The operator's failure watcher waits out this grace before treating an
+# unschedulable Pod as a failure (trustyai-service-operator
+# controllers/evalhub/evaluation_job_failure_reconciler.go), so the end-to-end
+# path needs more than a label read.
+OPERATOR_FAILURE_EVENT_TIMEOUT: int = 600
+
+
+@pytest.mark.parametrize(
+    "model_namespace",
+    [
+        pytest.param(
+            {"name": "test-evalhub-np-failure-event"},
+        ),
+    ],
+    indirect=True,
+)
+@pytest.mark.ai_safety
+@pytest.mark.usefixtures("evalhub_operator_installed")
+class TestEvalHubApiPolicyOperatorFailureEventPath:
+    """End-to-end regression coverage for the operator's own EvalHub API client path.
+
+    The API NetworkPolicy has to admit the operator manager Pod because that Pod
+    reports the failures the evaluation Job containers cannot report. This class
+    exercises the consequence rather than the policy shape: a Job whose Pod can
+    never be scheduled must still end up failed, and it must get there through an
+    EvaluationFailed Event emitted by the operator, which the operator records only
+    after its POST to the EvalHub API succeeds. With the peer missing, the policy
+    silently drops that POST, no Event appears, and the Job stays pending.
+    """
+
+    @pytest.mark.tier2
+    def test_unschedulable_job_fails_through_operator_failure_event(
+        self,
+        admin_client: DynamicClient,
+        tenant_a_token: str,
+        tenant_a_namespace: Namespace,
+        evalhub_mt_ca_bundle_file: str,
+        evalhub_mt_route: Route,
+        submit_pvc_job: Callable[..., str],
+    ) -> None:
+        """A Job referencing a PVC that does not exist still reaches failed.
+
+        Given an evaluation Job whose Pod can never be scheduled because its PVC
+        does not exist,
+        when the operator's failure watcher passes its scheduling grace,
+        then the operator POSTs the failure to the EvalHub API, the batch Job gets an
+        EvaluationFailed Event from source.component=trustyai-service-operator, and
+        the EvalHub job state becomes failed instead of staying pending.
+        """
+        claim_name = "nonexistent-pvc-operator-failure-event"
+        job_id = submit_pvc_job(
+            claim_name=claim_name,
+            job_name="np-operator-failure-event",
+        )
+        batch_jobs = wait_for_evalhub_runtime_job_count(
+            admin_client=admin_client,
+            namespace=tenant_a_namespace.name,
+            evalhub_job_id=job_id,
+            minimum=1,
+        )
+        batch_job_name = batch_jobs[0].name
+
+        try:
+            failure_event = wait_for_event_from_component(
+                admin_client=admin_client,
+                job_name=batch_job_name,
+                namespace=tenant_a_namespace.name,
+                reason=LIFECYCLE_REASON_FAILED,
+                source_component=LIFECYCLE_SOURCE_OPERATOR,
+                timeout=OPERATOR_FAILURE_EVENT_TIMEOUT,
+            )
+        except TimeoutExpiredError:
+            pytest.fail(
+                f"No {LIFECYCLE_REASON_FAILED} Event from {LIFECYCLE_SOURCE_OPERATOR} on batch Job "
+                f"{batch_job_name} within {OPERATOR_FAILURE_EVENT_TIMEOUT}s. The operator detects the "
+                f"unschedulable Pod but its failure event never reaches EvalHub when the API "
+                f"NetworkPolicy does not admit the operator manager Pod "
+                f"({EVALHUB_NP_OPERATOR_POD_LABELS}); the evaluation job then stays pending forever."
+            )
+
+        event_message = str(failure_event.get("message", ""))
+        assert claim_name in event_message, (
+            f"Operator failure event does not carry the missing-PVC detail for {claim_name}: {event_message!r}"
+        )
+
+        job_data = wait_for_evalhub_job(
+            host=evalhub_mt_route.host,
+            token=tenant_a_token,
+            ca_bundle_file=evalhub_mt_ca_bundle_file,
+            tenant=tenant_a_namespace.name,
+            job_id=job_id,
+            timeout=OPERATOR_FAILURE_EVENT_TIMEOUT,
+        )
+        state = job_data.get("status", {}).get("state")
+        assert state == "failed", (
+            f"Evaluation Job with an unschedulable Pod must reach 'failed', got {state!r}. "
+            f"A 'pending' job means the operator's failure event did not reach EvalHub: {job_data.get('status')}"
         )
