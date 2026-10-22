@@ -84,16 +84,10 @@ def test_trustyaiservice_crd_exists(
     indirect=True,
 )
 def test_trustyai_service_with_invalid_db_cert(
-    admin_client,
-    current_client_token,
-    model_namespace: Namespace,
-    trustyai_service_with_invalid_db_cert,
-):
-    """Test to make sure TrustyAIService pod fails when incorrect database TLS certificate is used."""
+    trustyai_service_with_invalid_db_cert: TrustyAIService,
+) -> None:
+    """Given an invalid database CA, verify TrustyAIService reports a database connection failure."""
     validate_trustyai_service_db_conn_failure(
-        client=admin_client,
-        namespace=model_namespace,
-        label_selector=f"app.kubernetes.io/instance={trustyai_service_with_invalid_db_cert.name}",
         trustyai_service=trustyai_service_with_invalid_db_cert,
     )
 

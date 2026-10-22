@@ -1,5 +1,4 @@
 import datetime
-import re
 from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
@@ -10,7 +9,6 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
-from kubernetes.client.rest import ApiException
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
@@ -24,10 +22,9 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.trustyai_service import TrustyAIService
-from timeout_sampler import TimeoutSampler, retry
+from timeout_sampler import TimeoutSampler
 
 from utilities.constants import MARIA_DB_IMAGE, TRUSTYAI_SERVICE_NAME
-from utilities.exceptions import TooManyPodsError, UnexpectedFailureError
 from utilities.general import validate_container_images, wait_for_pods_by_labels
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -306,84 +303,15 @@ def create_standalone_mariadb(
             yield deployment
 
 
-def _trustyai_service_reports_db_connection_error(trustyai_service: TrustyAIService) -> bool:
-    """Return True when the TrustyAIService CR reports a database connection failure."""
-    status = trustyai_service.instance.status or {}
-    for condition in status.get("conditions", []):
-        if condition.get("type") == "DBAvailable" and condition.get("reason") == "DBConnectionError":
-            return True
-    return False
-
-
-def _pod_logs_show_tls_verification_failure(pod: Pod, tls_verification_failure_regex: str) -> bool:
-    """Return True when TrustyAI container logs report a MariaDB TLS verification failure."""
-    for previous in (False, True):
-        try:
-            log_output = pod.log(container=TRUSTYAI_SERVICE_NAME, previous=previous)
-        except ApiException:
-            continue
-        if re.search(tls_verification_failure_regex, log_output, re.MULTILINE | re.IGNORECASE):
-            return True
-    return False
-
-
-@retry(
-    wait_timeout=120,
-    sleep=5,
-    exceptions_dict={TooManyPodsError: [], UnexpectedFailureError: []},
-)
-def validate_trustyai_service_db_conn_failure(
-    client: DynamicClient,
-    namespace: Namespace,
-    label_selector: str | None,
-    trustyai_service: TrustyAIService | None = None,
-) -> bool:
-    """Validate that an invalid DB certificate leaves the TrustyAI container unready.
-
-    A ``DBConnectionError`` condition alone is insufficient because it can describe
-    operator provisioning failures unrelated to a TrustyAI TLS handshake.
-
-    Args:
-        client: The OpenShift client.
-        namespace: Namespace under which the pod is created.
-        label_selector: The label selector used to select the correct pod(s) to monitor.
-        trustyai_service: Optional TrustyAIService CR to inspect for status conditions.
-
-    Returns:
-        bool: True if pod failure is of expected state else False.
-
-    Raises:
-        TimeoutExpiredError: if the method takes longer than `wait_timeout` to return a value.
-        TooManyPodsError: if the number of pods exceeds 1.
-        UnexpectedFailureError: if the pod failure is different from the expected failure mode.
-
-    """
-    pods = list(Pod.get(client=client, namespace=namespace.name, label_selector=label_selector))
-    if pods:
-        if len(pods) > 1:
-            raise TooManyPodsError("More than one pod found in TrustyAIService.")
-        pod = pods[0]
-        container_statuses = pod.instance.status.containerStatuses or []
-        service_status = next(
-            (status for status in container_statuses if status.name == TRUSTYAI_SERVICE_NAME),
-            None,
-        )
-        if service_status is None or service_status.ready:
-            return False
-
-        tls_verification_failure_regex = (
-            r"(PKIX path.*failed|certificate verify failed|certificate validation failed|"
-            r"self[- ]signed certificate|unable to get local issuer certificate)"
-        )
-        if _pod_logs_show_tls_verification_failure(
-            pod=pod,
-            tls_verification_failure_regex=tls_verification_failure_regex,
-        ):
-            return True
-
-        if trustyai_service and _trustyai_service_reports_db_connection_error(trustyai_service=trustyai_service):
-            LOGGER.info("TrustyAIService reports DBConnectionError, but no pod TLS verification failure is logged yet")
-    return False
+def validate_trustyai_service_db_conn_failure(trustyai_service: TrustyAIService) -> None:
+    """Wait for TrustyAIService to report a database connection failure."""
+    trustyai_service.wait_for_condition(
+        condition="DBAvailable",
+        status="False",
+        reason="DBConnectionError",
+        timeout=120,
+        sleep_time=5,
+    )
 
 
 @contextmanager
