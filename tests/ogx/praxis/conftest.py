@@ -255,6 +255,7 @@ def praxis_migration_runner(
     ogx_postgres_pod: Pod,
 ) -> Callable[[], OgxServer]:
     """Return a runner that enables Praxis mode and waits for database migration."""
+
     def _run_migration() -> OgxServer:
         return run_migration(
             ogx_server=ogx_server,
