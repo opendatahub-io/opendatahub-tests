@@ -12,7 +12,9 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
+from ocp_resources.trustyai_service import TrustyAIService
 
+from tests.ai_safety.trustyai_service.constants import TAI_METRICS_CONFIG
 from tests.ai_safety.trustyai_service.storage_backends.constants import (
     ENV_APPLICATION_NAME,
     ENV_MAX_CONNECTIONS_BUDGET,
@@ -38,6 +40,7 @@ from tests.ai_safety.trustyai_service.storage_backends.utils import (
     wait_for_deployment_unready,
     wait_for_model_observations,
     wait_for_pod_log_message,
+    wait_for_trustyai_condition,
 )
 from utilities.constants import TRUSTYAI_SERVICE_NAME
 
@@ -231,40 +234,22 @@ class TestPostgresSettingsFromConfigMap:
     indirect=True,
 )
 class TestInvalidSettingsFailFast:
-    """A bad value keeps the pod unready and the log names the key and the value."""
+    """The service refuses settings the operator cannot check, and the log names the key and the value."""
 
     @pytest.mark.parametrize(
         "case_id, config, expected_fragments",
         [
             pytest.param(
-                "bool",
-                {ENV_SYNCHRONOUS_COMMIT: "maybe"},
-                [f"{ENV_SYNCHRONOUS_COMMIT}='maybe'"],
-                id="invalid-boolean",
-            ),
-            pytest.param(
                 "pool0",
                 {ENV_POOL_SIZE: "0"},
                 [f"{ENV_POOL_SIZE}='0'"],
-                id="pool-size-zero-is-rejected-not-clamped",
-            ),
-            pytest.param(
-                "both",
-                {ENV_POOL_SIZE: "0", ENV_MAX_OVERFLOW: "-1"},
-                [f"{ENV_POOL_SIZE}='0'", f"{ENV_MAX_OVERFLOW}='-1'"],
-                id="every-bad-pool-key-is-reported",
-            ),
-            pytest.param(
-                "stmt",
-                {ENV_STATEMENT_TIMEOUT_MS: "-5"},
-                [f"{ENV_STATEMENT_TIMEOUT_MS}='-5'"],
-                id="negative-statement-timeout",
+                id="test_pool_size_zero_is_rejected_by_service",
             ),
             pytest.param(
                 "budget",
                 {ENV_POOL_SIZE: "5", ENV_MAX_OVERFLOW: "10", ENV_MAX_CONNECTIONS_BUDGET: "8"},
                 [f"{ENV_MAX_CONNECTIONS_BUDGET}=8", "exceeds the per-pod budget"],
-                id="pool-ceiling-over-connection-budget",
+                id="test_pool_ceiling_over_connection_budget",
             ),
         ],
     )
@@ -281,7 +266,11 @@ class TestInvalidSettingsFailFast:
         config: dict[str, str],
         expected_fragments: list[str],
     ) -> None:
-        """The service refuses the value, says which key is wrong, and never becomes ready."""
+        """
+        Given a tuning ConfigMap with a value only the service can reject
+        When the service pod restarts
+        Then the log names the key and value and the pod never becomes ready
+        """
         name = f"{TRUSTYAI_SERVICE_NAME}-bad-{case_id}"
         config_map_name = f"{DB_CONFIG_MAP_NAME}-{case_id}"
 
@@ -317,6 +306,93 @@ class TestInvalidSettingsFailFast:
                 namespace=model_namespace.name,
                 name=name,
             ), f"Service became ready with invalid settings {config}"
+
+
+@pytest.mark.ai_safety
+@pytest.mark.tier3
+@pytest.mark.parametrize(
+    "model_namespace",
+    [pytest.param({"name": "test-trustyai-db-config-operator"})],
+    indirect=True,
+)
+class TestInvalidSettingsRejectedByOperator:
+    """The operator rejects bad tuning values on the CR before it creates or updates any pod."""
+
+    @pytest.mark.parametrize(
+        "case_id, config, rejected_key, rejected_value",
+        [
+            pytest.param(
+                "bool",
+                {ENV_SYNCHRONOUS_COMMIT: "maybe"},
+                ENV_SYNCHRONOUS_COMMIT,
+                "maybe",
+                id="test_invalid_synchronous_commit",
+            ),
+            pytest.param(
+                "stmt",
+                {ENV_STATEMENT_TIMEOUT_MS: "-5"},
+                ENV_STATEMENT_TIMEOUT_MS,
+                "-5",
+                id="test_negative_statement_timeout",
+            ),
+            pytest.param(
+                "both",
+                {ENV_POOL_SIZE: "0", ENV_MAX_OVERFLOW: "-1"},
+                # Keys are checked in sorted order and only the first bad one is reported.
+                ENV_MAX_OVERFLOW,
+                "-1",
+                id="test_first_bad_key_is_reported",
+            ),
+        ],
+    )
+    def test_invalid_config_map_value_is_reported_on_the_cr(
+        self,
+        admin_client: DynamicClient,
+        model_namespace: Namespace,
+        postgres_db: Deployment,
+        postgres_db_credentials_secret: Secret,
+        postgres_service_ca_secret: Callable[[str], AbstractContextManager[Secret]],
+        deploy_db_config_map: Callable[..., AbstractContextManager[ConfigMap]],
+        teardown_resources: bool,
+        case_id: str,
+        config: dict[str, str],
+        rejected_key: str,
+        rejected_value: str,
+    ) -> None:
+        """
+        Given a tuning ConfigMap with a value the operator can validate
+        When a TrustyAIService references it
+        Then DatabaseTuningAvailable is False with reason InvalidConfiguration naming the key and value
+        And the service is not Ready
+        """
+        name = f"{TRUSTYAI_SERVICE_NAME}-op-{case_id}"
+        config_map_name = f"{DB_CONFIG_MAP_NAME}-op-{case_id}"
+        storage = {
+            "format": "DATABASE",
+            "size": "1Gi",
+            "databaseConfigurations": postgres_db_credentials_secret.name,
+            "databaseTuning": config_map_name,
+        }
+
+        with (
+            postgres_service_ca_secret(name),
+            deploy_db_config_map(name=config_map_name, data=config),
+            TrustyAIService(
+                client=admin_client,
+                name=name,
+                namespace=model_namespace.name,
+                storage=storage,
+                metrics=TAI_METRICS_CONFIG,
+                teardown=teardown_resources,
+            ) as service,
+        ):
+            tuning = wait_for_trustyai_condition(
+                service=service, condition_type="DatabaseTuningAvailable", status="False"
+            )
+            assert tuning["reason"] == "InvalidConfiguration", f"Unexpected reason: {tuning}"
+            assert f'"{rejected_key}"' in tuning["message"], f"Message should name {rejected_key}: {tuning}"
+            assert f'"{rejected_value}"' in tuning["message"], f"Message should show {rejected_value!r}: {tuning}"
+            wait_for_trustyai_condition(service=service, condition_type="Ready", status="False")
 
 
 @pytest.mark.ai_safety

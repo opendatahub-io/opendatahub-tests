@@ -228,6 +228,34 @@ def wait_for_deployment_unready(
     return any(TimeoutSampler(wait_timeout=timeout, sleep=5, func=_no_ready_replicas))
 
 
+def wait_for_trustyai_condition(
+    service: Any,
+    condition_type: str,
+    status: str,
+    timeout: int = 300,
+) -> dict[str, Any]:
+    """Wait for a TrustyAIService status condition and return it.
+
+    Args:
+        service: The TrustyAIService custom resource.
+        condition_type: Condition type to look for, such as `DatabaseTuningAvailable`.
+        status: Wanted condition status, `"True"` or `"False"`.
+        timeout: Seconds to wait.
+
+    Returns:
+        The matching condition as a dict.
+    """
+
+    def _condition() -> dict[str, Any] | None:
+        conditions = service.instance.to_dict().get("status", {}).get("conditions") or []
+        return next((item for item in conditions if item["type"] == condition_type and item["status"] == status), None)
+
+    for condition in TimeoutSampler(wait_timeout=timeout, sleep=5, func=_condition):
+        if condition:
+            return condition
+    raise TimeoutError(f"{condition_type}={status} not reported on {service.name}")
+
+
 def patch_service_deployment(
     deployment: Deployment,
     env: dict[str, str] | None = None,
