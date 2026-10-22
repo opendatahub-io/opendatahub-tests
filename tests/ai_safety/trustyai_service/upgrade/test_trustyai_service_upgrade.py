@@ -1,13 +1,17 @@
 import pytest
+from ocp_resources.deployment import Deployment
 from timeout_sampler import retry
 
 from tests.ai_safety.trustyai_service.constants import DRIFT_BASE_DATA_PATH, TRUSTYAI_DB_MIGRATION_PATCH
 from tests.ai_safety.trustyai_service.service.utils import (
     patch_trustyai_service_cr,
-    wait_for_trustyai_db_migration_complete_log,
+    prepare_trustyai_db_migration,
+    stage_trustyai_legacy_migration_file,
+    wait_for_trustyai_db_migration_rollout,
 )
 from tests.ai_safety.trustyai_service.trustyai_service_utils import (
     TrustyAIServiceMetrics,
+    get_num_observations_from_trustyai_service,
     send_inferences_and_verify_trustyai_service_registered,
     verify_trustyai_service_metric_delete_request,
     verify_trustyai_service_metric_registered_post_upgrade,
@@ -141,34 +145,52 @@ class TestPostUpgradeTrustyAIService:
         trustyai_service,
         gaussian_credit_model,
     ) -> None:
-        """Verify if TrustyAI DB Migration works as expected.
-        This test initializes TrustyAI Service with PVC Storage at first with a database on standby but the service is
-         not
-        configured to use it.
-        Data is uploaded to the PVC, then the TrustyAI CR is patched to trigger a migration from PVC to DB storage.
-        config.
-        Then waits for the migration success entry in the container logs and patches the service again to remove PVC
-        config.
-        Finally, a metric is scheduled and checked if the service works as expected post-migration.
-
-        Args:
-            admin_client: DynamicClient
-            current_client_token: RedactedString
-            mariadb: MariaDB
-            trustyai_db_ca_secret: None
-            trustyai_service: TrustyAIService
-            gaussian_credit_model: Generator[InferenceService, Any, Any]
-
-        Returns:
-            None
-        """
+        """Given pre-upgrade PVC observations, when storage changes to DATABASE, then data and metrics survive."""
+        expected_observations = get_num_observations_from_trustyai_service(
+            client=admin_client,
+            token=current_client_token,
+            trustyai_service=trustyai_service,
+            model_name="gaussian-credit-model",
+        )
+        assert expected_observations > 0, "Training observations were not present before database migration"
+        stage_trustyai_legacy_migration_file(
+            client=admin_client,
+            namespace=trustyai_service.namespace,
+            service_name=trustyai_service.name,
+            model_name="gaussian-credit-model",
+        )
+        trustyai_deployment = Deployment(
+            client=admin_client,
+            name=trustyai_service.name,
+            namespace=trustyai_service.namespace,
+            ensure_exists=True,
+        )
+        original_deployment_spec = trustyai_deployment.instance.spec.template.spec.to_dict()
         trustyai_db_migration_patched_service = patch_trustyai_service_cr(
             trustyai_service=trustyai_service, patches=TRUSTYAI_DB_MIGRATION_PATCH
         )
 
-        wait_for_trustyai_db_migration_complete_log(
+        prepare_trustyai_db_migration(
             client=admin_client,
+            namespace=trustyai_service.namespace,
+            service_name=trustyai_service.name,
+            original_deployment_spec=original_deployment_spec,
+        )
+        wait_for_trustyai_db_migration_rollout(
+            client=admin_client,
+            namespace=trustyai_service.namespace,
+            service_name=trustyai_service.name,
+        )
+
+        migrated_observations = get_num_observations_from_trustyai_service(
+            client=admin_client,
+            token=current_client_token,
             trustyai_service=trustyai_db_migration_patched_service,
+            model_name="gaussian-credit-model",
+        )
+        assert migrated_observations == expected_observations, (
+            "Database migration changed the gaussian-credit-model observation count: "
+            f"expected {expected_observations}, got {migrated_observations}"
         )
 
         @retry(wait_timeout=30, sleep=5)

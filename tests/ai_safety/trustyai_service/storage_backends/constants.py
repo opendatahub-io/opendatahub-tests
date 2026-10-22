@@ -1,0 +1,61 @@
+"""Constants for TrustyAI SQL storage backend cluster tests."""
+
+# PostgreSQL fixture deployed for the suite.
+POSTGRES_SERVICE_NAME: str = "trustyai-postgres"
+POSTGRES_PORT: int = 5432
+POSTGRES_DB_NAME: str = "trustyai_db"
+POSTGRES_DB_USERNAME: str = "trustyai_user"
+POSTGRES_DB_PASSWORD: str = "trustyai_password"  # pragma: allowlist secret
+POSTGRES_CREDENTIALS_SECRET_NAME: str = "postgres-db-credentials"
+POSTGRES_CA_SECRET_NAME: str = "trustyai-service-db-ca"
+
+POSTGRES_CONFIG_MOUNT_PATH: str = "/opt/app-root/src/postgresql-cfg"
+POSTGRES_CERTS_MOUNT_PATH: str = "/opt/app-root/src/certs"
+
+SERVICE_HEALTH_PORT: int = 8080
+SERVICE_DB_CA_MOUNT_PATH: str = "/etc/tls/db"
+SERVICE_DB_CA_FILE: str = f"{SERVICE_DB_CA_MOUNT_PATH}/ca.crt"
+
+# SQLite tests use the CR's DATABASE storage format with databaseKind=sqlite.
+
+# SERVICE_STORAGE_FORMAT and QUARKUS_DATASOURCE_DB_KIND are separate settings:
+# the CR chooses DATABASE, while the referenced Secret chooses postgresql/sqlite.
+DATABASE_STORAGE_FORMAT: str = "DATABASE"
+POSTGRES_DATABASE_KIND: str = "postgresql"
+SQLITE_DATABASE_KIND: str = "sqlite"
+# Legacy names retained for assertions that describe the selected backend kind.
+STORAGE_FORMAT_POSTGRES: str = POSTGRES_DATABASE_KIND
+STORAGE_FORMAT_SQLITE: str = SQLITE_DATABASE_KIND
+STORAGE_SERVICE_NAME: str = "trustyai-service"
+POSTGRES_SERVICE_DEPLOYMENT: str = STORAGE_SERVICE_NAME
+SQLITE_SERVICE_DEPLOYMENT: str = STORAGE_SERVICE_NAME
+SQLITE_MEMORY_SERVICE_DEPLOYMENT: str = STORAGE_SERVICE_NAME
+SQLITE_DATA_MOUNT_PATH: str = "/tmp"
+ENV_STORAGE_FORMAT: str = "SERVICE_STORAGE_FORMAT"
+ENV_DATABASE_KIND: str = "QUARKUS_DATASOURCE_DB_KIND"
+ENV_ALLOW_INSECURE_TLS: str = "DATABASE_ALLOW_INSECURE_TLS"
+ENV_TLS_CA_CERT: str = "DATABASE_TLS_CA_CERT"
+ENV_POOL_SIZE: str = "DATABASE_POOL_SIZE"
+ENV_MAX_OVERFLOW: str = "DATABASE_MAX_OVERFLOW"
+ENV_POOL_RECYCLE: str = "DATABASE_POOL_RECYCLE"
+ENV_MAX_CONNECTIONS_BUDGET: str = "DATABASE_MAX_CONNECTIONS_BUDGET"
+ENV_POOL_TIMEOUT: str = "DATABASE_POOL_TIMEOUT"
+ENV_APPLICATION_NAME: str = "DATABASE_APPLICATION_NAME"
+ENV_STATEMENT_TIMEOUT_MS: str = "DATABASE_STATEMENT_TIMEOUT_MS"
+ENV_SYNCHRONOUS_COMMIT: str = "DATABASE_SYNCHRONOUS_COMMIT"
+ENV_SQLITE_JOURNAL_MODE: str = "DATABASE_SQLITE_JOURNAL_MODE"
+ENV_SQLITE_SYNCHRONOUS: str = "DATABASE_SQLITE_SYNCHRONOUS"
+ENV_SQLITE_BUSY_TIMEOUT_MS: str = "DATABASE_SQLITE_BUSY_TIMEOUT_MS"
+ENV_SQLITE_CACHE_SIZE_KB: str = "DATABASE_SQLITE_CACHE_SIZE_KB"
+
+# Endpoints under test.
+ENDPOINT_INFO: str = "info"
+ENDPOINT_INFO_NAMES: str = "info/names"
+ENDPOINT_INFO_TAGS: str = "info/tags"
+ENDPOINT_INFERENCE_IDS: str = "info/inference/ids"
+ENDPOINT_DATA_UPLOAD: str = "data/upload"
+ENDPOINT_HEALTH: str = "q/health"
+ENDPOINT_HEALTH_READY: str = "q/health/ready"
+
+HEALTH_STATUS_OK: str = "ok"
+STORAGE_CHECK_NAME: str = "Storage readiness"
