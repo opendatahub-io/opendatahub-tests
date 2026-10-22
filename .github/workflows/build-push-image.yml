@@ -1,0 +1,127 @@
+name: Build and Push Container Image (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: "Git ref (branch, tag or SHA) to build the image from."
+        required: true
+        type: string
+      tag:
+        description: "Image tag to build and push."
+        required: true
+        type: string
+      image:
+        description: "Image name, without the registry prefix."
+        required: false
+        type: string
+        default: opendatahub-tests
+    outputs:
+      image_reference:
+        description: "Fully qualified reference of the pushed image."
+        value: ${{ jobs.build-push.outputs.image_reference }}
+    secrets:
+      QUAY_USERNAME:
+        required: true
+      QUAY_PASSWORD:
+        required: true
+
+env:
+  # Fixed on purpose: callers must not be able to redirect pushes (and the Quay credentials) elsewhere.
+  REGISTRY: quay.io/opendatahub
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    outputs:
+      image_reference: ${{ steps.image-reference.outputs.reference }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+
+      - name: Generate image manifest
+        id: manifest
+        continue-on-error: true
+        run: echo "json=$(uv run python scripts/generate_image_manifest.py --compact)" >> "$GITHUB_OUTPUT"
+
+      - name: Compute manifest checksum
+        id: checksum
+        if: steps.manifest.outcome == 'success'
+        env:
+          MANIFEST: ${{ steps.manifest.outputs.json }}
+        run: echo "sha256=$(echo -n "$MANIFEST" | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare image labels
+        id: labels
+        env:
+          MANIFEST_JSON: ${{ steps.manifest.outputs.json }}
+          MANIFEST_SHA: ${{ steps.checksum.outputs.sha256 }}
+          MANIFEST_OUTCOME: ${{ steps.manifest.outcome }}
+        run: |
+          if [ "$MANIFEST_OUTCOME" == "success" ]; then
+            {
+              echo "--label=io.opendatahub.tests.required-images=$MANIFEST_JSON"
+              echo "--label=io.opendatahub.tests.required-images.sha256=$MANIFEST_SHA"
+            } > /tmp/extra-labels.txt
+            echo "args<<EOF" >> "$GITHUB_OUTPUT"
+            cat /tmp/extra-labels.txt >> "$GITHUB_OUTPUT"
+            echo "EOF" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Image manifest generation failed — building without manifest labels"
+            echo "args=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build Image
+        id: build-image
+        uses: redhat-actions/buildah-build@v3
+        with:
+          image: ${{ inputs.image }}
+          tags: ${{ inputs.tag }}
+          containerfiles: |
+            ./Dockerfile
+          extra-args: |
+            ${{ steps.labels.outputs.args }}
+
+      - name: Push To Image Registry
+        id: push-to-registry
+        uses: redhat-actions/push-to-registry@v3
+        with:
+          image: ${{ steps.build-image.outputs.image }}
+          tags: ${{ steps.build-image.outputs.tags }}
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_PASSWORD }}
+
+      - name: Export image reference
+        id: image-reference
+        if: always()
+        env:
+          IMAGE: ${{ inputs.image }}
+          TAG: ${{ inputs.tag }}
+        run: printf 'reference=%s/%s:%s\n' "$REGISTRY" "$IMAGE" "$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Write job summary
+        if: always()
+        env:
+          IMAGE_REFERENCE: ${{ steps.image-reference.outputs.reference }}
+          SOURCE_REF: ${{ inputs.ref }}
+          BUILD_OUTCOME: ${{ steps.build-image.outcome }}
+          PUSH_OUTCOME: ${{ steps.push-to-registry.outcome }}
+          MANIFEST_OUTCOME: ${{ steps.manifest.outcome }}
+        run: |
+          {
+            echo "### Container image"
+            echo ""
+            echo "| Item | Value |"
+            echo "| --- | --- |"
+            printf '| Image | `%s` |\n' "$IMAGE_REFERENCE"
+            printf '| Source ref | `%s` |\n' "$SOURCE_REF"
+            printf '| Build | %s |\n' "$BUILD_OUTCOME"
+            printf '| Push | %s |\n' "$PUSH_OUTCOME"
+            printf '| Image manifest label | %s |\n' "$MANIFEST_OUTCOME"
+          } >> "$GITHUB_STEP_SUMMARY"
