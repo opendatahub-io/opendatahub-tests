@@ -300,6 +300,12 @@ EVALHUB_NP_DASHBOARD_POD_LABELS: dict[str, str] = {
 }
 EVALHUB_NP_INSTANCE_NAME_LABEL: str = "evalhub_instance_name"
 EVALHUB_NP_INSTANCE_NAMESPACE_LABEL: str = "evalhub_instance_namespace"
+# The operator's own manager Pod is an EvalHub API client: it POSTs benchmark
+# failure events for Job pods that never start. Mirrors the manager
+# Deployment's immutable control-plane label
+# (trustyai-service-operator config/manager/manager.yaml), which the
+# applications-namespace overlays keep.
+EVALHUB_NP_OPERATOR_POD_LABELS: dict[str, str] = {"control-plane": "trustyai-service-operator"}
 
 # Operator service name in OTEL traces
 OPERATOR_OTEL_SERVICE_NAME: str = "trustyai-service-operator"

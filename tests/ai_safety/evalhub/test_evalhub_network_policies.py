@@ -19,6 +19,7 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_NP_INSTANCE_NAME_LABEL,
     EVALHUB_NP_INSTANCE_NAMESPACE_LABEL,
     EVALHUB_NP_MONITORING_POLICY_GROUP,
+    EVALHUB_NP_OPERATOR_POD_LABELS,
     EVALHUB_NP_POLICY_GROUP_LABEL,
     EVALHUB_NP_PROMETHEUS_POD_LABELS,
     EVALHUB_NP_ROLE,
@@ -51,8 +52,9 @@ def _expected_ingress_rules(evalhub_cr: EvalHub, applications_namespace: str) ->
         applications_namespace: ODH applications namespace hosting the Dashboard eval-hub-ui module.
 
     Returns:
-        The four expected ingress rules: OpenShift router, Dashboard eval-hub-ui proxy,
-        evaluation-job callbacks, and Prometheus metrics scraping.
+        The five expected ingress rules: OpenShift router, Dashboard eval-hub-ui proxy,
+        the operator manager Pod (failure-event reporter), evaluation-job callbacks,
+        and Prometheus metrics scraping.
     """
     job_pod_labels = {
         EVALHUB_K8S_LABEL_APP: EVALHUB_K8S_LABEL_APP_VALUE,
@@ -74,6 +76,17 @@ def _expected_ingress_rules(evalhub_cr: EvalHub, applications_namespace: str) ->
                         "matchLabels": {EVALHUB_NP_DASHBOARD_NAMESPACE_LABEL: applications_namespace}
                     },
                     "podSelector": {"matchLabels": EVALHUB_NP_DASHBOARD_POD_LABELS},
+                }
+            ],
+            "ports": [_tcp_port(EVALHUB_SERVICE_PORT)],
+        },
+        {
+            "from": [
+                {
+                    "namespaceSelector": {
+                        "matchLabels": {EVALHUB_NP_DASHBOARD_NAMESPACE_LABEL: applications_namespace}
+                    },
+                    "podSelector": {"matchLabels": EVALHUB_NP_OPERATOR_POD_LABELS},
                 }
             ],
             "ports": [_tcp_port(EVALHUB_SERVICE_PORT)],
@@ -124,8 +137,9 @@ class TestEvalHubNetworkPolicies:
 
     The TrustyAI workload operator reconciles one ingress-only policy per EvalHub CR
     (trustyai-service-operator controllers/evalhub/network_policy.go): the OpenShift
-    router (API Route), the ODH Dashboard eval-hub-ui proxy and evaluation-job callback
-    pods reach kube-rbac-proxy on TCP 8443, while Prometheus scrapes the
+    router (API Route), the ODH Dashboard eval-hub-ui proxy, the operator's own manager
+    Pod (which reports job failures the Job containers cannot) and evaluation-job
+    callback pods reach kube-rbac-proxy on TCP 8443, while Prometheus scrapes the
     unauthenticated metrics listener on TCP 8081. The plain sqlite EvalHub CR these
     tests create has MCP disabled, so no MCP ingress rule is expected.
     """
@@ -186,9 +200,58 @@ class TestEvalHubNetworkPolicies:
         )
         assert len(ingress_rules) == len(expected_rules), (
             f"{evalhub_api_network_policy.name} must admit exactly {len(expected_rules)} ingress rules "
-            f"(router, Dashboard, job callbacks, Prometheus): {ingress_rules}"
+            f"(router, Dashboard, operator failure-event reporter, job callbacks, Prometheus): {ingress_rules}"
         )
         # Ingress rule order carries no meaning; compare as sorted multisets.
         assert sorted(ingress_rules, key=_canonical_rule) == sorted(expected_rules, key=_canonical_rule), (
             f"{evalhub_api_network_policy.name} must admit exactly the expected peers: {ingress_rules}"
+        )
+
+    @pytest.mark.tier2
+    def test_api_network_policy_admits_operator_failure_event_peer(
+        self,
+        evalhub_api_network_policy: NetworkPolicy,
+        trustyai_operator_deployment: Deployment,
+    ) -> None:
+        """The operator manager Pod may POST evaluation-job failure events to the EvalHub API.
+
+        The operator's evalhub-evaluation-job-failure reconciler (and the Kueue Workload
+        failure reconciler) POSTs /api/v1/evaluations/jobs/<id>/events when a Job pod
+        never starts: an unschedulable Pod or missing PVC, or a failed init container
+        for a bad git ref/sub_path or an invalid Hugging Face repo/sub_path. Without an
+        ingress peer for the operator Pod the operator-generated policy drops those
+        POSTs, EvalHub never records the failure, and the job stays pending until the
+        caller times out instead of moving to failed.
+        """
+        applications_namespace = py_config["applications_namespace"]
+        ingress_rules = get_network_policy_ingress_rules(network_policy=evalhub_api_network_policy)
+
+        def _is_operator_failure_event_peer(peer: dict[str, Any]) -> bool:
+            return (
+                peer.get("namespaceSelector", {}).get("matchLabels", {}).get(EVALHUB_NP_DASHBOARD_NAMESPACE_LABEL)
+                == applications_namespace
+                and peer.get("podSelector", {}).get("matchLabels") == EVALHUB_NP_OPERATOR_POD_LABELS
+            )
+
+        operator_rules = [
+            rule
+            for rule in ingress_rules
+            if any(_is_operator_failure_event_peer(peer) for peer in rule.get("from", []))
+        ]
+        assert operator_rules, (
+            f"{evalhub_api_network_policy.name} must admit the operator manager Pod "
+            f"({EVALHUB_NP_OPERATOR_POD_LABELS}) in {applications_namespace} on TCP {EVALHUB_SERVICE_PORT}; "
+            f"without it the operator's job failure events are dropped: {ingress_rules}"
+        )
+        assert operator_rules[0]["ports"] == [_tcp_port(EVALHUB_SERVICE_PORT)], (
+            f"{evalhub_api_network_policy.name} must admit the operator failure-event peer on TCP "
+            f"{EVALHUB_SERVICE_PORT}: {operator_rules[0]['ports']}"
+        )
+
+        # The peer must select the Pods that actually run the failure reconcilers, not a
+        # stale identity, so bind the selector to the deployed manager Deployment labels.
+        operator_pod_labels = trustyai_operator_deployment.instance.to_dict()["spec"]["template"]["metadata"]["labels"]
+        assert EVALHUB_NP_OPERATOR_POD_LABELS.items() <= operator_pod_labels.items(), (
+            f"{evalhub_api_network_policy.name} selects {EVALHUB_NP_OPERATOR_POD_LABELS}, which does not match the "
+            f"deployed {trustyai_operator_deployment.name} pod labels {operator_pod_labels}"
         )
