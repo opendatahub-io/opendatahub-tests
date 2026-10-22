@@ -399,9 +399,3 @@ def praxis_postgres_pod(
         namespace=unprivileged_model_namespace.name,
         label_selector=PRAXIS_POSTGRES_POD_LABEL_SELECTOR,
     )
-
-
-@pytest.fixture(scope="class")
-def enabled_ogx_operator(dsc_resource: DataScienceCluster) -> DataScienceCluster:
-    """Local debug override: the operator is deployed by hand, leave the DSC alone."""
-    return dsc_resource
