@@ -5,7 +5,6 @@ import httpx
 import pytest
 import requests
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
