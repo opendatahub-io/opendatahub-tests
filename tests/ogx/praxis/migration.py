@@ -48,37 +48,37 @@ def run_migration(
     ogx_connection_string_name: str,
     praxis_connection_string_name: str,
 ) -> None:
-        ResourceEditor(
-            patches={
-                ogx_server: {
-                    "spec": {
-                        "storage": {
-                            "sql": {
-                                "type": "postgres",
-                                "connectionString": {
-                                    "name": ogx_connection_string_name,
-                                    "key": OGX_CONNECTION_SECRET_KEY,
-                                },
-                            }
-                        },
-                        "praxisMode": {
-                            "enabled": True,
-                            "migrationJob": {
-                                "enabled": True,
-                                "targetConnectionString": {
-                                    "name": praxis_connection_string_name,
-                                    "key": PRAXIS_CONNECTION_SECRET_KEY,
-                                },
-                                "fallbackTenant": MIGRATION_FALLBACK_TENANT,
-                                "fallbackOwnerSubject": MIGRATION_FALLBACK_OWNER_SUBJECT,
+    ResourceEditor(
+        patches={
+            ogx_server: {
+                "spec": {
+                    "storage": {
+                        "sql": {
+                            "type": "postgres",
+                            "connectionString": {
+                                "name": ogx_connection_string_name,
+                                "key": OGX_CONNECTION_SECRET_KEY,
                             },
+                        }
+                    },
+                    "praxisMode": {
+                        "enabled": True,
+                        "migrationJob": {
+                            "enabled": True,
+                            "targetConnectionString": {
+                                "name": praxis_connection_string_name,
+                                "key": PRAXIS_CONNECTION_SECRET_KEY,
+                            },
+                            "fallbackTenant": MIGRATION_FALLBACK_TENANT,
+                            "fallbackOwnerSubject": MIGRATION_FALLBACK_OWNER_SUBJECT,
                         },
-                    }
+                    },
                 }
             }
-        ).update()
-        _wait_for_migration_job_completion(client=unprivileged_client, ogx_server=ogx_server)
-        return ogx_server
+        }
+    ).update()
+    _wait_for_migration_job_completion(client=unprivileged_client, ogx_server=ogx_server)
+    return ogx_server
 
 
 def run_two_step_migration(
@@ -181,9 +181,12 @@ def _wait_for_migration_job_completion(client: DynamicClient, ogx_server: OgxSer
         for condition in job.instance.status.conditions or []:
             if condition.status == ResourceConstants.Condition.Status.TRUE:
                 if condition.type == ResourceConstants.Status.FAILED:
-                    logs = "\n".join(f"--- pod {name} ---\n{log}" for name, log in captured.items()) or "no pod log was captured"
+                    logs = (
+                        "\n".join(f"--- pod {name} ---\n{log}" for name, log in captured.items())
+                        or "no pod log was captured"
+                    )
                     raise MigrationJobFailedError(f"Praxis migration job {job.name} failed:\n{logs}")
-                
+
                 if condition.type == ResourceConstants.Status.COMPLETE:
                     LOGGER.info(f"Praxis migration job {job.name} completed")
                     return job
