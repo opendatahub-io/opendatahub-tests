@@ -16,6 +16,7 @@ import requests
 import structlog
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.inference_service import InferenceService
+from timeout_sampler import retry
 
 from tests.model_serving.model_runtime.mlserver.constant import (
     BASE_RAW_DEPLOYMENT_CONFIG,
@@ -24,7 +25,6 @@ from tests.model_serving.model_runtime.mlserver.constant import (
     MODEL_PATH_PREFIX,
     OutputType,
 )
-from timeout_sampler import retry
 from utilities.constants import KServeDeploymentType, Ports, Protocols, Timeout
 from utilities.inference_utils import Inference, get_exposed_isvc_url
 from utilities.infra import get_pods_by_isvc_label
