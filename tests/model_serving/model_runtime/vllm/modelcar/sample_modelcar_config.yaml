@@ -16,6 +16,14 @@ model-car:
     # get_kv_cache_spec() raises NotImplementedError on HPU (engine core dies at init).
     unsupported_accelerators:
       - gaudi
+    # Default 16Gi limit OOM-kills the vLLM engine while loading the whisper weights.
+    resources:
+      requests:
+        cpu: "4"
+        memory: "48Gi"
+      limits:
+        cpu: "8"
+        memory: "64Gi"
     serving_arguments:
       args:
         - "--uvicorn-log-level=info"
