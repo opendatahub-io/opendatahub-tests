@@ -31,7 +31,7 @@ GIT_MODEL_NAMESPACE = pytest.param({"name": "test-evalhub-git-private-storage"})
         "RHAI-15115: Private Git repository for EvalHub Git Storage tests "
         "is not yet configured under the organization."
     ),
-    strict=False,
+    run = False
 )
 class TestEvalHubGitStoragePrivate:
     """Private git repository test cases for EvalHub Git Storage Source.
