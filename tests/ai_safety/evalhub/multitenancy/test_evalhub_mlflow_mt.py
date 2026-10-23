@@ -19,6 +19,7 @@ from ocp_resources.evalhub import EvalHub
 from ocp_resources.namespace import Namespace
 from ocp_resources.route import Route
 from ocp_resources.service import Service
+from pytest_testconfig import config as py_config
 
 from tests.ai_safety.evalhub.constants import (
     EVALHUB_JOBS_PATH,
@@ -33,9 +34,10 @@ from tests.ai_safety.evalhub.utils import (
 # Fixtures: EvalHub with MLflow enabled (expects existing MLflow deployment)
 # ---------------------------------------------------------------------------
 
-# MLflow is a cluster-scoped CR typically deployed in opendatahub namespace.
+# MLflow is a cluster-scoped CR deployed into the DSCI applications namespace.
 # These tests reuse the existing MLflow instance rather than creating one.
-MLFLOW_NAMESPACE = "opendatahub"
+#
+# Read py_config["applications_namespace"] at use time, not module-level — it's only set after collection.
 MLFLOW_SERVICE_PORT = 8443
 
 
@@ -44,13 +46,14 @@ def mlflow_deployment_ready(
     admin_client: DynamicClient,
 ) -> Deployment:
     """Verify the existing MLflow deployment is available. Skip if not deployed."""
+    namespace = py_config["applications_namespace"]
     deployment = Deployment(
         client=admin_client,
         name="mlflow",
-        namespace=MLFLOW_NAMESPACE,
+        namespace=namespace,
     )
     if not deployment.exists:
-        pytest.fail("MLflow deployment not found in opendatahub namespace — deploy MLflow first")
+        pytest.fail(f"MLflow deployment not found in {namespace} namespace — deploy MLflow first")
     deployment.wait_for_replicas(timeout=300)
     return deployment
 
@@ -65,9 +68,9 @@ def evalhub_mt_cr(  # noqa: UFN001
 
     Same name as the conftest fixture so pytest uses this one for the
     MLflow test class. Points MLFLOW_TRACKING_URI at the existing MLflow
-    service in opendatahub.
+    service.
     """
-    mlflow_uri = f"https://mlflow.{MLFLOW_NAMESPACE}.svc.cluster.local:{MLFLOW_SERVICE_PORT}"
+    mlflow_uri = f"https://mlflow.{py_config['applications_namespace']}.svc.cluster.local:{MLFLOW_SERVICE_PORT}/mlflow"
     with EvalHub(
         client=admin_client,
         name="evalhub-mt",
@@ -236,7 +239,7 @@ class TestEvalHubMLflowIntegration:
             verify=evalhub_mt_ca_bundle_file,
             timeout=30,
         )
-        assert resp.status_code == 202
+        assert resp.status_code == 202, f"Expected 202, got {resp.status_code}: {resp.text[:500]}"
         exp_id = resp.json().get("resource", {}).get("mlflow_experiment_id")
         assert exp_id
 
