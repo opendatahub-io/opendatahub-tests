@@ -272,6 +272,12 @@ OTEL_TRACE_COLLECTOR_LABELS: dict[str, str] = {"app": "otel-trace-collector"}
 # Operator pod label selector
 OPERATOR_POD_LABEL_SELECTOR: str = "control-plane=trustyai-service-operator"
 
+# controller-runtime leader election Lease name (kubebuilder-generated
+# LeaderElectionID, stable for this operator's codebase/version). Used to
+# resolve the actively-reconciling pod when multiple pods transiently exist
+# during a rolling update.
+OPERATOR_LEADER_ELECTION_LEASE: str = "b7e9931f.trustyai.opendatahub.io"
+
 # Operator service name in OTEL traces
 OPERATOR_OTEL_SERVICE_NAME: str = "trustyai-service-operator"
 
