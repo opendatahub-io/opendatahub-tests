@@ -2,6 +2,7 @@
 
 from collections.abc import Generator
 from contextlib import contextmanager
+from datetime import datetime
 from typing import Any
 
 import pytest
@@ -18,7 +19,7 @@ from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.service_monitor import ServiceMonitor
 from pytest_testconfig import config as py_config
-from timeout_sampler import TimeoutSampler
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_gateway.models_as_a_service.observability.constants import (
     DEFAULT_LIMITADOR_SCRAPE_INTERVAL,
@@ -39,6 +40,7 @@ from tests.ai_gateway.models_as_a_service.observability.constants import (
     USAGE_LOGS_COLLECTOR_NAME,
     USAGE_LOGS_CRB_NAME,
     USAGE_LOGS_ENVOY_FILTER_NAME,
+    loki_usage_rate_limited_requests_query,
     loki_usage_requests_query,
     loki_usage_successful_requests_query,
     loki_usage_tokens_query,
@@ -513,16 +515,48 @@ def usage_logs_monitoring_spec(secret_name: str, storage_class_name: str) -> dic
 
 def wait_for_dsci_usage_logs_conditions(
     dsci_resource: DSCInitialization,
+    since: datetime | None = None,
     timeout: int = DSCI_USAGE_LOGS_CONDITIONS_WAIT_TIMEOUT,
 ) -> None:
     """Wait for DSCI to report the odh-observability usage-logs conditions as True.
 
-    opendatahub-operator projects the Monitoring CR's status (and, transitively, the
-    usage-logs LokiStack readiness) onto DSCI.status.conditions, so these conditions are
-    awaited on DSCI directly rather than by watching the Monitoring and LokiStack CRs.
+    opendatahub-operator projects the Monitoring CR's status onto DSCI.status.conditions, so
+    these conditions are awaited on DSCI directly rather than by watching the Monitoring CR.
+
+    Args:
+        dsci_resource: DSCI resource whose conditions are awaited.
+        since: When set, a condition only satisfies the wait if it transitioned to True at
+            or after this instant. Pass the time spec.monitoring was patched so the
+            conditions left behind by a previous monitoring configuration do not satisfy
+            the wait before the operator has rolled out the newly configured
+            usage-logs collector and LokiStack.
+        timeout: Maximum number of seconds to wait for all conditions.
     """
-    for condition in DSCI_USAGE_LOGS_CONDITIONS:
-        dsci_resource.wait_for_condition(condition=condition, status="True", timeout=timeout)
+
+    def usage_logs_conditions_ready() -> bool:
+        dsci_status = dsci_resource.instance.get("status") or {}
+        conditions = {condition["type"]: condition for condition in dsci_status.get("conditions") or []}
+        for condition_name in DSCI_USAGE_LOGS_CONDITIONS:
+            condition = conditions.get(condition_name)
+            if not condition or condition.get("status") != "True":
+                return False
+            # Ready describes the whole DSCI and does not transition for a monitoring-only
+            # change, so only the usage-logs conditions need to be fresh.
+            if since is None or condition_name == "Ready":
+                continue
+            transition_time = condition.get("lastTransitionTime")
+            if not transition_time or datetime.fromisoformat(transition_time) < since:
+                return False
+        return True
+
+    try:
+        for ready in TimeoutSampler(wait_timeout=timeout, sleep=5, func=usage_logs_conditions_ready):
+            if ready:
+                return
+    except TimeoutExpiredError as err:
+        raise AssertionError(
+            f"DSCI conditions {DSCI_USAGE_LOGS_CONDITIONS} did not become True within {timeout}s"
+        ) from err
 
 
 def query_loki_instant(
@@ -588,3 +622,46 @@ def get_loki_usage_totals(
         f"successful_requests={successful_requests_total}, tokens={tokens_total}"
     )
     return requests_total, successful_requests_total, tokens_total
+
+
+def get_loki_rate_limited_requests(
+    http_session: requests.Session,
+    admin_token: str,
+    subscription: str,
+) -> int:
+    """Return the count of usage-logged rate-limited (429) inference requests for a subscription."""
+    rate_limited_requests_total = loki_query_value(
+        query_response=query_loki_instant(
+            http_session=http_session,
+            admin_token=admin_token,
+            logql_query=loki_usage_rate_limited_requests_query(subscription=subscription),
+        ),
+    )
+    LOGGER.info(f"Usage logs rate-limited requests for subscription '{subscription}': {rate_limited_requests_total}")
+    return rate_limited_requests_total
+
+
+def get_loki_usage_totals_with_rate_limits(
+    http_session: requests.Session,
+    admin_token: str,
+    model: str,
+    subscription: str,
+) -> tuple[int, int, int]:
+    """Return the (successful requests, rate-limited requests, total tokens) usage-logged for a model.
+
+    Extends get_loki_usage_totals with the rate-limited request count. That count is not
+    model-scoped: a rate-limited call is rejected before a model response exists, so its
+    `model` label is not guaranteed to match the served model name; it is scoped by the
+    test's subscription instead.
+    """
+    _, successful_requests_total, tokens_total = get_loki_usage_totals(
+        http_session=http_session,
+        admin_token=admin_token,
+        model=model,
+    )
+    rate_limited_requests_total = get_loki_rate_limited_requests(
+        http_session=http_session,
+        admin_token=admin_token,
+        subscription=subscription,
+    )
+    return successful_requests_total, rate_limited_requests_total, tokens_total
