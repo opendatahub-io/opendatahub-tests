@@ -360,14 +360,13 @@ def updated_oauth_config(
         updated_providers = identity_providers + [new_idp]
 
         LOGGER.info("Updating OAuth")
-        identity_providers_patch = ResourceEditor(patches={oauth: {"spec": {"identityProviders": updated_providers}}})
-        identity_providers_patch.update(backup_resources=True)
-        # Wait for OAuth server to be ready
-        wait_for_oauth_openshift_deployment(client=admin_client)
-        LOGGER.info(f"Added IDP {user_credentials_rbac['idp_name']} to OAuth configuration")
-        yield
-        identity_providers_patch.restore()
-        wait_for_oauth_openshift_deployment(client=admin_client)
+        try:
+            with ResourceEditor(patches={oauth: {"spec": {"identityProviders": updated_providers}}}):
+                wait_for_oauth_openshift_deployment(client=admin_client)
+                LOGGER.info(f"Added IDP {user_credentials_rbac['idp_name']} to OAuth configuration")
+                yield
+        finally:
+            wait_for_oauth_openshift_deployment(client=admin_client)
 
 
 @pytest.fixture(scope="module")
