@@ -26,6 +26,13 @@ GIT_MODEL_NAMESPACE = pytest.param({"name": "test-evalhub-git-private-storage"})
 @pytest.mark.tier2
 @pytest.mark.ai_safety
 @pytest.mark.skip_on_disconnected
+@pytest.mark.xfail(
+    reason=(
+        "RHAI-15115: Private Git repository for EvalHub Git Storage tests "
+        "is not yet configured under the organization."
+    ),
+    strict=False,
+)
 class TestEvalHubGitStoragePrivate:
     """Private git repository test cases for EvalHub Git Storage Source.
 
