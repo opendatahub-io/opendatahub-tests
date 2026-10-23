@@ -14,9 +14,12 @@ from pytest import FixtureRequest
 
 from tests.model_serving.model_runtime.vllm.constant import TEMPLATE_MAP
 from tests.model_serving.model_runtime.vllm.cpu.ibm_power_z.constant import (
-    IBM_POWER_Z_INFERENCE_TIMEOUT_SECONDS,
+    IBM_POWER_ROUTE_TIMEOUT,
+    IBM_POWER_Z_ISVC_TIMEOUT,
     IBM_POWER_Z_PREDICT_RESOURCES,
-    IBM_Z_PREDICT_RESOURCES,
+    ISVC_TIMEOUT_MAP,
+    PREDICT_RESOURCES_MAP,
+    ROUTE_TIMEOUT_MAP,
 )
 from tests.model_serving.model_runtime.vllm.utils import (
     add_image_pull_secrets_if_configured,
@@ -28,41 +31,11 @@ from utilities.constants import AcceleratorType, Annotations, KServeDeploymentTy
 from utilities.inference_utils import create_isvc
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
-# CPU inference on IBM Power is slow; the default HAProxy route timeout is 30s
-# which is not enough for CPU inference. Annotate the ISVC so KServe propagates
-# this to the Route it creates.
-IBM_POWER_ROUTE_TIMEOUT: str = "300s"
-
-# Z runs the same models on smaller compact clusters, where decode throughput is a
-# fraction of Power's — a 50-token completion can exceed the 300s above, failing the
-# test on the route rather than on the model.
-IBM_Z_ROUTE_TIMEOUT: str = f"{IBM_POWER_Z_INFERENCE_TIMEOUT_SECONDS}s"
-
 LOGGER = structlog.get_logger(name=__name__)
 
 SUPPORTED_IBM_POWER_Z_ACCELERATORS: set[str] = {
     AcceleratorType.CPU_POWER,
     AcceleratorType.CPU_Z,
-}
-
-# Power and Z share this suite but not its sizing; Z runs on smaller compact clusters.
-PREDICT_RESOURCES_MAP: dict[str, dict[str, dict[str, str]]] = {
-    AcceleratorType.CPU_Z: IBM_Z_PREDICT_RESOURCES,
-}
-
-ROUTE_TIMEOUT_MAP: dict[str, str] = {
-    AcceleratorType.CPU_Z: IBM_Z_ROUTE_TIMEOUT,
-}
-
-# Readiness budget for create_isvc, which covers pod creation, weight loading and
-# vLLM's torch.compile warmup. Warmup scales with model size on Z - roughly 13min
-# for a 7B, 22min for an 8B - so phi-4 (14B) was still compiling when the 1800s
-# default expired.
-IBM_POWER_Z_ISVC_TIMEOUT: int = 1800
-IBM_Z_ISVC_TIMEOUT: int = 3600
-
-ISVC_TIMEOUT_MAP: dict[str, int] = {
-    AcceleratorType.CPU_Z: IBM_Z_ISVC_TIMEOUT,
 }
 
 

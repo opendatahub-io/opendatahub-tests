@@ -1,5 +1,7 @@
 from typing import Any
 
+from utilities.constants import AcceleratorType
+
 GRANITE_4_1_8B_MODEL_PATH: str = "granite-4.1-8b"
 FALCON3_7B_INSTRUCT_MODEL_PATH: str = "Falcon3-7B-Instruct"
 LLAMA_3_2_1B_INSTRUCT_MODEL_PATH: str = "llama-32-1b-instruct"
@@ -32,6 +34,12 @@ IBM_Z_PREDICT_RESOURCES: dict[str, dict[str, str]] = {
     "limits": {"cpu": "12", "memory": "48Gi"},
 }
 
+# Power and Z share this suite but not its sizing; accelerators absent from this
+# map fall back to the Power defaults.
+PREDICT_RESOURCES_MAP: dict[str, dict[str, dict[str, str]]] = {
+    AcceleratorType.CPU_Z: IBM_Z_PREDICT_RESOURCES,
+}
+
 IBM_POWER_Z_SERVING_ARGUMENT: list[str] = [
     "--dtype=bfloat16",
     "--model=/mnt/models",
@@ -47,6 +55,27 @@ IBM_POWER_Z_SERVING_ARGUMENT: list[str] = [
 # while the route is still open. On Power the 300s route timeout still cuts first,
 # so the wider client budget is a no-op there.
 IBM_POWER_Z_INFERENCE_TIMEOUT_SECONDS: int = 900
+
+# CPU inference on IBM Power is slow; the default HAProxy route timeout is 30s
+# which is not enough for it. The ISVC is annotated so KServe propagates this to
+# the Route it creates. Z needs the wider budget above for the same reason.
+IBM_POWER_ROUTE_TIMEOUT: str = "300s"
+IBM_Z_ROUTE_TIMEOUT: str = f"{IBM_POWER_Z_INFERENCE_TIMEOUT_SECONDS}s"
+
+ROUTE_TIMEOUT_MAP: dict[str, str] = {
+    AcceleratorType.CPU_Z: IBM_Z_ROUTE_TIMEOUT,
+}
+
+# Readiness budget for create_isvc, which covers pod creation, weight loading and
+# vLLM's torch.compile warmup. Warmup scales with model size on Z - roughly 13min
+# for a 7B and 22min for an 8B - so a 14B model can still be compiling when the
+# 1800s Power default expires.
+IBM_POWER_Z_ISVC_TIMEOUT: int = 1800
+IBM_Z_ISVC_TIMEOUT: int = 3600
+
+ISVC_TIMEOUT_MAP: dict[str, int] = {
+    AcceleratorType.CPU_Z: IBM_Z_ISVC_TIMEOUT,
+}
 
 # These tests assert only that the completion is non-empty, so the token count is
 # pure cost. Decode measures 0.1-0.3 tok/s on s390x, where 50 tokens could outrun
