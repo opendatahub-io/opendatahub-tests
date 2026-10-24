@@ -190,6 +190,7 @@ class Annotations:
 
 class StorageClassName:
     NFS: str = "nfs"
+    LVMS_VG1: str = "lvms-vg1"
 
 
 class DscComponents:
