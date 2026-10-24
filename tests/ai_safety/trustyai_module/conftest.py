@@ -3,6 +3,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.deployment import Deployment
+from ocp_resources.network_policy import NetworkPolicy
 from pytest_testconfig import config as py_config
 
 from tests.ai_safety.trustyai_module.constants import (
@@ -10,6 +11,7 @@ from tests.ai_safety.trustyai_module.constants import (
     TRUSTYAI_MODULE_CRD_NAME,
     TRUSTYAI_MODULE_NAME,
     TRUSTYAI_MODULE_OPERATOR_DEPLOYMENT,
+    TRUSTYAI_MODULE_OPERATOR_NETWORK_POLICY,
     TRUSTYAI_PLATFORM_CONFIGMAP,
     TRUSTYAI_WORKLOAD_OPERATOR_DEPLOYMENT,
 )
@@ -46,6 +48,20 @@ def trustyai_module_operator_deployment(
     return Deployment(
         client=admin_client,
         name=TRUSTYAI_MODULE_OPERATOR_DEPLOYMENT,
+        namespace=py_config["applications_namespace"],
+        ensure_exists=True,
+    )
+
+
+@pytest.fixture(scope="session")
+def trustyai_module_operator_network_policy(
+    admin_client: DynamicClient,
+    modular_trustyai_architecture: None,
+) -> NetworkPolicy:
+    """Wrap the module-bundle NetworkPolicy the platform deploys for the module operator manager pod."""
+    return NetworkPolicy(
+        client=admin_client,
+        name=TRUSTYAI_MODULE_OPERATOR_NETWORK_POLICY,
         namespace=py_config["applications_namespace"],
         ensure_exists=True,
     )

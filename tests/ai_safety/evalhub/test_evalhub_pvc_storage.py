@@ -11,6 +11,7 @@ from ocp_resources.route import Route
 from tests.ai_safety.evalhub.constants import PVC_TOKENIZER_PATH
 from tests.ai_safety.evalhub.utils import (
     validate_evalhub_job_completed,
+    validate_evalhub_job_network_policy,
     wait_for_evalhub_job,
     wait_for_evalhub_runtime_job_count,
 )
@@ -36,7 +37,9 @@ class TestEvalHubPVCStorage:
     ) -> None:
         """Given a PVC with test data in the tenant namespace,
         when an evaluation job is submitted with test_data_ref.pvc,
-        then the job completes successfully and results are persisted."""
+        then the job completes successfully and results are persisted,
+        and the runtime's per-execution NetworkPolicy protects the job pods
+        (ingress-deny, selecting only that execution, owned by the Job)."""
         job_id = submit_pvc_job(
             claim_name=evalhub_test_data_populated.name,
             job_name="pvc-mount-test",
@@ -58,6 +61,14 @@ class TestEvalHubPVCStorage:
             minimum=1,
         )
         batch_job = batch_jobs[0]
+
+        validate_evalhub_job_network_policy(
+            admin_client=admin_client,
+            namespace=tenant_a_namespace.name,
+            evalhub_job_id=job_id,
+            batch_job=batch_job,
+        )
+
         spec = batch_job.instance.spec.template.spec
 
         pvc_volumes = [

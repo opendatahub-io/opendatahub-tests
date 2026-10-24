@@ -18,6 +18,7 @@ from ocp_resources.evalhub import EvalHub
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.mlflow import MLflow
 from ocp_resources.namespace import Namespace
+from ocp_resources.network_policy import NetworkPolicy
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
@@ -38,6 +39,8 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_JOBS_WRITER_CLUSTERROLE,
     EVALHUB_METRICS_SERVICE_SUFFIX,
     EVALHUB_MT_CR_NAME,
+    EVALHUB_NP_COMPONENT,
+    EVALHUB_NP_ROLE,
     EVALHUB_TENANT_LABEL_KEY,
     EVALHUB_TENANT_LABEL_VALUE,
     EVALHUB_USER_ROLE_RULES,
@@ -99,6 +102,12 @@ from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import Labels, LLMdInferenceSimConfig, Protocols
 from utilities.general import collect_pod_information
 from utilities.infra import create_inference_token, create_ns
+from utilities.network_policy import (
+    NETWORK_POLICY_COMPONENT_LABEL,
+    NETWORK_POLICY_OWNER_UID_LABEL,
+    NETWORK_POLICY_ROLE_LABEL,
+    get_network_policy_labels,
+)
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -379,6 +388,60 @@ def evalhub_metrics_service(
         namespace=model_namespace.name,
         ensure_exists=True,
     )
+
+
+# EvalHub NetworkPolicy fixtures
+
+
+@pytest.fixture(scope="class")
+def evalhub_operator_installed(admin_client: DynamicClient) -> None:
+    """Skip EvalHub tests when the EvalHub CRD is not installed on the cluster."""
+    if not is_evalhub_crd_available(admin_client):
+        pytest.skip(
+            "EvalHub CRD 'evalhubs.trustyai.opendatahub.io' not available; install the TrustyAI/EvalHub operator first"
+        )
+
+
+@pytest.fixture(scope="class")
+def evalhub_api_network_policy(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    evalhub_operator_installed: None,
+    evalhub_cr: EvalHub,
+) -> NetworkPolicy:
+    """Fetch the operator-managed ingress NetworkPolicy protecting the EvalHub API pod.
+
+    The operator derives each policy name from a hash of the owning EvalHub identity
+    (trustyai-service-operator controllers/utils/network_policy_identity.go), so the
+    policy cannot be addressed by a stable name: it is discovered through the reserved
+    identity labels and matched to the CR by its owner-uid label.
+    """
+    selector = f"{NETWORK_POLICY_COMPONENT_LABEL}={EVALHUB_NP_COMPONENT},{NETWORK_POLICY_ROLE_LABEL}={EVALHUB_NP_ROLE}"
+
+    def _owned_api_policies() -> list[NetworkPolicy]:
+        owner_uid = evalhub_cr.instance.to_dict()["metadata"]["uid"]
+        return [
+            policy
+            for policy in NetworkPolicy.get(
+                client=admin_client,
+                namespace=model_namespace.name,
+                label_selector=selector,
+            )
+            if get_network_policy_labels(network_policy=policy).get(NETWORK_POLICY_OWNER_UID_LABEL) == owner_uid
+        ]
+
+    try:
+        for policies in TimeoutSampler(wait_timeout=180, sleep=5, func=_owned_api_policies):
+            if policies:
+                assert len(policies) == 1, (
+                    f"Expected one EvalHub API NetworkPolicy owned by {evalhub_cr.name} in "
+                    f"{model_namespace.name}, found {len(policies)}"
+                )
+                return policies[0]
+    except TimeoutExpiredError as err:
+        raise RuntimeError(
+            f"EvalHub API NetworkPolicy was not reconciled for {evalhub_cr.name} in {model_namespace.name}"
+        ) from err
 
 
 # MLflow fixture

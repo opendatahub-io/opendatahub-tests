@@ -10,6 +10,7 @@ from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.evalhub import EvalHub
 from ocp_resources.job import Job
 from ocp_resources.mlflow import MLflow
+from ocp_resources.network_policy import NetworkPolicy
 from ocp_resources.pod import Pod
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.service_account import ServiceAccount
@@ -26,12 +27,17 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_JOB_BENCHMARK_LOGS_PATH_TEMPLATE,
     EVALHUB_JOB_CONFIG_CLUSTERROLE,
     EVALHUB_JOB_LOGS_PATH_TEMPLATE,
+    EVALHUB_JOB_NP_EGRESS_ANNOTATION,
+    EVALHUB_JOB_NP_EGRESS_ANNOTATION_VALUE,
+    EVALHUB_JOB_NP_NAME_PREFIX,
+    EVALHUB_JOB_NP_NAME_SUFFIX,
     EVALHUB_JOBS_PATH,
     EVALHUB_JOBS_WRITER_CLUSTERROLE,
     EVALHUB_K8S_LABEL_APP,
     EVALHUB_K8S_LABEL_APP_VALUE,
     EVALHUB_K8S_LABEL_COMPONENT,
     EVALHUB_K8S_LABEL_COMPONENT_VALUE,
+    EVALHUB_K8S_LABEL_EXECUTION_ID,
     EVALHUB_K8S_LABEL_JOB_ID,
     EVALHUB_LOG_CONTENT_TYPE,
     EVALHUB_MT_CR_NAME,
@@ -847,6 +853,80 @@ def wait_for_evalhub_runtime_job_count(
             return jobs
     raise TimeoutExpiredError(
         f"Expected at least {minimum} batch Job(s) for evalhub job_id={evalhub_job_id} in {namespace}"
+    )
+
+
+def validate_evalhub_job_network_policy(
+    admin_client: DynamicClient,
+    namespace: str,
+    evalhub_job_id: str,
+    batch_job: Job,
+) -> None:
+    """Assert the per-execution NetworkPolicy the EvalHub runtime creates for a Job.
+
+    Mirrors eval-hub internal/eval_hub/runtimes/k8s/network_policy.go (PR #1070):
+    one ingress-only policy per execution with an empty rule list (deny all
+    ingress), selecting only that execution's pods through the app/component/
+    execution-id labels, annotated as not claiming egress isolation, and owned
+    by the Job it protects (ownership transferred from the job-spec ConfigMap).
+    """
+    policies = list(
+        NetworkPolicy.get(
+            client=admin_client,
+            namespace=namespace,
+            label_selector=evalhub_runtime_label_selector(evalhub_job_id=evalhub_job_id),
+        )
+    )
+    assert policies, f"No per-execution NetworkPolicy found for evalhub job_id={evalhub_job_id} in {namespace}"
+    assert len(policies) == 1, f"Expected one NetworkPolicy for job_id={evalhub_job_id}, found {len(policies)}"
+
+    network_policy = policies[0].instance
+    policy_name = network_policy.metadata.name
+    assert policy_name.startswith(EVALHUB_JOB_NP_NAME_PREFIX) and policy_name.endswith(EVALHUB_JOB_NP_NAME_SUFFIX), (
+        f"Unexpected per-execution NetworkPolicy name: {policy_name}"
+    )
+
+    policy_types = list(network_policy.spec.policyTypes or [])
+    assert policy_types == ["Ingress"], f"Per-execution policy must be ingress-only, got policyTypes: {policy_types}"
+    assert not (network_policy.spec.ingress or []), "Per-execution policy must deny all ingress (empty rule list)"
+
+    match_labels = dict(network_policy.spec.podSelector.matchLabels or {})
+    required_selector_keys = {
+        EVALHUB_K8S_LABEL_APP,
+        EVALHUB_K8S_LABEL_COMPONENT,
+        EVALHUB_K8S_LABEL_EXECUTION_ID,
+    }
+    assert required_selector_keys <= set(match_labels), (
+        f"Pod selector must select only this execution via {sorted(required_selector_keys)}: {match_labels}"
+    )
+    assert match_labels[EVALHUB_K8S_LABEL_APP] == EVALHUB_K8S_LABEL_APP_VALUE
+    assert match_labels[EVALHUB_K8S_LABEL_COMPONENT] == EVALHUB_K8S_LABEL_COMPONENT_VALUE
+
+    pod_labels = dict(batch_job.instance.spec.template.metadata.labels or {})
+    unmatched = {key: value for key, value in match_labels.items() if pod_labels.get(key) != value}
+    assert not unmatched, (
+        f"NetworkPolicy pod selector does not match the Job's pod labels; unmatched: {unmatched}, "
+        f"selector: {match_labels}, pod labels: {pod_labels}"
+    )
+
+    annotations = dict(network_policy.metadata.annotations or {})
+    assert annotations.get(EVALHUB_JOB_NP_EGRESS_ANNOTATION) == EVALHUB_JOB_NP_EGRESS_ANNOTATION_VALUE, (
+        f"Egress is intentionally unmanaged by this policy; expected annotation "
+        f"{EVALHUB_JOB_NP_EGRESS_ANNOTATION}={EVALHUB_JOB_NP_EGRESS_ANNOTATION_VALUE}, got: {annotations}"
+    )
+
+    owner_references = list(network_policy.metadata.ownerReferences or [])
+    job_uid = batch_job.instance.metadata.uid
+    assert any(ref.kind == "Job" and ref.uid == job_uid for ref in owner_references), (
+        f"NetworkPolicy must be owned by Job {batch_job.name} (uid {job_uid}), "
+        f"owners: {[ref.kind for ref in owner_references]}"
+    )
+
+    LOGGER.info(
+        "EvalHub per-execution NetworkPolicy verified",
+        network_policy=policy_name,
+        namespace=namespace,
+        evalhub_job_id=evalhub_job_id,
     )
 
 
