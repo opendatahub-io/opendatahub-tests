@@ -22,8 +22,11 @@ import pytest
 import structlog
 from ocp_resources.pod import Pod
 
-from tests.model_serving.model_server.image_validation.constant import KSERVE_CONTROL_PLANE_DEPLOYMENTS
-from utilities.general import validate_container_images
+from tests.model_serving.model_server.image_validation.constant import (
+    KSERVE_CONTROL_PLANE_DEPLOYMENTS,
+    STORAGE_INITIALIZER_CONTAINER_NAME,
+)
+from tests.model_serving.model_server.image_validation.utils import validate_images
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -58,18 +61,7 @@ class TestKServeControlPlaneImages:
         When validating their container images
         Then the images use registry.redhat.io, sha256 digest, and are listed in CSV relatedImages
         """
-        validation_errors = []
-        for pod in kserve_control_plane_pods:
-            LOGGER.info(f"Validating {pod.name} in {pod.namespace}")
-            validation_errors.extend(
-                validate_container_images(
-                    pod=pod,
-                    valid_image_refs=related_images_refs,
-                )
-            )
-
-        if validation_errors:
-            pytest.fail("\n".join(validation_errors))
+        validate_images(pods_to_validate=kserve_control_plane_pods, related_images_refs=related_images_refs)
         LOGGER.info("control plane pods images : passed")
 
 
@@ -89,18 +81,15 @@ class TestModelServerImages:
         When validating its model server pod images (predictor and storage-initializer)
         Then the images use registry.redhat.io, sha256 digest, and are listed in CSV relatedImages
         """
-        validation_errors = []
         for pod in isvc_model_server_pods:
-            LOGGER.info(f"Validating {pod.name} in {pod.namespace}")
-            validation_errors.extend(
-                validate_container_images(
-                    pod=pod,
-                    valid_image_refs=related_images_refs,
-                )
+            assert any(
+                container.name == STORAGE_INITIALIZER_CONTAINER_NAME
+                for container in (pod.instance.spec.initContainers or [])
+            ), (
+                f"Pod {pod.name} in namespace {pod.namespace} "
+                f"does not have a {STORAGE_INITIALIZER_CONTAINER_NAME} init container"
             )
-
-        if validation_errors:
-            pytest.fail("\n".join(validation_errors))
+        validate_images(pods_to_validate=isvc_model_server_pods, related_images_refs=related_images_refs)
         LOGGER.info("isvc model server pod images : passed")
 
     @pytest.mark.rawdeployment
@@ -114,16 +103,5 @@ class TestModelServerImages:
         When validating its router pod images
         Then the images use registry.redhat.io, sha256 digest, and are listed in CSV relatedImages
         """
-        validation_errors = []
-        for pod in inference_graph_router_pods:
-            LOGGER.info(f"Validating {pod.name} in {pod.namespace}")
-            validation_errors.extend(
-                validate_container_images(
-                    pod=pod,
-                    valid_image_refs=related_images_refs,
-                )
-            )
-
-        if validation_errors:
-            pytest.fail("\n".join(validation_errors))
+        validate_images(pods_to_validate=inference_graph_router_pods, related_images_refs=related_images_refs)
         LOGGER.info("inference graph router pod images : passed")

@@ -34,7 +34,6 @@ from tests.model_serving.model_server.image_validation.constant import (
     PLACEHOLDER_STORAGE_URI,
 )
 from utilities.constants import Annotations, KServeDeploymentType, Labels
-from utilities.general import wait_for_pods_by_labels
 from utilities.inference_utils import create_isvc
 from utilities.infra import create_ns, get_pods_by_ig_label, wait_for_isvc_pods
 from utilities.serving_runtime import ServingRuntimeFromTemplate
@@ -96,12 +95,18 @@ def model_server_inference_service(
 @pytest.fixture
 def kserve_control_plane_pods(request: FixtureRequest, admin_client: DynamicClient) -> list[Pod]:
     """Pods of a kserve control plane deployment in the applications namespace."""
-    yield wait_for_pods_by_labels(
-        admin_client=admin_client,
-        namespace=py_config["applications_namespace"],
-        label_selector=request.param["label_selector"],
-        expected_num_pods=1,
+    pods = list(
+        Pod.get(
+            client=admin_client,
+            namespace=py_config["applications_namespace"],
+            label_selector=request.param["label_selector"],
+        )
     )
+    assert pods, (
+        f"No pods found for deployment {request.param['name']} with label selector "
+        f"{request.param['label_selector']} in namespace {py_config['applications_namespace']}"
+    )
+    return pods
 
 
 @pytest.fixture
@@ -120,8 +125,8 @@ def isvc_model_server_pods(
         runtime_name=model_server_serving_runtime.name,
     ):
         if pods:
-            yield pods
-            return
+            break
+    yield pods
 
 
 @pytest.fixture
@@ -159,5 +164,5 @@ def inference_graph_router_pods(
             ig=inference_graph,
         ):
             if pods:
-                yield pods
-                return
+                break
+        yield pods
