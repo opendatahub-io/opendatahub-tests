@@ -95,18 +95,19 @@ def model_server_inference_service(
 @pytest.fixture
 def kserve_control_plane_pods(request: FixtureRequest, admin_client: DynamicClient) -> list[Pod]:
     """Pods of a kserve control plane deployment in the applications namespace."""
-    pods = list(
-        Pod.get(
-            client=admin_client,
-            namespace=py_config["applications_namespace"],
-            label_selector=request.param["label_selector"],
-        )
-    )
-    assert pods, (
-        f"No pods found for deployment {request.param['name']} with label selector "
-        f"{request.param['label_selector']} in namespace {py_config['applications_namespace']}"
-    )
-    return pods
+    for pods in TimeoutSampler(
+        wait_timeout=300,
+        sleep=5,
+        func=lambda: list(
+            Pod.get(
+                client=admin_client,
+                namespace=py_config["applications_namespace"],
+                label_selector=request.param["label_selector"],
+            )
+        ),
+    ):
+        if pods:
+            return pods
 
 
 @pytest.fixture
