@@ -78,7 +78,9 @@ def model_server_inference_service(
     model_format = model_server_serving_runtime.instance.spec.supportedModelFormats[0].name
     with create_isvc(
         client=admin_client,
-        name="model-server-images-isvc",
+        # RawKube builds the predictor host as "<isvc>-predictor-<namespace>", capped at 63
+        # characters; keep the ISVC name short enough for the 29-char test namespace.
+        name="ms-images-isvc",
         namespace=model_server_image_validation_namespace.name,
         model_format=model_format,
         runtime=model_server_serving_runtime.name,
