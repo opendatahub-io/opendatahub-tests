@@ -1,9 +1,10 @@
 """MLflow integration tests for EvalHub (multitenancy suite).
 
-Requires an MLflow server already deployed on the cluster (cluster-scoped CR).
-The EvalHub CR is created with MLFLOW_TRACKING_URI pointing at the existing
-MLflow service. Tests verify experiment creation on job submit, experiment_id
-on the job response, and filtering jobs by experiment_id.
+These tests require the MLflow operator to be enabled on the cluster. They
+reuse an existing MLflow instance or create one if none exists. The EvalHub CR
+is configured with MLFLOW_TRACKING_URI pointing at the MLflow service. Tests
+verify experiment creation on job submit, experiment_id on the job response,
+and filtering jobs by experiment_id.
 """
 
 from __future__ import annotations
@@ -23,39 +24,60 @@ from pytest_testconfig import config as py_config
 
 from tests.ai_safety.evalhub.constants import (
     EVALHUB_JOBS_PATH,
+    EVALHUB_TENANT_LABEL_KEY,
+    EVALHUB_TENANT_LABEL_VALUE,
 )
 from tests.ai_safety.evalhub.utils import (
+    MLflowWithWorkspaces,
     build_evalhub_job_payload,
     build_headers,
     submit_evalhub_job,
 )
 
-# ---------------------------------------------------------------------------
-# Fixtures: EvalHub with MLflow enabled (expects existing MLflow deployment)
-# ---------------------------------------------------------------------------
-
-# MLflow is a cluster-scoped CR deployed into the DSCI applications namespace.
-# These tests reuse the existing MLflow instance rather than creating one.
-#
-# Read py_config["applications_namespace"] at use time, not module-level — it's only set after collection.
 MLFLOW_SERVICE_PORT = 8443
 
 
 @pytest.fixture(scope="class")
 def mlflow_deployment_ready(
     admin_client: DynamicClient,
-) -> Deployment:
-    """Verify the existing MLflow deployment is available. Skip if not deployed."""
+) -> Generator[Deployment, Any, Any]:
+    """Reuse an existing MLflow deployment, or create an MLflow instance for this class if absent.
+
+    The MLflow operator must already be enabled in the DSC.
+    """
     namespace = py_config["applications_namespace"]
+    mlflow_instance = MLflowWithWorkspaces(
+        client=admin_client,
+        name="mlflow",
+    )
     deployment = Deployment(
         client=admin_client,
         name="mlflow",
         namespace=namespace,
     )
-    if not deployment.exists:
-        pytest.fail(f"MLflow deployment not found in {namespace} namespace — deploy MLflow first")
-    deployment.wait_for_replicas(timeout=300)
-    return deployment
+    if mlflow_instance.exists:
+        deployment.wait_for_replicas(timeout=300)
+        yield deployment
+        return
+
+    with MLflowWithWorkspaces(
+        client=admin_client,
+        name="mlflow",
+        storage={
+            "accessModes": ["ReadWriteOnce"],
+            "resources": {"requests": {"storage": "1Gi"}},
+        },
+        backend_store_uri="sqlite:////mlflow/mlflow.db",
+        artifacts_destination="file:///mlflow/artifacts",
+        serve_artifacts=True,
+        workspace_label_selector={
+            "matchLabels": {EVALHUB_TENANT_LABEL_KEY: EVALHUB_TENANT_LABEL_VALUE},
+        },
+        image={"imagePullPolicy": "Always"},
+        wait_for_resource=True,
+    ):
+        deployment.wait_for_replicas(timeout=300)
+        yield deployment
 
 
 @pytest.fixture(scope="class")
