@@ -15,16 +15,39 @@ from utilities.image_constants import SharedImages
 LOGGER = structlog.get_logger(name=__name__)
 
 
+def get_predictor_pod_uids(client: DynamicClient, isvc: InferenceService) -> set:
+    """Return UIDs of the currently Running predictor pods for the ISVC."""
+    label_selector = f"serving.kserve.io/inferenceservice={isvc.name}"
+    raw_pods = list(
+        Pod.get(
+            client=client,
+            namespace=isvc.namespace,
+            label_selector=label_selector,
+            field_selector="status.phase=Running",
+            raw=True,
+        )
+    )
+    return {p.metadata.uid for p in raw_pods}
+
+
 def wait_for_rollout_complete(
     client: DynamicClient,
     isvc: InferenceService,
     timeout: int = 120,
+    previous_pod_uids: set | None = None,
 ) -> None:
     """Wait until the ISVC deployment rollout is complete.
 
     A rollout is complete when replicas == readyReplicas == updatedReplicas,
     meaning all pods are running the latest template with no stragglers from
     previous ReplicaSets.
+
+    When `previous_pod_uids` is provided (snapshot of pod UIDs taken before
+    the change that triggers the rollout), the wait additionally requires at
+    least one Running pod with a UID not in that snapshot. Without this, the
+    convergence check can pass immediately against the still-converged old
+    deployment before the controller has observed the change, causing the
+    caller to inspect a stale pod.
     """
     expected = isvc.instance.spec.predictor.get("minReplicas", 1)
     label_selector = f"serving.kserve.io/inferenceservice={isvc.name}"
@@ -38,7 +61,11 @@ def wait_for_rollout_complete(
         updated = status.get("updatedReplicas", 0)
         total = status.get("replicas", 0)
         LOGGER.info(f"rollout: replicas={total} ready={ready} updated={updated} expected={expected}")
-        return ready == expected and updated == expected and total == expected
+        if not (ready == expected and updated == expected and total == expected):
+            return False
+        if previous_pod_uids is not None:
+            return bool(get_predictor_pod_uids(client=client, isvc=isvc) - previous_pod_uids)
+        return True
 
     for sample in TimeoutSampler(wait_timeout=timeout, sleep=2, func=_rollout_complete):
         if sample:

@@ -13,7 +13,10 @@ from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest import FixtureRequest
 
-from tests.model_serving.model_server.kserve.storage.pvc.utils import wait_for_rollout_complete
+from tests.model_serving.model_server.kserve.storage.pvc.utils import (
+    get_predictor_pod_uids,
+    wait_for_rollout_complete,
+)
 from utilities.constants import KServeDeploymentType
 from utilities.general import download_model_data
 from utilities.inference_utils import create_isvc
@@ -84,7 +87,7 @@ def patched_read_only_isvc(
     """
     readonly_value = request.param["readonly"]
     LOGGER.info(f"patched_read_only_isvc: patching readonly={readonly_value}")
-    with ResourceEditor(
+    editor = ResourceEditor(
         patches={
             pvc_inference_service: {
                 "metadata": {
@@ -92,12 +95,22 @@ def patched_read_only_isvc(
                 }
             }
         }
-    ):
-        wait_for_rollout_complete(client=unprivileged_client, isvc=pvc_inference_service)
+    )
+    pod_uids_before = get_predictor_pod_uids(client=unprivileged_client, isvc=pvc_inference_service)
+    editor.update()
+    try:
+        wait_for_rollout_complete(
+            client=unprivileged_client, isvc=pvc_inference_service, previous_pod_uids=pod_uids_before
+        )
         yield pvc_inference_service
-    # ResourceEditor restores the annotation to None, triggering a rollout.
-    # Wait for it to settle so the next test sees a clean state.
-    wait_for_rollout_complete(client=unprivileged_client, isvc=pvc_inference_service)
+    finally:
+        # Restore the original annotation value, triggering a rollout.
+        # Wait for it to settle so the next test sees a clean state.
+        pod_uids_before_restore = get_predictor_pod_uids(client=unprivileged_client, isvc=pvc_inference_service)
+        editor.restore()
+        wait_for_rollout_complete(
+            client=unprivileged_client, isvc=pvc_inference_service, previous_pod_uids=pod_uids_before_restore
+        )
 
 
 @pytest.fixture(scope="class")
