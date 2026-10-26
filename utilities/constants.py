@@ -90,6 +90,7 @@ class RuntimeTemplates:
     VLLM_ROCM: str = "vllm-rocm-runtime-template"
     VLLM_GAUDI: str = "vllm-gaudi-runtime-template"
     VLLM_SPYRE: str = "vllm-spyre-x86-runtime-template"
+    VLLM_SPYRE_PPC64LE: str = "vllm-spyre-ppc64le-runtime-template"
     VLLM_CPU_x86: str = "vllm-cpu-x86-runtime-template"
     VLLM_CPU_POWER: str = "vllm-cpu-runtime-template"
     VLLM_CPU_Z: str = "vllm-cpu-z-runtime-template"
@@ -147,10 +148,11 @@ class AcceleratorType:
     AMD: str = "amd"
     GAUDI: str = "gaudi"
     SPYRE: str = "spyre"
+    SPYRE_PPC64LE: str = "spyre_ppc64le"
     CPU_x86: str = "cpu_x86"
     CPU_POWER: str = "cpu_power"
     CPU_Z: str = "cpu_z"
-    SUPPORTED_LISTS: list[str] = [NVIDIA, AMD, GAUDI, SPYRE, CPU_x86, CPU_POWER, CPU_Z]  # noqa: RUF012
+    SUPPORTED_LISTS: list[str] = [NVIDIA, AMD, GAUDI, SPYRE, SPYRE_PPC64LE, CPU_x86, CPU_POWER, CPU_Z]  # noqa: RUF012
 
 
 class ApiGroups:
@@ -415,6 +417,33 @@ class MinIo:
             "args": ["server", "/data"],
             **MINIO_BASE_LABELS_ANNOTATIONS,
         }
+
+
+class SeaweedFs:
+    """SeaweedFS S3-compatible storage settings shared across test components."""
+
+    class Metadata:
+        NAME: str = "seaweedfs"
+        DEFAULT_PORT: int = 8333
+        FILER_PORT: int = 8888
+        FILER_GRPC_PORT: int = 18888
+
+    class Credentials:
+        ACCESS_KEY_VALUE: str = "THEACCESSKEY"
+        SECRET_KEY_VALUE: str = "THESECRETKEY"
+
+    class Buckets:
+        MODELMESH_EXAMPLE_MODELS: str = "modelmesh-example-models"
+
+    class PodConfig:
+        ARGS: tuple[str, ...] = (
+            "server",
+            "-dir=/tmp",
+            "-s3",
+            "-iam",
+            "-filer",
+            "-master.volumePreallocate=false",
+        )
 
 
 MODEL_REGISTRY: str = "model-registry"

@@ -1,16 +1,22 @@
 import json
 from typing import Any, Literal
 
+import requests
 import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.pod import Pod
+from timeout_sampler import retry
 
 from tests.ai_hub.constants import CATALOG_CONTAINER, DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
+from tests.ai_hub.model_catalog.metadata.constants import STATUS_PATH_TEMPLATE
 from tests.ai_hub.model_catalog.search.utils import fetch_all_artifacts_with_dynamic_paging
 from tests.ai_hub.utils import (
+    TransientUnauthorizedError,
     execute_authenticated_post,
+    execute_delete_call_with_retry,
+    execute_get_command,
     execute_get_command_with_retry,
     get_rest_headers,
     should_include_by_pattern,
@@ -503,3 +509,41 @@ def verify_labels_match(expected_labels: list[dict[str, Any]], api_labels: list[
         errors.append(f"Unexpected labels in API response: {unexpected}")
 
     assert not errors, "\n".join(errors)
+
+
+class SourceStatusNotRestored(Exception):
+    pass
+
+
+def get_source_status(base_url: str, headers: dict[str, str], source_id: str) -> dict[str, Any]:
+    """Get the persisted status of a catalog source, allowing an empty response."""
+    return execute_get_command(
+        url=STATUS_PATH_TEMPLATE.format(base=base_url, source_id=source_id),
+        headers=headers,
+    )
+
+
+def clear_source_status(base_url: str, headers: dict[str, str], source_id: str) -> int:
+    """Clear the persisted status of a catalog source."""
+    response = execute_delete_call_with_retry(
+        url=STATUS_PATH_TEMPLATE.format(base=base_url, source_id=source_id),
+        headers=headers,
+    )
+    return response.status_code
+
+
+@retry(
+    wait_timeout=120,
+    sleep=5,
+    exceptions_dict={
+        SourceStatusNotRestored: [],
+        TransientUnauthorizedError: [],
+        requests.exceptions.ConnectionError: [],
+    },
+)
+def wait_for_source_status_restored(base_url: str, headers: dict[str, str], source_id: str) -> dict[str, Any]:
+    """Wait for a catalog source's persisted status to be repopulated after a restart."""
+    status = get_source_status(base_url=base_url, headers=headers, source_id=source_id)
+    if status.get("status"):
+        return status
+    raise SourceStatusNotRestored(f"Status for {source_id} not yet restored: {status}")

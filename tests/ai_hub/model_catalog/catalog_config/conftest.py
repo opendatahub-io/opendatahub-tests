@@ -1,4 +1,3 @@
-import re
 from collections.abc import Generator
 
 import pytest
@@ -16,8 +15,12 @@ from tests.ai_hub.model_catalog.catalog_config.utils import (
     modify_catalog_source,
     wait_for_catalog_source_restore,
 )
-from tests.ai_hub.model_catalog.constants import REDHAT_AI_CATALOG_ID, REDHAT_AI_CATALOG_NAME
-from tests.ai_hub.model_catalog.utils import get_models_from_catalog_api, wait_for_model_catalog_api
+from tests.ai_hub.model_catalog.constants import DEFAULT_CATALOGS, VALIDATED_CATALOG_ID, VALIDATED_CATALOG_LABEL
+from tests.ai_hub.model_catalog.utils import (
+    get_models_from_catalog_api,
+    get_shipped_catalog,
+    wait_for_model_catalog_api,
+)
 from tests.ai_hub.utils import get_model_catalog_pod, wait_for_model_catalog_pod_ready_after_deletion
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -81,65 +84,34 @@ def recreated_model_catalog_configmap(
     return recreated_configmap
 
 
-@pytest.fixture(scope="package", autouse=True)
+@pytest.fixture(scope="package")
 def catalog_pod_model_counts(
     admin_client: DynamicClient,
     recreated_model_catalog_configmap: ConfigMap,
 ) -> dict[str, int]:
-    """
-    Package-scoped auto-use fixture that extracts model counts from catalog pod logs.
-    Only applies to tests in catalog_config package.
-
-    Scrapes logs for earliest occurrences of:
-    - "redhat_ai_validated_models: loaded x models"
-    - "redhat_ai_models: loaded y models"
-
-    Returns:
-        Dictionary with keys "redhat_ai_validated_models" and "redhat_ai_models"
-        containing the extracted model counts
-    """
-    # Get the model catalog pod
+    """Expected model counts read from both shipped catalogs before filtering."""
     namespace_name = py_config["model_registry_namespace"]
-    catalog_pods = get_model_catalog_pod(client=admin_client, model_registry_namespace=namespace_name)
-    assert len(catalog_pods) > 0, f"No model catalog pods found in namespace {namespace_name}"
-
-    catalog_pod = catalog_pods[0]  # Use the first pod if multiple exist
-
-    # Get pod logs
-    logs = catalog_pod.log(container="catalog")
-
-    # Define regex patterns for extraction
-    patterns = {
-        "redhat_ai_validated_models": r"redhat_ai_validated_models: loaded (\d+) models",
-        "redhat_ai_models": r"redhat_ai_models: loaded (\d+) models",
+    catalog_pod = get_model_catalog_pod(client=admin_client, model_registry_namespace=namespace_name)[0]
+    return {
+        source_id: len(
+            get_shipped_catalog(pod=catalog_pod, catalog_file=source["properties"]["yamlCatalogPath"])["models"]
+        )
+        for source_id, source in DEFAULT_CATALOGS.items()
     }
-
-    # Extract counts
-    model_counts = {}
-    for key, pattern in patterns.items():
-        match = re.search(pattern, logs)
-        if match:
-            model_counts[key] = int(match.group(1))
-        else:
-            LOGGER.warning(f"Pattern '{pattern}' not found in catalog pod logs")
-            model_counts[key] = 0  # Default to 0 if not found
-
-    LOGGER.info(f"Extracted model counts from catalog pod logs: {model_counts}")
-    return model_counts
 
 
 @pytest.fixture(scope="function")
-def redhat_ai_models_with_filter(
+def validated_models_with_filter(
     request: pytest.FixtureRequest,
     admin_client: DynamicClient,
     model_registry_namespace: str,
-    baseline_redhat_ai_models: dict[str, set[str] | int],
+    baseline_validated_models: dict[str, set[str] | int],
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
     catalog_pod_model_counts: dict[str, int],
 ) -> Generator[set[str]]:
     """
-    Unified fixture for applying filters to redhat_ai catalog and yielding expected models.
+    Unified fixture for applying filters to validated catalog and yielding expected models.
 
     Expects request.param dict with:
     - "filter_type": "inclusion", "exclusion", or "combined"
@@ -148,10 +120,10 @@ def redhat_ai_models_with_filter(
     - For combined: "include_pattern", "include_filter_value", "exclude_pattern", "exclude_filter_value"
 
     Returns:
-        set[str]: Expected redhat_ai models after applying the filter(s)
+        set[str]: Expected validated models after applying the filter(s)
     """
     param = getattr(request, "param", {})
-    baseline_models = baseline_redhat_ai_models["api_models"]
+    baseline_models = baseline_validated_models["api_models"]
     filter_type = param["filter_type"]  # Required parameter
 
     # Calculate expected models and modify_catalog_source kwargs
@@ -176,7 +148,7 @@ def redhat_ai_models_with_filter(
 
     # Apply filters
     patch_info = modify_catalog_source(
-        admin_client=admin_client, namespace=model_registry_namespace, source_id=REDHAT_AI_CATALOG_ID, **modify_kwargs
+        admin_client=admin_client, namespace=model_registry_namespace, source_id=VALIDATED_CATALOG_ID, **modify_kwargs
     )
 
     with ResourceEditor(patches={patch_info["configmap"]: patch_info["patch"]}):
@@ -195,13 +167,13 @@ def redhat_ai_models_with_filter(
     wait_for_catalog_source_restore(
         model_catalog_rest_url=model_catalog_rest_url,
         model_registry_rest_headers=model_registry_rest_headers,
-        source_label=REDHAT_AI_CATALOG_NAME,
-        expected_count=catalog_pod_model_counts[REDHAT_AI_CATALOG_ID],
+        source_label=VALIDATED_CATALOG_LABEL,
+        expected_count=catalog_pod_model_counts[VALIDATED_CATALOG_ID],
     )
 
 
 @pytest.fixture(scope="class")
-def disabled_redhat_ai_source(
+def disabled_validated_source(
     admin_client: DynamicClient,
     model_registry_namespace: str,
     model_catalog_rest_url: list[str],
@@ -209,7 +181,7 @@ def disabled_redhat_ai_source(
     catalog_pod_model_counts: dict[str, int],
 ) -> Generator[None]:
     """
-    Fixture that disables the redhat_ai catalog source and yields control.
+    Fixture that disables the validated catalog source and yields control.
 
     Automatically restores the source to enabled state after test completion.
     """
@@ -217,7 +189,7 @@ def disabled_redhat_ai_source(
     disable_patch = modify_catalog_source(
         admin_client=admin_client,
         namespace=model_registry_namespace,
-        source_id=REDHAT_AI_CATALOG_ID,
+        source_id=VALIDATED_CATALOG_ID,
         enabled=False,
     )
 
@@ -231,8 +203,8 @@ def disabled_redhat_ai_source(
     wait_for_catalog_source_restore(
         model_catalog_rest_url=model_catalog_rest_url,
         model_registry_rest_headers=model_registry_rest_headers,
-        source_label=REDHAT_AI_CATALOG_NAME,
-        expected_count=catalog_pod_model_counts[REDHAT_AI_CATALOG_ID],
+        source_label=VALIDATED_CATALOG_LABEL,
+        expected_count=catalog_pod_model_counts[VALIDATED_CATALOG_ID],
     )
 
 

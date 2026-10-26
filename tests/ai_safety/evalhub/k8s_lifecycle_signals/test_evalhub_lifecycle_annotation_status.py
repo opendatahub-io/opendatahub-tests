@@ -155,7 +155,7 @@ class TestAnnAnnotationStatus:
         ts = data["timestamp"]
         assert isinstance(ts, str), f"timestamp must be a string, got {type(ts)}"
         try:
-            datetime.fromisoformat(date_string=ts.replace(old="Z", new="+00:00"))
+            datetime.fromisoformat(ts)  # noqa: FCN001
         except ValueError as exc:
             raise AssertionError(f"timestamp is not a valid RFC 3339 UTC value: {ts!r}") from exc
 

@@ -1,3 +1,5 @@
+import itertools
+
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
@@ -15,6 +17,7 @@ from tests.ai_safety.lm_eval.constants import (
     LLMAAJ_TASK_DATA,
     LMEVAL_OCI_REPO,
     LMEVAL_OCI_TAG,
+    LMEVAL_SHORT_JOB_TIMEOUT,
     LMEVALJOB_COMPLETE_STATE,
     ODH_TRUSTED_CA_BUNDLE_CONFIGMAP,
 )
@@ -27,14 +30,19 @@ from tests.ai_safety.lm_eval.utils import (
     wait_for_vllm_model_ready,
 )
 from tests.ai_safety.utils import validate_tai_component_images
-from utilities.constants import OCIRegistry
+from utilities.constants import OCIRegistry, SeaweedFs
 from utilities.registry_utils import pull_manifest_from_oci_registry
 
 TIER1_LMEVAL_TASKS: list[str] = get_lmeval_tasks(min_downloads=10000)
 
-TIER2_LMEVAL_TASKS: list[str] = list(
+TIER2_LMEVAL_TASKS: list[str] = sorted(
     set(get_lmeval_tasks(min_downloads=0.70, max_downloads=10000)) - set(TIER1_LMEVAL_TASKS)
 )
+
+TIER2_CHUNK_SIZE: int = 10
+TIER2_LMEVAL_TASK_CHUNKS: list[list[str]] = [
+    list(batch) for batch in itertools.batched(TIER2_LMEVAL_TASKS, TIER2_CHUNK_SIZE)
+]
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -90,9 +98,11 @@ def test_lmeval_huggingface_model(admin_client, model_namespace, lmevaljob_hf_po
     "model_namespace, lmevaljob_hf",
     [
         pytest.param(
-            {"name": "test-lmeval-hf-tier2"},
-            {"task_list": {"taskNames": TIER2_LMEVAL_TASKS}},
-        ),
+            {"name": f"test-lmeval-hf-tier2-{idx}"},
+            {"task_list": {"taskNames": chunk}},
+            id=f"tier2_chunk{idx}",
+        )
+        for idx, chunk in enumerate(TIER2_LMEVAL_TASK_CHUNKS)
     ],
     indirect=True,
 )
@@ -142,11 +152,11 @@ def test_lmeval_vllm_emulator(admin_client, model_namespace, lmevaljob_vllm_emul
 
 @pytest.mark.tier1
 @pytest.mark.parametrize(
-    "model_namespace, minio_data_connection",
+    "model_namespace, lmeval_seaweedfs_data_connection",
     [
         pytest.param(
             {"name": "test-s3-lmeval"},
-            {"bucket": "models"},
+            {"bucket": SeaweedFs.Buckets.MODELMESH_EXAMPLE_MODELS},
         )
     ],
     indirect=True,
@@ -161,11 +171,11 @@ def test_lmeval_s3_storage(
 
 
 @pytest.mark.parametrize(
-    "model_namespace, minio_data_connection",
+    "model_namespace, lmeval_seaweedfs_data_connection",
     [
         pytest.param(
             {"name": "test-lmeval-images"},
-            {"bucket": "models"},
+            {"bucket": SeaweedFs.Buckets.MODELMESH_EXAMPLE_MODELS},
         )
     ],
     indirect=True,
@@ -186,7 +196,7 @@ def test_verify_lmeval_pod_images(lmevaljob_s3_offline_pod, trustyai_operator_co
 
 @pytest.mark.tier1
 @pytest.mark.parametrize(
-    "model_namespace, oci_registry_pod_with_minio, lmeval_data_downloader_pod, lmevaljob_local_offline_oci",
+    "model_namespace, oci_registry_pod_with_seaweedfs, lmeval_data_downloader_pod, lmevaljob_local_offline_oci",
     [
         pytest.param(
             {"name": "test-lmeval-local-offline-unitxt"},
@@ -254,7 +264,7 @@ def test_lmeval_gpu(
         inference_service_name=lmeval_vllm_inference_service.name,
     )
 
-    validate_lmeval_job_pod_and_logs(lmevaljob_pod=lmevaljob_gpu_pod)
+    validate_lmeval_job_pod_and_logs(lmevaljob_pod=lmevaljob_gpu_pod, timeout=LMEVAL_SHORT_JOB_TIMEOUT)
 
 
 @pytest.mark.tier2
@@ -284,7 +294,7 @@ def test_lmeval_vllm_emulator_https_ca_bundle(
     Validates RHOAIENG-60487.
     """
     validate_ca_bundle_injected(pod=lmevaljob_vllm_emulator_https_pod, job_name=lmevaljob_vllm_emulator_https.name)
-    validate_lmeval_job_pod_and_logs(lmevaljob_pod=lmevaljob_vllm_emulator_https_pod)
+    validate_lmeval_job_pod_and_logs(lmevaljob_pod=lmevaljob_vllm_emulator_https_pod, timeout=LMEVAL_SHORT_JOB_TIMEOUT)
 
 
 @pytest.mark.tier2
@@ -311,7 +321,7 @@ def test_lmeval_vllm_emulator_http_no_ca_bundle(
     Then: Operator does not inject CA bundle and evaluation completes successfully
     """
     validate_ca_bundle_not_injected(pod=lmevaljob_vllm_emulator_pod, job_name=lmevaljob_vllm_emulator.name)
-    validate_lmeval_job_pod_and_logs(lmevaljob_pod=lmevaljob_vllm_emulator_pod)
+    validate_lmeval_job_pod_and_logs(lmevaljob_pod=lmevaljob_vllm_emulator_pod, timeout=LMEVAL_SHORT_JOB_TIMEOUT)
 
 
 @pytest.mark.tier1

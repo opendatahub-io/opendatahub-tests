@@ -1,363 +1,250 @@
-"""Pytest fixtures for Spark upgrade tests."""
+"""Fixtures for Spark execution continuity and resubmission across upgrades."""
 
 from collections.abc import Generator
+from contextlib import contextmanager
+from pathlib import Path
 from typing import Any
 
 import pytest
-import shortuuid
-import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.data_science_cluster import DataScienceCluster
+from ocp_resources.config_map import ConfigMap
 from ocp_resources.namespace import Namespace
-from ocp_resources.resource import ResourceEditor
-from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.service_account import ServiceAccount
 
-from tests.spark.upgrade.utils import (
-    capture_spark_application_baseline,
-    create_spark_pi_application_spec,
-    load_baseline_from_configmap,
-    save_baseline_to_configmap,
-)
-from utilities.constants import DscComponents
-from utilities.infra import create_ns
+from tests.spark.upgrade.utils import resubmit_spark_application
+from tests.spark.utils import create_gated_continuity_spark_spec, create_spark_connect_spec
+from utilities.resources.scheduled_spark_application import ScheduledSparkApplication
 from utilities.resources.spark_application import SparkApplication
-
-LOGGER = structlog.get_logger(name=__name__)
-
-UPGRADE_NAMESPACE = "upgrade-spark-operator"
-SPARK_SERVICE_ACCOUNT = "spark-operator-spark"
-
-
-@pytest.fixture(scope="session")
-def pre_upgrade_spark_dsc_patch(
-    pytestconfig: pytest.Config,
-    dsc_resource: DataScienceCluster,
-) -> DataScienceCluster:
-    """Enable Spark Operator in DSC before upgrade tests.
-
-    Spark Operator is Tech Preview and not managed by default.
-    This fixture sets it to Managed state for upgrade testing.
-    Only runs during pre-upgrade phase.
-    """
-    # Only enable during pre-upgrade phase
-    if pytestconfig.option.post_upgrade:
-        return dsc_resource
-
-    original_components = dsc_resource.instance.spec.components
-    component_patch = {"sparkoperator": {"managementState": DscComponents.ManagementState.MANAGED}}
-
-    current_state = original_components.get("sparkoperator", {}).get("managementState")
-    if current_state == DscComponents.ManagementState.MANAGED:
-        raise AssertionError(
-            "Spark Operator is already in Managed state. This indicates a previous test did not clean up properly."
-        )
-    else:
-        LOGGER.info("Setting Spark Operator to Managed state")
-        editor = ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}})
-        editor.update()
-
-        # Wait for Spark Operator to be ready
-        LOGGER.info("Waiting for Spark Operator to be ready")
-        dsc_resource.wait_for_condition(condition="SparkOperatorReady", status="True", timeout=300)
-
-        return dsc_resource
+from utilities.resources.spark_connect import SparkConnect
 
 
 @pytest.fixture(scope="class")
-def post_upgrade_spark_dsc_patch(
-    pytestconfig: pytest.Config,
-    dsc_resource: DataScienceCluster,
-) -> Generator[DataScienceCluster, Any, Any]:
-    """Restore Spark Operator to Removed state after new SparkApplication tests.
-
-    Since Spark Operator is Tech Preview, it should be set back to Removed
-    state after testing to match the default cluster state.
-    Only runs during post-upgrade phase.
-    """
-    yield dsc_resource
-
-    # Only restore during post-upgrade phase
-    if not pytestconfig.option.post_upgrade:
-        return
-
-    original_components = dsc_resource.instance.spec.components
-    component_patch = {"sparkoperator": {"managementState": DscComponents.ManagementState.REMOVED}}
-
-    current_state = original_components.get("sparkoperator", {}).get("managementState")
-    if current_state == DscComponents.ManagementState.REMOVED:
-        raise AssertionError(
-            "Spark Operator is already in Removed state during post-upgrade. "
-            "This indicates Spark Operator was not enabled during pre-upgrade tests."
-        )
-    else:
-        LOGGER.info("Setting Spark Operator back to Removed state")
-        editor = ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}})
-        editor.update()
-
-
-@pytest.fixture(scope="session")
-def spark_upgrade_baseline_fixture(
-    pytestconfig: pytest.Config,
-    admin_client: DynamicClient,
-) -> dict[str, dict]:
-    """Load pre-upgrade baseline values from the cluster ConfigMap.
-
-    Only available during post-upgrade runs. Returns an empty dict during
-    pre-upgrade so fixtures that depend on it can be unconditionally wired.
-    """
-    if not pytestconfig.option.post_upgrade:
-        return {}
-
-    return load_baseline_from_configmap(
-        client=admin_client,
-        namespace=UPGRADE_NAMESPACE,
-    )
-
-
-@pytest.fixture(scope="session")
-def spark_namespace_fixture(
-    pytestconfig: pytest.Config,
-    admin_client: DynamicClient,
-    teardown_resources: bool,
-    pre_upgrade_spark_dsc_patch: DataScienceCluster,
-) -> Generator[Namespace, Any, Any]:
-    """Create or reference the upgrade namespace.
-
-    Pre-upgrade: Creates fresh namespace (cleans up existing if needed)
-    Post-upgrade: References existing namespace and cleans up after tests
-    """
-    ns = Namespace(client=admin_client, name=UPGRADE_NAMESPACE)
-
-    if pytestconfig.option.post_upgrade:
-        # Post-upgrade: namespace should exist from pre-upgrade
-        yield ns
-        if teardown_resources:
-            ns.clean_up()
-
-    else:
-        # Pre-upgrade: namespace should NOT exist from previous runs
-        if ns.exists:
-            raise AssertionError(
-                f"Namespace {UPGRADE_NAMESPACE} already exists. "
-                "This indicates a previous test run did not clean up properly."
-            )
-
-        with create_ns(
-            admin_client=admin_client,
-            name=UPGRADE_NAMESPACE,
-            model_mesh_enabled=False,
-            add_dashboard_label=True,
-            teardown=teardown_resources,
-        ) as ns:
-            yield ns
-
-
-@pytest.fixture(scope="session")
-def spark_role_fixture(
-    pytestconfig: pytest.Config,
-    admin_client: DynamicClient,
-    spark_namespace_fixture: Namespace,
-    teardown_resources: bool,
-) -> Generator[Role, Any, Any]:
-    """Create or reference the Spark Role with necessary permissions.
-
-    Pre-upgrade: Creates Role
-    Post-upgrade: References existing Role and cleans up
-    """
-    role_kwargs = {
-        "client": admin_client,
-        "name": "spark-operator-role",
-        "namespace": spark_namespace_fixture.name,
-    }
-
-    role = Role(**role_kwargs)
-
-    if pytestconfig.option.post_upgrade:
-        yield role
-    else:
-        role_instance = Role(
-            **role_kwargs,
-            rules=[
-                {
-                    "apiGroups": [""],
-                    "resources": ["pods", "services", "configmaps"],
-                    "verbs": ["create", "get", "list", "watch", "delete", "patch", "update"],
-                },
-                {
-                    "apiGroups": [""],
-                    "resources": ["pods/log"],
-                    "verbs": ["get"],
-                },
-            ],
-            teardown=teardown_resources,
-        )
-        role_instance.deploy()
-        yield role_instance
-
-
-@pytest.fixture(scope="session")
-def service_account_fixture(
-    pytestconfig: pytest.Config,
-    admin_client: DynamicClient,
-    spark_namespace_fixture: Namespace,
-    spark_role_fixture: Role,
-    teardown_resources: bool,
-) -> Generator[ServiceAccount, Any, Any]:
-    """Create or reference the Spark service account with RoleBinding.
-
-    Pre-upgrade: Creates service account and RoleBinding
-    Post-upgrade: References existing service account and cleans up
-    """
-    sa_kwargs = {
-        "client": admin_client,
-        "name": SPARK_SERVICE_ACCOUNT,
-        "namespace": spark_namespace_fixture.name,
-    }
-
-    sa = ServiceAccount(**sa_kwargs)
-
-    if pytestconfig.option.post_upgrade:
-        yield sa
-    else:
-        sa = ServiceAccount(**sa_kwargs, teardown=teardown_resources)
-        sa.deploy()
-
-        # Create RoleBinding
-        rb = RoleBinding(
-            client=admin_client,
-            name="spark-operator-rolebinding",
-            namespace=spark_namespace_fixture.name,
-            subjects_kind="ServiceAccount",
-            subjects_name=SPARK_SERVICE_ACCOUNT,
-            role_ref_kind="Role",
-            role_ref_name=spark_role_fixture.name,
-            teardown=teardown_resources,
-        )
-        rb.deploy()
-
-        yield sa
-
-
-@pytest.fixture(scope="session")
-def spark_application_fixture(
-    pytestconfig: pytest.Config,
-    admin_client: DynamicClient,
-    spark_namespace_fixture: Namespace,
-    service_account_fixture: ServiceAccount,
-    teardown_resources: bool,
-) -> Generator[SparkApplication, Any, Any]:
-    """Create or reference a SparkApplication for upgrade testing.
-
-    Pre-upgrade: Creates SparkApplication with spark-pi workload
-    Post-upgrade: References existing SparkApplication and cleans up
-    """
-    spark_app_name = "upgrade-spark-pi"
-
-    spark_app_kwargs = {
-        "client": admin_client,
-        "name": spark_app_name,
-        "namespace": spark_namespace_fixture.name,
-    }
-
-    spark_app = SparkApplication(**spark_app_kwargs)
-
-    if pytestconfig.option.post_upgrade:
-        yield spark_app
-    else:
-        # Create SparkApplication spec
-        spec = create_spark_pi_application_spec(
-            name=spark_app_name,
-            namespace=spark_namespace_fixture.name,
-            service_account=service_account_fixture.name,
-        )
-
-        # Deploy SparkApplication using kind_dict
-        spark_app_instance = SparkApplication(
-            client=admin_client,
-            kind_dict=spec,
-        )
-        spark_app_instance.deploy()
-
-        yield spark_app_instance
-
-
-@pytest.fixture(scope="session")
-def new_spark_application_fixture(
-    pytestconfig: pytest.Config,
-    admin_client: DynamicClient,
-    spark_namespace_fixture: Namespace,
-    service_account_fixture: ServiceAccount,
-    teardown_resources: bool,
-) -> Generator[SparkApplication | None, Any, Any]:
-    """Create a new SparkApplication post-upgrade to test control plane.
-
-    Pre-upgrade: Returns None (only runs post-upgrade)
-    Post-upgrade: Creates a fresh SparkApplication
-    """
-    if not pytestconfig.option.post_upgrade:
-        yield None
-        return
-
-    # Generate unique name for post-upgrade test (lowercase for RFC 1123)
-    spark_app_name = f"post-upgrade-spark-pi-{shortuuid.uuid()[:8].lower()}"
-
-    # Create SparkApplication spec
-    spec = create_spark_pi_application_spec(
-        name=spark_app_name,
-        namespace=spark_namespace_fixture.name,
-        service_account=service_account_fixture.name,
-    )
-
-    # Deploy SparkApplication using kind_dict
-    spark_app = SparkApplication(
-        client=admin_client,
-        kind_dict=spec,
-    )
-    spark_app.deploy()
-
-    try:
-        yield spark_app
-    finally:
-        if teardown_resources:
-            spark_app.clean_up()
-
-
-def _capture_and_save_baseline(
-    pytestconfig: pytest.Config,
-    admin_client: DynamicClient,
-    spark_app: SparkApplication,
-) -> None:
-    """Capture SparkApplication baseline values and persist to ConfigMap.
-
-    No-op during post-upgrade runs.
-    """
-    if pytestconfig.option.post_upgrade:
-        return
-
-    baselines = {
-        spark_app.name: capture_spark_application_baseline(
-            client=admin_client,
-            spark_app=spark_app,
-        ),
-    }
-    save_baseline_to_configmap(
-        client=admin_client,
-        namespace=UPGRADE_NAMESPACE,
-        baselines=baselines,
-    )
-
-
-@pytest.fixture(scope="session")
-def spark_capture_upgrade_baseline(
+def resubmitted_spark_application_fixture(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     spark_application_fixture: SparkApplication,
-) -> None:
-    """Capture baseline values for the SparkApplication."""
-    _capture_and_save_baseline(
-        pytestconfig=pytestconfig,
+    teardown_resources: bool,
+) -> Generator[SparkApplication | None, Any, Any]:
+    """Re-run the pre-upgrade SparkApplication on the upgraded operator.
+
+    Verifies the customer can actively *use* their existing pre-upgrade workload
+    after the upgrade, not just that it survived. Deletes the existing (COMPLETED)
+    resource and recreates it with the same name and spec so the upgraded operator
+    reconciles and runs it again.
+
+    Pre-upgrade: Returns None (only runs post-upgrade)
+    Post-upgrade: Re-submits the existing SparkApplication
+    """
+    if pytestconfig.option.post_upgrade:
+        yield resubmit_spark_application(
+            client=admin_client,
+            spark_app=spark_application_fixture,
+            teardown=teardown_resources,
+        )
+    else:
+        yield None
+
+
+@contextmanager
+def _spark_continuity_control(
+    admin_client: DynamicClient,
+    namespace: str,
+    name: str,
+    post_upgrade: bool,
+    teardown: bool,
+) -> Generator[ConfigMap, Any, Any]:
+    """Create or reference a continuity-control ConfigMap holding the workload, release gate, and baseline.
+
+    Each continuity test needs its own control ConfigMap so their release gates and baselines do not
+    collide when both run in the same upgrade session.
+
+    Args:
+        admin_client: Kubernetes client.
+        namespace: Namespace to create or reference the ConfigMap in.
+        name: ConfigMap name.
+        post_upgrade: Whether the post-upgrade lane is selected (reference instead of create).
+        teardown: Whether to clean up the ConfigMap on teardown.
+
+    Yields:
+        ConfigMap: The continuity-control ConfigMap.
+    """
+    control = ConfigMap(client=admin_client, name=name, namespace=namespace)
+    if post_upgrade:
+        assert control.exists, "Run the in-progress pre-upgrade test and preserve its resources first"
+        yield control
+    else:
+        with ConfigMap(
+            client=admin_client,
+            name=name,
+            namespace=namespace,
+            data={"workload.py": Path(__file__).with_name("continuity_workload.py").read_text(), "release": "false"},
+            teardown=teardown,
+        ) as control:
+            yield control
+
+
+@pytest.fixture()
+def spark_continuity_control(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    spark_namespace_fixture: Namespace,
+    teardown_resources: bool,
+) -> Generator[ConfigMap, Any, Any]:
+    """Provide the directly-created job's workload script, release gate, and execution baseline."""
+    with _spark_continuity_control(
         admin_client=admin_client,
-        spark_app=spark_application_fixture,
+        namespace=spark_namespace_fixture.name,
+        name="spark-upgrade-continuity",
+        post_upgrade=pytestconfig.option.post_upgrade,
+        teardown=teardown_resources,
+    ) as control:
+        yield control
+
+
+@pytest.fixture()
+def scheduled_spark_continuity_control(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    spark_namespace_fixture: Namespace,
+    teardown_resources: bool,
+) -> Generator[ConfigMap, Any, Any]:
+    """Provide the scheduled job's workload script, release gate, and execution baseline."""
+    with _spark_continuity_control(
+        admin_client=admin_client,
+        namespace=spark_namespace_fixture.name,
+        name="scheduled-spark-upgrade-continuity",
+        post_upgrade=pytestconfig.option.post_upgrade,
+        teardown=teardown_resources,
+    ) as control:
+        yield control
+
+
+@pytest.fixture()
+def spark_continuity_application(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    spark_continuity_control: ConfigMap,
+    spark_workload_service_account: ServiceAccount,
+    role_binding_fixture: list[RoleBinding],
+    teardown_resources: bool,
+) -> Generator[SparkApplication, Any, Any]:
+    """Create before upgrade, or reference after upgrade, the gated Spark execution."""
+    application = SparkApplication(
+        client=admin_client, name="upgrade-spark-in-progress", namespace=spark_continuity_control.namespace
     )
+    if pytestconfig.option.post_upgrade:
+        assert application.exists, "The in-progress SparkApplication did not survive"
+        yield application
+    else:
+        manifest = {
+            "apiVersion": "sparkoperator.k8s.io/v1beta2",
+            "kind": "SparkApplication",
+            "metadata": {"name": application.name, "namespace": application.namespace},
+            "spec": create_gated_continuity_spark_spec(
+                name=application.name,
+                namespace=application.namespace,
+                service_account=spark_workload_service_account.name,
+                control_config_map_name=spark_continuity_control.name,
+            ),
+        }
+        with SparkApplication(client=admin_client, kind_dict=manifest, teardown=teardown_resources) as application:
+            yield application
+
+
+@pytest.fixture()
+def scheduled_continuity_application(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    scheduled_spark_continuity_control: ConfigMap,
+    spark_workload_service_account: ServiceAccount,
+    role_binding_fixture: list[RoleBinding],
+    teardown_resources: bool,
+) -> Generator[ScheduledSparkApplication, Any, Any]:
+    """Create before upgrade, or reference after upgrade, the gated scheduled Spark execution.
+
+    The ScheduledSparkApplication mints a child run from the same release-gated workload used by
+    ``spark_continuity_application``. ``Forbid`` keeps exactly one run in flight so the held run is
+    deterministically the one adopted by the upgraded operator.
+    """
+    scheduled_application = ScheduledSparkApplication(
+        client=admin_client,
+        name="upgrade-scheduled-spark-in-progress",
+        namespace=scheduled_spark_continuity_control.namespace,
+    )
+    if pytestconfig.option.post_upgrade:
+        assert scheduled_application.exists, "The in-progress ScheduledSparkApplication did not survive"
+        yield scheduled_application
+    else:
+        manifest = {
+            "apiVersion": "sparkoperator.k8s.io/v1beta2",
+            "kind": "ScheduledSparkApplication",
+            "metadata": {"name": scheduled_application.name, "namespace": scheduled_application.namespace},
+            "spec": {
+                "schedule": "@every 2m",
+                "concurrencyPolicy": "Forbid",
+                "successfulRunHistoryLimit": 5,
+                "failedRunHistoryLimit": 5,
+                "template": create_gated_continuity_spark_spec(
+                    name=scheduled_application.name,
+                    namespace=scheduled_application.namespace,
+                    service_account=spark_workload_service_account.name,
+                    control_config_map_name=scheduled_spark_continuity_control.name,
+                ),
+            },
+        }
+        with ScheduledSparkApplication(
+            client=admin_client, kind_dict=manifest, teardown=teardown_resources
+        ) as scheduled_application:
+            yield scheduled_application
+
+
+@pytest.fixture()
+def spark_connect_continuity_control(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    spark_namespace_fixture: Namespace,
+    teardown_resources: bool,
+) -> Generator[ConfigMap, Any, Any]:
+    """Persist the pre-upgrade Spark Connect server identity across the two pytest processes."""
+    control = ConfigMap(
+        client=admin_client, name="spark-connect-upgrade-continuity", namespace=spark_namespace_fixture.name
+    )
+    if pytestconfig.option.post_upgrade:
+        assert control.exists, "Run the in-progress pre-upgrade test and preserve its resources first"
+        yield control
+    else:
+        with ConfigMap(
+            client=admin_client, name=control.name, namespace=control.namespace, data={}, teardown=teardown_resources
+        ) as control:
+            yield control
+
+
+@pytest.fixture()
+def spark_connect_continuity_application(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    spark_namespace_fixture: Namespace,
+    spark_workload_service_account: ServiceAccount,
+    role_binding_fixture: list[RoleBinding],
+    teardown_resources: bool,
+) -> Generator[SparkConnect, Any, Any]:
+    """Create before upgrade, or reference after upgrade, a long-lived Spark Connect server.
+
+    The server is held running across the operator upgrade so the post-upgrade test can prove the
+    upgraded operator adopts the same server pod (strong continuity) and it still serves queries.
+    """
+    spark_connect = SparkConnect(
+        client=admin_client, name="upgrade-spark-connect", namespace=spark_namespace_fixture.name
+    )
+    if pytestconfig.option.post_upgrade:
+        assert spark_connect.exists, "The Spark Connect server did not survive the upgrade"
+        yield spark_connect
+    else:
+        manifest = create_spark_connect_spec(
+            name=spark_connect.name,
+            namespace=spark_connect.namespace,
+            service_account=spark_workload_service_account.name,
+        )
+        with SparkConnect(client=admin_client, kind_dict=manifest, teardown=teardown_resources) as spark_connect:
+            yield spark_connect

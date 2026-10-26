@@ -1,4 +1,4 @@
-"""Path resolution and validation utilities for repo-relative file access."""
+"""Path resolution and validation utilities."""
 
 from pathlib import Path
 
@@ -41,3 +41,34 @@ def resolve_repo_path(source: str | Path, repo_root: Path | None = None) -> Path
             f"Path must be under repo root ({repo_root_resolved}): {source!r}",
         )
     return resolved
+
+
+def resolve_trusted_path(source: str | Path) -> Path:
+    """Resolve an output path without allowing malformed or symlinked destinations.
+
+    Unlike :func:`resolve_repo_path`, this contract intentionally does not constrain
+    the result to a repository or artifact root. This is suitable for CI artifact
+    directories selected outside the checkout.
+    """
+    try:
+        raw = Path(source)
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"Invalid path value: {source!r}") from error
+
+    source_text = str(source)
+    if not source_text.strip():
+        raise ValueError("Path must not be empty")
+    if "\x00" in source_text:
+        raise ValueError("Path must not contain NUL characters")
+
+    candidate = raw if raw.is_absolute() else Path.cwd() / raw
+    candidate = candidate.absolute()
+    try:
+        for component in (candidate, *candidate.parents):
+            if component.is_symlink():
+                raise ValueError(f"Path must not contain symlinks: {source!r}")
+        if candidate.exists() and not candidate.is_dir():
+            raise ValueError(f"Path must be a directory: {source!r}")
+        return candidate.resolve(strict=False)
+    except OSError as error:
+        raise ValueError(f"Unable to validate path: {source!r}") from error

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import Generator, Sequence
 from contextlib import contextmanager
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal, NamedTuple, TypedDict
 from urllib.parse import urlparse
 
 import pytest
@@ -45,6 +45,20 @@ class ModelIdentityCollisionNames(TypedDict):
     secondary_llmis_name: str
 
 
+class MaaSLlmdScenario(NamedTuple):
+    """MaaS resources serving one LLM-d deployment scenario."""
+
+    llmisvc: LLMInferenceService
+    subscription: MaaSSubscription
+    gateway_token: str
+
+
+def maas_body_routed_model_name(llmisvc: LLMInferenceService) -> str:
+    """Return the canonical identity required by MaaS body-routed requests."""
+    configured_model_name = llmisvc.instance.spec.model.get("name", llmisvc.name)
+    return f"publishers/{llmisvc.namespace}/models/{configured_model_name}"
+
+
 def build_model_identity_collision_names(suffix: str) -> ModelIdentityCollisionNames:
     """Build unique LLMIS and shared model names for identity-collision tests."""
     return {
@@ -59,6 +73,8 @@ def patch_llmisvc_with_maas_router_and_tiers(
     llm_service: LLMInferenceService,
     tiers: Sequence[str],
     enable_auth: bool = True,
+    restore_on_exit: bool = True,
+    labels: dict[str, str] | None = None,
 ) -> Generator[None]:
     """
     Patch an LLMInferenceService to use MaaS router (gateway refs + route {})
@@ -70,6 +86,14 @@ def patch_llmisvc_with_maas_router_and_tiers(
     Examples:
       - tiers=[]              -> open model
       - tiers=["premium"]     -> premium-only
+
+    Args:
+        llm_service: LLMInferenceService to configure for MaaS routing.
+        tiers: MaaS access tiers to attach to the service.
+        enable_auth: Whether MaaS authentication is enabled for the service.
+        restore_on_exit: Whether to restore the original service configuration
+            when the context exits.
+        labels: Optional labels to add to the service.
     """
     router_spec = {
         "gateway": {"refs": [{"name": MAAS_GATEWAY_NAME, "namespace": MAAS_GATEWAY_NAMESPACE}]},
@@ -86,8 +110,15 @@ def patch_llmisvc_with_maas_router_and_tiers(
         },
         "spec": {"router": router_spec},
     }
+    if labels:
+        patch_body["metadata"]["labels"] = labels
 
-    with ResourceEditor(patches={llm_service: patch_body}):
+    resource_editor = ResourceEditor(patches={llm_service: patch_body})
+    if restore_on_exit:
+        with resource_editor:
+            yield
+    else:
+        resource_editor.update()
         yield
 
 
@@ -604,6 +635,7 @@ def maas_identity_collision_model_ref(
     service_account: str,
     collision_names: ModelIdentityCollisionNames,
     primary: bool,
+    restore_llmis_patch_on_exit: bool = True,
 ) -> Generator[MaaSModelRef]:
     """Create one LLMIS + MaaSModelRef pair for a model-identity collision scenario."""
     llmis_name = collision_names["primary_llmis_name"] if primary else collision_names["secondary_llmis_name"]
@@ -613,6 +645,7 @@ def maas_identity_collision_model_ref(
         namespace=namespace,
         service_account=service_account,
         model_name=collision_names["shared_model_name"],
+        restore_llmis_patch_on_exit=restore_llmis_patch_on_exit,
     ) as (_llm_service, model_ref):
         yield model_ref
 
@@ -661,12 +694,14 @@ def assert_model_identity_collision_detected_and_resolved(
     survivor: Literal["primary", "secondary"] = "primary",
 ) -> None:
     """Assert colliding MaaSModelRefs are flagged, emit events, and recover after sibling removal."""
+    restore_primary_llmis_patch = survivor != "secondary"
     with maas_identity_collision_model_ref(
         admin_client=admin_client,
         namespace=namespace,
         service_account=service_account,
         collision_names=collision_names,
         primary=True,
+        restore_llmis_patch_on_exit=restore_primary_llmis_patch,
     ) as primary_model_ref:
         assert_model_ref_identity_unique(
             maas_model_ref=primary_model_ref,
@@ -730,6 +765,7 @@ def create_maas_routed_llmisvc(
     model_name: str,
     storage_uri: str = IDENTITY_COLLISION_LLMIS_STORAGE_URI,
     container_image: str = IDENTITY_COLLISION_LLMIS_IMAGE,
+    restore_llmis_patch_on_exit: bool = True,
 ) -> Generator[LLMInferenceService]:
     """Create a Ready LLMInferenceService patched for MaaS gateway routing."""
     with (
@@ -748,7 +784,11 @@ def create_maas_routed_llmisvc(
             wait=False,
             timeout=900,
         ) as llm_service,
-        patch_llmisvc_with_maas_router_and_tiers(llm_service=llm_service, tiers=[]),
+        patch_llmisvc_with_maas_router_and_tiers(
+            llm_service=llm_service,
+            tiers=[],
+            restore_on_exit=restore_llmis_patch_on_exit,
+        ),
     ):
         llm_service.wait_for_condition(condition="Ready", status="True", timeout=900)
         yield llm_service
@@ -761,6 +801,7 @@ def maas_llmisvc_and_model_ref(
     namespace: str,
     service_account: str,
     model_name: str,
+    restore_llmis_patch_on_exit: bool = True,
 ) -> Generator[tuple[LLMInferenceService, MaaSModelRef]]:
     """Create a Ready LLMInferenceService and matching MaaSModelRef for identity-collision tests."""
     with (
@@ -770,6 +811,7 @@ def maas_llmisvc_and_model_ref(
             namespace=namespace,
             service_account=service_account,
             model_name=model_name,
+            restore_llmis_patch_on_exit=restore_llmis_patch_on_exit,
         ) as llm_service,
         MaaSModelRef(
             client=admin_client,

@@ -79,6 +79,7 @@ DEFAULT_CUSTOM_MODEL_CATALOG: str = "model-catalog-sources"
 SAMPLE_MODEL_NAME1 = "mistralai/Mistral-7B-Instruct-v0.3"
 CUSTOM_CATALOG_ID1: str = "sample_custom_catalog1"
 DEFAULT_MODEL_CATALOG_CM: str = "default-catalog-sources"
+MODEL_CATALOG_API_PATH: str = "/api/model_catalog/v1alpha1/"
 MCP_CATALOG_API_PATH: str = "/api/mcp_catalog/v1alpha1/"
 AGENT_CATALOG_API_PATH: str = "/api/agent_catalog/v1alpha1/"
 KUBERBACPROXY_STR: str = "KubeRBACProxyAvailable"
@@ -153,3 +154,13 @@ MR_RUNTIME_CONTAINERS_Z: dict[str, Any] = {
     },
 }
 MR_MODEL_SERVER_URL_PATH_Z: str = ""
+EXTERNAL_ADDRESS_REST_ANNOTATION: str = "routing.opendatahub.io/external-address-rest"
+KUBE_RBAC_PROXY_PORT: int = 8443
+CURL_CONNECT_TIMEOUT_EXIT_CODE: int = 28
+ROUTER_INGRESS_PEER: dict[str, Any] = {
+    "namespaceSelector": {"matchLabels": {"network.openshift.io/policy-group": "ingress"}},
+}
+AUTOML_BFF_PEER: dict[str, Any] = {
+    "namespaceSelector": {"matchLabels": {"opendatahub.io/generated-namespace": "true"}},
+    "podSelector": {"matchLabels": {"deployment": "automl-ui"}},
+}

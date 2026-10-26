@@ -11,9 +11,15 @@ from tests.model_serving.model_server.llmd.utils import (
     log_accelerator_selection,
     log_base_refs_selection,
 )
-from tests.model_serving.model_server.utils import is_arm64_cluster, skip_test
+from tests.model_serving.model_server.utils import (
+    CONNECTION_PATH_ANNOTATION,
+    CONNECTIONS_ANNOTATION,
+    is_arm64_cluster,
+    skip_test,
+)
 from utilities.constants import Labels
 from utilities.infra import is_disconnected_cluster
+from utilities.resources.llm_inference_service import LLMInferenceService
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -33,10 +39,24 @@ class LLMISvcConfig:
     enable_auth = False
     wait_timeout = 420
     base_refs = None
+    # Whether to wait for Ready (and workload pods) after creation. Smoke/injection-only
+    # variants set this to False since they never schedule a pod.
+    wait = True
 
     # default values for expectation pods count
     expected_vllm_pod_count = 1
     expected_inference_pool_pod_count = 1
+
+    # ── ConnectionsAPI storage-strategy axis ──────────────────────────────
+    # When True, storage is driven by a ConnectionsAPI connection Secret (resolved by the
+    # `connection_secret_fixture` fixture) instead of a static `storage_uri`. `connection_secret_name`
+    # and `connection_bucket` are bound at fixture-time via `with_overrides` — never set directly on
+    # a class body.
+    use_connection: bool = False
+    connection_secret_fixture: str | None = None
+    connection_path: str | None = None
+    connection_secret_name: str | None = None
+    connection_bucket: str | None = None
 
     @classmethod
     def container_resources(cls):
@@ -65,11 +85,30 @@ class LLMISvcConfig:
 
     @classmethod
     def annotations(cls):
-        return {
+        result = {
             "prometheus.io/port": "8000",
             "prometheus.io/path": "/metrics",
             "security.opendatahub.io/enable-auth": str(cls.enable_auth).lower(),
         }
+
+        # ConnectionsAPI annotations. Not set unless `use_connection` is set.
+        if not cls.use_connection:
+            return result
+        assert cls.connection_secret_name is not None, "connection_secret_name must be bound via with_overrides"
+        result[CONNECTIONS_ANNOTATION] = cls.connection_secret_name
+        if cls.connection_path:
+            result[CONNECTION_PATH_ANNOTATION] = cls.connection_path
+
+        return result
+
+    @classmethod
+    def verify_injection(cls, llmisvc: LLMInferenceService) -> None:
+        """Assert the ConnectionsAPI webhook injected the expected fields. No-op for static configs.
+
+        `use_connection` subclasses must override this — the base implementation only guards
+        against a connection config that forgets to, rather than asserting anything itself.
+        """
+        assert not cls.use_connection, f"{cls.__name__} sets use_connection=True but never overrides verify_injection"
 
     @classmethod
     def prefill_config(cls):
@@ -238,6 +277,7 @@ class GpuConfig(LLMISvcConfig):
     # default GPU requirements
     min_gpus_per_node = 1
     min_nodes = 1
+    min_total_gpus = 1
     supported_accelerators = LLMD_TESTS_SUPPORTED_ACCELERATORS
 
     # supported-topologies values must be consistent with the samples
@@ -286,10 +326,11 @@ class GpuConfig(LLMISvcConfig):
 
         Scans worker nodes, filters to ``cls.supported_accelerators``, and
         picks the type with the most total GPUs (node count as tiebreaker).
-        Skips the test if no accelerator meets ``min_gpus_per_node`` / ``min_nodes``.
+        Skips the test if no accelerator meets ``min_gpus_per_node``, ``min_nodes``,
+        and ``min_total_gpus``.
 
         Uses ``cls.supported_accelerators``, ``cls.min_gpus_per_node``,
-        and ``cls.min_nodes`` to filter and qualify.
+        ``cls.min_nodes``, and ``cls.min_total_gpus`` to filter and qualify.
 
         Args:
             client: Kubernetes dynamic client.
@@ -332,7 +373,7 @@ class GpuConfig(LLMISvcConfig):
         qualified = {
             resource_name: node_stats
             for resource_name, node_stats in candidates.items()
-            if node_stats["qualifying_nodes"] >= cls.min_nodes
+            if node_stats["qualifying_nodes"] >= cls.min_nodes and node_stats["qualifying_gpus"] >= cls.min_total_gpus
         }
 
         # Skip the test if no accelerator type meets the requirements
@@ -356,6 +397,7 @@ class GpuConfig(LLMISvcConfig):
                 f"  This test can run on [{supported}] and requires:\n"
                 f"  - at least {cls.min_gpus_per_node} GPU(s) per node\n"
                 f"  - at least {cls.min_nodes} node(s) with GPU\n"
+                f"  - at least {cls.min_total_gpus} GPU(s) in total\n"
                 f"  {cluster_state}"
             )
             skip_test(reason=reason)

@@ -19,10 +19,9 @@ class SharedImages:
     MLSERVER_LIGHTGBM: str = "oci://quay.io/opendatahub/modelcar-mlserver-lightgbm@sha256:2e4c2aff76656b3547e8af21728818eb586080202ae23a8b5155ac59f57d8328"  # noqa: E501
     MLSERVER_ONNX: str = "oci://quay.io/opendatahub/modelcar-mlserver-onnx@sha256:d7747270ba666c0585dc20f38425811e3d901f150618237d4ab94781b3ab31b7"  # noqa: E501
 
-    BUSYBOX: str = (
-        "quay.io/quay/busybox"
-        "@sha256:92f3298bf80a1ba949140d77987f5de081f010337880cd771f7e7fc928f8c74d"  # pragma: allowlist secret
-    )
+    BUSYBOX: str = "quay.io/quay/busybox@sha256:92f3298bf80a1ba949140d77987f5de081f010337880cd771f7e7fc928f8c74d"
+
+    UBI_MINIMAL: str = "registry.access.redhat.com/ubi9/ubi-minimal:latest"
 
     MODELCAR_MNIST_8_1: str = "oci://quay.io/opendatahub/modelcar-openvino@sha256:c92d7d0cb4a1e798ab6a6c4370259a081c6f335bad26627a99046607873b0e42"  # noqa: E501
     MODELCAR_GRANITE_8B_CODE_INSTRUCT: str = "oci://registry.redhat.io/rhelai1/modelcar-granite-8b-code-instruct@sha256:e23eafe347ecdcaf219da6b573f3ef9f526f86543f7bad8e7d3329b36f0bc631"  # noqa: E501
@@ -42,6 +41,10 @@ class SharedImages:
     MINIO_QWEN_HAP_BPIV2: str = "quay.io/trustyai_testing/qwen2.5-0.5b-instruct-hap-bpiv2-minio@sha256:eac1ca56f62606e887c80b4a358b3061c8d67f0b071c367c0aa12163967d5b2b"  # noqa: E501
     MINIO_MODEL_REGISTRY: str = (
         "quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e"
+    )
+
+    SEAWEEDFS: str = (
+        "ghcr.io/chrislusf/seaweedfs@sha256:6620371e8af8282056685c652d4637265698c9e2c2d59f9594e6ac333ad6c634"
     )
 
     MARIADB_1011: str = (

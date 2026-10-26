@@ -322,17 +322,24 @@ def model_car_inference_service(
     serving_runtime_from_template: ServingRuntime,
 ) -> Generator[InferenceService, Any, Any]:
     deployment_mode = request.param.get("deployment-mode", KServeDeploymentType.RAW_DEPLOYMENT)
-    with create_isvc(
-        client=unprivileged_client,
-        name=f"model-car-{deployment_mode.lower()}",
-        namespace=unprivileged_model_namespace.name,
-        runtime=serving_runtime_from_template.name,
-        storage_uri=request.param["storage-uri"],
-        model_format=serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,
-        deployment_mode=deployment_mode,
-        external_route=request.param.get("external-route", True),
-        wait_for_predictor_pods=False,
-    ) as isvc:
+    isvc_kwargs: dict[str, Any] = {
+        "client": unprivileged_client,
+        "name": f"model-car-{deployment_mode.lower()}",
+        "namespace": unprivileged_model_namespace.name,
+        "runtime": serving_runtime_from_template.name,
+        "storage_uri": request.param["storage-uri"],
+        "model_format": serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,
+        "deployment_mode": deployment_mode,
+        "external_route": request.param.get("external-route", True),
+        "wait_for_predictor_pods": False,
+    }
+    # ConnectionsAPI OCI storage-strategy variant (kserve/storage/oci/test_oci_image.py): resolve
+    # the connection Secret by fixture name so it's created before the ISVC references it. Additive
+    # and unused by every other caller of this fixture.
+    if connection_secret_fixture := request.param.get("connection-secret-fixture"):
+        secret = request.getfixturevalue(argname=connection_secret_fixture)
+        isvc_kwargs["connections"] = secret.name
+    with create_isvc(**isvc_kwargs) as isvc:
         yield isvc
 
 
