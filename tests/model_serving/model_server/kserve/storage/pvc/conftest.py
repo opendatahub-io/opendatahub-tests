@@ -97,7 +97,7 @@ def patched_read_only_isvc(
         }
     )
     pod_uids_before = get_predictor_pod_uids(client=unprivileged_client, isvc=pvc_inference_service)
-    editor.update()
+    editor.update(backup_resources=True)
     try:
         wait_for_rollout_complete(
             client=unprivileged_client, isvc=pvc_inference_service, previous_pod_uids=pod_uids_before
