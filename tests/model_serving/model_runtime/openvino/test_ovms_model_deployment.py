@@ -28,7 +28,7 @@ from utilities.constants import KServeDeploymentType, ModelFormat, Protocols
 
 LOGGER = structlog.get_logger(name=__name__)
 
-pytestmark = pytest.mark.usefixtures("valid_aws_config")
+pytestmark = pytest.mark.usefixtures("skip_if_arm64_cluster_detected", "valid_aws_config")
 
 
 @pytest.mark.parametrize(

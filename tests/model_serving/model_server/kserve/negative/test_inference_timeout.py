@@ -30,7 +30,7 @@ from tests.model_serving.model_server.kserve.negative.utils import (
 
 pytestmark = [
     pytest.mark.rawdeployment,
-    pytest.mark.usefixtures("valid_aws_config"),
+    pytest.mark.usefixtures("skip_if_arm64_cluster_detected", "valid_aws_config"),
 ]
 
 _VALID_BODY: str = json.dumps(VALID_OVMS_INFERENCE_BODY)
