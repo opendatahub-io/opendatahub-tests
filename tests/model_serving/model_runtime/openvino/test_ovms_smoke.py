@@ -18,6 +18,8 @@ Note:
 import pytest
 from ocp_resources.pod import Pod
 
+pytestmark = pytest.mark.usefixtures("skip_if_arm64_cluster_detected")
+
 
 @pytest.mark.skip_on_disconnected
 @pytest.mark.parametrize(

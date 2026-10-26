@@ -17,6 +17,14 @@ model-car:
     unsupported_accelerators:
       - gaudi
       - spyre
+    # Default 16Gi limit OOM-kills the vLLM engine while loading the whisper weights.
+    resources:
+      requests:
+        cpu: "4"
+        memory: "48Gi"
+      limits:
+        cpu: "8"
+        memory: "64Gi"
     serving_arguments:
       args:
         - "--uvicorn-log-level=info"
