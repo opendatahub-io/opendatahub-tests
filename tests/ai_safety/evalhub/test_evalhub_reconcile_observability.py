@@ -1057,16 +1057,16 @@ class TestEvalHubReconcileRegression:
             "controller-runtime base reconcile metrics missing — possible regression"
         )
 
-    def test_lmes_gorch_controller_metrics_unaffected(
+    def test_lmes_nemo_controller_metrics_unaffected(
         self,
         operator_metrics_route: Route,
         admin_client: DynamicClient,
         model_namespace: Namespace,
         operator_metrics_token: str,
     ) -> None:
-        """Given the new instrumentation, LMES and GORCH controller metrics still work.
+        """Given the new instrumentation, LMES and NemoGuardrails controller metrics still work.
 
-        TC-REG-002: Verify existing LMES and GORCH controller metrics are
+        TC-REG-002: Verify existing LMES and NemoGuardrails controller metrics are
         unaffected by the new EvalHub reconciliation observability code.
         """
         raw_metrics = fetch_operator_metrics(
@@ -1080,7 +1080,7 @@ class TestEvalHubReconcileRegression:
         )
         controllers_seen = {sample["labels"].get("controller", "") for sample in reconcile_samples}
         assert controllers_seen, "No controller_runtime_reconcile_total samples found"
-        expected_controllers = {"lmevaljob", "guardrailsorchestrator"}
+        expected_controllers = {"lmevaljob", "nemoguardrails"}
         missing = expected_controllers - controllers_seen
         assert not missing, (
             f"Expected controllers {expected_controllers} in metrics, missing: {missing}. Found: {controllers_seen}"
