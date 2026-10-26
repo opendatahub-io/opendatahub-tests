@@ -168,6 +168,9 @@ def vllm_inference_service(
     resources: Any = deepcopy(predict_resources.get("resources", PREDICT_RESOURCES["resources"]))
     resources["requests"][identifier] = gpu_count
     resources["limits"][identifier] = gpu_count
+    if accelerator_type == AcceleratorType.SPYRE:
+        resources["requests"]["memory"] = "32Gi"
+        resources["limits"]["memory"] = "64Gi"
     isvc_kwargs["resources"] = resources
 
     if accelerator_type == AcceleratorType.GAUDI:
