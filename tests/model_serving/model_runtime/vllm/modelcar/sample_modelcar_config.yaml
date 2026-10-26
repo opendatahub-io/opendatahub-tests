@@ -16,6 +16,7 @@ model-car:
     # get_kv_cache_spec() raises NotImplementedError on HPU (engine core dies at init).
     unsupported_accelerators:
       - gaudi
+      - spyre
     serving_arguments:
       args:
         - "--uvicorn-log-level=info"
@@ -31,6 +32,7 @@ model-car:
     # Gemma3Model.forward() signature mismatch on HPU (missing intermediate_tensors) -> engine dead.
     unsupported_accelerators:
       - gaudi
+      - spyre
     serving_arguments:
       args:
         - "--uvicorn-log-level=info"
@@ -39,6 +41,8 @@ model-car:
   - name: nomic-embed-text-v1-5
     image: oci://registry.redhat.io/rhelai1/modelcar-nomic-embed-text-v1-5:1.5
     model_output_type: embedding
+    unsupported_accelerators:
+      - spyre
     serving_arguments:
       args:
         - "--uvicorn-log-level=info"
