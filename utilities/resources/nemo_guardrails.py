@@ -16,6 +16,7 @@ class NemoGuardrails(NamespacedResource):
 
     def __init__(
         self,
+        allowed_consumers: dict[str, Any] | None = None,
         ca_bundle_config: dict[str, Any] | None = None,
         env: list[Any] | None = None,
         expose_route: bool | None = None,
@@ -26,6 +27,12 @@ class NemoGuardrails(NamespacedResource):
     ) -> None:
         r"""
         Args:
+            allowed_consumers (dict[str, Any]): Controls which namespaces may attach an AIGuardrail
+              consumer to this server. Set namespaces.from to "Same" to allow only the server's own
+              namespace (the default when this field is omitted), "All" to allow any namespace, or
+              "Selector" to allow only namespaces whose labels match the given label selector.
+              "Selector" requires a non-empty selector; "Same" and "All" must not include one.
+
             ca_bundle_config (dict[str, Any]): CABundleConfig defines the CA bundle configuration for custom
               certificates
 
@@ -45,6 +52,7 @@ class NemoGuardrails(NamespacedResource):
         """
         super().__init__(**kwargs)
 
+        self.allowed_consumers = allowed_consumers
         self.ca_bundle_config = ca_bundle_config
         self.env = env
         self.expose_route = expose_route
@@ -64,6 +72,9 @@ class NemoGuardrails(NamespacedResource):
             _spec = self.res["spec"]
 
             _spec["nemoConfigs"] = self.nemo_configs
+
+            if self.allowed_consumers is not None:
+                _spec["allowedConsumers"] = self.allowed_consumers
 
             if self.ca_bundle_config is not None:
                 _spec["caBundleConfig"] = self.ca_bundle_config

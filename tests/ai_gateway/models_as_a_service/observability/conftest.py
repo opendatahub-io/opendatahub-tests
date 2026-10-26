@@ -15,7 +15,6 @@ from tests.ai_gateway.models_as_a_service.observability.constants import (
     SERVICE_MONITOR_CRD_NAME,
 )
 from tests.ai_gateway.models_as_a_service.observability.utils import (
-    get_maas_config_default,
     limitador_is_deployed,
     maas_config_usage_logging_enabled,
     monitoring_namespace_exists,
@@ -64,15 +63,6 @@ def opentelemetry_collector_crd_available(admin_client: DynamicClient) -> None:
     """Fail when the OpenTelemetryCollector CRD is not installed."""
     if not opentelemetry_collector_crd_installed(admin_client=admin_client):
         pytest.fail(f"{OTEL_COLLECTOR_CRD_NAME} not installed; usage-logs collector bundle requires it")
-
-
-@pytest.fixture(scope="session")
-def maas_config_default(
-    admin_client: DynamicClient,
-    maas_subscription_controller_enabled_latest: None,
-) -> MaaSConfig:
-    """Return the cluster-scoped MaaS Config/default anchor."""
-    return get_maas_config_default(admin_client=admin_client)
 
 
 @pytest.fixture

@@ -54,55 +54,44 @@ class ProtocolVersion:
     V2: str = "v2"
 
 
-# Tabular inference payloads (one row) for Telco Churn model schema.
+# Tabular inference payloads (one Titanic row) for the model schema in S3.
 # V2: one tensor per feature (input.name must match required feature names).
 TABULAR_V2_INPUT: dict[str, Any] = {
     "inputs": [
-        {"name": "gender", "shape": [1], "datatype": "BYTES", "data": ["Female"]},
-        {"name": "SeniorCitizen", "shape": [1], "datatype": "INT64", "data": [0]},
-        {"name": "Partner", "shape": [1], "datatype": "BYTES", "data": ["Yes"]},
-        {"name": "Dependents", "shape": [1], "datatype": "BYTES", "data": ["No"]},
-        {"name": "tenure", "shape": [1], "datatype": "INT64", "data": [1]},
-        {"name": "PhoneService", "shape": [1], "datatype": "BYTES", "data": ["No"]},
-        {"name": "MultipleLines", "shape": [1], "datatype": "BYTES", "data": ["No phone service"]},
-        {"name": "InternetService", "shape": [1], "datatype": "BYTES", "data": ["DSL"]},
-        {"name": "OnlineSecurity", "shape": [1], "datatype": "BYTES", "data": ["No"]},
-        {"name": "OnlineBackup", "shape": [1], "datatype": "BYTES", "data": ["Yes"]},
-        {"name": "DeviceProtection", "shape": [1], "datatype": "BYTES", "data": ["No"]},
-        {"name": "TechSupport", "shape": [1], "datatype": "BYTES", "data": ["No"]},
-        {"name": "StreamingTV", "shape": [1], "datatype": "BYTES", "data": ["No"]},
-        {"name": "StreamingMovies", "shape": [1], "datatype": "BYTES", "data": ["No"]},
-        {"name": "Contract", "shape": [1], "datatype": "BYTES", "data": ["Month-to-month"]},
-        {"name": "PaperlessBilling", "shape": [1], "datatype": "BYTES", "data": ["Yes"]},
-        {"name": "PaymentMethod", "shape": [1], "datatype": "BYTES", "data": ["Electronic check"]},
-        {"name": "MonthlyCharges", "shape": [1], "datatype": "FP64", "data": [29.85]},
-        {"name": "TotalCharges", "shape": [1], "datatype": "FP64", "data": [29.85]},
+        {"name": "PassengerId", "shape": [1], "datatype": "INT64", "data": [2]},
+        {"name": "Pclass", "shape": [1], "datatype": "INT64", "data": [1]},
+        {
+            "name": "Name",
+            "shape": [1],
+            "datatype": "BYTES",
+            "data": ["Cumings, Mrs. John Bradley (Florence Briggs Thayer)"],
+        },
+        {"name": "Sex", "shape": [1], "datatype": "BYTES", "data": ["female"]},
+        {"name": "Age", "shape": [1], "datatype": "FP64", "data": [38.0]},
+        {"name": "SibSp", "shape": [1], "datatype": "INT64", "data": [1]},
+        {"name": "Parch", "shape": [1], "datatype": "INT64", "data": [0]},
+        {"name": "Ticket", "shape": [1], "datatype": "BYTES", "data": ["PC 17599"]},
+        {"name": "Fare", "shape": [1], "datatype": "FP64", "data": [71.2833]},
+        {"name": "Cabin", "shape": [1], "datatype": "BYTES", "data": ["C85"]},
+        {"name": "Embarked", "shape": [1], "datatype": "BYTES", "data": ["C"]},
     ]
 }
 
-# V1: row-wise values in the same feature order as required by the runtime.
+# V1: row-wise values in the same feature order as the model schema.
 TABULAR_V1_INPUT: dict[str, Any] = {
     "instances": [
         [
-            "Female",
-            0,
-            "Yes",
-            "No",
+            2,
             1,
-            "No",
-            "No phone service",
-            "DSL",
-            "No",
-            "Yes",
-            "No",
-            "No",
-            "No",
-            "No",
-            "Month-to-month",
-            "Yes",
-            "Electronic check",
-            29.85,
-            29.85,
+            "Cumings, Mrs. John Bradley (Florence Briggs Thayer)",
+            "female",
+            38.0,
+            1,
+            0,
+            "PC 17599",
+            71.2833,
+            "C85",
+            "C",
         ]
     ]
 }

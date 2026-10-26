@@ -13,6 +13,7 @@ from typing import Any, NamedTuple
 
 import structlog
 from _pytest.fixtures import FixtureRequest
+from kubernetes.client.exceptions import ApiException
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.event import Event
 from ocp_resources.node import Node
@@ -20,11 +21,13 @@ from ocp_resources.pod import Pod
 from ocp_resources.prometheus import Prometheus
 from pyhelper_utils.shell import run_command
 from timeout_sampler import TimeoutExpiredError, retry
+from urllib3.exceptions import HTTPError
 
 from tests.model_serving.model_server.llmd.constants import LLMD_TESTS_SUPPORTED_ACCELERATORS
 from tests.model_serving.model_server.utils import assert_service_account_exists, wait_for_cleared_predicate
 from utilities.certificates_utils import get_ca_bundle
 from utilities.constants import Timeout
+from utilities.general import collect_pod_information
 from utilities.infra import get_dsci_applications_namespace
 from utilities.jira import is_jira_issue_open
 from utilities.llmd_constants import LLMEndpoint
@@ -661,6 +664,26 @@ def get_llmd_inference_pool_pods(
         if labels.get("kserve.io/component") == "workload":
             pods.append(pod)
     return pods
+
+
+def collect_llmisvc_pod_information(llmisvc: LLMInferenceService) -> None:
+    """Save workload and scheduler pod diagnostics before service cleanup.
+
+    Args:
+        llmisvc: Service whose pod YAML and container logs should be collected.
+    """
+    try:
+        for pod in Pod.get(
+            client=llmisvc.client,
+            namespace=llmisvc.namespace,
+            label_selector=(
+                f"{Pod.ApiGroup.APP_KUBERNETES_IO}/part-of=llminferenceservice,"
+                f"{Pod.ApiGroup.APP_KUBERNETES_IO}/name={llmisvc.name}"
+            ),
+        ):
+            collect_pod_information(pod=pod)
+    except ApiException, HTTPError, TimeoutExpiredError:
+        LOGGER.warning(f"Pod information gathering failed for {llmisvc.namespace}/{llmisvc.name}.")
 
 
 def get_llmd_vllm_pods(
