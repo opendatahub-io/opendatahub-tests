@@ -13,9 +13,13 @@ class ModelServingImages:
         "@sha256:cac5c60eb969f6881e3d2c473e331a5232e1fd510d3fca56cc96e1835af5519d"  # pragma: allowlist secret
     )
 
+    # Multi-arch (amd64 + arm64) rebuild of the sentiment transformer.
+    # The amd64 manifest is byte-identical to the original spolti image
+    # (quay.io/spolti/kserve-sentiment-custom-transformer@sha256:cd8c290d...);
+    # the arm64 manifest enables the transformer auth tests on arm clusters.
     TRANSFORMER_IMAGE: str = (
-        "quay.io/spolti/kserve-sentiment-custom-transformer"
-        "@sha256:cd8c290d0860e0b67dbd4138bc985e5f895da2c8e4eac3644fdb4a16520a8495"  # pragma: allowlist secret
+        "quay.io/model_server/kserve-sentiment-custom-transformer"
+        "@sha256:62043a1d95dd084d9a8ddc3775c8bde218020a520889f1af85b24f430c53cf4e"  # pragma: allowlist secret
     )
 
     VLLM_OMNI_MODELCAR: str = (

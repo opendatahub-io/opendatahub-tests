@@ -18,7 +18,8 @@ from utilities.resources.llm_inference_service import LLMInferenceService
 
 pytestmark = [
     pytest.mark.smoke,
-    pytest.mark.usefixtures("valid_aws_config"),
+    # TinyLlama CPU inference uses the vllm-cpu runtime image, which is not built for arm64
+    pytest.mark.usefixtures("skip_if_arm64_cluster_detected", "valid_aws_config"),
 ]
 
 NAMESPACE = ns_from_file(file=__file__)
