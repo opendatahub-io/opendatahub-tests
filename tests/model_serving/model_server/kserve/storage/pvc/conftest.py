@@ -97,8 +97,10 @@ def patched_read_only_isvc(
         }
     )
     pod_uids_before = get_predictor_pod_uids(client=unprivileged_client, isvc=pvc_inference_service)
-    editor.update(backup_resources=True)
+    patched = False
     try:
+        editor.update(backup_resources=True)
+        patched = True
         wait_for_rollout_complete(
             client=unprivileged_client, isvc=pvc_inference_service, previous_pod_uids=pod_uids_before
         )
@@ -106,11 +108,16 @@ def patched_read_only_isvc(
     finally:
         # Restore the original annotation value, triggering a rollout.
         # Wait for it to settle so the next test sees a clean state.
-        pod_uids_before_restore = get_predictor_pod_uids(client=unprivileged_client, isvc=pvc_inference_service)
+        # If the update itself failed, no rollout is running: restore is a
+        # no-op without a backup and any original exception is left to
+        # propagate once this block finishes.
+        if patched:
+            pod_uids_before_restore = get_predictor_pod_uids(client=unprivileged_client, isvc=pvc_inference_service)
         editor.restore()
-        wait_for_rollout_complete(
-            client=unprivileged_client, isvc=pvc_inference_service, previous_pod_uids=pod_uids_before_restore
-        )
+        if patched:
+            wait_for_rollout_complete(
+                client=unprivileged_client, isvc=pvc_inference_service, previous_pod_uids=pod_uids_before_restore
+            )
 
 
 @pytest.fixture(scope="class")
