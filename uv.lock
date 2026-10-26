@@ -1960,7 +1960,7 @@ dependencies = [
     { name = "openshift-python-wrapper" },
     { name = "portforward" },
     { name = "protobuf" },
-    { name = "pyarrow", version = "23.0.1+ppc64le1", source = { registry = "https://wheels.developerfirst.ibm.com/ppc64le/linux/+simple/" }, marker = "platform_machine == 'ppc64le'" },
+    { name = "pyarrow", version = "24.0.0", source = { registry = "https://wheels.developerfirst.ibm.com/ppc64le/linux/+simple/" }, marker = "platform_machine == 'ppc64le'" },
     { name = "pyarrow", version = "26.0.0", source = { registry = "https://pypi.org/simple/" }, marker = "platform_machine != 'ppc64le'" },
     { name = "pygithub" },
     { name = "pynacl", version = "1.6.2", source = { registry = "https://pypi.org/simple/" }, marker = "platform_machine != 'ppc64le'" },
@@ -2457,7 +2457,7 @@ wheels = [
 
 [[package]]
 name = "pyarrow"
-version = "23.0.1+ppc64le1"
+version = "24.0.0"
 source = { registry = "https://wheels.developerfirst.ibm.com/ppc64le/linux/+simple/" }
 resolution-markers = [
     "platform_machine == 'ppc64le' and sys_platform == 'win32'",
@@ -2465,7 +2465,7 @@ resolution-markers = [
     "platform_machine == 'ppc64le' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 wheels = [
-    { url = "https://wheels.developerfirst.ibm.com/ppc64le/linux/+f/ac7/6f8e697db3a69/pyarrow-23.0.1+ppc64le1-cp314-cp314-manylinux_2_34_ppc64le.whl", hash = "sha256:ac76f8e697db3a69d4a1e630bd5cdba7743be78d573552fe9a35ba0dd861ebb4" },
+    { url = "https://wheels.developerfirst.ibm.com/ppc64le/linux/+f/d80/efed1d83b67f0/pyarrow-24.0.0-cp314-cp314-manylinux_2_34_ppc64le.whl", hash = "sha256:d80efed1d83b67f04741c907763cef9c960236b05b9d01ad1cae1cf729b6f1dd" },
 ]
 
 [[package]]
