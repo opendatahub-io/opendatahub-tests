@@ -9,14 +9,18 @@ This module provides fixtures for:
 """
 
 import copy
+import os
 from collections.abc import Generator
 from typing import Any, cast
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.cluster_version import ClusterVersion
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
+from ocp_resources.resource import get_client
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
@@ -39,6 +43,39 @@ from utilities.constants import (
 from utilities.inference_utils import create_isvc
 from utilities.infra import get_pods_by_isvc_label
 from utilities.serving_runtime import ServingRuntimeFromTemplate
+
+LOGGER = structlog.get_logger(name=__name__)
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item], config: pytest.Config) -> None:
+    """Deselect model car tests on OCP < 4.20 (ImageVolume not supported)."""
+    kubeconfig = os.environ.get("KUBECONFIG", os.path.expanduser("~/.kube/config"))
+    if not os.path.exists(kubeconfig):
+        return
+
+    ocp_version: Version | None = None
+    deselected: list[pytest.Item] = []
+    remaining: list[pytest.Item] = []
+
+    for item in items:
+        if "/model_car/" not in str(item.fspath):
+            remaining.append(item)
+            continue
+
+        if ocp_version is None:
+            client = get_client()
+            cluster_version = ClusterVersion(client=client, name="version", ensure_exists=True)
+            ocp_version = Version.parse(version=str(cluster_version.instance.status.history[0].version))
+            LOGGER.info(f"OCP version: {ocp_version}, min required for model car: {MLSERVER_MODELCAR_MIN_OCP_VERSION}")
+
+        if ocp_version < MLSERVER_MODELCAR_MIN_OCP_VERSION:
+            deselected.append(item)
+        else:
+            remaining.append(item)
+
+    if deselected:
+        config.hook.pytest_deselected(items=deselected)
+        items[:] = remaining
 
 
 @pytest.fixture(scope="class")
@@ -185,7 +222,6 @@ def mlserver_model_car_inference_service(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     mlserver_serving_runtime: ServingRuntime,
-    openshift_version: Version,
 ) -> Generator[InferenceService]:
     """
     Create InferenceService for MLServer model car (OCI image) testing.
@@ -195,17 +231,10 @@ def mlserver_model_car_inference_service(
         admin_client: Kubernetes dynamic client.
         model_namespace: Namespace for deployment.
         mlserver_serving_runtime: MLServer ServingRuntime instance.
-        openshift_version: OpenShift cluster version.
 
     Yields:
         InferenceService: Configured ISVC using OCI storage.
     """
-    if openshift_version < MLSERVER_MODELCAR_MIN_OCP_VERSION:
-        pytest.skip(
-            f"MLServer model car requires OCP {MLSERVER_MODELCAR_MIN_OCP_VERSION}+ for ImageVolume support, "
-            f"current version: {openshift_version}"
-        )
-
     params = request.param
     storage_uri = params.get("storage-uri")
     if not storage_uri:
