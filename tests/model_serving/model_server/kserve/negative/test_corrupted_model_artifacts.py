@@ -17,7 +17,7 @@ from tests.model_serving.model_server.kserve.negative.utils import (
     wait_for_isvc_model_status_states,
 )
 
-pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_config")]
+pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("skip_if_arm64_cluster_detected", "valid_aws_config")]
 
 
 @pytest.mark.tier3

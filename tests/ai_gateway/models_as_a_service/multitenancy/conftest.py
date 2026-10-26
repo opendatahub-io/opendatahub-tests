@@ -546,6 +546,26 @@ def tenant_a_inference_headers(
         yield {"Authorization": f"Bearer {plaintext_key}"}
 
 
+@pytest.fixture(scope="class")
+def tenant_b_inference_headers(
+    per_tenant_maas_api_ready: None,
+    request_session_http: requests.Session,
+    tenant_b_base_url: str,
+    tenant_b_subscription_name: str,
+    current_client_token: str,
+) -> Generator[dict[str, str], Any, Any]:
+    """Create a tenant B API key and return Authorization headers for inference."""
+    with isolation_tenant_api_key_plaintext(
+        request_session_http=request_session_http,
+        base_url=tenant_b_base_url,
+        ocp_user_token=current_client_token,
+        subscription_name=tenant_b_subscription_name,
+        key_name_prefix="e2e-mt-inference-b",
+        fixture_label="tenant_b_inference_headers",
+    ) as plaintext_key:
+        yield {"Authorization": f"Bearer {plaintext_key}"}
+
+
 @pytest.fixture(scope="session")
 def maas_config_tenants_healthy_reconcile_enabled(
     maas_config_default: MaaSConfig,
