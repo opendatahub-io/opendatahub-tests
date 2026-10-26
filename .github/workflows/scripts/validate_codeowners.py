@@ -13,16 +13,17 @@ LOGGER = logging.getLogger("codeowners_eligibility")
 ELIGIBILITY_WINDOW_DAYS = 365
 
 
-def expand_owner_to_users(github_client: Github, owner: str) -> set[str]:
+def expand_owner_to_users(github_client: Github, owner: str, repository_organization: str) -> set[str]:
     """Return the user login(s) represented by an owner reference."""
     if "/" not in owner:
         return {owner}
 
     organization_name, team_slug = owner.split("/", maxsplit=1)
+    if organization_name.casefold() != repository_organization.casefold():
+        raise ValueError("CODEOWNERS teams must belong to the repository organization.")
+
     team = github_client.get_organization(login=organization_name).get_team_by_slug(slug=team_slug)
-    members = {member.login.casefold() for member in team.get_members()}
-    LOGGER.info("Expanded @%s to %d team member(s).", owner, len(members))
-    return members
+    return {member.login.casefold() for member in team.get_members()}
 
 
 def has_recent_contribution(github_client: Github, repository: Repository, username: str, since: date) -> bool:
@@ -99,12 +100,17 @@ def main() -> int:
         repository_api = github_client.get_repo(full_name_or_id=repository)
         users_to_check: set[str] = set()
         for owner in added_owners:
-            users_to_check.update(expand_owner_to_users(github_client=github_client, owner=owner))
+            users_to_check.update(
+                expand_owner_to_users(
+                    github_client=github_client,
+                    owner=owner,
+                    repository_organization=repository.split("/", maxsplit=1)[0],
+                )
+            )
 
         since = date.today() - timedelta(days=ELIGIBILITY_WINDOW_DAYS)
         ineligible_users: list[str] = []
         for username in sorted(users_to_check):
-            LOGGER.info("Checking eligibility for @%s.", username)
             if not has_recent_contribution(
                 github_client=github_client,
                 repository=repository_api,
@@ -112,19 +118,16 @@ def main() -> int:
                 since=since,
             ):
                 ineligible_users.append(username)
-    except GithubException as error:
-        LOGGER.error("Unable to complete CODEOWNERS eligibility checks: %s", error)
+    except GithubException, ValueError:
+        LOGGER.error("Unable to evaluate one or more newly added CODEOWNERS references.")
         return 1
 
     if ineligible_users:
-        LOGGER.error(
-            "Eligibility requires at least one authored or reviewed PR in %s in the past year.",
-            repository,
-        )
-        LOGGER.error("Ineligible CODEOWNERS user(s): %s", ", ".join(f"@{user}" for user in ineligible_users))
+        LOGGER.error("Eligibility requires at least one authored or reviewed PR in the past year.")
+        LOGGER.error("One or more newly added CODEOWNERS users do not meet the eligibility requirement.")
         return 1
 
-    LOGGER.info("All %d newly added CODEOWNERS user(s) are eligible.", len(users_to_check))
+    LOGGER.info("All newly added CODEOWNERS users meet the eligibility requirement.")
     return 0
 
 
