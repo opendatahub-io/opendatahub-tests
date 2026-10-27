@@ -61,24 +61,24 @@ class TestGeminiDeployment:
 
     @pytest.mark.tier1
     def test_config_conditional_activation_pattern(self, ogx_gemini_pod: Pod) -> None:
-        """Verify config.yaml uses the GEMINI_API_KEY conditional pattern (TC-DEP-002).
+        """Verify config.yaml uses the ENABLE_GEMINI conditional pattern (TC-DEP-002).
 
         Given: a deployed OGX distribution.
         When: the distribution config file inside the pod is located and inspected.
         Then: it references the conditional activation pattern
-            ${env.GEMINI_API_KEY:+gemini-inference}.
+            ${env.ENABLE_GEMINI:+gemini}.
         """
         search_roots = " ".join(CONFIG_SEARCH_PATHS)
         config_files = ogx_gemini_pod.execute(
             command=[
                 "sh",
                 "-c",
-                f"grep -rls 'gemini-inference' {search_roots} 2>/dev/null || true",
+                f"grep -rls 'ENABLE_GEMINI:+gemini' {search_roots} 2>/dev/null || true",
             ]
         ).strip()
         if not config_files:
             pytest.fail(
-                reason="Could not locate the distribution config referencing 'gemini-inference' in the pod; "
+                reason="Could not locate the distribution config referencing 'ENABLE_GEMINI:+gemini' in the pod; "
                 f"searched {CONFIG_SEARCH_PATHS!r}. Confirm the config path to complete TC-DEP-002."
             )
 
@@ -86,7 +86,7 @@ class TestGeminiDeployment:
         # pattern may live in any one of them, so check every match rather than
         # only the first.
         candidate_files = [line.strip() for line in config_files.splitlines() if line.strip()]
-        pattern = "${env.GEMINI_API_KEY:+gemini-inference}"
+        pattern = "${env.ENABLE_GEMINI:+gemini}"
         matched_file = None
         for candidate in candidate_files:
             contents = ogx_gemini_pod.execute(command=["sh", "-c", f"cat {candidate}"])
