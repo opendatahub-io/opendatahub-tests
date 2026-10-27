@@ -9,6 +9,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
 from ocp_resources.route import Route
 from ogx_client import NotFoundError, OgxClient
+from timeout_sampler import retry
 
 from tests.ogx.constants import OGX_CLIENT_VERIFY_SSL, OGX_CORE_INFERENCE_MODEL, ModelInfo
 from tests.ogx.praxis.constants import MIGRATION_FALLBACK_OWNER_SUBJECT, MIGRATION_FALLBACK_TENANT
@@ -24,6 +25,27 @@ OGX_SERVER_PARAMS: dict[str, Any] = {
 }
 RESPONSES_API_PATH: Final[str] = "/v1/responses"
 UNSERVED_STATUS_CODES: Final[frozenset[int]] = frozenset({404})
+
+
+@retry(wait_timeout=10, sleep=2, exceptions_dict={httpx.HTTPStatusError: []})
+def _probe_route(route: Route, probe_client: httpx.Client) -> int:
+    """Probe a Route for the Responses API, retrying server errors.
+
+    Args:
+        route: OpenShift Route to probe.
+        probe_client: HTTP client used to send the probe.
+
+    Returns:
+        The first non-server-error HTTP status code.
+
+    Raises:
+        HTTPStatusError: If the Route returns a server error.
+    """
+    response = probe_client.post(f"https://{route.host}{RESPONSES_API_PATH}", json={})
+    if response.is_server_error:
+        response.raise_for_status()
+
+    return response.status_code
 
 
 @pytest.mark.parametrize(
@@ -89,13 +111,14 @@ class TestPraxisResponsesOwnership:
             if route.name not in {praxis_gateway_route.name, ogx_test_route.name}
         ]
 
+        routes_exposing_responses: list[str] = []
         with httpx.Client(verify=OGX_CLIENT_VERIFY_SSL, timeout=10) as probe_client:
-            routes_exposing_responses = [
-                f"{route.name} (Service {route.instance.to_dict()['spec']['to']['name']})"
-                for route in other_routes
-                if probe_client.post(f"https://{route.host}{RESPONSES_API_PATH}", json={}).status_code
-                not in UNSERVED_STATUS_CODES
-            ]
+            for route in other_routes:
+                status_code = _probe_route(route=route, probe_client=probe_client)
+                if status_code not in UNSERVED_STATUS_CODES:
+                    routes_exposing_responses.append(
+                        f"{route.name} (Service {route.instance.to_dict()['spec']['to']['name']})"
+                    )
 
         assert not routes_exposing_responses, (
             f"Routes other than Praxis or OGX expose {RESPONSES_API_PATH}: {routes_exposing_responses}"
