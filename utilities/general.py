@@ -502,22 +502,32 @@ def wait_for_pods_running(
     Waits for all pods in a given namespace to reach Running/Completed state. To avoid catching all pods in running
     state too soon, use number_of_consecutive_checks with appropriate values.
 
+    When label_selector is specified, at least one matching pod must exist; otherwise the check raises on timeout
+    to prevent vacuously passing when zero pods match.
+
     Args:
         label_selector: Optional label selector to scope the check (e.g. app=maas-api). Prefer this in
             component health tests so unrelated leftover CrashLoop/Pending pods do not fail the suite.
     """
+
+    def _check_pods() -> list[Pod]:
+        pods = list(
+            Pod.get(
+                client=admin_client,
+                namespace=namespace_name,
+                label_selector=label_selector,
+            )
+        )
+        if label_selector and not pods:
+            raise ResourceNotFoundError(
+                f"No pods matching label_selector={label_selector!r} in namespace {namespace_name}"
+            )
+        return get_not_running_pods(pods=pods)
+
     samples = TimeoutSampler(
         wait_timeout=180,
         sleep=5,
-        func=lambda: get_not_running_pods(
-            pods=list(
-                Pod.get(
-                    client=admin_client,
-                    namespace=namespace_name,
-                    label_selector=label_selector,
-                )
-            )
-        ),
+        func=_check_pods,
         exceptions_dict={NotFoundError: [], ResourceNotFoundError: []},
     )
     sample = None

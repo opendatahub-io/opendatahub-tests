@@ -735,6 +735,8 @@ def maas_controller_enabled_latest(
         DscComponents.KSERVE: {"modelsAsService": {"managementState": DscComponents.ManagementState.MANAGED}}
     }
 
+    dsc_was_ready = dsc_resource.status == dsc_resource.Status.READY
+
     with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
         # Wait only for ModelsAsServiceReady. Full DSC Ready also requires unrelated
         # components (e.g. Dashboard); under upgrade CPU pressure those can stay
@@ -746,7 +748,10 @@ def maas_controller_enabled_latest(
         )
         yield dsc_resource
 
-    dsc_resource.wait_for_condition(condition="Ready", status="True", timeout=600)
+    # Only require full DSC Ready in teardown if it was Ready before the fixture ran;
+    # otherwise the teardown wait times out on pre-existing NotReady conditions.
+    if dsc_was_ready:
+        dsc_resource.wait_for_condition(condition="Ready", status="True", timeout=600)
 
 
 @pytest.fixture(scope="session")
@@ -1094,6 +1099,8 @@ def maas_subscription_controller_enabled_latest(
         DscComponents.KSERVE: {"modelsAsService": {"managementState": DscComponents.ManagementState.MANAGED}}
     }
 
+    dsc_was_ready = dsc_resource.status == dsc_resource.Status.READY
+
     with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
         # Wait only for ModelsAsServiceReady. Full DSC Ready also requires unrelated
         # components (e.g. Dashboard); under upgrade CPU pressure those can stay
@@ -1105,7 +1112,10 @@ def maas_subscription_controller_enabled_latest(
         )
         yield dsc_resource
 
-    dsc_resource.wait_for_condition(condition="Ready", status="True", timeout=600)
+    # Only require full DSC Ready in teardown if it was Ready before the fixture ran;
+    # otherwise the teardown wait times out on pre-existing NotReady conditions.
+    if dsc_was_ready:
+        dsc_resource.wait_for_condition(condition="Ready", status="True", timeout=600)
 
 
 @pytest.fixture(scope="class")

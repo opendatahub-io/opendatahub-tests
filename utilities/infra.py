@@ -1082,18 +1082,24 @@ def wait_for_dsc_status_ready(dsc_resource: DataScienceCluster) -> bool:
 
             apps_ns = py_config.get("applications_namespace", "redhat-ods-applications")
             client = dsc_resource.client
-            pending = [
-                f"{pod.name}:{pod.instance.status.phase}"
-                for pod in Pod.get(client=client, namespace=apps_ns)
-                if pod.instance.status.phase == "Pending"
-            ]
+            # Single API call: server-side filter for Pending pods, raw=True avoids per-pod GET requests
+            raw_pods = Pod.get(client=client, namespace=apps_ns, field_selector="status.phase=Pending", raw=True)
+            pending = [f"{item['metadata']['name']}:{item['status']['phase']}" for item in raw_pods.get("items", [])]
             if pending:
                 message += f"\nPending pods in {apps_ns}: {', '.join(pending)}"
                 message += (
                     "\nHint: DashboardReady often fails when workers lack CPU for rhods-dashboard "
                     "(FailedScheduling / Insufficient cpu) or leftover test workloads fill the cluster."
                 )
-        except (AttributeError, KeyError, NotFoundError, ResourceNotFoundError, TypeError) as exc:
+        except (
+            AttributeError,
+            KeyError,
+            NotFoundError,
+            ResourceNotFoundError,
+            TypeError,
+            kubernetes.client.exceptions.ApiException,
+            urllib3.exceptions.HTTPError,
+        ) as exc:
             LOGGER.debug(f"Could not enrich DSC not-ready error with pending pods: {exc}")
 
     raise ResourceNotReadyError(message)
