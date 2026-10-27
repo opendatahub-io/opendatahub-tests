@@ -31,6 +31,7 @@ from tests.ai_safety.evalhub.utils import (
     MLflowWithWorkspaces,
     build_evalhub_job_payload,
     build_headers,
+    label_selector_matches,
     submit_evalhub_job,
 )
 
@@ -56,12 +57,12 @@ def mlflow_deployment_ready(
         namespace=namespace,
     )
     if mlflow_instance.exists:
-        existing_spec = mlflow_instance.instance.to_dict().get("spec", {})
-        existing_match_labels = (existing_spec.get("workspaceLabelSelector") or {}).get("matchLabels") or {}
-        if existing_match_labels.get(EVALHUB_TENANT_LABEL_KEY) != EVALHUB_TENANT_LABEL_VALUE:
+        existing_selector = mlflow_instance.instance.to_dict().get("spec", {}).get("workspaceLabelSelector")
+        tenant_labels = {EVALHUB_TENANT_LABEL_KEY: EVALHUB_TENANT_LABEL_VALUE}
+        if existing_selector is None or not label_selector_matches(selector=existing_selector, labels=tenant_labels):
             pytest.fail(
-                f"Existing MLflow instance 'mlflow' has workspaceLabelSelector matchLabels "
-                f"{existing_match_labels}, expected {EVALHUB_TENANT_LABEL_KEY}={EVALHUB_TENANT_LABEL_VALUE}"
+                f"Existing MLflow instance 'mlflow' has workspaceLabelSelector {existing_selector}, "
+                f"which does not select tenant namespaces labeled {tenant_labels}"
             )
         deployment.wait_for_replicas(timeout=300)
         yield deployment

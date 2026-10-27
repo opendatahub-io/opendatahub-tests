@@ -71,6 +71,40 @@ class MLflowWithWorkspaces(MLflow):
             self.res["spec"]["workspaceLabelSelector"] = self._workspace_label_selector
 
 
+def label_selector_matches(selector: dict[str, Any], labels: dict[str, str]) -> bool:
+    """Check whether a Kubernetes LabelSelector matches a set of labels.
+
+    Both ``matchLabels`` and ``matchExpressions`` must be satisfied, as in Kubernetes.
+
+    Args:
+        selector: LabelSelector dict with optional ``matchLabels`` and ``matchExpressions``.
+        labels: Labels of the object being selected, e.g. a namespace's labels.
+
+    Returns:
+        True if every requirement in the selector is satisfied by the labels.
+    """
+    for key, value in (selector.get("matchLabels") or {}).items():
+        if labels.get(key) != value:
+            return False
+    for expression in selector.get("matchExpressions") or []:
+        key = expression["key"]
+        operator = expression["operator"]
+        values = expression.get("values") or []
+        if operator == "In":
+            matched = key in labels and labels[key] in values
+        elif operator == "NotIn":
+            matched = key not in labels or labels[key] not in values
+        elif operator == "Exists":
+            matched = key in labels
+        elif operator == "DoesNotExist":
+            matched = key not in labels
+        else:
+            matched = False
+        if not matched:
+            return False
+    return True
+
+
 class TransientEvalhubHealthError(Exception):
     """Recoverable failure while polling an EvalHub health endpoint."""
 
