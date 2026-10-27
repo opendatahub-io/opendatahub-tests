@@ -17,6 +17,7 @@ from tests.model_serving.model_runtime.vllm.constant import (
     ACCELERATOR_IDENTIFIER,
     GAUDI_ENV_VARIABLES,
     PREDICT_RESOURCES,
+    SPYRE_PREDICT_RESOURCES,
     SPYRE_VLLM_ENV_VARIABLES,
     TEMPLATE_MAP,
 )
@@ -164,8 +165,11 @@ def vllm_inference_service(
     gpu_count = request.param.get("gpu_count")
     timeout = request.param.get("timeout")
     identifier = ACCELERATOR_IDENTIFIER.get(accelerator_type, Labels.Nvidia.NVIDIA_COM_GPU)
-    predict_resources = request.param.get("predict_resources", PREDICT_RESOURCES)
-    resources: Any = deepcopy(predict_resources.get("resources", PREDICT_RESOURCES["resources"]))
+    predict_resources = request.param.get("predict_resources", {})
+    default_resources = (
+        SPYRE_PREDICT_RESOURCES if accelerator_type == AcceleratorType.SPYRE else PREDICT_RESOURCES["resources"]
+    )
+    resources: Any = deepcopy(predict_resources.get("resources", default_resources))
     resources["requests"][identifier] = gpu_count
     resources["limits"][identifier] = gpu_count
     isvc_kwargs["resources"] = resources
