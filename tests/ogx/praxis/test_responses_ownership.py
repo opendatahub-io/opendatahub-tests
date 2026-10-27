@@ -22,7 +22,7 @@ OGX_SERVER_PARAMS: dict[str, Any] = {
     "cpu_limits": "2",
 }
 RESPONSES_API_PATH: Final[str] = "/v1/responses"
-UNSERVED_STATUS_CODES: Final[frozenset[int]] = frozenset({404, 503})
+UNSERVED_STATUS_CODES: Final[frozenset[int]] = frozenset({404})
 
 
 @pytest.mark.parametrize(
@@ -40,6 +40,7 @@ class TestPraxisResponsesOwnership:
         self,
         admin_client: DynamicClient,
         unprivileged_model_namespace: Namespace,
+        ogx_test_route: Route,
         praxis_gateway_route: Route,
         ogx_praxis_client: OgxClient,
         praxis_migration_runner: Callable[[], OgxServer],
@@ -64,6 +65,8 @@ class TestPraxisResponsesOwnership:
             for route in Route.get(client=admin_client, namespace=unprivileged_model_namespace.name)
             if route.name != praxis_gateway_route.name
         ]
+        assert ogx_test_route.name in {route.name for route in other_routes}, "OGX Route was not found for probing"
+
         with httpx.Client(verify=OGX_CLIENT_VERIFY_SSL, timeout=10) as probe_client:
             routes_exposing_responses = [
                 f"{route.name} (Service {route.instance.to_dict()['spec']['to']['name']})"
