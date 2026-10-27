@@ -87,10 +87,12 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     nodes = list(Node.get(dyn_client=client))
     cluster_architecture = nodes[0].instance.status.nodeInfo.architecture
     py_config["cluster_architecture"] = cluster_architecture
-    if cluster_architecture == "s390x":
-        LOGGER.info("s390x cluster detected, using Red Hat MySQL 8.4 image and vLLM runtime")
-        ai_hub_constants.MR_DB_IMAGE_DIGEST = ai_hub_constants.MR_DB_IMAGE_DIGEST_S390X
+    if cluster_architecture in ("s390x", "ppc64le"):
+        LOGGER.info(f"{cluster_architecture} cluster detected, using Red Hat MySQL 8.4 image")
+        ai_hub_constants.MR_DB_IMAGE_DIGEST = ai_hub_constants.MR_DB_IMAGE_DIGEST_S390X_PPC
         ai_hub_constants.MR_DB_MYSQL_ARGS = []
+    if cluster_architecture == "s390x":
+        LOGGER.info("s390x cluster detected, using vLLM runtime")
         ai_hub_constants.MR_RUNTIME_TEMPLATE = ai_hub_constants.MR_RUNTIME_TEMPLATE_Z
         ai_hub_constants.MODEL_ARTIFACT.update(ai_hub_constants.MODEL_ARTIFACT_VLLM)
         ai_hub_constants.MR_ISVC_RESOURCES.update(ai_hub_constants.MR_ISVC_RESOURCES_Z)
