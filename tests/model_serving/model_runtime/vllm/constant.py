@@ -53,6 +53,10 @@ PREDICT_RESOURCES: dict[str, list[dict[str, str | dict[str, str]]] | dict[str, d
     "resources": {"requests": {"cpu": "2", "memory": "15Gi"}, "limits": {"cpu": "3", "memory": "16Gi"}},
 }
 
+SPYRE_PREDICT_RESOURCES: dict[str, dict[str, dict[str, str]]] = {
+    "resources": {"requests": {"memory": "32Gi"}, "limits": {"memory": "64Gi"}},
+}
+
 COMPLETION_QUERY: list[dict[str, Any]] = [
     {
         "text": "List the top five breeds of dogs and their characteristics.",
