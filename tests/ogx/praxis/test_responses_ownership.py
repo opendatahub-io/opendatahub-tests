@@ -6,6 +6,7 @@ from typing import Any, Final
 import httpx
 import pytest
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
 from ocp_resources.route import Route
 from ogx_client import NotFoundError, OgxClient
@@ -13,6 +14,7 @@ from timeout_sampler import retry
 
 from tests.ogx.constants import OGX_CLIENT_VERIFY_SSL, OGX_CORE_INFERENCE_MODEL, ModelInfo
 from tests.ogx.praxis.constants import MIGRATION_FALLBACK_OWNER_SUBJECT, MIGRATION_FALLBACK_TENANT
+from tests.ogx.praxis.migration import wait_for_deployment_rollout
 from utilities.resources.ogx_server import OgxServer
 
 NAMESPACE_PARAMS: dict[str, Any] = {"name": "test-praxis-responses-ownership", "randomize_name": True}
@@ -63,6 +65,7 @@ class TestPraxisResponsesOwnership:
         self,
         admin_client: DynamicClient,
         unprivileged_model_namespace: Namespace,
+        ogx_server_deployment: Deployment,
         ogx_test_route: Route,
         ogx_client: OgxClient,
         ogx_models: ModelInfo,
@@ -83,7 +86,9 @@ class TestPraxisResponsesOwnership:
         )
         assert ogx_response.output, "OGX returned no output before Praxis migration"
 
+        prev_gen = int(ogx_server_deployment.instance.metadata.generation)
         praxis_migration_runner()
+        wait_for_deployment_rollout(deployment=ogx_server_deployment, previous_generation=prev_gen)
 
         praxis_response = ogx_praxis_client.responses.create(
             model=OGX_CORE_INFERENCE_MODEL,
