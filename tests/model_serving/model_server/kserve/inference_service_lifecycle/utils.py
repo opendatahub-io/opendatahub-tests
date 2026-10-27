@@ -17,6 +17,36 @@ from utilities.infra import get_pods_by_isvc_label
 
 LOGGER = structlog.get_logger(name=__name__)
 
+# Annotation on the KServe ServiceAnnotationDisallowedList: it is filtered out of
+# the Deployment pod template, so patching it cannot change the desired spec, but
+# the update event still enqueues an InferenceService reconciliation.
+RECONCILE_TRIGGER_ANNOTATION = "kubectl.kubernetes.io/last-applied-configuration"
+RECONCILE_TRIGGER_ANNOTATION_VALUE = '{"test": "isvc-reconcile-trigger"}'
+
+
+@contextmanager
+def trigger_isvc_reconcile(isvc: InferenceService) -> Generator[InferenceService, Any]:
+    """
+    Trigger an InferenceService reconciliation without changing its desired state.
+
+    Patches an ISVC annotation that KServe filters out of the Deployment pod
+    template (see RECONCILE_TRIGGER_ANNOTATION), so the reconciliation rebuilds
+    the desired Deployment from an unchanged spec. The annotation is restored on
+    exit, which triggers a second, equally no-op reconciliation.
+
+    Args:
+        isvc (InferenceService): InferenceService object
+
+    Yields:
+        InferenceService: InferenceService object
+    """
+    with ResourceEditor(
+        patches={
+            isvc: {"metadata": {"annotations": {RECONCILE_TRIGGER_ANNOTATION: RECONCILE_TRIGGER_ANNOTATION_VALUE}}}
+        }
+    ):
+        yield isvc
+
 
 @contextmanager
 def update_inference_service(
