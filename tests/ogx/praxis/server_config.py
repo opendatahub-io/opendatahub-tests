@@ -1,7 +1,9 @@
 from typing import Any
+from urllib.parse import urlparse
 
 import yaml
 
+from tests.ogx.constants import OGX_CORE_VLLM_API_TOKEN, OGX_CORE_VLLM_URL
 from tests.ogx.praxis.constants import (
     MIGRATION_FALLBACK_TENANT,
     PRAXIS_GATEWAY_APP_LABEL,
@@ -13,31 +15,46 @@ from tests.ogx.praxis.constants import (
 from tests.ogx.praxis.utils import praxis_connection_string
 
 # Names internal to the Praxis configuration rendered by `praxis_gateway_config`.
-# The upstream is deliberately unreachable: nothing the tests send to Praxis is
-# meant to be proxied anywhere.
 _PRAXIS_FILTER_CHAIN_NAME: str = "store-pipeline"
-_PRAXIS_UNUSED_UPSTREAM_NAME: str = "unused-upstream"
-_PRAXIS_UNUSED_UPSTREAM: str = "127.0.0.1:1"
+_PRAXIS_VLLM_UPSTREAM_NAME: str = "vllm-upstream"
 
 
 def build_praxis_gateway_config(namespace: str) -> str:
     """Render the Praxis configuration that puts it in front of the target database.
 
     The pipeline is the one the OGX repository's `migration-e2e-praxis` workflow
-    uses, reduced to what stamping the schema needs: the two store filters own
-    the three tables the migration writes to, and the filters around them are the
-    ones those two require to be reachable. The upstream cluster is never dialed,
-    because a request for a missing resource is answered locally.
+    uses. The store filters own the three tables the migration writes to, while
+    Responses create requests are translated to Chat Completions and sent
+    directly to the configured vLLM inference endpoint.
 
-    The rendered document embeds the target DSN, so it must only ever be written
-    into a Secret.
+    The rendered document embeds the target DSN and vLLM API token, so it must
+    only ever be written into a Secret.
 
     Args:
         namespace: Namespace holding the target PostgreSQL service.
 
     Returns:
         The Praxis configuration as a YAML document.
+
+    Raises:
+        ValueError: If ``OGX_CORE_VLLM_URL`` is not a valid HTTP(S) URL.
     """
+    vllm_url = urlparse(url=OGX_CORE_VLLM_URL)
+    if vllm_url.scheme not in {"http", "https"} or not vllm_url.hostname:
+        raise ValueError("OGX_CORE_VLLM_URL must be a valid HTTP(S) URL")
+
+    vllm_port = vllm_url.port or (443 if vllm_url.scheme == "https" else 80)
+    vllm_host = vllm_url.hostname
+    vllm_endpoint = f"{vllm_host}:{vllm_port}"
+    vllm_host_header = vllm_url.netloc
+    vllm_cluster: dict[str, Any] = {
+        "name": _PRAXIS_VLLM_UPSTREAM_NAME,
+        "endpoints": [vllm_endpoint],
+        "read_timeout_ms": 300000,
+    }
+    if vllm_url.scheme == "https":
+        vllm_cluster["tls"] = {"sni": vllm_host}
+
     postgres_backend: dict[str, Any] = {
         "backend": "postgres",
         "database_url": praxis_connection_string(namespace=namespace),
@@ -59,33 +76,71 @@ def build_praxis_gateway_config(namespace: str) -> str:
             {
                 "name": _PRAXIS_FILTER_CHAIN_NAME,
                 "filters": [
-                    {"filter": "state_owner", "mode": "single_tenant", "tenant_id": MIGRATION_FALLBACK_TENANT},
                     # Classifies the operation from the request head. `openai_conversations`
                     # requires it earlier in the same chain.
                     {"filter": "ai_operation"},
+                    {
+                        "filter": "openai_responses_request",
+                        "initialize_state": False,
+                        "on_invalid": "reject",
+                    },
+                    {"filter": "openai_responses_request", "on_invalid": "reject"},
+                    {"filter": "state_owner", "mode": "single_tenant", "tenant_id": MIGRATION_FALLBACK_TENANT},
                     {
                         "filter": "openai_conversations",
                         "conversations_table": TARGET_CONVERSATIONS_TABLE,
                         "items_table": TARGET_CONVERSATION_ITEMS_TABLE,
                         **postgres_backend,
                     },
-                    {"filter": "openai_responses_request"},
                     {
                         "filter": "openai_responses_store",
                         "responses_table": TARGET_RESPONSES_TABLE,
                         "conversations_table": TARGET_CONVERSATIONS_TABLE,
                         **postgres_backend,
                     },
-                    # The probes are served locally and the migration never POSTs
-                    # to Praxis, so no request reaches this cluster. It exists
-                    # only because the response-store chain requires a route.
                     {
-                        "filter": "router",
-                        "routes": [{"path_prefix": "/", "cluster": _PRAXIS_UNUSED_UPSTREAM_NAME}],
-                    },
-                    {
-                        "filter": "load_balancer",
-                        "clusters": [{"name": _PRAXIS_UNUSED_UPSTREAM_NAME, "endpoints": [_PRAXIS_UNUSED_UPSTREAM]}],
+                        "filter": "iterative_request_router",
+                        "initial_step": "inference",
+                        "max_iterations": 1,
+                        "timeout_ms": 300000,
+                        "steps": [
+                            {
+                                "name": "inference",
+                                "filters": [
+                                    {"filter": "openai_responses_to_chat_completions"},
+                                    {
+                                        "filter": "path_rewrite",
+                                        "replace": {
+                                            "pattern": "^/v1/responses/?$",
+                                            "replacement": "/v1/chat/completions",
+                                        },
+                                        "conditions": [{"when": {"path_prefix": "/v1/responses", "methods": ["POST"]}}],
+                                    },
+                                    {
+                                        "filter": "router",
+                                        "routes": [{"path_prefix": "/", "cluster": _PRAXIS_VLLM_UPSTREAM_NAME}],
+                                    },
+                                    {
+                                        "filter": "credential_injection",
+                                        "clusters": [
+                                            {
+                                                "name": _PRAXIS_VLLM_UPSTREAM_NAME,
+                                                "header": "Authorization",
+                                                "value": OGX_CORE_VLLM_API_TOKEN,
+                                                "header_prefix": "Bearer ",
+                                                "strip_client_credential": True,
+                                            }
+                                        ],
+                                    },
+                                    {
+                                        "filter": "headers",
+                                        "request_set": [{"name": "Host", "value": vllm_host_header}],
+                                    },
+                                    {"filter": "load_balancer", "clusters": [vllm_cluster]},
+                                ],
+                                "on_result": [{"default": True, "done": True}],
+                            }
+                        ],
                     },
                 ],
             }
