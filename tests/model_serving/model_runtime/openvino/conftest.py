@@ -47,7 +47,7 @@ OVMS_SMOKE_SCRIPTS_MOUNT_PATH = "/scripts"
 
 
 @pytest.fixture(scope="session")
-def skip_if_disconnected(admin_client: DynamicClient) -> None:
+def skip_ovms_on_disconnected(admin_client: DynamicClient) -> None:
     """Skip test if running on a disconnected (air-gapped) cluster."""
     if is_disconnected_cluster(client=admin_client):
         pytest.skip("Test requires internet access, not available on disconnected clusters")
