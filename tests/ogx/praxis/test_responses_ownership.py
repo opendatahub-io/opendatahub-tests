@@ -1,6 +1,7 @@
 """Ownership of the `/v1/responses` API after the OGX -> Praxis migration."""
 
-from typing import Final
+from collections.abc import Callable
+from typing import Any, Final
 
 import httpx
 import pytest
@@ -10,15 +11,23 @@ from ocp_resources.route import Route
 from ogx_client import OgxClient
 
 from tests.ogx.constants import OGX_CLIENT_VERIFY_SSL, OGX_CORE_INFERENCE_MODEL
+from utilities.resources.ogx_server import OgxServer
 
-NAMESPACE_PARAMS = {"name": "test-praxis-responses-ownership", "randomize_name": True}
+NAMESPACE_PARAMS: dict[str, Any] = {"name": "test-praxis-responses-ownership", "randomize_name": True}
+OGX_SERVER_PARAMS: dict[str, Any] = {
+    "ogx_storage_size": "2Gi",
+    "vector_io_provider": "pgvector",
+    "files_provider": "local",
+    "cpu_requests": "500m",
+    "cpu_limits": "2",
+}
 RESPONSES_API_PATH: Final[str] = "/v1/responses"
 UNSERVED_STATUS_CODES: Final[frozenset[int]] = frozenset({404, 503})
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace",
-    [pytest.param(NAMESPACE_PARAMS)],
+    "unprivileged_model_namespace, ogx_server",
+    [pytest.param(NAMESPACE_PARAMS, OGX_SERVER_PARAMS)],
     indirect=True,
 )
 @pytest.mark.ogx
@@ -33,13 +42,16 @@ class TestPraxisResponsesOwnership:
         unprivileged_model_namespace: Namespace,
         praxis_gateway_route: Route,
         ogx_praxis_client: OgxClient,
+        praxis_migration_runner: Callable[[], OgxServer],
     ) -> None:
         """Verify Praxis is the namespace's sole externally routed Responses API.
 
-        Given: A Praxis gateway exposed in a test namespace.
-        When: A Responses request is sent to Praxis and all other namespace Routes are probed.
+        Given: An OGX server migrated to a Praxis gateway in a test namespace.
+        When: Migration completes, a Responses request is sent to Praxis, and other Routes are probed.
         Then: Praxis serves the request and no other Route exposes `/v1/responses`.
         """
+        praxis_migration_runner()
+
         response = ogx_praxis_client.responses.create(
             model=OGX_CORE_INFERENCE_MODEL,
             input="Reply with the single word 'Praxis'.",
