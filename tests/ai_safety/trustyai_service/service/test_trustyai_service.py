@@ -15,10 +15,13 @@ from tests.ai_safety.trustyai_service.constants import (
 )
 from tests.ai_safety.trustyai_service.service.utils import (
     patch_trustyai_service_cr,
-    wait_for_trustyai_db_migration_complete_log,
+    prepare_trustyai_db_migration,
+    stage_trustyai_legacy_migration_file,
+    wait_for_trustyai_db_migration_rollout,
 )
 from tests.ai_safety.trustyai_service.trustyai_service_utils import (
     TrustyAIServiceMetrics,
+    get_num_observations_from_trustyai_service,
     verify_trustyai_service_metric_scheduling_request,
     verify_upload_data_to_trustyai_service,
 )
@@ -26,6 +29,7 @@ from tests.ai_safety.trustyai_service.utils import (
     validate_trustyai_service_db_conn_failure,
     validate_trustyai_service_images,
 )
+from utilities.certificates_utils import create_ca_bundle_file
 from utilities.constants import TRUSTYAI_SERVICE_NAME
 
 logger = structlog.get_logger(name=__name__)
@@ -40,7 +44,12 @@ def _wait_for_route_ready(admin_client: DynamicClient, trustyai_service: TrustyA
         ensure_exists=True,
     )
     url = f"https://{route.instance.spec.host}/q/health"
-    response = requests.get(url, headers={"Authorization": f"Bearer {token}"}, verify=False, timeout=10)
+    response = requests.get(
+        url,
+        headers={"Authorization": f"Bearer {token}"},
+        verify=create_ca_bundle_file(client=admin_client),
+        timeout=10,
+    )
     content_type = response.headers.get("Content-Type", "")
     logger.info(f"Route readiness check: status={response.status_code}, content-type={content_type}")
     assert "application/json" in content_type, f"Route not ready, got content-type: {content_type}"
@@ -75,16 +84,11 @@ def test_trustyaiservice_crd_exists(
     indirect=True,
 )
 def test_trustyai_service_with_invalid_db_cert(
-    admin_client,
-    current_client_token,
-    model_namespace: Namespace,
-    trustyai_service_with_invalid_db_cert,
-):
-    """Test to make sure TrustyAIService pod fails when incorrect database TLS certificate is used."""
+    trustyai_service_with_invalid_db_cert: TrustyAIService,
+) -> None:
+    """Given an invalid database CA, verify TrustyAIService reports a database connection failure."""
     validate_trustyai_service_db_conn_failure(
-        client=admin_client,
-        namespace=model_namespace,
-        label_selector=f"app.kubernetes.io/instance={trustyai_service_with_invalid_db_cert.name}",
+        trustyai_service=trustyai_service_with_invalid_db_cert,
     )
 
 
@@ -135,52 +139,67 @@ def test_trustyai_service_db_migration(
     trustyai_service,
     gaussian_credit_model,
 ) -> None:
-    """Verify if TrustyAI DB Migration works as expected.
-    This test initializes TrustyAI Service with PVC Storage at first with a database on standby but the service is not
-    configured to use it.
-    Data is uploaded to the PVC, then the TrustyAI CR is patched to trigger a migration from PVC to DB storage.
-    config.
-    Then waits for the migration success entry in the container logs and patches the service again to remove PVC config.
-    Finally, a metric is scheduled and checked if the service works as expected post migration.
-
-    Args:
-        admin_client: DynamicClient
-        current_client_token: RedactedString
-        mariadb: MariaDB
-        trustyai_db_ca_secret: None
-        trustyai_service: TrustyAIService
-        gaussian_credit_model: Generator[InferenceService, Any, Any]
-
-    Returns:
-        None
-    """
+    """Given PVC-backed observations and MariaDB, when storage changes to DATABASE, then data and metrics survive."""
     verify_upload_data_to_trustyai_service(
         client=admin_client,
         trustyai_service=trustyai_service,
         token=current_client_token,
         data_path=f"{DRIFT_BASE_DATA_PATH}/training_data.json",
     )
+    expected_observations = get_num_observations_from_trustyai_service(
+        client=admin_client,
+        token=current_client_token,
+        trustyai_service=trustyai_service,
+        model_name="gaussian-credit-model",
+    )
+    assert expected_observations > 0, "Training observations were not present before database migration"
+
+    stage_trustyai_legacy_migration_file(
+        client=admin_client,
+        namespace=trustyai_service.namespace,
+        service_name=trustyai_service.name,
+        model_name="gaussian-credit-model",
+    )
+
+    trustyai_deployment = Deployment(
+        client=admin_client,
+        name=TRUSTYAI_SERVICE_NAME,
+        namespace=trustyai_service.namespace,
+        ensure_exists=True,
+    )
+    original_deployment_spec = trustyai_deployment.instance.spec.template.spec.to_dict()
 
     trustyai_db_migration_patched_service = patch_trustyai_service_cr(
         trustyai_service=trustyai_service, patches=TRUSTYAI_DB_MIGRATION_PATCH
     )
 
-    wait_for_trustyai_db_migration_complete_log(
+    prepare_trustyai_db_migration(
         client=admin_client,
-        trustyai_service=trustyai_db_migration_patched_service,
+        namespace=trustyai_service.namespace,
+        service_name=trustyai_service.name,
+        original_deployment_spec=original_deployment_spec,
     )
-
-    Deployment(
+    wait_for_trustyai_db_migration_rollout(
         client=admin_client,
-        name=TRUSTYAI_SERVICE_NAME,
-        namespace=trustyai_db_migration_patched_service.namespace,
-        ensure_exists=True,
-    ).wait_for_replicas()
+        namespace=trustyai_service.namespace,
+        service_name=trustyai_service.name,
+    )
 
     _wait_for_route_ready(
         admin_client=admin_client,
         trustyai_service=trustyai_db_migration_patched_service,
         token=current_client_token,
+    )
+
+    migrated_observations = get_num_observations_from_trustyai_service(
+        client=admin_client,
+        token=current_client_token,
+        trustyai_service=trustyai_db_migration_patched_service,
+        model_name="gaussian-credit-model",
+    )
+    assert migrated_observations == expected_observations, (
+        "Database migration changed the gaussian-credit-model observation count: "
+        f"expected {expected_observations}, got {migrated_observations}"
     )
 
     verify_trustyai_service_metric_scheduling_request(
