@@ -166,13 +166,10 @@ def vllm_inference_service(
     timeout = request.param.get("timeout")
     identifier = ACCELERATOR_IDENTIFIER.get(accelerator_type, Labels.Nvidia.NVIDIA_COM_GPU)
     predict_resources = request.param.get("predict_resources", PREDICT_RESOURCES)
-    resources: Any = deepcopy(predict_resources.get("resources", PREDICT_RESOURCES["resources"]))
+    default_resources = SPYRE_PREDICT_RESOURCES if accelerator_type == AcceleratorType.SPYRE else PREDICT_RESOURCES["resources"]
+    resources: Any = deepcopy(predict_resources.get("resources", default_resources))
     resources["requests"][identifier] = gpu_count
     resources["limits"][identifier] = gpu_count
-    if accelerator_type == AcceleratorType.SPYRE:
-        for scope, spyre_resources in SPYRE_PREDICT_RESOURCES["resources"].items():
-            for resource, value in spyre_resources.items():
-                resources[scope].setdefault(resource, value)
     isvc_kwargs["resources"] = resources
 
     if accelerator_type == AcceleratorType.GAUDI:
