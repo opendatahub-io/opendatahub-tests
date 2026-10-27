@@ -15,19 +15,63 @@ from utilities.image_constants import SharedImages
 LOGGER = structlog.get_logger(name=__name__)
 
 
+def get_running_predictor_pods_raw(client: DynamicClient, isvc: InferenceService) -> list:
+    """Return the currently Running predictor pods (raw objects) for the ISVC.
+
+    Uses field_selector to filter Running pods at the API level (raw=True
+    avoids extra API calls).
+    """
+    label_selector = f"serving.kserve.io/inferenceservice={isvc.name}"
+    return list(
+        Pod.get(
+            client=client,
+            namespace=isvc.namespace,
+            label_selector=label_selector,
+            field_selector="status.phase=Running",
+            raw=True,
+        )
+    )
+
+
+def get_predictor_pod_uids(client: DynamicClient, isvc: InferenceService) -> set:
+    """Return UIDs of the currently Running predictor pods for the ISVC."""
+    return {p.metadata.uid for p in get_running_predictor_pods_raw(client=client, isvc=isvc)}
+
+
+def get_isvc_readonly_flag(isvc: InferenceService) -> bool:
+    """Return the readOnly flag the controller derives from the ISVC annotation.
+
+    Mirrors KServe: only an explicit "false" makes the storage read-write; any
+    other value (including a missing annotation) defaults to read-only.
+    """
+    return isvc.instance.metadata.annotations.get("storage.kserve.io/readonly") != "false"
+
+
 def wait_for_rollout_complete(
     client: DynamicClient,
     isvc: InferenceService,
     timeout: int = 120,
+    previous_pod_uids: set | None = None,
 ) -> None:
     """Wait until the ISVC deployment rollout is complete.
 
     A rollout is complete when replicas == readyReplicas == updatedReplicas,
     meaning all pods are running the latest template with no stragglers from
     previous ReplicaSets.
+
+    When `previous_pod_uids` is provided (snapshot of pod UIDs taken before
+    the change that triggers the rollout), the wait additionally requires a
+    Running pod with a UID not in that snapshot whose `/mnt/models`
+    volumeMount matches the readOnly value the ISVC annotation currently
+    requests. Without this, the convergence check can pass immediately
+    against the still-converged old deployment before the controller has
+    observed the change, or accept a newly-created pod from an old
+    ReplicaSet (e.g. recreated after an eviction), causing the caller to
+    inspect a stale pod.
     """
     expected = isvc.instance.spec.predictor.get("minReplicas", 1)
     label_selector = f"serving.kserve.io/inferenceservice={isvc.name}"
+    expected_readonly = get_isvc_readonly_flag(isvc=isvc)
 
     def _rollout_complete() -> bool:
         deployments = list(Deployment.get(client=client, namespace=isvc.namespace, label_selector=label_selector))
@@ -38,7 +82,21 @@ def wait_for_rollout_complete(
         updated = status.get("updatedReplicas", 0)
         total = status.get("replicas", 0)
         LOGGER.info(f"rollout: replicas={total} ready={ready} updated={updated} expected={expected}")
-        return ready == expected and updated == expected and total == expected
+        if not (ready == expected and updated == expected and total == expected):
+            return False
+        if previous_pod_uids is None:
+            return True
+        for raw_pod in get_running_predictor_pods_raw(client=client, isvc=isvc):
+            if raw_pod.metadata.uid in previous_pod_uids:
+                continue
+            pod = Pod(client=client, name=raw_pod.metadata.name, namespace=raw_pod.metadata.namespace)
+            if get_volume_mount_readonly(pod=pod) == expected_readonly:
+                LOGGER.info(
+                    f"rollout: new pod {raw_pod.metadata.name} runs the requested template "
+                    f"(volumeMount.readOnly={expected_readonly})"
+                )
+                return True
+        return False
 
     for sample in TimeoutSampler(wait_timeout=timeout, sleep=2, func=_rollout_complete):
         if sample:

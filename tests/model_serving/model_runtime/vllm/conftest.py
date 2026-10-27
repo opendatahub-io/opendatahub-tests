@@ -182,8 +182,13 @@ def vllm_inference_service(
         isvc_kwargs["volumes"] = predict_resources.get("volumes", PREDICT_RESOURCES["volumes"])
         isvc_kwargs["volumes_mounts"] = predict_resources.get("volume_mounts", PREDICT_RESOURCES["volume_mounts"])
     if arguments := request.param.get("runtime_argument"):
-        arguments = [arg for arg in arguments if not arg.startswith(("--tensor-parallel-size", "--quantization"))]
+        strip_prefixes = ["--tensor-parallel-size", "--quantization"]
+        if accelerator_type == AcceleratorType.SPYRE:
+            strip_prefixes.append("--max-model-len")
+        arguments = [arg for arg in arguments if not arg.startswith(tuple(strip_prefixes))]
         arguments.append(f"--tensor-parallel-size={gpu_count}")
+        if accelerator_type == AcceleratorType.SPYRE:
+            arguments.append("--max-model-len=1024")
         if quantization := request.param.get("quantization"):
             validate_supported_quantization_schema(q_type=quantization)
             arguments.append(f"--quantization={quantization}")

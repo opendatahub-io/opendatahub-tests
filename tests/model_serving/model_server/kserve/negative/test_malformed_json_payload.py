@@ -14,7 +14,7 @@ from tests.model_serving.model_server.kserve.negative.utils import (
     send_inference_request,
 )
 
-pytestmark = pytest.mark.usefixtures("valid_aws_config")
+pytestmark = pytest.mark.usefixtures("skip_if_arm64_cluster_detected", "valid_aws_config")
 
 MALFORMED_JSON_EXPECTED_CODES: set[int] = {
     HTTPStatus.BAD_REQUEST,
