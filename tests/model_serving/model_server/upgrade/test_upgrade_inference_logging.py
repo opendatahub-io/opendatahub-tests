@@ -1,6 +1,9 @@
 import pytest
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.inference_service import InferenceService
 
 from tests.model_serving.model_server.upgrade.utils import (
+    ISVCBaseline,
     get_isvc_baseline,
     verify_inference_generation,
     verify_isvc_pods_not_restarted_against_baseline,
@@ -30,12 +33,19 @@ class TestPreUpgradeInferenceLogging:
     """
 
     @pytest.mark.pre_upgrade
-    def test_pre_upgrade_logging_isvc_agent_sidecar(self, admin_client, logging_inference_service_fixture):
+    def test_pre_upgrade_logging_isvc_agent_sidecar(
+        self,
+        admin_client: DynamicClient,
+        logging_inference_service_fixture: InferenceService,
+    ) -> None:
         """Verify the kserve-agent sidecar runs in the predictor pod before upgrade"""
         wait_for_isvc_agent_sidecar(client=admin_client, isvc=logging_inference_service_fixture)
 
     @pytest.mark.pre_upgrade
-    def test_pre_upgrade_logging_isvc_inference(self, logging_inference_service_fixture):
+    def test_pre_upgrade_logging_isvc_inference(
+        self,
+        logging_inference_service_fixture: InferenceService,
+    ) -> None:
         """Test inference on the logging-enabled ISVC before upgrade"""
         verify_inference_response(
             inference_service=logging_inference_service_fixture,
@@ -65,7 +75,10 @@ class TestPostUpgradeInferenceLogging:
 
     @pytest.mark.post_upgrade
     @pytest.mark.dependency(name="logging_isvc_exists")
-    def test_post_upgrade_logging_isvc_exists(self, logging_inference_service_fixture):
+    def test_post_upgrade_logging_isvc_exists(
+        self,
+        logging_inference_service_fixture: InferenceService,
+    ) -> None:
         """Test that the logging-enabled ISVC exists after upgrade"""
         assert logging_inference_service_fixture.exists
 
@@ -73,9 +86,9 @@ class TestPostUpgradeInferenceLogging:
     @pytest.mark.dependency(depends=["logging_isvc_exists"])
     def test_post_upgrade_logging_isvc_not_modified(
         self,
-        logging_inference_service_fixture,
-        upgrade_baseline_fixture,
-    ):
+        logging_inference_service_fixture: InferenceService,
+        upgrade_baseline_fixture: dict[str, dict[str, ISVCBaseline]],
+    ) -> None:
         """Test that the logging-enabled ISVC is not modified in upgrade"""
         baseline = get_isvc_baseline(
             baselines=upgrade_baseline_fixture,
@@ -90,10 +103,10 @@ class TestPostUpgradeInferenceLogging:
     @pytest.mark.dependency(depends=["logging_isvc_exists"])
     def test_post_upgrade_logging_pods_not_restarted(
         self,
-        admin_client,
-        logging_inference_service_fixture,
-        upgrade_baseline_fixture,
-    ):
+        admin_client: DynamicClient,
+        logging_inference_service_fixture: InferenceService,
+        upgrade_baseline_fixture: dict[str, dict[str, ISVCBaseline]],
+    ) -> None:
         """Verify pods of the logging-enabled ISVC have not restarted beyond pre-upgrade baseline"""
         baseline = get_isvc_baseline(
             baselines=upgrade_baseline_fixture,
@@ -107,13 +120,20 @@ class TestPostUpgradeInferenceLogging:
 
     @pytest.mark.post_upgrade
     @pytest.mark.dependency(depends=["logging_isvc_exists"])
-    def test_post_upgrade_logging_agent_sidecar_present(self, admin_client, logging_inference_service_fixture):
+    def test_post_upgrade_logging_agent_sidecar_present(
+        self,
+        admin_client: DynamicClient,
+        logging_inference_service_fixture: InferenceService,
+    ) -> None:
         """Verify the kserve-agent sidecar is still present in the predictor pod after upgrade"""
         wait_for_isvc_agent_sidecar(client=admin_client, isvc=logging_inference_service_fixture)
 
     @pytest.mark.post_upgrade
     @pytest.mark.dependency(depends=["logging_isvc_exists"])
-    def test_post_upgrade_logging_isvc_inference(self, logging_inference_service_fixture):
+    def test_post_upgrade_logging_isvc_inference(
+        self,
+        logging_inference_service_fixture: InferenceService,
+    ) -> None:
         """Test inference on the logging-enabled ISVC after upgrade"""
         verify_inference_response(
             inference_service=logging_inference_service_fixture,

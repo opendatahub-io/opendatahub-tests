@@ -16,6 +16,9 @@ UPDATED_PULL_SECRET: str = "updated-pull-secret"  # pragma: allowlist-secret
 
 # Inference logging (kserve-agent sidecar). The sink URL does not need to resolve:
 # the agent posts payloads asynchronously and its readiness probe is served by the
-# agent itself, so a non-existent in-cluster endpoint keeps the ISVC Ready.
-ISVC_LOGGER_SINK_URL: str = "http://logger-sink.invalid.svc.cluster.local"
+# agent itself, so a non-existent endpoint keeps the ISVC Ready. The ".invalid"
+# reserved TLD is used (IETF RFC 2606) so the name can never resolve and, being
+# only two labels, cannot be claimed as a Kubernetes Service DNS name
+# (<service>.<namespace>.svc.cluster.local).
+ISVC_LOGGER_SINK_URL: str = "http://logger-sink.invalid"
 ISVC_LOGGER_MODE: str = "all"
