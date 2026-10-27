@@ -165,7 +165,7 @@ def vllm_inference_service(
     gpu_count = request.param.get("gpu_count")
     timeout = request.param.get("timeout")
     identifier = ACCELERATOR_IDENTIFIER.get(accelerator_type, Labels.Nvidia.NVIDIA_COM_GPU)
-    predict_resources = request.param.get("predict_resources", PREDICT_RESOURCES)
+    predict_resources = request.param.get("predict_resources", {})
     default_resources = (
         SPYRE_PREDICT_RESOURCES if accelerator_type == AcceleratorType.SPYRE else PREDICT_RESOURCES["resources"]
     )
