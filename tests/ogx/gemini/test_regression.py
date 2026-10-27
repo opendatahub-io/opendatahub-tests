@@ -73,7 +73,9 @@ class TestGeminiRegression:
 
         openai_llm = _resolve_model_id(ogx_client=ogx_client, provider_id="openai", model_type="llm")
         if not openai_llm:
-            pytest.skip(reason="No remote::openai LLM model configured; cannot assert TC-REG-001")
+            if "remote::openai" not in provider_types:
+                pytest.skip(reason="remote::openai is not enabled (no OPENAI_API_KEY); cannot assert TC-REG-001")
+            pytest.fail(reason="remote::openai is enabled but registered no LLM model")
 
         chat = ogx_client.chat.completions.create(
             model=openai_llm,
