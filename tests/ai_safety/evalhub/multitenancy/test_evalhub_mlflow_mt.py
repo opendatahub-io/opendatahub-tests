@@ -56,6 +56,13 @@ def mlflow_deployment_ready(
         namespace=namespace,
     )
     if mlflow_instance.exists:
+        existing_spec = mlflow_instance.instance.to_dict().get("spec", {})
+        existing_match_labels = (existing_spec.get("workspaceLabelSelector") or {}).get("matchLabels") or {}
+        if existing_match_labels.get(EVALHUB_TENANT_LABEL_KEY) != EVALHUB_TENANT_LABEL_VALUE:
+            pytest.fail(
+                f"Existing MLflow instance 'mlflow' has workspaceLabelSelector matchLabels "
+                f"{existing_match_labels}, expected {EVALHUB_TENANT_LABEL_KEY}={EVALHUB_TENANT_LABEL_VALUE}"
+            )
         deployment.wait_for_replicas(timeout=300)
         yield deployment
         return
