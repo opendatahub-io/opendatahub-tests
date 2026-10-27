@@ -1083,7 +1083,9 @@ def wait_for_dsc_status_ready(dsc_resource: DataScienceCluster) -> bool:
             apps_ns = py_config.get("applications_namespace", "redhat-ods-applications")
             client = dsc_resource.client
             # Single API call: server-side filter for Pending pods, raw=True avoids per-pod GET requests
-            raw_pods = Pod.get(client=client, namespace=apps_ns, field_selector="status.phase=Pending", raw=True)
+            raw_pods: dict[str, Any] = next(
+                Pod.get(client=client, namespace=apps_ns, field_selector="status.phase=Pending", raw=True), {}
+            )
             pending = [f"{item['metadata']['name']}:{item['status']['phase']}" for item in raw_pods.get("items", [])]
             if pending:
                 message += f"\nPending pods in {apps_ns}: {', '.join(pending)}"
@@ -1100,7 +1102,7 @@ def wait_for_dsc_status_ready(dsc_resource: DataScienceCluster) -> bool:
             kubernetes.client.exceptions.ApiException,
             urllib3.exceptions.HTTPError,
         ) as exc:
-            LOGGER.debug(f"Could not enrich DSC not-ready error with pending pods: {exc}")
+            LOGGER.debug(f"Pod lookup failed ({type(exc).__name__}), continuing with DSC readiness check")
 
     raise ResourceNotReadyError(message)
 

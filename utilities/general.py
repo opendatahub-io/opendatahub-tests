@@ -510,7 +510,7 @@ def wait_for_pods_running(
             component health tests so unrelated leftover CrashLoop/Pending pods do not fail the suite.
     """
 
-    def _check_pods() -> list[Pod]:
+    def _check_pods() -> list[dict[str, Any]]:
         pods = list(
             Pod.get(
                 client=admin_client,
@@ -541,6 +541,8 @@ def wait_for_pods_running(
             else:
                 current_check = 0
     except TimeoutExpiredError:
+        if label_selector and sample is None:
+            raise
         if sample:
             LOGGER.error(
                 f"timeout waiting for all pods in namespace {namespace_name} to reach "
