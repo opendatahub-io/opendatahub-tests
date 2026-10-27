@@ -41,6 +41,7 @@ MLFLOW_SERVICE_PORT = 8443
 @pytest.fixture(scope="class")
 def mlflow_deployment_ready(
     admin_client: DynamicClient,
+    tenant_a_namespace: Namespace,
 ) -> Generator[Deployment, Any, Any]:
     """Reuse an existing MLflow deployment, or create an MLflow instance for this class if absent.
 
@@ -58,11 +59,11 @@ def mlflow_deployment_ready(
     )
     if mlflow_instance.exists:
         existing_selector = mlflow_instance.instance.to_dict().get("spec", {}).get("workspaceLabelSelector")
-        tenant_labels = {EVALHUB_TENANT_LABEL_KEY: EVALHUB_TENANT_LABEL_VALUE}
+        tenant_labels = dict(tenant_a_namespace.instance.metadata.labels or {})
         if existing_selector is None or not label_selector_matches(selector=existing_selector, labels=tenant_labels):
             pytest.fail(
                 f"Existing MLflow instance 'mlflow' has workspaceLabelSelector {existing_selector}, "
-                f"which does not select tenant namespaces labeled {tenant_labels}"
+                f"which does not select tenant namespace {tenant_a_namespace.name} labeled {tenant_labels}"
             )
         deployment.wait_for_replicas(timeout=300)
         yield deployment
