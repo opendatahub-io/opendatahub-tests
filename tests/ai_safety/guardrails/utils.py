@@ -243,7 +243,20 @@ def create_detector_config(*detector_names: str) -> dict[str, dict[str, Any]]:
     }
 
 
-def verify_health_info_response(host, token, ca_bundle_file):
+@retry(
+    exceptions_dict={AssertionError: [], requests.exceptions.ConnectionError: [], requests.exceptions.ReadTimeout: []},
+    wait_timeout=120,
+    sleep=5,
+)
+def verify_health_info_response(host: str, token: str, ca_bundle_file: str) -> bool:
+    """Verify all services in the /info endpoint report HEALTHY status.
+
+    Retries for up to 120 seconds because individual backend services may still be
+    initialising when the orchestrator's /health endpoint already returns HTTP 200.
+
+    Returns:
+        True when all services report HEALTHY status.
+    """
     response = requests.get(
         url=f"https://{host}/info",
         headers=get_auth_headers(token=token),
@@ -260,6 +273,7 @@ def verify_health_info_response(host, token, ca_bundle_file):
             mismatches.append(f"Service {service_name} is not healthy: {service_info['status']}")
 
     assert not mismatches, f"GuardrailsOrchestrator service failures: {mismatches}"
+    return True
 
 
 def _send_guardrails_orchestrator_post_request(
