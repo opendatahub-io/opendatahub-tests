@@ -569,13 +569,13 @@ def seaweedfs_deployment_otel(admin_client, model_namespace, seaweedfs_pvc_otel)
                 {
                     "name": SeaweedFs.Metadata.NAME,
                     "image": SeaweedFs.PodConfig.IMAGE,
-                    "args": ["server", "-dir=/storage", "-s3", "-iam", "-master.volumePreallocate=false"],
+                    "args": ["server", "-dir=/data", "-s3", "-iam", "-master.volumePreallocate=false"],
                     "env": [
                         {"name": "accesskey", "value": TEMPO},
                         {"name": "secretkey", "value": SEAWEEDFS_SECRET_KEY_VALUE},
                     ],
                     "ports": [{"containerPort": SeaweedFs.Metadata.DEFAULT_PORT}],
-                    "volumeMounts": [{"mountPath": "/storage", "name": "storage"}],
+                    "volumeMounts": [{"mountPath": "/data", "name": "storage"}],
                     "lifecycle": {"postStart": {"exec": {"command": ["/bin/sh", "-c", initialization_command]}}},
                 }
             ],

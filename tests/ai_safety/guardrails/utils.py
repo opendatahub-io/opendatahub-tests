@@ -242,6 +242,7 @@ def create_detector_config(*detector_names: str) -> dict[str, dict[str, Any]]:
     }
 
 
+@retry(wait_timeout=120, sleep=4)
 def verify_health_info_response(host, token, ca_bundle_file):
     response = requests.get(url=f"https://{host}/info", headers=get_auth_headers(token=token), verify=ca_bundle_file)
     assert response.status_code == http.HTTPStatus.OK
@@ -254,6 +255,8 @@ def verify_health_info_response(host, token, ca_bundle_file):
             mismatches.append(f"Service {service_name} is not healthy: {service_info['status']}")
 
     assert not mismatches, f"GuardrailsOrchestrator service failures: {mismatches}"
+
+    return True
 
 
 def _send_guardrails_orchestrator_post_request(
