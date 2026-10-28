@@ -162,6 +162,7 @@ def praxis_connection_string_secret(
 def praxis_gateway_config_secret(
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
+    ogx_server: OgxServer,
     praxis_postgres_service: Service,
     teardown_resources: bool,
 ) -> Generator[Secret]:
@@ -172,7 +173,10 @@ def praxis_gateway_config_secret(
         name=PRAXIS_GATEWAY_CONFIG_SECRET_NAME,
         type="Opaque",
         string_data={
-            PRAXIS_GATEWAY_CONFIG_KEY: build_praxis_gateway_config(namespace=unprivileged_model_namespace.name),
+            PRAXIS_GATEWAY_CONFIG_KEY: build_praxis_gateway_config(
+                namespace=unprivileged_model_namespace.name,
+                ogx_service_name=f"{ogx_server.name}-service",
+            ),
         },
         teardown=teardown_resources,
     ) as secret:
