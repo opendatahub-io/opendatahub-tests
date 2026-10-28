@@ -93,7 +93,8 @@ class RuntimeTemplates:
     VLLM_SPYRE_PPC64LE: str = "vllm-spyre-ppc64le-runtime-template"
     VLLM_CPU_x86: str = "vllm-cpu-x86-runtime-template"
     VLLM_CPU_POWER: str = "vllm-cpu-runtime-template"
-    VLLM_CPU_Z: str = "vllm-cpu-z-runtime-template"
+    # Power and Z share the same vLLM CPU template (ppc64le/s390x)
+    VLLM_CPU_Z: str = "vllm-cpu-runtime-template"
     VLLM_OMNI_CUDA: str = "vllm-omni-cuda-runtime-template"
     VLLM_OMNI_CUDA_FAST_1: str = "vllm-omni-cuda-runtime-template-fast-1"
     VLLM_OMNI_CUDA_FAST_2: str = "vllm-omni-cuda-runtime-template-fast-2"
@@ -309,6 +310,7 @@ class OpenshiftRouteTimeout:
 
 class Containers:
     KSERVE_CONTAINER_NAME: str = "kserve-container"
+    KSERVE_AGENT_CONTAINER_NAME: str = "agent"
 
 
 class RunTimeConfigs:

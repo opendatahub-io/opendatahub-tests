@@ -1,9 +1,10 @@
 """MLflow integration tests for EvalHub (multitenancy suite).
 
-Requires an MLflow server already deployed on the cluster (cluster-scoped CR).
-The EvalHub CR is created with MLFLOW_TRACKING_URI pointing at the existing
-MLflow service. Tests verify experiment creation on job submit, experiment_id
-on the job response, and filtering jobs by experiment_id.
+These tests require the MLflow operator to be enabled on the cluster. They
+reuse an existing MLflow instance or create one if none exists. The EvalHub CR
+is configured with MLFLOW_TRACKING_URI pointing at the MLflow service. Tests
+verify experiment creation on job submit, experiment_id on the job response,
+and filtering jobs by experiment_id.
 """
 
 from __future__ import annotations
@@ -19,40 +20,73 @@ from ocp_resources.evalhub import EvalHub
 from ocp_resources.namespace import Namespace
 from ocp_resources.route import Route
 from ocp_resources.service import Service
+from pytest_testconfig import config as py_config
 
 from tests.ai_safety.evalhub.constants import (
     EVALHUB_JOBS_PATH,
+    EVALHUB_TENANT_LABEL_KEY,
+    EVALHUB_TENANT_LABEL_VALUE,
 )
 from tests.ai_safety.evalhub.utils import (
+    MLflowWithWorkspaces,
     build_evalhub_job_payload,
     build_headers,
+    label_selector_matches,
     submit_evalhub_job,
 )
 
-# ---------------------------------------------------------------------------
-# Fixtures: EvalHub with MLflow enabled (expects existing MLflow deployment)
-# ---------------------------------------------------------------------------
-
-# MLflow is a cluster-scoped CR typically deployed in opendatahub namespace.
-# These tests reuse the existing MLflow instance rather than creating one.
-MLFLOW_NAMESPACE = "opendatahub"
 MLFLOW_SERVICE_PORT = 8443
 
 
 @pytest.fixture(scope="class")
 def mlflow_deployment_ready(
     admin_client: DynamicClient,
-) -> Deployment:
-    """Verify the existing MLflow deployment is available. Skip if not deployed."""
+    tenant_a_namespace: Namespace,
+) -> Generator[Deployment, Any, Any]:
+    """Reuse an existing MLflow deployment, or create an MLflow instance for this class if absent.
+
+    The MLflow operator must already be enabled in the DSC.
+    """
+    namespace = py_config["applications_namespace"]
+    mlflow_instance = MLflowWithWorkspaces(
+        client=admin_client,
+        name="mlflow",
+    )
     deployment = Deployment(
         client=admin_client,
         name="mlflow",
-        namespace=MLFLOW_NAMESPACE,
+        namespace=namespace,
     )
-    if not deployment.exists:
-        pytest.fail("MLflow deployment not found in opendatahub namespace — deploy MLflow first")
-    deployment.wait_for_replicas(timeout=300)
-    return deployment
+    if mlflow_instance.exists:
+        existing_selector = mlflow_instance.instance.to_dict().get("spec", {}).get("workspaceLabelSelector")
+        tenant_labels = dict(tenant_a_namespace.instance.metadata.labels or {})
+        if existing_selector is None or not label_selector_matches(selector=existing_selector, labels=tenant_labels):
+            pytest.fail(
+                f"Existing MLflow instance 'mlflow' has workspaceLabelSelector {existing_selector}, "
+                f"which does not select tenant namespace {tenant_a_namespace.name} labeled {tenant_labels}"
+            )
+        deployment.wait_for_replicas(timeout=300)
+        yield deployment
+        return
+
+    with MLflowWithWorkspaces(
+        client=admin_client,
+        name="mlflow",
+        storage={
+            "accessModes": ["ReadWriteOnce"],
+            "resources": {"requests": {"storage": "1Gi"}},
+        },
+        backend_store_uri="sqlite:////mlflow/mlflow.db",
+        artifacts_destination="file:///mlflow/artifacts",
+        serve_artifacts=True,
+        workspace_label_selector={
+            "matchLabels": {EVALHUB_TENANT_LABEL_KEY: EVALHUB_TENANT_LABEL_VALUE},
+        },
+        image={"imagePullPolicy": "Always"},
+        wait_for_resource=True,
+    ):
+        deployment.wait_for_replicas(timeout=300)
+        yield deployment
 
 
 @pytest.fixture(scope="class")
@@ -65,9 +99,9 @@ def evalhub_mt_cr(  # noqa: UFN001
 
     Same name as the conftest fixture so pytest uses this one for the
     MLflow test class. Points MLFLOW_TRACKING_URI at the existing MLflow
-    service in opendatahub.
+    service.
     """
-    mlflow_uri = f"https://mlflow.{MLFLOW_NAMESPACE}.svc.cluster.local:{MLFLOW_SERVICE_PORT}"
+    mlflow_uri = f"https://mlflow.{py_config['applications_namespace']}.svc.cluster.local:{MLFLOW_SERVICE_PORT}/mlflow"
     with EvalHub(
         client=admin_client,
         name="evalhub-mt",
@@ -236,7 +270,7 @@ class TestEvalHubMLflowIntegration:
             verify=evalhub_mt_ca_bundle_file,
             timeout=30,
         )
-        assert resp.status_code == 202
+        assert resp.status_code == 202, f"Expected 202, got {resp.status_code}: {resp.text[:500]}"
         exp_id = resp.json().get("resource", {}).get("mlflow_experiment_id")
         assert exp_id
 
