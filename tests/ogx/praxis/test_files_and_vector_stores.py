@@ -4,10 +4,13 @@ from collections.abc import Callable
 from typing import Any
 
 import pytest
+from ocp_resources.deployment import Deployment
 from ogx_client import OgxClient
 from ogx_client.types.vector_store import VectorStore
 
 from tests.ogx.datasets import IBM_2025_Q4_EARNINGS
+from tests.ogx.praxis.constants import MIGRATION_FALLBACK_OWNER_SUBJECT, MIGRATION_FALLBACK_TENANT, PRAXIS_GATEWAY_POD_LABELS
+from tests.ogx.praxis.migration import wait_for_deployment_rollout
 from utilities.resources.ogx_server import OgxServer
 
 NAMESPACE_PARAMS: dict[str, Any] = {"name": "test-ogx-praxis-files-migration", "randomize_name": True}
@@ -17,6 +20,20 @@ OGX_SERVER_PARAMS: dict[str, Any] = {
     "files_provider": "local",
     "cpu_requests": "500m",
     "cpu_limits": "2",
+    "network": {
+        "policy": {
+            "ingress": [
+                {
+                    "ports": [{"port": 8321, "protocol": "TCP"}],
+                    "from": [
+                        {"namespaceSelector": {"matchLabels": {"network.openshift.io/policy-group": "ingress"}}},
+                        {"namespaceSelector": {"matchLabels": {"network.openshift.io/policy-group": "host-network"}}},
+                        {"podSelector": {"matchLabels": PRAXIS_GATEWAY_POD_LABELS}},
+                    ],
+                }
+            ]
+        }
+    },
 }
 
 
@@ -40,6 +57,8 @@ class TestFilesAndVectorStoresMigration:
         self,
         ogx_client: OgxClient,
         ogx_praxis_client: OgxClient,
+        ogx_server: OgxServer,
+        ogx_server_deployment: Deployment,
         vector_store: VectorStore,
         praxis_migration_runner: Callable[[], OgxServer],
     ) -> None:
@@ -52,10 +71,19 @@ class TestFilesAndVectorStoresMigration:
         source_file_ids = {file.id for file in ogx_client.files.list().data}
         source_vector_store_ids = {store.id for store in ogx_client.vector_stores.list().data}
 
+        prev_gen = int(ogx_server.instance.metadata.generation)
         praxis_migration_runner()
+        wait_for_deployment_rollout(deployment=ogx_server_deployment, previous_generation=prev_gen)
 
-        target_file_ids = {file.id for file in ogx_praxis_client.files.list().data}
-        target_vector_store_ids = {store.id for store in ogx_praxis_client.vector_stores.list().data}
+        extra_headers = {
+            "x-user-id": MIGRATION_FALLBACK_OWNER_SUBJECT,
+            "x-tenant-id": MIGRATION_FALLBACK_TENANT,
+        }
+
+        target_files = ogx_praxis_client.files.list(extra_headers=extra_headers).data
+        target_vector_stores = ogx_praxis_client.vector_stores.list(extra_headers=extra_headers).data
+        target_file_ids = {file.id for file in target_files}
+        target_vector_store_ids = {store.id for store in target_vector_stores}
 
         assert target_file_ids == source_file_ids, "Praxis File IDs differ from the File IDs seeded in OGX"
         assert target_vector_store_ids == source_vector_store_ids, (

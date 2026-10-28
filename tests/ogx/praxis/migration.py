@@ -11,6 +11,7 @@ from tests.ogx.praxis.constants import (
     MIGRATION_FALLBACK_TENANT,
     OGX_CONNECTION_SECRET_KEY,
     PRAXIS_CONNECTION_SECRET_KEY,
+    PRAXIS_GATEWAY_POD_LABELS,
 )
 from utilities.resources.ogx_server import OgxServer
 
@@ -94,6 +95,10 @@ def run_migration(
                     },
                     "praxisMode": {
                         "enabled": True,
+                        "praxisSelector": {
+                            "namespace": ogx_server.namespace,
+                            "podSelector": {"matchLabels": PRAXIS_GATEWAY_POD_LABELS},
+                        },
                         "migrationJob": {
                             "enabled": True,
                             "targetConnectionString": {
