@@ -26,15 +26,15 @@ from timeout_sampler import TimeoutSampler
 from tests.ai_safety.guardrails.constants import (
     AUTOCONFIG_DETECTOR_LABEL,
     OTEL_EXPORTER_PORT,
-    SUPER_SECRET,
     TEMPO,
     TEST_TLS_CERTIFICATE,
     TEST_TLS_PRIVATE_KEY,
 )
-from tests.ai_safety.image_constants import AiSafetyImages
 from utilities.constants import (
     KServeDeploymentType,
     RuntimeTemplates,
+    SeaweedFs,
+    Timeout,
 )
 from utilities.inference_utils import LOGGER, create_isvc
 from utilities.operator_utils import get_cluster_service_version
@@ -108,6 +108,11 @@ def prompt_injection_detector_isvc(
             },
             teardown=teardown_resources,
         ) as isvc:
+            isvc.wait_for_condition(
+                condition=isvc.Condition.READY,
+                status=isvc.Condition.Status.TRUE,
+                timeout=600,
+            )
             yield isvc
 
 
@@ -217,6 +222,11 @@ def hap_detector_isvc(
             },
             teardown=teardown_resources,
         ) as isvc:
+            isvc.wait_for_condition(
+                condition=isvc.Condition.READY,
+                status=isvc.Condition.Status.TRUE,
+                timeout=600,
+            )
             yield isvc
 
 
@@ -302,12 +312,12 @@ def installed_tempo_operator(admin_client: DynamicClient, model_namespace: Names
 def tempo_stack(
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    minio_secret_otel: Secret,
+    seaweedfs_secret_otel: Secret,
     pytestconfig: pytest.Config,
     teardown_resources: bool,
 ) -> Generator[TempoStack, Any]:
     """
-    Create a TempoStack CR in the test namespace, configured to use MinIO backend.
+    Create a TempoStack CR in the test namespace, configured to use a SeaweedFS S3 backend.
     """
     tempo_name = "my-tempo-stack"
 
@@ -354,10 +364,10 @@ def tempo_stack(
         tempo_stack_dict["metadata"]["namespace"] = model_namespace.name
         tempo_stack_dict["metadata"]["name"] = tempo_name
 
-        # Override spec with MinIO backend and resource constraints
+        # Override spec with SeaweedFS S3 backend and resource constraints
         tempo_stack_dict["spec"]["storage"] = {
             "secret": {
-                "name": minio_secret_otel.name,
+                "name": seaweedfs_secret_otel.name,
                 "type": "s3",
             }
         }
@@ -438,7 +448,7 @@ def installed_opentelemetry_operator(
 def otel_collector(
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    minio_service_otel,
+    seaweedfs_service_otel: Service,
     tempo_stack: TempoStack,
     pytestconfig: pytest.Config,
     teardown_resources: bool,
@@ -629,100 +639,142 @@ def guardrails_orchestrator_pod_with_tls(
 
 
 @pytest.fixture(scope="class")
-def minio_pvc_otel(
+def seaweedfs_pvc_otel(
     admin_client: DynamicClient,
     model_namespace: Namespace,
+    pytestconfig: pytest.Config,
+    teardown_resources: bool,
 ) -> Generator[PersistentVolumeClaim, Any, Any]:
-    """
-    Creates a PVC for MinIO storage backend in the given namespace.
-    """
-    pvc_kwargs = {
-        "name": "minio",
-        "namespace": model_namespace.name,
-        "client": admin_client,
-        "size": "2Gi",
-        "accessmodes": "ReadWriteOnce",
-        "label": {"app.kubernetes.io/name": "minio"},
-    }
-
-    with PersistentVolumeClaim(**pvc_kwargs) as pvc:
-        yield pvc
-
-
-@pytest.fixture(scope="class")
-def minio_deployment_otel(admin_client, model_namespace, minio_pvc_otel):
-    selector = {"matchLabels": {"app.kubernetes.io/name": "minio"}}
-    pod_template = {
-        "metadata": {"labels": {"app.kubernetes.io/name": "minio"}},
-        "spec": {
-            "containers": [
-                {
-                    "name": "minio",
-                    "image": AiSafetyImages.MINIO_SERVER_OTEL,
-                    "command": ["/bin/sh", "-c", "mkdir -p /storage/tempo && minio server /storage"],
-                    "env": [
-                        {"name": "MINIO_ACCESS_KEY", "value": TEMPO},
-                        {"name": "MINIO_SECRET_KEY", "value": SUPER_SECRET},
-                    ],
-                    "ports": [{"containerPort": 9000}],
-                    "volumeMounts": [{"mountPath": "/storage", "name": "storage"}],
-                }
-            ],
-            "volumes": [
-                {
-                    "name": "storage",
-                    "persistentVolumeClaim": {"claimName": "minio"},
-                }
-            ],
-        },
-    }
-
-    deployment = Deployment(
-        client=admin_client,
-        name="minio",
-        namespace=model_namespace.name,
-        selector=selector,
-        template=pod_template,
-        strategy={"type": "Recreate"},
-        teardown=True,
-    )
-
-    with deployment:
-        deployment.wait_for_replicas()
-        yield deployment
-
-
-@pytest.fixture(scope="class")
-def minio_service_otel(
-    admin_client, model_namespace, minio_deployment_otel, pytestconfig: pytest.Config, teardown_resources: bool
-):
+    """Creates a PVC for the SeaweedFS storage backend in the given namespace."""
     if pytestconfig.option.post_upgrade:
-        # During post-upgrade, reuse existing Service
+        pvc = PersistentVolumeClaim(
+            name=SeaweedFs.Metadata.NAME,
+            namespace=model_namespace.name,
+            client=admin_client,
+        )
+        yield pvc
+        if teardown_resources:
+            pvc.clean_up()
+    else:
+        pvc_kwargs = {
+            "name": SeaweedFs.Metadata.NAME,
+            "namespace": model_namespace.name,
+            "client": admin_client,
+            "size": "2Gi",
+            "accessmodes": "ReadWriteOnce",
+            "label": {"app.kubernetes.io/name": SeaweedFs.Metadata.NAME},
+        }
+
+        with PersistentVolumeClaim(**pvc_kwargs, teardown=teardown_resources) as pvc:
+            yield pvc
+
+
+@pytest.fixture(scope="class")
+def seaweedfs_deployment_otel(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    seaweedfs_pvc_otel: PersistentVolumeClaim,
+    pytestconfig: pytest.Config,
+    teardown_resources: bool,
+) -> Generator[Deployment, Any, Any]:
+    """Creates a SeaweedFS Deployment for Tempo OTel backend storage."""
+    if pytestconfig.option.post_upgrade:
+        deployment = Deployment(
+            client=admin_client,
+            name=SeaweedFs.Metadata.NAME,
+            namespace=model_namespace.name,
+        )
+        deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_5MIN)
+        yield deployment
+        if teardown_resources:
+            deployment.clean_up()
+    else:
+        selector = {"matchLabels": {"app.kubernetes.io/name": SeaweedFs.Metadata.NAME}}
+        initialization_command = (
+            "for attempt in $(seq 1 60); do "
+            f"wget -q --spider http://127.0.0.1:{SeaweedFs.Metadata.DEFAULT_PORT}/status && break; "
+            '[ "$attempt" -eq 60 ] && exit 1; sleep 2; '
+            "done; "
+            'echo "s3.configure -user admin -access_key $accesskey -secret_key $secretkey -actions Admin -apply" '
+            "| /usr/bin/weed shell && "
+            f"echo 's3.bucket.create -name {TEMPO}' | /usr/bin/weed shell"
+        )
+        pod_template = {
+            "metadata": {"labels": {"app.kubernetes.io/name": SeaweedFs.Metadata.NAME}},
+            "spec": {
+                "securityContext": {"hostUsers": False, "seccompProfile": {"type": "RuntimeDefault"}},
+                "containers": [
+                    {
+                        "name": SeaweedFs.Metadata.NAME,
+                        "image": SeaweedFs.PodConfig.IMAGE,
+                        "args": ["server", "-dir=/data", "-s3", "-iam", "-master.volumePreallocate=false"],
+                        "env": [
+                            {"name": "accesskey", "value": TEMPO},
+                            {"name": "secretkey", "value": SeaweedFs.Credentials.SECRET_KEY_VALUE},
+                        ],
+                        "ports": [{"containerPort": SeaweedFs.Metadata.DEFAULT_PORT}],
+                        "volumeMounts": [{"mountPath": "/data", "name": "storage"}],
+                        "lifecycle": {"postStart": {"exec": {"command": ["/bin/sh", "-c", initialization_command]}}},
+                    }
+                ],
+                "volumes": [
+                    {
+                        "name": "storage",
+                        "persistentVolumeClaim": {"claimName": SeaweedFs.Metadata.NAME},
+                    }
+                ],
+            },
+        }
+
+        deployment = Deployment(
+            client=admin_client,
+            name=SeaweedFs.Metadata.NAME,
+            namespace=model_namespace.name,
+            selector=selector,
+            template=pod_template,
+            strategy={"type": "Recreate"},
+            teardown=teardown_resources,
+        )
+
+        with deployment:
+            deployment.wait_for_replicas(timeout=Timeout.TIMEOUT_5MIN)
+            yield deployment
+
+
+@pytest.fixture(scope="class")
+def seaweedfs_service_otel(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    seaweedfs_deployment_otel: Deployment,
+    pytestconfig: pytest.Config,
+    teardown_resources: bool,
+) -> Generator[Service, Any, Any]:
+    """Creates a Service for the SeaweedFS OTel backend."""
+    if pytestconfig.option.post_upgrade:
         service = Service(
             client=admin_client,
-            name="minio",
+            name=SeaweedFs.Metadata.NAME,
             namespace=model_namespace.name,
         )
         yield service
         if teardown_resources:
             service.clean_up()
     else:
-        # During pre-upgrade or normal tests, create new Service
         ports = [
             {
-                "port": 9000,
+                "port": SeaweedFs.Metadata.DEFAULT_PORT,
                 "protocol": "TCP",
-                "targetPort": 9000,
+                "targetPort": SeaweedFs.Metadata.DEFAULT_PORT,
             }
         ]
 
         selector = {
-            "app.kubernetes.io/name": "minio",
+            "app.kubernetes.io/name": SeaweedFs.Metadata.NAME,
         }
 
         service = Service(
             client=admin_client,
-            name="minio",
+            name=SeaweedFs.Metadata.NAME,
             namespace=model_namespace.name,
             ports=ports,
             selector=selector,
@@ -734,30 +786,36 @@ def minio_service_otel(
 
 
 @pytest.fixture(scope="class")
-def minio_secret_otel(
-    admin_client, model_namespace, minio_service_otel, pytestconfig: pytest.Config, teardown_resources: bool
-):
+def seaweedfs_secret_otel(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    seaweedfs_service_otel: Service,
+    pytestconfig: pytest.Config,
+    teardown_resources: bool,
+) -> Generator[Secret, Any, Any]:
+    """Creates a Secret with SeaweedFS S3 credentials for the Tempo backend."""
     if pytestconfig.option.post_upgrade:
-        # During post-upgrade, reuse existing Secret
         secret = Secret(
             client=admin_client,
-            name="minio-test",
+            name="seaweedfs-test",
             namespace=model_namespace.name,
         )
         yield secret
         if teardown_resources:
             secret.clean_up()
     else:
-        # During pre-upgrade or normal tests, create new Secret
         secret = Secret(
             client=admin_client,
-            name="minio-test",
+            name="seaweedfs-test",
             namespace=model_namespace.name,
             string_data={
-                "endpoint": f"http://{minio_service_otel.name}.{model_namespace.name}.svc.cluster.local:9000",
+                "endpoint": (
+                    f"http://{seaweedfs_service_otel.name}.{model_namespace.name}.svc.cluster.local:"
+                    f"{SeaweedFs.Metadata.DEFAULT_PORT}"
+                ),
                 "bucket": TEMPO,
                 "access_key_id": TEMPO,  # pragma: allowlist secret
-                "access_key_secret": SUPER_SECRET,  # pragma: allowlist secret
+                "access_key_secret": SeaweedFs.Credentials.SECRET_KEY_VALUE,  # pragma: allowlist secret
             },
             type="Opaque",
             teardown=teardown_resources,
