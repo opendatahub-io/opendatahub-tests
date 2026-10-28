@@ -469,11 +469,31 @@ def minio_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, An
 
 
 @pytest.fixture(scope="class")
+def minio_credentials_secret(
+    admin_client: DynamicClient,
+    minio_namespace: Namespace,
+) -> Generator[Secret, Any, Any]:
+    """MinIO server credentials in the MinIO namespace."""
+    with Secret(
+        client=admin_client,
+        name="minio-credentials",
+        namespace=minio_namespace.name,
+        string_data={
+            MinIo.Credentials.ACCESS_KEY_NAME: MinIo.Credentials.ACCESS_KEY_VALUE,
+            MinIo.Credentials.SECRET_KEY_NAME: MinIo.Credentials.SECRET_KEY_VALUE,
+        },
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="class")
 def minio_pod(
     request: FixtureRequest,
     admin_client: DynamicClient,
     minio_namespace: Namespace,
+    minio_credentials_secret: Secret,
 ) -> Generator[Pod, Any, Any]:
+    """MinIO Pod with credentials supplied by a Secret."""
     pod_labels = {Labels.Openshift.APP: MinIo.Metadata.NAME}
 
     if labels := request.param.get("labels"):
@@ -489,11 +509,21 @@ def minio_pod(
                 "env": [
                     {
                         "name": MinIo.Credentials.ACCESS_KEY_NAME,
-                        "value": MinIo.Credentials.ACCESS_KEY_VALUE,
+                        "valueFrom": {
+                            "secretKeyRef": {
+                                "name": minio_credentials_secret.name,
+                                "key": MinIo.Credentials.ACCESS_KEY_NAME,
+                            },
+                        },
                     },
                     {
                         "name": MinIo.Credentials.SECRET_KEY_NAME,
-                        "value": MinIo.Credentials.SECRET_KEY_VALUE,
+                        "valueFrom": {
+                            "secretKeyRef": {
+                                "name": minio_credentials_secret.name,
+                                "key": MinIo.Credentials.SECRET_KEY_NAME,
+                            },
+                        },
                     },
                 ],
                 "image": request.param.get("image"),
@@ -578,13 +608,32 @@ def seaweedfs_filer_config(
 
 
 @pytest.fixture(scope="class")
+def seaweedfs_credentials_secret(
+    admin_client: DynamicClient,
+    seaweedfs_namespace: Namespace,
+) -> Generator[Secret, Any, Any]:
+    """SeaweedFS server credentials in the SeaweedFS namespace."""
+    with Secret(
+        client=admin_client,
+        name="seaweedfs-credentials",
+        namespace=seaweedfs_namespace.name,
+        string_data={
+            "accesskey": SeaweedFs.Credentials.ACCESS_KEY_VALUE,
+            "secretkey": SeaweedFs.Credentials.SECRET_KEY_VALUE,
+        },
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="class")
 def seaweedfs_pod(
     request: FixtureRequest,
     admin_client: DynamicClient,
     seaweedfs_namespace: Namespace,
     seaweedfs_filer_config: ConfigMap,
+    seaweedfs_credentials_secret: Secret,
 ) -> Generator[Pod, Any, Any]:
-    """Run an authenticated SeaweedFS instance exposing its S3 API."""
+    """Run an authenticated SeaweedFS instance exposing its S3 API with Secret credentials."""
     pod_labels = {Labels.Openshift.APP: SeaweedFs.Metadata.NAME}
     fixture_config = getattr(request, "param", {})
 
@@ -613,8 +662,18 @@ def seaweedfs_pod(
                 "image": SeaweedFs.PodConfig.IMAGE,
                 "args": list(SeaweedFs.PodConfig.ARGS),
                 "env": [
-                    {"name": "accesskey", "value": SeaweedFs.Credentials.ACCESS_KEY_VALUE},
-                    {"name": "secretkey", "value": SeaweedFs.Credentials.SECRET_KEY_VALUE},
+                    {
+                        "name": "accesskey",
+                        "valueFrom": {
+                            "secretKeyRef": {"name": seaweedfs_credentials_secret.name, "key": "accesskey"},
+                        },
+                    },
+                    {
+                        "name": "secretkey",
+                        "valueFrom": {
+                            "secretKeyRef": {"name": seaweedfs_credentials_secret.name, "key": "secretkey"},
+                        },
+                    },
                 ],
                 "ports": [
                     {"containerPort": SeaweedFs.Metadata.DEFAULT_PORT, "name": "s3"},

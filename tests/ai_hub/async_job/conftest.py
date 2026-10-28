@@ -271,11 +271,30 @@ def oci_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, Any]
 
 
 @pytest.fixture(scope="class")
+def oci_registry_s3_credentials_secret(
+    admin_client: DynamicClient,
+    oci_namespace: Namespace,
+) -> Generator[Secret, Any, Any]:
+    """S3 credentials for the OCI registry in its namespace."""
+    with Secret(
+        client=admin_client,
+        name="oci-registry-s3-credentials",
+        namespace=oci_namespace.name,
+        string_data={
+            "AWS_ACCESS_KEY_ID": SeaweedFs.Credentials.ACCESS_KEY_VALUE,
+            "AWS_SECRET_ACCESS_KEY": SeaweedFs.Credentials.SECRET_KEY_VALUE,
+        },
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="class")
 def oci_registry_pod_with_s3(
     request: FixtureRequest,
     admin_client: DynamicClient,
     oci_namespace: Namespace,
     seaweedfs_service: Service,
+    oci_registry_s3_credentials_secret: Secret,
 ) -> Generator[Pod, Any, Any]:
     """Run an OCI registry backed by SeaweedFS S3 storage."""
     pod_labels = {Labels.Openshift.APP: OCIRegistry.Metadata.NAME}
@@ -302,8 +321,24 @@ def oci_registry_pod_with_s3(
                     {"name": "ZOT_STORAGE_STORAGEDRIVER_BUCKET", "value": SeaweedFs.Buckets.MODELMESH_EXAMPLE_MODELS},
                     {"name": "ZOT_STORAGE_STORAGEDRIVER_REGION", "value": OCIRegistry.Storage.STORAGE_DRIVER_REGION},
                     {"name": "ZOT_STORAGE_STORAGEDRIVER_REGIONENDPOINT", "value": f"http://{s3_endpoint}"},
-                    {"name": "ZOT_STORAGE_STORAGEDRIVER_ACCESSKEY", "value": SeaweedFs.Credentials.ACCESS_KEY_VALUE},
-                    {"name": "ZOT_STORAGE_STORAGEDRIVER_SECRETKEY", "value": SeaweedFs.Credentials.SECRET_KEY_VALUE},
+                    {
+                        "name": "ZOT_STORAGE_STORAGEDRIVER_ACCESSKEY",
+                        "valueFrom": {
+                            "secretKeyRef": {
+                                "name": oci_registry_s3_credentials_secret.name,
+                                "key": "AWS_ACCESS_KEY_ID",
+                            },
+                        },
+                    },
+                    {
+                        "name": "ZOT_STORAGE_STORAGEDRIVER_SECRETKEY",
+                        "valueFrom": {
+                            "secretKeyRef": {
+                                "name": oci_registry_s3_credentials_secret.name,
+                                "key": "AWS_SECRET_ACCESS_KEY",
+                            },
+                        },
+                    },
                     {
                         "name": "ZOT_STORAGE_STORAGEDRIVER_SECURE",
                         "value": OCIRegistry.Storage.STORAGE_STORAGEDRIVER_SECURE,

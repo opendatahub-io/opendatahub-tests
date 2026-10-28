@@ -38,7 +38,7 @@ pytestmark = [pytest.mark.modelmesh, pytest.mark.minio, pytest.mark.sanity]
                 "name": f"{ModelName.MNIST}-model",
                 "model-format": ModelAndFormat.OPENVINO_IR,
                 "model-version": "1",
-                "model-dir": f"modelmesh/{ModelFormat.ONNX}",
+                "model-dir": f"serving/modelmesh/{ModelFormat.ONNX}",
                 "deployment-mode": KServeDeploymentType.MODEL_MESH,
             },
         )

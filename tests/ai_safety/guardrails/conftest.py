@@ -5,6 +5,7 @@ import pytest
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.cluster_service_version import ClusterServiceVersion
+from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
@@ -588,8 +589,75 @@ def seaweedfs_pvc_otel(
 
 
 @pytest.fixture(scope="class")
+def seaweedfs_otel_filer_config(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    pytestconfig: pytest.Config,
+    teardown_resources: bool,
+) -> Generator[ConfigMap, Any, Any]:
+    """Configure SeaweedFS filer metadata storage on the writable temporary filesystem."""
+    config_name = "seaweedfs-filer-config"
+    if pytestconfig.option.post_upgrade:
+        config_map = ConfigMap(
+            client=admin_client,
+            name=config_name,
+            namespace=model_namespace.name,
+        )
+        yield config_map
+        if teardown_resources:
+            config_map.clean_up()
+    else:
+        with ConfigMap(
+            client=admin_client,
+            name=config_name,
+            namespace=model_namespace.name,
+            data={"filer.toml": '[leveldb2]\nenabled = true\ndir = "/tmp/filerldb2"\n'},
+            teardown=teardown_resources,
+        ) as config_map:
+            yield config_map
+
+
+@pytest.fixture(scope="class")
+def seaweedfs_otel_credentials_secret(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    pytestconfig: pytest.Config,
+    teardown_resources: bool,
+) -> Generator[Secret, Any, Any]:
+    """SeaweedFS server credentials in the model namespace."""
+    secret_name = "seaweedfs-credentials"  # pragma: allowlist secret
+    if pytestconfig.option.post_upgrade:
+        secret = Secret(
+            client=admin_client,
+            name=secret_name,
+            namespace=model_namespace.name,
+        )
+        yield secret
+        if teardown_resources:
+            secret.clean_up()
+    else:
+        with Secret(
+            client=admin_client,
+            name=secret_name,
+            namespace=model_namespace.name,
+            string_data={
+                "accesskey": TEMPO,  # pragma: allowlist secret
+                "secretkey": SEAWEEDFS_SECRET_KEY_VALUE,  # pragma: allowlist secret
+            },
+            teardown=teardown_resources,
+        ) as secret:
+            yield secret
+
+
+@pytest.fixture(scope="class")
 def seaweedfs_deployment_otel(
-    admin_client, model_namespace, seaweedfs_pvc_otel, pytestconfig: pytest.Config, teardown_resources: bool
+    admin_client,
+    model_namespace,
+    seaweedfs_pvc_otel,
+    seaweedfs_otel_filer_config: ConfigMap,
+    seaweedfs_otel_credentials_secret: Secret,
+    pytestconfig: pytest.Config,
+    teardown_resources: bool,
 ):
     if pytestconfig.option.post_upgrade:
         # During post-upgrade, reuse existing Deployment
@@ -626,11 +694,35 @@ def seaweedfs_deployment_otel(
                         "image": SeaweedFs.PodConfig.IMAGE,
                         "args": ["server", "-dir=/storage", "-s3", "-iam", "-master.volumePreallocate=false"],
                         "env": [
-                            {"name": "accesskey", "value": TEMPO},
-                            {"name": "secretkey", "value": SEAWEEDFS_SECRET_KEY_VALUE},
+                            {
+                                "name": "accesskey",
+                                "valueFrom": {
+                                    "secretKeyRef": {
+                                        "name": seaweedfs_otel_credentials_secret.name,
+                                        "key": "accesskey",
+                                    },
+                                },
+                            },
+                            {
+                                "name": "secretkey",
+                                "valueFrom": {
+                                    "secretKeyRef": {
+                                        "name": seaweedfs_otel_credentials_secret.name,
+                                        "key": "secretkey",
+                                    },
+                                },
+                            },
                         ],
                         "ports": [{"containerPort": SeaweedFs.Metadata.DEFAULT_PORT}],
-                        "volumeMounts": [{"mountPath": "/storage", "name": "storage"}],
+                        "volumeMounts": [
+                            {"mountPath": "/storage", "name": "storage"},
+                            {
+                                "name": "filer-config",
+                                "mountPath": "/etc/seaweedfs/filer.toml",
+                                "subPath": "filer.toml",
+                                "readOnly": True,
+                            },
+                        ],
                         "lifecycle": {"postStart": {"exec": {"command": ["/bin/sh", "-c", initialization_command]}}},
                     }
                 ],
@@ -638,7 +730,8 @@ def seaweedfs_deployment_otel(
                     {
                         "name": "storage",
                         "persistentVolumeClaim": {"claimName": SeaweedFs.Metadata.NAME},
-                    }
+                    },
+                    {"name": "filer-config", "configMap": {"name": seaweedfs_otel_filer_config.name}},
                 ],
             },
         }
