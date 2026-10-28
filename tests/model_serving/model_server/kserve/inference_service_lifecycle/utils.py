@@ -1,12 +1,13 @@
 """Utilities for inference service lifecycle testing."""
 
 import time
-from collections.abc import Generator
+from collections.abc import Generator, Iterator
 from contextlib import contextmanager
 from typing import Any
 
 import structlog
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
@@ -16,6 +17,99 @@ from tests.model_serving.model_server.utils import verify_no_inference_pods
 from utilities.infra import get_pods_by_isvc_label
 
 LOGGER = structlog.get_logger(name=__name__)
+
+# Label used as reconciliation evidence: labels (unlike annotations) are copied
+# from the InferenceService onto the Deployment object metadata by the
+# controller (see Predictor.buildObjectMeta), and object-level labels are not
+# part of the pod template, so a matching label on the Deployment proves the
+# controller re-reconciled the ISVC without rolling out pods.
+RECONCILE_TRIGGER_LABEL = "test.opendatahub.io/isvc-reconcile-trigger"
+
+# Label on ISVC annotations that KServe filters out of the Deployment object
+# metadata (see ServiceAnnotationDisallowedList): patching it cannot change the
+# desired state, but the update event still enqueues a reconciliation.
+RECONCILE_TRIGGER_ANNOTATION = "kubectl.kubernetes.io/last-applied-configuration"
+RECONCILE_TRIGGER_ANNOTATION_VALUE = '{"test": "isvc-reconcile-trigger"}'
+
+
+@contextmanager
+def trigger_isvc_reconcile(client: DynamicClient, isvc: InferenceService) -> Generator[InferenceService, Any]:
+    """
+    Trigger an InferenceService reconciliation without changing its desired state.
+
+    Patches an ISVC annotation that KServe filters out of the Deployment object
+    metadata (see RECONCILE_TRIGGER_ANNOTATION) and a label that is copied
+    through. The reconciliation rebuilds the desired Deployment from an
+    unchanged pod-spec, and this helper only yields once the controller has
+    processed the update -- proven by the trigger label appearing on the
+    Deployment object's (non pod-template) metadata.
+
+    Waiting for this evidence matters: yielding immediately could let the test
+    finish its observation window with pods a delayed reconciliation never
+    reached, passing without exercising the no-rollout path under test.
+
+    The patches are restored on exit, which triggers a second no-op
+    reconciliation after the observation window closes.
+
+    Args:
+        client (DynamicClient): DynamicClient with access to the ISVC namespace.
+        isvc (InferenceService): InferenceService object
+
+    Yields:
+        InferenceService: InferenceService object
+    """
+    trigger_value = f"{isvc.name}-{int(time.time())}"
+    with ResourceEditor(
+        patches={
+            isvc: {
+                "metadata": {
+                    "labels": {RECONCILE_TRIGGER_LABEL: trigger_value},
+                    "annotations": {RECONCILE_TRIGGER_ANNOTATION: RECONCILE_TRIGGER_ANNOTATION_VALUE},
+                }
+            }
+        }
+    ):
+        wait_for_deployment_label(
+            client=client,
+            isvc=isvc,
+            label=RECONCILE_TRIGGER_LABEL,
+            value=trigger_value,
+        )
+        yield isvc
+
+
+def wait_for_deployment_label(client: DynamicClient, isvc: InferenceService, label: str, value: str) -> None:
+    """
+    Wait until the predictor Deployment object carries the given label value.
+
+    The label lives on the Deployment object metadata (not the pod template), so
+    its appearance proves the KServe controller reconciled the update without
+    implying a pod rollout.
+
+    Args:
+        client (DynamicClient): DynamicClient object.
+        isvc (InferenceService): InferenceService object.
+        label (str): Label key to wait for.
+        value (str): Expected label value.
+
+    Raises:
+        TimeoutExpiredError: If the controller does not propagate the label in time.
+    """
+    try:
+        deployment = Deployment(
+            client=client,
+            name=f"{isvc.name}-predictor",
+            namespace=isvc.namespace,
+        )
+        for _ in TimeoutSampler(
+            wait_timeout=600,
+            sleep=5,
+            func=lambda: deployment.exists is not None and deployment.instance.metadata.labels.get(label) == value,
+        ):
+            return
+    except TimeoutExpiredError:
+        LOGGER.error(f"Predictor Deployment for {isvc.name} was not reconciled: label {label}={value} not found")
+        raise
 
 
 @contextmanager
@@ -39,6 +133,41 @@ def update_inference_service(
             wait_for_new_running_inference_pods(isvc=isvc, orig_pods=orig_pods)
 
         yield isvc
+
+
+def wait_for_elapsed(
+    sleep_interval: int,
+    *,
+    wait_timeout: int,
+) -> Iterator[None]:
+    """
+    Yield repeatedly until a bounded observation window elapses.
+
+    Unlike ``TimeoutSampler``, which only yields until a condition passes, this
+    sampler yields for the whole window so the caller can assert a condition that
+    must HOLD (not become true) on every sample, catching regressions that appear
+    mid-window. Used for "no rollout" checks where the pass condition is that old
+    pods must never be replaced or restarted.
+
+    The ``TimeoutSampler`` timeout itself is the observation window, so its
+    expiry (after the window is fully sampled) is swallowed: consuming the whole
+    window without the caller breaking early is the success path.
+
+    Args:
+        sleep_interval (int): Seconds to sleep between samples.
+        wait_timeout (int): Total observation window in seconds.
+
+    Yields:
+        None: Once per sampling interval for the whole window.
+    """
+    try:
+        yield from TimeoutSampler(
+            wait_timeout=wait_timeout,
+            sleep=sleep_interval,
+            func=lambda: "sample",
+        )
+    except TimeoutExpiredError:
+        return
 
 
 def verify_env_vars_in_isvc_pods(isvc: InferenceService, env_vars: list[dict[str, str]], vars_exist: bool) -> None:
