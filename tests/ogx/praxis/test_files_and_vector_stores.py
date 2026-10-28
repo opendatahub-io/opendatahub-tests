@@ -9,7 +9,11 @@ from ogx_client import OgxClient
 from ogx_client.types.vector_store import VectorStore
 
 from tests.ogx.datasets import IBM_2025_Q4_EARNINGS
-from tests.ogx.praxis.constants import MIGRATION_FALLBACK_OWNER_SUBJECT, MIGRATION_FALLBACK_TENANT, PRAXIS_GATEWAY_POD_LABELS
+from tests.ogx.praxis.constants import (
+    MIGRATION_FALLBACK_OWNER_SUBJECT,
+    MIGRATION_FALLBACK_TENANT,
+    PRAXIS_GATEWAY_POD_LABELS,
+)
 from tests.ogx.praxis.migration import wait_for_deployment_rollout
 from utilities.resources.ogx_server import OgxServer
 
