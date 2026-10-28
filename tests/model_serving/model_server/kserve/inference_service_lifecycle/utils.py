@@ -96,16 +96,17 @@ def wait_for_deployment_label(client: DynamicClient, isvc: InferenceService, lab
         TimeoutExpiredError: If the controller does not propagate the label in time.
     """
     try:
-        for deployment in TimeoutSampler(
-            wait_timeout=600,
-            sleep=5,
-            func=Deployment.get,
+        deployment = Deployment(
             client=client,
             name=f"{isvc.name}-predictor",
             namespace=isvc.namespace,
+        )
+        for _ in TimeoutSampler(
+            wait_timeout=600,
+            sleep=5,
+            func=lambda: deployment.exists is not None and deployment.instance.metadata.labels.get(label) == value,
         ):
-            if deployment and deployment.instance.metadata.labels.get(label) == value:
-                return
+            return
     except TimeoutExpiredError:
         LOGGER.error(f"Predictor Deployment for {isvc.name} was not reconciled: label {label}={value} not found")
         raise
