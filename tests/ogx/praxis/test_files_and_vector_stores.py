@@ -54,7 +54,7 @@ OGX_SERVER_PARAMS: dict[str, Any] = {
 )
 @pytest.mark.ogx
 @pytest.mark.tier1
-@pytest.skip(
+@pytest.mark.skip(
     reason=(
         "Skipping. PraxisMode sets server.tenancy.mode to multi-tenant,",
         "which makes previously seeded Files and Vector Stores inaccessible.",
@@ -68,7 +68,6 @@ class TestFilesAndVectorStoresMigration:
         self,
         ogx_client: OgxClient,
         ogx_praxis_client: OgxClient,
-        ogx_server: OgxServer,
         ogx_server_deployment: Deployment,
         vector_store: VectorStore,
         praxis_migration_runner: Callable[[], OgxServer],
@@ -82,7 +81,7 @@ class TestFilesAndVectorStoresMigration:
         source_file_ids = {file.id for file in ogx_client.files.list().data}
         source_vector_store_ids = {store.id for store in ogx_client.vector_stores.list().data}
 
-        prev_gen = int(ogx_server.instance.metadata.generation)
+        prev_gen = int(ogx_server_deployment.instance.metadata.generation)
         praxis_migration_runner()
         wait_for_deployment_rollout(deployment=ogx_server_deployment, previous_generation=prev_gen)
 
