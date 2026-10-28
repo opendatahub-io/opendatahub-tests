@@ -67,27 +67,6 @@ jobs:
       QUAY_PASSWORD: ${{ secrets.QUAY_PASSWORD }}
 ```
 
-## Testing a workflow before it is merged
-
-`workflow_dispatch` workflows are only offered for the repository default branch, so
-`Cut Release Branch` cannot be run against `opendatahub-io/opendatahub-tests` until it is
-merged. Test it on a fork instead:
-
-1. Push the branch under test to your fork's default branch:
-   `git push --force origin HEAD:main`.
-2. In the fork, add `QUAY_USERNAME` and `QUAY_PASSWORD` repository secrets for a quay
-   namespace you own.
-3. Actions tab of the fork -> `Cut Release Branch` -> `Run workflow`. Set `branch_name` to a
-   throwaway value such as `test-cut-1`. The registry is fixed to `quay.io/opendatahub`, so
-   run with `build_image: false` to check branch creation. To check the image push as well,
-   point `REGISTRY` in the fork's copy of `build-push-image.yml` at your own namespace first.
-4. Verify the branch exists in the fork and that the tag exists in your quay repository.
-5. Clean up: delete the test branch and the quay tag, and reset the fork default branch to
-   the upstream `main`.
-
-Reusable workflows are resolved from the ref of the calling workflow, so `build-push-image.yml`
-is picked up from the same branch under test without any extra setup.
-
 ## How to add a new workflow
 
 1. Create a new file in `.github/workflows` directory.
