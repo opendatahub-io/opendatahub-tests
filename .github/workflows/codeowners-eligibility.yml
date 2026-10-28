@@ -1,0 +1,66 @@
+name: Validate CODEOWNERS Eligibility
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  validate-codeowners:
+    name: Validate CODEOWNERS Eligibility
+    runs-on: ubuntu-latest
+
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+
+    steps:
+      - name: Check changed files
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          changed_files=$(gh api --paginate "repos/${REPOSITORY}/pulls/${PR_NUMBER}/files" --jq '.[].filename')
+          if printf '%s\n' "$changed_files" | grep -Fxq '.github/CODEOWNERS'; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo ".github/CODEOWNERS changed; eligibility validation will run."
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo ".github/CODEOWNERS was not changed; eligibility validation will be skipped."
+          fi
+
+      - name: Checkout base branch
+        if: steps.check.outputs.changed == 'true'
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+
+      - name: Install uv
+        if: steps.check.outputs.changed == 'true'
+        uses: astral-sh/setup-uv@v10.3.2
+
+      - name: Fetch pull request head
+        if: steps.check.outputs.changed == 'true'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          git fetch --no-tags origin "refs/pull/${PR_NUMBER}/head"
+          echo "PR_HEAD_SHA=$(git rev-parse FETCH_HEAD)" >> "$GITHUB_ENV"
+
+      - name: Validate new CODEOWNERS
+        if: steps.check.outputs.changed == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.RHODS_CI_BOT_PAT }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: uv run python .github/workflows/scripts/validate_codeowners.py
+
+      - name: Skip eligibility validation
+        if: steps.check.outputs.changed == 'false'
+        run: echo ".github/CODEOWNERS was not modified; skipping eligibility validation."
