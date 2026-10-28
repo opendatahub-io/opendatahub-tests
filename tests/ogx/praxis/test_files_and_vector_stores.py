@@ -56,9 +56,9 @@ OGX_SERVER_PARAMS: dict[str, Any] = {
 @pytest.mark.tier1
 @pytest.mark.skip(
     reason=(
-        "Skipping. PraxisMode sets server.tenancy.mode to multi-tenant,",
-        "which makes previously seeded Files and Vector Stores inaccessible.",
-        "Un-skip this test after the issue with multi-tenancy is resolved.",
+        "Skipping. PraxisMode sets server.tenancy.mode to multi-tenant,"
+        "which makes previously seeded Files and Vector Stores inaccessible."
+        "Un-skip this test after the issue with multi-tenancy is resolved."
     )
 )
 class TestFilesAndVectorStoresMigration:
