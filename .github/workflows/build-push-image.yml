@@ -47,7 +47,10 @@ jobs:
       - name: Generate image manifest
         id: manifest
         continue-on-error: true
-        run: echo "json=$(uv run python scripts/generate_image_manifest.py --compact)" >> "$GITHUB_OUTPUT"
+        run: |
+          # Assign separately so a failure of the command is not masked by echo's exit status.
+          json="$(uv run python scripts/generate_image_manifest.py --compact)"
+          echo "json=$json" >> "$GITHUB_OUTPUT"
 
       - name: Compute manifest checksum
         id: checksum

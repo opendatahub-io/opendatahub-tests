@@ -176,7 +176,7 @@ jobs:
       contents: read
     uses: ./.github/workflows/build-push-image.yml
     with:
-      ref: ${{ needs.create-branch.outputs.branch }}
+      ref: ${{ needs.create-branch.outputs.sha }}
       tag: ${{ needs.create-branch.outputs.tag }}
       image: ${{ needs.create-branch.outputs.image }}
     secrets:
