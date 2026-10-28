@@ -419,6 +419,9 @@ def apply_db_args_and_volume_mounts(
     volumes_mounts = list(db_container.get("volumeMounts", []))
 
     if db_backend == "mysql":
+        if not db_args:
+            # Red Hat MySQL image: container args replace the default CMD, so restate the command
+            db_args.append("run-mysqld")
         db_args.extend([
             f"--ssl-ca={ca_mount_path}/ca/ca-bundle.crt",
             f"--ssl-cert={ca_mount_path}/server_cert/tls.crt",
