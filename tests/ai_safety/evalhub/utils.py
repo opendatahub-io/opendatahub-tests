@@ -12,11 +12,13 @@ from ocp_resources.job import Job
 from ocp_resources.mlflow import MLflow
 from ocp_resources.pod import Pod
 from ocp_resources.role_binding import RoleBinding
+from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_safety.evalhub.constants import (
     EVALHUB_COLLECTIONS_PATH,
+    EVALHUB_CONTAINER_NAME,
     EVALHUB_CRD_NAME,
     EVALHUB_DEFAULT_HARDWARE_PROFILE,
     EVALHUB_FULL_API_VERSION_V1,
@@ -34,6 +36,8 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_K8S_LABEL_COMPONENT_VALUE,
     EVALHUB_K8S_LABEL_JOB_ID,
     EVALHUB_LOG_CONTENT_TYPE,
+    EVALHUB_METRICS_PATH,
+    EVALHUB_METRICS_PORT,
     EVALHUB_MT_CR_NAME,
     EVALHUB_PROVIDERS_PATH,
     EVALHUB_VLLM_EMULATOR_PORT,
@@ -1735,6 +1739,27 @@ def fetch_operator_metrics(
     )
     response.raise_for_status()
     return response.text
+
+
+def fetch_evalhub_metrics(evalhub_api_pod: Pod, evalhub_metrics_service: Service) -> str:
+    """Fetch raw Prometheus text from the EvalHub metrics Service.
+
+    The metrics port is cluster-internal with no Route, so the request is made with curl
+    from inside the EvalHub pod rather than from the test runner.
+
+    Args:
+        evalhub_api_pod: Running EvalHub API pod to run curl in.
+        evalhub_metrics_service: Metrics Service created by the operator for EvalHub.
+
+    Returns:
+        Raw Prometheus text-format string from the /metrics endpoint.
+    """
+    url = (
+        f"http://{evalhub_metrics_service.name}.{evalhub_metrics_service.namespace}"
+        f".svc.cluster.local:{EVALHUB_METRICS_PORT}{EVALHUB_METRICS_PATH}"
+    )
+    # -f makes curl exit non-zero on HTTP errors, which fails the pod exec
+    return evalhub_api_pod.execute(command=["curl", "-sSf", url], container=EVALHUB_CONTAINER_NAME)
 
 
 def fetch_trace_collector_logs(trace_collector_pod: Pod, tail_lines: int = 5000) -> str:

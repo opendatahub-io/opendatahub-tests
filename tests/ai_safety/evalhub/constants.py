@@ -1,4 +1,5 @@
 import re
+from typing import Any
 
 from tests.ai_safety.image_constants import AiSafetyImages
 
@@ -168,6 +169,21 @@ EVALHUB_METRICS_SERVICE_SUFFIX: str = "-metrics"
 EVALHUB_METRICS_PORT: int = 8081
 EVALHUB_METRICS_COMPONENT_LABEL: str = "metrics"
 EVALHUB_SCRAPE_INTERVAL: str = "30s"
+
+# EvalHub emits HTTP request metrics on /metrics only when OTEL metrics are enabled.
+# The stdout exporter enables them without needing an OTEL collector.
+EVALHUB_OTEL_METRICS_STDOUT_CONFIG: dict[str, Any] = {
+    "enabled": True,
+    "enableMetrics": True,
+    "enableTracing": False,
+    "enableLogs": False,
+    "exporterType": "stdout",
+}
+EVALHUB_HTTP_METRICS: tuple[str, ...] = (
+    "http_server_request_duration",
+    "http_server_request_count",
+    "http_server_active_requests",
+)
 
 # OTEL Collector constants
 OTEL_COLLECTOR_NAMESPACE: str = "otel-collector"

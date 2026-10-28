@@ -32,6 +32,8 @@ from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_safety.evalhub.constants import (
+    EVALHUB_APP_LABEL,
+    EVALHUB_COMPONENT_LABEL,
     EVALHUB_JOB_CONFIG_CLUSTERROLE,
     EVALHUB_JOB_SA_PREFIX,
     EVALHUB_JOB_SA_SUFFIX,
@@ -108,15 +110,20 @@ LOGGER = structlog.get_logger(name=__name__)
 
 @pytest.fixture(scope="class")
 def evalhub_cr(
+    request: pytest.FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
 ) -> Generator[EvalHub, Any, Any]:
-    """Create an EvalHub custom resource and wait for it to be ready."""
+    """Create an EvalHub custom resource and wait for it to be ready.
+
+    Accepts an optional indirect param dict with an ``otel`` key to set spec.otel.
+    """
     with EvalHub(
         client=admin_client,
         name="evalhub",
         namespace=model_namespace.name,
         database={"type": "sqlite"},
+        otel=getattr(request, "param", {}).get("otel"),
         wait_for_resource=True,
     ) as evalhub:
         yield evalhub
@@ -379,6 +386,24 @@ def evalhub_metrics_service(
         namespace=model_namespace.name,
         ensure_exists=True,
     )
+
+
+@pytest.fixture(scope="class")
+def evalhub_api_pod(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    evalhub_deployment: Deployment,
+) -> Pod:
+    """Running EvalHub API pod, used to reach cluster-internal endpoints."""
+    pods = list(
+        Pod.get(
+            client=admin_client,
+            namespace=model_namespace.name,
+            label_selector=f"app={EVALHUB_APP_LABEL},component={EVALHUB_COMPONENT_LABEL}",
+        )
+    )
+    assert pods, f"No EvalHub API pod found in namespace {model_namespace.name}"
+    return pods[0]
 
 
 # MLflow fixture
