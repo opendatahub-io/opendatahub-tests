@@ -96,9 +96,8 @@ def namespace_fs_group(client: DynamicClient, namespace: str) -> int | None:
 
 def download_model_data(
     client: DynamicClient,
-    aws_access_key_id: str,
-    aws_secret_access_key: str,
     model_namespace: str,
+    credentials_secret_name: str,
     model_pvc_name: str,
     bucket_name: str,
     aws_endpoint_url: str,
@@ -113,9 +112,9 @@ def download_model_data(
 
     Args:
         client (DynamicClient): Admin client
-        aws_access_key_id (str): AWS access key
-        aws_secret_access_key (str): AWS secret key
         model_namespace (str): Namespace of the model
+        credentials_secret_name (str): Name of the Secret in model_namespace containing
+            AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
         model_pvc_name (str): Name of the PVC
         bucket_name (str): Name of the bucket
         aws_endpoint_url (str): AWS endpoint URL
@@ -123,7 +122,8 @@ def download_model_data(
         model_path (str): Path to the model
         use_sub_path (bool): Whether to use a sub path
         restricted_scc_init (bool): Use OpenShift restricted-SCC-safe init (no chmod,
-            fsGroup from namespace, init container mounts full PVC when use_sub_path).
+            fsGroup from namespace, init container mounts full PVC and creates a writable
+            model directory when use_sub_path).
         node_selector (dict[str, str] | None): Optional nodeSelector for the download pod.
 
     Returns:
@@ -137,7 +137,7 @@ def download_model_data(
     pvc_model_path = f"/mnt/models/{model_path}"
     if restricted_scc_init and use_sub_path:
         init_volume_mount: dict[str, str] = {"mountPath": "/mnt/models/", "name": model_pvc_name}
-        init_command: list[str] = ["mkdir", "-p", pvc_model_path]
+        init_command: list[str] = ["mkdir", "-p", "-m", "0777", pvc_model_path]
         init_container_args: list[str] = []
         download_destination = "/mnt/models/"
     elif restricted_scc_init:
@@ -174,8 +174,18 @@ def download_model_data(
                 download_destination,
             ],
             "env": [
-                {"name": "AWS_ACCESS_KEY_ID", "value": aws_access_key_id},
-                {"name": "AWS_SECRET_ACCESS_KEY", "value": aws_secret_access_key},
+                {
+                    "name": "AWS_ACCESS_KEY_ID",
+                    "valueFrom": {
+                        "secretKeyRef": {"name": credentials_secret_name, "key": "AWS_ACCESS_KEY_ID"},
+                    },
+                },
+                {
+                    "name": "AWS_SECRET_ACCESS_KEY",
+                    "valueFrom": {
+                        "secretKeyRef": {"name": credentials_secret_name, "key": "AWS_SECRET_ACCESS_KEY"},
+                    },
+                },
                 {"name": "S3_USE_HTTPS", "value": "1"},
                 {"name": "AWS_ENDPOINT_URL", "value": aws_endpoint_url},
                 {"name": "AWS_DEFAULT_REGION", "value": aws_default_region},
