@@ -144,7 +144,10 @@ def _wait_for_migration_job_completion(client: DynamicClient, ogx_server: OgxSer
         sleep=_MIGRATION_JOB_POLL_INTERVAL,
         func=lambda: job.instance,
     ):
-        for condition in instance.status.conditions or []:
+        if not instance.status or not instance.status.conditions:
+            continue
+
+        for condition in instance.status.conditions:
             if condition.status != ResourceConstants.Condition.Status.TRUE:
                 continue
 
