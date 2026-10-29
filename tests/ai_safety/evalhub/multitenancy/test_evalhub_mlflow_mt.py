@@ -4,17 +4,19 @@ These tests require the MLflow operator to be enabled on the cluster. They
 reuse an existing MLflow instance or create one if none exists. The EvalHub CR
 is configured with MLFLOW_TRACKING_URI pointing at the MLflow service. Tests
 verify experiment creation on job submit, experiment_id on the job response,
-and filtering jobs by experiment_id.
+filtering jobs by experiment_id, and experiment fields in the job spec ConfigMap.
 """
 
 from __future__ import annotations
 
+import json
 from collections.abc import Generator
 from typing import Any
 
 import pytest
 import requests
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
 from ocp_resources.evalhub import EvalHub
 from ocp_resources.namespace import Namespace
@@ -31,8 +33,13 @@ from tests.ai_safety.evalhub.utils import (
     MLflowWithWorkspaces,
     build_evalhub_job_payload,
     build_headers,
+    cleanup_evalhub_job,
+    evalhub_runtime_label_selector,
     label_selector_matches,
+    post_evalhub_job_raw,
     submit_evalhub_job,
+    wait_for_evalhub_runtime_job_count,
+    wait_for_evalhub_runtime_resources_absent,
 )
 
 MLFLOW_SERVICE_PORT = 8443
@@ -289,3 +296,92 @@ class TestEvalHubMLflowIntegration:
             assert item_exp_id == exp_id, (
                 f"Expected all filtered jobs to have mlflow_experiment_id={exp_id}, got {item_exp_id}"
             )
+
+
+@pytest.mark.parametrize(
+    "model_namespace",
+    [
+        pytest.param(
+            {"name": "test-evalhub-k8s-mlflow"},
+        ),
+    ],
+    indirect=True,
+)
+@pytest.mark.ai_safety
+class TestEvalHubK8sMlflowJobSpec:
+    """experiment_name / tags in job.json when the cluster EvalHub enables MLflow."""
+
+    def test_mlflow_experiment_fields_in_job_json_when_supported(
+        self,
+        tenant_a_token: str,
+        tenant_a_namespace: Namespace,
+        evalhub_mt_ca_bundle_file: str,
+        evalhub_mt_route: Route,
+        evalhub_vllm_emulator_service: Service,
+        admin_client: DynamicClient,
+    ) -> None:
+        """Given: an EvalHub instance with MLFLOW_TRACKING_URI pointing at MLflow.
+        When: a job is submitted with an experiment block (name and tags).
+        Then: the job's spec ConfigMap job.json carries experiment_name and tags.
+        """
+        base = build_evalhub_job_payload(
+            model_service_name=evalhub_vllm_emulator_service.name,
+            tenant_namespace=tenant_a_namespace.name,
+            job_name="evalhub-k8s-mlflow-spec-job",
+        )
+        base["experiment"] = {
+            "name": "odh-fvt-evalhub-experiment",
+            "tags": [{"key": "suite", "value": "k8s-resources-mt"}],
+        }
+        resp = post_evalhub_job_raw(
+            host=evalhub_mt_route.host,
+            token=tenant_a_token,
+            ca_bundle_file=evalhub_mt_ca_bundle_file,
+            tenant=tenant_a_namespace.name,
+            payload=base,
+        )
+        if resp.status_code != 202:
+            pytest.fail(
+                "EvalHub instance does not accept experiment payload (MLflow likely disabled): "
+                f"{resp.status_code} {resp.text}"
+            )
+
+        job_id = resp.json()["resource"]["id"]
+        try:
+            wait_for_evalhub_runtime_job_count(
+                admin_client=admin_client,
+                namespace=tenant_a_namespace.name,
+                evalhub_job_id=job_id,
+                minimum=1,
+            )
+
+            selector = evalhub_runtime_label_selector(evalhub_job_id=job_id)
+            cms = list(
+                ConfigMap.get(
+                    client=admin_client,
+                    namespace=tenant_a_namespace.name,
+                    label_selector=selector,
+                )
+            )
+            spec_cms = [cm for cm in cms if cm.name.endswith("-spec")]
+            assert len(spec_cms) >= 1
+            raw = (spec_cms[0].instance.data or {}).get("job.json")
+            assert raw
+            spec = json.loads(raw)
+            assert spec.get("experiment_name") == "odh-fvt-evalhub-experiment"
+            tags = spec.get("tags") or []
+            assert any(t.get("key") == "suite" and t.get("value") == "k8s-resources-mt" for t in tags)
+        finally:
+            cleanup_evalhub_job(
+                host=evalhub_mt_route.host,
+                token=tenant_a_token,
+                ca_bundle_file=evalhub_mt_ca_bundle_file,
+                tenant=tenant_a_namespace.name,
+                job_id=job_id,
+            )
+
+        wait_for_evalhub_runtime_resources_absent(
+            admin_client=admin_client,
+            namespace=tenant_a_namespace.name,
+            evalhub_job_id=job_id,
+        )
