@@ -1,6 +1,7 @@
 import pytest
 import requests
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.deployment import Deployment
 from ocp_resources.route import Route
 from ocp_resources.service import Service
 
@@ -9,7 +10,7 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_HTTP_METRICS,
     EVALHUB_OTEL_METRICS_STDOUT_CONFIG,
 )
-from tests.ai_safety.evalhub.utils import fetch_evalhub_metrics
+from tests.ai_safety.evalhub.utils import assert_evalhub_otel_metrics_enabled, fetch_evalhub_metrics
 from utilities.guardrails import get_auth_headers
 
 
@@ -33,6 +34,7 @@ class TestEvalHubMetrics:
         current_client_token: str,
         evalhub_ca_bundle_file: str,
         admin_client: DynamicClient,
+        evalhub_deployment: Deployment,
         evalhub_metrics_service: Service,
     ) -> None:
         """Verify /metrics returns 200 and includes the OTEL HTTP server metrics.
@@ -41,6 +43,7 @@ class TestEvalHubMetrics:
         so it is scraped via the service DNS name from inside the EvalHub pod.
         HTTP metrics are only emitted with OTEL metrics enabled on the EvalHub CR.
         """
+        assert_evalhub_otel_metrics_enabled(evalhub_deployment=evalhub_deployment)
         body = fetch_evalhub_metrics(
             client=admin_client,
             evalhub_metrics_service=evalhub_metrics_service,
@@ -54,12 +57,14 @@ class TestEvalHubMetrics:
         evalhub_ca_bundle_file: str,
         evalhub_route: Route,
         admin_client: DynamicClient,
+        evalhub_deployment: Deployment,
         evalhub_metrics_service: Service,
     ) -> None:
         """Given: a running EvalHub instance with metrics service.
         When: GET /api/v1/health is called, then /metrics is scraped.
         Then: /metrics contains a request count for the health path.
         """
+        assert_evalhub_otel_metrics_enabled(evalhub_deployment=evalhub_deployment)
         headers = get_auth_headers(token=current_client_token)
 
         # Hit the health endpoint through the Route to generate a metric entry

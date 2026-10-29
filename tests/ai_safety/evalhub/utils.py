@@ -4,10 +4,12 @@ from typing import Any, Final
 import pytest
 import requests
 import structlog
+import yaml
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import NotFoundError
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.custom_resource_definition import CustomResourceDefinition
+from ocp_resources.deployment import Deployment
 from ocp_resources.evalhub import EvalHub
 from ocp_resources.job import Job
 from ocp_resources.mlflow import MLflow
@@ -21,6 +23,7 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_APP_LABEL,
     EVALHUB_COLLECTIONS_PATH,
     EVALHUB_COMPONENT_LABEL,
+    EVALHUB_CONFIG_VOLUME_NAME,
     EVALHUB_CONTAINER_NAME,
     EVALHUB_CRD_NAME,
     EVALHUB_DEFAULT_HARDWARE_PROFILE,
@@ -1764,6 +1767,40 @@ def get_ready_evalhub_api_pod(client: DynamicClient, namespace: str) -> Pod | No
         if container_statuses and all(status.ready for status in container_statuses):
             return Pod(client=client, namespace=namespace, name=pod.metadata.name)
     return None
+
+
+def assert_evalhub_otel_metrics_enabled(evalhub_deployment: Deployment) -> None:
+    """Assert that the EvalHub deployment runs with OTEL metrics enabled.
+
+    EvalHub emits HTTP request metrics on /metrics only when both ``otel.enabled`` and
+    ``otel.enable_metrics`` are true in its config.yaml, which the operator generates from
+    ``spec.otel`` on the EvalHub CR. With the default CR (no ``spec.otel``), /metrics has
+    no HTTP metrics, so tests that check them must enable OTEL.
+
+    Args:
+        evalhub_deployment: EvalHub API Deployment created by the operator.
+
+    Raises:
+        AssertionError: If the mounted config.yaml does not enable OTEL metrics.
+    """
+    volumes = evalhub_deployment.instance.spec.template.spec.volumes or []
+    config_volume = next((volume for volume in volumes if volume.name == EVALHUB_CONFIG_VOLUME_NAME), None)
+    assert config_volume and config_volume.configMap, (
+        f"Deployment {evalhub_deployment.name} has no ConfigMap volume named '{EVALHUB_CONFIG_VOLUME_NAME}'"
+    )
+    config_map = ConfigMap(
+        client=evalhub_deployment.client,
+        name=config_volume.configMap.name,
+        namespace=evalhub_deployment.namespace,
+        ensure_exists=True,
+    )
+    config = yaml.safe_load((config_map.instance.data or {}).get("config.yaml") or "") or {}
+    otel_config = config.get("otel") or {}
+    assert otel_config.get("enabled") and otel_config.get("enable_metrics"), (
+        "EvalHub HTTP request metrics require OTEL metrics: set spec.otel with enabled and enableMetrics "
+        f"on the EvalHub CR (e.g. EVALHUB_OTEL_METRICS_STDOUT_CONFIG). ConfigMap {config_map.name} has "
+        f"otel config: {otel_config}"
+    )
 
 
 def fetch_evalhub_metrics(client: DynamicClient, evalhub_metrics_service: Service, timeout: int = 120) -> str:

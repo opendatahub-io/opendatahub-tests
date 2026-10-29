@@ -26,6 +26,8 @@ EVALHUB_LOG_MAX_TAIL_LINES: int = 10000
 
 EVALHUB_APP_LABEL: str = "eval-hub"
 EVALHUB_CONTAINER_NAME: str = "evalhub"
+# Pod volume through which the operator mounts the generated EvalHub config.yaml
+EVALHUB_CONFIG_VOLUME_NAME: str = "evalhub-config"
 EVALHUB_KUBE_RBAC_PROXY_CONTAINER: str = "kube-rbac-proxy"
 EVALHUB_COMPONENT_LABEL: str = "api"
 
