@@ -70,7 +70,8 @@ def get_evalcard_from_mlflow(
     """Fetch the eval card JSON that EvalHub uploaded to MLflow for a job.
 
     EvalHub uploads the card after the job reaches a terminal state, and MLflow's tag
-    index may lag behind, so the run lookup is retried.
+    index may lag behind, so the run lookup is retried. EvalHub creates the tagged run
+    before uploading the artifact, so the artifact download is retried as well.
     """
     run_id = None
     for run_id in TimeoutSampler(
@@ -89,16 +90,18 @@ def get_evalcard_from_mlflow(
     LOGGER.info(f"Found eval card MLflow run {run_id} for job {job_id} in experiment {experiment_id}")
 
     artifact_path = f"{experiment_id}/{run_id}/artifacts/{EVALCARD_MLFLOW_ARTIFACT_NAME}"
-    resp = requests.get(
+    for resp in TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=sleep,
+        func=requests.get,
         url=f"{mlflow_url}{MLFLOW_ARTIFACTS_PATH}/{artifact_path}",
         headers=_mlflow_headers(token=token, workspace=workspace),
         verify=ca_bundle_file,
         timeout=30,
-    )
-    assert resp.status_code == 200, (
-        f"Failed to download MLflow artifact {artifact_path}, got {resp.status_code}: {resp.text}"
-    )
-    return resp.json()
+    ):
+        if resp.status_code == 200:
+            return resp.json()
+        LOGGER.info(f"MLflow artifact {artifact_path} not available yet (status {resp.status_code}): {resp.text}")
 
 
 def _oci_manifest_status_code(registry_url: str, repo: str, tag: str) -> int:
