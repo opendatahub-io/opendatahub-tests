@@ -8,7 +8,7 @@ import pytest
 import structlog
 from ogx_client import OgxClient
 
-from tests.ogx.constants import GEMINI_PROVIDER_ID, GEMINI_PROVIDER_TYPE
+from tests.ogx.constants import GEMINI_PROVIDER_ID, GEMINI_PROVIDER_TYPE, OPENAI_PROVIDER_TYPE
 from tests.ogx.gemini.utils import list_provider_types
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -73,9 +73,13 @@ class TestGeminiRegression:
 
         openai_llm = _resolve_model_id(ogx_client=ogx_client, provider_id="openai", model_type="llm")
         if not openai_llm:
-            if "remote::openai" not in provider_types:
-                pytest.skip(reason="remote::openai is not enabled (no OPENAI_API_KEY); cannot assert TC-REG-001")
-            pytest.fail(reason="remote::openai is enabled but registered no LLM model")
+            if OPENAI_PROVIDER_TYPE not in provider_types:
+                pytest.skip(
+                    reason=f"{OPENAI_PROVIDER_TYPE} is not in /v1/providers, so TC-REG-001 cannot run; enabling it "
+                    "needs OPENAI_API_KEY in the OgxServer pod, which the ogx_server fixture does not set "
+                    "(RHOAIENG-101061)"
+                )
+            pytest.fail(reason=f"{OPENAI_PROVIDER_TYPE} is enabled but registered no LLM model")
 
         chat = ogx_client.chat.completions.create(
             model=openai_llm,

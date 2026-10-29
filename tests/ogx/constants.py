@@ -50,8 +50,11 @@ OGX_CORE_AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "dummy")
 # Remote Gemini inference provider (remote::gemini) configuration.
 # The provider activates conditionally in the Red Hat OGX Distribution config.yaml
 # via the pattern ${env.ENABLE_GEMINI:+gemini}; setting ENABLE_GEMINI in the
-# OgxServer pod is what turns the provider on.
+# OgxServer pod is what turns the provider on, and GEMINI_API_KEY (via
+# api_key: ${env.GEMINI_API_KEY:=}) is what authenticates it to the Gemini API.
 GEMINI_PROVIDER_TYPE = "remote::gemini"
+# Provider whose coexistence with remote::gemini TC-REG-001 checks.
+OPENAI_PROVIDER_TYPE = "remote::openai"
 # provider_id reported by GET /v1/providers for the Gemini inference provider.
 GEMINI_PROVIDER_ID = os.getenv("OGX_CORE_GEMINI_PROVIDER_ID", "gemini")
 # Header used to override provider configuration (e.g. the API key) per request.
