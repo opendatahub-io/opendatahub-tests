@@ -47,35 +47,39 @@ from utilities.serving_runtime import ServingRuntimeFromTemplate
 LOGGER = structlog.get_logger(name=__name__)
 
 
-def pytest_collection_modifyitems(items: list[pytest.Item], config: pytest.Config) -> None:
-    """Deselect model car tests on OCP < 4.20 (ImageVolume not supported)."""
+def _get_completed_ocp_version() -> Version | None:
+    """Return the OCP version of the latest completed update, or None on failure."""
     kubeconfig = os.environ.get("KUBECONFIG", os.path.expanduser("~/.kube/config"))
     if not os.path.exists(kubeconfig):
+        return None
+
+    try:
+        client = get_client()
+        cluster_version = ClusterVersion(client=client, name="version", ensure_exists=True)
+        for entry in cluster_version.instance.status.history or []:
+            if entry.state == "Completed":
+                return Version.parse(version=str(entry.version))
+    except ValueError, TypeError, AttributeError, OSError:
+        LOGGER.warning("Could not determine OCP version during collection, keeping model car tests")
+
+    return None
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item], config: pytest.Config) -> None:
+    """Deselect model car tests on OCP < 4.20 (ImageVolume not supported)."""
+    model_car_items = [item for item in items if "/model_car/" in str(item.path)]
+    if not model_car_items:
         return
 
-    ocp_version: Version | None = None
-    deselected: list[pytest.Item] = []
-    remaining: list[pytest.Item] = []
-
-    for item in items:
-        if "/model_car/" not in str(item.fspath):
-            remaining.append(item)
-            continue
-
-        if ocp_version is None:
-            client = get_client()
-            cluster_version = ClusterVersion(client=client, name="version", ensure_exists=True)
-            ocp_version = Version.parse(version=str(cluster_version.instance.status.history[0].version))
+    ocp_version = _get_completed_ocp_version()
+    if ocp_version is None or ocp_version >= MLSERVER_MODELCAR_MIN_OCP_VERSION:
+        if ocp_version is not None:
             LOGGER.info(f"OCP version: {ocp_version}, min required for model car: {MLSERVER_MODELCAR_MIN_OCP_VERSION}")
+        return
 
-        if ocp_version < MLSERVER_MODELCAR_MIN_OCP_VERSION:
-            deselected.append(item)
-        else:
-            remaining.append(item)
-
-    if deselected:
-        config.hook.pytest_deselected(items=deselected)
-        items[:] = remaining
+    LOGGER.info(f"OCP version: {ocp_version}, min required for model car: {MLSERVER_MODELCAR_MIN_OCP_VERSION}")
+    config.hook.pytest_deselected(items=model_car_items)
+    items[:] = [item for item in items if item not in model_car_items]
 
 
 @pytest.fixture(scope="class")
