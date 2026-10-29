@@ -1765,15 +1765,17 @@ def get_ready_evalhub_api_pod(client: DynamicClient, namespace: str) -> Pod | No
     return None
 
 
-def fetch_evalhub_metrics(evalhub_api_pod: Pod, evalhub_metrics_service: Service) -> str:
+def fetch_evalhub_metrics(client: DynamicClient, evalhub_metrics_service: Service, timeout: int = 120) -> str:
     """Fetch raw Prometheus text from the EvalHub metrics Service.
 
     The metrics port is cluster-internal with no Route, so the request is made with curl
-    from inside the EvalHub pod rather than from the test runner.
+    from inside an EvalHub API pod rather than from the test runner. The pod is selected
+    on each call so a pod replaced since an earlier scrape is not reused.
 
     Args:
-        evalhub_api_pod: Running EvalHub API pod to run curl in.
+        client: Kubernetes dynamic client.
         evalhub_metrics_service: Metrics Service created by the operator for EvalHub.
+        timeout: Seconds to wait for a ready EvalHub API pod.
 
     Returns:
         Raw Prometheus text-format string from the /metrics endpoint.
@@ -1782,8 +1784,16 @@ def fetch_evalhub_metrics(evalhub_api_pod: Pod, evalhub_metrics_service: Service
         f"http://{evalhub_metrics_service.name}.{evalhub_metrics_service.namespace}"
         f".svc.cluster.local:{EVALHUB_METRICS_PORT}{EVALHUB_METRICS_PATH}"
     )
-    # -f makes curl exit non-zero on HTTP errors, which fails the pod exec
-    return evalhub_api_pod.execute(command=["curl", "-sSf", url], container=EVALHUB_CONTAINER_NAME)
+    for evalhub_api_pod in TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=5,
+        func=get_ready_evalhub_api_pod,
+        client=client,
+        namespace=evalhub_metrics_service.namespace,
+    ):
+        if evalhub_api_pod:
+            # -f makes curl exit non-zero on HTTP errors, which fails the pod exec
+            return evalhub_api_pod.execute(command=["curl", "-sSf", url], container=EVALHUB_CONTAINER_NAME)
 
 
 def fetch_trace_collector_logs(trace_collector_pod: Pod, tail_lines: int = 5000) -> str:

@@ -88,7 +88,6 @@ from tests.ai_safety.evalhub.utils import (
     build_hf_multi_benchmark_job_payload,
     build_pvc_job_payload,
     delete_evalhub_job,
-    get_ready_evalhub_api_pod,
     is_evalhub_crd_available,
     submit_evalhub_job,
     submit_garak_job,
@@ -385,24 +384,6 @@ def evalhub_metrics_service(
         namespace=model_namespace.name,
         ensure_exists=True,
     )
-
-
-@pytest.fixture(scope="class")
-def evalhub_api_pod(
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
-    evalhub_deployment: Deployment,
-) -> Pod:
-    """Running, ready EvalHub API pod, used to reach cluster-internal endpoints."""
-    for pod in TimeoutSampler(
-        wait_timeout=120,
-        sleep=5,
-        func=get_ready_evalhub_api_pod,
-        client=admin_client,
-        namespace=model_namespace.name,
-    ):
-        if pod:
-            return pod
 
 
 # MLflow fixture

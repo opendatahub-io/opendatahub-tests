@@ -1,6 +1,6 @@
 import pytest
 import requests
-from ocp_resources.pod import Pod
+from kubernetes.dynamic import DynamicClient
 from ocp_resources.route import Route
 from ocp_resources.service import Service
 
@@ -32,7 +32,7 @@ class TestEvalHubMetrics:
         self,
         current_client_token: str,
         evalhub_ca_bundle_file: str,
-        evalhub_api_pod: Pod,
+        admin_client: DynamicClient,
         evalhub_metrics_service: Service,
     ) -> None:
         """Verify /metrics returns 200 and includes the OTEL HTTP server metrics.
@@ -42,7 +42,7 @@ class TestEvalHubMetrics:
         HTTP metrics are only emitted with OTEL metrics enabled on the EvalHub CR.
         """
         body = fetch_evalhub_metrics(
-            evalhub_api_pod=evalhub_api_pod,
+            client=admin_client,
             evalhub_metrics_service=evalhub_metrics_service,
         )
         for metric in EVALHUB_HTTP_METRICS:
@@ -53,7 +53,7 @@ class TestEvalHubMetrics:
         current_client_token: str,
         evalhub_ca_bundle_file: str,
         evalhub_route: Route,
-        evalhub_api_pod: Pod,
+        admin_client: DynamicClient,
         evalhub_metrics_service: Service,
     ) -> None:
         """Given: a running EvalHub instance with metrics service.
@@ -74,7 +74,7 @@ class TestEvalHubMetrics:
 
         # Scrape metrics from the internal service and verify the health path appears
         metrics = fetch_evalhub_metrics(
-            evalhub_api_pod=evalhub_api_pod,
+            client=admin_client,
             evalhub_metrics_service=evalhub_metrics_service,
         )
         assert EVALHUB_HEALTH_PATH in metrics, f"Expected request count for '{EVALHUB_HEALTH_PATH}' in /metrics output"
