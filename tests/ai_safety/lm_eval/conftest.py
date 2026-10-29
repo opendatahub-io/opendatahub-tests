@@ -260,7 +260,10 @@ def vllm_emulator_route(
 
 @pytest.fixture(scope="function")
 def lmeval_seaweedfs_deployment(
-    admin_client: DynamicClient, seaweedfs_namespace: Namespace, pvc_seaweedfs_namespace: PersistentVolumeClaim
+    admin_client: DynamicClient,
+    seaweedfs_namespace: Namespace,
+    pvc_seaweedfs_namespace: PersistentVolumeClaim,
+    seaweedfs_credentials_secret: Secret,
 ) -> Generator[Deployment, Any, Any]:
     seaweedfs_app_label = {"app": SeaweedFs.Metadata.NAME}
     initialization_command = (
@@ -290,8 +293,24 @@ def lmeval_seaweedfs_deployment(
                         "image": SeaweedFs.PodConfig.IMAGE,
                         "args": ["server", "-dir=/data", "-s3", "-iam", "-master.volumePreallocate=false"],
                         "env": [
-                            {"name": "accesskey", "value": SeaweedFs.Credentials.ACCESS_KEY_VALUE},
-                            {"name": "secretkey", "value": SeaweedFs.Credentials.SECRET_KEY_VALUE},
+                            {
+                                "name": "accesskey",
+                                "valueFrom": {
+                                    "secretKeyRef": {
+                                        "name": seaweedfs_credentials_secret.name,
+                                        "key": "accesskey",
+                                    },
+                                },
+                            },
+                            {
+                                "name": "secretkey",
+                                "valueFrom": {
+                                    "secretKeyRef": {
+                                        "name": seaweedfs_credentials_secret.name,
+                                        "key": "secretkey",
+                                    },
+                                },
+                            },
                         ],
                         "ports": [{"containerPort": SeaweedFs.Metadata.DEFAULT_PORT}],
                         "volumeMounts": [{"name": "seaweedfs-storage", "mountPath": "/data"}],
