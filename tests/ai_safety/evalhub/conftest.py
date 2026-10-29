@@ -32,8 +32,6 @@ from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_safety.evalhub.constants import (
-    EVALHUB_APP_LABEL,
-    EVALHUB_COMPONENT_LABEL,
     EVALHUB_JOB_CONFIG_CLUSTERROLE,
     EVALHUB_JOB_SA_PREFIX,
     EVALHUB_JOB_SA_SUFFIX,
@@ -90,6 +88,7 @@ from tests.ai_safety.evalhub.utils import (
     build_hf_multi_benchmark_job_payload,
     build_pvc_job_payload,
     delete_evalhub_job,
+    get_ready_evalhub_api_pod,
     is_evalhub_crd_available,
     submit_evalhub_job,
     submit_garak_job,
@@ -394,16 +393,16 @@ def evalhub_api_pod(
     model_namespace: Namespace,
     evalhub_deployment: Deployment,
 ) -> Pod:
-    """Running EvalHub API pod, used to reach cluster-internal endpoints."""
-    pods = list(
-        Pod.get(
-            client=admin_client,
-            namespace=model_namespace.name,
-            label_selector=f"app={EVALHUB_APP_LABEL},component={EVALHUB_COMPONENT_LABEL}",
-        )
-    )
-    assert pods, f"No EvalHub API pod found in namespace {model_namespace.name}"
-    return pods[0]
+    """Running, ready EvalHub API pod, used to reach cluster-internal endpoints."""
+    for pod in TimeoutSampler(
+        wait_timeout=120,
+        sleep=5,
+        func=get_ready_evalhub_api_pod,
+        client=admin_client,
+        namespace=model_namespace.name,
+    ):
+        if pod:
+            return pod
 
 
 # MLflow fixture

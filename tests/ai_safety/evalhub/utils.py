@@ -17,7 +17,9 @@ from ocp_resources.service_account import ServiceAccount
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_safety.evalhub.constants import (
+    EVALHUB_APP_LABEL,
     EVALHUB_COLLECTIONS_PATH,
+    EVALHUB_COMPONENT_LABEL,
     EVALHUB_CONTAINER_NAME,
     EVALHUB_CRD_NAME,
     EVALHUB_DEFAULT_HARDWARE_PROFILE,
@@ -1739,6 +1741,28 @@ def fetch_operator_metrics(
     )
     response.raise_for_status()
     return response.text
+
+
+def get_ready_evalhub_api_pod(client: DynamicClient, namespace: str) -> Pod | None:
+    """Return a running, ready EvalHub API pod that is not shutting down, or None if there is none yet.
+
+    After a rollout, the old pod can still be listed while it terminates, so the first
+    pod matching the label selector is not necessarily usable.
+    """
+    # raw=True reads pod data from a single list call, so a pod deleted mid-check
+    # can't raise NotFoundError on a per-pod fetch.
+    for pod in Pod.get(
+        client=client,
+        namespace=namespace,
+        label_selector=f"app={EVALHUB_APP_LABEL},component={EVALHUB_COMPONENT_LABEL}",
+        raw=True,
+    ):
+        if pod.metadata.deletionTimestamp or not pod.status or pod.status.phase != Pod.Status.RUNNING:
+            continue
+        container_statuses = pod.status.containerStatuses or []
+        if container_statuses and all(status.ready for status in container_statuses):
+            return Pod(client=client, namespace=namespace, name=pod.metadata.name)
+    return None
 
 
 def fetch_evalhub_metrics(evalhub_api_pod: Pod, evalhub_metrics_service: Service) -> str:
