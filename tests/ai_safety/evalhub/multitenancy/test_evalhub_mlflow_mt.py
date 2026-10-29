@@ -33,7 +33,7 @@ from tests.ai_safety.evalhub.utils import (
     MLflowWithWorkspaces,
     build_evalhub_job_payload,
     build_headers,
-    delete_evalhub_job,
+    cleanup_evalhub_job,
     evalhub_runtime_label_selector,
     label_selector_matches,
     post_evalhub_job_raw,
@@ -320,7 +320,10 @@ class TestEvalHubK8sMlflowJobSpec:
         evalhub_vllm_emulator_service: Service,
         admin_client: DynamicClient,
     ) -> None:
-        """If POST accepts an experiment block, spec ConfigMap job.json must carry experiment_name and tags."""
+        """Given: an EvalHub instance with MLFLOW_TRACKING_URI pointing at MLflow.
+        When: a job is submitted with an experiment block (name and tags).
+        Then: the job's spec ConfigMap job.json carries experiment_name and tags.
+        """
         base = build_evalhub_job_payload(
             model_service_name=evalhub_vllm_emulator_service.name,
             tenant_namespace=tenant_a_namespace.name,
@@ -344,38 +347,39 @@ class TestEvalHubK8sMlflowJobSpec:
             )
 
         job_id = resp.json()["resource"]["id"]
-        wait_for_evalhub_runtime_job_count(
-            admin_client=admin_client,
-            namespace=tenant_a_namespace.name,
-            evalhub_job_id=job_id,
-            minimum=1,
-        )
-
-        selector = evalhub_runtime_label_selector(evalhub_job_id=job_id)
-        cms = list(
-            ConfigMap.get(
-                client=admin_client,
+        try:
+            wait_for_evalhub_runtime_job_count(
+                admin_client=admin_client,
                 namespace=tenant_a_namespace.name,
-                label_selector=selector,
+                evalhub_job_id=job_id,
+                minimum=1,
             )
-        )
-        spec_cms = [cm for cm in cms if cm.name.endswith("-spec")]
-        assert len(spec_cms) >= 1
-        raw = (spec_cms[0].instance.data or {}).get("job.json")
-        assert raw
-        spec = json.loads(raw)
-        assert spec.get("experiment_name") == "odh-fvt-evalhub-experiment"
-        tags = spec.get("tags") or []
-        assert any(t.get("key") == "suite" and t.get("value") == "k8s-resources-mt" for t in tags)
 
-        delete_evalhub_job(
-            host=evalhub_mt_route.host,
-            token=tenant_a_token,
-            ca_bundle_file=evalhub_mt_ca_bundle_file,
-            tenant=tenant_a_namespace.name,
-            job_id=job_id,
-            hard_delete=True,
-        )
+            selector = evalhub_runtime_label_selector(evalhub_job_id=job_id)
+            cms = list(
+                ConfigMap.get(
+                    client=admin_client,
+                    namespace=tenant_a_namespace.name,
+                    label_selector=selector,
+                )
+            )
+            spec_cms = [cm for cm in cms if cm.name.endswith("-spec")]
+            assert len(spec_cms) >= 1
+            raw = (spec_cms[0].instance.data or {}).get("job.json")
+            assert raw
+            spec = json.loads(raw)
+            assert spec.get("experiment_name") == "odh-fvt-evalhub-experiment"
+            tags = spec.get("tags") or []
+            assert any(t.get("key") == "suite" and t.get("value") == "k8s-resources-mt" for t in tags)
+        finally:
+            cleanup_evalhub_job(
+                host=evalhub_mt_route.host,
+                token=tenant_a_token,
+                ca_bundle_file=evalhub_mt_ca_bundle_file,
+                tenant=tenant_a_namespace.name,
+                job_id=job_id,
+            )
+
         wait_for_evalhub_runtime_resources_absent(
             admin_client=admin_client,
             namespace=tenant_a_namespace.name,
