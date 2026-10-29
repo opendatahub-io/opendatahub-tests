@@ -61,6 +61,14 @@ EVALHUB_K8S_ANNOTATION_JOB_ID: str = "eval-hub.github.io/job_id"
 EVALHUB_K8S_ANNOTATION_PROVIDER_ID: str = "eval-hub.github.io/provider_id"
 EVALHUB_K8S_ANNOTATION_BENCHMARK_ID: str = "eval-hub.github.io/benchmark_id"
 
+# Per-execution NetworkPolicy created by the EvalHub runtime before each
+# evaluation Job — mirrors eval-hub internal/eval_hub/runtimes/k8s/network_policy.go
+EVALHUB_K8S_LABEL_EXECUTION_ID: str = "eval-hub.github.io/execution-id"
+EVALHUB_JOB_NP_NAME_PREFIX: str = "evalhub-"
+EVALHUB_JOB_NP_NAME_SUFFIX: str = "-netpol"
+EVALHUB_JOB_NP_EGRESS_ANNOTATION: str = "eval-hub.github.io/network-policy-egress"
+EVALHUB_JOB_NP_EGRESS_ANNOTATION_VALUE: str = "unmanaged-by-this-policy"
+
 # Shared RBAC rules for EvalHub user access
 EVALHUB_USER_ROLE_RULES: list[dict[str, list[str]]] = [
     {
@@ -271,6 +279,33 @@ OTEL_TRACE_COLLECTOR_LABELS: dict[str, str] = {"app": "otel-trace-collector"}
 
 # Operator pod label selector
 OPERATOR_POD_LABEL_SELECTOR: str = "control-plane=trustyai-service-operator"
+
+# EvalHub API NetworkPolicy (trustyai-service-operator)
+# The operator derives each policy name from a hash of the owning EvalHub
+# identity, so tests discover the policy through the reserved identity labels
+# (component/role/owner-uid) instead of a stable name.
+EVALHUB_NP_COMPONENT: str = "evalhub"
+EVALHUB_NP_ROLE: str = "api"
+EVALHUB_NP_POLICY_GROUP_LABEL: str = "network.openshift.io/policy-group"
+EVALHUB_NP_ROUTER_POLICY_GROUP: str = "ingress"
+EVALHUB_NP_MONITORING_POLICY_GROUP: str = "monitoring"
+EVALHUB_NP_PROMETHEUS_POD_LABELS: dict[str, str] = {
+    "app.kubernetes.io/name": "prometheus",
+    "app.kubernetes.io/component": "prometheus",
+}
+EVALHUB_NP_DASHBOARD_NAMESPACE_LABEL: str = "kubernetes.io/metadata.name"
+EVALHUB_NP_DASHBOARD_POD_LABELS: dict[str, str] = {
+    "deployment": "eval-hub-ui",
+    "app.kubernetes.io/part-of": "odh-dashboard",
+}
+EVALHUB_NP_INSTANCE_NAME_LABEL: str = "evalhub_instance_name"
+EVALHUB_NP_INSTANCE_NAMESPACE_LABEL: str = "evalhub_instance_namespace"
+# The operator's own manager Pod is an EvalHub API client: it POSTs benchmark
+# failure events for Job pods that never start. Mirrors the manager
+# Deployment's immutable control-plane label
+# (trustyai-service-operator config/manager/manager.yaml), which the
+# applications-namespace overlays keep.
+EVALHUB_NP_OPERATOR_POD_LABELS: dict[str, str] = {"control-plane": "trustyai-service-operator"}
 
 # Operator service name in OTEL traces
 OPERATOR_OTEL_SERVICE_NAME: str = "trustyai-service-operator"
