@@ -50,6 +50,11 @@ class SharedImages:
         "icr.io/ppc64le-oss/seaweedfs-ppc64le"
         "@sha256:f0671dcb703b1301b546e4ab016496d818bdb1ae596dea91d135d9ce236eb698"  # pragma: allowlist secret
     )
+    # Multi-arch OCI registry image (includes ppc64le)
+    DISTRIBUTION_REGISTRY_PPC64LE: str = (
+        "public.ecr.aws/docker/library/registry"
+        "@sha256:d4032d4cc323c1731c707931ecada07a53076eac38e3b61ae57533f170f2c6c3"  # pragma: allowlist secret
+    )
 
     MARIADB_1011: str = (
         "registry.redhat.io/rhel9/mariadb-1011@sha256:092407d87f8017bb444a462fb3d38ad5070429e94df7cf6b91d82697f36d0fa9"
