@@ -6,10 +6,10 @@ KUEUE_CPU_QUOTA = "3"
 KUEUE_MEMORY_QUOTA = "5Gi"
 
 # The operator names some tenant RoleBindings '{instance.Name}-{tenant_ns}-...' without the
-# instance namespace, so same-named instances overwrite each other's bindings. The Kueue
-# EvalHub is session-scoped, so it must not share a name with the class-scoped 'evalhub-mt'
-# instances used by later tests.
-EVALHUB_KUEUE_CR_NAME = "evalhub-kueue"
+# instance namespace, so same-named instances that serve the same tenant namespace overwrite
+# each other's bindings. The Kueue EvalHub is session-scoped, so it must not share a name with
+# the class-scoped 'evalhub-mt' instances used by later tests.
+EVALHUB_KUEUE_CR_NAME: str = "evalhub-kueue"
 
 VLLM_EMULATOR = "vllm-emulator"
 VLLM_EMULATOR_IMAGE: str = AiSafetyImages.VLLM_EMULATOR

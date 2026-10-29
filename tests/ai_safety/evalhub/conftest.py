@@ -135,9 +135,9 @@ def evalhub_mt_cr(
     Uses a distinct name ('evalhub-mt') to avoid RoleBinding name collisions
     with the production EvalHub instance. The operator names some tenant RoleBindings
     as '{instance.Name}-{tenant_ns}-job-config-rb' without the instance namespace, so
-    same-named instances in different namespaces overwrite each other's bindings
-    (the last one reconciled wins). Any other EvalHub alive during these tests must
-    use a different name.
+    same-named instances in different namespaces that serve the same tenant namespace
+    overwrite each other's bindings there (the last one reconciled wins). Any other
+    EvalHub alive during these tests must use a different name.
 
     Note: This creates a Custom Resource (CR) instance, not the CustomResourceDefinition (CRD).
     The CRD must already be installed by the EvalHub/TrustyAI operator.
