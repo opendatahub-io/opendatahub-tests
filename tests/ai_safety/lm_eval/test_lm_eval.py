@@ -373,7 +373,7 @@ def test_lmeval_rerun_after_spec_change(
     """Test LMEvalJob re-runs after spec change.
 
     Given: A completed LMEvalJob with last-scheduled-generation annotation set
-    When: Job spec is edited (batchSize changed, bumping metadata.Generation)
+    When: Job spec is edited (limit changed, bumping metadata.Generation)
     Then: Job status resets to New, re-runs to Complete, and generation annotation updates
 
     Validates trustyai-service-operator#729 re-run behavior.
@@ -396,7 +396,7 @@ def test_lmeval_rerun_after_spec_change(
         patches={
             lmevaljob_vllm_emulator: {
                 "spec": {
-                    "batchSize": "2",
+                    "limit": "0.02",
                 }
             }
         }
