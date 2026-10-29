@@ -93,5 +93,5 @@ class TestGeminiDeployment:
             "GEMINI_API_KEY is not set in the OgxServer pod environment"
         )
         assert is_gemini_provider_active(ogx_client=ogx_client), (
-            "remote::gemini provider is not active despite GEMINI_API_KEY being injected"
+            "remote::gemini provider is not active; ENABLE_GEMINI gates it, GEMINI_API_KEY only authenticates it"
         )
