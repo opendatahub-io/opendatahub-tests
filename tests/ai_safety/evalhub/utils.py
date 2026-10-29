@@ -5,12 +5,13 @@ import pytest
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import NotFoundError
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.evalhub import EvalHub
 from ocp_resources.job import Job
 from ocp_resources.mlflow import MLflow
-from ocp_resources.pod import Pod
+from ocp_resources.pod import ExecOnPodError, Pod
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
@@ -1770,7 +1771,9 @@ def fetch_evalhub_metrics(client: DynamicClient, evalhub_metrics_service: Servic
 
     The metrics port is cluster-internal with no Route, so the request is made with curl
     from inside an EvalHub API pod rather than from the test runner. The pod is selected
-    on each call so a pod replaced since an earlier scrape is not reused.
+    on each call so a pod replaced since an earlier scrape is not reused. If the pod is
+    deleted or the exec fails before curl runs, another ready pod is selected; a curl
+    failure is raised as is.
 
     Args:
         client: Kubernetes dynamic client.
@@ -1779,6 +1782,9 @@ def fetch_evalhub_metrics(client: DynamicClient, evalhub_metrics_service: Servic
 
     Returns:
         Raw Prometheus text-format string from the /metrics endpoint.
+
+    Raises:
+        ExecOnPodError: If curl fails, for example on an HTTP error from /metrics.
     """
     url = (
         f"http://{evalhub_metrics_service.name}.{evalhub_metrics_service.namespace}"
@@ -1791,9 +1797,19 @@ def fetch_evalhub_metrics(client: DynamicClient, evalhub_metrics_service: Servic
         client=client,
         namespace=evalhub_metrics_service.namespace,
     ):
-        if evalhub_api_pod:
+        if not evalhub_api_pod:
+            continue
+        try:
             # -f makes curl exit non-zero on HTTP errors, which fails the pod exec
             return evalhub_api_pod.execute(command=["curl", "-sSf", url], container=EVALHUB_CONTAINER_NAME)
+        except NotFoundError:
+            LOGGER.info(f"EvalHub pod {evalhub_api_pod.name} was deleted before the scrape, selecting another pod")
+        except ExecOnPodError as exc:
+            # rc -1 means the exec itself failed (pod shutting down, stream closed); any other
+            # rc is curl's exit code, which is a real failure of the metrics endpoint
+            if exc.rc != -1:
+                raise
+            LOGGER.info(f"Exec on EvalHub pod {evalhub_api_pod.name} failed ({exc.err}), selecting another pod")
 
 
 def fetch_trace_collector_logs(trace_collector_pod: Pod, tail_lines: int = 5000) -> str:
