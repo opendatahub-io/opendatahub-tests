@@ -128,6 +128,14 @@ GIT_FULL_REPO_TOKENIZER_PATH: str = "/test_data/tests/git-testdata/tokenizer"
 # Guaranteed-nonexistent per RFC 2606; used for negative tests that must not resolve.
 GIT_NONEXISTENT_REPO_URL: str = "https://git.example.com/does-not-exist/repo.git"
 GIT_COMMIT_SHA_PATTERN: re.Pattern[str] = re.compile(r"^[0-9a-f]{7,40}$")
+# Immutable tag on the public repo, so the resolved SHA can be asserted exactly.
+GIT_PUBLIC_REPO_TAG: str = "v1.0.1"
+GIT_PUBLIC_REPO_TAG_COMMIT: str = "fe0bd091165b2ba82af12baa0a0ec82abde01917"  # pragma: allowlist secret
+GIT_INVALID_REF: str = "no-such-branch-does-not-exist"
+# Init container env vars set by the EvalHub operator for git clones.
+ENV_GIT_URL: str = "TEST_DATA_GIT_URL"
+ENV_GIT_REF: str = "TEST_DATA_GIT_REF"
+ENV_GIT_SUBPATH: str = "TEST_DATA_GIT_SUBPATH"
 
 # Git storage source (RHAISTRAT-2058)
 GIT_CLONE_INIT_CONTAINER_NAME: str = "init"
