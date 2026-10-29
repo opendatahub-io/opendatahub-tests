@@ -4,17 +4,26 @@ from typing import Any, Final
 import pytest
 import requests
 import structlog
+import yaml
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import NotFoundError
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.deployment import Deployment
 from ocp_resources.evalhub import EvalHub
 from ocp_resources.job import Job
 from ocp_resources.mlflow import MLflow
+from ocp_resources.pod import ExecOnPodError, Pod
 from ocp_resources.role_binding import RoleBinding
+from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_safety.evalhub.constants import (
+    EVALHUB_APP_LABEL,
     EVALHUB_COLLECTIONS_PATH,
+    EVALHUB_COMPONENT_LABEL,
+    EVALHUB_CONFIG_VOLUME_NAME,
+    EVALHUB_CONTAINER_NAME,
     EVALHUB_FULL_API_VERSION_V1,
     EVALHUB_FULL_API_VERSION_V1ALPHA1,
     EVALHUB_HEALTH_PATH,
@@ -30,6 +39,8 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_K8S_LABEL_COMPONENT_VALUE,
     EVALHUB_K8S_LABEL_JOB_ID,
     EVALHUB_LOG_CONTENT_TYPE,
+    EVALHUB_METRICS_PATH,
+    EVALHUB_METRICS_PORT,
     EVALHUB_MT_CR_NAME,
     EVALHUB_PROVIDERS_PATH,
     EVALHUB_VLLM_EMULATOR_PORT,
@@ -1325,3 +1336,340 @@ def fetch_evalhub_job_logs_while_running(
         return assert_plain_text_logs_response(response=response)
 
     raise TimeoutExpiredError(f"Job '{job_id}' did not reach running state within {timeout}s")
+
+
+# Operator reconciliation observability helpers (RHAISTRAT-1606 / RHAI-241)
+
+
+def fetch_operator_metrics(
+    operator_metrics_route_host: str,
+    operator_metrics_token: str,
+) -> str:
+    """Fetch raw Prometheus text from the operator metrics endpoint.
+
+    Args:
+        operator_metrics_route_host: Route host for the operator metrics service.
+        operator_metrics_token: Bearer token for kube-rbac-proxy authentication.
+
+    Returns:
+        Raw Prometheus text-format string from the /metrics endpoint.
+    """
+    response = requests.get(
+        f"https://{operator_metrics_route_host}/metrics",
+        headers={"Authorization": f"Bearer {operator_metrics_token}"},
+        verify=False,
+        timeout=10,
+    )
+    response.raise_for_status()
+    return response.text
+
+
+def get_ready_evalhub_api_pod(client: DynamicClient, namespace: str) -> Pod | None:
+    """Return a running, ready EvalHub API pod that is not shutting down, or None if there is none yet.
+
+    After a rollout, the old pod can still be listed while it terminates, so the first
+    pod matching the label selector is not necessarily usable.
+    """
+    # raw=True reads pod data from a single list call, so a pod deleted mid-check
+    # can't raise NotFoundError on a per-pod fetch.
+    for pod in Pod.get(
+        client=client,
+        namespace=namespace,
+        label_selector=f"app={EVALHUB_APP_LABEL},component={EVALHUB_COMPONENT_LABEL}",
+        raw=True,
+    ):
+        if pod.metadata.deletionTimestamp or not pod.status or pod.status.phase != Pod.Status.RUNNING:
+            continue
+        container_statuses = pod.status.containerStatuses or []
+        if container_statuses and all(status.ready for status in container_statuses):
+            return Pod(client=client, namespace=namespace, name=pod.metadata.name)
+    return None
+
+
+def assert_evalhub_otel_metrics_enabled(evalhub_deployment: Deployment) -> None:
+    """Assert that the EvalHub deployment runs with OTEL metrics enabled.
+
+    EvalHub emits HTTP request metrics on /metrics only when both ``otel.enabled`` and
+    ``otel.enable_metrics`` are true in its config.yaml, which the operator generates from
+    ``spec.otel`` on the EvalHub CR. With the default CR (no ``spec.otel``), /metrics has
+    no HTTP metrics, so tests that check them must enable OTEL.
+
+    Args:
+        evalhub_deployment: EvalHub API Deployment created by the operator.
+
+    Raises:
+        AssertionError: If the mounted config.yaml does not enable OTEL metrics.
+    """
+    volumes = evalhub_deployment.instance.spec.template.spec.volumes or []
+    config_volume = next((volume for volume in volumes if volume.name == EVALHUB_CONFIG_VOLUME_NAME), None)
+    assert config_volume and config_volume.configMap, (
+        f"Deployment {evalhub_deployment.name} has no ConfigMap volume named '{EVALHUB_CONFIG_VOLUME_NAME}'"
+    )
+    config_map = ConfigMap(
+        client=evalhub_deployment.client,
+        name=config_volume.configMap.name,
+        namespace=evalhub_deployment.namespace,
+        ensure_exists=True,
+    )
+    config = yaml.safe_load((config_map.instance.data or {}).get("config.yaml") or "") or {}
+    otel_config = config.get("otel") or {}
+    assert otel_config.get("enabled") and otel_config.get("enable_metrics"), (
+        "EvalHub HTTP request metrics require OTEL metrics: set spec.otel with enabled and enableMetrics "
+        f"on the EvalHub CR (e.g. EVALHUB_OTEL_METRICS_STDOUT_CONFIG). ConfigMap {config_map.name} has "
+        f"otel config: {otel_config}"
+    )
+
+
+def fetch_evalhub_metrics(client: DynamicClient, evalhub_metrics_service: Service, timeout: int = 120) -> str:
+    """Fetch raw Prometheus text from the EvalHub metrics Service.
+
+    The metrics port is cluster-internal with no Route, so the request is made with curl
+    from inside an EvalHub API pod rather than from the test runner. The pod is selected
+    on each call so a pod replaced since an earlier scrape is not reused. If the pod is
+    deleted or the exec fails before curl runs, another ready pod is selected; a curl
+    failure is raised as is.
+
+    Args:
+        client: Kubernetes dynamic client.
+        evalhub_metrics_service: Metrics Service created by the operator for EvalHub.
+        timeout: Seconds to wait for a ready EvalHub API pod.
+
+    Returns:
+        Raw Prometheus text-format string from the /metrics endpoint.
+
+    Raises:
+        ExecOnPodError: If curl fails, for example on an HTTP error from /metrics.
+    """
+    url = (
+        f"http://{evalhub_metrics_service.name}.{evalhub_metrics_service.namespace}"
+        f".svc.cluster.local:{EVALHUB_METRICS_PORT}{EVALHUB_METRICS_PATH}"
+    )
+    for evalhub_api_pod in TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=5,
+        func=get_ready_evalhub_api_pod,
+        client=client,
+        namespace=evalhub_metrics_service.namespace,
+    ):
+        if not evalhub_api_pod:
+            continue
+        try:
+            # -f makes curl exit non-zero on HTTP errors, which fails the pod exec
+            return evalhub_api_pod.execute(command=["curl", "-sSf", url], container=EVALHUB_CONTAINER_NAME)
+        except NotFoundError:
+            LOGGER.info(f"EvalHub pod {evalhub_api_pod.name} was deleted before the scrape, selecting another pod")
+        except ExecOnPodError as exc:
+            # rc -1 means the exec itself failed (pod shutting down, stream closed); any other
+            # rc is curl's exit code, which is a real failure of the metrics endpoint
+            if exc.rc != -1:
+                raise
+            LOGGER.info(f"Exec on EvalHub pod {evalhub_api_pod.name} failed ({exc.err}), selecting another pod")
+
+
+def fetch_trace_collector_logs(trace_collector_pod: Pod, tail_lines: int = 5000) -> str:
+    """Fetch recent logs from the OTEL trace collector pod.
+
+    Args:
+        trace_collector_pod: Pod resource for the OTEL collector.
+        tail_lines: Max number of log lines to retrieve (bounds memory use).
+
+    Returns:
+        Raw log output from the otel-collector container.
+    """
+    return trace_collector_pod.log(container="otel-collector", tail_lines=tail_lines)
+
+
+def parse_prometheus_text(text: str) -> dict[str, list[dict[str, Any]]]:
+    """Parse Prometheus text-format exposition into a dict keyed by metric name.
+
+    Each entry maps to a list of sample dicts with keys ``labels`` and ``value``.
+
+    Args:
+        text: Raw text from the operator /metrics endpoint.
+
+    Returns:
+        Mapping of metric family name to list of samples.
+    """
+    import re
+
+    metrics: dict[str, list[dict[str, Any]]] = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        match = re.match(r"^([a-zA-Z_:][a-zA-Z0-9_:]*)(\{(.+?)\})?\s+(.+?)(\s+\d+)?$", line)
+        if not match:
+            continue
+        name = match.group(1)
+        labels_raw = match.group(3) or ""
+        value_str = match.group(4)
+
+        labels: dict[str, str] = {}
+        if labels_raw:
+            for label_match in re.finditer(r'(\w+)="([^"]*)"', labels_raw):
+                labels[label_match.group(1)] = label_match.group(2)
+
+        try:
+            value: float | str = float(value_str)
+        except ValueError:
+            value = value_str
+
+        metrics.setdefault(name, []).append({"labels": labels, "value": value})
+    return metrics
+
+
+def get_metric_samples(
+    metrics: dict[str, list[dict[str, Any]]],
+    metric_name: str,
+    label_filter: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    """Filter parsed Prometheus samples by metric name and optional label match.
+
+    Args:
+        metrics: Output from ``parse_prometheus_text``.
+        metric_name: Metric family name (e.g. ``evalhub_controller_reconcile_total``).
+        label_filter: Optional dict of label key/value pairs that must all match.
+
+    Returns:
+        List of matching sample dicts.
+    """
+    samples = metrics.get(metric_name, [])
+    if not label_filter:
+        return samples
+    return [s for s in samples if all(s["labels"].get(key) == val for key, val in label_filter.items())]
+
+
+def metric_value_sum(
+    metrics: dict[str, list[dict[str, Any]]],
+    metric_name: str,
+    label_filter: dict[str, str] | None = None,
+) -> float:
+    """Sum all sample values for a metric, optionally filtered by labels.
+
+    Args:
+        metrics: Output from ``parse_prometheus_text``.
+        metric_name: Metric family name.
+        label_filter: Optional label filter.
+
+    Returns:
+        Sum of matching sample values.
+    """
+    samples = get_metric_samples(metrics=metrics, metric_name=metric_name, label_filter=label_filter)
+    total = 0.0
+    for s in samples:
+        try:
+            total += float(s["value"])
+        except TypeError, ValueError:
+            pass
+    return total
+
+
+def parse_trace_spans_from_logs(logs: str) -> list[dict[str, Any]]:
+    """Best-effort extraction of spans from OTEL collector debug exporter logs.
+
+    The debug exporter format is unstable and may change between collector
+    versions. Returns an empty list if parsing encounters unexpected structure.
+
+    Args:
+        logs: Raw stdout log output from the OTEL collector pod.
+
+    Returns:
+        List of span dicts with keys: name, trace_id, span_id, parent_span_id,
+        status, attributes.
+    """
+    import re
+
+    try:
+        spans: list[dict[str, Any]] = []
+        current_span: dict[str, Any] = {}
+
+        def _new_span() -> dict[str, Any]:
+            return {
+                "name": "",
+                "trace_id": "",
+                "span_id": "",
+                "parent_span_id": "",
+                "status": "",
+                "attributes": {},
+            }
+
+        for line in logs.splitlines():
+            line = line.strip()
+
+            if re.match(r"Span\s*#\d+", line):
+                if current_span.get("name"):
+                    spans.append(current_span)
+                current_span = _new_span()
+                continue
+
+            name_match = re.search(r"Name\s*:\s*(.+)", line)
+            if name_match:
+                if not current_span:
+                    current_span = _new_span()
+                elif current_span.get("name"):
+                    spans.append(current_span)
+                    current_span = _new_span()
+                current_span["name"] = name_match.group(1).strip()
+                continue
+
+            trace_id_match = re.search(r"(?:Trace\s*ID|TraceID)\s*:\s*([0-9a-fA-F]+)", line)
+            if trace_id_match and current_span:
+                current_span["trace_id"] = trace_id_match.group(1)
+                continue
+
+            parent_match = re.search(r"(?:Parent\s*ID|ParentSpanID)\s*:\s*([0-9a-fA-F]+)", line)
+            if parent_match and current_span:
+                current_span["parent_span_id"] = parent_match.group(1)
+                continue
+
+            span_id_match = re.search(r"(?:^|\s)ID\s*:\s*([0-9a-fA-F]+)", line)
+            if span_id_match and current_span:
+                current_span["span_id"] = span_id_match.group(1)
+                continue
+
+            span_id_match2 = re.search(r"SpanID\s*:\s*([0-9a-fA-F]+)", line)
+            if span_id_match2 and current_span:
+                current_span["span_id"] = span_id_match2.group(1)
+                continue
+
+            status_match = re.search(r"(?:Status\s*code|Status)\s*:\s*(\w+)", line)
+            if status_match and current_span:
+                current_span["status"] = status_match.group(1)
+                continue
+
+            attr_match = re.search(r"->\s*([a-zA-Z0-9_.]+)\s*:\s*(.+)", line)
+            if attr_match and current_span:
+                current_span["attributes"][attr_match.group(1).strip()] = attr_match.group(2).strip()
+
+        if current_span.get("name"):
+            spans.append(current_span)
+
+        return spans
+    except re.error, KeyError, IndexError, TypeError:
+        return []
+
+
+def filter_spans_by_name(spans: list[dict[str, Any]], name: str) -> list[dict[str, Any]]:
+    """Filter parsed spans to those matching a specific span name.
+
+    Args:
+        spans: List of span dicts from ``parse_trace_spans_from_logs``.
+        name: Exact span name to match.
+
+    Returns:
+        List of matching span dicts.
+    """
+    return [s for s in spans if s["name"] == name]
+
+
+def get_child_spans(spans: list[dict[str, Any]], parent_span_id: str) -> list[dict[str, Any]]:
+    """Get all spans that are children of a given parent span ID.
+
+    Args:
+        spans: List of span dicts from ``parse_trace_spans_from_logs``.
+        parent_span_id: The span ID of the parent.
+
+    Returns:
+        List of child span dicts.
+    """
+    return [s for s in spans if s["parent_span_id"] == parent_span_id]
