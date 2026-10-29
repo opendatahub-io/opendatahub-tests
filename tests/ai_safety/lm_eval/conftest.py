@@ -3,14 +3,17 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.lm_eval_job import LMEvalJob
 from ocp_resources.namespace import Namespace
+from ocp_resources.node import Node
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
+from ocp_resources.resource import get_client
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
@@ -45,6 +48,22 @@ from utilities.serving_runtime import ServingRuntimeFromTemplate
 VLLM_EMULATOR: str = "vllm-emulator"
 VLLM_EMULATOR_PORT: int = 8000
 LMEVALJOB_NAME: str = "lmeval-test-job"
+
+LOGGER = structlog.get_logger(name=__name__)
+
+
+def pytest_sessionstart(session: pytest.Session) -> None:
+    """Swap SharedImages.SEAWEEDFS to the ppc64le-specific image on Power clusters."""
+    config = session.config
+    if config.getoption("--collect-only") or config.getoption("--setup-plan"):
+        return
+
+    # Since clusters are not heterogeneous, all nodes share the same architecture
+    nodes = list(Node.get(dyn_client=get_client()))
+    cluster_architecture = nodes[0].instance.status.nodeInfo.architecture
+    if cluster_architecture == "ppc64le":
+        LOGGER.info(f"{cluster_architecture} cluster detected, using ppc64le SeaweedFS image")
+        SharedImages.SEAWEEDFS = SharedImages.SEAWEEDFS_PPC64LE
 
 
 @pytest.fixture(scope="function")
