@@ -637,12 +637,15 @@ class TestEvalHubReconcileErrors:
         operator_metrics_route: Route,
         operator_metrics_token: str,
         evalhub_failure_cr: EvalHub,
+        evalhub_invalid_spec_cr: EvalHub,
     ) -> None:
-        """Given multiple error types in the same reconciliation, all are recorded.
+        """Given two CRs that fail in different ways, multiple error types are recorded.
 
-        TC-ERR-002: Verify that multiple failure types within the same
-        reconciliation cycle are all recorded in the errors metric.
+        TC-ERR-002: The overlong-name CR and the missing-database CR each fail
+        reconciliation with a different error, so the errors metric for the
+        evalhub controller should show at least two distinct error_type values.
         """
+        error_types_seen: set = set()
         try:
             for raw_metrics in TimeoutSampler(
                 wait_timeout=METRICS_POLL_TIMEOUT,
@@ -667,7 +670,10 @@ class TestEvalHubReconcileErrors:
                     if len(error_types_seen) >= 2:
                         return
         except TimeoutExpiredError:
-            pytest.fail("No error types recorded in errors metric")
+            pytest.fail(
+                f"Expected at least 2 distinct error_type values in {RECONCILE_ERRORS_METRIC}, "
+                f"last seen: {error_types_seen}"
+            )
 
     @pytest.mark.skip(reason="Requires a job-failure fixture that submits and awaits a failing evaluation job")
     def test_job_failure_produces_metric_and_trace(

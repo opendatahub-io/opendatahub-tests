@@ -2474,6 +2474,21 @@ def evalhub_failure_cr(
 
 
 @pytest.fixture(scope="class")
+def evalhub_invalid_spec_cr(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+) -> Generator[EvalHub, Any, Any]:
+    """EvalHub CR without spec.database, which the operator rejects as a validation error."""
+    with EvalHub(
+        client=admin_client,
+        name="evalhub-no-database",
+        namespace=model_namespace.name,
+        wait_for_resource=True,
+    ) as evalhub:
+        yield evalhub
+
+
+@pytest.fixture(scope="class")
 def operator_metrics_route(
     admin_client: DynamicClient,
 ) -> Generator[Route, Any, Any]:
