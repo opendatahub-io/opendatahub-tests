@@ -5,9 +5,6 @@ class AiSafetyImages:
         "quay.io/trustyai_testing/vllm_emulator@sha256:c4bdd5bb93171dee5b4c8454f36d7c42b58b2a4ceb74f29dba5760ac53b5c12d"
     )
     MINIO_MC: str = "quay.io/minio/mc@sha256:470f5546b596e16c7816b9c3fa7a78ce4076bb73c2c73f7faeec0c8043923123"
-    MINIO_SERVER_OTEL: str = (
-        "quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e"
-    )
     MINIO_DSPA: str = "quay.io/opendatahub/minio:RELEASE.2019-08-14T20-37-41Z-license-compliance"
     SIMPLE_MINIO: str = (
         "quay.io/opendatahub/minio@sha256:587abc14be9bbeed794473cf7290c40e377062f2f77f5e4e27742a77680f08e0"
