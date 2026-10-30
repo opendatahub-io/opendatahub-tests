@@ -73,6 +73,7 @@ from ocp_resources.project_project_openshift_io import Project
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
+from pytest_testconfig import config as py_config
 
 from tests.ai_gateway.models_as_a_service.multitenancy.utils import (
     gateway_access_label_key as _gateway_access_label_key,
@@ -106,7 +107,22 @@ EXTERNAL_TARGET_MODEL = "gpt-3.5-turbo"
 EXTERNAL_API_FORMAT = "openai-chat"
 
 AGC_DEPLOYMENT_NAME = os.environ.get("AGC_DEPLOYMENT_NAME", "ai-gateway-controller")
-AGC_DEPLOYMENT_NAMESPACE = os.environ.get("AGC_DEPLOYMENT_NAMESPACE", MAAS_GATEWAY_NAMESPACE)
+# The AGC Deployment's namespace varies by deployment type: the MaaS e2e
+# companion deploy puts it in "opendatahub", the RHOAI operator in
+# "redhat-ods-applications", ODH in "odh-applications". An explicit
+# AGC_DEPLOYMENT_NAMESPACE wins; otherwise find_agc_deployment searches the
+# candidates below. (Only the Gateway and the praxis payload-processing
+# Deployment live in MAAS_GATEWAY_NAMESPACE.)
+AGC_DEPLOYMENT_NAMESPACE = os.environ.get("AGC_DEPLOYMENT_NAMESPACE", "")
+AGC_DEPLOYMENT_NAMESPACE_CANDIDATES = tuple(
+    dict.fromkeys([
+        AGC_DEPLOYMENT_NAMESPACE,
+        py_config.get("applications_namespace", ""),
+        "redhat-ods-applications",
+        "odh-applications",
+        "opendatahub",
+    ])
+)
 
 EXTERNAL_MODEL_CRD_NAME = "externalmodels.inference.opendatahub.io"
 REFERENCE_GRANT_CRD_NAME = "referencegrants.gateway.networking.k8s.io"
@@ -269,17 +285,26 @@ def installed_crd_capabilities(admin_client: DynamicClient, crd: dict[str, Any] 
 
 
 def find_agc_deployment(admin_client: DynamicClient) -> dict[str, Any] | None:
-    """Locate the ai-gateway-controller Deployment, if installed."""
-    deployment = get_json_or_none(
-        client=admin_client, kind="deployment", name=AGC_DEPLOYMENT_NAME, namespace=AGC_DEPLOYMENT_NAMESPACE
-    )
-    if deployment:
-        return deployment
-    # Fall back to a name match in case the companion deploy renames it.
-    for candidate in list_json(admin_client, "deployment", AGC_DEPLOYMENT_NAMESPACE):
-        name = (candidate.get("metadata") or {}).get("name") or ""
-        if "ai-gateway-controller" in name or name.startswith("aigc"):
-            return candidate
+    """Locate the ai-gateway-controller Deployment, if installed.
+
+    Searches the well-known deployment namespaces (explicit env override
+    first, then the operator applications namespace and the companion-deploy
+    defaults); falls back to a name match in case the companion deploy
+    renames it.
+    """
+    for namespace in AGC_DEPLOYMENT_NAMESPACE_CANDIDATES:
+        if not namespace:
+            continue
+        deployment = get_json_or_none(
+            client=admin_client, kind="deployment", name=AGC_DEPLOYMENT_NAME, namespace=namespace
+        )
+        if deployment:
+            return deployment
+        # Fall back to a name match in case the companion deploy renames it.
+        for candidate in list_json(admin_client, "deployment", namespace):
+            name = (candidate.get("metadata") or {}).get("name") or ""
+            if "ai-gateway-controller" in name or name.startswith("aigc"):
+                return candidate
     return None
 
 
@@ -311,7 +336,7 @@ def require_tenant_external_model_support(admin_client: DynamicClient) -> dict[s
     if find_agc_deployment(admin_client) is None:
         pytest.skip(
             f"ai-gateway-controller deployment not found "
-            f"({AGC_DEPLOYMENT_NAME} in {AGC_DEPLOYMENT_NAMESPACE}); AGC companion not installed"
+            f"({AGC_DEPLOYMENT_NAME} in {AGC_DEPLOYMENT_NAMESPACE_CANDIDATES}); AGC companion not installed"
         )
     return capabilities
 
@@ -378,7 +403,8 @@ def record_tenant_external_model_evidence(admin_client: DynamicClient) -> dict[s
         "recordedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "agc": {
             "deploymentName": AGC_DEPLOYMENT_NAME,
-            "deploymentNamespace": AGC_DEPLOYMENT_NAMESPACE,
+            "deploymentNamespace": AGC_DEPLOYMENT_NAMESPACE or "auto-discovered",
+            "deploymentNamespaceCandidates": list(AGC_DEPLOYMENT_NAMESPACE_CANDIDATES),
             "image": _safe(
                 lambda: deployment_image(find_agc_deployment(admin_client)),
                 "",
@@ -1431,17 +1457,6 @@ def serve_external_model_in_tenant(
     resolved_policy_name = policy_name or f"{model_name}-access"
     resolved_subscription_name = subscription_name or f"{model_name}-sub"
 
-    if wait_model_ready:
-        # Source-suite semantics: model_name is the MaaSModelRef name (for
-        # shared models it is the per-tenant tenant-pinned ref, not the
-        # ExternalModel name), so readiness is the ref's status.phase.
-        wait_for_maas_model_ref_ready(
-            admin_client=admin_client,
-            ref_name=model_name,
-            namespace=model_namespace,
-            timeout=resolved_timeout,
-        )
-
     with ExitStack() as stack:
         auth_policy = stack.enter_context(
             cm=MaaSAuthPolicy(
@@ -1474,6 +1489,18 @@ def serve_external_model_in_tenant(
             )
         )
         subscription.wait_for_condition(condition="Ready", status="True", timeout=resolved_timeout)
+        if wait_model_ready:
+            # Source-suite semantics (require_model_ready): the ref's phase
+            # reads Ready only once governance is paired, so this wait must
+            # follow the policy/subscription creation. model_name is the
+            # MaaSModelRef name (per-tenant tenant-pinned ref for shared
+            # models, the model name for single-attachment models).
+            wait_for_maas_model_ref_ready(
+                admin_client=admin_client,
+                ref_name=model_name,
+                namespace=model_namespace,
+                timeout=resolved_timeout,
+            )
         api_key, key_id = mint_tenant_api_key(
             request_session_http=request_session_http,
             ocp_token=ocp_token,
@@ -1493,7 +1520,7 @@ def serve_external_model_in_tenant(
                     key_id=key_id,
                 )
 
-            stack.callback(callback=_revoke_key)
+            stack.callback(_revoke_key)  # noqa: FCN001
         yield {
             "policy": resolved_policy_name,
             "subscription": resolved_subscription_name,

@@ -53,7 +53,6 @@ LOGGER = structlog.get_logger(name=__name__)
 
 MAAS_API_DEPLOYMENT_NAME = "maas-api"
 MAAS_HOST_PREFIX = "maas."
-TENANT_GATEWAY_SERVICE_SUFFIX = "-openshift-default"
 TENANT_GATEWAY_ROUTE_SUFFIX = "-route"
 GATEWAY_ACCESS_LABEL_PREFIX = "maas.opendatahub.io/gateway-access-"
 GATEWAY_HTTP_PORT = 80
@@ -103,8 +102,13 @@ def ingress_domain_from_maas_host(maas_host: str) -> str:
 
 
 def tenant_gateway_service_name(gateway_name: str) -> str:
-    """Return the OpenShift Service fronting a tenant Gateway."""
-    return f"{gateway_name}{TENANT_GATEWAY_SERVICE_SUFFIX}"
+    """Return the OpenShift Service fronting a tenant Gateway.
+
+    The openshift.io gateway controller names the per-Gateway LoadBalancer
+    Service ``<gateway-name>-<gateway-class>`` (source-suite convention), so
+    the suffix must follow the configured class, not a fixed literal.
+    """
+    return f"{gateway_name}-{AIGATEWAY_GATEWAY_CLASS_NAME}"
 
 
 def tenant_gateway_route_name(gateway_name: str) -> str:

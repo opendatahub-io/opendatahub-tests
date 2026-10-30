@@ -1,5 +1,6 @@
 import base64
 import json
+import os
 from collections.abc import Generator
 from contextlib import contextmanager
 from json import JSONDecodeError
@@ -46,7 +47,11 @@ DEFAULT_MAAS_TENANT_NAME = "default-tenant"
 MaaSTenantResource = MaasTenantConfig | Tenant
 
 AITENANT_INFRA_NAMESPACE: str = "ai-tenants"
-AIGATEWAY_GATEWAY_CLASS_NAME: str = "openshift-default"
+# The tenant Gateway class: OCP's built-in default when GatewayAPI is enabled.
+# Env-overridable (source-suite convention): clusters where the built-in class
+# is absent (e.g. only operator-created classes exist) must point this at an
+# Accepted GatewayClass, such as maas-gateway-class.
+AIGATEWAY_GATEWAY_CLASS_NAME: str = os.environ.get("AITENANT_GATEWAY_CLASS_NAME", "openshift-default")
 AIGATEWAY_BOOTSTRAP_GATEWAY_LISTENERS: list[dict[str, Any]] = [
     {
         "name": "http",
