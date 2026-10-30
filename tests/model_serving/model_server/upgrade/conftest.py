@@ -14,6 +14,7 @@ from ocp_resources.gateway import Gateway
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.job import Job
 from ocp_resources.namespace import Namespace
+from ocp_resources.resource import ResourceEditor
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
@@ -22,6 +23,10 @@ from ocp_resources.serving_runtime import ServingRuntime
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_serving.model_runtime.vllm.utils import skip_if_not_deployment_mode
+from tests.model_serving.model_server.kserve.inference_service_lifecycle.constants import (
+    ISVC_LOGGER_MODE,
+    ISVC_LOGGER_SINK_URL,
+)
 from tests.model_serving.model_server.llmd.llmd_configs.config_upgrade import (
     LLMD_KUEUE_CLUSTER_QUEUE,
     LLMD_KUEUE_CPU_QUOTA,
@@ -75,6 +80,7 @@ from tests.model_serving.model_server.upgrade.utils import (
     save_auth_token_to_secret,
     save_baseline_to_configmap,
 )
+from tests.model_serving.model_server.utils import wait_for_isvc_agent_sidecar
 from utilities.constants import (
     KServeDeploymentType,
     ModelAndFormat,
@@ -376,6 +382,82 @@ def capture_private_endpoint_upgrade_baseline(
     """Capture baseline values for the private-endpoint ISVC."""
     _capture_and_save_baseline(
         pytestconfig=pytestconfig, admin_client=admin_client, isvc=private_endpoint_inference_service_fixture
+    )
+
+
+# Inference Logging Upgrade Fixtures
+@pytest.fixture(scope="session")
+def logging_inference_service_fixture(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    serving_runtime_fixture: ServingRuntime,
+    s3_connection_fixture: Secret,
+    teardown_resources: bool,
+) -> Generator[InferenceService, Any, Any]:
+    """InferenceService with inference logging enabled (kserve-agent sidecar) for upgrade tests.
+
+    Pre-upgrade: creates the ISVC in the shared upgrade namespace and enables
+    inference logging by patching spec.predictor.logger, the same mechanism
+    TrustyAI uses for the models it monitors. The controller rolls the predictor
+    Deployment and the pod mutator webhook injects the kserve-agent sidecar into
+    the new pod. The logger spec intentionally stays patched: the ISVC is kept
+    alive across the upgrade and re-attached post-upgrade.
+    """
+    isvc_kwargs = {
+        "client": admin_client,
+        "name": "upgrade-logger-isvc",
+        "namespace": serving_runtime_fixture.namespace,
+    }
+
+    isvc = InferenceService(**isvc_kwargs)
+
+    if pytestconfig.option.post_upgrade:
+        yield isvc
+        isvc.clean_up()
+    else:
+        with create_isvc(
+            runtime=serving_runtime_fixture.name,
+            model_format=ModelAndFormat.OPENVINO_IR,
+            deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+            storage_key=s3_connection_fixture.name,
+            storage_path=ModelStoragePath.OPENVINO_EXAMPLE_MODEL,
+            model_version=ModelVersion.OPSET13,
+            external_route=False,
+            teardown=teardown_resources,
+            **isvc_kwargs,
+        ) as isvc:
+            ResourceEditor(
+                patches={
+                    isvc: {
+                        "spec": {
+                            "predictor": {
+                                "logger": {
+                                    "url": ISVC_LOGGER_SINK_URL,
+                                    "mode": ISVC_LOGGER_MODE,
+                                }
+                            }
+                        }
+                    }
+                }
+            ).update()
+            wait_for_isvc_agent_sidecar(client=admin_client, isvc=isvc)
+            isvc.wait_for_condition(
+                condition=InferenceService.Condition.READY,
+                status=InferenceService.Condition.Status.TRUE,
+                timeout=Timeout.TIMEOUT_10MIN,
+            )
+            yield isvc
+
+
+@pytest.fixture(scope="session")
+def capture_logging_upgrade_baseline(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    logging_inference_service_fixture: InferenceService,
+) -> None:
+    """Capture baseline values for the inference-logging ISVC."""
+    _capture_and_save_baseline(
+        pytestconfig=pytestconfig, admin_client=admin_client, isvc=logging_inference_service_fixture
     )
 
 

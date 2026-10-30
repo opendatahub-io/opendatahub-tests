@@ -108,15 +108,20 @@ LOGGER = structlog.get_logger(name=__name__)
 
 @pytest.fixture(scope="class")
 def evalhub_cr(
+    request: pytest.FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
 ) -> Generator[EvalHub, Any, Any]:
-    """Create an EvalHub custom resource and wait for it to be ready."""
+    """Create an EvalHub custom resource and wait for it to be ready.
+
+    Accepts an optional indirect param dict with an ``otel`` key to set spec.otel.
+    """
     with EvalHub(
         client=admin_client,
         name="evalhub",
         namespace=model_namespace.name,
         database={"type": "sqlite"},
+        otel=getattr(request, "param", {}).get("otel"),
         wait_for_resource=True,
     ) as evalhub:
         yield evalhub
@@ -133,9 +138,11 @@ def evalhub_mt_cr(
     """Create an EvalHub CR for multi-tenancy tests.
 
     Uses a distinct name ('evalhub-mt') to avoid RoleBinding name collisions
-    with the production EvalHub instance. The operator names tenant RoleBindings
-    as '{instance.Name}-{ns}-job-config-rb' and uses Get-or-Create (not Update),
-    so two instances named 'evalhub' would collide and the first one wins.
+    with the production EvalHub instance. The operator names some tenant RoleBindings
+    as '{instance.Name}-{tenant_ns}-job-config-rb' without the instance namespace, so
+    same-named instances in different namespaces that serve the same tenant namespace
+    overwrite each other's bindings there (the last one reconciled wins). Any other
+    EvalHub alive during these tests must use a different name.
 
     Note: This creates a Custom Resource (CR) instance, not the CustomResourceDefinition (CRD).
     The CRD must already be installed by the EvalHub/TrustyAI operator.

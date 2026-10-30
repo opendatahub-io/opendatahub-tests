@@ -19,7 +19,7 @@ from tests.model_serving.model_server.kserve.negative.utils import (
     wait_for_isvc_ready_false,
 )
 
-pytestmark = [pytest.mark.rawdeployment]
+pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("skip_if_arm64_cluster_detected")]
 
 
 @pytest.mark.tier2
