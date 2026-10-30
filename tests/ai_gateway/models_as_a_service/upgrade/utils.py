@@ -16,6 +16,7 @@ from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.maas_auth_policy import MaaSAuthPolicy
 from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.maas_subscription import MaaSSubscription
+from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.replica_set import ReplicaSet
 from ocp_resources.resource import NamespacedResource
@@ -1749,6 +1750,43 @@ AGC_UPGRADE_BASELINE_CM_KEY = "agc_upgrade_baseline"
 AGC_UPGRADE_API_KEY_SECRET_KEY = "api-key"  # pragma: allowlist secret
 
 
+def clean_up_agc_upgrade_resources(
+    admin_client: DynamicClient,
+    subscription_namespace: str,
+) -> None:
+    """Delete the resources a pre-upgrade run retains for the post-upgrade run.
+
+    Idempotent (every delete is guarded by an existence check) so it can run
+    after the owning fixtures already cleaned up their part: the API key
+    Secret, the default-tenant governance objects and the fixed upgrade
+    namespace (which cascades the ExternalModel and the baseline ConfigMap).
+    """
+    secret = Secret(
+        client=admin_client,
+        name=AGC_UPGRADE_API_KEY_SECRET_NAME,
+        namespace=AGC_UPGRADE_NAMESPACE,
+    )
+    if secret.exists:
+        secret.clean_up()
+    for governance in (
+        MaaSAuthPolicy(
+            client=admin_client,
+            name=AGC_UPGRADE_AUTH_POLICY_NAME,
+            namespace=subscription_namespace,
+        ),
+        MaaSSubscription(
+            client=admin_client,
+            name=AGC_UPGRADE_SUBSCRIPTION_NAME,
+            namespace=subscription_namespace,
+        ),
+    ):
+        if governance.exists:
+            governance.clean_up()
+    namespace = Namespace(client=admin_client, name=AGC_UPGRADE_NAMESPACE)
+    if namespace.exists:
+        namespace.clean_up()
+
+
 class AGCRouteBaseline(TypedDict):
     uid: str
     generation: int
@@ -1772,8 +1810,8 @@ def agc_attachment_route_baseline(
     """Snapshot the identity of the model namespace's default-gateway routes.
 
     Captures uid (recreation), generation (in-place rewrite) and the
-    serialized spec/labels (byte-identity) of every HTTPRoute attached to
-    the default MaaS Gateway in the model namespace.
+    serialized spec/labels of every HTTPRoute attached to the default MaaS
+    Gateway in the model namespace.
     """
     routes: dict[str, AGCRouteBaseline] = {}
     for route in attachment_httproutes(

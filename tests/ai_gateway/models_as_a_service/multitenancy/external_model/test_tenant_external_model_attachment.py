@@ -850,6 +850,14 @@ class TestListenerAdmissionRecovery:
         env = recovery_env
         tenant_b = env["tenant_b"]
         model = env["recovering_model"]
+        # Restore the refusal precondition first: the readmission test may
+        # run before this one under random ordering, and its label would
+        # leave the attachment Ready instead of NotAllowedByListeners.
+        remove_gateway_access_label(
+            admin_client=admin_client,
+            namespace_name=model["namespace"],
+            gateway_name=tenant_b["gateway_name"],
+        )
         wait_for_gateway_attachment_reason(
             admin_client=admin_client,
             model_name=model["name"],

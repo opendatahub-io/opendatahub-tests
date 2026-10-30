@@ -61,6 +61,7 @@ from tests.ai_gateway.models_as_a_service.upgrade.utils import (
     capture_legacy_migration_baseline,
     capture_maas_baseline,
     capture_multitenant_upgrade_baseline,
+    clean_up_agc_upgrade_resources,
     cluster_has_inference_external_model_crd,
     cluster_has_legacy_external_model_crd,
     create_and_persist_tenant_api_key,
@@ -1130,10 +1131,29 @@ def maas_legacy_ipp_envoyfilter_config_patches(
 
 
 @pytest.fixture(scope="session")
-def agc_upgrade_supported(admin_client: DynamicClient) -> None:
-    """Skip the AGC upgrade suite when the AGC companion is not installed."""
+def agc_upgrade_supported(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+) -> None:
+    """Skip the AGC upgrade suite when the AGC companion is not installed.
 
+    After the upgrade the gate is stricter: a baseline ConfigMap records that
+    the pre-upgrade run found the AGC present, so a missing Deployment then
+    means the upgrade removed it — a failure, not a skip.
+    """
     if find_agc_deployment(admin_client=admin_client) is None:
+        if pytestconfig.option.post_upgrade:
+            baseline = ConfigMap(
+                client=admin_client,
+                name=AGC_UPGRADE_BASELINE_CM_NAME,
+                namespace=AGC_UPGRADE_NAMESPACE,
+            )
+            if baseline.exists:
+                pytest.fail(
+                    f"ai-gateway-controller deployment not found after the upgrade, but "
+                    f"{AGC_UPGRADE_NAMESPACE}/{AGC_UPGRADE_BASELINE_CM_NAME} records it was "
+                    "present before; the upgrade removed the AGC"
+                )
         pytest.skip("ai-gateway-controller deployment not found; AGC companion not installed")
 
 
@@ -1273,10 +1293,10 @@ def agc_upgrade_api_key(
             request_session_http=request_session_http,
             api_key_name=f"e2e-agc-upgrade-{generate_random_name()}",
             subscription=subscription.name,
-            # A real upgrade job can start the post-upgrade run more than a
-            # day after the pre-upgrade run; 24h expiry would reject the
-            # stored key even when the AGC objects are intact.
-            expires_in="72h",
+            # No expires_in: a real upgrade job can start the post-upgrade
+            # run arbitrarily later than the pre-upgrade run, and any fixed
+            # TTL would reject the stored key even when the AGC objects are
+            # intact.
         )
         assert_api_key_created_ok(resp=response, body=body)
         Secret(
@@ -1324,11 +1344,27 @@ def capture_agc_upgrade_baseline(
 def agc_upgrade_baseline(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
-) -> AGCUpgradeBaseline | dict[str, Any]:
-    """Load the AGC baseline when post-upgrade, empty dict pre-upgrade."""
+    maas_subscription_namespace: Namespace,
+    teardown_resources: bool,
+) -> Generator[AGCUpgradeBaseline | dict[str, Any], Any]:
+    """Load the AGC baseline when post-upgrade, empty dict pre-upgrade.
+
+    Post-upgrade this is also the cleanup owner of last resort: it runs even
+    when only the object-preservation test executes (which requests no other
+    AGC fixture), so the retained Secret, governance objects and namespace
+    do not outlive the run when teardown is enabled.
+    """
     if pytestconfig.option.post_upgrade:
-        return load_agc_upgrade_baseline_from_configmap(
+        baseline = load_agc_upgrade_baseline_from_configmap(
             client=admin_client,
             namespace=AGC_UPGRADE_NAMESPACE,
         )
-    return {}
+        yield baseline
+        if teardown_resources:
+            assert maas_subscription_namespace.name is not None
+            clean_up_agc_upgrade_resources(
+                admin_client=admin_client,
+                subscription_namespace=maas_subscription_namespace.name,
+            )
+        return
+    yield {}

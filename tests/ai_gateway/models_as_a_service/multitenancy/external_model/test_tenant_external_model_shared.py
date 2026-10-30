@@ -872,6 +872,10 @@ class TestTenantQuotaIsolation:
                 model_client_name=model["client_name"],
                 api_key=quota_model["access_a"]["api_key"],
                 path_tag=model["path_tag"],
+                # No retries: a 429 near the end of the window would otherwise
+                # sleep past the reset and come back 200, hiding the rejection
+                # this loop must observe (the route is already warm).
+                retries=0,
             )
             if limited.status_code == 200:
                 successes += 1

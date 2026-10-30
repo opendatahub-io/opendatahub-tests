@@ -139,6 +139,13 @@ def default_tenant_model_namespace(
     teardown_resources: bool,
 ) -> Generator[Namespace | Project, Any, Any]:
     """The llm namespace the default Gateway's allowedRoutes already admits."""
+    existing = get_json_or_none(client=admin_client, kind="namespace", name=MODEL_NAMESPACE)
+    if existing is not None:
+        # Left over from a previous run (fixed name): adopt it without
+        # ownership so cleanup never deletes a namespace this run did not
+        # create.
+        yield Namespace(client=admin_client, name=MODEL_NAMESPACE)
+        return
     with create_ns(
         admin_client=admin_client,
         name=MODEL_NAMESPACE,

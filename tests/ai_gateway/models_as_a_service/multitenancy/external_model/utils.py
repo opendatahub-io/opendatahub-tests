@@ -75,10 +75,15 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from pytest_testconfig import config as py_config
 
+from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import AITenantTestContext
 from tests.ai_gateway.models_as_a_service.multitenancy.utils import (
     gateway_access_label_key as _gateway_access_label_key,
 )
-from tests.ai_gateway.models_as_a_service.utils import create_api_key, revoke_api_key
+from tests.ai_gateway.models_as_a_service.utils import (
+    build_aitenant_spec,
+    create_api_key,
+    revoke_api_key,
+)
 from utilities.constants import MAAS_GATEWAY_NAMESPACE
 from utilities.general import generate_random_name
 from utilities.infra import create_ns
@@ -149,6 +154,7 @@ ATTACHMENT_ROUTE_HASH_RE = re.compile(r"[0-9a-f]{12}")
 # praxis resources to "<resource>-<tenant-name>").
 PER_TENANT_PROCESSING_DEPLOYMENT_PREFIX = "payload-processing-"
 PRAXIS_IMAGE_MARKER = "praxis"
+TENANT_EXTERNAL_MODEL_NAME_PREFIX = "e2e-extmod"
 
 
 # ─── Generic resource JSON access ───────────────────────────────────────────
@@ -251,9 +257,16 @@ def redact_sensitive(value: Any, *, max_length: int = 300) -> str:
 
 
 def _crd_schema_properties(crd: dict[str, Any], section: str | None) -> dict[str, Any]:
-    """Merge the schema properties of *section* ("spec"/"status") across versions."""
+    """Merge the schema properties of *section* ("spec"/"status") across served versions.
+
+    Unserved versions are skipped: Kubernetes only accepts objects through a
+    served version, so fields that exist solely in an unserved one cannot be
+    used and must not enable suite capabilities.
+    """
     merged: dict[str, Any] = {}
     for version in (crd.get("spec") or {}).get("versions") or []:
+        if not version.get("served"):
+            continue
         schema = ((version.get("schema") or {}).get("openAPIV3Schema") or {}).get("properties") or {}
         if section is None:
             merged.update(schema)
@@ -314,6 +327,76 @@ def deployment_image(deployment: dict[str, Any] | None) -> str:
         return ""
     containers = ((deployment.get("spec") or {}).get("template") or {}).get("spec", {}).get("containers") or []
     return (containers[0].get("image") if containers else "") or ""
+
+
+def per_tenant_processing_uses_praxis(
+    admin_client: DynamicClient,
+    tenant_name: str,
+    *,
+    timeout: int = 120,
+) -> bool:
+    """Whether the tenant's payload-processing Deployment runs praxis-extproc.
+
+    Polls for the Deployment to exist and settle before deciding: a single
+    read can race the AGC's per-tenant reconcile and would skip the module on
+    a cluster that actually supports the contract. Returns False only after
+    the bounded wait confirms the image is not praxis (or never appears).
+    """
+    deployment_name = f"{PER_TENANT_PROCESSING_DEPLOYMENT_PREFIX}{tenant_name}"
+
+    def _check() -> None:
+        deployment = get_json_or_none(
+            client=admin_client,
+            kind="deployment",
+            name=deployment_name,
+            namespace=MAAS_GATEWAY_NAMESPACE,
+        )
+        assert deployment is not None, f"Deployment {MAAS_GATEWAY_NAMESPACE}/{deployment_name} not found"
+        assert PRAXIS_IMAGE_MARKER in deployment_image(deployment), (
+            f"Deployment {MAAS_GATEWAY_NAMESPACE}/{deployment_name} image "
+            f"{deployment_image(deployment)!r} is not praxis-extproc"
+        )
+
+    try:
+        wait_until(
+            check=_check,
+            timeout=timeout,
+            what=f"praxis image on {MAAS_GATEWAY_NAMESPACE}/{deployment_name}",
+        )
+    except TimeoutError:
+        return False
+    return True
+
+
+def extmod_tenant_test_params(tenant_label: str) -> dict[str, Any]:
+    """AITenant name and spec for one external model suite tenant."""
+    aitenant_name = f"{TENANT_EXTERNAL_MODEL_NAME_PREFIX}-{tenant_label}-{generate_random_name()}"
+    assert len(aitenant_name) <= MAX_AITENANT_NAME_LENGTH, (
+        f"tenant name {aitenant_name!r} is {len(aitenant_name)} characters; AGC per-tenant "
+        f"praxis resource naming needs it to stay at or under {MAX_AITENANT_NAME_LENGTH} "
+        "(63-char limit minus the longest resource base name)"
+    )
+    return {
+        "aitenant_name": aitenant_name,
+        "aitenant_spec": build_aitenant_spec(aitenant_name=aitenant_name),
+    }
+
+
+def tenant_case(
+    context: AITenantTestContext,
+    gateway_name: str,
+    maas_host: str,
+) -> dict[str, str]:
+    """Enrich an AITenant context with the external model suite's case keys."""
+    gateway_host = f"{gateway_name}.{maas_host.removeprefix('maas.')}"
+    return {
+        "tenant_label_name": context["aitenant_name"],
+        "tenant_ns": context["tenant_namespace_name"],
+        "gateway_name": gateway_name,
+        "gateway_host": gateway_host,
+        "gateway_url": f"https://{gateway_host}",
+        "maas_api_url": f"https://{gateway_host}/maas-api",
+    }
 
 
 def require_tenant_external_model_support(admin_client: DynamicClient) -> dict[str, bool]:
@@ -1295,7 +1378,13 @@ def wait_for_no_destination_rules_referencing(
     """Wait until no DestinationRule referencing the model remains."""
 
     def _check() -> bool:
-        rules = destination_rules_referencing(admin_client, model_name, *namespaces, also_matching=also_matching)  # noqa: FCN001 - namespaces feed *args
+        # positional call is required: *namespaces must follow admin_client/model_name
+        rules = destination_rules_referencing(  # noqa: FCN001 - *namespaces must follow positionally
+            admin_client,
+            model_name,
+            *namespaces,
+            also_matching=also_matching,
+        )
         assert not rules, (
             f"stale DestinationRules referencing {model_name} (also matching {also_matching}): "
             f"{[rule['metadata']['name'] for rule in rules]}"
@@ -1339,16 +1428,16 @@ def infer_external_chat(
     retries: int = 6,
     delay: int = 5,
     request_timeout: int = 60,
-    verify: bool = False,
+    verify: bool | str = True,
     provider_path: str | None = None,
 ) -> requests.Response:
     """Run one chat completion through a gateway and return the response.
 
     Retries transient gateway errors (auth propagation, route rollout) with a
-    bounded count; non-transient failures return immediately. TLS verification
-    is off by default (the repo convention for gateway-route requests, cf.
-    request_session_http): tenant-gateway Route certs are signed by the
-    cluster CA, which is not in the runner's trust store.
+    bounded count; non-transient failures return immediately. TLS is verified
+    against the router CA bundle installed by the ``gateway_route_ca_bundle``
+    fixture (via ``REQUESTS_CA_BUNDLE``); pass ``verify=False`` to opt out on
+    clusters whose Route certificates cannot be resolved that way.
     """
     url = external_chat_url(
         gateway_url=gateway_url,

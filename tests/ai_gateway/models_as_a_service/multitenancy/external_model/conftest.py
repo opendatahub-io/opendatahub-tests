@@ -8,25 +8,24 @@ gatewayRefs additive schema is not distributed yet.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Generator
 from contextlib import ExitStack
 from typing import Any
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 
 from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import (
-    AITenantTestContext,
     build_aitenant_test_context,
 )
 from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils import (
-    MAX_AITENANT_NAME_LENGTH,
-    PER_TENANT_PROCESSING_DEPLOYMENT_PREFIX,
-    PRAXIS_IMAGE_MARKER,
-    deployment_image,
-    get_json_or_none,
+    extmod_tenant_test_params,
+    per_tenant_processing_uses_praxis,
     record_tenant_external_model_evidence,
     require_tenant_external_model_support,
+    tenant_case,
 )
 from tests.ai_gateway.models_as_a_service.multitenancy.utils import (
     isolation_bootstrap_gateway_context,
@@ -35,15 +34,46 @@ from tests.ai_gateway.models_as_a_service.multitenancy.utils import (
 from tests.ai_gateway.models_as_a_service.utils import (
     aitenant_from_spec,
     bootstrap_gateway_ref,
-    build_aitenant_spec,
     deploy_and_verify_aitenant_ready,
     host_from_ingress_domain,
     verify_maas_gateway_programmed,
 )
-from utilities.constants import MAAS_GATEWAY_NAMESPACE
-from utilities.general import generate_random_name
+from utilities.certificates_utils import get_ca_bundle
 
-TENANT_EXTERNAL_MODEL_NAME_PREFIX = "e2e-extmod"
+LOGGER = structlog.get_logger(name=__name__)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def gateway_route_ca_bundle(admin_client: DynamicClient) -> Generator[str]:
+    """Trust the cluster's router CA for gateway Route TLS.
+
+    Tenant-gateway Route certificates are signed by the cluster's router CA,
+    which is not in the runner's trust store; without this, requests-based
+    inference (``infer_external_chat``) fails TLS verification. Resolves the
+    bundle the way ``utilities.autogluon`` does and exports it through
+    ``REQUESTS_CA_BUNDLE`` for the whole suite. Yields the bundle path, or
+    ``""`` when none is needed or available (managed clusters).
+    """
+    previous = os.environ.get("REQUESTS_CA_BUNDLE")
+    bundle = os.environ.get("TENANT_EXTERNAL_MODEL_CA_BUNDLE", "")
+    if not bundle:
+        try:
+            bundle = get_ca_bundle(client=admin_client)
+        except Exception as ex:  # noqa: BLE001 - trust resolution is best-effort
+            LOGGER.warning(
+                "Failed to resolve the OpenShift router CA bundle; gateway "
+                "inference falls back to the system trust store",
+                error=str(ex),
+            )
+    if bundle:
+        os.environ["REQUESTS_CA_BUNDLE"] = bundle
+    try:
+        yield bundle
+    finally:
+        if previous is None:
+            os.environ.pop("REQUESTS_CA_BUNDLE", None)
+        else:
+            os.environ["REQUESTS_CA_BUNDLE"] = previous
 
 
 @pytest.fixture(scope="module")
@@ -61,61 +91,16 @@ def tenant_external_model_evidence(
     return record_tenant_external_model_evidence(admin_client=admin_client)
 
 
-def _per_tenant_processing_uses_praxis(
-    admin_client: DynamicClient,
-    tenant_name: str,
-) -> bool:
-    """Whether the tenant's payload-processing deployment runs praxis-extproc."""
-    deployment = get_json_or_none(
-        client=admin_client,
-        kind="deployment",
-        name=f"{PER_TENANT_PROCESSING_DEPLOYMENT_PREFIX}{tenant_name}",
-        namespace=MAAS_GATEWAY_NAMESPACE,
-    )
-    return PRAXIS_IMAGE_MARKER in deployment_image(deployment)
-
-
-def _extmod_tenant_test_params(tenant_label: str) -> dict[str, Any]:
-    """AITenant name and spec for one external model suite tenant."""
-    aitenant_name = f"{TENANT_EXTERNAL_MODEL_NAME_PREFIX}-{tenant_label}-{generate_random_name()}"
-    assert len(aitenant_name) <= MAX_AITENANT_NAME_LENGTH, (
-        f"tenant name {aitenant_name!r} is {len(aitenant_name)} characters; AGC per-tenant "
-        f"praxis resource naming needs it to stay at or under {MAX_AITENANT_NAME_LENGTH} "
-        "(63-char limit minus the longest resource base name)"
-    )
-    return {
-        "aitenant_name": aitenant_name,
-        "aitenant_spec": build_aitenant_spec(aitenant_name=aitenant_name),
-    }
-
-
 @pytest.fixture(scope="module")
 def tenant_external_model_primary_test_params() -> dict[str, Any]:
     """Primary AITenant name and spec for the external model suite."""
-    return _extmod_tenant_test_params(tenant_label="a")
+    return extmod_tenant_test_params(tenant_label="a")
 
 
 @pytest.fixture(scope="module")
 def tenant_external_model_secondary_test_params() -> dict[str, Any]:
     """Secondary AITenant name and spec for the external model suite."""
-    return _extmod_tenant_test_params(tenant_label="b")
-
-
-def _tenant_case(
-    context: AITenantTestContext,
-    gateway_name: str,
-    maas_host: str,
-) -> dict[str, str]:
-    """Enrich an AITenant context with the external model suite's case keys."""
-    gateway_host = f"{gateway_name}.{maas_host.removeprefix('maas.')}"
-    return {
-        "tenant_label_name": context["aitenant_name"],
-        "tenant_ns": context["tenant_namespace_name"],
-        "gateway_name": gateway_name,
-        "gateway_host": gateway_host,
-        "gateway_url": f"https://{gateway_host}",
-        "maas_api_url": f"https://{gateway_host}/maas-api",
-    }
+    return extmod_tenant_test_params(tenant_label="b")
 
 
 @pytest.fixture(scope="module")
@@ -180,12 +165,12 @@ def tenant_external_model_tenants(
                 )
             )
             deploy_and_verify_aitenant_ready(aitenant=aitenant)
-            if not _per_tenant_processing_uses_praxis(admin_client, params["aitenant_name"]):
+            if not per_tenant_processing_uses_praxis(admin_client, params["aitenant_name"]):
                 pytest.skip(
                     f"per-tenant payload-processing for {params['aitenant_name']} is not "
                     "praxis-extproc; the AGC/Praxis multi-tenant contract is not active"
                 )
-            cases[key] = _tenant_case(
+            cases[key] = tenant_case(
                 context=build_aitenant_test_context(aitenant=aitenant),
                 gateway_name=gateway.name,
                 maas_host=maas_host,
