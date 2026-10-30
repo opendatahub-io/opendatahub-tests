@@ -707,6 +707,54 @@ def maas_inference_service_tinyllama(
 
 
 @pytest.fixture(scope="class")
+def maas_inference_service_tinyllama_modelcar(
+    admin_client: DynamicClient,
+    maas_unprivileged_model_namespace: Namespace,
+    maas_gateway_api: None,
+    maas_request_ratelimit_policy: None,
+) -> Generator[LLMInferenceService]:
+    """
+    TinyLlama modelcar-backed LLMInferenceService wired through MaaS for tests.
+
+    Deploys from the public quay.io OCI modelcar, so no S3 bucket or AWS credentials are required.
+    """
+    with (
+        create_llmisvc(
+            client=admin_client,
+            name=generate_random_name(prefix="llm-oci-tinyllama"),
+            namespace=maas_unprivileged_model_namespace.name,
+            storage_uri=ModelStorage.OCI.TINYLLAMA,
+            container_image=SharedImages.VLLM_CPU,
+            container_resources={
+                "limits": {"cpu": "2", "memory": "12Gi"},
+                "requests": {"cpu": "1", "memory": "8Gi"},
+            },
+            wait=False,
+            timeout=900,
+        ) as llm_service,
+        patch_llmisvc_with_maas_router(
+            llm_service=llm_service,
+        ),
+    ):
+        inst = llm_service.instance
+        storage_uri = inst.spec.model.uri
+        assert storage_uri == ModelStorage.OCI.TINYLLAMA, f"Unexpected storage_uri on TinyLlama LLMI: {storage_uri}"
+
+        llm_service.wait_for_condition(
+            condition="Ready",
+            status="True",
+            timeout=900,
+        )
+
+        LOGGER.info(
+            f"MaaS: TinyLlama modelcar LLMI {llm_service.namespace}/{llm_service.name} "
+            f"Ready and patched (storage_uri={storage_uri})"
+        )
+
+        yield llm_service
+
+
+@pytest.fixture(scope="class")
 def maas_scheme(admin_client: DynamicClient, maas_unprivileged_model_namespace: Namespace) -> str:
     return detect_scheme_via_llmisvc(
         client=admin_client,
@@ -1312,6 +1360,59 @@ def maas_auth_policy_tinyllama_free(
 
 
 @pytest.fixture(scope="class")
+def maas_model_tinyllama_modelcar(
+    admin_client: DynamicClient,
+    maas_inference_service_tinyllama_modelcar: LLMInferenceService,
+) -> Generator[MaaSModelRef, Any, Any]:
+    with MaaSModelRef(
+        client=admin_client,
+        name=maas_inference_service_tinyllama_modelcar.name,
+        namespace=maas_inference_service_tinyllama_modelcar.namespace,
+        model_ref={
+            "name": maas_inference_service_tinyllama_modelcar.name,
+            "namespace": maas_inference_service_tinyllama_modelcar.namespace,
+            "kind": "LLMInferenceService",
+        },
+        teardown=True,
+        wait_for_resource=True,
+    ) as maas_model:
+        yield maas_model
+
+
+@pytest.fixture(scope="class")
+def maas_auth_policy_tinyllama_modelcar(
+    admin_client: DynamicClient,
+    maas_model_tinyllama_modelcar: MaaSModelRef,
+    maas_subscription_namespace: Namespace,
+) -> Generator[MaaSAuthPolicy, Any, Any]:
+    """AuthPolicy for the modelcar-backed TinyLlama, open to all authenticated users.
+
+    Lets credential-free tests (e.g. usage-logs) satisfy maas_gateway_auth_policy_ready
+    without pulling in the S3-backed free-tier model and its AWS credential requirement.
+    """
+
+    with MaaSAuthPolicy(
+        client=admin_client,
+        name="tinyllama-modelcar-access",
+        namespace=maas_subscription_namespace.name,
+        model_refs=[
+            {
+                "name": maas_model_tinyllama_modelcar.name,
+                "namespace": maas_model_tinyllama_modelcar.namespace,
+            }
+        ],
+        subjects={
+            "groups": [
+                {"name": "system:authenticated"},
+            ],
+        },
+        teardown=True,
+        wait_for_resource=True,
+    ) as maas_auth_policy_modelcar:
+        yield maas_auth_policy_modelcar
+
+
+@pytest.fixture(scope="class")
 def maas_subscription_tinyllama_free(
     admin_client: DynamicClient,
     maas_free_group: str,
@@ -1360,6 +1461,35 @@ def minimal_subscription_for_free_user(
         owner_group_name="system:authenticated",
         model_name=maas_model_tinyllama_free.name,
         model_namespace=maas_model_tinyllama_free.namespace,
+        tokens_per_minute=1000,
+        window="1m",
+        priority=0,
+        teardown=True,
+        wait_for_resource=True,
+    ) as subscription:
+        subscription.wait_for_condition(condition="Ready", status="True", timeout=300)
+        yield subscription
+
+
+@pytest.fixture(scope="class")
+def minimal_subscription_for_modelcar(
+    admin_client: DynamicClient,
+    maas_subscription_namespace: Namespace,
+    maas_model_tinyllama_modelcar: MaaSModelRef,
+) -> Generator[MaaSSubscription, Any, Any]:
+    """Active MaaSSubscription for system:authenticated on the modelcar-backed TinyLlama model ref.
+
+    Without this, maas-api's CreateAPIKey handler rejects token minting with
+    "no matching subscription found for user" even when a MaaSAuthPolicy is in place.
+    """
+    sub_name = f"e2e-authz-modelcar-sub-{generate_random_name()}"
+    with create_maas_subscription(
+        admin_client=admin_client,
+        subscription_namespace=maas_subscription_namespace.name,
+        subscription_name=sub_name,
+        owner_group_name="system:authenticated",
+        model_name=maas_model_tinyllama_modelcar.name,
+        model_namespace=maas_model_tinyllama_modelcar.namespace,
         tokens_per_minute=1000,
         window="1m",
         priority=0,
