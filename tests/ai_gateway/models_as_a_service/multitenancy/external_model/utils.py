@@ -1341,13 +1341,16 @@ def infer_external_chat(
     retries: int = 6,
     delay: int = 5,
     request_timeout: int = 60,
-    verify: bool = True,
+    verify: bool = False,
     provider_path: str | None = None,
 ) -> requests.Response:
     """Run one chat completion through a gateway and return the response.
 
     Retries transient gateway errors (auth propagation, route rollout) with a
-    bounded count; non-transient failures return immediately.
+    bounded count; non-transient failures return immediately. TLS verification
+    is off by default (the repo convention for gateway-route requests, cf.
+    request_session_http): tenant-gateway Route certs are signed by the
+    cluster CA, which is not in the runner's trust store.
     """
     url = external_chat_url(
         gateway_url=gateway_url,
