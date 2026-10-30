@@ -322,15 +322,6 @@ def env_bool(name: str, default: bool = False) -> bool:
     return value.strip().lower() in ("1", "true", "yes", "on")
 
 
-def require_crossns_provider_support() -> None:
-    """Gate P1 cross-namespace provider scenarios (RHOAIENG-90804)."""
-    if not env_bool("TENANT_EXTERNAL_MODEL_CROSSNS_E2E"):
-        pytest.skip(
-            "cross-namespace provider E2E is gated until AGC ships "
-            "cross-namespace provider support; set TENANT_EXTERNAL_MODEL_CROSSNS_E2E=true to enable"
-        )
-
-
 def require_legacy_ipp_coexistence_support() -> None:
     """Gate the legacy IPP coexistence scenario (RHOAIENG-99761 image pin)."""
     if not env_bool("TENANT_EXTERNAL_MODEL_LEGACY_IPP_E2E"):
@@ -350,19 +341,6 @@ _WITHDRAWAL_ISSUE_FLAGS = {
 def withdrawal_gate_enabled(issue: str) -> bool:
     """Effective per-issue withdrawal gate state (per-issue flag OR umbrella)."""
     return env_bool(_WITHDRAWAL_ISSUE_FLAGS[issue]) or env_bool("TENANT_EXTERNAL_MODEL_WITHDRAWAL_E2E")
-
-
-def require_provider_withdrawal_support(issue: str) -> None:
-    """Gate provider-withdrawal scenarios per issue (praxis release pending).
-
-    With a flag set, the corresponding test fails red if the contract does
-    not hold, so a post-fix regression cannot hide behind a skip.
-    """
-    if not withdrawal_gate_enabled(issue):
-        pytest.skip(
-            f"provider withdrawal E2E for {issue} is gated; set {_WITHDRAWAL_ISSUE_FLAGS[issue]}=true "
-            f"to enable (with it set, the {issue} contract is expected to hold and a violation fails red)"
-        )
 
 
 def record_tenant_external_model_evidence(admin_client: DynamicClient) -> dict[str, Any]:
@@ -688,18 +666,6 @@ def patch_external_model_gateway_refs(
     patch_external_model(admin_client=admin_client, name=name, namespace=namespace, fields={"gatewayRefs": refs})
 
 
-def patch_external_model_provider_refs(
-    admin_client: DynamicClient,
-    name: str,
-    namespace: str,
-    provider_refs: list[dict[str, Any]],
-) -> None:
-    """Wholesale-replace an ExternalModel's ``spec.externalProviderRefs``."""
-    patch_external_model(
-        admin_client=admin_client, name=name, namespace=namespace, fields={"externalProviderRefs": provider_refs}
-    )
-
-
 def wait_for_model_generation_observed(
     admin_client: DynamicClient,
     name: str,
@@ -951,20 +917,6 @@ def wait_for_gateway_attachment_absent(
         timeout=timeout or TENANT_EXTERNAL_MODEL_READY_TIMEOUT,
         what=f"{model_namespace}/{model_name} detachment from {gateway_namespace}/{gateway_name}",
     )
-
-
-def external_model_http_route_name(
-    admin_client: DynamicClient,
-    model_name: str,
-    model_namespace: str,
-) -> str:
-    """Legacy single-attachment route name (status.httpRouteName or model name)."""
-    external_model = get_json_or_none(
-        client=admin_client, kind="externalmodel", name=model_name, namespace=model_namespace
-    )
-    if external_model:
-        return (external_model.get("status") or {}).get("httpRouteName") or model_name
-    return model_name
 
 
 def external_model_reports_maas_route(
