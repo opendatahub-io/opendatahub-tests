@@ -34,6 +34,7 @@ KNOWN_REGISTRIES: tuple[str, ...] = (
     "docker.io",
     "registry.redhat.io",
     "public.ecr.aws",
+    "icr.io",
     "nvcr.io",
 )
 

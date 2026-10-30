@@ -5,7 +5,7 @@ class AiHubImages:
         "public.ecr.aws/docker/library/mysql"
         "@sha256:28540698ce89bd72f985044de942d65bd99c6fadb2db105327db57f3f70564f0"  # pragma: allowlist secret
     )
-    MYSQL_S390X: str = (
+    MYSQL_S390X_PPC: str = (
         "registry.redhat.io/rhel9/mysql-84"
         "@sha256:c16d572a6ff2ba6029a261ea4ba6342a14743f1e2615b23a32964a201bda9566"  # pragma: allowlist secret
     )
