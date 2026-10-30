@@ -1,3 +1,4 @@
+import base64
 from collections.abc import Generator
 from contextlib import ExitStack
 from typing import Any
@@ -26,7 +27,19 @@ from tests.ai_gateway.models_as_a_service.maas_api_key.utils import (
 from tests.ai_gateway.models_as_a_service.maas_subscription.utils import (
     create_maas_subscription,
 )
+from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils import (
+    external_model_stack,
+    find_agc_deployment,
+    wait_for_gateway_attachment_ready,
+)
 from tests.ai_gateway.models_as_a_service.upgrade.utils import (
+    AGC_UPGRADE_API_KEY_SECRET_KEY,
+    AGC_UPGRADE_API_KEY_SECRET_NAME,
+    AGC_UPGRADE_AUTH_POLICY_NAME,
+    AGC_UPGRADE_BASELINE_CM_NAME,
+    AGC_UPGRADE_MODEL_NAME,
+    AGC_UPGRADE_NAMESPACE,
+    AGC_UPGRADE_SUBSCRIPTION_NAME,
     LEGACY_MIGRATION_AUTH_POLICY_NAME,
     LEGACY_MIGRATION_ENDPOINT,
     LEGACY_MIGRATION_MODEL_NAME,
@@ -39,6 +52,7 @@ from tests.ai_gateway.models_as_a_service.upgrade.utils import (
     MAAS_MULTITENANT_UPGRADE_NAMESPACE,
     MULTITENANT_UPGRADE_TENANT_A_TOKENS_PER_MINUTE,
     MULTITENANT_UPGRADE_TENANT_B_TOKENS_PER_MINUTE,
+    AGCUpgradeBaseline,
     LegacyMigrationBaseline,
     MaaSBaseline,
     MultitenantUpgradeTenantRecord,
@@ -52,18 +66,23 @@ from tests.ai_gateway.models_as_a_service.upgrade.utils import (
     create_and_persist_tenant_api_key,
     delete_multitenant_upgrade_api_key_secrets,
     inference_external_model_for_baseline,
+    load_agc_upgrade_baseline_from_configmap,
     load_legacy_migration_baseline_from_configmap,
     load_maas_api_key_from_secret,
     load_maas_baseline_from_configmap,
     load_multitenant_upgrade_baseline_from_configmap,
     multitenant_upgrade_tenant_aitenant_names,
     provision_multitenant_upgrade_aitenant,
+    save_agc_upgrade_baseline_to_configmap,
     save_legacy_migration_baseline_to_configmap,
     save_maas_baseline_to_configmap,
     save_multitenant_upgrade_baseline_to_configmap,
     skip_legacy_default_maas_ipp_envoyfilter_upgrade_unless_applicable,
     tenant_base_url_for_record,
     wait_for_legacy_maas_networking_present,
+)
+from tests.ai_gateway.models_as_a_service.upgrade.utils import (
+    capture_agc_upgrade_baseline as capture_agc_baseline_snapshot,
 )
 from tests.ai_gateway.models_as_a_service.utils import (
     MaaSTenantResource,
@@ -73,6 +92,7 @@ from tests.ai_gateway.models_as_a_service.utils import (
     host_from_ingress_domain,
 )
 from utilities.constants import MAAS_GATEWAY_NAME, MAAS_GATEWAY_NAMESPACE, ApiGroups
+from utilities.general import generate_random_name
 from utilities.infra import create_ns
 from utilities.llmisvc_upgrade_utils import capture_llmisvc_baseline, save_baseline_to_configmap
 from utilities.logger import RedactedString
@@ -1104,3 +1124,208 @@ def maas_legacy_ipp_envoyfilter_config_patches(
         admin_client=admin_client,
         gateway_namespace=MAAS_GATEWAY_NAMESPACE,
     )
+
+
+# ─── AGC external model upgrade (RHOAIENG-90809 narrowed scope) ─────────────
+
+
+@pytest.fixture(scope="session")
+def agc_upgrade_supported(admin_client: DynamicClient) -> None:
+    """Skip the AGC upgrade suite when the AGC companion is not installed."""
+
+    if find_agc_deployment(admin_client=admin_client) is None:
+        pytest.skip("ai-gateway-controller deployment not found; AGC companion not installed")
+
+
+@pytest.fixture(scope="session")
+def agc_upgrade_namespace(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    teardown_resources: bool,
+) -> Generator[Namespace, Any, Any]:
+    """Dedicated namespace for the AGC external model upgrade test (no MaasTenantConfig)."""
+    namespace = Namespace(client=admin_client, name=AGC_UPGRADE_NAMESPACE)
+    if pytestconfig.option.post_upgrade:
+        yield namespace
+        if teardown_resources and namespace.exists:
+            namespace.clean_up()
+    else:
+        if namespace.exists:
+            LOGGER.info(f"Namespace {AGC_UPGRADE_NAMESPACE} already exists, reusing it")
+            yield namespace
+        else:
+            with create_ns(
+                admin_client=admin_client,
+                name=AGC_UPGRADE_NAMESPACE,
+                teardown=teardown_resources,
+            ) as created_namespace:
+                yield created_namespace
+
+
+@pytest.fixture(scope="session")
+def agc_upgrade_external_model(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    agc_upgrade_supported: None,
+    agc_upgrade_namespace: Namespace,
+    teardown_resources: bool,
+) -> Generator[dict[str, Any], Any, Any]:
+    """Legacy-shaped ExternalModel (no gatewayRefs) served by the default tenant.
+
+    Pre-upgrade: created in the upgrade namespace (which carries no
+    MaasTenantConfig, so the implicit default-gateway attachment applies —
+    the 3.5-compatible shape). Post-upgrade: re-attached by name only.
+    """
+    if pytestconfig.option.post_upgrade:
+        yield {
+            "name": AGC_UPGRADE_MODEL_NAME,
+            "namespace": AGC_UPGRADE_NAMESPACE,
+            "client_name": AGC_UPGRADE_MODEL_NAME,
+            "credential": None,
+            "path_tag": "",
+        }
+        return
+    with external_model_stack(
+        admin_client=admin_client,
+        name=AGC_UPGRADE_MODEL_NAME,
+        namespace=agc_upgrade_namespace.name,
+        gateway_refs=None,
+        teardown=teardown_resources,
+    ) as model:
+        wait_for_gateway_attachment_ready(
+            admin_client=admin_client,
+            model_name=model["name"],
+            model_namespace=model["namespace"],
+            gateway_name=MAAS_GATEWAY_NAME,
+        )
+        yield model
+
+
+@pytest.fixture(scope="class")
+def agc_upgrade_api_key(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    request_session_http: requests.Session,
+    ocp_token_for_actor: str,
+    agc_upgrade_external_model: dict[str, Any],
+    maas_subscription_namespace: Namespace,
+    maas_upgrade_base_url: str,
+    teardown_resources: bool,
+) -> Generator[RedactedString | None, Any, Any]:
+    """API key bound to the upgrade model's subscription, persisted in a Secret.
+
+    Pre-upgrade: creates governance (MaaSAuthPolicy + MaaSSubscription) on
+    the default tenant, mints a key and stores it in a Secret so it survives
+    the upgrade. Post-upgrade: loads and deletes the Secret.
+    """
+    model_name = agc_upgrade_external_model["name"]
+    model_namespace = agc_upgrade_external_model["namespace"]
+    secret = Secret(
+        client=admin_client,
+        name=AGC_UPGRADE_API_KEY_SECRET_NAME,
+        namespace=AGC_UPGRADE_NAMESPACE,
+    )
+    if pytestconfig.option.post_upgrade:
+        assert secret.exists, (
+            f"API key Secret {AGC_UPGRADE_NAMESPACE}/{AGC_UPGRADE_API_KEY_SECRET_NAME} not found; "
+            "ensure pre-upgrade tests ran successfully"
+        )
+        api_key = RedactedString(value=base64.b64decode(secret.instance.data[AGC_UPGRADE_API_KEY_SECRET_KEY]).decode())
+        if teardown_resources and secret.exists:
+            secret.clean_up()
+        yield api_key
+        return
+    with ExitStack() as stack:
+        auth_policy = stack.enter_context(
+            cm=MaaSAuthPolicy(
+                client=admin_client,
+                name=AGC_UPGRADE_AUTH_POLICY_NAME,
+                namespace=maas_subscription_namespace.name,
+                model_refs=[{"name": model_name, "namespace": model_namespace}],
+                subjects={"groups": [{"name": "system:authenticated"}]},
+                teardown=teardown_resources,
+                wait_for_resource=True,
+            )
+        )
+        auth_policy.wait_for_condition(condition="Ready", status="True", timeout=300)
+        subscription = stack.enter_context(
+            cm=MaaSSubscription(
+                client=admin_client,
+                name=AGC_UPGRADE_SUBSCRIPTION_NAME,
+                namespace=maas_subscription_namespace.name,
+                owner={"groups": [{"name": "system:authenticated"}]},
+                model_refs=[
+                    {
+                        "name": model_name,
+                        "namespace": model_namespace,
+                        "tokenRateLimits": [{"limit": 10000, "window": "1h"}],
+                    }
+                ],
+                priority=0,
+                teardown=teardown_resources,
+                wait_for_resource=True,
+            )
+        )
+        subscription.wait_for_condition(condition="Ready", status="True", timeout=300)
+        response, body = create_api_key(
+            base_url=maas_upgrade_base_url,
+            ocp_user_token=ocp_token_for_actor,
+            request_session_http=request_session_http,
+            api_key_name=f"e2e-agc-upgrade-{generate_random_name()}",
+            subscription=subscription.name,
+            expires_in="24h",
+        )
+        assert_api_key_created_ok(response=response, body=body)
+        Secret(
+            client=admin_client,
+            name=AGC_UPGRADE_API_KEY_SECRET_NAME,
+            namespace=AGC_UPGRADE_NAMESPACE,
+            string_data={AGC_UPGRADE_API_KEY_SECRET_KEY: body["key"]},
+            teardown=False,
+        ).deploy()
+        yield RedactedString(value=body["key"])
+
+
+@pytest.fixture(scope="session")
+def capture_agc_upgrade_baseline(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    agc_upgrade_external_model: dict[str, Any],
+    teardown_resources: bool,
+) -> Generator[None, Any, Any]:
+    """Snapshot the default-tenant objects before the AGC upgrade (pre-upgrade only)."""
+    if pytestconfig.option.post_upgrade:
+        yield None
+        return
+    baseline = capture_agc_baseline_snapshot(
+        client=admin_client,
+        model=agc_upgrade_external_model,
+    )
+    save_agc_upgrade_baseline_to_configmap(
+        client=admin_client,
+        namespace=AGC_UPGRADE_NAMESPACE,
+        baseline=baseline,
+    )
+    yield None
+    if teardown_resources:
+        config_map = ConfigMap(
+            client=admin_client,
+            name=AGC_UPGRADE_BASELINE_CM_NAME,
+            namespace=AGC_UPGRADE_NAMESPACE,
+        )
+        if config_map.exists:
+            config_map.clean_up()
+
+
+@pytest.fixture(scope="session")
+def agc_upgrade_baseline(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+) -> AGCUpgradeBaseline | dict[str, Any]:
+    """Load the AGC baseline when post-upgrade, empty dict pre-upgrade."""
+    if pytestconfig.option.post_upgrade:
+        return load_agc_upgrade_baseline_from_configmap(
+            client=admin_client,
+            namespace=AGC_UPGRADE_NAMESPACE,
+        )
+    return {}

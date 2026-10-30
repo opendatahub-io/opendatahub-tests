@@ -23,6 +23,7 @@ models_as_a_service/
 │   ├── conftest.py                # Shared AITenant bootstrap fixtures
 │   ├── utils.py                   # Per-tenant maas-api verification helpers
 │   ├── aitenant/                  # AITenant bootstrap and cleanup (scenario fixtures)
+│   ├── external_model/            # Multi-tenant external model serving (AGC/Praxis)
 │   ├── isolation/                 # Tenant-scoped API key auth isolation
 │   └── maas_api/                  # Per-tenant maas-api deployment and routing
 │
@@ -45,8 +46,9 @@ models_as_a_service/
 - **`maas_cleanup/`** - Validates that disabling MaaS in DSC cleans up operator-managed resources
 - **`maas_subscription/`** - Subscription enforcement, access control, filtering, rate limit exemptions, cascade deletion, multi-subscription and multi-auth-policy scenarios
 - **`multitenancy/`** - AITenant bootstrap, per-tenant maas-api deployment/routing, auth isolation, cross-gateway inference, and per-tenant gateway negative security (`multitenancy/security/`, RHOAIENG-100758)
+- **`multitenancy/external_model/`** - Multi-tenant external model serving through tenant gateways (AGC/Praxis, RHAI-12994 P0): user-namespace models attached via `gatewayRefs`, shared multi-gateway models with per-tenant auth/quota isolation, model-name conflicts, legacy-shaped compat, and default-tenant fallback. Skips unless the installed ExternalModel CRD carries the gatewayRefs additive schema and the ai-gateway-controller is deployed
 - **`oidc_tests/`** - OIDC token flow, model access, multi-user, and header injection tests
-- **`upgrade/`** - Pre/post-upgrade tests verifying that existing MaaS functionality, configuration, and customer workflows remain valid across platform/operator upgrades.
+- **`upgrade/`** - Pre/post-upgrade tests verifying that existing MaaS functionality, configuration, and customer workflows remain valid across platform/operator upgrades. Includes the AGC upgrade scenario (`test_tenant_external_model_agc_upgrade.py`, RHOAIENG-90809 narrowed scope): legacy default-tenant objects must survive an AGC upgrade byte-identically
 - **`test_maas_endpoints.py`** - Core MaaS API endpoint validation
 - **`test_maas_rbac_e2e.py`** - End-to-end RBAC validation across user tiers
 - **`test_maas_*_rate_limits.py`** - Request and token-based rate limiting
