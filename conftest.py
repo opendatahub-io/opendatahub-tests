@@ -335,12 +335,16 @@ def pytest_collection_modifyitems(session: Session, config: Config, items: list[
         config.hook.pytest_deselected(items=deselected)
 
     if not config.getoption("--collect-only") and not config.getoption("--setup-plan"):
-        if not _oci_image_volumes_supported():
+        tests_dir = pathlib.Path(__file__).parent / "tests"
+        items_need_cluster = any(item.path.is_relative_to(tests_dir) for item in items)
+        if items_need_cluster and not _oci_image_volumes_supported():
             oci_deselected = [item for item in items if "requires_oci_image_volumes" in item.keywords]
             if oci_deselected:
                 items[:] = [item for item in items if "requires_oci_image_volumes" not in item.keywords]
                 config.hook.pytest_deselected(items=oci_deselected)
-        if _kyverno_replace_image_registry_policy_exists():
+                # OCI filtering can empty the selection: recompute before any further cluster call.
+                items_need_cluster = any(item.path.is_relative_to(tests_dir) for item in items)
+        if items_need_cluster and _kyverno_replace_image_registry_policy_exists():
             mirroring_deselected = [item for item in items if "no_image_registry_mirroring" in item.keywords]
             if mirroring_deselected:
                 items[:] = [item for item in items if "no_image_registry_mirroring" not in item.keywords]
@@ -417,6 +421,10 @@ def pytest_collection_finish(session: Session) -> None:
     config = session.config
     if config.getoption("--collect-only") or config.getoption("--setup-plan"):
         LOGGER.info("Skipping global config update for collect-only or setup-plan")
+        return
+    tests_dir = pathlib.Path(__file__).parent / "tests"
+    if not any(item.path.is_relative_to(tests_dir) for item in session.items):
+        LOGGER.info("Skipping global config update for a run with no tests/ items (DSC not required)")
         return
     if session.items:
         for item in session.items:
