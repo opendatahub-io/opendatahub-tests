@@ -322,6 +322,17 @@ def env_bool(name: str, default: bool = False) -> bool:
     return value.strip().lower() in ("1", "true", "yes", "on")
 
 
+def require_crossns_provider_support(admin_client: DynamicClient) -> None:
+    """Gate P1 cross-namespace provider scenarios (RHOAIENG-90804)."""
+    if not env_bool("TENANT_EXTERNAL_MODEL_CROSSNS_E2E"):
+        pytest.skip(
+            "cross-namespace provider E2E is gated until AGC ships "
+            "cross-namespace provider support; set TENANT_EXTERNAL_MODEL_CROSSNS_E2E=true to enable"
+        )
+    if get_json_or_none(client=admin_client, kind="crd", name=REFERENCE_GRANT_CRD_NAME) is None:
+        pytest.skip(f"ReferenceGrant CRD {REFERENCE_GRANT_CRD_NAME} is not installed")
+
+
 def require_legacy_ipp_coexistence_support() -> None:
     """Gate the legacy IPP coexistence scenario (RHOAIENG-99761 image pin)."""
     if not env_bool("TENANT_EXTERNAL_MODEL_LEGACY_IPP_E2E"):
