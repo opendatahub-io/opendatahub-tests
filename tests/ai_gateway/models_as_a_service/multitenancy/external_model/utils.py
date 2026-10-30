@@ -1296,8 +1296,8 @@ def wait_for_no_destination_rules_referencing(
 
     def _check() -> bool:
         rules = destination_rules_referencing(
-            *namespaces, admin_client=admin_client, model_name=model_name, also_matching=also_matching
-        )
+            admin_client, model_name, *namespaces, also_matching=also_matching
+        )  # noqa: FCN001 - namespaces feed *args
         assert not rules, (
             f"stale DestinationRules referencing {model_name} (also matching {also_matching}): "
             f"{[rule['metadata']['name'] for rule in rules]}"
