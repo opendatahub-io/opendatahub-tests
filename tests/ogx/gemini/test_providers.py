@@ -76,18 +76,18 @@ class TestGeminiProviders:
 
     @pytest.mark.tier1
     def test_gemini_conditional_activation_with_key(self, ogx_client: OgxClient) -> None:
-        """Verify remote::gemini activates when GEMINI_API_KEY is set (TC-PROV-003).
+        """Verify remote::gemini activates when ENABLE_GEMINI is set (TC-PROV-003).
 
-        Given: an OgxServer deployed with GEMINI_API_KEY set.
+        Given: an OgxServer deployed with ENABLE_GEMINI set and GEMINI_API_KEY injected.
         When: /v1/providers is queried.
         Then: remote::gemini is active.
 
         Note: the negative half of TC-PROV-003 (redeploying the distribution
-        *without* GEMINI_API_KEY and asserting the provider disappears) is a
+        *without* ENABLE_GEMINI and asserting the provider disappears) is a
         destructive re-rollout of a class-scoped server and is intentionally not
-        automated here; it requires a dedicated no-key deployment. Track as a
+        automated here; it requires a dedicated deployment without ENABLE_GEMINI. Track as a
         follow-up before marking TC-PROV-003 fully automated.
         """
         assert is_gemini_provider_active(ogx_client=ogx_client), (
-            "remote::gemini should be active when GEMINI_API_KEY is injected"
+            "remote::gemini should be active when ENABLE_GEMINI is set"
         )

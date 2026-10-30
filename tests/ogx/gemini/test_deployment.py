@@ -61,40 +61,20 @@ class TestGeminiDeployment:
 
     @pytest.mark.tier1
     def test_config_conditional_activation_pattern(self, ogx_gemini_pod: Pod) -> None:
-        """Verify config.yaml uses the GEMINI_API_KEY conditional pattern (TC-DEP-002).
+        """Verify config.yaml uses the ENABLE_GEMINI conditional pattern (TC-DEP-002).
 
         Given: a deployed OGX distribution.
         When: the distribution config file inside the pod is located and inspected.
         Then: it references the conditional activation pattern
-            ${env.GEMINI_API_KEY:+gemini-inference}.
+            ${env.ENABLE_GEMINI:+gemini}.
         """
+        pattern = "${env.ENABLE_GEMINI:+gemini}"
         search_roots = " ".join(CONFIG_SEARCH_PATHS)
-        config_files = ogx_gemini_pod.execute(
-            command=[
-                "sh",
-                "-c",
-                f"grep -rls 'gemini-inference' {search_roots} 2>/dev/null || true",
-            ]
+        matched_files = ogx_gemini_pod.execute(
+            command=["sh", "-c", f"grep -rlsF '{pattern}' {search_roots} 2>/dev/null || true"]
         ).strip()
-        if not config_files:
-            pytest.fail(
-                reason="Could not locate the distribution config referencing 'gemini-inference' in the pod; "
-                f"searched {CONFIG_SEARCH_PATHS!r}. Confirm the config path to complete TC-DEP-002."
-            )
-
-        # grep -l can match several candidate files; the conditional activation
-        # pattern may live in any one of them, so check every match rather than
-        # only the first.
-        candidate_files = [line.strip() for line in config_files.splitlines() if line.strip()]
-        pattern = "${env.GEMINI_API_KEY:+gemini-inference}"
-        matched_file = None
-        for candidate in candidate_files:
-            contents = ogx_gemini_pod.execute(command=["sh", "-c", f"cat {candidate}"])
-            if pattern in contents:
-                matched_file = candidate
-                break
-        assert matched_file, (
-            f"Conditional activation pattern {pattern!r} not found in any candidate config file: {candidate_files!r}"
+        assert matched_files, (
+            f"Conditional activation pattern {pattern!r} not found in any file under {CONFIG_SEARCH_PATHS!r}"
         )
 
     @pytest.mark.tier1
@@ -113,5 +93,5 @@ class TestGeminiDeployment:
             "GEMINI_API_KEY is not set in the OgxServer pod environment"
         )
         assert is_gemini_provider_active(ogx_client=ogx_client), (
-            "remote::gemini provider is not active despite GEMINI_API_KEY being injected"
+            "remote::gemini provider is not active; ENABLE_GEMINI gates it, GEMINI_API_KEY only authenticates it"
         )
