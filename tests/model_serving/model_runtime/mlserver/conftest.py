@@ -9,21 +9,27 @@ This module provides fixtures for:
 """
 
 import copy
+import os
 from collections.abc import Generator
 from typing import Any, cast
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.cluster_version import ClusterVersion
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
+from ocp_resources.resource import get_client
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
+from semver import Version
 from syrupy.extensions.json import JSONSnapshotExtension
 
 from tests.model_serving.model_runtime.mlserver.constant import (
     MLSERVER_ACCELERATOR_IDENTIFIER,
+    MLSERVER_MODELCAR_MIN_OCP_VERSION,
     MLSERVER_RUNTIME_NAME_MAP,
     MLSERVER_TEMPLATE_MAP,
     PREDICT_RESOURCES,
@@ -37,6 +43,43 @@ from utilities.constants import (
 from utilities.inference_utils import create_isvc
 from utilities.infra import get_pods_by_isvc_label
 from utilities.serving_runtime import ServingRuntimeFromTemplate
+
+LOGGER = structlog.get_logger(name=__name__)
+
+
+def _get_completed_ocp_version() -> Version | None:
+    """Return the OCP version of the latest completed update, or None on failure."""
+    kubeconfig = os.environ.get("KUBECONFIG", os.path.expanduser("~/.kube/config"))
+    if not os.path.exists(kubeconfig):
+        return None
+
+    try:
+        client = get_client()
+        cluster_version = ClusterVersion(client=client, name="version", ensure_exists=True)
+        for entry in cluster_version.instance.status.history or []:
+            if entry.state == "Completed":
+                return Version.parse(version=str(entry.version))
+    except ValueError, TypeError, AttributeError, OSError:
+        LOGGER.warning("Could not determine OCP version during collection, keeping model car tests")
+
+    return None
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item], config: pytest.Config) -> None:
+    """Deselect model car tests on OCP < 4.20 (ImageVolume not supported)."""
+    model_car_items = [item for item in items if "/model_car/" in str(item.path)]
+    if not model_car_items:
+        return
+
+    ocp_version = _get_completed_ocp_version()
+    if ocp_version is None or ocp_version >= MLSERVER_MODELCAR_MIN_OCP_VERSION:
+        if ocp_version is not None:
+            LOGGER.info(f"OCP version: {ocp_version}, min required for model car: {MLSERVER_MODELCAR_MIN_OCP_VERSION}")
+        return
+
+    LOGGER.info(f"OCP version: {ocp_version}, min required for model car: {MLSERVER_MODELCAR_MIN_OCP_VERSION}")
+    config.hook.pytest_deselected(items=model_car_items)
+    items[:] = [item for item in items if item not in model_car_items]
 
 
 @pytest.fixture(scope="class")
