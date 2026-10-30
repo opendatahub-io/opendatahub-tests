@@ -1279,9 +1279,17 @@ def external_chat_url(
     gateway_url: str,
     model_namespace: str,
     model_client_name: str,
+    provider_path: str | None = None,
 ) -> str:
-    """Chat-completions URL via the AGC path convention."""
-    return f"{gateway_url}/{model_namespace}/{model_client_name}/v1/chat/completions"
+    """Chat-completions URL via the AGC path convention.
+
+    ``provider_path`` overrides the client-side path suffix: the AGC's
+    attachment route forwards whatever follows the model name to the
+    provider verbatim, so requesting ``/status/503`` against an echo
+    upstream fails that request deterministically (fault injection).
+    """
+    suffix = provider_path if provider_path is not None else "/v1/chat/completions"
+    return f"{gateway_url}/{model_namespace}/{model_client_name}{suffix}"
 
 
 def infer_external_chat(
@@ -1295,6 +1303,7 @@ def infer_external_chat(
     delay: int = 5,
     request_timeout: int = 60,
     verify: bool = True,
+    provider_path: str | None = None,
 ) -> requests.Response:
     """Run one chat completion through a gateway and return the response.
 
@@ -1302,7 +1311,10 @@ def infer_external_chat(
     bounded count; non-transient failures return immediately.
     """
     url = external_chat_url(
-        gateway_url=gateway_url, model_namespace=model_namespace, model_client_name=model_client_name
+        gateway_url=gateway_url,
+        model_namespace=model_namespace,
+        model_client_name=model_client_name,
+        provider_path=provider_path,
     )
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     payload = {"model": model_client_name, "messages": [{"role": "user", "content": path_tag}]}
