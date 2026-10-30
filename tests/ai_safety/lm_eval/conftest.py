@@ -10,10 +10,8 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.lm_eval_job import LMEvalJob
 from ocp_resources.namespace import Namespace
-from ocp_resources.node import Node
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
-from ocp_resources.resource import get_client
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
@@ -51,22 +49,6 @@ VLLM_EMULATOR_PORT: int = 8000
 LMEVALJOB_NAME: str = "lmeval-test-job"
 
 LOGGER = structlog.get_logger(name=__name__)
-
-
-def pytest_sessionstart(session: pytest.Session) -> None:
-    """Swap the SeaweedFS and OCI registry images to their ppc64le-capable variants on Power clusters."""
-    config = session.config
-    if config.getoption("--collect-only") or config.getoption("--setup-plan"):
-        return
-
-    # Since clusters are not heterogeneous, all nodes share the same architecture
-    nodes = list(Node.get(dyn_client=get_client()))
-    cluster_architecture = nodes[0].instance.status.nodeInfo.architecture
-    py_config["cluster_architecture"] = cluster_architecture
-    if cluster_architecture == "ppc64le":
-        LOGGER.info(f"{cluster_architecture} cluster detected, using ppc64le SeaweedFS and OCI registry images")
-        SharedImages.SEAWEEDFS = SharedImages.SEAWEEDFS_PPC64LE
-        OCIRegistry.PodConfig.REGISTRY_IMAGE = SharedImages.DISTRIBUTION_REGISTRY_PPC64LE
 
 
 @pytest.fixture(scope="function")
