@@ -1439,6 +1439,12 @@ def infer_external_chat(
     fixture (via ``REQUESTS_CA_BUNDLE``); pass ``verify=False`` to opt out on
     clusters whose Route certificates cannot be resolved that way.
     """
+    if provider_path is None:
+        # Source-suite semantics: an echo binding's client URL carries the
+        # provider path after the model name — the AGC forwards whatever
+        # follows the model name verbatim (prefix stripped), so /v1/chat/
+        # completions would reach httpbingo as a non-echo path and 404.
+        provider_path = echo_provider_path(path_tag) if path_tag else "/v1/chat/completions"
     url = external_chat_url(
         gateway_url=gateway_url,
         model_namespace=model_namespace,
