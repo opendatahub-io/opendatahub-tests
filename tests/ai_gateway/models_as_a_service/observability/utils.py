@@ -2,12 +2,16 @@
 
 from collections.abc import Generator
 from contextlib import contextmanager
+from typing import Any
 
+import pytest
+import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.cluster_role_binding import ClusterRoleBinding
 from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.deployment import Deployment
+from ocp_resources.dsc_initialization import DSCInitialization
 from ocp_resources.namespace import Namespace
 from ocp_resources.open_telemetry_collector import OpenTelemetryCollector
 from ocp_resources.pod import Pod
@@ -18,6 +22,8 @@ from timeout_sampler import TimeoutSampler
 
 from tests.ai_gateway.models_as_a_service.observability.constants import (
     DEFAULT_LIMITADOR_SCRAPE_INTERVAL,
+    DSCI_USAGE_LOGS_CONDITIONS,
+    DSCI_USAGE_LOGS_CONDITIONS_WAIT_TIMEOUT,
     LIMITADOR_APP_LABEL,
     LIMITADOR_DEPLOYMENT_NAMESPACES,
     LIMITADOR_METRICS_PATH,
@@ -26,11 +32,16 @@ from tests.ai_gateway.models_as_a_service.observability.constants import (
     LIMITADOR_SCRAPE_LABEL_VALUE,
     LIMITADOR_SERVICE_MONITOR_NAME,
     LIMITADOR_SERVICE_MONITOR_WAIT_TIMEOUT,
+    LOKI_QUERY_TENANT,
+    LOKI_QUERY_URL,
     OTEL_COLLECTOR_CRD_NAME,
     USAGE_LOGGING_RESOURCES_WAIT_TIMEOUT,
     USAGE_LOGS_COLLECTOR_NAME,
     USAGE_LOGS_CRB_NAME,
     USAGE_LOGS_ENVOY_FILTER_NAME,
+    loki_usage_requests_query,
+    loki_usage_successful_requests_query,
+    loki_usage_tokens_query,
 )
 from utilities.constants import MAAS_GATEWAY_NAMESPACE
 from utilities.resources.envoy_filter import EnvoyFilter
@@ -48,6 +59,19 @@ def maas_config_usage_logging_enabled(
 ) -> Generator[MaaSConfig]:
     """Patch Config/default to enable usageLogging and restore on exit."""
     with ResourceEditor(patches={maas_config: {"spec": {"usageLogging": True}}}):
+        yield maas_config
+
+
+@contextmanager
+def maas_config_usage_logging_disabled(
+    maas_config: MaaSConfig,
+) -> Generator[MaaSConfig]:
+    """Patch Config/default to disable usageLogging; no-op when already disabled."""
+    if not usage_logging_enabled(maas_config=maas_config):
+        yield maas_config
+        return
+
+    with ResourceEditor(patches={maas_config: {"spec": {"usageLogging": False}}}):
         yield maas_config
 
 
@@ -470,3 +494,97 @@ def assert_usage_logging_resources_absent(
         monitoring_namespace=monitoring_namespace,
         present=False,
     ), "Usage-log observability resources must be absent when usageLogging is disabled"
+
+
+def usage_logs_monitoring_spec(secret_name: str, storage_class_name: str) -> dict[str, Any]:
+    """Build the DSCI spec.monitoring patch that enables usage logs on S3-backed storage."""
+    return {
+        "managementState": "Managed",
+        "usageLogs": {
+            "storage": {
+                "type": "s3",
+                "secretName": secret_name,
+                "credentialMode": "static",
+                "storageClassName": storage_class_name,
+            },
+        },
+    }
+
+
+def wait_for_dsci_usage_logs_conditions(
+    dsci_resource: DSCInitialization,
+    timeout: int = DSCI_USAGE_LOGS_CONDITIONS_WAIT_TIMEOUT,
+) -> None:
+    """Wait for DSCI to report the odh-observability usage-logs conditions as True.
+
+    opendatahub-operator projects the Monitoring CR's status (and, transitively, the
+    usage-logs LokiStack readiness) onto DSCI.status.conditions, so these conditions are
+    awaited on DSCI directly rather than by watching the Monitoring and LokiStack CRs.
+    """
+    for condition in DSCI_USAGE_LOGS_CONDITIONS:
+        dsci_resource.wait_for_condition(condition=condition, status="True", timeout=timeout)
+
+
+def query_loki_instant(
+    http_session: requests.Session,
+    admin_token: str,
+    logql_query: str,
+) -> dict[str, Any]:
+    """Run a Loki instant query against the usage-logs LokiStack application tenant."""
+    response = http_session.get(
+        url=LOKI_QUERY_URL,
+        headers={
+            "Authorization": f"Bearer {admin_token}",
+            "X-Scope-OrgID": LOKI_QUERY_TENANT,
+        },
+        params={"query": logql_query},
+        timeout=60,
+    )
+    assert response.status_code == 200, (
+        f"Loki query failed: HTTP {response.status_code} {response.text[:200]} (query={logql_query})"
+    )
+    return response.json()
+
+
+def loki_query_value(query_response: dict[str, Any]) -> int:
+    """Return the numeric value of a Loki instant query; an empty result counts as 0."""
+    if query_response.get("status") != "success":
+        pytest.fail(f"Loki query did not succeed: {query_response}")
+    results = query_response["data"]["result"]
+    if not results:
+        return 0
+    return int(float(results[0]["value"][1]))
+
+
+def get_loki_usage_totals(
+    http_session: requests.Session,
+    admin_token: str,
+    model: str,
+) -> tuple[int, int, int]:
+    """Return the (requests, successful requests, total tokens) usage-logged for a model in the query window."""
+    requests_total = loki_query_value(
+        query_response=query_loki_instant(
+            http_session=http_session,
+            admin_token=admin_token,
+            logql_query=loki_usage_requests_query(model=model),
+        ),
+    )
+    successful_requests_total = loki_query_value(
+        query_response=query_loki_instant(
+            http_session=http_session,
+            admin_token=admin_token,
+            logql_query=loki_usage_successful_requests_query(model=model),
+        ),
+    )
+    tokens_total = loki_query_value(
+        query_response=query_loki_instant(
+            http_session=http_session,
+            admin_token=admin_token,
+            logql_query=loki_usage_tokens_query(model=model),
+        ),
+    )
+    LOGGER.info(
+        f"Usage logs for model '{model}': requests={requests_total}, "
+        f"successful_requests={successful_requests_total}, tokens={tokens_total}"
+    )
+    return requests_total, successful_requests_total, tokens_total
