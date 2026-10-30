@@ -1798,19 +1798,32 @@ def capture_agc_upgrade_baseline(
 ) -> AGCUpgradeBaseline:
     """Snapshot default-tenant/legacy-shaped objects before upgrading AGC."""
     external_model = get_json_or_none(client, "externalmodel", model["name"], model["namespace"]) or {}
+    route_name = (external_model.get("status") or {}).get("httpRouteName") or ""
+    # Guard against vacuous passes: an empty route name or an empty
+    # DestinationRule set would make the post-upgrade comparison succeed
+    # without verifying anything.
+    assert route_name, (
+        f"ExternalModel {model['namespace']}/{model['name']} reported no "
+        "status.httpRouteName before the upgrade; cannot baseline the route"
+    )
+    rule_uids = sorted(
+        rule.get("metadata", {}).get("uid") or ""
+        for rule in destination_rules_referencing(
+            client,
+            model["name"],
+            MAAS_GATEWAY_NAMESPACE,
+        )
+    )
+    assert rule_uids, (
+        f"no provider DestinationRules reference {model['name']} in "
+        f"{MAAS_GATEWAY_NAMESPACE} before the upgrade; cannot baseline the rules"
+    )
     baseline: AGCUpgradeBaseline = {
         "model_name": model["name"],
         "model_namespace": model["namespace"],
-        "http_route_name": (external_model.get("status") or {}).get("httpRouteName") or "",
+        "http_route_name": route_name,
         "routes": agc_attachment_route_baseline(client=client, model_namespace=model["namespace"]),
-        "destination_rule_uids": sorted(
-            rule.get("metadata", {}).get("uid") or ""
-            for rule in destination_rules_referencing(
-                client,
-                model["name"],
-                MAAS_GATEWAY_NAMESPACE,
-            )
-        ),
+        "destination_rule_uids": rule_uids,
         "agc_image": deployment_image(find_agc_deployment(admin_client=client)),
     }
     LOGGER.info(f"Captured AGC upgrade baseline for {model['namespace']}/{model['name']}")
@@ -1883,6 +1896,10 @@ def verify_agc_default_tenant_objects_unchanged(
             baseline["model_name"],
             MAAS_GATEWAY_NAMESPACE,
         )
+    )
+    assert current_rule_uids, (
+        f"no provider DestinationRules reference {baseline['model_name']} in "
+        f"{MAAS_GATEWAY_NAMESPACE} after the AGC upgrade"
     )
     assert current_rule_uids == baseline["destination_rule_uids"], (
         "provider DestinationRules were recreated across the AGC upgrade "

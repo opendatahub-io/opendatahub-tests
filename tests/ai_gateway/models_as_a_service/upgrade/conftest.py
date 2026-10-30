@@ -1273,9 +1273,12 @@ def agc_upgrade_api_key(
             request_session_http=request_session_http,
             api_key_name=f"e2e-agc-upgrade-{generate_random_name()}",
             subscription=subscription.name,
-            expires_in="24h",
+            # A real upgrade job can start the post-upgrade run more than a
+            # day after the pre-upgrade run; 24h expiry would reject the
+            # stored key even when the AGC objects are intact.
+            expires_in="72h",
         )
-        assert_api_key_created_ok(response=response, body=body)
+        assert_api_key_created_ok(resp=response, body=body)
         Secret(
             client=admin_client,
             name=AGC_UPGRADE_API_KEY_SECRET_NAME,

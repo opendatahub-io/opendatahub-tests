@@ -72,11 +72,12 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.project_project_openshift_io import Project
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
+from ocp_resources.service import Service
 
 from tests.ai_gateway.models_as_a_service.multitenancy.utils import (
     gateway_access_label_key as _gateway_access_label_key,
 )
-from tests.ai_gateway.models_as_a_service.utils import create_api_key
+from tests.ai_gateway.models_as_a_service.utils import create_api_key, revoke_api_key
 from utilities.constants import MAAS_GATEWAY_NAMESPACE
 from utilities.general import generate_random_name
 from utilities.infra import create_ns
@@ -148,6 +149,7 @@ _JSON_WRAPPERS: dict[str, type] = {
     "maasauthpolicy": MaaSAuthPolicy,
     "maassubscription": MaaSSubscription,
     "crd": CustomResourceDefinition,
+    "service": Service,
 }
 
 
@@ -1430,11 +1432,13 @@ def serve_external_model_in_tenant(
     resolved_subscription_name = subscription_name or f"{model_name}-sub"
 
     if wait_model_ready:
-        wait_for_gateway_attachment_ready(
+        # Source-suite semantics: model_name is the MaaSModelRef name (for
+        # shared models it is the per-tenant tenant-pinned ref, not the
+        # ExternalModel name), so readiness is the ref's status.phase.
+        wait_for_maas_model_ref_ready(
             admin_client=admin_client,
-            model_name=model_name,
-            model_namespace=model_namespace,
-            gateway_name=tenant["gateway_name"],
+            ref_name=model_name,
+            namespace=model_namespace,
             timeout=resolved_timeout,
         )
 
@@ -1470,18 +1474,55 @@ def serve_external_model_in_tenant(
             )
         )
         subscription.wait_for_condition(condition="Ready", status="True", timeout=resolved_timeout)
-        api_key = mint_tenant_api_key(
+        api_key, key_id = mint_tenant_api_key(
             request_session_http=request_session_http,
             ocp_token=ocp_token,
             tenant=tenant,
             key_name=key_name or f"e2e-extmod-{generate_random_name()}",
             subscription_name=resolved_subscription_name,
         )
+        if teardown:
+            # Registered last so it unwinds first: revoke while the
+            # subscription still exists (a revoked key is inert once the
+            # subscription is gone, but revoking avoids tenant-store residue).
+            def _revoke_key() -> None:
+                revoke_tenant_api_key(
+                    request_session_http=request_session_http,
+                    ocp_token=ocp_token,
+                    tenant=tenant,
+                    key_id=key_id,
+                )
+
+            stack.callback(callback=_revoke_key)
         yield {
             "policy": resolved_policy_name,
             "subscription": resolved_subscription_name,
             "api_key": api_key,
         }
+
+
+def wait_for_maas_model_ref_ready(
+    admin_client: DynamicClient,
+    ref_name: str,
+    namespace: str,
+    *,
+    timeout: int | None = None,
+) -> None:
+    """Wait until a MaaSModelRef reports ``status.phase: Ready``.
+
+    Source-suite semantics: governance helpers key on the MaaSModelRef name
+    (per-tenant tenant-pinned refs for shared models, the model name for
+    single-attachment models), not on the ExternalModel name.
+    """
+    resolved_timeout = timeout or TENANT_EXTERNAL_MODEL_READY_TIMEOUT
+
+    def _check() -> None:
+        ref = get_json_or_none(client=admin_client, kind="maasmodelref", name=ref_name, namespace=namespace)
+        assert ref is not None, f"MaaSModelRef {namespace}/{ref_name} not found"
+        phase = (ref.get("status") or {}).get("phase")
+        assert phase == "Ready", f"MaaSModelRef {namespace}/{ref_name} reports phase {phase!r}, want Ready"
+
+    wait_until(check=_check, timeout=resolved_timeout, what=f"MaaSModelRef {namespace}/{ref_name} phase Ready")
 
 
 def mint_tenant_api_key(
@@ -1490,8 +1531,12 @@ def mint_tenant_api_key(
     tenant: dict[str, str],
     key_name: str,
     subscription_name: str,
-) -> str:
-    """Mint an API key from a tenant's own maas-api endpoint."""
+) -> tuple[str, str]:
+    """Mint an API key from a tenant's own maas-api endpoint.
+
+    Returns the key value and the key id (needed to revoke the key during
+    teardown so runs do not leave ``e2e-extmod-*`` keys in the tenant store).
+    """
     response, body = create_api_key(
         base_url=tenant["maas_api_url"],
         ocp_user_token=ocp_token,
@@ -1505,7 +1550,30 @@ def mint_tenant_api_key(
     )
     api_key = body.get("key")
     assert api_key, f"API key missing in response: {redact_sensitive(body)}"
-    return api_key
+    key_id = body.get("id")
+    assert key_id, f"API key id missing in response: {redact_sensitive(body)}"
+    return api_key, key_id
+
+
+def revoke_tenant_api_key(
+    request_session_http: requests.Session,
+    ocp_token: str,
+    tenant: dict[str, str],
+    key_id: str,
+) -> None:
+    """Best-effort revocation of a tenant maas-api key during teardown."""
+    try:
+        response, _body = revoke_api_key(
+            request_session_http=request_session_http,
+            base_url=tenant["maas_api_url"],
+            key_id=key_id,
+            ocp_user_token=ocp_token,
+        )
+        assert response.status_code in (200, 202, 204), (
+            f"failed to revoke API key {key_id} on tenant maas-api {tenant['maas_api_url']}: {response.status_code}"
+        )
+    except Exception as exc:  # noqa: BLE001 - teardown must not mask test failures
+        LOGGER.warning(f"best-effort API key revocation failed for key {key_id}: {exc}")
 
 
 # ─── User namespaces ────────────────────────────────────────────────────────

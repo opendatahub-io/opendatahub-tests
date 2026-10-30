@@ -737,10 +737,13 @@ def _usage_provider(
         )
     )
 
-    def _ready() -> bool:
+    def _ready() -> None:
         deployment = get_json_or_none(admin_client, "deployment", sim, namespace) or {}
         status = deployment.get("status") or {}
-        return (status.get("availableReplicas") or 0) >= 1
+        available = status.get("availableReplicas") or 0
+        # Must assert (not return): wait_until only keeps polling while the
+        # check raises, so a boolean return would end the wait on first poll.
+        assert available >= 1, f"usage simulator {namespace}/{sim} has {available} available replicas, want >= 1"
 
     wait_until(check=_ready, timeout=240, what=f"usage simulator deployment {namespace}/{sim}")
     return {

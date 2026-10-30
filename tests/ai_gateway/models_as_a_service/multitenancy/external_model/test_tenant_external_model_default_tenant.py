@@ -113,8 +113,16 @@ INFERENCE_REQUEST_TIMEOUT = 60
 
 
 @pytest.fixture(scope="module", autouse=True)
-def _require_praxis_default_tenant(admin_client: DynamicClient) -> None:
-    """Skip unless the default tenant's payload-processing runs praxis-extproc."""
+def _require_praxis_default_tenant(
+    admin_client: DynamicClient,
+    tenant_external_model_capabilities: dict[str, bool],
+) -> None:
+    """Skip unless the default tenant's payload-processing runs praxis-extproc.
+
+    Also gates on the installed AGC + ExternalModel CRD capabilities: without
+    the gatewayRefs schema these tests would patch it and wait for a
+    GatewayNotManaged reason that never appears (timeout, not skip).
+    """
     deployment = get_json_or_none(
         client=admin_client, kind="deployment", name="payload-processing", namespace=MAAS_GATEWAY_NAMESPACE
     )

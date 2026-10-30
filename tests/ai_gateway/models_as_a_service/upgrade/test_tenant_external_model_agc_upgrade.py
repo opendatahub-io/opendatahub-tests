@@ -2,8 +2,8 @@
 
 Narrowed scope, per the 3.6 test plan: default-tenant / legacy-shaped
 objects (ExternalModels without gatewayRefs, served through the default
-tenant's Gateway as in 3.5) must survive an AGC upgrade byte-identically —
-same HTTPRoutes (uid / generation / labels / spec), same provider
+tenant's Gateway as in 3.5) must survive an AGC upgrade unchanged (same
+HTTPRoutes (uid / generation / labels / spec), same provider
 DestinationRules (uids), no object recreation — with serving, authorization
 and deletion behavior preserved. The 3.5→3.6 product upgrade path is
 covered by the legacy-migration suite in this directory; runtime no-op and
@@ -75,7 +75,7 @@ class TestPostUpgradeAGCExternalModel:
     ) -> None:
         """Given the pre-upgrade baseline snapshot, when AGC has been upgraded,
         then the model's HTTPRoutes, DestinationRules and published route name
-        are byte-identical (no recreation, no rewrite)."""
+        are unchanged (no recreation, no in-place rewrite)."""
         verify_agc_default_tenant_objects_unchanged(
             client=admin_client,
             baseline=agc_upgrade_baseline,

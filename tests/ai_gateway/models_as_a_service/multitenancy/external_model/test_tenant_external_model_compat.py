@@ -483,19 +483,21 @@ class TestLegacyIppCoexistence:
             status_before = _attachment_status_snapshot(admin_client=admin_client, model=model)
 
             # Flip the default tenant to legacy IPP (backend selection +
-            # cleanup/claim handoff) and wait for the legacy stack.
-            _ensure_payload_processing_type_on_tenant_config(
-                admin_client=admin_client,
-                tenant_namespace=DEFAULT_TENANT_NAMESPACE,
-                payload_type=PAYLOAD_PROCESSING_TYPE_IPP,
-            )
-            _wait_default_backend(admin_client=admin_client, praxis=False)
-            # A live legacy replica is necessary but not sufficient for the
-            # controller to have acted on the default tenant; settle before
-            # the negative assertions so absence checks are meaningful.
-            time.sleep(RECONCILE_WAIT)
-
+            # cleanup/claim handoff) and wait for the legacy stack. The flip
+            # happens inside the try so a failed wait still restores the
+            # original backend selection instead of poisoning later tests.
             try:
+                _ensure_payload_processing_type_on_tenant_config(
+                    admin_client=admin_client,
+                    tenant_namespace=DEFAULT_TENANT_NAMESPACE,
+                    payload_type=PAYLOAD_PROCESSING_TYPE_IPP,
+                )
+                _wait_default_backend(admin_client=admin_client, praxis=False)
+                # A live legacy replica is necessary but not sufficient for the
+                # controller to have acted on the default tenant; settle before
+                # the negative assertions so absence checks are meaningful.
+                time.sleep(RECONCILE_WAIT)
+
                 yield {
                     "case_b": case_b,
                     "model": model,
