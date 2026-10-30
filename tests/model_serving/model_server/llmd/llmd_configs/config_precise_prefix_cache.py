@@ -279,7 +279,7 @@ class PrecisePrefixCacheProducerConfig(TinyLlamaOciGpuConfig):
                 "--pool-namespace",
                 "{{ .ObjectMeta.Namespace }}",
                 "--pool-group",
-                "inference.networking.x-k8s.io",
+                "inference.networking.k8s.io",
                 "--zap-encoder",
                 "json",
                 "--grpc-port",
