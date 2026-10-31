@@ -1485,7 +1485,10 @@ def echo_headers(response: requests.Response) -> dict[str, str]:
         body = response.json()
     except ValueError as exc:
         raise AssertionError(f"non-JSON response body: {redact_sensitive(response.text)}") from exc
-    headers = ((body.get("json") or {}).get("headers") or {}) if "json" in body else (body.get("headers") or {})
+    # Top-level only, as in the source suite: the echo body also carries a
+    # "json" key holding the *request's* payload, so a nested lookup would
+    # search the chat-completions body instead of the echoed headers.
+    headers = body.get("headers") or {}
     return {str(key): str(value) for key, value in headers.items()}
 
 
