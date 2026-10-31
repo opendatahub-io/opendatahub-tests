@@ -1475,6 +1475,11 @@ def infer_external_chat(
         if response.status_code == 429 and "retry" in (response.text or "").lower() and attempt < retries:
             time.sleep(delay)
             continue
+        if response.status_code == 404 and attempt < retries:
+            # Route propagation: the source suite rides out 404s for the full
+            # retry budget (attachment churn re-serves asynchronously).
+            time.sleep(delay)
+            continue
         return response
     raise AssertionError(f"inference to {url} kept failing transiently: {last_exc}")
 
