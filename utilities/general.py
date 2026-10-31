@@ -496,15 +496,28 @@ def wait_for_pods_running(
     admin_client: DynamicClient,
     namespace_name: str,
     number_of_consecutive_checks: int = 1,
+    label_selector: str = "",
 ) -> bool | None:
     """
     Waits for all pods in a given namespace to reach Running/Completed state. To avoid catching all pods in running
     state too soon, use number_of_consecutive_checks with appropriate values.
+
+    Args:
+        label_selector: Optional label selector to scope the check (e.g. app=maas-api). Prefer this in
+            component health tests so unrelated leftover CrashLoop/Pending pods do not fail the suite.
     """
     samples = TimeoutSampler(
         wait_timeout=180,
         sleep=5,
-        func=lambda: get_not_running_pods(pods=list(Pod.get(client=admin_client, namespace=namespace_name))),
+        func=lambda: get_not_running_pods(
+            pods=list(
+                Pod.get(
+                    client=admin_client,
+                    namespace=namespace_name,
+                    label_selector=label_selector,
+                )
+            )
+        ),
         exceptions_dict={NotFoundError: [], ResourceNotFoundError: []},
     )
     sample = None
