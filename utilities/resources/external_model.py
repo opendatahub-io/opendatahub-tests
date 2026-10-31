@@ -21,6 +21,7 @@ class ExternalModel(NamespacedResource):
     def __init__(
         self,
         external_provider_refs: list[Any] | None = None,
+        gateway_refs: list[dict[str, Any]] | None = None,
         model_name: str | None = None,
         **kwargs: Any,
     ) -> None:
@@ -28,6 +29,10 @@ class ExternalModel(NamespacedResource):
         Args:
             external_provider_refs (list[Any]): ExternalProviderRefs maps this model to one or more external
               providers. Each entry specifies the provider specific details.
+
+            gateway_refs (list[dict[str, Any]]): GatewayRefs attaches this model to explicit tenant Gateways
+              (ai-gateway-controller contract). Each entry is a ``{"name": ..., "namespace": ...}``
+              reference; None keeps the legacy shape (tenant-local resolution).
 
             model_name (str): ModelName is the client-facing model name used in inference request
               bodies. Clients send this value in the "model" field of chat
@@ -40,6 +45,7 @@ class ExternalModel(NamespacedResource):
         super().__init__(**kwargs)
 
         self.external_provider_refs = external_provider_refs
+        self.gateway_refs = gateway_refs
         self.model_name = model_name
 
     def to_dict(self) -> None:
@@ -54,6 +60,9 @@ class ExternalModel(NamespacedResource):
             _spec = self.res["spec"]
 
             _spec["externalProviderRefs"] = self.external_provider_refs
+
+            if self.gateway_refs is not None:
+                _spec["gatewayRefs"] = self.gateway_refs
 
             if self.model_name is not None:
                 _spec["modelName"] = self.model_name

@@ -16,6 +16,7 @@ from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.maas_auth_policy import MaaSAuthPolicy
 from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.maas_subscription import MaaSSubscription
+from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.replica_set import ReplicaSet
 from ocp_resources.resource import NamespacedResource
@@ -35,6 +36,13 @@ from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import (
     AIGATEWAY_BOOTSTRAPPED_TENANT_NAME,
     build_aitenant_test_context,
     wait_for_maas_resource_phase,
+)
+from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils import (
+    attachment_httproutes,
+    deployment_image,
+    destination_rules_referencing,
+    find_agc_deployment,
+    get_json_or_none,
 )
 from tests.ai_gateway.models_as_a_service.multitenancy.utils import (
     TENANT_ISOLATION_MODEL_NAME,
@@ -1727,4 +1735,225 @@ def verify_praxis_aitenant_without_maas_legacy_ipp_envoyfilter_post_upgrade(
     LOGGER.info(
         f"Praxis AITenant '{aitenant_name}' has no maas legacy IPP markers in '{gateway_namespace}' "
         "and Praxis payload processing is active"
+    )
+
+
+# ─── AGC external model upgrade (RHOAIENG-90809 narrowed scope) ─────────────
+
+AGC_UPGRADE_NAMESPACE = "upgrade-maas-agc-em"
+AGC_UPGRADE_MODEL_NAME = "upgrade-maas-agc-em"
+AGC_UPGRADE_AUTH_POLICY_NAME = "upgrade-maas-agc-em-auth"
+AGC_UPGRADE_SUBSCRIPTION_NAME = "upgrade-maas-agc-em-sub"
+AGC_UPGRADE_API_KEY_SECRET_NAME = "upgrade-maas-agc-em-api-key"  # pragma: allowlist secret
+AGC_UPGRADE_BASELINE_CM_NAME = "maas-agc-upgrade-baseline"
+AGC_UPGRADE_BASELINE_CM_KEY = "agc_upgrade_baseline"
+AGC_UPGRADE_API_KEY_SECRET_KEY = "api-key"  # pragma: allowlist secret
+
+
+def clean_up_agc_upgrade_resources(
+    admin_client: DynamicClient,
+    subscription_namespace: str,
+) -> None:
+    """Delete the resources a pre-upgrade run retains for the post-upgrade run.
+
+    Idempotent (every delete is guarded by an existence check) so it can run
+    after the owning fixtures already cleaned up their part: the API key
+    Secret, the default-tenant governance objects and the fixed upgrade
+    namespace (which cascades the ExternalModel and the baseline ConfigMap).
+    """
+    secret = Secret(
+        client=admin_client,
+        name=AGC_UPGRADE_API_KEY_SECRET_NAME,
+        namespace=AGC_UPGRADE_NAMESPACE,
+    )
+    if secret.exists:
+        secret.clean_up()
+    for governance in (
+        MaaSAuthPolicy(
+            client=admin_client,
+            name=AGC_UPGRADE_AUTH_POLICY_NAME,
+            namespace=subscription_namespace,
+        ),
+        MaaSSubscription(
+            client=admin_client,
+            name=AGC_UPGRADE_SUBSCRIPTION_NAME,
+            namespace=subscription_namespace,
+        ),
+    ):
+        if governance.exists:
+            governance.clean_up()
+    namespace = Namespace(client=admin_client, name=AGC_UPGRADE_NAMESPACE)
+    if namespace.exists:
+        namespace.clean_up()
+
+
+class AGCRouteBaseline(TypedDict):
+    uid: str
+    generation: int
+    labels: dict[str, str]
+    spec: str
+
+
+class AGCUpgradeBaseline(TypedDict):
+    model_name: str
+    model_namespace: str
+    http_route_name: str
+    routes: dict[str, AGCRouteBaseline]
+    destination_rule_uids: list[str]
+    agc_image: str
+
+
+def agc_attachment_route_baseline(
+    client: DynamicClient,
+    model_namespace: str,
+) -> dict[str, AGCRouteBaseline]:
+    """Snapshot the identity of the model namespace's default-gateway routes.
+
+    Captures uid (recreation), generation (in-place rewrite) and the
+    serialized spec/labels of every HTTPRoute attached to the default MaaS
+    Gateway in the model namespace.
+    """
+    routes: dict[str, AGCRouteBaseline] = {}
+    for route in attachment_httproutes(
+        admin_client=client,
+        route_namespace=model_namespace,
+        gateway_name=MAAS_GATEWAY_NAME,
+        gateway_namespace=MAAS_GATEWAY_NAMESPACE,
+    ):
+        metadata = route.get("metadata") or {}
+        routes[metadata["name"]] = {
+            "uid": metadata.get("uid") or "",
+            "generation": metadata.get("generation") or 0,
+            "labels": metadata.get("labels") or {},
+            "spec": json.dumps(route.get("spec") or {}, sort_keys=True),
+        }
+    return routes
+
+
+def capture_agc_upgrade_baseline(
+    client: DynamicClient,
+    model: dict[str, Any],
+) -> AGCUpgradeBaseline:
+    """Snapshot default-tenant/legacy-shaped objects before upgrading AGC."""
+    external_model = get_json_or_none(client, "externalmodel", model["name"], model["namespace"]) or {}
+    route_name = (external_model.get("status") or {}).get("httpRouteName") or ""
+    # Guard against vacuous passes: an empty route name or an empty
+    # DestinationRule set would make the post-upgrade comparison succeed
+    # without verifying anything.
+    assert route_name, (
+        f"ExternalModel {model['namespace']}/{model['name']} reported no "
+        "status.httpRouteName before the upgrade; cannot baseline the route"
+    )
+    rule_uids = sorted(
+        rule.get("metadata", {}).get("uid") or ""
+        for rule in destination_rules_referencing(
+            client,
+            model["name"],
+            MAAS_GATEWAY_NAMESPACE,
+        )
+    )
+    assert rule_uids, (
+        f"no provider DestinationRules reference {model['name']} in "
+        f"{MAAS_GATEWAY_NAMESPACE} before the upgrade; cannot baseline the rules"
+    )
+    baseline: AGCUpgradeBaseline = {
+        "model_name": model["name"],
+        "model_namespace": model["namespace"],
+        "http_route_name": route_name,
+        "routes": agc_attachment_route_baseline(client=client, model_namespace=model["namespace"]),
+        "destination_rule_uids": rule_uids,
+        "agc_image": deployment_image(find_agc_deployment(admin_client=client)),
+    }
+    LOGGER.info(f"Captured AGC upgrade baseline for {model['namespace']}/{model['name']}")
+    return baseline
+
+
+def save_agc_upgrade_baseline_to_configmap(
+    client: DynamicClient,
+    namespace: str,
+    baseline: AGCUpgradeBaseline,
+) -> ConfigMap:
+    """Persist the AGC baseline snapshot to a ConfigMap for post-upgrade retrieval."""
+    serialized_data = {AGC_UPGRADE_BASELINE_CM_KEY: json.dumps(baseline)}
+    config_map = ConfigMap(client=client, name=AGC_UPGRADE_BASELINE_CM_NAME, namespace=namespace)
+    if config_map.exists:
+        resource_dict = config_map.instance.to_dict()
+        resource_dict.setdefault("data", {}).update(serialized_data)
+        config_map.update(resource_dict=resource_dict)
+    else:
+        config_map = ConfigMap(
+            client=client,
+            name=AGC_UPGRADE_BASELINE_CM_NAME,
+            namespace=namespace,
+            data=serialized_data,
+        )
+        config_map.deploy()
+    LOGGER.info(f"Saved AGC baseline to ConfigMap {namespace}/{AGC_UPGRADE_BASELINE_CM_NAME}")
+    return config_map
+
+
+def load_agc_upgrade_baseline_from_configmap(
+    client: DynamicClient,
+    namespace: str,
+) -> AGCUpgradeBaseline:
+    """Load the AGC baseline snapshot created during pre-upgrade."""
+    config_map = ConfigMap(client=client, name=AGC_UPGRADE_BASELINE_CM_NAME, namespace=namespace)
+    assert config_map.exists, (
+        f"AGC baseline ConfigMap '{AGC_UPGRADE_BASELINE_CM_NAME}' not found in '{namespace}'. "
+        "Ensure pre-upgrade tests ran successfully."
+    )
+    baseline: AGCUpgradeBaseline = json.loads(_config_map_string_data(config_map)[AGC_UPGRADE_BASELINE_CM_KEY])
+    LOGGER.info(f"Loaded AGC upgrade baseline for {baseline['model_namespace']}/{baseline['model_name']}")
+    return baseline
+
+
+def verify_agc_default_tenant_objects_unchanged(
+    client: DynamicClient,
+    baseline: AGCUpgradeBaseline,
+) -> None:
+    """Assert the legacy default-tenant objects survived the AGC upgrade unchanged.
+
+    uid equality proves no object recreation; generation and serialized-spec
+    equality prove no in-place rewrite; the DestinationRule uid set proves
+    the provider rules were not re-rendered. resourceVersion is deliberately
+    not compared (it changes on any touch, including status writes by other
+    controllers).
+    """
+    current_routes = agc_attachment_route_baseline(client=client, model_namespace=baseline["model_namespace"])
+    assert current_routes, (
+        f"no HTTPRoutes attached to the default Gateway remain in {baseline['model_namespace']} after the AGC upgrade"
+    )
+    assert current_routes == baseline["routes"], (
+        "default-tenant HTTPRoutes changed across the AGC upgrade "
+        f"(before: {baseline['routes']} -> after: {current_routes})"
+    )
+    current_rule_uids = sorted(
+        rule.get("metadata", {}).get("uid") or ""
+        for rule in destination_rules_referencing(
+            client,
+            baseline["model_name"],
+            MAAS_GATEWAY_NAMESPACE,
+        )
+    )
+    assert current_rule_uids, (
+        f"no provider DestinationRules reference {baseline['model_name']} in "
+        f"{MAAS_GATEWAY_NAMESPACE} after the AGC upgrade"
+    )
+    assert current_rule_uids == baseline["destination_rule_uids"], (
+        "provider DestinationRules were recreated across the AGC upgrade "
+        f"(before: {baseline['destination_rule_uids']} -> after: {current_rule_uids})"
+    )
+    external_model = get_json_or_none(
+        client=client,
+        kind="externalmodel",
+        name=baseline["model_name"],
+        namespace=baseline["model_namespace"],
+    )
+    assert external_model is not None, (
+        f"ExternalModel {baseline['model_namespace']}/{baseline['model_name']} disappeared across the upgrade"
+    )
+    current_route_name = (external_model.get("status") or {}).get("httpRouteName") or ""
+    assert current_route_name == baseline["http_route_name"], (
+        f"status.httpRouteName changed across the AGC upgrade: "
+        f"{baseline['http_route_name']!r} -> {current_route_name!r}"
     )
