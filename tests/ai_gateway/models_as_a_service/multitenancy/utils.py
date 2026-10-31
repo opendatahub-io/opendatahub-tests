@@ -309,6 +309,27 @@ def gateway_access_namespace_labels(gateway_name: str) -> dict[str, str]:
     return {gateway_access_label_key(gateway_name=gateway_name): "true"}
 
 
+def admit_namespace_to_gateway(admin_client: DynamicClient, namespace: str, gateway_name: str) -> None:
+    """Label a namespace as admitted by a tenant Gateway's listeners (no undo).
+
+    Port of the source suite's ``apply_gateway_access_label``: the tenant
+    namespace itself must carry the per-gateway access label for
+    tenant-own models' HTTPRoutes to be admitted by the tenant Gateway —
+    the listeners select on the per-gateway label, not the generic one
+    maas-controller stamps on tenant namespaces. The label is not removed
+    on exit: the namespace is torn down with its tenant.
+    """
+    namespace_obj = Namespace(client=admin_client, name=namespace, ensure_exists=True)
+    assert namespace_obj.exists, f"namespace '{namespace}' not found"
+    ResourceEditor(
+        patches={
+            namespace_obj: {
+                "metadata": {"labels": gateway_access_namespace_labels(gateway_name=gateway_name)}
+            }
+        }
+    ).update()
+
+
 def tenant_gateway_hostname(gateway_name: str, maas_host: str) -> str:
     """Return the external hostname routed to a tenant Gateway."""
     ingress_domain = ingress_domain_from_maas_host(maas_host=maas_host)

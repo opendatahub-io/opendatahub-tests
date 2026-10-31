@@ -1587,7 +1587,9 @@ def serve_external_model_in_tenant(
                         "tokenRateLimits": [{"limit": token_limit, "window": window}],
                     }
                 ],
-                priority=0,
+                # Source-suite default: no explicit priority. An explicit 0
+                # collides with other subscriptions in the tenant and the
+                # controller flags SpecPriorityDuplicate.
                 teardown=teardown,
                 wait_for_resource=True,
             )

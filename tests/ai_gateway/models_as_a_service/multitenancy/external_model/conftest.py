@@ -28,6 +28,7 @@ from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils impo
     tenant_case,
 )
 from tests.ai_gateway.models_as_a_service.multitenancy.utils import (
+    admit_namespace_to_gateway,
     isolation_bootstrap_gateway_context,
     tenant_gateway_external_route,
 )
@@ -170,8 +171,17 @@ def tenant_external_model_tenants(
                     f"per-tenant payload-processing for {params['aitenant_name']} is not "
                     "praxis-extproc; the AGC/Praxis multi-tenant contract is not active"
                 )
+            context = build_aitenant_test_context(aitenant=aitenant)
+            # Source-suite bootstrap_aitenant_tenant step: admit the tenant
+            # namespace to its own gateway so tenant-own models' routes are
+            # accepted (listeners select the per-gateway access label).
+            admit_namespace_to_gateway(
+                admin_client=admin_client,
+                namespace=context["tenant_namespace_name"],
+                gateway_name=gateway.name,
+            )
             cases[key] = tenant_case(
-                context=build_aitenant_test_context(aitenant=aitenant),
+                context=context,
                 gateway_name=gateway.name,
                 maas_host=maas_host,
             )
