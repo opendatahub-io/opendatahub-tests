@@ -322,11 +322,7 @@ def admit_namespace_to_gateway(admin_client: DynamicClient, namespace: str, gate
     namespace_obj = Namespace(client=admin_client, name=namespace, ensure_exists=True)
     assert namespace_obj.exists, f"namespace '{namespace}' not found"
     ResourceEditor(
-        patches={
-            namespace_obj: {
-                "metadata": {"labels": gateway_access_namespace_labels(gateway_name=gateway_name)}
-            }
-        }
+        patches={namespace_obj: {"metadata": {"labels": gateway_access_namespace_labels(gateway_name=gateway_name)}}}
     ).update()
 
 
