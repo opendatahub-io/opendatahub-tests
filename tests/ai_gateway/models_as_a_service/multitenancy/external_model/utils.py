@@ -828,6 +828,9 @@ def infer_external_chat(
         if response.status_code >= 500 and attempt < retries:
             time.sleep(delay)
             continue
+        if response.status_code == 403 and not (response.text or "").strip() and attempt < retries:
+            time.sleep(delay)
+            continue
         if response.status_code == 429 and "retry" in (response.text or "").lower() and attempt < retries:
             time.sleep(delay)
             continue
