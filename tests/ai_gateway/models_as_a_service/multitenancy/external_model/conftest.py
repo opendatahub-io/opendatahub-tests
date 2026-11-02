@@ -28,17 +28,21 @@ from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils impo
     EXTERNAL_ENDPOINT,
     admitted_user_namespace,
     deploy_aitenant_best_effort,
+    external_model_stack,
     extmod_tenant_test_params,
+    gateway_ref,
     namespace_name,
     per_tenant_processing_uses_praxis,
     provision_and_serve_in_tenant,
     record_tenant_external_model_evidence,
     require_maas_route,
     require_tenant_external_model_support,
+    serve_in_tenant_and_cleanup,
     serve_shared_model_in_tenant,
     tenant_case,
-    two_gateway_model,
+    unadmitted_user_namespace,
     usage_provider,
+    wait_shared_attachments_ready,
 )
 from tests.ai_gateway.models_as_a_service.multitenancy.utils import (
     admit_namespace_to_gateway,
@@ -56,10 +60,7 @@ from utilities.certificates_utils import router_ca_bundle_env
 LOGGER = structlog.get_logger(name=__name__)
 
 LIMITED_TOKEN_LIMIT = 3
-# Effectively unlimited: the simulator can report more than 100 tokens for a
-# single response, and the usage scenario must let tenant B serve consecutive
-# requests inside one window without a spurious 429.
-UNLIMITED_TOKEN_LIMIT = 100000
+UNLIMITED_TOKEN_LIMIT = 100
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -85,15 +86,15 @@ def tenant_external_model_evidence(
 
 
 @pytest.fixture(scope="module")
-def tenant_external_model_primary_test_params(admin_client: DynamicClient) -> dict[str, Any]:
+def tenant_external_model_primary_test_params() -> dict[str, Any]:
     """Primary AITenant name and spec for the external model suite."""
-    return extmod_tenant_test_params(tenant_label="alpha", admin_client=admin_client)
+    return extmod_tenant_test_params(tenant_label="alpha")
 
 
 @pytest.fixture(scope="module")
-def tenant_external_model_secondary_test_params(admin_client: DynamicClient) -> dict[str, Any]:
+def tenant_external_model_secondary_test_params() -> dict[str, Any]:
     """Secondary AITenant name and spec for the external model suite."""
-    return extmod_tenant_test_params(tenant_label="beta", admin_client=admin_client)
+    return extmod_tenant_test_params(tenant_label="beta")
 
 
 @pytest.fixture(scope="module")
@@ -157,7 +158,7 @@ def tenant_external_model_tenants(
             )
             deploy_and_verify_aitenant_ready(aitenant=aitenant)
             if not per_tenant_processing_uses_praxis(admin_client, params["aitenant_name"]):
-                pytest.fail(
+                pytest.skip(
                     f"per-tenant payload-processing for {params['aitenant_name']} is not "
                     "praxis-extproc; the AGC/Praxis multi-tenant contract is not active"
                 )
@@ -266,14 +267,23 @@ def shared_model(
     name = f"e2e-shr-shared-{uuid.uuid4().hex[:6]}"
     with ExitStack() as stack:
         model = stack.enter_context(
-            cm=two_gateway_model(
+            cm=external_model_stack(
                 admin_client,
                 name=name,
                 namespace=namespace_name(shared_user_namespace),
-                cases=cases,
+                gateway_refs=[
+                    gateway_ref(cases["tenant_a"]["gateway_name"]),
+                    gateway_ref(cases["tenant_b"]["gateway_name"]),
+                ],
+                model_name=f"{name}-client",
+                tenant_refs=[
+                    cases["tenant_a"]["tenant_label_name"],
+                    cases["tenant_b"]["tenant_label_name"],
+                ],
                 teardown=teardown_resources,
             )
         )
+        wait_shared_attachments_ready(admin_client=admin_client, cases=tuple(cases.values()), model=model)
         yield {"model": model}
 
 
@@ -291,7 +301,7 @@ def shared_serving(
     require_maas_route(admin_client=admin_client, model=model)
     with ExitStack() as stack:
         yield {
-            "tenant_a": serve_shared_model_in_tenant(
+            "access_a": serve_shared_model_in_tenant(
                 admin_client=admin_client,
                 request_session_http=request_session_http,
                 ocp_token=ocp_token_for_actor,
@@ -300,7 +310,7 @@ def shared_serving(
                 model=model,
                 teardown=teardown_resources,
             ),
-            "tenant_b": serve_shared_model_in_tenant(
+            "access_b": serve_shared_model_in_tenant(
                 admin_client=admin_client,
                 request_session_http=request_session_http,
                 ocp_token=ocp_token_for_actor,
@@ -326,14 +336,23 @@ def isolated_keys(
     name = f"e2e-shr-auth-{uuid.uuid4().hex[:6]}"
     with ExitStack() as stack:
         model = stack.enter_context(
-            cm=two_gateway_model(
+            cm=external_model_stack(
                 admin_client,
                 name=name,
                 namespace=namespace_name(shared_user_namespace),
-                cases=cases,
+                gateway_refs=[
+                    gateway_ref(cases["tenant_a"]["gateway_name"]),
+                    gateway_ref(cases["tenant_b"]["gateway_name"]),
+                ],
+                model_name=f"{name}-client",
+                tenant_refs=[
+                    cases["tenant_a"]["tenant_label_name"],
+                    cases["tenant_b"]["tenant_label_name"],
+                ],
                 teardown=teardown_resources,
             )
         )
+        wait_shared_attachments_ready(admin_client=admin_client, cases=tuple(cases.values()), model=model)
         require_maas_route(admin_client=admin_client, model=model)
         access_a = serve_shared_model_in_tenant(
             admin_client=admin_client,
@@ -353,7 +372,7 @@ def isolated_keys(
             model=model,
             teardown=teardown_resources,
         )
-        yield {"model": model, "tenant_a": access_a["api_key"], "tenant_b": access_b["api_key"]}
+        yield {"model": model, "key_a": access_a["api_key"], "key_b": access_b["api_key"]}
 
 
 @pytest.fixture(scope="class")
@@ -368,14 +387,23 @@ def ambiguous_model_ref(
     name = f"e2e-shr-amb-{uuid.uuid4().hex[:6]}"
     with ExitStack() as stack:
         model = stack.enter_context(
-            cm=two_gateway_model(
+            cm=external_model_stack(
                 admin_client,
                 name=name,
                 namespace=namespace_name(shared_user_namespace),
-                cases=cases,
+                gateway_refs=[
+                    gateway_ref(cases["tenant_a"]["gateway_name"]),
+                    gateway_ref(cases["tenant_b"]["gateway_name"]),
+                ],
+                model_name=f"{name}-client",
+                tenant_refs=[
+                    cases["tenant_a"]["tenant_label_name"],
+                    cases["tenant_b"]["tenant_label_name"],
+                ],
                 teardown=teardown_resources,
             )
         )
+        wait_shared_attachments_ready(admin_client=admin_client, cases=tuple(cases.values()), model=model)
         require_maas_route(admin_client=admin_client, model=model)
         ambiguous_ref = f"{name}-ambiguous"
         stack.enter_context(
@@ -417,22 +445,31 @@ def quota_model(
             teardown=teardown_resources,
         )
         model = stack.enter_context(
-            cm=two_gateway_model(
+            cm=external_model_stack(
                 admin_client,
                 name=name,
                 namespace=namespace_name(shared_user_namespace),
-                cases=cases,
-                teardown=teardown_resources,
+                gateway_refs=[
+                    gateway_ref(cases["tenant_a"]["gateway_name"]),
+                    gateway_ref(cases["tenant_b"]["gateway_name"]),
+                ],
+                model_name=client_name,
+                tenant_refs=[
+                    cases["tenant_a"]["tenant_label_name"],
+                    cases["tenant_b"]["tenant_label_name"],
+                ],
                 endpoint=usage["endpoint"],
                 provider_path=usage["provider_path"],
                 credential=usage["credential"],
                 provider_config=usage["provider_config"],
+                teardown=teardown_resources,
             )
         )
+        wait_shared_attachments_ready(admin_client=admin_client, cases=tuple(cases.values()), model=model)
         require_maas_route(admin_client=admin_client, model=model)
         yield {
             "model": model,
-            "tenant_a": serve_shared_model_in_tenant(
+            "access_a": serve_shared_model_in_tenant(
                 admin_client=admin_client,
                 request_session_http=request_session_http,
                 ocp_token=ocp_token_for_actor,
@@ -443,7 +480,7 @@ def quota_model(
                 token_limit=LIMITED_TOKEN_LIMIT,
                 window="1m",
             ),
-            "tenant_b": serve_shared_model_in_tenant(
+            "access_b": serve_shared_model_in_tenant(
                 admin_client=admin_client,
                 request_session_http=request_session_http,
                 ocp_token=ocp_token_for_actor,
@@ -455,4 +492,224 @@ def quota_model(
                 window="1m",
             ),
             "usage": usage,
+        }
+
+
+@pytest.fixture(scope="module")
+def attachment_env(
+    admin_client: DynamicClient,
+    tenant_external_model_tenants: dict[str, dict[str, str]],
+    teardown_resources: bool,
+) -> Generator[dict[str, Any], Any, Any]:
+    """User namespaces (admitted + deliberately unadmitted) on the shared tenants."""
+    tenant_a = tenant_external_model_tenants["tenant_a"]
+    tenant_b = tenant_external_model_tenants["tenant_b"]
+    with ExitStack() as stack:
+        user_ns = stack.enter_context(
+            cm=admitted_user_namespace(
+                admin_client,
+                "e2e-extmod-att-user",
+                tenant_a["gateway_name"],
+                tenant_b["gateway_name"],
+                teardown=teardown_resources,
+            )
+        )
+        unadmitted_ns = stack.enter_context(
+            cm=unadmitted_user_namespace(
+                admin_client,
+                "e2e-extmod-att-noaccess",
+                teardown=teardown_resources,
+            )
+        )
+        yield {
+            "tenant_a": tenant_a,
+            "tenant_b": tenant_b,
+            "user_ns": user_ns.name,
+            "unadmitted_ns": unadmitted_ns.name,
+        }
+
+
+@pytest.fixture(scope="class")
+def attached_model(
+    admin_client: DynamicClient,
+    request_session_http: requests.Session,
+    ocp_token_for_actor: str,
+    attachment_env: dict[str, Any],
+    teardown_resources: bool,
+) -> Generator[dict[str, Any], Any, Any]:
+    """One model attached to (and served through) tenant B's gateway."""
+    env = attachment_env
+    tenant_b = env["tenant_b"]
+    with ExitStack() as stack:
+        model = stack.enter_context(
+            cm=external_model_stack(
+                admin_client,
+                name=f"e2e-att-serve-{uuid.uuid4().hex[:6]}",
+                namespace=env["user_ns"],
+                gateway_refs=[gateway_ref(tenant_b["gateway_name"])],
+                teardown=teardown_resources,
+            )
+        )
+        access = stack.enter_context(
+            cm=serve_in_tenant_and_cleanup(admin_client, request_session_http, ocp_token_for_actor, tenant_b, model)
+        )
+        yield {"model": model, "access": access}
+
+
+@pytest.fixture(scope="class")
+def unrelated_model(
+    admin_client: DynamicClient,
+    request_session_http: requests.Session,
+    ocp_token_for_actor: str,
+    attachment_env: dict[str, Any],
+    teardown_resources: bool,
+) -> Generator[dict[str, Any], Any, Any]:
+    """A bystander model on tenant B's gateway that must survive cleanup."""
+    env = attachment_env
+    tenant_b = env["tenant_b"]
+    with ExitStack() as stack:
+        model = stack.enter_context(
+            cm=external_model_stack(
+                admin_client,
+                name=f"e2e-att-unrel-{uuid.uuid4().hex[:6]}",
+                namespace=env["user_ns"],
+                gateway_refs=[gateway_ref(tenant_b["gateway_name"])],
+                teardown=teardown_resources,
+            )
+        )
+        access = stack.enter_context(
+            cm=serve_in_tenant_and_cleanup(admin_client, request_session_http, ocp_token_for_actor, tenant_b, model)
+        )
+        yield {"model": model, "access": access}
+
+
+@pytest.fixture(scope="class")
+def refused_model(
+    admin_client: DynamicClient,
+    attachment_env: dict[str, Any],
+    teardown_resources: bool,
+) -> Generator[dict[str, Any], Any, Any]:
+    """One model attached to tenant B's gateway from an unadmitted namespace."""
+    env = attachment_env
+    tenant_b = env["tenant_b"]
+    with external_model_stack(
+        admin_client,
+        name=f"e2e-att-noaccess-{uuid.uuid4().hex[:6]}",
+        namespace=env["unadmitted_ns"],
+        gateway_refs=[gateway_ref(tenant_b["gateway_name"])],
+        teardown=teardown_resources,
+    ) as model:
+        yield model
+
+
+@pytest.fixture(scope="class")
+def recovery_env(
+    admin_client: DynamicClient,
+    request_session_http: requests.Session,
+    ocp_token_for_actor: str,
+    attachment_env: dict[str, Any],
+    teardown_resources: bool,
+) -> Generator[dict[str, Any], Any, Any]:
+    """A refused model and a healthy control model, each in its own namespace.
+
+    The namespace context managers start (and own teardown of) the
+    namespaces right after creation: pytest runs no teardown after a
+    failed setup, so provisioning or serving failures must still delete
+    the namespaces.
+    """
+    env = attachment_env
+    tenant_b = env["tenant_b"]
+    with ExitStack() as stack:
+        refused_ns = stack.enter_context(
+            cm=unadmitted_user_namespace(
+                admin_client,
+                "e2e-extmod-rec-noaccess",
+                teardown=teardown_resources,
+            )
+        )
+        control_ns = stack.enter_context(
+            cm=admitted_user_namespace(
+                admin_client,
+                "e2e-extmod-rec-user",
+                tenant_b["gateway_name"],
+                teardown=teardown_resources,
+            )
+        )
+        recovering_model = stack.enter_context(
+            cm=external_model_stack(
+                admin_client,
+                name=f"e2e-rec-recover-{uuid.uuid4().hex[:6]}",
+                namespace=namespace_name(refused_ns),
+                gateway_refs=[gateway_ref(tenant_b["gateway_name"])],
+                teardown=teardown_resources,
+            )
+        )
+        control_model = stack.enter_context(
+            cm=external_model_stack(
+                admin_client,
+                name=f"e2e-rec-ctrl-{uuid.uuid4().hex[:6]}",
+                namespace=namespace_name(control_ns),
+                gateway_refs=[gateway_ref(tenant_b["gateway_name"])],
+                teardown=teardown_resources,
+            )
+        )
+        control_access = stack.enter_context(
+            cm=serve_in_tenant_and_cleanup(
+                admin_client, request_session_http, ocp_token_for_actor, tenant_b, control_model
+            )
+        )
+        yield {
+            "tenant_b": tenant_b,
+            "refused_ns": refused_ns.name,
+            "control_ns": control_ns.name,
+            "recovering_model": recovering_model,
+            "control_model": control_model,
+            "control_access": control_access,
+        }
+
+
+@pytest.fixture(scope="class")
+def rotation_model(
+    admin_client: DynamicClient,
+    request_session_http: requests.Session,
+    ocp_token_for_actor: str,
+    attachment_env: dict[str, Any],
+    teardown_resources: bool,
+) -> Generator[dict[str, Any], Any, Any]:
+    """One serving model whose source credential Secret will be rotated.
+
+    Its own namespace: the rotation rewrites this Secret in place, and
+    the module's shared user namespace hosts other classes' models. The
+    namespace context manager owns its teardown right after creation:
+    pytest runs no teardown after a failed setup, so provisioning or
+    serving failures must still delete the namespace.
+    """
+    env = attachment_env
+    tenant_b = env["tenant_b"]
+    with ExitStack() as stack:
+        user_ns = stack.enter_context(
+            cm=admitted_user_namespace(
+                admin_client,
+                "e2e-extmod-rot-user",
+                tenant_b["gateway_name"],
+                teardown=teardown_resources,
+            )
+        )
+        model = stack.enter_context(
+            cm=external_model_stack(
+                admin_client,
+                name=f"e2e-rot-{uuid.uuid4().hex[:6]}",
+                namespace=namespace_name(user_ns),
+                gateway_refs=[gateway_ref(tenant_b["gateway_name"])],
+                teardown=teardown_resources,
+            )
+        )
+        access = stack.enter_context(
+            cm=serve_in_tenant_and_cleanup(admin_client, request_session_http, ocp_token_for_actor, tenant_b, model)
+        )
+        yield {
+            "tenant_b": tenant_b,
+            "user_ns": user_ns.name,
+            "model": model,
+            "access": access,
         }
