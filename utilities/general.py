@@ -559,22 +559,51 @@ def wait_for_oauth_openshift_deployment(client: DynamicClient) -> None:
         client=client, name="oauth-openshift", namespace="openshift-authentication", ensure_exists=True
     )
 
-    _log = f"Wait for {deployment_obj.name} -> Type: Progressing -> Reason:"
+    def _progressing_reason() -> str | None:
+        for condition in deployment_obj.instance.status.conditions or []:
+            if condition.type == "Progressing":
+                return condition.reason
+        return None
 
-    def _wait_sampler(_reason: str) -> None:
-        sampler = TimeoutSampler(
-            wait_timeout=240,
-            sleep=5,
-            func=lambda: deployment_obj.instance.status.conditions,
+    def _settled() -> bool:
+        instance = deployment_obj.instance
+        status = instance.status
+        return (
+            status is not None
+            and status.observedGeneration == instance.metadata.generation
+            and _progressing_reason() == "NewReplicaSetAvailable"
         )
-        for sample in sampler:
-            for _spl in sample:
-                if _spl.type == "Progressing" and _spl.reason == _reason:
-                    return
 
-    for reason in ("ReplicaSetUpdated", "NewReplicaSetAvailable"):
-        LOGGER.info(f"{_log} {reason}")
-        _wait_sampler(_reason=reason)
+    entry_generation = deployment_obj.instance.metadata.generation
+
+    def _rollout_started() -> bool:
+        return deployment_obj.instance.metadata.generation > entry_generation or _progressing_reason() == (
+            "ReplicaSetUpdated"
+        )
+
+    # The authentication operator re-renders the deployment some time after
+    # the OAuth edit, so a settled deployment may still be running the old
+    # configuration: first wait for the rollout to start (generation bump or
+    # the transient ReplicaSetUpdated reason). An OAuth edit that does not
+    # change effective configuration never retriggers a rollout - then the
+    # best-effort window expires and a settled deployment is accepted.
+    rollout_started = False
+    try:
+        sampler = TimeoutSampler(wait_timeout=90, sleep=5, func=_rollout_started)
+        for sample in sampler:
+            if sample:
+                rollout_started = True
+                break
+    except TimeoutExpiredError:
+        pass
+
+    if not rollout_started and _settled():
+        return
+
+    sampler = TimeoutSampler(wait_timeout=240, sleep=5, func=_settled)
+    for sample in sampler:
+        if sample:
+            return
 
 
 def collect_pod_information(pod: Pod) -> None:

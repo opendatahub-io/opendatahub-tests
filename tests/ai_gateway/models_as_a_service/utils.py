@@ -1,5 +1,6 @@
 import base64
 import json
+import os
 from collections.abc import Generator
 from contextlib import contextmanager
 from json import JSONDecodeError
@@ -46,7 +47,11 @@ DEFAULT_MAAS_TENANT_NAME = "default-tenant"
 MaaSTenantResource = MaasTenantConfig | Tenant
 
 AITENANT_INFRA_NAMESPACE: str = "ai-tenants"
-AIGATEWAY_GATEWAY_CLASS_NAME: str = "openshift-default"
+# The tenant Gateway class: OCP's built-in default when GatewayAPI is enabled.
+# Env-overridable (source-suite convention): clusters where the built-in class
+# is absent (e.g. only operator-created classes exist) must point this at an
+# Accepted GatewayClass, such as maas-gateway-class.
+AIGATEWAY_GATEWAY_CLASS_NAME: str = os.environ.get("AITENANT_GATEWAY_CLASS_NAME", "openshift-default")
 AIGATEWAY_BOOTSTRAP_GATEWAY_LISTENERS: list[dict[str, Any]] = [
     {
         "name": "http",
@@ -702,6 +707,31 @@ def revoke_token(
     return resp
 
 
+def _is_transient_proxy_response(response: requests.Response) -> bool:
+    """True when a 500/502/503 body is a gateway reload artifact, not a maas-api error.
+
+    Port of the source suite's proxy-response class: empty or plain-text
+    proxy errors ("Internal Server Error", "Service Unavailable", "Bad
+    Gateway") and Envoy/Istio route-failure texts ("upstream connect error",
+    "no healthy upstream") appear while the dataplane or auth filters are
+    mid-reload and are safe to retry. maas-api JSON errors (for example
+    ``{"error": "Failed to create API key"}``) are never transient.
+    """
+    body = (response.text or "").strip()
+    if not body:
+        return True
+    if body in (
+        "Internal Server Error",
+        "Internal Server Error.",
+        "Service Unavailable",
+        "Service Unavailable.",
+        "Bad Gateway",
+        "Bad Gateway.",
+    ):
+        return True
+    return "upstream connect error" in body or "no healthy upstream" in body
+
+
 def create_api_key(
     base_url: str,
     ocp_user_token: str,
@@ -746,6 +776,7 @@ def create_api_key(
     last_response: requests.Response | None = None
     empty_403_retries = 0
     auth_failure_retries = 0
+    proxy_error_retries = 0
     try:
         for response in TimeoutSampler(
             wait_timeout=30,
@@ -768,6 +799,13 @@ def create_api_key(
                 auth_failure_retries += 1
                 LOGGER.info("create_api_key: 500 AUTH_FAILURE (Authorino identity not ready) — retrying")
                 continue
+            if response.status_code in (500, 502, 503) and _is_transient_proxy_response(response):  # type: ignore[bad-argument-type]
+                proxy_error_retries += 1
+                LOGGER.info(
+                    f"create_api_key: {response.status_code} proxy/gateway reload artifact "
+                    "(Envoy/router mid-reload) — retrying"
+                )
+                continue
             break
     except TimeoutExpiredError:
         LOGGER.info(
@@ -778,7 +816,10 @@ def create_api_key(
     if response is None or response.status_code not in (200, 201):
         status = response.status_code if response is not None else "no response"
         body = response.text[:500] if response is not None else "no HTTP response received"
-        retry_summary = f"empty_403_retries={empty_403_retries} auth_failure_retries={auth_failure_retries}"
+        retry_summary = (
+            f"empty_403_retries={empty_403_retries} "
+            f"auth_failure_retries={auth_failure_retries} proxy_error_retries={proxy_error_retries}"
+        )
         if raise_on_error:
             raise AssertionError(f"api-key create failed: status={status} body={body} {retry_summary}")
         return response, {}  # type: ignore[return-value]
