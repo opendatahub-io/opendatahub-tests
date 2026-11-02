@@ -72,12 +72,9 @@ def pytest_collection_modifyitems(items: list[pytest.Item], config: pytest.Confi
         return
 
     ocp_version = _get_completed_ocp_version()
-    if ocp_version is None or ocp_version >= MLSERVER_MODELCAR_MIN_OCP_VERSION:
-        if ocp_version is not None:
-            LOGGER.info(f"OCP version: {ocp_version}, min required for model car: {MLSERVER_MODELCAR_MIN_OCP_VERSION}")
-        return
-
     LOGGER.info(f"OCP version: {ocp_version}, min required for model car: {MLSERVER_MODELCAR_MIN_OCP_VERSION}")
+    if ocp_version is None or ocp_version >= MLSERVER_MODELCAR_MIN_OCP_VERSION:
+        return
     config.hook.pytest_deselected(items=model_car_items)
     items[:] = [item for item in items if item not in model_car_items]
 
