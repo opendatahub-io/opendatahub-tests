@@ -799,7 +799,9 @@ def create_api_key(
                 auth_failure_retries += 1
                 LOGGER.info("create_api_key: 500 AUTH_FAILURE (Authorino identity not ready) — retrying")
                 continue
-            if response.status_code in (500, 502, 503) and _is_transient_proxy_response(response):  # type: ignore[bad-argument-type]
+            if response.status_code in (500, 502, 503) and _is_transient_proxy_response(  # type: ignore[bad-argument-type]
+                response,
+            ):
                 proxy_error_retries += 1
                 LOGGER.info(
                     f"create_api_key: {response.status_code} proxy/gateway reload artifact "
