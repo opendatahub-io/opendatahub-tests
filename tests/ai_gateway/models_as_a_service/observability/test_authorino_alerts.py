@@ -19,17 +19,18 @@ from ocp_resources.service import Service
 from ocp_resources.service_monitor import ServiceMonitor
 from timeout_sampler import TimeoutSampler
 
-from tests.ai_gateway.image_constants import AIGatewayImages
 from tests.ai_gateway.models_as_a_service.observability.authorino_alerts import (
     AuthorinoMetricsClient,
     post_authorino_request,
     query_alert_metrics,
 )
 from tests.ai_gateway.models_as_a_service.observability.utils import resolve_maas_monitoring_namespace
+from tests.ai_gateway.models_as_a_service.utils import patch_llmisvc_with_maas_router
 from utilities.certificates_utils import create_ca_bundle_file
-from utilities.constants import MAAS_GATEWAY_NAME, MAAS_GATEWAY_NAMESPACE
+from utilities.constants import ModelStorage
 from utilities.general import generate_random_name
-from utilities.resources.llm_inference_service import LLMInferenceService
+from utilities.image_constants import SharedImages
+from utilities.llmd_utils import create_llmisvc
 
 LOGGER = structlog.get_logger(name=__name__)
 ALERT_NAME = "MaaSAuthorinoAuthenticationHighFailureRate"
@@ -48,6 +49,7 @@ def authorino_monitoring_stack(admin_client: DynamicClient, dsci_resource: DSCIn
             dsci_resource: {
                 "spec": {
                     "monitoring": {
+                        "managementState": "Managed",
                         "metrics": monitoring.get("metrics") or {"storage": {"size": "5Gi", "retention": "1d"}},
                         "alerting": monitoring.get("alerting") or {},
                     }
@@ -68,58 +70,31 @@ def authorino_monitoring_stack(admin_client: DynamicClient, dsci_resource: DSCIn
 
 @pytest.fixture
 def authorino_model_namespace(admin_client: DynamicClient, authorino_monitoring_stack: str) -> Generator[Namespace]:
-    """Provide an isolated namespace for the simulator and remove it after the test."""
+    """Provide an isolated namespace for the model and remove it after the test."""
     with Namespace(client=admin_client, name=generate_random_name(prefix="authorino-alert-")) as namespace:
         yield namespace
 
 
 @pytest.fixture
 def authorino_model_url(admin_client: DynamicClient, authorino_model_namespace: Namespace) -> Generator[str]:
-    """Deploy a CPU-only simulator behind the MaaS gateway and clean it up afterward."""
-    with LLMInferenceService(
-        client=admin_client,
-        name="authorino-alert-simulator",
-        namespace=authorino_model_namespace.name,
-        model={"uri": "hf://placeholder/no-model", "name": "facebook/opt-125m"},
-        storage_initializer={"enabled": False},
-        replicas=1,
-        router={"route": {}, "gateway": {"refs": [{"name": MAAS_GATEWAY_NAME, "namespace": MAAS_GATEWAY_NAMESPACE}]}},
-        template={
-            "containers": [
-                {
-                    "name": "main",
-                    "image": AIGatewayImages.LLMD_INFERENCE_SIM,
-                    "command": ["/app/llm-d-inference-sim"],
-                    "args": [
-                        "--port",
-                        "8000",
-                        "--model",
-                        "facebook/opt-125m",
-                        "--mode",
-                        "random",
-                        "--no-mm-encoder-only",
-                        "--ssl-certfile",
-                        "/var/run/kserve/tls/tls.crt",
-                        "--ssl-keyfile",
-                        "/var/run/kserve/tls/tls.key",
-                    ],
-                    "ports": [{"name": "https", "containerPort": 8000}],
-                    "env": [
-                        {"name": "POD_NAME", "valueFrom": {"fieldRef": {"fieldPath": "metadata.name"}}},
-                        {"name": "POD_NAMESPACE", "valueFrom": {"fieldRef": {"fieldPath": "metadata.namespace"}}},
-                        {"name": "POD_IP", "valueFrom": {"fieldRef": {"fieldPath": "status.podIP"}}},
-                    ],
-                    "resources": {
-                        "requests": {"cpu": "100m", "memory": "256Mi"},
-                        "limits": {"cpu": "500m", "memory": "512Mi"},
-                    },
-                    "readinessProbe": {"httpGet": {"path": "/ready", "port": "https", "scheme": "HTTPS"}},
-                    "livenessProbe": {"httpGet": {"path": "/health", "port": "https", "scheme": "HTTPS"}},
-                }
-            ]
-        },
-    ) as model:
-        model.wait_for_condition(condition="Ready", status="True", timeout=600)
+    """Deploy a TinyLlama modelcar behind the MaaS gateway and clean it up afterward."""
+    with (
+        create_llmisvc(
+            client=admin_client,
+            name="authorino-alert-model",
+            namespace=authorino_model_namespace.name,
+            storage_uri=ModelStorage.OCI.TINYLLAMA,
+            container_image=SharedImages.VLLM_CPU,
+            container_resources={
+                "limits": {"cpu": "2", "memory": "12Gi"},
+                "requests": {"cpu": "1", "memory": "8Gi"},
+            },
+            wait=False,
+            timeout=900,
+        ) as model,
+        patch_llmisvc_with_maas_router(llm_service=model),
+    ):
+        model.wait_for_condition(condition="Ready", status="True", timeout=900)
         yield f"{model.instance.status.url.rstrip('/')}/v1/chat/completions"
 
 
@@ -161,10 +136,9 @@ def authorino_product_prometheus(
         for response in TimeoutSampler(
             wait_timeout=300,
             sleep=10,
-            func=requests.get,
+            func=prometheus.get,
             exceptions_dict={requests.exceptions.ConnectionError: [], requests.exceptions.Timeout: []},
-            url=f"{prometheus.api_url}/api/v1/stores",
-            timeout=30,
+            path="/api/v1/stores",
         ):
             response.raise_for_status()
             result = response.json()
@@ -210,7 +184,7 @@ def test_authorino_authentication_alert_fires(
     prometheus = authorino_product_prometheus
     target_url = authorino_model_url
     target = urlsplit(url=target_url)
-    assert target.scheme == "https" and target.hostname, "Simulator must expose an HTTPS model URL"
+    assert target.scheme == "https" and target.hostname, "Model must expose an HTTPS URL"
     assert not (target.username or target.password or target.query or target.fragment), "Use a URL without credentials"
     rule_resource = PrometheusRule(
         client=admin_client,

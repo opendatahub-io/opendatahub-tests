@@ -1,10 +1,12 @@
 """Query validation independent of the cluster alert lifecycle."""
 
+from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
 
 from tests.ai_gateway.models_as_a_service.observability.authorino_alerts import (
+    AuthorinoMetricsClient,
     query_alert_metrics,
 )
 
@@ -33,8 +35,10 @@ def test_authorino_query_response_validation(
         "data": {"resultType": "vector", "result": []},
     }
     get = Mock(return_value=response)
-    monkeypatch.setattr("tests.ai_gateway.models_as_a_service.observability.authorino_alerts.requests.get", get)
-    prometheus = Mock(api_url="https://metrics.example", headers={}, verify_ssl=True)
+    monkeypatch.setattr("tests.ai_gateway.models_as_a_service.observability.authorino_alerts.requests.Session.get", get)
+    prometheus = AuthorinoMetricsClient(
+        api_url="https://metrics.example", verify_ssl="ca.pem", monitoring_namespace="monitoring"
+    )
     if expected_error:
         with pytest.raises(AssertionError, match=expected_error):
             query_alert_metrics(prometheus=prometheus, query="ALERTS")
@@ -179,15 +183,50 @@ def test_authorino_tls_errors_are_not_retried(monkeypatch: pytest.MonkeyPatch, e
             url="https://model.example/v1/chat/completions",
         )
     else:
-        monkeypatch.setattr("tests.ai_gateway.models_as_a_service.observability.authorino_alerts.requests.get", request)
+        monkeypatch.setattr(
+            "tests.ai_gateway.models_as_a_service.observability.authorino_alerts.requests.Session.get", request
+        )
         sampler = TimeoutSampler(
             wait_timeout=1,
             sleep=0,
             func=query_alert_metrics,
             exceptions_dict={requests.exceptions.ConnectionError: [], requests.exceptions.Timeout: []},
-            prometheus=Mock(api_url="https://metrics.example", verify_ssl=True),
+            prometheus=AuthorinoMetricsClient(
+                api_url="https://metrics.example", verify_ssl="ca.pem", monitoring_namespace="monitoring"
+            ),
             query="up",
         )
     with pytest.raises(TimeoutExpiredError, match="TLS verification failed"):
         next(iter(sampler))
     request.assert_called_once()
+
+
+@pytest.mark.tier1
+@pytest.mark.parametrize(
+    "path",
+    [
+        pytest.param("/api/v1/query", id="test_query_loopback"),
+        pytest.param("/api/v1/stores", id="test_stores_loopback"),
+    ],
+)
+def test_authorino_loopback_ignores_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, path: str) -> None:
+    """Given proxy and netrc settings, when querying Thanos, then requests stay credential-free on loopback."""
+    import requests
+
+    netrc = tmp_path / "netrc"
+    netrc.write_text(data="machine 127.0.0.1 login unwanted password unused\n")
+    monkeypatch.setenv(name="NETRC", value=str(netrc))
+    monkeypatch.setenv(name="HTTP_PROXY", value="http://proxy.invalid:8080")
+    monkeypatch.setenv(name="ALL_PROXY", value="http://proxy.invalid:8080")
+    monkeypatch.setenv(name="NO_PROXY", value="")
+    send = Mock(return_value=requests.Response())
+    monkeypatch.setattr(requests.Session, "send", send)
+    prometheus = AuthorinoMetricsClient(
+        api_url="http://127.0.0.1:19092", verify_ssl="ca.pem", monitoring_namespace="monitoring"
+    )
+    prometheus.get(path=path)
+    prepared = send.call_args.args[0]
+    assert prepared.url == f"http://127.0.0.1:19092{path}"
+    assert "Authorization" not in prepared.headers
+    assert not send.call_args.kwargs["proxies"]
+    assert send.call_args.kwargs["allow_redirects"] is False

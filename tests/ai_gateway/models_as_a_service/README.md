@@ -143,15 +143,18 @@ Authorino monitoring resources (models-as-a-service PR #1769), with
 controller-managed ServiceMonitor and `monitoring.rhobs/v1` authentication rule;
 it does not install substitute rules or change their thresholds.
 
-Function-scoped fixtures enable DSCI metrics and alerting, wait for the monitoring
-stack and Authorino scraping, and deploy a CPU-only simulator in a temporary
-namespace behind the MaaS gateway. No external model URL, GPU, model download,
-or storage credentials are needed. Teardown deletes the simulator and namespace
-and restores the previous DSCI metrics/alerting settings, including when setup
-or the test fails.
+Function-scoped fixtures set DSCI monitoring to `Managed`, enable metrics and
+alerting, wait for the monitoring stack and Authorino scraping, and deploy a
+CPU-only TinyLlama modelcar in a temporary namespace behind the MaaS gateway.
+No external model URL, GPU, or S3 credentials are needed. The model requests
+1 CPU and 8 GiB memory (limits: 2 CPUs and 12 GiB) and requires access to the
+modelcar and runtime images. Teardown deletes the model and namespace and
+restores the previous DSCI management state and metrics/alerting settings,
+including when setup or the test fails.
 
 The test queries product Thanos through a temporary loopback Kubernetes
-port-forward using the runner's cluster credentials. This preserves visibility
+port-forward using the runner's cluster credentials. Thanos requests ignore
+environment proxies and netrc credentials. This preserves visibility
 of aggregated alerts without namespace labels. The runner needs permission to
 patch DSCI, create the model and namespace, and port-forward in the monitoring
 namespace. There is no fallback to UWM.
@@ -161,7 +164,7 @@ uv run pytest -v -s tests/ai_gateway/models_as_a_service/observability/test_auth
 ```
 
 The test verifies an inactive baseline, generates bounded unauthenticated traffic
-to its simulator, requires HTTP 401 responses, observes pending and firing,
+to its model, requires HTTP 401 responses, observes pending and firing,
 and checks that Authorino's `UNAUTHENTICATED` counter increases. It stops traffic
 and waits for recovery, including after an assertion failure. Transient connection
 errors and timeouts are retried within the existing deadlines; TLS certificate
