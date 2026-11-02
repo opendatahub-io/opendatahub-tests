@@ -55,6 +55,13 @@ TIER2_LMEVAL_TASK_CHUNKS: list[list[str]] = [
 
 LOGGER = structlog.get_logger(name=__name__)
 
+RHOAIENG_94190_SKIP_REASON = (
+    "RHOAIENG-94190: LMEvalJob scheduling can race the operator's reconciler "
+    "(handleNewCR is not idempotent against its own last-scheduled-generation annotation write), "
+    "leaving status.state stuck at 'Scheduled' forever even though the pod succeeds. Intermittent, "
+    "so a passing run does not mean the bug is fixed. Fix in review: trustyai-service-operator#1073."
+)
+
 
 @pytest.mark.smoke
 @pytest.mark.ai_safety
@@ -73,13 +80,7 @@ def test_lmevaljob_crd_exists(
     assert crd_resource.exists, f"CRD {crd_name} does not exist on the cluster"
 
 
-@pytest.mark.xfail(
-    reason="RHOAIENG-94190: LMEvalJob scheduling can race the operator's reconciler "
-    "(handleNewCR is not idempotent against its own last-scheduled-generation annotation write), "
-    "leaving status.state stuck at 'Scheduled' forever even though the pod succeeds. Intermittent, "
-    "so a passing run does not mean the bug is fixed. Fix in review: trustyai-service-operator#1073.",
-    strict=False,
-)
+@pytest.mark.jira("RHOAIENG-94190")
 @pytest.mark.skip_on_disconnected
 @pytest.mark.tier1
 @pytest.mark.parametrize(
@@ -105,16 +106,11 @@ def test_lmevaljob_crd_exists(
 def test_lmeval_huggingface_model(admin_client, model_namespace, lmevaljob_hf_pod):
     """Tests that verify running common evaluations (and a custom one) on a model pulled directly from HuggingFace.
     On each test we run a different evaluation task, limiting it to 0.5% of the questions on each eval."""
+    pytest.skip(reason=RHOAIENG_94190_SKIP_REASON)
     validate_lmeval_job_pod_and_logs(lmevaljob_pod=lmevaljob_hf_pod)
 
 
-@pytest.mark.xfail(
-    reason="RHOAIENG-94190: LMEvalJob scheduling can race the operator's reconciler "
-    "(handleNewCR is not idempotent against its own last-scheduled-generation annotation write), "
-    "leaving status.state stuck at 'Scheduled' forever even though the pod succeeds. Intermittent, "
-    "so a passing run does not mean the bug is fixed. Fix in review: trustyai-service-operator#1073.",
-    strict=False,
-)
+@pytest.mark.jira("RHOAIENG-94190")
 @pytest.mark.skip_on_disconnected
 @pytest.mark.tier2
 @pytest.mark.parametrize(
@@ -132,6 +128,7 @@ def test_lmeval_huggingface_model(admin_client, model_namespace, lmevaljob_hf_po
 def test_lmeval_huggingface_model_tier2(admin_client, model_namespace, lmevaljob_hf_pod):
     """Tests that verify running common evaluations (and a custom one) on a model pulled directly from HuggingFace.
     On each test we run a different evaluation task, limiting it to 0.5% of the questions on each eval."""
+    pytest.skip(reason=RHOAIENG_94190_SKIP_REASON)
     validate_lmeval_job_pod_and_logs(lmevaljob_pod=lmevaljob_hf_pod)
 
 
@@ -376,13 +373,7 @@ def test_lmeval_https_verify_certificate_no_ca_bundle(
     )
 
 
-@pytest.mark.xfail(
-    reason="RHOAIENG-94190: LMEvalJob scheduling can race the operator's reconciler "
-    "(handleNewCR is not idempotent against its own last-scheduled-generation annotation write), "
-    "leaving status.state stuck at 'Scheduled' forever even though the pod succeeds. Intermittent, "
-    "so a passing run does not mean the bug is fixed. Fix in review: trustyai-service-operator#1073.",
-    strict=False,
-)
+@pytest.mark.jira("RHOAIENG-94190")
 @pytest.mark.tier1
 @pytest.mark.parametrize(
     "model_namespace",
@@ -408,6 +399,7 @@ def test_lmeval_rerun_after_spec_change(
 
     Validates trustyai-service-operator#729 re-run behavior.
     """
+    pytest.skip(reason=RHOAIENG_94190_SKIP_REASON)
     validate_lmeval_job_pod_and_logs(
         lmevaljob_pod=lmevaljob_vllm_emulator_pod,
         timeout=LMEVAL_SHORT_JOB_TIMEOUT,
