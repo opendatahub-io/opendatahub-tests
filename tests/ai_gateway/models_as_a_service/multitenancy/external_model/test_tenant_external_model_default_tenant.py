@@ -55,6 +55,7 @@ from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils impo
     gateway_status_entry,
     get_json_or_none,
     infer_chat_completion,
+    list_json,
     namespace_name,
     patch_external_model_gateway_refs,
     redact_sensitive,
@@ -119,7 +120,18 @@ def default_tenant_model_namespace(
     if existing is not None:
         # Left over from a previous run (fixed name): adopt it without
         # ownership so cleanup never deletes a namespace this run did not
-        # create.
+        # create. A namespace claimed by a MaasTenantConfig cannot receive
+        # implicit default-tenant attachment (its models belong to that
+        # tenant's gateway), so adopting it would only time out.
+        claimed = list_json(
+            client=admin_client, kind="maastenantconfig", namespace=MODEL_NAMESPACE
+        )
+        if claimed:
+            pytest.skip(
+                f"namespace '{MODEL_NAMESPACE}' is claimed by a MaasTenantConfig "
+                f"({', '.join(item['metadata']['name'] for item in claimed)}); "
+                "the default Gateway will not implicitly attach its models"
+            )
         yield Namespace(client=admin_client, name=MODEL_NAMESPACE)
         return
     with create_ns(

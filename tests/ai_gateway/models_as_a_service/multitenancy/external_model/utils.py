@@ -101,6 +101,7 @@ from utilities.resources.destination_rule import DestinationRule
 from utilities.resources.external_model import ExternalModel
 from utilities.resources.external_provider import ExternalProvider
 from utilities.resources.http_route import HTTPRoute
+from utilities.resources.maastenantconfig import MaasTenantConfig
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -251,6 +252,7 @@ _JSON_WRAPPERS: dict[str, type] = {
     "maasmodelref": MaaSModelRef,
     "maasauthpolicy": MaaSAuthPolicy,
     "maassubscription": MaaSSubscription,
+    "maastenantconfig": MaasTenantConfig,
     "crd": CustomResourceDefinition,
     "service": Service,
 }

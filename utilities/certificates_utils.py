@@ -1,10 +1,12 @@
 import base64
 import os
+import time
 from collections.abc import Generator
 from contextlib import contextmanager
 from functools import cache
 from typing import Any
 
+import certifi
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
@@ -67,6 +69,12 @@ def create_ca_bundle_file(client: DynamicClient) -> str:
 
     with open(filepath, "w") as fd:
         fd.write(bundle)
+
+    # REQUESTS_CA_BUNDLE replaces (it does not extend) requests' default
+    # verification, so a router-only bundle breaks public HTTPS endpoints
+    # (for example catalog schema fetches): append the system trust store.
+    with open(certifi.where(), encoding="utf-8") as system_bundle, open(filepath, "a", encoding="utf-8") as fd:
+        fd.write("\n" + system_bundle.read())
 
     return filepath
 
@@ -175,13 +183,26 @@ def router_ca_bundle_env(client: DynamicClient) -> Generator[str, Any]:
     previous = os.environ.get("REQUESTS_CA_BUNDLE")
     bundle = os.environ.get("TENANT_EXTERNAL_MODEL_CA_BUNDLE", "")
     if not bundle:
-        try:
-            bundle = get_ca_bundle(client=client)
-        except Exception as ex:  # noqa: BLE001 - trust resolution is best-effort
+        # Bounded retries: a transient API error must not leave the whole
+        # session without the router CA (the fixture is session-scoped, so a
+        # one-off failure would otherwise break TLS verification for good).
+        last_error: Exception | None = None
+        for attempt in range(1, 4):
+            try:
+                bundle = get_ca_bundle(client=client)
+                break
+            except Exception as ex:  # noqa: BLE001 - trust resolution is best-effort
+                last_error = ex
+                LOGGER.warning(
+                    f"Failed to resolve the OpenShift router CA bundle (attempt {attempt}/3)",
+                    error=str(ex),
+                )
+                time.sleep(5)
+        else:
             LOGGER.warning(
-                "Failed to resolve the OpenShift router CA bundle; gateway "
-                "inference falls back to the system trust store",
-                error=str(ex),
+                "Failed to resolve the OpenShift router CA bundle after 3 attempts; "
+                "gateway inference falls back to the system trust store",
+                error=str(last_error),
             )
     if bundle:
         os.environ["REQUESTS_CA_BUNDLE"] = bundle
