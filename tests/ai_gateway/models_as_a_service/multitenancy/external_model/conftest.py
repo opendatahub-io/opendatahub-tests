@@ -13,6 +13,7 @@ from contextlib import ExitStack
 from typing import Any
 
 import pytest
+import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 
@@ -24,6 +25,7 @@ from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils impo
     deploy_aitenant_best_effort,
     extmod_tenant_test_params,
     per_tenant_processing_uses_praxis,
+    provision_and_serve_in_tenant,
     record_tenant_external_model_evidence,
     require_tenant_external_model_support,
     tenant_case,
@@ -163,11 +165,10 @@ def failure_env(
     tenant_external_model_tenants: dict[str, dict[str, str]],
     teardown_resources: bool,
 ) -> Generator[dict[str, Any], Any, Any]:
-    """Shared environment for the failure-isolation scenario.
+    """Test data for the failure-isolation scenario.
 
-    One user namespace admitted to both tenants' gateways; models and
-    governance are created per class under one ExitStack so everything is
-    cleaned up at module teardown.
+    One user namespace admitted to both tenants' gateways; cleanup is owned
+    by this fixture and never exposed to the tests.
     """
     with ExitStack() as stack:
         user_ns = stack.enter_context(
@@ -183,5 +184,36 @@ def failure_env(
             "tenant_a": tenant_external_model_tenants["tenant_a"],
             "tenant_b": tenant_external_model_tenants["tenant_b"],
             "user_ns": user_ns,
-            "stack": stack,
+        }
+
+
+@pytest.fixture(scope="module")
+def failure_served(
+    admin_client: DynamicClient,
+    request_session_http: requests.Session,
+    ocp_token_for_actor: str,
+    failure_env: dict[str, Any],
+    teardown_resources: bool,
+) -> Generator[dict[str, dict[str, Any]], Any, Any]:
+    """Each tenant gets its own independent external model, served on its gateway."""
+    with ExitStack() as stack:
+        yield {
+            "a": provision_and_serve_in_tenant(
+                admin_client=admin_client,
+                request_session_http=request_session_http,
+                ocp_token=ocp_token_for_actor,
+                stack=stack,
+                user_namespace=failure_env["user_ns"],
+                case=failure_env["tenant_a"],
+                teardown=teardown_resources,
+            ),
+            "b": provision_and_serve_in_tenant(
+                admin_client=admin_client,
+                request_session_http=request_session_http,
+                ocp_token=ocp_token_for_actor,
+                stack=stack,
+                user_namespace=failure_env["user_ns"],
+                case=failure_env["tenant_b"],
+                teardown=teardown_resources,
+            ),
         }

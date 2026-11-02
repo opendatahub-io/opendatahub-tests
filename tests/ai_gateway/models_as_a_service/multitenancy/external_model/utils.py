@@ -1113,21 +1113,22 @@ def provision_and_serve_in_tenant(
     admin_client: DynamicClient,
     request_session_http: requests.Session,
     ocp_token: str,
-    env: dict[str, Any],
+    stack: ExitStack,
+    user_namespace: Namespace | Project,
     case: dict[str, str],
     teardown: bool,
 ) -> dict[str, Any]:
     """Provision one external model attached to this tenant's gateway and serve it."""
-    model = env["stack"].enter_context(
+    model = stack.enter_context(
         cm=external_model_stack(
             admin_client=admin_client,
             name=f"e2e-fail-{case['tenant_label_name']}",
-            namespace=namespace_name(env["user_ns"]),
+            namespace=namespace_name(user_namespace),
             gateway_refs=[gateway_ref(gateway_name=case["gateway_name"])],
             teardown=teardown,
         )
     )
-    access = env["stack"].enter_context(
+    access = stack.enter_context(
         cm=serve_external_model_in_tenant(
             admin_client=admin_client,
             request_session_http=request_session_http,

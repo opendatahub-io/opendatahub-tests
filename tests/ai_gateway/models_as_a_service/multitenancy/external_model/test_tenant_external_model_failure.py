@@ -13,7 +13,7 @@ resolvedModelAlias dependency). The shared header-echo endpoint doubles as
 the fault injector: httpbingo's ``/status/503`` returns that status, so
 routing tenant A's request there makes its upstream error deterministically
 while tenant B keeps using the healthy ``/anything`` echo path (the AGC
-forwards whatever path follows the model name to the provider verbatim —
+forwards whatever path follows the model name to the provider verbatim –
 see ``external_chat_url``).
 """
 
@@ -23,14 +23,11 @@ import os
 from typing import Any
 
 import pytest
-import requests
 import structlog
-from kubernetes.dynamic import DynamicClient
 
 from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils import (
     assert_served_by_provider,
     infer_external_chat,
-    provision_and_serve_in_tenant,
     redact_sensitive,
 )
 
@@ -45,65 +42,38 @@ pytestmark = pytest.mark.xdist_group(name="tenant_ipp")
 class TestTenantProviderFailureIsolation:
     """A 5xx from one tenant's upstream must not degrade the other tenant."""
 
-    @pytest.fixture(scope="class")
-    def served(
-        self,
-        admin_client: DynamicClient,
-        request_session_http: requests.Session,
-        ocp_token_for_actor: str,
-        failure_env: dict[str, Any],
-        teardown_resources: bool,
-    ) -> dict[str, dict[str, Any]]:
-        """Each tenant gets its own independent external model, served on its gateway."""
-        return {
-            "a": provision_and_serve_in_tenant(
-                admin_client=admin_client,
-                request_session_http=request_session_http,
-                ocp_token=ocp_token_for_actor,
-                env=failure_env,
-                case=failure_env["tenant_a"],
-                teardown=teardown_resources,
-            ),
-            "b": provision_and_serve_in_tenant(
-                admin_client=admin_client,
-                request_session_http=request_session_http,
-                ocp_token=ocp_token_for_actor,
-                env=failure_env,
-                case=failure_env["tenant_b"],
-                teardown=teardown_resources,
-            ),
-        }
-
     @pytest.mark.tier2
     def test_upstream_failure_in_one_tenant_does_not_degrade_the_other(
         self,
         failure_env: dict[str, Any],
-        served: dict[str, dict[str, Any]],
+        failure_served: dict[str, dict[str, Any]],
     ) -> None:
         """Given two tenants each serving their own external model, when tenant
         A's upstream returns 5xx, then tenant B keeps serving healthy traffic
         through its own gateway with its own credential injected."""
         tenant_a, tenant_b = failure_env["tenant_a"], failure_env["tenant_b"]
-        model_a, model_b = served["a"], served["b"]
-
-        def serve(case: dict[str, str], served_model: dict[str, Any], *, retries: int = 6) -> requests.Response:
-            return infer_external_chat(
-                gateway_url=case["gateway_url"],
-                model_namespace=served_model["model"]["namespace"],
-                model_client_name=served_model["model"]["name"],
-                api_key=served_model["api_key"],
-                path_tag=served_model["model"]["path_tag"],
-                retries=retries,
-            )
+        model_a, model_b = failure_served["a"], failure_served["b"]
 
         LOGGER.info("Baseline: asserting both tenant A and tenant B serve healthy traffic")
         assert_served_by_provider(
-            response=serve(tenant_a, model_a),
+            response=infer_external_chat(
+                gateway_url=tenant_a["gateway_url"],
+                model_namespace=model_a["model"]["namespace"],
+                model_client_name=model_a["model"]["name"],
+                api_key=model_a["api_key"],
+                path_tag=model_a["model"]["path_tag"],
+            ),
             path_tag=model_a["model"]["path_tag"],
             credential=model_a["model"]["credential"],
         )
         assert_served_by_provider(
-            response=serve(tenant_b, model_b),
+            response=infer_external_chat(
+                gateway_url=tenant_b["gateway_url"],
+                model_namespace=model_b["model"]["namespace"],
+                model_client_name=model_b["model"]["name"],
+                api_key=model_b["api_key"],
+                path_tag=model_b["model"]["path_tag"],
+            ),
             path_tag=model_b["model"]["path_tag"],
             credential=model_b["model"]["credential"],
         )
@@ -125,7 +95,14 @@ class TestTenantProviderFailureIsolation:
 
         LOGGER.info("Isolation: asserting tenant B still serves despite tenant A's 503")
         assert_served_by_provider(
-            response=serve(tenant_b, model_b, retries=1),
+            response=infer_external_chat(
+                gateway_url=tenant_b["gateway_url"],
+                model_namespace=model_b["model"]["namespace"],
+                model_client_name=model_b["model"]["name"],
+                api_key=model_b["api_key"],
+                path_tag=model_b["model"]["path_tag"],
+                retries=1,
+            ),
             path_tag=model_b["model"]["path_tag"],
             credential=model_b["model"]["credential"],
         )
