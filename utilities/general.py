@@ -86,15 +86,18 @@ def b64_encoded_string(string_to_encode: str) -> str:
 
 
 def namespace_fs_group(client: DynamicClient, namespace: str) -> int | None:
-    """Return fsGroup from OpenShift namespace SCC uid-range annotation when present."""
+    """Return fsGroup from the namespace's effective OpenShift SCC group range."""
     ns = Namespace(client=client, name=namespace)
     if not ns.exists:
         return None
     annotations = ns.instance.metadata.annotations or {}
-    uid_range = annotations.get("openshift.io/sa.scc.uid-range")
-    if not uid_range:
+    group_range = annotations.get("openshift.io/sa.scc.supplemental-groups")
+    if group_range is None:
+        group_range = annotations.get("openshift.io/sa.scc.uid-range")
+    if not group_range:
         return None
-    return int(uid_range.split("/")[0])
+    first_block = group_range.split(",")[0]
+    return int(first_block.split("/")[0].split("-")[0])
 
 
 def download_model_data(

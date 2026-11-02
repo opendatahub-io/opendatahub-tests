@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 from ocp_resources.namespace import Namespace
 from ocp_resources.route import Route
 
-from tests.ai_safety.evalhub.evalcard.constants import EVALCARD_OCI_REPO, EVALCARD_OCI_TAG
+from tests.ai_safety.evalhub.evalcard.constants import (
+    EVALCARD_OCI_LAYER_MEDIA_TYPE,
+    EVALCARD_OCI_REPO,
+    EVALCARD_OCI_TAG,
+)
 from tests.ai_safety.evalhub.evalcard.utils import (
-    get_evalcard_http,
+    get_evalcard_from_mlflow,
+    get_evalcard_manifest_from_oci,
     validate_evalcard_collection_fields,
     validate_evalcard_complete_mode,
     validate_evalcard_schema,
@@ -18,7 +25,7 @@ from tests.ai_safety.evalhub.utils import (
     wait_for_evalhub_job,
 )
 from utilities.constants import OCIRegistry
-from utilities.registry_utils import pull_manifest_from_oci_registry
+from utilities.registry_utils import pull_blob_from_oci_registry
 
 
 @pytest.mark.parametrize(
@@ -34,8 +41,8 @@ from utilities.registry_utils import pull_manifest_from_oci_registry
 class TestEvalHubEvalCard:
     """EvalCard generation integration tests.
 
-    Verifies that evaluation disclosure cards (evalcard.yaml) are generated
-    and stored correctly for various job types.
+    Verifies that evaluation cards (evaluation-card.json) are generated and
+    stored in MLflow (and OCI when configured) for various job types.
     """
 
     def test_evalcard_single_task_run(
@@ -44,21 +51,19 @@ class TestEvalHubEvalCard:
         tenant_a_token: str,
         tenant_a_namespace: Namespace,
         evalhub_mt_ca_bundle_file: str,
-        evalhub_mt_route: Route,
+        evalcard_mlflow_url: str,
     ) -> None:
         """Single-task job with MLflow experiment produces a valid eval card."""
-        job_id, _ = evalcard_single_task_job
+        job_id, job_result = evalcard_single_task_job
 
-        resp = get_evalcard_http(
-            host=evalhub_mt_route.host,
+        card = get_evalcard_from_mlflow(
+            mlflow_url=evalcard_mlflow_url,
             token=tenant_a_token,
             ca_bundle_file=evalhub_mt_ca_bundle_file,
-            tenant=tenant_a_namespace.name,
+            workspace=tenant_a_namespace.name,
+            experiment_id=job_result["resource"]["mlflow_experiment_id"],
             job_id=job_id,
         )
-        assert resp.status_code == 200, f"Expected 200 for evalcard retrieval, got {resp.status_code}: {resp.text}"
-
-        card = resp.json()
         validate_evalcard_schema(card=card, job_id=job_id)
 
         assert len(card["context"]["benchmarks"]) == 1, (
@@ -79,21 +84,19 @@ class TestEvalHubEvalCard:
         tenant_a_token: str,
         tenant_a_namespace: Namespace,
         evalhub_mt_ca_bundle_file: str,
-        evalhub_mt_route: Route,
+        evalcard_mlflow_url: str,
     ) -> None:
         """Collection job produces an aggregated eval card with collection-level results."""
-        job_id, _ = evalcard_collection_job
+        job_id, job_result = evalcard_collection_job
 
-        resp = get_evalcard_http(
-            host=evalhub_mt_route.host,
+        card = get_evalcard_from_mlflow(
+            mlflow_url=evalcard_mlflow_url,
             token=tenant_a_token,
             ca_bundle_file=evalhub_mt_ca_bundle_file,
-            tenant=tenant_a_namespace.name,
+            workspace=tenant_a_namespace.name,
+            experiment_id=job_result["resource"]["mlflow_experiment_id"],
             job_id=job_id,
         )
-        assert resp.status_code == 200, f"Expected 200 for collection evalcard, got {resp.status_code}: {resp.text}"
-
-        card = resp.json()
         validate_evalcard_schema(card=card, job_id=job_id)
         validate_evalcard_collection_fields(card=card, collection_id=evalcard_collection_id)
 
@@ -107,21 +110,19 @@ class TestEvalHubEvalCard:
         tenant_a_token: str,
         tenant_a_namespace: Namespace,
         evalhub_mt_ca_bundle_file: str,
-        evalhub_mt_route: Route,
+        evalcard_mlflow_url: str,
     ) -> None:
         """Production job with pass_criteria and weights produces a complete card."""
-        job_id, _ = evalcard_complete_job
+        job_id, job_result = evalcard_complete_job
 
-        resp = get_evalcard_http(
-            host=evalhub_mt_route.host,
+        card = get_evalcard_from_mlflow(
+            mlflow_url=evalcard_mlflow_url,
             token=tenant_a_token,
             ca_bundle_file=evalhub_mt_ca_bundle_file,
-            tenant=tenant_a_namespace.name,
+            workspace=tenant_a_namespace.name,
+            experiment_id=job_result["resource"]["mlflow_experiment_id"],
             job_id=job_id,
         )
-        assert resp.status_code == 200, f"Expected 200 for complete evalcard, got {resp.status_code}: {resp.text}"
-
-        card = resp.json()
         validate_evalcard_schema(card=card, job_id=job_id)
         validate_evalcard_complete_mode(card=card)
 
@@ -180,13 +181,13 @@ class TestEvalHubEvalCard:
         tenant_a_token: str,
         tenant_a_namespace: Namespace,
         evalhub_mt_ca_bundle_file: str,
-        evalhub_mt_route: Route,
+        evalcard_mlflow_url: str,
     ) -> None:
         """Eval card is stored as an MLflow artifact and retrievable.
 
         Verifies that the job response contains mlflow_experiment_id (indicating
-        MLflow integration is active) and that the eval card can be retrieved
-        via the EvalHub discovery API for the same job.
+        MLflow integration is active) and that EvalHub uploaded the eval card
+        to an MLflow run tagged with the job ID.
         """
         job_id, job_result = evalcard_single_task_job
 
@@ -195,25 +196,21 @@ class TestEvalHubEvalCard:
             f"Expected mlflow_experiment_id in job response, got: {job_result.get('resource', {})}"
         )
 
-        resp = get_evalcard_http(
-            host=evalhub_mt_route.host,
+        card = get_evalcard_from_mlflow(
+            mlflow_url=evalcard_mlflow_url,
             token=tenant_a_token,
             ca_bundle_file=evalhub_mt_ca_bundle_file,
-            tenant=tenant_a_namespace.name,
+            workspace=tenant_a_namespace.name,
+            experiment_id=job_result["resource"]["mlflow_experiment_id"],
             job_id=job_id,
         )
-        assert resp.status_code == 200, (
-            f"Expected 200 for evalcard MLflow retrieval, got {resp.status_code}: {resp.text}"
-        )
-
-        card = resp.json()
         validate_evalcard_schema(card=card, job_id=job_id)
 
         has_mlflow_run = any(bench.get("mlflow_run_id") for bench in card["results"]["benchmarks"])
         assert has_mlflow_run, "At least one benchmark result should have mlflow_run_id when MLflow is configured"
 
     @pytest.mark.parametrize(
-        "oci_registry_pod_with_minio",
+        "oci_registry_pod_with_s3",
         [pytest.param(OCIRegistry.PodConfig.REGISTRY_BASE_CONFIG)],
         indirect=True,
     )
@@ -223,29 +220,39 @@ class TestEvalHubEvalCard:
         tenant_a_token: str,
         tenant_a_namespace: Namespace,
         evalhub_mt_ca_bundle_file: str,
-        evalhub_mt_route: Route,
+        evalcard_mlflow_url: str,
         oci_registry_host: str,
     ) -> None:
         """Eval card is exported to an OCI registry and retrievable as an OCI artifact."""
-        job_id, _ = evalcard_oci_job
+        job_id, job_result = evalcard_oci_job
 
         registry_url = f"http://{oci_registry_host}"
-        manifest = pull_manifest_from_oci_registry(
+        manifest = get_evalcard_manifest_from_oci(
             registry_url=registry_url,
             repo=EVALCARD_OCI_REPO,
-            tag=EVALCARD_OCI_TAG,
+            tag=f"{EVALCARD_OCI_TAG}-{job_id}",
         )
         assert manifest, "OCI manifest must not be empty"
-        assert "layers" in manifest, "OCI manifest must contain layers"
-        assert len(manifest["layers"]) >= 1, "OCI manifest must have at least one layer"
+        card_layers = [
+            layer for layer in manifest.get("layers", []) if layer.get("mediaType") == EVALCARD_OCI_LAYER_MEDIA_TYPE
+        ]
+        assert len(card_layers) == 1, f"Expected one eval card layer in OCI manifest, got: {manifest.get('layers')}"
 
-        resp = get_evalcard_http(
-            host=evalhub_mt_route.host,
+        oci_card = json.loads(
+            pull_blob_from_oci_registry(
+                registry_url=registry_url,
+                repo=EVALCARD_OCI_REPO,
+                digest=card_layers[0]["digest"],
+            )
+        )
+        validate_evalcard_schema(card=oci_card, job_id=job_id)
+
+        card = get_evalcard_from_mlflow(
+            mlflow_url=evalcard_mlflow_url,
             token=tenant_a_token,
             ca_bundle_file=evalhub_mt_ca_bundle_file,
-            tenant=tenant_a_namespace.name,
+            workspace=tenant_a_namespace.name,
+            experiment_id=job_result["resource"]["mlflow_experiment_id"],
             job_id=job_id,
         )
-        assert resp.status_code == 200, f"Expected 200 for OCI-exported evalcard, got {resp.status_code}: {resp.text}"
-        card = resp.json()
-        validate_evalcard_schema(card=card, job_id=job_id)
+        assert oci_card == card, "Eval card exported to OCI must match the card stored in MLflow"

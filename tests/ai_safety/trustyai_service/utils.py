@@ -25,7 +25,7 @@ from ocp_resources.trustyai_service import TrustyAIService
 from timeout_sampler import TimeoutSampler
 
 from utilities.constants import MARIA_DB_IMAGE, TRUSTYAI_SERVICE_NAME
-from utilities.general import validate_container_images, wait_for_pods_by_labels
+from utilities.general import namespace_fs_group, validate_container_images, wait_for_pods_by_labels
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -135,6 +135,9 @@ def create_standalone_mariadb(
     Uses Red Hat registry image to avoid Docker Hub rate limits.
     """
     ca_cert, server_cert, server_key = generate_db_tls_certs(namespace_name=namespace_name, service_name=name)
+    pod_security_context: dict[str, Any] = {}
+    if (fs_group := namespace_fs_group(client=client, namespace=namespace_name)) is not None:
+        pod_security_context["fsGroup"] = fs_group
 
     with (
         Secret(
@@ -279,6 +282,7 @@ def create_standalone_mariadb(
                 ],
                 "dnsPolicy": "ClusterFirst",
                 "restartPolicy": "Always",
+                "securityContext": pod_security_context,
                 "volumes": [
                     {"name": "mariadb-data", "persistentVolumeClaim": {"claimName": name}},
                     {"name": "ca-cert", "secret": {"secretName": f"{name}-ca"}},

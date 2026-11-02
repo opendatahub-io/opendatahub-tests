@@ -12,14 +12,16 @@ How the Pod works:
 
 Note:
   This test requires internet access to download models from Hugging Face (e.g., "gpt2").
-  It will fail in disconnected/air-gapped environments where external model downloads are not available.
+  It is automatically skipped on disconnected/air-gapped clusters.
 """
 
 import pytest
 from ocp_resources.pod import Pod
 
+pytestmark = pytest.mark.usefixtures("skip_if_arm64_cluster_detected")
 
-@pytest.mark.skip_on_disconnected
+
+@pytest.mark.usefixtures("skip_ovms_on_disconnected")
 @pytest.mark.parametrize(
     "model_namespace",
     [pytest.param({"name": "ovms-smoke"}, id="ovms-smoke", marks=pytest.mark.smoke)],
@@ -43,7 +45,7 @@ class TestOVMSSmokeInOpenShift:
 
         Note:
             This test requires internet access to download models from Hugging Face.
-            It will fail in disconnected/air-gapped environments.
+            It is automatically skipped on disconnected/air-gapped clusters.
 
         Args:
             ovms_smoke_pod: The completed Kubernetes Pod that ran the smoke scripts.

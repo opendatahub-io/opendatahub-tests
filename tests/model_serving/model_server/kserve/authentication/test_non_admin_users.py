@@ -7,6 +7,9 @@ from utilities.constants import Protocols
 from utilities.inference_utils import Inference
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
+# The test deploys an OVMS runtime, whose image is not built for arm64
+pytestmark = pytest.mark.usefixtures("skip_if_arm64_cluster_detected")
+
 
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, unprivileged_s3_ovms_raw_inference_service",

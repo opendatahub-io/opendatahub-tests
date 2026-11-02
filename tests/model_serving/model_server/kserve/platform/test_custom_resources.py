@@ -11,7 +11,12 @@ from utilities.constants import (
 
 LOGGER = structlog.get_logger(name=__name__)
 
-pytestmark = [pytest.mark.tier3, pytest.mark.slow, pytest.mark.usefixtures("valid_aws_config")]
+# The test deploys an OVMS runtime, whose image is not built for arm64
+pytestmark = [
+    pytest.mark.tier3,
+    pytest.mark.slow,
+    pytest.mark.usefixtures("skip_if_arm64_cluster_detected", "valid_aws_config"),
+]
 
 
 def wait_for_isvc_model_status(isvc: InferenceService, target_model_state: str, transition_status: str) -> None:
