@@ -123,9 +123,7 @@ def default_tenant_model_namespace(
         # create. A namespace claimed by a MaasTenantConfig cannot receive
         # implicit default-tenant attachment (its models belong to that
         # tenant's gateway), so adopting it would only time out.
-        claimed = list_json(
-            client=admin_client, kind="maastenantconfig", namespace=MODEL_NAMESPACE
-        )
+        claimed = list_json(client=admin_client, kind="maastenantconfig", namespace=MODEL_NAMESPACE)
         if claimed:
             pytest.skip(
                 f"namespace '{MODEL_NAMESPACE}' is claimed by a MaasTenantConfig "
