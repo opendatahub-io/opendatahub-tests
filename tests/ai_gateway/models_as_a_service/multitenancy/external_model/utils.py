@@ -1883,6 +1883,42 @@ def assert_not_served(response: requests.Response) -> None:
         )
 
 
+def conflict_cr_name() -> str:
+    """A CR name shared by one test's conflict pair, unique across tests."""
+    return f"e2e-cfl-{uuid.uuid4().hex[:6]}"
+
+
+def provision_model_in_stack(stack: ExitStack, admin_client: DynamicClient, **kwargs: Any) -> dict[str, Any]:
+    """Create one external model serving stack that lives until module teardown."""
+    return stack.enter_context(cm=external_model_stack(admin_client, **kwargs))
+
+
+def serve_in_tenant_with_ns_suffix(
+    admin_client: DynamicClient,
+    request_session_http: requests.Session,
+    ocp_token: str,
+    stack: ExitStack,
+    case: dict[str, str],
+    model: dict[str, Any],
+    **kwargs: Any,
+) -> dict[str, str]:
+    """Serve one model under a tenant and keep the policy/subscription until module teardown."""
+    ns_suffix = model["namespace"].rsplit("-", 1)[-1]
+    return stack.enter_context(
+        cm=serve_external_model_in_tenant(
+            admin_client,
+            request_session_http,
+            ocp_token,
+            tenant=case,
+            model_name=model["name"],
+            model_namespace=model["namespace"],
+            policy_name=f"{model['name']}-{ns_suffix}-access",
+            subscription_name=f"{model['name']}-{ns_suffix}-sub",
+            **kwargs,
+        )
+    )
+
+
 def serve_model_in_tenant_stack(
     admin_client: DynamicClient,
     request_session_http: requests.Session,
