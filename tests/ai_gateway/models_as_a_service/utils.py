@@ -1,5 +1,6 @@
 import base64
 import json
+import os
 from collections.abc import Generator
 from contextlib import contextmanager
 from json import JSONDecodeError
@@ -46,7 +47,8 @@ DEFAULT_MAAS_TENANT_NAME = "default-tenant"
 MaaSTenantResource = MaasTenantConfig | Tenant
 
 AITENANT_INFRA_NAMESPACE: str = "ai-tenants"
-AIGATEWAY_GATEWAY_CLASS_NAME: str = "openshift-default"
+# OCP's built-in GatewayAPI class; override via AITENANT_GATEWAY_CLASS_NAME when absent.
+AIGATEWAY_GATEWAY_CLASS_NAME: str = os.environ.get("AITENANT_GATEWAY_CLASS_NAME", "openshift-default")
 AIGATEWAY_BOOTSTRAP_GATEWAY_LISTENERS: list[dict[str, Any]] = [
     {
         "name": "http",
@@ -728,6 +730,10 @@ def create_api_key(
         subscription: Optional MaaSSubscription name to bind at mint time.
         ephemeral: When True, marks the key as short-lived/programmatic.
         extra_headers: Optional additional HTTP headers (for example X-MaaS-Tenant).
+
+    Retries only responses provably rejected before maas-api saw the request
+    (empty 403 and AUTH_FAILURE 500). Plain proxy 5xx is not retried: a reset
+    after the request was forwarded can orphan a created key.
     """
     api_keys_url = f"{base_url}/v1/api-keys"
     payload: dict[str, Any] = {"name": api_key_name}

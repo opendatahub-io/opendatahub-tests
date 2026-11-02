@@ -1,7 +1,12 @@
 import base64
 import os
+import time
+from collections.abc import Generator
+from contextlib import contextmanager
 from functools import cache
+from typing import Any
 
+import certifi
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
@@ -40,7 +45,10 @@ def create_ca_bundle_file(client: DynamicClient) -> str:
     Creates a ca bundle file from the router certificate secret.
 
     Queries the default IngressController to determine the correct secret name,
-    supporting both default and custom ingress certificates.
+    supporting both default and custom ingress certificates. Appends the system
+    trust store (certifi): REQUESTS_CA_BUNDLE replaces rather than extends
+    requests' default verification, so a router-only bundle would break public
+    HTTPS endpoints.
 
     Args:
         client (DynamicClient): DynamicClient object
@@ -64,6 +72,9 @@ def create_ca_bundle_file(client: DynamicClient) -> str:
 
     with open(filepath, "w") as fd:
         fd.write(bundle)
+
+    with open(certifi.where(), encoding="utf-8") as system_bundle, open(filepath, "a", encoding="utf-8") as fd:
+        fd.write("\n" + system_bundle.read())
 
     return filepath
 
@@ -156,3 +167,47 @@ def create_ca_bundle_with_router_cert(
         if router_ca_content not in bundle_content:
             with open(ca_bundle_path, "a", encoding="utf-8") as bundle_append:
                 bundle_append.write("\n" + router_ca_content)
+
+
+@contextmanager
+def router_ca_bundle_env(client: DynamicClient) -> Generator[str, Any]:
+    """Export the router CA bundle through REQUESTS_CA_BUNDLE for the suite.
+
+    Gateway Route certificates are signed by the cluster's router CA, which is
+    not in the runner's trust store; without this, requests-based inference
+    against gateway Routes fails TLS verification. Honors an explicit
+    TENANT_EXTERNAL_MODEL_CA_BUNDLE override; yields the bundle path, or ""
+    when none is needed or available (managed clusters). Restores the previous
+    environment state on exit. Resolution is retried (3x5s): a transient API
+    error must not leave a session-scoped consumer without the router CA.
+    """
+    previous = os.environ.get("REQUESTS_CA_BUNDLE")
+    bundle = os.environ.get("TENANT_EXTERNAL_MODEL_CA_BUNDLE", "")
+    if not bundle:
+        last_error: Exception | None = None
+        for attempt in range(1, 4):
+            try:
+                bundle = get_ca_bundle(client=client)
+                break
+            except Exception as ex:  # noqa: BLE001 - trust resolution is best-effort
+                last_error = ex
+                LOGGER.warning(
+                    f"Failed to resolve the OpenShift router CA bundle (attempt {attempt}/3)",
+                    error=str(ex),
+                )
+                time.sleep(5)
+        else:
+            LOGGER.warning(
+                "Failed to resolve the OpenShift router CA bundle after 3 attempts; "
+                "gateway inference falls back to the system trust store",
+                error=str(last_error),
+            )
+    if bundle:
+        os.environ["REQUESTS_CA_BUNDLE"] = bundle
+    try:
+        yield bundle
+    finally:
+        if previous is None:
+            os.environ.pop("REQUESTS_CA_BUNDLE", None)
+        else:
+            os.environ["REQUESTS_CA_BUNDLE"] = previous

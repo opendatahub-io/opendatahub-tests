@@ -53,7 +53,6 @@ LOGGER = structlog.get_logger(name=__name__)
 
 MAAS_API_DEPLOYMENT_NAME = "maas-api"
 MAAS_HOST_PREFIX = "maas."
-TENANT_GATEWAY_SERVICE_SUFFIX = "-openshift-default"
 TENANT_GATEWAY_ROUTE_SUFFIX = "-route"
 GATEWAY_ACCESS_LABEL_PREFIX = "maas.opendatahub.io/gateway-access-"
 GATEWAY_HTTP_PORT = 80
@@ -103,8 +102,13 @@ def ingress_domain_from_maas_host(maas_host: str) -> str:
 
 
 def tenant_gateway_service_name(gateway_name: str) -> str:
-    """Return the OpenShift Service fronting a tenant Gateway."""
-    return f"{gateway_name}{TENANT_GATEWAY_SERVICE_SUFFIX}"
+    """Return the OpenShift Service fronting a tenant Gateway.
+
+    The openshift.io gateway controller names the per-Gateway LoadBalancer
+    Service ``<gateway-name>-<gateway-class>`` (source-suite convention), so
+    the suffix must follow the configured class, not a fixed literal.
+    """
+    return f"{gateway_name}-{AIGATEWAY_GATEWAY_CLASS_NAME}"
 
 
 def tenant_gateway_route_name(gateway_name: str) -> str:
@@ -303,6 +307,23 @@ def gateway_access_label_key(gateway_name: str) -> str:
 def gateway_access_namespace_labels(gateway_name: str) -> dict[str, str]:
     """Return namespace labels required for a tenant Gateway to accept HTTPRoutes."""
     return {gateway_access_label_key(gateway_name=gateway_name): "true"}
+
+
+def admit_namespace_to_gateway(admin_client: DynamicClient, namespace: str, gateway_name: str) -> None:
+    """Label a namespace as admitted by a tenant Gateway's listeners (no undo).
+
+    Port of the source suite's ``apply_gateway_access_label``: the tenant
+    namespace itself must carry the per-gateway access label for
+    tenant-own models' HTTPRoutes to be admitted by the tenant Gateway —
+    the listeners select on the per-gateway label, not the generic one
+    maas-controller stamps on tenant namespaces. The label is not removed
+    on exit: the namespace is torn down with its tenant.
+    """
+    namespace_obj = Namespace(client=admin_client, name=namespace, ensure_exists=True)
+    assert namespace_obj.exists, f"namespace '{namespace}' not found"
+    ResourceEditor(
+        patches={namespace_obj: {"metadata": {"labels": gateway_access_namespace_labels(gateway_name=gateway_name)}}}
+    ).update()
 
 
 def tenant_gateway_hostname(gateway_name: str, maas_host: str) -> str:
