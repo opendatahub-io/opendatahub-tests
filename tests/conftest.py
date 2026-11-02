@@ -73,7 +73,6 @@ from utilities.infra import (
 )
 from utilities.logger import RedactedString
 from utilities.mariadb_utils import wait_for_mariadb_operator_deployments
-from utilities.minio import create_minio_data_connection_secret
 from utilities.openshell_utils import get_cluster_apps_domain, wait_for_openshell_gateway_pod
 from utilities.operator_utils import get_cluster_service_version, get_csv_related_images
 from utilities.serving_runtime import get_runtime_image_from_template
@@ -1343,109 +1342,6 @@ def oci_registry_pod_with_s3(
                         "name": "ZOT_STORAGE_STORAGEDRIVER_SECRETKEY",
                         "valueFrom": {
                             "secretKeyRef": {"name": oci_registry_s3_secret.name, "key": "AWS_SECRET_ACCESS_KEY"},
-                        },
-                    },
-                    {
-                        "name": "ZOT_STORAGE_STORAGEDRIVER_SECURE",
-                        "value": OCIRegistry.Storage.STORAGE_STORAGEDRIVER_SECURE,
-                    },
-                    {
-                        "name": "ZOT_STORAGE_STORAGEDRIVER_FORCEPATHSTYLE",
-                        "value": OCIRegistry.Storage.STORAGE_STORAGEDRIVER_FORCEPATHSTYLE,
-                    },
-                    {"name": "ZOT_HTTP_ADDRESS", "value": OCIRegistry.Metadata.DEFAULT_HTTP_ADDRESS},
-                    {"name": "ZOT_HTTP_PORT", "value": str(OCIRegistry.Metadata.DEFAULT_PORT)},
-                    {"name": "ZOT_LOG_LEVEL", "value": "info"},
-                ],
-                "image": fixture_config.get("image", OCIRegistry.PodConfig.REGISTRY_IMAGE),
-                "name": OCIRegistry.Metadata.NAME,
-                "securityContext": {
-                    "allowPrivilegeEscalation": False,
-                    "capabilities": {"drop": ["ALL"]},
-                    "runAsNonRoot": True,
-                    "seccompProfile": {"type": "RuntimeDefault"},
-                },
-                "volumeMounts": [
-                    {
-                        "name": "zot-data",
-                        "mountPath": "/var/lib/registry",
-                    }
-                ],
-            }
-        ],
-        volumes=[
-            {
-                "name": "zot-data",
-                "emptyDir": {},
-            }
-        ],
-        label=pod_labels,
-        annotations=fixture_config.get("annotations"),
-    ) as oci_pod:
-        oci_pod.wait_for_condition(condition="Ready", status="True")
-        yield oci_pod
-
-
-@pytest.fixture(scope="class")
-def oci_registry_minio_secret(
-    admin_client: DynamicClient,
-    oci_namespace: Namespace,
-    minio_service: Service,
-) -> Generator[Secret, Any, Any]:
-    """MinIO storage credentials in the OCI registry namespace."""
-    with create_minio_data_connection_secret(
-        minio_service=minio_service,
-        model_namespace=oci_namespace.name,
-        aws_s3_bucket=MinIo.Buckets.MODELMESH_EXAMPLE_MODELS,
-        client=admin_client,
-    ) as secret:
-        yield secret
-
-
-@pytest.fixture(scope="class")
-def oci_registry_pod_with_minio(
-    request: FixtureRequest,
-    admin_client: DynamicClient,
-    oci_namespace: Namespace,
-    minio_service: Service,
-    oci_registry_minio_secret: Secret,
-) -> Generator[Pod, Any, Any]:
-    """OCI registry Pod with MinIO storage credentials supplied by a Secret."""
-    fixture_config = getattr(request, "param", {})
-    pod_labels = {Labels.Openshift.APP: OCIRegistry.Metadata.NAME}
-
-    if labels := fixture_config.get("labels"):
-        pod_labels.update(labels)
-
-    minio_fqdn = f"{minio_service.name}.{minio_service.namespace}.svc.cluster.local"
-    minio_endpoint = f"{minio_fqdn}:{MinIo.Metadata.DEFAULT_PORT}"
-
-    with Pod(
-        client=admin_client,
-        name=OCIRegistry.Metadata.NAME,
-        namespace=oci_namespace.name,
-        containers=[
-            {
-                "args": fixture_config.get("args"),
-                "env": [
-                    {"name": "ZOT_STORAGE_STORAGEDRIVER_NAME", "value": OCIRegistry.Storage.STORAGE_DRIVER},
-                    {
-                        "name": "ZOT_STORAGE_STORAGEDRIVER_ROOTDIRECTORY",
-                        "value": OCIRegistry.Storage.STORAGE_DRIVER_ROOT_DIRECTORY,
-                    },
-                    {"name": "ZOT_STORAGE_STORAGEDRIVER_BUCKET", "value": MinIo.Buckets.MODELMESH_EXAMPLE_MODELS},
-                    {"name": "ZOT_STORAGE_STORAGEDRIVER_REGION", "value": OCIRegistry.Storage.STORAGE_DRIVER_REGION},
-                    {"name": "ZOT_STORAGE_STORAGEDRIVER_REGIONENDPOINT", "value": f"http://{minio_endpoint}"},
-                    {
-                        "name": "ZOT_STORAGE_STORAGEDRIVER_ACCESSKEY",
-                        "valueFrom": {
-                            "secretKeyRef": {"name": oci_registry_minio_secret.name, "key": "AWS_ACCESS_KEY_ID"},
-                        },
-                    },
-                    {
-                        "name": "ZOT_STORAGE_STORAGEDRIVER_SECRETKEY",
-                        "valueFrom": {
-                            "secretKeyRef": {"name": oci_registry_minio_secret.name, "key": "AWS_SECRET_ACCESS_KEY"},
                         },
                     },
                     {
