@@ -84,6 +84,7 @@ from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import (
     expected_tenant_namespace_name,
 )
 from tests.ai_gateway.models_as_a_service.multitenancy.utils import (
+    gateway_access_label_key,
     gateway_access_namespace_labels,
 )
 from tests.ai_gateway.models_as_a_service.utils import (
@@ -284,6 +285,26 @@ def wait_until(
             return result
     except TimeoutExpiredError as exc:
         raise TimeoutError(f"timed out after {timeout}s waiting for: {what}") from exc
+
+
+def wait_for_not_found(
+    client: DynamicClient,
+    kind: str,
+    name: str,
+    namespace: str | None = None,
+    timeout: int = TENANT_EXTERNAL_MODEL_READY_TIMEOUT,
+) -> None:
+    """Wait until a resource is actually gone (a failed delete cannot pass vacuously)."""
+
+    def _check() -> bool:
+        assert get_json_or_none(client, kind, name, namespace) is None, f"{kind}/{namespace}/{name} still exists"
+        return True
+
+    wait_until(
+        check=_check,
+        timeout=timeout,
+        what=f"{kind}/{namespace}/{name} deletion",
+    )
 
 
 def redact_sensitive(value: Any, *, max_length: int = 300) -> str:
@@ -778,6 +799,32 @@ def external_model_stack(
         }
 
 
+def patch_external_model(
+    admin_client: DynamicClient,
+    name: str,
+    namespace: str,
+    fields: dict[str, Any],
+) -> None:
+    """Merge-patch an ExternalModel's spec (gatewayRefs / provider set edits)."""
+    external_model = ExternalModel(
+        client=admin_client,
+        name=name,
+        namespace=namespace,
+        ensure_exists=True,
+    )
+    ResourceEditor(patches={external_model: {"spec": fields}}).update()
+
+
+def patch_external_model_gateway_refs(
+    admin_client: DynamicClient,
+    name: str,
+    namespace: str,
+    refs: list[dict[str, str]] | None,
+) -> None:
+    """Set (or remove, with None) an ExternalModel's ``spec.gatewayRefs``."""
+    patch_external_model(admin_client=admin_client, name=name, namespace=namespace, fields={"gatewayRefs": refs})
+
+
 def gateway_status_entry(
     admin_client: DynamicClient,
     model_name: str,
@@ -874,6 +921,70 @@ def wait_for_gateway_attachment_ready(
         matcher=_matcher,
         what="report Ready",
         timeout=timeout,
+    )
+
+
+def wait_for_gateway_attachment_reason(
+    admin_client: DynamicClient,
+    model_name: str,
+    model_namespace: str,
+    gateway_name: str,
+    reason: str,
+    *,
+    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+    timeout: int | None = None,
+) -> dict[str, Any]:
+    """Wait until one gateway attachment reports a condition with *reason*.
+
+    Used for NotAllowedByListeners (gateway-attachment authorization) and
+    ModelNameConflict (client-facing name conflicts): the reason is the
+    contract, matched on the per-gateway ``status.gateways`` entry when
+    present, otherwise on the model's aggregate conditions.
+    """
+
+    def _matcher(conditions: list[dict[str, Any]], where: str) -> dict[str, Any]:
+        matches = [condition for condition in conditions if condition.get("reason") == reason]
+        assert matches, f"no condition with reason {reason!r} on {where}; conditions: {conditions}"
+        return matches[0]
+
+    return _wait_for_gateway_attachment(
+        admin_client=admin_client,
+        model_name=model_name,
+        model_namespace=model_namespace,
+        gateway_name=gateway_name,
+        gateway_namespace=gateway_namespace,
+        matcher=_matcher,
+        what=f"report reason {reason}",
+        timeout=timeout,
+    )
+
+
+def wait_for_gateway_attachment_absent(
+    admin_client: DynamicClient,
+    model_name: str,
+    model_namespace: str,
+    gateway_name: str,
+    *,
+    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+    timeout: int | None = None,
+) -> None:
+    """Wait until the status.gateways entry for a detached gateway is gone."""
+
+    def _check() -> bool:
+        entry = gateway_status_entry(
+            admin_client=admin_client,
+            model_name=model_name,
+            model_namespace=model_namespace,
+            gateway_name=gateway_name,
+            gateway_namespace=gateway_namespace,
+        )
+        assert entry is None, f"status.gateways entry still present: {redact_sensitive(entry)}"
+        return True
+
+    wait_until(
+        check=_check,
+        timeout=timeout or TENANT_EXTERNAL_MODEL_READY_TIMEOUT,
+        what=f"{model_namespace}/{model_name} detachment from {gateway_namespace}/{gateway_name}",
     )
 
 
@@ -1019,6 +1130,212 @@ def wait_for_attachment_httproute(
     )
 
 
+def wait_for_no_attachment_httproute(
+    admin_client: DynamicClient,
+    route_namespace: str,
+    gateway_name: str,
+    *,
+    model_name: str | None = None,
+    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+    timeout: int | None = None,
+) -> None:
+    """Wait until no HTTPRoute remains attached to the gateway (model-scoped)."""
+    scope = f" for model {model_name}" if model_name else ""
+
+    def _check() -> bool:
+        routes = attachment_httproutes(
+            admin_client=admin_client,
+            route_namespace=route_namespace,
+            gateway_name=gateway_name,
+            gateway_namespace=gateway_namespace,
+        )
+        if model_name is not None:
+            routes = [route for route in routes if route_is_for_model(route, model_name)]
+        assert not routes, f"stale HTTPRoute(s) still attached: {[route['metadata']['name'] for route in routes]}"
+        return True
+
+    wait_until(
+        check=_check,
+        timeout=timeout or TENANT_EXTERNAL_MODEL_READY_TIMEOUT,
+        what=f"no HTTPRoute in {route_namespace} attached to {gateway_namespace}/{gateway_name}{scope}",
+    )
+
+
+def _find_credential_copy(
+    admin_client: DynamicClient,
+    tenant_namespace: str,
+    expected: str,
+    *,
+    exclude_uid: str | None,
+) -> dict[str, Any] | None:
+    """Find a Secret in *tenant_namespace* carrying *expected*, excluding the source object."""
+    for secret in list_json(admin_client, "secret", tenant_namespace):
+        metadata = secret.get("metadata") or {}
+        if metadata.get("uid") == exclude_uid:
+            continue
+        if (secret.get("data") or {}).get(CREDENTIAL_DATA_KEY) == expected:
+            return secret
+    return None
+
+
+def credential_copy_in(
+    admin_client: DynamicClient,
+    tenant_namespace: str,
+    source_secret_name: str,
+    source_namespace: str,
+) -> dict[str, Any] | None:
+    """Find the controller-owned copy of a credential Secret in a tenant namespace.
+
+    AGC delivers credentials from outside the tenant namespace as
+    controller-owned copies, identified by content (matching ``api-key``
+    data) rather than name.
+    """
+    source = get_json_or_none(client=admin_client, kind="secret", name=source_secret_name, namespace=source_namespace)
+    if not source:
+        return None
+    expected = (source.get("data") or {}).get(CREDENTIAL_DATA_KEY)
+    if not expected:
+        return None
+    return _find_credential_copy(
+        admin_client=admin_client,
+        tenant_namespace=tenant_namespace,
+        expected=expected,
+        exclude_uid=(source.get("metadata") or {}).get("uid"),
+    )
+
+
+def wait_for_credential_copy(
+    admin_client: DynamicClient,
+    tenant_namespace: str,
+    source_secret_name: str,
+    source_namespace: str,
+    *,
+    timeout: int | None = None,
+) -> dict[str, Any]:
+    """Wait for the controller-owned credential copy in a tenant namespace."""
+
+    def _check() -> dict[str, Any]:
+        copy = credential_copy_in(
+            admin_client=admin_client,
+            tenant_namespace=tenant_namespace,
+            source_secret_name=source_secret_name,
+            source_namespace=source_namespace,
+        )
+        assert copy is not None, (
+            f"no controller-owned credential copy of {source_namespace}/{source_secret_name} "
+            f"found in tenant namespace {tenant_namespace}"
+        )
+        return copy
+
+    return wait_until(
+        check=_check,
+        timeout=timeout or TENANT_EXTERNAL_MODEL_READY_TIMEOUT,
+        what=f"credential copy of {source_namespace}/{source_secret_name} in {tenant_namespace}",
+    )
+
+
+def wait_for_no_credential_copy(
+    admin_client: DynamicClient,
+    tenant_namespace: str,
+    source_secret_name: str,
+    source_namespace: str,
+    *,
+    timeout: int | None = None,
+) -> None:
+    """Wait until no controller-owned copy of the credential remains.
+
+    The expected ``api-key`` is captured from the source Secret up front: an
+    unreadable source fails the wait rather than passing vacuously.
+    """
+    source = get_json_or_none(client=admin_client, kind="secret", name=source_secret_name, namespace=source_namespace)
+    if not source:
+        pytest.fail(
+            f"source secret {source_namespace}/{source_secret_name} is unreadable; "
+            "the absence of a credential copy cannot be proven without it"
+        )
+    expected = (source.get("data") or {}).get(CREDENTIAL_DATA_KEY)
+    if not expected:
+        pytest.fail(
+            f"source secret {source_namespace}/{source_secret_name} carries no "
+            f"{CREDENTIAL_DATA_KEY} data; the absence of a credential copy cannot be proven without it"
+        )
+    assert isinstance(expected, str), f"unexpected {CREDENTIAL_DATA_KEY} data type in source secret"
+    source_uid = (source.get("metadata") or {}).get("uid")
+
+    def _check() -> bool:
+        copy = _find_credential_copy(
+            admin_client=admin_client, tenant_namespace=tenant_namespace, expected=expected, exclude_uid=source_uid
+        )
+        assert copy is None, (
+            f"stale credential copy {copy.get('metadata', {}).get('name')} still present in {tenant_namespace}"
+        )
+        return True
+
+    wait_until(
+        check=_check,
+        timeout=timeout or TENANT_EXTERNAL_MODEL_READY_TIMEOUT,
+        what=f"no credential copy of {source_namespace}/{source_secret_name} in {tenant_namespace}",
+    )
+
+
+def destination_rules_referencing(
+    admin_client: DynamicClient,
+    model_name: str,
+    *namespaces: str,
+    also_matching: tuple[str, ...] = (),
+) -> list[dict[str, Any]]:
+    """DestinationRules that reference *model_name* (by name or labels).
+
+    AGC creates the provider DestinationRules in the Gateway namespace under
+    hashed names that are not part of the shared contract — discovery matches
+    on references to the model (test provider names embed the model name, and
+    the rules carry them in names and ``external-provider`` labels).
+    *also_matching* additionally requires every string to appear in the same
+    metadata (e.g. a gateway name, to scope to one attachment's rules).
+    """
+    matches: list[dict[str, Any]] = []
+    needles = [model_name, *also_matching]
+    for namespace in namespaces:
+        for rule in list_json(admin_client, "destinationrule", namespace):
+            metadata = rule.get("metadata") or {}
+            owners = [(owner or {}).get("name") or "" for owner in metadata.get("ownerReferences") or []]
+            blob = json.dumps({
+                "name": metadata.get("name") or "",
+                "labels": metadata.get("labels") or {},
+                "ownerReferences": owners,
+            })
+            if all(needle in blob for needle in needles):
+                matches.append(rule)
+    return matches
+
+
+def wait_for_no_destination_rules_referencing(
+    admin_client: DynamicClient,
+    model_name: str,
+    *namespaces: str,
+    also_matching: tuple[str, ...] = (),
+    timeout: int | None = None,
+) -> None:
+    """Wait until no DestinationRule referencing the model remains."""
+
+    def _check() -> bool:
+        rules = destination_rules_referencing(  # noqa: FCN001 - *namespaces must follow positionally
+            admin_client,
+            model_name,
+            *namespaces,
+            also_matching=also_matching,
+        )
+        assert not rules, (
+            f"stale DestinationRules referencing {model_name} (also matching {also_matching}): "
+            f"{[rule['metadata']['name'] for rule in rules]}"
+        )
+        return True
+
+    wait_until(
+        check=_check,
+        timeout=timeout or TENANT_EXTERNAL_MODEL_READY_TIMEOUT,
+        what=f"no DestinationRules referencing {model_name} in {namespaces}",
+    )
 
 
 def external_chat_url(
@@ -1385,10 +1702,120 @@ def admitted_user_namespace(
         yield namespace
 
 
+@contextmanager
+def unadmitted_user_namespace(
+    admin_client: DynamicClient,
+    prefix: str,
+    *,
+    teardown: bool = True,
+) -> Generator[Namespace | Project, Any, Any]:
+    """Create a namespace no tenant gateway's allowedRoutes selector admits."""
+    with user_namespace(
+        admin_client,
+        new_user_namespace_name(prefix),
+        teardown=teardown,
+    ) as namespace:
+        yield namespace
+
+
 def namespace_name(namespace: Namespace | Project) -> str:
     """Assert and return a namespace wrapper's name (never None at runtime)."""
     assert namespace.name is not None, f"namespace object {namespace!r} carries no name"
     return namespace.name
+
+
+def provider_external_name_service(provider_name: str) -> str:
+    """The AGC's ExternalName Service name for a provider.
+
+    The attachment HTTPRoute's backendRefs reference this Service (created in
+    the model namespace, resolving to the provider endpoint), alongside the
+    provider-selection sink Service.
+    """
+    return f"provider-{provider_name}"
+
+
+def remove_gateway_access_label(
+    admin_client: DynamicClient,
+    namespace_name: str,
+    gateway_name: str,
+) -> None:
+    """Remove a namespace's gateway-access label (narrow allowedRoutes admission)."""
+    namespace = Namespace(client=admin_client, name=namespace_name, ensure_exists=True)
+    assert namespace.exists, f"namespace {namespace_name} not found"
+    ResourceEditor(
+        patches={
+            namespace: {
+                "metadata": {"labels": {gateway_access_label_key(gateway_name=gateway_name): None}},
+            },
+        },
+    ).update()
+    LOGGER.info(f"Removed gateway-access label of {gateway_name!r} from namespace '{namespace_name}'")
+
+
+def apply_credential_secret(
+    admin_client: DynamicClient,
+    name: str,
+    namespace: str,
+    credential: str,
+) -> None:
+    """Rewrite a provider credential Secret in place (data key ``api-key``).
+
+    Used by the rotation scenario: the source Secret keeps its identity
+    (name/namespace) while its key value changes, which is what the
+    controller-owned tenant copy must follow.
+    """
+    secret = Secret(client=admin_client, name=name, namespace=namespace, ensure_exists=True)
+    assert secret.exists, f"secret {namespace}/{name} not found"
+    ResourceEditor(
+        patches={secret: {"stringData": {CREDENTIAL_DATA_KEY: credential}}},
+    ).update()
+    LOGGER.info(f"Rotated credential secret {namespace}/{name}")
+
+
+@contextmanager
+def serve_in_tenant_and_cleanup(
+    admin_client: DynamicClient,
+    request_session_http: requests.Session,
+    ocp_token: str,
+    case: dict[str, str],
+    model: dict[str, Any],
+) -> Generator[dict[str, str], Any, Any]:
+    """Serve one model in a tenant and clean the MaaS stack up afterwards."""
+    with serve_external_model_in_tenant(
+        admin_client,
+        request_session_http,
+        ocp_token,
+        case,
+        model["name"],
+        model["namespace"],
+        policy_name=f"{model['name']}-access",
+        subscription_name=f"{model['name']}-sub",
+    ) as access:
+        yield access
+
+
+def assert_not_served(response: requests.Response) -> None:
+    """Assert a response proves the model was not served.
+
+    A successful serve is a 200 from the echo provider, so any other status
+    is a non-serving verdict. 401/403/404 are the expected refusals (auth
+    denial / no route); 502/503 with a gateway-generated (non-provider)
+    body are envoy-side failures on a gateway that holds no route for the
+    model — observed under load while filters reload, and equally proof
+    that no serve happened.
+    """
+    assert response.status_code != 200, (
+        f"expected the model to not be served, got {response.status_code}: {redact_sensitive(response.text)}"
+    )
+    if response.status_code in (502, 503):
+        assert (
+            not (response.text or "").strip()
+            or "Internal Server Error" in response.text
+            or "Service Unavailable" in response.text
+        ), (
+            f"5xx carries a provider-shaped body, expected a gateway-generated "
+            f"refusal/failure: {redact_sensitive(response.text)}"
+        )
 
 
 def provision_and_serve_in_tenant(
