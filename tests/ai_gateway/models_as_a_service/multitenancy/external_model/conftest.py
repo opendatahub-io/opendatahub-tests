@@ -187,7 +187,7 @@ def failure_env(
         }
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="class")
 def failure_served(
     admin_client: DynamicClient,
     request_session_http: requests.Session,
