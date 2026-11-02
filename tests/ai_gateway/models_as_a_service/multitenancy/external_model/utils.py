@@ -93,7 +93,7 @@ from tests.ai_gateway.models_as_a_service.utils import (
     create_api_key,
     revoke_api_key,
 )
-from utilities.constants import MAAS_GATEWAY_NAMESPACE
+from utilities.constants import MAAS_GATEWAY_NAME, MAAS_GATEWAY_NAMESPACE
 from utilities.general import generate_random_name
 from utilities.image_constants import SharedImages
 from utilities.infra import create_ns
@@ -204,6 +204,7 @@ MAX_AITENANT_NAME_LENGTH = 63 - len(AGC_LONGEST_RESOURCE_BASE)
 ATTACHMENT_ROUTE_HASH_RE = re.compile(r"[0-9a-f]{12}")
 
 PER_TENANT_PROCESSING_DEPLOYMENT_PREFIX = "payload-processing-"
+MODEL_NAMESPACE = "llm"
 PRAXIS_IMAGE_MARKER = "praxis"
 TENANT_EXTERNAL_MODEL_NAME_PREFIX = "e2e-extmod"
 
@@ -1816,6 +1817,243 @@ def assert_not_served(response: requests.Response) -> None:
             f"5xx carries a provider-shaped body, expected a gateway-generated "
             f"refusal/failure: {redact_sensitive(response.text)}"
         )
+
+
+@contextmanager
+def default_tenant_model_stack(
+    admin_client: DynamicClient,
+    *,
+    prefix: str,
+    namespace: str,
+) -> Generator[dict[str, Any], Any, Any]:
+    """A 3.5-shaped stack in the model namespace: credential Secret, provider with
+    ``auth.type: simple``, ExternalModel without gatewayRefs and its MaaSModelRef."""
+    suffix = generate_random_name()
+    name = f"{prefix}-{suffix}"
+    model: dict[str, Any] = {
+        "name": name,
+        "namespace": namespace,
+        "provider": f"{name}-provider",
+        "secret_name": f"{name}-cred",
+        "credential": f"sk-extmod-{suffix}",  # pragma: allowlist secret
+        "path_tag": f"{name}-{generate_random_name()}",
+    }
+    with ExitStack() as stack:
+        stack.enter_context(
+            cm=Secret(
+                client=admin_client,
+                name=model["secret_name"],
+                namespace=namespace,
+                type="Opaque",
+                string_data={CREDENTIAL_DATA_KEY: model["credential"]},
+                wait_for_resource=True,
+            )
+        )
+        stack.enter_context(
+            cm=ExternalProvider(
+                client=admin_client,
+                name=model["provider"],
+                namespace=namespace,
+                provider="openai",
+                endpoint=EXTERNAL_ENDPOINT,
+                auth={"type": "simple", "secretRef": {"name": model["secret_name"]}},
+                wait_for_resource=True,
+            )
+        )
+        stack.enter_context(
+            cm=ExternalModel(
+                client=admin_client,
+                name=name,
+                namespace=namespace,
+                external_provider_refs=[
+                    {
+                        "ref": {"name": model["provider"]},
+                        "targetModel": EXTERNAL_TARGET_MODEL,
+                        "apiFormat": EXTERNAL_API_FORMAT,
+                        "path": f"/anything/{model['path_tag']}",
+                    }
+                ],
+                wait_for_resource=True,
+            )
+        )
+        stack.enter_context(
+            cm=MaaSModelRef(
+                client=admin_client,
+                name=name,
+                namespace=namespace,
+                model_ref={
+                    "name": name,
+                    "namespace": namespace,
+                    "kind": "ExternalModel",
+                    "apiGroup": "inference.opendatahub.io",
+                },
+                wait_for_resource=True,
+            )
+        )
+        yield model
+
+
+def wait_implicitly_attached(
+    admin_client: DynamicClient,
+    model: dict[str, Any],
+) -> dict[str, Any]:
+    """Wait for the implicit attachment's result, accepted route, credential
+    copy and DestinationRule; returns the result and route."""
+
+    def _destination_rules() -> list[dict[str, Any]]:
+        return destination_rules_referencing(  # noqa: FCN001 - namespace feeds *args
+            admin_client, model["name"], MAAS_GATEWAY_NAMESPACE, also_matching=(MAAS_GATEWAY_NAME,)
+        )
+
+    def _published() -> bool:
+        assert _destination_rules(), f"no DestinationRule for {model['provider']} in {MAAS_GATEWAY_NAMESPACE}"
+        return True
+
+    wait_for_gateway_attachment_ready(
+        admin_client=admin_client,
+        model_name=model["name"],
+        model_namespace=model["namespace"],
+        gateway_name=MAAS_GATEWAY_NAME,
+    )
+    result = gateway_status_entry(
+        admin_client=admin_client,
+        model_name=model["name"],
+        model_namespace=model["namespace"],
+        gateway_name=MAAS_GATEWAY_NAME,
+    )
+    route_name = ((result or {}).get("httpRouteRef") or {}).get("name")
+    assert route_name, f"Ready result names no route: {redact_sensitive(result)}"
+    route = wait_for_attachment_httproute(
+        admin_client=admin_client,
+        route_namespace=model["namespace"],
+        gateway_name=MAAS_GATEWAY_NAME,
+        model_name=model["name"],
+    )[0]
+    wait_for_credential_copy(
+        admin_client=admin_client,
+        tenant_namespace=DEFAULT_TENANT_NAMESPACE,
+        source_secret_name=model["secret_name"],
+        source_namespace=model["namespace"],
+    )
+    wait_until(check=_published, timeout=READY_TIMEOUT, what=f"DestinationRule for {model['name']}")
+    return {"result": result, "route": route}
+
+
+def wait_not_implicitly_attached(
+    admin_client: DynamicClient,
+    model: dict[str, Any],
+    route_name: str,
+) -> None:
+    """Wait until the implicit attachment and every object it published are gone."""
+    wait_for_gateway_attachment_absent(
+        admin_client=admin_client,
+        model_name=model["name"],
+        model_namespace=model["namespace"],
+        gateway_name=MAAS_GATEWAY_NAME,
+    )
+    wait_for_not_found(
+        client=admin_client, kind="httproute", name=route_name, namespace=model["namespace"], timeout=READY_TIMEOUT
+    )
+    wait_for_no_credential_copy(
+        admin_client=admin_client,
+        tenant_namespace=DEFAULT_TENANT_NAMESPACE,
+        source_secret_name=model["secret_name"],
+        source_namespace=model["namespace"],
+        timeout=READY_TIMEOUT,
+    )
+    wait_for_no_destination_rules_referencing(  # noqa: FCN001 - namespace feeds *args
+        admin_client, model["name"], MAAS_GATEWAY_NAMESPACE, also_matching=(MAAS_GATEWAY_NAME,), timeout=READY_TIMEOUT
+    )
+
+
+@contextmanager
+def serve_in_default_tenant(
+    admin_client: DynamicClient,
+    request_session_http: requests.Session,
+    ocp_token: str,
+    base_url: str,
+    model: dict[str, Any],
+) -> Generator[str, Any, Any]:
+    """MaaSAuthPolicy + MaaSSubscription in the default tenant; yields an API key."""
+    policy_name, subscription_name = f"{model['name']}-access", f"{model['name']}-sub"
+    with ExitStack() as stack:
+        policy = stack.enter_context(
+            cm=MaaSAuthPolicy(
+                client=admin_client,
+                name=policy_name,
+                namespace=DEFAULT_TENANT_NAMESPACE,
+                model_refs=[{"name": model["name"], "namespace": model["namespace"]}],
+                subjects={"groups": [{"name": "system:authenticated"}]},
+                wait_for_resource=True,
+            )
+        )
+        policy.wait_for_condition(condition="Ready", status="True", timeout=READY_TIMEOUT)
+        subscription = stack.enter_context(
+            cm=MaaSSubscription(
+                client=admin_client,
+                name=subscription_name,
+                namespace=DEFAULT_TENANT_NAMESPACE,
+                owner={"groups": [{"name": "system:authenticated"}]},
+                model_refs=[
+                    {
+                        "name": model["name"],
+                        "namespace": model["namespace"],
+                        "tokenRateLimits": [{"limit": 100, "window": "1m"}],
+                    }
+                ],
+                priority=0,
+                wait_for_resource=True,
+            )
+        )
+        subscription.wait_for_condition(condition="Ready", status="True", timeout=READY_TIMEOUT)
+        model_ref = MaaSModelRef(
+            client=admin_client,
+            name=model["name"],
+            namespace=model["namespace"],
+            ensure_exists=True,
+        )
+        model_ref.wait_for_condition(condition="Ready", status="True", timeout=READY_TIMEOUT)
+        response, body = create_api_key(
+            base_url=base_url,
+            ocp_user_token=ocp_token,
+            request_session_http=request_session_http,
+            api_key_name=f"e2e-dft-{generate_random_name()}",
+            subscription=subscription_name,
+        )
+        assert response.status_code in (200, 201), (
+            f"failed to mint API key on default maas-api {base_url}: "
+            f"{response.status_code} {redact_sensitive(response.text)}"
+        )
+        api_key = body.get("key")
+        assert api_key, f"API key missing in response: {redact_sensitive(body)}"
+        yield api_key
+
+
+def infer_chat_completion(
+    request_session_http: requests.Session,
+    gateway_url: str,
+    model: dict[str, Any],
+    api_key: str,
+    *,
+    retries: int = INFERENCE_RETRIES,
+) -> requests.Response:
+    """POST a chat completion to the model's echo path through a Gateway."""
+    url = f"{gateway_url}/{model['namespace']}/{model['name']}/anything/{model['path_tag']}"
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    payload = {
+        "model": model["name"],
+        "messages": [{"role": "user", "content": "default tenant e2e"}],
+        "max_tokens": 8,
+    }
+    for attempt in range(retries + 1):
+        response = request_session_http.post(url=url, headers=headers, json=payload, timeout=INFERENCE_REQUEST_TIMEOUT)
+        transient = response.status_code >= 500 or (
+            response.status_code == 429 and "retry" in (response.text or "").lower()
+        )
+        if not transient or attempt == retries:
+            return response
+        time.sleep(INFERENCE_RETRY_DELAY)
+    raise AssertionError(f"inference to {url} kept failing transiently")  # pragma: no cover
 
 
 def provision_and_serve_in_tenant(

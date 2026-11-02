@@ -26,22 +26,30 @@ from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import (
 )
 from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils import (
     EXTERNAL_ENDPOINT,
+    MODEL_NAMESPACE,
+    PRAXIS_IMAGE_MARKER,
     admitted_user_namespace,
+    default_tenant_model_stack,
     deploy_aitenant_best_effort,
+    deployment_image,
     external_model_stack,
     extmod_tenant_test_params,
     gateway_ref,
+    get_json_or_none,
+    list_json,
     namespace_name,
     per_tenant_processing_uses_praxis,
     provision_and_serve_in_tenant,
     record_tenant_external_model_evidence,
     require_maas_route,
     require_tenant_external_model_support,
+    serve_in_default_tenant,
     serve_in_tenant_and_cleanup,
     serve_shared_model_in_tenant,
     tenant_case,
     unadmitted_user_namespace,
     usage_provider,
+    wait_implicitly_attached,
     wait_shared_attachments_ready,
 )
 from tests.ai_gateway.models_as_a_service.multitenancy.utils import (
@@ -56,6 +64,8 @@ from tests.ai_gateway.models_as_a_service.utils import (
     verify_maas_gateway_programmed,
 )
 from utilities.certificates_utils import router_ca_bundle_env
+from utilities.constants import MAAS_GATEWAY_NAMESPACE
+from utilities.infra import create_ns
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -713,3 +723,86 @@ def rotation_model(
             "model": model,
             "access": access,
         }
+
+
+@pytest.fixture(scope="class")
+def default_gateway_url(maas_host: str) -> str:
+    """External URL of the default (models-as-a-service) Gateway.
+
+    Default-tenant traffic is served through the Gateway's own listener
+    hostname (``maas.<ingress-domain>``), the external name the install
+    exposes maas-default-gateway under. Unlike tenant gateways, no
+    per-gateway OpenShift Route is created for the default Gateway, so a
+    ``<gateway-name>.<domain>`` host has no Route behind it (503).
+    """
+    return f"https://{maas_host}"
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _require_praxis_default_tenant(
+    admin_client: DynamicClient,
+    tenant_external_model_capabilities: dict[str, bool],
+) -> None:
+    """Skip unless the default tenant's payload-processing runs praxis-extproc.
+
+    Also gates on the installed AGC + ExternalModel CRD capabilities: without
+    the gatewayRefs schema these tests would patch it and wait for a
+    GatewayNotManaged reason that never appears (timeout, not skip).
+    """
+    deployment = get_json_or_none(
+        client=admin_client, kind="deployment", name="payload-processing", namespace=MAAS_GATEWAY_NAMESPACE
+    )
+    if PRAXIS_IMAGE_MARKER not in deployment_image(deployment):
+        pytest.skip(
+            "default tenant payload-processing is not praxis-extproc; its IPP serves "
+            "models without gatewayRefs and the AGC leaves them alone"
+        )
+
+
+@pytest.fixture(scope="module")
+def default_tenant_model_namespace(
+    admin_client: DynamicClient,
+    teardown_resources: bool,
+) -> Generator[Namespace | Project, Any, Any]:
+    """The llm namespace the default Gateway's allowedRoutes already admits."""
+    existing = get_json_or_none(client=admin_client, kind="namespace", name=MODEL_NAMESPACE)
+    if existing is not None:
+        claimed = list_json(client=admin_client, kind="maastenantconfig", namespace=MODEL_NAMESPACE)
+        if claimed:
+            pytest.skip(
+                f"namespace '{MODEL_NAMESPACE}' is claimed by a MaasTenantConfig "
+                f"({', '.join(item['metadata']['name'] for item in claimed)}); "
+                "the default Gateway will not implicitly attach its models"
+            )
+        yield Namespace(client=admin_client, name=MODEL_NAMESPACE)
+        return
+    with create_ns(
+        admin_client=admin_client,
+        name=MODEL_NAMESPACE,
+        teardown=teardown_resources,
+    ) as namespace:
+        yield namespace
+
+
+@pytest.fixture(scope="class")
+def implicit_model(
+    admin_client: DynamicClient,
+    request_session_http: requests.Session,
+    ocp_token_for_actor: str,
+    base_url: str,
+    default_tenant_model_namespace: Namespace,
+) -> Generator[dict[str, Any], Any, Any]:
+    """A 3.5-shaped model implicitly attached to the default Gateway and served by the default tenant."""
+    with ExitStack() as stack:
+        model = stack.enter_context(
+            cm=default_tenant_model_stack(
+                admin_client,
+                prefix="e2e-dft",
+                namespace=namespace_name(default_tenant_model_namespace),
+            )
+        )
+        attachment = wait_implicitly_attached(admin_client=admin_client, model=model)
+        api_key = stack.enter_context(
+            cm=serve_in_default_tenant(admin_client, request_session_http, ocp_token_for_actor, base_url, model)
+        )
+        yield {"model": model, "api_key": api_key, **attachment}
