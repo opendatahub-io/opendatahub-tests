@@ -560,9 +560,8 @@ def wait_for_oauth_openshift_deployment(client: DynamicClient) -> None:
     The authentication operator re-renders the deployment some time after the
     edit, so a settled deployment may still run the old configuration: first
     wait for the rollout to start (generation bump or the transient
-    ReplicaSetUpdated reason). An edit that does not change effective
-    configuration never retriggers a rollout; then the best-effort window
-    expires and a settled deployment is accepted.
+    ReplicaSetUpdated reason), then for the deployment to settle again. A
+    rollout that never starts raises TimeoutExpiredError.
     """
     deployment_obj = Deployment(
         client=client, name="oauth-openshift", namespace="openshift-authentication", ensure_exists=True
@@ -590,18 +589,10 @@ def wait_for_oauth_openshift_deployment(client: DynamicClient) -> None:
             "ReplicaSetUpdated"
         )
 
-    rollout_started = False
-    try:
-        sampler = TimeoutSampler(wait_timeout=90, sleep=5, func=_rollout_started)
-        for sample in sampler:
-            if sample:
-                rollout_started = True
-                break
-    except TimeoutExpiredError:
-        pass
-
-    if not rollout_started and _settled():
-        return
+    sampler = TimeoutSampler(wait_timeout=240, sleep=5, func=_rollout_started)
+    for sample in sampler:
+        if sample:
+            break
 
     sampler = TimeoutSampler(wait_timeout=240, sleep=5, func=_settled)
     for sample in sampler:

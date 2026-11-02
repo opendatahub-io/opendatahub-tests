@@ -48,7 +48,7 @@ MaaSTenantResource = MaasTenantConfig | Tenant
 
 AITENANT_INFRA_NAMESPACE: str = "ai-tenants"
 # OCP's built-in GatewayAPI class; override via AITENANT_GATEWAY_CLASS_NAME when absent.
-AIGATEWAY_GATEWAY_CLASS_NAME: str = os.environ.get("AITENANT_GATEWAY_CLASS_NAME", "openshift-default")
+AIGATEWAY_GATEWAY_CLASS_NAME: str = os.environ.get("AITENANT_GATEWAY_CLASS_NAME") or "openshift-default"
 AIGATEWAY_BOOTSTRAP_GATEWAY_LISTENERS: list[dict[str, Any]] = [
     {
         "name": "http",

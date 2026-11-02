@@ -15,6 +15,7 @@ from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.maas_subscription import MaaSSubscription
 from ocp_resources.namespace import Namespace
 from ocp_resources.resource import ResourceEditor
+from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
@@ -101,14 +102,33 @@ def ingress_domain_from_maas_host(maas_host: str) -> str:
     return maas_host.removeprefix(MAAS_HOST_PREFIX)
 
 
-def tenant_gateway_service_name(gateway_name: str) -> str:
-    """Return the OpenShift Service fronting a tenant Gateway.
+def tenant_gateway_service_name(
+    client: DynamicClient,
+    gateway_name: str,
+    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+) -> str:
+    """Return the name of the OpenShift Service fronting a tenant Gateway.
 
     The openshift.io gateway controller names the per-Gateway LoadBalancer
-    Service ``<gateway-name>-<gateway-class>`` (source-suite convention), so
-    the suffix must follow the configured class, not a fixed literal.
+    Service ``<gateway-name>-<gateway-class>``, but controllers for other
+    GatewayClasses may not follow that convention, so the Service is looked
+    up from the cluster instead of only composing the name: a Service owned
+    by the Gateway wins, the composed name is accepted when it exists, and
+    a unique ``<gateway-name>-`` prefixed Service is the last resort.
     """
-    return f"{gateway_name}-{AIGATEWAY_GATEWAY_CLASS_NAME}"
+    services = list(Service.get(client=client, namespace=gateway_namespace))
+    for service in services:
+        for owner_reference in service.instance.metadata.ownerReferences or []:
+            if owner_reference.kind == "Gateway" and owner_reference.name == gateway_name:
+                return service.name
+    service_names = {service.name for service in services}
+    composed = f"{gateway_name}-{AIGATEWAY_GATEWAY_CLASS_NAME}"
+    if composed in service_names:
+        return composed
+    prefixed = sorted(name for name in service_names if name.startswith(f"{gateway_name}-"))
+    assert prefixed, f"No Service fronting Gateway '{gateway_name}' in namespace '{gateway_namespace}'"
+    assert len(prefixed) == 1, f"Ambiguous Services for Gateway '{gateway_name}': {prefixed}"
+    return prefixed[0]
 
 
 def tenant_gateway_route_name(gateway_name: str) -> str:
@@ -469,7 +489,13 @@ def tenant_gateway_external_route(
         name=tenant_gateway_route_name(gateway_name=gateway_name),
         namespace=gateway_namespace,
         host=route_host,
-        to={"kind": "Service", "name": tenant_gateway_service_name(gateway_name=gateway_name), "weight": 100},
+        to={
+            "kind": "Service",
+            "name": tenant_gateway_service_name(
+                client=admin_client, gateway_name=gateway_name, gateway_namespace=gateway_namespace
+            ),
+            "weight": 100,
+        },
         port={"targetPort": GATEWAY_HTTP_PORT},
         tls={
             "termination": "edge",
