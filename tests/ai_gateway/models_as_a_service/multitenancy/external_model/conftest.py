@@ -50,7 +50,7 @@ def gateway_route_ca_bundle(admin_client: DynamicClient) -> Generator[str]:
         yield bundle
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="class")
 def default_gateway_url(maas_host: str) -> str:
     """External URL of the default (models-as-a-service) Gateway.
 
