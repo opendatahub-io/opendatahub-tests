@@ -78,9 +78,6 @@ from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils impo
     wait_for_not_found,
     wait_until,
 )
-from tests.ai_gateway.models_as_a_service.multitenancy.utils import (
-    tenant_gateway_hostname,
-)
 from tests.ai_gateway.models_as_a_service.utils import create_api_key
 from utilities.constants import MAAS_GATEWAY_NAME, MAAS_GATEWAY_NAMESPACE
 from utilities.general import generate_random_name
@@ -157,7 +154,12 @@ def default_tenant_model_namespace(
 @pytest.fixture(scope="class")
 def default_tenant_gateway_url(maas_host: str) -> str:
     """External URL of the default (models-as-a-service) Gateway."""
-    return f"https://{tenant_gateway_hostname(gateway_name=MAAS_GATEWAY_NAME, maas_host=maas_host)}"
+    # Source-suite semantics: default-tenant traffic is served through the
+    # Gateway's own listener hostname (maas.<ingress-domain>), the external
+    # name the install exposes maas-default-gateway under. Unlike tenant
+    # gateways, no per-gateway OpenShift Route is created for the default
+    # Gateway, so a "<gateway-name>.<domain>" host has no Route behind it.
+    return f"https://{maas_host}"
 
 
 # ─── 3.5-shaped stack ───────────────────────────────────────────────────────

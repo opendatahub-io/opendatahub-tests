@@ -74,6 +74,7 @@ from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from pytest_testconfig import config as py_config
+from timeout_sampler import TimeoutExpiredError
 
 from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import AITenantTestContext
 from tests.ai_gateway.models_as_a_service.multitenancy.utils import (
@@ -192,9 +193,10 @@ def get_json_or_none(
     wrapper = _JSON_WRAPPERS[kind]
     try:
         instances = list(wrapper.get(client=client, name=name, namespace=namespace))
-    except NotFoundError:
+        return _instance_to_dict(instances[0].instance) if instances else None
+    except NotFoundError, TimeoutExpiredError:
+        # Vanished between discovery and the lazy instance fetch: not there.
         return None
-    return _instance_to_dict(instances[0].instance) if instances else None
 
 
 def list_json(
@@ -202,10 +204,20 @@ def list_json(
     kind: str,
     namespace: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Return raw JSON dicts for every resource of *kind* in *namespace*."""
-    wrapper = _JSON_WRAPPERS[kind]
-    instances = list(wrapper.get(client=client, namespace=namespace))
-    return [_instance_to_dict(instance.instance) for instance in instances]
+    """Return raw JSON dicts for every resource of *kind* in *namespace*.
+
+    A resource deleted between the list and its (lazy, per-name) instance
+    fetch raises NotFoundError after the wrapper's retry budget: when
+    polling for resources to disappear that means "not there", so such
+    items are skipped instead of failing the poll.
+    """
+    result: list[dict[str, Any]] = []
+    for instance in _JSON_WRAPPERS[kind].get(client=client, namespace=namespace):
+        try:
+            result.append(_instance_to_dict(instance.instance))
+        except NotFoundError, TimeoutExpiredError:
+            continue
+    return result
 
 
 def wait_until(
