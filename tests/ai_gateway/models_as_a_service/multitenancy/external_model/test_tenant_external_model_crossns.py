@@ -17,9 +17,8 @@ P1 scenarios:
 5. A model referencing same-named providers from two namespaces serves
    through both.
 
-Gated on TENANT_EXTERNAL_MODEL_CROSSNS_E2E=true (AGC cross-namespace
-provider support, RHOAIENG-90804, is done; the flag additionally requires
-the AGC ReferenceGrant validation and its RBAC to be packaged).
+Runs wherever the AGC ReferenceGrant validation and its RBAC are packaged
+(capability-gated on the ReferenceGrant CRD; RHOAIENG-90804 is done).
 
 Shares the tenant_external_model session tenants (see
 conftest.tenant_external_model_tenants); this module creates its own user

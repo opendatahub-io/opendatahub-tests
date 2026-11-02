@@ -445,12 +445,12 @@ def env_bool(name: str, default: bool = False) -> bool:
 
 
 def require_crossns_provider_support(admin_client: DynamicClient) -> None:
-    """Gate P1 cross-namespace provider scenarios (RHOAIENG-90804)."""
-    if not env_bool("TENANT_EXTERNAL_MODEL_CROSSNS_E2E"):
-        pytest.skip(
-            "cross-namespace provider E2E is gated until AGC ships "
-            "cross-namespace provider support; set TENANT_EXTERNAL_MODEL_CROSSNS_E2E=true to enable"
-        )
+    """Gate cross-namespace provider scenarios (RHOAIENG-90804) on capability.
+
+    The AGC ships cross-namespace provider support (validated 8/8 against a
+    product nightly), so the scenarios run wherever the ReferenceGrant CRD
+    the feature depends on is installed, and skip on clusters without it.
+    """
     if get_json_or_none(client=admin_client, kind="crd", name=REFERENCE_GRANT_CRD_NAME) is None:
         pytest.skip(f"ReferenceGrant CRD {REFERENCE_GRANT_CRD_NAME} is not installed")
 
@@ -522,7 +522,6 @@ def record_tenant_external_model_evidence(admin_client: DynamicClient) -> dict[s
             False,
         ),
         "gates": {
-            "TENANT_EXTERNAL_MODEL_CROSSNS_E2E": env_bool("TENANT_EXTERNAL_MODEL_CROSSNS_E2E"),
             "TENANT_EXTERNAL_MODEL_LEGACY_IPP_E2E": env_bool("TENANT_EXTERNAL_MODEL_LEGACY_IPP_E2E"),
             "TENANT_EXTERNAL_MODEL_LAST_PROVIDER_WITHDRAWAL_E2E": withdrawal_gate_enabled("#106"),
             "TENANT_EXTERNAL_MODEL_PARTIAL_WITHDRAWAL_E2E": withdrawal_gate_enabled("#108"),
