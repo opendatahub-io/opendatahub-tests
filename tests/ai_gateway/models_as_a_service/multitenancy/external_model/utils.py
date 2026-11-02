@@ -546,6 +546,14 @@ def record_tenant_external_model_evidence(admin_client: DynamicClient) -> dict[s
     return evidence
 
 
+def maas_model_ref_alias(admin_client: DynamicClient, namespace: str, name: str) -> str:
+    """The MaaSModelRef's ``status.resolvedModelAlias`` (model identity for gateway auth)."""
+    ref = get_json_or_none(admin_client, "maasmodelref", name, namespace) or {}
+    return ((ref.get("status") or {}).get("resolvedModelAlias")) or ""
+
+
+
+
 def echo_provider_path(path_tag: str) -> str:
     """Provider path of an echo binding: the echo endpoint serves ``/anything/<tag>``."""
     return f"/anything/{path_tag}"
@@ -581,6 +589,13 @@ def external_model_binding(
 def gateway_ref(gateway_name: str, gateway_namespace: str = MAAS_GATEWAY_NAMESPACE) -> dict[str, str]:
     """One ``spec.gatewayRefs[]`` entry."""
     return {"name": gateway_name, "namespace": gateway_namespace}
+
+
+def external_model_route_name(model_name: str) -> str:
+    """AGC tenant-local route name for an ExternalModel (``external-model-<name>``)."""
+    return f"external-model-{model_name}"
+
+
 
 
 class TenantPinnedMaaSModelRef(MaaSModelRef):
@@ -761,6 +776,249 @@ def external_model_stack(
             "override_secret": override_secret_name_resolved,
             "path_tag": path_tag,
         }
+
+
+def gateway_status_entry(
+    admin_client: DynamicClient,
+    model_name: str,
+    model_namespace: str,
+    gateway_name: str,
+    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+) -> dict[str, Any] | None:
+    """Return the status.gateways entry for one gateway attachment."""
+    external_model = get_json_or_none(
+        client=admin_client, kind="externalmodel", name=model_name, namespace=model_namespace
+    )
+    if not external_model:
+        return None
+    for entry in (external_model.get("status") or {}).get("gateways") or []:
+        if entry.get("name") == gateway_name and entry.get("namespace") == gateway_namespace:
+            return entry
+    return None
+
+
+def _attachment_conditions(
+    external_model: dict[str, Any],
+    gateway_name: str,
+    gateway_namespace: str,
+) -> tuple[list[dict[str, Any]], str]:
+    """Conditions describing one gateway attachment (per-gateway entry preferred)."""
+    entries = (external_model.get("status") or {}).get("gateways") or []
+    entry = next(
+        (item for item in entries if item.get("name") == gateway_name and item.get("namespace") == gateway_namespace),
+        None,
+    )
+    if entry is not None and entry.get("conditions"):
+        return entry["conditions"], f"attachment to {gateway_namespace}/{gateway_name}"
+    status = external_model.get("status") or {}
+    return (status.get("conditions") or []), "aggregate model status"
+
+
+def _wait_for_gateway_attachment(
+    admin_client: DynamicClient,
+    model_name: str,
+    model_namespace: str,
+    gateway_name: str,
+    *,
+    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+    matcher: Callable[[list[dict[str, Any]], str], Any],
+    what: str,
+    timeout: int | None = None,
+) -> Any:
+    def _check() -> Any:
+        external_model = get_json_or_none(
+            client=admin_client, kind="externalmodel", name=model_name, namespace=model_namespace
+        )
+        assert external_model is not None, f"externalmodel/{model_namespace}/{model_name} not found"
+        conditions, where = _attachment_conditions(
+            external_model=external_model, gateway_name=gateway_name, gateway_namespace=gateway_namespace
+        )
+        assert conditions, (
+            f"no attachment conditions for {gateway_namespace}/{gateway_name} on "
+            f"{model_namespace}/{model_name}; status: {redact_sensitive(external_model.get('status'))}"
+        )
+        return matcher(conditions, where)  # noqa: FCN001 - Callable params take no keywords
+
+    return wait_until(
+        check=_check,
+        timeout=timeout or TENANT_EXTERNAL_MODEL_READY_TIMEOUT,
+        what=f"{model_namespace}/{model_name} attachment to {gateway_namespace}/{gateway_name}: {what}",
+    )
+
+
+def wait_for_gateway_attachment_ready(
+    admin_client: DynamicClient,
+    model_name: str,
+    model_namespace: str,
+    gateway_name: str,
+    *,
+    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+    timeout: int | None = None,
+) -> dict[str, Any]:
+    """Wait until one gateway attachment reports serving readiness."""
+
+    def _matcher(conditions: list[dict[str, Any]], where: str) -> dict[str, Any]:
+        by_type = {condition.get("type"): condition for condition in conditions}
+        for condition_type in READY_CONDITION_TYPES:
+            condition = by_type.get(condition_type)
+            if condition and condition.get("status") == "True":
+                return condition
+        raise AssertionError(f"attachment not ready on {where}; conditions: {conditions}")
+
+    return _wait_for_gateway_attachment(
+        admin_client=admin_client,
+        model_name=model_name,
+        model_namespace=model_namespace,
+        gateway_name=gateway_name,
+        gateway_namespace=gateway_namespace,
+        matcher=_matcher,
+        what="report Ready",
+        timeout=timeout,
+    )
+
+
+def external_model_reports_maas_route(
+    admin_client: DynamicClient,
+    model_name: str,
+    model_namespace: str,
+) -> bool:
+    """Whether the MaaS stack can resolve this ExternalModel's serving route.
+
+    maas-controller resolves an attached model's HTTPRoute from the AGC's
+    per-gateway ``status.gateways[]`` results or, on aggregate-status AGC
+    builds, from ``status.httpRouteName`` — which those builds write only for
+    single-attachment models (RHOAIENG-90802 gate).
+    """
+    external_model = get_json_or_none(
+        client=admin_client, kind="externalmodel", name=model_name, namespace=model_namespace
+    )
+    if not external_model:
+        return False
+    status = external_model.get("status") or {}
+    if status.get("httpRouteName"):
+        return True
+    for entry in status.get("gateways") or []:
+        if not entry.get("httpRouteRef"):
+            continue
+        if any(
+            condition.get("type") in READY_CONDITION_TYPES and condition.get("status") == "True"
+            for condition in entry.get("conditions") or []
+        ):
+            return True
+    return False
+
+
+def route_is_for_model(route: dict[str, Any], model_name: str) -> bool:
+    """Whether an AGC-managed HTTPRoute belongs to the given ExternalModel.
+
+    Route names carry the model: ``external-model-<name>`` for tenant-local
+    models and ``external-model-<name>-<hash>`` for cross-namespace
+    attachments, where the hash is the controller's shortHash — exactly 12
+    lowercase hex characters. Requiring that exact shape keeps models whose
+    names share a prefix distinct.
+    """
+    route_name = (route.get("metadata") or {}).get("name") or ""
+    base = external_model_route_name(model_name=model_name)
+    if route_name == base:
+        return True
+    prefix = f"{base}-"
+    if not route_name.startswith(prefix):
+        return False
+    return ATTACHMENT_ROUTE_HASH_RE.fullmatch(route_name.removeprefix(prefix)) is not None
+
+
+def attachment_httproutes(
+    admin_client: DynamicClient,
+    route_namespace: str,
+    gateway_name: str,
+    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+) -> list[dict[str, Any]]:
+    """HTTPRoutes in *route_namespace* whose parentRefs select the gateway."""
+    routes: list[dict[str, Any]] = []
+    for route in list_json(admin_client, "httproute", route_namespace):
+        for parent in (route.get("spec") or {}).get("parentRefs") or []:
+            if (
+                parent.get("name") == gateway_name
+                and (parent.get("namespace") or gateway_namespace) == gateway_namespace
+            ):
+                routes.append(route)
+                break
+    return routes
+
+
+def httproute_parent_conditions(
+    route: dict[str, Any],
+    gateway_name: str,
+    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+) -> list[dict[str, Any]]:
+    """Route status conditions for the parentRef selecting the gateway."""
+    for parent in (route.get("status") or {}).get("parents") or []:
+        ref = parent.get("parentRef") or {}
+        if ref.get("name") == gateway_name and (ref.get("namespace") or gateway_namespace) == gateway_namespace:
+            return parent.get("conditions") or []
+    return []
+
+
+def wait_for_attachment_httproute(
+    admin_client: DynamicClient,
+    route_namespace: str,
+    gateway_name: str,
+    *,
+    model_name: str | None = None,
+    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+    accepted: bool = True,
+    reason: str | None = None,
+    timeout: int | None = None,
+) -> list[dict[str, Any]]:
+    """Wait for a gateway-attached HTTPRoute in the route namespace.
+
+    ``accepted=False`` waits for the gateway to refuse the route (e.g.
+    NotAllowedByListeners). ``model_name`` scopes the wait to one
+    ExternalModel's route: a namespace can host other models attached to the
+    same gateway, and an unscoped wait could pass on their routes.
+    """
+    expected_reason = reason
+    scope = f" for model {model_name}" if model_name else ""
+
+    def _check() -> list[dict[str, Any]]:
+        routes = attachment_httproutes(
+            admin_client=admin_client,
+            route_namespace=route_namespace,
+            gateway_name=gateway_name,
+            gateway_namespace=gateway_namespace,
+        )
+        if model_name is not None:
+            routes = [route for route in routes if route_is_for_model(route, model_name)]
+        assert routes, f"no HTTPRoute in {route_namespace} attached to {gateway_namespace}/{gateway_name}{scope}"
+        for route in routes:
+            conditions = {
+                condition.get("type"): condition
+                for condition in httproute_parent_conditions(route, gateway_name, gateway_namespace)
+            }
+            accepted_condition = conditions.get("Accepted")
+            if accepted:
+                if accepted_condition and accepted_condition.get("status") == "True":
+                    return routes
+            elif (
+                accepted_condition
+                and accepted_condition.get("status") == "False"
+                and (expected_reason is None or accepted_condition.get("reason") == expected_reason)
+            ):
+                return routes
+        raise AssertionError(
+            f"HTTPRoute(s) in {route_namespace} not in expected state "
+            f"(accepted={accepted}, reason={expected_reason!r}): "
+            f"{[route.get('status') for route in routes]}"
+        )
+
+    return wait_until(
+        check=_check,
+        timeout=timeout or TENANT_EXTERNAL_MODEL_READY_TIMEOUT,
+        what=f"HTTPRoute in {route_namespace} attached to {gateway_namespace}/{gateway_name}{scope} "
+        f"(accepted={accepted}, reason={expected_reason!r})",
+    )
+
+
 
 
 def external_chat_url(
@@ -1166,3 +1424,216 @@ def provision_and_serve_in_tenant(
         )
     )
     return {"model": model, "api_key": access["api_key"]}
+
+
+def serve_shared_model_in_tenant(
+    admin_client: DynamicClient,
+    request_session_http: requests.Session,
+    ocp_token: str,
+    stack: ExitStack,
+    case: dict[str, str],
+    model: dict[str, Any],
+    teardown: bool,
+    **kwargs: Any,
+) -> dict[str, str]:
+    """Serve one shared model in one tenant and mint its API key."""
+    ref_name = model["model_refs"][case["tenant_label_name"]]
+    return stack.enter_context(
+        cm=serve_external_model_in_tenant(
+            admin_client,
+            request_session_http,
+            ocp_token,
+            tenant=case,
+            model_name=ref_name,
+            model_namespace=model["namespace"],
+            policy_name=f"{model['name']}-access",
+            subscription_name=f"{model['name']}-sub",
+            teardown=teardown,
+            **kwargs,
+        )
+    )
+
+
+def wait_shared_attachments_ready(admin_client: DynamicClient, cases: tuple[dict[str, str], ...], model: dict[str, Any]) -> None:
+    """Wait until both tenants' gateway attachments report ready."""
+    for case in cases:
+        wait_for_gateway_attachment_ready(
+            admin_client=admin_client,
+            model_name=model["name"],
+            model_namespace=model["namespace"],
+            gateway_name=case["gateway_name"],
+        )
+
+
+def require_maas_route(admin_client: DynamicClient, model: dict[str, Any]) -> None:
+    """Skip when the MaaS stack cannot resolve this multi-gateway model.
+
+    Aggregate-status AGC builds report no per-gateway ``status.gateways``
+    results and no ``status.httpRouteName`` for multi-attachment models, so
+    maas-controller cannot select a route: the MaaSModelRef never reports an
+    endpoint and the subscription TRLP backend stays not-ready, which makes
+    per-tenant auth keys and quotas impossible to wire for the shared model.
+    """
+    if not external_model_reports_maas_route(admin_client, model["name"], model["namespace"]):
+        pytest.skip(
+            "AGC reports aggregate model status only (no per-gateway status.gateways "
+            "results); the MaaS stack cannot resolve a multi-gateway model's route, so "
+            "per-tenant auth/quota serving for a shared model cannot be exercised"
+        )
+
+
+def require_client_name_alias(
+    admin_client: DynamicClient,
+    model: dict[str, Any],
+    case: dict[str, str],
+) -> None:
+    """Skip until the published model identity is the client-facing name.
+
+    The per-tenant stacks go green with per-gateway status alone, but a
+    path-routed request carries ``{namespace}/{client-facing name}`` while
+    the modelRefs are named after their tenants: requests only authorize
+    once the controller publishes ``spec.modelName`` as
+    ``status.resolvedModelAlias`` and maas-api matches pairs against it.
+    Both halves ship together, so one alias check gates both.
+    """
+    ref_name = model["model_refs"][case["tenant_label_name"]]
+    alias = maas_model_ref_alias(admin_client=admin_client, namespace=model["namespace"], name=ref_name)
+    if alias != model["client_name"]:
+        pytest.skip(
+            "client-facing model names are not resolvable through the gateway "
+            f"yet: MaaSModelRef {model['namespace']}/{ref_name} "
+            f"status.resolvedModelAlias={alias!r} != {model['client_name']!r}"
+        )
+
+
+def usage_provider(
+    admin_client: DynamicClient,
+    stack: ExitStack,
+    namespace: str,
+    client_model_name: str,
+    teardown: bool,
+) -> dict[str, Any]:
+    """Deploy the usage-returning provider the quota model binds to.
+
+    A dedicated in-cluster ``llm-d-inference-sim`` (``--mode random``): its
+    responses carry ``usage.total_tokens``, which token budgets are
+    accounted from. The gateway envoy verifies provider certificates, so
+    the simulator cannot serve a self-signed cert: its Service is annotated
+    for an OpenShift service serving certificate (signed by the cluster
+    service CA) and the provider points envoy at the CA bundle mounted in
+    every pod through ``spec.config["tls.caCertificates"]``. The simulator
+    validates the request body's ``model`` field, so it is configured with
+    the client-facing model name the requests will carry.
+
+    The simulator is deployed in the model's namespace and is dedicated to
+    that model, so no rate limits apply on the provider hop: a 429 seen
+    through a tenant gateway can only be that tenant's own budget.
+
+    An echo endpoint cannot stand in even with a synthetic usage field: the
+    telemetry pipeline drops reports whose body does not name the model and
+    cannot read gzip-compressed responses (which httpbingo serves) — the
+    simulator's plain OpenAI-shaped bodies satisfy all of it.
+    """
+    suffix = uuid.uuid4().hex[:6]
+    sim = f"e2e-usage-sim-{suffix}"
+    cert_secret = f"{sim}-cert"
+    dns_name = f"{sim}.{namespace}.svc.cluster.local"
+    stack.enter_context(
+        cm=Service(
+            client=admin_client,
+            name=sim,
+            namespace=namespace,
+            annotations={SERVING_CERT_ANNOTATION: cert_secret},
+            selector={"app": sim},
+            ports=[{"port": 443, "targetPort": 8000, "name": "https"}],
+            teardown=teardown,
+            wait_for_resource=True,
+        )
+    )
+
+    def _cert_injected() -> bool:
+        secret = get_json_or_none(admin_client, "secret", cert_secret, namespace) or {}
+        return bool((secret.get("data") or {}).get("tls.crt"))
+
+    wait_until(check=_cert_injected, timeout=120, what=f"service-ca cert secret {namespace}/{cert_secret}")
+
+    stack.enter_context(
+        cm=Deployment(
+            client=admin_client,
+            name=sim,
+            namespace=namespace,
+            replicas=1,
+            selector={"matchLabels": {"app": sim}},
+            template={
+                "metadata": {"labels": {"app": sim}},
+                "spec": {
+                    "containers": [
+                        {
+                            "name": "sim",
+                            "image": LLM_D_INFERENCE_SIM_IMAGE,
+                            "command": ["/app/llm-d-inference-sim"],
+                            "args": [
+                                "--port",
+                                "8000",
+                                "--model",
+                                client_model_name,
+                                "--mode",
+                                "random",
+                                "--no-mm-encoder-only",
+                                "--ssl-certfile",
+                                "/etc/sim/tls/tls.crt",
+                                "--ssl-keyfile",
+                                "/etc/sim/tls/tls.key",
+                            ],
+                            "ports": [{"containerPort": 8000, "name": "https", "protocol": "TCP"}],
+                            "readinessProbe": {
+                                "httpGet": {
+                                    "path": "/ready",
+                                    "port": "https",
+                                    "scheme": "HTTPS",
+                                }
+                            },
+                            "volumeMounts": [{"name": "tls", "mountPath": "/etc/sim/tls", "readOnly": True}],
+                        }
+                    ],
+                    "volumes": [{"name": "tls", "secret": {"secretName": cert_secret}}],
+                },
+            },
+            teardown=teardown,
+        )
+    )
+
+    def _ready() -> None:
+        deployment = get_json_or_none(admin_client, "deployment", sim, namespace) or {}
+        status = deployment.get("status") or {}
+        available = status.get("availableReplicas") or 0
+        assert available >= 1, f"usage simulator {namespace}/{sim} has {available} available replicas, want >= 1"
+
+    wait_until(check=_ready, timeout=240, what=f"usage simulator deployment {namespace}/{sim}")
+    return {
+        "endpoint": dns_name,
+        "provider_path": "/v1/chat/completions",
+        "credential": f"sk-usage-{suffix}",
+        "provider_config": {"tls.caCertificates": SA_SERVICE_CA},
+    }
+
+
+def assert_returns_usage(response: requests.Response) -> None:
+    """Assert an inference response carries OpenAI-style usage tokens.
+
+    Token quotas are accounted from ``usage.total_tokens`` in the response,
+    so a provider that returns no usage (e.g. the header-echo endpoint)
+    can never exhaust a budget — quota assertions are only meaningful
+    against responses that pass this check.
+    """
+    assert response.status_code == 200, (
+        f"expected 200 from external model inference, got {response.status_code}: {redact_sensitive(response.text)}"
+    )
+    try:
+        usage = (response.json() or {}).get("usage") or {}
+    except ValueError:
+        usage = {}
+    total_tokens = usage.get("total_tokens")
+    assert isinstance(total_tokens, int) and total_tokens > 0, (
+        f"response carries no usage.total_tokens for token accounting: {redact_sensitive(response.text)}"
+    )

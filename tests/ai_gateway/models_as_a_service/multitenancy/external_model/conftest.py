@@ -8,6 +8,7 @@ gatewayRefs additive schema is not distributed yet.
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Generator
 from contextlib import ExitStack
 from typing import Any
@@ -16,19 +17,30 @@ import pytest
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.maas_model_ref import MaaSModelRef
+from ocp_resources.namespace import Namespace
+from ocp_resources.project_project_openshift_io import Project
 
 from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import (
     build_aitenant_test_context,
 )
 from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils import (
+    EXTERNAL_ENDPOINT,
     admitted_user_namespace,
     deploy_aitenant_best_effort,
+    external_model_stack,
     extmod_tenant_test_params,
+    gateway_ref,
+    namespace_name,
     per_tenant_processing_uses_praxis,
     provision_and_serve_in_tenant,
     record_tenant_external_model_evidence,
+    require_maas_route,
     require_tenant_external_model_support,
+    serve_shared_model_in_tenant,
     tenant_case,
+    usage_provider,
+    wait_shared_attachments_ready,
 )
 from tests.ai_gateway.models_as_a_service.multitenancy.utils import (
     admit_namespace_to_gateway,
@@ -44,6 +56,9 @@ from tests.ai_gateway.models_as_a_service.utils import (
 from utilities.certificates_utils import router_ca_bundle_env
 
 LOGGER = structlog.get_logger(name=__name__)
+
+LIMITED_TOKEN_LIMIT = 3
+UNLIMITED_TOKEN_LIMIT = 100
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -216,4 +231,263 @@ def failure_served(
                 case=failure_env["tenant_b"],
                 teardown=teardown_resources,
             ),
+        }
+
+
+@pytest.fixture(scope="module")
+def shared_user_namespace(
+    admin_client: DynamicClient,
+    tenant_external_model_tenants: dict[str, dict[str, str]],
+    teardown_resources: bool,
+) -> Generator[Namespace | Project, Any, Any]:
+    """User namespace admitted to both tenants' gateways for the shared module."""
+    with ExitStack() as stack:
+        yield stack.enter_context(
+            cm=admitted_user_namespace(
+                admin_client,
+                "e2e-extmod-shr-user",
+                tenant_external_model_tenants["tenant_a"]["gateway_name"],
+                tenant_external_model_tenants["tenant_b"]["gateway_name"],
+                teardown=teardown_resources,
+            )
+        )
+
+
+@pytest.fixture(scope="class")
+def shared_model(
+    admin_client: DynamicClient,
+    tenant_external_model_tenants: dict[str, dict[str, str]],
+    shared_user_namespace: Namespace | Project,
+    teardown_resources: bool,
+) -> Generator[dict[str, Any], Any, Any]:
+    """The shared model attached to both tenants' gateways."""
+    cases = tenant_external_model_tenants
+    name = f"e2e-shr-shared-{uuid.uuid4().hex[:6]}"
+    with ExitStack() as stack:
+        model = stack.enter_context(
+            cm=external_model_stack(
+                admin_client,
+                name=name,
+                namespace=namespace_name(shared_user_namespace),
+                gateway_refs=[
+                    gateway_ref(cases["tenant_a"]["gateway_name"]),
+                    gateway_ref(cases["tenant_b"]["gateway_name"]),
+                ],
+                model_name=f"{name}-client",
+                tenant_refs=[
+                    cases["tenant_a"]["tenant_label_name"],
+                    cases["tenant_b"]["tenant_label_name"],
+                ],
+                teardown=teardown_resources,
+            )
+        )
+        wait_shared_attachments_ready(admin_client=admin_client, cases=tuple(cases.values()), model=model)
+        yield {"model": model}
+
+
+@pytest.fixture(scope="class")
+def shared_serving(
+    admin_client: DynamicClient,
+    request_session_http: requests.Session,
+    ocp_token_for_actor: str,
+    tenant_external_model_tenants: dict[str, dict[str, str]],
+    shared_model: dict[str, Any],
+    teardown_resources: bool,
+) -> Generator[dict[str, Any], Any, Any]:
+    """Per-tenant auth/subscription stacks and API keys for the shared model."""
+    model = shared_model["model"]
+    require_maas_route(admin_client=admin_client, model=model)
+    with ExitStack() as stack:
+        yield {
+            "access_a": serve_shared_model_in_tenant(
+                admin_client=admin_client,
+                request_session_http=request_session_http,
+                ocp_token=ocp_token_for_actor,
+                stack=stack,
+                case=tenant_external_model_tenants["tenant_a"],
+                model=model,
+                teardown=teardown_resources,
+            ),
+            "access_b": serve_shared_model_in_tenant(
+                admin_client=admin_client,
+                request_session_http=request_session_http,
+                ocp_token=ocp_token_for_actor,
+                stack=stack,
+                case=tenant_external_model_tenants["tenant_b"],
+                model=model,
+                teardown=teardown_resources,
+            ),
+        }
+
+
+@pytest.fixture(scope="class")
+def isolated_keys(
+    admin_client: DynamicClient,
+    request_session_http: requests.Session,
+    ocp_token_for_actor: str,
+    tenant_external_model_tenants: dict[str, dict[str, str]],
+    shared_user_namespace: Namespace | Project,
+    teardown_resources: bool,
+) -> Generator[dict[str, Any], Any, Any]:
+    """Two tenants' API keys for the same two-gateway model."""
+    cases = tenant_external_model_tenants
+    name = f"e2e-shr-auth-{uuid.uuid4().hex[:6]}"
+    with ExitStack() as stack:
+        model = stack.enter_context(
+            cm=external_model_stack(
+                admin_client,
+                name=name,
+                namespace=namespace_name(shared_user_namespace),
+                gateway_refs=[
+                    gateway_ref(cases["tenant_a"]["gateway_name"]),
+                    gateway_ref(cases["tenant_b"]["gateway_name"]),
+                ],
+                model_name=f"{name}-client",
+                tenant_refs=[
+                    cases["tenant_a"]["tenant_label_name"],
+                    cases["tenant_b"]["tenant_label_name"],
+                ],
+                teardown=teardown_resources,
+            )
+        )
+        wait_shared_attachments_ready(admin_client=admin_client, cases=tuple(cases.values()), model=model)
+        require_maas_route(admin_client=admin_client, model=model)
+        access_a = serve_shared_model_in_tenant(
+            admin_client=admin_client,
+            request_session_http=request_session_http,
+            ocp_token=ocp_token_for_actor,
+            stack=stack,
+            case=cases["tenant_a"],
+            model=model,
+            teardown=teardown_resources,
+        )
+        access_b = serve_shared_model_in_tenant(
+            admin_client=admin_client,
+            request_session_http=request_session_http,
+            ocp_token=ocp_token_for_actor,
+            stack=stack,
+            case=cases["tenant_b"],
+            model=model,
+            teardown=teardown_resources,
+        )
+        yield {"model": model, "key_a": access_a["api_key"], "key_b": access_b["api_key"]}
+
+
+@pytest.fixture(scope="class")
+def ambiguous_model_ref(
+    admin_client: DynamicClient,
+    tenant_external_model_tenants: dict[str, dict[str, str]],
+    shared_user_namespace: Namespace | Project,
+    teardown_resources: bool,
+) -> Generator[dict[str, Any], Any, Any]:
+    """A two-gateway model plus a tenantRef-less modelRef naming it."""
+    cases = tenant_external_model_tenants
+    name = f"e2e-shr-amb-{uuid.uuid4().hex[:6]}"
+    with ExitStack() as stack:
+        model = stack.enter_context(
+            cm=external_model_stack(
+                admin_client,
+                name=name,
+                namespace=namespace_name(shared_user_namespace),
+                gateway_refs=[
+                    gateway_ref(cases["tenant_a"]["gateway_name"]),
+                    gateway_ref(cases["tenant_b"]["gateway_name"]),
+                ],
+                model_name=f"{name}-client",
+                tenant_refs=[
+                    cases["tenant_a"]["tenant_label_name"],
+                    cases["tenant_b"]["tenant_label_name"],
+                ],
+                teardown=teardown_resources,
+            )
+        )
+        wait_shared_attachments_ready(admin_client=admin_client, cases=tuple(cases.values()), model=model)
+        require_maas_route(admin_client=admin_client, model=model)
+        ambiguous_ref = f"{name}-ambiguous"
+        stack.enter_context(
+            cm=MaaSModelRef(
+                client=admin_client,
+                name=ambiguous_ref,
+                namespace=namespace_name(shared_user_namespace),
+                annotations={
+                    "maas.opendatahub.io/endpoint": EXTERNAL_ENDPOINT,
+                    "maas.opendatahub.io/provider": "openai",
+                },
+                model_ref={"kind": "ExternalModel", "name": name},
+                teardown=teardown_resources,
+                wait_for_resource=True,
+            )
+        )
+        yield {"model": model, "ambiguous_ref": ambiguous_ref}
+
+
+@pytest.fixture(scope="class")
+def quota_model(
+    admin_client: DynamicClient,
+    request_session_http: requests.Session,
+    ocp_token_for_actor: str,
+    tenant_external_model_tenants: dict[str, dict[str, str]],
+    shared_user_namespace: Namespace | Project,
+    teardown_resources: bool,
+) -> Generator[dict[str, Any], Any, Any]:
+    """The simulator-backed shared model served in both tenants with asymmetric token budgets."""
+    cases = tenant_external_model_tenants
+    name = f"e2e-shr-quota-{uuid.uuid4().hex[:6]}"
+    client_name = f"{name}-client"
+    with ExitStack() as stack:
+        usage = usage_provider(
+            admin_client=admin_client,
+            stack=stack,
+            namespace=namespace_name(shared_user_namespace),
+            client_model_name=client_name,
+            teardown=teardown_resources,
+        )
+        model = stack.enter_context(
+            cm=external_model_stack(
+                admin_client,
+                name=name,
+                namespace=namespace_name(shared_user_namespace),
+                gateway_refs=[
+                    gateway_ref(cases["tenant_a"]["gateway_name"]),
+                    gateway_ref(cases["tenant_b"]["gateway_name"]),
+                ],
+                model_name=client_name,
+                tenant_refs=[
+                    cases["tenant_a"]["tenant_label_name"],
+                    cases["tenant_b"]["tenant_label_name"],
+                ],
+                endpoint=usage["endpoint"],
+                provider_path=usage["provider_path"],
+                credential=usage["credential"],
+                provider_config=usage["provider_config"],
+                teardown=teardown_resources,
+            )
+        )
+        wait_shared_attachments_ready(admin_client=admin_client, cases=tuple(cases.values()), model=model)
+        require_maas_route(admin_client=admin_client, model=model)
+        yield {
+            "model": model,
+            "access_a": serve_shared_model_in_tenant(
+                admin_client=admin_client,
+                request_session_http=request_session_http,
+                ocp_token=ocp_token_for_actor,
+                stack=stack,
+                case=cases["tenant_a"],
+                model=model,
+                teardown=teardown_resources,
+                token_limit=LIMITED_TOKEN_LIMIT,
+                window="1m",
+            ),
+            "access_b": serve_shared_model_in_tenant(
+                admin_client=admin_client,
+                request_session_http=request_session_http,
+                ocp_token=ocp_token_for_actor,
+                stack=stack,
+                case=cases["tenant_b"],
+                model=model,
+                teardown=teardown_resources,
+                token_limit=UNLIMITED_TOKEN_LIMIT,
+                window="1m",
+            ),
+            "usage": usage,
         }
