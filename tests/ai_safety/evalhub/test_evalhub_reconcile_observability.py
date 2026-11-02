@@ -153,6 +153,12 @@ class TestEvalHubReconcileMetrics:
         TC-MET-003: Verify evalhub_controller_reconcile_total counter increments
         for a successful reconciliation outcome.
         """
+        evalhub_reconcile_cr.wait_for_condition(
+            condition="Ready",
+            status="True",
+            timeout=120,
+        )
+
         try:
             for raw_metrics in TimeoutSampler(
                 wait_timeout=METRICS_POLL_TIMEOUT,
