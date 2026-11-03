@@ -86,15 +86,15 @@ def tenant_external_model_evidence(
 
 
 @pytest.fixture(scope="module")
-def tenant_external_model_primary_test_params() -> dict[str, Any]:
+def tenant_external_model_primary_test_params(admin_client: DynamicClient) -> dict[str, Any]:
     """Primary AITenant name and spec for the external model suite."""
-    return extmod_tenant_test_params(tenant_label="alpha")
+    return extmod_tenant_test_params(tenant_label="alpha", admin_client=admin_client)
 
 
 @pytest.fixture(scope="module")
-def tenant_external_model_secondary_test_params() -> dict[str, Any]:
+def tenant_external_model_secondary_test_params(admin_client: DynamicClient) -> dict[str, Any]:
     """Secondary AITenant name and spec for the external model suite."""
-    return extmod_tenant_test_params(tenant_label="beta")
+    return extmod_tenant_test_params(tenant_label="beta", admin_client=admin_client)
 
 
 @pytest.fixture(scope="module")
