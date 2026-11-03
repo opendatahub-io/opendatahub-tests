@@ -830,6 +830,7 @@ def implicit_model(
         )
         yield {"model": model, "api_key": api_key, **attachment}
 
+
 @pytest.fixture(scope="module")
 def crossns_env(
     admin_client: DynamicClient,
@@ -866,6 +867,7 @@ def crossns_env(
             "provider_ns": namespace_name(provider_ns),
             "teardown": teardown_resources,
         }
+
 
 @pytest.fixture(scope="module")
 def conflicts_env(
@@ -1132,7 +1134,5 @@ def coexistence(
                 "provider_service_uid": (provider_service or {}).get("metadata", {}).get("uid"),
             }
         finally:
-            restore_payload_processing_annotation(
-                admin_client, DEFAULT_TENANT_NAMESPACE, original_payload_annotation
-            )
+            restore_payload_processing_annotation(admin_client, DEFAULT_TENANT_NAMESPACE, original_payload_annotation)
             wait_default_backend(admin_client, praxis=True)

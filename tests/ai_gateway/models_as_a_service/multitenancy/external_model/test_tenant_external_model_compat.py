@@ -206,7 +206,9 @@ class TestLegacyIppCoexistence:
             f"{model['namespace']}/{model['name']} to the default gateway"
         )
 
-    def test_not_served_through_default_gateway(self, request_session_http: requests.Session, coexistence: dict[str, Any]) -> None:
+    def test_not_served_through_default_gateway(
+        self, request_session_http: requests.Session, coexistence: dict[str, Any]
+    ) -> None:
         """Given the new-shaped AGC model, when called through the default gateway,
         then the request is rejected (the legacy controller does not serve it).
         """
@@ -260,7 +262,9 @@ class TestLegacyIppCoexistence:
                 "provider Service was recreated (ownership handoff broke)"
             )
 
-    def test_agc_tenant_gateway_still_serves(self, request_session_http: requests.Session, coexistence: dict[str, Any]) -> None:
+    def test_agc_tenant_gateway_still_serves(
+        self, request_session_http: requests.Session, coexistence: dict[str, Any]
+    ) -> None:
         """Given the default tenant on legacy IPP, when the model is called through its tenant gateway,
         then the AGC/Praxis path still serves it with the provider credential injected.
         """

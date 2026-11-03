@@ -94,13 +94,16 @@ class TestCrossNsProviderGrant:
         model serves with that credential."""
         with ExitStack() as stack:
             env = crossns_env
-            model = crossns_model(admin_client=admin_client, env=env, stack=stack, name=f"e2e-crossns-grant-{uuid.uuid4().hex[:6]}")
+            model = crossns_model(
+                admin_client=admin_client, env=env, stack=stack, name=f"e2e-crossns-grant-{uuid.uuid4().hex[:6]}"
+            )
             reference_grant_for(admin_client=admin_client, env=env, stack=stack, model=model)
             access = serve_model_in_tenant_stack(
                 admin_client=admin_client,
                 request_session_http=request_session_http,
                 ocp_token=ocp_token_for_actor,
-                env=env, stack=stack,
+                env=env,
+                stack=stack,
                 model=model,
             )
 
@@ -126,6 +129,7 @@ class TestCrossNsProviderGrant:
             )
             assert_served_by_provider(response=response, path_tag=model["path_tag"], credential=model["credential"])
 
+
 @pytest.mark.usefixtures(
     "maas_subscription_controller_enabled_latest",
     "authorino_tls_configured",
@@ -149,7 +153,9 @@ class TestMissingGrant:
         afterwards serves normally."""
         with ExitStack() as stack:
             env = crossns_env
-            model = crossns_model(admin_client=admin_client, env=env, stack=stack, name=f"e2e-crossns-missing-{uuid.uuid4().hex[:6]}")
+            model = crossns_model(
+                admin_client=admin_client, env=env, stack=stack, name=f"e2e-crossns-missing-{uuid.uuid4().hex[:6]}"
+            )
             gateway = env["tenant"]["gateway_name"]
 
             wait_for_gateway_attachment_not_ready(
@@ -165,7 +171,8 @@ class TestMissingGrant:
                 admin_client=admin_client,
                 request_session_http=request_session_http,
                 ocp_token=ocp_token_for_actor,
-                env=env, stack=stack,
+                env=env,
+                stack=stack,
                 model=model,
             )
             wait_for_gateway_attachment_ready(
@@ -195,11 +202,14 @@ class TestMissingGrant:
         authorization failure."""
         with ExitStack() as stack:
             env = crossns_env
-            model = crossns_model(admin_client=admin_client, env=env, stack=stack, name=f"e2e-crossns-wronggr-{uuid.uuid4().hex[:6]}")
+            model = crossns_model(
+                admin_client=admin_client, env=env, stack=stack, name=f"e2e-crossns-wronggr-{uuid.uuid4().hex[:6]}"
+            )
             gateway = env["tenant"]["gateway_name"]
             reference_grant_for(
                 admin_client=admin_client,
-                env=env, stack=stack,
+                env=env,
+                stack=stack,
                 model=model,
                 name_suffix="-wrong",
                 from_namespace=f"{model['namespace']}-other",
@@ -212,6 +222,7 @@ class TestMissingGrant:
                 gateway_name=gateway,
                 message_pattern=GRANT_FAILURE_PATTERN,
             )
+
 
 @pytest.mark.usefixtures(
     "maas_subscription_controller_enabled_latest",
@@ -236,14 +247,17 @@ class TestGrantRevocation:
         credential copy is withdrawn, and inference is denied."""
         with ExitStack() as stack:
             env = crossns_env
-            model = crossns_model(admin_client=admin_client, env=env, stack=stack, name=f"e2e-crossns-revoke-{uuid.uuid4().hex[:6]}")
+            model = crossns_model(
+                admin_client=admin_client, env=env, stack=stack, name=f"e2e-crossns-revoke-{uuid.uuid4().hex[:6]}"
+            )
             gateway = env["tenant"]["gateway_name"]
             grant = reference_grant_for(admin_client=admin_client, env=env, stack=stack, model=model)
             access = serve_model_in_tenant_stack(
                 admin_client=admin_client,
                 request_session_http=request_session_http,
                 ocp_token=ocp_token_for_actor,
-                env=env, stack=stack,
+                env=env,
+                stack=stack,
                 model=model,
             )
             wait_for_gateway_attachment_ready(
@@ -303,14 +317,17 @@ class TestGrantRevocation:
         attachment fails with an authorization message and inference stops."""
         with ExitStack() as stack:
             env = crossns_env
-            model = crossns_model(admin_client=admin_client, env=env, stack=stack, name=f"e2e-crossns-narrow-{uuid.uuid4().hex[:6]}")
+            model = crossns_model(
+                admin_client=admin_client, env=env, stack=stack, name=f"e2e-crossns-narrow-{uuid.uuid4().hex[:6]}"
+            )
             gateway = env["tenant"]["gateway_name"]
             grant = reference_grant_for(admin_client=admin_client, env=env, stack=stack, model=model)
             access = serve_model_in_tenant_stack(
                 admin_client=admin_client,
                 request_session_http=request_session_http,
                 ocp_token=ocp_token_for_actor,
-                env=env, stack=stack,
+                env=env,
+                stack=stack,
                 model=model,
             )
             wait_for_gateway_attachment_ready(
@@ -323,7 +340,8 @@ class TestGrantRevocation:
             revoke_reference_grant(grant=grant)
             reference_grant_for(
                 admin_client=admin_client,
-                env=env, stack=stack,
+                env=env,
+                stack=stack,
                 model=model,
                 name_suffix="-narrowed",
                 from_namespace=f"{model['namespace']}-other",
@@ -344,7 +362,10 @@ class TestGrantRevocation:
                 path_tag=model["path_tag"],
                 retries=1,
             )
-            assert denied.status_code != 200, f"inference must stop after the grant is narrowed, got {denied.status_code}"
+            assert denied.status_code != 200, (
+                f"inference must stop after the grant is narrowed, got {denied.status_code}"
+            )
+
 
 @pytest.mark.usefixtures(
     "maas_subscription_controller_enabled_latest",
@@ -412,7 +433,8 @@ class TestCredentialSourceSelection:
 
             default_model = crossns_model_with_provider(
                 admin_client=admin_client,
-                env=env, stack=stack,
+                env=env,
+                stack=stack,
                 name=f"e2e-crossns-creddef-{uuid.uuid4().hex[:6]}",
                 provider_name=provider_name,
             )
@@ -421,7 +443,8 @@ class TestCredentialSourceSelection:
                 admin_client=admin_client,
                 request_session_http=request_session_http,
                 ocp_token=ocp_token_for_actor,
-                env=env, stack=stack,
+                env=env,
+                stack=stack,
                 model=default_model,
             )
             response = infer_external_chat(
@@ -432,12 +455,15 @@ class TestCredentialSourceSelection:
                 api_key=access["api_key"],
                 path_tag=default_model["path_tag"],
             )
-            assert_served_by_provider(response=response, path_tag=default_model["path_tag"], credential=provider_credential)
+            assert_served_by_provider(
+                response=response, path_tag=default_model["path_tag"], credential=provider_credential
+            )
             assert model_credential not in response.text, "model-local Secret must not be used without an auth override"
 
             override_model = crossns_model_with_provider(
                 admin_client=admin_client,
-                env=env, stack=stack,
+                env=env,
+                stack=stack,
                 name=f"e2e-crossns-credovr-{uuid.uuid4().hex[:6]}",
                 provider_name=provider_name,
                 override_secret=shared_credential,
@@ -447,7 +473,8 @@ class TestCredentialSourceSelection:
                 admin_client=admin_client,
                 request_session_http=request_session_http,
                 ocp_token=ocp_token_for_actor,
-                env=env, stack=stack,
+                env=env,
+                stack=stack,
                 model=override_model,
             )
             response = infer_external_chat(
@@ -458,7 +485,9 @@ class TestCredentialSourceSelection:
                 api_key=access["api_key"],
                 path_tag=override_model["path_tag"],
             )
-            assert_served_by_provider(response=response, path_tag=override_model["path_tag"], credential=model_credential)
+            assert_served_by_provider(
+                response=response, path_tag=override_model["path_tag"], credential=model_credential
+            )
             assert provider_credential not in response.text, (
                 "provider-local Secret must not be used when auth is overridden"
             )
@@ -505,7 +534,8 @@ class TestCredentialSourceSelection:
             missing_override = "does-not-exist-cred"
             model = crossns_model_with_provider(
                 admin_client=admin_client,
-                env=env, stack=stack,
+                env=env,
+                stack=stack,
                 name=f"e2e-crossns-nofb-{uuid.uuid4().hex[:6]}",
                 provider_name=provider_name,
                 override_secret=missing_override,
@@ -529,6 +559,7 @@ class TestCredentialSourceSelection:
             assert phase and phase != "Ready", (
                 f"model must report a present, non-Ready phase after the missing-secret failure, got {phase!r}"
             )
+
 
 @pytest.mark.usefixtures(
     "maas_subscription_controller_enabled_latest",
@@ -609,7 +640,8 @@ class TestSameNamedProvidersTwoNamespaces:
                     )
                     apply_reference_grant(
                         admin_client=admin_client,
-                        env=env, stack=stack,
+                        env=env,
+                        stack=stack,
                         name=f"{shared_provider}-grant",
                         provider_namespace=provider_ns,
                         from_namespace=env["model_ns"],
@@ -665,7 +697,8 @@ class TestSameNamedProvidersTwoNamespaces:
                     admin_client=admin_client,
                     request_session_http=request_session_http,
                     ocp_token=ocp_token_for_actor,
-                    env=env, stack=stack,
+                    env=env,
+                    stack=stack,
                     model=model,
                 )
                 wait_for_gateway_attachment_ready(

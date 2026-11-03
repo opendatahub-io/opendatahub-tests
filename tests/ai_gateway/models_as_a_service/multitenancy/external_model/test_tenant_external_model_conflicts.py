@@ -231,6 +231,7 @@ class TestModelNameConflict:
             )
             assert denied.status_code != 200, f"the conflicted loser must not serve, got {denied.status_code}"
 
+
 @pytest.mark.usefixtures(
     "maas_subscription_controller_enabled_latest",
     "authorino_tls_configured",
@@ -324,6 +325,7 @@ class TestSameNamedObjectsTwoNamespaces:
             path_tag=model_2["path_tag"],
         )
         assert_served_by_provider(response=response, path_tag=model_2["path_tag"], credential=model_2["credential"])
+
 
 @pytest.mark.usefixtures(
     "maas_subscription_controller_enabled_latest",
