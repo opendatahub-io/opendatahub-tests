@@ -800,7 +800,7 @@ def create_api_key(
     proxy_error_retries = 0
     try:
         for response in TimeoutSampler(
-            wait_timeout=30,
+            wait_timeout=120,
             sleep=5,
             func=request_session_http.post,
             url=api_keys_url,
@@ -830,7 +830,7 @@ def create_api_key(
             break
     except TimeoutExpiredError:
         LOGGER.info(
-            "create_api_key: timed out after 30s waiting for successful create "
+            "create_api_key: timed out after 120s waiting for successful create "
             "(retryable empty 403 / AUTH_FAILURE / plain proxy 5xx)"
         )
 
