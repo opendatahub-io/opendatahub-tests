@@ -574,8 +574,6 @@ def maas_model_ref_alias(admin_client: DynamicClient, namespace: str, name: str)
     return ((ref.get("status") or {}).get("resolvedModelAlias")) or ""
 
 
-
-
 def echo_provider_path(path_tag: str) -> str:
     """Provider path of an echo binding: the echo endpoint serves ``/anything/<tag>``."""
     return f"/anything/{path_tag}"
@@ -616,8 +614,6 @@ def gateway_ref(gateway_name: str, gateway_namespace: str = MAAS_GATEWAY_NAMESPA
 def external_model_route_name(model_name: str) -> str:
     """AGC tenant-local route name for an ExternalModel (``external-model-<name>``)."""
     return f"external-model-{model_name}"
-
-
 
 
 class TenantPinnedMaaSModelRef(MaaSModelRef):
@@ -2119,7 +2115,9 @@ def serve_shared_model_in_tenant(
     )
 
 
-def wait_shared_attachments_ready(admin_client: DynamicClient, cases: tuple[dict[str, str], ...], model: dict[str, Any]) -> None:
+def wait_shared_attachments_ready(
+    admin_client: DynamicClient, cases: tuple[dict[str, str], ...], model: dict[str, Any]
+) -> None:
     """Wait until both tenants' gateway attachments report ready."""
     for case in cases:
         wait_for_gateway_attachment_ready(
