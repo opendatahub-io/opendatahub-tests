@@ -111,9 +111,7 @@ class TestSharedModelTwoGateways:
         """status.gateways carries an independent ready result per gateway."""
         model = shared_model["model"]
         cases = tuple(tenant_external_model_tenants.values())
-        if (
-            gateway_status_entry(admin_client, model["name"], model["namespace"], cases[0]["gateway_name"]) is None
-        ):
+        if gateway_status_entry(admin_client, model["name"], model["namespace"], cases[0]["gateway_name"]) is None:
             pytest.skip(
                 "AGC reports aggregate model status only (no status.gateways entries); "
                 "per-gateway readiness is covered by test_both_gateways_serve"
@@ -319,9 +317,7 @@ class TestSharedModelAmbiguousModelRef:
         ExternalModel share a resolved alias today), which are separate
         gaps; this test proves the tenant selection the scenario is about."""
         model = ambiguous_model_ref["model"]
-        cases = {
-            case["tenant_label_name"]: case for case in tenant_external_model_tenants.values()
-        }
+        cases = {case["tenant_label_name"]: case for case in tenant_external_model_tenants.values()}
         for tenant_label, ref_name in model["model_refs"].items():
             case = cases[tenant_label]
 
