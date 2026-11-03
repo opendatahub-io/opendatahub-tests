@@ -737,7 +737,12 @@ def _search_active_api_keys(
     ocp_user_token: str,
     extra_headers: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Search all active API keys, paging until a short page is returned."""
+    """Search all active API keys, paging until a short page is returned.
+
+    Raises:
+        RuntimeError: When a search page fails or the page cap is reached with
+            a full page, meaning the collected results may be incomplete.
+    """
     request_headers = {"Authorization": f"Bearer {ocp_user_token}"}
     if extra_headers is not None:
         request_headers.update(extra_headers)
@@ -755,13 +760,12 @@ def _search_active_api_keys(
             timeout=60,
         )
         if response.status_code != 200:
-            LOGGER.warning(f"active-key search failed with status={response.status_code}")
-            break
+            raise RuntimeError(f"active-key search failed with status={response.status_code}")
         page_items = (response.json() or {}).get("items") or []
         items.extend(page_items)
         if len(page_items) < limit:
-            break
-    return items
+            return items
+    raise RuntimeError(f"active-key search hit the {MAX_API_KEY_SEARCH_PAGES}-page cap; results may be incomplete")
 
 
 def _same_name_active_key_ids(
@@ -813,13 +817,18 @@ def _revoke_orphaned_duplicate_keys(
     ]
     for duplicate in duplicates:
         LOGGER.warning(f"orphan-key dedupe: revoking duplicate key id={duplicate.get('id')} name={api_key_name}")
-        revoke_api_key(
+        revoke_response, _ = revoke_api_key(
             request_session_http=request_session_http,
             base_url=base_url,
             key_id=str(duplicate["id"]),
             ocp_user_token=ocp_user_token,
             extra_headers=extra_headers,
         )
+        if revoke_response.status_code not in (200, 202, 204):
+            LOGGER.warning(
+                f"orphan-key dedupe: revoking key id={duplicate.get('id')} failed with "
+                f"status={revoke_response.status_code}"
+            )
 
 
 def create_api_key(
@@ -868,6 +877,7 @@ def create_api_key(
     if extra_headers is not None:
         request_headers.update(extra_headers)
 
+    preexisting_key_ids: set[str] | None
     try:
         preexisting_key_ids = _same_name_active_key_ids(
             request_session_http=request_session_http,
@@ -876,11 +886,15 @@ def create_api_key(
             ocp_user_token=ocp_user_token,
             extra_headers=extra_headers,
         )
-    except Exception as error:  # noqa: BLE001 - snapshot is best effort
-        LOGGER.warning(f"orphan-key dedupe: same-name key snapshot failed: {error}")
-        preexisting_key_ids = set()
+    except Exception as error:  # noqa: BLE001 - snapshot availability is best effort
+        LOGGER.warning(f"orphan-key dedupe: same-name key snapshot unavailable, skipping cleanup: {error}")
+        preexisting_key_ids = None
 
     def revoke_keys_created_by_this_call(keep_key_id: str) -> None:
+        if preexisting_key_ids is None:
+            # Without a complete snapshot, same-name keys cannot be told apart
+            # from pre-existing ones, so cleanup is skipped entirely.
+            return
         try:
             _revoke_orphaned_duplicate_keys(
                 request_session_http=request_session_http,
