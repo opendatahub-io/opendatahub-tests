@@ -1082,10 +1082,17 @@ def infer_external_chat(
 
     Retries transient gateway errors (auth propagation, route rollout) with a
     bounded count; non-transient failures return immediately. TLS is verified
-    against the router CA bundle installed by the ``gateway_route_ca_bundle``
-    fixture (via ``REQUESTS_CA_BUNDLE``); pass ``verify=False`` to opt out on
+    against the router CA bundle exported by the ``router_ca_bundle_env``
+    fixture (``REQUESTS_CA_BUNDLE``); pass ``verify=False`` to opt out on
     clusters whose Route certificates cannot be resolved that way.
     """
+    if verify is True:
+        # The shared request session disables trust_env so that its own
+        # verify=False is honored; requests then ignores REQUESTS_CA_BUNDLE
+        # for per-request verify=True calls, so resolve the bundle here.
+        bundle_path = os.environ.get("REQUESTS_CA_BUNDLE")
+        if bundle_path:
+            verify = bundle_path
     if provider_path is None:
         provider_path = echo_provider_path(path_tag) if path_tag else "/v1/chat/completions"
     url = external_chat_url(
