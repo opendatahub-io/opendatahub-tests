@@ -189,6 +189,7 @@ class TestLegacyIppCoexistence:
     selection redeploys it).
     """
 
+    @pytest.mark.tier2
     def test_no_route_on_default_gateway(
         self,
         admin_client: DynamicClient,
@@ -203,6 +204,7 @@ class TestLegacyIppCoexistence:
             f"{model['namespace']}/{model['name']} to the default gateway"
         )
 
+    @pytest.mark.tier2
     def test_not_served_through_default_gateway(
         self, request_session_http: requests.Session, coexistence: dict[str, Any]
     ) -> None:
@@ -223,6 +225,7 @@ class TestLegacyIppCoexistence:
             f"new-shaped AGC model must not be served on the default gateway, got {response.status_code}"
         )
 
+    @pytest.mark.tier2
     def test_no_ipp_status_writes(
         self,
         admin_client: DynamicClient,
@@ -237,6 +240,7 @@ class TestLegacyIppCoexistence:
             f"legacy IPP overwrote the AGC status.gateways results: {coexistence['status_before']} -> {status_after}"
         )
 
+    @pytest.mark.tier2
     def test_shared_provider_ownership_stays_defined(
         self,
         admin_client: DynamicClient,
@@ -259,6 +263,7 @@ class TestLegacyIppCoexistence:
                 "provider Service was recreated (ownership handoff broke)"
             )
 
+    @pytest.mark.tier2
     def test_agc_tenant_gateway_still_serves(
         self, request_session_http: requests.Session, coexistence: dict[str, Any]
     ) -> None:
