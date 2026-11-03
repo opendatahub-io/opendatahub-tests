@@ -37,7 +37,9 @@ def multitenancy_usage_logs_telemetry_enabled(
                 admin_client=admin_client,
                 tenant_namespace=test_context["tenant_namespace_name"],
             )
-            stack.enter_context(patch_maastenantconfig_usage_telemetry(tenant_config))
+            stack.enter_context(
+                patch_maastenantconfig_usage_telemetry(maas_tenant_config=tenant_config),
+            )
         yield
 
 
