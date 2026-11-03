@@ -81,7 +81,7 @@ def test_lmevaljob_crd_exists(
 
 
 @pytest.mark.jira("RHOAIENG-94190")
-@pytest.mark.skip(reason=RHOAIENG_94190_SKIP_REASON)
+@pytest.mark.xfail(reason=RHOAIENG_94190_SKIP_REASON, strict=False)
 @pytest.mark.skip_on_disconnected
 @pytest.mark.tier1
 @pytest.mark.parametrize(
@@ -111,7 +111,7 @@ def test_lmeval_huggingface_model(admin_client, model_namespace, lmevaljob_hf_po
 
 
 @pytest.mark.jira("RHOAIENG-94190")
-@pytest.mark.skip(reason=RHOAIENG_94190_SKIP_REASON)
+@pytest.mark.xfail(reason=RHOAIENG_94190_SKIP_REASON, strict=False)
 @pytest.mark.skip_on_disconnected
 @pytest.mark.tier2
 @pytest.mark.parametrize(
@@ -374,7 +374,7 @@ def test_lmeval_https_verify_certificate_no_ca_bundle(
 
 
 @pytest.mark.jira("RHOAIENG-94190")
-@pytest.mark.skip(reason=RHOAIENG_94190_SKIP_REASON)
+@pytest.mark.xfail(reason=RHOAIENG_94190_SKIP_REASON, strict=False)
 @pytest.mark.tier1
 @pytest.mark.parametrize(
     "model_namespace",
