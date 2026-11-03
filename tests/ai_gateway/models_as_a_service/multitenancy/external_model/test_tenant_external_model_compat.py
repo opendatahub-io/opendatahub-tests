@@ -48,8 +48,6 @@ from utilities.constants import MAAS_GATEWAY_NAME, MAAS_GATEWAY_NAMESPACE
 
 LOGGER = structlog.get_logger(name=__name__)
 
-PAYLOAD_PROCESSING_TYPE_PRAXIS = "praxis"
-PAYLOAD_PROCESSING_TYPE_IPP = "ipp"
 
 
 RECONCILE_WAIT = int(os.environ.get("E2E_RECONCILE_WAIT", "8"))
