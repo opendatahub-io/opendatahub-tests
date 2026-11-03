@@ -808,6 +808,7 @@ def implicit_model(
         )
         yield {"model": model, "api_key": api_key, **attachment}
 
+
 @pytest.fixture(scope="module")
 def crossns_env(
     admin_client: DynamicClient,

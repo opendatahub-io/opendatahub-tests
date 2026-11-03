@@ -153,7 +153,9 @@ class TestUserNamespaceAttachmentServing:
     def test_credential_copy_delivered_to_tenant(
         self,
         request_session_http: requests.Session,
-        admin_client: DynamicClient, attachment_env: dict[str, Any], attached_model: dict[str, Any]
+        admin_client: DynamicClient,
+        attachment_env: dict[str, Any],
+        attached_model: dict[str, Any],
     ) -> None:
         """Given a serving attachment, when reading tenant B's namespace, then the
         user-namespace credential is delivered there as a controller-owned copy
@@ -173,7 +175,9 @@ class TestUserNamespaceAttachmentServing:
     def test_unselected_gateway_not_serving(
         self,
         request_session_http: requests.Session,
-        admin_client: DynamicClient, attachment_env: dict[str, Any], attached_model: dict[str, Any]
+        admin_client: DynamicClient,
+        attachment_env: dict[str, Any],
+        attached_model: dict[str, Any],
     ) -> None:
         """Given the model is attached only to tenant B's gateway, when inspecting
         tenant A's gateway, then it has no route, no credential copy, and does
@@ -203,7 +207,9 @@ class TestUserNamespaceAttachmentServing:
     def test_inference_serves_with_user_namespace_credential(
         self,
         request_session_http: requests.Session,
-        admin_client: DynamicClient, attachment_env: dict[str, Any], attached_model: dict[str, Any]
+        admin_client: DynamicClient,
+        attachment_env: dict[str, Any],
+        attached_model: dict[str, Any],
     ) -> None:
         """Given a serving attachment, when running real inference through tenant
         B's gateway, then it reaches the provider with the user-namespace
@@ -512,7 +518,9 @@ class TestListenerNotAllowed:
     def test_route_not_admitted_and_not_served(
         self,
         request_session_http: requests.Session,
-        admin_client: DynamicClient, attachment_env: dict[str, Any], refused_model: dict[str, Any]
+        admin_client: DynamicClient,
+        attachment_env: dict[str, Any],
+        refused_model: dict[str, Any],
     ) -> None:
         """Given a refused attachment, when reading the route's parent conditions
         and sending a request through the gateway, then the route (if created)
@@ -562,7 +570,9 @@ class TestListenerAdmissionRecovery:
     def test_refused_model_does_not_break_tenant_models(
         self,
         request_session_http: requests.Session,
-        admin_client: DynamicClient, attachment_env: dict[str, Any], recovery_env: dict[str, Any]
+        admin_client: DynamicClient,
+        attachment_env: dict[str, Any],
+        recovery_env: dict[str, Any],
     ) -> None:
         """Given the gateway refuses the recovering model's namespace, when
         reading that attachment's status and serving the control model, then
@@ -779,7 +789,9 @@ class TestCredentialRotationFollowsSource:
     def test_rotation_updates_copy_and_serving(
         self,
         request_session_http: requests.Session,
-        admin_client: DynamicClient, attachment_env: dict[str, Any], rotation_model: dict[str, Any]
+        admin_client: DynamicClient,
+        attachment_env: dict[str, Any],
+        rotation_model: dict[str, Any],
     ) -> None:
         """Given a serving attachment, when the user-namespace source Secret's
         key is rotated, then the tenant copy carries the new key, no stale
