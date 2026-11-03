@@ -1,7 +1,7 @@
 import base64
 import json
 import os
-from collections.abc import Generator, Mapping
+from collections.abc import Generator
 from contextlib import contextmanager
 from json import JSONDecodeError
 from typing import Any
@@ -31,7 +31,6 @@ from utilities.constants import (
 from utilities.llmd_utils import get_llm_inference_url
 from utilities.plugins.constant import OpenAIEnpoints, RestHeader
 from utilities.resources.aitenant import AITenant
-from utilities.resources.external_model import ExternalModel
 from utilities.resources.http_route import HTTPRoute
 from utilities.resources.llm_inference_service import LLMInferenceService
 from utilities.resources.maastenantconfig import MaasTenantConfig
@@ -738,12 +737,7 @@ def _search_active_api_keys(
     ocp_user_token: str,
     extra_headers: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Search all active API keys, paging until a short page is returned.
-
-    Raises:
-        RuntimeError: When a search page fails or the page cap is reached with
-            a full page, meaning the collected results may be incomplete.
-    """
+    """Search all active API keys, paging until a short page is returned."""
     request_headers = {"Authorization": f"Bearer {ocp_user_token}"}
     if extra_headers is not None:
         request_headers.update(extra_headers)
@@ -761,12 +755,13 @@ def _search_active_api_keys(
             timeout=60,
         )
         if response.status_code != 200:
-            raise RuntimeError(f"active-key search failed with status={response.status_code}")
+            LOGGER.warning(f"active-key search failed with status={response.status_code}")
+            break
         page_items = (response.json() or {}).get("items") or []
         items.extend(page_items)
         if len(page_items) < limit:
-            return items
-    raise RuntimeError(f"active-key search hit the {MAX_API_KEY_SEARCH_PAGES}-page cap; results may be incomplete")
+            break
+    return items
 
 
 def _same_name_active_key_ids(
@@ -816,36 +811,15 @@ def _revoke_orphaned_duplicate_keys(
         and str(item.get("id")) not in preexisting_key_ids
         and str(item.get("id")) != keep_key_id
     ]
-    if not keep_key_id and len(duplicates) > 1:
-        # The create failed (no returned key ID to keep), and more than one
-        # new same-name key exists: another caller may have created one of
-        # them after this call's snapshot, so ownership cannot be established
-        # and nothing is revoked.
-        LOGGER.warning(
-            f"orphan-key dedupe: {len(duplicates)} new same-name keys exist but no key ID "
-            "was returned by this call; skipping cleanup to avoid revoking another caller's key"
-        )
-        return
     for duplicate in duplicates:
         LOGGER.warning(f"orphan-key dedupe: revoking duplicate key id={duplicate.get('id')} name={api_key_name}")
-        try:
-            revoke_response, _ = revoke_api_key(
-                request_session_http=request_session_http,
-                base_url=base_url,
-                key_id=str(duplicate["id"]),
-                ocp_user_token=ocp_user_token,
-                extra_headers=extra_headers,
-            )
-            if revoke_response.status_code not in (200, 202, 204):
-                LOGGER.warning(
-                    f"orphan-key dedupe: revoking key id={duplicate.get('id')} failed with "
-                    f"status={revoke_response.status_code}"
-                )
-        except Exception as error:  # noqa: BLE001 - one duplicate must not stop the rest
-            LOGGER.warning(
-                f"orphan-key dedupe: revoking key id={duplicate.get('id')} raised, "
-                f"continuing with remaining duplicates: {error}"
-            )
+        revoke_api_key(
+            request_session_http=request_session_http,
+            base_url=base_url,
+            key_id=str(duplicate["id"]),
+            ocp_user_token=ocp_user_token,
+            extra_headers=extra_headers,
+        )
 
 
 def create_api_key(
@@ -894,7 +868,6 @@ def create_api_key(
     if extra_headers is not None:
         request_headers.update(extra_headers)
 
-    preexisting_key_ids: set[str] | None
     try:
         preexisting_key_ids = _same_name_active_key_ids(
             request_session_http=request_session_http,
@@ -903,15 +876,11 @@ def create_api_key(
             ocp_user_token=ocp_user_token,
             extra_headers=extra_headers,
         )
-    except Exception as error:  # noqa: BLE001 - snapshot availability is best effort
-        LOGGER.warning(f"orphan-key dedupe: same-name key snapshot unavailable, skipping cleanup: {error}")
-        preexisting_key_ids = None
+    except Exception as error:  # noqa: BLE001 - snapshot is best effort
+        LOGGER.warning(f"orphan-key dedupe: same-name key snapshot failed: {error}")
+        preexisting_key_ids = set()
 
     def revoke_keys_created_by_this_call(keep_key_id: str) -> None:
-        if preexisting_key_ids is None:
-            # Without a complete snapshot, same-name keys cannot be told apart
-            # from pre-existing ones, so cleanup is skipped entirely.
-            return
         try:
             _revoke_orphaned_duplicate_keys(
                 request_session_http=request_session_http,
@@ -932,7 +901,7 @@ def create_api_key(
     proxy_error_retries = 0
     try:
         for response in TimeoutSampler(
-            wait_timeout=240,
+            wait_timeout=120,
             sleep=5,
             func=request_session_http.post,
             url=api_keys_url,
@@ -952,7 +921,7 @@ def create_api_key(
                 auth_failure_retries += 1
                 LOGGER.info("create_api_key: 500 AUTH_FAILURE (Authorino identity not ready) — retrying")
                 continue
-            if response.status_code in (500, 502, 503, 504) and not (response.text or "").lstrip().startswith("{"):
+            if response.status_code in (500, 502, 503) and not (response.text or "").lstrip().startswith("{"):
                 proxy_error_retries += 1
                 LOGGER.info(
                     f"create_api_key: {response.status_code} plain-text proxy/gateway error "
@@ -962,7 +931,7 @@ def create_api_key(
             break
     except TimeoutExpiredError:
         LOGGER.info(
-            "create_api_key: timed out after 240s waiting for successful create "
+            "create_api_key: timed out after 120s waiting for successful create "
             "(retryable empty 403 / AUTH_FAILURE / plain proxy 5xx)"
         )
 
@@ -1122,116 +1091,6 @@ def wait_for_httproute(
     ):
         if route is not None:
             return route
-
-
-def _object_ref_name_and_namespace(ref: Any) -> tuple[str, str]:
-    """Return ``(name, namespace)`` from a Kubernetes object reference; namespace may be empty."""
-    name = ""
-    route_namespace = ""
-    if hasattr(ref, "name") and ref.name:
-        name = str(ref.name)
-    elif isinstance(ref, Mapping) and ref.get("name"):
-        name = str(ref["name"])
-    if hasattr(ref, "namespace") and ref.namespace:
-        route_namespace = str(ref.namespace)
-    elif isinstance(ref, Mapping) and ref.get("namespace"):
-        route_namespace = str(ref["namespace"])
-    return name, route_namespace
-
-
-def _gateway_attachment_http_route_ref(external_model_status: Any) -> tuple[str, str]:
-    """Read programmed HTTPRoute name/namespace from ExternalModel gateway attachments."""
-    if hasattr(external_model_status, "gateways"):
-        gateways = external_model_status.gateways or []
-    elif isinstance(external_model_status, Mapping) and "gateways" in external_model_status:
-        gateways = external_model_status["gateways"] or []
-    else:
-        return "", ""
-
-    for gateway in gateways:
-        route_ref = gateway.httpRouteRef if hasattr(gateway, "httpRouteRef") else None
-        if route_ref is None and isinstance(gateway, Mapping) and "httpRouteRef" in gateway:
-            route_ref = gateway["httpRouteRef"]
-        if route_ref is None:
-            continue
-        route_name, route_namespace = _object_ref_name_and_namespace(ref=route_ref)
-        if route_name:
-            return route_name, route_namespace
-    return "", ""
-
-
-def get_external_model_http_route_ref(external_model: ExternalModel) -> tuple[str, str]:
-    """Return the HTTPRoute name and namespace published on ExternalModel status, if programmed.
-
-    Namespace is empty when status only exposes ``httpRouteName`` (callers should use the
-    ExternalModel namespace for lookup).
-    """
-    external_model_status = external_model.instance.status
-    if external_model_status is None:
-        return "", ""
-    if hasattr(external_model_status, "httpRouteName") and external_model_status.httpRouteName:
-        return str(external_model_status.httpRouteName), ""
-    if isinstance(external_model_status, Mapping) and "httpRouteName" in external_model_status:
-        route_name = external_model_status["httpRouteName"]
-        if route_name:
-            return str(route_name), ""
-    return _gateway_attachment_http_route_ref(external_model_status=external_model_status)
-
-
-def get_external_model_http_route_name(external_model: ExternalModel) -> str:
-    """Return the HTTPRoute name published on ExternalModel status, if programmed."""
-    route_name, _route_namespace = get_external_model_http_route_ref(external_model=external_model)
-    return route_name
-
-
-def wait_for_external_model_http_route_name(
-    external_model: ExternalModel,
-    timeout: int = 300,
-) -> str:
-    """Poll until ExternalModel status reports an HTTPRoute name."""
-    for http_route_name in TimeoutSampler(
-        wait_timeout=timeout,
-        sleep=5,
-        func=get_external_model_http_route_name,
-        external_model=external_model,
-    ):
-        if http_route_name:
-            return http_route_name
-
-
-def wait_for_external_model_httproute(
-    client: DynamicClient,
-    external_model: ExternalModel,
-    namespace: str,
-    timeout: int = 300,
-) -> str:
-    """Poll until ExternalModel is programmed and its HTTPRoute exists in the namespace."""
-
-    def external_model_httproute_ready() -> str:
-        http_route_name, http_route_namespace = get_external_model_http_route_ref(
-            external_model=external_model,
-        )
-        if not http_route_name:
-            return ""
-        lookup_namespace = http_route_namespace or namespace
-        if (
-            get_httproute(
-                client=client,
-                name=http_route_name,
-                namespace=lookup_namespace,
-            )
-            is None
-        ):
-            return ""
-        return http_route_name
-
-    for http_route_name in TimeoutSampler(
-        wait_timeout=timeout,
-        sleep=5,
-        func=external_model_httproute_ready,
-    ):
-        if http_route_name:
-            return http_route_name
 
 
 def fresh_aitenant(aitenant: AITenant) -> AITenant:
