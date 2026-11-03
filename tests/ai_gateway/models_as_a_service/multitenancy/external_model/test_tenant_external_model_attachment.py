@@ -96,6 +96,7 @@ pytestmark = pytest.mark.tier2
 class TestUserNamespaceAttachmentServing:
     """A user-ns model attached to tenant B's gateway serves through it only."""
 
+    @pytest.mark.tier2
     def test_attachment_status_ready(
         self, admin_client: DynamicClient, attachment_env: dict[str, Any], attached_model: dict[str, Any]
     ) -> None:
@@ -115,6 +116,7 @@ class TestUserNamespaceAttachmentServing:
             gateway_name=env["tenant_b"]["gateway_name"],
         )
 
+    @pytest.mark.tier2
     def test_one_httproute_in_model_namespace(
         self, admin_client: DynamicClient, attachment_env: dict[str, Any], attached_model: dict[str, Any]
     ) -> None:
@@ -150,6 +152,7 @@ class TestUserNamespaceAttachmentServing:
             f"ExternalName Service {provider_service}"
         )
 
+    @pytest.mark.tier2
     def test_credential_copy_delivered_to_tenant(
         self,
         request_session_http: requests.Session,
@@ -172,6 +175,7 @@ class TestUserNamespaceAttachmentServing:
         )
         assert copy["metadata"]["namespace"] == tenant_b["tenant_ns"]
 
+    @pytest.mark.tier2
     def test_unselected_gateway_not_serving(
         self,
         request_session_http: requests.Session,
@@ -204,6 +208,7 @@ class TestUserNamespaceAttachmentServing:
         )
         assert_not_served(response=response)
 
+    @pytest.mark.tier2
     def test_inference_serves_with_user_namespace_credential(
         self,
         request_session_http: requests.Session,
@@ -238,6 +243,7 @@ class TestUserNamespaceAttachmentServing:
 class TestAttachmentLifecycleCleanup:
     """Detach and delete remove only their own serving configuration."""
 
+    @pytest.mark.tier2
     def test_detach_removes_only_that_attachment(
         self,
         admin_client: DynamicClient,
@@ -361,6 +367,7 @@ class TestAttachmentLifecycleCleanup:
                 )
                 assert_served_by_provider(response=response, path_tag=model["path_tag"], credential=model["credential"])
 
+    @pytest.mark.tier2
     def test_model_delete_removes_serving_config(
         self,
         request_session_http: requests.Session,
@@ -469,6 +476,7 @@ class TestListenerNotAllowed:
     the attachment and publishes nothing into the tenant.
     """
 
+    @pytest.mark.tier2
     def test_attachment_reports_not_allowed_by_listeners(
         self, admin_client: DynamicClient, attachment_env: dict[str, Any], refused_model: dict[str, Any]
     ) -> None:
@@ -485,6 +493,7 @@ class TestListenerNotAllowed:
             reason="NotAllowedByListeners",
         )
 
+    @pytest.mark.tier2
     def test_nothing_published_into_tenant(
         self, admin_client: DynamicClient, attachment_env: dict[str, Any], refused_model: dict[str, Any]
     ) -> None:
@@ -515,6 +524,7 @@ class TestListenerNotAllowed:
                 break
             time.sleep(TENANT_EXTERNAL_MODEL_POLL_INTERVAL)
 
+    @pytest.mark.tier2
     def test_route_not_admitted_and_not_served(
         self,
         request_session_http: requests.Session,
@@ -567,6 +577,7 @@ class TestListenerAdmissionRecovery:
     other classes' routes, and removing its label would break them.
     """
 
+    @pytest.mark.tier2
     def test_refused_model_does_not_break_tenant_models(
         self,
         request_session_http: requests.Session,
@@ -605,6 +616,7 @@ class TestListenerAdmissionRecovery:
         )
         assert_served_by_provider(response=response, path_tag=control["path_tag"], credential=control["credential"])
 
+    @pytest.mark.tier2
     def test_readmission_recovers_attachment_without_model_edit(
         self,
         admin_client: DynamicClient,
@@ -662,6 +674,7 @@ class TestListenerAdmissionRecovery:
             )
             assert_served_by_provider(response=response, path_tag=model["path_tag"], credential=model["credential"])
 
+    @pytest.mark.tier2
     def test_narrowing_admission_stops_serving(
         self,
         admin_client: DynamicClient,
@@ -786,6 +799,7 @@ class TestCredentialRotationFollowsSource:
     the old one.
     """
 
+    @pytest.mark.tier2
     def test_rotation_updates_copy_and_serving(
         self,
         request_session_http: requests.Session,
