@@ -102,19 +102,16 @@ def ingress_domain_from_maas_host(maas_host: str) -> str:
     return maas_host.removeprefix(MAAS_HOST_PREFIX)
 
 
-def tenant_gateway_service_name(
+def _tenant_gateway_service_candidate(
     client: DynamicClient,
     gateway_name: str,
-    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
-) -> str:
-    """Return the name of the OpenShift Service fronting a tenant Gateway.
+    gateway_namespace: str,
+) -> str | None:
+    """Name of the Service fronting a tenant Gateway, or None when none exists yet.
 
-    The openshift.io gateway controller names the per-Gateway LoadBalancer
-    Service ``<gateway-name>-<gateway-class>``, but controllers for other
-    GatewayClasses may not follow that convention, so the Service is looked
-    up from the cluster instead of only composing the name: a Service owned
-    by the Gateway wins, the composed name is accepted when it exists, and
-    a unique ``<gateway-name>-`` prefixed Service is the last resort.
+    A Service owned by the Gateway wins, the composed
+    ``<gateway-name>-<gateway-class>`` name is accepted when it exists, and a
+    unique ``<gateway-name>-`` prefixed Service is the last resort.
     """
     services = list(Service.get(client=client, namespace=gateway_namespace))
     for service in services:
@@ -126,9 +123,36 @@ def tenant_gateway_service_name(
     if composed in service_names:
         return composed
     prefixed = sorted(name for name in service_names if name.startswith(f"{gateway_name}-"))
-    assert prefixed, f"No Service fronting Gateway '{gateway_name}' in namespace '{gateway_namespace}'"
+    if not prefixed:
+        return None
     assert len(prefixed) == 1, f"Ambiguous Services for Gateway '{gateway_name}': {prefixed}"
     return prefixed[0]
+
+
+def tenant_gateway_service_name(
+    client: DynamicClient,
+    gateway_name: str,
+    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+) -> str:
+    """Return the name of the OpenShift Service fronting a tenant Gateway.
+
+    The Gateway API does not guarantee the controller has created the Service
+    by the time the Gateway reports Programmed, so candidates are polled for
+    a bounded window instead of asserting on a single lookup.
+    """
+    for candidate in TimeoutSampler(
+        wait_timeout=60,
+        sleep=2,
+        func=_tenant_gateway_service_candidate,
+        client=client,
+        gateway_name=gateway_name,
+        gateway_namespace=gateway_namespace,
+    ):
+        if candidate is not None:
+            return candidate
+    raise TimeoutExpiredError(
+        f"No Service fronting Gateway '{gateway_name}' appeared in namespace '{gateway_namespace}' within 60 seconds"
+    )
 
 
 def tenant_gateway_route_name(gateway_name: str) -> str:
