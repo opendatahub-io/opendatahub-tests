@@ -30,6 +30,16 @@ LIMITADOR_SERVICE_MONITOR_WAIT_TIMEOUT: int = 120
 USAGE_LOGGING_RESOURCES_WAIT_TIMEOUT: int = 120
 LIMITADOR_SCRAPE_INTERVAL_TEST_VALUE: str = "1m"
 
+USAGE_LOGS_TENANCY_PROXY_DEPLOYMENT: str = "usage-logs-tenancy-proxy"
+LOKI_GATEWAY_SERVICE_NAME: str = "data-science-lokistack-gateway-http"
+LOKI_GATEWAY_PORT: int = 8080
+LOKI_APPLICATION_TENANT_HEADER: str = "application"
+USAGE_LOGS_SERVICE_NAME: str = "models-as-a-service"
+USAGE_LOGS_QUERY_LOOKBACK: str = "30m"
+USAGE_LOGS_INGESTION_WAIT_TIMEOUT: int = 300
+USAGE_LOGS_INGESTION_POLL_SECONDS: int = 15
+USAGE_LOGS_TENANCY_PROXY_PORT: int = 8443
+
 
 def limitador_scrape_target_up_query() -> str:
     """Build a PromQL query that confirms Limitador metrics are scraped."""
