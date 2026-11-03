@@ -1012,10 +1012,36 @@ def authorino_tls_configured(admin_client: DynamicClient) -> Generator[None, Any
     ):
         authorino_deployment.wait_for_condition(condition="Available", status="True", timeout=120)
         LOGGER.info("authorino_tls_configured: TLS configuration applied, rollout complete")
+        _wait_for_authorino_auth_path(admin_client=admin_client)
         yield
 
     authorino_deployment.wait_for_condition(condition="Available", status="True", timeout=120)
     LOGGER.info("authorino_tls_configured: TLS configuration removed, rollout complete")
+
+
+def _wait_for_authorino_auth_path(admin_client: DynamicClient) -> None:
+    """Wait until gateway auth traffic works again after an Authorino rollout.
+
+    Authorino restarts make its single endpoint flap for the gateway envoys
+    (outlier detection ejects it after consecutive gRPC failures), so requests
+    through the maas default gateway hang or 500 for a short window even though
+    the Authorino deployment already reports Available. Probe the unauthenticated
+    maas-api path until the gateway answers, so tests do not race that window.
+    """
+    probe_url = f"https://{host_from_ingress_domain(client=admin_client)}/maas-api/v1/models"
+    for sample in TimeoutSampler(
+        wait_timeout=120,
+        sleep=5,
+        func=requests.get,
+        exceptions_dict={requests.RequestException: []},
+        url=probe_url,
+        timeout=15,
+        verify=False,
+    ):
+        if sample.status_code < 500:
+            LOGGER.info(f"authorino_tls_configured: auth path healthy ({probe_url} -> {sample.status_code})")
+            return
+        LOGGER.info(f"authorino_tls_configured: auth path still settling ({probe_url} -> {sample.status_code})")
 
 
 @pytest.fixture(scope="class")
