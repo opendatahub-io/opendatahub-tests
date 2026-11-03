@@ -28,6 +28,7 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_VLLM_EMULATOR_PORT,
 )
 from tests.ai_safety.evalhub.kueue.constants import (
+    EVALHUB_KUEUE_CR_NAME,
     KUEUE_CPU_QUOTA,
     KUEUE_MEMORY_QUOTA,
     VLLM_EMULATOR,
@@ -161,7 +162,7 @@ def evalhub_kueue_cr(
 
     with EvalHub(
         client=admin_client,
-        name="evalhub-mt",
+        name=EVALHUB_KUEUE_CR_NAME,
         namespace=evalhub_kueue_model_namespace.name,
         database={"type": "sqlite"},
         collections=["leaderboard-v2"],

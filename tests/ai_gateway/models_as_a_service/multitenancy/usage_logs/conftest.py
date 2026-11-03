@@ -7,7 +7,7 @@ import pytest
 from kubernetes.dynamic import DynamicClient
 
 from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import AITenantTestContext
-from tests.ai_gateway.models_as_a_service.observability.constants import USAGE_LOGS_INGESTION_WAIT_TIMEOUT
+from tests.ai_gateway.models_as_a_service.observability.constants import USAGE_LOGS_PROPAGATION_TIMEOUT
 from tests.ai_gateway.models_as_a_service.observability.usage_logs_query_utils import (
     maastenantconfig_for_namespace,
     patch_maastenantconfig_usage_telemetry,
@@ -43,4 +43,4 @@ def multitenancy_usage_logs_telemetry_enabled(
 @pytest.fixture(scope="class")
 def usage_logs_ingestion_wait_timeout() -> int:
     """Return the Loki ingestion poll timeout for usage-log assertions."""
-    return USAGE_LOGS_INGESTION_WAIT_TIMEOUT
+    return USAGE_LOGS_PROPAGATION_TIMEOUT

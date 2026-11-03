@@ -19,25 +19,28 @@ from timeout_sampler import TimeoutSampler
 
 from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import AIGATEWAY_BOOTSTRAPPED_TENANT_NAME
 from tests.ai_gateway.models_as_a_service.observability.constants import (
-    LOKI_APPLICATION_TENANT_HEADER,
-    LOKI_GATEWAY_PORT,
     LOKI_GATEWAY_SERVICE_NAME,
-    USAGE_LOGS_INGESTION_POLL_SECONDS,
-    USAGE_LOGS_QUERY_LOOKBACK,
+    LOKI_QUERY_TENANT,
+    LOKI_QUERY_URL,
+    USAGE_LOGS_MULTITENANT_QUERY_LOOKBACK,
+    USAGE_LOGS_PROPAGATION_SLEEP,
     USAGE_LOGS_SERVICE_NAME,
     USAGE_LOGS_TENANCY_PROXY_DEPLOYMENT,
+    USAGE_LOGS_TENANCY_PROXY_LOCAL_PORT,
     USAGE_LOGS_TENANCY_PROXY_PORT,
 )
-from tests.ai_gateway.models_as_a_service.observability.utils import resolve_maas_monitoring_namespace
+from ocp_resources.exceptions import MissingResourceError
+from tests.ai_gateway.models_as_a_service.utils import endpoints_have_ready_addresses
 from tests.observability.authorization import authenticate_persona_tokens
-from utilities.certificates_utils import create_ca_bundle_file
-from utilities.infra import get_openshift_token
+from utilities.infra import get_dsci_monitoring_namespace
 from utilities.resources.maastenantconfig import MaasTenantConfig
 
 LOGGER = structlog.get_logger(name=__name__)
 
-LOKI_QUERY_RANGE_PATH = "/loki/api/v1/query_range"
-LOKI_GATEWAY_API_PREFIX = "/api/logs/v1/application"
+LOKI_QUERY_RANGE_URL: str = LOKI_QUERY_URL.replace("/loki/api/v1/query", "/loki/api/v1/query_range")
+TENANCY_PROXY_QUERY_RANGE_URL: str = (
+    f"https://localhost:{USAGE_LOGS_TENANCY_PROXY_LOCAL_PORT}/loki/api/v1/query_range"
+)
 
 
 def usage_logs_telemetry_spec(*, capture_user: bool = True) -> dict[str, Any]:
@@ -90,20 +93,27 @@ def loki_gateway_service_ready(
     admin_client: DynamicClient,
     monitoring_namespace: str,
 ) -> bool:
-    """Return True when the Loki gateway Service exists in the monitoring namespace."""
+    """Return True when the Loki gateway Service exists and has ready endpoints."""
     service = Service(
         client=admin_client,
         name=LOKI_GATEWAY_SERVICE_NAME,
         namespace=monitoring_namespace,
     )
-    return bool(service.exists)
+    if not service.exists:
+        return False
+    return endpoints_have_ready_addresses(
+        admin_client=admin_client,
+        namespace=monitoring_namespace,
+        name=LOKI_GATEWAY_SERVICE_NAME,
+    )
 
 
 def usage_logs_e2e_stack_ready(admin_client: DynamicClient) -> tuple[bool, str]:
     """Return whether Loki + tenancy proxy prerequisites are present."""
-    monitoring_namespace = resolve_maas_monitoring_namespace(admin_client=admin_client)
-    if not monitoring_namespace:
-        return False, "maas-controller MONITORING_NAMESPACE is not configured"
+    try:
+        monitoring_namespace = get_dsci_monitoring_namespace(client=admin_client)
+    except MissingResourceError:
+        return False, "DSCInitialization not found (cannot resolve monitoring namespace)"
     if not usage_logs_tenancy_proxy_ready(
         admin_client=admin_client,
         monitoring_namespace=monitoring_namespace,
@@ -118,7 +128,7 @@ def usage_logs_e2e_stack_ready(admin_client: DynamicClient) -> tuple[bool, str]:
     ):
         return (
             False,
-            f"Service '{LOKI_GATEWAY_SERVICE_NAME}' not found in '{monitoring_namespace}' (LokiStack not ready)",
+            f"Service '{LOKI_GATEWAY_SERVICE_NAME}' is not ready in '{monitoring_namespace}' (LokiStack not ready)",
         )
     return True, monitoring_namespace
 
@@ -132,7 +142,7 @@ def resolve_openshift_username(admin_client: DynamicClient, bearer_token: str) -
     return identities["caller"].principal
 
 
-def subscription_count_logql(*, user_id: str, lookback: str = USAGE_LOGS_QUERY_LOOKBACK) -> str:
+def subscription_count_logql(*, user_id: str, lookback: str = USAGE_LOGS_MULTITENANT_QUERY_LOOKBACK) -> str:
     """Build LogQL that counts usage-log lines per subscription for one user."""
     escaped_user = user_id.replace("\\", "\\\\").replace('"', '\\"')
     return (
@@ -141,20 +151,6 @@ def subscription_count_logql(*, user_id: str, lookback: str = USAGE_LOGS_QUERY_L
         f'| user_id="{escaped_user}" '
         f'| subscription!="" | subscription!="-" '
         f"[{lookback}]))"
-    )
-
-
-def _loki_gateway_query_range_url(*, monitoring_namespace: str) -> str:
-    return (
-        f"https://{LOKI_GATEWAY_SERVICE_NAME}.{monitoring_namespace}.svc:"
-        f"{LOKI_GATEWAY_PORT}{LOKI_GATEWAY_API_PREFIX}{LOKI_QUERY_RANGE_PATH}"
-    )
-
-
-def _tenancy_proxy_query_range_url(*, monitoring_namespace: str) -> str:
-    return (
-        f"https://{USAGE_LOGS_TENANCY_PROXY_DEPLOYMENT}.{monitoring_namespace}.svc:"
-        f"{USAGE_LOGS_TENANCY_PROXY_PORT}{LOKI_QUERY_RANGE_PATH}"
     )
 
 
@@ -181,26 +177,21 @@ def _lookback_to_nanoseconds(lookback: str) -> int:
 
 def query_loki_gateway_range(
     *,
-    admin_client: DynamicClient,
-    monitoring_namespace: str,
+    http_session: requests.Session,
+    admin_token: str,
     logql: str,
-    bearer_token: str | None = None,
-    lookback: str = USAGE_LOGS_QUERY_LOOKBACK,
+    lookback: str = USAGE_LOGS_MULTITENANT_QUERY_LOOKBACK,
     timeout_seconds: int = 60,
 ) -> dict[str, Any]:
-    """Run a LogQL query_range against the admin Loki gateway (application tenant)."""
-    url = _loki_gateway_query_range_url(monitoring_namespace=monitoring_namespace)
+    """Run a LogQL query_range against the admin Loki gateway (requires Loki port-forward)."""
     params = _query_range_params(logql=logql, lookback=lookback)
-    token = bearer_token or get_openshift_token(client=admin_client)
-    verify = create_ca_bundle_file(client=admin_client)
-    response = requests.get(
-        url=f"{url}?{urlencode(params)}",
+    response = http_session.get(
+        url=f"{LOKI_QUERY_RANGE_URL}?{urlencode(params)}",
         headers={
-            "Authorization": f"Bearer {token}",
-            "X-Scope-OrgID": LOKI_APPLICATION_TENANT_HEADER,
+            "Authorization": f"Bearer {admin_token}",
+            "X-Scope-OrgID": LOKI_QUERY_TENANT,
         },
         timeout=timeout_seconds,
-        verify=verify,
     )
     response.raise_for_status()
     payload = response.json()
@@ -211,22 +202,18 @@ def query_loki_gateway_range(
 
 def query_usage_logs_tenancy_proxy_range(
     *,
-    admin_client: DynamicClient,
-    monitoring_namespace: str,
+    http_session: requests.Session,
     logql: str,
     user_bearer_token: str,
-    lookback: str = USAGE_LOGS_QUERY_LOOKBACK,
+    lookback: str = USAGE_LOGS_MULTITENANT_QUERY_LOOKBACK,
     timeout_seconds: int = 60,
 ) -> dict[str, Any]:
-    """Run a LogQL query_range through the usage-logs tenancy proxy as an end user."""
-    url = _tenancy_proxy_query_range_url(monitoring_namespace=monitoring_namespace)
+    """Run a LogQL query_range through the usage-logs tenancy proxy (requires proxy port-forward)."""
     params = _query_range_params(logql=logql, lookback=lookback)
-    verify = create_ca_bundle_file(client=admin_client)
-    response = requests.get(
-        url=f"{url}?{urlencode(params)}",
+    response = http_session.get(
+        url=f"{TENANCY_PROXY_QUERY_RANGE_URL}?{urlencode(params)}",
         headers={"Authorization": f"Bearer {user_bearer_token}"},
         timeout=timeout_seconds,
-        verify=verify,
     )
     response.raise_for_status()
     payload = response.json()
@@ -250,59 +237,45 @@ def subscription_names_from_loki_response(payload: Mapping[str, Any]) -> set[str
 
 def wait_for_subscriptions_in_loki(
     *,
-    admin_client: DynamicClient,
-    monitoring_namespace: str,
+    http_session: requests.Session,
+    admin_token: str,
     user_id: str,
     expected_subscriptions: set[str],
     query_via_proxy: bool,
     user_bearer_token: str,
     timeout: int,
-    lookback: str = USAGE_LOGS_QUERY_LOOKBACK,
+    lookback: str = USAGE_LOGS_MULTITENANT_QUERY_LOOKBACK,
 ) -> set[str]:
     """Poll until Loki returns all expected subscription names for the user."""
     logql = subscription_count_logql(user_id=user_id, lookback=lookback)
+    subscriptions_from_last_poll: set[str] = set()
 
     def subscriptions_visible() -> bool:
+        nonlocal subscriptions_from_last_poll
         if query_via_proxy:
             payload = query_usage_logs_tenancy_proxy_range(
-                admin_client=admin_client,
-                monitoring_namespace=monitoring_namespace,
+                http_session=http_session,
                 logql=logql,
                 user_bearer_token=user_bearer_token,
                 lookback=lookback,
             )
         else:
             payload = query_loki_gateway_range(
-                admin_client=admin_client,
-                monitoring_namespace=monitoring_namespace,
+                http_session=http_session,
+                admin_token=admin_token,
                 logql=logql,
                 lookback=lookback,
             )
-        found = subscription_names_from_loki_response(payload=payload)
-        return expected_subscriptions.issubset(found)
+        subscriptions_from_last_poll = subscription_names_from_loki_response(payload=payload)
+        return expected_subscriptions.issubset(subscriptions_from_last_poll)
 
     for ready in TimeoutSampler(
         wait_timeout=timeout,
-        sleep=USAGE_LOGS_INGESTION_POLL_SECONDS,
+        sleep=USAGE_LOGS_PROPAGATION_SLEEP,
         func=subscriptions_visible,
     ):
         if ready:
-            if query_via_proxy:
-                payload = query_usage_logs_tenancy_proxy_range(
-                    admin_client=admin_client,
-                    monitoring_namespace=monitoring_namespace,
-                    logql=logql,
-                    user_bearer_token=user_bearer_token,
-                    lookback=lookback,
-                )
-            else:
-                payload = query_loki_gateway_range(
-                    admin_client=admin_client,
-                    monitoring_namespace=monitoring_namespace,
-                    logql=logql,
-                    lookback=lookback,
-                )
-            return subscription_names_from_loki_response(payload=payload)
+            return subscriptions_from_last_poll
     raise AssertionError(
         f"Timed out waiting for subscriptions {sorted(expected_subscriptions)} "
         f"for user_id={user_id!r} (via_proxy={query_via_proxy})"

@@ -310,6 +310,7 @@ class OpenshiftRouteTimeout:
 
 class Containers:
     KSERVE_CONTAINER_NAME: str = "kserve-container"
+    KSERVE_AGENT_CONTAINER_NAME: str = "agent"
 
 
 class RunTimeConfigs:

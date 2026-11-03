@@ -1,11 +1,20 @@
 """Multi-tenant usage-log dashboard E2E (RHOAIENG-99404)."""
 
+import portforward
 import pytest
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 
 from tests.ai_gateway.models_as_a_service.multitenancy.utils import assert_tenant_inference_status
+from tests.ai_gateway.models_as_a_service.observability.constants import (
+    LOKI_GATEWAY_SERVICE_NAME,
+    LOKI_GATEWAY_SERVICE_PORT,
+    LOKI_QUERY_LOCAL_PORT,
+    USAGE_LOGS_TENANCY_PROXY_DEPLOYMENT,
+    USAGE_LOGS_TENANCY_PROXY_LOCAL_PORT,
+    USAGE_LOGS_TENANCY_PROXY_PORT,
+)
 from tests.ai_gateway.models_as_a_service.observability.usage_logs_query_utils import (
     resolve_openshift_username,
     wait_for_subscriptions_in_loki,
@@ -52,6 +61,7 @@ class TestMultiTenantUsageLogs:
         user_token = str(current_client_token)
         user_id = resolve_openshift_username(admin_client=admin_client, bearer_token=user_token)
         expected_subscriptions = {tenant_a_subscription_name, tenant_b_subscription_name}
+        monitoring_namespace = usage_logs_multi_tenant_e2e_monitoring_namespace
 
         assert_tenant_inference_status(
             session=request_session_http,
@@ -73,30 +83,43 @@ class TestMultiTenantUsageLogs:
             subscriptions=sorted(expected_subscriptions),
         )
 
-        admin_subscriptions = wait_for_subscriptions_in_loki(
-            admin_client=admin_client,
-            monitoring_namespace=usage_logs_multi_tenant_e2e_monitoring_namespace,
-            user_id=user_id,
-            expected_subscriptions=expected_subscriptions,
-            query_via_proxy=False,
-            user_bearer_token=user_token,
-            timeout=usage_logs_ingestion_wait_timeout,
-        )
-        assert expected_subscriptions.issubset(admin_subscriptions), (
-            f"Admin Loki query missing subscriptions: expected {sorted(expected_subscriptions)}, "
-            f"found {sorted(admin_subscriptions)}"
-        )
+        with portforward.forward(
+            pod_or_service=LOKI_GATEWAY_SERVICE_NAME,
+            namespace=monitoring_namespace,
+            from_port=LOKI_QUERY_LOCAL_PORT,
+            to_port=LOKI_GATEWAY_SERVICE_PORT,
+            waiting=20,
+        ), portforward.forward(
+            pod_or_service=USAGE_LOGS_TENANCY_PROXY_DEPLOYMENT,
+            namespace=monitoring_namespace,
+            from_port=USAGE_LOGS_TENANCY_PROXY_LOCAL_PORT,
+            to_port=USAGE_LOGS_TENANCY_PROXY_PORT,
+            waiting=20,
+        ):
+            admin_subscriptions = wait_for_subscriptions_in_loki(
+                http_session=request_session_http,
+                admin_token=user_token,
+                user_id=user_id,
+                expected_subscriptions=expected_subscriptions,
+                query_via_proxy=False,
+                user_bearer_token=user_token,
+                timeout=usage_logs_ingestion_wait_timeout,
+            )
+            assert expected_subscriptions.issubset(admin_subscriptions), (
+                f"Admin Loki query missing subscriptions: expected {sorted(expected_subscriptions)}, "
+                f"found {sorted(admin_subscriptions)}"
+            )
 
-        personal_subscriptions = wait_for_subscriptions_in_loki(
-            admin_client=admin_client,
-            monitoring_namespace=usage_logs_multi_tenant_e2e_monitoring_namespace,
-            user_id=user_id,
-            expected_subscriptions=expected_subscriptions,
-            query_via_proxy=True,
-            user_bearer_token=user_token,
-            timeout=usage_logs_ingestion_wait_timeout,
-        )
-        assert expected_subscriptions.issubset(personal_subscriptions), (
-            f"Personal tenancy-proxy query missing subscriptions: expected {sorted(expected_subscriptions)}, "
-            f"found {sorted(personal_subscriptions)}"
-        )
+            personal_subscriptions = wait_for_subscriptions_in_loki(
+                http_session=request_session_http,
+                admin_token=user_token,
+                user_id=user_id,
+                expected_subscriptions=expected_subscriptions,
+                query_via_proxy=True,
+                user_bearer_token=user_token,
+                timeout=usage_logs_ingestion_wait_timeout,
+            )
+            assert expected_subscriptions.issubset(personal_subscriptions), (
+                f"Personal tenancy-proxy query missing subscriptions: expected {sorted(expected_subscriptions)}, "
+                f"found {sorted(personal_subscriptions)}"
+            )
