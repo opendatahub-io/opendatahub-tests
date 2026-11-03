@@ -49,7 +49,6 @@ from utilities.constants import MAAS_GATEWAY_NAME, MAAS_GATEWAY_NAMESPACE
 LOGGER = structlog.get_logger(name=__name__)
 
 
-
 RECONCILE_WAIT = int(os.environ.get("E2E_RECONCILE_WAIT", "8"))
 SETTLE_POLL_INTERVAL = 5
 
