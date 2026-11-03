@@ -40,8 +40,19 @@ LOKI_QUERY_TENANT: str = "application"
 LOKI_QUERY_PATH: str = f"/api/logs/v1/{LOKI_QUERY_TENANT}/loki/api/v1/query"
 LOKI_QUERY_URL: str = f"https://localhost:{LOKI_QUERY_LOCAL_PORT}{LOKI_QUERY_PATH}"
 LOKI_QUERY_RANGE_WINDOW: str = "1h"
-# odh-observability projects the Monitoring CR's usage-logs conditions onto DSCI.status.conditions.
+MONITORING_API_VERSION: str = "services.platform.opendatahub.io/v1alpha1"
+MONITORING_INSTANCE_NAME: str = "default-monitoring"
+# Usage-logs Loki readiness (separate from platform log-forwarding LokiStackAvailable on DSCI).
+MONITORING_USAGE_LOGS_LOKI_CONDITION: str = "UsageLogsLokiStackAvailable"
+# Older odh-observability releases reported usage-logs Loki readiness on Monitoring LokiStackAvailable.
+MONITORING_LEGACY_LOKI_CONDITION: str = "LokiStackAvailable"
+# Bootstrap tests wait on DSCI after operator projection (includes legacy LokiStackAvailable name).
 DSCI_USAGE_LOGS_CONDITIONS: tuple[str, ...] = ("Ready", "UsageLogsCollectorAvailable", "LokiStackAvailable")
+DSCI_USAGE_LOGS_PIPELINE_CONDITIONS: tuple[str, ...] = (
+    "MonitoringReady",
+    "MonitoringStackAvailable",
+    "UsageLogsCollectorAvailable",
+)
 DSCI_USAGE_LOGS_CONDITIONS_WAIT_TIMEOUT: int = 600
 USAGE_LOGS_PROPAGATION_TIMEOUT: int = 300
 USAGE_LOGS_PROPAGATION_SLEEP: int = 15

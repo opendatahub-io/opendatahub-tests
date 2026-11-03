@@ -24,11 +24,16 @@ from timeout_sampler import TimeoutSampler
 
 from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import AIGATEWAY_BOOTSTRAPPED_TENANT_NAME
 from tests.ai_gateway.models_as_a_service.observability.constants import (
+    DSCI_USAGE_LOGS_PIPELINE_CONDITIONS,
     LOKI_GATEWAY_SERVICE_NAME,
     LOKI_QUERY_TENANT,
     LOKI_QUERY_URL,
     LOKI_STACK_CRD_NAME,
+    MONITORING_API_VERSION,
     MONITORING_CRD_NAME,
+    MONITORING_INSTANCE_NAME,
+    MONITORING_LEGACY_LOKI_CONDITION,
+    MONITORING_USAGE_LOGS_LOKI_CONDITION,
     OTEL_COLLECTOR_CRD_NAME,
     USAGE_LOGS_MULTITENANT_QUERY_LOOKBACK,
     USAGE_LOGS_PROPAGATION_SLEEP,
@@ -113,13 +118,6 @@ def loki_gateway_service_ready(
     )
 
 
-_DSCI_USAGE_LOGS_PIPELINE_CONDITIONS: tuple[str, ...] = (
-    "MonitoringReady",
-    "MonitoringStackAvailable",
-    "LokiStackAvailable",
-    "UsageLogsCollectorAvailable",
-)
-
 _USAGE_LOGS_DSCI_FIX_HINT = (
     "Fix: on DSCInitialization spec.monitoring set managementState=Managed and configure "
     "usageLogs.storage (S3 secret in the monitoring namespace) so the ODH operator deploys "
@@ -141,6 +139,52 @@ def _dsci_condition_fields(
                 str(condition.message) if condition.message is not None else None,
             )
     return None, None, None
+
+
+def _monitoring_cr_condition_fields(
+    admin_client: DynamicClient,
+    monitoring_namespace: str,
+    condition_type: str,
+) -> tuple[str | None, str | None, str | None]:
+    """Return (status, reason, message) for a Monitoring CR status condition type."""
+    monitoring_api = admin_client.resources.get(api_version=MONITORING_API_VERSION, kind="Monitoring")
+    monitoring = monitoring_api.get(name=MONITORING_INSTANCE_NAME, namespace=monitoring_namespace)
+    status = monitoring.status or {}
+    for condition in status.get("conditions") or []:
+        if condition.get("type") == condition_type:
+            return (
+                str(condition.get("status")) if condition.get("status") is not None else None,
+                str(condition.get("reason")) if condition.get("reason") is not None else None,
+                str(condition.get("message")) if condition.get("message") is not None else None,
+            )
+    return None, None, None
+
+
+def _usage_logs_loki_ready_on_monitoring(
+    admin_client: DynamicClient,
+    monitoring_namespace: str,
+) -> tuple[bool, str]:
+    """Return whether Monitoring reports usage-logs Loki ready, plus failure detail if not."""
+    details: list[str] = []
+    for condition_type in (MONITORING_USAGE_LOGS_LOKI_CONDITION, MONITORING_LEGACY_LOKI_CONDITION):
+        status, reason, message = _monitoring_cr_condition_fields(
+            admin_client=admin_client,
+            monitoring_namespace=monitoring_namespace,
+            condition_type=condition_type,
+        )
+        if status == "True":
+            return True, condition_type
+        if status is not None:
+            details.append(
+                f"type={condition_type} status={status!r} reason={reason!r} message={message!r}",
+            )
+    if not details:
+        return (
+            False,
+            f"Monitoring '{MONITORING_INSTANCE_NAME}' in '{monitoring_namespace}' has no "
+            f"{MONITORING_USAGE_LOGS_LOKI_CONDITION} or {MONITORING_LEGACY_LOKI_CONDITION} condition",
+        )
+    return False, "; ".join(details)
 
 
 def verify_usage_logs_multi_tenant_e2e_prerequisites(
@@ -168,6 +212,14 @@ def verify_usage_logs_multi_tenant_e2e_prerequisites(
             f"expected 'Managed'. {_USAGE_LOGS_DSCI_FIX_HINT}",
         )
 
+    usage_logs_spec = monitoring_spec.get("usageLogs") or {}
+    if not usage_logs_spec.get("storage"):
+        return (
+            None,
+            f"DSCInitialization '{dsci_name}' spec.monitoring.usageLogs.storage is not configured. "
+            f"{_USAGE_LOGS_DSCI_FIX_HINT}",
+        )
+
     for crd_name in (LOKI_STACK_CRD_NAME, OTEL_COLLECTOR_CRD_NAME, MONITORING_CRD_NAME):
         if not CustomResourceDefinition(client=admin_client, name=crd_name).exists:
             return (
@@ -177,7 +229,7 @@ def verify_usage_logs_multi_tenant_e2e_prerequisites(
                 f"{_USAGE_LOGS_DSCI_FIX_HINT}",
             )
 
-    for condition_type in _DSCI_USAGE_LOGS_PIPELINE_CONDITIONS:
+    for condition_type in DSCI_USAGE_LOGS_PIPELINE_CONDITIONS:
         status, reason, message = _dsci_condition_fields(dsci=dsci, condition_type=condition_type)
         if status != "True":
             detail = f"type={condition_type} status={status!r} reason={reason!r} message={message!r}"
@@ -203,6 +255,25 @@ def verify_usage_logs_multi_tenant_e2e_prerequisites(
             f"DSCI bootstrap should create it when monitoring is Managed.",
         )
 
+    loki_ready, loki_detail = _usage_logs_loki_ready_on_monitoring(
+        admin_client=admin_client,
+        monitoring_namespace=monitoring_namespace,
+    )
+    if not loki_ready:
+        dsci_loki_status, dsci_loki_reason, dsci_loki_message = _dsci_condition_fields(
+            dsci=dsci,
+            condition_type="LokiStackAvailable",
+        )
+        return (
+            None,
+            f"Monitoring '{MONITORING_INSTANCE_NAME}' in '{monitoring_namespace}' is not ready for usage-log E2E "
+            f"({loki_detail}). "
+            f"Note: DSCI LokiStackAvailable={dsci_loki_status!r} reason={dsci_loki_reason!r} "
+            f"reflects platform log forwarding, not usage-logs Loki "
+            f"(message={dsci_loki_message!r}). "
+            f"{_USAGE_LOGS_DSCI_FIX_HINT}",
+        )
+
     maas_monitoring_namespace = resolve_maas_monitoring_namespace(admin_client=admin_client)
     if maas_monitoring_namespace and maas_monitoring_namespace != monitoring_namespace:
         return (
@@ -218,7 +289,8 @@ def verify_usage_logs_multi_tenant_e2e_prerequisites(
         return (
             None,
             f"Service '{LOKI_GATEWAY_SERVICE_NAME}' has no ready endpoints in '{monitoring_namespace}'. "
-            f"Wait for data-science-lokistack gateway after LokiStackAvailable=True, or fix LokiStack reconcile. "
+            f"Wait for the usage-logs LokiStack gateway ({MONITORING_USAGE_LOGS_LOKI_CONDITION}=True on Monitoring), "
+            f"or provide a Service alias to the gateway when the platform name is not reconciled yet. "
             f"{_USAGE_LOGS_DSCI_FIX_HINT}",
         )
 
