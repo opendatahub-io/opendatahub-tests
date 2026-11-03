@@ -407,7 +407,7 @@ def per_tenant_processing_uses_praxis(
 
 def extmod_tenant_test_params(tenant_label: str) -> dict[str, Any]:
     """AITenant name and spec for one external model suite tenant."""
-    aitenant_name = f"{TENANT_EXTERNAL_MODEL_NAME_PREFIX}-{tenant_label}-{generate_random_name(length=5)}"
+    aitenant_name = f"{TENANT_EXTERNAL_MODEL_NAME_PREFIX}-{tenant_label}-{generate_random_name(length=4)}"
     assert len(aitenant_name) <= MAX_AITENANT_NAME_LENGTH, (
         f"tenant name {aitenant_name!r} is {len(aitenant_name)} characters; AGC per-tenant "
         f"praxis resource naming needs it to stay at or under {MAX_AITENANT_NAME_LENGTH} "
