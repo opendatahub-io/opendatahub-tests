@@ -88,6 +88,7 @@ from tests.ai_gateway.models_as_a_service.multitenancy.utils import (
     gateway_access_namespace_labels,
 )
 from tests.ai_gateway.models_as_a_service.utils import (
+    AITENANT_INFRA_NAMESPACE,
     aitenant_from_spec,
     build_aitenant_spec,
     create_api_key,
@@ -210,6 +211,8 @@ PER_TENANT_PROCESSING_DEPLOYMENT_PREFIX = "payload-processing-"
 MODEL_NAMESPACE = "llm"
 PRAXIS_IMAGE_MARKER = "praxis"
 TENANT_EXTERNAL_MODEL_NAME_PREFIX = "e2e-extmod"
+# Attempts to generate an unused AITenant name before giving up.
+AITENANT_NAME_MAX_ATTEMPTS = 5
 
 
 _JSON_WRAPPERS: dict[str, type] = {
@@ -430,14 +433,32 @@ def per_tenant_processing_uses_praxis(
     return True
 
 
-def extmod_tenant_test_params(tenant_label: str) -> dict[str, Any]:
-    """AITenant name and spec for one external model suite tenant."""
-    aitenant_name = f"{TENANT_EXTERNAL_MODEL_NAME_PREFIX}-{tenant_label}-{generate_random_name(length=4)}"
-    assert len(aitenant_name) <= MAX_AITENANT_NAME_LENGTH, (
-        f"tenant name {aitenant_name!r} is {len(aitenant_name)} characters; AGC per-tenant "
-        f"praxis resource naming needs it to stay at or under {MAX_AITENANT_NAME_LENGTH} "
-        "(63-char limit minus the longest resource base name)"
-    )
+def extmod_tenant_test_params(
+    tenant_label: str,
+    admin_client: DynamicClient,
+    cr_namespace: str = AITENANT_INFRA_NAMESPACE,
+) -> dict[str, Any]:
+    """AITenant name and spec for one external model suite tenant.
+
+    The random suffix is regenerated while the candidate name is already taken
+    by a retained AITenant from an earlier run, so provisioning never collides
+    with stale tenants.
+    """
+    for _ in range(AITENANT_NAME_MAX_ATTEMPTS):
+        aitenant_name = f"{TENANT_EXTERNAL_MODEL_NAME_PREFIX}-{tenant_label}-{generate_random_name(length=4)}"
+        assert len(aitenant_name) <= MAX_AITENANT_NAME_LENGTH, (
+            f"tenant name {aitenant_name!r} is {len(aitenant_name)} characters; AGC per-tenant "
+            f"praxis resource naming needs it to stay at or under {MAX_AITENANT_NAME_LENGTH} "
+            "(63-char limit minus the longest resource base name)"
+        )
+        if not AITenant(client=admin_client, name=aitenant_name, namespace=cr_namespace).exists:
+            break
+        LOGGER.info(f"extmod_tenant_test_params: AITenant {aitenant_name} already exists, regenerating suffix")
+    else:
+        raise AssertionError(
+            f"could not generate an unused AITenant name for label {tenant_label!r} "
+            f"after {AITENANT_NAME_MAX_ATTEMPTS} attempts"
+        )
     return {
         "aitenant_name": aitenant_name,
         "aitenant_spec": build_aitenant_spec(aitenant_name=aitenant_name),
