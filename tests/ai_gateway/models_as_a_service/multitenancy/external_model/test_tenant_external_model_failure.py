@@ -47,7 +47,7 @@ FAILING_UPSTREAM_STATUS = int(os.environ.get("E2E_EXTERNAL_FAILURE_STATUS", "503
 class TestTenantProviderFailureIsolation:
     """A 5xx from one tenant's upstream must not degrade the other tenant."""
 
-    @pytest.mark.tier2
+    @pytest.mark.tier3
     def test_upstream_failure_in_one_tenant_does_not_degrade_the_other(
         self,
         request_session_http: requests.Session,
