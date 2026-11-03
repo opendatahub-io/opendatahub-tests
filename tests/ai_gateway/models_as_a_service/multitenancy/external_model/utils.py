@@ -74,7 +74,7 @@ from ocp_resources.resource import ResourceEditor
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from pytest_testconfig import config as py_config
-from timeout_sampler import TimeoutExpiredError
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_gateway.models_as_a_service.maas_subscription.utils import (
     MAAS_SUBSCRIPTION_NAMESPACE,
@@ -84,7 +84,7 @@ from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import (
     expected_tenant_namespace_name,
 )
 from tests.ai_gateway.models_as_a_service.multitenancy.utils import (
-    gateway_access_label_key as _gateway_access_label_key,
+    gateway_access_namespace_labels,
 )
 from tests.ai_gateway.models_as_a_service.utils import (
     aitenant_from_spec,
@@ -274,14 +274,16 @@ def wait_until(
     interval: int = TENANT_EXTERNAL_MODEL_POLL_INTERVAL,
 ) -> Any:
     """Poll *check* until it stops raising, within a bounded time budget."""
-    deadline = time.monotonic() + timeout
-    while True:
-        try:
-            return check()
-        except AssertionError as exc:
-            if time.monotonic() >= deadline:
-                raise TimeoutError(f"timed out after {timeout}s waiting for: {what}") from exc
-            time.sleep(interval)
+    try:
+        for result in TimeoutSampler(
+            wait_timeout=timeout,
+            sleep=interval,
+            func=check,
+            exceptions_dict={AssertionError: []},
+        ):
+            return result
+    except TimeoutExpiredError as exc:
+        raise TimeoutError(f"timed out after {timeout}s waiting for: {what}") from exc
 
 
 def redact_sensitive(value: Any, *, max_length: int = 300) -> str:
@@ -405,7 +407,7 @@ def per_tenant_processing_uses_praxis(
 
 def extmod_tenant_test_params(tenant_label: str) -> dict[str, Any]:
     """AITenant name and spec for one external model suite tenant."""
-    aitenant_name = f"{TENANT_EXTERNAL_MODEL_NAME_PREFIX}-{tenant_label}-{generate_random_name()}"
+    aitenant_name = f"{TENANT_EXTERNAL_MODEL_NAME_PREFIX}-{tenant_label}-{generate_random_name(length=5)}"
     assert len(aitenant_name) <= MAX_AITENANT_NAME_LENGTH, (
         f"tenant name {aitenant_name!r} is {len(aitenant_name)} characters; AGC per-tenant "
         f"praxis resource naming needs it to stay at or under {MAX_AITENANT_NAME_LENGTH} "
@@ -778,7 +780,19 @@ def external_chat_url(
     return f"{gateway_url}/{model_namespace}/{model_client_name}{suffix}"
 
 
+def _transient_inference_response(response: requests.Response) -> bool:
+    """Whether an inference response is retryable gateway/rollout noise."""
+    if response.status_code >= 500:
+        return True
+    if response.status_code == 403 and not (response.text or "").strip():
+        return True
+    if response.status_code == 429 and "retry" in (response.text or "").lower():
+        return True
+    return response.status_code == 404
+
+
 def infer_external_chat(
+    request_session_http: requests.Session,
     gateway_url: str,
     model_namespace: str,
     model_client_name: str,
@@ -809,36 +823,49 @@ def infer_external_chat(
     )
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     payload = {"model": model_client_name, "messages": [{"role": "user", "content": path_tag}]}
-    last_exc: Exception | None = None
-    for attempt in range(retries + 1):
-        try:
-            response = requests.post(
-                url=url,
-                headers=headers,
-                json=payload,
-                timeout=request_timeout,
-                verify=verify,
-            )
-        except requests.RequestException as exc:
-            last_exc = exc
-            if attempt < retries:
-                time.sleep(delay)
-                continue
-            raise
-        if response.status_code >= 500 and attempt < retries:
-            time.sleep(delay)
-            continue
-        if response.status_code == 403 and not (response.text or "").strip() and attempt < retries:
-            time.sleep(delay)
-            continue
-        if response.status_code == 429 and "retry" in (response.text or "").lower() and attempt < retries:
-            time.sleep(delay)
-            continue
-        if response.status_code == 404 and attempt < retries:
-            time.sleep(delay)
-            continue
-        return response
-    raise AssertionError(f"inference to {url} kept failing transiently: {last_exc}")
+    last_response: requests.Response | None = None
+    try:
+        for response in TimeoutSampler(
+            wait_timeout=(retries + 1) * delay,
+            sleep=delay,
+            func=request_session_http.post,
+            exceptions_dict={requests.RequestException: []},
+            url=url,
+            headers=headers,
+            json=payload,
+            timeout=request_timeout,
+            verify=verify,
+        ):
+            last_response = response
+            if not _transient_inference_response(response):
+                return response
+    except TimeoutExpiredError:
+        if last_response is not None:
+            return last_response
+        raise AssertionError(f"inference to {url} kept failing transiently") from None
+    raise AssertionError(f"inference to {url} kept failing transiently")
+
+
+def infer_for_served_model(
+    request_session_http: requests.Session,
+    case: dict[str, str],
+    served_model: dict[str, Any],
+    *,
+    retries: int = 6,
+    provider_path: str | None = None,
+) -> requests.Response:
+    """One chat completion for a served tenant model through its own gateway."""
+    model = served_model["model"]
+    return infer_external_chat(
+        request_session_http=request_session_http,
+        gateway_url=case["gateway_url"],
+        model_namespace=model["namespace"],
+        model_client_name=model["name"],
+        api_key=served_model["api_key"],
+        path_tag=model["path_tag"],
+        retries=retries,
+        provider_path=provider_path,
+    )
 
 
 def echo_headers(response: requests.Response) -> dict[str, str]:
@@ -1022,10 +1049,11 @@ def mint_tenant_api_key(
         f"failed to mint API key on tenant maas-api {tenant['maas_api_url']}: "
         f"{response.status_code} {redact_sensitive(response.text)}"
     )
-    api_key = body.get("key")
-    assert api_key, f"API key missing in response: {redact_sensitive(body)}"
-    key_id = body.get("id")
-    assert key_id, f"API key id missing in response: {redact_sensitive(body)}"
+    try:
+        api_key = body["key"]
+        key_id = body["id"]
+    except KeyError as exc:
+        raise AssertionError(f"API key response missing field {exc}: {redact_sensitive(body)}") from exc
     return api_key, key_id
 
 
@@ -1050,16 +1078,6 @@ def revoke_tenant_api_key(
         LOGGER.warning(f"best-effort API key revocation failed for key {key_id}: {exc}")
 
 
-def gateway_access_label_key(gateway_name: str) -> str:
-    """Namespace label key that admits routes for one tenant gateway."""
-    return _gateway_access_label_key(gateway_name=gateway_name)
-
-
-def gateway_access_namespace_labels(*gateway_names: str) -> dict[str, str]:
-    """Namespace labels admitting routes for the given tenant gateways."""
-    return {gateway_access_label_key(gateway_name): "true" for gateway_name in gateway_names}
-
-
 @contextmanager
 def user_namespace(
     admin_client: DynamicClient,
@@ -1075,10 +1093,13 @@ def user_namespace(
     created in it (the user-namespace serving path). No labels keeps that
     gate closed (the unadmitted-namespace scenarios).
     """
+    labels: dict[str, str] = {}
+    for gateway_name in gateway_names:
+        labels.update(gateway_access_namespace_labels(gateway_name=gateway_name))
     with create_ns(
         admin_client=admin_client,
         name=name,
-        labels=gateway_access_namespace_labels(*gateway_names) or None,
+        labels=labels or None,
         teardown=teardown,
     ) as namespace:
         yield namespace

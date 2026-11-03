@@ -71,13 +71,13 @@ def tenant_external_model_evidence(
 @pytest.fixture(scope="module")
 def tenant_external_model_primary_test_params() -> dict[str, Any]:
     """Primary AITenant name and spec for the external model suite."""
-    return extmod_tenant_test_params(tenant_label="a")
+    return extmod_tenant_test_params(tenant_label="alpha")
 
 
 @pytest.fixture(scope="module")
 def tenant_external_model_secondary_test_params() -> dict[str, Any]:
     """Secondary AITenant name and spec for the external model suite."""
-    return extmod_tenant_test_params(tenant_label="b")
+    return extmod_tenant_test_params(tenant_label="beta")
 
 
 @pytest.fixture(scope="module")
@@ -198,7 +198,7 @@ def failure_served(
     """Each tenant gets its own independent external model, served on its gateway."""
     with ExitStack() as stack:
         yield {
-            "a": provision_and_serve_in_tenant(
+            "tenant_a": provision_and_serve_in_tenant(
                 admin_client=admin_client,
                 request_session_http=request_session_http,
                 ocp_token=ocp_token_for_actor,
@@ -207,7 +207,7 @@ def failure_served(
                 case=failure_env["tenant_a"],
                 teardown=teardown_resources,
             ),
-            "b": provision_and_serve_in_tenant(
+            "tenant_b": provision_and_serve_in_tenant(
                 admin_client=admin_client,
                 request_session_http=request_session_http,
                 ocp_token=ocp_token_for_actor,

@@ -23,11 +23,12 @@ import os
 from typing import Any
 
 import pytest
+import requests
 import structlog
 
 from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils import (
     assert_served_by_provider,
-    infer_external_chat,
+    infer_for_served_model,
     redact_sensitive,
 )
 
@@ -36,15 +37,20 @@ LOGGER = structlog.get_logger(name=__name__)
 FAILING_UPSTREAM_PATH = os.environ.get("E2E_EXTERNAL_FAILURE_PATH", "/status/503")
 FAILING_UPSTREAM_STATUS = int(os.environ.get("E2E_EXTERNAL_FAILURE_STATUS", "503"))
 
-pytestmark = pytest.mark.xdist_group(name="tenant_ipp")
 
-
+@pytest.mark.usefixtures(
+    "maas_subscription_controller_enabled_latest",
+    "authorino_tls_configured",
+    "maas_gateway_api",
+    "aitenant_infra_namespace",
+)
 class TestTenantProviderFailureIsolation:
     """A 5xx from one tenant's upstream must not degrade the other tenant."""
 
     @pytest.mark.tier2
     def test_upstream_failure_in_one_tenant_does_not_degrade_the_other(
         self,
+        request_session_http: requests.Session,
         failure_env: dict[str, Any],
         failure_served: dict[str, dict[str, Any]],
     ) -> None:
@@ -52,39 +58,29 @@ class TestTenantProviderFailureIsolation:
         A's upstream returns 5xx, then tenant B keeps serving healthy traffic
         through its own gateway with its own credential injected."""
         tenant_a, tenant_b = failure_env["tenant_a"], failure_env["tenant_b"]
-        model_a, model_b = failure_served["a"], failure_served["b"]
+        served_a, served_b = failure_served["tenant_a"], failure_served["tenant_b"]
 
         LOGGER.info("Baseline: asserting both tenant A and tenant B serve healthy traffic")
         assert_served_by_provider(
-            response=infer_external_chat(
-                gateway_url=tenant_a["gateway_url"],
-                model_namespace=model_a["model"]["namespace"],
-                model_client_name=model_a["model"]["name"],
-                api_key=model_a["api_key"],
-                path_tag=model_a["model"]["path_tag"],
+            response=infer_for_served_model(
+                request_session_http=request_session_http, case=tenant_a, served_model=served_a
             ),
-            path_tag=model_a["model"]["path_tag"],
-            credential=model_a["model"]["credential"],
+            path_tag=served_a["model"]["path_tag"],
+            credential=served_a["model"]["credential"],
         )
         assert_served_by_provider(
-            response=infer_external_chat(
-                gateway_url=tenant_b["gateway_url"],
-                model_namespace=model_b["model"]["namespace"],
-                model_client_name=model_b["model"]["name"],
-                api_key=model_b["api_key"],
-                path_tag=model_b["model"]["path_tag"],
+            response=infer_for_served_model(
+                request_session_http=request_session_http, case=tenant_b, served_model=served_b
             ),
-            path_tag=model_b["model"]["path_tag"],
-            credential=model_b["model"]["credential"],
+            path_tag=served_b["model"]["path_tag"],
+            credential=served_b["model"]["credential"],
         )
 
         LOGGER.info(f"Fault injection: routing tenant A to {FAILING_UPSTREAM_PATH} (expect {FAILING_UPSTREAM_STATUS})")
-        failing = infer_external_chat(
-            gateway_url=tenant_a["gateway_url"],
-            model_namespace=model_a["model"]["namespace"],
-            model_client_name=model_a["model"]["name"],
-            api_key=model_a["api_key"],
-            path_tag=model_a["model"]["path_tag"],
+        failing = infer_for_served_model(
+            request_session_http=request_session_http,
+            case=tenant_a,
+            served_model=served_a,
             provider_path=FAILING_UPSTREAM_PATH,
             retries=1,
         )
@@ -95,14 +91,9 @@ class TestTenantProviderFailureIsolation:
 
         LOGGER.info("Isolation: asserting tenant B still serves despite tenant A's 503")
         assert_served_by_provider(
-            response=infer_external_chat(
-                gateway_url=tenant_b["gateway_url"],
-                model_namespace=model_b["model"]["namespace"],
-                model_client_name=model_b["model"]["name"],
-                api_key=model_b["api_key"],
-                path_tag=model_b["model"]["path_tag"],
-                retries=1,
+            response=infer_for_served_model(
+                request_session_http=request_session_http, case=tenant_b, served_model=served_b, retries=1
             ),
-            path_tag=model_b["model"]["path_tag"],
-            credential=model_b["model"]["credential"],
+            path_tag=served_b["model"]["path_tag"],
+            credential=served_b["model"]["credential"],
         )
