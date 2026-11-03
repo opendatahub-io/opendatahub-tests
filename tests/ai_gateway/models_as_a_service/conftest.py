@@ -101,6 +101,13 @@ def request_session_http() -> Generator[requests.Session]:
     session = requests.Session()
     session.headers.update({"User-Agent": "odh-maas-billing-tests/1"})
     session.verify = False
+    # REQUESTS_CA_BUNDLE (set by router_ca_bundle_env so module-level inference
+    # calls can verify gateway Route certificates) overrides a session-level
+    # verify=False in requests, which would make every session call that does
+    # not pass verify= per-request verify against the router CA instead. The
+    # default gateway may serve a certificate that does not match that bundle
+    # (or its own hostname), so keep this session's verify=False authoritative.
+    session.trust_env = False
     yield session
     session.close()
 
