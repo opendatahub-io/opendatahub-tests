@@ -47,6 +47,8 @@ DEFAULT_MAAS_TENANT_NAME = "default-tenant"
 MaaSTenantResource = MaasTenantConfig | Tenant
 
 AITENANT_INFRA_NAMESPACE: str = "ai-tenants"
+# Upper bound on pages fetched when searching active API keys (50 per page).
+MAX_API_KEY_SEARCH_PAGES: int = 20
 # OCP's built-in GatewayAPI class; override via AITENANT_GATEWAY_CLASS_NAME when absent.
 AIGATEWAY_GATEWAY_CLASS_NAME: str = os.environ.get("AITENANT_GATEWAY_CLASS_NAME") or "openshift-default"
 AIGATEWAY_BOOTSTRAP_GATEWAY_LISTENERS: list[dict[str, Any]] = [
@@ -232,6 +234,31 @@ def host_from_ingress_domain(client) -> str:
     domain = ingress_config.instance.spec.get("domain")
     assert domain, "Ingress 'cluster' missing spec.domain (ingresses.config.openshift.io)"
     return f"maas.{domain}"
+
+
+def wait_for_authorino_auth_path(admin_client: DynamicClient) -> None:
+    """Wait until gateway auth traffic works again after an Authorino rollout.
+
+    Authorino restarts make its single endpoint flap for the gateway envoys
+    (outlier detection ejects it after consecutive gRPC failures), so requests
+    through the maas default gateway hang or 500 for a short window even though
+    the Authorino deployment already reports Available. Probe the unauthenticated
+    maas-api path until the gateway answers, so tests do not race that window.
+    """
+    probe_url = f"https://{host_from_ingress_domain(client=admin_client)}/maas-api/v1/models"
+    for sample in TimeoutSampler(
+        wait_timeout=120,
+        sleep=5,
+        func=requests.get,
+        exceptions_dict={requests.RequestException: []},
+        url=probe_url,
+        timeout=15,
+        verify=False,
+    ):
+        if sample.status_code < 500:
+            LOGGER.info(f"authorino auth path healthy ({probe_url} -> {sample.status_code})")
+            return
+        LOGGER.info(f"authorino auth path still settling ({probe_url} -> {sample.status_code})")
 
 
 def _first_ready_llmisvc(
@@ -704,38 +731,86 @@ def revoke_token(
     return resp
 
 
+def _search_active_api_keys(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_user_token: str,
+    extra_headers: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    """Search all active API keys, paging until a short page is returned."""
+    request_headers = {"Authorization": f"Bearer {ocp_user_token}"}
+    if extra_headers is not None:
+        request_headers.update(extra_headers)
+    items: list[dict[str, Any]] = []
+    limit = 50
+    for page_index in range(MAX_API_KEY_SEARCH_PAGES):
+        response = request_session_http.post(
+            url=f"{base_url}/v1/api-keys/search",
+            headers=request_headers,
+            json={
+                "filters": {"status": ["active"]},
+                "sort": {"by": "created_at", "order": "desc"},
+                "pagination": {"limit": limit, "offset": page_index * limit},
+            },
+            timeout=60,
+        )
+        if response.status_code != 200:
+            LOGGER.warning(f"active-key search failed with status={response.status_code}")
+            break
+        page_items = (response.json() or {}).get("items") or []
+        items.extend(page_items)
+        if len(page_items) < limit:
+            break
+    return items
+
+
+def _same_name_active_key_ids(
+    request_session_http: requests.Session,
+    base_url: str,
+    api_key_name: str,
+    ocp_user_token: str,
+    extra_headers: dict[str, str] | None = None,
+) -> set[str]:
+    """IDs of every active API key named ``api_key_name`` (empty on search failure)."""
+    items = _search_active_api_keys(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        ocp_user_token=ocp_user_token,
+        extra_headers=extra_headers,
+    )
+    return {str(item["id"]) for item in items if item.get("name") == api_key_name and item.get("id") is not None}
+
+
 def _revoke_orphaned_duplicate_keys(
     request_session_http: requests.Session,
     base_url: str,
     api_key_name: str,
     keep_key_id: str,
+    preexisting_key_ids: set[str],
     ocp_user_token: str,
     extra_headers: dict[str, str] | None = None,
 ) -> None:
     """Revoke duplicate keys a retried create may have orphaned (best-effort).
 
     A plain proxy 5xx can hide a create that actually succeeded upstream, so
-    after a successful retry every other active key with the same name is
+    after a retried create every active key with the same name that this call
+    created (absent from ``preexisting_key_ids``, the same-name IDs snapshotted
+    before the first POST) and that is not the returned ``keep_key_id`` is
     revoked. Inlined (not ``list_api_keys``) to avoid a circular import.
     """
-    request_headers = {"Authorization": f"Bearer {ocp_user_token}"}
-    if extra_headers is not None:
-        request_headers.update(extra_headers)
-    response = request_session_http.post(
-        url=f"{base_url}/v1/api-keys/search",
-        headers=request_headers,
-        json={
-            "filters": {"status": ["active"]},
-            "sort": {"by": "created_at", "order": "desc"},
-            "pagination": {"limit": 50, "offset": 0},
-        },
-        timeout=60,
+    items = _search_active_api_keys(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        ocp_user_token=ocp_user_token,
+        extra_headers=extra_headers,
     )
-    if response.status_code != 200:
-        LOGGER.warning(f"orphan-key dedupe: key search failed with status={response.status_code}")
-        return
-    items = (response.json() or {}).get("items") or []
-    duplicates = [item for item in items if item.get("name") == api_key_name and str(item.get("id")) != keep_key_id]
+    duplicates = [
+        item
+        for item in items
+        if item.get("name") == api_key_name
+        and str(item.get("id")) not in preexisting_key_ids
+        and str(item.get("id")) != keep_key_id
+    ]
     for duplicate in duplicates:
         LOGGER.warning(f"orphan-key dedupe: revoking duplicate key id={duplicate.get('id')} name={api_key_name}")
         revoke_api_key(
@@ -777,8 +852,8 @@ def create_api_key(
     Retries responses that were provably rejected before maas-api saw the
     request (empty 403, AUTH_FAILURE 500), plus plain-text proxy 5xx (maas-api
     errors are JSON). A plain-5xx retry may hide a create that succeeded
-    upstream, so afterwards any duplicate active key with the same name is
-    revoked (see ``_revoke_orphaned_duplicate_keys``).
+    upstream, so afterwards any duplicate active key with the same name that
+    this call created is revoked (see ``_revoke_orphaned_duplicate_keys``).
     """
     api_keys_url = f"{base_url}/v1/api-keys"
     payload: dict[str, Any] = {"name": api_key_name}
@@ -792,6 +867,32 @@ def create_api_key(
     request_headers = {"Authorization": f"Bearer {ocp_user_token}", "Content-Type": "application/json"}
     if extra_headers is not None:
         request_headers.update(extra_headers)
+
+    try:
+        preexisting_key_ids = _same_name_active_key_ids(
+            request_session_http=request_session_http,
+            base_url=base_url,
+            api_key_name=api_key_name,
+            ocp_user_token=ocp_user_token,
+            extra_headers=extra_headers,
+        )
+    except Exception as error:  # noqa: BLE001 - snapshot is best effort
+        LOGGER.warning(f"orphan-key dedupe: same-name key snapshot failed: {error}")
+        preexisting_key_ids = set()
+
+    def revoke_keys_created_by_this_call(keep_key_id: str) -> None:
+        try:
+            _revoke_orphaned_duplicate_keys(
+                request_session_http=request_session_http,
+                base_url=base_url,
+                api_key_name=api_key_name,
+                keep_key_id=keep_key_id,
+                preexisting_key_ids=preexisting_key_ids,
+                ocp_user_token=ocp_user_token,
+                extra_headers=extra_headers,
+            )
+        except Exception as error:  # noqa: BLE001 - dedupe is best effort
+            LOGGER.warning(f"orphan-key dedupe failed: {error}")
 
     response: requests.Response | None = None
     last_response: requests.Response | None = None
@@ -838,7 +939,14 @@ def create_api_key(
     if response is None or response.status_code not in (200, 201):
         status = response.status_code if response is not None else "no response"
         body = response.text[:500] if response is not None else "no HTTP response received"
-        retry_summary = f"empty_403_retries={empty_403_retries} auth_failure_retries={auth_failure_retries}"
+        retry_summary = (
+            f"empty_403_retries={empty_403_retries} auth_failure_retries={auth_failure_retries} "
+            f"proxy_error_retries={proxy_error_retries}"
+        )
+        if proxy_error_retries:
+            # A plain-5xx attempt can have created a key upstream that the
+            # caller never sees; revoke same-name keys this call created.
+            revoke_keys_created_by_this_call(keep_key_id="")
         if raise_on_error:
             raise AssertionError(f"api-key create failed: status={status} body={body} {retry_summary}")
         return response, {}  # type: ignore[return-value]
@@ -849,14 +957,7 @@ def create_api_key(
         raise AssertionError("API key creation returned non-JSON response") from error
 
     if proxy_error_retries:
-        _revoke_orphaned_duplicate_keys(
-            request_session_http=request_session_http,
-            base_url=base_url,
-            api_key_name=api_key_name,
-            keep_key_id=str(parsed_body.get("id", "")),
-            ocp_user_token=ocp_user_token,
-            extra_headers=extra_headers,
-        )
+        revoke_keys_created_by_this_call(keep_key_id=str(parsed_body.get("id", "")))
 
     api_key = parsed_body.get("key", "")
     if not isinstance(api_key, str) or not api_key.startswith("sk-"):
