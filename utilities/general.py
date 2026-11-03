@@ -8,6 +8,7 @@ import structlog
 from kubernetes.client.exceptions import ApiException
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import NotFoundError, ResourceNotFoundError
+from ocp_resources.cluster_operator import ClusterOperator
 from ocp_resources.deployment import Deployment
 from ocp_resources.inference_graph import InferenceGraph
 from ocp_resources.inference_service import InferenceService
@@ -562,6 +563,13 @@ def wait_for_oauth_openshift_deployment(client: DynamicClient) -> None:
     wait for the rollout to start (generation bump or the transient
     ReplicaSetUpdated reason), then for the deployment to settle again. A
     rollout that never starts raises TimeoutExpiredError.
+
+    A finished deployment rollout does not mean authentication works again
+    yet: the kube-apiserver authenticators keep failing TokenReview for a
+    short window after the oauth-openshift pods are updated (until the
+    authentication ClusterOperator reports Progressing=False and
+    Available=True again). Wait for that too, so callers do not race the
+    reconvergence with requests whose auth depends on TokenReview.
     """
     deployment_obj = Deployment(
         client=client, name="oauth-openshift", namespace="openshift-authentication", ensure_exists=True
@@ -597,6 +605,26 @@ def wait_for_oauth_openshift_deployment(client: DynamicClient) -> None:
     sampler = TimeoutSampler(wait_timeout=240, sleep=5, func=_settled)
     for sample in sampler:
         if sample:
+            break
+
+    _wait_for_authentication_clusteroperator(client=client)
+
+
+def _wait_for_authentication_clusteroperator(client: DynamicClient) -> None:
+    """Wait until the authentication ClusterOperator is Available and not Progressing."""
+
+    def _auth_reconciled() -> bool:
+        conditions = {
+            condition.get("type"): condition.get("status")
+            for condition in cluster_operator.instance.status.conditions or []
+        }
+        return conditions.get("Progressing") == "False" and conditions.get("Available") == "True"
+
+    cluster_operator = ClusterOperator(client=client, name="authentication", ensure_exists=True)
+    sampler = TimeoutSampler(wait_timeout=240, sleep=5, func=_auth_reconciled)
+    for sample in sampler:
+        if sample:
+            LOGGER.info("authentication ClusterOperator reconciled (Available=True, Progressing=False)")
             return
 
 
