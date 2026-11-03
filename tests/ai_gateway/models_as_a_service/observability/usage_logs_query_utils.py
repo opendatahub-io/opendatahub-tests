@@ -12,6 +12,7 @@ from urllib.parse import urlencode
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import NotFoundError
 from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.deployment import Deployment
 from ocp_resources.dsc_initialization import DSCInitialization
@@ -131,7 +132,9 @@ def _dsci_condition_fields(
     condition_type: str,
 ) -> tuple[str | None, str | None, str | None]:
     """Return (status, reason, message) for a DSCI status condition type."""
-    for condition in dsci.instance.status.conditions or []:
+    status = dsci.instance.status
+    conditions = (status.conditions if status is not None else None) or []
+    for condition in conditions:
         if condition.type == condition_type:
             return (
                 str(condition.status) if condition.status is not None else None,
@@ -148,7 +151,10 @@ def _monitoring_cr_condition_fields(
 ) -> tuple[str | None, str | None, str | None]:
     """Return (status, reason, message) for a Monitoring CR status condition type."""
     monitoring_api = admin_client.resources.get(api_version=MONITORING_API_VERSION, kind="Monitoring")
-    monitoring = monitoring_api.get(name=MONITORING_INSTANCE_NAME, namespace=monitoring_namespace)
+    try:
+        monitoring = monitoring_api.get(name=MONITORING_INSTANCE_NAME, namespace=monitoring_namespace)
+    except NotFoundError:
+        return None, None, None
     status = monitoring.status or {}
     for condition in status.get("conditions") or []:
         if condition.get("type") == condition_type:
@@ -178,6 +184,8 @@ def _usage_logs_loki_ready_on_monitoring(
             details.append(
                 f"type={condition_type} status={status!r} reason={reason!r} message={message!r}",
             )
+            if condition_type == MONITORING_USAGE_LOGS_LOKI_CONDITION:
+                break
     if not details:
         return (
             False,
@@ -305,15 +313,6 @@ def verify_usage_logs_multi_tenant_e2e_prerequisites(
         )
 
     return monitoring_namespace, None
-
-
-def usage_logs_e2e_stack_ready(admin_client: DynamicClient) -> tuple[bool, str]:
-    """Return whether Loki + tenancy proxy prerequisites are present (legacy helper)."""
-    monitoring_namespace, failure = verify_usage_logs_multi_tenant_e2e_prerequisites(admin_client=admin_client)
-    if failure:
-        return False, failure
-    assert monitoring_namespace is not None
-    return True, monitoring_namespace
 
 
 def resolve_openshift_username(admin_client: DynamicClient, bearer_token: str) -> str:
