@@ -1,5 +1,4 @@
 import base64
-import urllib.request
 from collections.abc import Generator
 from typing import Any
 
@@ -109,11 +108,6 @@ def request_session_http() -> Generator[requests.Session]:
     # default gateway may serve a certificate that does not match that bundle
     # (or its own hostname), so keep this session's verify=False authoritative.
     session.trust_env = False
-    # trust_env=False also disables requests' environment proxy support, so a
-    # runner that reaches the gateway Route only through a proxy would lose
-    # connectivity; restore the environment proxies explicitly. REQUESTS_CA_BUNDLE
-    # is still not picked up, keeping this session's verify=False authoritative.
-    session.proxies.update(urllib.request.getproxies())
     yield session
     session.close()
 
@@ -945,7 +939,7 @@ def maas_api_endpoints_ready(
 @pytest.fixture(scope="session")
 def authorino_tls_configured(admin_client: DynamicClient) -> Generator[None, Any, Any]:
     """Configure Authorino TLS for MaaS API communication."""
-    authorino_namespaces = ["rh-connectivity-link", "kuadrant-system", "openshift-operators"]
+    authorino_namespaces = ["rh-connectivity-link", "kuadrant-system"]
     authorino_namespace = next(
         (ns for ns in authorino_namespaces if Deployment(client=admin_client, name="authorino", namespace=ns).exists),
         None,
