@@ -83,18 +83,21 @@ class TestMultiTenantUsageLogs:
             subscriptions=sorted(expected_subscriptions),
         )
 
-        with portforward.forward(
-            pod_or_service=LOKI_GATEWAY_SERVICE_NAME,
-            namespace=monitoring_namespace,
-            from_port=LOKI_QUERY_LOCAL_PORT,
-            to_port=LOKI_GATEWAY_SERVICE_PORT,
-            waiting=20,
-        ), portforward.forward(
-            pod_or_service=USAGE_LOGS_TENANCY_PROXY_DEPLOYMENT,
-            namespace=monitoring_namespace,
-            from_port=USAGE_LOGS_TENANCY_PROXY_LOCAL_PORT,
-            to_port=USAGE_LOGS_TENANCY_PROXY_PORT,
-            waiting=20,
+        with (
+            portforward.forward(
+                pod_or_service=LOKI_GATEWAY_SERVICE_NAME,
+                namespace=monitoring_namespace,
+                from_port=LOKI_QUERY_LOCAL_PORT,
+                to_port=LOKI_GATEWAY_SERVICE_PORT,
+                waiting=20,
+            ),
+            portforward.forward(
+                pod_or_service=USAGE_LOGS_TENANCY_PROXY_DEPLOYMENT,
+                namespace=monitoring_namespace,
+                from_port=USAGE_LOGS_TENANCY_PROXY_LOCAL_PORT,
+                to_port=USAGE_LOGS_TENANCY_PROXY_PORT,
+                waiting=20,
+            ),
         ):
             admin_subscriptions = wait_for_subscriptions_in_loki(
                 http_session=request_session_http,

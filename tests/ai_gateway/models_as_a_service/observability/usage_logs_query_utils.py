@@ -13,6 +13,7 @@ import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
+from ocp_resources.exceptions import MissingResourceError
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.service import Service
 from timeout_sampler import TimeoutSampler
@@ -27,9 +28,7 @@ from tests.ai_gateway.models_as_a_service.observability.constants import (
     USAGE_LOGS_SERVICE_NAME,
     USAGE_LOGS_TENANCY_PROXY_DEPLOYMENT,
     USAGE_LOGS_TENANCY_PROXY_LOCAL_PORT,
-    USAGE_LOGS_TENANCY_PROXY_PORT,
 )
-from ocp_resources.exceptions import MissingResourceError
 from tests.ai_gateway.models_as_a_service.utils import endpoints_have_ready_addresses
 from tests.observability.authorization import authenticate_persona_tokens
 from utilities.infra import get_dsci_monitoring_namespace
@@ -38,9 +37,7 @@ from utilities.resources.maastenantconfig import MaasTenantConfig
 LOGGER = structlog.get_logger(name=__name__)
 
 LOKI_QUERY_RANGE_URL: str = LOKI_QUERY_URL.replace("/loki/api/v1/query", "/loki/api/v1/query_range")
-TENANCY_PROXY_QUERY_RANGE_URL: str = (
-    f"https://localhost:{USAGE_LOGS_TENANCY_PROXY_LOCAL_PORT}/loki/api/v1/query_range"
-)
+TENANCY_PROXY_QUERY_RANGE_URL: str = f"https://localhost:{USAGE_LOGS_TENANCY_PROXY_LOCAL_PORT}/loki/api/v1/query_range"
 
 
 def usage_logs_telemetry_spec(*, capture_user: bool = True) -> dict[str, Any]:
@@ -146,7 +143,7 @@ def subscription_count_logql(*, user_id: str, lookback: str = USAGE_LOGS_MULTITE
     """Build LogQL that counts usage-log lines per subscription for one user."""
     escaped_user = user_id.replace("\\", "\\\\").replace('"', '\\"')
     return (
-        f'count by (subscription) (count_over_time('
+        f"count by (subscription) (count_over_time("
         f'{{service_name="{USAGE_LOGS_SERVICE_NAME}"}} '
         f'| user_id="{escaped_user}" '
         f'| subscription!="" | subscription!="-" '
@@ -292,7 +289,5 @@ def maastenantconfig_for_namespace(
         name=AIGATEWAY_BOOTSTRAPPED_TENANT_NAME,
         namespace=tenant_namespace,
     )
-    assert config.exists, (
-        f"MaasTenantConfig/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} not found in '{tenant_namespace}'"
-    )
+    assert config.exists, f"MaasTenantConfig/{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME} not found in '{tenant_namespace}'"
     return config
