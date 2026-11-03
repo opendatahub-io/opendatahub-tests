@@ -11,17 +11,18 @@ from tests.ai_gateway.models_as_a_service.observability.constants import USAGE_L
 from tests.ai_gateway.models_as_a_service.observability.usage_logs_query_utils import (
     maastenantconfig_for_namespace,
     patch_maastenantconfig_usage_telemetry,
-    usage_logs_e2e_stack_ready,
+    verify_usage_logs_multi_tenant_e2e_prerequisites,
 )
 
 
 @pytest.fixture(scope="session")
 def usage_logs_multi_tenant_e2e_monitoring_namespace(admin_client: DynamicClient) -> str:
-    """Skip when Loki gateway or usage-logs tenancy proxy is not ready on the cluster."""
-    ready, detail = usage_logs_e2e_stack_ready(admin_client=admin_client)
-    if not ready:
-        pytest.skip(detail)
-    return detail
+    """Fail fast when pipeline prerequisites for usage-log multitenancy E2E are missing."""
+    monitoring_namespace, failure = verify_usage_logs_multi_tenant_e2e_prerequisites(admin_client=admin_client)
+    if failure:
+        pytest.fail(failure)
+    assert monitoring_namespace is not None
+    return monitoring_namespace
 
 
 @pytest.fixture(scope="class")

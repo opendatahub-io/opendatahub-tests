@@ -12,10 +12,14 @@ from urllib.parse import urlencode
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.deployment import Deployment
+from ocp_resources.dsc_initialization import DSCInitialization
 from ocp_resources.exceptions import MissingResourceError
+from ocp_resources.namespace import Namespace
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.service import Service
+from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutSampler
 
 from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import AIGATEWAY_BOOTSTRAPPED_TENANT_NAME
@@ -23,12 +27,16 @@ from tests.ai_gateway.models_as_a_service.observability.constants import (
     LOKI_GATEWAY_SERVICE_NAME,
     LOKI_QUERY_TENANT,
     LOKI_QUERY_URL,
+    LOKI_STACK_CRD_NAME,
+    MONITORING_CRD_NAME,
+    OTEL_COLLECTOR_CRD_NAME,
     USAGE_LOGS_MULTITENANT_QUERY_LOOKBACK,
     USAGE_LOGS_PROPAGATION_SLEEP,
     USAGE_LOGS_SERVICE_NAME,
     USAGE_LOGS_TENANCY_PROXY_DEPLOYMENT,
     USAGE_LOGS_TENANCY_PROXY_LOCAL_PORT,
 )
+from tests.ai_gateway.models_as_a_service.observability.utils import resolve_maas_monitoring_namespace
 from tests.ai_gateway.models_as_a_service.utils import endpoints_have_ready_addresses
 from tests.observability.authorization import authenticate_persona_tokens
 from utilities.infra import get_dsci_monitoring_namespace
@@ -105,28 +113,134 @@ def loki_gateway_service_ready(
     )
 
 
-def usage_logs_e2e_stack_ready(admin_client: DynamicClient) -> tuple[bool, str]:
-    """Return whether Loki + tenancy proxy prerequisites are present."""
+_DSCI_USAGE_LOGS_PIPELINE_CONDITIONS: tuple[str, ...] = (
+    "MonitoringReady",
+    "MonitoringStackAvailable",
+    "LokiStackAvailable",
+    "UsageLogsCollectorAvailable",
+)
+
+_USAGE_LOGS_DSCI_FIX_HINT = (
+    "Fix: on DSCInitialization spec.monitoring set managementState=Managed and configure "
+    "usageLogs.storage (S3 secret in the monitoring namespace) so the ODH operator deploys "
+    "data-science-lokistack and the usage-logs collector. Pipeline clusters must provide this "
+    "before running multitenancy usage-log E2E (RHOAIENG-99404)."
+)
+
+
+def _dsci_condition_fields(
+    dsci: DSCInitialization,
+    condition_type: str,
+) -> tuple[str | None, str | None, str | None]:
+    """Return (status, reason, message) for a DSCI status condition type."""
+    for condition in dsci.instance.status.conditions or []:
+        if condition.type == condition_type:
+            return (
+                str(condition.status) if condition.status is not None else None,
+                str(condition.reason) if condition.reason is not None else None,
+                str(condition.message) if condition.message is not None else None,
+            )
+    return None, None, None
+
+
+def verify_usage_logs_multi_tenant_e2e_prerequisites(
+    admin_client: DynamicClient,
+) -> tuple[str | None, str | None]:
+    """Verify pipeline prerequisites for multitenancy usage-log E2E.
+
+    Returns (monitoring_namespace, None) when ready, else (None, pytest.fail message).
+    """
+    dsci_name = py_config["dsci_name"]
+    dsci = DSCInitialization(client=admin_client, name=dsci_name)
+    if not dsci.exists:
+        return (
+            None,
+            f"DSCInitialization '{dsci_name}' not found. "
+            f"Set pytest --tc=dsci_name=<name> to match the cluster (expected default-dsci on RHOAI).",
+        )
+
+    monitoring_spec = dsci.instance.spec.get("monitoring") or {}
+    management_state = monitoring_spec.get("managementState")
+    if management_state != "Managed":
+        return (
+            None,
+            f"DSCInitialization '{dsci_name}' spec.monitoring.managementState is {management_state!r}, "
+            f"expected 'Managed'. {_USAGE_LOGS_DSCI_FIX_HINT}",
+        )
+
+    for crd_name in (LOKI_STACK_CRD_NAME, OTEL_COLLECTOR_CRD_NAME, MONITORING_CRD_NAME):
+        if not CustomResourceDefinition(client=admin_client, name=crd_name).exists:
+            return (
+                None,
+                f"CRD '{crd_name}' is not installed. "
+                f"The usage-logs LokiStack requires the Loki operator and ODH monitoring CRDs. "
+                f"{_USAGE_LOGS_DSCI_FIX_HINT}",
+            )
+
+    for condition_type in _DSCI_USAGE_LOGS_PIPELINE_CONDITIONS:
+        status, reason, message = _dsci_condition_fields(dsci=dsci, condition_type=condition_type)
+        if status != "True":
+            detail = f"type={condition_type} status={status!r} reason={reason!r} message={message!r}"
+            return (
+                None,
+                f"DSCInitialization '{dsci_name}' is not ready for usage-log E2E ({detail}). "
+                f"{_USAGE_LOGS_DSCI_FIX_HINT}",
+            )
+
     try:
         monitoring_namespace = get_dsci_monitoring_namespace(client=admin_client)
     except MissingResourceError:
-        return False, "DSCInitialization not found (cannot resolve monitoring namespace)"
-    if not usage_logs_tenancy_proxy_ready(
-        admin_client=admin_client,
-        monitoring_namespace=monitoring_namespace,
-    ):
         return (
-            False,
-            f"Deployment '{USAGE_LOGS_TENANCY_PROXY_DEPLOYMENT}' is not ready in '{monitoring_namespace}'",
+            None,
+            f"Could not resolve monitoring namespace from DSCInitialization '{dsci_name}'. "
+            f"Ensure spec.monitoring.namespace is set (typically redhat-ods-monitoring).",
         )
+
+    if not Namespace(client=admin_client, name=monitoring_namespace).exists:
+        return (
+            None,
+            f"Monitoring namespace '{monitoring_namespace}' does not exist. "
+            f"DSCI bootstrap should create it when monitoring is Managed.",
+        )
+
+    maas_monitoring_namespace = resolve_maas_monitoring_namespace(admin_client=admin_client)
+    if maas_monitoring_namespace and maas_monitoring_namespace != monitoring_namespace:
+        return (
+            None,
+            f"maas-controller MONITORING_NAMESPACE ({maas_monitoring_namespace!r}) does not match "
+            f"DSCI monitoring namespace ({monitoring_namespace!r}). Align operator env and DSCI.",
+        )
+
     if not loki_gateway_service_ready(
         admin_client=admin_client,
         monitoring_namespace=monitoring_namespace,
     ):
         return (
-            False,
-            f"Service '{LOKI_GATEWAY_SERVICE_NAME}' is not ready in '{monitoring_namespace}' (LokiStack not ready)",
+            None,
+            f"Service '{LOKI_GATEWAY_SERVICE_NAME}' has no ready endpoints in '{monitoring_namespace}'. "
+            f"Wait for data-science-lokistack gateway after LokiStackAvailable=True, or fix LokiStack reconcile. "
+            f"{_USAGE_LOGS_DSCI_FIX_HINT}",
         )
+
+    if not usage_logs_tenancy_proxy_ready(
+        admin_client=admin_client,
+        monitoring_namespace=monitoring_namespace,
+    ):
+        return (
+            None,
+            f"Deployment '{USAGE_LOGS_TENANCY_PROXY_DEPLOYMENT}' is not Available in '{monitoring_namespace}'. "
+            f"Ensure maas-controller reconciled usage-logs-tenancy-proxy (Config/default present).",
+        )
+
+    return monitoring_namespace, None
+
+
+def usage_logs_e2e_stack_ready(admin_client: DynamicClient) -> tuple[bool, str]:
+    """Return whether Loki + tenancy proxy prerequisites are present (legacy helper)."""
+    monitoring_namespace, failure = verify_usage_logs_multi_tenant_e2e_prerequisites(admin_client=admin_client)
+    if failure:
+        return False, failure
+    assert monitoring_namespace is not None
     return True, monitoring_namespace
 
 
