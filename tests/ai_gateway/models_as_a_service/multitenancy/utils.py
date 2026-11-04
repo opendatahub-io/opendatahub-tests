@@ -902,59 +902,64 @@ def provision_tenant_model(
     aws_s3_region: str,
     aws_s3_bucket: str,
     aws_s3_endpoint: str,
+    storage_uri: str = ModelStorage.S3.TINYLLAMA,
     teardown: bool = True,
     llm_ready_timeout: int = 900,
     httproute_timeout: int = 300,
     spec_tenant_ref: str | None = None,
 ) -> Generator[MaaSModelRef, Any, Any]:
-    """Provision a tenant-local TinyLlama model whose HTTPRoute attaches to the tenant Gateway."""
-    storage_uri = ModelStorage.S3.TINYLLAMA
-    secret_bucket, secret_region, secret_endpoint = s3_secret_config_for_storage_uri(
-        storage_uri,
-        aws_s3_bucket=aws_s3_bucket,
-        aws_s3_region=aws_s3_region,
-        aws_s3_endpoint=aws_s3_endpoint,
-    )
+    """Provision a tenant-local model whose HTTPRoute attaches to the tenant Gateway."""
     label_namespace_gateway_access(
         admin_client=admin_client,
         namespace_name=tenant_namespace_name,
         gateway_name=gateway_name,
     )
+    service_account: str | None = TENANT_MODELS_BUCKET_SA_NAME
     with ExitStack() as stack:
-        stack.enter_context(
-            cm=s3_endpoint_secret(
-                client=admin_client,
-                name=TENANT_MODELS_BUCKET_SECRET_NAME,
-                namespace=tenant_namespace_name,
-                aws_access_key=aws_access_key,
-                aws_secret_access_key=aws_secret_access_key,
-                aws_s3_region=secret_region,
-                aws_s3_bucket=secret_bucket,
-                aws_s3_endpoint=secret_endpoint,
-                teardown=teardown,
+        if storage_uri.startswith("s3://"):
+            secret_bucket, secret_region, secret_endpoint = s3_secret_config_for_storage_uri(
+                storage_uri,
+                aws_s3_bucket=aws_s3_bucket,
+                aws_s3_region=aws_s3_region,
+                aws_s3_endpoint=aws_s3_endpoint,
             )
-        )
-        stack.enter_context(
-            cm=ServiceAccount(
-                client=admin_client,
-                namespace=tenant_namespace_name,
-                name=TENANT_MODELS_BUCKET_SA_NAME,
-                secrets=[{"name": TENANT_MODELS_BUCKET_SECRET_NAME}],
-                teardown=teardown,
+            stack.enter_context(
+                cm=s3_endpoint_secret(
+                    client=admin_client,
+                    name=TENANT_MODELS_BUCKET_SECRET_NAME,
+                    namespace=tenant_namespace_name,
+                    aws_access_key=aws_access_key,
+                    aws_secret_access_key=aws_secret_access_key,
+                    aws_s3_region=secret_region,
+                    aws_s3_bucket=secret_bucket,
+                    aws_s3_endpoint=secret_endpoint,
+                    teardown=teardown,
+                )
             )
-        )
+            stack.enter_context(
+                cm=ServiceAccount(
+                    client=admin_client,
+                    namespace=tenant_namespace_name,
+                    name=TENANT_MODELS_BUCKET_SA_NAME,
+                    secrets=[{"name": TENANT_MODELS_BUCKET_SECRET_NAME}],
+                    teardown=teardown,
+                )
+            )
+        else:
+            service_account = None
+
         llm_service = stack.enter_context(
             cm=create_llmisvc(
                 client=admin_client,
                 name=model_name,
                 namespace=tenant_namespace_name,
-                storage_uri=ModelStorage.S3.TINYLLAMA,
+                storage_uri=storage_uri,
                 container_image=SharedImages.VLLM_CPU,
                 container_resources={
                     "limits": {"cpu": "2", "memory": "12Gi"},
                     "requests": {"cpu": "1", "memory": "8Gi"},
                 },
-                service_account=TENANT_MODELS_BUCKET_SA_NAME,
+                service_account=service_account,
                 wait=False,
                 timeout=llm_ready_timeout,
                 teardown=teardown,

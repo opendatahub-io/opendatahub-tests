@@ -41,6 +41,7 @@ from tests.ai_gateway.models_as_a_service.utils import (
     deploy_and_verify_aitenant_ready,
 )
 from utilities.general import generate_random_name
+from utilities.constants import ModelStorage
 from utilities.resources.aitenant import AITenant
 from utilities.resources.maas_config import Config as MaaSConfig
 from utilities.resources.route import Route
@@ -318,11 +319,18 @@ def two_aitenant_test_contexts(
 
 
 @pytest.fixture(scope="class")
+def tenant_isolation_model_storage_uri() -> str:
+    """Storage URI for tenant-local models in isolation scenarios (default: CI S3 TinyLlama)."""
+    return ModelStorage.S3.TINYLLAMA
+
+
+@pytest.fixture(scope="class")
 def isolation_tenant_governance(
     admin_client: DynamicClient,
     two_aitenant_test_contexts: tuple[AITenantTestContext, AITenantTestContext],
     maas_free_group: str,
     teardown_resources: bool,
+    tenant_isolation_model_storage_uri: str,
     aws_access_key_id: str,
     aws_secret_access_key: str,
     models_s3_bucket_name: str,
@@ -351,6 +359,7 @@ def isolation_tenant_governance(
                     aws_s3_region=models_s3_bucket_region,
                     aws_s3_bucket=models_s3_bucket_name,
                     aws_s3_endpoint=models_s3_bucket_endpoint,
+                    storage_uri=tenant_isolation_model_storage_uri,
                     teardown=teardown_resources,
                 )
             )

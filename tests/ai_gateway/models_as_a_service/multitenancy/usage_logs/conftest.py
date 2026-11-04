@@ -13,6 +13,41 @@ from tests.ai_gateway.models_as_a_service.observability.usage_logs_query_utils i
     patch_maastenantconfig_usage_telemetry,
     verify_usage_logs_multi_tenant_e2e_prerequisites,
 )
+from utilities.constants import ModelStorage
+
+
+@pytest.fixture(scope="session")
+def aws_access_key_id() -> str:
+    """Not used when tenant models deploy from OCI modelcar (see tenant_isolation_model_storage_uri)."""
+    return "unused-oci-tenant-model"
+
+
+@pytest.fixture(scope="session")
+def aws_secret_access_key() -> str:
+    """Not used when tenant models deploy from OCI modelcar (see tenant_isolation_model_storage_uri)."""
+    return "unused-oci-tenant-model"
+
+
+@pytest.fixture(scope="session")
+def models_s3_bucket_name() -> str:
+    """Placeholder; usage-log multitenancy E2E uses OCI TinyLlama, not S3."""
+    return "unused"
+
+
+@pytest.fixture(scope="session")
+def models_s3_bucket_region() -> str:
+    return ModelStorage.S3.ODS_CI_WISDOM_REGION
+
+
+@pytest.fixture(scope="session")
+def models_s3_bucket_endpoint() -> str:
+    return ModelStorage.S3.ODS_CI_WISDOM_ENDPOINT
+
+
+@pytest.fixture(scope="class")
+def tenant_isolation_model_storage_uri() -> str:
+    """OCI TinyLlama on each tenant gateway (no ods-ci-wisdom AWS credentials required locally)."""
+    return ModelStorage.OCI.TINYLLAMA
 
 
 @pytest.fixture(scope="session")
