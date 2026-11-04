@@ -2,6 +2,7 @@ import pytest
 
 from tests.model_serving.model_server.upgrade.utils import (
     get_isvc_baseline,
+    get_upgrade_isvc_inference_config,
     verify_auth_enabled,
     verify_inference_generation,
     verify_isvc_pods_not_restarted_against_baseline,
@@ -10,7 +11,6 @@ from tests.model_serving.model_server.upgrade.utils import (
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import Protocols
 from utilities.inference_utils import Inference, UserInference
-from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
 
 pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_config")]
 
@@ -28,7 +28,7 @@ class TestPreUpgradeAuthModelServer:
         """Verify authenticated model inference before upgrade"""
         verify_inference_response(
             inference_service=auth_inference_service_fixture,
-            inference_config=OPENVINO_KSERVE_INFERENCE_CONFIG,
+            inference_config=get_upgrade_isvc_inference_config(inference_service=auth_inference_service_fixture),
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
             use_default_query=True,
@@ -98,7 +98,7 @@ class TestPostUpgradeAuthModelServer:
         """Verify authenticated model inference after upgrade"""
         verify_inference_response(
             inference_service=auth_inference_service_fixture,
-            inference_config=OPENVINO_KSERVE_INFERENCE_CONFIG,
+            inference_config=get_upgrade_isvc_inference_config(inference_service=auth_inference_service_fixture),
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
             use_default_query=True,
@@ -114,7 +114,7 @@ class TestPostUpgradeAuthModelServer:
         """Verify unauthorized requests are rejected after upgrade"""
         inference = UserInference(
             inference_service=auth_inference_service_fixture,
-            inference_config=OPENVINO_KSERVE_INFERENCE_CONFIG,
+            inference_config=get_upgrade_isvc_inference_config(inference_service=auth_inference_service_fixture),
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
         )
@@ -144,7 +144,7 @@ class TestPostUpgradeAuthModelServer:
         """Verify a freshly created token also works for inference after upgrade"""
         verify_inference_response(
             inference_service=auth_inference_service_fixture,
-            inference_config=OPENVINO_KSERVE_INFERENCE_CONFIG,
+            inference_config=get_upgrade_isvc_inference_config(inference_service=auth_inference_service_fixture),
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
             use_default_query=True,

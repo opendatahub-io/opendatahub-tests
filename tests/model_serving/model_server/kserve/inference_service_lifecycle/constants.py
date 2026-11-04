@@ -2,7 +2,7 @@ from utilities.constants import ModelVersion
 
 BASE_ISVC_CONFIG: dict[str, str] = {
     "name": "isvc-replicas",
-    "model-version": ModelVersion.OPSET13,
+    "model-version": ModelVersion.V1,
     "model-dir": "test-dir",
 }
 

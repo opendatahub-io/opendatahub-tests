@@ -5,10 +5,7 @@ from tests.model_serving.model_server.kserve.inference_service_lifecycle.constan
     UPDATED_PULL_SECRET,
 )
 from tests.model_serving.model_server.kserve.inference_service_lifecycle.utils import verify_pull_secret
-from utilities.constants import ModelName, ModelStorage, RuntimeTemplates
-
-# The test deploys an OVMS runtime, whose image is not built for arm64
-pytestmark = pytest.mark.usefixtures("skip_if_arm64_cluster_detected")
+from utilities.constants import ModelCarImage, ModelName, RuntimeTemplates
 
 
 @pytest.mark.parametrize(
@@ -18,10 +15,10 @@ pytestmark = pytest.mark.usefixtures("skip_if_arm64_cluster_detected")
             {"name": "test-pull-secret-modelcar"},
             {
                 "name": f"{ModelName.MNIST}-runtime",
-                "template-name": RuntimeTemplates.OVMS_KSERVE,
+                "template-name": RuntimeTemplates.MLSERVER,
                 "multi-model": False,
             },
-            {"storage-uri": ModelStorage.OCI.MNIST_8_1},
+            {"storage-uri": ModelCarImage.MLSERVER_ONNX},
         )
     ],
     indirect=True,

@@ -24,7 +24,7 @@ from utilities.constants import (
     THANOS_QUERIER_ADDRESS,
     KServeDeploymentType,
     Labels,
-    ModelAndFormat,
+    ModelFormat,
     RuntimeTemplates,
 )
 from utilities.inference_utils import create_isvc
@@ -202,11 +202,11 @@ def stressed_keda_vllm_inference_service(
 
 
 @pytest.fixture(scope="class")
-def stressed_ovms_keda_inference_service(
+def stressed_mlserver_keda_inference_service(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
-    ovms_kserve_serving_runtime: ServingRuntime,
+    mlserver_kserve_serving_runtime: ServingRuntime,
     ci_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     model_name = f"{request.param['name']}-raw"
@@ -215,10 +215,10 @@ def stressed_ovms_keda_inference_service(
         name=model_name,
         namespace=unprivileged_model_namespace.name,
         external_route=True,
-        runtime=ovms_kserve_serving_runtime.name,
+        runtime=mlserver_kserve_serving_runtime.name,
         storage_path=request.param["model-dir"],
         storage_key=ci_endpoint_s3_secret.name,
-        model_format=ModelAndFormat.OPENVINO_IR,
+        model_format=ModelFormat.ONNX,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         model_version=request.param["model-version"],
         min_replicas=request.param["initial_pod_count"],

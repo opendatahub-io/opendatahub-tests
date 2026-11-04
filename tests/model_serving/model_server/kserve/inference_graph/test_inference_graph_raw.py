@@ -9,11 +9,11 @@ from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 @pytest.mark.rawdeployment
 @pytest.mark.tier1
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace,ovms_kserve_serving_runtime",
+    "unprivileged_model_namespace,mlserver_kserve_serving_runtime",
     [
         pytest.param(
             {"name": "kserve-inference-graph-deploy"},
-            {"runtime-name": ModelInferenceRuntime.ONNX_RUNTIME},
+            {"runtime-name": ModelInferenceRuntime.MLSERVER_RUNTIME},
         )
     ],
     indirect=True,
@@ -22,7 +22,7 @@ class TestInferenceGraphRaw:
     """Validate KServe InferenceGraph functionality in raw deployment mode.
 
     Steps:
-        1. Deploy an OVMS serving runtime with ONNX support in the test namespace.
+        1. Deploy an MLServer serving runtime with ONNX support in the test namespace.
         2. Create inference graphs with various configurations (public, private, auth-enabled).
         3. Send inference requests through each graph and verify correct routing and responses.
         4. Verify authentication enforcement by testing with privileged and unprivileged tokens.

@@ -138,7 +138,7 @@ class TestDescriptiveClassName:
 ### Key Resources
 
 - `InferenceService` (ISVC): core serving primitive — model deployment, scaling, routing.
-- `ServingRuntime`: runtime template (OVMS, Triton, vLLM, etc.).
+- `ServingRuntime`: runtime template (MLServer, Triton, vLLM, etc.).
 - `LLMInferenceService` (LLMISVC): llm-d-specific CRD wrapping InferenceService with router, prefill, and scheduling config.
 - `LocalModelNamespaceCache`: namespace-scoped model cache — pre-downloads model to node PVCs.
 - `InferenceGraph`: DAG-based model routing (splitter, ensemble, sequence).

@@ -17,7 +17,7 @@ The CI pipeline runs pre-upgrade tests on the source branch, performs the operat
 
 | File                               | Scenario               | Namespace                    |
 | ---------------------------------- | ---------------------- | ---------------------------- |
-| `test_upgrade.py`                  | RawDeployment OVMS     | `upgrade-model-server`       |
+| `test_upgrade.py`                  | RawDeployment MLServer | `upgrade-model-server`       |
 | `test_upgrade_auth.py`             | Auth-enabled RawDeploy | `upgrade-auth-model-server`  |
 | `test_upgrade_model_car.py`        | ModelCar (OCI storage) | `upgrade-model-car`          |
 | `test_upgrade_metrics.py`          | Metrics (Prometheus)   | `upgrade-metrics`            |
@@ -74,6 +74,7 @@ uv run pytest --pre-upgrade tests/model_serving/model_server/upgrade/test_upgrad
 - **Baseline persistence**: Pre-upgrade state (pod names, restart counts, generation, images, URLs) is captured and stored in ConfigMaps. Most ISVC baselines are saved in the shared `upgrade-model-server` namespace; KServe+Kueue and LLMISVC baselines are saved in each workload's own namespace. The namespaces persist across the upgrade, so post-upgrade tests load the same ConfigMaps and compare against current state.
 - **Auth token persistence**: For auth scenarios, pre-upgrade tokens are saved to Secrets so they can be reused post-upgrade to verify token survival.
 - **Cross-branch compatibility**: Resource names, namespaces, and fixture names must be identical between branches for pre/post pairs to match. Any rename breaks the upgrade path.
+- **OVMS → MLServer migration window (RHOAIENG-95304)**: this branch deploys MLServer (ONNX models). Until the oldest supported pre-upgrade release branch also deploys MLServer, post-upgrade lanes may face ISVCs that were created by an OVMS branch (`openvino_ir` format). The helpers `get_upgrade_isvc_inference_config`, `get_upgrade_isvc_metrics_query`, and `get_upgrade_modelcar_storage_uri` in `utils.py` select the matching payload/metric/ModelCar by the ISVC's model format, so post-upgrade verification works for both. Remove the `openvino_ir` branches of these helpers once the oldest supported pre-upgrade branch deploys MLServer.
 - **Dependencies**: Post-upgrade tests use `@pytest.mark.dependency` to skip downstream tests if the ISVC/LLMISVC no longer exists.
 
 ## Known limitations

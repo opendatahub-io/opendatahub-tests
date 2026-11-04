@@ -10,12 +10,11 @@ from utilities.constants import RuntimeTemplates
 
 LOGGER = structlog.get_logger(name=__name__)
 
-OVMS_REST_PORT = 8888
-OVMS_HEALTH_ENDPOINT = "v2/health/ready"
+MLSERVER_REST_PORT = 8080
+MLSERVER_HEALTH_ENDPOINT = "v2/health/ready"
 HTTP_OK = "200"
 
-# The test deploys an OVMS runtime, whose image is not built for arm64
-pytestmark = [pytest.mark.tier1, pytest.mark.usefixtures("skip_if_arm64_cluster_detected", "valid_aws_config")]
+pytestmark = [pytest.mark.tier1, pytest.mark.usefixtures("valid_aws_config")]
 
 
 @pytest.mark.parametrize(
@@ -24,8 +23,8 @@ pytestmark = [pytest.mark.tier1, pytest.mark.usefixtures("skip_if_arm64_cluster_
         pytest.param(
             {"name": "endpoint"},
             {
-                "name": "ovms-endpoint-runtime",
-                "template-name": RuntimeTemplates.OVMS_KSERVE,
+                "name": "mlserver-endpoint-runtime",
+                "template-name": RuntimeTemplates.MLSERVER,
                 "multi-model": False,
             },
         )
@@ -34,10 +33,10 @@ pytestmark = [pytest.mark.tier1, pytest.mark.usefixtures("skip_if_arm64_cluster_
 )
 class TestKserveInternalEndpoint:
     """
-    Tests the internal endpoint of a KServe RawDeployment predictor using OVMS with S3 storage.
+    Tests the internal endpoint of a KServe RawDeployment predictor using MLServer with S3 storage.
 
     Steps:
-        1. Deploy OVMS ServingRuntime and InferenceService with S3 storage in RawDeployment mode.
+        1. Deploy MLServer ServingRuntime and InferenceService with S3 storage in RawDeployment mode.
         2. Verify the model state reaches "Loaded".
         3. Verify the internal endpoint URL is set correctly.
         4. Curl v2/health/ready from a pod in the same namespace — expect HTTP 200.
@@ -67,8 +66,8 @@ class TestKserveInternalEndpoint:
         curl_stdout = curl_from_pod(
             isvc=endpoint_isvc,
             pod=same_namespace_pod,
-            endpoint=OVMS_HEALTH_ENDPOINT,
-            port=OVMS_REST_PORT,
+            endpoint=MLSERVER_HEALTH_ENDPOINT,
+            port=MLSERVER_REST_PORT,
         )
         assert curl_stdout == HTTP_OK
 
@@ -84,7 +83,7 @@ class TestKserveInternalEndpoint:
         curl_stdout = curl_from_pod(
             isvc=endpoint_isvc,
             pod=diff_namespace_pod,
-            endpoint=OVMS_HEALTH_ENDPOINT,
-            port=OVMS_REST_PORT,
+            endpoint=MLSERVER_HEALTH_ENDPOINT,
+            port=MLSERVER_REST_PORT,
         )
         assert curl_stdout == HTTP_OK

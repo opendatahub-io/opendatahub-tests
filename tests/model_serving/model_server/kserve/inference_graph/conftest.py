@@ -153,7 +153,7 @@ def dog_breed_inference_graph(
 def dog_cat_inference_service(
     admin_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
-    ovms_kserve_serving_runtime: ServingRuntime,
+    mlserver_kserve_serving_runtime: ServingRuntime,
     models_endpoint_s3_secret: Secret,
     kserve_raw_headless_service_config: DataScienceCluster,
 ) -> Generator[InferenceService, Any, Any]:
@@ -161,7 +161,7 @@ def dog_cat_inference_service(
         client=admin_client,
         name="dog-cat-classifier",
         namespace=unprivileged_model_namespace.name,
-        runtime=ovms_kserve_serving_runtime.name,
+        runtime=mlserver_kserve_serving_runtime.name,
         storage_key=models_endpoint_s3_secret.name,
         storage_path=ModelStoragePath.CAT_DOG_ONNX,
         model_format=ModelFormat.ONNX,
@@ -172,7 +172,7 @@ def dog_cat_inference_service(
         services = get_services_by_isvc_label(
             client=admin_client,
             isvc=isvc,
-            runtime_name=ovms_kserve_serving_runtime.name,
+            runtime_name=mlserver_kserve_serving_runtime.name,
         )
         is_headed = any(
             getattr(svc.instance.spec, "clusterIP", None) and svc.instance.spec.clusterIP != "None" for svc in services
@@ -188,7 +188,7 @@ def dog_cat_inference_service(
 def dog_breed_inference_service(
     admin_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
-    ovms_kserve_serving_runtime: ServingRuntime,
+    mlserver_kserve_serving_runtime: ServingRuntime,
     models_endpoint_s3_secret: Secret,
     kserve_raw_headless_service_config: DataScienceCluster,
 ) -> Generator[InferenceService, Any, Any]:
@@ -196,7 +196,7 @@ def dog_breed_inference_service(
         client=admin_client,
         name="dog-breed-classifier",
         namespace=unprivileged_model_namespace.name,
-        runtime=ovms_kserve_serving_runtime.name,
+        runtime=mlserver_kserve_serving_runtime.name,
         storage_key=models_endpoint_s3_secret.name,
         storage_path=ModelStoragePath.DOG_BREED_ONNX,
         model_format=ModelFormat.ONNX,

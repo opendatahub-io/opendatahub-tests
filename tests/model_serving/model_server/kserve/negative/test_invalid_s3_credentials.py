@@ -18,7 +18,7 @@ from tests.model_serving.model_server.kserve.negative.utils import (
     wait_for_isvc_model_status_states,
 )
 
-pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("skip_if_arm64_cluster_detected", "valid_aws_config")]
+pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_config")]
 
 
 @pytest.mark.tier3
@@ -28,12 +28,12 @@ class TestInvalidS3Credentials:
     def test_isvc_reports_failed_to_load_with_invalid_s3_credentials(
         self,
         admin_client: DynamicClient,
-        invalid_s3_credentials_ovms_isvc: InferenceService,
+        invalid_s3_credentials_mlserver_isvc: InferenceService,
     ) -> None:
         """Given a valid bucket path and invalid AWS keys, the ISVC must not silently succeed.
 
         When:
-            An OVMS RawDeployment InferenceService is created with ``wait=False`` so the
+            An MLServer RawDeployment InferenceService is created with ``wait=False`` so the
             controller can reconcile while model download fails.
 
         Then:
@@ -55,7 +55,7 @@ class TestInvalidS3Credentials:
         )
         try:
             wait_for_isvc_model_status_states(
-                isvc=invalid_s3_credentials_ovms_isvc,
+                isvc=invalid_s3_credentials_mlserver_isvc,
                 target_model_state="FailedToLoad",
                 transition_status="BlockedByFailedLoad",
             )

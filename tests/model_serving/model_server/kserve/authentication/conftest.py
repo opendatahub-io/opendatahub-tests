@@ -20,6 +20,7 @@ from utilities.constants import (
     KServeDeploymentType,
     ModelFormat,
     ModelName,
+    ModelVersion,
     Protocols,
     RuntimeTemplates,
 )
@@ -37,13 +38,13 @@ from utilities.serving_runtime import ServingRuntimeFromTemplate
 @pytest.fixture(scope="class")
 def http_raw_view_role(
     unprivileged_client: DynamicClient,
-    http_s3_ovms_raw_inference_service: InferenceService,
+    http_s3_mlserver_raw_inference_service: InferenceService,
 ) -> Generator[Role, Any, Any]:
     with create_isvc_view_role(
         client=unprivileged_client,
-        isvc=http_s3_ovms_raw_inference_service,
-        name=f"{http_s3_ovms_raw_inference_service.name}-view",
-        resource_names=[http_s3_ovms_raw_inference_service.name],
+        isvc=http_s3_mlserver_raw_inference_service,
+        name=f"{http_s3_mlserver_raw_inference_service.name}-view",
+        resource_names=[http_s3_mlserver_raw_inference_service.name],
     ) as role:
         yield role
 
@@ -53,7 +54,7 @@ def http_raw_role_binding(
     unprivileged_client: DynamicClient,
     http_raw_view_role: Role,
     model_service_account: ServiceAccount,
-    http_s3_ovms_raw_inference_service: InferenceService,
+    http_s3_mlserver_raw_inference_service: InferenceService,
 ) -> Generator[RoleBinding, Any, Any]:
     with RoleBinding(
         client=unprivileged_client,
@@ -75,42 +76,42 @@ def http_raw_inference_token(model_service_account: ServiceAccount, http_raw_rol
 @pytest.fixture()
 def patched_remove_raw_authentication_isvc(
     unprivileged_client: DynamicClient,
-    http_s3_ovms_raw_inference_service: InferenceService,
+    http_s3_mlserver_raw_inference_service: InferenceService,
     http_raw_inference_token: str,
 ) -> Generator[InferenceService, Any, Any]:
     with ResourceEditor(
         patches={
-            http_s3_ovms_raw_inference_service: {
+            http_s3_mlserver_raw_inference_service: {
                 "metadata": {
                     "annotations": {Annotations.KserveAuth.SECURITY: "false"},
                 }
             }
         }
     ):
-        http_s3_ovms_raw_inference_service.wait_for_condition(
-            condition=http_s3_ovms_raw_inference_service.Condition.READY,
-            status=http_s3_ovms_raw_inference_service.Condition.Status.TRUE,
+        http_s3_mlserver_raw_inference_service.wait_for_condition(
+            condition=http_s3_mlserver_raw_inference_service.Condition.READY,
+            status=http_s3_mlserver_raw_inference_service.Condition.Status.TRUE,
             timeout=120,
         )
         wait_for_inference_deployment_replicas(
             client=unprivileged_client,
-            isvc=http_s3_ovms_raw_inference_service,
+            isvc=http_s3_mlserver_raw_inference_service,
         )
-        wait_for_raw_isvc_https_infer_ready(isvc=http_s3_ovms_raw_inference_service, token=None)
-        yield http_s3_ovms_raw_inference_service
+        wait_for_raw_isvc_https_infer_ready(isvc=http_s3_mlserver_raw_inference_service, token=None)
+        yield http_s3_mlserver_raw_inference_service
 
     # ResourceEditor restores auth on exit; wait for ISVC to reconcile before next test
-    http_s3_ovms_raw_inference_service.wait_for_condition(
-        condition=http_s3_ovms_raw_inference_service.Condition.READY,
-        status=http_s3_ovms_raw_inference_service.Condition.Status.TRUE,
+    http_s3_mlserver_raw_inference_service.wait_for_condition(
+        condition=http_s3_mlserver_raw_inference_service.Condition.READY,
+        status=http_s3_mlserver_raw_inference_service.Condition.Status.TRUE,
         timeout=120,
     )
     wait_for_inference_deployment_replicas(
         client=unprivileged_client,
-        isvc=http_s3_ovms_raw_inference_service,
+        isvc=http_s3_mlserver_raw_inference_service,
     )
     wait_for_raw_isvc_https_infer_ready(
-        isvc=http_s3_ovms_raw_inference_service,
+        isvc=http_s3_mlserver_raw_inference_service,
         token=http_raw_inference_token,
     )
 
@@ -129,11 +130,11 @@ def model_service_account_2(
 
 
 @pytest.fixture(scope="class")
-def http_s3_ovms_raw_inference_service(
+def http_s3_mlserver_raw_inference_service(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
-    http_s3_ovms_serving_runtime: ServingRuntime,
+    http_s3_mlserver_serving_runtime: ServingRuntime,
     ci_s3_bucket_name: str,
     ci_endpoint_s3_secret: Secret,
     model_service_account: ServiceAccount,
@@ -144,10 +145,11 @@ def http_s3_ovms_raw_inference_service(
         client=unprivileged_client,
         name=f"{Protocols.HTTP}-{ModelFormat.ONNX}",
         namespace=unprivileged_model_namespace.name,
-        runtime=http_s3_ovms_serving_runtime.name,
+        runtime=http_s3_mlserver_serving_runtime.name,
         storage_key=ci_endpoint_s3_secret.name,
         storage_path=urlparse(storage_uri).path,
-        model_format=http_s3_ovms_serving_runtime.instance.spec.supportedModelFormats[0].name,
+        model_format=ModelFormat.ONNX,
+        model_version=ModelVersion.V1,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         model_service_account=model_service_account.name,
         enable_auth=True,
@@ -157,11 +159,11 @@ def http_s3_ovms_raw_inference_service(
 
 
 @pytest.fixture(scope="class")
-def http_s3_ovms_raw_inference_service_2(
+def http_s3_mlserver_raw_inference_service_2(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
-    http_s3_ovms_serving_runtime: ServingRuntime,
+    http_s3_mlserver_serving_runtime: ServingRuntime,
     ci_s3_bucket_name: str,
     ci_endpoint_s3_secret: Secret,
     model_service_account_2: ServiceAccount,
@@ -172,10 +174,11 @@ def http_s3_ovms_raw_inference_service_2(
         client=unprivileged_client,
         name=f"{Protocols.HTTP}-{ModelFormat.ONNX}-2",
         namespace=unprivileged_model_namespace.name,
-        runtime=http_s3_ovms_serving_runtime.name,
+        runtime=http_s3_mlserver_serving_runtime.name,
         storage_key=ci_endpoint_s3_secret.name,
         storage_path=urlparse(storage_uri).path,
-        model_format=http_s3_ovms_serving_runtime.instance.spec.supportedModelFormats[0].name,
+        model_format=ModelFormat.ONNX,
+        model_version=ModelVersion.V1,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         model_service_account=model_service_account_2.name,
         enable_auth=True,
@@ -185,7 +188,7 @@ def http_s3_ovms_raw_inference_service_2(
 
 
 @pytest.fixture(scope="class")
-def http_s3_ovms_serving_runtime(
+def http_s3_mlserver_serving_runtime(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
@@ -194,28 +197,27 @@ def http_s3_ovms_serving_runtime(
         client=unprivileged_client,
         name=f"{Protocols.HTTP}-{ModelName.MNIST}-runtime",
         namespace=unprivileged_model_namespace.name,
-        template_name=RuntimeTemplates.OVMS_KSERVE,
+        template_name=RuntimeTemplates.MLSERVER,
         multi_model=False,
-        enable_http=True,
-        enable_grpc=False,
     ) as model_runtime:
         yield model_runtime
 
 
 @pytest.fixture(scope="class")
-def unprivileged_s3_ovms_raw_inference_service(
+def unprivileged_s3_mlserver_raw_inference_service(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
-    http_s3_ovms_serving_runtime: ServingRuntime,
+    http_s3_mlserver_serving_runtime: ServingRuntime,
     unprivileged_ci_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=unprivileged_client,
         name=f"{Protocols.HTTP}-{ModelFormat.ONNX}-raw",
         namespace=unprivileged_model_namespace.name,
-        runtime=http_s3_ovms_serving_runtime.name,
-        model_format=http_s3_ovms_serving_runtime.instance.spec.supportedModelFormats[0].name,
+        runtime=http_s3_mlserver_serving_runtime.name,
+        model_format=ModelFormat.ONNX,
+        model_version=ModelVersion.V1,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         storage_key=unprivileged_ci_endpoint_s3_secret.name,
         storage_path=request.param["model-dir"],

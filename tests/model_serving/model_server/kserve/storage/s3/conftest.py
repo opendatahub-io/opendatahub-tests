@@ -16,12 +16,12 @@ from utilities.minio import create_minio_data_connection_secret
 
 
 @pytest.fixture(scope="class")
-def kserve_ovms_minio_inference_service(
+def kserve_mlserver_minio_inference_service(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     unprivileged_minio_data_connection: Secret,
-    ovms_kserve_serving_runtime: ServingRuntime,
+    mlserver_kserve_serving_runtime: ServingRuntime,
 ) -> Generator[InferenceService, Any, Any]:
     isvc_kwargs: dict[str, Any] = {
         "client": unprivileged_client,
@@ -29,10 +29,12 @@ def kserve_ovms_minio_inference_service(
         "namespace": unprivileged_model_namespace.name,
         "deployment_mode": request.param["deployment-mode"],
         "model_format": request.param["model-format"],
-        "runtime": ovms_kserve_serving_runtime.name,
+        "runtime": mlserver_kserve_serving_runtime.name,
         "model_version": request.param["model-version"],
         "external_route": request.param.get("external-route"),
     }
+    if env_vars := request.param.get("env-vars"):
+        isvc_kwargs["model_env_variables"] = [{"name": key, "value": value} for key, value in env_vars.items()]
     if request.param.get("storage-strategy") == "connection":
         isvc_kwargs["connections"] = unprivileged_minio_data_connection.name
         isvc_kwargs["connection_path"] = request.param["model-dir"]

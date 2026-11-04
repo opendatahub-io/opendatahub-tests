@@ -11,7 +11,7 @@ KSERVE_KUEUE_LOCAL_QUEUE: str = "upgrade-kserve-local-queue"
 KSERVE_KUEUE_CLUSTER_QUEUE: str = "upgrade-kserve-cluster-queue"
 KSERVE_KUEUE_RESOURCE_FLAVOR: str = "upgrade-kserve-flavor"
 
-# Pod resources sized for minimal OVMS raw deployment footprint.
+# Pod resources sized for a minimal MLServer raw deployment footprint.
 # Kueue admits on the sum of ALL container requests in the pod. Headed raw ISVCs
 # also inject kube-rbac-proxy (~100m CPU / 64Mi memory), so one pod costs about
 # 200m CPU + 1088Mi memory when the model container requests 100m / 1Gi.

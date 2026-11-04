@@ -8,18 +8,17 @@ from tests.model_serving.model_server.utils import (
 )
 from utilities.constants import (
     KServeDeploymentType,
+    ModelCarImage,
     ModelName,
-    ModelStorage,
     Protocols,
     RuntimeTemplates,
 )
 from utilities.inference_utils import Inference
-from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
+from utilities.manifests.onnx import ONNX_RESNET50_INFERENCE_CONFIG
 from utilities.monitoring import get_metrics_value, validate_metrics_field
 
 pytestmark = [
-    # The test deploys an OVMS runtime, whose image is not built for arm64
-    pytest.mark.usefixtures("skip_if_arm64_cluster_detected", "user_workload_monitoring_config_map"),
+    pytest.mark.usefixtures("user_workload_monitoring_config_map"),
     pytest.mark.metrics,
 ]
 
@@ -28,14 +27,14 @@ pytestmark = [
     "unprivileged_model_namespace, serving_runtime_from_template, model_car_inference_service",
     [
         pytest.param(
-            {"name": "test-ovms-metrics"},
+            {"name": "test-mlserver-metrics"},
             {
                 "name": f"{ModelName.MNIST}-runtime",
-                "template-name": RuntimeTemplates.OVMS_KSERVE,
+                "template-name": RuntimeTemplates.MLSERVER,
                 "multi-model": False,
             },
             {
-                "storage-uri": ModelStorage.OCI.MNIST_8_1,
+                "storage-uri": ModelCarImage.MLSERVER_ONNX,
                 "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT,
             },
         )
@@ -43,10 +42,10 @@ pytestmark = [
     indirect=True,
 )
 class TestModelMetrics:
-    """Validate OVMS model metrics are reported through OpenShift UserWorkloadMonitoring.
+    """Validate MLServer model metrics are reported through OpenShift UserWorkloadMonitoring.
 
     Steps:
-        1. Deploy an OVMS model car inference service with metrics enabled.
+        1. Deploy an MLServer model car inference service with metrics enabled.
         2. Send a single inference request and verify the success counter increments to 1.
         3. Send multiple inference requests in parallel and verify the total success count.
         4. Query Prometheus for CPU utilization metrics of the model namespace pods.
@@ -60,15 +59,15 @@ class TestModelMetrics:
 
         verify_inference_response(
             inference_service=model_car_inference_service,
-            inference_config=ONNX_INFERENCE_CONFIG,
+            inference_config=ONNX_RESNET50_INFERENCE_CONFIG,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
             use_default_query=True,
         )
 
         metrics_query = (
-            f'ovms_requests_success{{namespace="{model_car_inference_service.namespace}", '
-            f'name="{model_car_inference_service.name}"}}'
+            f'model_infer_request_success_total{{namespace="{model_car_inference_service.namespace}", '
+            f'model="{model_car_inference_service.name}"}}'
         )
 
         validate_metrics_field(
@@ -86,7 +85,7 @@ class TestModelMetrics:
 
         run_inference_multiple_times(
             isvc=model_car_inference_service,
-            inference_config=ONNX_INFERENCE_CONFIG,
+            inference_config=ONNX_RESNET50_INFERENCE_CONFIG,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
             iterations=total_runs,
@@ -94,8 +93,8 @@ class TestModelMetrics:
         )
 
         metrics_query = (
-            f'ovms_requests_success{{namespace="{model_car_inference_service.namespace}", '
-            f'name="{model_car_inference_service.name}"}}'
+            f'model_infer_request_success_total{{namespace="{model_car_inference_service.namespace}", '
+            f'model="{model_car_inference_service.name}"}}'
         )
 
         validate_metrics_field(

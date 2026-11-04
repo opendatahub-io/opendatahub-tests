@@ -57,7 +57,7 @@ def model_server_serving_runtime(
     admin_client: DynamicClient,
     model_server_image_validation_namespace: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
-    """A ServingRuntime created from the OVMS kserve template."""
+    """A ServingRuntime created from the MLServer kserve template."""
     with ServingRuntimeFromTemplate(
         client=admin_client,
         name="model-server-images-runtime",

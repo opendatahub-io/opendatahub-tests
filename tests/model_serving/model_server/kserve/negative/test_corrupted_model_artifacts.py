@@ -17,7 +17,7 @@ from tests.model_serving.model_server.kserve.negative.utils import (
     wait_for_isvc_model_status_states,
 )
 
-pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("skip_if_arm64_cluster_detected", "valid_aws_config")]
+pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_config")]
 
 
 @pytest.mark.tier3
@@ -27,12 +27,12 @@ class TestCorruptedModelArtifacts:
     def test_isvc_reports_failed_to_load_with_corrupted_model(
         self,
         admin_client: DynamicClient,
-        corrupted_model_ovms_isvc: InferenceService,
+        corrupted_model_mlserver_isvc: InferenceService,
     ) -> None:
         """Given a valid S3 path containing a corrupted model, the ISVC must report failure.
 
         When:
-            An OVMS RawDeployment InferenceService is created pointing to a
+            An MLServer RawDeployment InferenceService is created pointing to a
             zero-byte or non-existent model path in S3 so the storage-initializer
             or predictor fails to load the model.
 
@@ -48,7 +48,7 @@ class TestCorruptedModelArtifacts:
         )
         try:
             wait_for_isvc_model_status_states(
-                isvc=corrupted_model_ovms_isvc,
+                isvc=corrupted_model_mlserver_isvc,
                 target_model_state="FailedToLoad",
                 transition_status="BlockedByFailedLoad",
             )

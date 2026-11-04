@@ -83,7 +83,6 @@ from tests.model_serving.model_server.upgrade.utils import (
 from tests.model_serving.model_server.utils import wait_for_isvc_agent_sidecar
 from utilities.constants import (
     KServeDeploymentType,
-    ModelAndFormat,
     ModelCarImage,
     ModelFormat,
     ModelStoragePath,
@@ -243,16 +242,9 @@ def serving_runtime_fixture(
     else:
         with ServingRuntimeFromTemplate(
             **runtime_kwargs,
-            template_name=RuntimeTemplates.OVMS_KSERVE,
+            template_name=RuntimeTemplates.MLSERVER,
             multi_model=False,
-            enable_http=True,
             teardown=teardown_resources,
-            resources={
-                ModelFormat.OVMS: {
-                    "requests": {"cpu": "1", "memory": "4Gi"},
-                    "limits": {"cpu": "2", "memory": "8Gi"},
-                }
-            },
         ) as model_runtime:
             yield model_runtime
 
@@ -281,11 +273,11 @@ def inference_service_fixture(
     else:
         with create_isvc(
             runtime=serving_runtime_fixture.name,
-            model_format=ModelAndFormat.OPENVINO_IR,
+            model_format=ModelFormat.ONNX,
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
             storage_key=s3_connection_fixture.name,
-            storage_path=ModelStoragePath.OPENVINO_EXAMPLE_MODEL,
-            model_version=ModelVersion.OPSET13,
+            storage_path=ModelStoragePath.MNIST_ONNX,
+            model_version=ModelVersion.V1,
             external_route=False,
             teardown=teardown_resources,
             **isvc_kwargs,
@@ -417,11 +409,11 @@ def logging_inference_service_fixture(
     else:
         with create_isvc(
             runtime=serving_runtime_fixture.name,
-            model_format=ModelAndFormat.OPENVINO_IR,
+            model_format=ModelFormat.ONNX,
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
             storage_key=s3_connection_fixture.name,
-            storage_path=ModelStoragePath.OPENVINO_EXAMPLE_MODEL,
-            model_version=ModelVersion.OPSET13,
+            storage_path=ModelStoragePath.MNIST_ONNX,
+            model_version=ModelVersion.V1,
             external_route=False,
             teardown=teardown_resources,
             **isvc_kwargs,
@@ -573,17 +565,10 @@ def auth_serving_runtime_fixture(
     else:
         with ServingRuntimeFromTemplate(
             **runtime_kwargs,
-            template_name=RuntimeTemplates.OVMS_KSERVE,
+            template_name=RuntimeTemplates.MLSERVER,
             multi_model=False,
-            enable_http=True,
             enable_grpc=False,
             teardown=teardown_resources,
-            resources={
-                ModelFormat.OVMS: {
-                    "requests": {"cpu": "1", "memory": "4Gi"},
-                    "limits": {"cpu": "2", "memory": "8Gi"},
-                }
-            },
         ) as model_runtime:
             yield model_runtime
 
@@ -612,11 +597,11 @@ def auth_inference_service_fixture(
     else:
         with create_isvc(
             runtime=auth_serving_runtime_fixture.name,
-            model_format=ModelAndFormat.OPENVINO_IR,
+            model_format=ModelFormat.ONNX,
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
             storage_key=auth_s3_connection_fixture.name,
-            storage_path=ModelStoragePath.OPENVINO_EXAMPLE_MODEL,
-            model_version=ModelVersion.OPSET13,
+            storage_path=ModelStoragePath.MNIST_ONNX,
+            model_version=ModelVersion.V1,
             external_route=True,
             enable_auth=True,
             model_service_account=auth_service_account_fixture.name,
@@ -776,16 +761,9 @@ def model_car_serving_runtime_fixture(
     else:
         with ServingRuntimeFromTemplate(
             **runtime_kwargs,
-            template_name=RuntimeTemplates.OVMS_KSERVE,
+            template_name=RuntimeTemplates.MLSERVER,
             multi_model=False,
-            enable_http=True,
             teardown=teardown_resources,
-            resources={
-                ModelFormat.OVMS: {
-                    "requests": {"cpu": "1", "memory": "4Gi"},
-                    "limits": {"cpu": "2", "memory": "8Gi"},
-                }
-            },
         ) as model_runtime:
             yield model_runtime
 
@@ -812,9 +790,10 @@ def model_car_inference_service_fixture(
     else:
         with create_isvc(
             runtime=model_car_serving_runtime_fixture.name,
-            model_format=model_car_serving_runtime_fixture.instance.spec.supportedModelFormats[0].name,
+            model_format=ModelFormat.ONNX,
+            model_version=ModelVersion.V1,
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-            storage_uri=ModelCarImage.MNIST_8_1,
+            storage_uri=ModelCarImage.MLSERVER_ONNX,
             external_route=True,
             teardown=teardown_resources,
             wait_for_predictor_pods=False,
@@ -905,16 +884,9 @@ def metrics_serving_runtime_fixture(
     else:
         with ServingRuntimeFromTemplate(
             **runtime_kwargs,
-            template_name=RuntimeTemplates.OVMS_KSERVE,
+            template_name=RuntimeTemplates.MLSERVER,
             multi_model=False,
-            enable_http=True,
             teardown=teardown_resources,
-            resources={
-                ModelFormat.OVMS: {
-                    "requests": {"cpu": "1", "memory": "4Gi"},
-                    "limits": {"cpu": "2", "memory": "8Gi"},
-                }
-            },
         ) as model_runtime:
             yield model_runtime
 
@@ -941,9 +913,10 @@ def metrics_inference_service_fixture(
     else:
         with create_isvc(
             runtime=metrics_serving_runtime_fixture.name,
-            model_format=metrics_serving_runtime_fixture.instance.spec.supportedModelFormats[0].name,
+            model_format=ModelFormat.ONNX,
+            model_version=ModelVersion.V1,
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-            storage_uri=ModelCarImage.MNIST_8_1,
+            storage_uri=ModelCarImage.MLSERVER_ONNX,
             external_route=True,
             teardown=teardown_resources,
             wait_for_predictor_pods=False,
@@ -1035,16 +1008,9 @@ def private_endpoint_serving_runtime_fixture(
     else:
         with ServingRuntimeFromTemplate(
             **runtime_kwargs,
-            template_name=RuntimeTemplates.OVMS_KSERVE,
+            template_name=RuntimeTemplates.MLSERVER,
             multi_model=False,
-            enable_http=True,
             teardown=teardown_resources,
-            resources={
-                ModelFormat.OVMS: {
-                    "requests": {"cpu": "1", "memory": "4Gi"},
-                    "limits": {"cpu": "2", "memory": "8Gi"},
-                }
-            },
         ) as model_runtime:
             yield model_runtime
 
@@ -1072,11 +1038,11 @@ def private_endpoint_inference_service_fixture(
     else:
         with create_isvc(
             runtime=private_endpoint_serving_runtime_fixture.name,
-            model_format=ModelAndFormat.OPENVINO_IR,
+            model_format=ModelFormat.ONNX,
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
             storage_key=private_endpoint_s3_connection_fixture.name,
-            storage_path=ModelStoragePath.OPENVINO_EXAMPLE_MODEL,
-            model_version=ModelVersion.OPSET13,
+            storage_path=ModelStoragePath.MNIST_ONNX,
+            model_version=ModelVersion.V1,
             external_route=False,
             teardown=teardown_resources,
             **isvc_kwargs,
@@ -1116,16 +1082,9 @@ def new_isvc_serving_runtime_fixture(
             client=admin_client,
             name="new-isvc-upgrade-runtime",
             namespace=new_isvc_namespace_fixture.name,
-            template_name=RuntimeTemplates.OVMS_KSERVE,
+            template_name=RuntimeTemplates.MLSERVER,
             multi_model=False,
-            enable_http=True,
             teardown=True,
-            resources={
-                ModelFormat.OVMS: {
-                    "requests": {"cpu": "1", "memory": "4Gi"},
-                    "limits": {"cpu": "2", "memory": "8Gi"},
-                }
-            },
         ) as model_runtime:
             yield model_runtime
     else:
@@ -1145,9 +1104,10 @@ def new_isvc_inference_service_fixture(
             name="new-isvc-post-upgrade",
             namespace=new_isvc_serving_runtime_fixture.namespace,
             runtime=new_isvc_serving_runtime_fixture.name,
-            model_format=new_isvc_serving_runtime_fixture.instance.spec.supportedModelFormats[0].name,
+            model_format=ModelFormat.ONNX,
+            model_version=ModelVersion.V1,
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-            storage_uri=ModelCarImage.MNIST_8_1,
+            storage_uri=ModelCarImage.MLSERVER_ONNX,
             external_route=True,
             teardown=True,
             wait_for_predictor_pods=False,
@@ -1541,8 +1501,8 @@ def kserve_kueue_upgrade_s3_secret(
 def kserve_kueue_upgrade_model_storage() -> dict[str, str]:
     """Return model storage path and version for external S3."""
     return {
-        "storage_path": ModelStoragePath.OPENVINO_EXAMPLE_MODEL,
-        "model_version": ModelVersion.OPSET13,
+        "storage_path": ModelStoragePath.MNIST_ONNX,
+        "model_version": ModelVersion.V1,
     }
 
 
@@ -1553,7 +1513,7 @@ def kserve_kueue_upgrade_serving_runtime(
     kserve_kueue_upgrade_namespace: Namespace,
     teardown_resources: bool,
 ) -> Generator[ServingRuntime, Any, Any]:
-    """OVMS ServingRuntime for KServe Kueue upgrade tests."""
+    """MLServer ServingRuntime for KServe Kueue upgrade tests."""
     runtime_kwargs = {
         "client": admin_client,
         "name": KSERVE_KUEUE_UPGRADE_RUNTIME_NAME,
@@ -1703,7 +1663,7 @@ def kserve_kueue_upgrade_inference_service(
     else:
         with create_isvc(
             runtime=kserve_kueue_upgrade_serving_runtime.name,
-            model_format=ModelAndFormat.OPENVINO_IR,
+            model_format=ModelFormat.ONNX,
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
             storage_key=kserve_kueue_upgrade_s3_secret.name,
             storage_path=kserve_kueue_upgrade_model_storage["storage_path"],

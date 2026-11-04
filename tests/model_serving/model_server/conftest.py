@@ -34,8 +34,8 @@ from utilities.constants import (
     DscComponents,
     KServeDeploymentType,
     Labels,
-    ModelAndFormat,
     ModelFormat,
+    ModelVersion,
     RuntimeTemplates,
     StorageClassName,
 )
@@ -162,7 +162,7 @@ def skip_if_no_nfs_storage_class(admin_client: DynamicClient) -> None:
 
 
 @pytest.fixture(scope="class")
-def ovms_kserve_serving_runtime(
+def mlserver_kserve_serving_runtime(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
@@ -171,14 +171,8 @@ def ovms_kserve_serving_runtime(
         "client": unprivileged_client,
         "namespace": unprivileged_model_namespace.name,
         "name": request.param["runtime-name"],
-        "template_name": RuntimeTemplates.OVMS_KSERVE,
+        "template_name": RuntimeTemplates.MLSERVER,
         "multi_model": False,
-        "resources": {
-            ModelFormat.OVMS: {
-                "requests": {"cpu": "1", "memory": "4Gi"},
-                "limits": {"cpu": "2", "memory": "8Gi"},
-            }
-        },
     }
 
     if model_format_name := request.param.get("model-format"):
@@ -218,11 +212,11 @@ def ci_endpoint_s3_secret(
 
 
 @pytest.fixture(scope="class")
-def ovms_kserve_inference_service(
+def mlserver_kserve_inference_service(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
-    ovms_kserve_serving_runtime: ServingRuntime,
+    mlserver_kserve_serving_runtime: ServingRuntime,
     ci_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     deployment_mode = request.param["deployment-mode"]
@@ -230,10 +224,10 @@ def ovms_kserve_inference_service(
         "client": unprivileged_client,
         "name": f"{request.param['name']}-{deployment_mode.lower()}",
         "namespace": unprivileged_model_namespace.name,
-        "runtime": ovms_kserve_serving_runtime.name,
+        "runtime": mlserver_kserve_serving_runtime.name,
         "storage_path": request.param["model-dir"],
         "storage_key": ci_endpoint_s3_secret.name,
-        "model_format": ModelAndFormat.OPENVINO_IR,
+        "model_format": ModelFormat.ONNX,
         "deployment_mode": deployment_mode,
         "model_version": request.param["model-version"],
     }
@@ -262,11 +256,11 @@ def ovms_kserve_inference_service(
 
 
 @pytest.fixture(scope="class")
-def ovms_raw_inference_service(
+def mlserver_raw_inference_service(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
-    ovms_kserve_serving_runtime: ServingRuntime,
+    mlserver_kserve_serving_runtime: ServingRuntime,
     ci_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
@@ -274,10 +268,10 @@ def ovms_raw_inference_service(
         name=f"{request.param['name']}-raw",
         namespace=unprivileged_model_namespace.name,
         external_route=True,
-        runtime=ovms_kserve_serving_runtime.name,
+        runtime=mlserver_kserve_serving_runtime.name,
         storage_path=request.param["model-dir"],
         storage_key=ci_endpoint_s3_secret.name,
-        model_format=ModelAndFormat.OPENVINO_IR,
+        model_format=ModelFormat.ONNX,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         model_version=request.param["model-version"],
         stop_resume=request.param.get("stop", False),
@@ -328,7 +322,8 @@ def model_car_inference_service(
         "namespace": unprivileged_model_namespace.name,
         "runtime": serving_runtime_from_template.name,
         "storage_uri": request.param["storage-uri"],
-        "model_format": serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,
+        "model_format": ModelFormat.ONNX,
+        "model_version": ModelVersion.V1,
         "deployment_mode": deployment_mode,
         "external_route": request.param.get("external-route", True),
         "wait_for_predictor_pods": False,
@@ -368,7 +363,7 @@ def gpu_model_car_inference_service(
     """Create a GPU-accelerated model car inference service."""
     from copy import deepcopy
 
-    from tests.model_serving.model_runtime.openvino.constant import PREDICT_RESOURCES
+    from tests.model_serving.model_runtime.mlserver.constant import PREDICT_RESOURCES
 
     deployment_mode = request.param.get("deployment-mode", KServeDeploymentType.RAW_DEPLOYMENT)
     gpu_count = request.param.get("gpu-count", 1)
