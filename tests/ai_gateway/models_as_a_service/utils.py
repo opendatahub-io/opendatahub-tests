@@ -1013,11 +1013,14 @@ def wait_for_external_model_httproute(
         if not http_route_name:
             return ""
         lookup_namespace = http_route_namespace or namespace
-        if get_httproute(
-            client=client,
-            name=http_route_name,
-            namespace=lookup_namespace,
-        ) is None:
+        if (
+            get_httproute(
+                client=client,
+                name=http_route_name,
+                namespace=lookup_namespace,
+            )
+            is None
+        ):
             return ""
         return http_route_name
 
