@@ -815,6 +815,16 @@ def _revoke_orphaned_duplicate_keys(
         and str(item.get("id")) not in preexisting_key_ids
         and str(item.get("id")) != keep_key_id
     ]
+    if not keep_key_id and len(duplicates) > 1:
+        # The create failed (no returned key ID to keep), and more than one
+        # new same-name key exists: another caller may have created one of
+        # them after this call's snapshot, so ownership cannot be established
+        # and nothing is revoked.
+        LOGGER.warning(
+            f"orphan-key dedupe: {len(duplicates)} new same-name keys exist but no key ID "
+            "was returned by this call; skipping cleanup to avoid revoking another caller's key"
+        )
+        return
     for duplicate in duplicates:
         LOGGER.warning(f"orphan-key dedupe: revoking duplicate key id={duplicate.get('id')} name={api_key_name}")
         try:
