@@ -74,6 +74,7 @@ UNMANAGED_GATEWAY_NAME = "e2e-dft-unmanaged-gateway"
     "authorino_tls_configured",
     "maas_gateway_api",
     "aitenant_infra_namespace",
+    "_require_praxis_default_tenant",
 )
 class TestDefaultTenantServesModelWithoutGatewayRefs:
     """A 3.5-shaped model in a namespace of no tenant is served through the
@@ -190,6 +191,7 @@ class TestDefaultTenantServesModelWithoutGatewayRefs:
     "authorino_tls_configured",
     "maas_gateway_api",
     "aitenant_infra_namespace",
+    "_require_praxis_default_tenant",
 )
 class TestImplicitAttachmentLifecycle:
     """gatewayRefs replace the implicit attachment and removing them restores
