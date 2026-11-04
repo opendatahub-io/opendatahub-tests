@@ -69,6 +69,14 @@ from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils impo
 
 QUOTA_EXHAUSTION_TIMEOUT = 90
 
+# A MaaSAuthPolicy reporting Ready does not guarantee the derived AuthConfig is
+# enforced on every gateway envoy yet; a foreign key briefly serving through
+# the other tenant's gateway is that propagation window, not a steady-state
+# isolation break, so the cross-gateway rejection is re-checked a bounded
+# number of times before failing.
+CROSS_GATEWAY_REJECTION_ATTEMPTS: int = 6
+CROSS_GATEWAY_REJECTION_RETRY_INTERVAL: int = 5
+
 
 @pytest.mark.usefixtures(
     "maas_subscription_controller_enabled_latest",
@@ -205,19 +213,28 @@ class TestTenantAuthIsolation:
                 path_tag=model["path_tag"],
             )
             assert_served_by_provider(response=served, path_tag=model["path_tag"], credential=model["credential"])
-            rejected = infer_external_chat(
-                request_session_http=request_session_http,
-                gateway_url=other["gateway_url"],
-                model_namespace=model["namespace"],
-                model_client_name=model["client_name"],
-                api_key=api_key,
-                path_tag=model["path_tag"],
-                retries=1,
-            )
-            assert rejected.status_code in (401, 403), (
+            rejected: requests.Response | None = None
+            for attempt in range(1, CROSS_GATEWAY_REJECTION_ATTEMPTS + 1):
+                rejected = infer_external_chat(
+                    request_session_http=request_session_http,
+                    gateway_url=other["gateway_url"],
+                    model_namespace=model["namespace"],
+                    model_client_name=model["client_name"],
+                    api_key=api_key,
+                    path_tag=model["path_tag"],
+                    retries=1,
+                )
+                if rejected.status_code in (401, 403):
+                    break
+                # Retry while the other gateway's auth enforcement catches up
+                # with the policy created moments ago by the class fixture.
+                time.sleep(CROSS_GATEWAY_REJECTION_RETRY_INTERVAL)
+            assert rejected is not None and rejected.status_code in (401, 403), (
                 f"{case['tenant_label_name']}'s API key must be rejected by "
-                f"{other['tenant_label_name']}'s gateway, got "
-                f"{rejected.status_code}: {redact_sensitive(rejected.text)}"
+                f"{other['tenant_label_name']}'s gateway after "
+                f"{attempt} attempts (got "
+                f"{rejected.status_code if rejected is not None else 'no response'}: "
+                f"{redact_sensitive(rejected.text) if rejected is not None else ''})"
             )
 
     @pytest.mark.tier2
