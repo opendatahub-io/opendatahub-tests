@@ -1064,7 +1064,7 @@ def _clear_finalizers_and_delete_maastenantconfig(
             },
         ).update()
         tenant_config.delete()
-    except (NotFoundError, ResourceNotFoundError):
+    except NotFoundError, ResourceNotFoundError:
         pass
     refreshed_tenant_config = _synthetic_discovery_maastenantconfig(
         admin_client=admin_client,
