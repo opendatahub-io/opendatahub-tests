@@ -1,4 +1,5 @@
 import base64
+import urllib.request
 from collections.abc import Generator
 from typing import Any
 
@@ -108,6 +109,11 @@ def request_session_http() -> Generator[requests.Session]:
     # default gateway may serve a certificate that does not match that bundle
     # (or its own hostname), so keep this session's verify=False authoritative.
     session.trust_env = False
+    # trust_env=False also disables requests' environment proxy support, so a
+    # runner that reaches the gateway Route only through a proxy would lose
+    # connectivity; restore the environment proxies explicitly. REQUESTS_CA_BUNDLE
+    # is still not picked up, keeping this session's verify=False authoritative.
+    session.proxies.update(urllib.request.getproxies())
     yield session
     session.close()
 
