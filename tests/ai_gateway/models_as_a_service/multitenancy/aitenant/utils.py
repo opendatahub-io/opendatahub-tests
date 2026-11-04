@@ -8,6 +8,7 @@ import pytest
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import NotFoundError, ResourceNotFoundError
 from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.deployment import Deployment
 from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
@@ -87,6 +88,8 @@ MAAS_MODEL_REF_TENANT_RESOLUTION_FAILED_PHASES = ("Failed",)
 MAAS_MODEL_REF_READY_CONDITION_TYPE = "Ready"
 
 SUBSCRIPTION_RECONCILED_PHASES = ("Active", "Degraded")
+
+SYNTHETIC_DISCOVERY_RESOURCE_DELETE_TIMEOUT = 300
 
 LEGACY_TENANT_MIGRATION_API_KEYS_DAYS_LEGACY = 37
 LEGACY_TENANT_MIGRATION_API_KEYS_DAYS_MISMATCH = 90
@@ -990,6 +993,160 @@ def remove_discovery_namespace_labels(admin_client: DynamicClient, tenant_namesp
     LOGGER.info(f"Removed tenant discovery labels from namespace '{tenant_namespace_name}'")
 
 
+def remove_synthetic_discovery_namespace_labels_if_present(
+    admin_client: DynamicClient,
+    tenant_namespace_name: str,
+    gateway_name: str = MAAS_GATEWAY_NAME,
+) -> None:
+    """Remove discovery and gateway-access labels from a synthetic discovery test namespace."""
+    from tests.ai_gateway.models_as_a_service.multitenancy.utils import gateway_access_label_key
+
+    tenant_namespace = Namespace(
+        client=admin_client,
+        name=tenant_namespace_name,
+        wait_for_resource=False,
+    )
+    if not tenant_namespace.exists:
+        return
+    namespace_labels = dict(tenant_namespace.instance.metadata.labels or {})
+    label_removal_patch: dict[str, str | None] = {}
+    for label_key, removal_value in discovery_namespace_label_removal_patch().items():
+        if label_key in namespace_labels:
+            label_removal_patch[label_key] = removal_value
+    gateway_access_label = gateway_access_label_key(gateway_name=gateway_name)
+    if gateway_access_label in namespace_labels:
+        label_removal_patch[gateway_access_label] = None
+    if not label_removal_patch:
+        return
+    ResourceEditor(
+        patches={tenant_namespace: {"metadata": {"labels": label_removal_patch}}},
+    ).update()
+    LOGGER.info(
+        f"Removed synthetic discovery labels from namespace '{tenant_namespace_name}': "
+        f"{sorted(label_removal_patch.keys())}"
+    )
+
+
+def _synthetic_discovery_maastenantconfig(
+    admin_client: DynamicClient,
+    tenant_namespace_name: str,
+) -> MaasTenantConfig:
+    """Return a MaasTenantConfig handle for synthetic discovery teardown."""
+    return MaasTenantConfig(
+        client=admin_client,
+        name=AIGATEWAY_BOOTSTRAPPED_TENANT_NAME,
+        namespace=tenant_namespace_name,
+        wait_for_resource=False,
+    )
+
+
+def _clear_finalizers_and_delete_maastenantconfig(
+    admin_client: DynamicClient,
+    tenant_namespace_name: str,
+) -> bool:
+    """Clear finalizers, delete default-tenant, return True when the CR is gone.
+
+    Treats ``NotFoundError`` during patch/delete as success when the CR was removed
+    concurrently (e.g. namespace cascade).
+    """
+    tenant_config = _synthetic_discovery_maastenantconfig(
+        admin_client=admin_client,
+        tenant_namespace_name=tenant_namespace_name,
+    )
+    if not tenant_config.exists:
+        return True
+    try:
+        ResourceEditor(
+            patches={
+                tenant_config: {
+                    "metadata": {"finalizers": []},
+                },
+            },
+        ).update()
+        tenant_config.delete()
+    except (NotFoundError, ResourceNotFoundError):
+        pass
+    refreshed_tenant_config = _synthetic_discovery_maastenantconfig(
+        admin_client=admin_client,
+        tenant_namespace_name=tenant_namespace_name,
+    )
+    return not refreshed_tenant_config.exists
+
+
+def delete_maastenantconfig_clearing_finalizers(
+    admin_client: DynamicClient,
+    tenant_namespace_name: str,
+    timeout: int = SYNTHETIC_DISCOVERY_RESOURCE_DELETE_TIMEOUT,
+) -> None:
+    """Delete MaasTenantConfig/default-tenant for synthetic discovery test cleanup.
+
+    Clears ``metadata.finalizers`` (including ``praxis-cleanup``) before delete so
+    teardown does not block on ai-gateway-controller completion. Retries when the
+    controller re-attaches finalizers during delete. This is test-only cleanup; it
+    does not assert that Praxis/dataplane resources were fully unwound.
+    """
+    try:
+        for is_deleted in TimeoutSampler(
+            wait_timeout=timeout,
+            sleep=2,
+            func=lambda: _clear_finalizers_and_delete_maastenantconfig(
+                admin_client=admin_client,
+                tenant_namespace_name=tenant_namespace_name,
+            ),
+        ):
+            if is_deleted:
+                return
+    except TimeoutExpiredError:
+        pytest.fail(
+            f"MaasTenantConfig '{AIGATEWAY_BOOTSTRAPPED_TENANT_NAME}' in namespace "
+            f"'{tenant_namespace_name}' was not deleted within {timeout}s after clearing finalizers"
+        )
+
+
+def delete_tenant_namespace_if_present(
+    admin_client: DynamicClient,
+    tenant_namespace_name: str,
+    timeout: int = SYNTHETIC_DISCOVERY_RESOURCE_DELETE_TIMEOUT,
+) -> None:
+    """Delete a tenant namespace when it still exists."""
+    tenant_namespace = Namespace(
+        client=admin_client,
+        name=tenant_namespace_name,
+        wait_for_resource=False,
+    )
+    if not tenant_namespace.exists:
+        return
+    tenant_namespace.delete()
+    tenant_namespace.wait_deleted(timeout=timeout)
+
+
+def teardown_synthetic_discovery_tenant_resources(
+    admin_client: DynamicClient,
+    tenant_namespace_name: str,
+    gateway_name: str = MAAS_GATEWAY_NAME,
+) -> None:
+    """Tear down synthetic discovery fixtures: labels, MaasTenantConfig, then namespace.
+
+    Strips discovery and per-gateway gateway-access labels, then removes
+    MaasTenantConfig (see ``delete_maastenantconfig_clearing_finalizers``). Orphan
+    Praxis workloads may remain if controllers lag; namespace delete can still
+    time out if those objects block termination.
+    """
+    remove_synthetic_discovery_namespace_labels_if_present(
+        admin_client=admin_client,
+        tenant_namespace_name=tenant_namespace_name,
+        gateway_name=gateway_name,
+    )
+    delete_maastenantconfig_clearing_finalizers(
+        admin_client=admin_client,
+        tenant_namespace_name=tenant_namespace_name,
+    )
+    delete_tenant_namespace_if_present(
+        admin_client=admin_client,
+        tenant_namespace_name=tenant_namespace_name,
+    )
+
+
 def prepare_discovered_tenant_namespace(
     admin_client: DynamicClient,
     tenant_namespace_name: str,
@@ -1050,28 +1207,39 @@ def synthetic_discovery_tenant_namespace(
     discovery_case: TenantNamespaceDiscoveryCase | None = None,
     discovery_labels_applied: bool = True,
 ) -> Generator[TenantNamespaceDiscoveryCase, Any, Any]:
-    """Create namespace + MaasTenantConfig for discovery tests; optionally apply discovery labels."""
+    """Create namespace + MaasTenantConfig for discovery tests; optionally apply discovery labels.
+
+    Nested resources use ``teardown=False``; ``finally`` runs ``teardown_synthetic_discovery_tenant_resources``
+    when ``teardown`` is True (Praxis finalizers and discovery labels require ordered cleanup).
+    """
     case = discovery_case if discovery_case is not None else build_tenant_namespace_discovery_case()
     tenant_namespace_name = case["tenant_namespace_name"]
     with (
         tenant_namespace_for_discovery(
             admin_client=admin_client,
             tenant_namespace_name=tenant_namespace_name,
-            teardown=teardown,
+            teardown=False,
         ),
         default_tenant_maastenantconfig(
             admin_client=admin_client,
             tenant_namespace_name=tenant_namespace_name,
-            teardown=teardown,
+            teardown=False,
         ),
     ):
-        if discovery_labels_applied:
-            prepare_discovered_tenant_namespace(
-                admin_client=admin_client,
-                tenant_namespace_name=tenant_namespace_name,
-                tenant_label_name=case["tenant_label_name"],
-            )
-        yield case
+        try:
+            if discovery_labels_applied:
+                prepare_discovered_tenant_namespace(
+                    admin_client=admin_client,
+                    tenant_namespace_name=tenant_namespace_name,
+                    tenant_label_name=case["tenant_label_name"],
+                )
+            yield case
+        finally:
+            if teardown:
+                teardown_synthetic_discovery_tenant_resources(
+                    admin_client=admin_client,
+                    tenant_namespace_name=tenant_namespace_name,
+                )
 
 
 def read_maas_model_ref_spec_tenant_ref(model_ref: NamespacedResource) -> str | None:
