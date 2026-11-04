@@ -817,17 +817,23 @@ def _revoke_orphaned_duplicate_keys(
     ]
     for duplicate in duplicates:
         LOGGER.warning(f"orphan-key dedupe: revoking duplicate key id={duplicate.get('id')} name={api_key_name}")
-        revoke_response, _ = revoke_api_key(
-            request_session_http=request_session_http,
-            base_url=base_url,
-            key_id=str(duplicate["id"]),
-            ocp_user_token=ocp_user_token,
-            extra_headers=extra_headers,
-        )
-        if revoke_response.status_code not in (200, 202, 204):
+        try:
+            revoke_response, _ = revoke_api_key(
+                request_session_http=request_session_http,
+                base_url=base_url,
+                key_id=str(duplicate["id"]),
+                ocp_user_token=ocp_user_token,
+                extra_headers=extra_headers,
+            )
+            if revoke_response.status_code not in (200, 202, 204):
+                LOGGER.warning(
+                    f"orphan-key dedupe: revoking key id={duplicate.get('id')} failed with "
+                    f"status={revoke_response.status_code}"
+                )
+        except Exception as error:  # noqa: BLE001 - one duplicate must not stop the rest
             LOGGER.warning(
-                f"orphan-key dedupe: revoking key id={duplicate.get('id')} failed with "
-                f"status={revoke_response.status_code}"
+                f"orphan-key dedupe: revoking key id={duplicate.get('id')} raised, "
+                f"continuing with remaining duplicates: {error}"
             )
 
 
@@ -935,7 +941,7 @@ def create_api_key(
                 auth_failure_retries += 1
                 LOGGER.info("create_api_key: 500 AUTH_FAILURE (Authorino identity not ready) — retrying")
                 continue
-            if response.status_code in (500, 502, 503) and not (response.text or "").lstrip().startswith("{"):
+            if response.status_code in (500, 502, 503, 504) and not (response.text or "").lstrip().startswith("{"):
                 proxy_error_retries += 1
                 LOGGER.info(
                     f"create_api_key: {response.status_code} plain-text proxy/gateway error "
