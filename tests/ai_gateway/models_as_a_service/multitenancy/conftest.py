@@ -40,8 +40,8 @@ from tests.ai_gateway.models_as_a_service.utils import (
     build_aitenant_spec,
     deploy_and_verify_aitenant_ready,
 )
-from utilities.general import generate_random_name
 from utilities.constants import ModelStorage
+from utilities.general import generate_random_name
 from utilities.resources.aitenant import AITenant
 from utilities.resources.maas_config import Config as MaaSConfig
 from utilities.resources.route import Route
