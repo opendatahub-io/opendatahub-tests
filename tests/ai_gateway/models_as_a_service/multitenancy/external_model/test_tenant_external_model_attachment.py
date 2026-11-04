@@ -198,7 +198,7 @@ class TestUserNamespaceAttachmentServing:
             is None
         ), "unselected tenant must not receive a credential copy"
         response = infer_external_chat(
-            request_session_http,
+            request_session_http=request_session_http,
             gateway_url=tenant_a["gateway_url"],
             model_namespace=model["namespace"],
             model_client_name=model["client_name"],
@@ -224,7 +224,7 @@ class TestUserNamespaceAttachmentServing:
         model = attached_model["model"]
         tenant_b = env["tenant_b"]
         response = infer_external_chat(
-            request_session_http,
+            request_session_http=request_session_http,
             gateway_url=tenant_b["gateway_url"],
             model_namespace=model["namespace"],
             model_client_name=model["client_name"],
@@ -358,7 +358,7 @@ class TestAttachmentLifecycleCleanup:
                 admin_client, request_session_http, ocp_token_for_actor, tenant_b, model
             ) as access_b:
                 response = infer_external_chat(
-                    request_session_http,
+                    request_session_http=request_session_http,
                     gateway_url=tenant_b["gateway_url"],
                     model_namespace=model["namespace"],
                     model_client_name=model["client_name"],
@@ -455,7 +455,7 @@ class TestAttachmentLifecycleCleanup:
 
         unrelated = unrelated_model["model"]
         response = infer_external_chat(
-            request_session_http,
+            request_session_http=request_session_http,
             gateway_url=tenant_b["gateway_url"],
             model_namespace=unrelated["namespace"],
             model_client_name=unrelated["client_name"],
@@ -550,7 +550,7 @@ class TestListenerNotAllowed:
                     f"route {route['metadata']['name']} must not be admitted: {conditions}"
                 )
         response = infer_external_chat(
-            request_session_http,
+            request_session_http=request_session_http,
             gateway_url=tenant_b["gateway_url"],
             model_namespace=model["namespace"],
             model_client_name=model["client_name"],
@@ -607,7 +607,7 @@ class TestListenerAdmissionRecovery:
         )
         control = env["control_model"]
         response = infer_external_chat(
-            request_session_http,
+            request_session_http=request_session_http,
             gateway_url=tenant_b["gateway_url"],
             model_namespace=control["namespace"],
             model_client_name=control["client_name"],
@@ -665,7 +665,7 @@ class TestListenerAdmissionRecovery:
             admin_client, request_session_http, ocp_token_for_actor, tenant_b, model
         ) as access:
             response = infer_external_chat(
-                request_session_http,
+                request_session_http=request_session_http,
                 gateway_url=tenant_b["gateway_url"],
                 model_namespace=model["namespace"],
                 model_client_name=model["client_name"],
@@ -714,7 +714,7 @@ class TestListenerAdmissionRecovery:
             admin_client, request_session_http, ocp_token_for_actor, tenant_b, model
         ) as access:
             served = infer_external_chat(
-                request_session_http,
+                request_session_http=request_session_http,
                 gateway_url=tenant_b["gateway_url"],
                 model_namespace=model["namespace"],
                 model_client_name=model["client_name"],
@@ -748,7 +748,7 @@ class TestListenerAdmissionRecovery:
 
             def _refused() -> bool:
                 response = infer_external_chat(
-                    request_session_http,
+                    request_session_http=request_session_http,
                     gateway_url=tenant_b["gateway_url"],
                     model_namespace=model["namespace"],
                     model_client_name=model["client_name"],
@@ -770,7 +770,7 @@ class TestListenerAdmissionRecovery:
 
         control = env["control_model"]
         control_served = infer_external_chat(
-            request_session_http,
+            request_session_http=request_session_http,
             gateway_url=tenant_b["gateway_url"],
             model_namespace=control["namespace"],
             model_client_name=control["client_name"],
@@ -817,7 +817,7 @@ class TestCredentialRotationFollowsSource:
         model = env["model"]
 
         response = infer_external_chat(
-            request_session_http,
+            request_session_http=request_session_http,
             gateway_url=tenant_b["gateway_url"],
             model_namespace=model["namespace"],
             model_client_name=model["client_name"],
@@ -864,7 +864,7 @@ class TestCredentialRotationFollowsSource:
         last_error_excerpt = ""
         while True:
             response = infer_external_chat(
-                request_session_http,
+                request_session_http=request_session_http,
                 gateway_url=tenant_b["gateway_url"],
                 model_namespace=model["namespace"],
                 model_client_name=model["client_name"],
