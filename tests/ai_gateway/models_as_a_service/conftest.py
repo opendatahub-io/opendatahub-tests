@@ -945,7 +945,7 @@ def maas_api_endpoints_ready(
 @pytest.fixture(scope="session")
 def authorino_tls_configured(admin_client: DynamicClient) -> Generator[None, Any, Any]:
     """Configure Authorino TLS for MaaS API communication."""
-    authorino_namespaces = ["rh-connectivity-link", "kuadrant-system"]
+    authorino_namespaces = ["rh-connectivity-link", "kuadrant-system", "openshift-operators"]
     authorino_namespace = next(
         (ns for ns in authorino_namespaces if Deployment(client=admin_client, name="authorino", namespace=ns).exists),
         None,
