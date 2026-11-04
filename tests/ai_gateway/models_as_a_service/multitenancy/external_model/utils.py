@@ -2370,6 +2370,23 @@ def serve_in_default_tenant(
         )
         api_key = body.get("key")
         assert api_key, f"API key missing in response: {redact_sensitive(body)}"
+        key_id = body.get("id")
+        assert key_id, f"API key ID missing in response: {redact_sensitive(body)}"
+
+        def _revoke_key() -> None:
+            revoke_response, _ = revoke_api_key(
+                request_session_http=request_session_http,
+                base_url=base_url,
+                key_id=str(key_id),
+                ocp_user_token=ocp_token,
+            )
+            if revoke_response.status_code not in (200, 202, 204):
+                LOGGER.warning(
+                    f"failed to revoke default-tenant API key {key_id}: "
+                    f"{revoke_response.status_code} {redact_sensitive(revoke_response.text)}"
+                )
+
+        stack.callback(_revoke_key)  # noqa: FCN001
         yield api_key
 
 
