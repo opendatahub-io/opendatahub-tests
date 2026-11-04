@@ -120,7 +120,7 @@ class TestCrossNsProviderGrant:
                 source_namespace=model["secret_namespace"],
             )
             response = infer_external_chat(
-                request_session_http,
+                request_session_http=request_session_http,
                 gateway_url=env["tenant"]["gateway_url"],
                 model_namespace=model["namespace"],
                 model_client_name=model["client_name"],
@@ -182,7 +182,7 @@ class TestMissingGrant:
                 gateway_name=gateway,
             )
             response = infer_external_chat(
-                request_session_http,
+                request_session_http=request_session_http,
                 gateway_url=env["tenant"]["gateway_url"],
                 model_namespace=model["namespace"],
                 model_client_name=model["client_name"],
@@ -268,7 +268,7 @@ class TestGrantRevocation:
             )
 
             response = infer_external_chat(
-                request_session_http,
+                request_session_http=request_session_http,
                 gateway_url=env["tenant"]["gateway_url"],
                 model_namespace=model["namespace"],
                 model_client_name=model["client_name"],
@@ -292,7 +292,7 @@ class TestGrantRevocation:
                 source_namespace=model["secret_namespace"],
             )
             denied = infer_external_chat(
-                request_session_http,
+                request_session_http=request_session_http,
                 gateway_url=env["tenant"]["gateway_url"],
                 model_namespace=model["namespace"],
                 model_client_name=model["client_name"],
@@ -301,7 +301,8 @@ class TestGrantRevocation:
                 retries=1,
             )
             assert denied.status_code != 200, (
-                f"inference must stop after the grant is revoked, got {denied.status_code}: {redact_sensitive(denied.text)}"
+                f"inference must stop after the grant is revoked, "
+                f"got {denied.status_code}: {redact_sensitive(denied.text)}"
             )
 
     @pytest.mark.tier2
@@ -354,7 +355,7 @@ class TestGrantRevocation:
                 message_pattern=GRANT_FAILURE_PATTERN,
             )
             denied = infer_external_chat(
-                request_session_http,
+                request_session_http=request_session_http,
                 gateway_url=env["tenant"]["gateway_url"],
                 model_namespace=model["namespace"],
                 model_client_name=model["client_name"],
@@ -448,7 +449,7 @@ class TestCredentialSourceSelection:
                 model=default_model,
             )
             response = infer_external_chat(
-                request_session_http,
+                request_session_http=request_session_http,
                 gateway_url=env["tenant"]["gateway_url"],
                 model_namespace=default_model["namespace"],
                 model_client_name=default_model["client_name"],
@@ -478,7 +479,7 @@ class TestCredentialSourceSelection:
                 model=override_model,
             )
             response = infer_external_chat(
-                request_session_http,
+                request_session_http=request_session_http,
                 gateway_url=env["tenant"]["gateway_url"],
                 model_namespace=override_model["namespace"],
                 model_client_name=override_model["client_name"],
@@ -711,7 +712,7 @@ class TestSameNamedProvidersTwoNamespaces:
                 seen: set[str] = set()
                 for _request_index in range(12):
                     response = infer_external_chat(
-                        request_session_http,
+                        request_session_http=request_session_http,
                         gateway_url=case["gateway_url"],
                         model_namespace=model["namespace"],
                         model_client_name=model["client_name"],
