@@ -76,7 +76,6 @@ from tests.ai_gateway.models_as_a_service.utils import (
     build_maas_headers,
     create_api_key,
     deploy_and_verify_aitenant_ready,
-    get_external_model_http_route_name,
     get_httproute,
     get_maas_models_response,
     verify_maas_tenant_config_ready,
