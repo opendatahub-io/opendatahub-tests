@@ -8,6 +8,7 @@ from tests.ai_gateway.models_as_a_service.guardrails.constants import (
     OUTPUT_RAIL_FLOW,
     PII_EMAIL,
     PII_PROMPT,
+    STREAMING_WITH_OUTPUT_GUARDRAIL_MESSAGE,
     STREAMING_WITH_OUTPUT_GUARDRAIL_STATUS,
 )
 from tests.ai_gateway.models_as_a_service.guardrails.utils import chat_completion_payload, wait_for_chat_response
@@ -82,6 +83,33 @@ class TestMaaSGuardrails:
         assert INPUT_RAIL_FLOW in response.text, f"Expected blocking rail in 403 body, got: {response.text!r}"
         assert PII_EMAIL not in response.text, "Blocked response must not echo the PII back"
 
+    @pytest.mark.tier2
+    def test_pii_streaming_prompt_blocked_by_input_guardrail(
+        self,
+        request_session_http: requests.Session,
+        guardrails_model_url: str,
+        guardrails_echo_llmisvc: LLMInferenceService,
+        input_guarded_api_key: str,
+    ) -> None:
+        """Given a subscription with an input-phase PII guardrail,
+        when a streaming prompt containing an e-mail address is sent through MaaS,
+        then the gateway rejects it with 403 before a streamed response can begin.
+        """
+        response = wait_for_chat_response(
+            request_session_http=request_session_http,
+            model_url=guardrails_model_url,
+            headers=build_maas_headers(token=input_guarded_api_key),
+            payload=chat_completion_payload(
+                model=guardrails_echo_llmisvc.name,
+                prompt=PII_PROMPT,
+                stream=True,
+            ),
+            is_expected=lambda resp: resp.status_code == 403,
+            description="PII streaming prompt blocked by the input guardrail",
+        )
+        assert INPUT_RAIL_FLOW in response.text, f"Expected blocking rail in 403 body, got: {response.text!r}"
+        assert PII_EMAIL not in response.text, "Blocked response must not echo the PII back"
+
     @pytest.mark.tier1
     def test_pii_response_blocked_by_output_guardrail(
         self,
@@ -134,6 +162,56 @@ class TestMaaSGuardrails:
         assert CLEAN_PROMPT in content, f"Expected echoed prompt in completion, got: {content!r}"
 
     @pytest.mark.tier1
+    def test_pii_response_blocked_with_input_and_output_guardrails(
+        self,
+        request_session_http: requests.Session,
+        guardrails_model_url: str,
+        guardrails_echo_llmisvc: LLMInferenceService,
+        input_output_guarded_api_key: str,
+    ) -> None:
+        """Given a subscription with input-phase and output-phase guardrails,
+        when an e-mail prompt passes the input check and is echoed by the model,
+        then the input phase allows the request and the output phase blocks the completion.
+        """
+        response = wait_for_chat_response(
+            request_session_http=request_session_http,
+            model_url=guardrails_model_url,
+            headers=build_maas_headers(token=input_output_guarded_api_key),
+            payload=chat_completion_payload(model=guardrails_echo_llmisvc.name, prompt=PII_PROMPT),
+            is_expected=lambda resp: resp.status_code == 200 and GUARDRAIL_VIOLATION_ERROR_CODE in resp.text,
+            description="PII completion blocked by input and output guardrails",
+        )
+        error = response.json()["error"]
+        assert error["code"] == GUARDRAIL_VIOLATION_ERROR_CODE, f"Unexpected error document: {error}"
+        assert error["type"] == "guardrail_violation", f"Unexpected error document: {error}"
+        assert OUTPUT_RAIL_FLOW in error["message"], f"Expected blocking rail in message: {error}"
+        assert PII_EMAIL not in response.text, "Blocked completion must not leak the PII"
+
+    @pytest.mark.tier2
+    def test_streaming_rejected_with_input_and_output_guardrails(
+        self,
+        request_session_http: requests.Session,
+        guardrails_model_url: str,
+        guardrails_echo_llmisvc: LLMInferenceService,
+        input_output_guarded_api_key: str,
+    ) -> None:
+        """Given a subscription with input-phase and output-phase guardrails,
+        when a streaming chat completion is requested with a clean prompt,
+        then the gateway rejects it with 422 before the model can stream an unchecked response.
+        """
+        response = wait_for_chat_response(
+            request_session_http=request_session_http,
+            model_url=guardrails_model_url,
+            headers=build_maas_headers(token=input_output_guarded_api_key),
+            payload=chat_completion_payload(model=guardrails_echo_llmisvc.name, prompt=CLEAN_PROMPT, stream=True),
+            is_expected=lambda resp: resp.status_code == STREAMING_WITH_OUTPUT_GUARDRAIL_STATUS,
+            description="streaming request rejected by input and output guardrails",
+        )
+        assert response.text == STREAMING_WITH_OUTPUT_GUARDRAIL_MESSAGE, (
+            f"Unexpected streaming rejection body: {response.text!r}"
+        )
+
+    @pytest.mark.tier1
     def test_unguarded_subscription_not_screened(
         self,
         request_session_http: requests.Session,
@@ -176,7 +254,9 @@ class TestMaaSGuardrails:
             is_expected=lambda resp: resp.status_code == STREAMING_WITH_OUTPUT_GUARDRAIL_STATUS,
             description="streaming request rejected by the output guardrail",
         )
-        assert "streaming" in response.text, f"Expected streaming rejection reason, got: {response.text!r}"
+        assert response.text == STREAMING_WITH_OUTPUT_GUARDRAIL_MESSAGE, (
+            f"Unexpected streaming rejection body: {response.text!r}"
+        )
 
     @pytest.mark.tier2
     def test_streaming_allowed_with_input_only_guardrail(

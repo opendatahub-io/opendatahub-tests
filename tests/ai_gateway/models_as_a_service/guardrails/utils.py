@@ -3,6 +3,7 @@ from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from typing import Any
 
+import portforward
 import pytest
 import requests
 import structlog
@@ -18,6 +19,8 @@ from tests.ai_gateway.models_as_a_service.guardrails.constants import (
     ECHO_SIM_PORT,
     GUARDRAIL_CHECK_HEADER_PREFIX,
     GUARDRAIL_ENFORCEMENT_TIMEOUT_SECONDS,
+    MAAS_API_SELECTION_LOCAL_PORT,
+    MAAS_API_SELECTION_PATH,
 )
 from tests.ai_gateway.models_as_a_service.praxis.constants import (
     LEGACY_IPP_PLUGINS_CONFIGMAP_NAME_BASE,
@@ -28,14 +31,15 @@ from tests.ai_gateway.models_as_a_service.utils import create_api_key, revoke_ap
 from utilities.constants import MAAS_GATEWAY_NAMESPACE
 from utilities.general import generate_random_name
 from utilities.resources.ai_guardrail import AIGuardrail
+from utilities.resources.auth_policy import AuthPolicy
 from utilities.resources.maa_s_subscription import MaaSSubscription
 from utilities.resources.nemo_guardrails import NemoGuardrails
 
 LOGGER = structlog.get_logger(name=__name__)
 
 
-def guardrail_check_header(namespace: str, guardrail_name: str, check_name: str) -> str:
-    """Return the selection header ai-gateway-controller compiles for an AIGuardrail check.
+def guardrail_check_id(namespace: str, guardrail_name: str, check_name: str) -> str:
+    """Return the stable selection identifier for an AIGuardrail check.
 
     Args:
         namespace: Namespace of the AIGuardrail.
@@ -43,17 +47,22 @@ def guardrail_check_header(namespace: str, guardrail_name: str, check_name: str)
         check_name: Name of the check inside spec.checks.
 
     Returns:
-        Header name ``x-aigateway-guardrail-<sha256(namespace:guardrail:check)>``.
+        SHA-256 identifier derived from namespace, guardrail name, and check name.
     """
-    check_id = hashlib.sha256(f"{namespace}:{guardrail_name}:{check_name}".encode()).hexdigest()
-    return f"{GUARDRAIL_CHECK_HEADER_PREFIX}{check_id}"
+    return hashlib.sha256(f"{namespace}:{guardrail_name}:{check_name}".encode()).hexdigest()
 
 
-def nemo_email_detection_config() -> dict[str, str]:
-    """Return NeMo ConfigMap data that blocks e-mail addresses on input and output.
+def guardrail_check_header(namespace: str, guardrail_name: str, check_name: str) -> str:
+    """Return the selection header ai-gateway-controller compiles for an AIGuardrail check."""
+    return f"{GUARDRAIL_CHECK_HEADER_PREFIX}{guardrail_check_id(namespace, guardrail_name, check_name)}"
 
-    A regex recognizer keeps detection independent of Presidio NLP models, and
-    ``passthrough`` lets the server run checks without a main LLM.
+
+def nemo_sensitive_data_detection_config(input_entities: list[str], output_entities: list[str]) -> dict[str, str]:
+    """Return NeMo ConfigMap data that detects entities independently by request phase.
+
+    Built-in Presidio recognizers avoid custom recognizer state being reused
+    across guardrail evaluations. ``passthrough`` lets the server run checks
+    without a main LLM.
 
     Returns:
         ConfigMap data with ``config.yaml`` and an empty ``rails.co``.
@@ -63,21 +72,8 @@ def nemo_email_detection_config() -> dict[str, str]:
         "rails": {
             "config": {
                 "sensitive_data_detection": {
-                    "recognizers": [
-                        {
-                            "name": "Email Regex",
-                            "supported_entity": "EMAIL",
-                            "patterns": [
-                                {
-                                    "name": "email_regex",
-                                    "regex": r"[a-zA-Z0-9_.+\-]+@[a-zA-Z0-9\-]+(\.[a-zA-Z0-9\-]+)+",
-                                    "score": 1,
-                                }
-                            ],
-                        }
-                    ],
-                    "input": {"entities": ["EMAIL"]},
-                    "output": {"entities": ["EMAIL"]},
+                    "input": {"entities": input_entities},
+                    "output": {"entities": output_entities},
                 }
             },
             "input": {"flows": ["detect sensitive data on input"]},
@@ -85,6 +81,22 @@ def nemo_email_detection_config() -> dict[str, str]:
         },
     }
     return {"config.yaml": yaml.dump(config_yaml), "rails.co": ""}
+
+
+def nemo_email_detection_config() -> dict[str, str]:
+    """Return NeMo ConfigMap data that blocks e-mail addresses on input and output."""
+    return nemo_sensitive_data_detection_config(
+        input_entities=["EMAIL_ADDRESS"],
+        output_entities=["EMAIL_ADDRESS"],
+    )
+
+
+def nemo_phase_detection_config() -> dict[str, str]:
+    """Return NeMo ConfigMap data that accepts e-mail input and blocks e-mail output."""
+    return nemo_sensitive_data_detection_config(
+        input_entities=["PHONE_NUMBER"],
+        output_entities=["EMAIL_ADDRESS"],
+    )
 
 
 def echo_sim_container(served_model_name: str) -> dict[str, Any]:
@@ -286,8 +298,9 @@ def guarded_maas_subscription(
     name: str,
     model_ref: MaaSModelRef,
     guardrails: list[dict[str, Any]] | None,
+    owner_groups: list[str] | None = None,
 ) -> Generator[MaaSSubscription, Any, Any]:
-    """Create a Ready MaaSSubscription for all authenticated users with optional guardrail attachments.
+    """Create a Ready MaaSSubscription with optional owner groups and guardrail attachments.
 
     Args:
         admin_client: Cluster admin client.
@@ -295,6 +308,7 @@ def guarded_maas_subscription(
         name: Subscription name.
         model_ref: MaaSModelRef included in the subscription.
         guardrails: ``spec.guardrails`` attachments, or None for an unguarded subscription.
+        owner_groups: Subscription owner groups, defaulting to ``system:authenticated``.
 
     Yields:
         The Ready MaaSSubscription.
@@ -303,7 +317,7 @@ def guarded_maas_subscription(
         client=admin_client,
         name=name,
         namespace=namespace,
-        owner={"groups": [{"name": "system:authenticated"}]},
+        owner={"groups": [{"name": group} for group in (owner_groups or ["system:authenticated"])]},
         model_refs=[
             {
                 "name": model_ref.name,
@@ -420,4 +434,209 @@ def wait_for_chat_response(
         f"Timed out waiting for {description}. "
         f"last_status={getattr(last_response, 'status_code', None)}, "
         f"last_body={(getattr(last_response, 'text', '') or '')[:300]}"
+    )
+
+
+def _wait_for_guardrail_selection(
+    request_session_http: requests.Session,
+    maas_api_infra_namespace: str,
+    subscription: MaaSSubscription,
+    model_ref: MaaSModelRef,
+    is_expected: Callable[[dict[str, Any]], bool],
+    description: str,
+    groups: list[str] | None = None,
+    username: str = "guardrails-e2e",
+    requested_subscription: str | None = None,
+    requested_model: str | None = None,
+) -> dict[str, Any]:
+    """Wait for a MaaS selection response matching the expected subscription metadata.
+
+    Args:
+        request_session_http: HTTP session used for the local MaaS API request.
+        maas_api_infra_namespace: Namespace containing the MaaS API service.
+        subscription: Subscription selected explicitly by the request.
+        model_ref: Model requested by the selection request.
+        is_expected: Predicate applied to a successful selection response.
+        description: Expected selection result used in the timeout message.
+        groups: Identity groups sent to the selection endpoint.
+        username: Identity username sent to the selection endpoint.
+        requested_subscription: Explicit subscription name, or None for group-based auto-selection.
+        requested_model: Model identifier sent to the selection endpoint.
+
+    Returns:
+        The selection response matching ``is_expected``.
+    """
+    selection_url = f"https://localhost:{MAAS_API_SELECTION_LOCAL_PORT}{MAAS_API_SELECTION_PATH}"
+    payload: dict[str, Any] = {
+        "groups": groups or ["system:authenticated"],
+        "username": username,
+        "requestedModel": requested_model or f"{model_ref.namespace}/{model_ref.name}",
+    }
+    if requested_subscription is not None:
+        payload["requestedSubscription"] = requested_subscription
+    last_response: requests.Response | None = None
+
+    with portforward.forward(
+        pod_or_service="maas-api",
+        namespace=maas_api_infra_namespace,
+        from_port=MAAS_API_SELECTION_LOCAL_PORT,
+        to_port=8443,
+        waiting=20,
+    ):
+        try:
+            for response in TimeoutSampler(
+                wait_timeout=GUARDRAIL_ENFORCEMENT_TIMEOUT_SECONDS,
+                sleep=10,
+                func=request_session_http.post,
+                url=selection_url,
+                json=payload,
+                timeout=30,
+            ):
+                last_response = response
+                response_body = response.json()
+                if response.status_code == 200 and is_expected(response_body):
+                    return response_body
+        except TimeoutExpiredError:
+            pass
+
+    pytest.fail(
+        f"Timed out waiting for {description}. "
+        f"last_status={getattr(last_response, 'status_code', None)}, "
+        f"last_body={(getattr(last_response, 'text', '') or '')[:300]}"
+    )
+
+
+def wait_for_guardrail_unavailable_selection(
+    request_session_http: requests.Session,
+    maas_api_infra_namespace: str,
+    subscription: MaaSSubscription,
+    model_ref: MaaSModelRef,
+) -> dict[str, Any]:
+    """Wait for MaaS selection to fail closed for a subscription with an unavailable guardrail."""
+    return _wait_for_guardrail_selection(
+        request_session_http=request_session_http,
+        maas_api_infra_namespace=maas_api_infra_namespace,
+        subscription=subscription,
+        model_ref=model_ref,
+        is_expected=lambda selection: selection.get("error") == "guardrail_unavailable",
+        description="MaaS selection to fail closed for an unavailable guardrail",
+        requested_subscription=subscription.name,
+    )
+
+
+def wait_for_selected_guardrail_checks(
+    request_session_http: requests.Session,
+    maas_api_infra_namespace: str,
+    subscription: MaaSSubscription,
+    model_ref: MaaSModelRef,
+    expected_check_ids: set[str],
+    requested_model: str | None = None,
+) -> dict[str, Any]:
+    """Wait for MaaS selection to return exactly the expected effective guardrail checks."""
+    return _wait_for_guardrail_selection(
+        request_session_http=request_session_http,
+        maas_api_infra_namespace=maas_api_infra_namespace,
+        subscription=subscription,
+        model_ref=model_ref,
+        is_expected=lambda selection: selection.get("selectedGuardrailChecks")
+        == {check_id: True for check_id in expected_check_ids},
+        description="MaaS selection to return the expected guardrail checks",
+        requested_subscription=subscription.name,
+        requested_model=requested_model,
+    )
+
+
+def wait_for_selected_guardrail_checks_for_groups(
+    request_session_http: requests.Session,
+    maas_api_infra_namespace: str,
+    subscription: MaaSSubscription,
+    model_ref: MaaSModelRef,
+    groups: list[str],
+    expected_check_ids: set[str],
+    username: str = "guardrails-e2e",
+    requested_model: str | None = None,
+) -> dict[str, Any]:
+    """Wait for group-based MaaS selection without explicitly naming a subscription."""
+    return _wait_for_guardrail_selection(
+        request_session_http=request_session_http,
+        maas_api_infra_namespace=maas_api_infra_namespace,
+        subscription=subscription,
+        model_ref=model_ref,
+        is_expected=lambda selection: selection.get("selectedGuardrailChecks")
+        == {check_id: True for check_id in expected_check_ids},
+        description="MaaS selection to return guardrails for the requested identity groups",
+        groups=groups,
+        username=username,
+        requested_subscription=None,
+        requested_model=requested_model,
+    )
+
+
+def _gateway_guardrail_header_catalog(
+    admin_client: DynamicClient,
+    policy_name: str,
+    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+) -> set[str]:
+    auth_policy = AuthPolicy(
+        client=admin_client,
+        name=policy_name,
+        namespace=gateway_namespace,
+    )
+    if not auth_policy.exists:
+        return set()
+
+    spec = auth_policy.instance.spec or {}
+    defaults = spec.get("defaults") or {}
+    rules = defaults.get("rules") or {}
+    response = rules.get("response") or {}
+    success = response.get("success") or {}
+    headers = success.get("headers") or {}
+    return {
+        header_name.lower()
+        for header_name in dict(headers)
+        if header_name.lower().startswith(GUARDRAIL_CHECK_HEADER_PREFIX)
+    }
+
+
+def wait_for_guardrail_header_catalog(
+    admin_client: DynamicClient,
+    policy_name: str,
+    expected_headers: set[str],
+    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+    timeout: int = GUARDRAIL_ENFORCEMENT_TIMEOUT_SECONDS,
+) -> set[str]:
+    """Wait until a gateway AuthPolicy exposes exactly the expected guardrail headers.
+
+    Args:
+        admin_client: Cluster admin client.
+        policy_name: Gateway AuthPolicy to inspect.
+        expected_headers: Guardrail header names that must be present.
+        gateway_namespace: Namespace containing the gateway AuthPolicy.
+        timeout: Maximum seconds to wait.
+
+    Returns:
+        The current guardrail header catalog.
+    """
+    try:
+        for headers in TimeoutSampler(
+            wait_timeout=timeout,
+            sleep=10,
+            func=_gateway_guardrail_header_catalog,
+            admin_client=admin_client,
+            policy_name=policy_name,
+            gateway_namespace=gateway_namespace,
+        ):
+            if headers == {header.lower() for header in expected_headers}:
+                return headers
+    except TimeoutExpiredError:
+        pass
+
+    current_headers = _gateway_guardrail_header_catalog(
+        admin_client=admin_client,
+        policy_name=policy_name,
+        gateway_namespace=gateway_namespace,
+    )
+    pytest.fail(
+        f"Timed out waiting for AuthPolicy {gateway_namespace}/{policy_name} to expose guardrail headers "
+        f"{sorted(expected_headers)}; current headers={sorted(current_headers)}"
     )
