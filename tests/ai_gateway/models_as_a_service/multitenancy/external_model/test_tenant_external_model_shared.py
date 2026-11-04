@@ -139,7 +139,7 @@ class TestSharedModelTwoGateways:
             case = tenant_external_model_tenants[case_key]
             access = shared_serving[access_key]
             response = infer_external_chat(
-                request_session_http,
+                request_session_http=request_session_http,
                 gateway_url=case["gateway_url"],
                 model_namespace=model["namespace"],
                 model_client_name=model["client_name"],
@@ -197,7 +197,7 @@ class TestTenantAuthIsolation:
             ),
         ):
             served = infer_external_chat(
-                request_session_http,
+                request_session_http=request_session_http,
                 gateway_url=case["gateway_url"],
                 model_namespace=model["namespace"],
                 model_client_name=model["client_name"],
@@ -206,7 +206,7 @@ class TestTenantAuthIsolation:
             )
             assert_served_by_provider(response=served, path_tag=model["path_tag"], credential=model["credential"])
             rejected = infer_external_chat(
-                request_session_http,
+                request_session_http=request_session_http,
                 gateway_url=other["gateway_url"],
                 model_namespace=model["namespace"],
                 model_client_name=model["client_name"],
@@ -231,7 +231,7 @@ class TestTenantAuthIsolation:
         model = isolated_keys["model"]
         for case in tenant_external_model_tenants.values():
             response = infer_external_chat(
-                request_session_http,
+                request_session_http=request_session_http,
                 gateway_url=case["gateway_url"],
                 model_namespace=model["namespace"],
                 model_client_name=model["client_name"],
@@ -393,7 +393,7 @@ class TestTenantQuotaIsolation:
         while time.time() < deadline:
             try:
                 limited = infer_external_chat(
-                    request_session_http,
+                    request_session_http=request_session_http,
                     gateway_url=tenant_external_model_tenants["tenant_a"]["gateway_url"],
                     model_namespace=model["namespace"],
                     model_client_name=model["client_name"],
@@ -426,7 +426,7 @@ class TestTenantQuotaIsolation:
         assert successes > 0, "tenant A hit 429 before any successful inference (limits not live?)"
 
         response = infer_external_chat(
-            request_session_http,
+            request_session_http=request_session_http,
             gateway_url=tenant_external_model_tenants["tenant_b"]["gateway_url"],
             model_namespace=model["namespace"],
             model_client_name=model["client_name"],
@@ -437,7 +437,7 @@ class TestTenantQuotaIsolation:
         assert_returns_usage(response=response)
 
         again = infer_external_chat(
-            request_session_http,
+            request_session_http=request_session_http,
             gateway_url=tenant_external_model_tenants["tenant_b"]["gateway_url"],
             model_namespace=model["namespace"],
             model_client_name=model["client_name"],
