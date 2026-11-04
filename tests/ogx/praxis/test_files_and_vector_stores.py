@@ -11,7 +11,6 @@ from ogx_client.types.vector_store import VectorStore
 from tests.ogx.datasets import IBM_2025_Q4_EARNINGS
 from tests.ogx.praxis.constants import (
     MIGRATION_FALLBACK_OWNER_SUBJECT,
-    MIGRATION_FALLBACK_TENANT,
     PRAXIS_GATEWAY_POD_LABELS,
 )
 from tests.ogx.praxis.migration import wait_for_deployment_rollout
@@ -54,13 +53,6 @@ OGX_SERVER_PARAMS: dict[str, Any] = {
 )
 @pytest.mark.ogx
 @pytest.mark.tier1
-@pytest.mark.skip(
-    reason=(
-        "Skipping. PraxisMode sets server.tenancy.mode to multi-tenant,"
-        "which makes previously seeded Files and Vector Stores inaccessible."
-        "Un-skip this test after the issue with multi-tenancy is resolved."
-    )
-)
 class TestFilesAndVectorStoresMigration:
     """Verify Files and Vector Stores are accessible after migration."""
 
@@ -85,10 +77,7 @@ class TestFilesAndVectorStoresMigration:
         praxis_migration_runner()
         wait_for_deployment_rollout(deployment=ogx_server_deployment, previous_generation=prev_gen)
 
-        extra_headers = {
-            "x-user-id": MIGRATION_FALLBACK_OWNER_SUBJECT,
-            "x-tenant-id": MIGRATION_FALLBACK_TENANT,
-        }
+        extra_headers = {"x-user-id": MIGRATION_FALLBACK_OWNER_SUBJECT}
 
         target_files = ogx_praxis_client.files.list(extra_headers=extra_headers).data
         target_vector_stores = ogx_praxis_client.vector_stores.list(extra_headers=extra_headers).data
