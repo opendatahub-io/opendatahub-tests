@@ -73,33 +73,36 @@ class TestMaaSGuardrailFailClosed:
         when MaaS selects a subscription using that policy,
         then selection fails closed without returning any selected checks.
         """
-        with AIGuardrail(
-            client=admin_client,
-            name=generate_random_name(prefix="e2e-guardrails-missing-nemo"),
-            namespace=maas_subscription_namespace.name,
-            provider={
-                "nemo": {"ref": {"name": "does-not-exist"}},
-                "timeout": AI_GUARDRAIL_TIMEOUT,
-            },
-            checks=[{"name": INPUT_CHECK_NAME, "configId": NEMO_PII_CONFIG_ID, "phases": ["Input"]}],
-            teardown=True,
-            wait_for_resource=True,
-        ) as unavailable_provider_guardrail, MaaSSubscription(
-            client=admin_client,
-            name=generate_random_name(prefix="e2e-guardrails-unavailable-provider"),
-            namespace=maas_subscription_namespace.name,
-            owner={"groups": [{"name": "system:authenticated"}]},
-            model_refs=[
-                {
-                    "name": guardrails_model_ref.name,
-                    "namespace": guardrails_model_ref.namespace,
-                    "tokenRateLimits": [{"limit": 100000, "window": "1m"}],
-                }
-            ],
-            guardrails=[{"ref": {"name": unavailable_provider_guardrail.name}, "checks": [INPUT_CHECK_NAME]}],
-            teardown=True,
-            wait_for_resource=True,
-        ) as unavailable_provider_subscription:
+        with (
+            AIGuardrail(
+                client=admin_client,
+                name=generate_random_name(prefix="e2e-guardrails-missing-nemo"),
+                namespace=maas_subscription_namespace.name,
+                provider={
+                    "nemo": {"ref": {"name": "does-not-exist"}},
+                    "timeout": AI_GUARDRAIL_TIMEOUT,
+                },
+                checks=[{"name": INPUT_CHECK_NAME, "configId": NEMO_PII_CONFIG_ID, "phases": ["Input"]}],
+                teardown=True,
+                wait_for_resource=True,
+            ) as unavailable_provider_guardrail,
+            MaaSSubscription(
+                client=admin_client,
+                name=generate_random_name(prefix="e2e-guardrails-unavailable-provider"),
+                namespace=maas_subscription_namespace.name,
+                owner={"groups": [{"name": "system:authenticated"}]},
+                model_refs=[
+                    {
+                        "name": guardrails_model_ref.name,
+                        "namespace": guardrails_model_ref.namespace,
+                        "tokenRateLimits": [{"limit": 100000, "window": "1m"}],
+                    }
+                ],
+                guardrails=[{"ref": {"name": unavailable_provider_guardrail.name}, "checks": [INPUT_CHECK_NAME]}],
+                teardown=True,
+                wait_for_resource=True,
+            ) as unavailable_provider_subscription,
+        ):
             selection = wait_for_guardrail_unavailable_selection(
                 request_session_http=request_session_http,
                 maas_api_infra_namespace=maas_api_infra_namespace,

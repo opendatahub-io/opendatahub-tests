@@ -162,7 +162,7 @@ class TestMaaSGuardrailReconciliation:
                             "checks": [INPUT_CHECK_NAME, OUTPUT_CHECK_NAME],
                         }
                     ]
-                }
+                },
             }
         )
         phase_input_guarded_subscription.wait_for_condition(condition="Ready", status="True", timeout=300)
@@ -194,7 +194,7 @@ class TestMaaSGuardrailReconciliation:
                             "checks": [INPUT_CHECK_NAME],
                         }
                     ]
-                }
+                },
             }
         )
         phase_input_guarded_subscription.wait_for_condition(condition="Ready", status="True", timeout=300)

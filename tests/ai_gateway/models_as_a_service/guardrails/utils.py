@@ -542,8 +542,10 @@ def wait_for_selected_guardrail_checks(
         maas_api_infra_namespace=maas_api_infra_namespace,
         subscription=subscription,
         model_ref=model_ref,
-        is_expected=lambda selection: selection.get("name") == subscription.name
-        and selection.get("selectedGuardrailChecks") == {check_id: True for check_id in expected_check_ids},
+        is_expected=lambda selection: (
+            selection.get("name") == subscription.name
+            and selection.get("selectedGuardrailChecks") == dict.fromkeys(expected_check_ids, True)
+        ),
         description="MaaS selection to return the expected guardrail checks",
         requested_subscription=subscription.name,
         requested_model=requested_model,
@@ -566,8 +568,9 @@ def wait_for_selected_guardrail_checks_for_groups(
         maas_api_infra_namespace=maas_api_infra_namespace,
         subscription=subscription,
         model_ref=model_ref,
-        is_expected=lambda selection: selection.get("selectedGuardrailChecks")
-        == {check_id: True for check_id in expected_check_ids},
+        is_expected=lambda selection: (
+            selection.get("selectedGuardrailChecks") == dict.fromkeys(expected_check_ids, True)
+        ),
         description="MaaS selection to return guardrails for the requested identity groups",
         groups=groups,
         username=username,
