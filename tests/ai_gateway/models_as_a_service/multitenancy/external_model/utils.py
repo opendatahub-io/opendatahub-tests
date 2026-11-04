@@ -2004,9 +2004,11 @@ def usage_provider(
         )
     )
 
-    def _cert_injected() -> bool:
+    def _cert_injected() -> None:
         secret = get_json_or_none(admin_client, "secret", cert_secret, namespace) or {}
-        return bool((secret.get("data") or {}).get("tls.crt"))
+        assert (secret.get("data") or {}).get("tls.crt"), (
+            f"secret {namespace}/{cert_secret} has no tls.crt yet (service-ca injection pending)"
+        )
 
     wait_until(check=_cert_injected, timeout=120, what=f"service-ca cert secret {namespace}/{cert_secret}")
 
