@@ -739,12 +739,16 @@ def default_gateway_url(maas_host: str) -> str:
     return f"https://{maas_host}"
 
 
-@pytest.fixture(scope="module", autouse=True)
+@pytest.fixture(scope="module")
 def _require_praxis_default_tenant(
     admin_client: DynamicClient,
     tenant_external_model_capabilities: dict[str, bool],
 ) -> None:
     """Skip unless the default tenant's payload-processing runs praxis-extproc.
+
+    Requested explicitly by the default-tenant module only: other modules in
+    this directory check their own per-tenant Praxis stacks and must not be
+    gated on the default tenant's backend.
 
     Also gates on the installed AGC + ExternalModel CRD capabilities: without
     the gatewayRefs schema these tests would patch it and wait for a
