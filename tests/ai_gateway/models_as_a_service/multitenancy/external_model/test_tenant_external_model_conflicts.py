@@ -134,7 +134,7 @@ class TestModelNameConflict:
                 model_name=older["name"],
             )
             response = infer_external_chat(
-                request_session_http,
+                request_session_http=request_session_http,
                 gateway_url=tenant_a["gateway_url"],
                 model_namespace=tenant_own["namespace"],
                 model_client_name=tenant_own["client_name"],
@@ -145,7 +145,7 @@ class TestModelNameConflict:
                 response=response, path_tag=tenant_own["path_tag"], credential=tenant_own["credential"]
             )
             denied = infer_external_chat(
-                request_session_http,
+                request_session_http=request_session_http,
                 gateway_url=tenant_a["gateway_url"],
                 model_namespace=older["namespace"],
                 model_client_name=older["client_name"],
@@ -212,7 +212,7 @@ class TestModelNameConflict:
                 model_name=youngest["name"],
             )
             response = infer_external_chat(
-                request_session_http,
+                request_session_http=request_session_http,
                 gateway_url=tenant_a["gateway_url"],
                 model_namespace=oldest["namespace"],
                 model_client_name=oldest["client_name"],
@@ -221,7 +221,7 @@ class TestModelNameConflict:
             )
             assert_served_by_provider(response=response, path_tag=oldest["path_tag"], credential=oldest["credential"])
             denied = infer_external_chat(
-                request_session_http,
+                request_session_http=request_session_http,
                 gateway_url=tenant_a["gateway_url"],
                 model_namespace=youngest["namespace"],
                 model_client_name=youngest["client_name"],
@@ -300,7 +300,7 @@ class TestSameNamedObjectsTwoNamespaces:
         (access_1, access_2) = same_named_pair["accesses"]
 
         response = infer_external_chat(
-            request_session_http,
+            request_session_http=request_session_http,
             gateway_url=tenant_a["gateway_url"],
             model_namespace=model_1["namespace"],
             model_client_name=model_1["client_name"],
@@ -317,7 +317,7 @@ class TestSameNamedObjectsTwoNamespaces:
                 f"status.resolvedModelAlias={alias!r} != {model_2['client_name']!r}"
             )
         response = infer_external_chat(
-            request_session_http,
+            request_session_http=request_session_http,
             gateway_url=tenant_a["gateway_url"],
             model_namespace=model_2["namespace"],
             model_client_name=model_2["client_name"],
@@ -363,7 +363,7 @@ class TestForeignBrokenModelIsolation:
         )
         healthy = broken_pair["healthy"]
         response = infer_external_chat(
-            request_session_http,
+            request_session_http=request_session_http,
             gateway_url=tenant_a["gateway_url"],
             model_namespace=healthy["namespace"],
             model_client_name=healthy["client_name"],
@@ -397,7 +397,7 @@ class TestForeignBrokenModelIsolation:
         )
         healthy = broken_pair["healthy"]
         response = infer_external_chat(
-            request_session_http,
+            request_session_http=request_session_http,
             gateway_url=tenant_a["gateway_url"],
             model_namespace=healthy["namespace"],
             model_client_name=healthy["client_name"],
