@@ -322,7 +322,8 @@ def verify_usage_logs_multi_tenant_e2e_prerequisites(
             None,
             (
                 f"Service '{LOKI_GATEWAY_SERVICE_NAME}' has no ready endpoints in '{monitoring_namespace}'. "
-                f"Wait for the usage-logs LokiStack gateway ({MONITORING_USAGE_LOGS_LOKI_CONDITION}=True on Monitoring), "
+                f"Wait for the usage-logs LokiStack gateway "
+                f"({MONITORING_USAGE_LOGS_LOKI_CONDITION}=True on Monitoring), "
                 f"or provide a Service alias to the gateway when the platform name is not reconciled yet. "
                 f"{_USAGE_LOGS_DSCI_FIX_HINT}"
             ),
