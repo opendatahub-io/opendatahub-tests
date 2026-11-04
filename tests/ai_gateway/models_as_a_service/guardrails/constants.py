@@ -28,5 +28,4 @@ CLEAN_PROMPT: str = "Please summarize the attached report briefly."
 
 GUARDRAIL_ENFORCEMENT_TIMEOUT_SECONDS: int = 600
 
-MAAS_API_SELECTION_LOCAL_PORT: int = 28444
 MAAS_API_SELECTION_PATH: str = "/internal/v1/subscriptions/select"

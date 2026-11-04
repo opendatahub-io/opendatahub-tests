@@ -55,10 +55,11 @@ class TestMaaSGuardrails:
             timeout=60,
         )
         assert response.status_code == 200, (
-            f"Clean prompt rejected by the input guardrail: status={response.status_code}, body={response.text[:300]!r}"
+            f"Clean prompt rejected by the input guardrail: status={response.status_code}"
         )
         content = response.json()["choices"][0]["message"]["content"]
-        assert CLEAN_PROMPT in content, f"Expected echoed prompt in completion, got: {content!r}"
+        if CLEAN_PROMPT not in content:
+            pytest.fail("Expected echoed prompt in completion")
 
     @pytest.mark.tier1
     def test_pii_prompt_blocked_by_input_guardrail(
@@ -80,8 +81,10 @@ class TestMaaSGuardrails:
             is_expected=lambda resp: resp.status_code == 403,
             description="PII prompt blocked by the input guardrail",
         )
-        assert INPUT_RAIL_FLOW in response.text, f"Expected blocking rail in 403 body, got: {response.text!r}"
-        assert PII_EMAIL not in response.text, "Blocked response must not echo the PII back"
+        if INPUT_RAIL_FLOW not in response.text:
+            pytest.fail("Expected input blocking rail in 403 response")
+        if PII_EMAIL in response.text:
+            pytest.fail("Blocked response must not echo PII")
 
     @pytest.mark.tier2
     def test_pii_streaming_prompt_blocked_by_input_guardrail(
@@ -107,8 +110,10 @@ class TestMaaSGuardrails:
             is_expected=lambda resp: resp.status_code == 403,
             description="PII streaming prompt blocked by the input guardrail",
         )
-        assert INPUT_RAIL_FLOW in response.text, f"Expected blocking rail in 403 body, got: {response.text!r}"
-        assert PII_EMAIL not in response.text, "Blocked response must not echo the PII back"
+        if INPUT_RAIL_FLOW not in response.text:
+            pytest.fail("Expected input blocking rail in 403 response")
+        if PII_EMAIL in response.text:
+            pytest.fail("Blocked response must not echo PII")
 
     @pytest.mark.tier1
     def test_pii_response_blocked_by_output_guardrail(
@@ -131,10 +136,14 @@ class TestMaaSGuardrails:
             description="PII completion blocked by the output guardrail",
         )
         error = response.json()["error"]
-        assert error["code"] == GUARDRAIL_VIOLATION_ERROR_CODE, f"Unexpected error document: {error}"
-        assert error["type"] == "guardrail_violation", f"Unexpected error document: {error}"
-        assert OUTPUT_RAIL_FLOW in error["message"], f"Expected blocking rail in message: {error}"
-        assert PII_EMAIL not in response.text, "Blocked completion must not leak the PII"
+        if error["code"] != GUARDRAIL_VIOLATION_ERROR_CODE:
+            pytest.fail("Expected content_blocked guardrail error code")
+        if error["type"] != "guardrail_violation":
+            pytest.fail("Expected guardrail_violation error type")
+        if OUTPUT_RAIL_FLOW not in error["message"]:
+            pytest.fail("Expected output blocking rail in error message")
+        if PII_EMAIL in response.text:
+            pytest.fail("Blocked completion must not leak PII")
 
     @pytest.mark.tier1
     def test_clean_response_passes_output_guardrail(
@@ -157,9 +166,11 @@ class TestMaaSGuardrails:
             description="clean completion allowed by the output guardrail",
         )
         response_body = response.json()
-        assert "error" not in response_body, f"Clean completion was replaced: {response_body}"
+        if "error" in response_body:
+            pytest.fail("Clean completion was replaced by a guardrail error")
         content = response_body["choices"][0]["message"]["content"]
-        assert CLEAN_PROMPT in content, f"Expected echoed prompt in completion, got: {content!r}"
+        if CLEAN_PROMPT not in content:
+            pytest.fail("Expected echoed prompt in completion")
 
     @pytest.mark.tier1
     def test_pii_response_blocked_with_input_and_output_guardrails(
@@ -182,10 +193,14 @@ class TestMaaSGuardrails:
             description="PII completion blocked by input and output guardrails",
         )
         error = response.json()["error"]
-        assert error["code"] == GUARDRAIL_VIOLATION_ERROR_CODE, f"Unexpected error document: {error}"
-        assert error["type"] == "guardrail_violation", f"Unexpected error document: {error}"
-        assert OUTPUT_RAIL_FLOW in error["message"], f"Expected blocking rail in message: {error}"
-        assert PII_EMAIL not in response.text, "Blocked completion must not leak the PII"
+        if error["code"] != GUARDRAIL_VIOLATION_ERROR_CODE:
+            pytest.fail("Expected content_blocked guardrail error code")
+        if error["type"] != "guardrail_violation":
+            pytest.fail("Expected guardrail_violation error type")
+        if OUTPUT_RAIL_FLOW not in error["message"]:
+            pytest.fail("Expected output blocking rail in error message")
+        if PII_EMAIL in response.text:
+            pytest.fail("Blocked completion must not leak PII")
 
     @pytest.mark.tier2
     def test_streaming_rejected_with_input_and_output_guardrails(
@@ -207,9 +222,8 @@ class TestMaaSGuardrails:
             is_expected=lambda resp: resp.status_code == STREAMING_WITH_OUTPUT_GUARDRAIL_STATUS,
             description="streaming request rejected by input and output guardrails",
         )
-        assert response.text == STREAMING_WITH_OUTPUT_GUARDRAIL_MESSAGE, (
-            f"Unexpected streaming rejection body: {response.text!r}"
-        )
+        if response.text != STREAMING_WITH_OUTPUT_GUARDRAIL_MESSAGE:
+            pytest.fail("Unexpected streaming rejection body")
 
     @pytest.mark.tier1
     def test_unguarded_subscription_not_screened(
@@ -232,7 +246,8 @@ class TestMaaSGuardrails:
             description="PII prompt allowed on the unguarded subscription",
         )
         content = response.json()["choices"][0]["message"]["content"]
-        assert PII_EMAIL in content, f"Expected unscreened echo of the PII prompt, got: {content!r}"
+        if PII_EMAIL not in content:
+            pytest.fail("Expected unscreened echo of the PII prompt")
 
     @pytest.mark.tier2
     def test_streaming_rejected_with_output_guardrail(
@@ -254,9 +269,8 @@ class TestMaaSGuardrails:
             is_expected=lambda resp: resp.status_code == STREAMING_WITH_OUTPUT_GUARDRAIL_STATUS,
             description="streaming request rejected by the output guardrail",
         )
-        assert response.text == STREAMING_WITH_OUTPUT_GUARDRAIL_MESSAGE, (
-            f"Unexpected streaming rejection body: {response.text!r}"
-        )
+        if response.text != STREAMING_WITH_OUTPUT_GUARDRAIL_MESSAGE:
+            pytest.fail("Unexpected streaming rejection body")
 
     @pytest.mark.tier2
     def test_streaming_allowed_with_input_only_guardrail(
@@ -281,7 +295,8 @@ class TestMaaSGuardrails:
         assert response.headers.get("content-type", "").startswith("text/event-stream"), (
             f"Expected an SSE response, got content-type={response.headers.get('content-type')!r}"
         )
-        assert "data: " in response.text, "Expected SSE data frames in the streamed response"
+        if "data: " not in response.text:
+            pytest.fail("Expected SSE data frames in the streamed response")
 
     @pytest.mark.tier2
     def test_client_supplied_guardrail_header_rejected(
@@ -304,7 +319,7 @@ class TestMaaSGuardrails:
             is_expected=lambda resp: resp.status_code in (401, 403),
             description="client-supplied guardrail header rejected",
         )
-        assert PII_EMAIL not in response.text, f"Denied request must not reach the model: {response.text!r}"
-        assert INPUT_RAIL_FLOW not in response.text, (
-            f"Request must be denied by the auth policy, not the guardrail: {response.text!r}"
-        )
+        if PII_EMAIL in response.text:
+            pytest.fail("Denied request reached the model")
+        if INPUT_RAIL_FLOW in response.text:
+            pytest.fail("Request was denied by the guardrail instead of the auth policy")

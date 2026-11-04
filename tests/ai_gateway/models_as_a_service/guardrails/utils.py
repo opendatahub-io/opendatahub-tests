@@ -19,7 +19,6 @@ from tests.ai_gateway.models_as_a_service.guardrails.constants import (
     ECHO_SIM_PORT,
     GUARDRAIL_CHECK_HEADER_PREFIX,
     GUARDRAIL_ENFORCEMENT_TIMEOUT_SECONDS,
-    MAAS_API_SELECTION_LOCAL_PORT,
     MAAS_API_SELECTION_PATH,
 )
 from tests.ai_gateway.models_as_a_service.praxis.constants import (
@@ -217,7 +216,8 @@ def _guardrail_checks_compiled(admin_client: DynamicClient, check_headers: list[
     deployment_status = deployment_instance.status or {}
     desired_replicas = deployment_instance.spec.replicas or 0
     return (
-        deployment_status.get("observedGeneration", 0) >= deployment_instance.metadata.generation
+        desired_replicas > 0
+        and deployment_status.get("observedGeneration", 0) >= deployment_instance.metadata.generation
         and deployment_status.get("updatedReplicas", 0) == desired_replicas
         and deployment_status.get("availableReplicas", 0) == desired_replicas
         and deployment_status.get("replicas", 0) == desired_replicas
@@ -266,7 +266,7 @@ def wait_for_guardrail_checks_compiled(
     """Wait until the default tenant's Praxis ExtProc enforces the given guardrail checks.
 
     ai-gateway-controller compiles header-gated ``ai_guardrails`` filters into the
-    post-auth ``extproc.yaml`` and rolls the payload-processing Deployment.
+    post-auth ``extproc.yaml`` and rolls a nonzero payload-processing Deployment.
 
     Args:
         admin_client: Cluster admin client.
@@ -433,7 +433,8 @@ def wait_for_chat_response(
     pytest.fail(
         f"Timed out waiting for {description}. "
         f"last_status={getattr(last_response, 'status_code', None)}, "
-        f"last_body={(getattr(last_response, 'text', '') or '')[:300]}"
+        f"last_content_type={getattr(last_response, 'headers', {}).get('content-type') if last_response else None}, "
+        f"last_body_length={len(getattr(last_response, 'content', b'') or b'')}"
     )
 
 
@@ -466,7 +467,6 @@ def _wait_for_guardrail_selection(
     Returns:
         The selection response matching ``is_expected``.
     """
-    selection_url = f"https://localhost:{MAAS_API_SELECTION_LOCAL_PORT}{MAAS_API_SELECTION_PATH}"
     payload: dict[str, Any] = {
         "groups": groups or ["system:authenticated"],
         "username": username,
@@ -479,10 +479,11 @@ def _wait_for_guardrail_selection(
     with portforward.forward(
         pod_or_service="maas-api",
         namespace=maas_api_infra_namespace,
-        from_port=MAAS_API_SELECTION_LOCAL_PORT,
+        from_port=0,
         to_port=8443,
         waiting=20,
-    ):
+    ) as forwarder:
+        selection_url = f"https://localhost:{forwarder.from_port}{MAAS_API_SELECTION_PATH}"
         try:
             for response in TimeoutSampler(
                 wait_timeout=GUARDRAIL_ENFORCEMENT_TIMEOUT_SECONDS,
@@ -493,8 +494,10 @@ def _wait_for_guardrail_selection(
                 timeout=30,
             ):
                 last_response = response
+                if response.status_code != 200:
+                    continue
                 response_body = response.json()
-                if response.status_code == 200 and is_expected(response_body):
+                if is_expected(response_body):
                     return response_body
         except TimeoutExpiredError:
             pass
@@ -502,7 +505,8 @@ def _wait_for_guardrail_selection(
     pytest.fail(
         f"Timed out waiting for {description}. "
         f"last_status={getattr(last_response, 'status_code', None)}, "
-        f"last_body={(getattr(last_response, 'text', '') or '')[:300]}"
+        f"last_content_type={getattr(last_response, 'headers', {}).get('content-type') if last_response else None}, "
+        f"last_body_length={len(getattr(last_response, 'content', b'') or b'')}"
     )
 
 
@@ -538,8 +542,8 @@ def wait_for_selected_guardrail_checks(
         maas_api_infra_namespace=maas_api_infra_namespace,
         subscription=subscription,
         model_ref=model_ref,
-        is_expected=lambda selection: selection.get("selectedGuardrailChecks")
-        == {check_id: True for check_id in expected_check_ids},
+        is_expected=lambda selection: selection.get("name") == subscription.name
+        and selection.get("selectedGuardrailChecks") == {check_id: True for check_id in expected_check_ids},
         description="MaaS selection to return the expected guardrail checks",
         requested_subscription=subscription.name,
         requested_model=requested_model,
