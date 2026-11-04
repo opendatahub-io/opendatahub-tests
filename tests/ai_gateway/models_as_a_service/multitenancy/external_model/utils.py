@@ -315,7 +315,7 @@ def redact_sensitive(value: Any, *, max_length: int = 300) -> str:
     """Redact secret-looking fields and truncate for log/assert messages."""
     text = repr(value)
     for needle in ("sk-", "api-key", "password", "token"):
-        text = re.sub(rf"{needle}[^'\"\\s,}}]*", f"{needle}***", text, flags=re.IGNORECASE)
+        text = re.sub(rf"{needle}[^'\"\s,}}]*", f"{needle}***", text, flags=re.IGNORECASE)
     return text if len(text) <= max_length else f"{text[:max_length]}..."
 
 
