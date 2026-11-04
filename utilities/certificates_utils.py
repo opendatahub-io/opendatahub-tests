@@ -204,6 +204,12 @@ def router_ca_bundle_env(client: DynamicClient) -> Generator[str, Any]:
             )
     if bundle:
         os.environ["REQUESTS_CA_BUNDLE"] = bundle
+    else:
+        # An inherited REQUESTS_CA_BUNDLE would be picked up by per-request
+        # verify paths (e.g. infer_external_chat) and could verify against an
+        # unsuitable bundle; clear it so inference really does fall back to
+        # the system trust store, as the warning above states.
+        os.environ.pop("REQUESTS_CA_BUNDLE", None)
     try:
         yield bundle
     finally:
