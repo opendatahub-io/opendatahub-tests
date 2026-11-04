@@ -45,8 +45,8 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import uuid
-from functools import partial
 from typing import Any
 
 import pytest
@@ -57,11 +57,9 @@ from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils impo
     TENANT_EXTERNAL_MODEL_READY_TIMEOUT,
     assert_returns_usage,
     assert_served_by_provider,
-    exhaust_tenant_token_budget,
     gateway_status_entry,
+    get_json_or_none,
     infer_external_chat,
-    infer_for_shared_model,
-    maas_model_ref_phase,
     redact_sensitive,
     require_client_name_alias,
     wait_for_attachment_httproute,
@@ -70,43 +68,6 @@ from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils impo
 )
 
 QUOTA_EXHAUSTION_TIMEOUT = 90
-
-# A MaaSAuthPolicy reporting Ready does not guarantee the derived AuthConfig is
-# enforced on every gateway envoy yet; a foreign key briefly serving through
-# the other tenant's gateway is that propagation window, not a steady-state
-# isolation break, so the cross-gateway rejection is re-checked a bounded
-# number of times before failing.
-CROSS_GATEWAY_REJECTION_ATTEMPTS: int = 6
-CROSS_GATEWAY_REJECTION_RETRY_INTERVAL: int = 5
-
-
-def infer_and_assert_rejected(
-    request_session_http: requests.Session,
-    gateway_url: str,
-    model: dict[str, Any],
-    api_key: str,
-    case_label: str,
-    other_label: str,
-) -> requests.Response:
-    """Infer via a foreign gateway and assert the key is rejected.
-
-    Retried by the caller while the other gateway's auth enforcement catches
-    up with the policy created moments ago by the class fixture.
-    """
-    response = infer_external_chat(
-        request_session_http=request_session_http,
-        gateway_url=gateway_url,
-        model_namespace=model["namespace"],
-        model_client_name=model["client_name"],
-        api_key=api_key,
-        path_tag=model["path_tag"],
-        retries=1,
-    )
-    assert response.status_code in (401, 403), (
-        f"{case_label}'s API key must be rejected by {other_label}'s gateway "
-        f"(got {response.status_code}: {redact_sensitive(response.text)})"
-    )
-    return response
 
 
 @pytest.mark.usefixtures(
@@ -174,14 +135,16 @@ class TestSharedModelTwoGateways:
             model=model,
             case=tenant_external_model_tenants["tenant_a"],
         )
-        for case_key in ("tenant_a", "tenant_b"):
+        for case_key, access_key in (("tenant_a", "access_a"), ("tenant_b", "access_b")):
             case = tenant_external_model_tenants[case_key]
-            access = shared_serving[case_key]
-            response = infer_for_shared_model(
+            access = shared_serving[access_key]
+            response = infer_external_chat(
                 request_session_http=request_session_http,
-                case=case,
-                model=model,
+                gateway_url=case["gateway_url"],
+                model_namespace=model["namespace"],
+                model_client_name=model["client_name"],
                 api_key=access["api_key"],
+                path_tag=model["path_tag"],
             )
             assert_served_by_provider(response=response, path_tag=model["path_tag"], credential=model["credential"])
 
@@ -223,41 +186,39 @@ class TestTenantAuthIsolation:
                     tenant_external_model_tenants["tenant_a"],
                     tenant_external_model_tenants["tenant_b"],
                 ),
-                isolated_keys["tenant_a"],
+                isolated_keys["key_a"],
             ),
             (
                 (
                     tenant_external_model_tenants["tenant_b"],
                     tenant_external_model_tenants["tenant_a"],
                 ),
-                isolated_keys["tenant_b"],
+                isolated_keys["key_b"],
             ),
         ):
-            served = infer_for_shared_model(
+            served = infer_external_chat(
                 request_session_http=request_session_http,
-                case=case,
-                model=model,
+                gateway_url=case["gateway_url"],
+                model_namespace=model["namespace"],
+                model_client_name=model["client_name"],
                 api_key=api_key,
+                path_tag=model["path_tag"],
             )
             assert_served_by_provider(response=served, path_tag=model["path_tag"], credential=model["credential"])
-
-            rejected = wait_until(
-                check=partial(
-                    infer_and_assert_rejected,
-                    request_session_http=request_session_http,
-                    gateway_url=other["gateway_url"],
-                    model=model,
-                    api_key=api_key,
-                    case_label=case["tenant_label_name"],
-                    other_label=other["tenant_label_name"],
-                ),
-                timeout=CROSS_GATEWAY_REJECTION_ATTEMPTS * CROSS_GATEWAY_REJECTION_RETRY_INTERVAL,
-                interval=CROSS_GATEWAY_REJECTION_RETRY_INTERVAL,
-                what=(
-                    f"{case['tenant_label_name']}'s API key being rejected by {other['tenant_label_name']}'s gateway"
-                ),
+            rejected = infer_external_chat(
+                request_session_http=request_session_http,
+                gateway_url=other["gateway_url"],
+                model_namespace=model["namespace"],
+                model_client_name=model["client_name"],
+                api_key=api_key,
+                path_tag=model["path_tag"],
+                retries=1,
             )
-            assert rejected.status_code in (401, 403)
+            assert rejected.status_code in (401, 403), (
+                f"{case['tenant_label_name']}'s API key must be rejected by "
+                f"{other['tenant_label_name']}'s gateway, got "
+                f"{rejected.status_code}: {redact_sensitive(rejected.text)}"
+            )
 
     @pytest.mark.tier2
     def test_unknown_key_rejected_on_both_gateways(
@@ -269,11 +230,13 @@ class TestTenantAuthIsolation:
         """An unknown API key is rejected by both tenants' gateways."""
         model = isolated_keys["model"]
         for case in tenant_external_model_tenants.values():
-            response = infer_for_shared_model(
+            response = infer_external_chat(
                 request_session_http=request_session_http,
-                case=case,
-                model=model,
+                gateway_url=case["gateway_url"],
+                model_namespace=model["namespace"],
+                model_client_name=model["client_name"],
                 api_key=f"sk-extmod-invalid-{uuid.uuid4().hex[:8]}",
+                path_tag=model["path_tag"],
                 retries=1,
             )
             assert response.status_code in (401, 403), (
@@ -309,14 +272,17 @@ class TestSharedModelAmbiguousModelRef:
         model = ambiguous_model_ref["model"]
 
         def _check() -> dict[str, Any]:
-            phase, status = maas_model_ref_phase(
-                admin_client=admin_client,
+            ref = get_json_or_none(
+                client=admin_client,
+                kind="maasmodelref",
                 name=ambiguous_model_ref["ambiguous_ref"],
                 namespace=model["namespace"],
             )
-            assert phase == "Failed", (
+            assert ref is not None, "ambiguous MaaSModelRef not found"
+            status = ref.get("status") or {}
+            assert status.get("phase") == "Failed", (
                 f"tenantRef-less modelRef for a two-gateway model must be Failed, "
-                f"got phase={phase!r}: {redact_sensitive(status)}"
+                f"got phase={status.get('phase')!r}: {redact_sensitive(status)}"
             )
             blob = json.dumps(status)
             assert re.search(r"tenantref", blob, re.IGNORECASE), (
@@ -356,37 +322,27 @@ class TestSharedModelAmbiguousModelRef:
             case = cases[tenant_label]
 
             def _check(ref_name: str = ref_name, case: dict[str, str] = case) -> dict[str, Any]:
-                phase, status = maas_model_ref_phase(
-                    admin_client=admin_client,
-                    name=ref_name,
-                    namespace=model["namespace"],
+                ref = get_json_or_none(
+                    client=admin_client, kind="maasmodelref", name=ref_name, namespace=model["namespace"]
                 )
-                assert phase != "Failed", f"pinned modelRef {ref_name} must not fail: {redact_sensitive(status)}"
-                conditions = status.get("conditions")
-                assert conditions is not None, (
-                    f"pinned modelRef {ref_name} reports no conditions yet: {redact_sensitive(status)}"
+                assert ref is not None, f"MaaSModelRef {model['namespace']}/{ref_name} not found"
+                status = ref.get("status") or {}
+                assert status.get("phase") != "Failed", (
+                    f"pinned modelRef {ref_name} must not fail: {redact_sensitive(status)}"
                 )
-                runtime = next((c for c in conditions if c["type"] == "RuntimeReady"), None)
-                assert runtime is not None, (
-                    f"pinned modelRef {ref_name} reports no RuntimeReady condition yet: {redact_sensitive(status)}"
-                )
-                assert runtime["status"] == "True", (
+                conditions = {condition.get("type"): condition for condition in status.get("conditions") or []}
+                runtime = conditions.get("RuntimeReady")
+                assert runtime is not None and runtime.get("status") == "True", (
                     f"pinned modelRef {ref_name} runtime not ready: {redact_sensitive(status)}"
                 )
-                assert status.get("resolvedTenantRef") is not None, (
-                    f"pinned modelRef {ref_name} not resolved to a tenant yet: {redact_sensitive(status)}"
-                )
-                assert status["resolvedTenantRef"] == case["tenant_label_name"], (
+                assert status.get("resolvedTenantRef") == case["tenant_label_name"], (
                     f"pinned modelRef {ref_name} resolved tenant "
-                    f"{status['resolvedTenantRef']!r}, expected "
+                    f"{status.get('resolvedTenantRef')!r}, expected "
                     f"{case['tenant_label_name']!r}: {redact_sensitive(status)}"
                 )
-                assert status.get("httpRouteGatewayName") is not None, (
-                    f"pinned modelRef {ref_name} not resolved to a gateway yet: {redact_sensitive(status)}"
-                )
-                assert status["httpRouteGatewayName"] == case["gateway_name"], (
+                assert status.get("httpRouteGatewayName") == case["gateway_name"], (
                     f"pinned modelRef {ref_name} resolved gateway "
-                    f"{status['httpRouteGatewayName']!r}, expected "
+                    f"{status.get('httpRouteGatewayName')!r}, expected "
                     f"{case['gateway_name']!r}: {redact_sensitive(status)}"
                 )
                 return status
@@ -431,33 +387,62 @@ class TestTenantQuotaIsolation:
         )
         provider_path = quota_model["usage"]["provider_path"]
 
-        limited, successes = exhaust_tenant_token_budget(
-            request_session_http=request_session_http,
-            case=tenant_external_model_tenants["tenant_a"],
-            model=model,
-            api_key=quota_model["tenant_a"]["api_key"],
-            provider_path=provider_path,
-            timeout=QUOTA_EXHAUSTION_TIMEOUT,
-        )
-        assert limited.status_code == 429, (
-            f"tenant A did not hit its token budget after {successes} successes: {redact_sensitive(limited.text)}"
+        successes = 0
+        limited = None
+        deadline = time.time() + QUOTA_EXHAUSTION_TIMEOUT
+        while time.time() < deadline:
+            try:
+                limited = infer_external_chat(
+                    request_session_http=request_session_http,
+                    gateway_url=tenant_external_model_tenants["tenant_a"]["gateway_url"],
+                    model_namespace=model["namespace"],
+                    model_client_name=model["client_name"],
+                    api_key=quota_model["access_a"]["api_key"],
+                    path_tag=model["path_tag"],
+                    provider_path=provider_path,
+                    retries=0,
+                )
+            except requests.RequestException:
+                time.sleep(1.0)
+                continue
+            if limited.status_code == 200:
+                successes += 1
+            elif limited.status_code == 429:
+                if successes:
+                    break
+            elif limited.status_code >= 500:
+                time.sleep(1.0)
+                continue
+            else:
+                raise AssertionError(
+                    "unexpected inference response on tenant A: "
+                    f"{limited.status_code}: {redact_sensitive(limited.text)}"
+                )
+            time.sleep(1.0)
+        assert limited is not None and limited.status_code == 429, (
+            f"tenant A did not hit its token budget after {successes} successes: "
+            f"{redact_sensitive(limited.text if limited is not None else 'no response')}"
         )
         assert successes > 0, "tenant A hit 429 before any successful inference (limits not live?)"
 
-        response = infer_for_shared_model(
+        response = infer_external_chat(
             request_session_http=request_session_http,
-            case=tenant_external_model_tenants["tenant_b"],
-            model=model,
-            api_key=quota_model["tenant_b"]["api_key"],
+            gateway_url=tenant_external_model_tenants["tenant_b"]["gateway_url"],
+            model_namespace=model["namespace"],
+            model_client_name=model["client_name"],
+            api_key=quota_model["access_b"]["api_key"],
+            path_tag=model["path_tag"],
             provider_path=provider_path,
         )
         assert_returns_usage(response=response)
 
-        again = infer_for_shared_model(
+        again = infer_external_chat(
             request_session_http=request_session_http,
-            case=tenant_external_model_tenants["tenant_b"],
-            model=model,
-            api_key=quota_model["tenant_b"]["api_key"],
+            gateway_url=tenant_external_model_tenants["tenant_b"]["gateway_url"],
+            model_namespace=model["namespace"],
+            model_client_name=model["client_name"],
+            api_key=quota_model["access_b"]["api_key"],
+            path_tag=model["path_tag"],
             provider_path=provider_path,
         )
         assert_returns_usage(response=again)
