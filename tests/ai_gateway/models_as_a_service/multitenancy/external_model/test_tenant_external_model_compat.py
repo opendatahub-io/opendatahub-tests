@@ -85,7 +85,7 @@ class TestOmittedGatewayRefsUnchanged:
             f"'{model['name']}'), got {route_names}"
         )
         response = infer_external_chat(
-            request_session_http,
+            request_session_http=request_session_http,
             gateway_url=tenant_a["gateway_url"],
             model_namespace=model["namespace"],
             model_client_name=model["client_name"],
@@ -161,7 +161,7 @@ class TestOmittedGatewayRefsUnchanged:
             )
             time.sleep(SETTLE_POLL_INTERVAL)
         response = infer_external_chat(
-            request_session_http,
+            request_session_http=request_session_http,
             gateway_url=tenant_a["gateway_url"],
             model_namespace=model["namespace"],
             model_client_name=model["client_name"],
@@ -213,7 +213,7 @@ class TestLegacyIppCoexistence:
         """
         model = coexistence["model"]
         response = infer_external_chat(
-            request_session_http,
+            request_session_http=request_session_http,
             gateway_url=coexistence["default_gateway_url"],
             model_namespace=model["namespace"],
             model_client_name=model["client_name"],
@@ -273,7 +273,7 @@ class TestLegacyIppCoexistence:
         model = coexistence["model"]
         case_b = coexistence["case_b"]
         response = infer_external_chat(
-            request_session_http,
+            request_session_http=request_session_http,
             gateway_url=case_b["gateway_url"],
             model_namespace=model["namespace"],
             model_client_name=model["client_name"],
