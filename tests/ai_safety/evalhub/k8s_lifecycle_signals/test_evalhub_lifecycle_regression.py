@@ -19,6 +19,7 @@ from tests.ai_safety.evalhub.utils import (
     submit_evalhub_job,
     wait_for_evalhub_job,
 )
+from utilities.constants import Timeout
 
 
 @pytest.mark.ai_safety
@@ -123,6 +124,9 @@ class TestRegRegression:
 
         k8s_job = Job(client=admin_client, name=job_name, namespace=ns)
         assert k8s_job.exists, f"Batch Job {job_name} must exist in {ns} after completion"
+
+        # The API reports completion before the Job controller sets terminal conditions
+        k8s_job.wait_for_condition(condition="Complete", status="True", timeout=Timeout.TIMEOUT_5MIN)
 
         conditions = k8s_job.instance.status.conditions or []
         complete_conditions = [c for c in conditions if c.get("type") == "Complete" and c.get("status") == "True"]
