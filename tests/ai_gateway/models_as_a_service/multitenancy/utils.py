@@ -867,6 +867,29 @@ def patch_llmisvc_with_tenant_gateway_router(
         yield
 
 
+def s3_secret_config_for_storage_uri(
+    storage_uri: str,
+    *,
+    aws_s3_bucket: str,
+    aws_s3_region: str,
+    aws_s3_endpoint: str,
+) -> tuple[str, str, str]:
+    """Align KServe S3 secret region/endpoint with the bucket named in ``storage_uri``.
+
+    CI model URIs under ``ods-ci-wisdom`` live in ``us-east-2``; pytest flags often pass
+    ``us-east-1`` for unrelated buckets. Using the wrong region yields S3 HeadBucket 301 and
+    a CrashLooping storage-initializer.
+    """
+    bucket_in_uri = urlparse(storage_uri).netloc
+    if bucket_in_uri == ModelStorage.S3.ODS_CI_WISDOM_BUCKET:
+        return (
+            ModelStorage.S3.ODS_CI_WISDOM_BUCKET,
+            ModelStorage.S3.ODS_CI_WISDOM_REGION,
+            ModelStorage.S3.ODS_CI_WISDOM_ENDPOINT,
+        )
+    return aws_s3_bucket, aws_s3_region, aws_s3_endpoint
+
+
 @contextmanager
 def provision_tenant_model(
     admin_client: DynamicClient,
@@ -885,6 +908,13 @@ def provision_tenant_model(
     spec_tenant_ref: str | None = None,
 ) -> Generator[MaaSModelRef, Any, Any]:
     """Provision a tenant-local TinyLlama model whose HTTPRoute attaches to the tenant Gateway."""
+    storage_uri = ModelStorage.S3.TINYLLAMA
+    secret_bucket, secret_region, secret_endpoint = s3_secret_config_for_storage_uri(
+        storage_uri,
+        aws_s3_bucket=aws_s3_bucket,
+        aws_s3_region=aws_s3_region,
+        aws_s3_endpoint=aws_s3_endpoint,
+    )
     label_namespace_gateway_access(
         admin_client=admin_client,
         namespace_name=tenant_namespace_name,
@@ -898,9 +928,9 @@ def provision_tenant_model(
                 namespace=tenant_namespace_name,
                 aws_access_key=aws_access_key,
                 aws_secret_access_key=aws_secret_access_key,
-                aws_s3_region=aws_s3_region,
-                aws_s3_bucket=aws_s3_bucket,
-                aws_s3_endpoint=aws_s3_endpoint,
+                aws_s3_region=secret_region,
+                aws_s3_bucket=secret_bucket,
+                aws_s3_endpoint=secret_endpoint,
                 teardown=teardown,
             )
         )

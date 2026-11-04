@@ -1,4 +1,12 @@
-"""Multi-tenant usage-log dashboard E2E (RHOAIENG-99404)."""
+"""Multi-tenant usage-log dashboard E2E (RHOAIENG-99404).
+
+Local run needs AWS credentials with read access to the ``ods-ci-wisdom`` bucket (TinyLlama
+URI). ``provision_tenant_model`` aligns the KServe secret to ``us-east-2`` for that bucket;
+``--models-s3-bucket-name`` must still be set (any value) but region flags can match CI:
+
+``--models-s3-bucket-name=ods-ci-wisdom --models-s3-bucket-region=us-east-2
+--models-s3-bucket-endpoint=https://s3.us-east-2.amazonaws.com``
+"""
 
 import portforward
 import pytest
