@@ -891,7 +891,7 @@ def same_named_pair(
     request_session_http: requests.Session,
     ocp_token_for_actor: str,
     conflicts_env: dict[str, Any],
-) -> dict[str, Any]:
+) -> Generator[dict[str, Any], Any]:
     """Two same-named model stacks in two user namespaces, both admitted and served."""
     with ExitStack() as stack:
         env = conflicts_env
@@ -951,7 +951,7 @@ def same_named_pair(
             case=tenant_a,
             model=model_2,
         )
-        return {
+        yield {
             "shared_cr_name": shared_cr_name,
             "models": (model_1, model_2),
             "accesses": (access_1, access_2),
@@ -964,7 +964,7 @@ def broken_pair(
     request_session_http: requests.Session,
     ocp_token_for_actor: str,
     conflicts_env: dict[str, Any],
-) -> dict[str, Any]:
+) -> Generator[dict[str, Any], Any]:
     """A healthy served model plus a broken foreign model on the same gateway."""
     with ExitStack() as stack:
         env = conflicts_env
@@ -1012,7 +1012,7 @@ def broken_pair(
                 wait_for_resource=True,
             )
         )
-        return {
+        yield {
             "healthy": healthy,
             "access": access,
             "broken_name": broken_name,
